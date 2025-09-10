@@ -4,20 +4,22 @@ mod grid_snapper;
 mod layer_snapper;
 mod snap_results;
 
-use crate::consts::{COLOR_OVERLAY_BLUE, COLOR_OVERLAY_LABEL_BACKGROUND, COLOR_OVERLAY_WHITE};
+use crate::consts::{COLOR_OVERLAY_BLACK_75, COLOR_OVERLAY_BLUE, COLOR_OVERLAY_WHITE};
 use crate::messages::portfolio::document::overlays::utility_types::{OverlayContext, Pivot};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::{GridSnapTarget, PathSnapTarget, SnapTarget};
 use crate::messages::prelude::*;
 pub use alignment_snapper::*;
-use bezier_rs::TValue;
 pub use distribution_snapper::*;
 use glam::{DAffine2, DVec2};
 use graphene_std::renderer::Quad;
 use graphene_std::renderer::Rect;
 use graphene_std::vector::NoHashBuilder;
 use graphene_std::vector::PointId;
+use graphene_std::vector::algorithms::intersection::filtered_segment_intersections;
+use graphene_std::vector::misc::point_to_dvec2;
 pub use grid_snapper::*;
+use kurbo::ParamCurve;
 pub use layer_snapper::*;
 pub use snap_results::*;
 use std::cmp::Ordering;
@@ -81,6 +83,7 @@ impl SnapConstraint {
 		}
 	}
 }
+
 pub fn snap_tolerance(document: &DocumentMessageHandler) -> f64 {
 	document.snapping_state.tolerance / document.document_ptz.zoom()
 }
@@ -127,13 +130,16 @@ fn get_closest_point(points: Vec<SnappedPoint>) -> Option<SnappedPoint> {
 		}
 	}
 }
+
 fn get_closest_curve(curves: &[SnappedCurve], exclude_paths: bool) -> Option<&SnappedPoint> {
 	let keep_curve = |curve: &&SnappedCurve| !exclude_paths || curve.point.target != SnapTarget::Path(PathSnapTarget::AlongPath);
 	curves.iter().filter(keep_curve).map(|curve| &curve.point).min_by(compare_points)
 }
+
 fn get_closest_line(lines: &[SnappedLine]) -> Option<&SnappedPoint> {
 	lines.iter().map(|curve| &curve.point).min_by(compare_points)
 }
+
 fn get_closest_intersection(snap_to: DVec2, curves: &[SnappedCurve]) -> Option<SnappedPoint> {
 	let mut best = None;
 	for curve_i in curves {
@@ -141,8 +147,8 @@ fn get_closest_intersection(snap_to: DVec2, curves: &[SnappedCurve]) -> Option<S
 			if curve_i.start == curve_j.start && curve_i.layer == curve_j.layer {
 				continue;
 			}
-			for curve_i_t in curve_i.document_curve.intersections(&curve_j.document_curve, None, None) {
-				let snapped_point_document = curve_i.document_curve.evaluate(TValue::Parametric(curve_i_t));
+			for curve_i_t in filtered_segment_intersections(curve_i.document_curve, curve_j.document_curve, None, None) {
+				let snapped_point_document = point_to_dvec2(curve_i.document_curve.eval(curve_i_t));
 				let distance = snap_to.distance(snapped_point_document);
 				let i_closer = curve_i.point.distance < curve_j.point.distance;
 				let close = if i_closer { curve_i } else { curve_j };
@@ -165,6 +171,7 @@ fn get_closest_intersection(snap_to: DVec2, curves: &[SnappedCurve]) -> Option<S
 	}
 	best
 }
+
 fn get_grid_intersection(snap_to: DVec2, lines: &[SnappedLine]) -> Option<SnappedPoint> {
 	let mut best = None;
 	for line_i in lines {
@@ -237,6 +244,7 @@ impl<'a> SnapData<'a> {
 		self.node_snap_cache.is_some_and(|cache| !cache.manipulators.is_empty())
 	}
 }
+
 impl SnapManager {
 	pub fn update_indicator(&mut self, snapped_point: SnappedPoint) {
 		self.indicator = snapped_point.is_snapped().then_some(snapped_point);
@@ -324,7 +332,8 @@ impl SnapManager {
 			}
 			return;
 		}
-		let Some(bounds) = document.metadata().bounding_box_with_transform(layer, DAffine2::IDENTITY) else {
+		// We use a loose bounding box here since these are potential candidates which will be filtered later anyway
+		let Some(bounds) = document.metadata().loose_bounding_box_with_transform(layer, DAffine2::IDENTITY) else {
 			return;
 		};
 		let layer_bounds = document.metadata().transform_to_document(layer) * Quad::from_box(bounds);
@@ -482,7 +491,7 @@ impl SnapManager {
 			if !any_align && ind.distribution_equal_distance_horizontal.is_none() && ind.distribution_equal_distance_vertical.is_none() {
 				let text = format!("[{}] from [{}]", ind.target, ind.source);
 				let transform = DAffine2::from_translation(viewport - DVec2::new(0., 4.));
-				overlay_context.text(&text, COLOR_OVERLAY_WHITE, Some(COLOR_OVERLAY_LABEL_BACKGROUND), transform, 4., [Pivot::Start, Pivot::End]);
+				overlay_context.text(&text, COLOR_OVERLAY_WHITE, Some(COLOR_OVERLAY_BLACK_75), transform, 4., [Pivot::Start, Pivot::End]);
 				overlay_context.square(viewport, Some(4.), Some(COLOR_OVERLAY_BLUE), Some(COLOR_OVERLAY_BLUE));
 			}
 		}

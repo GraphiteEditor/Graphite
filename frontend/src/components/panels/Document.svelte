@@ -16,6 +16,7 @@
 		UpdateMouseCursor,
 		isWidgetSpanRow,
 	} from "@graphite/messages";
+	import type { AppWindowState } from "@graphite/state-providers/app-window";
 	import type { DocumentState } from "@graphite/state-providers/document";
 	import { textInputCleanup } from "@graphite/utility-functions/keyboard-entry";
 	import { extractPixelData, rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
@@ -34,6 +35,7 @@
 	let viewport: HTMLDivElement | undefined;
 
 	const editor = getContext<Editor>("editor");
+	const appWindow = getContext<AppWindowState>("appWindow");
 	const document = getContext<DocumentState>("document");
 
 	// Interactive text editing
@@ -149,9 +151,11 @@
 				return;
 			}
 
-			if (file.name.endsWith(".graphite")) {
+			const graphiteFileSuffix = "." + editor.handle.fileExtension();
+			if (file.name.endsWith(graphiteFileSuffix)) {
 				const content = await file.text();
-				editor.handle.openDocumentFile(file.name, content);
+				const documentName = file.name.slice(0, -graphiteFileSuffix.length);
+				editor.handle.openDocumentFile(documentName, content);
 				return;
 			}
 		});
@@ -192,12 +196,25 @@
 
 		const placeholders = window.document.querySelectorAll("[data-viewport] [data-canvas-placeholder]");
 		// Replace the placeholders with the actual canvas elements
-		placeholders.forEach((placeholder) => {
+		Array.from(placeholders).forEach((placeholder) => {
 			const canvasName = placeholder.getAttribute("data-canvas-placeholder");
 			if (!canvasName) return;
 			// Get the canvas element from the global storage
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			const canvas = (window as any).imageCanvases[canvasName];
+			let canvas = (window as any).imageCanvases[canvasName];
+
+			if (canvasName !== "0" && canvas.parentElement) {
+				var newCanvas = window.document.createElement("canvas");
+				var context = newCanvas.getContext("2d");
+
+				newCanvas.width = canvas.width;
+				newCanvas.height = canvas.height;
+
+				context?.drawImage(canvas, 0, 0);
+
+				canvas = newCanvas;
+			}
+
 			placeholder.replaceWith(canvas);
 		});
 	}
@@ -226,8 +243,8 @@
 			`.trim();
 
 		if (!rasterizedCanvas) {
-			rasterizedCanvas = await rasterizeSVGCanvas(svg, width * dpiFactor, height * dpiFactor, "image/png");
-			rasterizedContext = rasterizedCanvas.getContext("2d") || undefined;
+			rasterizedCanvas = await rasterizeSVGCanvas(svg, width * dpiFactor, height * dpiFactor);
+			rasterizedContext = rasterizedCanvas.getContext("2d", { willReadFrequently: true }) || undefined;
 		}
 		if (!rasterizedContext) return undefined;
 
@@ -312,11 +329,11 @@
 
 		await tick();
 
-		if (!textInput) {
-			return;
-		}
+		if (!textInput) return;
 
+		// eslint-disable-next-line svelte/no-dom-manipulating
 		if (displayEditableTextbox.text === "") textInput.textContent = "";
+		// eslint-disable-next-line svelte/no-dom-manipulating
 		else textInput.textContent = `${displayEditableTextbox.text}\n`;
 
 		// Make it so `maxHeight` is a multiple of `lineHeight`
@@ -330,6 +347,7 @@
 		textInput.style.lineHeight = `${displayEditableTextbox.lineHeightRatio}`;
 		textInput.style.fontSize = `${displayEditableTextbox.fontSize}px`;
 		textInput.style.color = displayEditableTextbox.color.toHexOptionalAlpha() || "transparent";
+		textInput.style.textAlign = displayEditableTextbox.align;
 
 		textInput.oninput = () => {
 			if (!textInput) return;
@@ -455,7 +473,7 @@
 			rulerVertical?.resize();
 
 			// Send the new bounds of the viewports to the backend
-			if (viewport.parentElement) updateBoundsOfViewports(editor, viewport.parentElement);
+			if (viewport.parentElement) updateBoundsOfViewports(editor);
 		});
 		if (viewport) viewportResizeObserver.observe(viewport);
 	});
@@ -490,7 +508,7 @@
 				<LayoutRow class="spacer" />
 			{/if}
 			<LayoutCol class="tool-shelf-bottom-widgets">
-				<WidgetLayout class={"working-colors-input-area"} layout={$document.workingColorsLayout} />
+				<WidgetLayout class="working-colors-input-area" layout={$document.workingColorsLayout} />
 			</LayoutCol>
 		</LayoutCol>
 		<LayoutCol class="viewport-container">
@@ -500,13 +518,13 @@
 					<RulerInput origin={rulerOrigin.x} majorMarkSpacing={rulerSpacing} numberInterval={rulerInterval} direction="Horizontal" bind:this={rulerHorizontal} />
 				</LayoutRow>
 			{/if}
-			<LayoutRow class="viewport-container-inner">
+			<LayoutRow class="viewport-container-inner-1">
 				{#if rulersVisible}
 					<LayoutCol class="ruler-or-scrollbar">
 						<RulerInput origin={rulerOrigin.y} majorMarkSpacing={rulerSpacing} numberInterval={rulerInterval} direction="Vertical" bind:this={rulerVertical} />
 					</LayoutCol>
 				{/if}
-				<LayoutCol class="viewport-container-inner" styles={{ cursor: canvasCursor }}>
+				<LayoutCol class="viewport-container-inner-2" styles={{ cursor: canvasCursor }} data-viewport-container>
 					{#if cursorEyedropper}
 						<EyedropperPreview
 							colorChoice={cursorEyedropperPreviewColorChoice}
@@ -517,25 +535,36 @@
 							y={cursorTop}
 						/>
 					{/if}
-					<div class="viewport" on:pointerdown={(e) => canvasPointerDown(e)} bind:this={viewport} data-viewport>
-						<svg class="artboards" style:width={canvasWidthCSS} style:height={canvasHeightCSS}>
-							{@html artworkSvg}
-						</svg>
+					<div
+						class:viewport={!$appWindow.viewportHolePunch}
+						class:viewport-transparent={$appWindow.viewportHolePunch}
+						on:pointerdown={(e) => canvasPointerDown(e)}
+						bind:this={viewport}
+						data-viewport
+					>
+						{#if !$appWindow.viewportHolePunch}
+							<svg class="artboards" style:width={canvasWidthCSS} style:height={canvasHeightCSS}>
+								{@html artworkSvg}
+							</svg>
+						{/if}
 						<div class="text-input" style:width={canvasWidthCSS} style:height={canvasHeightCSS} style:pointer-events={showTextInput ? "auto" : ""}>
 							{#if showTextInput}
 								<div bind:this={textInput} style:transform="matrix({textInputMatrix})" on:scroll={preventTextEditingScroll} />
 							{/if}
 						</div>
-						<canvas
-							class="overlays"
-							width={canvasWidthScaledRoundedToEven}
-							height={canvasHeightScaledRoundedToEven}
-							style:width={canvasWidthCSS}
-							style:height={canvasHeightCSS}
-							data-overlays-canvas
-						>
-						</canvas>
+						{#if !$appWindow.viewportHolePunch}
+							<canvas
+								class="overlays"
+								width={canvasWidthScaledRoundedToEven}
+								height={canvasHeightScaledRoundedToEven}
+								style:width={canvasWidthCSS}
+								style:height={canvasHeightCSS}
+								data-overlays-canvas
+							>
+							</canvas>
+						{/if}
 					</div>
+
 					<div class="graph-view" class:open={$document.graphViewOverlayOpen} style:--fade-artwork={`${$document.fadeArtwork}%`} data-graph>
 						<Graph />
 					</div>
@@ -579,7 +608,8 @@
 		.control-bar {
 			height: 32px;
 			flex: 0 0 auto;
-			margin: 0 4px;
+			padding: 0 4px; // Padding (instead of margin) is needed for the viewport hole punch on desktop
+			background: var(--color-3-darkgray); // Needed for the viewport hole punch on desktop
 
 			.spacer {
 				min-width: 40px;
@@ -618,6 +648,7 @@
 			.tool-shelf {
 				flex: 0 0 auto;
 				justify-content: space-between;
+				background: var(--color-3-darkgray); // Needed for the viewport hole punch on desktop
 
 				.tools {
 					flex: 0 1 auto;
@@ -646,7 +677,7 @@
 
 							&[title^="Coming Soon"] {
 								opacity: 0.25;
-								transition: opacity 0.2s;
+								transition: opacity 0.1s;
 
 								&:hover {
 									opacity: 1;
@@ -659,7 +690,7 @@
 								}
 
 								.color-vector {
-									fill: var(--color-data-vectordata);
+									fill: var(--color-data-vector);
 								}
 
 								.color-raster {
@@ -699,6 +730,7 @@
 
 				.ruler-or-scrollbar {
 					flex: 0 0 auto;
+					background: var(--color-3-darkgray); // Needed for the viewport hole punch on desktop
 				}
 
 				.ruler-corner {
@@ -729,12 +761,17 @@
 					margin-right: 16px;
 				}
 
-				.viewport-container-inner {
+				.viewport-container-inner-1,
+				.viewport-container-inner-2 {
 					flex: 1 1 100%;
 					position: relative;
 
 					.viewport {
 						background: var(--color-2-mildblack);
+					}
+
+					.viewport,
+					.viewport-transparent {
 						width: 100%;
 						height: 100%;
 						// Allows the SVG to be placed at explicit integer values of width and height to prevent non-pixel-perfect SVG scaling
@@ -761,7 +798,6 @@
 						.text-input {
 							word-break: break-all;
 							unicode-bidi: plaintext;
-							text-align: left;
 						}
 
 						.text-input div {
@@ -776,7 +812,6 @@
 							white-space: pre-wrap;
 							word-break: normal;
 							unicode-bidi: plaintext;
-							text-align: left;
 							display: inline-block;
 							// Workaround to force Chrome to display the flashing text entry cursor when text is empty
 							padding-left: 1px;
@@ -792,7 +827,7 @@
 
 					.graph-view {
 						pointer-events: none;
-						transition: opacity 0.2s ease-in-out;
+						transition: opacity 0.2s;
 						opacity: 0;
 
 						&.open {

@@ -1,4 +1,4 @@
-use crate::messages::broadcast::broadcast_event::BroadcastEvent;
+use crate::messages::broadcast::event::EventMessage;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 
@@ -27,7 +27,7 @@ impl DialogLayoutHolder for CloseDocumentDialog {
 			TextButton::new("Discard")
 				.on_update(move |_| {
 					DialogMessage::CloseDialogAndThen {
-						followups: vec![BroadcastEvent::ToolAbort.into(), PortfolioMessage::CloseDocument { document_id }.into()],
+						followups: vec![EventMessage::ToolAbort.into(), PortfolioMessage::CloseDocument { document_id }.into()],
 					}
 					.into()
 				})

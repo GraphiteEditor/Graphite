@@ -2,7 +2,7 @@
 name = "graphite-wasm"
 publish = false
 version = "0.0.0"
-rust-version = "1.85"
+rust-version = "1.88"
 authors = ["Graphite Authors <contact@graphite.rs>"]
 edition = "2024"
 readme = "../../README.md"
@@ -11,9 +11,10 @@ repository = "https://github.com/GraphiteEditor/Graphite"
 license = "Apache-2.0"
 
 [features]
-default = ["gpu"]
+default = ["gpu", "shader-nodes"]
 gpu = ["editor/gpu"]
-tauri = [ "editor/tauri"]
+native = []
+shader-nodes = ["graphene-std/shader-nodes", "gpu"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -38,6 +39,8 @@ wasm-bindgen-futures = { workspace = true }
 math-parser = { workspace = true }
 wgpu = { workspace = true }
 web-sys = { workspace = true }
+ron = { workspace = true }
+serde_json = { workspace = true }
 
 [package.metadata.wasm-pack.profile.dev]
 wasm-opt = false

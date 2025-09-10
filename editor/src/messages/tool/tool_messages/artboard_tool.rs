@@ -4,6 +4,7 @@ use crate::messages::portfolio::document::overlays::utility_types::OverlayContex
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::compass_rose::Axis;
+use crate::messages::tool::common_functionality::measure;
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::snapping;
 use crate::messages::tool::common_functionality::snapping::SnapCandidatePoint;
@@ -11,7 +12,9 @@ use crate::messages::tool::common_functionality::snapping::SnapData;
 use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::tool::common_functionality::transformation_cage::*;
 use graph_craft::document::NodeId;
-use graphene_std::renderer::Quad;
+use graphene_std::Artboard;
+use graphene_std::renderer::{Quad, Rect};
+use graphene_std::table::Table;
 
 #[derive(Default, ExtractField)]
 pub struct ArtboardTool {
@@ -24,7 +27,7 @@ pub struct ArtboardTool {
 pub enum ArtboardToolMessage {
 	// Standard messages
 	Abort,
-	Overlays(OverlayContext),
+	Overlays { context: OverlayContext },
 
 	// Tool-specific messages
 	UpdateSelectedArtboard,
@@ -49,9 +52,9 @@ impl ToolMetadata for ArtboardTool {
 }
 
 #[message_handler_data]
-impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for ArtboardTool {
-	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
-		self.fsm_state.process_event(message, &mut self.data, tool_data, &(), responses, false);
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for ArtboardTool {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
+		self.fsm_state.process_event(message, &mut self.data, context, &(), responses, false);
 	}
 
 	fn actions(&self) -> ActionList {
@@ -81,7 +84,7 @@ impl ToolTransition for ArtboardTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
 			tool_abort: Some(ArtboardToolMessage::Abort.into()),
-			overlay_provider: Some(|overlay_context| ArtboardToolMessage::Overlays(overlay_context).into()),
+			overlay_provider: Some(|context| ArtboardToolMessage::Overlays { context }.into()),
 			..Default::default()
 		}
 	}
@@ -177,7 +180,7 @@ impl ArtboardToolData {
 		let Some(movement) = &bounds.selected_edges else {
 			return;
 		};
-		if self.selected_artboard.unwrap() == LayerNodeIdentifier::ROOT_PARENT {
+		if self.selected_artboard == Some(LayerNodeIdentifier::ROOT_PARENT) {
 			log::error!("Selected artboard cannot be ROOT_PARENT");
 			return;
 		}
@@ -218,14 +221,14 @@ impl Fsm for ArtboardToolFsmState {
 	type ToolData = ArtboardToolData;
 	type ToolOptions = ();
 
-	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, _tool_options: &(), responses: &mut VecDeque<Message>) -> Self {
-		let ToolActionHandlerData { document, input, .. } = tool_action_data;
+	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionMessageContext, _tool_options: &(), responses: &mut VecDeque<Message>) -> Self {
+		let ToolActionMessageContext { document, input, .. } = tool_action_data;
 
 		let hovered = ArtboardToolData::hovered_artboard(document, input).is_some();
 
 		let ToolMessage::Artboard(event) = event else { return self };
 		match (self, event) {
-			(state, ArtboardToolMessage::Overlays(mut overlay_context)) => {
+			(state, ArtboardToolMessage::Overlays { context: mut overlay_context }) => {
 				let display_transform_cage = overlay_context.visibility_settings.transform_cage();
 				if display_transform_cage && state != ArtboardToolFsmState::Drawing {
 					if let Some(bounds) = tool_data.selected_artboard.and_then(|layer| document.metadata().bounding_box_document(layer)) {
@@ -237,6 +240,39 @@ impl Fsm for ArtboardToolFsmState {
 					}
 				} else {
 					tool_data.bounding_box_manager.take();
+				}
+
+				// Measure with Alt held down between selected artboard and hovered layers/artboards
+				// TODO: Don't use `Key::Alt` directly, instead take it as a variable from the input mappings list like in all other places
+				let alt_pressed = input.keyboard.get(Key::Alt as usize);
+				let quick_measurement_enabled = overlay_context.visibility_settings.quick_measurement();
+				let not_resizing = !matches!(state, ArtboardToolFsmState::ResizingBounds);
+
+				if quick_measurement_enabled && not_resizing && alt_pressed {
+					// Get the selected artboard bounds
+					let selected_artboard_bounds = tool_data.selected_artboard.and_then(|layer| document.metadata().bounding_box_document(layer)).map(Rect::from_box);
+
+					// Find hovered artboard or regular layer
+					let hovered_artboard = ArtboardToolData::hovered_artboard(document, input);
+					let hovered_layer = document.click_xray(input).find(|&layer| !document.network_interface.is_artboard(&layer.to_node(), &[]));
+
+					// Get bounds for the hovered object (prioritize artboards)
+					let hovered_bounds = if let Some(artboard) = hovered_artboard {
+						document.metadata().bounding_box_document(artboard).map(Rect::from_box)
+					} else if let Some(layer) = hovered_layer {
+						document.metadata().bounding_box_document(layer).map(Rect::from_box)
+					} else {
+						None
+					};
+
+					// If both selected artboard and hovered object bounds exist, overlay measurement lines
+					if let (Some(selected_bounds), Some(hovered_bounds)) = (selected_artboard_bounds, hovered_bounds) {
+						// Don't measure if it's the same artboard
+						if selected_artboard_bounds != Some(hovered_bounds) {
+							let document_to_viewport = document.metadata().document_to_viewport;
+							measure::overlay(selected_bounds, hovered_bounds, document_to_viewport, document_to_viewport, &mut overlay_context);
+						}
+					}
 				}
 
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
@@ -336,8 +372,8 @@ impl Fsm for ArtboardToolFsmState {
 
 					responses.add(GraphOperationMessage::NewArtboard {
 						id,
-						artboard: graphene_std::Artboard {
-							graphic_group: graphene_std::GraphicGroupTable::default(),
+						artboard: Artboard {
+							content: Table::new(),
 							label: String::from("Artboard"),
 							location: start.min(end).round().as_ivec2(),
 							dimensions: (start.round() - end.round()).abs().as_ivec2(),
@@ -562,13 +598,17 @@ impl Fsm for ArtboardToolFsmState {
 #[cfg(test)]
 mod test_artboard {
 	pub use crate::test_utils::test_prelude::*;
+	use graphene_std::table::Table;
 
-	async fn get_artboards(editor: &mut EditorTestUtils) -> Vec<graphene_std::Artboard> {
+	async fn get_artboards(editor: &mut EditorTestUtils) -> Table<graphene_std::Artboard> {
 		let instrumented = match editor.eval_graph().await {
 			Ok(instrumented) => instrumented,
-			Err(e) => panic!("Failed to evaluate graph: {}", e),
+			Err(e) => panic!("Failed to evaluate graph: {e}"),
 		};
-		instrumented.grab_all_input::<graphene_std::graphic_element::append_artboard::ArtboardInput>(&editor.runtime).collect()
+		instrumented
+			.grab_all_input::<graphene_std::graphic::extend::NewInput<graphene_std::Artboard>>(&editor.runtime)
+			.flatten()
+			.collect()
 	}
 
 	#[tokio::test]
@@ -580,8 +620,8 @@ mod test_artboard {
 		let artboards = get_artboards(&mut editor).await;
 
 		assert_eq!(artboards.len(), 1);
-		assert_eq!(artboards[0].location, IVec2::new(10, 0));
-		assert_eq!(artboards[0].dimensions, IVec2::new(10, 11));
+		assert_eq!(artboards.get(0).unwrap().element.location, IVec2::new(10, 0));
+		assert_eq!(artboards.get(0).unwrap().element.dimensions, IVec2::new(10, 11));
 	}
 
 	#[tokio::test]
@@ -592,8 +632,8 @@ mod test_artboard {
 
 		let artboards = get_artboards(&mut editor).await;
 		assert_eq!(artboards.len(), 1);
-		assert_eq!(artboards[0].location, IVec2::new(-10, 10));
-		assert_eq!(artboards[0].dimensions, IVec2::new(20, 20));
+		assert_eq!(artboards.get(0).unwrap().element.location, IVec2::new(-10, 10));
+		assert_eq!(artboards.get(0).unwrap().element.dimensions, IVec2::new(20, 20));
 	}
 
 	#[tokio::test]
@@ -611,9 +651,9 @@ mod test_artboard {
 
 		let artboards = get_artboards(&mut editor).await;
 		assert_eq!(artboards.len(), 1);
-		assert_eq!(artboards[0].location, IVec2::new(0, 0));
+		assert_eq!(artboards.get(0).unwrap().element.location, IVec2::new(0, 0));
 		let desired_size = DVec2::splat(f64::consts::FRAC_1_SQRT_2 * 10.);
-		assert_eq!(artboards[0].dimensions, desired_size.round().as_ivec2());
+		assert_eq!(artboards.get(0).unwrap().element.dimensions, desired_size.round().as_ivec2());
 	}
 
 	#[tokio::test]
@@ -632,9 +672,9 @@ mod test_artboard {
 
 		let artboards = get_artboards(&mut editor).await;
 		assert_eq!(artboards.len(), 1);
-		assert_eq!(artboards[0].location, DVec2::splat(f64::consts::FRAC_1_SQRT_2 * -10.).as_ivec2());
+		assert_eq!(artboards.get(0).unwrap().element.location, DVec2::splat(f64::consts::FRAC_1_SQRT_2 * -10.).as_ivec2());
 		let desired_size = DVec2::splat(f64::consts::FRAC_1_SQRT_2 * 20.);
-		assert_eq!(artboards[0].dimensions, desired_size.round().as_ivec2());
+		assert_eq!(artboards.get(0).unwrap().element.dimensions, desired_size.round().as_ivec2());
 	}
 
 	#[tokio::test]

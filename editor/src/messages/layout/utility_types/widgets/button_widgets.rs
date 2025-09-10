@@ -118,6 +118,8 @@ pub struct TextButton {
 
 	pub disabled: bool,
 
+	pub narrow: bool,
+
 	pub tooltip: String,
 
 	#[serde(skip)]
@@ -168,8 +170,6 @@ pub struct ColorInput {
 	#[widget_builder(constructor)]
 	pub value: FillChoice,
 
-	pub disabled: bool,
-
 	// TODO: Implement
 	// #[serde(rename = "allowTransparency")]
 	// #[derivative(Default(value = "false"))]
@@ -179,9 +179,13 @@ pub struct ColorInput {
 	#[derivative(Default(value = "true"))]
 	pub allow_none: bool,
 
-	// TODO: Implement
-	// pub disabled: bool,
-	//
+	pub disabled: bool,
+
+	pub narrow: bool,
+
+	#[serde(rename = "menuDirection")]
+	pub menu_direction: Option<MenuDirection>,
+
 	pub tooltip: String,
 
 	#[serde(skip)]

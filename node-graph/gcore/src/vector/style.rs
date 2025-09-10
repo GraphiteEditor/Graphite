@@ -2,6 +2,7 @@
 
 use crate::Color;
 pub use crate::gradient::*;
+use crate::table::Table;
 use dyn_any::DynAny;
 use glam::DAffine2;
 
@@ -24,7 +25,7 @@ impl std::fmt::Display for Fill {
 		match self {
 			Self::None => write!(f, "None"),
 			Self::Solid(color) => write!(f, "#{} (Alpha: {}%)", color.to_rgb_hex_srgb(), color.a() * 100.),
-			Self::Gradient(gradient) => write!(f, "{}", gradient),
+			Self::Gradient(gradient) => write!(f, "{gradient}"),
 		}
 	}
 }
@@ -117,6 +118,21 @@ impl From<Color> for Fill {
 impl From<Option<Color>> for Fill {
 	fn from(color: Option<Color>) -> Fill {
 		Fill::solid_or_none(color)
+	}
+}
+
+impl From<Table<Color>> for Fill {
+	fn from(color: Table<Color>) -> Fill {
+		Fill::solid_or_none(color.into())
+	}
+}
+
+impl From<Table<GradientStops>> for Fill {
+	fn from(gradient: Table<GradientStops>) -> Fill {
+		Fill::Gradient(Gradient {
+			stops: gradient.iter().nth(0).map(|row| row.element.clone()).unwrap_or_default(),
+			..Default::default()
+		})
 	}
 }
 
@@ -309,17 +325,6 @@ impl std::hash::Hash for Stroke {
 	}
 }
 
-impl From<Color> for Stroke {
-	fn from(color: Color) -> Self {
-		Self::new(Some(color), 1.)
-	}
-}
-impl From<Option<Color>> for Stroke {
-	fn from(color: Option<Color>) -> Self {
-		Self::new(color, 1.)
-	}
-}
-
 impl Stroke {
 	pub const fn new(color: Option<Color>, weight: f64) -> Self {
 		Self {
@@ -364,6 +369,16 @@ impl Stroke {
 	/// Get the current stroke weight.
 	pub fn weight(&self) -> f64 {
 		self.weight
+	}
+
+	/// Get the effective stroke weight.
+	pub fn effective_width(&self) -> f64 {
+		self.weight
+			* match self.align {
+				StrokeAlign::Center => 1.,
+				StrokeAlign::Inside => 0.,
+				StrokeAlign::Outside => 2.,
+			}
 	}
 
 	pub fn dash_lengths(&self) -> String {
@@ -635,14 +650,16 @@ impl PathStyle {
 	}
 }
 
-/// Represents different ways of rendering an object
+/// Ways the user can choose to view the artwork in the viewport.
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type)]
-pub enum ViewMode {
+pub enum RenderMode {
 	/// Render with normal coloration at the current viewport resolution
 	#[default]
-	Normal,
+	Normal = 0,
 	/// Render only the outlines of shapes at the current viewport resolution
 	Outline,
-	/// Render with normal coloration at the document resolution, showing the pixels when the current viewport resolution is higher
-	Pixels,
+	// /// Render with normal coloration at the document resolution, showing the pixels when the current viewport resolution is higher
+	// PixelPreview,
+	// /// Render a preview of how the object would be exported as an SVG.
+	// SvgPreview,
 }

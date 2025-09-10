@@ -9,12 +9,15 @@ type JsMessageCallback<T extends JsMessage> = (messageData: T) => void;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type JsMessageCallbackMap = Record<string, JsMessageCallback<any> | undefined>;
 
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createSubscriptionRouter() {
 	const subscriptions: JsMessageCallbackMap = {};
 
 	const subscribeJsMessage = <T extends JsMessage, Args extends unknown[]>(messageType: new (...args: Args) => T, callback: JsMessageCallback<T>) => {
 		subscriptions[messageType.name] = callback;
+	};
+
+	const unsubscribeJsMessage = <T extends JsMessage>(messageType: new () => T) => {
+		delete subscriptions[messageType.name];
 	};
 
 	const handleJsMessage = (messageType: JsMessageType, messageData: Record<string, unknown>, wasm: WebAssembly.Memory, handle: EditorHandle) => {
@@ -68,6 +71,7 @@ export function createSubscriptionRouter() {
 
 	return {
 		subscribeJsMessage,
+		unsubscribeJsMessage,
 		handleJsMessage,
 	};
 }

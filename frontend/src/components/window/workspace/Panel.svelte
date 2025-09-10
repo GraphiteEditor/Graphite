@@ -1,14 +1,14 @@
 <script lang="ts" context="module">
+	import Data from "@graphite/components/panels/Data.svelte";
 	import Document from "@graphite/components/panels/Document.svelte";
 	import Layers from "@graphite/components/panels/Layers.svelte";
 	import Properties from "@graphite/components/panels/Properties.svelte";
-	import Spreadsheet from "@graphite/components/panels/Spreadsheet.svelte";
 
 	const PANEL_COMPONENTS = {
 		Document,
 		Layers,
 		Properties,
-		Spreadsheet,
+		Data,
 	};
 	type PanelType = keyof typeof PANEL_COMPONENTS;
 </script>
@@ -36,11 +36,18 @@
 
 	export let tabMinWidths = false;
 	export let tabCloseButtons = false;
-	export let tabLabels: { name: string; tooltip?: string }[];
+	export let tabLabels: { name: string; unsaved?: boolean; tooltip?: string }[];
 	export let tabActiveIndex: number;
 	export let panelType: PanelType | undefined = undefined;
 	export let clickAction: ((index: number) => void) | undefined = undefined;
 	export let closeAction: ((index: number) => void) | undefined = undefined;
+
+	let className = "";
+	export { className as class };
+	export let classes: Record<string, boolean> = {};
+	let styleName = "";
+	export { styleName as style };
+	export let styles: Record<string, string | number | undefined> = {};
 
 	let tabElements: (LayoutRow | undefined)[] = [];
 
@@ -76,9 +83,11 @@
 				return;
 			}
 
-			if (file.name.endsWith(".graphite")) {
+			const graphiteFileSuffix = "." + editor.handle.fileExtension();
+			if (file.name.endsWith(graphiteFileSuffix)) {
 				const content = await file.text();
-				editor.handle.openDocumentFile(file.name, content);
+				const documentName = file.name.slice(0, -graphiteFileSuffix.length);
+				editor.handle.openDocumentFile(documentName, content);
 				return;
 			}
 		});
@@ -90,7 +99,7 @@
 	}
 </script>
 
-<LayoutCol class="panel" on:pointerdown={() => panelType && editor.handle.setActivePanel(panelType)}>
+<LayoutCol on:pointerdown={() => panelType && editor.handle.setActivePanel(panelType)} class={`panel ${className}`.trim()} {classes} style={styleName} {styles}>
 	<LayoutRow class="tab-bar" classes={{ "min-widths": tabMinWidths }}>
 		<LayoutRow class="tab-group" scrollableX={true}>
 			{#each tabLabels as tabLabel, tabIndex}
@@ -121,7 +130,12 @@
 					}}
 					bind:this={tabElements[tabIndex]}
 				>
-					<TextLabel>{tabLabel.name}</TextLabel>
+					<LayoutRow class="name">
+						<TextLabel class="text">{tabLabel.name}</TextLabel>
+						{#if tabLabel.unsaved}
+							<TextLabel>*</TextLabel>
+						{/if}
+					</LayoutRow>
 					{#if tabCloseButtons}
 						<IconButton
 							action={(e) => {
@@ -151,32 +165,34 @@
 					</LayoutRow>
 					<LayoutRow class="actions">
 						<table>
-							<tr>
-								<td>
-									<TextButton label="New Document" icon="File" flush={true} action={() => editor.handle.newDocumentDialog()} />
-								</td>
-								<td>
-									<UserInputLabel keysWithLabelsGroups={[[...platformModifiers(true), { key: "KeyN", label: "N" }]]} />
-								</td>
-							</tr>
-							<tr>
-								<td>
-									<TextButton label="Open Document" icon="Folder" flush={true} action={() => editor.handle.openDocument()} />
-								</td>
-								<td>
-									<UserInputLabel keysWithLabelsGroups={[[...platformModifiers(false), { key: "KeyO", label: "O" }]]} />
-								</td>
-							</tr>
-							<tr>
-								<td colspan="2">
-									<TextButton label="Open Demo Artwork" icon="Image" flush={true} action={() => editor.handle.demoArtworkDialog()} />
-								</td>
-							</tr>
-							<tr>
-								<td colspan="2">
-									<TextButton label="Support the Development Fund" icon="Heart" flush={true} action={() => editor.handle.visitUrl("https://graphite.rs/donate/")} />
-								</td>
-							</tr>
+							<tbody>
+								<tr>
+									<td>
+										<TextButton label="New Document" icon="File" flush={true} action={() => editor.handle.newDocumentDialog()} />
+									</td>
+									<td>
+										<UserInputLabel keysWithLabelsGroups={[[...platformModifiers(true), { key: "KeyN", label: "N" }]]} />
+									</td>
+								</tr>
+								<tr>
+									<td>
+										<TextButton label="Open Document" icon="Folder" flush={true} action={() => editor.handle.openDocument()} />
+									</td>
+									<td>
+										<UserInputLabel keysWithLabelsGroups={[[...platformModifiers(false), { key: "KeyO", label: "O" }]]} />
+									</td>
+								</tr>
+								<tr>
+									<td colspan="2">
+										<TextButton label="Open Demo Artwork" icon="Image" flush={true} action={() => editor.handle.demoArtworkDialog()} />
+									</td>
+								</tr>
+								<tr>
+									<td colspan="2">
+										<TextButton label="Support the Development Fund" icon="Heart" flush={true} action={() => editor.handle.visitUrl("https://graphite.rs/donate/")} />
+									</td>
+								</tr>
+							</tbody>
 						</table>
 					</LayoutRow>
 				</LayoutCol>
@@ -194,6 +210,7 @@
 		.tab-bar {
 			height: 28px;
 			min-height: auto;
+			background: var(--color-1-nearblack); // Needed for the viewport hole punch on desktop
 
 			&.min-widths .tab-group .tab {
 				min-width: 120px;
@@ -248,14 +265,22 @@
 						}
 					}
 
-					.text-label {
+					.name {
 						flex: 1 1 100%;
-						overflow-x: hidden;
-						white-space: nowrap;
-						text-overflow: ellipsis;
-						// Height and line-height required because https://stackoverflow.com/a/21611191/775283
-						height: 28px;
-						line-height: 28px;
+
+						.text-label {
+							// Height and line-height required because https://stackoverflow.com/a/21611191/775283
+							height: 28px;
+							line-height: 28px;
+							flex: 0 0 auto;
+
+							&.text {
+								overflow-x: hidden;
+								white-space: nowrap;
+								text-overflow: ellipsis;
+								flex-shrink: 1;
+							}
+						}
 					}
 
 					.icon-button {
@@ -335,6 +360,12 @@
 					}
 				}
 			}
+		}
+
+		// Needed for the viewport hole punch on desktop
+		.viewport-hole-punch &.document-panel,
+		.viewport-hole-punch &.document-panel .panel-body:not(:has(.empty-panel)) {
+			background: none;
 		}
 	}
 </style>

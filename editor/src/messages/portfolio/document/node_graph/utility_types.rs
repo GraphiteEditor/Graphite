@@ -1,4 +1,5 @@
-use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector, TypeSource};
+use crate::messages::portfolio::document::utility_types::network_interface::TypeSource;
+use glam::IVec2;
 use graph_craft::document::NodeId;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::Type;
@@ -8,30 +9,35 @@ use std::borrow::Cow;
 pub enum FrontendGraphDataType {
 	#[default]
 	General,
-	Raster,
-	VectorData,
 	Number,
-	Group,
 	Artboard,
+	Graphic,
+	Raster,
+	Vector,
+	Color,
+	Gradient,
+	Typography,
 }
 
 impl FrontendGraphDataType {
 	pub fn from_type(input: &Type) -> Self {
 		match TaggedValue::from_type_or_none(input) {
-			TaggedValue::Image(_) | TaggedValue::RasterData(_) => Self::Raster,
-			TaggedValue::Subpaths(_) | TaggedValue::VectorData(_) => Self::VectorData,
 			TaggedValue::U32(_)
 			| TaggedValue::U64(_)
+			| TaggedValue::F32(_)
 			| TaggedValue::F64(_)
-			| TaggedValue::UVec2(_)
-			| TaggedValue::IVec2(_)
 			| TaggedValue::DVec2(_)
-			| TaggedValue::OptionalDVec2(_)
 			| TaggedValue::F64Array4(_)
 			| TaggedValue::VecF64(_)
-			| TaggedValue::VecDVec2(_) => Self::Number,
-			TaggedValue::GraphicGroup(_) | TaggedValue::GraphicElement(_) => Self::Group, // TODO: Is GraphicElement supposed to be included here?
-			TaggedValue::ArtboardGroup(_) => Self::Artboard,
+			| TaggedValue::VecDVec2(_)
+			| TaggedValue::DAffine2(_) => Self::Number,
+			TaggedValue::Artboard(_) => Self::Artboard,
+			TaggedValue::Graphic(_) => Self::Graphic,
+			TaggedValue::Raster(_) => Self::Raster,
+			TaggedValue::Vector(_) => Self::Vector,
+			TaggedValue::Color(_) => Self::Color,
+			TaggedValue::Gradient(_) | TaggedValue::GradientStops(_) | TaggedValue::GradientTable(_) => Self::Gradient,
+			TaggedValue::String(_) => Self::Typography,
 			_ => Self::General,
 		}
 	}
@@ -55,7 +61,8 @@ pub struct FrontendGraphInput {
 	#[serde(rename = "validTypes")]
 	pub valid_types: Vec<String>,
 	#[serde(rename = "connectedTo")]
-	pub connected_to: Option<OutputConnector>,
+	/// Either "nothing", "import index {index}", or "{node name} output {output_index}".
+	pub connected_to: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -63,11 +70,13 @@ pub struct FrontendGraphOutput {
 	#[serde(rename = "dataType")]
 	pub data_type: FrontendGraphDataType,
 	pub name: String,
-	pub description: String,
 	#[serde(rename = "resolvedType")]
 	pub resolved_type: String,
+	pub description: String,
+	/// If connected to an export, it is "export index {index}".
+	/// If connected to a node, it is "{node name} input {input_index}".
 	#[serde(rename = "connectedTo")]
-	pub connected_to: Vec<InputConnector>,
+	pub connected_to: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -88,13 +97,15 @@ pub struct FrontendNode {
 	pub primary_output: Option<FrontendGraphOutput>,
 	#[serde(rename = "exposedOutputs")]
 	pub exposed_outputs: Vec<FrontendGraphOutput>,
-	pub position: (i32, i32),
+	#[serde(rename = "primaryOutputConnectedToLayer")]
+	pub primary_output_connected_to_layer: bool,
+	#[serde(rename = "primaryInputConnectedToLayer")]
+	pub primary_input_connected_to_layer: bool,
+	pub position: IVec2,
 	pub visible: bool,
 	pub locked: bool,
 	pub previewed: bool,
 	pub errors: Option<String>,
-	#[serde(rename = "uiOnly")]
-	pub ui_only: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -179,8 +190,8 @@ pub struct FrontendClickTargets {
 	pub node_click_targets: Vec<String>,
 	#[serde(rename = "layerClickTargets")]
 	pub layer_click_targets: Vec<String>,
-	#[serde(rename = "portClickTargets")]
-	pub port_click_targets: Vec<String>,
+	#[serde(rename = "connectorClickTargets")]
+	pub connector_click_targets: Vec<String>,
 	#[serde(rename = "iconClickTargets")]
 	pub icon_click_targets: Vec<String>,
 	#[serde(rename = "allNodesBoundingBox")]

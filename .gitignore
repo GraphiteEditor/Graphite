@@ -3,7 +3,9 @@ target/
 *.exrc
 perf.data*
 profile.json
+profile.json.gz
 flamegraph.svg
 .idea/
 .direnv
 hierarchical_message_system_tree.txt
+hierarchical_message_system_tree.html

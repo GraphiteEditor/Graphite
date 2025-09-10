@@ -11,7 +11,7 @@ The graph that is presented to users in the editor is known as the document grap
 ```rs
 pub struct DocumentNode {
 	pub inputs: Vec<NodeInput>,
-	pub manual_composition: Option<Type>,
+	pub call_argument: Type,
 	pub implementation: DocumentNodeImplementation,
 	pub skip_deduplication: bool,
 	pub visible: bool,
@@ -157,7 +157,7 @@ raster_node!(graphene_core::raster::OpacityNode<_>, params: [f64]),
 
 There is also the more general `register_node!` for nodes that do not need to run per pixel.
 ```rs
-register_node!(graphene_core::transform_nodes::SetTransformNode<_>, input: VectorData, params: [DAffine2]),
+register_node!(graphene_core::transform_nodes::SetTransformNode<_>, input: Vector, params: [DAffine2]),
 ```
 
 ## Debugging

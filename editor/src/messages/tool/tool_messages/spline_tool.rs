@@ -41,7 +41,7 @@ impl Default for SplineOptions {
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum SplineToolMessage {
 	// Standard messages
-	Overlays(OverlayContext),
+	Overlays { context: OverlayContext },
 	CanvasTransformed,
 	Abort,
 	WorkingColorChanged,
@@ -54,7 +54,7 @@ pub enum SplineToolMessage {
 	PointerMove,
 	PointerOutsideViewport,
 	Undo,
-	UpdateOptions(SplineOptionsUpdate),
+	UpdateOptions { options: SplineOptionsUpdate },
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -93,7 +93,12 @@ fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 		.label("Weight")
 		.min(0.)
 		.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
-		.on_update(|number_input: &NumberInput| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::LineWeight(number_input.value.unwrap())).into())
+		.on_update(|number_input: &NumberInput| {
+			SplineToolMessage::UpdateOptions {
+				options: SplineOptionsUpdate::LineWeight(number_input.value.unwrap()),
+			}
+			.into()
+		})
 		.widget_holder()
 }
 
@@ -102,9 +107,26 @@ impl LayoutHolder for SplineTool {
 		let mut widgets = self.options.fill.create_widgets(
 			"Fill",
 			true,
-			|_| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::FillColor(None)).into(),
-			|color_type: ToolColorType| WidgetCallback::new(move |_| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::FillColorType(color_type.clone())).into()),
-			|color: &ColorInput| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::FillColor(color.value.as_solid().map(|color| color.to_linear_srgb()))).into(),
+			|_| {
+				SplineToolMessage::UpdateOptions {
+					options: SplineOptionsUpdate::FillColor(None),
+				}
+				.into()
+			},
+			|color_type: ToolColorType| {
+				WidgetCallback::new(move |_| {
+					SplineToolMessage::UpdateOptions {
+						options: SplineOptionsUpdate::FillColorType(color_type.clone()),
+					}
+					.into()
+				})
+			},
+			|color: &ColorInput| {
+				SplineToolMessage::UpdateOptions {
+					options: SplineOptionsUpdate::FillColor(color.value.as_solid().map(|color| color.to_linear_srgb())),
+				}
+				.into()
+			},
 		);
 
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
@@ -112,9 +134,26 @@ impl LayoutHolder for SplineTool {
 		widgets.append(&mut self.options.stroke.create_widgets(
 			"Stroke",
 			true,
-			|_| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::StrokeColor(None)).into(),
-			|color_type: ToolColorType| WidgetCallback::new(move |_| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::StrokeColorType(color_type.clone())).into()),
-			|color: &ColorInput| SplineToolMessage::UpdateOptions(SplineOptionsUpdate::StrokeColor(color.value.as_solid().map(|color| color.to_linear_srgb()))).into(),
+			|_| {
+				SplineToolMessage::UpdateOptions {
+					options: SplineOptionsUpdate::StrokeColor(None),
+				}
+				.into()
+			},
+			|color_type: ToolColorType| {
+				WidgetCallback::new(move |_| {
+					SplineToolMessage::UpdateOptions {
+						options: SplineOptionsUpdate::StrokeColorType(color_type.clone()),
+					}
+					.into()
+				})
+			},
+			|color: &ColorInput| {
+				SplineToolMessage::UpdateOptions {
+					options: SplineOptionsUpdate::StrokeColor(color.value.as_solid().map(|color| color.to_linear_srgb())),
+				}
+				.into()
+			},
 		));
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
 		widgets.push(create_weight_widget(self.options.line_weight));
@@ -124,13 +163,13 @@ impl LayoutHolder for SplineTool {
 }
 
 #[message_handler_data]
-impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SplineTool {
-	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, tool_data: &mut ToolActionHandlerData<'a>) {
-		let ToolMessage::Spline(SplineToolMessage::UpdateOptions(action)) = message else {
-			self.fsm_state.process_event(message, &mut self.tool_data, tool_data, &self.options, responses, true);
+impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for SplineTool {
+	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
+		let ToolMessage::Spline(SplineToolMessage::UpdateOptions { options }) = message else {
+			self.fsm_state.process_event(message, &mut self.tool_data, context, &self.options, responses, true);
 			return;
 		};
-		match action {
+		match options {
 			SplineOptionsUpdate::LineWeight(line_weight) => self.options.line_weight = line_weight,
 			SplineOptionsUpdate::FillColor(color) => {
 				self.options.fill.custom_color = color;
@@ -179,7 +218,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionHandlerData<'a>> for SplineT
 impl ToolTransition for SplineTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
-			overlay_provider: Some(|overlay_context: OverlayContext| SplineToolMessage::Overlays(overlay_context).into()),
+			overlay_provider: Some(|context: OverlayContext| SplineToolMessage::Overlays { context }.into()),
 			canvas_transformed: Some(SplineToolMessage::CanvasTransformed.into()),
 			tool_abort: Some(SplineToolMessage::Abort.into()),
 			working_color_changed: Some(SplineToolMessage::WorkingColorChanged.into()),
@@ -242,8 +281,15 @@ impl Fsm for SplineToolFsmState {
 	type ToolData = SplineToolData;
 	type ToolOptions = SplineOptions;
 
-	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionHandlerData, tool_options: &Self::ToolOptions, responses: &mut VecDeque<Message>) -> Self {
-		let ToolActionHandlerData {
+	fn transition(
+		self,
+		event: ToolMessage,
+		tool_data: &mut Self::ToolData,
+		tool_action_data: &mut ToolActionMessageContext,
+		tool_options: &Self::ToolOptions,
+		responses: &mut VecDeque<Message>,
+	) -> Self {
+		let ToolActionMessageContext {
 			document,
 			global_tool_data,
 			input,
@@ -255,7 +301,7 @@ impl Fsm for SplineToolFsmState {
 		let ToolMessage::Spline(event) = event else { return self };
 		match (self, event) {
 			(_, SplineToolMessage::CanvasTransformed) => self,
-			(_, SplineToolMessage::Overlays(mut overlay_context)) => {
+			(_, SplineToolMessage::Overlays { context: mut overlay_context }) => {
 				path_endpoint_overlays(document, shape_editor, &mut overlay_context, preferences);
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 				self
@@ -353,8 +399,6 @@ impl Fsm for SplineToolFsmState {
 				tool_options.stroke.apply_stroke(tool_data.weight, layer, responses);
 				tool_data.current_layer = Some(layer);
 
-				responses.add(Message::StartBuffer);
-
 				SplineToolFsmState::Drawing
 			}
 			(SplineToolFsmState::Drawing, SplineToolMessage::DragStop) => {
@@ -435,10 +479,9 @@ impl Fsm for SplineToolFsmState {
 				SplineToolFsmState::Ready
 			}
 			(_, SplineToolMessage::WorkingColorChanged) => {
-				responses.add(SplineToolMessage::UpdateOptions(SplineOptionsUpdate::WorkingColors(
-					Some(global_tool_data.primary_color),
-					Some(global_tool_data.secondary_color),
-				)));
+				responses.add(SplineToolMessage::UpdateOptions {
+					options: SplineOptionsUpdate::WorkingColors(Some(global_tool_data.primary_color), Some(global_tool_data.secondary_color)),
+				});
 				self
 			}
 			_ => self,
@@ -543,15 +586,15 @@ mod test_spline_tool {
 	use crate::test_utils::test_prelude::*;
 	use glam::DAffine2;
 	use graphene_std::vector::PointId;
-	use graphene_std::vector::VectorData;
+	use graphene_std::vector::Vector;
 
-	fn assert_point_positions(vector_data: &VectorData, layer_to_viewport: DAffine2, expected_points: &[DVec2], epsilon: f64) {
-		let points_in_viewport: Vec<DVec2> = vector_data
+	fn assert_point_positions(vector: &Vector, layer_to_viewport: DAffine2, expected_points: &[DVec2], epsilon: f64) {
+		let points_in_viewport: Vec<DVec2> = vector
 			.point_domain
 			.ids()
 			.iter()
 			.filter_map(|&point_id| {
-				let position = vector_data.point_domain.position_from_id(point_id)?;
+				let position = vector.point_domain.position_from_id(point_id)?;
 				Some(layer_to_viewport.transform_point2(position))
 			})
 			.collect();
@@ -563,11 +606,7 @@ mod test_spline_tool {
 
 			assert!(
 				distance < epsilon,
-				"Point {} position mismatch: expected {:?}, got {:?} (distance: {})",
-				i,
-				expected_point,
-				actual_point,
-				distance
+				"Point {i} position mismatch: expected {expected_point:?}, got {actual_point:?} (distance: {distance})"
 			);
 		}
 	}
@@ -596,19 +635,19 @@ mod test_spline_tool {
 
 		let first_spline_node = find_spline(document, spline_layer).expect("Spline node not found in the layer");
 
-		let first_vector_data = document.network_interface.compute_modified_vector(spline_layer).expect("Vector data not found for the spline layer");
+		let first_vector = document.network_interface.compute_modified_vector(spline_layer).expect("Vector not found for the spline layer");
 
 		// Verify initial spline has correct number of points and segments
-		let initial_point_count = first_vector_data.point_domain.ids().len();
-		let initial_segment_count = first_vector_data.segment_domain.ids().len();
-		assert_eq!(initial_point_count, 3, "Expected 3 points in initial spline, found {}", initial_point_count);
-		assert_eq!(initial_segment_count, 2, "Expected 2 segments in initial spline, found {}", initial_segment_count);
+		let initial_point_count = first_vector.point_domain.ids().len();
+		let initial_segment_count = first_vector.segment_domain.ids().len();
+		assert_eq!(initial_point_count, 3, "Expected 3 points in initial spline, found {initial_point_count}");
+		assert_eq!(initial_segment_count, 2, "Expected 2 segments in initial spline, found {initial_segment_count}");
 
 		let layer_to_viewport = document.metadata().transform_to_viewport(spline_layer);
 
-		let endpoints: Vec<(PointId, DVec2)> = first_vector_data
+		let endpoints: Vec<(PointId, DVec2)> = first_vector
 			.extendable_points(false)
-			.filter_map(|point_id| first_vector_data.point_domain.position_from_id(point_id).map(|pos| (point_id, layer_to_viewport.transform_point2(pos))))
+			.filter_map(|point_id| first_vector.point_domain.position_from_id(point_id).map(|pos| (point_id, layer_to_viewport.transform_point2(pos))))
 			.collect();
 
 		assert_eq!(endpoints.len(), 2, "Expected 2 endpoints in the initial spline");
@@ -627,17 +666,17 @@ mod test_spline_tool {
 		editor.press(Key::Enter, ModifierKeys::empty()).await;
 
 		let document = editor.active_document();
-		let extended_vector_data = document
+		let extended_vector = document
 			.network_interface
 			.compute_modified_vector(spline_layer)
-			.expect("Vector data not found for the extended spline layer");
+			.expect("Vector not found for the extended spline layer");
 
 		// Verify extended spline has correct number of points and segments
-		let extended_point_count = extended_vector_data.point_domain.ids().len();
-		let extended_segment_count = extended_vector_data.segment_domain.ids().len();
+		let extended_point_count = extended_vector.point_domain.ids().len();
+		let extended_segment_count = extended_vector.segment_domain.ids().len();
 
-		assert_eq!(extended_point_count, 5, "Expected 5 points in extended spline, found {}", extended_point_count);
-		assert_eq!(extended_segment_count, 4, "Expected 4 segments in extended spline, found {}", extended_segment_count);
+		assert_eq!(extended_point_count, 5, "Expected 5 points in extended spline, found {extended_point_count}");
+		assert_eq!(extended_segment_count, 4, "Expected 4 segments in extended spline, found {extended_segment_count}");
 
 		// Verify the spline node is still the same
 		let extended_spline_node = find_spline(document, spline_layer).expect("Spline node not found after extension");
@@ -648,7 +687,7 @@ mod test_spline_tool {
 
 		let all_expected_points = [initial_points[0], initial_points[1], initial_points[2], continuation_points[0], continuation_points[1]];
 
-		assert_point_positions(&extended_vector_data, layer_to_viewport, &all_expected_points, 1e-10);
+		assert_point_positions(&extended_vector, layer_to_viewport, &all_expected_points, 1e-10);
 	}
 
 	#[tokio::test]
@@ -672,7 +711,7 @@ mod test_spline_tool {
 
 		// Evaluate the graph to ensure everything is processed
 		if let Err(e) = editor.eval_graph().await {
-			panic!("Graph evaluation failed: {}", e);
+			panic!("Graph evaluation failed: {e}");
 		}
 
 		// Get the layer and vector data
@@ -683,14 +722,14 @@ mod test_spline_tool {
 			.selected_visible_and_unlocked_layers(network_interface)
 			.next()
 			.expect("Should have a selected layer");
-		let vector_data = network_interface.compute_modified_vector(layer).expect("Should have vector data");
+		let vector = network_interface.compute_modified_vector(layer).expect("Should have vector data");
 		let layer_to_viewport = document.metadata().transform_to_viewport(layer);
 
 		// Expected points in viewport coordinates
 		let expected_points = vec![DVec2::new(50., 50.), DVec2::new(100., 50.), DVec2::new(150., 100.)];
 
 		// Assert all points are correctly positioned
-		assert_point_positions(&vector_data, layer_to_viewport, &expected_points, 1e-10);
+		assert_point_positions(&vector, layer_to_viewport, &expected_points, 1e-10);
 	}
 
 	#[tokio::test]
@@ -712,7 +751,7 @@ mod test_spline_tool {
 
 		// Evaluating the graph to ensure everything is processed
 		if let Err(e) = editor.eval_graph().await {
-			panic!("Graph evaluation failed: {}", e);
+			panic!("Graph evaluation failed: {e}");
 		}
 
 		// Get the layer and vector data
@@ -723,14 +762,14 @@ mod test_spline_tool {
 			.selected_visible_and_unlocked_layers(network_interface)
 			.next()
 			.expect("Should have a selected layer");
-		let vector_data = network_interface.compute_modified_vector(layer).expect("Should have vector data");
+		let vector = network_interface.compute_modified_vector(layer).expect("Should have vector data");
 		let layer_to_viewport = document.metadata().transform_to_viewport(layer);
 
 		// Expected points in viewport coordinates
 		let expected_points = vec![DVec2::new(50., 50.), DVec2::new(100., 50.), DVec2::new(150., 100.)];
 
 		// Assert all points are correctly positioned
-		assert_point_positions(&vector_data, layer_to_viewport, &expected_points, 1e-10);
+		assert_point_positions(&vector, layer_to_viewport, &expected_points, 1e-10);
 	}
 
 	#[tokio::test]
@@ -750,7 +789,7 @@ mod test_spline_tool {
 
 		// Evaluating the graph to ensure everything is processed
 		if let Err(e) = editor.eval_graph().await {
-			panic!("Graph evaluation failed: {}", e);
+			panic!("Graph evaluation failed: {e}");
 		}
 
 		// Get the layer and vector data
@@ -761,14 +800,14 @@ mod test_spline_tool {
 			.selected_visible_and_unlocked_layers(network_interface)
 			.next()
 			.expect("Should have a selected layer");
-		let vector_data = network_interface.compute_modified_vector(layer).expect("Should have vector data");
+		let vector = network_interface.compute_modified_vector(layer).expect("Should have vector data");
 		let layer_to_viewport = document.metadata().transform_to_viewport(layer);
 
 		// Expected points in viewport coordinates
 		let expected_points = vec![DVec2::new(50., 50.), DVec2::new(100., 50.), DVec2::new(150., 100.)];
 
 		// Assert all points are correctly positioned
-		assert_point_positions(&vector_data, layer_to_viewport, &expected_points, 1e-10);
+		assert_point_positions(&vector, layer_to_viewport, &expected_points, 1e-10);
 	}
 
 	#[tokio::test]
@@ -789,7 +828,7 @@ mod test_spline_tool {
 
 		editor.handle_message(SplineToolMessage::Confirm).await;
 		if let Err(e) = editor.eval_graph().await {
-			panic!("Graph evaluation failed: {}", e);
+			panic!("Graph evaluation failed: {e}");
 		}
 
 		// Get the layer and vector data
@@ -800,14 +839,14 @@ mod test_spline_tool {
 			.selected_visible_and_unlocked_layers(network_interface)
 			.next()
 			.expect("Should have a selected layer");
-		let vector_data = network_interface.compute_modified_vector(layer).expect("Should have vector data");
+		let vector = network_interface.compute_modified_vector(layer).expect("Should have vector data");
 		let layer_to_viewport = document.metadata().transform_to_viewport(layer);
 
 		// Expected points in viewport coordinates
 		let expected_points = vec![DVec2::new(50., 50.), DVec2::new(100., 50.), DVec2::new(150., 100.)];
 
 		// Assert all points are correctly positioned
-		assert_point_positions(&vector_data, layer_to_viewport, &expected_points, 1e-10);
+		assert_point_positions(&vector, layer_to_viewport, &expected_points, 1e-10);
 	}
 
 	#[tokio::test]
@@ -840,17 +879,17 @@ mod test_spline_tool {
 		let spline_layer = layers.next().expect("Failed to find the spline layer");
 		assert!(find_spline(document, spline_layer).is_some(), "Spline node not found in the layer");
 
-		let vector_data = document.network_interface.compute_modified_vector(spline_layer).expect("Vector data not found for the spline layer");
+		let vector = document.network_interface.compute_modified_vector(spline_layer).expect("Vector not found for the spline layer");
 
 		// Verify we have the correct number of points and segments
-		let point_count = vector_data.point_domain.ids().len();
-		let segment_count = vector_data.segment_domain.ids().len();
+		let point_count = vector.point_domain.ids().len();
+		let segment_count = vector.segment_domain.ids().len();
 
-		assert_eq!(point_count, 3, "Expected 3 points in the spline, found {}", point_count);
-		assert_eq!(segment_count, 2, "Expected 2 segments in the spline, found {}", segment_count);
+		assert_eq!(point_count, 3, "Expected 3 points in the spline, found {point_count}");
+		assert_eq!(segment_count, 2, "Expected 2 segments in the spline, found {segment_count}");
 
 		let layer_to_viewport = document.metadata().transform_to_viewport(spline_layer);
 
-		assert_point_positions(&vector_data, layer_to_viewport, &spline_points, 1e-10);
+		assert_point_positions(&vector, layer_to_viewport, &spline_points, 1e-10);
 	}
 }

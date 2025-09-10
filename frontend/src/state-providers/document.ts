@@ -13,11 +13,9 @@ import {
 	UpdateWorkingColorsLayout,
 	UpdateNodeGraphControlBarLayout,
 	UpdateGraphViewOverlay,
-	TriggerDelayedZoomCanvasToFitAll,
 	UpdateGraphFadeArtwork,
 } from "@graphite/messages";
 
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createDocumentState(editor: Editor) {
 	const state = writable({
 		// Layouts
@@ -92,12 +90,6 @@ export function createDocumentState(editor: Editor) {
 		update((state) => {
 			state.graphViewOverlayOpen = updateGraphViewOverlay.open;
 			return state;
-		});
-	});
-	editor.subscriptions.subscribeJsMessage(TriggerDelayedZoomCanvasToFitAll, () => {
-		// TODO: This is horribly hacky
-		[0, 1, 10, 50, 100, 200, 300, 400, 500].forEach((delay) => {
-			setTimeout(() => editor.handle.zoomCanvasToFitAll(), delay);
 		});
 	});
 

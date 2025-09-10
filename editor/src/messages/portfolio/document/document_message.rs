@@ -1,5 +1,8 @@
+use std::path::PathBuf;
+
 use super::utility_types::misc::{GroupFolderType, SnappingState};
 use crate::messages::input_mapper::utility_types::input_keyboard::Key;
+use crate::messages::portfolio::document::data_panel::DataPanelMessage;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::overlays::utility_types::OverlaysType;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -13,7 +16,7 @@ use graphene_std::raster::BlendMode;
 use graphene_std::raster::Image;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::click_target::ClickTarget;
-use graphene_std::vector::style::ViewMode;
+use graphene_std::vector::style::RenderMode;
 
 #[impl_message(Message, PortfolioMessage, Document)]
 #[derive(derivative::Derivative, Clone, serde::Serialize, serde::Deserialize)]
@@ -31,6 +34,8 @@ pub enum DocumentMessage {
 	Overlays(OverlaysMessage),
 	#[child]
 	PropertiesPanel(PropertiesPanelMessage),
+	#[child]
+	DataPanel(DataPanelMessage),
 
 	// Messages
 	AlignSelectedLayers {
@@ -48,7 +53,9 @@ pub enum DocumentMessage {
 	DocumentHistoryBackward,
 	DocumentHistoryForward,
 	DocumentStructureChanged,
-	DrawArtboardOverlays(OverlayContext),
+	DrawArtboardOverlays {
+		context: OverlayContext,
+	},
 	DuplicateSelectedLayers,
 	EnterNestedNetwork {
 		node_id: NodeId,
@@ -67,9 +74,15 @@ pub enum DocumentMessage {
 		open: bool,
 	},
 	GraphViewOverlayToggle,
-	GridOptions(GridSnapping),
-	GridOverlays(OverlayContext),
-	GridVisibility(bool),
+	GridOptions {
+		options: GridSnapping,
+	},
+	GridOverlays {
+		context: OverlayContext,
+	},
+	GridVisibility {
+		visible: bool,
+	},
 	GroupSelectedLayers {
 		group_folder_type: GroupFolderType,
 	},
@@ -105,6 +118,10 @@ pub enum DocumentMessage {
 	RenderRulers,
 	RenderScrollbars,
 	SaveDocument,
+	SaveDocumentAs,
+	SavedDocument {
+		path: Option<PathBuf>,
+	},
 	SelectParentLayer,
 	SelectAllLayers,
 	SelectedLayersLower,
@@ -159,13 +176,14 @@ pub enum DocumentMessage {
 		node_id: NodeId,
 		is_layer: bool,
 	},
-	SetViewMode {
-		view_mode: ViewMode,
+	SetRenderMode {
+		render_mode: RenderMode,
 	},
 	AddTransaction,
 	StartTransaction,
 	EndTransaction,
 	CommitTransaction,
+	CancelTransaction,
 	AbortTransaction,
 	RepeatedAbortTransaction {
 		undo_count: usize,
@@ -182,7 +200,7 @@ pub enum DocumentMessage {
 	UpdateUpstreamTransforms {
 		upstream_footprints: HashMap<NodeId, Footprint>,
 		local_transforms: HashMap<NodeId, DAffine2>,
-		first_instance_source_id: HashMap<NodeId, Option<NodeId>>,
+		first_element_source_id: HashMap<NodeId, Option<NodeId>>,
 	},
 	UpdateClickTargets {
 		click_targets: HashMap<NodeId, Vec<ClickTarget>>,

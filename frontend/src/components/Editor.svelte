@@ -9,6 +9,7 @@
 	import { createLocalizationManager } from "@graphite/io-managers/localization";
 	import { createPanicManager } from "@graphite/io-managers/panic";
 	import { createPersistenceManager } from "@graphite/io-managers/persistence";
+	import { createAppWindowState } from "@graphite/state-providers/app-window";
 	import { createDialogState } from "@graphite/state-providers/dialog";
 	import { createDocumentState } from "@graphite/state-providers/document";
 	import { createFontsState } from "@graphite/state-providers/fonts";
@@ -36,6 +37,8 @@
 	setContext("nodeGraph", nodeGraph);
 	let portfolio = createPortfolioState(editor);
 	setContext("portfolio", portfolio);
+	let appWindow = createAppWindowState(editor);
+	setContext("appWindow", appWindow);
 
 	// Initialize managers, which are isolated systems that subscribe to backend messages to link them to browser API functionality (like JS events, IndexedDB, etc.)
 	createClipboardManager(editor);
@@ -58,10 +61,11 @@
 	});
 </script>
 
-<MainWindow />
+<MainWindow platform={$appWindow.platform} maximized={$appWindow.maximized} viewportHolePunch={$appWindow.viewportHolePunch} />
 
 <style lang="scss" global>
 	// Disable the spinning loading indicator
+	body::before,
 	body::after {
 		content: none !important;
 	}
@@ -109,16 +113,22 @@
 
 		--color-data-general: #cfcfcf;
 		--color-data-general-dim: #8a8a8a;
-		--color-data-raster: #e4bb72;
-		--color-data-raster-dim: #8b7752;
-		--color-data-vectordata: #65bbe5;
-		--color-data-vectordata-dim: #4b778c;
-		--color-data-group: #66b195;
-		--color-data-group-dim: #3d725e;
-		--color-data-artboard: #fbf9eb;
-		--color-data-artboard-dim: #b9b9a9;
 		--color-data-number: #c9a699;
 		--color-data-number-dim: #886b60;
+		--color-data-artboard: #fbf9eb;
+		--color-data-artboard-dim: #b9b9a9;
+		--color-data-graphic: #68c587;
+		--color-data-graphic-dim: #37754c;
+		--color-data-raster: #e4bb72;
+		--color-data-raster-dim: #9a7b43;
+		--color-data-vector: #65bbe5;
+		--color-data-vector-dim: #417892;
+		--color-data-color: #ce6ea7;
+		--color-data-color-dim: #924071;
+		--color-data-gradient: #af81eb;
+		--color-data-gradient-dim: #6c489b;
+		--color-data-typography: #eea7a7;
+		--color-data-typography-dim: #955252;
 
 		--color-none: white;
 		--color-none-repeat: no-repeat;
@@ -136,8 +146,9 @@
 			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 32"><line stroke="red" stroke-width="4px" x1="0" y1="36" x2="80" y2="-4" /></svg>\
 			');
 
-		--color-transparent-checkered-background: linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%),
-			linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%), linear-gradient(#ffffff, #ffffff);
+		--color-transparent-checkered-background:
+			linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%), linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%),
+			linear-gradient(#ffffff, #ffffff);
 		--color-transparent-checkered-background-size: 16px 16px, 16px 16px, 16px 16px;
 		--color-transparent-checkered-background-position: 0 0, 8px 8px, 8px 8px;
 		--color-transparent-checkered-background-position-plus-one: 1px 1px, 9px 9px, 9px 9px;
@@ -206,8 +217,14 @@
 		height: 100%;
 		background: var(--color-2-mildblack);
 		overscroll-behavior: none;
-		-webkit-user-select: none; // Required as of Safari 15.0 (Graphite's minimum version) through the latest release
+		-webkit-user-select: none; // Still required by Safari as of 2025
 		user-select: none;
+	}
+
+	// Needed for the viewport hole punch on desktop
+	html:has(body > .viewport-hole-punch),
+	body:has(> .viewport-hole-punch) {
+		background: none;
 	}
 
 	// The default value of `auto` from the CSS spec is a footgun with flexbox layouts:
@@ -335,5 +352,45 @@
 	// Variant: dark outline over light colors (when the checkbox is checked)
 	:not(.optional-input) > .checkbox-input input:focus-visible + label.checked {
 		outline: 1px dashed var(--color-2-mildblack);
+	}
+
+	@font-face {
+		font-family: "Source Sans Pro";
+		font-weight: 400;
+		font-style: normal;
+		font-stretch: normal;
+		src: url("@graphite/../node_modules/source-sans/WOFF2/TTF/SourceSansPro-Regular.ttf.woff2") format("woff2");
+	}
+
+	@font-face {
+		font-family: "Source Sans Pro";
+		font-weight: 400;
+		font-style: italic;
+		font-stretch: normal;
+		src: url("@graphite/../node_modules/source-sans/WOFF2/TTF/SourceSansPro-It.ttf.woff2") format("woff2");
+	}
+
+	@font-face {
+		font-family: "Source Sans Pro";
+		font-weight: 700;
+		font-style: normal;
+		font-stretch: normal;
+		src: url("@graphite/../node_modules/source-sans/WOFF2/TTF/SourceSansPro-Bold.ttf.woff2") format("woff2");
+	}
+
+	@font-face {
+		font-family: "Source Sans Pro";
+		font-weight: 700;
+		font-style: italic;
+		font-stretch: normal;
+		src: url("@graphite/../node_modules/source-sans/WOFF2/TTF/SourceSansPro-BoldIt.ttf.woff2") format("woff2");
+	}
+
+	@font-face {
+		font-family: "Source Code Pro";
+		font-weight: 400;
+		font-style: normal;
+		font-stretch: normal;
+		src: url("@graphite/../node_modules/source-code-pro/WOFF2/TTF/SourceCodePro-Regular.ttf.woff2") format("woff2");
 	}
 </style>

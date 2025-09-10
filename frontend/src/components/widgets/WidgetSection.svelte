@@ -35,17 +35,17 @@
 				editor.handle.setNodePinned(widgetData.id, !widgetData.pinned);
 				e?.stopPropagation();
 			}}
-			class={"show-only-on-hover"}
+			class="show-only-on-hover"
 		/>
 		<IconButton
-			icon={"Trash"}
-			tooltip={"Delete this node from the layer chain"}
+			icon="Trash"
+			tooltip="Delete this node from the layer chain"
 			size={24}
 			action={(e) => {
 				editor.handle.deleteNode(widgetData.id);
 				e?.stopPropagation();
 			}}
-			class={"show-only-on-hover"}
+			class="show-only-on-hover"
 		/>
 		<IconButton
 			icon={widgetData.visible ? "EyeVisible" : "EyeHidden"}

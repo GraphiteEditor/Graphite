@@ -14,7 +14,7 @@ impl AutoPanning {
 
 			for message in messages {
 				responses.add(BroadcastMessage::SubscribeEvent {
-					on: BroadcastEvent::AnimationFrame,
+					on: EventMessage::AnimationFrame,
 					send: Box::new(message.clone()),
 				});
 			}
@@ -27,8 +27,8 @@ impl AutoPanning {
 
 			for message in messages {
 				responses.add(BroadcastMessage::UnsubscribeEvent {
-					on: BroadcastEvent::AnimationFrame,
-					message: Box::new(message.clone()),
+					on: EventMessage::AnimationFrame,
+					send: Box::new(message.clone()),
 				});
 			}
 		}

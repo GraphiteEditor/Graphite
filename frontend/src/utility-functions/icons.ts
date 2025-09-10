@@ -1,5 +1,3 @@
-/* eslint-disable import/first */
-
 // Graphics
 import GraphiteLogotypeSolid from "@graphite-frontend/assets/graphics/graphite-logotype-solid.svg";
 
@@ -39,6 +37,10 @@ import License12px from "@graphite-frontend/assets/icon-12px-solid/license-12px.
 import Link from "@graphite-frontend/assets/icon-12px-solid/link.svg";
 import Overlays from "@graphite-frontend/assets/icon-12px-solid/overlays.svg";
 import Remove from "@graphite-frontend/assets/icon-12px-solid/remove.svg";
+import RenderModeNormal from "@graphite-frontend/assets/icon-12px-solid/render-mode-normal.svg";
+import RenderModeOutline from "@graphite-frontend/assets/icon-12px-solid/render-mode-outline.svg";
+import RenderModePixels from "@graphite-frontend/assets/icon-12px-solid/render-mode-pixels.svg";
+import RenderModeSvg from "@graphite-frontend/assets/icon-12px-solid/render-mode-svg.svg";
 import Snapping from "@graphite-frontend/assets/icon-12px-solid/snapping.svg";
 import SwapHorizontal from "@graphite-frontend/assets/icon-12px-solid/swap-horizontal.svg";
 import SwapVertical from "@graphite-frontend/assets/icon-12px-solid/swap-vertical.svg";
@@ -82,6 +84,10 @@ const SOLID_12PX = {
 	Link: { svg: Link, size: 12 },
 	Overlays: { svg: Overlays, size: 12 },
 	Remove: { svg: Remove, size: 12 },
+	RenderModeNormal: { svg: RenderModeNormal, size: 12 },
+	RenderModeOutline: { svg: RenderModeOutline, size: 12 },
+	RenderModePixels: { svg: RenderModePixels, size: 12 },
+	RenderModeSvg: { svg: RenderModeSvg, size: 12 },
 	Snapping: { svg: Snapping, size: 12 },
 	SwapHorizontal: { svg: SwapHorizontal, size: 12 },
 	SwapVertical: { svg: SwapVertical, size: 12 },
@@ -199,9 +205,6 @@ import Trash from "@graphite-frontend/assets/icon-16px-solid/trash.svg";
 import TurnNegative90 from "@graphite-frontend/assets/icon-16px-solid/turn-negative-90.svg";
 import TurnPositive90 from "@graphite-frontend/assets/icon-16px-solid/turn-positive-90.svg";
 import UserManual from "@graphite-frontend/assets/icon-16px-solid/user-manual.svg";
-import ViewModeNormal from "@graphite-frontend/assets/icon-16px-solid/view-mode-normal.svg";
-import ViewModeOutline from "@graphite-frontend/assets/icon-16px-solid/view-mode-outline.svg";
-import ViewModePixels from "@graphite-frontend/assets/icon-16px-solid/view-mode-pixels.svg";
 import ViewportDesignMode from "@graphite-frontend/assets/icon-16px-solid/viewport-design-mode.svg";
 import ViewportGuideMode from "@graphite-frontend/assets/icon-16px-solid/viewport-guide-mode.svg";
 import ViewportSelectMode from "@graphite-frontend/assets/icon-16px-solid/viewport-select-mode.svg";
@@ -320,9 +323,6 @@ const SOLID_16PX = {
 	TurnNegative90: { svg: TurnNegative90, size: 16 },
 	TurnPositive90: { svg: TurnPositive90, size: 16 },
 	UserManual: { svg: UserManual, size: 16 },
-	ViewModeNormal: { svg: ViewModeNormal, size: 16 },
-	ViewModeOutline: { svg: ViewModeOutline, size: 16 },
-	ViewModePixels: { svg: ViewModePixels, size: 16 },
 	ViewportDesignMode: { svg: ViewportDesignMode, size: 16 },
 	ViewportGuideMode: { svg: ViewportGuideMode, size: 16 },
 	ViewportSelectMode: { svg: ViewportSelectMode, size: 16 },

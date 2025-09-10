@@ -3,7 +3,7 @@
 use super::common_functionality::shape_editor::ShapeState;
 use super::tool_messages::*;
 use crate::messages::broadcast::BroadcastMessage;
-use crate::messages::broadcast::broadcast_event::BroadcastEvent;
+use crate::messages::broadcast::event::EventMessage;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, LayoutKeysGroup, MouseMotion};
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::input_mapper::utility_types::misc::ActionKeys;
@@ -19,7 +19,7 @@ use std::borrow::Cow;
 use std::fmt::{self, Debug};
 
 #[derive(ExtractField)]
-pub struct ToolActionHandlerData<'a> {
+pub struct ToolActionMessageContext<'a> {
 	pub document: &'a mut DocumentMessageHandler,
 	pub document_id: DocumentId,
 	pub global_tool_data: &'a DocumentToolData,
@@ -30,8 +30,8 @@ pub struct ToolActionHandlerData<'a> {
 	pub preferences: &'a PreferencesMessageHandler,
 }
 
-pub trait ToolCommon: for<'a, 'b> MessageHandler<ToolMessage, &'b mut ToolActionHandlerData<'a>> + LayoutHolder + ToolTransition + ToolMetadata {}
-impl<T> ToolCommon for T where T: for<'a, 'b> MessageHandler<ToolMessage, &'b mut ToolActionHandlerData<'a>> + LayoutHolder + ToolTransition + ToolMetadata {}
+pub trait ToolCommon: for<'a, 'b> MessageHandler<ToolMessage, &'b mut ToolActionMessageContext<'a>> + LayoutHolder + ToolTransition + ToolMetadata {}
+impl<T> ToolCommon for T where T: for<'a, 'b> MessageHandler<ToolMessage, &'b mut ToolActionMessageContext<'a>> + LayoutHolder + ToolTransition + ToolMetadata {}
 
 type Tool = dyn ToolCommon + Send + Sync;
 
@@ -53,7 +53,7 @@ pub trait Fsm {
 	/// For example, if the tool's FSM is in a `Ready` state and receives a `DragStart` message as its event, it may decide to send some messages,
 	/// update some internal tool variables, and end by transitioning to a `Drawing` state.
 	#[must_use]
-	fn transition(self, message: ToolMessage, tool_data: &mut Self::ToolData, transition_data: &mut ToolActionHandlerData, options: &Self::ToolOptions, responses: &mut VecDeque<Message>) -> Self;
+	fn transition(self, message: ToolMessage, tool_data: &mut Self::ToolData, transition_data: &mut ToolActionMessageContext, options: &Self::ToolOptions, responses: &mut VecDeque<Message>) -> Self;
 
 	/// Implementing this trait function lets a specific tool provide a list of hints (user input actions presently available) to draw in the footer bar.
 	fn update_hints(&self, responses: &mut VecDeque<Message>);
@@ -82,7 +82,7 @@ pub trait Fsm {
 		&mut self,
 		message: ToolMessage,
 		tool_data: &mut Self::ToolData,
-		transition_data: &mut ToolActionHandlerData,
+		transition_data: &mut ToolActionMessageContext,
 		options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 		update_cursor_on_transition: bool,
@@ -141,7 +141,7 @@ impl DocumentToolData {
 			layout_target: LayoutTarget::WorkingColors,
 		});
 
-		responses.add(BroadcastMessage::TriggerEvent(BroadcastEvent::WorkingColorChanged));
+		responses.add(BroadcastMessage::TriggerEvent(EventMessage::WorkingColorChanged));
 	}
 }
 
@@ -158,7 +158,7 @@ pub trait ToolTransition {
 	fn event_to_message_map(&self) -> EventToMessageMap;
 
 	fn activate(&self, responses: &mut VecDeque<Message>) {
-		let mut subscribe_message = |broadcast_to_tool_mapping: Option<ToolMessage>, event: BroadcastEvent| {
+		let mut subscribe_message = |broadcast_to_tool_mapping: Option<ToolMessage>, event: EventMessage| {
 			if let Some(mapping) = broadcast_to_tool_mapping {
 				responses.add(BroadcastMessage::SubscribeEvent {
 					on: event,
@@ -168,32 +168,32 @@ pub trait ToolTransition {
 		};
 
 		let event_to_tool_map = self.event_to_message_map();
-		subscribe_message(event_to_tool_map.canvas_transformed, BroadcastEvent::CanvasTransformed);
-		subscribe_message(event_to_tool_map.tool_abort, BroadcastEvent::ToolAbort);
-		subscribe_message(event_to_tool_map.selection_changed, BroadcastEvent::SelectionChanged);
-		subscribe_message(event_to_tool_map.working_color_changed, BroadcastEvent::WorkingColorChanged);
+		subscribe_message(event_to_tool_map.canvas_transformed, EventMessage::CanvasTransformed);
+		subscribe_message(event_to_tool_map.tool_abort, EventMessage::ToolAbort);
+		subscribe_message(event_to_tool_map.selection_changed, EventMessage::SelectionChanged);
+		subscribe_message(event_to_tool_map.working_color_changed, EventMessage::WorkingColorChanged);
 		if let Some(overlay_provider) = event_to_tool_map.overlay_provider {
-			responses.add(OverlaysMessage::AddProvider(overlay_provider));
+			responses.add(OverlaysMessage::AddProvider { provider: overlay_provider });
 		}
 	}
 
 	fn deactivate(&self, responses: &mut VecDeque<Message>) {
-		let mut unsubscribe_message = |broadcast_to_tool_mapping: Option<ToolMessage>, event: BroadcastEvent| {
+		let mut unsubscribe_message = |broadcast_to_tool_mapping: Option<ToolMessage>, event: EventMessage| {
 			if let Some(mapping) = broadcast_to_tool_mapping {
 				responses.add(BroadcastMessage::UnsubscribeEvent {
 					on: event,
-					message: Box::new(mapping.into()),
+					send: Box::new(mapping.into()),
 				});
 			}
 		};
 
 		let event_to_tool_map = self.event_to_message_map();
-		unsubscribe_message(event_to_tool_map.canvas_transformed, BroadcastEvent::CanvasTransformed);
-		unsubscribe_message(event_to_tool_map.tool_abort, BroadcastEvent::ToolAbort);
-		unsubscribe_message(event_to_tool_map.selection_changed, BroadcastEvent::SelectionChanged);
-		unsubscribe_message(event_to_tool_map.working_color_changed, BroadcastEvent::WorkingColorChanged);
+		unsubscribe_message(event_to_tool_map.canvas_transformed, EventMessage::CanvasTransformed);
+		unsubscribe_message(event_to_tool_map.tool_abort, EventMessage::ToolAbort);
+		unsubscribe_message(event_to_tool_map.selection_changed, EventMessage::SelectionChanged);
+		unsubscribe_message(event_to_tool_map.working_color_changed, EventMessage::WorkingColorChanged);
 		if let Some(overlay_provider) = event_to_tool_map.overlay_provider {
-			responses.add(OverlaysMessage::RemoveProvider(overlay_provider));
+			responses.add(OverlaysMessage::RemoveProvider { provider: overlay_provider });
 		}
 	}
 }

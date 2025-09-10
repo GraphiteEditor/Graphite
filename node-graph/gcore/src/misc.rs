@@ -60,3 +60,30 @@ impl Clampable for DVec2 {
 		self.min(DVec2::splat(max))
 	}
 }
+
+// TODO: Eventually remove this migration document upgrade code
+pub fn migrate_color<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<crate::table::Table<graphene_core_shaders::color::Color>, D::Error> {
+	use crate::table::Table;
+	use graphene_core_shaders::color::Color;
+	use serde::Deserialize;
+
+	#[derive(serde::Serialize, serde::Deserialize)]
+	#[serde(untagged)]
+	enum ColorFormat {
+		Color(Color),
+		OptionalColor(Option<Color>),
+		ColorTable(Table<Color>),
+	}
+
+	Ok(match ColorFormat::deserialize(deserializer)? {
+		ColorFormat::Color(color) => Table::new_from_element(color),
+		ColorFormat::OptionalColor(color) => {
+			if let Some(color) = color {
+				Table::new_from_element(color)
+			} else {
+				Table::new()
+			}
+		}
+		ColorFormat::ColorTable(color_table) => color_table,
+	})
+}

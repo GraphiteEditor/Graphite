@@ -11,17 +11,17 @@
 	--color-walnut: #473a3a;
 	--color-slate: #3a4047;
 	--color-crimson: #803847;
-	--color-lilac: #cabdc8;
+	--color-lilac: #e5e0eb;
 	// --color-lime: #c5e0af;
 	--color-lemon: #efe2b2;
 	--color-peach: #ebb29f;
 	--color-ale: #cd8f7a;
-	// --color-flamingo: #d2697c;
+	--color-flamingo: #d2697c;
 	--color-seaside: #b0d6cb;
 	--color-seaside-rgb: 176, 214, 203;
 	// --color-cove: #83c0b9;
 	// --color-sage: #91b99a;
-	// --color-storm: #627088;
+	--color-storm: #495875;
 
 	--max-width: 1200px;
 	--max-width-plus-padding: calc(var(--max-width) + 40px * 2);
@@ -313,7 +313,6 @@ body > .page {
 			}
 
 			details[open] summary::before {
-				// content: "▼";
 				transform: rotate(90deg);
 			}
 		}

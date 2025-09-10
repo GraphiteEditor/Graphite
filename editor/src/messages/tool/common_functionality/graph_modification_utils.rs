@@ -3,7 +3,6 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeNetworkInterface, NodeTemplate};
 use crate::messages::prelude::*;
-use bezier_rs::Subpath;
 use glam::DVec2;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
@@ -11,10 +10,13 @@ use graph_craft::{ProtoNodeIdentifier, concrete};
 use graphene_std::Color;
 use graphene_std::NodeInputDecleration;
 use graphene_std::raster::BlendMode;
-use graphene_std::raster_types::{CPU, GPU, RasterDataTable};
+use graphene_std::raster_types::{CPU, GPU, Raster};
+use graphene_std::subpath::Subpath;
+use graphene_std::table::Table;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::style::Gradient;
-use graphene_std::vector::{ManipulatorPointId, PointId, SegmentId, VectorModificationType};
+use graphene_std::vector::misc::ManipulatorPointId;
+use graphene_std::vector::style::{Fill, Gradient};
+use graphene_std::vector::{PointId, SegmentId, VectorModificationType};
 use std::collections::VecDeque;
 
 /// Returns the ID of the first Spline node in the horizontal flow which is not followed by a `Path` node, or `None` if none exists.
@@ -33,7 +35,7 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 	if first_layer == second_layer {
 		return;
 	}
-	// Calculate the downstream transforms in order to bring the other vector data into the same layer space
+	// Calculate the downstream transforms in order to bring the other vector geometry into the same layer space
 	let first_layer_transform = document.metadata().downstream_transform_to_document(first_layer);
 	let second_layer_transform = document.metadata().downstream_transform_to_document(second_layer);
 
@@ -153,31 +155,32 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 	});
 
 	responses.add(NodeGraphMessage::RunDocumentGraph);
-	responses.add(Message::StartBuffer);
-	responses.add(PenToolMessage::RecalculateLatestPointsPosition);
+	responses.add(DeferMessage::AfterGraphRun {
+		messages: vec![PenToolMessage::RecalculateLatestPointsPosition.into()],
+	});
 }
 
 /// Merge the `first_endpoint` with `second_endpoint`.
 pub fn merge_points(document: &DocumentMessageHandler, layer: LayerNodeIdentifier, first_endpoint: PointId, second_endpont: PointId, responses: &mut VecDeque<Message>) {
 	let transform = document.metadata().transform_to_document(layer);
-	let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { return };
+	let Some(vector) = document.network_interface.compute_modified_vector(layer) else { return };
 
-	let segment = vector_data.segment_bezier_iter().find(|(_, _, start, end)| *end == second_endpont || *start == second_endpont);
+	let segment = vector.segment_bezier_iter().find(|(_, _, start, end)| *end == second_endpont || *start == second_endpont);
 	let Some((segment, _, mut segment_start_point, mut segment_end_point)) = segment else {
 		log::error!("Could not get the segment for second_endpoint.");
 		return;
 	};
 
 	let mut handles = [None; 2];
-	if let Some(handle_position) = ManipulatorPointId::PrimaryHandle(segment).get_position(&vector_data) {
-		let anchor_position = ManipulatorPointId::Anchor(segment_start_point).get_position(&vector_data).unwrap();
+	if let Some(handle_position) = ManipulatorPointId::PrimaryHandle(segment).get_position(&vector) {
+		let anchor_position = ManipulatorPointId::Anchor(segment_start_point).get_position(&vector).unwrap();
 		let handle_position = transform.transform_point2(handle_position);
 		let anchor_position = transform.transform_point2(anchor_position);
 		let anchor_to_handle = handle_position - anchor_position;
 		handles[0] = Some(anchor_to_handle);
 	}
-	if let Some(handle_position) = ManipulatorPointId::EndHandle(segment).get_position(&vector_data) {
-		let anchor_position = ManipulatorPointId::Anchor(segment_end_point).get_position(&vector_data).unwrap();
+	if let Some(handle_position) = ManipulatorPointId::EndHandle(segment).get_position(&vector) {
+		let anchor_position = ManipulatorPointId::Anchor(segment_end_point).get_position(&vector).unwrap();
 		let handle_position = transform.transform_point2(handle_position);
 		let anchor_position = transform.transform_point2(anchor_position);
 		let anchor_to_handle = handle_position - anchor_position;
@@ -210,7 +213,7 @@ pub fn new_vector_layer(subpaths: Vec<Subpath<PointId>>, id: NodeId, parent: Lay
 }
 
 /// Create a new bitmap layer.
-pub fn new_image_layer(image_frame: RasterDataTable<CPU>, id: NodeId, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
+pub fn new_image_layer(image_frame: Table<Raster<CPU>>, id: NodeId, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
 	let insert_index = 0;
 	responses.add(GraphOperationMessage::NewBitmapLayer {
 		id,
@@ -270,7 +273,7 @@ pub fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkI
 	let fill_index = 1;
 
 	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs("Fill")?;
-	let TaggedValue::Fill(graphene_std::vector::style::Fill::Gradient(gradient)) = inputs.get(fill_index)?.as_value()? else {
+	let TaggedValue::Fill(Fill::Gradient(gradient)) = inputs.get(fill_index)?.as_value()? else {
 		return None;
 	};
 	Some(gradient.clone())
@@ -281,7 +284,7 @@ pub fn get_fill_color(layer: LayerNodeIdentifier, network_interface: &NodeNetwor
 	let fill_index = 1;
 
 	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs("Fill")?;
-	let TaggedValue::Fill(graphene_std::vector::style::Fill::Solid(color)) = inputs.get(fill_index)?.as_value()? else {
+	let TaggedValue::Fill(Fill::Solid(color)) = inputs.get(fill_index)?.as_value()? else {
 		return None;
 	};
 	Some(color.to_linear_srgb())
@@ -332,6 +335,10 @@ pub fn get_fill_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkIn
 	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name("Fill")
 }
 
+pub fn get_circle_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
+	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name("Circle")
+}
+
 pub fn get_ellipse_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
 	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name("Ellipse")
 }
@@ -352,6 +359,10 @@ pub fn get_star_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkIn
 	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name("Star")
 }
 
+pub fn get_arc_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
+	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name("Arc")
+}
+
 pub fn get_spiral_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
 	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name("Spiral")
 }
@@ -360,8 +371,12 @@ pub fn get_text_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkIn
 	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name("Text")
 }
 
+pub fn get_grid_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
+	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name("Grid")
+}
+
 /// Gets properties from the Text node
-pub fn get_text(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<(&String, &Font, TypesettingConfig)> {
+pub fn get_text(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<(&String, &Font, TypesettingConfig, bool)> {
 	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs("Text")?;
 
 	let Some(TaggedValue::String(text)) = &inputs[1].as_value() else { return None };
@@ -372,6 +387,8 @@ pub fn get_text(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInter
 	let Some(&TaggedValue::OptionalF64(max_width)) = inputs[6].as_value() else { return None };
 	let Some(&TaggedValue::OptionalF64(max_height)) = inputs[7].as_value() else { return None };
 	let Some(&TaggedValue::F64(tilt)) = inputs[8].as_value() else { return None };
+	let Some(&TaggedValue::TextAlign(align)) = inputs[9].as_value() else { return None };
+	let Some(&TaggedValue::Bool(per_glyph_instances)) = inputs[10].as_value() else { return None };
 
 	let typesetting = TypesettingConfig {
 		font_size,
@@ -380,8 +397,9 @@ pub fn get_text(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInter
 		character_spacing,
 		max_height,
 		tilt,
+		align,
 	};
-	Some((text, font, typesetting))
+	Some((text, font, typesetting, per_glyph_instances))
 }
 
 pub fn get_stroke_width(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<f64> {
@@ -425,6 +443,16 @@ impl<'a> NodeGraphLayer<'a> {
 			.find(|node_id| self.network_interface.reference(node_id, &[]).is_some_and(|reference| *reference == Some(node_name.to_string())))
 	}
 
+	/// Node id of a visible node if it exists in the layer's primary flow until another layer
+	pub fn upstream_visible_node_id_from_name_in_layer(&self, node_name: &str) -> Option<NodeId> {
+		// `.skip(1)` is used to skip self
+		self.horizontal_layer_flow()
+			.skip(1)
+			.take_while(|node_id| !self.network_interface.is_layer(node_id, &[]))
+			.filter(|node_id| self.network_interface.is_visible(node_id, &[]))
+			.find(|node_id| self.network_interface.reference(node_id, &[]).is_some_and(|reference| *reference == Some(node_name.to_string())))
+	}
+
 	/// Node id of a protonode if it exists in the layer's primary flow
 	pub fn upstream_node_id_from_protonode(&self, protonode_identifier: ProtoNodeIdentifier) -> Option<NodeId> {
 		self.horizontal_layer_flow()
@@ -439,10 +467,11 @@ impl<'a> NodeGraphLayer<'a> {
 
 	/// Find all of the inputs of a specific node within the layer's primary flow, up until the next layer is reached.
 	pub fn find_node_inputs(&self, node_name: &str) -> Option<&'a Vec<NodeInput>> {
+		// `.skip(1)` is used to skip self
 		self.horizontal_layer_flow()
-			.skip(1)// Skip self
-			.take_while(|node_id| !self.network_interface.is_layer(node_id,&[]))
-			.find(|node_id| self.network_interface.reference(node_id,&[]).is_some_and(|reference| *reference == Some(node_name.to_string())))
+			.skip(1)
+			.take_while(|node_id| !self.network_interface.is_layer(node_id, &[]))
+			.find(|node_id| self.network_interface.reference(node_id, &[]).is_some_and(|reference| *reference == Some(node_name.to_string())))
 			.and_then(|node_id| self.network_interface.document_network().nodes.get(&node_id).map(|node| &node.inputs))
 	}
 
@@ -456,6 +485,6 @@ impl<'a> NodeGraphLayer<'a> {
 	pub fn is_raster_layer(layer: LayerNodeIdentifier, network_interface: &mut NodeNetworkInterface) -> bool {
 		let layer_input_type = network_interface.input_type(&InputConnector::node(layer.to_node(), 1), &[]).0.nested_type().clone();
 
-		layer_input_type == concrete!(RasterDataTable<CPU>) || layer_input_type == concrete!(RasterDataTable<GPU>)
+		layer_input_type == concrete!(Table<Raster<CPU>>) || layer_input_type == concrete!(Table<Raster<GPU>>)
 	}
 }

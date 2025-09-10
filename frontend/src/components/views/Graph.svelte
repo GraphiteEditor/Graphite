@@ -4,8 +4,7 @@
 	import { fade } from "svelte/transition";
 
 	import type { Editor } from "@graphite/editor";
-	import type { Node } from "@graphite/messages";
-	import type { FrontendNode, FrontendGraphInput, FrontendGraphOutput } from "@graphite/messages";
+	import type { FrontendGraphInput, FrontendGraphOutput } from "@graphite/messages";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import type { IconName } from "@graphite/utility-functions/icons";
 
@@ -32,7 +31,7 @@
 	// Imports/Export are stored at a key value of 0
 
 	$: gridSpacing = calculateGridSpacing($nodeGraph.transform.scale);
-	$: dotRadius = 1 + Math.floor($nodeGraph.transform.scale - 0.5 + 0.001) / 2;
+	$: gridDotRadius = 1 + Math.floor($nodeGraph.transform.scale - 0.5 + 0.001) / 2;
 
 	let inputElement: HTMLInputElement;
 	let hoveringImportIndex: number | undefined = undefined;
@@ -178,7 +177,7 @@
 	}
 
 	function dataTypeTooltip(value: FrontendGraphInput | FrontendGraphOutput): string {
-		return value.resolvedType ? `Data Type:\n${value.resolvedType}` : `Data Type (Unresolved):\n${value.dataType}`;
+		return `Data Type: ${value.resolvedType}`;
 	}
 
 	function validTypesText(value: FrontendGraphInput): string {
@@ -189,37 +188,11 @@
 	function outputConnectedToText(output: FrontendGraphOutput): string {
 		if (output.connectedTo.length === 0) return "Connected to nothing";
 
-		return output.connectedTo
-			.map((inputConnector) => {
-				if ((inputConnector as Node).nodeId === undefined) return `Connected to export index ${inputConnector.index}`;
-				return `Connected to ${(inputConnector as Node).nodeId}, port index ${inputConnector.index}`;
-			})
-			.join("\n");
+		return `Connected to:\n${output.connectedTo.join("\n")}`;
 	}
 
 	function inputConnectedToText(input: FrontendGraphInput): string {
-		if (input.connectedTo === undefined) return "Connected to nothing";
-		if ((input.connectedTo as Node).nodeId === undefined) return `Connected to import index ${input.connectedTo.index}`;
-		return `Connected to ${(input.connectedTo as Node).nodeId}, port index ${input.connectedTo.index}`;
-	}
-
-	function primaryOutputConnectedToLayer(node: FrontendNode): boolean {
-		let firstConnectedNode = Array.from($nodeGraph.nodes.values()).find((n) =>
-			node.primaryOutput?.connectedTo.some((connector) => {
-				if ((connector as Node).nodeId === undefined) return false;
-				if (connector.index !== 0n) return false;
-				return n.id === (connector as Node).nodeId || false;
-			}),
-		);
-		return firstConnectedNode?.isLayer || false;
-	}
-
-	function primaryInputConnectedToLayer(node: FrontendNode): boolean {
-		const connectedNode = Array.from($nodeGraph.nodes.values()).find((n) => {
-			if ((node.primaryInput?.connectedTo as Node) === undefined) return false;
-			return n.id === (node.primaryInput?.connectedTo as Node).nodeId;
-		});
-		return connectedNode?.isLayer || false;
+		return `Connected to:\n${input.connectedTo}`;
 	}
 
 	function zipWithUndefined(arr1: FrontendGraphInput[], arr2: FrontendGraphOutput[]) {
@@ -238,7 +211,7 @@
 	style:--grid-spacing={`${gridSpacing}px`}
 	style:--grid-offset-x={`${$nodeGraph.transform.x}px`}
 	style:--grid-offset-y={`${$nodeGraph.transform.y}px`}
-	style:--dot-radius={`${dotRadius}px`}
+	style:--grid-dot-radius={`${gridDotRadius}px`}
 	data-node-graph
 >
 	<!-- Right click menu for adding nodes -->
@@ -265,16 +238,12 @@
 							{
 								value: "node",
 								label: "Node",
-								action: () => {
-									toggleLayerDisplay(false, contextMenuData.nodeId);
-								},
+								action: () => toggleLayerDisplay(false, contextMenuData.nodeId),
 							},
 							{
 								value: "layer",
 								label: "Layer",
-								action: () => {
-									toggleLayerDisplay(true, contextMenuData.nodeId);
-								},
+								action: () => toggleLayerDisplay(true, contextMenuData.nodeId),
 							},
 						]}
 						disabled={!canBeToggledBetweenNodeAndLayer(contextMenuData.nodeId)}
@@ -290,7 +259,7 @@
 
 	<!-- Click target debug visualizations -->
 	{#if $nodeGraph.clickTargets}
-		<div class="click-targets" style:transform-origin={`0 0`} style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
+		<div class="click-targets" style:transform-origin="0 0" style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
 			<svg>
 				{#each $nodeGraph.clickTargets.nodeClickTargets as pathString}
 					<path class="node" d={pathString} />
@@ -298,8 +267,8 @@
 				{#each $nodeGraph.clickTargets.layerClickTargets as pathString}
 					<path class="layer" d={pathString} />
 				{/each}
-				{#each $nodeGraph.clickTargets.portClickTargets as pathString}
-					<path class="port" d={pathString} />
+				{#each $nodeGraph.clickTargets.connectorClickTargets as pathString}
+					<path class="connector" d={pathString} />
 				{/each}
 				{#each $nodeGraph.clickTargets.iconClickTargets as pathString}
 					<path class="visibility" d={pathString} />
@@ -314,14 +283,14 @@
 	{/if}
 
 	<!-- Thick vertical layer connection wires -->
-	<div class="wires" style:transform-origin={`0 0`} style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
+	<div class="wires" style:transform-origin="0 0" style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
 		<svg>
 			{#each $nodeGraph.wires.values() as map}
 				{#each map.values() as { pathString, dataType, thick, dashed }}
 					{#if thick}
 						<path
 							d={pathString}
-							style:--data-line-width={"8px"}
+							style:--data-line-width="8px"
 							style:--data-color={`var(--color-data-${dataType.toLowerCase()})`}
 							style:--data-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
 							style:--data-dasharray={`3,${dashed ? 2 : 0}`}
@@ -332,156 +301,188 @@
 		</svg>
 	</div>
 
-	<!-- Import and Export ports -->
-	<div class="imports-and-exports" style:transform-origin={`0 0`} style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
-		{#each $nodeGraph.imports as { outputMetadata, position }, index}
-			<svg
-				xmlns="http://www.w3.org/2000/svg"
-				viewBox="0 0 8 8"
-				class="port"
-				data-port="output"
-				data-datatype={outputMetadata.dataType}
-				style:--data-color={`var(--color-data-${outputMetadata.dataType.toLowerCase()})`}
-				style:--data-color-dim={`var(--color-data-${outputMetadata.dataType.toLowerCase()}-dim)`}
-				style:--offset-left={position.x / 24}
-				style:--offset-top={position.y / 24}
-			>
-				<title>{`${dataTypeTooltip(outputMetadata)}\n\n${outputConnectedToText(outputMetadata)}`}</title>
-				{#if outputMetadata.connectedTo !== undefined}
-					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
-				{:else}
-					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
-				{/if}
-			</svg>
+	<!-- Import and Export connectors -->
+	<div class="imports-and-exports" style:transform-origin="0 0" style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
+		{#if $nodeGraph.updateImportsExports}
+			{#each $nodeGraph.updateImportsExports.imports as frontendOutput, index}
+				{#if frontendOutput}
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						viewBox="0 0 8 8"
+						class="connector"
+						data-connector="output"
+						data-datatype={frontendOutput.dataType}
+						style:--data-color={`var(--color-data-${frontendOutput.dataType.toLowerCase()})`}
+						style:--data-color-dim={`var(--color-data-${frontendOutput.dataType.toLowerCase()}-dim)`}
+						style:--offset-left={($nodeGraph.updateImportsExports.importPosition.x - 8) / 24}
+						style:--offset-top={($nodeGraph.updateImportsExports.importPosition.y - 8) / 24 + index}
+					>
+						<title>{`${dataTypeTooltip(frontendOutput)}\n\n${outputConnectedToText(frontendOutput)}`}</title>
+						{#if frontendOutput.connectedTo.length > 0}
+							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
+						{:else}
+							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
+						{/if}
+					</svg>
 
-			<div
-				class="edit-import-export import"
-				on:pointerenter={() => (hoveringImportIndex = index)}
-				on:pointerleave={() => (hoveringImportIndex = undefined)}
-				style:--offset-left={position.x / 24}
-				style:--offset-top={position.y / 24}
-			>
-				{#if editingNameImportIndex == index}
-					<input
-						class="import-text-input"
-						type="text"
-						style:width={importsToEdgeTextInputWidth()}
-						bind:this={inputElement}
-						bind:value={editingNameText}
-						on:blur={setEditingImportName}
-						on:keydown={(e) => e.key === "Enter" && setEditingImportName(e)}
-					/>
+					<div
+						on:pointerenter={() => (hoveringImportIndex = index)}
+						on:pointerleave={() => (hoveringImportIndex = undefined)}
+						class="edit-import-export import"
+						class:separator-bottom={index === 0 && $nodeGraph.updateImportsExports.addImportExport}
+						class:separator-top={index === 1 && $nodeGraph.updateImportsExports.addImportExport}
+						style:--offset-left={($nodeGraph.updateImportsExports.importPosition.x - 8) / 24}
+						style:--offset-top={($nodeGraph.updateImportsExports.importPosition.y - 8) / 24 + index}
+					>
+						{#if editingNameImportIndex == index}
+							<input
+								class="import-text-input"
+								type="text"
+								style:width={importsToEdgeTextInputWidth()}
+								bind:this={inputElement}
+								bind:value={editingNameText}
+								on:blur={setEditingImportName}
+								on:keydown={(e) => e.key === "Enter" && setEditingImportName(e)}
+							/>
+						{:else}
+							<p class="import-text" on:dblclick={() => setEditingImportNameIndex(index, frontendOutput.name)}>
+								{frontendOutput.name}
+							</p>
+						{/if}
+						{#if (hoveringImportIndex === index || editingNameImportIndex === index) && $nodeGraph.updateImportsExports.addImportExport}
+							<IconButton
+								size={16}
+								icon="Remove"
+								class="remove-button-import"
+								data-index={index}
+								data-import-text-edge
+								action={() => {
+									/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
+								}}
+							/>
+							{#if index > 0}
+								<div class="reorder-drag-grip" title="Reorder this export" />
+							{/if}
+						{/if}
+					</div>
 				{:else}
-					<p class="import-text" on:dblclick={() => setEditingImportNameIndex(index, outputMetadata.name)}>{outputMetadata.name}</p>
+					<div
+						class="plus"
+						style:--offset-top={($nodeGraph.updateImportsExports.importPosition.y - 12) / 24}
+						style:--offset-left={($nodeGraph.updateImportsExports.importPosition.x - 12) / 24}
+					>
+						<IconButton size={24} icon="Add" action={() => editor.handle.addPrimaryImport()} />
+					</div>
 				{/if}
-				{#if hoveringImportIndex === index || editingNameImportIndex === index}
-					<IconButton
-						size={16}
-						icon={"Remove"}
-						class="remove-button-import"
-						data-index={index}
-						data-import-text-edge
-						action={() => {
-							/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
-						}}
-					/>
-					<div class="reorder-drag-grip" title="Reorder this import"></div>
-				{/if}
-			</div>
-		{/each}
-		{#if $nodeGraph.reorderImportIndex !== undefined}
-			{@const position = {
-				x: Number($nodeGraph.imports[0].position.x),
-				y: Number($nodeGraph.imports[0].position.y) + Number($nodeGraph.reorderImportIndex) * 24,
-			}}
-			<div class="reorder-bar" style:--offset-left={(position.x - 48) / 24} style:--offset-top={(position.y - 4) / 24} />
-		{/if}
-		{#if $nodeGraph.addImport !== undefined}
-			<div class="plus" style:--offset-left={$nodeGraph.addImport.x / 24} style:--offset-top={$nodeGraph.addImport.y / 24}>
-				<IconButton
-					size={24}
-					icon="Add"
-					action={() => {
-						/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
-					}}
-				/>
-			</div>
-		{/if}
-		{#each $nodeGraph.exports as { inputMetadata, position }, index}
-			<svg
-				xmlns="http://www.w3.org/2000/svg"
-				viewBox="0 0 8 8"
-				class="port"
-				data-port="input"
-				data-datatype={inputMetadata.dataType}
-				style:--data-color={`var(--color-data-${inputMetadata.dataType.toLowerCase()})`}
-				style:--data-color-dim={`var(--color-data-${inputMetadata.dataType.toLowerCase()}-dim)`}
-				style:--offset-left={position.x / 24}
-				style:--offset-top={position.y / 24}
-			>
-				<title>{`${dataTypeTooltip(inputMetadata)}\n\n${inputConnectedToText(inputMetadata)}`}</title>
-				{#if inputMetadata.connectedTo !== undefined}
-					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
+			{/each}
+
+			{#each $nodeGraph.updateImportsExports.exports as frontendInput, index}
+				{#if frontendInput}
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						viewBox="0 0 8 8"
+						class="connector"
+						data-connector="input"
+						data-datatype={frontendInput.dataType}
+						style:--data-color={`var(--color-data-${frontendInput.dataType.toLowerCase()})`}
+						style:--data-color-dim={`var(--color-data-${frontendInput.dataType.toLowerCase()}-dim)`}
+						style:--offset-left={($nodeGraph.updateImportsExports.exportPosition.x - 8) / 24}
+						style:--offset-top={($nodeGraph.updateImportsExports.exportPosition.y - 8) / 24 + index}
+					>
+						<title>{`${dataTypeTooltip(frontendInput)}\n\n${inputConnectedToText(frontendInput)}`}</title>
+						{#if frontendInput.connectedTo !== "nothing"}
+							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
+						{:else}
+							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
+						{/if}
+					</svg>
+					<div
+						on:pointerenter={() => (hoveringExportIndex = index)}
+						on:pointerleave={() => (hoveringExportIndex = undefined)}
+						class="edit-import-export export"
+						class:separator-bottom={index === 0 && $nodeGraph.updateImportsExports.addImportExport}
+						class:separator-top={index === 1 && $nodeGraph.updateImportsExports.addImportExport}
+						style:--offset-left={($nodeGraph.updateImportsExports.exportPosition.x - 8) / 24}
+						style:--offset-top={($nodeGraph.updateImportsExports.exportPosition.y - 8) / 24 + index}
+					>
+						{#if (hoveringExportIndex === index || editingNameExportIndex === index) && $nodeGraph.updateImportsExports.addImportExport}
+							{#if index > 0}
+								<div class="reorder-drag-grip" title="Reorder this export" />
+							{/if}
+							<IconButton
+								size={16}
+								icon="Remove"
+								class="remove-button-export"
+								data-index={index}
+								data-export-text-edge
+								action={() => {
+									/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
+								}}
+							/>
+						{/if}
+						{#if editingNameExportIndex === index}
+							<input
+								type="text"
+								style:width={exportsToEdgeTextInputWidth()}
+								bind:this={inputElement}
+								bind:value={editingNameText}
+								on:blur={setEditingExportName}
+								on:keydown={(e) => e.key === "Enter" && setEditingExportName(e)}
+							/>
+						{:else}
+							<p class="export-text" on:dblclick={() => setEditingExportNameIndex(index, frontendInput.name)}>
+								{frontendInput.name}
+							</p>
+						{/if}
+					</div>
 				{:else}
-					<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
+					<div
+						class="plus"
+						style:--offset-left={($nodeGraph.updateImportsExports.exportPosition.x - 12) / 24}
+						style:--offset-top={($nodeGraph.updateImportsExports.exportPosition.y - 12) / 24}
+					>
+						<IconButton size={24} icon="Add" action={() => editor.handle.addPrimaryExport()} />
+					</div>
 				{/if}
-			</svg>
-			<div
-				class="edit-import-export export"
-				on:pointerenter={() => (hoveringExportIndex = index)}
-				on:pointerleave={() => (hoveringExportIndex = undefined)}
-				style:--offset-left={position.x / 24}
-				style:--offset-top={position.y / 24}
-			>
-				{#if hoveringExportIndex === index || editingNameExportIndex === index}
-					<div class="reorder-drag-grip" title="Reorder this export"></div>
-					<IconButton
-						size={16}
-						icon={"Remove"}
-						class="remove-button-export"
-						data-index={index}
-						data-export-text-edge
-						action={() => {
-							/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
-						}}
-					/>
-				{/if}
-				{#if editingNameExportIndex === index}
-					<input
-						type="text"
-						style:width={exportsToEdgeTextInputWidth()}
-						bind:this={inputElement}
-						bind:value={editingNameText}
-						on:blur={setEditingExportName}
-						on:keydown={(e) => e.key === "Enter" && setEditingExportName(e)}
-					/>
-				{:else}
-					<p class="export-text" on:dblclick={() => setEditingExportNameIndex(index, inputMetadata.name)}>{inputMetadata.name}</p>
-				{/if}
-			</div>
-		{/each}
-		{#if $nodeGraph.reorderExportIndex !== undefined}
-			{@const position = {
-				x: Number($nodeGraph.exports[0].position.x),
-				y: Number($nodeGraph.exports[0].position.y) + Number($nodeGraph.reorderExportIndex) * 24,
-			}}
-			<div class="reorder-bar" style:--offset-left={position.x / 24} style:--offset-top={(position.y - 4) / 24} />
-		{/if}
-		{#if $nodeGraph.addExport !== undefined}
-			<div class="plus" style:--offset-left={$nodeGraph.addExport.x / 24} style:--offset-top={$nodeGraph.addExport.y / 24}>
-				<IconButton
-					size={24}
-					icon={"Add"}
-					action={() => {
-						/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
-					}}
-				/>
-			</div>
+			{/each}
+
+			{#if $nodeGraph.updateImportsExports.addImportExport == true}
+				<div
+					class="plus"
+					style:--offset-left={($nodeGraph.updateImportsExports.importPosition.x - 12) / 24}
+					style:--offset-top={($nodeGraph.updateImportsExports.importPosition.y - 12) / 24 + $nodeGraph.updateImportsExports.imports.length}
+				>
+					<IconButton size={24} icon="Add" action={() => editor.handle.addSecondaryImport()} />
+				</div>
+				<div
+					class="plus"
+					style:--offset-left={($nodeGraph.updateImportsExports.exportPosition.x - 12) / 24}
+					style:--offset-top={($nodeGraph.updateImportsExports.exportPosition.y - 12) / 24 + $nodeGraph.updateImportsExports.exports.length}
+				>
+					<IconButton size={24} icon="Add" action={() => editor.handle.addSecondaryExport()} />
+				</div>
+			{/if}
+
+			{#if $nodeGraph.reorderImportIndex !== undefined}
+				{@const position = {
+					x: Number($nodeGraph.updateImportsExports.importPosition.x),
+					y: Number($nodeGraph.updateImportsExports.importPosition.y) + Number($nodeGraph.reorderImportIndex) * 24,
+				}}
+				<div class="reorder-bar" style:--offset-left={(position.x - 48) / 24} style:--offset-top={(position.y - 12) / 24} />
+			{/if}
+
+			{#if $nodeGraph.reorderExportIndex !== undefined}
+				{@const position = {
+					x: Number($nodeGraph.updateImportsExports.exportPosition.x),
+					y: Number($nodeGraph.updateImportsExports.exportPosition.y) + Number($nodeGraph.reorderExportIndex) * 24,
+				}}
+				<div class="reorder-bar" style:--offset-left={position.x / 24} style:--offset-top={(position.y - 12) / 24} />
+			{/if}
 		{/if}
 	</div>
 
 	<!-- Layers and nodes -->
-	<div class="layers-and-nodes" style:transform-origin={`0 0`} style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
+	<div class="layers-and-nodes" style:transform-origin="0 0" style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
 		<!-- Layers -->
 		{#each Array.from($nodeGraph.nodes)
 			.filter(([nodeId, node]) => node.isLayer && $nodeGraph.visibleNodes.has(nodeId))
@@ -521,8 +522,8 @@
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
 							viewBox="0 0 8 12"
-							class="port top"
-							data-port="output"
+							class="connector top"
+							data-connector="output"
 							data-datatype={node.primaryOutput.dataType}
 							style:--data-color={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()})`}
 							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()}-dim)`}
@@ -530,7 +531,7 @@
 							<title>{`${dataTypeTooltip(node.primaryOutput)}\n\n${outputConnectedToText(node.primaryOutput)}`}</title>
 							{#if node.primaryOutput.connectedTo.length > 0}
 								<path d="M0,6.953l2.521,-1.694a2.649,2.649,0,0,1,2.959,0l2.52,1.694v5.047h-8z" fill="var(--data-color)" />
-								{#if primaryOutputConnectedToLayer(node)}
+								{#if node.primaryOutputConnectedToLayer}
 									<path d="M0,-3.5h8v8l-2.521,-1.681a2.666,2.666,0,0,0,-2.959,0l-2.52,1.681z" fill="var(--data-color-dim)" />
 								{/if}
 							{:else}
@@ -542,8 +543,8 @@
 					<svg
 						xmlns="http://www.w3.org/2000/svg"
 						viewBox="0 0 8 12"
-						class="port bottom"
-						data-port="input"
+						class="connector bottom"
+						data-connector="input"
 						data-datatype={node.primaryInput?.dataType}
 						style:--data-color={`var(--color-data-${(node.primaryInput?.dataType || "General").toLowerCase()})`}
 						style:--data-color-dim={`var(--color-data-${(node.primaryInput?.dataType || "General").toLowerCase()}-dim)`}
@@ -551,9 +552,9 @@
 						{#if node.primaryInput}
 							<title>{`${dataTypeTooltip(node.primaryInput)}\n\n${validTypesText(node.primaryInput)}\n\n${inputConnectedToText(node.primaryInput)}`}</title>
 						{/if}
-						{#if node.primaryInput?.connectedTo !== undefined}
+						{#if node.primaryInput?.connectedTo !== "nothing"}
 							<path d="M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z" fill="var(--data-color)" />
-							{#if primaryInputConnectedToLayer(node)}
+							{#if node.primaryInputConnectedToLayer}
 								<path d="M0,10.95l2.52,-1.69c0.89,-0.6,2.06,-0.6,2.96,0l2.52,1.69v5.05h-8v-5.05z" fill="var(--data-color-dim)" />
 							{/if}
 						{:else}
@@ -561,14 +562,14 @@
 						{/if}
 					</svg>
 				</div>
-				<!-- Layer input port (from left) -->
+				<!-- Layer input connector (from left) -->
 				{#if node.exposedInputs.length > 0}
-					<div class="input ports">
+					<div class="input connectors">
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
 							viewBox="0 0 8 8"
-							class="port"
-							data-port="input"
+							class="connector"
+							data-connector="input"
 							data-datatype={stackDataInput.dataType}
 							style:--data-color={`var(--color-data-${stackDataInput.dataType.toLowerCase()})`}
 							style:--data-color-dim={`var(--color-data-${stackDataInput.dataType.toLowerCase()}-dim)`}
@@ -588,7 +589,7 @@
 				</div>
 				<div class="solo-drag-grip" title="Drag only this layer without pushing others outside the stack"></div>
 				<IconButton
-					class={"visibility"}
+					class="visibility"
 					data-visibility-button
 					size={24}
 					icon={node.visible ? "EyeVisible" : "EyeHidden"}
@@ -617,7 +618,7 @@
 						{#if !thick}
 							<path
 								d={pathString}
-								style:--data-line-width={"2px"}
+								style:--data-line-width="2px"
 								style:--data-color={`var(--color-data-${dataType.toLowerCase()})`}
 								style:--data-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
 								style:--data-dasharray={`3,${dashed ? 2 : 0}`}
@@ -679,14 +680,14 @@
 						{/each}
 					</div>
 				{/if}
-				<!-- Input ports -->
-				<div class="input ports">
+				<!-- Input connectors -->
+				<div class="input connectors">
 					{#if node.primaryInput?.dataType}
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
 							viewBox="0 0 8 8"
-							class="port primary-port"
-							data-port="input"
+							class="connector primary-connector"
+							data-connector="input"
 							data-datatype={node.primaryInput?.dataType}
 							style:--data-color={`var(--color-data-${node.primaryInput.dataType.toLowerCase()})`}
 							style:--data-color-dim={`var(--color-data-${node.primaryInput.dataType.toLowerCase()}-dim)`}
@@ -704,8 +705,8 @@
 							<svg
 								xmlns="http://www.w3.org/2000/svg"
 								viewBox="0 0 8 8"
-								class="port"
-								data-port="input"
+								class="connector"
+								data-connector="input"
 								data-datatype={secondary.dataType}
 								style:--data-color={`var(--color-data-${secondary.dataType.toLowerCase()})`}
 								style:--data-color-dim={`var(--color-data-${secondary.dataType.toLowerCase()}-dim)`}
@@ -720,14 +721,14 @@
 						{/if}
 					{/each}
 				</div>
-				<!-- Output ports -->
-				<div class="output ports">
+				<!-- Output connectors -->
+				<div class="output connectors">
 					{#if node.primaryOutput}
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
 							viewBox="0 0 8 8"
-							class="port primary-port"
-							data-port="output"
+							class="connector primary-connector"
+							data-connector="output"
 							data-datatype={node.primaryOutput.dataType}
 							style:--data-color={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()})`}
 							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()}-dim)`}
@@ -744,8 +745,8 @@
 						<svg
 							xmlns="http://www.w3.org/2000/svg"
 							viewBox="0 0 8 8"
-							class="port"
-							data-port="output"
+							class="connector"
+							data-connector="output"
 							data-datatype={secondary.dataType}
 							style:--data-color={`var(--color-data-${secondary.dataType.toLowerCase()})`}
 							style:--data-color-dim={`var(--color-data-${secondary.dataType.toLowerCase()}-dim)`}
@@ -801,8 +802,8 @@
 			width: 100%;
 			height: 100%;
 			background-size: var(--grid-spacing) var(--grid-spacing);
-			background-position: calc(var(--grid-offset-x) - var(--dot-radius)) calc(var(--grid-offset-y) - var(--dot-radius));
-			background-image: radial-gradient(circle at var(--dot-radius) var(--dot-radius), var(--color-3-darkgray) var(--dot-radius), transparent 0);
+			background-position: calc(var(--grid-offset-x) - var(--grid-dot-radius)) calc(var(--grid-offset-y) - var(--grid-dot-radius));
+			background-image: radial-gradient(circle at var(--grid-dot-radius) var(--grid-dot-radius), var(--color-3-darkgray) var(--grid-dot-radius), transparent 0);
 			background-repeat: repeat;
 			image-rendering: pixelated;
 			mix-blend-mode: screen;
@@ -859,7 +860,7 @@
 					stroke: blue;
 				}
 
-				.port {
+				.connector {
 					stroke: green;
 				}
 
@@ -898,11 +899,13 @@
 		}
 
 		.imports-and-exports {
-			position: absolute;
 			width: 100%;
 			height: 100%;
+			position: absolute;
+			// Keeps the connectors above the wires
+			z-index: 1;
 
-			.port {
+			.connector {
 				position: absolute;
 				width: 8px;
 				height: 8px;
@@ -934,6 +937,24 @@
 				top: calc(var(--offset-top) * 24px);
 				margin-top: -5px;
 				height: 24px;
+
+				&.separator-bottom::after,
+				&.separator-top::before {
+					content: "";
+					position: absolute;
+					background: var(--color-8-uppergray);
+					height: 1px;
+					left: -4px;
+					right: -4px;
+				}
+
+				&.separator-bottom::after {
+					bottom: -1px;
+				}
+
+				&.separator-top::before {
+					top: 0;
+				}
 
 				&.import {
 					right: calc(100% - var(--offset-left) * 24px);
@@ -1008,7 +1029,7 @@
 				border-radius: 4px;
 				bottom: calc(100% + 12px);
 				z-index: -1;
-				transition: opacity 0.2s ease-in-out;
+				transition: opacity 0.2s;
 				opacity: 0.5;
 
 				// Tail
@@ -1040,7 +1061,7 @@
 					-webkit-user-select: text;
 					user-select: text;
 					transition:
-						opacity 0.2s ease-in-out,
+						opacity 0.2s,
 						z-index 0s 0.2s;
 
 					&::selection {
@@ -1088,8 +1109,10 @@
 				border: 1px dashed var(--data-color);
 			}
 
-			.ports {
+			.connectors {
 				position: absolute;
+				// Keeps the connectors above the wires
+				z-index: 1;
 
 				&.input {
 					left: -3px;
@@ -1100,7 +1123,7 @@
 				}
 			}
 
-			.port {
+			.connector {
 				// Double the intended value because of margin collapsing, but for the first and last we divide it by two as intended
 				margin: calc(24px - 8px) 0;
 				width: 8px;
@@ -1117,7 +1140,7 @@
 			border-radius: 8px;
 			--extra-width-to-reach-grid-multiple: 8px;
 			--node-chain-area-left-extension: 0;
-			// Keep this equation in sync with the equivalent one in the Svelte template `<clipPath><path d="layerBorderMask(...)" /></clipPath>` above, as well as the `left` port offset CSS rule above in `.ports.input` above.
+			// Keep this equation in sync with the equivalent one in the Svelte template `<clipPath><path d="layerBorderMask(...)" /></clipPath>` above, as well as the `left` connector offset CSS rule above in `.connectors.input` above.
 			width: calc((var(--layer-area-width) - 0.5) * 24px);
 			padding-left: calc(var(--node-chain-area-left-extension) * 24px);
 			margin-left: calc((0.5 - var(--node-chain-area-left-extension)) * 24px);
@@ -1141,8 +1164,10 @@
 				border-radius: 2px;
 				position: relative;
 				box-sizing: border-box;
-				width: 72px;
 				height: 48px;
+				// We shorten the width by 1px on the left and right so the inner thumbnail graphic maintains a perfect 3:2 aspect ratio
+				width: calc(72px - 2px);
+				margin: 0 1px;
 
 				&::before {
 					content: "";
@@ -1153,7 +1178,7 @@
 				}
 
 				&::before,
-				svg:not(.port) {
+				svg:not(.connector) {
 					pointer-events: none;
 					position: absolute;
 					margin: auto;
@@ -1163,7 +1188,7 @@
 					height: calc(100% - 2px);
 				}
 
-				.port {
+				.connector {
 					position: absolute;
 					margin: 0 auto;
 					left: 0;
@@ -1211,21 +1236,21 @@
 				right: -12px;
 			}
 
-			.input.ports {
+			.input.connectors {
 				left: calc(-3px + var(--node-chain-area-left-extension) * 24px - 36px);
 			}
 
 			.solo-drag-grip,
 			.visibility,
-			.input.ports,
-			.input.ports .port {
+			.input.connectors,
+			.input.connectors .connector {
 				position: absolute;
 				margin: auto 0;
 				top: 0;
 				bottom: 0;
 			}
 
-			.input.ports .port {
+			.input.connectors .connector {
 				left: 24px;
 			}
 		}
@@ -1259,11 +1284,11 @@
 				}
 			}
 
-			.port {
+			.connector {
 				&:first-of-type {
 					margin-top: calc((24px - 8px) / 2);
 
-					&:not(.primary-port) {
+					&:not(.primary-connector) {
 						margin-top: calc((24px - 8px) / 2 + 24px);
 					}
 				}

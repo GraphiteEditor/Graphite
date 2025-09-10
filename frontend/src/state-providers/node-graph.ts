@@ -1,7 +1,6 @@
 import { writable } from "svelte/store";
 
 import { type Editor } from "@graphite/editor";
-import type { FrontendGraphOutput, FrontendGraphInput } from "@graphite/messages";
 import {
 	type Box,
 	type FrontendClickTargets,
@@ -28,7 +27,6 @@ import {
 	UpdateWirePathInProgress,
 } from "@graphite/messages";
 
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createNodeGraphState(editor: Editor) {
 	const { subscribe, update } = writable({
 		box: undefined as Box | undefined,
@@ -37,10 +35,7 @@ export function createNodeGraphState(editor: Editor) {
 		layerWidths: new Map<bigint, number>(),
 		chainWidths: new Map<bigint, number>(),
 		hasLeftInputWire: new Map<bigint, boolean>(),
-		imports: [] as { outputMetadata: FrontendGraphOutput; position: { x: number; y: number } }[],
-		exports: [] as { inputMetadata: FrontendGraphInput; position: { x: number; y: number } }[],
-		addImport: undefined as { x: number; y: number } | undefined,
-		addExport: undefined as { x: number; y: number } | undefined,
+		updateImportsExports: undefined as UpdateImportsExports | undefined,
 		nodes: new Map<bigint, FrontendNode>(),
 		visibleNodes: new Set<bigint>(),
 		/// The index is the exposed input index. The exports have a first key value of u32::MAX.
@@ -96,10 +91,7 @@ export function createNodeGraphState(editor: Editor) {
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateImportsExports, (updateImportsExports) => {
 		update((state) => {
-			state.imports = updateImportsExports.imports;
-			state.exports = updateImportsExports.exports;
-			state.addImport = updateImportsExports.addImport;
-			state.addExport = updateImportsExports.addExport;
+			state.updateImportsExports = updateImportsExports;
 			return state;
 		});
 	});

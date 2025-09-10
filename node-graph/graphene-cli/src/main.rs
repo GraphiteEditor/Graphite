@@ -88,10 +88,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	}
 	let device = application_io.gpu_executor().unwrap().context.device.clone();
 
-	let preferences = EditorPreferences {
-		use_vello: true,
-		..Default::default()
-	};
+	let preferences = EditorPreferences { use_vello: true };
 	let editor_api = Arc::new(WasmEditorApi {
 		font_cache: FontCache::default(),
 		application_io: Some(application_io.into()),
@@ -104,14 +101,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	match app.command {
 		Command::Compile { print_proto, .. } => {
 			if print_proto {
-				println!("{}", proto_graph);
+				println!("{proto_graph}");
 			}
 		}
 		Command::Run { run_loop, .. } => {
 			std::thread::spawn(move || {
 				loop {
 					std::thread::sleep(std::time::Duration::from_nanos(10));
-					device.poll(wgpu::Maintain::Poll);
+					device.poll(wgpu::PollType::Poll).unwrap();
 				}
 			});
 			let executor = create_executor(proto_graph)?;
@@ -120,10 +117,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 			loop {
 				let result = (&executor).execute(render_config).await?;
 				if !run_loop {
-					println!("{:?}", result);
+					println!("{result:?}");
 					break;
 				}
-				std::thread::sleep(std::time::Duration::from_millis(16));
+				tokio::time::sleep(std::time::Duration::from_millis(16)).await;
 			}
 		}
 	}

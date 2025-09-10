@@ -20,7 +20,7 @@
 
 	const GRID_SIZE = 4;
 
-	let groups: CurveManipulatorGroup[] = [
+	let manipulatorsList: CurveManipulatorGroup[] = [
 		{
 			anchor: [0, 0],
 			handles: [
@@ -48,29 +48,29 @@
 	let dAttribute = recalculateSvgPath();
 
 	$: {
-		groups = [groups[0]].concat(value.manipulatorGroups).concat([groups[groups.length - 1]]);
-		groups[0].handles[1] = value.firstHandle;
-		groups[groups.length - 1].handles[0] = value.lastHandle;
+		manipulatorsList = [manipulatorsList[0]].concat(value.manipulatorGroups).concat([manipulatorsList[manipulatorsList.length - 1]]);
+		manipulatorsList[0].handles[1] = value.firstHandle;
+		manipulatorsList[manipulatorsList.length - 1].handles[0] = value.lastHandle;
 		dAttribute = recalculateSvgPath();
 	}
 
 	function updateCurve() {
 		dispatch("value", {
-			manipulatorGroups: groups.slice(1, groups.length - 1),
-			firstHandle: groups[0].handles[1],
-			lastHandle: groups[groups.length - 1].handles[0],
+			manipulatorGroups: manipulatorsList.slice(1, manipulatorsList.length - 1),
+			firstHandle: manipulatorsList[0].handles[1],
+			lastHandle: manipulatorsList[manipulatorsList.length - 1].handles[0],
 		});
 	}
 
 	function recalculateSvgPath() {
 		let dAttribute = "";
-		let anchor = groups[0].anchor;
-		let handle = groups[0].handles[1];
+		let anchor = manipulatorsList[0].anchor;
+		let handle = manipulatorsList[0].handles[1];
 
-		groups.slice(1).forEach((group) => {
-			dAttribute += `M${anchor[0]} ${1 - anchor[1]} C${handle[0]} ${1 - handle[1]}, ${group.handles[0][0]} ${1 - group.handles[0][1]}, ${group.anchor[0]} ${1 - group.anchor[1]} `;
-			anchor = group.anchor;
-			handle = group.handles[1];
+		manipulatorsList.slice(1).forEach((m) => {
+			dAttribute += `M${anchor[0]} ${1 - anchor[1]} C${handle[0]} ${1 - handle[1]}, ${m.handles[0][0]} ${1 - m.handles[0][1]}, ${m.anchor[0]} ${1 - m.anchor[1]} `;
+			anchor = m.anchor;
+			handle = m.handles[1];
 		});
 
 		return dAttribute;
@@ -78,12 +78,12 @@
 
 	function handleManipulatorPointerDown(e: PointerEvent, i: number) {
 		// Delete an anchor with RMB or MMB
-		if (e.button > 0 && i > 0 && i < groups.length - 1) {
+		if (e.button > 0 && i > 0 && i < manipulatorsList.length - 1) {
 			draggedNodeIndex = undefined;
 			selectedNodeIndex = undefined;
 
-			groups.splice(i, 1);
-			groups = groups;
+			manipulatorsList.splice(i, 1);
+			manipulatorsList = manipulatorsList;
 
 			dAttribute = recalculateSvgPath();
 
@@ -109,12 +109,12 @@
 	}
 
 	function clampHandles() {
-		for (let i = 0; i < groups.length - 1; i++) {
-			const [min, max] = [groups[i].anchor[0], groups[i + 1].anchor[0]];
+		for (let i = 0; i < manipulatorsList.length - 1; i++) {
+			const [min, max] = [manipulatorsList[i].anchor[0], manipulatorsList[i + 1].anchor[0]];
 
 			for (let j = 0; j < 2; j++) {
-				groups[i + j].handles[1 - j][0] = clamp(groups[i + j].handles[1 - j][0], min, max);
-				groups[i + j].handles[1 - j][1] = clamp(groups[i + j].handles[1 - j][1]);
+				manipulatorsList[i + j].handles[1 - j][0] = clamp(manipulatorsList[i + j].handles[1 - j][0], min, max);
+				manipulatorsList[i + j].handles[1 - j][1] = clamp(manipulatorsList[i + j].handles[1 - j][1]);
 			}
 		}
 	}
@@ -128,10 +128,10 @@
 		const anchor = getSvgPositionFromPointerEvent(e);
 		if (!anchor) return;
 
-		let nodeIndex = groups.findIndex((group) => group.anchor[0] > anchor[0]);
-		if (nodeIndex === -1) nodeIndex = groups.length;
+		let nodeIndex = manipulatorsList.findIndex((manipulators) => manipulators.anchor[0] > anchor[0]);
+		if (nodeIndex === -1) nodeIndex = manipulatorsList.length;
 
-		groups.splice(nodeIndex, 0, {
+		manipulatorsList.splice(nodeIndex, 0, {
 			anchor: anchor,
 			handles: [
 				[anchor[0] - 0.05, anchor[1]],
@@ -145,7 +145,7 @@
 	}
 
 	function setHandlePosition(anchorIndex: number, handleIndex: number, position: [number, number]) {
-		const { anchor, handles } = groups[anchorIndex];
+		const { anchor, handles } = manipulatorsList[anchorIndex];
 		const otherHandle = handles[1 - handleIndex];
 
 		const handleVector = [anchor[0] - position[0], anchor[1] - position[1]];
@@ -158,26 +158,26 @@
 	}
 
 	function handlePointerMove(e: PointerEvent) {
-		if (draggedNodeIndex === undefined || draggedNodeIndex === 0 || draggedNodeIndex === groups.length - 1) return;
+		if (draggedNodeIndex === undefined || draggedNodeIndex === 0 || draggedNodeIndex === manipulatorsList.length - 1) return;
 		const position = getSvgPositionFromPointerEvent(e);
 		if (!position) return;
 
 		if (draggedNodeIndex > 0) {
-			position[0] = clamp(position[0], groups[draggedNodeIndex - 1].anchor[0], groups[draggedNodeIndex + 1].anchor[0]);
+			position[0] = clamp(position[0], manipulatorsList[draggedNodeIndex - 1].anchor[0], manipulatorsList[draggedNodeIndex + 1].anchor[0]);
 
-			const group = groups[draggedNodeIndex];
-			group.handles = [
-				[group.handles[0][0] + position[0] - group.anchor[0], group.handles[0][1] + position[1] - group.anchor[1]],
-				[group.handles[1][0] + position[0] - group.anchor[0], group.handles[1][1] + position[1] - group.anchor[1]],
+			const manipulators = manipulatorsList[draggedNodeIndex];
+			manipulators.handles = [
+				[manipulators.handles[0][0] + position[0] - manipulators.anchor[0], manipulators.handles[0][1] + position[1] - manipulators.anchor[1]],
+				[manipulators.handles[1][0] + position[0] - manipulators.anchor[0], manipulators.handles[1][1] + position[1] - manipulators.anchor[1]],
 			];
-			group.anchor = position;
+			manipulators.anchor = position;
 		} else {
 			if (selectedNodeIndex === undefined) return;
 			setHandlePosition(selectedNodeIndex, -draggedNodeIndex - 1, position);
 
-			const group = groups[selectedNodeIndex];
-			if (group.handles[0][0] > group.anchor[0]) {
-				group.handles = [group.handles[1], group.handles[0]];
+			const manipulators = manipulatorsList[selectedNodeIndex];
+			if (manipulators.handles[0][0] > manipulators.anchor[0]) {
+				manipulators.handles = [manipulators.handles[1], manipulators.handles[0]];
 				draggedNodeIndex = -3 - draggedNodeIndex;
 			}
 		}
@@ -188,7 +188,7 @@
 	}
 </script>
 
-<LayoutRow class={"curve-input"} classes={{ disabled, ...classes }} style={styleName} {styles} {tooltip}>
+<LayoutRow class="curve-input" classes={{ disabled, ...classes }} style={styleName} {styles} {tooltip}>
 	<svg viewBox="0 0 1 1" on:pointermove={handlePointerMove} on:pointerup={handlePointerUp}>
 		{#each { length: GRID_SIZE - 1 } as _, i}
 			<path class="grid" d={`M 0 ${(i + 1) / GRID_SIZE} L 1 ${(i + 1) / GRID_SIZE}`} />
@@ -196,14 +196,14 @@
 		{/each}
 		<path class="curve" d={dAttribute} />
 		{#if selectedNodeIndex !== undefined}
-			{@const group = groups[selectedNodeIndex]}
+			{@const m = manipulatorsList[selectedNodeIndex]}
 			{#each [0, 1] as i}
-				<path d={`M ${group.anchor[0]} ${1 - group.anchor[1]} L ${group.handles[i][0]} ${1 - group.handles[i][1]}`} class="handle-line" />
-				<circle cx={group.handles[i][0]} cy={1 - group.handles[i][1]} class="manipulator handle" r="0.02" on:pointerdown={(e) => handleManipulatorPointerDown(e, -i - 1)} />
+				<path d={`M ${m.anchor[0]} ${1 - m.anchor[1]} L ${m.handles[i][0]} ${1 - m.handles[i][1]}`} class="handle-line" />
+				<circle cx={m.handles[i][0]} cy={1 - m.handles[i][1]} class="manipulator handle" r="0.02" on:pointerdown={(e) => handleManipulatorPointerDown(e, -i - 1)} />
 			{/each}
 		{/if}
-		{#each groups as group, i}
-			<circle cx={group.anchor[0]} cy={1 - group.anchor[1]} class="manipulator" r="0.02" on:pointerdown={(e) => handleManipulatorPointerDown(e, i)} />
+		{#each manipulatorsList as manipulators, i}
+			<circle cx={manipulators.anchor[0]} cy={1 - manipulators.anchor[1]} class="manipulator" r="0.02" on:pointerdown={(e) => handleManipulatorPointerDown(e, i)} />
 		{/each}
 	</svg>
 	<slot />

@@ -1,23 +1,20 @@
-<script lang="ts" context="module">
-	export type Platform = "Windows" | "Mac" | "Linux" | "Web";
-</script>
-
 <script lang="ts">
 	import { getContext, onMount } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import { type KeyRaw, type LayoutKeysGroup, type MenuBarEntry, type MenuListEntry, UpdateMenuBarLayout } from "@graphite/messages";
+	import { type KeyRaw, type LayoutKeysGroup, type MenuBarEntry, type MenuListEntry, type AppWindowPlatform, UpdateMenuBarLayout } from "@graphite/messages";
 	import type { PortfolioState } from "@graphite/state-providers/portfolio";
 	import { platformIsMac } from "@graphite/utility-functions/platform";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
+	import WindowButtonsLinux from "@graphite/components/window/title-bar/WindowButtonsLinux.svelte";
 	import WindowButtonsMac from "@graphite/components/window/title-bar/WindowButtonsMac.svelte";
 	import WindowButtonsWeb from "@graphite/components/window/title-bar/WindowButtonsWeb.svelte";
 	import WindowButtonsWindows from "@graphite/components/window/title-bar/WindowButtonsWindows.svelte";
 	import WindowTitle from "@graphite/components/window/title-bar/WindowTitle.svelte";
 
-	export let platform: Platform;
+	export let platform: AppWindowPlatform;
 	export let maximized: boolean;
 
 	const editor = getContext<Editor>("editor");
@@ -73,7 +70,7 @@
 	<!-- Menu bar (or on Mac: window buttons) -->
 	<LayoutRow class="left">
 		{#if platform === "Mac"}
-			<WindowButtonsMac {maximized} />
+			<WindowButtonsMac />
 		{:else}
 			{#each entries as entry}
 				<TextButton label={entry.label} icon={entry.icon} menuListChildren={entry.children} action={entry.action} flush={true} />
@@ -86,8 +83,10 @@
 	</LayoutRow>
 	<!-- Window buttons (except on Mac) -->
 	<LayoutRow class="right">
-		{#if platform === "Windows" || platform === "Linux"}
+		{#if platform === "Windows"}
 			<WindowButtonsWindows {maximized} />
+		{:else if platform === "Linux"}
+			<WindowButtonsLinux {maximized} />
 		{:else if platform === "Web"}
 			<WindowButtonsWeb />
 		{/if}

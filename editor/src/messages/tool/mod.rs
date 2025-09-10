@@ -9,6 +9,6 @@ pub mod utility_types;
 #[doc(inline)]
 pub use tool_message::{ToolMessage, ToolMessageDiscriminant};
 #[doc(inline)]
-pub use tool_message_handler::{ToolMessageData, ToolMessageHandler};
+pub use tool_message_handler::{ToolMessageContext, ToolMessageHandler};
 #[doc(inline)]
 pub use transform_layer::{TransformLayerMessage, TransformLayerMessageDiscriminant};

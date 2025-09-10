@@ -1,5 +1,3 @@
-/* eslint-disable import/first */
-
 // Demo artwork
 import ThumbnailChangingSeasons from "@graphite-frontend/assets/images/demo-artwork/thumbnail-changing-seasons.png";
 import ThumbnailIsometricFountain from "@graphite-frontend/assets/images/demo-artwork/thumbnail-isometric-fountain.png";

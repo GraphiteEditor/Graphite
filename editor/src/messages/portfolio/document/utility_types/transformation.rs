@@ -8,7 +8,8 @@ use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::utility_types::ToolType;
 use glam::{DAffine2, DMat2, DVec2};
 use graphene_std::renderer::Quad;
-use graphene_std::vector::{HandleExt, HandleId, ManipulatorPointId, PointId, VectorModificationType};
+use graphene_std::vector::misc::{HandleId, ManipulatorPointId};
+use graphene_std::vector::{HandleExt, PointId, VectorModificationType};
 use std::collections::{HashMap, VecDeque};
 use std::f64::consts::PI;
 
@@ -79,7 +80,7 @@ impl OriginalTransforms {
 					if path_map.contains_key(&layer) {
 						continue;
 					}
-					let Some(vector_data) = network_interface.compute_modified_vector(layer) else {
+					let Some(vector) = network_interface.compute_modified_vector(layer) else {
 						continue;
 					};
 					let Some(selected_points) = shape_editor.selected_points_in_layer(layer) else {
@@ -91,7 +92,7 @@ impl OriginalTransforms {
 
 					let mut selected_points = selected_points.clone();
 
-					for (segment_id, _, start, end) in vector_data.segment_bezier_iter() {
+					for (segment_id, _, start, end) in vector.segment_bezier_iter() {
 						if selected_segments.contains(&segment_id) {
 							selected_points.insert(ManipulatorPointId::Anchor(start));
 							selected_points.insert(ManipulatorPointId::Anchor(end));
@@ -100,23 +101,23 @@ impl OriginalTransforms {
 
 					// Anchors also move their handles
 					let anchor_ids = selected_points.iter().filter_map(|point| point.as_anchor());
-					let anchors = anchor_ids.filter_map(|id| vector_data.point_domain.position_from_id(id).map(|pos| (id, AnchorPoint { initial: pos, current: pos })));
+					let anchors = anchor_ids.filter_map(|id| vector.point_domain.position_from_id(id).map(|pos| (id, AnchorPoint { initial: pos, current: pos })));
 					let anchors = anchors.collect();
 
 					let selected_handles = selected_points.iter().filter_map(|point| point.as_handle());
 					let anchor_ids = selected_points.iter().filter_map(|point| point.as_anchor());
-					let connected_handles = anchor_ids.flat_map(|point| vector_data.all_connected(point));
+					let connected_handles = anchor_ids.flat_map(|point| vector.all_connected(point));
 					let all_handles = selected_handles.chain(connected_handles);
 
 					let handles = all_handles
 						.filter_map(|id| {
-							let anchor = id.to_manipulator_point().get_anchor(&vector_data)?;
-							let initial = id.to_manipulator_point().get_position(&vector_data)?;
-							let relative = vector_data.point_domain.position_from_id(anchor)?;
-							let other_handle = vector_data
+							let anchor = id.to_manipulator_point().get_anchor(&vector)?;
+							let initial = id.to_manipulator_point().get_position(&vector)?;
+							let relative = vector.point_domain.position_from_id(anchor)?;
+							let other_handle = vector
 								.other_colinear_handle(id)
 								.filter(|other| !selected_points.contains(&other.to_manipulator_point()) && !selected_points.contains(&ManipulatorPointId::Anchor(anchor)));
-							let mirror = other_handle.and_then(|id| Some((id, id.to_manipulator_point().get_position(&vector_data)?)));
+							let mirror = other_handle.and_then(|id| Some((id, id.to_manipulator_point().get_position(&vector)?)));
 
 							Some((id, HandlePoint { initial, relative, anchor, mirror }))
 						})
@@ -517,8 +518,8 @@ impl<'a> Selected<'a> {
 		tool_type: &'a ToolType,
 		pen_handle: Option<&'a mut DVec2>,
 	) -> Self {
-		// If user is using the Select tool then use the original layer transforms
-		if (*tool_type == ToolType::Select) && (*original_transforms == OriginalTransforms::Path(HashMap::new())) {
+		// If user is using the Select tool or Shape tool then use the original layer transforms
+		if (*tool_type == ToolType::Select || *tool_type == ToolType::Shape) && (*original_transforms == OriginalTransforms::Path(HashMap::new())) {
 			*original_transforms = OriginalTransforms::Layer(HashMap::new());
 		}
 

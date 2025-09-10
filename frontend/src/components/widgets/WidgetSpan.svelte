@@ -25,6 +25,7 @@
 	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
 	import WorkingColorsInput from "@graphite/components/widgets/inputs/WorkingColorsInput.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
+	import ImageLabel from "@graphite/components/widgets/labels/ImageLabel.svelte";
 	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
@@ -38,6 +39,8 @@
 	let className = "";
 	export { className as class };
 	export let classes: Record<string, boolean> = {};
+
+	export let narrow = false;
 
 	$: extraClasses = Object.entries(classes)
 		.flatMap(([className, stateName]) => (stateName ? [className] : []))
@@ -81,7 +84,7 @@
 
 <!-- TODO: Refactor this component to use `<svelte:component this={attributesObject} />` to avoid all the separate conditional components -->
 
-<div class={`widget-span ${className} ${extraClasses}`.trim()} class:row={direction === "row"} class:column={direction === "column"}>
+<div class={`widget-span ${className} ${extraClasses}`.trim()} class:narrow class:row={direction === "row"} class:column={direction === "column"}>
 	{#each widgets as component, index}
 		{@const checkboxInput = narrowWidgetProps(component.props, "CheckboxInput")}
 		{#if checkboxInput}
@@ -123,6 +126,10 @@
 		{@const iconLabel = narrowWidgetProps(component.props, "IconLabel")}
 		{#if iconLabel}
 			<IconLabel {...exclude(iconLabel)} />
+		{/if}
+		{@const imageLabel = narrowWidgetProps(component.props, "ImageLabel")}
+		{#if imageLabel}
+			<ImageLabel {...exclude(imageLabel)} />
 		{/if}
 		{@const imageButton = narrowWidgetProps(component.props, "ImageButton")}
 		{#if imageButton}
@@ -197,11 +204,17 @@
 	.widget-span.row {
 		flex: 0 0 auto;
 		display: flex;
-		min-height: 32px;
+		--row-height: 32px;
+		min-height: var(--row-height);
+
+		&.narrow {
+			--row-height: 24px;
+		}
 
 		> * {
 			--widget-height: 24px;
-			margin: calc((24px - var(--widget-height)) / 2 + 4px) 0;
+			// Vertically center the widget within the row
+			margin: calc((var(--row-height) - var(--widget-height)) / 2) 0;
 			min-height: var(--widget-height);
 
 			&:not(.multiline) {

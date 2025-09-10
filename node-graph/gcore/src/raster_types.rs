@@ -1,148 +1,213 @@
 use crate::Color;
-use crate::bounds::BoundingBox;
-use crate::instances::Instances;
+use crate::bounds::{BoundingBox, RenderBoundingBox};
 use crate::math::quad::Quad;
 use crate::raster::Image;
 use core::ops::Deref;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
-#[cfg(feature = "wgpu")]
-use std::sync::Arc;
+use std::fmt::Debug;
+use std::ops::DerefMut;
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq, Copy)]
-pub struct CPU;
-#[derive(Clone, Debug, Hash, PartialEq, Eq, Copy)]
-pub struct GPU;
+mod __private {
+	pub trait Sealed {}
+}
 
-trait Storage: 'static {}
-impl Storage for CPU {}
-impl Storage for GPU {}
+pub trait Storage: __private::Sealed + Clone + Debug + 'static {
+	fn is_empty(&self) -> bool;
+}
 
-#[derive(Clone, Debug, Hash, PartialEq)]
-#[allow(private_bounds)]
-pub struct Raster<T: Storage> {
-	data: RasterStorage,
+#[derive(Clone, Debug, PartialEq, Hash, Default)]
+pub struct Raster<T>
+where
+	Raster<T>: Storage,
+{
 	storage: T,
 }
 
-unsafe impl<T: Storage> dyn_any::StaticType for Raster<T> {
+unsafe impl<T> dyn_any::StaticType for Raster<T>
+where
+	Raster<T>: Storage,
+{
 	type Static = Raster<T>;
 }
-#[derive(Clone, Debug, Hash, PartialEq, DynAny)]
-pub enum RasterStorage {
-	Cpu(Image<Color>),
-	#[cfg(feature = "wgpu")]
-	Gpu(Arc<wgpu::Texture>),
-	#[cfg(not(feature = "wgpu"))]
-	Gpu(()),
+
+impl<T> Raster<T>
+where
+	Raster<T>: Storage,
+{
+	pub fn new(t: T) -> Self {
+		Self { storage: t }
+	}
 }
 
-impl RasterStorage {}
-impl Raster<CPU> {
-	pub fn new_cpu(image: Image<Color>) -> Self {
-		Self {
-			data: RasterStorage::Cpu(image),
-			storage: CPU,
-		}
-	}
-	pub fn data(&self) -> &Image<Color> {
-		let RasterStorage::Cpu(cpu) = &self.data else { unreachable!() };
-		cpu
-	}
-	pub fn data_mut(&mut self) -> &mut Image<Color> {
-		let RasterStorage::Cpu(cpu) = &mut self.data else { unreachable!() };
-		cpu
-	}
-	pub fn into_data(self) -> Image<Color> {
-		let RasterStorage::Cpu(cpu) = self.data else { unreachable!() };
-		cpu
-	}
-	pub fn is_empty(&self) -> bool {
-		let data = self.data();
-		data.height == 0 || data.width == 0
-	}
-}
-impl Default for Raster<CPU> {
-	fn default() -> Self {
-		Self {
-			data: RasterStorage::Cpu(Image::default()),
-			storage: CPU,
-		}
-	}
-}
-impl Deref for Raster<CPU> {
-	type Target = Image<Color>;
+impl<T> Deref for Raster<T>
+where
+	Raster<T>: Storage,
+{
+	type Target = T;
 
 	fn deref(&self) -> &Self::Target {
-		self.data()
+		&self.storage
 	}
 }
-#[cfg(feature = "wgpu")]
-impl Raster<GPU> {
-	pub fn new_gpu(image: Arc<wgpu::Texture>) -> Self {
-		Self {
-			data: RasterStorage::Gpu(image),
-			storage: GPU,
+
+impl<T> DerefMut for Raster<T>
+where
+	Raster<T>: Storage,
+{
+	fn deref_mut(&mut self) -> &mut Self::Target {
+		&mut self.storage
+	}
+}
+
+pub use cpu::CPU;
+
+mod cpu {
+	use super::*;
+	use crate::raster_types::__private::Sealed;
+
+	#[derive(Clone, Debug, Default, PartialEq, Hash, DynAny)]
+	pub struct CPU(Image<Color>);
+
+	impl Sealed for Raster<CPU> {}
+
+	impl Storage for Raster<CPU> {
+		fn is_empty(&self) -> bool {
+			self.0.height == 0 || self.0.width == 0
 		}
 	}
-	pub fn data(&self) -> &wgpu::Texture {
-		let RasterStorage::Gpu(gpu) = &self.data else { unreachable!() };
-		gpu
+
+	impl Raster<CPU> {
+		pub fn new_cpu(image: Image<Color>) -> Self {
+			Self::new(CPU(image))
+		}
+
+		pub fn data(&self) -> &Image<Color> {
+			self
+		}
+
+		pub fn data_mut(&mut self) -> &mut Image<Color> {
+			self
+		}
+
+		pub fn into_data(self) -> Image<Color> {
+			self.storage.0
+		}
 	}
-	pub fn data_mut(&mut self) -> &mut Arc<wgpu::Texture> {
-		let RasterStorage::Gpu(gpu) = &mut self.data else { unreachable!() };
-		gpu
+
+	impl Deref for CPU {
+		type Target = Image<Color>;
+
+		fn deref(&self) -> &Self::Target {
+			&self.0
+		}
 	}
-	pub fn data_owned(&self) -> Arc<wgpu::Texture> {
-		let RasterStorage::Gpu(gpu) = &self.data else { unreachable!() };
-		gpu.clone()
+
+	impl DerefMut for CPU {
+		fn deref_mut(&mut self) -> &mut Self::Target {
+			&mut self.0
+		}
+	}
+
+	impl<'de> serde::Deserialize<'de> for Raster<CPU> {
+		fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+		where
+			D: serde::Deserializer<'de>,
+		{
+			Ok(Raster::new_cpu(Image::deserialize(deserializer)?))
+		}
+	}
+
+	impl serde::Serialize for Raster<CPU> {
+		fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+		where
+			S: serde::Serializer,
+		{
+			self.0.serialize(serializer)
+		}
 	}
 }
 
-impl Raster<GPU> {
-	#[cfg(feature = "wgpu")]
-	pub fn is_empty(&self) -> bool {
-		let data = self.data();
-		data.width() == 0 || data.height() == 0
-	}
-	#[cfg(not(feature = "wgpu"))]
-	pub fn is_empty(&self) -> bool {
-		true
-	}
-}
+pub use gpu::GPU;
 
 #[cfg(feature = "wgpu")]
-impl Deref for Raster<GPU> {
-	type Target = wgpu::Texture;
+mod gpu {
+	use super::*;
+	use crate::raster_types::__private::Sealed;
 
-	fn deref(&self) -> &Self::Target {
-		self.data()
+	#[derive(Clone, Debug, PartialEq, Hash)]
+	pub struct GPU {
+		pub texture: wgpu::Texture,
+	}
+
+	impl Sealed for Raster<GPU> {}
+
+	impl Storage for Raster<GPU> {
+		fn is_empty(&self) -> bool {
+			self.texture.width() == 0 || self.texture.height() == 0
+		}
+	}
+
+	impl Raster<GPU> {
+		pub fn new_gpu(texture: wgpu::Texture) -> Self {
+			Self::new(GPU { texture })
+		}
+
+		pub fn data(&self) -> &wgpu::Texture {
+			&self.texture
+		}
 	}
 }
 
-pub type RasterDataTable<Storage> = Instances<Raster<Storage>>;
+#[cfg(not(feature = "wgpu"))]
+mod gpu {
+	use super::*;
+	use crate::raster_types::__private::Sealed;
 
-// TODO: Make this not dupliated
-impl BoundingBox for RasterDataTable<CPU> {
-	fn bounding_box(&self, transform: DAffine2, _include_stroke: bool) -> Option<[DVec2; 2]> {
-		self.instance_ref_iter()
-			.filter(|instance| !instance.instance.is_empty()) // Eliminate empty images
-			.flat_map(|instance| {
-				let transform = transform * *instance.transform;
-				(transform.matrix2.determinant() != 0.).then(|| (transform * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box())
-			})
-			.reduce(Quad::combine_bounds)
+	#[derive(Clone, Debug, PartialEq, Hash)]
+	pub struct GPU;
+
+	impl Sealed for Raster<GPU> {}
+
+	impl Storage for Raster<GPU> {
+		fn is_empty(&self) -> bool {
+			true
+		}
 	}
 }
 
-impl BoundingBox for RasterDataTable<GPU> {
-	fn bounding_box(&self, transform: DAffine2, _include_stroke: bool) -> Option<[DVec2; 2]> {
-		self.instance_ref_iter()
-			.filter(|instance| !instance.instance.is_empty()) // Eliminate empty images
-			.flat_map(|instance| {
-				let transform = transform * *instance.transform;
-				(transform.matrix2.determinant() != 0.).then(|| (transform * Quad::from_box([DVec2::ZERO, DVec2::ONE])).bounding_box())
-			})
-			.reduce(Quad::combine_bounds)
+mod gpu_common {
+	use super::*;
+
+	impl<'de> serde::Deserialize<'de> for Raster<GPU> {
+		fn deserialize<D>(_deserializer: D) -> Result<Self, D::Error>
+		where
+			D: serde::Deserializer<'de>,
+		{
+			unimplemented!()
+		}
+	}
+
+	impl serde::Serialize for Raster<GPU> {
+		fn serialize<S>(&self, _serializer: S) -> Result<S::Ok, S::Error>
+		where
+			S: serde::Serializer,
+		{
+			unimplemented!()
+		}
+	}
+}
+
+impl<T> BoundingBox for Raster<T>
+where
+	Raster<T>: Storage,
+{
+	fn bounding_box(&self, transform: DAffine2, _include_stroke: bool) -> RenderBoundingBox {
+		if self.is_empty() || transform.matrix2.determinant() == 0. {
+			return RenderBoundingBox::None;
+		}
+
+		let unit_rectangle = Quad::from_box([DVec2::ZERO, DVec2::ONE]);
+		RenderBoundingBox::Rectangle((transform * unit_rectangle).bounding_box())
 	}
 }

@@ -1,6 +1,5 @@
-use crate::messages::prelude::*;
-
 use super::animation_message_handler::AnimationTimeMode;
+use crate::messages::prelude::*;
 
 #[impl_message(Message, Animation)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -9,9 +8,9 @@ pub enum AnimationMessage {
 	EnableLivePreview,
 	DisableLivePreview,
 	RestartAnimation,
-	SetFrameIndex(f64),
-	SetTime(f64),
+	SetFrameIndex { frame: f64 },
+	SetTime { time: f64 },
 	UpdateTime,
 	IncrementFrameCounter,
-	SetAnimationTimeMode(AnimationTimeMode),
+	SetAnimationTimeMode { animation_time_mode: AnimationTimeMode },
 }

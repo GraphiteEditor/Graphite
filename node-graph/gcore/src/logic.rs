@@ -1,17 +1,25 @@
-use crate::ArtboardGroupTable;
+use crate::Artboard;
 use crate::Color;
-use crate::GraphicElement;
-use crate::GraphicGroupTable;
+use crate::Graphic;
 use crate::gradient::GradientStops;
 use crate::graphene_core::registry::types::TextArea;
-use crate::raster_types::{CPU, GPU, RasterDataTable};
-use crate::vector::VectorDataTable;
+use crate::raster_types::{CPU, GPU, Raster};
+use crate::table::Table;
+use crate::vector::Vector;
 use crate::{Context, Ctx};
 use glam::{DAffine2, DVec2};
 
+#[node_macro::node(category("Type Conversion"))]
+fn to_string<T: std::fmt::Debug>(_: impl Ctx, #[implementations(bool, f64, u32, u64, DVec2, DAffine2, String)] value: T) -> String {
+	format!("{value:?}")
+}
+
 #[node_macro::node(category("Text"))]
-fn to_string<T: std::fmt::Debug>(_: impl Ctx, #[implementations(String, bool, f64, u32, u64, DVec2, VectorDataTable, DAffine2)] value: T) -> String {
-	format!("{:?}", value)
+fn serialize<T: serde::Serialize>(
+	_: impl Ctx,
+	#[implementations(String, bool, f64, u32, u64, DVec2, DAffine2, Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>)] value: T,
+) -> String {
+	serde_json::to_string(&value).unwrap_or_else(|_| "Serialization Error".to_string())
 }
 
 #[node_macro::node(category("Text"))]
@@ -33,8 +41,8 @@ fn string_slice(_: impl Ctx, #[implementations(String)] string: String, start: f
 }
 
 #[node_macro::node(category("Text"))]
-fn string_length(_: impl Ctx, #[implementations(String)] string: String) -> usize {
-	string.len()
+fn string_length(_: impl Ctx, #[implementations(String)] string: String) -> u32 {
+	string.chars().count() as u32
 }
 
 #[node_macro::node(category("Math: Logic"))]
@@ -51,14 +59,12 @@ async fn switch<T, C: Send + 'n + Clone>(
 		Context -> u64,
 		Context -> DVec2,
 		Context -> DAffine2,
-		Context -> ArtboardGroupTable,
-		Context -> VectorDataTable,
-		Context -> GraphicGroupTable,
-		Context -> RasterDataTable<CPU>,
-		Context -> RasterDataTable<GPU>,
-		Context -> GraphicElement,
-		Context -> Color,
-		Context -> Option<Color>,
+		Context -> Table<Artboard>,
+		Context -> Table<Graphic>,
+		Context -> Table<Vector>,
+		Context -> Table<Raster<CPU>>,
+		Context -> Table<Raster<GPU>>,
+		Context -> Table<Color>,
 		Context -> GradientStops,
 	)]
 	if_true: impl Node<C, Output = T>,
@@ -72,14 +78,12 @@ async fn switch<T, C: Send + 'n + Clone>(
 		Context -> u64,
 		Context -> DVec2,
 		Context -> DAffine2,
-		Context -> ArtboardGroupTable,
-		Context -> VectorDataTable,
-		Context -> GraphicGroupTable,
-		Context -> RasterDataTable<CPU>,
-		Context -> RasterDataTable<GPU>,
-		Context -> GraphicElement,
-		Context -> Color,
-		Context -> Option<Color>,
+		Context -> Table<Artboard>,
+		Context -> Table<Graphic>,
+		Context -> Table<Vector>,
+		Context -> Table<Raster<CPU>>,
+		Context -> Table<Raster<GPU>>,
+		Context -> Table<Color>,
 		Context -> GradientStops,
 	)]
 	if_false: impl Node<C, Output = T>,

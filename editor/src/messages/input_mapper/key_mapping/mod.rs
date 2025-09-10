@@ -2,6 +2,6 @@ mod key_mapping_message;
 mod key_mapping_message_handler;
 
 #[doc(inline)]
-pub use key_mapping_message::{KeyMappingMessage, KeyMappingMessageDiscriminant, MappingVariant, MappingVariantDiscriminant};
+pub use key_mapping_message::{KeyMappingMessage, KeyMappingMessageDiscriminant, MappingVariant};
 #[doc(inline)]
-pub use key_mapping_message_handler::{KeyMappingMessageData, KeyMappingMessageHandler};
+pub use key_mapping_message_handler::{KeyMappingMessageContext, KeyMappingMessageHandler};

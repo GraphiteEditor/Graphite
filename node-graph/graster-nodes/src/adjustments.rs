@@ -1,18 +1,22 @@
 #![allow(clippy::too_many_arguments)]
 
-use crate::curve::CubicSplines;
-use dyn_any::DynAny;
-use graphene_core::Node;
-use graphene_core::blending::BlendMode;
-use graphene_core::color::Color;
-use graphene_core::color::Pixel;
-use graphene_core::context::Ctx;
+use crate::adjust::Adjust;
+use crate::cubic_spline::CubicSplines;
+use core::fmt::Debug;
+use glam::{Vec3, Vec4};
+#[cfg(feature = "std")]
 use graphene_core::gradient::GradientStops;
-use graphene_core::raster::image::Image;
-use graphene_core::raster_types::{CPU, Raster, RasterDataTable};
-use graphene_core::registry::types::{Angle, Percentage, SignedPercentage};
-use std::cmp::Ordering;
-use std::fmt::Debug;
+#[cfg(feature = "std")]
+use graphene_core::raster_types::{CPU, Raster};
+#[cfg(feature = "std")]
+use graphene_core::table::Table;
+use graphene_core_shaders::color::Color;
+use graphene_core_shaders::context::Ctx;
+use graphene_core_shaders::registry::types::{AngleF32, PercentageF32, SignedPercentageF32};
+use node_macro::BufferStruct;
+use num_enum::{FromPrimitive, IntoPrimitive};
+#[cfg(not(feature = "std"))]
+use num_traits::float::Float;
 
 // TODO: Implement the following:
 // Color Balance
@@ -29,8 +33,10 @@ use std::fmt::Debug;
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27clrL%27%20%3D%20Color%20Lookup
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Color%20Lookup%20(Photoshop%20CS6
 
-#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, DynAny, Hash, node_macro::ChoiceType, specta::Type, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Default, Clone, Copy, Eq, PartialEq, Hash, node_macro::ChoiceType, bytemuck::NoUninit, BufferStruct, FromPrimitive, IntoPrimitive)]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 #[widget(Dropdown)]
+#[repr(u32)]
 pub enum LuminanceCalculation {
 	#[default]
 	#[label("sRGB")]
@@ -41,14 +47,16 @@ pub enum LuminanceCalculation {
 	MaximumChannels,
 }
 
-#[node_macro::node(category("Raster: Adjustment"))]
+#[node_macro::node(category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
 fn luminance<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Color,
-		RasterDataTable<CPU>,
+		Table<Raster<CPU>>,
+		Table<Color>,
+		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut input: T,
 	luminance_calc: LuminanceCalculation,
 ) -> T {
@@ -65,14 +73,38 @@ fn luminance<T: Adjust<Color>>(
 	input
 }
 
-#[node_macro::node(category("Raster: Channels"))]
+#[node_macro::node(category("Raster"), shader_node(PerPixelAdjust))]
+fn gamma_correction<T: Adjust<Color>>(
+	_: impl Ctx,
+	#[implementations(
+		Table<Raster<CPU>>,
+		Table<Color>,
+		Table<GradientStops>,
+		GradientStops,
+	)]
+	#[gpu_image]
+	mut input: T,
+	#[default(2.2)]
+	#[range((0.01, 10.))]
+	#[hard_min(0.0001)]
+	gamma: f32,
+	inverse: bool,
+) -> T {
+	let exponent = if inverse { 1. / gamma } else { gamma };
+	input.adjust(|color| color.gamma(exponent));
+	input
+}
+
+#[node_macro::node(category("Raster: Channels"), shader_node(PerPixelAdjust))]
 fn extract_channel<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Color,
-		RasterDataTable<CPU>,
+		Table<Raster<CPU>>,
+		Table<Color>,
+		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut input: T,
 	channel: RedGreenBlueAlpha,
 ) -> T {
@@ -88,22 +120,56 @@ fn extract_channel<T: Adjust<Color>>(
 	input
 }
 
-#[node_macro::node(category("Raster: Channels"))]
+#[node_macro::node(category("Raster: Channels"), shader_node(PerPixelAdjust))]
 fn make_opaque<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Color,
-		RasterDataTable<CPU>,
+		Table<Raster<CPU>>,
+		Table<Color>,
+		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut input: T,
 ) -> T {
 	input.adjust(|color| {
 		if color.a() == 0. {
 			return color.with_alpha(1.);
 		}
-		Color::from_rgbaf32(color.r() / color.a(), color.g() / color.a(), color.b() / color.a(), 1.).unwrap()
+		Color::from_rgbaf32_unchecked(color.r() / color.a(), color.g() / color.a(), color.b() / color.a(), 1.)
 	});
+	input
+}
+
+/// See [`brightness_contrast`]
+#[node_macro::node(
+	name("Brightness/Contrast classic"),
+	category("Raster: Adjustment"),
+	properties("brightness_contrast_properties"),
+	shader_node(PerPixelAdjust)
+)]
+fn brightness_contrast_classic<T: Adjust<Color>>(
+	_: impl Ctx,
+	#[implementations(
+		Table<Raster<CPU>>,
+		Table<Color>,
+		Table<GradientStops>,
+		GradientStops,
+	)]
+	#[gpu_image]
+	mut input: T,
+	brightness: SignedPercentageF32,
+	contrast: SignedPercentageF32,
+) -> T {
+	let brightness = brightness / 255.;
+
+	let contrast = contrast / 100.;
+	let contrast = if contrast > 0. { (contrast * core::f32::consts::FRAC_PI_2 - 0.01).tan() } else { contrast };
+
+	let offset = brightness * contrast + brightness - contrast / 2.;
+
+	input.adjust(|color| color.to_gamma_srgb().map_rgb(|c| (c + c * contrast + offset).clamp(0., 1.)).to_linear_srgb());
+
 	input
 }
 
@@ -113,30 +179,23 @@ fn make_opaque<T: Adjust<Color>>(
 //
 // Some further analysis available at:
 // https://geraldbakker.nl/psnumbers/brightness-contrast.html
-#[node_macro::node(name("Brightness/Contrast"), category("Raster: Adjustment"), properties("brightness_contrast_properties"))]
+#[node_macro::node(name("Brightness/Contrast"), category("Raster: Adjustment"), properties("brightness_contrast_properties"), cfg(feature = "std"))]
 fn brightness_contrast<T: Adjust<Color>>(
-	_: impl Ctx,
+	_ctx: impl Ctx,
 	#[implementations(
-	Color,
-	RasterDataTable<CPU>,
-	GradientStops,
-)]
+		Table<Raster<CPU>>,
+		Table<Color>,
+		Table<GradientStops>,
+		GradientStops,
+	)]
+	#[gpu_image]
 	mut input: T,
-	brightness: SignedPercentage,
-	contrast: SignedPercentage,
+	brightness: SignedPercentageF32,
+	contrast: SignedPercentageF32,
 	use_classic: bool,
 ) -> T {
 	if use_classic {
-		let brightness = brightness as f32 / 255.;
-
-		let contrast = contrast as f32 / 100.;
-		let contrast = if contrast > 0. { (contrast * std::f32::consts::FRAC_PI_2 - 0.01).tan() } else { contrast };
-
-		let offset = brightness * contrast + brightness - contrast / 2.;
-
-		input.adjust(|color| color.to_gamma_srgb().map_rgb(|c| (c + c * contrast + offset).clamp(0., 1.)).to_linear_srgb());
-
-		return input;
+		return brightness_contrast_classic(_ctx, input, brightness, contrast);
 	}
 
 	const WINDOW_SIZE: usize = 1024;
@@ -146,19 +205,19 @@ fn brightness_contrast<T: Adjust<Color>>(
 	// We clamp the brightness before the two curve X-axis points `130 - brightness * 26` and `233 - brightness * 48` intersect.
 	// Beyond the point of intersection, the cubic spline fitting becomes invalid and fails an assertion, which we need to avoid.
 	// See the intersection of the red lines at x = 103/22*100 = 468.18182 in the graph: https://www.desmos.com/calculator/ekvz4zyd9c
-	let brightness = (brightness.abs() / 100.).min(103. / 22. - 0.00001) as f32;
+	let brightness = (brightness.abs() / 100.).min(103. / 22. - 0.00001);
 	let brightness_curve_points = CubicSplines {
 		x: [0., 130. - brightness * 26., 233. - brightness * 48., 255.].map(|x| x / 255.),
 		y: [0., 130. + brightness * 51., 233. + brightness * 10., 255.].map(|x| x / 255.),
 	};
 	let brightness_curve_solutions = brightness_curve_points.solve();
-	let mut brightness_lut: [f32; WINDOW_SIZE] = std::array::from_fn(|i| {
+	let mut brightness_lut: [f32; WINDOW_SIZE] = core::array::from_fn(|i| {
 		let x = i as f32 / (WINDOW_SIZE as f32 - 1.);
 		brightness_curve_points.interpolate(x, &brightness_curve_solutions)
 	});
 	// Special handling for when brightness is negative
 	if brightness_is_negative {
-		brightness_lut = std::array::from_fn(|i| {
+		brightness_lut = core::array::from_fn(|i| {
 			let mut x = i;
 			while x > 1 && brightness_lut[x] > i as f32 / WINDOW_SIZE as f32 {
 				x -= 1;
@@ -171,13 +230,13 @@ fn brightness_contrast<T: Adjust<Color>>(
 	// Unlike with brightness, the X-axis points `64` and `192` don't intersect at any contrast value, because they are constants.
 	// So we don't have to worry about clamping the contrast value to avoid invalid cubic spline fitting.
 	// See the graph: https://www.desmos.com/calculator/iql9vsca56
-	let contrast = contrast as f32 / 100.;
+	let contrast = contrast / 100.;
 	let contrast_curve_points = CubicSplines {
 		x: [0., 64., 192., 255.].map(|x| x / 255.),
 		y: [0., 64. - contrast * 30., 192. + contrast * 30., 255.].map(|x| x / 255.),
 	};
 	let contrast_curve_solutions = contrast_curve_points.solve();
-	let contrast_lut: [f32; WINDOW_SIZE] = std::array::from_fn(|i| {
+	let contrast_lut: [f32; WINDOW_SIZE] = core::array::from_fn(|i| {
 		let x = i as f32 / (WINDOW_SIZE as f32 - 1.);
 		contrast_curve_points.interpolate(x, &contrast_curve_solutions)
 	});
@@ -202,32 +261,34 @@ fn brightness_contrast<T: Adjust<Color>>(
 //
 // Some further analysis available at:
 // https://geraldbakker.nl/psnumbers/levels.html
-#[node_macro::node(category("Raster: Adjustment"))]
+#[node_macro::node(category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
 fn levels<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Color,
-		RasterDataTable<CPU>,
+		Table<Raster<CPU>>,
+		Table<Color>,
+		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut image: T,
-	#[default(0.)] shadows: Percentage,
-	#[default(50.)] midtones: Percentage,
-	#[default(100.)] highlights: Percentage,
-	#[default(0.)] output_minimums: Percentage,
-	#[default(100.)] output_maximums: Percentage,
+	#[default(0.)] shadows: PercentageF32,
+	#[default(50.)] midtones: PercentageF32,
+	#[default(100.)] highlights: PercentageF32,
+	#[default(0.)] output_minimums: PercentageF32,
+	#[default(100.)] output_maximums: PercentageF32,
 ) -> T {
 	image.adjust(|color| {
 		let color = color.to_gamma_srgb();
 
 		// Input Range (Range: 0-1)
-		let input_shadows = (shadows / 100.) as f32;
-		let input_midtones = (midtones / 100.) as f32;
-		let input_highlights = (highlights / 100.) as f32;
+		let input_shadows = shadows / 100.;
+		let input_midtones = midtones / 100.;
+		let input_highlights = highlights / 100.;
 
 		// Output Range (Range: 0-1)
-		let output_minimums = (output_minimums / 100.) as f32;
-		let output_maximums = (output_maximums / 100.) as f32;
+		let output_minimums = output_minimums / 100.;
+		let output_maximums = output_maximums / 100.;
 
 		// Midtones interpolation factor between minimums and maximums (Range: 0-1)
 		let midtones = output_minimums + (output_maximums - output_minimums) * input_midtones;
@@ -269,44 +330,46 @@ fn levels<T: Adjust<Color>>(
 // Algorithm from:
 // https://stackoverflow.com/a/55233732/775283
 // Works the same for gamma and linear color
-#[node_macro::node(name("Black & White"), category("Raster: Adjustment"))]
-async fn black_and_white<T: Adjust<Color>>(
+#[node_macro::node(name("Black & White"), category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
+fn black_and_white<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Color,
-		RasterDataTable<CPU>,
+		Table<Raster<CPU>>,
+		Table<Color>,
+		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut image: T,
 	#[default(Color::BLACK)] tint: Color,
 	#[default(40.)]
 	#[range((-200., 300.))]
-	reds: Percentage,
+	reds: PercentageF32,
 	#[default(60.)]
 	#[range((-200., 300.))]
-	yellows: Percentage,
+	yellows: PercentageF32,
 	#[default(40.)]
 	#[range((-200., 300.))]
-	greens: Percentage,
+	greens: PercentageF32,
 	#[default(60.)]
 	#[range((-200., 300.))]
-	cyans: Percentage,
+	cyans: PercentageF32,
 	#[default(20.)]
 	#[range((-200., 300.))]
-	blues: Percentage,
+	blues: PercentageF32,
 	#[default(80.)]
 	#[range((-200., 300.))]
-	magentas: Percentage,
+	magentas: PercentageF32,
 ) -> T {
 	image.adjust(|color| {
 		let color = color.to_gamma_srgb();
 
-		let reds = reds as f32 / 100.;
-		let yellows = yellows as f32 / 100.;
-		let greens = greens as f32 / 100.;
-		let cyans = cyans as f32 / 100.;
-		let blues = blues as f32 / 100.;
-		let magentas = magentas as f32 / 100.;
+		let reds = reds / 100.;
+		let yellows = yellows / 100.;
+		let greens = greens / 100.;
+		let cyans = cyans / 100.;
+		let blues = blues / 100.;
+		let magentas = magentas / 100.;
 
 		let gray_base = color.r().min(color.g()).min(color.b());
 
@@ -331,7 +394,7 @@ async fn black_and_white<T: Adjust<Color>>(
 		// TODO: Fix "Color" blend mode implementation so it matches the expected behavior perfectly (it's currently close)
 		let color = tint.with_luminance(luminance);
 
-		let color = Color::from_rgbaf32(color.r(), color.g(), color.b(), alpha_part).unwrap();
+		let color = Color::from_rgbaf32_unchecked(color.r(), color.g(), color.b(), alpha_part);
 
 		color.to_linear_srgb()
 	});
@@ -341,18 +404,20 @@ async fn black_and_white<T: Adjust<Color>>(
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27hue%20%27%20%3D%20Old,saturation%2C%20Photoshop%205.0
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=0%20%3D%20Use%20other.-,Hue/Saturation,-Hue/Saturation%20settings
-#[node_macro::node(name("Hue/Saturation"), category("Raster: Adjustment"))]
-async fn hue_saturation<T: Adjust<Color>>(
+#[node_macro::node(name("Hue/Saturation"), category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
+fn hue_saturation<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Color,
-		RasterDataTable<CPU>,
+		Table<Raster<CPU>>,
+		Table<Color>,
+		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut input: T,
-	hue_shift: Angle,
-	saturation_shift: SignedPercentage,
-	lightness_shift: SignedPercentage,
+	hue_shift: AngleF32,
+	saturation_shift: SignedPercentageF32,
+	lightness_shift: SignedPercentageF32,
 ) -> T {
 	input.adjust(|color| {
 		let color = color.to_gamma_srgb();
@@ -360,11 +425,11 @@ async fn hue_saturation<T: Adjust<Color>>(
 		let [hue, saturation, lightness, alpha] = color.to_hsla();
 
 		let color = Color::from_hsla(
-			(hue + hue_shift as f32 / 360.) % 1.,
+			(hue + hue_shift / 360.) % 1.,
 			// TODO: Improve the way saturation works (it's slightly off)
-			(saturation + saturation_shift as f32 / 100.).clamp(0., 1.),
+			(saturation + saturation_shift / 100.).clamp(0., 1.),
 			// TODO: Fix the way lightness works (it's very off)
-			(lightness + lightness_shift as f32 / 100.).clamp(0., 1.),
+			(lightness + lightness_shift / 100.).clamp(0., 1.),
 			alpha,
 		);
 
@@ -375,14 +440,16 @@ async fn hue_saturation<T: Adjust<Color>>(
 
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27%20%3D%20Color%20Lookup-,%27nvrt%27%20%3D%20Invert,-%27post%27%20%3D%20Posterize
-#[node_macro::node(category("Raster: Adjustment"))]
-async fn invert<T: Adjust<Color>>(
+#[node_macro::node(category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
+fn invert<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Color,
-		RasterDataTable<CPU>,
+		Table<Raster<CPU>>,
+		Table<Color>,
+		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut input: T,
 ) -> T {
 	input.adjust(|color| {
@@ -397,22 +464,24 @@ async fn invert<T: Adjust<Color>>(
 
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=post%27%20%3D%20Posterize-,%27thrs%27%20%3D%20Threshold,-%27grdm%27%20%3D%20Gradient
-#[node_macro::node(category("Raster: Adjustment"))]
-async fn threshold<T: Adjust<Color>>(
+#[node_macro::node(category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
+fn threshold<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Color,
-		RasterDataTable<CPU>,
+		Table<Raster<CPU>>,
+		Table<Color>,
+		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut image: T,
-	#[default(50.)] min_luminance: Percentage,
-	#[default(100.)] max_luminance: Percentage,
+	#[default(50.)] min_luminance: PercentageF32,
+	#[default(100.)] max_luminance: PercentageF32,
 	luminance_calc: LuminanceCalculation,
 ) -> T {
 	image.adjust(|color| {
-		let min_luminance = Color::srgb_to_linear(min_luminance as f32 / 100.);
-		let max_luminance = Color::srgb_to_linear(max_luminance as f32 / 100.);
+		let min_luminance = Color::srgb_to_linear(min_luminance / 100.);
+		let max_luminance = Color::srgb_to_linear(max_luminance / 100.);
 
 		let luminance = match luminance_calc {
 			LuminanceCalculation::SRGB => color.luminance_srgb(),
@@ -424,202 +493,6 @@ async fn threshold<T: Adjust<Color>>(
 
 		if luminance >= min_luminance && luminance <= max_luminance { Color::WHITE } else { Color::BLACK }
 	});
-	image
-}
-
-trait Blend<P: Pixel> {
-	fn blend(&self, under: &Self, blend_fn: impl Fn(P, P) -> P) -> Self;
-}
-impl Blend<Color> for Color {
-	fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
-		blend_fn(*self, *under)
-	}
-}
-impl Blend<Color> for Option<Color> {
-	fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
-		match (self, under) {
-			(Some(a), Some(b)) => Some(blend_fn(*a, *b)),
-			(a, None) => *a,
-			(None, b) => *b,
-		}
-	}
-}
-impl Blend<Color> for RasterDataTable<CPU> {
-	fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
-		let mut result_table = self.clone();
-
-		for (over, under) in result_table.instance_mut_iter().zip(under.instance_ref_iter()) {
-			let data = over.instance.data.iter().zip(under.instance.data.iter()).map(|(a, b)| blend_fn(*a, *b)).collect();
-
-			*over.instance = Raster::new_cpu(Image {
-				data,
-				width: over.instance.width,
-				height: over.instance.height,
-				base64_string: None,
-			});
-		}
-
-		result_table
-	}
-}
-impl Blend<Color> for GradientStops {
-	fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
-		let mut combined_stops = self.iter().map(|(position, _)| position).chain(under.iter().map(|(position, _)| position)).collect::<Vec<_>>();
-		combined_stops.dedup_by(|&mut a, &mut b| (a - b).abs() < 1e-6);
-		combined_stops.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
-
-		let stops = combined_stops
-			.into_iter()
-			.map(|&position| {
-				let over_color = self.evaluate(position);
-				let under_color = under.evaluate(position);
-				let color = blend_fn(over_color, under_color);
-				(position, color)
-			})
-			.collect::<Vec<_>>();
-
-		GradientStops::new(stops)
-	}
-}
-
-#[node_macro::node(category("Raster"))]
-async fn blend<T: Blend<Color> + Send>(
-	_: impl Ctx,
-	#[implementations(
-		Color,
-		RasterDataTable<CPU>,
-		GradientStops,
-	)]
-	over: T,
-	#[expose]
-	#[implementations(
-		Color,
-		RasterDataTable<CPU>,
-		GradientStops,
-	)]
-	under: T,
-	blend_mode: BlendMode,
-	#[default(100.)] opacity: Percentage,
-) -> T {
-	over.blend(&under, |a, b| blend_colors(a, b, blend_mode, opacity / 100.))
-}
-
-#[node_macro::node(category(""), skip_impl)]
-fn blend_color_pair<BlendModeNode, OpacityNode>(input: (Color, Color), blend_mode: &'n BlendModeNode, opacity: &'n OpacityNode) -> Color
-where
-	BlendModeNode: Node<'n, (), Output = BlendMode> + 'n,
-	OpacityNode: Node<'n, (), Output = Percentage> + 'n,
-{
-	let blend_mode = blend_mode.eval(());
-	let opacity = opacity.eval(());
-	blend_colors(input.0, input.1, blend_mode, opacity / 100.)
-}
-
-pub fn apply_blend_mode(foreground: Color, background: Color, blend_mode: BlendMode) -> Color {
-	match blend_mode {
-		// Normal group
-		BlendMode::Normal => background.blend_rgb(foreground, Color::blend_normal),
-		// Darken group
-		BlendMode::Darken => background.blend_rgb(foreground, Color::blend_darken),
-		BlendMode::Multiply => background.blend_rgb(foreground, Color::blend_multiply),
-		BlendMode::ColorBurn => background.blend_rgb(foreground, Color::blend_color_burn),
-		BlendMode::LinearBurn => background.blend_rgb(foreground, Color::blend_linear_burn),
-		BlendMode::DarkerColor => background.blend_darker_color(foreground),
-		// Lighten group
-		BlendMode::Lighten => background.blend_rgb(foreground, Color::blend_lighten),
-		BlendMode::Screen => background.blend_rgb(foreground, Color::blend_screen),
-		BlendMode::ColorDodge => background.blend_rgb(foreground, Color::blend_color_dodge),
-		BlendMode::LinearDodge => background.blend_rgb(foreground, Color::blend_linear_dodge),
-		BlendMode::LighterColor => background.blend_lighter_color(foreground),
-		// Contrast group
-		BlendMode::Overlay => foreground.blend_rgb(background, Color::blend_hardlight),
-		BlendMode::SoftLight => background.blend_rgb(foreground, Color::blend_softlight),
-		BlendMode::HardLight => background.blend_rgb(foreground, Color::blend_hardlight),
-		BlendMode::VividLight => background.blend_rgb(foreground, Color::blend_vivid_light),
-		BlendMode::LinearLight => background.blend_rgb(foreground, Color::blend_linear_light),
-		BlendMode::PinLight => background.blend_rgb(foreground, Color::blend_pin_light),
-		BlendMode::HardMix => background.blend_rgb(foreground, Color::blend_hard_mix),
-		// Inversion group
-		BlendMode::Difference => background.blend_rgb(foreground, Color::blend_difference),
-		BlendMode::Exclusion => background.blend_rgb(foreground, Color::blend_exclusion),
-		BlendMode::Subtract => background.blend_rgb(foreground, Color::blend_subtract),
-		BlendMode::Divide => background.blend_rgb(foreground, Color::blend_divide),
-		// Component group
-		BlendMode::Hue => background.blend_hue(foreground),
-		BlendMode::Saturation => background.blend_saturation(foreground),
-		BlendMode::Color => background.blend_color(foreground),
-		BlendMode::Luminosity => background.blend_luminosity(foreground),
-		// Other utility blend modes (hidden from the normal list) - do not have alpha blend
-		_ => panic!("Used blend mode without alpha blend"),
-	}
-}
-
-trait Adjust<P> {
-	fn adjust(&mut self, map_fn: impl Fn(&P) -> P);
-}
-impl Adjust<Color> for Color {
-	fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {
-		*self = map_fn(self);
-	}
-}
-impl Adjust<Color> for Option<Color> {
-	fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {
-		if let Some(v) = self {
-			*v = map_fn(v)
-		}
-	}
-}
-impl Adjust<Color> for GradientStops {
-	fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {
-		for (_pos, c) in self.iter_mut() {
-			*c = map_fn(c);
-		}
-	}
-}
-impl Adjust<Color> for RasterDataTable<CPU> {
-	fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {
-		for instance in self.instance_mut_iter() {
-			for c in instance.instance.data_mut().data.iter_mut() {
-				*c = map_fn(c);
-			}
-		}
-	}
-}
-
-#[inline(always)]
-pub fn blend_colors(foreground: Color, background: Color, blend_mode: BlendMode, opacity: f64) -> Color {
-	let target_color = match blend_mode {
-		// Other utility blend modes (hidden from the normal list) - do not have alpha blend
-		BlendMode::Erase => return background.alpha_subtract(foreground),
-		BlendMode::Restore => return background.alpha_add(foreground),
-		BlendMode::MultiplyAlpha => return background.alpha_multiply(foreground),
-		blend_mode => apply_blend_mode(foreground, background, blend_mode),
-	};
-
-	background.alpha_blend(target_color.to_associated_alpha(opacity as f32))
-}
-
-// Aims for interoperable compatibility with:
-// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27grdm%27%20%3D%20Gradient%20Map
-// https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Gradient%20settings%20(Photoshop%206.0)
-#[node_macro::node(category("Raster: Adjustment"))]
-async fn gradient_map<T: Adjust<Color>>(
-	_: impl Ctx,
-	#[implementations(
-		Color,
-		RasterDataTable<CPU>,
-		GradientStops,
-	)]
-	mut image: T,
-	gradient: GradientStops,
-	reverse: bool,
-) -> T {
-	image.adjust(|color| {
-		let intensity = color.luminance_srgb();
-		let intensity = if reverse { 1. - intensity } else { intensity };
-		gradient.evaluate(intensity as f64).to_linear_srgb()
-	});
-
 	image
 }
 
@@ -638,19 +511,21 @@ async fn gradient_map<T: Adjust<Color>>(
 // It's not the same as the saturation component of Hue/Saturation/Value. Vibrance and Saturation are both separable.
 // When both parameters are set, it is equivalent to running this adjustment twice, with only vibrance set and then only saturation set.
 // (Except for some noise probably due to rounding error.)
-#[node_macro::node(category("Raster: Adjustment"))]
-async fn vibrance<T: Adjust<Color>>(
+#[node_macro::node(category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
+fn vibrance<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Color,
-		RasterDataTable<CPU>,
+		Table<Raster<CPU>>,
+		Table<Color>,
+		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut image: T,
-	vibrance: SignedPercentage,
+	vibrance: SignedPercentageF32,
 ) -> T {
 	image.adjust(|color| {
-		let vibrance = vibrance as f32 / 100.;
+		let vibrance = vibrance / 100.;
 		// Slow the effect down by half when it's negative, since artifacts begin appearing past -50%.
 		// So this scales the 0% to -50% range to 0% to -100%.
 		let slowed_vibrance = if vibrance >= 0. { vibrance } else { vibrance * 0.5 };
@@ -700,7 +575,9 @@ async fn vibrance<T: Adjust<Color>>(
 }
 
 /// Color Channel
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type, serde::Serialize, serde::Deserialize)]
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType, BufferStruct, FromPrimitive, IntoPrimitive)]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
 pub enum RedGreenBlue {
 	#[default]
@@ -710,8 +587,10 @@ pub enum RedGreenBlue {
 }
 
 /// Color Channel
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType, bytemuck::NoUninit, BufferStruct, FromPrimitive, IntoPrimitive)]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
+#[repr(u32)]
 pub enum RedGreenBlueAlpha {
 	#[default]
 	Red,
@@ -721,7 +600,8 @@ pub enum RedGreenBlueAlpha {
 }
 
 /// Style of noise pattern
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 #[widget(Dropdown)]
 pub enum NoiseType {
 	#[default]
@@ -736,7 +616,8 @@ pub enum NoiseType {
 	WhiteNoise,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 /// Style of layered levels of the noise pattern
 pub enum FractalType {
 	#[default]
@@ -752,7 +633,8 @@ pub enum FractalType {
 }
 
 /// Distance function used by the cellular noise
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 pub enum CellularDistanceFunction {
 	#[default]
 	Euclidean,
@@ -762,7 +644,8 @@ pub enum CellularDistanceFunction {
 	Hybrid,
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 pub enum CellularReturnType {
 	CellValue,
 	#[default]
@@ -781,7 +664,8 @@ pub enum CellularReturnType {
 }
 
 /// Type of domain warp
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 #[widget(Dropdown)]
 pub enum DomainWarpType {
 	#[default]
@@ -796,69 +680,71 @@ pub enum DomainWarpType {
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27mixr%27%20%3D%20Channel%20Mixer
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=Lab%20color%20only-,Channel%20Mixer,-Key%20is%20%27mixr
-#[node_macro::node(category("Raster: Adjustment"), properties("channel_mixer_properties"))]
-async fn channel_mixer<T: Adjust<Color>>(
+#[node_macro::node(category("Raster: Adjustment"), properties("channel_mixer_properties"), shader_node(PerPixelAdjust))]
+fn channel_mixer<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Color,
-		RasterDataTable<CPU>,
+		Table<Raster<CPU>>,
+		Table<Color>,
+		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut image: T,
 
 	monochrome: bool,
 
 	#[default(40.)]
 	#[name("Red")]
-	monochrome_r: f64,
+	monochrome_r: f32,
 	#[default(40.)]
 	#[name("Green")]
-	monochrome_g: f64,
+	monochrome_g: f32,
 	#[default(20.)]
 	#[name("Blue")]
-	monochrome_b: f64,
+	monochrome_b: f32,
 	#[default(0.)]
 	#[name("Constant")]
-	monochrome_c: f64,
+	monochrome_c: f32,
 
 	#[default(100.)]
 	#[name("(Red) Red")]
-	red_r: f64,
+	red_r: f32,
 	#[default(0.)]
 	#[name("(Red) Green")]
-	red_g: f64,
+	red_g: f32,
 	#[default(0.)]
 	#[name("(Red) Blue")]
-	red_b: f64,
+	red_b: f32,
 	#[default(0.)]
 	#[name("(Red) Constant")]
-	red_c: f64,
+	red_c: f32,
 
 	#[default(0.)]
 	#[name("(Green) Red")]
-	green_r: f64,
+	green_r: f32,
 	#[default(100.)]
 	#[name("(Green) Green")]
-	green_g: f64,
+	green_g: f32,
 	#[default(0.)]
 	#[name("(Green) Blue")]
-	green_b: f64,
+	green_b: f32,
 	#[default(0.)]
 	#[name("(Green) Constant")]
-	green_c: f64,
+	green_c: f32,
 
 	#[default(0.)]
 	#[name("(Blue) Red")]
-	blue_r: f64,
+	blue_r: f32,
 	#[default(0.)]
 	#[name("(Blue) Green")]
-	blue_g: f64,
+	blue_g: f32,
 	#[default(100.)]
 	#[name("(Blue) Blue")]
-	blue_b: f64,
+	blue_b: f32,
 	#[default(0.)]
 	#[name("(Blue) Constant")]
-	blue_c: f64,
+	blue_c: f32,
 
 	// Display-only properties (not used within the node)
 	_output_channel: RedGreenBlue,
@@ -869,15 +755,15 @@ async fn channel_mixer<T: Adjust<Color>>(
 		let (r, g, b, a) = color.components();
 
 		let color = if monochrome {
-			let (monochrome_r, monochrome_g, monochrome_b, monochrome_c) = (monochrome_r as f32 / 100., monochrome_g as f32 / 100., monochrome_b as f32 / 100., monochrome_c as f32 / 100.);
+			let (monochrome_r, monochrome_g, monochrome_b, monochrome_c) = (monochrome_r / 100., monochrome_g / 100., monochrome_b / 100., monochrome_c / 100.);
 
 			let gray = (r * monochrome_r + g * monochrome_g + b * monochrome_b + monochrome_c).clamp(0., 1.);
 
 			Color::from_rgbaf32_unchecked(gray, gray, gray, a)
 		} else {
-			let (red_r, red_g, red_b, red_c) = (red_r as f32 / 100., red_g as f32 / 100., red_b as f32 / 100., red_c as f32 / 100.);
-			let (green_r, green_g, green_b, green_c) = (green_r as f32 / 100., green_g as f32 / 100., green_b as f32 / 100., green_c as f32 / 100.);
-			let (blue_r, blue_g, blue_b, blue_c) = (blue_r as f32 / 100., blue_g as f32 / 100., blue_b as f32 / 100., blue_c as f32 / 100.);
+			let (red_r, red_g, red_b, red_c) = (red_r / 100., red_g / 100., red_b / 100., red_c / 100.);
+			let (green_r, green_g, green_b, green_c) = (green_r / 100., green_g / 100., green_b / 100., green_c / 100.);
+			let (blue_r, blue_g, blue_b, blue_c) = (blue_r / 100., blue_g / 100., blue_b / 100., blue_c / 100.);
 
 			let red = (r * red_r + g * red_g + b * red_b + red_c).clamp(0., 1.);
 			let green = (r * green_r + g * green_g + b * green_b + green_c).clamp(0., 1.);
@@ -891,7 +777,9 @@ async fn channel_mixer<T: Adjust<Color>>(
 	image
 }
 
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type, serde::Serialize, serde::Deserialize)]
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType, BufferStruct, FromPrimitive, IntoPrimitive)]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
 pub enum RelativeAbsolute {
 	#[default]
@@ -899,8 +787,9 @@ pub enum RelativeAbsolute {
 	Absolute,
 }
 
-#[repr(C)]
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, DynAny, node_macro::ChoiceType, specta::Type, serde::Serialize, serde::Deserialize)]
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType, BufferStruct, FromPrimitive, IntoPrimitive)]
+#[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 pub enum SelectiveColorChoice {
 	#[default]
 	Reds,
@@ -922,62 +811,64 @@ pub enum SelectiveColorChoice {
 //
 // Algorithm based on:
 // https://blog.pkh.me/p/22-understanding-selective-coloring-in-adobe-photoshop.html
-#[node_macro::node(category("Raster: Adjustment"), properties("selective_color_properties"))]
-async fn selective_color<T: Adjust<Color>>(
+#[node_macro::node(category("Raster: Adjustment"), properties("selective_color_properties"), shader_node(PerPixelAdjust))]
+fn selective_color<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Color,
-		RasterDataTable<CPU>,
+		Table<Raster<CPU>>,
+		Table<Color>,
+		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut image: T,
 
 	mode: RelativeAbsolute,
 
-	#[name("(Reds) Cyan")] r_c: f64,
-	#[name("(Reds) Magenta")] r_m: f64,
-	#[name("(Reds) Yellow")] r_y: f64,
-	#[name("(Reds) Black")] r_k: f64,
+	#[name("(Reds) Cyan")] r_c: f32,
+	#[name("(Reds) Magenta")] r_m: f32,
+	#[name("(Reds) Yellow")] r_y: f32,
+	#[name("(Reds) Black")] r_k: f32,
 
-	#[name("(Yellows) Cyan")] y_c: f64,
-	#[name("(Yellows) Magenta")] y_m: f64,
-	#[name("(Yellows) Yellow")] y_y: f64,
-	#[name("(Yellows) Black")] y_k: f64,
+	#[name("(Yellows) Cyan")] y_c: f32,
+	#[name("(Yellows) Magenta")] y_m: f32,
+	#[name("(Yellows) Yellow")] y_y: f32,
+	#[name("(Yellows) Black")] y_k: f32,
 
-	#[name("(Greens) Cyan")] g_c: f64,
-	#[name("(Greens) Magenta")] g_m: f64,
-	#[name("(Greens) Yellow")] g_y: f64,
-	#[name("(Greens) Black")] g_k: f64,
+	#[name("(Greens) Cyan")] g_c: f32,
+	#[name("(Greens) Magenta")] g_m: f32,
+	#[name("(Greens) Yellow")] g_y: f32,
+	#[name("(Greens) Black")] g_k: f32,
 
-	#[name("(Cyans) Cyan")] c_c: f64,
-	#[name("(Cyans) Magenta")] c_m: f64,
-	#[name("(Cyans) Yellow")] c_y: f64,
-	#[name("(Cyans) Black")] c_k: f64,
+	#[name("(Cyans) Cyan")] c_c: f32,
+	#[name("(Cyans) Magenta")] c_m: f32,
+	#[name("(Cyans) Yellow")] c_y: f32,
+	#[name("(Cyans) Black")] c_k: f32,
 
-	#[name("(Blues) Cyan")] b_c: f64,
-	#[name("(Blues) Magenta")] b_m: f64,
-	#[name("(Blues) Yellow")] b_y: f64,
-	#[name("(Blues) Black")] b_k: f64,
+	#[name("(Blues) Cyan")] b_c: f32,
+	#[name("(Blues) Magenta")] b_m: f32,
+	#[name("(Blues) Yellow")] b_y: f32,
+	#[name("(Blues) Black")] b_k: f32,
 
-	#[name("(Magentas) Cyan")] m_c: f64,
-	#[name("(Magentas) Magenta")] m_m: f64,
-	#[name("(Magentas) Yellow")] m_y: f64,
-	#[name("(Magentas) Black")] m_k: f64,
+	#[name("(Magentas) Cyan")] m_c: f32,
+	#[name("(Magentas) Magenta")] m_m: f32,
+	#[name("(Magentas) Yellow")] m_y: f32,
+	#[name("(Magentas) Black")] m_k: f32,
 
-	#[name("(Whites) Cyan")] w_c: f64,
-	#[name("(Whites) Magenta")] w_m: f64,
-	#[name("(Whites) Yellow")] w_y: f64,
-	#[name("(Whites) Black")] w_k: f64,
+	#[name("(Whites) Cyan")] w_c: f32,
+	#[name("(Whites) Magenta")] w_m: f32,
+	#[name("(Whites) Yellow")] w_y: f32,
+	#[name("(Whites) Black")] w_k: f32,
 
-	#[name("(Neutrals) Cyan")] n_c: f64,
-	#[name("(Neutrals) Magenta")] n_m: f64,
-	#[name("(Neutrals) Yellow")] n_y: f64,
-	#[name("(Neutrals) Black")] n_k: f64,
+	#[name("(Neutrals) Cyan")] n_c: f32,
+	#[name("(Neutrals) Magenta")] n_m: f32,
+	#[name("(Neutrals) Yellow")] n_y: f32,
+	#[name("(Neutrals) Black")] n_k: f32,
 
-	#[name("(Blacks) Cyan")] k_c: f64,
-	#[name("(Blacks) Magenta")] k_m: f64,
-	#[name("(Blacks) Yellow")] k_y: f64,
-	#[name("(Blacks) Black")] k_k: f64,
+	#[name("(Blacks) Cyan")] k_c: f32,
+	#[name("(Blacks) Magenta")] k_m: f32,
+	#[name("(Blacks) Yellow")] k_y: f32,
+	#[name("(Blacks) Black")] k_k: f32,
 
 	_colors: SelectiveColorChoice,
 ) -> T {
@@ -1014,24 +905,26 @@ async fn selective_color<T: Adjust<Color>>(
 			RelativeAbsolute::Absolute => (-1., -1., -1.),
 		};
 
-		let (sum_r, sum_g, sum_b) = [
-			(SelectiveColorChoice::Reds, (r_c as f32, r_m as f32, r_y as f32, r_k as f32)),
-			(SelectiveColorChoice::Yellows, (y_c as f32, y_m as f32, y_y as f32, y_k as f32)),
-			(SelectiveColorChoice::Greens, (g_c as f32, g_m as f32, g_y as f32, g_k as f32)),
-			(SelectiveColorChoice::Cyans, (c_c as f32, c_m as f32, c_y as f32, c_k as f32)),
-			(SelectiveColorChoice::Blues, (b_c as f32, b_m as f32, b_y as f32, b_k as f32)),
-			(SelectiveColorChoice::Magentas, (m_c as f32, m_m as f32, m_y as f32, m_k as f32)),
-			(SelectiveColorChoice::Whites, (w_c as f32, w_m as f32, w_y as f32, w_k as f32)),
-			(SelectiveColorChoice::Neutrals, (n_c as f32, n_m as f32, n_y as f32, n_k as f32)),
-			(SelectiveColorChoice::Blacks, (k_c as f32, k_m as f32, k_y as f32, k_k as f32)),
-		]
-		.into_iter()
-		.fold((0., 0., 0.), |acc, (color_parameter_group, (c, m, y, k))| {
+		let array = [
+			(SelectiveColorChoice::Reds, (r_c, r_m, r_y, r_k)),
+			(SelectiveColorChoice::Yellows, (y_c, y_m, y_y, y_k)),
+			(SelectiveColorChoice::Greens, (g_c, g_m, g_y, g_k)),
+			(SelectiveColorChoice::Cyans, (c_c, c_m, c_y, c_k)),
+			(SelectiveColorChoice::Blues, (b_c, b_m, b_y, b_k)),
+			(SelectiveColorChoice::Magentas, (m_c, m_m, m_y, m_k)),
+			(SelectiveColorChoice::Whites, (w_c, w_m, w_y, w_k)),
+			(SelectiveColorChoice::Neutrals, (n_c, n_m, n_y, n_k)),
+			(SelectiveColorChoice::Blacks, (k_c, k_m, k_y, k_k)),
+		];
+		let mut sum = Vec3::ZERO;
+		for i in 0..array.len() {
+			let (color_parameter_group, (c, m, y, k)) = array[i];
+
 			// Skip this color parameter group...
 			// ...if it's unchanged from the default of zero offset on all CMYK parameters, or...
 			// ...if this pixel's color isn't in the range affected by this color parameter group
 			if (c < f32::EPSILON && m < f32::EPSILON && y < f32::EPSILON && k < f32::EPSILON) || (!pixel_color_range(color_parameter_group)) {
-				return acc;
+				continue;
 			}
 
 			let (c, m, y, k) = (c / 100., m / 100., y / 100., k / 100.);
@@ -1044,14 +937,15 @@ async fn selective_color<T: Adjust<Color>>(
 				SelectiveColorChoice::Blacks => 1. - max(r, g, b) * 2.,
 			};
 
-			let offset_r = ((c + k * (c + 1.)) * slope_r).clamp(-r, -r + 1.) * color_parameter_group_scale_factor;
-			let offset_g = ((m + k * (m + 1.)) * slope_g).clamp(-g, -g + 1.) * color_parameter_group_scale_factor;
-			let offset_b = ((y + k * (y + 1.)) * slope_b).clamp(-b, -b + 1.) * color_parameter_group_scale_factor;
+			let offset_r = f32::clamp((c + k * (c + 1.)) * slope_r, -r, -r + 1.) * color_parameter_group_scale_factor;
+			let offset_g = f32::clamp((m + k * (m + 1.)) * slope_g, -g, -g + 1.) * color_parameter_group_scale_factor;
+			let offset_b = f32::clamp((y + k * (y + 1.)) * slope_b, -b, -b + 1.) * color_parameter_group_scale_factor;
 
-			(acc.0 + offset_r, acc.1 + offset_g, acc.2 + offset_b)
-		});
+			sum += Vec3::new(offset_r, offset_g, offset_b);
+		}
 
-		let color = Color::from_rgbaf32_unchecked((r + sum_r).clamp(0., 1.), (g + sum_g).clamp(0., 1.), (b + sum_b).clamp(0., 1.), a);
+		let rgb = Vec3::new(r, g, b);
+		let color = Color::from_vec4(Vec4::from(((sum + rgb).clamp(Vec3::ZERO, Vec3::ONE), a)));
 
 		color.to_linear_srgb()
 	});
@@ -1064,14 +958,16 @@ async fn selective_color<T: Adjust<Color>>(
 // Algorithm based on:
 // https://www.axiomx.com/posterize.htm
 // This algorithm produces fully accurate output in relation to the industry standard.
-#[node_macro::node(category("Raster: Adjustment"))]
-async fn posterize<T: Adjust<Color>>(
+#[node_macro::node(category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
+fn posterize<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Color,
-		RasterDataTable<CPU>,
+		Table<Raster<CPU>>,
+		Table<Color>,
+		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut input: T,
 	#[default(4)]
 	#[hard_min(2.)]
@@ -1097,108 +993,34 @@ async fn posterize<T: Adjust<Color>>(
 //
 // Algorithm based on:
 // https://geraldbakker.nl/psnumbers/exposure.html
-#[node_macro::node(category("Raster: Adjustment"), properties("exposure_properties"))]
-async fn exposure<T: Adjust<Color>>(
+#[node_macro::node(category("Raster: Adjustment"), properties("exposure_properties"), shader_node(PerPixelAdjust))]
+fn exposure<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(
-		Color,
-		RasterDataTable<CPU>,
+		Table<Raster<CPU>>,
+		Table<Color>,
+		Table<GradientStops>,
 		GradientStops,
 	)]
+	#[gpu_image]
 	mut input: T,
-	exposure: f64,
-	offset: f64,
+	exposure: f32,
+	offset: f32,
 	#[default(1.)]
 	#[range((0.01, 10.))]
 	#[hard_min(0.0001)]
-	gamma_correction: f64,
+	gamma_correction: f32,
 ) -> T {
 	input.adjust(|color| {
 		let adjusted = color
-		// Exposure
-		.map_rgb(|c: f32| c * 2_f32.powf(exposure as f32))
-		// Offset
-		.map_rgb(|c: f32| c + offset as f32)
-		// Gamma correction
-		.gamma(gamma_correction as f32);
+			// Exposure
+			.map_rgb(|c: f32| c * 2_f32.powf(exposure))
+			// Offset
+			.map_rgb(|c: f32| c + offset)
+			// Gamma correction
+			.gamma(gamma_correction);
 
 		adjusted.map_rgb(|c: f32| c.clamp(0., 1.))
 	});
 	input
-}
-
-#[node_macro::node(category("Raster: Adjustment"))]
-fn color_overlay<T: Adjust<Color>>(
-	_: impl Ctx,
-	#[implementations(
-		Color,
-		RasterDataTable<CPU>,
-		GradientStops,
-	)]
-	mut image: T,
-	#[default(Color::BLACK)] color: Color,
-	blend_mode: BlendMode,
-	#[default(100.)] opacity: Percentage,
-) -> T {
-	let opacity = (opacity as f32 / 100.).clamp(0., 1.);
-
-	image.adjust(|pixel| {
-		let image = pixel.map_rgb(|channel| channel * (1. - opacity));
-
-		// The apply blend mode function divides rgb by the alpha channel for the background. This undoes that.
-		let associated_pixel = Color::from_rgbaf32_unchecked(pixel.r() * pixel.a(), pixel.g() * pixel.a(), pixel.b() * pixel.a(), pixel.a());
-		let overlay = apply_blend_mode(color, associated_pixel, blend_mode).map_rgb(|channel| channel * opacity);
-
-		Color::from_rgbaf32_unchecked(image.r() + overlay.r(), image.g() + overlay.g(), image.b() + overlay.b(), pixel.a())
-	});
-	image
-}
-
-// pub use index_node::IndexNode;
-
-// mod index_node {
-// 	use crate::raster::{Color, Image};
-// 	use crate::Ctx;
-
-// 	#[node_macro::node(category(""))]
-// 	pub fn index<T: Default + Clone>(
-// 		_: impl Ctx,
-// 		#[implementations(Vec<Image<Color>>, Vec<Color>)]
-// 		#[widget(ParsedWidgetOverride::Hidden)]
-// 		input: Vec<T>,
-// 		index: u32,
-// 	) -> T {
-// 		if (index as usize) < input.len() {
-// 			input[index as usize].clone()
-// 		} else {
-// 			warn!("The number of segments is {} but the requested segment is {}!", input.len(), index);
-// 			Default::default()
-// 		}
-// 	}
-// }
-
-#[cfg(test)]
-mod test {
-	use graphene_core::blending::BlendMode;
-	use graphene_core::color::Color;
-	use graphene_core::raster::image::Image;
-	use graphene_core::raster_types::{Raster, RasterDataTable};
-
-	#[tokio::test]
-	async fn color_overlay_multiply() {
-		let image_color = Color::from_rgbaf32_unchecked(0.7, 0.6, 0.5, 0.4);
-		let image = Image::new(1, 1, image_color);
-
-		// Color { red: 0., green: 1., blue: 0., alpha: 1. }
-		let overlay_color = Color::GREEN;
-
-		// 100% of the output should come from the multiplied value
-		let opacity = 100_f64;
-
-		let result = super::color_overlay((), RasterDataTable::new(Raster::new_cpu(image.clone())), overlay_color, BlendMode::Multiply, opacity);
-		let result = result.instance_ref_iter().next().unwrap().instance;
-
-		// The output should just be the original green and alpha channels (as we multiply them by 1 and other channels by 0)
-		assert_eq!(result.data[0], Color::from_rgbaf32_unchecked(0., image_color.g(), 0., image_color.a()));
-	}
 }

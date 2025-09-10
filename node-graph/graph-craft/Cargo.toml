@@ -25,7 +25,6 @@ graphene-raster-nodes = { workspace = true }
 # Workspace dependencies
 log = { workspace = true }
 glam = { workspace = true }
-bezier-rs = { workspace = true }
 specta = { workspace = true }
 rustc-hash = { workspace = true }
 url = { workspace = true }
@@ -38,15 +37,12 @@ tokio = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
 
 # Workspace dependencies
-[target.'cfg(target_arch = "wasm32")'.dependencies]
-web-sys = { workspace = true, features = [
-	"Navigator",
-	"Gpu",
-] }
+[target.'cfg(target_family = "wasm")'.dependencies]
+web-sys = { workspace = true, features = ["Navigator", "Gpu"] }
 js-sys = { workspace = true }
 wasm-bindgen = { workspace = true }
 
-[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
 winit = { workspace = true }
 
 [dev-dependencies]

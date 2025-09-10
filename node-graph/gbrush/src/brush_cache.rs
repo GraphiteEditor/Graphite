@@ -1,31 +1,33 @@
 use crate::brush_stroke::BrushStroke;
 use crate::brush_stroke::BrushStyle;
 use dyn_any::DynAny;
-use graphene_core::instances::Instance;
 use graphene_core::raster_types::CPU;
 use graphene_core::raster_types::Raster;
+use graphene_core::table::TableRow;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::hash::Hasher;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
-// TODO: This is a temporary hack, be sure to not reuse this when the brush is being rewritten.
+// TODO: This is a temporary hack, be sure to not reuse this when the brush system is replaced/rewritten.
 static NEXT_BRUSH_CACHE_IMPL_ID: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone, Debug, DynAny, serde::Serialize, serde::Deserialize)]
 struct BrushCacheImpl {
+	#[serde(default = "new_unique_id")]
 	unique_id: u64,
 	// The full previous input that was cached.
+	#[serde(default)]
 	prev_input: Vec<BrushStroke>,
 
 	// The strokes that have been fully processed and blended into the background.
-	#[serde(deserialize_with = "graphene_core::raster::image::migrate_image_frame_instance")]
-	background: Instance<Raster<CPU>>,
-	#[serde(deserialize_with = "graphene_core::raster::image::migrate_image_frame_instance")]
-	blended_image: Instance<Raster<CPU>>,
-	#[serde(deserialize_with = "graphene_core::raster::image::migrate_image_frame_instance")]
-	last_stroke_texture: Instance<Raster<CPU>>,
+	#[serde(default, deserialize_with = "graphene_core::raster::image::migrate_image_frame_row")]
+	background: TableRow<Raster<CPU>>,
+	#[serde(default, deserialize_with = "graphene_core::raster::image::migrate_image_frame_row")]
+	blended_image: TableRow<Raster<CPU>>,
+	#[serde(default, deserialize_with = "graphene_core::raster::image::migrate_image_frame_row")]
+	last_stroke_texture: TableRow<Raster<CPU>>,
 
 	// A cache for brush textures.
 	#[serde(skip)]
@@ -33,7 +35,7 @@ struct BrushCacheImpl {
 }
 
 impl BrushCacheImpl {
-	fn compute_brush_plan(&mut self, mut background: Instance<Raster<CPU>>, input: &[BrushStroke]) -> BrushPlan {
+	fn compute_brush_plan(&mut self, mut background: TableRow<Raster<CPU>>, input: &[BrushStroke]) -> BrushPlan {
 		// Do background invalidation.
 		if background != self.background {
 			self.background = background.clone();
@@ -60,8 +62,8 @@ impl BrushCacheImpl {
 		background = std::mem::take(&mut self.blended_image);
 
 		// Check if the first non-blended stroke is an extension of the last one.
-		let mut first_stroke_texture = Instance {
-			instance: Raster::<CPU>::default(),
+		let mut first_stroke_texture = TableRow {
+			element: Raster::<CPU>::default(),
 			transform: glam::DAffine2::ZERO,
 			..Default::default()
 		};
@@ -88,7 +90,7 @@ impl BrushCacheImpl {
 		}
 	}
 
-	pub fn cache_results(&mut self, input: Vec<BrushStroke>, blended_image: Instance<Raster<CPU>>, last_stroke_texture: Instance<Raster<CPU>>) {
+	pub fn cache_results(&mut self, input: Vec<BrushStroke>, blended_image: TableRow<Raster<CPU>>, last_stroke_texture: TableRow<Raster<CPU>>) {
 		self.prev_input = input;
 		self.blended_image = blended_image;
 		self.last_stroke_texture = last_stroke_texture;
@@ -98,7 +100,7 @@ impl BrushCacheImpl {
 impl Default for BrushCacheImpl {
 	fn default() -> Self {
 		Self {
-			unique_id: NEXT_BRUSH_CACHE_IMPL_ID.fetch_add(1, Ordering::SeqCst),
+			unique_id: new_unique_id(),
 			prev_input: Vec::new(),
 			background: Default::default(),
 			blended_image: Default::default(),
@@ -120,11 +122,15 @@ impl Hash for BrushCacheImpl {
 	}
 }
 
+fn new_unique_id() -> u64 {
+	NEXT_BRUSH_CACHE_IMPL_ID.fetch_add(1, Ordering::SeqCst)
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct BrushPlan {
 	pub strokes: Vec<BrushStroke>,
-	pub background: Instance<Raster<CPU>>,
-	pub first_stroke_texture: Instance<Raster<CPU>>,
+	pub background: TableRow<Raster<CPU>>,
+	pub first_stroke_texture: TableRow<Raster<CPU>>,
 	pub first_stroke_point_skip: usize,
 }
 
@@ -160,12 +166,12 @@ impl Hash for BrushCache {
 }
 
 impl BrushCache {
-	pub fn compute_brush_plan(&self, background: Instance<Raster<CPU>>, input: &[BrushStroke]) -> BrushPlan {
+	pub fn compute_brush_plan(&self, background: TableRow<Raster<CPU>>, input: &[BrushStroke]) -> BrushPlan {
 		let mut inner = self.0.lock().unwrap();
 		inner.compute_brush_plan(background, input)
 	}
 
-	pub fn cache_results(&self, input: Vec<BrushStroke>, blended_image: Instance<Raster<CPU>>, last_stroke_texture: Instance<Raster<CPU>>) {
+	pub fn cache_results(&self, input: Vec<BrushStroke>, blended_image: TableRow<Raster<CPU>>, last_stroke_texture: TableRow<Raster<CPU>>) {
 		let mut inner = self.0.lock().unwrap();
 		inner.cache_results(input, blended_image, last_stroke_texture)
 	}
