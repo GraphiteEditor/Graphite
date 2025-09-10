@@ -160,8 +160,7 @@ pub struct RenderContext {
 pub enum RenderOutputType {
 	#[default]
 	Svg,
-	Canvas,
-	Texture,
+	Vello,
 }
 
 /// Static state used whilst rendering
@@ -1388,6 +1387,11 @@ impl Render for Table<Raster<GPU>> {
 const ALMOST_INF: f64 = (1_000_000_000) as f64;
 const ALMOST_INF_OFFSET: f64 = (-500_000_000) as f64;
 
+// Since colors and gradients are tecnically infinetly big we have to implement
+// workarounds for rendering them correctly in a way which still allow us
+// to cache the intermediate render data (SVG string / vello scene).
+// For SVG this is is achived by creating a giant rectangle as its bounds.
+// For vello we create a layer with a placeholder transform which we later replace with the current viewport transform
 impl Render for Table<Color> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for row in self.iter() {
@@ -1527,6 +1531,7 @@ impl Render for Table<GradientStops> {
 			let mut layer = false;
 			if opacity < 1. || alpha_blending.blend_mode != BlendMode::default() {
 				let blending = peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver);
+				// See implemenation in `Table<Color>` for more detail
 				scene.push_layer(blending, opacity, kurbo::Affine::scale(f64::INFINITY), &rect);
 				layer = true;
 			}

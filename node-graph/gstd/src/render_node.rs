@@ -67,12 +67,7 @@ async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + 
 
 	let editor_api = editor_api.eval(None).await;
 
-	if !render_params.for_export
-		&& editor_api.editor_preferences.use_vello()
-		&& matches!(
-			render_params.render_output_type,
-			graphene_svg_renderer::RenderOutputType::Canvas | graphene_svg_renderer::RenderOutputType::Texture
-		) {
+	if !render_params.for_export && editor_api.editor_preferences.use_vello() && matches!(render_params.render_output_type, graphene_svg_renderer::RenderOutputType::Vello) {
 		let mut scene = vello::Scene::new();
 
 		let mut context = wgpu_executor::RenderContext::default();
@@ -106,8 +101,8 @@ async fn create_context<'a: 'n>(
 		ExportFormat::Svg => RenderOutputTypeRequest::Svg,
 		ExportFormat::Png { .. } => todo!(),
 		ExportFormat::Jpeg => todo!(),
-		ExportFormat::Canvas => RenderOutputTypeRequest::Canvas,
-		ExportFormat::Texture => RenderOutputTypeRequest::Texture,
+		ExportFormat::Canvas => RenderOutputTypeRequest::Vello,
+		ExportFormat::Texture => RenderOutputTypeRequest::Vello,
 	};
 	let render_params = RenderParams {
 		render_mode: render_config.render_mode,
@@ -158,8 +153,8 @@ async fn render<'a: 'n>(
 	if let RenderIntermediateType::Svg(_) = ty {
 		output_format = RenderOutputTypeRequest::Svg;
 	}
-	let data = match output_format {
-		RenderOutputTypeRequest::Svg => {
+	let data = match (output_format, &ty) {
+		(RenderOutputTypeRequest::Svg, RenderIntermediateType::Svg(svg_data)) => {
 			let mut svg_renderer = SvgRender::new();
 			if !contains_artboard && !render_params.hide_artboards {
 				svg_renderer.leaf_tag("rect", |attributes| {
@@ -174,14 +169,9 @@ async fn render<'a: 'n>(
 					attributes.push("fill", "white");
 				});
 			}
-			match &ty {
-				RenderIntermediateType::Svg(svg_data) => {
-					svg_renderer.svg.push(SvgSegment::from(svg_data.0.clone()));
-					svg_renderer.image_data = svg_data.1.clone();
-					svg_renderer.svg_defs = svg_data.2.clone();
-				}
-				_ => unreachable!(),
-			};
+			svg_renderer.svg.push(SvgSegment::from(svg_data.0.clone()));
+			svg_renderer.image_data = svg_data.1.clone();
+			svg_renderer.svg_defs = svg_data.2.clone();
 
 			svg_renderer.wrap_with_transform(footprint.transform, Some(footprint.resolution.as_dvec2()));
 			RenderOutputType::Svg {
@@ -189,23 +179,26 @@ async fn render<'a: 'n>(
 				image_data: svg_renderer.image_data,
 			}
 		}
-		_ => {
+		(RenderOutputTypeRequest::Vello, RenderIntermediateType::Vello(vello_data)) => {
 			let Some(exec) = editor_api.application_io.as_ref().unwrap().gpu_executor() else {
 				unreachable!("Attempted to render with Vello when no GPU executor is available");
 			};
-			let RenderIntermediateType::Vello(vello_data) = ty else { unreachable!() };
 			let (child, context) = Arc::as_ref(&vello_data);
 			let footprint_transform = vello::kurbo::Affine::new(footprint.transform.to_cols_array());
-			let mut child = child.clone();
-			let encoding = child.encoding_mut();
+
+			let mut scene = vello::Scene::new();
+			scene.append(child, Some(footprint_transform));
+
+			let encoding = scene.encoding_mut();
+
+			// We now replace all transforms which are supposed to be infinite with a transform which covers the entire viewport
+			// See [#vello > Full screen color/gradients @ 💬](https://xi.zulipchat.com/#narrow/channel/197075-vello/topic/Full.20screen.20color.2Fgradients/near/538435044) for more detail
+
 			for transform in encoding.transforms.iter_mut() {
-				if *transform == vello_encoding::Transform::from_kurbo(&vello::kurbo::Affine::scale(f64::INFINITY)) {
-					*transform =
-						vello_encoding::Transform::from_kurbo(&(footprint_transform.inverse() * vello::kurbo::Affine::scale_non_uniform(footprint.resolution.x as f64, footprint.resolution.y as f64)))
+				if transform.matrix[0] == f32::INFINITY {
+					*transform = vello_encoding::Transform::from_kurbo(&(vello::kurbo::Affine::scale_non_uniform(footprint.resolution.x as f64, footprint.resolution.y as f64)))
 				}
 			}
-			let mut scene = vello::Scene::new();
-			scene.append(&child, Some(footprint_transform));
 
 			let mut background = Color::from_rgb8_srgb(0x22, 0x22, 0x22);
 			if !contains_artboard && !render_params.hide_artboards {
@@ -225,13 +218,14 @@ async fn render<'a: 'n>(
 				RenderOutputType::CanvasFrame(frame)
 			} else {
 				let texture = exec
-					.render_vello_scene_to_texture(&scene, footprint.resolution, &context, background)
+					.render_vello_scene_to_texture(&scene, footprint.resolution, context, background)
 					.await
 					.expect("Failed to render Vello scene");
 
 				RenderOutputType::Texture(ImageTexture { texture })
 			}
 		}
+		_ => unreachable!("Render node did not receive its requested data type"),
 	};
 	RenderOutput { data, metadata }
 }
