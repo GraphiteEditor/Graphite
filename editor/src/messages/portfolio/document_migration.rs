@@ -5,7 +5,7 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate, OutputConnector};
 use crate::messages::prelude::DocumentMessageHandler;
-use glam::IVec2;
+use glam::{DVec2, IVec2};
 use graph_craft::document::DocumentNode;
 use graph_craft::document::{DocumentNodeImplementation, NodeInput, value::TaggedValue};
 use graphene_std::ProtoNodeIdentifier;
@@ -16,6 +16,7 @@ use graphene_std::uuid::NodeId;
 use graphene_std::vector::Vector;
 use graphene_std::vector::style::{PaintOrder, StrokeAlign};
 use std::collections::HashMap;
+use std::f64::consts::PI;
 
 const TEXT_REPLACEMENTS: &[(&str, &str)] = &[
 	("graphene_core::vector::vector_nodes::SamplePointsNode", "graphene_core::vector::SamplePolylineNode"),
@@ -1049,6 +1050,46 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 		document.network_interface.add_import(TaggedValue::None, false, 0, "Primary", "", &node_path);
 		document.network_interface.add_import(TaggedValue::U32(0), false, 1, "Loop Level", "TODO", &node_path);
+	}
+
+	// Migrate the transform node to use degrees instead of radians and add another temporary input that will be used for the origin offset
+	if reference == "Transform" && node.inputs.get(5).is_none() {
+		let rotation = node.inputs.get(2)?;
+
+		match rotation {
+			NodeInput::Value { tagged_value, exposed } => {
+				let TaggedValue::F64(radians) = *tagged_value.clone().into_inner() else {
+					return None;
+				};
+				let degrees = NodeInput::value(TaggedValue::F64(radians * 180. / PI), *exposed);
+				document.network_interface.set_input(&InputConnector::node(*node_id, 2), degrees, network_path);
+			}
+			NodeInput::Node { .. } => {
+				let Some(multiply_node) = resolve_document_node_type("Multiply") else {
+					log::error!("Could not get multiply node from definition when upgrading transform");
+					return None;
+				};
+
+				let mut template = multiply_node.default_node_template();
+				template.document_node.inputs[1] = NodeInput::value(TaggedValue::F64(180. / PI), false);
+				let multiply_node_id = NodeId::new();
+				document.network_interface.insert_node(multiply_node_id, template, network_path);
+				let Some(transform_position) = document.network_interface.position_from_downstream_node(node_id, network_path) else {
+					log::error!("Could not get positon for transform node {node_id}");
+					return None;
+				};
+				let multiply_position: IVec2 = transform_position + IVec2::new(-7, 1);
+				document.network_interface.shift_absolute_node_position(&multiply_node_id, multiply_position, network_path);
+				document.network_interface.insert_node_between(&multiply_node_id, &InputConnector::node(*node_id, 2), 0, network_path);
+				let nested_transform_network = [network_path, &[*node_id]].concat();
+				document
+					.network_interface
+					.add_import(TaggedValue::DVec2(DVec2::ZERO), false, 5, "Origin Offset", "", &nested_transform_network);
+				// Hide the properties row for now
+				document.network_interface.set_input_override(node_id, 5, Some("hidden".to_string()), network_path);
+			}
+			_ => {}
+		}
 	}
 
 	// Add context features to nodes that don't have them (fine-grained context caching migration)

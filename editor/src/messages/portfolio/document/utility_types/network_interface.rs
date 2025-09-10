@@ -1232,6 +1232,17 @@ impl NodeNetworkInterface {
 		Some(&metadata.transient_metadata)
 	}
 
+	pub fn set_input_override(&mut self, node_id: &NodeId, index: usize, widget_override: Option<String>, network_path: &[NodeId]) {
+		let Some(metadata) = self
+			.node_metadata_mut(node_id, network_path)
+			.and_then(|node_metadata| node_metadata.persistent_metadata.input_metadata.get_mut(index))
+		else {
+			log::error!("Could not get input metadata for {node_id} index {index} in set_input_override");
+			return;
+		};
+		metadata.persistent_metadata.widget_override = widget_override;
+	}
+
 	/// Returns the input name to display in the properties panel. If the name is empty then the type is used.
 	pub fn displayed_input_name_and_description(&mut self, node_id: &NodeId, input_index: usize, network_path: &[NodeId]) -> (String, String) {
 		let Some(input_metadata) = self.persistent_input_metadata(node_id, input_index, network_path) else {
