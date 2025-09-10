@@ -1070,10 +1070,10 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 					return None;
 				};
 
-				let mut template = multiply_node.default_node_template();
-				template.document_node.inputs[1] = NodeInput::value(TaggedValue::F64(180. / PI), false);
+				let mut multiply_template = multiply_node.default_node_template();
+				multiply_template.document_node.inputs[1] = NodeInput::value(TaggedValue::F64(180. / PI), false);
 				let multiply_node_id = NodeId::new();
-				document.network_interface.insert_node(multiply_node_id, template, network_path);
+				document.network_interface.insert_node(multiply_node_id, multiply_template, network_path);
 				let Some(transform_position) = document.network_interface.position_from_downstream_node(node_id, network_path) else {
 					log::error!("Could not get positon for transform node {node_id}");
 					return None;
@@ -1087,6 +1087,20 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 					.add_import(TaggedValue::DVec2(DVec2::ZERO), false, 5, "Origin Offset", "", &nested_transform_network);
 				// Hide the properties row for now
 				document.network_interface.set_input_override(node_id, 5, Some("hidden".to_string()), network_path);
+			}
+			_ => {}
+		};
+
+		let skew = node.inputs.get(4)?;
+		match skew {
+			NodeInput::Value { tagged_value, exposed } => {
+				let TaggedValue::DVec2(old_value) = *tagged_value.clone().into_inner() else {
+					return None;
+				};
+				// The previous value stored the tangent of the displayed degrees. Now it stores the degrees, so take the arctan of it and convert to degrees
+				let new_value = DVec2::new(old_value.x.atan().to_degrees(), old_value.y.atan().to_degrees());
+				let new_input = NodeInput::value(TaggedValue::DVec2(new_value), *exposed);
+				document.network_interface.set_input(&InputConnector::node(*node_id, 4), new_input, network_path);
 			}
 			_ => {}
 		}
