@@ -26,6 +26,7 @@ use graphene_std::vector::{PointId, Vector, VectorModificationType};
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
 use interpreted_executor::node_registry::NODE_REGISTRY;
 use kurbo::BezPath;
+use private::MemoNetwork;
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -36,7 +37,7 @@ use std::ops::Deref;
 pub struct NodeNetworkInterface {
 	/// The node graph that generates this document's artwork. It recursively stores its sub-graphs, so this root graph is the whole snapshot of the document content.
 	/// A public mutable reference should never be created. It should only be mutated through custom setters which perform the necessary side effects to keep network_metadata in sync
-	network: NodeNetwork,
+	network: MemoNetwork,
 	/// Stores all editor information for a NodeNetwork. Should automatically kept in sync by the setter methods when changes to the document network are made.
 	network_metadata: NodeNetworkMetadata,
 	// TODO: Wrap in TransientMetadata Option
@@ -68,10 +69,69 @@ impl PartialEq for NodeNetworkInterface {
 	}
 }
 
+mod private {
+	use std::cell::RefCell;
+	use std::hash::{Hash, Hasher};
+
+	use graph_craft::document::NodeNetwork;
+
+	#[derive(Debug, Default, Clone, PartialEq)]
+	pub struct MemoNetwork {
+		network: NodeNetwork,
+		hash_code: RefCell<Option<u64>>,
+	}
+
+	impl<'de> serde::Deserialize<'de> for MemoNetwork {
+		fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+		where
+			D: serde::Deserializer<'de>,
+		{
+			Ok(Self::new(NodeNetwork::deserialize(deserializer)?))
+		}
+	}
+
+	impl serde::Serialize for MemoNetwork {
+		fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+		where
+			S: serde::Serializer,
+		{
+			self.network.serialize(serializer)
+		}
+	}
+
+	impl Hash for MemoNetwork {
+		fn hash<H: Hasher>(&self, state: &mut H) {
+			self.current_hash().hash(state);
+		}
+	}
+
+	impl MemoNetwork {
+		pub fn network(&self) -> &NodeNetwork {
+			&self.network
+		}
+		pub fn network_mut(&mut self) -> &mut NodeNetwork {
+			self.hash_code.replace(None);
+			&mut self.network
+		}
+
+		pub fn new(network: NodeNetwork) -> Self {
+			Self { network, hash_code: None.into() }
+		}
+
+		pub fn current_hash(&self) -> u64 {
+			let mut hash_code = self.hash_code.borrow_mut();
+			if hash_code.is_none() {
+				*hash_code = Some(self.network.current_hash());
+			}
+			hash_code.unwrap()
+		}
+	}
+}
+
 impl NodeNetworkInterface {
 	/// Add DocumentNodePath input to the PathModifyNode protonode
 	pub fn migrate_path_modify_node(&mut self) {
-		fix_network(&mut self.network);
+		fix_network(self.document_network_mut());
 		fn fix_network(network: &mut NodeNetwork) {
 			for node in network.nodes.values_mut() {
 				if let Some(network) = node.implementation.get_network_mut() {
@@ -91,16 +151,23 @@ impl NodeNetworkInterface {
 impl NodeNetworkInterface {
 	/// Gets the network of the root document
 	pub fn document_network(&self) -> &NodeNetwork {
-		&self.network
+		self.network.network()
+	}
+	pub fn document_network_mut(&mut self) -> &mut NodeNetwork {
+		self.network.network_mut()
 	}
 
 	/// Gets the nested network based on network_path
 	pub fn nested_network(&self, network_path: &[NodeId]) -> Option<&NodeNetwork> {
-		let Some(network) = self.network.nested_network(network_path) else {
+		let Some(network) = self.document_network().nested_network(network_path) else {
 			log::error!("Could not get nested network with path {network_path:?} in NodeNetworkInterface::network");
 			return None;
 		};
 		Some(network)
+	}
+
+	pub fn network_hash(&self) -> u64 {
+		self.network.current_hash()
 	}
 
 	/// Get the specified document node in the nested network based on node_id and network_path
@@ -161,7 +228,7 @@ impl NodeNetworkInterface {
 				.back()
 				.cloned()
 				.unwrap_or_default()
-				.filtered_selected_nodes(network_metadata.persistent_metadata.node_metadata.keys().cloned().collect()),
+				.filtered_selected_nodes(|node_id| network_metadata.persistent_metadata.node_metadata.contains_key(node_id)),
 		)
 	}
 
@@ -1556,7 +1623,7 @@ impl NodeNetworkInterface {
 			log::error!("Could not get network or network_metadata in upstream_flow_back_from_nodes");
 			return FlowIter {
 				stack: Vec::new(),
-				network: &self.network,
+				network: &self.document_network(),
 				network_metadata: &self.network_metadata,
 				flow_type: FlowType::UpstreamFlow,
 			};
@@ -1708,7 +1775,7 @@ impl NodeNetworkInterface {
 			}
 		}
 		Self {
-			network: node_network,
+			network: MemoNetwork::new(node_network),
 			network_metadata,
 			document_metadata: DocumentMetadata::default(),
 			resolved_types: ResolvedDocumentNodeTypes::default(),
@@ -1744,7 +1811,7 @@ fn random_protonode_implementation(protonode: &graph_craft::ProtoNodeIdentifier)
 // Private mutable getters for use within the network interface
 impl NodeNetworkInterface {
 	fn network_mut(&mut self, network_path: &[NodeId]) -> Option<&mut NodeNetwork> {
-		self.network.nested_network_mut(network_path)
+		self.document_network_mut().nested_network_mut(network_path)
 	}
 
 	fn network_metadata_mut(&mut self, network_path: &[NodeId]) -> Option<&mut NodeNetworkMetadata> {
