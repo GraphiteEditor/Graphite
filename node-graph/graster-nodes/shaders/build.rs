@@ -23,7 +23,7 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
 		}
 	}
 
-	let shader_crate = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/.."));
+	let shader_crate = PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/entrypoint"));
 
 	println!("cargo:rerun-if-env-changed=RUSTC_CODEGEN_SPIRV_PATH");
 	let rustc_codegen_spirv_path = std::env::var("RUSTC_CODEGEN_SPIRV_PATH").unwrap_or_default();
@@ -43,7 +43,6 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let mut builder = backend.to_spirv_builder(shader_crate, "spirv-unknown-naga-wgsl");
 	builder.print_metadata = MetadataPrintout::DependencyOnly;
 	builder.spirv_metadata = SpirvMetadata::Full;
-	builder.shader_crate_features.default_features = false;
 	let wgsl_result = builder.build()?;
 	let path_to_spv = wgsl_result.module.unwrap_single();
 
