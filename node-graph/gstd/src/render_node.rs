@@ -195,8 +195,17 @@ async fn render<'a: 'n>(
 			};
 			let RenderIntermediateType::Vello(vello_data) = ty else { unreachable!() };
 			let (child, context) = Arc::as_ref(&vello_data);
+			let footprint_transform = vello::kurbo::Affine::new(footprint.transform.to_cols_array());
+			let mut child = child.clone();
+			let encoding = child.encoding_mut();
+			for transform in encoding.transforms.iter_mut() {
+				if *transform == vello_encoding::Transform::from_kurbo(&vello::kurbo::Affine::scale(f64::INFINITY)) {
+					*transform =
+						vello_encoding::Transform::from_kurbo(&(footprint_transform.inverse() * vello::kurbo::Affine::scale_non_uniform(footprint.resolution.x as f64, footprint.resolution.y as f64)))
+				}
+			}
 			let mut scene = vello::Scene::new();
-			scene.append(child, Some(vello::kurbo::Affine::new(footprint.transform.to_cols_array())));
+			scene.append(&child, Some(footprint_transform));
 
 			let mut background = Color::from_rgb8_srgb(0x22, 0x22, 0x22);
 			if !contains_artboard && !render_params.hide_artboards {

@@ -49,6 +49,7 @@ wasm-bindgen = { workspace = true, optional = true }
 wasm-bindgen-futures = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
 vello = { workspace = true }
+vello_encoding = { workspace = true }
 web-sys = { workspace = true, optional = true, features = [
 	"Window",
 	"CanvasRenderingContext2d",
