@@ -200,6 +200,7 @@ fn difference<'a>(vector: impl DoubleEndedIterator<Item = TableRowRef<'a, Vector
 		element.style = first_row.element.style.clone();
 		let boolean_intersection_result = TableRow {
 			element,
+			mask: first_row.mask.clone(),
 			transform: *first_row.transform,
 			alpha_blending: *first_row.alpha_blending,
 			source_node_id: *first_row.source_node_id,
@@ -294,6 +295,7 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 
 						TableRow {
 							element,
+							mask: row.mask.clone(),
 							transform: row.transform,
 							alpha_blending: row.alpha_blending,
 							source_node_id: row.source_node_id,
@@ -312,6 +314,7 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 
 						TableRow {
 							element,
+							mask: row.mask.clone(),
 							transform: row.transform,
 							alpha_blending: row.alpha_blending,
 							source_node_id: row.source_node_id,

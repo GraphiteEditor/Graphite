@@ -39,6 +39,7 @@ pub async fn upload_texture<'a: 'n>(_: impl Ctx, input: Table<Raster<CPU>>, exec
 
 			TableRow {
 				element: Raster::new_gpu(texture),
+				mask: row.mask.clone(),
 				transform: *row.transform,
 				alpha_blending: *row.alpha_blending,
 				source_node_id: *row.source_node_id,

@@ -88,6 +88,7 @@ pub fn migrate_artboard<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Re
 			for (artboard, source_node_id) in artboard_group.artboards {
 				table.push(TableRow {
 					element: artboard,
+					mask: None,
 					transform: DAffine2::IDENTITY,
 					alpha_blending: AlphaBlending::default(),
 					source_node_id,

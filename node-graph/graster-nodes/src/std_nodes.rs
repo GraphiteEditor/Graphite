@@ -2,9 +2,10 @@ use crate::adjustments::{CellularDistanceFunction, CellularReturnType, DomainWar
 use dyn_any::DynAny;
 use fastnoise_lite;
 use glam::{DAffine2, DVec2, Vec2};
+use graphene_core::Graphic;
 use graphene_core::blending::AlphaBlending;
 use graphene_core::color::Color;
-use graphene_core::color::{Alpha, AlphaMut, Channel, LinearChannel, Luminance, RGBMut};
+use graphene_core::color::{AlphaMut, Channel, LinearChannel, Luminance, RGBMut};
 use graphene_core::context::{Ctx, ExtractFootprint};
 use graphene_core::math::bbox::Bbox;
 use graphene_core::raster::image::Image;
@@ -12,6 +13,7 @@ use graphene_core::raster::{Bitmap, BitmapMut};
 use graphene_core::raster_types::{CPU, Raster};
 use graphene_core::table::{Table, TableRow};
 use graphene_core::transform::Transform;
+use graphene_core::vector::Vector;
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
 use std::fmt::Debug;
@@ -175,6 +177,7 @@ pub fn combine_channels(
 
 			Some(TableRow {
 				element: Raster::new_cpu(image),
+				mask: None,
 				transform,
 				alpha_blending,
 				source_node_id,
@@ -184,53 +187,46 @@ pub fn combine_channels(
 }
 
 #[node_macro::node(category("Raster"))]
-pub fn mask(
+pub fn mask<T, E>(
 	_: impl Ctx,
 	/// The image to be masked.
-	image: Table<Raster<CPU>>,
-	/// The stencil to be used for masking.
+	#[implementations(
+        Table<Vector>,
+        Table<Graphic>,
+        Table<Raster<CPU>>,
+        Table<Vector>,
+        Table<Graphic>,
+        Table<Raster<CPU>>,
+        Table<Vector>,
+        Table<Graphic>,
+        Table<Raster<CPU>>,
+	)]
+	mut image: Table<T>,
+
 	#[expose]
-	stencil: Table<Raster<CPU>>,
-) -> Table<Raster<CPU>> {
-	// TODO: Figure out what it means to support multiple stencil rows?
-	let Some(stencil) = stencil.into_iter().next() else {
-		// No stencil provided so we return the original image
-		return image;
-	};
-	let stencil_size = DVec2::new(stencil.element.width as f64, stencil.element.height as f64);
-
+	#[implementations(
+        Table<Vector>,
+        Table<Vector>,
+        Table<Vector>,
+        Table<Graphic>,
+        Table<Graphic>,
+        Table<Graphic>,
+        Table<Raster<CPU>>,
+        Table<Raster<CPU>>,
+        Table<Raster<CPU>>,
+	)]
+	stencil: Table<E>,
+) -> Table<T>
+where
+	Table<E>: Into<Graphic> + Clone,
+{
+	for instance in image.iter_mut() {
+		*instance.mask = Some(stencil.clone().into());
+	}
 	image
-		.into_iter()
-		.filter_map(|mut row| {
-			let image_size = DVec2::new(row.element.width as f64, row.element.height as f64);
-			let mask_size = stencil.transform.decompose_scale();
-
-			if mask_size == DVec2::ZERO {
-				return None;
-			}
-
-			// Transforms a point from the background image to the foreground image
-			let bg_to_fg = row.transform * DAffine2::from_scale(1. / image_size);
-			let stencil_transform_inverse = stencil.transform.inverse();
-
-			for y in 0..row.element.height {
-				for x in 0..row.element.width {
-					let image_point = DVec2::new(x as f64, y as f64);
-					let mask_point = bg_to_fg.transform_point2(image_point);
-					let local_mask_point = stencil_transform_inverse.transform_point2(mask_point);
-					let mask_point = stencil.transform.transform_point2(local_mask_point.clamp(DVec2::ZERO, DVec2::ONE));
-					let mask_point = (DAffine2::from_scale(stencil_size) * stencil.transform.inverse()).transform_point2(mask_point);
-
-					let image_pixel = row.element.data_mut().get_pixel_mut(x, y).unwrap();
-					let mask_pixel = stencil.element.sample(mask_point);
-					*image_pixel = image_pixel.multiplied_alpha(mask_pixel.l().cast_linear_channel());
-				}
-			}
-
-			Some(row)
-		})
-		.collect()
 }
+
+// TODO: Use as in-place raster modifier
 
 #[node_macro::node(category(""))]
 pub fn extend_image_to_bounds(_: impl Ctx, image: Table<Raster<CPU>>, bounds: DAffine2) -> Table<Raster<CPU>> {

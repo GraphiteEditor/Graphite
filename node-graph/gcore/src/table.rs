@@ -1,3 +1,4 @@
+use crate::Graphic;
 use crate::bounds::{BoundingBox, RenderBoundingBox};
 use crate::transform::ApplyTransform;
 use crate::uuid::NodeId;
@@ -6,10 +7,13 @@ use dyn_any::StaticType;
 use glam::DAffine2;
 use std::hash::Hash;
 
+pub type Mask = Option<Graphic>;
+
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Table<T> {
 	#[serde(alias = "instances", alias = "instance")]
 	element: Vec<T>,
+	mask: Vec<Mask>,
 	transform: Vec<DAffine2>,
 	alpha_blending: Vec<AlphaBlending>,
 	source_node_id: Vec<Option<NodeId>>,
@@ -23,6 +27,7 @@ impl<T> Table<T> {
 	pub fn with_capacity(capacity: usize) -> Self {
 		Self {
 			element: Vec::with_capacity(capacity),
+			mask: Vec::with_capacity(capacity),
 			transform: Vec::with_capacity(capacity),
 			alpha_blending: Vec::with_capacity(capacity),
 			source_node_id: Vec::with_capacity(capacity),
@@ -32,6 +37,7 @@ impl<T> Table<T> {
 	pub fn new_from_element(element: T) -> Self {
 		Self {
 			element: vec![element],
+			mask: vec![None],
 			transform: vec![DAffine2::IDENTITY],
 			alpha_blending: vec![AlphaBlending::default()],
 			source_node_id: vec![None],
@@ -41,6 +47,7 @@ impl<T> Table<T> {
 	pub fn new_from_row(row: TableRow<T>) -> Self {
 		Self {
 			element: vec![row.element],
+			mask: vec![row.mask],
 			transform: vec![row.transform],
 			alpha_blending: vec![row.alpha_blending],
 			source_node_id: vec![row.source_node_id],
@@ -49,6 +56,7 @@ impl<T> Table<T> {
 
 	pub fn push(&mut self, row: TableRow<T>) {
 		self.element.push(row.element);
+		self.mask.push(row.mask);
 		self.transform.push(row.transform);
 		self.alpha_blending.push(row.alpha_blending);
 		self.source_node_id.push(row.source_node_id);
@@ -56,6 +64,7 @@ impl<T> Table<T> {
 
 	pub fn extend(&mut self, table: Table<T>) {
 		self.element.extend(table.element);
+		self.mask.extend(table.mask);
 		self.transform.extend(table.transform);
 		self.alpha_blending.extend(table.alpha_blending);
 		self.source_node_id.extend(table.source_node_id);
@@ -68,6 +77,7 @@ impl<T> Table<T> {
 
 		Some(TableRowRef {
 			element: &self.element[index],
+			mask: &self.mask[index],
 			transform: &self.transform[index],
 			alpha_blending: &self.alpha_blending[index],
 			source_node_id: &self.source_node_id[index],
@@ -81,6 +91,7 @@ impl<T> Table<T> {
 
 		Some(TableRowMut {
 			element: &mut self.element[index],
+			mask: &mut self.mask[index],
 			transform: &mut self.transform[index],
 			alpha_blending: &mut self.alpha_blending[index],
 			source_node_id: &mut self.source_node_id[index],
@@ -99,11 +110,13 @@ impl<T> Table<T> {
 	pub fn iter(&self) -> impl DoubleEndedIterator<Item = TableRowRef<'_, T>> + Clone {
 		self.element
 			.iter()
+			.zip(self.mask.iter())
 			.zip(self.transform.iter())
 			.zip(self.alpha_blending.iter())
 			.zip(self.source_node_id.iter())
-			.map(|(((element, transform), alpha_blending), source_node_id)| TableRowRef {
+			.map(|((((element, mask), transform), alpha_blending), source_node_id)| TableRowRef {
 				element,
+				mask,
 				transform,
 				alpha_blending,
 				source_node_id,
@@ -114,11 +127,13 @@ impl<T> Table<T> {
 	pub fn iter_mut(&mut self) -> impl DoubleEndedIterator<Item = TableRowMut<'_, T>> {
 		self.element
 			.iter_mut()
+			.zip(self.mask.iter_mut())
 			.zip(self.transform.iter_mut())
 			.zip(self.alpha_blending.iter_mut())
 			.zip(self.source_node_id.iter_mut())
-			.map(|(((element, transform), alpha_blending), source_node_id)| TableRowMut {
+			.map(|((((element, mask), transform), alpha_blending), source_node_id)| TableRowMut {
 				element,
+				mask,
 				transform,
 				alpha_blending,
 				source_node_id,
@@ -156,6 +171,7 @@ impl<T> IntoIterator for Table<T> {
 	fn into_iter(self) -> Self::IntoIter {
 		TableRowIter {
 			element: self.element.into_iter(),
+			mask: self.mask.into_iter(),
 			transform: self.transform.into_iter(),
 			alpha_blending: self.alpha_blending.into_iter(),
 			source_node_id: self.source_node_id.into_iter(),
@@ -165,6 +181,7 @@ impl<T> IntoIterator for Table<T> {
 
 pub struct TableRowIter<T> {
 	element: std::vec::IntoIter<T>,
+	mask: std::vec::IntoIter<Mask>,
 	transform: std::vec::IntoIter<DAffine2>,
 	alpha_blending: std::vec::IntoIter<AlphaBlending>,
 	source_node_id: std::vec::IntoIter<Option<NodeId>>,
@@ -174,12 +191,14 @@ impl<T> Iterator for TableRowIter<T> {
 
 	fn next(&mut self) -> Option<Self::Item> {
 		let element = self.element.next()?;
+		let mask = self.mask.next()?;
 		let transform = self.transform.next()?;
 		let alpha_blending = self.alpha_blending.next()?;
 		let source_node_id = self.source_node_id.next()?;
 
 		Some(TableRow {
 			element,
+			mask,
 			transform,
 			alpha_blending,
 			source_node_id,
@@ -191,6 +210,7 @@ impl<T> Default for Table<T> {
 	fn default() -> Self {
 		Self {
 			element: Vec::new(),
+			mask: Vec::new(),
 			transform: Vec::new(),
 			alpha_blending: Vec::new(),
 			source_node_id: Vec::new(),
@@ -242,10 +262,11 @@ impl<T> FromIterator<TableRow<T>> for Table<T> {
 	}
 }
 
-#[derive(Copy, Clone, Default, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Default, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct TableRow<T> {
 	#[serde(alias = "instance")]
 	pub element: T,
+	pub mask: Mask,
 	pub transform: DAffine2,
 	pub alpha_blending: AlphaBlending,
 	pub source_node_id: Option<NodeId>,
@@ -255,6 +276,7 @@ impl<T> TableRow<T> {
 	pub fn new_from_element(element: T) -> Self {
 		Self {
 			element,
+			mask: None,
 			transform: DAffine2::IDENTITY,
 			alpha_blending: AlphaBlending::default(),
 			source_node_id: None,
@@ -264,6 +286,7 @@ impl<T> TableRow<T> {
 	pub fn as_ref(&self) -> TableRowRef<'_, T> {
 		TableRowRef {
 			element: &self.element,
+			mask: &self.mask,
 			transform: &self.transform,
 			alpha_blending: &self.alpha_blending,
 			source_node_id: &self.source_node_id,
@@ -273,6 +296,7 @@ impl<T> TableRow<T> {
 	pub fn as_mut(&mut self) -> TableRowMut<'_, T> {
 		TableRowMut {
 			element: &mut self.element,
+			mask: &mut self.mask,
 			transform: &mut self.transform,
 			alpha_blending: &mut self.alpha_blending,
 			source_node_id: &mut self.source_node_id,
@@ -283,6 +307,7 @@ impl<T> TableRow<T> {
 #[derive(Copy, Clone, Debug, PartialEq)]
 pub struct TableRowRef<'a, T> {
 	pub element: &'a T,
+	pub mask: &'a Mask,
 	pub transform: &'a DAffine2,
 	pub alpha_blending: &'a AlphaBlending,
 	pub source_node_id: &'a Option<NodeId>,
@@ -295,6 +320,7 @@ impl<T> TableRowRef<'_, T> {
 	{
 		TableRow {
 			element: self.element.clone(),
+			mask: self.mask.clone(),
 			transform: *self.transform,
 			alpha_blending: *self.alpha_blending,
 			source_node_id: *self.source_node_id,
@@ -305,6 +331,7 @@ impl<T> TableRowRef<'_, T> {
 #[derive(Debug)]
 pub struct TableRowMut<'a, T> {
 	pub element: &'a mut T,
+	pub mask: &'a mut Mask,
 	pub transform: &'a mut DAffine2,
 	pub alpha_blending: &'a mut AlphaBlending,
 	pub source_node_id: &'a mut Option<NodeId>,

@@ -536,6 +536,10 @@ impl Render for Table<Graphic> {
 
 						attributes.push(mask_type.to_attribute(), selector);
 					}
+
+					if let Some(mask) = row.mask {
+						attributes.push_mask(mask, render_params.for_clipper());
+					}
 				},
 				|render| {
 					row.element.render_svg(render, render_params);
@@ -576,6 +580,19 @@ impl Render for Table<Graphic> {
 				}
 			}
 
+			let mut masked = false;
+			if let Some(mask) = row.mask {
+				let bounds = mask.bounding_box(transform, true);
+
+				if let RenderBoundingBox::Rectangle(bounds) = bounds {
+					masked = true;
+					let rect = vello::kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
+
+					scene.push_luminance_mask_layer(1., kurbo::Affine::IDENTITY, &rect);
+					mask.render_to_vello(scene, transform, context, &render_params.for_clipper());
+				}
+			}
+
 			let next_clips = iter.peek().is_some_and(|next_row| next_row.element.had_clip_enabled());
 			if next_clips && mask_element_and_transform.is_none() {
 				mask_element_and_transform = Some((row.element, transform));
@@ -605,6 +622,10 @@ impl Render for Table<Graphic> {
 				}
 			} else {
 				row.element.render_to_vello(scene, transform, context, render_params);
+			}
+
+			if masked {
+				scene.pop_layer();
 			}
 
 			if layer {
@@ -734,6 +755,7 @@ impl Render for Table<Vector> {
 
 				let vector_row = Table::new_from_row(TableRow {
 					element,
+					mask: None,
 					alpha_blending: *row.alpha_blending,
 					transform: *row.transform,
 					source_node_id: None,
@@ -789,6 +811,11 @@ impl Render for Table<Vector> {
 					let selector = format!("url(#{id})");
 					attributes.push(mask_type.to_attribute(), selector);
 				}
+
+				if let Some(mask) = row.mask {
+					attributes.push_mask(mask, render_params.for_clipper());
+				}
+
 				attributes.push_val(fill_and_stroke);
 
 				let opacity = row.alpha_blending.opacity(render_params.for_mask);
@@ -870,6 +897,19 @@ impl Render for Table<Vector> {
 					kurbo::Affine::new(multiplied_transform.to_cols_array()),
 					&kurbo::Rect::new(layer_bounds[0].x, layer_bounds[0].y, layer_bounds[1].x, layer_bounds[1].y),
 				);
+			}
+
+			let mut masked = false;
+			if let Some(mask) = row.mask {
+				let bounds = mask.bounding_box(element_transform, true);
+
+				if let RenderBoundingBox::Rectangle(bounds) = bounds {
+					masked = true;
+					let rect = vello::kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
+
+					scene.push_luminance_mask_layer(1., kurbo::Affine::IDENTITY, &rect);
+					mask.render_to_vello(scene, element_transform, _context, &render_params.for_clipper());
+				}
 			}
 
 			let can_draw_aligned_stroke =
@@ -997,6 +1037,7 @@ impl Render for Table<Vector> {
 
 						let vector_table = Table::new_from_row(TableRow {
 							element,
+							mask: None,
 							alpha_blending: *row.alpha_blending,
 							transform: *row.transform,
 							source_node_id: None,
@@ -1058,6 +1099,10 @@ impl Render for Table<Vector> {
 						}
 					}
 				}
+			}
+
+			if masked {
+				scene.pop_layer();
 			}
 
 			// If we pushed a layer for opacity or a blend mode, we need to pop it
@@ -1218,30 +1263,38 @@ impl Render for Table<Raster<CPU>> {
 					base64_string
 				});
 
-				render.leaf_tag("image", |attributes| {
-					attributes.push("width", "1");
-					attributes.push("height", "1");
-					attributes.push("preserveAspectRatio", "none");
-					attributes.push("href", base64_string);
-					let matrix = format_transform_matrix(transform);
-					if !matrix.is_empty() {
-						attributes.push("transform", matrix);
-					}
+				let render_image = |render: &mut SvgRender| {
+					render.leaf_tag("image", |attributes| {
+						attributes.push("width", "1");
+						attributes.push("height", "1");
+						attributes.push("preserveAspectRatio", "none");
+						attributes.push("href", base64_string);
+						let matrix = format_transform_matrix(transform);
+						if !matrix.is_empty() {
+							attributes.push("transform", matrix);
+						}
 
-					let opacity = row.alpha_blending.opacity(render_params.for_mask);
-					if opacity < 1. {
-						attributes.push("opacity", opacity.to_string());
-					}
-					if row.alpha_blending.blend_mode != BlendMode::default() {
-						attributes.push("style", row.alpha_blending.blend_mode.render());
-					}
-				});
+						let opacity = row.alpha_blending.opacity(render_params.for_mask);
+						if opacity < 1. {
+							attributes.push("opacity", opacity.to_string());
+						}
+						if row.alpha_blending.blend_mode != BlendMode::default() {
+							attributes.push("style", row.alpha_blending.blend_mode.render());
+						}
+					});
+				};
+
+				if let Some(mask) = row.mask {
+					render.parent_tag("g", |attributes| attributes.push_mask(mask, render_params.for_clipper()), render_image);
+				} else {
+					render_image(render)
+				}
 			}
 		}
 	}
 
 	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, _: &mut RenderContext, render_params: &RenderParams) {
+	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
 		use vello::peniko;
 
 		for row in self.iter() {
@@ -1268,7 +1321,24 @@ impl Render for Table<Raster<CPU>> {
 			let image = peniko::Image::new(image.to_flat_u8().0.into(), peniko::ImageFormat::Rgba8, image.width, image.height).with_extend(peniko::Extend::Repeat);
 			let image_transform = transform * *row.transform * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
 
+			let mut masked = false;
+			if let Some(mask) = row.mask {
+				let bounds = mask.bounding_box(transform, true);
+
+				if let RenderBoundingBox::Rectangle(bounds) = bounds {
+					masked = true;
+					let rect = vello::kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
+
+					scene.push_luminance_mask_layer(1., kurbo::Affine::IDENTITY, &rect);
+					mask.render_to_vello(scene, transform, _context, &render_params.for_clipper());
+				}
+			}
+
 			scene.draw_image(&image, kurbo::Affine::new(image_transform.to_cols_array()));
+
+			if masked {
+				scene.pop_layer();
+			}
 
 			if layer {
 				scene.pop_layer();
@@ -1561,10 +1631,26 @@ impl SvgRenderAttrs<'_> {
 		value(self.0);
 		self.0.svg.push("\"".into());
 	}
+
 	pub fn push(&mut self, name: impl Into<SvgSegment>, value: impl Into<SvgSegment>) {
 		self.push_complex(name, move |renderer| renderer.svg.push(value.into()));
 	}
+
 	pub fn push_val(&mut self, value: impl Into<SvgSegment>) {
 		self.0.svg.push(value.into());
+	}
+
+	fn push_mask(&mut self, mask: &Graphic, render_params: RenderParams) {
+		let uuid = generate_uuid();
+		let mut svg = SvgRender::new();
+		mask.render_svg(&mut svg, &render_params);
+
+		let id = format!("mask-{}", uuid);
+		write!(&mut self.0.svg_defs, r##"{}"##, svg.svg_defs).unwrap();
+		write!(&mut self.0.svg_defs, r##"<mask id="{id}">{}</mask>"##, svg.svg.to_svg_string()).unwrap();
+
+		let selector = format!("url(#{id})");
+
+		self.push("mask", selector);
 	}
 }
