@@ -1052,8 +1052,8 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.add_import(TaggedValue::U32(0), false, 1, "Loop Level", "TODO", &node_path);
 	}
 
-	// Migrate the transform node to use degrees instead of radians and add another temporary input that will be used for the origin offset
-	if reference == "Transform" && node.inputs.get(5).is_none() {
+	// Migrate the Transform node to use degrees instead of radians
+	if reference == "Transform" && node.inputs.get(6).is_none() {
 		// Migrate rotation from radians to degrees
 		match node.inputs.get(2)? {
 			NodeInput::Value { tagged_value, exposed } => {
@@ -1085,13 +1085,6 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 				document.network_interface.insert_node(multiply_node_id, multiply_template, network_path);
 				document.network_interface.shift_absolute_node_position(&multiply_node_id, multiply_position, network_path);
 				document.network_interface.insert_node_between(&multiply_node_id, &InputConnector::node(*node_id, 2), 0, network_path);
-
-				// Add the Origin Offset parameter as a hidden input, which will be given actual functionality in the future but is currently used as a marker to detect not-yet-upgraded Transform nodes
-				let nested_transform_network = [network_path, &[*node_id]].concat();
-				document
-					.network_interface
-					.add_import(TaggedValue::DVec2(DVec2::ZERO), false, 5, "Origin Offset", "", &nested_transform_network);
-				document.network_interface.set_input_override(node_id, 5, Some("hidden".to_string()), network_path); // Hide it while we're not yet using it
 			}
 			_ => {}
 		};
@@ -1106,6 +1099,24 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			let new_input = NodeInput::value(TaggedValue::DVec2(new_value), *exposed);
 			document.network_interface.set_input(&InputConnector::node(*node_id, 4), new_input, network_path);
 		}
+
+		// Remove the possible existence of the old "Pivot" hidden value input that was removed in #2730
+		let nested_transform_network = [network_path, &[*node_id]].concat();
+		if node.inputs.get(5).is_some() {
+			document.network_interface.remove_import(5, &nested_transform_network);
+		}
+
+		// Add the Origin Offset parameter as a hidden input, which will be given actual functionality in the future but is currently used as a marker to detect not-yet-upgraded Transform nodes
+		document
+			.network_interface
+			.add_import(TaggedValue::DVec2(DVec2::ZERO), false, 5, "Origin Offset", "", &nested_transform_network);
+		document.network_interface.set_input_override(node_id, 5, Some("hidden".to_string()), network_path); // Hide it while we're not yet using it
+
+		// Add the Scale Appearance parameter as a hidden input, which will be given actual functionality in the future but is currently used as a marker to detect not-yet-upgraded Transform nodes
+		document
+			.network_interface
+			.add_import(TaggedValue::Bool(true), false, 6, "Scale Appearance", "", &nested_transform_network);
+		document.network_interface.set_input_override(node_id, 6, Some("hidden".to_string()), network_path); // Hide it while we're not yet using it
 	}
 
 	// Add context features to nodes that don't have them (fine-grained context caching migration)

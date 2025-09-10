@@ -1351,32 +1351,52 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					inputs: vec![
+						// Value
 						NodeInput::value(TaggedValue::DAffine2(DAffine2::default()), true),
+						// Translation
 						NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
+						// Rotation
 						NodeInput::value(TaggedValue::F64(0.), false),
+						// Scale
 						NodeInput::value(TaggedValue::DVec2(DVec2::ONE), false),
+						// Skew
 						NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
+						// Origin Offset
 						NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
+						// Scale Appearance
+						NodeInput::value(TaggedValue::Bool(true), false),
 					],
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(1), 0)],
+						exports: vec![
+							// From the Transform node
+							NodeInput::node(NodeId(1), 0),
+						],
 						nodes: [
+							// Monitor node
 							DocumentNode {
-								inputs: vec![NodeInput::network(generic!(T), 0)],
+								inputs: vec![
+									// From the Value import
+									NodeInput::network(generic!(T), 0),
+								],
 								implementation: DocumentNodeImplementation::ProtoNode(memo::monitor::IDENTIFIER),
 								call_argument: generic!(T),
 								skip_deduplication: true,
 								..Default::default()
 							},
+							// Transform node
 							DocumentNode {
 								inputs: vec![
+									// From the Monitor node
 									NodeInput::node(NodeId(0), 0),
+									// From the Translation import
 									NodeInput::network(concrete!(DVec2), 1),
+									// From the Rotation import
 									NodeInput::network(concrete!(f64), 2),
+									// From the Scale import
 									NodeInput::network(concrete!(DVec2), 3),
+									// From the Skew import
 									NodeInput::network(concrete!(DVec2), 4),
 								],
-								call_argument: concrete!(Context),
 								implementation: DocumentNodeImplementation::ProtoNode(transform_nodes::transform::IDENTIFIER),
 								..Default::default()
 							},
@@ -1442,7 +1462,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							}),
 						),
 						InputMetadata::with_name_description_override("Skew", "TODO", WidgetOverride::Custom("transform_skew".to_string())),
-						("Origin Offset", "TODO").into(),
+						InputMetadata::with_name_description_override("Origin Offset", "TODO", WidgetOverride::Custom("hidden".to_string())),
+						InputMetadata::with_name_description_override("Scale Appearance", "TODO", WidgetOverride::Custom("hidden".to_string())),
 					],
 					output_names: vec!["Data".to_string()],
 					..Default::default()
