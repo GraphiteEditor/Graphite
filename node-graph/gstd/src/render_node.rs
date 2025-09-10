@@ -12,6 +12,7 @@ use graphene_core::{Artboard, CloneVarArgs, ExtractAll, ExtractVarArgs};
 use graphene_core::{Color, Context, Ctx, ExtractFootprint, Graphic, OwnedContextImpl, WasmNotSend};
 use graphene_svg_renderer::{Render, RenderOutputType as RenderOutputTypeRequest, RenderParams, RenderSvgSegmentList, SvgRender, format_transform_matrix};
 use graphene_svg_renderer::{RenderMetadata, SvgSegment};
+use wgpu_executor::RenderContext;
 
 use std::sync::Arc;
 
@@ -25,9 +26,8 @@ type ImageData = Vec<(u64, Image<Color>)>;
 
 #[derive(Clone, dyn_any::DynAny)]
 pub enum RenderIntermediateType {
-	Vello(Arc<vello::Scene>),
-	Svg(Arc<(String, ImageData)>),
-	Data(Arc<dyn Render + Send + Sync + 'static>),
+	Vello(Arc<(vello::Scene, RenderContext)>),
+	Svg(Arc<(String, ImageData, String)>),
 }
 #[derive(Clone, dyn_any::DynAny)]
 pub struct RenderIntermediate {
@@ -65,13 +65,6 @@ async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + 
 	data.collect_metadata(&mut metadata, footprint, None);
 	let contains_artboard = data.contains_artboard();
 
-	if data.contains_color_or_gradient() {
-		return RenderIntermediate {
-			ty: RenderIntermediateType::Data(Arc::new(data)),
-			metadata,
-			contains_artboard,
-		};
-	}
 	let editor_api = editor_api.eval(None).await;
 
 	if !render_params.for_export
@@ -86,7 +79,7 @@ async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + 
 		data.render_to_vello(&mut scene, Default::default(), &mut context, render_params);
 
 		RenderIntermediate {
-			ty: RenderIntermediateType::Vello(Arc::new(scene)),
+			ty: RenderIntermediateType::Vello(Arc::new((scene, context))),
 			metadata,
 			contains_artboard,
 		}
@@ -94,7 +87,7 @@ async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + 
 		data.render_svg(&mut render, render_params);
 
 		RenderIntermediate {
-			ty: RenderIntermediateType::Svg(Arc::new((render.svg.to_svg_string(), render.image_data))),
+			ty: RenderIntermediateType::Svg(Arc::new((render.svg.to_svg_string(), render.image_data, render.svg_defs.clone()))),
 			metadata,
 			contains_artboard,
 		}
@@ -185,9 +178,7 @@ async fn render<'a: 'n>(
 				RenderIntermediateType::Svg(svg_data) => {
 					svg_renderer.svg.push(SvgSegment::from(svg_data.0.clone()));
 					svg_renderer.image_data = svg_data.1.clone();
-				}
-				RenderIntermediateType::Data(data) => {
-					data.render_svg(&mut svg_renderer, render_params);
+					svg_renderer.svg_defs = svg_data.2.clone();
 				}
 				_ => unreachable!(),
 			};
@@ -199,30 +190,20 @@ async fn render<'a: 'n>(
 			}
 		}
 		_ => {
-			let mut context = wgpu_executor::RenderContext::default();
 			let Some(exec) = editor_api.application_io.as_ref().unwrap().gpu_executor() else {
 				unreachable!("Attempted to render with Vello when no GPU executor is available");
 			};
-			let scene = match ty {
-				RenderIntermediateType::Vello(child) => {
-					let mut scene = vello::Scene::new();
-					scene.append(Arc::as_ref(&child), Some(vello::kurbo::Affine::new(footprint.transform.to_cols_array())));
-					scene
-				}
-				RenderIntermediateType::Data(data) => {
-					let mut scene = vello::Scene::new();
-					data.render_to_vello(&mut scene, footprint.transform, &mut context, render_params);
-					scene
-				}
-				_ => unreachable!(),
-			};
+			let RenderIntermediateType::Vello(vello_data) = ty else { unreachable!() };
+			let (child, context) = Arc::as_ref(&vello_data);
+			let mut scene = vello::Scene::new();
+			scene.append(child, Some(vello::kurbo::Affine::new(footprint.transform.to_cols_array())));
 
 			let mut background = Color::from_rgb8_srgb(0x22, 0x22, 0x22);
 			if !contains_artboard && !render_params.hide_artboards {
 				background = Color::WHITE;
 			}
 			if let Some(surface_handle) = surface_handle {
-				exec.render_vello_scene(&scene, &surface_handle, footprint.resolution, &context, background)
+				exec.render_vello_scene(&scene, &surface_handle, footprint.resolution, context, background)
 					.await
 					.expect("Failed to render Vello scene");
 

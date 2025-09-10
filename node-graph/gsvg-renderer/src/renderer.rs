@@ -276,9 +276,6 @@ pub trait Render: BoundingBox + RenderComplexity {
 	fn contains_artboard(&self) -> bool {
 		false
 	}
-	fn contains_color_or_gradient(&self) -> bool {
-		false
-	}
 
 	fn new_ids_from_hash(&mut self, _reference: Option<NodeId>) {}
 }
@@ -385,16 +382,6 @@ impl Render for Graphic {
 			Graphic::RasterGPU(table) => table.contains_artboard(),
 			Graphic::Color(table) => table.contains_artboard(),
 			Graphic::Gradient(table) => table.contains_artboard(),
-		}
-	}
-	fn contains_color_or_gradient(&self) -> bool {
-		match self {
-			Graphic::Graphic(table) => table.contains_color_or_gradient(),
-			Graphic::Vector(table) => table.contains_color_or_gradient(),
-			Graphic::RasterCPU(table) => table.contains_color_or_gradient(),
-			Graphic::RasterGPU(table) => table.contains_color_or_gradient(),
-			Graphic::Color(table) => table.contains_color_or_gradient(),
-			Graphic::Gradient(table) => table.contains_color_or_gradient(),
 		}
 	}
 
@@ -704,9 +691,6 @@ impl Render for Table<Graphic> {
 	fn contains_artboard(&self) -> bool {
 		self.iter().any(|row| row.element.contains_artboard())
 	}
-	fn contains_color_or_gradient(&self) -> bool {
-		self.iter().any(|row| row.element.contains_color_or_gradient())
-	}
 
 	fn new_ids_from_hash(&mut self, _reference: Option<NodeId>) {
 		for row in self.iter_mut() {
@@ -768,7 +752,7 @@ impl Render for Table<Vector> {
 						applied_stroke_transform,
 						bounds_matrix,
 						transformed_bounds_matrix,
-						&render_params,
+						render_params,
 					);
 					attributes.push_val(fill_and_stroke);
 				});
@@ -866,7 +850,7 @@ impl Render for Table<Vector> {
 						applied_stroke_transform,
 						bounds_matrix,
 						transformed_bounds_matrix,
-						&render_params,
+						render_params,
 					);
 					attributes.push_val(fill_and_stroke);
 				});
@@ -1401,17 +1385,17 @@ impl Render for Table<Raster<GPU>> {
 	}
 }
 
+const ALMOST_INF: f64 = (1_000_000_000) as f64;
+const ALMOST_INF_OFFSET: f64 = (-500_000_000) as f64;
+
 impl Render for Table<Color> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for row in self.iter() {
 			render.leaf_tag("rect", |attributes| {
-				attributes.push("width", render_params.footprint.resolution.x.to_string());
-				attributes.push("height", render_params.footprint.resolution.y.to_string());
-
-				let matrix = format_transform_matrix(render_params.footprint.transform.inverse());
-				if !matrix.is_empty() {
-					attributes.push("transform", matrix);
-				}
+				attributes.push("width", ALMOST_INF.to_string());
+				attributes.push("height", ALMOST_INF.to_string());
+				attributes.push("x", ALMOST_INF_OFFSET.to_string());
+				attributes.push("y", ALMOST_INF_OFFSET.to_string());
 
 				let color = row.element;
 				attributes.push("fill", format!("#{}", color.to_rgb_hex_srgb_from_gamma()));
@@ -1432,7 +1416,9 @@ impl Render for Table<Color> {
 	}
 
 	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
+	fn render_to_vello(&self, scene: &mut Scene, _parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
+		use core::f64;
+
 		use vello::peniko;
 
 		for row in self.iter() {
@@ -1440,31 +1426,24 @@ impl Render for Table<Color> {
 			let blend_mode = alpha_blending.blend_mode.to_peniko();
 			let opacity = alpha_blending.opacity(render_params.for_mask);
 
-			let transform = parent_transform * render_params.footprint.transform.inverse();
 			let color = row.element;
 			let vello_color = peniko::Color::new([color.r(), color.g(), color.b(), color.a()]);
 
-			let rect = kurbo::Rect::from_origin_size(
-				kurbo::Point::ZERO,
-				kurbo::Size::new(render_params.footprint.resolution.x as f64, render_params.footprint.resolution.y as f64),
-			);
+			let rect = kurbo::Rect::from_origin_size(kurbo::Point::ZERO, kurbo::Size::new(1., 1.));
 
 			let mut layer = false;
 			if opacity < 1. || alpha_blending.blend_mode != BlendMode::default() {
 				let blending = peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver);
-				scene.push_layer(blending, opacity, kurbo::Affine::IDENTITY, &rect);
+				scene.push_layer(blending, opacity, kurbo::Affine::scale(f64::INFINITY), &rect);
 				layer = true;
 			}
 
-			scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(transform.to_cols_array()), vello_color, None, &rect);
+			scene.fill(peniko::Fill::NonZero, kurbo::Affine::scale(f64::INFINITY), vello_color, None, &rect);
 
 			if layer {
 				scene.pop_layer();
 			}
 		}
-	}
-	fn contains_color_or_gradient(&self) -> bool {
-		true
 	}
 }
 
@@ -1472,13 +1451,10 @@ impl Render for Table<GradientStops> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for row in self.iter() {
 			render.leaf_tag("rect", |attributes| {
-				attributes.push("width", render_params.footprint.resolution.x.to_string());
-				attributes.push("height", render_params.footprint.resolution.y.to_string());
-
-				let matrix = format_transform_matrix(render_params.footprint.transform.inverse());
-				if !matrix.is_empty() {
-					attributes.push("transform", matrix);
-				}
+				attributes.push("width", ALMOST_INF.to_string());
+				attributes.push("height", ALMOST_INF.to_string());
+				attributes.push("x", ALMOST_INF_OFFSET.to_string());
+				attributes.push("y", ALMOST_INF_OFFSET.to_string());
 
 				let mut stop_string = String::new();
 				for (position, color) in row.element.0.iter() {
@@ -1535,7 +1511,7 @@ impl Render for Table<GradientStops> {
 	}
 
 	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
+	fn render_to_vello(&self, scene: &mut Scene, _parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
 		use vello::peniko;
 
 		for row in self.iter() {
@@ -1543,31 +1519,24 @@ impl Render for Table<GradientStops> {
 			let blend_mode = alpha_blending.blend_mode.to_peniko();
 			let opacity = alpha_blending.opacity(render_params.for_mask);
 
-			let transform = parent_transform * render_params.footprint.transform.inverse();
 			let color = row.element.0.first().map(|stop| stop.1).unwrap_or(Color::MAGENTA);
 			let vello_color = peniko::Color::new([color.r(), color.g(), color.b(), color.a()]);
 
-			let rect = kurbo::Rect::from_origin_size(
-				kurbo::Point::ZERO,
-				kurbo::Size::new(render_params.footprint.resolution.x as f64, render_params.footprint.resolution.y as f64),
-			);
+			let rect = kurbo::Rect::from_origin_size(kurbo::Point::ZERO, kurbo::Size::new(1., 1.));
 
 			let mut layer = false;
 			if opacity < 1. || alpha_blending.blend_mode != BlendMode::default() {
 				let blending = peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver);
-				scene.push_layer(blending, opacity, kurbo::Affine::IDENTITY, &rect);
+				scene.push_layer(blending, opacity, kurbo::Affine::scale(f64::INFINITY), &rect);
 				layer = true;
 			}
 
-			scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(transform.to_cols_array()), vello_color, None, &rect);
+			scene.fill(peniko::Fill::NonZero, kurbo::Affine::scale(f64::INFINITY), vello_color, None, &rect);
 
 			if layer {
 				scene.pop_layer();
 			}
 		}
-	}
-	fn contains_color_or_gradient(&self) -> bool {
-		true
 	}
 }
 
