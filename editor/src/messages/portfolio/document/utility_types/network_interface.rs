@@ -3564,8 +3564,7 @@ impl NodeNetworkInterface {
 		}
 
 		self.document_metadata
-			.click_targets
-			.get(&layer)
+			.click_targets(layer)
 			.map(|click| click.iter().map(ClickTarget::target_type))
 			.map(|target_types| Vector::from_target_types(target_types, true))
 	}
