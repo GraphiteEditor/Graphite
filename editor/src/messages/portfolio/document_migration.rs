@@ -1054,66 +1054,67 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 	// Migrate the transform node to use degrees instead of radians and add another temporary input that will be used for the origin offset
 	if reference == "Transform" && node.inputs.get(5).is_none() {
-		let rotation = node.inputs.get(2)?;
-
-		match rotation {
+		// Migrate rotation from radians to degrees
+		match node.inputs.get(2)? {
 			NodeInput::Value { tagged_value, exposed } => {
-				let TaggedValue::F64(radians) = *tagged_value.clone().into_inner() else {
-					return None;
-				};
-				let degrees = NodeInput::value(TaggedValue::F64(radians * 180. / PI), *exposed);
+				// Read the existing Properties panel number value, which used to be in radians
+				let TaggedValue::F64(radians) = *tagged_value.clone().into_inner() else { return None };
+
+				// Convert the radians to degrees and set it back as the new input value
+				let degrees = NodeInput::value(TaggedValue::F64(radians.to_degrees()), *exposed);
 				document.network_interface.set_input(&InputConnector::node(*node_id, 2), degrees, network_path);
 			}
 			NodeInput::Node { .. } => {
+				// Construct a new Multiply node for converting from degrees to radians
 				let Some(multiply_node) = resolve_document_node_type("Multiply") else {
 					log::error!("Could not get multiply node from definition when upgrading transform");
 					return None;
 				};
-
 				let mut multiply_template = multiply_node.default_node_template();
 				multiply_template.document_node.inputs[1] = NodeInput::value(TaggedValue::F64(180. / PI), false);
+
+				// Decide on the placement position of the new Multiply node
 				let multiply_node_id = NodeId::new();
-				document.network_interface.insert_node(multiply_node_id, multiply_template, network_path);
 				let Some(transform_position) = document.network_interface.position_from_downstream_node(node_id, network_path) else {
 					log::error!("Could not get positon for transform node {node_id}");
 					return None;
 				};
-				let multiply_position: IVec2 = transform_position + IVec2::new(-7, 1);
+				let multiply_position = transform_position + IVec2::new(-7, 1);
+
+				// Insert the new Multiply node into the network directly before it's used
+				document.network_interface.insert_node(multiply_node_id, multiply_template, network_path);
 				document.network_interface.shift_absolute_node_position(&multiply_node_id, multiply_position, network_path);
 				document.network_interface.insert_node_between(&multiply_node_id, &InputConnector::node(*node_id, 2), 0, network_path);
+
+				// Add the Origin Offset parameter as a hidden input, which will be given actual functionality in the future but is currently used as a marker to detect not-yet-upgraded Transform nodes
 				let nested_transform_network = [network_path, &[*node_id]].concat();
 				document
 					.network_interface
 					.add_import(TaggedValue::DVec2(DVec2::ZERO), false, 5, "Origin Offset", "", &nested_transform_network);
-				// Hide the properties row for now
-				document.network_interface.set_input_override(node_id, 5, Some("hidden".to_string()), network_path);
+				document.network_interface.set_input_override(node_id, 5, Some("hidden".to_string()), network_path); // Hide it while we're not yet using it
 			}
 			_ => {}
 		};
 
-		let skew = node.inputs.get(4)?;
-		match skew {
-			NodeInput::Value { tagged_value, exposed } => {
-				let TaggedValue::DVec2(old_value) = *tagged_value.clone().into_inner() else {
-					return None;
-				};
-				// The previous value stored the tangent of the displayed degrees. Now it stores the degrees, so take the arctan of it and convert to degrees
-				let new_value = DVec2::new(old_value.x.atan().to_degrees(), old_value.y.atan().to_degrees());
-				let new_input = NodeInput::value(TaggedValue::DVec2(new_value), *exposed);
-				document.network_interface.set_input(&InputConnector::node(*node_id, 4), new_input, network_path);
-			}
-			_ => {}
+		// Migrate skew from radians to degrees
+		if let NodeInput::Value { tagged_value, exposed } = node.inputs.get(4)? {
+			// Read the existing Properties panel number value, which used to be in radians
+			let TaggedValue::DVec2(old_value) = *tagged_value.clone().into_inner() else { return None };
+
+			// The previous value stored the tangent of the displayed degrees. Now it stores the degrees, so take the arctan of it and convert to degrees.
+			let new_value = DVec2::new(old_value.x.atan().to_degrees(), old_value.y.atan().to_degrees());
+			let new_input = NodeInput::value(TaggedValue::DVec2(new_value), *exposed);
+			document.network_interface.set_input(&InputConnector::node(*node_id, 4), new_input, network_path);
 		}
 	}
 
 	// Add context features to nodes that don't have them (fine-grained context caching migration)
-	if node.context_features == graphene_std::ContextDependencies::default() {
-		if let Some(reference) = document.network_interface.reference(node_id, network_path).cloned().flatten() {
-			if let Some(node_definition) = resolve_document_node_type(&reference) {
-				let context_features = node_definition.node_template.document_node.context_features;
-				document.network_interface.set_context_features(node_id, network_path, context_features);
-			}
-		}
+	if node.context_features == graphene_std::ContextDependencies::default()
+		&& let Some(reference) = document.network_interface.reference(node_id, network_path).cloned().flatten()
+		&& let Some(node_definition) = resolve_document_node_type(&reference)
+	{
+		let context_features = node_definition.node_template.document_node.context_features;
+		document.network_interface.set_context_features(node_id, network_path, context_features);
 	}
 
 	// ==================================
