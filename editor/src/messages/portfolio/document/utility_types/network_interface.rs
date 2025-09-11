@@ -1,4 +1,5 @@
 mod deserialization;
+mod memo_network;
 
 use super::document_metadata::{DocumentMetadata, LayerNodeIdentifier, NodeRelations};
 use super::misc::PTZ;
@@ -26,7 +27,7 @@ use graphene_std::vector::{PointId, Vector, VectorModificationType};
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
 use interpreted_executor::node_registry::NODE_REGISTRY;
 use kurbo::BezPath;
-use private::MemoNetwork;
+use memo_network::MemoNetwork;
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -66,65 +67,6 @@ impl Clone for NodeNetworkInterface {
 impl PartialEq for NodeNetworkInterface {
 	fn eq(&self, other: &Self) -> bool {
 		self.network == other.network && self.network_metadata == other.network_metadata
-	}
-}
-
-mod private {
-	use std::cell::RefCell;
-	use std::hash::{Hash, Hasher};
-
-	use graph_craft::document::NodeNetwork;
-
-	#[derive(Debug, Default, Clone, PartialEq)]
-	pub struct MemoNetwork {
-		network: NodeNetwork,
-		hash_code: RefCell<Option<u64>>,
-	}
-
-	impl<'de> serde::Deserialize<'de> for MemoNetwork {
-		fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-		where
-			D: serde::Deserializer<'de>,
-		{
-			Ok(Self::new(NodeNetwork::deserialize(deserializer)?))
-		}
-	}
-
-	impl serde::Serialize for MemoNetwork {
-		fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-		where
-			S: serde::Serializer,
-		{
-			self.network.serialize(serializer)
-		}
-	}
-
-	impl Hash for MemoNetwork {
-		fn hash<H: Hasher>(&self, state: &mut H) {
-			self.current_hash().hash(state);
-		}
-	}
-
-	impl MemoNetwork {
-		pub fn network(&self) -> &NodeNetwork {
-			&self.network
-		}
-		pub fn network_mut(&mut self) -> &mut NodeNetwork {
-			self.hash_code.replace(None);
-			&mut self.network
-		}
-
-		pub fn new(network: NodeNetwork) -> Self {
-			Self { network, hash_code: None.into() }
-		}
-
-		pub fn current_hash(&self) -> u64 {
-			let mut hash_code = self.hash_code.borrow_mut();
-			if hash_code.is_none() {
-				*hash_code = Some(self.network.current_hash());
-			}
-			hash_code.unwrap()
-		}
 	}
 }
 
