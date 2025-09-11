@@ -7,7 +7,7 @@ authors = ["Graphite Authors <contact@graphite.rs>"]
 license = "MIT OR Apache-2.0"
 
 [features]
-default = ["wasm"]
+default = ["wasm", "wgpu"]
 gpu = []
 wgpu = ["gpu", "graph-craft/wgpu", "graphene-application-io/wgpu"]
 wasm = [
@@ -18,7 +18,7 @@ wasm = [
 	"image/png",
 ]
 image-compare = []
-vello = ["dep:vello", "gpu"]
+vello = ["gpu"]
 resvg = []
 wayland = ["graph-craft/wayland"]
 shader-nodes = ["graphene-raster-nodes/shader-nodes"]
@@ -48,7 +48,8 @@ base64 = { workspace = true }
 wasm-bindgen = { workspace = true, optional = true }
 wasm-bindgen-futures = { workspace = true, optional = true }
 tokio = { workspace = true, optional = true }
-vello = { workspace = true, optional = true }
+vello = { workspace = true }
+vello_encoding = { workspace = true }
 web-sys = { workspace = true, optional = true, features = [
 	"Window",
 	"CanvasRenderingContext2d",

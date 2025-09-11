@@ -156,11 +156,19 @@ pub struct RenderContext {
 	pub resource_overrides: Vec<(peniko::Image, wgpu::Texture)>,
 }
 
+#[derive(Default, Clone, Copy, Hash)]
+pub enum RenderOutputType {
+	#[default]
+	Svg,
+	Vello,
+}
+
 /// Static state used whilst rendering
 #[derive(Default, Clone)]
 pub struct RenderParams {
 	pub render_mode: RenderMode,
 	pub footprint: Footprint,
+	pub render_output_type: RenderOutputType,
 	pub thumbnail: bool,
 	/// Don't render the rectangle for an artboard to allow exporting with a transparent background.
 	pub hide_artboards: bool,
@@ -172,6 +180,23 @@ pub struct RenderParams {
 	pub alignment_parent_transform: Option<DAffine2>,
 	pub aligned_strokes: bool,
 	pub override_paint_order: bool,
+}
+
+impl Hash for RenderParams {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		self.render_mode.hash(state);
+		self.footprint.hash(state);
+		self.render_output_type.hash(state);
+		self.thumbnail.hash(state);
+		self.hide_artboards.hash(state);
+		self.for_export.hash(state);
+		self.for_mask.hash(state);
+		if let Some(x) = self.alignment_parent_transform {
+			x.to_cols_array().iter().for_each(|x| x.to_bits().hash(state))
+		}
+		self.aligned_strokes.hash(state);
+		self.override_paint_order.hash(state);
+	}
 }
 
 impl RenderParams {
@@ -222,6 +247,14 @@ pub struct RenderMetadata {
 	pub first_element_source_id: HashMap<NodeId, Option<NodeId>>,
 	pub click_targets: HashMap<NodeId, Vec<ClickTarget>>,
 	pub clip_targets: HashSet<NodeId>,
+}
+
+impl RenderMetadata {
+	pub fn apply_transform(&mut self, transform: DAffine2) {
+		for value in self.upstream_footprints.values_mut() {
+			value.transform = transform * value.transform;
+		}
+	}
 }
 
 // TODO: Rename to "Graphical"
@@ -719,7 +752,7 @@ impl Render for Table<Vector> {
 						applied_stroke_transform,
 						bounds_matrix,
 						transformed_bounds_matrix,
-						&render_params,
+						render_params,
 					);
 					attributes.push_val(fill_and_stroke);
 				});
@@ -817,7 +850,7 @@ impl Render for Table<Vector> {
 						applied_stroke_transform,
 						bounds_matrix,
 						transformed_bounds_matrix,
-						&render_params,
+						render_params,
 					);
 					attributes.push_val(fill_and_stroke);
 				});
@@ -1352,17 +1385,23 @@ impl Render for Table<Raster<GPU>> {
 	}
 }
 
+const ALMOST_INF: f64 = 2_000_000_000.;
+const ALMOST_INF_OFFSET: f64 = ALMOST_INF / -2.;
+
+// Since colors and gradients are technically infinitely big, we have to implement
+// workarounds for rendering them correctly in a way which still allows us
+// to cache the intermediate render data (SVG string/Vello scene).
+// For SVG, this is is achived by creating a truly giant rectangle.
+// For Vello, we create a layer with a placeholder transform which we
+// later replace with the current viewport transform before each render.
 impl Render for Table<Color> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for row in self.iter() {
 			render.leaf_tag("rect", |attributes| {
-				attributes.push("width", render_params.footprint.resolution.x.to_string());
-				attributes.push("height", render_params.footprint.resolution.y.to_string());
-
-				let matrix = format_transform_matrix(render_params.footprint.transform.inverse());
-				if !matrix.is_empty() {
-					attributes.push("transform", matrix);
-				}
+				attributes.push("width", ALMOST_INF.to_string());
+				attributes.push("height", ALMOST_INF.to_string());
+				attributes.push("x", ALMOST_INF_OFFSET.to_string());
+				attributes.push("y", ALMOST_INF_OFFSET.to_string());
 
 				let color = row.element;
 				attributes.push("fill", format!("#{}", color.to_rgb_hex_srgb_from_gamma()));
@@ -1383,7 +1422,7 @@ impl Render for Table<Color> {
 	}
 
 	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
+	fn render_to_vello(&self, scene: &mut Scene, _parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
 		use vello::peniko;
 
 		for row in self.iter() {
@@ -1391,23 +1430,19 @@ impl Render for Table<Color> {
 			let blend_mode = alpha_blending.blend_mode.to_peniko();
 			let opacity = alpha_blending.opacity(render_params.for_mask);
 
-			let transform = parent_transform * render_params.footprint.transform.inverse();
 			let color = row.element;
 			let vello_color = peniko::Color::new([color.r(), color.g(), color.b(), color.a()]);
 
-			let rect = kurbo::Rect::from_origin_size(
-				kurbo::Point::ZERO,
-				kurbo::Size::new(render_params.footprint.resolution.x as f64, render_params.footprint.resolution.y as f64),
-			);
+			let rect = kurbo::Rect::from_origin_size(kurbo::Point::ZERO, kurbo::Size::new(1., 1.));
 
 			let mut layer = false;
 			if opacity < 1. || alpha_blending.blend_mode != BlendMode::default() {
 				let blending = peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver);
-				scene.push_layer(blending, opacity, kurbo::Affine::IDENTITY, &rect);
+				scene.push_layer(blending, opacity, kurbo::Affine::scale(f64::INFINITY), &rect);
 				layer = true;
 			}
 
-			scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(transform.to_cols_array()), vello_color, None, &rect);
+			scene.fill(peniko::Fill::NonZero, kurbo::Affine::scale(f64::INFINITY), vello_color, None, &rect);
 
 			if layer {
 				scene.pop_layer();
@@ -1420,13 +1455,10 @@ impl Render for Table<GradientStops> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for row in self.iter() {
 			render.leaf_tag("rect", |attributes| {
-				attributes.push("width", render_params.footprint.resolution.x.to_string());
-				attributes.push("height", render_params.footprint.resolution.y.to_string());
-
-				let matrix = format_transform_matrix(render_params.footprint.transform.inverse());
-				if !matrix.is_empty() {
-					attributes.push("transform", matrix);
-				}
+				attributes.push("width", ALMOST_INF.to_string());
+				attributes.push("height", ALMOST_INF.to_string());
+				attributes.push("x", ALMOST_INF_OFFSET.to_string());
+				attributes.push("y", ALMOST_INF_OFFSET.to_string());
 
 				let mut stop_string = String::new();
 				for (position, color) in row.element.0.iter() {
@@ -1483,7 +1515,7 @@ impl Render for Table<GradientStops> {
 	}
 
 	#[cfg(feature = "vello")]
-	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
+	fn render_to_vello(&self, scene: &mut Scene, _parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
 		use vello::peniko;
 
 		for row in self.iter() {
@@ -1491,23 +1523,20 @@ impl Render for Table<GradientStops> {
 			let blend_mode = alpha_blending.blend_mode.to_peniko();
 			let opacity = alpha_blending.opacity(render_params.for_mask);
 
-			let transform = parent_transform * render_params.footprint.transform.inverse();
 			let color = row.element.0.first().map(|stop| stop.1).unwrap_or(Color::MAGENTA);
 			let vello_color = peniko::Color::new([color.r(), color.g(), color.b(), color.a()]);
 
-			let rect = kurbo::Rect::from_origin_size(
-				kurbo::Point::ZERO,
-				kurbo::Size::new(render_params.footprint.resolution.x as f64, render_params.footprint.resolution.y as f64),
-			);
+			let rect = kurbo::Rect::from_origin_size(kurbo::Point::ZERO, kurbo::Size::new(1., 1.));
 
 			let mut layer = false;
 			if opacity < 1. || alpha_blending.blend_mode != BlendMode::default() {
 				let blending = peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver);
-				scene.push_layer(blending, opacity, kurbo::Affine::IDENTITY, &rect);
+				// See implemenation in `Table<Color>` for more detail
+				scene.push_layer(blending, opacity, kurbo::Affine::scale(f64::INFINITY), &rect);
 				layer = true;
 			}
 
-			scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(transform.to_cols_array()), vello_color, None, &rect);
+			scene.fill(peniko::Fill::NonZero, kurbo::Affine::scale(f64::INFINITY), vello_color, None, &rect);
 
 			if layer {
 				scene.pop_layer();

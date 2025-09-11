@@ -21,12 +21,14 @@ use graphene_std::application_io::{ImageTexture, SurfaceFrame};
 use graphene_std::brush::brush_cache::BrushCache;
 use graphene_std::brush::brush_stroke::BrushStroke;
 use graphene_std::gradient::GradientStops;
+use graphene_std::render_node::RenderIntermediate;
 use graphene_std::table::Table;
 use graphene_std::transform::Footprint;
 use graphene_std::uuid::NodeId;
 use graphene_std::vector::Vector;
+use graphene_std::wasm_application_io::WasmEditorApi;
 #[cfg(feature = "gpu")]
-use graphene_std::wasm_application_io::{WasmEditorApi, WasmSurfaceHandle};
+use graphene_std::wasm_application_io::WasmSurfaceHandle;
 use node_registry_macros::{async_node, convert_node, into_node};
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
@@ -130,6 +132,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => &WasmEditorApi, Context => graphene_std::ContextFeatures]),
 		#[cfg(feature = "gpu")]
 		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => Arc<WasmSurfaceHandle>, Context => graphene_std::ContextFeatures]),
+		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => RenderIntermediate, Context => graphene_std::ContextFeatures]),
 		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => WgpuSurface, Context => graphene_std::ContextFeatures]),
 		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => Option<WgpuSurface>, Context => graphene_std::ContextFeatures]),
 		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => WindowHandle, Context => graphene_std::ContextFeatures]),
@@ -164,7 +167,6 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => DAffine2]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => Footprint]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => RenderOutput]),
-		#[cfg(feature = "gpu")]
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => &WasmEditorApi]),
 		#[cfg(feature = "gpu")]
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => WgpuSurface]),
@@ -215,6 +217,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => graphene_core::vector::misc::CentroidType]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => graphene_path_bool::BooleanOperation]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => graphene_core::text::TextAlign]),
+		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => RenderIntermediate]),
 		// =================
 		// IMPURE MEMO NODES
 		// =================

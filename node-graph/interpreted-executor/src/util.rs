@@ -28,7 +28,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 	let render_node = DocumentNode {
 		inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(2), 0)],
 		implementation: DocumentNodeImplementation::Network(NodeNetwork {
-			exports: vec![NodeInput::node(NodeId(2), 0)],
+			exports: vec![NodeInput::node(NodeId(4), 0)],
 			nodes: [
 				DocumentNode {
 					inputs: vec![NodeInput::scope("editor-api")],
@@ -41,18 +41,36 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_core::memo::memo::IDENTIFIER),
 					..Default::default()
 				},
-				// TODO: Add conversion step
+				DocumentNode {
+					call_argument: concrete!(Context),
+					inputs: vec![
+						NodeInput::import(graphene_core::Type::Fn(Box::new(concrete!(Context)), Box::new(generic!(T))), 0),
+						NodeInput::scope("editor-api"),
+					],
+					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_node::render_intermediate::IDENTIFIER),
+					context_features: graphene_std::ContextDependencies {
+						extract: ContextFeatures::VARARGS,
+						inject: ContextFeatures::empty(),
+					},
+					..Default::default()
+				},
+				DocumentNode {
+					call_argument: concrete!(Context),
+					inputs: vec![NodeInput::scope("editor-api"), NodeInput::node(NodeId(2), 0), NodeInput::node(NodeId(1), 0)],
+					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_node::render::IDENTIFIER),
+					context_features: graphene_std::ContextDependencies {
+						extract: ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS,
+						inject: ContextFeatures::empty(),
+					},
+					..Default::default()
+				},
 				DocumentNode {
 					call_argument: concrete!(graphene_std::application_io::RenderConfig),
-					inputs: vec![
-						NodeInput::scope("editor-api"),
-						NodeInput::import(graphene_core::Type::Fn(Box::new(concrete!(Context)), Box::new(generic!(T))), 0),
-						NodeInput::node(NodeId(1), 0),
-					],
-					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_std::wasm_application_io::RenderNode")),
+					inputs: vec![NodeInput::node(NodeId(3), 0)],
+					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_node::create_context::IDENTIFIER),
 					context_features: graphene_std::ContextDependencies {
-						extract: ContextFeatures::FOOTPRINT,
-						inject: ContextFeatures::FOOTPRINT | ContextFeatures::REAL_TIME | ContextFeatures::ANIMATION_TIME,
+						extract: ContextFeatures::empty(),
+						inject: ContextFeatures::REAL_TIME | ContextFeatures::ANIMATION_TIME | ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS,
 					},
 					..Default::default()
 				},
