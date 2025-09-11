@@ -9,7 +9,7 @@ pub use graphene_core::uuid::NodeId;
 pub use graphene_core::uuid::generate_uuid;
 use graphene_core::{Context, ContextDependencies, Cow, MemoHash, ProtoNodeIdentifier, Type};
 use log::Metadata;
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxBuildHasher, FxHashMap};
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -551,9 +551,8 @@ impl PartialEq for NodeNetwork {
 /// Graph modification functions
 impl NodeNetwork {
 	pub fn current_hash(&self) -> u64 {
-		let mut hasher = DefaultHasher::new();
-		self.hash(&mut hasher);
-		hasher.finish()
+		use std::hash::BuildHasher;
+		FxBuildHasher.hash_one(self)
 	}
 
 	pub fn value_network(node: DocumentNode) -> Self {

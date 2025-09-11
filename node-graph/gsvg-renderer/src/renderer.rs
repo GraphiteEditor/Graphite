@@ -1117,7 +1117,7 @@ impl Render for Table<Vector> {
 
 				// For free-floating anchors, we need to add a click target for each
 				let single_anchors_targets = vector.point_domain.ids().iter().filter_map(|&point_id| {
-					if vector.connected_count(point_id) == 0 {
+					if !vector.any_connected(point_id) {
 						let anchor = vector.point_domain.position_from_id(point_id).unwrap_or_default();
 						let point = FreePoint::new(point_id, anchor);
 
@@ -1162,7 +1162,7 @@ impl Render for Table<Vector> {
 
 			// For free-floating anchors, we need to add a click target for each
 			let single_anchors_targets = row.element.point_domain.ids().iter().filter_map(|&point_id| {
-				if row.element.connected_count(point_id) > 0 {
+				if row.element.any_connected(point_id) {
 					return None;
 				}
 

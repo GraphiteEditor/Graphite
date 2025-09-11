@@ -426,6 +426,11 @@ impl SegmentDomain {
 		self.all_connected(point).count()
 	}
 
+	/// Enumerate the number of segments connected to a point. If a segment starts and ends at a point then it is counted twice.
+	pub(crate) fn any_connected(&self, point: usize) -> bool {
+		self.all_connected(point).next().is_some()
+	}
+
 	/// Iterates over segments in the domain.
 	///
 	/// Tuple is: (id, start point, end point, handles)
