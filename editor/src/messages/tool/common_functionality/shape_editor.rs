@@ -1504,7 +1504,6 @@ impl ShapeState {
 			for (segment, _, start, end) in vector.segment_bezier_iter() {
 				if state.selected_segments.contains(&segment) {
 					if start_transaction && !transaction_started {
-						log::info!("111111");
 						responses.add(DocumentMessage::AddTransaction);
 						transaction_started = true;
 					}
@@ -1523,21 +1522,21 @@ impl ShapeState {
 			let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
 
 			for point in &state.selected_points {
-				if let ManipulatorPointId::Anchor(anchor) = point {
-					if vector.all_connected(*anchor).all(|segment| state.is_segment_selected(segment.segment)) {
-						if !transaction_started && start_transaction {
-							responses.add(DocumentMessage::AddTransaction);
-							transaction_started = true
-						}
-						let modification_type = VectorModificationType::RemovePoint { id: *anchor };
-						responses.add(GraphOperationMessage::Vector { layer, modification_type });
+				if let ManipulatorPointId::Anchor(anchor) = point
+					&& vector.all_connected(*anchor).all(|segment| state.is_segment_selected(segment.segment))
+				{
+					if !transaction_started && start_transaction {
+						responses.add(DocumentMessage::AddTransaction);
+						transaction_started = true
 					}
+					let modification_type = VectorModificationType::RemovePoint { id: *anchor };
+					responses.add(GraphOperationMessage::Vector { layer, modification_type });
 				}
 			}
 		}
 	}
 
-	// Break path at a selected point, note that it also adds a transaction if there is some change in state, returns whether some change happened or not
+	/// Note: this also adds a history transaction if there is some change in state.
 	pub fn break_path_at_selected_point(&self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		let mut transaction_started = false;
 
@@ -1556,6 +1555,7 @@ impl ShapeState {
 							responses.add(DocumentMessage::AddTransaction);
 							transaction_started = true;
 						}
+
 						if handles.contains(&handle) {
 							let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
 							responses.add(GraphOperationMessage::Vector { layer, modification_type });
@@ -1592,7 +1592,8 @@ impl ShapeState {
 		}
 	}
 
-	/// Delete point(s) and adjacent segments, also starts a transaction if some change takes place
+	/// Delete point(s) and adjacent segments.
+	/// Note: this also adds a history transaction if there is some change in state, and true is returned if so.
 	pub fn delete_point_and_break_path(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) -> bool {
 		let mut transaction_started = false;
 
