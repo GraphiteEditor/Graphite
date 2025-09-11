@@ -45,6 +45,8 @@ impl<'a> MessageHandler<NewDocumentDialogMessage, NewDocumentDialogMessageContex
 						messages: vec![DocumentMessage::ZoomCanvasToFitAll.into(), DocumentMessage::DeselectAllLayers.into()],
 					});
 				}
+
+				responses.add(DocumentMessage::MarkAsSaved);
 			}
 		}
 
