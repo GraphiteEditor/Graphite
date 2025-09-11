@@ -12,16 +12,10 @@ use graphene_core::{Artboard, CloneVarArgs, ExtractAll, ExtractVarArgs};
 use graphene_core::{Color, Context, Ctx, ExtractFootprint, Graphic, OwnedContextImpl, WasmNotSend};
 use graphene_svg_renderer::{Render, RenderOutputType as RenderOutputTypeRequest, RenderParams, RenderSvgSegmentList, SvgRender, format_transform_matrix};
 use graphene_svg_renderer::{RenderMetadata, SvgSegment};
+use std::sync::Arc;
 use wgpu_executor::RenderContext;
 
-use std::sync::Arc;
-
-#[cfg(feature = "wgpu")]
-#[node_macro::node(category("Debug: GPU"))]
-async fn create_surface<'a: 'n>(_: impl Ctx, editor: &'a WasmEditorApi) -> Arc<WasmSurfaceHandle> {
-	Arc::new(editor.application_io.as_ref().unwrap().create_window())
-}
-
+/// List of (canvas id, image data) pairs for embedding images as canvases in the final SVG string.
 type ImageData = Vec<(u64, Image<Color>)>;
 
 #[derive(Clone, dyn_any::DynAny)]
@@ -183,7 +177,7 @@ async fn render<'a: 'n>(
 			let Some(exec) = editor_api.application_io.as_ref().unwrap().gpu_executor() else {
 				unreachable!("Attempted to render with Vello when no GPU executor is available");
 			};
-			let (child, context) = Arc::as_ref(&vello_data);
+			let (child, context) = Arc::as_ref(vello_data);
 			let footprint_transform = vello::kurbo::Affine::new(footprint.transform.to_cols_array());
 
 			let mut scene = vello::Scene::new();
@@ -192,7 +186,7 @@ async fn render<'a: 'n>(
 			let encoding = scene.encoding_mut();
 
 			// We now replace all transforms which are supposed to be infinite with a transform which covers the entire viewport
-			// See [#vello > Full screen color/gradients @ 💬](https://xi.zulipchat.com/#narrow/channel/197075-vello/topic/Full.20screen.20color.2Fgradients/near/538435044) for more detail
+			// See <https://xi.zulipchat.com/#narrow/channel/197075-vello/topic/Full.20screen.20color.2Fgradients/near/538435044> for more detail
 
 			for transform in encoding.transforms.iter_mut() {
 				if transform.matrix[0] == f32::INFINITY {

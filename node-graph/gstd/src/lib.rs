@@ -1,9 +1,8 @@
 pub mod any;
+pub mod render_node;
 pub mod text;
 #[cfg(feature = "wasm")]
 pub mod wasm_application_io;
-
-pub mod render_node;
 
 pub use graphene_application_io as application_io;
 pub use graphene_brush as brush;

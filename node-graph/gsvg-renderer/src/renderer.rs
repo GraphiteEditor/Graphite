@@ -156,7 +156,7 @@ pub struct RenderContext {
 	pub resource_overrides: Vec<(peniko::Image, wgpu::Texture)>,
 }
 
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone, Copy, Hash)]
 pub enum RenderOutputType {
 	#[default]
 	Svg,
@@ -186,6 +186,7 @@ impl Hash for RenderParams {
 	fn hash<H: Hasher>(&self, state: &mut H) {
 		self.render_mode.hash(state);
 		self.footprint.hash(state);
+		self.render_output_type.hash(state);
 		self.thumbnail.hash(state);
 		self.hide_artboards.hash(state);
 		self.for_export.hash(state);
@@ -1384,14 +1385,15 @@ impl Render for Table<Raster<GPU>> {
 	}
 }
 
-const ALMOST_INF: f64 = (1_000_000_000) as f64;
-const ALMOST_INF_OFFSET: f64 = (-500_000_000) as f64;
+const ALMOST_INF: f64 = 2_000_000_000.;
+const ALMOST_INF_OFFSET: f64 = ALMOST_INF / -2.;
 
-// Since colors and gradients are tecnically infinetly big we have to implement
-// workarounds for rendering them correctly in a way which still allow us
-// to cache the intermediate render data (SVG string / vello scene).
-// For SVG this is is achived by creating a giant rectangle as its bounds.
-// For vello we create a layer with a placeholder transform which we later replace with the current viewport transform
+// Since colors and gradients are technically infinitely big, we have to implement
+// workarounds for rendering them correctly in a way which still allows us
+// to cache the intermediate render data (SVG string/Vello scene).
+// For SVG, this is is achived by creating a truly giant rectangle.
+// For Vello, we create a layer with a placeholder transform which we
+// later replace with the current viewport transform before each render.
 impl Render for Table<Color> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for row in self.iter() {
@@ -1421,8 +1423,6 @@ impl Render for Table<Color> {
 
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, _parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
-		use core::f64;
-
 		use vello::peniko;
 
 		for row in self.iter() {

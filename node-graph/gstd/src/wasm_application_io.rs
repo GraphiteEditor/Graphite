@@ -1,21 +1,24 @@
+#[cfg(target_family = "wasm")]
+use base64::Engine;
 pub use graph_craft::document::value::RenderOutputType;
 pub use graph_craft::wasm_application_io::*;
 use graphene_application_io::ApplicationIo;
+#[cfg(target_family = "wasm")]
+use graphene_core::gradient::GradientStops;
 #[cfg(target_family = "wasm")]
 use graphene_core::math::bbox::Bbox;
 use graphene_core::raster::image::Image;
 use graphene_core::raster_types::{CPU, Raster};
 use graphene_core::table::Table;
+#[cfg(target_family = "wasm")]
+use graphene_core::transform::Footprint;
+#[cfg(target_family = "wasm")]
+use graphene_core::vector::Vector;
 use graphene_core::{Color, Ctx};
 #[cfg(target_family = "wasm")]
 use graphene_core::{Graphic, WasmNotSend};
 #[cfg(target_family = "wasm")]
-use graphene_core::{gradient::GradientStops, transform::Footprint, vector::Vector};
-#[cfg(target_family = "wasm")]
 use graphene_svg_renderer::{Render, RenderParams, RenderSvgSegmentList, SvgRender};
-
-#[cfg(target_family = "wasm")]
-use base64::Engine;
 use std::sync::Arc;
 #[cfg(target_family = "wasm")]
 use wasm_bindgen::JsCast;
