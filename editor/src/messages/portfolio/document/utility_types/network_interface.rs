@@ -1,4 +1,5 @@
 mod deserialization;
+mod memo_network;
 
 use super::document_metadata::{DocumentMetadata, LayerNodeIdentifier, NodeRelations};
 use super::misc::PTZ;
@@ -26,6 +27,7 @@ use graphene_std::vector::{PointId, Vector, VectorModificationType};
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
 use interpreted_executor::node_registry::NODE_REGISTRY;
 use kurbo::BezPath;
+use memo_network::MemoNetwork;
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -36,7 +38,7 @@ use std::ops::Deref;
 pub struct NodeNetworkInterface {
 	/// The node graph that generates this document's artwork. It recursively stores its sub-graphs, so this root graph is the whole snapshot of the document content.
 	/// A public mutable reference should never be created. It should only be mutated through custom setters which perform the necessary side effects to keep network_metadata in sync
-	network: NodeNetwork,
+	network: MemoNetwork,
 	/// Stores all editor information for a NodeNetwork. Should automatically kept in sync by the setter methods when changes to the document network are made.
 	network_metadata: NodeNetworkMetadata,
 	// TODO: Wrap in TransientMetadata Option
@@ -71,7 +73,7 @@ impl PartialEq for NodeNetworkInterface {
 impl NodeNetworkInterface {
 	/// Add DocumentNodePath input to the PathModifyNode protonode
 	pub fn migrate_path_modify_node(&mut self) {
-		fix_network(&mut self.network);
+		fix_network(self.document_network_mut());
 		fn fix_network(network: &mut NodeNetwork) {
 			for node in network.nodes.values_mut() {
 				if let Some(network) = node.implementation.get_network_mut() {
@@ -91,16 +93,23 @@ impl NodeNetworkInterface {
 impl NodeNetworkInterface {
 	/// Gets the network of the root document
 	pub fn document_network(&self) -> &NodeNetwork {
-		&self.network
+		self.network.network()
+	}
+	pub fn document_network_mut(&mut self) -> &mut NodeNetwork {
+		self.network.network_mut()
 	}
 
 	/// Gets the nested network based on network_path
 	pub fn nested_network(&self, network_path: &[NodeId]) -> Option<&NodeNetwork> {
-		let Some(network) = self.network.nested_network(network_path) else {
+		let Some(network) = self.document_network().nested_network(network_path) else {
 			log::error!("Could not get nested network with path {network_path:?} in NodeNetworkInterface::network");
 			return None;
 		};
 		Some(network)
+	}
+
+	pub fn network_hash(&self) -> u64 {
+		self.network.current_hash()
 	}
 
 	/// Get the specified document node in the nested network based on node_id and network_path
@@ -161,7 +170,7 @@ impl NodeNetworkInterface {
 				.back()
 				.cloned()
 				.unwrap_or_default()
-				.filtered_selected_nodes(network_metadata.persistent_metadata.node_metadata.keys().cloned().collect()),
+				.filtered_selected_nodes(|node_id| network_metadata.persistent_metadata.node_metadata.contains_key(node_id)),
 		)
 	}
 
@@ -457,7 +466,7 @@ impl NodeNetworkInterface {
 					let tagged_value = TaggedValue::from_type_or_none(&self.input_type(&InputConnector::node(*node_id, input_index), network_path).0);
 					*input = NodeInput::value(tagged_value, true);
 				}
-			} else if let &mut NodeInput::Network { .. } = input {
+			} else if let &mut NodeInput::Import { .. } = input {
 				// Always disconnect network node input
 				let tagged_value = TaggedValue::from_type_or_none(&self.input_type(&InputConnector::node(*node_id, input_index), network_path).0);
 				*input = NodeInput::value(tagged_value, true);
@@ -725,7 +734,7 @@ impl NodeNetworkInterface {
 								..
 							} => self.output_type(&OutputConnector::node(*nested_node_id, *output_index), &[network_path, &[*node_id]].concat()),
 							NodeInput::Value { tagged_value, .. } => (tagged_value.ty(), TypeSource::TaggedValue),
-							NodeInput::Network { .. } => {
+							NodeInput::Import { .. } => {
 								// let mut encapsulating_path = network_path.to_vec();
 								// let encapsulating_node = encapsulating_path.pop().expect("No imports exist in document network");
 								// self.input_type(&InputConnector::node(encapsulating_node, *import_index), network_path)
@@ -1232,6 +1241,17 @@ impl NodeNetworkInterface {
 		Some(&metadata.transient_metadata)
 	}
 
+	pub fn set_input_override(&mut self, node_id: &NodeId, index: usize, widget_override: Option<String>, network_path: &[NodeId]) {
+		let Some(metadata) = self
+			.node_metadata_mut(node_id, network_path)
+			.and_then(|node_metadata| node_metadata.persistent_metadata.input_metadata.get_mut(index))
+		else {
+			log::error!("Could not get input metadata for {node_id} index {index} in set_input_override");
+			return;
+		};
+		metadata.persistent_metadata.widget_override = widget_override;
+	}
+
 	/// Returns the input name to display in the properties panel. If the name is empty then the type is used.
 	pub fn displayed_input_name_and_description(&mut self, node_id: &NodeId, input_index: usize, network_path: &[NodeId]) -> (String, String) {
 		let Some(input_metadata) = self.persistent_input_metadata(node_id, input_index, network_path) else {
@@ -1545,7 +1565,7 @@ impl NodeNetworkInterface {
 			log::error!("Could not get network or network_metadata in upstream_flow_back_from_nodes");
 			return FlowIter {
 				stack: Vec::new(),
-				network: &self.network,
+				network: &self.document_network(),
 				network_metadata: &self.network_metadata,
 				flow_type: FlowType::UpstreamFlow,
 			};
@@ -1575,7 +1595,7 @@ impl NodeNetworkInterface {
 		let input = self.input_from_connector(input_connector, network_path);
 		input.and_then(|input| match input {
 			NodeInput::Node { node_id, output_index, .. } => Some(OutputConnector::node(*node_id, *output_index)),
-			NodeInput::Network { import_index, .. } => Some(OutputConnector::Import(*import_index)),
+			NodeInput::Import { import_index, .. } => Some(OutputConnector::Import(*import_index)),
 			_ => None,
 		})
 	}
@@ -1697,7 +1717,7 @@ impl NodeNetworkInterface {
 			}
 		}
 		Self {
-			network: node_network,
+			network: MemoNetwork::new(node_network),
 			network_metadata,
 			document_metadata: DocumentMetadata::default(),
 			resolved_types: ResolvedDocumentNodeTypes::default(),
@@ -1733,7 +1753,7 @@ fn random_protonode_implementation(protonode: &graph_craft::ProtoNodeIdentifier)
 // Private mutable getters for use within the network interface
 impl NodeNetworkInterface {
 	fn network_mut(&mut self, network_path: &[NodeId]) -> Option<&mut NodeNetwork> {
-		self.network.nested_network_mut(network_path)
+		self.document_network_mut().nested_network_mut(network_path)
 	}
 
 	fn network_metadata_mut(&mut self, network_path: &[NodeId]) -> Option<&mut NodeNetworkMetadata> {
@@ -2408,7 +2428,7 @@ impl NodeNetworkInterface {
 						)
 					});
 					outward_wires_entry.push(InputConnector::node(*current_node_id, input_index));
-				} else if let NodeInput::Network { import_index, .. } = input {
+				} else if let NodeInput::Import { import_index, .. } = input {
 					let outward_wires_entry = outward_wires
 						.get_mut(&OutputConnector::Import(*import_index))
 						.unwrap_or_else(|| panic!("Output connector {:?} should be initialized for each import from a node", OutputConnector::Import(*import_index)));
@@ -2425,7 +2445,7 @@ impl NodeNetworkInterface {
 					)
 				});
 				outward_wires_entry.push(InputConnector::Export(export_index));
-			} else if let NodeInput::Network { import_index, .. } = export {
+			} else if let NodeInput::Import { import_index, .. } = export {
 				let outward_wires_entry = outward_wires
 					.get_mut(&OutputConnector::Import(*import_index))
 					.unwrap_or_else(|| panic!("Output connector {:?} should be initialized between imports and exports", OutputConnector::Import(*import_index)));
@@ -3486,8 +3506,7 @@ impl NodeNetworkInterface {
 		}
 
 		self.document_metadata
-			.click_targets
-			.get(&layer)
+			.click_targets(layer)
 			.map(|click| click.iter().map(ClickTarget::target_type))
 			.map(|target_types| Vector::from_target_types(target_types, true))
 	}
@@ -4215,8 +4234,8 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn set_input(&mut self, input_connector: &InputConnector, new_input: NodeInput, network_path: &[NodeId]) {
-		if matches!(input_connector, InputConnector::Export(_)) && matches!(new_input, NodeInput::Network { .. }) {
-			// TODO: Add support for flattening NodeInput::Network exports in flatten_with_fns https://github.com/GraphiteEditor/Graphite/issues/1762
+		if matches!(input_connector, InputConnector::Export(_)) && matches!(new_input, NodeInput::Import { .. }) {
+			// TODO: Add support for flattening NodeInput::Import exports in flatten_with_fns https://github.com/GraphiteEditor/Graphite/issues/1762
 			log::error!("Cannot connect a network to an export, see https://github.com/GraphiteEditor/Graphite/issues/1762");
 			return;
 		}
@@ -4386,12 +4405,12 @@ impl NodeNetworkInterface {
 				self.try_set_upstream_to_chain(input_connector, network_path);
 			}
 			// If a connection is made to the imports
-			(NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. }, NodeInput::Network { .. }) => {
+			(NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. }, NodeInput::Import { .. }) => {
 				self.unload_outward_wires(network_path);
 				self.unload_wire(input_connector, network_path);
 			}
 			// If a connection to the imports is disconnected
-			(NodeInput::Network { .. }, NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. }) => {
+			(NodeInput::Import { .. }, NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. }) => {
 				self.unload_outward_wires(network_path);
 				self.unload_wire(input_connector, network_path);
 			}
@@ -4501,7 +4520,7 @@ impl NodeNetworkInterface {
 	pub fn create_wire(&mut self, output_connector: &OutputConnector, input_connector: &InputConnector, network_path: &[NodeId]) {
 		let input = match output_connector {
 			OutputConnector::Node { node_id, output_index } => NodeInput::node(*node_id, *output_index),
-			OutputConnector::Import(import_index) => NodeInput::Network {
+			OutputConnector::Import(import_index) => NodeInput::Import {
 				import_type: graph_craft::generic!(T),
 				import_index: *import_index,
 			},
@@ -4548,7 +4567,7 @@ impl NodeNetworkInterface {
 			.document_node
 			.inputs
 			.iter()
-			.all(|input| !(matches!(input, NodeInput::Node { .. }) || matches!(input, NodeInput::Network { .. })));
+			.all(|input| !(matches!(input, NodeInput::Node { .. }) || matches!(input, NodeInput::Import { .. })));
 		assert!(has_node_or_network_input, "Cannot insert node with node or network inputs. Use insert_node_group instead");
 		let Some(network) = self.network_mut(network_path) else {
 			log::error!("Network not found in insert_node");
@@ -4685,7 +4704,7 @@ impl NodeNetworkInterface {
 			node.inputs
 				.iter()
 				.find(|input| input.is_exposed())
-				.filter(|input| matches!(input, NodeInput::Node { .. } | NodeInput::Network { .. }))
+				.filter(|input| matches!(input, NodeInput::Node { .. } | NodeInput::Import { .. }))
 				.cloned()
 		});
 		// Get all upstream references
@@ -4706,7 +4725,7 @@ impl NodeNetworkInterface {
 		for downstream_input in &downstream_inputs_to_disconnect {
 			self.disconnect_input(downstream_input, network_path);
 			// Prevent reconnecting export to import until https://github.com/GraphiteEditor/Graphite/issues/1762 is solved
-			if !(matches!(reconnect_to_input, Some(NodeInput::Network { .. })) && matches!(downstream_input, InputConnector::Export(_))) {
+			if !(matches!(reconnect_to_input, Some(NodeInput::Import { .. })) && matches!(downstream_input, InputConnector::Export(_))) {
 				if let Some(reconnect_input) = &reconnect_to_input {
 					reconnect_node = reconnect_input.as_node().and_then(|node_id| if self.is_stack(&node_id, network_path) { Some(node_id) } else { None });
 					self.disconnect_input(&InputConnector::node(*node_id, 0), network_path);
@@ -5992,7 +6011,7 @@ impl NodeNetworkInterface {
 					self.shift_absolute_node_position(&layer.to_node(), shift, network_path);
 					self.insert_node_between(&layer.to_node(), &post_node, 0, network_path);
 				}
-				NodeInput::Network { .. } => {
+				NodeInput::Import { .. } => {
 					log::error!("Cannot move post node to parent which connects to the imports")
 				}
 			}
@@ -6011,7 +6030,7 @@ impl NodeNetworkInterface {
 					self.shift_absolute_node_position(&layer.to_node(), shift, network_path);
 					self.insert_node_between(&layer.to_node(), &post_node, 0, network_path);
 				}
-				NodeInput::Network { .. } => {
+				NodeInput::Import { .. } => {
 					log::error!("Cannot move post node to parent which connects to the imports")
 				}
 			}
@@ -6214,7 +6233,7 @@ impl OutputConnector {
 
 	pub fn from_input(input: &NodeInput) -> Option<Self> {
 		match input {
-			NodeInput::Network { import_index, .. } => Some(Self::Import(*import_index)),
+			NodeInput::Import { import_index, .. } => Some(Self::Import(*import_index)),
 			NodeInput::Node { node_id, output_index, .. } => Some(Self::node(*node_id, *output_index)),
 			_ => None,
 		}

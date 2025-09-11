@@ -599,7 +599,7 @@ impl PenToolData {
 		self.g1_continuous = true;
 		let document = snap_data.document;
 		self.next_handle_start = self.next_point;
-		let vector = document.network_interface.compute_modified_vector(layer).unwrap();
+		let Some(vector) = document.network_interface.compute_modified_vector(layer) else { return };
 		self.update_handle_type(TargetHandle::FuturePreviewOutHandle);
 		self.handle_mode = HandleMode::ColinearLocked;
 

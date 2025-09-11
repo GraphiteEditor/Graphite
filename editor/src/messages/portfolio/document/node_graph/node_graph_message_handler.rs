@@ -200,7 +200,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(PortfolioMessage::SubmitActiveGraphRender);
 			}
 			NodeGraphMessage::CreateWire { output_connector, input_connector } => {
-				// TODO: Add support for flattening NodeInput::Network exports in flatten_with_fns https://github.com/GraphiteEditor/Graphite/issues/1762
+				// TODO: Add support for flattening NodeInput::Import exports in flatten_with_fns https://github.com/GraphiteEditor/Graphite/issues/1762
 				if matches!(input_connector, InputConnector::Export(_)) && matches!(output_connector, OutputConnector::Import { .. }) {
 					responses.add(DialogMessage::RequestComingSoonDialog { issue: Some(1762) });
 					return;

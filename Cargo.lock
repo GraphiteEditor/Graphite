@@ -2235,6 +2235,7 @@ dependencies = [
  "reqwest",
  "tokio",
  "vello",
+ "vello_encoding",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",

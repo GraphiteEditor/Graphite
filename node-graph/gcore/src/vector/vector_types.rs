@@ -322,6 +322,11 @@ impl Vector {
 		self.point_domain.resolve_id(point).map_or(0, |point| self.segment_domain.connected_count(point))
 	}
 
+	/// Enumerate the number of segments connected to a point. If a segment starts and ends at a point then it is counted twice.
+	pub fn any_connected(&self, point: PointId) -> bool {
+		self.point_domain.resolve_id(point).is_some_and(|point| self.segment_domain.any_connected(point))
+	}
+
 	pub fn check_point_inside_shape(&self, transform: DAffine2, point: DVec2) -> bool {
 		let number = self
 			.stroke_bezpath_iter()

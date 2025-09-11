@@ -104,6 +104,7 @@ impl WgpuExecutor {
 	}
 
 	async fn render_vello_scene_to_target_texture(&self, scene: &Scene, size: UVec2, context: &RenderContext, background: Color, output: &mut Option<TargetTexture>) -> Result<()> {
+		let size = size.max(UVec2::ONE);
 		let target_texture = if let Some(target_texture) = output
 			&& target_texture.size == size
 		{

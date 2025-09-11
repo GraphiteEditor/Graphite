@@ -236,7 +236,7 @@ impl Dispatcher {
 				}
 				Message::NoOp => {}
 				Message::Batched { messages } => {
-					messages.iter().for_each(|message| self.handle_message(message.to_owned(), false));
+					messages.into_iter().for_each(|message| self.handle_message(message, false));
 				}
 			}
 
