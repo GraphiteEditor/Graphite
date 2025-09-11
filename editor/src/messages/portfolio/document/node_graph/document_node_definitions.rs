@@ -1351,31 +1351,52 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					inputs: vec![
+						// Value
 						NodeInput::value(TaggedValue::DAffine2(DAffine2::default()), true),
+						// Translation
 						NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
+						// Rotation
 						NodeInput::value(TaggedValue::F64(0.), false),
+						// Scale
 						NodeInput::value(TaggedValue::DVec2(DVec2::ONE), false),
+						// Skew
 						NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
+						// Origin Offset
+						NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
+						// Scale Appearance
+						NodeInput::value(TaggedValue::Bool(true), false),
 					],
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(1), 0)],
+						exports: vec![
+							// From the Transform node
+							NodeInput::node(NodeId(1), 0),
+						],
 						nodes: [
+							// Monitor node
 							DocumentNode {
-								inputs: vec![NodeInput::network(generic!(T), 0)],
+								inputs: vec![
+									// From the Value import
+									NodeInput::network(generic!(T), 0),
+								],
 								implementation: DocumentNodeImplementation::ProtoNode(memo::monitor::IDENTIFIER),
 								call_argument: generic!(T),
 								skip_deduplication: true,
 								..Default::default()
 							},
+							// Transform node
 							DocumentNode {
 								inputs: vec![
+									// From the Monitor node
 									NodeInput::node(NodeId(0), 0),
+									// From the Translation import
 									NodeInput::network(concrete!(DVec2), 1),
+									// From the Rotation import
 									NodeInput::network(concrete!(f64), 2),
+									// From the Scale import
 									NodeInput::network(concrete!(DVec2), 3),
+									// From the Skew import
 									NodeInput::network(concrete!(DVec2), 4),
 								],
-								call_argument: concrete!(Context),
 								implementation: DocumentNodeImplementation::ProtoNode(transform_nodes::transform::IDENTIFIER),
 								..Default::default()
 							},
@@ -1441,6 +1462,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							}),
 						),
 						InputMetadata::with_name_description_override("Skew", "TODO", WidgetOverride::Custom("transform_skew".to_string())),
+						InputMetadata::with_name_description_override("Origin Offset", "TODO", WidgetOverride::Custom("hidden".to_string())),
+						InputMetadata::with_name_description_override("Scale Appearance", "TODO", WidgetOverride::Custom("hidden".to_string())),
 					],
 					output_names: vec!["Data".to_string()],
 					..Default::default()
@@ -2190,13 +2213,13 @@ fn static_input_properties() -> InputProperties {
 			if let Some(&TaggedValue::F64(val)) = input.as_non_exposed_value() {
 				widgets.extend_from_slice(&[
 					Separator::new(SeparatorType::Unrelated).widget_holder(),
-					NumberInput::new(Some(val.to_degrees()))
+					NumberInput::new(Some(val))
 						.unit("°")
 						.mode(NumberInputMode::Range)
 						.range_min(Some(-180.))
 						.range_max(Some(180.))
 						.on_update(node_properties::update_value(
-							|number_input: &NumberInput| TaggedValue::F64(number_input.value.unwrap().to_radians()),
+							|number_input: &NumberInput| TaggedValue::F64(number_input.value.unwrap()),
 							node_id,
 							index,
 						))
@@ -2219,29 +2242,28 @@ fn static_input_properties() -> InputProperties {
 				return Err("Input not found in transform skew input override".to_string());
 			};
 			if let Some(&TaggedValue::DVec2(val)) = input.as_non_exposed_value() {
-				let to_skew = |input: &NumberInput| input.value.unwrap().to_radians().tan();
 				widgets.extend_from_slice(&[
 					Separator::new(SeparatorType::Unrelated).widget_holder(),
-					NumberInput::new(Some(val.x.atan().to_degrees()))
+					NumberInput::new(Some(val.x))
 						.label("X")
 						.unit("°")
 						.min(-89.9)
 						.max(89.9)
 						.on_update(node_properties::update_value(
-							move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(to_skew(input), val.y)),
+							move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(input.value.unwrap(), val.y)),
 							node_id,
 							index,
 						))
 						.on_commit(node_properties::commit_value)
 						.widget_holder(),
 					Separator::new(SeparatorType::Related).widget_holder(),
-					NumberInput::new(Some(val.y.atan().to_degrees()))
+					NumberInput::new(Some(val.y))
 						.label("Y")
 						.unit("°")
 						.min(-89.9)
 						.max(89.9)
 						.on_update(node_properties::update_value(
-							move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(val.x, to_skew(input))),
+							move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(val.x, input.value.unwrap())),
 							node_id,
 							index,
 						))
