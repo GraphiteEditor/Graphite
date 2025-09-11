@@ -457,7 +457,7 @@ impl NodeNetworkInterface {
 					let tagged_value = TaggedValue::from_type_or_none(&self.input_type(&InputConnector::node(*node_id, input_index), network_path).0);
 					*input = NodeInput::value(tagged_value, true);
 				}
-			} else if let &mut NodeInput::Network { .. } = input {
+			} else if let &mut NodeInput::Import { .. } = input {
 				// Always disconnect network node input
 				let tagged_value = TaggedValue::from_type_or_none(&self.input_type(&InputConnector::node(*node_id, input_index), network_path).0);
 				*input = NodeInput::value(tagged_value, true);
@@ -725,7 +725,7 @@ impl NodeNetworkInterface {
 								..
 							} => self.output_type(&OutputConnector::node(*nested_node_id, *output_index), &[network_path, &[*node_id]].concat()),
 							NodeInput::Value { tagged_value, .. } => (tagged_value.ty(), TypeSource::TaggedValue),
-							NodeInput::Network { .. } => {
+							NodeInput::Import { .. } => {
 								// let mut encapsulating_path = network_path.to_vec();
 								// let encapsulating_node = encapsulating_path.pop().expect("No imports exist in document network");
 								// self.input_type(&InputConnector::node(encapsulating_node, *import_index), network_path)
@@ -1586,7 +1586,7 @@ impl NodeNetworkInterface {
 		let input = self.input_from_connector(input_connector, network_path);
 		input.and_then(|input| match input {
 			NodeInput::Node { node_id, output_index, .. } => Some(OutputConnector::node(*node_id, *output_index)),
-			NodeInput::Network { import_index, .. } => Some(OutputConnector::Import(*import_index)),
+			NodeInput::Import { import_index, .. } => Some(OutputConnector::Import(*import_index)),
 			_ => None,
 		})
 	}
@@ -2419,7 +2419,7 @@ impl NodeNetworkInterface {
 						)
 					});
 					outward_wires_entry.push(InputConnector::node(*current_node_id, input_index));
-				} else if let NodeInput::Network { import_index, .. } = input {
+				} else if let NodeInput::Import { import_index, .. } = input {
 					let outward_wires_entry = outward_wires
 						.get_mut(&OutputConnector::Import(*import_index))
 						.unwrap_or_else(|| panic!("Output connector {:?} should be initialized for each import from a node", OutputConnector::Import(*import_index)));
@@ -2436,7 +2436,7 @@ impl NodeNetworkInterface {
 					)
 				});
 				outward_wires_entry.push(InputConnector::Export(export_index));
-			} else if let NodeInput::Network { import_index, .. } = export {
+			} else if let NodeInput::Import { import_index, .. } = export {
 				let outward_wires_entry = outward_wires
 					.get_mut(&OutputConnector::Import(*import_index))
 					.unwrap_or_else(|| panic!("Output connector {:?} should be initialized between imports and exports", OutputConnector::Import(*import_index)));
@@ -4226,8 +4226,8 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn set_input(&mut self, input_connector: &InputConnector, new_input: NodeInput, network_path: &[NodeId]) {
-		if matches!(input_connector, InputConnector::Export(_)) && matches!(new_input, NodeInput::Network { .. }) {
-			// TODO: Add support for flattening NodeInput::Network exports in flatten_with_fns https://github.com/GraphiteEditor/Graphite/issues/1762
+		if matches!(input_connector, InputConnector::Export(_)) && matches!(new_input, NodeInput::Import { .. }) {
+			// TODO: Add support for flattening NodeInput::Import exports in flatten_with_fns https://github.com/GraphiteEditor/Graphite/issues/1762
 			log::error!("Cannot connect a network to an export, see https://github.com/GraphiteEditor/Graphite/issues/1762");
 			return;
 		}
@@ -4397,12 +4397,12 @@ impl NodeNetworkInterface {
 				self.try_set_upstream_to_chain(input_connector, network_path);
 			}
 			// If a connection is made to the imports
-			(NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. }, NodeInput::Network { .. }) => {
+			(NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. }, NodeInput::Import { .. }) => {
 				self.unload_outward_wires(network_path);
 				self.unload_wire(input_connector, network_path);
 			}
 			// If a connection to the imports is disconnected
-			(NodeInput::Network { .. }, NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. }) => {
+			(NodeInput::Import { .. }, NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. }) => {
 				self.unload_outward_wires(network_path);
 				self.unload_wire(input_connector, network_path);
 			}
@@ -4512,7 +4512,7 @@ impl NodeNetworkInterface {
 	pub fn create_wire(&mut self, output_connector: &OutputConnector, input_connector: &InputConnector, network_path: &[NodeId]) {
 		let input = match output_connector {
 			OutputConnector::Node { node_id, output_index } => NodeInput::node(*node_id, *output_index),
-			OutputConnector::Import(import_index) => NodeInput::Network {
+			OutputConnector::Import(import_index) => NodeInput::Import {
 				import_type: graph_craft::generic!(T),
 				import_index: *import_index,
 			},
@@ -4559,7 +4559,7 @@ impl NodeNetworkInterface {
 			.document_node
 			.inputs
 			.iter()
-			.all(|input| !(matches!(input, NodeInput::Node { .. }) || matches!(input, NodeInput::Network { .. })));
+			.all(|input| !(matches!(input, NodeInput::Node { .. }) || matches!(input, NodeInput::Import { .. })));
 		assert!(has_node_or_network_input, "Cannot insert node with node or network inputs. Use insert_node_group instead");
 		let Some(network) = self.network_mut(network_path) else {
 			log::error!("Network not found in insert_node");
@@ -4696,7 +4696,7 @@ impl NodeNetworkInterface {
 			node.inputs
 				.iter()
 				.find(|input| input.is_exposed())
-				.filter(|input| matches!(input, NodeInput::Node { .. } | NodeInput::Network { .. }))
+				.filter(|input| matches!(input, NodeInput::Node { .. } | NodeInput::Import { .. }))
 				.cloned()
 		});
 		// Get all upstream references
@@ -4717,7 +4717,7 @@ impl NodeNetworkInterface {
 		for downstream_input in &downstream_inputs_to_disconnect {
 			self.disconnect_input(downstream_input, network_path);
 			// Prevent reconnecting export to import until https://github.com/GraphiteEditor/Graphite/issues/1762 is solved
-			if !(matches!(reconnect_to_input, Some(NodeInput::Network { .. })) && matches!(downstream_input, InputConnector::Export(_))) {
+			if !(matches!(reconnect_to_input, Some(NodeInput::Import { .. })) && matches!(downstream_input, InputConnector::Export(_))) {
 				if let Some(reconnect_input) = &reconnect_to_input {
 					reconnect_node = reconnect_input.as_node().and_then(|node_id| if self.is_stack(&node_id, network_path) { Some(node_id) } else { None });
 					self.disconnect_input(&InputConnector::node(*node_id, 0), network_path);
@@ -6003,7 +6003,7 @@ impl NodeNetworkInterface {
 					self.shift_absolute_node_position(&layer.to_node(), shift, network_path);
 					self.insert_node_between(&layer.to_node(), &post_node, 0, network_path);
 				}
-				NodeInput::Network { .. } => {
+				NodeInput::Import { .. } => {
 					log::error!("Cannot move post node to parent which connects to the imports")
 				}
 			}
@@ -6022,7 +6022,7 @@ impl NodeNetworkInterface {
 					self.shift_absolute_node_position(&layer.to_node(), shift, network_path);
 					self.insert_node_between(&layer.to_node(), &post_node, 0, network_path);
 				}
-				NodeInput::Network { .. } => {
+				NodeInput::Import { .. } => {
 					log::error!("Cannot move post node to parent which connects to the imports")
 				}
 			}
@@ -6225,7 +6225,7 @@ impl OutputConnector {
 
 	pub fn from_input(input: &NodeInput) -> Option<Self> {
 		match input {
-			NodeInput::Network { import_index, .. } => Some(Self::Import(*import_index)),
+			NodeInput::Import { import_index, .. } => Some(Self::Import(*import_index)),
 			NodeInput::Node { node_id, output_index, .. } => Some(Self::node(*node_id, *output_index)),
 			_ => None,
 		}
