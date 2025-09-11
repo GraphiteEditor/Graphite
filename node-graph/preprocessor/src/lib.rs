@@ -86,15 +86,14 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 							};
 
 							DocumentNode {
-								inputs: vec![NodeInput::network(input.clone(), i)],
+								inputs: vec![NodeInput::import(input.clone(), i)],
 								implementation: DocumentNodeImplementation::ProtoNode(proto_node),
 								visible: true,
-								call_argument: concrete!(Context),
 								..Default::default()
 							}
 						}
 						_ => DocumentNode {
-							inputs: vec![NodeInput::network(generic!(X), i)],
+							inputs: vec![NodeInput::import(generic!(X), i)],
 							implementation: DocumentNodeImplementation::ProtoNode(identity_node.clone()),
 							visible: false,
 							..Default::default()
