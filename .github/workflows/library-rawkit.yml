@@ -38,6 +38,13 @@ jobs:
 
       - name: 📦 Run sccache-cache
         uses: mozilla-actions/sccache-action@v0.0.6
+        continue-on-error: true
+
+      - name: 🔧 Fallback if sccache fails
+        if: failure()
+        run: |
+          echo "sccache failed, disabling it"
+          echo "RUSTC_WRAPPER=" >> $GITHUB_ENV
 
       - name: 🔬 Check Rust formatting
         run: |
@@ -56,4 +63,4 @@ jobs:
 
       - name: 📈 Run sccache stat for check
         shell: bash
-        run: sccache --show-stats
+        run: sccache --show-stats || echo "sccache stats unavailable"
