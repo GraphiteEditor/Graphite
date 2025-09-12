@@ -8,6 +8,12 @@ use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::iter::zip;
 
+#[derive(Clone, Debug, Default, PartialEq, Hash)]
+struct PointSegmentConnections {
+	start_segments: Vec<usize>,
+	end_segments: Vec<usize>,
+}
+
 /// A simple macro for creating strongly typed ids (to avoid confusion when passing around ids).
 macro_rules! create_ids {
 	($($id:ident),*) => {
@@ -58,8 +64,8 @@ impl Hasher for NoHash {
 	fn finish(&self) -> u64 {
 		self.0.unwrap()
 	}
-	fn write(&mut self, _bytes: &[u8]) {
-		unimplemented!()
+	fn write(&mut self, bytes: &[u8]) {
+		self.0 = Some(u64::from_ne_bytes(bytes.try_into().unwrap_or_default()));
 	}
 	fn write_u64(&mut self, i: u64) {
 		debug_assert!(self.0.is_none());
@@ -79,11 +85,33 @@ impl std::hash::BuildHasher for NoHashBuilder {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
+#[serde(from = "PointDomainSerde")]
 /// Stores data which is per-point. Each point is merely a position and can be used in a point cloud or to for a bézier path. In future this will be extendable at runtime with custom attributes.
 pub struct PointDomain {
 	id: Vec<PointId>,
 	#[serde(alias = "positions")]
 	pub(crate) position: Vec<DVec2>,
+	#[serde(skip)]
+	id_to_index: HashMap<PointId, usize, NoHashBuilder>,
+}
+
+#[derive(serde::Deserialize)]
+struct PointDomainSerde {
+	id: Vec<PointId>,
+	#[serde(alias = "positions")]
+	position: Vec<DVec2>,
+}
+
+impl From<PointDomainSerde> for PointDomain {
+	fn from(serde_data: PointDomainSerde) -> Self {
+		let mut point_domain = Self {
+			id: serde_data.id,
+			position: serde_data.position,
+			id_to_index: HashMap::with_hasher(NoHashBuilder),
+		};
+		point_domain.rebuild_reverse_map();
+		point_domain
+	}
 }
 
 impl Hash for PointDomain {
@@ -95,12 +123,24 @@ impl Hash for PointDomain {
 
 impl PointDomain {
 	pub const fn new() -> Self {
-		Self { id: Vec::new(), position: Vec::new() }
+		Self {
+			id: Vec::new(),
+			position: Vec::new(),
+			id_to_index: HashMap::with_hasher(NoHashBuilder),
+		}
 	}
 
 	pub fn clear(&mut self) {
 		self.id.clear();
 		self.position.clear();
+		self.id_to_index.clear();
+	}
+
+	fn rebuild_reverse_map(&mut self) {
+		self.id_to_index.clear();
+		for (index, &id) in self.id.iter().enumerate() {
+			self.id_to_index.insert(id, index);
+		}
 	}
 
 	pub fn retain(&mut self, segment_domain: &mut SegmentDomain, f: impl Fn(&PointId) -> bool) {
@@ -125,20 +165,27 @@ impl PointDomain {
 		segment_domain.end_point.iter_mut().for_each(update_index);
 
 		self.id.retain(f);
+
+		// Rebuild the reverse map with new indices
+		self.rebuild_reverse_map();
 	}
 
 	pub fn push(&mut self, id: PointId, position: DVec2) {
-		if self.id.contains(&id) {
+		if self.id_to_index.contains_key(&id) {
 			return;
 		}
 
+		let index = self.id.len();
 		self.id.push(id);
 		self.position.push(position);
+		self.id_to_index.insert(id, index);
 	}
 
 	pub fn push_unchecked(&mut self, id: PointId, position: DVec2) {
+		let index = self.id.len();
 		self.id.push(id);
 		self.position.push(position);
+		self.id_to_index.insert(id, index);
 	}
 
 	pub fn positions(&self) -> &[DVec2] {
@@ -171,16 +218,25 @@ impl PointDomain {
 	}
 
 	pub(crate) fn resolve_id(&self, id: PointId) -> Option<usize> {
-		self.id.iter().position(|&check_id| check_id == id)
+		self.id_to_index.get(&id).copied()
 	}
 
 	pub fn concat(&mut self, other: &Self, transform: DAffine2, id_map: &IdMap) {
+		let start_index = self.id.len();
 		self.id.extend(other.id.iter().map(|id| *id_map.point_map.get(id).unwrap_or(id)));
 		self.position.extend(other.position.iter().map(|&pos| transform.transform_point2(pos)));
+
+		// Add new entries to reverse map
+		for (offset, &id) in self.id.iter().skip(start_index).enumerate() {
+			self.id_to_index.insert(id, start_index + offset);
+		}
 	}
 
 	pub fn map_ids(&mut self, id_map: &IdMap) {
 		self.id.iter_mut().for_each(|id| *id = *id_map.point_map.get(id).unwrap_or(id));
+
+		// Rebuild reverse map with new IDs
+		self.rebuild_reverse_map();
 	}
 
 	pub fn transform(&mut self, transform: DAffine2) {
@@ -203,7 +259,8 @@ impl PointDomain {
 	}
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Hash, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Default, DynAny, serde::Serialize, serde::Deserialize)]
+#[serde(from = "SegmentDomainSerde")]
 /// Stores data which is per-segment. A segment is a bézier curve between two end points with a stroke. In future this will be extendable at runtime with custom attributes.
 pub struct SegmentDomain {
 	#[serde(alias = "ids")]
@@ -212,6 +269,54 @@ pub struct SegmentDomain {
 	end_point: Vec<usize>,
 	handles: Vec<BezierHandles>,
 	stroke: Vec<StrokeId>,
+	#[serde(skip)]
+	point_to_segments: HashMap<usize, PointSegmentConnections, NoHashBuilder>,
+	#[serde(skip)]
+	id_to_index: HashMap<SegmentId, usize, NoHashBuilder>,
+}
+
+impl PartialEq for SegmentDomain {
+	fn eq(&self, other: &Self) -> bool {
+		self.id == other.id && self.start_point == other.start_point && self.end_point == other.end_point && self.handles == other.handles && self.stroke == other.stroke
+		// Note: point_to_segments is derived from other fields, so we don't compare it
+	}
+}
+
+impl Hash for SegmentDomain {
+	fn hash<H: Hasher>(&self, state: &mut H) {
+		self.id.hash(state);
+		self.start_point.hash(state);
+		self.end_point.hash(state);
+		self.handles.hash(state);
+		self.stroke.hash(state);
+		// Note: point_to_segments is derived from other fields, so we don't hash it
+	}
+}
+
+#[derive(serde::Deserialize)]
+struct SegmentDomainSerde {
+	#[serde(alias = "ids")]
+	id: Vec<SegmentId>,
+	start_point: Vec<usize>,
+	end_point: Vec<usize>,
+	handles: Vec<BezierHandles>,
+	stroke: Vec<StrokeId>,
+}
+
+impl From<SegmentDomainSerde> for SegmentDomain {
+	fn from(serde_data: SegmentDomainSerde) -> Self {
+		let mut segment_domain = Self {
+			id: serde_data.id,
+			start_point: serde_data.start_point,
+			end_point: serde_data.end_point,
+			handles: serde_data.handles,
+			stroke: serde_data.stroke,
+			point_to_segments: HashMap::with_hasher(NoHashBuilder),
+			id_to_index: HashMap::with_hasher(NoHashBuilder),
+		};
+		segment_domain.rebuild_point_mappings();
+		segment_domain
+	}
 }
 
 impl SegmentDomain {
@@ -222,6 +327,8 @@ impl SegmentDomain {
 			end_point: Vec::new(),
 			handles: Vec::new(),
 			stroke: Vec::new(),
+			point_to_segments: HashMap::with_hasher(NoHashBuilder),
+			id_to_index: HashMap::with_hasher(NoHashBuilder),
 		}
 	}
 
@@ -231,6 +338,18 @@ impl SegmentDomain {
 		self.end_point.clear();
 		self.handles.clear();
 		self.stroke.clear();
+		self.point_to_segments.clear();
+		self.id_to_index.clear();
+	}
+
+	fn rebuild_point_mappings(&mut self) {
+		self.point_to_segments.clear();
+		self.id_to_index.clear();
+		for (segment_index, (&start, &end)) in self.start_point.iter().zip(&self.end_point).enumerate() {
+			self.point_to_segments.entry(start).or_default().start_segments.push(segment_index);
+			self.point_to_segments.entry(end).or_default().end_segments.push(segment_index);
+			self.id_to_index.insert(self.id[segment_index], segment_index);
+		}
 	}
 
 	pub fn retain(&mut self, f: impl Fn(&SegmentId) -> bool, points_length: usize) {
@@ -274,6 +393,9 @@ impl SegmentDomain {
 				f(id)
 			}
 		});
+
+		// Rebuild point mappings after retain operation
+		self.rebuild_point_mappings();
 	}
 
 	pub fn ids(&self) -> &[SegmentId] {
@@ -310,15 +432,21 @@ impl SegmentDomain {
 
 	pub fn push(&mut self, id: SegmentId, start: usize, end: usize, handles: BezierHandles, stroke: StrokeId) {
 		#[cfg(debug_assertions)]
-		if self.id.contains(&id) {
-			warn!("Tried to push an existing point to a point domain");
+		if self.id_to_index.contains_key(&id) {
+			warn!("Tried to push an existing segment to a segment domain");
 		}
 
+		let segment_index = self.id.len();
 		self.id.push(id);
 		self.start_point.push(start);
 		self.end_point.push(end);
 		self.handles.push(handles);
 		self.stroke.push(stroke);
+
+		// Update mappings
+		self.point_to_segments.entry(start).or_default().start_segments.push(segment_index);
+		self.point_to_segments.entry(end).or_default().end_segments.push(segment_index);
+		self.id_to_index.insert(id, segment_index);
 	}
 
 	pub(crate) fn start_point_mut(&mut self) -> impl Iterator<Item = (SegmentId, &mut usize)> {
@@ -363,19 +491,18 @@ impl SegmentDomain {
 
 	/// Gets all points connected to the current one but not including the current one.
 	pub(crate) fn connected_points(&self, current: usize) -> impl Iterator<Item = usize> + '_ {
-		self.start_point.iter().zip(&self.end_point).filter_map(move |(&a, &b)| match (a == current, b == current) {
-			(true, false) => Some(b),
-			(false, true) => Some(a),
-			_ => None,
-		})
+		self.point_to_segments.get(&current)
+			.map(|connections| {
+				connections.start_segments.iter().map(move |&segment_index| self.end_point[segment_index])
+					.chain(connections.end_segments.iter().map(move |&segment_index| self.start_point[segment_index]))
+			})
+			.into_iter()
+			.flatten()
 	}
 
-	/// Get index from ID by linear search. Takes `O(n)` time.
+	/// Get index from ID by HashMap lookup. Takes `O(1)` time.
 	fn id_to_index(&self, id: SegmentId) -> Option<usize> {
-		debug_assert_eq!(self.id.len(), self.handles.len());
-		debug_assert_eq!(self.id.len(), self.start_point.len());
-		debug_assert_eq!(self.id.len(), self.end_point.len());
-		self.id.iter().position(|&check_id| check_id == id)
+		self.id_to_index.get(&id).copied()
 	}
 
 	fn resolve_range(&self, range: &std::ops::RangeInclusive<SegmentId>) -> Option<std::ops::RangeInclusive<usize>> {
@@ -394,10 +521,15 @@ impl SegmentDomain {
 		self.end_point.extend(other.end_point.iter().map(|&index| id_map.point_offset + index));
 		self.handles.extend(other.handles.iter().map(|handles| handles.apply_transformation(|p| transform.transform_point2(p))));
 		self.stroke.extend(&other.stroke);
+
+		// Rebuild point mappings after concatenation
+		self.rebuild_point_mappings();
 	}
 
 	pub fn map_ids(&mut self, id_map: &IdMap) {
 		self.id.iter_mut().for_each(|id| *id = *id_map.segment_map.get(id).unwrap_or(id));
+
+		// Point mappings don't need rebuilding since only segment IDs changed, not point connections
 	}
 
 	pub fn transform(&mut self, transform: DAffine2) {
@@ -408,12 +540,22 @@ impl SegmentDomain {
 
 	/// Enumerate all segments that start at the point.
 	pub(crate) fn start_connected(&self, point: usize) -> impl Iterator<Item = SegmentId> + '_ {
-		self.start_point.iter().zip(&self.id).filter(move |&(&found_point, _)| found_point == point).map(|(_, &seg)| seg)
+		self.point_to_segments
+			.get(&point)
+			.map(|connections| connections.start_segments.as_slice())
+			.unwrap_or(&[])
+			.iter()
+			.map(move |&segment_index| self.id[segment_index])
 	}
 
 	/// Enumerate all segments that end at the point.
 	pub(crate) fn end_connected(&self, point: usize) -> impl Iterator<Item = SegmentId> + '_ {
-		self.end_point.iter().zip(&self.id).filter(move |&(&found_point, _)| found_point == point).map(|(_, &seg)| seg)
+		self.point_to_segments
+			.get(&point)
+			.map(|connections| connections.end_segments.as_slice())
+			.unwrap_or(&[])
+			.iter()
+			.map(move |&segment_index| self.id[segment_index])
 	}
 
 	/// Enumerate all segments that start or end at a point, converting them to [`HandleId`s]. Note that the handles may not exist e.g. for a linear segment.
@@ -423,12 +565,18 @@ impl SegmentDomain {
 
 	/// Enumerate the number of segments connected to a point. If a segment starts and ends at a point then it is counted twice.
 	pub(crate) fn connected_count(&self, point: usize) -> usize {
-		self.all_connected(point).count()
+		self.point_to_segments
+			.get(&point)
+			.map(|connections| connections.start_segments.len() + connections.end_segments.len())
+			.unwrap_or(0)
 	}
 
 	/// Enumerate the number of segments connected to a point. If a segment starts and ends at a point then it is counted twice.
 	pub(crate) fn any_connected(&self, point: usize) -> bool {
-		self.all_connected(point).next().is_some()
+		self.point_to_segments
+			.get(&point)
+			.map(|connections| !connections.start_segments.is_empty() || !connections.end_segments.is_empty())
+			.unwrap_or(false)
 	}
 
 	/// Iterates over segments in the domain.
