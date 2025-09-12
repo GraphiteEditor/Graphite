@@ -362,6 +362,7 @@ impl LayoutHolder for PathTool {
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for PathTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
 		let updating_point = message == ToolMessage::Path(PathToolMessage::SelectedPointUpdated);
+		let old_editable = self.tool_data.make_path_editable_is_allowed;
 
 		match message {
 			ToolMessage::Path(PathToolMessage::UpdateOptions { options }) => match options {
@@ -416,6 +417,11 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Path
 
 		if updating_point {
 			self.send_layout(responses, LayoutTarget::ToolOptions);
+		}
+
+		if self.tool_data.make_path_editable_is_allowed != old_editable {
+			// It is necessary to update the menu bar's "make path editable" enabled state
+			responses.add(MenuBarMessage::SendLayout);
 		}
 	}
 
