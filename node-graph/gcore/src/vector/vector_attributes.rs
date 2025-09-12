@@ -4,7 +4,7 @@ use crate::vector::vector_types::Vector;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use kurbo::{CubicBez, Line, PathSeg, QuadBez};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::hash::{Hash, Hasher};
 use std::iter::zip;
 
@@ -491,9 +491,13 @@ impl SegmentDomain {
 
 	/// Gets all points connected to the current one but not including the current one.
 	pub(crate) fn connected_points(&self, current: usize) -> impl Iterator<Item = usize> + '_ {
-		self.point_to_segments.get(&current)
+		self.point_to_segments
+			.get(&current)
 			.map(|connections| {
-				connections.start_segments.iter().map(move |&segment_index| self.end_point[segment_index])
+				connections
+					.start_segments
+					.iter()
+					.map(move |&segment_index| self.end_point[segment_index])
 					.chain(connections.end_segments.iter().map(move |&segment_index| self.start_point[segment_index]))
 			})
 			.into_iter()
@@ -1050,11 +1054,24 @@ impl Vector {
 			points[end].set(StrokePathIterPointSegmentMetadata::new(segment_index, true));
 		}
 
+		// Pre-compute endpoints and available points for O(1) lookup
+		let mut endpoints = Vec::new();
+		let mut available = VecDeque::new();
+
+		for (index, metadata) in points.iter().enumerate() {
+			match metadata.connected() {
+				1 => endpoints.push(index),
+				n if n > 0 => available.push_back(index),
+				_ => {}
+			}
+		}
+
 		StrokePathIter {
 			vector: self,
 			points,
-			skip: 0,
 			done_one: false,
+			endpoints,
+			available,
 		}
 	}
 
@@ -1181,24 +1198,43 @@ impl StrokePathIterPointMetadata {
 pub struct StrokePathIter<'a> {
 	vector: &'a Vector,
 	points: Vec<StrokePathIterPointMetadata>,
-	skip: usize,
 	done_one: bool,
+	// Pre-computed indices for fast lookup
+	endpoints: Vec<usize>,      // Points with exactly 1 connection initially
+	available: VecDeque<usize>, // Queue of points with remaining connections
 }
 
 impl Iterator for StrokePathIter<'_> {
 	type Item = (Vec<ManipulatorGroup<PointId>>, bool);
 
 	fn next(&mut self) -> Option<Self::Item> {
-		let current_start = if let Some((index, _)) = self.points.iter().enumerate().skip(self.skip).find(|(_, val)| val.connected() == 1) {
-			index
-		} else {
+		let current_start = loop {
+			// Try endpoints first (O(1) instead of O(n) scan)
+			if let Some(endpoint) = self.endpoints.pop() {
+				if self.points[endpoint].connected() > 0 {
+					break endpoint;
+				}
+				// Endpoint was consumed, try next one
+				continue;
+			}
+
+			// Switch to any available points if no endpoints left
 			if !self.done_one {
 				self.done_one = true;
-				self.skip = 0;
 			}
-			self.points.iter().enumerate().skip(self.skip).find(|(_, val)| val.connected() > 0)?.0
+
+			// Try any available point (O(1) instead of O(n) scan)
+			if let Some(point) = self.available.pop_front() {
+				if self.points[point].connected() > 0 {
+					break point;
+				}
+				// Point was consumed, try next
+				continue;
+			}
+
+			// No more points available
+			return None;
 		};
-		self.skip = current_start + 1;
 
 		// There will always be one (seeing as we checked above)
 		let mut point_index = current_start;
