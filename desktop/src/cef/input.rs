@@ -1,11 +1,13 @@
 use cef::sys::{cef_event_flags_t, cef_key_event_type_t, cef_mouse_button_type_t};
 use cef::{Browser, ImplBrowser, ImplBrowserHost, KeyEvent, KeyEventType, MouseEvent};
-use std::time::{Duration, Instant};
+use std::time::Instant;
 use winit::dpi::PhysicalPosition;
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 
 mod keymap;
 use keymap::{ToNativeKeycode, ToVKBits};
+
+use super::consts::{MULTICLICK_ALLOWED_TRAVEL, MULTICLICK_TIMEOUT, SCROLL_LINE_HEIGHT, SCROLL_LINE_WIDTH, SCROLL_SPEED_X, SCROLL_SPEED_Y};
 
 pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputState, event: &WindowEvent) {
 	match event {
@@ -15,8 +17,6 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 			let Some(host) = browser.host() else {
 				return;
 			};
-
-			host.set_focus(1);
 			host.send_mouse_move_event(Some(&input_state.into()), 0);
 		}
 		WindowEvent::MouseInput { state, button, .. } => {
@@ -35,23 +35,19 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 			let Some(host) = browser.host() else {
 				return;
 			};
-
-			host.set_focus(1);
 			host.send_mouse_click_event(Some(&input_state.into()), cef_button, cef_mouse_up, cef_click_count);
 		}
 		WindowEvent::MouseWheel { delta, phase: _, device_id: _, .. } => {
+			let mouse_event = input_state.into();
+			let (mut delta_x, mut delta_y) = match delta {
+				MouseScrollDelta::LineDelta(x, y) => (x * SCROLL_LINE_WIDTH as f32, y * SCROLL_LINE_HEIGHT as f32),
+				MouseScrollDelta::PixelDelta(physical_position) => (physical_position.x as f32, physical_position.y as f32),
+			};
+			delta_x *= SCROLL_SPEED_X;
+			delta_y *= SCROLL_SPEED_Y;
+
 			let Some(host) = browser.host() else {
 				return;
-			};
-
-			host.set_focus(1);
-
-			let mouse_event = input_state.into();
-			let line_width = 40; //feels about right, TODO: replace with correct value
-			let line_height = 30; //feels about right, TODO: replace with correct value
-			let (delta_x, delta_y) = match delta {
-				MouseScrollDelta::LineDelta(x, y) => (x * line_width as f32, y * line_height as f32),
-				MouseScrollDelta::PixelDelta(physical_position) => (physical_position.x as f32, physical_position.y as f32),
 			};
 			host.send_mouse_wheel_event(Some(&mouse_event), delta_x as i32, delta_y as i32);
 		}
@@ -59,12 +55,6 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 			input_state.modifiers_changed(&modifiers.state());
 		}
 		WindowEvent::KeyboardInput { device_id: _, event, is_synthetic: _ } => {
-			let Some(host) = browser.host() else {
-				return;
-			};
-
-			host.set_focus(1);
-
 			let (named_key, character) = match &event.logical_key {
 				winit::keyboard::Key::Named(named_key) => (
 					Some(named_key),
@@ -98,6 +88,10 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 			}
 
 			key_event.native_key_code = native_key_code;
+
+			let Some(host) = browser.host() else {
+				return;
+			};
 
 			match event.state {
 				ElementState::Pressed => {
@@ -234,9 +228,6 @@ struct ClickTracker {
 }
 impl ClickTracker {
 	fn input(&mut self, button: &MouseButton, state: &ElementState, position: &MousePosition) -> ClickCount {
-		const ALLOWABLE_MULTICLICK_SLOP: usize = 4;
-		const ALLOWABLE_MULTICLICK_TIME: Duration = Duration::from_millis(500);
-
 		let record = match button {
 			MouseButton::Left => &mut self.left,
 			MouseButton::Right => &mut self.right,
@@ -258,8 +249,8 @@ impl ClickTracker {
 
 		let dx = position.x.abs_diff(record.position.x);
 		let dy = position.y.abs_diff(record.position.y);
-		let within_dist = dx <= ALLOWABLE_MULTICLICK_SLOP && dy <= ALLOWABLE_MULTICLICK_SLOP;
-		let within_time = now.saturating_duration_since(record.time) <= ALLOWABLE_MULTICLICK_TIME;
+		let within_dist = dx <= MULTICLICK_ALLOWED_TRAVEL && dy <= MULTICLICK_ALLOWED_TRAVEL;
+		let within_time = now.saturating_duration_since(record.time) <= MULTICLICK_TIMEOUT;
 
 		let count = if within_time && within_dist { ClickCount::Double } else { ClickCount::Single };
 
