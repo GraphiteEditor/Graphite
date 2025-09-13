@@ -2,11 +2,9 @@ use std::time::{Duration, Instant};
 
 use cef::rc::{Rc, RcImpl};
 use cef::sys::{_cef_browser_process_handler_t, cef_base_ref_counted_t, cef_browser_process_handler_t};
-use cef::{CefString, ImplBrowserProcessHandler, SchemeHandlerFactory, WrapBrowserProcessHandler};
+use cef::{CefString, ImplBrowserProcessHandler, WrapBrowserProcessHandler};
 
-use super::scheme_handler_factory::SchemeHandlerFactoryImpl;
 use crate::cef::CefEventHandler;
-use crate::cef::consts::RESOURCE_SCHEME;
 
 pub(crate) struct BrowserProcessHandlerImpl<H: CefEventHandler> {
 	object: *mut RcImpl<cef_browser_process_handler_t, Self>,
@@ -22,14 +20,6 @@ impl<H: CefEventHandler> BrowserProcessHandlerImpl<H> {
 }
 
 impl<H: CefEventHandler + Clone> ImplBrowserProcessHandler for BrowserProcessHandlerImpl<H> {
-	fn on_context_initialized(&self) {
-		cef::register_scheme_handler_factory(
-			Some(&CefString::from(RESOURCE_SCHEME)),
-			None,
-			Some(&mut SchemeHandlerFactory::new(SchemeHandlerFactoryImpl::new(self.event_handler.clone()))),
-		);
-	}
-
 	fn on_schedule_message_pump_work(&self, delay_ms: i64) {
 		self.event_handler.schedule_cef_message_loop_work(Instant::now() + Duration::from_millis(delay_ms as u64));
 	}
