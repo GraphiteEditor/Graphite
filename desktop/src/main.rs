@@ -9,6 +9,8 @@ pub(crate) mod consts;
 
 mod cef;
 
+mod native_window;
+
 mod render;
 
 mod app;
