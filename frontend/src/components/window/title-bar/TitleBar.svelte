@@ -66,7 +66,7 @@
 	});
 </script>
 
-<LayoutRow class="title-bar" on:mousedown={() => editor.handle.appWindowDrag()}>
+<LayoutRow class="title-bar">
 	<!-- Menu bar (or on Mac: window buttons) -->
 	<LayoutRow class="left">
 		{#if platform === "Mac"}
@@ -76,13 +76,15 @@
 				<TextButton label={entry.label} icon={entry.icon} menuListChildren={entry.children} action={entry.action} flush={true} />
 			{/each}
 		{/if}
+		<LayoutRow on:mousedown={() => editor.handle.appWindowDrag()} />
 	</LayoutRow>
 	<!-- Document title -->
-	<LayoutRow class="center">
+	<LayoutRow class="center" on:mousedown={() => editor.handle.appWindowDrag()}>
 		<WindowTitle text={windowTitle} />
 	</LayoutRow>
 	<!-- Window buttons (except on Mac) -->
 	<LayoutRow class="right">
+		<LayoutRow on:mousedown={() => editor.handle.appWindowDrag()} />
 		{#if platform === "Windows"}
 			<WindowButtonsWindows {maximized} />
 		{:else if platform === "Linux"}
