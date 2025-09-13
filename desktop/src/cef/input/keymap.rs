@@ -47,10 +47,8 @@ impl ToVKBits for winit::keyboard::NamedKey {
 			(0x91, ScrollLock),
 			(0x10, Shift),
 			(0x5B, Meta),
-			(0x5C, Super),
 			(0x0D, Enter),
 			(0x09, Tab),
-			(0x20, Space),
 			(0x28, ArrowDown),
 			(0x25, ArrowLeft),
 			(0x27, ArrowRight),
@@ -253,6 +251,7 @@ impl ToVKBits for char {
 			(0xDE, '"'),
 			(0xBF, '/'),
 			(0xBF, '?'),
+			(0x20, ' '),
 		)
 	}
 }
