@@ -43,6 +43,7 @@
 	on:dragover
 	on:dragstart
 	on:drop
+	on:mousedown
 	on:mouseup
 	on:pointerdown
 	on:pointerenter
@@ -67,7 +68,6 @@ on:keydown
 on:keypress
 on:keyup
 on:lostpointercapture
-on:mousedown
 on:mouseenter
 on:mouseleave
 on:mousemove

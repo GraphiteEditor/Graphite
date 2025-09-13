@@ -70,6 +70,9 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 			// Forward this to update the UI
 			return Some(message);
 		}
+		FrontendMessage::DragWindow => {
+			dispatcher.respond(DesktopFrontendMessage::DragWindow);
+		}
 		FrontendMessage::CloseWindow => {
 			dispatcher.respond(DesktopFrontendMessage::CloseWindow);
 		}

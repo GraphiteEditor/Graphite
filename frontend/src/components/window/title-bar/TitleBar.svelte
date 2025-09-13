@@ -76,13 +76,15 @@
 				<TextButton label={entry.label} icon={entry.icon} menuListChildren={entry.children} action={entry.action} flush={true} />
 			{/each}
 		{/if}
+		<LayoutRow on:mousedown={() => editor.handle.appWindowDrag()} on:dblclick={() => editor.handle.appWindowMaximize()} />
 	</LayoutRow>
 	<!-- Document title -->
-	<LayoutRow class="center">
+	<LayoutRow class="center" on:mousedown={() => editor.handle.appWindowDrag()} on:dblclick={() => editor.handle.appWindowMaximize()}>
 		<WindowTitle text={windowTitle} />
 	</LayoutRow>
 	<!-- Window buttons (except on Mac) -->
 	<LayoutRow class="right">
+		<LayoutRow on:mousedown={() => editor.handle.appWindowDrag()} on:dblclick={() => editor.handle.appWindowMaximize()} />
 		{#if platform === "Windows"}
 			<WindowButtonsWindows {maximized} />
 		{:else if platform === "Linux"}

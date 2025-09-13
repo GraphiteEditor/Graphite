@@ -352,6 +352,13 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
+	/// Drag the application window
+	#[wasm_bindgen(js_name = appWindowDrag)]
+	pub fn app_window_start_drag(&self) {
+		let message = AppWindowMessage::AppWindowDrag;
+		self.dispatch(message);
+	}
+
 	/// Displays a dialog with an error message
 	#[wasm_bindgen(js_name = errorDialog)]
 	pub fn error_dialog(&self, title: String, description: String) {
