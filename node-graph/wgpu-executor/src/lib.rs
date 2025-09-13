@@ -53,7 +53,7 @@ pub struct TargetTexture {
 #[cfg(target_family = "wasm")]
 pub type Window = web_sys::HtmlCanvasElement;
 #[cfg(not(target_family = "wasm"))]
-pub type Window = Arc<winit::window::Window>;
+pub type Window = Arc<dyn winit::window::Window>;
 
 unsafe impl StaticType for Surface {
 	type Static = Surface;

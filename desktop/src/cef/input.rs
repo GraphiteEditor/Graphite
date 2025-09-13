@@ -2,7 +2,7 @@ use cef::sys::{cef_event_flags_t, cef_key_event_type_t, cef_mouse_button_type_t}
 use cef::{Browser, ImplBrowser, ImplBrowserHost, KeyEvent, KeyEventType, MouseEvent};
 use std::time::Instant;
 use winit::dpi::PhysicalPosition;
-use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
+use winit::event::{ButtonSource, ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 
 mod keymap;
 use keymap::{ToNativeKeycode, ToVKBits};
@@ -11,7 +11,7 @@ use super::consts::{MULTICLICK_ALLOWED_TRAVEL, MULTICLICK_TIMEOUT, SCROLL_LINE_H
 
 pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputState, event: &WindowEvent) {
 	match event {
-		WindowEvent::CursorMoved { position, .. } => {
+		WindowEvent::PointerMoved { position, .. } => {
 			input_state.cursor_move(position);
 
 			let Some(host) = browser.host() else {
@@ -19,13 +19,20 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 			};
 			host.send_mouse_move_event(Some(&input_state.into()), 0);
 		}
-		WindowEvent::MouseInput { state, button, .. } => {
-			let cef_click_count = input_state.mouse_input(button, state).into();
+		WindowEvent::PointerButton { state, button, .. } => {
+			let mouse_button = match button {
+				ButtonSource::Mouse(mouse_button) => mouse_button,
+				_ => {
+					return; // TODO: Handle touch input
+				}
+			};
+
+			let cef_click_count = input_state.mouse_input(mouse_button, state).into();
 			let cef_mouse_up = match state {
 				ElementState::Pressed => 0,
 				ElementState::Released => 1,
 			};
-			let cef_button = match button {
+			let cef_button = match mouse_button {
 				MouseButton::Left => cef::MouseButtonType::from(cef_mouse_button_type_t::MBT_LEFT),
 				MouseButton::Right => cef::MouseButtonType::from(cef_mouse_button_type_t::MBT_RIGHT),
 				MouseButton::Middle => cef::MouseButtonType::from(cef_mouse_button_type_t::MBT_MIDDLE),
@@ -59,7 +66,6 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 				winit::keyboard::Key::Named(named_key) => (
 					Some(named_key),
 					match named_key {
-						winit::keyboard::NamedKey::Space => Some(' '),
 						winit::keyboard::NamedKey::Enter => Some('\u{000d}'),
 						_ => None,
 					},
@@ -312,7 +318,7 @@ impl CefModifiers {
 		if input_state.modifiers.alt_key() {
 			inner |= cef_event_flags_t::EVENTFLAG_ALT_DOWN as u32;
 		}
-		if input_state.modifiers.super_key() {
+		if input_state.modifiers.meta_key() {
 			inner |= cef_event_flags_t::EVENTFLAG_COMMAND_DOWN as u32;
 		}
 

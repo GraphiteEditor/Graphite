@@ -23,7 +23,7 @@ impl Drop for WindowsNativeWindowHandle {
 	}
 }
 
-pub(super) fn setup(window: &Window) -> WindowsNativeWindowHandle {
+pub(super) fn setup(window: &Box<dyn Window>) -> WindowsNativeWindowHandle {
 	let hwnd = match window.window_handle().expect("No window handle").as_raw() {
 		RawWindowHandle::Win32(h) => HWND(h.hwnd.get() as *mut std::ffi::c_void),
 		_ => panic!("Not a Win32 window"),
