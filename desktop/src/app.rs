@@ -23,11 +23,13 @@ use winit::window::Window;
 use winit::window::WindowId;
 
 use crate::cef;
+use crate::native_window;
 
 pub(crate) struct WinitApp {
 	cef_context: Box<dyn cef::CefContext>,
 	window: Option<Arc<Window>>,
 	cef_schedule: Option<Instant>,
+	native_window: native_window::NativeWindowHandle,
 	window_size_sender: Sender<WindowSize>,
 	graphics_state: Option<GraphicsState>,
 	wgpu_context: WgpuContext,
@@ -71,6 +73,7 @@ impl WinitApp {
 			web_communication_initialized: false,
 			web_communication_startup_buffer: Vec::new(),
 			persistent_data,
+			native_window: Default::default(),
 		}
 	}
 
@@ -277,22 +280,15 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 			.with_title(APP_NAME)
 			.with_min_inner_size(winit::dpi::LogicalSize::new(400, 300))
 			.with_inner_size(winit::dpi::LogicalSize::new(1200, 800))
-			.with_decorations(false)
 			.with_resizable(true);
 
-		#[cfg(target_os = "linux")]
-		{
-			use crate::consts::APP_ID;
-			use winit::platform::wayland::ActiveEventLoopExtWayland;
+		self.native_window.build(&mut window, event_loop);
 
-			window = if event_loop.is_wayland() {
-				winit::platform::wayland::WindowAttributesExtWayland::with_name(window, APP_ID, "")
-			} else {
-				winit::platform::x11::WindowAttributesExtX11::with_name(window, APP_ID, APP_NAME)
-			}
-		}
+		let window = event_loop.create_window(window).unwrap();
 
-		let window = Arc::new(event_loop.create_window(window).unwrap());
+		self.native_window.setup(&window);
+
+		let window = Arc::new(window);
 		let graphics_state = GraphicsState::new(window.clone(), self.wgpu_context.clone());
 
 		self.window = Some(window);
