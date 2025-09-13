@@ -1385,9 +1385,6 @@ impl Render for Table<Raster<GPU>> {
 	}
 }
 
-const ALMOST_INF: f64 = 2_000_000_000.;
-const ALMOST_INF_OFFSET: f64 = ALMOST_INF / -2.;
-
 // Since colors and gradients are technically infinitely big, we have to implement
 // workarounds for rendering them correctly in a way which still allows us
 // to cache the intermediate render data (SVG string/Vello scene).
@@ -1397,11 +1394,10 @@ const ALMOST_INF_OFFSET: f64 = ALMOST_INF / -2.;
 impl Render for Table<Color> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for row in self.iter() {
-			render.leaf_tag("rect", |attributes| {
-				attributes.push("width", ALMOST_INF.to_string());
-				attributes.push("height", ALMOST_INF.to_string());
-				attributes.push("x", ALMOST_INF_OFFSET.to_string());
-				attributes.push("y", ALMOST_INF_OFFSET.to_string());
+			render.leaf_tag("polyline", |attributes| {
+				// Chrome doesn't like drawing centered rectangles bigger than ~20 million so we draw a polyline quad instead
+				let max = u64::MAX;
+				attributes.push("points", format!("{max},{max} -{max},{max} -{max},-{max} {max},-{max}"));
 
 				let color = row.element;
 				attributes.push("fill", format!("#{}", color.to_rgb_hex_srgb_from_gamma()));
@@ -1452,13 +1448,13 @@ impl Render for Table<Color> {
 }
 
 impl Render for Table<GradientStops> {
+	// TODO: Fix infinite gradient rendering
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for row in self.iter() {
 			render.leaf_tag("rect", |attributes| {
-				attributes.push("width", ALMOST_INF.to_string());
-				attributes.push("height", ALMOST_INF.to_string());
-				attributes.push("x", ALMOST_INF_OFFSET.to_string());
-				attributes.push("y", ALMOST_INF_OFFSET.to_string());
+				// Chrome doesn't like drawing centered rectangles bigger than ~20 million so we draw a polyline quad instead
+				let max = u64::MAX;
+				attributes.push("points", format!("{max},{max} -{max},{max} -{max},-{max} {max},-{max}"));
 
 				let mut stop_string = String::new();
 				for (position, color) in row.element.0.iter() {
@@ -1514,6 +1510,7 @@ impl Render for Table<GradientStops> {
 		}
 	}
 
+	// TODO: Fix infinite gradient rendering
 	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, _parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
 		use vello::peniko;
