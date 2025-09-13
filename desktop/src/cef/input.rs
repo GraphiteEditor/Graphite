@@ -1,5 +1,6 @@
 use cef::sys::{cef_event_flags_t, cef_key_event_type_t, cef_mouse_button_type_t};
 use cef::{Browser, ImplBrowser, ImplBrowserHost, KeyEvent, KeyEventType, MouseEvent};
+use std::time::{Duration, Instant};
 use winit::dpi::PhysicalPosition;
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 
@@ -9,196 +10,148 @@ use keymap::{ToNativeKeycode, ToVKBits};
 pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputState, event: &WindowEvent) {
 	match event {
 		WindowEvent::CursorMoved { position, .. } => {
-			if let Some(host) = browser.host() {
-				host.set_focus(1);
-			}
+			input_state.cursor_move(position);
 
-			input_state.update_mouse_position(position);
-			let mouse_event: MouseEvent = (input_state).into();
-			browser.host().unwrap().send_mouse_move_event(Some(&mouse_event), 0);
+			let Some(host) = browser.host() else {
+				return;
+			};
+
+			host.set_focus(1);
+			host.send_mouse_move_event(Some(&input_state.into()), 0);
 		}
 		WindowEvent::MouseInput { state, button, .. } => {
-			if let Some(host) = browser.host() {
-				host.set_focus(1);
+			let cef_click_count = input_state.mouse_input(button, state).into();
+			let cef_mouse_up = match state {
+				ElementState::Pressed => 0,
+				ElementState::Released => 1,
+			};
+			let cef_button = match button {
+				MouseButton::Left => cef::MouseButtonType::from(cef_mouse_button_type_t::MBT_LEFT),
+				MouseButton::Right => cef::MouseButtonType::from(cef_mouse_button_type_t::MBT_RIGHT),
+				MouseButton::Middle => cef::MouseButtonType::from(cef_mouse_button_type_t::MBT_MIDDLE),
+				_ => return, //TODO: Handle Forward and Back button
+			};
 
-				let mouse_up = match state {
-					ElementState::Pressed => 0,
-					ElementState::Released => 1,
-				};
+			let Some(host) = browser.host() else {
+				return;
+			};
 
-				let cef_button = match button {
-					MouseButton::Left => Some(cef::MouseButtonType::from(cef_mouse_button_type_t::MBT_LEFT)),
-					MouseButton::Right => Some(cef::MouseButtonType::from(cef_mouse_button_type_t::MBT_RIGHT)),
-					MouseButton::Middle => Some(cef::MouseButtonType::from(cef_mouse_button_type_t::MBT_MIDDLE)),
-					MouseButton::Forward => None, //TODO: Handle Forward button
-					MouseButton::Back => None,    //TODO: Handle Back button
-					_ => None,
-				};
-
-				let mut mouse_state = input_state.mouse_state.clone();
-				match button {
-					MouseButton::Left => {
-						mouse_state.left = match state {
-							ElementState::Pressed => true,
-							ElementState::Released => false,
-						}
-					}
-					MouseButton::Right => {
-						mouse_state.right = match state {
-							ElementState::Pressed => true,
-							ElementState::Released => false,
-						}
-					}
-					MouseButton::Middle => {
-						mouse_state.middle = match state {
-							ElementState::Pressed => true,
-							ElementState::Released => false,
-						}
-					}
-					_ => {}
-				};
-				input_state.update_mouse_state(mouse_state);
-
-				let mouse_event: MouseEvent = input_state.into();
-
-				if let Some(button) = cef_button {
-					host.send_mouse_click_event(
-						Some(&mouse_event),
-						button,
-						mouse_up,
-						1, // click count
-					);
-				}
-			}
+			host.set_focus(1);
+			host.send_mouse_click_event(Some(&input_state.into()), cef_button, cef_mouse_up, cef_click_count);
 		}
 		WindowEvent::MouseWheel { delta, phase: _, device_id: _, .. } => {
-			if let Some(host) = browser.host() {
-				let mouse_event = input_state.into();
-				let line_width = 40; //feels about right, TODO: replace with correct value
-				let line_height = 30; //feels about right, TODO: replace with correct value
-				let (delta_x, delta_y) = match delta {
-					MouseScrollDelta::LineDelta(x, y) => (x * line_width as f32, y * line_height as f32),
-					MouseScrollDelta::PixelDelta(physical_position) => (physical_position.x as f32, physical_position.y as f32),
-				};
-				host.send_mouse_wheel_event(Some(&mouse_event), delta_x as i32, delta_y as i32);
-			}
+			let Some(host) = browser.host() else {
+				return;
+			};
+
+			host.set_focus(1);
+
+			let mouse_event = input_state.into();
+			let line_width = 40; //feels about right, TODO: replace with correct value
+			let line_height = 30; //feels about right, TODO: replace with correct value
+			let (delta_x, delta_y) = match delta {
+				MouseScrollDelta::LineDelta(x, y) => (x * line_width as f32, y * line_height as f32),
+				MouseScrollDelta::PixelDelta(physical_position) => (physical_position.x as f32, physical_position.y as f32),
+			};
+			host.send_mouse_wheel_event(Some(&mouse_event), delta_x as i32, delta_y as i32);
 		}
 		WindowEvent::ModifiersChanged(modifiers) => {
-			input_state.update_modifiers(&modifiers.state());
+			input_state.modifiers_changed(&modifiers.state());
 		}
 		WindowEvent::KeyboardInput { device_id: _, event, is_synthetic: _ } => {
-			if let Some(host) = browser.host() {
-				host.set_focus(1);
+			let Some(host) = browser.host() else {
+				return;
+			};
 
-				let (named_key, character) = match &event.logical_key {
-					winit::keyboard::Key::Named(named_key) => (
-						Some(named_key),
-						match named_key {
-							winit::keyboard::NamedKey::Space => Some(' '),
-							winit::keyboard::NamedKey::Enter => Some('\u{000d}'),
-							_ => None,
-						},
-					),
-					winit::keyboard::Key::Character(str) => {
-						let char = str.chars().next().unwrap_or('\0');
-						(None, Some(char))
-					}
-					_ => return,
-				};
+			host.set_focus(1);
 
-				let native_key_code = event.physical_key.to_native_keycode();
-
-				let modifiers = input_state.cef_modifiers(&event.location, event.repeat).raw();
-
-				let mut key_event = KeyEvent {
-					size: size_of::<KeyEvent>(),
-					modifiers,
-					..Default::default()
-				};
-
-				if let Some(named_key) = named_key {
-					key_event.windows_key_code = named_key.to_vk_bits();
-				} else if let Some(char) = character {
-					key_event.windows_key_code = char.to_vk_bits();
+			let (named_key, character) = match &event.logical_key {
+				winit::keyboard::Key::Named(named_key) => (
+					Some(named_key),
+					match named_key {
+						winit::keyboard::NamedKey::Space => Some(' '),
+						winit::keyboard::NamedKey::Enter => Some('\u{000d}'),
+						_ => None,
+					},
+				),
+				winit::keyboard::Key::Character(str) => {
+					let char = str.chars().next().unwrap_or('\0');
+					(None, Some(char))
 				}
+				_ => return,
+			};
 
-				key_event.native_key_code = native_key_code;
+			let native_key_code = event.physical_key.to_native_keycode();
 
-				match event.state {
-					ElementState::Pressed => {
-						key_event.type_ = KeyEventType::from(cef_key_event_type_t::KEYEVENT_RAWKEYDOWN);
-						host.send_key_event(Some(&key_event));
+			let modifiers = input_state.cef_modifiers(&event.location, event.repeat).raw();
 
-						if let Some(char) = character {
-							let mut char_key_event = KeyEvent {
-								size: size_of::<KeyEvent>(),
-								modifiers,
-								is_system_key: 0,
-								..Default::default()
-							};
-							let mut buf = [0; 2];
-							char.encode_utf16(&mut buf);
-							char_key_event.windows_key_code = buf[0] as i32;
-							char_key_event.character = buf[0];
-							char_key_event.native_key_code = native_key_code;
-							let mut buf = [0; 2];
-							char.to_lowercase().next().unwrap().encode_utf16(&mut buf);
-							char_key_event.unmodified_character = buf[0];
-							char_key_event.type_ = KeyEventType::from(cef_key_event_type_t::KEYEVENT_CHAR);
-							host.send_key_event(Some(&char_key_event));
-						}
+			let mut key_event = KeyEvent {
+				size: size_of::<KeyEvent>(),
+				modifiers,
+				..Default::default()
+			};
+
+			if let Some(named_key) = named_key {
+				key_event.windows_key_code = named_key.to_vk_bits();
+			} else if let Some(char) = character {
+				key_event.windows_key_code = char.to_vk_bits();
+			}
+
+			key_event.native_key_code = native_key_code;
+
+			match event.state {
+				ElementState::Pressed => {
+					key_event.type_ = KeyEventType::from(cef_key_event_type_t::KEYEVENT_RAWKEYDOWN);
+					host.send_key_event(Some(&key_event));
+
+					if let Some(char) = character {
+						let mut char_key_event = KeyEvent {
+							size: size_of::<KeyEvent>(),
+							modifiers,
+							is_system_key: 0,
+							..Default::default()
+						};
+						let mut buf = [0; 2];
+						char.encode_utf16(&mut buf);
+						char_key_event.windows_key_code = buf[0] as i32;
+						char_key_event.character = buf[0];
+						char_key_event.native_key_code = native_key_code;
+						let mut buf = [0; 2];
+						char.to_lowercase().next().unwrap().encode_utf16(&mut buf);
+						char_key_event.unmodified_character = buf[0];
+						char_key_event.type_ = KeyEventType::from(cef_key_event_type_t::KEYEVENT_CHAR);
+						host.send_key_event(Some(&char_key_event));
 					}
-					ElementState::Released => {
-						key_event.type_ = KeyEventType::from(cef_key_event_type_t::KEYEVENT_KEYUP);
-						host.send_key_event(Some(&key_event));
-					}
-				};
+				}
+				ElementState::Released => {
+					key_event.type_ = KeyEventType::from(cef_key_event_type_t::KEYEVENT_KEYUP);
+					host.send_key_event(Some(&key_event));
+				}
 			}
 		}
 		_ => {}
 	}
 }
 
-#[derive(Default, Clone)]
-pub(crate) struct MouseState {
-	left: bool,
-	right: bool,
-	middle: bool,
-}
-
-#[derive(Default, Clone, Debug)]
-pub(crate) struct MousePosition {
-	x: usize,
-	y: usize,
-}
-
-impl From<&PhysicalPosition<f64>> for MousePosition {
-	fn from(position: &PhysicalPosition<f64>) -> Self {
-		Self {
-			x: position.x as usize,
-			y: position.y as usize,
-		}
-	}
-}
-
-#[derive(Default, Clone)]
+#[derive(Default)]
 pub(crate) struct InputState {
 	modifiers: winit::keyboard::ModifiersState,
 	mouse_position: MousePosition,
 	mouse_state: MouseState,
+	mouse_click_tracker: ClickTracker,
 }
-
 impl InputState {
-	fn update_modifiers(&mut self, modifiers: &winit::keyboard::ModifiersState) {
+	fn modifiers_changed(&mut self, modifiers: &winit::keyboard::ModifiersState) {
 		self.modifiers = *modifiers;
 	}
 
-	fn update_mouse_position(&mut self, position: &PhysicalPosition<f64>) {
+	fn cursor_move(&mut self, position: &PhysicalPosition<f64>) {
 		self.mouse_position = position.into();
 	}
 
-	fn update_mouse_state(&mut self, state: MouseState) {
-		self.mouse_state = state;
+	fn mouse_input(&mut self, button: &MouseButton, state: &ElementState) -> ClickCount {
+		self.mouse_state.update(button, state);
+		self.mouse_click_tracker.input(button, state, &self.mouse_position)
 	}
 
 	fn cef_modifiers(&self, location: &winit::keyboard::KeyLocation, is_repeat: bool) -> CefModifiers {
@@ -215,7 +168,6 @@ impl From<InputState> for CefModifiers {
 		CefModifiers::new(&val, &winit::keyboard::KeyLocation::Standard, false)
 	}
 }
-
 impl From<&InputState> for MouseEvent {
 	fn from(val: &InputState) -> Self {
 		MouseEvent {
@@ -235,8 +187,127 @@ impl From<&mut InputState> for MouseEvent {
 	}
 }
 
-struct CefModifiers(u32);
+#[derive(Default, Clone)]
+pub(crate) struct MousePosition {
+	x: usize,
+	y: usize,
+}
+impl From<&PhysicalPosition<f64>> for MousePosition {
+	fn from(position: &PhysicalPosition<f64>) -> Self {
+		Self {
+			x: position.x as usize,
+			y: position.y as usize,
+		}
+	}
+}
 
+#[derive(Default, Clone)]
+pub(crate) struct MouseState {
+	left: bool,
+	right: bool,
+	middle: bool,
+}
+impl MouseState {
+	pub(crate) fn update(&mut self, button: &MouseButton, state: &ElementState) {
+		match state {
+			ElementState::Pressed => match button {
+				MouseButton::Left => self.left = true,
+				MouseButton::Right => self.right = true,
+				MouseButton::Middle => self.middle = true,
+				_ => {}
+			},
+			ElementState::Released => match button {
+				MouseButton::Left => self.left = false,
+				MouseButton::Right => self.right = false,
+				MouseButton::Middle => self.middle = false,
+				_ => {}
+			},
+		}
+	}
+}
+
+#[derive(Default)]
+struct ClickTracker {
+	left: Option<ClickRecord>,
+	middle: Option<ClickRecord>,
+	right: Option<ClickRecord>,
+}
+impl ClickTracker {
+	fn input(&mut self, button: &MouseButton, state: &ElementState, position: &MousePosition) -> ClickCount {
+		const ALLOWABLE_MULTICLICK_SLOP: usize = 4;
+		const ALLOWABLE_MULTICLICK_TIME: Duration = Duration::from_millis(500);
+
+		let record = match button {
+			MouseButton::Left => &mut self.left,
+			MouseButton::Right => &mut self.right,
+			MouseButton::Middle => &mut self.middle,
+			_ => return ClickCount::Single,
+		};
+
+		let now = Instant::now();
+
+		let Some(record) = record else {
+			*record = Some(ClickRecord {
+				time: now,
+				position: position.clone(),
+				down_count: ClickCount::Single,
+				up_count: ClickCount::Single,
+			});
+			return ClickCount::Single;
+		};
+
+		let dx = position.x.abs_diff(record.position.x);
+		let dy = position.y.abs_diff(record.position.y);
+		let within_dist = dx <= ALLOWABLE_MULTICLICK_SLOP && dy <= ALLOWABLE_MULTICLICK_SLOP;
+		let within_time = now.saturating_duration_since(record.time) <= ALLOWABLE_MULTICLICK_TIME;
+
+		let count = if within_time && within_dist { ClickCount::Double } else { ClickCount::Single };
+
+		*record = match state {
+			ElementState::Pressed => ClickRecord {
+				time: now,
+				position: position.clone(),
+				down_count: count.clone(),
+				up_count: record.up_count.clone(),
+			},
+			ElementState::Released => ClickRecord {
+				time: now,
+				position: position.clone(),
+				down_count: record.down_count.clone(),
+				up_count: count.clone(),
+			},
+		};
+		count
+	}
+}
+
+#[derive(Clone)]
+enum ClickCount {
+	Single,
+	Double,
+}
+impl Default for ClickCount {
+	fn default() -> Self {
+		Self::Single
+	}
+}
+impl From<ClickCount> for i32 {
+	fn from(count: ClickCount) -> i32 {
+		match count {
+			ClickCount::Single => 1,
+			ClickCount::Double => 2,
+		}
+	}
+}
+
+struct ClickRecord {
+	time: Instant,
+	position: MousePosition,
+	down_count: ClickCount,
+	up_count: ClickCount,
+}
+
+struct CefModifiers(u32);
 impl CefModifiers {
 	fn new(input_state: &InputState, location: &winit::keyboard::KeyLocation, is_repeat: bool) -> Self {
 		let mut inner = 0;
