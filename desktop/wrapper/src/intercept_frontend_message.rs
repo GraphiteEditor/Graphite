@@ -70,6 +70,9 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 			// Forward this to update the UI
 			return Some(message);
 		}
+		FrontendMessage::DragWindow => {
+			dispatcher.respond(DesktopFrontendMessage::DragWindow);
+		}
 		FrontendMessage::CloseWindow => {
 			dispatcher.respond(DesktopFrontendMessage::CloseWindow);
 		}
@@ -106,6 +109,12 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		}
 		FrontendMessage::TriggerLoadRestAutoSaveDocuments => {
 			dispatcher.respond(DesktopFrontendMessage::PersistenceLoadRemainingDocuments);
+		}
+		FrontendMessage::TriggerSavePreferences { preferences } => {
+			dispatcher.respond(DesktopFrontendMessage::PersistenceWritePreferences { preferences });
+		}
+		FrontendMessage::TriggerLoadPreferences => {
+			dispatcher.respond(DesktopFrontendMessage::PersistenceLoadPreferences);
 		}
 		m => return Some(m),
 	}

@@ -390,19 +390,17 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			PortfolioMessage::NewDocumentWithName { name } => {
 				let mut new_document = DocumentMessageHandler::default();
 				new_document.name = name;
-				let mut new_responses = VecDeque::new();
-				new_responses.add(DocumentMessage::PTZUpdate);
+
+				responses.add(DocumentMessage::PTZUpdate);
 
 				let document_id = DocumentId(generate_uuid());
 				if self.active_document().is_some() {
-					new_responses.add(EventMessage::ToolAbort);
-					new_responses.add(NavigationMessage::CanvasPan { delta: (0., 0.).into() });
+					responses.add(EventMessage::ToolAbort);
+					responses.add(NavigationMessage::CanvasPan { delta: (0., 0.).into() });
 				}
 
-				self.load_document(new_document, document_id, self.layers_panel_open, &mut new_responses, false);
-				new_responses.add(PortfolioMessage::SelectDocument { document_id });
-				new_responses.extend(responses.drain(..));
-				*responses = new_responses;
+				self.load_document(new_document, document_id, self.layers_panel_open, responses, false);
+				responses.add(PortfolioMessage::SelectDocument { document_id });
 			}
 			PortfolioMessage::NextDocument => {
 				if let Some(active_document_id) = self.active_document_id {

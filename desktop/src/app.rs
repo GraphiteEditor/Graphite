@@ -164,6 +164,11 @@ impl WinitApp {
 					window.set_minimized(minimized);
 				}
 			}
+			DesktopFrontendMessage::DragWindow => {
+				if let Some(window) = &self.window {
+					let _ = window.drag_window();
+				}
+			}
 			DesktopFrontendMessage::CloseWindow => {
 				let _ = self.event_loop_proxy.send_event(CustomEvent::CloseWindow);
 			}
@@ -211,6 +216,15 @@ impl WinitApp {
 				}
 				if let Some(id) = self.persistent_data.current_document_id() {
 					let message = DesktopWrapperMessage::SelectDocument { id };
+					self.dispatch_desktop_wrapper_message(message);
+				}
+			}
+			DesktopFrontendMessage::PersistenceWritePreferences { preferences } => {
+				self.persistent_data.write_preferences(preferences);
+			}
+			DesktopFrontendMessage::PersistenceLoadPreferences => {
+				if let Some(preferences) = self.persistent_data.load_preferences() {
+					let message = DesktopWrapperMessage::LoadPreferences { preferences };
 					self.dispatch_desktop_wrapper_message(message);
 				}
 			}
@@ -262,7 +276,9 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 		let mut window = Window::default_attributes()
 			.with_title(APP_NAME)
 			.with_min_inner_size(winit::dpi::LogicalSize::new(400, 300))
-			.with_inner_size(winit::dpi::LogicalSize::new(1200, 800));
+			.with_inner_size(winit::dpi::LogicalSize::new(1200, 800))
+			.with_decorations(false)
+			.with_resizable(true);
 
 		#[cfg(target_os = "linux")]
 		{

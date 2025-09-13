@@ -139,7 +139,10 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 						}
 					}
 
-					if matches!(old_tool, ToolType::Path | ToolType::Select) {
+					// If a G/R/S transform is active while using Path, Select, Pen, or Shape,
+					// and the user switches to a different tool, cancel the current transform
+					// operation to avoid leaving it in an inconsistent state
+					if matches!(old_tool, ToolType::Path | ToolType::Select | ToolType::Pen | ToolType::Shape) {
 						responses.add(TransformLayerMessage::CancelTransformOperation);
 					}
 				};

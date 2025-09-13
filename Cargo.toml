@@ -18,6 +18,7 @@ members = [
 	"node-graph/graphene-cli",
 	"node-graph/graster-nodes",
 	"node-graph/graster-nodes/shaders",
+	"node-graph/graster-nodes/shaders/entrypoint",
 	"node-graph/gstd",
 	"node-graph/gsvg-renderer",
 	"node-graph/interpreted-executor",
@@ -135,6 +136,7 @@ winit = { version = "0.30", features = ["wayland", "rwh_06"] }
 url = "2.5"
 tokio = { version = "1.29", features = ["fs", "macros", "io-std", "rt"] }
 vello = { git = "https://github.com/linebender/vello.git", rev = "87cc5bee6d3a34d15017dbbb58634ddc7f33ff9b" } # TODO switch back to stable when a release is made
+vello_encoding = { git = "https://github.com/linebender/vello.git", rev = "87cc5bee6d3a34d15017dbbb58634ddc7f33ff9b" } # TODO switch back to stable when a release is made
 resvg = "0.45"
 usvg = "0.45"
 rand = { version = "0.9", default-features = false, features = ["std_rng"] }

@@ -40,7 +40,7 @@ pub struct ClickTarget {
 
 impl ClickTarget {
 	pub fn new_with_subpath(subpath: Subpath<PointId>, stroke_width: f64) -> Self {
-		let bounding_box = subpath.loose_bounding_box();
+		let bounding_box = subpath.bounding_box();
 		Self {
 			target_type: ClickTargetType::Subpath(subpath),
 			stroke_width,

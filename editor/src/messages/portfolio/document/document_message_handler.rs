@@ -1062,6 +1062,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					responses.add(NodeGraphMessage::UpdateNewNodeGraph);
 				}
 			}
+			DocumentMessage::MarkAsSaved => {
+				self.set_save_state(true);
+				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+			}
 			DocumentMessage::SelectParentLayer => {
 				let selected_nodes = self.network_interface.selected_nodes();
 				let selected_layers = selected_nodes.selected_layers(self.metadata());

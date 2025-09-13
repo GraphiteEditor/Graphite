@@ -1,8 +1,9 @@
-use graph_craft::document::value::RenderOutput;
+#[cfg(target_family = "wasm")]
+use base64::Engine;
 pub use graph_craft::document::value::RenderOutputType;
 pub use graph_craft::wasm_application_io::*;
-use graphene_application_io::{ApplicationIo, ExportFormat, RenderConfig};
-use graphene_core::Artboard;
+use graphene_application_io::ApplicationIo;
+#[cfg(target_family = "wasm")]
 use graphene_core::gradient::GradientStops;
 #[cfg(target_family = "wasm")]
 use graphene_core::math::bbox::Bbox;
@@ -11,13 +12,13 @@ use graphene_core::raster_types::{CPU, Raster};
 use graphene_core::table::Table;
 #[cfg(target_family = "wasm")]
 use graphene_core::transform::Footprint;
-use graphene_core::vector::Vector;
-use graphene_core::{Color, Context, Ctx, ExtractFootprint, Graphic, OwnedContextImpl, WasmNotSend};
-use graphene_svg_renderer::RenderMetadata;
-use graphene_svg_renderer::{Render, RenderParams, RenderSvgSegmentList, SvgRender, format_transform_matrix};
-
 #[cfg(target_family = "wasm")]
-use base64::Engine;
+use graphene_core::vector::Vector;
+use graphene_core::{Color, Ctx};
+#[cfg(target_family = "wasm")]
+use graphene_core::{Graphic, WasmNotSend};
+#[cfg(target_family = "wasm")]
+use graphene_svg_renderer::{Render, RenderParams, RenderSvgSegmentList, SvgRender};
 use std::sync::Arc;
 #[cfg(target_family = "wasm")]
 use wasm_bindgen::JsCast;
@@ -139,80 +140,6 @@ fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> Table<Raster<CPU>> {
 	Table::new_from_element(Raster::new_cpu(image))
 }
 
-fn render_svg(data: impl Render, mut render: SvgRender, render_params: RenderParams) -> RenderOutputType {
-	let footprint = render_params.footprint;
-
-	if !data.contains_artboard() && !render_params.hide_artboards {
-		render.leaf_tag("rect", |attributes| {
-			attributes.push("x", "0");
-			attributes.push("y", "0");
-			attributes.push("width", footprint.resolution.x.to_string());
-			attributes.push("height", footprint.resolution.y.to_string());
-			let matrix = format_transform_matrix(footprint.transform.inverse());
-			if !matrix.is_empty() {
-				attributes.push("transform", matrix);
-			}
-			attributes.push("fill", "white");
-		});
-	}
-
-	data.render_svg(&mut render, &render_params);
-
-	render.wrap_with_transform(footprint.transform, Some(footprint.resolution.as_dvec2()));
-
-	RenderOutputType::Svg {
-		svg: render.svg.to_svg_string(),
-		image_data: render.image_data,
-	}
-}
-
-#[cfg(feature = "vello")]
-#[cfg_attr(not(target_family = "wasm"), allow(dead_code))]
-async fn render_canvas(render_config: RenderConfig, data: impl Render, editor: &WasmEditorApi, surface_handle: Option<wgpu_executor::WgpuSurface>, render_params: RenderParams) -> RenderOutputType {
-	use graphene_application_io::{ImageTexture, SurfaceFrame};
-
-	let mut footprint = render_config.viewport;
-	footprint.resolution = footprint.resolution.max(glam::UVec2::splat(1));
-	let Some(exec) = editor.application_io.as_ref().unwrap().gpu_executor() else {
-		unreachable!("Attempted to render with Vello when no GPU executor is available");
-	};
-	use vello::*;
-
-	let mut scene = Scene::new();
-	let mut child = Scene::new();
-
-	let mut context = wgpu_executor::RenderContext::default();
-	data.render_to_vello(&mut child, Default::default(), &mut context, &render_params);
-
-	// TODO: Instead of applying the transform here, pass the transform during the translation to avoid the O(n) cost
-	scene.append(&child, Some(kurbo::Affine::new(footprint.transform.to_cols_array())));
-
-	let mut background = Color::from_rgb8_srgb(0x22, 0x22, 0x22);
-	if !data.contains_artboard() && !render_config.hide_artboards {
-		background = Color::WHITE;
-	}
-	if let Some(surface_handle) = surface_handle {
-		exec.render_vello_scene(&scene, &surface_handle, footprint.resolution, &context, background)
-			.await
-			.expect("Failed to render Vello scene");
-
-		let frame = SurfaceFrame {
-			surface_id: surface_handle.window_id,
-			resolution: render_config.viewport.resolution,
-			transform: glam::DAffine2::IDENTITY,
-		};
-
-		RenderOutputType::CanvasFrame(frame)
-	} else {
-		let texture = exec
-			.render_vello_scene_to_texture(&scene, footprint.resolution, &context, background)
-			.await
-			.expect("Failed to render Vello scene");
-
-		RenderOutputType::Texture(ImageTexture { texture })
-	}
-}
-
 #[cfg(target_family = "wasm")]
 #[node_macro::node(category(""))]
 async fn rasterize<T: WasmNotSend + 'n>(
@@ -281,71 +208,4 @@ where
 		transform: footprint.transform,
 		..Default::default()
 	})
-}
-
-#[node_macro::node(category(""))]
-async fn render<'a: 'n, T: 'n + Render + WasmNotSend>(
-	render_config: RenderConfig,
-	editor_api: impl Node<Context<'static>, Output = &'a WasmEditorApi>,
-	#[implementations(
-		Context -> Table<Artboard>,
-		Context -> Table<Graphic>,
-		Context -> Table<Vector>,
-		Context -> Table<Raster<CPU>>,
-		Context -> Table<Color>,
-		Context -> Table<GradientStops>,
-	)]
-	data: impl Node<Context<'static>, Output = T>,
-	_surface_handle: impl Node<Context<'static>, Output = Option<wgpu_executor::WgpuSurface>>,
-) -> RenderOutput {
-	let footprint = render_config.viewport;
-	let ctx = OwnedContextImpl::default()
-		.with_footprint(footprint)
-		.with_real_time(render_config.time.time)
-		.with_animation_time(render_config.time.animation_time.as_secs_f64())
-		.into_context();
-	ctx.footprint();
-
-	let render_params = RenderParams {
-		render_mode: render_config.render_mode,
-		hide_artboards: render_config.hide_artboards,
-		for_export: render_config.for_export,
-		footprint,
-		..Default::default()
-	};
-
-	let data = data.eval(ctx.clone()).await;
-	let editor_api = editor_api.eval(None).await;
-
-	#[cfg(all(feature = "vello", not(test), target_family = "wasm"))]
-	let _surface_handle = _surface_handle.eval(None).await;
-	#[cfg(not(target_family = "wasm"))]
-	let _surface_handle: Option<wgpu_executor::WgpuSurface> = None;
-
-	let use_vello = editor_api.editor_preferences.use_vello();
-	#[cfg(all(feature = "vello", not(test), target_family = "wasm"))]
-	let use_vello = use_vello && _surface_handle.is_some();
-
-	let mut metadata = RenderMetadata::default();
-	data.collect_metadata(&mut metadata, footprint, None);
-
-	let output_format = render_config.export_format;
-	let data = match output_format {
-		ExportFormat::Svg => render_svg(data, SvgRender::new(), render_params),
-		ExportFormat::Canvas => {
-			if use_vello && editor_api.application_io.as_ref().unwrap().gpu_executor().is_some() {
-				#[cfg(all(feature = "vello", not(test)))]
-				return RenderOutput {
-					data: render_canvas(render_config, data, editor_api, _surface_handle, render_params).await,
-					metadata,
-				};
-				#[cfg(any(not(feature = "vello"), test))]
-				render_svg(data, SvgRender::new(), render_params)
-			} else {
-				render_svg(data, SvgRender::new(), render_params)
-			}
-		}
-		_ => todo!("Non-SVG render output for {output_format:?}"),
-	};
-	RenderOutput { data, metadata }
 }

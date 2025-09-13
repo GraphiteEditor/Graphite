@@ -1,7 +1,10 @@
 pub use graphite_editor::messages::prelude::DocumentId;
 use graphite_editor::messages::prelude::FrontendMessage;
-pub(crate) use graphite_editor::messages::prelude::Message as EditorMessage;
 use std::path::PathBuf;
+
+pub(crate) use graphite_editor::messages::prelude::Message as EditorMessage;
+
+pub use graphite_editor::messages::prelude::PreferencesMessageHandler as Preferences;
 
 pub enum DesktopFrontendMessage {
 	ToWeb(Vec<FrontendMessage>),
@@ -33,6 +36,8 @@ pub enum DesktopFrontendMessage {
 		maximized: bool,
 		minimized: bool,
 	},
+	DragWindow,
+	CloseWindow,
 	PersistenceWriteDocument {
 		id: DocumentId,
 		document: Document,
@@ -48,7 +53,10 @@ pub enum DesktopFrontendMessage {
 	PersistenceUpdateDocumentsList {
 		ids: Vec<DocumentId>,
 	},
-	CloseWindow,
+	PersistenceWritePreferences {
+		preferences: Preferences,
+	},
+	PersistenceLoadPreferences,
 }
 
 pub enum DesktopWrapperMessage {
@@ -92,6 +100,9 @@ pub enum DesktopWrapperMessage {
 	},
 	SelectDocument {
 		id: DocumentId,
+	},
+	LoadPreferences {
+		preferences: Preferences,
 	},
 }
 
