@@ -176,33 +176,32 @@ fn render_glyph_run(glyph_run: &GlyphRun<'_, ()>, path_builder: &mut PathBuilder
 }
 
 fn layout_text(str: &str, font_data: Option<Blob<u8>>, typesetting: TypesettingConfig) -> Option<Layout<()>> {
-	let font_cx = FONT_CONTEXT.with(Clone::clone);
-	let mut font_cx = font_cx.borrow_mut();
-	let layout_cx = LAYOUT_CONTEXT.with(Clone::clone);
-	let mut layout_cx = layout_cx.borrow_mut();
+	FONT_CONTEXT.with_borrow_mut(|mut font_cx| {
+		LAYOUT_CONTEXT.with_borrow_mut(|layout_cx| {
+			let font_family = font_data.and_then(|font_data| {
+				font_cx
+					.collection
+					.register_fonts(font_data, None)
+					.first()
+					.and_then(|(family_id, _)| font_cx.collection.family_name(*family_id).map(String::from))
+			})?;
 
-	let font_family = font_data.and_then(|font_data| {
-		font_cx
-			.collection
-			.register_fonts(font_data, None)
-			.first()
-			.and_then(|(family_id, _)| font_cx.collection.family_name(*family_id).map(String::from))
-	})?;
+			const DISPLAY_SCALE: f32 = 1.;
+			let mut builder = layout_cx.ranged_builder(&mut font_cx, str, DISPLAY_SCALE, false);
 
-	const DISPLAY_SCALE: f32 = 1.;
-	let mut builder = layout_cx.ranged_builder(&mut font_cx, str, DISPLAY_SCALE, false);
+			builder.push_default(StyleProperty::FontSize(typesetting.font_size as f32));
+			builder.push_default(StyleProperty::LetterSpacing(typesetting.character_spacing as f32));
+			builder.push_default(StyleProperty::FontStack(parley::FontStack::Single(parley::FontFamily::Named(std::borrow::Cow::Owned(font_family)))));
+			builder.push_default(LineHeight::FontSizeRelative(typesetting.line_height_ratio as f32));
 
-	builder.push_default(StyleProperty::FontSize(typesetting.font_size as f32));
-	builder.push_default(StyleProperty::LetterSpacing(typesetting.character_spacing as f32));
-	builder.push_default(StyleProperty::FontStack(parley::FontStack::Single(parley::FontFamily::Named(std::borrow::Cow::Owned(font_family)))));
-	builder.push_default(LineHeight::FontSizeRelative(typesetting.line_height_ratio as f32));
+			let mut layout: Layout<()> = builder.build(str);
 
-	let mut layout: Layout<()> = builder.build(str);
+			layout.break_all_lines(typesetting.max_width.map(|mw| mw as f32));
+			layout.align(typesetting.max_width.map(|max_w| max_w as f32), typesetting.align.into(), AlignmentOptions::default());
 
-	layout.break_all_lines(typesetting.max_width.map(|mw| mw as f32));
-	layout.align(typesetting.max_width.map(|max_w| max_w as f32), typesetting.align.into(), AlignmentOptions::default());
-
-	Some(layout)
+			Some(layout)
+		})
+	})
 }
 
 pub fn to_path(str: &str, font_data: Option<Blob<u8>>, typesetting: TypesettingConfig, per_glyph_instances: bool) -> Table<Vector> {
