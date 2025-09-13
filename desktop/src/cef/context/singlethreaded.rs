@@ -10,6 +10,7 @@ use super::CefContext;
 pub(super) struct SingleThreadedCefContext {
 	pub(super) browser: Browser,
 	pub(super) input_state: InputState,
+	pub(super) instance_dir: std::path::PathBuf,
 }
 
 impl CefContext for SingleThreadedCefContext {
@@ -33,6 +34,7 @@ impl CefContext for SingleThreadedCefContext {
 impl Drop for SingleThreadedCefContext {
 	fn drop(&mut self) {
 		cef::shutdown();
+		std::fs::remove_dir_all(&self.instance_dir).expect("Failed to remove CEF cache directory");
 	}
 }
 

@@ -63,6 +63,10 @@ fn main() {
 			tracing::error!("Failed to create CEF browser");
 			exit(1);
 		}
+		Err(cef::InitError::RequestContextCreationFailed) => {
+			tracing::error!("Failed to create CEF request context");
+			exit(1);
+		}
 	};
 
 	tracing::info!("CEF initialized successfully");
