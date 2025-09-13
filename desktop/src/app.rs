@@ -28,8 +28,8 @@ use crate::native_window;
 pub(crate) struct WinitApp {
 	cef_context: Box<dyn cef::CefContext>,
 	window: Option<Arc<Window>>,
-	cef_schedule: Option<Instant>,
 	native_window: native_window::NativeWindowHandle,
+	cef_schedule: Option<Instant>,
 	window_size_sender: Sender<WindowSize>,
 	graphics_state: Option<GraphicsState>,
 	wgpu_context: WgpuContext,
@@ -282,7 +282,7 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 			.with_inner_size(winit::dpi::LogicalSize::new(1200, 800))
 			.with_resizable(true);
 
-		self.native_window.build(&mut window, event_loop);
+		window = self.native_window.build(window, event_loop);
 
 		let window = event_loop.create_window(window).unwrap();
 

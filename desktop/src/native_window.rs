@@ -19,12 +19,12 @@ impl Default for NativeWindowHandle {
 
 impl NativeWindowHandle {
 	#[allow(unused_variables)]
-	pub(super) fn build(&mut self, window: &mut WindowAttributes, event_loop: &ActiveEventLoop) {
+	pub(super) fn build(&mut self, window: WindowAttributes, event_loop: &ActiveEventLoop) -> WindowAttributes {
 		#[cfg(target_os = "linux")]
 		{
 			use crate::consts::{APP_ID, APP_NAME};
 			use winit::platform::wayland::ActiveEventLoopExtWayland;
-			window = if event_loop.is_wayland() {
+			if event_loop.is_wayland() {
 				winit::platform::wayland::WindowAttributesExtWayland::with_name(window, APP_ID, "")
 			} else {
 				winit::platform::x11::WindowAttributesExtX11::with_name(window, APP_ID, APP_NAME)
