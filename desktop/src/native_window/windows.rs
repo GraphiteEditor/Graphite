@@ -41,7 +41,7 @@ struct WindowsNativeWindowHandleInner {
 	prev_window_message_handler: isize,
 }
 impl WindowsNativeWindowHandleInner {
-	fn new(window: &Window) -> WindowsNativeWindowHandleInner {
+	fn new(window: &Box<dyn Window>) -> WindowsNativeWindowHandleInner {
 		// Extract Win32 HWND from winit.
 		let hwnd = match window.window_handle().expect("No window handle").as_raw() {
 			RawWindowHandle::Win32(h) => HWND(h.hwnd.get() as *mut std::ffi::c_void),

@@ -1,39 +1,37 @@
-use crate::CustomEvent;
-use crate::cef::WindowSize;
-use crate::consts::{APP_NAME, CEF_MESSAGE_LOOP_MAX_ITERATIONS};
-use crate::persist::PersistentData;
-use crate::render::GraphicsState;
-use graphite_desktop_wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, Platform};
-use graphite_desktop_wrapper::{DesktopWrapper, NodeGraphExecutionResult, WgpuContext, serialize_frontend_messages};
-
 use rfd::AsyncFileDialog;
 use std::sync::Arc;
+use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
 use std::sync::mpsc::SyncSender;
 use std::thread;
 use std::time::Duration;
 use std::time::Instant;
 use winit::application::ApplicationHandler;
-use winit::dpi::PhysicalSize;
 use winit::event::WindowEvent;
 use winit::event_loop::ActiveEventLoop;
 use winit::event_loop::ControlFlow;
-use winit::event_loop::EventLoopProxy;
 use winit::window::Window;
 use winit::window::WindowId;
 
 use crate::cef;
+use crate::consts::CEF_MESSAGE_LOOP_MAX_ITERATIONS;
 use crate::native_window;
+use crate::persist::PersistentData;
+use crate::render::GraphicsState;
+use crate::{CustomEvent, CustomEventScheduler};
+use graphite_desktop_wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, Platform};
+use graphite_desktop_wrapper::{DesktopWrapper, NodeGraphExecutionResult, WgpuContext, serialize_frontend_messages};
 
 pub(crate) struct WinitApp {
 	cef_context: Box<dyn cef::CefContext>,
-	window: Option<Arc<Window>>,
+	window: Option<Arc<Box<dyn Window>>>,
 	native_window: native_window::NativeWindowHandle,
 	cef_schedule: Option<Instant>,
-	window_size_sender: Sender<WindowSize>,
+	cef_window_size_sender: Sender<cef::WindowSize>,
 	graphics_state: Option<GraphicsState>,
 	wgpu_context: WgpuContext,
-	event_loop_proxy: EventLoopProxy<CustomEvent>,
+	custom_event_receiver: Receiver<CustomEvent>,
+	custom_event_scheduler: CustomEventScheduler,
 	desktop_wrapper: DesktopWrapper,
 	last_ui_update: Instant,
 	avg_frame_time: f32,
@@ -44,13 +42,19 @@ pub(crate) struct WinitApp {
 }
 
 impl WinitApp {
-	pub(crate) fn new(cef_context: Box<dyn cef::CefContext>, window_size_sender: Sender<WindowSize>, wgpu_context: WgpuContext, event_loop_proxy: EventLoopProxy<CustomEvent>) -> Self {
-		let rendering_loop_proxy = event_loop_proxy.clone();
+	pub(crate) fn new(
+		cef_context: Box<dyn cef::CefContext>,
+		window_size_sender: Sender<cef::WindowSize>,
+		wgpu_context: WgpuContext,
+		custom_event_receiver: Receiver<CustomEvent>,
+		custom_event_scheduler: CustomEventScheduler,
+	) -> Self {
+		let rendering_custom_event_scheduler = custom_event_scheduler.clone();
 		let (start_render_sender, start_render_receiver) = std::sync::mpsc::sync_channel(1);
 		std::thread::spawn(move || {
 			loop {
 				let result = futures::executor::block_on(DesktopWrapper::execute_node_graph());
-				let _ = rendering_loop_proxy.send_event(CustomEvent::NodeGraphExecutionResult(result));
+				rendering_custom_event_scheduler.schedule(CustomEvent::NodeGraphExecutionResult(result));
 				let _ = start_render_receiver.recv();
 			}
 		});
@@ -63,9 +67,10 @@ impl WinitApp {
 			window: None,
 			cef_schedule: Some(Instant::now()),
 			graphics_state: None,
-			window_size_sender,
+			cef_window_size_sender: window_size_sender,
 			wgpu_context,
-			event_loop_proxy,
+			custom_event_receiver,
+			custom_event_scheduler,
 			desktop_wrapper: DesktopWrapper::new(),
 			last_ui_update: Instant::now(),
 			avg_frame_time: 0.,
@@ -87,7 +92,7 @@ impl WinitApp {
 				self.send_or_queue_web_message(bytes);
 			}
 			DesktopFrontendMessage::OpenFileDialog { title, filters, context } => {
-				let event_loop_proxy = self.event_loop_proxy.clone();
+				let custom_event_scheduler = self.custom_event_scheduler.clone();
 				let _ = thread::spawn(move || {
 					let mut dialog = AsyncFileDialog::new().set_title(title);
 					for filter in filters {
@@ -100,7 +105,7 @@ impl WinitApp {
 						&& let Ok(content) = std::fs::read(&path)
 					{
 						let message = DesktopWrapperMessage::OpenFileDialogResult { path, content, context };
-						let _ = event_loop_proxy.send_event(CustomEvent::DesktopWrapperMessage(message));
+						custom_event_scheduler.schedule(CustomEvent::DesktopWrapperMessage(message));
 					}
 				});
 			}
@@ -111,7 +116,7 @@ impl WinitApp {
 				filters,
 				context,
 			} => {
-				let event_loop_proxy = self.event_loop_proxy.clone();
+				let custom_event_scheduler = self.custom_event_scheduler.clone();
 				let _ = thread::spawn(move || {
 					let mut dialog = AsyncFileDialog::new().set_title(title).set_file_name(default_filename);
 					if let Some(folder) = default_folder {
@@ -125,7 +130,7 @@ impl WinitApp {
 
 					if let Some(path) = futures::executor::block_on(show_dialog) {
 						let message = DesktopWrapperMessage::SaveFileDialogResult { path, context };
-						let _ = event_loop_proxy.send_event(CustomEvent::DesktopWrapperMessage(message));
+						custom_event_scheduler.schedule(CustomEvent::DesktopWrapperMessage(message));
 					}
 				});
 			}
@@ -145,7 +150,7 @@ impl WinitApp {
 				if let Some(graphics_state) = &mut self.graphics_state
 					&& let Some(window) = &self.window
 				{
-					let window_size = window.inner_size();
+					let window_size = window.surface_size();
 
 					let viewport_offset_x = x / window_size.width as f32;
 					let viewport_offset_y = y / window_size.height as f32;
@@ -173,7 +178,7 @@ impl WinitApp {
 				}
 			}
 			DesktopFrontendMessage::CloseWindow => {
-				let _ = self.event_loop_proxy.send_event(CustomEvent::CloseWindow);
+				self.custom_event_scheduler.schedule(CustomEvent::CloseWindow);
 			}
 			DesktopFrontendMessage::PersistenceWriteDocument { id, document } => {
 				self.persistent_data.write_document(id, document);
@@ -252,62 +257,8 @@ impl WinitApp {
 			self.web_communication_startup_buffer.push(message);
 		}
 	}
-}
 
-impl ApplicationHandler<CustomEvent> for WinitApp {
-	fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-		// Set a timeout in case we miss any cef schedule requests
-		let timeout = Instant::now() + Duration::from_millis(10);
-		let wait_until = timeout.min(self.cef_schedule.unwrap_or(timeout));
-		if let Some(schedule) = self.cef_schedule
-			&& schedule < Instant::now()
-		{
-			self.cef_schedule = None;
-			// Poll cef message loop multiple times to avoid message loop starvation
-			for _ in 0..CEF_MESSAGE_LOOP_MAX_ITERATIONS {
-				self.cef_context.work();
-			}
-		}
-		if let Some(window) = &self.window.as_ref() {
-			window.request_redraw();
-		}
-
-		event_loop.set_control_flow(ControlFlow::WaitUntil(wait_until));
-	}
-
-	fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-		let mut window = Window::default_attributes()
-			.with_title(APP_NAME)
-			.with_min_inner_size(winit::dpi::LogicalSize::new(400, 300))
-			.with_inner_size(winit::dpi::LogicalSize::new(1200, 800))
-			.with_resizable(true);
-
-		window = self.native_window.build(window, event_loop);
-
-		let window = event_loop.create_window(window).unwrap();
-
-		self.native_window.setup(&window);
-
-		let window = Arc::new(window);
-		let graphics_state = GraphicsState::new(window.clone(), self.wgpu_context.clone());
-
-		self.window = Some(window);
-		self.graphics_state = Some(graphics_state);
-
-		tracing::info!("Winit window created and ready");
-
-		self.desktop_wrapper.init(self.wgpu_context.clone());
-
-		#[cfg(target_os = "windows")]
-		let platform = Platform::Windows;
-		#[cfg(target_os = "macos")]
-		let platform = Platform::Mac;
-		#[cfg(target_os = "linux")]
-		let platform = Platform::Linux;
-		self.dispatch_desktop_wrapper_message(DesktopWrapperMessage::UpdatePlatform(platform));
-	}
-
-	fn user_event(&mut self, event_loop: &ActiveEventLoop, event: CustomEvent) {
+	fn user_event(&mut self, event_loop: &dyn ActiveEventLoop, event: CustomEvent) {
 		match event {
 			CustomEvent::WebCommunicationInitialized => {
 				self.web_communication_initialized = true;
@@ -358,23 +309,55 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 			}
 		}
 	}
+}
+impl ApplicationHandler for WinitApp {
+	fn can_create_surfaces(&mut self, event_loop: &dyn ActiveEventLoop) {
+		let window_attributes = self.native_window.build(event_loop);
 
-	fn window_event(&mut self, event_loop: &ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
+		let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
+
+		self.native_window.setup(&window);
+
+		let graphics_state = GraphicsState::new(window.clone(), self.wgpu_context.clone());
+
+		self.window = Some(window);
+		self.graphics_state = Some(graphics_state);
+
+		tracing::info!("Winit window created and ready");
+
+		self.desktop_wrapper.init(self.wgpu_context.clone());
+
+		#[cfg(target_os = "windows")]
+		let platform = Platform::Windows;
+		#[cfg(target_os = "macos")]
+		let platform = Platform::Mac;
+		#[cfg(target_os = "linux")]
+		let platform = Platform::Linux;
+		self.dispatch_desktop_wrapper_message(DesktopWrapperMessage::UpdatePlatform(platform));
+	}
+
+	fn proxy_wake_up(&mut self, event_loop: &dyn ActiveEventLoop) {
+		while let Ok(event) = self.custom_event_receiver.try_recv() {
+			self.user_event(event_loop, event);
+		}
+	}
+
+	fn window_event(&mut self, event_loop: &dyn ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
 		self.cef_context.handle_window_event(&event);
 
 		match event {
 			WindowEvent::CloseRequested => {
-				let _ = self.event_loop_proxy.send_event(CustomEvent::CloseWindow);
+				self.custom_event_scheduler.schedule(CustomEvent::CloseWindow);
 			}
-			WindowEvent::Resized(PhysicalSize { width, height }) => {
-				let _ = self.window_size_sender.send(WindowSize::new(width as usize, height as usize));
+			WindowEvent::SurfaceResized(size) => {
+				let _ = self.cef_window_size_sender.send(size.into());
 				self.cef_context.notify_of_resize();
 			}
 			WindowEvent::RedrawRequested => {
 				let Some(ref mut graphics_state) = self.graphics_state else { return };
 				// Only rerender once we have a new UI texture to display
 				if let Some(window) = &self.window {
-					match graphics_state.render(window.as_ref()) {
+					match graphics_state.render(window) {
 						Ok(_) => {}
 						Err(wgpu::SurfaceError::Lost) => {
 							tracing::warn!("lost surface");
@@ -387,23 +370,44 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 					let _ = self.start_render_sender.try_send(());
 				}
 			}
-			// Currently not supported on wayland see https://github.com/rust-windowing/winit/issues/1881
-			WindowEvent::DroppedFile(path) => {
-				match std::fs::read(&path) {
-					Ok(content) => {
-						let message = DesktopWrapperMessage::OpenFile { path, content };
-						let _ = self.event_loop_proxy.send_event(CustomEvent::DesktopWrapperMessage(message));
-					}
-					Err(e) => {
-						tracing::error!("Failed to read dropped file {}: {}", path.display(), e);
-						return;
-					}
-				};
+			WindowEvent::DragDropped { paths, .. } => {
+				for path in paths {
+					match std::fs::read(&path) {
+						Ok(content) => {
+							let message = DesktopWrapperMessage::OpenFile { path, content };
+							self.custom_event_scheduler.schedule(CustomEvent::DesktopWrapperMessage(message));
+						}
+						Err(e) => {
+							tracing::error!("Failed to read dropped file {}: {}", path.display(), e);
+							return;
+						}
+					};
+				}
 			}
 			_ => {}
 		}
 
 		// Notify cef of possible input events
 		self.cef_context.work();
+	}
+
+	fn about_to_wait(&mut self, event_loop: &dyn ActiveEventLoop) {
+		// Set a timeout in case we miss any cef schedule requests
+		let timeout = Instant::now() + Duration::from_millis(10);
+		let wait_until = timeout.min(self.cef_schedule.unwrap_or(timeout));
+		if let Some(schedule) = self.cef_schedule
+			&& schedule < Instant::now()
+		{
+			self.cef_schedule = None;
+			// Poll cef message loop multiple times to avoid message loop starvation
+			for _ in 0..CEF_MESSAGE_LOOP_MAX_ITERATIONS {
+				self.cef_context.work();
+			}
+		}
+		if let Some(window) = &self.window.as_ref() {
+			window.request_redraw();
+		}
+
+		event_loop.set_control_flow(ControlFlow::WaitUntil(wait_until));
 	}
 }
