@@ -66,7 +66,7 @@
 	});
 </script>
 
-<LayoutRow class="title-bar">
+<LayoutRow class="title-bar" on:mousedown={() => editor.handle.appWindowDrag()}>
 	<!-- Menu bar (or on Mac: window buttons) -->
 	<LayoutRow class="left">
 		{#if platform === "Mac"}

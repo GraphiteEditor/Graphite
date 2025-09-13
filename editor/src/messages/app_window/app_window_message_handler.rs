@@ -31,6 +31,9 @@ impl MessageHandler<AppWindowMessage, ()> for AppWindowMessageHandler {
 				self.platform = platform;
 				responses.add(FrontendMessage::UpdatePlatform { platform: self.platform });
 			}
+			AppWindowMessage::AppWindowDrag => {
+				responses.add(FrontendMessage::DragWindow);
+			}
 			AppWindowMessage::AppWindowClose => {
 				responses.add(FrontendMessage::CloseWindow);
 			}
