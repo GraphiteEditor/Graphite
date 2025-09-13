@@ -27,7 +27,7 @@ pub trait ExtractAnimationTime {
 }
 
 pub trait ExtractIndex {
-	fn try_index(&self) -> Option<Vec<usize>>;
+	fn try_index(&self) -> Option<usize>;
 }
 
 // Consider returning a slice or something like that
@@ -175,7 +175,7 @@ impl<T: ExtractAnimationTime + Sync> ExtractAnimationTime for Option<T> {
 	}
 }
 impl<T: ExtractIndex> ExtractIndex for Option<T> {
-	fn try_index(&self) -> Option<Vec<usize>> {
+	fn try_index(&self) -> Option<usize> {
 		self.as_ref().and_then(|x| x.try_index())
 	}
 }
@@ -212,7 +212,7 @@ impl<T: ExtractAnimationTime + Sync> ExtractAnimationTime for Arc<T> {
 	}
 }
 impl<T: ExtractIndex> ExtractIndex for Arc<T> {
-	fn try_index(&self) -> Option<Vec<usize>> {
+	fn try_index(&self) -> Option<usize> {
 		(**self).try_index()
 	}
 }
@@ -268,8 +268,8 @@ impl ExtractRealTime for ContextImpl<'_> {
 	}
 }
 impl ExtractIndex for ContextImpl<'_> {
-	fn try_index(&self) -> Option<Vec<usize>> {
-		self.index.clone()
+	fn try_index(&self) -> Option<usize> {
+		self.index
 	}
 }
 impl ExtractVarArgs for ContextImpl<'_> {
@@ -304,8 +304,8 @@ impl ExtractAnimationTime for OwnedContextImpl {
 	}
 }
 impl ExtractIndex for OwnedContextImpl {
-	fn try_index(&self) -> Option<Vec<usize>> {
-		self.index.clone()
+	fn try_index(&self) -> Option<usize> {
+		self.index
 	}
 }
 impl ExtractVarArgs for OwnedContextImpl {
@@ -360,7 +360,7 @@ pub struct OwnedContextImpl {
 	varargs: Option<Arc<[DynBox]>>,
 	parent: Option<Arc<dyn ExtractVarArgs + Sync + Send>>,
 	// This could be converted into a single enum to save extra bytes
-	index: Option<Vec<usize>>,
+	index: Option<usize>,
 	real_time: Option<f64>,
 	animation_time: Option<f64>,
 }
@@ -481,11 +481,7 @@ impl OwnedContextImpl {
 		self
 	}
 	pub fn with_index(mut self, index: usize) -> Self {
-		if let Some(current_index) = &mut self.index {
-			current_index.push(index);
-		} else {
-			self.index = Some(vec![index]);
-		}
+		self.index = Some(index);
 		self
 	}
 	pub fn into_context(self) -> Option<Arc<Self>> {
@@ -497,11 +493,12 @@ impl OwnedContextImpl {
 	}
 }
 
-#[derive(Default, Clone, dyn_any::DynAny)]
+#[derive(Default, Clone, Copy, dyn_any::DynAny)]
 pub struct ContextImpl<'a> {
 	pub(crate) footprint: Option<&'a Footprint>,
 	varargs: Option<&'a [DynRef<'a>]>,
-	index: Option<Vec<usize>>, // This could be converted into a single enum to save extra bytes
+	// This could be converted into a single enum to save extra bytes
+	index: Option<usize>,
 	real_time: Option<f64>,
 }
 
@@ -513,7 +510,6 @@ impl<'a> ContextImpl<'a> {
 		ContextImpl {
 			footprint: Some(new_footprint),
 			varargs: varargs.map(|x| x.borrow()),
-			index: self.index.clone(),
 			..*self
 		}
 	}
