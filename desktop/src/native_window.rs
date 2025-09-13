@@ -30,6 +30,10 @@ impl NativeWindowHandle {
 				winit::platform::x11::WindowAttributesExtX11::with_name(window, APP_ID, APP_NAME)
 			}
 		}
+		#[cfg(not(target_os = "linux"))]
+		{
+			window
+		}
 	}
 
 	#[allow(unused_variables)]
