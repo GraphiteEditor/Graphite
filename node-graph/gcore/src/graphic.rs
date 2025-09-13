@@ -3,6 +3,7 @@ use crate::bounds::{BoundingBox, RenderBoundingBox};
 use crate::gradient::GradientStops;
 use crate::raster_types::{CPU, GPU, Raster};
 use crate::table::{Table, TableRow};
+use crate::text::Typography;
 use crate::uuid::NodeId;
 use crate::vector::Vector;
 use crate::{Artboard, Color, Ctx};
@@ -11,7 +12,7 @@ use glam::{DAffine2, DVec2};
 use std::hash::Hash;
 
 /// The possible forms of graphical content that can be rendered by the Render node into either an image or SVG syntax.
-#[derive(Clone, Debug, Hash, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, Hash, PartialEq, DynAny)]
 pub enum Graphic {
 	Graphic(Table<Graphic>),
 	Vector(Table<Vector>),
@@ -19,6 +20,26 @@ pub enum Graphic {
 	RasterGPU(Table<Raster<GPU>>),
 	Color(Table<Color>),
 	Gradient(Table<GradientStops>),
+	Typography(Table<Typography>),
+}
+
+impl serde::Serialize for Graphic {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: serde::Serializer,
+	{
+		let default: Table<Graphic> = Table::new();
+		default.serialize(serializer)
+	}
+}
+
+impl<'de> serde::Deserialize<'de> for Graphic {
+	fn deserialize<D>(_deserializer: D) -> Result<Self, D::Error>
+	where
+		D: serde::Deserializer<'de>,
+	{
+		Ok(Graphic::Graphic(Table::new()))
+	}
 }
 
 impl Default for Graphic {
@@ -232,6 +253,7 @@ impl Graphic {
 			Graphic::RasterGPU(raster) => raster.iter().all(|row| row.alpha_blending.clip),
 			Graphic::Color(color) => color.iter().all(|row| row.alpha_blending.clip),
 			Graphic::Gradient(gradient) => gradient.iter().all(|row| row.alpha_blending.clip),
+			Graphic::Typography(typography) => typography.iter().all(|row| row.alpha_blending.clip),
 		}
 	}
 
@@ -256,6 +278,7 @@ impl BoundingBox for Graphic {
 			Graphic::Graphic(graphic) => graphic.bounding_box(transform, include_stroke),
 			Graphic::Color(color) => color.bounding_box(transform, include_stroke),
 			Graphic::Gradient(gradient) => gradient.bounding_box(transform, include_stroke),
+			Graphic::Typography(typography) => typography.bounding_box(transform, include_stroke),
 		}
 	}
 }
@@ -507,34 +530,15 @@ pub fn migrate_graphic<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Res
 		elements: Vec<(Graphic, Option<NodeId>)>,
 	}
 
-	#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-	pub struct OlderTable<T> {
-		id: Vec<u64>,
-		#[serde(alias = "instances", alias = "instance")]
-		element: Vec<T>,
-	}
-
-	#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
-	pub struct OldTable<T> {
-		id: Vec<u64>,
-		#[serde(alias = "instances", alias = "instance")]
-		element: Vec<T>,
-		transform: Vec<DAffine2>,
-		alpha_blending: Vec<AlphaBlending>,
-	}
-
 	#[derive(serde::Serialize, serde::Deserialize)]
 	#[serde(untagged)]
-	enum GraphicFormat {
+	enum EitherFormat {
 		OldGraphicGroup(OldGraphicGroup),
-		OlderTableOldGraphicGroup(OlderTable<OldGraphicGroup>),
-		OldTableOldGraphicGroup(OldTable<OldGraphicGroup>),
-		OldTableGraphicGroup(OldTable<GraphicGroup>),
 		Table(serde_json::Value),
 	}
 
-	Ok(match GraphicFormat::deserialize(deserializer)? {
-		GraphicFormat::OldGraphicGroup(old) => {
+	Ok(match EitherFormat::deserialize(deserializer)? {
+		EitherFormat::OldGraphicGroup(old) => {
 			let mut graphic_table = Table::new();
 			for (graphic, source_node_id) in old.elements {
 				graphic_table.push(TableRow {
@@ -546,43 +550,7 @@ pub fn migrate_graphic<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Res
 			}
 			graphic_table
 		}
-		GraphicFormat::OlderTableOldGraphicGroup(old) => old
-			.element
-			.into_iter()
-			.flat_map(|element| {
-				element.elements.into_iter().map(move |(graphic, source_node_id)| TableRow {
-					element: graphic,
-					transform: element.transform,
-					alpha_blending: element.alpha_blending,
-					source_node_id,
-				})
-			})
-			.collect(),
-		GraphicFormat::OldTableOldGraphicGroup(old) => old
-			.element
-			.into_iter()
-			.flat_map(|element| {
-				element.elements.into_iter().map(move |(graphic, source_node_id)| TableRow {
-					element: graphic,
-					transform: element.transform,
-					alpha_blending: element.alpha_blending,
-					source_node_id,
-				})
-			})
-			.collect(),
-		GraphicFormat::OldTableGraphicGroup(old) => old
-			.element
-			.into_iter()
-			.flat_map(|element| {
-				element.elements.into_iter().map(move |(graphic, source_node_id)| TableRow {
-					element: graphic,
-					transform: Default::default(),
-					alpha_blending: Default::default(),
-					source_node_id,
-				})
-			})
-			.collect(),
-		GraphicFormat::Table(value) => {
+		EitherFormat::Table(value) => {
 			// Try to deserialize as either table format
 			if let Ok(old_table) = serde_json::from_value::<Table<GraphicGroup>>(value.clone()) {
 				let mut graphic_table = Table::new();

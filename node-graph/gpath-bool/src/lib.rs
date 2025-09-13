@@ -318,6 +318,7 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 						}
 					})
 					.collect::<Vec<_>>(),
+				Graphic::Typography(_) => Vec::new(),
 			}
 		})
 		.collect()
