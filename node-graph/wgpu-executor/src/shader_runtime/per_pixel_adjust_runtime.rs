@@ -230,7 +230,7 @@ impl PerPixelAdjustGraphicsPipeline {
 				rp.draw(0..3, 0..1);
 
 				TableRow {
-					element: Raster::new(GPU { texture: tex_out }),
+					element: Raster::new_gpu(tex_out),
 					transform: *instance.transform,
 					alpha_blending: *instance.alpha_blending,
 					source_node_id: *instance.source_node_id,
