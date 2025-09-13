@@ -8,5 +8,6 @@ pub enum AppWindowMessage {
 	AppWindowMinimize,
 	AppWindowMaximize,
 	AppWindowUpdatePlatform { platform: AppWindowPlatform },
+	AppWindowDrag,
 	AppWindowClose,
 }

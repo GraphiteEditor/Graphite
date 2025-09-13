@@ -36,6 +36,8 @@ pub enum DesktopFrontendMessage {
 		maximized: bool,
 		minimized: bool,
 	},
+	DragWindow,
+	CloseWindow,
 	PersistenceWriteDocument {
 		id: DocumentId,
 		document: Document,
@@ -55,7 +57,6 @@ pub enum DesktopFrontendMessage {
 		preferences: Preferences,
 	},
 	PersistenceLoadPreferences,
-	CloseWindow,
 }
 
 pub enum DesktopWrapperMessage {

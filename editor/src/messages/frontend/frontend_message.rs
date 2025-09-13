@@ -343,6 +343,7 @@ pub enum FrontendMessage {
 		maximized: bool,
 		minimized: bool,
 	},
+	DragWindow,
 	CloseWindow,
 	UpdateViewportHolePunch {
 		active: bool,
