@@ -1,22 +1,19 @@
 use crate::WgpuExecutor;
 use graphene_core::Ctx;
 use graphene_core::color::SRGBA8;
+use graphene_core::ops::Convert;
 use graphene_core::raster_types::{CPU, GPU, Raster};
 use graphene_core::table::{Table, TableRow};
 use wgpu::util::{DeviceExt, TextureDataOrder};
 use wgpu::{Extent3d, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages};
 
-pub trait UploadTexture {
-	fn upload_texture(self, executor: &WgpuExecutor) -> Table<Raster<GPU>>;
-}
-
-impl UploadTexture for Table<Raster<GPU>> {
-	fn upload_texture(self, _executor: &WgpuExecutor) -> Table<Raster<GPU>> {
+impl<'i> Convert<Table<Raster<GPU>>, &'i WgpuExecutor> for Table<Raster<GPU>> {
+	fn convert(self, _converter: &'i WgpuExecutor) -> Table<Raster<GPU>> {
 		self
 	}
 }
-impl UploadTexture for Table<Raster<CPU>> {
-	fn upload_texture(self, executor: &WgpuExecutor) -> Table<Raster<GPU>> {
+impl<'i> Convert<Table<Raster<GPU>>, &'i WgpuExecutor> for Table<Raster<CPU>> {
+	fn convert(self, executor: &'i WgpuExecutor) -> Table<Raster<GPU>> {
 		let device = &executor.context.device;
 		let queue = &executor.context.queue;
 		let table = self
@@ -61,6 +58,10 @@ impl UploadTexture for Table<Raster<CPU>> {
 }
 
 #[node_macro::node(category(""))]
-pub async fn upload_texture<'a: 'n, T: UploadTexture>(_: impl Ctx, #[implementations(Table<Raster<CPU>>, Table<Raster<GPU>>)] input: T, executor: &'a WgpuExecutor) -> Table<Raster<GPU>> {
-	input.upload_texture(executor)
+pub async fn upload_texture<'a: 'n, T: Convert<Table<Raster<GPU>>, &'a WgpuExecutor>>(
+	_: impl Ctx,
+	#[implementations(Table<Raster<CPU>>, Table<Raster<GPU>>)] input: T,
+	executor: &'a WgpuExecutor,
+) -> Table<Raster<GPU>> {
+	input.convert(executor)
 }

@@ -394,21 +394,29 @@ mod node_registry_macros {
 			x
 		}};
 		(from: $from:ty, to: $to:ty) => {
+			convert_node!(from: $from, to: $to, converter: ())
+		};
+		(from: $from:ty, to: $to:ty, converter: $convert:ty) => {
 			(
 				ProtoNodeIdentifier::new(concat!["graphene_core::ops::ConvertNode<", stringify!($to), ">"]),
 				|mut args| {
 					Box::pin(async move {
-						let node = graphene_core::ops::ConvertNode::new(graphene_std::any::downcast_node::<Context, $from>(args.pop().unwrap()),
-graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$to>))						);
+						let node = graphene_core::ops::ConvertNode::new(
+							graphene_std::any::downcast_node::<Context, $from>(args.pop().unwrap()),
+							graphene_std::any::downcast_node::<Context, $convert>(args.pop().unwrap()),
+							graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$to>))
+						);
 						let any: DynAnyNode<Context, $to, _> = graphene_std::any::DynAnyNode::new(node);
 						Box::new(any) as TypeErasedBox
 					})
 				},
 				{
-					let node = graphene_core::ops::ConvertNode::new(graphene_std::any::PanicNode::<Context, core::pin::Pin<Box<dyn core::future::Future<Output = $from> + Send>>>::new(),
-
-graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$to>))					);
-					let params = vec![fn_type_fut!(Context, $from)];
+					let node = graphene_core::ops::ConvertNode::new(
+						graphene_std::any::PanicNode::<Context, core::pin::Pin<Box<dyn core::future::Future<Output = $from> + Send>>>::new(),
+						graphene_std::any::PanicNode::<Context, core::pin::Pin<Box<dyn core::future::Future<Output = $convert> + Send>>>::new(),
+						graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$to>))
+					);
+					let params = vec![fn_type_fut!(Context, $from), fn_type_fut!(Context, $convert)];
 					let node_io = NodeIO::<'_, Context>::to_async_node_io(&node, params);
 					node_io
 				},
