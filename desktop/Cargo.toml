@@ -41,7 +41,7 @@ vello = { workspace = true }
 derivative = { workspace = true }
 rfd = { workspace = true }
 open = { workspace = true }
-rand = { workspace = true }
+rand = { workspace = true, features = ["thread_rng"] }
 serde = { workspace = true }
 
 # Hardware acceleration dependencies
