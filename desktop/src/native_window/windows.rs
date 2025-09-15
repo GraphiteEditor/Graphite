@@ -9,9 +9,6 @@
 //! - The helper window is a invisible window that never activates, so it doesn't steal focus from the main window.
 //! - The main window needs to update the helper window's position and size whenever it moves or resizes.
 
-use std::ffi::c_void;
-use std::mem::{size_of, transmute};
-use std::ptr::null_mut;
 use std::sync::OnceLock;
 use wgpu::rwh::{HasWindowHandle, RawWindowHandle};
 use windows::Win32::Foundation::*;
@@ -71,7 +68,7 @@ impl WindowsNativeWindowHandleInner {
 				0,
 				None,
 				None,
-				HINSTANCE(null_mut()),
+				HINSTANCE(std::ptr::null_mut()),
 				// Pass the main window's HWND to WM_NCCREATE so the helper can store it.
 				Some(&hwnd as *const _ as _),
 			)
@@ -121,7 +118,7 @@ impl WindowsNativeWindowHandleInner {
 
 		// Undo subclassing and destroy the helper window.
 		let _ = unsafe { SetWindowLongPtrW(self.main, GWLP_WNDPROC, self.prev_window_message_handler) };
-		if self.helper.0 != null_mut() {
+		if self.helper.0 != std::ptr::null_mut() {
 			let _ = unsafe { DestroyWindow(self.helper) };
 		}
 	}
@@ -164,7 +161,7 @@ unsafe fn ensure_helper_class() {
 			lpfnWndProc: Some(helper_window_handle_message),
 			hInstance: unsafe { GetModuleHandleW(None).unwrap().into() },
 			hIcon: HICON::default(),
-			hCursor: unsafe { LoadCursorW(HINSTANCE(null_mut()), IDC_ARROW).unwrap() },
+			hCursor: unsafe { LoadCursorW(HINSTANCE(std::ptr::null_mut()), IDC_ARROW).unwrap() },
 			// No painting; the ring is invisible.
 			hbrBackground: HBRUSH::default(),
 			lpszClassName: PCWSTR(class_name.as_ptr()),
@@ -244,7 +241,7 @@ unsafe extern "system" fn helper_window_handle_message(hwnd: HWND, msg: u32, wpa
 		// Helper window button down translates to SC_SIZE | WMSZ_* on the main window.
 		WM_NCLBUTTONDOWN | WM_NCRBUTTONDOWN | WM_NCMBUTTONDOWN => {
 			// Extract the main window's HWND from GWLP_USERDATA that we saved earlier.
-			let main_ptr = unsafe { GetWindowLongPtrW(hwnd, GWLP_USERDATA) } as *mut c_void;
+			let main_ptr = unsafe { GetWindowLongPtrW(hwnd, GWLP_USERDATA) } as *mut std::ffi::c_void;
 			let main = HWND(main_ptr);
 			if unsafe { IsWindow(main).as_bool() } {
 				let Some(wmsz) = (unsafe { calculate_resize_direction(hwnd, lparam) }) else {
