@@ -1,3 +1,14 @@
+//! Implements a Windows-specific custom window frame (no titlebar, but native boarder, shadows and resize).
+//! Look and feel should be similar to a standard window.
+//!
+//! Implementation notes:
+//! - Windows that don't use standard decorations don't get native resize handles or shadows by default.
+//! - We implement resize handles (outside the main window) by creating an invisible "helper" window that
+//!   is a little larger than the main window and positioned on top of it. The helper window does hit-testing
+//!   and triggers native resize operations on the main window when the user clicks and drags a resize area.
+//! - The helper window is a invisible window that never activates, so it doesn't steal focus from the main window.
+//! - The main window needs to update the helper window's position and size whenever it moves or resizes.
+
 use std::ffi::c_void;
 use std::mem::{size_of, transmute};
 use std::ptr::null_mut;
