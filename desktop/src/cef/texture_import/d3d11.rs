@@ -265,7 +265,6 @@ impl D3D11Importer {
 
 	fn import_d3d11_handle_to_d3d12(&self, hal_device: &<wgpu::hal::api::Dx12 as wgpu::hal::Api>::Device) -> Result<windows::Win32::Graphics::Direct3D12::ID3D12Resource, TextureImportError> {
 		use windows::Win32::Graphics::Direct3D12::*;
-		use windows::core::*;
 
 		// Get D3D12 device from wgpu-hal
 		let d3d12_device = hal_device.raw_device();
