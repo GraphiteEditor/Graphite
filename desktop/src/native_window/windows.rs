@@ -1,161 +1,143 @@
-//! # Hybrid borderless window with an invisible resize band
-//!
-//! This module turns a standard Win32 window into a custom-framed window while
-//! preserving native resize behavior and shadows by surrounding it with an
-//! **invisible helper window** (an 8px “ring”). The ring performs hit-testing
-//! outside the visible bounds and then triggers the system’s resize/move loop
-//! **on the main window**, so you get OS-accurate resizing, snapping, and
-//! cursors without drawing a standard caption or border.
-//!
-//! Key ideas:
-//! - We extend/glass the client frame with DWM to avoid the system-drawn title bar,
-//!   but keep modern visuals (e.g., dark caption, Mica).  
-//!   Docs: DWM custom frame & extending client area.  
-//!   <https://learn.microsoft.com/windows/win32/dwm/customframe>  
-//!   <https://learn.microsoft.com/windows/win32/api/dwmapi/nf-dwmapi-dwmextendframeintoclientarea>
-//! - We subclass the main window proc to manage layout and keep the helper synced.  
-//!   <https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-setwindowlongptra>
-//! - The helper window uses `WM_NCHITTEST` to classify edges/corners (`HT*`) and,
-//!   on mouse down, starts the system resize loop on the owner via `WM_SYSCOMMAND`
-//!   with `SC_SIZE | WMSZ_*`.  
-//!   <https://learn.microsoft.com/windows/win32/inputdev/wm-nchittest>  
-//!   <https://learn.microsoft.com/windows/win32/menurc/wm-syscommand>
-//! - The helper is created with `WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW` so it never
-//!   activates or shows in Alt+Tab, but still receives mouse input.  
-//!   <https://learn.microsoft.com/windows/win32/winmsg/extended-window-styles>
-//! - `DWMWA_VISIBLE_FRAME_BORDER_THICKNESS` helps match system metrics when
-//!   extending frame or aligning visuals.  
-//!   <https://learn.microsoft.com/windows/win32/api/dwmapi/ne-dwmapi-dwmwindowattribute>
-//!
-//! This pattern avoids trying to “extend hit-testing” beyond an HWND’s bounds,
-//! which Win32 does not support directly; instead we *place another HWND there*
-//! and forward the action to the owner.
-
-use std::cell::{OnceCell, RefCell};
-use std::collections::HashMap;
 use std::ffi::c_void;
 use std::mem::{size_of, transmute};
 use std::ptr::null_mut;
-use std::sync::{Mutex, OnceLock, RwLock};
-use std::thread::ThreadId;
-
+use std::sync::OnceLock;
 use wgpu::rwh::{HasWindowHandle, RawWindowHandle};
-use winit::window::Window;
-
 use windows::Win32::Foundation::*;
 use windows::Win32::Graphics::{Dwm::*, Gdi::HBRUSH};
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Controls::MARGINS;
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::PCWSTR;
+use winit::window::Window;
 
 pub(super) struct WindowsNativeWindowHandle {
 	inner: WindowsNativeWindowHandleInner,
 }
+impl WindowsNativeWindowHandle {
+	pub(super) fn new(window: &Window) -> Self {
+		let inner = WindowsNativeWindowHandleInner::new(window);
+		WindowsNativeWindowHandle { inner }
+	}
+}
+impl Drop for WindowsNativeWindowHandle {
+	fn drop(&mut self) {
+		self.inner.destroy();
+	}
+}
 
 #[derive(Clone)]
 struct WindowsNativeWindowHandleInner {
-	owner: HWND,
+	main: HWND,
 	helper: HWND,
 	prev_window_message_handler: isize,
 }
+impl WindowsNativeWindowHandleInner {
+	fn new(window: &Window) -> WindowsNativeWindowHandleInner {
+		// Extract Win32 HWND from winit.
+		let hwnd = match window.window_handle().expect("No window handle").as_raw() {
+			RawWindowHandle::Win32(h) => HWND(h.hwnd.get() as *mut std::ffi::c_void),
+			_ => panic!("Not a Win32 window"),
+		};
 
-pub(super) fn setup(window: &Window) -> WindowsNativeWindowHandle {
-	// Extract Win32 HWND from winit.
-	let hwnd = match window.window_handle().expect("No window handle").as_raw() {
-		RawWindowHandle::Win32(h) => HWND(h.hwnd.get() as *mut std::ffi::c_void),
-		_ => panic!("Not a Win32 window"),
-	};
+		// Register the invisible helper (resize ring) window class.
+		unsafe { ensure_helper_class() };
 
-	// Ask DWM to draw a dark caption (when applicable).
-	// DWMWA_USE_IMMERSIVE_DARK_MODE is supported on recent Windows 10+ builds.
-	// Ref: https://learn.microsoft.com/windows/apps/desktop/modernize/ui/apply-windows-themes
-	let dark_mode: i32 = 1;
-	let _ = unsafe { DwmSetWindowAttribute(hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, &dark_mode as *const i32 as *const c_void, size_of::<i32>() as u32) };
+		// Create the helper as a popup tool window that never activates.
+		// WS_EX_NOACTIVATE keeps focus on the main window; WS_EX_TOOLWINDOW hides it from Alt+Tab.
+		// https://learn.microsoft.com/windows/win32/winmsg/extended-window-styles
+		let ex = WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW;
+		let style = WS_POPUP;
+		let helper = unsafe {
+			CreateWindowExW(
+				ex,
+				PCWSTR(HELPER_CLASS_NAME.encode_utf16().collect::<Vec<_>>().as_ptr()),
+				PCWSTR::null(),
+				style,
+				0,
+				0,
+				0,
+				0,
+				None,
+				None,
+				HINSTANCE(null_mut()),
+				// Pass the main window's HWND to WM_NCCREATE so the helper can store it.
+				Some(&hwnd as *const _ as _),
+			)
+		}
+		.expect("CreateWindowExW failed");
 
-	// Enable a system backdrop material (e.g., Mica) behind the non-client region.
-	// Ref: DWMWA_SYSTEMBACKDROP_TYPE
-	// https://learn.microsoft.com/windows/win32/api/dwmapi/ne-dwmapi-dwm_systembackdrop_type
-	let system_backdrop_type: i32 = 1;
-	let _ = unsafe { DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, &system_backdrop_type as *const i32 as *const c_void, size_of::<i32>() as u32) };
+		// Subclass the main window.
+		// https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-setwindowlongptra
+		let prev_window_message_handler = unsafe { SetWindowLongPtrW(hwnd, GWLP_WNDPROC, main_window_handle_message as isize) };
+		if prev_window_message_handler == 0 {
+			let _ = unsafe { DestroyWindow(helper) };
+			panic!("SetWindowLongPtrW failed");
+		}
 
-	// Register the invisible helper (resize ring) window class.
-	unsafe { ensure_helper_class() };
+		let inner = WindowsNativeWindowHandleInner {
+			main: hwnd,
+			helper,
+			prev_window_message_handler,
+		};
+		registry::insert(&inner);
 
-	// Create the helper as a popup tool window that never activates.
-	// WS_EX_NOACTIVATE keeps focus on the owner; WS_EX_TOOLWINDOW hides it from Alt+Tab.
-	// https://learn.microsoft.com/windows/win32/winmsg/extended-window-styles
-	let ex = WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW;
-	let style = WS_POPUP;
-	let helper = unsafe {
-		CreateWindowExW(
-			ex,
-			PCWSTR(HELPER_CLASS_NAME.encode_utf16().collect::<Vec<_>>().as_ptr()),
-			PCWSTR::null(),
-			style,
-			0,
-			0,
-			0,
-			0,
-			None,
-			None,
-			HINSTANCE(null_mut()),
-			// Pass the owner HWND to WM_NCCREATE so the helper can store it.
-			Some(&hwnd as *const _ as _),
-		)
+		// Place the helper over the main window and show it without activation.
+		unsafe { position_helper(hwnd, helper) };
+		let _ = unsafe { ShowWindow(helper, SW_SHOWNOACTIVATE) };
+
+		// DwmExtendFrameIntoClientArea is needed to keep native window frame (but no titlebar).
+		// https://learn.microsoft.com/windows/win32/api/dwmapi/nf-dwmapi-dwmextendframeintoclientarea
+		// https://learn.microsoft.com/windows/win32/api/dwmapi/ne-dwmapi-dwmwindowattribute
+		let mut boarder_size: u32 = 1;
+		let _ = unsafe { DwmGetWindowAttribute(hwnd, DWMWA_VISIBLE_FRAME_BORDER_THICKNESS, &mut boarder_size as *mut _ as *mut _, size_of::<u32>() as u32) };
+		let margins = MARGINS {
+			cxLeftWidth: 0,
+			cxRightWidth: 0,
+			cyBottomHeight: 0,
+			cyTopHeight: boarder_size as i32,
+		};
+		let _ = unsafe { DwmExtendFrameIntoClientArea(hwnd, &margins) };
+
+		// Force window update
+		let _ = unsafe { SetWindowPos(hwnd, None, 0, 0, 0, 0, SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER) };
+
+		inner
 	}
-	.expect("CreateWindowExW failed");
 
-	// Subclass the main window so we can react to move/size/show and keep the
-	// helper ring positioned.
-	// https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-setwindowlongptra
-	let prev = unsafe { SetWindowLongPtrW(hwnd, GWLP_WNDPROC, main_window_handle_message as isize) };
-	if prev == 0 {
-		let _ = unsafe { DestroyWindow(helper) };
-		panic!("SetWindowLongPtrW failed");
+	fn destroy(&self) {
+		registry::remove_by_main(self.main);
+
+		// Undo subclassing and destroy the helper window.
+		let _ = unsafe { SetWindowLongPtrW(self.main, GWLP_WNDPROC, self.prev_window_message_handler) };
+		if self.helper.0 != null_mut() {
+			let _ = unsafe { DestroyWindow(self.helper) };
+		}
 	}
-
-	// Place the helper ring around the owner and show it without activation.
-	unsafe { position_helper(hwnd, helper) };
-	let _ = unsafe { ShowWindow(helper, SW_SHOWNOACTIVATE) };
-
-	// Query the system-visible frame border thickness (varies by DPI) and
-	// extend the frame into the client area to blend system and custom visuals.
-	// https://learn.microsoft.com/windows/win32/api/dwmapi/ne-dwmapi-dwmwindowattribute
-	// https://learn.microsoft.com/windows/win32/api/dwmapi/nf-dwmapi-dwmextendframeintoclientarea
-	let mut boarder_size: u32 = 1;
-	let _ = unsafe { DwmGetWindowAttribute(hwnd, DWMWA_VISIBLE_FRAME_BORDER_THICKNESS, &mut boarder_size as *mut _ as *mut _, size_of::<u32>() as u32) };
-	let margins = MARGINS {
-		cxLeftWidth: 0,
-		cxRightWidth: 0,
-		cyBottomHeight: 0,
-		cyTopHeight: boarder_size as i32,
-	};
-	let _ = unsafe { DwmExtendFrameIntoClientArea(hwnd, &margins) };
-
-	// Force the non-client metrics to be recalculated after style/DWM changes.
-	let _ = unsafe { SetWindowPos(hwnd, None, 0, 0, 0, 0, SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER) };
-
-	let inner = WindowsNativeWindowHandleInner {
-		owner: hwnd,
-		helper: helper,
-		prev_window_message_handler: prev,
-	};
-
-	registry::insert(&inner);
-
-	WindowsNativeWindowHandle { inner }
 }
 
-impl Drop for WindowsNativeWindowHandle {
-	fn drop(&mut self) {
-		// Undo subclassing and destroy the helper ring.
-		registry::remove_by_owner(self.inner.owner);
+mod registry {
+	use std::cell::RefCell;
+	use windows::Win32::Foundation::HWND;
 
-		let _ = unsafe { SetWindowLongPtrW(self.inner.owner, GWLP_WNDPROC, self.inner.prev_window_message_handler) };
-		if self.inner.helper.0 != null_mut() {
-			let _ = unsafe { DestroyWindow(self.inner.helper) };
-		}
+	use crate::native_window::windows::WindowsNativeWindowHandleInner;
+
+	thread_local! {
+		static STORE: RefCell<Vec<WindowsNativeWindowHandleInner>> = RefCell::new(Vec::new());
+	}
+
+	pub(super) fn find_by_main(main: HWND) -> Option<WindowsNativeWindowHandleInner> {
+		STORE.with_borrow(|vec| vec.iter().find(|h| h.main == main).cloned())
+	}
+	pub(super) fn remove_by_main(main: HWND) {
+		STORE.with_borrow_mut(|vec| {
+			vec.retain(|h| h.main != main);
+		});
+	}
+	pub(super) fn insert(handle: &WindowsNativeWindowHandleInner) {
+		STORE.with_borrow_mut(|vec| {
+			vec.push(handle.clone());
+		});
 	}
 }
 
@@ -181,99 +163,55 @@ unsafe fn ensure_helper_class() {
 	});
 }
 
-mod registry {
-	use std::cell::RefCell;
-	use windows::Win32::Foundation::HWND;
-
-	use crate::native_window::windows::WindowsNativeWindowHandleInner;
-
-	thread_local! {
-		static STORE: RefCell<Vec<WindowsNativeWindowHandleInner>> = RefCell::new(Vec::new());
-	}
-
-	pub(super) fn find_by_helper(helper: HWND) -> Option<WindowsNativeWindowHandleInner> {
-		STORE.with_borrow(|vec| vec.iter().find(|h| h.helper == helper).cloned())
-	}
-	pub(super) fn find_by_owner(owner: HWND) -> Option<WindowsNativeWindowHandleInner> {
-		STORE.with_borrow(|vec| vec.iter().find(|h| h.owner == owner).cloned())
-	}
-	pub(super) fn remove_by_owner(owner: HWND) {
-		STORE.with_borrow_mut(|vec| {
-			vec.retain(|h| h.owner != owner);
-		});
-	}
-	pub(super) fn insert(handle: &WindowsNativeWindowHandleInner) {
-		STORE.with_borrow_mut(|vec| {
-			vec.push(handle.clone());
-		});
-	}
-}
-
-// Position the helper window to match the owner’s location and size plus the resize band size.
-unsafe fn position_helper(owner: HWND, helper: HWND) {
-	let mut r = RECT::default();
-	let _ = unsafe { GetWindowRect(owner, &mut r) };
-
-	const RESIZE_BAND_SIZE: i32 = 8;
-	let x = r.left - RESIZE_BAND_SIZE;
-	let y = r.top - RESIZE_BAND_SIZE;
-	let w = (r.right - r.left) + RESIZE_BAND_SIZE * 2;
-	let h = (r.bottom - r.top) + RESIZE_BAND_SIZE * 2;
-
-	let _ = unsafe { SetWindowPos(helper, owner, x, y, w, h, SWP_NOACTIVATE) };
-}
-
+// Main window message handler, called on the UI thread for every message the main window receives.
 unsafe extern "system" fn main_window_handle_message(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
-	match msg {
-		// Return 0 to to tell Windows to skip the default non-client area calculation and drawing.
-		WM_NCCALCSIZE => {
-			if wparam.0 != 0 {
-				return LRESULT(0);
-			}
+	if msg == WM_NCCALCSIZE {
+		if wparam.0 != 0 {
+			// Return 0 to to tell Windows to skip the default non-client area calculation and drawing.
+			return LRESULT(0);
 		}
+	}
 
+	let Some(handle) = registry::find_by_main(hwnd) else {
+		return unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) };
+	};
+
+	match msg {
 		// Keep the invisible resize helper in sync with moves/resizes/visibility.
 		WM_MOVE | WM_MOVING | WM_SIZE | WM_SIZING | WM_WINDOWPOSCHANGED | WM_SHOWWINDOW => {
-			if let Some(handle) = registry::find_by_owner(hwnd) {
-				if msg == WM_SHOWWINDOW {
-					if wparam.0 == 0 {
-						let _ = unsafe { ShowWindow(handle.helper, SW_HIDE) };
-					} else {
-						let _ = unsafe { ShowWindow(handle.helper, SW_SHOWNOACTIVATE) };
-					}
+			if msg == WM_SHOWWINDOW {
+				if wparam.0 == 0 {
+					let _ = unsafe { ShowWindow(handle.helper, SW_HIDE) };
+				} else {
+					let _ = unsafe { ShowWindow(handle.helper, SW_SHOWNOACTIVATE) };
 				}
-				unsafe { position_helper(hwnd, handle.helper) };
 			}
+			unsafe { position_helper(hwnd, handle.helper) };
 		}
 
-		// If the owner is destroyed, destroy the helper too.
+		// If the main window is destroyed, destroy the helper too.
+		// Should only be needed if windows forcefully destroys the main window.
 		WM_DESTROY => {
-			if let Some(handle) = registry::find_by_owner(hwnd) {
-				if handle.helper.0 != null_mut() {
-					unsafe {
-						let _ = DestroyWindow(handle.helper);
-					};
-				}
-			}
+			let _ = unsafe { DestroyWindow(handle.helper) };
 		}
+
 		_ => {}
 	}
 
-	// Call the previous window procedure, this is standard subclassing pattern.
-	let prev = registry::find_by_owner(hwnd).map(|h| h.prev_window_message_handler).unwrap_or(0);
-	if prev != 0 {
-		return unsafe { CallWindowProcW(transmute(prev), hwnd, msg, wparam, lparam) };
-	}
+	// Ensure the previous window message handler is valid.
+	assert_ne!(handle.prev_window_message_handler, 0);
 
-	// Fall back to the default window procedure, happens when subclass initialization failed.
-	unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+	// Call the previous window message handler, this is a standard subclassing pattern.
+	return unsafe { CallWindowProcW(transmute(handle.prev_window_message_handler), hwnd, msg, wparam, lparam) };
 }
 
+// Helper window message handler, called on the UI thread for every message the helper window receives.
 unsafe extern "system" fn helper_window_handle_message(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
 	match msg {
 		// Helper window creation, should be the first message that the helper window receives.
 		WM_NCCREATE => {
-			// Save owner HWND in GWLP_USERDATA so we can extract it later
+			// Main window HWND is provided when creating the helper window with `CreateWindowExW`
+			// Save main window HWND in GWLP_USERDATA so we can extract it later
 			let cs = unsafe { &*(lparam.0 as *const CREATESTRUCTW) };
 			let init = unsafe { &*(cs.lpCreateParams as *const HWND) };
 			unsafe { SetWindowLongPtrW(hwnd, GWLP_USERDATA, init.0 as isize) };
@@ -289,22 +227,22 @@ unsafe extern "system" fn helper_window_handle_message(hwnd: HWND, msg: u32, wpa
 			return LRESULT(ht as isize);
 		}
 
-		// This starts the system's modal resize loop for the owner window if a resize area is hit.
-		// Helper window button down, translates to SC_SIZE | WMSZ_* on the owner.
+		// This starts the system's resize loop for the main window if a resize area is hit.
+		// Helper window button down translates to SC_SIZE | WMSZ_* on the main window.
 		WM_NCLBUTTONDOWN | WM_NCRBUTTONDOWN | WM_NCMBUTTONDOWN => {
-			// Extract the owner HWND from GWLP_USERDATA that we saved earlier.
-			let owner_ptr = unsafe { GetWindowLongPtrW(hwnd, GWLP_USERDATA) } as *mut c_void;
-			let owner = HWND(owner_ptr);
-			if unsafe { IsWindow(owner).as_bool() } {
+			// Extract the main window's HWND from GWLP_USERDATA that we saved earlier.
+			let main_ptr = unsafe { GetWindowLongPtrW(hwnd, GWLP_USERDATA) } as *mut c_void;
+			let main = HWND(main_ptr);
+			if unsafe { IsWindow(main).as_bool() } {
 				let Some(wmsz) = (unsafe { calculate_resize_direction(hwnd, lparam) }) else {
 					return LRESULT(0);
 				};
 
-				// Ensure that the owner can receive WM_SYSCOMMAND.
-				let _ = unsafe { SetForegroundWindow(owner) };
+				// Ensure that the main window can receive WM_SYSCOMMAND.
+				let _ = unsafe { SetForegroundWindow(main) };
 
-				// Start sizing on the owner in the calculated direction. (SC_SIZE + WMSZ_*)
-				let _ = unsafe { PostMessageW(owner, WM_SYSCOMMAND, WPARAM((SC_SIZE + wmsz) as usize), lparam) };
+				// Start sizing on the main window in the calculated direction. (SC_SIZE + WMSZ_*)
+				let _ = unsafe { PostMessageW(main, WM_SYSCOMMAND, WPARAM((SC_SIZE + wmsz) as usize), lparam) };
 			}
 			return LRESULT(0);
 		}
@@ -314,6 +252,20 @@ unsafe extern "system" fn helper_window_handle_message(hwnd: HWND, msg: u32, wpa
 		_ => {}
 	}
 	unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
+}
+
+// Position the helper window to match the main window's location and size (plus the resize band size).
+unsafe fn position_helper(main: HWND, helper: HWND) {
+	let mut r = RECT::default();
+	let _ = unsafe { GetWindowRect(main, &mut r) };
+
+	const RESIZE_BAND_SIZE: i32 = 8;
+	let x = r.left - RESIZE_BAND_SIZE;
+	let y = r.top - RESIZE_BAND_SIZE;
+	let w = (r.right - r.left) + RESIZE_BAND_SIZE * 2;
+	let h = (r.bottom - r.top) + RESIZE_BAND_SIZE * 2;
+
+	let _ = unsafe { SetWindowPos(helper, main, x, y, w, h, SWP_NOACTIVATE) };
 }
 
 unsafe fn calculate_hit(helper: HWND, lparam: LPARAM) -> u32 {

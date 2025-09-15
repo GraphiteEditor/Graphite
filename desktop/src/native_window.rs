@@ -10,13 +10,11 @@ pub(crate) enum NativeWindowHandle {
 	Windows(windows::WindowsNativeWindowHandle),
 	None,
 }
-
 impl Default for NativeWindowHandle {
 	fn default() -> Self {
 		Self::None
 	}
 }
-
 impl NativeWindowHandle {
 	#[allow(unused_variables)]
 	pub(super) fn build(&mut self, window: WindowAttributes, event_loop: &ActiveEventLoop) -> WindowAttributes {
@@ -40,7 +38,7 @@ impl NativeWindowHandle {
 	pub(crate) fn setup(&mut self, window: &Window) {
 		#[cfg(target_os = "windows")]
 		{
-			*self = NativeWindowHandle::Windows(windows::setup(window));
+			*self = NativeWindowHandle::Windows(windows::WindowsNativeWindowHandle::new(window));
 		}
 	}
 }
