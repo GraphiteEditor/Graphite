@@ -12,8 +12,8 @@
 //!
 //! The system gracefully falls back to CPU textures when hardware acceleration is unavailable.
 
+use crate::event::{AppEvent, AppEventScheduler};
 use crate::render::FrameBufferRef;
-use crate::{CustomEvent, CustomEventScheduler};
 use graphite_desktop_wrapper::{WgpuContext, deserialize_editor_message};
 use std::fs::File;
 use std::io::{Cursor, Read};
@@ -91,15 +91,15 @@ impl Read for ResourceReader {
 #[derive(Clone)]
 pub(crate) struct CefHandler {
 	wgpu_context: WgpuContext,
-	custom_event_scheduler: CustomEventScheduler,
+	app_event_scheduler: AppEventScheduler,
 	window_size_receiver: Arc<Mutex<WindowSizeReceiver>>,
 }
 
 impl CefHandler {
-	pub(crate) fn new(wgpu_context: WgpuContext, custom_event_scheduler: CustomEventScheduler, window_size_receiver: Receiver<WindowSize>) -> Self {
+	pub(crate) fn new(wgpu_context: WgpuContext, app_event_scheduler: AppEventScheduler, window_size_receiver: Receiver<WindowSize>) -> Self {
 		Self {
 			wgpu_context,
-			custom_event_scheduler,
+			app_event_scheduler,
 			window_size_receiver: Arc::new(Mutex::new(WindowSizeReceiver::new(window_size_receiver))),
 		}
 	}
@@ -154,14 +154,14 @@ impl CefEventHandler for CefHandler {
 			},
 		);
 
-		self.custom_event_scheduler.schedule(CustomEvent::UiUpdate(texture));
+		self.app_event_scheduler.schedule(AppEvent::UiUpdate(texture));
 	}
 
 	#[cfg(feature = "accelerated_paint")]
 	fn draw_gpu(&self, shared_texture: SharedTextureHandle) {
 		match shared_texture.import_texture(&self.wgpu_context.device) {
 			Ok(texture) => {
-				self.custom_event_scheduler.schedule(CustomEvent::UiUpdate(texture));
+				self.app_event_scheduler.schedule(AppEvent::UiUpdate(texture));
 			}
 			Err(e) => {
 				tracing::error!("Failed to import shared texture: {}", e);
@@ -225,11 +225,11 @@ impl CefEventHandler for CefHandler {
 	}
 
 	fn schedule_cef_message_loop_work(&self, scheduled_time: std::time::Instant) {
-		self.custom_event_scheduler.schedule(CustomEvent::ScheduleBrowserWork(scheduled_time));
+		self.app_event_scheduler.schedule(AppEvent::ScheduleBrowserWork(scheduled_time));
 	}
 
 	fn initialized_web_communication(&self) {
-		self.custom_event_scheduler.schedule(CustomEvent::WebCommunicationInitialized);
+		self.app_event_scheduler.schedule(AppEvent::WebCommunicationInitialized);
 	}
 
 	fn receive_web_message(&self, message: &[u8]) {
@@ -237,7 +237,7 @@ impl CefEventHandler for CefHandler {
 			tracing::error!("Failed to deserialize web message");
 			return;
 		};
-		self.custom_event_scheduler.schedule(CustomEvent::DesktopWrapperMessage(desktop_wrapper_message));
+		self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(desktop_wrapper_message));
 	}
 }
 

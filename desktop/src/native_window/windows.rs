@@ -23,7 +23,7 @@ pub(super) struct WindowsNativeWindowHandle {
 	inner: WindowsNativeWindowHandleInner,
 }
 impl WindowsNativeWindowHandle {
-	pub(super) fn new(window: &Window) -> Self {
+	pub(super) fn new(window: &Box<dyn Window>) -> Self {
 		let inner = WindowsNativeWindowHandleInner::new(window);
 		WindowsNativeWindowHandle { inner }
 	}
