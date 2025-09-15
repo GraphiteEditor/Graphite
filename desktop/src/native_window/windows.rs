@@ -209,11 +209,13 @@ unsafe extern "system" fn main_window_handle_message(hwnd: HWND, msg: u32, wpara
 		_ => {}
 	}
 
-	// Ensure the previous window message handler is valid.
+	// Ensure the previous window message handler is not null.
 	assert_ne!(handle.prev_window_message_handler, 0);
 
 	// Call the previous window message handler, this is a standard subclassing pattern.
-	return unsafe { CallWindowProcW(transmute(handle.prev_window_message_handler), hwnd, msg, wparam, lparam) };
+	let prev_window_message_handler_fn_ptr: *const () = std::ptr::without_provenance(handle.prev_window_message_handler as usize);
+	let prev_window_message_handler_fn = unsafe { std::mem::transmute::<_, _>(prev_window_message_handler_fn_ptr) };
+	return unsafe { CallWindowProcW(Some(prev_window_message_handler_fn), hwnd, msg, wparam, lparam) };
 }
 
 // Helper window message handler, called on the UI thread for every message the helper window receives.
@@ -223,9 +225,9 @@ unsafe extern "system" fn helper_window_handle_message(hwnd: HWND, msg: u32, wpa
 		WM_NCCREATE => {
 			// Main window HWND is provided when creating the helper window with `CreateWindowExW`
 			// Save main window HWND in GWLP_USERDATA so we can extract it later
-			let cs = unsafe { &*(lparam.0 as *const CREATESTRUCTW) };
-			let init = unsafe { &*(cs.lpCreateParams as *const HWND) };
-			unsafe { SetWindowLongPtrW(hwnd, GWLP_USERDATA, init.0 as isize) };
+			let crate_struct = lparam.0 as *const CREATESTRUCTW;
+			let create_param = unsafe { (*crate_struct).lpCreateParams as *const HWND };
+			unsafe { SetWindowLongPtrW(hwnd, GWLP_USERDATA, (*create_param).0 as isize) };
 			return LRESULT(1);
 		}
 
