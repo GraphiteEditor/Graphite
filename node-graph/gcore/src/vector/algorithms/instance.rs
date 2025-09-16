@@ -103,7 +103,8 @@ async fn instance_position(ctx: impl Ctx + ExtractVarArgs) -> DVec2 {
 	Default::default()
 }
 
-// TODO: Make this return a u32 instead of an f64, but we ned to improve math-related compatibility with integer types first.
+// TODO: Return u32, u64, or usize instead of f64 after #1621 is resolved and has allowed us to implement automatic type conversion in the node graph for nodes with generic type inputs.
+// TODO: (Currently automatic type conversion only works for concrete types, via the Graphene preprocessor and not the full Graphene type system.)
 #[node_macro::node(category("Instancing"), path(graphene_core::vector))]
 async fn instance_index(ctx: impl Ctx + ExtractIndex, _primary: (), loop_level: u32) -> f64 {
 	let Some(index_iter) = ctx.try_index() else { return 0. };
