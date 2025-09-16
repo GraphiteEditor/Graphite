@@ -107,9 +107,8 @@ async fn instance_position(ctx: impl Ctx + ExtractVarArgs) -> DVec2 {
 #[node_macro::node(category("Instancing"), path(graphene_core::vector))]
 async fn instance_index(ctx: impl Ctx + ExtractIndex, _primary: (), loop_level: u32) -> f64 {
 	let Some(index_iter) = ctx.try_index() else { return 0. };
-	let mut index_iter = index_iter.enumerate();
 	let mut last = 0;
-	while let Some((i, index)) = index_iter.next() {
+	for (i, index) in index_iter.enumerate() {
 		if i == loop_level as usize {
 			return index as f64;
 		}
