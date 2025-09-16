@@ -15,6 +15,7 @@ use crate::messages::portfolio::document::utility_types::transformation::Axis;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils;
+use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
 use crate::messages::tool::common_functionality::pivot::{PivotGizmo, PivotGizmoType, PivotToolSource, pin_pivot_widget, pivot_gizmo_type_widget, pivot_reference_point_widget};
 use crate::messages::tool::common_functionality::shape_editor::{
 	ClosestSegment, ManipulatorAngle, OpposingHandleLengths, SelectedLayerState, SelectedPointsInfo, SelectionChange, SelectionShape, SelectionShapeType, ShapeState,
@@ -699,7 +700,7 @@ impl PathToolData {
 	fn mouse_down(
 		&mut self,
 		shape_editor: &mut ShapeState,
-		document: &DocumentMessageHandler,
+		document: &mut DocumentMessageHandler,
 		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 		extend_selection: bool,
@@ -726,6 +727,9 @@ impl PathToolData {
 		let mut old_selection = HashMap::new();
 
 		for (layer, state) in &shape_editor.selected_shape_state {
+			if NodeGraphLayer::is_raster_layer(*layer, &mut document.network_interface) {
+				return PathToolFsmState::Ready;
+			}
 			let selected_points = state.selected_points().collect::<HashSet<_>>();
 			let selected_segments = state.selected_segments().collect::<HashSet<_>>();
 			old_selection.insert(*layer, (selected_points, selected_segments));
