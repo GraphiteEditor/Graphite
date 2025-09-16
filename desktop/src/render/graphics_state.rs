@@ -24,7 +24,7 @@ pub(crate) struct GraphicsState {
 }
 
 impl GraphicsState {
-	pub(crate) fn new(window: Arc<Box<dyn Window>>, context: WgpuContext) -> Self {
+	pub(crate) fn new(window: Arc<dyn Window>, context: WgpuContext) -> Self {
 		let size = window.surface_size();
 
 		let surface = context.instance.create_surface(window).unwrap();
@@ -232,7 +232,7 @@ impl GraphicsState {
 		self.bind_overlays_texture(texture);
 	}
 
-	pub(crate) fn render(&mut self, window: &Arc<Box<dyn Window>>) -> Result<(), wgpu::SurfaceError> {
+	pub(crate) fn render(&mut self, window: &dyn Window) -> Result<(), wgpu::SurfaceError> {
 		if let Some(scene) = self.overlays_scene.take() {
 			self.render_overlays(scene);
 		}

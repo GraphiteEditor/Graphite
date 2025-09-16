@@ -24,7 +24,7 @@ use graphite_desktop_wrapper::{DesktopWrapper, NodeGraphExecutionResult, WgpuCon
 
 pub(crate) struct App {
 	cef_context: Box<dyn cef::CefContext>,
-	window: Option<Arc<Box<dyn Window>>>,
+	window: Option<Arc<dyn Window>>,
 	native_window: native_window::NativeWindowHandle,
 	cef_schedule: Option<Instant>,
 	cef_window_size_sender: Sender<cef::WindowSize>,
@@ -314,9 +314,9 @@ impl ApplicationHandler for App {
 	fn can_create_surfaces(&mut self, event_loop: &dyn ActiveEventLoop) {
 		let window_attributes = self.native_window.build(event_loop);
 
-		let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
+		let window: Arc<dyn Window> = Arc::from(event_loop.create_window(window_attributes).unwrap());
 
-		self.native_window.setup(&window);
+		self.native_window.setup(window.as_ref());
 
 		let graphics_state = GraphicsState::new(window.clone(), self.wgpu_context.clone());
 
@@ -357,7 +357,7 @@ impl ApplicationHandler for App {
 				let Some(ref mut graphics_state) = self.graphics_state else { return };
 				// Only rerender once we have a new UI texture to display
 				if let Some(window) = &self.window {
-					match graphics_state.render(window) {
+					match graphics_state.render(window.as_ref()) {
 						Ok(_) => {}
 						Err(wgpu::SurfaceError::Lost) => {
 							tracing::warn!("lost surface");

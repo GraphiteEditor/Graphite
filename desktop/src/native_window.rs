@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use winit::event_loop::ActiveEventLoop;
 use winit::window::{Window, WindowAttributes};
 
@@ -45,7 +43,7 @@ impl NativeWindowHandle {
 		window
 	}
 	#[allow(unused_variables)]
-	pub(crate) fn setup(&mut self, window: &Arc<Box<dyn Window>>) {
+	pub(crate) fn setup(&mut self, window: &dyn Window) {
 		#[cfg(target_os = "windows")]
 		{
 			*self = NativeWindowHandle::Windows(windows::WindowsNativeWindowHandle::new(window));
