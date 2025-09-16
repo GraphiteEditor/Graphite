@@ -21,7 +21,6 @@ async fn context_modification<T>(
 		Context -> bool,
 		Context -> u32,
 		Context -> u64,
-		Context -> usize,
 		Context -> f32,
 		Context -> f64,
 		Context -> String,
