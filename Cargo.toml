@@ -132,7 +132,7 @@ web-sys = { version = "=0.3.77", features = [
 	"HtmlImageElement",
 	"ImageBitmapRenderingContext",
 ] }
-winit = { version = "0.30", features = ["wayland", "rwh_06"] }
+winit = { git = "https://github.com/rust-windowing/winit.git", rev = "66283a79bddd034c45fb0e72c84fa5cd4e5f82fb" }
 url = "2.5"
 tokio = { version = "1.29", features = ["fs", "macros", "io-std", "rt"] }
 vello = { git = "https://github.com/linebender/vello.git", rev = "87cc5bee6d3a34d15017dbbb58634ddc7f33ff9b" } # TODO switch back to stable when a release is made

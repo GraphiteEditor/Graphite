@@ -10,10 +10,9 @@
 //! - **Windows**: D3D11 shared textures via either Vulkan or D3D12 interop (`accelerated_paint_d3d11` feature)
 //! - **macOS**: IOSurface via Metal/Vulkan interop (`accelerated_paint_iosurface` feature)
 //!
-//!
 //! The system gracefully falls back to CPU textures when hardware acceleration is unavailable.
 
-use crate::CustomEvent;
+use crate::event::{AppEvent, AppEventScheduler};
 use crate::render::FrameBufferRef;
 use graphite_desktop_wrapper::{WgpuContext, deserialize_editor_message};
 use std::fs::File;
@@ -38,7 +37,6 @@ mod texture_import;
 use texture_import::SharedTextureHandle;
 
 pub(crate) use context::{CefContext, CefContextBuilder, InitError};
-use winit::event_loop::EventLoopProxy;
 
 pub(crate) trait CefEventHandler: Clone + Send + Sync + 'static {
 	fn window_size(&self) -> WindowSize;
@@ -58,10 +56,14 @@ pub(crate) struct WindowSize {
 	pub(crate) width: usize,
 	pub(crate) height: usize,
 }
-
 impl WindowSize {
 	pub(crate) fn new(width: usize, height: usize) -> Self {
 		Self { width, height }
+	}
+}
+impl From<winit::dpi::PhysicalSize<u32>> for WindowSize {
+	fn from(size: winit::dpi::PhysicalSize<u32>) -> Self {
+		Self::new(size.width as usize, size.height as usize)
 	}
 }
 
@@ -88,29 +90,17 @@ impl Read for ResourceReader {
 
 #[derive(Clone)]
 pub(crate) struct CefHandler {
-	window_size_receiver: Arc<Mutex<WindowSizeReceiver>>,
-	event_loop_proxy: EventLoopProxy<CustomEvent>,
 	wgpu_context: WgpuContext,
+	app_event_scheduler: AppEventScheduler,
+	window_size_receiver: Arc<Mutex<WindowSizeReceiver>>,
 }
 
-struct WindowSizeReceiver {
-	receiver: Receiver<WindowSize>,
-	window_size: WindowSize,
-}
-impl WindowSizeReceiver {
-	fn new(window_size_receiver: Receiver<WindowSize>) -> Self {
-		Self {
-			window_size: WindowSize { width: 1, height: 1 },
-			receiver: window_size_receiver,
-		}
-	}
-}
 impl CefHandler {
-	pub(crate) fn new(window_size_receiver: Receiver<WindowSize>, event_loop_proxy: EventLoopProxy<CustomEvent>, wgpu_context: WgpuContext) -> Self {
+	pub(crate) fn new(wgpu_context: WgpuContext, app_event_scheduler: AppEventScheduler, window_size_receiver: Receiver<WindowSize>) -> Self {
 		Self {
-			window_size_receiver: Arc::new(Mutex::new(WindowSizeReceiver::new(window_size_receiver))),
-			event_loop_proxy,
 			wgpu_context,
+			app_event_scheduler,
+			window_size_receiver: Arc::new(Mutex::new(WindowSizeReceiver::new(window_size_receiver))),
 		}
 	}
 }
@@ -164,14 +154,14 @@ impl CefEventHandler for CefHandler {
 			},
 		);
 
-		let _ = self.event_loop_proxy.send_event(CustomEvent::UiUpdate(texture));
+		self.app_event_scheduler.schedule(AppEvent::UiUpdate(texture));
 	}
 
 	#[cfg(feature = "accelerated_paint")]
 	fn draw_gpu(&self, shared_texture: SharedTextureHandle) {
 		match shared_texture.import_texture(&self.wgpu_context.device) {
 			Ok(texture) => {
-				let _ = self.event_loop_proxy.send_event(CustomEvent::UiUpdate(texture));
+				self.app_event_scheduler.schedule(AppEvent::UiUpdate(texture));
 			}
 			Err(e) => {
 				tracing::error!("Failed to import shared texture: {}", e);
@@ -235,11 +225,11 @@ impl CefEventHandler for CefHandler {
 	}
 
 	fn schedule_cef_message_loop_work(&self, scheduled_time: std::time::Instant) {
-		let _ = self.event_loop_proxy.send_event(CustomEvent::ScheduleBrowserWork(scheduled_time));
+		self.app_event_scheduler.schedule(AppEvent::ScheduleBrowserWork(scheduled_time));
 	}
 
 	fn initialized_web_communication(&self) {
-		let _ = self.event_loop_proxy.send_event(CustomEvent::WebCommunicationInitialized);
+		self.app_event_scheduler.schedule(AppEvent::WebCommunicationInitialized);
 	}
 
 	fn receive_web_message(&self, message: &[u8]) {
@@ -247,6 +237,19 @@ impl CefEventHandler for CefHandler {
 			tracing::error!("Failed to deserialize web message");
 			return;
 		};
-		let _ = self.event_loop_proxy.send_event(CustomEvent::DesktopWrapperMessage(desktop_wrapper_message));
+		self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(desktop_wrapper_message));
+	}
+}
+
+struct WindowSizeReceiver {
+	window_size: WindowSize,
+	receiver: Receiver<WindowSize>,
+}
+impl WindowSizeReceiver {
+	fn new(window_size_receiver: Receiver<WindowSize>) -> Self {
+		Self {
+			window_size: WindowSize { width: 1, height: 1 },
+			receiver: window_size_receiver,
+		}
 	}
 }
