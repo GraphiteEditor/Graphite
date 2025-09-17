@@ -591,6 +591,7 @@ struct PathToolData {
 	hovered_layers: Vec<LayerNodeIdentifier>,
 	ghost_outline: Vec<(Vec<ClickTargetType>, LayerNodeIdentifier)>,
 	make_path_editable_is_allowed: bool,
+	is_raster_layer: bool,
 }
 
 impl PathToolData {
@@ -728,11 +729,13 @@ impl PathToolData {
 
 		for (layer, state) in &shape_editor.selected_shape_state {
 			if NodeGraphLayer::is_raster_layer(*layer, &mut document.network_interface) {
+				self.is_raster_layer = true;
 				return PathToolFsmState::Ready;
 			}
 			let selected_points = state.selected_points().collect::<HashSet<_>>();
 			let selected_segments = state.selected_segments().collect::<HashSet<_>>();
 			old_selection.insert(*layer, (selected_points, selected_segments));
+			self.is_raster_layer = false;
 		}
 
 		// Check if the point is already selected; if not, select the first point within the threshold (in pixels)
@@ -1686,7 +1689,13 @@ impl Fsm for PathToolFsmState {
 				}
 
 				// TODO: find the segment ids of which the selected points are a part of
-
+				if tool_data.is_raster_layer {
+					overlay_context.visibility_settings.anchors = false;
+					overlay_context.visibility_settings.handles = false;
+					overlay_context.visibility_settings.path = false;
+					path_overlays(document, DrawHandles::None, shape_editor, &mut overlay_context);
+					return Default::default();
+				}
 				match tool_options.path_overlay_mode {
 					PathOverlayMode::AllHandles => {
 						path_overlays(document, DrawHandles::All, shape_editor, &mut overlay_context);
@@ -1766,6 +1775,10 @@ impl Fsm for PathToolFsmState {
 						// If there exists an underlying anchor, we show a hover overlay
 						(|| {
 							if !tool_options.path_editing_mode.point_editing_mode {
+								return;
+							}
+
+							if tool_data.is_raster_layer {
 								return;
 							}
 
