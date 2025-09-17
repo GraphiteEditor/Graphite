@@ -28,21 +28,23 @@ fn string_concatenate(_: impl Ctx, #[implementations(String)] first: String, sec
 }
 
 #[node_macro::node(category("Text"))]
-fn string_replace(_: impl Ctx, #[implementations(String)] string: String, from: TextArea, to: TextArea) -> String {
+fn string_replace(_: impl Ctx, string: String, from: TextArea, to: TextArea) -> String {
 	string.replace(&from, &to)
 }
 
 #[node_macro::node(category("Text"))]
-fn string_slice(_: impl Ctx, #[implementations(String)] string: String, start: f64, end: f64) -> String {
+fn string_slice(_: impl Ctx, string: String, start: f64, end: f64) -> String {
 	let start = if start < 0. { string.len() - start.abs() as usize } else { start as usize };
 	let end = if end <= 0. { string.len() - end.abs() as usize } else { end as usize };
 	let n = end.saturating_sub(start);
 	string.char_indices().skip(start).take(n).map(|(_, c)| c).collect()
 }
 
+// TODO: Return u32, u64, or usize instead of f64 after #1621 is resolved and has allowed us to implement automatic type conversion in the node graph for nodes with generic type inputs.
+// TODO: (Currently automatic type conversion only works for concrete types, via the Graphene preprocessor and not the full Graphene type system.)
 #[node_macro::node(category("Text"))]
-fn string_length(_: impl Ctx, #[implementations(String)] string: String) -> u32 {
-	string.chars().count() as u32
+fn string_length(_: impl Ctx, string: String) -> f64 {
+	string.chars().count() as f64
 }
 
 #[node_macro::node(category("Math: Logic"))]
