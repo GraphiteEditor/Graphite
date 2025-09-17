@@ -7,8 +7,8 @@ use graphite_desktop_wrapper::WgpuContext;
 pub(crate) mod consts;
 
 mod app;
-mod cli;
 mod cef;
+mod cli;
 mod dirs;
 mod event;
 mod native_window;

@@ -5,9 +5,9 @@ use clap::{Parser, ValueEnum};
 
 #[derive(Debug, Clone, ValueEnum)]
 pub enum UIAceleratedPainting {
-    Auto,
-    Yes,
-    No,
+	Auto,
+	Yes,
+	No,
 }
 
 #[derive(Debug, Parser)]

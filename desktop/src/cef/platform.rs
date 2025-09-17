@@ -1,4 +1,4 @@
-use crate::cli::{get_cli, UIAceleratedPainting};
+use crate::cli::{UIAceleratedPainting, get_cli};
 
 #[cfg(feature = "accelerated_paint")]
 pub fn should_enable_hardware_acceleration() -> bool {
