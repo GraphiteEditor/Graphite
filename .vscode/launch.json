@@ -6,43 +6,46 @@
 	"configurations": [
 		{
 			"type": "lldb",
+			"request": "attach",
+			"name": "Attach",
+			"program": "${workspaceFolder}/target/debug/graphite-desktop.exe"
+		},
+		{
+			"type": "cppvsdbg",
 			"request": "launch",
 			"name": "Graphite debug executable",
-			"cargo": {
-				"args": [
-					"build",
-					"--bin=graphite",
-					"--package=graphite",
-				],
-				"filter": {
-					"name": "graphite",
-					"kind": "bin",
-				},
-			},
+			"program": "${workspaceFolder}/target/debug/graphite-desktop.exe",
 			"args": [],
-			"cwd": "${workspaceFolder}",
-			"env": {
-				"RUST_LOG": "error",
-			},
+			"cwd": "${workspaceFolder}/frontend",
+			"preLaunchTask": "Build desktop",
+			"environment": [
+				{
+					"name": "Path",
+					"value": "${env:Path};${workspaceFolder}/target/debug/build/cef-dll-sys-64de2d8cf2651480/out/build/libcef_dll_wrapper;${workspaceFolder}/target/debug/build/cef-dll-sys-64de2d8cf2651480/out/cef_windows_x86_64;${workspaceFolder}/target/debug/build/ring-3cde4330c4f9f08b/out;${workspaceFolder}/target/debug/build/ring-d1ae505507179bc0/out;${workspaceFolder}/target/debug/deps;${workspaceFolder}/target/debug;${env:USERPROFILE}\\.cargo\\bin"
+				}
+			]
+		},
+		{
+			"type": "cppvsdbg",
+			"request": "launch",
+			"name": "Debug Graphite Desktop (VS)",
+			"program": "${workspaceFolder}/target/debug/graphite-desktop.exe",
+			"args": [],
+			"cwd": "${workspaceFolder}/frontend"
 		},
 		{
 			"type": "lldb",
 			"request": "launch",
 			"name": "Debug unit tests in executable 'graphite'",
 			"cargo": {
-				"args": [
-					"test",
-					"--no-run",
-					"--bin=graphite",
-					"--package=graphite",
-				],
+				"args": ["test", "--no-run", "--bin=graphite", "--package=graphite"],
 				"filter": {
 					"name": "graphite",
-					"kind": "bin",
-				},
+					"kind": "bin"
+				}
 			},
 			"args": [],
-			"cwd": "${workspaceFolder}",
-		},
-	],
+			"cwd": "${workspaceFolder}"
+		}
+	]
 }

@@ -1,5 +1,6 @@
 use crate::CustomEvent;
 use crate::cef::WindowSize;
+use crate::cli::get_cli;
 use crate::consts::{APP_NAME, CEF_MESSAGE_LOOP_MAX_ITERATIONS};
 use crate::persist::PersistentData;
 use crate::render::GraphicsState;
@@ -85,6 +86,21 @@ impl WinitApp {
 					return;
 				};
 				self.send_or_queue_web_message(bytes);
+			}
+			DesktopFrontendMessage::Init => {
+				tracing::info!("Initializing application...");
+				let cli = get_cli();
+				if let Some(paths) = cli.files.clone() {
+					for path in paths {
+						tracing::info!("Opening file from command line: {}", path.display());
+						if let Ok(content) = std::fs::read(&path) {
+							let message = DesktopWrapperMessage::OpenFile { path, content };
+							self.dispatch_desktop_wrapper_message(message);
+						} else {
+							tracing::error!("Failed to read file: {}", path.display());
+						}
+					}
+				}
 			}
 			DesktopFrontendMessage::OpenFileDialog { title, filters, context } => {
 				let event_loop_proxy = self.event_loop_proxy.clone();
@@ -408,15 +424,15 @@ impl ApplicationHandler<CustomEvent> for WinitApp {
 	}
 }
 
-fn load_string(path: &std::path::PathBuf) -> Option<String> {
-	let Ok(content) = fs::read_to_string(path) else {
-		tracing::error!("Failed to read file: {}", path.display());
-		return None;
-	};
+// fn load_string(path: &std::path::PathBuf) -> Option<String> {
+// 	let Ok(content) = fs::read_to_string(path) else {
+// 		tracing::error!("Failed to read file: {}", path.display());
+// 		return None;
+// 	};
 
-	if content.is_empty() {
-		tracing::warn!("Dropped file is empty: {}", path.display());
-		return None;
-	}
-	Some(content)
-}
+// 	if content.is_empty() {
+// 		tracing::warn!("Dropped file is empty: {}", path.display());
+// 		return None;
+// 	}
+// 	Some(content)
+// }

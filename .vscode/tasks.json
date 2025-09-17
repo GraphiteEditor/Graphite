@@ -1,0 +1,28 @@
+{
+	"tasks": [
+		{
+			"type": "npm",
+			"script": "start-desktop",
+			"problemMatcher": [],
+			"label": "npm: start-desktop",
+			"detail": "cd frontend && npm run build-native-dev && cargo run -p graphite-desktop",
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			}
+		},
+		{
+			"type": "shell",
+			"command": "cargo build -p graphite-desktop",
+			"problemMatcher": [],
+			"label": "Build desktop",
+			"group": {
+				"kind": "build",
+				"isDefault": false
+			},
+			"options": {
+				"cwd": "${workspaceFolder}"
+			}
+		}
+	]
+}

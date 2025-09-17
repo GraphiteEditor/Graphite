@@ -16,6 +16,8 @@ mod render;
 mod app;
 use app::WinitApp;
 
+mod cli;
+
 mod dirs;
 mod persist;
 
@@ -43,6 +45,8 @@ fn main() {
 		tracing::error!("Cef subprocess failed with error: {error}");
 		return;
 	}
+
+	cli::init_cli();
 
 	let wgpu_context = futures::executor::block_on(WgpuContext::new()).unwrap();
 

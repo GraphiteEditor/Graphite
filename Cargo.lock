@@ -2266,6 +2266,7 @@ dependencies = [
  "bytemuck",
  "cef",
  "cef-dll-sys",
+ "clap",
  "core-foundation",
  "derivative",
  "dirs",
