@@ -3,6 +3,7 @@ use crate::proto::{Any as DAny, FutureAny};
 use crate::wasm_application_io::WasmEditorApi;
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
+use glam::{Affine2, Vec2};
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graphene_application_io::{ImageTexture, SurfaceFrame};
 use graphene_brush::brush_cache::BrushCache;
@@ -15,7 +16,7 @@ use graphene_core::uuid::NodeId;
 use graphene_core::vector::Vector;
 use graphene_core::vector::style::Fill;
 use graphene_core::vector::style::GradientStops;
-use graphene_core::{Artboard, Color, Graphic, MemoHash, Node, Type};
+use graphene_core::{Artboard, Color, ContextFeatures, Graphic, MemoHash, Node, Type};
 use graphene_svg_renderer::RenderMetadata;
 use std::fmt::Display;
 use std::hash::Hash;
@@ -163,13 +164,15 @@ tagged_value! {
 	// ===============
 	// PRIMITIVE TYPES
 	// ===============
-	#[serde(alias = "F32")] // TODO: Eventually remove this alias document upgrade code
+	F32(f32),
 	F64(f64),
 	U32(u32),
 	U64(u64),
 	Bool(bool),
 	String(String),
 	OptionalF64(Option<f64>),
+	ColorNotInTable(Color),
+	OptionalColorNotInTable(Option<Color>),
 	// ========================
 	// LISTS OF PRIMITIVE TYPES
 	// ========================
@@ -186,7 +189,7 @@ tagged_value! {
 	#[serde(alias = "VectorData")]
 	Vector(Table<Vector>),
 	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphene_core::raster::image::migrate_image_frame"))] // TODO: Eventually remove this migration document upgrade code
-	#[serde(alias = "ImageFrame", alias = "RasterData")]
+	#[serde(alias = "ImageFrame", alias = "RasterData", alias = "Image")]
 	Raster(Table<Raster<CPU>>),
 	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphene_core::graphic::migrate_graphic"))] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "GraphicGroup", alias = "Group")]
@@ -201,6 +204,8 @@ tagged_value! {
 	// ============
 	// STRUCT TYPES
 	// ============
+	FVec2(Vec2),
+	FAffine2(Affine2),
 	#[serde(alias = "IVec2", alias = "UVec2")]
 	DVec2(DVec2),
 	DAffine2(DAffine2),
@@ -212,6 +217,7 @@ tagged_value! {
 	BrushStrokes(Vec<BrushStroke>),
 	BrushCache(BrushCache),
 	DocumentNode(DocumentNode),
+	ContextFeatures(ContextFeatures),
 	Curve(graphene_raster_nodes::curve::Curve),
 	Footprint(graphene_core::transform::Footprint),
 	VectorModification(Box<graphene_core::vector::VectorModification>),
@@ -236,6 +242,7 @@ tagged_value! {
 	ArcType(graphene_core::vector::misc::ArcType),
 	MergeByDistanceAlgorithm(graphene_core::vector::misc::MergeByDistanceAlgorithm),
 	PointSpacingType(graphene_core::vector::misc::PointSpacingType),
+	SpiralType(graphene_core::vector::misc::SpiralType),
 	#[serde(alias = "LineCap")]
 	StrokeCap(graphene_core::vector::style::StrokeCap),
 	#[serde(alias = "LineJoin")]
@@ -257,6 +264,7 @@ impl TaggedValue {
 			TaggedValue::String(x) => format!("\"{x}\""),
 			TaggedValue::U32(x) => x.to_string() + "_u32",
 			TaggedValue::U64(x) => x.to_string() + "_u64",
+			TaggedValue::F32(x) => x.to_string() + "_f32",
 			TaggedValue::F64(x) => x.to_string() + "_f64",
 			TaggedValue::Bool(x) => x.to_string(),
 			TaggedValue::BlendMode(x) => "BlendMode::".to_string() + &x.to_string(),
@@ -301,13 +309,13 @@ impl TaggedValue {
 					"MAGENTA" => Color::MAGENTA,
 					"TRANSPARENT" => Color::TRANSPARENT,
 					_ => {
-						log::error!("Invalid default value color constant: {}", input);
+						log::error!("Invalid default value color constant: {input}");
 						return None;
 					}
 				});
 			}
 
-			log::error!("Invalid default value color: {}", input);
+			log::error!("Invalid default value color: {input}");
 			None
 		}
 
@@ -327,13 +335,13 @@ impl TaggedValue {
 					"BottomCenter" => ReferencePoint::BottomCenter,
 					"BottomRight" => ReferencePoint::BottomRight,
 					_ => {
-						log::error!("Invalid ReferencePoint default type variant: {}", input);
+						log::error!("Invalid ReferencePoint default type variant: {input}");
 						return None;
 					}
 				});
 			}
 
-			log::error!("Invalid ReferencePoint default type: {}", input);
+			log::error!("Invalid ReferencePoint default type: {input}");
 			None
 		}
 
@@ -348,11 +356,14 @@ impl TaggedValue {
 					x if x == TypeId::of::<()>() => TaggedValue::None,
 					x if x == TypeId::of::<String>() => TaggedValue::String(string.into()),
 					x if x == TypeId::of::<f64>() => FromStr::from_str(string).map(TaggedValue::F64).ok()?,
+					x if x == TypeId::of::<f32>() => FromStr::from_str(string).map(TaggedValue::F32).ok()?,
 					x if x == TypeId::of::<u64>() => FromStr::from_str(string).map(TaggedValue::U64).ok()?,
 					x if x == TypeId::of::<u32>() => FromStr::from_str(string).map(TaggedValue::U32).ok()?,
 					x if x == TypeId::of::<DVec2>() => to_dvec2(string).map(TaggedValue::DVec2)?,
 					x if x == TypeId::of::<bool>() => FromStr::from_str(string).map(TaggedValue::Bool).ok()?,
 					x if x == TypeId::of::<Table<Color>>() => to_color(string).map(|color| TaggedValue::Color(Table::new_from_element(color)))?,
+					x if x == TypeId::of::<Color>() => to_color(string).map(TaggedValue::ColorNotInTable)?,
+					x if x == TypeId::of::<Option<Color>>() => TaggedValue::ColorNotInTable(to_color(string)?),
 					x if x == TypeId::of::<Fill>() => to_color(string).map(|color| TaggedValue::Fill(Fill::solid(color)))?,
 					x if x == TypeId::of::<ReferencePoint>() => to_reference_point(string).map(TaggedValue::ReferencePoint)?,
 					_ => return None,
@@ -378,6 +389,7 @@ impl Display for TaggedValue {
 			TaggedValue::String(x) => f.write_str(x),
 			TaggedValue::U32(x) => f.write_fmt(format_args!("{x}")),
 			TaggedValue::U64(x) => f.write_fmt(format_args!("{x}")),
+			TaggedValue::F32(x) => f.write_fmt(format_args!("{x}")),
 			TaggedValue::F64(x) => f.write_fmt(format_args!("{x}")),
 			TaggedValue::Bool(x) => f.write_fmt(format_args!("{x}")),
 			_ => panic!("Cannot convert to string"),
@@ -392,7 +404,8 @@ impl<'input> Node<'input, DAny<'input>> for UpcastNode {
 	type Output = FutureAny<'input>;
 
 	fn eval(&'input self, _: DAny<'input>) -> Self::Output {
-		Box::pin(async move { self.value.clone().into_inner().to_dynany() })
+		let memo_clone = MemoHash::clone(&self.value);
+		Box::pin(async move { memo_clone.into_inner().as_ref().clone().to_dynany() })
 	}
 }
 impl UpcastNode {
@@ -452,7 +465,17 @@ mod fake_hash {
 			self.to_bits().hash(state)
 		}
 	}
+	impl FakeHash for f32 {
+		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+			self.to_bits().hash(state)
+		}
+	}
 	impl FakeHash for DVec2 {
+		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+			self.to_array().iter().for_each(|x| x.to_bits().hash(state))
+		}
+	}
+	impl FakeHash for Vec2 {
 		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
 			self.to_array().iter().for_each(|x| x.to_bits().hash(state))
 		}
@@ -462,7 +485,12 @@ mod fake_hash {
 			self.to_cols_array().iter().for_each(|x| x.to_bits().hash(state))
 		}
 	}
-	impl<X: FakeHash> FakeHash for Option<X> {
+	impl FakeHash for Affine2 {
+		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+			self.to_cols_array().iter().for_each(|x| x.to_bits().hash(state))
+		}
+	}
+	impl<T: FakeHash> FakeHash for Option<T> {
 		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
 			if let Some(x) = self {
 				1.hash(state);
@@ -472,7 +500,7 @@ mod fake_hash {
 			}
 		}
 	}
-	impl<X: FakeHash> FakeHash for Vec<X> {
+	impl<T: FakeHash> FakeHash for Vec<T> {
 		fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
 			self.len().hash(state);
 			self.iter().for_each(|x| x.hash(state))
@@ -489,4 +517,9 @@ mod fake_hash {
 			self.1.hash(state)
 		}
 	}
+}
+
+#[test]
+fn can_construct_color() {
+	assert_eq!(TaggedValue::from_type(&concrete!(Color)).unwrap(), TaggedValue::ColorNotInTable(Color::default()));
 }

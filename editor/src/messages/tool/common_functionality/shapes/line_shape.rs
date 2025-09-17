@@ -210,18 +210,18 @@ mod test_line_tool {
 	async fn get_line_node_inputs(editor: &mut EditorTestUtils) -> Option<(DVec2, DVec2)> {
 		let document = editor.active_document();
 		let network_interface = &document.network_interface;
-		let node_id = network_interface
+
+		network_interface
 			.selected_nodes()
 			.selected_visible_and_unlocked_layers(network_interface)
 			.filter_map(|layer| {
-				let node_inputs = NodeGraphLayer::new(layer, &network_interface).find_node_inputs("Line")?;
+				let node_inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs("Line")?;
 				let (Some(&TaggedValue::DVec2(start)), Some(&TaggedValue::DVec2(end))) = (node_inputs[1].as_value(), node_inputs[2].as_value()) else {
 					return None;
 				};
 				Some((start, end))
 			})
-			.next();
-		node_id
+			.next()
 	}
 
 	#[tokio::test]
@@ -245,11 +245,7 @@ mod test_line_tool {
 		editor.new_document().await;
 		editor.handle_message(NavigationMessage::CanvasZoomSet { zoom_factor: 2. }).await;
 		editor.handle_message(NavigationMessage::CanvasPan { delta: DVec2::new(100., 50.) }).await;
-		editor
-			.handle_message(NavigationMessage::CanvasTiltSet {
-				angle_radians: (30. as f64).to_radians(),
-			})
-			.await;
+		editor.handle_message(NavigationMessage::CanvasTiltSet { angle_radians: 30_f64.to_radians() }).await;
 		editor.drag_tool(ToolType::Line, 0., 0., 100., 100., ModifierKeys::empty()).await;
 		if let Some((start_input, end_input)) = get_line_node_inputs(&mut editor).await {
 			let document = editor.active_document();
@@ -261,15 +257,11 @@ mod test_line_tool {
 
 			assert!(
 				(start_input - expected_start).length() < 1.,
-				"Start point should match expected document coordinates. Got {:?}, expected {:?}",
-				start_input,
-				expected_start
+				"Start point should match expected document coordinates. Got {start_input:?}, expected {expected_start:?}"
 			);
 			assert!(
 				(end_input - expected_end).length() < 1.,
-				"End point should match expected document coordinates. Got {:?}, expected {:?}",
-				end_input,
-				expected_end
+				"End point should match expected document coordinates. Got {end_input:?}, expected {expected_end:?}"
 			);
 		} else {
 			panic!("Line was not created successfully with transformed viewport");
@@ -282,27 +274,19 @@ mod test_line_tool {
 		editor.new_document().await;
 		editor.drag_tool(ToolType::Line, 0., 0., 100., 100., ModifierKeys::CONTROL).await;
 		if let Some((start_input, end_input)) = get_line_node_inputs(&mut editor).await {
-			match (start_input, end_input) {
-				(start_input, end_input) => {
-					let line_vec = end_input - start_input;
-					let original_angle = line_vec.angle_to(DVec2::X);
-					editor.drag_tool(ToolType::Line, 0., 0., 200., 50., ModifierKeys::CONTROL).await;
-					if let Some((updated_start, updated_end)) = get_line_node_inputs(&mut editor).await {
-						match (updated_start, updated_end) {
-							(updated_start, updated_end) => {
-								let updated_line_vec = updated_end - updated_start;
-								let updated_angle = updated_line_vec.angle_to(DVec2::X);
-								print!("{:?}", original_angle);
-								print!("{:?}", updated_angle);
-								assert!(
-									line_vec.normalize().dot(updated_line_vec.normalize()).abs() - 1. < 1e-6,
-									"Line angle should be locked when Ctrl is kept pressed"
-								);
-								assert!((updated_start - updated_end).length() > 1., "Line should be able to change length when Ctrl is kept pressed");
-							}
-						}
-					}
-				}
+			let line_vec = end_input - start_input;
+			let original_angle = line_vec.angle_to(DVec2::X);
+			editor.drag_tool(ToolType::Line, 0., 0., 200., 50., ModifierKeys::CONTROL).await;
+			if let Some((updated_start, updated_end)) = get_line_node_inputs(&mut editor).await {
+				let updated_line_vec = updated_end - updated_start;
+				let updated_angle = updated_line_vec.angle_to(DVec2::X);
+				print!("{original_angle:?}");
+				print!("{updated_angle:?}");
+				assert!(
+					line_vec.normalize().dot(updated_line_vec.normalize()).abs() - 1. < 1e-6,
+					"Line angle should be locked when Ctrl is kept pressed"
+				);
+				assert!((updated_start - updated_end).length() > 1., "Line should be able to change length when Ctrl is kept pressed");
 			}
 		}
 	}
@@ -313,14 +297,10 @@ mod test_line_tool {
 		editor.new_document().await;
 		editor.drag_tool(ToolType::Line, 100., 100., 200., 100., ModifierKeys::ALT).await;
 		if let Some((start_input, end_input)) = get_line_node_inputs(&mut editor).await {
-			match (start_input, end_input) {
-				(start_input, end_input) => {
-					let expected_start = DVec2::new(0., 100.);
-					let expected_end = DVec2::new(200., 100.);
-					assert!((start_input - expected_start).length() < 1., "Start point should be near (0, 100)");
-					assert!((end_input - expected_end).length() < 1., "End point should be near (200, 100)");
-				}
-			}
+			let expected_start = DVec2::new(0., 100.);
+			let expected_end = DVec2::new(200., 100.);
+			assert!((start_input - expected_start).length() < 1., "Start point should be near (0, 100)");
+			assert!((end_input - expected_end).length() < 1., "End point should be near (200, 100)");
 		}
 	}
 

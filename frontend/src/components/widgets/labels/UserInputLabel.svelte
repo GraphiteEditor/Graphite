@@ -39,7 +39,7 @@
 	export let requiresLock = false;
 	export let textOnly = false;
 
-	$: keyboardLockInfoMessage = watchKeyboardLockInfoMessage(fullscreen.keyboardLockApiSupported);
+	$: keyboardLockInfoMessage = watchKeyboardLockInfoMessage($fullscreen.keyboardLockApiSupported);
 
 	$: displayKeyboardLockNotice = requiresLock && !$fullscreen.keyboardLocked;
 
@@ -183,7 +183,8 @@
 				display: flex;
 				justify-content: center;
 				align-items: center;
-				font-family: "Inconsolata", monospace;
+				font-family: "Source Code Pro", monospace;
+				font-size: 12px;
 				font-weight: 400;
 				text-align: center;
 				height: 16px;

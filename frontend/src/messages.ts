@@ -1,5 +1,4 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-/* eslint-disable max-classes-per-file */
 
 import { Transform, Type, plainToClass } from "class-transformer";
 
@@ -12,12 +11,6 @@ export class JsMessage {
 }
 
 const TupleToVec2 = Transform(({ value }: { value: [number, number] | undefined }) => (value === undefined ? undefined : { x: value[0], y: value[1] }));
-const ImportsToVec2Array = Transform(({ obj: { imports } }: { obj: { imports: [FrontendGraphOutput, number, number][] } }) =>
-	imports.map(([outputMetadata, x, y]) => ({ outputMetadata, position: { x, y } })),
-);
-const ExportsToVec2Array = Transform(({ obj: { exports } }: { obj: { exports: [FrontendGraphInput, number, number][] } }) =>
-	exports.map(([inputMetadata, x, y]) => ({ inputMetadata, position: { x, y } })),
-);
 
 // const BigIntTupleToVec2 = Transform(({ value }: { value: [bigint, bigint] | undefined }) => (value === undefined ? undefined : { x: Number(value[0]), y: Number(value[1]) }));
 
@@ -58,17 +51,17 @@ export class UpdateContextMenuInformation extends JsMessage {
 }
 
 export class UpdateImportsExports extends JsMessage {
-	@ImportsToVec2Array
-	readonly imports!: { outputMetadata: FrontendGraphOutput; position: XY }[];
+	readonly imports!: (FrontendGraphOutput | undefined)[];
 
-	@ExportsToVec2Array
-	readonly exports!: { inputMetadata: FrontendGraphInput; position: XY }[];
+	readonly exports!: (FrontendGraphInput | undefined)[];
 
 	@TupleToVec2
-	readonly addImport!: XY | undefined;
+	readonly importPosition!: XY;
 
 	@TupleToVec2
-	readonly addExport!: XY | undefined;
+	readonly exportPosition!: XY;
+
+	readonly addImportExport!: boolean;
 }
 
 export class UpdateInSelectedNetwork extends JsMessage {
@@ -136,35 +129,34 @@ export class UpdateNodeGraphSelection extends JsMessage {
 }
 
 export class UpdateOpenDocumentsList extends JsMessage {
-	@Type(() => FrontendDocumentDetails)
-	readonly openDocuments!: FrontendDocumentDetails[];
+	@Type(() => OpenDocument)
+	readonly openDocuments!: OpenDocument[];
 }
 
 export class UpdateWirePathInProgress extends JsMessage {
 	readonly wirePath!: WirePath | undefined;
 }
 
-// Allows the auto save system to use a string for the id rather than a BigInt.
-// IndexedDb does not allow for BigInts as primary keys.
-// TypeScript does not allow subclasses to change the type of class variables in subclasses.
-// It is an abstract class to point out that it should not be instantiated directly.
-export abstract class DocumentDetails {
+export class OpenDocument {
+	readonly id!: bigint;
+	@Type(() => DocumentDetails)
+	readonly details!: DocumentDetails;
+
+	get displayName(): string {
+		return this.details.displayName;
+	}
+}
+
+export class DocumentDetails {
 	readonly name!: string;
 
 	readonly isAutoSaved!: boolean;
 
 	readonly isSaved!: boolean;
 
-	// This field must be provided by the subclass implementation
-	// readonly id!: bigint | string;
-
 	get displayName(): string {
 		return `${this.name}${this.isSaved ? "" : "*"}`;
 	}
-}
-
-export class FrontendDocumentDetails extends DocumentDetails {
-	readonly id!: bigint;
 }
 
 export class Box {
@@ -194,29 +186,6 @@ export type ContextMenuInformation = {
 
 export type FrontendGraphDataType = "General" | "Number" | "Artboard" | "Graphic" | "Raster" | "Vector" | "Color";
 
-export class Node {
-	readonly index!: bigint;
-	// Omitted if this Node is an Import or Export to/from the node network
-	readonly nodeId?: bigint;
-}
-
-const CreateOutputConnectorOptional = Transform(({ obj }) => {
-	if (obj.connectedTo == undefined) {
-		return undefined;
-	}
-	if (obj.connectedTo?.export !== undefined) {
-		return { index: obj.connectedTo?.export };
-	} else if (obj.connectedTo?.import !== undefined) {
-		return { index: obj.connectedTo?.import };
-	} else {
-		if (obj.connectedTo?.node.inputIndex !== undefined) {
-			return { nodeId: obj.connectedTo?.node.nodeId, index: obj.connectedTo?.node.inputIndex };
-		} else {
-			return { nodeId: obj.connectedTo?.node.nodeId, index: obj.connectedTo?.node.outputIndex };
-		}
-	}
-});
-
 export class FrontendGraphInput {
 	readonly dataType!: FrontendGraphDataType;
 
@@ -228,27 +197,8 @@ export class FrontendGraphInput {
 
 	readonly validTypes!: string[];
 
-	@CreateOutputConnectorOptional
-	connectedTo!: Node | undefined;
+	readonly connectedTo!: string;
 }
-
-const CreateInputConnectorArray = Transform(({ obj }) => {
-	const newInputConnectors: Node[] = [];
-	obj.connectedTo.forEach((connector: any) => {
-		if (connector.export !== undefined) {
-			newInputConnectors.push({ index: connector.export });
-		} else if (connector.import !== undefined) {
-			newInputConnectors.push({ index: connector.import });
-		} else {
-			if (connector.node.inputIndex !== undefined) {
-				newInputConnectors.push({ nodeId: connector.node.nodeId, index: connector.node.inputIndex });
-			} else {
-				newInputConnectors.push({ nodeId: connector.node.nodeId, index: connector.node.outputIndex });
-			}
-		}
-	});
-	return newInputConnectors;
-});
 
 export class FrontendGraphOutput {
 	readonly dataType!: FrontendGraphDataType;
@@ -259,8 +209,7 @@ export class FrontendGraphOutput {
 
 	readonly resolvedType!: string;
 
-	@CreateInputConnectorArray
-	connectedTo!: Node[];
+	readonly connectedTo!: string[];
 }
 
 export class FrontendNode {
@@ -274,20 +223,20 @@ export class FrontendNode {
 
 	readonly displayName!: string;
 
-	@Type(() => FrontendGraphInput)
 	readonly primaryInput!: FrontendGraphInput | undefined;
 
-	@Type(() => FrontendGraphInput)
 	readonly exposedInputs!: FrontendGraphInput[];
 
-	@Type(() => FrontendGraphOutput)
 	readonly primaryOutput!: FrontendGraphOutput | undefined;
 
-	@Type(() => FrontendGraphOutput)
 	readonly exposedOutputs!: FrontendGraphOutput[];
 
+	readonly primaryInputConnectedToLayer!: boolean;
+
+	readonly primaryOutputConnectedToLayer!: boolean;
+
 	@TupleToVec2
-	readonly position!: XY | undefined;
+	readonly position!: XY;
 
 	// TODO: Store field for the width of the left node chain
 
@@ -298,8 +247,6 @@ export class FrontendNode {
 	readonly unlocked!: boolean;
 
 	readonly errors!: string | undefined;
-
-	readonly uiOnly!: boolean;
 }
 
 export class FrontendNodeType {
@@ -329,21 +276,20 @@ export class WireUpdate {
 	readonly wirePathUpdate!: WirePath | undefined;
 }
 
-export class IndexedDbDocumentDetails extends DocumentDetails {
+export class TriggerPersistenceWriteDocument extends JsMessage {
+	// Use a string since IndexedDB can not use BigInts for keys
 	@Transform(({ value }: { value: bigint }) => value.toString())
-	id!: string;
-}
+	documentId!: string;
 
-export class TriggerIndexedDbWriteDocument extends JsMessage {
 	document!: string;
 
-	@Type(() => IndexedDbDocumentDetails)
-	details!: IndexedDbDocumentDetails;
+	@Type(() => DocumentDetails)
+	details!: DocumentDetails;
 
 	version!: string;
 }
 
-export class TriggerIndexedDbRemoveDocument extends JsMessage {
+export class TriggerPersistenceRemoveDocument extends JsMessage {
 	// Use a string since IndexedDB can not use BigInts for keys
 	@Transform(({ value }: { value: bigint }) => value.toString())
 	documentId!: string;
@@ -356,9 +302,12 @@ export class UpdatePlatform extends JsMessage {
 	readonly platform!: AppWindowPlatform;
 }
 
-export class UpdateMaximized extends JsMessage {
+export class UpdateWindowState extends JsMessage {
 	readonly maximized!: boolean;
+	readonly minimized!: boolean;
 }
+
+export class CloseWindow extends JsMessage {}
 
 export class UpdateViewportHolePunch extends JsMessage {
 	readonly active!: boolean;
@@ -946,6 +895,8 @@ export class TriggerAboutGraphiteLocalizedCommitDate extends JsMessage {
 	readonly commitDate!: string;
 }
 
+export class TriggerDisplayThirdPartyLicensesDialog extends JsMessage {}
+
 // WIDGET PROPS
 
 export abstract class WidgetProps {
@@ -990,6 +941,8 @@ export class ColorInput extends WidgetProps {
 	allowNone!: boolean;
 
 	disabled!: boolean;
+
+	narrow!: boolean;
 
 	menuDirection!: MenuDirection | undefined;
 
@@ -1088,6 +1041,8 @@ export class DropdownInput extends WidgetProps {
 
 	disabled!: boolean;
 
+	narrow!: boolean;
+
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
 
@@ -1176,6 +1131,9 @@ export class NumberInput extends WidgetProps {
 
 	disabled!: boolean;
 
+	// Narrow
+	narrow!: boolean;
+
 	// Value
 
 	value!: number | undefined;
@@ -1253,6 +1211,8 @@ export class RadioInput extends WidgetProps {
 
 	disabled!: boolean;
 
+	narrow!: boolean;
+
 	selectedIndex!: number | undefined;
 
 	minWidth!: number;
@@ -1310,6 +1270,8 @@ export class TextButton extends WidgetProps {
 
 	disabled!: boolean;
 
+	narrow!: boolean;
+
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
 
@@ -1351,6 +1313,8 @@ export class TextInput extends WidgetProps {
 
 	disabled!: boolean;
 
+	narrow!: boolean;
+
 	minWidth!: number;
 
 	maxWidth!: number;
@@ -1366,17 +1330,21 @@ export class TextLabel extends WidgetProps {
 	// Props
 	disabled!: boolean;
 
+	narrow!: boolean;
+
 	bold!: boolean;
 
 	italic!: boolean;
+
+	monospace!: boolean;
+
+	multiline!: boolean;
 
 	centerAlign!: boolean;
 
 	tableAlign!: boolean;
 
-	minWidth!: number;
-
-	multiline!: boolean;
+	minWidth!: string;
 
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltip!: string | undefined;
@@ -1444,7 +1412,6 @@ export class Widget {
 	widgetId!: bigint;
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function hoistWidgetHolder(widgetHolder: any): Widget {
 	const kind = Object.keys(widgetHolder.widget)[0];
 	const props = widgetHolder.widget[kind];
@@ -1459,7 +1426,6 @@ function hoistWidgetHolder(widgetHolder: any): Widget {
 	return plainToClass(Widget, { props, widgetId });
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function hoistWidgetHolders(widgetHolders: any[]): Widget[] {
 	return widgetHolders.map(hoistWidgetHolder);
 }
@@ -1475,7 +1441,6 @@ export class WidgetDiffUpdate extends JsMessage {
 	layoutTarget!: unknown;
 
 	// TODO: Replace `any` with correct typing
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	@Transform(({ value }: { value: any }) => createWidgetDiff(value))
 	diff!: WidgetDiff[];
 }
@@ -1510,7 +1475,6 @@ export function patchWidgetLayout(layout: /* &mut */ WidgetLayout, updates: Widg
 				return targetLayout;
 			}
 			// This is a path traversal so we can assume from the backend that it exists
-			// eslint-disable-next-line @typescript-eslint/no-non-null-assertion
 			if (targetLayout && "action" in targetLayout) return targetLayout.children![index];
 
 			return targetLayout?.[index];
@@ -1531,7 +1495,6 @@ export function patchWidgetLayout(layout: /* &mut */ WidgetLayout, updates: Widg
 			diffObject.length = 0;
 		}
 		// Remove all of the keys from the old object
-		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		Object.keys(diffObject).forEach((key) => delete (diffObject as any)[key]);
 
 		// Assign keys to the new object
@@ -1564,7 +1527,6 @@ export function isWidgetSection(layoutRow: LayoutGroup): layoutRow is WidgetSect
 }
 
 // Unpacking rust types to more usable type in the frontend
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function createWidgetDiff(diffs: any[]): WidgetDiff[] {
 	return diffs.map((diff) => {
 		const { widgetPath, newValue } = diff;
@@ -1583,7 +1545,6 @@ function createWidgetDiff(diffs: any[]): WidgetDiff[] {
 }
 
 // Unpacking a layout group
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function createLayoutGroup(layoutGroup: any): LayoutGroup {
 	if (layoutGroup.column) {
 		const columnWidgets = hoistWidgetHolders(layoutGroup.column.columnWidgets);
@@ -1641,7 +1602,6 @@ export class UpdateMenuBarLayout extends JsMessage {
 	layoutTarget!: unknown;
 
 	// TODO: Replace `any` with correct typing
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	@Transform(({ value }: { value: any }) => createMenuLayout(value))
 	layout!: MenuBarEntry[];
 }
@@ -1658,14 +1618,12 @@ export class UpdateToolShelfLayout extends WidgetDiffUpdate {}
 
 export class UpdateWorkingColorsLayout extends WidgetDiffUpdate {}
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function createMenuLayout(menuBarEntry: any[]): MenuBarEntry[] {
 	return menuBarEntry.map((entry) => ({
 		...entry,
 		children: createMenuLayoutRecursive(entry.children),
 	}));
 }
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function createMenuLayoutRecursive(children: any[][]): MenuBarEntry[][] {
 	return children.map((groups) =>
 		groups.map((entry) => ({
@@ -1678,7 +1636,6 @@ function createMenuLayoutRecursive(children: any[][]): MenuBarEntry[][] {
 }
 
 // `any` is used since the type of the object should be known from the Rust side
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type JSMessageFactory = (data: any, wasm: WebAssembly.Memory, handle: EditorHandle) => JsMessage;
 type MessageMaker = typeof JsMessage | JSMessageFactory;
 
@@ -1692,14 +1649,15 @@ export const messageMakers: Record<string, MessageMaker> = {
 	DisplayRemoveEditableTextbox,
 	SendUIMetadata,
 	TriggerAboutGraphiteLocalizedCommitDate,
+	TriggerDisplayThirdPartyLicensesDialog,
 	TriggerSaveDocument,
 	TriggerSaveFile,
 	TriggerExportImage,
 	TriggerFetchAndOpenDocument,
 	TriggerFontLoad,
 	TriggerImport,
-	TriggerIndexedDbRemoveDocument,
-	TriggerIndexedDbWriteDocument,
+	TriggerPersistenceRemoveDocument,
+	TriggerPersistenceWriteDocument,
 	TriggerLoadFirstAutoSaveDocument,
 	TriggerLoadPreferences,
 	TriggerLoadRestAutoSaveDocuments,
@@ -1736,7 +1694,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateLayersPanelControlBarLeftLayout,
 	UpdateLayersPanelControlBarRightLayout,
 	UpdateLayerWidths,
-	UpdateMaximized,
+	UpdateWindowState,
 	UpdateMenuBarLayout,
 	UpdateMouseCursor,
 	UpdateNodeGraphControlBarLayout,

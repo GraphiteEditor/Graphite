@@ -128,7 +128,10 @@ impl PointDomain {
 	}
 
 	pub fn push(&mut self, id: PointId, position: DVec2) {
-		debug_assert!(!self.id.contains(&id));
+		if self.id.contains(&id) {
+			return;
+		}
+
 		self.id.push(id);
 		self.position.push(position);
 	}
@@ -306,7 +309,10 @@ impl SegmentDomain {
 	}
 
 	pub fn push(&mut self, id: SegmentId, start: usize, end: usize, handles: BezierHandles, stroke: StrokeId) {
-		debug_assert!(!self.id.contains(&id), "Tried to push an existing point to a point domain");
+		#[cfg(debug_assertions)]
+		if self.id.contains(&id) {
+			warn!("Tried to push an existing point to a point domain");
+		}
 
 		self.id.push(id);
 		self.start_point.push(start);
@@ -418,6 +424,11 @@ impl SegmentDomain {
 	/// Enumerate the number of segments connected to a point. If a segment starts and ends at a point then it is counted twice.
 	pub(crate) fn connected_count(&self, point: usize) -> usize {
 		self.all_connected(point).count()
+	}
+
+	/// Enumerate the number of segments connected to a point. If a segment starts and ends at a point then it is counted twice.
+	pub(crate) fn any_connected(&self, point: usize) -> bool {
+		self.all_connected(point).next().is_some()
 	}
 
 	/// Iterates over segments in the domain.

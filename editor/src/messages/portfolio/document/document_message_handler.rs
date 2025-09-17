@@ -6,7 +6,7 @@ use super::utility_types::misc::{GroupFolderType, SNAP_FUNCTIONS_FOR_BOUNDING_BO
 use super::utility_types::network_interface::{self, NodeNetworkInterface, TransactionStatus};
 use super::utility_types::nodes::{CollapsedLayers, SelectedNodes};
 use crate::application::{GRAPHITE_GIT_COMMIT_HASH, generate_uuid};
-use crate::consts::{ASYMPTOTIC_EFFECT, COLOR_OVERLAY_GRAY, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ROTATE_SNAP_INTERVAL};
+use crate::consts::{ASYMPTOTIC_EFFECT, COLOR_OVERLAY_GRAY, DEFAULT_DOCUMENT_NAME, FILE_EXTENSION, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ROTATE_SNAP_INTERVAL};
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::data_panel::{DataPanelMessageContext, DataPanelMessageHandler};
@@ -17,7 +17,7 @@ use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType
 use crate::messages::portfolio::document::properties_panel::properties_panel_message_handler::PropertiesPanelMessageContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentMode, FlipAxis, PTZ};
-use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate};
+use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate, OutputConnector};
 use crate::messages::portfolio::document::utility_types::nodes::RawBuffer;
 use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::portfolio::utility_types::PersistentData;
@@ -39,7 +39,7 @@ use graphene_std::table::Table;
 use graphene_std::vector::PointId;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::misc::{dvec2_to_point, point_to_dvec2};
-use graphene_std::vector::style::ViewMode;
+use graphene_std::vector::style::RenderMode;
 use kurbo::{Affine, CubicBez, Line, ParamCurve, PathSeg, QuadBez};
 use std::path::PathBuf;
 use std::time::Duration;
@@ -85,8 +85,6 @@ pub struct DocumentMessageHandler {
 	/// List of the [`LayerNodeIdentifier`]s that are currently collapsed by the user in the Layers panel.
 	/// Collapsed means that the expansion arrow isn't set to show the children of these layers.
 	pub collapsed: CollapsedLayers,
-	/// The name of the document, which is displayed in the tab and title bar of the editor.
-	pub name: String,
 	/// The full Git commit hash of the Graphite repository that was used to build the editor.
 	/// We save this to provide a hint about which version of the editor was used to create the document.
 	pub commit_hash: String,
@@ -94,9 +92,10 @@ pub struct DocumentMessageHandler {
 	pub document_ptz: PTZ,
 	/// The current mode that the document is in, which starts out as Design Mode. This choice affects the editing behavior of the tools.
 	pub document_mode: DocumentMode,
-	/// The current view mode that the user has set for rendering the document within the viewport.
+	/// The current mode that the user has set for rendering the document within the viewport.
 	/// This is usually "Normal" but can be set to "Outline" or "Pixels" to see the canvas differently.
-	pub view_mode: ViewMode,
+	#[serde(alias = "view_mode")]
+	pub render_mode: RenderMode,
 	/// Sets whether or not all the viewport overlays should be drawn on top of the artwork.
 	/// This includes tool interaction visualizations (like the transform cage and path anchors/handles), the grid, and more.
 	pub overlays_visibility_settings: OverlaysVisibilitySettings,
@@ -113,6 +112,12 @@ pub struct DocumentMessageHandler {
 	// Fields omitted from the saved document format
 	// =============================================
 	//
+	/// The name of the document, which is displayed in the tab and title bar of the editor.
+	#[serde(skip)]
+	pub name: String,
+	/// The path of the to the document file.
+	#[serde(skip)]
+	pub(crate) path: Option<PathBuf>,
 	/// Path to network currently viewed in the node graph overlay. This will eventually be stored in each panel, so that multiple panels can refer to different networks
 	#[serde(skip)]
 	breadcrumb_network_path: Vec<NodeId>,
@@ -125,9 +130,6 @@ pub struct DocumentMessageHandler {
 	/// Stack of document network snapshots for future history states.
 	#[serde(skip)]
 	document_redo_history: VecDeque<NodeNetworkInterface>,
-	/// The path of the to the document file.
-	#[serde(skip)]
-	path: Option<PathBuf>,
 	/// Hash of the document snapshot that was most recently saved to disk by the user.
 	#[serde(skip)]
 	saved_hash: Option<u64>,
@@ -159,11 +161,10 @@ impl Default for DocumentMessageHandler {
 			// ============================================
 			network_interface: default_document_network_interface(),
 			collapsed: CollapsedLayers::default(),
-			name: DEFAULT_DOCUMENT_NAME.to_string(),
 			commit_hash: GRAPHITE_GIT_COMMIT_HASH.to_string(),
 			document_ptz: PTZ::default(),
 			document_mode: DocumentMode::DesignMode,
-			view_mode: ViewMode::default(),
+			render_mode: RenderMode::default(),
 			overlays_visibility_settings: OverlaysVisibilitySettings::default(),
 			rulers_visible: true,
 			graph_view_overlay_open: false,
@@ -172,11 +173,12 @@ impl Default for DocumentMessageHandler {
 			// =============================================
 			// Fields omitted from the saved document format
 			// =============================================
+			name: DEFAULT_DOCUMENT_NAME.to_string(),
+			path: None,
 			breadcrumb_network_path: Vec::new(),
 			selection_network_path: Vec::new(),
 			document_undo_history: VecDeque::new(),
 			document_redo_history: VecDeque::new(),
-			path: None,
 			saved_hash: None,
 			auto_saved_hash: None,
 			layer_range_selection_reference: None,
@@ -391,7 +393,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					responses.add(FrontendMessage::UpdateDocumentLayerStructure { data_buffer });
 				}
 			}
-			DocumentMessage::DrawArtboardOverlays(overlay_context) => {
+			DocumentMessage::DrawArtboardOverlays { context: overlay_context } => {
 				if !overlay_context.visibility_settings.artboard_name() {
 					return;
 				}
@@ -582,24 +584,25 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					responses.add(NodeGraphMessage::UpdateHints);
 				} else {
 					responses.add(ToolMessage::ActivateTool { tool_type: *current_tool });
+					responses.add(OverlaysMessage::Draw); // Redraw overlays when graph is closed
 				}
 			}
 			DocumentMessage::GraphViewOverlayToggle => {
 				responses.add(DocumentMessage::GraphViewOverlay { open: !self.graph_view_overlay_open });
 			}
-			DocumentMessage::GridOptions(grid) => {
-				self.snapping_state.grid = grid;
+			DocumentMessage::GridOptions { options } => {
+				self.snapping_state.grid = options;
 				self.snapping_state.grid_snapping = true;
 				responses.add(OverlaysMessage::Draw);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
-			DocumentMessage::GridOverlays(mut overlay_context) => {
+			DocumentMessage::GridOverlays { context: mut overlay_context } => {
 				if self.snapping_state.grid_snapping {
 					grid_overlay(self, &mut overlay_context)
 				}
 			}
-			DocumentMessage::GridVisibility(enabled) => {
-				self.snapping_state.grid_snapping = enabled;
+			DocumentMessage::GridVisibility { visible } => {
+				self.snapping_state.grid_snapping = visible;
 				responses.add(OverlaysMessage::Draw);
 			}
 			DocumentMessage::GroupSelectedLayers { group_folder_type } => {
@@ -946,7 +949,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(OverlaysMessage::Draw);
 			}
 			DocumentMessage::RenameDocument { new_name } => {
-				self.name = new_name;
+				self.name = new_name.clone();
+
+				self.path = None;
+				self.set_save_state(false);
+				self.set_auto_save_state(false);
+
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 				responses.add(NodeGraphMessage::UpdateNewNodeGraph);
 			}
@@ -1019,25 +1027,44 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					multiplier: scrollbar_multiplier.into(),
 				});
 			}
-			DocumentMessage::SaveDocument => {
+			DocumentMessage::SaveDocument | DocumentMessage::SaveDocumentAs => {
+				if let DocumentMessage::SaveDocumentAs = message {
+					self.path = None;
+				}
+
 				self.set_save_state(true);
 				responses.add(PortfolioMessage::AutoSaveActiveDocument);
 				// Update the save status of the just saved document
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 
-				let name = match self.name.ends_with(FILE_SAVE_SUFFIX) {
-					true => self.name.clone(),
-					false => self.name.clone() + FILE_SAVE_SUFFIX,
-				};
 				responses.add(FrontendMessage::TriggerSaveDocument {
 					document_id,
-					name,
+					name: format!("{}.{}", self.name.clone(), FILE_EXTENSION),
 					path: self.path.clone(),
 					content: self.serialize_document().into_bytes(),
 				})
 			}
 			DocumentMessage::SavedDocument { path } => {
 				self.path = path;
+
+				// Update the name to match the file stem
+				let document_name_from_path = self.path.as_ref().and_then(|path| {
+					if path.extension().is_some_and(|e| e == FILE_EXTENSION) {
+						path.file_stem().map(|n| n.to_string_lossy().to_string())
+					} else {
+						None
+					}
+				});
+				if let Some(name) = document_name_from_path {
+					self.name = name;
+
+					responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+					responses.add(NodeGraphMessage::UpdateNewNodeGraph);
+				}
+			}
+			DocumentMessage::MarkAsSaved => {
+				self.set_save_state(true);
+				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 			}
 			DocumentMessage::SelectParentLayer => {
 				let selected_nodes = self.network_interface.selected_nodes();
@@ -1061,7 +1088,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				if !parent_layers.is_empty() {
 					let nodes = parent_layers.into_iter().collect();
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
-					responses.add(BroadcastEvent::SelectionChanged);
+					responses.add(EventMessage::SelectionChanged);
 				}
 			}
 			DocumentMessage::SelectAllLayers => {
@@ -1136,7 +1163,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						} else {
 							responses.add_front(NodeGraphMessage::SelectedNodesAdd { nodes: vec![id] });
 						}
-						responses.add(BroadcastEvent::SelectionChanged);
+						responses.add(EventMessage::SelectionChanged);
 					} else {
 						nodes.push(id);
 					}
@@ -1205,7 +1232,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					Some(overlays_type) => overlays_type,
 					None => {
 						visibility_settings.all = visible;
-						responses.add(BroadcastEvent::ToolAbort);
+						responses.add(EventMessage::ToolAbort);
 						responses.add(OverlaysMessage::Draw);
 						return;
 					}
@@ -1228,7 +1255,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					OverlaysType::Handles => visibility_settings.handles = visible,
 				}
 
-				responses.add(BroadcastEvent::ToolAbort);
+				responses.add(EventMessage::ToolAbort);
 				responses.add(OverlaysMessage::Draw);
 			}
 			DocumentMessage::SetRangeSelectionLayer { new_layer } => {
@@ -1244,8 +1271,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(NodeGraphMessage::SetToNodeOrLayer { node_id, is_layer });
 				responses.add(DocumentMessage::EndTransaction);
 			}
-			DocumentMessage::SetViewMode { view_mode } => {
-				self.view_mode = view_mode;
+			DocumentMessage::SetRenderMode { render_mode } => {
+				self.render_mode = render_mode;
 				responses.add_front(NodeGraphMessage::RunDocumentGraph);
 			}
 			DocumentMessage::AddTransaction => {
@@ -1264,26 +1291,37 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 			}
-			// Commits the transaction if the network was mutated since the transaction started, otherwise it aborts the transaction
+			// Commits the transaction if the network was mutated since the transaction started, otherwise it cancels the transaction
 			DocumentMessage::EndTransaction => match self.network_interface.transaction_status() {
 				TransactionStatus::Started => {
-					responses.add_front(DocumentMessage::AbortTransaction);
+					responses.add_front(DocumentMessage::CancelTransaction);
 				}
 				TransactionStatus::Modified => {
 					responses.add_front(DocumentMessage::CommitTransaction);
 				}
 				TransactionStatus::Finished => {}
 			},
+			DocumentMessage::CancelTransaction => {
+				self.network_interface.finish_transaction();
+				self.document_undo_history.pop_back();
+			}
 			DocumentMessage::CommitTransaction => {
 				if self.network_interface.transaction_status() == TransactionStatus::Finished {
 					return;
 				}
 				self.network_interface.finish_transaction();
 				self.document_redo_history.clear();
+				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 			}
-			DocumentMessage::AbortTransaction => {
-				responses.add(DocumentMessage::RepeatedAbortTransaction { undo_count: 1 });
-			}
+			DocumentMessage::AbortTransaction => match self.network_interface.transaction_status() {
+				TransactionStatus::Started => {
+					responses.add_front(DocumentMessage::CancelTransaction);
+				}
+				TransactionStatus::Modified => {
+					responses.add(DocumentMessage::RepeatedAbortTransaction { undo_count: 1 });
+				}
+				TransactionStatus::Finished => {}
+			},
 			DocumentMessage::RepeatedAbortTransaction { undo_count } => {
 				if self.network_interface.transaction_status() == TransactionStatus::Finished {
 					return;
@@ -1295,6 +1333,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				self.network_interface.finish_transaction();
 				responses.add(OverlaysMessage::Draw);
+				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 			}
 			DocumentMessage::ToggleLayerExpansion { id, recursive } => {
 				let layer = LayerNodeIdentifier::new(id, &self.network_interface);
@@ -1442,12 +1481,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					let transform = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), &self.document_ptz);
 					self.network_interface.set_document_to_viewport_transform(transform);
 					// Ensure selection box is kept in sync with the pointer when the PTZ changes
-					responses.add(SelectToolMessage::PointerMove(SelectToolPointerKeys {
-						axis_align: Key::Shift,
-						snap_angle: Key::Shift,
-						center: Key::Alt,
-						duplicate: Key::Alt,
-					}));
+					responses.add(SelectToolMessage::PointerMove {
+						modifier_keys: SelectToolPointerKeys {
+							axis_align: Key::Shift,
+							snap_angle: Key::Shift,
+							center: Key::Alt,
+							duplicate: Key::Alt,
+						},
+					});
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				} else {
 					let Some(network_metadata) = self.network_interface.network_metadata(&self.breadcrumb_network_path) else {
@@ -1476,11 +1517,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			}
 			DocumentMessage::SelectionStepBack => {
 				self.network_interface.selection_step_back(&self.selection_network_path);
-				responses.add(BroadcastEvent::SelectionChanged);
+				responses.add(EventMessage::SelectionChanged);
 			}
 			DocumentMessage::SelectionStepForward => {
 				self.network_interface.selection_step_forward(&self.selection_network_path);
-				responses.add(BroadcastEvent::SelectionChanged);
+				responses.add(EventMessage::SelectionChanged);
 			}
 			DocumentMessage::WrapContentInArtboard { place_artboard_at_origin } => {
 				// Get bounding box of all layers
@@ -1567,6 +1608,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			ZoomCanvasTo200Percent,
 			ZoomCanvasToFitAll,
 		);
+
+		// Additional actions available on desktop
+		#[cfg(not(target_family = "wasm"))]
+		common.extend(actions!(DocumentMessageDiscriminant::SaveDocumentAs));
 
 		// Additional actions if there are any selected layers
 		if self.network_interface.selected_nodes().selected_layers(self.metadata()).next().is_some() {
@@ -1755,7 +1800,8 @@ impl DocumentMessageHandler {
 
 	pub fn deserialize_document(serialized_content: &str) -> Result<Self, EditorError> {
 		let document_message_handler = serde_json::from_str::<DocumentMessageHandler>(serialized_content)
-			.or_else(|_| {
+			.or_else(|e| {
+				log::warn!("Failed to directly load document with the following error: {e}. Trying old DocumentMessageHandler.");
 				// TODO: Eventually remove this document upgrade code
 				#[derive(Debug, serde::Serialize, serde::Deserialize)]
 				pub struct OldDocumentMessageHandler {
@@ -1780,9 +1826,9 @@ impl DocumentMessageHandler {
 					pub document_ptz: PTZ,
 					/// The current mode that the document is in, which starts out as Design Mode. This choice affects the editing behavior of the tools.
 					pub document_mode: DocumentMode,
-					/// The current view mode that the user has set for rendering the document within the viewport.
+					/// The current mode that the user has set for rendering the document within the viewport.
 					/// This is usually "Normal" but can be set to "Outline" or "Pixels" to see the canvas differently.
-					pub view_mode: ViewMode,
+					pub view_mode: RenderMode,
 					/// Sets whether or not all the viewport overlays should be drawn on top of the artwork.
 					/// This includes tool interaction visualizations (like the transform cage and path anchors/handles), the grid, and more.
 					pub overlays_visibility_settings: OverlaysVisibilitySettings,
@@ -1800,7 +1846,7 @@ impl DocumentMessageHandler {
 					commit_hash: old_message_handler.commit_hash,
 					document_ptz: old_message_handler.document_ptz,
 					document_mode: old_message_handler.document_mode,
-					view_mode: old_message_handler.view_mode,
+					render_mode: old_message_handler.view_mode,
 					overlays_visibility_settings: old_message_handler.overlays_visibility_settings,
 					rulers_visible: old_message_handler.rulers_visible,
 					graph_view_overlay_open: old_message_handler.graph_view_overlay_open,
@@ -1947,16 +1993,16 @@ impl DocumentMessageHandler {
 		Some(previous_network)
 	}
 
-	pub fn current_hash(&self) -> Option<u64> {
-		self.document_undo_history.iter().last().map(|network| network.document_network().current_hash())
+	pub fn current_hash(&self) -> u64 {
+		self.network_interface.document_network().current_hash()
 	}
 
 	pub fn is_auto_saved(&self) -> bool {
-		self.current_hash() == self.auto_saved_hash
+		Some(self.current_hash()) == self.auto_saved_hash
 	}
 
 	pub fn is_saved(&self) -> bool {
-		self.current_hash() == self.saved_hash
+		Some(self.current_hash()) == self.saved_hash
 	}
 
 	pub fn is_graph_overlay_open(&self) -> bool {
@@ -1965,7 +2011,7 @@ impl DocumentMessageHandler {
 
 	pub fn set_auto_save_state(&mut self, is_saved: bool) {
 		if is_saved {
-			self.auto_saved_hash = self.current_hash();
+			self.auto_saved_hash = Some(self.current_hash());
 		} else {
 			self.auto_saved_hash = None;
 		}
@@ -1973,7 +2019,7 @@ impl DocumentMessageHandler {
 
 	pub fn set_save_state(&mut self, is_saved: bool) {
 		if is_saved {
-			self.saved_hash = self.current_hash();
+			self.saved_hash = Some(self.current_hash());
 		} else {
 			self.saved_hash = None;
 		}
@@ -2483,7 +2529,7 @@ impl DocumentMessageHandler {
 				.icon("Grid")
 				.tooltip("Grid")
 				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::ToggleGridVisibility))
-				.on_update(|optional_input: &CheckboxInput| DocumentMessage::GridVisibility(optional_input.checked).into())
+				.on_update(|optional_input: &CheckboxInput| DocumentMessage::GridVisibility { visible: optional_input.checked }.into())
 				.widget_holder(),
 			PopoverButton::new()
 				.popover_layout(overlay_options(&self.snapping_state.grid))
@@ -2491,28 +2537,30 @@ impl DocumentMessageHandler {
 				.widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			RadioInput::new(vec![
-				RadioEntryData::new("normal")
-					.icon("ViewModeNormal")
-					.tooltip("View Mode: Normal")
-					.on_update(|_| DocumentMessage::SetViewMode { view_mode: ViewMode::Normal }.into()),
-				RadioEntryData::new("outline")
-					.icon("ViewModeOutline")
-					.tooltip("View Mode: Outline")
-					.on_update(|_| DocumentMessage::SetViewMode { view_mode: ViewMode::Outline }.into()),
-				RadioEntryData::new("pixels")
-					.icon("ViewModePixels")
-					.tooltip("View Mode: Pixels")
-					.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(320) }.into()),
+				RadioEntryData::new("Normal")
+					.icon("RenderModeNormal")
+					.tooltip("Render Mode: Normal")
+					.on_update(|_| DocumentMessage::SetRenderMode { render_mode: RenderMode::Normal }.into()),
+				RadioEntryData::new("Outline")
+					.icon("RenderModeOutline")
+					.tooltip("Render Mode: Outline")
+					.on_update(|_| DocumentMessage::SetRenderMode { render_mode: RenderMode::Outline }.into()),
+				// RadioEntryData::new("PixelPreview")
+				// 	.icon("RenderModePixels")
+				// 	.tooltip("Render Mode: Pixel Preview")
+				// 	.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(320) }.into()),
+				// RadioEntryData::new("SvgPreview")
+				// 	.icon("RenderModeSvg")
+				// 	.tooltip("Render Mode: SVG Preview")
+				// 	.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(1845) }.into()),
 			])
-			.selected_index(match self.view_mode {
-				ViewMode::Normal => Some(0),
-				_ => Some(1),
-			})
+			.selected_index(Some(self.render_mode as u32))
+			.narrow(true)
 			.widget_holder(),
 			// PopoverButton::new()
 			// 	.popover_layout(vec![
 			// 		LayoutGroup::Row {
-			// 			widgets: vec![TextLabel::new("View Mode").bold(true).widget_holder()],
+			// 			widgets: vec![TextLabel::new("Render Mode").bold(true).widget_holder()],
 			// 		},
 			// 		LayoutGroup::Row {
 			// 			widgets: vec![TextLabel::new("Coming soon").widget_holder()],
@@ -2573,7 +2621,7 @@ impl DocumentMessageHandler {
 			layout: Layout::WidgetLayout(document_bar_layout),
 			layout_target: LayoutTarget::DocumentBar,
 		});
-		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
+		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
 	pub fn update_layers_panel_control_bar_widgets(&self, layers_panel_open: bool, responses: &mut VecDeque<Message>) {
@@ -2738,7 +2786,7 @@ impl DocumentMessageHandler {
 		});
 	}
 
-	pub fn update_layers_panel_bottom_bar_widgets(&self, layers_panel_open: bool, responses: &mut VecDeque<Message>) {
+	pub fn update_layers_panel_bottom_bar_widgets(&mut self, layers_panel_open: bool, responses: &mut VecDeque<Message>) {
 		if !layers_panel_open {
 			return;
 		}
@@ -2748,6 +2796,7 @@ impl DocumentMessageHandler {
 		let selected_layer = selected_layers.next();
 		let has_selection = selected_layer.is_some();
 		let has_multiple_selection = selected_layers.next().is_some();
+		for _ in selected_layers {}
 
 		let widgets = vec![
 			PopoverButton::new()
@@ -2761,7 +2810,7 @@ impl DocumentMessageHandler {
 						let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &self.network_interface);
 						let node_type = graph_layer.horizontal_layer_flow().nth(1);
 						if let Some(node_id) = node_type {
-							let (output_type, _) = self.network_interface.output_type(&node_id, 0, &self.selection_network_path);
+							let (output_type, _) = self.network_interface.output_type(&OutputConnector::node(node_id, 0), &self.selection_network_path);
 							Some(format!("type:{}", output_type.nested_type()))
 						} else {
 							None

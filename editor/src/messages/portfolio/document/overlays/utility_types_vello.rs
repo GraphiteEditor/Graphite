@@ -3,6 +3,7 @@ use crate::consts::{
 	COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, DOWEL_PIN_RADIUS, MANIPULATOR_GROUP_MARKER_SIZE,
 	PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER,
 };
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::Message;
 use core::borrow::Borrow;
 use core::f64::consts::{FRAC_PI_2, PI, TAU};
@@ -202,6 +203,7 @@ impl core::hash::Hash for OverlayContext {
 }
 
 impl OverlayContext {
+	#[allow(dead_code)]
 	pub(super) fn new(size: DVec2, device_pixel_ratio: f64, visibility_settings: OverlaysVisibilitySettings) -> Self {
 		Self {
 			internal: Arc::new(Mutex::new(OverlayContextInternal::new(size, device_pixel_ratio, visibility_settings))),
@@ -399,8 +401,8 @@ pub enum Pivot {
 
 pub enum DrawHandles {
 	All,
-	SelectedAnchors(Vec<SegmentId>),
-	FrontierHandles(HashMap<SegmentId, Vec<PointId>>),
+	SelectedAnchors(HashMap<LayerNodeIdentifier, Vec<SegmentId>>),
+	FrontierHandles(HashMap<LayerNodeIdentifier, HashMap<SegmentId, Vec<PointId>>>),
 	None,
 }
 
@@ -1020,6 +1022,8 @@ impl OverlayContextInternal {
 		};
 
 		// Load Source Sans Pro font data
+		// TODO: Grab this from the node_modules folder (either with `include_bytes!` or ideally at runtime) instead of checking the font file into the repo.
+		// TODO: And maybe use the WOFF2 version (if it's supported) for its smaller, compressed file size.
 		const FONT_DATA: &[u8] = include_bytes!("source-sans-pro-regular.ttf");
 		let font_blob = Some(load_font(FONT_DATA));
 
@@ -1045,6 +1049,8 @@ impl OverlayContextInternal {
 		};
 
 		// Load Source Sans Pro font data
+		// TODO: Grab this from the node_modules folder (either with `include_bytes!` or ideally at runtime) instead of checking the font file into the repo.
+		// TODO: And maybe use the WOFF2 version (if it's supported) for its smaller, compressed file size.
 		const FONT_DATA: &[u8] = include_bytes!("source-sans-pro-regular.ttf");
 		let font_blob = Some(load_font(FONT_DATA));
 
@@ -1151,7 +1157,7 @@ impl OverlayContextInternal {
 				let move_to = last_point != Some(start_id);
 				last_point = Some(end_id);
 
-				self.bezier_to_path(bezier, row.transform.clone(), move_to, &mut path);
+				self.bezier_to_path(bezier, *row.transform, move_to, &mut path);
 			}
 
 			// Render the path

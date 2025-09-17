@@ -41,9 +41,7 @@ db-urls = ["https://github.com/rustsec/advisory-db"]
 ignore = [
 	"RUSTSEC-2024-0370", # Unmaintained but still fully functional crate `proc-macro-error`
 	"RUSTSEC-2024-0388", # Unmaintained but still fully functional crate `derivative`
-	"RUSTSEC-2025-0007", # Unmaintained but still fully functional crate `ring`
 	"RUSTSEC-2024-0436", # Unmaintained but still fully functional crate `paste`
-	"RUSTSEC-2025-0014", # Unmaintained but still fully functional crate `humantime`
 ]
 # Threshold for security vulnerabilities, any vulnerability with a CVSS score
 # lower than the range specified will be ignored. Note that ignored advisories
@@ -63,25 +61,25 @@ ignore = [
 # See https://spdx.org/licenses/ for list of possible licenses
 # [possible values: any SPDX 3.11 short identifier (+ optional exception)].
 #
-# Keep this list in sync with those in `/about.toml` and `/frontend/vite.config.ts`.
 allow = [
-	"Apache-2.0 WITH LLVM-exception",
-	"Apache-2.0",
-	"BSD-2-Clause",
-	"BSD-3-Clause",
-	"BSL-1.0",
-	"CC0-1.0",
-	"CDLA-Permissive-2.0",
-	"ISC",
-	"MIT-0",
-	"MIT",
-	"MPL-2.0",
-	"OpenSSL",
-	"Unicode-3.0",
-	"Unicode-DFS-2016",
-	"Zlib",
-	"NCSA",
-	"bzip2-1.0.6",
+	"Apache-2.0 WITH LLVM-exception", # Keep this list in sync with those in `/about.toml`
+	"Apache-2.0", # Keep this list in sync with those in `/about.toml`
+	"BSD-2-Clause", # Keep this list in sync with those in `/about.toml`
+	"BSD-3-Clause", # Keep this list in sync with those in `/about.toml`
+	"BSL-1.0", # Keep this list in sync with those in `/about.toml`
+	"CC0-1.0", # Keep this list in sync with those in `/about.toml`
+	"CDLA-Permissive-2.0", # Keep this list in sync with those in `/about.toml`
+	"ISC", # Keep this list in sync with those in `/about.toml`
+	"MIT-0", # Keep this list in sync with those in `/about.toml`
+	"MIT", # Keep this list in sync with those in `/about.toml`
+	"MPL-2.0", # Keep this list in sync with those in `/about.toml`
+	"OpenSSL", # Keep this list in sync with those in `/about.toml`
+	"Unicode-3.0", # Keep this list in sync with those in `/about.toml`
+	"Unicode-DFS-2016", # Keep this list in sync with those in `/about.toml`
+	"Zlib", # Keep this list in sync with those in `/about.toml`
+	"NCSA", # Keep this list in sync with those in `/about.toml`
+	"bzip2-1.0.6", # Keep this list in sync with those in `/about.toml`
+	"OFL-1.1", # Keep this list in sync with those in `/about.toml`
 ]
 # The confidence threshold for detecting a license from license text.
 # The higher the value, the more closely the license text must be to the

@@ -283,7 +283,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 	async function onBeforeUnload(e: BeforeUnloadEvent) {
 		const activeDocument = get(portfolio).documents[get(portfolio).activeDocumentIndex];
-		if (activeDocument && !activeDocument.isAutoSaved) editor.handle.triggerAutoSave(activeDocument.id);
+		if (activeDocument && !activeDocument.details.isAutoSaved) editor.handle.triggerAutoSave(activeDocument.id);
 
 		// Skip the message if the editor crashed, since work is already lost
 		if (await editor.handle.hasCrashed()) return;
@@ -291,7 +291,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		// Skip the message during development, since it's annoying when testing
 		if (await editor.handle.inDevelopmentMode()) return;
 
-		const allDocumentsSaved = get(portfolio).documents.reduce((acc, doc) => acc && doc.isSaved, true);
+		const allDocumentsSaved = get(portfolio).documents.reduce((acc, doc) => acc && doc.details.isSaved, true);
 		if (!allDocumentsSaved) {
 			e.returnValue = "Unsaved work will be lost if the web browser tab is closed. Close anyway?";
 			e.preventDefault();
@@ -334,8 +334,11 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 				editor.handle.pasteImage(file.name, new Uint8Array(imageData.data), imageData.width, imageData.height);
 			}
 
-			if (file.name.endsWith(".graphite")) {
-				editor.handle.openDocumentFile(file.name, await file.text());
+			const graphiteFileSuffix = "." + editor.handle.fileExtension();
+			if (file.name.endsWith(graphiteFileSuffix)) {
+				const content = await file.text();
+				const documentName = file.name.slice(0, -graphiteFileSuffix.length);
+				editor.handle.openDocumentFile(documentName, content);
 			}
 		});
 	}

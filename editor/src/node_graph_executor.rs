@@ -1,4 +1,3 @@
-use crate::consts::FILE_SAVE_SUFFIX;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::prelude::*;
 use glam::{DAffine2, DVec2, UVec2};
@@ -116,7 +115,7 @@ impl NodeGraphExecutor {
 
 	/// Update the cached network if necessary.
 	fn update_node_graph(&mut self, document: &mut DocumentMessageHandler, node_to_inspect: Option<NodeId>, ignore_hash: bool) -> Result<(), String> {
-		let network_hash = document.network_interface.document_network().current_hash();
+		let network_hash = document.network_interface.network_hash();
 		// Refresh the graph when it changes or the inspect node changes
 		if network_hash != self.node_graph_hash || self.previous_node_to_inspect != node_to_inspect || ignore_hash {
 			let network = document.network_interface.document_network().clone();
@@ -150,7 +149,7 @@ impl NodeGraphExecutor {
 			export_format: graphene_std::application_io::ExportFormat::Canvas,
 			#[cfg(not(any(feature = "resvg", feature = "vello")))]
 			export_format: graphene_std::application_io::ExportFormat::Svg,
-			view_mode: document.view_mode,
+			render_mode: document.render_mode,
 			hide_artboards: false,
 			for_export: false,
 		};
@@ -160,7 +159,7 @@ impl NodeGraphExecutor {
 
 		self.futures.insert(execution_id, ExecutionContext { export_config: None, document_id });
 
-		Ok(DeferMessage::SetGraphSubmissionIndex(execution_id).into())
+		Ok(DeferMessage::SetGraphSubmissionIndex { execution_id }.into())
 	}
 
 	/// Evaluates a node graph, computing the entire graph
@@ -199,7 +198,7 @@ impl NodeGraphExecutor {
 			},
 			time: Default::default(),
 			export_format: graphene_std::application_io::ExportFormat::Svg,
-			view_mode: document.view_mode,
+			render_mode: document.render_mode,
 			hide_artboards: export_config.transparent_background,
 			for_export: true,
 		};
@@ -229,18 +228,11 @@ impl NodeGraphExecutor {
 		};
 
 		let ExportConfig {
-			file_type,
-			file_name,
-			size,
-			scale_factor,
-			..
+			file_type, name, size, scale_factor, ..
 		} = export_config;
 
 		let file_suffix = &format!(".{file_type:?}").to_lowercase();
-		let name = match file_name.ends_with(FILE_SAVE_SUFFIX) {
-			true => file_name.replace(FILE_SAVE_SUFFIX, file_suffix),
-			false => file_name + file_suffix,
-		};
+		let name = name + file_suffix;
 
 		if file_type == FileType::Svg {
 			responses.add(FrontendMessage::TriggerSaveFile { name, content: svg.into_bytes() });
@@ -288,7 +280,10 @@ impl NodeGraphExecutor {
 					} else {
 						self.process_node_graph_output(node_graph_output, responses)?;
 					}
-					responses.add(DeferMessage::TriggerGraphRun(execution_id, execution_context.document_id));
+					responses.add(DeferMessage::TriggerGraphRun {
+						execution_id,
+						document_id: execution_context.document_id,
+					});
 
 					// Update the Data panel on the frontend using the value of the inspect result.
 					if let Some(inspect_result) = (self.previous_node_to_inspect.is_some()).then_some(inspect_result).flatten() {
@@ -436,7 +431,7 @@ mod test {
 				let monitor_node = DocumentNode {
 					inputs: vec![input],
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::memo::monitor::IDENTIFIER),
-					manual_composition: Some(graph_craft::generic!(T)),
+					call_argument: graph_craft::generic!(T),
 					skip_deduplication: true,
 					..Default::default()
 				};

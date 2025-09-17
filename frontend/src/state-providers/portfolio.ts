@@ -1,10 +1,8 @@
-/* eslint-disable max-classes-per-file */
-
 import { writable } from "svelte/store";
 
 import { type Editor } from "@graphite/editor";
+import type { OpenDocument } from "@graphite/messages";
 import {
-	type FrontendDocumentDetails,
 	TriggerFetchAndOpenDocument,
 	TriggerSaveDocument,
 	TriggerExportImage,
@@ -20,11 +18,10 @@ import {
 import { downloadFile, downloadFileBlob, upload } from "@graphite/utility-functions/files";
 import { extractPixelData, rasterizeSVG } from "@graphite/utility-functions/rasterization";
 
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createPortfolioState(editor: Editor) {
 	const { subscribe, update } = writable({
 		unsaved: false,
-		documents: [] as FrontendDocumentDetails[],
+		documents: [] as OpenDocument[],
 		activeDocumentIndex: 0,
 		dataPanelOpen: false,
 		propertiesPanelOpen: true,
@@ -49,7 +46,7 @@ export function createPortfolioState(editor: Editor) {
 	editor.subscriptions.subscribeJsMessage(TriggerFetchAndOpenDocument, async (triggerFetchAndOpenDocument) => {
 		try {
 			const { name, filename } = triggerFetchAndOpenDocument;
-			const url = new URL(filename, document.location.href);
+			const url = new URL(`demo-artwork/${filename}`, document.location.href);
 			const data = await fetch(url);
 			const content = await data.text();
 
@@ -62,9 +59,16 @@ export function createPortfolioState(editor: Editor) {
 		}
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerOpenDocument, async () => {
-		const extension = editor.handle.fileSaveSuffix();
-		const data = await upload(extension, "text");
-		editor.handle.openDocumentFile(data.filename, data.content);
+		const suffix = "." + editor.handle.fileExtension();
+		const data = await upload(suffix, "text");
+
+		// Use filename as document name, removing the extension if it exists
+		let documentName = data.filename;
+		if (documentName.endsWith(suffix)) {
+			documentName = documentName.slice(0, -suffix.length);
+		}
+
+		editor.handle.openDocumentFile(documentName, data.content);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerImport, async () => {
 		const data = await upload("image/*", "both");
@@ -76,12 +80,14 @@ export function createPortfolioState(editor: Editor) {
 		}
 
 		// In case the user accidentally uploads a Graphite file, open it instead of failing to import it
-		if (data.filename.endsWith(".graphite")) {
-			editor.handle.openDocumentFile(data.filename, data.content.text);
+		const graphiteFileSuffix = "." + editor.handle.fileExtension();
+		if (data.filename.endsWith(graphiteFileSuffix)) {
+			const documentName = data.filename.slice(0, -graphiteFileSuffix.length);
+			editor.handle.openDocumentFile(documentName, data.content.text);
 			return;
 		}
 
-		const imageData = await extractPixelData(new Blob([data.content.data], { type: data.type }));
+		const imageData = await extractPixelData(new Blob([new Uint8Array(data.content.data)], { type: data.type }));
 		editor.handle.pasteImage(data.filename, new Uint8Array(imageData.data), imageData.width, imageData.height);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerSaveDocument, (triggerSaveDocument) => {

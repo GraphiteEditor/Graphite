@@ -101,14 +101,9 @@ impl Circle {
 		};
 
 		let dimensions = (start - end).abs();
-		let radius: f64;
 
 		// We keep the smaller dimension's scale at 1 and scale the other dimension accordingly
-		if dimensions.x > dimensions.y {
-			radius = dimensions.y / 2.;
-		} else {
-			radius = dimensions.x / 2.;
-		}
+		let radius: f64 = if dimensions.x > dimensions.y { dimensions.y / 2. } else { dimensions.x / 2. };
 
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(node_id, 1),

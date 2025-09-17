@@ -78,7 +78,9 @@ pub struct SelectToolPointerKeys {
 pub enum SelectToolMessage {
 	// Standard messages
 	Abort,
-	Overlays(OverlayContext),
+	Overlays {
+		context: OverlayContext,
+	},
 
 	// Tool-specific messages
 	DragStart {
@@ -94,9 +96,15 @@ pub enum SelectToolMessage {
 	EditLayer,
 	EditLayerExec,
 	Enter,
-	PointerMove(SelectToolPointerKeys),
-	PointerOutsideViewport(SelectToolPointerKeys),
-	SelectOptions(SelectOptionsUpdate),
+	PointerMove {
+		modifier_keys: SelectToolPointerKeys,
+	},
+	PointerOutsideViewport {
+		modifier_keys: SelectToolPointerKeys,
+	},
+	SelectOptions {
+		options: SelectOptionsUpdate,
+	},
 	SetPivot {
 		position: ReferencePoint,
 	},
@@ -127,9 +135,12 @@ impl SelectTool {
 		let layer_selection_behavior_entries = [NestedSelectionBehavior::Shallowest, NestedSelectionBehavior::Deepest]
 			.iter()
 			.map(|mode| {
-				MenuListEntry::new(format!("{mode:?}"))
-					.label(mode.to_string())
-					.on_commit(move |_| SelectToolMessage::SelectOptions(SelectOptionsUpdate::NestedSelectionBehavior(*mode)).into())
+				MenuListEntry::new(format!("{mode:?}")).label(mode.to_string()).on_commit(move |_| {
+					SelectToolMessage::SelectOptions {
+						options: SelectOptionsUpdate::NestedSelectionBehavior(*mode),
+					}
+					.into()
+				})
 			})
 			.collect();
 
@@ -191,11 +202,11 @@ impl SelectTool {
 		let list = <BooleanOperation as graphene_std::choice_type::ChoiceTypeStatic>::list();
 		list.iter().flat_map(|i| i.iter()).map(move |(operation, info)| {
 			let mut tooltip = info.label.to_string();
-			if let Some(doc) = info.docstring.as_deref() {
+			if let Some(doc) = info.docstring {
 				tooltip.push_str("\n\n");
 				tooltip.push_str(doc);
 			}
-			IconButton::new(info.icon.as_deref().unwrap(), 24)
+			IconButton::new(info.icon.unwrap(), 24)
 				.tooltip(tooltip)
 				.disabled(selected_count == 0)
 				.on_update(move |_| {
@@ -278,7 +289,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Sele
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
 		let mut redraw_reference_pivot = false;
 
-		if let ToolMessage::Select(SelectToolMessage::SelectOptions(ref option_update)) = message {
+		if let ToolMessage::Select(SelectToolMessage::SelectOptions { options: ref option_update }) = message {
 			match option_update {
 				SelectOptionsUpdate::NestedSelectionBehavior(nested_selection_behavior) => {
 					self.tool_data.nested_selection_behavior = *nested_selection_behavior;
@@ -342,7 +353,7 @@ impl ToolTransition for SelectTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
 			tool_abort: Some(SelectToolMessage::Abort.into()),
-			overlay_provider: Some(|overlay_context| SelectToolMessage::Overlays(overlay_context).into()),
+			overlay_provider: Some(|context| SelectToolMessage::Overlays { context }.into()),
 			..Default::default()
 		}
 	}
@@ -591,7 +602,7 @@ impl Fsm for SelectToolFsmState {
 
 		let ToolMessage::Select(event) = event else { return self };
 		match (self, event) {
-			(_, SelectToolMessage::Overlays(mut overlay_context)) => {
+			(_, SelectToolMessage::Overlays { context: mut overlay_context }) => {
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 
 				let selected_layers_count = document.network_interface.selected_nodes().selected_unlocked_layers(&document.network_interface).count();
@@ -691,32 +702,28 @@ impl Fsm for SelectToolFsmState {
 						// Measure with Alt held down
 						// TODO: Don't use `Key::Alt` directly, instead take it as a variable from the input mappings list like in all other places
 						if overlay_context.visibility_settings.quick_measurement() && !matches!(self, Self::ResizingBounds { .. }) && input.keyboard.get(Key::Alt as usize) {
-							// Get all selected layers and compute their viewport-aligned AABB
-							let selected_bounds_viewport = document
+							// Compute document-space bounding box (AABB) of all selected visible & unlocked layers
+							let selected_bounds_doc_space = document
 								.network_interface
 								.selected_nodes()
 								.selected_visible_and_unlocked_layers(&document.network_interface)
+								// Exclude layers that are artboards
 								.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
-								.filter_map(|layer| {
-									// Get the layer's bounding box in its local space
-									let local_bounds = document.metadata().bounding_box_with_transform(layer, DAffine2::IDENTITY)?;
-									// Transform the bounds directly to viewport space
-									let viewport_quad = document.metadata().transform_to_viewport(layer) * Quad::from_box(local_bounds);
-									// Convert the quad to an AABB in viewport space
-									Some(Rect::from_box(viewport_quad.bounding_box()))
-								})
+								// For each remaining layer, try to get its document-space bounding box and convert it to a Rect
+								.filter_map(|layer| document.metadata().bounding_box_document(layer).map(Rect::from_box))
+								// Combine all individual bounding boxes into one overall bounding box that contains all selected layers
 								.reduce(Rect::combine_bounds);
 
-							// Get the hovered layer's viewport-aligned AABB
-							let hovered_bounds_viewport = document.metadata().bounding_box_with_transform(layer, DAffine2::IDENTITY).map(|bounds| {
-								let viewport_quad = document.metadata().transform_to_viewport(layer) * Quad::from_box(bounds);
-								Rect::from_box(viewport_quad.bounding_box())
-							});
+							// Compute document-space bounding box (AABB) of the currently hovered layer
+							let hovered_bounds_doc_space = document.metadata().bounding_box_document(layer);
 
-							// Use the viewport-aligned AABBs for measurement
-							if let (Some(selected_bounds), Some(hovered_bounds)) = (selected_bounds_viewport, hovered_bounds_viewport) {
-								// Since we're already in viewport space, use identity transform
-								measure::overlay(selected_bounds, hovered_bounds, DAffine2::IDENTITY, DAffine2::IDENTITY, &mut overlay_context);
+							// If both selected and hovered bounds exist, overlay measurement lines
+							if let (Some(selected_bounds), Some(hovered_bounds)) = (selected_bounds_doc_space, hovered_bounds_doc_space.map(Rect::from_box)) {
+								// Both `selected_bounds` and `hovered_bounds` are in document space.
+								// To correctly render overlay lines in the UI (which is in viewport space), we need to transform both rectangles from document to viewport space.
+								// Therefore, we pass `document_to_viewport` as both the `transform` and `document_to_viewport` parameters.
+								let document_to_viewport = document.metadata().document_to_viewport;
+								measure::overlay(selected_bounds, hovered_bounds, document_to_viewport, document_to_viewport, &mut overlay_context);
 							}
 						}
 					}
@@ -845,7 +852,13 @@ impl Fsm for SelectToolFsmState {
 				if let Some(pivot) = pivot {
 					let offset = tool_data
 						.pivot_gizmo_start
-						.map(|offset| tool_data.pivot_gizmo.pivot_disconnected().then_some(tool_data.drag_current - offset).unwrap_or_default())
+						.map(|offset| {
+							if tool_data.pivot_gizmo.pivot_disconnected() {
+								tool_data.drag_current - offset
+							} else {
+								Default::default()
+							}
+						})
 						.unwrap_or_default();
 					let shift = tool_data.pivot_gizmo_shift.unwrap_or_default();
 					overlay_context.pivot(pivot + offset + shift, angle);
@@ -888,7 +901,7 @@ impl Fsm for SelectToolFsmState {
 									color
 								} else {
 									let color_string = &graphene_std::Color::from_rgb_str(color.strip_prefix('#').unwrap()).unwrap().with_alpha(0.25).to_rgba_hex_srgb();
-									&format!("#{}", color_string)
+									&format!("#{color_string}")
 								};
 								let line_center = tool_data.line_center;
 								overlay_context.line(line_center - direction * viewport_diagonal, line_center + direction * viewport_diagonal, Some(color), None);
@@ -1146,7 +1159,7 @@ impl Fsm for SelectToolFsmState {
 					deepest,
 					remove,
 				},
-				SelectToolMessage::PointerMove(modifier_keys),
+				SelectToolMessage::PointerMove { modifier_keys },
 			) => {
 				if !has_dragged {
 					responses.add(ToolMessage::UpdateHints);
@@ -1191,8 +1204,8 @@ impl Fsm for SelectToolFsmState {
 
 				// Auto-panning
 				let messages = [
-					SelectToolMessage::PointerOutsideViewport(modifier_keys.clone()).into(),
-					SelectToolMessage::PointerMove(modifier_keys).into(),
+					SelectToolMessage::PointerOutsideViewport { modifier_keys: modifier_keys.clone() }.into(),
+					SelectToolMessage::PointerMove { modifier_keys }.into(),
 				];
 				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 
@@ -1204,7 +1217,7 @@ impl Fsm for SelectToolFsmState {
 					remove,
 				}
 			}
-			(SelectToolFsmState::ResizingBounds, SelectToolMessage::PointerMove(modifier_keys)) => {
+			(SelectToolFsmState::ResizingBounds, SelectToolMessage::PointerMove { modifier_keys }) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					resize_bounds(
 						document,
@@ -1219,14 +1232,14 @@ impl Fsm for SelectToolFsmState {
 						ToolType::Select,
 					);
 					let messages = [
-						SelectToolMessage::PointerOutsideViewport(modifier_keys.clone()).into(),
-						SelectToolMessage::PointerMove(modifier_keys).into(),
+						SelectToolMessage::PointerOutsideViewport { modifier_keys: modifier_keys.clone() }.into(),
+						SelectToolMessage::PointerMove { modifier_keys }.into(),
 					];
 					tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 				}
 				SelectToolFsmState::ResizingBounds
 			}
-			(SelectToolFsmState::SkewingBounds { skew }, SelectToolMessage::PointerMove(_)) => {
+			(SelectToolFsmState::SkewingBounds { skew }, SelectToolMessage::PointerMove { .. }) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					skew_bounds(
 						document,
@@ -1240,7 +1253,7 @@ impl Fsm for SelectToolFsmState {
 				}
 				SelectToolFsmState::SkewingBounds { skew }
 			}
-			(SelectToolFsmState::RotatingBounds, SelectToolMessage::PointerMove(_)) => {
+			(SelectToolFsmState::RotatingBounds, SelectToolMessage::PointerMove { .. }) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					rotate_bounds(
 						document,
@@ -1256,7 +1269,7 @@ impl Fsm for SelectToolFsmState {
 
 				SelectToolFsmState::RotatingBounds
 			}
-			(SelectToolFsmState::DraggingPivot, SelectToolMessage::PointerMove(modifier_keys)) => {
+			(SelectToolFsmState::DraggingPivot, SelectToolMessage::PointerMove { modifier_keys }) => {
 				let mouse_position = input.mouse.position;
 				let snapped_mouse_position = mouse_position;
 
@@ -1266,14 +1279,14 @@ impl Fsm for SelectToolFsmState {
 
 				// Auto-panning
 				let messages = [
-					SelectToolMessage::PointerOutsideViewport(modifier_keys.clone()).into(),
-					SelectToolMessage::PointerMove(modifier_keys).into(),
+					SelectToolMessage::PointerOutsideViewport { modifier_keys: modifier_keys.clone() }.into(),
+					SelectToolMessage::PointerMove { modifier_keys }.into(),
 				];
 				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 
 				SelectToolFsmState::DraggingPivot
 			}
-			(SelectToolFsmState::Drawing { selection_shape, has_drawn }, SelectToolMessage::PointerMove(modifier_keys)) => {
+			(SelectToolFsmState::Drawing { selection_shape, has_drawn }, SelectToolMessage::PointerMove { modifier_keys }) => {
 				if !has_drawn {
 					responses.add(ToolMessage::UpdateHints);
 				}
@@ -1287,14 +1300,14 @@ impl Fsm for SelectToolFsmState {
 
 				// Auto-panning
 				let messages = [
-					SelectToolMessage::PointerOutsideViewport(modifier_keys.clone()).into(),
-					SelectToolMessage::PointerMove(modifier_keys).into(),
+					SelectToolMessage::PointerOutsideViewport { modifier_keys: modifier_keys.clone() }.into(),
+					SelectToolMessage::PointerMove { modifier_keys }.into(),
 				];
 				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
 
 				SelectToolFsmState::Drawing { selection_shape, has_drawn: true }
 			}
-			(SelectToolFsmState::Ready { .. }, SelectToolMessage::PointerMove(_)) => {
+			(SelectToolFsmState::Ready { .. }, SelectToolMessage::PointerMove { .. }) => {
 				let dragging_bounds = tool_data
 					.bounding_box_manager
 					.as_mut()
@@ -1330,7 +1343,7 @@ impl Fsm for SelectToolFsmState {
 					deepest,
 					remove,
 				},
-				SelectToolMessage::PointerOutsideViewport(_),
+				SelectToolMessage::PointerOutsideViewport { .. },
 			) => {
 				// Auto-panning
 				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, responses) {
@@ -1346,7 +1359,7 @@ impl Fsm for SelectToolFsmState {
 					remove,
 				}
 			}
-			(SelectToolFsmState::ResizingBounds | SelectToolFsmState::SkewingBounds { .. }, SelectToolMessage::PointerOutsideViewport(_)) => {
+			(SelectToolFsmState::ResizingBounds | SelectToolFsmState::SkewingBounds { .. }, SelectToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning
 				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, responses) {
 					if let Some(bounds) = &mut tool_data.bounding_box_manager {
@@ -1357,13 +1370,13 @@ impl Fsm for SelectToolFsmState {
 
 				self
 			}
-			(SelectToolFsmState::DraggingPivot, SelectToolMessage::PointerOutsideViewport(_)) => {
+			(SelectToolFsmState::DraggingPivot, SelectToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning
 				let _ = tool_data.auto_panning.shift_viewport(input, responses);
 
 				self
 			}
-			(SelectToolFsmState::Drawing { .. }, SelectToolMessage::PointerOutsideViewport(_)) => {
+			(SelectToolFsmState::Drawing { .. }, SelectToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning
 				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, responses) {
 					tool_data.drag_start += shift;
@@ -1371,11 +1384,11 @@ impl Fsm for SelectToolFsmState {
 
 				self
 			}
-			(state, SelectToolMessage::PointerOutsideViewport(modifier_keys)) => {
+			(state, SelectToolMessage::PointerOutsideViewport { modifier_keys }) => {
 				// Auto-panning
 				let messages = [
-					SelectToolMessage::PointerOutsideViewport(modifier_keys.clone()).into(),
-					SelectToolMessage::PointerMove(modifier_keys).into(),
+					SelectToolMessage::PointerOutsideViewport { modifier_keys: modifier_keys.clone() }.into(),
+					SelectToolMessage::PointerMove { modifier_keys }.into(),
 				];
 				tool_data.auto_panning.stop(&messages, responses);
 
@@ -1436,8 +1449,6 @@ impl Fsm for SelectToolFsmState {
 							}
 
 							tool_data.get_snap_candidates(document, input);
-
-							responses.add(DocumentMessage::StartTransaction);
 						}
 					}
 				}
@@ -1448,7 +1459,11 @@ impl Fsm for SelectToolFsmState {
 				tool_data.select_single_layer = None;
 
 				if let Some(start) = tool_data.pivot_gizmo_start {
-					let offset = tool_data.pivot_gizmo.pivot_disconnected().then_some(tool_data.drag_current - start).unwrap_or_default();
+					let offset = if tool_data.pivot_gizmo.pivot_disconnected() {
+						tool_data.drag_current - start
+					} else {
+						Default::default()
+					};
 					if let Some(v) = tool_data.pivot_gizmo.pivot.pivot.as_mut() {
 						*v += offset;
 					}
@@ -1606,8 +1621,6 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::Ready { selection }
 			}
 			(_, SelectToolMessage::SetPivot { position }) => {
-				responses.add(DocumentMessage::StartTransaction);
-
 				tool_data.pivot_gizmo.pivot.last_non_none_reference_point = position;
 				tool_data.pivot_gizmo.pivot.pinned = false;
 
@@ -1642,7 +1655,9 @@ impl Fsm for SelectToolFsmState {
 			}
 			(_, SelectToolMessage::PivotShift { offset, flush }) => {
 				if flush {
-					tool_data.pivot_gizmo.pivot.pivot.as_mut().map(|v| *v += tool_data.pivot_gizmo_shift.take().unwrap_or_default());
+					if let Some(v) = tool_data.pivot_gizmo.pivot.pivot.as_mut() {
+						*v += tool_data.pivot_gizmo_shift.take().unwrap_or_default();
+					}
 					let pivot_gizmo = tool_data.pivot_gizmo();
 					responses.add(TransformLayerMessage::SetPivotGizmo { pivot_gizmo });
 					return self;

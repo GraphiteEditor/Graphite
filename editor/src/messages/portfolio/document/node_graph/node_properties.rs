@@ -23,7 +23,7 @@ use graphene_std::raster::{
 use graphene_std::table::{Table, TableRow};
 use graphene_std::text::{Font, TextAlign};
 use graphene_std::transform::{Footprint, ReferencePoint, Transform};
-use graphene_std::vector::misc::{ArcType, CentroidType, GridType, MergeByDistanceAlgorithm, PointSpacingType};
+use graphene_std::vector::misc::{ArcType, CentroidType, GridType, MergeByDistanceAlgorithm, PointSpacingType, SpiralType};
 use graphene_std::vector::style::{Fill, FillChoice, FillType, GradientStops, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 
 pub(crate) fn string_properties(text: &str) -> Vec<LayoutGroup> {
@@ -147,9 +147,9 @@ pub(crate) fn property_from_type(
 		Type::Concrete(concrete_type) => {
 			match concrete_type.alias.as_ref().map(|x| x.as_ref()) {
 				// Aliased types (ambiguous values)
-				Some("Percentage") => number_widget(default_info, number_input.percentage().min(min(0.)).max(max(100.))).into(),
-				Some("SignedPercentage") => number_widget(default_info, number_input.percentage().min(min(-100.)).max(max(100.))).into(),
-				Some("Angle") => number_widget(default_info, number_input.mode_range().min(min(-180.)).max(max(180.)).unit(unit.unwrap_or("°"))).into(),
+				Some("Percentage") | Some("PercentageF32") => number_widget(default_info, number_input.percentage().min(min(0.)).max(max(100.))).into(),
+				Some("SignedPercentage") | Some("SignedPercentageF32") => number_widget(default_info, number_input.percentage().min(min(-100.)).max(max(100.))).into(),
+				Some("Angle") | Some("AngleF32") => number_widget(default_info, number_input.mode_range().min(min(-180.)).max(max(180.)).unit(unit.unwrap_or("°"))).into(),
 				Some("Multiplier") => number_widget(default_info, number_input.unit(unit.unwrap_or("x"))).into(),
 				Some("PixelLength") => number_widget(default_info, number_input.min(min(0.)).unit(unit.unwrap_or(" px"))).into(),
 				Some("Length") => number_widget(default_info, number_input.min(min(0.))).into(),
@@ -166,13 +166,15 @@ pub(crate) fn property_from_type(
 						// ===============
 						// PRIMITIVE TYPES
 						// ===============
-						Some(x) if x == TypeId::of::<f64>() => number_widget(default_info, number_input.min(min(f64::NEG_INFINITY)).max(max(f64::INFINITY))).into(),
+						Some(x) if x == TypeId::of::<f64>() || x == TypeId::of::<f32>() => number_widget(default_info, number_input.min(min(f64::NEG_INFINITY)).max(max(f64::INFINITY))).into(),
 						Some(x) if x == TypeId::of::<u32>() => number_widget(default_info, number_input.int().min(min(0.)).max(max(f64::from(u32::MAX)))).into(),
 						Some(x) if x == TypeId::of::<u64>() => number_widget(default_info, number_input.int().min(min(0.))).into(),
 						Some(x) if x == TypeId::of::<bool>() => bool_widget(default_info, CheckboxInput::default()).into(),
 						Some(x) if x == TypeId::of::<String>() => text_widget(default_info).into(),
 						Some(x) if x == TypeId::of::<DVec2>() => vec2_widget(default_info, "X", "Y", "", None, false),
 						Some(x) if x == TypeId::of::<DAffine2>() => transform_widget(default_info, &mut extra_widgets),
+						Some(x) if x == TypeId::of::<Color>() => color_widget(default_info, ColorInput::default()),
+						Some(x) if x == TypeId::of::<Option<Color>>() => color_widget(default_info, ColorInput::default()),
 						// ==========================
 						// PRIMITIVE COLLECTION TYPES
 						// ==========================
@@ -805,6 +807,14 @@ pub fn number_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props:
 				.on_commit(commit_value)
 				.widget_holder(),
 		]),
+		Some(&TaggedValue::F32(x)) => widgets.extend_from_slice(&[
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			number_props
+				.value(Some(x as f64))
+				.on_update(update_value(move |x: &NumberInput| TaggedValue::F32(x.value.unwrap() as f32), node_id, index))
+				.on_commit(commit_value)
+				.widget_holder(),
+		]),
 		Some(&TaggedValue::U32(x)) => widgets.extend_from_slice(&[
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			number_props
@@ -848,6 +858,15 @@ pub fn number_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props:
 			// We use an arbitrary `y` instead of an arbitrary `x` here because the "Grid" node's "Spacing" value's height should be used from rectangular mode when transferred to "Y Spacing" in isometric mode
 				.value(Some(dvec2.y))
 				.on_update(update_value(move |x: &NumberInput| TaggedValue::F64(x.value.unwrap()), node_id, index))
+				.on_commit(commit_value)
+				.widget_holder(),
+		]),
+		Some(&TaggedValue::FVec2(vec2)) => widgets.extend_from_slice(&[
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			number_props
+				// We use an arbitrary `y` instead of an arbitrary `x` here because the "Grid" node's "Spacing" value's height should be used from rectangular mode when transferred to "Y Spacing" in isometric mode
+				.value(Some(vec2.y as f64))
+				.on_update(update_value(move |x: &NumberInput| TaggedValue::F32(x.value.unwrap() as f32), node_id, index))
 				.on_commit(commit_value)
 				.widget_holder(),
 		]),
@@ -909,6 +928,22 @@ pub fn color_widget(parameter_widgets_info: ParameterWidgetsInfo, color_button: 
 
 	// Add the color input
 	match &**tagged_value {
+		TaggedValue::ColorNotInTable(color) => widgets.push(
+			color_button
+				.value(FillChoice::Solid(*color))
+				.allow_none(false)
+				.on_update(update_value(|input: &ColorInput| TaggedValue::ColorNotInTable(input.value.as_solid().unwrap()), node_id, index))
+				.on_commit(commit_value)
+				.widget_holder(),
+		),
+		TaggedValue::OptionalColorNotInTable(color) => widgets.push(
+			color_button
+				.value(color.map_or(FillChoice::None, FillChoice::Solid))
+				.allow_none(true)
+				.on_update(update_value(|input: &ColorInput| TaggedValue::OptionalColorNotInTable(input.value.as_solid()), node_id, index))
+				.on_commit(commit_value)
+				.widget_holder(),
+		),
 		TaggedValue::Color(color_table) => widgets.push(
 			color_button
 				.value(match color_table.iter().next() {
@@ -948,7 +983,7 @@ pub fn color_widget(parameter_widgets_info: ParameterWidgetsInfo, color_button: 
 				.on_commit(commit_value)
 				.widget_holder(),
 		),
-		_ => {}
+		x => warn!("Colour {x:?}"),
 	}
 
 	LayoutGroup::Row { widgets }
@@ -1247,6 +1282,66 @@ pub(crate) fn grid_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	let rows = number_widget(ParameterWidgetsInfo::new(node_id, RowsInput::INDEX, true, context), NumberInput::default().min(1.));
 
 	widgets.extend([LayoutGroup::Row { widgets: columns }, LayoutGroup::Row { widgets: rows }]);
+
+	widgets
+}
+
+pub(crate) fn spiral_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	use graphene_std::vector::generator_nodes::spiral::*;
+
+	let spiral_type = enum_choice::<SpiralType>()
+		.for_socket(ParameterWidgetsInfo::new(node_id, SpiralTypeInput::INDEX, true, context))
+		.property_row();
+	let turns = number_widget(ParameterWidgetsInfo::new(node_id, TurnsInput::INDEX, true, context), NumberInput::default().min(0.1));
+	let start_angle = number_widget(ParameterWidgetsInfo::new(node_id, StartAngleInput::INDEX, true, context), NumberInput::default().unit("°"));
+
+	let mut widgets = vec![spiral_type, LayoutGroup::Row { widgets: turns }, LayoutGroup::Row { widgets: start_angle }];
+
+	let document_node = match get_document_node(node_id, context) {
+		Ok(document_node) => document_node,
+		Err(err) => {
+			log::error!("Could not get document node in exposure_properties: {err}");
+			return Vec::new();
+		}
+	};
+
+	let Some(spiral_type_input) = document_node.inputs.get(SpiralTypeInput::INDEX) else {
+		log::warn!("A widget failed to be built because its node's input index is invalid.");
+		return vec![];
+	};
+	if let Some(&TaggedValue::SpiralType(spiral_type)) = spiral_type_input.as_non_exposed_value() {
+		match spiral_type {
+			SpiralType::Archimedean => {
+				let inner_radius = LayoutGroup::Row {
+					widgets: number_widget(ParameterWidgetsInfo::new(node_id, InnerRadiusInput::INDEX, true, context), NumberInput::default().min(0.).unit(" px")),
+				};
+
+				let outer_radius = LayoutGroup::Row {
+					widgets: number_widget(ParameterWidgetsInfo::new(node_id, OuterRadiusInput::INDEX, true, context), NumberInput::default().unit(" px")),
+				};
+
+				widgets.extend([inner_radius, outer_radius]);
+			}
+			SpiralType::Logarithmic => {
+				let inner_radius = LayoutGroup::Row {
+					widgets: number_widget(ParameterWidgetsInfo::new(node_id, InnerRadiusInput::INDEX, true, context), NumberInput::default().min(0.).unit(" px")),
+				};
+
+				let outer_radius = LayoutGroup::Row {
+					widgets: number_widget(ParameterWidgetsInfo::new(node_id, OuterRadiusInput::INDEX, true, context), NumberInput::default().min(0.1).unit(" px")),
+				};
+
+				widgets.extend([inner_radius, outer_radius]);
+			}
+		}
+	}
+
+	let angular_resolution = number_widget(
+		ParameterWidgetsInfo::new(node_id, AngularResolutionInput::INDEX, true, context),
+		NumberInput::default().min(1.).max(180.).unit("°"),
+	);
+
+	widgets.push(LayoutGroup::Row { widgets: angular_resolution });
 
 	widgets
 }

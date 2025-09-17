@@ -146,8 +146,9 @@
 			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 32"><line stroke="red" stroke-width="4px" x1="0" y1="36" x2="80" y2="-4" /></svg>\
 			');
 
-		--color-transparent-checkered-background: linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%),
-			linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%), linear-gradient(#ffffff, #ffffff);
+		--color-transparent-checkered-background:
+			linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%), linear-gradient(45deg, #cccccc 25%, transparent 25%, transparent 75%, #cccccc 75%),
+			linear-gradient(#ffffff, #ffffff);
 		--color-transparent-checkered-background-size: 16px 16px, 16px 16px, 16px 16px;
 		--color-transparent-checkered-background-position: 0 0, 8px 8px, 8px 8px;
 		--color-transparent-checkered-background-position-plus-one: 1px 1px, 9px 9px, 9px 9px;
@@ -351,5 +352,45 @@
 	// Variant: dark outline over light colors (when the checkbox is checked)
 	:not(.optional-input) > .checkbox-input input:focus-visible + label.checked {
 		outline: 1px dashed var(--color-2-mildblack);
+	}
+
+	@font-face {
+		font-family: "Source Sans Pro";
+		font-weight: 400;
+		font-style: normal;
+		font-stretch: normal;
+		src: url("@graphite/../node_modules/source-sans/WOFF2/TTF/SourceSansPro-Regular.ttf.woff2") format("woff2");
+	}
+
+	@font-face {
+		font-family: "Source Sans Pro";
+		font-weight: 400;
+		font-style: italic;
+		font-stretch: normal;
+		src: url("@graphite/../node_modules/source-sans/WOFF2/TTF/SourceSansPro-It.ttf.woff2") format("woff2");
+	}
+
+	@font-face {
+		font-family: "Source Sans Pro";
+		font-weight: 700;
+		font-style: normal;
+		font-stretch: normal;
+		src: url("@graphite/../node_modules/source-sans/WOFF2/TTF/SourceSansPro-Bold.ttf.woff2") format("woff2");
+	}
+
+	@font-face {
+		font-family: "Source Sans Pro";
+		font-weight: 700;
+		font-style: italic;
+		font-stretch: normal;
+		src: url("@graphite/../node_modules/source-sans/WOFF2/TTF/SourceSansPro-BoldIt.ttf.woff2") format("woff2");
+	}
+
+	@font-face {
+		font-family: "Source Code Pro";
+		font-weight: 400;
+		font-style: normal;
+		font-stretch: normal;
+		src: url("@graphite/../node_modules/source-code-pro/WOFF2/TTF/SourceCodePro-Regular.ttf.woff2") format("woff2");
 	}
 </style>

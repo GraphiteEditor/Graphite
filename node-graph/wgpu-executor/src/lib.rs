@@ -1,6 +1,8 @@
 mod context;
+pub mod shader_runtime;
 pub mod texture_upload;
 
+use crate::shader_runtime::ShaderRuntime;
 use anyhow::Result;
 pub use context::Context;
 use dyn_any::StaticType;
@@ -18,6 +20,7 @@ use wgpu::{Origin3d, SurfaceConfiguration, TextureAspect};
 pub struct WgpuExecutor {
 	pub context: Context,
 	vello_renderer: Mutex<Renderer>,
+	pub shader_runtime: ShaderRuntime,
 }
 
 impl std::fmt::Debug for WgpuExecutor {
@@ -101,6 +104,7 @@ impl WgpuExecutor {
 	}
 
 	async fn render_vello_scene_to_target_texture(&self, scene: &Scene, size: UVec2, context: &RenderContext, background: Color, output: &mut Option<TargetTexture>) -> Result<()> {
+		let size = size.max(UVec2::ONE);
 		let target_texture = if let Some(target_texture) = output
 			&& target_texture.size == size
 		{
@@ -195,6 +199,7 @@ impl WgpuExecutor {
 		.ok()?;
 
 		Some(Self {
+			shader_runtime: ShaderRuntime::new(&context),
 			context,
 			vello_renderer: vello_renderer.into(),
 		})

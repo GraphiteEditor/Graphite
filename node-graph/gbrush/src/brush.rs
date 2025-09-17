@@ -137,7 +137,7 @@ pub async fn create_brush_texture(brush_style: &BrushStyle) -> Raster<CPU> {
 }
 
 pub fn blend_with_mode(background: TableRow<Raster<CPU>>, foreground: TableRow<Raster<CPU>>, blend_mode: BlendMode, opacity: f64) -> TableRow<Raster<CPU>> {
-	let opacity = opacity / 100.;
+	let opacity = opacity as f32 / 100.;
 	match std::hint::black_box(blend_mode) {
 		// Normal group
 		BlendMode::Normal => blend_image_closure(foreground, background, |a, b| blend_colors(a, b, BlendMode::Normal, opacity)),

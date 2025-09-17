@@ -241,9 +241,8 @@ async fn repeat<I: 'n + Send + Clone>(
 #[node_macro::node(category("Instancing"), path(graphene_core::vector))]
 async fn circular_repeat<I: 'n + Send + Clone>(
 	_: impl Ctx,
-	// TODO: Implement other graphical types.
 	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>)] instance: Table<I>,
-	angle_offset: Angle,
+	start_angle: Angle,
 	#[unit(" px")]
 	#[default(5)]
 	radius: f64,
@@ -254,7 +253,7 @@ async fn circular_repeat<I: 'n + Send + Clone>(
 	let mut result_table = Table::new();
 
 	for index in 0..count {
-		let angle = DAffine2::from_angle((TAU / count as f64) * index as f64 + angle_offset.to_radians());
+		let angle = DAffine2::from_angle((TAU / count as f64) * index as f64 + start_angle.to_radians());
 		let translation = DAffine2::from_translation(radius * DVec2::Y);
 		let transform = angle * translation;
 
@@ -864,7 +863,7 @@ async fn offset_path(_: impl Ctx, content: Table<Vector>, distance: f64, join: S
 			for mut bezpath in bezpaths {
 				bezpath.apply_affine(transform);
 
-				// Taking the existing stroke data and passing it to Bezier-rs to generate new paths.
+				// Taking the existing stroke data and passing it to Kurbo to generate new paths.
 				let mut bezpath_out = offset_bezpath(
 					&bezpath,
 					-distance,
@@ -938,6 +937,35 @@ async fn solidify_stroke(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
 
 			row.element = result;
 			row
+		})
+		.collect()
+}
+
+#[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
+async fn separate_subpaths(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
+	content
+		.into_iter()
+		.flat_map(|row| {
+			let style = row.element.style.clone();
+			let transform = row.transform;
+			let alpha_blending = row.alpha_blending;
+			let source_node_id = row.source_node_id;
+
+			row.element
+				.stroke_bezpath_iter()
+				.map(move |bezpath| {
+					let mut vector = Vector::default();
+					vector.append_bezpath(bezpath);
+					vector.style = style.clone();
+
+					TableRow {
+						element: vector,
+						transform,
+						alpha_blending,
+						source_node_id,
+					}
+				})
+				.collect::<Vec<TableRow<Vector>>>()
 		})
 		.collect()
 }
@@ -1065,11 +1093,11 @@ async fn sample_polyline(
 		.collect()
 }
 
-/// Splits a path at a given progress from 0 to 1 along the path, creating two new subpaths from the original one (if the path is initially open) or one open subpath (if the path is initially closed).
+/// Cuts a path at a given progress from 0 to 1 along the path, creating two new subpaths from the original one (if the path is initially open) or one open subpath (if the path is initially closed).
 ///
 /// If multiple subpaths make up the path, the whole number part of the progress value selects the subpath and the decimal part determines the position along it.
 #[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
-async fn split_path(_: impl Ctx, mut content: Table<Vector>, progress: Fraction, parameterized_distance: bool, reverse: bool) -> Table<Vector> {
+async fn cut_path(_: impl Ctx, mut content: Table<Vector>, progress: Fraction, parameterized_distance: bool, reverse: bool) -> Table<Vector> {
 	let euclidian = !parameterized_distance;
 
 	let bezpaths = content
@@ -1108,9 +1136,9 @@ async fn split_path(_: impl Ctx, mut content: Table<Vector>, progress: Fraction,
 	content
 }
 
-/// Splits path segments into separate disconnected pieces where each is a distinct subpath.
+/// Cuts path segments into separate disconnected pieces where each is a distinct subpath.
 #[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
-async fn split_segments(_: impl Ctx, mut content: Table<Vector>) -> Table<Vector> {
+async fn cut_segments(_: impl Ctx, mut content: Table<Vector>) -> Table<Vector> {
 	// Iterate through every segment and make a copy of each of its endpoints, then reassign each segment's endpoints to its own unique point copy
 	for row in content.iter_mut() {
 		let points_count = row.element.point_domain.ids().len();
@@ -1302,6 +1330,14 @@ async fn poisson_disk_points(
 
 #[node_macro::node(category(""), path(graphene_core::vector))]
 async fn subpath_segment_lengths(_: impl Ctx, content: Table<Vector>) -> Vec<f64> {
+	let pathseg_perimeter = |segment: PathSeg| {
+		if is_linear(segment) {
+			Line::new(segment.start(), segment.end()).perimeter(DEFAULT_ACCURACY)
+		} else {
+			segment.perimeter(DEFAULT_ACCURACY)
+		}
+	};
+
 	content
 		.into_iter()
 		.flat_map(|vector| {
@@ -1311,7 +1347,7 @@ async fn subpath_segment_lengths(_: impl Ctx, content: Table<Vector>) -> Vec<f64
 				.stroke_bezpath_iter()
 				.flat_map(|mut bezpath| {
 					bezpath.apply_affine(Affine::new(transform.to_cols_array()));
-					bezpath.segments().map(|segment| segment.perimeter(DEFAULT_ACCURACY)).collect::<Vec<f64>>()
+					bezpath.segments().map(pathseg_perimeter).collect::<Vec<f64>>()
 				})
 				.collect::<Vec<f64>>()
 		})

@@ -6,7 +6,7 @@
 //
 use crate::helpers::translate_key;
 use crate::{EDITOR_HANDLE, EDITOR_HAS_CRASHED, Error, MESSAGE_BUFFER};
-use editor::consts::FILE_SAVE_SUFFIX;
+use editor::consts::FILE_EXTENSION;
 use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
 use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
 use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -242,6 +242,9 @@ impl EditorHandle {
 
 	#[wasm_bindgen(js_name = initAfterFrontendReady)]
 	pub fn init_after_frontend_ready(&self, platform: String) {
+		#[cfg(feature = "native")]
+		crate::native_communcation::initialize_native_communication();
+
 		// Send initialization messages
 		let platform = match platform.as_str() {
 			"Windows" => Platform::Windows,
@@ -277,7 +280,7 @@ impl EditorHandle {
 
 						// Used by auto-panning, but this could possibly be refactored in the future, see:
 						// <https://github.com/GraphiteEditor/Graphite/pull/2562#discussion_r2041102786>
-						handle.dispatch(BroadcastMessage::TriggerEvent(BroadcastEvent::AnimationFrame));
+						handle.dispatch(BroadcastMessage::TriggerEvent(EventMessage::AnimationFrame));
 					});
 				}
 
@@ -311,6 +314,30 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
+	#[wasm_bindgen(js_name = addPrimaryImport)]
+	pub fn add_primary_import(&self) {
+		self.dispatch(DocumentMessage::AddTransaction);
+		self.dispatch(NodeGraphMessage::AddPrimaryImport);
+	}
+
+	#[wasm_bindgen(js_name = addSecondaryImport)]
+	pub fn add_secondary_import(&self) {
+		self.dispatch(DocumentMessage::AddTransaction);
+		self.dispatch(NodeGraphMessage::AddSecondaryImport);
+	}
+
+	#[wasm_bindgen(js_name = addPrimaryExport)]
+	pub fn add_primary_export(&self) {
+		self.dispatch(DocumentMessage::AddTransaction);
+		self.dispatch(NodeGraphMessage::AddPrimaryExport);
+	}
+
+	#[wasm_bindgen(js_name = addSecondaryExport)]
+	pub fn add_secondary_export(&self) {
+		self.dispatch(DocumentMessage::AddTransaction);
+		self.dispatch(NodeGraphMessage::AddSecondaryExport);
+	}
+
 	/// Toggles minimizing or restoring down the application window
 	#[wasm_bindgen(js_name = appWindowMaximize)]
 	pub fn app_window_maximize(&self) {
@@ -322,6 +349,13 @@ impl EditorHandle {
 	#[wasm_bindgen(js_name = appWindowClose)]
 	pub fn app_window_close(&self) {
 		let message = AppWindowMessage::AppWindowClose;
+		self.dispatch(message);
+	}
+
+	/// Drag the application window
+	#[wasm_bindgen(js_name = appWindowDrag)]
+	pub fn app_window_start_drag(&self) {
+		let message = AppWindowMessage::AppWindowDrag;
 		self.dispatch(message);
 	}
 
@@ -344,10 +378,10 @@ impl EditorHandle {
 		cfg!(debug_assertions)
 	}
 
-	/// Get the constant `FILE_SAVE_SUFFIX`
-	#[wasm_bindgen(js_name = fileSaveSuffix)]
-	pub fn file_save_suffix(&self) -> String {
-		FILE_SAVE_SUFFIX.into()
+	/// Get the constant `FILE_EXTENSION`
+	#[wasm_bindgen(js_name = fileExtension)]
+	pub fn file_extension(&self) -> String {
+		FILE_EXTENSION.into()
 	}
 
 	/// Update the value of a given UI widget, but don't commit it to the history (unless `commit_layout()` is called, which handles that)
@@ -388,6 +422,11 @@ impl EditorHandle {
 
 	#[wasm_bindgen(js_name = loadPreferences)]
 	pub fn load_preferences(&self, preferences: String) {
+		let Ok(preferences) = serde_json::from_str(&preferences) else {
+			log::error!("Failed to deserialize preferences");
+			return;
+		};
+
 		let message = PreferencesMessage::Load { preferences };
 
 		self.dispatch(message);
@@ -421,7 +460,8 @@ impl EditorHandle {
 	#[wasm_bindgen(js_name = openDocumentFile)]
 	pub fn open_document_file(&self, document_name: String, document_serialized_content: String) {
 		let message = PortfolioMessage::OpenDocumentFile {
-			document_name,
+			document_name: Some(document_name),
+			document_path: None,
 			document_serialized_content,
 		};
 		self.dispatch(message);
@@ -432,11 +472,13 @@ impl EditorHandle {
 		let document_id = DocumentId(document_id);
 		let message = PortfolioMessage::OpenDocumentFileWithId {
 			document_id,
-			document_name,
+			document_name: Some(document_name),
+			document_path: None,
 			document_is_auto_saved: true,
 			document_is_saved,
 			document_serialized_content,
 			to_front,
+			select_after_open: false,
 		};
 		self.dispatch(message);
 	}
@@ -461,6 +503,12 @@ impl EditorHandle {
 			localized_commit_date,
 			localized_commit_year,
 		};
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = requestLicensesThirdPartyDialogWithLicenseText)]
+	pub fn request_licenses_third_party_dialog_with_license_text(&self, license_text: String) {
+		let message = DialogMessage::RequestLicensesThirdPartyDialogWithLicenseText { license_text };
 		self.dispatch(message);
 	}
 

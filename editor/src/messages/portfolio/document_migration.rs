@@ -5,7 +5,7 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate, OutputConnector};
 use crate::messages::prelude::DocumentMessageHandler;
-use glam::IVec2;
+use glam::{DVec2, IVec2};
 use graph_craft::document::DocumentNode;
 use graph_craft::document::{DocumentNodeImplementation, NodeInput, value::TaggedValue};
 use graphene_std::ProtoNodeIdentifier;
@@ -16,10 +16,12 @@ use graphene_std::uuid::NodeId;
 use graphene_std::vector::Vector;
 use graphene_std::vector::style::{PaintOrder, StrokeAlign};
 use std::collections::HashMap;
+use std::f64::consts::PI;
 
 const TEXT_REPLACEMENTS: &[(&str, &str)] = &[
 	("graphene_core::vector::vector_nodes::SamplePointsNode", "graphene_core::vector::SamplePolylineNode"),
 	("graphene_core::vector::vector_nodes::SubpathSegmentLengthsNode", "graphene_core::vector::SubpathSegmentLengthsNode"),
+	("\"manual_composition\":null", "\"manual_composition\":{\"Generic\":\"T\"}"),
 ];
 
 pub struct NodeReplacement<'a> {
@@ -111,6 +113,10 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	NodeReplacement {
 		node: graphene_std::math_nodes::root::IDENTIFIER,
 		aliases: &["graphene_core::ops::RootNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::math_nodes::absolute_value::IDENTIFIER,
+		aliases: &["graphene_core::ops::AbsoluteValueNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::logarithm::IDENTIFIER,
@@ -228,6 +234,14 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 			"graphene_core::ops::CoordinateValueNode",
 			"graphene_math_nodes::CoordinateValueNode",
 		],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::cut_segments::IDENTIFIER,
+		aliases: &["graphene_core::vector::SplitSegmentsNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::cut_path::IDENTIFIER,
+		aliases: &["graphene_core::vector::SplitPathNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::vector::vec_2_to_point::IDENTIFIER,
@@ -441,14 +455,6 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		node: graphene_std::transform_nodes::transform::IDENTIFIER,
 		aliases: &["graphene_core::transform::TransformNode"],
 	},
-	NodeReplacement {
-		node: graphene_std::transform_nodes::boundless_footprint::IDENTIFIER,
-		aliases: &["graphene_core::transform::BoundlessFootprintNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::transform_nodes::freeze_real_time::IDENTIFIER,
-		aliases: &["graphene_core::transform::FreezeRealTimeNode"],
-	},
 	// ???
 	NodeReplacement {
 		node: graphene_std::vector::spline::IDENTIFIER,
@@ -476,7 +482,13 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	},
 	NodeReplacement {
 		node: graphene_std::ops::identity::IDENTIFIER,
-		aliases: &["graphene_core::transform::CullNode"],
+		aliases: &[
+			"graphene_core::transform::CullNode",
+			"graphene_core::transform::BoundlessFootprintNode",
+			"graphene_core::transform::FreezeRealTimeNode",
+			"graphene_core::transform_nodes::BoundlessFootprintNode",
+			"graphene_core::transform_nodes::FreezeRealTimeNode",
+		],
 	},
 	NodeReplacement {
 		node: graphene_std::vector::flatten_path::IDENTIFIER,
@@ -551,7 +563,7 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 				let mut default_template = NodeTemplate::default();
 				default_template.document_node.implementation = DocumentNodeImplementation::ProtoNode(new.clone());
 				document.network_interface.replace_implementation(node_id, &network_path, &mut default_template);
-				document.network_interface.set_manual_compostion(node_id, &network_path, Some(graph_craft::Type::Generic("T".into())));
+				document.network_interface.set_call_argument(node_id, &network_path, default_template.document_node.call_argument);
 			}
 		}
 	}
@@ -576,11 +588,9 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		}
 	}
 
-	// Upgrade old nodes to use `Context` instead of `()` or `Footprint` for manual composition
-	if node.manual_composition == Some(graph_craft::concrete!(())) || node.manual_composition == Some(graph_craft::concrete!(graphene_std::transform::Footprint)) {
-		document
-			.network_interface
-			.set_manual_compostion(node_id, network_path, graph_craft::concrete!(graphene_std::Context).into());
+	// Upgrade old nodes to use `Context` instead of `()` or `Footprint` as their call argument
+	if node.call_argument == graph_craft::concrete!(()) || node.call_argument == graph_craft::concrete!(graphene_std::transform::Footprint) {
+		document.network_interface.set_call_argument(node_id, network_path, graph_craft::concrete!(graphene_std::Context));
 	}
 
 	// Only nodes that have not been modified and still refer to a definition can be updated
@@ -1042,6 +1052,89 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.add_import(TaggedValue::U32(0), false, 1, "Loop Level", "TODO", &node_path);
 	}
 
+	// Migrate the Transform node to use degrees instead of radians
+	if reference == "Transform" && node.inputs.get(6).is_none() {
+		// Migrate rotation from radians to degrees
+		match node.inputs.get(2)? {
+			NodeInput::Value { tagged_value, exposed } => {
+				// Read the existing Properties panel number value, which used to be in radians
+				let TaggedValue::F64(radians) = *tagged_value.clone().into_inner() else { return None };
+
+				// Convert the radians to degrees and set it back as the new input value
+				let degrees = NodeInput::value(TaggedValue::F64(radians.to_degrees()), *exposed);
+				document.network_interface.set_input(&InputConnector::node(*node_id, 2), degrees, network_path);
+			}
+			NodeInput::Node { .. } => {
+				// Construct a new Multiply node for converting from degrees to radians
+				let Some(multiply_node) = resolve_document_node_type("Multiply") else {
+					log::error!("Could not get multiply node from definition when upgrading transform");
+					return None;
+				};
+				let mut multiply_template = multiply_node.default_node_template();
+				multiply_template.document_node.inputs[1] = NodeInput::value(TaggedValue::F64(180. / PI), false);
+
+				// Decide on the placement position of the new Multiply node
+				let multiply_node_id = NodeId::new();
+				let Some(transform_position) = document.network_interface.position_from_downstream_node(node_id, network_path) else {
+					log::error!("Could not get positon for transform node {node_id}");
+					return None;
+				};
+				let multiply_position = transform_position + IVec2::new(-7, 1);
+
+				// Insert the new Multiply node into the network directly before it's used
+				document.network_interface.insert_node(multiply_node_id, multiply_template, network_path);
+				document.network_interface.shift_absolute_node_position(&multiply_node_id, multiply_position, network_path);
+				document.network_interface.insert_node_between(&multiply_node_id, &InputConnector::node(*node_id, 2), 0, network_path);
+			}
+			_ => {}
+		};
+
+		// Migrate skew from radians to degrees
+		if let NodeInput::Value { tagged_value, exposed } = node.inputs.get(4)? {
+			// Read the existing Properties panel number value, which used to be in radians
+			let TaggedValue::DVec2(old_value) = *tagged_value.clone().into_inner() else { return None };
+
+			// The previous value stored the tangent of the displayed degrees. Now it stores the degrees, so take the arctan of it and convert to degrees.
+			let new_value = DVec2::new(old_value.x.atan().to_degrees(), old_value.y.atan().to_degrees());
+			let new_input = NodeInput::value(TaggedValue::DVec2(new_value), *exposed);
+			document.network_interface.set_input(&InputConnector::node(*node_id, 4), new_input, network_path);
+		}
+
+		if document
+			.network_interface
+			.node_metadata(node_id, network_path)
+			.map(|x| x.persistent_metadata.input_metadata.len() > 5)
+			.unwrap_or_default()
+		{
+			// Remove the possible existence of the old "Pivot" hidden value input that was removed in #2730
+			let nested_transform_network = [network_path, &[*node_id]].concat();
+			if node.inputs.get(5).is_some() {
+				document.network_interface.remove_import(5, &nested_transform_network);
+			}
+
+			// Add the Origin Offset parameter as a hidden input, which will be given actual functionality in the future but is currently used as a marker to detect not-yet-upgraded Transform nodes
+			document
+				.network_interface
+				.add_import(TaggedValue::DVec2(DVec2::ZERO), false, 5, "Origin Offset", "", &nested_transform_network);
+			document.network_interface.set_input_override(node_id, 5, Some("hidden".to_string()), network_path); // Hide it while we're not yet using it
+
+			// Add the Scale Appearance parameter as a hidden input, which will be given actual functionality in the future but is currently used as a marker to detect not-yet-upgraded Transform nodes
+			document
+				.network_interface
+				.add_import(TaggedValue::Bool(true), false, 6, "Scale Appearance", "", &nested_transform_network);
+			document.network_interface.set_input_override(node_id, 6, Some("hidden".to_string()), network_path); // Hide it while we're not yet using it
+		}
+	}
+
+	// Add context features to nodes that don't have them (fine-grained context caching migration)
+	if node.context_features == graphene_std::ContextDependencies::default()
+		&& let Some(reference) = document.network_interface.reference(node_id, network_path).cloned().flatten()
+		&& let Some(node_definition) = resolve_document_node_type(&reference)
+	{
+		let context_features = node_definition.node_template.document_node.context_features;
+		document.network_interface.set_context_features(node_id, network_path, context_features);
+	}
+
 	// ==================================
 	// PUT ALL MIGRATIONS ABOVE THIS LINE
 	// ==================================
@@ -1083,8 +1176,8 @@ mod tests {
 			*hashmap.entry(node.node.clone()).or_default() += 1;
 		});
 		let duplicates = hashmap.iter().filter(|(_, count)| **count > 1).map(|(node, _)| &node.name).collect::<Vec<_>>();
-		if duplicates.len() > 0 {
-			panic!("Duplicate entries in `NODE_REPLACEMENTS`: {:?}", duplicates);
+		if !duplicates.is_empty() {
+			panic!("Duplicate entries in `NODE_REPLACEMENTS`: {duplicates:?}");
 		}
 	}
 }

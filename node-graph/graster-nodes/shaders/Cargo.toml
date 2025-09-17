@@ -1,0 +1,16 @@
+[package]
+name = "graphene-raster-nodes-shaders"
+version = "0.1.0"
+edition = "2024"
+description = "graphene raster data format"
+authors = ["Graphite Authors <contact@graphite.rs>"]
+license = "MIT OR Apache-2.0"
+
+[lib]
+crate-type = ["rlib", "dylib"]
+
+[dependencies]
+
+[build-dependencies]
+cargo-gpu = { workspace = true }
+env_logger = { workspace = true }

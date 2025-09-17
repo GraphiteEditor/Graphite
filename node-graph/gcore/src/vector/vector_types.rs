@@ -5,7 +5,7 @@ pub use super::vector_modification::*;
 use crate::bounds::{BoundingBox, RenderBoundingBox};
 use crate::math::quad::Quad;
 use crate::subpath::{BezierHandles, ManipulatorGroup, Subpath};
-use crate::table::Table;
+use crate::table::{Table, TableRow};
 use crate::transform::Transform;
 use crate::vector::click_target::{ClickTargetType, FreePoint};
 use crate::vector::misc::{HandleId, ManipulatorPointId};
@@ -59,7 +59,7 @@ impl std::hash::Hash for Vector {
 }
 
 impl Vector {
-	/// Add a Bezier-rs subpath to this path.
+	/// Add a subpath to this vector path.
 	pub fn append_subpath(&mut self, subpath: impl Borrow<Subpath<PointId>>, preserve_id: bool) {
 		let subpath: &Subpath<PointId> = subpath.borrow();
 		let stroke_id = StrokeId::ZERO;
@@ -131,7 +131,7 @@ impl Vector {
 		self.point_domain.push(id, point.position);
 	}
 
-	/// Construct some new vector path from a single Bezier-rs subpath with an identity transform and black fill.
+	/// Construct some new vector path from a single subpath with an identity transform and black fill.
 	pub fn from_subpath(subpath: impl Borrow<Subpath<PointId>>) -> Self {
 		Self::from_subpaths([subpath], false)
 	}
@@ -143,7 +143,7 @@ impl Vector {
 		vector
 	}
 
-	/// Construct some new vector path from Bezier-rs subpaths with an identity transform and black fill.
+	/// Construct some new vector path from subpaths with an identity transform and black fill.
 	pub fn from_subpaths(subpaths: impl IntoIterator<Item = impl Borrow<Subpath<PointId>>>, preserve_id: bool) -> Self {
 		let mut vector = Self::default();
 
@@ -322,6 +322,11 @@ impl Vector {
 		self.point_domain.resolve_id(point).map_or(0, |point| self.segment_domain.connected_count(point))
 	}
 
+	/// Enumerate the number of segments connected to a point. If a segment starts and ends at a point then it is counted twice.
+	pub fn any_connected(&self, point: PointId) -> bool {
+		self.point_domain.resolve_id(point).is_some_and(|point| self.segment_domain.any_connected(point))
+	}
+
 	pub fn check_point_inside_shape(&self, transform: DAffine2, point: DVec2) -> bool {
 		let number = self
 			.stroke_bezpath_iter()
@@ -490,18 +495,35 @@ pub fn migrate_vector<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Resu
 		pub upstream_graphic_group: Option<Table<Graphic>>,
 	}
 
+	#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+	pub struct OldTable<T> {
+		#[serde(alias = "instances", alias = "instance")]
+		element: Vec<T>,
+		transform: Vec<DAffine2>,
+		alpha_blending: Vec<AlphaBlending>,
+	}
+
+	#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+	pub struct OlderTable<T> {
+		id: Vec<u64>,
+		#[serde(alias = "instances", alias = "instance")]
+		element: Vec<T>,
+	}
+
 	#[derive(serde::Serialize, serde::Deserialize)]
 	#[serde(untagged)]
 	#[allow(clippy::large_enum_variant)]
-	enum EitherFormat {
+	enum VectorFormat {
 		Vector(Vector),
 		OldVectorData(OldVectorData),
+		OldVectorTable(OldTable<Vector>),
+		OlderVectorTable(OlderTable<Vector>),
 		VectorTable(Table<Vector>),
 	}
 
-	Ok(match EitherFormat::deserialize(deserializer)? {
-		EitherFormat::Vector(vector) => Table::new_from_element(vector),
-		EitherFormat::OldVectorData(old) => {
+	Ok(match VectorFormat::deserialize(deserializer)? {
+		VectorFormat::Vector(vector) => Table::new_from_element(vector),
+		VectorFormat::OldVectorData(old) => {
 			let mut vector_table = Table::new_from_element(Vector {
 				style: old.style,
 				colinear_manipulators: old.colinear_manipulators,
@@ -514,7 +536,19 @@ pub fn migrate_vector<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Resu
 			*vector_table.iter_mut().next().unwrap().alpha_blending = old.alpha_blending;
 			vector_table
 		}
-		EitherFormat::VectorTable(vector_table) => vector_table,
+		VectorFormat::OlderVectorTable(older_table) => older_table.element.into_iter().map(|element| TableRow { element, ..Default::default() }).collect(),
+		VectorFormat::OldVectorTable(old_table) => old_table
+			.element
+			.into_iter()
+			.zip(old_table.transform.into_iter().zip(old_table.alpha_blending))
+			.map(|(element, (transform, alpha_blending))| TableRow {
+				element,
+				transform,
+				alpha_blending,
+				source_node_id: None,
+			})
+			.collect(),
+		VectorFormat::VectorTable(vector_table) => vector_table,
 	})
 }
 

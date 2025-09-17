@@ -50,19 +50,17 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 		match message {
 			// Management messages
 			PreferencesMessage::Load { preferences } => {
-				if let Ok(deserialized_preferences) = serde_json::from_str::<PreferencesMessageHandler>(&preferences) {
-					*self = deserialized_preferences;
+				*self = preferences;
 
-					responses.add(PortfolioMessage::EditorPreferences);
-					responses.add(PortfolioMessage::UpdateVelloPreference);
-					responses.add(PreferencesMessage::ModifyLayout {
-						zoom_with_scroll: self.zoom_with_scroll,
-					});
-				}
+				responses.add(PortfolioMessage::EditorPreferences);
+				responses.add(PortfolioMessage::UpdateVelloPreference);
+				responses.add(PreferencesMessage::ModifyLayout {
+					zoom_with_scroll: self.zoom_with_scroll,
+				});
 			}
 			PreferencesMessage::ResetToDefaults => {
 				refresh_dialog(responses);
-				responses.add(KeyMappingMessage::ModifyMapping(MappingVariant::Default));
+				responses.add(KeyMappingMessage::ModifyMapping { mapping: MappingVariant::Default });
 
 				*self = Self::default()
 			}
@@ -80,7 +78,7 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 				self.zoom_with_scroll = zoom_with_scroll;
 
 				let variant = if zoom_with_scroll { MappingVariant::ZoomWithScroll } else { MappingVariant::Default };
-				responses.add(KeyMappingMessage::ModifyMapping(variant));
+				responses.add(KeyMappingMessage::ModifyMapping { mapping: variant });
 			}
 			PreferencesMessage::SelectionMode { selection_mode } => {
 				self.selection_mode = selection_mode;

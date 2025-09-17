@@ -22,6 +22,9 @@
 	// Disabled
 	export let disabled = false;
 
+	// Narrow
+	export let narrow = false;
+
 	// Value
 	// When `value` is not provided (i.e. it's `undefined`), a dash is displayed.
 	export let value: number | undefined = undefined; // NOTE: Do not update this directly, do so by calling `updateValue()` instead.
@@ -365,6 +368,11 @@
 			cumulativeDragDelta = 0;
 
 			document.exitPointerLock();
+
+			// Fallback for Safari in case pointerlockchange never fires
+			setTimeout(() => {
+				if (!document.pointerLockElement) pointerLockChange();
+			}, 0);
 		};
 		const pointerMove = (e: PointerEvent) => {
 			// Abort the drag if right click is down. This works here because a "pointermove" event is fired when right clicking even if the cursor didn't move.
@@ -635,8 +643,9 @@
 </script>
 
 <FieldInput
-	class={"number-input"}
+	class="number-input"
 	classes={{
+		narrow,
 		increment: mode === "Increment",
 		range: mode === "Range",
 	}}
@@ -648,6 +657,7 @@
 	on:pointerdown={onDragPointerDown}
 	{label}
 	{disabled}
+	{narrow}
 	{tooltip}
 	{styles}
 	hideContextMenu={true}
@@ -704,7 +714,13 @@
 			text-align: center;
 		}
 
+		&.narrow {
+			--widget-height: 20px;
+		}
+
 		&.increment {
+			--arrow-radius: 3px;
+
 			// Widen the label and input margins from the edges by an extra 8px to make room for the increment arrows
 			label {
 				margin-left: 8px;
@@ -733,7 +749,7 @@
 				position: absolute;
 				top: 0;
 				margin: 0;
-				padding: 9px 0;
+				padding: calc(var(--widget-height) / 2 - var(--arrow-radius)) 0;
 				border: none;
 				border-radius: 2px;
 				background: rgba(var(--color-1-nearblack-rgb), 0.5);
@@ -754,7 +770,7 @@
 						width: 0;
 						height: 0;
 						border-style: solid;
-						border-width: 3px 0 3px 3px;
+						border-width: var(--arrow-radius) 0 var(--arrow-radius) var(--arrow-radius);
 						border-color: transparent transparent transparent var(--color-e-nearwhite);
 					}
 				}
@@ -770,7 +786,7 @@
 						width: 0;
 						height: 0;
 						border-style: solid;
-						border-width: 3px 3px 3px 0;
+						border-width: var(--arrow-radius) var(--arrow-radius) var(--arrow-radius) 0;
 						border-color: transparent var(--color-e-nearwhite) transparent transparent;
 					}
 				}
@@ -840,7 +856,7 @@
 					appearance: none;
 					border-radius: 2px;
 					width: 4px;
-					height: 22px;
+					height: calc(var(--widget-height) - 2px);
 					background: #494949; // Becomes var(--color-5-dullgray) with screen blend mode over var(--color-1-nearblack) background
 				}
 
@@ -857,7 +873,7 @@
 					border: none;
 					border-radius: 2px;
 					width: 4px;
-					height: 22px;
+					height: calc(var(--widget-height) - 2px);
 					background: #494949; // Becomes var(--color-5-dullgray) with screen blend mode over var(--color-1-nearblack) background
 				}
 
@@ -895,7 +911,7 @@
 					border-radius: 2px;
 					margin-left: -2px;
 					width: 4px;
-					height: 22px;
+					height: calc(var(--widget-height) - 2px);
 					top: 1px;
 					left: calc(var(--progress-factor) * 100%);
 					background: #5b5b5b; // Becomes var(--color-6-lowergray) with screen blend mode over var(--color-1-nearblack) background

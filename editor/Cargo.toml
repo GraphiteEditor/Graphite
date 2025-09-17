@@ -12,11 +12,10 @@ license = "Apache-2.0"
 
 [features]
 default = ["wasm"]
-wasm = ["wasm-bindgen", "graphene-std/wasm", "wasm-bindgen-futures"]
+wasm = ["wasm-bindgen", "graphene-std/wasm"]
 gpu = ["interpreted-executor/gpu", "wgpu-executor"]
 resvg = ["graphene-std/resvg"]
 vello = ["graphene-std/vello", "resvg"]
-ron = ["dep:ron"]
 
 [dependencies]
 # Local dependencies
@@ -43,21 +42,15 @@ num_enum = { workspace = true }
 usvg = { workspace = true }
 once_cell = { workspace = true }
 web-sys = { workspace = true }
-bytemuck = { workspace = true }
 vello = { workspace = true }
-tracing = { workspace = true }
 base64 = { workspace = true }
-
-# Required dependencies
-spin = "0.9.8"
+spin = { workspace = true }
 
 # Optional local dependencies
 wgpu-executor = { workspace = true, optional = true }
 
 # Optional workspace dependencies
 wasm-bindgen = { workspace = true, optional = true }
-wasm-bindgen-futures = { workspace = true, optional = true }
-ron = { workspace = true, optional = true }
 
 [dev-dependencies]
 # Workspace dependencies

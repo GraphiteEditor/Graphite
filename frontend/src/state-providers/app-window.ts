@@ -1,11 +1,8 @@
-/* eslint-disable max-classes-per-file */
-
 import { writable } from "svelte/store";
 
 import { type Editor } from "@graphite/editor";
-import { type AppWindowPlatform, UpdatePlatform, UpdateMaximized, UpdateViewportHolePunch } from "@graphite/messages";
+import { type AppWindowPlatform, UpdatePlatform, UpdateViewportHolePunch, UpdateWindowState } from "@graphite/messages";
 
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createAppWindowState(editor: Editor) {
 	const { subscribe, update } = writable({
 		platform: "Web" as AppWindowPlatform,
@@ -20,9 +17,9 @@ export function createAppWindowState(editor: Editor) {
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateMaximized, (maximized) => {
+	editor.subscriptions.subscribeJsMessage(UpdateWindowState, (updateWindowState) => {
 		update((state) => {
-			state.maximized = maximized.maximized;
+			state.maximized = updateWindowState.maximized;
 			return state;
 		});
 	});

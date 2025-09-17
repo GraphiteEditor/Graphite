@@ -60,7 +60,7 @@ impl AsI64 for f64 {
 #[widget(Radio)]
 pub enum GridType {
 	#[default]
-	Rectangular,
+	Rectangular = 0,
 	Isometric,
 }
 
@@ -100,6 +100,10 @@ pub fn point_to_dvec2(point: Point) -> DVec2 {
 
 pub fn dvec2_to_point(value: DVec2) -> Point {
 	Point { x: value.x, y: value.y }
+}
+
+pub fn get_line_endpoints(line: Line) -> (DVec2, DVec2) {
+	(point_to_dvec2(line.p0), point_to_dvec2(line.p1))
 }
 
 pub fn segment_to_handles(segment: &PathSeg) -> BezierHandles {
@@ -182,10 +186,10 @@ pub fn bezpath_to_manipulator_groups(bezpath: &BezPath) -> (Vec<ManipulatorGroup
 				ManipulatorGroup::new(point_to_dvec2(point2), Some(point_to_dvec2(point1)), None)
 			}
 			kurbo::PathEl::ClosePath => {
-				if let Some(last_manipulators) = manipulator_groups.pop() {
-					if let Some(first_manipulators) = manipulator_groups.first_mut() {
-						first_manipulators.out_handle = last_manipulators.in_handle;
-					}
+				if let Some(last_manipulators) = manipulator_groups.pop()
+					&& let Some(first_manipulators) = manipulator_groups.first_mut()
+				{
+					first_manipulators.out_handle = last_manipulators.in_handle;
 				}
 				is_closed = true;
 				break;
@@ -410,4 +414,12 @@ impl HandleId {
 			HandleType::End => Self::primary(self.segment),
 		}
 	}
+}
+
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[widget(Dropdown)]
+pub enum SpiralType {
+	#[default]
+	Archimedean,
+	Logarithmic,
 }

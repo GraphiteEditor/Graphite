@@ -1,7 +1,6 @@
 /* eslint-disable no-console */
 
 import { spawnSync } from "child_process";
-
 import fs from "fs";
 import path from "path";
 
@@ -13,40 +12,30 @@ import { DynamicPublicDirectory as viteMultipleAssets } from "vite-multiple-asse
 
 const projectRootDir = path.resolve(__dirname);
 
-// Keep this list in sync with those in `/about.toml` and `/deny.toml`.
-const ALLOWED_LICENSES = [
-	"Apache-2.0 WITH LLVM-exception",
-	"Apache-2.0",
-	"BSD-2-Clause",
-	"BSD-3-Clause",
-	"BSL-1.0",
-	"CC0-1.0",
-	"CDLA-Permissive-2.0",
-	"ISC",
-	"MIT-0",
-	"MIT",
-	"MPL-2.0",
-	"OpenSSL",
-	"Unicode-3.0",
-	"Unicode-DFS-2016",
-	"Zlib",
-	"NCSA",
-];
-
 // https://vitejs.dev/config/
 export default defineConfig({
 	plugins: [
 		svelte({
 			preprocess: [sveltePreprocess()],
 			onwarn(warning, defaultHandler) {
-				// NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
-				const suppressed = ["css-unused-selector", "vite-plugin-svelte-css-no-scopable-elements", "a11y-no-static-element-interactions", "a11y-no-noninteractive-element-interactions"];
+				const suppressed = [
+					"css-unused-selector", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
+					"vite-plugin-svelte-css-no-scopable-elements", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
+					"a11y-no-static-element-interactions", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
+					"a11y-no-noninteractive-element-interactions", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
+					"a11y-click-events-have-key-events", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
+				];
 				if (suppressed.includes(warning.code)) return;
 
 				defaultHandler?.(warning);
 			},
 		}),
-		viteMultipleAssets(["../demo-artwork"]),
+		viteMultipleAssets(
+			// Additional static asset directories besides `public/`
+			[{ input: "../demo-artwork/**", output: "demo-artwork" }],
+			// Options where we set custom MIME types
+			{ mimeTypes: { ".graphite": "application/json" } },
+		),
 	],
 	resolve: {
 		alias: [
@@ -66,8 +55,10 @@ export default defineConfig({
 			plugins: [
 				rollupPluginLicense({
 					thirdParty: {
+						includePrivate: false,
+						multipleVersions: true,
 						allow: {
-							test: `(${ALLOWED_LICENSES.join(" OR ")})`,
+							test: `(${getAcceptedLicenses()})`,
 							failOnUnlicensed: true,
 							failOnViolation: true,
 						},
@@ -78,11 +69,6 @@ export default defineConfig({
 					},
 				}),
 			],
-			output: {
-				// Inject `.min` into the filename of minified CSS files to tell Cloudflare not to minify it again.
-				// Cloudflare's minifier breaks the CSS due to a bug where it removes whitespace around calc() plus operators.
-				assetFileNames: (info) => `assets/[name]-[hash]${info.name?.endsWith(".css") ? ".min" : ""}[extname]`,
-			},
 		},
 	},
 });
@@ -103,10 +89,11 @@ type PackageInfo = {
 
 function formatThirdPartyLicenses(jsLicenses: Dependency[]): string {
 	// Generate the Rust license information.
-	let licenses = generateRustLicenses() || [];
+	const rustLicenses = generateRustLicenses();
+	const additionalLicenses = generateAdditionalLicenses();
 
-	// Ensure we have license information to work with before proceeding.
-	if (licenses.length === 0) {
+	// Ensure we have the required license information to work with before proceeding.
+	if (rustLicenses.length === 0) {
 		// This is probably caused by `cargo about` not being installed.
 		console.error("Could not run `cargo about`, which is required to generate license information.");
 		console.error("To install cargo-about on your system, you can run `cargo install cargo-about`.");
@@ -121,9 +108,11 @@ function formatThirdPartyLicenses(jsLicenses: Dependency[]): string {
 		process.exit(1);
 	}
 
-	// Find then duplicate this license if one of its packages is `path-bool`, adding its notice text.
-	let foundLicensesIndex;
-	let foundPackagesIndex;
+	let licenses = rustLicenses.concat(additionalLicenses);
+
+	// SPECIAL CASE: Find then duplicate this license if one of its packages is `path-bool`, adding its notice text.
+	let foundLicensesIndex: number | undefined = undefined;
+	let foundPackagesIndex: number | undefined = undefined;
 	licenses.forEach((license, licenseIndex) => {
 		license.packages.forEach((pkg, pkgIndex) => {
 			if (pkg.name === "path-bool") {
@@ -147,7 +136,7 @@ function formatThirdPartyLicenses(jsLicenses: Dependency[]): string {
 		});
 	}
 
-	// Augment the imported Rust license list with the provided JS license list.
+	// Extend the license list with the provided JS licenses.
 	jsLicenses.forEach((jsLicense) => {
 		const name = jsLicense.name || "";
 		const version = jsLicense.version || "";
@@ -158,14 +147,12 @@ function formatThirdPartyLicenses(jsLicenses: Dependency[]): string {
 
 		let repository = jsLicense.repository || "";
 		if (repository && typeof repository === "object") repository = repository.url;
-		// Remove the `git+` or `git://` prefix and `.git` suffix.
-		const repo = repository ? repository.replace(/^.*(github.com\/.*?\/.*?)(?:.git)/, "https://$1") : repository;
 
 		const matchedLicense = licenses.find(
 			(license) => license.licenseName === licenseName && trimBlankLines(license.licenseText || "") === licenseText && trimBlankLines(license.noticeText || "") === noticeText,
 		);
 
-		const pkg: PackageInfo = { name, version, author, repository: repo };
+		const pkg: PackageInfo = { name, version, author, repository };
 		if (matchedLicense) matchedLicense.packages.push(pkg);
 		else licenses.push({ licenseName, licenseText, noticeText, packages: [pkg] });
 	});
@@ -232,7 +219,15 @@ function formatThirdPartyLicenses(jsLicenses: Dependency[]): string {
 	licenses.forEach((license) => {
 		let packagesWithSameLicense = license.packages.map((packageInfo) => {
 			const { name, version, author, repository } = packageInfo;
-			return `${name} ${version}${author ? ` - ${author}` : ""}${repository ? ` - ${repository}` : ""}`;
+
+			// Remove the `git+` or `git://` prefix and `.git` suffix.
+			let repo = repository;
+			if (repo.startsWith("git+")) repo = repo.slice("git+".length);
+			if (repo.startsWith("git://")) repo = repo.slice("git://".length);
+			if (repo.endsWith(".git")) repo = repo.slice(0, -".git".length);
+			if (repo.endsWith(".git#release")) repo = repo.slice(0, -".git#release".length);
+
+			return `${name} ${version}${author ? ` - ${author}` : ""}${repo ? ` - ${repo}` : ""}`;
 		});
 		const multi = packagesWithSameLicense.length !== 1;
 		const saysLicense = license.licenseName.toLowerCase().includes("license");
@@ -249,10 +244,44 @@ function formatThirdPartyLicenses(jsLicenses: Dependency[]): string {
 		formattedLicenseNotice += ` ${"‾".repeat(packagesLineLength + 2)}\n`;
 		formattedLicenseNotice += `${license.licenseText}\n`;
 	});
+
+	formattedLicenseNotice += "\n";
 	return formattedLicenseNotice;
 }
 
-function generateRustLicenses(): LicenseInfo[] | undefined {
+// Include additional licenses that aren't automatically generated by `cargo about` or `rollup-plugin-license`.
+function generateAdditionalLicenses(): LicenseInfo[] {
+	const ADDITIONAL_LICENSES = [
+		{
+			licenseName: "SIL Open Font License 1.1",
+			licenseTextPath: "node_modules/source-sans/LICENSE.txt",
+			manifestPath: "node_modules/source-sans/package.json",
+		},
+		{
+			licenseName: "SIL Open Font License 1.1",
+			licenseTextPath: "node_modules/source-code-pro/LICENSE.md",
+			manifestPath: "node_modules/source-code-pro/package.json",
+		},
+	];
+
+	return ADDITIONAL_LICENSES.map(({ licenseName, licenseTextPath, manifestPath }) => {
+		const licenseText = (fs.existsSync(licenseTextPath) && fs.readFileSync(licenseTextPath, "utf8")) || "";
+
+		const manifestJSON = (fs.existsSync(manifestPath) && JSON.parse(fs.readFileSync(manifestPath, "utf8"))) || {};
+		const name = manifestJSON.name || "";
+		const version = manifestJSON.version || "";
+		const author = manifestJSON.author.name || manifestJSON.author || "";
+		const repository = manifestJSON.repository?.url || "";
+
+		return {
+			licenseName,
+			licenseText: trimBlankLines(licenseText),
+			packages: [{ name, version, author, repository }],
+		};
+	});
+}
+
+function generateRustLicenses(): LicenseInfo[] {
 	// Log the starting status to the build output.
 	console.info("\n\nGenerating license information for Rust code\n");
 
@@ -272,14 +301,14 @@ function generateRustLicenses(): LicenseInfo[] | undefined {
 			if (status !== 101) {
 				console.error("cargo-about failed", status, stderr);
 			}
-			return undefined;
+			return [];
 		}
 
 		// Make sure the output starts with this expected label, which lets us know the file generated with expected output.
 		// We don't want to eval an error message or something else, so we fail early if that happens.
 		if (!stdout.trim().startsWith("GENERATED_BY_CARGO_ABOUT:")) {
 			console.error("Unexpected output from cargo-about", stdout);
-			return undefined;
+			return [];
 		}
 
 		// Convert the array JS syntax string into an actual JS array in memory.
@@ -308,7 +337,7 @@ function generateRustLicenses(): LicenseInfo[] | undefined {
 
 		return rustLicenses;
 	} catch (_) {
-		return undefined;
+		return [];
 	}
 }
 
@@ -331,11 +360,9 @@ function htmlDecode(input: string): string {
 		if (maybeEntity) return maybeEntity[1];
 
 		let match;
-		// eslint-disable-next-line no-cond-assign
 		if ((match = entityCode.match(/^#x([\da-fA-F]+)$/))) {
 			return String.fromCharCode(parseInt(match[1], 16));
 		}
-		// eslint-disable-next-line no-cond-assign
 		if ((match = entityCode.match(/^#(\d+)$/))) {
 			return String.fromCharCode(~~match[1]);
 		}
@@ -354,4 +381,19 @@ function trimBlankLines(input: string): string {
 	}
 
 	return result;
+}
+
+function getAcceptedLicenses() {
+	const tomlContent = fs.readFileSync(path.resolve(__dirname, "../about.toml"), "utf8");
+
+	const licensesBlock = tomlContent?.match(/accepted\s*=\s*\[([^\]]*)\]/)?.[1] || "";
+
+	return licensesBlock
+		.split("\n")
+		.map((line) => line.replace(/#.*$/, "")) // Remove comments
+		.join("\n")
+		.split(",")
+		.map((license) => license.trim().replace(/"/g, ""))
+		.filter((license) => license.length > 0)
+		.join(" OR ");
 }

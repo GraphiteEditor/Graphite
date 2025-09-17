@@ -9,15 +9,17 @@
 </script>
 
 <table>
-	{#each widgetData.tableWidgets as row}
-		<tr>
-			{#each row as cell}
-				<td>
-					<WidgetSpan widgetData={{ rowWidgets: [cell] }} {layoutTarget} />
-				</td>
-			{/each}
-		</tr>
-	{/each}
+	<tbody>
+		{#each widgetData.tableWidgets as row}
+			<tr>
+				{#each row as cell}
+					<td>
+						<WidgetSpan widgetData={{ rowWidgets: [cell] }} {layoutTarget} narrow={true} />
+					</td>
+				{/each}
+			</tr>
+		{/each}
+	</tbody>
 </table>
 
 <style lang="scss">
