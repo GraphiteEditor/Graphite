@@ -402,8 +402,8 @@ mod node_registry_macros {
 				|mut args| {
 					Box::pin(async move {
 						let node = graphene_core::ops::ConvertNode::new(
-							graphene_std::any::downcast_node::<Context, $from>(args.pop().unwrap()),
-							graphene_std::any::downcast_node::<Context, $convert>(args.pop().unwrap()),
+							graphene_std::any::downcast_node::<Context, $from>(args.pop().expect("Construct node did not get first argument")),
+							graphene_std::any::downcast_node::<Context, $convert>(args.pop().expect("Convert node did not get converter argument")),
 							graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$to>))
 						);
 						let any: DynAnyNode<Context, $to, _> = graphene_std::any::DynAnyNode::new(node);
