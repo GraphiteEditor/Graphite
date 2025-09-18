@@ -1,6 +1,6 @@
 use crate::document::NodeNetwork;
 use crate::graphene_compiler::Compiler;
-use crate::proto::ProtoNetwork;
+use crate::proto::{ProtoNetwork, TypingContext};
 
 pub fn load_network(document_string: &str) -> NodeNetwork {
 	let document: serde_json::Value = serde_json::from_str(document_string).expect("Failed to parse document");
@@ -8,9 +8,9 @@ pub fn load_network(document_string: &str) -> NodeNetwork {
 	serde_json::from_str::<NodeNetwork>(&document).expect("Failed to parse document")
 }
 
-pub fn compile(network: NodeNetwork) -> ProtoNetwork {
+pub fn compile(network: NodeNetwork, ty: &mut TypingContext) -> ProtoNetwork {
 	let compiler = Compiler {};
-	compiler.compile_single(network).unwrap()
+	compiler.compile_single(network, ty).unwrap()
 }
 
 pub fn load_from_name(name: &str) -> NodeNetwork {

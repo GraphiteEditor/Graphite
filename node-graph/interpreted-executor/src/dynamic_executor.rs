@@ -97,6 +97,10 @@ impl DynamicExecutor {
 		self.typing_context.type_of(self.output).map(|node_io| node_io.call_argument.clone())
 	}
 
+	pub fn typing_context_mut(&mut self) -> &mut TypingContext {
+		&mut self.typing_context
+	}
+
 	pub fn tree(&self) -> &BorrowTree {
 		&self.tree
 	}
