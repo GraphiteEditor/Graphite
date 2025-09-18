@@ -1060,6 +1060,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	if reference == "Instance Index" && inputs_count == 0 {
 		let mut node_template = resolve_document_node_type(reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		document.network_interface.set_display_name(node_id, "Instance Index".to_string(), network_path);
 
 		let mut node_path = network_path.to_vec();
 		node_path.push(*node_id);

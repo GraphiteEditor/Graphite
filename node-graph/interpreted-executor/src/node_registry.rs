@@ -57,6 +57,10 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		#[cfg(feature = "gpu")]
 		into_node!(from: &WasmEditorApi, to: &WgpuExecutor),
 		convert_node!(from: String, to: String),
+		convert_node!(from: bool, to: String),
+		convert_node!(from: DVec2, to: String),
+		convert_node!(from: IVec2, to: String),
+		convert_node!(from: DAffine2, to: String),
 		// =============
 		// MONITOR NODES
 		// =============
