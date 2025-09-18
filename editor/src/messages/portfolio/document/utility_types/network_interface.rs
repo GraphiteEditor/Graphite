@@ -8,7 +8,6 @@ use crate::consts::{EXPORTS_TO_RIGHT_EDGE_PIXEL_GAP, EXPORTS_TO_TOP_EDGE_PIXEL_G
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DocumentNodeDefinition, resolve_document_node_type};
 use crate::messages::portfolio::document::node_graph::utility_types::{Direction, FrontendClickTargets, FrontendGraphDataType, FrontendGraphInput, FrontendGraphOutput};
-use crate::messages::portfolio::document::utility_types::network_interface;
 use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle, WirePath, WirePathUpdate, build_vector_wire};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::tool_messages::tool_prelude::NumberInputMode;
@@ -3490,11 +3489,7 @@ impl NodeNetworkInterface {
 		(layer_widths, chain_widths, has_left_input_wire)
 	}
 
-	pub fn compute_modified_vector(&mut self, layer: LayerNodeIdentifier) -> Option<Vector> {
-		if graph_modification_utils::NodeGraphLayer::is_raster_layer(layer, self) {
-			return None;
-		}
-
+	pub fn compute_modified_vector(&self, layer: LayerNodeIdentifier) -> Option<Vector> {
 		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, self);
 
 		if let Some(path_node) = graph_layer.upstream_visible_node_id_from_name_in_layer("Path") {
