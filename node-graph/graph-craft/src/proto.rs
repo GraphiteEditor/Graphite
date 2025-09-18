@@ -415,13 +415,11 @@ impl ProtoNetwork {
 		if self.nodes[node_index].1.identifier == ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode") {
 			// TODO: make cleaner
 			let previous_id = new_order.id_mapping[inputs[0].0 as usize];
-			let previous = new_order.vec[previous_id].clone();
 			new_order.id_mapping.push(previous_id);
 			// Replicate the results from the input node
 			results.push(results[inputs[0].0 as usize].clone());
 			// new_order.push_node(previous.1, Some(node_index))?;
 			return Ok(());
-			// return self.find_context_dependencies(inputs[0], new_order, results);
 		}
 
 		// Compute the dependencies for each branch and combine all of them
