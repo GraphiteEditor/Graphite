@@ -61,6 +61,10 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		convert_node!(from: DVec2, to: String),
 		convert_node!(from: IVec2, to: String),
 		convert_node!(from: DAffine2, to: String),
+		convert_node!(from: Table<Raster<CPU>>, to: Table<Raster<CPU>>, converter: &WgpuExecutor),
+		convert_node!(from: Table<Raster<CPU>>, to: Table<Raster<GPU>>, converter: &WgpuExecutor),
+		convert_node!(from: Table<Raster<GPU>>, to: Table<Raster<GPU>>, converter: &WgpuExecutor),
+		convert_node!(from: Table<Raster<GPU>>, to: Table<Raster<CPU>>, converter: &WgpuExecutor),
 		// =============
 		// MONITOR NODES
 		// =============
@@ -401,9 +405,10 @@ mod node_registry_macros {
 				ProtoNodeIdentifier::new(concat!["graphene_core::ops::ConvertNode<", stringify!($to), ">"]),
 				|mut args| {
 					Box::pin(async move {
+						let mut args = args.drain(..);
 						let node = graphene_core::ops::ConvertNode::new(
-							graphene_std::any::downcast_node::<Context, $from>(args.pop().expect("Construct node did not get first argument")),
-							graphene_std::any::downcast_node::<Context, $convert>(args.pop().expect("Convert node did not get converter argument")),
+							graphene_std::any::downcast_node::<Context, $from>(args.next().expect("Convert node did not get first argument")),
+							graphene_std::any::downcast_node::<Context, $convert>(args.next().expect("Convert node did not get converter argument")),
 							graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$to>))
 						);
 						let any: DynAnyNode<Context, $to, _> = graphene_std::any::DynAnyNode::new(node);
