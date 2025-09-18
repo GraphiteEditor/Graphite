@@ -1,12 +1,10 @@
 use graphene_core::BlendMode;
 use vello::peniko;
 
-#[cfg(feature = "vello")]
 pub trait BlendModeExt {
 	fn to_peniko(&self) -> peniko::Mix;
 }
 
-#[cfg(feature = "vello")]
 impl BlendModeExt for BlendMode {
 	fn to_peniko(&self) -> peniko::Mix {
 		match self {

@@ -9,7 +9,7 @@ license = "MIT OR Apache-2.0"
 [dependencies]
 # Local dependencies
 dyn-any = { workspace = true }
-graphene-core = { workspace = true }
+graphene-core = { workspace = true, features = ["wgpu"] }
 
 # Workspace dependencies
 glam = { workspace = true }
@@ -21,4 +21,4 @@ usvg = { workspace = true }
 kurbo = { workspace = true }
 
 # Optional workspace dependencies
-vello = { workspace = true, optional = true }
+vello = { workspace = true }

@@ -28,7 +28,6 @@ use std::fmt::Write;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::ops::Deref;
 use std::sync::{Arc, LazyLock};
-#[cfg(feature = "vello")]
 use vello::*;
 
 #[derive(Clone, Copy, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -152,7 +151,6 @@ impl Default for SvgRender {
 
 #[derive(Clone, Debug, Default)]
 pub struct RenderContext {
-	#[cfg(feature = "vello")]
 	pub resource_overrides: Vec<(peniko::Image, wgpu::Texture)>,
 }
 
@@ -261,7 +259,6 @@ impl RenderMetadata {
 pub trait Render: BoundingBox + RenderComplexity {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams);
 
-	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, _render_params: &RenderParams);
 
 	/// The upstream click targets for each layer are collected during the render so that they do not have to be calculated for each click detection.
@@ -292,7 +289,6 @@ impl Render for Graphic {
 		}
 	}
 
-	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 		match self {
 			Graphic::Graphic(table) => table.render_to_vello(scene, transform, context, render_params),
@@ -445,7 +441,6 @@ impl Render for Artboard {
 		);
 	}
 
-	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 		use vello::peniko;
 
@@ -501,7 +496,6 @@ impl Render for Table<Artboard> {
 		}
 	}
 
-	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 		for row in self.iter() {
 			row.element.render_to_vello(scene, transform, context, render_params);
@@ -577,7 +571,6 @@ impl Render for Table<Graphic> {
 		}
 	}
 
-	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 		let mut iter = self.iter().peekable();
 		let mut mask_element_and_transform = None;
@@ -858,7 +851,6 @@ impl Render for Table<Vector> {
 		}
 	}
 
-	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
 		use graphene_core::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WEIGHT};
 		use graphene_core::vector::style::{GradientType, StrokeCap, StrokeJoin};
@@ -1273,7 +1265,6 @@ impl Render for Table<Raster<CPU>> {
 		}
 	}
 
-	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, _: &mut RenderContext, render_params: &RenderParams) {
 		use vello::peniko;
 
@@ -1334,7 +1325,6 @@ impl Render for Table<Raster<GPU>> {
 		log::warn!("tried to render texture as an svg");
 	}
 
-	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, _render_params: &RenderParams) {
 		use vello::peniko;
 
@@ -1417,7 +1407,6 @@ impl Render for Table<Color> {
 		}
 	}
 
-	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, _parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
 		use vello::peniko;
 
@@ -1511,7 +1500,6 @@ impl Render for Table<GradientStops> {
 	}
 
 	// TODO: Fix infinite gradient rendering
-	#[cfg(feature = "vello")]
 	fn render_to_vello(&self, scene: &mut Scene, _parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
 		use vello::peniko;
 

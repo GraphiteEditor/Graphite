@@ -8,7 +8,7 @@ pub fn load_network(document_string: &str) -> NodeNetwork {
 	serde_json::from_str::<NodeNetwork>(&document).expect("Failed to parse document")
 }
 
-pub fn compile(network: NodeNetwork, ty: &mut TypingContext) -> ProtoNetwork {
+pub fn compile(network: NodeNetwork, ty: Option<&mut TypingContext>) -> ProtoNetwork {
 	let compiler = Compiler {};
 	compiler.compile_single(network, ty).unwrap()
 }

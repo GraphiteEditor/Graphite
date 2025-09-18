@@ -253,7 +253,7 @@ impl NodeRuntime {
 		assert_eq!(scoped_network.exports.len(), 1, "Graph with multiple outputs not yet handled");
 
 		let c = Compiler {};
-		let proto_network = match c.compile_single(scoped_network, self.executor.typing_context_mut()) {
+		let proto_network = match c.compile_single(scoped_network, Some(self.executor.typing_context_mut())) {
 			Ok(network) => network,
 			Err(e) => return Err(e),
 		};
