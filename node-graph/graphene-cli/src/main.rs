@@ -5,7 +5,7 @@ use fern::colors::{Color, ColoredLevelConfig};
 use futures::executor::block_on;
 use graph_craft::document::*;
 use graph_craft::graphene_compiler::Compiler;
-use graph_craft::proto::ProtoNetwork;
+use graph_craft::proto::{ProtoNetwork, TypingContext};
 use graph_craft::util::load_network;
 use graph_craft::wasm_application_io::EditorPreferences;
 use graphene_std::application_io::{ApplicationIo, NodeGraphUpdateMessage, NodeGraphUpdateSender};
@@ -231,7 +231,8 @@ fn compile_graph(document_string: String, editor_api: Arc<WasmEditorApi>) -> Res
 	let wrapped_network = wrap_network_in_scope(network.clone(), editor_api);
 
 	let compiler = Compiler {};
-	compiler.compile_single(wrapped_network).map_err(|x| x.into())
+	let mut ty = TypingContext::new(&interpreted_executor::node_registry::NODE_REGISTRY);
+	compiler.compile_single(wrapped_network, &mut ty).map_err(|x| x.into())
 }
 
 fn create_executor(proto_network: ProtoNetwork) -> Result<DynamicExecutor, Box<dyn Error>> {
