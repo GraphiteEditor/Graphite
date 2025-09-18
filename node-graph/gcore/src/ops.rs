@@ -1,6 +1,6 @@
 use graphene_core_shaders::Ctx;
 
-use crate::Node;
+use crate::{ExtractFootprint, Node, transform::Footprint};
 use std::marker::PhantomData;
 
 // TODO: Rename to "Passthrough"
@@ -50,16 +50,16 @@ fn into<'i, T: 'i + Send + Into<O>, O: 'i + Send>(_: impl Ctx, value: T, _out_ty
 
 /// The [`Convert`] trait allows for conversion between Rust primitive numeric types.
 /// Because number casting is lossy, we cannot use the normal [`Into`] trait like we do for other types.
-pub trait Convert<T>: Sized {
+pub trait Convert<T, C>: Sized {
 	/// Converts this type into the (usually inferred) output type.
 	#[must_use]
-	fn convert(self) -> T;
+	fn convert(self, footprint: Footprint, converter: C) -> impl Future<Output = T> + Send;
 }
 
-impl<T: ToString> Convert<String> for T {
+impl<T: ToString + Send> Convert<String, ()> for T {
 	/// Converts this type into a `String` using its `ToString` implementation.
 	#[inline]
-	fn convert(self) -> String {
+	async fn convert(self, _: Footprint, _converter: ()) -> String {
 		self.to_string()
 	}
 }
@@ -67,8 +67,8 @@ impl<T: ToString> Convert<String> for T {
 /// Implements the [`Convert`] trait for conversion between the cartesian product of Rust's primitive numeric types.
 macro_rules! impl_convert {
 	($from:ty, $to:ty) => {
-		impl Convert<$to> for $from {
-			fn convert(self) -> $to {
+		impl Convert<$to, ()> for $from {
+			async fn convert(self, _: Footprint, _: ()) -> $to {
 				self as $to
 			}
 		}
@@ -106,8 +106,8 @@ impl_convert!(isize);
 impl_convert!(usize);
 
 #[node_macro::node(skip_impl)]
-fn convert<'i, T: 'i + Send + Convert<O>, O: 'i + Send>(_: impl Ctx, value: T, _out_ty: PhantomData<O>) -> O {
-	value.convert()
+async fn convert<'i, T: 'i + Send + Convert<O, C>, O: 'i + Send, C: 'i + Send>(ctx: impl Ctx + ExtractFootprint, value: T, converter: C, _out_ty: PhantomData<O>) -> O {
+	value.convert(*ctx.try_footprint().unwrap_or(&Footprint::DEFAULT), converter).await
 }
 
 #[cfg(test)]

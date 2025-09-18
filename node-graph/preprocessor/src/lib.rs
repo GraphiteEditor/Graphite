@@ -67,6 +67,7 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 						1 => {
 							let input = inputs.iter().next().unwrap();
 							let input_ty = input.nested_type();
+							let mut inputs = vec![NodeInput::import(input.clone(), i)];
 
 							let into_node_identifier = ProtoNodeIdentifier {
 								name: format!("graphene_core::ops::IntoNode<{}>", input_ty.clone()).into(),
@@ -80,13 +81,14 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 								into_node_identifier
 							} else if into_node_registry.keys().any(|ident| ident.name.as_ref() == convert_node_identifier.name.as_ref()) {
 								generated_nodes += 1;
+								inputs.push(NodeInput::value(TaggedValue::None, false));
 								convert_node_identifier
 							} else {
 								identity_node.clone()
 							};
 
 							DocumentNode {
-								inputs: vec![NodeInput::import(input.clone(), i)],
+								inputs,
 								implementation: DocumentNodeImplementation::ProtoNode(proto_node),
 								visible: true,
 								..Default::default()

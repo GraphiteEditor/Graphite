@@ -128,7 +128,7 @@ impl PerPixelAdjustCodegen<'_> {
 				#(pub #uniform_members),*
 			}
 		};
-		let uniform_struct_shader_struct_derive = crate::buffer_struct::derive_buffer_struct_struct(&self.crate_ident, &uniform_struct)?;
+		let uniform_struct_shader_struct_derive = crate::buffer_struct::derive_buffer_struct_struct(self.crate_ident, &uniform_struct)?;
 
 		let image_params = self
 			.params
