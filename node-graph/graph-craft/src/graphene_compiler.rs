@@ -5,7 +5,7 @@ use std::error::Error;
 pub struct Compiler {}
 
 impl Compiler {
-	pub fn compile(&self, mut network: NodeNetwork, ty: &mut TypingContext) -> impl Iterator<Item = Result<ProtoNetwork, String>> {
+	pub fn compile<'a>(&'a self, mut network: NodeNetwork, mut ty: Option<&mut TypingContext>) -> impl Iterator<Item = Result<ProtoNetwork, String>> {
 		let node_ids = network.nodes.keys().copied().collect::<Vec<_>>();
 		network.populate_dependants();
 		for id in node_ids {
@@ -17,12 +17,12 @@ impl Compiler {
 		let proto_networks = network.into_proto_networks();
 
 		proto_networks.map(move |mut proto_network| {
-			proto_network.insert_context_nullification_nodes(ty)?;
+			proto_network.insert_context_nullification_nodes(ty.as_deref_mut())?;
 			proto_network.generate_stable_node_ids();
 			Ok(proto_network)
 		})
 	}
-	pub fn compile_single(&self, network: NodeNetwork, ty: &mut TypingContext) -> Result<ProtoNetwork, String> {
+	pub fn compile_single(&self, network: NodeNetwork, ty: Option<&mut TypingContext>) -> Result<ProtoNetwork, String> {
 		assert_eq!(network.exports.len(), 1, "Graph with multiple outputs not yet handled");
 		let Some(proto_network) = self.compile(network, ty).next() else {
 			return Err("Failed to convert graph into proto graph".to_string());

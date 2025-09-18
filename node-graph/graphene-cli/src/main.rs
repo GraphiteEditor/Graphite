@@ -232,7 +232,7 @@ fn compile_graph(document_string: String, editor_api: Arc<WasmEditorApi>) -> Res
 
 	let compiler = Compiler {};
 	let mut ty = TypingContext::new(&interpreted_executor::node_registry::NODE_REGISTRY);
-	compiler.compile_single(wrapped_network, &mut ty).map_err(|x| x.into())
+	compiler.compile_single(wrapped_network, Some(&mut ty)).map_err(|x| x.into())
 }
 
 fn create_executor(proto_network: ProtoNetwork) -> Result<DynamicExecutor, Box<dyn Error>> {
