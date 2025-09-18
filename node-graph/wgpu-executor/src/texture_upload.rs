@@ -43,11 +43,14 @@ fn upload_to_texture(device: &std::sync::Arc<wgpu::Device>, queue: &std::sync::A
 /// Creates a buffer and adds a copy operation from the texture to the buffer
 /// using the provided command encoder. Returns dimensions and the buffer for
 /// later mapping and data extraction.
-fn download_to_buffer(device: &std::sync::Arc<wgpu::Device>, encoder: &mut wgpu::CommandEncoder, texture: &wgpu::Texture) -> (u32, u32, wgpu::Buffer) {
+fn download_to_buffer(device: &std::sync::Arc<wgpu::Device>, encoder: &mut wgpu::CommandEncoder, texture: &wgpu::Texture) -> (wgpu::Buffer, u32, u32, u32, u32) {
 	let width = texture.width();
 	let height = texture.height();
 	let bytes_per_pixel = 4; // RGBA8
-	let buffer_size = (width * height * bytes_per_pixel) as u64;
+	let unpadded_bytes_per_row = width * bytes_per_pixel;
+	let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+	let padded_bytes_per_row = unpadded_bytes_per_row.div_ceil(align) * align;
+	let buffer_size = padded_bytes_per_row as u64 * height as u64;
 
 	let output_buffer = device.create_buffer(&wgpu::BufferDescriptor {
 		label: Some("texture_download_buffer"),
@@ -67,7 +70,7 @@ fn download_to_buffer(device: &std::sync::Arc<wgpu::Device>, encoder: &mut wgpu:
 			buffer: &output_buffer,
 			layout: wgpu::TexelCopyBufferLayout {
 				offset: 0,
-				bytes_per_row: Some(width * bytes_per_pixel),
+				bytes_per_row: Some(padded_bytes_per_row),
 				rows_per_image: Some(height),
 			},
 		},
@@ -77,7 +80,7 @@ fn download_to_buffer(device: &std::sync::Arc<wgpu::Device>, encoder: &mut wgpu:
 			depth_or_array_layers: 1,
 		},
 	);
-	(width, height, output_buffer)
+	(output_buffer, width, height, unpadded_bytes_per_row, padded_bytes_per_row)
 }
 
 /// Passthrough conversion for GPU tables - no conversion needed
@@ -149,21 +152,42 @@ impl<'i> Convert<Table<Raster<CPU>>, &'i WgpuExecutor> for Table<Raster<GPU>> {
 			let gpu_raster = row.element;
 			let texture = gpu_raster.data();
 
-			let (width, height, output_buffer) = download_to_buffer(device, &mut encoder, texture);
+			let (output_buffer, width, height, unpadded_bytes_per_row, padded_bytes_per_row) = download_to_buffer(device, &mut encoder, texture);
 
-			buffers_and_info.push((output_buffer, width, height, *row.transform, *row.alpha_blending, *row.source_node_id));
+			buffers_and_info.push((
+				output_buffer,
+				width,
+				height,
+				unpadded_bytes_per_row,
+				padded_bytes_per_row,
+				*row.transform,
+				*row.alpha_blending,
+				*row.source_node_id,
+			));
 		}
 
 		queue.submit([encoder.finish()]);
 
 		let mut map_futures = Vec::new();
-		for (buffer, _width, _height, _transform, _alpha_blending, _source_node_id) in &buffers_and_info {
+		let mut buffer_sclices_and_info = Vec::new();
+		for (buffer, width, height, unpadded_bytes_per_row, padded_bytes_per_row, transform, alpha_blending, source_node_id) in &buffers_and_info {
 			let buffer_slice = buffer.slice(..);
 			let (sender, receiver) = futures::channel::oneshot::channel();
 			buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
 				let _ = sender.send(result);
 			});
 			map_futures.push(receiver);
+			buffer_sclices_and_info.push((
+				buffer,
+				buffer_slice,
+				width,
+				height,
+				unpadded_bytes_per_row,
+				padded_bytes_per_row,
+				transform,
+				alpha_blending,
+				source_node_id,
+			));
 		}
 
 		let map_results = futures::future::try_join_all(map_futures)
@@ -172,29 +196,39 @@ impl<'i> Convert<Table<Raster<CPU>>, &'i WgpuExecutor> for Table<Raster<GPU>> {
 			.expect("Buffer mapping communication failed");
 
 		let mut table = Vec::new();
-		for (i, (buffer, width, height, transform, alpha_blending, source_node_id)) in buffers_and_info.into_iter().enumerate() {
+		for (i, (buffer, buffer_slice, width, height, unpadded_bytes_per_row, padded_bytes_per_row, transform, alpha_blending, source_node_id)) in buffer_sclices_and_info.into_iter().enumerate() {
 			if let Err(e) = &map_results[i] {
 				panic!("Buffer mapping failed: {e:?}");
 			}
 
-			let data = buffer.slice(..).get_mapped_range();
-			let cpu_data: Vec<Color> = data.chunks_exact(4).map(|chunk| Color::from_rgba8_srgb(chunk[0], chunk[1], chunk[2], chunk[3])).collect();
+			let view = buffer_slice.get_mapped_range();
 
-			drop(data);
+			let row_stride = *padded_bytes_per_row as usize;
+			let row_bytes = *unpadded_bytes_per_row as usize;
+			let mut cpu_data: Vec<Color> = Vec::with_capacity((width * height) as usize);
+			for row in 0..*height as usize {
+				let start = row * row_stride;
+				let row_slice = &view[start..start + row_bytes];
+				for px in row_slice.chunks_exact(4) {
+					cpu_data.push(Color::from_rgba8_srgb(px[0], px[1], px[2], px[3]));
+				}
+			}
+
+			drop(view);
 			buffer.unmap();
 			let cpu_image = Image {
 				data: cpu_data,
-				width,
-				height,
+				width: *width,
+				height: *height,
 				base64_string: None,
 			};
 			let cpu_raster = Raster::new_cpu(cpu_image);
 
 			table.push(TableRow {
 				element: cpu_raster,
-				transform,
-				alpha_blending,
-				source_node_id,
+				transform: *transform,
+				alpha_blending: *alpha_blending,
+				source_node_id: *source_node_id,
 			});
 		}
 
@@ -215,22 +249,32 @@ impl<'i> Convert<Raster<CPU>, &'i WgpuExecutor> for Raster<GPU> {
 		let gpu_raster = &self;
 		let texture = gpu_raster.data();
 
-		let (width, height, output_buffer) = download_to_buffer(device, &mut encoder, texture);
+		let (buffer, width, height, unpadded_bytes_per_row, padded_bytes_per_row) = download_to_buffer(device, &mut encoder, texture);
 
 		queue.submit([encoder.finish()]);
 
-		let buffer_slice = output_buffer.slice(..);
+		let buffer_slice = buffer.slice(..);
 		let (sender, receiver) = futures::channel::oneshot::channel();
 		buffer_slice.map_async(wgpu::MapMode::Read, move |result| {
 			let _ = sender.send(result);
 		});
 		receiver.await.expect("Failed to receive map result").expect("Buffer mapping failed");
 
-		let data = output_buffer.slice(..).get_mapped_range();
-		let cpu_data: Vec<Color> = data.chunks_exact(4).map(|chunk| Color::from_rgba8_srgb(chunk[0], chunk[1], chunk[2], chunk[3])).collect();
+		let view = buffer_slice.get_mapped_range();
 
-		drop(data);
-		output_buffer.unmap();
+		let row_stride = padded_bytes_per_row as usize;
+		let row_bytes = unpadded_bytes_per_row as usize;
+		let mut cpu_data: Vec<Color> = Vec::with_capacity((width * height) as usize);
+		for row in 0..height as usize {
+			let start = row * row_stride;
+			let row_slice = &view[start..start + row_bytes];
+			for px in row_slice.chunks_exact(4) {
+				cpu_data.push(Color::from_rgba8_srgb(px[0], px[1], px[2], px[3]));
+			}
+		}
+
+		drop(view);
+		buffer.unmap();
 		let cpu_image = Image {
 			data: cpu_data,
 			width,
