@@ -1341,6 +1341,13 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										display_name: "Transform".to_string(),
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
+										input_metadata: vec![
+											("Value", "TODO").into(),
+											("Translation", "TODO").into(),
+											("Rotation", "TODO").into(),
+											("Scale", "TODO").into(),
+											("Skew", "TODO").into(),
+										],
 										..Default::default()
 									},
 									..Default::default()
