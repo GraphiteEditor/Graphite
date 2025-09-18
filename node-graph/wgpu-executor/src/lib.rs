@@ -1,6 +1,6 @@
 mod context;
 pub mod shader_runtime;
-pub mod texture_upload;
+pub mod texture_conversion;
 
 use crate::shader_runtime::ShaderRuntime;
 use anyhow::Result;
