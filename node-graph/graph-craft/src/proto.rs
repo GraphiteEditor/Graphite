@@ -211,6 +211,26 @@ enum NodeState {
 	Visited,
 }
 
+struct NodeList<'a> {
+	vec: Vec<(NodeId, ProtoNode)>,
+	ty: &'a mut TypingContext,
+	id_mapping: Vec<usize>,
+}
+
+impl<'a> NodeList<'a> {
+	fn push_node(&mut self, node: ProtoNode, old_node_idx: Option<usize>) -> Result<(NodeId, Type), GraphErrors> {
+		let node_id = node.stable_node_id().unwrap();
+		let out_ty = self.ty.infer(node_id, &node)?.return_value;
+		// log::debug!("{old_node_idx:?}, {node_id:?}, {node:?}, {:?}", self.id_mapping);
+		if let Some(old_node_idx) = old_node_idx {
+			assert_eq!(old_node_idx, self.id_mapping.len());
+			self.id_mapping.push(self.vec.len());
+		}
+		self.vec.push((node_id, node));
+		Ok((node_id, out_ty))
+	}
+}
+
 impl ProtoNetwork {
 	fn check_ref(&self, ref_id: &NodeId, id: &NodeId) {
 		debug_assert!(
@@ -296,33 +316,44 @@ impl ProtoNetwork {
 
 	/// Inserts context nullification nodes to optimize caching.
 	/// This analysis is performed after topological sorting to ensure proper dependency tracking.
-	pub fn insert_context_nullification_nodes(&mut self) -> Result<(), String> {
+	pub fn insert_context_nullification_nodes(&mut self, ty: &mut TypingContext) -> Result<(), String> {
 		// Perform topological sort once
 		self.reorder_ids()?;
 
-		self.find_context_dependencies(self.output);
+		let mut new_order = NodeList {
+			vec: Vec::with_capacity(self.nodes.len() + 20),
+			ty,
+			id_mapping: Vec::with_capacity(self.nodes.len()),
+		};
+		let mut results = Vec::with_capacity(self.nodes.len());
+		for node_id in 0..self.nodes.len() {
+			self.find_context_dependencies(NodeId(node_id as u64), &mut new_order, &mut results).map_err(|e| format!("{e:?}"))?;
+		}
 
-		// Perform topological sort a second time to integrate the new nodes
-		self.reorder_ids()?;
+		self.nodes = new_order.vec;
+		self.output = results[self.output.0 as usize].1;
+		// log::debug!("{:?}", self.nodes);
+		// log::debug!("{:}", self);
+		// // Perform topological sort a second time to integrate the new nodes
+		// self.reorder_ids()?;
 
 		Ok(())
 	}
 
-	fn insert_context_nullification_node(&mut self, node_id: NodeId, context_deps: ContextFeatures) -> NodeId {
-		let (_, node) = &self.nodes[node_id.0 as usize];
+	fn insert_context_nullification_node(&mut self, old_node_id: NodeId, new_node_id: NodeId, context_deps: ContextFeatures, new_nodes: &mut NodeList) -> Result<NodeId, GraphErrors> {
+		let (_, node) = &self.nodes[old_node_id.0 as usize];
 		let mut path = node.original_location.path.clone();
+
+		log::debug!("Inserting context nullification after {:?} with context features: {:?}", node.identifier, context_deps);
 
 		// Add a path extension with a placeholder value which should not conflict with existing paths
 		if let Some(p) = path.as_mut() {
 			p.push(NodeId(10))
 		}
 
-		let memo_node_id = NodeId(self.nodes.len() as u64);
-
-		self.nodes.push((
-			memo_node_id,
+		let (memo_node_id, _) = new_nodes.push_node(
 			ProtoNode {
-				construction_args: ConstructionArgs::Nodes(vec![node_id]),
+				construction_args: ConstructionArgs::Nodes(vec![new_node_id]),
 				call_argument: concrete!(Context),
 				identifier: graphene_core::memo::memo::IDENTIFIER,
 				original_location: OriginalLocation {
@@ -331,12 +362,10 @@ impl ProtoNetwork {
 				},
 				..Default::default()
 			},
-		));
+			None,
+		)?;
 
-		let nullification_value_node_id = NodeId(self.nodes.len() as u64);
-
-		self.nodes.push((
-			nullification_value_node_id,
+		let (nullification_value_node_id, _) = new_nodes.push_node(
 			ProtoNode {
 				construction_args: ConstructionArgs::Value(MemoHash::new(TaggedValue::ContextFeatures(context_deps))),
 				call_argument: concrete!(Context),
@@ -347,10 +376,9 @@ impl ProtoNetwork {
 				},
 				..Default::default()
 			},
-		));
-		let nullification_node_id = NodeId(self.nodes.len() as u64);
-		self.nodes.push((
-			nullification_node_id,
+			None,
+		)?;
+		let (nullification_node_id, _) = new_nodes.push_node(
 			ProtoNode {
 				construction_args: ConstructionArgs::Nodes(vec![memo_node_id, nullification_value_node_id]),
 				call_argument: concrete!(Context),
@@ -361,11 +389,12 @@ impl ProtoNetwork {
 				},
 				..Default::default()
 			},
-		));
-		nullification_node_id
+			None,
+		)?;
+		Ok(nullification_node_id)
 	}
 
-	fn find_context_dependencies(&mut self, id: NodeId) -> (ContextFeatures, Option<NodeId>) {
+	fn find_context_dependencies(&mut self, id: NodeId, new_order: &mut NodeList, results: &mut Vec<(ContextFeatures, NodeId, Type, bool)>) -> Result<(), GraphErrors> {
 		let mut branch_dependencies = Vec::new();
 		let mut combined_deps = ContextFeatures::default();
 		let node_index = id.0 as usize;
@@ -373,18 +402,34 @@ impl ProtoNetwork {
 		let context_features = self.nodes[node_index].1.context_features;
 
 		let mut inputs = match &self.nodes[node_index].1.construction_args {
-			// We pretend like we have already placed context modification nodes after ourselves because value nodes don't need to be cached
-			ConstructionArgs::Value(_) => return (context_features.extract, Some(id)),
 			ConstructionArgs::Nodes(items) => items.clone(),
-			ConstructionArgs::Inline(_) => return (context_features.extract, Some(id)),
+			// We pretend like we have already placed context modification nodes after ourselves because value nodes don't need to be cached
+			_ => {
+				let (stable_id, ty) = new_order.push_node(self.nodes[node_index].1.clone(), Some(node_index))?;
+				results.push((context_features.extract, stable_id, ty, true));
+				return Ok(());
+			}
 		};
+
+		// Filter out identity nodes
+		if self.nodes[node_index].1.identifier == ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode") {
+			// TODO: make cleaner
+			let previous_id = new_order.id_mapping[inputs[0].0 as usize];
+			let previous = new_order.vec[previous_id].clone();
+			new_order.id_mapping.push(previous_id);
+			// Replicate the results from the input node
+			results.push(results[inputs[0].0 as usize].clone());
+			// new_order.push_node(previous.1, Some(node_index))?;
+			return Ok(());
+			// return self.find_context_dependencies(inputs[0], new_order, results);
+		}
 
 		// Compute the dependencies for each branch and combine all of them
 		for &node in &inputs {
-			let branch = self.find_context_dependencies(node);
+			let branch = &results[node.0 as usize];
 
-			branch_dependencies.push(branch);
 			combined_deps |= branch.0;
+			branch_dependencies.push(branch);
 		}
 		let mut new_deps = combined_deps;
 
@@ -393,15 +438,17 @@ impl ProtoNetwork {
 		// Add requirements we have
 		new_deps |= context_features.extract;
 
-		// If we either introduce new dependencies, we can cache all children which don't yet need that dependency
-		let we_introduce_new_deps = !combined_deps.contains(new_deps);
+		// If we introduce new dependencies, we can cache all children which don't yet need that dependency
+		let we_introduce_new_deps = !combined_deps.contains(new_deps) && !new_deps.is_empty();
+		// log::debug!("combined_deps: {combined_deps:?} new_deps: {new_deps:?}, context_features: {context_features:?}");
 
 		// For diverging branches, we can add a cache node for all branches which don't reqire all dependencies
-		for (child_node, (deps, new_id)) in inputs.iter_mut().zip(branch_dependencies.into_iter()) {
-			if let Some(new_id) = new_id {
-				*child_node = new_id;
-			} else if we_introduce_new_deps || deps != combined_deps {
-				*child_node = self.insert_context_nullification_node(*child_node, deps);
+		for (child_node, (deps, new_id, out_ty, already_placed_nullification)) in inputs.iter_mut().zip(branch_dependencies.into_iter()) {
+			let old_child_id = *child_node;
+			*child_node = *new_id;
+			if !*already_placed_nullification && (we_introduce_new_deps || *deps != combined_deps) {
+				// log::debug!("already_placed: {already_placed_nullification} we_introduce_new_deps {we_introduce_new_deps} deps: {deps:?} combined_deps: {combined_deps:?}");
+				*child_node = self.insert_context_nullification_node(old_child_id, *new_id, *deps, new_order)?;
 			}
 		}
 		self.nodes[node_index].1.construction_args = ConstructionArgs::Nodes(inputs);
@@ -415,13 +462,18 @@ impl ProtoNetwork {
 		// Do we satisfy any existing dependencies?
 		let we_supply_existing_deps = !combined_deps.difference(remaining_deps_from_children).is_empty();
 
-		let mut new_id = None;
-		if we_supply_existing_deps {
+		// TODO: replace with mem take
+		let (stable_id, out_ty) = new_order.push_node(self.nodes[node_index].1.clone(), Some(node_index))?;
+
+		let mut new_id = stable_id;
+		if we_supply_existing_deps && node_index != self.nodes.len() - 1 {
+			// log::debug!("we supply existing deps");
 			// Our set of context dependencies has shrunk so we can add a cache node after the current node
-			new_id = Some(self.insert_context_nullification_node(id, new_deps));
+			new_id = self.insert_context_nullification_node(id, stable_id, new_deps, new_order)?;
 		}
 
-		(new_deps, new_id)
+		results.push((new_deps, new_id, out_ty, we_supply_existing_deps));
+		Ok(())
 	}
 
 	/// Update all of the references to a node ID in the graph with a new ID named `compose_node_id`.
@@ -936,9 +988,7 @@ mod test {
 	#[test]
 	fn stable_node_id_generation() {
 		let mut construction_network = test_network();
-		construction_network
-			.insert_context_nullification_nodes()
-			.expect("Error when calling 'insert_context_nullification_nodes' on 'construction_network.");
+		construction_network.reorder_ids().unwrap();
 		construction_network.generate_stable_node_ids();
 		assert_eq!(construction_network.nodes[0].1.identifier.name.as_ref(), "value");
 		let ids: Vec<_> = construction_network.nodes.iter().map(|(id, _)| *id).collect();

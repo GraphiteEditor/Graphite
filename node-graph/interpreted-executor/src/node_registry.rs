@@ -396,6 +396,7 @@ mod node_registry_macros {
 			(
 				ProtoNodeIdentifier::new(concat!["graphene_core::ops::ConvertNode<", stringify!($to), ">"]),
 				|mut args| {
+					log::debug!("registering convert from {:?} to {:?} with {:?}", stringify!($from), stringify!($to), stringify!($convert));
 					Box::pin(async move {
 						let mut args = args.drain(..);
 						let node = graphene_std::ops::ConvertNode::new(
@@ -416,6 +417,7 @@ mod node_registry_macros {
 					);
 					let params = vec![fn_type_fut!(Context, $from), fn_type_fut!(Context, $convert)];
 					let node_io = NodeIO::<'_, Context>::to_async_node_io(&node, params);
+					// log::debug!("node io: {:?}", node_io);
 					node_io
 				},
 			)
