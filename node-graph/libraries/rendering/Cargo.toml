@@ -22,6 +22,5 @@ kurbo = { workspace = true }
 vector-types = { workspace = true }
 graphic-types = { workspace = true }
 
-
 # Workspace dependencies
 vello = { workspace = true }

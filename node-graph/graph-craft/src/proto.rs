@@ -213,14 +213,14 @@ enum NodeState {
 
 struct NodeList<'a> {
 	vec: Vec<(NodeId, ProtoNode)>,
-	ty: &'a mut TypingContext,
+	ty: Option<&'a mut TypingContext>,
 	id_mapping: Vec<usize>,
 }
 
 impl<'a> NodeList<'a> {
-	fn push_node(&mut self, node: ProtoNode, old_node_idx: Option<usize>) -> Result<(NodeId, Type), GraphErrors> {
+	fn push_node(&mut self, node: ProtoNode, old_node_idx: Option<usize>) -> Result<(NodeId, Option<Type>), GraphErrors> {
 		let node_id = node.stable_node_id().unwrap();
-		let out_ty = self.ty.infer(node_id, &node)?.return_value;
+		let out_ty = if let Some(ty) = &mut self.ty { Some(ty.infer(node_id, &node)?.return_value) } else { None };
 		// log::debug!("{old_node_idx:?}, {node_id:?}, {node:?}, {:?}", self.id_mapping);
 		if let Some(old_node_idx) = old_node_idx {
 			assert_eq!(old_node_idx, self.id_mapping.len());
@@ -316,7 +316,7 @@ impl ProtoNetwork {
 
 	/// Inserts context nullification nodes to optimize caching.
 	/// This analysis is performed after topological sorting to ensure proper dependency tracking.
-	pub fn insert_context_nullification_nodes(&mut self, ty: &mut TypingContext) -> Result<(), String> {
+	pub fn insert_context_nullification_nodes(&mut self, ty: Option<&mut TypingContext>) -> Result<(), String> {
 		// Perform topological sort once
 		self.reorder_ids()?;
 
@@ -394,7 +394,7 @@ impl ProtoNetwork {
 		Ok(nullification_node_id)
 	}
 
-	fn find_context_dependencies(&mut self, id: NodeId, new_order: &mut NodeList, results: &mut Vec<(ContextFeatures, NodeId, Type, bool)>) -> Result<(), GraphErrors> {
+	fn find_context_dependencies(&mut self, id: NodeId, new_order: &mut NodeList, results: &mut Vec<(ContextFeatures, NodeId, Option<Type>, bool)>) -> Result<(), GraphErrors> {
 		let mut branch_dependencies = Vec::new();
 		let mut combined_deps = ContextFeatures::default();
 		let node_index = id.0 as usize;
