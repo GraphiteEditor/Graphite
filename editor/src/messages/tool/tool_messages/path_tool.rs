@@ -706,7 +706,7 @@ impl PathToolData {
 	fn mouse_down(
 		&mut self,
 		shape_editor: &mut ShapeState,
-		document: &DocumentMessageHandler,
+		document: &mut DocumentMessageHandler,
 		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 		extend_selection: bool,
@@ -733,6 +733,9 @@ impl PathToolData {
 		let mut old_selection = HashMap::new();
 
 		for (layer, state) in &shape_editor.selected_shape_state {
+			if NodeGraphLayer::is_raster_layer(*layer, &mut document.network_interface) {
+				return PathToolFsmState::Ready;
+			}
 			let selected_points = state.selected_points().collect::<HashSet<_>>();
 			let selected_segments = state.selected_segments().collect::<HashSet<_>>();
 			old_selection.insert(*layer, (selected_points, selected_segments));
