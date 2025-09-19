@@ -67,7 +67,7 @@ impl<'i> Convert<Table<Raster<GPU>>, &'i WgpuExecutor> for Table<Vector> {
 		queue.submit([command_buffer]);
 
 		let mut table = Table::new_from_element(Raster::new_gpu(new_texture));
-		*(table.get_mut(0).as_mut().unwrap().transform) = DAffine2::from_scale((texture.width() as f64, texture.height() as f64).into());
+		*(table.get_mut(0).as_mut().unwrap().transform) = footprint.transform.inverse() * DAffine2::from_scale((texture.width() as f64, texture.height() as f64).into());
 		table
 	}
 }
