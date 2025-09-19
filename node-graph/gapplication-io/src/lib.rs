@@ -222,11 +222,8 @@ pub trait GetEditorPreferences {
 pub enum ExportFormat {
 	#[default]
 	Svg,
-	Png {
-		transparent: bool,
-	},
-	Jpeg,
 	Canvas,
+	Buffer,
 	Texture,
 }
 

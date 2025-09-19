@@ -190,6 +190,12 @@ impl NodeGraphExecutor {
 		let size = bounds[1] - bounds[0];
 		let transform = DAffine2::from_translation(bounds[0]).inverse();
 
+		let export_format = if export_config.file_type == FileType::Svg || cfg!(not(feature = "gpu")) {
+			graphene_std::application_io::ExportFormat::Svg
+		} else {
+			graphene_std::application_io::ExportFormat::Buffer
+		};
+
 		let render_config = RenderConfig {
 			viewport: Footprint {
 				transform: DAffine2::from_scale(DVec2::splat(export_config.scale_factor)) * transform,
@@ -197,7 +203,7 @@ impl NodeGraphExecutor {
 				..Default::default()
 			},
 			time: Default::default(),
-			export_format: graphene_std::application_io::ExportFormat::Svg,
+			export_format,
 			render_mode: document.render_mode,
 			hide_artboards: export_config.transparent_background,
 			for_export: true,
@@ -219,28 +225,49 @@ impl NodeGraphExecutor {
 	}
 
 	fn export(&self, node_graph_output: TaggedValue, export_config: ExportConfig, responses: &mut VecDeque<Message>) -> Result<(), String> {
-		let TaggedValue::RenderOutput(RenderOutput {
-			data: RenderOutputType::Svg { svg, .. },
-			..
-		}) = node_graph_output
-		else {
-			return Err("Incorrect render type for exporting (expected RenderOutput::Svg)".to_string());
-		};
-
 		let ExportConfig {
-			file_type, name, size, scale_factor, ..
+			file_type,
+			name,
+			size,
+			scale_factor,
+			transparent_background,
+			..
 		} = export_config;
 
 		let file_suffix = &format!(".{file_type:?}").to_lowercase();
 		let name = name + file_suffix;
 
-		if file_type == FileType::Svg {
-			responses.add(FrontendMessage::TriggerSaveFile { name, content: svg.into_bytes() });
-		} else {
-			let mime = file_type.to_mime().to_string();
-			let size = (size * scale_factor).into();
-			responses.add(FrontendMessage::TriggerExportImage { svg, name, mime, size });
-		}
+		match node_graph_output {
+			TaggedValue::RenderOutput(RenderOutput {
+				data: RenderOutputType::Svg { svg, .. },
+				..
+			}) => {
+				if file_type == FileType::Svg {
+					responses.add(FrontendMessage::TriggerSaveFile { name, content: svg.into_bytes() });
+				} else {
+					let mime = file_type.to_mime().to_string();
+					let size = (size * scale_factor).into();
+					responses.add(FrontendMessage::TriggerExportImage { svg, name, mime, size });
+				}
+			}
+			#[cfg(feature = "gpu")]
+			TaggedValue::RenderOutput(RenderOutput {
+				data: RenderOutputType::Buffer { data, width, height },
+				..
+			}) if file_type != FileType::Svg => {
+				responses.add(FrontendMessage::TriggerExportImageBuffer {
+					data,
+					width,
+					height,
+					transparent: transparent_background,
+					name,
+					file_type,
+				});
+			}
+			_ => {
+				return Err(format!("Incorrect render type for exporting to an SVG ({file_type:?}, {node_graph_output})"));
+			}
+		};
 
 		Ok(())
 	}
