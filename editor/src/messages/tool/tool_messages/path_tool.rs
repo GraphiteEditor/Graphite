@@ -362,12 +362,20 @@ impl LayoutHolder for PathTool {
 #[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for PathTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
+		let target_layers: Vec<LayerNodeIdentifier> = context.document.network_interface.selected_nodes().selected_layers(context.document.metadata()).collect();
+		for layer in target_layers {
+			if NodeGraphLayer::is_raster_layer(layer, &mut context.document.network_interface) {
+				context.shape_editor.set_selected_layers(Vec::new());
+			}
+		}
+
 		let selected_layer = context.document.click(context.input);
 		if let Some(layer) = selected_layer {
 			if NodeGraphLayer::is_raster_layer(layer, &mut context.document.network_interface) {
 				return;
 			}
 		}
+
 		let updating_point = message == ToolMessage::Path(PathToolMessage::SelectedPointUpdated);
 
 		match message {
@@ -706,7 +714,7 @@ impl PathToolData {
 	fn mouse_down(
 		&mut self,
 		shape_editor: &mut ShapeState,
-		document: &mut DocumentMessageHandler,
+		document: &DocumentMessageHandler,
 		input: &InputPreprocessorMessageHandler,
 		responses: &mut VecDeque<Message>,
 		extend_selection: bool,
@@ -733,9 +741,6 @@ impl PathToolData {
 		let mut old_selection = HashMap::new();
 
 		for (layer, state) in &shape_editor.selected_shape_state {
-			if NodeGraphLayer::is_raster_layer(*layer, &mut document.network_interface) {
-				return PathToolFsmState::Ready;
-			}
 			let selected_points = state.selected_points().collect::<HashSet<_>>();
 			let selected_segments = state.selected_segments().collect::<HashSet<_>>();
 			old_selection.insert(*layer, (selected_points, selected_segments));
