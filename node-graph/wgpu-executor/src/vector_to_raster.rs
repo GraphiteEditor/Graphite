@@ -22,7 +22,7 @@ impl<'i> Convert<Table<Raster<GPU>>, &'i WgpuExecutor> for Table<Vector> {
 		log::debug!("rasterizing vector data with footprint {footprint:?}");
 
 		let vector = &self;
-		log::debug!("{:?}", vector);
+		log::debug!("{vector:?}");
 
 		// Create a Vello scene for this vector
 		let mut scene = vello::Scene::new();
@@ -33,18 +33,14 @@ impl<'i> Convert<Table<Raster<GPU>>, &'i WgpuExecutor> for Table<Vector> {
 
 		// Render the scene to a GPU texture
 		let resolution = footprint.resolution;
-		let background = core_types::Color::BLACK;
+		let background = core_types::Color::TRANSPARENT;
 
 		// Use async rendering to get the texture
-		let texture = async {
-			executor
-				.render_vello_scene_to_texture(&scene, resolution, &context, background)
-				.await
-				.expect("Failed to render Vello scene to texture")
-		};
+		let texture = executor
+			.render_vello_scene_to_texture(&scene, resolution, &context, background)
+			.await
+			.expect("Failed to render Vello scene to texture");
 
-		// Block on the texture creation (we're in an async context)
-		let texture = futures::executor::block_on(texture);
 		let device = &executor.context.device;
 		let queue = &executor.context.queue;
 		let mut encoder = device.create_command_encoder(&CommandEncoderDescriptor::default());
@@ -70,6 +66,8 @@ impl<'i> Convert<Table<Raster<GPU>>, &'i WgpuExecutor> for Table<Vector> {
 		let command_buffer = encoder.finish();
 		queue.submit([command_buffer]);
 
-		Table::new_from_element(Raster::new_gpu(new_texture))
+		let mut table = Table::new_from_element(Raster::new_gpu(new_texture));
+		*(table.get_mut(0).as_mut().unwrap().transform) = DAffine2::from_scale((texture.width() as f64, texture.height() as f64).into());
+		table
 	}
 }
