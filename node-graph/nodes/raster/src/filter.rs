@@ -6,7 +6,7 @@ use raster_types::Image;
 use raster_types::{Bitmap, BitmapMut};
 use raster_types::{CPU, Raster};
 
-/// Blurs the image with a Gaussian or blur kernel filter.
+/// Blurs the image with a Gaussian, blur kernel or Median filter.
 #[node_macro::node(category("Raster: Filter"))]
 async fn blur(
 	_: impl Ctx,
@@ -18,6 +18,8 @@ async fn blur(
 	radius: PixelLength,
 	/// Use a lower-quality box kernel instead of a circular Gaussian kernel. This is faster but produces boxy artifacts.
 	box_blur: bool,
+	/// Use a median filter instead of a blur. This is good for removing noise while preserving edges, but does not produce a smooth blur effect.
+	median: bool,
 	/// Opt to incorrectly apply the filter with color calculations in gamma space for compatibility with the results from other software.
 	gamma: bool,
 ) -> Table<Raster<CPU>> {
@@ -32,7 +34,10 @@ async fn blur(
 				image.clone()
 			} else if box_blur {
 				Raster::new_cpu(box_blur_algorithm(image.into_data(), radius, gamma))
-			} else {
+			} else if median {
+				Raster::new_cpu(median_filter_algorithm(image.into_data(), radius as u32, gamma))
+			}
+			else {
 				Raster::new_cpu(gaussian_blur_algorithm(image.into_data(), radius, gamma))
 			};
 
@@ -178,4 +183,60 @@ fn box_blur_algorithm(mut original_buffer: Image<Color>, radius: f64, gamma: boo
 	}
 
 	y_axis
+}
+
+fn median_filter_algorithm(mut original_buffer: Image<Color>, radius: u32, gamma: bool) -> Image<Color> {
+	if gamma {
+		original_buffer.map_pixels(|px| px.to_gamma_srgb().to_associated_alpha(px.a()));
+	} else {
+		original_buffer.map_pixels(|px| px.to_associated_alpha(px.a()));
+	}
+
+	let (width, height) = original_buffer.dimensions();
+	let mut output = Image::new(width, height, Color::TRANSPARENT);
+
+	for y in 0..height {
+		for x in 0..width {
+			// Collect pixel neighborhood
+			let mut r_vals = Vec::with_capacity(((2 * radius + 1).pow(2)) as usize);
+			let mut g_vals = Vec::with_capacity(r_vals.capacity());
+			let mut b_vals = Vec::with_capacity(r_vals.capacity());
+			let mut a_vals = Vec::with_capacity(r_vals.capacity());
+
+			for ny in y.saturating_sub(radius)..=(y + radius).min(height - 1) {
+				for nx in x.saturating_sub(radius)..=(x + radius).min(width - 1) {
+					if let Some(px) = original_buffer.get_pixel(nx, ny) {
+						r_vals.push(px.r());
+						g_vals.push(px.g());
+						b_vals.push(px.b());
+						a_vals.push(px.a());
+					}
+				}
+			}
+
+			// Use quickselect instead of sorting for efficiency
+			let r = median_quickselect(&mut r_vals);
+			let g = median_quickselect(&mut g_vals);
+			let b = median_quickselect(&mut b_vals);
+			let a = median_quickselect(&mut a_vals);
+
+			output.set_pixel(x, y, Color::from_rgbaf32_unchecked(r, g, b, a));
+		}
+	}
+
+	if gamma {
+		output.map_pixels(|px| px.to_linear_srgb().to_unassociated_alpha());
+	} else {
+		output.map_pixels(|px| px.to_unassociated_alpha());
+	}
+
+	output
+}
+
+/// Finds the median of a slice using quickselect for efficiency.
+/// This avoids the cost of full sorting (O(n log n)).
+fn median_quickselect(values: &mut [f32]) -> f32 {
+	let mid: usize = values.len() / 2;
+	// nth_unstable is like quickselect: average O(n)
+	*values.select_nth_unstable_by(mid, |a, b| a.partial_cmp(b).unwrap()).1
 }
