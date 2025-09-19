@@ -8,6 +8,7 @@ use graph_craft::{ProtoNodeIdentifier, concrete};
 use graphene_std::registry::*;
 use graphene_std::*;
 use std::collections::{HashMap, HashSet};
+use wgpu_executor::WgpuExecutor;
 
 pub fn expand_network(network: &mut NodeNetwork, substitutions: &HashMap<ProtoNodeIdentifier, DocumentNode>) {
 	if network.generated {
@@ -76,12 +77,20 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 								name: format!("graphene_core::ops::ConvertNode<{}>", input_ty.clone()).into(),
 							};
 
+							let mut context_features = ContextDependencies::default();
 							let proto_node = if into_node_registry.keys().any(|ident: &ProtoNodeIdentifier| ident.name.as_ref() == into_node_identifier.name.as_ref()) {
 								generated_nodes += 1;
 								into_node_identifier
-							} else if into_node_registry.keys().any(|ident| ident.name.as_ref() == convert_node_identifier.name.as_ref()) {
+							} else if let Some(impls) = into_node_registry.get(&convert_node_identifier) {
 								generated_nodes += 1;
-								inputs.push(NodeInput::value(TaggedValue::None, false));
+								let converter = match impls.keys().next() {
+									Some(node_io) if node_io.inputs[1].nested_type() == &concrete!(&WgpuExecutor) => {
+										context_features.extract |= ContextFeatures::FOOTPRINT;
+										NodeInput::scope("wgpu-executor")
+									}
+									_ => NodeInput::value(TaggedValue::None, false),
+								};
+								inputs.push(converter);
 								convert_node_identifier
 							} else {
 								identity_node.clone()
@@ -93,6 +102,7 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 								implementation: DocumentNodeImplementation::ProtoNode(proto_node),
 								visible: true,
 								original_location,
+								context_features,
 								..Default::default()
 							}
 						}

@@ -7,6 +7,7 @@ license = "MIT OR Apache-2.0"
 [dependencies]
 # Local dependencies
 core-types = { workspace = true }
+graphic-types = { workspace = true }
 raster-types = { workspace = true, features = ["wgpu"] }
 graphene-application-io = { workspace = true, features = ["wgpu"] }
 rendering = { workspace = true }
@@ -22,3 +23,4 @@ web-sys = { workspace = true }
 winit = { workspace = true }
 vello = { workspace = true }
 bytemuck = { workspace = true }
+log = { workspace = true }

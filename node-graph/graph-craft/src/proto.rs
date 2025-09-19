@@ -344,7 +344,7 @@ impl ProtoNetwork {
 		let (_, node) = &self.nodes[old_node_id.0 as usize];
 		let mut path = node.original_location.path.clone();
 
-		log::debug!("Inserting context nullification after {:?} with context features: {:?}", node.identifier, context_deps);
+		// log::debug!("Inserting context nullification after {:?} with context features: {:?}", node.identifier, context_deps);
 
 		// Add a path extension with a placeholder value which should not conflict with existing paths
 		if let Some(p) = path.as_mut() {

@@ -1,6 +1,7 @@
 mod context;
 pub mod shader_runtime;
 pub mod texture_conversion;
+pub mod vector_to_raster;
 
 use crate::shader_runtime::ShaderRuntime;
 use anyhow::Result;
