@@ -14,9 +14,7 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 		WindowEvent::PointerMoved { position, .. } | WindowEvent::PointerEntered { position, .. } => {
 			input_state.cursor_move(position);
 
-			let Some(host) = browser.host() else {
-				return;
-			};
+			let Some(host) = browser.host() else { return };
 			host.send_mouse_move_event(Some(&input_state.into()), 0);
 		}
 		WindowEvent::PointerLeft { position, .. } => {
@@ -24,9 +22,7 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 				input_state.cursor_move(position);
 			}
 
-			let Some(host) = browser.host() else {
-				return;
-			};
+			let Some(host) = browser.host() else { return };
 			host.send_mouse_move_event(Some(&input_state.into()), 1);
 		}
 		WindowEvent::PointerButton { state, button, .. } => {
@@ -49,9 +45,7 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 				_ => return, //TODO: Handle Forward and Back button
 			};
 
-			let Some(host) = browser.host() else {
-				return;
-			};
+			let Some(host) = browser.host() else { return };
 			host.send_mouse_click_event(Some(&input_state.into()), cef_button, cef_mouse_up, cef_click_count);
 		}
 		WindowEvent::MouseWheel { delta, phase: _, device_id: _, .. } => {
@@ -63,9 +57,7 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 			delta_x *= SCROLL_SPEED_X;
 			delta_y *= SCROLL_SPEED_Y;
 
-			let Some(host) = browser.host() else {
-				return;
-			};
+			let Some(host) = browser.host() else { return };
 			host.send_mouse_wheel_event(Some(&mouse_event), delta_x as i32, delta_y as i32);
 		}
 		WindowEvent::ModifiersChanged(modifiers) => {
@@ -105,9 +97,7 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 
 			key_event.native_key_code = native_key_code;
 
-			let Some(host) = browser.host() else {
-				return;
-			};
+			let Some(host) = browser.host() else { return };
 
 			match event.state {
 				ElementState::Pressed => {
