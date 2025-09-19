@@ -178,12 +178,14 @@ fn render_glyph_run(glyph_run: &GlyphRun<'_, ()>, path_builder: &mut PathBuilder
 fn layout_text(str: &str, font_data: Option<Blob<u8>>, typesetting: TypesettingConfig) -> Option<Layout<()>> {
 	FONT_CONTEXT.with_borrow_mut(|mut font_cx| {
 		LAYOUT_CONTEXT.with_borrow_mut(|layout_cx| {
-			let font_family = font_data.and_then(|font_data| {
-				font_cx
-					.collection
-					.register_fonts(font_data, None)
-					.first()
-					.and_then(|(family_id, _)| font_cx.collection.family_name(*family_id).map(String::from))
+			let (font_family, font_info) = font_data.and_then(|font_data| {
+				let families = font_cx.collection.register_fonts(font_data, None);
+
+				families.first().and_then(|(family_id, fonts_info)| {
+					fonts_info
+						.first()
+						.and_then(|font_info| font_cx.collection.family_name(*family_id).map(|f| (f.to_string(), font_info.clone())))
+				})
 			})?;
 
 			const DISPLAY_SCALE: f32 = 1.;
@@ -192,6 +194,9 @@ fn layout_text(str: &str, font_data: Option<Blob<u8>>, typesetting: TypesettingC
 			builder.push_default(StyleProperty::FontSize(typesetting.font_size as f32));
 			builder.push_default(StyleProperty::LetterSpacing(typesetting.character_spacing as f32));
 			builder.push_default(StyleProperty::FontStack(parley::FontStack::Single(parley::FontFamily::Named(std::borrow::Cow::Owned(font_family)))));
+			builder.push_default(StyleProperty::FontWeight(font_info.weight()));
+			builder.push_default(StyleProperty::FontStyle(font_info.style()));
+			builder.push_default(StyleProperty::FontWidth(font_info.width()));
 			builder.push_default(LineHeight::FontSizeRelative(typesetting.line_height_ratio as f32));
 
 			let mut layout: Layout<()> = builder.build(str);
