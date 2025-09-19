@@ -4,7 +4,7 @@ pub use graph_craft::wasm_application_io::*;
 use graphene_application_io::{ApplicationIo, ExportFormat, ImageTexture, RenderConfig, SurfaceFrame};
 use graphene_core::gradient::GradientStops;
 use graphene_core::raster::image::Image;
-use graphene_core::raster_types::{CPU, Raster};
+use graphene_core::raster_types::{CPU, GPU, Raster};
 use graphene_core::table::Table;
 use graphene_core::transform::Footprint;
 use graphene_core::vector::Vector;
@@ -38,6 +38,7 @@ async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + 
 		Context -> Table<Graphic>,
 		Context -> Table<Vector>,
 		Context -> Table<Raster<CPU>>,
+		Context -> Table<Raster<GPU>>,
 		Context -> Table<Color>,
 		Context -> Table<GradientStops>,
 	)]
