@@ -9,6 +9,7 @@ use graphene_application_io::{ApplicationIo, ExportFormat, ImageTexture, RenderC
 use graphic_types::Artboard;
 use graphic_types::Graphic;
 use graphic_types::Vector;
+use graphic_types::raster_types::GPU;
 use graphic_types::raster_types::Image;
 use graphic_types::raster_types::{CPU, Raster};
 use rendering::{Render, RenderOutputType as RenderOutputTypeRequest, RenderParams, RenderSvgSegmentList, SvgRender, format_transform_matrix};
@@ -40,6 +41,7 @@ async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + 
 		Context -> Table<Graphic>,
 		Context -> Table<Vector>,
 		Context -> Table<Raster<CPU>>,
+		Context -> Table<Raster<GPU>>,
 		Context -> Table<Color>,
 		Context -> Table<GradientStops>,
 	)]

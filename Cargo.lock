@@ -4352,6 +4352,7 @@ dependencies = [
  "graphene-std",
  "interpreted-executor",
  "log",
+ "wgpu-executor",
 ]
 
 [[package]]
@@ -6950,6 +6951,8 @@ dependencies = [
  "futures",
  "glam",
  "graphene-application-io",
+ "graphic-types",
+ "log",
  "node-macro",
  "raster-types",
  "rendering",
