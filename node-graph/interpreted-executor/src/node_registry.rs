@@ -4,7 +4,6 @@ use graph_craft::document::DocumentNode;
 use graph_craft::document::value::RenderOutput;
 use graph_craft::proto::{NodeConstructor, TypeErasedBox};
 use graphene_std::Artboard;
-use graphene_std::Context;
 use graphene_std::Graphic;
 #[cfg(feature = "gpu")]
 use graphene_std::any::DowncastBothNode;
@@ -27,6 +26,7 @@ use graphene_std::vector::Vector;
 use graphene_std::wasm_application_io::WasmEditorApi;
 #[cfg(feature = "gpu")]
 use graphene_std::wasm_application_io::WasmSurfaceHandle;
+use graphene_std::{Context, ContextFeatures};
 use graphene_std::{Cow, ProtoNodeIdentifier};
 use graphene_std::{NodeIO, NodeIOTypes};
 use graphene_std::{fn_type_fut, future};
@@ -47,9 +47,9 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		// ==========
 		into_node!(from: Table<Graphic>, to: Table<Graphic>),
 		into_node!(from: Table<Vector>, to: Table<Vector>),
-		into_node!(from: Table<Raster<CPU>>, to: Table<Raster<CPU>>),
-		#[cfg(feature = "gpu")]
-		into_node!(from: Table<Raster<GPU>>, to: Table<Raster<GPU>>),
+		// into_node!(from: Table<Raster<CPU>>, to: Table<Raster<CPU>>),
+		// #[cfg(feature = "gpu")]
+		// into_node!(from: Table<Raster<GPU>>, to: Table<Raster<GPU>>),
 		convert_node!(from: Table<Vector>, to: Table<Graphic>),
 		convert_node!(from: Table<Raster<CPU>>, to: Table<Graphic>),
 		#[cfg(feature = "gpu")]
@@ -71,6 +71,8 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		convert_node!(from: Table<Raster<GPU>>, to: Table<Raster<GPU>>, converter: &WgpuExecutor),
 		#[cfg(feature = "gpu")]
 		convert_node!(from: Table<Raster<GPU>>, to: Table<Raster<CPU>>, converter: &WgpuExecutor),
+		#[cfg(feature = "gpu")]
+		convert_node!(from: Table<Vector>, to: Table<Raster<GPU>>, converter: &WgpuExecutor),
 		// =============
 		// MONITOR NODES
 		// =============
@@ -187,6 +189,8 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		#[cfg(feature = "gpu")]
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => WgpuSurface]),
 		#[cfg(feature = "gpu")]
+		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => &WgpuExecutor]),
+		#[cfg(feature = "gpu")]
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => Table<Raster<GPU>>]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => Option<f64>]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => Color]),
@@ -234,6 +238,11 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => path_bool_nodes::BooleanOperation]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => graphene_std::text::TextAlign]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => RenderIntermediate]),
+		// =================
+		// CONTEXT MOD NODES
+		// =================
+		#[cfg(feature = "gpu")]
+		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => &WgpuExecutor, Context => ContextFeatures]),
 		// =======================
 		// CREATE GPU SURFACE NODE
 		// =======================
@@ -418,7 +427,6 @@ mod node_registry_macros {
 			(
 				ProtoNodeIdentifier::new(concat!["graphene_core::ops::ConvertNode<", stringify!($to), ">"]),
 				|mut args| {
-					log::debug!("registering convert from {:?} to {:?} with {:?}", stringify!($from), stringify!($to), stringify!($convert));
 					Box::pin(async move {
 						let mut args = args.drain(..);
 						let node = graphene_std::ops::ConvertNode::new(
@@ -439,7 +447,6 @@ mod node_registry_macros {
 					);
 					let params = vec![fn_type_fut!(Context, $from), fn_type_fut!(Context, $convert)];
 					let node_io = NodeIO::<'_, Context>::to_async_node_io(&node, params);
-					// log::debug!("node io: {:?}", node_io);
 					node_io
 				},
 			)
