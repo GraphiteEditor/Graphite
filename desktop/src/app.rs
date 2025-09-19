@@ -14,6 +14,7 @@ use winit::window::Window;
 use winit::window::WindowId;
 
 use crate::cef;
+use crate::cli::get_cli;
 use crate::consts::CEF_MESSAGE_LOOP_MAX_ITERATIONS;
 use crate::event::{AppEvent, AppEventScheduler};
 use crate::native_window;
@@ -90,6 +91,21 @@ impl App {
 					return;
 				};
 				self.send_or_queue_web_message(bytes);
+			}
+			DesktopFrontendMessage::Init => {
+				tracing::info!("Initializing application...");
+				let cli = get_cli();
+				if let Some(paths) = cli.files.clone() {
+					for path in paths {
+						tracing::info!("Opening file from command line: {}", path.display());
+						if let Ok(content) = std::fs::read(&path) {
+							let message = DesktopWrapperMessage::OpenFile { path, content };
+							self.dispatch_desktop_wrapper_message(message);
+						} else {
+							tracing::error!("Failed to read file: {}", path.display());
+						}
+					}
+				}
 			}
 			DesktopFrontendMessage::OpenFileDialog { title, filters, context } => {
 				let app_event_scheduler = self.app_event_scheduler.clone();

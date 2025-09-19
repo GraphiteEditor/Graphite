@@ -8,6 +8,7 @@ pub(crate) mod consts;
 
 mod app;
 mod cef;
+mod cli;
 mod dirs;
 mod event;
 mod native_window;
@@ -30,6 +31,8 @@ fn main() {
 		tracing::error!("Cef subprocess failed with error: {error}");
 		return;
 	}
+
+	cli::init_cli();
 
 	let wgpu_context = futures::executor::block_on(WgpuContext::new()).unwrap();
 
