@@ -363,11 +363,14 @@ impl LayoutHolder for PathTool {
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for PathTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
 		let target_layers: Vec<LayerNodeIdentifier> = context.document.network_interface.selected_nodes().selected_layers(context.document.metadata()).collect();
+		let mut target_layers_after_filtering: Vec<LayerNodeIdentifier> = Vec::new();
 		for layer in target_layers {
 			if NodeGraphLayer::is_raster_layer(layer, &mut context.document.network_interface) {
-				context.shape_editor.set_selected_layers(Vec::new());
+				continue;
 			}
+			target_layers_after_filtering.push(layer);
 		}
+		context.shape_editor.set_selected_layers(target_layers_after_filtering);
 
 		let selected_layer = context.document.click(context.input);
 		if let Some(layer) = selected_layer {
