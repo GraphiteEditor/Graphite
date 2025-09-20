@@ -36,8 +36,7 @@ async fn blur(
 				Raster::new_cpu(box_blur_algorithm(image.into_data(), radius, gamma))
 			} else if median {
 				Raster::new_cpu(median_filter_algorithm(image.into_data(), radius as u32, gamma))
-			}
-			else {
+			} else {
 				Raster::new_cpu(gaussian_blur_algorithm(image.into_data(), radius, gamma))
 			};
 
@@ -195,16 +194,26 @@ fn median_filter_algorithm(mut original_buffer: Image<Color>, radius: u32, gamma
 	let (width, height) = original_buffer.dimensions();
 	let mut output = Image::new(width, height, Color::TRANSPARENT);
 
+	// Pre-allocate and reuse buffers outside the loops to avoid repeated allocations.
+	let window_capacity = ((2 * radius + 1).pow(2)) as usize;
+	let mut r_vals: Vec<f32> = Vec::with_capacity(window_capacity);
+	let mut g_vals: Vec<f32> = Vec::with_capacity(window_capacity);
+	let mut b_vals: Vec<f32> = Vec::with_capacity(window_capacity);
+	let mut a_vals: Vec<f32> = Vec::with_capacity(window_capacity);
+
 	for y in 0..height {
 		for x in 0..width {
-			// Collect pixel neighborhood
-			let mut r_vals = Vec::with_capacity(((2 * radius + 1).pow(2)) as usize);
-			let mut g_vals = Vec::with_capacity(r_vals.capacity());
-			let mut b_vals = Vec::with_capacity(r_vals.capacity());
-			let mut a_vals = Vec::with_capacity(r_vals.capacity());
+			r_vals.clear();
+			g_vals.clear();
+			b_vals.clear();
+			a_vals.clear();
 
-			for ny in y.saturating_sub(radius)..=(y + radius).min(height - 1) {
-				for nx in x.saturating_sub(radius)..=(x + radius).min(width - 1) {
+			// Use saturating_add to avoid potential overflow in extreme cases
+			let y_max = y.saturating_add(radius).min(height - 1);
+			let x_max = x.saturating_add(radius).min(width - 1);
+
+			for ny in y.saturating_sub(radius)..=y_max {
+				for nx in x.saturating_sub(radius)..=x_max {
 					if let Some(px) = original_buffer.get_pixel(nx, ny) {
 						r_vals.push(px.r());
 						g_vals.push(px.g());
@@ -214,7 +223,6 @@ fn median_filter_algorithm(mut original_buffer: Image<Color>, radius: u32, gamma
 				}
 			}
 
-			// Use quickselect instead of sorting for efficiency
 			let r = median_quickselect(&mut r_vals);
 			let g = median_quickselect(&mut g_vals);
 			let b = median_quickselect(&mut b_vals);
