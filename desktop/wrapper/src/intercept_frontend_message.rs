@@ -64,17 +64,17 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		FrontendMessage::TriggerVisitLink { url } => {
 			dispatcher.respond(DesktopFrontendMessage::OpenUrl(url));
 		}
-		FrontendMessage::UpdateWindowState { maximized, minimized } => {
-			dispatcher.respond(DesktopFrontendMessage::UpdateWindowState { maximized, minimized });
-
-			// Forward this to update the UI
-			return Some(message);
-		}
 		FrontendMessage::DragWindow => {
 			dispatcher.respond(DesktopFrontendMessage::DragWindow);
 		}
 		FrontendMessage::CloseWindow => {
 			dispatcher.respond(DesktopFrontendMessage::CloseWindow);
+		}
+		FrontendMessage::TriggerMinimizeWindow => {
+			dispatcher.respond(DesktopFrontendMessage::MinimizeWindow);
+		}
+		FrontendMessage::TriggerMaximizeWindow => {
+			dispatcher.respond(DesktopFrontendMessage::MaximizeWindow);
 		}
 		FrontendMessage::TriggerPersistenceWriteDocument { document_id, document, details } => {
 			dispatcher.respond(DesktopFrontendMessage::PersistenceWriteDocument {

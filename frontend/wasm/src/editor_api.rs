@@ -307,13 +307,6 @@ impl EditorHandle {
 		}
 	}
 
-	/// Minimizes the application window to the taskbar or dock
-	#[wasm_bindgen(js_name = appWindowMinimize)]
-	pub fn app_window_minimize(&self) {
-		let message = AppWindowMessage::AppWindowMinimize;
-		self.dispatch(message);
-	}
-
 	#[wasm_bindgen(js_name = addPrimaryImport)]
 	pub fn add_primary_import(&self) {
 		self.dispatch(DocumentMessage::AddTransaction);
@@ -336,6 +329,13 @@ impl EditorHandle {
 	pub fn add_secondary_export(&self) {
 		self.dispatch(DocumentMessage::AddTransaction);
 		self.dispatch(NodeGraphMessage::AddSecondaryExport);
+	}
+
+	/// Minimizes the application window to the taskbar or dock
+	#[wasm_bindgen(js_name = appWindowMinimize)]
+	pub fn app_window_minimize(&self) {
+		let message = AppWindowMessage::AppWindowMinimize;
+		self.dispatch(message);
 	}
 
 	/// Toggles minimizing or restoring down the application window
