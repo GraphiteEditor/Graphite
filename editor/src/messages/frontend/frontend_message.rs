@@ -120,6 +120,8 @@ pub enum FrontendMessage {
 	TriggerVisitLink {
 		url: String,
 	},
+	TriggerMinimizeWindow,
+	TriggerMaximizeWindow,
 
 	// Update prefix: give the frontend a new value or state for it to use
 	UpdateActiveDocument {
@@ -339,9 +341,8 @@ pub enum FrontendMessage {
 	UpdatePlatform {
 		platform: AppWindowPlatform,
 	},
-	UpdateWindowState {
+	UpdateMaximized {
 		maximized: bool,
-		minimized: bool,
 	},
 	DragWindow,
 	CloseWindow,

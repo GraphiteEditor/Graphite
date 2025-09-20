@@ -1,7 +1,7 @@
 import { writable } from "svelte/store";
 
 import { type Editor } from "@graphite/editor";
-import { type AppWindowPlatform, UpdatePlatform, UpdateViewportHolePunch, UpdateWindowState } from "@graphite/messages";
+import { type AppWindowPlatform, UpdatePlatform, UpdateViewportHolePunch, UpdateMaximized as UpdateMaximized } from "@graphite/messages";
 
 export function createAppWindowState(editor: Editor) {
 	const { subscribe, update } = writable({
@@ -17,9 +17,9 @@ export function createAppWindowState(editor: Editor) {
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateWindowState, (updateWindowState) => {
+	editor.subscriptions.subscribeJsMessage(UpdateMaximized, (updateMaximized) => {
 		update((state) => {
-			state.maximized = updateWindowState.maximized;
+			state.maximized = updateMaximized.maximized;
 			return state;
 		});
 	});

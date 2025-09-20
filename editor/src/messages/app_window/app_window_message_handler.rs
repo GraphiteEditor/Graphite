@@ -5,8 +5,6 @@ use graphite_proc_macros::{ExtractField, message_handler_data};
 #[derive(Debug, Clone, Default, ExtractField)]
 pub struct AppWindowMessageHandler {
 	platform: AppWindowPlatform,
-	maximized: bool,
-	minimized: bool,
 }
 
 #[message_handler_data]
@@ -14,18 +12,10 @@ impl MessageHandler<AppWindowMessage, ()> for AppWindowMessageHandler {
 	fn process_message(&mut self, message: AppWindowMessage, responses: &mut std::collections::VecDeque<Message>, _: ()) {
 		match message {
 			AppWindowMessage::AppWindowMaximize => {
-				self.maximized = !self.maximized;
-				responses.add(FrontendMessage::UpdateWindowState {
-					maximized: self.maximized,
-					minimized: self.minimized,
-				});
+				responses.add(FrontendMessage::TriggerMaximizeWindow);
 			}
 			AppWindowMessage::AppWindowMinimize => {
-				self.minimized = !self.minimized;
-				responses.add(FrontendMessage::UpdateWindowState {
-					maximized: self.maximized,
-					minimized: self.minimized,
-				});
+				responses.add(FrontendMessage::TriggerMinimizeWindow);
 			}
 			AppWindowMessage::AppWindowUpdatePlatform { platform } => {
 				self.platform = platform;
