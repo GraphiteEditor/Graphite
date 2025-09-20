@@ -24,7 +24,8 @@ impl NativeWindowHandle {
 			.with_title(APP_NAME)
 			.with_min_surface_size(winit::dpi::LogicalSize::new(400, 300))
 			.with_surface_size(winit::dpi::LogicalSize::new(1200, 800))
-			.with_resizable(true);
+			.with_resizable(true)
+			.with_theme(Some(winit::window::Theme::Dark));
 
 		#[cfg(target_os = "linux")]
 		{
@@ -33,7 +34,7 @@ impl NativeWindowHandle {
 			use winit::platform::wayland::WindowAttributesWayland;
 			use winit::platform::x11::WindowAttributesX11;
 			window = if event_loop.is_wayland() {
-				let wayland_window = WindowAttributesWayland::default().with_name(APP_ID, "");
+				let wayland_window = WindowAttributesWayland::default().with_name(APP_ID, "").with_prefer_csd(true);
 				window.with_platform_attributes(Box::new(wayland_window))
 			} else {
 				let x11_window = WindowAttributesX11::default().with_name(APP_ID, APP_NAME);
