@@ -1,7 +1,7 @@
 use graphene_std::Color;
 use graphene_std::raster::Image;
 use graphite_editor::messages::app_window::app_window_message_handler::AppWindowPlatform;
-use graphite_editor::messages::prelude::{AppWindowMessage, DocumentMessage, PortfolioMessage, PreferencesMessage};
+use graphite_editor::messages::prelude::{AppWindowMessage, DocumentMessage, FrontendMessage, PortfolioMessage, PreferencesMessage};
 
 use crate::messages::Platform;
 
@@ -116,6 +116,10 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 				Platform::Linux => AppWindowPlatform::Linux,
 			};
 			let message = AppWindowMessage::AppWindowUpdatePlatform { platform };
+			dispatcher.queue_editor_message(message.into());
+		}
+		DesktopWrapperMessage::UpdateMaximized { maximized } => {
+			let message = FrontendMessage::UpdateMaximized { maximized };
 			dispatcher.queue_editor_message(message.into());
 		}
 		DesktopWrapperMessage::LoadDocument {
