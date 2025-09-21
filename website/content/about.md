@@ -38,9 +38,9 @@ Mission success will come when Graphite is an industry standard. A cohesive prod
 
 ## Funding
 
-Graphite has no investors to answer to and will always be free and open source. [Keavon](#keavon), the project founder, has been personally funding all expenses out-of-pocket and turning down a tech industry salary to work full-time bringing Graphite to life. He asks for [your support](/donate) bearing a small fraction of that cost.
+Graphite is beholden to no investors and will always be free and open source. The project's [founder](#keavon) has been personally funding the organization's expenses and working full-time to bring the project to life. He asks for [your support](/donate) bearing some of the costs.
 
-Long-term, donations will be supplemented by revenue from optional cloud storage/sync and high-speed GPU render services.
+Later on, donations will be supplemented by revenue from operating an asset marketplace for user-created procedural content.
 
 </div>
 
@@ -156,7 +156,7 @@ Dennis is a mix between a mathematician and a mad scientist. While still enjoyin
 
 ## Adam Gerhant <span class="handle">(@pendapia)</span> <img src="https://static.graphite.rs/icons/flags/us.png" class="flag" title="American" />
 
-***Editor graph tooling, node data formats***
+***Editor node graph tooling***
 
 Adam is a pragmatic problem solver with a talent for simplifying complexity. He is responsible for various architectural decisions which provide future proof integrations between the Graphene engine and editor. His work has greatly improved the performance, stability and code quality of the project, while also setting the stage for additional features.
 

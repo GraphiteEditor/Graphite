@@ -84,5 +84,9 @@
 			flex: 0 0 30%;
 			text-align: right;
 		}
+
+		a {
+			color: inherit;
+		}
 	}
 </style>
