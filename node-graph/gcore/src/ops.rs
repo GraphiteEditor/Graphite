@@ -1,6 +1,5 @@
-use graphene_core_shaders::Ctx;
-
 use crate::Node;
+use graphene_core_shaders::Ctx;
 use std::marker::PhantomData;
 
 // TODO: Rename to "Passthrough"

@@ -33,24 +33,24 @@ impl ValueProvider for MathNodeContext {
 
 /// Calculates a mathematical expression with input values "A" and "B"
 #[node_macro::node(category("Math: Arithmetic"), properties("math_properties"))]
-fn math<U: num_traits::float::Float>(
+fn math<T: num_traits::float::Float>(
 	_: impl Ctx,
 	/// The value of "A" when calculating the expression
 	#[implementations(f64, f32)]
-	operand_a: U,
+	operand_a: T,
 	/// A math expression that may incorporate "A" and/or "B", such as "sqrt(A + B) - B^2"
 	#[default(A + B)]
 	expression: String,
 	/// The value of "B" when calculating the expression
 	#[implementations(f64, f32)]
 	#[default(1.)]
-	operand_b: U,
-) -> U {
+	operand_b: T,
+) -> T {
 	let (node, _unit) = match ast::Node::try_parse_from_str(&expression) {
 		Ok(expr) => expr,
 		Err(e) => {
 			warn!("Invalid expression: `{expression}`\n{e:?}");
-			return U::from(0.).unwrap();
+			return T::from(0.).unwrap();
 		}
 	};
 	let context = EvalContext::new(
@@ -65,14 +65,14 @@ fn math<U: num_traits::float::Float>(
 		Ok(value) => value,
 		Err(e) => {
 			warn!("Expression evaluation error: {e:?}");
-			return U::from(0.).unwrap();
+			return T::from(0.).unwrap();
 		}
 	};
 
 	let Value::Number(num) = value;
 	match num {
-		Number::Real(val) => U::from(val).unwrap(),
-		Number::Complex(c) => U::from(c.re).unwrap(),
+		Number::Real(val) => T::from(val).unwrap(),
+		Number::Complex(c) => T::from(c.re).unwrap(),
 	}
 }
 
@@ -109,11 +109,11 @@ fn subtract<U: Sub<T>, T>(
 fn multiply<U: Mul<T>, T>(
 	_: impl Ctx,
 	/// The left-hand side of the multiplication operation.
-	#[implementations(f64, f32, u32, f64, DVec2, DVec2, DAffine2)]
+	#[implementations(f64, f32, u32, DVec2, f64, DVec2, DAffine2)]
 	multiplier: U,
 	/// The right-hand side of the multiplication operation.
 	#[default(1.)]
-	#[implementations(f64, f32, u32, DVec2, f64, DVec2, DAffine2)]
+	#[implementations(f64, f32, u32, DVec2, DVec2, f64, DAffine2)]
 	multiplicand: T,
 ) -> <U as Mul<T>>::Output {
 	multiplier * multiplicand
@@ -126,11 +126,11 @@ fn multiply<U: Mul<T>, T>(
 fn divide<U: Div<T> + Default + PartialEq, T: Default + PartialEq>(
 	_: impl Ctx,
 	/// The left-hand side of the division operation.
-	#[implementations(f64, f64, f32, f32, u32, u32, DVec2, DVec2, f64)]
+	#[implementations(f64, f32, u32, DVec2, DVec2, f64)]
 	numerator: U,
 	/// The right-hand side of the division operation.
 	#[default(1.)]
-	#[implementations(f64, f64, f32, f32, u32, u32, DVec2, f64, DVec2)]
+	#[implementations(f64, f32, u32, DVec2, f64, DVec2)]
 	denominator: T,
 ) -> <U as Div<T>>::Output
 where
@@ -162,58 +162,58 @@ fn modulo<U: Rem<T, Output: Add<T, Output: Rem<T, Output = U::Output>>>, T: Copy
 
 /// The exponent operation (^) calculates the result of raising a number to a power.
 #[node_macro::node(category("Math: Arithmetic"))]
-fn exponent<U: Pow<T>, T>(
+fn exponent<T: Pow<T>>(
 	_: impl Ctx,
 	/// The base number that will be raised to the power.
 	#[implementations(f64, f32, u32)]
-	base: U,
+	base: T,
 	/// The power to which the base number will be raised.
-	#[default(2.)]
 	#[implementations(f64, f32, u32)]
+	#[default(2.)]
 	power: T,
-) -> <U as num_traits::Pow<T>>::Output {
+) -> <T as num_traits::Pow<T>>::Output {
 	base.pow(power)
 }
 
 /// The square root operation (√) calculates the nth root of a number, equivalent to raising the number to the power of 1/n.
 #[node_macro::node(category("Math: Arithmetic"))]
-fn root<U: num_traits::float::Float>(
+fn root<T: num_traits::float::Float>(
 	_: impl Ctx,
 	/// The number for which the nth root will be calculated.
 	#[default(2.)]
 	#[implementations(f64, f32)]
-	radicand: U,
+	radicand: T,
 	/// The degree of the root to be calculated. Square root is 2, cube root is 3, and so on.
 	#[default(2.)]
 	#[implementations(f64, f32)]
-	degree: U,
-) -> U {
-	if degree == U::from(2.).unwrap() {
+	degree: T,
+) -> T {
+	if degree == T::from(2.).unwrap() {
 		radicand.sqrt()
-	} else if degree == U::from(3.).unwrap() {
+	} else if degree == T::from(3.).unwrap() {
 		radicand.cbrt()
 	} else {
-		radicand.powf(U::from(1.).unwrap() / degree)
+		radicand.powf(T::from(1.).unwrap() / degree)
 	}
 }
 
 /// The logarithmic function (log) calculates the logarithm of a number with a specified base. If the natural logarithm function (ln) is desired, set the base to "e".
 #[node_macro::node(category("Math: Arithmetic"))]
-fn logarithm<U: num_traits::float::Float>(
+fn logarithm<T: num_traits::float::Float>(
 	_: impl Ctx,
 	/// The number for which the logarithm will be calculated.
 	#[implementations(f64, f32)]
-	value: U,
+	value: T,
 	/// The base of the logarithm, such as 2 (binary), 10 (decimal), and e (natural logarithm).
 	#[default(2.)]
 	#[implementations(f64, f32)]
-	base: U,
-) -> U {
-	if base == U::from(2.).unwrap() {
+	base: T,
+) -> T {
+	if base == T::from(2.).unwrap() {
 		value.log2()
-	} else if base == U::from(10.).unwrap() {
+	} else if base == T::from(10.).unwrap() {
 		value.log10()
-	} else if base - U::from(std::f64::consts::E).unwrap() < U::epsilon() * U::from(1e6).unwrap() {
+	} else if base - T::from(std::f64::consts::E).unwrap() < T::epsilon() * T::from(1e6).unwrap() {
 		value.ln()
 	} else {
 		value.log(base)
@@ -222,66 +222,66 @@ fn logarithm<U: num_traits::float::Float>(
 
 /// The sine trigonometric function (sin) calculates the ratio of the angle's opposite side length to its hypotenuse length.
 #[node_macro::node(category("Math: Trig"))]
-fn sine<U: num_traits::float::Float>(
+fn sine<T: num_traits::float::Float>(
 	_: impl Ctx,
 	/// The given angle.
 	#[implementations(f64, f32)]
-	theta: U,
+	theta: T,
 	/// Whether the given angle should be interpreted as radians instead of degrees.
 	radians: bool,
-) -> U {
+) -> T {
 	if radians { theta.sin() } else { theta.to_radians().sin() }
 }
 
 /// The cosine trigonometric function (cos) calculates the ratio of the angle's adjacent side length to its hypotenuse length.
 #[node_macro::node(category("Math: Trig"))]
-fn cosine<U: num_traits::float::Float>(
+fn cosine<T: num_traits::float::Float>(
 	_: impl Ctx,
 	/// The given angle.
 	#[implementations(f64, f32)]
-	theta: U,
+	theta: T,
 	/// Whether the given angle should be interpreted as radians instead of degrees.
 	radians: bool,
-) -> U {
+) -> T {
 	if radians { theta.cos() } else { theta.to_radians().cos() }
 }
 
 /// The tangent trigonometric function (tan) calculates the ratio of the angle's opposite side length to its adjacent side length.
 #[node_macro::node(category("Math: Trig"))]
-fn tangent<U: num_traits::float::Float>(
+fn tangent<T: num_traits::float::Float>(
 	_: impl Ctx,
 	/// The given angle.
 	#[implementations(f64, f32)]
-	theta: U,
+	theta: T,
 	/// Whether the given angle should be interpreted as radians instead of degrees.
 	radians: bool,
-) -> U {
+) -> T {
 	if radians { theta.tan() } else { theta.to_radians().tan() }
 }
 
 /// The inverse sine trigonometric function (asin) calculates the angle whose sine is the specified value.
 #[node_macro::node(category("Math: Trig"))]
-fn sine_inverse<U: num_traits::float::Float>(
+fn sine_inverse<T: num_traits::float::Float>(
 	_: impl Ctx,
 	/// The given value for which the angle will be calculated. Must be in the range [-1, 1] or else the result will be NaN.
 	#[implementations(f64, f32)]
-	value: U,
+	value: T,
 	/// Whether the resulting angle should be given in as radians instead of degrees.
 	radians: bool,
-) -> U {
+) -> T {
 	if radians { value.asin() } else { value.asin().to_degrees() }
 }
 
 /// The inverse cosine trigonometric function (acos) calculates the angle whose cosine is the specified value.
 #[node_macro::node(category("Math: Trig"))]
-fn cosine_inverse<U: num_traits::float::Float>(
+fn cosine_inverse<T: num_traits::float::Float>(
 	_: impl Ctx,
 	/// The given value for which the angle will be calculated. Must be in the range [-1, 1] or else the result will be NaN.
 	#[implementations(f64, f32)]
-	value: U,
+	value: T,
 	/// Whether the resulting angle should be given in as radians instead of degrees.
 	radians: bool,
-) -> U {
+) -> T {
 	if radians { value.acos() } else { value.acos().to_degrees() }
 }
 
@@ -289,16 +289,16 @@ fn cosine_inverse<U: num_traits::float::Float>(
 /// atan: the angle whose tangent is the specified scalar number.
 /// atan2: the angle of a ray from the origin to the specified vec2.
 ///
-/// The resulting angle is always in the range [0°, 180°] or, in radians, [-π/2, π/2].
+/// The resulting angle is always in the range [-90°, 90°] or, in radians, [-π/2, π/2].
 #[node_macro::node(category("Math: Trig"))]
-fn tangent_inverse<U: TangentInverse>(
+fn tangent_inverse<T: TangentInverse>(
 	_: impl Ctx,
 	/// The given value for which the angle will be calculated.
 	#[implementations(f64, f32, DVec2)]
-	value: U,
+	value: T,
 	/// Whether the resulting angle should be given in as radians instead of degrees.
 	radians: bool,
-) -> U::Output {
+) -> T::Output {
 	value.atan(radians)
 }
 
@@ -327,88 +327,86 @@ impl TangentInverse for DVec2 {
 
 /// The random function (rand) converts a seed into a random number within the specified range, inclusive of the minimum and exclusive of the maximum. The minimum and maximum values are automatically swapped if they are reversed.
 #[node_macro::node(category("Math: Numeric"))]
-fn random<U: num_traits::float::Float>(
+fn random(
 	_: impl Ctx,
 	_primary: (),
 	/// Seed to determine the unique variation of which number will be generated.
 	seed: u64,
 	/// The smaller end of the range within which the random number will be generated.
-	#[implementations(f64, f32)]
 	#[default(0.)]
-	min: U,
+	min: f64,
 	/// The larger end of the range within which the random number will be generated.
-	#[implementations(f64, f32)]
 	#[default(1.)]
-	max: U,
+	max: f64,
 ) -> f64 {
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed);
 	let result = rng.random::<f64>();
 	let (min, max) = if min < max { (min, max) } else { (max, min) };
-	let (min, max) = (min.to_f64().unwrap(), max.to_f64().unwrap());
 	result * (max - min) + min
 }
 
-/// Convert a number to an integer of the type u32, which may be the required type for certain node inputs. This will be removed in the future when automatic type conversion is implemented.
-#[node_macro::node(name("To u32"), category("Type Conversion"))]
-fn to_u32<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f64, f32)] value: U) -> u32 {
-	let value = U::clamp(value, U::from(0.).unwrap(), U::from(u32::MAX as f64).unwrap());
-	value.to_u32().unwrap()
+// TODO: Test that these are no longer needed in all circumstances, then remove them and add a migration to convert these into Passthrough nodes. Note: these act more as type annotations than as identity functions.
+/// Convert a number to an integer of the type u32, which may be the required type for certain node inputs.
+#[node_macro::node(name("To u32"), category("Debug"))]
+fn to_u32(_: impl Ctx, value: u32) -> u32 {
+	value
 }
 
-/// Convert a number to an integer of the type u64, which may be the required type for certain node inputs. This will be removed in the future when automatic type conversion is implemented.
-#[node_macro::node(name("To u64"), category("Type Conversion"))]
-fn to_u64<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f64, f32)] value: U) -> u64 {
-	let value = U::clamp(value, U::from(0.).unwrap(), U::from(u64::MAX as f64).unwrap());
-	value.to_u64().unwrap()
+// TODO: Test that these are no longer needed in all circumstances, then remove them and add a migration to convert these into Passthrough nodes. Note: these act more as type annotations than as identity functions.
+/// Convert a number to an integer of the type u64, which may be the required type for certain node inputs.
+#[node_macro::node(name("To u64"), category("Debug"))]
+fn to_u64(_: impl Ctx, value: u64) -> u64 {
+	value
 }
 
-/// Convert an integer to a decimal number of the type f64, which may be the required type for certain node inputs. This will be removed in the future when automatic type conversion is implemented.
-#[node_macro::node(name("To f64"), category("Type Conversion"))]
-fn to_f64<U: num_traits::int::PrimInt>(_: impl Ctx, #[implementations(u32, u64)] value: U) -> f64 {
-	value.to_f64().unwrap()
+// TODO: Test that these are no longer needed in all circumstances, then remove them and add a migration to convert these into Passthrough nodes. Note: these act more as type annotations than as identity functions.
+/// Convert an integer to a decimal number of the type f64, which may be the required type for certain node inputs.
+#[node_macro::node(name("To f64"), category("Debug"))]
+fn to_f64(_: impl Ctx, value: f64) -> f64 {
+	value
 }
 
 /// The rounding function (round) maps an input value to its nearest whole number. Halfway values are rounded away from zero.
 #[node_macro::node(category("Math: Numeric"))]
-fn round<U: num_traits::float::Float>(
+fn round<T: num_traits::float::Float>(
 	_: impl Ctx,
 	/// The number which will be rounded.
 	#[implementations(f64, f32)]
-	value: U,
-) -> U {
+	value: T,
+) -> T {
 	value.round()
 }
 
 /// The floor function (floor) rounds down an input value to the nearest whole number, unless the input number is already whole.
 #[node_macro::node(category("Math: Numeric"))]
-fn floor<U: num_traits::float::Float>(
+fn floor<T: num_traits::float::Float>(
 	_: impl Ctx,
 	/// The number which will be rounded down.
 	#[implementations(f64, f32)]
-	value: U,
-) -> U {
+	value: T,
+) -> T {
 	value.floor()
 }
 
 /// The ceiling function (ceil) rounds up an input value to the nearest whole number, unless the input number is already whole.
 #[node_macro::node(category("Math: Numeric"))]
-fn ceiling<U: num_traits::float::Float>(
+fn ceiling<T: num_traits::float::Float>(
 	_: impl Ctx,
 	/// The number which will be rounded up.
 	#[implementations(f64, f32)]
-	value: U,
-) -> U {
+	value: T,
+) -> T {
 	value.ceil()
 }
 
 /// The absolute value function (abs) removes the negative sign from an input value, if present.
 #[node_macro::node(category("Math: Numeric"))]
-fn absolute_value<U: num_traits::float::Float>(
+fn absolute_value<T: num_traits::sign::Signed>(
 	_: impl Ctx,
 	/// The number which will be made positive.
-	#[implementations(f64, f32)]
-	value: U,
-) -> U {
+	#[implementations(f64, f32, i32, i64)]
+	value: T,
+) -> T {
 	value.abs()
 }
 
@@ -540,28 +538,28 @@ fn binary_gcd<T: num_traits::int::PrimInt + std::ops::ShrAssign<i32> + std::ops:
 
 /// The equality operation (==) compares two values and returns true if they are equal, or false if they are not.
 #[node_macro::node(category("Math: Logic"))]
-fn equals<U: std::cmp::PartialEq<T>, T>(
+fn equals<T: std::cmp::PartialEq<T>>(
 	_: impl Ctx,
 	/// One of the two numbers to compare for equality.
 	#[implementations(f64, f32, u32, DVec2, &str, String)]
 	value: T,
 	/// The other of the two numbers to compare for equality.
 	#[implementations(f64, f32, u32, DVec2, &str, String)]
-	other_value: U,
+	other_value: T,
 ) -> bool {
 	other_value == value
 }
 
 /// The inequality operation (!=) compares two values and returns true if they are not equal, or false if they are.
 #[node_macro::node(category("Math: Logic"))]
-fn not_equals<U: std::cmp::PartialEq<T>, T>(
+fn not_equals<T: std::cmp::PartialEq<T>>(
 	_: impl Ctx,
 	/// One of the two numbers to compare for inequality.
 	#[implementations(f64, f32, u32, DVec2, &str)]
 	value: T,
 	/// The other of the two numbers to compare for inequality.
 	#[implementations(f64, f32, u32, DVec2, &str)]
-	other_value: U,
+	other_value: T,
 ) -> bool {
 	other_value != value
 }

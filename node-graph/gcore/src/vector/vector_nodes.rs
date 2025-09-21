@@ -1211,10 +1211,10 @@ async fn position_on_path(
 	let euclidian = !parameterized_distance;
 
 	let mut bezpaths = content
-		.into_iter()
+		.iter()
 		.flat_map(|vector| {
-			let transform = vector.transform;
-			vector.element.stroke_bezpath_iter().map(|bezpath| (bezpath, transform)).collect::<Vec<_>>()
+			let transform = *vector.transform;
+			vector.element.stroke_bezpath_iter().map(move |bezpath| (bezpath, transform))
 		})
 		.collect::<Vec<_>>();
 	let bezpath_count = bezpaths.len() as f64;
@@ -1246,14 +1246,16 @@ async fn tangent_on_path(
 	reverse: bool,
 	/// Traverse the path using each segment's Bézier curve parameterization instead of the Euclidean distance. Faster to compute but doesn't respect actual distances.
 	parameterized_distance: bool,
+	/// Whether the resulting angle should be given in as radians instead of degrees.
+	radians: bool,
 ) -> f64 {
 	let euclidian = !parameterized_distance;
 
 	let mut bezpaths = content
-		.into_iter()
+		.iter()
 		.flat_map(|vector| {
-			let transform = vector.transform;
-			vector.element.stroke_bezpath_iter().map(|bezpath| (bezpath, transform)).collect::<Vec<_>>()
+			let transform = *vector.transform;
+			vector.element.stroke_bezpath_iter().map(move |bezpath| (bezpath, transform))
 		})
 		.collect::<Vec<_>>();
 	let bezpath_count = bezpaths.len() as f64;
@@ -1261,7 +1263,7 @@ async fn tangent_on_path(
 	let progress = if reverse { bezpath_count - progress } else { progress };
 	let index = if progress >= bezpath_count { (bezpath_count - 1.) as usize } else { progress as usize };
 
-	bezpaths.get_mut(index).map_or(0., |(bezpath, transform)| {
+	let angle = bezpaths.get_mut(index).map_or(0., |(bezpath, transform)| {
 		let t = if progress == bezpath_count { 1. } else { progress.fract() };
 		let t_value = |t: f64| if euclidian { TValue::Euclidean(t) } else { TValue::Parametric(t) };
 
@@ -1277,7 +1279,9 @@ async fn tangent_on_path(
 		}
 
 		-tangent.angle_to(if reverse { -DVec2::X } else { DVec2::X })
-	})
+	});
+
+	if radians { angle } else { angle.to_degrees() }
 }
 
 #[node_macro::node(category(""), path(graphene_core::vector))]

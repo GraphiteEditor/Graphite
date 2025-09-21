@@ -9,9 +9,9 @@ use crate::vector::Vector;
 use crate::{Context, Ctx};
 use glam::{DAffine2, DVec2};
 
-#[node_macro::node(category("Type Conversion"))]
-fn to_string<T: std::fmt::Debug>(_: impl Ctx, #[implementations(bool, f64, u32, u64, DVec2, DAffine2, String)] value: T) -> String {
-	format!("{value:?}")
+#[node_macro::node(category("Debug"))]
+fn to_string(_: impl Ctx, value: String) -> String {
+	value
 }
 
 #[node_macro::node(category("Text"))]
@@ -34,10 +34,24 @@ fn string_replace(_: impl Ctx, string: String, from: TextArea, to: TextArea) -> 
 
 #[node_macro::node(category("Text"))]
 fn string_slice(_: impl Ctx, string: String, start: f64, end: f64) -> String {
-	let start = if start < 0. { string.len() - start.abs() as usize } else { start as usize };
-	let end = if end <= 0. { string.len() - end.abs() as usize } else { end as usize };
-	let n = end.saturating_sub(start);
-	string.char_indices().skip(start).take(n).map(|(_, c)| c).collect()
+	let total_chars = string.chars().count();
+
+	let start = if start < 0. {
+		total_chars.saturating_sub(start.abs() as usize)
+	} else {
+		(start as usize).min(total_chars)
+	};
+	let end = if end <= 0. {
+		total_chars.saturating_sub(end.abs() as usize)
+	} else {
+		(end as usize).min(total_chars)
+	};
+
+	if start >= end {
+		return String::new();
+	}
+
+	string.chars().skip(start).take(end - start).collect()
 }
 
 // TODO: Return u32, u64, or usize instead of f64 after #1621 is resolved and has allowed us to implement automatic type conversion in the node graph for nodes with generic type inputs.
