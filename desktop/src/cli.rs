@@ -1,5 +1,4 @@
 use std::path::PathBuf;
-use std::sync::OnceLock;
 
 use clap::{Parser, ValueEnum};
 
@@ -17,15 +16,4 @@ pub struct Cli {
 
 	#[arg(long, value_enum, default_value_t = UIAceleratedPainting::Auto,  help = "Enable UI accelerated painting using GPU")]
 	pub ui_accelerated_painting: UIAceleratedPainting,
-}
-
-static CLI: OnceLock<Cli> = OnceLock::new();
-
-pub fn init_cli() -> &'static Cli {
-	CLI.set(Cli::parse()).ok();
-	CLI.get().expect("CLI should be initialized")
-}
-
-pub fn get_cli() -> &'static Cli {
-	CLI.get().expect("CLI should be initialized")
 }

@@ -14,7 +14,6 @@ use winit::window::Window;
 use winit::window::WindowId;
 
 use crate::cef;
-use crate::cli::get_cli;
 use crate::consts::CEF_MESSAGE_LOOP_MAX_ITERATIONS;
 use crate::event::{AppEvent, AppEventScheduler};
 use crate::native_window;
@@ -40,6 +39,7 @@ pub(crate) struct App {
 	web_communication_initialized: bool,
 	web_communication_startup_buffer: Vec<Vec<u8>>,
 	persistent_data: PersistentData,
+	cli_files: Option<Vec<std::path::PathBuf>>,
 }
 
 impl App {
@@ -49,6 +49,7 @@ impl App {
 		wgpu_context: WgpuContext,
 		app_event_receiver: Receiver<AppEvent>,
 		app_event_scheduler: AppEventScheduler,
+		cli_files: Option<Vec<std::path::PathBuf>>,
 	) -> Self {
 		let rendering_app_event_scheduler = app_event_scheduler.clone();
 		let (start_render_sender, start_render_receiver) = std::sync::mpsc::sync_channel(1);
@@ -80,6 +81,7 @@ impl App {
 			web_communication_startup_buffer: Vec::new(),
 			persistent_data,
 			native_window: Default::default(),
+			cli_files,
 		}
 	}
 
@@ -94,8 +96,7 @@ impl App {
 			}
 			DesktopFrontendMessage::Init => {
 				tracing::info!("Initializing application...");
-				let cli = get_cli();
-				if let Some(paths) = cli.files.clone() {
+				if let Some(paths) = self.cli_files.clone() {
 					for path in paths {
 						tracing::info!("Opening file from command line: {}", path.display());
 						if let Ok(content) = std::fs::read(&path) {
