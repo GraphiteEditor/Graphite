@@ -1,4 +1,4 @@
-use super::utility_types::{OverlayContext, OverlayContextInternal, OverlayProvider, OverlaysVisibilitySettings};
+use super::utility_types::{OverlayContext, OverlayProvider, OverlaysVisibilitySettings};
 use crate::messages::prelude::*;
 
 #[derive(ExtractField)]
