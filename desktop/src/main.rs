@@ -27,7 +27,7 @@ fn main() {
 		// We are in a CEF subprocess
 		// This will block until the CEF subprocess quits
 		let error = cef_context_builder.execute_sub_process();
-		tracing::debug!("Cef subprocess failed with error: {error}");
+		tracing::warn!("Cef subprocess failed with error: {error}");
 		return;
 	}
 
