@@ -1,4 +1,4 @@
-use super::utility_types::{OverlayProvider, OverlaysVisibilitySettings};
+use super::utility_types::{OverlayContext, OverlayContextInternal, OverlayProvider, OverlaysVisibilitySettings};
 use crate::messages::prelude::*;
 
 #[derive(ExtractField)]
@@ -15,6 +15,8 @@ pub struct OverlaysMessageHandler {
 	canvas: Option<web_sys::HtmlCanvasElement>,
 	#[cfg(target_family = "wasm")]
 	context: Option<web_sys::CanvasRenderingContext2d>,
+	#[cfg(not(target_family = "wasm"))]
+	context: Option<OverlayContext>,
 }
 
 #[message_handler_data]
@@ -80,7 +82,11 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 
 				let size = ipp.viewport_bounds.size();
 
-				let overlay_context = OverlayContext::new(size, device_pixel_ratio, visibility_settings);
+				if self.context.is_none() {
+					self.context = Some(OverlayContext::new(size, device_pixel_ratio, visibility_settings));
+				}
+
+				let overlay_context = self.context.as_mut().unwrap();
 
 				if visibility_settings.all() {
 					responses.add(DocumentMessage::GridOverlays { context: overlay_context.clone() });
@@ -89,7 +95,7 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 						responses.add(provider(overlay_context.clone()));
 					}
 				}
-				responses.add(FrontendMessage::RenderOverlays { context: overlay_context });
+				responses.add(FrontendMessage::RenderOverlays { context: overlay_context.clone() });
 			}
 			#[cfg(all(not(target_family = "wasm"), test))]
 			OverlaysMessage::Draw => {

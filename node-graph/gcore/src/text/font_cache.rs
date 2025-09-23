@@ -1,5 +1,7 @@
 use dyn_any::DynAny;
+use parley::fontique::Blob;
 use std::collections::HashMap;
+use std::sync::Arc;
 
 /// A font type (storing font family and font style and an optional preview URL)
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Hash, PartialEq, Eq, DynAny, specta::Type)]
@@ -52,6 +54,11 @@ impl FontCache {
 	/// Try to get the bytes for a font
 	pub fn get(&self, font: &Font) -> Option<&Vec<u8>> {
 		self.resolve_font(font).and_then(|font| self.font_file_data.get(font))
+	}
+
+	/// Get font data as a Blob for use with parley/skrifa
+	pub fn get_blob(&self, font: &Font) -> Option<Blob<u8>> {
+		self.get(font).map(|data| Blob::new(Arc::new(data.clone())))
 	}
 
 	/// Check if the font is already loaded
