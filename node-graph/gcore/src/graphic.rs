@@ -338,7 +338,7 @@ async fn wrap_graphic<T: Into<Graphic> + 'n>(
 
 /// Converts a table of graphical content into a graphic table by placing it into an element of a new wrapper graphic table.
 /// If it is already a graphic table, it is not wrapped again. Use the 'Wrap Graphic' node if wrapping is always desired.
-#[node_macro::node(category("Type Conversion"))]
+#[node_macro::node(category("General"))]
 async fn to_graphic<T: Into<Table<Graphic>> + 'n>(
 	_: impl Ctx,
 	#[implementations(

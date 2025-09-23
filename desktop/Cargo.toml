@@ -26,7 +26,7 @@ graphite-desktop-wrapper = { path = "wrapper" }
 graphite-desktop-embedded-resources = { path = "embedded-resources", optional = true }
 
 wgpu = { workspace = true }
-winit = { workspace = true, features = [ "serde" ] }
+winit = { workspace = true, features = [ "wayland-csd-adwaita-notitlebar", "serde" ] }
 thiserror = { workspace = true }
 futures = { workspace = true }
 cef = { workspace = true }

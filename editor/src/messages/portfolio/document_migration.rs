@@ -784,6 +784,22 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::Bool(true), false), network_path);
 	}
 
+	// Upgrade the 'Tangent on Path' node to include a boolean input for whether the output should be in radians, which was previously the only option but is now not the default
+	if (reference == "Tangent on Path") && inputs_count == 4 {
+		let mut node_template = resolve_document_node_type(reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[2].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node(*node_id, 3), old_inputs[3].clone(), network_path);
+		document
+			.network_interface
+			.set_input(&InputConnector::node(*node_id, 4), NodeInput::value(TaggedValue::Bool(true), false), network_path);
+	}
+
 	// Upgrade the Modulo node to include a boolean input for whether the output should be always positive, which was previously not an option
 	if reference == "Modulo" && inputs_count == 2 {
 		let mut node_template = resolve_document_node_type(reference)?.default_node_template();
@@ -1044,6 +1060,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	if reference == "Instance Index" && inputs_count == 0 {
 		let mut node_template = resolve_document_node_type(reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		document.network_interface.set_display_name(node_id, "Instance Index".to_string(), network_path);
 
 		let mut node_path = network_path.to_vec();
 		node_path.push(*node_id);
@@ -1054,6 +1071,30 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 	// Migrate the Transform node to use degrees instead of radians
 	if reference == "Transform" && node.inputs.get(6).is_none() {
+		let mut node_template = resolve_document_node_type("Transform")?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		// Value
+		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+		// Translation
+		document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
+		// Rotation
+		document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[2].clone(), network_path);
+		// Scale
+		document.network_interface.set_input(&InputConnector::node(*node_id, 3), old_inputs[3].clone(), network_path);
+		// Skew
+		document.network_interface.set_input(&InputConnector::node(*node_id, 4), old_inputs[4].clone(), network_path);
+		// Origin Offset
+		document
+			.network_interface
+			.set_input(&InputConnector::node(*node_id, 5), NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false), network_path);
+		// Scale Appearance
+		document
+			.network_interface
+			.set_input(&InputConnector::node(*node_id, 6), NodeInput::value(TaggedValue::Bool(true), false), network_path);
+
 		// Migrate rotation from radians to degrees
 		match node.inputs.get(2)? {
 			NodeInput::Value { tagged_value, exposed } => {
@@ -1098,31 +1139,6 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			let new_value = DVec2::new(old_value.x.atan().to_degrees(), old_value.y.atan().to_degrees());
 			let new_input = NodeInput::value(TaggedValue::DVec2(new_value), *exposed);
 			document.network_interface.set_input(&InputConnector::node(*node_id, 4), new_input, network_path);
-		}
-
-		if document
-			.network_interface
-			.node_metadata(node_id, network_path)
-			.map(|x| x.persistent_metadata.input_metadata.len() > 5)
-			.unwrap_or_default()
-		{
-			// Remove the possible existence of the old "Pivot" hidden value input that was removed in #2730
-			let nested_transform_network = [network_path, &[*node_id]].concat();
-			if node.inputs.get(5).is_some() {
-				document.network_interface.remove_import(5, &nested_transform_network);
-			}
-
-			// Add the Origin Offset parameter as a hidden input, which will be given actual functionality in the future but is currently used as a marker to detect not-yet-upgraded Transform nodes
-			document
-				.network_interface
-				.add_import(TaggedValue::DVec2(DVec2::ZERO), false, 5, "Origin Offset", "", &nested_transform_network);
-			document.network_interface.set_input_override(node_id, 5, Some("hidden".to_string()), network_path); // Hide it while we're not yet using it
-
-			// Add the Scale Appearance parameter as a hidden input, which will be given actual functionality in the future but is currently used as a marker to detect not-yet-upgraded Transform nodes
-			document
-				.network_interface
-				.add_import(TaggedValue::Bool(true), false, 6, "Scale Appearance", "", &nested_transform_network);
-			document.network_interface.set_input_override(node_id, 6, Some("hidden".to_string()), network_path); // Hide it while we're not yet using it
 		}
 	}
 

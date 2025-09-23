@@ -1002,10 +1002,7 @@ impl NodeNetworkInterface {
 			.outward_wires(network_path)
 			.and_then(|outward_wires| outward_wires.get(output_connector))
 			.cloned()
-			.unwrap_or_else(|| {
-				log::error!("Could not get {output_connector:?} in outward wires");
-				Vec::new()
-			})
+			.unwrap_or_default()
 			.iter()
 			.map(|input| match input {
 				InputConnector::Node { node_id, input_index } => {
@@ -6470,7 +6467,7 @@ pub struct NodeNetworkTransientMetadata {
 	pub stack_dependents: TransientMetadata<HashMap<NodeId, LayerOwner>>,
 	/// Cache for the bounding box around all nodes in node graph space.
 	pub all_nodes_bounding_box: TransientMetadata<[DVec2; 2]>,
-	/// Cache bounding box for all "groups of nodes", which will be used to prevent overlapping nodes
+	// /// Cache bounding box for all "groups of nodes", which will be used to prevent overlapping nodes
 	// node_group_bounding_box: Vec<(Subpath<ManipulatorGroupId>, Vec<Nodes>)>,
 	/// Cache for all outward wire connections
 	pub outward_wires: TransientMetadata<HashMap<OutputConnector, Vec<InputConnector>>>,

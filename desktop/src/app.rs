@@ -183,10 +183,15 @@ impl App {
 					graphics_state.set_overlays_scene(scene);
 				}
 			}
-			DesktopFrontendMessage::UpdateWindowState { maximized, minimized } => {
+			DesktopFrontendMessage::MinimizeWindow => {
 				if let Some(window) = &self.window {
+					window.set_minimized(true);
+				}
+			}
+			DesktopFrontendMessage::MaximizeWindow => {
+				if let Some(window) = &self.window {
+					let maximized = !window.is_maximized();
 					window.set_maximized(maximized);
-					window.set_minimized(minimized);
 				}
 			}
 			DesktopFrontendMessage::DragWindow => {
@@ -369,6 +374,10 @@ impl ApplicationHandler for App {
 			WindowEvent::SurfaceResized(size) => {
 				let _ = self.cef_window_size_sender.send(size.into());
 				self.cef_context.notify_of_resize();
+				if let Some(window) = &self.window {
+					let maximized = window.is_maximized();
+					self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(DesktopWrapperMessage::UpdateMaximized { maximized }));
+				}
 			}
 			WindowEvent::RedrawRequested => {
 				let Some(ref mut graphics_state) = self.graphics_state else { return };

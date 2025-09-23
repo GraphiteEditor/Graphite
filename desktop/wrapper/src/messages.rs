@@ -33,10 +33,8 @@ pub enum DesktopFrontendMessage {
 		height: f32,
 	},
 	UpdateOverlays(vello::Scene),
-	UpdateWindowState {
-		maximized: bool,
-		minimized: bool,
-	},
+	MinimizeWindow,
+	MaximizeWindow,
 	DragWindow,
 	CloseWindow,
 	PersistenceWriteDocument {
@@ -93,6 +91,9 @@ pub enum DesktopWrapperMessage {
 	},
 	PollNodeGraphEvaluation,
 	UpdatePlatform(Platform),
+	UpdateMaximized {
+		maximized: bool,
+	},
 	LoadDocument {
 		id: DocumentId,
 		document: Document,
