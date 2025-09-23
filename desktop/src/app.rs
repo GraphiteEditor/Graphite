@@ -236,10 +236,9 @@ impl App {
 				self.persistent_data.write_preferences(preferences);
 			}
 			DesktopFrontendMessage::PersistenceLoadPreferences => {
-				if let Some(preferences) = self.persistent_data.load_preferences() {
-					let message = DesktopWrapperMessage::LoadPreferences { preferences };
-					self.dispatch_desktop_wrapper_message(message);
-				}
+				let preferences = self.persistent_data.load_preferences();
+				let message = DesktopWrapperMessage::LoadPreferences { preferences };
+				self.dispatch_desktop_wrapper_message(message);
 			}
 		}
 	}
