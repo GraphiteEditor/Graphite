@@ -10,6 +10,8 @@ mod render_process_v8_handler;
 mod resource_handler;
 mod scheme_handler_factory;
 
+mod display_handler;
+
 pub(super) mod render_handler;
 pub(super) mod task;
 
