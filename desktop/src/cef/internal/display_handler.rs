@@ -24,16 +24,14 @@ impl ImplDisplayHandler for DisplayHandlerImpl {
 		let message = message.map(|m| m.to_string()).unwrap_or_default();
 		let source = source.map(|s| s.to_string()).unwrap_or_default();
 		let line = line as i64;
-		// TODO: hide this files location in the log
+		let browser_source = format!("{source}:{line}");
+		static BROWSER: &str = "browser";
 		match level.as_ref() {
-			LOGSEVERITY_FATAL => tracing::error!("Console [{}:{}]: {}", source, line, message),
-			LOGSEVERITY_ERROR => tracing::error!("Console [{}:{}]: {}", source, line, message),
-			LOGSEVERITY_WARNING => tracing::warn!("Console [{}:{}]: {}", source, line, message),
-			LOGSEVERITY_INFO => tracing::info!("Console [{}:{}]: {}", source, line, message),
-			LOGSEVERITY_DEFAULT => tracing::debug!("Console [{}:{}]: {}", source, line, message),
-			LOGSEVERITY_VERBOSE => tracing::trace!("Console [{}:{}]: {}", source, line, message),
-			LOGSEVERITY_DISABLE => tracing::trace!("Console [{}:{}]: {}", source, line, message),
-			_ => tracing::trace!("Console [{}:{}]: {}", source, line, message),
+			LOGSEVERITY_FATAL | LOGSEVERITY_ERROR => tracing::error!(target: BROWSER, "{browser_source} {message}"),
+			LOGSEVERITY_WARNING => tracing::warn!(target: BROWSER, "{browser_source} {message}"),
+			LOGSEVERITY_INFO => tracing::info!(target: BROWSER, "{browser_source} {message}"),
+			LOGSEVERITY_DEFAULT | LOGSEVERITY_VERBOSE => tracing::debug!(target: BROWSER, "{browser_source} {message}"),
+			_ => tracing::trace!(target: BROWSER, "{browser_source} {message}"),
 		}
 		0
 	}
