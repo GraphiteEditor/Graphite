@@ -67,6 +67,12 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		convert_node!(from: Table<Raster<GPU>>, to: Table<Raster<CPU>>, converter: &WgpuExecutor),
 		#[cfg(feature = "gpu")]
 		convert_node!(from: Table<Vector>, to: Table<Raster<GPU>>, converter: &WgpuExecutor),
+		#[cfg(feature = "gpu")]
+		convert_node!(from: Table<Graphic>, to: Table<Raster<GPU>>, converter: &WgpuExecutor),
+		#[cfg(feature = "gpu")]
+		convert_node!(from: Table<GradientStops>, to: Table<Raster<GPU>>, converter: &WgpuExecutor),
+		#[cfg(feature = "gpu")]
+		convert_node!(from: Table<Color>, to: Table<Raster<GPU>>, converter: &WgpuExecutor),
 		// =============
 		// MONITOR NODES
 		// =============
