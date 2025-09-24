@@ -1,11 +1,11 @@
 mod font_cache;
 mod path_builder;
-mod thread_text;
+mod text_context;
 mod to_path;
 
 use dyn_any::DynAny;
 pub use font_cache::*;
-pub use thread_text::ThreadText;
+pub use text_context::TextContext;
 pub use to_path::*;
 
 /// Alignment of lines of type within a text block.

@@ -1,4 +1,4 @@
-use super::utility_types::{OverlayContext, OverlayProvider, OverlaysVisibilitySettings};
+use super::utility_types::{OverlayProvider, OverlaysVisibilitySettings};
 use crate::messages::prelude::*;
 
 #[derive(ExtractField)]
@@ -15,8 +15,8 @@ pub struct OverlaysMessageHandler {
 	canvas: Option<web_sys::HtmlCanvasElement>,
 	#[cfg(target_family = "wasm")]
 	context: Option<web_sys::CanvasRenderingContext2d>,
-	#[cfg(not(target_family = "wasm"))]
-	context: Option<OverlayContext>,
+	#[cfg(all(not(target_family = "wasm"), not(test)))]
+	context: Option<super::utility_types::OverlayContext>,
 }
 
 #[message_handler_data]

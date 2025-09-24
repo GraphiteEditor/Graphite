@@ -12,7 +12,7 @@ use graphene_std::Color;
 use graphene_std::math::quad::Quad;
 use graphene_std::subpath::{self, Subpath};
 use graphene_std::table::Table;
-use graphene_std::text::ThreadText;
+use graphene_std::text::TextContext;
 use graphene_std::text::{Font, FontCache, TextAlign, TypesettingConfig};
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::point_to_dvec2;
@@ -413,7 +413,13 @@ pub(super) struct OverlayContextInternal {
 	device_pixel_ratio: f64,
 	visibility_settings: OverlaysVisibilitySettings,
 	font_cache: FontCache,
-	thread_text: ThreadText,
+	thread_text: TextContext,
+}
+
+impl Default for OverlayContextInternal {
+	fn default() -> Self {
+		Self::new(DVec2::new(100., 100.), 1., OverlaysVisibilitySettings::default())
+	}
 }
 
 impl OverlayContextInternal {
@@ -430,7 +436,7 @@ impl OverlayContextInternal {
 			device_pixel_ratio,
 			visibility_settings,
 			font_cache,
-			thread_text: ThreadText::default(),
+			thread_text: TextContext::default(),
 		}
 	}
 

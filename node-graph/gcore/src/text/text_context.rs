@@ -10,30 +10,30 @@ use std::collections::HashMap;
 use super::path_builder::PathBuilder;
 
 thread_local! {
-	static THREAD_TEXT: RefCell<ThreadText> = RefCell::new(ThreadText::default());
+	static THREAD_TEXT: RefCell<TextContext> = RefCell::new(TextContext::default());
 }
 
 /// Unified thread-local text processing context that combines font and layout management
 /// for efficient text rendering operations.
 #[derive(Default)]
-pub struct ThreadText {
+pub struct TextContext {
 	font_context: FontContext,
 	layout_context: LayoutContext<()>,
 	/// Cached font metadata for performance optimization
 	font_info_cache: HashMap<Font, (FamilyId, FontInfo)>,
 }
 
-impl ThreadText {
-	/// Access the thread-local ThreadText instance for text processing operations
-	pub fn with<F, R>(f: F) -> R
+impl TextContext {
+	/// Access the thread-local TextContext instance for text processing operations
+	pub fn with_thread_local<F, R>(f: F) -> R
 	where
-		F: FnOnce(&mut ThreadText) -> R,
+		F: FnOnce(&mut TextContext) -> R,
 	{
 		THREAD_TEXT.with_borrow_mut(f)
 	}
 
 	/// Resolve a font and return its data as a Blob if available
-	fn resolve_font_data(&self, font: &Font, font_cache: &FontCache) -> Option<Blob<u8>> {
+	fn resolve_font_data<'a>(&self, font: &'a Font, font_cache: &'a FontCache) -> Option<(Blob<u8>, &'a Font)> {
 		font_cache.get_blob(font)
 	}
 
@@ -62,8 +62,10 @@ impl ThreadText {
 
 	/// Create a text layout using the specified font and typesetting configuration
 	fn layout_text(&mut self, text: &str, font: &Font, font_cache: &FontCache, typesetting: TypesettingConfig) -> Option<Layout<()>> {
-		let font_data = self.resolve_font_data(font, font_cache)?;
-		let (font_family, font_info) = self.get_font_info(font, &font_data)?;
+		// Note that the actual_font may not be the desired font if that font is not yet loaded.
+		// It is important not to cache the default font under the name of another font.
+		let (font_data, actual_font) = self.resolve_font_data(font, font_cache)?;
+		let (font_family, font_info) = self.get_font_info(actual_font, &font_data)?;
 
 		const DISPLAY_SCALE: f32 = 1.;
 		let mut builder = self.layout_context.ranged_builder(&mut self.font_context, text, DISPLAY_SCALE, false);

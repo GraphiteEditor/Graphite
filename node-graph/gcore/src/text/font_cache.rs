@@ -52,13 +52,13 @@ impl FontCache {
 	}
 
 	/// Try to get the bytes for a font
-	pub fn get(&self, font: &Font) -> Option<&Vec<u8>> {
-		self.resolve_font(font).and_then(|font| self.font_file_data.get(font))
+	pub fn get<'a>(&'a self, font: &'a Font) -> Option<(&'a Vec<u8>, &'a Font)> {
+		self.resolve_font(font).and_then(|font| self.font_file_data.get(font).map(|data| (data, font)))
 	}
 
 	/// Get font data as a Blob for use with parley/skrifa
-	pub fn get_blob(&self, font: &Font) -> Option<Blob<u8>> {
-		self.get(font).map(|data| Blob::new(Arc::new(data.clone())))
+	pub fn get_blob<'a>(&'a self, font: &'a Font) -> Option<(Blob<u8>, &'a Font)> {
+		self.get(font).map(|(data, font)| (Blob::new(Arc::new(data.clone())), font))
 	}
 
 	/// Check if the font is already loaded
