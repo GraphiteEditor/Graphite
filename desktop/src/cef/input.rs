@@ -33,7 +33,7 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 				}
 			};
 
-			let cef_click_count = input_state.mouse_input(mouse_button, state).into();
+			let cef_click_count = input_state.mouse_input(mouse_button, state);
 			let cef_mouse_up = match state {
 				ElementState::Pressed => 0,
 				ElementState::Released => 1,
@@ -46,7 +46,7 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 			};
 
 			let Some(host) = browser.host() else { return };
-			host.send_mouse_click_event(Some(&input_state.into()), cef_button, cef_mouse_up, cef_click_count);
+			host.send_mouse_click_event(Some(&input_state.into()), cef_button, cef_mouse_up, cef_click_count as i32);
 		}
 		WindowEvent::MouseWheel { delta, phase: _, device_id: _, .. } => {
 			let mouse_event = input_state.into();
@@ -149,7 +149,7 @@ impl InputState {
 		self.mouse_position = position.into();
 	}
 
-	fn mouse_input(&mut self, button: &MouseButton, state: &ElementState) -> ClickCount {
+	fn mouse_input(&mut self, button: &MouseButton, state: &ElementState) -> u32 {
 		self.mouse_state.update(button, state);
 		self.mouse_click_tracker.input(button, state, &self.mouse_position)
 	}
@@ -233,24 +233,27 @@ struct ClickTracker {
 	right: Option<ClickRecord>,
 }
 impl ClickTracker {
-	fn input(&mut self, button: &MouseButton, state: &ElementState, position: &MousePosition) -> ClickCount {
+	fn input(&mut self, button: &MouseButton, state: &ElementState, position: &MousePosition) -> u32 {
 		let record = match button {
 			MouseButton::Left => &mut self.left,
 			MouseButton::Right => &mut self.right,
 			MouseButton::Middle => &mut self.middle,
-			_ => return ClickCount::Single,
+			_ => return 1,
 		};
 
 		let now = Instant::now();
 
-		let Some(record) = record else {
+		if record.is_none() {
 			*record = Some(ClickRecord {
 				time: now,
 				position: position.clone(),
-				down_count: ClickCount::Single,
-				up_count: ClickCount::Single,
+				down_count: 0,
+				up_count: 0,
 			});
-			return ClickCount::Single;
+		}
+
+		let Some(record) = record else {
+			return 1;
 		};
 
 		let dx = position.x.abs_diff(record.position.x);
@@ -258,41 +261,28 @@ impl ClickTracker {
 		let within_dist = dx <= MULTICLICK_ALLOWED_TRAVEL && dy <= MULTICLICK_ALLOWED_TRAVEL;
 		let within_time = now.saturating_duration_since(record.time) <= MULTICLICK_TIMEOUT;
 
-		let count = if within_time && within_dist { ClickCount::Double } else { ClickCount::Single };
+		record.time = now;
+		record.position = position.clone();
 
-		*record = match state {
-			ElementState::Pressed => ClickRecord {
-				time: now,
-				position: position.clone(),
-				down_count: count.clone(),
-				up_count: record.up_count.clone(),
-			},
-			ElementState::Released => ClickRecord {
-				time: now,
-				position: position.clone(),
-				down_count: record.down_count.clone(),
-				up_count: count.clone(),
-			},
-		};
-		count
-	}
-}
-
-#[derive(Clone)]
-enum ClickCount {
-	Single,
-	Double,
-}
-impl Default for ClickCount {
-	fn default() -> Self {
-		Self::Single
-	}
-}
-impl From<ClickCount> for i32 {
-	fn from(count: ClickCount) -> i32 {
-		match count {
-			ClickCount::Single => 1,
-			ClickCount::Double => 2,
+		match state {
+			ElementState::Pressed if within_time && within_dist => {
+				record.down_count += 1;
+				record.down_count
+			}
+			ElementState::Released if within_time && within_dist => {
+				record.up_count += 1;
+				record.up_count
+			}
+			ElementState::Pressed => {
+				record.down_count = 1;
+				record.up_count = 0;
+				1
+			}
+			ElementState::Released => {
+				record.down_count = 0;
+				record.up_count = 1;
+				1
+			}
 		}
 	}
 }
@@ -300,8 +290,8 @@ impl From<ClickCount> for i32 {
 struct ClickRecord {
 	time: Instant,
 	position: MousePosition,
-	down_count: ClickCount,
-	up_count: ClickCount,
+	down_count: u32,
+	up_count: u32,
 }
 
 struct CefModifiers(u32);
