@@ -35,15 +35,31 @@ impl ContextBuilder {
 		self.features = features;
 		self
 	}
+	#[cfg(target_family = "wasm")]
+	pub async fn build(self) -> Option<Context> {
+		let instance = self.build_instance();
+		let adapter = self.request_adapter(&instance).await?;
+		let (device, queue) = self.request_device(&adapter).await?;
+		Some(Context {
+			device: Arc::new(device),
+			queue: Arc::new(queue),
+			adapter: Arc::new(adapter),
+			instance: Arc::new(instance),
+		})
+	}
+	#[cfg(not(target_family = "wasm"))]
 	pub async fn build(self) -> Option<Context> {
 		self.build_with_adapter_selection_inner(None::<WgpuAdapterSelectorFn>).await
 	}
+	#[cfg(not(target_family = "wasm"))]
 	pub async fn build_with_adapter_selection<S: WgpuAdapterSelector>(self, select: S) -> Option<Context> {
 		self.build_with_adapter_selection_inner(Some(select)).await
 	}
+	#[cfg(not(target_family = "wasm"))]
 	async fn build_with_adapter_selection_inner<S: WgpuAdapterSelector>(self, select: Option<S>) -> Option<Context> {
 		let instance = self.build_instance();
 
+		#[cfg(not(target_family = "wasm"))]
 		let selected_adapter = if let Some(select) = select {
 			self.select_adapter(&instance, select)
 		} else if cfg!(target_os = "windows") {
@@ -53,6 +69,8 @@ impl ContextBuilder {
 		} else {
 			None
 		};
+		#[cfg(target_family = "wasm")]
+		let selected_adapter = None;
 
 		let adapter = if let Some(adapter) = selected_adapter { adapter } else { self.request_adapter(&instance).await? };
 
@@ -64,14 +82,10 @@ impl ContextBuilder {
 			instance: Arc::new(instance),
 		})
 	}
+	#[cfg(not(target_family = "wasm"))]
 	pub async fn available_adapters_fmt(&self) -> impl std::fmt::Display {
-		#[cfg(not(target_family = "wasm"))]
-		{
-			let instance = self.build_instance();
-			AvailableAdaptersFormatter(instance.enumerate_adapters(self.backends))
-		}
-		#[cfg(target_family = "wasm")]
-		AvailableAdaptersFormatter(Vec::new())
+		let instance = self.build_instance();
+		AvailableAdaptersFormatter(instance.enumerate_adapters(self.backends))
 	}
 
 	fn build_instance(&self) -> Instance {
@@ -81,40 +95,39 @@ impl ContextBuilder {
 		})
 	}
 	async fn request_adapter(&self, instance: &Instance) -> Option<Adapter> {
-		instance
-			.request_adapter(&wgpu::RequestAdapterOptions {
-				power_preference: wgpu::PowerPreference::HighPerformance,
-				compatible_surface: None,
-				force_fallback_adapter: false,
-			})
-			.await
-			.ok()
-	}
-	fn select_adapter<S: WgpuAdapterSelector>(&self, instance: &Instance, select: S) -> Option<Adapter> {
-		#[cfg(not(target_family = "wasm"))]
-		return select(&mut instance.enumerate_adapters(self.backends));
-		#[cfg(target_family = "wasm")]
-		None
+		let request_adapter_options = wgpu::RequestAdapterOptions {
+			power_preference: wgpu::PowerPreference::HighPerformance,
+			compatible_surface: None,
+			force_fallback_adapter: false,
+		};
+		instance.request_adapter(&request_adapter_options).await.ok()
 	}
 	async fn request_device(&self, adapter: &Adapter) -> Option<(Device, Queue)> {
-		adapter
-			.request_device(&wgpu::DeviceDescriptor {
-				label: None,
-				required_features: self.features,
-				required_limits: adapter.limits(),
-				memory_hints: Default::default(),
-				trace: wgpu::Trace::Off,
-			})
-			.await
-			.ok()
+		let device_descriptor = wgpu::DeviceDescriptor {
+			label: None,
+			required_features: self.features,
+			required_limits: adapter.limits(),
+			memory_hints: Default::default(),
+			trace: wgpu::Trace::Off,
+		};
+		adapter.request_device(&device_descriptor).await.ok()
+	}
+	#[cfg(not(target_family = "wasm"))]
+	fn select_adapter<S: WgpuAdapterSelector>(&self, instance: &Instance, select: S) -> Option<Adapter> {
+		select(&mut instance.enumerate_adapters(self.backends))
 	}
 }
 
+#[cfg(not(target_family = "wasm"))]
 pub trait WgpuAdapterSelector: FnOnce(&mut Vec<Adapter>) -> Option<Adapter> {}
+#[cfg(not(target_family = "wasm"))]
 impl<F> WgpuAdapterSelector for F where F: FnOnce(&mut Vec<Adapter>) -> Option<Adapter> {}
+#[cfg(not(target_family = "wasm"))]
 type WgpuAdapterSelectorFn = fn(&mut Vec<Adapter>) -> Option<Adapter>;
 
+#[cfg(not(target_family = "wasm"))]
 struct AvailableAdaptersFormatter(Vec<Adapter>);
+#[cfg(not(target_family = "wasm"))]
 impl std::fmt::Display for AvailableAdaptersFormatter {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		for (i, adapter) in self.0.iter().enumerate() {
