@@ -65,9 +65,13 @@ impl ContextBuilder {
 		})
 	}
 	pub async fn available_adapters_fmt(&self) -> impl std::fmt::Display {
-		let instance = self.build_instance();
-		let adapters = instance.enumerate_adapters(self.backends);
-		AvailableAdaptersFormatter(adapters)
+		#[cfg(not(target_family = "wasm"))]
+		{
+			let instance = self.build_instance();
+			AvailableAdaptersFormatter(instance.enumerate_adapters(self.backends))
+		}
+		#[cfg(target_family = "wasm")]
+		AvailableAdaptersFormatter(Vec::new())
 	}
 
 	fn build_instance(&self) -> Instance {
@@ -87,7 +91,10 @@ impl ContextBuilder {
 			.ok()
 	}
 	fn select_adapter<S: WgpuAdapterSelector>(&self, instance: &Instance, select: S) -> Option<Adapter> {
-		select(&mut instance.enumerate_adapters(self.backends))
+		#[cfg(not(target_family = "wasm"))]
+		return select(&mut instance.enumerate_adapters(self.backends));
+		#[cfg(target_family = "wasm")]
+		None
 	}
 	async fn request_device(&self, adapter: &Adapter) -> Option<(Device, Queue)> {
 		adapter
