@@ -20,13 +20,7 @@ impl<H: CefEventHandler> DisplayHandlerImpl<H> {
 }
 
 impl<H: CefEventHandler> ImplDisplayHandler for DisplayHandlerImpl<H> {
-	fn on_cursor_change(
-		&self,
-		_browser: Option<&mut cef::Browser>,
-		_cursor: ::std::os::raw::c_ulong,
-		cursor_type: cef::CursorType,
-		_custom_cursor_info: Option<&cef::CursorInfo>,
-	) -> ::std::os::raw::c_int {
+	fn on_cursor_change(&self, _browser: Option<&mut cef::Browser>, _cursor: cef::CursorHandle, cursor_type: cef::CursorType, _custom_cursor_info: Option<&cef::CursorInfo>) -> ::std::os::raw::c_int {
 		let cursor = match cursor_type.into() {
 			CT_POINTER => CursorIcon::Default,
 			CT_CROSS => CursorIcon::Crosshair,
