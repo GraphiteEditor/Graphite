@@ -11,7 +11,6 @@ pub struct Context {
 
 impl Context {
 	pub async fn new() -> Option<Self> {
-		// Instantiates instance of WebGPU
 		let instance_descriptor = wgpu::InstanceDescriptor {
 			backends: wgpu::Backends::all(),
 			..Default::default()
@@ -23,12 +22,14 @@ impl Context {
 			compatible_surface: None,
 			force_fallback_adapter: false,
 		};
-		// `request_adapter` instantiates the general connection to the GPU
+
 		let adapter = instance.request_adapter(&adapter_options).await.ok()?;
 
+		Self::new_with_instance_and_adapter(instance, adapter).await
+	}
+
+	pub async fn new_with_instance_and_adapter(instance: wgpu::Instance, adapter: wgpu::Adapter) -> Option<Self> {
 		let required_limits = adapter.limits();
-		// `request_device` instantiates the feature specific connection to the GPU, defining some parameters,
-		//  `features` being the available features.
 		let (device, queue) = adapter
 			.request_device(&wgpu::DeviceDescriptor {
 				label: None,

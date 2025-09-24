@@ -31,7 +31,7 @@ fn main() {
 		return;
 	}
 
-	let wgpu_context = futures::executor::block_on(WgpuContext::new()).unwrap();
+	let wgpu_context = futures::executor::block_on(init_wgpu_context());
 
 	let event_loop = EventLoop::new().unwrap();
 	let (app_event_sender, app_event_receiver) = std::sync::mpsc::channel();
@@ -66,4 +66,53 @@ fn main() {
 	let mut app = App::new(Box::new(cef_context), window_size_sender, wgpu_context, app_event_receiver, app_event_scheduler);
 
 	event_loop.run_app(&mut app).unwrap();
+}
+
+async fn init_wgpu_context() -> WgpuContext {
+	// TODO: make this configurable via cli flags instead
+	let adapter_override = std::env::var("GRAPHITE_WGPU_ADAPTER").ok().map(|s| usize::from_str_radix(&s, 10).ok()).flatten();
+
+	let instance_descriptor = wgpu::InstanceDescriptor {
+		backends: wgpu::Backends::all(),
+		..Default::default()
+	};
+	let instance = wgpu::Instance::new(&instance_descriptor);
+
+	let mut adapters = instance.enumerate_adapters(wgpu::Backends::all());
+
+	// TODO: add a cli flag to list adapters and exit instead of always printing
+	let adapters_fmt = adapters
+		.iter()
+		.enumerate()
+		.map(|(i, a)| {
+			let info = a.get_info();
+			format!(
+				"\nAdapter {}:\n  Name: {}\n  Backend: {:?}\n  Driver: {}\n  Device ID: {}\n  Vendor ID: {}",
+				i, info.name, info.backend, info.driver, info.device, info.vendor
+			)
+		})
+		.collect::<Vec<_>>()
+		.join("\n");
+	println!("\nAvailable wgpu adapters:\n {}\n", adapters_fmt);
+
+	let adapter_index = if let Some(index) = adapter_override
+		&& index < adapters.len()
+	{
+		index
+	} else if cfg!(target_os = "windows") {
+		match adapters.iter().enumerate().find(|(_, a)| a.get_info().backend == wgpu::Backend::Dx12) {
+			Some((index, _)) => index,
+			None => 0,
+		}
+	} else {
+		0 // Same behavior as requests adapter
+	};
+
+	tracing::info!("Using WGPU adapter {adapter_index}");
+
+	let adapter = adapters.remove(adapter_index);
+
+	WgpuContext::new_with_instance_and_adapter(instance, adapter)
+		.await
+		.expect("Failed to create WGPU context with specified adapter")
 }
