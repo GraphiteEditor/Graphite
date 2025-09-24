@@ -1,3 +1,4 @@
+use clap::Parser;
 use std::process::exit;
 use tracing_subscriber::EnvFilter;
 use winit::event_loop::EventLoop;
@@ -8,6 +9,7 @@ pub(crate) mod consts;
 
 mod app;
 mod cef;
+mod cli;
 mod dirs;
 mod event;
 mod native_window;
@@ -17,6 +19,8 @@ mod render;
 use app::App;
 use cef::CefHandler;
 use event::CreateAppEventSchedulerEventLoopExt;
+
+use crate::cli::Cli;
 
 fn main() {
 	tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();
@@ -31,6 +35,8 @@ fn main() {
 		return;
 	}
 
+	let cli = Cli::parse();
+
 	let wgpu_context = futures::executor::block_on(WgpuContext::new()).unwrap();
 
 	let event_loop = EventLoop::new().unwrap();
@@ -40,7 +46,7 @@ fn main() {
 	let (window_size_sender, window_size_receiver) = std::sync::mpsc::channel();
 
 	let cef_handler = cef::CefHandler::new(wgpu_context.clone(), app_event_scheduler.clone(), window_size_receiver);
-	let cef_context = match cef_context_builder.initialize(cef_handler) {
+	let cef_context = match cef_context_builder.initialize(cef_handler, cli.ui_accelerated_painting) {
 		Ok(c) => {
 			tracing::info!("CEF initialized successfully");
 			c
@@ -63,7 +69,7 @@ fn main() {
 		}
 	};
 
-	let mut app = App::new(Box::new(cef_context), window_size_sender, wgpu_context, app_event_receiver, app_event_scheduler);
+	let mut app = App::new(Box::new(cef_context), window_size_sender, wgpu_context, app_event_receiver, app_event_scheduler, cli.files);
 
 	event_loop.run_app(&mut app).unwrap();
 }
