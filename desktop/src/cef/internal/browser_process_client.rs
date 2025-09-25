@@ -1,23 +1,26 @@
 use cef::rc::{Rc, RcImpl};
 use cef::sys::{_cef_client_t, cef_base_ref_counted_t};
-use cef::{ImplClient, LifeSpanHandler, RenderHandler, WrapClient};
+use cef::{DisplayHandler, ImplClient, LifeSpanHandler, RenderHandler, WrapClient};
 
 use crate::cef::CefEventHandler;
 use crate::cef::ipc::{MessageType, UnpackMessage, UnpackedMessage};
 
 use super::browser_process_life_span_handler::BrowserProcessLifeSpanHandlerImpl;
+use super::display_handler::DisplayHandlerImpl;
 
 pub(crate) struct BrowserProcessClientImpl<H: CefEventHandler> {
 	object: *mut RcImpl<_cef_client_t, Self>,
 	render_handler: RenderHandler,
 	event_handler: H,
+	display_handler: DisplayHandler,
 }
 impl<H: CefEventHandler> BrowserProcessClientImpl<H> {
 	pub(crate) fn new(render_handler: RenderHandler, event_handler: H) -> Self {
 		Self {
 			object: std::ptr::null_mut(),
 			render_handler,
-			event_handler,
+			event_handler: event_handler.clone(),
+			display_handler: DisplayHandler::new(DisplayHandlerImpl::new(event_handler)),
 		}
 	}
 }
@@ -57,6 +60,10 @@ impl<H: CefEventHandler> ImplClient for BrowserProcessClientImpl<H> {
 		Some(LifeSpanHandler::new(BrowserProcessLifeSpanHandlerImpl::new()))
 	}
 
+	fn display_handler(&self) -> Option<cef::DisplayHandler> {
+		Some(self.display_handler.clone())
+	}
+
 	fn get_raw(&self) -> *mut _cef_client_t {
 		self.object.cast()
 	}
@@ -72,6 +79,7 @@ impl<H: CefEventHandler> Clone for BrowserProcessClientImpl<H> {
 			object: self.object,
 			render_handler: self.render_handler.clone(),
 			event_handler: self.event_handler.clone(),
+			display_handler: self.display_handler.clone(),
 		}
 	}
 }
