@@ -60,6 +60,7 @@ windows = { version = "0.58.0", features = [
 	"Win32_System_LibraryLoader",
 	"Win32_UI_Controls",
 	"Win32_UI_WindowsAndMessaging",
+	"Win32_UI_HiDpi",
 ], optional = true }
 
 # macOS-specific dependencies
