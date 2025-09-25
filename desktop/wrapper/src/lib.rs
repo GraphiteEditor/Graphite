@@ -5,8 +5,10 @@ use graphite_editor::messages::prelude::{FrontendMessage, Message};
 // TODO: Remove usage of this reexport in desktop create and remove this line
 pub use graphene_std::Color;
 
-pub use wgpu_executor::Context as WgpuContext;
+pub use wgpu_executor::WgpuContext;
+pub use wgpu_executor::WgpuContextBuilder;
 pub use wgpu_executor::WgpuExecutor;
+pub use wgpu_executor::WgpuFeatures;
 
 pub mod messages;
 use messages::{DesktopFrontendMessage, DesktopWrapperMessage};

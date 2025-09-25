@@ -15,7 +15,7 @@ use graph_craft::document::value::TaggedValue;
 use graphene_std::renderer::Quad;
 use graphene_std::subpath::{Bezier, BezierHandles};
 use graphene_std::table::Table;
-use graphene_std::text::{FontCache, load_font};
+use graphene_std::text::FontCache;
 use graphene_std::vector::algorithms::bezpath_algorithms::pathseg_compute_lookup_table;
 use graphene_std::vector::misc::{HandleId, ManipulatorPointId, dvec2_to_point};
 use graphene_std::vector::{HandleExt, PointId, SegmentId, Vector, VectorModification, VectorModificationType};
@@ -74,8 +74,7 @@ pub fn text_bounding_box(layer: LayerNodeIdentifier, document: &DocumentMessageH
 		return Quad::from_box([DVec2::ZERO, DVec2::ZERO]);
 	};
 
-	let font_data = font_cache.get(font).map(|data| load_font(data));
-	let far = graphene_std::text::bounding_box(text, font_data, typesetting, false);
+	let far = graphene_std::text::bounding_box(text, font, font_cache, typesetting, false);
 
 	// TODO: Once the instance tables refactor is complete and per_glyph_instances can be removed (since it'll be the default),
 	// TODO: remove this because the top of the dashed bounding overlay should no longer be based on the first line's baseline.
