@@ -19,8 +19,8 @@ impl<H: CefEventHandler> BrowserProcessClientImpl<H> {
 		Self {
 			object: std::ptr::null_mut(),
 			render_handler,
-			event_handler,
-			display_handler: DisplayHandler::new(DisplayHandlerImpl::new()),
+			event_handler: event_handler.clone(),
+			display_handler: DisplayHandler::new(DisplayHandlerImpl::new(event_handler)),
 		}
 	}
 }
