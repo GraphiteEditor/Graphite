@@ -39,8 +39,17 @@ impl NativeWindowHandle {
 			} else {
 				let x11_window = WindowAttributesX11::default().with_name(APP_ID, APP_NAME);
 				window.with_platform_attributes(Box::new(x11_window))
+			};
+		}
+
+		#[cfg(target_os = "windows")]
+		{
+			if let Ok(win_icon) = winit::platform::windows::WinIcon::from_resource(1, None) {
+				let icon = winit::icon::Icon(std::sync::Arc::new(win_icon));
+				window = window.with_window_icon(Some(icon));
 			}
 		}
+
 		window
 	}
 	#[allow(unused_variables)]
