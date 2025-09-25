@@ -151,7 +151,7 @@ impl InputState {
 
 	fn mouse_input(&mut self, button: &MouseButton, state: &ElementState) -> ClickCount {
 		self.mouse_state.update(button, state);
-		self.mouse_click_tracker.input(button, state, &self.mouse_position)
+		self.mouse_click_tracker.input(button, state, self.mouse_position)
 	}
 
 	fn cef_modifiers(&self, location: &winit::keyboard::KeyLocation, is_repeat: bool) -> CefModifiers {
@@ -187,7 +187,7 @@ impl From<&mut InputState> for MouseEvent {
 	}
 }
 
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Copy)]
 pub(crate) struct MousePosition {
 	x: usize,
 	y: usize,
@@ -233,7 +233,7 @@ struct ClickTracker {
 	right: Option<ClickRecord>,
 }
 impl ClickTracker {
-	fn input(&mut self, button: &MouseButton, state: &ElementState, position: &MousePosition) -> ClickCount {
+	fn input(&mut self, button: &MouseButton, state: &ElementState, position: MousePosition) -> ClickCount {
 		let record = match button {
 			MouseButton::Left => &mut self.left,
 			MouseButton::Right => &mut self.right,
@@ -241,34 +241,27 @@ impl ClickTracker {
 			_ => return ClickCount::Single,
 		};
 
-		let now = Instant::now();
-
 		let Some(record) = record else {
-			*record = Some(ClickRecord {
-				time: now,
-				position: position.clone(),
-				down_count: ClickCount::Single,
-				up_count: ClickCount::Single,
-			});
+			*record = Some(ClickRecord { position, ..Default::default() });
 			return ClickCount::Single;
 		};
+
+		let now = Instant::now();
+		record.time = now;
+		record.position = position;
 
 		match state {
 			ElementState::Pressed if record.down_count == ClickCount::Double => {
 				*record = ClickRecord {
-					time: now,
-					position: position.clone(),
 					down_count: ClickCount::Single,
-					up_count: record.up_count,
+					..*record
 				};
 				return ClickCount::Single;
 			}
 			ElementState::Released if record.up_count == ClickCount::Double => {
 				*record = ClickRecord {
-					time: now,
-					position: position.clone(),
-					down_count: record.down_count,
 					up_count: ClickCount::Single,
+					..*record
 				};
 				return ClickCount::Single;
 			}
@@ -283,32 +276,18 @@ impl ClickTracker {
 		let count = if within_time && within_dist { ClickCount::Double } else { ClickCount::Single };
 
 		*record = match state {
-			ElementState::Pressed => ClickRecord {
-				time: now,
-				position: position.clone(),
-				down_count: count,
-				up_count: record.up_count,
-			},
-			ElementState::Released => ClickRecord {
-				time: now,
-				position: position.clone(),
-				down_count: record.down_count,
-				up_count: count,
-			},
+			ElementState::Pressed => ClickRecord { down_count: count, ..*record },
+			ElementState::Released => ClickRecord { up_count: count, ..*record },
 		};
 		count
 	}
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Default)]
 enum ClickCount {
+	#[default]
 	Single,
 	Double,
-}
-impl Default for ClickCount {
-	fn default() -> Self {
-		Self::Single
-	}
 }
 impl From<ClickCount> for i32 {
 	fn from(count: ClickCount) -> i32 {
@@ -319,11 +298,23 @@ impl From<ClickCount> for i32 {
 	}
 }
 
+#[derive(Clone, Copy)]
 struct ClickRecord {
 	time: Instant,
 	position: MousePosition,
 	down_count: ClickCount,
 	up_count: ClickCount,
+}
+
+impl Default for ClickRecord {
+	fn default() -> Self {
+		Self {
+			time: Instant::now(),
+			position: Default::default(),
+			down_count: Default::default(),
+			up_count: Default::default(),
+		}
+	}
 }
 
 struct CefModifiers(u32);
