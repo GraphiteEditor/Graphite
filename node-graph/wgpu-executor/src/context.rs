@@ -39,11 +39,11 @@ impl ContextBuilder {
 #[cfg(not(target_family = "wasm"))]
 impl ContextBuilder {
 	pub async fn build(self) -> Option<Context> {
-		self.build_with_adapter_selection_inner(None::<fn(&mut Vec<Adapter>) -> Option<Adapter>>).await
+		self.build_with_adapter_selection_inner(None::<fn(&[Adapter]) -> Option<usize>>).await
 	}
 	pub async fn build_with_adapter_selection<S>(self, select: S) -> Option<Context>
 	where
-		S: FnOnce(&mut Vec<Adapter>) -> Option<Adapter>,
+		S: Fn(&[Adapter]) -> Option<usize>,
 	{
 		self.build_with_adapter_selection_inner(Some(select)).await
 	}
@@ -94,25 +94,19 @@ impl ContextBuilder {
 }
 #[cfg(not(target_family = "wasm"))]
 impl ContextBuilder {
-	#[cfg(not(target_family = "wasm"))]
 	async fn build_with_adapter_selection_inner<S>(self, select: Option<S>) -> Option<Context>
 	where
-		S: FnOnce(&mut Vec<Adapter>) -> Option<Adapter>,
+		S: Fn(&[Adapter]) -> Option<usize>,
 	{
 		let instance = self.build_instance();
 
-		#[cfg(not(target_family = "wasm"))]
 		let selected_adapter = if let Some(select) = select {
 			self.select_adapter(&instance, select)
 		} else if cfg!(target_os = "windows") {
-			self.select_adapter(&instance, |adapters: &mut Vec<Adapter>| {
-				adapters.iter().position(|a| a.get_info().backend == wgpu::Backend::Dx12).map(|i| adapters.remove(i))
-			})
+			self.select_adapter(&instance, |adapters: &[Adapter]| adapters.iter().position(|a| a.get_info().backend == wgpu::Backend::Dx12))
 		} else {
 			None
 		};
-		#[cfg(target_family = "wasm")]
-		let selected_adapter = None;
 
 		let adapter = if let Some(adapter) = selected_adapter { adapter } else { self.request_adapter(&instance).await? };
 
@@ -126,9 +120,14 @@ impl ContextBuilder {
 	}
 	fn select_adapter<S>(&self, instance: &Instance, select: S) -> Option<Adapter>
 	where
-		S: FnOnce(&mut Vec<Adapter>) -> Option<Adapter>,
+		S: Fn(&[Adapter]) -> Option<usize>,
 	{
-		select(&mut instance.enumerate_adapters(self.backends))
+		let mut adapters = instance.enumerate_adapters(self.backends);
+		let selected_index = select(&adapters)?;
+		if selected_index >= adapters.len() {
+			return None;
+		}
+		Some(adapters.remove(selected_index))
 	}
 }
 #[cfg(not(target_family = "wasm"))]

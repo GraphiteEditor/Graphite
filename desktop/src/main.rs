@@ -12,7 +12,7 @@ mod native_window;
 mod persist;
 mod render;
 
-mod gpu;
+mod gpu_context;
 
 use app::App;
 use cef::CefHandler;
@@ -31,7 +31,7 @@ fn main() {
 		return;
 	}
 
-	let wgpu_context = futures::executor::block_on(gpu::create_wgpu_context());
+	let wgpu_context = futures::executor::block_on(gpu_context::create_wgpu_context());
 
 	let event_loop = EventLoop::new().unwrap();
 	let (app_event_sender, app_event_receiver) = std::sync::mpsc::channel();
