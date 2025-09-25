@@ -38,7 +38,5 @@ fn text<'i: 'n>(
 		align,
 	};
 
-	let font_data = editor.font_cache.get(&font_name).map(|f| load_font(f));
-
-	to_path(&text, font_data, typesetting, per_glyph_instances)
+	to_path(&text, &font_name, &editor.font_cache, typesetting, per_glyph_instances)
 }
