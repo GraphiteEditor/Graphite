@@ -259,7 +259,7 @@ impl ClickTracker {
 					time: now,
 					position: position.clone(),
 					down_count: ClickCount::Single,
-					up_count: record.up_count.clone(),
+					up_count: record.up_count,
 				};
 				return ClickCount::Single;
 			}
@@ -267,7 +267,7 @@ impl ClickTracker {
 				*record = ClickRecord {
 					time: now,
 					position: position.clone(),
-					down_count: record.down_count.clone(),
+					down_count: record.down_count,
 					up_count: ClickCount::Single,
 				};
 				return ClickCount::Single;
@@ -286,21 +286,21 @@ impl ClickTracker {
 			ElementState::Pressed => ClickRecord {
 				time: now,
 				position: position.clone(),
-				down_count: count.clone(),
-				up_count: record.up_count.clone(),
+				down_count: count,
+				up_count: record.up_count,
 			},
 			ElementState::Released => ClickRecord {
 				time: now,
 				position: position.clone(),
-				down_count: record.down_count.clone(),
-				up_count: count.clone(),
+				down_count: record.down_count,
+				up_count: count,
 			},
 		};
 		count
 	}
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, Copy, PartialEq)]
 enum ClickCount {
 	Single,
 	Double,
