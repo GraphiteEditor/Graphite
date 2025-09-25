@@ -253,6 +253,28 @@ impl ClickTracker {
 			return ClickCount::Single;
 		};
 
+		match state {
+			ElementState::Pressed if record.down_count == ClickCount::Double => {
+				*record = ClickRecord {
+					time: now,
+					position: position.clone(),
+					down_count: ClickCount::Single,
+					up_count: record.up_count.clone(),
+				};
+				return ClickCount::Single;
+			}
+			ElementState::Released if record.up_count == ClickCount::Double => {
+				*record = ClickRecord {
+					time: now,
+					position: position.clone(),
+					down_count: record.down_count.clone(),
+					up_count: ClickCount::Single,
+				};
+				return ClickCount::Single;
+			}
+			_ => {}
+		}
+
 		let dx = position.x.abs_diff(record.position.x);
 		let dy = position.y.abs_diff(record.position.y);
 		let within_dist = dx <= MULTICLICK_ALLOWED_TRAVEL && dy <= MULTICLICK_ALLOWED_TRAVEL;
@@ -278,7 +300,7 @@ impl ClickTracker {
 	}
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 enum ClickCount {
 	Single,
 	Double,
