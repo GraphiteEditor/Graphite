@@ -11,9 +11,7 @@ pub(super) async fn create_wgpu_context() -> WgpuContext {
 		None => wgpu_context_builder.build().await,
 		Some(adapter_index) => {
 			tracing::info!("Overriding WGPU adapter selection with adapter index {adapter_index}");
-			wgpu_context_builder
-				.build_with_adapter_selection(|adapters: &mut Vec<_>| if adapter_index < adapters.len() { Some(adapters.remove(adapter_index)) } else { None })
-				.await
+			wgpu_context_builder.build_with_adapter_selection(|_| Some(adapter_index)).await
 		}
 	}
 	.expect("Failed to create WGPU context");
