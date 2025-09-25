@@ -200,7 +200,7 @@ impl<'i> Convert<Table<Raster<CPU>>, &'i WgpuExecutor> for Table<Raster<GPU>> {
 		let mut converters = Vec::new();
 		let mut rows_meta = Vec::new();
 
-		for row in self.into_iter() {
+		for row in self {
 			let gpu_raster = row.element;
 			converters.push(RasterGpuToRasterCpuConverter::new(device, &mut encoder, gpu_raster));
 			rows_meta.push(TableRow {
@@ -223,17 +223,16 @@ impl<'i> Convert<Table<Raster<CPU>>, &'i WgpuExecutor> for Table<Raster<GPU>> {
 			.map_err(|_| "Failed to receive map result")
 			.expect("Buffer mapping communication failed");
 
-		let mut table = Vec::new();
-		for (element, row) in map_results.into_iter().zip(rows_meta.into_iter()) {
-			table.push(TableRow {
+		map_results
+			.into_iter()
+			.zip(rows_meta.into_iter())
+			.map(|(element, row)| TableRow {
 				element,
 				transform: row.transform,
 				alpha_blending: row.alpha_blending,
 				source_node_id: row.source_node_id,
-			});
-		}
-
-		table.into_iter().collect()
+			})
+			.collect()
 	}
 }
 
