@@ -305,6 +305,11 @@ impl App {
 					self.cef_schedule = Some(instant);
 				}
 			}
+			AppEvent::CursorChange(cursor) => {
+				if let Some(window) = &self.window {
+					window.set_cursor(cursor);
+				}
+			}
 			AppEvent::CloseWindow => {
 				// TODO: Implement graceful shutdown
 
