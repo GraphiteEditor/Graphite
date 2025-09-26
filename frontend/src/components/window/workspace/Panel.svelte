@@ -100,7 +100,7 @@
 </script>
 
 <LayoutCol on:pointerdown={() => panelType && editor.handle.setActivePanel(panelType)} class={`panel ${className}`.trim()} {classes} style={styleName} {styles}>
-	<LayoutRow class="tab-bar" classes={{ "min-widths": tabMinWidths }}>
+	<LayoutRow class="tab-bar" classes={{ "min-widths": tabMinWidths }} on:dblclick = {() => editor.handle.newDocumentDialog()}>
 		<LayoutRow class="tab-group" scrollableX={true}>
 			{#each tabLabels as tabLabel, tabIndex}
 				<LayoutRow
@@ -118,6 +118,7 @@
 							closeAction?.(tabIndex);
 						}
 					}}
+					on:dblclick = {(e) => e.stopPropagation()}
 					on:mouseup={(e) => {
 						// Middle mouse button click fallback for Safari:
 						// https://developer.mozilla.org/en-US/docs/Web/API/Element/auxclick_event#browser_compatibility
