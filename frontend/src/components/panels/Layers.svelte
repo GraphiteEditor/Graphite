@@ -2,7 +2,6 @@
 	import { getContext, onMount, onDestroy, tick } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import { beginDraggingElement } from "@graphite/io-managers/drag";
 	import {
 		defaultWidgetLayout,
 		patchWidgetLayout,
@@ -50,10 +49,12 @@
 	let layers: LayerListingInfo[] = [];
 
 	// Interactive dragging
-	let draggable = true;
 	let draggingData: undefined | DraggingData = undefined;
 	let fakeHighlightOfNotYetSelectedLayerBeingDragged: undefined | bigint = undefined;
 	let dragInPanel = false;
+	let isDragging = false;
+	let dragStartPosition = { x: 0, y: 0 };
+	const dragThreshold = 5;
 
 	// Interactive clipping
 	let layerToClipUponClick: LayerListingInfo | undefined = undefined;
@@ -185,8 +186,6 @@
 
 	async function onEditLayerName(listing: LayerListingInfo) {
 		if (listing.editingName) return;
-
-		draggable = false;
 		listing.editingName = true;
 		layers = layers;
 
@@ -200,8 +199,6 @@
 	function onEditLayerNameChange(listing: LayerListingInfo, e: Event) {
 		// Eliminate duplicate events
 		if (!listing.editingName) return;
-
-		draggable = true;
 		listing.editingName = false;
 		layers = layers;
 
@@ -211,7 +208,6 @@
 	}
 
 	async function onEditLayerNameDeselect(listing: LayerListingInfo) {
-		draggable = true;
 		listing.editingName = false;
 		layers = layers;
 
@@ -371,9 +367,11 @@
 		};
 	}
 
-	async function dragStart(event: DragEvent, listing: LayerListingInfo) {
+	function handlePointerDown(event: PointerEvent, listing: LayerListingInfo) {
+		// Only handle primary button (left mouse button)
+		if (event.button !== 0) return;
+
 		const layer = listing.entry;
-		dragInPanel = true;
 		if (!$nodeGraph.selected.includes(layer.id)) {
 			fakeHighlightOfNotYetSelectedLayerBeingDragged = layer.id;
 		}
@@ -381,77 +379,98 @@
 			if (!$nodeGraph.selected.includes(layer.id)) selectLayer(listing, false, false);
 		};
 
-		const target = (event.target instanceof HTMLElement && event.target) || undefined;
-		const closest = target?.closest("[data-layer]") || undefined;
-		const draggingELement = (closest instanceof HTMLElement && closest) || undefined;
-		if (draggingELement) beginDraggingElement(draggingELement);
+		// Store initial drag position and select function for later use
+		dragStartPosition = { x: event.clientX, y: event.clientY };
+		draggingData = { select, insertParentId: undefined, insertDepth: 0, insertIndex: undefined, highlightFolder: false, markerHeight: 0 };
 
-		// Set style of cursor for drag
-		if (event.dataTransfer) {
-			event.dataTransfer.dropEffect = "move";
-			event.dataTransfer.effectAllowed = "move";
-		}
-
-		if (list) draggingData = calculateDragIndex(list, event.clientY, select);
+		// Capture pointer to receive move events
+		(event.target as HTMLElement)?.setPointerCapture(event.pointerId);
 	}
 
-	function updateInsertLine(event: DragEvent) {
-		if (!draggable) return;
+	function updateInsertLine(event: PointerEvent) {
+		// If not dragging yet, check if we should start dragging
+		if (!isDragging && event.buttons === 1 && draggingData) {
+			const deltaX = event.clientX - dragStartPosition.x;
+			const deltaY = event.clientY - dragStartPosition.y;
+			const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
 
-		// Stop the drag from being shown as cancelled
+			if (distance > dragThreshold) {
+				isDragging = true;
+				dragInPanel = true;
+				event.preventDefault();
+			}
+		}
+
+		if (!isDragging) return;
+
 		event.preventDefault();
 		dragInPanel = true;
 
 		if (list) draggingData = calculateDragIndex(list, event.clientY, draggingData?.select);
 	}
 
-	function drop(e: DragEvent) {
+	function handlePointerUp(event: PointerEvent) {
+		const wasDragging = isDragging;
+
+		// If we were dragging, complete the move operation
+		if (isDragging && draggingData) {
+			const { select, insertParentId, insertIndex } = draggingData;
+
+			// Complete the layer move
+			select?.();
+			editor.handle.moveLayerInTree(insertParentId, insertIndex);
+		}
+
+		// Cleanup state
+		draggingData = undefined;
+		fakeHighlightOfNotYetSelectedLayerBeingDragged = undefined;
+		isDragging = false;
+		dragInPanel = false;
+
+		// Release pointer capture
+		if (wasDragging) {
+			try {
+				(event.target as HTMLElement)?.releasePointerCapture(event.pointerId);
+			} catch {
+				// Ignore errors - pointer might not be captured
+			}
+		}
+	}
+
+	function handleDrop(e: DragEvent) {
 		if (!draggingData) return;
-		const { select, insertParentId, insertIndex } = draggingData;
+		const { insertParentId, insertIndex } = draggingData;
 
 		e.preventDefault();
 
-		if (e.dataTransfer) {
-			// Moving layers
-			if (e.dataTransfer.items.length === 0) {
-				if (draggable && dragInPanel) {
-					select?.();
-					editor.handle.moveLayerInTree(insertParentId, insertIndex);
+		if (e.dataTransfer && e.dataTransfer.items.length > 0) {
+			// Handle file imports
+			Array.from(e.dataTransfer.items).forEach(async (item) => {
+				const file = item.getAsFile();
+				if (!file) return;
+
+				if (file.type.includes("svg")) {
+					const svgData = await file.text();
+					editor.handle.pasteSvg(file.name, svgData, undefined, undefined, insertParentId, insertIndex);
+					return;
 				}
-			}
-			// Importing files
-			else {
-				Array.from(e.dataTransfer.items).forEach(async (item) => {
-					const file = item.getAsFile();
-					if (!file) return;
 
-					if (file.type.includes("svg")) {
-						const svgData = await file.text();
-						editor.handle.pasteSvg(file.name, svgData, undefined, undefined, insertParentId, insertIndex);
-						return;
-					}
+				if (file.type.startsWith("image")) {
+					const imageData = await extractPixelData(file);
+					editor.handle.pasteImage(file.name, new Uint8Array(imageData.data), imageData.width, imageData.height, undefined, undefined, insertParentId, insertIndex);
+					return;
+				}
 
-					if (file.type.startsWith("image")) {
-						const imageData = await extractPixelData(file);
-						editor.handle.pasteImage(file.name, new Uint8Array(imageData.data), imageData.width, imageData.height, undefined, undefined, insertParentId, insertIndex);
-						return;
-					}
-
-					// When we eventually have sub-documents, this should be changed to import the document instead of opening it in a separate tab
-					const graphiteFileSuffix = "." + editor.handle.fileExtension();
-					if (file.name.endsWith(graphiteFileSuffix)) {
-						const content = await file.text();
-						const documentName = file.name.slice(0, -graphiteFileSuffix.length);
-						editor.handle.openDocumentFile(documentName, content);
-						return;
-					}
-				});
-			}
+				// When we eventually have sub-documents, this should be changed to import the document instead of opening it in a separate tab
+				const graphiteFileSuffix = "." + editor.handle.fileExtension();
+				if (file.name.endsWith(graphiteFileSuffix)) {
+					const content = await file.text();
+					const documentName = file.name.slice(0, -graphiteFileSuffix.length);
+					editor.handle.openDocumentFile(documentName, content);
+					return;
+				}
+			});
 		}
-
-		draggingData = undefined;
-		fakeHighlightOfNotYetSelectedLayerBeingDragged = undefined;
-		dragInPanel = false;
 	}
 
 	function rebuildLayerHierarchy(updateDocumentLayerStructure: DocumentLayerStructure) {
@@ -509,9 +528,11 @@
 			data-layer-panel
 			bind:this={list}
 			on:click={() => deselectAllLayers()}
-			on:dragover={updateInsertLine}
-			on:dragend={drop}
-			on:drop={drop}
+			on:pointermove={updateInsertLine}
+			on:pointerup={handlePointerUp}
+			on:pointercancel={handlePointerUp}
+			on:pointerleave={() => (dragInPanel = false)}
+			on:drop={handleDrop}
 		>
 			{#each layers as listing, index}
 				{@const selected = fakeHighlightOfNotYetSelectedLayerBeingDragged !== undefined ? fakeHighlightOfNotYetSelectedLayerBeingDragged === listing.entry.id : listing.entry.selected}
@@ -528,8 +549,7 @@
 					data-layer
 					data-index={index}
 					tooltip={listing.entry.tooltip}
-					{draggable}
-					on:dragstart={(e) => draggable && dragStart(e, listing)}
+					on:pointerdown={(e) => handlePointerDown(e, listing)}
 					on:click={(e) => selectLayerWithModifiers(e, listing)}
 				>
 					{#if listing.entry.childrenAllowed}
