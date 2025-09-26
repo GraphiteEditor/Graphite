@@ -979,16 +979,10 @@ fn extract_vector(ctx: impl Ctx + ExtractVarArgs) -> Table<Vector> {
 #[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
 async fn map_instance(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: Table<Vector>, map_fn: impl Node<Context<'static>, Output = Table<Vector>>) -> Table<Vector> {
 	let mut rows = Vec::new();
-	// log::debug!("content: {content:?}");
 	for row in content {
-		let transform = row.transform;
-		let alpha_blending = row.alpha_blending;
-		let source_node_id = row.source_node_id;
-
 		let owned_ctx = OwnedContextImpl::from(ctx.clone());
 		let owned_ctx = owned_ctx.with_vararg(Box::new(Table::new_from_row(row)));
 		let table = map_fn.eval(owned_ctx.into_context()).await;
-		// log::debug!("content: {content:?}");
 		for inner_row in table {
 			rows.push(inner_row);
 		}
