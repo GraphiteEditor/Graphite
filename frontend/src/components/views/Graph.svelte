@@ -666,7 +666,7 @@
 				<div class="primary" class:in-selected-network={$nodeGraph.inSelectedNetwork} class:no-secondary-section={exposedInputsOutputs.length === 0}>
 					<IconLabel icon={nodeIcon(node.reference)} />
 					<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
-					<TextLabel>{node.displayName}</TextLabel>
+					<TextLabel tooltip={node.reference}>{node.displayName}</TextLabel>
 				</div>
 				<!-- Secondary rows -->
 				{#if exposedInputsOutputs.length > 0}
