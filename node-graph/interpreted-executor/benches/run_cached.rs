@@ -10,7 +10,7 @@ fn subsequent_evaluations(c: &mut Criterion) {
 	bench_for_each_demo(&mut group, |name, g| {
 		let (executor, _) = setup_network(name);
 		g.bench_function(name, |b| {
-			b.iter(|| futures::executor::block_on(executor.tree().eval_tagged_value(executor.output(), criterion::black_box(context))).unwrap())
+			b.iter(|| futures::executor::block_on(executor.tree().eval_tagged_value(executor.output(), std::hint::black_box(context))).unwrap())
 		});
 	});
 	group.finish();
