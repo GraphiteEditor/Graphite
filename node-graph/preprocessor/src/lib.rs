@@ -29,6 +29,8 @@ pub fn expand_network(network: &mut NodeNetwork, substitutions: &HashMap<ProtoNo
 
 pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNode> {
 	let mut custom = HashMap::new();
+	// We pre initialize the node registry here to avoid a deadlock
+	let into_node_registry = &*interpreted_executor::node_registry::NODE_REGISTRY;
 	let node_registry = graphene_core::registry::NODE_REGISTRY.lock().unwrap();
 	for (id, metadata) in graphene_core::registry::NODE_METADATA.lock().unwrap().iter() {
 		let id = id.clone();
@@ -53,8 +55,6 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 		let network_inputs = (0..input_count).map(|i| NodeInput::node(NodeId(i as u64), 0)).collect();
 
 		let identity_node = ops::identity::IDENTIFIER;
-
-		let into_node_registry = &interpreted_executor::node_registry::NODE_REGISTRY;
 
 		let mut generated_nodes = 0;
 		let mut nodes: HashMap<_, _, _> = node_io_types

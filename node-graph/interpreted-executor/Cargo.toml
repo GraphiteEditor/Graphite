@@ -29,6 +29,7 @@ serde = { workspace = true }
 graph-craft = { workspace = true, features = ["loading"] }
 criterion = { workspace = true }
 iai-callgrind = { workspace = true }
+preprocessor = { workspace = true }
 
 # Benchmarks
 [[bench]]
