@@ -124,7 +124,7 @@ impl WgpuExecutor {
 				mip_level_count: 1,
 				sample_count: 1,
 				dimension: wgpu::TextureDimension::D2,
-				usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING,
+				usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC,
 				format: VELLO_SURFACE_FORMAT,
 				view_formats: &[],
 			});
