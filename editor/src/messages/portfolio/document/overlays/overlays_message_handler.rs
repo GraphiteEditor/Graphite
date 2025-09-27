@@ -15,8 +15,6 @@ pub struct OverlaysMessageHandler {
 	canvas: Option<web_sys::HtmlCanvasElement>,
 	#[cfg(target_family = "wasm")]
 	context: Option<web_sys::CanvasRenderingContext2d>,
-	#[cfg(all(not(target_family = "wasm"), not(test)))]
-	context: Option<super::utility_types::OverlayContext>,
 }
 
 #[message_handler_data]
@@ -82,11 +80,7 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 
 				let size = ipp.viewport_bounds.size();
 
-				if self.context.is_none() {
-					self.context = Some(OverlayContext::new(size, device_pixel_ratio, visibility_settings));
-				}
-
-				let overlay_context = self.context.as_mut().unwrap();
+				let overlay_context = OverlayContext::new(size, device_pixel_ratio, visibility_settings);
 
 				if visibility_settings.all() {
 					responses.add(DocumentMessage::GridOverlays { context: overlay_context.clone() });
@@ -95,7 +89,7 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 						responses.add(provider(overlay_context.clone()));
 					}
 				}
-				responses.add(FrontendMessage::RenderOverlays { context: overlay_context.clone() });
+				responses.add(FrontendMessage::RenderOverlays { context: overlay_context });
 			}
 			#[cfg(all(not(target_family = "wasm"), test))]
 			OverlaysMessage::Draw => {
