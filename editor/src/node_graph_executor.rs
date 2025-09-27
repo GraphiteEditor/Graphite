@@ -51,7 +51,7 @@ pub enum NodeGraphUpdate {
 pub struct NodeGraphExecutor {
 	runtime_io: NodeRuntimeIO,
 	current_execution_id: u64,
-	futures: HashMap<u64, ExecutionContext>,
+	futures: VecDeque<(u64, ExecutionContext)>,
 	node_graph_hash: u64,
 	previous_node_to_inspect: Option<NodeId>,
 }
@@ -157,7 +157,7 @@ impl NodeGraphExecutor {
 		// Execute the node graph
 		let execution_id = self.queue_execution(render_config);
 
-		self.futures.insert(execution_id, ExecutionContext { export_config: None, document_id });
+		self.futures.push_back((execution_id, ExecutionContext { export_config: None, document_id }));
 
 		Ok(DeferMessage::SetGraphSubmissionIndex { execution_id }.into())
 	}
@@ -213,7 +213,7 @@ impl NodeGraphExecutor {
 			export_config: Some(export_config),
 			document_id,
 		};
-		self.futures.insert(execution_id, execution_context);
+		self.futures.push_back((execution_id, execution_context));
 
 		Ok(())
 	}
@@ -273,7 +273,19 @@ impl NodeGraphExecutor {
 					responses.extend(existing_responses.into_iter().map(Into::into));
 					document.network_interface.update_vector_modify(vector_modify);
 
-					let execution_context = self.futures.remove(&execution_id).ok_or_else(|| "Invalid generation ID".to_string())?;
+					while let Some(&(fid, _)) = self.futures.front() {
+						if fid < execution_id {
+							self.futures.pop_front();
+						} else {
+							break;
+						}
+					}
+
+					let Some((fid, execution_context)) = self.futures.pop_front() else {
+						panic!("InvalidGenerationId")
+					};
+					assert_eq!(fid, execution_id, "Missmatch in execution id");
+
 					if let Some(export_config) = execution_context.export_config {
 						// Special handling for exporting the artwork
 						self.export(node_graph_output, export_config, responses)?;
