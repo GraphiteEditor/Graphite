@@ -20,9 +20,21 @@ use graphene_std::vector::{PointId, SegmentId, Vector};
 use kurbo::{self, BezPath, ParamCurve};
 use kurbo::{Affine, PathSeg};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 use vello::Scene;
 use vello::peniko;
+
+// Global lazy initialized font cache and text context
+static GLOBAL_FONT_CACHE: LazyLock<FontCache> = LazyLock::new(|| {
+	let mut font_cache = FontCache::default();
+	// Initialize with the hardcoded font used by overlay text
+	const FONT_DATA: &[u8] = include_bytes!("source-sans-pro-regular.ttf");
+	let font = Font::new("Source Sans Pro".to_string(), "Regular".to_string());
+	font_cache.insert(font, String::new(), FONT_DATA.to_vec());
+	font_cache
+});
+
+static GLOBAL_TEXT_CONTEXT: LazyLock<Mutex<TextContext>> = LazyLock::new(|| Mutex::new(TextContext::default()));
 
 pub type OverlayProvider = fn(OverlayContext) -> Message;
 
@@ -412,8 +424,6 @@ pub(super) struct OverlayContextInternal {
 	size: DVec2,
 	device_pixel_ratio: f64,
 	visibility_settings: OverlaysVisibilitySettings,
-	font_cache: FontCache,
-	thread_text: TextContext,
 }
 
 impl Default for OverlayContextInternal {
@@ -424,19 +434,11 @@ impl Default for OverlayContextInternal {
 
 impl OverlayContextInternal {
 	pub(super) fn new(size: DVec2, device_pixel_ratio: f64, visibility_settings: OverlaysVisibilitySettings) -> Self {
-		let mut font_cache = FontCache::default();
-		// Initialize with the hardcoded font used by overlay text
-		const FONT_DATA: &[u8] = include_bytes!("source-sans-pro-regular.ttf");
-		let font = Font::new("Source Sans Pro".to_string(), "Regular".to_string());
-		font_cache.insert(font, String::new(), FONT_DATA.to_vec());
-
 		Self {
 			scene: Scene::new(),
 			size,
 			device_pixel_ratio,
 			visibility_settings,
-			font_cache,
-			thread_text: TextContext::default(),
 		}
 	}
 
@@ -1031,7 +1033,8 @@ impl OverlayContextInternal {
 		// TODO: Grab this from the node_modules folder (either with `include_bytes!` or ideally at runtime) instead of checking the font file into the repo.
 		// TODO: And maybe use the WOFF2 version (if it's supported) for its smaller, compressed file size.
 		let font = Font::new("Source Sans Pro".to_string(), "Regular".to_string());
-		let bounds = self.thread_text.bounding_box(text, &font, &self.font_cache, typesetting, false);
+		let mut text_context = GLOBAL_TEXT_CONTEXT.lock().expect("Failed to lock global text context");
+		let bounds = text_context.bounding_box(text, &font, &GLOBAL_FONT_CACHE, typesetting, false);
 		bounds.x
 	}
 
@@ -1056,14 +1059,15 @@ impl OverlayContextInternal {
 		let font = Font::new("Source Sans Pro".to_string(), "Regular".to_string());
 
 		// Get text dimensions directly from layout
-		let text_size = self.thread_text.bounding_box(text, &font, &self.font_cache, typesetting, false);
+		let mut text_context = GLOBAL_TEXT_CONTEXT.lock().expect("Failed to lock global text context");
+		let text_size = text_context.bounding_box(text, &font, &GLOBAL_FONT_CACHE, typesetting, false);
 		let text_width = text_size.x;
 		let text_height = text_size.y;
 		// Create a rect from the size (assuming text starts at origin)
 		let text_bounds = kurbo::Rect::new(0.0, 0.0, text_width, text_height);
 
 		// Convert text to vector paths for rendering
-		let text_table = self.thread_text.to_path(text, &font, &self.font_cache, typesetting, false);
+		let text_table = text_context.to_path(text, &font, &GLOBAL_FONT_CACHE, typesetting, false);
 
 		// Calculate position based on pivot
 		let mut position = DVec2::ZERO;
