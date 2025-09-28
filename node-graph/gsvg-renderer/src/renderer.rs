@@ -1596,7 +1596,7 @@ impl Render for Table<Typography> {
 										attributes.push("transform", matrix);
 									}
 
-									attributes.push("font-family", table_row.element.font_family.clone());
+									attributes.push("font-family", table_row.element.family_name.clone());
 									attributes.push("font-weight", font_attributes.weight.value().to_string());
 									attributes.push("font-size", glyph_run.run().font_size().to_string());
 									attributes.push("font-style", font_style);
