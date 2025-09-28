@@ -3570,4 +3570,5 @@ fn update_dynamic_hints(
 		PathToolFsmState::SlidingPoint => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
 	};
 	responses.add(FrontendMessage::UpdateInputHints { hint_data });
+	responses.add(ToolMessage::UpdateHints);
 }
