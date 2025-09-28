@@ -19,6 +19,9 @@
 
 	$: nodeCategories = buildNodeCategories($nodeGraph.nodeTypes, searchTerm);
 
+	let focusedNodeIndex = 0;
+	$: flatNodeList = nodeCategories.flatMap((node) => node[1].nodes);
+
 	type NodeCategoryDetails = {
 		nodes: FrontendNodeType[];
 		open: boolean;
@@ -29,6 +32,7 @@
 		const isTypeSearch = searchTerm.toLowerCase().startsWith("type:");
 		let typeSearchTerm = "";
 		let remainingSearchTerms = [searchTerm.toLowerCase()];
+		focusedNodeIndex = 0;
 
 		if (isTypeSearch) {
 			// Extract the first word after "type:" as the type search
@@ -104,11 +108,32 @@
 			});
 	}
 
+	function keyboardNavigationHandler(e: KeyboardEvent) {
+		const listLength: number = flatNodeList.length;
+		if (listLength === 0) return;
+
+		if (e.key === "ArrowDown") {
+			focusedNodeIndex = (focusedNodeIndex + 1) % listLength;
+			e.preventDefault();
+		} else if (e.key === "ArrowUp") {
+			focusedNodeIndex = (focusedNodeIndex - 1 + listLength) % listLength;
+			e.preventDefault();
+		} else if (e.key === "Enter") {
+			const node = flatNodeList[focusedNodeIndex];
+			dispatch("selectNodeType", node.name);
+		} else {
+			return;
+		}
+
+		setTimeout(() => document.querySelector(".node-catalog button.emphasized")?.scrollIntoView({ block: "nearest" }), 0);
+	}
+
 	onMount(() => {
 		setTimeout(() => nodeSearchInput?.focus(), 0);
 	});
 </script>
 
+<svelte:window on:keydown={keyboardNavigationHandler} />
 <div class="node-catalog">
 	<TextInput placeholder="Search Nodes..." value={searchTerm} on:value={({ detail }) => (searchTerm = detail)} bind:this={nodeSearchInput} />
 	<div class="list-results" on:wheel|passive|stopPropagation>
@@ -118,7 +143,13 @@
 					<TextLabel>{nodeCategory[0]}</TextLabel>
 				</summary>
 				{#each nodeCategory[1].nodes as nodeType}
-					<TextButton {disabled} label={nodeType.name} tooltip={$nodeGraph.nodeDescriptions.get(nodeType.name)} action={() => dispatch("selectNodeType", nodeType.name)} />
+					<TextButton
+						{disabled}
+						label={nodeType.name}
+						tooltip={$nodeGraph.nodeDescriptions.get(nodeType.name)}
+						emphasized={nodeType == flatNodeList[focusedNodeIndex]}
+						action={() => dispatch("selectNodeType", nodeType.name)}
+					/>
 				{/each}
 			</details>
 		{:else}
