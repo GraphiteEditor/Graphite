@@ -2887,6 +2887,7 @@ dependencies = [
  "iai-callgrind",
  "log",
  "once_cell",
+ "preprocessor",
  "serde",
  "wgpu-executor",
 ]
