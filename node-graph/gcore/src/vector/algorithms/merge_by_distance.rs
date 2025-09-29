@@ -105,6 +105,11 @@ impl MergeByDistanceExt for Vector {
 	fn merge_by_distance_spatial(&mut self, transform: DAffine2, distance: f64) {
 		let point_count = self.point_domain.positions().len();
 
+		if !(distance.is_finite() && distance > 0.0) {
+			// Nothing to merge or invalid input; bail safely
+			return;
+		}
+
 		// Find min x and y for grid cell normalization
 		let mut min_x = f64::MAX;
 		let mut min_y = f64::MAX;
@@ -123,8 +128,14 @@ impl MergeByDistanceExt for Vector {
 		// Add points to grid cells without collecting all positions first
 		for i in 0..point_count {
 			let pos = transform.transform_point2(self.point_domain.positions()[i]);
-			let grid_x = ((pos.x - min_x) / distance).floor() as i32;
-			let grid_y = ((pos.y - min_y) / distance).floor() as i32;
+			let gx = ((pos.x - min_x) / distance).floor();
+			let gy = ((pos.y - min_y) / distance).floor();
+			if !gx.is_finite() || !gy.is_finite() {
+				continue;
+			}
+
+			let grid_x = gx.clamp(i32::MIN as f64, i32::MAX as f64) as i32;
+			let grid_y = gy.clamp(i32::MIN as f64, i32::MAX as f64) as i32;
 
 			grid.entry((grid_x, grid_y)).or_default().push(i);
 		}
@@ -142,17 +153,27 @@ impl MergeByDistanceExt for Vector {
 			}
 
 			let pos_i = transform.transform_point2(self.point_domain.positions()[i]);
-			let grid_x = ((pos_i.x - min_x) / distance).floor() as i32;
-			let grid_y = ((pos_i.y - min_y) / distance).floor() as i32;
+
+			let gx = ((pos_i.x - min_x) / distance).floor();
+			let gy = ((pos_i.y - min_y) / distance).floor();
+
+			if !gx.is_finite() || !gy.is_finite() {
+				point_index_map[i] = Some(merged_positions.len());
+				merged_positions.push(self.point_domain.positions()[i]);
+				merged_indices.push(self.point_domain.ids()[i]);
+				continue;
+			}
+
+			let grid_x = gx.clamp(i32::MIN as f64, i32::MAX as f64) as i32;
+			let grid_y = gy.clamp(i32::MIN as f64, i32::MAX as f64) as i32;
 
 			let mut group = vec![i];
 
-			// Check only neighboring cells (3x3 grid around current cell)
 			for dx in -1..=1 {
 				for dy in -1..=1 {
-					let neighbor_cell = (grid_x + dx, grid_y + dy);
-
-					if let Some(indices) = grid.get(&neighbor_cell) {
+					let nx = grid_x.saturating_add(dx);
+					let ny = grid_y.saturating_add(dy);
+					if let Some(indices) = grid.get(&(nx, ny)) {
 						for &j in indices {
 							if j > i && point_index_map[j].is_none() {
 								let pos_j = transform.transform_point2(self.point_domain.positions()[j]);
@@ -166,21 +187,29 @@ impl MergeByDistanceExt for Vector {
 			}
 
 			// Create merged point - calculate positions as needed
-			let merged_position = group
+			let merged_world = group
 				.iter()
 				.map(|&idx| transform.transform_point2(self.point_domain.positions()[idx]))
 				.fold(DVec2::ZERO, |sum, pos| sum + pos)
 				/ group.len() as f64;
+			let merged_local = transform.inverse().transform_point2(merged_world);
 
-			let merged_position = transform.inverse().transform_point2(merged_position);
+			let rep_id = group.iter().map(|&idx| self.point_domain.ids()[idx]).min().unwrap();
 			let merged_index = merged_positions.len();
-
-			merged_positions.push(merged_position);
-			merged_indices.push(self.point_domain.ids()[group[0]]);
+			merged_positions.push(merged_local);
+			merged_indices.push(rep_id);
 
 			// Update mapping for all points in the group
 			for &idx in &group {
 				point_index_map[idx] = Some(merged_index);
+			}
+		}
+
+		for i in 0..point_count {
+			if point_index_map[i].is_none() {
+				point_index_map[i] = Some(merged_positions.len());
+				merged_positions.push(self.point_domain.positions()[i]);
+				merged_indices.push(self.point_domain.ids()[i]);
 			}
 		}
 
