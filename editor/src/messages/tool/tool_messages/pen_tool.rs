@@ -684,6 +684,7 @@ impl PenToolData {
 		let document = snap_data.document;
 		let next_handle_start = self.next_handle_start;
 		let handle_start = self.latest_point()?.handle_start;
+		
 		let mouse = snap_data.input.mouse.position;
 		self.handle_swapped = false;
 		self.handle_end_offset = None;
