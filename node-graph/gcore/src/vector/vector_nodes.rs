@@ -643,6 +643,116 @@ fn bilinear_interpolate(t: DVec2, quad: &[DVec2; 4]) -> DVec2 {
 	tl * (1. - t.x) * (1. - t.y) + tr * t.x * (1. - t.y) + br * t.x * t.y + bl * (1. - t.x) * t.y
 }
 
+/// Packs shapes using bounds with Best Fit Decreasing Height (BFDH) algorithm
+/// Algorithm:
+/// - Sort shapes by height (tallest first)
+/// - For each shape, find the existing shelf with minimum remaining space that fits
+/// - Create new shelf only if no existing shelf can accommodate the shape
+/// Works as a reasonable approximation for classic box packing problem
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn pack_by_bounds<I: 'n + Send + Clone>(
+	_: impl Ctx,
+	#[implementations(
+		Table<Graphic>,
+		Table<Vector>,
+		Table<Raster<CPU>>,
+		Table<Raster<GPU>>,
+	)]
+	elements: Table<I>,
+	#[unit(" px")]
+	#[default(10.)]
+	spacing: f64,
+	#[unit(" px")]
+	#[default(1000.)]
+	max_width: f64,
+) -> Table<I>
+where
+	Graphic: From<Table<I>>,
+	Table<I>: BoundingBox,
+{
+	use core::cmp::Ordering;
+
+	// Helper structure for shelves
+	#[derive(Clone)]
+	struct Shelf {
+		y: f64,
+		height: f64,
+		current_x: f64,
+	}
+
+	// Prep the rows to be sorted
+	let mut items: Vec<(f64, f64, DVec2, TableRow<I>)> = elements
+		.into_iter()
+		.map(|row| {
+			// Single-element table to query its bounding box
+			let single = Table::new_from_row(row.clone());
+			let (w, h, top_left) = match single.bounding_box(DAffine2::IDENTITY, false) {
+				RenderBoundingBox::Rectangle([min, max]) => {
+					let size = max - min;
+					(size.x.max(0.), size.y.max(0.), min)
+				}
+				_ => (0., 0., DVec2::ZERO),
+			};
+			(w, h, top_left, row)
+		})
+		.collect();
+		
+	// Sort by height, tallest first
+	items.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
+
+	let mut result = Table::new();
+	let mut shelves: Vec<Shelf> = Vec::new();
+
+	for (w, h, top_left, mut row) in items {
+		if w <= 0. {
+			result.push(row);
+			continue;
+		}
+
+		// Find a good shelf, minimum remaining space that can fit this item ideally
+		let mut best_shelf_idx = None;
+		let mut min_remaining_space = f64::INFINITY;
+
+		for (idx, shelf) in shelves.iter().enumerate() {
+			let remaining_space = max_width - shelf.current_x;
+			if remaining_space >= w && remaining_space < min_remaining_space {
+				min_remaining_space = remaining_space;
+				best_shelf_idx = Some(idx);
+			}
+		}
+
+		if let Some(shelf_idx) = best_shelf_idx {
+			// Place on existing shelf
+			let shelf = &mut shelves[shelf_idx];
+			
+			// Update shelf height if needed
+			if h > shelf.height {
+				shelf.height = h;
+			}
+
+			let target_pos = DVec2::new(shelf.current_x, shelf.y);
+			row.transform = DAffine2::from_translation(target_pos - top_left) * row.transform;
+
+			shelf.current_x += w + spacing;
+		} else {
+			// Create new shelf
+			let new_y = shelves.last().map_or(0., |last| last.y + last.height + spacing);
+			let target_pos = DVec2::new(0., new_y);
+			row.transform = DAffine2::from_translation(target_pos - top_left) * row.transform;
+
+			shelves.push(Shelf {
+				y: new_y,
+				height: h,
+				current_x: w + spacing,
+			});
+		}
+
+		result.push(row);
+	}
+
+	result
+}
+
 /// Automatically constructs tangents (Bézier handles) for anchor points in a vector path.
 #[node_macro::node(category("Vector: Modifier"), name("Auto-Tangents"), path(graphene_core::vector))]
 async fn auto_tangents(

@@ -220,6 +220,97 @@ fn logarithm<T: num_traits::float::Float>(
 	}
 }
 
+/// The Remap function (remap) linearly maps a number from one range to another. If the input range is zero, the output will be the output minimum.
+#[node_macro::node(category("Math: Numeric"))]
+fn remap<U: num_traits::float::Float>(
+	_: impl Ctx,
+	#[implementations(f64, f32)] value: U,
+	#[implementations(f64, f32)]
+	#[default(-1.)]
+	input_min: U,
+	#[implementations(f64, f32)]
+	#[default(1.)]
+	input_max: U,
+	#[implementations(f64, f32)]
+	#[default(0.)]
+	output_min: U,
+	#[implementations(f64, f32)]
+	#[default(1.)]
+	output_max: U,
+	#[default(false)] clamped: bool,
+) -> U {
+	let input_range = input_max - input_min;
+
+	// Handle division by zero
+	if input_range.abs() < U::epsilon() {
+		return output_min;
+	}
+
+	let normalized = (value - input_min) / input_range;
+	let output_range = output_max - output_min;
+
+	let result = output_min + normalized * output_range;
+
+	if clamped {
+		// Handle both normal and inverted ranges, since we want to allow the user to use this node to also reverse a range.
+		if output_min <= output_max {
+			result.clamp(output_min, output_max)
+		} else {
+			result.clamp(output_max, output_min)
+		}
+	} else {
+		result
+	}
+}
+
+/// Compute pascal triangle coefficients for use in generalized smoothstep
+fn pascal_triangle<T: num_traits::float::Float>(a: T, b: T) -> T {
+	let mut result = T::one();
+	let b_int = b.to_usize().unwrap_or(0);
+	for i in 1..=b_int {
+		let i_t = T::from(i).unwrap();
+		result = result * (a - (i_t - T::one())) / i_t;
+	}
+	result
+}
+
+/// The smoothstep function creates a smooth interpolation curve between 0 and 1 
+/// Order 1 is linear, order 2 is the standard smoothstep (3x² - 2x³), etc
+#[node_macro::node(category("Math: Numeric"))]
+fn smoothstep<T: num_traits::float::Float>(
+	_: impl Ctx,
+	/// The input value which will be smoothly interpolated, values are automatically clamped to the 0-1 range
+	#[implementations(f64, f32)]
+	value: T,
+	/// Higher values create smoother transitions, minimum value is 1 e.g. linear, maximum is 8 e.g. very smooth
+	#[default(2.)]
+	#[implementations(f64, f32)]
+	#[hard_min(1.)]
+	#[hard_max(8.)]
+	order: T,
+) -> T {
+	// Clamp input
+	let value = value.clamp(T::zero(), T::one());
+
+	// For order 1, return linear interpolation
+	let order_int = order.to_usize().unwrap_or(1).max(1);
+	if order_int == 1 {
+		return value;
+	}
+
+	// Compute generalized smoothstep using Pascal triangle
+	let order_t = T::from(order_int).unwrap();
+	let mut result = T::zero();
+	for n in 0..order_int {
+		let n_t = T::from(n).unwrap();
+		let coeff1 = pascal_triangle(-order_t, n_t);
+		let coeff2 = pascal_triangle(T::from(2 * order_int - 1).unwrap(), order_t - n_t - T::one());
+		let power = value.powf(order_t + n_t);
+		result = result + coeff1 * coeff2 * power;
+	}
+	result
+}
+
 /// The sine trigonometric function (sin) calculates the ratio of the angle's opposite side length to its hypotenuse length.
 #[node_macro::node(category("Math: Trig"))]
 fn sine<T: num_traits::float::Float>(
