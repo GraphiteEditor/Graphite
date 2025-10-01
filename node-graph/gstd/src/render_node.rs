@@ -199,14 +199,9 @@ async fn render<'a: 'n>(
 				}
 			}
 
-			let mut background = Color::from_rgb8_srgb(0x22, 0x22, 0x22);
-			if !contains_artboard && !render_params.hide_artboards {
-				background = Color::WHITE;
-			}
-
 			if matches!(render_output_request_type, RenderOutputTypeRequest::Buffer) {
 				let texture = exec
-					.render_vello_scene_to_texture(&scene, footprint.resolution, context, background)
+					.render_vello_scene_to_texture(&scene, footprint.resolution, context, Color::TRANSPARENT)
 					.await
 					.expect("Failed to render Vello scene");
 
@@ -218,6 +213,11 @@ async fn render<'a: 'n>(
 					data: RenderOutputType::Buffer { data, width, height },
 					metadata,
 				};
+			}
+
+			let mut background = Color::from_rgb8_srgb(0x22, 0x22, 0x22);
+			if !contains_artboard && !render_params.hide_artboards {
+				background = Color::WHITE;
 			}
 
 			if let Some(surface_handle) = surface_handle {
