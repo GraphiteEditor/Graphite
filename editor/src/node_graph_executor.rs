@@ -235,8 +235,12 @@ impl NodeGraphExecutor {
 			..
 		} = export_config;
 
-		let file_suffix = &format!(".{file_type:?}").to_lowercase();
-		let name = name + file_suffix;
+		let file_extension = match file_type {
+			FileType::Svg => "svg",
+			FileType::Png => "png",
+			FileType::Jpg => "jpg",
+		};
+		let name = format!("{name}.{file_extension}");
 
 		match node_graph_output {
 			TaggedValue::RenderOutput(RenderOutput {
@@ -256,14 +260,41 @@ impl NodeGraphExecutor {
 				data: RenderOutputType::Buffer { data, width, height },
 				..
 			}) if file_type != FileType::Svg => {
-				responses.add(FrontendMessage::TriggerExportImageBuffer {
-					data,
-					width,
-					height,
-					transparent: transparent_background,
-					name,
-					file_type,
-				});
+				use image::buffer::ConvertBuffer;
+				use image::{ImageFormat, RgbImage, RgbaImage};
+
+				let Some(image) = RgbaImage::from_raw(width, height, data) else {
+					return Err(format!("Failed to create image buffer for export"));
+				};
+
+				let mut encoded = Vec::new();
+				let mut cursor = std::io::Cursor::new(&mut encoded);
+
+				match file_type {
+					FileType::Png => {
+						let result = if transparent_background {
+							image.write_to(&mut cursor, ImageFormat::Png)
+						} else {
+							let image: RgbImage = image.convert();
+							image.write_to(&mut cursor, ImageFormat::Png)
+						};
+						if let Err(err) = result {
+							return Err(format!("Failed to encode PNG: {err}"));
+						}
+					}
+					FileType::Jpg => {
+						let image: RgbImage = image.convert();
+						let result = image.write_to(&mut cursor, ImageFormat::Jpeg);
+						if let Err(err) = result {
+							return Err(format!("Failed to encode JPG: {err}"));
+						}
+					}
+					FileType::Svg => {
+						return Err(format!("SVG cannot be exported from an image buffer"));
+					}
+				}
+
+				responses.add(FrontendMessage::TriggerSaveFile { name, content: encoded });
 			}
 			_ => {
 				return Err(format!("Incorrect render type for exporting to an SVG ({file_type:?}, {node_graph_output})"));
