@@ -82,16 +82,6 @@ pub enum FrontendMessage {
 		mime: String,
 		size: (f64, f64),
 	},
-	#[cfg(feature = "gpu")]
-	#[serde(skip)]
-	TriggerExportImageBuffer {
-		data: Vec<u8>,
-		width: u32,
-		height: u32,
-		transparent: bool,
-		file_type: super::utility_types::FileType,
-		name: String,
-	},
 	TriggerFetchAndOpenDocument {
 		name: String,
 		filename: String,
