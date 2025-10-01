@@ -222,18 +222,7 @@ impl NodeRuntime {
 					// Resolve the result from the inspection by accessing the monitor node
 					let inspect_result = self.inspect_state.and_then(|state| state.access(&self.executor));
 
-					let texture = if let Ok(TaggedValue::RenderOutput(RenderOutput {
-						data: RenderOutputType::Texture(texture),
-						..
-					})) = &result
-					{
-						// We can early return becaus we know that there is at most one execution request and it will always be handled last
-						Some(texture.clone())
-					} else {
-						None
-					};
-
-					let result = match result {
+					let (result, texture) = match result {
 						Ok(TaggedValue::RenderOutput(RenderOutput {
 							data: RenderOutputType::Texture(image_texture),
 							metadata,
@@ -250,12 +239,25 @@ impl NodeRuntime {
 
 							let (data, width, height) = raster_cpu.to_flat_u8();
 
-							Ok(TaggedValue::RenderOutput(RenderOutput {
-								data: RenderOutputType::Buffer { data, width, height },
-								metadata,
-							}))
+							(
+								Ok(TaggedValue::RenderOutput(RenderOutput {
+									data: RenderOutputType::Buffer { data, width, height },
+									metadata,
+								})),
+								None,
+							)
 						}
-						r => r,
+						Ok(TaggedValue::RenderOutput(RenderOutput {
+							data: RenderOutputType::Texture(texture),
+							metadata,
+						})) => (
+							Ok(TaggedValue::RenderOutput(RenderOutput {
+								data: RenderOutputType::Texture(texture.clone()),
+								metadata,
+							})),
+							Some(texture),
+						),
+						r => (r, None),
 					};
 
 					self.sender.send_execution_response(ExecutionResponse {

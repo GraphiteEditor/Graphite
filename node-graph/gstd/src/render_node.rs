@@ -3,7 +3,6 @@ pub use graph_craft::document::value::RenderOutputType;
 pub use graph_craft::wasm_application_io::*;
 use graphene_application_io::{ApplicationIo, ExportFormat, ImageTexture, RenderConfig, SurfaceFrame};
 use graphene_core::gradient::GradientStops;
-use graphene_core::ops::Convert;
 use graphene_core::raster::image::Image;
 use graphene_core::raster_types::{CPU, Raster};
 use graphene_core::table::Table;
@@ -67,7 +66,6 @@ async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + 
 		}
 		#[cfg(not(target_family = "wasm"))]
 		{
-			#[expect(unused_variables)]
 			let _ = editor_api;
 			matches!(render_params.render_output_type, graphene_svg_renderer::RenderOutputType::Vello)
 		}

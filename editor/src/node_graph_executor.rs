@@ -230,6 +230,7 @@ impl NodeGraphExecutor {
 			name,
 			size,
 			scale_factor,
+			#[cfg(feature = "gpu")]
 			transparent_background,
 			..
 		} = export_config;

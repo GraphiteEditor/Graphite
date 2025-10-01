@@ -210,8 +210,6 @@ impl WgpuExecutor {
 	}
 }
 
-pub use wgpu::Texture as WgpuTexture;
-
 pub type WindowHandle = Arc<SurfaceHandle<Window>>;
 
 #[node_macro::node(skip_impl)]
