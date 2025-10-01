@@ -69,21 +69,33 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 			file_type,
 			name,
 		} => {
+			let Some(image) = image::RgbaImage::from_raw(width, height, data) else {
+				tracing::error!("Failed to create image buffer for export");
+				return None;
+			};
+
 			let mut encoded = Vec::new();
+			let mut cursor = std::io::Cursor::new(&mut encoded);
 
 			use graphite_editor::messages::frontend::utility_types::FileType;
-			use image::ColorType;
-			use image::ImageEncoder;
+			use image::buffer::ConvertBuffer;
 			match file_type {
 				FileType::Png => {
-					let result = image::codecs::png::PngEncoder::new(std::io::Cursor::new(&mut encoded)).write_image(&data, width, height, ColorType::Rgba8.into());
+					let result = if transparent {
+						image.write_to(&mut cursor, image::ImageFormat::Png)
+						// TODO: find out why this is never triggered and fix it
+					} else {
+						let image: image::RgbImage = image.convert();
+						image.write_to(&mut cursor, image::ImageFormat::Png)
+					};
 					if let Err(err) = result {
 						tracing::error!("Failed to encode PNG: {err}");
 						return None;
 					}
 				}
 				FileType::Jpg => {
-					let result = image::codecs::jpeg::JpegEncoder::new(std::io::Cursor::new(&mut encoded)).write_image(&data, width, height, ColorType::Rgba8.into());
+					let image: image::RgbImage = image.convert();
+					let result = image.write_to(&mut cursor, image::ImageFormat::Jpeg);
 					if let Err(err) = result {
 						tracing::error!("Failed to encode JPG: {err}");
 						return None;
@@ -105,8 +117,6 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 			} else {
 				format!("{name}.{file_extension}")
 			};
-
-			println!("Successfully encoded image, size: {} bytes", encoded.len());
 
 			dispatcher.respond(DesktopFrontendMessage::SaveFileDialog {
 				title: "Export".to_string(),
