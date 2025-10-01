@@ -135,3 +135,8 @@ pub enum Platform {
 	Mac,
 	Linux,
 }
+
+pub enum ExportType {
+	Png,
+	Jpg,
+}
