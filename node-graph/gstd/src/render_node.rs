@@ -59,11 +59,21 @@ async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + 
 	data.collect_metadata(&mut metadata, footprint, None);
 	let contains_artboard = data.contains_artboard();
 
-	let editor_api = editor_api.eval(None).await;
+	let use_vello = {
+		#[cfg(target_family = "wasm")]
+		{
+			let editor_api = editor_api.eval(None).await;
+			!render_params.for_export && editor_api.editor_preferences.use_vello() && matches!(render_params.render_output_type, graphene_svg_renderer::RenderOutputType::Vello)
+		}
+		#[cfg(not(target_family = "wasm"))]
+		{
+			#[expect(unused_variables)]
+			let _ = editor_api;
+			matches!(render_params.render_output_type, graphene_svg_renderer::RenderOutputType::Vello)
+		}
+	};
 
-	if (!render_params.for_export && editor_api.editor_preferences.use_vello() && matches!(render_params.render_output_type, graphene_svg_renderer::RenderOutputType::Texture))
-		|| matches!(render_params.render_output_type, RenderOutputTypeRequest::Buffer)
-	{
+	if use_vello {
 		let mut scene = vello::Scene::new();
 
 		let mut context = wgpu_executor::RenderContext::default();
@@ -97,9 +107,8 @@ async fn create_context<'a: 'n>(
 
 	let render_output_type = match render_config.export_format {
 		ExportFormat::Svg => RenderOutputTypeRequest::Svg,
-		ExportFormat::Buffer => RenderOutputTypeRequest::Buffer,
-		ExportFormat::Texture => RenderOutputTypeRequest::Texture,
-		ExportFormat::Canvas => RenderOutputTypeRequest::Texture,
+		ExportFormat::Texture => RenderOutputTypeRequest::Vello,
+		ExportFormat::Canvas => RenderOutputTypeRequest::Vello,
 	};
 
 	let render_params = RenderParams {
@@ -178,7 +187,7 @@ async fn render<'a: 'n>(
 				image_data: svg_renderer.image_data,
 			}
 		}
-		(render_output_request_type, RenderIntermediateType::Vello(vello_data)) => {
+		(RenderOutputTypeRequest::Vello, RenderIntermediateType::Vello(vello_data)) => {
 			let Some(exec) = editor_api.application_io.as_ref().unwrap().gpu_executor() else {
 				unreachable!("Attempted to render with Vello when no GPU executor is available");
 			};
@@ -197,22 +206,6 @@ async fn render<'a: 'n>(
 				if transform.matrix[0] == f32::INFINITY {
 					*transform = vello_encoding::Transform::from_kurbo(&(vello::kurbo::Affine::scale_non_uniform(footprint.resolution.x as f64, footprint.resolution.y as f64)))
 				}
-			}
-
-			if matches!(render_output_request_type, RenderOutputTypeRequest::Buffer) {
-				let texture = exec
-					.render_vello_scene_to_texture(&scene, footprint.resolution, context, Color::TRANSPARENT)
-					.await
-					.expect("Failed to render Vello scene");
-
-				let raster_cpu = Raster::new_gpu(texture).convert(Footprint::BOUNDLESS, exec).await;
-
-				let (data, width, height) = raster_cpu.to_flat_u8();
-
-				return RenderOutput {
-					data: RenderOutputType::Buffer { data, width, height },
-					metadata,
-				};
 			}
 
 			let mut background = Color::from_rgb8_srgb(0x22, 0x22, 0x22);

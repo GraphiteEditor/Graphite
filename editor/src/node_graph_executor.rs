@@ -193,7 +193,7 @@ impl NodeGraphExecutor {
 		let export_format = if export_config.file_type == FileType::Svg || cfg!(not(feature = "gpu")) {
 			graphene_std::application_io::ExportFormat::Svg
 		} else {
-			graphene_std::application_io::ExportFormat::Buffer
+			graphene_std::application_io::ExportFormat::Texture
 		};
 
 		let render_config = RenderConfig {

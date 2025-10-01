@@ -223,7 +223,6 @@ pub enum ExportFormat {
 	#[default]
 	Svg,
 	Canvas,
-	Buffer,
 	Texture,
 }
 

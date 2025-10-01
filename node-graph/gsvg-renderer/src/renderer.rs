@@ -160,8 +160,7 @@ pub struct RenderContext {
 pub enum RenderOutputType {
 	#[default]
 	Svg,
-	Texture,
-	Buffer,
+	Vello,
 }
 
 /// Static state used whilst rendering
