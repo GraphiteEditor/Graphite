@@ -7,9 +7,11 @@ use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::GraphErrors;
 use graph_craft::wasm_application_io::EditorPreferences;
 use graph_craft::{ProtoNodeIdentifier, concrete};
-use graphene_std::application_io::{ImageTexture, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
+use graphene_std::application_io::{ApplicationIo, ImageTexture, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
 use graphene_std::bounds::RenderBoundingBox;
 use graphene_std::memo::IORecord;
+use graphene_std::ops::Convert;
+use graphene_std::raster_types::Raster;
 use graphene_std::renderer::{Render, RenderParams, SvgRender};
 use graphene_std::renderer::{RenderSvgSegmentList, SvgSegment};
 use graphene_std::table::{Table, TableRow};
@@ -220,16 +222,44 @@ impl NodeRuntime {
 					// Resolve the result from the inspection by accessing the monitor node
 					let inspect_result = self.inspect_state.and_then(|state| state.access(&self.executor));
 
-					let texture = if let Ok(TaggedValue::RenderOutput(RenderOutput {
-						data: RenderOutputType::Texture(texture),
-						..
-					})) = &result
-					{
-						// We can early return becaus we know that there is at most one execution request and it will always be handled last
-						Some(texture.clone())
-					} else {
-						None
+					let (result, texture) = match result {
+						Ok(TaggedValue::RenderOutput(RenderOutput {
+							data: RenderOutputType::Texture(image_texture),
+							metadata,
+						})) if render_config.for_export => {
+							let executor = self
+								.editor_api
+								.application_io
+								.as_ref()
+								.unwrap()
+								.gpu_executor()
+								.expect("GPU executor should be available when we receive a texture");
+
+							let raster_cpu = Raster::new_gpu(image_texture.texture).convert(Footprint::BOUNDLESS, executor).await;
+
+							let (data, width, height) = raster_cpu.to_flat_u8();
+
+							(
+								Ok(TaggedValue::RenderOutput(RenderOutput {
+									data: RenderOutputType::Buffer { data, width, height },
+									metadata,
+								})),
+								None,
+							)
+						}
+						Ok(TaggedValue::RenderOutput(RenderOutput {
+							data: RenderOutputType::Texture(texture),
+							metadata,
+						})) => (
+							Ok(TaggedValue::RenderOutput(RenderOutput {
+								data: RenderOutputType::Texture(texture.clone()),
+								metadata,
+							})),
+							Some(texture),
+						),
+						r => (r, None),
 					};
+
 					self.sender.send_execution_response(ExecutionResponse {
 						execution_id,
 						result,
@@ -274,18 +304,12 @@ impl NodeRuntime {
 	async fn execute_network(&mut self, render_config: RenderConfig) -> Result<TaggedValue, String> {
 		use graph_craft::graphene_compiler::Executor;
 
-		let result = match self.executor.input_type() {
+		match self.executor.input_type() {
 			Some(t) if t == concrete!(RenderConfig) => (&self.executor).execute(render_config).await.map_err(|e| e.to_string()),
 			Some(t) if t == concrete!(()) => (&self.executor).execute(()).await.map_err(|e| e.to_string()),
 			Some(t) => Err(format!("Invalid input type {t:?}")),
 			_ => Err(format!("No input type:\n{:?}", self.node_graph_errors)),
-		};
-		let result = match result {
-			Ok(value) => value,
-			Err(e) => return Err(e),
-		};
-
-		Ok(result)
+		}
 	}
 
 	/// Updates state data

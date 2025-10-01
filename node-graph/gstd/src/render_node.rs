@@ -44,7 +44,6 @@ async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + 
 	data: impl Node<Context<'static>, Output = T>,
 	editor_api: impl Node<Context<'static>, Output = &'a WasmEditorApi>,
 ) -> RenderIntermediate {
-	let mut render = SvgRender::new();
 	let render_params = ctx
 		.vararg(0)
 		.expect("Did not find var args")
@@ -59,9 +58,20 @@ async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + 
 	data.collect_metadata(&mut metadata, footprint, None);
 	let contains_artboard = data.contains_artboard();
 
-	let editor_api = editor_api.eval(None).await;
+	let use_vello = {
+		#[cfg(target_family = "wasm")]
+		{
+			let editor_api = editor_api.eval(None).await;
+			!render_params.for_export && editor_api.editor_preferences.use_vello() && matches!(render_params.render_output_type, graphene_svg_renderer::RenderOutputType::Vello)
+		}
+		#[cfg(not(target_family = "wasm"))]
+		{
+			let _ = editor_api;
+			matches!(render_params.render_output_type, graphene_svg_renderer::RenderOutputType::Vello)
+		}
+	};
 
-	if !render_params.for_export && editor_api.editor_preferences.use_vello() && matches!(render_params.render_output_type, graphene_svg_renderer::RenderOutputType::Vello) {
+	if use_vello {
 		let mut scene = vello::Scene::new();
 
 		let mut context = wgpu_executor::RenderContext::default();
@@ -73,6 +83,8 @@ async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + 
 			contains_artboard,
 		}
 	} else {
+		let mut render = SvgRender::new();
+
 		data.render_svg(&mut render, render_params);
 
 		RenderIntermediate {
@@ -93,11 +105,10 @@ async fn create_context<'a: 'n>(
 
 	let render_output_type = match render_config.export_format {
 		ExportFormat::Svg => RenderOutputTypeRequest::Svg,
-		ExportFormat::Png { .. } => todo!(),
-		ExportFormat::Jpeg => todo!(),
-		ExportFormat::Canvas => RenderOutputTypeRequest::Vello,
 		ExportFormat::Texture => RenderOutputTypeRequest::Vello,
+		ExportFormat::Canvas => RenderOutputTypeRequest::Vello,
 	};
+
 	let render_params = RenderParams {
 		render_mode: render_config.render_mode,
 		hide_artboards: render_config.hide_artboards,
@@ -106,6 +117,7 @@ async fn create_context<'a: 'n>(
 		footprint: Footprint::default(),
 		..Default::default()
 	};
+
 	let ctx = OwnedContextImpl::default()
 		.with_footprint(footprint)
 		.with_real_time(render_config.time.time)
@@ -198,6 +210,7 @@ async fn render<'a: 'n>(
 			if !contains_artboard && !render_params.hide_artboards {
 				background = Color::WHITE;
 			}
+
 			if let Some(surface_handle) = surface_handle {
 				exec.render_vello_scene(&scene, &surface_handle, footprint.resolution, context, background)
 					.await
