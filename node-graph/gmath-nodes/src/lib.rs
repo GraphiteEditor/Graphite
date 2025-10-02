@@ -331,7 +331,7 @@ fn remap<U: num_traits::float::Float>(
 	_: impl Ctx,
 	#[implementations(f64, f32)] value: U,
 	#[implementations(f64, f32)]
-	#[default(-1.)]
+	#[default(0.)]
 	input_min: U,
 	#[implementations(f64, f32)]
 	#[default(1.)]
