@@ -14,6 +14,7 @@ use crate::cef::consts::{RESOURCE_DOMAIN, RESOURCE_SCHEME};
 use crate::cef::dirs::create_instance_dir;
 use crate::cef::input::InputState;
 use crate::cef::internal::{BrowserProcessAppImpl, BrowserProcessClientImpl, RenderHandlerImpl, RenderProcessAppImpl, SchemeHandlerFactoryImpl};
+use crate::cli::UIAceleratedPainting;
 
 pub(crate) struct CefContextBuilder<H: CefEventHandler> {
 	pub(crate) args: Args,
@@ -63,7 +64,7 @@ impl<H: CefEventHandler> CefContextBuilder<H> {
 	}
 
 	#[cfg(target_os = "macos")]
-	pub(crate) fn initialize(self, event_handler: H) -> Result<impl CefContext, InitError> {
+	pub(crate) fn initialize(self, event_handler: H, acceleration_preference: UIAceleratedPainting) -> Result<impl CefContext, InitError> {
 		let instance_dir = create_instance_dir();
 
 		let settings = Settings {
@@ -77,11 +78,11 @@ impl<H: CefEventHandler> CefContextBuilder<H> {
 
 		self.initialize_inner(&event_handler, settings)?;
 
-		create_browser(event_handler, instance_dir)
+		create_browser(event_handler, instance_dir, acceleration_preference)
 	}
 
 	#[cfg(not(target_os = "macos"))]
-	pub(crate) fn initialize(self, event_handler: H) -> Result<impl CefContext, InitError> {
+	pub(crate) fn initialize(self, event_handler: H, acceleration_preference: UIAceleratedPainting) -> Result<impl CefContext, InitError> {
 		let instance_dir = create_instance_dir();
 
 		let settings = Settings {
@@ -94,7 +95,7 @@ impl<H: CefEventHandler> CefContextBuilder<H> {
 
 		self.initialize_inner(&event_handler, settings)?;
 
-		super::multithreaded::run_on_ui_thread(move || match create_browser(event_handler, instance_dir) {
+		super::multithreaded::run_on_ui_thread(move || match create_browser(event_handler, instance_dir, acceleration_preference) {
 			Ok(context) => {
 				super::multithreaded::CONTEXT.with(|b| {
 					*b.borrow_mut() = Some(context);
@@ -125,14 +126,18 @@ impl<H: CefEventHandler> CefContextBuilder<H> {
 	}
 }
 
-fn create_browser<H: CefEventHandler>(event_handler: H, instance_dir: PathBuf) -> Result<SingleThreadedCefContext, InitError> {
+fn create_browser<H: CefEventHandler>(event_handler: H, instance_dir: PathBuf, acceleration_preference: UIAceleratedPainting) -> Result<SingleThreadedCefContext, InitError> {
 	let render_handler = RenderHandler::new(RenderHandlerImpl::new(event_handler.clone()));
 	let mut client = Client::new(BrowserProcessClientImpl::new(render_handler, event_handler.clone()));
 
 	let window_info = WindowInfo {
 		windowless_rendering_enabled: 1,
 		#[cfg(feature = "accelerated_paint")]
-		shared_texture_enabled: if crate::cef::platform::should_enable_hardware_acceleration() { 1 } else { 0 },
+		shared_texture_enabled: if crate::cef::platform::should_enable_hardware_acceleration(acceleration_preference) {
+			1
+		} else {
+			0
+		},
 		..Default::default()
 	};
 
