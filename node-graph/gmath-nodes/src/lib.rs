@@ -330,19 +330,15 @@ impl TangentInverse for DVec2 {
 fn remap<U: num_traits::float::Float>(
 	_: impl Ctx,
 	#[implementations(f64, f32)] value: U,
-	#[implementations(f64, f32)]
-	#[default(0.)]
-	input_min: U,
+	#[implementations(f64, f32)] input_min: U,
 	#[implementations(f64, f32)]
 	#[default(1.)]
 	input_max: U,
-	#[implementations(f64, f32)]
-	#[default(0.)]
-	output_min: U,
+	#[implementations(f64, f32)] output_min: U,
 	#[implementations(f64, f32)]
 	#[default(1.)]
 	output_max: U,
-	#[default(false)] clamped: bool,
+	clamped: bool,
 ) -> U {
 	let input_range = input_max - input_min;
 
