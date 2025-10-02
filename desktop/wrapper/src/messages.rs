@@ -104,7 +104,7 @@ pub enum DesktopWrapperMessage {
 		id: DocumentId,
 	},
 	LoadPreferences {
-		preferences: Preferences,
+		preferences: Option<Preferences>,
 	},
 }
 

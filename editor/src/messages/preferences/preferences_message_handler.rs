@@ -50,7 +50,9 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 		match message {
 			// Management messages
 			PreferencesMessage::Load { preferences } => {
-				*self = preferences;
+				if let Some(preferences) = preferences {
+					*self = preferences;
+				}
 
 				responses.add(PortfolioMessage::EditorPreferences);
 				responses.add(PortfolioMessage::UpdateVelloPreference);

@@ -1,4 +1,4 @@
-use crate::Context;
+use crate::WgpuContext;
 use crate::shader_runtime::{FULLSCREEN_VERTEX_SHADER_NAME, ShaderRuntime};
 use futures::lock::Mutex;
 use graphene_core::raster_types::{GPU, Raster};
@@ -31,7 +31,7 @@ impl ShaderRuntime {
 		let mut cache = self.per_pixel_adjust.pipeline_cache.lock().await;
 		let pipeline = cache
 			.entry(shaders.fragment_shader_name.to_owned())
-			.or_insert_with(|| PerPixelAdjustGraphicsPipeline::new(&self.context, &shaders));
+			.or_insert_with(|| PerPixelAdjustGraphicsPipeline::new(&self.context, shaders));
 
 		let arg_buffer = args.map(|args| {
 			let device = &self.context.device;
@@ -58,7 +58,7 @@ pub struct PerPixelAdjustGraphicsPipeline {
 }
 
 impl PerPixelAdjustGraphicsPipeline {
-	pub fn new(context: &Context, info: &Shaders) -> Self {
+	pub fn new(context: &WgpuContext, info: &Shaders) -> Self {
 		let device = &context.device;
 		let name = info.fragment_shader_name.to_owned();
 
@@ -67,7 +67,7 @@ impl PerPixelAdjustGraphicsPipeline {
 		// TODO workaround to naga removing `:`
 		let fragment_name = fragment_name.replace(":", "");
 		let shader_module = device.create_shader_module(ShaderModuleDescriptor {
-			label: Some(&format!("PerPixelAdjust {} wgsl shader", name)),
+			label: Some(&format!("PerPixelAdjust {name} wgsl shader")),
 			source: ShaderSource::Wgsl(Cow::Borrowed(info.wgsl_shader)),
 		});
 
@@ -107,16 +107,16 @@ impl PerPixelAdjustGraphicsPipeline {
 			}]
 		};
 		let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
-			label: Some(&format!("PerPixelAdjust {} PipelineLayout", name)),
+			label: Some(&format!("PerPixelAdjust {name} PipelineLayout")),
 			bind_group_layouts: &[&device.create_bind_group_layout(&BindGroupLayoutDescriptor {
-				label: Some(&format!("PerPixelAdjust {} BindGroupLayout 0", name)),
+				label: Some(&format!("PerPixelAdjust {name} BindGroupLayout 0")),
 				entries,
 			})],
 			push_constant_ranges: &[],
 		});
 
 		let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
-			label: Some(&format!("PerPixelAdjust {} Pipeline", name)),
+			label: Some(&format!("PerPixelAdjust {name} Pipeline")),
 			layout: Some(&pipeline_layout),
 			vertex: VertexState {
 				module: &shader_module,
@@ -155,7 +155,7 @@ impl PerPixelAdjustGraphicsPipeline {
 		}
 	}
 
-	pub fn dispatch(&self, context: &Context, textures: Table<Raster<GPU>>, arg_buffer: Option<Buffer>) -> Table<Raster<GPU>> {
+	pub fn dispatch(&self, context: &WgpuContext, textures: Table<Raster<GPU>>, arg_buffer: Option<Buffer>) -> Table<Raster<GPU>> {
 		assert_eq!(self.has_uniform, arg_buffer.is_some());
 		let device = &context.device;
 		let name = self.name.as_str();

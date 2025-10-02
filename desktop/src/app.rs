@@ -253,10 +253,9 @@ impl App {
 				self.persistent_data.write_preferences(preferences);
 			}
 			DesktopFrontendMessage::PersistenceLoadPreferences => {
-				if let Some(preferences) = self.persistent_data.load_preferences() {
-					let message = DesktopWrapperMessage::LoadPreferences { preferences };
-					self.dispatch_desktop_wrapper_message(message);
-				}
+				let preferences = self.persistent_data.load_preferences();
+				let message = DesktopWrapperMessage::LoadPreferences { preferences };
+				self.dispatch_desktop_wrapper_message(message);
 			}
 		}
 	}
@@ -321,6 +320,11 @@ impl App {
 					self.cef_context.work();
 				} else {
 					self.cef_schedule = Some(instant);
+				}
+			}
+			AppEvent::CursorChange(cursor) => {
+				if let Some(window) = &self.window {
+					window.set_cursor(cursor);
 				}
 			}
 			AppEvent::CloseWindow => {
