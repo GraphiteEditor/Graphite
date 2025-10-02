@@ -543,7 +543,7 @@
 						data-viewport
 					>
 						{#if !$appWindow.viewportHolePunch}
-							<svg class="artboards" style:width={canvasWidthCSS} style:height={canvasHeightCSS}>
+							<svg class="artboards" style:width={canvasWidthCSS} style:height={canvasHeightCSS} style:opacity={$document.graphViewOverlayOpen ? `${(100 - $document.fadeArtwork) / 100}` : '1'}>
 								{@html artworkSvg}
 							</svg>
 						{/if}
