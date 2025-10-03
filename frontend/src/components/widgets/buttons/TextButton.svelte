@@ -15,6 +15,7 @@
 	export let icon: IconName | undefined = undefined;
 	export let hoverIcon: IconName | undefined = undefined;
 	export let emphasized = false;
+	export let focused = false;
 	export let flush = false;
 	export let minWidth = 0;
 	export let disabled = false;
@@ -54,6 +55,7 @@
 		class:open={self?.open}
 		class:hover-icon={hoverIcon && !disabled}
 		class:emphasized
+		class:focused
 		class:disabled
 		class:narrow
 		class:flush
@@ -118,7 +120,8 @@
 		}
 
 		&:hover,
-		&.open {
+		&.open,
+		&.focused {
 			--button-background-color: var(--color-6-lowergray);
 			--button-text-color: var(--color-f-white);
 		}
@@ -143,7 +146,8 @@
 			--button-text-color: var(--color-2-mildblack);
 
 			&:hover,
-			&.open {
+			&.open,
+			&.focused {
 				--button-background-color: var(--color-f-white);
 			}
 
@@ -157,7 +161,8 @@
 			--button-text-color: var(--color-e-nearwhite);
 
 			&:hover,
-			&.open {
+			&.open,
+			&.focused {
 				--button-background-color: var(--color-5-dullgray);
 			}
 		}
