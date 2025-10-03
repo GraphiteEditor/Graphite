@@ -129,6 +129,23 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			_ => quote!(None),
 		})
 		.collect();
+
+	let number_hard_min_values: Vec<_> = fields
+		.iter()
+		.map(|field| match field {
+			ParsedField::Regular { number_hard_min: Some(hard_min), .. } => quote!(Some(#hard_min)),
+			_ => quote!(None),
+		})
+		.collect();
+
+	let number_hard_max_values: Vec<_> = fields
+		.iter()
+		.map(|field| match field {
+			ParsedField::Regular { number_hard_max: Some(hard_max), .. } => quote!(Some(#hard_max)),
+			_ => quote!(None),
+		})
+		.collect();
+
 	let number_mode_range_values: Vec<_> = fields
 		.iter()
 		.map(|field| match &field.ty {
@@ -369,6 +386,8 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 								default_type: #default_types,
 								number_min: #number_min_values,
 								number_max: #number_max_values,
+								number_hard_min: #number_hard_min_values,
+								number_hard_max: #number_hard_max_values,
 								number_mode_range: #number_mode_range_values,
 								number_display_decimal_places: #number_display_decimal_places,
 								number_step: #number_step,
