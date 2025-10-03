@@ -441,11 +441,16 @@ pub enum RenderOutputType {
 	CanvasFrame(SurfaceFrame),
 	#[serde(skip)]
 	Texture(ImageTexture),
+	#[serde(skip)]
+	Buffer {
+		data: Vec<u8>,
+		width: u32,
+		height: u32,
+	},
 	Svg {
 		svg: String,
 		image_data: Vec<(u64, Image<Color>)>,
 	},
-	Image(Vec<u8>),
 }
 
 impl Hash for RenderOutput {
