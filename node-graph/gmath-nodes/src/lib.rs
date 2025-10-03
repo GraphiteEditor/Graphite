@@ -325,7 +325,6 @@ impl TangentInverse for DVec2 {
 	}
 }
 
-/// The Remap function linearly maps a number from one range to another. If the input range is zero, the output will be the output minimum.
 #[node_macro::node(category("Math: Numeric"))]
 fn remap<U: num_traits::float::Float>(
 	_: impl Ctx,
