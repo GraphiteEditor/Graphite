@@ -12,11 +12,11 @@ css = ["/layout/reading-material.css"]
 
 <article>
 
-Graphite is open source software built by the community. The application is free to use by anyone for any purpose, even commercially. The artwork you produce is solely yours.
+Graphite is open source software built by its community and distributed by *Graphite Labs, LLC*, the official [organization](/about#organization) that operates the project. Builds of the application are free to use by anyone for any purpose, even commercially. The artwork you produce is solely yours.
 
-The source code [available on GitHub](https://github.com/GraphiteEditor/Graphite) (including the Graphite editor application, libraries, and other software materials) is provided under the Apache 2.0 license posted below, unless otherwise noted within the repository.
+The source code [available on GitHub](https://github.com/GraphiteEditor/Graphite) (including the Graphite editor application, libraries, and other software materials) is shared under the Apache 2.0 license posted below, unless otherwise noted within the repository.
 
-Visual assets, including but not limited to brand graphics, logos, fonts, icon sets, SVG data, and sample artworks are excluded from this code license and held under copyright by their respective owners. Derivative works must substitute these assets before distributing modified releases of the software. This protects the integrity of the [brand](/logo) and encourages the community to [contribute](/volunteer) back to the official project instead of fragmenting the ecosystem.
+Visual assets, including but not limited to brand graphics, logos, fonts, icon sets, SVG files, and sample artworks are excluded from this code license and held under copyright by their respective owners. Derivative works must substitute these assets before distributing modified releases of the software. This protects the integrity of the [brand](/logo) and encourages the community to [contribute](/volunteer) back to the official project instead of fragmenting the ecosystem.
 
 ---
 

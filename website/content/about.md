@@ -31,16 +31,14 @@ The idea for Graphite began with a desire to create artwork and edit photos usin
 
 Graphite strives to unshackle the creativity of every budding artist and seasoned professional by building the best comprehensive art and design tool that's accessible to all.
 
-Mission success will come when Graphite is an industry standard. A cohesive product vision and focus on innovation over imitation is the strategy that will make that possible.
+Mission success will come when Graphite is an industry standard. A cohesive product vision and a focus on innovation over imitation is the strategy that will make that possible.
 
 </div>
 <div class="block">
 
-## Funding
+## Organization
 
-Graphite is beholden to no investors and will always be free and open source. The project's [founder](#keavon) has been personally funding the organization's expenses and working full-time to bring the project to life. He asks for [your support](/donate) bearing some of the costs.
-
-Later on, donations will be supplemented by revenue from operating an asset marketplace for user-created procedural content.
+Graphite is fully funded by its community and beholden to no investors, ensuring it remains free and open source forever. The organization, *Graphite Labs, LLC*, is owned and controlled solely by the project's founder. Future nonprofit foundation status is being explored, but that administrative complexity is not yet justified. All revenue is being reinvested into the project, with aims to employ full-time developers once funding reaches sustainable levels.
 
 </div>
 
@@ -138,15 +136,15 @@ Dennis is a mix between a mathematician and a mad scientist. While still enjoyin
 </div>
 <div class="diptych">
 
-<div class="block" id="hypercube">
+<div class="block" id="timon">
 
-<img src="https://static.graphite.rs/content/about/core-team-photo-hypercube__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Photo of Hypercube" />
+<img src="https://static.graphite.rs/content/about/core-team-photo-timon-schelling.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Photo of Timon Schelling" />
 
-## "Hypercube" <span class="handle">(@0Hypercube)</span> <img src="https://static.graphite.rs/icons/flags/gb.png" class="flag" title="British" />
+## Timon Schelling <span class="handle">(@timon-schelling)</span> <img src="https://static.graphite.rs/icons/flags/de.png" class="flag" title="German" />
 
-***Editor systems, nodes, tools, architecture***
+***Desktop application engineering***
 
-"Hypercube" is a light speed code monkey who excels at developing, refactoring, and maintaining the editor codebase. With an unmatched ability to comprehend intricate code, he delivers lasting and efficient solutions at an impressive pace. He takes ownership of many central editor systems including tools, typography, transforms, layers, and node graph integration.
+Timon believes open source tools are essential to grant digital artists freedom in access, creativity, and expression. He builds and maintains Graphite's native desktop app, ensuring its polish, reliability, and cross-platform consistency. Drawn to Graphite by its vision of procedural, nondestructive, expansive 2D art tools, he works to make that vision usable by as many people as possible.
 
 </div>
 

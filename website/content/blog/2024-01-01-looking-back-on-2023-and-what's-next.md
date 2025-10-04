@@ -94,7 +94,7 @@ The next big news of August was my formation of [Graphite Labs, LLC](https://www
 I allocated my time at several points throughout the year into growing and evolving this website with a refreshed and more visually-appealing home page, dedicated pages for information [about](/about) the project and its [features](/features), an area providing resources and help for [volunteers](/volunteer) and [code contributors](/volunteer/guide), and just this month— a [user manual](/learn) complete with an introductory tutorial series. The first video went up yesterday:
 
 <div class="youtube-embed aspect-16x9">
-	<img data-youtube-embed="7gjUhl_3X10" src="https://static.graphite.rs/content/learn/introduction/tutorial-1-vector-art-quickstart-youtube.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite Tutorial 1 - Hands-On Quickstart" />
+	<img data-youtube-embed="7gjUhl_3X10" src="https://static.graphite.rs/content/learn/introduction/tutorial-1-vector-art-quickstart-youtube__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Vector Art Quickstart - Graphite, the Open Source 2D Graphics Suite" />
 </div>
 
 The user manual and tutorial series will continue expanding throughout the coming weeks. Additional website features including user accounts, forums, and other community features are being planned.
