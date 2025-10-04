@@ -71,6 +71,8 @@ impl<'a> DesktopWrapperMessageDispatcher<'a> {
 			frontend_messages.extend(current_frontend_messages);
 		}
 
-		self.respond(DesktopFrontendMessage::ToWeb(frontend_messages));
+		if !frontend_messages.is_empty() {
+			self.respond(DesktopFrontendMessage::ToWeb(frontend_messages));
+		}
 	}
 }

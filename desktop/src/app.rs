@@ -82,7 +82,7 @@ impl App {
 		}
 	}
 
-	fn handle_desktop_frontend_message(&mut self, message: DesktopFrontendMessage) {
+	fn handle_desktop_frontend_message(&mut self, message: DesktopFrontendMessage, responses: &mut Vec<DesktopWrapperMessage>) {
 		match message {
 			DesktopFrontendMessage::ToWeb(messages) => {
 				let Some(bytes) = serialize_frontend_messages(messages) else {
@@ -205,7 +205,7 @@ impl App {
 						to_front: false,
 						select_after_open: true,
 					};
-					self.dispatch_desktop_wrapper_message(message);
+					responses.push(message);
 				}
 			}
 			DesktopFrontendMessage::PersistenceLoadRemainingDocuments => {
@@ -216,7 +216,7 @@ impl App {
 						to_front: true,
 						select_after_open: false,
 					};
-					self.dispatch_desktop_wrapper_message(message);
+					responses.push(message);
 				}
 				for (id, document) in self.persistent_data.documents_after_current() {
 					let message = DesktopWrapperMessage::LoadDocument {
@@ -225,11 +225,11 @@ impl App {
 						to_front: false,
 						select_after_open: false,
 					};
-					self.dispatch_desktop_wrapper_message(message);
+					responses.push(message);
 				}
 				if let Some(id) = self.persistent_data.current_document_id() {
 					let message = DesktopWrapperMessage::SelectDocument { id };
-					self.dispatch_desktop_wrapper_message(message);
+					responses.push(message);
 				}
 			}
 			DesktopFrontendMessage::PersistenceWritePreferences { preferences } => {
@@ -238,14 +238,18 @@ impl App {
 			DesktopFrontendMessage::PersistenceLoadPreferences => {
 				let preferences = self.persistent_data.load_preferences();
 				let message = DesktopWrapperMessage::LoadPreferences { preferences };
-				self.dispatch_desktop_wrapper_message(message);
+				responses.push(message);
 			}
 		}
 	}
 
 	fn handle_desktop_frontend_messages(&mut self, messages: Vec<DesktopFrontendMessage>) {
+		let mut responses = Vec::new();
 		for message in messages {
-			self.handle_desktop_frontend_message(message);
+			self.handle_desktop_frontend_message(message, &mut responses);
+		}
+		for message in responses {
+			self.dispatch_desktop_wrapper_message(message);
 		}
 	}
 
