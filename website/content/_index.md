@@ -153,6 +153,28 @@ meta_description = "Open source free software. A vector graphics creativity suit
 </div>
 </section>
 <!-- ▙ SCREENSHOTS ▟ -->
+<!--                  -->
+<!-- ▛ WHAT'S NEW ▜ -->
+<section id="what-is-new" class="block">
+
+<div class="block">
+
+## What's new?
+
+The latest major update is out now! See what the team has been cooking up recently:
+
+<div class="block video-container">
+<div>
+<div class="youtube-embed aspect-16x9">
+	<img data-youtube-embed="Vl5BA4g3QXM" loading="lazy" src="https://static.graphite.rs/content/index/video-september-025-update.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="September Update - Graphite, the Open Source 2D Graphics Suite" />
+</div>
+</div>
+</div>
+
+</div>
+
+</section>
+<!-- ▙ WHAT'S NEW ▟ -->
 <!--                 -->
 <!-- ▛ OVERVIEW ▜ -->
 <section id="overview" class="feature-box-outer">
@@ -167,7 +189,7 @@ meta_description = "Open source free software. A vector graphics creativity suit
 <div class="diptych sizzle-video">
 <div class="block text">
 
-Starting life as a vector editor, Graphite is evolving into a generalized, all-in-one graphics toolbox that's built more like a game engine than a conventional creative app. The editor's tools wrap its node graph core, providing user-friendly workflows for vector, raster, animation, and beyond.
+Starting life as a vector editor, Graphite is evolving into a general-purpose, all-in-one graphics toolbox that is built more like a game engine than a conventional creative app. The editor's tools wrap its node graph core, providing user-friendly workflows for vector, raster, animation, and beyond.
 
 <a href="https://editor.graphite.rs" class="button arrow">Start creating</a>
 
@@ -277,7 +299,7 @@ Presently, Graphite is a lightweight offline web app with features primarily ori
 
 ## Desktop-first and web-ready
 
-Where's the download? The web app is [currently live](https://editor.graphite.rs) and desktop apps for Windows, Mac, and Linux should be available in 2025.
+Where's the download? The web app is [currently live](https://editor.graphite.rs) and desktop apps for Windows, Mac, and Linux will be available in Q4 2025.
 
 Graphite is designed principally as a professional desktop application that is also accessible in a browser for quick access from anywhere. It's built for speed with (nearly) no JavaScript. And regardless of platform, it runs locally and privately on your own hardware— there is no server.
 
@@ -290,7 +312,7 @@ Graphite's code architecture is structured to deliver true native performance fo
 </div>
 </section>
 <!-- ▙ OVERVIEW ▟ -->
-<!--              -->
+<!--               -->
 <!-- ▛ DONATE ▜ -->
 <section id="donate" class="block">
 
@@ -376,15 +398,15 @@ Graphite's representation of artwork as a node graph lets you customize, compose
 <div class="feature-icons four-wide">
 	<div class="feature-icon">
 		<img class="atlas" style="--atlas-index: 9" src="https://static.graphite.rs/icons/icon-atlas-features__2.png" alt="" />
-		<span class="balance-text">Infinitely pan and zoom, export any resolution with no pixelation</span>
+		<span class="balance-text">Infinitely pan and zoom; export any resolution with no pixelation</span>
 	</div>
 	<div class="feature-icon">
 		<img class="atlas" style="--atlas-index: 2" src="https://static.graphite.rs/icons/icon-atlas-features__2.png" alt="" />
-		<span class="balance-text">Modular node-based pipelines for generative AI <em>(future)</em></span>
+		<span class="balance-text">Build workflows to mix AI and human-authored content <em>(future)</em></span>
 	</div>
 	<div class="feature-icon">
 		<img class="atlas" style="--atlas-index: 11" src="https://static.graphite.rs/icons/icon-atlas-features__2.png" alt="" />
-		<span class="balance-text">Asset pipelines for studio production environments <em>(future)</em></span>
+		<span class="balance-text">Deploy asset pipelines in studio production environments <em>(future)</em></span>
 	</div>
 </div>
 
@@ -475,7 +497,7 @@ Get started with Graphite by following along to a hands-on quickstart tutorial.
 <div class="block video-container">
 <div>
 <div class="youtube-embed aspect-16x9">
-	<img data-youtube-embed="7gjUhl_3X10" loading="lazy" src="https://static.graphite.rs/content/index/tutorial-1-youtube.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite Tutorial 1 - Hands-On Quickstart" />
+	<img data-youtube-embed="7gjUhl_3X10" loading="lazy" src="https://static.graphite.rs/content/learn/introduction/tutorial-1-vector-art-quickstart-youtube__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Vector Art Quickstart - Graphite, the Open Source 2D Graphics Suite" />
 </div>
 </div>
 </div>
