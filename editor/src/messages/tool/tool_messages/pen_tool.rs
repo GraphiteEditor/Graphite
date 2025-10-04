@@ -436,6 +436,7 @@ impl PenToolData {
 	}
 
 	fn add_point(&mut self, point: LastPoint) {
+		log::debug!("{:?}" , point);
 		self.point_index = (self.point_index + 1).min(self.latest_points.len());
 		self.latest_points.truncate(self.point_index);
 		self.latest_points.push(point);
@@ -662,7 +663,7 @@ impl PenToolData {
 			let Some(pos) = vector.point_domain.position_from_id(id) else { continue };
 			let transformed_distance_between_squared = transform.transform_point2(pos).distance_squared(transform.transform_point2(self.next_point));
 			let snap_point_tolerance_squared = crate::consts::SNAP_POINT_TOLERANCE.powi(2);
-
+			log::debug!("path closed");
 			if transformed_distance_between_squared < snap_point_tolerance_squared {
 				self.update_handle_type(TargetHandle::PreviewInHandle);
 				self.handle_end_offset = None;
@@ -1451,6 +1452,8 @@ impl Fsm for PenToolFsmState {
 		tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
+
+		log::debug!("transition happening , {:?}" , self);
 		let ToolActionMessageContext {
 			document,
 			global_tool_data,
@@ -1479,7 +1482,7 @@ impl Fsm for PenToolFsmState {
 		match (self, event) {
 			(PenToolFsmState::PlacingAnchor | PenToolFsmState::GRSHandle, PenToolMessage::GRS { grab, rotate, scale }) => {
 				let Some(layer) = layer else { return PenToolFsmState::PlacingAnchor };
-
+				log::debug!("placing anchor");
 				let Some(latest) = tool_data.latest_point() else { return PenToolFsmState::PlacingAnchor };
 				if latest.handle_start == latest.pos {
 					return PenToolFsmState::PlacingAnchor;

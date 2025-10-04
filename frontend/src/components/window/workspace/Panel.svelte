@@ -41,6 +41,7 @@
 	export let panelType: PanelType | undefined = undefined;
 	export let clickAction: ((index: number) => void) | undefined = undefined;
 	export let closeAction: ((index: number) => void) | undefined = undefined;
+	export let dblclickEmptySpaceAction : (() => void) | undefined = undefined;
 
 	let className = "";
 	export { className as class };
@@ -149,9 +150,7 @@
 					{/if}
 				</LayoutRow>
 			{/each}
-			{#if panelType == 'Document'}
-				<LayoutRow class="tab-group-empty-space" on:dblclick={() => editor.handle.newDocumentDialog()}></LayoutRow>
-			{/if}
+			<LayoutRow class="tab-group-empty-space" on:dblclick={dblclickEmptySpaceAction}></LayoutRow>
 		</LayoutRow>
 		
 		<!-- <PopoverButton style="VerticalEllipsis">
