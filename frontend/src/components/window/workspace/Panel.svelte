@@ -41,6 +41,7 @@
 	export let panelType: PanelType | undefined = undefined;
 	export let clickAction: ((index: number) => void) | undefined = undefined;
 	export let closeAction: ((index: number) => void) | undefined = undefined;
+	export let dblclickEmptySpaceAction : (() => void) | undefined = undefined;
 
 	let className = "";
 	export { className as class };
@@ -100,7 +101,8 @@
 </script>
 
 <LayoutCol on:pointerdown={() => panelType && editor.handle.setActivePanel(panelType)} class={`panel ${className}`.trim()} {classes} style={styleName} {styles}>
-	<LayoutRow class="tab-bar" classes={{ "min-widths": tabMinWidths }}>
+	<LayoutRow class="tab-bar" classes={{ "min-widths": tabMinWidths }} >
+
 		<LayoutRow class="tab-group" scrollableX={true}>
 			{#each tabLabels as tabLabel, tabIndex}
 				<LayoutRow
@@ -148,11 +150,14 @@
 					{/if}
 				</LayoutRow>
 			{/each}
+			<LayoutRow class="tab-group-empty-space" on:dblclick={dblclickEmptySpaceAction}></LayoutRow>
 		</LayoutRow>
+		
 		<!-- <PopoverButton style="VerticalEllipsis">
 			<TextLabel bold={true}>Panel Options</TextLabel>
 			<TextLabel multiline={true}>Coming soon</TextLabel>
 		</PopoverButton> -->
+
 	</LayoutRow>
 	<LayoutCol class="panel-body">
 		{#if panelType}
@@ -218,13 +223,15 @@
 		background: var(--color-1-nearblack);
 		border-radius: 6px;
 		overflow: hidden;
-
+		
 		.tab-bar {
 			height: 28px;
 			min-height: auto;
 			background: var(--color-1-nearblack); // Needed for the viewport hole punch on desktop
 			flex-shrink: 0;
-
+			.tab-group-empty-space {
+				width: 100%;
+			}
 			&.min-widths .tab-group .tab {
 				min-width: 120px;
 				max-width: 360px;
