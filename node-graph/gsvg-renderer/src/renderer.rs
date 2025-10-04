@@ -153,7 +153,7 @@ impl Default for SvgRender {
 #[derive(Clone, Debug, Default)]
 pub struct RenderContext {
 	#[cfg(feature = "vello")]
-	pub resource_overrides: Vec<(peniko::Image, wgpu::Texture)>,
+	pub resource_overrides: Vec<(peniko::Image, Raster<GPU>)>,
 }
 
 #[derive(Default, Clone, Copy, Hash)]
@@ -1359,7 +1359,7 @@ impl Render for Table<Raster<GPU>> {
 			.with_extend(peniko::Extend::Repeat);
 			let image_transform = transform * *row.transform * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
 			scene.draw_image(&image, kurbo::Affine::new(image_transform.to_cols_array()));
-			context.resource_overrides.push((image, row.element.data().clone()));
+			context.resource_overrides.push((image, row.element.clone()));
 
 			if layer {
 				scene.pop_layer()
