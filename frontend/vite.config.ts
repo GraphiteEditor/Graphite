@@ -7,37 +7,82 @@ import path from "path";
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import rollupPluginLicense, { type Dependency } from "rollup-plugin-license";
 import { sveltePreprocess } from "svelte-preprocess";
-import { defineConfig } from "vite";
+import { defineConfig, type AliasOptions, type BuildOptions, type Plugin, type ResolveOptions, type UserConfig } from "vite";
 import { DynamicPublicDirectory as viteMultipleAssets } from "vite-multiple-assets";
 
 const projectRootDir = path.resolve(__dirname);
 
 // https://vitejs.dev/config/
-export default defineConfig({
-	plugins: [
-		svelte({
-			preprocess: [sveltePreprocess()],
-			onwarn(warning, defaultHandler) {
-				const suppressed = [
-					"css-unused-selector", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
-					"vite-plugin-svelte-css-no-scopable-elements", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
-					"a11y-no-static-element-interactions", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
-					"a11y-no-noninteractive-element-interactions", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
-					"a11y-click-events-have-key-events", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
-				];
-				if (suppressed.includes(warning.code)) return;
+export default defineConfig(({ mode }) => {
+	switch (mode) {
+		case "desktop":
+			return desktop();
+		case "icons":
+			return icons(false);
+		case "icons-placeholder":
+			return icons(true);
+		default:
+			return web();
+	}
+});
 
-				defaultHandler?.(warning);
+function web(): UserConfig {
+	return {
+		plugins: [sveltePlugins(), assetsPlugin()],
+		resolve: resolve(),
+		server: {
+			port: 8080,
+			host: "0.0.0.0",
+		},
+		build: build(),
+	};
+}
+
+function desktop(): UserConfig {
+	return {
+		plugins: [sveltePlugins(), assetsPlugin()],
+		resolve: resolve(),
+		build: build(true),
+	};
+}
+
+function icons(usePlaceholderIcons: boolean): UserConfig {
+	return {
+		plugins: [placeholderIconsPlugin(usePlaceholderIcons)],
+		resolve: resolve(),
+		build: {
+			lib: {
+				entry: path.resolve(projectRootDir, "src/icons.ts"),
+				formats: ["es" as const],
+				fileName: "assets/icons",
 			},
-		}),
-		viteMultipleAssets(
-			// Additional static asset directories besides `public/`
-			[{ input: "../demo-artwork/**", output: "demo-artwork" }],
-			// Options where we set custom MIME types
-			{ mimeTypes: { ".graphite": "application/json" } },
-		),
-	],
-	resolve: {
+			emptyOutDir: false,
+		},
+		publicDir: false,
+	};
+}
+
+function placeholderIconsPlugin(enabled: boolean): Plugin {
+	return {
+		name: "graphite-placeholder-icons",
+		enforce: "pre",
+		load(id) {
+			if (!enabled) return null;
+			if (id.endsWith(".svg") || id.endsWith(".svg?raw")) {
+				const raw = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 12 12"><circle cx="6" cy="6" r="3" /></svg>`;
+				return `export default ${JSON.stringify(raw)};`;
+			}
+			return null;
+		},
+	};
+}
+
+function resolve():
+	| (ResolveOptions & {
+			alias?: AliasOptions;
+	  })
+	| undefined {
+	return {
 		alias: [
 			{ find: /@graphite-frontend\/(.*\.svg)/, replacement: path.resolve(projectRootDir, "$1?raw") },
 			{ find: "@graphite-frontend", replacement: projectRootDir },
@@ -45,13 +90,22 @@ export default defineConfig({
 			{ find: "@graphite/../public", replacement: path.resolve(projectRootDir, "public") },
 			{ find: "@graphite", replacement: path.resolve(projectRootDir, "src") },
 		],
-	},
-	server: {
-		port: 8080,
-		host: "0.0.0.0",
-	},
-	build: {
+	};
+}
+
+function build(desktop: boolean = false): BuildOptions {
+	const entryNames = !desktop ? `assets/[name]-[hash].js` : `assets/[name].js`;
+	const chunkNames = !desktop ? `assets/[name]-[hash].js` : `assets/[name].js`;
+	const assetNames = !desktop ? `assets/[name]-[hash].[ext]` : `assets/[name].[ext]`;
+	return {
 		rollupOptions: {
+			external: desktop ? ["@graphite/icons"] : [],
+			output: {
+				entryFileNames: entryNames,
+				chunkFileNames: chunkNames,
+				assetFileNames: assetNames,
+				paths: desktop ? { ["@graphite/icons"]: "/assets/icons.js" } : {},
+			},
 			plugins: [
 				rollupPluginLicense({
 					thirdParty: {
@@ -67,11 +121,38 @@ export default defineConfig({
 							template: formatThirdPartyLicenses,
 						},
 					},
-				}),
+				}) as Plugin,
 			],
 		},
-	},
-});
+	};
+}
+
+function sveltePlugins(): Plugin[] {
+	return svelte({
+		preprocess: [sveltePreprocess()],
+		onwarn(warning, defaultHandler) {
+			const suppressed = [
+				"css-unused-selector", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
+				"vite-plugin-svelte-css-no-scopable-elements", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
+				"a11y-no-static-element-interactions", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
+				"a11y-no-noninteractive-element-interactions", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
+				"a11y-click-events-have-key-events", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
+			];
+			if (suppressed.includes(warning.code)) return;
+
+			defaultHandler?.(warning);
+		},
+	});
+}
+
+function assetsPlugin(): Plugin {
+	return viteMultipleAssets(
+		// Additional static asset directories besides `public/`
+		[{ input: "../demo-artwork/**", output: "demo-artwork" }],
+		// Options where we set custom MIME types
+		{ mimeTypes: { ".graphite": "application/json" } },
+	) as Plugin;
+}
 
 type LicenseInfo = {
 	licenseName: string;

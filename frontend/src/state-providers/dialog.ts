@@ -1,6 +1,7 @@
 import { writable } from "svelte/store";
 
 import { type Editor } from "@graphite/editor";
+import { type IconName } from "@graphite/icons";
 import {
 	defaultWidgetLayout,
 	DisplayDialog,
@@ -11,7 +12,6 @@ import {
 	patchWidgetLayout,
 	TriggerDisplayThirdPartyLicensesDialog,
 } from "@graphite/messages";
-import { type IconName } from "@graphite/utility-functions/icons";
 
 export function createDialogState(editor: Editor) {
 	const { subscribe, update } = writable({
