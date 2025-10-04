@@ -481,7 +481,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			description: Cow::Borrowed("Loads an image from a given URL"),
 			properties: None,
 		},
-		#[cfg(all(feature = "gpu", target_family = "wasm"))]
+		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
 			identifier: "Rasterize",
 			category: "Raster",
@@ -502,7 +502,10 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 								..Default::default()
 							},
 							DocumentNode {
+								#[cfg(target_family = "wasm")]
 								inputs: vec![NodeInput::import(generic!(T), 0), NodeInput::import(concrete!(Footprint), 1), NodeInput::node(NodeId(1), 0)],
+								#[cfg(not(target_family = "wasm"))]
+								inputs: vec![NodeInput::import(generic!(T), 0), NodeInput::import(concrete!(Footprint), 1), NodeInput::scope("wgpu-executor")],
 								implementation: DocumentNodeImplementation::ProtoNode(wasm_application_io::rasterize::IDENTIFIER),
 								..Default::default()
 							},
