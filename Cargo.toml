@@ -196,7 +196,7 @@ poly-cool = "0.3"
 spin = "0.10"
 clap = "4.5"
 spirv-std = { git = "https://github.com/rust-gpu/rust-gpu", rev = "c12f216121820580731440ee79ebc7403d6ea04f", features = ["bytemuck"] }
-cargo-gpu = { git = "https://github.com/rust-gpu/cargo-gpu", rev = "f969528e87baa17a7d48eecf4a6fcfdcaaf30566" }
+cargo-gpu = { git = "https://github.com/rust-gpu/cargo-gpu", rev = "1358ab005b9a6b076117ef35f9de597c64f85670", default-features = false }
 
 [workspace.lints.rust]
 unexpected_cfgs = { level = "allow", check-cfg = ['cfg(target_arch, values("spirv"))'] }
