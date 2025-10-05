@@ -70,6 +70,6 @@ impl RenderComplexity for GradientStops {
 
 impl RenderComplexity for Typography {
 	fn render_complexity(&self) -> usize {
-		1
+		self.layout.lines().map(|line| line.items().count()).sum()
 	}
 }

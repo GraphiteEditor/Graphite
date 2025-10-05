@@ -83,7 +83,7 @@ impl fmt::Debug for Typography {
 
 impl PartialEq for Typography {
 	fn eq(&self, _other: &Self) -> bool {
-		unimplemented!("Typography data type cannot be compared")
+		unimplemented!("Typography cannot be compared")
 	}
 }
 

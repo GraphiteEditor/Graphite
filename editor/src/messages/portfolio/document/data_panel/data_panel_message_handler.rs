@@ -546,13 +546,11 @@ impl TableRowLayout for Typography {
 		"Typography"
 	}
 	fn identifier(&self) -> String {
-		"Typography".to_string()
-	}
-	fn element_widget(&self, _index: usize) -> WidgetHolder {
-		TextLabel::new("Not supported").widget_holder()
+		format!("Typography: {self:?}")
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		vec![LayoutGroup::Row { widgets: Vec::new() }]
+		let widgets = vec![TextLabel::new("TODO").widget_holder()];
+		vec![LayoutGroup::Row { widgets }]
 	}
 }
 
