@@ -2184,6 +2184,7 @@ version = "0.1.0"
 dependencies = [
  "cargo-gpu",
  "env_logger",
+ "log",
 ]
 
 [[package]]
