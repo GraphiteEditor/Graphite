@@ -132,6 +132,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_std::raster::adjustments::SelectiveColorChoice]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_core::vector::misc::GridType]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_core::vector::misc::ArcType]),
+		// Add here
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_core::vector::misc::MergeByDistanceAlgorithm]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_core::vector::misc::PointSpacingType]),
 		async_node!(graphene_core::memo::MonitorNode<_, _, _>, input: Context, fn_params: [Context => graphene_core::vector::style::FillType]),
@@ -217,6 +218,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => graphene_std::raster::SelectiveColorChoice]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => graphene_core::vector::misc::GridType]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => graphene_core::vector::misc::ArcType]),
+		// add here
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => graphene_core::vector::misc::MergeByDistanceAlgorithm]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => graphene_core::vector::misc::PointSpacingType]),
 		async_node!(graphene_core::memo::MemoNode<_, _>, input: Context, fn_params: [Context => graphene_core::vector::style::StrokeCap]),

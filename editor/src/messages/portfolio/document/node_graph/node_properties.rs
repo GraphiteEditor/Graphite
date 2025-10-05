@@ -215,6 +215,7 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<StrokeAlign>() => enum_choice::<StrokeAlign>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<PaintOrder>() => enum_choice::<PaintOrder>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<ArcType>() => enum_choice::<ArcType>().for_socket(default_info).property_row(),
+						// Add here
 						Some(x) if x == TypeId::of::<TextAlign>() => enum_choice::<TextAlign>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<MergeByDistanceAlgorithm>() => enum_choice::<MergeByDistanceAlgorithm>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<PointSpacingType>() => enum_choice::<PointSpacingType>().for_socket(default_info).property_row(),

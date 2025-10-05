@@ -240,6 +240,7 @@ tagged_value! {
 	SelectiveColorChoice(graphene_raster_nodes::adjustments::SelectiveColorChoice),
 	GridType(graphene_core::vector::misc::GridType),
 	ArcType(graphene_core::vector::misc::ArcType),
+	// Add here
 	MergeByDistanceAlgorithm(graphene_core::vector::misc::MergeByDistanceAlgorithm),
 	PointSpacingType(graphene_core::vector::misc::PointSpacingType),
 	SpiralType(graphene_core::vector::misc::SpiralType),

@@ -74,6 +74,8 @@ pub enum ArcType {
 	PieSlice,
 }
 
+// Add enum here (widget Dropdown vs Radio)
+
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
 #[widget(Radio)]

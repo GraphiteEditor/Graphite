@@ -12,7 +12,9 @@ use crate::table::{Table, TableRow, TableRowMut};
 use crate::transform::{Footprint, ReferencePoint, Transform};
 use crate::vector::PointDomain;
 use crate::vector::algorithms::bezpath_algorithms::eval_pathseg_euclidean;
+use crate::vector::algorithms::decimation::ramer_douglas_peucker;
 use crate::vector::algorithms::merge_by_distance::MergeByDistanceExt;
+use crate::vector::algorithms::vectorize::{build_vectorize_config, parse_svg_paths_to_vector, vector_row_to_graphic_row};
 use crate::vector::misc::{MergeByDistanceAlgorithm, PointSpacingType, is_linear};
 use crate::vector::misc::{handles_to_segment, segment_to_handles};
 use crate::vector::style::{PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
@@ -200,6 +202,177 @@ where
 	}
 
 	content
+}
+
+#[node_macro::node(category("Raster: Filter"), path(graphene_core::vector))]
+async fn vectorize(
+	_: impl Ctx,
+	image: Table<Raster<CPU>>,
+	color_mode: u32,
+	hierarchical: u32,
+	path_simplify_mode: u32,
+	#[default(4)]
+	#[hard_min(1.)]
+	filter_speckle: u32,
+	#[default(6)]
+	#[hard_min(1.)]
+	#[hard_max(8.)]
+	color_precision: u32,
+	#[default(16)]
+	#[hard_min(0.)]
+	#[hard_max(255.)]
+	layer_difference: u32,
+	#[default(60)]
+	#[hard_min(0.)]
+	#[hard_max(180.)]
+	corner_threshold: f32,
+	#[default(4.)]
+	#[hard_min(3.5)]
+	length_threshold: f64,
+	#[default(10)]
+	#[hard_min(1.)]
+	max_iterations: u32,
+	#[default(45)]
+	#[hard_min(0.)]
+	#[hard_max(180.)]
+	splice_threshold: f32,
+	#[default(8)]
+	#[hard_min(0.)]
+	path_precision: u32,
+) -> Table<Graphic> {
+	let mut result_table = Table::new();
+
+	for row in image.iter() {
+		let raster = &row.element;
+
+		if raster.width == 0 || raster.height == 0 {
+			continue;
+		}
+
+		let (pixel_data, width, height) = raster.to_flat_u8();
+		let color_image = vtracer::ColorImage {
+			pixels: pixel_data,
+			width: width as usize,
+			height: height as usize,
+		};
+
+		let config = build_vectorize_config(
+			color_mode,
+			hierarchical,
+			path_simplify_mode,
+			filter_speckle,
+			color_precision,
+			layer_difference,
+			corner_threshold,
+			length_threshold,
+			max_iterations,
+			splice_threshold,
+			path_precision,
+		);
+
+		match vtracer::convert(color_image, config) {
+			Ok(svg_file) => {
+				let svg_content = svg_file.to_string();
+				log::trace!("Generated SVG content:\n{}", svg_content);
+
+				let vector_rows = parse_svg_paths_to_vector(&svg_content);
+
+				let mut graphic_table = Table::new();
+				for vector_row in vector_rows {
+					graphic_table.push(vector_row_to_graphic_row(vector_row, &row));
+				}
+
+				let graphic_group = Graphic::Graphic(graphic_table);
+				let mut graphic_row = TableRow::new_from_element(graphic_group);
+				graphic_row.transform = *row.transform;
+				graphic_row.alpha_blending = *row.alpha_blending;
+				graphic_row.source_node_id = *row.source_node_id;
+				result_table.push(graphic_row);
+			}
+			Err(e) => {
+				log::error!("Vectorization failed: {}", e);
+			}
+		}
+	}
+
+	result_table
+}
+
+/// Simplifies vector paths using the Ramer-Douglas-Peucker algorithm for line decimation.
+/// Reduces the number of points in a path while preserving its overall shape within a specified tolerance.
+#[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
+fn decimate(
+	_: impl Ctx,
+	source: Table<Vector>,
+	#[default(0.1)]
+	#[hard_min(0.001)]
+	tolerance: f64,
+) -> Table<Vector> {
+	use crate::vector::misc::{dvec2_to_point, point_to_dvec2};
+	use kurbo::Affine;
+
+	source
+		.into_iter()
+		.map(|row| {
+			let transform = Affine::new(row.transform.to_cols_array());
+			let vector = row.element;
+
+			let mut new_vector = Vector {
+				style: vector.style.clone(),
+				upstream_nested_layers: vector.upstream_nested_layers.clone(),
+				..Default::default()
+			};
+
+			// Process each bezpath in the vector
+			for mut bezpath in vector.stroke_bezpath_iter() {
+				// Apply transform to work in world space for accurate distance calculations
+				bezpath.apply_affine(transform);
+
+				// Extract anchor points from the bezpath
+				let anchors: Vec<DVec2> = bezpath.segments().map(|seg| point_to_dvec2(seg.start())).collect();
+
+				// Handle the last point if the path isn't closed
+				let is_closed = bezpath.elements().last() == Some(&kurbo::PathEl::ClosePath);
+				let mut all_anchors = anchors;
+				if !is_closed {
+					if let Some(last_seg) = bezpath.segments().last() {
+						all_anchors.push(point_to_dvec2(last_seg.end()));
+					}
+				}
+
+				if all_anchors.len() <= 2 {
+					// Can't simplify paths with 2 or fewer points
+					bezpath.apply_affine(transform.inverse());
+					new_vector.append_bezpath(bezpath);
+					continue;
+				}
+
+				// Apply RDP algorithm
+				let simplified_indices = ramer_douglas_peucker(&all_anchors, tolerance);
+
+				// Build new bezpath from simplified points
+				let mut simplified_bezpath = kurbo::BezPath::new();
+				if let Some(&first_idx) = simplified_indices.first() {
+					simplified_bezpath.move_to(dvec2_to_point(all_anchors[first_idx]));
+
+					for &idx in simplified_indices.iter().skip(1) {
+						simplified_bezpath.line_to(dvec2_to_point(all_anchors[idx]));
+					}
+
+					// Close the path if the original was closed and we have enough points
+					if is_closed && simplified_indices.len() > 2 {
+						simplified_bezpath.close_path();
+					}
+				}
+
+				// Transform back to local space
+				simplified_bezpath.apply_affine(transform.inverse());
+				new_vector.append_bezpath(simplified_bezpath);
+			}
+
+			TableRow { element: new_vector, ..row }
+		})
+		.collect()
 }
 
 #[node_macro::node(category("Instancing"), path(graphene_core::vector))]
