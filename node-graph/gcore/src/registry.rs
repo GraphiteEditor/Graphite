@@ -9,7 +9,7 @@ use std::sync::{LazyLock, Mutex};
 pub use graphene_core_shaders::registry::types;
 
 // Translation struct between macro and definition
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct NodeMetadata {
 	pub display_name: &'static str,
 	pub category: Option<&'static str>,

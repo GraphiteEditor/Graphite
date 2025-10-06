@@ -147,9 +147,7 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 
 	async function loadPreferences() {
 		const preferences = await get<Record<string, unknown>>("preferences", graphiteStore);
-		if (!preferences) return;
-
-		editor.handle.loadPreferences(JSON.stringify(preferences));
+		editor.handle.loadPreferences(preferences ? JSON.stringify(preferences) : undefined);
 	}
 
 	// FRONTEND MESSAGE SUBSCRIPTIONS

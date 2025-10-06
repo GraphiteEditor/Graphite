@@ -325,6 +325,44 @@ impl TangentInverse for DVec2 {
 	}
 }
 
+#[node_macro::node(category("Math: Numeric"))]
+fn remap<U: num_traits::float::Float>(
+	_: impl Ctx,
+	#[implementations(f64, f32)] value: U,
+	#[implementations(f64, f32)] input_min: U,
+	#[implementations(f64, f32)]
+	#[default(1.)]
+	input_max: U,
+	#[implementations(f64, f32)] output_min: U,
+	#[implementations(f64, f32)]
+	#[default(1.)]
+	output_max: U,
+	clamped: bool,
+) -> U {
+	let input_range = input_max - input_min;
+
+	// Handle division by zero
+	if input_range.abs() < U::epsilon() {
+		return output_min;
+	}
+
+	let normalized = (value - input_min) / input_range;
+	let output_range = output_max - output_min;
+
+	let result = output_min + normalized * output_range;
+
+	if clamped {
+		// Handle both normal and inverted ranges, since we want to allow the user to use this node to also reverse a range.
+		if output_min <= output_max {
+			result.clamp(output_min, output_max)
+		} else {
+			result.clamp(output_max, output_min)
+		}
+	} else {
+		result
+	}
+}
+
 /// The random function (rand) converts a seed into a random number within the specified range, inclusive of the minimum and exclusive of the maximum. The minimum and maximum values are automatically swapped if they are reversed.
 #[node_macro::node(category("Math: Numeric"))]
 fn random(

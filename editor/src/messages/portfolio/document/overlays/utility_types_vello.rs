@@ -12,16 +12,29 @@ use graphene_std::Color;
 use graphene_std::math::quad::Quad;
 use graphene_std::subpath::{self, Subpath};
 use graphene_std::table::Table;
-use graphene_std::text::{TextAlign, TypesettingConfig, load_font, to_path};
+use graphene_std::text::TextContext;
+use graphene_std::text::{Font, FontCache, TextAlign, TypesettingConfig};
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::point_to_dvec2;
 use graphene_std::vector::{PointId, SegmentId, Vector};
 use kurbo::{self, BezPath, ParamCurve};
 use kurbo::{Affine, PathSeg};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 use vello::Scene;
 use vello::peniko;
+
+// Global lazy initialized font cache and text context
+static GLOBAL_FONT_CACHE: LazyLock<FontCache> = LazyLock::new(|| {
+	let mut font_cache = FontCache::default();
+	// Initialize with the hardcoded font used by overlay text
+	const FONT_DATA: &[u8] = include_bytes!("source-sans-pro-regular.ttf");
+	let font = Font::new("Source Sans Pro".to_string(), "Regular".to_string());
+	font_cache.insert(font, String::new(), FONT_DATA.to_vec());
+	font_cache
+});
+
+static GLOBAL_TEXT_CONTEXT: LazyLock<Mutex<TextContext>> = LazyLock::new(|| Mutex::new(TextContext::default()));
 
 pub type OverlayProvider = fn(OverlayContext) -> Message;
 
@@ -215,7 +228,7 @@ impl OverlayContext {
 
 	pub fn take_scene(self) -> Scene {
 		let mut internal = self.internal.lock().expect("Failed to lock internal overlay context");
-		std::mem::take(&mut *internal).scene
+		std::mem::take(&mut internal.scene)
 	}
 
 	fn internal(&'_ self) -> MutexGuard<'_, OverlayContextInternal> {
@@ -415,12 +428,7 @@ pub(super) struct OverlayContextInternal {
 
 impl Default for OverlayContextInternal {
 	fn default() -> Self {
-		Self {
-			scene: Scene::new(),
-			size: DVec2::ZERO,
-			device_pixel_ratio: 1.0,
-			visibility_settings: OverlaysVisibilitySettings::default(),
-		}
+		Self::new(DVec2::new(100., 100.), 1., OverlaysVisibilitySettings::default())
 	}
 }
 
@@ -1007,7 +1015,7 @@ impl OverlayContextInternal {
 		self.scene.fill(peniko::Fill::NonZero, self.get_transform(), &brush, None, &path);
 	}
 
-	fn get_width(&self, text: &str) -> f64 {
+	fn get_width(&mut self, text: &str) -> f64 {
 		// Use the actual text-to-path system to get precise text width
 		const FONT_SIZE: f64 = 12.0;
 
@@ -1024,13 +1032,10 @@ impl OverlayContextInternal {
 		// Load Source Sans Pro font data
 		// TODO: Grab this from the node_modules folder (either with `include_bytes!` or ideally at runtime) instead of checking the font file into the repo.
 		// TODO: And maybe use the WOFF2 version (if it's supported) for its smaller, compressed file size.
-		const FONT_DATA: &[u8] = include_bytes!("source-sans-pro-regular.ttf");
-		let font_blob = Some(load_font(FONT_DATA));
-
-		// Convert text to paths and calculate actual bounds
-		let text_table = to_path(text, font_blob, typesetting, false);
-		let text_bounds = self.calculate_text_bounds(&text_table);
-		text_bounds.width()
+		let font = Font::new("Source Sans Pro".to_string(), "Regular".to_string());
+		let mut text_context = GLOBAL_TEXT_CONTEXT.lock().expect("Failed to lock global text context");
+		let bounds = text_context.bounding_box(text, &font, &GLOBAL_FONT_CACHE, typesetting, false);
+		bounds.x
 	}
 
 	fn text(&mut self, text: &str, font_color: &str, background_color: Option<&str>, transform: DAffine2, padding: f64, pivot: [Pivot; 2]) {
@@ -1051,15 +1056,18 @@ impl OverlayContextInternal {
 		// Load Source Sans Pro font data
 		// TODO: Grab this from the node_modules folder (either with `include_bytes!` or ideally at runtime) instead of checking the font file into the repo.
 		// TODO: And maybe use the WOFF2 version (if it's supported) for its smaller, compressed file size.
-		const FONT_DATA: &[u8] = include_bytes!("source-sans-pro-regular.ttf");
-		let font_blob = Some(load_font(FONT_DATA));
+		let font = Font::new("Source Sans Pro".to_string(), "Regular".to_string());
 
-		// Convert text to vector paths using the existing text system
-		let text_table = to_path(text, font_blob, typesetting, false);
-		// Calculate text bounds from the generated paths
-		let text_bounds = self.calculate_text_bounds(&text_table);
-		let text_width = text_bounds.width();
-		let text_height = text_bounds.height();
+		// Get text dimensions directly from layout
+		let mut text_context = GLOBAL_TEXT_CONTEXT.lock().expect("Failed to lock global text context");
+		let text_size = text_context.bounding_box(text, &font, &GLOBAL_FONT_CACHE, typesetting, false);
+		let text_width = text_size.x;
+		let text_height = text_size.y;
+		// Create a rect from the size (assuming text starts at origin)
+		let text_bounds = kurbo::Rect::new(0.0, 0.0, text_width, text_height);
+
+		// Convert text to vector paths for rendering
+		let text_table = text_context.to_path(text, &font, &GLOBAL_FONT_CACHE, typesetting, false);
 
 		// Calculate position based on pivot
 		let mut position = DVec2::ZERO;
@@ -1092,56 +1100,6 @@ impl OverlayContextInternal {
 
 		// Render the actual text paths
 		self.render_text_paths(&text_table, font_color, vello_transform);
-	}
-
-	// Calculate bounds of text from vector table
-	fn calculate_text_bounds(&self, text_table: &Table<Vector>) -> kurbo::Rect {
-		let mut min_x = f64::INFINITY;
-		let mut min_y = f64::INFINITY;
-		let mut max_x = f64::NEG_INFINITY;
-		let mut max_y = f64::NEG_INFINITY;
-
-		for row in text_table.iter() {
-			// Use the existing segment_bezier_iter to get all bezier curves
-			for (_, bezier, _, _) in row.element.segment_bezier_iter() {
-				let transformed_bezier = bezier.apply_transformation(|point| row.transform.transform_point2(point));
-
-				// Add start and end points to bounds
-				let points = [transformed_bezier.start, transformed_bezier.end];
-				for point in points {
-					min_x = min_x.min(point.x);
-					min_y = min_y.min(point.y);
-					max_x = max_x.max(point.x);
-					max_y = max_y.max(point.y);
-				}
-
-				// Add handle points if they exist
-				match transformed_bezier.handles {
-					subpath::BezierHandles::Quadratic { handle } => {
-						min_x = min_x.min(handle.x);
-						min_y = min_y.min(handle.y);
-						max_x = max_x.max(handle.x);
-						max_y = max_y.max(handle.y);
-					}
-					subpath::BezierHandles::Cubic { handle_start, handle_end } => {
-						for handle in [handle_start, handle_end] {
-							min_x = min_x.min(handle.x);
-							min_y = min_y.min(handle.y);
-							max_x = max_x.max(handle.x);
-							max_y = max_y.max(handle.y);
-						}
-					}
-					_ => {}
-				}
-			}
-		}
-
-		if min_x.is_finite() && min_y.is_finite() && max_x.is_finite() && max_y.is_finite() {
-			kurbo::Rect::new(min_x, min_y, max_x, max_y)
-		} else {
-			// Fallback for empty text
-			kurbo::Rect::new(0.0, 0.0, 0.0, 12.0)
-		}
 	}
 
 	// Render text paths to the vello scene using existing infrastructure

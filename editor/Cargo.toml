@@ -45,6 +45,7 @@ web-sys = { workspace = true }
 vello = { workspace = true }
 base64 = { workspace = true }
 spin = { workspace = true }
+image = { workspace = true }
 
 # Optional local dependencies
 wgpu-executor = { workspace = true, optional = true }

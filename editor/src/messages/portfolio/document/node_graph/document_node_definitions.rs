@@ -980,7 +980,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							DocumentNode {
 								inputs: vec![NodeInput::import(concrete!(Table<Raster<CPU>>), 0), NodeInput::node(NodeId(0), 0)],
 								call_argument: generic!(T),
-								implementation: DocumentNodeImplementation::ProtoNode(wgpu_executor::texture_upload::upload_texture::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(wgpu_executor::texture_conversion::upload_texture::IDENTIFIER),
 								..Default::default()
 							},
 							DocumentNode {

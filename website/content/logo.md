@@ -24,10 +24,11 @@ The Graphite logo is made available for community use, with some limitations. Wh
 
 Please be advised that the logo is not part of the software's Apache 2.0 [license](/license). Users of the logo must adhere to the usage policy:
 
-1. Do not use the Graphite logo as your own. It should not be used as your primary, or most visually prominent, branding. Your usage should not imply that it's a part of the official Graphite project, nor that it's endorsed or affiliated.
-2. Only use the logo when talking about, describing, referencing, or crediting the official Graphite project or software. If used as a hyperlink, it should point only to <https://graphite.rs>.
-3. Do not modify the logo. The solid-colored version may only be recolored with another substitute solid color if doing so is necessary for visual consistency when presented alongside other logos of the same color. Sufficient blank space should be preserved around the logo so it does not compete with impinging design elements.
-4. Commercial use of the logo (for example, merchandise sales) is not allowed without express written permission.
+1. Do not use the Graphite logo as your own. It should not be used as your primary—or most visually prominent—branding, and may never be incorporated into your own logo. Your usage should not imply that it's a part of the official Graphite project, nor that it's endorsed or affiliated.
+2. Your (product, service, website, company, channel, etc.) brand name should not begin with "Graphite", or use it as the most prominent word in the name. It may only be used as a secondary or descriptive word that comes after your own unique name. For example: "XYZ for Graphite" is acceptable, but "Graphite XYZ" is not since it implies affiliation.
+3. Only use the logo when talking about, describing, referencing, or crediting the official Graphite project or software. If used as a hyperlink, it should point only to <https://graphite.rs>.
+4. Do not modify the logo. The solid-colored version may only be recolored with another substitute solid color if doing so is necessary for visual consistency when presented alongside other logos of the same color. Sufficient blank space should be preserved around the logo so it does not overlap or compete with impinging design elements.
+5. Commercial use of the logo (for example, merchandise sales) is not allowed without express written permission.
 
 If in doubt, please <a href="/contact">get in touch</a> by email to request clarification or permission.
 

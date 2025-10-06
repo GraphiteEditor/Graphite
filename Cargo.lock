@@ -685,7 +685,7 @@ dependencies = [
  "serde-untagged",
  "serde-value",
  "thiserror 2.0.16",
- "toml",
+ "toml 0.8.23",
  "unicode-xid",
  "url",
 ]
@@ -1317,7 +1317,7 @@ dependencies = [
 [[package]]
 name = "dpi"
 version = "0.1.2"
-source = "git+https://github.com/rust-windowing/winit.git?rev=66283a79bddd034c45fb0e72c84fa5cd4e5f82fb#66283a79bddd034c45fb0e72c84fa5cd4e5f82fb"
+source = "git+https://github.com/rust-windowing/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad#37221c7192ef1deec022a2278e54429331c01bad"
 dependencies = [
  "serde",
 ]
@@ -2184,6 +2184,7 @@ version = "0.1.0"
 dependencies = [
  "cargo-gpu",
  "env_logger",
+ "log",
 ]
 
 [[package]]
@@ -2267,6 +2268,7 @@ dependencies = [
  "wgpu",
  "windows",
  "winit",
+ "winres",
 ]
 
 [[package]]
@@ -2309,6 +2311,7 @@ dependencies = [
  "graph-craft",
  "graphene-std",
  "graphite-proc-macros",
+ "image",
  "interpreted-executor",
  "js-sys",
  "kurbo",
@@ -2886,6 +2889,7 @@ dependencies = [
  "iai-callgrind",
  "log",
  "once_cell",
+ "preprocessor",
  "serde",
  "wgpu-executor",
 ]
@@ -5550,7 +5554,7 @@ dependencies = [
  "cfg-expr",
  "heck",
  "pkg-config",
- "toml",
+ "toml 0.8.23",
  "version-compare",
 ]
 
@@ -5814,6 +5818,15 @@ dependencies = [
  "futures-sink",
  "pin-project-lite",
  "tokio",
+]
+
+[[package]]
+name = "toml"
+version = "0.5.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f4f7f0dd8d50a853a531c426359045b1998f04219d88799810762cd4ad314234"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
@@ -7134,7 +7147,7 @@ checksum = "271414315aff87387382ec3d271b52d7ae78726f5d44ac98b4f4030c91880486"
 [[package]]
 name = "winit"
 version = "0.30.12"
-source = "git+https://github.com/rust-windowing/winit.git?rev=66283a79bddd034c45fb0e72c84fa5cd4e5f82fb#66283a79bddd034c45fb0e72c84fa5cd4e5f82fb"
+source = "git+https://github.com/rust-windowing/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad#37221c7192ef1deec022a2278e54429331c01bad"
 dependencies = [
  "bitflags 2.9.3",
  "cfg_aliases",
@@ -7161,7 +7174,7 @@ dependencies = [
 [[package]]
 name = "winit-android"
 version = "0.30.12"
-source = "git+https://github.com/rust-windowing/winit.git?rev=66283a79bddd034c45fb0e72c84fa5cd4e5f82fb#66283a79bddd034c45fb0e72c84fa5cd4e5f82fb"
+source = "git+https://github.com/rust-windowing/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad#37221c7192ef1deec022a2278e54429331c01bad"
 dependencies = [
  "android-activity",
  "bitflags 2.9.3",
@@ -7176,7 +7189,7 @@ dependencies = [
 [[package]]
 name = "winit-appkit"
 version = "0.30.12"
-source = "git+https://github.com/rust-windowing/winit.git?rev=66283a79bddd034c45fb0e72c84fa5cd4e5f82fb#66283a79bddd034c45fb0e72c84fa5cd4e5f82fb"
+source = "git+https://github.com/rust-windowing/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad#37221c7192ef1deec022a2278e54429331c01bad"
 dependencies = [
  "bitflags 2.9.3",
  "block2",
@@ -7198,7 +7211,7 @@ dependencies = [
 [[package]]
 name = "winit-common"
 version = "0.30.12"
-source = "git+https://github.com/rust-windowing/winit.git?rev=66283a79bddd034c45fb0e72c84fa5cd4e5f82fb#66283a79bddd034c45fb0e72c84fa5cd4e5f82fb"
+source = "git+https://github.com/rust-windowing/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad#37221c7192ef1deec022a2278e54429331c01bad"
 dependencies = [
  "memmap2",
  "objc2",
@@ -7213,7 +7226,7 @@ dependencies = [
 [[package]]
 name = "winit-core"
 version = "0.30.12"
-source = "git+https://github.com/rust-windowing/winit.git?rev=66283a79bddd034c45fb0e72c84fa5cd4e5f82fb#66283a79bddd034c45fb0e72c84fa5cd4e5f82fb"
+source = "git+https://github.com/rust-windowing/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad#37221c7192ef1deec022a2278e54429331c01bad"
 dependencies = [
  "bitflags 2.9.3",
  "cursor-icon",
@@ -7228,7 +7241,7 @@ dependencies = [
 [[package]]
 name = "winit-orbital"
 version = "0.30.12"
-source = "git+https://github.com/rust-windowing/winit.git?rev=66283a79bddd034c45fb0e72c84fa5cd4e5f82fb#66283a79bddd034c45fb0e72c84fa5cd4e5f82fb"
+source = "git+https://github.com/rust-windowing/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad#37221c7192ef1deec022a2278e54429331c01bad"
 dependencies = [
  "bitflags 2.9.3",
  "dpi",
@@ -7243,7 +7256,7 @@ dependencies = [
 [[package]]
 name = "winit-uikit"
 version = "0.30.12"
-source = "git+https://github.com/rust-windowing/winit.git?rev=66283a79bddd034c45fb0e72c84fa5cd4e5f82fb#66283a79bddd034c45fb0e72c84fa5cd4e5f82fb"
+source = "git+https://github.com/rust-windowing/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad#37221c7192ef1deec022a2278e54429331c01bad"
 dependencies = [
  "bitflags 2.9.3",
  "block2",
@@ -7264,7 +7277,7 @@ dependencies = [
 [[package]]
 name = "winit-wayland"
 version = "0.30.12"
-source = "git+https://github.com/rust-windowing/winit.git?rev=66283a79bddd034c45fb0e72c84fa5cd4e5f82fb#66283a79bddd034c45fb0e72c84fa5cd4e5f82fb"
+source = "git+https://github.com/rust-windowing/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad#37221c7192ef1deec022a2278e54429331c01bad"
 dependencies = [
  "ahash",
  "bitflags 2.9.3",
@@ -7290,7 +7303,7 @@ dependencies = [
 [[package]]
 name = "winit-web"
 version = "0.30.12"
-source = "git+https://github.com/rust-windowing/winit.git?rev=66283a79bddd034c45fb0e72c84fa5cd4e5f82fb#66283a79bddd034c45fb0e72c84fa5cd4e5f82fb"
+source = "git+https://github.com/rust-windowing/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad#37221c7192ef1deec022a2278e54429331c01bad"
 dependencies = [
  "atomic-waker",
  "bitflags 2.9.3",
@@ -7312,7 +7325,7 @@ dependencies = [
 [[package]]
 name = "winit-win32"
 version = "0.30.12"
-source = "git+https://github.com/rust-windowing/winit.git?rev=66283a79bddd034c45fb0e72c84fa5cd4e5f82fb#66283a79bddd034c45fb0e72c84fa5cd4e5f82fb"
+source = "git+https://github.com/rust-windowing/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad#37221c7192ef1deec022a2278e54429331c01bad"
 dependencies = [
  "bitflags 2.9.3",
  "cursor-icon",
@@ -7328,7 +7341,7 @@ dependencies = [
 [[package]]
 name = "winit-x11"
 version = "0.30.12"
-source = "git+https://github.com/rust-windowing/winit.git?rev=66283a79bddd034c45fb0e72c84fa5cd4e5f82fb#66283a79bddd034c45fb0e72c84fa5cd4e5f82fb"
+source = "git+https://github.com/rust-windowing/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad#37221c7192ef1deec022a2278e54429331c01bad"
 dependencies = [
  "bitflags 2.9.3",
  "bytemuck",
@@ -7355,6 +7368,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "21a0236b59786fed61e2a80582dd500fe61f18b5dca67a4a067d0bc9039339cf"
 dependencies = [
  "memchr",
+]
+
+[[package]]
+name = "winres"
+version = "0.1.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b68db261ef59e9e52806f688020631e987592bd83619edccda9c47d42cde4f6c"
+dependencies = [
+ "toml 0.5.11",
 ]
 
 [[package]]

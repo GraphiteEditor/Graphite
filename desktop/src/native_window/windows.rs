@@ -12,9 +12,11 @@
 use std::sync::OnceLock;
 use wgpu::rwh::{HasWindowHandle, RawWindowHandle};
 use windows::Win32::Foundation::*;
-use windows::Win32::Graphics::{Dwm::*, Gdi::HBRUSH};
+use windows::Win32::Graphics::Dwm::*;
+use windows::Win32::Graphics::Gdi::*;
 use windows::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows::Win32::UI::Controls::MARGINS;
+use windows::Win32::UI::HiDpi::*;
 use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::PCWSTR;
 use winit::window::Window;
@@ -173,11 +175,24 @@ unsafe fn ensure_helper_class() {
 
 // Main window message handler, called on the UI thread for every message the main window receives.
 unsafe extern "system" fn main_window_handle_message(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
-	if msg == WM_NCCALCSIZE {
-		if wparam.0 != 0 {
-			// Return 0 to to tell Windows to skip the default non-client area calculation and drawing.
-			return LRESULT(0);
+	if msg == WM_NCCALCSIZE && wparam.0 != 0 {
+		// When maximized, shrink to visible frame so content doesn't extend beyond it.
+		if unsafe { IsZoomed(hwnd).as_bool() } {
+			let params = unsafe { &mut *(lparam.0 as *mut NCCALCSIZE_PARAMS) };
+
+			let dpi = unsafe { GetDpiForWindow(hwnd) };
+			let size = unsafe { GetSystemMetricsForDpi(SM_CXSIZEFRAME, dpi) };
+			let pad = unsafe { GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi) };
+			let inset = (size + pad) as i32;
+
+			params.rgrc[0].left += inset;
+			params.rgrc[0].top += inset;
+			params.rgrc[0].right -= inset;
+			params.rgrc[0].bottom -= inset;
 		}
+
+		// Return 0 to to tell Windows to skip the default non-client area calculation and drawing.
+		return LRESULT(0);
 	}
 
 	let Some(handle) = registry::find_by_main(hwnd) else {
