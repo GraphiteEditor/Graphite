@@ -655,7 +655,7 @@
 				style:--clip-path-id={`url(#${clipPathId})`}
 				style:--data-color={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()})`}
 				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
-				title={`${node.displayName}\n\n${description || ""}`.trim() + (editor.handle.inDevelopmentMode() ? `\n\nNode ID: ${node.id}` : "")}
+				title={`${node.reference || node.displayName}\n\n${description || ""}`.trim() + (editor.handle.inDevelopmentMode() ? `\n\nNode ID: ${node.id}` : "")}
 				data-node={node.id}
 			>
 				{#if node.errors}
@@ -666,7 +666,7 @@
 				<div class="primary" class:in-selected-network={$nodeGraph.inSelectedNetwork} class:no-secondary-section={exposedInputsOutputs.length === 0}>
 					<IconLabel icon={nodeIcon(node.reference)} />
 					<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
-					<TextLabel tooltip={node.reference}>{node.displayName}</TextLabel>
+					<TextLabel>{node.displayName}</TextLabel>
 				</div>
 				<!-- Secondary rows -->
 				{#if exposedInputsOutputs.length > 0}
