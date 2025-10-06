@@ -11,13 +11,19 @@ use super::consts::{MULTICLICK_ALLOWED_TRAVEL, MULTICLICK_TIMEOUT, SCROLL_LINE_H
 
 pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputState, event: &WindowEvent) {
 	match event {
-		WindowEvent::PointerMoved { position, .. } => {
+		WindowEvent::PointerMoved { position, .. } | WindowEvent::PointerEntered { position, .. } => {
 			input_state.cursor_move(position);
 
-			let Some(host) = browser.host() else {
-				return;
-			};
+			let Some(host) = browser.host() else { return };
 			host.send_mouse_move_event(Some(&input_state.into()), 0);
+		}
+		WindowEvent::PointerLeft { position, .. } => {
+			if let Some(position) = position {
+				input_state.cursor_move(position);
+			}
+
+			let Some(host) = browser.host() else { return };
+			host.send_mouse_move_event(Some(&input_state.into()), 1);
 		}
 		WindowEvent::PointerButton { state, button, .. } => {
 			let mouse_button = match button {
@@ -39,9 +45,7 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 				_ => return, //TODO: Handle Forward and Back button
 			};
 
-			let Some(host) = browser.host() else {
-				return;
-			};
+			let Some(host) = browser.host() else { return };
 			host.send_mouse_click_event(Some(&input_state.into()), cef_button, cef_mouse_up, cef_click_count);
 		}
 		WindowEvent::MouseWheel { delta, phase: _, device_id: _, .. } => {
@@ -53,9 +57,7 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 			delta_x *= SCROLL_SPEED_X;
 			delta_y *= SCROLL_SPEED_Y;
 
-			let Some(host) = browser.host() else {
-				return;
-			};
+			let Some(host) = browser.host() else { return };
 			host.send_mouse_wheel_event(Some(&mouse_event), delta_x as i32, delta_y as i32);
 		}
 		WindowEvent::ModifiersChanged(modifiers) => {
@@ -95,9 +97,7 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 
 			key_event.native_key_code = native_key_code;
 
-			let Some(host) = browser.host() else {
-				return;
-			};
+			let Some(host) = browser.host() else { return };
 
 			match event.state {
 				ElementState::Pressed => {
@@ -151,7 +151,7 @@ impl InputState {
 
 	fn mouse_input(&mut self, button: &MouseButton, state: &ElementState) -> ClickCount {
 		self.mouse_state.update(button, state);
-		self.mouse_click_tracker.input(button, state, &self.mouse_position)
+		self.mouse_click_tracker.input(button, state, self.mouse_position)
 	}
 
 	fn cef_modifiers(&self, location: &winit::keyboard::KeyLocation, is_repeat: bool) -> CefModifiers {
@@ -187,7 +187,7 @@ impl From<&mut InputState> for MouseEvent {
 	}
 }
 
-#[derive(Default, Clone)]
+#[derive(Default, Clone, Copy)]
 pub(crate) struct MousePosition {
 	x: usize,
 	y: usize,
@@ -233,7 +233,7 @@ struct ClickTracker {
 	right: Option<ClickRecord>,
 }
 impl ClickTracker {
-	fn input(&mut self, button: &MouseButton, state: &ElementState, position: &MousePosition) -> ClickCount {
+	fn input(&mut self, button: &MouseButton, state: &ElementState, position: MousePosition) -> ClickCount {
 		let record = match button {
 			MouseButton::Left => &mut self.left,
 			MouseButton::Right => &mut self.right,
@@ -241,52 +241,55 @@ impl ClickTracker {
 			_ => return ClickCount::Single,
 		};
 
-		let now = Instant::now();
-
 		let Some(record) = record else {
-			*record = Some(ClickRecord {
-				time: now,
-				position: position.clone(),
-				down_count: ClickCount::Single,
-				up_count: ClickCount::Single,
-			});
+			*record = Some(ClickRecord { position, ..Default::default() });
 			return ClickCount::Single;
 		};
+
+		let previous = record.time;
+
+		let now = Instant::now();
+		record.time = now;
+		record.position = position;
+
+		match state {
+			ElementState::Pressed if record.down_count == ClickCount::Double => {
+				*record = ClickRecord {
+					down_count: ClickCount::Single,
+					..*record
+				};
+				return ClickCount::Single;
+			}
+			ElementState::Released if record.up_count == ClickCount::Double => {
+				*record = ClickRecord {
+					up_count: ClickCount::Single,
+					..*record
+				};
+				return ClickCount::Single;
+			}
+			_ => {}
+		}
 
 		let dx = position.x.abs_diff(record.position.x);
 		let dy = position.y.abs_diff(record.position.y);
 		let within_dist = dx <= MULTICLICK_ALLOWED_TRAVEL && dy <= MULTICLICK_ALLOWED_TRAVEL;
-		let within_time = now.saturating_duration_since(record.time) <= MULTICLICK_TIMEOUT;
+		let within_time = now.saturating_duration_since(previous) <= MULTICLICK_TIMEOUT;
 
 		let count = if within_time && within_dist { ClickCount::Double } else { ClickCount::Single };
 
 		*record = match state {
-			ElementState::Pressed => ClickRecord {
-				time: now,
-				position: position.clone(),
-				down_count: count.clone(),
-				up_count: record.up_count.clone(),
-			},
-			ElementState::Released => ClickRecord {
-				time: now,
-				position: position.clone(),
-				down_count: record.down_count.clone(),
-				up_count: count.clone(),
-			},
+			ElementState::Pressed => ClickRecord { down_count: count, ..*record },
+			ElementState::Released => ClickRecord { up_count: count, ..*record },
 		};
 		count
 	}
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy, PartialEq, Default)]
 enum ClickCount {
+	#[default]
 	Single,
 	Double,
-}
-impl Default for ClickCount {
-	fn default() -> Self {
-		Self::Single
-	}
 }
 impl From<ClickCount> for i32 {
 	fn from(count: ClickCount) -> i32 {
@@ -297,11 +300,23 @@ impl From<ClickCount> for i32 {
 	}
 }
 
+#[derive(Clone, Copy)]
 struct ClickRecord {
 	time: Instant,
 	position: MousePosition,
 	down_count: ClickCount,
 	up_count: ClickCount,
+}
+
+impl Default for ClickRecord {
+	fn default() -> Self {
+		Self {
+			time: Instant::now(),
+			position: Default::default(),
+			down_count: Default::default(),
+			up_count: Default::default(),
+		}
+	}
 }
 
 struct CefModifiers(u32);

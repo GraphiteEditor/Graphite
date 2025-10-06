@@ -1,5 +1,5 @@
 use criterion::measurement::Measurement;
-use criterion::{BenchmarkGroup, Criterion, black_box, criterion_group, criterion_main};
+use criterion::{BenchmarkGroup, Criterion, criterion_group, criterion_main};
 use graph_craft::graphene_compiler::Executor;
 use graph_craft::proto::ProtoNetwork;
 use graph_craft::util::{DEMO_ART, compile, load_from_name};
@@ -16,7 +16,7 @@ fn update_executor<M: Measurement>(name: &str, c: &mut BenchmarkGroup<M>) {
 	c.bench_function(name, |b| {
 		b.iter_batched(
 			|| (executor.clone(), proto_network.clone()),
-			|(mut executor, network)| futures::executor::block_on(executor.update(black_box(network))),
+			|(mut executor, network)| futures::executor::block_on(executor.update(std::hint::black_box(network))),
 			criterion::BatchSize::SmallInput,
 		)
 	});

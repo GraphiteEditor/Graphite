@@ -2,8 +2,6 @@ use std::process::exit;
 use tracing_subscriber::EnvFilter;
 use winit::event_loop::EventLoop;
 
-use graphite_desktop_wrapper::WgpuContext;
-
 pub(crate) mod consts;
 
 mod app;
@@ -13,6 +11,8 @@ mod event;
 mod native_window;
 mod persist;
 mod render;
+
+mod gpu_context;
 
 use app::App;
 use cef::CefHandler;
@@ -27,11 +27,11 @@ fn main() {
 		// We are in a CEF subprocess
 		// This will block until the CEF subprocess quits
 		let error = cef_context_builder.execute_sub_process();
-		tracing::error!("Cef subprocess failed with error: {error}");
+		tracing::warn!("Cef subprocess failed with error: {error}");
 		return;
 	}
 
-	let wgpu_context = futures::executor::block_on(WgpuContext::new()).unwrap();
+	let wgpu_context = futures::executor::block_on(gpu_context::create_wgpu_context());
 
 	let event_loop = EventLoop::new().unwrap();
 	let (app_event_sender, app_event_receiver) = std::sync::mpsc::channel();

@@ -61,6 +61,14 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		convert_node!(from: DVec2, to: String),
 		convert_node!(from: IVec2, to: String),
 		convert_node!(from: DAffine2, to: String),
+		#[cfg(feature = "gpu")]
+		convert_node!(from: Table<Raster<CPU>>, to: Table<Raster<CPU>>, converter: &WgpuExecutor),
+		#[cfg(feature = "gpu")]
+		convert_node!(from: Table<Raster<CPU>>, to: Table<Raster<GPU>>, converter: &WgpuExecutor),
+		#[cfg(feature = "gpu")]
+		convert_node!(from: Table<Raster<GPU>>, to: Table<Raster<GPU>>, converter: &WgpuExecutor),
+		#[cfg(feature = "gpu")]
+		convert_node!(from: Table<Raster<GPU>>, to: Table<Raster<CPU>>, converter: &WgpuExecutor),
 		// =============
 		// MONITOR NODES
 		// =============
@@ -394,21 +402,30 @@ mod node_registry_macros {
 			x
 		}};
 		(from: $from:ty, to: $to:ty) => {
+			convert_node!(from: $from, to: $to, converter: ())
+		};
+		(from: $from:ty, to: $to:ty, converter: $convert:ty) => {
 			(
 				ProtoNodeIdentifier::new(concat!["graphene_core::ops::ConvertNode<", stringify!($to), ">"]),
 				|mut args| {
 					Box::pin(async move {
-						let node = graphene_core::ops::ConvertNode::new(graphene_std::any::downcast_node::<Context, $from>(args.pop().unwrap()),
-graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$to>))						);
+						let mut args = args.drain(..);
+						let node = graphene_core::ops::ConvertNode::new(
+							graphene_std::any::downcast_node::<Context, $from>(args.next().expect("Convert node did not get first argument")),
+							graphene_std::any::downcast_node::<Context, $convert>(args.next().expect("Convert node did not get converter argument")),
+							graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$to>))
+						);
 						let any: DynAnyNode<Context, $to, _> = graphene_std::any::DynAnyNode::new(node);
 						Box::new(any) as TypeErasedBox
 					})
 				},
 				{
-					let node = graphene_core::ops::ConvertNode::new(graphene_std::any::PanicNode::<Context, core::pin::Pin<Box<dyn core::future::Future<Output = $from> + Send>>>::new(),
-
-graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$to>))					);
-					let params = vec![fn_type_fut!(Context, $from)];
+					let node = graphene_core::ops::ConvertNode::new(
+						graphene_std::any::PanicNode::<Context, core::pin::Pin<Box<dyn core::future::Future<Output = $from> + Send>>>::new(),
+						graphene_std::any::PanicNode::<Context, core::pin::Pin<Box<dyn core::future::Future<Output = $convert> + Send>>>::new(),
+						graphene_std::any::FutureWrapperNode::new(graphene_std::value::ClonedNode::new(std::marker::PhantomData::<$to>))
+					);
+					let params = vec![fn_type_fut!(Context, $from), fn_type_fut!(Context, $convert)];
 					let node_io = NodeIO::<'_, Context>::to_async_node_io(&node, params);
 					node_io
 				},
