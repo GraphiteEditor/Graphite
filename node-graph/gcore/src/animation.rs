@@ -20,6 +20,7 @@ pub enum AnimationTimeMode {
 	FrameNumber,
 }
 
+/// Produces a chosen representation of the current real time and date (in UTC) based on the system clock.
 #[node_macro::node(category("Animation"))]
 fn real_time(ctx: impl Ctx + ExtractRealTime, _primary: (), mode: RealTimeMode) -> f64 {
 	let real_time = ctx.try_real_time().unwrap_or_default();
@@ -35,6 +36,7 @@ fn real_time(ctx: impl Ctx + ExtractRealTime, _primary: (), mode: RealTimeMode) 
 	}
 }
 
+/// Produces the time, in seconds on the timeline, since the beginning of animation playback.
 #[node_macro::node(category("Animation"))]
 fn animation_time(ctx: impl Ctx + ExtractAnimationTime) -> f64 {
 	ctx.try_animation_time().unwrap_or_default()
