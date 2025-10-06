@@ -59,15 +59,14 @@ async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + 
 	let contains_artboard = data.contains_artboard();
 
 	let use_vello = {
+		let editor_api = editor_api.eval(None).await;
 		#[cfg(target_family = "wasm")]
 		{
-			let editor_api = editor_api.eval(None).await;
-			!render_params.for_export && editor_api.editor_preferences.use_vello() && matches!(render_params.render_output_type, graphene_svg_renderer::RenderOutputType::Vello)
+			editor_api.editor_preferences.use_vello() && !render_params.for_export && matches!(render_params.render_output_type, graphene_svg_renderer::RenderOutputType::Vello)
 		}
 		#[cfg(not(target_family = "wasm"))]
 		{
-			let _ = editor_api;
-			matches!(render_params.render_output_type, graphene_svg_renderer::RenderOutputType::Vello)
+			(editor_api.editor_preferences.use_vello() || render_params.for_export) && matches!(render_params.render_output_type, graphene_svg_renderer::RenderOutputType::Vello)
 		}
 	};
 
