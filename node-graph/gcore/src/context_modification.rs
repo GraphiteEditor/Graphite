@@ -11,8 +11,8 @@ use core::f64;
 use glam::{DAffine2, DVec2};
 use graphene_core_shaders::color::Color;
 
-/// Node for filtering context features based on requirements
-/// This node is inserted by the compiler to "zero out" unused context parts
+/// Node for filtering components of the context based on the specified requirements.
+/// This node is inserted by the compiler to "zero out" unused context components.
 #[node_macro::node(category("Internal"))]
 async fn context_modification<T>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
