@@ -106,7 +106,7 @@
 
           cargoDeps = pkgs.rustPlatform.fetchCargoVendor {
             src = finalAttrs.src;
-            hash = "sha256-N9pMv9MvF3Z/yNjuSJtVHa1qBy9JmGvFV5jAriTQMaY=";
+            hash = "sha256-BVIQIZbGW19Rof0J7U2r6XFCUC52hb7+uaE1di4bV4A=";
           };
 
           npmDeps = pkgs.fetchNpmDeps {
