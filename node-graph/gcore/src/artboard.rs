@@ -110,6 +110,7 @@ pub fn migrate_artboard<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Re
 	})
 }
 
+/// Constructs a new single artboard table with the chosen properties.
 #[node_macro::node(category(""))]
 async fn create_artboard<T: Into<Table<Graphic>> + 'n>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
