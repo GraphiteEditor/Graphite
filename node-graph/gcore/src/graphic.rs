@@ -354,6 +354,7 @@ async fn to_graphic<T: Into<Table<Graphic>> + 'n>(
 	content.into()
 }
 
+/// Removes a level of nesting from a graphic table, or all nesting if "Fully Flatten" is enabled.
 #[node_macro::node(category("General"))]
 async fn flatten_graphic(_: impl Ctx, content: Table<Graphic>, fully_flatten: bool) -> Table<Graphic> {
 	// TODO: Avoid mutable reference, instead return a new Table<Graphic>?
@@ -393,6 +394,7 @@ async fn flatten_graphic(_: impl Ctx, content: Table<Graphic>, fully_flatten: bo
 	output
 }
 
+/// Converts a graphic table into a vector table by deeply flattening any vector content it contains, and discarding any non-vector content.
 #[node_macro::node(category("Vector"))]
 async fn flatten_vector(_: impl Ctx, content: Table<Graphic>) -> Table<Vector> {
 	// TODO: Avoid mutable reference, instead return a new Table<Graphic>?
