@@ -7,7 +7,7 @@ use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::GraphErrors;
 use graph_craft::wasm_application_io::EditorPreferences;
 use graph_craft::{ProtoNodeIdentifier, concrete};
-use graphene_std::application_io::{ApplicationIo, ImageTexture, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
+use graphene_std::application_io::{ApplicationIo, ExportFormat, ImageTexture, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
 use graphene_std::bounds::RenderBoundingBox;
 use graphene_std::memo::IORecord;
 use graphene_std::ops::Convert;
@@ -212,7 +212,26 @@ impl NodeRuntime {
 
 					self.sender.send_generation_response(CompilationResponse { result, node_graph_errors });
 				}
-				GraphRuntimeRequest::ExecutionRequest(ExecutionRequest { execution_id, render_config, .. }) => {
+				GraphRuntimeRequest::ExecutionRequest(ExecutionRequest { execution_id, mut render_config, .. }) => {
+					// There are cases where we want to export via the svg pipeline eventhough raster whas requested.
+					// On desktop when the user has disabled vello rendering in the preferences and we are not exporting.
+					// On web when the user has disabled vello rendering in the preferences or we are exporting.
+					if matches!(render_config.export_format, ExportFormat::Raster) {
+						let allow_raster_export = {
+							#[cfg(target_family = "wasm")]
+							{
+								self.editor_api.editor_preferences.use_vello() && !render_config.for_export
+							}
+							#[cfg(not(target_family = "wasm"))]
+							{
+								self.editor_api.editor_preferences.use_vello() || render_config.for_export
+							}
+						};
+						if !allow_raster_export || self.editor_api.application_io.as_ref().unwrap().gpu_executor().is_some() {
+							render_config.export_format = ExportFormat::Svg;
+						}
+					}
+
 					let result = self.execute_network(render_config).await;
 					let mut responses = VecDeque::new();
 					// TODO: Only process monitor nodes if the graph has changed, not when only the Footprint changes
