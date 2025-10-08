@@ -174,6 +174,7 @@ impl SetClip for Table<GradientStops> {
 	}
 }
 
+/// Applies the blend mode to the input graphics. Setting this allows for customizing how overlapping content is composited together.
 #[node_macro::node(category("Style"))]
 fn blend_mode<T: SetBlendMode>(
 	_: impl Ctx,
@@ -192,6 +193,7 @@ fn blend_mode<T: SetBlendMode>(
 	value
 }
 
+/// Modifies the opacity of the input graphics by multiplying the existing opacity by this percentage. This affects the transparency of the content (together with any above which is clipped to it).
 #[node_macro::node(category("Style"))]
 fn opacity<T: MultiplyAlpha>(
 	_: impl Ctx,
@@ -210,6 +212,7 @@ fn opacity<T: MultiplyAlpha>(
 	value
 }
 
+/// Sets each of the blending properties at once. The blend mode determines how overlapping content is composited together. The opacity affects the transparency of the content (together with any above which is clipped to it). The fill affects the transparency of the content itself, without affecting that of content clipped to it. The clip property determines whether the content inherits the alpha of the content beneath it.
 #[node_macro::node(category("Style"))]
 fn blending<T: SetBlendMode + MultiplyAlpha + MultiplyFill + SetClip>(
 	_: impl Ctx,
