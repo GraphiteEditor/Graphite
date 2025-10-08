@@ -391,7 +391,6 @@ impl BorrowTree {
 				};
 				self.store_node(node, id, path.into());
 			}
-			ConstructionArgs::Inline(_) => unimplemented!("Inline nodes are not supported yet"),
 			ConstructionArgs::Nodes(ids) => {
 				let ids = ids.to_vec();
 				let construction_nodes = self.node_deps(&ids);

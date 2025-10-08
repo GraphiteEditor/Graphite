@@ -741,7 +741,6 @@ impl NodeNetworkInterface {
 								(concrete!(()), TypeSource::Error("Could not type from network"))
 							}
 							NodeInput::Scope(_) => todo!(),
-							NodeInput::Inline(_) => todo!(),
 							NodeInput::Reflection(_) => todo!(),
 						}
 					}
@@ -4403,17 +4402,17 @@ impl NodeNetworkInterface {
 				self.try_set_upstream_to_chain(input_connector, network_path);
 			}
 			// If a connection is made to the imports
-			(NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. }, NodeInput::Import { .. }) => {
+			(NodeInput::Value { .. } | NodeInput::Scope { .. }, NodeInput::Import { .. }) => {
 				self.unload_outward_wires(network_path);
 				self.unload_wire(input_connector, network_path);
 			}
 			// If a connection to the imports is disconnected
-			(NodeInput::Import { .. }, NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. }) => {
+			(NodeInput::Import { .. }, NodeInput::Value { .. } | NodeInput::Scope { .. }) => {
 				self.unload_outward_wires(network_path);
 				self.unload_wire(input_connector, network_path);
 			}
 			// If a node is disconnected.
-			(NodeInput::Node { .. }, NodeInput::Value { .. } | NodeInput::Scope { .. } | NodeInput::Inline { .. }) => {
+			(NodeInput::Node { .. }, NodeInput::Value { .. } | NodeInput::Scope { .. }) => {
 				self.unload_outward_wires(network_path);
 				self.unload_wire(input_connector, network_path);
 
@@ -5990,7 +5989,7 @@ impl NodeNetworkInterface {
 		if !inserting_into_stack {
 			match post_node_input {
 				// Create a new stack
-				NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Inline(_) | NodeInput::Reflection(_) => {
+				NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Reflection(_) => {
 					self.create_wire(&OutputConnector::node(layer.to_node(), 0), &post_node, network_path);
 
 					let final_layer_position = after_move_post_layer_position + IVec2::new(-8, 3);
@@ -6016,7 +6015,7 @@ impl NodeNetworkInterface {
 		} else {
 			match post_node_input {
 				// Move to the bottom of the stack
-				NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Inline(_) | NodeInput::Reflection(_) => {
+				NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Reflection(_) => {
 					let offset = after_move_post_layer_position - previous_layer_position + IVec2::new(0, 3 + height_above_layer);
 					self.shift_absolute_node_position(&layer.to_node(), offset, network_path);
 					self.create_wire(&OutputConnector::node(layer.to_node(), 0), &post_node, network_path);
