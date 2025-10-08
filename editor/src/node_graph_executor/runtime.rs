@@ -227,7 +227,7 @@ impl NodeRuntime {
 								self.editor_api.editor_preferences.use_vello() || render_config.for_export
 							}
 						};
-						if !allow_raster_export || self.editor_api.application_io.as_ref().unwrap().gpu_executor().is_some() {
+						if !allow_raster_export || self.editor_api.application_io.as_ref().unwrap().gpu_executor().is_none() {
 							render_config.export_format = ExportFormat::Svg;
 						}
 					}
