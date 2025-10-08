@@ -216,8 +216,9 @@ impl NodeRuntime {
 					// There are cases where we want to export via the svg pipeline eventhough raster whas requested.
 					// On desktop when the user has disabled vello rendering in the preferences and we are not exporting.
 					// On web when the user has disabled vello rendering in the preferences or we are exporting.
+					// And on all platforms when there is no GPU executor available.
 					if matches!(render_config.export_format, ExportFormat::Raster) {
-						let allow_raster_export = {
+						let allow_raster = {
 							#[cfg(target_family = "wasm")]
 							{
 								self.editor_api.editor_preferences.use_vello() && !render_config.for_export
@@ -227,7 +228,7 @@ impl NodeRuntime {
 								self.editor_api.editor_preferences.use_vello() || render_config.for_export
 							}
 						};
-						if !allow_raster_export || self.editor_api.application_io.as_ref().unwrap().gpu_executor().is_none() {
+						if !allow_raster || self.editor_api.application_io.as_ref().unwrap().gpu_executor().is_none() {
 							render_config.export_format = ExportFormat::Svg;
 						}
 					}
