@@ -213,22 +213,14 @@ impl NodeRuntime {
 					self.sender.send_generation_response(CompilationResponse { result, node_graph_errors });
 				}
 				GraphRuntimeRequest::ExecutionRequest(ExecutionRequest { execution_id, mut render_config, .. }) => {
-					// There are cases where we want to export via the svg pipeline eventhough raster whas requested.
-					// On desktop when the user has disabled vello rendering in the preferences and we are not exporting.
-					// On web when the user has disabled vello rendering in the preferences or we are exporting.
-					// And on all platforms when there is no GPU executor available.
+					// There are cases where we want to export via the svg pipeline eventhough raster was requested.
 					if matches!(render_config.export_format, ExportFormat::Raster) {
-						let allow_raster = {
-							#[cfg(target_family = "wasm")]
-							{
-								self.editor_api.editor_preferences.use_vello() && !render_config.for_export
-							}
-							#[cfg(not(target_family = "wasm"))]
-							{
-								self.editor_api.editor_preferences.use_vello() || render_config.for_export
-							}
-						};
-						if !allow_raster || self.editor_api.application_io.as_ref().unwrap().gpu_executor().is_none() {
+						let vello_available = self.editor_api.application_io.as_ref().unwrap().gpu_executor().is_some();
+						let use_vello = vello_available && self.editor_api.editor_preferences.use_vello();
+
+						// On web when the user has disabled vello rendering in the preferences or we are exporting.
+						// And on all platforms when vello is not supposed to be used.
+						if !use_vello || cfg!(target_family = "wasm") && render_config.for_export {
 							render_config.export_format = ExportFormat::Svg;
 						}
 					}
