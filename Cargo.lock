@@ -648,17 +648,17 @@ dependencies = [
 [[package]]
 name = "cargo-gpu"
 version = "0.1.0"
-source = "git+https://github.com/rust-gpu/cargo-gpu?rev=f969528e87baa17a7d48eecf4a6fcfdcaaf30566#f969528e87baa17a7d48eecf4a6fcfdcaaf30566"
+source = "git+https://github.com/rust-gpu/cargo-gpu?rev=3952a22d16edbd38689f3a876e417899f21e1fe7#3952a22d16edbd38689f3a876e417899f21e1fe7"
 dependencies = [
  "anyhow",
  "cargo_metadata",
  "clap",
  "crossterm",
  "directories",
+ "dunce",
  "env_logger",
  "log",
  "relative-path",
- "rustc_codegen_spirv-target-specs 0.9.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "semver",
  "serde",
  "serde_json",
@@ -1321,6 +1321,12 @@ source = "git+https://github.com/rust-windowing/winit.git?rev=37221c7192ef1deec0
 dependencies = [
  "serde",
 ]
+
+[[package]]
+name = "dunce"
+version = "1.0.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
 
 [[package]]
 name = "dyn-any"
@@ -2184,6 +2190,7 @@ version = "0.1.0"
 dependencies = [
  "cargo-gpu",
  "env_logger",
+ "log",
 ]
 
 [[package]]
@@ -4787,12 +4794,6 @@ checksum = "357703d41365b4b27c590e3ed91eabb1b663f07c4c084095e60cbed4362dff0d"
 [[package]]
 name = "rustc_codegen_spirv-target-specs"
 version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6c89eaf493b3dfc730cda42a77014aad65e03213992c7afe0dff60a9f7d3dd94"
-
-[[package]]
-name = "rustc_codegen_spirv-target-specs"
-version = "0.9.0"
 source = "git+https://github.com/rust-gpu/rust-gpu?rev=c12f216121820580731440ee79ebc7403d6ea04f#c12f216121820580731440ee79ebc7403d6ea04f"
 dependencies = [
  "serde",
@@ -5335,7 +5336,7 @@ dependencies = [
  "memchr",
  "notify",
  "raw-string",
- "rustc_codegen_spirv-target-specs 0.9.0 (git+https://github.com/rust-gpu/rust-gpu?rev=c12f216121820580731440ee79ebc7403d6ea04f)",
+ "rustc_codegen_spirv-target-specs",
  "rustc_codegen_spirv-types",
  "semver",
  "serde",

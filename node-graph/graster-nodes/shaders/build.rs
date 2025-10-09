@@ -3,7 +3,7 @@ use cargo_gpu::spirv_builder::{MetadataPrintout, SpirvMetadata};
 use std::path::PathBuf;
 
 pub fn main() -> Result<(), Box<dyn std::error::Error>> {
-	env_logger::builder().init();
+	env_logger::builder().filter_level(log::LevelFilter::Debug).init();
 
 	// Skip building the shader if they are provided externally
 	println!("cargo:rerun-if-env-changed=GRAPHENE_RASTER_NODES_SHADER_PATH");
