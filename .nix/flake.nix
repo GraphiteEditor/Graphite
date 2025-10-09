@@ -12,8 +12,6 @@
 # - Development shell: `nix develop .nix` from the project root
 # - Run in dev shell with direnv: add `use flake` to .envrc
 {
-  description = "Development environment and build configuration";
-
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     rust-overlay = {
@@ -40,85 +38,22 @@
           extensions = rustExtensions;
         };
 
-        rustGPUToolchainPkg = pkgs.rust-bin.nightly."2025-06-23".default.override {
-          extensions = rustExtensions ++ [ "rustc-dev" "llvm-tools" ];
-        };
-        rustGPUToolchainRustPlatform = pkgs.makeRustPlatform {
-          cargo = rustGPUToolchainPkg;
-          rustc = rustGPUToolchainPkg;
-        };
-        rustc_codegen_spirv = rustGPUToolchainRustPlatform.buildRustPackage (finalAttrs: {
-          pname = "rustc_codegen_spirv";
-          version = "0-unstable-2025-08-04";
-          src = pkgs.fetchFromGitHub {
-            owner = "Rust-GPU";
-            repo = "rust-gpu";
-            rev = "c12f216121820580731440ee79ebc7403d6ea04f";
-            hash = "sha256-rG1cZvOV0vYb1dETOzzbJ0asYdE039UZImobXZfKIno=";
-          };
-          cargoHash = "sha256-AEigcEc5wiBd3zLqWN/2HSbkfOVFneAqNvg9HsouZf4=";
-          cargoBuildFlags = [ "-p" "rustc_codegen_spirv" "--features=use-compiled-tools" "--no-default-features" ];
-          doCheck = false;
-        });
-        rustGpuCargo = pkgs.writeShellScriptBin "cargo" ''
-          #!${pkgs.lib.getExe pkgs.bash}
-
-          filtered_args=()
-          for arg in "$@"; do
-            case "$arg" in
-              +nightly|+nightly-*) ;;
-              *) filtered_args+=("$arg") ;;
-            esac
-          done
-
-          exec ${rustGPUToolchainPkg}/bin/cargo ${"\${filtered_args[@]}"}
-        '';
-        rustGpuPathOverride = "${rustGpuCargo}/bin:${rustGPUToolchainPkg}/bin";
-
-        libcef = pkgs.libcef.overrideAttrs (finalAttrs: previousAttrs: {
-          version = "139.0.17";
-          gitRevision = "6c347eb";
-          chromiumVersion = "139.0.7258.31";
-          srcHash = "sha256-kRMO8DP4El1qytDsAZBdHvR9AAHXce90nPdyfJailBg=";
-
-          __intentionallyOverridingVersion = true;
-
-          postInstall = ''
-            strip $out/lib/*
-          '';
-        });
-        libcefPath = pkgs.runCommand "libcef-path" {} ''
-          mkdir -p $out
-
-          ln -s ${libcef}/include $out/include
-          find ${libcef}/lib -type f -name "*" -exec ln -s {} $out/ \;
-          find ${libcef}/libexec -type f -name "*" -exec ln -s {} $out/ \;
-          cp -r ${libcef}/share/cef/* $out/
-
-          echo '${builtins.toJSON {
-            type = "minimal";
-            name = builtins.baseNameOf libcef.src.url;
-            sha1 = "";
-          }}' > $out/archive.json
-        '';
-
-        # Shared build inputs - system libraries that need to be in LD_LIBRARY_PATH
-        buildInputs = with pkgs; [
-          # System libraries
-          wayland
-          openssl
-          vulkan-loader
-          libraw
-          libGL
+        # Shared build inputs; libraries that need to be in LD_LIBRARY_PATH
+        buildInputs = [
+          pkgs.wayland
+          pkgs.openssl
+          pkgs.vulkan-loader
+          pkgs.libraw
+          pkgs.libGL
 
           # X11 libraries, not needed on wayland! Remove when x11 is finally dead
-          libxkbcommon
-          xorg.libXcursor
-          xorg.libxcb
-          xorg.libX11
+          pkgs.libxkbcommon
+          pkgs.xorg.libXcursor
+          pkgs.xorg.libxcb
+          pkgs.xorg.libX11
         ];
 
-        # Development tools that don't need to be in LD_LIBRARY_PATH
+        # Packages needed to build the package
         buildTools =  [
           rust
           pkgs.nodejs
@@ -127,40 +62,95 @@
           pkgs.wasm-bindgen-cli
           pkgs.wasm-pack
           pkgs.pkg-config
-          pkgs.git
           pkgs.cargo-about
+        ];
+
+        # Development tools; not needed to build the package
+        devTools = [
+          pkgs.git
+
+          pkgs.cargo-watch
+          pkgs.cargo-nextest
+          pkgs.cargo-expand
 
           # Linker
           pkgs.mold
-        ];
-        # Development tools that don't need to be in LD_LIBRARY_PATH
-        devTools = with pkgs; [
-          cargo-watch
-          cargo-nextest
-          cargo-expand
 
           # Profiling tools
-          gnuplot
-          samply
-          cargo-flamegraph
+          pkgs.gnuplot
+          pkgs.samply
+          pkgs.cargo-flamegraph
         ];
+
+        cefEnv = import ./cef.nix { inherit pkgs; };
+        rustGPUEnv = import ./rust-gpu.nix { inherit pkgs; };
+
+        libPath = "${pkgs.lib.makeLibraryPath buildInputs}:${cefEnv.CEF_PATH}";
       in
       {
-        # Development shell configuration
-        devShells.default = pkgs.mkShell {
+        devShells.default = pkgs.mkShell ({
           packages = buildInputs ++ buildTools ++ devTools;
 
-          LD_LIBRARY_PATH = "${pkgs.lib.makeLibraryPath buildInputs}:${libcefPath}";
-          CEF_PATH = libcefPath;
-          XDG_DATA_DIRS="${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}:$XDG_DATA_DIRS";
-
-          RUST_GPU_PATH_OVERRIDE = rustGpuPathOverride;
-          RUSTC_CODEGEN_SPIRV_PATH = "${rustc_codegen_spirv}/lib/librustc_codegen_spirv.so";
+          LD_LIBRARY_PATH = libPath;
+          XDG_DATA_DIRS = "${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}:$XDG_DATA_DIRS";
 
           shellHook = ''
             alias cargo='mold --run cargo'
           '';
-        };
+        } // cefEnv // rustGPUEnv);
+
+        packages.default = pkgs.stdenv.mkDerivation(finalAttrs: {
+          pname = "graphite-editor";
+          version = "unstable";
+          src = pkgs.lib.cleanSource ./..;
+
+          cargoDeps = pkgs.rustPlatform.fetchCargoVendor {
+            src = finalAttrs.src;
+            hash = "sha256-BVIQIZbGW19Rof0J7U2r6XFCUC52hb7+uaE1di4bV4A=";
+          };
+
+          npmDeps = pkgs.fetchNpmDeps {
+            inherit (finalAttrs) pname version;
+            src = "${finalAttrs.src}/frontend";
+            hash = "sha256-UWuJpKNYj2Xn34rpMDZ75pzMYUOLQjPeGuJ/QlPbX9A=";
+          };
+
+          npmRoot = "frontend";
+          npmConfigScript = "setup";
+          makeCacheWritable = true;
+
+          buildInputs = buildInputs;
+          nativeBuildInputs = buildTools ++ [
+            pkgs.rustPlatform.cargoSetupHook
+            pkgs.npmHooks.npmConfigHook
+            pkgs.makeWrapper
+          ];
+
+          env = cefEnv // rustGPUEnv;
+
+          buildPhase = ''
+            export HOME="$TMPDIR"
+
+            npm run build-desktop
+          '';
+
+          installPhase = ''
+            mkdir -p $out/bin
+            cp target/release/graphite-desktop $out/bin/graphite-editor
+
+            mkdir -p $out/share/applications
+            cp $src/desktop/assets/*.desktop $out/share/applications/
+
+            mkdir -p $out/share/icons/hicolor/scalable/apps
+            cp $src/desktop/assets/graphite-icon-color.svg $out/share/icons/hicolor/scalable/apps/
+          '';
+
+          postFixup = ''
+            wrapProgram "$out/bin/graphite-editor" \
+              --prefix LD_LIBRARY_PATH : "${libPath}" \
+              --set CEF_PATH "${cefEnv.CEF_PATH}"
+          '';
+        });
       }
     );
 }
