@@ -39,6 +39,7 @@ pub(crate) struct App {
 	web_communication_initialized: bool,
 	web_communication_startup_buffer: Vec<Vec<u8>>,
 	persistent_data: PersistentData,
+	cli_files: Option<Vec<std::path::PathBuf>>,
 }
 
 impl App {
@@ -48,6 +49,7 @@ impl App {
 		wgpu_context: WgpuContext,
 		app_event_receiver: Receiver<AppEvent>,
 		app_event_scheduler: AppEventScheduler,
+		cli_files: Option<Vec<std::path::PathBuf>>,
 	) -> Self {
 		let rendering_app_event_scheduler = app_event_scheduler.clone();
 		let (start_render_sender, start_render_receiver) = std::sync::mpsc::sync_channel(1);
@@ -79,6 +81,7 @@ impl App {
 			web_communication_startup_buffer: Vec::new(),
 			persistent_data,
 			native_window: Default::default(),
+			cli_files,
 		}
 	}
 
@@ -90,6 +93,22 @@ impl App {
 					return;
 				};
 				self.send_or_queue_web_message(bytes);
+			}
+			DesktopFrontendMessage::OpenDocumentsSuppliedAtStartup => {
+				let app_event_scheduler = self.app_event_scheduler.clone();
+				if let Some(paths) = self.cli_files.clone() {
+					let _ = thread::spawn(move || {
+						for path in paths {
+							tracing::info!("Opening file from command line: {}", path.display());
+							if let Ok(content) = std::fs::read(&path) {
+								let message = DesktopWrapperMessage::OpenFile { path, content };
+								app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
+							} else {
+								tracing::error!("Failed to read file: {}", path.display());
+							}
+						}
+					});
+				}
 			}
 			DesktopFrontendMessage::OpenFileDialog { title, filters, context } => {
 				let app_event_scheduler = self.app_event_scheduler.clone();

@@ -43,6 +43,7 @@ rfd = { workspace = true }
 open = { workspace = true }
 rand = { workspace = true, features = ["thread_rng"] }
 serde = { workspace = true }
+clap = { workspace = true, features = ["derive"] }
 
 # Hardware acceleration dependencies
 ash = { version = "0.38", optional = true }
