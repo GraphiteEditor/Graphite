@@ -141,7 +141,7 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 
 			let delta = (delta * PINCH_ZOOM_SPEED).round() as i32;
 
-			host.send_mouse_wheel_event(Some(&mouse_event), delta, 0);
+			host.send_mouse_wheel_event(Some(&mouse_event), 0, delta);
 		}
 		_ => {}
 	}
