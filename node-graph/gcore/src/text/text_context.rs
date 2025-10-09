@@ -38,34 +38,35 @@ impl TextContext {
 	}
 
 	/// Get or cache font information for a given font
-	fn get_font_info(&mut self, font: &Font, font_data: &Blob<u8>) -> Option<(String, FontInfo)> {
+	pub fn get_font_info(&mut self, font: &Font, font_cache: &FontCache) -> Option<(String, FontInfo)> {
+		// Note that the actual_font may not be the desired font if that font is not yet loaded.
+		// It is important not to cache the default font under the name of another font.
+		let (font_data, actual_font) = self.resolve_font_data(font, font_cache)?;
+
 		// Check if we already have the font info cached
-		if let Some((family_id, font_info)) = self.font_info_cache.get(font) {
+		if let Some((family_id, font_info)) = self.font_info_cache.get(actual_font) {
 			if let Some(family_name) = self.font_context.collection.family_name(*family_id) {
 				return Some((family_name.to_string(), font_info.clone()));
 			}
 		}
 
 		// Register the font and cache the info
-		let families = self.font_context.collection.register_fonts(font_data.clone(), None);
+		let families = self.font_context.collection.register_fonts(font_data, None);
 
-		families.first().and_then(|(family_id, fonts_info)| {
-			fonts_info.first().and_then(|font_info| {
-				self.font_context.collection.family_name(*family_id).map(|family_name| {
+		families.into_iter().next().and_then(|(family_id, fonts_info)| {
+			fonts_info.into_iter().next().and_then(|font_info| {
+				self.font_context.collection.family_name(family_id).map(|family_name| {
 					// Cache the font info for future use
-					self.font_info_cache.insert(font.clone(), (*family_id, font_info.clone()));
-					(family_name.to_string(), font_info.clone())
+					self.font_info_cache.insert(actual_font.clone(), (family_id, font_info.clone()));
+					(family_name.to_string(), font_info)
 				})
 			})
 		})
 	}
 
 	/// Create a text layout using the specified font and typesetting configuration
-	fn layout_text(&mut self, text: &str, font: &Font, font_cache: &FontCache, typesetting: TypesettingConfig) -> Option<Layout<()>> {
-		// Note that the actual_font may not be the desired font if that font is not yet loaded.
-		// It is important not to cache the default font under the name of another font.
-		let (font_data, actual_font) = self.resolve_font_data(font, font_cache)?;
-		let (font_family, font_info) = self.get_font_info(actual_font, &font_data)?;
+	pub fn layout_text(&mut self, text: &str, font: &Font, font_cache: &FontCache, typesetting: TypesettingConfig) -> Option<Layout<()>> {
+		let (font_family, font_info) = self.get_font_info(font, font_cache)?;
 
 		const DISPLAY_SCALE: f32 = 1.;
 		let mut builder = self.layout_context.ranged_builder(&mut self.font_context, text, DISPLAY_SCALE, false);
@@ -87,17 +88,21 @@ impl TextContext {
 	}
 
 	/// Convert text to vector paths using the specified font and typesetting configuration
-	pub fn to_path(&mut self, text: &str, font: &Font, font_cache: &FontCache, typesetting: TypesettingConfig, per_glyph_instances: bool) -> Table<Vector> {
+	pub fn text_to_path(&mut self, text: &str, font: &Font, font_cache: &FontCache, typesetting: TypesettingConfig, per_glyph_instances: bool) -> Table<Vector> {
 		let Some(layout) = self.layout_text(text, font, font_cache, typesetting) else {
 			return Table::new_from_element(Vector::default());
 		};
 
+		self.layout_to_path(layout, 0., per_glyph_instances)
+	}
+
+	pub fn layout_to_path(&mut self, layout: Layout<()>, tilt: f64, per_glyph_instances: bool) -> Table<Vector> {
 		let mut path_builder = PathBuilder::new(per_glyph_instances, layout.scale() as f64);
 
 		for line in layout.lines() {
 			for item in line.items() {
 				if let PositionedLayoutItem::GlyphRun(glyph_run) = item {
-					path_builder.render_glyph_run(&glyph_run, typesetting.tilt, per_glyph_instances);
+					path_builder.render_glyph_run(&glyph_run, tilt, per_glyph_instances);
 				}
 			}
 		}

@@ -3,8 +3,13 @@ mod path_builder;
 mod text_context;
 mod to_path;
 
+use std::fmt;
+
 use dyn_any::DynAny;
 pub use font_cache::*;
+use graphene_core_shaders::color::Color;
+use parley::Layout;
+use std::hash::{Hash, Hasher};
 pub use text_context::TextContext;
 pub use to_path::*;
 
@@ -55,5 +60,35 @@ impl Default for TypesettingConfig {
 			tilt: 0.,
 			align: TextAlign::default(),
 		}
+	}
+}
+
+#[derive(Clone, DynAny)]
+pub struct Typography {
+	pub layout: Layout<()>,
+	pub family_name: String,
+	pub color: Color,
+	pub stroke: Option<(Color, f64)>,
+}
+
+impl fmt::Debug for Typography {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		f.debug_struct("Typography")
+			.field("font_family", &self.family_name)
+			.field("color", &self.color)
+			.field("stroke", &self.stroke)
+			.finish()
+	}
+}
+
+impl PartialEq for Typography {
+	fn eq(&self, _other: &Self) -> bool {
+		unimplemented!("Typography cannot be compared")
+	}
+}
+
+impl Hash for Typography {
+	fn hash<H: Hasher>(&self, _: &mut H) {
+		unimplemented!("Typography cannot be hashed")
 	}
 }
