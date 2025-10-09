@@ -116,6 +116,9 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		FrontendMessage::TriggerLoadPreferences => {
 			dispatcher.respond(DesktopFrontendMessage::PersistenceLoadPreferences);
 		}
+		FrontendMessage::OpenDocumentsSuppliedAtStartup => {
+			dispatcher.respond(DesktopFrontendMessage::OpenDocumentsSuppliedAtStartup);
+		}
 		m => return Some(m),
 	}
 	None

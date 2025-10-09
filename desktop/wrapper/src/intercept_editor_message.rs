@@ -1,5 +1,4 @@
 use graphite_editor::messages::prelude::InputPreprocessorMessage;
-use graphite_editor::messages::tool::tool_messages::tool_prelude::PortfolioMessage;
 
 use super::DesktopWrapperMessageDispatcher;
 use super::messages::{DesktopFrontendMessage, EditorMessage};
@@ -18,10 +17,6 @@ pub(super) fn intercept_editor_message(dispatcher: &mut DesktopWrapperMessageDis
 				});
 			}
 			Some(EditorMessage::InputPreprocessor(message))
-		}
-		EditorMessage::Portfolio(PortfolioMessage::Init) => {
-			dispatcher.respond(DesktopFrontendMessage::Init);
-			Some(EditorMessage::Portfolio(PortfolioMessage::Init))
 		}
 		m => Some(m),
 	}

@@ -8,7 +8,7 @@ pub use graphite_editor::messages::prelude::PreferencesMessageHandler as Prefere
 
 pub enum DesktopFrontendMessage {
 	ToWeb(Vec<FrontendMessage>),
-	Init,
+	OpenDocumentsSuppliedAtStartup,
 	OpenFileDialog {
 		title: String,
 		filters: Vec<FileFilter>,

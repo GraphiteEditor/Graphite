@@ -94,18 +94,20 @@ impl App {
 				};
 				self.send_or_queue_web_message(bytes);
 			}
-			DesktopFrontendMessage::Init => {
-				tracing::info!("Initializing application...");
+			DesktopFrontendMessage::OpenDocumentsSuppliedAtStartup => {
+				let app_event_scheduler = self.app_event_scheduler.clone();
 				if let Some(paths) = self.cli_files.clone() {
-					for path in paths {
-						tracing::info!("Opening file from command line: {}", path.display());
-						if let Ok(content) = std::fs::read(&path) {
-							let message = DesktopWrapperMessage::OpenFile { path, content };
-							self.dispatch_desktop_wrapper_message(message);
-						} else {
-							tracing::error!("Failed to read file: {}", path.display());
+					let _ = thread::spawn(move || {
+						for path in paths {
+							tracing::info!("Opening file from command line: {}", path.display());
+							if let Ok(content) = std::fs::read(&path) {
+								let message = DesktopWrapperMessage::OpenFile { path, content };
+								app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
+							} else {
+								tracing::error!("Failed to read file: {}", path.display());
+							}
 						}
-					}
+					});
 				}
 			}
 			DesktopFrontendMessage::OpenFileDialog { title, filters, context } => {
