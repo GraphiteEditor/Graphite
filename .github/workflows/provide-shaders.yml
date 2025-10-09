@@ -1,0 +1,29 @@
+name: Build and upload shaders for graphene raster nodes to artifacts Repository
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Build graphene raster nodes shaders
+        run: nix develop .nix -c cargo build -r -p graphene-raster-nodes-shaders
+
+      - name: Upload graphene raster nodes shaders to artifacts repository
+        run: |
+          bash .github/workflows/scripts/artifact-upload.bash \
+            ${{ vars.ARTIFACTS_REPO_OWNER }} \
+            ${{ vars.ARTIFACTS_REPO_NAME }} \
+            ${{ vars.ARTIFACTS_REPO_BRANCH }} \
+            rev/${{ github.sha }}/graphene_raster_nodes_shaders_entrypoint.wgsl \
+            target/spirv-builder/spirv-unknown-naga-wgsl/release/deps/graphene_raster_nodes_shaders_entrypoint.wgsl \
+            "${{ github.sha }} graphene_raster_nodes_shaders_entrypoint.wgsl" \
+            ${{ secrets.ARTIFACTS_REPO_TOKEN }}
