@@ -2,7 +2,7 @@ use cef::sys::{cef_event_flags_t, cef_key_event_type_t, cef_mouse_button_type_t}
 use cef::{Browser, ImplBrowser, ImplBrowserHost, KeyEvent, KeyEventType, MouseEvent};
 use std::time::Instant;
 use winit::dpi::PhysicalPosition;
-use winit::event::{ButtonSource, ElementState, MouseButton, MouseScrollDelta, WindowEvent};
+use winit::event::{ButtonSource, ElementState, MouseButton, MouseScrollDelta, TouchPhase, WindowEvent};
 
 mod keymap;
 use keymap::{ToNativeKeycode, ToVKBits};
@@ -129,6 +129,24 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 				}
 			}
 		}
+		WindowEvent::PinchGesture { delta, phase, .. } => {
+			match phase {
+				TouchPhase::Started => {
+					input_state.gesture_state.start_pinch();
+				}
+				TouchPhase::Moved => {}
+				TouchPhase::Ended | TouchPhase::Cancelled => {
+					input_state.gesture_state.end_pinch();
+				}
+			}
+			let Some(host) = browser.host() else { return };
+			if let Some(delta) = input_state.gesture_state.update_pinch(*delta) {
+				println!("Pinch delta: {delta}");
+				let mut mouse_event: MouseEvent = input_state.into();
+				mouse_event.modifiers = cef_event_flags_t::EVENTFLAG_CONTROL_DOWN as u32;
+				host.send_mouse_wheel_event(Some(&mouse_event), delta.round() as i32, 0);
+			}
+		}
 		_ => {}
 	}
 }
@@ -139,6 +157,7 @@ pub(crate) struct InputState {
 	mouse_position: MousePosition,
 	mouse_state: MouseState,
 	mouse_click_tracker: ClickTracker,
+	gesture_state: GestureState,
 }
 impl InputState {
 	fn modifiers_changed(&mut self, modifiers: &winit::keyboard::ModifiersState) {
@@ -317,6 +336,32 @@ impl Default for ClickRecord {
 			down_count: Default::default(),
 			up_count: Default::default(),
 		}
+	}
+}
+
+#[derive(Default)]
+struct GestureState {
+	pinch_active: bool,
+	pinch_last_scale: f64,
+}
+impl GestureState {
+	fn start_pinch(&mut self) {
+		self.pinch_active = true;
+		self.pinch_last_scale = 1.0;
+	}
+
+	fn update_pinch(&mut self, scale: f64) -> Option<f64> {
+		if !self.pinch_active {
+			return None;
+		}
+		let delta = scale / self.pinch_last_scale;
+		self.pinch_last_scale = scale;
+		Some(delta)
+	}
+
+	fn end_pinch(&mut self) {
+		self.pinch_active = false;
+		self.pinch_last_scale = 1.0;
 	}
 }
 
