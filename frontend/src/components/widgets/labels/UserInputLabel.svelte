@@ -1,9 +1,10 @@
 <script lang="ts">
 	import { getContext } from "svelte";
 
+	import type { IconName } from "@graphite/icons";
+
 	import { type KeyRaw, type LayoutKeysGroup, type Key, type MouseMotion } from "@graphite/messages";
 	import type { FullscreenState } from "@graphite/state-providers/fullscreen";
-	import type { IconName } from "@graphite/utility-functions/icons";
 	import { platformIsMac } from "@graphite/utility-functions/platform";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
