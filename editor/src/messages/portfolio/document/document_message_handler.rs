@@ -1047,6 +1047,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::SavedDocument { path } => {
 				self.path = path;
 
+				responses.add(PortfolioMessage::AutoSaveActiveDocument);
+
 				// Update the name to match the file stem
 				let document_name_from_path = self.path.as_ref().and_then(|path| {
 					if path.extension().is_some_and(|e| e == FILE_EXTENSION) {

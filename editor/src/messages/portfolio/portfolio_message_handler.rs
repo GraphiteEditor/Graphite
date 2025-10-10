@@ -194,6 +194,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					document: document.serialize_document(),
 					details: DocumentDetails {
 						name: document.name.clone(),
+						path: document.path.clone(),
 						is_saved: document.is_saved(),
 						is_auto_saved: document.is_auto_saved(),
 					},
@@ -1052,9 +1053,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						self.documents.get(id).map(|document| OpenDocument {
 							id: *id,
 							details: DocumentDetails {
-								is_auto_saved: document.is_auto_saved(),
-								is_saved: document.is_saved(),
 								name: document.name.clone(),
+								path: document.path.clone(),
+								is_saved: document.is_saved(),
+								is_auto_saved: document.is_auto_saved(),
 							},
 						})
 					})
