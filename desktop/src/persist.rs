@@ -6,14 +6,13 @@ pub(crate) struct PersistentData {
 	current_document: Option<DocumentId>,
 	#[serde(skip)]
 	document_order: Option<Vec<DocumentId>>,
-	preferences: Option<Preferences>,
 }
 
 impl PersistentData {
 	pub(crate) fn write_document(&mut self, id: DocumentId, document: Document) {
 		self.documents.write(id, document);
 		if let Some(order) = &self.document_order {
-			self.documents.force_order(order.clone());
+			self.documents.force_order(order);
 		}
 		self.flush();
 	}
@@ -171,10 +170,10 @@ impl DocumentStore {
 		})
 	}
 
-	fn force_order(&mut self, desired_order: Vec<DocumentId>) {
+	fn force_order(&mut self, desired_order: &Vec<DocumentId>) {
 		let mut ordered_prefix_len = 0;
 		for id in desired_order {
-			if let Some(offset) = self.0[ordered_prefix_len..].iter().position(|meta| meta.id == id) {
+			if let Some(offset) = self.0[ordered_prefix_len..].iter().position(|meta| meta.id == *id) {
 				let found_index = ordered_prefix_len + offset;
 				if found_index != ordered_prefix_len {
 					self.0[ordered_prefix_len..=found_index].rotate_right(1);
