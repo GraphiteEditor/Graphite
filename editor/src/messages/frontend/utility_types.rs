@@ -17,6 +17,8 @@ pub struct DocumentDetails {
 	pub is_saved: bool,
 	#[serde(rename = "isAutoSaved")]
 	pub is_auto_saved: bool,
+	#[serde(rename = "exportPath")]
+	pub export_path: Option<PathBuf>,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]

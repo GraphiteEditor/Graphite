@@ -197,6 +197,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						path: document.path.clone(),
 						is_saved: document.is_saved(),
 						is_auto_saved: document.is_auto_saved(),
+						export_path: None,
 					},
 				})
 			}
@@ -1057,6 +1058,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 								path: document.path.clone(),
 								is_saved: document.is_saved(),
 								is_auto_saved: document.is_auto_saved(),
+								export_path: None,
 							},
 						})
 					})

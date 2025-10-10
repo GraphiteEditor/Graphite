@@ -123,6 +123,9 @@ pub enum DocumentMessage {
 		path: Option<PathBuf>,
 	},
 	MarkAsSaved,
+	ExportedDocument {
+		path: Option<PathBuf>,
+	},
 	SelectParentLayer,
 	SelectAllLayers,
 	SelectedLayersLower,

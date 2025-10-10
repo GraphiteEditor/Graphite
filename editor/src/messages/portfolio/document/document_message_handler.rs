@@ -118,6 +118,8 @@ pub struct DocumentMessageHandler {
 	/// The path of the to the document file.
 	#[serde(skip)]
 	pub(crate) path: Option<PathBuf>,
+	/// The path to which the document was most recently exported to.
+	pub(crate) export_path: Option<PathBuf>,
 	/// Path to network currently viewed in the node graph overlay. This will eventually be stored in each panel, so that multiple panels can refer to different networks
 	#[serde(skip)]
 	breadcrumb_network_path: Vec<NodeId>,
@@ -1067,6 +1069,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::MarkAsSaved => {
 				self.set_save_state(true);
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+			}
+			DocumentMessage::ExportedDocument { path } => {
+				self.export_path = path;
+				responses.add(PortfolioMessage::AutoSaveActiveDocument);
 			}
 			DocumentMessage::SelectParentLayer => {
 				let selected_nodes = self.network_interface.selected_nodes();
