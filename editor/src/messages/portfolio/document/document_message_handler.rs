@@ -606,6 +606,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(OverlaysMessage::Draw);
 			}
 			DocumentMessage::GroupSelectedLayers { group_folder_type } => {
+				// If drawing with pen tool then abort
+				responses.add(PenToolMessage::Abort);
 				responses.add(DocumentMessage::AddTransaction);
 
 				let mut parent_per_selected_nodes: HashMap<LayerNodeIdentifier, Vec<NodeId>> = HashMap::new();
