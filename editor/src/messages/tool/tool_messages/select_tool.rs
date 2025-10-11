@@ -660,10 +660,11 @@ impl Fsm for SelectToolFsmState {
 				// TODO: Don't use `Key::MouseMiddle` directly, instead take it as a variable from the input mappings list like in all other places; or find a better way than checking the key state
 				if !matches!(self, Self::Drawing { .. }) && !input.keyboard.get(Key::MouseMiddle as usize) {
 					// Get the layer the user is hovering over
-					let click = document.click(input);
+					// Artboards are included since they're needed for quick measurement, but will be filtered out for selection later on
+					let click = document.click_list_with_artboards(input).last();
 					let not_selected_click = click.filter(|&hovered_layer| !document.network_interface.selected_nodes().selected_layers_contains(hovered_layer, document.metadata()));
 					if let Some(layer) = not_selected_click {
-						if overlay_context.visibility_settings.hover_outline() {
+						if overlay_context.visibility_settings.hover_outline() && !document.network_interface.is_artboard(&layer.to_node(), &[]) {
 							let layer_to_viewport = document.metadata().transform_to_viewport(layer);
 							let mut hover_overlay_draw = |layer: LayerNodeIdentifier, color: Option<&str>| {
 								if layer.has_children(document.metadata()) {
@@ -707,7 +708,7 @@ impl Fsm for SelectToolFsmState {
 								.network_interface
 								.selected_nodes()
 								.selected_visible_and_unlocked_layers(&document.network_interface)
-								// Exclude layers that are artboards
+								// Exclude layers that are artboards from the selection bounding box
 								.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
 								// For each remaining layer, try to get its document-space bounding box and convert it to a Rect
 								.filter_map(|layer| document.metadata().bounding_box_document(layer).map(Rect::from_box))
