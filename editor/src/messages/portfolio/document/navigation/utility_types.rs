@@ -6,6 +6,7 @@ pub enum NavigationOperation {
 	None,
 	Pan {
 		pan_original_for_abort: DVec2,
+		pan_raw_viewport_delta: DVec2,
 	},
 	Tilt {
 		tilt_original_for_abort: f64,
