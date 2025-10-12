@@ -145,7 +145,7 @@ fn make_opaque<T: Adjust<Color>>(
 #[node_macro::node(
 	name("Brightness/Contrast classic"),
 	category("Raster: Adjustment"),
-	properties("brightness_contrast_properties"),
+	properties("brightness_contrast_classic_properties"),
 	shader_node(PerPixelAdjust)
 )]
 fn brightness_contrast_classic<T: Adjust<Color>>(
