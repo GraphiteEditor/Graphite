@@ -110,14 +110,14 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		FrontendMessage::TriggerLoadRestAutoSaveDocuments => {
 			dispatcher.respond(DesktopFrontendMessage::PersistenceLoadRemainingDocuments);
 		}
+		FrontendMessage::TriggerOpenLaunchDocuments => {
+			dispatcher.respond(DesktopFrontendMessage::OpenLaunchDocuments);
+		}
 		FrontendMessage::TriggerSavePreferences { preferences } => {
 			dispatcher.respond(DesktopFrontendMessage::PersistenceWritePreferences { preferences });
 		}
 		FrontendMessage::TriggerLoadPreferences => {
 			dispatcher.respond(DesktopFrontendMessage::PersistenceLoadPreferences);
-		}
-		FrontendMessage::OpenDocumentsSuppliedAtStartup => {
-			dispatcher.respond(DesktopFrontendMessage::OpenDocumentsSuppliedAtStartup);
 		}
 		m => return Some(m),
 	}

@@ -154,7 +154,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				// Tell frontend to finish loading persistent documents
 				responses.add(FrontendMessage::TriggerLoadRestAutoSaveDocuments);
 
-				responses.add(FrontendMessage::OpenDocumentsSuppliedAtStartup);
+				responses.add(FrontendMessage::TriggerOpenLaunchDocuments);
 			}
 			PortfolioMessage::DocumentPassMessage { document_id, message } => {
 				if let Some(document) = self.documents.get_mut(&document_id) {

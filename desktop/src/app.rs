@@ -96,24 +96,6 @@ impl App {
 				};
 				self.send_or_queue_web_message(bytes);
 			}
-			DesktopFrontendMessage::OpenDocumentsSuppliedAtStartup => {
-				if self.launch_documents.is_empty() {
-					return;
-				}
-				let app_event_scheduler = self.app_event_scheduler.clone();
-				let launch_documents = std::mem::take(&mut self.launch_documents);
-				let _ = thread::spawn(move || {
-					for path in launch_documents {
-						tracing::info!("Opening file from command line: {}", path.display());
-						if let Ok(content) = fs::read(&path) {
-							let message = DesktopWrapperMessage::OpenFile { path, content };
-							app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
-						} else {
-							tracing::error!("Failed to read file: {}", path.display());
-						}
-					}
-				});
-			}
 			DesktopFrontendMessage::OpenFileDialog { title, filters, context } => {
 				let app_event_scheduler = self.app_event_scheduler.clone();
 				let _ = thread::spawn(move || {
@@ -220,6 +202,14 @@ impl App {
 			DesktopFrontendMessage::PersistenceUpdateDocumentsList { ids } => {
 				self.persistent_data.set_document_order(ids);
 			}
+			DesktopFrontendMessage::PersistenceWritePreferences { preferences } => {
+				self.persistent_data.write_preferences(preferences);
+			}
+			DesktopFrontendMessage::PersistenceLoadPreferences => {
+				let preferences = self.persistent_data.load_preferences();
+				let message = DesktopWrapperMessage::LoadPreferences { preferences };
+				responses.push(message);
+			}
 			DesktopFrontendMessage::PersistenceLoadCurrentDocument => {
 				if let Some((id, document)) = self.persistent_data.current_document() {
 					let message = DesktopWrapperMessage::LoadDocument {
@@ -255,13 +245,23 @@ impl App {
 					responses.push(message);
 				}
 			}
-			DesktopFrontendMessage::PersistenceWritePreferences { preferences } => {
-				self.persistent_data.write_preferences(preferences);
-			}
-			DesktopFrontendMessage::PersistenceLoadPreferences => {
-				let preferences = self.persistent_data.load_preferences();
-				let message = DesktopWrapperMessage::LoadPreferences { preferences };
-				responses.push(message);
+			DesktopFrontendMessage::OpenLaunchDocuments => {
+				if self.launch_documents.is_empty() {
+					return;
+				}
+				let app_event_scheduler = self.app_event_scheduler.clone();
+				let launch_documents = std::mem::take(&mut self.launch_documents);
+				let _ = thread::spawn(move || {
+					for path in launch_documents {
+						tracing::info!("Opening file from command line: {}", path.display());
+						if let Ok(content) = fs::read(&path) {
+							let message = DesktopWrapperMessage::OpenFile { path, content };
+							app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
+						} else {
+							tracing::error!("Failed to read file: {}", path.display());
+						}
+					}
+				});
 			}
 		}
 	}

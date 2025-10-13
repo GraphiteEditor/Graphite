@@ -52,8 +52,6 @@ pub enum FrontendMessage {
 	},
 	DisplayRemoveEditableTextbox,
 
-	OpenDocumentsSuppliedAtStartup,
-
 	// Send prefix: Send global, static data to the frontend that is never updated
 	SendUIMetadata {
 		#[serde(rename = "nodeDescriptions")]
@@ -104,6 +102,7 @@ pub enum FrontendMessage {
 	},
 	TriggerLoadFirstAutoSaveDocument,
 	TriggerLoadRestAutoSaveDocuments,
+	TriggerOpenLaunchDocuments,
 	TriggerLoadPreferences,
 	TriggerOpenDocument,
 	TriggerPaste,

@@ -18,9 +18,8 @@ mod gpu_context;
 
 use app::App;
 use cef::CefHandler;
+use cli::Cli;
 use event::CreateAppEventSchedulerEventLoopExt;
-
-use crate::cli::Cli;
 
 fn main() {
 	tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();
