@@ -23,7 +23,7 @@ impl ImplLifeSpanHandler for BrowserProcessLifeSpanHandlerImpl {
 		_user_gesture: ::std::os::raw::c_int,
 		_popup_features: Option<&cef::PopupFeatures>,
 		_window_info: Option<&mut cef::WindowInfo>,
-		_client: Option<&mut Option<impl cef::ImplClient>>,
+		_client: Option<&mut Option<cef::Client>>,
 		_settings: Option<&mut cef::BrowserSettings>,
 		_extra_info: Option<&mut Option<cef::DictionaryValue>>,
 		_no_javascript_access: Option<&mut ::std::os::raw::c_int>,

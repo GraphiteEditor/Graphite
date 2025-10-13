@@ -75,14 +75,7 @@
         '';
         rustGpuPathOverride = "${rustGpuCargo}/bin:${rustGPUToolchainPkg}/bin";
 
-        libcef = pkgs.libcef.overrideAttrs (finalAttrs: previousAttrs: {
-          version = "139.0.17";
-          gitRevision = "6c347eb";
-          chromiumVersion = "139.0.7258.31";
-          srcHash = "sha256-kRMO8DP4El1qytDsAZBdHvR9AAHXce90nPdyfJailBg=";
-
-          __intentionallyOverridingVersion = true;
-
+        libcef = pkgs.libcef.overrideAttrs (_: _: {
           postInstall = ''
             strip $out/lib/*
           '';
