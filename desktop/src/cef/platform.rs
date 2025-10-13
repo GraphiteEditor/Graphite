@@ -1,6 +1,5 @@
 #[cfg(feature = "accelerated_paint")]
 pub fn should_enable_hardware_acceleration() -> bool {
-	// Auto-detect
 	#[cfg(target_os = "linux")]
 	{
 		// Check if running on Wayland or X11
