@@ -727,13 +727,36 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						insert_index: insert_index + layer_index - insert_offset,
 					});
 
+					// If the layer is changing parent, recalc transforms so the child's viewport position is preserved.
 					if layer_to_move.parent(self.metadata()) != Some(parent) {
-						// TODO: Fix this so it works when dragging a layer into a group parent which has a Transform node, which used to work before #2689 caused this regression by removing the empty vector table row.
-						// TODO: See #2688 for this issue.
+						// --- START: ensure parent's local_transform is present in DocumentMetadata cache ---
+						let parent_node_id = parent.to_node();
+						let doc_meta = self.network_interface.document_metadata();
+						let parent_has_local = doc_meta.local_transforms.contains_key(&parent_node_id);
+						let _ = doc_meta; // release immutable borrow
+
+						if !parent_has_local {
+							// Try to locate upstream Transform node in the parent's chain
+							if let Some(transform_node_id) =
+								crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext::locate_node_in_layer_chain("Transform", parent, &self.network_interface)
+							{
+								// Read current transform from the transform node and insert into local_transforms cache
+								if let Some(document_node) = self.network_interface.document_node(&transform_node_id, &[]) {
+									let parent_transform = crate::messages::portfolio::document::graph_operation::transform_utils::get_current_transform(&document_node.inputs);
+									// Build updated maps and call update_transforms to atomically replace caches
+									let upstream_footprints = self.network_interface.document_metadata().upstream_footprints.clone();
+									let mut new_local_transforms = self.network_interface.document_metadata().local_transforms.clone();
+									new_local_transforms.insert(parent_node_id, parent_transform);
+									self.network_interface.update_transforms(upstream_footprints, new_local_transforms);
+								}
+							}
+						}
+						// --- END: parent's local_transform synchronized ---
+
+						// Now compute child's new local transform relative to new parent (uses the freshly synced cache)
 						let layer_local_transform = self.network_interface.document_metadata().transform_to_viewport(layer_to_move);
 						let undo_transform = self.network_interface.document_metadata().transform_to_viewport(parent).inverse();
 						let transform = undo_transform * layer_local_transform;
-
 						responses.add(GraphOperationMessage::TransformSet {
 							layer: layer_to_move,
 							transform,
@@ -1975,6 +1998,7 @@ impl DocumentMessageHandler {
 
 		Some(previous_network)
 	}
+
 	pub fn redo_with_history(&mut self, ipp: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
 		// Push the UpdateOpenDocumentsList message to the queue in order to update the save status of the open documents
 		let Some(previous_network) = self.redo(ipp, responses) else { return };
@@ -3381,6 +3405,7 @@ mod document_message_handler_tests {
 		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
 		assert!(true, "Application didn't crash after folder move operation");
 	}
+
 	#[tokio::test]
 	async fn test_moving_folder_with_children() {
 		let mut editor = EditorTestUtils::create();
@@ -3421,8 +3446,6 @@ mod document_message_handler_tests {
 		assert_eq!(rect_grandparent, folder2, "Rectangle's grandparent should be folder2");
 	}
 
-	// TODO: Fix https://github.com/GraphiteEditor/Graphite/issues/2688 and reenable this as part of that fix.
-	#[ignore]
 	#[tokio::test]
 	async fn test_moving_layers_retains_transforms() {
 		let mut editor = EditorTestUtils::create();
