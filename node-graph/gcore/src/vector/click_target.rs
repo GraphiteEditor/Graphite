@@ -31,11 +31,18 @@ pub enum ClickTargetType {
 }
 
 /// Represents a clickable target for the layer
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ClickTarget {
 	target_type: ClickTargetType,
 	stroke_width: f64,
 	bounding_box: Option<[DVec2; 2]>,
+	bounding_box_cache: std::sync::Arc<std::sync::RwLock<Vec<(DAffine2, Option<[DVec2; 2]>)>>>,
+}
+
+impl PartialEq for ClickTarget {
+	fn eq(&self, other: &Self) -> bool {
+		self.target_type == other.target_type && self.stroke_width == other.stroke_width && self.bounding_box == other.bounding_box
+	}
 }
 
 impl ClickTarget {
@@ -45,6 +52,7 @@ impl ClickTarget {
 			target_type: ClickTargetType::Subpath(subpath),
 			stroke_width,
 			bounding_box,
+			bounding_box_cache: std::sync::Arc::new(Vec::with_capacity(10).into()),
 		}
 	}
 
@@ -60,6 +68,7 @@ impl ClickTarget {
 			target_type: ClickTargetType::FreePoint(point),
 			stroke_width,
 			bounding_box,
+			bounding_box_cache: std::sync::Arc::new(Vec::with_capacity(10).into()),
 		}
 	}
 
@@ -76,7 +85,28 @@ impl ClickTarget {
 	}
 
 	pub fn bounding_box_with_transform(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
-		self.bounding_box.map(|[a, b]| [transform.transform_point2(a), transform.transform_point2(b)])
+		match self.target_type {
+			ClickTargetType::Subpath(ref subpath) =>
+			{
+			let read = self.bounding_box_cache.read().unwrap();
+			if let Some((_, bounds)) = read.iter().find(|(t, _)| t.to_cols_array().iter().zip(transform.to_cols_array().iter()).all(|(a, b)|a.to_bits() == b.to_bits())){
+				*bounds
+			} else {
+				std::mem::drop(read);
+				let mut write = self.bounding_box_cache.write().unwrap();
+				if write.len() >= 10 {
+					write.clear();
+				}
+				let bounds = subpath.bounding_box_with_transform(transform);
+
+				write.push((transform, bounds));
+				bounds
+			}
+			}
+			,
+			// TODO: use point for calculation of bbox
+			ClickTargetType::FreePoint(_) => self.bounding_box.map(|[a, b]| [transform.transform_point2(a), transform.transform_point2(b)]),
+		}
 	}
 
 	pub fn apply_transform(&mut self, affine_transform: DAffine2) {
