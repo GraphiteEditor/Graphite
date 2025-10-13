@@ -1,4 +1,6 @@
 use rfd::AsyncFileDialog;
+use std::fs;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
@@ -39,7 +41,7 @@ pub(crate) struct App {
 	web_communication_initialized: bool,
 	web_communication_startup_buffer: Vec<Vec<u8>>,
 	persistent_data: PersistentData,
-	cli_files: Option<Vec<std::path::PathBuf>>,
+	launch_documents: Vec<PathBuf>,
 }
 
 impl App {
@@ -49,7 +51,7 @@ impl App {
 		wgpu_context: WgpuContext,
 		app_event_receiver: Receiver<AppEvent>,
 		app_event_scheduler: AppEventScheduler,
-		cli_files: Option<Vec<std::path::PathBuf>>,
+		launch_documents: Vec<PathBuf>,
 	) -> Self {
 		let rendering_app_event_scheduler = app_event_scheduler.clone();
 		let (start_render_sender, start_render_receiver) = std::sync::mpsc::sync_channel(1);
@@ -81,7 +83,7 @@ impl App {
 			web_communication_startup_buffer: Vec::new(),
 			persistent_data,
 			native_window: Default::default(),
-			cli_files,
+			launch_documents,
 		}
 	}
 
@@ -95,20 +97,22 @@ impl App {
 				self.send_or_queue_web_message(bytes);
 			}
 			DesktopFrontendMessage::OpenDocumentsSuppliedAtStartup => {
-				let app_event_scheduler = self.app_event_scheduler.clone();
-				if let Some(paths) = self.cli_files.clone() {
-					let _ = thread::spawn(move || {
-						for path in paths {
-							tracing::info!("Opening file from command line: {}", path.display());
-							if let Ok(content) = std::fs::read(&path) {
-								let message = DesktopWrapperMessage::OpenFile { path, content };
-								app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
-							} else {
-								tracing::error!("Failed to read file: {}", path.display());
-							}
-						}
-					});
+				if self.launch_documents.is_empty() {
+					return;
 				}
+				let app_event_scheduler = self.app_event_scheduler.clone();
+				let launch_documents = std::mem::take(&mut self.launch_documents);
+				let _ = thread::spawn(move || {
+					for path in launch_documents {
+						tracing::info!("Opening file from command line: {}", path.display());
+						if let Ok(content) = fs::read(&path) {
+							let message = DesktopWrapperMessage::OpenFile { path, content };
+							app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
+						} else {
+							tracing::error!("Failed to read file: {}", path.display());
+						}
+					}
+				});
 			}
 			DesktopFrontendMessage::OpenFileDialog { title, filters, context } => {
 				let app_event_scheduler = self.app_event_scheduler.clone();
@@ -121,7 +125,7 @@ impl App {
 					let show_dialog = async move { dialog.pick_file().await.map(|f| f.path().to_path_buf()) };
 
 					if let Some(path) = futures::executor::block_on(show_dialog)
-						&& let Ok(content) = std::fs::read(&path)
+						&& let Ok(content) = fs::read(&path)
 					{
 						let message = DesktopWrapperMessage::OpenFileDialogResult { path, content, context };
 						app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
@@ -154,7 +158,7 @@ impl App {
 				});
 			}
 			DesktopFrontendMessage::WriteFile { path, content } => {
-				if let Err(e) = std::fs::write(&path, content) {
+				if let Err(e) = fs::write(&path, content) {
 					tracing::error!("Failed to write file {}: {}", path.display(), e);
 				}
 			}
@@ -408,7 +412,7 @@ impl ApplicationHandler for App {
 			}
 			WindowEvent::DragDropped { paths, .. } => {
 				for path in paths {
-					match std::fs::read(&path) {
+					match fs::read(&path) {
 						Ok(content) => {
 							let message = DesktopWrapperMessage::OpenFile { path, content };
 							self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));

@@ -46,7 +46,7 @@ fn main() {
 	let (window_size_sender, window_size_receiver) = std::sync::mpsc::channel();
 
 	let cef_handler = cef::CefHandler::new(wgpu_context.clone(), app_event_scheduler.clone(), window_size_receiver);
-	let cef_context = match cef_context_builder.initialize(cef_handler, cli.disable_ui_acceleration.unwrap_or(false)) {
+	let cef_context = match cef_context_builder.initialize(cef_handler, cli.disable_ui_acceleration) {
 		Ok(c) => {
 			tracing::info!("CEF initialized successfully");
 			c

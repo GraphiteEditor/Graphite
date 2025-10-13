@@ -1,10 +1,5 @@
 #[cfg(feature = "accelerated_paint")]
-pub fn should_enable_hardware_acceleration(user_disabled: bool) -> bool {
-	if user_disabled {
-		// User explicitly disabled
-		return false;
-	}
-
+pub fn should_enable_hardware_acceleration() -> bool {
 	// Auto-detect
 	#[cfg(target_os = "linux")]
 	{
