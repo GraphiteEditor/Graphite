@@ -484,7 +484,6 @@ async fn round_corners(
 
 					// If any of the points have handles, skip corner rounding
 					if current_group.has_out_handle() || current_group.has_in_handle() || prev_group.has_out_handle() || next_group.has_in_handle() {
-						// If any of the points have handles, skip corner rounding
 						new_manipulator_groups.push(*current_group);
 						continue;
 					}
