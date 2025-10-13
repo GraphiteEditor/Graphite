@@ -24,6 +24,8 @@
 	import { setupViewportResizeObserver, cleanupViewportResizeObserver } from "@graphite/utility-functions/viewports";
 
 	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "@graphite/components/floating-menus/EyedropperPreview.svelte";
+	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
+	import MenuList from "@graphite/components/floating-menus/MenuList.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import Graph from "@graphite/components/views/Graph.svelte";
@@ -95,6 +97,16 @@
 	$: canvasWidthScaledRoundedToEven = canvasWidthScaled && (canvasWidthScaled % 2 === 1 ? canvasWidthScaled + 1 : canvasWidthScaled);
 	$: canvasHeightScaledRoundedToEven = canvasHeightScaled && (canvasHeightScaled % 2 === 1 ? canvasHeightScaled + 1 : canvasHeightScaled);
 
+	// Menu shown when an SVG is dropped on to the canvas
+	let svgDropMenu: { open: boolean; x: number; y: number; name: string; svg: string } = { open: false, x: 0, y: 0, name: "", svg: "" };
+
+	function importSvgAsNewDocument(name: string, svg: string) {
+		(editor.handle as unknown as { importSvgAsNewDocument?: (name: string, svg: string) => void }).importSvgAsNewDocument?.(name, svg);
+	}
+	function importSvgAsLayerAt(x: number, y: number, name: string, svg: string) {
+		editor.handle.pasteSvg(name, svg, x, y);
+	}
+
 	$: toolShelfTotalToolsAndSeparators = ((layoutGroup) => {
 		if (!isWidgetSpanRow(layoutGroup)) return undefined;
 
@@ -142,7 +154,13 @@
 
 			if (file.type.includes("svg")) {
 				const svgData = await file.text();
-				editor.handle.pasteSvg(file.name, svgData, x, y);
+				// Menu shown at drop location
+				if (typeof x === "number" && typeof y === "number") {
+					svgDropMenu = { open: true, x, y, name: file.name, svg: svgData };
+				} else {
+					//Paste normally
+					editor.handle.pasteSvg(file.name, svgData, x, y);
+				}
 				return;
 			}
 
@@ -626,6 +644,34 @@
 		</LayoutCol>
 	</LayoutRow>
 </LayoutCol>
+
+{#if svgDropMenu.open}
+	<FloatingMenu open={true} type="Cursor" class="svg-drop-menu" styles={{ left: svgDropMenu.x + "px", top: svgDropMenu.y + "px" }}>
+		<MenuList
+			open={true}
+			entries={[
+				[
+					{
+						label: "Import as new layer",
+						value: "layer",
+						action: () => {
+							importSvgAsLayerAt(svgDropMenu.x, svgDropMenu.y, svgDropMenu.name, svgDropMenu.svg);
+							svgDropMenu.open = false;
+						},
+					},
+					{
+						label: "Import as new document",
+						value: "document",
+						action: () => {
+							importSvgAsNewDocument(svgDropMenu.name, svgDropMenu.svg);
+							svgDropMenu.open = false;
+						},
+					},
+				],
+			]}
+		/>
+	</FloatingMenu>
+{/if}
 
 <style lang="scss" global>
 	.document {

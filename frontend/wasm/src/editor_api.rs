@@ -811,6 +811,12 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
+	/// Import an SVG as a new document directly (used for dropping on tab bar empty area or choosing the menu option)
+	#[wasm_bindgen(js_name = importSvgAsNewDocument)]
+	pub fn import_svg_as_new_document(&self, name: Option<String>, svg: String) {
+		self.dispatch(PortfolioMessage::ImportSvgAsNewDocument { name, svg });
+	}
+
 	/// Toggle visibility of a layer or node given its node ID
 	#[wasm_bindgen(js_name = toggleNodeVisibilityLayerPanel)]
 	pub fn toggle_node_visibility_layer(&self, id: u64) {

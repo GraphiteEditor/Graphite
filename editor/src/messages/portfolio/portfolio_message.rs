@@ -109,6 +109,10 @@ pub enum PortfolioMessage {
 		mouse: Option<(f64, f64)>,
 		parent_and_insert_index: Option<(LayerNodeIdentifier, usize)>,
 	},
+	ImportSvgAsNewDocument {
+		name: Option<String>,
+		svg: String,
+	},
 	PrevDocument,
 	RequestWelcomeScreenButtonsLayout,
 	RequestStatusBarInfoLayout,
