@@ -136,9 +136,11 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 			// Messages
 			PortfolioMessage::Init => {
-				// Load persistent data from the browser database
-				responses.add(FrontendMessage::TriggerLoadFirstAutoSaveDocument);
+				// Tell frontend to load persistent preferences
 				responses.add(FrontendMessage::TriggerLoadPreferences);
+
+				// Tell frontend to load the current document
+				responses.add(FrontendMessage::TriggerLoadFirstAutoSaveDocument);
 
 				// Display the menu bar at the top of the window
 				responses.add(MenuBarMessage::SendLayout);
@@ -149,8 +151,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					node_types: document_node_definitions::collect_node_types(),
 				});
 
-				// Finish loading persistent data from the browser database
+				// Tell frontend to finish loading persistent documents
 				responses.add(FrontendMessage::TriggerLoadRestAutoSaveDocuments);
+
+				responses.add(FrontendMessage::TriggerOpenLaunchDocuments);
 			}
 			PortfolioMessage::DocumentPassMessage { document_id, message } => {
 				if let Some(document) = self.documents.get_mut(&document_id) {

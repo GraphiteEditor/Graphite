@@ -185,8 +185,8 @@ iai-callgrind = { version = "0.16" }
 ndarray = "0.16"
 strum = { version = "0.27", features = ["derive"] }
 dirs = "6.0"
-cef = "=139.0.1"
-cef-dll-sys = "=139.0.1"
+cef = "140"
+cef-dll-sys = "140"
 include_dir = "0.7"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing = "0.1"
@@ -196,7 +196,7 @@ poly-cool = "0.3"
 spin = "0.10"
 clap = "4.5"
 spirv-std = { git = "https://github.com/rust-gpu/rust-gpu", rev = "c12f216121820580731440ee79ebc7403d6ea04f", features = ["bytemuck"] }
-cargo-gpu = { git = "https://github.com/rust-gpu/cargo-gpu", rev = "1358ab005b9a6b076117ef35f9de597c64f85670", default-features = false }
+cargo-gpu = { git = "https://github.com/rust-gpu/cargo-gpu", rev = "3952a22d16edbd38689f3a876e417899f21e1fe7", default-features = false }
 
 [workspace.lints.rust]
 unexpected_cfgs = { level = "allow", check-cfg = ['cfg(target_arch, values("spirv"))'] }
