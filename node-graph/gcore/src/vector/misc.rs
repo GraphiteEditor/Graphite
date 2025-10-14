@@ -189,7 +189,10 @@ pub fn bezpath_to_manipulator_groups(bezpath: &BezPath) -> (Vec<ManipulatorGroup
 				if let Some(last_manipulators) = manipulator_groups.pop()
 					&& let Some(first_manipulators) = manipulator_groups.first_mut()
 				{
-					first_manipulators.out_handle = last_manipulators.in_handle;
+					// The popped manipulators represent the duplicate anchor produced by the closing PathEl.
+					// Its `in_handle` corresponds to the second control point of the closing curve,
+					// which should become the first manipulator's `in_handle` (not its `out_handle`).
+					first_manipulators.in_handle = last_manipulators.in_handle;
 				}
 				is_closed = true;
 				break;
