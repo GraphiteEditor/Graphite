@@ -1759,6 +1759,20 @@ impl DocumentMessageHandler {
 			})
 	}
 
+	/// Find layers (including artboards) under the location in viewport space that was clicked, listed by their depth in the layer tree hierarchy.
+	pub fn click_list_with_artboards<'a>(&'a self, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
+		self.click_xray(ipp)
+			.skip_while(|&layer| layer == LayerNodeIdentifier::ROOT_PARENT)
+			.scan(true, |last_had_children, layer| {
+				if *last_had_children {
+					*last_had_children = layer.has_children(self.network_interface.document_metadata());
+					Some(layer)
+				} else {
+					None
+				}
+			})
+	}
+
 	pub fn click_list_no_parents<'a>(&'a self, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
 		self.click_xray(ipp)
 			.filter(move |&layer| !self.network_interface.is_artboard(&layer.to_node(), &[]) && !layer.has_children(self.network_interface.document_metadata()))
