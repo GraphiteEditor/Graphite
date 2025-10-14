@@ -333,35 +333,86 @@ fn to_path(vector: &Vector, transform: DAffine2) -> Vec<path_bool::PathSegment> 
 
 fn to_path_segments(path: &mut Vec<path_bool::PathSegment>, subpath: &Subpath<PointId>, transform: DAffine2) {
 	use path_bool::PathSegment;
-	let mut global_start = None;
+
+	const EPSILON: f64 = 1e-8;
+	const COORD_LIMIT: f64 = 1.0e6;
+	#[inline]
+	fn finite_clamped(mut v: DVec2) -> Option<DVec2> {
+		if !v.x.is_finite() || !v.y.is_finite() {
+			return None;
+		}
+		v.x = v.x.clamp(-COORD_LIMIT, COORD_LIMIT);
+		v.y = v.y.clamp(-COORD_LIMIT, COORD_LIMIT);
+		Some(v)
+	}
+
+	let transform_point = |pos: DVec2| -> Option<DVec2> {
+		let p = transform.transform_point2(pos);
+		let q = p * EPSILON.recip();
+		let q = q.round();
+		let q = q * EPSILON;
+		finite_clamped(q)
+	};
+
+	let mut global_start: Option<DVec2> = None;
 	let mut global_end = DVec2::ZERO;
+	let mut any_segment = false;
 
 	for bezier in subpath.iter() {
-		const EPS: f64 = 1e-8;
-		let transform_point = |pos: DVec2| transform.transform_point2(pos).mul(EPS.recip()).round().mul(EPS);
-
 		let PathSegPoints { p0, p1, p2, p3 } = pathseg_points(bezier);
 
-		let p0 = transform_point(p0);
-		let p1 = p1.map(transform_point);
-		let p2 = p2.map(transform_point);
-		let p3 = transform_point(p3);
+		let p0 = match transform_point(p0) {
+			Some(v) => v,
+			None => continue,
+		};
+		let p3 = match transform_point(p3) {
+			Some(v) => v,
+			None => continue,
+		};
+		let p1 = match p1 {
+			Some(h) => transform_point(h),
+			None => None,
+		};
+		let p2 = match p2 {
+			Some(h) => transform_point(h),
+			None => None,
+		};
 
 		if global_start.is_none() {
 			global_start = Some(p0);
 		}
 		global_end = p3;
 
-		let segment = match (p1, p2) {
-			(None, None) => PathSegment::Line(p0, p3),
-			(None, Some(p2)) | (Some(p2), None) => PathSegment::Quadratic(p0, p2, p3),
-			(Some(p1), Some(p2)) => PathSegment::Cubic(p0, p1, p2, p3),
+		let seg = match (p1, p2) {
+			(None, None) => {
+				if (p3 - p0).length_squared() == 0.0 {
+					continue;
+				}
+				PathSegment::Line(p0, p3)
+			}
+			(None, Some(p2)) | (Some(p2), None) => {
+				if (p3 - p0).length_squared() == 0.0 && (p2 - p0).length_squared() == 0.0 {
+					continue;
+				}
+				PathSegment::Quadratic(p0, p2, p3)
+			}
+			(Some(p1), Some(p2)) => {
+				if (p3 - p0).length_squared() == 0.0 && (p1 - p0).length_squared() == 0.0 && (p2 - p0).length_squared() == 0.0 {
+					continue;
+				};
+				PathSegment::Cubic(p0, p1, p2, p3)
+			}
 		};
-
-		path.push(segment);
+		path.push(seg);
+		any_segment = true;
 	}
-	if let Some(start) = global_start {
-		path.push(PathSegment::Line(global_end, start));
+
+	if any_segment {
+		if let Some(start) = global_start {
+			if (global_end - start).length_squared() > 0.0 {
+				path.push(PathSegment::Line(global_end, start))
+			}
+		}
 	}
 }
 
