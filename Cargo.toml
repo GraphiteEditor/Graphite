@@ -185,8 +185,8 @@ iai-callgrind = { version = "0.16" }
 ndarray = "0.16"
 strum = { version = "0.27", features = ["derive"] }
 dirs = "6.0"
-cef = "=139.0.1"
-cef-dll-sys = "=139.0.1"
+cef = "140"
+cef-dll-sys = "140"
 include_dir = "0.7"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing = "0.1"

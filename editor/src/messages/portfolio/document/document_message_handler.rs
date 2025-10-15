@@ -496,6 +496,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					self.node_graph_handler.wire_in_progress_from_connector = None;
 					self.node_graph_handler.wire_in_progress_to_connector = None;
 					responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
+				} else if !self.breadcrumb_network_path.is_empty() {
+					// Exit one level up if inside a nested network
+					responses.add(DocumentMessage::ExitNestedNetwork { steps_back: 1 });
 				} else {
 					responses.add(DocumentMessage::GraphViewOverlay { open: false });
 				}
@@ -1750,6 +1753,20 @@ impl DocumentMessageHandler {
 	pub fn click_list<'a>(&'a self, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
 		self.click_xray(ipp)
 			.filter(move |&layer| !self.network_interface.is_artboard(&layer.to_node(), &[]))
+			.skip_while(|&layer| layer == LayerNodeIdentifier::ROOT_PARENT)
+			.scan(true, |last_had_children, layer| {
+				if *last_had_children {
+					*last_had_children = layer.has_children(self.network_interface.document_metadata());
+					Some(layer)
+				} else {
+					None
+				}
+			})
+	}
+
+	/// Find layers (including artboards) under the location in viewport space that was clicked, listed by their depth in the layer tree hierarchy.
+	pub fn click_list_with_artboards<'a>(&'a self, ipp: &InputPreprocessorMessageHandler) -> impl Iterator<Item = LayerNodeIdentifier> + use<'a> {
+		self.click_xray(ipp)
 			.skip_while(|&layer| layer == LayerNodeIdentifier::ROOT_PARENT)
 			.scan(true, |last_had_children, layer| {
 				if *last_had_children {
