@@ -1,8 +1,11 @@
+use std::sync::{Arc, RwLock};
+
 use super::algorithms::{bezpath_algorithms::bezpath_is_inside_bezpath, intersection::filtered_segment_intersections};
 use super::misc::dvec2_to_point;
 use crate::math::math_ext::QuadExt;
 use crate::math::quad::Quad;
 use crate::subpath::Subpath;
+use crate::transform::Transform;
 use crate::vector::PointId;
 use crate::vector::misc::point_to_dvec2;
 use glam::{DAffine2, DMat2, DVec2};
@@ -30,13 +33,21 @@ pub enum ClickTargetType {
 	FreePoint(FreePoint),
 }
 
+#[derive(Clone, Debug, Default)]
+struct BoundingBoxCache {
+	fingerprints: u64,
+	elements: [(f64, Option<[DVec2; 2]>); 8],
+	write_ptr: usize,
+}
+
 /// Represents a clickable target for the layer
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct ClickTarget {
 	target_type: ClickTargetType,
 	stroke_width: f64,
 	bounding_box: Option<[DVec2; 2]>,
-	bounding_box_cache: std::sync::Arc<std::sync::RwLock<Vec<(DAffine2, Option<[DVec2; 2]>)>>>,
+	#[serde(skip)]
+	bounding_box_cache: Arc<RwLock<BoundingBoxCache>>,
 }
 
 impl PartialEq for ClickTarget {
@@ -52,7 +63,7 @@ impl ClickTarget {
 			target_type: ClickTargetType::Subpath(subpath),
 			stroke_width,
 			bounding_box,
-			bounding_box_cache: std::sync::Arc::new(Vec::with_capacity(10).into()),
+			bounding_box_cache: Default::default(),
 		}
 	}
 
@@ -68,7 +79,7 @@ impl ClickTarget {
 			target_type: ClickTargetType::FreePoint(point),
 			stroke_width,
 			bounding_box,
-			bounding_box_cache: std::sync::Arc::new(Vec::with_capacity(10).into()),
+			bounding_box_cache: Default::default(),
 		}
 	}
 
@@ -86,24 +97,54 @@ impl ClickTarget {
 
 	pub fn bounding_box_with_transform(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
 		match self.target_type {
-			ClickTargetType::Subpath(ref subpath) =>
-			{
-			let read = self.bounding_box_cache.read().unwrap();
-			if let Some((_, bounds)) = read.iter().find(|(t, _)| t.to_cols_array().iter().zip(transform.to_cols_array().iter()).all(|(a, b)|a.to_bits() == b.to_bits())){
-				*bounds
-			} else {
+			ClickTargetType::Subpath(ref subpath) => {
+				if transform.has_skew() {
+					return subpath.bounding_box_with_transform(transform);
+				}
+				let rotation = transform.decompose_rotation();
+				let fingerprint = (rotation.to_bits() % 265) as u8;
+
+				let read = self.bounding_box_cache.read().unwrap();
+
+				let mut mask: u8 = 0;
+				// Split out mask construction into dedicated loop to allow for vectorization
+				for (i, fp) in (0..8).zip(read.fingerprints.to_le_bytes()) {
+					if fp == fingerprint {
+						mask |= 1 << i;
+					}
+				}
+				let scale = transform.decompose_scale();
+
+				while mask != 0 {
+					let pos = mask.trailing_zeros() as usize;
+
+					if rotation == read.elements[pos].0 && read.elements[pos].1.is_some() {
+						let transform = DAffine2::from_scale_angle_translation(scale, 0., transform.translation);
+						let new_bounds = read.elements[pos].1.map(|[a, b]| [transform.transform_point2(a), transform.transform_point2(b)]);
+
+						return new_bounds;
+					}
+					mask &= !(1 << pos);
+				}
+
 				std::mem::drop(read);
 				let mut write = self.bounding_box_cache.write().unwrap();
-				if write.len() >= 10 {
-					write.clear();
-				}
-				let bounds = subpath.bounding_box_with_transform(transform);
+				let bounds = subpath.bounding_box_with_transform(DAffine2::from_angle(rotation));
 
-				write.push((transform, bounds));
-				bounds
+				if bounds.is_none() {
+					return bounds;
+				}
+
+				let write_ptr = write.write_ptr;
+				write.elements[write_ptr] = (rotation, bounds);
+				let mut bytes = write.fingerprints.to_le_bytes();
+				bytes[write_ptr] = fingerprint;
+				write.fingerprints = u64::from_le_bytes(bytes);
+				write.write_ptr = (write_ptr + 1) % write.elements.len();
+
+				let transform = DAffine2::from_scale_angle_translation(scale, 0., transform.translation);
+				bounds.map(|[a, b]| [transform.transform_point2(a), transform.transform_point2(b)])
 			}
-			}
-			,
 			// TODO: use point for calculation of bbox
 			ClickTargetType::FreePoint(_) => self.bounding_box.map(|[a, b]| [transform.transform_point2(a), transform.transform_point2(b)]),
 		}
