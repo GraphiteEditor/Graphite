@@ -43,10 +43,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 				},
 				DocumentNode {
 					call_argument: concrete!(Context),
-					inputs: vec![
-						NodeInput::import(graphene_core::Type::Fn(Box::new(concrete!(Context)), Box::new(generic!(T))), 0),
-						NodeInput::scope("editor-api"),
-					],
+					inputs: vec![NodeInput::import(graphene_core::Type::Fn(Box::new(concrete!(Context)), Box::new(generic!(T))), 0)],
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_node::render_intermediate::IDENTIFIER),
 					context_features: graphene_std::ContextDependencies {
 						extract: ContextFeatures::VARARGS,

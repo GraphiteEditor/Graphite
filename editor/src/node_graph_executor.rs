@@ -146,7 +146,7 @@ impl NodeGraphExecutor {
 			},
 			time,
 			#[cfg(any(feature = "resvg", feature = "vello"))]
-			export_format: graphene_std::application_io::ExportFormat::Canvas,
+			export_format: graphene_std::application_io::ExportFormat::Raster,
 			#[cfg(not(any(feature = "resvg", feature = "vello")))]
 			export_format: graphene_std::application_io::ExportFormat::Svg,
 			render_mode: document.render_mode,
@@ -190,10 +190,10 @@ impl NodeGraphExecutor {
 		let size = bounds[1] - bounds[0];
 		let transform = DAffine2::from_translation(bounds[0]).inverse();
 
-		let export_format = if export_config.file_type == FileType::Svg || cfg!(not(feature = "gpu")) {
+		let export_format = if export_config.file_type == FileType::Svg {
 			graphene_std::application_io::ExportFormat::Svg
 		} else {
-			graphene_std::application_io::ExportFormat::Texture
+			graphene_std::application_io::ExportFormat::Raster
 		};
 
 		let render_config = RenderConfig {
