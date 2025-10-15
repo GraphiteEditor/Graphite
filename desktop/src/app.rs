@@ -1,4 +1,6 @@
 use rfd::AsyncFileDialog;
+use std::fs;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
@@ -39,6 +41,7 @@ pub(crate) struct App {
 	web_communication_initialized: bool,
 	web_communication_startup_buffer: Vec<Vec<u8>>,
 	persistent_data: PersistentData,
+	launch_documents: Vec<PathBuf>,
 }
 
 impl App {
@@ -48,6 +51,7 @@ impl App {
 		wgpu_context: WgpuContext,
 		app_event_receiver: Receiver<AppEvent>,
 		app_event_scheduler: AppEventScheduler,
+		launch_documents: Vec<PathBuf>,
 	) -> Self {
 		let rendering_app_event_scheduler = app_event_scheduler.clone();
 		let (start_render_sender, start_render_receiver) = std::sync::mpsc::sync_channel(1);
@@ -79,6 +83,7 @@ impl App {
 			web_communication_startup_buffer: Vec::new(),
 			persistent_data,
 			native_window: Default::default(),
+			launch_documents,
 		}
 	}
 
@@ -102,7 +107,7 @@ impl App {
 					let show_dialog = async move { dialog.pick_file().await.map(|f| f.path().to_path_buf()) };
 
 					if let Some(path) = futures::executor::block_on(show_dialog)
-						&& let Ok(content) = std::fs::read(&path)
+						&& let Ok(content) = fs::read(&path)
 					{
 						let message = DesktopWrapperMessage::OpenFileDialogResult { path, content, context };
 						app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
@@ -135,7 +140,7 @@ impl App {
 				});
 			}
 			DesktopFrontendMessage::WriteFile { path, content } => {
-				if let Err(e) = std::fs::write(&path, content) {
+				if let Err(e) = fs::write(&path, content) {
 					tracing::error!("Failed to write file {}: {}", path.display(), e);
 				}
 			}
@@ -197,6 +202,14 @@ impl App {
 			DesktopFrontendMessage::PersistenceUpdateDocumentsList { ids } => {
 				self.persistent_data.set_document_order(ids);
 			}
+			DesktopFrontendMessage::PersistenceWritePreferences { preferences } => {
+				self.persistent_data.write_preferences(preferences);
+			}
+			DesktopFrontendMessage::PersistenceLoadPreferences => {
+				let preferences = self.persistent_data.load_preferences();
+				let message = DesktopWrapperMessage::LoadPreferences { preferences };
+				responses.push(message);
+			}
 			DesktopFrontendMessage::PersistenceLoadCurrentDocument => {
 				if let Some((id, document)) = self.persistent_data.current_document() {
 					let message = DesktopWrapperMessage::LoadDocument {
@@ -232,13 +245,23 @@ impl App {
 					responses.push(message);
 				}
 			}
-			DesktopFrontendMessage::PersistenceWritePreferences { preferences } => {
-				self.persistent_data.write_preferences(preferences);
-			}
-			DesktopFrontendMessage::PersistenceLoadPreferences => {
-				let preferences = self.persistent_data.load_preferences();
-				let message = DesktopWrapperMessage::LoadPreferences { preferences };
-				responses.push(message);
+			DesktopFrontendMessage::OpenLaunchDocuments => {
+				if self.launch_documents.is_empty() {
+					return;
+				}
+				let app_event_scheduler = self.app_event_scheduler.clone();
+				let launch_documents = std::mem::take(&mut self.launch_documents);
+				let _ = thread::spawn(move || {
+					for path in launch_documents {
+						tracing::info!("Opening file from command line: {}", path.display());
+						if let Ok(content) = fs::read(&path) {
+							let message = DesktopWrapperMessage::OpenFile { path, content };
+							app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
+						} else {
+							tracing::error!("Failed to read file: {}", path.display());
+						}
+					}
+				});
 			}
 		}
 	}
@@ -389,7 +412,7 @@ impl ApplicationHandler for App {
 			}
 			WindowEvent::DragDropped { paths, .. } => {
 				for path in paths {
-					match std::fs::read(&path) {
+					match fs::read(&path) {
 						Ok(content) => {
 							let message = DesktopWrapperMessage::OpenFile { path, content };
 							self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
