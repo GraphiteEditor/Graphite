@@ -662,6 +662,7 @@ impl PenToolData {
 			let Some(pos) = vector.point_domain.position_from_id(id) else { continue };
 			let transformed_distance_between_squared = transform.transform_point2(pos).distance_squared(transform.transform_point2(self.next_point));
 			let snap_point_tolerance_squared = crate::consts::SNAP_POINT_TOLERANCE.powi(2);
+
 			if transformed_distance_between_squared < snap_point_tolerance_squared {
 				self.update_handle_type(TargetHandle::PreviewInHandle);
 				self.handle_end_offset = None;
@@ -683,7 +684,6 @@ impl PenToolData {
 		let document = snap_data.document;
 		let next_handle_start = self.next_handle_start;
 		let handle_start = self.latest_point()?.handle_start;
-		
 		let mouse = snap_data.input.mouse.position;
 		self.handle_swapped = false;
 		self.handle_end_offset = None;
@@ -1450,7 +1450,6 @@ impl Fsm for PenToolFsmState {
 		tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
-
 		let ToolActionMessageContext {
 			document,
 			global_tool_data,
@@ -1479,6 +1478,7 @@ impl Fsm for PenToolFsmState {
 		match (self, event) {
 			(PenToolFsmState::PlacingAnchor | PenToolFsmState::GRSHandle, PenToolMessage::GRS { grab, rotate, scale }) => {
 				let Some(layer) = layer else { return PenToolFsmState::PlacingAnchor };
+
 				let Some(latest) = tool_data.latest_point() else { return PenToolFsmState::PlacingAnchor };
 				if latest.handle_start == latest.pos {
 					return PenToolFsmState::PlacingAnchor;
