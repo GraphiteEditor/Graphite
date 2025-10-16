@@ -151,12 +151,10 @@
 			{/each}
 			<LayoutRow class="tab-group-empty-space" on:dblclick={dblclickEmptySpaceAction}></LayoutRow>
 		</LayoutRow>
-		
 		<!-- <PopoverButton style="VerticalEllipsis">
 			<TextLabel bold={true}>Panel Options</TextLabel>
 			<TextLabel multiline={true}>Coming soon</TextLabel>
 		</PopoverButton> -->
-
 	</LayoutRow>
 	<LayoutCol class="panel-body">
 		{#if panelType}
