@@ -292,3 +292,165 @@ impl ClickTarget {
 		}
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+	use crate::subpath::Subpath;
+	use glam::DVec2;
+	use std::f64::consts::PI;
+
+	#[test]
+	fn test_bounding_box_cache_fingerprint_generation() {
+		// Test that fingerprints have MSB set and use only 7 bits for data
+		let rotation1 = 0.0;
+		let rotation2 = PI / 3.0;
+		let rotation3 = PI / 2.0;
+
+		let fp1 = BoundingBoxCache::rotation_fingerprint(rotation1);
+		let fp2 = BoundingBoxCache::rotation_fingerprint(rotation2);
+		let fp3 = BoundingBoxCache::rotation_fingerprint(rotation3);
+
+		// All fingerprints should have MSB set (presence flag)
+		assert_eq!(fp1 & BoundingBoxCache::PRESENCE_FLAG, BoundingBoxCache::PRESENCE_FLAG);
+		assert_eq!(fp2 & BoundingBoxCache::PRESENCE_FLAG, BoundingBoxCache::PRESENCE_FLAG);
+		assert_eq!(fp3 & BoundingBoxCache::PRESENCE_FLAG, BoundingBoxCache::PRESENCE_FLAG);
+
+		// Lower 7 bits should contain the actual fingerprint data
+		let data1 = fp1 & !BoundingBoxCache::PRESENCE_FLAG;
+		let data2 = fp2 & !BoundingBoxCache::PRESENCE_FLAG;
+		let data3 = fp3 & !BoundingBoxCache::PRESENCE_FLAG;
+
+		// Data portions should be different (unless collision)
+		assert!(data1 != data2 && data2 != data3 && data3 != data1);
+	}
+
+	#[test]
+	fn test_bounding_box_cache_basic_operations() {
+		let mut cache = BoundingBoxCache::default();
+
+		// Create a simple rectangle subpath for testing
+		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::new(100.0, 50.0));
+
+		let rotation = PI / 4.0;
+		let scale = DVec2::new(2.0, 2.0);
+		let translation = DVec2::new(10.0, 20.0);
+		let fingerprint = BoundingBoxCache::rotation_fingerprint(rotation);
+
+		// Cache should be empty initially
+		assert!(cache.try_read(rotation, scale, translation, fingerprint).is_none());
+
+		// Add to cache
+		let result = cache.add_to_cache(&subpath, rotation, scale, translation, fingerprint);
+		assert!(result.is_some());
+
+		// Should now be able to read from cache
+		let cached = cache.try_read(rotation, scale, translation, fingerprint);
+		assert!(cached.is_some());
+		assert_eq!(cached.unwrap(), result);
+	}
+
+	#[test]
+	fn test_bounding_box_cache_ring_buffer_behavior() {
+		let mut cache = BoundingBoxCache::default();
+		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::new(10.0, 10.0));
+		let scale = DVec2::ONE;
+		let translation = DVec2::ZERO;
+
+		// Fill cache beyond capacity to test ring buffer behavior
+		let rotations: Vec<f64> = (0..10).map(|i| i as f64 * PI / 8.0).collect();
+
+		for rotation in &rotations {
+			let fingerprint = BoundingBoxCache::rotation_fingerprint(*rotation);
+			cache.add_to_cache(&subpath, *rotation, scale, translation, fingerprint);
+		}
+
+		// First two entries should be overwritten (cache size is 8)
+		let first_fp = BoundingBoxCache::rotation_fingerprint(rotations[0]);
+		let second_fp = BoundingBoxCache::rotation_fingerprint(rotations[1]);
+		let last_fp = BoundingBoxCache::rotation_fingerprint(rotations[9]);
+
+		assert!(cache.try_read(rotations[0], scale, translation, first_fp).is_none());
+		assert!(cache.try_read(rotations[1], scale, translation, second_fp).is_none());
+		assert!(cache.try_read(rotations[9], scale, translation, last_fp).is_some());
+	}
+
+	#[test]
+	fn test_click_target_bounding_box_caching() {
+		// Create a click target with a simple rectangle
+		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::new(100.0, 50.0));
+		let click_target = ClickTarget::new_with_subpath(subpath, 1.0);
+
+		let rotation = PI / 6.0;
+		let scale = DVec2::new(1.5, 1.5);
+		let translation = DVec2::new(20.0, 30.0);
+		let transform = DAffine2::from_scale_angle_translation(scale, rotation, translation);
+
+		// Helper function to count present values in cache
+		let count_present_values = || {
+			let cache = click_target.bounding_box_cache.read().unwrap();
+			cache.fingerprints.to_le_bytes().iter().filter(|&&fp| fp & BoundingBoxCache::PRESENCE_FLAG != 0).count()
+		};
+
+		// Initially cache should be empty
+		assert_eq!(count_present_values(), 0);
+
+		// First call should compute and cache
+		let result1 = click_target.bounding_box_with_transform(transform);
+		assert!(result1.is_some());
+		assert_eq!(count_present_values(), 1);
+
+		// Second call with same transform should use cache, not add new entry
+		let result2 = click_target.bounding_box_with_transform(transform);
+		assert_eq!(result1, result2);
+		assert_eq!(count_present_values(), 1); // Should still be 1, not 2
+
+		// Different scale/translation but same rotation should use cached rotation
+		let transform2 = DAffine2::from_scale_angle_translation(DVec2::new(2.0, 2.0), rotation, DVec2::new(50.0, 60.0));
+		let result3 = click_target.bounding_box_with_transform(transform2);
+		assert!(result3.is_some());
+		assert_ne!(result1, result3); // Different due to different scale/translation
+		assert_eq!(count_present_values(), 1); // Should still be 1, reused same rotation
+	}
+
+	#[test]
+	fn test_click_target_skew_bypass_cache() {
+		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::new(100.0, 50.0));
+		let click_target = ClickTarget::new_with_subpath(subpath.clone(), 1.0);
+
+		// Create a transform with skew (non-uniform scaling in different directions)
+		let skew_transform = DAffine2::from_cols_array(&[2.0, 0.5, 0.0, 1.0, 10.0, 20.0]);
+		assert!(skew_transform.has_skew());
+
+		// Should bypass cache and compute directly
+		let result = click_target.bounding_box_with_transform(skew_transform);
+		let expected = subpath.bounding_box_with_transform(skew_transform);
+		assert_eq!(result, expected);
+	}
+
+	#[test]
+	fn test_cache_fingerprint_collision_handling() {
+		let mut cache = BoundingBoxCache::default();
+		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::new(10.0, 10.0));
+		let scale = DVec2::ONE;
+		let translation = DVec2::ZERO;
+
+		// Find two rotations that produce the same fingerprint (collision)
+		let rotation1 = 0.0;
+		let rotation2 = 0.25;
+		let fp1 = BoundingBoxCache::rotation_fingerprint(rotation1);
+		let fp2 = BoundingBoxCache::rotation_fingerprint(rotation2);
+
+		// If we found a collision, test that exact rotation matching still works
+		if fp1 == fp2 && rotation1 != rotation2 {
+			// Add first rotation
+			cache.add_to_cache(&subpath, rotation1, scale, translation, fp1);
+
+			// Should find the exact rotation
+			assert!(cache.try_read(rotation1, scale, translation, fp1).is_some());
+
+			// Should not find the colliding rotation (different exact value)
+			assert!(cache.try_read(rotation2, scale, translation, fp2).is_none());
+		}
+	}
+}
