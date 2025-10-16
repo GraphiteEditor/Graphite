@@ -101,7 +101,7 @@
 </script>
 
 <LayoutCol on:pointerdown={() => panelType && editor.handle.setActivePanel(panelType)} class={`panel ${className}`.trim()} {classes} style={styleName} {styles}>
-	<LayoutRow class="tab-bar" classes={{ "min-widths": tabMinWidths }} >
+	<LayoutRow class="tab-bar" classes={{ "min-widths": tabMinWidths }}>
 
 		<LayoutRow class="tab-group" scrollableX={true}>
 			{#each tabLabels as tabLabel, tabIndex}
