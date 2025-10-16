@@ -220,7 +220,6 @@
 		background: var(--color-1-nearblack);
 		border-radius: 6px;
 		overflow: hidden;
-		
 		.tab-bar {
 			height: 28px;
 			min-height: auto;
