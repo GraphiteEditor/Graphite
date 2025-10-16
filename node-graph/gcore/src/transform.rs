@@ -22,6 +22,11 @@ pub trait Transform {
 		if rotation == -0. { 0. } else { rotation }
 	}
 
+	/// Detects if the transform contains skew by checking if the transformation matrix
+	/// deviates from a pure rotation + uniform scale + translation.
+	///
+	/// Returns true if the matrix columns are not orthogonal or have different lengths,
+	/// indicating the presence of skew or non-uniform scaling.
 	fn has_skew(&self) -> bool {
 		let mat2 = self.transform().matrix2;
 		let col0 = mat2.x_axis;
@@ -29,7 +34,8 @@ pub trait Transform {
 
 		const EPSILON: f64 = 1e-10;
 
-		// Check orthogonal and equal length (no skew)
+		// Check if columns are orthogonal (dot product should be ~0) and equal length
+		// Non-orthogonal columns or different lengths indicate skew/non-uniform scaling
 		col0.dot(col1).abs() > EPSILON || (col0.length() - col1.length()).abs() > EPSILON
 	}
 }

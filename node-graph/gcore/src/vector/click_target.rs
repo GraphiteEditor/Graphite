@@ -11,6 +11,8 @@ use crate::vector::misc::point_to_dvec2;
 use glam::{DAffine2, DMat2, DVec2};
 use kurbo::{Affine, BezPath, ParamCurve, PathSeg, Shape};
 
+type BoundingBox = Option<[DVec2; 2]>;
+
 #[derive(Copy, Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct FreePoint {
 	pub id: PointId,
@@ -33,11 +35,83 @@ pub enum ClickTargetType {
 	FreePoint(FreePoint),
 }
 
+/// Fixed-size ring buffer cache for rotated bounding boxes.
+///
+/// Stores up to 8 rotation angles and their corresponding bounding boxes to avoid
+/// recomputing expensive bezier curve bounds for repeated rotations. Uses 7-bit
+/// fingerprint hashing with MSB as presence flag for fast lookup.
 #[derive(Clone, Debug, Default)]
 struct BoundingBoxCache {
+	/// Packed 7-bit fingerprints with MSB presence flags for cache lookup
 	fingerprints: u64,
-	elements: [(f64, Option<[DVec2; 2]>); 8],
+	/// (rotation_angle, cached_bounds) pairs
+	elements: [(f64, BoundingBox); Self::CACHE_SIZE],
+	/// Next position to write in ring buffer
 	write_ptr: usize,
+}
+
+impl BoundingBoxCache {
+	/// Cache size - must be ≤ 8 since fingerprints is u64 (8 bytes, 1 byte per element)
+	const CACHE_SIZE: usize = 8;
+	const FINGERPRINT_BITS: u32 = 7;
+	const PRESENCE_FLAG: u8 = 1 << Self::FINGERPRINT_BITS;
+
+	/// Generates a 7-bit fingerprint from rotation with MSB as presence flag
+	fn rotation_fingerprint(rotation: f64) -> u8 {
+		(rotation.to_bits() % (1 << Self::FINGERPRINT_BITS)) as u8 | Self::PRESENCE_FLAG
+	}
+	/// Attempts to find cached bounding box for the given rotation.
+	/// Returns Some(bounds) if found, None if not cached.
+	fn try_read(&self, rotation: f64, scale: DVec2, translation: DVec2, fingerprint: u8) -> Option<BoundingBox> {
+		// Build bitmask of positions with matching fingerprints for vectorized comparison
+		let mut mask: u8 = 0;
+		for (i, fp) in (0..Self::CACHE_SIZE).zip(self.fingerprints.to_le_bytes()) {
+			// Check MSB for presence and lower 7 bits for fingerprint match
+			if fp == fingerprint {
+				mask |= 1 << i;
+			}
+		}
+		// Check each position with matching fingerprint for exact rotation match
+		while mask != 0 {
+			let pos = mask.trailing_zeros() as usize;
+
+			if rotation == self.elements[pos].0 {
+				// Found cached rotation - apply scale and translation to cached bounds
+				let transform = DAffine2::from_scale_angle_translation(scale, 0., translation);
+				let new_bounds = self.elements[pos].1.map(|[a, b]| [transform.transform_point2(a), transform.transform_point2(b)]);
+
+				return Some(new_bounds);
+			}
+			mask &= !(1 << pos);
+		}
+		None
+	}
+	/// Computes and caches bounding box for the given rotation, then applies scale/translation.
+	/// Returns the final transformed bounds.
+	fn add_to_cache(&mut self, subpath: &Subpath<PointId>, rotation: f64, scale: DVec2, translation: DVec2, fingerprint: u8) -> BoundingBox {
+		// Compute bounds for pure rotation (expensive operation we want to cache)
+		let bounds = subpath.bounding_box_with_transform(DAffine2::from_angle(rotation));
+
+		if bounds.is_none() {
+			return bounds;
+		}
+
+		// Store in ring buffer at current write position
+		let write_ptr = self.write_ptr;
+		self.elements[write_ptr] = (rotation, bounds);
+
+		// Update fingerprint byte for this position
+		let mut bytes = self.fingerprints.to_le_bytes();
+		bytes[write_ptr] = fingerprint;
+		self.fingerprints = u64::from_le_bytes(bytes);
+
+		// Advance write pointer (ring buffer behavior)
+		self.write_ptr = (write_ptr + 1) % Self::CACHE_SIZE;
+
+		// Apply scale and translation to cached rotated bounds
+		let transform = DAffine2::from_scale_angle_translation(scale, 0., translation);
+		bounds.map(|[a, b]| [transform.transform_point2(a), transform.transform_point2(b)])
+	}
 }
 
 /// Represents a clickable target for the layer
@@ -45,7 +119,7 @@ struct BoundingBoxCache {
 pub struct ClickTarget {
 	target_type: ClickTargetType,
 	stroke_width: f64,
-	bounding_box: Option<[DVec2; 2]>,
+	bounding_box: BoundingBox,
 	#[serde(skip)]
 	bounding_box_cache: Arc<RwLock<BoundingBoxCache>>,
 }
@@ -87,7 +161,7 @@ impl ClickTarget {
 		&self.target_type
 	}
 
-	pub fn bounding_box(&self) -> Option<[DVec2; 2]> {
+	pub fn bounding_box(&self) -> BoundingBox {
 		self.bounding_box
 	}
 
@@ -95,55 +169,32 @@ impl ClickTarget {
 		self.bounding_box.map(|bbox| bbox[0] + (bbox[1] - bbox[0]) / 2.)
 	}
 
-	pub fn bounding_box_with_transform(&self, transform: DAffine2) -> Option<[DVec2; 2]> {
+	pub fn bounding_box_with_transform(&self, transform: DAffine2) -> BoundingBox {
 		match self.target_type {
 			ClickTargetType::Subpath(ref subpath) => {
+				// Bypass cache for skewed transforms since rotation decomposition isn't valid
 				if transform.has_skew() {
 					return subpath.bounding_box_with_transform(transform);
 				}
+
+				// Decompose transform into rotation, scale, translation for caching strategy
 				let rotation = transform.decompose_rotation();
-				let fingerprint = (rotation.to_bits() % 265) as u8;
-
-				let read = self.bounding_box_cache.read().unwrap();
-
-				let mut mask: u8 = 0;
-				// Split out mask construction into dedicated loop to allow for vectorization
-				for (i, fp) in (0..8).zip(read.fingerprints.to_le_bytes()) {
-					if fp == fingerprint {
-						mask |= 1 << i;
-					}
-				}
 				let scale = transform.decompose_scale();
+				let translation = transform.translation;
 
-				while mask != 0 {
-					let pos = mask.trailing_zeros() as usize;
+				// Generate fingerprint for cache lookup
+				let fingerprint = BoundingBoxCache::rotation_fingerprint(rotation);
 
-					if rotation == read.elements[pos].0 && read.elements[pos].1.is_some() {
-						let transform = DAffine2::from_scale_angle_translation(scale, 0., transform.translation);
-						let new_bounds = read.elements[pos].1.map(|[a, b]| [transform.transform_point2(a), transform.transform_point2(b)]);
-
-						return new_bounds;
-					}
-					mask &= !(1 << pos);
+				// Try to read from cache first
+				let read_lock = self.bounding_box_cache.read().unwrap();
+				if let Some(value) = read_lock.try_read(rotation, scale, translation, fingerprint) {
+					return value;
 				}
+				std::mem::drop(read_lock);
 
-				std::mem::drop(read);
-				let mut write = self.bounding_box_cache.write().unwrap();
-				let bounds = subpath.bounding_box_with_transform(DAffine2::from_angle(rotation));
-
-				if bounds.is_none() {
-					return bounds;
-				}
-
-				let write_ptr = write.write_ptr;
-				write.elements[write_ptr] = (rotation, bounds);
-				let mut bytes = write.fingerprints.to_le_bytes();
-				bytes[write_ptr] = fingerprint;
-				write.fingerprints = u64::from_le_bytes(bytes);
-				write.write_ptr = (write_ptr + 1) % write.elements.len();
-
-				let transform = DAffine2::from_scale_angle_translation(scale, 0., transform.translation);
-				bounds.map(|[a, b]| [transform.transform_point2(a), transform.transform_point2(b)])
+				// Cache miss - compute and store new entry
+				let mut write_lock = self.bounding_box_cache.write().unwrap();
+				write_lock.add_to_cache(subpath, rotation, scale, translation, fingerprint)
 			}
 			// TODO: use point for calculation of bbox
 			ClickTargetType::FreePoint(_) => self.bounding_box.map(|[a, b]| [transform.transform_point2(a), transform.transform_point2(b)]),
