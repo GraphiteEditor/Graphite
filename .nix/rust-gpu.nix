@@ -13,12 +13,12 @@ let
     pname = "rustc_codegen_spirv";
     version = "0-unstable-2025-08-04";
     src = pkgs.fetchFromGitHub {
-      owner = "Rust-GPU";
-      repo = "rust-gpu";
-      rev = "3f05f5482824e3b1fbb44c9ef90a8795a0204c7c";
-      hash = "sha256-ygNxjkzuvcO2jLYhayNuIthhH6/seCbTq3M0IkbsDrY=";
+      owner = "Firestar99";
+      repo = "rust-gpu-new";
+      rev = "c12f216121820580731440ee79ebc7403d6ea04f";
+      hash = "sha256-rG1cZvOV0vYb1dETOzzbJ0asYdE039UZImobXZfKIno=";
     };
-    cargoHash = "sha256-SzTvKUG/da//pHb7hN230wRsQ6BYAkP8HoXqJO30/dU=";
+    cargoHash = "sha256-AEigcEc5wiBd3zLqWN/2HSbkfOVFneAqNvg9HsouZf4=";
     cargoBuildFlags = [
       "-p"
       "rustc_codegen_spirv"

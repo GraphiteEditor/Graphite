@@ -195,7 +195,7 @@ open = "5.3"
 poly-cool = "0.3"
 spin = "0.10"
 clap = "4.5"
-spirv-std = { git = "https://github.com/rust-gpu/rust-gpu", rev = "3f05f5482824e3b1fbb44c9ef90a8795a0204c7c", features = ["bytemuck"] }
+spirv-std = { git = "https://github.com/Firestar99/rust-gpu-new", rev = "c12f216121820580731440ee79ebc7403d6ea04f", features = ["bytemuck"] }
 cargo-gpu = { git = "https://github.com/Firestar99/cargo-gpu", rev = "3952a22d16edbd38689f3a876e417899f21e1fe7", default-features = false }
 
 [workspace.lints.rust]

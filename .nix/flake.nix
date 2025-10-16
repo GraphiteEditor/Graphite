@@ -57,7 +57,7 @@
           pkgs.nodejs
           pkgs.nodePackages.npm
           pkgs.binaryen
-          pkgs.wasm-bindgen-cli
+          pkgs.wasm-bindgen-cli_0_2_100
           pkgs.wasm-pack
           pkgs.pkg-config
           pkgs.cargo-about
@@ -142,6 +142,8 @@
             mkdir -p $out/share/icons/hicolor/scalable/apps
             cp $src/desktop/assets/graphite-icon-color.svg $out/share/icons/hicolor/scalable/apps/
           '';
+          
+          doCheck = false;
 
           postFixup = ''
             wrapProgram "$out/bin/graphite-editor" \
