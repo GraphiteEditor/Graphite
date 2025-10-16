@@ -1074,6 +1074,12 @@ pub fn query_assign_colors_randomize(node_id: NodeId, context: &NodePropertiesCo
 	})
 }
 
+pub(crate) fn brightness_contrast_classic_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	use graphene_std::raster::brightness_contrast_classic::*;
+
+	brightness_contrast_properties_common(node_id, context, BrightnessInput::INDEX, ContrastInput::INDEX, true)
+}
+
 pub(crate) fn brightness_contrast_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	use graphene_std::raster::brightness_contrast::*;
 
@@ -1092,9 +1098,22 @@ pub(crate) fn brightness_contrast_properties(node_id: NodeId, context: &mut Node
 		_ => false,
 	};
 
+	let mut layout = brightness_contrast_properties_common(node_id, context, BrightnessInput::INDEX, ContrastInput::INDEX, use_classic_value);
+	layout.extend([LayoutGroup::Row { widgets: use_classic }]);
+
+	layout
+}
+
+fn brightness_contrast_properties_common(
+	node_id: NodeId,
+	context: &mut NodePropertiesContext,
+	brightness_input_index: usize,
+	contrast_input_index: usize,
+	use_classic_value: bool,
+) -> Vec<LayoutGroup> {
 	// Brightness
 	let brightness = number_widget(
-		ParameterWidgetsInfo::new(node_id, BrightnessInput::INDEX, true, context),
+		ParameterWidgetsInfo::new(node_id, brightness_input_index, true, context),
 		NumberInput::default()
 			.unit("%")
 			.mode_range()
@@ -1105,7 +1124,7 @@ pub(crate) fn brightness_contrast_properties(node_id: NodeId, context: &mut Node
 
 	// Contrast
 	let contrast = number_widget(
-		ParameterWidgetsInfo::new(node_id, ContrastInput::INDEX, true, context),
+		ParameterWidgetsInfo::new(node_id, contrast_input_index, true, context),
 		NumberInput::default()
 			.unit("%")
 			.mode_range()
@@ -1114,11 +1133,7 @@ pub(crate) fn brightness_contrast_properties(node_id: NodeId, context: &mut Node
 			.range_max(Some(100.)),
 	);
 
-	let layout = vec![
-		LayoutGroup::Row { widgets: brightness },
-		LayoutGroup::Row { widgets: contrast },
-		LayoutGroup::Row { widgets: use_classic },
-	];
+	let layout = vec![LayoutGroup::Row { widgets: brightness }, LayoutGroup::Row { widgets: contrast }];
 
 	layout
 }
