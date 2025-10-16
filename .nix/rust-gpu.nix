@@ -2,7 +2,8 @@
 
 let
   toolchainPkg = pkgs.rust-bin.nightly."2025-06-23".default.override {
-    extensions = [ "rust-src" "rust-analyzer" "clippy" "cargo" "rustc-dev" "llvm-tools" ];
+    extensions =
+      [ "rust-src" "rust-analyzer" "clippy" "cargo" "rustc-dev" "llvm-tools" ];
   };
   toolchainRustPlatform = pkgs.makeRustPlatform {
     cargo = toolchainPkg;
@@ -14,11 +15,16 @@ let
     src = pkgs.fetchFromGitHub {
       owner = "Rust-GPU";
       repo = "rust-gpu";
-      rev = "c12f216121820580731440ee79ebc7403d6ea04f";
-      hash = "sha256-rG1cZvOV0vYb1dETOzzbJ0asYdE039UZImobXZfKIno=";
+      rev = "3f05f5482824e3b1fbb44c9ef90a8795a0204c7c";
+      hash = "sha256-ygNxjkzuvcO2jLYhayNuIthhH6/seCbTq3M0IkbsDrY=";
     };
-    cargoHash = "sha256-AEigcEc5wiBd3zLqWN/2HSbkfOVFneAqNvg9HsouZf4=";
-    cargoBuildFlags = [ "-p" "rustc_codegen_spirv" "--features=use-compiled-tools" "--no-default-features" ];
+    cargoHash = "sha256-SzTvKUG/da//pHb7hN230wRsQ6BYAkP8HoXqJO30/dU=";
+    cargoBuildFlags = [
+      "-p"
+      "rustc_codegen_spirv"
+      "--features=use-compiled-tools"
+      "--no-default-features"
+    ];
     doCheck = false;
   });
   cargoWrapper = pkgs.writeShellScriptBin "cargo" ''
@@ -34,8 +40,8 @@ let
 
     exec ${toolchainPkg}/bin/cargo ${"\${filtered_args[@]}"}
   '';
-in
-{
+in {
   RUST_GPU_PATH_OVERRIDE = "${cargoWrapper}/bin:${toolchainPkg}/bin";
-  RUSTC_CODEGEN_SPIRV_PATH = "${rustc_codegen_spirv}/lib/librustc_codegen_spirv.so";
+  RUSTC_CODEGEN_SPIRV_PATH =
+    "${rustc_codegen_spirv}/lib/librustc_codegen_spirv.so";
 }

@@ -132,7 +132,7 @@ web-sys = { version = "=0.3.77", features = [
 	"HtmlImageElement",
 	"ImageBitmapRenderingContext",
 ] }
-winit = { git = "https://github.com/rust-windowing/winit.git", rev = "37221c7192ef1deec022a2278e54429331c01bad" }
+winit = { git = "https://github.com/timon-schelling/winit.git", rev = "37221c7192ef1deec022a2278e54429331c01bad" }
 url = "2.5"
 tokio = { version = "1.29", features = ["fs", "macros", "io-std", "rt"] }
 vello = { git = "https://github.com/linebender/vello.git", rev = "87cc5bee6d3a34d15017dbbb58634ddc7f33ff9b" } # TODO switch back to stable when a release is made
@@ -195,8 +195,8 @@ open = "5.3"
 poly-cool = "0.3"
 spin = "0.10"
 clap = "4.5"
-spirv-std = { git = "https://github.com/rust-gpu/rust-gpu", rev = "c12f216121820580731440ee79ebc7403d6ea04f", features = ["bytemuck"] }
-cargo-gpu = { git = "https://github.com/rust-gpu/cargo-gpu", rev = "3952a22d16edbd38689f3a876e417899f21e1fe7", default-features = false }
+spirv-std = { git = "https://github.com/rust-gpu/rust-gpu", rev = "3f05f5482824e3b1fbb44c9ef90a8795a0204c7c", features = ["bytemuck"] }
+cargo-gpu = { git = "https://github.com/Firestar99/cargo-gpu", rev = "3952a22d16edbd38689f3a876e417899f21e1fe7", default-features = false }
 
 [workspace.lints.rust]
 unexpected_cfgs = { level = "allow", check-cfg = ['cfg(target_arch, values("spirv"))'] }
