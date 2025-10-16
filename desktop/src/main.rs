@@ -1,3 +1,4 @@
+use clap::Parser;
 use std::process::exit;
 use tracing_subscriber::EnvFilter;
 use winit::event_loop::EventLoop;
@@ -6,6 +7,7 @@ pub(crate) mod consts;
 
 mod app;
 mod cef;
+mod cli;
 mod dirs;
 mod event;
 mod native_window;
@@ -16,6 +18,7 @@ mod gpu_context;
 
 use app::App;
 use cef::CefHandler;
+use cli::Cli;
 use event::CreateAppEventSchedulerEventLoopExt;
 
 fn main() {
@@ -31,6 +34,8 @@ fn main() {
 		return;
 	}
 
+	let cli = Cli::parse();
+
 	let wgpu_context = futures::executor::block_on(gpu_context::create_wgpu_context());
 
 	let event_loop = EventLoop::new().unwrap();
@@ -40,7 +45,7 @@ fn main() {
 	let (window_size_sender, window_size_receiver) = std::sync::mpsc::channel();
 
 	let cef_handler = cef::CefHandler::new(wgpu_context.clone(), app_event_scheduler.clone(), window_size_receiver);
-	let cef_context = match cef_context_builder.initialize(cef_handler) {
+	let cef_context = match cef_context_builder.initialize(cef_handler, cli.disable_ui_acceleration) {
 		Ok(c) => {
 			tracing::info!("CEF initialized successfully");
 			c
@@ -63,7 +68,7 @@ fn main() {
 		}
 	};
 
-	let mut app = App::new(Box::new(cef_context), window_size_sender, wgpu_context, app_event_receiver, app_event_scheduler);
+	let mut app = App::new(Box::new(cef_context), window_size_sender, wgpu_context, app_event_receiver, app_event_scheduler, cli.files);
 
 	event_loop.run_app(&mut app).unwrap();
 }

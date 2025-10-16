@@ -496,6 +496,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					self.node_graph_handler.wire_in_progress_from_connector = None;
 					self.node_graph_handler.wire_in_progress_to_connector = None;
 					responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
+				} else if !self.breadcrumb_network_path.is_empty() {
+					// Exit one level up if inside a nested network
+					responses.add(DocumentMessage::ExitNestedNetwork { steps_back: 1 });
 				} else {
 					responses.add(DocumentMessage::GraphViewOverlay { open: false });
 				}
@@ -1046,6 +1049,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			}
 			DocumentMessage::SavedDocument { path } => {
 				self.path = path;
+
+				responses.add(PortfolioMessage::AutoSaveActiveDocument);
 
 				// Update the name to match the file stem
 				let document_name_from_path = self.path.as_ref().and_then(|path| {

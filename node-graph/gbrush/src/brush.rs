@@ -194,7 +194,6 @@ async fn brush(_: impl Ctx, mut image_frame_table: Table<Raster<CPU>>, strokes: 
 	let background_bounds = bbox.to_transform();
 
 	let mut draw_strokes: Vec<_> = strokes.iter().filter(|&s| !matches!(s.style.blend_mode, BlendMode::Erase | BlendMode::Restore)).cloned().collect();
-	let erase_restore_strokes: Vec<_> = strokes.iter().filter(|&s| matches!(s.style.blend_mode, BlendMode::Erase | BlendMode::Restore)).cloned().collect();
 
 	let mut brush_plan = cache.compute_brush_plan(table_row, &draw_strokes);
 
@@ -258,8 +257,8 @@ async fn brush(_: impl Ctx, mut image_frame_table: Table<Raster<CPU>>, strokes: 
 		actual_image = blend_with_mode(actual_image, stroke_texture, stroke.style.blend_mode, (stroke.style.color.a() * 100.) as f64);
 	}
 
-	let has_erase_strokes = strokes.iter().any(|s| s.style.blend_mode == BlendMode::Erase);
-	if has_erase_strokes {
+	let has_erase_or_restore_strokes = strokes.iter().any(|s| matches!(s.style.blend_mode, BlendMode::Erase | BlendMode::Restore));
+	if has_erase_or_restore_strokes {
 		let opaque_image = Image::new(bbox.size().x as u32, bbox.size().y as u32, Color::WHITE);
 		let mut erase_restore_mask = TableRow {
 			element: Raster::new_cpu(opaque_image),
@@ -267,7 +266,7 @@ async fn brush(_: impl Ctx, mut image_frame_table: Table<Raster<CPU>>, strokes: 
 			..Default::default()
 		};
 
-		for stroke in erase_restore_strokes {
+		for stroke in strokes {
 			let mut brush_texture = cache.get_cached_brush(&stroke.style);
 			if brush_texture.is_none() {
 				let tex = create_brush_texture(&stroke.style).await;
@@ -277,28 +276,20 @@ async fn brush(_: impl Ctx, mut image_frame_table: Table<Raster<CPU>>, strokes: 
 			let brush_texture = brush_texture.unwrap();
 			let positions: Vec<_> = stroke.compute_blit_points().into_iter().collect();
 
-			match stroke.style.blend_mode {
-				BlendMode::Erase => {
-					let blend_params = FnNode::new(|(a, b)| blend_colors(a, b, BlendMode::Erase, 1.));
-					let blit_node = BlitNode::new(
-						FutureWrapperNode::new(ClonedNode::new(brush_texture)),
-						FutureWrapperNode::new(ClonedNode::new(positions)),
-						FutureWrapperNode::new(ClonedNode::new(blend_params)),
-					);
-					erase_restore_mask = blit_node.eval(Table::new_from_row(erase_restore_mask)).await.into_iter().next().unwrap_or_default();
-				}
-				// Yes, this is essentially the same as the above, but we duplicate to inline the blend mode.
-				BlendMode::Restore => {
-					let blend_params = FnNode::new(|(a, b)| blend_colors(a, b, BlendMode::Restore, 1.));
-					let blit_node = BlitNode::new(
-						FutureWrapperNode::new(ClonedNode::new(brush_texture)),
-						FutureWrapperNode::new(ClonedNode::new(positions)),
-						FutureWrapperNode::new(ClonedNode::new(blend_params)),
-					);
-					erase_restore_mask = blit_node.eval(Table::new_from_row(erase_restore_mask)).await.into_iter().next().unwrap_or_default();
-				}
-				_ => unreachable!(),
-			}
+			// For mask composition: Erase subtracts alpha, Restore adds alpha, and Draw acts like Restore to allow repainting erased areas.
+			let mask_blend_mode = match stroke.style.blend_mode {
+				BlendMode::Erase => BlendMode::Erase,
+				BlendMode::Restore => BlendMode::Restore,
+				_ => BlendMode::Restore,
+			};
+
+			let blend_params = FnNode::new(move |(a, b)| blend_colors(a, b, mask_blend_mode, 1.));
+			let blit_node = BlitNode::new(
+				FutureWrapperNode::new(ClonedNode::new(brush_texture)),
+				FutureWrapperNode::new(ClonedNode::new(positions)),
+				FutureWrapperNode::new(ClonedNode::new(blend_params)),
+			);
+			erase_restore_mask = blit_node.eval(Table::new_from_row(erase_restore_mask)).await.into_iter().next().unwrap_or_default();
 		}
 
 		let blend_params = FnNode::new(|(a, b)| blend_colors(a, b, BlendMode::MultiplyAlpha, 1.));

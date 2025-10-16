@@ -153,6 +153,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				// Tell frontend to finish loading persistent documents
 				responses.add(FrontendMessage::TriggerLoadRestAutoSaveDocuments);
+
+				responses.add(FrontendMessage::TriggerOpenLaunchDocuments);
 			}
 			PortfolioMessage::DocumentPassMessage { document_id, message } => {
 				if let Some(document) = self.documents.get_mut(&document_id) {
@@ -194,6 +196,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					document: document.serialize_document(),
 					details: DocumentDetails {
 						name: document.name.clone(),
+						path: document.path.clone(),
 						is_saved: document.is_saved(),
 						is_auto_saved: document.is_auto_saved(),
 					},
@@ -1067,9 +1070,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						self.documents.get(id).map(|document| OpenDocument {
 							id: *id,
 							details: DocumentDetails {
-								is_auto_saved: document.is_auto_saved(),
-								is_saved: document.is_saved(),
 								name: document.name.clone(),
+								path: document.path.clone(),
+								is_saved: document.is_saved(),
+								is_auto_saved: document.is_auto_saved(),
 							},
 						})
 					})

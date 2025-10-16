@@ -102,6 +102,7 @@ pub enum FrontendMessage {
 	},
 	TriggerLoadFirstAutoSaveDocument,
 	TriggerLoadRestAutoSaveDocuments,
+	TriggerOpenLaunchDocuments,
 	TriggerLoadPreferences,
 	TriggerOpenDocument,
 	TriggerPaste,
