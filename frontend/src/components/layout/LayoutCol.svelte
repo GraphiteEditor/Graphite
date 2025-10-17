@@ -47,6 +47,8 @@
 	on:pointerdown
 	on:pointerenter
 	on:pointerleave
+	on:pointermove
+	on:pointerup
 	on:scroll
 	{...$$restProps}
 >
