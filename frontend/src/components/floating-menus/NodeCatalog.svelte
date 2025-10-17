@@ -125,7 +125,7 @@
 			return;
 		}
 
-		setTimeout(() => document.querySelector(".node-catalog button.emphasized")?.scrollIntoView({ block: "nearest" }), 0);
+		setTimeout(() => document.querySelector("[data-emphasized]")?.scrollIntoView({ block: "nearest" }), 0);
 	}
 
 	onMount(() => {
@@ -214,6 +214,11 @@
 				.text-button {
 					width: 100%;
 					margin: 4px 0;
+				}
+
+				.emphasized {
+					--button-background-color: var(--color-6-lowergray);
+					--button-text-color: var(--color-f-white);
 				}
 			}
 		}
