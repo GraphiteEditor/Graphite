@@ -18,7 +18,6 @@ use crate::vector::misc::{handles_to_segment, segment_to_handles};
 use crate::vector::style::{PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 use crate::vector::{FillId, RegionId};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, Graphic, OwnedContextImpl};
-use core::f64::consts::PI;
 use core::hash::{Hash, Hasher};
 use glam::{DAffine2, DVec2};
 use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, PathEl, PathSeg, Shape};
@@ -445,6 +444,12 @@ async fn round_corners(
 				..Default::default()
 			};
 
+			// Cosine of the minimum angle threshold for corner rounding
+			// This is used to skip rounding for near-straight corners
+			// (cosine is used to avoid computing expensive arccosine)
+			let cos_threshold = min_angle_threshold.to_radians().cos();
+			const EPSILON: f64 = 1e-3;
+
 			// Grab the initial point ID as a stable starting point
 			let mut initial_point_id = source.point_domain.ids().first().copied().unwrap_or(PointId::generate());
 
@@ -472,24 +477,38 @@ async fn round_corners(
 					let curr_idx = i;
 					let next_idx = if i == manipulator_groups.len() - 1 { if is_closed { 0 } else { i } } else { i + 1 };
 
-					let prev = manipulator_groups[prev_idx].anchor;
-					let curr = manipulator_groups[curr_idx].anchor;
-					let next = manipulator_groups[next_idx].anchor;
+					let current_group = &manipulator_groups[curr_idx];
+					let prev_group = &manipulator_groups[prev_idx];
+					let next_group = &manipulator_groups[next_idx];
+
+					// If any of the points have handles, skip corner rounding
+					if current_group.has_out_handle() || current_group.has_in_handle() || prev_group.has_out_handle() || next_group.has_in_handle() {
+						new_manipulator_groups.push(*current_group);
+						continue;
+					}
+
+					let prev = prev_group.anchor;
+					let curr = current_group.anchor;
+					let next = next_group.anchor;
 
 					let dir1 = (curr - prev).normalize_or(DVec2::X);
 					let dir2 = (next - curr).normalize_or(DVec2::X);
 
-					let theta = PI - dir1.angle_to(dir2).abs();
+					// Cosine of the inner angle between the two segments
+					let cos = -dir1.dot(dir2);
 
 					// Skip near-straight corners
-					if theta > PI - min_angle_threshold.to_radians() {
-						new_manipulator_groups.push(manipulator_groups[curr_idx]);
+					if cos - cos_threshold > EPSILON {
+						new_manipulator_groups.push(*current_group);
 						continue;
 					}
 
+					// Calculate sine of half the angle using trig identity
+					let sin = (1. - cos * cos * 0.25).sqrt();
+
 					// Calculate L, with limits to avoid extreme values
-					let distance_along_edge = radius / (theta / 2.).sin();
-					let distance_along_edge = distance_along_edge.min(edge_length_limit * (curr - prev).length().min((next - curr).length())).max(0.01);
+					let distance_along_edge = radius / sin;
+					let distance_along_edge = distance_along_edge.min(edge_length_limit * curr.distance(prev).min(curr.distance(next))).max(0.01);
 
 					// Find points on each edge at distance L from corner
 					let p1 = curr - dir1 * distance_along_edge;
