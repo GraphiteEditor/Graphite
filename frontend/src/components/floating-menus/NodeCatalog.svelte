@@ -125,7 +125,7 @@
 			return;
 		}
 
-		setTimeout(() => document.querySelector(".node-catalog button.focused")?.scrollIntoView({ block: "nearest" }), 0);
+		setTimeout(() => document.querySelector(".node-catalog button.emphasized")?.scrollIntoView({ block: "nearest" }), 0);
 	}
 
 	onMount(() => {
@@ -147,7 +147,7 @@
 						{disabled}
 						label={nodeType.name}
 						tooltip={$nodeGraph.nodeDescriptions.get(nodeType.name)}
-						focused={nodeType == flatNodeList[focusedNodeIndex]}
+						emphasized={nodeType == flatNodeList[focusedNodeIndex]}
 						action={() => dispatch("selectNodeType", nodeType.name)}
 					/>
 				{/each}
