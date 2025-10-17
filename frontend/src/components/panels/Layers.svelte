@@ -353,11 +353,18 @@
 			// Dragging to the empty space below all layers
 			let lastLayer = treeChildren[treeChildren.length - 1];
 			if (lastLayer.getBoundingClientRect().bottom < clientY) {
-				const numberRootLayers = layers.filter((layer) => layer.entry.depth === 1).length;
-				insertParentId = undefined;
-				insertDepth = 0;
-				insertIndex = numberRootLayers;
-				markerHeight = lastLayer.getBoundingClientRect().bottom - layerPanelTop;
+				const lastLayerIndexAttr = lastLayer.getAttribute("data-index");
+				if (lastLayerIndexAttr) {
+					const { folderIndex, entry: lastEntry } = layers[parseInt(lastLayerIndexAttr, 10)];
+
+					if (lastEntry.depth === 1) {
+						insertParentId = undefined;
+					} else {
+						insertParentId = lastEntry.parentId;
+					}
+					insertIndex = folderIndex + 1;
+					markerHeight = lastLayer.getBoundingClientRect().bottom - layerPanel.getBoundingClientRect().top;
+				}
 			}
 		}
 
