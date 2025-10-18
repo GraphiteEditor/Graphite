@@ -2191,7 +2191,6 @@ dependencies = [
  "cargo-gpu",
  "env_logger",
  "log",
- "rustc-literal-escaper",
 ]
 
 [[package]]
@@ -4791,12 +4790,6 @@ name = "rustc-hash"
 version = "2.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "357703d41365b4b27c590e3ed91eabb1b663f07c4c084095e60cbed4362dff0d"
-
-[[package]]
-name = "rustc-literal-escaper"
-version = "0.0.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e4ee29da77c5a54f42697493cd4c9b9f31b74df666a6c04dfc4fde77abe0438b"
 
 [[package]]
 name = "rustc_codegen_spirv-target-specs"
