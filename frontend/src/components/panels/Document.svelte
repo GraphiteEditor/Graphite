@@ -23,8 +23,8 @@
 	import { updateBoundsOfViewports } from "@graphite/utility-functions/viewports";
 
 	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "@graphite/components/floating-menus/EyedropperPreview.svelte";
-	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
 	import MenuList from "@graphite/components/floating-menus/MenuList.svelte";
+	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import Graph from "@graphite/components/views/Graph.svelte";
@@ -100,7 +100,8 @@
 	let svgDropMenu: { open: boolean; x: number; y: number; name: string; svg: string } = { open: false, x: 0, y: 0, name: "", svg: "" };
 
 	function importSvgAsNewDocument(name: string, svg: string) {
-		(editor.handle as unknown as { importSvgAsNewDocument?: (name: string, svg: string) => void }).importSvgAsNewDocument?.(name, svg);
+		const handleWithImport = editor.handle as unknown as { importSvgAsNewDocument?: (name: string | undefined, svg: string) => void };
+		handleWithImport.importSvgAsNewDocument?.(name, svg);
 	}
 	function importSvgAsLayerAt(x: number, y: number, name: string, svg: string) {
 		editor.handle.pasteSvg(name, svg, x, y);
@@ -622,7 +623,7 @@
 			entries={[
 				[
 					{
-						label: "Import as new layer",
+						label: "Import as New Layer",
 						value: "layer",
 						action: () => {
 							importSvgAsLayerAt(svgDropMenu.x, svgDropMenu.y, svgDropMenu.name, svgDropMenu.svg);
@@ -630,7 +631,7 @@
 						},
 					},
 					{
-						label: "Import as new document",
+						label: "Import as New Document",
 						value: "document",
 						action: () => {
 							importSvgAsNewDocument(svgDropMenu.name, svgDropMenu.svg);
