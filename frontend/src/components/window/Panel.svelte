@@ -80,8 +80,9 @@
 
 			if (file.type.includes("svg")) {
 				const svgData = await file.text();
-				// Calling the new API "importSvgAsNewDocument"
-				(editor.handle as any).importSvgAsNewDocument?.(file.name, svgData);
+				// Call the API `importSvgAsNewDocument`
+				const handleWithImport = editor.handle as unknown as { importSvgAsNewDocument?: (name: string | undefined, svg: string) => void };
+				handleWithImport.importSvgAsNewDocument?.(file.name, svgData);
 				return;
 			}
 		});
