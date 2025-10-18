@@ -75,14 +75,20 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Grabbing });
 
 				responses.add(FrontendMessage::UpdateInputHints {
-					hint_data: HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
+					hint_data: HintData(vec![
+						HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+						HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain to Axis")]),
+					]),
 				});
 
 				self.mouse_position = ipp.mouse.position;
 				let Some(ptz) = get_ptz(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
 					return;
 				};
-				self.navigation_operation = NavigationOperation::Pan { pan_original_for_abort: ptz.pan };
+				self.navigation_operation = NavigationOperation::Pan {
+					pan_original_for_abort: ptz.pan,
+					pan_raw_viewport_delta: DVec2::ZERO,
+				};
 			}
 			NavigationMessage::BeginCanvasTilt { was_dispatched_from_menu } => {
 				let Some(ptz) = get_ptz(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
@@ -139,6 +145,16 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				let transformed_delta = document_to_viewport.inverse().transform_vector2(delta);
 
 				ptz.pan += transformed_delta;
+				responses.add(EventMessage::CanvasTransformed);
+				responses.add(DocumentMessage::PTZUpdate);
+			}
+			NavigationMessage::CanvasPanSet { position } => {
+				let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
+					log::error!("Could not get PTZ in CanvasPanSet");
+					return;
+				};
+
+				ptz.pan = position;
 				responses.add(EventMessage::CanvasTransformed);
 				responses.add(DocumentMessage::PTZUpdate);
 			}
@@ -407,9 +423,29 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 			NavigationMessage::PointerMove { snap } => {
 				match self.navigation_operation {
 					NavigationOperation::None => {}
-					NavigationOperation::Pan { .. } => {
+					NavigationOperation::Pan {
+						pan_original_for_abort,
+						pan_raw_viewport_delta,
+					} => {
 						let delta = ipp.mouse.position - self.mouse_position;
-						responses.add(NavigationMessage::CanvasPan { delta });
+
+						let pan_raw_viewport_delta = pan_raw_viewport_delta + delta;
+
+						self.navigation_operation = NavigationOperation::Pan {
+							pan_original_for_abort,
+							pan_raw_viewport_delta,
+						};
+
+						let mut locked_delta = pan_raw_viewport_delta;
+
+						if ipp.keyboard.get(snap as usize) {
+							if locked_delta.x.abs() >= locked_delta.y.abs() { locked_delta.y = 0. } else { locked_delta.x = 0. }
+						}
+
+						let document_to_viewport = self.calculate_offset_transform(ipp.viewport_bounds.center(), ptz);
+						let new_pan = pan_original_for_abort + document_to_viewport.inverse().transform_vector2(locked_delta);
+
+						responses.add(NavigationMessage::CanvasPanSet { position: new_pan });
 					}
 					NavigationOperation::Tilt {
 						tilt_raw_not_snapped,
