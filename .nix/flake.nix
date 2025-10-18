@@ -108,7 +108,7 @@
           };
 
           
-          # TODO: Remove the need for this hash by getting individual package hashes from package-lock.json. @timon-schelling and @bluelinden tried this on 2025-10-17, but we were unsuccessful due to the bad documentation around pkgs.importNpmLock. We hope to try this again sometime.
+          # TODO: Remove the need for this hash by using individual package resolutions and hashes from package-lock.json
           npmDeps = pkgs.fetchNpmDeps {
             inherit (finalAttrs) pname version;
             src = "${finalAttrs.src}/frontend";
