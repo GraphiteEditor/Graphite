@@ -54,6 +54,7 @@ pub enum TextureImportError {
 	HardwareUnavailable { reason: String },
 
 	#[error("Vulkan operation failed: {operation}")]
+	#[cfg(not(target_os = "macos"))]
 	VulkanError { operation: String },
 
 	#[error("Platform-specific error: {message}")]

@@ -13,6 +13,8 @@ mod scheme_handler_factory;
 mod display_handler;
 
 pub(super) mod render_handler;
+
+#[cfg(not(target_os = "macos"))]
 pub(super) mod task;
 
 pub(super) use browser_process_app::BrowserProcessAppImpl;

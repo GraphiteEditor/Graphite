@@ -25,12 +25,23 @@ unsafe impl<H: CefEventHandler> Send for CefContextBuilder<H> {}
 
 impl<H: CefEventHandler> CefContextBuilder<H> {
 	pub(crate) fn new() -> Self {
+		Self::new_inner(false)
+	}
+
+	pub(crate) fn new_helper() -> Self {
+		Self::new_inner(true)
+	}
+
+	fn new_inner(helper: bool) -> Self {
 		#[cfg(target_os = "macos")]
 		let _loader = {
-			let loader = library_loader::LibraryLoader::new(&std::env::current_exe().unwrap(), false);
+			let loader = cef::library_loader::LibraryLoader::new(&std::env::current_exe().unwrap(), helper);
 			assert!(loader.load());
 			loader
 		};
+		#[cfg(not(target_os = "macos"))]
+		let _ = helper;
+
 		let _ = api_hash(CEF_API_VERSION_LAST, 0);
 
 		let args = Args::new();
@@ -66,12 +77,17 @@ impl<H: CefEventHandler> CefContextBuilder<H> {
 	pub(crate) fn initialize(self, event_handler: H, disable_gpu_acceleration: bool) -> Result<impl CefContext, InitError> {
 		let instance_dir = create_instance_dir();
 
+		let exe = std::env::current_exe().expect("cannot get current exe path");
+		let app_root = exe.parent().and_then(|p| p.parent()).expect("bad path structure").parent().expect("bad path structure");
+
 		let settings = Settings {
 			windowless_rendering_enabled: 1,
 			multi_threaded_message_loop: 0,
 			external_message_pump: 1,
 			root_cache_path: instance_dir.to_str().map(CefString::from).unwrap(),
 			cache_path: CefString::from(""),
+			no_sandbox: 1,
+			main_bundle_path: CefString::from(app_root.to_str().unwrap()),
 			..Default::default()
 		};
 

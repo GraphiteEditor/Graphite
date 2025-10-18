@@ -18,7 +18,7 @@ gpu = ["graphite-desktop-wrapper/gpu"]
 accelerated_paint = ["accelerated_paint_dmabuf", "accelerated_paint_d3d11", "accelerated_paint_iosurface"]
 accelerated_paint_dmabuf = ["libc", "ash"]
 accelerated_paint_d3d11 = ["windows", "ash"]
-accelerated_paint_iosurface = ["objc2-io-surface", "objc2-metal", "core-foundation"]
+accelerated_paint_iosurface = ["metal", "objc", "core-foundation"]
 
 [dependencies]
 # Local dependencies
@@ -64,11 +64,13 @@ windows = { version = "0.58.0", features = [
 	"Win32_UI_HiDpi",
 ], optional = true }
 
+
 # macOS-specific dependencies
 [target.'cfg(target_os = "macos")'.dependencies]
-objc2-io-surface = { version = "0.3", optional = true }
-objc2-metal = { version = "0.3", optional = true }
-core-foundation = { version = "0.9", optional = true }
+metal = { version = "0.31.0", optional = true }
+objc = { version = "0.2", optional = true }
+core-foundation = { version = "0.10", optional = true }
+
 
 # Linux-specific dependencies
 [target.'cfg(target_os = "linux")'.dependencies]

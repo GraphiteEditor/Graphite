@@ -3,6 +3,7 @@ members = [
 	"desktop",
 	"desktop/wrapper",
 	"desktop/embedded-resources",
+	"desktop/platform/mac",
 	"editor",
 	"frontend/wasm",
 	"libraries/dyn-any",

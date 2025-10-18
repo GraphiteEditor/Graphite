@@ -1,7 +1,6 @@
 //! Common utilities and traits for texture import across platforms
 
 use crate::cef::texture_import::*;
-use ash::vk;
 use cef::sys::cef_color_type_t;
 use wgpu::Device;
 
@@ -20,10 +19,10 @@ pub mod format {
 
 	#[cfg(not(target_os = "macos"))]
 	/// Convert CEF color type to Vulkan format
-	pub fn cef_to_vulkan(format: cef_color_type_t) -> Result<vk::Format, TextureImportError> {
+	pub fn cef_to_vulkan(format: cef_color_type_t) -> Result<ash::vk::Format, TextureImportError> {
 		match format {
-			cef_color_type_t::CEF_COLOR_TYPE_BGRA_8888 => Ok(vk::Format::B8G8R8A8_UNORM),
-			cef_color_type_t::CEF_COLOR_TYPE_RGBA_8888 => Ok(vk::Format::R8G8B8A8_UNORM),
+			cef_color_type_t::CEF_COLOR_TYPE_BGRA_8888 => Ok(ash::vk::Format::B8G8R8A8_UNORM),
+			cef_color_type_t::CEF_COLOR_TYPE_RGBA_8888 => Ok(ash::vk::Format::R8G8B8A8_UNORM),
 			_ => Err(TextureImportError::UnsupportedFormat { format }),
 		}
 	}
@@ -63,8 +62,10 @@ pub mod texture {
 }
 
 /// Common Vulkan utilities
+#[cfg(not(target_os = "macos"))]
 pub mod vulkan {
 	use super::*;
+	use ash::vk;
 
 	/// Find a suitable memory type index for Vulkan allocation
 	pub fn find_memory_type_index(type_filter: u32, properties: vk::MemoryPropertyFlags, mem_properties: &vk::PhysicalDeviceMemoryProperties) -> Option<u32> {
@@ -72,7 +73,6 @@ pub mod vulkan {
 	}
 
 	/// Check if the wgpu device is using Vulkan backend
-	#[cfg(not(target_os = "macos"))]
 	pub fn is_vulkan_backend(device: &Device) -> bool {
 		use wgpu::hal::api;
 		let mut is_vulkan = false;

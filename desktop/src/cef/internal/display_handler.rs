@@ -19,8 +19,13 @@ impl<H: CefEventHandler> DisplayHandlerImpl<H> {
 	}
 }
 
+#[cfg(not(target_os = "macos"))]
+type CefCursorHandle = cef::CursorHandle;
+#[cfg(target_os = "macos")]
+type CefCursorHandle = *mut u8;
+
 impl<H: CefEventHandler> ImplDisplayHandler for DisplayHandlerImpl<H> {
-	fn on_cursor_change(&self, _browser: Option<&mut cef::Browser>, _cursor: cef::CursorHandle, cursor_type: cef::CursorType, _custom_cursor_info: Option<&cef::CursorInfo>) -> ::std::os::raw::c_int {
+	fn on_cursor_change(&self, _browser: Option<&mut cef::Browser>, _cursor: CefCursorHandle, cursor_type: cef::CursorType, _custom_cursor_info: Option<&cef::CursorInfo>) -> ::std::os::raw::c_int {
 		let cursor = match cursor_type.into() {
 			CT_POINTER => CursorIcon::Default,
 			CT_CROSS => CursorIcon::Crosshair,
