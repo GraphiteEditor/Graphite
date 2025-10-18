@@ -1,7 +1,11 @@
 name: Profiling Changes
 
 on:
-  pull_request: {}
+  pull_request:
+    paths:
+      - 'node-graph/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
 
 env:
   CARGO_TERM_COLOR: always
@@ -50,14 +54,23 @@ jobs:
         id: master-sha
         run: echo "sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
+      - name: Get CPU info
+        id: cpu-info
+        run: |
+          # Get CPU model and create a short hash for cache key
+          CPU_MODEL=$(cat /proc/cpuinfo | grep "model name" | head -1 | cut -d: -f2 | xargs)
+          CPU_HASH=$(echo "$CPU_MODEL" | sha256sum | cut -c1-8)
+          echo "cpu-hash=$CPU_HASH" >> $GITHUB_OUTPUT
+          echo "CPU: $CPU_MODEL (hash: $CPU_HASH)"
+
       - name: Cache benchmark baselines
         id: cache-benchmark-baselines
         uses: actions/cache@v4
         with:
           path: target/iai
-          key: ${{ runner.os }}-benchmark-baselines-master-${{ steps.master-sha.outputs.sha }}
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ steps.cpu-info.outputs.cpu-hash }}-benchmark-baselines-master-${{ steps.master-sha.outputs.sha }}
           restore-keys: |
-            ${{ runner.os }}-benchmark-baselines-master-
+            ${{ runner.os }}-${{ runner.arch }}-${{ steps.cpu-info.outputs.cpu-hash }}-benchmark-baselines-master-
 
       - name: Run baseline benchmarks
         if: steps.cache-benchmark-baselines.outputs.cache-hit != 'true'
@@ -85,6 +98,8 @@ jobs:
           cargo bench --bench run_cached_iai -- --baseline=master --output-format=json | jq -sc | sed 's/\\"//g' > /tmp/run_cached_output.json
 
       - name: Make old comments collapsed by default
+        # Only run if we have write permissions (not a fork)
+        if: github.event.pull_request.head.repo.full_name == github.repository
         uses: actions/github-script@v7
         with:
           github-token: ${{secrets.GITHUB_TOKEN}}
@@ -110,6 +125,7 @@ jobs:
             }
 
       - name: Comment PR
+        if: github.event.pull_request.head.repo.full_name == github.repository
         uses: actions/github-script@v7
         with:
           github-token: ${{secrets.GITHUB_TOKEN}}
@@ -245,4 +261,29 @@ jobs:
               }
             } else {
               console.log("No benchmark results to display.");
+            }
+
+      - name: Fail on significant regressions
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            const allOutputs = [
+              JSON.parse(fs.readFileSync('/tmp/compile_output.json', 'utf8')),
+              JSON.parse(fs.readFileSync('/tmp/update_output.json', 'utf8')),
+              JSON.parse(fs.readFileSync('/tmp/run_once_output.json', 'utf8')),
+              JSON.parse(fs.readFileSync('/tmp/run_cached_output.json', 'utf8'))
+            ];
+
+            for (const benchmarkOutput of allOutputs) {
+              for (const benchmark of benchmarkOutput) {
+                if (benchmark.profiles?.[0]?.summaries?.parts?.[0]?.metrics_summary?.Callgrind?.Ir?.diffs?.diff_pct) {
+                  const diffPct = parseFloat(benchmark.profiles[0].summaries.parts[0].metrics_summary.Callgrind.Ir.diffs.diff_pct);
+                  if (diffPct > 5) {
+                    core.setFailed(`Significant performance regression detected: ${benchmark.module_path} ${benchmark.id} increased by ${diffPct.toFixed(2)}%`);
+                    return;
+                  }
+                }
+              }
             }
