@@ -21,6 +21,23 @@ pub trait Transform {
 		let rotation = -rotation_matrix.mul_vec2(DVec2::X).angle_to(DVec2::X);
 		if rotation == -0. { 0. } else { rotation }
 	}
+
+	/// Detects if the transform contains skew by checking if the transformation matrix
+	/// deviates from a pure rotation + uniform scale + translation.
+	///
+	/// Returns true if the matrix columns are not orthogonal or have different lengths,
+	/// indicating the presence of skew or non-uniform scaling.
+	fn has_skew(&self) -> bool {
+		let mat2 = self.transform().matrix2;
+		let col0 = mat2.x_axis;
+		let col1 = mat2.y_axis;
+
+		const EPSILON: f64 = 1e-10;
+
+		// Check if columns are orthogonal (dot product should be ~0) and equal length
+		// Non-orthogonal columns or different lengths indicate skew/non-uniform scaling
+		col0.dot(col1).abs() > EPSILON || (col0.length() - col1.length()).abs() > EPSILON
+	}
 }
 
 pub trait TransformMut: Transform {
