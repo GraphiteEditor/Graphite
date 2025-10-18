@@ -41,7 +41,7 @@
 	export let panelType: PanelType | undefined = undefined;
 	export let clickAction: ((index: number) => void) | undefined = undefined;
 	export let closeAction: ((index: number) => void) | undefined = undefined;
-	export let dblclickEmptySpaceAction : (() => void) | undefined = undefined;
+	export let dblclickEmptySpaceAction: (() => void) | undefined = undefined;
 
 	let className = "";
 	export { className as class };
