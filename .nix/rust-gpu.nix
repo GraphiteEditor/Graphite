@@ -2,7 +2,8 @@
 
 let
   toolchainPkg = pkgs.rust-bin.nightly."2025-06-23".default.override {
-    extensions = [ "rust-src" "rust-analyzer" "clippy" "cargo" "rustc-dev" "llvm-tools" ];
+    extensions =
+      [ "rust-src" "rust-analyzer" "clippy" "cargo" "rustc-dev" "llvm-tools" ];
   };
   toolchainRustPlatform = pkgs.makeRustPlatform {
     cargo = toolchainPkg;
@@ -12,13 +13,18 @@ let
     pname = "rustc_codegen_spirv";
     version = "0-unstable-2025-08-04";
     src = pkgs.fetchFromGitHub {
-      owner = "Rust-GPU";
-      repo = "rust-gpu";
+      owner = "Firestar99";
+      repo = "rust-gpu-new";
       rev = "c12f216121820580731440ee79ebc7403d6ea04f";
       hash = "sha256-rG1cZvOV0vYb1dETOzzbJ0asYdE039UZImobXZfKIno=";
     };
     cargoHash = "sha256-AEigcEc5wiBd3zLqWN/2HSbkfOVFneAqNvg9HsouZf4=";
-    cargoBuildFlags = [ "-p" "rustc_codegen_spirv" "--features=use-compiled-tools" "--no-default-features" ];
+    cargoBuildFlags = [
+      "-p"
+      "rustc_codegen_spirv"
+      "--features=use-compiled-tools"
+      "--no-default-features"
+    ];
     doCheck = false;
   });
   cargoWrapper = pkgs.writeShellScriptBin "cargo" ''
@@ -34,8 +40,8 @@ let
 
     exec ${toolchainPkg}/bin/cargo ${"\${filtered_args[@]}"}
   '';
-in
-{
+in {
   RUST_GPU_PATH_OVERRIDE = "${cargoWrapper}/bin:${toolchainPkg}/bin";
-  RUSTC_CODEGEN_SPIRV_PATH = "${rustc_codegen_spirv}/lib/librustc_codegen_spirv.so";
+  RUSTC_CODEGEN_SPIRV_PATH =
+    "${rustc_codegen_spirv}/lib/librustc_codegen_spirv.so";
 }
