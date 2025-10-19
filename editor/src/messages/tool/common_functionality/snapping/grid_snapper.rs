@@ -90,7 +90,7 @@ impl GridSnapper {
 
 	fn get_snap_lines(&self, document_point: DVec2, snap_data: &mut SnapData) -> Vec<Line> {
 		match snap_data.document.snapping_state.grid.grid_type {
-			GridType::Rectangular { spacing } => self.get_snap_lines_rectangular(document_point, snap_data, spacing),
+			GridType::Rectangular { spacing, .. } => self.get_snap_lines_rectangular(document_point, snap_data, spacing),
 			GridType::Isometric { y_axis_spacing, angle_a, angle_b } => self.get_snap_lines_isometric(document_point, snap_data, y_axis_spacing, angle_a, angle_b),
 		}
 	}

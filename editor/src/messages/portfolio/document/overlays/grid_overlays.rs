@@ -10,6 +10,7 @@ use graphene_std::vector::style::FillChoice;
 fn grid_overlay_rectangular(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, spacing: DVec2) {
 	let origin = document.snapping_state.grid.origin;
 	let grid_color = "#".to_string() + &document.snapping_state.grid.grid_color.to_rgba_hex_srgb();
+	let grid_color_minor = "#".to_string() + &document.snapping_state.grid.grid_color_minor.to_rgba_hex_srgb();
 	let Some(spacing) = GridSnapping::compute_rectangle_spacing(spacing, &document.document_ptz) else {
 		return;
 	};
@@ -36,7 +37,28 @@ fn grid_overlay_rectangular(document: &DocumentMessageHandler, overlay_context: 
 			} else {
 				DVec2::new(secondary_pos, primary_end)
 			};
-			overlay_context.line(document_to_viewport.transform_point2(start), document_to_viewport.transform_point2(end), Some(&grid_color), None);
+			overlay_context.line(
+				document_to_viewport.transform_point2(start),
+				document_to_viewport.transform_point2(end),
+				is_major_line(
+					line_index,
+					if primary == 0 {
+						document.snapping_state.grid.rectangular_major_interval_along_x
+					} else {
+						document.snapping_state.grid.rectangular_major_interval_along_y
+					},
+				)
+				.then_some(&if document.snapping_state.grid.major_is_thick { &grid_color } else { &grid_color_minor }),
+				is_major_line(
+					line_index,
+					if primary == 0 {
+						document.snapping_state.grid.rectangular_major_interval_along_x
+					} else {
+						document.snapping_state.grid.rectangular_major_interval_along_y
+					},
+				)
+				.then_some(if document.snapping_state.grid.major_is_thick { 3. } else { 1. }),
+			);
 		}
 	}
 }
@@ -49,6 +71,7 @@ fn grid_overlay_rectangular(document: &DocumentMessageHandler, overlay_context: 
 fn grid_overlay_rectangular_dot(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, spacing: DVec2) {
 	let origin = document.snapping_state.grid.origin;
 	let grid_color = "#".to_string() + &document.snapping_state.grid.grid_color.to_rgba_hex_srgb();
+	let grid_color_minor = "#".to_string() + &document.snapping_state.grid.grid_color_minor.to_rgba_hex_srgb();
 	let Some(spacing) = GridSnapping::compute_rectangle_spacing(spacing, &document.document_ptz) else {
 		return;
 	};
@@ -174,9 +197,17 @@ fn grid_overlay_isometric_dot(document: &DocumentMessageHandler, overlay_context
 	}
 }
 
+fn is_major_line(line_index: i32, major_interval: u32) -> bool {
+	line_index % major_interval as i32 == 0
+}
+
+fn line_is_thick(line_index: i32, major_interval: u32, major_is_thick: bool) -> bool {
+	major_is_thick && is_major_line(line_index, major_interval)
+}
+
 pub fn grid_overlay(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext) {
 	match document.snapping_state.grid.grid_type {
-		GridType::Rectangular { spacing } => {
+		GridType::Rectangular { spacing, .. } => {
 			if document.snapping_state.grid.dot_display {
 				grid_overlay_rectangular_dot(document, overlay_context, spacing)
 			} else {
@@ -205,10 +236,8 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 	}
 	let update_origin = |grid, update: fn(&mut GridSnapping) -> Option<&mut f64>| {
 		update_val::<NumberInput, _>(grid, move |grid, val| {
-			if let Some(val) = val.value {
-				if let Some(update) = update(grid) {
-					*update = val;
-				}
+			if let (Some(val), Some(update)) = (val.value, update(grid)) {
+				*update = val;
 			}
 		})
 	};
@@ -219,7 +248,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 			}
 		})
 	};
-	let update_display = |grid, update: fn(&mut GridSnapping) -> Option<&mut bool>| {
+	let _update_display = |grid, update: fn(&mut GridSnapping) -> Option<&mut bool>| {
 		update_val::<CheckboxInput, _>(grid, move |grid, checkbox| {
 			if let Some(update) = update(grid) {
 				*update = checkbox.checked;
@@ -230,7 +259,54 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 	widgets.push(LayoutGroup::Row {
 		widgets: vec![TextLabel::new("Grid").bold(true).widget_holder()],
 	});
+	let mut color_widgets = vec![TextLabel::new("Color").table_align(true).widget_holder(), Separator::new(SeparatorType::Unrelated).widget_holder()];
+	color_widgets.push(
+		ColorInput::new(FillChoice::Solid(grid.grid_color.to_gamma_srgb()))
+			.tooltip("Grid display color")
+			.allow_none(false)
+			.on_update(update_color(grid, |grid| Some(&mut grid.grid_color)))
+			.widget_holder(),
+	);
+	if grid.has_minor_lines() {
+		color_widgets.push(Separator::new(SeparatorType::Related).widget_holder());
+		color_widgets.push(
+			ColorInput::new(FillChoice::Solid(grid.grid_color_minor.to_gamma_srgb()))
+				.tooltip("Minor grid line display color")
+				.allow_none(false)
+				.on_update(update_color(grid, |grid| Some(&mut grid.grid_color_minor)))
+				.widget_holder(),
+		);
+	}
+	widgets.push(LayoutGroup::Row { widgets: color_widgets });
 
+	widgets.push(LayoutGroup::Row {
+		widgets: vec![
+			TextLabel::new("Display").table_align(true).widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			RadioInput::new(vec![
+				RadioEntryData::new("small").icon("Dot").on_update(update_val(grid, |grid, _| {
+					grid.major_is_thick = false;
+				})),
+				RadioEntryData::new("large").icon("DotLarge").on_update(update_val(grid, |grid, _| {
+					grid.major_is_thick = true;
+				})),
+			])
+			.selected_index(Some(if grid.major_is_thick { 1 } else { 0 }))
+			.widget_holder(),
+			Separator::new(SeparatorType::Related).widget_holder(),
+			RadioInput::new(vec![
+				RadioEntryData::new("lines").label("Lines").icon("Grid").on_update(update_val(grid, |grid, _| {
+					grid.dot_display = false;
+				})),
+				RadioEntryData::new("dots").label("Dots").icon("GridDotted").on_update(update_val(grid, |grid, _| {
+					grid.dot_display = true;
+				})),
+			])
+			// .min_width(200)
+			.selected_index(Some(if grid.dot_display { 1 } else { 0 }))
+			.widget_holder(),
+		],
+	});
 	widgets.push(LayoutGroup::Row {
 		widgets: vec![
 			TextLabel::new("Type").table_align(true).widget_holder(),
@@ -245,7 +321,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 					grid.grid_type = GridType::Rectangular { spacing: grid.rectangular_spacing };
 				})),
 				RadioEntryData::new("isometric").label("Isometric").on_update(update_val(grid, |grid, _| {
-					if let GridType::Rectangular { spacing } = grid.grid_type {
+					if let GridType::Rectangular { spacing, .. } = grid.grid_type {
 						grid.rectangular_spacing = spacing;
 					}
 					grid.grid_type = GridType::Isometric {
@@ -263,24 +339,6 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 			.widget_holder(),
 		],
 	});
-
-	let mut color_widgets = vec![TextLabel::new("Display").table_align(true).widget_holder(), Separator::new(SeparatorType::Unrelated).widget_holder()];
-	color_widgets.extend([
-		CheckboxInput::new(grid.dot_display)
-			.icon("GridDotted")
-			.tooltip("Display as dotted grid")
-			.on_update(update_display(grid, |grid| Some(&mut grid.dot_display)))
-			.widget_holder(),
-		Separator::new(SeparatorType::Related).widget_holder(),
-	]);
-	color_widgets.push(
-		ColorInput::new(FillChoice::Solid(grid.grid_color.to_gamma_srgb()))
-			.tooltip("Grid display color")
-			.allow_none(false)
-			.on_update(update_color(grid, |grid| Some(&mut grid.grid_color)))
-			.widget_holder(),
-	);
-	widgets.push(LayoutGroup::Row { widgets: color_widgets });
 
 	widgets.push(LayoutGroup::Row {
 		widgets: vec![
@@ -303,27 +361,58 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 	});
 
 	match grid.grid_type {
-		GridType::Rectangular { spacing } => widgets.push(LayoutGroup::Row {
-			widgets: vec![
-				TextLabel::new("Spacing").table_align(true).widget_holder(),
-				Separator::new(SeparatorType::Unrelated).widget_holder(),
-				NumberInput::new(Some(spacing.x))
-					.label("X")
-					.unit(" px")
-					.min(0.)
-					.min_width(98)
-					.on_update(update_origin(grid, |grid| grid.grid_type.rectangular_spacing().map(|spacing| &mut spacing.x)))
-					.widget_holder(),
-				Separator::new(SeparatorType::Related).widget_holder(),
-				NumberInput::new(Some(spacing.y))
-					.label("Y")
-					.unit(" px")
-					.min(0.)
-					.min_width(98)
-					.on_update(update_origin(grid, |grid| grid.grid_type.rectangular_spacing().map(|spacing| &mut spacing.y)))
-					.widget_holder(),
-			],
-		}),
+		GridType::Rectangular { spacing, .. } => {
+			widgets.push(LayoutGroup::Row {
+				widgets: vec![
+					TextLabel::new("Spacing").table_align(true).widget_holder(),
+					Separator::new(SeparatorType::Unrelated).widget_holder(),
+					NumberInput::new(Some(spacing.x))
+						.label("X")
+						.unit(" px")
+						.min(0.)
+						.min_width(98)
+						.on_update(update_origin(grid, |grid| grid.grid_type.rectangular_spacing().map(|spacing| &mut spacing.x)))
+						.widget_holder(),
+					Separator::new(SeparatorType::Related).widget_holder(),
+					NumberInput::new(Some(spacing.y))
+						.label("Y")
+						.unit(" px")
+						.min(0.)
+						.min_width(98)
+						.on_update(update_origin(grid, |grid| grid.grid_type.rectangular_spacing().map(|spacing| &mut spacing.y)))
+						.widget_holder(),
+				],
+			});
+			widgets.push(LayoutGroup::Row {
+				widgets: vec![
+					TextLabel::new("Mark Every").table_align(true).widget_holder(),
+					Separator::new(SeparatorType::Unrelated).widget_holder(),
+					NumberInput::new(Some(grid.rectangular_major_interval_along_x as f64))
+						.unit(" col")
+						.int()
+						.min(1.)
+						.min_width(98)
+						.on_update(update_val(grid, |grid, val: &NumberInput| {
+							if let Some(val) = val.value {
+								grid.rectangular_major_interval_along_x = val as u32;
+							}
+						}))
+						.widget_holder(),
+					Separator::new(SeparatorType::Related).widget_holder(),
+					NumberInput::new(Some(grid.rectangular_major_interval_along_y as f64))
+						.unit(" row")
+						.int()
+						.min(1.)
+						.min_width(98)
+						.on_update(update_val(grid, |grid, val: &NumberInput| {
+							if let Some(val) = val.value {
+								grid.rectangular_major_interval_along_y = val as u32;
+							}
+						}))
+						.widget_holder(),
+				],
+			});
+		}
 		GridType::Isometric { y_axis_spacing, angle_a, angle_b } => {
 			widgets.push(LayoutGroup::Row {
 				widgets: vec![
@@ -342,15 +431,63 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 					TextLabel::new("Angles").table_align(true).widget_holder(),
 					Separator::new(SeparatorType::Unrelated).widget_holder(),
 					NumberInput::new(Some(angle_a))
+						.label("A")
 						.unit("°")
 						.min_width(98)
 						.on_update(update_origin(grid, |grid| grid.grid_type.angle_a()))
 						.widget_holder(),
 					Separator::new(SeparatorType::Related).widget_holder(),
 					NumberInput::new(Some(angle_b))
+						.label("B")
 						.unit("°")
 						.min_width(98)
 						.on_update(update_origin(grid, |grid| grid.grid_type.angle_b()))
+						.widget_holder(),
+				],
+			});
+			widgets.push(LayoutGroup::Row {
+				widgets: vec![
+					TextLabel::new("Mark Every").table_align(true).widget_holder(),
+					Separator::new(SeparatorType::Unrelated).widget_holder(),
+					NumberInput::new(Some(grid.isometric_major_interval_along_a as f64))
+						.label("A")
+						.int()
+						.min(1.)
+						.min_width(98)
+						.on_update(update_val(grid, |grid, val: &NumberInput| {
+							if let Some(val) = val.value {
+								grid.isometric_major_interval_along_a = val as u32;
+							}
+						}))
+						.widget_holder(),
+					Separator::new(SeparatorType::Related).widget_holder(),
+					NumberInput::new(Some(grid.isometric_major_interval_along_b as f64))
+						.label("B")
+						.int()
+						.min(1.)
+						.min_width(98)
+						.on_update(update_val(grid, |grid, val: &NumberInput| {
+							if let Some(val) = val.value {
+								grid.isometric_major_interval_along_b = val as u32;
+							}
+						}))
+						.widget_holder(),
+				],
+			});
+			widgets.push(LayoutGroup::Row {
+				widgets: vec![
+					TextLabel::new("").table_align(true).widget_holder(),
+					Separator::new(SeparatorType::Unrelated).widget_holder(),
+					NumberInput::new(Some(grid.isometric_major_interval_along_x as f64))
+						.label("X")
+						.int()
+						.min(1.)
+						.min_width(200)
+						.on_update(update_val(grid, |grid, val: &NumberInput| {
+							if let Some(val) = val.value {
+								grid.isometric_major_interval_along_x = val as u32;
+							}
+						}))
 						.widget_holder(),
 				],
 			});
