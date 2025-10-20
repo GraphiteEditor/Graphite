@@ -28,8 +28,6 @@ members = [
 	"proc-macros",
 ]
 default-members = [
-	"desktop",
-	"desktop/wrapper",
 	"editor",
 	"frontend/wasm",
 	"libraries/dyn-any",

@@ -10,13 +10,6 @@
 //! - **Windows**: D3D11 shared textures via Vulkan interop
 //! - **macOS**: IOSurface via Metal native API
 //!
-//! # Usage
-//!
-//! ```no_run
-//! // Import texture with automatic platform detection
-//! let texture = shared_handle.import_texture(&device)?;
-//! ```
-//!
 //! # Features
 //!
 //! - `accelerated_paint` - Base feature for texture import
@@ -54,6 +47,7 @@ pub enum TextureImportError {
 	HardwareUnavailable { reason: String },
 
 	#[error("Vulkan operation failed: {operation}")]
+	#[cfg(not(target_os = "macos"))]
 	VulkanError { operation: String },
 
 	#[error("Platform-specific error: {message}")]

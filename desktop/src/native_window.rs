@@ -50,6 +50,15 @@ impl NativeWindowHandle {
 			}
 		}
 
+		#[cfg(target_os = "macos")]
+		{
+			let mac_window = winit::platform::macos::WindowAttributesMacOS::default()
+				.with_titlebar_transparent(true)
+				.with_fullsize_content_view(true)
+				.with_title_hidden(true);
+			window = window.with_platform_attributes(Box::new(mac_window));
+		}
+
 		window
 	}
 	#[allow(unused_variables)]
