@@ -26,6 +26,7 @@ use win as native;
 
 pub(crate) struct Window {
 	winit_window: Arc<dyn winit::window::Window>,
+	#[allow(dead_code)]
 	native_handle: native::NativeWindowImpl,
 }
 
