@@ -66,6 +66,12 @@ impl<H: CefEventHandler + Clone> ImplApp for BrowserProcessAppImpl<H> {
 					cmd.append_switch_with_value(Some(&CefString::from("ozone-platform")), Some(&CefString::from("wayland")));
 				}
 			}
+
+			#[cfg(target_os = "macos")]
+			{
+				// Hide user prompt asking for keychain access
+				cmd.append_switch(Some(&CefString::from("use-mock-keychain")));
+			}
 		}
 	}
 
