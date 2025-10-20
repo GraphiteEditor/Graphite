@@ -48,7 +48,7 @@ fn grid_overlay_rectangular(document: &DocumentMessageHandler, overlay_context: 
 						document.snapping_state.grid.rectangular_major_interval_along_y
 					},
 				)
-				.then_some(&if document.snapping_state.grid.major_is_thick { &grid_color } else { &grid_color_minor }),
+				.then_some(if document.snapping_state.grid.major_is_thick { &grid_color } else { &grid_color_minor }),
 				is_major_line(
 					line_index,
 					if primary == 0 {
