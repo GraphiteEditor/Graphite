@@ -1,7 +1,6 @@
 use rfd::AsyncFileDialog;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
 use std::sync::mpsc::SyncSender;
@@ -12,22 +11,20 @@ use winit::application::ApplicationHandler;
 use winit::event::WindowEvent;
 use winit::event_loop::ActiveEventLoop;
 use winit::event_loop::ControlFlow;
-use winit::window::Window;
 use winit::window::WindowId;
 
 use crate::cef;
 use crate::consts::CEF_MESSAGE_LOOP_MAX_ITERATIONS;
 use crate::event::{AppEvent, AppEventScheduler};
-use crate::native_window;
 use crate::persist::PersistentData;
 use crate::render::GraphicsState;
+use crate::window::Window;
 use graphite_desktop_wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, Platform};
 use graphite_desktop_wrapper::{DesktopWrapper, NodeGraphExecutionResult, WgpuContext, serialize_frontend_messages};
 
 pub(crate) struct App {
 	cef_context: Box<dyn cef::CefContext>,
-	window: Option<Arc<dyn Window>>,
-	native_window: native_window::NativeWindowHandle,
+	window: Option<Window>,
 	cef_schedule: Option<Instant>,
 	cef_window_size_sender: Sender<cef::WindowSize>,
 	graphics_state: Option<GraphicsState>,
@@ -82,7 +79,6 @@ impl App {
 			web_communication_initialized: false,
 			web_communication_startup_buffer: Vec::new(),
 			persistent_data,
-			native_window: Default::default(),
 			launch_documents,
 		}
 	}
@@ -173,18 +169,17 @@ impl App {
 			}
 			DesktopFrontendMessage::MinimizeWindow => {
 				if let Some(window) = &self.window {
-					window.set_minimized(true);
+					window.minimize();
 				}
 			}
 			DesktopFrontendMessage::MaximizeWindow => {
 				if let Some(window) = &self.window {
-					let maximized = !window.is_maximized();
-					window.set_maximized(maximized);
+					window.toggle_maximize();
 				}
 			}
 			DesktopFrontendMessage::DragWindow => {
 				if let Some(window) = &self.window {
-					let _ = window.drag_window();
+					let _ = window.start_drag();
 				}
 			}
 			DesktopFrontendMessage::CloseWindow => {
@@ -348,15 +343,11 @@ impl App {
 }
 impl ApplicationHandler for App {
 	fn can_create_surfaces(&mut self, event_loop: &dyn ActiveEventLoop) {
-		let window_attributes = self.native_window.build(event_loop);
-
-		let window: Arc<dyn Window> = Arc::from(event_loop.create_window(window_attributes).unwrap());
-
-		self.native_window.setup(window.as_ref());
-
-		let graphics_state = GraphicsState::new(window.clone(), self.wgpu_context.clone());
-
+		let window = Window::new(event_loop);
 		self.window = Some(window);
+
+		let graphics_state = GraphicsState::new(self.window.as_ref().unwrap(), self.wgpu_context.clone());
+
 		self.graphics_state = Some(graphics_state);
 
 		tracing::info!("Winit window created and ready");
@@ -397,7 +388,7 @@ impl ApplicationHandler for App {
 				let Some(ref mut graphics_state) = self.graphics_state else { return };
 				// Only rerender once we have a new UI texture to display
 				if let Some(window) = &self.window {
-					match graphics_state.render(window.as_ref()) {
+					match graphics_state.render(window) {
 						Ok(_) => {}
 						Err(wgpu::SurfaceError::Lost) => {
 							tracing::warn!("lost surface");

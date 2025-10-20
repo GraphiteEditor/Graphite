@@ -10,7 +10,7 @@ mod cef;
 mod cli;
 mod dirs;
 mod event;
-mod native_window;
+mod window;
 mod persist;
 mod render;
 
