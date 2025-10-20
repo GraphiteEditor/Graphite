@@ -4,7 +4,7 @@ use winit::window::{Window, WindowAttributes};
 use super::NativeWindow;
 
 pub(super) struct NativeWindowImpl {
-	native_handle: windows::WindowsNativeWindowHandle,
+	native_handle: native_handle::NativeWindowHandle,
 }
 
 impl NativeWindow for NativeWindowImpl {
@@ -17,8 +17,16 @@ impl NativeWindow for NativeWindowImpl {
 		}
 	}
 
-	fn new(_window: &dyn Window) -> Self {
-		let native_handle = windows::WindowsNativeWindowHandle::new(window);
+	fn new(window: &dyn Window) -> Self {
+		let native_handle = native_handle::NativeWindowHandle::new(window);
 		NativeWindowImpl { native_handle }
 	}
 }
+
+impl Drop for NativeWindowImpl {
+	fn drop(&mut self) {
+		self.native_handle.destroy();
+	}
+}
+
+mod native_handle;
