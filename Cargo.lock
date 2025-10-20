@@ -2285,7 +2285,15 @@ dependencies = [
  "wgpu",
  "windows",
  "winit",
- "winres",
+]
+
+[[package]]
+name = "graphite-desktop-bundle"
+version = "0.1.0"
+dependencies = [
+ "cef-dll-sys",
+ "plist",
+ "serde",
 ]
 
 [[package]]
@@ -2293,6 +2301,21 @@ name = "graphite-desktop-embedded-resources"
 version = "0.1.0"
 dependencies = [
  "include_dir",
+]
+
+[[package]]
+name = "graphite-desktop-platform-mac"
+version = "0.1.0"
+dependencies = [
+ "graphite-desktop",
+]
+
+[[package]]
+name = "graphite-desktop-platform-win"
+version = "0.1.0"
+dependencies = [
+ "graphite-desktop",
+ "winres",
 ]
 
 [[package]]
@@ -4087,6 +4110,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7edddbd0b52d732b21ad9a5fab5c704c14cd949e5e9a1ec5929a24fded1b904c"
 
 [[package]]
+name = "plist"
+version = "1.8.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "740ebea15c5d1428f910cd1a5f52cebf8d25006245ed8ade92702f4943d91e07"
+dependencies = [
+ "base64",
+ "indexmap",
+ "quick-xml 0.38.3",
+ "serde",
+ "time",
+]
+
+[[package]]
 name = "plotters"
 version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4300,6 +4336,15 @@ name = "quick-xml"
 version = "0.37.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "331e97a1af0bf59823e6eadffe373d7b27f485be8748f71471c662c1f269b7fb"
+dependencies = [
+ "memchr",
+]
+
+[[package]]
+name = "quick-xml"
+version = "0.38.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "42a232e7487fc2ef313d96dde7948e7a3c05101870d8985e4fd8d26aedd27b89"
 dependencies = [
  "memchr",
 ]
@@ -6523,7 +6568,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "54cb1e9dc49da91950bdfd8b848c49330536d9d1fb03d4bfec8cae50caa50ae3"
 dependencies = [
  "proc-macro2",
- "quick-xml",
+ "quick-xml 0.37.5",
  "quote",
 ]
 
