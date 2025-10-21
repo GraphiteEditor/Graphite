@@ -3,7 +3,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-pub(crate) const APP_NAME: &str = "Graphite Editor";
+pub(crate) const APP_NAME: &str = "Graphite";
 
 fn profile_name() -> &'static str {
 	let mut profile = env!("CARGO_PROFILE");
