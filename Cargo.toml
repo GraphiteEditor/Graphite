@@ -205,7 +205,6 @@ opt-level = 1
 [profile.dev.package]
 graphite-editor = { opt-level = 1 }
 graphene-core-shaders = { opt-level = 1 }
-graphene-core = { opt-level = 1 }
 graphene-std = { opt-level = 1 }
 interpreted-executor = { opt-level = 1 } # This is a mitigation for https://github.com/rustwasm/wasm-pack/issues/981 which is needed because the node_registry function is too large
 graphite-proc-macros = { opt-level = 1 }
