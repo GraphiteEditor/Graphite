@@ -23,7 +23,7 @@ pub(crate) struct GraphicsState {
 }
 
 impl GraphicsState {
-	pub(crate) fn new(window: &Window, context: WgpuContext) -> GraphicsState {
+	pub(crate) fn new(window: &Window, context: WgpuContext) -> Self {
 		let size = window.surface_size();
 		let surface = window.create_surface(context.instance.clone());
 
@@ -163,7 +163,7 @@ impl GraphicsState {
 
 		let wgpu_executor = WgpuExecutor::with_context(context.clone()).expect("Failed to create WgpuExecutor");
 
-		GraphicsState {
+		Self {
 			surface,
 			context,
 			executor: wgpu_executor,
