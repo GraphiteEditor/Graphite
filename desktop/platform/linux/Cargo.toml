@@ -1,7 +1,7 @@
 [package]
-name = "graphite-desktop-platform-win"
+name = "graphite-desktop-platform-linux"
 version = "0.0.0"
-description = "Graphite Desktop Platform Windows"
+description = "Graphite Desktop Platform Linux"
 authors = ["Graphite Authors <contact@graphite.rs>"]
 license = "Apache-2.0"
 repository = ""
@@ -10,6 +10,3 @@ rust-version = "1.87"
 
 [dependencies]
 graphite-desktop = { path = "../.." }
-
-[target.'cfg(target_os = "windows")'.build-dependencies]
-winres = "0.1"

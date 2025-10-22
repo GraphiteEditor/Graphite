@@ -4,6 +4,7 @@ members = [
 	"desktop/wrapper",
 	"desktop/embedded-resources",
 	"desktop/bundle",
+	"desktop/platform/linux",
 	"desktop/platform/mac",
 	"desktop/platform/win",
 	"editor",

@@ -2289,7 +2289,7 @@ dependencies = [
 
 [[package]]
 name = "graphite-desktop-bundle"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "cef-dll-sys",
  "plist",
@@ -2304,15 +2304,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "graphite-desktop-platform-linux"
+version = "0.0.0"
+dependencies = [
+ "graphite-desktop",
+]
+
+[[package]]
 name = "graphite-desktop-platform-mac"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "graphite-desktop",
 ]
 
 [[package]]
 name = "graphite-desktop-platform-win"
-version = "0.1.0"
+version = "0.0.0"
 dependencies = [
  "graphite-desktop",
  "winres",
