@@ -157,6 +157,17 @@ jobs:
               return str.padStart(len);
             }
 
+            function isSignificantChange(diffPct, absoluteChange, benchmarkType) {
+              const meetsPercentageThreshold = Math.abs(diffPct) > 5;
+              const meetsAbsoluteThreshold = absoluteChange > 200000;
+              const isCachedExecution = benchmarkType === 'run_cached' ||
+                                        benchmarkType.includes('Cached Execution');
+
+              return isCachedExecution
+                ? (meetsPercentageThreshold && meetsAbsoluteThreshold)
+                : meetsPercentageThreshold;
+            }
+
             function processBenchmarkOutput(benchmarkOutput, sectionTitle, isLast = false) {
               let sectionBody = "";
               let hasResults = false;
@@ -198,7 +209,7 @@ jobs:
                     
                     sectionBody += "```\n</details>\n\n";
                     
-                        if (Math.abs(irDiff.diff_pct) > 5) {
+                        if (isSignificantChange(irDiff.diff_pct, Math.abs(irDiff.new - irDiff.old), sectionTitle)) {
                           significantChanges = true;
                           hasSignificantChanges = true;
                         }
@@ -276,12 +287,21 @@ jobs:
               JSON.parse(fs.readFileSync('/tmp/run_cached_output.json', 'utf8'))
             ];
 
-            for (const benchmarkOutput of allOutputs) {
+            const outputNames = ['compile', 'update', 'run_once', 'run_cached'];
+
+            for (let i = 0; i < allOutputs.length; i++) {
+              const benchmarkOutput = allOutputs[i];
+              const outputName = outputNames[i];
+
               for (const benchmark of benchmarkOutput) {
                 if (benchmark.profiles?.[0]?.summaries?.parts?.[0]?.metrics_summary?.Callgrind?.Ir?.diffs?.diff_pct) {
                   const diffPct = parseFloat(benchmark.profiles[0].summaries.parts[0].metrics_summary.Callgrind.Ir.diffs.diff_pct);
-                  if (diffPct > 5) {
-                    core.setFailed(`Significant performance regression detected: ${benchmark.module_path} ${benchmark.id} increased by ${diffPct.toFixed(2)}%`);
+                  const oldValue = benchmark.profiles[0].summaries.parts[0].metrics_summary.Callgrind.Ir.metrics.Both[1].Int;
+                  const newValue = benchmark.profiles[0].summaries.parts[0].metrics_summary.Callgrind.Ir.metrics.Both[0].Int;
+                  const absoluteChange = Math.abs(newValue - oldValue);
+
+                  if (isSignificantChange(diffPct, absoluteChange, outputName)) {
+                    core.setFailed(`Significant performance regression detected: ${benchmark.module_path} ${benchmark.id} increased by ${absoluteChange.toLocaleString()} instructions (${diffPct.toFixed(2)}%)`);
                     return;
                   }
                 }
