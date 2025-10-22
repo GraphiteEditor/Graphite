@@ -24,8 +24,8 @@ pub fn main() -> Result<(), Box<dyn Error>> {
 
 	// TODO: Consider adding more useful cli
 	if std::env::args().any(|a| a == "open") {
-		let app_path = app_dir.to_string_lossy();
-		run_command("open", &[&app_path]).expect("failed to open app")
+		let executable_path = app_dir.join(EXEC_PATH).join(APP_NAME);
+		run_command(&executable_path.to_string_lossy(), &[]).expect("failed to open app");
 	}
 
 	Ok(())
