@@ -3,22 +3,19 @@ use base64::Engine;
 pub use graph_craft::document::value::RenderOutputType;
 pub use graph_craft::wasm_application_io::*;
 use graphene_application_io::ApplicationIo;
-#[cfg(target_family = "wasm")]
 use graphene_core::gradient::GradientStops;
 #[cfg(target_family = "wasm")]
 use graphene_core::math::bbox::Bbox;
 use graphene_core::raster::image::Image;
 use graphene_core::raster_types::{CPU, Raster};
 use graphene_core::table::Table;
-#[cfg(target_family = "wasm")]
 use graphene_core::transform::Footprint;
-#[cfg(target_family = "wasm")]
 use graphene_core::vector::Vector;
 use graphene_core::{Color, Ctx};
-#[cfg(target_family = "wasm")]
 use graphene_core::{Graphic, WasmNotSend};
+use graphene_svg_renderer::Render;
 #[cfg(target_family = "wasm")]
-use graphene_svg_renderer::{Render, RenderParams, RenderSvgSegmentList, SvgRender};
+use graphene_svg_renderer::{RenderParams, RenderSvgSegmentList, SvgRender};
 use std::sync::Arc;
 #[cfg(target_family = "wasm")]
 use wasm_bindgen::JsCast;
@@ -205,6 +202,74 @@ where
 	let image = Image::from_image_data(&rasterized.data().0, resolution.x as u32, resolution.y as u32);
 	Table::new_from_row(TableRow {
 		element: Raster::new_cpu(image),
+		transform: footprint.transform,
+		..Default::default()
+	})
+}
+
+#[cfg(not(target_family = "wasm"))]
+#[node_macro::node(category(""))]
+async fn rasterize<'a: 'n, T: WasmNotSend + 'n>(
+	_: impl Ctx,
+	#[implementations(
+		Table<Vector>,
+		Table<Raster<CPU>>,
+		Table<Graphic>,
+		Table<Color>,
+		Table<GradientStops>,
+	)]
+	mut data: Table<T>,
+	footprint: Footprint,
+	wgpu_executor: &'a wgpu_executor::WgpuExecutor,
+) -> Table<Raster<CPU>>
+where
+	Table<T>: graphene_svg_renderer::Render,
+{
+	use graphene_core::math::bbox::Bbox;
+	use graphene_core::table::TableRow;
+	use wgpu_executor::RenderContext;
+
+	if footprint.transform.matrix2.determinant() == 0. {
+		log::trace!("Invalid footprint received for rasterization");
+		return Table::new();
+	}
+
+	let aabb = Bbox::from_transform(footprint.transform).to_axis_aligned_bbox();
+	let resolution = footprint.resolution;
+
+	// Adjust data transforms to account for bounding box offset
+	for row in data.iter_mut() {
+		*row.transform = glam::DAffine2::from_translation(-aabb.start) * *row.transform;
+	}
+
+	// Create Vello scene and render context
+	let mut scene = vello::Scene::new();
+	let mut context = RenderContext::default();
+
+	// Render data to Vello scene
+	let render_params = graphene_svg_renderer::RenderParams {
+		footprint: Footprint::default(),
+		for_export: true,
+		..Default::default()
+	};
+	data.render_to_vello(&mut scene, Default::default(), &mut context, &render_params);
+
+	// Render scene to texture
+	let background = graphene_core::Color::TRANSPARENT;
+	let wgpu_texture = wgpu_executor
+		.render_vello_scene_to_texture(&scene, resolution, &context, background)
+		.await
+		.expect("Failed to render Vello scene to texture");
+
+	// Wrap the texture in a Raster<GPU>
+	let gpu_raster = Raster::new_gpu(wgpu_texture);
+
+	// Convert GPU raster to CPU raster using Convert trait
+	use graphene_core::ops::Convert;
+	let cpu_raster = gpu_raster.convert(Footprint::default(), wgpu_executor).await;
+
+	Table::new_from_row(TableRow {
+		element: cpu_raster,
 		transform: footprint.transform,
 		..Default::default()
 	})
