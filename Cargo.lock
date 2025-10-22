@@ -1338,11 +1338,6 @@ name = "dpi"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d8b14ccef22fc6f5a8f4d7d768562a182c04ce9a3b3157b91390b52ddfdf1a76"
-
-[[package]]
-name = "dpi"
-version = "0.1.2"
-source = "git+https://github.com/timon-schelling/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad#37221c7192ef1deec022a2278e54429331c01bad"
 dependencies = [
  "serde",
 ]
@@ -3433,7 +3428,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "01c1738382f66ed56b3b9c8119e794a2e23148ac8ea214eda86622d4cb9d415a"
 dependencies = [
  "crossbeam-channel",
- "dpi 0.1.2 (registry+https://github.com/rust-lang/crates.io-index)",
+ "dpi",
  "keyboard-types 0.7.0",
  "objc2",
  "objc2-app-kit",
@@ -7245,12 +7240,12 @@ checksum = "271414315aff87387382ec3d271b52d7ae78726f5d44ac98b4f4030c91880486"
 [[package]]
 name = "winit"
 version = "0.30.12"
-source = "git+https://github.com/timon-schelling/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad#37221c7192ef1deec022a2278e54429331c01bad"
+source = "git+https://github.com/timon-schelling/winit.git?rev=4be17a5ed552c7a39a671bca97880c929334751e#4be17a5ed552c7a39a671bca97880c929334751e"
 dependencies = [
  "bitflags 2.9.3",
  "cfg_aliases",
  "cursor-icon",
- "dpi 0.1.2 (git+https://github.com/timon-schelling/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad)",
+ "dpi",
  "libc",
  "raw-window-handle",
  "rustix",
@@ -7272,11 +7267,11 @@ dependencies = [
 [[package]]
 name = "winit-android"
 version = "0.30.12"
-source = "git+https://github.com/timon-schelling/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad#37221c7192ef1deec022a2278e54429331c01bad"
+source = "git+https://github.com/timon-schelling/winit.git?rev=4be17a5ed552c7a39a671bca97880c929334751e#4be17a5ed552c7a39a671bca97880c929334751e"
 dependencies = [
  "android-activity",
  "bitflags 2.9.3",
- "dpi 0.1.2 (git+https://github.com/timon-schelling/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad)",
+ "dpi",
  "ndk",
  "raw-window-handle",
  "smol_str",
@@ -7287,12 +7282,12 @@ dependencies = [
 [[package]]
 name = "winit-appkit"
 version = "0.30.12"
-source = "git+https://github.com/timon-schelling/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad#37221c7192ef1deec022a2278e54429331c01bad"
+source = "git+https://github.com/timon-schelling/winit.git?rev=4be17a5ed552c7a39a671bca97880c929334751e#4be17a5ed552c7a39a671bca97880c929334751e"
 dependencies = [
  "bitflags 2.9.3",
  "block2",
  "dispatch2",
- "dpi 0.1.2 (git+https://github.com/timon-schelling/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad)",
+ "dpi",
  "objc2",
  "objc2-app-kit",
  "objc2-core-foundation",
@@ -7309,7 +7304,7 @@ dependencies = [
 [[package]]
 name = "winit-common"
 version = "0.30.12"
-source = "git+https://github.com/timon-schelling/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad#37221c7192ef1deec022a2278e54429331c01bad"
+source = "git+https://github.com/timon-schelling/winit.git?rev=4be17a5ed552c7a39a671bca97880c929334751e#4be17a5ed552c7a39a671bca97880c929334751e"
 dependencies = [
  "memmap2",
  "objc2",
@@ -7324,11 +7319,11 @@ dependencies = [
 [[package]]
 name = "winit-core"
 version = "0.30.12"
-source = "git+https://github.com/timon-schelling/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad#37221c7192ef1deec022a2278e54429331c01bad"
+source = "git+https://github.com/timon-schelling/winit.git?rev=4be17a5ed552c7a39a671bca97880c929334751e#4be17a5ed552c7a39a671bca97880c929334751e"
 dependencies = [
  "bitflags 2.9.3",
  "cursor-icon",
- "dpi 0.1.2 (git+https://github.com/timon-schelling/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad)",
+ "dpi",
  "keyboard-types 0.8.1",
  "raw-window-handle",
  "serde",
@@ -7339,10 +7334,10 @@ dependencies = [
 [[package]]
 name = "winit-orbital"
 version = "0.30.12"
-source = "git+https://github.com/timon-schelling/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad#37221c7192ef1deec022a2278e54429331c01bad"
+source = "git+https://github.com/timon-schelling/winit.git?rev=4be17a5ed552c7a39a671bca97880c929334751e#4be17a5ed552c7a39a671bca97880c929334751e"
 dependencies = [
  "bitflags 2.9.3",
- "dpi 0.1.2 (git+https://github.com/timon-schelling/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad)",
+ "dpi",
  "orbclient",
  "raw-window-handle",
  "redox_syscall",
@@ -7354,12 +7349,12 @@ dependencies = [
 [[package]]
 name = "winit-uikit"
 version = "0.30.12"
-source = "git+https://github.com/timon-schelling/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad#37221c7192ef1deec022a2278e54429331c01bad"
+source = "git+https://github.com/timon-schelling/winit.git?rev=4be17a5ed552c7a39a671bca97880c929334751e#4be17a5ed552c7a39a671bca97880c929334751e"
 dependencies = [
  "bitflags 2.9.3",
  "block2",
  "dispatch2",
- "dpi 0.1.2 (git+https://github.com/timon-schelling/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad)",
+ "dpi",
  "objc2",
  "objc2-core-foundation",
  "objc2-foundation",
@@ -7375,13 +7370,13 @@ dependencies = [
 [[package]]
 name = "winit-wayland"
 version = "0.30.12"
-source = "git+https://github.com/timon-schelling/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad#37221c7192ef1deec022a2278e54429331c01bad"
+source = "git+https://github.com/timon-schelling/winit.git?rev=4be17a5ed552c7a39a671bca97880c929334751e#4be17a5ed552c7a39a671bca97880c929334751e"
 dependencies = [
  "ahash",
  "bitflags 2.9.3",
  "calloop",
  "cursor-icon",
- "dpi 0.1.2 (git+https://github.com/timon-schelling/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad)",
+ "dpi",
  "libc",
  "memmap2",
  "raw-window-handle",
@@ -7401,13 +7396,13 @@ dependencies = [
 [[package]]
 name = "winit-web"
 version = "0.30.12"
-source = "git+https://github.com/timon-schelling/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad#37221c7192ef1deec022a2278e54429331c01bad"
+source = "git+https://github.com/timon-schelling/winit.git?rev=4be17a5ed552c7a39a671bca97880c929334751e#4be17a5ed552c7a39a671bca97880c929334751e"
 dependencies = [
  "atomic-waker",
  "bitflags 2.9.3",
  "concurrent-queue",
  "cursor-icon",
- "dpi 0.1.2 (git+https://github.com/timon-schelling/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad)",
+ "dpi",
  "js-sys",
  "pin-project",
  "raw-window-handle",
@@ -7423,11 +7418,11 @@ dependencies = [
 [[package]]
 name = "winit-win32"
 version = "0.30.12"
-source = "git+https://github.com/timon-schelling/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad#37221c7192ef1deec022a2278e54429331c01bad"
+source = "git+https://github.com/timon-schelling/winit.git?rev=4be17a5ed552c7a39a671bca97880c929334751e#4be17a5ed552c7a39a671bca97880c929334751e"
 dependencies = [
  "bitflags 2.9.3",
  "cursor-icon",
- "dpi 0.1.2 (git+https://github.com/timon-schelling/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad)",
+ "dpi",
  "raw-window-handle",
  "smol_str",
  "tracing",
@@ -7439,13 +7434,13 @@ dependencies = [
 [[package]]
 name = "winit-x11"
 version = "0.30.12"
-source = "git+https://github.com/timon-schelling/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad#37221c7192ef1deec022a2278e54429331c01bad"
+source = "git+https://github.com/timon-schelling/winit.git?rev=4be17a5ed552c7a39a671bca97880c929334751e#4be17a5ed552c7a39a671bca97880c929334751e"
 dependencies = [
  "bitflags 2.9.3",
  "bytemuck",
  "calloop",
  "cursor-icon",
- "dpi 0.1.2 (git+https://github.com/timon-schelling/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad)",
+ "dpi",
  "libc",
  "percent-encoding",
  "raw-window-handle",
