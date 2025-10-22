@@ -1,6 +1,9 @@
 use std::path::PathBuf;
 
+use graphite_editor::messages::layout::utility_types::widgets::menu_widgets::MenuBarEntry;
 use graphite_editor::messages::prelude::FrontendMessage;
+
+use crate::messages::MenuItem;
 
 use super::DesktopWrapperMessageDispatcher;
 use super::messages::{DesktopFrontendMessage, Document, FileFilter, OpenFileDialogContext, SaveFileDialogContext};
@@ -118,6 +121,65 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		}
 		FrontendMessage::TriggerLoadPreferences => {
 			dispatcher.respond(DesktopFrontendMessage::PersistenceLoadPreferences);
+		}
+		FrontendMessage::UpdateMenuBarLayout { layout_target, layout } => {
+			fn items_from_children(children: &Vec<Vec<MenuBarEntry>>) -> Vec<MenuItem> {
+				let mut items = Vec::new();
+				for (i, section) in children.iter().enumerate() {
+					for entry in section.iter() {
+						if let Some(item) = create_menu_item(entry) {
+							items.push(item);
+						}
+					}
+					if i != children.len() - 1 {
+						items.push(MenuItem::Separator);
+					}
+				}
+				items
+			}
+
+			fn create_menu_item(
+				MenuBarEntry {
+					label,
+					children,
+					action,
+					disabled,
+					icon,
+					..
+				}: &MenuBarEntry,
+			) -> Option<MenuItem> {
+				let id = action.widget_id.0;
+				let text = if label.is_empty() {
+					return None;
+				} else {
+					label.clone()
+				};
+				let enabled = !*disabled;
+
+				if !children.0.is_empty() {
+					let items = items_from_children(&children.0);
+					return Some(MenuItem::SubMenu { id, text, enabled, items });
+				}
+
+				// TODO: Find a better way to determine if this is a checkbox
+				match icon.as_deref() {
+					Some("CheckboxChecked") => {
+						return Some(MenuItem::Checkbox { id, text, enabled, checked: true });
+					}
+					Some("CheckboxUnchecked") => {
+						return Some(MenuItem::Checkbox { id, text, enabled, checked: false });
+					}
+					_ => {}
+				}
+
+				Some(MenuItem::Action { id, text, enabled })
+			}
+
+			let entries: Vec<MenuItem> = layout.iter().filter_map(|entry| create_menu_item(entry)).collect();
+
+			dispatcher.respond(DesktopFrontendMessage::UpdateMenu { entries });
+
+			return Some(FrontendMessage::UpdateMenuBarLayout { layout, layout_target });
 		}
 		m => return Some(m),
 	}

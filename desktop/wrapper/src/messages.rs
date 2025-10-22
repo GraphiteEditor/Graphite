@@ -56,6 +56,9 @@ pub enum DesktopFrontendMessage {
 		preferences: Preferences,
 	},
 	PersistenceLoadPreferences,
+	UpdateMenu {
+		entries: Vec<MenuItem>,
+	},
 }
 
 pub enum DesktopWrapperMessage {
@@ -106,6 +109,9 @@ pub enum DesktopWrapperMessage {
 	LoadPreferences {
 		preferences: Option<Preferences>,
 	},
+	MenuEvent {
+		id: u64,
+	},
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize, Debug)]
@@ -135,4 +141,11 @@ pub enum Platform {
 	Windows,
 	Mac,
 	Linux,
+}
+
+pub enum MenuItem {
+	Action { id: u64, text: String, enabled: bool },
+	Checkbox { id: u64, text: String, enabled: bool, checked: bool },
+	SubMenu { id: u64, text: String, enabled: bool, items: Vec<MenuItem> },
+	Separator,
 }
