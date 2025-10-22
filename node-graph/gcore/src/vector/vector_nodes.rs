@@ -969,24 +969,29 @@ async fn separate_subpaths(_: impl Ctx, content: Table<Vector>) -> Table<Vector>
 		})
 		.collect()
 }
+
 #[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
-fn extract_vector(ctx: impl Ctx + ExtractVarArgs) -> Table<Vector> {
+fn instance_vector(ctx: impl Ctx + ExtractVarArgs) -> Table<Vector> {
 	let Ok(var_arg) = ctx.vararg(0) else { return Default::default() };
 	let var_arg = var_arg as &dyn std::any::Any;
+
 	var_arg.downcast_ref().cloned().unwrap_or_default()
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
-async fn map(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: Table<Vector>, map_fn: impl Node<Context<'static>, Output = Table<Vector>>) -> Table<Vector> {
+async fn instance_map(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: Table<Vector>, mapped: impl Node<Context<'static>, Output = Table<Vector>>) -> Table<Vector> {
 	let mut rows = Vec::new();
+
 	for (i, row) in content.into_iter().enumerate() {
 		let owned_ctx = OwnedContextImpl::from(ctx.clone());
 		let owned_ctx = owned_ctx.with_vararg(Box::new(Table::new_from_row(row))).with_index(i);
-		let table = map_fn.eval(owned_ctx.into_context()).await;
+		let table = mapped.eval(owned_ctx.into_context()).await;
+
 		for inner_row in table {
 			rows.push(inner_row);
 		}
 	}
+
 	rows.into_iter().collect()
 }
 
