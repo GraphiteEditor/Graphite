@@ -42,9 +42,7 @@ async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + 
 		Context -> Table<GradientStops>,
 	)]
 	data: impl Node<Context<'static>, Output = T>,
-	editor_api: impl Node<Context<'static>, Output = &'a WasmEditorApi>,
 ) -> RenderIntermediate {
-	let mut render = SvgRender::new();
 	let render_params = ctx
 		.vararg(0)
 		.expect("Did not find var args")
@@ -59,26 +57,29 @@ async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + 
 	data.collect_metadata(&mut metadata, footprint, None);
 	let contains_artboard = data.contains_artboard();
 
-	let editor_api = editor_api.eval(None).await;
+	match &render_params.render_output_type {
+		RenderOutputTypeRequest::Vello => {
+			let mut scene = vello::Scene::new();
 
-	if !render_params.for_export && editor_api.editor_preferences.use_vello() && matches!(render_params.render_output_type, graphene_svg_renderer::RenderOutputType::Vello) {
-		let mut scene = vello::Scene::new();
+			let mut context = wgpu_executor::RenderContext::default();
+			data.render_to_vello(&mut scene, Default::default(), &mut context, render_params);
 
-		let mut context = wgpu_executor::RenderContext::default();
-		data.render_to_vello(&mut scene, Default::default(), &mut context, render_params);
-
-		RenderIntermediate {
-			ty: RenderIntermediateType::Vello(Arc::new((scene, context))),
-			metadata,
-			contains_artboard,
+			RenderIntermediate {
+				ty: RenderIntermediateType::Vello(Arc::new((scene, context))),
+				metadata,
+				contains_artboard,
+			}
 		}
-	} else {
-		data.render_svg(&mut render, render_params);
+		RenderOutputTypeRequest::Svg => {
+			let mut render = SvgRender::new();
 
-		RenderIntermediate {
-			ty: RenderIntermediateType::Svg(Arc::new((render.svg.to_svg_string(), render.image_data, render.svg_defs.clone()))),
-			metadata,
-			contains_artboard,
+			data.render_svg(&mut render, render_params);
+
+			RenderIntermediate {
+				ty: RenderIntermediateType::Svg(Arc::new((render.svg.to_svg_string(), render.image_data, render.svg_defs.clone()))),
+				metadata,
+				contains_artboard,
+			}
 		}
 	}
 }
@@ -93,11 +94,9 @@ async fn create_context<'a: 'n>(
 
 	let render_output_type = match render_config.export_format {
 		ExportFormat::Svg => RenderOutputTypeRequest::Svg,
-		ExportFormat::Png { .. } => todo!(),
-		ExportFormat::Jpeg => todo!(),
-		ExportFormat::Canvas => RenderOutputTypeRequest::Vello,
-		ExportFormat::Texture => RenderOutputTypeRequest::Vello,
+		ExportFormat::Raster => RenderOutputTypeRequest::Vello,
 	};
+
 	let render_params = RenderParams {
 		render_mode: render_config.render_mode,
 		hide_artboards: render_config.hide_artboards,
@@ -106,6 +105,7 @@ async fn create_context<'a: 'n>(
 		footprint: Footprint::default(),
 		..Default::default()
 	};
+
 	let ctx = OwnedContextImpl::default()
 		.with_footprint(footprint)
 		.with_real_time(render_config.time.time)
@@ -142,12 +142,7 @@ async fn render<'a: 'n>(
 		None
 	};
 
-	let mut output_format = render_params.render_output_type;
-	// TODO: Actually request the right thing upfront
-	if let RenderIntermediateType::Svg(_) = ty {
-		output_format = RenderOutputTypeRequest::Svg;
-	}
-	let data = match (output_format, &ty) {
+	let data = match (render_params.render_output_type, &ty) {
 		(RenderOutputTypeRequest::Svg, RenderIntermediateType::Svg(svg_data)) => {
 			let mut svg_renderer = SvgRender::new();
 			if !contains_artboard && !render_params.hide_artboards {
@@ -198,6 +193,7 @@ async fn render<'a: 'n>(
 			if !contains_artboard && !render_params.hide_artboards {
 				background = Color::WHITE;
 			}
+
 			if let Some(surface_handle) = surface_handle {
 				exec.render_vello_scene(&scene, &surface_handle, footprint.resolution, context, background)
 					.await

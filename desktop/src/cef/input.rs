@@ -7,7 +7,7 @@ use winit::event::{ButtonSource, ElementState, MouseButton, MouseScrollDelta, Wi
 mod keymap;
 use keymap::{ToNativeKeycode, ToVKBits};
 
-use super::consts::{MULTICLICK_ALLOWED_TRAVEL, MULTICLICK_TIMEOUT, SCROLL_LINE_HEIGHT, SCROLL_LINE_WIDTH, SCROLL_SPEED_X, SCROLL_SPEED_Y};
+use super::consts::{MULTICLICK_ALLOWED_TRAVEL, MULTICLICK_TIMEOUT, PINCH_ZOOM_SPEED, SCROLL_LINE_HEIGHT, SCROLL_LINE_WIDTH, SCROLL_SPEED_X, SCROLL_SPEED_Y};
 
 pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputState, event: &WindowEvent) {
 	match event {
@@ -129,6 +129,20 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 				}
 			}
 		}
+		WindowEvent::PinchGesture { delta, .. } => {
+			if !delta.is_normal() {
+				return;
+			}
+			let Some(host) = browser.host() else { return };
+
+			let mut mouse_event: MouseEvent = input_state.into();
+			mouse_event.modifiers |= cef_event_flags_t::EVENTFLAG_CONTROL_DOWN as u32;
+			mouse_event.modifiers |= cef_event_flags_t::EVENTFLAG_PRECISION_SCROLLING_DELTA as u32;
+
+			let delta = (delta * PINCH_ZOOM_SPEED).round() as i32;
+
+			host.send_mouse_wheel_event(Some(&mouse_event), 0, delta);
+		}
 		_ => {}
 	}
 }
@@ -246,7 +260,8 @@ impl ClickTracker {
 			return ClickCount::Single;
 		};
 
-		let previous = record.time;
+		let prev_time = record.time;
+		let prev_position = record.position;
 
 		let now = Instant::now();
 		record.time = now;
@@ -270,10 +285,10 @@ impl ClickTracker {
 			_ => {}
 		}
 
-		let dx = position.x.abs_diff(record.position.x);
-		let dy = position.y.abs_diff(record.position.y);
+		let dx = position.x.abs_diff(prev_position.x);
+		let dy = position.y.abs_diff(prev_position.y);
 		let within_dist = dx <= MULTICLICK_ALLOWED_TRAVEL && dy <= MULTICLICK_ALLOWED_TRAVEL;
-		let within_time = now.saturating_duration_since(previous) <= MULTICLICK_TIMEOUT;
+		let within_time = now.saturating_duration_since(prev_time) <= MULTICLICK_TIMEOUT;
 
 		let count = if within_time && within_dist { ClickCount::Double } else { ClickCount::Single };
 

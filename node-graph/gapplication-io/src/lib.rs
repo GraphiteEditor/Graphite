@@ -222,12 +222,7 @@ pub trait GetEditorPreferences {
 pub enum ExportFormat {
 	#[default]
 	Svg,
-	Png {
-		transparent: bool,
-	},
-	Jpeg,
-	Canvas,
-	Texture,
+	Raster,
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]

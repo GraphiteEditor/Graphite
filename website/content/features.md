@@ -136,9 +136,17 @@ Marrying vector and raster under one roof enables both art forms to complement e
 			<img class="atlas" style="--atlas-index: 48" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
 			<span>Robust vector mesh editing/rendering</span>
 		</div>
+		<div class="feature-icon ongoing" title="Development Ongoing">
+			<img class="atlas" style="--atlas-index: 43; transform: rotate(90deg)" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
+			<span>Automatic image trace vectorization</span>
+		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 41" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
 			<span>Timeline panel for animation curves</span>
+		</div>
+		<div class="feature-icon">
+			<img class="atlas" style="--atlas-index: 40" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
+			<span>Simplified main properties panel</span>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 9" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
@@ -149,28 +157,12 @@ Marrying vector and raster under one roof enables both art forms to complement e
 			<span>Signed distance field rendering</span>
 		</div>
 		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 40" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>Simplified main properties panel</span>
-		</div>
-		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 43; transform: rotate(90deg)" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>Automatic image trace vectorization</span>
-		</div>
-		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 5" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>Brush tool rewrite</span>
-		</div>
-		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 54" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>Local file browser for saving/loading</span>
-		</div>
-		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 53" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
 			<span>Local fonts access</span>
 		</div>
 		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 56" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>Variable color swatches</span>
+			<img class="atlas" style="--atlas-index: 54" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
+			<span>Local file browser for saving/loading</span>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 18" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
@@ -189,8 +181,20 @@ Marrying vector and raster under one roof enables both art forms to complement e
 			<h3>— Beta —</h3>
 		</div>
 		<div class="feature-icon">
+			<img class="atlas" style="--atlas-index: 56" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
+			<span>Variable color swatches</span>
+		</div>
+		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 52" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
 			<span>Command palette and context menus</span>
+		</div>
+		<div class="feature-icon">
+			<img class="atlas" style="--atlas-index: 28" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
+			<span>Physical units of measure</span>
+		</div>
+		<div class="feature-icon">
+			<img class="atlas" style="--atlas-index: 5" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
+			<span>Brush tool rewrite</span>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 43" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
@@ -221,6 +225,10 @@ Marrying vector and raster under one roof enables both art forms to complement e
 			<span>Offline edit resolution with CRDTs</span>
 		</div>
 		<div class="feature-icon">
+			<img class="atlas" style="--atlas-index: 22" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
+			<span>History brush and clone stamp tools</span>
+		</div>
+		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 34" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
 			<span>Asset libraries and node marketplace</span>
 		</div>
@@ -245,24 +253,20 @@ Marrying vector and raster under one roof enables both art forms to complement e
 			<span>Liquify and warp transforms</span>
 		</div>
 		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 32" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>PDF, EPS, AI, DXF, PSD, and TIFF</span>
-		</div>
-		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 33" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>HDR and WCG color handling</span>
-		</div>
-		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 55" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>CMYK and other color spaces</span>
-		</div>
-		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 31" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
 			<span>Advanced typography and typesetting</span>
 		</div>
 		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 22" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>Frozen-in-time graph references</span>
+			<img class="atlas" style="--atlas-index: 32" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
+			<span>PDF, EPS, AI, DXF, PSD, and TIFF</span>
+		</div>
+		<div class="feature-icon">
+			<img class="atlas" style="--atlas-index: 55" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
+			<span>CMYK, spot color, and ICC profiles</span>
+		</div>
+		<div class="feature-icon">
+			<img class="atlas" style="--atlas-index: 33" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
+			<span>HDR and WCG color handling</span>
 		</div>
 		<!-- 1.0 Release -->
 		<div class="feature-icon heading">
@@ -287,10 +291,6 @@ Marrying vector and raster under one roof enables both art forms to complement e
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 11" src="https://static.graphite.rs/icons/icon-atlas-features__2.png" alt="" />
 			<span>Infinite generative vector patterns</span>
-		</div>
-		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 28" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
-			<span>Construction geometry mode</span>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 29" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
