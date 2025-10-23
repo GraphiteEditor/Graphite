@@ -73,6 +73,3 @@ core-foundation = { version = "0.10", optional = true }
 # Linux-specific dependencies
 [target.'cfg(target_os = "linux")'.dependencies]
 libc = { version = "0.2", optional = true }
-
-[target.'cfg(target_os = "windows")'.build-dependencies]
-winres = "0.1"
