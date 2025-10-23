@@ -10,9 +10,9 @@ mod cef;
 mod cli;
 mod dirs;
 mod event;
-mod native_window;
 mod persist;
 mod render;
+mod window;
 
 mod gpu_context;
 

@@ -1,5 +1,4 @@
-use std::sync::Arc;
-use winit::window::Window;
+use crate::window::Window;
 
 use graphite_desktop_wrapper::{Color, WgpuContext, WgpuExecutor};
 
@@ -24,10 +23,9 @@ pub(crate) struct GraphicsState {
 }
 
 impl GraphicsState {
-	pub(crate) fn new(window: Arc<dyn Window>, context: WgpuContext) -> Self {
+	pub(crate) fn new(window: &Window, context: WgpuContext) -> Self {
 		let size = window.surface_size();
-
-		let surface = context.instance.create_surface(window).unwrap();
+		let surface = window.create_surface(context.instance.clone());
 
 		let surface_caps = surface.get_capabilities(&context.adapter);
 		let surface_format = surface_caps.formats.iter().find(|f| f.is_srgb()).copied().unwrap_or(surface_caps.formats[0]);
@@ -232,7 +230,7 @@ impl GraphicsState {
 		self.bind_overlays_texture(texture);
 	}
 
-	pub(crate) fn render(&mut self, window: &dyn Window) -> Result<(), wgpu::SurfaceError> {
+	pub(crate) fn render(&mut self, window: &Window) -> Result<(), wgpu::SurfaceError> {
 		if let Some(scene) = self.overlays_scene.take() {
 			self.render_overlays(scene);
 		}
