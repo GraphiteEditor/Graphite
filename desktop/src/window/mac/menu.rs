@@ -1,4 +1,5 @@
 use muda::Menu as MudaMenu;
+use muda::accelerator::Accelerator;
 use muda::{AboutMetadataBuilder, CheckMenuItem, IsMenuItem, MenuEvent, MenuId, MenuItem, MenuItemKind, PredefinedMenuItem, Submenu};
 
 use crate::event::{AppEvent, AppEventScheduler};
@@ -52,14 +53,16 @@ fn menu_items_from_wrapper(entries: Vec<WrapperMenuItem>) -> Vec<MenuItemKind> {
 	let mut menu_items: Vec<MenuItemKind> = Vec::new();
 	for entry in entries {
 		match entry {
-			WrapperMenuItem::Action { id, text, enabled } => {
+			WrapperMenuItem::Action { id, text, enabled, shortcut } => {
 				let id = u64_to_menu_id(id);
-				let item = MenuItem::with_id(id, text, enabled, None);
+				let accelerator = shortcut.map(|s| Accelerator::new(Some(s.modifiers), s.key));
+				let item = MenuItem::with_id(id, text, enabled, accelerator);
 				menu_items.push(MenuItemKind::MenuItem(item));
 			}
-			WrapperMenuItem::Checkbox { id, text, enabled, checked } => {
+			WrapperMenuItem::Checkbox { id, text, enabled, shortcut, checked } => {
 				let id = u64_to_menu_id(id);
-				let check = CheckMenuItem::with_id(id, text, enabled, checked, None);
+				let accelerator = shortcut.map(|s| Accelerator::new(Some(s.modifiers), s.key));
+				let check = CheckMenuItem::with_id(id, text, enabled, checked, accelerator);
 				menu_items.push(MenuItemKind::Check(check));
 			}
 			WrapperMenuItem::SubMenu { text: name, items, .. } => {
