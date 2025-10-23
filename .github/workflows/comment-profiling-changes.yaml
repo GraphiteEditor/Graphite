@@ -220,6 +220,17 @@ jobs:
               let sectionBody = "";
               let hasResults = false;
               let hasSignificantChanges = false;
+
+              function isSignificantChange(diffPct, absoluteChange, benchmarkType) {
+                const meetsPercentageThreshold = Math.abs(diffPct) > 5;
+                const meetsAbsoluteThreshold = absoluteChange > 200000;
+                const isCachedExecution = benchmarkType === 'run_cached' ||
+                                          benchmarkType.includes('Cached Execution');
+
+                return isCachedExecution
+                  ? (meetsPercentageThreshold && meetsAbsoluteThreshold)
+                  : meetsPercentageThreshold;
+              }
               
               for (const benchmark of benchmarkOutput) {
                 if (benchmark.profiles && benchmark.profiles.length > 0) {
@@ -256,7 +267,11 @@ jobs:
                     }
                     
                     sectionBody += "```\n</details>\n\n";
-                    
+
+                        if (isSignificantChange(irDiff.diff_pct, Math.abs(irDiff.new - irDiff.old), sectionTitle)) {
+                          significantChanges = true;
+                          hasSignificantChanges = true;
+                        }
                       }
                     }
                   }
