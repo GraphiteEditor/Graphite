@@ -133,7 +133,7 @@ fn substring_by_index(_: impl Ctx, #[implementations(String)] string: String, de
 #[node_macro::node(category("Text"))]
 fn count_substring(_: impl Ctx, #[implementations(String)] string: String, substring: String) -> f64 {
 	if substring.is_empty() {
-		return 0.0;
+		return 0.;
 	}
 	string.matches(&substring).count() as f64
 }
