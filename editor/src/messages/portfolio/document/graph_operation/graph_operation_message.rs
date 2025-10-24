@@ -4,7 +4,6 @@ use crate::messages::portfolio::document::utility_types::network_interface::Node
 use crate::messages::prelude::*;
 use glam::{DAffine2, IVec2};
 use graph_craft::document::NodeId;
-use graphene_std::Artboard;
 use graphene_std::brush::brush_stroke::BrushStroke;
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::{CPU, Raster};
@@ -14,6 +13,7 @@ use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::PointId;
 use graphene_std::vector::VectorModificationType;
 use graphene_std::vector::style::{Fill, Stroke};
+use graphene_std::{Artboard, Color};
 
 #[impl_message(Message, DocumentMessage, GraphOperation)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
@@ -40,6 +40,10 @@ pub enum GraphOperationMessage {
 	StrokeSet {
 		layer: LayerNodeIdentifier,
 		stroke: Stroke,
+	},
+	StrokeColorSet {
+		layer: LayerNodeIdentifier,
+		stroke_color: Color,
 	},
 	TransformChange {
 		layer: LayerNodeIdentifier,
