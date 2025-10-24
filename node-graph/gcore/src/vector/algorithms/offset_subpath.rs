@@ -5,9 +5,10 @@ use kurbo::{BezPath, Join, ParamCurve, PathEl, PathSeg};
 /// Value to control smoothness and mathematical accuracy to offset a cubic Bezier.
 const CUBIC_REGULARIZATION_ACCURACY: f64 = 0.5;
 /// Accuracy of fitting offset curve to Bezier paths.
-const CUBIC_TO_BEZPATH_ACCURACY: f64 = 1e-3;
+const CUBIC_TO_BEZPATH_ACCURACY: f64 = 1e-2;
 /// Constant used to determine if `f64`s are equivalent.
 pub const MAX_ABSOLUTE_DIFFERENCE: f64 = 1e-7;
+const MAX_FITTED_SEGMENTS: usize = 10000;
 
 /// Reduces the segments of the bezpath into simple subcurves, then offset each subcurve a set `distance` away.
 /// The intersections of segments of the subpath are joined using the method specified by the `join` argument.
@@ -19,15 +20,30 @@ pub fn offset_bezpath(bezpath: &BezPath, distance: f64, join: Join, miter_limit:
 	}
 
 	let mut bezpaths = bezpath
-			.segments()
-			.map(|bezier| bezier.to_cubic())
-			.map(|cubic_bez| {
-				let cubic_offset = kurbo::offset::CubicOffset::new_regularized(cubic_bez, distance, CUBIC_REGULARIZATION_ACCURACY);
+		.segments()
+		.map(|bezier| bezier.to_cubic())
+		.filter_map(|cubic_bez| {
+			let start = cubic_bez.p0;
+			let is_degenerate =
+				(cubic_bez.p1 - start).hypot() < MAX_ABSOLUTE_DIFFERENCE && (cubic_bez.p2 - start).hypot() < MAX_ABSOLUTE_DIFFERENCE && (cubic_bez.p3 - start).hypot() < MAX_ABSOLUTE_DIFFERENCE;
 
-				kurbo::fit_to_bezpath(&cubic_offset, CUBIC_TO_BEZPATH_ACCURACY)
-			})
-			.filter(|bezpath| bezpath.get_seg(1).is_some()) // In some cases the reduced and scaled bézier is marked by is_point (so the subpath is empty).
-			.collect::<Vec<BezPath>>();
+			if is_degenerate {
+				return None;
+			}
+
+			let cubic_offset = kurbo::offset::CubicOffset::new_regularized(cubic_bez, distance, CUBIC_REGULARIZATION_ACCURACY);
+
+			let fitted = kurbo::fit_to_bezpath(&cubic_offset, CUBIC_TO_BEZPATH_ACCURACY);
+
+			if fitted.segments().count() > MAX_FITTED_SEGMENTS {
+				None
+			} else if fitted.get_seg(1).is_some() {
+				Some(fitted)
+			} else {
+				None
+			}
+		})
+		.collect::<Vec<BezPath>>();
 
 	// Clip or join consecutive Subpaths
 	for i in 0..bezpaths.len() - 1 {
