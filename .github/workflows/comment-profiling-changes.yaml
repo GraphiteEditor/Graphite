@@ -1,7 +1,11 @@
 name: Profiling Changes
 
 on:
-  pull_request: {}
+  pull_request:
+    paths:
+      - 'node-graph/**'
+      - 'Cargo.toml'
+      - 'Cargo.lock'
 
 env:
   CARGO_TERM_COLOR: always
@@ -50,14 +54,23 @@ jobs:
         id: master-sha
         run: echo "sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
 
+      - name: Get CPU info
+        id: cpu-info
+        run: |
+          # Get CPU model and create a short hash for cache key
+          CPU_MODEL=$(cat /proc/cpuinfo | grep "model name" | head -1 | cut -d: -f2 | xargs)
+          CPU_HASH=$(echo "$CPU_MODEL" | sha256sum | cut -c1-8)
+          echo "cpu-hash=$CPU_HASH" >> $GITHUB_OUTPUT
+          echo "CPU: $CPU_MODEL (hash: $CPU_HASH)"
+
       - name: Cache benchmark baselines
         id: cache-benchmark-baselines
         uses: actions/cache@v4
         with:
           path: target/iai
-          key: ${{ runner.os }}-benchmark-baselines-master-${{ steps.master-sha.outputs.sha }}
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ steps.cpu-info.outputs.cpu-hash }}-benchmark-baselines-master-${{ steps.master-sha.outputs.sha }}
           restore-keys: |
-            ${{ runner.os }}-benchmark-baselines-master-
+            ${{ runner.os }}-${{ runner.arch }}-${{ steps.cpu-info.outputs.cpu-hash }}-benchmark-baselines-master-
 
       - name: Run baseline benchmarks
         if: steps.cache-benchmark-baselines.outputs.cache-hit != 'true'
@@ -85,6 +98,8 @@ jobs:
           cargo bench --bench run_cached_iai -- --baseline=master --output-format=json | jq -sc | sed 's/\\"//g' > /tmp/run_cached_output.json
 
       - name: Make old comments collapsed by default
+        # Only run if we have write permissions (not a fork)
+        if: github.event.pull_request.head.repo.full_name == github.repository
         uses: actions/github-script@v7
         with:
           github-token: ${{secrets.GITHUB_TOKEN}}
@@ -109,7 +124,67 @@ jobs:
               });
             }
 
+      - name: Analyze profiling changes
+        id: analyze
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            function isSignificantChange(diffPct, absoluteChange, benchmarkType) {
+              const meetsPercentageThreshold = Math.abs(diffPct) > 5;
+              const meetsAbsoluteThreshold = absoluteChange > 200000;
+              const isCachedExecution = benchmarkType === 'run_cached' ||
+                                        benchmarkType.includes('Cached Execution');
+
+              return isCachedExecution
+                ? (meetsPercentageThreshold && meetsAbsoluteThreshold)
+                : meetsPercentageThreshold;
+            }
+
+            const allOutputs = [
+              JSON.parse(fs.readFileSync('/tmp/compile_output.json', 'utf8')),
+              JSON.parse(fs.readFileSync('/tmp/update_output.json', 'utf8')),
+              JSON.parse(fs.readFileSync('/tmp/run_once_output.json', 'utf8')),
+              JSON.parse(fs.readFileSync('/tmp/run_cached_output.json', 'utf8'))
+            ];
+            const outputNames = ['compile', 'update', 'run_once', 'run_cached'];
+            const sectionTitles = ['Compilation', 'Update', 'Run Once', 'Cached Execution'];
+
+            let hasSignificantChanges = false;
+            let regressionDetails = [];
+
+            for (let i = 0; i < allOutputs.length; i++) {
+              const benchmarkOutput = allOutputs[i];
+              const outputName = outputNames[i];
+              const sectionTitle = sectionTitles[i];
+
+              for (const benchmark of benchmarkOutput) {
+                if (benchmark.profiles?.[0]?.summaries?.parts?.[0]?.metrics_summary?.Callgrind?.Ir?.diffs?.diff_pct) {
+                  const diffPct = parseFloat(benchmark.profiles[0].summaries.parts[0].metrics_summary.Callgrind.Ir.diffs.diff_pct);
+                  const oldValue = benchmark.profiles[0].summaries.parts[0].metrics_summary.Callgrind.Ir.metrics.Both[1].Int;
+                  const newValue = benchmark.profiles[0].summaries.parts[0].metrics_summary.Callgrind.Ir.metrics.Both[0].Int;
+                  const absoluteChange = Math.abs(newValue - oldValue);
+
+                  if (isSignificantChange(diffPct, absoluteChange, outputName)) {
+                    hasSignificantChanges = true;
+                    regressionDetails.push({
+                      module_path: benchmark.module_path,
+                      id: benchmark.id,
+                      diffPct,
+                      absoluteChange,
+                      sectionTitle
+                    });
+                  }
+                }
+              }
+            }
+
+            core.setOutput('has-significant-changes', hasSignificantChanges);
+            core.setOutput('regression-details', JSON.stringify(regressionDetails));
+
       - name: Comment PR
+        if: github.event.pull_request.head.repo.full_name == github.repository
         uses: actions/github-script@v7
         with:
           github-token: ${{secrets.GITHUB_TOKEN}}
@@ -121,7 +196,7 @@ jobs:
             const runOnceOutput = JSON.parse(fs.readFileSync('/tmp/run_once_output.json', 'utf8'));
             const runCachedOutput = JSON.parse(fs.readFileSync('/tmp/run_cached_output.json', 'utf8'));
 
-            let significantChanges = false;
+            const hasSignificantChanges = '${{ steps.analyze.outputs.has-significant-changes }}' === 'true';
             let commentBody = "";
 
             function formatNumber(num) {
@@ -145,6 +220,17 @@ jobs:
               let sectionBody = "";
               let hasResults = false;
               let hasSignificantChanges = false;
+
+              function isSignificantChange(diffPct, absoluteChange, benchmarkType) {
+                const meetsPercentageThreshold = Math.abs(diffPct) > 5;
+                const meetsAbsoluteThreshold = absoluteChange > 200000;
+                const isCachedExecution = benchmarkType === 'run_cached' ||
+                                          benchmarkType.includes('Cached Execution');
+
+                return isCachedExecution
+                  ? (meetsPercentageThreshold && meetsAbsoluteThreshold)
+                  : meetsPercentageThreshold;
+              }
               
               for (const benchmark of benchmarkOutput) {
                 if (benchmark.profiles && benchmark.profiles.length > 0) {
@@ -181,8 +267,8 @@ jobs:
                     }
                     
                     sectionBody += "```\n</details>\n\n";
-                    
-                        if (Math.abs(irDiff.diff_pct) > 5) {
+
+                        if (isSignificantChange(irDiff.diff_pct, Math.abs(irDiff.new - irDiff.old), sectionTitle)) {
                           significantChanges = true;
                           hasSignificantChanges = true;
                         }
@@ -232,7 +318,7 @@ jobs:
             if (commentBody.length > 0) {
               const output = `<details open>\n<summary>Performance Benchmark Results</summary>\n\n${commentBody}\n</details>`;
 
-              if (significantChanges) {
+              if (hasSignificantChanges) {
                 github.rest.issues.createComment({
                   issue_number: context.issue.number,
                   owner: context.repo.owner,
@@ -246,3 +332,13 @@ jobs:
             } else {
               console.log("No benchmark results to display.");
             }
+
+      - name: Fail on significant regressions
+        if: steps.analyze.outputs.has-significant-changes == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const regressionDetails = JSON.parse('${{ steps.analyze.outputs.regression-details }}');
+            const firstRegression = regressionDetails[0];
+
+            core.setFailed(`Significant performance regression detected: ${firstRegression.module_path} ${firstRegression.id} increased by ${firstRegression.absoluteChange.toLocaleString()} instructions (${firstRegression.diffPct.toFixed(2)}%)`);
