@@ -57,21 +57,25 @@ pub struct TextLabel {
 
 	pub tooltip: String,
 
-	#[serde(rename = "checkboxId")]
-	#[widget_builder(skip)]
-	pub checkbox_id: CheckboxId,
+	#[serde(rename = "forCheckbox")]
+	pub for_checkbox: CheckboxId,
 
 	// Body
 	#[widget_builder(constructor)]
 	pub value: String,
 }
 
-impl TextLabel {
-	pub fn for_checkbox(mut self, id: &mut CheckboxId) -> Self {
-		id.fill();
-		self.checkbox_id = id.clone();
-		self
-	}
+#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Default, WidgetBuilder, specta::Type)]
+#[derivative(Debug, PartialEq)]
+pub struct ImageLabel {
+	#[widget_builder(constructor)]
+	pub url: String,
+
+	pub width: Option<String>,
+
+	pub height: Option<String>,
+
+	pub tooltip: String,
 }
 
 // TODO: Add UserInputLabel

@@ -1,7 +1,6 @@
-use crate::vector::VectorDataTable;
 use graph_craft::wasm_application_io::WasmEditorApi;
-use graphene_core::Ctx;
 pub use graphene_core::text::*;
+use graphene_core::{Ctx, table::Table, vector::Vector};
 
 #[node_macro::node(category(""))]
 fn text<'i: 'n>(
@@ -28,10 +27,11 @@ fn text<'i: 'n>(
 	#[unit("°")]
 	#[default(0.)]
 	tilt: f64,
-	/// Splits each text glyph into its own instance, i.e. row in the table of vector data.
+	align: TextAlign,
+	/// Splits each text glyph into its own row in the table of vector geometry.
 	#[default(false)]
 	per_glyph_instances: bool,
-) -> VectorDataTable {
+) -> Table<Vector> {
 	let typesetting = TypesettingConfig {
 		font_size,
 		line_height_ratio,
@@ -39,6 +39,7 @@ fn text<'i: 'n>(
 		max_width,
 		max_height,
 		tilt,
+		align,
 	};
 
 	let font_data = editor.font_cache.get(&font_name).map(|f| load_font(f));

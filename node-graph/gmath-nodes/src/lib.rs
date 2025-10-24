@@ -1,6 +1,7 @@
 use glam::{DAffine2, DVec2};
 use graphene_core::gradient::GradientStops;
 use graphene_core::registry::types::{Fraction, Percentage, PixelSize, TextArea};
+use graphene_core::table::Table;
 use graphene_core::transform::Footprint;
 use graphene_core::{Color, Ctx, num_traits};
 use log::warn;
@@ -286,7 +287,7 @@ fn cosine_inverse<U: num_traits::float::Float>(
 
 /// The inverse tangent trigonometric function (atan or atan2, depending on input type) calculates:
 /// atan: the angle whose tangent is the specified scalar number.
-/// atan2: the angle of a ray from the origin to the specified coordinate.
+/// atan2: the angle of a ray from the origin to the specified vec2.
 ///
 /// The resulting angle is always in the range [0°, 180°] or, in radians, [-π/2, π/2].
 #[node_macro::node(category("Math: Trig"))]
@@ -348,21 +349,21 @@ fn random<U: num_traits::float::Float>(
 }
 
 /// Convert a number to an integer of the type u32, which may be the required type for certain node inputs. This will be removed in the future when automatic type conversion is implemented.
-#[node_macro::node(name("To u32"), category("Math: Numeric"))]
+#[node_macro::node(name("To u32"), category("Type Conversion"))]
 fn to_u32<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f64, f32)] value: U) -> u32 {
 	let value = U::clamp(value, U::from(0.).unwrap(), U::from(u32::MAX as f64).unwrap());
 	value.to_u32().unwrap()
 }
 
 /// Convert a number to an integer of the type u64, which may be the required type for certain node inputs. This will be removed in the future when automatic type conversion is implemented.
-#[node_macro::node(name("To u64"), category("Math: Numeric"))]
+#[node_macro::node(name("To u64"), category("Type Conversion"))]
 fn to_u64<U: num_traits::float::Float>(_: impl Ctx, #[implementations(f64, f32)] value: U) -> u64 {
 	let value = U::clamp(value, U::from(0.).unwrap(), U::from(u64::MAX as f64).unwrap());
 	value.to_u64().unwrap()
 }
 
 /// Convert an integer to a decimal number of the type f64, which may be the required type for certain node inputs. This will be removed in the future when automatic type conversion is implemented.
-#[node_macro::node(name("To f64"), category("Math: Numeric"))]
+#[node_macro::node(name("To f64"), category("Type Conversion"))]
 fn to_f64<U: num_traits::int::PrimInt>(_: impl Ctx, #[implementations(u32, u64)] value: U) -> f64 {
 	value.to_f64().unwrap()
 }
@@ -651,29 +652,36 @@ fn percentage_value(_: impl Ctx, _primary: (), percentage: Percentage) -> f64 {
 	percentage
 }
 
-/// Constructs a two-dimensional vector value which may be set to any XY coordinate.
-#[node_macro::node(category("Value"))]
-fn coordinate_value(_: impl Ctx, _primary: (), x: f64, y: f64) -> DVec2 {
+/// Constructs a two-dimensional vector value which may be set to any XY pair.
+#[node_macro::node(category("Value"), name("Vec2 Value"))]
+fn vec2_value(_: impl Ctx, _primary: (), x: f64, y: f64) -> DVec2 {
 	DVec2::new(x, y)
 }
 
 /// Constructs a color value which may be set to any color, or no color.
 #[node_macro::node(category("Value"))]
-fn color_value(_: impl Ctx, _primary: (), #[default(Color::BLACK)] color: Option<Color>) -> Option<Color> {
+fn color_value(_: impl Ctx, _primary: (), #[default(Color::RED)] color: Table<Color>) -> Table<Color> {
 	color
-}
-
-/// Gets the color at the specified position along the gradient, given a position from 0 (left) to 1 (right).
-#[node_macro::node(category("Color"))]
-fn sample_gradient(_: impl Ctx, _primary: (), gradient: GradientStops, position: Fraction) -> Color {
-	let position = position.clamp(0., 1.);
-	gradient.evaluate(position)
 }
 
 /// Constructs a gradient value which may be set to any sequence of color stops to represent the transition between colors.
 #[node_macro::node(category("Value"))]
 fn gradient_value(_: impl Ctx, _primary: (), gradient: GradientStops) -> GradientStops {
 	gradient
+}
+
+/// Constructs a gradient value which may be set to any sequence of color stops to represent the transition between colors.
+#[node_macro::node(category("Value"))]
+fn gradient_table_value(_: impl Ctx, _primary: (), gradient: GradientStops) -> Table<GradientStops> {
+	Table::new_from_element(gradient)
+}
+
+/// Gets the color at the specified position along the gradient, given a position from 0 (left) to 1 (right).
+#[node_macro::node(category("Color"))]
+fn sample_gradient(_: impl Ctx, _primary: (), gradient: GradientStops, position: Fraction) -> Table<Color> {
+	let position = position.clamp(0., 1.);
+	let color = gradient.evaluate(position);
+	Table::new_from_element(color)
 }
 
 /// Constructs a string value which may be set to any plain text.

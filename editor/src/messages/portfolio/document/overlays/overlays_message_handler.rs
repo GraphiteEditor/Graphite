@@ -11,21 +11,24 @@ pub struct OverlaysMessageContext<'a> {
 #[derive(Debug, Clone, Default, ExtractField)]
 pub struct OverlaysMessageHandler {
 	pub overlay_providers: HashSet<OverlayProvider>,
-	#[cfg(target_arch = "wasm32")]
+	#[cfg(target_family = "wasm")]
 	canvas: Option<web_sys::HtmlCanvasElement>,
-	#[cfg(target_arch = "wasm32")]
+	#[cfg(target_family = "wasm")]
 	context: Option<web_sys::CanvasRenderingContext2d>,
 }
 
 #[message_handler_data]
 impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMessageHandler {
 	fn process_message(&mut self, message: OverlaysMessage, responses: &mut VecDeque<Message>, context: OverlaysMessageContext) {
-		let OverlaysMessageContext { visibility_settings, ipp, .. } = context;
-		#[cfg(target_arch = "wasm32")]
-		let device_pixel_ratio = context.device_pixel_ratio;
+		let OverlaysMessageContext {
+			visibility_settings,
+			ipp,
+			device_pixel_ratio,
+			..
+		} = context;
 
 		match message {
-			#[cfg(target_arch = "wasm32")]
+			#[cfg(target_family = "wasm")]
 			OverlaysMessage::Draw => {
 				use super::utility_functions::overlay_canvas_element;
 				use super::utility_types::OverlayContext;
@@ -61,22 +64,41 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 							visibility_settings: visibility_settings.clone(),
 						}));
 					}
-					responses.add(DocumentMessage::GridOverlays(OverlayContext {
-						render_context: canvas_context.clone(),
-						size: size.as_dvec2(),
-						device_pixel_ratio,
-						visibility_settings: visibility_settings.clone(),
-					}));
+					responses.add(DocumentMessage::GridOverlays {
+						context: OverlayContext {
+							render_context: canvas_context.clone(),
+							size: size.as_dvec2(),
+							device_pixel_ratio,
+							visibility_settings: visibility_settings.clone(),
+						},
+					});
 				}
 			}
-			#[cfg(not(target_arch = "wasm32"))]
+			#[cfg(all(not(target_family = "wasm"), not(test)))]
 			OverlaysMessage::Draw => {
-				warn!("Cannot render overlays on non-Wasm targets.\n{responses:?} {visibility_settings:?} {ipp:?}",);
+				use super::utility_types::OverlayContext;
+
+				let size = ipp.viewport_bounds.size();
+
+				let overlay_context = OverlayContext::new(size, device_pixel_ratio, visibility_settings);
+
+				if visibility_settings.all() {
+					responses.add(DocumentMessage::GridOverlays { context: overlay_context.clone() });
+
+					for provider in &self.overlay_providers {
+						responses.add(provider(overlay_context.clone()));
+					}
+				}
+				responses.add(FrontendMessage::RenderOverlays { context: overlay_context });
 			}
-			OverlaysMessage::AddProvider(message) => {
+			#[cfg(all(not(target_family = "wasm"), test))]
+			OverlaysMessage::Draw => {
+				let _ = (responses, visibility_settings, ipp, device_pixel_ratio);
+			}
+			OverlaysMessage::AddProvider { provider: message } => {
 				self.overlay_providers.insert(message);
 			}
-			OverlaysMessage::RemoveProvider(message) => {
+			OverlaysMessage::RemoveProvider { provider: message } => {
 				self.overlay_providers.remove(&message);
 			}
 		}

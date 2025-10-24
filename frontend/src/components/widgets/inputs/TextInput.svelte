@@ -16,6 +16,7 @@
 	// Styling
 	export let centered = false;
 	export let minWidth = 0;
+	export let maxWidth = 0;
 
 	let className = "";
 	export { className as class };
@@ -63,7 +64,10 @@
 <FieldInput
 	class={`text-input ${className}`.trim()}
 	classes={{ centered, ...classes }}
-	styles={{ ...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}) }}
+	styles={{
+		...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}),
+		...(maxWidth > 0 ? { "max-width": `${maxWidth}px` } : {}),
+	}}
 	{value}
 	on:value
 	on:textFocused={onTextFocused}

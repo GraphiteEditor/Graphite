@@ -9,6 +9,7 @@ use crate::application::{GRAPHITE_GIT_COMMIT_HASH, generate_uuid};
 use crate::consts::{ASYMPTOTIC_EFFECT, COLOR_OVERLAY_GRAY, DEFAULT_DOCUMENT_NAME, FILE_SAVE_SUFFIX, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ROTATE_SNAP_INTERVAL};
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
+use crate::messages::portfolio::document::data_panel::{DataPanelMessageContext, DataPanelMessageHandler};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::NodeGraphMessageContext;
 use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay, overlay_options};
@@ -18,6 +19,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::{Doc
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentMode, FlipAxis, PTZ};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate};
 use crate::messages::portfolio::document::utility_types::nodes::RawBuffer;
+use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_blend_mode, get_fill, get_opacity};
@@ -25,17 +27,21 @@ use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::NodeGraphExecutor;
-use bezier_rs::Subpath;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
 use graphene_std::math::quad::Quad;
 use graphene_std::path_bool::{boolean_intersect, path_bool_lib};
 use graphene_std::raster::BlendMode;
-use graphene_std::raster_types::{Raster, RasterDataTable};
+use graphene_std::raster_types::Raster;
+use graphene_std::subpath::Subpath;
+use graphene_std::table::Table;
 use graphene_std::vector::PointId;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
+use graphene_std::vector::misc::{dvec2_to_point, point_to_dvec2};
 use graphene_std::vector::style::ViewMode;
+use kurbo::{Affine, CubicBez, Line, ParamCurve, PathSeg, QuadBez};
+use std::path::PathBuf;
 use std::time::Duration;
 
 #[derive(ExtractField)]
@@ -47,6 +53,9 @@ pub struct DocumentMessageContext<'a> {
 	pub current_tool: &'a ToolType,
 	pub preferences: &'a PreferencesMessageHandler,
 	pub device_pixel_ratio: f64,
+	pub data_panel_open: bool,
+	pub layers_panel_open: bool,
+	pub properties_panel_open: bool,
 }
 
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize, ExtractField)]
@@ -61,9 +70,11 @@ pub struct DocumentMessageHandler {
 	#[serde(skip)]
 	pub node_graph_handler: NodeGraphMessageHandler,
 	#[serde(skip)]
-	overlays_message_handler: OverlaysMessageHandler,
+	pub overlays_message_handler: OverlaysMessageHandler,
 	#[serde(skip)]
-	properties_panel_message_handler: PropertiesPanelMessageHandler,
+	pub properties_panel_message_handler: PropertiesPanelMessageHandler,
+	#[serde(skip)]
+	pub data_panel_message_handler: DataPanelMessageHandler,
 
 	// ============================================
 	// Fields that are saved in the document format
@@ -114,6 +125,9 @@ pub struct DocumentMessageHandler {
 	/// Stack of document network snapshots for future history states.
 	#[serde(skip)]
 	document_redo_history: VecDeque<NodeNetworkInterface>,
+	/// The path of the to the document file.
+	#[serde(skip)]
+	path: Option<PathBuf>,
 	/// Hash of the document snapshot that was most recently saved to disk by the user.
 	#[serde(skip)]
 	saved_hash: Option<u64>,
@@ -139,6 +153,7 @@ impl Default for DocumentMessageHandler {
 			node_graph_handler: NodeGraphMessageHandler::default(),
 			overlays_message_handler: OverlaysMessageHandler::default(),
 			properties_panel_message_handler: PropertiesPanelMessageHandler::default(),
+			data_panel_message_handler: DataPanelMessageHandler::default(),
 			// ============================================
 			// Fields that are saved in the document format
 			// ============================================
@@ -161,6 +176,7 @@ impl Default for DocumentMessageHandler {
 			selection_network_path: Vec::new(),
 			document_undo_history: VecDeque::new(),
 			document_redo_history: VecDeque::new(),
+			path: None,
 			saved_hash: None,
 			auto_saved_hash: None,
 			layer_range_selection_reference: None,
@@ -180,6 +196,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			current_tool,
 			preferences,
 			device_pixel_ratio,
+			data_panel_open,
+			layers_panel_open,
+			properties_panel_open,
 		} = context;
 
 		match message {
@@ -217,8 +236,19 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					document_name: self.name.as_str(),
 					executor,
 					persistent_data,
+					properties_panel_open,
 				};
 				self.properties_panel_message_handler.process_message(message, responses, context);
+			}
+			DocumentMessage::DataPanel(message) => {
+				self.data_panel_message_handler.process_message(
+					message,
+					responses,
+					DataPanelMessageContext {
+						network_interface: &mut self.network_interface,
+						data_panel_open,
+					},
+				);
 			}
 			DocumentMessage::NodeGraph(message) => {
 				self.node_graph_handler.process_message(
@@ -235,6 +265,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						graph_fade_artwork_percentage: self.graph_fade_artwork_percentage,
 						navigation_handler: &self.navigation_handler,
 						preferences,
+						layers_panel_open,
 					},
 				);
 			}
@@ -350,14 +381,17 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::DocumentHistoryBackward => self.undo_with_history(ipp, responses),
 			DocumentMessage::DocumentHistoryForward => self.redo_with_history(ipp, responses),
 			DocumentMessage::DocumentStructureChanged => {
-				self.update_layers_panel_control_bar_widgets(responses);
-				self.update_layers_panel_bottom_bar_widgets(responses);
+				if layers_panel_open {
+					self.network_interface.load_structure();
+					let data_buffer: RawBuffer = self.serialize_root();
 
-				self.network_interface.load_structure();
-				let data_buffer: RawBuffer = self.serialize_root();
-				responses.add(FrontendMessage::UpdateDocumentLayerStructure { data_buffer });
+					self.update_layers_panel_control_bar_widgets(layers_panel_open, responses);
+					self.update_layers_panel_bottom_bar_widgets(layers_panel_open, responses);
+
+					responses.add(FrontendMessage::UpdateDocumentLayerStructure { data_buffer });
+				}
 			}
-			DocumentMessage::DrawArtboardOverlays(overlay_context) => {
+			DocumentMessage::DrawArtboardOverlays { context: overlay_context } => {
 				if !overlay_context.visibility_settings.artboard_name() {
 					return;
 				}
@@ -548,24 +582,25 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					responses.add(NodeGraphMessage::UpdateHints);
 				} else {
 					responses.add(ToolMessage::ActivateTool { tool_type: *current_tool });
+					responses.add(OverlaysMessage::Draw); // Redraw overlays when graph is closed
 				}
 			}
 			DocumentMessage::GraphViewOverlayToggle => {
 				responses.add(DocumentMessage::GraphViewOverlay { open: !self.graph_view_overlay_open });
 			}
-			DocumentMessage::GridOptions(grid) => {
-				self.snapping_state.grid = grid;
+			DocumentMessage::GridOptions { options } => {
+				self.snapping_state.grid = options;
 				self.snapping_state.grid_snapping = true;
 				responses.add(OverlaysMessage::Draw);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
-			DocumentMessage::GridOverlays(mut overlay_context) => {
+			DocumentMessage::GridOverlays { context: mut overlay_context } => {
 				if self.snapping_state.grid_snapping {
 					grid_overlay(self, &mut overlay_context)
 				}
 			}
-			DocumentMessage::GridVisibility(enabled) => {
-				self.snapping_state.grid_snapping = enabled;
+			DocumentMessage::GridVisibility { visible } => {
+				self.snapping_state.grid_snapping = visible;
 				responses.add(OverlaysMessage::Draw);
 			}
 			DocumentMessage::GroupSelectedLayers { group_folder_type } => {
@@ -691,7 +726,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					});
 
 					if layer_to_move.parent(self.metadata()) != Some(parent) {
-						// TODO: Fix this so it works when dragging a layer into a group parent which has a Transform node, which used to work before #2689 caused this regression by removing the empty VectorData table row.
+						// TODO: Fix this so it works when dragging a layer into a group parent which has a Transform node, which used to work before #2689 caused this regression by removing the empty vector table row.
 						// TODO: See #2688 for this issue.
 						let layer_local_transform = self.network_interface.document_metadata().transform_to_viewport(layer_to_move);
 						let undo_transform = self.network_interface.document_metadata().transform_to_viewport(parent).inverse();
@@ -837,7 +872,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				responses.add(DocumentMessage::AddTransaction);
 
-				let layer = graph_modification_utils::new_image_layer(RasterDataTable::new(Raster::new_cpu(image)), layer_node_id, self.new_layer_parent(true), responses);
+				let layer = graph_modification_utils::new_image_layer(Table::new_from_element(Raster::new_cpu(image)), layer_node_id, self.new_layer_parent(true), responses);
 
 				if let Some(name) = name {
 					responses.add(NodeGraphMessage::SetDisplayName {
@@ -995,10 +1030,15 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					true => self.name.clone(),
 					false => self.name.clone() + FILE_SAVE_SUFFIX,
 				};
-				responses.add(FrontendMessage::TriggerDownloadTextFile {
-					document: self.serialize_document(),
+				responses.add(FrontendMessage::TriggerSaveDocument {
+					document_id,
 					name,
+					path: self.path.clone(),
+					content: self.serialize_document().into_bytes(),
 				})
+			}
+			DocumentMessage::SavedDocument { path } => {
+				self.path = path;
 			}
 			DocumentMessage::SelectParentLayer => {
 				let selected_nodes = self.network_interface.selected_nodes();
@@ -1022,7 +1062,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				if !parent_layers.is_empty() {
 					let nodes = parent_layers.into_iter().collect();
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes });
-					responses.add(BroadcastEvent::SelectionChanged);
+					responses.add(EventMessage::SelectionChanged);
 				}
 			}
 			DocumentMessage::SelectAllLayers => {
@@ -1097,7 +1137,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						} else {
 							responses.add_front(NodeGraphMessage::SelectedNodesAdd { nodes: vec![id] });
 						}
-						responses.add(BroadcastEvent::SelectionChanged);
+						responses.add(EventMessage::SelectionChanged);
 					} else {
 						nodes.push(id);
 					}
@@ -1117,7 +1157,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 			}
 			DocumentMessage::SetActivePanel { active_panel: panel } => {
-				use crate::messages::portfolio::utility_types::PanelType;
 				match panel {
 					PanelType::Document => {
 						if self.graph_view_overlay_open {
@@ -1167,7 +1206,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					Some(overlays_type) => overlays_type,
 					None => {
 						visibility_settings.all = visible;
-						responses.add(BroadcastEvent::ToolAbort);
+						responses.add(EventMessage::ToolAbort);
 						responses.add(OverlaysMessage::Draw);
 						return;
 					}
@@ -1190,7 +1229,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					OverlaysType::Handles => visibility_settings.handles = visible,
 					OverlaysType::FillableIndicator => visibility_settings.fillable_indicator = visible,
 				}
-				responses.add(BroadcastEvent::ToolAbort);
+
+				responses.add(EventMessage::ToolAbort);
 				responses.add(OverlaysMessage::Draw);
 			}
 			DocumentMessage::SetRangeSelectionLayer { new_layer } => {
@@ -1302,10 +1342,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::UpdateUpstreamTransforms {
 				upstream_footprints,
 				local_transforms,
-				first_instance_source_id,
+				first_element_source_id,
 			} => {
 				self.network_interface.update_transforms(upstream_footprints, local_transforms);
-				self.network_interface.update_first_instance_source_id(first_instance_source_id);
+				self.network_interface.update_first_element_source_id(first_element_source_id);
 			}
 			DocumentMessage::UpdateClickTargets { click_targets } => {
 				// TODO: Allow non layer nodes to have click targets
@@ -1404,12 +1444,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					let transform = self.navigation_handler.calculate_offset_transform(ipp.viewport_bounds.center(), &self.document_ptz);
 					self.network_interface.set_document_to_viewport_transform(transform);
 					// Ensure selection box is kept in sync with the pointer when the PTZ changes
-					responses.add(SelectToolMessage::PointerMove(SelectToolPointerKeys {
-						axis_align: Key::Shift,
-						snap_angle: Key::Shift,
-						center: Key::Alt,
-						duplicate: Key::Alt,
-					}));
+					responses.add(SelectToolMessage::PointerMove {
+						modifier_keys: SelectToolPointerKeys {
+							axis_align: Key::Shift,
+							snap_angle: Key::Shift,
+							center: Key::Alt,
+							duplicate: Key::Alt,
+						},
+					});
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				} else {
 					let Some(network_metadata) = self.network_interface.network_metadata(&self.breadcrumb_network_path) else {
@@ -1438,11 +1480,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			}
 			DocumentMessage::SelectionStepBack => {
 				self.network_interface.selection_step_back(&self.selection_network_path);
-				responses.add(BroadcastEvent::SelectionChanged);
+				responses.add(EventMessage::SelectionChanged);
 			}
 			DocumentMessage::SelectionStepForward => {
 				self.network_interface.selection_step_forward(&self.selection_network_path);
-				responses.add(BroadcastEvent::SelectionChanged);
+				responses.add(EventMessage::SelectionChanged);
 			}
 			DocumentMessage::WrapContentInArtboard { place_artboard_at_origin } => {
 				// Get bounding box of all layers
@@ -1870,10 +1912,11 @@ impl DocumentMessageHandler {
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		responses.add(NodeGraphMessage::SelectedNodesUpdated);
 		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
+
 		// TODO: Remove once the footprint is used to load the imports/export distances from the edge
 		responses.add(NodeGraphMessage::UnloadWires);
 		responses.add(NodeGraphMessage::SetGridAlignedEdges);
-		responses.add(Message::StartBuffer);
+
 		Some(previous_network)
 	}
 	pub fn redo_with_history(&mut self, ipp: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
@@ -2145,7 +2188,7 @@ impl DocumentMessageHandler {
 					},
 					LayoutGroup::Row {
 						widgets: {
-							let mut checkbox_id = CheckboxId::default();
+							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.artboard_name)
 									.on_update(|optional_input: &CheckboxInput| {
@@ -2155,15 +2198,15 @@ impl DocumentMessageHandler {
 										}
 										.into()
 									})
-									.for_label(checkbox_id.clone())
+									.for_label(checkbox_id)
 									.widget_holder(),
-								TextLabel::new("Artboard Name".to_string()).for_checkbox(&mut checkbox_id).widget_holder(),
+								TextLabel::new("Artboard Name".to_string()).for_checkbox(checkbox_id).widget_holder(),
 							]
 						},
 					},
 					LayoutGroup::Row {
 						widgets: {
-							let mut checkbox_id = CheckboxId::default();
+							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.transform_measurement)
 									.on_update(|optional_input: &CheckboxInput| {
@@ -2173,9 +2216,9 @@ impl DocumentMessageHandler {
 										}
 										.into()
 									})
-									.for_label(checkbox_id.clone())
+									.for_label(checkbox_id)
 									.widget_holder(),
-								TextLabel::new("G/R/S Measurement".to_string()).for_checkbox(&mut checkbox_id).widget_holder(),
+								TextLabel::new("G/R/S Measurement".to_string()).for_checkbox(checkbox_id).widget_holder(),
 							]
 						},
 					},
@@ -2184,7 +2227,7 @@ impl DocumentMessageHandler {
 					},
 					LayoutGroup::Row {
 						widgets: {
-							let mut checkbox_id = CheckboxId::default();
+							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.quick_measurement)
 									.on_update(|optional_input: &CheckboxInput| {
@@ -2194,15 +2237,15 @@ impl DocumentMessageHandler {
 										}
 										.into()
 									})
-									.for_label(checkbox_id.clone())
+									.for_label(checkbox_id)
 									.widget_holder(),
-								TextLabel::new("Quick Measurement".to_string()).for_checkbox(&mut checkbox_id).widget_holder(),
+								TextLabel::new("Quick Measurement".to_string()).for_checkbox(checkbox_id).widget_holder(),
 							]
 						},
 					},
 					LayoutGroup::Row {
 						widgets: {
-							let mut checkbox_id = CheckboxId::default();
+							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.transform_cage)
 									.on_update(|optional_input: &CheckboxInput| {
@@ -2212,15 +2255,15 @@ impl DocumentMessageHandler {
 										}
 										.into()
 									})
-									.for_label(checkbox_id.clone())
+									.for_label(checkbox_id)
 									.widget_holder(),
-								TextLabel::new("Transform Cage".to_string()).for_checkbox(&mut checkbox_id).widget_holder(),
+								TextLabel::new("Transform Cage".to_string()).for_checkbox(checkbox_id).widget_holder(),
 							]
 						},
 					},
 					LayoutGroup::Row {
 						widgets: {
-							let mut checkbox_id = CheckboxId::default();
+							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.compass_rose)
 									.on_update(|optional_input: &CheckboxInput| {
@@ -2230,15 +2273,15 @@ impl DocumentMessageHandler {
 										}
 										.into()
 									})
-									.for_label(checkbox_id.clone())
+									.for_label(checkbox_id)
 									.widget_holder(),
-								TextLabel::new("Transform Dial".to_string()).for_checkbox(&mut checkbox_id).widget_holder(),
+								TextLabel::new("Transform Dial".to_string()).for_checkbox(checkbox_id).widget_holder(),
 							]
 						},
 					},
 					LayoutGroup::Row {
 						widgets: {
-							let mut checkbox_id = CheckboxId::default();
+							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.pivot)
 									.on_update(|optional_input: &CheckboxInput| {
@@ -2248,15 +2291,15 @@ impl DocumentMessageHandler {
 										}
 										.into()
 									})
-									.for_label(checkbox_id.clone())
+									.for_label(checkbox_id)
 									.widget_holder(),
-								TextLabel::new("Transform Pivot".to_string()).for_checkbox(&mut checkbox_id).widget_holder(),
+								TextLabel::new("Transform Pivot".to_string()).for_checkbox(checkbox_id).widget_holder(),
 							]
 						},
 					},
 					LayoutGroup::Row {
 						widgets: {
-							let mut checkbox_id = CheckboxId::default();
+							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.origin)
 									.on_update(|optional_input: &CheckboxInput| {
@@ -2266,15 +2309,15 @@ impl DocumentMessageHandler {
 										}
 										.into()
 									})
-									.for_label(checkbox_id.clone())
+									.for_label(checkbox_id)
 									.widget_holder(),
-								TextLabel::new("Transform Origin".to_string()).for_checkbox(&mut checkbox_id).widget_holder(),
+								TextLabel::new("Transform Origin".to_string()).for_checkbox(checkbox_id).widget_holder(),
 							]
 						},
 					},
 					LayoutGroup::Row {
 						widgets: {
-							let mut checkbox_id = CheckboxId::default();
+							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.hover_outline)
 									.on_update(|optional_input: &CheckboxInput| {
@@ -2284,15 +2327,15 @@ impl DocumentMessageHandler {
 										}
 										.into()
 									})
-									.for_label(checkbox_id.clone())
+									.for_label(checkbox_id)
 									.widget_holder(),
-								TextLabel::new("Hover Outline".to_string()).for_checkbox(&mut checkbox_id).widget_holder(),
+								TextLabel::new("Hover Outline".to_string()).for_checkbox(checkbox_id).widget_holder(),
 							]
 						},
 					},
 					LayoutGroup::Row {
 						widgets: {
-							let mut checkbox_id = CheckboxId::default();
+							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.selection_outline)
 									.on_update(|optional_input: &CheckboxInput| {
@@ -2302,9 +2345,9 @@ impl DocumentMessageHandler {
 										}
 										.into()
 									})
-									.for_label(checkbox_id.clone())
+									.for_label(checkbox_id)
 									.widget_holder(),
-								TextLabel::new("Selection Outline".to_string()).for_checkbox(&mut checkbox_id).widget_holder(),
+								TextLabel::new("Selection Outline".to_string()).for_checkbox(checkbox_id).widget_holder(),
 							]
 						},
 					},
@@ -2313,7 +2356,7 @@ impl DocumentMessageHandler {
 					},
 					LayoutGroup::Row {
 						widgets: {
-							let mut checkbox_id = CheckboxId::default();
+							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.path)
 									.on_update(|optional_input: &CheckboxInput| {
@@ -2323,15 +2366,15 @@ impl DocumentMessageHandler {
 										}
 										.into()
 									})
-									.for_label(checkbox_id.clone())
+									.for_label(checkbox_id)
 									.widget_holder(),
-								TextLabel::new("Path".to_string()).for_checkbox(&mut checkbox_id).widget_holder(),
+								TextLabel::new("Path".to_string()).for_checkbox(checkbox_id).widget_holder(),
 							]
 						},
 					},
 					LayoutGroup::Row {
 						widgets: {
-							let mut checkbox_id = CheckboxId::default();
+							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.anchors)
 									.on_update(|optional_input: &CheckboxInput| {
@@ -2341,15 +2384,15 @@ impl DocumentMessageHandler {
 										}
 										.into()
 									})
-									.for_label(checkbox_id.clone())
+									.for_label(checkbox_id)
 									.widget_holder(),
-								TextLabel::new("Anchors".to_string()).for_checkbox(&mut checkbox_id).widget_holder(),
+								TextLabel::new("Anchors".to_string()).for_checkbox(checkbox_id).widget_holder(),
 							]
 						},
 					},
 					LayoutGroup::Row {
 						widgets: {
-							let mut checkbox_id = CheckboxId::default();
+							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.handles)
 									.disabled(!self.overlays_visibility_settings.anchors)
@@ -2360,11 +2403,11 @@ impl DocumentMessageHandler {
 										}
 										.into()
 									})
-									.for_label(checkbox_id.clone())
+									.for_label(checkbox_id)
 									.widget_holder(),
 								TextLabel::new("Handles".to_string())
 									.disabled(!self.overlays_visibility_settings.anchors)
-									.for_checkbox(&mut checkbox_id)
+									.for_checkbox(checkbox_id)
 									.widget_holder(),
 							]
 						},
@@ -2374,7 +2417,7 @@ impl DocumentMessageHandler {
 					},
 					LayoutGroup::Row {
 						widgets: {
-							let mut checkbox_id = CheckboxId::default();
+							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.fillable_indicator)
 									.on_update(|optional_input: &CheckboxInput| {
@@ -2386,7 +2429,7 @@ impl DocumentMessageHandler {
 									})
 									.for_label(checkbox_id.clone())
 									.widget_holder(),
-								TextLabel::new("Fillable Indicator".to_string()).for_checkbox(&mut checkbox_id).widget_holder(),
+								TextLabel::new("Fillable Indicator".to_string()).for_checkbox(checkbox_id).widget_holder(),
 							]
 						},
 					},
@@ -2418,7 +2461,7 @@ impl DocumentMessageHandler {
 					.into_iter()
 					.chain(SNAP_FUNCTIONS_FOR_BOUNDING_BOXES.into_iter().map(|(name, closure, tooltip)| LayoutGroup::Row {
 						widgets: {
-							let mut checkbox_id = CheckboxId::default();
+							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(*closure(&mut snapping_state))
 									.on_update(move |input: &CheckboxInput| {
@@ -2429,9 +2472,9 @@ impl DocumentMessageHandler {
 										.into()
 									})
 									.tooltip(tooltip)
-									.for_label(checkbox_id.clone())
+									.for_label(checkbox_id)
 									.widget_holder(),
-								TextLabel::new(name).tooltip(tooltip).for_checkbox(&mut checkbox_id).widget_holder(),
+								TextLabel::new(name).tooltip(tooltip).for_checkbox(checkbox_id).widget_holder(),
 							]
 						},
 					}))
@@ -2440,7 +2483,7 @@ impl DocumentMessageHandler {
 					}])
 					.chain(SNAP_FUNCTIONS_FOR_PATHS.into_iter().map(|(name, closure, tooltip)| LayoutGroup::Row {
 						widgets: {
-							let mut checkbox_id = CheckboxId::default();
+							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(*closure(&mut snapping_state2))
 									.on_update(move |input: &CheckboxInput| {
@@ -2451,9 +2494,9 @@ impl DocumentMessageHandler {
 										.into()
 									})
 									.tooltip(tooltip)
-									.for_label(checkbox_id.clone())
+									.for_label(checkbox_id)
 									.widget_holder(),
-								TextLabel::new(name).tooltip(tooltip).for_checkbox(&mut checkbox_id).widget_holder(),
+								TextLabel::new(name).tooltip(tooltip).for_checkbox(checkbox_id).widget_holder(),
 							]
 						},
 					}))
@@ -2465,7 +2508,7 @@ impl DocumentMessageHandler {
 				.icon("Grid")
 				.tooltip("Grid")
 				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::ToggleGridVisibility))
-				.on_update(|optional_input: &CheckboxInput| DocumentMessage::GridVisibility(optional_input.checked).into())
+				.on_update(|optional_input: &CheckboxInput| DocumentMessage::GridVisibility { visible: optional_input.checked }.into())
 				.widget_holder(),
 			PopoverButton::new()
 				.popover_layout(overlay_options(&self.snapping_state.grid))
@@ -2558,7 +2601,11 @@ impl DocumentMessageHandler {
 		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
 	}
 
-	pub fn update_layers_panel_control_bar_widgets(&self, responses: &mut VecDeque<Message>) {
+	pub fn update_layers_panel_control_bar_widgets(&self, layers_panel_open: bool, responses: &mut VecDeque<Message>) {
+		if !layers_panel_open {
+			return;
+		}
+
 		// Get an iterator over the selected layers (excluding artboards which don't have an opacity or blend mode).
 		let selected_nodes = self.network_interface.selected_nodes();
 		let selected_layers_except_artboards = selected_nodes.selected_layers_except_artboards(&self.network_interface);
@@ -2716,7 +2763,11 @@ impl DocumentMessageHandler {
 		});
 	}
 
-	pub fn update_layers_panel_bottom_bar_widgets(&self, responses: &mut VecDeque<Message>) {
+	pub fn update_layers_panel_bottom_bar_widgets(&self, layers_panel_open: bool, responses: &mut VecDeque<Message>) {
+		if !layers_panel_open {
+			return;
+		}
+
 		let selected_nodes = self.network_interface.selected_nodes();
 		let mut selected_layers = selected_nodes.selected_layers(self.metadata());
 		let selected_layer = selected_layers.next();
@@ -2926,7 +2977,7 @@ impl DocumentMessageHandler {
 /// Create a network interface with a single export
 fn default_document_network_interface() -> NodeNetworkInterface {
 	let mut network_interface = NodeNetworkInterface::default();
-	network_interface.add_export(TaggedValue::ArtboardGroup(graphene_std::ArtboardGroupTable::default()), -1, "", &[]);
+	network_interface.add_export(TaggedValue::Artboard(Default::default()), -1, "", &[]);
 	network_interface
 }
 
@@ -2958,10 +3009,10 @@ fn quad_to_path_lib_segments(quad: Quad) -> Vec<path_bool_lib::PathSegment> {
 }
 
 fn click_targets_to_path_lib_segments<'a>(click_targets: impl Iterator<Item = &'a ClickTarget>, transform: DAffine2) -> Vec<path_bool_lib::PathSegment> {
-	let segment = |bezier: bezier_rs::Bezier| match bezier.handles {
-		bezier_rs::BezierHandles::Linear => path_bool_lib::PathSegment::Line(bezier.start, bezier.end),
-		bezier_rs::BezierHandles::Quadratic { handle } => path_bool_lib::PathSegment::Quadratic(bezier.start, handle, bezier.end),
-		bezier_rs::BezierHandles::Cubic { handle_start, handle_end } => path_bool_lib::PathSegment::Cubic(bezier.start, handle_start, handle_end, bezier.end),
+	let segment = |bezier: PathSeg| match bezier {
+		PathSeg::Line(line) => path_bool_lib::PathSegment::Line(point_to_dvec2(line.p0), point_to_dvec2(line.p1)),
+		PathSeg::Quad(quad_bez) => path_bool_lib::PathSegment::Quadratic(point_to_dvec2(quad_bez.p0), point_to_dvec2(quad_bez.p1), point_to_dvec2(quad_bez.p2)),
+		PathSeg::Cubic(cubic_bez) => path_bool_lib::PathSegment::Cubic(point_to_dvec2(cubic_bez.p0), point_to_dvec2(cubic_bez.p1), point_to_dvec2(cubic_bez.p2), point_to_dvec2(cubic_bez.p3)),
 	};
 	click_targets
 		.filter_map(|target| {
@@ -2972,7 +3023,7 @@ fn click_targets_to_path_lib_segments<'a>(click_targets: impl Iterator<Item = &'
 			}
 		})
 		.flatten()
-		.map(|bezier| segment(bezier.apply_transformation(|x| transform.transform_point2(x))))
+		.map(|bezier| segment(Affine::new(transform.to_cols_array()) * bezier))
 		.collect()
 }
 
@@ -2995,11 +3046,11 @@ impl<'a> ClickXRayIter<'a> {
 
 	/// Handles the checking of the layer where the target is a rect or path
 	fn check_layer_area_target(&mut self, click_targets: Option<&Vec<ClickTarget>>, clip: bool, layer: LayerNodeIdentifier, path: Vec<path_bool_lib::PathSegment>, transform: DAffine2) -> XRayResult {
-		// Convert back to Bezier-rs types for intersections
+		// Convert back to Kurbo types for intersections
 		let segment = |bezier: &path_bool_lib::PathSegment| match *bezier {
-			path_bool_lib::PathSegment::Line(start, end) => bezier_rs::Bezier::from_linear_dvec2(start, end),
-			path_bool_lib::PathSegment::Cubic(start, h1, h2, end) => bezier_rs::Bezier::from_cubic_dvec2(start, h1, h2, end),
-			path_bool_lib::PathSegment::Quadratic(start, h1, end) => bezier_rs::Bezier::from_quadratic_dvec2(start, h1, end),
+			path_bool_lib::PathSegment::Line(start, end) => PathSeg::Line(Line::new(dvec2_to_point(start), dvec2_to_point(end))),
+			path_bool_lib::PathSegment::Cubic(start, h1, h2, end) => PathSeg::Cubic(CubicBez::new(dvec2_to_point(start), dvec2_to_point(h1), dvec2_to_point(h2), dvec2_to_point(end))),
+			path_bool_lib::PathSegment::Quadratic(start, h1, end) => PathSeg::Quad(QuadBez::new(dvec2_to_point(start), dvec2_to_point(h1), dvec2_to_point(end))),
 			path_bool_lib::PathSegment::Arc(_, _, _, _, _, _, _) => unimplemented!(),
 		};
 		let get_clip = || path.iter().map(segment);
@@ -3048,7 +3099,10 @@ impl<'a> ClickXRayIter<'a> {
 			XRayTarget::Quad(quad) => self.check_layer_area_target(click_targets, clip, layer, quad_to_path_lib_segments(*quad), transform),
 			XRayTarget::Path(path) => self.check_layer_area_target(click_targets, clip, layer, path.clone(), transform),
 			XRayTarget::Polygon(polygon) => {
-				let polygon = polygon.iter_closed().map(|line| path_bool_lib::PathSegment::Line(line.start, line.end)).collect();
+				let polygon = polygon
+					.iter_closed()
+					.map(|line| path_bool_lib::PathSegment::Line(point_to_dvec2(line.start()), point_to_dvec2(line.end())))
+					.collect();
 				self.check_layer_area_target(click_targets, clip, layer, polygon, transform)
 			}
 		}

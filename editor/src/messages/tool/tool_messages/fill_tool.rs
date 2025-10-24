@@ -3,9 +3,11 @@ use crate::messages::portfolio::document::overlays::utility_types::OverlayContex
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer, get_stroke_width};
 use graph_craft::document::value::TaggedValue;
 use graphene_std::NodeInputDecleration;
+use graphene_std::subpath::Subpath;
 use graphene_std::vector::PointId;
 use graphene_std::vector::stroke::{CapInput, JoinInput, MiterLimitInput};
 use graphene_std::vector::style::{Fill, Stroke, StrokeCap, StrokeJoin};
+use kurbo::Shape;
 
 #[derive(Default, ExtractField)]
 pub struct FillTool {
@@ -18,7 +20,7 @@ pub enum FillToolMessage {
 	// Standard messages
 	Abort,
 	WorkingColorChanged,
-	Overlays(OverlayContext),
+	Overlays { context: OverlayContext },
 
 	// Tool-specific messages
 	PointerMove,
@@ -71,24 +73,34 @@ impl ToolTransition for FillTool {
 		EventToMessageMap {
 			tool_abort: Some(FillToolMessage::Abort.into()),
 			working_color_changed: Some(FillToolMessage::WorkingColorChanged.into()),
-			overlay_provider: Some(|overlay_context| FillToolMessage::Overlays(overlay_context).into()),
+			overlay_provider: Some(|context| FillToolMessage::Overlays { context }.into()),
 			..Default::default()
 		}
 	}
 }
 
-pub fn close_to_subpath(mouse_pos: DVec2, subpath: bezier_rs::Subpath<PointId>, stroke_width: f64, _zoom: f64, layer_to_viewport_transform: DAffine2) -> bool {
+pub fn close_to_subpath(mouse_pos: DVec2, subpath: Subpath<PointId>, stroke_width: f64, _zoom: f64, layer_to_viewport_transform: DAffine2) -> bool {
 	let mouse_pos = layer_to_viewport_transform.inverse().transform_point2(mouse_pos);
 	let max_stroke_distance = stroke_width;
 
-	if let Some((segment_index, t)) = subpath.project(mouse_pos) {
-		let nearest_point = subpath.evaluate(bezier_rs::SubpathTValue::Parametric { segment_index, t });
-		// debug!("max_stroke_distance: {max_stroke_distance}");
-		// debug!("mouse-stroke distance: {:?}", (mouse_pos - nearest_point).length());
-		(mouse_pos - nearest_point).length_squared() <= max_stroke_distance
-	} else {
-		false
+	let subpath_bezpath = subpath.to_bezpath();
+	let mouse_point = kurbo::Point::new(mouse_pos.x, mouse_pos.y);
+	let mut is_close = false;
+	for seg in subpath_bezpath.segments() {
+		if seg.contains(mouse_point) {
+			is_close = true;
+		}
 	}
+	return is_close;
+
+	// if let Some((segment_index, t)) = subpath.project(mouse_pos) {
+	// 	let nearest_point = subpath.evaluate(SubpathTValue::Parametric { segment_index, t });
+	// 	// debug!("max_stroke_distance: {max_stroke_distance}");
+	// 	// debug!("mouse-stroke distance: {:?}", (mouse_pos - nearest_point).length());
+	// 	(mouse_pos - nearest_point).length_squared() <= max_stroke_distance
+	// } else {
+	// 	false
+	// }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -117,7 +129,7 @@ impl Fsm for FillToolFsmState {
 
 		let ToolMessage::Fill(event) = event else { return self };
 		match (self, event) {
-			(_, FillToolMessage::Overlays(mut overlay_context)) => {
+			(_, FillToolMessage::Overlays { context: mut overlay_context }) => {
 				// Choose the working color to preview
 				let use_secondary = input.keyboard.get(Key::Shift as usize);
 				let preview_color = if use_secondary { global_tool_data.secondary_color } else { global_tool_data.primary_color };

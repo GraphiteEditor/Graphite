@@ -43,18 +43,19 @@ fn draw_line_with_length(line_start: DVec2, line_end: DVec2, transform: DAffine2
 	}
 }
 
-/// Draws a dashed outline around a rectangle to visualize the AABB
+/// Draws a dashed outline around the given rectangle (assumed to be in document space).
+/// The provided transform is applied to convert coordinates (e.g., to viewport space) during rendering.
 fn draw_dashed_rect_outline(rect: Rect, transform: DAffine2, overlay_context: &mut OverlayContext) {
 	let min = rect.min();
 	let max = rect.max();
 
-	// Create the four corners of the rectangle
-	let top_left = transform.transform_point2(DVec2::new(min.x, min.y));
-	let top_right = transform.transform_point2(DVec2::new(max.x, min.y));
-	let bottom_right = transform.transform_point2(DVec2::new(max.x, max.y));
-	let bottom_left = transform.transform_point2(DVec2::new(min.x, max.y));
+	// Define corners in document space
+	let top_left = DVec2::new(min.x, min.y);
+	let top_right = DVec2::new(max.x, min.y);
+	let bottom_right = DVec2::new(max.x, max.y);
+	let bottom_left = DVec2::new(min.x, max.y);
 
-	// Draw the four sides as dashed lines
+	// Draw each edge using document-space coordinates; transform is applied inside draw_dashed_line
 	draw_dashed_line(top_left, top_right, transform, overlay_context);
 	draw_dashed_line(top_right, bottom_right, transform, overlay_context);
 	draw_dashed_line(bottom_right, bottom_left, transform, overlay_context);

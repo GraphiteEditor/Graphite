@@ -8,17 +8,20 @@ use crate::messages::portfolio::document::node_graph::utility_types::{Direction,
 use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle, WirePath, WirePathUpdate, build_vector_wire};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::tool_messages::tool_prelude::NumberInputMode;
-use bezier_rs::Subpath;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
 use graph_craft::{Type, concrete};
+use graphene_std::Artboard;
 use graphene_std::math::quad::Quad;
+use graphene_std::subpath::Subpath;
+use graphene_std::table::Table;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
-use graphene_std::vector::{PointId, VectorData, VectorModificationType};
+use graphene_std::vector::{PointId, Vector, VectorModificationType};
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypes;
 use interpreted_executor::node_registry::NODE_REGISTRY;
+use kurbo::BezPath;
 use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::{DefaultHasher, Hash, Hasher};
@@ -507,8 +510,8 @@ impl NodeNetworkInterface {
 			InputConnector::Node { node_id, input_index } => (node_id, input_index),
 			InputConnector::Export(export_index) => {
 				let Some((encapsulating_node_id, encapsulating_node_id_path)) = network_path.split_last() else {
-					// The outermost network export defaults to an ArtboardGroupTable.
-					return Some((concrete!(graphene_std::ArtboardGroupTable), TypeSource::OuterMostExportDefault));
+					// The outermost network export defaults to a Table<Artboard>.
+					return Some((concrete!(Table<Artboard>), TypeSource::OuterMostExportDefault));
 				};
 
 				let output_type = self.output_type(encapsulating_node_id, export_index, encapsulating_node_id_path);
@@ -673,7 +676,7 @@ impl NodeNetworkInterface {
 						let valid_implementation = (0..number_of_inputs).filter(|iterator_index| iterator_index != input_index).all(|iterator_index| {
 							let input_type = self.input_type(&InputConnector::node(*node_id, iterator_index), network_path).0;
 							// Value inputs are stored as concrete, so they are compared to the nested type. Node inputs are stored as fn, so they are compared to the entire type.
-							// For example a node input of (Footprint) -> VectorData would not be compatible with () -> VectorData
+							// For example a node input of (Footprint) -> Vector would not be compatible with () -> Vector
 							node_io.inputs.get(iterator_index).map(|ty| ty.nested_type().clone()).as_ref() == Some(&input_type) || node_io.inputs.get(iterator_index) == Some(&input_type)
 						});
 						if valid_implementation { node_io.inputs.get(*input_index).cloned() } else { None }
@@ -1284,7 +1287,7 @@ impl NodeNetworkInterface {
 						let artboard = self.document_node(&artboard_node_identifier.to_node(), &[]);
 						let clip_input = artboard.unwrap().inputs.get(5).unwrap();
 						if let NodeInput::Value { tagged_value, .. } = clip_input {
-							if tagged_value.to_primitive_string() == "true" {
+							if tagged_value.clone().into_inner() == TaggedValue::Bool(true) {
 								return Some(Quad::clip(
 									self.document_metadata.bounding_box_document(layer).unwrap_or_default(),
 									self.document_metadata.bounding_box_document(artboard_node_identifier).unwrap_or_default(),
@@ -1424,13 +1427,13 @@ impl NodeNetworkInterface {
 			.any(|id| id == potentially_upstream_node)
 	}
 
-	#[cfg(not(target_arch = "wasm32"))]
+	#[cfg(not(target_family = "wasm"))]
 	fn text_width(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<f64> {
 		warn!("Failed to find width of {node_id:#?} in network_path {network_path:?} due to non-wasm arch");
 		Some(0.)
 	}
 
-	#[cfg(target_arch = "wasm32")]
+	#[cfg(target_family = "wasm")]
 	fn text_width(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<f64> {
 		let document = web_sys::window().unwrap().document().unwrap();
 		let div = match document.create_element("div") {
@@ -2632,7 +2635,7 @@ impl NodeNetworkInterface {
 				InputConnector::Node { node_id, input_index } => (*node_id, *input_index),
 				InputConnector::Export(export_index) => (NodeId(u64::MAX), *export_index),
 			})
-			.chain(std::iter::once((NodeId(u64::MAX), usize::MAX)))
+			.chain(std::iter::once((NodeId(u64::MAX), u32::MAX as usize)))
 			.collect()
 	}
 
@@ -2711,8 +2714,7 @@ impl NodeNetworkInterface {
 		let thick = vertical_end && vertical_start;
 		let vector_wire = build_vector_wire(output_position, input_position, vertical_start, vertical_end, graph_wire_style);
 
-		let mut path_string = String::new();
-		let _ = vector_wire.subpath_to_svg(&mut path_string, DAffine2::IDENTITY);
+		let path_string = vector_wire.to_svg();
 		let data_type = FrontendGraphDataType::from_type(&self.input_type(&input, network_path).0);
 		let wire_path_update = Some(WirePath {
 			path_string,
@@ -2723,20 +2725,20 @@ impl NodeNetworkInterface {
 
 		Some(WirePathUpdate {
 			id: NodeId(u64::MAX),
-			input_index: usize::MAX,
+			input_index: u32::MAX as usize,
 			wire_path_update,
 		})
 	}
 
 	/// Returns the vector subpath and a boolean of whether the wire should be thick.
-	pub fn vector_wire_from_input(&mut self, input: &InputConnector, wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<(Subpath<PointId>, bool)> {
+	pub fn vector_wire_from_input(&mut self, input: &InputConnector, wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<(BezPath, bool)> {
 		let Some(input_position) = self.get_input_center(input, network_path) else {
 			log::error!("Could not get dom rect for wire end: {:?}", input);
 			return None;
 		};
 		// An upstream output could not be found, so the wire does not exist, but it should still be loaded as as empty vector
 		let Some(upstream_output) = self.upstream_output_connector(input, network_path) else {
-			return Some((Subpath::from_anchors(std::iter::empty(), false), false));
+			return Some((BezPath::new(), false));
 		};
 		let Some(output_position) = self.get_output_center(&upstream_output, network_path) else {
 			log::error!("Could not get dom rect for wire start: {:?}", upstream_output);
@@ -2750,8 +2752,7 @@ impl NodeNetworkInterface {
 
 	pub fn wire_path_from_input(&mut self, input: &InputConnector, graph_wire_style: GraphWireStyle, dashed: bool, network_path: &[NodeId]) -> Option<WirePath> {
 		let (vector_wire, thick) = self.vector_wire_from_input(input, graph_wire_style, network_path)?;
-		let mut path_string = String::new();
-		let _ = vector_wire.subpath_to_svg(&mut path_string, DAffine2::IDENTITY);
+		let path_string = vector_wire.to_svg();
 		let data_type = FrontendGraphDataType::from_type(&self.input_type(input, network_path).0);
 		Some(WirePath {
 			path_string,
@@ -2831,7 +2832,7 @@ impl NodeNetworkInterface {
 			let node_click_target_bottom_right = node_click_target_top_left + DVec2::new(width as f64, height as f64);
 
 			let radius = 3.;
-			let subpath = bezier_rs::Subpath::new_rounded_rect(node_click_target_top_left, node_click_target_bottom_right, [radius; 4]);
+			let subpath = Subpath::new_rounded_rect(node_click_target_top_left, node_click_target_bottom_right, [radius; 4]);
 			let node_click_target = ClickTarget::new_with_subpath(subpath, 0.);
 
 			DocumentNodeClickTargets {
@@ -2870,7 +2871,7 @@ impl NodeNetworkInterface {
 			let node_bottom_right = node_top_left + DVec2::new(width as f64, height as f64);
 			let chain_top_left = node_top_left - DVec2::new((chain_width_grid_spaces * crate::consts::GRID_SIZE) as f64, 0.);
 			let radius = 10.;
-			let subpath = bezier_rs::Subpath::new_rounded_rect(chain_top_left, node_bottom_right, [radius; 4]);
+			let subpath = Subpath::new_rounded_rect(chain_top_left, node_bottom_right, [radius; 4]);
 			let node_click_target = ClickTarget::new_with_subpath(subpath, 0.);
 
 			DocumentNodeClickTargets {
@@ -3047,7 +3048,7 @@ impl NodeNetworkInterface {
 
 	pub fn collect_frontend_click_targets(&mut self, network_path: &[NodeId]) -> FrontendClickTargets {
 		let mut all_node_click_targets = Vec::new();
-		let mut port_click_targets = Vec::new();
+		let mut connector_click_targets = Vec::new();
 		let mut icon_click_targets = Vec::new();
 		let Some(network_metadata) = self.network_metadata(network_path) else {
 			log::error!("Could not get nested network_metadata in collect_frontend_click_targets");
@@ -3058,27 +3059,21 @@ impl NodeNetworkInterface {
 				let mut node_path = String::new();
 
 				if let ClickTargetType::Subpath(subpath) = node_click_targets.node_click_target.target_type() {
-					let _ = subpath.subpath_to_svg(&mut node_path, DAffine2::IDENTITY);
+					node_path.push_str(subpath.to_bezpath().to_svg().as_str())
 				}
 				all_node_click_targets.push((node_id, node_path));
 				for port in node_click_targets.port_click_targets.click_targets().chain(import_export_click_targets.click_targets()) {
 					if let ClickTargetType::Subpath(subpath) = port.target_type() {
-						let mut port_path = String::new();
-						let _ = subpath.subpath_to_svg(&mut port_path, DAffine2::IDENTITY);
-						port_click_targets.push(port_path);
+						connector_click_targets.push(subpath.to_bezpath().to_svg());
 					}
 				}
 				if let NodeTypeClickTargets::Layer(layer_metadata) = &node_click_targets.node_type_metadata {
 					if let ClickTargetType::Subpath(subpath) = layer_metadata.visibility_click_target.target_type() {
-						let mut port_path = String::new();
-						let _ = subpath.subpath_to_svg(&mut port_path, DAffine2::IDENTITY);
-						icon_click_targets.push(port_path);
+						icon_click_targets.push(subpath.to_bezpath().to_svg());
 					}
 
 					if let ClickTargetType::Subpath(subpath) = layer_metadata.grip_click_target.target_type() {
-						let mut port_path = String::new();
-						let _ = subpath.subpath_to_svg(&mut port_path, DAffine2::IDENTITY);
-						icon_click_targets.push(port_path);
+						icon_click_targets.push(subpath.to_bezpath().to_svg());
 					}
 				}
 			}
@@ -3094,9 +3089,8 @@ impl NodeNetworkInterface {
 		});
 
 		let bounds = self.all_nodes_bounding_box(network_path).cloned().unwrap_or([DVec2::ZERO, DVec2::ZERO]);
-		let rect = bezier_rs::Subpath::<PointId>::new_rect(bounds[0], bounds[1]);
-		let mut all_nodes_bounding_box = String::new();
-		let _ = rect.subpath_to_svg(&mut all_nodes_bounding_box, DAffine2::IDENTITY);
+		let rect = Subpath::<PointId>::new_rect(bounds[0], bounds[1]);
+		let all_nodes_bounding_box = rect.to_bezpath().to_svg();
 
 		let Some(rounded_network_edge_distance) = self.rounded_network_edge_distance(network_path).cloned() else {
 			log::error!("Could not get rounded_network_edge_distance in collect_frontend_click_targets");
@@ -3122,9 +3116,8 @@ impl NodeNetworkInterface {
 			.inverse()
 			.transform_point2(import_exports_viewport_bottom_right);
 
-		let import_exports_target = bezier_rs::Subpath::<PointId>::new_rect(node_graph_top_left, node_graph_bottom_right);
-		let mut import_exports_bounding_box = String::new();
-		let _ = import_exports_target.subpath_to_svg(&mut import_exports_bounding_box, DAffine2::IDENTITY);
+		let import_exports_target = Subpath::<PointId>::new_rect(node_graph_top_left, node_graph_bottom_right);
+		let import_exports_bounding_box = import_exports_target.to_bezpath().to_svg();
 
 		let mut modify_import_export = Vec::new();
 		if let Some(modify_import_export_click_targets) = self.modify_import_export(network_path) {
@@ -3135,16 +3128,14 @@ impl NodeNetworkInterface {
 				.chain(modify_import_export_click_targets.reorder_imports_exports.click_targets())
 			{
 				if let ClickTargetType::Subpath(subpath) = click_target.target_type() {
-					let mut remove_string = String::new();
-					let _ = subpath.subpath_to_svg(&mut remove_string, DAffine2::IDENTITY);
-					modify_import_export.push(remove_string);
+					modify_import_export.push(subpath.to_bezpath().to_svg());
 				}
 			}
 		}
 		FrontendClickTargets {
 			node_click_targets,
 			layer_click_targets,
-			port_click_targets,
+			connector_click_targets,
 			icon_click_targets,
 			all_nodes_bounding_box,
 			import_exports_bounding_box,
@@ -3375,7 +3366,7 @@ impl NodeNetworkInterface {
 		self.selected_nodes()
 			.0
 			.iter()
-			.filter(|node| self.is_layer(&node, &[]) && !self.is_layer(&node, &[]))
+			.filter(|node| self.is_layer(&node, &[]) && !self.is_locked(&node, &[]))
 			.filter_map(|layer| self.document_metadata.bounding_box_viewport(LayerNodeIdentifier::new(*layer, self)))
 			.reduce(Quad::combine_bounds)
 	}
@@ -3406,7 +3397,7 @@ impl NodeNetworkInterface {
 			return None;
 		};
 
-		let bounding_box_subpath = bezier_rs::Subpath::<PointId>::new_rect(bounds[0], bounds[1]);
+		let bounding_box_subpath = Subpath::<PointId>::new_rect(bounds[0], bounds[1]);
 		bounding_box_subpath.bounding_box_with_transform(network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport)
 	}
 
@@ -3442,22 +3433,27 @@ impl NodeNetworkInterface {
 		(layer_widths, chain_widths, has_left_input_wire)
 	}
 
-	pub fn compute_modified_vector(&self, layer: LayerNodeIdentifier) -> Option<VectorData> {
+	pub fn compute_modified_vector(&self, layer: LayerNodeIdentifier) -> Option<Vector> {
 		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, self);
 
-		if let Some(vector_data) = graph_layer.upstream_node_id_from_name("Path").and_then(|node| self.document_metadata.vector_modify.get(&node)) {
-			let mut modified = vector_data.clone();
-			if let Some(TaggedValue::VectorModification(modification)) = graph_layer.find_input("Path", 1) {
-				modification.apply(&mut modified);
+		if let Some(path_node) = graph_layer.upstream_visible_node_id_from_name_in_layer("Path") {
+			if let Some(vector) = self.document_metadata.vector_modify.get(&path_node) {
+				let mut modified = vector.clone();
+
+				let path_node = self.document_network().nodes.get(&path_node);
+				let modification_input = path_node.and_then(|node: &DocumentNode| node.inputs.get(1)).and_then(|input| input.as_value());
+				if let Some(TaggedValue::VectorModification(modification)) = modification_input {
+					modification.apply(&mut modified);
+				}
+				return Some(modified);
 			}
-			return Some(modified);
 		}
 
 		self.document_metadata
 			.click_targets
 			.get(&layer)
 			.map(|click| click.iter().map(ClickTarget::target_type))
-			.map(|target_types| VectorData::from_target_types(target_types, true))
+			.map(|target_types| Vector::from_target_types(target_types, true))
 	}
 
 	/// Loads the structure of layer nodes from a node graph.
@@ -3553,8 +3549,8 @@ impl NodeNetworkInterface {
 	}
 
 	/// Update the cached first instance source id of the layers
-	pub fn update_first_instance_source_id(&mut self, new: HashMap<NodeId, Option<NodeId>>) {
-		self.document_metadata.first_instance_source_ids = new;
+	pub fn update_first_element_source_id(&mut self, new: HashMap<NodeId, Option<NodeId>>) {
+		self.document_metadata.first_element_source_ids = new;
 	}
 
 	/// Update the cached click targets of the layers
@@ -3568,7 +3564,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Update the vector modify of the layers
-	pub fn update_vector_modify(&mut self, new_vector_modify: HashMap<NodeId, VectorData>) {
+	pub fn update_vector_modify(&mut self, new_vector_modify: HashMap<NodeId, Vector>) {
 		self.document_metadata.vector_modify = new_vector_modify;
 	}
 }
@@ -6041,7 +6037,7 @@ impl Iterator for FlowIter<'_> {
 				} else {
 					0
 				};
-				let take = if self.flow_type == FlowType::UpstreamFlow { usize::MAX } else { 1 };
+				let take = if self.flow_type == FlowType::UpstreamFlow { u32::MAX as usize } else { 1 };
 				let inputs = document_node.inputs.iter().skip(skip).take(take);
 
 				let node_ids = inputs.filter_map(|input| match input {
@@ -6604,11 +6600,30 @@ struct InputTransientMetadata {
 fn migrate_output_names<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Vec<String>, D::Error> {
 	use serde::Deserialize;
 
-	const REPLACEMENTS: [(&str, &str); 4] = [
-		("VectorData", "Instances<VectorData>"),
-		("GraphicGroup", "Instances<GraphicGroup>"),
-		("ImageFrame", "Instances<Image>"),
-		("Instances<ImageFrame>", "Instances<Image>"),
+	const REPLACEMENTS: &[(&str, &str)] = &[
+		// Single to table data
+		("VectorData", "Table<Vector>"),
+		("GraphicGroup", "Table<Graphic>"),
+		("ImageFrame", "Table<Image>"),
+		// `ImageFrame` to `Image` rename
+		("Instances<ImageFrame>", "Table<Image>"),
+		// `Instances` to `Table` rename
+		("Instances<VectorData>", "Table<Vector>"),
+		("Instances<GraphicGroup>", "Table<Graphic>"),
+		("Instances<Image>", "Table<Image>"),
+		("Instances<GraphicElement>", "Table<Graphic>"),
+		("Table<GraphicElement>", "Table<Graphic>"),
+		("Future<Instances<Vector>>", "Future<Table<Vector>>"),
+		("Future<Instances<GraphicGroup>>", "Future<Table<Graphic>>"),
+		("Future<Instances<Image>>", "Future<Table<Image>>"),
+		("Future<Instances<GraphicElement>>", "Future<Table<Graphic>>"),
+		("Future<Table<GraphicElement>>", "Future<Table<Graphic>>"),
+		("Future<Table<VectorData>>", "Future<Table<Vector>>"),
+		("Table<VectorData>", "Table<Vector>"),
+		("Table<GraphicGroup>", "Table<Graphic>"),
+		("Future<Table<GraphicGroup>>", "Future<Table<Graphic>>"),
+		("Table<Group>", "Table<Graphic>"),
+		("Future<Table<Group>>", "Future<Table<Graphic>>"),
 	];
 
 	let mut names = Vec::<String>::deserialize(deserializer)?;
@@ -6802,13 +6817,6 @@ impl From<DocumentNodePersistentMetadataPropertiesRow> for DocumentNodePersisten
 			network_metadata: old.network_metadata,
 		}
 	}
-}
-
-#[derive(serde::Serialize, serde::Deserialize)]
-enum NodePersistentMetadataVersions {
-	DocumentNodePersistentMetadataPropertiesRow(DocumentNodePersistentMetadataPropertiesRow),
-	NodePersistentMetadataInputNames(DocumentNodePersistentMetadataInputNames),
-	NodePersistentMetadata(DocumentNodePersistentMetadata),
 }
 
 fn deserialize_node_persistent_metadata<'de, D>(deserializer: D) -> Result<DocumentNodePersistentMetadata, D::Error>

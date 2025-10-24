@@ -8,7 +8,6 @@ use graphene_std::Context;
 use graphene_std::uuid::NodeId;
 use std::sync::Arc;
 
-// TODO: this is copy pasta from the editor (and does get out of sync)
 pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEditorApi>) -> NodeNetwork {
 	network.generate_node_paths(&[]);
 

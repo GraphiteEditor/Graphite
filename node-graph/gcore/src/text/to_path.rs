@@ -1,10 +1,11 @@
-use crate::instances::Instance;
-use crate::vector::{PointId, VectorData, VectorDataTable};
-use bezier_rs::{ManipulatorGroup, Subpath};
+use super::TextAlign;
+use crate::subpath::{ManipulatorGroup, Subpath};
+use crate::table::{Table, TableRow};
+use crate::vector::{PointId, Vector};
 use core::cell::RefCell;
 use glam::{DAffine2, DVec2};
 use parley::fontique::Blob;
-use parley::{Alignment, AlignmentOptions, FontContext, GlyphRun, Layout, LayoutContext, LineHeight, PositionedLayoutItem, StyleProperty};
+use parley::{AlignmentOptions, FontContext, GlyphRun, Layout, LayoutContext, LineHeight, PositionedLayoutItem, StyleProperty};
 use skrifa::GlyphId;
 use skrifa::instance::{LocationRef, NormalizedCoord, Size};
 use skrifa::outline::{DrawSettings, OutlinePen};
@@ -23,7 +24,7 @@ struct PathBuilder {
 	current_subpath: Subpath<PointId>,
 	origin: DVec2,
 	glyph_subpaths: Vec<Subpath<PointId>>,
-	vector_table: VectorDataTable,
+	vector_table: Table<Vector>,
 	scale: f64,
 	id: PointId,
 }
@@ -50,15 +51,15 @@ impl PathBuilder {
 		}
 
 		if per_glyph_instances {
-			self.vector_table.push(Instance {
-				instance: VectorData::from_subpaths(core::mem::take(&mut self.glyph_subpaths), false),
+			self.vector_table.push(TableRow {
+				element: Vector::from_subpaths(core::mem::take(&mut self.glyph_subpaths), false),
 				transform: DAffine2::from_translation(glyph_offset),
 				..Default::default()
 			});
 		} else {
 			for subpath in self.glyph_subpaths.drain(..) {
-				// Unwrapping here is ok because `self.vector_table` is initialized with a single `VectorData`
-				self.vector_table.get_mut(0).unwrap().instance.append_subpath(subpath, false);
+				// Unwrapping here is ok because `self.vector_table` is initialized with a single `Vector` table element
+				self.vector_table.get_mut(0).unwrap().element.append_subpath(subpath, false);
 			}
 		}
 	}
@@ -103,6 +104,7 @@ pub struct TypesettingConfig {
 	pub max_width: Option<f64>,
 	pub max_height: Option<f64>,
 	pub tilt: f64,
+	pub align: TextAlign,
 }
 
 impl Default for TypesettingConfig {
@@ -114,6 +116,7 @@ impl Default for TypesettingConfig {
 			max_width: None,
 			max_height: None,
 			tilt: 0.,
+			align: TextAlign::default(),
 		}
 	}
 }
@@ -197,24 +200,20 @@ fn layout_text(str: &str, font_data: Option<Blob<u8>>, typesetting: TypesettingC
 	let mut layout: Layout<()> = builder.build(str);
 
 	layout.break_all_lines(typesetting.max_width.map(|mw| mw as f32));
-	layout.align(typesetting.max_width.map(|max_w| max_w as f32), Alignment::Left, AlignmentOptions::default());
+	layout.align(typesetting.max_width.map(|max_w| max_w as f32), typesetting.align.into(), AlignmentOptions::default());
 
 	Some(layout)
 }
 
-pub fn to_path(str: &str, font_data: Option<Blob<u8>>, typesetting: TypesettingConfig, per_glyph_instances: bool) -> VectorDataTable {
+pub fn to_path(str: &str, font_data: Option<Blob<u8>>, typesetting: TypesettingConfig, per_glyph_instances: bool) -> Table<Vector> {
 	let Some(layout) = layout_text(str, font_data, typesetting) else {
-		return VectorDataTable::new(VectorData::default());
+		return Table::new_from_element(Vector::default());
 	};
 
 	let mut path_builder = PathBuilder {
 		current_subpath: Subpath::new(Vec::new(), false),
 		glyph_subpaths: Vec::new(),
-		vector_table: if per_glyph_instances {
-			VectorDataTable::default()
-		} else {
-			VectorDataTable::new(VectorData::default())
-		},
+		vector_table: if per_glyph_instances { Table::new() } else { Table::new_from_element(Vector::default()) },
 		scale: layout.scale() as f64,
 		id: PointId::ZERO,
 		origin: DVec2::default(),
@@ -229,7 +228,7 @@ pub fn to_path(str: &str, font_data: Option<Blob<u8>>, typesetting: TypesettingC
 	}
 
 	if path_builder.vector_table.is_empty() {
-		path_builder.vector_table = VectorDataTable::new(VectorData::default());
+		path_builder.vector_table = Table::new_from_element(Vector::default());
 	}
 
 	path_builder.vector_table

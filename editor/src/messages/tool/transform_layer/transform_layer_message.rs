@@ -8,10 +8,8 @@ use glam::DVec2;
 #[impl_message(Message, ToolMessage, TransformLayer)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum TransformLayerMessage {
-	// Overlays
-	Overlays(OverlayContext),
-
 	// Messages
+	Overlays { context: OverlayContext },
 	ApplyTransformOperation { final_transform: bool },
 	BeginTransformOperation { operation: TransformType },
 	BeginGrab,

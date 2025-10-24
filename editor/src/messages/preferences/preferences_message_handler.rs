@@ -62,7 +62,7 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 			}
 			PreferencesMessage::ResetToDefaults => {
 				refresh_dialog(responses);
-				responses.add(KeyMappingMessage::ModifyMapping(MappingVariant::Default));
+				responses.add(KeyMappingMessage::ModifyMapping { mapping: MappingVariant::Default });
 
 				*self = Self::default()
 			}
@@ -80,7 +80,7 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 				self.zoom_with_scroll = zoom_with_scroll;
 
 				let variant = if zoom_with_scroll { MappingVariant::ZoomWithScroll } else { MappingVariant::Default };
-				responses.add(KeyMappingMessage::ModifyMapping(variant));
+				responses.add(KeyMappingMessage::ModifyMapping { mapping: variant });
 			}
 			PreferencesMessage::SelectionMode { selection_mode } => {
 				self.selection_mode = selection_mode;

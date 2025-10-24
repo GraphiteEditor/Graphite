@@ -16,10 +16,12 @@ pub struct MenuBarMessageHandler {
 	pub has_selected_nodes: bool,
 	pub has_selected_layers: bool,
 	pub has_selection_history: (bool, bool),
-	pub spreadsheet_view_open: bool,
 	pub message_logging_verbosity: MessageLoggingVerbosity,
 	pub reset_node_definitions_on_open: bool,
-	pub single_path_node_compatible_layer_selected: bool,
+	pub make_path_editable_is_allowed: bool,
+	pub data_panel_open: bool,
+	pub layers_panel_open: bool,
+	pub properties_panel_open: bool,
 }
 
 #[message_handler_data]
@@ -46,7 +48,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 		let message_logging_verbosity_names = self.message_logging_verbosity == MessageLoggingVerbosity::Names;
 		let message_logging_verbosity_contents = self.message_logging_verbosity == MessageLoggingVerbosity::Contents;
 		let reset_node_definitions_on_open = self.reset_node_definitions_on_open;
-		let single_path_node_compatible_layer_selected = self.single_path_node_compatible_layer_selected;
+		let make_path_editable_is_allowed = self.make_path_editable_is_allowed;
 
 		let menu_bar_entries = vec![
 			MenuBarEntry {
@@ -359,8 +361,8 @@ impl LayoutHolder for MenuBarMessageHandler {
 
 								choices
 									.into_iter()
-									.map(|group| {
-										group
+									.map(|section| {
+										section
 											.into_iter()
 											.map(|(axis, aggregate, icon, name)| MenuBarEntry {
 												label: name.into(),
@@ -419,7 +421,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 							action: MenuBarEntry::no_action(),
 							disabled: no_active_document || !has_selected_layers,
 							children: MenuBarEntryChildren(vec![{
-								let list = <BooleanOperation as graphene_std::registry::ChoiceTypeStatic>::list();
+								let list = <BooleanOperation as graphene_std::choice_type::ChoiceTypeStatic>::list();
 								list.iter()
 									.flat_map(|i| i.iter())
 									.map(move |(operation, info)| MenuBarEntry {
@@ -442,7 +444,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 						icon: Some("NodeShape".into()),
 						shortcut: None,
 						action: MenuBarEntry::create_action(|_| NodeGraphMessage::AddPathNode.into()),
-						disabled: !single_path_node_compatible_layer_selected,
+						disabled: !make_path_editable_is_allowed,
 						..MenuBarEntry::default()
 					}],
 				]),
@@ -585,18 +587,40 @@ impl LayoutHolder for MenuBarMessageHandler {
 						disabled: no_active_document,
 						..MenuBarEntry::default()
 					}],
+				]),
+			),
+			MenuBarEntry::new_root(
+				"Window".into(),
+				false,
+				MenuBarEntryChildren(vec![
+					vec![
+						MenuBarEntry {
+							label: "Properties".into(),
+							icon: Some(if self.properties_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" }.into()),
+							shortcut: action_keys!(PortfolioMessageDiscriminant::TogglePropertiesPanelOpen),
+							action: MenuBarEntry::create_action(|_| PortfolioMessage::TogglePropertiesPanelOpen.into()),
+							..MenuBarEntry::default()
+						},
+						MenuBarEntry {
+							label: "Layers".into(),
+							icon: Some(if self.layers_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" }.into()),
+							shortcut: action_keys!(PortfolioMessageDiscriminant::ToggleLayersPanelOpen),
+							action: MenuBarEntry::create_action(|_| PortfolioMessage::ToggleLayersPanelOpen.into()),
+							..MenuBarEntry::default()
+						},
+					],
 					vec![MenuBarEntry {
-						label: "Window: Spreadsheet".into(),
-						icon: Some(if self.spreadsheet_view_open { "CheckboxChecked" } else { "CheckboxUnchecked" }.into()),
-						action: MenuBarEntry::create_action(|_| SpreadsheetMessage::ToggleOpen.into()),
-						disabled: no_active_document,
+						label: "Data".into(),
+						icon: Some(if self.data_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" }.into()),
+						shortcut: action_keys!(PortfolioMessageDiscriminant::ToggleDataPanelOpen),
+						action: MenuBarEntry::create_action(|_| PortfolioMessage::ToggleDataPanelOpen.into()),
 						..MenuBarEntry::default()
 					}],
 				]),
 			),
 			MenuBarEntry::new_root(
 				"Help".into(),
-				true,
+				false,
 				MenuBarEntryChildren(vec![
 					vec![MenuBarEntry {
 						label: "About Graphite…".into(),

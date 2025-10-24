@@ -167,14 +167,21 @@ fn migrate_type_descriptor_names<'de, D: serde::Deserializer<'de>>(deserializer:
 	let name = match name.as_str() {
 		"f32" => "f64".to_string(),
 		"graphene_core::transform::Footprint" => "std::option::Option<std::sync::Arc<graphene_core::context::OwnedContextImpl>>".to_string(),
-		"graphene_core::graphic_element::GraphicGroup" => "graphene_core::instances::Instances<graphene_core::graphic_element::GraphicGroup>".to_string(),
-		"graphene_core::vector::vector_data::VectorData" => "graphene_core::instances::Instances<graphene_core::vector::vector_data::VectorData>".to_string(),
+		"graphene_core::graphic_element::GraphicGroup" => "graphene_core::table::Table<graphene_core::graphic::Graphic>".to_string(),
 		"graphene_core::raster::image::ImageFrame<Color>"
 		| "graphene_core::raster::image::ImageFrame<graphene_core::raster::color::Color>"
 		| "graphene_core::instances::Instances<graphene_core::raster::image::ImageFrame<Color>>"
-		| "graphene_core::instances::Instances<graphene_core::raster::image::ImageFrame<graphene_core::raster::color::Color>>" => {
-			"graphene_core::instances::Instances<graphene_core::raster::image::Image<graphene_core::raster::color::Color>>".to_string()
+		| "graphene_core::instances::Instances<graphene_core::raster::image::ImageFrame<graphene_core::raster::color::Color>>"
+		| "graphene_core::instances::Instances<graphene_core::raster::image::Image<graphene_core::raster::color::Color>>" => {
+			"graphene_core::table::Table<graphene_core::raster::image::Image<graphene_core::raster::color::Color>>".to_string()
 		}
+		"graphene_core::vector::vector_data::VectorData"
+		| "graphene_core::instances::Instances<graphene_core::vector::vector_data::VectorData>"
+		| "graphene_core::table::Table<graphene_core::vector::vector_data::VectorData>"
+		| "graphene_core::table::Table<graphene_core::vector::vector_data::Vector>" => "graphene_core::table::Table<graphene_core::vector::vector_types::Vector>".to_string(),
+		"graphene_core::instances::Instances<graphene_core::graphic_element::Artboard>" => "graphene_core::table::Table<graphene_core::artboard::Artboard>".to_string(),
+		"graphene_core::vector::vector_data::modification::VectorModification" => "graphene_core::vector::vector_modification::VectorModification".to_string(),
+		"graphene_core::table::Table<graphene_core::graphic_element::Graphic>" => "graphene_core::table::Table<graphene_core::graphic::Graphic>".to_string(),
 		_ => name,
 	};
 

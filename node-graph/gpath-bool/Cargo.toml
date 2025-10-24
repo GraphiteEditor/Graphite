@@ -9,7 +9,6 @@ license = "MIT OR Apache-2.0"
 [dependencies]
 # Local dependencies
 dyn-any = { workspace = true }
-bezier-rs = { workspace = true }
 graphene-core = { workspace = true }
 node-macro = { workspace = true }
 glam = { workspace = true }

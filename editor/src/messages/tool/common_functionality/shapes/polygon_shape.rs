@@ -67,7 +67,7 @@ impl ShapeGizmoHandler for PolygonGizmoHandler {
 		overlay_context: &mut OverlayContext,
 	) {
 		self.number_of_points_dial.overlays(document, selected_polygon_layer, shape_editor, mouse_position, overlay_context);
-		self.point_radius_handle.overlays(selected_polygon_layer, document, input, mouse_position, overlay_context);
+		self.point_radius_handle.overlays(selected_polygon_layer, document, input, overlay_context);
 
 		polygon_outline(selected_polygon_layer, document, overlay_context);
 	}
@@ -85,8 +85,20 @@ impl ShapeGizmoHandler for PolygonGizmoHandler {
 		}
 
 		if self.point_radius_handle.is_dragging_or_snapped() {
-			self.point_radius_handle.overlays(None, document, input, mouse_position, overlay_context);
+			self.point_radius_handle.overlays(None, document, input, overlay_context);
 		}
+	}
+
+	fn mouse_cursor_icon(&self) -> Option<MouseCursorIcon> {
+		if self.number_of_points_dial.is_dragging() || self.number_of_points_dial.is_hovering() {
+			return Some(MouseCursorIcon::EWResize);
+		}
+
+		if self.point_radius_handle.is_dragging_or_snapped() || self.point_radius_handle.hovered() {
+			return Some(MouseCursorIcon::Default);
+		}
+
+		None
 	}
 
 	fn cleanup(&mut self) {
@@ -112,7 +124,7 @@ impl Polygon {
 		modifier: ShapeToolModifierKey,
 		responses: &mut VecDeque<Message>,
 	) {
-		let [center, lock_ratio, _, _] = modifier;
+		let [center, lock_ratio, _] = modifier;
 
 		if let Some([start, end]) = shape_tool_data.data.calculate_points(document, ipp, center, lock_ratio) {
 			// TODO: We need to determine how to allow the polygon node to make irregular shapes

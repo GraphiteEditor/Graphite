@@ -1,34 +1,35 @@
 use dyn_any::StaticType;
 use graphene_application_io::{ApplicationError, ApplicationIo, ResourceFuture, SurfaceHandle, SurfaceId};
-#[cfg(target_arch = "wasm32")]
+#[cfg(target_family = "wasm")]
 use js_sys::{Object, Reflect};
 use std::collections::HashMap;
+use std::hash::Hash;
 use std::sync::Arc;
-#[cfg(target_arch = "wasm32")]
+#[cfg(target_family = "wasm")]
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 #[cfg(feature = "tokio")]
 use tokio::io::AsyncReadExt;
-#[cfg(target_arch = "wasm32")]
+#[cfg(target_family = "wasm")]
 use wasm_bindgen::JsCast;
-#[cfg(target_arch = "wasm32")]
+#[cfg(target_family = "wasm")]
 use wasm_bindgen::JsValue;
-#[cfg(target_arch = "wasm32")]
+#[cfg(target_family = "wasm")]
 use web_sys::HtmlCanvasElement;
-#[cfg(target_arch = "wasm32")]
+#[cfg(target_family = "wasm")]
 use web_sys::window;
 #[cfg(feature = "wgpu")]
 use wgpu_executor::WgpuExecutor;
 
 #[derive(Debug)]
 struct WindowWrapper {
-	#[cfg(target_arch = "wasm32")]
+	#[cfg(target_family = "wasm")]
 	window: SurfaceHandle<HtmlCanvasElement>,
-	#[cfg(not(target_arch = "wasm32"))]
+	#[cfg(not(target_family = "wasm"))]
 	window: SurfaceHandle<Arc<winit::window::Window>>,
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(target_family = "wasm")]
 impl Drop for WindowWrapper {
 	fn drop(&mut self) {
 		let window = window().expect("should have a window in this context");
@@ -39,7 +40,7 @@ impl Drop for WindowWrapper {
 		let wrapper = || {
 			if let Ok(canvases) = Reflect::get(&window, &image_canvases_key) {
 				// Convert key and value to JsValue
-				let js_key = JsValue::from_str(format!("canvas{}", self.window.window_id).as_str());
+				let js_key = JsValue::from_str(self.window.window_id.to_string().as_str());
 
 				// Use Reflect API to set property
 				Reflect::delete_property(&canvases.into(), &js_key)?;
@@ -51,14 +52,14 @@ impl Drop for WindowWrapper {
 	}
 }
 
-#[cfg(target_arch = "wasm32")]
+#[cfg(target_family = "wasm")]
 unsafe impl Sync for WindowWrapper {}
-#[cfg(target_arch = "wasm32")]
+#[cfg(target_family = "wasm")]
 unsafe impl Send for WindowWrapper {}
 
 #[derive(Debug, Default)]
 pub struct WasmApplicationIo {
-	#[cfg(target_arch = "wasm32")]
+	#[cfg(target_family = "wasm")]
 	ids: AtomicU64,
 	#[cfg(feature = "wgpu")]
 	pub(crate) gpu_executor: Option<WgpuExecutor>,
@@ -69,14 +70,6 @@ pub struct WasmApplicationIo {
 static WGPU_AVAILABLE: std::sync::atomic::AtomicI8 = std::sync::atomic::AtomicI8::new(-1);
 
 pub fn wgpu_available() -> Option<bool> {
-	// Always enable wgpu when running with Tauri
-	#[cfg(target_arch = "wasm32")]
-	if let Some(window) = web_sys::window() {
-		if js_sys::Reflect::get(&window, &wasm_bindgen::JsValue::from_str("__TAURI__")).is_ok() {
-			return Some(true);
-		}
-	}
-
 	match WGPU_AVAILABLE.load(Ordering::SeqCst) {
 		-1 => None,
 		0 => Some(false),
@@ -86,7 +79,7 @@ pub fn wgpu_available() -> Option<bool> {
 
 impl WasmApplicationIo {
 	pub async fn new() -> Self {
-		#[cfg(all(feature = "wgpu", target_arch = "wasm32"))]
+		#[cfg(all(feature = "wgpu", target_family = "wasm"))]
 		let executor = if let Some(gpu) = web_sys::window().map(|w| w.navigator().gpu()) {
 			let request_adapter = || {
 				let request_adapter = js_sys::Reflect::get(&gpu, &wasm_bindgen::JsValue::from_str("requestAdapter")).ok()?;
@@ -102,7 +95,7 @@ impl WasmApplicationIo {
 			None
 		};
 
-		#[cfg(all(feature = "wgpu", not(target_arch = "wasm32")))]
+		#[cfg(all(feature = "wgpu", not(target_family = "wasm")))]
 		let executor = WgpuExecutor::new().await;
 
 		#[cfg(not(feature = "wgpu"))]
@@ -112,7 +105,7 @@ impl WasmApplicationIo {
 		WGPU_AVAILABLE.store(wgpu_available as i8, Ordering::SeqCst);
 
 		let mut io = Self {
-			#[cfg(target_arch = "wasm32")]
+			#[cfg(target_family = "wasm")]
 			ids: AtomicU64::new(0),
 			#[cfg(feature = "wgpu")]
 			gpu_executor: executor,
@@ -136,11 +129,31 @@ impl WasmApplicationIo {
 		let wgpu_available = executor.is_some();
 		WGPU_AVAILABLE.store(wgpu_available as i8, Ordering::SeqCst);
 
-		// Always enable wgpu when running with Tauri
 		let mut io = Self {
-			#[cfg(target_arch = "wasm32")]
+			#[cfg(target_family = "wasm")]
 			ids: AtomicU64::new(0),
 			#[cfg(feature = "wgpu")]
+			gpu_executor: executor,
+			windows: Vec::new(),
+			resources: HashMap::new(),
+		};
+
+		io.resources.insert("null".to_string(), Arc::from(include_bytes!("null.png").to_vec()));
+
+		io
+	}
+	#[cfg(all(not(target_family = "wasm"), feature = "wgpu"))]
+	pub fn new_with_context(context: wgpu_executor::Context) -> Self {
+		#[cfg(feature = "wgpu")]
+		let executor = WgpuExecutor::with_context(context);
+
+		#[cfg(not(feature = "wgpu"))]
+		let wgpu_available = false;
+		#[cfg(feature = "wgpu")]
+		let wgpu_available = executor.is_some();
+		WGPU_AVAILABLE.store(wgpu_available as i8, Ordering::SeqCst);
+
+		let mut io = Self {
 			gpu_executor: executor,
 			windows: Vec::new(),
 			resources: HashMap::new(),
@@ -171,16 +184,16 @@ impl<'a> From<&'a WasmApplicationIo> for &'a WgpuExecutor {
 pub type WasmEditorApi = graphene_application_io::EditorApi<WasmApplicationIo>;
 
 impl ApplicationIo for WasmApplicationIo {
-	#[cfg(target_arch = "wasm32")]
+	#[cfg(target_family = "wasm")]
 	type Surface = HtmlCanvasElement;
-	#[cfg(not(target_arch = "wasm32"))]
+	#[cfg(not(target_family = "wasm"))]
 	type Surface = Arc<winit::window::Window>;
 	#[cfg(feature = "wgpu")]
 	type Executor = WgpuExecutor;
 	#[cfg(not(feature = "wgpu"))]
 	type Executor = ();
 
-	#[cfg(target_arch = "wasm32")]
+	#[cfg(target_family = "wasm")]
 	fn create_window(&self) -> SurfaceHandle<Self::Surface> {
 		let wrapper = || {
 			let document = window().expect("should have a window in this context").document().expect("window should have a document");
@@ -200,7 +213,7 @@ impl ApplicationIo for WasmApplicationIo {
 			}
 
 			// Convert key and value to JsValue
-			let js_key = JsValue::from_str(format!("canvas{}", id).as_str());
+			let js_key = JsValue::from_str(id.to_string().as_str());
 			let js_value = JsValue::from(canvas.clone());
 
 			let canvases = Object::from(canvases.unwrap());
@@ -215,31 +228,35 @@ impl ApplicationIo for WasmApplicationIo {
 
 		wrapper().expect("should be able to set canvas in global scope")
 	}
-	#[cfg(not(target_arch = "wasm32"))]
+	#[cfg(not(target_family = "wasm"))]
 	fn create_window(&self) -> SurfaceHandle<Self::Surface> {
-		log::trace!("Spawning window");
+		todo!("winit api changed, calling create_window on EventLoop is deprecated");
 
-		#[cfg(all(not(test), target_os = "linux", feature = "wayland"))]
-		use winit::platform::wayland::EventLoopBuilderExtWayland;
+		// log::trace!("Spawning window");
 
-		#[cfg(all(not(test), target_os = "linux", feature = "wayland"))]
-		let event_loop = winit::event_loop::EventLoopBuilder::new().with_any_thread(true).build().unwrap();
-		#[cfg(not(all(not(test), target_os = "linux", feature = "wayland")))]
-		let event_loop = winit::event_loop::EventLoop::new().unwrap();
+		// #[cfg(all(not(test), target_os = "linux", feature = "wayland"))]
+		// use winit::platform::wayland::EventLoopBuilderExtWayland;
 
-		let window = winit::window::WindowBuilder::new()
-			.with_title("Graphite")
-			.with_inner_size(winit::dpi::PhysicalSize::new(800, 600))
-			.build(&event_loop)
-			.unwrap();
+		// #[cfg(all(not(test), target_os = "linux", feature = "wayland"))]
+		// let event_loop = winit::event_loop::EventLoopBuilder::new().with_any_thread(true).build().unwrap();
+		// #[cfg(not(all(not(test), target_os = "linux", feature = "wayland")))]
+		// let event_loop = winit::event_loop::EventLoop::new().unwrap();
 
-		SurfaceHandle {
-			window_id: SurfaceId(window.id().into()),
-			surface: Arc::new(window),
-		}
+		// let window = event_loop
+		// 	.create_window(
+		// 		winit::window::WindowAttributes::default()
+		// 			.with_title("Graphite")
+		// 			.with_inner_size(winit::dpi::PhysicalSize::new(800, 600)),
+		// 	)
+		// 	.unwrap();
+
+		// SurfaceHandle {
+		// 	window_id: SurfaceId(window.id().into()),
+		// 	surface: Arc::new(window),
+		// }
 	}
 
-	#[cfg(target_arch = "wasm32")]
+	#[cfg(target_family = "wasm")]
 	fn destroy_window(&self, surface_id: SurfaceId) {
 		let window = window().expect("should have a window in this context");
 		let window = Object::from(window);
@@ -249,7 +266,7 @@ impl ApplicationIo for WasmApplicationIo {
 		let wrapper = || {
 			if let Ok(canvases) = Reflect::get(&window, &image_canvases_key) {
 				// Convert key and value to JsValue
-				let js_key = JsValue::from_str(format!("canvas{}", surface_id.0).as_str());
+				let js_key = JsValue::from_str(surface_id.0.to_string().as_str());
 
 				// Use Reflect API to set property
 				Reflect::delete_property(&canvases.into(), &js_key)?;
@@ -260,7 +277,7 @@ impl ApplicationIo for WasmApplicationIo {
 		wrapper().expect("should be able to set canvas in global scope")
 	}
 
-	#[cfg(not(target_arch = "wasm32"))]
+	#[cfg(not(target_family = "wasm"))]
 	fn destroy_window(&self, _surface_id: SurfaceId) {}
 
 	#[cfg(feature = "wgpu")]
@@ -329,9 +346,9 @@ impl graphene_application_io::GetEditorPreferences for EditorPreferences {
 impl Default for EditorPreferences {
 	fn default() -> Self {
 		Self {
-			#[cfg(target_arch = "wasm32")]
+			#[cfg(target_family = "wasm")]
 			use_vello: false,
-			#[cfg(not(target_arch = "wasm32"))]
+			#[cfg(not(target_family = "wasm"))]
 			use_vello: true,
 		}
 	}

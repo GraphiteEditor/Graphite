@@ -5,6 +5,7 @@ use syn::GenericParam;
 mod codegen;
 mod derive_choice_type;
 mod parsing;
+mod shader_nodes;
 mod validation;
 
 /// Used to create a node definition.
