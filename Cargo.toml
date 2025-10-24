@@ -194,7 +194,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing = "0.1"
 rfd = "0.15"
 open = "5.3"
-poly-cool = "0.3"
+polycool = "0.4"
 spin = "0.10"
 clap = "4.5"
 spirv-std = { git = "https://github.com/Firestar99/rust-gpu-new", rev = "c12f216121820580731440ee79ebc7403d6ea04f", features = ["bytemuck"] }
