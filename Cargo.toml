@@ -226,3 +226,7 @@ debug = true
 [profile.profiling]
 inherits = "release"
 debug = true
+
+[patch.crates-io]
+# Force cargo to use only one version of the dpi crate (vendoring breaks without this)
+dpi = { git = "https://github.com/rust-windowing/winit.git" }
