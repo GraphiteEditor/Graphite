@@ -28,9 +28,7 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         overlays = [ (import rust-overlay) ];
-        pkgs = import nixpkgs {
-          inherit system overlays;
-        };
+        pkgs = import nixpkgs { inherit system overlays; };
 
         rustExtensions = [ "rust-src" "rust-analyzer" "clippy" "cargo" ];
         rust = pkgs.rust-bin.stable.latest.default.override {
@@ -54,12 +52,12 @@
         ];
 
         # Packages needed to build the package
-        buildTools =  [
+        buildTools = [
           rust
           pkgs.nodejs
           pkgs.nodePackages.npm
           pkgs.binaryen
-          pkgs.wasm-bindgen-cli
+          pkgs.wasm-bindgen-cli_0_2_100
           pkgs.wasm-pack
           pkgs.pkg-config
           pkgs.cargo-about
@@ -86,29 +84,30 @@
         rustGPUEnv = import ./rust-gpu.nix { inherit pkgs; };
 
         libPath = "${pkgs.lib.makeLibraryPath buildInputs}:${cefEnv.CEF_PATH}";
-      in
-      {
+      in {
         devShells.default = pkgs.mkShell ({
           packages = buildInputs ++ buildTools ++ devTools;
 
           LD_LIBRARY_PATH = libPath;
-          XDG_DATA_DIRS = "${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}:$XDG_DATA_DIRS";
+          XDG_DATA_DIRS =
+            "${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}:$XDG_DATA_DIRS";
 
           shellHook = ''
             alias cargo='mold --run cargo'
           '';
         } // cefEnv // rustGPUEnv);
 
-        packages.default = pkgs.stdenv.mkDerivation(finalAttrs: {
+        packages.default = pkgs.rustPlatform.buildRustPackage (finalAttrs: {
           pname = "graphite-editor";
           version = "unstable";
           src = pkgs.lib.cleanSource ./..;
 
-          cargoDeps = pkgs.rustPlatform.fetchCargoVendor {
-            src = finalAttrs.src;
-            hash = "sha256-BVIQIZbGW19Rof0J7U2r6XFCUC52hb7+uaE1di4bV4A=";
+          cargoLock = {
+            lockFile = ../Cargo.lock;
+            allowBuiltinFetchGit = true;
           };
 
+          # TODO: Remove the need for this hash by using individual package resolutions and hashes from package-lock.json
           npmDeps = pkgs.fetchNpmDeps {
             inherit (finalAttrs) pname version;
             src = "${finalAttrs.src}/frontend";
@@ -131,7 +130,10 @@
           buildPhase = ''
             export HOME="$TMPDIR"
 
-            npm run build-desktop
+            pushd frontend
+            npm run build-native
+            popd
+            cargo build -r -p graphite-desktop
           '';
 
           installPhase = ''
@@ -145,12 +147,13 @@
             cp $src/desktop/assets/graphite-icon-color.svg $out/share/icons/hicolor/scalable/apps/
           '';
 
+          doCheck = false;
+
           postFixup = ''
             wrapProgram "$out/bin/graphite-editor" \
               --prefix LD_LIBRARY_PATH : "${libPath}" \
               --set CEF_PATH "${cefEnv.CEF_PATH}"
           '';
         });
-      }
-    );
+      });
 }

@@ -10,3 +10,6 @@ rustflags = [
 	"link-arg=--max-memory=4294967296",
 	"--cfg=web_sys_unstable_apis",
 ]
+
+[env]
+CARGO_WORKSPACE_DIR = { value = "", relative = true }

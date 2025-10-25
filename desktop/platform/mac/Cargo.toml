@@ -1,0 +1,16 @@
+[package]
+name = "graphite-desktop-platform-mac"
+version = "0.0.0"
+description = "Graphite Desktop Platform Mac"
+authors = ["Graphite Authors <contact@graphite.rs>"]
+license = "Apache-2.0"
+repository = ""
+edition = "2024"
+rust-version = "1.87"
+
+[[bin]]
+name = "graphite-desktop-platform-mac-helper"
+path = "src/helper.rs"
+
+[dependencies]
+graphite-desktop = { path = "../.." }
