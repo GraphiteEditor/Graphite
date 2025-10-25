@@ -5,7 +5,7 @@ use kurbo::{BezPath, Join, ParamCurve, PathEl, PathSeg};
 /// Value to control smoothness and mathematical accuracy to offset a cubic Bezier.
 const CUBIC_REGULARIZATION_ACCURACY: f64 = 0.5;
 /// Accuracy of fitting offset curve to Bezier paths.
-const CUBIC_TO_BEZPATH_ACCURACY: f64 = 1e-2;
+const CUBIC_TO_BEZPATH_ACCURACY: f64 = 1e-3;
 /// Constant used to determine if `f64`s are equivalent.
 pub const MAX_ABSOLUTE_DIFFERENCE: f64 = 1e-7;
 const MAX_FITTED_SEGMENTS: usize = 10000;
