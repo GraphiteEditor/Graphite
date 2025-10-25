@@ -4,15 +4,15 @@
 	"scripts": {
 		"---------- DEV SERVER ----------": "",
 		"start": "cd frontend && npm start",
-		"start-desktop": "cd frontend && npm run build-native-dev && cargo run -p graphite-desktop",
+		"start-desktop": "cd frontend && npm run build-native-dev && cargo run -p graphite-desktop-bundle -- open",
 		"profiling": "cd frontend && npm run profiling",
 		"production": "cd frontend && npm run production",
 		"---------- BUILDS ----------": "",
 		"build-dev": "cd frontend && npm run build-dev",
 		"build-profiling": "cd frontend && npm run build-profiling",
 		"build": "cd frontend && npm run build",
-		"build-desktop": "cd frontend && npm run build-native && cargo build -r -p graphite-desktop",
-		"build-desktop-dev": "cd frontend && npm run build-native-dev && cargo build -p graphite-desktop",
+		"build-desktop": "cd frontend && npm run build-native && cargo run -r -p graphite-desktop-bundle",
+		"build-desktop-dev": "cd frontend && npm run build-native-dev && cargo run -p graphite-desktop-bundle",
 		"---------- UTILITIES ----------": "",
 		"lint": "cd frontend && npm run lint",
 		"lint-fix": "cd frontend && npm run lint-fix"
