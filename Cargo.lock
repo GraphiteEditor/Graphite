@@ -1327,7 +1327,7 @@ dependencies = [
 [[package]]
 name = "dpi"
 version = "0.1.2"
-source = "git+https://github.com/timon-schelling/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad#37221c7192ef1deec022a2278e54429331c01bad"
+source = "git+https://github.com/rust-windowing/winit.git#bd6fef1d80ba063cbe91e150b3fb343927cdc72b"
 dependencies = [
  "serde",
 ]
@@ -3687,9 +3687,9 @@ dependencies = [
 
 [[package]]
 name = "objc2-app-kit"
-version = "0.3.1"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e6f29f568bec459b0ddff777cec4fe3fd8666d82d5a40ebd0ff7e66134f89bcc"
+checksum = "d49e936b501e5c5bf01fda3a9452ff86dc3ea98ad5f283e1455153142d97518c"
 dependencies = [
  "bitflags 2.9.3",
  "block2",
@@ -3700,9 +3700,9 @@ dependencies = [
 
 [[package]]
 name = "objc2-core-foundation"
-version = "0.3.1"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1c10c2894a6fed806ade6027bcd50662746363a9589d3ec9d9bef30a4e4bc166"
+checksum = "2a180dd8642fa45cdb7dd721cd4c11b1cadd4929ce112ebd8b9f5803cc79d536"
 dependencies = [
  "bitflags 2.9.3",
  "block2",
@@ -3712,9 +3712,9 @@ dependencies = [
 
 [[package]]
 name = "objc2-core-graphics"
-version = "0.3.1"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "989c6c68c13021b5c2d6b71456ebb0f9dc78d752e86a98da7c716f4f9470f5a4"
+checksum = "e022c9d066895efa1345f8e33e584b9f958da2fd4cd116792e15e07e4720a807"
 dependencies = [
  "bitflags 2.9.3",
  "libc",
@@ -3733,9 +3733,9 @@ dependencies = [
 
 [[package]]
 name = "objc2-core-video"
-version = "0.3.1"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1989c3e76c7e978cab0ba9e6f4961cd00ed14ca21121444cc26877403bfb6303"
+checksum = "d425caf1df73233f29fd8a5c3e5edbc30d2d4307870f802d18f00d83dc5141a6"
 dependencies = [
  "bitflags 2.9.3",
  "objc2-core-foundation",
@@ -3750,9 +3750,9 @@ checksum = "ef25abbcd74fb2609453eb695bd2f860d389e457f67dc17cafc8b8cbc89d0c33"
 
 [[package]]
 name = "objc2-foundation"
-version = "0.3.1"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "900831247d2fe1a09a683278e5384cfb8c80c79fe6b166f9d14bfdde0ea1b03c"
+checksum = "e3e0adef53c21f888deb4fa59fc59f7eb17404926ee8a6f59f5df0fd7f9f3272"
 dependencies = [
  "bitflags 2.9.3",
  "block2",
@@ -3762,9 +3762,9 @@ dependencies = [
 
 [[package]]
 name = "objc2-ui-kit"
-version = "0.3.1"
+version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "25b1312ad7bc8a0e92adae17aa10f90aae1fb618832f9b993b022b591027daed"
+checksum = "d87d638e33c06f577498cbcc50491496a3ed4246998a7fbba7ccb98b1e7eab22"
 dependencies = [
  "bitflags 2.9.3",
  "objc2",
@@ -7198,7 +7198,7 @@ checksum = "271414315aff87387382ec3d271b52d7ae78726f5d44ac98b4f4030c91880486"
 [[package]]
 name = "winit"
 version = "0.30.12"
-source = "git+https://github.com/timon-schelling/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad#37221c7192ef1deec022a2278e54429331c01bad"
+source = "git+https://github.com/rust-windowing/winit.git#bd6fef1d80ba063cbe91e150b3fb343927cdc72b"
 dependencies = [
  "bitflags 2.9.3",
  "cfg_aliases",
@@ -7225,7 +7225,7 @@ dependencies = [
 [[package]]
 name = "winit-android"
 version = "0.30.12"
-source = "git+https://github.com/timon-schelling/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad#37221c7192ef1deec022a2278e54429331c01bad"
+source = "git+https://github.com/rust-windowing/winit.git#bd6fef1d80ba063cbe91e150b3fb343927cdc72b"
 dependencies = [
  "android-activity",
  "bitflags 2.9.3",
@@ -7240,7 +7240,7 @@ dependencies = [
 [[package]]
 name = "winit-appkit"
 version = "0.30.12"
-source = "git+https://github.com/timon-schelling/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad#37221c7192ef1deec022a2278e54429331c01bad"
+source = "git+https://github.com/rust-windowing/winit.git#bd6fef1d80ba063cbe91e150b3fb343927cdc72b"
 dependencies = [
  "bitflags 2.9.3",
  "block2",
@@ -7262,7 +7262,7 @@ dependencies = [
 [[package]]
 name = "winit-common"
 version = "0.30.12"
-source = "git+https://github.com/timon-schelling/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad#37221c7192ef1deec022a2278e54429331c01bad"
+source = "git+https://github.com/rust-windowing/winit.git#bd6fef1d80ba063cbe91e150b3fb343927cdc72b"
 dependencies = [
  "memmap2",
  "objc2",
@@ -7277,7 +7277,7 @@ dependencies = [
 [[package]]
 name = "winit-core"
 version = "0.30.12"
-source = "git+https://github.com/timon-schelling/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad#37221c7192ef1deec022a2278e54429331c01bad"
+source = "git+https://github.com/rust-windowing/winit.git#bd6fef1d80ba063cbe91e150b3fb343927cdc72b"
 dependencies = [
  "bitflags 2.9.3",
  "cursor-icon",
@@ -7292,7 +7292,7 @@ dependencies = [
 [[package]]
 name = "winit-orbital"
 version = "0.30.12"
-source = "git+https://github.com/timon-schelling/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad#37221c7192ef1deec022a2278e54429331c01bad"
+source = "git+https://github.com/rust-windowing/winit.git#bd6fef1d80ba063cbe91e150b3fb343927cdc72b"
 dependencies = [
  "bitflags 2.9.3",
  "dpi",
@@ -7307,7 +7307,7 @@ dependencies = [
 [[package]]
 name = "winit-uikit"
 version = "0.30.12"
-source = "git+https://github.com/timon-schelling/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad#37221c7192ef1deec022a2278e54429331c01bad"
+source = "git+https://github.com/rust-windowing/winit.git#bd6fef1d80ba063cbe91e150b3fb343927cdc72b"
 dependencies = [
  "bitflags 2.9.3",
  "block2",
@@ -7328,7 +7328,7 @@ dependencies = [
 [[package]]
 name = "winit-wayland"
 version = "0.30.12"
-source = "git+https://github.com/timon-schelling/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad#37221c7192ef1deec022a2278e54429331c01bad"
+source = "git+https://github.com/rust-windowing/winit.git#bd6fef1d80ba063cbe91e150b3fb343927cdc72b"
 dependencies = [
  "ahash",
  "bitflags 2.9.3",
@@ -7354,7 +7354,7 @@ dependencies = [
 [[package]]
 name = "winit-web"
 version = "0.30.12"
-source = "git+https://github.com/timon-schelling/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad#37221c7192ef1deec022a2278e54429331c01bad"
+source = "git+https://github.com/rust-windowing/winit.git#bd6fef1d80ba063cbe91e150b3fb343927cdc72b"
 dependencies = [
  "atomic-waker",
  "bitflags 2.9.3",
@@ -7376,7 +7376,7 @@ dependencies = [
 [[package]]
 name = "winit-win32"
 version = "0.30.12"
-source = "git+https://github.com/timon-schelling/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad#37221c7192ef1deec022a2278e54429331c01bad"
+source = "git+https://github.com/rust-windowing/winit.git#bd6fef1d80ba063cbe91e150b3fb343927cdc72b"
 dependencies = [
  "bitflags 2.9.3",
  "cursor-icon",
@@ -7392,7 +7392,7 @@ dependencies = [
 [[package]]
 name = "winit-x11"
 version = "0.30.12"
-source = "git+https://github.com/timon-schelling/winit.git?rev=37221c7192ef1deec022a2278e54429331c01bad#37221c7192ef1deec022a2278e54429331c01bad"
+source = "git+https://github.com/rust-windowing/winit.git#bd6fef1d80ba063cbe91e150b3fb343927cdc72b"
 dependencies = [
  "bitflags 2.9.3",
  "bytemuck",
