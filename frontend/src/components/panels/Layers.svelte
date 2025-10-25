@@ -308,16 +308,25 @@
 		let markerHeight = 0;
 		const layerPanel = document.querySelector("[data-layer-panel]"); // Selects the element with the data-layer-panel attribute
 		if (layerPanel !== null && treeChildren !== undefined && treeOffset !== undefined) {
+			const lastChild = treeChildren[treeChildren.length - 1];
+			if (lastChild.getBoundingClientRect().bottom < clientY) {
+				return { select, insertParentId: undefined, insertDepth: 0, insertIndex: undefined, highlightFolder: false, markerHeight: 0 };
+			}
+
 			let layerPanelTop = layerPanel.getBoundingClientRect().top;
 			Array.from(treeChildren).forEach((treeChild) => {
-				const indexAttribute = treeChild.getAttribute("data-index");
+				const indexAttribute = parseInt(treeChild.getAttribute("data-index") ?? "0", 10);
 				if (!indexAttribute) return;
-				const { folderIndex, entry: layer } = layers[parseInt(indexAttribute, 10)];
+				const { folderIndex, entry: layer } = layers[indexAttribute];
 
 				const rect = treeChild.getBoundingClientRect();
 				if (rect.top > clientY || rect.bottom < clientY) {
 					return;
 				}
+
+				const isDraggingBtnArtBoards = layers[indexAttribute]?.entry?.depth === 1 && layers[indexAttribute + 1]?.entry?.depth === 1;
+				if (isDraggingBtnArtBoards) return;
+
 				const pointerPercentage = (clientY - rect.top) / rect.height;
 				if (layer.childrenAllowed) {
 					if (pointerPercentage < 0.25) {
