@@ -135,6 +135,7 @@ web-sys = { version = "=0.3.77", features = [
 	"ImageBitmapRenderingContext",
 ] }
 winit = { git = "https://github.com/rust-windowing/winit.git" }
+keyboard-types = "0.8"
 url = "2.5"
 tokio = { version = "1.29", features = ["fs", "macros", "io-std", "rt"] }
 vello = { git = "https://github.com/linebender/vello.git", rev = "87cc5bee6d3a34d15017dbbb58634ddc7f33ff9b" } # TODO switch back to stable when a release is made
@@ -225,3 +226,7 @@ debug = true
 [profile.profiling]
 inherits = "release"
 debug = true
+
+[patch.crates-io]
+# Force cargo to use only one version of the dpi crate (vendoring breaks without this)
+dpi = { git = "https://github.com/rust-windowing/winit.git" }

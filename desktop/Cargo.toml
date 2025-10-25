@@ -66,6 +66,7 @@ windows = { version = "0.58.0", features = [
 
 # macOS-specific dependencies
 [target.'cfg(target_os = "macos")'.dependencies]
+muda = { git = "https://github.com/tauri-apps/muda.git", rev = "3f460b8fbaed59cda6d95ceea6904f000f093f15", default-features = false }
 metal = { version = "0.31.0", optional = true }
 objc = { version = "0.2", optional = true }
 core-foundation = { version = "0.10", optional = true }

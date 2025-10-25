@@ -1,4 +1,4 @@
-use graphite_desktop_wrapper::{WgpuContext, WgpuContextBuilder, WgpuFeatures};
+use crate::wrapper::{WgpuContext, WgpuContextBuilder, WgpuFeatures};
 
 pub(super) async fn create_wgpu_context() -> WgpuContext {
 	let wgpu_context_builder = WgpuContextBuilder::new().with_features(WgpuFeatures::PUSH_CONSTANTS);

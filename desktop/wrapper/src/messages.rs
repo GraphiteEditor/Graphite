@@ -1,11 +1,10 @@
-pub use graphite_editor::messages::prelude::DocumentId;
 use graphite_editor::messages::prelude::FrontendMessage;
 use std::path::PathBuf;
 
 pub(crate) use graphite_editor::messages::prelude::Message as EditorMessage;
 
+pub use graphite_editor::messages::prelude::DocumentId;
 pub use graphite_editor::messages::prelude::PreferencesMessageHandler as Preferences;
-
 pub enum DesktopFrontendMessage {
 	ToWeb(Vec<FrontendMessage>),
 	OpenLaunchDocuments,
@@ -56,6 +55,9 @@ pub enum DesktopFrontendMessage {
 		preferences: Preferences,
 	},
 	PersistenceLoadPreferences,
+	UpdateMenu {
+		entries: Vec<MenuItem>,
+	},
 }
 
 pub enum DesktopWrapperMessage {
@@ -106,6 +108,9 @@ pub enum DesktopWrapperMessage {
 	LoadPreferences {
 		preferences: Option<Preferences>,
 	},
+	MenuEvent {
+		id: u64,
+	},
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize, Debug)]
@@ -135,4 +140,33 @@ pub enum Platform {
 	Windows,
 	Mac,
 	Linux,
+}
+
+pub enum MenuItem {
+	Action {
+		id: u64,
+		text: String,
+		enabled: bool,
+		shortcut: Option<Shortcut>,
+	},
+	Checkbox {
+		id: u64,
+		text: String,
+		enabled: bool,
+		shortcut: Option<Shortcut>,
+		checked: bool,
+	},
+	SubMenu {
+		id: u64,
+		text: String,
+		enabled: bool,
+		items: Vec<MenuItem>,
+	},
+	Separator,
+}
+
+pub use keyboard_types::{Code as KeyCode, Modifiers};
+pub struct Shortcut {
+	pub key: KeyCode,
+	pub modifiers: Modifiers,
 }

@@ -337,7 +337,7 @@ export class HintInfo {
 
 // Rust enum `Key`
 export type KeyRaw = string;
-// Serde converts a Rust `Key` enum variant into this format (via a custom serializer) with both the `Key` variant name (called `RawKey` in TS) and the localized `label` for the key
+// Serde converts a Rust `Key` enum variant into this format with both the `Key` variant name (called `RawKey` in TS) and the localized `label` for the key
 export type Key = { key: KeyRaw; label: string };
 export type LayoutKeysGroup = Key[];
 export type ActionKeys = { keys: LayoutKeysGroup };

@@ -14,7 +14,7 @@
 
 use crate::event::{AppEvent, AppEventScheduler};
 use crate::render::FrameBufferRef;
-use graphite_desktop_wrapper::{WgpuContext, deserialize_editor_message};
+use crate::wrapper::{WgpuContext, deserialize_editor_message};
 use std::fs::File;
 use std::io::{Cursor, Read};
 use std::path::PathBuf;
