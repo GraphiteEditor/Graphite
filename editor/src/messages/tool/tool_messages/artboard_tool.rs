@@ -739,9 +739,9 @@ mod test_artboard {
 		editor.new_document().await;
 		editor.set_viewport_size(DVec2::splat(-1000.), DVec2::splat(1000.)).await; // Necessary for doing snapping since snaps outside of the viewport are discarded
 		editor.drag_tool(ToolType::Artboard, 10., 10., 20., 22., ModifierKeys::empty()).await; // Artboard to drag
-		editor.drag_tool(ToolType::Artboard, 70., 70., 80., 80., ModifierKeys::empty()).await; // Artboard to snap to
+		editor.drag_tool(ToolType::Artboard, 70., 0., 80., 100., ModifierKeys::empty()).await; // Artboard to snap to
 		editor.drag_tool(ToolType::Artboard, 15., 15., 15. + 49., 15., ModifierKeys::empty()).await; // Drag the artboard so it should snap to the edge
 
-		has_artboards(&mut editor, vec![ArtboardLayoutDocument::new((60, 10), (10, 12)), ArtboardLayoutDocument::new((70, 70), (80, 80))]).await;
+		has_artboards(&mut editor, vec![ArtboardLayoutDocument::new((60, 10), (10, 12)), ArtboardLayoutDocument::new((70, 0), (10, 100))]).await;
 	}
 }
