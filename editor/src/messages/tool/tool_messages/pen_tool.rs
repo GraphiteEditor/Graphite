@@ -1,5 +1,5 @@
 use super::tool_prelude::*;
-use crate::consts::{COLOR_OVERLAY_BLUE, DEFAULT_STROKE_WIDTH, HIDE_HANDLE_DISTANCE, LINE_ROTATE_SNAP_ANGLE, SEGMENT_OVERLAY_SIZE};
+use crate::consts::{COLOR_OVERLAY_BLUE, DEFAULT_STROKE_WIDTH, DOUBLE_CLICK_MILLISECONDS, DRAG_THRESHOLD, HIDE_HANDLE_DISTANCE, LINE_ROTATE_SNAP_ANGLE, SEGMENT_OVERLAY_SIZE};
 use crate::messages::input_mapper::utility_types::input_mouse::MouseKeys;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::overlays::utility_functions::path_overlays;
@@ -410,6 +410,9 @@ struct PenToolData {
 	/// and Ctrl is pressed near the anchor to make it colinear with its opposite handle.
 	angle_locked: bool,
 	path_closed: bool,
+	last_click_time: Option<u64>,
+	last_click_pos: Option<DVec2>,
+	pending_double_click_confirm: bool,
 
 	handle_mode: HandleMode,
 	prior_segment_layer: Option<LayerNodeIdentifier>,
@@ -446,6 +449,18 @@ impl PenToolData {
 		self.latest_points.clear();
 		self.point_index = 0;
 		self.snap_manager.cleanup(responses);
+		self.pending_double_click_confirm = false;
+		self.last_click_time = None;
+		self.last_click_pos = None;
+	}
+
+	fn update_click_timing(&mut self, time: u64, position: DVec2) -> bool {
+		let within_time = self.last_click_time.map(|last_time| time.saturating_sub(last_time) <= DOUBLE_CLICK_MILLISECONDS).unwrap_or(false);
+		let within_distance = self.last_click_pos.map(|last_pos| last_pos.distance(position) <= DRAG_THRESHOLD).unwrap_or(false);
+		let is_double_click = within_time && within_distance;
+		self.last_click_time = Some(time);
+		self.last_click_pos = Some(position);
+		is_double_click
 	}
 
 	/// Check whether target handle is primary, end, or `self.handle_end`
@@ -1816,6 +1831,8 @@ impl Fsm for PenToolFsmState {
 				self
 			}
 			(PenToolFsmState::Ready, PenToolMessage::DragStart { append_to_selected }) => {
+				tool_data.pending_double_click_confirm = false;
+				let _ = tool_data.update_click_timing(input.time, input.mouse.position);
 				responses.add(DocumentMessage::StartTransaction);
 				tool_data.handle_mode = HandleMode::Free;
 
@@ -1838,6 +1855,14 @@ impl Fsm for PenToolFsmState {
 				state
 			}
 			(PenToolFsmState::PlacingAnchor, PenToolMessage::DragStart { append_to_selected }) => {
+				let double_click = if tool_data.buffering_merged_vector {
+					false
+				} else {
+					tool_data.update_click_timing(input.time, input.mouse.position)
+				};
+				if !tool_data.buffering_merged_vector {
+					tool_data.pending_double_click_confirm = double_click;
+				}
 				let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
 				let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
 				let viewport = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
@@ -1892,9 +1917,16 @@ impl Fsm for PenToolFsmState {
 			}
 			(PenToolFsmState::DraggingHandle(_), PenToolMessage::DragStop) => {
 				tool_data.cleanup_target_selections(shape_editor, layer, document, responses);
-				tool_data
+				let next_state = tool_data
 					.finish_placing_handle(SnapData::new(document, input), transform, preferences, responses)
-					.unwrap_or(PenToolFsmState::PlacingAnchor)
+					.unwrap_or(PenToolFsmState::PlacingAnchor);
+				if tool_data.pending_double_click_confirm && matches!(next_state, PenToolFsmState::PlacingAnchor) {
+					tool_data.pending_double_click_confirm = false;
+					responses.add(PenToolMessage::Confirm);
+				} else {
+					tool_data.pending_double_click_confirm = false;
+				}
+				next_state
 			}
 			(
 				PenToolFsmState::DraggingHandle(_),
