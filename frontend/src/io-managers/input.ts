@@ -38,7 +38,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 	let inPointerLock = false;
 	const shakeSamples: { x: number; y: number; time: number }[] = [];
 	let lastShakeTime = 0;
-	
+
 	// Get device pixel ratio for coordinate transformation
 	// This fixes the offset issue on high-DPI devices like iPad
 	const getDevicePixelRatio = () => window.devicePixelRatio || 1;
@@ -168,7 +168,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		const dpr = getDevicePixelRatio();
 		const scaledX = e.clientX * dpr;
 		const scaledY = e.clientY * dpr;
-		
+
 		const modifiers = makeKeyboardModifiersBitfield(e);
 		if (detectShake(e)) editor.handle.onMouseShake(scaledX, scaledY, e.buttons, modifiers);
 		editor.handle.onMouseMove(scaledX, scaledY, e.buttons, modifiers);
@@ -203,7 +203,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 			const dpr = getDevicePixelRatio();
 			const scaledX = e.clientX * dpr;
 			const scaledY = e.clientY * dpr;
-			
+
 			const modifiers = makeKeyboardModifiersBitfield(e);
 			editor.handle.onMouseDown(scaledX, scaledY, e.buttons, modifiers);
 		}
@@ -226,7 +226,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		const dpr = getDevicePixelRatio();
 		const scaledX = e.clientX * dpr;
 		const scaledY = e.clientY * dpr;
-		
+
 		const modifiers = makeKeyboardModifiersBitfield(e);
 		editor.handle.onMouseUp(scaledX, scaledY, e.buttons, modifiers);
 	}
@@ -256,7 +256,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		const dpr = getDevicePixelRatio();
 		const scaledX = e.clientX * dpr;
 		const scaledY = e.clientY * dpr;
-		
+
 		const modifiers = makeKeyboardModifiersBitfield(e);
 		editor.handle.onDoubleClick(scaledX, scaledY, buttons, modifiers);
 	}
@@ -296,7 +296,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 			const dpr = getDevicePixelRatio();
 			const scaledX = e.clientX * dpr;
 			const scaledY = e.clientY * dpr;
-			
+
 			const modifiers = makeKeyboardModifiersBitfield(e);
 			editor.handle.onWheelScroll(scaledX, scaledY, e.buttons, e.deltaX, e.deltaY, e.deltaZ, modifiers);
 		}
