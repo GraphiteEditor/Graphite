@@ -304,16 +304,13 @@ impl fmt::Display for Key {
 
 impl From<Key> for LayoutKey {
 	fn from(key: Key) -> Self {
-		Self {
-			key: format!("{key:?}"),
-			label: key.to_string(),
-		}
+		Self { key, label: key.to_string() }
 	}
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
-struct LayoutKey {
-	key: String,
+pub struct LayoutKey {
+	pub key: Key,
 	label: String,
 }
 
@@ -359,7 +356,7 @@ impl From<KeysGroup> for String {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
-pub struct LayoutKeysGroup(Vec<LayoutKey>);
+pub struct LayoutKeysGroup(pub Vec<LayoutKey>);
 
 impl From<KeysGroup> for LayoutKeysGroup {
 	fn from(keys_group: KeysGroup) -> Self {

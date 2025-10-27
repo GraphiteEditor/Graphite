@@ -1,6 +1,6 @@
 use crate::window::Window;
 
-use graphite_desktop_wrapper::{Color, WgpuContext, WgpuExecutor};
+use crate::wrapper::{Color, WgpuContext, WgpuExecutor};
 
 #[derive(derivative::Derivative)]
 #[derivative(Debug)]
