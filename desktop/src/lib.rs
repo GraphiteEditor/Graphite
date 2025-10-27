@@ -10,11 +10,13 @@ mod cef;
 mod cli;
 mod dirs;
 mod event;
-mod native_window;
 mod persist;
 mod render;
+mod window;
 
 mod gpu_context;
+
+pub(crate) use graphite_desktop_wrapper as wrapper;
 
 use app::App;
 use cef::CefHandler;

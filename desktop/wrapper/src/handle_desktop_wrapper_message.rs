@@ -1,7 +1,9 @@
 use graphene_std::Color;
 use graphene_std::raster::Image;
 use graphite_editor::messages::app_window::app_window_message_handler::AppWindowPlatform;
+use graphite_editor::messages::layout::LayoutMessage;
 use graphite_editor::messages::prelude::{AppWindowMessage, DocumentMessage, FrontendMessage, PortfolioMessage, PreferencesMessage};
+use graphite_editor::messages::tool::tool_messages::tool_prelude::{LayoutTarget, WidgetId};
 
 use crate::messages::Platform;
 
@@ -55,7 +57,7 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 				document_path: Some(path),
 				document_serialized_content: content,
 			};
-			dispatcher.queue_editor_message(message.into());
+			dispatcher.queue_editor_message(message);
 		}
 		DesktopWrapperMessage::ImportFile { path, content } => {
 			let extension = path.extension().and_then(|s| s.to_str()).unwrap_or_default().to_lowercase();
@@ -80,7 +82,7 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 				mouse: None,
 				parent_and_insert_index: None,
 			};
-			dispatcher.queue_editor_message(message.into());
+			dispatcher.queue_editor_message(message);
 		}
 		DesktopWrapperMessage::ImportImage { path, content } => {
 			let name = path.file_stem().and_then(|s| s.to_str()).map(|s| s.to_string());
@@ -106,7 +108,7 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 				mouse: None,
 				parent_and_insert_index: None,
 			};
-			dispatcher.queue_editor_message(message.into());
+			dispatcher.queue_editor_message(message);
 		}
 		DesktopWrapperMessage::PollNodeGraphEvaluation => dispatcher.poll_node_graph_evaluation(),
 		DesktopWrapperMessage::UpdatePlatform(platform) => {
@@ -116,11 +118,11 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 				Platform::Linux => AppWindowPlatform::Linux,
 			};
 			let message = AppWindowMessage::AppWindowUpdatePlatform { platform };
-			dispatcher.queue_editor_message(message.into());
+			dispatcher.queue_editor_message(message);
 		}
 		DesktopWrapperMessage::UpdateMaximized { maximized } => {
 			let message = FrontendMessage::UpdateMaximized { maximized };
-			dispatcher.queue_editor_message(message.into());
+			dispatcher.queue_editor_message(message);
 		}
 		DesktopWrapperMessage::LoadDocument {
 			id,
@@ -138,15 +140,23 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 				to_front,
 				select_after_open,
 			};
-			dispatcher.queue_editor_message(message.into());
+			dispatcher.queue_editor_message(message);
 		}
 		DesktopWrapperMessage::SelectDocument { id } => {
 			let message = PortfolioMessage::SelectDocument { document_id: id };
-			dispatcher.queue_editor_message(message.into());
+			dispatcher.queue_editor_message(message);
 		}
 		DesktopWrapperMessage::LoadPreferences { preferences } => {
 			let message = PreferencesMessage::Load { preferences };
-			dispatcher.queue_editor_message(message.into());
+			dispatcher.queue_editor_message(message);
+		}
+		DesktopWrapperMessage::MenuEvent { id } => {
+			let message = LayoutMessage::WidgetValueUpdate {
+				layout_target: LayoutTarget::MenuBar,
+				widget_id: WidgetId(id),
+				value: serde_json::Value::Bool(true),
+			};
+			dispatcher.queue_editor_message(message);
 		}
 	}
 }

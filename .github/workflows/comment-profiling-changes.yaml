@@ -124,6 +124,65 @@ jobs:
               });
             }
 
+      - name: Analyze profiling changes
+        id: analyze
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+
+            function isSignificantChange(diffPct, absoluteChange, benchmarkType) {
+              const meetsPercentageThreshold = Math.abs(diffPct) > 5;
+              const meetsAbsoluteThreshold = absoluteChange > 200000;
+              const isCachedExecution = benchmarkType === 'run_cached' ||
+                                        benchmarkType.includes('Cached Execution');
+
+              return isCachedExecution
+                ? (meetsPercentageThreshold && meetsAbsoluteThreshold)
+                : meetsPercentageThreshold;
+            }
+
+            const allOutputs = [
+              JSON.parse(fs.readFileSync('/tmp/compile_output.json', 'utf8')),
+              JSON.parse(fs.readFileSync('/tmp/update_output.json', 'utf8')),
+              JSON.parse(fs.readFileSync('/tmp/run_once_output.json', 'utf8')),
+              JSON.parse(fs.readFileSync('/tmp/run_cached_output.json', 'utf8'))
+            ];
+            const outputNames = ['compile', 'update', 'run_once', 'run_cached'];
+            const sectionTitles = ['Compilation', 'Update', 'Run Once', 'Cached Execution'];
+
+            let hasSignificantChanges = false;
+            let regressionDetails = [];
+
+            for (let i = 0; i < allOutputs.length; i++) {
+              const benchmarkOutput = allOutputs[i];
+              const outputName = outputNames[i];
+              const sectionTitle = sectionTitles[i];
+
+              for (const benchmark of benchmarkOutput) {
+                if (benchmark.profiles?.[0]?.summaries?.parts?.[0]?.metrics_summary?.Callgrind?.Ir?.diffs?.diff_pct) {
+                  const diffPct = parseFloat(benchmark.profiles[0].summaries.parts[0].metrics_summary.Callgrind.Ir.diffs.diff_pct);
+                  const oldValue = benchmark.profiles[0].summaries.parts[0].metrics_summary.Callgrind.Ir.metrics.Both[1].Int;
+                  const newValue = benchmark.profiles[0].summaries.parts[0].metrics_summary.Callgrind.Ir.metrics.Both[0].Int;
+                  const absoluteChange = Math.abs(newValue - oldValue);
+
+                  if (isSignificantChange(diffPct, absoluteChange, outputName)) {
+                    hasSignificantChanges = true;
+                    regressionDetails.push({
+                      module_path: benchmark.module_path,
+                      id: benchmark.id,
+                      diffPct,
+                      absoluteChange,
+                      sectionTitle
+                    });
+                  }
+                }
+              }
+            }
+
+            core.setOutput('has-significant-changes', hasSignificantChanges);
+            core.setOutput('regression-details', JSON.stringify(regressionDetails));
+
       - name: Comment PR
         if: github.event.pull_request.head.repo.full_name == github.repository
         uses: actions/github-script@v7
@@ -137,7 +196,7 @@ jobs:
             const runOnceOutput = JSON.parse(fs.readFileSync('/tmp/run_once_output.json', 'utf8'));
             const runCachedOutput = JSON.parse(fs.readFileSync('/tmp/run_cached_output.json', 'utf8'));
 
-            let significantChanges = false;
+            const hasSignificantChanges = '${{ steps.analyze.outputs.has-significant-changes }}' === 'true';
             let commentBody = "";
 
             function formatNumber(num) {
@@ -161,6 +220,17 @@ jobs:
               let sectionBody = "";
               let hasResults = false;
               let hasSignificantChanges = false;
+
+              function isSignificantChange(diffPct, absoluteChange, benchmarkType) {
+                const meetsPercentageThreshold = Math.abs(diffPct) > 5;
+                const meetsAbsoluteThreshold = absoluteChange > 200000;
+                const isCachedExecution = benchmarkType === 'run_cached' ||
+                                          benchmarkType.includes('Cached Execution');
+
+                return isCachedExecution
+                  ? (meetsPercentageThreshold && meetsAbsoluteThreshold)
+                  : meetsPercentageThreshold;
+              }
               
               for (const benchmark of benchmarkOutput) {
                 if (benchmark.profiles && benchmark.profiles.length > 0) {
@@ -197,8 +267,8 @@ jobs:
                     }
                     
                     sectionBody += "```\n</details>\n\n";
-                    
-                        if (Math.abs(irDiff.diff_pct) > 5) {
+
+                        if (isSignificantChange(irDiff.diff_pct, Math.abs(irDiff.new - irDiff.old), sectionTitle)) {
                           significantChanges = true;
                           hasSignificantChanges = true;
                         }
@@ -248,7 +318,7 @@ jobs:
             if (commentBody.length > 0) {
               const output = `<details open>\n<summary>Performance Benchmark Results</summary>\n\n${commentBody}\n</details>`;
 
-              if (significantChanges) {
+              if (hasSignificantChanges) {
                 github.rest.issues.createComment({
                   issue_number: context.issue.number,
                   owner: context.repo.owner,
@@ -264,26 +334,11 @@ jobs:
             }
 
       - name: Fail on significant regressions
+        if: steps.analyze.outputs.has-significant-changes == 'true'
         uses: actions/github-script@v7
         with:
           script: |
-            const fs = require('fs');
+            const regressionDetails = JSON.parse('${{ steps.analyze.outputs.regression-details }}');
+            const firstRegression = regressionDetails[0];
 
-            const allOutputs = [
-              JSON.parse(fs.readFileSync('/tmp/compile_output.json', 'utf8')),
-              JSON.parse(fs.readFileSync('/tmp/update_output.json', 'utf8')),
-              JSON.parse(fs.readFileSync('/tmp/run_once_output.json', 'utf8')),
-              JSON.parse(fs.readFileSync('/tmp/run_cached_output.json', 'utf8'))
-            ];
-
-            for (const benchmarkOutput of allOutputs) {
-              for (const benchmark of benchmarkOutput) {
-                if (benchmark.profiles?.[0]?.summaries?.parts?.[0]?.metrics_summary?.Callgrind?.Ir?.diffs?.diff_pct) {
-                  const diffPct = parseFloat(benchmark.profiles[0].summaries.parts[0].metrics_summary.Callgrind.Ir.diffs.diff_pct);
-                  if (diffPct > 5) {
-                    core.setFailed(`Significant performance regression detected: ${benchmark.module_path} ${benchmark.id} increased by ${diffPct.toFixed(2)}%`);
-                    return;
-                  }
-                }
-              }
-            }
+            core.setFailed(`Significant performance regression detected: ${firstRegression.module_path} ${firstRegression.id} increased by ${firstRegression.absoluteChange.toLocaleString()} instructions (${firstRegression.diffPct.toFixed(2)}%)`);

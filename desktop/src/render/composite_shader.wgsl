@@ -8,15 +8,9 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
 	var out: VertexOutput;
 
 	let pos = array(
-		// 1st triangle
-		vec2f( -1.0, -1.0), // center
-		vec2f( 1.0, -1.0), // right, center
-		vec2f( -1.0, 1.0), // center, top
-
-		// 2nd triangle
-		vec2f( -1.0, 1.0), // center, top
-		vec2f( 1.0, -1.0), // right, center
-		vec2f( 1.0, 1.0), // right, top
+		vec2f( -1.0, -1.0),
+		vec2f( 3.0, -1.0),
+		vec2f( -1.0, 3.0),
 	);
 	let xy = pos[vertex_index];
 	out.clip_position = vec4f(xy , 0.0, 1.0);

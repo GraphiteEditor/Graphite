@@ -39,7 +39,7 @@ kurbo = { workspace = true }
 lyon_geom = { workspace = true }
 log = { workspace = true }
 base64 = { workspace = true }
-poly-cool = { workspace = true }
+polycool = { workspace = true }
 
 # Optional workspace dependencies
 serde = { workspace = true, optional = true }
