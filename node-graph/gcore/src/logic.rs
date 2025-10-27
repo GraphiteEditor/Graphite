@@ -69,6 +69,20 @@ fn string_length(_: impl Ctx, string: String) -> f64 {
 	string.chars().count() as f64
 }
 
+// Get an indexed part of string whitch separated a specified delimeter ("1;2;3" e.t.c.)
+#[node_macro::node(category("Text"))]
+fn substring_by_index(_: impl Ctx, string: String, #[default("\\n")] delimeter: String, index: u32) -> String {
+	let delimeter = delimeter.replace("\\n", "\n");
+	string.split(&delimeter).nth(index as usize).unwrap_or("").to_owned()
+}
+
+// Get amount substrings like ";" in string (useful for check max index in substring_by_index)
+#[node_macro::node(category("Text"))]
+fn count_substring(_: impl Ctx, string: String, #[default("\\n")] substring: String) -> f64 {
+	let substring = substring.replace("\\n", "\n");
+	string.matches(&substring).count() as f64
+}
+
 /// Evaluates either the "If True" or "If False" input branch based on whether the input condition is true or false.
 #[node_macro::node(category("Math: Logic"))]
 async fn switch<T, C: Send + 'n + Clone>(
@@ -119,21 +133,4 @@ async fn switch<T, C: Send + 'n + Clone>(
 	} else {
 		if_false.eval(ctx).await
 	}
-}
-
-// Get an indexed part of string whitch separated a specified delimeter ("1;2;3" e.t.c.)
-#[node_macro::node(category("Text"))]
-fn substring_by_index(_: impl Ctx, #[implementations(String)] string: String, delimeter: String, index: u32) -> String {
-	let idx = index as usize;
-	let parts: Vec<&str> = string.split(&delimeter).collect();
-	if idx < parts.len() { parts[idx].to_string() } else { String::new() }
-}
-
-// Get amount substrings like ";" in string (useful for check max index in substring_by_index)
-#[node_macro::node(category("Text"))]
-fn count_substring(_: impl Ctx, #[implementations(String)] string: String, substring: String) -> f64 {
-	if substring.is_empty() {
-		return 0.;
-	}
-	string.matches(&substring).count() as f64
 }
