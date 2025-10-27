@@ -1,9 +1,9 @@
 <script lang="ts">
-	import { evaluateMathExpression } from "@graphite-frontend/wasm/pkg/graphite_wasm.js";
 	import { createEventDispatcher, onMount, onDestroy } from "svelte";
 
 	import { PRESS_REPEAT_DELAY_MS, PRESS_REPEAT_INTERVAL_MS } from "@graphite/io-managers/input";
 	import { type NumberInputMode, type NumberInputIncrementBehavior } from "@graphite/messages";
+	import { evaluateMathExpression } from "@graphite-frontend/wasm/pkg/graphite_wasm.js";
 
 	import { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";
 	import FieldInput from "@graphite/components/widgets/inputs/FieldInput.svelte";
