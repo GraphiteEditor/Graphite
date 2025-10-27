@@ -8,6 +8,8 @@ const CUBIC_REGULARIZATION_ACCURACY: f64 = 0.5;
 const CUBIC_TO_BEZPATH_ACCURACY: f64 = 1e-3;
 /// Constant used to determine if `f64`s are equivalent.
 pub const MAX_ABSOLUTE_DIFFERENCE: f64 = 1e-7;
+/// Squared version to avoid sqrt in distance checks.
+const MAX_ABSOLUTE_DIFFERENCE_SQUARED: f64 = MAX_ABSOLUTE_DIFFERENCE * MAX_ABSOLUTE_DIFFERENCE;
 const MAX_FITTED_SEGMENTS: usize = 10000;
 
 /// Reduces the segments of the bezpath into simple subcurves, then offset each subcurve a set `distance` away.
@@ -23,9 +25,12 @@ pub fn offset_bezpath(bezpath: &BezPath, distance: f64, join: Join, miter_limit:
 		.segments()
 		.map(|bezier| bezier.to_cubic())
 		.filter_map(|cubic_bez| {
+			// Skip degenerate curves where all control points are at the same location.
+			// Offsetting a point is undefined and causes infinite recursion in fit_to_bezpath.
 			let start = cubic_bez.p0;
-			let is_degenerate =
-				(cubic_bez.p1 - start).hypot() < MAX_ABSOLUTE_DIFFERENCE && (cubic_bez.p2 - start).hypot() < MAX_ABSOLUTE_DIFFERENCE && (cubic_bez.p3 - start).hypot() < MAX_ABSOLUTE_DIFFERENCE;
+			let is_degenerate = start.distance_squared(cubic_bez.p1) < MAX_ABSOLUTE_DIFFERENCE_SQUARED
+				&& start.distance_squared(cubic_bez.p2) < MAX_ABSOLUTE_DIFFERENCE_SQUARED
+				&& start.distance_squared(cubic_bez.p3) < MAX_ABSOLUTE_DIFFERENCE_SQUARED;
 
 			if is_degenerate {
 				return None;
