@@ -17,7 +17,7 @@ use crate::vector::misc::{MergeByDistanceAlgorithm, PointSpacingType, is_linear}
 use crate::vector::misc::{handles_to_segment, segment_to_handles};
 use crate::vector::style::{PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 use crate::vector::{FillId, RegionId};
-use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, Graphic, OwnedContextImpl};
+use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, ExtractVarArgs, Graphic, OwnedContextImpl};
 use core::f64::consts::PI;
 use core::hash::{Hash, Hasher};
 use glam::{DAffine2, DVec2};
@@ -968,6 +968,31 @@ async fn separate_subpaths(_: impl Ctx, content: Table<Vector>) -> Table<Vector>
 				.collect::<Vec<TableRow<Vector>>>()
 		})
 		.collect()
+}
+
+#[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
+fn instance_vector(ctx: impl Ctx + ExtractVarArgs) -> Table<Vector> {
+	let Ok(var_arg) = ctx.vararg(0) else { return Default::default() };
+	let var_arg = var_arg as &dyn std::any::Any;
+
+	var_arg.downcast_ref().cloned().unwrap_or_default()
+}
+
+#[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
+async fn instance_map(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: Table<Vector>, mapped: impl Node<Context<'static>, Output = Table<Vector>>) -> Table<Vector> {
+	let mut rows = Vec::new();
+
+	for (i, row) in content.into_iter().enumerate() {
+		let owned_ctx = OwnedContextImpl::from(ctx.clone());
+		let owned_ctx = owned_ctx.with_vararg(Box::new(Table::new_from_row(row))).with_index(i);
+		let table = mapped.eval(owned_ctx.into_context()).await;
+
+		for inner_row in table {
+			rows.push(inner_row);
+		}
+	}
+
+	rows.into_iter().collect()
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
