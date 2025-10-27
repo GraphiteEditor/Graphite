@@ -37,10 +37,8 @@ pub fn offset_bezpath(bezpath: &BezPath, distance: f64, join: Join, miter_limit:
 
 			if fitted.segments().count() > MAX_FITTED_SEGMENTS {
 				None
-			} else if fitted.get_seg(1).is_some() {
-				Some(fitted)
 			} else {
-				None
+				fitted.get_seg(1).is_some().then_some(fitted)
 			}
 		})
 		.collect::<Vec<BezPath>>();
