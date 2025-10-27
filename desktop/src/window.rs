@@ -3,10 +3,13 @@ use winit::event_loop::ActiveEventLoop;
 use winit::window::{Window as WinitWindow, WindowAttributes};
 
 use crate::consts::APP_NAME;
+use crate::event::AppEventScheduler;
+use crate::wrapper::messages::MenuItem;
 
 pub(crate) trait NativeWindow {
 	fn configure(attributes: WindowAttributes, event_loop: &dyn ActiveEventLoop) -> WindowAttributes;
-	fn new(window: &dyn WinitWindow) -> Self;
+	fn new(window: &dyn WinitWindow, app_event_scheduler: AppEventScheduler) -> Self;
+	fn update_menu(&self, _entries: Vec<MenuItem>) {}
 }
 
 #[cfg(target_os = "linux")]
@@ -31,7 +34,7 @@ pub(crate) struct Window {
 }
 
 impl Window {
-	pub(crate) fn new(event_loop: &dyn ActiveEventLoop) -> Self {
+	pub(crate) fn new(event_loop: &dyn ActiveEventLoop, app_event_scheduler: AppEventScheduler) -> Self {
 		let mut attributes = WindowAttributes::default()
 			.with_title(APP_NAME)
 			.with_min_surface_size(winit::dpi::LogicalSize::new(400, 300))
@@ -42,7 +45,7 @@ impl Window {
 		attributes = native::NativeWindowImpl::configure(attributes, event_loop);
 
 		let winit_window = event_loop.create_window(attributes).unwrap();
-		let native_handle = native::NativeWindowImpl::new(winit_window.as_ref());
+		let native_handle = native::NativeWindowImpl::new(winit_window.as_ref(), app_event_scheduler);
 		Self {
 			winit_window: winit_window.into(),
 			native_handle,
@@ -83,5 +86,9 @@ impl Window {
 
 	pub(crate) fn set_cursor(&self, cursor: winit::cursor::Cursor) {
 		self.winit_window.set_cursor(cursor);
+	}
+
+	pub(crate) fn update_menu(&self, entries: Vec<MenuItem>) {
+		self.native_handle.update_menu(entries);
 	}
 }

@@ -16,6 +16,8 @@ mod window;
 
 mod gpu_context;
 
+pub(crate) use graphite_desktop_wrapper as wrapper;
+
 use app::App;
 use cef::CefHandler;
 use cli::Cli;
