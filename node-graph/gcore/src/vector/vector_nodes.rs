@@ -821,16 +821,17 @@ async fn vec2_to_point(_: impl Ctx, vec2: DVec2) -> Table<Vector> {
 async fn points_to_polyline(_: impl Ctx, mut points: Table<Vector>, #[default(true)] closed: bool) -> Table<Vector> {
 	for row in points.iter_mut() {
 		let mut segment_domain = SegmentDomain::new();
+		let mut next_id = SegmentId::ZERO;
 
 		let points_count = row.element.point_domain.ids().len();
 
 		if points_count > 2 {
 			(0..points_count - 1).for_each(|i| {
-				segment_domain.push(SegmentId::generate(), i, i + 1, BezierHandles::Linear, StrokeId::generate());
+				segment_domain.push(next_id.next_id(), i, i + 1, BezierHandles::Linear, StrokeId::generate());
 			});
 
 			if closed {
-				segment_domain.push(SegmentId::generate(), points_count - 1, 0, BezierHandles::Linear, StrokeId::generate());
+				segment_domain.push(next_id.next_id(), points_count - 1, 0, BezierHandles::Linear, StrokeId::generate());
 
 				row.element
 					.region_domain
@@ -1394,6 +1395,7 @@ async fn spline(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
 			}
 
 			let mut segment_domain = SegmentDomain::default();
+			let mut next_id = SegmentId::ZERO;
 			for (manipulator_groups, closed) in row.element.stroke_manipulator_groups() {
 				let positions = manipulator_groups.iter().map(|manipulators| manipulators.anchor).collect::<Vec<_>>();
 				let closed = closed && positions.len() > 2;
@@ -1418,7 +1420,7 @@ async fn spline(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
 					let handle_end = positions[next_index] * 2. - first_handles[next_index];
 					let handles = BezierHandles::Cubic { handle_start, handle_end };
 
-					segment_domain.push(SegmentId::generate(), start_index, end_index, handles, stroke_id);
+					segment_domain.push(next_id.next_id(), start_index, end_index, handles, stroke_id);
 				}
 			}
 
