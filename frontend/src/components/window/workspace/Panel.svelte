@@ -50,6 +50,7 @@
 	export let styles: Record<string, string | number | undefined> = {};
 
 	let tabElements: (LayoutRow | undefined)[] = [];
+	let tabGroupElement: LayoutRow | undefined;
 
 	function platformModifiers(reservedKey: boolean): LayoutKeysGroup {
 		// TODO: Remove this by properly feeding these keys from a layout provided by the backend
@@ -93,6 +94,39 @@
 		});
 	}
 
+	// To handle dropping SVGs onto the empty tab space so that they open as a new document
+	function dropOnTabBar(e: DragEvent) {
+		const { dataTransfer } = e;
+		if (!dataTransfer) return;
+
+		// Determine if the pointer is over the empty area of the tab bar (to the right of the last tab)
+		const tabGroupDiv = tabGroupElement?.div?.();
+		if (!tabGroupDiv) return;
+
+		const groupBounds = tabGroupDiv.getBoundingClientRect();
+		const tabDivs = tabElements.map((t) => t?.div?.()).filter((el): el is HTMLDivElement => Boolean(el));
+		const lastTabRight = tabDivs.length ? tabDivs[tabDivs.length - 1]!.getBoundingClientRect().right : groupBounds.left;
+		const overEmptySpace = e.clientX > lastTabRight && e.clientX < groupBounds.right;
+
+		// If not over the empty part of the tab bar, ignore
+		if (!overEmptySpace) return;
+
+		e.preventDefault();
+
+		Array.from(dataTransfer.items).forEach(async (item) => {
+			const file = item.getAsFile();
+			if (!file) return;
+
+			if (file.type.includes("svg")) {
+				const svgData = await file.text();
+				// Call the API `importSvgAsNewDocument`
+				const handleWithImport = editor.handle as unknown as { importSvgAsNewDocument?: (name: string | undefined, svg: string) => void };
+				handleWithImport.importSvgAsNewDocument?.(file.name, svgData);
+				return;
+			}
+		});
+	}
+
 	export async function scrollTabIntoView(newIndex: number) {
 		await tick();
 		tabElements[newIndex]?.div?.()?.scrollIntoView();
@@ -100,8 +134,8 @@
 </script>
 
 <LayoutCol on:pointerdown={() => panelType && editor.handle.setActivePanel(panelType)} class={`panel ${className}`.trim()} {classes} style={styleName} {styles}>
-	<LayoutRow class="tab-bar" classes={{ "min-widths": tabMinWidths }}>
-		<LayoutRow class="tab-group" scrollableX={true}>
+	<LayoutRow class="tab-bar" classes={{ "min-widths": tabMinWidths }} on:dragover={(e) => e.preventDefault()} on:drop={dropOnTabBar}>
+		<LayoutRow class="tab-group" scrollableX={true} bind:this={tabGroupElement}>
 			{#each tabLabels as tabLabel, tabIndex}
 				<LayoutRow
 					class="tab"
