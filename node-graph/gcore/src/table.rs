@@ -2,7 +2,7 @@ use crate::bounds::{BoundingBox, RenderBoundingBox};
 use crate::transform::ApplyTransform;
 use crate::uuid::NodeId;
 use crate::{AlphaBlending, math::quad::Quad};
-use dyn_any::StaticType;
+use dyn_any::{StaticType, StaticTypeSized};
 use glam::DAffine2;
 use std::hash::Hash;
 
@@ -203,6 +203,18 @@ impl<T: Hash> Hash for Table<T> {
 		for element in &self.element {
 			element.hash(state);
 		}
+		for transform in &self.transform {
+			transform.to_cols_array().map(|x| x.to_bits()).hash(state);
+		}
+		for alpha_blending in &self.alpha_blending {
+			alpha_blending.hash(state);
+		}
+	}
+}
+
+impl<T: PartialEq> PartialEq for Table<T> {
+	fn eq(&self, other: &Self) -> bool {
+		self.element == other.element && self.transform == other.transform && self.alpha_blending == other.alpha_blending
 	}
 }
 
@@ -220,14 +232,8 @@ impl<T> ApplyTransform for Table<T> {
 	}
 }
 
-impl<T: PartialEq> PartialEq for Table<T> {
-	fn eq(&self, other: &Self) -> bool {
-		self.element.len() == other.element.len() && { self.element.iter().zip(other.element.iter()).all(|(a, b)| a == b) }
-	}
-}
-
-unsafe impl<T: StaticType + 'static> StaticType for Table<T> {
-	type Static = Table<T>;
+unsafe impl<T: StaticTypeSized> StaticType for Table<T> {
+	type Static = Table<T::Static>;
 }
 
 impl<T> FromIterator<TableRow<T>> for Table<T> {
