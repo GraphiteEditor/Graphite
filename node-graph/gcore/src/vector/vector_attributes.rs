@@ -300,6 +300,10 @@ impl SegmentDomain {
 		self.end_point[segment_index] = new;
 	}
 
+	pub fn set_handles(&mut self, segment_index: usize, new: BezierHandles) {
+		self.handles[segment_index] = new;
+	}
+
 	pub fn handles(&self) -> &[BezierHandles] {
 		&self.handles
 	}
