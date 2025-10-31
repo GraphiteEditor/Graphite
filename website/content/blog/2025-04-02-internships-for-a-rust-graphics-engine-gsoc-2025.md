@@ -1,10 +1,11 @@
 +++
 title = "Internships for a Rust graphics engine: GSoC 2025"
 date = 2025-04-02
+authors = ["Keavon Chambers"]
+
 [extra]
 banner = "https://static.graphite.rs/content/blog/2025-04-02-internships-for-a-rust-graphics-engine-gsoc-2025.avif"
 banner_png = "https://static.graphite.rs/content/blog/2025-04-02-internships-for-a-rust-graphics-engine-gsoc-2025.png"
-author = "Keavon Chambers"
 summary = "Join Graphite in Google Summer of Code 2025 for a unique opportunity to contribute to open-source software development in Rust and computer graphics. Get paid while learning, working on self-contained projects under experienced mentors, and help Graphite grow."
 reddit = "https://www.reddit.com/r/graphite/comments/1jplm6t/internships_for_a_rust_graphics_engine_gsoc_2025/"
 twitter = "https://x.com/GraphiteEditor/status/1907384498389651663"

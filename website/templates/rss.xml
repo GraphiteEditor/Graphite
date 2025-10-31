@@ -14,8 +14,8 @@
         <updated>{{ page.updated | default(value=page.date) | date(format="%Y-%m-%dT%H:%M:%S%:z") }}</updated>
         <published>{{ page.date | date(format="%Y-%m-%dT%H:%M:%S%:z") }}</published>
 
-        {% if page.extra.authors %}
-            {% for author in page.extra.authors %}
+        {% if page.authors %}
+            {% for author in page.authors %}
             <author>
                 <name>{{ author }}</name>
             </author>

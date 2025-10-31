@@ -1,10 +1,11 @@
 +++
 title = "Graphite progress report (Q2 2024)"
 date = 2024-07-31
+authors = ["Keavon Chambers", "Hypercube"]
+
 [extra]
 banner = "https://static.graphite.rs/content/blog/2024-07-31-graphite-progress-report-q2-2024.avif"
 banner_png = "https://static.graphite.rs/content/blog/2024-07-31-graphite-progress-report-q2-2024.png"
-author = "Keavon Chambers & Hypercube"
 summary = "Graphite's Q2 2024 update introduces boolean path operations, a new gradient picker, layer locking, and more improvements."
 reddit = "https://www.reddit.com/r/graphite/comments/1ei9ps2/blog_post_graphite_progress_report_q2_2024/"
 twitter = "https://x.com/GraphiteEditor/status/1819360794028462569"

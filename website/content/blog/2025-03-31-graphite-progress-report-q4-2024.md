@@ -1,10 +1,11 @@
 +++
 title = "Graphite progress report (Q4 2024)"
 date = 2025-03-31
+authors = ["Keavon Chambers", "Hypercube"]
+
 [extra]
 banner = "https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024.avif"
 banner_png = "https://static.graphite.rs/content/blog/2025-03-31-graphite-progress-report-q4-2024.png"
-author = "Keavon Chambers & Hypercube"
 summary = "Graphite's Q4 2024 update introduces quality of life features across drawing tools and procedural editing."
 css = ["/component/demo-artwork.css"]
 reddit = "https://www.reddit.com/r/graphite/comments/1jpjqcs/blog_post_graphite_progress_report_q4_2024/"

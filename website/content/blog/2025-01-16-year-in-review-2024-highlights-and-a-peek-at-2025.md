@@ -1,11 +1,11 @@
 +++
 title = "Year in review: 2024 highlights and a peek at 2025"
 date = 2025-01-16
+authors = ["Keavon Chambers"]
 
 [extra]
 banner = "https://static.graphite.rs/content/blog/2025-01-16-year-in-review-2024-highlights-and-a-peek-at-2025.avif"
 banner_png = "https://static.graphite.rs/content/blog/2025-01-16-year-in-review-2024-highlights-and-a-peek-at-2025.png"
-author = "Keavon Chambers"
 summary = "Graphite has come a long way in 2024. Read about the progress made and the plans for the upcoming year."
 reddit = "https://www.reddit.com/r/graphite/comments/1i3umnl/blog_post_year_in_review_2024_highlights_and_a/"
 twitter = "https://x.com/GraphiteEditor/status/1880404337345851612"
