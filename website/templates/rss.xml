@@ -22,8 +22,8 @@
             {% endfor %}
         {% endif %}
 
-        {% if page.extra.summary %}
-        <summary>{{ page.extra.summary }}</summary>
+        {% if page.description %}
+        <summary>{{ page.description }}</summary>
         {% endif %}
 
         <content type="html"><![CDATA[

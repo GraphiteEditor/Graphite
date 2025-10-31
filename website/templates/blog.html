@@ -26,7 +26,7 @@
 				<time datetime="{{ page.date | date(format='%Y-%m-%d') }}"> {{ page.date | date(format="%B %d, %Y", timezone="America/Los_Angeles") }}</time>.
 			</span>
 			<div class="summary">
-				<p>{{ page.summary | striptags | safe }}</p>
+				<p>{{ page.description | striptags | safe }}</p>
 			</div>
 			<div class="keep-reading">
 				<a href="{{ page.path | safe }}" class="link arrow">Keep Reading</a>

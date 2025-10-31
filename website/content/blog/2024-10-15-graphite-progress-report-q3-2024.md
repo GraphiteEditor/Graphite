@@ -2,11 +2,12 @@
 title = "Graphite progress report (Q3 2024)"
 date = 2024-10-15
 authors = ["Keavon Chambers", "Hypercube"]
+description = "Graphite's Q3 2024 update introduces improvements to performance, node graph organization, nondestructive path editing, a new render engine, and more helpful nodes."
+
 
 [extra]
 banner = "https://static.graphite.rs/content/blog/2024-10-15-graphite-progress-report-q3-2024.avif"
 banner_png = "https://static.graphite.rs/content/blog/2024-10-15-graphite-progress-report-q3-2024.png"
-summary = "Graphite's Q3 2024 update introduces improvements to performance, node graph organization, nondestructive path editing, a new render engine, and more helpful nodes."
 reddit = "https://www.reddit.com/r/graphite/comments/1g4h6ya/blog_post_graphite_progress_report_q3_2024/"
 twitter = "https://x.com/GraphiteEditor/status/1846283664562573344"
 css = ["/component/demo-artwork.css"]

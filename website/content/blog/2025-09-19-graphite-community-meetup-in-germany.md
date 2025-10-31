@@ -2,11 +2,12 @@
 title = "Graphite community meetup in Germany"
 date = 2025-09-19
 authors = ["Keavon Chambers"]
+description = "Join us for a Graphite community meetup on October 10th, 2025 in Karlsruhe, Germany. Meet the core team and connect with fellow enthusiasts."
+
 
 [extra]
 banner = "https://static.graphite.rs/content/blog/2025-09-19-graphite-community-meetup-in-germany.avif"
 banner_png = "https://static.graphite.rs/content/blog/2025-09-19-graphite-community-meetup-in-germany.png"
-summary = "Join us for a Graphite community meetup on October 10th, 2025 in Karlsruhe, Germany. Meet the core team and connect with fellow enthusiasts."
 reddit = "https://www.reddit.com/r/graphite/comments/1nlt64g/graphite_community_meetup_in_germany_october_10/"
 twitter = "https://x.com/GraphiteEditor/status/1969324821205925934"
 bluesky = "https://bsky.app/profile/graphiteeditor.bsky.social/post/3lzaz3uizkc2j"
