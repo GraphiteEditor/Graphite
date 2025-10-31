@@ -246,7 +246,7 @@ impl Default for GridSnapping {
 			isometric_major_interval_along_a: 1,
 			grid_color: Color::from_rgb_str(COLOR_OVERLAY_GRAY_DARK.strip_prefix('#').unwrap()).unwrap().with_alpha(0.4),
 			grid_color_minor: Color::from_rgb_str(COLOR_OVERLAY_GRAY_DARK.strip_prefix('#').unwrap()).unwrap().with_alpha(0.2),
-			major_is_thick: true,
+			major_is_thick: false,
 			dot_display: false,
 		}
 	}
@@ -281,15 +281,11 @@ impl GridSnapping {
 		}
 		Some(multiplier)
 	}
-	
+
 	pub fn has_minor_lines(&self) -> bool {
 		match self.grid_type {
 			GridType::Rectangular { .. } => self.rectangular_major_interval_along_x > 1 || self.rectangular_major_interval_along_y > 1,
-			GridType::Isometric { .. } => {
-				self.isometric_major_interval_along_x > 1
-					|| self.isometric_major_interval_along_a > 1
-					|| self.isometric_major_interval_along_b > 1
-			}
+			GridType::Isometric { .. } => self.isometric_major_interval_along_x > 1 || self.isometric_major_interval_along_a > 1 || self.isometric_major_interval_along_b > 1,
 		}
 	}
 }
