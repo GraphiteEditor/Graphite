@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0">
+<channel>
+    <title>{{ config.title }}</title>
+    <link>{{ config.base_url | safe }}</link>
+    <description>{{ config.description }}</description>
+    <lastBuildDate>{{ now() | date(format="%a, %d %b %Y %H:%M:%S %z") }}</lastBuildDate>
+
+    {% for page in section.pages %}
+    <item>
+        <title>{{ page.title }}</title>
+        <link>{{ page.permalink | safe }}</link>
+        <guid>{{ page.permalink | safe }}</guid>
+        <pubDate>{{ page.date | date(format="%a, %d %b %Y %H:%M:%S %z") }}</pubDate>
+        <description><![CDATA[
+            {{ page.content | safe }}
+        ]]></description>
+    </item>
+    {% endfor %}
+</channel>
+</rss>
