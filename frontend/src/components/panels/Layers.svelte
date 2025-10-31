@@ -291,7 +291,7 @@
 		editor.handle.deselectAllLayers();
 	}
 
-	function calculateDragIndex(tree: LayoutCol, clientY: number, select?: () => void): DraggingData {
+	function calculateDragIndex(tree: LayoutCol, clientY: number, select?: () => void): DraggingData | undefined {
 		const treeChildren = tree.div()?.children;
 		const treeOffset = tree.div()?.getBoundingClientRect().top;
 
@@ -307,25 +307,42 @@
 
 		let markerHeight = 0;
 		const layerPanel = document.querySelector("[data-layer-panel]"); // Selects the element with the data-layer-panel attribute
+		let isInvalidDrag = false;
+
 		if (layerPanel !== null && treeChildren !== undefined && treeOffset !== undefined) {
 			const lastChild = treeChildren[treeChildren.length - 1];
-			if (lastChild.getBoundingClientRect().bottom < clientY) {
-				return { select, insertParentId: undefined, insertDepth: 0, insertIndex: undefined, highlightFolder: false, markerHeight: 0 };
+			if (clientY + 10 > lastChild.getBoundingClientRect().bottom) {
+				return;
 			}
 
 			let layerPanelTop = layerPanel.getBoundingClientRect().top;
-			Array.from(treeChildren).forEach((treeChild) => {
+
+			for (const treeChild of Array.from(treeChildren)) {
+				if (isInvalidDrag) break;
 				const indexAttribute = parseInt(treeChild.getAttribute("data-index") ?? "0", 10);
-				if (!indexAttribute) return;
+				if (!indexAttribute) continue;
 				const { folderIndex, entry: layer } = layers[indexAttribute];
 
 				const rect = treeChild.getBoundingClientRect();
 				if (rect.top > clientY || rect.bottom < clientY) {
-					return;
+					continue;
 				}
 
-				const isDraggingBtnArtBoards = layers[indexAttribute]?.entry?.depth === 1 && layers[indexAttribute + 1]?.entry?.depth === 1;
-				if (isDraggingBtnArtBoards) return;
+				const prevLayer = layers[indexAttribute];
+				const nextLayer = layers[indexAttribute + 1];
+				if (prevLayer?.entry?.depth === 1) {
+					const prevRectTop = treeChildren?.[indexAttribute].getBoundingClientRect().top;
+					if (prevLayer?.entry?.depth === 1 && prevRectTop + 10 > clientY) {
+						isInvalidDrag = true;
+						break;
+					}
+				}
+
+				const isDraggingBtnArtBoards = nextLayer?.entry?.depth === 1 && prevLayer?.entry?.depth === 1;
+
+				if (isDraggingBtnArtBoards) {
+					isInvalidDrag = true;
+				}
 
 				const pointerPercentage = (clientY - rect.top) / rect.height;
 				if (layer.childrenAllowed) {
@@ -358,7 +375,8 @@
 						markerHeight = rect.bottom - layerPanelTop;
 					}
 				}
-			});
+				break;
+			}
 			// Dragging to the empty space below all layers
 			let lastLayer = treeChildren[treeChildren.length - 1];
 			if (lastLayer.getBoundingClientRect().bottom < clientY) {
@@ -368,6 +386,7 @@
 				insertIndex = numberRootLayers;
 				markerHeight = lastLayer.getBoundingClientRect().bottom - layerPanelTop;
 			}
+			if (isInvalidDrag) return;
 		}
 
 		return {
