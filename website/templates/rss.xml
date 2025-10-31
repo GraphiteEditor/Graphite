@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
-    <title>{{ config.title }}</title>
+    <title>{{ config.title }} Blog</title>
     <link href="{{ config.base_url | safe }}"/>
     <updated>{{ now() | date(format="%Y-%m-%dT%H:%M:%S%:z") }}</updated>
     <id>{{ config.base_url | safe }}</id>
