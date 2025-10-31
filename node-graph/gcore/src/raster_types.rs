@@ -134,10 +134,11 @@ pub use gpu::GPU;
 mod gpu {
 	use super::*;
 	use crate::raster_types::__private::Sealed;
+	use std::sync::Arc;
 
 	#[derive(Clone, Debug, PartialEq, Hash)]
 	pub struct GPU {
-		pub texture: wgpu::Texture,
+		pub texture: Arc<InnerTexture>,
 	}
 
 	impl Sealed for Raster<GPU> {}
@@ -150,11 +151,30 @@ mod gpu {
 
 	impl Raster<GPU> {
 		pub fn new_gpu(texture: wgpu::Texture) -> Self {
-			Self::new(GPU { texture })
+			Self::new(GPU {
+				texture: Arc::new(InnerTexture(texture)),
+			})
 		}
 
 		pub fn data(&self) -> &wgpu::Texture {
 			&self.texture
+		}
+	}
+
+	#[derive(Debug, PartialEq, Hash)]
+	pub struct InnerTexture(wgpu::Texture);
+
+	impl Deref for InnerTexture {
+		type Target = wgpu::Texture;
+
+		fn deref(&self) -> &Self::Target {
+			&self.0
+		}
+	}
+
+	impl Drop for InnerTexture {
+		fn drop(&mut self) {
+			self.0.destroy();
 		}
 	}
 }
@@ -173,6 +193,10 @@ mod gpu {
 		fn is_empty(&self) -> bool {
 			true
 		}
+	}
+
+	impl Drop for GPU {
+		fn drop(&mut self) {}
 	}
 }
 
