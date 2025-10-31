@@ -25,7 +25,16 @@ fn grid_overlay_rectangular(document: &DocumentMessageHandler, overlay_context: 
 		let primary_start = bounds.0.iter().map(|&corner| corner[primary]).min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or_default();
 		let primary_end = bounds.0.iter().map(|&corner| corner[primary]).max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or_default();
 		let spacing = spacing[secondary];
+		let first_index = ((min - origin[secondary]) / spacing).ceil() as i32;
 		for line_index in 0..=((max - min) / spacing).ceil() as i32 {
+			let is_major = is_major_line(
+				line_index + first_index,
+				if primary == 1 {
+					document.snapping_state.grid.rectangular_major_interval_along_x
+				} else {
+					document.snapping_state.grid.rectangular_major_interval_along_y
+				},
+			);
 			let secondary_pos = (((min - origin[secondary]) / spacing).ceil() + line_index as f64) * spacing + origin[secondary];
 			let start = if primary == 0 {
 				DVec2::new(primary_start, secondary_pos)
@@ -40,24 +49,16 @@ fn grid_overlay_rectangular(document: &DocumentMessageHandler, overlay_context: 
 			overlay_context.line(
 				document_to_viewport.transform_point2(start),
 				document_to_viewport.transform_point2(end),
-				is_major_line(
-					line_index,
-					if primary == 0 {
-						document.snapping_state.grid.rectangular_major_interval_along_x
-					} else {
-						document.snapping_state.grid.rectangular_major_interval_along_y
-					},
-				)
-				.then_some(if document.snapping_state.grid.major_is_thick { &grid_color } else { &grid_color_minor }),
-				is_major_line(
-					line_index,
-					if primary == 0 {
-						document.snapping_state.grid.rectangular_major_interval_along_x
-					} else {
-						document.snapping_state.grid.rectangular_major_interval_along_y
-					},
-				)
-				.then_some(if document.snapping_state.grid.major_is_thick { 3. } else { 1. }),
+				if is_major {
+					Some(&grid_color)
+				} else {
+					Some(&grid_color_minor)
+				},
+				if is_major && document.snapping_state.grid.major_is_thick {
+					Some(3.)
+				} else {
+					Some(1.)
+				},
 			);
 		}
 	}
