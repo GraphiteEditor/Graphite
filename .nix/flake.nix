@@ -107,7 +107,6 @@
             allowBuiltinFetchGit = true;
           };
 
-          
           # TODO: Remove the need for this hash by using individual package resolutions and hashes from package-lock.json
           npmDeps = pkgs.fetchNpmDeps {
             inherit (finalAttrs) pname version;
@@ -131,7 +130,10 @@
           buildPhase = ''
             export HOME="$TMPDIR"
 
-            npm run build-desktop
+            pushd frontend
+            npm run build-native
+            popd
+            cargo build -r -p graphite-desktop
           '';
 
           installPhase = ''
@@ -144,7 +146,7 @@
             mkdir -p $out/share/icons/hicolor/scalable/apps
             cp $src/desktop/assets/graphite-icon-color.svg $out/share/icons/hicolor/scalable/apps/
           '';
-          
+
           doCheck = false;
 
           postFixup = ''
