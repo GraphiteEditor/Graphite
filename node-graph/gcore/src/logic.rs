@@ -69,18 +69,11 @@ fn string_length(_: impl Ctx, string: String) -> f64 {
 	string.chars().count() as f64
 }
 
-// Get an indexed part of string whitch separated a specified delimeter ("1;2;3" e.t.c.)
+// Spliet a string by a specified delimeter ("1;2;3" e.t.c.) and return a vector of strings
 #[node_macro::node(category("Text"))]
-fn substring_by_index(_: impl Ctx, string: String, #[default("\\n")] delimeter: String, index: u32) -> String {
+fn split(_: impl Ctx, string: String, #[default("\\n")] delimeter: String) -> Vec<String> {
 	let delimeter = delimeter.replace("\\n", "\n");
-	string.split(&delimeter).nth(index as usize).unwrap_or("").to_owned()
-}
-
-// Get amount substrings like ";" in string (useful for check max index in substring_by_index)
-#[node_macro::node(category("Text"))]
-fn count_substring(_: impl Ctx, string: String, #[default("\\n")] substring: String) -> f64 {
-	let substring = substring.replace("\\n", "\n");
-	string.matches(&substring).count() as f64
+	string.split(&delimeter).map(|x| x.to_string()).collect()
 }
 
 /// Evaluates either the "If True" or "If False" input branch based on whether the input condition is true or false.
