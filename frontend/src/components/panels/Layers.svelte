@@ -291,7 +291,7 @@
 		editor.handle.deselectAllLayers();
 	}
 
-	function calculateDragIndex(tree: LayoutCol, clientY: number, select?: () => void): DraggingData | undefined {
+	function calculateDragIndex(tree: LayoutCol, clientY: number, dataIndex: number, select?: () => void): DraggingData | undefined {
 		const treeChildren = tree.div()?.children;
 		const treeOffset = tree.div()?.getBoundingClientRect().top;
 
@@ -310,9 +310,11 @@
 		let isInvalidDrag = false;
 
 		if (layerPanel !== null && treeChildren !== undefined && treeOffset !== undefined) {
-			const lastChild = treeChildren[treeChildren.length - 1];
-			if (clientY + 10 > lastChild.getBoundingClientRect().bottom) {
-				return;
+			const lastLayerDepth = layers[layers.length - 1]?.entry?.depth;
+			const draggingLayerDepth = layers[dataIndex]?.entry?.depth;
+
+			if (clientY > treeChildren[layers.length - 1].getBoundingClientRect().bottom - 10) {
+				if (lastLayerDepth === 1 && draggingLayerDepth > 1) isInvalidDrag = true;
 			}
 
 			let layerPanelTop = layerPanel.getBoundingClientRect().top;
@@ -327,21 +329,23 @@
 				if (rect.top > clientY || rect.bottom < clientY) {
 					continue;
 				}
+				if (draggingLayerDepth > 1) {
+					const prevLayer = layers[indexAttribute];
+					const nextLayer = layers[indexAttribute + 1];
+					if (prevLayer?.entry?.depth === 1) {
+						const prevRectTop = treeChildren?.[indexAttribute].getBoundingClientRect().top;
+						if (prevLayer?.entry?.depth === 1 && prevRectTop + 10 > clientY) {
+							isInvalidDrag = true;
+							break;
+						}
+					}
 
-				const prevLayer = layers[indexAttribute];
-				const nextLayer = layers[indexAttribute + 1];
-				if (prevLayer?.entry?.depth === 1) {
-					const prevRectTop = treeChildren?.[indexAttribute].getBoundingClientRect().top;
-					if (prevLayer?.entry?.depth === 1 && prevRectTop + 10 > clientY) {
+					const isDraggingBtnArtBoards = nextLayer?.entry?.depth === 1 && prevLayer?.entry?.depth === 1;
+
+					if (isDraggingBtnArtBoards) {
 						isInvalidDrag = true;
 						break;
 					}
-				}
-
-				const isDraggingBtnArtBoards = nextLayer?.entry?.depth === 1 && prevLayer?.entry?.depth === 1;
-
-				if (isDraggingBtnArtBoards) {
-					isInvalidDrag = true;
 				}
 
 				const pointerPercentage = (clientY - rect.top) / rect.height;
@@ -412,7 +416,11 @@
 		const target = (event.target instanceof HTMLElement && event.target) || undefined;
 		const closest = target?.closest("[data-layer]") || undefined;
 		const draggingELement = (closest instanceof HTMLElement && closest) || undefined;
-		if (draggingELement) beginDraggingElement(draggingELement);
+		if (draggingELement) {
+			beginDraggingElement(draggingELement);
+			// Store the index of the layer being dragged
+			draggedLayerIndex = parseInt(draggingELement.getAttribute("data-index") ?? "0", 10);
+		}
 
 		// Set style of cursor for drag
 		if (event.dataTransfer) {
@@ -420,8 +428,12 @@
 			event.dataTransfer.effectAllowed = "move";
 		}
 
-		if (list) draggingData = calculateDragIndex(list, event.clientY, select);
+		if (list && draggedLayerIndex !== undefined) {
+			draggingData = calculateDragIndex(list, event.clientY, draggedLayerIndex, select);
+		}
 	}
+
+	let draggedLayerIndex: number | undefined;
 
 	function updateInsertLine(event: DragEvent) {
 		if (!draggable) return;
@@ -430,7 +442,10 @@
 		event.preventDefault();
 		dragInPanel = true;
 
-		if (list) draggingData = calculateDragIndex(list, event.clientY, draggingData?.select);
+		// Use the stored index from dragStart
+		if (list && draggedLayerIndex !== undefined) {
+			draggingData = calculateDragIndex(list, event.clientY, draggedLayerIndex, draggingData?.select);
+		}
 	}
 
 	function drop(e: DragEvent) {
@@ -480,6 +495,7 @@
 		draggingData = undefined;
 		fakeHighlightOfNotYetSelectedLayerBeingDragged = undefined;
 		dragInPanel = false;
+		draggedLayerIndex = undefined;
 	}
 
 	function rebuildLayerHierarchy(updateDocumentLayerStructure: DocumentLayerStructure) {
