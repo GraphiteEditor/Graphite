@@ -39,6 +39,10 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 	const shakeSamples: { x: number; y: number; time: number }[] = [];
 	let lastShakeTime = 0;
 
+	// Get device pixel ratio for coordinate transformation
+	// This fixes the offset issue on high-DPI devices like iPad
+	const getDevicePixelRatio = () => window.devicePixelRatio || 1;
+
 	// Event listeners
 
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -160,9 +164,14 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		const inGraphOverlay = get(document).graphViewOverlayOpen;
 		if (!viewportPointerInteractionOngoing && (inFloatingMenu || inGraphOverlay)) return;
 
+		// Scale coordinates by device pixel ratio to fix offset on high-DPI devices like iPad
+		const dpr = getDevicePixelRatio();
+		const scaledX = e.clientX * dpr;
+		const scaledY = e.clientY * dpr;
+
 		const modifiers = makeKeyboardModifiersBitfield(e);
-		if (detectShake(e)) editor.handle.onMouseShake(e.clientX, e.clientY, e.buttons, modifiers);
-		editor.handle.onMouseMove(e.clientX, e.clientY, e.buttons, modifiers);
+		if (detectShake(e)) editor.handle.onMouseShake(scaledX, scaledY, e.buttons, modifiers);
+		editor.handle.onMouseMove(scaledX, scaledY, e.buttons, modifiers);
 	}
 
 	function onPointerDown(e: PointerEvent) {
@@ -190,8 +199,13 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		}
 
 		if (viewportPointerInteractionOngoing && isTargetingCanvas instanceof Element) {
+			// Scale coordinates by device pixel ratio to fix offset on high-DPI devices like iPad
+			const dpr = getDevicePixelRatio();
+			const scaledX = e.clientX * dpr;
+			const scaledY = e.clientY * dpr;
+
 			const modifiers = makeKeyboardModifiersBitfield(e);
-			editor.handle.onMouseDown(e.clientX, e.clientY, e.buttons, modifiers);
+			editor.handle.onMouseDown(scaledX, scaledY, e.buttons, modifiers);
 		}
 	}
 
@@ -208,8 +222,13 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 		if (textToolInteractiveInputElement) return;
 
+		// Scale coordinates by device pixel ratio to fix offset on high-DPI devices like iPad
+		const dpr = getDevicePixelRatio();
+		const scaledX = e.clientX * dpr;
+		const scaledY = e.clientY * dpr;
+
 		const modifiers = makeKeyboardModifiersBitfield(e);
-		editor.handle.onMouseUp(e.clientX, e.clientY, e.buttons, modifiers);
+		editor.handle.onMouseUp(scaledX, scaledY, e.buttons, modifiers);
 	}
 
 	// Mouse events
@@ -233,8 +252,13 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		if (e.button === BUTTON_BACK) buttons = 8; // Back
 		if (e.button === BUTTON_FORWARD) buttons = 16; // Forward
 
+		// Scale coordinates by device pixel ratio to fix offset on high-DPI devices like iPad
+		const dpr = getDevicePixelRatio();
+		const scaledX = e.clientX * dpr;
+		const scaledY = e.clientY * dpr;
+
 		const modifiers = makeKeyboardModifiersBitfield(e);
-		editor.handle.onDoubleClick(e.clientX, e.clientY, buttons, modifiers);
+		editor.handle.onDoubleClick(scaledX, scaledY, buttons, modifiers);
 	}
 
 	function onMouseDown(e: MouseEvent) {
@@ -268,8 +292,13 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 		if (isTargetingCanvas) {
 			e.preventDefault();
+			// Scale coordinates by device pixel ratio to fix offset on high-DPI devices like iPad
+			const dpr = getDevicePixelRatio();
+			const scaledX = e.clientX * dpr;
+			const scaledY = e.clientY * dpr;
+
 			const modifiers = makeKeyboardModifiersBitfield(e);
-			editor.handle.onWheelScroll(e.clientX, e.clientY, e.buttons, e.deltaX, e.deltaY, e.deltaZ, modifiers);
+			editor.handle.onWheelScroll(scaledX, scaledY, e.buttons, e.deltaX, e.deltaY, e.deltaZ, modifiers);
 		}
 	}
 

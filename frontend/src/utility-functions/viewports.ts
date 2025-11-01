@@ -2,9 +2,14 @@ import { type Editor } from "@graphite/editor";
 
 export function updateBoundsOfViewports(editor: Editor) {
 	const viewports = Array.from(window.document.querySelectorAll("[data-viewport-container]"));
+
+	// Get device pixel ratio to scale bounds for high-DPI devices like iPad
+	const dpr = window.devicePixelRatio || 1;
+
 	const boundsOfViewports = viewports.map((canvas) => {
 		const bounds = canvas.getBoundingClientRect();
-		return [bounds.left, bounds.top, bounds.right, bounds.bottom];
+		// Scale bounds by device pixel ratio to match scaled pointer coordinates
+		return [bounds.left * dpr, bounds.top * dpr, bounds.right * dpr, bounds.bottom * dpr];
 	});
 
 	const flattened = boundsOfViewports.flat();
