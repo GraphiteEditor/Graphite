@@ -81,7 +81,9 @@ impl Fsm for EyedropperToolFsmState {
 	type ToolOptions = ();
 
 	fn transition(self, event: ToolMessage, _tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionMessageContext, _tool_options: &(), responses: &mut VecDeque<Message>) -> Self {
-		let ToolActionMessageContext { global_tool_data, input, .. } = tool_action_data;
+		let ToolActionMessageContext {
+			global_tool_data, input, viewport, ..
+		} = tool_action_data;
 
 		let ToolMessage::Eyedropper(event) = event else { return self };
 		match (self, event) {
@@ -97,7 +99,7 @@ impl Fsm for EyedropperToolFsmState {
 			}
 			// Sampling -> Sampling
 			(EyedropperToolFsmState::SamplingPrimary | EyedropperToolFsmState::SamplingSecondary, EyedropperToolMessage::PointerMove) => {
-				if input.viewport_bounds.in_bounds(input.mouse.position) {
+				if viewport.in_logical_bounds(input.mouse.position) {
 					update_cursor_preview(responses, input, global_tool_data, None);
 				} else {
 					disable_cursor_preview(responses);

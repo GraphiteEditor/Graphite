@@ -1,6 +1,6 @@
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::prelude::*;
-use glam::{DAffine2, DVec2, UVec2};
+use glam::{DAffine2, UVec2};
 use graph_craft::document::value::{RenderOutput, TaggedValue};
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
@@ -136,14 +136,17 @@ impl NodeGraphExecutor {
 		document: &mut DocumentMessageHandler,
 		document_id: DocumentId,
 		viewport_resolution: UVec2,
+		viewport_scale: f64,
 		time: TimingInformation,
 	) -> Result<Message, String> {
+		let viewport = Footprint {
+			transform: document.metadata().document_to_viewport,
+			resolution: viewport_resolution,
+			..Default::default()
+		};
 		let render_config = RenderConfig {
-			viewport: Footprint {
-				transform: document.metadata().document_to_viewport,
-				resolution: viewport_resolution,
-				..Default::default()
-			},
+			viewport,
+			scale: viewport_scale,
 			time,
 			#[cfg(any(feature = "resvg", feature = "vello"))]
 			export_format: graphene_std::application_io::ExportFormat::Raster,
@@ -163,22 +166,30 @@ impl NodeGraphExecutor {
 	}
 
 	/// Evaluates a node graph, computing the entire graph
+	#[allow(clippy::too_many_arguments)]
 	pub fn submit_node_graph_evaluation(
 		&mut self,
 		document: &mut DocumentMessageHandler,
 		document_id: DocumentId,
 		viewport_resolution: UVec2,
+		viewport_scale: f64,
 		time: TimingInformation,
 		node_to_inspect: Option<NodeId>,
 		ignore_hash: bool,
 	) -> Result<Message, String> {
 		self.update_node_graph(document, node_to_inspect, ignore_hash)?;
-		self.submit_current_node_graph_evaluation(document, document_id, viewport_resolution, time)
+		self.submit_current_node_graph_evaluation(document, document_id, viewport_resolution, viewport_scale, time)
 	}
 
 	/// Evaluates a node graph for export
 	pub fn submit_document_export(&mut self, document: &mut DocumentMessageHandler, document_id: DocumentId, mut export_config: ExportConfig) -> Result<(), String> {
 		let network = document.network_interface.document_network().clone();
+
+		let export_format = if export_config.file_type == FileType::Svg {
+			graphene_std::application_io::ExportFormat::Svg
+		} else {
+			graphene_std::application_io::ExportFormat::Raster
+		};
 
 		// Calculate the bounding box of the region to be exported
 		let bounds = match export_config.bounds {
@@ -187,28 +198,23 @@ impl NodeGraphExecutor {
 			ExportBounds::Artboard(id) => document.metadata().bounding_box_document(id),
 		}
 		.ok_or_else(|| "No bounding box".to_string())?;
-		let size = bounds[1] - bounds[0];
+		let resolution = (bounds[1] - bounds[0]).as_uvec2();
 		let transform = DAffine2::from_translation(bounds[0]).inverse();
-
-		let export_format = if export_config.file_type == FileType::Svg {
-			graphene_std::application_io::ExportFormat::Svg
-		} else {
-			graphene_std::application_io::ExportFormat::Raster
-		};
 
 		let render_config = RenderConfig {
 			viewport: Footprint {
-				transform: DAffine2::from_scale(DVec2::splat(export_config.scale_factor)) * transform,
-				resolution: (size * export_config.scale_factor).as_uvec2(),
+				resolution,
+				transform,
 				..Default::default()
 			},
+			scale: export_config.scale_factor,
 			time: Default::default(),
 			export_format,
 			render_mode: document.render_mode,
 			hide_artboards: export_config.transparent_background,
 			for_export: true,
 		};
-		export_config.size = size;
+		export_config.size = resolution.as_dvec2();
 
 		// Execute the node graph
 		self.runtime_io

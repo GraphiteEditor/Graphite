@@ -44,9 +44,9 @@ pub fn start() {
 	let (app_event_sender, app_event_receiver) = std::sync::mpsc::channel();
 	let app_event_scheduler = event_loop.create_app_event_scheduler(app_event_sender);
 
-	let (window_size_sender, window_size_receiver) = std::sync::mpsc::channel();
+	let (cef_view_info_sender, cef_view_info_receiver) = std::sync::mpsc::channel();
 
-	let cef_handler = cef::CefHandler::new(wgpu_context.clone(), app_event_scheduler.clone(), window_size_receiver);
+	let cef_handler = cef::CefHandler::new(wgpu_context.clone(), app_event_scheduler.clone(), cef_view_info_receiver);
 	let cef_context = match cef_context_builder.initialize(cef_handler, cli.disable_ui_acceleration) {
 		Ok(c) => {
 			tracing::info!("CEF initialized successfully");
@@ -70,7 +70,7 @@ pub fn start() {
 		}
 	};
 
-	let mut app = App::new(Box::new(cef_context), window_size_sender, wgpu_context, app_event_receiver, app_event_scheduler, cli.files);
+	let mut app = App::new(Box::new(cef_context), cef_view_info_sender, wgpu_context, app_event_receiver, app_event_scheduler, cli.files);
 
 	event_loop.run_app(&mut app).unwrap();
 }

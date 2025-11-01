@@ -34,9 +34,9 @@ impl AutoPanning {
 		}
 	}
 
-	pub fn setup_by_mouse_position(&mut self, input: &InputPreprocessorMessageHandler, messages: &[Message], responses: &mut VecDeque<Message>) {
+	pub fn setup_by_mouse_position(&mut self, input: &InputPreprocessorMessageHandler, viewport: &ViewportMessageHandler, messages: &[Message], responses: &mut VecDeque<Message>) {
 		let mouse_position = input.mouse.position;
-		let viewport_size = input.viewport_bounds.size();
+		let viewport_size = viewport.logical_size().into_dvec2();
 		let is_pointer_outside_edge = mouse_position.x < 0. || mouse_position.x > viewport_size.x || mouse_position.y < 0. || mouse_position.y > viewport_size.y;
 
 		match is_pointer_outside_edge {
@@ -50,12 +50,12 @@ impl AutoPanning {
 	/// If the mouse was beyond any edge, it returns the amount shifted. Otherwise it returns None.
 	/// The shift is proportional to the distance between edge and mouse, and to the duration of the frame.
 	/// It is also guaranteed to be integral.
-	pub fn shift_viewport(&self, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) -> Option<DVec2> {
+	pub fn shift_viewport(&self, input: &InputPreprocessorMessageHandler, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) -> Option<DVec2> {
 		if !self.subscribed_to_animation_frame {
 			return None;
 		}
 
-		let viewport_size = input.viewport_bounds.size();
+		let viewport_size = viewport.logical_size().into_dvec2();
 		let mouse_position = input.mouse.position.clamp(
 			DVec2::ZERO - DVec2::splat(DRAG_BEYOND_VIEWPORT_MAX_OVEREXTENSION_PIXELS),
 			viewport_size + DVec2::splat(DRAG_BEYOND_VIEWPORT_MAX_OVEREXTENSION_PIXELS),

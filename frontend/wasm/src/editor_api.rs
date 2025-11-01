@@ -8,7 +8,7 @@ use crate::helpers::translate_key;
 use crate::{EDITOR_HANDLE, EDITOR_HAS_CRASHED, Error, MESSAGE_BUFFER};
 use editor::consts::FILE_EXTENSION;
 use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
-use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
+use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta};
 use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use editor::messages::portfolio::document::utility_types::network_interface::ImportOrExport;
 use editor::messages::portfolio::utility_types::Platform;
@@ -516,13 +516,16 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
-	/// Send new bounds when document panel viewports get resized or moved within the editor
-	/// [left, top, right, bottom]...
-	#[wasm_bindgen(js_name = boundsOfViewports)]
-	pub fn bounds_of_viewports(&self, bounds_of_viewports: &[f64]) {
-		let chunked: Vec<_> = bounds_of_viewports.chunks(4).map(ViewportBounds::from_slice).collect();
+	/// Send new bounds when viewport get resized or moved within the editor
+	/// [left, top, right, bottom]
+	#[wasm_bindgen(js_name = boundsOfViewport)]
+	pub fn bounds_of_viewport(&self, bounds: &[f64]) {
+		let x = bounds[0];
+		let y = bounds[1];
+		let width = bounds[2] - bounds[0];
+		let height = bounds[3] - bounds[1];
 
-		let message = InputPreprocessorMessage::BoundsOfViewports { bounds_of_viewports: chunked };
+		let message = ViewportMessage::UpdateBounds { x, y, width, height };
 		self.dispatch(message);
 	}
 
@@ -534,9 +537,9 @@ impl EditorHandle {
 	}
 
 	/// Inform the overlays system of the current device pixel ratio
-	#[wasm_bindgen(js_name = setDevicePixelRatio)]
-	pub fn set_device_pixel_ratio(&self, ratio: f64) {
-		let message = PortfolioMessage::SetDevicePixelRatio { ratio };
+	#[wasm_bindgen(js_name = updateViewportScale)]
+	pub fn update_viewport_scale(&self, scale: f64) {
+		let message = ViewportMessage::UpdateScale { scale };
 		self.dispatch(message);
 	}
 

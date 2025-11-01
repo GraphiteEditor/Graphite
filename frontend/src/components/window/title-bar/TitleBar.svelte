@@ -9,7 +9,6 @@
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
 	import WindowButtonsLinux from "@graphite/components/window/title-bar/WindowButtonsLinux.svelte";
-	import WindowButtonsMac from "@graphite/components/window/title-bar/WindowButtonsMac.svelte";
 	import WindowButtonsWeb from "@graphite/components/window/title-bar/WindowButtonsWeb.svelte";
 	import WindowButtonsWindows from "@graphite/components/window/title-bar/WindowButtonsWindows.svelte";
 	import WindowTitle from "@graphite/components/window/title-bar/WindowTitle.svelte";
@@ -69,9 +68,7 @@
 <LayoutRow class="title-bar">
 	<!-- Menu bar (or on Mac: window buttons) -->
 	<LayoutRow class="left">
-		{#if platform === "Mac"}
-			<WindowButtonsMac />
-		{:else}
+		{#if platform !== "Mac"}
 			{#each entries as entry}
 				<TextButton label={entry.label} icon={entry.icon} menuListChildren={entry.children} action={entry.action} flush={true} />
 			{/each}

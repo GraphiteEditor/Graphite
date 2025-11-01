@@ -31,6 +31,7 @@ pub use crate::messages::portfolio::{PortfolioMessage, PortfolioMessageContext, 
 pub use crate::messages::preferences::{PreferencesMessage, PreferencesMessageDiscriminant, PreferencesMessageHandler};
 pub use crate::messages::tool::transform_layer::{TransformLayerMessage, TransformLayerMessageDiscriminant, TransformLayerMessageHandler};
 pub use crate::messages::tool::{ToolMessage, ToolMessageContext, ToolMessageDiscriminant, ToolMessageHandler};
+pub use crate::messages::viewport::{ViewportMessage, ViewportMessageDiscriminant, ViewportMessageHandler};
 
 // Message, MessageDiscriminant
 pub use crate::messages::message::{Message, MessageDiscriminant};

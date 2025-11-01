@@ -394,7 +394,7 @@
 			removeUpdatePixelRatio = () => mediaQueryList.removeEventListener("change", updatePixelRatio);
 
 			devicePixelRatio = window.devicePixelRatio;
-			editor.handle.setDevicePixelRatio(devicePixelRatio);
+			editor.handle.updateViewportScale(devicePixelRatio);
 		};
 		updatePixelRatio();
 

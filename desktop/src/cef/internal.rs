@@ -22,3 +22,13 @@ pub(super) use browser_process_client::BrowserProcessClientImpl;
 pub(super) use render_handler::RenderHandlerImpl;
 pub(super) use render_process_app::RenderProcessAppImpl;
 pub(super) use scheme_handler_factory::SchemeHandlerFactoryImpl;
+
+pub(super) trait NotifyViewInfoChanged {
+	fn notify_view_info_changed(&self);
+}
+impl<T: cef::ImplBrowserHost> NotifyViewInfoChanged for T {
+	fn notify_view_info_changed(&self) {
+		self.notify_screen_info_changed();
+		self.was_resized();
+	}
+}

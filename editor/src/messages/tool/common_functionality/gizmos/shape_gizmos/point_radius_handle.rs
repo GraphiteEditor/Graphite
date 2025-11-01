@@ -142,7 +142,7 @@ impl PointRadiusHandle {
 		}
 	}
 
-	pub fn overlays(&self, selected_star_layer: Option<LayerNodeIdentifier>, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, overlay_context: &mut OverlayContext) {
+	pub fn overlays(&self, selected_star_layer: Option<LayerNodeIdentifier>, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext) {
 		match &self.handle_state {
 			PointRadiusHandleState::Inactive => {
 				let Some(layer) = selected_star_layer else { return };
@@ -187,7 +187,7 @@ impl PointRadiusHandle {
 
 				let viewport = document.metadata().transform_to_viewport(layer);
 				let center = viewport.transform_point2(DVec2::ZERO);
-				let viewport_diagonal = input.viewport_bounds.size().length();
+				let viewport_diagonal = overlay_context.viewport.physical_size().into_dvec2().length();
 
 				// Star
 				if let Some((sides, radius1, radius2)) = extract_star_parameters(Some(layer), document) {

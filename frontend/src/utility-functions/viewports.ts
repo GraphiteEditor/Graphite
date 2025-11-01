@@ -10,5 +10,5 @@ export function updateBoundsOfViewports(editor: Editor) {
 	const flattened = boundsOfViewports.flat();
 	const data = Float64Array.from(flattened);
 
-	if (boundsOfViewports.length > 0) editor.handle.boundsOfViewports(data);
+	if (boundsOfViewports.length > 0) editor.handle.boundsOfViewport(data);
 }

@@ -103,6 +103,7 @@ async fn create_context<'a: 'n>(
 		for_export: render_config.for_export,
 		render_output_type,
 		footprint: Footprint::default(),
+		scale: render_config.scale,
 		..Default::default()
 	};
 
@@ -173,10 +174,13 @@ async fn render<'a: 'n>(
 				unreachable!("Attempted to render with Vello when no GPU executor is available");
 			};
 			let (child, context) = Arc::as_ref(vello_data);
-			let footprint_transform = vello::kurbo::Affine::new(footprint.transform.to_cols_array());
+
+			let scale_transform = glam::DAffine2::from_scale(glam::DVec2::splat(render_params.scale));
+			let footprint_transform = scale_transform * footprint.transform;
+			let footprint_transform_vello = vello::kurbo::Affine::new(footprint_transform.to_cols_array());
 
 			let mut scene = vello::Scene::new();
-			scene.append(child, Some(footprint_transform));
+			scene.append(child, Some(footprint_transform_vello));
 
 			let encoding = scene.encoding_mut();
 
@@ -194,23 +198,22 @@ async fn render<'a: 'n>(
 				background = Color::WHITE;
 			}
 
+			let resolution = (footprint.resolution.as_dvec2() * render_params.scale).as_uvec2();
+
 			if let Some(surface_handle) = surface_handle {
-				exec.render_vello_scene(&scene, &surface_handle, footprint.resolution, context, background)
+				exec.render_vello_scene(&scene, &surface_handle, resolution, context, background)
 					.await
 					.expect("Failed to render Vello scene");
 
 				let frame = SurfaceFrame {
 					surface_id: surface_handle.window_id,
-					resolution: footprint.resolution,
+					resolution,
 					transform: glam::DAffine2::IDENTITY,
 				};
 
 				RenderOutputType::CanvasFrame(frame)
 			} else {
-				let texture = exec
-					.render_vello_scene_to_texture(&scene, footprint.resolution, context, background)
-					.await
-					.expect("Failed to render Vello scene");
+				let texture = exec.render_vello_scene_to_texture(&scene, resolution, context, background).await.expect("Failed to render Vello scene");
 
 				RenderOutputType::Texture(ImageTexture { texture })
 			}

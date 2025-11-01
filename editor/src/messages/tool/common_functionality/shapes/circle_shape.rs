@@ -89,13 +89,14 @@ impl Circle {
 	pub fn update_shape(
 		document: &DocumentMessageHandler,
 		ipp: &InputPreprocessorMessageHandler,
+		viewport: &ViewportMessageHandler,
 		layer: LayerNodeIdentifier,
 		shape_tool_data: &mut ShapeToolData,
 		modifier: ShapeToolModifierKey,
 		responses: &mut VecDeque<Message>,
 	) {
 		let center = modifier[0];
-		let [start, end] = shape_tool_data.data.calculate_circle_points(document, ipp, center);
+		let [start, end] = shape_tool_data.data.calculate_circle_points(document, ipp, viewport, center);
 		let Some(node_id) = graph_modification_utils::get_circle_id(layer, &document.network_interface) else {
 			return;
 		};

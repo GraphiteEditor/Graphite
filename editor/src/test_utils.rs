@@ -48,8 +48,7 @@ impl EditorTestUtils {
 				Err(e) => return Err(format!("update_node_graph_instrumented failed\n\n{e}")),
 			};
 
-			let viewport_resolution = glam::UVec2::ONE;
-			if let Err(e) = exector.submit_current_node_graph_evaluation(document, DocumentId(0), viewport_resolution, Default::default()) {
+			if let Err(e) = exector.submit_current_node_graph_evaluation(document, DocumentId(0), Default::default(), Default::default()) {
 				return Err(format!("submit_current_node_graph_evaluation failed\n\n{e}"));
 			}
 			runtime.run().await;
@@ -296,8 +295,11 @@ impl EditorTestUtils {
 
 	/// Necessary for doing snapping since snaps outside of the viewport are discarded
 	pub async fn set_viewport_size(&mut self, top_left: DVec2, bottom_right: DVec2) {
-		self.handle_message(InputPreprocessorMessage::BoundsOfViewports {
-			bounds_of_viewports: vec![ViewportBounds { top_left, bottom_right }],
+		self.handle_message(ViewportMessage::UpdateBounds {
+			x: top_left.x,
+			y: top_left.y,
+			width: bottom_right.x - top_left.x,
+			height: bottom_right.y - top_left.y,
 		})
 		.await;
 	}

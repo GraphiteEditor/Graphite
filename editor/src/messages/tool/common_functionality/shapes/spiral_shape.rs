@@ -36,13 +36,20 @@ impl Spiral {
 		])
 	}
 
-	pub fn update_shape(document: &DocumentMessageHandler, ipp: &InputPreprocessorMessageHandler, layer: LayerNodeIdentifier, shape_tool_data: &mut ShapeToolData, responses: &mut VecDeque<Message>) {
+	pub fn update_shape(
+		document: &DocumentMessageHandler,
+		ipp: &InputPreprocessorMessageHandler,
+		viewport: &ViewportMessageHandler,
+		layer: LayerNodeIdentifier,
+		shape_tool_data: &mut ShapeToolData,
+		responses: &mut VecDeque<Message>,
+	) {
 		use graphene_std::vector::generator_nodes::spiral::*;
 
 		let viewport_drag_start = shape_tool_data.data.viewport_drag_start(document);
 
 		let ignore = vec![layer];
-		let snap_data = SnapData::ignore(document, ipp, &ignore);
+		let snap_data = SnapData::ignore(document, ipp, viewport, &ignore);
 		let config = SnapTypeConfiguration::default();
 		let document_mouse = document.metadata().document_to_viewport.inverse().transform_point2(ipp.mouse.position);
 		let snapped = shape_tool_data.data.snap_manager.free_snap(&snap_data, &SnapCandidatePoint::handle(document_mouse), config);

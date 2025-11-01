@@ -48,6 +48,7 @@ impl Line {
 	pub fn update_shape(
 		document: &DocumentMessageHandler,
 		ipp: &InputPreprocessorMessageHandler,
+		viewport: &ViewportMessageHandler,
 		layer: LayerNodeIdentifier,
 		shape_tool_data: &mut ShapeToolData,
 		modifier: ShapeToolModifierKey,
@@ -59,7 +60,7 @@ impl Line {
 
 		let keyboard = &ipp.keyboard;
 		let ignore = [layer];
-		let snap_data = SnapData::ignore(document, ipp, &ignore);
+		let snap_data = SnapData::ignore(document, ipp, viewport, &ignore);
 		let mut document_points = generate_line(shape_tool_data, snap_data, keyboard.key(lock_angle), keyboard.key(snap_angle), keyboard.key(center));
 
 		if shape_tool_data.line_data.dragging_endpoint == Some(LineEnd::Start) {

@@ -133,8 +133,8 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 	None
 }
 
-fn convert_menu_bar_entries_to_menu_items(layout: &Vec<MenuBarEntry>) -> Vec<MenuItem> {
-	layout.iter().filter_map(|entry| convert_menu_bar_entry_to_menu_item(entry)).collect()
+fn convert_menu_bar_entries_to_menu_items(layout: &[MenuBarEntry]) -> Vec<MenuItem> {
+	layout.iter().filter_map(convert_menu_bar_entry_to_menu_item).collect()
 }
 
 fn convert_menu_bar_entry_to_menu_item(
@@ -161,13 +161,7 @@ fn convert_menu_bar_entry_to_menu_item(
 	}
 
 	let shortcut = match shortcut {
-		Some(ActionKeys::Keys(LayoutKeysGroup(keys))) => {
-			if let Some(shortcut) = convert_layout_keys_to_shortcut(&keys) {
-				Some(shortcut)
-			} else {
-				None
-			}
-		}
+		Some(ActionKeys::Keys(LayoutKeysGroup(keys))) => convert_layout_keys_to_shortcut(keys),
 		_ => None,
 	};
 
@@ -197,7 +191,7 @@ fn convert_menu_bar_entry_to_menu_item(
 	Some(MenuItem::Action { id, text, shortcut, enabled })
 }
 
-fn convert_menu_bar_entry_children_to_menu_items(children: &Vec<Vec<MenuBarEntry>>) -> Vec<MenuItem> {
+fn convert_menu_bar_entry_children_to_menu_items(children: &[Vec<MenuBarEntry>]) -> Vec<MenuItem> {
 	let mut items = Vec::new();
 	for (i, section) in children.iter().enumerate() {
 		for entry in section.iter() {
@@ -327,5 +321,5 @@ fn convert_layout_keys_to_shortcut(layout_keys: &Vec<LayoutKey>) -> Option<Short
 			_ => key = None,
 		}
 	}
-	if let Some(key) = key { Some(Shortcut { key, modifiers }) } else { None }
+	key.map(|key| Shortcut { key, modifiers })
 }
