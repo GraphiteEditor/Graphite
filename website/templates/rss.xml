@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+    <title>{{ config.title }} Blog</title>
+    <link href="{{ config.base_url | safe }}"/>
+    <updated>{{ now() | date(format="%Y-%m-%dT%H:%M:%S%:z") }}</updated>
+    <id>{{ config.base_url | safe }}</id>
+    <subtitle>{{ config.description }}</subtitle>
+
+    {% for page in section.pages %}
+    <entry>
+        <title>{{ page.title }}</title>
+        <link href="{{ page.permalink | safe }}"/>
+        <id>{{ page.permalink | safe }}</id>
+        <updated>{{ page.updated | default(value=page.date) | date(format="%Y-%m-%dT%H:%M:%S%:z") }}</updated>
+        <published>{{ page.date | date(format="%Y-%m-%dT%H:%M:%S%:z") }}</published>
+
+        {% if page.authors %}
+            {% for author in page.authors %}
+            <author>
+                <name>{{ author }}</name>
+            </author>
+            {% endfor %}
+        {% endif %}
+
+        {% if page.description %}
+        <summary>{{ page.description }}</summary>
+        {% endif %}
+
+        <content type="html"><![CDATA[
+            {{ page.content | safe }}
+        ]]></content>
+    </entry>
+    {% endfor %}
+</feed>
