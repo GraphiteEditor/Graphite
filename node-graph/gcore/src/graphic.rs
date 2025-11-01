@@ -451,6 +451,7 @@ fn index<T: AtIndex + Clone + Default>(
 		Vec<u32>,
 		Vec<u64>,
 		Vec<DVec2>,
+		Vec<String>,
 		Table<Artboard>,
 		Table<Graphic>,
 		Table<Vector>,

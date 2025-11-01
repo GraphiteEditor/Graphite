@@ -69,6 +69,13 @@ fn string_length(_: impl Ctx, string: String) -> f64 {
 	string.chars().count() as f64
 }
 
+// Spliet a string by a specified delimeter ("1;2;3" e.t.c.) and return a vector of strings
+#[node_macro::node(category("Text"))]
+fn split(_: impl Ctx, string: String, #[default("\\n")] delimeter: String) -> Vec<String> {
+	let delimeter = delimeter.replace("\\n", "\n");
+	string.split(&delimeter).map(|x| x.to_string()).collect()
+}
+
 /// Evaluates either the "If True" or "If False" input branch based on whether the input condition is true or false.
 #[node_macro::node(category("Math: Logic"))]
 async fn switch<T, C: Send + 'n + Clone>(
