@@ -1542,7 +1542,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					.default_node_template();
 				responses.add(NodeGraphMessage::InsertNode {
 					node_id,
-					node_template: new_artboard_node,
+					node_template: Box::new(new_artboard_node),
 				});
 				responses.add(NodeGraphMessage::ShiftNodePosition { node_id, x: 15, y: -3 });
 				responses.add(GraphOperationMessage::ResizeArtboard {

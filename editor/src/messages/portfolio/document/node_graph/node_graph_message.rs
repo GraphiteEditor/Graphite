@@ -75,7 +75,8 @@ pub enum NodeGraphMessage {
 	},
 	InsertNode {
 		node_id: NodeId,
-		node_template: NodeTemplate,
+		// Boxed to reduce size of enum (1120 bytes to 8 bytes)
+		node_template: Box<NodeTemplate>,
 	},
 	InsertNodeBetween {
 		node_id: NodeId,
