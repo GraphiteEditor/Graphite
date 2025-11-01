@@ -655,7 +655,7 @@
 				style:--clip-path-id={`url(#${clipPathId})`}
 				style:--data-color={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()})`}
 				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
-				title={`${node.displayName}\n\n${description || ""}`.trim() + (editor.handle.inDevelopmentMode() ? `\n\nNode ID: ${node.id}` : "")}
+				title={`${node.reference || node.displayName}\n\n${description || ""}`.trim() + (editor.handle.inDevelopmentMode() ? `\n\nNode ID: ${node.id}` : "")}
 				data-node={node.id}
 			>
 				{#if node.errors}
