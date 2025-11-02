@@ -8,6 +8,8 @@ use crate::messages::prelude::*;
 pub struct Dispatcher {
 	message_queues: Vec<VecDeque<Message>>,
 	pub responses: Vec<FrontendMessage>,
+	pub frontend_update_messages: Vec<Message>,
+	pub queue_frontend_updates: bool,
 	pub message_handlers: DispatcherMessageHandlers,
 }
 
@@ -56,12 +58,24 @@ const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayerStructure),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::TriggerFontLoad),
 ];
+/// For optimization, these are messages guaranteed to be redundant when repeated.
+/// The last occurrence of the message in the message queue is sufficient to ensure correct behavior.
+/// In addition, these messages do not change any state in the backend (aside from caches).
+const FRONTEND_UPDATE_MESSAGES: &[MessageDiscriminant] = &[
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::PropertiesPanel(
+		PropertiesPanelMessageDiscriminant::Refresh,
+	))),
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::Overlays(OverlaysMessageDiscriminant::Draw))),
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::RenderRulers)),
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::RenderScrollbars)),
+];
 const DEBUG_MESSAGE_BLOCK_LIST: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Broadcast(BroadcastMessageDiscriminant::TriggerEvent(EventMessageDiscriminant::AnimationFrame)),
 	MessageDiscriminant::Animation(AnimationMessageDiscriminant::IncrementFrameCounter),
 ];
 // TODO: Find a way to combine these with the list above. We use strings for now since these are the standard variant names used by multiple messages. But having these also type-checked would be best.
-const DEBUG_MESSAGE_ENDING_BLOCK_LIST: &[&str] = &["PointerMove", "PointerOutsideViewport", "Overlays", "Draw", "CurrentTime", "Time"];
+const DEBUG_MESSAGE_ENDING_BLOCK_LIST: &[&str] = &[];
+// "PointerMove", "PointerOutsideViewport", "Overlays", "Draw", "CurrentTime", "Time"];
 
 impl Dispatcher {
 	pub fn new() -> Self {
@@ -105,6 +119,12 @@ impl Dispatcher {
 
 		while let Some(message) = self.message_queues.last_mut().and_then(VecDeque::pop_front) {
 			// Skip processing of this message if it will be processed later (at the end of the shallowest level queue)
+			if self.queue_frontend_updates && FRONTEND_UPDATE_MESSAGES.contains(&message.to_discriminant()) {
+				if !self.frontend_update_messages.contains(&message) {
+					self.frontend_update_messages.push(message);
+				}
+				continue;
+			}
 			if SIDE_EFFECT_FREE_MESSAGES.contains(&message.to_discriminant()) {
 				let already_in_queue = self.message_queues.first().filter(|queue| queue.contains(&message)).is_some();
 				if already_in_queue {
@@ -128,6 +148,10 @@ impl Dispatcher {
 			// Process the action by forwarding it to the relevant message handler, or saving the FrontendMessage to be sent to the frontend
 			match message {
 				Message::Animation(message) => {
+					if let AnimationMessage::IncrementFrameCounter = &message {
+						self.message_queues[0].extend(self.frontend_update_messages.drain(..));
+					}
+
 					self.message_handlers.animation_message_handler.process_message(message, &mut queue, ());
 				}
 				Message::AppWindow(message) => {
@@ -278,7 +302,11 @@ impl Dispatcher {
 	}
 
 	pub fn poll_node_graph_evaluation(&mut self, responses: &mut VecDeque<Message>) -> Result<(), String> {
-		self.message_handlers.portfolio_message_handler.poll_node_graph_evaluation(responses)
+		let result = self.message_handlers.portfolio_message_handler.poll_node_graph_evaluation(responses);
+		if !responses.is_empty() && result.is_ok() {
+			self.queue_frontend_updates = true;
+		}
+		result
 	}
 
 	/// Create the tree structure for logging the messages as a tree
