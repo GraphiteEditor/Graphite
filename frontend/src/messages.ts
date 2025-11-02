@@ -29,6 +29,10 @@ export class UpdateBox extends JsMessage {
 	readonly box!: Box | undefined;
 }
 
+export class UpdateLasoo extends JsMessage {
+	readonly lasoo!: Lasoo | undefined;
+}
+
 export class UpdateClickTargets extends JsMessage {
 	readonly clickTargets!: FrontendClickTargets | undefined;
 }
@@ -167,6 +171,10 @@ export class Box {
 	readonly endX!: number;
 
 	readonly endY!: number;
+}
+
+export class Lasoo {
+	readonly points!: string;
 }
 
 export type FrontendClickTargets = {
@@ -1669,6 +1677,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerVisitLink,
 	UpdateActiveDocument,
 	UpdateBox,
+	UpdateLasoo,
 	UpdateClickTargets,
 	UpdateContextMenuInformation,
 	UpdateDialogButtons,
