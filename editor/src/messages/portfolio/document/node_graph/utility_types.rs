@@ -153,18 +153,18 @@ pub struct BoxSelection {
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
-pub struct LasooSelection {
+pub struct LassoSelection {
 	pub points: String,
 }
 
-impl FromIterator<glam::DVec2> for LasooSelection {
+impl FromIterator<glam::DVec2> for LassoSelection {
 	fn from_iter<I: IntoIterator<Item = glam::DVec2>>(iter: I) -> Self {
 		let mut points = String::new();
 		for coordinate in iter {
 			use std::fmt::Write;
 			write!(&mut points, "{},{} ", coordinate.x, coordinate.y).unwrap();
 		}
-		LasooSelection { points }
+		LassoSelection { points }
 	}
 }
 

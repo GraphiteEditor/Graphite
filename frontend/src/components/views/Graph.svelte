@@ -777,9 +777,9 @@
 	></div>
 {/if}
 
-{#if $nodeGraph.lasoo}
-	<svg class="lasoo-selection" style:clip-path={`polygon(${$nodeGraph.lasoo.points})`}>
-		<polygon points={$nodeGraph.lasoo.points} stroke="#00a8ff" stroke-width="1px" fill="rgba(0, 168, 255, 0.05)" />
+{#if $nodeGraph.lasso}
+	<svg class="lasso-selection" style:clip-path={`polygon(${$nodeGraph.lasso.points})`}>
+		<polygon points={$nodeGraph.lasso.points} stroke="#00a8ff" stroke-width="1px" fill="rgba(0, 168, 255, 0.05)" />
 	</svg>
 {/if}
 
@@ -1376,7 +1376,7 @@
 		border: 1px solid #00a8ff;
 	}
 
-	.lasoo-selection {
+	.lasso-selection {
 		position: absolute;
 		pointer-events: none;
 		z-index: 2;
