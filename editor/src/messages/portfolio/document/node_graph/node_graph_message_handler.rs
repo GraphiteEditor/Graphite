@@ -264,7 +264,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 				responses.add(NodeGraphMessage::InsertNode {
 					node_id,
-					node_template: node_template.clone(),
+					node_template: Box::new(node_template.clone()),
 				});
 				responses.add(NodeGraphMessage::ShiftNodePosition { node_id, x, y });
 				// Only auto connect to the dragged wire if the node is being added to the currently opened network
@@ -507,7 +507,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(NodeGraphMessage::UpdateImportsExports);
 			}
 			NodeGraphMessage::InsertNode { node_id, node_template } => {
-				network_interface.insert_node(node_id, node_template, selection_network_path);
+				network_interface.insert_node(node_id, *node_template, selection_network_path);
 			}
 			NodeGraphMessage::InsertNodeBetween {
 				node_id,
@@ -624,7 +624,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(DocumentMessage::AddTransaction);
 				responses.add(NodeGraphMessage::InsertNode {
 					node_id: encapsulating_node_id,
-					node_template: default_node_template,
+					node_template: Box::new(default_node_template),
 				});
 				responses.add(NodeGraphMessage::SetDisplayNameImpl {
 					node_id: encapsulating_node_id,
