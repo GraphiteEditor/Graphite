@@ -4,7 +4,7 @@
     <link href="{{ config.base_url | safe }}"/>
     <updated>{{ now() | date(format="%Y-%m-%dT%H:%M:%S%:z") }}</updated>
     <id>{{ config.base_url | safe }}</id>
-    <subtitle>{{ config.description }}</subtitle>
+    <subtitle>Latest news and articles from the Graphite team.</subtitle>
     <generator>Zola</generator>
     <icon>/favicon-32x32.png</icon>
     <rights>© 2025 Graphite Labs, LLC</rights>
