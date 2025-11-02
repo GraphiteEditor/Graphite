@@ -871,10 +871,18 @@ impl Render for Table<Vector> {
 			let multiplied_transform = parent_transform * *row.transform;
 			let has_real_stroke = row.element.style.stroke().filter(|stroke| stroke.weight() > 0.);
 			let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.);
-			let applied_stroke_transform = set_stroke_transform.unwrap_or(multiplied_transform);
-			let applied_stroke_transform = render_params.alignment_parent_transform.unwrap_or(applied_stroke_transform);
-			let element_transform = set_stroke_transform.map(|stroke_transform| multiplied_transform * stroke_transform.inverse());
-			let element_transform = element_transform.unwrap_or(DAffine2::IDENTITY);
+			let mut applied_stroke_transform = set_stroke_transform.unwrap_or(multiplied_transform);
+			let mut element_transform = set_stroke_transform
+				.map(|stroke_transform| multiplied_transform * stroke_transform.inverse())
+				.unwrap_or(DAffine2::IDENTITY);
+			if let Some(alignment_transform) = render_params.alignment_parent_transform {
+				applied_stroke_transform = alignment_transform;
+				element_transform = if alignment_transform.matrix2.determinant() != 0. {
+					multiplied_transform * alignment_transform.inverse()
+				} else {
+					multiplied_transform
+				};
+			}
 			let layer_bounds = row.element.bounding_box().unwrap_or_default();
 
 			let to_point = |p: DVec2| kurbo::Point::new(p.x, p.y);
