@@ -6,6 +6,7 @@
     <id>{{ config.base_url | safe }}</id>
     <subtitle>{{ config.description }}</subtitle>
     <generator>Zola</generator>
+    <icon>/favicon-32x32.png</icon>
 
     {% for page in section.pages %}
     <entry>
