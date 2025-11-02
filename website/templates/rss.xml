@@ -5,6 +5,7 @@
     <updated>{{ now() | date(format="%Y-%m-%dT%H:%M:%S%:z") }}</updated>
     <id>{{ config.base_url | safe }}</id>
     <subtitle>{{ config.description }}</subtitle>
+    <generator>Zola</generator>
 
     {% for page in section.pages %}
     <entry>
