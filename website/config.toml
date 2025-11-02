@@ -5,7 +5,6 @@ feed_filenames = ["rss.xml"]
 
 compile_sass = true
 minify_html = false
-generate_feeds = false
 
 [markdown]
 highlight_code = true
