@@ -777,6 +777,12 @@
 	></div>
 {/if}
 
+{#if $nodeGraph.lasoo}
+	<svg class="lasoo-selection" style:clip-path={`polygon(${$nodeGraph.lasoo.points})`}>
+		<polygon points={$nodeGraph.lasoo.points} stroke="#00a8ff" stroke-width="1px" fill="rgba(0, 168, 255, 0.05)" />
+	</svg>
+{/if}
+
 <style lang="scss" global>
 	.graph {
 		position: relative;
@@ -1368,5 +1374,15 @@
 		// is removed, but for now this color needs to stay in sync with `COLOR_OVERLAY_BLUE` set in consts.rs of the editor backend.
 		background: rgba(0, 168, 255, 0.05);
 		border: 1px solid #00a8ff;
+	}
+
+	.lasoo-selection {
+		position: absolute;
+		pointer-events: none;
+		z-index: 2;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
 	}
 </style>

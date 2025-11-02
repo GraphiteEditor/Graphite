@@ -4,6 +4,7 @@ import { type Editor } from "@graphite/editor";
 import type { NodeGraphError } from "@graphite/messages";
 import {
 	type Box,
+	type Lasoo,
 	type FrontendClickTargets,
 	type ContextMenuInformation,
 	type FrontendNode,
@@ -12,6 +13,7 @@ import {
 	ClearAllNodeGraphWires,
 	SendUIMetadata,
 	UpdateBox,
+	UpdateLasoo,
 	UpdateClickTargets,
 	UpdateContextMenuInformation,
 	UpdateInSelectedNetwork,
@@ -32,6 +34,7 @@ import {
 export function createNodeGraphState(editor: Editor) {
 	const { subscribe, update } = writable({
 		box: undefined as Box | undefined,
+		lasoo: undefined as Lasoo | undefined,
 		clickTargets: undefined as FrontendClickTargets | undefined,
 		contextMenuInformation: undefined as ContextMenuInformation | undefined,
 		error: undefined as NodeGraphError | undefined,
@@ -65,6 +68,12 @@ export function createNodeGraphState(editor: Editor) {
 	editor.subscriptions.subscribeJsMessage(UpdateBox, (updateBox) => {
 		update((state) => {
 			state.box = updateBox.box;
+			return state;
+		});
+	});
+	editor.subscriptions.subscribeJsMessage(UpdateLasoo, (updateLasoo) => {
+		update((state) => {
+			state.lasoo = updateLasoo.lasoo;
 			return state;
 		});
 	});

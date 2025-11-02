@@ -152,6 +152,10 @@ pub enum FrontendMessage {
 		#[serde(rename = "box")]
 		box_selection: Option<BoxSelection>,
 	},
+	UpdateLasoo {
+		#[serde(rename = "lasoo")]
+		lasoo_selection: Option<LasooSelection>,
+	},
 	UpdateContextMenuInformation {
 		#[serde(rename = "contextMenuInformation")]
 		context_menu_information: Option<ContextMenuInformation>,
