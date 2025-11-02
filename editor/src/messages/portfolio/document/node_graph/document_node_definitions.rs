@@ -1713,6 +1713,7 @@ pub static NODE_OVERRIDES: once_cell::sync::Lazy<NodeProperties> = once_cell::sy
 fn static_node_properties() -> NodeProperties {
 	let mut map: NodeProperties = HashMap::new();
 	map.insert("brightness_contrast_properties".to_string(), Box::new(node_properties::brightness_contrast_properties));
+	map.insert("brightness_contrast_classic_properties".to_string(), Box::new(node_properties::brightness_contrast_classic_properties));
 	map.insert("channel_mixer_properties".to_string(), Box::new(node_properties::channel_mixer_properties));
 	map.insert("fill_properties".to_string(), Box::new(node_properties::fill_properties));
 	map.insert("stroke_properties".to_string(), Box::new(node_properties::stroke_properties));
