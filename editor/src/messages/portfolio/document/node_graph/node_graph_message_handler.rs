@@ -6,7 +6,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::document_message_handler::navigation_controls;
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::NodePropertiesContext;
-use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType, NodeGraphErrorDiagnostic};
+use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType, LassoSelection, NodeGraphErrorDiagnostic};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::portfolio::document::utility_types::network_interface::{
@@ -25,8 +25,9 @@ use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
 use graphene_std::math::math_ext::QuadExt;
 use graphene_std::vector::algorithms::bezpath_algorithms::bezpath_is_inside_bezpath;
+use graphene_std::vector::misc::dvec2_to_point;
 use graphene_std::*;
-use kurbo::{DEFAULT_ACCURACY, Shape};
+use kurbo::{DEFAULT_ACCURACY, Line, PathSeg, Shape};
 use renderer::Quad;
 use std::cmp::Ordering;
 
@@ -64,6 +65,9 @@ pub struct NodeGraphMessageHandler {
 	/// If dragging the background to create a box selection, this stores its starting point in node graph coordinates,
 	/// plus a flag indicating if it has been dragged since the mousedown began.
 	box_selection_start: Option<(DVec2, bool)>,
+	/// If dragging the background to create a lasso selection, this stores its current lasso polygon in node graph coordinates,
+	/// plus a flag indicating if it has been dragged since the mousedown began.
+	lasso_selection_curr: Option<(Vec<DVec2>, bool)>,
 	/// Restore the selection before box selection if it is aborted
 	selection_before_pointer_down: Vec<NodeId>,
 	/// If the grip icon is held during a drag, then shift without pushing other nodes
@@ -765,6 +769,15 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						responses.add(FrontendMessage::UpdateBox { box_selection: None });
 						return;
 					}
+					// Abort a lasso selection
+					if self.lasso_selection_curr.is_some() {
+						self.lasso_selection_curr = None;
+						responses.add(NodeGraphMessage::SelectedNodesSet {
+							nodes: self.selection_before_pointer_down.clone(),
+						});
+						responses.add(FrontendMessage::UpdateLasso { lasso_selection: None });
+						return;
+					}
 					// Abort dragging a wire
 					if self.wire_in_progress_from_connector.is_some() {
 						self.wire_in_progress_from_connector = None;
@@ -974,7 +987,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				if !shift_click && !alt_click {
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: Vec::new() })
 				}
-				self.box_selection_start = Some((node_graph_point, false));
+
+				if control_click {
+					self.lasso_selection_curr = Some((vec![node_graph_point], false));
+				} else {
+					self.box_selection_start = Some((node_graph_point, false));
+				}
+
 				self.update_node_graph_hints(responses);
 			}
 			NodeGraphMessage::PointerMove { shift } => {
@@ -1108,6 +1127,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				} else if let Some((_, box_selection_dragged)) = &mut self.box_selection_start {
 					*box_selection_dragged = true;
 					responses.add(NodeGraphMessage::UpdateBoxSelection);
+					self.update_node_graph_hints(responses);
+				} else if let Some((_, lasso_selection_dragged)) = &mut self.lasso_selection_curr {
+					*lasso_selection_dragged = true;
+					responses.add(NodeGraphMessage::UpdateLassoSelection);
 					self.update_node_graph_hints(responses);
 				} else if self.reordering_import.is_some() {
 					let Some(modify_import_export) = network_interface.modify_import_export(selection_network_path) else {
@@ -1391,6 +1414,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				self.drag_start = None;
 				self.begin_dragging = false;
 				self.box_selection_start = None;
+				self.lasso_selection_curr = None;
 				self.wire_in_progress_from_connector = None;
 				self.wire_in_progress_type = FrontendGraphDataType::General;
 				self.wire_in_progress_to_connector = None;
@@ -1399,12 +1423,17 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(DocumentMessage::EndTransaction);
 				responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
 				responses.add(FrontendMessage::UpdateBox { box_selection: None });
+				responses.add(FrontendMessage::UpdateLasso { lasso_selection: None });
 				responses.add(FrontendMessage::UpdateImportReorderIndex { index: None });
 				responses.add(FrontendMessage::UpdateExportReorderIndex { index: None });
 				self.update_node_graph_hints(responses);
 			}
 			NodeGraphMessage::PointerOutsideViewport { shift } => {
-				if self.drag_start.is_some() || self.box_selection_start.is_some() || (self.wire_in_progress_from_connector.is_some() && self.context_menu.is_none()) {
+				if self.drag_start.is_some()
+					|| self.box_selection_start.is_some()
+					|| self.lasso_selection_curr.is_some()
+					|| (self.wire_in_progress_from_connector.is_some() && self.context_menu.is_none())
+				{
 					let _ = self.auto_panning.shift_viewport(ipp, viewport, responses);
 				} else {
 					// Auto-panning
@@ -1954,6 +1983,88 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						});
 					}
 					responses.add(FrontendMessage::UpdateBox { box_selection })
+				}
+			}
+			NodeGraphMessage::UpdateLassoSelection => {
+				if let Some((lasso_selection_curr, _)) = &mut self.lasso_selection_curr {
+					// WARNING WARNING WARNING: this commented-out code is copy pasted from UpdateBoxSelection above and has not been edited for lasso
+					// The mouse button was released but we missed the pointer up event
+					// if ((e.buttons & 1) === 0) {
+					// 	completeBoxSelection();
+					// 	boxSelection = undefined;
+					// } else if ((e.buttons & 2) !== 0) {
+					// 	editor.handle.selectNodes(new BigUint64Array(previousSelection));
+					// 	boxSelection = undefined;
+					// }
+
+					let Some(network_metadata) = network_interface.network_metadata(selection_network_path) else {
+						log::error!("Could not get network metadata in UpdateBoxSelection");
+						return;
+					};
+
+					{
+						let node_graph_point = network_metadata
+							.persistent_metadata
+							.navigation_metadata
+							.node_graph_to_viewport
+							.inverse()
+							.transform_point2(ipp.mouse.position);
+
+						lasso_selection_curr.push(node_graph_point);
+					}
+
+					let lasso_selection_viewport: Vec<DVec2> = lasso_selection_curr
+						.iter()
+						.map(|selection_point| network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.transform_point2(*selection_point))
+						.collect();
+
+					let shift = ipp.keyboard.get(Key::Shift as usize);
+					let alt = ipp.keyboard.get(Key::Alt as usize);
+					let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) else {
+						log::error!("Could not get selected nodes in UpdateBoxSelection");
+						return;
+					};
+					let previous_selection = selected_nodes.selected_nodes_ref().iter().cloned().collect::<HashSet<_>>();
+					let mut nodes = if shift || alt {
+						selected_nodes.selected_nodes_ref().iter().cloned().collect::<HashSet<_>>()
+					} else {
+						HashSet::new()
+					};
+					let all_nodes = network_metadata.persistent_metadata.node_metadata.keys().cloned().collect::<Vec<_>>();
+					let path: Vec<PathSeg> = {
+						fn points_to_polygon(points: &[DVec2]) -> Vec<PathSeg> {
+							points
+								.windows(2)
+								.map(|w| PathSeg::Line(Line::new(dvec2_to_point(w[0]), dvec2_to_point(w[1]))))
+								.chain(std::iter::once(PathSeg::Line(Line::new(
+									dvec2_to_point(*points.last().unwrap()),
+									dvec2_to_point(*points.first().unwrap()),
+								))))
+								.collect()
+						}
+						points_to_polygon(lasso_selection_curr)
+					};
+					for node_id in all_nodes {
+						let Some(click_targets) = network_interface.node_click_targets(&node_id, selection_network_path) else {
+							log::error!("Could not get transient metadata for node {node_id}");
+							continue;
+						};
+						if click_targets.node_click_target.intersect_path(|| path.iter().cloned(), DAffine2::IDENTITY) {
+							if alt {
+								nodes.remove(&node_id);
+							} else {
+								nodes.insert(node_id);
+							}
+						}
+					}
+					if nodes != previous_selection {
+						responses.add(NodeGraphMessage::SelectedNodesSet {
+							nodes: nodes.into_iter().collect::<Vec<_>>(),
+						});
+					}
+					responses.add(FrontendMessage::UpdateLasso {
+						lasso_selection: Some(LassoSelection::from_iter(lasso_selection_viewport.into_iter())),
+					})
 				}
 			}
 			NodeGraphMessage::UpdateImportsExports => {
@@ -2711,11 +2822,12 @@ impl NodeGraphMessageHandler {
 		// Node gragging is in progress (having already moved at least one pixel from the mouse down position)
 		let dragging_nodes = self.drag_start.as_ref().is_some_and(|(_, dragged)| *dragged);
 
-		// A box selection is in progress
-		let dragging_box_selection = self.box_selection_start.is_some_and(|(_, box_selection_dragged)| box_selection_dragged);
+		// A box or lasso selection is in progress
+		let dragging_selection = self.box_selection_start.as_ref().is_some_and(|(_, box_selection_dragged)| *box_selection_dragged)
+			|| self.lasso_selection_curr.as_ref().is_some_and(|(_, lasso_selection_dragged)| *lasso_selection_dragged);
 
 		// Cancel the ongoing action
-		if wiring || dragging_nodes || dragging_box_selection {
+		if wiring || dragging_nodes || dragging_selection {
 			let hint_data = HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]);
 			responses.add(FrontendMessage::UpdateInputHints { hint_data });
 			return;
@@ -2760,6 +2872,7 @@ impl Default for NodeGraphMessageHandler {
 			node_has_moved_in_drag: false,
 			shift_without_push: false,
 			box_selection_start: None,
+			lasso_selection_curr: None,
 			drag_start_chain_nodes: Vec::new(),
 			selection_before_pointer_down: Vec::new(),
 			disconnecting: None,
@@ -2790,6 +2903,7 @@ impl PartialEq for NodeGraphMessageHandler {
 			&& self.begin_dragging == other.begin_dragging
 			&& self.node_has_moved_in_drag == other.node_has_moved_in_drag
 			&& self.box_selection_start == other.box_selection_start
+			&& self.lasso_selection_curr == other.lasso_selection_curr
 			&& self.initial_disconnecting == other.initial_disconnecting
 			&& self.select_if_not_dragged == other.select_if_not_dragged
 			&& self.wire_in_progress_from_connector == other.wire_in_progress_from_connector

@@ -221,6 +221,7 @@ pub enum NodeGraphMessage {
 	},
 	UpdateEdges,
 	UpdateBoxSelection,
+	UpdateLassoSelection,
 	UpdateImportsExports,
 	UpdateLayerPanel,
 	UpdateNewNodeGraph,
