@@ -1973,7 +1973,18 @@ impl<T> Count for Vec<T> {
 #[node_macro::node(category("General"), path(graphene_core::vector))]
 async fn count_elements<I: Count>(
 	_: impl Ctx,
-	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>, Table<GradientStops>, Vec<String>, Vec<f64>, Vec<DVec2>)] source: I,
+	#[implementations(
+		Table<Graphic>,
+		Table<Vector>,
+		Table<Raster<CPU>>,
+		Table<Raster<GPU>>,
+		Table<Color>,
+		Table<GradientStops>,
+		Vec<String>,
+		Vec<f64>,
+		Vec<DVec2>,
+	)]
+	source: I,
 ) -> f64 {
 	source.count() as f64
 }
