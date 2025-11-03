@@ -65,6 +65,7 @@ const FRONTEND_UPDATE_MESSAGES: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::PropertiesPanel(
 		PropertiesPanelMessageDiscriminant::Refresh,
 	))),
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::UpdateDocumentWidgets),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::Overlays(OverlaysMessageDiscriminant::Draw))),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::RenderRulers)),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::RenderScrollbars)),
@@ -120,10 +121,17 @@ impl Dispatcher {
 		while let Some(message) = self.message_queues.last_mut().and_then(VecDeque::pop_front) {
 			// Skip processing of this message if it will be processed later (at the end of the shallowest level queue)
 			if self.queue_frontend_updates && FRONTEND_UPDATE_MESSAGES.contains(&message.to_discriminant()) {
-				if !self.frontend_update_messages.contains(&message) {
-					self.frontend_update_messages.push(message);
+				let already_in_queue = self.message_queues.first().is_some_and(|queue| queue.contains(&message));
+				if already_in_queue {
+					self.cleanup_queues(false);
+					continue;
+				} else if self.message_queues.len() > 1 {
+					if !self.frontend_update_messages.contains(&message) {
+						self.frontend_update_messages.push(message);
+					}
+					self.cleanup_queues(false);
+					continue;
 				}
-				continue;
 			}
 			if SIDE_EFFECT_FREE_MESSAGES.contains(&message.to_discriminant()) {
 				let already_in_queue = self.message_queues.first().filter(|queue| queue.contains(&message)).is_some();
@@ -148,11 +156,16 @@ impl Dispatcher {
 			// Process the action by forwarding it to the relevant message handler, or saving the FrontendMessage to be sent to the frontend
 			match message {
 				Message::Animation(message) => {
-					if let AnimationMessage::IncrementFrameCounter = &message {
-						self.message_queues[0].extend(self.frontend_update_messages.drain(..));
-					}
+					self.message_handlers.animation_message_handler.process_message(message.clone(), &mut queue, ());
 
-					self.message_handlers.animation_message_handler.process_message(message, &mut queue, ());
+					if let AnimationMessage::IncrementFrameCounter = &message {
+						// self.queue_frontend_updates = false;
+						// log::debug!("dispatching {:?}", self.frontend_update_messages);
+
+						self.cleanup_queues(true);
+						self.message_queues[0].extend(self.frontend_update_messages.drain(..));
+						// self.queue_frontend_updates = true;
+					}
 				}
 				Message::AppWindow(message) => {
 					self.message_handlers.app_window_message_handler.process_message(message, &mut queue, ());
@@ -331,6 +344,7 @@ impl Dispatcher {
 		if !is_blocked {
 			match message_logging_verbosity {
 				MessageLoggingVerbosity::Off => {}
+				// MessageLoggingVerbosity::Off |
 				MessageLoggingVerbosity::Names => {
 					info!("{}{:?}", Self::create_indents(queues), message.to_discriminant());
 				}
