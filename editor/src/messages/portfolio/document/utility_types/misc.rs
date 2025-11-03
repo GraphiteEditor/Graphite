@@ -249,16 +249,12 @@ impl GridSnapping {
 	pub fn compute_rectangle_spacing(mut size: DVec2, major_interval: &UVec2, navigation: &PTZ) -> Option<DVec2> {
 		let mut iterations = 0;
 		size = size.abs();
-		while (size.x * navigation.zoom() < 10.) || (size.y * navigation.zoom() < 10.) {
+		while (size * navigation.zoom()).cmplt(DVec2::splat(10.)).any() {
 			if iterations > 100 {
 				return None;
 			}
-			if size.x * navigation.zoom() < 10. {
-				size.x *= if major_interval.x != 1 { major_interval.x as f64 } else { 2. };
-			}
-			if size.y * navigation.zoom() < 10. {
-				size.y *= if major_interval.y != 1 { major_interval.y as f64 } else { 2. };
-			}
+			size.x *= if major_interval.x != 1 { major_interval.x as f64 } else { 2. };
+			size.y *= if major_interval.y != 1 { major_interval.y as f64 } else { 2. };
 			iterations += 1;
 		}
 		Some(size)
