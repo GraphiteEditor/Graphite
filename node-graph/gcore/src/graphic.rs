@@ -443,7 +443,7 @@ async fn flatten_vector(_: impl Ctx, content: Table<Graphic>) -> Table<Vector> {
 /// Returns the value at the specified index in the collection.
 /// If that index has no value, the type's default value is returned.
 #[node_macro::node(category("General"))]
-fn index<T: AtIndex + Clone + Default>(
+fn index_elements<T: AtIndex + Clone + Default>(
 	_: impl Ctx,
 	/// The collection of data, such as a list or table.
 	#[implementations(
