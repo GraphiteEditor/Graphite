@@ -815,13 +815,18 @@ impl Vector {
 		}
 	}
 
-	/// Construct a [`Bezier`] curve from an iterator of segments with (handles, start point, end point) independently of discontinuities.
-	pub fn subpath_from_segments_ignore_discontinuities(&self, segments: impl Iterator<Item = (BezierHandles, usize, usize)>) -> Option<Subpath<PointId>> {
+	/// Construct a [`Bezier`] curve from an iterator of segments with (handles, start point, end point), optionally ignoring discontinuities.
+	/// Returns None if any ids are invalid or if the segments are not continuous.
+	pub fn subpath_from_segments(&self, segments: impl Iterator<Item = (BezierHandles, usize, usize)>, ignore_discontinuities: bool) -> Option<Subpath<PointId>> {
 		let mut first_point = None;
 		let mut manipulators_list = Vec::new();
 		let mut last: Option<(usize, BezierHandles)> = None;
 
 		for (handle, start, end) in segments {
+			if !ignore_discontinuities && last.is_some_and(|(previous_end, _)| previous_end != start) {
+				warn!("subpath_from_segments that were not continuous");
+				return None;
+			}
 			first_point = Some(first_point.unwrap_or(start));
 
 			manipulators_list.push(ManipulatorGroup {
