@@ -2855,6 +2855,7 @@ impl NodeGraphMessageHandler {
 				HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"),
 				HintInfo::keys([Key::Shift], "Extend").prepend_plus(),
 				HintInfo::keys([Key::Alt], "Subtract").prepend_plus(),
+				HintInfo::keys([Key::Accel], "Lasso").prepend_plus(),
 			]),
 		]);
 		if self.has_selection {
