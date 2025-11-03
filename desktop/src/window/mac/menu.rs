@@ -41,32 +41,22 @@ impl Menu {
 		let new_entries = menu_items_from_wrapper(entries);
 		let existing_entries = self.inner.items();
 
-		let mut full_replacement_needed = false;
+		let mut new_entries_iter = new_entries.iter();
+		let mut existing_entries_iter = existing_entries.iter().skip(1); // Skip first menu (app menu)
 
-		// Skip first menu (app menu)
-		if existing_entries.len() - 1 == new_entries.len() {
-			for (old, new) in existing_entries.iter().skip(1).zip(new_entries.iter()) {
-				match (old, new) {
-					(muda::MenuItemKind::Submenu(old), muda::MenuItemKind::Submenu(new)) => {
-						if old.text() != new.text() {
-							full_replacement_needed = true;
-							break;
-						}
-
-						replace_children(old, 0, new.items());
-					}
-					_ => {
-						full_replacement_needed = true;
-						break;
-					}
-				}
+		let incremental_update_ok = std::iter::from_fn(move || match (existing_entries_iter.next(), new_entries_iter.next()) {
+			(Some(MenuItemKind::Submenu(old)), Some(MenuItemKind::Submenu(new))) if old.text() == new.text() => {
+				replace_children(old, 0, new.items());
+				Some(true)
 			}
-		} else {
-			full_replacement_needed = true;
-		}
+			(None, None) => None,
+			_ => Some(false),
+		})
+		.all(|b| b);
 
-		if full_replacement_needed {
-			replace_children(&self.inner, 1, new_entries);
+		if !incremental_update_ok {
+			// Fallback to full replace
+			replace_children(&self.inner, 1, new_entries); // Skip first menu (app menu)
 		}
 	}
 }
@@ -141,14 +131,12 @@ impl<'a> MenuContainer<'a> {
 			MenuContainer::Submenu(submenu) => submenu.items(),
 		}
 	}
-
 	fn remove(&self, item: &dyn IsMenuItem) -> Result<()> {
 		match self {
 			MenuContainer::Menu(menu) => menu.remove(item),
 			MenuContainer::Submenu(submenu) => submenu.remove(item),
 		}
 	}
-
 	fn append_items(&self, items: &[&dyn IsMenuItem]) -> Result<()> {
 		match self {
 			MenuContainer::Menu(menu) => menu.append_items(items),
