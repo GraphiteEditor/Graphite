@@ -45,6 +45,7 @@ impl VectorTableIterMut for Table<Vector> {
 	}
 }
 
+/// Uniquely sets the fill and/or stroke style of every vector element to individual colors sampled along a chosen gradient.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector))]
 async fn assign_colors<T>(
 	_: impl Ctx,
@@ -105,6 +106,7 @@ where
 	content
 }
 
+/// Applies a fill style to the vector content, giving an appearance to the area within the interior of the geometry.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("fill_properties"))]
 async fn fill<F: Into<Fill> + 'n + Send, V: VectorTableIterMut + 'n + Send>(
 	_: impl Ctx,
@@ -121,6 +123,7 @@ async fn fill<F: Into<Fill> + 'n + Send, V: VectorTableIterMut + 'n + Send>(
 	)]
 	mut content: V,
 	/// The fill to paint the path with.
+	#[default(Color::BLACK)]
 	#[implementations(
 		Fill,
 		Table<Color>,
@@ -131,7 +134,6 @@ async fn fill<F: Into<Fill> + 'n + Send, V: VectorTableIterMut + 'n + Send>(
 		Table<GradientStops>,
 		Gradient,
 	)]
-	#[default(Color::BLACK)]
 	fill: F,
 	_backup_color: Table<Color>,
 	_backup_gradient: Gradient,
@@ -144,7 +146,7 @@ async fn fill<F: Into<Fill> + 'n + Send, V: VectorTableIterMut + 'n + Send>(
 	content
 }
 
-/// Applies a stroke style to the vector contained in the input.
+/// Applies a stroke style to the vector content, giving an appearance to the area within the outline of the geometry.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("stroke_properties"))]
 async fn stroke<V>(
 	_: impl Ctx,
