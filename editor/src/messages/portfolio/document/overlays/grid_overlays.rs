@@ -2,7 +2,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::misc::{GridSnapping, GridType};
 use crate::messages::prelude::*;
-use glam::{DVec2,UVec2};
+use glam::{DVec2, UVec2};
 use graphene_std::raster::color::Color;
 use graphene_std::renderer::Quad;
 use graphene_std::vector::style::FillChoice;
@@ -50,18 +50,10 @@ fn grid_overlay_rectangular(document: &DocumentMessageHandler, overlay_context: 
 				DVec2::new(secondary_pos, primary_end)
 			};
 			overlay_context.line(
-				document_to_viewport.transform_point2(start),	
+				document_to_viewport.transform_point2(start),
 				document_to_viewport.transform_point2(end),
-				if is_major {
-					Some(&grid_color)
-				} else {
-					Some(&grid_color_minor)
-				},
-				if is_major && document.snapping_state.grid.major_is_thick {
-					Some(3.)
-				} else {
-					Some(1.)
-				},
+				if is_major { Some(&grid_color) } else { Some(&grid_color_minor) },
+				if is_major && document.snapping_state.grid.major_is_thick { Some(3.) } else { Some(1.) },
 			);
 		}
 	}
@@ -76,7 +68,7 @@ fn grid_overlay_rectangular_dot(document: &DocumentMessageHandler, overlay_conte
 	let origin = document.snapping_state.grid.origin;
 	let grid_color = "#".to_string() + &document.snapping_state.grid.grid_color.to_rgba_hex_srgb();
 	let grid_color_minor = "#".to_string() + &document.snapping_state.grid.grid_color_minor.to_rgba_hex_srgb();
-	let Some(spacing) = GridSnapping::compute_rectangle_spacing(spacing, &document.snapping_state.grid.rectangular_major_interval,  &document.document_ptz) else {
+	let Some(spacing) = GridSnapping::compute_rectangle_spacing(spacing, &document.snapping_state.grid.rectangular_major_interval, &document.document_ptz) else {
 		return;
 	};
 	let document_to_viewport = document
