@@ -287,7 +287,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let properties = &attributes.properties_string.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
 
 	let cfg = crate::shader_nodes::modify_cfg(attributes);
-	let node_input_accessor = generate_node_input_references(parsed, fn_generics, &field_idents, &graphene_core, &identifier, &cfg);
+	let node_input_accessor = generate_node_input_references(parsed, fn_generics, &field_idents, graphene_core, &identifier, &cfg);
 	let ShaderTokens { shader_entry_point, gpu_node } = attributes.shader_node.as_ref().map(|n| n.codegen(crate_ident, parsed)).unwrap_or(Ok(ShaderTokens::default()))?;
 
 	Ok(quote! {

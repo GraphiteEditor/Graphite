@@ -178,13 +178,18 @@ impl ArtboardToolData {
 		let Some(movement) = &bounds.selected_edges else {
 			return;
 		};
-		if self.selected_artboard == Some(LayerNodeIdentifier::ROOT_PARENT) {
+		let Some(selected_artboard) = self.selected_artboard else {
+			warn!("Attempted to resize artboard with no selected artboard");
+			self.bounding_box_manager.take(); // Remove the bounding box manager if there is no artboard.
+			return; // Just do nothing instead of crashing since the state likely isn't too broken.
+		};
+		if selected_artboard == LayerNodeIdentifier::ROOT_PARENT {
 			log::error!("Selected artboard cannot be ROOT_PARENT");
 			return;
 		}
 
 		let center = from_center.then_some(bounds.center_of_transformation);
-		let ignore = self.selected_artboard.map_or(Vec::new(), |layer| vec![layer]);
+		let ignore = vec![selected_artboard];
 		let snap = Some(SizeSnapData {
 			manager: &mut self.draw.snap_manager,
 			points: &mut self.snap_candidates,
@@ -196,14 +201,14 @@ impl ArtboardToolData {
 		let size = (max - min).abs();
 
 		responses.add(GraphOperationMessage::ResizeArtboard {
-			layer: self.selected_artboard.unwrap(),
+			layer: selected_artboard,
 			location: position.round().as_ivec2(),
 			dimensions: size.round().as_ivec2(),
 		});
 
 		let translation = position.round().as_ivec2() - self.dragging_current_artboard_location;
 		self.dragging_current_artboard_location = position.round().as_ivec2();
-		for child in self.selected_artboard.unwrap().children(document.metadata()) {
+		for child in selected_artboard.children(document.metadata()) {
 			let local_translation = document.metadata().downstream_transform_to_document(child).inverse().transform_vector2(-translation.as_dvec2());
 			responses.add(GraphOperationMessage::TransformChange {
 				layer: child,
@@ -235,6 +240,9 @@ impl Fsm for ArtboardToolFsmState {
 						bounding_box_manager.transform = document.metadata().document_to_viewport;
 
 						bounding_box_manager.render_overlays(&mut overlay_context, true);
+					} else {
+						// If the bounding box is not resolved (e.g. if the artboard is deleted), then discard the bounding box.
+						tool_data.bounding_box_manager.take();
 					}
 				} else {
 					tool_data.bounding_box_manager.take();

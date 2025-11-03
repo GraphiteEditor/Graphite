@@ -77,7 +77,7 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 		.default_node_template();
 	responses.add(NodeGraphMessage::InsertNode {
 		node_id: merge_node_id,
-		node_template: merge_node,
+		node_template: Box::new(merge_node),
 	});
 	responses.add(NodeGraphMessage::SetToNodeOrLayer {
 		node_id: merge_node_id,
@@ -103,7 +103,7 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 		.default_node_template();
 	responses.add(NodeGraphMessage::InsertNode {
 		node_id: flatten_node_id,
-		node_template: flatten_node,
+		node_template: Box::new(flatten_node),
 	});
 	responses.add(NodeGraphMessage::MoveNodeToChainStart {
 		node_id: flatten_node_id,
@@ -117,7 +117,7 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 		.default_node_template();
 	responses.add(NodeGraphMessage::InsertNode {
 		node_id: path_node_id,
-		node_template: path_node,
+		node_template: Box::new(path_node),
 	});
 	responses.add(NodeGraphMessage::MoveNodeToChainStart {
 		node_id: path_node_id,
@@ -132,7 +132,7 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 			.default_node_template();
 		responses.add(NodeGraphMessage::InsertNode {
 			node_id: spline_node_id,
-			node_template: spline_node,
+			node_template: Box::new(spline_node),
 		});
 		responses.add(NodeGraphMessage::MoveNodeToChainStart {
 			node_id: spline_node_id,
@@ -147,7 +147,7 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 		.default_node_template();
 	responses.add(NodeGraphMessage::InsertNode {
 		node_id: transform_node_id,
-		node_template: transform_node,
+		node_template: Box::new(transform_node),
 	});
 	responses.add(NodeGraphMessage::MoveNodeToChainStart {
 		node_id: transform_node_id,

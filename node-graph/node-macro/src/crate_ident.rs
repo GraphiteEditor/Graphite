@@ -30,16 +30,11 @@ impl Default for CrateIdent {
 				let name = format_ident!("{}", name);
 				Ok(quote!(::#name))
 			}
-			Err(e) => Err(syn::Error::new(Span::call_site(), &format!("Could not find dependency on `{orig_name}`:\n{e}"))),
+			Err(e) => Err(syn::Error::new(Span::call_site(), format!("Could not find dependency on `{orig_name}`:\n{e}"))),
 		};
 
 		let gcore = find_crate("graphene-core");
-		let gcore_shaders = find_crate("graphene-core-shaders").or_else(|eshaders| {
-			gcore
-				.as_ref()
-				.map(Clone::clone)
-				.map_err(|ecore| syn::Error::new(Span::call_site(), &format!("{ecore}\n\nFallback: {eshaders}")))
-		});
+		let gcore_shaders = find_crate("graphene-core-shaders").or_else(|eshaders| gcore.clone().map_err(|ecore| syn::Error::new(Span::call_site(), format!("{ecore}\n\nFallback: {eshaders}"))));
 		let wgpu_executor = find_crate("wgpu-executor");
 		Self { gcore, gcore_shaders, wgpu_executor }
 	}
