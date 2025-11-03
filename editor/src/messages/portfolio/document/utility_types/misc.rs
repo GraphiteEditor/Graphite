@@ -1,5 +1,5 @@
 use crate::consts::COLOR_OVERLAY_GRAY_DARK;
-use glam::{DVec2,UVec2, UVec3};
+use glam::{DVec2, UVec2, UVec3};
 use graphene_std::raster::Color;
 use std::fmt;
 
@@ -247,22 +247,22 @@ impl Default for GridSnapping {
 impl GridSnapping {
 	// Double grid size until it takes up at least 10px.
 	pub fn compute_rectangle_spacing(mut size: DVec2, major_interval: &UVec2, navigation: &PTZ) -> Option<DVec2> {
-			let mut iterations = 0;
-			size = size.abs();
-			while (size.x * navigation.zoom() < 10.) || (size.y * navigation.zoom() < 10.) {
-				if iterations > 100 {
-					return None;
-				}
-				if size.x * navigation.zoom() < 10. {
-					size.x *= if major_interval.x != 1 {major_interval.x as f64} else {2.};
-				}
-				if size.y * navigation.zoom() < 10. {
-					size.y *= if major_interval.y != 1 {major_interval.y as f64} else {2.};
-				}
-				iterations += 1;
+		let mut iterations = 0;
+		size = size.abs();
+		while (size.x * navigation.zoom() < 10.) || (size.y * navigation.zoom() < 10.) {
+			if iterations > 100 {
+				return None;
 			}
-			Some(size)
+			if size.x * navigation.zoom() < 10. {
+				size.x *= if major_interval.x != 1 { major_interval.x as f64 } else { 2. };
+			}
+			if size.y * navigation.zoom() < 10. {
+				size.y *= if major_interval.y != 1 { major_interval.y as f64 } else { 2. };
+			}
+			iterations += 1;
 		}
+		Some(size)
+	}
 
 	// Double grid size until it takes up at least 10px.
 	pub fn compute_isometric_multiplier(length: f64, divisor: f64, navigation: &PTZ) -> Option<f64> {
@@ -280,11 +280,11 @@ impl GridSnapping {
 	}
 
 	pub fn has_minor_lines(&self) -> bool {
-			match self.grid_type {
-				GridType::Rectangular { .. } => self.rectangular_major_interval.x > 1 || self.rectangular_major_interval.y > 1,
-				GridType::Isometric { .. } => self.isometric_major_interval.x > 1 || self.isometric_major_interval.z > 1 || self.isometric_major_interval.y > 1,
-			}
+		match self.grid_type {
+			GridType::Rectangular { .. } => self.rectangular_major_interval.x > 1 || self.rectangular_major_interval.y > 1,
+			GridType::Isometric { .. } => self.isometric_major_interval.x > 1 || self.isometric_major_interval.z > 1 || self.isometric_major_interval.y > 1,
 		}
+	}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

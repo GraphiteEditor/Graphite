@@ -1,6 +1,6 @@
 use super::*;
 use crate::messages::portfolio::document::utility_types::misc::{GridSnapTarget, GridSnapping, GridType, SnapTarget};
-use glam::{DVec2,UVec2};
+use glam::{DVec2, UVec2};
 use graphene_std::renderer::Quad;
 
 struct Line {
