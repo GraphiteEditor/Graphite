@@ -1,6 +1,7 @@
 use crate::application::Editor;
 use crate::application::set_uuid_seed;
 use crate::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
+use crate::messages::input_mapper::utility_types::input_mouse::ViewportBounds;
 use crate::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, MouseKeys, ScrollDelta, ViewportPosition};
 use crate::messages::portfolio::utility_types::Platform;
 use crate::messages::prelude::*;
@@ -32,7 +33,6 @@ impl EditorTestUtils {
 		let _ = GLOBAL_PLATFORM.set(Platform::Windows).is_ok();
 
 		editor.handle_message(PortfolioMessage::Init);
-
 		Self { editor, runtime }
 	}
 
@@ -291,6 +291,14 @@ impl EditorTestUtils {
 			},
 			modifier_keys,
 		)
+		.await;
+	}
+
+	/// Necessary for doing snapping since snaps outside of the viewport are discarded
+	pub async fn set_viewport_size(&mut self, top_left: DVec2, bottom_right: DVec2) {
+		self.handle_message(InputPreprocessorMessage::BoundsOfViewports {
+			bounds_of_viewports: vec![ViewportBounds { top_left, bottom_right }],
+		})
 		.await;
 	}
 }

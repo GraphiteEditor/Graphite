@@ -4262,11 +4262,6 @@ impl NodeNetworkInterface {
 			}
 		}
 
-		let previous_metadata = match &previous_input {
-			NodeInput::Node { node_id, .. } => self.position(node_id, network_path).map(|position| (*node_id, position)),
-			_ => None,
-		};
-
 		let Some(network) = self.network_mut(network_path) else {
 			log::error!("Could not get nested network in set_input");
 			return;
@@ -4302,6 +4297,12 @@ impl NodeNetworkInterface {
 			self.set_input(input_connector, old_input, network_path);
 			return;
 		}
+
+		// It is necessary to ensure the grpah is acyclic before calling `self.position` as it sometimes crashes with cyclic graphs #3227
+		let previous_metadata = match &previous_input {
+			NodeInput::Node { node_id, .. } => self.position(node_id, network_path).map(|position| (*node_id, position)),
+			_ => None,
+		};
 
 		self.transaction_modified();
 

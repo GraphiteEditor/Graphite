@@ -9,7 +9,6 @@ use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::snapping;
 use crate::messages::tool::common_functionality::snapping::SnapCandidatePoint;
 use crate::messages::tool::common_functionality::snapping::SnapData;
-use crate::messages::tool::common_functionality::snapping::SnapManager;
 use crate::messages::tool::common_functionality::transformation_cage::*;
 use graph_craft::document::NodeId;
 use graphene_std::Artboard;
@@ -108,7 +107,6 @@ impl Default for ArtboardToolFsmState {
 struct ArtboardToolData {
 	bounding_box_manager: Option<BoundingBoxManager>,
 	selected_artboard: Option<LayerNodeIdentifier>,
-	snap_manager: SnapManager,
 	cursor: MouseCursorIcon,
 	drag_start: DVec2,
 	drag_current: DVec2,
@@ -180,15 +178,20 @@ impl ArtboardToolData {
 		let Some(movement) = &bounds.selected_edges else {
 			return;
 		};
-		if self.selected_artboard == Some(LayerNodeIdentifier::ROOT_PARENT) {
+		let Some(selected_artboard) = self.selected_artboard else {
+			warn!("Attempted to resize artboard with no selected artboard");
+			self.bounding_box_manager.take(); // Remove the bounding box manager if there is no artboard.
+			return; // Just do nothing instead of crashing since the state likely isn't too broken.
+		};
+		if selected_artboard == LayerNodeIdentifier::ROOT_PARENT {
 			log::error!("Selected artboard cannot be ROOT_PARENT");
 			return;
 		}
 
 		let center = from_center.then_some(bounds.center_of_transformation);
-		let ignore = self.selected_artboard.map_or(Vec::new(), |layer| vec![layer]);
+		let ignore = vec![selected_artboard];
 		let snap = Some(SizeSnapData {
-			manager: &mut self.snap_manager,
+			manager: &mut self.draw.snap_manager,
 			points: &mut self.snap_candidates,
 			snap_data: SnapData::ignore(document, input, &ignore),
 		});
@@ -198,14 +201,14 @@ impl ArtboardToolData {
 		let size = (max - min).abs();
 
 		responses.add(GraphOperationMessage::ResizeArtboard {
-			layer: self.selected_artboard.unwrap(),
+			layer: selected_artboard,
 			location: position.round().as_ivec2(),
 			dimensions: size.round().as_ivec2(),
 		});
 
 		let translation = position.round().as_ivec2() - self.dragging_current_artboard_location;
 		self.dragging_current_artboard_location = position.round().as_ivec2();
-		for child in self.selected_artboard.unwrap().children(document.metadata()) {
+		for child in selected_artboard.children(document.metadata()) {
 			let local_translation = document.metadata().downstream_transform_to_document(child).inverse().transform_vector2(-translation.as_dvec2());
 			responses.add(GraphOperationMessage::TransformChange {
 				layer: child,
@@ -237,6 +240,9 @@ impl Fsm for ArtboardToolFsmState {
 						bounding_box_manager.transform = document.metadata().document_to_viewport;
 
 						bounding_box_manager.render_overlays(&mut overlay_context, true);
+					} else {
+						// If the bounding box is not resolved (e.g. if the artboard is deleted), then discard the bounding box.
+						tool_data.bounding_box_manager.take();
 					}
 				} else {
 					tool_data.bounding_box_manager.take();
@@ -275,7 +281,7 @@ impl Fsm for ArtboardToolFsmState {
 					}
 				}
 
-				tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
+				tool_data.draw.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
 
 				self
 			}
@@ -322,7 +328,7 @@ impl Fsm for ArtboardToolFsmState {
 					let snap_data = SnapData::ignore(document, input, &ignore);
 					let document_to_viewport = document.metadata().document_to_viewport;
 					let [start, current] = [tool_data.drag_start, tool_data.drag_current].map(|point| document_to_viewport.transform_point2(point));
-					let mouse_delta = snap_drag(start, current, axis_align, Axis::None, snap_data, &mut tool_data.snap_manager, &tool_data.snap_candidates);
+					let mouse_delta = snap_drag(start, current, axis_align, Axis::None, snap_data, &mut tool_data.draw.snap_manager, &tool_data.snap_candidates);
 
 					let size = bounds.bounds[1] - bounds.bounds[0];
 					let position = bounds.bounds[0] + bounds.transform.inverse().transform_vector2(mouse_delta);
@@ -354,6 +360,8 @@ impl Fsm for ArtboardToolFsmState {
 				ArtboardToolFsmState::Dragging
 			}
 			(ArtboardToolFsmState::Drawing, ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }) => {
+				// The draw.calculate_points_ignore_layer uses this value to avoid snapping to itself.
+				tool_data.draw.layer = tool_data.selected_artboard;
 				let [start, end] = tool_data.draw.calculate_points_ignore_layer(document, input, center, constrain_axis_or_aspect, true);
 				let viewport_to_document = document.metadata().document_to_viewport.inverse();
 				let [start, end] = [start, end].map(|point| viewport_to_document.transform_point2(point));
@@ -400,11 +408,11 @@ impl Fsm for ArtboardToolFsmState {
 					.map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, false, false, None));
 
 				if cursor == MouseCursorIcon::Default && !hovered {
-					tool_data.snap_manager.preview_draw(&SnapData::new(document, input), input.mouse.position);
+					tool_data.draw.snap_manager.preview_draw(&SnapData::new(document, input), input.mouse.position);
 					responses.add(OverlaysMessage::Draw);
 					cursor = MouseCursorIcon::Crosshair;
 				} else {
-					tool_data.snap_manager.cleanup(responses);
+					tool_data.draw.cleanup(responses);
 				}
 
 				if tool_data.cursor != cursor {
@@ -445,7 +453,7 @@ impl Fsm for ArtboardToolFsmState {
 			(ArtboardToolFsmState::Drawing | ArtboardToolFsmState::ResizingBounds | ArtboardToolFsmState::Dragging, ArtboardToolMessage::PointerUp) => {
 				responses.add(DocumentMessage::EndTransaction);
 
-				tool_data.snap_manager.cleanup(responses);
+				tool_data.draw.cleanup(responses);
 
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					bounds.original_transforms.clear();
@@ -553,7 +561,7 @@ impl Fsm for ArtboardToolFsmState {
 			(ArtboardToolFsmState::Dragging | ArtboardToolFsmState::Drawing | ArtboardToolFsmState::ResizingBounds, ArtboardToolMessage::Abort) => {
 				responses.add(DocumentMessage::AbortTransaction);
 
-				tool_data.snap_manager.cleanup(responses);
+				tool_data.draw.cleanup(responses);
 				responses.add(OverlaysMessage::Draw);
 
 				ArtboardToolFsmState::Ready { hovered }
@@ -611,17 +619,53 @@ mod test_artboard {
 			.collect()
 	}
 
+	#[derive(Debug, PartialEq)]
+	struct ArtboardLayoutDocument {
+		position: IVec2,
+		dimensions: IVec2,
+	}
+	impl ArtboardLayoutDocument {
+		pub fn new(position: impl Into<IVec2>, dimensions: impl Into<IVec2>) -> Self {
+			Self {
+				position: position.into(),
+				dimensions: dimensions.into(),
+			}
+		}
+	}
+
+	/// Check if all of the artboards exist in any ordering
+	async fn has_artboards(editor: &mut EditorTestUtils, mut expected: Vec<ArtboardLayoutDocument>) {
+		let artboards = get_artboards(editor)
+			.await
+			.iter()
+			.map(|row| ArtboardLayoutDocument::new(row.element.location, row.element.dimensions))
+			.collect::<Vec<_>>();
+		assert_eq!(artboards.len(), expected.len(), "incorrect len: actual {:?}, expected {:?}", artboards, expected);
+
+		for artboard in artboards {
+			let Some(index) = expected.iter().position(|expected| *expected == artboard) else {
+				panic!("found {:?} that did not match any expected artboards\nexpected {:?}", artboard, expected);
+			};
+			expected.remove(index);
+		}
+	}
+
 	#[tokio::test]
 	async fn artboard_draw_simple() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
 		editor.drag_tool(ToolType::Artboard, 10.1, 10.8, 19.9, 0.2, ModifierKeys::empty()).await;
+		has_artboards(&mut editor, vec![ArtboardLayoutDocument::new((10, 0), (10, 11))]).await;
+	}
 
-		let artboards = get_artboards(&mut editor).await;
-
-		assert_eq!(artboards.len(), 1);
-		assert_eq!(artboards.get(0).unwrap().element.location, IVec2::new(10, 0));
-		assert_eq!(artboards.get(0).unwrap().element.dimensions, IVec2::new(10, 11));
+	#[tokio::test]
+	async fn artboard_snapping() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.set_viewport_size(DVec2::splat(-1000.), DVec2::splat(1000.)).await; // Necessary for doing snapping since snaps outside of the viewport are discarded
+		editor.drag_tool(ToolType::Artboard, 10., 10., 20., 20., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Artboard, 11., 50., 19., 60., ModifierKeys::empty()).await;
+		has_artboards(&mut editor, vec![ArtboardLayoutDocument::new((10, 10), (10, 10)), ArtboardLayoutDocument::new((10, 50), (10, 10))]).await;
 	}
 
 	#[tokio::test]
@@ -629,11 +673,7 @@ mod test_artboard {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
 		editor.drag_tool(ToolType::Artboard, 10., 10., -10., 11., ModifierKeys::SHIFT).await;
-
-		let artboards = get_artboards(&mut editor).await;
-		assert_eq!(artboards.len(), 1);
-		assert_eq!(artboards.get(0).unwrap().element.location, IVec2::new(-10, 10));
-		assert_eq!(artboards.get(0).unwrap().element.dimensions, IVec2::new(20, 20));
+		has_artboards(&mut editor, vec![ArtboardLayoutDocument::new((-10, 10), (20, 20))]).await;
 	}
 
 	#[tokio::test]
@@ -648,12 +688,9 @@ mod test_artboard {
 			.await;
 		// Viewport coordinates
 		editor.drag_tool(ToolType::Artboard, 0., 0., 0., 10., ModifierKeys::SHIFT).await;
-
-		let artboards = get_artboards(&mut editor).await;
-		assert_eq!(artboards.len(), 1);
-		assert_eq!(artboards.get(0).unwrap().element.location, IVec2::new(0, 0));
 		let desired_size = DVec2::splat(f64::consts::FRAC_1_SQRT_2 * 10.);
-		assert_eq!(artboards.get(0).unwrap().element.dimensions, desired_size.round().as_ivec2());
+
+		has_artboards(&mut editor, vec![ArtboardLayoutDocument::new(IVec2::new(0, 0), desired_size.round().as_ivec2())]).await;
 	}
 
 	#[tokio::test]
@@ -669,12 +706,9 @@ mod test_artboard {
 			.await;
 		// Viewport coordinates
 		editor.drag_tool(ToolType::Artboard, 0., 0., 0., 10., ModifierKeys::SHIFT | ModifierKeys::ALT).await;
-
-		let artboards = get_artboards(&mut editor).await;
-		assert_eq!(artboards.len(), 1);
-		assert_eq!(artboards.get(0).unwrap().element.location, DVec2::splat(f64::consts::FRAC_1_SQRT_2 * -10.).as_ivec2());
-		let desired_size = DVec2::splat(f64::consts::FRAC_1_SQRT_2 * 20.);
-		assert_eq!(artboards.get(0).unwrap().element.dimensions, desired_size.round().as_ivec2());
+		let desired_location = DVec2::splat(f64::consts::FRAC_1_SQRT_2 * -10.).as_ivec2();
+		let desired_size = DVec2::splat(f64::consts::FRAC_1_SQRT_2 * 20.).as_ivec2();
+		has_artboards(&mut editor, vec![ArtboardLayoutDocument::new(desired_location, desired_size)]).await;
 	}
 
 	#[tokio::test]
@@ -685,8 +719,7 @@ mod test_artboard {
 		editor.drag_tool(ToolType::Artboard, 10.1, 10.8, 19.9, 0.2, ModifierKeys::default()).await;
 		editor.press(Key::Delete, ModifierKeys::default()).await;
 
-		let artboards = get_artboards(&mut editor).await;
-		assert_eq!(artboards.len(), 0);
+		has_artboards(&mut editor, vec![]).await;
 	}
 
 	#[tokio::test]
@@ -696,7 +729,27 @@ mod test_artboard {
 		editor.new_document().await;
 
 		editor.drag_tool_cancel_rmb(ToolType::Artboard).await;
-		let artboards = get_artboards(&mut editor).await;
-		assert_eq!(artboards.len(), 0);
+		has_artboards(&mut editor, vec![]).await;
+	}
+
+	#[tokio::test]
+	async fn artboard_move() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.drag_tool(ToolType::Artboard, 10., 10., 20., 22., ModifierKeys::empty()).await; // Artboard to drag
+		editor.drag_tool(ToolType::Artboard, 15., 15., 65., 65., ModifierKeys::empty()).await; // Drag from the middle by (50,50)
+
+		has_artboards(&mut editor, vec![ArtboardLayoutDocument::new((60, 60), (10, 12))]).await;
+	}
+	#[tokio::test]
+	async fn artboard_move_snapping() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		editor.set_viewport_size(DVec2::splat(-1000.), DVec2::splat(1000.)).await; // Necessary for doing snapping since snaps outside of the viewport are discarded
+		editor.drag_tool(ToolType::Artboard, 10., 10., 20., 22., ModifierKeys::empty()).await; // Artboard to drag
+		editor.drag_tool(ToolType::Artboard, 70., 0., 80., 100., ModifierKeys::empty()).await; // Artboard to snap to
+		editor.drag_tool(ToolType::Artboard, 15., 15., 15. + 49., 15., ModifierKeys::empty()).await; // Drag the artboard so it should snap to the edge
+
+		has_artboards(&mut editor, vec![ArtboardLayoutDocument::new((60, 10), (10, 12)), ArtboardLayoutDocument::new((70, 0), (10, 100))]).await;
 	}
 }

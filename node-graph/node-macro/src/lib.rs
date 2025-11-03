@@ -37,5 +37,5 @@ pub fn derive_choice_type(input_item: TokenStream) -> TokenStream {
 #[proc_macro_derive(BufferStruct)]
 pub fn derive_buffer_struct(input_item: TokenStream) -> TokenStream {
 	let crate_ident = CrateIdent::default();
-	TokenStream::from(buffer_struct::derive_buffer_struct(&crate_ident, input_item.into()).unwrap_or_else(|err| err.to_compile_error()))
+	TokenStream::from(buffer_struct::derive_buffer_struct(&crate_ident, input_item).unwrap_or_else(|err| err.to_compile_error()))
 }

@@ -1214,7 +1214,7 @@ impl PathToolData {
 
 			// Check if that segment exists or it has been removed
 			if let Some(vector_data) = document.network_interface.compute_modified_vector(layer)
-				&& !(vector_data.segment_domain.ids().iter().any(|segment| *segment == segment_id))
+				&& !(vector_data.segment_domain.ids().contains(&segment_id))
 			{
 				self.segment = None;
 			}
