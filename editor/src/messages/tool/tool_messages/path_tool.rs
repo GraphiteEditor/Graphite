@@ -701,6 +701,7 @@ impl PathToolData {
 		shape_editor: &mut ShapeState,
 		document: &DocumentMessageHandler,
 		input: &InputPreprocessorMessageHandler,
+		viewport: &ViewportMessageHandler,
 		responses: &mut VecDeque<Message>,
 		extend_selection: bool,
 		lasso_select: bool,
@@ -871,7 +872,7 @@ impl PathToolData {
 			}
 		}
 		// If no other layers are selected and this is a single-click, then also select the layer (exception)
-		else if let Some(layer) = document.click(input) {
+		else if let Some(layer) = document.click(input, viewport) {
 			if shape_editor.selected_shape_state.is_empty() {
 				self.first_selected_with_single_click = true;
 				// This ensures we don't need to double click a second time to get the drill through to work
@@ -1109,8 +1110,9 @@ impl PathToolData {
 		handle_position: DVec2,
 		document: &DocumentMessageHandler,
 		input: &InputPreprocessorMessageHandler,
+		viewport: &ViewportMessageHandler,
 	) -> DVec2 {
-		let snap_data = SnapData::new(document, input);
+		let snap_data = SnapData::new(document, input, viewport);
 		let snap_point = SnapCandidatePoint::handle_neighbors(new_handle_position, [anchor_position]);
 
 		let snap_result = match using_angle_constraints {
@@ -1380,6 +1382,7 @@ impl PathToolData {
 		shape_editor: &mut ShapeState,
 		document: &DocumentMessageHandler,
 		input: &InputPreprocessorMessageHandler,
+		viewport: &ViewportMessageHandler,
 		responses: &mut VecDeque<Message>,
 	) {
 		// First check if selection is not just a single handle point
@@ -1430,9 +1433,10 @@ impl PathToolData {
 				handle_position,
 				document,
 				input,
+				viewport,
 			)
 		} else {
-			shape_editor.snap(&mut self.snap_manager, &self.snap_cache, document, input, previous_mouse)
+			shape_editor.snap(&mut self.snap_manager, &self.snap_cache, document, input, viewport, previous_mouse)
 		};
 
 		let handle_lengths = if equidistant { None } else { self.opposing_handle_lengths.take() };
@@ -1538,7 +1542,13 @@ impl Fsm for PathToolFsmState {
 		tool_options: &Self::ToolOptions,
 		responses: &mut VecDeque<Message>,
 	) -> Self {
-		let ToolActionMessageContext { document, input, shape_editor, .. } = tool_action_data;
+		let ToolActionMessageContext {
+			document,
+			input,
+			viewport,
+			shape_editor,
+			..
+		} = tool_action_data;
 
 		update_dynamic_hints(self, responses, shape_editor, document, tool_data, tool_options, input.mouse.position);
 
@@ -1939,13 +1949,13 @@ impl Fsm for PathToolFsmState {
 						}
 					}
 					Self::Dragging(_) => {
-						tool_data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
+						tool_data.snap_manager.draw_overlays(SnapData::new(document, input, viewport), &mut overlay_context);
 
 						// Draw the snapping axis lines
 						if tool_data.snapping_axis.is_some() {
 							let Some(axis) = tool_data.snapping_axis else { return self };
 							let origin = tool_data.drag_start_pos;
-							let viewport_diagonal = input.viewport_bounds.size().length();
+							let viewport_diagonal = viewport.physical_size().into_dvec2().length();
 
 							let faded = |color: &str| {
 								let mut color = graphene_std::Color::from_rgb_str(color.strip_prefix('#').unwrap()).unwrap().with_alpha(0.25).to_rgba_hex_srgb();
@@ -1996,6 +2006,7 @@ impl Fsm for PathToolFsmState {
 					shape_editor,
 					document,
 					input,
+					viewport,
 					responses,
 					extend_selection,
 					lasso_select,
@@ -2056,7 +2067,7 @@ impl Fsm for PathToolFsmState {
 					}
 					.into(),
 				];
-				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
+				tool_data.auto_panning.setup_by_mouse_position(input, viewport, &messages, responses);
 
 				PathToolFsmState::Drawing { selection_shape }
 			}
@@ -2144,6 +2155,7 @@ impl Fsm for PathToolFsmState {
 						tool_action_data.shape_editor,
 						tool_action_data.document,
 						input,
+						viewport,
 						responses,
 					);
 				}
@@ -2173,7 +2185,7 @@ impl Fsm for PathToolFsmState {
 					}
 					.into(),
 				];
-				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
+				tool_data.auto_panning.setup_by_mouse_position(input, viewport, &messages, responses);
 
 				PathToolFsmState::Dragging(tool_data.dragging_state)
 			}
@@ -2203,7 +2215,7 @@ impl Fsm for PathToolFsmState {
 
 				// When moving the cursor around we want to update the hovered layers
 				let new_hovered_layers: Vec<LayerNodeIdentifier> = document
-					.click_list_no_parents(input)
+					.click_list_no_parents(input, viewport)
 					.filter(|&layer| {
 						// Filter out artboards and parent holders, and already selected layers
 						!document.network_interface.is_artboard(&layer.to_node(), &[])
@@ -2220,7 +2232,7 @@ impl Fsm for PathToolFsmState {
 			}
 			(PathToolFsmState::Drawing { selection_shape: selection_type }, PathToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning
-				if let Some(offset) = tool_data.auto_panning.shift_viewport(input, responses) {
+				if let Some(offset) = tool_data.auto_panning.shift_viewport(input, viewport, responses) {
 					tool_data.drag_start_pos += offset;
 				}
 
@@ -2228,7 +2240,7 @@ impl Fsm for PathToolFsmState {
 			}
 			(PathToolFsmState::Dragging(dragging_state), PathToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning
-				if let Some(offset) = tool_data.auto_panning.shift_viewport(input, responses) {
+				if let Some(offset) = tool_data.auto_panning.shift_viewport(input, viewport, responses) {
 					tool_data.drag_start_pos += offset;
 				}
 
@@ -2388,7 +2400,7 @@ impl Fsm for PathToolFsmState {
 
 				if tool_data.drag_start_pos.distance(previous_mouse) < 1e-8 {
 					// Clicked inside or outside the shape then deselect all of the points/segments
-					if document.click(input).is_some() && tool_data.stored_selection.is_none() {
+					if document.click(input, viewport).is_some() && tool_data.stored_selection.is_none() {
 						tool_data.stored_selection = Some(shape_editor.selected_shape_state.clone());
 					}
 
@@ -2941,7 +2953,7 @@ impl Fsm for PathToolFsmState {
 				let nearest_point = shape_editor.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD);
 
 				let mut get_drill_through_layer = || -> Option<LayerNodeIdentifier> {
-					let drill_through_layers = document.click_list_no_parents(input).collect::<Vec<LayerNodeIdentifier>>();
+					let drill_through_layers = document.click_list_no_parents(input, viewport).collect::<Vec<LayerNodeIdentifier>>();
 					if drill_through_layers.is_empty() {
 						tool_data.reset_drill_through_cycle();
 						None

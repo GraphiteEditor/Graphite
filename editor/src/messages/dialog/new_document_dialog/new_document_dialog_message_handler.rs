@@ -1,12 +1,7 @@
+use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
-use crate::messages::{input_mapper::utility_types::input_mouse::ViewportBounds, layout::utility_types::widget_prelude::*};
 use glam::{IVec2, UVec2};
 use graph_craft::document::NodeId;
-
-#[derive(ExtractField)]
-pub struct NewDocumentDialogMessageContext<'a> {
-	pub viewport_bounds: &'a ViewportBounds,
-}
 
 /// A dialog to allow users to set some initial options about a new document.
 #[derive(Debug, Clone, Default, ExtractField)]
@@ -17,8 +12,8 @@ pub struct NewDocumentDialogMessageHandler {
 }
 
 #[message_handler_data]
-impl<'a> MessageHandler<NewDocumentDialogMessage, NewDocumentDialogMessageContext<'a>> for NewDocumentDialogMessageHandler {
-	fn process_message(&mut self, message: NewDocumentDialogMessage, responses: &mut VecDeque<Message>, context: NewDocumentDialogMessageContext<'a>) {
+impl<'a> MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHandler {
+	fn process_message(&mut self, message: NewDocumentDialogMessage, responses: &mut VecDeque<Message>, _: ()) {
 		match message {
 			NewDocumentDialogMessage::Name { name } => self.name = name,
 			NewDocumentDialogMessage::Infinite { infinite } => self.infinite = infinite,
@@ -35,12 +30,9 @@ impl<'a> MessageHandler<NewDocumentDialogMessage, NewDocumentDialogMessageContex
 					});
 					responses.add(NavigationMessage::CanvasPan { delta: self.dimensions.as_dvec2() });
 					responses.add(NodeGraphMessage::RunDocumentGraph);
-					// If we already have bounds, we won't receive a viewport bounds update so we just fabricate one ourselves
-					if *context.viewport_bounds != ViewportBounds::default() {
-						responses.add(InputPreprocessorMessage::BoundsOfViewports {
-							bounds_of_viewports: vec![context.viewport_bounds.clone()],
-						});
-					}
+
+					responses.add(ViewportMessage::Trigger);
+
 					responses.add(DeferMessage::AfterNavigationReady {
 						messages: vec![DocumentMessage::ZoomCanvasToFitAll.into(), DocumentMessage::DeselectAllLayers.into()],
 					});

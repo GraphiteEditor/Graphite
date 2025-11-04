@@ -15,10 +15,10 @@ pub struct Resize {
 
 impl Resize {
 	/// Starts a resize, assigning the snap targets and snapping the starting position.
-	pub fn start(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler) {
+	pub fn start(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, viewport: &ViewportMessageHandler) {
 		let root_transform = document.metadata().document_to_viewport;
 		let point = SnapCandidatePoint::handle(root_transform.inverse().transform_point2(input.mouse.position));
-		let snapped = self.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
+		let snapped = self.snap_manager.free_snap(&SnapData::new(document, input, viewport), &point, SnapTypeConfiguration::default());
 		self.drag_start = snapped.snapped_point_document;
 	}
 
@@ -30,7 +30,14 @@ impl Resize {
 
 	/// Compute the drag start and end based on the current mouse position. If the layer doesn't exist, returns [`None`].
 	/// If you want to draw even without a layer, use [`Resize::calculate_points_ignore_layer`].
-	pub fn calculate_points(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, center: Key, lock_ratio: Key) -> Option<[DVec2; 2]> {
+	pub fn calculate_points(
+		&mut self,
+		document: &DocumentMessageHandler,
+		input: &InputPreprocessorMessageHandler,
+		viewport: &ViewportMessageHandler,
+		center: Key,
+		lock_ratio: Key,
+	) -> Option<[DVec2; 2]> {
 		let layer = self.layer?;
 
 		if layer == LayerNodeIdentifier::ROOT_PARENT {
@@ -42,21 +49,37 @@ impl Resize {
 			self.layer.take();
 			return None;
 		}
-		Some(self.calculate_points_ignore_layer(document, input, center, lock_ratio, false))
+		Some(self.calculate_points_ignore_layer(document, input, viewport, center, lock_ratio, false))
 	}
 
 	/// Compute the drag start and end based on the current mouse position. Ignores the state of the layer.
 	/// If you want to only draw whilst a layer exists, use [`Resize::calculate_points`].
-	pub fn calculate_points_ignore_layer(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, center: Key, lock_ratio: Key, in_document: bool) -> [DVec2; 2] {
+	pub fn calculate_points_ignore_layer(
+		&mut self,
+		document: &DocumentMessageHandler,
+		input: &InputPreprocessorMessageHandler,
+		viewport: &ViewportMessageHandler,
+		center: Key,
+		lock_ratio: Key,
+		in_document: bool,
+	) -> [DVec2; 2] {
 		let ratio = input.keyboard.get(lock_ratio as usize);
 		let center = input.keyboard.get(center as usize);
 
 		// Use shared snapping logic with optional center and ratio constraints, considering if coordinates are in document space.
-		self.compute_snapped_resize_points(document, input, center, ratio, in_document)
+		self.compute_snapped_resize_points(document, input, viewport, center, ratio, in_document)
 	}
 
-	pub fn calculate_transform(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, center: Key, lock_ratio: Key, skip_rerender: bool) -> Option<Message> {
-		let points_viewport = self.calculate_points(document, input, center, lock_ratio)?;
+	pub fn calculate_transform(
+		&mut self,
+		document: &DocumentMessageHandler,
+		input: &InputPreprocessorMessageHandler,
+		viewport: &ViewportMessageHandler,
+		center: Key,
+		lock_ratio: Key,
+		skip_rerender: bool,
+	) -> Option<Message> {
+		let points_viewport = self.calculate_points(document, input, viewport, center, lock_ratio)?;
 		Some(
 			GraphOperationMessage::TransformSet {
 				layer: self.layer?,
@@ -68,23 +91,31 @@ impl Resize {
 		)
 	}
 
-	pub fn calculate_circle_points(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, center: Key) -> [DVec2; 2] {
+	pub fn calculate_circle_points(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, viewport: &ViewportMessageHandler, center: Key) -> [DVec2; 2] {
 		let center = input.keyboard.get(center as usize);
 
 		// Use shared snapping logic with enforced aspect ratio and optional center snapping.
-		self.compute_snapped_resize_points(document, input, center, true, false)
+		self.compute_snapped_resize_points(document, input, viewport, center, true, false)
 	}
 
 	/// Calculates two points in viewport space from a drag, applying snapping, optional center mode, and aspect ratio locking.
-	fn compute_snapped_resize_points(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, center: bool, lock_ratio: bool, in_document: bool) -> [DVec2; 2] {
+	fn compute_snapped_resize_points(
+		&mut self,
+		document: &DocumentMessageHandler,
+		input: &InputPreprocessorMessageHandler,
+		viewport: &ViewportMessageHandler,
+		center: bool,
+		lock_ratio: bool,
+		in_document: bool,
+	) -> [DVec2; 2] {
 		let start = self.viewport_drag_start(document);
 		let mouse = input.mouse.position;
-		let document_to_viewport = document.navigation_handler.calculate_offset_transform(input.viewport_bounds.center(), &document.document_ptz);
+		let document_to_viewport = document.navigation_handler.calculate_offset_transform(viewport.physical_size().into(), &document.document_ptz);
 		let drag_start = self.drag_start;
 		let mut points_viewport = [start, mouse];
 
 		let ignore = if let Some(layer) = self.layer { vec![layer] } else { vec![] };
-		let snap_data = &SnapData::ignore(document, input, &ignore);
+		let snap_data = &SnapData::ignore(document, input, viewport, &ignore);
 
 		if lock_ratio {
 			let viewport_size = points_viewport[1] - points_viewport[0];

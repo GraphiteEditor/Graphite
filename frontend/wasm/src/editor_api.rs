@@ -8,7 +8,7 @@ use crate::helpers::translate_key;
 use crate::{EDITOR_HANDLE, EDITOR_HAS_CRASHED, Error, MESSAGE_BUFFER};
 use editor::consts::FILE_EXTENSION;
 use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
-use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
+use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta};
 use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use editor::messages::portfolio::document::utility_types::network_interface::ImportOrExport;
 use editor::messages::portfolio::utility_types::Platform;
@@ -516,13 +516,10 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
-	/// Send new bounds when document panel viewports get resized or moved within the editor
-	/// [left, top, right, bottom]...
-	#[wasm_bindgen(js_name = boundsOfViewports)]
-	pub fn bounds_of_viewports(&self, bounds_of_viewports: &[f64]) {
-		let chunked: Vec<_> = bounds_of_viewports.chunks(4).map(ViewportBounds::from_slice).collect();
-
-		let message = InputPreprocessorMessage::BoundsOfViewports { bounds_of_viewports: chunked };
+	/// Send new viewport info to the backend
+	#[wasm_bindgen(js_name = updateViewport)]
+	pub fn update_viewport(&self, x: f64, y: f64, width: f64, height: f64, scale: f64) {
+		let message = ViewportMessage::Update { x, y, width, height, scale };
 		self.dispatch(message);
 	}
 
@@ -530,13 +527,6 @@ impl EditorHandle {
 	#[wasm_bindgen(js_name = zoomCanvasToFitAll)]
 	pub fn zoom_canvas_to_fit_all(&self) {
 		let message = DocumentMessage::ZoomCanvasToFitAll;
-		self.dispatch(message);
-	}
-
-	/// Inform the overlays system of the current device pixel ratio
-	#[wasm_bindgen(js_name = setDevicePixelRatio)]
-	pub fn set_device_pixel_ratio(&self, ratio: f64) {
-		let message = PortfolioMessage::SetDevicePixelRatio { ratio };
 		self.dispatch(message);
 	}
 

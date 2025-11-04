@@ -145,12 +145,12 @@ impl ArtboardToolData {
 		}
 	}
 
-	fn hovered_artboard(document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler) -> Option<LayerNodeIdentifier> {
-		document.click_xray(input).find(|&layer| document.network_interface.is_artboard(&layer.to_node(), &[]))
+	fn hovered_artboard(document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, viewport: &ViewportMessageHandler) -> Option<LayerNodeIdentifier> {
+		document.click_xray(input, viewport).find(|&layer| document.network_interface.is_artboard(&layer.to_node(), &[]))
 	}
 
-	fn select_artboard(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) -> bool {
-		if let Some(intersection) = Self::hovered_artboard(document, input) {
+	fn select_artboard(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) -> bool {
+		if let Some(intersection) = Self::hovered_artboard(document, input, viewport) {
 			self.selected_artboard = Some(intersection);
 
 			if let Some(bounds) = document.metadata().bounding_box_document(intersection) {
@@ -171,7 +171,15 @@ impl ArtboardToolData {
 		}
 	}
 
-	fn resize_artboard(&mut self, responses: &mut VecDeque<Message>, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, from_center: bool, constrain_square: bool) {
+	fn resize_artboard(
+		&mut self,
+		responses: &mut VecDeque<Message>,
+		document: &DocumentMessageHandler,
+		input: &InputPreprocessorMessageHandler,
+		viewport: &ViewportMessageHandler,
+		from_center: bool,
+		constrain_square: bool,
+	) {
 		let Some(bounds) = &self.bounding_box_manager else {
 			return;
 		};
@@ -193,7 +201,7 @@ impl ArtboardToolData {
 		let snap = Some(SizeSnapData {
 			manager: &mut self.draw.snap_manager,
 			points: &mut self.snap_candidates,
-			snap_data: SnapData::ignore(document, input, &ignore),
+			snap_data: SnapData::ignore(document, input, viewport, &ignore),
 		});
 		let (min, size) = movement.new_size(input.mouse.position, bounds.transform, center, constrain_square, snap);
 		let max = min + size;
@@ -225,9 +233,9 @@ impl Fsm for ArtboardToolFsmState {
 	type ToolOptions = ();
 
 	fn transition(self, event: ToolMessage, tool_data: &mut Self::ToolData, tool_action_data: &mut ToolActionMessageContext, _tool_options: &(), responses: &mut VecDeque<Message>) -> Self {
-		let ToolActionMessageContext { document, input, .. } = tool_action_data;
+		let ToolActionMessageContext { document, input, viewport, .. } = tool_action_data;
 
-		let hovered = ArtboardToolData::hovered_artboard(document, input).is_some();
+		let hovered = ArtboardToolData::hovered_artboard(document, input, viewport).is_some();
 
 		let ToolMessage::Artboard(event) = event else { return self };
 		match (self, event) {
@@ -259,8 +267,8 @@ impl Fsm for ArtboardToolFsmState {
 					let selected_artboard_bounds = tool_data.selected_artboard.and_then(|layer| document.metadata().bounding_box_document(layer)).map(Rect::from_box);
 
 					// Find hovered artboard or regular layer
-					let hovered_artboard = ArtboardToolData::hovered_artboard(document, input);
-					let hovered_layer = document.click_xray(input).find(|&layer| !document.network_interface.is_artboard(&layer.to_node(), &[]));
+					let hovered_artboard = ArtboardToolData::hovered_artboard(document, input, viewport);
+					let hovered_layer = document.click_xray(input, viewport).find(|&layer| !document.network_interface.is_artboard(&layer.to_node(), &[]));
 
 					// Get bounds for the hovered object (prioritize artboards)
 					let hovered_bounds = if let Some(artboard) = hovered_artboard {
@@ -281,7 +289,7 @@ impl Fsm for ArtboardToolFsmState {
 					}
 				}
 
-				tool_data.draw.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
+				tool_data.draw.snap_manager.draw_overlays(SnapData::new(document, input, viewport), &mut overlay_context);
 
 				self
 			}
@@ -295,11 +303,11 @@ impl Fsm for ArtboardToolFsmState {
 					tool_data.start_resizing(selected_edges, document, input);
 					tool_data.get_snap_candidates(document, input);
 					ArtboardToolFsmState::ResizingBounds
-				} else if tool_data.select_artboard(document, input, responses) {
+				} else if tool_data.select_artboard(document, input, viewport, responses) {
 					tool_data.get_snap_candidates(document, input);
 					ArtboardToolFsmState::Dragging
 				} else {
-					tool_data.draw.start(document, input);
+					tool_data.draw.start(document, input, viewport);
 
 					ArtboardToolFsmState::Drawing
 				};
@@ -309,14 +317,14 @@ impl Fsm for ArtboardToolFsmState {
 			(ArtboardToolFsmState::ResizingBounds, ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }) => {
 				let from_center = input.keyboard.get(center as usize);
 				let constrain_square = input.keyboard.get(constrain_axis_or_aspect as usize);
-				tool_data.resize_artboard(responses, document, input, from_center, constrain_square);
+				tool_data.resize_artboard(responses, document, input, viewport, from_center, constrain_square);
 
 				// Auto-panning
 				let messages = [
 					ArtboardToolMessage::PointerOutsideViewport { constrain_axis_or_aspect, center }.into(),
 					ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }.into(),
 				];
-				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
+				tool_data.auto_panning.setup_by_mouse_position(input, viewport, &messages, responses);
 
 				ArtboardToolFsmState::ResizingBounds
 			}
@@ -325,7 +333,7 @@ impl Fsm for ArtboardToolFsmState {
 					let axis_align = input.keyboard.get(constrain_axis_or_aspect as usize);
 
 					let ignore = tool_data.selected_artboard.map_or(Vec::new(), |layer| vec![layer]);
-					let snap_data = SnapData::ignore(document, input, &ignore);
+					let snap_data = SnapData::ignore(document, input, viewport, &ignore);
 					let document_to_viewport = document.metadata().document_to_viewport;
 					let [start, current] = [tool_data.drag_start, tool_data.drag_current].map(|point| document_to_viewport.transform_point2(point));
 					let mouse_delta = snap_drag(start, current, axis_align, Axis::None, snap_data, &mut tool_data.draw.snap_manager, &tool_data.snap_candidates);
@@ -355,14 +363,14 @@ impl Fsm for ArtboardToolFsmState {
 						ArtboardToolMessage::PointerOutsideViewport { constrain_axis_or_aspect, center }.into(),
 						ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }.into(),
 					];
-					tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
+					tool_data.auto_panning.setup_by_mouse_position(input, viewport, &messages, responses);
 				}
 				ArtboardToolFsmState::Dragging
 			}
 			(ArtboardToolFsmState::Drawing, ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }) => {
 				// The draw.calculate_points_ignore_layer uses this value to avoid snapping to itself.
 				tool_data.draw.layer = tool_data.selected_artboard;
-				let [start, end] = tool_data.draw.calculate_points_ignore_layer(document, input, center, constrain_axis_or_aspect, true);
+				let [start, end] = tool_data.draw.calculate_points_ignore_layer(document, input, viewport, center, constrain_axis_or_aspect, true);
 				let viewport_to_document = document.metadata().document_to_viewport.inverse();
 				let [start, end] = [start, end].map(|point| viewport_to_document.transform_point2(point));
 				if let Some(artboard) = tool_data.selected_artboard {
@@ -396,7 +404,7 @@ impl Fsm for ArtboardToolFsmState {
 					ArtboardToolMessage::PointerOutsideViewport { constrain_axis_or_aspect, center }.into(),
 					ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }.into(),
 				];
-				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
+				tool_data.auto_panning.setup_by_mouse_position(input, viewport, &messages, responses);
 
 				ArtboardToolFsmState::Drawing
 			}
@@ -408,7 +416,7 @@ impl Fsm for ArtboardToolFsmState {
 					.map_or(MouseCursorIcon::Default, |bounds| bounds.get_cursor(input, false, false, None));
 
 				if cursor == MouseCursorIcon::Default && !hovered {
-					tool_data.draw.snap_manager.preview_draw(&SnapData::new(document, input), input.mouse.position);
+					tool_data.draw.snap_manager.preview_draw(&SnapData::new(document, input, viewport), input.mouse.position);
 					responses.add(OverlaysMessage::Draw);
 					cursor = MouseCursorIcon::Crosshair;
 				} else {
@@ -424,19 +432,19 @@ impl Fsm for ArtboardToolFsmState {
 			}
 			(ArtboardToolFsmState::ResizingBounds, ArtboardToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning
-				let _ = tool_data.auto_panning.shift_viewport(input, responses);
+				let _ = tool_data.auto_panning.shift_viewport(input, viewport, responses);
 
 				ArtboardToolFsmState::ResizingBounds
 			}
 			(ArtboardToolFsmState::Dragging, ArtboardToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning
-				tool_data.auto_panning.shift_viewport(input, responses);
+				tool_data.auto_panning.shift_viewport(input, viewport, responses);
 
 				ArtboardToolFsmState::Dragging
 			}
 			(ArtboardToolFsmState::Drawing, ArtboardToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning
-				tool_data.auto_panning.shift_viewport(input, responses);
+				tool_data.auto_panning.shift_viewport(input, viewport, responses);
 
 				ArtboardToolFsmState::Drawing
 			}
@@ -545,7 +553,9 @@ impl Fsm for ArtboardToolFsmState {
 				let scale = DAffine2::from_scale(enlargement_factor);
 				let pivot = DAffine2::from_translation(pivot);
 				let transformation = pivot * scale * pivot.inverse();
-				let document_to_viewport = document.navigation_handler.calculate_offset_transform(input.viewport_bounds.center(), &document.document_ptz);
+				let document_to_viewport = document
+					.navigation_handler
+					.calculate_offset_transform(viewport.logical_center_in_window_space().into(), &document.document_ptz);
 				let to = document_to_viewport.inverse() * document.metadata().downstream_transform_to_viewport(selected_artboard);
 				let original_transform = document.metadata().upstream_transform(selected_artboard.to_node());
 				let new = to.inverse() * transformation * to * original_transform;

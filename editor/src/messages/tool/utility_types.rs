@@ -28,6 +28,7 @@ pub struct ToolActionMessageContext<'a> {
 	pub shape_editor: &'a mut ShapeState,
 	pub node_graph: &'a NodeGraphExecutor,
 	pub preferences: &'a PreferencesMessageHandler,
+	pub viewport: &'a ViewportMessageHandler,
 }
 
 pub trait ToolCommon: for<'a, 'b> MessageHandler<ToolMessage, &'b mut ToolActionMessageContext<'a>> + LayoutHolder + ToolTransition + ToolMetadata {}

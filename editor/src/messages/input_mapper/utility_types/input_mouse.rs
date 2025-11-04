@@ -3,40 +3,12 @@ use crate::messages::prelude::*;
 use bitflags::bitflags;
 use glam::DVec2;
 use std::collections::VecDeque;
+use std::hash::{Hash, Hasher};
 
 // Origin is top left
 pub type DocumentPosition = DVec2;
 pub type ViewportPosition = DVec2;
 pub type EditorPosition = DVec2;
-
-#[derive(PartialEq, Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
-pub struct ViewportBounds {
-	pub top_left: DVec2,
-	pub bottom_right: DVec2,
-}
-
-impl ViewportBounds {
-	pub fn from_slice(slice: &[f64]) -> Self {
-		Self {
-			top_left: DVec2::from_slice(&slice[0..2]),
-			bottom_right: DVec2::from_slice(&slice[2..4]),
-		}
-	}
-
-	pub fn size(&self) -> DVec2 {
-		(self.bottom_right - self.top_left).ceil()
-	}
-
-	pub fn center(&self) -> DVec2 {
-		(self.bottom_right - self.top_left).ceil() / 2.
-	}
-
-	pub fn in_bounds(&self, position: ViewportPosition) -> bool {
-		position.x >= 0. && position.y >= 0. && position.x <= self.bottom_right.x && position.y <= self.bottom_right.y
-	}
-}
-
-use std::hash::{Hash, Hasher};
 
 #[derive(Debug, Copy, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct ScrollDelta {
@@ -113,9 +85,9 @@ impl EditorMouseState {
 		}
 	}
 
-	pub fn to_mouse_state(&self, active_viewport_bounds: &ViewportBounds) -> MouseState {
+	pub fn to_mouse_state(&self, viewport: &ViewportMessageHandler) -> MouseState {
 		MouseState {
-			position: self.editor_position - active_viewport_bounds.top_left,
+			position: viewport.remove_offset_from_logical_point(self.editor_position).into(),
 			mouse_keys: self.mouse_keys,
 			scroll_delta: self.scroll_delta,
 		}

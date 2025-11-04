@@ -43,6 +43,7 @@ pub struct NodeGraphMessageContext<'a> {
 	pub navigation_handler: &'a NavigationMessageHandler,
 	pub preferences: &'a PreferencesMessageHandler,
 	pub layers_panel_open: bool,
+	pub viewport: &'a ViewportMessageHandler,
 }
 
 #[derive(Debug, Clone, ExtractField)]
@@ -113,6 +114,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			navigation_handler,
 			preferences,
 			layers_panel_open,
+			viewport,
 		} = context;
 
 		match message {
@@ -783,12 +785,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 					// TODO: Create function
 					let node_graph_shift = if matches!(context_menu_data, ContextMenuData::CreateNode { compatible_type: None }) {
-						let appear_right_of_mouse = if click.x > ipp.viewport_bounds.size().x - 180. { -180. } else { 0. };
-						let appear_above_mouse = if click.y > ipp.viewport_bounds.size().y - 200. { -200. } else { 0. };
+						let appear_right_of_mouse = if click.x > viewport.logical_size().x - 180. { -180. } else { 0. };
+						let appear_above_mouse = if click.y > viewport.logical_size().y - 200. { -200. } else { 0. };
 						DVec2::new(appear_right_of_mouse, appear_above_mouse) / network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.matrix2.x_axis.x
 					} else {
-						let appear_right_of_mouse = if click.x > ipp.viewport_bounds.size().x - 173. { -173. } else { 0. };
-						let appear_above_mouse = if click.y > ipp.viewport_bounds.size().y - 34. { -34. } else { 0. };
+						let appear_right_of_mouse = if click.x > viewport.logical_size().x - 173. { -173. } else { 0. };
+						let appear_above_mouse = if click.y > viewport.logical_size().y - 34. { -34. } else { 0. };
 						DVec2::new(appear_right_of_mouse, appear_above_mouse) / network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.matrix2.x_axis.x
 					};
 
@@ -983,7 +985,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 				// Auto-panning
 				let messages = [NodeGraphMessage::PointerOutsideViewport { shift }.into(), NodeGraphMessage::PointerMove { shift }.into()];
-				self.auto_panning.setup_by_mouse_position(ipp, &messages, responses);
+				self.auto_panning.setup_by_mouse_position(ipp, viewport, &messages, responses);
 
 				let viewport_location = ipp.mouse.position;
 				let point = network_metadata
@@ -1218,8 +1220,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 							_ => Some(format!("type:{}", output_type.nested_type())),
 						};
 
-						let appear_right_of_mouse = if ipp.mouse.position.x > ipp.viewport_bounds.size().x - 173. { -173. } else { 0. };
-						let appear_above_mouse = if ipp.mouse.position.y > ipp.viewport_bounds.size().y - 34. { -34. } else { 0. };
+						let appear_right_of_mouse = if ipp.mouse.position.x > viewport.logical_size().x - 173. { -173. } else { 0. };
+						let appear_above_mouse = if ipp.mouse.position.y > viewport.logical_size().y - 34. { -34. } else { 0. };
 						let node_graph_shift = DVec2::new(appear_right_of_mouse, appear_above_mouse) / network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.matrix2.x_axis.x;
 
 						self.context_menu = Some(ContextMenuInformation {
@@ -1403,7 +1405,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}
 			NodeGraphMessage::PointerOutsideViewport { shift } => {
 				if self.drag_start.is_some() || self.box_selection_start.is_some() || (self.wire_in_progress_from_connector.is_some() && self.context_menu.is_none()) {
-					let _ = self.auto_panning.shift_viewport(ipp, responses);
+					let _ = self.auto_panning.shift_viewport(ipp, viewport, responses);
 				} else {
 					// Auto-panning
 					let messages = [NodeGraphMessage::PointerOutsideViewport { shift }.into(), NodeGraphMessage::PointerMove { shift }.into()];
@@ -1611,7 +1613,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					return;
 				};
 
-				let viewport_bbox = ipp.document_bounds();
+				let viewport_bounds = viewport.logical_bounds();
+				let viewport_bbox = [DVec2::new(viewport_bounds.x, viewport_bounds.y), DVec2::new(viewport_bounds.width, viewport_bounds.height)];
 				let document_bbox: [DVec2; 2] = viewport_bbox.map(|p| network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse().transform_point2(p));
 
 				let mut nodes = Vec::new();
@@ -1657,7 +1660,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}
 			NodeGraphMessage::SetGridAlignedEdges => {
 				if graph_view_overlay_open {
-					network_interface.set_grid_aligned_edges(DVec2::new(ipp.viewport_bounds.bottom_right.x - ipp.viewport_bounds.top_left.x, 0.), breadcrumb_network_path);
+					let viewport_bounds = viewport.logical_bounds();
+					network_interface.set_grid_aligned_edges(DVec2::new(viewport_bounds.x - viewport_bounds.width, 0.), breadcrumb_network_path);
 					// Send the new edges to the frontend
 					responses.add(NodeGraphMessage::UpdateImportsExports);
 				}

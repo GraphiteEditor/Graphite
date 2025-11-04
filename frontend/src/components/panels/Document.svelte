@@ -20,7 +20,7 @@
 	import type { DocumentState } from "@graphite/state-providers/document";
 	import { textInputCleanup } from "@graphite/utility-functions/keyboard-entry";
 	import { extractPixelData, rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
-	import { updateBoundsOfViewports } from "@graphite/utility-functions/viewports";
+	import { updateBoundsOfViewports as updateViewport } from "@graphite/utility-functions/viewports";
 
 	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "@graphite/components/floating-menus/EyedropperPreview.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -381,6 +381,20 @@
 		showTextInput = false;
 	}
 
+	function updateViewportInfo() {
+		if (!viewport) return;
+		// Resize the canvas
+		canvasSvgWidth = Math.ceil(parseFloat(getComputedStyle(viewport).width));
+		canvasSvgHeight = Math.ceil(parseFloat(getComputedStyle(viewport).height));
+
+		// Resize the rulers
+		rulerHorizontal?.resize();
+		rulerVertical?.resize();
+
+		// Send the new bounds of the viewports to the backend
+		if (viewport.parentElement) updateViewport(editor);
+	}
+
 	onMount(() => {
 		// Not compatible with Safari:
 		// <https://developer.mozilla.org/en-US/docs/Web/API/Window/devicePixelRatio#browser_compatibility>
@@ -393,8 +407,7 @@
 			mediaQueryList.addEventListener("change", updatePixelRatio);
 			removeUpdatePixelRatio = () => mediaQueryList.removeEventListener("change", updatePixelRatio);
 
-			devicePixelRatio = window.devicePixelRatio;
-			editor.handle.setDevicePixelRatio(devicePixelRatio);
+			updateViewportInfo();
 		};
 		updatePixelRatio();
 
@@ -462,18 +475,7 @@
 		window.dispatchEvent(new Event("resize"));
 
 		const viewportResizeObserver = new ResizeObserver(() => {
-			if (!viewport) return;
-
-			// Resize the canvas
-			canvasSvgWidth = Math.ceil(parseFloat(getComputedStyle(viewport).width));
-			canvasSvgHeight = Math.ceil(parseFloat(getComputedStyle(viewport).height));
-
-			// Resize the rulers
-			rulerHorizontal?.resize();
-			rulerVertical?.resize();
-
-			// Send the new bounds of the viewports to the backend
-			if (viewport.parentElement) updateBoundsOfViewports(editor);
+			updateViewportInfo();
 		});
 		if (viewport) viewportResizeObserver.observe(viewport);
 	});

@@ -26,6 +26,7 @@ pub struct DispatcherMessageHandlers {
 	pub portfolio_message_handler: PortfolioMessageHandler,
 	preferences_message_handler: PreferencesMessageHandler,
 	tool_message_handler: ToolMessageHandler,
+	viewport_message_handler: ViewportMessageHandler,
 }
 
 impl DispatcherMessageHandlers {
@@ -146,7 +147,6 @@ impl Dispatcher {
 					let context = DialogMessageContext {
 						portfolio: &self.message_handlers.portfolio_message_handler,
 						preferences: &self.message_handlers.preferences_message_handler,
-						viewport_bounds: &self.message_handlers.input_preprocessor_message_handler.viewport_bounds,
 					};
 					self.message_handlers.dialog_message_handler.process_message(message, &mut queue, context);
 				}
@@ -169,9 +169,14 @@ impl Dispatcher {
 				Message::InputPreprocessor(message) => {
 					let keyboard_platform = GLOBAL_PLATFORM.get().copied().unwrap_or_default().as_keyboard_platform_layout();
 
-					self.message_handlers
-						.input_preprocessor_message_handler
-						.process_message(message, &mut queue, InputPreprocessorMessageContext { keyboard_platform });
+					self.message_handlers.input_preprocessor_message_handler.process_message(
+						message,
+						&mut queue,
+						InputPreprocessorMessageContext {
+							keyboard_platform,
+							viewport: &self.message_handlers.viewport_message_handler,
+						},
+					);
 				}
 				Message::KeyMapping(message) => {
 					let input = &self.message_handlers.input_preprocessor_message_handler;
@@ -195,6 +200,7 @@ impl Dispatcher {
 					let reset_node_definitions_on_open = self.message_handlers.portfolio_message_handler.reset_node_definitions_on_open;
 					let timing_information = self.message_handlers.animation_message_handler.timing_information();
 					let animation = &self.message_handlers.animation_message_handler;
+					let viewport = &self.message_handlers.viewport_message_handler;
 
 					self.message_handlers.portfolio_message_handler.process_message(
 						message,
@@ -207,6 +213,7 @@ impl Dispatcher {
 							reset_node_definitions_on_open,
 							timing_information,
 							animation,
+							viewport,
 						},
 					);
 				}
@@ -230,9 +237,13 @@ impl Dispatcher {
 						persistent_data: &self.message_handlers.portfolio_message_handler.persistent_data,
 						node_graph: &self.message_handlers.portfolio_message_handler.executor,
 						preferences: &self.message_handlers.preferences_message_handler,
+						viewport: &self.message_handlers.viewport_message_handler,
 					};
 
 					self.message_handlers.tool_message_handler.process_message(message, &mut queue, context);
+				}
+				Message::Viewport(message) => {
+					self.message_handlers.viewport_message_handler.process_message(message, &mut queue, ());
 				}
 				Message::NoOp => {}
 				Message::Batched { messages } => {

@@ -21,6 +21,7 @@ pub struct NavigationMessageContext<'a> {
 	pub document_ptz: &'a mut PTZ,
 	pub graph_view_overlay_open: bool,
 	pub preferences: &'a PreferencesMessageHandler,
+	pub viewport: &'a ViewportMessageHandler,
 }
 
 #[derive(Debug, Clone, PartialEq, Default, ExtractField)]
@@ -41,6 +42,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 			document_ptz,
 			graph_view_overlay_open,
 			preferences,
+			viewport,
 		} = context;
 
 		fn get_ptz<'a>(document_ptz: &'a PTZ, network_interface: &'a NodeNetworkInterface, graph_view_overlay_open: bool, breadcrumb_network_path: &[NodeId]) -> Option<&'a PTZ> {
@@ -135,7 +137,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 					log::error!("Could not get PTZ in CanvasPan");
 					return;
 				};
-				let document_to_viewport = self.calculate_offset_transform(ipp.viewport_bounds.center(), ptz);
+				let document_to_viewport = self.calculate_offset_transform(viewport.logical_center_in_viewport_space().into_dvec2(), ptz);
 				let transformed_delta = document_to_viewport.inverse().transform_vector2(delta);
 
 				ptz.pan += transformed_delta;
@@ -169,8 +171,8 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 					log::error!("Could not get node graph PTZ in CanvasPanByViewportFraction");
 					return;
 				};
-				let document_to_viewport = self.calculate_offset_transform(ipp.viewport_bounds.center(), ptz);
-				let transformed_delta = document_to_viewport.inverse().transform_vector2(delta * ipp.viewport_bounds.size());
+				let document_to_viewport = self.calculate_offset_transform(viewport.logical_center_in_viewport_space().into_dvec2(), ptz);
+				let transformed_delta = document_to_viewport.inverse().transform_vector2(delta * viewport.physical_size().into_dvec2());
 
 				ptz.pan += transformed_delta;
 				responses.add(DocumentMessage::PTZUpdate);
@@ -214,7 +216,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 
 				let new_scale = *VIEWPORT_ZOOM_LEVELS.iter().rev().find(|scale| **scale < ptz.zoom()).unwrap_or(&ptz.zoom());
 				if center_on_mouse {
-					responses.add(self.center_zoom(ipp.viewport_bounds.size(), new_scale / ptz.zoom(), ipp.mouse.position));
+					responses.add(self.center_zoom(viewport.physical_size().into(), new_scale / ptz.zoom(), ipp.mouse.position));
 				}
 				responses.add(NavigationMessage::CanvasZoomSet { zoom_factor: new_scale });
 			}
@@ -225,7 +227,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 
 				let new_scale = *VIEWPORT_ZOOM_LEVELS.iter().find(|scale| **scale > ptz.zoom()).unwrap_or(&ptz.zoom());
 				if center_on_mouse {
-					responses.add(self.center_zoom(ipp.viewport_bounds.size(), new_scale / ptz.zoom(), ipp.mouse.position));
+					responses.add(self.center_zoom(viewport.physical_size().into(), new_scale / ptz.zoom(), ipp.mouse.position));
 				}
 				responses.add(NavigationMessage::CanvasZoomSet { zoom_factor: new_scale });
 			}
@@ -245,9 +247,9 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 					return;
 				};
 
-				zoom_factor *= Self::clamp_zoom(ptz.zoom() * zoom_factor, document_bounds, old_zoom, ipp);
+				zoom_factor *= Self::clamp_zoom(ptz.zoom() * zoom_factor, document_bounds, old_zoom, viewport);
 
-				responses.add(self.center_zoom(ipp.viewport_bounds.size(), zoom_factor, ipp.mouse.position));
+				responses.add(self.center_zoom(viewport.logical_size().into(), zoom_factor, ipp.mouse.position));
 				responses.add(NavigationMessage::CanvasZoomSet {
 					zoom_factor: ptz.zoom() * zoom_factor,
 				});
@@ -264,7 +266,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 					return;
 				};
 				let zoom = zoom_factor.clamp(VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_SCALE_MAX);
-				let zoom = zoom * Self::clamp_zoom(zoom, document_bounds, old_zoom, ipp);
+				let zoom = zoom * Self::clamp_zoom(zoom, document_bounds, old_zoom, viewport);
 				ptz.set_zoom(zoom);
 				if graph_view_overlay_open {
 					responses.add(NodeGraphMessage::UpdateGraphBarRight);
@@ -343,7 +345,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				let (pos1, pos2) = (pos1.min(pos2), pos1.max(pos2));
 				let diagonal = pos2 - pos1;
 
-				if diagonal.length() < f64::EPSILON * 1000. || ipp.viewport_bounds.size() == DVec2::ZERO {
+				if diagonal.length() < f64::EPSILON * 1000. || viewport.logical_size().into_dvec2() == DVec2::ZERO {
 					warn!("Cannot center since the viewport size is 0");
 					return;
 				}
@@ -352,10 +354,10 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 					log::error!("Could not get node graph PTZ in CanvasPanByViewportFraction");
 					return;
 				};
-				let document_to_viewport = self.calculate_offset_transform(ipp.viewport_bounds.center(), ptz);
+				let document_to_viewport = self.calculate_offset_transform(viewport.logical_center_in_viewport_space().into_dvec2(), ptz);
 
 				let v1 = document_to_viewport.inverse().transform_point2(DVec2::ZERO);
-				let v2 = document_to_viewport.inverse().transform_point2(ipp.viewport_bounds.size());
+				let v2 = document_to_viewport.inverse().transform_point2(viewport.logical_size().into_dvec2());
 
 				let center = ((v2 + v1) - (pos2 + pos1)) / 2.;
 				let size = (v2 - v1) / diagonal;
@@ -397,7 +399,8 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 						log::error!("Could not get node graph PTZ in FitViewportToSelection");
 						return;
 					};
-					let document_to_viewport = self.calculate_offset_transform(ipp.viewport_bounds.center(), ptz);
+
+					let document_to_viewport = self.calculate_offset_transform(viewport.logical_center_in_viewport_space().into_dvec2(), ptz);
 					responses.add(NavigationMessage::FitViewportToBounds {
 						bounds: [document_to_viewport.inverse().transform_point2(bounds[0]), document_to_viewport.inverse().transform_point2(bounds[1])],
 						prevent_zoom_past_100: false,
@@ -419,7 +422,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 						let tilt_raw_not_snapped = {
 							// Compute the angle in document space to counter for the canvas being flipped
 							let viewport_to_document = network_interface.document_metadata().document_to_viewport.inverse();
-							let half_viewport = ipp.viewport_bounds.size() / 2.;
+							let half_viewport = viewport.physical_size().into_dvec2() / 2.;
 							let start_offset = viewport_to_document.transform_vector2(self.mouse_position - half_viewport);
 							let end_offset = viewport_to_document.transform_vector2(ipp.mouse.position - half_viewport);
 							let angle = start_offset.angle_to(end_offset);
@@ -459,7 +462,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 								network_interface.graph_bounds_viewport_space(breadcrumb_network_path)
 							};
 
-							updated_zoom * Self::clamp_zoom(updated_zoom, document_bounds, old_zoom, ipp)
+							updated_zoom * Self::clamp_zoom(updated_zoom, document_bounds, old_zoom, viewport)
 						};
 						let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
 							log::error!("Could not get mutable PTZ in Zoom");
@@ -563,9 +566,9 @@ impl NavigationMessageHandler {
 		NavigationMessage::CanvasPan { delta }.into()
 	}
 
-	pub fn clamp_zoom(zoom: f64, document_bounds: Option<[DVec2; 2]>, old_zoom: f64, ipp: &InputPreprocessorMessageHandler) -> f64 {
+	pub fn clamp_zoom(zoom: f64, document_bounds: Option<[DVec2; 2]>, old_zoom: f64, viewport: &ViewportMessageHandler) -> f64 {
 		let document_size = (document_bounds.map(|[min, max]| max - min).unwrap_or_default() / old_zoom) * zoom;
-		let scale_factor = (document_size / ipp.viewport_bounds.size()).max_element();
+		let scale_factor = (document_size / viewport.physical_size().into_dvec2()).max_element();
 
 		if scale_factor <= f64::EPSILON * 100. || !scale_factor.is_finite() || scale_factor >= VIEWPORT_ZOOM_MIN_FRACTION_COVER {
 			return 1.;

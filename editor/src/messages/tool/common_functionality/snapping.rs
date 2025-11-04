@@ -206,29 +206,31 @@ pub struct SnapCache {
 pub struct SnapData<'a> {
 	pub document: &'a DocumentMessageHandler,
 	pub input: &'a InputPreprocessorMessageHandler,
+	pub viewport: &'a ViewportMessageHandler,
 	pub ignore: &'a [LayerNodeIdentifier],
 	pub node_snap_cache: Option<&'a SnapCache>,
 	pub candidates: Option<&'a Vec<LayerNodeIdentifier>>,
 	pub alignment_candidates: Option<&'a Vec<LayerNodeIdentifier>>,
 }
 impl<'a> SnapData<'a> {
-	pub fn new(document: &'a DocumentMessageHandler, input: &'a InputPreprocessorMessageHandler) -> Self {
-		Self::ignore(document, input, &[])
+	pub fn new(document: &'a DocumentMessageHandler, input: &'a InputPreprocessorMessageHandler, viewport: &'a ViewportMessageHandler) -> Self {
+		Self::ignore(document, input, viewport, &[])
 	}
-	pub fn ignore(document: &'a DocumentMessageHandler, input: &'a InputPreprocessorMessageHandler, ignore: &'a [LayerNodeIdentifier]) -> Self {
+	pub fn ignore(document: &'a DocumentMessageHandler, input: &'a InputPreprocessorMessageHandler, viewport: &'a ViewportMessageHandler, ignore: &'a [LayerNodeIdentifier]) -> Self {
 		Self {
 			document,
 			input,
+			viewport,
 			ignore,
 			candidates: None,
 			alignment_candidates: None,
 			node_snap_cache: None,
 		}
 	}
-	pub fn new_snap_cache(document: &'a DocumentMessageHandler, input: &'a InputPreprocessorMessageHandler, snap_cache: &'a SnapCache) -> Self {
+	pub fn new_snap_cache(document: &'a DocumentMessageHandler, input: &'a InputPreprocessorMessageHandler, viewport: &'a ViewportMessageHandler, snap_cache: &'a SnapCache) -> Self {
 		Self {
 			node_snap_cache: Some(snap_cache),
-			..Self::new(document, input)
+			..Self::new(document, input, viewport)
 		}
 	}
 	fn get_candidates(&self) -> &[LayerNodeIdentifier] {
@@ -301,7 +303,7 @@ impl SnapManager {
 
 		for point in snapped_points {
 			let viewport_point = document.metadata().document_to_viewport.transform_point2(point.snapped_point_document);
-			let on_screen = viewport_point.cmpgt(DVec2::ZERO).all() && viewport_point.cmplt(snap_data.input.viewport_bounds.size()).all();
+			let on_screen = viewport_point.cmpgt(DVec2::ZERO).all() && viewport_point.cmplt(snap_data.viewport.physical_size().into()).all();
 			if !on_screen && !off_screen {
 				continue;
 			}
@@ -337,7 +339,7 @@ impl SnapManager {
 			return;
 		};
 		let layer_bounds = document.metadata().transform_to_document(layer) * Quad::from_box(bounds);
-		let screen_bounds = document.metadata().document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, snap_data.input.viewport_bounds.size()]);
+		let screen_bounds = document.metadata().document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, snap_data.viewport.physical_size().into()]);
 		if screen_bounds.intersects(layer_bounds) {
 			if self.alignment_candidates.as_ref().is_none_or(|candidates| candidates.len() <= 100) {
 				self.alignment_candidates.get_or_insert_with(Vec::new).push(layer);

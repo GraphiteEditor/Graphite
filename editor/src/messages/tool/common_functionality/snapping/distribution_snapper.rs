@@ -76,7 +76,7 @@ impl DistributionSnapper {
 		self.down.clear();
 		self.up.clear();
 
-		let screen_bounds = (document.metadata().document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, snap_data.input.viewport_bounds.size()])).bounding_box();
+		let screen_bounds = (document.metadata().document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, snap_data.viewport.logical_size().into()])).bounding_box();
 		let max_extent = (screen_bounds[1] - screen_bounds[0]).abs().max_element();
 
 		// Collect artboard bounds
