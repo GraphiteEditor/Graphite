@@ -172,7 +172,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 					return;
 				};
 				let document_to_viewport = self.calculate_offset_transform(viewport.logical_center_in_viewport_space().into_dvec2(), ptz);
-				let transformed_delta = document_to_viewport.inverse().transform_vector2(delta * viewport.physical_size().into_dvec2());
+				let transformed_delta = document_to_viewport.inverse().transform_vector2(delta * viewport.logical_size().into_dvec2());
 
 				ptz.pan += transformed_delta;
 				responses.add(DocumentMessage::PTZUpdate);
@@ -216,7 +216,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 
 				let new_scale = *VIEWPORT_ZOOM_LEVELS.iter().rev().find(|scale| **scale < ptz.zoom()).unwrap_or(&ptz.zoom());
 				if center_on_mouse {
-					responses.add(self.center_zoom(viewport.physical_size().into(), new_scale / ptz.zoom(), ipp.mouse.position));
+					responses.add(self.center_zoom(viewport.logical_size().into(), new_scale / ptz.zoom(), ipp.mouse.position));
 				}
 				responses.add(NavigationMessage::CanvasZoomSet { zoom_factor: new_scale });
 			}
@@ -227,7 +227,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 
 				let new_scale = *VIEWPORT_ZOOM_LEVELS.iter().find(|scale| **scale > ptz.zoom()).unwrap_or(&ptz.zoom());
 				if center_on_mouse {
-					responses.add(self.center_zoom(viewport.physical_size().into(), new_scale / ptz.zoom(), ipp.mouse.position));
+					responses.add(self.center_zoom(viewport.logical_size().into(), new_scale / ptz.zoom(), ipp.mouse.position));
 				}
 				responses.add(NavigationMessage::CanvasZoomSet { zoom_factor: new_scale });
 			}
@@ -422,7 +422,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 						let tilt_raw_not_snapped = {
 							// Compute the angle in document space to counter for the canvas being flipped
 							let viewport_to_document = network_interface.document_metadata().document_to_viewport.inverse();
-							let half_viewport = viewport.physical_size().into_dvec2() / 2.;
+							let half_viewport = viewport.logical_size().into_dvec2() / 2.;
 							let start_offset = viewport_to_document.transform_vector2(self.mouse_position - half_viewport);
 							let end_offset = viewport_to_document.transform_vector2(ipp.mouse.position - half_viewport);
 							let angle = start_offset.angle_to(end_offset);
@@ -568,7 +568,7 @@ impl NavigationMessageHandler {
 
 	pub fn clamp_zoom(zoom: f64, document_bounds: Option<[DVec2; 2]>, old_zoom: f64, viewport: &ViewportMessageHandler) -> f64 {
 		let document_size = (document_bounds.map(|[min, max]| max - min).unwrap_or_default() / old_zoom) * zoom;
-		let scale_factor = (document_size / viewport.physical_size().into_dvec2()).max_element();
+		let scale_factor = (document_size / viewport.logical_size().into_dvec2()).max_element();
 
 		if scale_factor <= f64::EPSILON * 100. || !scale_factor.is_finite() || scale_factor >= VIEWPORT_ZOOM_MIN_FRACTION_COVER {
 			return 1.;

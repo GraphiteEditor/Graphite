@@ -303,7 +303,7 @@ impl SnapManager {
 
 		for point in snapped_points {
 			let viewport_point = document.metadata().document_to_viewport.transform_point2(point.snapped_point_document);
-			let on_screen = viewport_point.cmpgt(DVec2::ZERO).all() && viewport_point.cmplt(snap_data.viewport.physical_size().into()).all();
+			let on_screen = viewport_point.cmpgt(DVec2::ZERO).all() && viewport_point.cmplt(snap_data.viewport.logical_size().into()).all();
 			if !on_screen && !off_screen {
 				continue;
 			}
@@ -339,7 +339,7 @@ impl SnapManager {
 			return;
 		};
 		let layer_bounds = document.metadata().transform_to_document(layer) * Quad::from_box(bounds);
-		let screen_bounds = document.metadata().document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, snap_data.viewport.physical_size().into()]);
+		let screen_bounds = document.metadata().document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, snap_data.viewport.logical_size().into()]);
 		if screen_bounds.intersects(layer_bounds) {
 			if self.alignment_candidates.as_ref().is_none_or(|candidates| candidates.len() <= 100) {
 				self.alignment_candidates.get_or_insert_with(Vec::new).push(layer);

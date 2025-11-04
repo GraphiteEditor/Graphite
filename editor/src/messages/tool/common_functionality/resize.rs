@@ -110,7 +110,7 @@ impl Resize {
 	) -> [DVec2; 2] {
 		let start = self.viewport_drag_start(document);
 		let mouse = input.mouse.position;
-		let document_to_viewport = document.navigation_handler.calculate_offset_transform(viewport.physical_size().into(), &document.document_ptz);
+		let document_to_viewport = document.navigation_handler.calculate_offset_transform(viewport.logical_size().into(), &document.document_ptz);
 		let drag_start = self.drag_start;
 		let mut points_viewport = [start, mouse];
 

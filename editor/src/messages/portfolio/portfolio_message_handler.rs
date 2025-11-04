@@ -705,7 +705,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			}
 			PortfolioMessage::CenterPastedLayers { layers } => {
 				if let Some(document) = self.active_document_mut() {
-					let viewport_bounds_quad_pixels = Quad::from_box([DVec2::ZERO, viewport.physical_size().into_dvec2()]); // In viewport pixel coordinates
+					let viewport_bounds_quad_pixels = Quad::from_box([DVec2::ZERO, viewport.logical_size().into_dvec2()]); // In viewport pixel coordinates
 					let viewport_center_pixels = viewport_bounds_quad_pixels.center(); // In viewport pixel coordinates
 
 					let doc_to_viewport_transform = document.metadata().document_to_viewport;
