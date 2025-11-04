@@ -603,7 +603,7 @@ impl OverlayContextInternal {
 	}
 
 	fn get_transform(&self) -> kurbo::Affine {
-		kurbo::Affine::scale(self.viewport.convert_logical_to_physical(1.0))
+		kurbo::Affine::scale(self.viewport.scale())
 	}
 
 	fn square(&mut self, position: DVec2, size: Option<f64>, color_fill: Option<&str>, color_stroke: Option<&str>) {
@@ -1177,12 +1177,10 @@ impl OverlayContextInternal {
 	}
 
 	fn scale(&self, n: f64) -> f64 {
-		// self.viewport.convert_logical_to_physical(n)
 		n
 	}
 
 	fn inverse_scale(&self, n: f64) -> f64 {
-		// self.viewport.convert_physical_to_logical(n)
 		n
 	}
 }

@@ -363,7 +363,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				for document_id in self.document_ids.iter() {
 					let node_to_inspect = self.node_to_inspect();
 
-					let scale = viewport.convert_logical_to_physical(1.0);
+					let scale = viewport.scale();
 					let resolution = viewport.logical_size().into_dvec2().round().as_uvec2();
 
 					if let Ok(message) = self.executor.submit_node_graph_evaluation(
@@ -969,7 +969,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					return;
 				};
 
-				let scale = viewport.convert_logical_to_physical(1.0);
+				let scale = viewport.scale();
 				let resolution = viewport.logical_size().into_dvec2().round().as_uvec2();
 
 				let result = self

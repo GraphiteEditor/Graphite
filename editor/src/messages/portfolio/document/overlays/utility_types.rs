@@ -520,7 +520,7 @@ impl OverlayContext {
 	///
 	/// Overwrites all existing tranforms. This operation can be reversed with [`Self::reset_transform`].
 	fn start_dpi_aware_transform(&self) {
-		let [a, b, c, d, e, f] = DAffine2::from_scale(DVec2::splat(self.viewport.convert_logical_to_physical(1.0))).to_cols_array();
+		let [a, b, c, d, e, f] = DAffine2::from_scale(DVec2::splat(self.viewport.scale())).to_cols_array();
 		self.render_context
 			.set_transform(a, b, c, d, e, f)
 			.expect("transform should be able to be set to be able to account for DPI");
@@ -984,7 +984,7 @@ impl OverlayContext {
 			Pivot::End => -padding,
 		};
 
-		let [a, b, c, d, e, f] = (DAffine2::from_scale(DVec2::splat(self.viewport.convert_logical_to_physical(1.0))) * transform * DAffine2::from_translation(DVec2::new(x, y))).to_cols_array();
+		let [a, b, c, d, e, f] = (DAffine2::from_scale(DVec2::splat(self.viewport.scale())) * transform * DAffine2::from_translation(DVec2::new(x, y))).to_cols_array();
 		self.render_context.set_transform(a, b, c, d, e, f).expect("Failed to rotate the render context to the specified angle");
 
 		if let Some(background) = background_color {

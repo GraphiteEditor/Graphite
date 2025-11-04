@@ -59,6 +59,10 @@ impl MessageHandler<ViewportMessage, ()> for ViewportMessageHandler {
 }
 
 impl ViewportMessageHandler {
+	pub fn scale(&self) -> f64 {
+		self.scale
+	}
+
 	pub fn logical_bounds(&self) -> LogicalBounds {
 		self.bounds
 	}
@@ -106,14 +110,14 @@ impl ViewportMessageHandler {
 		self.logical_center_in_window_space().to_physical(self.scale)
 	}
 
-	pub fn in_logical_bounds<T: Into<LogicalPoint>>(&self, point: T) -> bool {
+	pub fn is_in_logical_bounds<T: Into<LogicalPoint>>(&self, point: T) -> bool {
 		let point = point.into();
 		point.x >= self.bounds.x && point.y >= self.bounds.y && point.x <= self.bounds.x + self.bounds.width && point.y <= self.bounds.y + self.bounds.height
 	}
 
-	pub fn in_physical_bounds<T: Into<PhysicalPoint>>(&self, point: T) -> bool {
+	pub fn is_in_physical_bounds<T: Into<PhysicalPoint>>(&self, point: T) -> bool {
 		let point = self.convert_physical_to_logical_point(point.into());
-		self.in_logical_bounds(point)
+		self.is_in_logical_bounds(point)
 	}
 
 	pub fn convert_physical_to_logical(&self, physical: f64) -> f64 {
