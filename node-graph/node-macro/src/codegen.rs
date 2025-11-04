@@ -88,7 +88,15 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		.iter()
 		.map(|field| match &field.ty {
 			ParsedFieldType::Regular(RegularParsedField { value_source, .. }) => match value_source {
-				ParsedValueSource::Default(data) => quote!(RegistryValueSource::Default(stringify!(#data))),
+				ParsedValueSource::Default(data) => {
+					// Check if the data is a string literal by parsing the token stream
+					let data_str = data.to_string();
+					if data_str.starts_with('"') && data_str.ends_with('"') && data_str.len() >= 2 {
+						quote!(RegistryValueSource::Default(#data))
+					} else {
+						quote!(RegistryValueSource::Default(stringify!(#data)))
+					}
+				}
 				ParsedValueSource::Scope(data) => quote!(RegistryValueSource::Scope(#data)),
 				_ => quote!(RegistryValueSource::None),
 			},

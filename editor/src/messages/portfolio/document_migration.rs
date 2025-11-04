@@ -78,8 +78,8 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::graphic_element::FlattenVectorNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::graphic::index::IDENTIFIER,
-		aliases: &["graphene_core::graphic_element::IndexNode"],
+		node: graphene_std::graphic::index_elements::IDENTIFIER,
+		aliases: &["graphene_core::graphic_element::IndexNode", "graphene_core::graphic::IndexNode"],
 	},
 	// math_nodes
 	NodeReplacement {
