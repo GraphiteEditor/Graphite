@@ -965,6 +965,7 @@ impl PenToolData {
 		}
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	fn drag_handle(
 		&mut self,
 		snap_data: SnapData,
