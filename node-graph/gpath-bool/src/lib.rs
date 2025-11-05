@@ -466,15 +466,6 @@ fn path_bool(a: Path, b: Path, op: PathBooleanOperation) -> Vec<Path> {
 				.collect()
 		})
 		.collect()
-	// match path_bool::path_boolean(&a, FillRule::NonZero, &b, FillRule::NonZero, op) {
-	// 	Ok(results) => results,
-	// 	Err(e) => {
-	// 		let a_path = path_bool::path_to_path_data(&a, 0.001);
-	// 		let b_path = path_bool::path_to_path_data(&b, 0.001);
-	// 		log::error!("Boolean error {e:?} encountered while processing {a_path}\n {op:?}\n {b_path}");
-	// 		Vec::new()
-	// 	}
-	// }
 }
 
 fn boolean_subtract(a: Path, b: Path) -> Vec<Path> {
