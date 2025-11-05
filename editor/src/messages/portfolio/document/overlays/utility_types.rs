@@ -151,11 +151,6 @@ impl core::hash::Hash for OverlayContext {
 }
 
 impl OverlayContext {
-	pub fn reverse_scale(&self, distance: f64) -> f64 {
-		// No-op when rendering to canvas
-		distance
-	}
-
 	pub fn quad(&mut self, quad: Quad, stroke_color: Option<&str>, color_fill: Option<&str>) {
 		self.dashed_polygon(&quad.0, stroke_color, color_fill, None, None, None);
 	}
