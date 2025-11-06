@@ -3,32 +3,35 @@ const RIPPLE_ANIMATION_MILLISECONDS = 100;
 const RIPPLE_WIDTH = 100;
 const HANDLE_STRETCH = 0.4;
 
-let navButtons;
-let rippleSvg;
-let ripplePath;
-let fullRippleHeight;
-let ripples;
-let activeRippleIndex;
+let /** @type {NodeList | undefined} **/ navButtons;
+let /** @type {Element | undefined} **/ rippleSvg;
+let /** @type {Element | undefined} **/ ripplePath;
+let /** @type {number | undefined} **/ fullRippleHeight;
+let /** @type {{ element: HTMLElement, goingUp: boolean, animationStartTime: number, animationEndTime: number }[]} **/ ripples;
+let /** @type {number} **/ activeRippleIndex;
 
 window.addEventListener("DOMContentLoaded", initializeRipples);
 
 function initializeRipples() {
 	window.addEventListener("resize", () => animate(true));
 
-	navButtons = document.querySelectorAll("header nav a");
-	rippleSvg = document.querySelector("header .ripple");
-	ripplePath = rippleSvg.querySelector("path");
-	fullRippleHeight = Number.parseInt(window.getComputedStyle(rippleSvg).height, 10);
+	navButtons = document.querySelectorAll("header nav a") || undefined;
+	rippleSvg = document.querySelector("header .ripple") || undefined;
+	ripplePath = rippleSvg?.querySelector("path") || undefined;
+	fullRippleHeight = rippleSvg ? Number.parseInt(window.getComputedStyle(rippleSvg).height, 10) || undefined : undefined;
 
-	ripples = Array.from(navButtons).map((button) => ({
-		element: button,
-		goingUp: false,
-		animationStartTime: 0,
-		animationEndTime: 0,
-	}));
+	ripples = Array.from(navButtons)
+		.filter((x) => x instanceof HTMLElement)
+		.map((button) => ({
+			element: button,
+			goingUp: false,
+			animationStartTime: 0,
+			animationEndTime: 0,
+		}));
 
 	activeRippleIndex = ripples.findIndex((ripple) => {
 		let link = ripple.element.getAttribute("href");
+		if (!link) return false;
 		if (!link.endsWith("/")) link += "/";
 		let location = window.location.pathname;
 		if (!location.endsWith("/")) location += "/";
@@ -41,7 +44,7 @@ function initializeRipples() {
 	});
 
 	ripples.forEach((ripple) => {
-		const updateTimings = (goingUp) => {
+		const updateTimings = (/** @type {boolean} **/ goingUp) => {
 			const start = ripple.animationStartTime;
 			const now = Date.now();
 			const stop = ripple.animationStartTime + RIPPLE_ANIMATION_MILLISECONDS;
@@ -61,13 +64,15 @@ function initializeRipples() {
 		ripple.element.addEventListener("pointerleave", () => updateTimings(false));
 	});
 
-	if (activeRippleIndex >= 0) ripples[activeRippleIndex] = {
-		...ripples[activeRippleIndex],
-		goingUp: true,
-		// Set to non-zero, but very old times (1ms after epoch), so the math works out as if the animation has already completed
-		animationStartTime: 1,
-		animationEndTime: 1 + RIPPLE_ANIMATION_MILLISECONDS,
-	};
+	if (activeRippleIndex >= 0) {
+		ripples[activeRippleIndex] = {
+			...ripples[activeRippleIndex],
+			goingUp: true,
+			// Set to non-zero, but very old times (1ms after epoch), so the math works out as if the animation has already completed
+			animationStartTime: 1,
+			animationEndTime: 1 + RIPPLE_ANIMATION_MILLISECONDS,
+		};
+	}
 
 	setRipples();
 }
@@ -83,10 +88,12 @@ function animate(forceRefresh = false) {
 }
 
 function setRipples() {
-	const lerp = (a, b, t) => a + (b - a) * t;
-	const ease = (x) => 1 - (1 - x) * (1 - x);
-	const clamp01 = (x) => Math.min(Math.max(x, 0), 1);
-	
+	const lerp = (/** @type {number} **/ a, /** @type {number} **/ b, /** @type {number} **/ t) => a + (b - a) * t;
+	const ease = (/** @type {number} **/ x) => 1 - (1 - x) * (1 - x);
+	const clamp01 = (/** @type {number} **/ x) => Math.min(Math.max(x, 0), 1);
+
+	if (!rippleSvg || !ripplePath || !navButtons || !fullRippleHeight || !(navButtons[0] instanceof HTMLElement)) return;
+
 	const rippleSvgRect = rippleSvg.getBoundingClientRect();
 
 	const rippleStrokeWidth = Number.parseInt(window.getComputedStyle(ripplePath).getPropertyValue("--border-thickness"), 10);
@@ -112,7 +119,7 @@ function setRipples() {
 
 		const buttonRect = ripple.element.getBoundingClientRect();
 		const buttonCenter = buttonRect.width / 2;
-		const rippleCenter = RIPPLE_WIDTH / 2 * mediaQueryScaleFactor;
+		const rippleCenter = (RIPPLE_WIDTH / 2) * mediaQueryScaleFactor;
 		const rippleOffset = rippleCenter - buttonCenter;
 		const rippleStartX = buttonRect.left - rippleSvgRect.left - rippleOffset;
 		const handleRadius = rippleCenter * HANDLE_STRETCH;

@@ -77,7 +77,8 @@ jobs:
           MODE: prod
         run: |
           cd website
-          npm run install-fonts
+          npm ci
+          npm run lint
           zola --config config.toml build --minify
 
       - name: 📤 Publish to Cloudflare Pages
