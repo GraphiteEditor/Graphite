@@ -42,7 +42,7 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 					canvas_context.dyn_into().expect("Context should be a canvas 2d context")
 				});
 
-				let size = viewport.size().to_physical();
+				let size = viewport.size();
 				canvas_context.clear_rect(0., 0., size.x(), size.y());
 
 				if visibility_settings.all() {
