@@ -422,7 +422,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 						let tilt_raw_not_snapped = {
 							// Compute the angle in document space to counter for the canvas being flipped
 							let viewport_to_document = network_interface.document_metadata().document_to_viewport.inverse();
-							let half_viewport = viewport.logical_size().into_dvec2() / 2.;
+							let half_viewport = viewport.logical_center_in_viewport_space().into_dvec2();
 							let start_offset = viewport_to_document.transform_vector2(self.mouse_position - half_viewport);
 							let end_offset = viewport_to_document.transform_vector2(ipp.mouse.position - half_viewport);
 							let angle = start_offset.angle_to(end_offset);

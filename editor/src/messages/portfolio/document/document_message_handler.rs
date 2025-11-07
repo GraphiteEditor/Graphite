@@ -1012,7 +1012,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				let scale = 0.5 + ASYMPTOTIC_EFFECT + document_transform_scale * SCALE_EFFECT;
 
 				let viewport_size = viewport.logical_size().into_dvec2();
-				let viewport_mid = viewport_size / 2.;
+				let viewport_mid = viewport.logical_center_in_viewport_space().into_dvec2();
 				let [bounds1, bounds2] = if !self.graph_view_overlay_open {
 					self.metadata().document_bounds_viewport_space().unwrap_or([viewport_mid; 2])
 				} else {

@@ -472,7 +472,7 @@ impl OverlayContextInternal {
 
 		self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(color_fill), None, &path);
 
-		self.scene.stroke(&kurbo::Stroke::new(1.0), transform, Self::parse_color(color_stroke), None, &path);
+		self.scene.stroke(&kurbo::Stroke::new(1.), transform, Self::parse_color(color_stroke), None, &path);
 	}
 
 	fn dashed_quad(&mut self, quad: Quad, stroke_color: Option<&str>, color_fill: Option<&str>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
@@ -505,7 +505,7 @@ impl OverlayContextInternal {
 		}
 
 		let stroke_color = stroke_color.unwrap_or(COLOR_OVERLAY_BLUE);
-		let mut stroke = kurbo::Stroke::new(1.0);
+		let mut stroke = kurbo::Stroke::new(1.);
 
 		if let Some(dash_width) = dash_width {
 			let dash_gap = dash_gap_width.unwrap_or(1.);
@@ -550,7 +550,7 @@ impl OverlayContextInternal {
 		self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(fill), None, &circle);
 
 		self.scene
-			.stroke(&kurbo::Stroke::new(1.0), transform, Self::parse_color(color.unwrap_or(COLOR_OVERLAY_BLUE)), None, &circle);
+			.stroke(&kurbo::Stroke::new(1.), transform, Self::parse_color(color.unwrap_or(COLOR_OVERLAY_BLUE)), None, &circle);
 	}
 
 	fn hover_manipulator_handle(&mut self, position: DVec2, selected: bool) {
@@ -562,13 +562,13 @@ impl OverlayContextInternal {
 
 		let fill = COLOR_OVERLAY_BLUE_50;
 		self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(fill), None, &circle);
-		self.scene.stroke(&kurbo::Stroke::new(1.0), transform, Self::parse_color(COLOR_OVERLAY_BLUE_50), None, &circle);
+		self.scene.stroke(&kurbo::Stroke::new(1.), transform, Self::parse_color(COLOR_OVERLAY_BLUE_50), None, &circle);
 
 		let inner_circle = kurbo::Circle::new((position.x, position.y), MANIPULATOR_GROUP_MARKER_SIZE / 2.);
 
 		let color_fill = if selected { COLOR_OVERLAY_BLUE } else { COLOR_OVERLAY_WHITE };
 		self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(color_fill), None, &circle);
-		self.scene.stroke(&kurbo::Stroke::new(1.0), transform, Self::parse_color(COLOR_OVERLAY_BLUE), None, &inner_circle);
+		self.scene.stroke(&kurbo::Stroke::new(1.), transform, Self::parse_color(COLOR_OVERLAY_BLUE), None, &inner_circle);
 	}
 
 	fn manipulator_anchor(&mut self, position: DVec2, selected: bool, color: Option<&str>) {
@@ -614,11 +614,11 @@ impl OverlayContextInternal {
 
 		self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(color_fill), None, &rect);
 
-		self.scene.stroke(&kurbo::Stroke::new(1.0), transform, Self::parse_color(color_stroke), None, &rect);
+		self.scene.stroke(&kurbo::Stroke::new(1.), transform, Self::parse_color(color_stroke), None, &rect);
 	}
 
 	fn pixel(&mut self, position: DVec2, color: Option<&str>) {
-		let size = 1.0;
+		let size = 1.;
 		let color_fill = color.unwrap_or(COLOR_OVERLAY_WHITE);
 
 		let position = position.round() - DVec2::splat(0.5);
@@ -640,7 +640,7 @@ impl OverlayContextInternal {
 
 		self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(color_fill), None, &circle);
 
-		self.scene.stroke(&kurbo::Stroke::new(1.0), transform, Self::parse_color(color_stroke), None, &circle);
+		self.scene.stroke(&kurbo::Stroke::new(1.), transform, Self::parse_color(color_stroke), None, &circle);
 	}
 
 	#[allow(clippy::too_many_arguments)]
@@ -692,7 +692,7 @@ impl OverlayContextInternal {
 			);
 		}
 
-		self.scene.stroke(&kurbo::Stroke::new(1.0), self.get_transform(), Self::parse_color(COLOR_OVERLAY_BLUE), None, &path);
+		self.scene.stroke(&kurbo::Stroke::new(1.), self.get_transform(), Self::parse_color(COLOR_OVERLAY_BLUE), None, &path);
 	}
 
 	fn draw_arc_gizmo_angle(&mut self, pivot: DVec2, bold_radius: f64, arc_radius: f64, offset_angle: f64, angle: f64) {
@@ -823,7 +823,7 @@ impl OverlayContextInternal {
 		// Draw the background circle with a white fill and colored outline
 		let circle = kurbo::Circle::new((x, y), DOWEL_PIN_RADIUS);
 		self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(COLOR_OVERLAY_WHITE), None, &circle);
-		self.scene.stroke(&kurbo::Stroke::new(1.0), transform, Self::parse_color(color), None, &circle);
+		self.scene.stroke(&kurbo::Stroke::new(1.), transform, Self::parse_color(color), None, &circle);
 
 		// Draw the two filled sectors using paths
 		let mut path = BezPath::new();
@@ -875,7 +875,7 @@ impl OverlayContextInternal {
 			self.bezier_to_path(bezier, transform, move_to, &mut path);
 		}
 
-		self.scene.stroke(&kurbo::Stroke::new(1.0), vello_transform, Self::parse_color(COLOR_OVERLAY_BLUE), None, &path);
+		self.scene.stroke(&kurbo::Stroke::new(1.), vello_transform, Self::parse_color(COLOR_OVERLAY_BLUE), None, &path);
 	}
 
 	/// Used by the Pen tool in order to show how the bezier curve would look like.
@@ -884,7 +884,7 @@ impl OverlayContextInternal {
 		let mut path = BezPath::new();
 		self.bezier_to_path(bezier, transform, true, &mut path);
 
-		self.scene.stroke(&kurbo::Stroke::new(1.0), vello_transform, Self::parse_color(COLOR_OVERLAY_BLUE), None, &path);
+		self.scene.stroke(&kurbo::Stroke::new(1.), vello_transform, Self::parse_color(COLOR_OVERLAY_BLUE), None, &path);
 	}
 
 	/// Used by the path tool segment mode in order to show the selected segments.
@@ -977,7 +977,7 @@ impl OverlayContextInternal {
 			let path = self.push_path(subpaths.iter(), transform);
 			let color = color.unwrap_or(COLOR_OVERLAY_BLUE);
 
-			self.scene.stroke(&kurbo::Stroke::new(1.0), self.get_transform(), Self::parse_color(color), None, &path);
+			self.scene.stroke(&kurbo::Stroke::new(1.), self.get_transform(), Self::parse_color(color), None, &path);
 		}
 	}
 
@@ -1019,7 +1019,7 @@ impl OverlayContextInternal {
 			height: PATTERN_HEIGHT,
 			x_extend: peniko::Extend::Repeat,
 			y_extend: peniko::Extend::Repeat,
-			alpha: 1.0,
+			alpha: 1.,
 			quality: peniko::ImageQuality::default(),
 		};
 
