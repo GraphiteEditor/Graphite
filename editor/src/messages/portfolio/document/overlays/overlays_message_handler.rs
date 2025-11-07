@@ -42,8 +42,12 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 					canvas_context.dyn_into().expect("Context should be a canvas 2d context")
 				});
 
-				let size = viewport.size();
-				canvas_context.clear_rect(0., 0., size.x(), size.y());
+				let size_logical = viewport.size();
+				let size_physical = size_logical.to_physical();
+				let width = size_logical.x().max(size_physical.x());
+				let height = size_logical.y().max(size_physical.y());
+
+				canvas_context.clear_rect(0., 0., width, height);
 
 				if visibility_settings.all() {
 					responses.add(DocumentMessage::GridOverlays {
