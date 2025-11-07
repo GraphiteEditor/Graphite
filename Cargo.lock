@@ -2141,7 +2141,7 @@ dependencies = [
  "num-traits",
  "parley",
  "petgraph 0.7.1",
- "polycool 0.4.0",
+ "polycool",
  "rand 0.9.2",
  "rand_chacha 0.9.0",
  "rustc-hash 2.1.1",
@@ -2193,6 +2193,7 @@ dependencies = [
  "glam",
  "graphene-core",
 <<<<<<< HEAD
+<<<<<<< HEAD
  "kurbo 0.12.0",
  "linesweeper 0.1.0",
 ||||||| parent of ca7c211b2 (Cleanup)
@@ -2200,6 +2201,11 @@ dependencies = [
  "linesweeper 0.1.0",
 =======
  "kurbo",
+||||||| parent of d2289c68a (Update linesweeper version to current main)
+ "kurbo",
+=======
+ "kurbo 0.12.0",
+>>>>>>> d2289c68a (Update linesweeper version to current main)
  "linesweeper",
 >>>>>>> ca7c211b2 (Cleanup)
  "log",
@@ -3267,29 +3273,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "linebender_resource_handle"
-version = "0.1.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d4a5ff6bcca6c4867b1c4fd4ef63e4db7436ef363e0ad7531d1558856bae64f4"
-
-[[package]]
-name = "linesweeper"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "21610e4eca7c23b4720aa9f362dccea75f005bad2fe98296a37b504afafe6ebb"
-dependencies = [
- "arrayvec",
- "kurbo 0.11.3",
- "polycool 0.3.3",
-]
-
-[[package]]
-name = "linux-raw-sys"
-version = "0.9.4"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cd945864f07fe9f5371a27ad7b52a172b4b499999f1d97574c9fa68373937e12"
-
-[[package]]
 name = "litemap"
 version = "0.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4307,15 +4290,6 @@ name = "pollster"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2f3a9f18d041e6d0e102a0a46750538147e5e8992d3b4873aaafee2520b00ce3"
-
-[[package]]
-name = "polycool"
-version = "0.3.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "70e7383348ab3cd2b26ec9454d2571b7c750f697cd615b4d9f79f505e699dacc"
-dependencies = [
- "arrayvec",
-]
 
 [[package]]
 name = "polycool"
