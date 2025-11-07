@@ -26,7 +26,7 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 			OverlaysMessage::Draw => {
 				use super::utility_functions::overlay_canvas_element;
 				use super::utility_types::OverlayContext;
-				use crate::messages::viewport::ToPhysical;
+				use crate::messages::viewport::{Position, ToPhysical};
 				use wasm_bindgen::JsCast;
 
 				let canvas = match &self.canvas {
@@ -42,8 +42,8 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 					canvas_context.dyn_into().expect("Context should be a canvas 2d context")
 				});
 
-				let size = viewport.size().to_physical().into_dvec2();
-				canvas_context.clear_rect(0., 0., size.x, size.y);
+				let size = viewport.size().to_physical();
+				canvas_context.clear_rect(0., 0., size.x(), size.y());
 
 				if visibility_settings.all() {
 					responses.add(DocumentMessage::GridOverlays {
