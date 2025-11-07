@@ -187,7 +187,7 @@ impl PointRadiusHandle {
 
 				let viewport = document.metadata().transform_to_viewport(layer);
 				let center = viewport.transform_point2(DVec2::ZERO);
-				let viewport_diagonal = overlay_context.viewport.logical_size().into_dvec2().length();
+				let viewport_diagonal = overlay_context.viewport.size().into_dvec2().length();
 
 				// Star
 				if let Some((sides, radius1, radius2)) = extract_star_parameters(Some(layer), document) {

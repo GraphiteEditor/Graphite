@@ -137,7 +137,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 					log::error!("Could not get PTZ in CanvasPan");
 					return;
 				};
-				let document_to_viewport = self.calculate_offset_transform(viewport.logical_center_in_viewport_space().into_dvec2(), ptz);
+				let document_to_viewport = self.calculate_offset_transform(viewport.center_in_viewport_space().into_dvec2(), ptz);
 				let transformed_delta = document_to_viewport.inverse().transform_vector2(delta);
 
 				ptz.pan += transformed_delta;
@@ -171,8 +171,8 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 					log::error!("Could not get node graph PTZ in CanvasPanByViewportFraction");
 					return;
 				};
-				let document_to_viewport = self.calculate_offset_transform(viewport.logical_center_in_viewport_space().into_dvec2(), ptz);
-				let transformed_delta = document_to_viewport.inverse().transform_vector2(delta * viewport.logical_size().into_dvec2());
+				let document_to_viewport = self.calculate_offset_transform(viewport.center_in_viewport_space().into_dvec2(), ptz);
+				let transformed_delta = document_to_viewport.inverse().transform_vector2(delta * viewport.size().into_dvec2());
 
 				ptz.pan += transformed_delta;
 				responses.add(DocumentMessage::PTZUpdate);
@@ -216,7 +216,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 
 				let new_scale = *VIEWPORT_ZOOM_LEVELS.iter().rev().find(|scale| **scale < ptz.zoom()).unwrap_or(&ptz.zoom());
 				if center_on_mouse {
-					responses.add(self.center_zoom(viewport.logical_size().into(), new_scale / ptz.zoom(), ipp.mouse.position));
+					responses.add(self.center_zoom(viewport.size().into(), new_scale / ptz.zoom(), ipp.mouse.position));
 				}
 				responses.add(NavigationMessage::CanvasZoomSet { zoom_factor: new_scale });
 			}
@@ -227,7 +227,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 
 				let new_scale = *VIEWPORT_ZOOM_LEVELS.iter().find(|scale| **scale > ptz.zoom()).unwrap_or(&ptz.zoom());
 				if center_on_mouse {
-					responses.add(self.center_zoom(viewport.logical_size().into(), new_scale / ptz.zoom(), ipp.mouse.position));
+					responses.add(self.center_zoom(viewport.size().into(), new_scale / ptz.zoom(), ipp.mouse.position));
 				}
 				responses.add(NavigationMessage::CanvasZoomSet { zoom_factor: new_scale });
 			}
@@ -249,7 +249,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 
 				zoom_factor *= Self::clamp_zoom(ptz.zoom() * zoom_factor, document_bounds, old_zoom, viewport);
 
-				responses.add(self.center_zoom(viewport.logical_size().into(), zoom_factor, ipp.mouse.position));
+				responses.add(self.center_zoom(viewport.size().into(), zoom_factor, ipp.mouse.position));
 				responses.add(NavigationMessage::CanvasZoomSet {
 					zoom_factor: ptz.zoom() * zoom_factor,
 				});
@@ -345,7 +345,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				let (pos1, pos2) = (pos1.min(pos2), pos1.max(pos2));
 				let diagonal = pos2 - pos1;
 
-				if diagonal.length() < f64::EPSILON * 1000. || viewport.logical_size().into_dvec2() == DVec2::ZERO {
+				if diagonal.length() < f64::EPSILON * 1000. || viewport.size().into_dvec2() == DVec2::ZERO {
 					warn!("Cannot center since the viewport size is 0");
 					return;
 				}
@@ -354,10 +354,10 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 					log::error!("Could not get node graph PTZ in CanvasPanByViewportFraction");
 					return;
 				};
-				let document_to_viewport = self.calculate_offset_transform(viewport.logical_center_in_viewport_space().into_dvec2(), ptz);
+				let document_to_viewport = self.calculate_offset_transform(viewport.center_in_viewport_space().into_dvec2(), ptz);
 
 				let v1 = document_to_viewport.inverse().transform_point2(DVec2::ZERO);
-				let v2 = document_to_viewport.inverse().transform_point2(viewport.logical_size().into_dvec2());
+				let v2 = document_to_viewport.inverse().transform_point2(viewport.size().into_dvec2());
 
 				let center = ((v2 + v1) - (pos2 + pos1)) / 2.;
 				let size = (v2 - v1) / diagonal;
@@ -400,7 +400,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 						return;
 					};
 
-					let document_to_viewport = self.calculate_offset_transform(viewport.logical_center_in_viewport_space().into_dvec2(), ptz);
+					let document_to_viewport = self.calculate_offset_transform(viewport.center_in_viewport_space().into_dvec2(), ptz);
 					responses.add(NavigationMessage::FitViewportToBounds {
 						bounds: [document_to_viewport.inverse().transform_point2(bounds[0]), document_to_viewport.inverse().transform_point2(bounds[1])],
 						prevent_zoom_past_100: false,
@@ -422,7 +422,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 						let tilt_raw_not_snapped = {
 							// Compute the angle in document space to counter for the canvas being flipped
 							let viewport_to_document = network_interface.document_metadata().document_to_viewport.inverse();
-							let half_viewport = viewport.logical_center_in_viewport_space().into_dvec2();
+							let half_viewport = viewport.center_in_viewport_space().into_dvec2();
 							let start_offset = viewport_to_document.transform_vector2(self.mouse_position - half_viewport);
 							let end_offset = viewport_to_document.transform_vector2(ipp.mouse.position - half_viewport);
 							let angle = start_offset.angle_to(end_offset);
@@ -568,7 +568,7 @@ impl NavigationMessageHandler {
 
 	pub fn clamp_zoom(zoom: f64, document_bounds: Option<[DVec2; 2]>, old_zoom: f64, viewport: &ViewportMessageHandler) -> f64 {
 		let document_size = (document_bounds.map(|[min, max]| max - min).unwrap_or_default() / old_zoom) * zoom;
-		let scale_factor = (document_size / viewport.logical_size().into_dvec2()).max_element();
+		let scale_factor = (document_size / viewport.size().into_dvec2()).max_element();
 
 		if scale_factor <= f64::EPSILON * 100. || !scale_factor.is_finite() || scale_factor >= VIEWPORT_ZOOM_MIN_FRACTION_COVER {
 			return 1.;

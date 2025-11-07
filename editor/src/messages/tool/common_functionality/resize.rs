@@ -112,7 +112,7 @@ impl Resize {
 		let mouse = input.mouse.position;
 		let document_to_viewport = document
 			.navigation_handler
-			.calculate_offset_transform(viewport.logical_center_in_viewport_space().into(), &document.document_ptz);
+			.calculate_offset_transform(viewport.center_in_viewport_space().into(), &document.document_ptz);
 		let drag_start = self.drag_start;
 		let mut points_viewport = [start, mouse];
 

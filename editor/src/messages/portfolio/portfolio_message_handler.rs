@@ -364,7 +364,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					let node_to_inspect = self.node_to_inspect();
 
 					let scale = viewport.scale();
-					let resolution = viewport.logical_size().into_dvec2().round().as_uvec2();
+					let resolution = viewport.size().into_dvec2().round().as_uvec2();
 
 					if let Ok(message) = self.executor.submit_node_graph_evaluation(
 						self.documents.get_mut(document_id).expect("Tried to render non-existent document"),
@@ -705,7 +705,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			}
 			PortfolioMessage::CenterPastedLayers { layers } => {
 				if let Some(document) = self.active_document_mut() {
-					let viewport_bounds_quad_pixels = Quad::from_box([DVec2::ZERO, viewport.logical_size().into_dvec2()]); // In viewport pixel coordinates
+					let viewport_bounds_quad_pixels = Quad::from_box([DVec2::ZERO, viewport.size().into_dvec2()]); // In viewport pixel coordinates
 					let viewport_center_pixels = viewport_bounds_quad_pixels.center(); // In viewport pixel coordinates
 
 					let doc_to_viewport_transform = document.metadata().document_to_viewport;
@@ -970,7 +970,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				};
 
 				let scale = viewport.scale();
-				let resolution = viewport.logical_size().into_dvec2().round().as_uvec2();
+				let resolution = viewport.size().into_dvec2().round().as_uvec2();
 
 				let result = self
 					.executor

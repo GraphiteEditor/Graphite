@@ -1955,7 +1955,7 @@ impl Fsm for PathToolFsmState {
 						if tool_data.snapping_axis.is_some() {
 							let Some(axis) = tool_data.snapping_axis else { return self };
 							let origin = tool_data.drag_start_pos;
-							let viewport_diagonal = viewport.logical_size().into_dvec2().length();
+							let viewport_diagonal = viewport.size().into_dvec2().length();
 
 							let faded = |color: &str| {
 								let mut color = graphene_std::Color::from_rgb_str(color.strip_prefix('#').unwrap()).unwrap().with_alpha(0.25).to_rgba_hex_srgb();

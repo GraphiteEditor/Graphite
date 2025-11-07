@@ -20,6 +20,7 @@ use crate::messages::tool::common_functionality::graph_modification_utils::{self
 use crate::messages::tool::common_functionality::utility_functions::make_path_editable_is_allowed;
 use crate::messages::tool::tool_messages::tool_prelude::{Key, MouseMotion};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
+use crate::messages::viewport::{Position, Rect};
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
@@ -785,12 +786,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 					// TODO: Create function
 					let node_graph_shift = if matches!(context_menu_data, ContextMenuData::CreateNode { compatible_type: None }) {
-						let appear_right_of_mouse = if click.x > viewport.logical_size().x - 180. { -180. } else { 0. };
-						let appear_above_mouse = if click.y > viewport.logical_size().y - 200. { -200. } else { 0. };
+						let appear_right_of_mouse = if click.x > viewport.size().x() - 180. { -180. } else { 0. };
+						let appear_above_mouse = if click.y > viewport.size().y() - 200. { -200. } else { 0. };
 						DVec2::new(appear_right_of_mouse, appear_above_mouse) / network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.matrix2.x_axis.x
 					} else {
-						let appear_right_of_mouse = if click.x > viewport.logical_size().x - 173. { -173. } else { 0. };
-						let appear_above_mouse = if click.y > viewport.logical_size().y - 34. { -34. } else { 0. };
+						let appear_right_of_mouse = if click.x > viewport.size().x() - 173. { -173. } else { 0. };
+						let appear_above_mouse = if click.y > viewport.size().y() - 34. { -34. } else { 0. };
 						DVec2::new(appear_right_of_mouse, appear_above_mouse) / network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.matrix2.x_axis.x
 					};
 
@@ -1220,8 +1221,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 							_ => Some(format!("type:{}", output_type.nested_type())),
 						};
 
-						let appear_right_of_mouse = if ipp.mouse.position.x > viewport.logical_size().x - 173. { -173. } else { 0. };
-						let appear_above_mouse = if ipp.mouse.position.y > viewport.logical_size().y - 34. { -34. } else { 0. };
+						let appear_right_of_mouse = if ipp.mouse.position.x > viewport.size().y() - 173. { -173. } else { 0. };
+						let appear_above_mouse = if ipp.mouse.position.y > viewport.size().y() - 34. { -34. } else { 0. };
 						let node_graph_shift = DVec2::new(appear_right_of_mouse, appear_above_mouse) / network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.matrix2.x_axis.x;
 
 						self.context_menu = Some(ContextMenuInformation {
@@ -1613,8 +1614,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					return;
 				};
 
-				let viewport_bounds = viewport.logical_bounds();
-				let viewport_bbox = [DVec2::new(viewport_bounds.x, viewport_bounds.y), DVec2::new(viewport_bounds.width, viewport_bounds.height)];
+				let viewport_bounds = viewport.bounds();
+				let viewport_bbox: [DVec2; 2] = viewport_bounds.into();
 				let document_bbox: [DVec2; 2] = viewport_bbox.map(|p| network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse().transform_point2(p));
 
 				let mut nodes = Vec::new();
@@ -1660,8 +1661,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}
 			NodeGraphMessage::SetGridAlignedEdges => {
 				if graph_view_overlay_open {
-					let viewport_bounds = viewport.logical_bounds();
-					network_interface.set_grid_aligned_edges(DVec2::new(viewport_bounds.x - viewport_bounds.width, 0.), breadcrumb_network_path);
+					let viewport_bounds = viewport.bounds();
+					network_interface.set_grid_aligned_edges(DVec2::new(viewport_bounds.x() - viewport_bounds.width(), 0.), breadcrumb_network_path);
 					// Send the new edges to the frontend
 					responses.add(NodeGraphMessage::UpdateImportsExports);
 				}

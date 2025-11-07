@@ -1,20 +1,20 @@
+use std::ops::{Add, Div, Mul, Sub};
+
 use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::tool_prelude::DVec2;
 
 #[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize, specta::Type, ExtractField)]
 pub struct ViewportMessageHandler {
-	bounds: LogicalBounds,
+	bounds: Bounds,
 	// Ratio of logical pixels to physical pixels
 	scale: f64,
 }
 impl Default for ViewportMessageHandler {
 	fn default() -> Self {
 		Self {
-			bounds: LogicalBounds {
-				x: 0.0,
-				y: 0.0,
-				width: 0.0,
-				height: 0.0,
+			bounds: Bounds {
+				offset: Point { x: 0.0, y: 0.0 },
+				size: Point { x: 0.0, y: 0.0 },
 			},
 			scale: 1.0,
 		}
@@ -29,17 +29,20 @@ impl MessageHandler<ViewportMessage, ()> for ViewportMessageHandler {
 				assert_ne!(scale, 0.0, "Viewport scale cannot be zero");
 				self.scale = scale;
 
-				self.bounds = LogicalBounds { x, y, width, height };
+				self.bounds = Bounds {
+					offset: Point { x, y },
+					size: Point { x: width, y: height },
+				};
 			}
 			ViewportMessage::Trigger => {}
 		}
 
-		let physical_bounds = self.physical_bounds();
+		let physical_bounds = self.bounds().to_physical();
 		responses.add(FrontendMessage::UpdateViewportPhysicalBounds {
-			x: physical_bounds.x,
-			y: physical_bounds.y,
-			width: physical_bounds.width,
-			height: physical_bounds.height,
+			x: physical_bounds.x(),
+			y: physical_bounds.y(),
+			width: physical_bounds.width(),
+			height: physical_bounds.height(),
 		});
 
 		responses.add(NavigationMessage::CanvasPan { delta: DVec2::ZERO });
@@ -63,329 +66,537 @@ impl ViewportMessageHandler {
 		self.scale
 	}
 
-	pub fn logical_bounds(&self) -> LogicalBounds {
-		self.bounds
+	pub fn bounds(&self) -> LogicalBounds {
+		self.bounds.into_scaled(self.scale)
 	}
 
-	pub fn physical_bounds(&self) -> PhysicalBounds {
-		self.logical_bounds().to_physical(self.scale)
+	pub fn offset(&self) -> LogicalPoint {
+		self.bounds.offset.into_scaled(self.scale)
 	}
 
-	pub fn logical_offset(&self) -> LogicalPoint {
-		LogicalPoint { x: self.bounds.x, y: self.bounds.y }
+	pub fn size(&self) -> LogicalPoint {
+		self.bounds.size().into_scaled(self.scale)
 	}
 
-	pub fn physical_offset(&self) -> PhysicalPoint {
-		self.logical_offset().to_physical(self.scale)
+	#[expect(private_bounds)]
+	pub fn logical<T: Into<Point>>(&self, point: T) -> LogicalPoint {
+		point.into().convert_to_logical(self.scale)
 	}
 
-	pub fn logical_size(&self) -> LogicalPoint {
+	#[expect(private_bounds)]
+	pub fn physical<T: Into<Point>>(&self, point: T) -> PhysicalPoint {
+		point.into().convert_to_physical(self.scale)
+	}
+
+	pub fn center_in_viewport_space(&self) -> LogicalPoint {
+		let size = self.size();
 		LogicalPoint {
-			x: self.bounds.width,
-			y: self.bounds.height,
+			inner: Point { x: size.x() / 2.0, y: size.y() / 2.0 },
+			scale: size.scale,
 		}
 	}
 
-	pub fn physical_size(&self) -> PhysicalPoint {
-		self.logical_size().to_physical(self.scale)
-	}
-
-	pub fn logical_center_in_viewport_space(&self) -> LogicalPoint {
-		let logical_size = self.logical_size();
+	pub fn center_in_window_space(&self) -> LogicalPoint {
+		let size = self.size();
+		let offset = self.offset();
 		LogicalPoint {
-			x: logical_size.x / 2.0,
-			y: logical_size.y / 2.0,
+			inner: Point {
+				x: (size.x() / 2.0) + offset.x(),
+				y: (size.y() / 2.0) + offset.y(),
+			},
+			scale: size.scale,
 		}
 	}
 
-	pub fn physical_center_in_viewport_space(&self) -> PhysicalPoint {
-		self.logical_center_in_viewport_space().to_physical(self.scale)
-	}
-
-	pub fn logical_center_in_window_space(&self) -> LogicalPoint {
-		self.apply_offset_to_logical_point(self.logical_center_in_viewport_space())
-	}
-
-	pub fn physical_center_in_window_space(&self) -> PhysicalPoint {
-		self.logical_center_in_window_space().to_physical(self.scale)
-	}
-
-	pub fn is_in_logical_bounds<T: Into<LogicalPoint>>(&self, point: T) -> bool {
-		let point = point.into();
-		point.x >= self.bounds.x && point.y >= self.bounds.y && point.x <= self.bounds.x + self.bounds.width && point.y <= self.bounds.y + self.bounds.height
-	}
-
-	pub fn is_in_physical_bounds<T: Into<PhysicalPoint>>(&self, point: T) -> bool {
-		let point = self.convert_physical_to_logical_point(point.into());
-		self.is_in_logical_bounds(point)
-	}
-
-	pub fn convert_physical_to_logical(&self, physical: f64) -> f64 {
-		physical.to_logical(self.scale)
-	}
-
-	pub fn convert_logical_to_physical(&self, logical: f64) -> f64 {
-		logical.to_physical(self.scale)
-	}
-
-	pub fn convert_physical_to_logical_point<T: Into<PhysicalPoint>>(&self, physical: T) -> LogicalPoint {
-		physical.into().to_logical(self.scale)
-	}
-
-	pub fn convert_logical_to_physical_point<T: Into<LogicalPoint>>(&self, logical: T) -> PhysicalPoint {
-		logical.into().to_physical(self.scale)
-	}
-
-	pub fn convert_physical_to_logical_bounds<T: Into<PhysicalBounds>>(&self, physical: T) -> LogicalBounds {
-		physical.into().to_logical(self.scale)
-	}
-
-	pub fn convert_logical_to_physical_bounds<T: Into<LogicalBounds>>(&self, logical: T) -> PhysicalBounds {
-		logical.into().to_physical(self.scale)
-	}
-
-	pub fn apply_offset_to_logical_point<T: Into<LogicalPoint>>(&self, logical: T) -> LogicalPoint {
-		let logical = logical.into();
-		let offset = self.logical_offset();
-		LogicalPoint {
-			x: logical.x + offset.x,
-			y: logical.y + offset.y,
-		}
-	}
-
-	pub fn apply_offset_to_physical_point<T: Into<PhysicalPoint>>(&self, physical: T) -> PhysicalPoint {
-		let physical = physical.into();
-		let offset = self.physical_offset();
-		PhysicalPoint {
-			x: physical.x + offset.x,
-			y: physical.y + offset.y,
-		}
-	}
-
-	pub fn remove_offset_from_logical_point<T: Into<LogicalPoint>>(&self, logical: T) -> LogicalPoint {
-		let logical = logical.into();
-		let offset = self.logical_offset();
-		LogicalPoint {
-			x: logical.x - offset.x,
-			y: logical.y - offset.y,
-		}
-	}
-
-	pub fn remove_offset_from_physical_point<T: Into<PhysicalPoint>>(&self, physical: T) -> PhysicalPoint {
-		let physical = physical.into();
-		let offset = self.physical_offset();
-		PhysicalPoint {
-			x: physical.x - offset.x,
-			y: physical.y - offset.y,
-		}
-	}
-
-	pub fn convert_logical_window_point_to_physical_viewport_point<T: Into<LogicalPoint>>(&self, logical: T) -> PhysicalPoint {
-		let physical_point = self.convert_logical_to_physical_point(logical);
-		self.apply_offset_to_physical_point(physical_point)
-	}
-
-	pub fn convert_physical_window_point_to_logical_viewport_point<T: Into<PhysicalPoint>>(&self, physical: T) -> LogicalPoint {
-		let logical_point = self.convert_physical_to_logical_point(physical);
-		self.apply_offset_to_logical_point(logical_point)
-	}
-
-	pub fn convert_logical_viewport_point_to_physical_window_point<T: Into<LogicalPoint>>(&self, offset_logical: T) -> PhysicalPoint {
-		let logical = self.remove_offset_from_logical_point(offset_logical);
-		self.convert_logical_to_physical_point(logical)
-	}
-
-	pub fn convert_physical_viewport_point_to_logical_window_point<T: Into<PhysicalPoint>>(&self, offset_physical: T) -> LogicalPoint {
-		let physical = self.remove_offset_from_physical_point(offset_physical);
-		self.convert_physical_to_logical_point(physical)
+	pub(crate) fn is_in_bounds(&self, point: LogicalPoint) -> bool {
+		point.x() >= self.bounds.x() && point.y() >= self.bounds.y() && point.x() <= self.bounds.x() + self.bounds.width() && point.y() <= self.bounds.y() + self.bounds.height()
 	}
 }
 
-trait ToPhysical<P: ToLogical<Self> + ?Sized> {
-	fn to_physical(self, scale: f64) -> P;
+pub trait ToLogical<L: ToPhysical<Self> + ?Sized> {
+	fn to_logical(self) -> L;
 }
-impl ToPhysical<f64> for f64 {
-	fn to_physical(self, scale: f64) -> f64 {
-		assert_ne!(scale, 0.0, "Cannot convert to physical with a scale of zero");
-		self * scale
+pub trait ToPhysical<P: ToLogical<Self> + ?Sized> {
+	fn to_physical(self) -> P;
+}
+
+trait IntoScaled<T: Scaled>: Sized {
+	fn into_scaled(self, scale: f64) -> T;
+}
+trait FromWithScale<T>: Sized {
+	fn from_with_scale(value: T, scale: f64) -> Self;
+}
+impl<T, U: Scaled> IntoScaled<U> for T
+where
+	U: FromWithScale<T>,
+{
+	fn into_scaled(self, scale: f64) -> U {
+		U::from_with_scale(self, scale)
 	}
 }
 
-trait ToLogical<L: ToPhysical<Self> + ?Sized> {
-	fn to_logical(self, scale: f64) -> L;
+trait AsPoint {
+	fn as_point(&self) -> Point;
 }
-impl ToLogical<f64> for f64 {
-	fn to_logical(self, scale: f64) -> f64 {
-		assert_ne!(scale, 0.0, "Cannot convert to logical with a scale of zero");
-		self / scale
+
+trait Scaled {
+	fn scale(&self) -> f64;
+}
+
+pub trait Position {
+	fn x(&self) -> f64;
+	fn y(&self) -> f64;
+}
+
+#[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize, specta::Type)]
+struct Point {
+	x: f64,
+	y: f64,
+}
+impl Point {
+	fn convert_to_logical(&self, scale: f64) -> LogicalPoint {
+		Point { x: self.x(), y: self.y() }.into_scaled(scale)
+	}
+	fn convert_to_physical(&self, scale: f64) -> PhysicalPoint {
+		Point {
+			x: self.x() / scale,
+			y: self.y() / scale,
+		}
+		.into_scaled(scale)
+	}
+}
+impl Position for Point {
+	fn x(&self) -> f64 {
+		self.x
+	}
+	fn y(&self) -> f64 {
+		self.y
 	}
 }
 
 #[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct LogicalPoint {
-	pub x: f64,
-	pub y: f64,
+	inner: Point,
+	scale: f64,
+}
+impl AsPoint for LogicalPoint {
+	fn as_point(&self) -> Point {
+		self.inner
+	}
+}
+impl Scaled for LogicalPoint {
+	fn scale(&self) -> f64 {
+		self.scale
+	}
+}
+impl Position for LogicalPoint {
+	fn x(&self) -> f64 {
+		self.inner.x()
+	}
+	fn y(&self) -> f64 {
+		self.inner.y()
+	}
 }
 impl ToPhysical<PhysicalPoint> for LogicalPoint {
-	fn to_physical(self, scale: f64) -> PhysicalPoint {
-		PhysicalPoint {
-			x: self.x.to_physical(scale),
-			y: self.y.to_physical(scale),
-		}
+	fn to_physical(self) -> PhysicalPoint {
+		PhysicalPoint { inner: self.inner, scale: self.scale }
+	}
+}
+impl FromWithScale<Point> for LogicalPoint {
+	fn from_with_scale(value: Point, scale: f64) -> Self {
+		Self { inner: value, scale }
 	}
 }
 
 #[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct PhysicalPoint {
-	pub x: f64,
-	pub y: f64,
+	inner: Point,
+	scale: f64,
+}
+impl AsPoint for PhysicalPoint {
+	fn as_point(&self) -> Point {
+		self.inner
+	}
+}
+impl Scaled for PhysicalPoint {
+	fn scale(&self) -> f64 {
+		self.scale
+	}
+}
+impl Position for PhysicalPoint {
+	fn x(&self) -> f64 {
+		self.inner.x() * self.scale
+	}
+	fn y(&self) -> f64 {
+		self.inner.y() * self.scale
+	}
 }
 impl ToLogical<LogicalPoint> for PhysicalPoint {
-	fn to_logical(self, scale: f64) -> LogicalPoint {
-		LogicalPoint {
-			x: self.x.to_logical(scale),
-			y: self.y.to_logical(scale),
-		}
+	fn to_logical(self) -> LogicalPoint {
+		LogicalPoint { inner: self.inner, scale: self.scale }
+	}
+}
+impl FromWithScale<Point> for PhysicalPoint {
+	fn from_with_scale(value: Point, scale: f64) -> Self {
+		Self { inner: value, scale }
+	}
+}
+
+pub trait Rect<P: Position>: Position {
+	fn offset(&self) -> P;
+	fn size(&self) -> P;
+	fn width(&self) -> f64;
+	fn height(&self) -> f64;
+}
+
+#[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize, specta::Type, ExtractField)]
+struct Bounds {
+	offset: Point,
+	size: Point,
+}
+impl Position for Bounds {
+	fn x(&self) -> f64 {
+		self.offset.x()
+	}
+	fn y(&self) -> f64 {
+		self.offset.y()
+	}
+}
+impl Rect<Point> for Bounds {
+	fn offset(&self) -> Point {
+		self.offset
+	}
+	fn size(&self) -> Point {
+		self.size
+	}
+	fn width(&self) -> f64 {
+		self.size.x()
+	}
+	fn height(&self) -> f64 {
+		self.size.y()
 	}
 }
 
 #[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct LogicalBounds {
-	pub x: f64,
-	pub y: f64,
-	pub width: f64,
-	pub height: f64,
+	offset: Point,
+	size: Point,
+	scale: f64,
+}
+impl Scaled for LogicalBounds {
+	fn scale(&self) -> f64 {
+		self.scale
+	}
+}
+impl Position for LogicalBounds {
+	fn x(&self) -> f64 {
+		self.offset.x()
+	}
+	fn y(&self) -> f64 {
+		self.offset.y()
+	}
+}
+impl Rect<LogicalPoint> for LogicalBounds {
+	fn offset(&self) -> LogicalPoint {
+		self.offset.into_scaled(self.scale)
+	}
+	fn size(&self) -> LogicalPoint {
+		self.size.into_scaled(self.scale)
+	}
+	fn width(&self) -> f64 {
+		self.size.x()
+	}
+	fn height(&self) -> f64 {
+		self.size.y()
+	}
 }
 impl ToPhysical<PhysicalBounds> for LogicalBounds {
-	fn to_physical(self, scale: f64) -> PhysicalBounds {
+	fn to_physical(self) -> PhysicalBounds {
 		PhysicalBounds {
-			x: self.x.to_physical(scale),
-			y: self.y.to_physical(scale),
-			width: self.width.to_physical(scale),
-			height: self.height.to_physical(scale),
+			offset: self.offset,
+			size: self.size,
+			scale: self.scale,
+		}
+	}
+}
+impl FromWithScale<Bounds> for LogicalBounds {
+	fn from_with_scale(value: Bounds, scale: f64) -> Self {
+		Self {
+			offset: value.offset(),
+			size: value.size(),
+			scale,
 		}
 	}
 }
 
 #[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct PhysicalBounds {
-	pub x: f64,
-	pub y: f64,
-	pub width: f64,
-	pub height: f64,
+	offset: Point,
+	size: Point,
+	scale: f64,
+}
+impl Scaled for PhysicalBounds {
+	fn scale(&self) -> f64 {
+		self.scale
+	}
+}
+impl Position for PhysicalBounds {
+	fn x(&self) -> f64 {
+		self.offset.x() * self.scale
+	}
+	fn y(&self) -> f64 {
+		self.offset.y() * self.scale
+	}
+}
+impl Rect<PhysicalPoint> for PhysicalBounds {
+	fn offset(&self) -> PhysicalPoint {
+		self.offset.into_scaled(self.scale)
+	}
+	fn size(&self) -> PhysicalPoint {
+		self.size.into_scaled(self.scale)
+	}
+	fn width(&self) -> f64 {
+		self.size.x() * self.scale
+	}
+	fn height(&self) -> f64 {
+		self.size.y() * self.scale
+	}
 }
 impl ToLogical<LogicalBounds> for PhysicalBounds {
-	fn to_logical(self, scale: f64) -> LogicalBounds {
+	fn to_logical(self) -> LogicalBounds {
 		LogicalBounds {
-			x: self.x.to_logical(scale),
-			y: self.y.to_logical(scale),
-			width: self.width.to_logical(scale),
-			height: self.height.to_logical(scale),
+			offset: self.offset,
+			size: self.size,
+			scale: self.scale,
+		}
+	}
+}
+impl FromWithScale<Bounds> for PhysicalBounds {
+	fn from_with_scale(value: Bounds, scale: f64) -> Self {
+		Self {
+			offset: value.offset(),
+			size: value.size(),
+			scale,
 		}
 	}
 }
 
-impl From<(f64, f64)> for LogicalPoint {
+impl Mul<f64> for Point {
+	type Output = Point;
+	fn mul(self, rhs: f64) -> Self::Output {
+		assert_ne!(rhs, 0.0, "Cannot multiply point by zero");
+		Point { x: self.x * rhs, y: self.y * rhs }
+	}
+}
+impl Div<f64> for Point {
+	type Output = Point;
+	fn div(self, rhs: f64) -> Self::Output {
+		assert_ne!(rhs, 0.0, "Cannot divide point by zero");
+		Point { x: self.x / rhs, y: self.y / rhs }
+	}
+}
+impl Add<f64> for Point {
+	type Output = Point;
+	fn add(self, rhs: f64) -> Self::Output {
+		Point { x: self.x + rhs, y: self.y + rhs }
+	}
+}
+impl Sub<f64> for Point {
+	type Output = Point;
+	fn sub(self, rhs: f64) -> Self::Output {
+		Point { x: self.x - rhs, y: self.y - rhs }
+	}
+}
+impl Mul<Point> for Point {
+	type Output = Point;
+	fn mul(self, rhs: Point) -> Self::Output {
+		assert_ne!(rhs.x, 0.0, "Cannot multiply point by zero");
+		assert_ne!(rhs.y, 0.0, "Cannot multiply point by zero");
+		Point { x: self.x * rhs.x, y: self.y * rhs.y }
+	}
+}
+impl Div<Point> for Point {
+	type Output = Point;
+	fn div(self, rhs: Point) -> Self::Output {
+		assert_ne!(rhs.x, 0.0, "Cannot multiply point by zero");
+		assert_ne!(rhs.y, 0.0, "Cannot multiply point by zero");
+		Point { x: self.x / rhs.x, y: self.y / rhs.y }
+	}
+}
+impl Add<Point> for Point {
+	type Output = Point;
+	fn add(self, rhs: Point) -> Self::Output {
+		Point { x: self.x + rhs.x, y: self.y + rhs.y }
+	}
+}
+impl Sub<Point> for Point {
+	type Output = Point;
+	fn sub(self, rhs: Point) -> Self::Output {
+		Point { x: self.x - rhs.x, y: self.y - rhs.y }
+	}
+}
+
+impl Mul<f64> for Bounds {
+	type Output = Bounds;
+	fn mul(self, rhs: f64) -> Self::Output {
+		assert_ne!(rhs, 0.0, "Cannot multiply bounds by zero");
+		Bounds {
+			offset: self.offset * rhs,
+			size: self.size * rhs,
+		}
+	}
+}
+impl Div<f64> for Bounds {
+	type Output = Bounds;
+	fn div(self, rhs: f64) -> Self::Output {
+		assert_ne!(rhs, 0.0, "Cannot divide bounds by zero");
+		Bounds {
+			offset: self.offset / rhs,
+			size: self.size / rhs,
+		}
+	}
+}
+
+impl Mul<LogicalPoint> for LogicalPoint {
+	type Output = LogicalPoint;
+	fn mul(self, rhs: LogicalPoint) -> Self::Output {
+		assert_scale(&self, &rhs);
+		(self.as_point() * rhs.as_point()).into_scaled(self.scale())
+	}
+}
+impl Div<LogicalPoint> for LogicalPoint {
+	type Output = LogicalPoint;
+	fn div(self, rhs: LogicalPoint) -> Self::Output {
+		assert_scale(&self, &rhs);
+		(self.as_point() / rhs.as_point()).into_scaled(self.scale())
+	}
+}
+impl Add<LogicalPoint> for LogicalPoint {
+	type Output = LogicalPoint;
+	fn add(self, rhs: LogicalPoint) -> Self::Output {
+		assert_scale(&self, &rhs);
+		(self.as_point() + rhs.as_point()).into_scaled(self.scale())
+	}
+}
+impl Sub<LogicalPoint> for LogicalPoint {
+	type Output = LogicalPoint;
+	fn sub(self, rhs: LogicalPoint) -> Self::Output {
+		assert_scale(&self, &rhs);
+		(self.as_point() - rhs.as_point()).into_scaled(self.scale())
+	}
+}
+impl Mul<PhysicalPoint> for PhysicalPoint {
+	type Output = PhysicalPoint;
+	fn mul(self, rhs: PhysicalPoint) -> Self::Output {
+		assert_scale(&self, &rhs);
+		(self.as_point() * rhs.as_point()).into_scaled(self.scale())
+	}
+}
+impl Div<PhysicalPoint> for PhysicalPoint {
+	type Output = PhysicalPoint;
+	fn div(self, rhs: PhysicalPoint) -> Self::Output {
+		assert_scale(&self, &rhs);
+		(self.as_point() / rhs.as_point()).into_scaled(self.scale())
+	}
+}
+impl Add<PhysicalPoint> for PhysicalPoint {
+	type Output = PhysicalPoint;
+	fn add(self, rhs: PhysicalPoint) -> Self::Output {
+		assert_scale(&self, &rhs);
+		(self.as_point() + rhs.as_point()).into_scaled(self.scale())
+	}
+}
+impl Sub<PhysicalPoint> for PhysicalPoint {
+	type Output = PhysicalPoint;
+	fn sub(self, rhs: PhysicalPoint) -> Self::Output {
+		assert_scale(&self, &rhs);
+		(self.as_point() - rhs.as_point()).into_scaled(self.scale())
+	}
+}
+fn assert_scale<T: Scaled>(a: &T, b: &T) {
+	assert_eq!(a.scale(), b.scale(), "Cannot multiply with diffent scale");
+}
+
+impl From<(f64, f64)> for Point {
 	fn from((x, y): (f64, f64)) -> Self {
 		Self { x, y }
 	}
 }
-impl From<(f64, f64)> for PhysicalPoint {
-	fn from((x, y): (f64, f64)) -> Self {
-		Self { x, y }
-	}
-}
-impl From<(f64, f64, f64, f64)> for LogicalBounds {
+impl From<(f64, f64, f64, f64)> for Bounds {
 	fn from((x, y, width, height): (f64, f64, f64, f64)) -> Self {
-		Self { x, y, width, height }
-	}
-}
-impl From<(f64, f64, f64, f64)> for PhysicalBounds {
-	fn from((x, y, width, height): (f64, f64, f64, f64)) -> Self {
-		Self { x, y, width, height }
+		Self {
+			offset: Point { x, y },
+			size: Point { x: width, y: height },
+		}
 	}
 }
 
 impl From<LogicalPoint> for (f64, f64) {
 	fn from(point: LogicalPoint) -> Self {
-		(point.x, point.y)
+		(point.x(), point.y())
 	}
 }
 impl From<PhysicalPoint> for (f64, f64) {
 	fn from(point: PhysicalPoint) -> Self {
-		(point.x, point.y)
+		(point.x(), point.y())
 	}
 }
 impl From<LogicalBounds> for (f64, f64, f64, f64) {
 	fn from(bounds: LogicalBounds) -> Self {
-		(bounds.x, bounds.y, bounds.width, bounds.height)
+		(bounds.x(), bounds.y(), bounds.width(), bounds.height())
 	}
 }
 impl From<PhysicalBounds> for (f64, f64, f64, f64) {
 	fn from(bounds: PhysicalBounds) -> Self {
-		(bounds.x, bounds.y, bounds.width, bounds.height)
+		(bounds.x(), bounds.y(), bounds.width(), bounds.height())
 	}
 }
 
-impl From<glam::DVec2> for LogicalPoint {
-	fn from(vec: glam::DVec2) -> Self {
-		Self { x: vec.x, y: vec.y }
-	}
-}
-impl From<glam::DVec2> for PhysicalPoint {
+impl From<glam::DVec2> for Point {
 	fn from(vec: glam::DVec2) -> Self {
 		Self { x: vec.x, y: vec.y }
 	}
 }
 impl From<LogicalPoint> for glam::DVec2 {
 	fn from(val: LogicalPoint) -> Self {
-		glam::DVec2::new(val.x, val.y)
+		glam::DVec2::new(val.x(), val.y())
 	}
 }
 impl From<PhysicalPoint> for glam::DVec2 {
 	fn from(val: PhysicalPoint) -> Self {
-		glam::DVec2::new(val.x, val.y)
+		glam::DVec2::new(val.x(), val.y())
 	}
 }
 
-impl From<[glam::DVec2; 2]> for LogicalBounds {
+impl From<[glam::DVec2; 2]> for Bounds {
 	fn from(bounds: [glam::DVec2; 2]) -> Self {
 		Self {
-			x: bounds[0].x,
-			y: bounds[0].y,
-			width: bounds[1].x - bounds[0].x,
-			height: bounds[1].y - bounds[0].y,
-		}
-	}
-}
-impl From<[glam::DVec2; 2]> for PhysicalBounds {
-	fn from(bounds: [glam::DVec2; 2]) -> Self {
-		Self {
-			x: bounds[0].x,
-			y: bounds[0].y,
-			width: bounds[1].x - bounds[0].x,
-			height: bounds[1].y - bounds[0].y,
+			offset: bounds[0].into(),
+			size: Point {
+				x: bounds[1].x - bounds[0].x,
+				y: bounds[1].y - bounds[0].y,
+			},
 		}
 	}
 }
 impl From<LogicalBounds> for [glam::DVec2; 2] {
 	fn from(bounds: LogicalBounds) -> Self {
-		[glam::DVec2::new(bounds.x, bounds.y), glam::DVec2::new(bounds.x + bounds.width, bounds.y + bounds.height)]
+		[glam::DVec2::new(bounds.x(), bounds.y()), glam::DVec2::new(bounds.x() + bounds.width(), bounds.y() + bounds.height())]
 	}
 }
 impl From<PhysicalBounds> for [glam::DVec2; 2] {
 	fn from(bounds: PhysicalBounds) -> Self {
-		[glam::DVec2::new(bounds.x, bounds.y), glam::DVec2::new(bounds.x + bounds.width, bounds.y + bounds.height)]
+		[glam::DVec2::new(bounds.x(), bounds.y()), glam::DVec2::new(bounds.x() + bounds.width(), bounds.y() + bounds.height())]
 	}
 }
 
 impl LogicalPoint {
 	pub fn into_dvec2(self) -> DVec2 {
-		DVec2::new(self.x, self.y)
+		DVec2::new(self.x(), self.y())
 	}
 }
 impl PhysicalPoint {
 	pub fn into_dvec2(self) -> DVec2 {
-		DVec2::new(self.x, self.y)
+		DVec2::new(self.x(), self.y())
 	}
 }

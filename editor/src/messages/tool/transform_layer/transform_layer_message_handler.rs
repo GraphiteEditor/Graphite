@@ -186,7 +186,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 					}
 				}
 
-				let viewport_box = viewport.logical_size().into_dvec2();
+				let viewport_box = viewport.size().into_dvec2();
 				let axis_constraint = self.transform_operation.axis_constraint();
 
 				let format_rounded = |value: f64, precision: usize| {

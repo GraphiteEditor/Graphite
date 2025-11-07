@@ -902,7 +902,7 @@ impl Fsm for SelectToolFsmState {
 									_ => unreachable!(),
 								};
 
-								let viewport_diagonal = viewport.logical_size().into_dvec2().length();
+								let viewport_diagonal = viewport.size().into_dvec2().length();
 
 								let color = if !hover {
 									color
@@ -924,7 +924,7 @@ impl Fsm for SelectToolFsmState {
 
 						let extension = tool_data.drag_current - tool_data.drag_start;
 						let origin = compass_center - extension;
-						let viewport_diagonal = viewport.logical_size().into_dvec2().length();
+						let viewport_diagonal = viewport.size().into_dvec2().length();
 
 						let edge = DVec2::from_angle(snapped_angle).normalize_or(DVec2::X) * viewport_diagonal;
 						let perp = edge.perp();
