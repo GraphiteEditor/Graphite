@@ -9,12 +9,19 @@ use crate::messages::tool::common_functionality::pivot::{PivotGizmo, PivotGizmoT
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::{ToolData, ToolType};
-use glam::{DAffine2, DVec2};
+use glam::{DAffine2, DVec2, DMat2};
 use graphene_std::renderer::Quad;
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::ManipulatorPointId;
 use graphene_std::vector::{Vector, VectorModificationType};
+use std::collections::{HashSet, VecDeque};
 use std::f64::consts::{PI, TAU};
+
+fn format_rounded(value: f64, decimals: usize) -> String {
+	let formatted = format!("{:.*}", decimals, value);
+	formatted.trim_end_matches('0').trim_end_matches('.').to_string()
+}
+
 
 const TRANSFORM_GRS_OVERLAY_PROVIDER: OverlayProvider = |context| TransformLayerMessage::Overlays { context }.into();
 
@@ -185,38 +192,53 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				}
 
 				let viewport_box = input.viewport_bounds.size();
+
 				let axis_constraint = self.transform_operation.axis_constraint();
 
-				let format_rounded = |value: f64, precision: usize| {
-					if self.typing.digits.is_empty() || !self.transform_operation.can_begin_typing() {
-						format!("{value:.precision$}").trim_end_matches('0').trim_end_matches('.').to_string()
-					} else {
-						self.typing.string.clone()
-					}
-				};
 
-				// TODO: Ensure removing this and adding this doesn't change the position of layers under PTZ ops
-				// responses.add(TransformLayerMessage::PointerMove {
-				// 	slow_key: SLOW_KEY,
-				// 	increments_key: INCREMENTS_KEY,
-				// });
+				let should_draw_constraint_line = !matches!(self.transform_operation, TransformOperation::Rotating(_));
+
+				if should_draw_constraint_line {
+					let mut constraint_direction = match axis_constraint {
+						Axis::X => Some(DVec2::X),
+						Axis::Y => Some(DVec2::Y),
+						_ => None,
+					};
+
+					if self.local {
+						if let Some(layer) = document
+							.network_interface
+							.selected_nodes()
+							.selected_layers(document.metadata())
+							.next()
+						{
+							if let Some(axis) = constraint_direction.as_mut() {
+								let layer_to_viewport = document.metadata().transform_to_viewport(layer);
+
+								let transformed_axis = layer_to_viewport.transform_vector2(*axis);
+								*axis = transformed_axis.normalize_or_zero();
+							}
+						}
+					}
+
+					if let Some(direction) = constraint_direction {
+						let pivot = document_to_viewport.transform_point2(self.local_pivot);
+
+						let line_length = 10_000.0;
+
+						overlay_context.dashed_line(
+							pivot - direction * line_length,
+							pivot + direction * line_length,
+							Some(COLOR_OVERLAY_BLUE),
+							Some(1.5),
+							Some(5.0),
+							Some(3.0),
+							None,
+						);
+					}
+				}
 
 				match self.transform_operation {
-					TransformOperation::None => (),
-					TransformOperation::Grabbing(translation) => {
-						let translation = translation.to_dvec(self.initial_transform, self.increments);
-						let viewport_translate = document_to_viewport.transform_vector2(translation);
-						let pivot = document_to_viewport.transform_point2(self.grab_target);
-						let quad = Quad::from_box([pivot, pivot + viewport_translate]);
-
-						responses.add(SelectToolMessage::PivotShift {
-							offset: Some(viewport_translate),
-							flush: false,
-						});
-
-						let typed_string = (!self.typing.digits.is_empty() && self.transform_operation.can_begin_typing()).then(|| self.typing.string.clone());
-						overlay_context.translation_box(translation, quad, typed_string);
-					}
 					TransformOperation::Scaling(scale) => {
 						let scale = scale.to_f64(self.increments);
 						let text = format!("{}x", format_rounded(scale, 3));
@@ -232,9 +254,21 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 						}
 						overlay_context.line(boundary_point, end_point, None, None);
 
-						let transform = DAffine2::from_translation(boundary_point.midpoint(pivot) + local_edge.perp().normalize_or(DVec2::X) * local_edge.element_product().signum() * 24.);
+						let text_angle = local_edge.to_angle();
+
+						let text_texture_width = overlay_context.get_width(&text) / 2.;
+						let text_texture_height = 12.;
+
+						let perpendicular = DVec2::new(-local_edge.y, local_edge.x).normalize_or_zero();
+						let text_texture_position = perpendicular * (text_texture_height + 4.) + local_edge.normalize_or_zero() * text_texture_width;
+
+						let rotation = DAffine2::from_angle(text_angle);
+						let translation = DAffine2::from_translation(text_texture_position + pivot);
+						let transform = translation * rotation;
+
 						overlay_context.text(&text, COLOR_OVERLAY_BLUE, None, transform, 16., [Pivot::Middle, Pivot::Middle]);
 					}
+
 					TransformOperation::Rotating(rotation) => {
 						let angle = rotation.to_f64(self.increments);
 						let pivot = document_to_viewport.transform_point2(self.local_pivot);
@@ -260,7 +294,11 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 						} else {
 							angle_in_degrees
 						};
-						let text = format!("{}°", format_rounded(display_angle, 2));
+						let text = format!("{:.2}°", display_angle)
+							.trim_end_matches('0')
+							.trim_end_matches('.')
+							.to_string();
+
 						let text_texture_width = overlay_context.get_width(&text) / 2.;
 						let text_texture_height = 12.;
 						let text_angle_on_unit_circle = DVec2::from_angle((angle % TAU) / 2. + offset_angle);
@@ -272,6 +310,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 						overlay_context.draw_angle(pivot, radius, arc_radius, offset_angle, angle);
 						overlay_context.text(&text, COLOR_OVERLAY_BLUE, None, transform, 16., [Pivot::Middle, Pivot::Middle]);
 					}
+					_ => {}
 				}
 			}
 
@@ -767,7 +806,7 @@ fn calculate_pivot(
 		} else {
 			None
 		})
-		.unwrap_or_else(average_position)
+			.unwrap_or_else(average_position)
 	};
 	let [point] = selected_points.as_slice() else {
 		// Handle the case where there are multiple points
@@ -1089,8 +1128,8 @@ mod test_transform_layer {
 		// Checking for off-diagonal elements close to 0.707, which corresponds to cos(45°) and sin(45°)
 		assert!(
 			!after_rotate_transform.matrix2.abs_diff_eq(after_grab_transform.matrix2, 1e-5) &&
-			(after_rotate_transform.matrix2.x_axis.y.abs() - 0.707).abs() < 0.1 &&  // Check for off-diagonal elements close to 0.707
-			(after_rotate_transform.matrix2.y_axis.x.abs() - 0.707).abs() < 0.1, // that would indicate ~45° rotation
+				(after_rotate_transform.matrix2.x_axis.y.abs() - 0.707).abs() < 0.1 &&  // Check for off-diagonal elements close to 0.707
+				(after_rotate_transform.matrix2.y_axis.x.abs() - 0.707).abs() < 0.1, // that would indicate ~45° rotation
 			"Rotation should change matrix components with approximately 45° rotation"
 		);
 
