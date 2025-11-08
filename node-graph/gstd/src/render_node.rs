@@ -103,6 +103,7 @@ async fn create_context<'a: 'n>(
 		for_export: render_config.for_export,
 		render_output_type,
 		footprint: Footprint::default(),
+		scale: render_config.scale,
 		..Default::default()
 	};
 
@@ -136,12 +137,6 @@ async fn render<'a: 'n>(
 	let RenderIntermediate { ty, mut metadata, contains_artboard } = data;
 	metadata.apply_transform(footprint.transform);
 
-	let surface_handle = if cfg!(all(feature = "vello", target_family = "wasm")) {
-		_surface_handle.eval(None).await
-	} else {
-		None
-	};
-
 	let data = match (render_params.render_output_type, &ty) {
 		(RenderOutputTypeRequest::Svg, RenderIntermediateType::Svg(svg_data)) => {
 			let mut svg_renderer = SvgRender::new();
@@ -173,19 +168,32 @@ async fn render<'a: 'n>(
 				unreachable!("Attempted to render with Vello when no GPU executor is available");
 			};
 			let (child, context) = Arc::as_ref(vello_data);
-			let footprint_transform = vello::kurbo::Affine::new(footprint.transform.to_cols_array());
+
+			let surface_handle = if cfg!(all(feature = "vello", target_family = "wasm")) {
+				_surface_handle.eval(None).await
+			} else {
+				None
+			};
+
+			// When rendering to a surface, we do not want to apply the scale
+			let scale = if surface_handle.is_none() { render_params.scale } else { 1. };
+
+			let scale_transform = glam::DAffine2::from_scale(glam::DVec2::splat(scale));
+			let footprint_transform = scale_transform * footprint.transform;
+			let footprint_transform_vello = vello::kurbo::Affine::new(footprint_transform.to_cols_array());
 
 			let mut scene = vello::Scene::new();
-			scene.append(child, Some(footprint_transform));
+			scene.append(child, Some(footprint_transform_vello));
 
-			let encoding = scene.encoding_mut();
+			let resolution = (footprint.resolution.as_dvec2() * scale).as_uvec2();
 
 			// We now replace all transforms which are supposed to be infinite with a transform which covers the entire viewport
 			// See <https://xi.zulipchat.com/#narrow/channel/197075-vello/topic/Full.20screen.20color.2Fgradients/near/538435044> for more detail
-
+			let scaled_infinite_transform = vello::kurbo::Affine::scale_non_uniform(resolution.x as f64, resolution.y as f64);
+			let encoding = scene.encoding_mut();
 			for transform in encoding.transforms.iter_mut() {
 				if transform.matrix[0] == f32::INFINITY {
-					*transform = vello_encoding::Transform::from_kurbo(&(vello::kurbo::Affine::scale_non_uniform(footprint.resolution.x as f64, footprint.resolution.y as f64)))
+					*transform = vello_encoding::Transform::from_kurbo(&scaled_infinite_transform);
 				}
 			}
 
@@ -195,22 +203,21 @@ async fn render<'a: 'n>(
 			}
 
 			if let Some(surface_handle) = surface_handle {
-				exec.render_vello_scene(&scene, &surface_handle, footprint.resolution, context, background)
+				exec.render_vello_scene(&scene, &surface_handle, resolution, context, background)
 					.await
 					.expect("Failed to render Vello scene");
 
 				let frame = SurfaceFrame {
 					surface_id: surface_handle.window_id,
-					resolution: footprint.resolution,
+					// TODO: Find a cleaner way to get the unscaled resolution here.
+					// This is done because the surface frame (canvas) is in logical pixels, not physical pixels.
+					resolution,
 					transform: glam::DAffine2::IDENTITY,
 				};
 
 				RenderOutputType::CanvasFrame(frame)
 			} else {
-				let texture = exec
-					.render_vello_scene_to_texture(&scene, footprint.resolution, context, background)
-					.await
-					.expect("Failed to render Vello scene");
+				let texture = exec.render_vello_scene_to_texture(&scene, resolution, context, background).await.expect("Failed to render Vello scene");
 
 				RenderOutputType::Texture(ImageTexture { texture })
 			}

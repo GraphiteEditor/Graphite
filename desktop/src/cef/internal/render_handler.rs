@@ -21,12 +21,12 @@ impl<H: CefEventHandler> RenderHandlerImpl<H> {
 impl<H: CefEventHandler> ImplRenderHandler for RenderHandlerImpl<H> {
 	fn view_rect(&self, _browser: Option<&mut Browser>, rect: Option<&mut Rect>) {
 		if let Some(rect) = rect {
-			let view = self.event_handler.window_size();
+			let view_info = self.event_handler.view_info();
 			*rect = Rect {
 				x: 0,
 				y: 0,
-				width: view.width as i32,
-				height: view.height as i32,
+				width: view_info.width() as i32,
+				height: view_info.height() as i32,
 			};
 		}
 	}
@@ -78,7 +78,7 @@ impl<H: CefEventHandler> Clone for RenderHandlerImpl<H> {
 		}
 		Self {
 			object: self.object,
-			event_handler: self.event_handler.clone(),
+			event_handler: self.event_handler.duplicate(),
 		}
 	}
 }

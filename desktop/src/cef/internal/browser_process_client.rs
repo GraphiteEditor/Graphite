@@ -1,26 +1,30 @@
 use cef::rc::{Rc, RcImpl};
 use cef::sys::{_cef_client_t, cef_base_ref_counted_t};
-use cef::{DisplayHandler, ImplClient, LifeSpanHandler, RenderHandler, WrapClient};
+use cef::{DisplayHandler, ImplClient, LifeSpanHandler, LoadHandler, RenderHandler, WrapClient};
 
 use crate::cef::CefEventHandler;
 use crate::cef::ipc::{MessageType, UnpackMessage, UnpackedMessage};
 
 use super::browser_process_life_span_handler::BrowserProcessLifeSpanHandlerImpl;
+use super::browser_process_load_handler::LoadHandlerImpl;
 use super::display_handler::DisplayHandlerImpl;
+use super::render_handler::RenderHandlerImpl;
 
 pub(crate) struct BrowserProcessClientImpl<H: CefEventHandler> {
 	object: *mut RcImpl<_cef_client_t, Self>,
-	render_handler: RenderHandler,
 	event_handler: H,
+	load_handler: LoadHandler,
+	render_handler: RenderHandler,
 	display_handler: DisplayHandler,
 }
 impl<H: CefEventHandler> BrowserProcessClientImpl<H> {
-	pub(crate) fn new(render_handler: RenderHandler, event_handler: H) -> Self {
+	pub(crate) fn new(event_handler: &H) -> Self {
 		Self {
 			object: std::ptr::null_mut(),
-			render_handler,
-			event_handler: event_handler.clone(),
-			display_handler: DisplayHandler::new(DisplayHandlerImpl::new(event_handler)),
+			event_handler: event_handler.duplicate(),
+			load_handler: LoadHandler::new(LoadHandlerImpl::new(event_handler.duplicate())),
+			render_handler: RenderHandler::new(RenderHandlerImpl::new(event_handler.duplicate())),
+			display_handler: DisplayHandler::new(DisplayHandlerImpl::new(event_handler.duplicate())),
 		}
 	}
 }
@@ -52,6 +56,10 @@ impl<H: CefEventHandler> ImplClient for BrowserProcessClientImpl<H> {
 		1
 	}
 
+	fn load_handler(&self) -> Option<cef::LoadHandler> {
+		Some(self.load_handler.clone())
+	}
+
 	fn render_handler(&self) -> Option<RenderHandler> {
 		Some(self.render_handler.clone())
 	}
@@ -77,8 +85,9 @@ impl<H: CefEventHandler> Clone for BrowserProcessClientImpl<H> {
 		}
 		Self {
 			object: self.object,
+			event_handler: self.event_handler.duplicate(),
+			load_handler: self.load_handler.clone(),
 			render_handler: self.render_handler.clone(),
-			event_handler: self.event_handler.clone(),
 			display_handler: self.display_handler.clone(),
 		}
 	}
