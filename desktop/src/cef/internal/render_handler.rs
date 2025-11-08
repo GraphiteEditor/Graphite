@@ -50,7 +50,7 @@ impl<H: CefEventHandler> ImplRenderHandler for RenderHandlerImpl<H> {
 
 	#[cfg(feature = "accelerated_paint")]
 	fn on_accelerated_paint(&self, _browser: Option<&mut Browser>, type_: PaintElementType, _dirty_rect_count: usize, _dirty_rects: Option<&Rect>, info: Option<&cef::AcceleratedPaintInfo>) {
-		use crate::cef::texture_import::shared_texture_handle::SharedTextureHandle;
+		use cef::osr_texture_import::SharedTextureHandle;
 
 		if type_ != PaintElementType::default() {
 			return;
