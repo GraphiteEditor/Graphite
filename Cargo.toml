@@ -106,7 +106,7 @@ quote = "1.0"
 chrono = "0.4"
 ron = "0.11"
 fastnoise-lite = "1.1"
-wgpu = { version = "25.0", features = [
+wgpu = { version = "26.0", features = [
 	# We don't have wgpu on multiple threads (yet) https://github.com/gfx-rs/wgpu/blob/trunk/CHANGELOG.md#wgpu-types-now-send-sync-on-wasm
 	"fragile-send-sync-non-atomic-wasm",
 	"spirv",
@@ -138,8 +138,8 @@ winit = { git = "https://github.com/rust-windowing/winit.git" }
 keyboard-types = "0.8"
 url = "2.5"
 tokio = { version = "1.29", features = ["fs", "macros", "io-std", "rt"] }
-vello = { git = "https://github.com/linebender/vello.git", rev = "87cc5bee6d3a34d15017dbbb58634ddc7f33ff9b" } # TODO switch back to stable when a release is made
-vello_encoding = { git = "https://github.com/linebender/vello.git", rev = "87cc5bee6d3a34d15017dbbb58634ddc7f33ff9b" } # TODO switch back to stable when a release is made
+vello = { version = "0.6" }
+vello_encoding = { version = "0.6" }
 resvg = "0.45"
 usvg = "0.45"
 rand = { version = "0.9", default-features = false, features = ["std_rng"] }
@@ -178,7 +178,7 @@ syn = { version = "2.0", default-features = false, features = [
 	"extra-traits",
 	"proc-macro",
 ] }
-kurbo = { version = "0.11", features = ["serde"] }
+kurbo = { version = "0.12", features = ["serde"] }
 lyon_geom = "1.0"
 petgraph = { version = "0.7", default-features = false, features = ["graphmap"] }
 half = { version = "2.4", default-features = false, features = ["bytemuck"] }

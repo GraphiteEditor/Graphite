@@ -1012,15 +1012,20 @@ impl OverlayContextInternal {
 			data[index..index + 4].copy_from_slice(&rgba);
 		}
 
-		let image = peniko::Image {
-			data: data.into(),
-			format: peniko::ImageFormat::Rgba8,
-			width: PATTERN_WIDTH,
-			height: PATTERN_HEIGHT,
-			x_extend: peniko::Extend::Repeat,
-			y_extend: peniko::Extend::Repeat,
-			alpha: 1.,
-			quality: peniko::ImageQuality::default(),
+		let image = peniko::ImageBrush {
+			image: peniko::ImageData {
+				data: data.into(),
+				format: peniko::ImageFormat::Rgba8,
+				width: PATTERN_WIDTH,
+				height: PATTERN_HEIGHT,
+				alpha_type: peniko::ImageAlphaType::Alpha,
+			},
+			sampler: peniko::ImageSampler {
+				x_extend: peniko::Extend::Repeat,
+				y_extend: peniko::Extend::Repeat,
+				quality: peniko::ImageQuality::default(),
+				alpha: 1.,
+			},
 		};
 
 		let path = self.push_path(subpaths, transform);
