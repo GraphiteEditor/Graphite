@@ -63,11 +63,7 @@ pub(crate) struct ViewInfo {
 }
 impl ViewInfo {
 	pub(crate) fn new() -> Self {
-		Self {
-			width: 1,
-			height: 1,
-			scale: 1.,
-		}
+		Self { width: 1, height: 1, scale: 1. }
 	}
 	pub(crate) fn apply_update(&mut self, update: ViewInfoUpdate) {
 		match update {
