@@ -20,7 +20,7 @@ impl CefContext for SingleThreadedCefContext {
 	}
 
 	fn handle_window_event(&mut self, event: &WindowEvent) {
-		input::handle_window_event(&self.browser, &mut self.input_state, event, self.event_handler.as_ref());
+		input::handle_window_event(&self.browser, &mut self.input_state, event);
 	}
 
 	fn notify_view_info_changed(&self) {

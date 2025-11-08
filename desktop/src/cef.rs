@@ -77,9 +77,6 @@ impl ViewInfo {
 			_ => {}
 		}
 	}
-	pub(crate) fn scale(&self) -> f64 {
-		self.scale
-	}
 	pub(crate) fn zoom(&self) -> f64 {
 		self.scale.ln() / 1.2_f64.ln()
 	}
