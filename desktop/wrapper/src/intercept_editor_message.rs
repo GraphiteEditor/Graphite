@@ -1,10 +1,7 @@
-use graphite_editor::messages::prelude::*;
-
 use super::DesktopWrapperMessageDispatcher;
-use super::messages::{DesktopFrontendMessage, EditorMessage};
+use super::messages::EditorMessage;
 
-pub(super) fn intercept_editor_message(dispatcher: &mut DesktopWrapperMessageDispatcher, message: EditorMessage) -> Option<EditorMessage> {
-	match message {
-		m => Some(m),
-	}
+pub(super) fn intercept_editor_message(_dispatcher: &mut DesktopWrapperMessageDispatcher, message: EditorMessage) -> Option<EditorMessage> {
+	// TODO: remove it turns out to be unnecessary
+	Some(message)
 }
