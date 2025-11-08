@@ -2192,22 +2192,8 @@ dependencies = [
  "dyn-any",
  "glam",
  "graphene-core",
-<<<<<<< HEAD
-<<<<<<< HEAD
  "kurbo 0.12.0",
- "linesweeper 0.1.0",
-||||||| parent of ca7c211b2 (Cleanup)
- "kurbo",
- "linesweeper 0.1.0",
-=======
- "kurbo",
-||||||| parent of d2289c68a (Update linesweeper version to current main)
- "kurbo",
-=======
- "kurbo 0.12.0",
->>>>>>> d2289c68a (Update linesweeper version to current main)
  "linesweeper",
->>>>>>> ca7c211b2 (Cleanup)
  "log",
  "node-macro",
  "path-bool",
@@ -3195,7 +3181,6 @@ checksum = "c62026ae44756f8a599ba21140f350303d4f08dcdcc71b5ad9c9bb8128c13c62"
 dependencies = [
  "arrayvec",
  "euclid",
- "serde",
  "smallvec",
 ]
 
@@ -3271,6 +3256,28 @@ dependencies = [
  "libc",
  "redox_syscall",
 ]
+
+[[package]]
+name = "linebender_resource_handle"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d4a5ff6bcca6c4867b1c4fd4ef63e4db7436ef363e0ad7531d1558856bae64f4"
+
+[[package]]
+name = "linesweeper"
+version = "0.1.0"
+source = "git+https://github.com/jneem/linesweeper#3025966b31c05a61ad57c5da008f538202c70af4"
+dependencies = [
+ "arrayvec",
+ "kurbo 0.12.0",
+ "polycool",
+]
+
+[[package]]
+name = "linux-raw-sys"
+version = "0.9.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cd945864f07fe9f5371a27ad7b52a172b4b499999f1d97574c9fa68373937e12"
 
 [[package]]
 name = "litemap"
@@ -4044,14 +4051,6 @@ dependencies = [
  "glam",
  "glob",
  "image",
-<<<<<<< HEAD
- "kurbo 0.11.3",
- "linesweeper 0.0.4",
-||||||| parent of ca7c211b2 (Cleanup)
- "kurbo",
- "linesweeper 0.0.4",
-=======
->>>>>>> ca7c211b2 (Cleanup)
  "lyon_geom",
  "regex",
  "resvg",
