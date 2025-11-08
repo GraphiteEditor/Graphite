@@ -8,6 +8,7 @@ use crate::messages::prelude::*;
 pub struct Dispatcher {
 	message_queues: Vec<VecDeque<Message>>,
 	pub responses: Vec<FrontendMessage>,
+	pub frontend_update_messages: Vec<Message>,
 	pub message_handlers: DispatcherMessageHandlers,
 }
 
@@ -42,19 +43,24 @@ impl DispatcherMessageHandlers {
 /// The last occurrence of the message in the message queue is sufficient to ensure correct behavior.
 /// In addition, these messages do not change any state in the backend (aside from caches).
 const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
-	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::PropertiesPanel(
-		PropertiesPanelMessageDiscriminant::Refresh,
-	))),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::DocumentStructureChanged)),
-	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::Overlays(OverlaysMessageDiscriminant::Draw))),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::NodeGraph(
 		NodeGraphMessageDiscriminant::RunDocumentGraph,
 	))),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::SubmitActiveGraphRender),
+	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::TriggerFontLoad),
+];
+/// Since we don't need to update the frontend multiple times per frame,
+/// we have a set of messages which we will buffer until the next frame is requested.
+const FRONTEND_UPDATE_MESSAGES: &[MessageDiscriminant] = &[
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::PropertiesPanel(
+		PropertiesPanelMessageDiscriminant::Refresh,
+	))),
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::UpdateDocumentWidgets),
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::Overlays(OverlaysMessageDiscriminant::Draw))),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::RenderRulers)),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::RenderScrollbars)),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayerStructure),
-	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::TriggerFontLoad),
 ];
 const DEBUG_MESSAGE_BLOCK_LIST: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Broadcast(BroadcastMessageDiscriminant::TriggerEvent(EventMessageDiscriminant::AnimationFrame)),
@@ -105,6 +111,19 @@ impl Dispatcher {
 
 		while let Some(message) = self.message_queues.last_mut().and_then(VecDeque::pop_front) {
 			// Skip processing of this message if it will be processed later (at the end of the shallowest level queue)
+			if FRONTEND_UPDATE_MESSAGES.contains(&message.to_discriminant()) {
+				let already_in_queue = self.message_queues.first().is_some_and(|queue| queue.contains(&message));
+				if already_in_queue {
+					self.cleanup_queues(false);
+					continue;
+				} else if self.message_queues.len() > 1 {
+					if !self.frontend_update_messages.contains(&message) {
+						self.frontend_update_messages.push(message);
+					}
+					self.cleanup_queues(false);
+					continue;
+				}
+			}
 			if SIDE_EFFECT_FREE_MESSAGES.contains(&message.to_discriminant()) {
 				let already_in_queue = self.message_queues.first().filter(|queue| queue.contains(&message)).is_some();
 				if already_in_queue {
@@ -128,6 +147,9 @@ impl Dispatcher {
 			// Process the action by forwarding it to the relevant message handler, or saving the FrontendMessage to be sent to the frontend
 			match message {
 				Message::Animation(message) => {
+					if let AnimationMessage::IncrementFrameCounter = &message {
+						self.message_queues[0].extend(self.frontend_update_messages.drain(..));
+					}
 					self.message_handlers.animation_message_handler.process_message(message, &mut queue, ());
 				}
 				Message::AppWindow(message) => {
