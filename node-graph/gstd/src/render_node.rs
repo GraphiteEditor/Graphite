@@ -182,14 +182,15 @@ async fn render<'a: 'n>(
 			let mut scene = vello::Scene::new();
 			scene.append(child, Some(footprint_transform_vello));
 
-			let encoding = scene.encoding_mut();
+			let resolution = (footprint.resolution.as_dvec2() * render_params.scale).as_uvec2();
 
 			// We now replace all transforms which are supposed to be infinite with a transform which covers the entire viewport
 			// See <https://xi.zulipchat.com/#narrow/channel/197075-vello/topic/Full.20screen.20color.2Fgradients/near/538435044> for more detail
-
+			let scaled_infinite_transform = vello::kurbo::Affine::scale_non_uniform(resolution.x as f64, resolution.y as f64);
+			let encoding = scene.encoding_mut();
 			for transform in encoding.transforms.iter_mut() {
 				if transform.matrix[0] == f32::INFINITY {
-					*transform = vello_encoding::Transform::from_kurbo(&(vello::kurbo::Affine::scale_non_uniform(footprint.resolution.x as f64, footprint.resolution.y as f64)))
+					*transform = vello_encoding::Transform::from_kurbo(&scaled_infinite_transform);
 				}
 			}
 
