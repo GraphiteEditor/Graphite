@@ -34,7 +34,7 @@ impl MessageHandler<ViewportMessage, ()> for ViewportMessageHandler {
 					size: Point { x: width, y: height },
 				};
 			}
-			ViewportMessage::Trigger => {}
+			ViewportMessage::RepropagateUpdate => {}
 		}
 
 		let physical_bounds = self.bounds().to_physical();

@@ -31,7 +31,7 @@ impl<'a> MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessa
 					responses.add(NavigationMessage::CanvasPan { delta: self.dimensions.as_dvec2() });
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 
-					responses.add(ViewportMessage::Trigger);
+					responses.add(ViewportMessage::RepropagateUpdate);
 
 					responses.add(DeferMessage::AfterNavigationReady {
 						messages: vec![DocumentMessage::ZoomCanvasToFitAll.into(), DocumentMessage::DeselectAllLayers.into()],
