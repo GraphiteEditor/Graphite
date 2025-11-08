@@ -90,11 +90,11 @@ impl ViewInfo {
 		}
 		Some(self.scale)
 	}
-	pub(crate) fn zoom(&self) -> Option<f64> {
+	pub(crate) fn zoom(&self) -> f64 {
 		if !self.use_fractional {
-			return None;
+			return 0.;
 		}
-		Some(self.scale.ln() / 1.2f64.ln())
+		self.scale.ln() / 1.2f64.ln()
 	}
 	pub(crate) fn width(&self) -> usize {
 		if self.use_fractional { self.width } else { (self.width as f64 / self.scale).round() as usize }

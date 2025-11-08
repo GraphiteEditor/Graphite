@@ -30,9 +30,7 @@ pub(super) trait NotifyViewInfoChanged {
 }
 impl<T: cef::ImplBrowserHost> NotifyViewInfoChanged for T {
 	fn notify_view_info_changed(&self, view_info: &ViewInfo) {
-		if let Some(zoom) = view_info.zoom() {
-			self.set_zoom_level(zoom);
-		}
+		self.set_zoom_level(view_info.zoom());
 		self.notify_screen_info_changed();
 		self.was_resized();
 	}
