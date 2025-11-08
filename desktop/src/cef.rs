@@ -32,9 +32,7 @@ mod platform;
 mod utility;
 
 #[cfg(feature = "accelerated_paint")]
-mod texture_import;
-#[cfg(feature = "accelerated_paint")]
-use texture_import::SharedTextureHandle;
+use cef::osr_texture_import::SharedTextureHandle;
 
 pub(crate) use context::{CefContext, CefContextBuilder, InitError};
 
