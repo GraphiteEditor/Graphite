@@ -182,7 +182,7 @@ impl App {
 			}
 			DesktopFrontendMessage::DragWindow => {
 				if let Some(window) = &self.window {
-					let _ = window.start_drag();
+					window.start_drag();
 				}
 			}
 			DesktopFrontendMessage::CloseWindow => {
@@ -384,7 +384,7 @@ impl ApplicationHandler for App {
 	}
 
 	fn window_event(&mut self, event_loop: &dyn ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
-		self.cef_context.handle_window_event(&event, self.window_scale);
+		self.cef_context.handle_window_event(&event);
 
 		match event {
 			WindowEvent::CloseRequested => {

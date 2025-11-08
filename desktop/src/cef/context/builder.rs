@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use cef::args::Args;
 use cef::sys::{CEF_API_VERSION_LAST, cef_resultcode_t};
 use cef::{
-	App, BrowserSettings, CefString, Client, DictionaryValue, ImplCommandLine, ImplRequestContext, RenderHandler, RequestContextSettings, SchemeHandlerFactory, Settings, WindowInfo, api_hash,
+	App, BrowserSettings, CefString, Client, DictionaryValue, ImplCommandLine, ImplRequestContext, RequestContextSettings, SchemeHandlerFactory, Settings, WindowInfo, api_hash,
 	browser_host_create_browser_sync, execute_process,
 };
 
@@ -13,7 +13,7 @@ use crate::cef::CefEventHandler;
 use crate::cef::consts::{RESOURCE_DOMAIN, RESOURCE_SCHEME};
 use crate::cef::dirs::create_instance_dir;
 use crate::cef::input::InputState;
-use crate::cef::internal::{BrowserProcessAppImpl, BrowserProcessClientImpl, RenderHandlerImpl, RenderProcessAppImpl, SchemeHandlerFactoryImpl};
+use crate::cef::internal::{BrowserProcessAppImpl, BrowserProcessClientImpl, RenderProcessAppImpl, SchemeHandlerFactoryImpl};
 
 pub(crate) struct CefContextBuilder<H: CefEventHandler> {
 	pub(crate) args: Args,
@@ -131,7 +131,7 @@ impl<H: CefEventHandler> CefContextBuilder<H> {
 
 	fn initialize_inner(self, event_handler: &H, settings: Settings) -> Result<(), InitError> {
 		// Attention! Wrapping this in an extra App is necessary, otherwise the program still compiles but segfaults
-		let mut cef_app = App::new(BrowserProcessAppImpl::new(event_handler.clone()));
+		let mut cef_app = App::new(BrowserProcessAppImpl::new(event_handler.duplicate()));
 
 		let result = cef::initialize(Some(self.args.as_main_args()), Some(&settings), Some(&mut cef_app), std::ptr::null_mut());
 		if result != 1 {
@@ -146,8 +146,7 @@ impl<H: CefEventHandler> CefContextBuilder<H> {
 }
 
 fn create_browser<H: CefEventHandler>(event_handler: H, instance_dir: PathBuf, disable_gpu_acceleration: bool) -> Result<SingleThreadedCefContext, InitError> {
-	let render_handler = RenderHandler::new(RenderHandlerImpl::new(event_handler.clone()));
-	let mut client = Client::new(BrowserProcessClientImpl::new(render_handler, event_handler.clone()));
+	let mut client = Client::new(BrowserProcessClientImpl::new(&event_handler));
 
 	#[cfg(feature = "accelerated_paint")]
 	let use_accelerated_paint = if disable_gpu_acceleration {
@@ -180,7 +179,7 @@ fn create_browser<H: CefEventHandler>(event_handler: H, instance_dir: PathBuf, d
 		return Err(InitError::RequestContextCreationFailed);
 	};
 
-	let mut scheme_handler_factory = SchemeHandlerFactory::new(SchemeHandlerFactoryImpl::new(event_handler.clone()));
+	let mut scheme_handler_factory = SchemeHandlerFactory::new(SchemeHandlerFactoryImpl::new(event_handler.duplicate()));
 	incognito_request_context.clear_scheme_handler_factories();
 	incognito_request_context.register_scheme_handler_factory(Some(&CefString::from(RESOURCE_SCHEME)), Some(&CefString::from(RESOURCE_DOMAIN)), Some(&mut scheme_handler_factory));
 
@@ -197,6 +196,7 @@ fn create_browser<H: CefEventHandler>(event_handler: H, instance_dir: PathBuf, d
 
 	if let Some(browser) = browser {
 		Ok(SingleThreadedCefContext {
+			event_handler: Box::new(event_handler),
 			browser,
 			input_state: InputState::default(),
 			instance_dir,

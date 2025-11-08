@@ -38,7 +38,7 @@ use texture_import::SharedTextureHandle;
 
 pub(crate) use context::{CefContext, CefContextBuilder, InitError};
 
-pub(crate) trait CefEventHandler: Clone + Send + Sync + 'static {
+pub(crate) trait CefEventHandler: Send + Sync + 'static {
 	fn view_info(&self) -> ViewInfo;
 	fn draw<'a>(&self, frame_buffer: FrameBufferRef<'a>);
 	#[cfg(feature = "accelerated_paint")]
@@ -50,6 +50,9 @@ pub(crate) trait CefEventHandler: Clone + Send + Sync + 'static {
 	fn schedule_cef_message_loop_work(&self, scheduled_time: Instant);
 	fn initialized_web_communication(&self);
 	fn receive_web_message(&self, message: &[u8]);
+	fn duplicate(&self) -> Self
+	where
+		Self: Sized;
 }
 
 #[derive(Clone, Copy)]
@@ -57,10 +60,16 @@ pub(crate) struct ViewInfo {
 	width: usize,
 	height: usize,
 	scale: f64,
+	use_fractional: bool,
 }
 impl ViewInfo {
 	pub(crate) fn new() -> Self {
-		Self { width: 1, height: 1, scale: 1.0 }
+		Self {
+			width: 1,
+			height: 1,
+			scale: 1.0,
+			use_fractional: false,
+		}
 	}
 	pub(crate) fn apply_update(&mut self, update: ViewInfoUpdate) {
 		match update {
@@ -73,15 +82,42 @@ impl ViewInfo {
 			}
 			_ => {}
 		}
+		self.use_fractional = self.use_fractional();
 	}
-	pub(crate) fn scale(&self) -> f64 {
-		self.scale
+	pub(crate) fn scale(&self) -> Option<f64> {
+		if self.use_fractional {
+			return None;
+		}
+		Some(self.scale)
 	}
-	pub(crate) fn scaled_width(&self) -> usize {
-		(self.width as f64 / self.scale).round() as usize
+	pub(crate) fn zoom(&self) -> Option<f64> {
+		if !self.use_fractional {
+			return None;
+		}
+		Some(self.scale.ln() / 1.2f64.ln())
 	}
-	pub(crate) fn scaled_height(&self) -> usize {
-		(self.height as f64 / self.scale).round() as usize
+	pub(crate) fn width(&self) -> usize {
+		if self.use_fractional { self.width } else { (self.width as f64 / self.scale).round() as usize }
+	}
+	pub(crate) fn height(&self) -> usize {
+		if self.use_fractional { self.height } else { (self.height as f64 / self.scale).round() as usize }
+	}
+
+	fn use_fractional(&self) -> bool {
+		#[cfg(not(target_os = "macos"))]
+		{
+			let frac_width = (self.width as f64 / self.scale) as usize;
+			let frac_height = (self.height as f64 / self.scale) as usize;
+			frac_width != self.width || frac_height != self.height
+		}
+		#[cfg(target_os = "macos")]
+		{
+			let int_width = (self.width as f64 / self.scale.round()) as usize;
+			let int_height = (self.height as f64 / self.scale.round()) as usize;
+			let frac_width = (self.width as f64 / self.scale) as usize;
+			let frac_height = (self.height as f64 / self.scale) as usize;
+			int_width != frac_width || int_height != frac_height
+		}
 	}
 }
 impl Default for ViewInfo {
@@ -116,7 +152,6 @@ impl Read for ResourceReader {
 	}
 }
 
-#[derive(Clone)]
 pub(crate) struct CefHandler {
 	wgpu_context: WgpuContext,
 	app_event_scheduler: AppEventScheduler,
@@ -270,6 +305,17 @@ impl CefEventHandler for CefHandler {
 			return;
 		};
 		self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(desktop_wrapper_message));
+	}
+
+	fn duplicate(&self) -> Self
+	where
+		Self: Sized,
+	{
+		Self {
+			wgpu_context: self.wgpu_context.clone(),
+			app_event_scheduler: self.app_event_scheduler.clone(),
+			view_info_receiver: self.view_info_receiver.clone(),
+		}
 	}
 }
 

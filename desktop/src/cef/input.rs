@@ -7,11 +7,14 @@ use winit::event::{ButtonSource, ElementState, MouseButton, MouseScrollDelta, Wi
 mod keymap;
 use keymap::{ToNativeKeycode, ToVKBits};
 
+use crate::cef::CefEventHandler;
+
 use super::consts::{MULTICLICK_ALLOWED_TRAVEL, MULTICLICK_TIMEOUT, PINCH_ZOOM_SPEED, SCROLL_LINE_HEIGHT, SCROLL_LINE_WIDTH, SCROLL_SPEED_X, SCROLL_SPEED_Y};
 
-pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputState, event: &WindowEvent, scale: f64) {
+pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputState, event: &WindowEvent, event_handler: &dyn CefEventHandler) {
 	match event {
 		WindowEvent::PointerMoved { position, .. } | WindowEvent::PointerEntered { position, .. } => {
+			let scale = event_handler.view_info().scale().unwrap_or(1.0);
 			input_state.cursor_move(&position.to_logical(scale));
 
 			let Some(host) = browser.host() else { return };
@@ -19,6 +22,7 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 		}
 		WindowEvent::PointerLeft { position, .. } => {
 			if let Some(position) = position {
+				let scale = event_handler.view_info().scale().unwrap_or(1.0);
 				input_state.cursor_move(&position.to_logical(scale));
 			}
 

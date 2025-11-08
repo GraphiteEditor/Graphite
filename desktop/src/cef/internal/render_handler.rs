@@ -25,8 +25,8 @@ impl<H: CefEventHandler> ImplRenderHandler for RenderHandlerImpl<H> {
 			*rect = Rect {
 				x: 0,
 				y: 0,
-				width: view_info.scaled_width() as i32,
-				height: view_info.scaled_height() as i32,
+				width: view_info.width() as i32,
+				height: view_info.height() as i32,
 			};
 		}
 	}
@@ -34,19 +34,19 @@ impl<H: CefEventHandler> ImplRenderHandler for RenderHandlerImpl<H> {
 	fn screen_info(&self, _browser: Option<&mut Browser>, screen_info: Option<&mut cef::ScreenInfo>) -> std::ffi::c_int {
 		if let Some(screen_info) = screen_info {
 			let view_info = self.event_handler.view_info();
+			if let Some(scale) = view_info.scale() {
+				let rect = Rect {
+					x: 0,
+					y: 0,
+					width: view_info.width() as i32,
+					height: view_info.height() as i32,
+				};
+				screen_info.rect = rect.clone();
+				screen_info.available_rect = rect;
 
-			screen_info.device_scale_factor = view_info.scale() as f32;
-
-			let rect = Rect {
-				x: 0,
-				y: 0,
-				width: view_info.scaled_width() as i32,
-				height: view_info.scaled_height() as i32,
-			};
-			screen_info.rect = rect.clone();
-			screen_info.available_rect = rect;
-
-			return 1;
+				screen_info.device_scale_factor = scale as f32;
+				return 1;
+			}
 		}
 		0
 	}
@@ -98,7 +98,7 @@ impl<H: CefEventHandler> Clone for RenderHandlerImpl<H> {
 		}
 		Self {
 			object: self.object,
-			event_handler: self.event_handler.clone(),
+			event_handler: self.event_handler.duplicate(),
 		}
 	}
 }

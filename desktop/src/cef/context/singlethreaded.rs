@@ -1,14 +1,15 @@
 use cef::{Browser, ImplBrowser};
 use winit::event::WindowEvent;
 
-use crate::cef::input;
 use crate::cef::input::InputState;
 use crate::cef::internal::NotifyViewInfoChanged;
 use crate::cef::ipc::{MessageType, SendMessage};
+use crate::cef::{CefEventHandler, input};
 
 use super::CefContext;
 
 pub(super) struct SingleThreadedCefContext {
+	pub(super) event_handler: Box<dyn CefEventHandler>,
 	pub(super) browser: Browser,
 	pub(super) input_state: InputState,
 	pub(super) instance_dir: std::path::PathBuf,
@@ -19,12 +20,13 @@ impl CefContext for SingleThreadedCefContext {
 		cef::do_message_loop_work();
 	}
 
-	fn handle_window_event(&mut self, event: &WindowEvent, scale: f64) {
-		input::handle_window_event(&self.browser, &mut self.input_state, event, scale)
+	fn handle_window_event(&mut self, event: &WindowEvent) {
+		input::handle_window_event(&self.browser, &mut self.input_state, event, self.event_handler.as_ref());
 	}
 
 	fn notify_view_info_changed(&self) {
-		self.browser.host().unwrap().notify_view_info_changed();
+		let view_info = self.event_handler.view_info();
+		self.browser.host().unwrap().notify_view_info_changed(&view_info);
 	}
 
 	fn send_web_message(&self, message: Vec<u8>) {
