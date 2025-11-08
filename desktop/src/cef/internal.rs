@@ -22,16 +22,3 @@ pub(super) use browser_process_app::BrowserProcessAppImpl;
 pub(super) use browser_process_client::BrowserProcessClientImpl;
 pub(super) use render_process_app::RenderProcessAppImpl;
 pub(super) use scheme_handler_factory::SchemeHandlerFactoryImpl;
-
-use crate::cef::ViewInfo;
-
-pub(super) trait NotifyViewInfoChanged {
-	fn notify_view_info_changed(&self, view_info: &ViewInfo);
-}
-impl<T: cef::ImplBrowserHost> NotifyViewInfoChanged for T {
-	fn notify_view_info_changed(&self, view_info: &ViewInfo) {
-		self.set_zoom_level(view_info.zoom());
-		self.notify_screen_info_changed();
-		self.was_resized();
-	}
-}

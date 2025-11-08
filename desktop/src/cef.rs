@@ -60,15 +60,13 @@ pub(crate) struct ViewInfo {
 	width: usize,
 	height: usize,
 	scale: f64,
-	use_fractional: bool,
 }
 impl ViewInfo {
 	pub(crate) fn new() -> Self {
 		Self {
 			width: 1,
 			height: 1,
-			scale: 1.0,
-			use_fractional: false,
+			scale: 1.,
 		}
 	}
 	pub(crate) fn apply_update(&mut self, update: ViewInfoUpdate) {
@@ -77,47 +75,23 @@ impl ViewInfo {
 				self.width = width;
 				self.height = height;
 			}
-			ViewInfoUpdate::Scale(scale) if scale > 0.0 => {
+			ViewInfoUpdate::Scale(scale) if scale > 0. => {
 				self.scale = scale;
 			}
 			_ => {}
 		}
-		self.use_fractional = self.use_fractional();
 	}
-	pub(crate) fn scale(&self) -> Option<f64> {
-		if self.use_fractional {
-			return None;
-		}
-		Some(self.scale)
+	pub(crate) fn scale(&self) -> f64 {
+		self.scale
 	}
 	pub(crate) fn zoom(&self) -> f64 {
-		if !self.use_fractional {
-			return 0.;
-		}
-		self.scale.ln() / 1.2f64.ln()
+		self.scale.ln() / 1.2_f64.ln()
 	}
 	pub(crate) fn width(&self) -> usize {
-		if self.use_fractional { self.width } else { (self.width as f64 / self.scale).round() as usize }
+		self.width
 	}
 	pub(crate) fn height(&self) -> usize {
-		if self.use_fractional { self.height } else { (self.height as f64 / self.scale).round() as usize }
-	}
-
-	fn use_fractional(&self) -> bool {
-		#[cfg(not(target_os = "macos"))]
-		{
-			let frac_width = (self.width as f64 / self.scale) as usize;
-			let frac_height = (self.height as f64 / self.scale) as usize;
-			frac_width != self.width || frac_height != self.height
-		}
-		#[cfg(target_os = "macos")]
-		{
-			let int_width = (self.width as f64 / self.scale.round()) as usize;
-			let int_height = (self.height as f64 / self.scale.round()) as usize;
-			let frac_width = (self.width as f64 / self.scale) as usize;
-			let frac_height = (self.height as f64 / self.scale) as usize;
-			int_width != frac_width || int_height != frac_height
-		}
+		self.height
 	}
 }
 impl Default for ViewInfo {

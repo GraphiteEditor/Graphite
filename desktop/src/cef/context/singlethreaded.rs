@@ -1,8 +1,7 @@
-use cef::{Browser, ImplBrowser};
+use cef::{Browser, ImplBrowser, ImplBrowserHost};
 use winit::event::WindowEvent;
 
 use crate::cef::input::InputState;
-use crate::cef::internal::NotifyViewInfoChanged;
 use crate::cef::ipc::{MessageType, SendMessage};
 use crate::cef::{CefEventHandler, input};
 
@@ -26,7 +25,9 @@ impl CefContext for SingleThreadedCefContext {
 
 	fn notify_view_info_changed(&self) {
 		let view_info = self.event_handler.view_info();
-		self.browser.host().unwrap().notify_view_info_changed(&view_info);
+		let host = self.browser.host().unwrap();
+		host.set_zoom_level(view_info.zoom());
+		host.was_resized();
 	}
 
 	fn send_web_message(&self, message: Vec<u8>) {
