@@ -137,12 +137,6 @@ async fn render<'a: 'n>(
 	let RenderIntermediate { ty, mut metadata, contains_artboard } = data;
 	metadata.apply_transform(footprint.transform);
 
-	let surface_handle = if cfg!(all(feature = "vello", target_family = "wasm")) {
-		_surface_handle.eval(None).await
-	} else {
-		None
-	};
-
 	let data = match (render_params.render_output_type, &ty) {
 		(RenderOutputTypeRequest::Svg, RenderIntermediateType::Svg(svg_data)) => {
 			let mut svg_renderer = SvgRender::new();
@@ -175,14 +169,23 @@ async fn render<'a: 'n>(
 			};
 			let (child, context) = Arc::as_ref(vello_data);
 
-			let scale_transform = glam::DAffine2::from_scale(glam::DVec2::splat(render_params.scale));
+			let surface_handle = if cfg!(all(feature = "vello", target_family = "wasm")) {
+				_surface_handle.eval(None).await
+			} else {
+				None
+			};
+
+			// When rendering to a surface, we do not want to apply the scale
+			let scale = if surface_handle.is_none() { render_params.scale } else { 1. };
+
+			let scale_transform = glam::DAffine2::from_scale(glam::DVec2::splat(scale));
 			let footprint_transform = scale_transform * footprint.transform;
 			let footprint_transform_vello = vello::kurbo::Affine::new(footprint_transform.to_cols_array());
 
 			let mut scene = vello::Scene::new();
 			scene.append(child, Some(footprint_transform_vello));
 
-			let resolution = (footprint.resolution.as_dvec2() * render_params.scale).as_uvec2();
+			let resolution = (footprint.resolution.as_dvec2() * scale).as_uvec2();
 
 			// We now replace all transforms which are supposed to be infinite with a transform which covers the entire viewport
 			// See <https://xi.zulipchat.com/#narrow/channel/197075-vello/topic/Full.20screen.20color.2Fgradients/near/538435044> for more detail
@@ -198,8 +201,6 @@ async fn render<'a: 'n>(
 			if !contains_artboard && !render_params.hide_artboards {
 				background = Color::WHITE;
 			}
-
-			let resolution = (footprint.resolution.as_dvec2() * render_params.scale).as_uvec2();
 
 			if let Some(surface_handle) = surface_handle {
 				exec.render_vello_scene(&scene, &surface_handle, resolution, context, background)
