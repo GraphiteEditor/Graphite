@@ -4,8 +4,6 @@ use kurbo::{BezPath, Join, ParamCurve, PathEl, PathSeg};
 
 /// Value to control smoothness and mathematical accuracy to offset a cubic Bezier.
 const CUBIC_REGULARIZATION_ACCURACY: f64 = 0.5;
-/// Accuracy of fitting offset curve to Bezier paths.
-const CUBIC_TO_BEZPATH_ACCURACY: f64 = 1e-3;
 /// Constant used to determine if `f64`s are equivalent.
 pub const MAX_ABSOLUTE_DIFFERENCE: f64 = 1e-7;
 /// Squared version to avoid sqrt in distance checks.
@@ -36,9 +34,8 @@ pub fn offset_bezpath(bezpath: &BezPath, distance: f64, join: Join, miter_limit:
 				return None;
 			}
 
-			let cubic_offset = kurbo::offset::CubicOffset::new_regularized(cubic_bez, distance, CUBIC_REGULARIZATION_ACCURACY);
-
-			let fitted = kurbo::fit_to_bezpath(&cubic_offset, CUBIC_TO_BEZPATH_ACCURACY);
+			let mut fitted = BezPath::new();
+			kurbo::offset::offset_cubic(cubic_bez, distance, CUBIC_REGULARIZATION_ACCURACY, &mut fitted);
 
 			if fitted.segments().count() > MAX_FITTED_SEGMENTS {
 				None

@@ -2,7 +2,7 @@ use graphene_std::Color;
 use graphene_std::raster::Image;
 use graphite_editor::messages::app_window::app_window_message_handler::AppWindowPlatform;
 use graphite_editor::messages::layout::LayoutMessage;
-use graphite_editor::messages::prelude::{AppWindowMessage, DocumentMessage, FrontendMessage, PortfolioMessage, PreferencesMessage};
+use graphite_editor::messages::prelude::*;
 use graphite_editor::messages::tool::tool_messages::tool_prelude::{LayoutTarget, WidgetId};
 
 use crate::messages::Platform;

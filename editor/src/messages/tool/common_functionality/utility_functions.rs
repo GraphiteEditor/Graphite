@@ -262,6 +262,7 @@ pub fn resize_bounds(
 	snap_manager: &mut SnapManager,
 	snap_candidates: &mut Vec<SnapCandidatePoint>,
 	input: &InputPreprocessorMessageHandler,
+	viewport: &ViewportMessageHandler,
 	center: bool,
 	constrain: bool,
 	tool: ToolType,
@@ -271,7 +272,7 @@ pub fn resize_bounds(
 		let snap = Some(SizeSnapData {
 			manager: snap_manager,
 			points: snap_candidates,
-			snap_data: SnapData::ignore(document, input, dragging_layers),
+			snap_data: SnapData::ignore(document, input, viewport, dragging_layers),
 		});
 		let (position, size) = movement.new_size(input.mouse.position, bounds.original_bound_transform, center, constrain, snap);
 		let (delta, mut pivot) = movement.bounds_to_scale_transform(position, size);

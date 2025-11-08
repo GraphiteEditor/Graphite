@@ -1,7 +1,6 @@
 use crate::application::Editor;
 use crate::application::set_uuid_seed;
 use crate::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
-use crate::messages::input_mapper::utility_types::input_mouse::ViewportBounds;
 use crate::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, MouseKeys, ScrollDelta, ViewportPosition};
 use crate::messages::portfolio::utility_types::Platform;
 use crate::messages::prelude::*;
@@ -10,7 +9,7 @@ use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::Instrumented;
 use crate::node_graph_executor::NodeRuntime;
 use crate::test_utils::test_prelude::LayerNodeIdentifier;
-use glam::DVec2;
+use glam::{DVec2, UVec2};
 use graph_craft::document::DocumentNode;
 use graphene_std::InputAccessor;
 use graphene_std::raster::color::Color;
@@ -48,8 +47,7 @@ impl EditorTestUtils {
 				Err(e) => return Err(format!("update_node_graph_instrumented failed\n\n{e}")),
 			};
 
-			let viewport_resolution = glam::UVec2::ONE;
-			if let Err(e) = exector.submit_current_node_graph_evaluation(document, DocumentId(0), viewport_resolution, Default::default()) {
+			if let Err(e) = exector.submit_current_node_graph_evaluation(document, DocumentId(0), UVec2::ONE, 1.0, Default::default()) {
 				return Err(format!("submit_current_node_graph_evaluation failed\n\n{e}"));
 			}
 			runtime.run().await;
@@ -296,8 +294,12 @@ impl EditorTestUtils {
 
 	/// Necessary for doing snapping since snaps outside of the viewport are discarded
 	pub async fn set_viewport_size(&mut self, top_left: DVec2, bottom_right: DVec2) {
-		self.handle_message(InputPreprocessorMessage::BoundsOfViewports {
-			bounds_of_viewports: vec![ViewportBounds { top_left, bottom_right }],
+		self.handle_message(ViewportMessage::Update {
+			x: top_left.x,
+			y: top_left.y,
+			width: bottom_right.x - top_left.x,
+			height: bottom_right.y - top_left.y,
+			scale: 1.0,
 		})
 		.await;
 	}

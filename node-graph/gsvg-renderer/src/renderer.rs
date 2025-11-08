@@ -153,7 +153,7 @@ impl Default for SvgRender {
 #[derive(Clone, Debug, Default)]
 pub struct RenderContext {
 	#[cfg(feature = "vello")]
-	pub resource_overrides: Vec<(peniko::Image, wgpu::Texture)>,
+	pub resource_overrides: Vec<(peniko::ImageBrush, wgpu::Texture)>,
 }
 
 #[derive(Default, Clone, Copy, Hash)]
@@ -168,11 +168,14 @@ pub enum RenderOutputType {
 pub struct RenderParams {
 	pub render_mode: RenderMode,
 	pub footprint: Footprint,
+	/// Ratio of physical pixels to logical pixels. `scale := physical_pixels / logical_pixels`
+	/// Ignored when rendering to SVG.
+	pub scale: f64,
 	pub render_output_type: RenderOutputType,
 	pub thumbnail: bool,
 	/// Don't render the rectangle for an artboard to allow exporting with a transparent background.
 	pub hide_artboards: bool,
-	/// Are we exporting as a standalone SVG?
+	/// Are we exporting
 	pub for_export: bool,
 	/// Are we generating a mask in this render pass? Used to see if fill should be multiplied with alpha.
 	pub for_mask: bool,
@@ -459,8 +462,7 @@ impl Render for Artboard {
 		scene.pop_layer();
 
 		if self.clip {
-			let blend_mode = peniko::BlendMode::new(peniko::Mix::Clip, peniko::Compose::SrcOver);
-			scene.push_layer(blend_mode, 1., kurbo::Affine::new(transform.to_cols_array()), &rect);
+			scene.push_clip_layer(kurbo::Affine::new(transform.to_cols_array()), &rect);
 		}
 		// Since the content's transform is right multiplied in when rendering the content, we just need to right multiply by the artboard offset here.
 		let child_transform = transform * DAffine2::from_translation(self.location.as_dvec2());
@@ -627,7 +629,7 @@ impl Render for Table<Graphic> {
 
 					scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
 					mask_element.render_to_vello(scene, transform_mask, context, &render_params.for_clipper());
-					scene.push_layer(peniko::BlendMode::new(peniko::Mix::Clip, peniko::Compose::SrcIn), 1., kurbo::Affine::IDENTITY, &rect);
+					scene.push_clip_layer(kurbo::Affine::IDENTITY, &rect);
 				}
 
 				row.element.render_to_vello(scene, transform, context, render_params);
@@ -941,21 +943,24 @@ impl Render for Table<Vector> {
 
 					let fill = peniko::Brush::Gradient(peniko::Gradient {
 						kind: match gradient.gradient_type {
-							GradientType::Linear => peniko::GradientKind::Linear {
+							GradientType::Linear => peniko::LinearGradientPosition {
 								start: to_point(start),
 								end: to_point(end),
-							},
+							}
+							.into(),
 							GradientType::Radial => {
 								let radius = start.distance(end);
-								peniko::GradientKind::Radial {
+								peniko::RadialGradientPosition {
 									start_center: to_point(start),
 									start_radius: 0.,
 									end_center: to_point(start),
 									end_radius: radius as f32,
 								}
+								.into()
 							}
 						},
 						stops,
+						interpolation_alpha_space: peniko::InterpolationAlphaSpace::Premultiplied,
 						..Default::default()
 					});
 					let inverse_element_transform = if element_transform.matrix2.determinant() != 0. {
@@ -1050,7 +1055,7 @@ impl Render for Table<Vector> {
 						if wants_stroke_below {
 							scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
 							vector_table.render_to_vello(scene, parent_transform, _context, &render_params.for_alignment(applied_stroke_transform));
-							scene.push_layer(peniko::BlendMode::new(peniko::Mix::Clip, compose), 1., kurbo::Affine::IDENTITY, &rect);
+							scene.push_layer(peniko::BlendMode::new(peniko::Mix::Normal, compose), 1., kurbo::Affine::IDENTITY, &rect);
 
 							do_stroke(scene, 2.);
 
@@ -1064,7 +1069,7 @@ impl Render for Table<Vector> {
 
 							scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
 							vector_table.render_to_vello(scene, parent_transform, _context, &render_params.for_alignment(applied_stroke_transform));
-							scene.push_layer(peniko::BlendMode::new(peniko::Mix::Clip, compose), 1., kurbo::Affine::IDENTITY, &rect);
+							scene.push_layer(peniko::BlendMode::new(peniko::Mix::Normal, compose), 1., kurbo::Affine::IDENTITY, &rect);
 
 							do_stroke(scene, 2.);
 
@@ -1298,10 +1303,17 @@ impl Render for Table<Raster<CPU>> {
 				}
 			}
 
-			let image = peniko::Image::new(image.to_flat_u8().0.into(), peniko::ImageFormat::Rgba8, image.width, image.height).with_extend(peniko::Extend::Repeat);
+			let image_brush = peniko::ImageBrush::new(peniko::ImageData {
+				data: image.to_flat_u8().0.into(),
+				format: peniko::ImageFormat::Rgba8,
+				width: image.width,
+				height: image.height,
+				alpha_type: peniko::ImageAlphaType::Alpha,
+			})
+			.with_extend(peniko::Extend::Repeat);
 			let image_transform = transform * *row.transform * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
 
-			scene.draw_image(&image, kurbo::Affine::new(image_transform.to_cols_array()));
+			scene.draw_image(&image_brush, kurbo::Affine::new(image_transform.to_cols_array()));
 
 			if layer {
 				scene.pop_layer();
@@ -1350,14 +1362,17 @@ impl Render for Table<Raster<GPU>> {
 				}
 			}
 
-			let image = peniko::Image::new(
-				peniko::Blob::new(LAZY_ARC_VEC_ZERO_U8.deref().clone()),
-				peniko::ImageFormat::Rgba8,
-				row.element.data().width(),
-				row.element.data().height(),
-			)
+			let width = row.element.data().width();
+			let height = row.element.data().height();
+			let image = peniko::ImageBrush::new(peniko::ImageData {
+				data: peniko::Blob::new(LAZY_ARC_VEC_ZERO_U8.deref().clone()),
+				format: peniko::ImageFormat::Rgba8,
+				width,
+				height,
+				alpha_type: peniko::ImageAlphaType::Alpha,
+			})
 			.with_extend(peniko::Extend::Repeat);
-			let image_transform = transform * *row.transform * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
+			let image_transform = transform * *row.transform * DAffine2::from_scale(1. / DVec2::new(width as f64, height as f64));
 			scene.draw_image(&image, kurbo::Affine::new(image_transform.to_cols_array()));
 			context.resource_overrides.push((image, row.element.data().clone()));
 

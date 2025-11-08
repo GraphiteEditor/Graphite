@@ -35,6 +35,7 @@ pub struct TransformLayerMessageContext<'a> {
 	pub input: &'a InputPreprocessorMessageHandler,
 	pub tool_data: &'a ToolData,
 	pub shape_editor: &'a mut ShapeState,
+	pub viewport: &'a ViewportMessageHandler,
 }
 
 #[derive(Debug, Clone, Default, ExtractField)]
@@ -84,6 +85,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 			input,
 			tool_data,
 			shape_editor,
+			viewport,
 		} = context;
 
 		let using_path_tool = tool_data.active_tool_type == ToolType::Path;
@@ -191,8 +193,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 					}
 				}
 
-				let viewport_box = input.viewport_bounds.size();
-
+				let viewport_box = viewport.size().into_dvec2();
 				let axis_constraint = self.transform_operation.axis_constraint();
 
 
