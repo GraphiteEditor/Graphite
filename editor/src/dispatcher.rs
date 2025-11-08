@@ -50,9 +50,8 @@ const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::SubmitActiveGraphRender),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::TriggerFontLoad),
 ];
-/// For optimization, these are messages guaranteed to be redundant when repeated.
-/// The last occurrence of the message in the message queue is sufficient to ensure correct behavior.
-/// In addition, these messages do not change any state in the backend (aside from caches).
+/// Since we don't need to update the frontend multiple times per frame,
+/// we have a set of messages which we will buffer until the next frame is requested.
 const FRONTEND_UPDATE_MESSAGES: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::PropertiesPanel(
 		PropertiesPanelMessageDiscriminant::Refresh,
