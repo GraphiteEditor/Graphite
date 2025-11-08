@@ -21,14 +21,34 @@ impl<H: CefEventHandler> RenderHandlerImpl<H> {
 impl<H: CefEventHandler> ImplRenderHandler for RenderHandlerImpl<H> {
 	fn view_rect(&self, _browser: Option<&mut Browser>, rect: Option<&mut Rect>) {
 		if let Some(rect) = rect {
-			let view = self.event_handler.window_size();
+			let view_info = self.event_handler.view_info();
 			*rect = Rect {
 				x: 0,
 				y: 0,
-				width: view.width as i32,
-				height: view.height as i32,
+				width: view_info.scaled_width() as i32,
+				height: view_info.scaled_height() as i32,
 			};
 		}
+	}
+
+	fn screen_info(&self, _browser: Option<&mut Browser>, screen_info: Option<&mut cef::ScreenInfo>) -> std::ffi::c_int {
+		if let Some(screen_info) = screen_info {
+			let view_info = self.event_handler.view_info();
+
+			screen_info.device_scale_factor = view_info.scale() as f32;
+
+			let rect = Rect {
+				x: 0,
+				y: 0,
+				width: view_info.scaled_width() as i32,
+				height: view_info.scaled_height() as i32,
+			};
+			screen_info.rect = rect.clone();
+			screen_info.available_rect = rect;
+
+			return 1;
+		}
+		0
 	}
 
 	fn on_paint(

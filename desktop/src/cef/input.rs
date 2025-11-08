@@ -1,7 +1,7 @@
 use cef::sys::{cef_event_flags_t, cef_key_event_type_t, cef_mouse_button_type_t};
 use cef::{Browser, ImplBrowser, ImplBrowserHost, KeyEvent, KeyEventType, MouseEvent};
 use std::time::Instant;
-use winit::dpi::PhysicalPosition;
+use winit::dpi::LogicalPosition;
 use winit::event::{ButtonSource, ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 
 mod keymap;
@@ -9,17 +9,17 @@ use keymap::{ToNativeKeycode, ToVKBits};
 
 use super::consts::{MULTICLICK_ALLOWED_TRAVEL, MULTICLICK_TIMEOUT, PINCH_ZOOM_SPEED, SCROLL_LINE_HEIGHT, SCROLL_LINE_WIDTH, SCROLL_SPEED_X, SCROLL_SPEED_Y};
 
-pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputState, event: &WindowEvent) {
+pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputState, event: &WindowEvent, scale: f64) {
 	match event {
 		WindowEvent::PointerMoved { position, .. } | WindowEvent::PointerEntered { position, .. } => {
-			input_state.cursor_move(position);
+			input_state.cursor_move(&position.to_logical(scale));
 
 			let Some(host) = browser.host() else { return };
 			host.send_mouse_move_event(Some(&input_state.into()), 0);
 		}
 		WindowEvent::PointerLeft { position, .. } => {
 			if let Some(position) = position {
-				input_state.cursor_move(position);
+				input_state.cursor_move(&position.to_logical(scale));
 			}
 
 			let Some(host) = browser.host() else { return };
@@ -159,7 +159,7 @@ impl InputState {
 		self.modifiers = *modifiers;
 	}
 
-	fn cursor_move(&mut self, position: &PhysicalPosition<f64>) {
+	fn cursor_move(&mut self, position: &LogicalPosition<f64>) {
 		self.mouse_position = position.into();
 	}
 
@@ -206,8 +206,8 @@ pub(crate) struct MousePosition {
 	x: usize,
 	y: usize,
 }
-impl From<&PhysicalPosition<f64>> for MousePosition {
-	fn from(position: &PhysicalPosition<f64>) -> Self {
+impl From<&LogicalPosition<f64>> for MousePosition {
+	fn from(position: &LogicalPosition<f64>) -> Self {
 		Self {
 			x: position.x as usize,
 			y: position.y as usize,

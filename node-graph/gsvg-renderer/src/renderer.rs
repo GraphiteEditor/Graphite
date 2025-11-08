@@ -168,11 +168,14 @@ pub enum RenderOutputType {
 pub struct RenderParams {
 	pub render_mode: RenderMode,
 	pub footprint: Footprint,
+	/// Ratio of physical pixels to logical pixels. `scale := physical_pixels / logical_pixels`
+	/// Ignored when rendering to SVG.
+	pub scale: f64,
 	pub render_output_type: RenderOutputType,
 	pub thumbnail: bool,
 	/// Don't render the rectangle for an artboard to allow exporting with a transparent background.
 	pub hide_artboards: bool,
-	/// Are we exporting as a standalone SVG?
+	/// Are we exporting
 	pub for_export: bool,
 	/// Are we generating a mask in this render pass? Used to see if fill should be multiplied with alpha.
 	pub for_mask: bool,

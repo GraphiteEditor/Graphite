@@ -1,8 +1,9 @@
-use cef::{Browser, ImplBrowser, ImplBrowserHost};
+use cef::{Browser, ImplBrowser};
 use winit::event::WindowEvent;
 
 use crate::cef::input;
 use crate::cef::input::InputState;
+use crate::cef::internal::NotifyViewInfoChanged;
 use crate::cef::ipc::{MessageType, SendMessage};
 
 use super::CefContext;
@@ -18,12 +19,12 @@ impl CefContext for SingleThreadedCefContext {
 		cef::do_message_loop_work();
 	}
 
-	fn handle_window_event(&mut self, event: &WindowEvent) {
-		input::handle_window_event(&self.browser, &mut self.input_state, event)
+	fn handle_window_event(&mut self, event: &WindowEvent, scale: f64) {
+		input::handle_window_event(&self.browser, &mut self.input_state, event, scale)
 	}
 
-	fn notify_of_resize(&self) {
-		self.browser.host().unwrap().was_resized();
+	fn notify_view_info_changed(&self) {
+		self.browser.host().unwrap().notify_view_info_changed();
 	}
 
 	fn send_web_message(&self, message: Vec<u8>) {

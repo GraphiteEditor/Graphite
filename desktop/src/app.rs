@@ -8,6 +8,7 @@ use std::thread;
 use std::time::Duration;
 use std::time::Instant;
 use winit::application::ApplicationHandler;
+use winit::dpi::PhysicalSize;
 use winit::event::WindowEvent;
 use winit::event_loop::ActiveEventLoop;
 use winit::event_loop::ControlFlow;
@@ -25,8 +26,9 @@ use crate::wrapper::{DesktopWrapper, NodeGraphExecutionResult, WgpuContext, seri
 pub(crate) struct App {
 	cef_context: Box<dyn cef::CefContext>,
 	window: Option<Window>,
+	window_scale: f64,
 	cef_schedule: Option<Instant>,
-	cef_window_size_sender: Sender<cef::WindowSize>,
+	cef_view_info_sender: Sender<cef::ViewInfoUpdate>,
 	graphics_state: Option<GraphicsState>,
 	wgpu_context: WgpuContext,
 	app_event_receiver: Receiver<AppEvent>,
@@ -44,7 +46,7 @@ pub(crate) struct App {
 impl App {
 	pub(crate) fn new(
 		cef_context: Box<dyn cef::CefContext>,
-		window_size_sender: Sender<cef::WindowSize>,
+		cef_view_info_sender: Sender<cef::ViewInfoUpdate>,
 		wgpu_context: WgpuContext,
 		app_event_receiver: Receiver<AppEvent>,
 		app_event_scheduler: AppEventScheduler,
@@ -66,9 +68,10 @@ impl App {
 		Self {
 			cef_context,
 			window: None,
+			window_scale: 1.0,
 			cef_schedule: Some(Instant::now()),
 			graphics_state: None,
-			cef_window_size_sender: window_size_sender,
+			cef_view_info_sender,
 			wgpu_context,
 			app_event_receiver,
 			app_event_scheduler,
@@ -147,19 +150,19 @@ impl App {
 					}
 				});
 			}
-			DesktopFrontendMessage::UpdateViewportBounds { x, y, width, height } => {
+			DesktopFrontendMessage::UpdateViewportPhysicalBounds { x, y, width, height } => {
 				if let Some(graphics_state) = &mut self.graphics_state
 					&& let Some(window) = &self.window
 				{
 					let window_size = window.surface_size();
 
-					let viewport_offset_x = x / window_size.width as f32;
-					let viewport_offset_y = y / window_size.height as f32;
-					graphics_state.set_viewport_offset([viewport_offset_x, viewport_offset_y]);
+					let viewport_offset_x = x / window_size.width as f64;
+					let viewport_offset_y = y / window_size.height as f64;
+					graphics_state.set_viewport_offset([viewport_offset_x as f32, viewport_offset_y as f32]);
 
-					let viewport_scale_x = if width != 0.0 { window_size.width as f32 / width } else { 1.0 };
-					let viewport_scale_y = if height != 0.0 { window_size.height as f32 / height } else { 1.0 };
-					graphics_state.set_viewport_scale([viewport_scale_x, viewport_scale_y]);
+					let viewport_scale_x = if width != 0.0 { window_size.width as f64 / width } else { 1.0 };
+					let viewport_scale_y = if height != 0.0 { window_size.height as f64 / height } else { 1.0 };
+					graphics_state.set_viewport_scale([viewport_scale_x as f32, viewport_scale_y as f32]);
 				}
 			}
 			DesktopFrontendMessage::UpdateOverlays(scene) => {
@@ -352,13 +355,16 @@ impl App {
 impl ApplicationHandler for App {
 	fn can_create_surfaces(&mut self, event_loop: &dyn ActiveEventLoop) {
 		let window = Window::new(event_loop, self.app_event_scheduler.clone());
+
+		self.window_scale = window.scale_factor();
+		let _ = self.cef_view_info_sender.send(cef::ViewInfoUpdate::Scale(self.window_scale));
+		self.cef_context.notify_view_info_changed();
+
 		self.window = Some(window);
 
 		let graphics_state = GraphicsState::new(self.window.as_ref().unwrap(), self.wgpu_context.clone());
 
 		self.graphics_state = Some(graphics_state);
-
-		tracing::info!("Winit window created and ready");
 
 		self.desktop_wrapper.init(self.wgpu_context.clone());
 
@@ -378,19 +384,27 @@ impl ApplicationHandler for App {
 	}
 
 	fn window_event(&mut self, event_loop: &dyn ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
-		self.cef_context.handle_window_event(&event);
+		self.cef_context.handle_window_event(&event, self.window_scale);
 
 		match event {
 			WindowEvent::CloseRequested => {
 				self.app_event_scheduler.schedule(AppEvent::CloseWindow);
 			}
-			WindowEvent::SurfaceResized(size) => {
-				let _ = self.cef_window_size_sender.send(size.into());
-				self.cef_context.notify_of_resize();
+			WindowEvent::SurfaceResized(PhysicalSize { width, height }) => {
+				let _ = self.cef_view_info_sender.send(cef::ViewInfoUpdate::Size {
+					width: width as usize,
+					height: height as usize,
+				});
+				self.cef_context.notify_view_info_changed();
 				if let Some(window) = &self.window {
 					let maximized = window.is_maximized();
 					self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(DesktopWrapperMessage::UpdateMaximized { maximized }));
 				}
+			}
+			WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+				self.window_scale = scale_factor;
+				let _ = self.cef_view_info_sender.send(cef::ViewInfoUpdate::Scale(self.window_scale));
+				self.cef_context.notify_view_info_changed();
 			}
 			WindowEvent::RedrawRequested => {
 				let Some(ref mut graphics_state) = self.graphics_state else { return };

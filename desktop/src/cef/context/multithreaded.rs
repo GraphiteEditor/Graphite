@@ -19,22 +19,22 @@ impl CefContext for MultiThreadedCefContextProxy {
 		// CEF handles its own message loop in multi-threaded mode
 	}
 
-	fn handle_window_event(&mut self, event: &WindowEvent) {
+	fn handle_window_event(&mut self, event: &WindowEvent, scale: f64) {
 		let event_clone = event.clone();
 		run_on_ui_thread(move || {
 			CONTEXT.with(|b| {
 				if let Some(context) = b.borrow_mut().as_mut() {
-					context.handle_window_event(&event_clone);
+					context.handle_window_event(&event_clone, scale);
 				}
 			});
 		});
 	}
 
-	fn notify_of_resize(&self) {
+	fn notify_view_info_changed(&self) {
 		run_on_ui_thread(move || {
 			CONTEXT.with(|b| {
 				if let Some(context) = b.borrow_mut().as_mut() {
-					context.notify_of_resize();
+					context.notify_view_info_changed();
 				}
 			});
 		});

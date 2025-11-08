@@ -39,7 +39,7 @@ use texture_import::SharedTextureHandle;
 pub(crate) use context::{CefContext, CefContextBuilder, InitError};
 
 pub(crate) trait CefEventHandler: Clone + Send + Sync + 'static {
-	fn window_size(&self) -> WindowSize;
+	fn view_info(&self) -> ViewInfo;
 	fn draw<'a>(&self, frame_buffer: FrameBufferRef<'a>);
 	#[cfg(feature = "accelerated_paint")]
 	fn draw_gpu(&self, shared_texture: SharedTextureHandle);
@@ -53,19 +53,46 @@ pub(crate) trait CefEventHandler: Clone + Send + Sync + 'static {
 }
 
 #[derive(Clone, Copy)]
-pub(crate) struct WindowSize {
-	pub(crate) width: usize,
-	pub(crate) height: usize,
+pub(crate) struct ViewInfo {
+	width: usize,
+	height: usize,
+	scale: f64,
 }
-impl WindowSize {
-	pub(crate) fn new(width: usize, height: usize) -> Self {
-		Self { width, height }
+impl ViewInfo {
+	pub(crate) fn new() -> Self {
+		Self { width: 1, height: 1, scale: 1.0 }
+	}
+	pub(crate) fn apply_update(&mut self, update: ViewInfoUpdate) {
+		match update {
+			ViewInfoUpdate::Size { width, height } if width > 0 && height > 0 => {
+				self.width = width;
+				self.height = height;
+			}
+			ViewInfoUpdate::Scale(scale) if scale > 0.0 => {
+				self.scale = scale;
+			}
+			_ => {}
+		}
+	}
+	pub(crate) fn scale(&self) -> f64 {
+		self.scale
+	}
+	pub(crate) fn scaled_width(&self) -> usize {
+		(self.width as f64 / self.scale).round() as usize
+	}
+	pub(crate) fn scaled_height(&self) -> usize {
+		(self.height as f64 / self.scale).round() as usize
 	}
 }
-impl From<winit::dpi::PhysicalSize<u32>> for WindowSize {
-	fn from(size: winit::dpi::PhysicalSize<u32>) -> Self {
-		Self::new(size.width as usize, size.height as usize)
+impl Default for ViewInfo {
+	fn default() -> Self {
+		Self::new()
 	}
+}
+
+pub(crate) enum ViewInfoUpdate {
+	Size { width: usize, height: usize },
+	Scale(f64),
 }
 
 #[derive(Clone)]
@@ -93,30 +120,30 @@ impl Read for ResourceReader {
 pub(crate) struct CefHandler {
 	wgpu_context: WgpuContext,
 	app_event_scheduler: AppEventScheduler,
-	window_size_receiver: Arc<Mutex<WindowSizeReceiver>>,
+	view_info_receiver: Arc<Mutex<ViewInfoReceiver>>,
 }
 
 impl CefHandler {
-	pub(crate) fn new(wgpu_context: WgpuContext, app_event_scheduler: AppEventScheduler, window_size_receiver: Receiver<WindowSize>) -> Self {
+	pub(crate) fn new(wgpu_context: WgpuContext, app_event_scheduler: AppEventScheduler, view_info_receiver: Receiver<ViewInfoUpdate>) -> Self {
 		Self {
 			wgpu_context,
 			app_event_scheduler,
-			window_size_receiver: Arc::new(Mutex::new(WindowSizeReceiver::new(window_size_receiver))),
+			view_info_receiver: Arc::new(Mutex::new(ViewInfoReceiver::new(view_info_receiver))),
 		}
 	}
 }
 
 impl CefEventHandler for CefHandler {
-	fn window_size(&self) -> WindowSize {
-		let Ok(mut guard) = self.window_size_receiver.lock() else {
-			tracing::error!("Failed to lock window_size_receiver");
-			return WindowSize::new(1, 1);
+	fn view_info(&self) -> ViewInfo {
+		let Ok(mut guard) = self.view_info_receiver.lock() else {
+			tracing::error!("Failed to lock view_info_receiver");
+			return ViewInfo::new();
 		};
-		let WindowSizeReceiver { receiver, window_size } = &mut *guard;
-		for new_window_size in receiver.try_iter() {
-			*window_size = new_window_size;
+		let ViewInfoReceiver { receiver, view_info } = &mut *guard;
+		for update in receiver.try_iter() {
+			view_info.apply_update(update);
 		}
-		*window_size
+		*view_info
 	}
 	fn draw<'a>(&self, frame_buffer: FrameBufferRef<'a>) {
 		let width = frame_buffer.width() as u32;
@@ -246,15 +273,12 @@ impl CefEventHandler for CefHandler {
 	}
 }
 
-struct WindowSizeReceiver {
-	window_size: WindowSize,
-	receiver: Receiver<WindowSize>,
+struct ViewInfoReceiver {
+	view_info: ViewInfo,
+	receiver: Receiver<ViewInfoUpdate>,
 }
-impl WindowSizeReceiver {
-	fn new(window_size_receiver: Receiver<WindowSize>) -> Self {
-		Self {
-			window_size: WindowSize { width: 1, height: 1 },
-			receiver: window_size_receiver,
-		}
+impl ViewInfoReceiver {
+	fn new(receiver: Receiver<ViewInfoUpdate>) -> Self {
+		Self { view_info: ViewInfo::new(), receiver }
 	}
 }
