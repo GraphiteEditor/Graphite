@@ -1,0 +1,32 @@
+[package]
+name = "vector-nodes"
+version = "0.1.0"
+edition = "2024"
+description = "Vector operation nodes for Graphene"
+authors = ["Graphite Authors <contact@graphite.rs>"]
+license = "MIT OR Apache-2.0"
+
+[features]
+default = ["serde"]
+
+[dependencies]
+# Local dependencies
+core-types = { workspace = true }
+vector-types = { workspace = true }
+graphic-types = { workspace = true }
+node-macro = { workspace = true }
+
+# Workspace dependencies
+dyn-any = { workspace = true }
+glam = { workspace = true }
+kurbo = { workspace = true }
+rand = { workspace = true }
+rustc-hash = { workspace = true }
+log = { workspace = true }
+
+# Optional workspace dependencies
+serde = { workspace = true, optional = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }
+futures = { workspace = true }

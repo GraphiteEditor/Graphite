@@ -1,8 +1,8 @@
 use crate::document::value::TaggedValue;
 use crate::document::{InlineRust, value};
 use crate::document::{NodeId, OriginalLocation};
-pub use graphene_core::registry::*;
-use graphene_core::*;
+pub use core_types::registry::*;
+use core_types::*;
 use rustc_hash::FxHashMap;
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
@@ -139,7 +139,7 @@ pub struct ProtoNode {
 impl Default for ProtoNode {
 	fn default() -> Self {
 		Self {
-			identifier: ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode"),
+			identifier: ProtoNodeIdentifier::new("core_types::ops::IdentityNode"),
 			construction_args: ConstructionArgs::Value(value::TaggedValue::U32(0).into()),
 			call_argument: concrete!(()),
 			original_location: OriginalLocation::default(),
@@ -175,7 +175,7 @@ impl ProtoNode {
 			_ => 2,
 		};
 		Self {
-			identifier: ProtoNodeIdentifier::new("graphene_core::value::ClonedNode"),
+			identifier: ProtoNodeIdentifier::new("core_types::value::ClonedNode"),
 			construction_args: value,
 			call_argument: concrete!(Context),
 			original_location: OriginalLocation {
@@ -324,7 +324,7 @@ impl ProtoNetwork {
 			ProtoNode {
 				construction_args: ConstructionArgs::Nodes(vec![node_id]),
 				call_argument: concrete!(Context),
-				identifier: graphene_core::memo::memo::IDENTIFIER,
+				identifier: core_types::memo::memo::IDENTIFIER,
 				original_location: OriginalLocation {
 					path: path.clone(),
 					..Default::default()
@@ -340,7 +340,7 @@ impl ProtoNetwork {
 			ProtoNode {
 				construction_args: ConstructionArgs::Value(MemoHash::new(TaggedValue::ContextFeatures(context_deps))),
 				call_argument: concrete!(Context),
-				identifier: ProtoNodeIdentifier::new("graphene_core::value::ClonedNode"),
+				identifier: ProtoNodeIdentifier::new("core_types::value::ClonedNode"),
 				original_location: OriginalLocation {
 					path: path.clone(),
 					..Default::default()
@@ -354,7 +354,7 @@ impl ProtoNetwork {
 			ProtoNode {
 				construction_args: ConstructionArgs::Nodes(vec![memo_node_id, nullification_value_node_id]),
 				call_argument: concrete!(Context),
-				identifier: graphene_core::context_modification::context_modification::IDENTIFIER,
+				identifier: gcore_nodes::context_modification::context_modification::IDENTIFIER,
 				original_location: OriginalLocation {
 					path: path.clone(),
 					..Default::default()

@@ -1,8 +1,8 @@
 use dyn_any::{DynAny, StaticType, StaticTypeSized};
 use glam::{DAffine2, UVec2};
-use graphene_core::text::FontCache;
-use graphene_core::transform::Footprint;
-use graphene_core::vector::style::RenderMode;
+use text_nodes::FontCache;
+use core_types::transform::Footprint;
+use vector_types::vector::style::RenderMode;
 use std::fmt::Debug;
 use std::future::Future;
 use std::hash::{Hash, Hasher};

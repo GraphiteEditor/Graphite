@@ -1,6 +1,7 @@
 use graph_craft::wasm_application_io::WasmEditorApi;
-pub use graphene_core::text::*;
-use graphene_core::{Ctx, table::Table, vector::Vector};
+pub use text_nodes::*;
+use core_types::{Ctx, table::Table};
+use graphic_types::Vector;
 
 #[node_macro::node(category(""))]
 fn text<'i: 'n>(

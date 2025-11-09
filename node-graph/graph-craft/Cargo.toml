@@ -6,7 +6,7 @@ license = "MIT OR Apache-2.0"
 
 [features]
 default = ["dealloc_nodes"]
-dealloc_nodes = ["graphene-core/dealloc_nodes"]
+dealloc_nodes = ["core-types/dealloc_nodes"]
 wgpu = ["wgpu-executor"]
 tokio = ["dep:tokio"]
 wayland = []
@@ -15,12 +15,15 @@ loading = ["serde_json"]
 [dependencies]
 # Local dependencies
 dyn-any = { workspace = true }
-graphene-core = { workspace = true }
-graphene-path-bool = { workspace = true }
-graphene-brush = { workspace = true }
+core-types = { workspace = true }
+path-bool-nodes = { workspace = true }
+brush-nodes = { workspace = true }
+gcore-nodes = { workspace = true }
 graphene-application-io = { workspace = true }
-graphene-svg-renderer = { workspace = true }
-graphene-raster-nodes = { workspace = true }
+svg-renderer = { workspace = true }
+raster-nodes = { workspace = true }
+graphic-types = { workspace = true }
+text-nodes = { workspace = true }
 
 # Workspace dependencies
 log = { workspace = true }

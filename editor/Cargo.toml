@@ -22,7 +22,7 @@ vello = ["graphene-std/vello", "resvg"]
 graphite-proc-macros = { workspace = true }
 graph-craft = { workspace = true }
 interpreted-executor = { workspace = true }
-graphene-std = { workspace = true } # NOTE: `graphene-core` should not be added here because `graphene-std` re-exports its contents
+graphene-std = { workspace = true } # NOTE: `core-types` should not be added here because `graphene-std` re-exports its contents
 preprocessor = { workspace = true }
 
 # Workspace dependencies

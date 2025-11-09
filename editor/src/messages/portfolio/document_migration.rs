@@ -45,7 +45,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &[
 			"graphene_core::ToGraphicGroupNode",
 			"graphene_core::graphic_element::ToGroupNode",
-			"graphene_core::graphic::ToGroupNode",
+			"graphene_core::graphic_types::ToGroupNode",
 		],
 	},
 	NodeReplacement {
@@ -54,24 +54,24 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 			// Converted from "To Element"
 			"graphene_core::ToGraphicElementNode",
 			"graphene_core::graphic_element::ToElementNode",
-			"graphene_core::graphic::ToElementNode",
+			"graphene_core::graphic_types::ToElementNode",
 		],
 	},
 	NodeReplacement {
 		node: graphene_std::graphic::legacy_layer_extend::IDENTIFIER,
 		aliases: &[
 			"graphene_core::graphic_element::LayerNode",
-			"graphene_core::graphic::LayerNode",
+			"graphene_core::graphic_types::LayerNode",
 			// Converted from "Append Artboard"
 			"graphene_core::AddArtboardNode",
 			"graphene_core::graphic_element::AppendArtboardNode",
-			"graphene_core::graphic::AppendArtboardNode",
+			"graphene_core::graphic_types::AppendArtboardNode",
 			"graphene_core::artboard::AppendArtboardNode",
 		],
 	},
 	NodeReplacement {
 		node: graphene_std::graphic::flatten_graphic::IDENTIFIER,
-		aliases: &["graphene_core::graphic_element::FlattenGroupNode", "graphene_core::graphic::FlattenGroupNode"],
+		aliases: &["graphene_core::graphic_element::FlattenGroupNode", "graphene_core::graphic_types::FlattenGroupNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::graphic::flatten_vector::IDENTIFIER,
@@ -79,7 +79,11 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	},
 	NodeReplacement {
 		node: graphene_std::graphic::index_elements::IDENTIFIER,
-		aliases: &["graphene_core::graphic_element::IndexNode", "graphene_core::graphic::IndexNode"],
+		aliases: &[
+			"graphene_core::graphic_element::IndexNode",
+			"graphene_core::graphic::IndexNode",
+			"graphene_core::graphic_element::IndexNode",
+		],
 	},
 	// math_nodes
 	NodeReplacement {
@@ -232,7 +236,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 			"graphene_core::ops::ConstructVector2",
 			"graphene_core::ops::Vector2ValueNode",
 			"graphene_core::ops::CoordinateValueNode",
-			"graphene_math_nodes::CoordinateValueNode",
+			"math_nodes::CoordinateValueNode",
 		],
 	},
 	NodeReplacement {
@@ -305,11 +309,11 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		node: graphene_std::vector::auto_tangents::IDENTIFIER,
 		aliases: &["graphene_core::vector::GenerateHandlesNode", "graphene_core::vector::RemoveHandlesNode"],
 	},
-	// graphene_raster_nodes::blending_nodes
+	// raster_nodes::blending_nodes
 	NodeReplacement {
 		node: graphene_std::raster_nodes::blending_nodes::blend::IDENTIFIER,
 		aliases: &[
-			"graphene_raster_nodes::adjustments::BlendNode",
+			"raster_nodes::adjustments::BlendNode",
 			"graphene_core::raster::adjustments::BlendNode",
 			"graphene_core::raster::BlendNode",
 		],
@@ -317,12 +321,12 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	NodeReplacement {
 		node: graphene_std::raster_nodes::blending_nodes::color_overlay::IDENTIFIER,
 		aliases: &[
-			"graphene_raster_nodes::adjustments::ColorOverlayNode",
+			"raster_nodes::adjustments::ColorOverlayNode",
 			"graphene_core::raster::adjustments::ColorOverlayNode",
-			"graphene_raster_nodes::generate_curves::ColorOverlayNode",
+			"raster_nodes::generate_curves::ColorOverlayNode",
 		],
 	},
-	// graphene_raster_nodes::adjustments
+	// raster_nodes::adjustments
 	NodeReplacement {
 		node: graphene_std::raster_nodes::adjustments::luminance::IDENTIFIER,
 		aliases: &["graphene_core::raster::adjustments::LuminanceNode", "graphene_core::raster::LuminanceNode"],
@@ -383,12 +387,12 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		node: graphene_std::raster_nodes::adjustments::exposure::IDENTIFIER,
 		aliases: &["graphene_core::raster::adjustments::ExposureNode", "graphene_core::raster::ExposureNode"],
 	},
-	// graphene_raster_nodes::*
+	// raster_nodes::*
 	NodeReplacement {
 		node: graphene_std::raster_nodes::gradient_map::gradient_map::IDENTIFIER,
 		aliases: &[
-			"graphene_raster_nodes::gradient_map::GradientMapNode",
-			"graphene_raster_nodes::adjustments::GradientMapNode",
+			"raster_nodes::gradient_map::GradientMapNode",
+			"raster_nodes::adjustments::GradientMapNode",
 			"graphene_core::raster::adjustments::GradientMapNode",
 			"graphene_core::raster::GradientMapNode",
 		],

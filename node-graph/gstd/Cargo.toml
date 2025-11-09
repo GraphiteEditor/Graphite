@@ -21,20 +21,27 @@ image-compare = []
 vello = ["gpu"]
 resvg = []
 wayland = ["graph-craft/wayland"]
-shader-nodes = ["graphene-raster-nodes/shader-nodes"]
+shader-nodes = ["raster-nodes/shader-nodes"]
 
 [dependencies]
 # Local dependencies
 dyn-any = { workspace = true }
 graph-craft = { workspace = true }
 wgpu-executor = { workspace = true }
-graphene-core = { workspace = true }
-graphene-path-bool = { workspace = true }
-graphene-math-nodes = { workspace = true }
-graphene-svg-renderer = { workspace = true }
+core-types = { workspace = true }
+vector-types = { workspace = true }
+graphic-types = { workspace = true }
+blending-nodes = { workspace = true }
+text-nodes = { workspace = true }
+transform-nodes = { workspace = true }
+vector-nodes = { workspace = true }
+path-bool-nodes = { workspace = true }
+math-nodes = { workspace = true }
+svg-renderer = { workspace = true }
 graphene-application-io = { workspace = true }
-graphene-raster-nodes = { workspace = true }
-graphene-brush = { workspace = true }
+raster-nodes = { workspace = true }
+brush-nodes = { workspace = true }
+gcore-nodes = { workspace = true }
 
 # Workspace dependencies
 log = { workspace = true }
