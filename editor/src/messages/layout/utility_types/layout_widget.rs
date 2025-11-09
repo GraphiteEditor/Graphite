@@ -523,7 +523,6 @@ impl WidgetHolder {
 					a.diff(b.clone(), &mut new_widget_path, widget_diffs);
 					new_widget_path.pop();
 				}
-				self.widget = new.widget;
 				return;
 			}
 		}
