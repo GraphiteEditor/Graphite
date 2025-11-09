@@ -593,6 +593,19 @@ impl SelectToolData {
 	}
 }
 
+/// Bounding boxes are unfortunately not axis aligned. The bounding boxes are found after a transformation is applied to all of the layers.
+/// This uses some rather confusing logic to determine what transform that should be.
+pub fn create_bounding_box_transform(document: &DocumentMessageHandler) -> DAffine2 {
+	// Update bounds
+	document
+		.network_interface
+		.selected_nodes()
+		.selected_visible_and_unlocked_layers(&document.network_interface)
+		.find(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
+		.map(|layer| document.metadata().transform_to_viewport_with_first_transform_node_if_group(layer, &document.network_interface))
+		.unwrap_or_default()
+}
+
 impl Fsm for SelectToolFsmState {
 	type ToolData = SelectToolData;
 	type ToolOptions = ();
@@ -633,14 +646,7 @@ impl Fsm for SelectToolFsmState {
 					}
 				}
 
-				// Update bounds
-				let mut transform = document
-					.network_interface
-					.selected_nodes()
-					.selected_visible_and_unlocked_layers(&document.network_interface)
-					.find(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
-					.map(|layer| document.metadata().transform_to_viewport_with_first_transform_node_if_group(layer, &document.network_interface))
-					.unwrap_or_default();
+				let mut transform = create_bounding_box_transform(&document);
 
 				// Check if the matrix is not invertible
 				let mut transform_tampered = false;
