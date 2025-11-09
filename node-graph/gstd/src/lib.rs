@@ -4,23 +4,84 @@ pub mod text;
 #[cfg(feature = "wasm")]
 pub mod wasm_application_io;
 
+pub use ::graphic_types::artboard;
+pub use blending_nodes;
+pub use brush_nodes as brush;
+pub use core_types::*;
 pub use graphene_application_io as application_io;
-pub use graphene_brush as brush;
-pub use graphene_core::vector;
-pub use graphene_core::*;
-pub use graphene_math_nodes as math_nodes;
-pub use graphene_path_bool as path_bool;
-pub use graphene_raster_nodes as raster_nodes;
+pub use math_nodes;
+pub use path_bool_nodes as path_bool;
+pub use raster_nodes;
+pub use text_nodes;
+pub use transform_nodes;
+pub use vector_nodes;
+pub use vector_types;
+
+/// Backward compatibility re-exports
+pub mod vector {
+	pub use graphic_types::Vector;
+	pub use vector_types::vector::{VectorModification, VectorModificationType, misc, style};
+	pub use vector_types::*;
+
+	// Re-export commonly used types and submodules
+	pub use vector_types::vector::algorithms;
+	pub use vector_types::vector::click_target;
+	pub use vector_types::vector::misc::HandleId;
+	pub use vector_types::vector::{PointId, RegionId, SegmentId, StrokeId};
+	pub use vector_types::vector::{deserialize_hashmap, serialize_hashmap};
+
+	// Re-export HandleExt trait and NoHashBuilder
+	pub use vector_types::vector::HandleExt;
+	pub use vector_types::vector::NoHashBuilder;
+
+	// Re-export vector node modules and functions
+	pub use vector_nodes::*;
+}
+
+pub mod graphic {
+	pub use graphic_types::Artboard;
+	pub use graphic_types::graphic::*;
+}
+
+pub mod subpath {
+	pub use vector_types::subpath::*;
+}
+
+pub mod gradient {
+	pub use vector_types::GradientStops;
+}
+
+pub mod transform {
+	pub use core_types::transform::*;
+	pub use vector_types::ReferencePoint;
+}
+
+pub mod math {
+	pub use core_types::math::quad;
+
+	pub mod math_ext {
+		pub use vector_types::{QuadExt, RectExt};
+	}
+}
+
+pub use gcore_nodes::debug;
+
+// Re-export at top level for convenience
+pub use graphic_types::{Artboard, Graphic, Vector};
 
 /// stop gap solutions until all paths have been replaced with their absolute ones
 pub mod renderer {
-	pub use graphene_core::math::quad::Quad;
-	pub use graphene_core::math::rect::Rect;
-	pub use graphene_svg_renderer::*;
+	pub use core_types::math::quad::Quad;
+	pub use core_types::math::rect::Rect;
+	pub use svg_renderer::*;
 }
 
 pub mod raster {
-	pub use graphene_core::raster::*;
-	pub use graphene_raster_nodes::adjustments::*;
-	pub use graphene_raster_nodes::*;
+	pub use graphic_types::raster_types::*;
+	pub use raster_nodes::adjustments::*;
+	pub use raster_nodes::*;
+}
+
+pub mod raster_types {
+	pub use graphic_types::raster_types::*;
 }

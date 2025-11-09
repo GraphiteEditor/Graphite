@@ -974,7 +974,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						nodes: [
 							DocumentNode {
 								inputs: vec![NodeInput::scope("editor-api")],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IntoNode<&WgpuExecutor>")),
+								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::ops::IntoNode<&WgpuExecutor>")),
 								..Default::default()
 							},
 							DocumentNode {
@@ -1073,7 +1073,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		// 	category: "Raster: Adjustment",
 		// 	node_template: NodeTemplate {
 		// 		document_node: DocumentNode {
-		// 			implementation: DocumentNodeImplementation::proto("graphene_core::raster::CurvesNode"),
+		// 			implementation: DocumentNodeImplementation::proto("core_types::raster::CurvesNode"),
 		// 			inputs: vec![
 		// 				NodeInput::value(TaggedValue::Raster(Default::default()), true),
 		// 				NodeInput::value(TaggedValue::Curve(Default::default()), false),

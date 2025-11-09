@@ -13,18 +13,26 @@ members = [
 	"libraries/path-bool",
 	"libraries/math-parser",
 	"node-graph/gapplication-io",
-	"node-graph/gbrush",
-	"node-graph/gcore",
-	"node-graph/gcore-shaders",
-	"node-graph/gmath-nodes",
-	"node-graph/gpath-bool",
+	"node-graph/core-types",
+	"node-graph/not-std-types",
+	"node-graph/raster-types",
+	"node-graph/vector-types",
+	"node-graph/graphic-types",
+	"node-graph/nodes/blending",
+	"node-graph/nodes/brush",
+	"node-graph/nodes/gcore",
+	"node-graph/nodes/math",
+	"node-graph/nodes/path-bool",
+	"node-graph/nodes/raster",
+	"node-graph/nodes/raster/shaders",
+	"node-graph/nodes/raster/shaders/entrypoint",
+	"node-graph/nodes/svg-renderer",
+	"node-graph/nodes/text",
+	"node-graph/nodes/transform",
+	"node-graph/nodes/vector",
 	"node-graph/graph-craft",
 	"node-graph/graphene-cli",
-	"node-graph/graster-nodes",
-	"node-graph/graster-nodes/shaders",
-	"node-graph/graster-nodes/shaders/entrypoint",
 	"node-graph/gstd",
-	"node-graph/gsvg-renderer",
 	"node-graph/interpreted-executor",
 	"node-graph/node-macro",
 	"node-graph/preprocessor",
@@ -38,17 +46,25 @@ default-members = [
 	"libraries/path-bool",
 	"libraries/math-parser",
 	"node-graph/gapplication-io",
-	"node-graph/gbrush",
-	"node-graph/gcore",
-	"node-graph/gcore-shaders",
-	"node-graph/graster-nodes/shaders",
-	"node-graph/gmath-nodes",
-	"node-graph/gpath-bool",
+	"node-graph/core-types",
+	"node-graph/not-std-types",
+	"node-graph/raster-types",
+	"node-graph/vector-types",
+	"node-graph/graphic-types",
+	"node-graph/nodes/blending",
+	"node-graph/nodes/brush",
+	"node-graph/nodes/gcore",
+	"node-graph/nodes/math",
+	"node-graph/nodes/path-bool",
+	"node-graph/nodes/raster",
+	"node-graph/nodes/raster/shaders",
+	"node-graph/nodes/svg-renderer",
+	"node-graph/nodes/text",
+	"node-graph/nodes/transform",
+	"node-graph/nodes/vector",
 	"node-graph/graph-craft",
 	"node-graph/graphene-cli",
-	"node-graph/graster-nodes",
 	"node-graph/gstd",
-	"node-graph/gsvg-renderer",
 	"node-graph/interpreted-executor",
 	"node-graph/node-macro",
 	"node-graph/preprocessor",
@@ -71,15 +87,23 @@ preprocessor = { path = "node-graph/preprocessor" }
 math-parser = { path = "libraries/math-parser" }
 path-bool = { path = "libraries/path-bool" }
 graphene-application-io = { path = "node-graph/gapplication-io" }
-graphene-brush = { path = "node-graph/gbrush" }
-graphene-core = { path = "node-graph/gcore" }
-graphene-core-shaders = { path = "node-graph/gcore-shaders" }
-graphene-math-nodes = { path = "node-graph/gmath-nodes" }
-graphene-path-bool = { path = "node-graph/gpath-bool" }
+brush-nodes = { path = "node-graph/nodes/brush" }
+core-types = { path = "node-graph/core-types" }
+not-std-types = { path = "node-graph/not-std-types" }
+raster-types = { path = "node-graph/raster-types" }
+vector-types = { path = "node-graph/vector-types" }
+graphic-types = { path = "node-graph/graphic-types" }
+blending-nodes = { path = "node-graph/nodes/blending" }
+gcore-nodes = { path = "node-graph/nodes/gcore" }
+text-nodes = { path = "node-graph/nodes/text" }
+transform-nodes = { path = "node-graph/nodes/transform" }
+vector-nodes = { path = "node-graph/nodes/vector" }
+math-nodes = { path = "node-graph/nodes/math" }
+path-bool-nodes = { path = "node-graph/nodes/path-bool" }
 graph-craft = { path = "node-graph/graph-craft" }
-graphene-raster-nodes = { path = "node-graph/graster-nodes" }
+raster-nodes = { path = "node-graph/nodes/raster" }
 graphene-std = { path = "node-graph/gstd" }
-graphene-svg-renderer = { path = "node-graph/gsvg-renderer" }
+svg-renderer = { path = "node-graph/nodes/svg-renderer" }
 interpreted-executor = { path = "node-graph/interpreted-executor" }
 node-macro = { path = "node-graph/node-macro" }
 wgpu-executor = { path = "node-graph/wgpu-executor" }
@@ -209,7 +233,7 @@ opt-level = 1
 
 [profile.dev.package]
 graphite-editor = { opt-level = 1 }
-graphene-core-shaders = { opt-level = 1 }
+not-std-types = { opt-level = 1 }
 graphene-std = { opt-level = 1 }
 interpreted-executor = { opt-level = 1 } # This is a mitigation for https://github.com/rustwasm/wasm-pack/issues/981 which is needed because the node_registry function is too large
 graphite-proc-macros = { opt-level = 1 }
@@ -218,6 +242,7 @@ rustc-hash = { opt-level = 3 }
 serde_derive = { opt-level = 1 }
 specta-macros = { opt-level = 1 }
 syn = { opt-level = 1 }
+node-macro = { opt-level = 3 }
 
 [profile.release]
 lto = "thin"

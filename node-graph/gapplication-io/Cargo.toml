@@ -13,7 +13,9 @@ wgpu = ["dep:wgpu"]
 [dependencies]
 # Local dependencies
 dyn-any = { workspace = true }
-graphene-core = { workspace = true }
+core-types = { workspace = true }
+vector-types = { workspace = true }
+text-nodes = { workspace = true }
 
 # Workspace dependencies
 glam = { workspace = true }

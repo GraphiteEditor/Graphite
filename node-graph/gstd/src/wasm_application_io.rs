@@ -4,21 +4,23 @@ pub use graph_craft::document::value::RenderOutputType;
 pub use graph_craft::wasm_application_io::*;
 use graphene_application_io::ApplicationIo;
 #[cfg(target_family = "wasm")]
-use graphene_core::gradient::GradientStops;
+use core_types::WasmNotSend;
 #[cfg(target_family = "wasm")]
-use graphene_core::math::bbox::Bbox;
-use graphene_core::raster::image::Image;
-use graphene_core::raster_types::{CPU, Raster};
-use graphene_core::table::Table;
+use core_types::math::bbox::Bbox;
+use graphic_types::raster_types::Image;
+use graphic_types::raster_types::{CPU, Raster};
+use core_types::table::Table;
 #[cfg(target_family = "wasm")]
-use graphene_core::transform::Footprint;
+use core_types::transform::Footprint;
+use core_types::{Color, Ctx};
 #[cfg(target_family = "wasm")]
-use graphene_core::vector::Vector;
-use graphene_core::{Color, Ctx};
+use svg_renderer::{Render, RenderParams, RenderSvgSegmentList, SvgRender};
 #[cfg(target_family = "wasm")]
-use graphene_core::{Graphic, WasmNotSend};
+use graphic_types::Graphic;
 #[cfg(target_family = "wasm")]
-use graphene_svg_renderer::{Render, RenderParams, RenderSvgSegmentList, SvgRender};
+use graphic_types::Vector;
+#[cfg(target_family = "wasm")]
+use graphic_types::vector_types::gradient::GradientStops;
 use std::sync::Arc;
 #[cfg(target_family = "wasm")]
 use wasm_bindgen::JsCast;
@@ -158,7 +160,7 @@ async fn rasterize<T: WasmNotSend + 'n>(
 where
 	Table<T>: Render,
 {
-	use graphene_core::table::TableRow;
+	use core_types::table::TableRow;
 
 	if footprint.transform.matrix2.determinant() == 0. {
 		log::trace!("Invalid footprint received for rasterization");

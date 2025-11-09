@@ -38,12 +38,12 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 				},
 				DocumentNode {
 					inputs: vec![NodeInput::node(NodeId(0), 0)],
-					implementation: DocumentNodeImplementation::ProtoNode(graphene_core::memo::memo::IDENTIFIER),
+					implementation: DocumentNodeImplementation::ProtoNode(core_types::memo::memo::IDENTIFIER),
 					..Default::default()
 				},
 				DocumentNode {
 					call_argument: concrete!(Context),
-					inputs: vec![NodeInput::import(graphene_core::Type::Fn(Box::new(concrete!(Context)), Box::new(generic!(T))), 0)],
+					inputs: vec![NodeInput::import(core_types::Type::Fn(Box::new(concrete!(Context)), Box::new(generic!(T))), 0)],
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_node::render_intermediate::IDENTIFIER),
 					context_features: graphene_std::ContextDependencies {
 						extract: ContextFeatures::VARARGS,
@@ -95,7 +95,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 
 	if cfg!(feature = "gpu") {
 		nodes.push(DocumentNode {
-			implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::from("graphene_core::ops::IntoNode<&WgpuExecutor>")),
+			implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::from("core_types::ops::IntoNode<&WgpuExecutor>")),
 			inputs: vec![NodeInput::node(NodeId(2), 0)],
 			..Default::default()
 		});

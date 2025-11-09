@@ -5,6 +5,7 @@ use quote::{format_ident, quote};
 pub struct CrateIdent {
 	gcore: syn::Result<TokenStream>,
 	gcore_shaders: syn::Result<TokenStream>,
+	raster_types: syn::Result<TokenStream>,
 	wgpu_executor: syn::Result<TokenStream>,
 }
 
@@ -15,6 +16,10 @@ impl CrateIdent {
 
 	pub fn gcore_shaders(&self) -> syn::Result<&TokenStream> {
 		self.gcore_shaders.as_ref().map_err(Clone::clone)
+	}
+
+	pub fn raster_types(&self) -> syn::Result<&TokenStream> {
+		self.raster_types.as_ref().map_err(Clone::clone)
 	}
 
 	pub fn wgpu_executor(&self) -> syn::Result<&TokenStream> {
@@ -33,9 +38,15 @@ impl Default for CrateIdent {
 			Err(e) => Err(syn::Error::new(Span::call_site(), format!("Could not find dependency on `{orig_name}`:\n{e}"))),
 		};
 
-		let gcore = find_crate("graphene-core");
-		let gcore_shaders = find_crate("graphene-core-shaders").or_else(|eshaders| gcore.clone().map_err(|ecore| syn::Error::new(Span::call_site(), format!("{ecore}\n\nFallback: {eshaders}"))));
+		let gcore = find_crate("core-types");
+		let gcore_shaders = find_crate("not-std-types").or_else(|eshaders| gcore.clone().map_err(|ecore| syn::Error::new(Span::call_site(), format!("{ecore}\n\nFallback: {eshaders}"))));
+		let raster_types = find_crate("raster-types");
 		let wgpu_executor = find_crate("wgpu-executor");
-		Self { gcore, gcore_shaders, wgpu_executor }
+		Self {
+			gcore,
+			gcore_shaders,
+			raster_types,
+			wgpu_executor,
+		}
 	}
 }
