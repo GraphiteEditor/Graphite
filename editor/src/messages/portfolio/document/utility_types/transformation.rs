@@ -5,13 +5,13 @@ use crate::messages::portfolio::document::graph_operation::utility_types::{Modif
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
+use crate::messages::tool::transform_layer::transform_layer_message_handler::OtherUsefulParameters;
 use crate::messages::tool::utility_types::ToolType;
 use glam::{DAffine2, DMat2, DVec2};
 use graphene_std::renderer::Quad;
 use graphene_std::vector::misc::{HandleId, ManipulatorPointId};
 use graphene_std::vector::{HandleExt, PointId, VectorModificationType};
 use std::collections::{HashMap, VecDeque};
-use std::f64::consts::PI;
 
 #[derive(Debug, PartialEq, Clone, Copy)]
 struct AnchorPoint {
@@ -156,22 +156,21 @@ pub struct Translation {
 }
 
 impl Translation {
-	pub fn to_dvec(self, transform: DAffine2, increment_mode: bool) -> DVec2 {
+	pub fn to_dvec(self, state: &OtherUsefulParameters) -> DVec2 {
 		let displacement = if let Some(value) = self.typed_distance {
 			match self.constraint {
-				Axis::X => transform.transform_vector2(DVec2::new(value, 0.)),
-				Axis::Y => transform.transform_vector2(DVec2::new(0., value)),
+				Axis::X => DVec2::X * value,
+				Axis::Y => DVec2::Y * value,
 				Axis::Both => self.dragged_distance,
 			}
 		} else {
 			match self.constraint {
 				Axis::Both => self.dragged_distance,
-				Axis::X => DVec2::new(self.dragged_distance.x, 0.),
-				Axis::Y => DVec2::new(0., self.dragged_distance.y),
+				Axis::X => DVec2::X * self.dragged_distance.dot(state.constraint_axis(self.constraint).unwrap_or_default()),
+				Axis::Y => DVec2::Y * self.dragged_distance.dot(state.constraint_axis(self.constraint).unwrap_or_default()),
 			}
 		};
-		let displacement = transform.inverse().transform_vector2(displacement);
-		if increment_mode { displacement.round() } else { displacement }
+		if state.is_rounded_to_intervals { displacement.round() } else { displacement }
 	}
 
 	#[must_use]
@@ -327,36 +326,19 @@ impl TransformType {
 
 impl TransformOperation {
 	#[allow(clippy::too_many_arguments)]
-	pub fn apply_transform_operation(&self, selected: &mut Selected, increment_mode: bool, local: bool, quad: Quad, transform: DAffine2, pivot: DVec2, local_transform: DAffine2) {
-		let local_axis_transform_angle = (quad.top_left() - quad.top_right()).to_angle();
+	pub fn apply_transform_operation(&self, selected: &mut Selected, state: &OtherUsefulParameters, document: &DocumentMessageHandler) {
 		if self != &TransformOperation::None {
-			let transformation = match self {
-				TransformOperation::Grabbing(translation) => {
-					let translate = DAffine2::from_translation(transform.transform_vector2(translation.to_dvec(local_transform, increment_mode)));
-					if local {
-						let resolved_angle = if local_axis_transform_angle > 0. {
-							local_axis_transform_angle
-						} else {
-							local_axis_transform_angle - PI
-						};
-						DAffine2::from_angle(resolved_angle) * translate * DAffine2::from_angle(-resolved_angle)
-					} else {
-						translate
-					}
-				}
-				TransformOperation::Rotating(rotation) => DAffine2::from_angle(rotation.to_f64(increment_mode)),
-				TransformOperation::Scaling(scale) => {
-					if local {
-						DAffine2::from_angle(local_axis_transform_angle) * DAffine2::from_scale(scale.to_dvec(increment_mode)) * DAffine2::from_angle(-local_axis_transform_angle)
-					} else {
-						DAffine2::from_scale(scale.to_dvec(increment_mode))
-					}
-				}
+			let mut transformation = match self {
+				TransformOperation::Grabbing(translation) => DAffine2::from_translation(translation.to_dvec(state)),
+				TransformOperation::Rotating(rotation) => DAffine2::from_angle(rotation.to_f64(state.is_rounded_to_intervals)),
+				TransformOperation::Scaling(scale) => DAffine2::from_scale(scale.to_dvec(state.is_rounded_to_intervals)),
 				TransformOperation::None => unreachable!(),
 			};
+			let normalized_transform = state.local_to_viewport_transform();
+			transformation = normalized_transform * transformation * normalized_transform.inverse();
 
-			selected.update_transforms(transformation, Some(pivot), Some(*self));
-			self.hints(selected.responses, local);
+			selected.update_transforms(transformation, Some(state.pivot_viewport(document)), Some(*self));
+			self.hints(selected.responses, state.is_transforming_in_local_space);
 		}
 	}
 
@@ -373,24 +355,25 @@ impl TransformOperation {
 	}
 
 	#[allow(clippy::too_many_arguments)]
-	pub fn constrain_axis(&mut self, axis: Axis, selected: &mut Selected, increment_mode: bool, mut local: bool, quad: Quad, transform: DAffine2, pivot: DVec2, local_transform: DAffine2) -> bool {
-		(*self, local) = match self {
+	pub fn constrain_axis(&mut self, axis: Axis, selected: &mut Selected, state: &OtherUsefulParameters, document: &DocumentMessageHandler) -> bool {
+		let resulting_local;
+		(*self, resulting_local) = match self {
 			TransformOperation::Grabbing(translation) => {
-				let (translation, local) = translation.with_constraint(axis, local);
-				(TransformOperation::Grabbing(translation), local)
+				let (translation, resulting_local) = translation.with_constraint(axis, state.is_transforming_in_local_space);
+				(TransformOperation::Grabbing(translation), resulting_local)
 			}
 			TransformOperation::Scaling(scale) => {
-				let (scale, local) = scale.with_constraint(axis, local);
-				(TransformOperation::Scaling(scale), local)
+				let (scale, resulting_local) = scale.with_constraint(axis, state.is_transforming_in_local_space);
+				(TransformOperation::Scaling(scale), resulting_local)
 			}
 			_ => (*self, false),
 		};
-		self.apply_transform_operation(selected, increment_mode, local, quad, transform, pivot, local_transform);
-		local
+		self.apply_transform_operation(selected, state, document);
+		resulting_local
 	}
 
 	#[allow(clippy::too_many_arguments)]
-	pub fn grs_typed(&mut self, typed: Option<f64>, selected: &mut Selected, increment_mode: bool, local: bool, quad: Quad, transform: DAffine2, pivot: DVec2, local_transform: DAffine2) {
+	pub fn grs_typed(&mut self, typed: Option<f64>, selected: &mut Selected, state: &OtherUsefulParameters, document: &DocumentMessageHandler) {
 		match self {
 			TransformOperation::None => (),
 			TransformOperation::Grabbing(translation) => translation.typed_distance = typed,
@@ -398,7 +381,7 @@ impl TransformOperation {
 			TransformOperation::Scaling(scale) => scale.typed_factor = typed,
 		};
 
-		self.apply_transform_operation(selected, increment_mode, local, quad, transform, pivot, local_transform);
+		self.apply_transform_operation(selected, state, document);
 	}
 
 	pub fn hints(&self, responses: &mut VecDeque<Message>, local: bool) {
@@ -481,7 +464,7 @@ impl TransformOperation {
 	}
 
 	#[allow(clippy::too_many_arguments)]
-	pub fn negate(&mut self, selected: &mut Selected, increment_mode: bool, local: bool, quad: Quad, transform: DAffine2, pivot: DVec2, local_transform: DAffine2) {
+	pub fn negate(&mut self, selected: &mut Selected, state: &OtherUsefulParameters, document: &DocumentMessageHandler) {
 		if *self != TransformOperation::None {
 			*self = match self {
 				TransformOperation::Scaling(scale) => TransformOperation::Scaling(scale.negate()),
@@ -489,7 +472,7 @@ impl TransformOperation {
 				TransformOperation::Grabbing(translation) => TransformOperation::Grabbing(translation.negate()),
 				_ => *self,
 			};
-			self.apply_transform_operation(selected, increment_mode, local, quad, transform, pivot, local_transform);
+			self.apply_transform_operation(selected, state, document);
 		}
 	}
 }
