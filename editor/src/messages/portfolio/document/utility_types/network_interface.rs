@@ -6911,3 +6911,34 @@ pub enum TransactionStatus {
 	#[default]
 	Finished,
 }
+
+#[cfg(test)]
+mod network_interface_tests {
+	use crate::test_utils::test_prelude::*;
+	#[tokio::test]
+	async fn copy_isolated_node() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let rectangle = editor.create_node_by_name("Rectangle").await;
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![rectangle] }).await;
+		let frontend_messages = editor.handle_message(NodeGraphMessage::Copy).await;
+		let serialized_nodes = frontend_messages
+			.into_iter()
+			.find_map(|msg| match msg {
+				FrontendMessage::TriggerTextCopy { copy_text } => Some(copy_text),
+				_ => None,
+			})
+			.expect("copy message should be dispatched")
+			.strip_prefix("graphite/nodes: ")
+			.expect("should start with magic string")
+			.to_string();
+		println!("Serialized: {serialized_nodes}");
+		editor.handle_message(NodeGraphMessage::PasteNodes { serialized_nodes }).await;
+		let nodes = &mut editor.active_document_mut().network_interface.network_mut(&[]).unwrap().nodes;
+		let orignal = nodes.remove(&rectangle).expect("original node should exist");
+		assert!(
+			nodes.values().any(|other| *other == orignal),
+			"duplicated node should exist\nother nodes: {nodes:#?}\norignal {orignal:#?}"
+		);
+	}
+}
