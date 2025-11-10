@@ -109,7 +109,8 @@ async fn instance_position(ctx: impl Ctx + ExtractVarArgs) -> DVec2 {
 async fn instance_index(ctx: impl Ctx + ExtractIndex, _primary: (), loop_level: u32) -> f64 {
 	let Some(index_iter) = ctx.try_index() else { return 0. };
 	let mut last = 0;
-	for (i, index) in index_iter.enumerate() {
+	// Index zero should be the top most index for some reason https://github.com/GraphiteEditor/Graphite/issues/3360
+	for (i, index) in index_iter.rev().enumerate() {
 		if i == loop_level as usize {
 			return index as f64;
 		}
