@@ -369,13 +369,8 @@ impl NodeNetworkInterface {
 						return None;
 					};
 					// TODO: Get downstream connections from all outputs
-					let Some(downstream_connections) = outward_wires.get(&OutputConnector::node(*node_id, 0)) else {
-						log::error!("Could not get outward wires in copy_nodes");
-						return None;
-					};
-					let has_selected_node_downstream = downstream_connections
-						.iter()
-						.any(|input_connector| input_connector.node_id().is_some_and(|upstream_id| new_ids.keys().any(|key| *key == upstream_id)));
+					let mut downstream_connections = outward_wires.get(&OutputConnector::node(*node_id, 0)).map_or([].iter(), |outputs| outputs.iter());
+					let has_selected_node_downstream = downstream_connections.any(|input_connector| input_connector.node_id().is_some_and(|upstream_id| new_ids.keys().any(|key| *key == upstream_id)));
 					// If the copied node does not have a downstream connection to another copied node, then set the position to absolute
 					if !has_selected_node_downstream {
 						let Some(position) = self.position(node_id, network_path) else {
