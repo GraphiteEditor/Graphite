@@ -56,6 +56,12 @@ impl Arrow {
 			start_viewport + direction * head_length + perpendicular * (head_width * 0.5),
 		];
 
+		// Get the layer's transform to convert viewport coordinates to layer-local coordinates
+		let viewport_to_layer = document.metadata().transform_to_viewport(layer).inverse();
+
+		// Convert viewport coordinates to layer-local coordinates
+		let local_anchors: Vec<DVec2> = viewport_anchors.iter().map(|&viewport_pos| viewport_to_layer.transform_point2(viewport_pos)).collect();
+
 		let vector = document.network_interface.compute_modified_vector(layer);
 		let existing_point_ids: Vec<PointId> = vector.as_ref().map(|v| v.point_domain.ids().to_vec()).unwrap_or_default();
 		let existing_segment_ids: Vec<SegmentId> = vector.as_ref().map(|v| v.segment_domain.ids().to_vec()).unwrap_or_default();
@@ -74,7 +80,8 @@ impl Arrow {
 			});
 		}
 
-		let point_ids: Vec<PointId> = viewport_anchors
+		// Insert points in layer-local coordinates
+		let point_ids: Vec<PointId> = local_anchors
 			.iter()
 			.map(|&pos| {
 				let id = PointId::generate();
