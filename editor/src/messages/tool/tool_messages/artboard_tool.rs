@@ -762,4 +762,30 @@ mod test_artboard {
 
 		has_artboards(&mut editor, vec![ArtboardLayoutDocument::new((60, 10), (10, 12)), ArtboardLayoutDocument::new((70, 0), (10, 100))]).await;
 	}
+
+	#[tokio::test]
+	async fn first_artboard() {
+		let mut editor = EditorTestUtils::create();
+
+		editor.new_document().await;
+		// Put rectangles in before making the artboard
+		editor.drag_tool(ToolType::Rectangle, 10., 10., 20., 16., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Rectangle, 15., 15., 25., 25., ModifierKeys::empty()).await;
+
+		// Put the artboard in
+		editor.drag_tool(ToolType::Artboard, 5., 5., 30., 10., ModifierKeys::empty()).await;
+		has_artboards(&mut editor, vec![ArtboardLayoutDocument::new((5, 5), (25, 5))]).await;
+		let document = editor.active_document();
+
+		// artboard
+		// ├── rectangle1
+		// └── rectangle2
+		let artboard = document.metadata().all_layers().next().unwrap();
+		let rectangle2 = artboard.first_child(document.metadata()).unwrap();
+		let rectangle1 = rectangle2.next_sibling(document.metadata()).unwrap();
+
+		// The document bounding boxes should remain the same (content shouldn't shift)
+		assert_eq!(document.metadata().bounding_box_document(rectangle1).unwrap(), [DVec2::new(10., 10.), DVec2::new(20., 16.)]);
+		assert_eq!(document.metadata().bounding_box_document(rectangle2).unwrap(), [DVec2::new(15., 15.), DVec2::new(25., 25.)]);
+	}
 }
