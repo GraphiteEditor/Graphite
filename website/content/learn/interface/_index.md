@@ -23,12 +23,6 @@ On the left, the [**menu bar**](./menu-bar) provides quick access to many editor
 
 <!-- In the (forthcoming) macOS desktop release, the menu bar is absent from the editor window; its functions are instead located in macOS menu bar. -->
 
-### Document title
-
-In the center, the **document title** displays the name of the active document. That name is given a `*` suffix if the file has unsaved changes. For example, *Painting.graphite** would be unsaved but *Painting.graphite* would have no changes following its last save.
-
-<p><img src="https://static.graphite.rs/content/learn/interface/document-title.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="The document title" /></p>
-
 ### Window buttons
 
 On the right, the **window buttons** provide platform-specific controls for the application.
@@ -37,7 +31,7 @@ On the right, the **window buttons** provide platform-specific controls for the 
 
 | | |
 |-|-|
-| **Web** | <p>A button to enter fullscreen mode is displayed.</p><p>The label "*Go fullscreen to access all hotkeys*" indicates that some shortcut keys like <kbd>Ctrl</kbd><kbd>N</kbd> (macOS: <kbd>⌘</kbd><kbd>N</kbd>) are reserved by the web browser and can only be used in fullscreen mode. (An alternative to going fullscreen: include <kbd>Alt</kbd> in the shortcut combinations for browser-reserved hotkeys.)</p><p><img src="https://static.graphite.rs/content/learn/interface/window-buttons-web.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Fullscreen button" /></p> |
+| **Web** | <p>A button to enter fullscreen mode is displayed.</p><p>Some shortcut keys like <kbd>Ctrl</kbd><kbd>N</kbd> (macOS: <kbd>⌘</kbd><kbd>N</kbd>) are reserved by the web browser and can only be used in fullscreen mode. (Alternative to going fullscreen: include <kbd>Alt</kbd> in the shortcut combinations for browser-reserved hotkeys.)</p><p><img src="https://static.graphite.rs/content/learn/interface/window-buttons-web.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Fullscreen button" /></p> |
 <!-- | **Windows<br />& Linux** | The standard window controls are displayed: minimize, maximize/restore down, and close.<br /><br /><img src="https://static.graphite.rs/content/learn/interface/window-buttons-windows-linux.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Minimize/maximize/close window buttons" /> | -->
 <!-- | **macOS** | The standard window controls are displayed: close, minimize, and fullscreen. These are located on the left of the title bar.<br /><br /><img src="https://static.graphite.rs/content/learn/interface/window-buttons-macos.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Close/minimize/fullscreen window buttons" /> | -->
 
