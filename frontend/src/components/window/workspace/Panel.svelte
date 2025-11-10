@@ -30,6 +30,7 @@
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 	import UserInputLabel from "@graphite/components/widgets/labels/UserInputLabel.svelte";
 
+	const BUTTON_LEFT = 0;
 	const BUTTON_MIDDLE = 1;
 
 	const editor = getContext<Editor>("editor");
@@ -41,6 +42,7 @@
 	export let panelType: PanelType | undefined = undefined;
 	export let clickAction: ((index: number) => void) | undefined = undefined;
 	export let closeAction: ((index: number) => void) | undefined = undefined;
+	export let emptySpaceAction: (() => void) | undefined = undefined;
 
 	let className = "";
 	export { className as class };
@@ -93,6 +95,11 @@
 		});
 	}
 
+	function onEmptySpaceAction(e: MouseEvent) {
+		if (e.target !== e.currentTarget) return;
+		if (e.button === BUTTON_MIDDLE || (e.button === BUTTON_LEFT && e.detail === 2)) emptySpaceAction?.();
+	}
+
 	export async function scrollTabIntoView(newIndex: number) {
 		await tick();
 		tabElements[newIndex]?.div?.()?.scrollIntoView();
@@ -101,7 +108,7 @@
 
 <LayoutCol on:pointerdown={() => panelType && editor.handle.setActivePanel(panelType)} class={`panel ${className}`.trim()} {classes} style={styleName} {styles}>
 	<LayoutRow class="tab-bar" classes={{ "min-widths": tabMinWidths }}>
-		<LayoutRow class="tab-group" scrollableX={true}>
+		<LayoutRow class="tab-group" scrollableX={true} on:click={onEmptySpaceAction} on:auxclick={onEmptySpaceAction}>
 			{#each tabLabels as tabLabel, tabIndex}
 				<LayoutRow
 					class="tab"
@@ -218,13 +225,13 @@
 		background: var(--color-1-nearblack);
 		border-radius: 6px;
 		overflow: hidden;
-
+		
 		.tab-bar {
 			height: 28px;
 			min-height: auto;
 			background: var(--color-1-nearblack); // Needed for the viewport hole punch on desktop
 			flex-shrink: 0;
-
+			
 			&.min-widths .tab-group .tab {
 				min-width: 120px;
 				max-width: 360px;
