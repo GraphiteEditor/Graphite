@@ -1593,9 +1593,11 @@ export class UpdateLayersPanelBottomBarLayout extends WidgetDiffUpdate {}
 export class UpdateMenuBarLayout extends JsMessage {
 	layoutTarget!: unknown;
 
-	// TODO: Replace `any` with correct typing
 	@Transform(({ value }: { value: any }) => createMenuLayout(value))
-	layout!: MenuBarEntry[];
+	layout?: MenuBarEntry[];
+
+	@Transform(({ value }: { value: any }) => createWidgetDiff(value))
+	diff?: WidgetDiff[];
 }
 
 export class UpdateNodeGraphControlBarLayout extends WidgetDiffUpdate {}

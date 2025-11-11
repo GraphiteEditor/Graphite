@@ -37,6 +37,53 @@ impl MessageHandler<MenuBarMessage, ()> for MenuBarMessageHandler {
 	}
 }
 
+impl MenuBarMessageHandler {
+	/// Convert MenuLayout to equivalent WidgetLayout containing TextButton widgets
+	fn convert_menu_to_widget_layout(menu_layout: MenuLayout) -> WidgetLayout {
+		use crate::messages::layout::utility_types::widgets::button_widgets::TextButton;
+		use crate::messages::layout::utility_types::widgets::input_widgets::{MenuListEntry, MenuListEntrySections};
+		use crate::messages::layout::utility_types::layout_widget::{WidgetLayout, LayoutGroup};
+		use crate::messages::layout::utility_types::widget_prelude::*;
+
+		fn convert_menu_bar_entry_to_menu_list_entry(entry: MenuBarEntry) -> MenuListEntry {
+			let children = entry.children.0.into_iter().map(|section| {
+				section.into_iter().map(convert_menu_bar_entry_to_menu_list_entry).collect()
+			}).collect();
+
+			let action_callback = entry.action;
+			MenuListEntry::new(entry.label.clone())
+				.label(entry.label)
+				.icon(entry.icon.unwrap_or_default())
+				.disabled(entry.disabled)
+				.children(children)
+				.on_update(move |_| {
+					// Extract the callback from the original action widget
+					if let Widget::InvisibleStandinInput(invisible) = &action_callback.widget {
+						(invisible.on_update.callback)(&())
+					} else {
+						Message::NoOp
+					}
+				})
+		}
+
+		let widgets: Vec<WidgetHolder> = menu_layout.layout.into_iter().map(|menu_entry| {
+			let menu_list_children: MenuListEntrySections = menu_entry.children.0.into_iter().map(|section| {
+				section.into_iter().map(convert_menu_bar_entry_to_menu_list_entry).collect()
+			}).collect();
+
+			// Create TextButton with menu list children - the actions are handled via MenuListEntry callbacks
+			TextButton::new(menu_entry.label.clone())
+				.icon(menu_entry.icon.as_deref())
+				.disabled(menu_entry.disabled)
+				.flush(true)
+				.menu_list_children(menu_list_children)
+				.widget_holder()
+		}).collect();
+
+		WidgetLayout::new(vec![LayoutGroup::Row { widgets }])
+	}
+}
+
 impl LayoutHolder for MenuBarMessageHandler {
 	fn layout(&self) -> Layout {
 		let no_active_document = !self.has_active_document;
@@ -737,6 +784,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 				]),
 			),
 		];
-		Layout::MenuLayout(MenuLayout::new(menu_bar_entries))
+		let menu_layout = MenuLayout::new(menu_bar_entries);
+		Layout::WidgetLayout(Self::convert_menu_to_widget_layout(menu_layout))
 	}
 }

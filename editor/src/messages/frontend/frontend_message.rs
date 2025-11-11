@@ -281,7 +281,10 @@ pub enum FrontendMessage {
 	UpdateMenuBarLayout {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
-		layout: Vec<MenuBarEntry>,
+		#[serde(skip_serializing_if = "Option::is_none")]
+		layout: Option<Vec<MenuBarEntry>>,
+		#[serde(skip_serializing_if = "Option::is_none")]
+		diff: Option<Vec<WidgetDiff>>,
 	},
 	UpdateMouseCursor {
 		cursor: MouseCursorIcon,

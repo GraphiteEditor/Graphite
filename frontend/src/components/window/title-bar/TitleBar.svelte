@@ -2,7 +2,8 @@
 	import { getContext, onMount } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import { type KeyRaw, type LayoutKeysGroup, type MenuBarEntry, type MenuListEntry, type AppWindowPlatform, UpdateMenuBarLayout } from "@graphite/messages";
+	import { type KeyRaw, type LayoutKeysGroup, type MenuBarEntry, type MenuListEntry, type AppWindowPlatform, UpdateMenuBarLayout, defaultWidgetLayout, patchWidgetLayout, type WidgetLayout as WidgetLayoutType } from "@graphite/messages";
+	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
 	import { platformIsMac } from "@graphite/utility-functions/platform";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -15,6 +16,7 @@
 	export let maximized: boolean;
 
 	const editor = getContext<Editor>("editor");
+	const menuBar = getContext<any>("menuBar");
 
 	// TODO: Apparently, Safari does not support the Keyboard.lock() API but does relax its authority over certain keyboard shortcuts in fullscreen mode, which we should take advantage of
 	const ACCEL_KEY = platformIsMac() ? "Command" : "Control";
@@ -27,6 +29,8 @@
 	];
 
 	let entries: MenuListEntry[] = [];
+	let useWidgetLayout = false;
+	let menuBarLayout: WidgetLayoutType = defaultWidgetLayout();
 
 	onMount(() => {
 		const arraysEqual = (a: KeyRaw[], b: KeyRaw[]): boolean => a.length === b.length && a.every((aValue, i) => aValue === b[i]);
@@ -37,24 +41,19 @@
 			return LOCK_REQUIRING_SHORTCUTS.some((lockKeyCombo) => arraysEqual(shortcutKeys, lockKeyCombo));
 		};
 
-		editor.subscriptions.subscribeJsMessage(UpdateMenuBarLayout, (updateMenuBarLayout) => {
-			const menuBarEntryToMenuListEntry = (entry: MenuBarEntry): MenuListEntry => ({
-				// From `MenuEntryCommon`
-				...entry,
-
-				// Shared names with fields that need to be converted from the type used in `MenuBarEntry` to that of `MenuListEntry`
-				action: () => editor.handle.widgetValueCommitAndUpdate(updateMenuBarLayout.layoutTarget, entry.action.widgetId, undefined),
-				children: entry.children ? entry.children.map((entries) => entries.map((entry) => menuBarEntryToMenuListEntry(entry))) : undefined,
-
-				// New fields in `MenuListEntry`
-				shortcutRequiresLock: entry.shortcut ? shortcutRequiresLock(entry.shortcut.keys) : undefined,
-				value: "",
-				disabled: entry.disabled ?? undefined,
-				font: undefined,
-			});
-
-			entries = updateMenuBarLayout.layout.map(menuBarEntryToMenuListEntry);
+		// Read menu bar state from the provider
+		const unsubscribe = menuBar.subscribe(($menuBar) => {
+			if ($menuBar.useWidgetLayout) {
+				useWidgetLayout = true;
+				menuBarLayout = $menuBar.layout;
+			} else {
+				useWidgetLayout = false;
+				// Convert MenuListEntry -> MenuListEntry (no-op mapping kept for future adjustments)
+				entries = $menuBar.entries as MenuListEntry[];
+			}
 		});
+
+		return () => unsubscribe();
 	});
 </script>
 
@@ -62,9 +61,13 @@
 	<!-- Menu bar -->
 	<LayoutRow>
 		{#if platform !== "Mac"}
-			{#each entries as entry}
-				<TextButton label={entry.label} icon={entry.icon} menuListChildren={entry.children} action={entry.action} flush={true} />
-			{/each}
+			{#if useWidgetLayout}
+				<WidgetLayout layout={menuBarLayout} />
+			{:else}
+				{#each entries as entry}
+					<TextButton label={entry.label} icon={entry.icon} menuListChildren={entry.children} action={entry.action} flush={true} />
+				{/each}
+			{/if}
 		{/if}
 	</LayoutRow>
 	<!-- Spacer -->

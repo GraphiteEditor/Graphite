@@ -16,6 +16,7 @@
 	import { createFullscreenState } from "@graphite/state-providers/fullscreen";
 	import { createNodeGraphState } from "@graphite/state-providers/node-graph";
 	import { createPortfolioState } from "@graphite/state-providers/portfolio";
+	import { createMenuBarState } from "@graphite/state-providers/menu-bar";
 	import { operatingSystem } from "@graphite/utility-functions/platform";
 
 	import MainWindow from "@graphite/components/window/MainWindow.svelte";
@@ -39,6 +40,9 @@
 	setContext("portfolio", portfolio);
 	let appWindow = createAppWindowState(editor);
 	setContext("appWindow", appWindow);
+    
+		let menuBar = createMenuBarState(editor);
+		setContext("menuBar", menuBar);
 
 	// Initialize managers, which are isolated systems that subscribe to backend messages to link them to browser API functionality (like JS events, IndexedDB, etc.)
 	createClipboardManager(editor);

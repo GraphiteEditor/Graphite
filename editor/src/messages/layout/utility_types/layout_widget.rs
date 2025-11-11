@@ -1,7 +1,6 @@
 use super::widgets::button_widgets::*;
 use super::widgets::input_widgets::*;
 use super::widgets::label_widgets::*;
-use super::widgets::menu_widgets::MenuLayout;
 use crate::application::generate_uuid;
 use crate::messages::input_mapper::utility_types::input_keyboard::KeysGroup;
 use crate::messages::input_mapper::utility_types::misc::ActionKeys;
@@ -105,50 +104,30 @@ pub trait DialogLayoutHolder: LayoutHolder {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum Layout {
 	WidgetLayout(WidgetLayout),
-	MenuLayout(MenuLayout),
 }
 
 impl Layout {
-	pub fn as_menu_layout(self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>) -> Option<MenuLayout> {
-		if let Self::MenuLayout(mut menu) = self {
-			menu.layout
-				.iter_mut()
-				.for_each(|menu_column| menu_column.children.fill_in_shortcut_actions_with_keys(action_input_mapping));
-			Some(menu)
-		} else {
-			None
-		}
-	}
+
 
 	pub fn iter(&self) -> Box<dyn Iterator<Item = &WidgetHolder> + '_> {
 		match self {
-			Layout::MenuLayout(menu_layout) => Box::new(menu_layout.iter()),
 			Layout::WidgetLayout(widget_layout) => Box::new(widget_layout.iter()),
 		}
 	}
 
 	pub fn iter_mut(&mut self) -> Box<dyn Iterator<Item = &mut WidgetHolder> + '_> {
 		match self {
-			Layout::MenuLayout(menu_layout) => Box::new(menu_layout.iter_mut()),
 			Layout::WidgetLayout(widget_layout) => Box::new(widget_layout.iter_mut()),
 		}
 	}
+
+
 
 	/// Diffing updates self (where self is old) based on new, updating the list of modifications as it does so.
 	pub fn diff(&mut self, new: Self, widget_path: &mut Vec<usize>, widget_diffs: &mut Vec<WidgetDiff>) {
 		match (self, new) {
 			// Simply diff the internal layout
 			(Self::WidgetLayout(current), Self::WidgetLayout(new)) => current.diff(new, widget_path, widget_diffs),
-			(current, Self::WidgetLayout(widget_layout)) => {
-				// Update current to the new value
-				*current = Self::WidgetLayout(widget_layout.clone());
-
-				// Push an update sublayout value
-				let new_value = DiffUpdate::SubLayout(widget_layout.layout);
-				let widget_path = widget_path.to_vec();
-				widget_diffs.push(WidgetDiff { widget_path, new_value });
-			}
-			(_, Self::MenuLayout(_)) => panic!("Cannot diff menu layout"),
 		}
 	}
 }

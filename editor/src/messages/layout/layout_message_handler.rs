@@ -25,7 +25,6 @@ impl MessageHandler<LayoutMessage, LayoutMessageContext<'_>> for LayoutMessageHa
 			LayoutMessage::ResendActiveWidget { layout_target, widget_id } => {
 				// Find the updated diff based on the specified layout target
 				let Some(diff) = (match &self.layouts[layout_target as usize] {
-					Layout::MenuLayout(_) => return,
 					Layout::WidgetLayout(layout) => Self::get_widget_path(layout, widget_id).map(|(widget, widget_path)| {
 						// Create a widget update diff for the relevant id
 						let new_value = DiffUpdate::Widget(widget.clone());
@@ -444,36 +443,15 @@ impl LayoutMessageHandler {
 		responses: &mut VecDeque<Message>,
 		action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>,
 	) {
-		match new_layout {
-			Layout::WidgetLayout(_) => {
-				let mut widget_diffs = Vec::new();
-				self.layouts[layout_target as usize].diff(new_layout, &mut Vec::new(), &mut widget_diffs);
+		let mut widget_diffs = Vec::new();
+		self.layouts[layout_target as usize].diff(new_layout, &mut Vec::new(), &mut widget_diffs);
 
-				// Skip sending if no diff.
-				if widget_diffs.is_empty() {
-					return;
-				}
-
-				self.send_diff(widget_diffs, layout_target, responses, action_input_mapping);
-			}
-			// We don't diff the menu bar layout yet.
-			Layout::MenuLayout(_) => {
-				// Skip update if the same
-				if self.layouts[layout_target as usize] == new_layout {
-					return;
-				}
-
-				// Update the backend storage
-				self.layouts[layout_target as usize] = new_layout;
-
-				// Update the UI
-				let Some(layout) = self.layouts[layout_target as usize].clone().as_menu_layout(action_input_mapping).map(|x| x.layout) else {
-					error!("Called unwrap_menu_layout on a widget layout");
-					return;
-				};
-				responses.add(FrontendMessage::UpdateMenuBarLayout { layout_target, layout });
-			}
+		// Skip sending if no diff.
+		if widget_diffs.is_empty() {
+			return;
 		}
+
+		self.send_diff(widget_diffs, layout_target, responses, action_input_mapping);
 	}
 
 	/// Send a diff to the frontend based on the layout target.
@@ -481,7 +459,7 @@ impl LayoutMessageHandler {
 		diff.iter_mut().for_each(|diff| diff.new_value.apply_keyboard_shortcut(action_input_mapping));
 
 		let message = match layout_target {
-			LayoutTarget::MenuBar => unreachable!("Menu bar is not diffed"),
+			LayoutTarget::MenuBar => FrontendMessage::UpdateMenuBarLayout { layout_target, layout: None, diff: Some(diff) },
 			LayoutTarget::DialogButtons => FrontendMessage::UpdateDialogButtons { layout_target, diff },
 			LayoutTarget::DialogColumn1 => FrontendMessage::UpdateDialogColumn1 { layout_target, diff },
 			LayoutTarget::DialogColumn2 => FrontendMessage::UpdateDialogColumn2 { layout_target, diff },
