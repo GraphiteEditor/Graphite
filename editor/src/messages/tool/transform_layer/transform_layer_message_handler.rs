@@ -7,6 +7,7 @@ use crate::messages::portfolio::document::utility_types::transformation::{Axis, 
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::pivot::{PivotGizmo, PivotGizmoType};
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
+use crate::messages::tool::tool_messages::select_tool;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::{ToolData, ToolType};
 use glam::{DAffine2, DVec2};
@@ -32,18 +33,18 @@ pub struct TransformLayerMessageContext<'a> {
 }
 
 #[derive(Debug, Clone, Default, ExtractField)]
-pub struct OtherUsefulParameters {
+pub struct TransformationState {
 	pub is_rounded_to_intervals: bool,
 	pub is_transforming_in_local_space: bool,
 	pub local_transform_axes: [DVec2; 2],
-
 	pub document_space_pivot: DocumentPosition,
 }
 
-impl OtherUsefulParameters {
+impl TransformationState {
 	pub fn pivot_viewport(&self, document: &DocumentMessageHandler) -> DVec2 {
 		document.metadata().document_to_viewport.transform_point2(self.document_space_pivot)
 	}
+
 	pub fn constraint_axis(&self, axis_constraint: Axis) -> Option<DVec2> {
 		match axis_constraint {
 			Axis::X => Some(if self.is_transforming_in_local_space { self.local_transform_axes[0] } else { DVec2::X }),
@@ -51,52 +52,47 @@ impl OtherUsefulParameters {
 			_ => None,
 		}
 	}
+
 	pub fn project_onto_constrained(&self, vector: DVec2, axis_constraint: Axis) -> DVec2 {
 		self.constraint_axis(axis_constraint).map_or(vector, |direction| vector.project_onto_normalized(direction))
 	}
+
 	pub fn local_to_viewport_transform(&self) -> DAffine2 {
-		self.is_transforming_in_local_space
-			.then(|| DAffine2::from_cols(self.local_transform_axes[0], self.local_transform_axes[1], DVec2::ZERO))
-			.unwrap_or_default()
+		if self.is_transforming_in_local_space {
+			DAffine2::from_cols(self.local_transform_axes[0], self.local_transform_axes[1], DVec2::ZERO)
+		} else {
+			DAffine2::IDENTITY
+		}
 	}
 }
 
 #[derive(Debug, Clone, Default, ExtractField)]
 pub struct TransformLayerMessageHandler {
 	pub transform_operation: TransformOperation,
-
+	state: TransformationState,
 	slow: bool,
 	layer_bounding_box: Quad,
 	typing: Typing,
-
 	mouse_position: ViewportPosition,
 	start_mouse: ViewportPosition,
-
 	original_transforms: OriginalTransforms,
 	pivot_gizmo: PivotGizmo,
 	pivot: ViewportPosition,
-
 	path_bounds: Option<[DVec2; 2]>,
-
 	local_mouse_start: DocumentPosition,
 	grab_target: DocumentPosition,
-
 	ptz: PTZ,
 	initial_transform: DAffine2,
-
 	operation_count: usize,
+	was_grabbing: bool,
 
 	// Pen tool (outgoing handle GRS manipulation)
 	handle: DVec2,
 	last_point: DVec2,
 	grs_pen_handle: bool,
 
-	// Ghost outlines for Path Tool
+	// Path tool (ghost outlines showing pre-transform geometry)
 	ghost_outline: Vec<(Vec<ClickTargetType>, DAffine2)>,
-
-	state: OtherUsefulParameters,
-
-	was_grabbing: bool,
 }
 
 #[message_handler_data]
@@ -275,7 +271,8 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 						} else if using_path_tool {
 							start_mouse - self.state.pivot_viewport(document)
 						} else {
-							self.layer_bounding_box.top_right() - self.layer_bounding_box.top_right() // TODO: This is always zero breaking the to_angle below????????
+							// TODO: This is always zero breaking the `.to_angle()` below?
+							self.layer_bounding_box.top_right() - self.layer_bounding_box.top_right()
 						};
 						let tilt_offset = document.document_ptz.unmodified_tilt();
 						let offset_angle = offset_angle.to_angle() + tilt_offset;
@@ -349,9 +346,8 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 					TransformType::Scale => TransformOperation::Scaling(Default::default()),
 				};
 				self.layer_bounding_box = selected.bounding_box();
-				let bounding_box = crate::messages::tool::tool_messages::select_tool::create_bounding_box_transform(document);
+				let bounding_box = select_tool::create_bounding_box_transform(document);
 				self.state.local_transform_axes = [bounding_box.x_axis, bounding_box.y_axis].map(|axis| axis.normalize_or_zero());
-				info!("{:?}", self.state.local_transform_axes);
 			}
 			TransformLayerMessage::BeginGrabPen { last_point, handle } | TransformLayerMessage::BeginRotatePen { last_point, handle } | TransformLayerMessage::BeginScalePen { last_point, handle } => {
 				self.typing.clear();
