@@ -178,6 +178,7 @@ impl SetClip for Table<GradientStops> {
 #[node_macro::node(category("Style"))]
 fn blend_mode<T: SetBlendMode>(
 	_: impl Ctx,
+	/// The layer stack that will be composited when rendering.
 	#[implementations(
 		Table<Graphic>,
 		Table<Vector>,
@@ -185,18 +186,21 @@ fn blend_mode<T: SetBlendMode>(
 		Table<Color>,
 		Table<GradientStops>,
 	)]
-	mut value: T,
+	mut content: T,
+	/// The choice of equation that controls how brightness and color blends between overlapping pixels.
 	blend_mode: BlendMode,
 ) -> T {
 	// TODO: Find a way to make this apply once to the table's parent (i.e. its row in its parent table or TableRow<T>) rather than applying to each row in its own table, which produces the undesired result
-	value.set_blend_mode(blend_mode);
-	value
+	content.set_blend_mode(blend_mode);
+	content
 }
 
-/// Modifies the opacity of the input graphics by multiplying the existing opacity by this percentage. This affects the transparency of the content (together with any above which is clipped to it).
+/// Modifies the opacity of the input graphics by multiplying the existing opacity by this percentage.
+/// This affects the transparency of the content (together with anything above which is clipped to it).
 #[node_macro::node(category("Style"))]
 fn opacity<T: MultiplyAlpha>(
 	_: impl Ctx,
+	/// The layer stack that will be composited when rendering.
 	#[implementations(
 		Table<Graphic>,
 		Table<Vector>,
@@ -204,18 +208,22 @@ fn opacity<T: MultiplyAlpha>(
 		Table<Color>,
 		Table<GradientStops>,
 	)]
-	mut value: T,
-	#[default(100.)] opacity: Percentage,
+	mut content: T,
+	/// How visible the content should be, including any content clipped to it.
+	/// Ranges from the default of 100% (fully opaque) to 0% (fully transparent).
+	#[default(100.)]
+	opacity: Percentage,
 ) -> T {
 	// TODO: Find a way to make this apply once to the table's parent (i.e. its row in its parent table or TableRow<T>) rather than applying to each row in its own table, which produces the undesired result
-	value.multiply_alpha(opacity / 100.);
-	value
+	content.multiply_alpha(opacity / 100.);
+	content
 }
 
-/// Sets each of the blending properties at once. The blend mode determines how overlapping content is composited together. The opacity affects the transparency of the content (together with any above which is clipped to it). The fill affects the transparency of the content itself, without affecting that of content clipped to it. The clip property determines whether the content inherits the alpha of the content beneath it.
+/// Sets each of the blending properties at once. The blend mode determines how overlapping content is composited together. The opacity affects the transparency of the content (together with anything above which is clipped to it). The fill affects the transparency of the content itself, without affecting that of content clipped to it. The clip property determines whether the content inherits the alpha of the content beneath it.
 #[node_macro::node(category("Style"))]
 fn blending<T: SetBlendMode + MultiplyAlpha + MultiplyFill + SetClip>(
 	_: impl Ctx,
+	/// The layer stack that will be composited when rendering.
 	#[implementations(
 		Table<Graphic>,
 		Table<Vector>,
@@ -223,16 +231,25 @@ fn blending<T: SetBlendMode + MultiplyAlpha + MultiplyFill + SetClip>(
 		Table<Color>,
 		Table<GradientStops>,
 	)]
-	mut value: T,
+	mut content: T,
+	/// The choice of equation that controls how brightness and color blends between overlapping pixels.
 	blend_mode: BlendMode,
-	#[default(100.)] opacity: Percentage,
-	#[default(100.)] fill: Percentage,
-	#[default(false)] clip: bool,
+	/// How visible the content should be, including any content clipped to it.
+	/// Ranges from the default of 100% (fully opaque) to 0% (fully transparent).
+	#[default(100.)]
+	opacity: Percentage,
+	/// How visible the content should be, independent of any content clipped to it.
+	/// Ranges from 0% (fully transparent) to 100% (fully opaque).
+	#[default(100.)]
+	fill: Percentage,
+	/// Whether the content inherits the alpha of the content beneath it.
+	#[default(false)]
+	clip: bool,
 ) -> T {
 	// TODO: Find a way to make this apply once to the table's parent (i.e. its row in its parent table or TableRow<T>) rather than applying to each row in its own table, which produces the undesired result
-	value.set_blend_mode(blend_mode);
-	value.multiply_alpha(opacity / 100.);
-	value.multiply_fill(fill / 100.);
-	value.set_clip(clip);
-	value
+	content.set_blend_mode(blend_mode);
+	content.multiply_alpha(opacity / 100.);
+	content.multiply_fill(fill / 100.);
+	content.set_clip(clip);
+	content
 }

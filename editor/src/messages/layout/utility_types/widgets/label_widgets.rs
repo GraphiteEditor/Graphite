@@ -36,7 +36,8 @@ pub enum SeparatorType {
 	Section,
 }
 
-#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Debug, PartialEq, Eq, Default, WidgetBuilder, specta::Type)]
+#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Debug, Eq, Default, WidgetBuilder, specta::Type)]
+#[derivative(PartialEq)]
 pub struct TextLabel {
 	pub disabled: bool,
 
@@ -62,6 +63,7 @@ pub struct TextLabel {
 	pub tooltip: String,
 
 	#[serde(rename = "forCheckbox")]
+	#[derivative(PartialEq = "ignore")]
 	pub for_checkbox: CheckboxId,
 
 	// Body

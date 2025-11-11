@@ -26,6 +26,14 @@ jobs:
       - name: 📥 Clone and checkout repository
         uses: actions/checkout@v3
 
+      # We can remove this step once `ubuntu-latest` has Node.js 22 or newer for its native TypeScript support. See:
+      # https://github.com/actions/runner-images?tab=readme-ov-file#available-images
+      # https://nodejs.org/en/learn/typescript/run-natively
+      - name: 📦 Install the latest Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "latest"
+
       - name: 🕸 Install Zola
         uses: taiki-e/install-action@v2
         with:
@@ -77,7 +85,8 @@ jobs:
           MODE: prod
         run: |
           cd website
-          npm run install-fonts
+          npm ci
+          npm run lint
           zola --config config.toml build --minify
 
       - name: 📤 Publish to Cloudflare Pages

@@ -38,7 +38,7 @@
 	{%- set global_css = ["/base.css", "/fonts/common.css"] -%}
 	{%- set fonts_loaded = load_data(path = "static/fonts/common.css", format = "plain", required = false) -%}
 	{%- if not fonts_loaded -%}
-	{{ throw(message = "------------------------------------------------------------> FONTS ARE NOT INSTALLED! Before running Zola, execute `npm run install-fonts` from the `/website` directory.") }}
+	{{ throw(message = "------------------------------------------------------------> FONTS ARE NOT INSTALLED! Before running Zola, execute `npm install` from the `/website` directory.") }}
 	{%- endif -%}
 
 	{#- RETRIEVE FROM TEMPLATES AND PAGES: CSS AND JS TO LOAD EITHER AS A LINK OR INLINE -#}
@@ -140,7 +140,7 @@
 				<a href="/press" class="link not-uppercase">Press</a>
 				<a href="/contact" class="link not-uppercase">Contact</a>
 			</nav>
-			<span>Copyright &copy; {{ now() | date(format = "%Y") }} Graphite Labs, LLC (an open source organization)</span>
+			<span>Copyright &copy; {{ now() | date(format = "%Y") }} Graphite Labs, LLC (an open source community organization)</span>
 		</footer>
 	</div>
 </body>

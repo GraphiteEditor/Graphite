@@ -45,6 +45,21 @@
 			&:not(:first-child) {
 				margin-top: 0;
 			}
+
+			tr:first-child:has(td:first-child label:empty) ~ tr td:first-child {
+				width: 0;
+			}
+		}
+
+		.widget-span:has(.text-area-input) {
+			flex: 1 1 100%;
+
+			.text-area-input textarea {
+				height: 100%;
+				margin-top: 0;
+				margin-bottom: 0;
+				resize: none;
+			}
 		}
 	}
 </style>

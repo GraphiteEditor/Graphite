@@ -418,7 +418,7 @@ impl Hash for VectorModification {
 	}
 }
 
-/// Applies a diff modification to a vector path.
+/// Applies a differential modification to a vector path, associating changes made by the Pen and Path tools to indices of edited points and segments.
 #[node_macro::node(category(""))]
 async fn path_modify(_ctx: impl Ctx, mut vector: Table<Vector>, modification: Box<VectorModification>, node_path: Vec<NodeId>) -> Table<Vector> {
 	if vector.is_empty() {
@@ -437,7 +437,7 @@ async fn path_modify(_ctx: impl Ctx, mut vector: Table<Vector>, modification: Bo
 	vector
 }
 
-/// Applies the vector path's local transformation to its geometry and resets it to the identity.
+/// Applies the vector path's local transformation to its geometry and resets the transform to the identity.
 #[node_macro::node(category("Vector"))]
 async fn apply_transform(_ctx: impl Ctx, mut vector: Table<Vector>) -> Table<Vector> {
 	for row in vector.iter_mut() {

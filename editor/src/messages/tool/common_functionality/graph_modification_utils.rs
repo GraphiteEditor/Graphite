@@ -32,7 +32,8 @@ pub fn find_spline(document: &DocumentMessageHandler, layer: LayerNodeIdentifier
 
 /// Merge `second_layer` to the `first_layer`.
 pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIdentifier, second_layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
-	if first_layer == second_layer {
+	// Skip layers that are children of each other (or the same)
+	if first_layer.ancestors(document.metadata()).any(|l| l == second_layer) || second_layer.ancestors(document.metadata()).any(|l| l == first_layer) {
 		return;
 	}
 	// Calculate the downstream transforms in order to bring the other vector geometry into the same layer space

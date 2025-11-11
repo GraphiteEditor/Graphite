@@ -178,13 +178,23 @@ pub fn blend_with_mode(background: TableRow<Raster<CPU>>, foreground: TableRow<R
 	}
 }
 
+/// Generates the brush strokes painted with the Brush tool as a raster image.
+/// If an input image is supplied, strokes are drawn on top of it, expanding bounds as needed.
 #[node_macro::node(category("Raster"))]
-async fn brush(_: impl Ctx, mut image_frame_table: Table<Raster<CPU>>, strokes: Vec<BrushStroke>, cache: BrushCache) -> Table<Raster<CPU>> {
-	if image_frame_table.is_empty() {
-		image_frame_table.push(TableRow::default());
+async fn brush(
+	_: impl Ctx,
+	/// Optional raster content that may be drawn onto.
+	mut image: Table<Raster<CPU>>,
+	/// The list of brush stroke paths drawn by the Brush tool, with each including both its coordinates and styles.
+	strokes: Vec<BrushStroke>,
+	/// Internal cache data used to accelerate rendering of the brush content.
+	cache: BrushCache,
+) -> Table<Raster<CPU>> {
+	if image.is_empty() {
+		image.push(TableRow::default());
 	}
 	// TODO: Find a way to handle more than one row
-	let table_row = image_frame_table.iter().next().expect("Expected the one row we just pushed").into_cloned();
+	let table_row = image.iter().next().expect("Expected the one row we just pushed").into_cloned();
 
 	let bounds = Table::new_from_row(table_row.clone()).bounding_box(DAffine2::IDENTITY, false);
 	let [start, end] = if let RenderBoundingBox::Rectangle(rect) = bounds { rect } else { [DVec2::ZERO, DVec2::ZERO] };
@@ -296,13 +306,13 @@ async fn brush(_: impl Ctx, mut image_frame_table: Table<Raster<CPU>>, strokes: 
 		actual_image = blend_image_closure(erase_restore_mask, actual_image, |a, b| blend_params.eval((a, b)));
 	}
 
-	let first_row = image_frame_table.iter_mut().next().unwrap();
+	let first_row = image.iter_mut().next().unwrap();
 	*first_row.element = actual_image.element;
 	*first_row.transform = actual_image.transform;
 	*first_row.alpha_blending = actual_image.alpha_blending;
 	*first_row.source_node_id = actual_image.source_node_id;
 
-	image_frame_table
+	image
 }
 
 pub fn blend_image_closure(foreground: TableRow<Raster<CPU>>, mut background: TableRow<Raster<CPU>>, map_fn: impl Fn(Color, Color) -> Color) -> TableRow<Raster<CPU>> {

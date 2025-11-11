@@ -25,11 +25,11 @@ pub enum DesktopFrontendMessage {
 		content: Vec<u8>,
 	},
 	OpenUrl(String),
-	UpdateViewportBounds {
-		x: f32,
-		y: f32,
-		width: f32,
-		height: f32,
+	UpdateViewportPhysicalBounds {
+		x: f64,
+		y: f64,
+		width: f64,
+		height: f64,
 	},
 	UpdateOverlays(vello::Scene),
 	MinimizeWindow,

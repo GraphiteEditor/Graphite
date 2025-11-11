@@ -13,7 +13,7 @@ pub(crate) struct BrowserProcessAppImpl<H: CefEventHandler> {
 	object: *mut RcImpl<_cef_app_t, Self>,
 	event_handler: H,
 }
-impl<H: CefEventHandler + Clone> BrowserProcessAppImpl<H> {
+impl<H: CefEventHandler> BrowserProcessAppImpl<H> {
 	pub(crate) fn new(event_handler: H) -> Self {
 		Self {
 			object: std::ptr::null_mut(),
@@ -22,9 +22,9 @@ impl<H: CefEventHandler + Clone> BrowserProcessAppImpl<H> {
 	}
 }
 
-impl<H: CefEventHandler + Clone> ImplApp for BrowserProcessAppImpl<H> {
+impl<H: CefEventHandler> ImplApp for BrowserProcessAppImpl<H> {
 	fn browser_process_handler(&self) -> Option<BrowserProcessHandler> {
-		Some(BrowserProcessHandler::new(BrowserProcessHandlerImpl::new(self.event_handler.clone())))
+		Some(BrowserProcessHandler::new(BrowserProcessHandlerImpl::new(self.event_handler.duplicate())))
 	}
 
 	fn on_register_custom_schemes(&self, registrar: Option<&mut SchemeRegistrar>) {
@@ -80,7 +80,7 @@ impl<H: CefEventHandler + Clone> ImplApp for BrowserProcessAppImpl<H> {
 	}
 }
 
-impl<H: CefEventHandler + Clone> Clone for BrowserProcessAppImpl<H> {
+impl<H: CefEventHandler> Clone for BrowserProcessAppImpl<H> {
 	fn clone(&self) -> Self {
 		unsafe {
 			let rc_impl = &mut *self.object;
@@ -88,7 +88,7 @@ impl<H: CefEventHandler + Clone> Clone for BrowserProcessAppImpl<H> {
 		}
 		Self {
 			object: self.object,
-			event_handler: self.event_handler.clone(),
+			event_handler: self.event_handler.duplicate(),
 		}
 	}
 }
@@ -100,7 +100,7 @@ impl<H: CefEventHandler> Rc for BrowserProcessAppImpl<H> {
 		}
 	}
 }
-impl<H: CefEventHandler + Clone> WrapApp for BrowserProcessAppImpl<H> {
+impl<H: CefEventHandler> WrapApp for BrowserProcessAppImpl<H> {
 	fn wrap_rc(&mut self, object: *mut RcImpl<_cef_app_t, Self>) {
 		self.object = object;
 	}

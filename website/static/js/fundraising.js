@@ -6,9 +6,10 @@ function initializeFundraisingBar() {
 	let loaded = false;
 
 	const fundraising = document.querySelector("[data-fundraising]");
+	if (!fundraising) return;
 	const bar = fundraising.querySelector("[data-fundraising-bar]");
-	const dynamicPercent = fundraising.querySelector("[data-fundraising-percent] [data-dynamic]")
-	const dynamicGoal = fundraising.querySelector("[data-fundraising-goal] [data-dynamic]")
+	const dynamicPercent = fundraising.querySelector("[data-fundraising-percent] [data-dynamic]");
+	const dynamicGoal = fundraising.querySelector("[data-fundraising-goal] [data-dynamic]");
 	if (!(fundraising instanceof HTMLElement && bar instanceof HTMLElement && dynamicPercent instanceof HTMLElement && dynamicGoal instanceof HTMLElement)) return;
 
 	const setFundraisingGoal = async () => {
@@ -18,15 +19,17 @@ function initializeFundraisingBar() {
 
 		fundraising.classList.remove("loading");
 		bar.style.setProperty("--fundraising-percent", `${data.percentComplete}%`);
-		dynamicPercent.textContent = data.percentComplete;
-		dynamicGoal.textContent = data.targetValue;
+		dynamicPercent.textContent = `${data.percentComplete}`;
+		dynamicGoal.textContent = `${data.targetValue}`;
 
 		loaded = true;
 	};
-	new IntersectionObserver((entries) => {
-		entries.forEach((entry) => {
-			if (!loaded && entry.intersectionRatio > VISIBILITY_COVERAGE_FRACTION) setFundraisingGoal();
-		});
-	}, { threshold: VISIBILITY_COVERAGE_FRACTION })
-		.observe(fundraising);
+	new IntersectionObserver(
+		(entries) => {
+			entries.forEach((entry) => {
+				if (!loaded && entry.intersectionRatio > VISIBILITY_COVERAGE_FRACTION) setFundraisingGoal();
+			});
+		},
+		{ threshold: VISIBILITY_COVERAGE_FRACTION },
+	).observe(fundraising);
 }

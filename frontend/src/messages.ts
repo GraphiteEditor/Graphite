@@ -143,12 +143,9 @@ export class UpdateWirePathInProgress extends JsMessage {
 
 export class OpenDocument {
 	readonly id!: bigint;
+
 	@Type(() => DocumentDetails)
 	readonly details!: DocumentDetails;
-
-	get displayName(): string {
-		return this.details.displayName;
-	}
 }
 
 export class DocumentDetails {
@@ -157,10 +154,6 @@ export class DocumentDetails {
 	readonly isAutoSaved!: boolean;
 
 	readonly isSaved!: boolean;
-
-	get displayName(): string {
-		return `${this.name}${this.isSaved ? "" : "*"}`;
-	}
 }
 
 export class Box {

@@ -90,13 +90,15 @@ fn decompose_translation(_: impl Ctx, transform: DAffine2) -> DVec2 {
 	transform.translation
 }
 
-/// Extracts the rotation component (in degrees) from the input transform. This, together with the "Decompose Scale" node, also may jointly represent any shear component in the original transform.
+/// Extracts the rotation component (in degrees) from the input transform.
+/// This, together with the "Decompose Scale" node, also may jointly represent any shear component in the original transform.
 #[node_macro::node(category("Math: Transform"))]
 fn decompose_rotation(_: impl Ctx, transform: DAffine2) -> f64 {
 	transform.decompose_rotation().to_degrees()
 }
 
-/// Extracts the scale component from the input transform. This, together with the "Decompose Rotation" node, also may jointly represent any shear component in the original transform.
+/// Extracts the scale component from the input transform.
+/// This, together with the "Decompose Rotation" node, also may jointly represent any shear component in the original transform.
 #[node_macro::node(category("Math: Transform"))]
 fn decompose_scale(_: impl Ctx, transform: DAffine2) -> DVec2 {
 	transform.decompose_scale()

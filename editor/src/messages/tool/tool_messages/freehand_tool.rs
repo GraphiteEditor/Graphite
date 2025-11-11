@@ -237,6 +237,7 @@ impl Fsm for FreehandToolFsmState {
 			input,
 			shape_editor,
 			preferences,
+			viewport,
 			..
 		} = tool_action_data;
 
@@ -283,7 +284,7 @@ impl Fsm for FreehandToolFsmState {
 
 				responses.add(DocumentMessage::DeselectAllLayers);
 
-				let parent = document.new_layer_bounding_artboard(input);
+				let parent = document.new_layer_bounding_artboard(input, viewport);
 
 				let node_type = resolve_document_node_type("Path").expect("Path node does not exist");
 				let node = node_type.default_node_template();
