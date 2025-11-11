@@ -39,7 +39,6 @@ export default defineConfig({
 	],
 	resolve: {
 		alias: [
-			{ find: /@graphite-frontend\/(.*\.svg)/, replacement: path.resolve(projectRootDir, "$1?raw") },
 			{ find: "@graphite-frontend", replacement: projectRootDir },
 			{ find: "@graphite/../assets", replacement: path.resolve(projectRootDir, "assets") },
 			{ find: "@graphite/../public", replacement: path.resolve(projectRootDir, "public") },

@@ -34,6 +34,7 @@
 		"class-transformer": "^0.5.1",
 		"idb-keyval": "^6.2.2",
 		"reflect-metadata": "^0.2.2",
+		"graphite-branded-assets": "github:keavon/graphite-branded-assets",
 		"source-code-pro": "github:adobe-fonts/source-code-pro#2.042R-u/1.062R-i/1.026R-vf",
 		"source-sans": "github:adobe-fonts/source-sans#2.045R-ro%2F1.095R-it"
 	},

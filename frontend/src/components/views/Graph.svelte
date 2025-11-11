@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { IconName } from "graphite-branded-assets";
 	import { getContext } from "svelte";
 	import { cubicInOut } from "svelte/easing";
 	import { fade } from "svelte/transition";
@@ -6,7 +7,6 @@
 	import type { Editor } from "@graphite/editor";
 	import type { FrontendGraphInput, FrontendGraphOutput } from "@graphite/messages";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
-	import type { IconName } from "@graphite/utility-functions/icons";
 
 	import NodeCatalog from "@graphite/components/floating-menus/NodeCatalog.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";

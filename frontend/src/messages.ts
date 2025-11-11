@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { Transform, Type, plainToClass } from "class-transformer";
+import { type PopoverButtonStyle, type IconName, type IconSize } from "graphite-branded-assets";
 
-import { type PopoverButtonStyle, type IconName, type IconSize } from "@graphite/utility-functions/icons";
 import { type EditorHandle } from "@graphite-frontend/wasm/pkg/graphite_wasm.js";
 
 export class JsMessage {

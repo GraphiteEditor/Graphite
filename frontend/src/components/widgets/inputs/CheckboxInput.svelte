@@ -1,7 +1,6 @@
 <script lang="ts">
+	import type { IconName } from "graphite-branded-assets";
 	import { createEventDispatcher } from "svelte";
-
-	import type { IconName } from "@graphite/utility-functions/icons";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
