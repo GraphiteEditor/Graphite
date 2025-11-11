@@ -32,7 +32,10 @@ export default defineConfig({
 		}),
 		viteMultipleAssets(
 			// Additional static asset directories besides `public/`
-			[{ input: "../demo-artwork/**", output: "demo-artwork" }],
+			[
+				{ input: "../demo-artwork/**", output: "demo-artwork" },
+				{ input: "node_modules/graphite-branded-assets/favicons/**", output: "" },
+			],
 			// Options where we set custom MIME types
 			{ mimeTypes: { ".graphite": "application/json" } },
 		),
@@ -57,7 +60,7 @@ export default defineConfig({
 						includePrivate: false,
 						multipleVersions: true,
 						allow: {
-							test: `(${getAcceptedLicenses()})`,
+							test: getAcceptedLicenses(),
 							failOnUnlicensed: true,
 							failOnViolation: true,
 						},
@@ -382,17 +385,24 @@ function trimBlankLines(input: string): string {
 	return result;
 }
 
-function getAcceptedLicenses() {
+function getAcceptedLicenses(): (dep: Dependency) => boolean {
 	const tomlContent = fs.readFileSync(path.resolve(__dirname, "../about.toml"), "utf8");
 
 	const licensesBlock = tomlContent?.match(/accepted\s*=\s*\[([^\]]*)\]/)?.[1] || "";
 
-	return licensesBlock
+	const accepted = licensesBlock
 		.split("\n")
 		.map((line) => line.replace(/#.*$/, "")) // Remove comments
 		.join("\n")
 		.split(",")
 		.map((license) => license.trim().replace(/"/g, ""))
-		.filter((license) => license.length > 0)
-		.join(" OR ");
+		.filter((license) => license.length > 0);
+
+	return (dep: Dependency) =>
+		// Regular SPDX license identifier match
+		(dep.license && accepted.includes(dep.license)) ||
+		// Allow graphite-branded-assets repository
+		(typeof dep.repository !== "string" && dep.repository?.url.toLowerCase().includes("github.com/keavon/graphite-branded-assets")) ||
+		// Fallback
+		false;
 }
