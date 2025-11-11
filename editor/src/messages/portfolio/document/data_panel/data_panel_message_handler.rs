@@ -165,6 +165,7 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Table<Raster<GPU>>,
 		Table<Color>,
 		Table<GradientStops>,
+		Vec<String>,
 		f64,
 		u32,
 		u64,
@@ -203,12 +204,44 @@ trait TableRowLayout {
 	}
 }
 
+impl<T: TableRowLayout> TableRowLayout for Vec<T> {
+	fn type_name() -> &'static str {
+		"Vec"
+	}
+	fn identifier(&self) -> String {
+		format!("Vec<{}> ({} element{})", T::type_name(), self.len(), if self.len() == 1 { "" } else { "s" })
+	}
+	fn element_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
+		if let Some(index) = data.desired_path.get(data.current_depth).copied() {
+			if let Some(row) = self.get(index) {
+				data.current_depth += 1;
+				let result = row.layout_with_breadcrumb(data);
+				data.current_depth -= 1;
+				return result;
+			} else {
+				warn!("Desired path truncated");
+				data.desired_path.truncate(data.current_depth);
+			}
+		}
+
+		let mut rows = self
+			.iter()
+			.enumerate()
+			.map(|(index, row)| vec![TextLabel::new(format!("{index}")).narrow(true).widget_holder(), row.element_widget(index)])
+			.collect::<Vec<_>>();
+
+		rows.insert(0, column_headings(&["", "element"]));
+
+		vec![LayoutGroup::Table { rows }]
+	}
+}
+
 impl<T: TableRowLayout> TableRowLayout for Table<T> {
 	fn type_name() -> &'static str {
 		"Table"
 	}
 	fn identifier(&self) -> String {
-		format!("Table<{}> ({} row{})", T::type_name(), self.len(), if self.len() == 1 { "" } else { "s" })
+		format!("Table<{}> ({} element{})", T::type_name(), self.len(), if self.len() == 1 { "" } else { "s" })
 	}
 	fn element_page(&self, data: &mut LayoutData) -> Vec<LayoutGroup> {
 		if let Some(index) = data.desired_path.get(data.current_depth).copied() {
@@ -595,7 +628,13 @@ impl TableRowLayout for String {
 		"String"
 	}
 	fn identifier(&self) -> String {
-		"String".to_string()
+		// Show the first line, and if there are more, indicate that with an ellipsis
+		let first_line = self.lines().next().unwrap_or("");
+		if self.lines().count() > 1 {
+			format!("\"{} …\"", first_line)
+		} else {
+			format!("\"{}\"", first_line)
+		}
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		let widgets = vec![TextAreaInput::new(self.to_string()).disabled(true).widget_holder()];

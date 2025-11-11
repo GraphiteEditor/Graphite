@@ -139,12 +139,9 @@ export class UpdateWirePathInProgress extends JsMessage {
 
 export class OpenDocument {
 	readonly id!: bigint;
+
 	@Type(() => DocumentDetails)
 	readonly details!: DocumentDetails;
-
-	get displayName(): string {
-		return this.details.displayName;
-	}
 }
 
 export class DocumentDetails {
@@ -153,10 +150,6 @@ export class DocumentDetails {
 	readonly isAutoSaved!: boolean;
 
 	readonly isSaved!: boolean;
-
-	get displayName(): string {
-		return `${this.name}${this.isSaved ? "" : "*"}`;
-	}
 }
 
 export class Box {
@@ -337,7 +330,7 @@ export class HintInfo {
 
 // Rust enum `Key`
 export type KeyRaw = string;
-// Serde converts a Rust `Key` enum variant into this format (via a custom serializer) with both the `Key` variant name (called `RawKey` in TS) and the localized `label` for the key
+// Serde converts a Rust `Key` enum variant into this format with both the `Key` variant name (called `RawKey` in TS) and the localized `label` for the key
 export type Key = { key: KeyRaw; label: string };
 export type LayoutKeysGroup = Key[];
 export type ActionKeys = { keys: LayoutKeysGroup };

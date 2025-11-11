@@ -88,7 +88,15 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		.iter()
 		.map(|field| match &field.ty {
 			ParsedFieldType::Regular(RegularParsedField { value_source, .. }) => match value_source {
-				ParsedValueSource::Default(data) => quote!(RegistryValueSource::Default(stringify!(#data))),
+				ParsedValueSource::Default(data) => {
+					// Check if the data is a string literal by parsing the token stream
+					let data_str = data.to_string();
+					if data_str.starts_with('"') && data_str.ends_with('"') && data_str.len() >= 2 {
+						quote!(RegistryValueSource::Default(#data))
+					} else {
+						quote!(RegistryValueSource::Default(stringify!(#data)))
+					}
+				}
 				ParsedValueSource::Scope(data) => quote!(RegistryValueSource::Scope(#data)),
 				_ => quote!(RegistryValueSource::None),
 			},
@@ -287,7 +295,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let properties = &attributes.properties_string.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
 
 	let cfg = crate::shader_nodes::modify_cfg(attributes);
-	let node_input_accessor = generate_node_input_references(parsed, fn_generics, &field_idents, &graphene_core, &identifier, &cfg);
+	let node_input_accessor = generate_node_input_references(parsed, fn_generics, &field_idents, graphene_core, &identifier, &cfg);
 	let ShaderTokens { shader_entry_point, gpu_node } = attributes.shader_node.as_ref().map(|n| n.codegen(crate_ident, parsed)).unwrap_or(Ok(ShaderTokens::default()))?;
 
 	Ok(quote! {

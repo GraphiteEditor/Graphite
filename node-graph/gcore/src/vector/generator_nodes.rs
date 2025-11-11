@@ -38,6 +38,7 @@ impl CornerRadius for [f64; 4] {
 	}
 }
 
+/// Generates a circle shape with a chosen radius.
 #[node_macro::node(category("Vector: Shape"))]
 fn circle(
 	_: impl Ctx,
@@ -50,6 +51,7 @@ fn circle(
 	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_ellipse(DVec2::splat(-radius), DVec2::splat(radius))))
 }
 
+/// Generates an arc shape forming a portion of a circle which may be open, closed, or a pie slice.
 #[node_macro::node(category("Vector: Shape"))]
 fn arc(
 	_: impl Ctx,
@@ -75,6 +77,7 @@ fn arc(
 	)))
 }
 
+/// Generates a spiral shape that winds from an inner to an outer radius.
 #[node_macro::node(category("Vector: Shape"), properties("spiral_properties"))]
 fn spiral(
 	_: impl Ctx,
@@ -96,6 +99,7 @@ fn spiral(
 	)))
 }
 
+/// Generates an ellipse shape (an oval or stretched circle) with the chosen radii.
 #[node_macro::node(category("Vector: Shape"))]
 fn ellipse(
 	_: impl Ctx,
@@ -123,6 +127,7 @@ fn ellipse(
 	Table::new_from_element(ellipse)
 }
 
+/// Generates a rectangle shape with the chosen width and height. It may also have rounded corners if desired.
 #[node_macro::node(category("Vector: Shape"), properties("rectangle_properties"))]
 fn rectangle<T: CornerRadius>(
 	_: impl Ctx,
@@ -140,6 +145,7 @@ fn rectangle<T: CornerRadius>(
 	corner_radius.generate(DVec2::new(width, height), clamped)
 }
 
+/// Generates an regular polygon shape like a triangle, square, pentagon, hexagon, heptagon, octagon, or any higher n-gon.
 #[node_macro::node(category("Vector: Shape"))]
 fn regular_polygon<T: AsU64>(
 	_: impl Ctx,
@@ -157,6 +163,7 @@ fn regular_polygon<T: AsU64>(
 	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_regular_polygon(DVec2::splat(-radius), points, radius)))
 }
 
+/// Generates an n-pointed star shape with inner and outer points at chosen radii from the center.
 #[node_macro::node(category("Vector: Shape"))]
 fn star<T: AsU64>(
 	_: impl Ctx,
@@ -179,6 +186,7 @@ fn star<T: AsU64>(
 	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_star_polygon(DVec2::splat(-diameter), points, diameter, inner_diameter)))
 }
 
+/// Generates a line with endpoints at the two chosen coordinates.
 #[node_macro::node(category("Vector: Shape"))]
 fn arrow(
 	_: impl Ctx,
@@ -218,6 +226,7 @@ impl GridSpacing for DVec2 {
 	}
 }
 
+/// Generates a rectangular or isometric grid with the chosen number of columns and rows. Line segments connect the points, forming a vector mesh.
 #[node_macro::node(category("Vector: Shape"), properties("grid_properties"))]
 fn grid<T: GridSpacing>(
 	_: impl Ctx,

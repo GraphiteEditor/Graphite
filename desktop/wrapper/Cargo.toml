@@ -31,3 +31,5 @@ ron = { workspace = true}
 vello = { workspace = true }
 image = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
+keyboard-types = { workspace = true }

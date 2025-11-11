@@ -17,7 +17,7 @@ use crate::vector::misc::{MergeByDistanceAlgorithm, PointSpacingType, is_linear}
 use crate::vector::misc::{handles_to_segment, segment_to_handles};
 use crate::vector::style::{PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 use crate::vector::{FillId, RegionId};
-use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, Graphic, OwnedContextImpl};
+use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, ExtractVarArgs, Graphic, OwnedContextImpl};
 use core::f64::consts::PI;
 use core::hash::{Hash, Hasher};
 use glam::{DAffine2, DVec2};
@@ -45,6 +45,7 @@ impl VectorTableIterMut for Table<Vector> {
 	}
 }
 
+/// Uniquely sets the fill and/or stroke style of every vector element to individual colors sampled along a chosen gradient.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector))]
 async fn assign_colors<T>(
 	_: impl Ctx,
@@ -105,6 +106,7 @@ where
 	content
 }
 
+/// Applies a fill style to the vector content, giving an appearance to the area within the interior of the geometry.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("fill_properties"))]
 async fn fill<F: Into<Fill> + 'n + Send, V: VectorTableIterMut + 'n + Send>(
 	_: impl Ctx,
@@ -121,6 +123,7 @@ async fn fill<F: Into<Fill> + 'n + Send, V: VectorTableIterMut + 'n + Send>(
 	)]
 	mut content: V,
 	/// The fill to paint the path with.
+	#[default(Color::BLACK)]
 	#[implementations(
 		Fill,
 		Table<Color>,
@@ -131,7 +134,6 @@ async fn fill<F: Into<Fill> + 'n + Send, V: VectorTableIterMut + 'n + Send>(
 		Table<GradientStops>,
 		Gradient,
 	)]
-	#[default(Color::BLACK)]
 	fill: F,
 	_backup_color: Table<Color>,
 	_backup_gradient: Gradient,
@@ -144,7 +146,7 @@ async fn fill<F: Into<Fill> + 'n + Send, V: VectorTableIterMut + 'n + Send>(
 	content
 }
 
-/// Applies a stroke style to the vector contained in the input.
+/// Applies a stroke style to the vector content, giving an appearance to the area within the outline of the geometry.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("stroke_properties"))]
 async fn stroke<V>(
 	_: impl Ctx,
@@ -821,16 +823,17 @@ async fn vec2_to_point(_: impl Ctx, vec2: DVec2) -> Table<Vector> {
 async fn points_to_polyline(_: impl Ctx, mut points: Table<Vector>, #[default(true)] closed: bool) -> Table<Vector> {
 	for row in points.iter_mut() {
 		let mut segment_domain = SegmentDomain::new();
+		let mut next_id = SegmentId::ZERO;
 
 		let points_count = row.element.point_domain.ids().len();
 
 		if points_count > 2 {
 			(0..points_count - 1).for_each(|i| {
-				segment_domain.push(SegmentId::generate(), i, i + 1, BezierHandles::Linear, StrokeId::generate());
+				segment_domain.push(next_id.next_id(), i, i + 1, BezierHandles::Linear, StrokeId::generate());
 			});
 
 			if closed {
-				segment_domain.push(SegmentId::generate(), points_count - 1, 0, BezierHandles::Linear, StrokeId::generate());
+				segment_domain.push(next_id.next_id(), points_count - 1, 0, BezierHandles::Linear, StrokeId::generate());
 
 				row.element
 					.region_domain
@@ -968,6 +971,31 @@ async fn separate_subpaths(_: impl Ctx, content: Table<Vector>) -> Table<Vector>
 				.collect::<Vec<TableRow<Vector>>>()
 		})
 		.collect()
+}
+
+#[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
+fn instance_vector(ctx: impl Ctx + ExtractVarArgs) -> Table<Vector> {
+	let Ok(var_arg) = ctx.vararg(0) else { return Default::default() };
+	let var_arg = var_arg as &dyn std::any::Any;
+
+	var_arg.downcast_ref().cloned().unwrap_or_default()
+}
+
+#[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
+async fn instance_map(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: Table<Vector>, mapped: impl Node<Context<'static>, Output = Table<Vector>>) -> Table<Vector> {
+	let mut rows = Vec::new();
+
+	for (i, row) in content.into_iter().enumerate() {
+		let owned_ctx = OwnedContextImpl::from(ctx.clone());
+		let owned_ctx = owned_ctx.with_vararg(Box::new(Table::new_from_row(row))).with_index(i);
+		let table = mapped.eval(owned_ctx.into_context()).await;
+
+		for inner_row in table {
+			rows.push(inner_row);
+		}
+	}
+
+	rows.into_iter().collect()
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
@@ -1369,6 +1397,7 @@ async fn spline(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
 			}
 
 			let mut segment_domain = SegmentDomain::default();
+			let mut next_id = SegmentId::ZERO;
 			for (manipulator_groups, closed) in row.element.stroke_manipulator_groups() {
 				let positions = manipulator_groups.iter().map(|manipulators| manipulators.anchor).collect::<Vec<_>>();
 				let closed = closed && positions.len() > 2;
@@ -1393,7 +1422,7 @@ async fn spline(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
 					let handle_end = positions[next_index] * 2. - first_handles[next_index];
 					let handles = BezierHandles::Cubic { handle_start, handle_end };
 
-					segment_domain.push(SegmentId::generate(), start_index, end_index, handles, stroke_id);
+					segment_domain.push(next_id.next_id(), start_index, end_index, handles, stroke_id);
 				}
 			}
 
@@ -1927,11 +1956,39 @@ fn point_inside(_: impl Ctx, source: Table<Vector>, point: DVec2) -> bool {
 	source.into_iter().any(|row| row.element.check_point_inside_shape(row.transform, point))
 }
 
+trait Count {
+	fn count(&self) -> usize;
+}
+impl<T> Count for Table<T> {
+	fn count(&self) -> usize {
+		self.len()
+	}
+}
+impl<T> Count for Vec<T> {
+	fn count(&self) -> usize {
+		self.len()
+	}
+}
+
 // TODO: Return u32, u64, or usize instead of f64 after #1621 is resolved and has allowed us to implement automatic type conversion in the node graph for nodes with generic type inputs.
 // TODO: (Currently automatic type conversion only works for concrete types, via the Graphene preprocessor and not the full Graphene type system.)
 #[node_macro::node(category("General"), path(graphene_core::vector))]
-async fn count_elements<I>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>, Table<GradientStops>)] source: Table<I>) -> f64 {
-	source.len() as f64
+async fn count_elements<I: Count>(
+	_: impl Ctx,
+	#[implementations(
+		Table<Graphic>,
+		Table<Vector>,
+		Table<Raster<CPU>>,
+		Table<Raster<GPU>>,
+		Table<Color>,
+		Table<GradientStops>,
+		Vec<String>,
+		Vec<f64>,
+		Vec<DVec2>,
+	)]
+	source: I,
+) -> f64 {
+	source.count() as f64
 }
 
 #[node_macro::node(category("Vector: Measure"), path(graphene_core::vector))]

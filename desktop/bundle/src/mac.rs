@@ -12,7 +12,6 @@ const HELPER_BIN: &str = "graphite-desktop-platform-mac-helper";
 
 const EXEC_PATH: &str = "Contents/MacOS";
 const FRAMEWORKS_PATH: &str = "Contents/Frameworks";
-const RESOURCES_PATH: &str = "Contents/Resources";
 const FRAMEWORK: &str = "Chromium Embedded Framework.framework";
 
 pub fn main() -> Result<(), Box<dyn Error>> {
@@ -56,10 +55,6 @@ fn create_app(app_dir: &Path, id: &str, name: &str, bin: &Path, is_helper: bool)
 	fs::create_dir_all(app_dir.join(EXEC_PATH)).unwrap();
 
 	let app_contents_dir: &Path = &app_dir.join("Contents");
-	for p in &[EXEC_PATH, RESOURCES_PATH, FRAMEWORKS_PATH] {
-		fs::create_dir_all(app_contents_dir.join(p)).unwrap();
-	}
-
 	create_info_plist(app_contents_dir, id, name, is_helper).unwrap();
 	fs::copy(bin, app_dir.join(EXEC_PATH).join(name)).unwrap();
 }

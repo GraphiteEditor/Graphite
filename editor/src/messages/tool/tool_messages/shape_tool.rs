@@ -526,11 +526,11 @@ pub struct ShapeToolData {
 }
 
 impl ShapeToolData {
-	fn get_snap_candidates(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler) {
+	fn get_snap_candidates(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, viewport: &ViewportMessageHandler) {
 		self.snap_candidates.clear();
 		for &layer in &self.layers_dragging {
 			if (self.snap_candidates.len() as f64) < document.snapping_state.tolerance {
-				snapping::get_layer_snap_points(layer, &SnapData::new(document, input), &mut self.snap_candidates);
+				snapping::get_layer_snap_points(layer, &SnapData::new(document, input, viewport), &mut self.snap_candidates);
 			}
 			if let Some(bounds) = document.metadata().bounding_box_with_transform(layer, DAffine2::IDENTITY) {
 				let quad = document.metadata().transform_to_document(layer) * Quad::from_box(bounds);
@@ -583,6 +583,7 @@ impl Fsm for ShapeToolFsmState {
 			input,
 			preferences,
 			shape_editor,
+			viewport,
 			..
 		}: &mut ToolActionMessageContext,
 		tool_options: &Self::ToolOptions,
@@ -621,7 +622,7 @@ impl Fsm for ShapeToolFsmState {
 				let hovering_over_gizmo = tool_data.gizmo_manager.hovering_over_gizmo();
 
 				if !matches!(self, ShapeToolFsmState::ModifyingGizmo) && !modifying_transform_cage && !hovering_over_gizmo {
-					tool_data.data.snap_manager.draw_overlays(SnapData::new(document, input), &mut overlay_context);
+					tool_data.data.snap_manager.draw_overlays(SnapData::new(document, input, viewport), &mut overlay_context);
 				}
 
 				if modifying_transform_cage && !matches!(self, ShapeToolFsmState::ModifyingGizmo) {
@@ -808,7 +809,7 @@ impl Fsm for ShapeToolFsmState {
 
 					match (resize, rotate, skew) {
 						(true, false, false) => {
-							tool_data.get_snap_candidates(document, input);
+							tool_data.get_snap_candidates(document, input, viewport);
 							update_cursor_and_pointer(tool_data, responses);
 
 							return ShapeToolFsmState::ResizingBounds;
@@ -820,7 +821,7 @@ impl Fsm for ShapeToolFsmState {
 							return ShapeToolFsmState::RotatingBounds;
 						}
 						(false, false, true) => {
-							tool_data.get_snap_candidates(document, input);
+							tool_data.get_snap_candidates(document, input, viewport);
 							update_cursor_and_pointer(tool_data, responses);
 
 							return ShapeToolFsmState::SkewingBounds { skew: Key::Control };
@@ -835,7 +836,10 @@ impl Fsm for ShapeToolFsmState {
 					}
 					ShapeType::Line => {
 						let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
-						let snapped = tool_data.data.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
+						let snapped = tool_data
+							.data
+							.snap_manager
+							.free_snap(&SnapData::new(document, input, viewport), &point, SnapTypeConfiguration::default());
 						tool_data.data.drag_start = snapped.snapped_point_document;
 					}
 				}
@@ -856,7 +860,7 @@ impl Fsm for ShapeToolFsmState {
 				};
 
 				let nodes = vec![(NodeId(0), node)];
-				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, document.new_layer_bounding_artboard(input), responses);
+				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, document.new_layer_bounding_artboard(input, viewport), responses);
 
 				let defered_responses = &mut VecDeque::new();
 
@@ -901,14 +905,14 @@ impl Fsm for ShapeToolFsmState {
 					ShapeType::Arrow => Arrow::update_shape(document, input, layer, tool_data, modifier, responses),
 					ShapeType::Spiral => Spiral::update_shape(document, input, layer, tool_data, responses),
 					ShapeType::Grid => Grid::update_shape(document, input, layer, tool_options.grid_type, tool_data, modifier, responses),
-					ShapeType::Rectangle => Rectangle::update_shape(document, input, layer, tool_data, modifier, responses),
-					ShapeType::Ellipse => Ellipse::update_shape(document, input, layer, tool_data, modifier, responses),
-					ShapeType::Line => Line::update_shape(document, input, layer, tool_data, modifier, responses),
+					ShapeType::Rectangle => Rectangle::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
+					ShapeType::Ellipse => Ellipse::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
+					ShapeType::Line => Line::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
 				}
 
 				// Auto-panning
 				let messages = [ShapeToolMessage::PointerOutsideViewport { modifier }.into(), ShapeToolMessage::PointerMove { modifier }.into()];
-				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
+				tool_data.auto_panning.setup_by_mouse_position(input, viewport, &messages, responses);
 
 				self
 			}
@@ -917,10 +921,10 @@ impl Fsm for ShapeToolFsmState {
 					return ShapeToolFsmState::Ready(tool_data.current_shape);
 				};
 
-				Line::update_shape(document, input, layer, tool_data, modifier, responses);
+				Line::update_shape(document, input, viewport, layer, tool_data, modifier, responses);
 				// Auto-panning
 				let messages = [ShapeToolMessage::PointerOutsideViewport { modifier }.into(), ShapeToolMessage::PointerMove { modifier }.into()];
-				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
+				tool_data.auto_panning.setup_by_mouse_position(input, viewport, &messages, responses);
 
 				self
 			}
@@ -942,11 +946,12 @@ impl Fsm for ShapeToolFsmState {
 						&mut tool_data.data.snap_manager,
 						&mut tool_data.snap_candidates,
 						input,
+						viewport,
 						input.keyboard.key(modifier[0]),
 						input.keyboard.key(modifier[1]),
 						ToolType::Shape,
 					);
-					tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
+					tool_data.auto_panning.setup_by_mouse_position(input, viewport, &messages, responses);
 				}
 
 				responses.add(OverlaysMessage::Draw);
@@ -1001,14 +1006,14 @@ impl Fsm for ShapeToolFsmState {
 					responses.add(FrontendMessage::UpdateMouseCursor { cursor });
 				}
 
-				tool_data.data.snap_manager.preview_draw(&SnapData::new(document, input), input.mouse.position);
+				tool_data.data.snap_manager.preview_draw(&SnapData::new(document, input, viewport), input.mouse.position);
 
 				responses.add(OverlaysMessage::Draw);
 				self
 			}
 			(ShapeToolFsmState::ResizingBounds | ShapeToolFsmState::SkewingBounds { .. }, ShapeToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning
-				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, responses)
+				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, viewport, responses)
 					&& let Some(bounds) = &mut tool_data.bounding_box_manager
 				{
 					bounds.center_of_transformation += shift;
@@ -1020,7 +1025,7 @@ impl Fsm for ShapeToolFsmState {
 			(ShapeToolFsmState::Ready(_), ShapeToolMessage::PointerOutsideViewport { .. }) => self,
 			(_, ShapeToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning
-				let _ = tool_data.auto_panning.shift_viewport(input, responses);
+				let _ = tool_data.auto_panning.shift_viewport(input, viewport, responses);
 				self
 			}
 			(

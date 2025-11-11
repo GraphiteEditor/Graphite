@@ -205,7 +205,7 @@ impl VisitMut for GenericsVisitor<'_> {
 	}
 
 	fn visit_path_segment_mut(&mut self, i: &mut PathSegment) {
-		if i.ident.to_string() == "Self" {
+		if i.ident == "Self" {
 			i.ident = self.self_ident.clone();
 		}
 		visit_mut::visit_path_segment_mut(self, i);

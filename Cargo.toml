@@ -106,7 +106,7 @@ quote = "1.0"
 chrono = "0.4"
 ron = "0.11"
 fastnoise-lite = "1.1"
-wgpu = { version = "25.0", features = [
+wgpu = { version = "27.0", features = [
 	# We don't have wgpu on multiple threads (yet) https://github.com/gfx-rs/wgpu/blob/trunk/CHANGELOG.md#wgpu-types-now-send-sync-on-wasm
 	"fragile-send-sync-non-atomic-wasm",
 	"spirv",
@@ -135,10 +135,11 @@ web-sys = { version = "=0.3.77", features = [
 	"ImageBitmapRenderingContext",
 ] }
 winit = { git = "https://github.com/rust-windowing/winit.git" }
+keyboard-types = "0.8"
 url = "2.5"
 tokio = { version = "1.29", features = ["fs", "macros", "io-std", "rt"] }
-vello = { git = "https://github.com/linebender/vello.git", rev = "87cc5bee6d3a34d15017dbbb58634ddc7f33ff9b" } # TODO switch back to stable when a release is made
-vello_encoding = { git = "https://github.com/linebender/vello.git", rev = "87cc5bee6d3a34d15017dbbb58634ddc7f33ff9b" } # TODO switch back to stable when a release is made
+vello = { git = "https://github.com/linebender/vello" }
+vello_encoding = { git = "https://github.com/linebender/vello" }
 resvg = "0.45"
 usvg = "0.45"
 rand = { version = "0.9", default-features = false, features = ["std_rng"] }
@@ -177,7 +178,7 @@ syn = { version = "2.0", default-features = false, features = [
 	"extra-traits",
 	"proc-macro",
 ] }
-kurbo = { version = "0.11", features = ["serde"] }
+kurbo = { version = "0.12", features = ["serde"] }
 lyon_geom = "1.0"
 petgraph = { version = "0.7", default-features = false, features = ["graphmap"] }
 half = { version = "2.4", default-features = false, features = ["bytemuck"] }
@@ -187,8 +188,8 @@ iai-callgrind = { version = "0.16" }
 ndarray = "0.16"
 strum = { version = "0.27", features = ["derive"] }
 dirs = "6.0"
-cef = "140"
-cef-dll-sys = "140"
+cef = { version = "141", features = ["accelerated_osr"] }
+cef-dll-sys = "141"
 include_dir = "0.7"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing = "0.1"
@@ -225,3 +226,7 @@ debug = true
 [profile.profiling]
 inherits = "release"
 debug = true
+
+[patch.crates-io]
+# Force cargo to use only one version of the dpi crate (vendoring breaks without this)
+dpi = { git = "https://github.com/rust-windowing/winit.git" }
