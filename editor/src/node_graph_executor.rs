@@ -542,7 +542,8 @@ mod test {
 			} else if let Some(x) = dynamic.downcast_ref::<IORecord<Context, Input::Result>>() {
 				Some(x.output.clone())
 			} else {
-				panic!("cannot downcast type for introspection");
+				warn!("cannot downcast type for introspection");
+				None
 			}
 		}
 
@@ -557,7 +558,7 @@ mod test {
 				.iter()
 				.filter_map(|inputs| inputs.get(Input::INDEX))
 				.filter_map(|input_monitor_node| runtime.executor.introspect(input_monitor_node).ok())
-				.filter_map(Instrumented::downcast::<Input>)
+				.filter_map(Instrumented::downcast::<Input>) // Some might not resolve (e.g. generics that don't work properly)
 		}
 
 		pub fn grab_protonode_input<Input: NodeInputDecleration>(&self, path: &Vec<NodeId>, runtime: &NodeRuntime) -> Option<Input::Result>

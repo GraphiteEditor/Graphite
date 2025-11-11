@@ -13,6 +13,7 @@ use glam::{DVec2, UVec2};
 use graph_craft::document::DocumentNode;
 use graphene_std::InputAccessor;
 use graphene_std::raster::color::Color;
+use graphene_std::uuid::NodeId;
 
 /// A set of utility functions to make the writing of editor test more declarative
 pub struct EditorTestUtils {
@@ -68,13 +69,15 @@ impl EditorTestUtils {
 		run(&mut self.editor, &mut self.runtime)
 	}
 
-	pub async fn handle_message(&mut self, message: impl Into<Message>) {
-		self.editor.handle_message(message);
+	pub async fn handle_message(&mut self, message: impl Into<Message>) -> Vec<FrontendMessage> {
+		let frontend_messages_from_msg = self.editor.handle_message(message);
 
 		// Required to process any buffered messages
 		if let Err(e) = self.eval_graph().await {
 			panic!("Failed to evaluate graph: {e}");
 		}
+
+		frontend_messages_from_msg
 	}
 
 	pub async fn new_document(&mut self) {
@@ -222,7 +225,7 @@ impl EditorTestUtils {
 			ToolType::Rectangle => self.handle_message(Message::Tool(ToolMessage::ActivateToolShapeRectangle)).await,
 			ToolType::Ellipse => self.handle_message(Message::Tool(ToolMessage::ActivateToolShapeEllipse)).await,
 			_ => self.handle_message(Message::Tool(ToolMessage::ActivateTool { tool_type })).await,
-		}
+		};
 	}
 
 	pub async fn select_primary_color(&mut self, color: Color) {
@@ -302,6 +305,18 @@ impl EditorTestUtils {
 			scale: 1.0,
 		})
 		.await;
+	}
+
+	pub async fn create_node_by_name(&mut self, name: impl Into<String>) -> NodeId {
+		let node_id = NodeId::new();
+		self.handle_message(NodeGraphMessage::CreateNodeFromContextMenu {
+			node_id: Some(node_id),
+			node_type: name.into(),
+			xy: None,
+			add_transaction: true,
+		})
+		.await;
+		node_id
 	}
 }
 
