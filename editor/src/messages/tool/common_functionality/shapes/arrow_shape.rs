@@ -1,12 +1,15 @@
 ﻿use super::shape_utility::ShapeToolModifierKey;
 use super::*;
+use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::NodeTemplate;
+use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate};
 use crate::messages::prelude::*;
-use glam::DVec2;
-use graphene_std::vector::{PointId, SegmentId, VectorModificationType};
+use crate::messages::tool::common_functionality::graph_modification_utils;
+use glam::{DAffine2, DVec2};
+use graph_craft::document::NodeInput;
+use graph_craft::document::value::TaggedValue;
 use std::collections::VecDeque;
 
 #[derive(Default)]
@@ -14,8 +17,14 @@ pub struct Arrow;
 
 impl Arrow {
 	pub fn create_node() -> NodeTemplate {
-		let node_type = resolve_document_node_type("Path").expect("Path node does not exist");
-		node_type.default_node_template()
+		let node_type = resolve_document_node_type("Arrow").expect("Arrow node does not exist");
+		node_type.node_template_input_override([
+			None,
+			Some(NodeInput::value(TaggedValue::F64(100.), false)), // length
+			Some(NodeInput::value(TaggedValue::F64(10.), false)),  // shaft_width
+			Some(NodeInput::value(TaggedValue::F64(30.), false)),  // head_width
+			Some(NodeInput::value(TaggedValue::F64(20.), false)),  // head_length
+		])
 	}
 
 	pub fn update_shape(
@@ -28,81 +37,51 @@ impl Arrow {
 	) {
 		let [center, lock_ratio, _] = modifier;
 
-		// Work in viewport space like Line does
-		let start_viewport = tool_data.data.viewport_drag_start(document);
-		let end_viewport = input.mouse.position;
+		let Some([start, end]) = tool_data.data.calculate_points(document, input, center, lock_ratio) else {
+			return;
+		};
 
-		let delta = end_viewport - start_viewport;
+		let delta = end - start;
 		let length = delta.length();
 		if length < 1e-6 {
 			return;
 		}
 
-		let direction = delta.normalize();
-		let perpendicular = DVec2::new(-direction.y, direction.x);
+		let Some(node_id) = graph_modification_utils::get_arrow_id(layer, &document.network_interface) else {
+			return;
+		};
 
-		let shaft_thickness = length * 0.05;
-		let head_width = length * 0.15;
+		// Calculate proportional dimensions
+		let shaft_width = length * 0.1;
+		let head_width = length * 0.3;
 		let head_length = length * 0.2;
 
-		// Build arrow in viewport space
-		let viewport_anchors = vec![
-			start_viewport,
-			start_viewport + direction * head_length - perpendicular * (head_width * 0.5),
-			start_viewport + direction * head_length - perpendicular * (shaft_thickness * 0.5),
-			end_viewport - perpendicular * (shaft_thickness * 0.5),
-			end_viewport + perpendicular * (shaft_thickness * 0.5),
-			start_viewport + direction * head_length + perpendicular * (shaft_thickness * 0.5),
-			start_viewport + direction * head_length + perpendicular * (head_width * 0.5),
-		];
+		// Update Arrow node parameters
+		responses.add(NodeGraphMessage::SetInput {
+			input_connector: InputConnector::node(node_id, 1),
+			input: NodeInput::value(TaggedValue::F64(length), false),
+		});
+		responses.add(NodeGraphMessage::SetInput {
+			input_connector: InputConnector::node(node_id, 2),
+			input: NodeInput::value(TaggedValue::F64(shaft_width), false),
+		});
+		responses.add(NodeGraphMessage::SetInput {
+			input_connector: InputConnector::node(node_id, 3),
+			input: NodeInput::value(TaggedValue::F64(head_width), false),
+		});
+		responses.add(NodeGraphMessage::SetInput {
+			input_connector: InputConnector::node(node_id, 4),
+			input: NodeInput::value(TaggedValue::F64(head_length), false),
+		});
 
-		// Get the layer's transform to convert viewport coordinates to layer-local coordinates
-		let viewport_to_layer = document.metadata().transform_to_viewport(layer).inverse();
-
-		// Convert viewport coordinates to layer-local coordinates
-		let local_anchors: Vec<DVec2> = viewport_anchors.iter().map(|&viewport_pos| viewport_to_layer.transform_point2(viewport_pos)).collect();
-
-		let vector = document.network_interface.compute_modified_vector(layer);
-		let existing_point_ids: Vec<PointId> = vector.as_ref().map(|v| v.point_domain.ids().to_vec()).unwrap_or_default();
-		let existing_segment_ids: Vec<SegmentId> = vector.as_ref().map(|v| v.segment_domain.ids().to_vec()).unwrap_or_default();
-
-		for point_id in existing_point_ids {
-			responses.add(GraphOperationMessage::Vector {
-				layer,
-				modification_type: VectorModificationType::RemovePoint { id: point_id },
-			});
-		}
-
-		for segment_id in existing_segment_ids {
-			responses.add(GraphOperationMessage::Vector {
-				layer,
-				modification_type: VectorModificationType::RemoveSegment { id: segment_id },
-			});
-		}
-
-		// Insert points in layer-local coordinates
-		let point_ids: Vec<PointId> = local_anchors
-			.iter()
-			.map(|&pos| {
-				let id = PointId::generate();
-				responses.add(GraphOperationMessage::Vector {
-					layer,
-					modification_type: VectorModificationType::InsertPoint { id, position: pos },
-				});
-				id
-			})
-			.collect();
-
-		for i in 0..point_ids.len() {
-			let id = SegmentId::generate();
-			let points = [point_ids[i], point_ids[(i + 1) % point_ids.len()]];
-			responses.add(GraphOperationMessage::Vector {
-				layer,
-				modification_type: VectorModificationType::InsertSegment { id, points, handles: [None, None] },
-			});
-		}
-
-		responses.add(NodeGraphMessage::RunDocumentGraph);
+		// Set transform to position and rotate the arrow
+		let angle = delta.y.atan2(delta.x);
+		responses.add(GraphOperationMessage::TransformSet {
+			layer,
+			transform: DAffine2::from_scale_angle_translation(DVec2::ONE, angle, start),
+			transform_in: TransformIn::Viewport,
+			skip_rerender: false,
+		});
 	}
 
 	pub fn overlays(_document: &DocumentMessageHandler, _tool_data: &ShapeToolData, _overlay_context: &mut OverlayContext) {}

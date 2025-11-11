@@ -317,6 +317,25 @@ impl<PointId: Identifier> Subpath<PointId> {
 		Self::from_anchors([p1, p2], false)
 	}
 
+	/// Constructs an arrow shape with parametric control over dimensions
+	pub fn new_arrow(length: f64, shaft_width: f64, head_width: f64, head_length: f64) -> Self {
+		let half_shaft = shaft_width * 0.5;
+		let half_head = head_width * 0.5;
+		let head_base = length - head_length;
+
+		let anchors = [
+			DVec2::new(0., -half_shaft),        // Tail bottom
+			DVec2::new(head_base, -half_shaft), // Head base bottom (shaft)
+			DVec2::new(head_base, -half_head),  // Head base bottom (wide)
+			DVec2::new(length, 0.),             // Tip
+			DVec2::new(head_base, half_head),   // Head base top (wide)
+			DVec2::new(head_base, half_shaft),  // Head base top (shaft)
+			DVec2::new(0., half_shaft),         // Tail top
+		];
+
+		Self::from_anchors(anchors, true)
+	}
+
 	pub fn new_spiral(a: f64, outer_radius: f64, turns: f64, start_angle: f64, delta_theta: f64, spiral_type: SpiralType) -> Self {
 		let mut manipulator_groups = Vec::new();
 		let mut prev_in_handle = None;

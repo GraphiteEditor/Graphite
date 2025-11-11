@@ -180,6 +180,26 @@ fn star<T: AsU64>(
 }
 
 #[node_macro::node(category("Vector: Shape"))]
+fn arrow(
+	_: impl Ctx,
+	_primary: (),
+	#[unit(" px")]
+	#[default(100)]
+	length: f64,
+	#[unit(" px")]
+	#[default(10)]
+	shaft_width: f64,
+	#[unit(" px")]
+	#[default(30)]
+	head_width: f64,
+	#[unit(" px")]
+	#[default(20)]
+	head_length: f64,
+) -> Table<Vector> {
+	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_arrow(length, shaft_width, head_width, head_length)))
+}
+
+#[node_macro::node(category("Vector: Shape"))]
 fn line(_: impl Ctx, _primary: (), #[default(0., 0.)] start: PixelSize, #[default(100., 100.)] end: PixelSize) -> Table<Vector> {
 	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_line(start, end)))
 }
