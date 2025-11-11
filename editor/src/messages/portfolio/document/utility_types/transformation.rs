@@ -5,7 +5,7 @@ use crate::messages::portfolio::document::graph_operation::utility_types::{Modif
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
-use crate::messages::tool::transform_layer::transform_layer_message_handler::OtherUsefulParameters;
+use crate::messages::tool::transform_layer::transform_layer_message_handler::TransformationState;
 use crate::messages::tool::utility_types::ToolType;
 use glam::{DAffine2, DMat2, DVec2};
 use graphene_std::renderer::Quad;
@@ -156,7 +156,7 @@ pub struct Translation {
 }
 
 impl Translation {
-	pub fn to_dvec(self, state: &OtherUsefulParameters) -> DVec2 {
+	pub fn to_dvec(self, state: &TransformationState) -> DVec2 {
 		let displacement = if let Some(value) = self.typed_distance {
 			match self.constraint {
 				Axis::X => DVec2::X * value,
@@ -326,7 +326,7 @@ impl TransformType {
 
 impl TransformOperation {
 	#[allow(clippy::too_many_arguments)]
-	pub fn apply_transform_operation(&self, selected: &mut Selected, state: &OtherUsefulParameters, document: &DocumentMessageHandler) {
+	pub fn apply_transform_operation(&self, selected: &mut Selected, state: &TransformationState, document: &DocumentMessageHandler) {
 		if self != &TransformOperation::None {
 			let mut transformation = match self {
 				TransformOperation::Grabbing(translation) => DAffine2::from_translation(translation.to_dvec(state)),
@@ -355,7 +355,7 @@ impl TransformOperation {
 	}
 
 	#[allow(clippy::too_many_arguments)]
-	pub fn constrain_axis(&mut self, axis: Axis, selected: &mut Selected, state: &OtherUsefulParameters, document: &DocumentMessageHandler) -> bool {
+	pub fn constrain_axis(&mut self, axis: Axis, selected: &mut Selected, state: &TransformationState, document: &DocumentMessageHandler) -> bool {
 		let resulting_local;
 		(*self, resulting_local) = match self {
 			TransformOperation::Grabbing(translation) => {
@@ -368,12 +368,14 @@ impl TransformOperation {
 			}
 			_ => (*self, false),
 		};
+
 		self.apply_transform_operation(selected, state, document);
+
 		resulting_local
 	}
 
 	#[allow(clippy::too_many_arguments)]
-	pub fn grs_typed(&mut self, typed: Option<f64>, selected: &mut Selected, state: &OtherUsefulParameters, document: &DocumentMessageHandler) {
+	pub fn grs_typed(&mut self, typed: Option<f64>, selected: &mut Selected, state: &TransformationState, document: &DocumentMessageHandler) {
 		match self {
 			TransformOperation::None => (),
 			TransformOperation::Grabbing(translation) => translation.typed_distance = typed,
@@ -464,7 +466,7 @@ impl TransformOperation {
 	}
 
 	#[allow(clippy::too_many_arguments)]
-	pub fn negate(&mut self, selected: &mut Selected, state: &OtherUsefulParameters, document: &DocumentMessageHandler) {
+	pub fn negate(&mut self, selected: &mut Selected, state: &TransformationState, document: &DocumentMessageHandler) {
 		if *self != TransformOperation::None {
 			*self = match self {
 				TransformOperation::Scaling(scale) => TransformOperation::Scaling(scale.negate()),
@@ -472,6 +474,7 @@ impl TransformOperation {
 				TransformOperation::Grabbing(translation) => TransformOperation::Grabbing(translation.negate()),
 				_ => *self,
 			};
+
 			self.apply_transform_operation(selected, state, document);
 		}
 	}

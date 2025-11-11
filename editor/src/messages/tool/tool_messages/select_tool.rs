@@ -646,7 +646,7 @@ impl Fsm for SelectToolFsmState {
 					}
 				}
 
-				let mut transform = create_bounding_box_transform(&document);
+				let mut transform = create_bounding_box_transform(document);
 
 				// Check if the matrix is not invertible
 				let mut transform_tampered = false;
