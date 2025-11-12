@@ -1,6 +1,6 @@
 use winit::event_loop::ActiveEventLoop;
-use winit::window::{Window, WindowAttributes};
 use winit::platform::macos::{OptionAsAlt, WindowAttributesMacOS};
+use winit::window::{Window, WindowAttributes};
 
 use crate::consts::APP_NAME;
 use crate::event::AppEventScheduler;
