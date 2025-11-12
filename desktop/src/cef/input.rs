@@ -64,46 +64,39 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 			input_state.modifiers_changed(&modifiers.state());
 		}
 		WindowEvent::KeyboardInput { device_id: _, event, is_synthetic: _ } => {
-			let (named_key, character) = match &event.logical_key {
-				winit::keyboard::Key::Named(named_key) => (
-					Some(named_key),
-					match named_key {
-						winit::keyboard::NamedKey::Enter => Some('\u{000d}'),
-						_ => None,
-					},
-				),
-				winit::keyboard::Key::Character(str) => {
-					let char = str.chars().next().unwrap_or('\0');
+			let (named_key, character) = match &event.key_without_modifiers {
+				winit::keyboard::Key::Named(named_key) => (Some(named_key), std::char::from_u32(named_key.to_vk_bits() as u32)),
+				winit::keyboard::Key::Character(_) if event.text.is_some() => {
+					let char = event.text.as_ref().unwrap().chars().next().unwrap_or('\0');
 					(None, Some(char))
 				}
 				_ => return,
 			};
 
+			let modifiers = input_state.cef_modifiers(&event.location, event.repeat).raw();
+
+			let vk_bits = if let Some(named_key) = named_key {
+				named_key.to_vk_bits()
+			} else if let Some(char) = character {
+				char.to_vk_bits()
+			} else {
+				0
+			};
+
 			let native_key_code = event.physical_key.to_native_keycode();
 
-			let modifiers = input_state.cef_modifiers(&event.location, event.repeat).raw();
+			let Some(host) = browser.host() else { return };
 
 			let mut key_event = KeyEvent {
 				size: size_of::<KeyEvent>(),
 				modifiers,
 				..Default::default()
 			};
-
-			if let Some(named_key) = named_key {
-				key_event.windows_key_code = named_key.to_vk_bits();
-			} else if let Some(char) = character {
-				key_event.windows_key_code = char.to_vk_bits();
-			}
-
 			key_event.native_key_code = native_key_code;
-
-			let Some(host) = browser.host() else { return };
+			key_event.windows_key_code = vk_bits;
 
 			match event.state {
 				ElementState::Pressed => {
-					key_event.type_ = KeyEventType::from(cef_key_event_type_t::KEYEVENT_RAWKEYDOWN);
-					host.send_key_event(Some(&key_event));
-
 					if let Some(char) = character {
 						let mut char_key_event = KeyEvent {
 							size: size_of::<KeyEvent>(),
@@ -111,19 +104,43 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 							is_system_key: 0,
 							..Default::default()
 						};
+
 						let mut buf = [0; 2];
 						char.encode_utf16(&mut buf);
-						char_key_event.windows_key_code = buf[0] as i32;
-						char_key_event.character = buf[0];
-						char_key_event.native_key_code = native_key_code;
-						let mut buf = [0; 2];
-						char.to_lowercase().next().unwrap().encode_utf16(&mut buf);
-						char_key_event.unmodified_character = buf[0];
-						char_key_event.type_ = KeyEventType::from(cef_key_event_type_t::KEYEVENT_CHAR);
-						host.send_key_event(Some(&char_key_event));
+
+						key_event.character = buf[0];
+						key_event.unmodified_character = buf[0];
+						key_event.type_ = KeyEventType::from(cef_key_event_type_t::KEYEVENT_RAWKEYDOWN);
+
+						if input_state.is_unmodified() && named_key.is_none() {
+							#[cfg(not(target_os = "macos"))] // TODO: Understand why this is needed to avoid double keydown events on mac
+							host.send_key_event(Some(&key_event));
+
+							char_key_event.native_key_code = native_key_code;
+							char_key_event.windows_key_code = buf[0] as i32;
+							char_key_event.character = buf[0];
+							char_key_event.unmodified_character = buf[0];
+							char_key_event.type_ = KeyEventType::from(cef_key_event_type_t::KEYEVENT_CHAR);
+							host.send_key_event(Some(&char_key_event));
+						} else {
+							host.send_key_event(Some(&key_event));
+						}
+					} else {
+						key_event.type_ = KeyEventType::from(cef_key_event_type_t::KEYEVENT_RAWKEYDOWN);
+						host.send_key_event(Some(&key_event));
 					}
 				}
 				ElementState::Released => {
+					if let Some(char) = character
+						&& input_state.is_unmodified()
+					{
+						let mut buf = [0; 2];
+						char.encode_utf16(&mut buf);
+
+						key_event.character = buf[0];
+						key_event.unmodified_character = buf[0];
+					}
+
 					key_event.type_ = KeyEventType::from(cef_key_event_type_t::KEYEVENT_KEYUP);
 					host.send_key_event(Some(&key_event));
 				}
@@ -174,6 +191,10 @@ impl InputState {
 
 	fn cef_modifiers_mouse_event(&self) -> CefModifiers {
 		self.cef_modifiers(&winit::keyboard::KeyLocation::Standard, false)
+	}
+
+	fn is_unmodified(&self) -> bool {
+		!self.modifiers.control_key() && !self.modifiers.alt_key() && !self.modifiers.meta_key()
 	}
 }
 
