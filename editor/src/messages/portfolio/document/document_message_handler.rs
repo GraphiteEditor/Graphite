@@ -2245,7 +2245,7 @@ impl DocumentMessageHandler {
 					},
 					LayoutGroup::Row {
 						widgets: {
-							let checkbox_id = CheckboxId::new();
+							let checkbox_id = CheckboxId::from_string("overlay-artboard-name");
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.artboard_name)
 									.on_update(|optional_input: &CheckboxInput| {
@@ -2263,7 +2263,7 @@ impl DocumentMessageHandler {
 					},
 					LayoutGroup::Row {
 						widgets: {
-							let checkbox_id = CheckboxId::new();
+							let checkbox_id = CheckboxId::from_string("overlay-transform-measurement");
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.transform_measurement)
 									.on_update(|optional_input: &CheckboxInput| {
@@ -2284,7 +2284,7 @@ impl DocumentMessageHandler {
 					},
 					LayoutGroup::Row {
 						widgets: {
-							let checkbox_id = CheckboxId::new();
+							let checkbox_id = CheckboxId::from_string("overlay-quick-measurement");
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.quick_measurement)
 									.on_update(|optional_input: &CheckboxInput| {
@@ -2302,7 +2302,7 @@ impl DocumentMessageHandler {
 					},
 					LayoutGroup::Row {
 						widgets: {
-							let checkbox_id = CheckboxId::new();
+							let checkbox_id = CheckboxId::from_string("overlay-transform-cage");
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.transform_cage)
 									.on_update(|optional_input: &CheckboxInput| {
@@ -2320,7 +2320,7 @@ impl DocumentMessageHandler {
 					},
 					LayoutGroup::Row {
 						widgets: {
-							let checkbox_id = CheckboxId::new();
+							let checkbox_id = CheckboxId::from_string("overlay-compass-rose");
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.compass_rose)
 									.on_update(|optional_input: &CheckboxInput| {
@@ -2338,7 +2338,7 @@ impl DocumentMessageHandler {
 					},
 					LayoutGroup::Row {
 						widgets: {
-							let checkbox_id = CheckboxId::new();
+							let checkbox_id = CheckboxId::from_string("overlay-pivot");
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.pivot)
 									.on_update(|optional_input: &CheckboxInput| {
@@ -2356,7 +2356,7 @@ impl DocumentMessageHandler {
 					},
 					LayoutGroup::Row {
 						widgets: {
-							let checkbox_id = CheckboxId::new();
+							let checkbox_id = CheckboxId::from_string("overlay-origin");
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.pivot)
 									.on_update(|optional_input: &CheckboxInput| {
@@ -2374,7 +2374,7 @@ impl DocumentMessageHandler {
 					},
 					LayoutGroup::Row {
 						widgets: {
-							let checkbox_id = CheckboxId::new();
+							let checkbox_id = CheckboxId::from_string("overlay-hover-outline");
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.hover_outline)
 									.on_update(|optional_input: &CheckboxInput| {
@@ -2392,7 +2392,7 @@ impl DocumentMessageHandler {
 					},
 					LayoutGroup::Row {
 						widgets: {
-							let checkbox_id = CheckboxId::new();
+							let checkbox_id = CheckboxId::from_string("overlay-selection-outline");
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.selection_outline)
 									.on_update(|optional_input: &CheckboxInput| {
@@ -2413,7 +2413,7 @@ impl DocumentMessageHandler {
 					},
 					LayoutGroup::Row {
 						widgets: {
-							let checkbox_id = CheckboxId::new();
+							let checkbox_id = CheckboxId::from_string("overlay-path");
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.path)
 									.on_update(|optional_input: &CheckboxInput| {
@@ -2431,7 +2431,7 @@ impl DocumentMessageHandler {
 					},
 					LayoutGroup::Row {
 						widgets: {
-							let checkbox_id = CheckboxId::new();
+							let checkbox_id = CheckboxId::from_string("overlay-anchors");
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.anchors)
 									.on_update(|optional_input: &CheckboxInput| {
@@ -2449,7 +2449,7 @@ impl DocumentMessageHandler {
 					},
 					LayoutGroup::Row {
 						widgets: {
-							let checkbox_id = CheckboxId::new();
+							let checkbox_id = CheckboxId::from_string("overlay-handles");
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.handles)
 									.disabled(!self.overlays_visibility_settings.anchors)
@@ -2497,7 +2497,7 @@ impl DocumentMessageHandler {
 					.into_iter()
 					.chain(SNAP_FUNCTIONS_FOR_BOUNDING_BOXES.into_iter().map(|(name, closure, tooltip)| LayoutGroup::Row {
 						widgets: {
-							let checkbox_id = CheckboxId::new();
+							let checkbox_id = CheckboxId::from_string(&format!("snap-bbox-{}", name.to_lowercase().replace(' ', "-")));
 							vec![
 								CheckboxInput::new(*closure(&mut snapping_state))
 									.on_update(move |input: &CheckboxInput| {
@@ -2519,7 +2519,7 @@ impl DocumentMessageHandler {
 					}])
 					.chain(SNAP_FUNCTIONS_FOR_PATHS.into_iter().map(|(name, closure, tooltip)| LayoutGroup::Row {
 						widgets: {
-							let checkbox_id = CheckboxId::new();
+							let checkbox_id = CheckboxId::from_string(&format!("snap-path-{}", name.to_lowercase().replace(' ', "-")));
 							vec![
 								CheckboxInput::new(*closure(&mut snapping_state2))
 									.on_update(move |input: &CheckboxInput| {

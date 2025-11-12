@@ -68,7 +68,7 @@ impl PreferencesDialogMessageHandler {
 				.widget_holder(),
 		];
 
-		let checkbox_id = CheckboxId::new();
+		let checkbox_id = CheckboxId::from_string("pref-zoom-with-scroll");
 		let zoom_with_scroll_tooltip = "Use the scroll wheel for zooming instead of vertically panning (not recommended for trackpads)";
 		let zoom_with_scroll = vec![
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
@@ -169,7 +169,7 @@ impl PreferencesDialogMessageHandler {
 			graph_wire_style,
 		];
 
-		let checkbox_id = CheckboxId::new();
+		let checkbox_id = CheckboxId::from_string("pref-vello-renderer");
 		let vello_tooltip = "Use the experimental Vello renderer (your browser must support WebGPU)";
 		let use_vello = vec![
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
@@ -188,7 +188,7 @@ impl PreferencesDialogMessageHandler {
 				.widget_holder(),
 		];
 
-		let checkbox_id = CheckboxId::new();
+		let checkbox_id = CheckboxId::from_string("pref-vector-meshes");
 		let vector_mesh_tooltip =
 			"Allow tools to produce vector meshes, where more than two segments can connect to an anchor point.\n\nCurrently this does not properly handle stroke joins and fills.";
 		let vector_meshes = vec![

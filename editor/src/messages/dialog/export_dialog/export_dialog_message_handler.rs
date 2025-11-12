@@ -149,7 +149,7 @@ impl LayoutHolder for ExportDialogMessageHandler {
 			DropdownInput::new(entries).selected_index(Some(index as u32)).widget_holder(),
 		];
 
-		let checkbox_id = CheckboxId::new();
+		let checkbox_id = CheckboxId::from_string("export-transparency");
 		let transparent_background = vec![
 			TextLabel::new("Transparency").table_align(true).min_width("100px").for_checkbox(checkbox_id).widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
