@@ -80,9 +80,6 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 
 			key_event.windows_key_code = match &event.logical_key {
 				winit::keyboard::Key::Named(named) => named.to_vk_bits(),
-				#[cfg(target_os = "macos")]
-				winit::keyboard::Key::Character(char) => char.chars().next().unwrap_or_default() as i32,
-				#[cfg(not(target_os = "macos"))]
 				winit::keyboard::Key::Character(char) => char.chars().next().unwrap_or_default().to_vk_bits(),
 				_ => 0,
 			};
