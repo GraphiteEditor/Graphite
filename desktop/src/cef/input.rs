@@ -1,5 +1,5 @@
 use cef::sys::{cef_event_flags_t, cef_key_event_type_t, cef_mouse_button_type_t};
-use cef::{Browser, ImplBrowser, ImplBrowserHost, KeyEvent, KeyEventType, MouseEvent};
+use cef::{Browser, ImplBrowser, ImplBrowserHost, KeyEvent, MouseEvent};
 use std::time::Instant;
 use winit::dpi::PhysicalPosition;
 use winit::event::{ButtonSource, ElementState, MouseButton, MouseScrollDelta, WindowEvent};
@@ -64,72 +64,42 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 			input_state.modifiers_changed(&modifiers.state());
 		}
 		WindowEvent::KeyboardInput { device_id: _, event, is_synthetic: _ } => {
-			dbg!(event);
-			let modifiers = input_state.cef_modifiers(&event.location, event.repeat).raw();
-
-			let native_key_code = event.physical_key.to_native_keycode();
-			let vk_bits = match &event.key_without_modifiers {
-				winit::keyboard::Key::Named(named_key) => named_key.to_vk_bits(),
-				winit::keyboard::Key::Character(char) => char.chars().next().unwrap_or('\0').to_vk_bits(),
-				_ => return,
-			};
-			let char = event.text_with_all_modifiers.as_ref().map(|text| text.chars().next().unwrap_or('\0').encode_utf16(&mut [0; 2])[0]);
-			let unmodified_char = event.text.as_ref().map(|text| text.chars().next().unwrap_or('\0').encode_utf16(&mut [0; 2])[0]);
-
 			let Some(host) = browser.host() else { return };
 
-			let mut key_event = KeyEvent {
-				size: size_of::<KeyEvent>(),
-				modifiers,
-				..Default::default()
-			};
-			#[cfg(target_os = "macos")]
-			{
-				key_event.native_key_code = native_key_code;
-				key_event.windows_key_code = vk_bits;
+			let mut key_event = KeyEvent::default();
+
+			key_event.type_ = match (event.state, &event.logical_key) {
+				(ElementState::Pressed, winit::keyboard::Key::Character(_)) => cef_key_event_type_t::KEYEVENT_CHAR,
+				(ElementState::Pressed, _) => cef_key_event_type_t::KEYEVENT_KEYDOWN,
+				(ElementState::Released, _) => cef_key_event_type_t::KEYEVENT_KEYUP,
 			}
+			.into();
 
-			match event.state {
-				ElementState::Pressed => {
-					let mut char_key_event = KeyEvent {
-						size: size_of::<KeyEvent>(),
-						modifiers,
-						is_system_key: 0,
-						..Default::default()
-					};
+			key_event.modifiers = input_state.cef_modifiers(&event.location, event.repeat).raw();
 
-					key_event.type_ = KeyEventType::from(cef_key_event_type_t::KEYEVENT_RAWKEYDOWN);
+			key_event.windows_key_code = match &event.logical_key {
+				winit::keyboard::Key::Named(named) => named.to_vk_bits(),
+				winit::keyboard::Key::Character(char) => char.chars().next().unwrap_or_default() as i32,
+				_ => 0,
+			};
+			key_event.native_key_code = event.physical_key.to_native_keycode();
 
-					if let winit::keyboard::Key::Character(_) = &event.logical_key {
-						#[cfg(not(target_os = "macos"))] // TODO: Understand why this is needed to avoid double keydown events on mac
-						host.send_key_event(Some(&key_event));
+			key_event.character = key_to_char(&event.logical_key) as u16;
+			key_event.unmodified_character = key_to_char(&event.key_without_modifiers) as u16;
 
-						char_key_event.native_key_code = native_key_code;
-						#[cfg(target_os = "windows")]
-						{
-							char_key_event.windows_key_code = char.unwrap_or(0) as i32;
-						}
-						#[cfg(not(target_os = "windows"))]
-						{
-							char_key_event.windows_key_code = vk_bits;
-						}
-						char_key_event.character = char.unwrap_or(0);
-						char_key_event.unmodified_character = unmodified_char.unwrap_or(0);
-						char_key_event.type_ = KeyEventType::from(cef_key_event_type_t::KEYEVENT_CHAR);
-						host.send_key_event(Some(&char_key_event));
-					} else {
-						host.send_key_event(Some(&key_event));
-					}
-				}
+			host.send_key_event(Some(&key_event));
 
-				ElementState::Released => {
-					if char.is_some() {
-						key_event.character = char.unwrap();
-						key_event.unmodified_character = unmodified_char.unwrap_or(0);
-					}
-
-					key_event.type_ = KeyEventType::from(cef_key_event_type_t::KEYEVENT_KEYUP);
-					host.send_key_event(Some(&key_event));
+			fn key_to_char(key: &winit::keyboard::Key) -> char {
+				match key {
+					winit::keyboard::Key::Named(named) => match named {
+						winit::keyboard::NamedKey::Tab => '\t',
+						winit::keyboard::NamedKey::Enter => '\r',
+						winit::keyboard::NamedKey::Backspace => '\x08',
+						winit::keyboard::NamedKey::Escape => '\x1b',
+						_ => '\0',
+					},
+					winit::keyboard::Key::Character(char) => char.chars().next().unwrap_or_default(),
+					_ => '\0',
 				}
 			}
 		}

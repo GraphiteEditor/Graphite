@@ -8,11 +8,11 @@ impl ToNativeKeycode for winit::keyboard::PhysicalKey {
 
 		#[cfg(target_os = "linux")]
 		{
-			self.to_scancode().map(|evdev| (evdev + 8) as i32).unwrap_or(0)
+			self.to_scancode().map(|evdev| (evdev + 8) as i32).unwrap_or_default()
 		}
 		#[cfg(any(target_os = "macos", target_os = "windows"))]
 		{
-			self.to_scancode().map(|c| c as i32).unwrap_or(0)
+			self.to_scancode().map(|c| c as i32).unwrap_or_default()
 		}
 	}
 }
