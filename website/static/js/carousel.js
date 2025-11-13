@@ -17,7 +17,8 @@ window.addEventListener("pointermove", dragMove);
  *   dragLastClientX: number | undefined,
  *   velocityDeltaWindow: Array<{ time: number, delta: number }>,
  *   jostleNoLongerNeeded: boolean,
- *   requestAnimationFrameActive: boolean
+ *   requestAnimationFrameActive: boolean,
+ *   videoSyncInterval: ReturnType<typeof setTimeout> | undefined,
  * }} Carousel
  */
 
@@ -34,8 +35,8 @@ function initializeCarousel() {
 			if (!(insertInsideElement instanceof HTMLElement)) return;
 			slideImages.forEach((image) => {
 				const clonedImage = image.cloneNode(true);
-				if (!(clonedImage instanceof HTMLImageElement)) return;
-				clonedImage.alt = "";
+				if (!(clonedImage instanceof HTMLImageElement) && !(clonedImage instanceof HTMLVideoElement)) return;
+				if (clonedImage instanceof HTMLImageElement) clonedImage.alt = "";
 				insertInsideElement.insertAdjacentElement("beforeend", clonedImage);
 			});
 		});
@@ -61,6 +62,7 @@ function initializeCarousel() {
 			velocityDeltaWindow,
 			jostleNoLongerNeeded,
 			requestAnimationFrameActive: false,
+			videoSyncInterval: undefined,
 		};
 		carousels.push(carousel);
 
@@ -166,6 +168,160 @@ function slideTo(carousel, index, smooth) {
 	slideImages[clamp(offsetIndex + 2, 0, slideImages.length - 1)].removeAttribute("loading");
 
 	setCurrentTransform(carousel, index * -100, "%", smooth);
+
+	// Manage video preloading and playback
+	manageVideoPlayback(carousel, index);
+}
+
+/**
+ * Get all video elements for a given slide index (main + torn edge copies)
+ * @param {Carousel} carousel
+ * @param {number} index
+ */
+function getVideosForSlide(carousel, index) {
+	// Account for the first image being the faded-out last image
+	const offsetIndex = index + 1;
+	const slideImages = Array.from(carousel.carouselContainer.querySelectorAll("[data-carousel-slide] [data-carousel-image]"));
+	const tornLeftImages = Array.from(carousel.carouselContainer.querySelectorAll("[data-carousel-slide-torn-left] [data-carousel-image]"));
+	const tornRightImages = Array.from(carousel.carouselContainer.querySelectorAll("[data-carousel-slide-torn-right] [data-carousel-image]"));
+
+	const mainElement = slideImages[offsetIndex];
+	const tornLeftElement = tornLeftImages[offsetIndex];
+	const tornRightElement = tornRightImages[offsetIndex];
+
+	return {
+		main: mainElement instanceof HTMLVideoElement ? mainElement : null,
+		tornLeft: tornLeftElement instanceof HTMLVideoElement ? tornLeftElement : null,
+		tornRight: tornRightElement instanceof HTMLVideoElement ? tornRightElement : null,
+	};
+}
+
+/**
+ * Check if the carousel is currently in transition (dragging or animating)
+ * @param {Carousel} carousel
+ */
+function isCarouselInTransition(carousel) {
+	// Check if user is dragging
+	if (carousel.dragLastClientX !== undefined) return true;
+
+	// Check if carousel has the "dragging" class (set during drag)
+	if (carousel.carouselContainer.classList.contains("dragging")) return true;
+
+	// Check if any slide has a transition in progress by looking at the computed style
+	const firstImage = carousel.images[1];
+	if (firstImage instanceof HTMLElement) {
+		const style = window.getComputedStyle(firstImage);
+		// If transform is transitioning, we're in motion
+		if (style.transitionProperty.includes("transform") && style.transitionDuration !== "0s") {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+/**
+ * Preload and manage playback of videos on current and adjacent slides
+ * @param {Carousel} carousel
+ * @param {number} currentIndex
+ */
+function manageVideoPlayback(carousel, currentIndex) {
+	const totalSlides = carousel.dots.length;
+
+	// Clear any existing sync interval
+	if (carousel.videoSyncInterval !== undefined) {
+		clearTimeout(carousel.videoSyncInterval);
+		carousel.videoSyncInterval = undefined;
+	}
+
+	// Stop all videos that aren't on current or adjacent slides
+	for (let i = 0; i < totalSlides; i++) {
+		if (Math.abs(i - currentIndex) > 1) {
+			const videos = getVideosForSlide(carousel, i);
+			[videos.main, videos.tornLeft, videos.tornRight].forEach((video) => {
+				if (video) {
+					video.pause();
+					video.currentTime = 0;
+				}
+			});
+		}
+	}
+
+	// Preload and potentially play videos on current and adjacent slides
+	const indicesToPreload = [currentIndex - 1, currentIndex, currentIndex + 1].filter((index) => index >= 0 && index < totalSlides);
+
+	indicesToPreload.forEach((index) => {
+		const videos = getVideosForSlide(carousel, index);
+
+		// Exit early if not a video slide
+		if (!videos.main) return;
+
+		// Preload the video
+		if (videos.main.readyState < 3) videos.main.load();
+
+		// If this is the current slide, play the main video when ready
+		if (index === currentIndex) {
+			const playWhenReady = () => {
+				if (videos.main && videos.main.readyState >= 3) {
+					// Start the main video
+					videos.main.currentTime = 0;
+					videos.main.play().catch(() => {});
+				} else if (videos.main) {
+					// Video not ready yet, check again
+					videos.main.addEventListener("canplaythrough", playWhenReady, { once: true });
+				}
+			};
+
+			playWhenReady();
+
+			// Monitor for transitions and sync torn videos when in motion
+			updateVideoSyncForTransitions(carousel, videos);
+		}
+	});
+}
+
+/**
+ * Set up monitoring to play/pause torn edge videos based on transition state
+ * @param {Carousel} carousel
+ * @param {{ main: HTMLVideoElement | null, tornLeft: HTMLVideoElement | null, tornRight: HTMLVideoElement | null }} videos
+ */
+function updateVideoSyncForTransitions(carousel, videos) {
+	if (!videos.main) return;
+
+	const syncTornVideos = () => {
+		const inTransition = isCarouselInTransition(carousel);
+
+		// During transition: sync and play all copies
+		if (inTransition && videos.main) {
+			const mainTime = videos.main.currentTime;
+			[videos.tornLeft, videos.tornRight].forEach((video) => {
+				if (!video) return;
+
+				if (video.paused) {
+					video.currentTime = mainTime;
+					video.play().catch(() => {
+						// Ignore autoplay errors
+					});
+				} else {
+					// Keep synced
+					const drift = Math.abs(video.currentTime - mainTime);
+					if (drift > 0.1) {
+						video.currentTime = mainTime;
+					}
+				}
+			});
+		}
+		// Not in transition: pause torn edge videos to save performance
+		else {
+			if (videos.tornLeft && !videos.tornLeft.paused) videos.tornLeft.pause();
+			if (videos.tornRight && !videos.tornRight.paused) videos.tornRight.pause();
+		}
+
+		// Continue checking while in transition, or check again soon in case transition starts
+		carousel.videoSyncInterval = setTimeout(syncTornVideos, 100);
+	};
+
+	syncTornVideos();
 }
 
 /**

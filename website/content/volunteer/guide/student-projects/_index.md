@@ -95,12 +95,6 @@ Based on the experience and insight brought to the table by the student, the nat
 
 </details>
 
-### Native development
-
-#### Graphite desktop app engineering
-
-*This is a newly added project pending a full written overview. Come ask on Discord for details.*
-
 ### Rendering and graphics
 
 Several of these require a good understanding of computer graphics rendering techniques and algorithms. Experience in game development and writing your own rendering engines is a plus.

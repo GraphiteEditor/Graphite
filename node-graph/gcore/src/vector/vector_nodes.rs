@@ -146,12 +146,31 @@ async fn fill<F: Into<Fill> + 'n + Send, V: VectorTableIterMut + 'n + Send>(
 	content
 }
 
+trait IntoF64Vec {
+	fn into_vec(self) -> Vec<f64>;
+}
+impl IntoF64Vec for f64 {
+	fn into_vec(self) -> Vec<f64> {
+		vec![self]
+	}
+}
+impl IntoF64Vec for Vec<f64> {
+	fn into_vec(self) -> Vec<f64> {
+		self
+	}
+}
+impl IntoF64Vec for String {
+	fn into_vec(self) -> Vec<f64> {
+		self.split(&[',', ' ']).filter(|s| !s.is_empty()).filter_map(|s| s.parse::<f64>().ok()).collect()
+	}
+}
+
 /// Applies a stroke style to the vector content, giving an appearance to the area within the outline of the geometry.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("stroke_properties"))]
-async fn stroke<V>(
+async fn stroke<V, L: IntoF64Vec>(
 	_: impl Ctx,
 	/// The content with vector paths to apply the stroke style to.
-	#[implementations(Table<Vector>, Table<Graphic>)]
+	#[implementations(Table<Vector>, Table<Vector>, Table<Vector>, Table<Graphic>, Table<Graphic>, Table<Graphic>)]
 	mut content: Table<V>,
 	/// The stroke color.
 	#[default(Color::BLACK)]
@@ -173,7 +192,8 @@ async fn stroke<V>(
 	/// <https://svgwg.org/svg2-draft/painting.html#PaintOrderProperty>
 	paint_order: PaintOrder,
 	/// The stroke dash lengths. Each length forms a distance in a pattern where the first length is a dash, the second is a gap, and so on. If the list is an odd length, the pattern repeats with solid-gap roles reversed.
-	dash_lengths: Vec<f64>,
+	#[implementations(Vec<f64>, f64, String, Vec<f64>, f64, String)]
+	dash_lengths: L,
 	/// The phase offset distance from the starting point of the dash pattern.
 	#[unit(" px")]
 	dash_offset: f64,
@@ -184,7 +204,7 @@ where
 	let stroke = Stroke {
 		color: color.into(),
 		weight,
-		dash_lengths,
+		dash_lengths: dash_lengths.into_vec(),
 		dash_offset,
 		cap,
 		join,

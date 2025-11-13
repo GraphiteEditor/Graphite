@@ -250,6 +250,7 @@ impl GraphicsState {
 						load: wgpu::LoadOp::Clear(wgpu::Color { r: 0.01, g: 0.01, b: 0.01, a: 1.0 }),
 						store: wgpu::StoreOp::Store,
 					},
+					depth_slice: None,
 				})],
 				depth_stencil_attachment: None,
 				occlusion_query_set: None,

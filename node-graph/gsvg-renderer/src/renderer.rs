@@ -168,11 +168,14 @@ pub enum RenderOutputType {
 pub struct RenderParams {
 	pub render_mode: RenderMode,
 	pub footprint: Footprint,
+	/// Ratio of physical pixels to logical pixels. `scale := physical_pixels / logical_pixels`
+	/// Ignored when rendering to SVG.
+	pub scale: f64,
 	pub render_output_type: RenderOutputType,
 	pub thumbnail: bool,
 	/// Don't render the rectangle for an artboard to allow exporting with a transparent background.
 	pub hide_artboards: bool,
-	/// Are we exporting as a standalone SVG?
+	/// Are we exporting
 	pub for_export: bool,
 	/// Are we generating a mask in this render pass? Used to see if fill should be multiplied with alpha.
 	pub for_mask: bool,
@@ -868,10 +871,18 @@ impl Render for Table<Vector> {
 			let multiplied_transform = parent_transform * *row.transform;
 			let has_real_stroke = row.element.style.stroke().filter(|stroke| stroke.weight() > 0.);
 			let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.);
-			let applied_stroke_transform = set_stroke_transform.unwrap_or(multiplied_transform);
-			let applied_stroke_transform = render_params.alignment_parent_transform.unwrap_or(applied_stroke_transform);
-			let element_transform = set_stroke_transform.map(|stroke_transform| multiplied_transform * stroke_transform.inverse());
-			let element_transform = element_transform.unwrap_or(DAffine2::IDENTITY);
+			let mut applied_stroke_transform = set_stroke_transform.unwrap_or(multiplied_transform);
+			let mut element_transform = set_stroke_transform
+				.map(|stroke_transform| multiplied_transform * stroke_transform.inverse())
+				.unwrap_or(DAffine2::IDENTITY);
+			if let Some(alignment_transform) = render_params.alignment_parent_transform {
+				applied_stroke_transform = alignment_transform;
+				element_transform = if alignment_transform.matrix2.determinant() != 0. {
+					multiplied_transform * alignment_transform.inverse()
+				} else {
+					multiplied_transform
+				};
+			}
 			let layer_bounds = row.element.bounding_box().unwrap_or_default();
 
 			let to_point = |p: DVec2| kurbo::Point::new(p.x, p.y);
@@ -893,7 +904,7 @@ impl Render for Table<Vector> {
 			let opacity = row.alpha_blending.opacity(render_params.for_mask);
 			if opacity < 1. || row.alpha_blending.blend_mode != BlendMode::default() {
 				layer = true;
-				let weight = row.element.style.stroke().unwrap().effective_width();
+				let weight = row.element.style.stroke().as_ref().map_or(0., Stroke::effective_width);
 				let quad = Quad::from_box(layer_bounds).inflate(weight * max_scale(applied_stroke_transform));
 				let layer_bounds = quad.bounding_box();
 				scene.push_layer(
@@ -1038,7 +1049,7 @@ impl Render for Table<Vector> {
 						});
 
 						let bounds = row.element.bounding_box_with_transform(multiplied_transform).unwrap_or(layer_bounds);
-						let weight = row.element.style.stroke().unwrap().effective_width();
+						let weight = row.element.style.stroke().as_ref().map_or(0., Stroke::effective_width);
 						let quad = Quad::from_box(bounds).inflate(weight * max_scale(applied_stroke_transform));
 						let bounds = quad.bounding_box();
 						let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);

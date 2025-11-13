@@ -59,26 +59,26 @@
 </script>
 
 <LayoutRow class="title-bar">
-	{#if platform !== "Mac"}
-		<!-- Menu bar -->
-		<LayoutRow>
+	<!-- Menu bar -->
+	<LayoutRow>
+		{#if platform !== "Mac"}
 			{#each entries as entry}
 				<TextButton label={entry.label} icon={entry.icon} menuListChildren={entry.children} action={entry.action} flush={true} />
 			{/each}
-		</LayoutRow>
-		<!-- Spacer -->
-		<LayoutRow class="spacer" on:mousedown={() => editor.handle.appWindowDrag()} on:dblclick={() => editor.handle.appWindowMaximize()} />
-		<!-- Window buttons -->
-		<LayoutRow>
-			{#if platform === "Web"}
-				<WindowButtonsWeb />
-			{:else if platform === "Windows"}
-				<WindowButtonsWindows {maximized} />
-			{:else if platform === "Linux"}
-				<WindowButtonsLinux {maximized} />
-			{/if}
-		</LayoutRow>
-	{/if}
+		{/if}
+	</LayoutRow>
+	<!-- Spacer -->
+	<LayoutRow class="spacer" on:mousedown={() => editor.handle.appWindowDrag()} on:dblclick={() => editor.handle.appWindowMaximize()} />
+	<!-- Window buttons -->
+	<LayoutRow>
+		{#if platform === "Web"}
+			<WindowButtonsWeb />
+		{:else if platform === "Windows"}
+			<WindowButtonsWindows {maximized} />
+		{:else if platform === "Linux"}
+			<WindowButtonsLinux {maximized} />
+		{/if}
+	</LayoutRow>
 </LayoutRow>
 
 <style lang="scss" global>

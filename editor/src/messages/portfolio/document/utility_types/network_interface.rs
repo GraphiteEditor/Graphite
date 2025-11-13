@@ -369,13 +369,8 @@ impl NodeNetworkInterface {
 						return None;
 					};
 					// TODO: Get downstream connections from all outputs
-					let Some(downstream_connections) = outward_wires.get(&OutputConnector::node(*node_id, 0)) else {
-						log::error!("Could not get outward wires in copy_nodes");
-						return None;
-					};
-					let has_selected_node_downstream = downstream_connections
-						.iter()
-						.any(|input_connector| input_connector.node_id().is_some_and(|upstream_id| new_ids.keys().any(|key| *key == upstream_id)));
+					let mut downstream_connections = outward_wires.get(&OutputConnector::node(*node_id, 0)).map_or([].iter(), |outputs| outputs.iter());
+					let has_selected_node_downstream = downstream_connections.any(|input_connector| input_connector.node_id().is_some_and(|upstream_id| new_ids.keys().any(|key| *key == upstream_id)));
 					// If the copied node does not have a downstream connection to another copied node, then set the position to absolute
 					if !has_selected_node_downstream {
 						let Some(position) = self.position(node_id, network_path) else {
@@ -6915,4 +6910,35 @@ pub enum TransactionStatus {
 	Modified,
 	#[default]
 	Finished,
+}
+
+#[cfg(test)]
+mod network_interface_tests {
+	use crate::test_utils::test_prelude::*;
+	#[tokio::test]
+	async fn copy_isolated_node() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+		let rectangle = editor.create_node_by_name("Rectangle").await;
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![rectangle] }).await;
+		let frontend_messages = editor.handle_message(NodeGraphMessage::Copy).await;
+		let serialized_nodes = frontend_messages
+			.into_iter()
+			.find_map(|msg| match msg {
+				FrontendMessage::TriggerTextCopy { copy_text } => Some(copy_text),
+				_ => None,
+			})
+			.expect("copy message should be dispatched")
+			.strip_prefix("graphite/nodes: ")
+			.expect("should start with magic string")
+			.to_string();
+		println!("Serialized: {serialized_nodes}");
+		editor.handle_message(NodeGraphMessage::PasteNodes { serialized_nodes }).await;
+		let nodes = &mut editor.active_document_mut().network_interface.network_mut(&[]).unwrap().nodes;
+		let orignal = nodes.remove(&rectangle).expect("original node should exist");
+		assert!(
+			nodes.values().any(|other| *other == orignal),
+			"duplicated node should exist\nother nodes: {nodes:#?}\norignal {orignal:#?}"
+		);
+	}
 }

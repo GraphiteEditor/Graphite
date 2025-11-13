@@ -1045,8 +1045,12 @@ async fn poll_node_graph_evaluation() {
 			crate::NODE_GRAPH_ERROR_DISPLAYED.store(false, Ordering::SeqCst);
 		}
 
+		// Batch responses to pool frontend updates
+		let batched = Message::Batched {
+			messages: messages.into_iter().collect(),
+		};
 		// Send each `FrontendMessage` to the JavaScript frontend
-		for response in messages.into_iter().flat_map(|message| editor.handle_message(message)) {
+		for response in editor.handle_message(batched) {
 			handle.send_frontend_message_to_js(response);
 		}
 

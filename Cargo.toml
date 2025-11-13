@@ -106,7 +106,7 @@ quote = "1.0"
 chrono = "0.4"
 ron = "0.11"
 fastnoise-lite = "1.1"
-wgpu = { version = "26.0", features = [
+wgpu = { version = "27.0", features = [
 	# We don't have wgpu on multiple threads (yet) https://github.com/gfx-rs/wgpu/blob/trunk/CHANGELOG.md#wgpu-types-now-send-sync-on-wasm
 	"fragile-send-sync-non-atomic-wasm",
 	"spirv",
@@ -138,8 +138,8 @@ winit = { git = "https://github.com/rust-windowing/winit.git" }
 keyboard-types = "0.8"
 url = "2.5"
 tokio = { version = "1.29", features = ["fs", "macros", "io-std", "rt"] }
-vello = { version = "0.6" }
-vello_encoding = { version = "0.6" }
+vello = { git = "https://github.com/linebender/vello" }
+vello_encoding = { git = "https://github.com/linebender/vello" }
 resvg = "0.45"
 usvg = "0.45"
 rand = { version = "0.9", default-features = false, features = ["std_rng"] }
@@ -188,8 +188,8 @@ iai-callgrind = { version = "0.16" }
 ndarray = "0.16"
 strum = { version = "0.27", features = ["derive"] }
 dirs = "6.0"
-cef = "140"
-cef-dll-sys = "140"
+cef = { version = "141", features = ["accelerated_osr"] }
+cef-dll-sys = "141"
 include_dir = "0.7"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing = "0.1"
