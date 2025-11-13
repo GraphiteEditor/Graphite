@@ -66,33 +66,43 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 		WindowEvent::KeyboardInput { device_id: _, event, is_synthetic: _ } => {
 			let Some(host) = browser.host() else { return };
 
-			let mut key_event = KeyEvent::default();
-
-			key_event.type_ = match (event.state, &event.logical_key) {
-				(ElementState::Pressed, winit::keyboard::Key::Character(_)) => cef_key_event_type_t::KEYEVENT_CHAR,
-				(ElementState::Pressed, _) => cef_key_event_type_t::KEYEVENT_RAWKEYDOWN,
-				(ElementState::Released, _) => cef_key_event_type_t::KEYEVENT_KEYUP,
-			}
-			.into();
+			let mut key_event = KeyEvent {
+				type_: match (event.state, &event.logical_key) {
+					(ElementState::Pressed, winit::keyboard::Key::Character(_)) => cef_key_event_type_t::KEYEVENT_CHAR,
+					(ElementState::Pressed, _) => cef_key_event_type_t::KEYEVENT_RAWKEYDOWN,
+					(ElementState::Released, _) => cef_key_event_type_t::KEYEVENT_KEYUP,
+				}
+				.into(),
+				..Default::default()
+			};
 
 			key_event.modifiers = input_state.cef_modifiers(&event.location, event.repeat).raw();
 
 			key_event.windows_key_code = match &event.logical_key {
 				winit::keyboard::Key::Named(named) => named.to_vk_bits(),
-				winit::keyboard::Key::Character(char) => char.chars().next().unwrap_or_default() as i32,
+				winit::keyboard::Key::Character(char) => char.chars().next().unwrap_or_default().to_vk_bits(),
 				_ => 0,
 			};
+
 			key_event.native_key_code = event.physical_key.to_native_keycode();
 
 			key_event.character = key_to_char(&event.logical_key) as u16;
 			key_event.unmodified_character = key_to_char(&event.key_without_modifiers) as u16;
 
 			#[cfg(target_os = "macos")] // See https://www.magpcss.org/ceforum/viewtopic.php?start=10&t=11650
-			if key_event.character == 0
-				&& key_event.unmodified_character == 0
-				&& let Some(text) = &event.text_with_all_modifiers
+			if key_event.character == 0 && key_event.unmodified_character == 0 {
+				key_event.character = 1;
+			}
+
+			#[cfg(not(target_os = "macos"))]
 			{
-				key_event.character = text.chars().next().unwrap_or_default() as u16;
+				if key_event.type_ == cef_key_event_type_t::KEYEVENT_CHAR.into() {
+					let mut key_down_event = key_event.clone();
+					key_down_event.type_ = cef_key_event_type_t::KEYEVENT_RAWKEYDOWN.into();
+					host.send_key_event(Some(&key_down_event));
+
+					key_event.windows_key_code = key_to_char(&event.logical_key) as i32;
+				}
 			}
 
 			host.send_key_event(Some(&key_event));
@@ -156,10 +166,6 @@ impl InputState {
 
 	fn cef_modifiers_mouse_event(&self) -> CefModifiers {
 		self.cef_modifiers(&winit::keyboard::KeyLocation::Standard, false)
-	}
-
-	fn is_no_mod_pressed(&self) -> bool {
-		!self.modifiers.control_key() && !self.modifiers.alt_key() && !self.modifiers.meta_key()
 	}
 }
 
