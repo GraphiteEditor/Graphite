@@ -70,7 +70,7 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 
 			key_event.type_ = match (event.state, &event.logical_key) {
 				(ElementState::Pressed, winit::keyboard::Key::Character(_)) => cef_key_event_type_t::KEYEVENT_CHAR,
-				(ElementState::Pressed, _) => cef_key_event_type_t::KEYEVENT_KEYDOWN,
+				(ElementState::Pressed, _) => cef_key_event_type_t::KEYEVENT_RAWKEYDOWN,
 				(ElementState::Released, _) => cef_key_event_type_t::KEYEVENT_KEYUP,
 			}
 			.into();
@@ -86,6 +86,14 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 
 			key_event.character = key_to_char(&event.logical_key) as u16;
 			key_event.unmodified_character = key_to_char(&event.key_without_modifiers) as u16;
+
+			#[cfg(target_os = "macos")] // See https://www.magpcss.org/ceforum/viewtopic.php?start=10&t=11650
+			if key_event.character == 0
+				&& key_event.unmodified_character == 0
+				&& let Some(text) = &event.text_with_all_modifiers
+			{
+				key_event.character = text.chars().next().unwrap_or_default() as u16;
+			}
 
 			host.send_key_event(Some(&key_event));
 

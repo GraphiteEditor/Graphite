@@ -1,5 +1,5 @@
 use winit::event_loop::ActiveEventLoop;
-use winit::platform::macos::{OptionAsAlt, WindowAttributesMacOS};
+use winit::platform::macos::WindowAttributesMacOS;
 use winit::window::{Window, WindowAttributes};
 
 use crate::consts::APP_NAME;
@@ -15,8 +15,7 @@ impl super::NativeWindow for NativeWindowImpl {
 		let mac_window = WindowAttributesMacOS::default()
 			.with_titlebar_transparent(true)
 			.with_fullsize_content_view(true)
-			.with_title_hidden(true)
-			.with_option_as_alt(OptionAsAlt::OnlyLeft);
+			.with_title_hidden(true);
 		attributes.with_platform_attributes(Box::new(mac_window))
 	}
 
