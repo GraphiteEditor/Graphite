@@ -90,8 +90,8 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 			key_event.unmodified_character = key_to_char(&event.key_without_modifiers) as u16;
 
 			#[cfg(target_os = "macos")] // See https://www.magpcss.org/ceforum/viewtopic.php?start=10&t=11650
-			if key_event.character == 0 && key_event.unmodified_character == 0 {
-				key_event.character = 1;
+			if key_event.character == 0 && key_event.unmodified_character == 0 && event.text_with_all_modifiers.is_some() {
+				key_event.unmodified_character = 1;
 			}
 
 			#[cfg(not(target_os = "macos"))]
