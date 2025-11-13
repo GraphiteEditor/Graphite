@@ -16,7 +16,7 @@ impl super::NativeWindow for NativeWindowImpl {
 			.with_titlebar_transparent(true)
 			.with_fullsize_content_view(true)
 			.with_title_hidden(true)
-			.with_option_as_alt(OptionAsAlt::Both);
+			.with_option_as_alt(OptionAsAlt::OnlyLeft);
 		attributes.with_platform_attributes(Box::new(mac_window))
 	}
 
