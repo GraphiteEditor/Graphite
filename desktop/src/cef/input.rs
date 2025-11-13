@@ -64,6 +64,7 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 			input_state.modifiers_changed(&modifiers.state());
 		}
 		WindowEvent::KeyboardInput { device_id: _, event, is_synthetic: _ } => {
+			dbg!(event);
 			let modifiers = input_state.cef_modifiers(&event.location, event.repeat).raw();
 
 			let native_key_code = event.physical_key.to_native_keycode();
