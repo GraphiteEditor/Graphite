@@ -2,6 +2,7 @@ use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use graphene_core::subpath::{ManipulatorGroup, PathSegPoints, Subpath, pathseg_points};
 use graphene_core::table::{Table, TableRow, TableRowRef};
+use graphene_core::text::TextContext;
 use graphene_core::vector::algorithms::merge_by_distance::MergeByDistanceExt;
 use graphene_core::vector::style::Fill;
 use graphene_core::vector::{PointId, Vector};
@@ -317,6 +318,10 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 							source_node_id: row.source_node_id,
 						}
 					})
+					.collect::<Vec<_>>(),
+				Graphic::Typography(typography) => typography
+					.into_iter()
+					.flat_map(|row| TextContext::with_thread_local(|ctx| ctx.layout_to_path(row.element.layout, 0., false)))
 					.collect::<Vec<_>>(),
 			}
 		})
