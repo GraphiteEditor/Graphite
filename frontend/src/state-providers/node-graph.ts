@@ -3,6 +3,7 @@ import { writable } from "svelte/store";
 import { type Editor } from "@graphite/editor";
 import {
 	type Box,
+	type Lasso,
 	type FrontendClickTargets,
 	type ContextMenuInformation,
 	type FrontendNode,
@@ -11,6 +12,7 @@ import {
 	ClearAllNodeGraphWires,
 	SendUIMetadata,
 	UpdateBox,
+	UpdateLasso,
 	UpdateClickTargets,
 	UpdateContextMenuInformation,
 	UpdateInSelectedNetwork,
@@ -30,6 +32,7 @@ import {
 export function createNodeGraphState(editor: Editor) {
 	const { subscribe, update } = writable({
 		box: undefined as Box | undefined,
+		lasso: undefined as Lasso | undefined,
 		clickTargets: undefined as FrontendClickTargets | undefined,
 		contextMenuInformation: undefined as ContextMenuInformation | undefined,
 		layerWidths: new Map<bigint, number>(),
@@ -62,6 +65,12 @@ export function createNodeGraphState(editor: Editor) {
 	editor.subscriptions.subscribeJsMessage(UpdateBox, (updateBox) => {
 		update((state) => {
 			state.box = updateBox.box;
+			return state;
+		});
+	});
+	editor.subscriptions.subscribeJsMessage(UpdateLasso, (updateLasso) => {
+		update((state) => {
+			state.lasso = updateLasso.lasso;
 			return state;
 		});
 	});
