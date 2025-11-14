@@ -25,95 +25,130 @@
     flake-compat.url = "https://flakehub.com/f/edolstra/flake-compat/1.tar.gz";
   };
 
-  outputs = inputs: inputs.flake-utils.lib.eachDefaultSystem (system:
-    let
-      info = {
-        pname = "graphite";
-        version = "unstable";
-        src = ./..;
-      };
+  outputs =
+    inputs:
+    inputs.flake-utils.lib.eachDefaultSystem (
+      system:
+      let
+        info = {
+          pname = "graphite";
+          version = "unstable";
+          src = ./..;
+        };
 
-      pkgs = import inputs.nixpkgs {
-        inherit system;
-        overlays = [ (import inputs.rust-overlay) ];
-      };
+        pkgs = import inputs.nixpkgs {
+          inherit system;
+          overlays = [ (import inputs.rust-overlay) ];
+        };
 
-      deps = {
-        crane = import ./deps/crane.nix { inherit pkgs inputs; };
-        cef = import ./deps/cef.nix { inherit pkgs inputs; };
-        rustGPU = import ./deps/rust-gpu.nix { inherit pkgs inputs; };
-      };
+        deps = {
+          crane = import ./deps/crane.nix { inherit pkgs inputs; };
+          cef = import ./deps/cef.nix { inherit pkgs inputs; };
+          rustGPU = import ./deps/rust-gpu.nix { inherit pkgs inputs; };
+        };
 
-      libs = rec {
-        desktop = [
-          pkgs.wayland
-          pkgs.openssl
-          pkgs.vulkan-loader
-          pkgs.libraw
-          pkgs.libGL
-        ];
-        desktop-x11 = [
-          pkgs.libxkbcommon
-          pkgs.xorg.libXcursor
-          pkgs.xorg.libxcb
-          pkgs.xorg.libX11
-        ];
-        desktop-all = desktop ++ desktop-x11;
-      };
+        libs = rec {
+          desktop = [
+            pkgs.wayland
+            pkgs.openssl
+            pkgs.vulkan-loader
+            pkgs.libraw
+            pkgs.libGL
+          ];
+          desktop-x11 = [
+            pkgs.libxkbcommon
+            pkgs.xorg.libXcursor
+            pkgs.xorg.libxcb
+            pkgs.xorg.libX11
+          ];
+          desktop-all = desktop ++ desktop-x11;
+        };
 
-      tools = rec {
-        desktop = [
-          pkgs.pkg-config
-        ];
-        frontend = [
-          pkgs.lld
-          pkgs.nodejs
-          pkgs.nodePackages.npm
-          pkgs.binaryen
-          pkgs.wasm-bindgen-cli_0_2_100
-          pkgs.wasm-pack
-          pkgs.cargo-about
-        ];
-        dev = [
-          pkgs.rustc
-          pkgs.cargo
-          pkgs.rust-analyzer
-          pkgs.clippy
+        tools = rec {
+          desktop = [
+            pkgs.pkg-config
+          ];
+          frontend = [
+            pkgs.lld
+            pkgs.nodejs
+            pkgs.nodePackages.npm
+            pkgs.binaryen
+            pkgs.wasm-bindgen-cli_0_2_100
+            pkgs.wasm-pack
+            pkgs.cargo-about
+          ];
+          dev = [
+            pkgs.rustc
+            pkgs.cargo
+            pkgs.rust-analyzer
+            pkgs.clippy
 
-          pkgs.git
+            pkgs.git
 
-          pkgs.cargo-watch
-          pkgs.cargo-nextest
-          pkgs.cargo-expand
+            pkgs.cargo-watch
+            pkgs.cargo-nextest
+            pkgs.cargo-expand
 
-          # Linker
-          pkgs.mold
+            # Linker
+            pkgs.mold
 
-          # Profiling tools
-          pkgs.gnuplot
-          pkgs.samply
-          pkgs.cargo-flamegraph
-        ];
-        all = desktop ++ frontend ++ dev;
-      };
-    in
-    {
-      packages = rec {
-        graphiteWithArgs = args: (import ./pkgs/graphite.nix {
-          pkgs = pkgs // { inherit graphene-raster-nodes-shaders; };
-          inherit info inputs deps libs tools;
-        }) args;
-        graphite = graphiteWithArgs { };
-        graphite-dev = graphiteWithArgs { dev = true; };
-        graphite-without-resources = graphiteWithArgs { embeddedResources = false; };
-        graphite-without-resources-dev = graphiteWithArgs { embeddedResources = false; dev = true; };
-        #TODO: graphene-cli = import ./pkgs/graphene-cli.nix { inherit info pkgs inputs deps libs tools; };
-        graphene-raster-nodes-shaders = import ./pkgs/graphene-raster-nodes-shaders.nix { inherit info pkgs inputs deps libs tools; };
+            # Profiling tools
+            pkgs.gnuplot
+            pkgs.samply
+            pkgs.cargo-flamegraph
+          ];
+          all = desktop ++ frontend ++ dev;
+        };
+      in
+      {
+        packages = rec {
+          graphiteWithArgs =
+            args:
+            (import ./pkgs/graphite.nix {
+              pkgs = pkgs // {
+                inherit graphene-raster-nodes-shaders;
+              };
+              inherit
+                info
+                inputs
+                deps
+                libs
+                tools
+                ;
+            })
+              args;
+          graphite = graphiteWithArgs { };
+          graphite-dev = graphiteWithArgs { dev = true; };
+          graphite-without-resources = graphiteWithArgs { embeddedResources = false; };
+          graphite-without-resources-dev = graphiteWithArgs {
+            embeddedResources = false;
+            dev = true;
+          };
+          #TODO: graphene-cli = import ./pkgs/graphene-cli.nix { inherit info pkgs inputs deps libs tools; };
+          graphene-raster-nodes-shaders = import ./pkgs/graphene-raster-nodes-shaders.nix {
+            inherit
+              info
+              pkgs
+              inputs
+              deps
+              libs
+              tools
+              ;
+          };
 
-        default = graphite;
-      };
+          default = graphite;
+        };
 
-      devShells.default = import ./dev.nix { inherit pkgs deps libs tools; };
-    }
-  );
+        devShells.default = import ./dev.nix {
+          inherit
+            pkgs
+            deps
+            libs
+            tools
+            ;
+        };
+
+        formatter = pkgs.nixfmt-tree;
+      }
+    );
 }
