@@ -1141,11 +1141,11 @@ async fn sample_polyline(
 		.collect()
 }
 
-/// Cuts a path at a given progress from 0 to 1 along the path, creating two new subpaths from the original one (if the path is initially open) or one open subpath (if the path is initially closed).
+/// Cuts a path at a given progression from 0 to 1 along the path, creating two new subpaths from the original one (if the path is initially open) or one open subpath (if the path is initially closed).
 ///
-/// If multiple subpaths make up the path, the whole number part of the progress value selects the subpath and the decimal part determines the position along it.
+/// If multiple subpaths make up the path, the whole number part of the progression value selects the subpath and the decimal part determines the position along it.
 #[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
-async fn cut_path(_: impl Ctx, mut content: Table<Vector>, progress: Fraction, parameterized_distance: bool, reverse: bool) -> Table<Vector> {
+async fn cut_path(_: impl Ctx, mut content: Table<Vector>, progression: Fraction, parameterized_distance: bool, reverse: bool) -> Table<Vector> {
 	let euclidian = !parameterized_distance;
 
 	let bezpaths = content
@@ -1155,7 +1155,7 @@ async fn cut_path(_: impl Ctx, mut content: Table<Vector>, progress: Fraction, p
 		.collect::<Vec<_>>();
 
 	let bezpath_count = bezpaths.len() as f64;
-	let t_value = progress.clamp(0., bezpath_count);
+	let t_value = progression.clamp(0., bezpath_count);
 	let t_value = if reverse { bezpath_count - t_value } else { t_value };
 	let index = if t_value >= bezpath_count { (bezpath_count - 1.) as usize } else { t_value as usize };
 
@@ -1241,16 +1241,16 @@ async fn cut_segments(_: impl Ctx, mut content: Table<Vector>) -> Table<Vector> 
 	content
 }
 
-/// Determines the position of a point on the path, given by its progress from 0 to 1 along the path.
+/// Determines the position of a point on the path, given by its progression from 0 to 1 along the path.
 ///
-/// If multiple subpaths make up the path, the whole number part of the progress value selects the subpath and the decimal part determines the position along it.
+/// If multiple subpaths make up the path, the whole number part of the progression value selects the subpath and the decimal part determines the position along it.
 #[node_macro::node(name("Position on Path"), category("Vector: Measure"), path(graphene_core::vector))]
 async fn position_on_path(
 	_: impl Ctx,
 	/// The path to traverse.
 	content: Table<Vector>,
 	/// The factor from the start to the end of the path, 0–1 for one subpath, 1–2 for a second subpath, and so on.
-	progress: Fraction,
+	progression: Fraction,
 	/// Swap the direction of the path.
 	reverse: bool,
 	/// Traverse the path using each segment's Bézier curve parameterization instead of the Euclidean distance. Faster to compute but doesn't respect actual distances.
@@ -1266,12 +1266,12 @@ async fn position_on_path(
 		})
 		.collect::<Vec<_>>();
 	let bezpath_count = bezpaths.len() as f64;
-	let progress = progress.clamp(0., bezpath_count);
-	let progress = if reverse { bezpath_count - progress } else { progress };
-	let index = if progress >= bezpath_count { (bezpath_count - 1.) as usize } else { progress as usize };
+	let progression = progression.clamp(0., bezpath_count);
+	let progression = if reverse { bezpath_count - progression } else { progression };
+	let index = if progression >= bezpath_count { (bezpath_count - 1.) as usize } else { progression as usize };
 
 	bezpaths.get_mut(index).map_or(DVec2::ZERO, |(bezpath, transform)| {
-		let t = if progress == bezpath_count { 1. } else { progress.fract() };
+		let t = if progression == bezpath_count { 1. } else { progression.fract() };
 		let t = if euclidian { TValue::Euclidean(t) } else { TValue::Parametric(t) };
 
 		bezpath.apply_affine(Affine::new(transform.to_cols_array()));
@@ -1280,16 +1280,16 @@ async fn position_on_path(
 	})
 }
 
-/// Determines the angle of the tangent at a point on the path, given by its progress from 0 to 1 along the path.
+/// Determines the angle of the tangent at a point on the path, given by its progression from 0 to 1 along the path.
 ///
-/// If multiple subpaths make up the path, the whole number part of the progress value selects the subpath and the decimal part determines the position along it.
+/// If multiple subpaths make up the path, the whole number part of the progression value selects the subpath and the decimal part determines the position along it.
 #[node_macro::node(name("Tangent on Path"), category("Vector: Measure"), path(graphene_core::vector))]
 async fn tangent_on_path(
 	_: impl Ctx,
 	/// The path to traverse.
 	content: Table<Vector>,
 	/// The factor from the start to the end of the path, 0–1 for one subpath, 1–2 for a second subpath, and so on.
-	progress: Fraction,
+	progression: Fraction,
 	/// Swap the direction of the path.
 	reverse: bool,
 	/// Traverse the path using each segment's Bézier curve parameterization instead of the Euclidean distance. Faster to compute but doesn't respect actual distances.
@@ -1307,12 +1307,12 @@ async fn tangent_on_path(
 		})
 		.collect::<Vec<_>>();
 	let bezpath_count = bezpaths.len() as f64;
-	let progress = progress.clamp(0., bezpath_count);
-	let progress = if reverse { bezpath_count - progress } else { progress };
-	let index = if progress >= bezpath_count { (bezpath_count - 1.) as usize } else { progress as usize };
+	let progression = progression.clamp(0., bezpath_count);
+	let progression = if reverse { bezpath_count - progression } else { progression };
+	let index = if progression >= bezpath_count { (bezpath_count - 1.) as usize } else { progression as usize };
 
 	let angle = bezpaths.get_mut(index).map_or(0., |(bezpath, transform)| {
-		let t = if progress == bezpath_count { 1. } else { progress.fract() };
+		let t = if progression == bezpath_count { 1. } else { progression.fract() };
 		let t_value = |t: f64| if euclidian { TValue::Euclidean(t) } else { TValue::Parametric(t) };
 
 		bezpath.apply_affine(Affine::new(transform.to_cols_array()));
