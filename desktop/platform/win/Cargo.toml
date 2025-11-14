@@ -11,5 +11,8 @@ rust-version = "1.87"
 [dependencies]
 graphite-desktop = { path = "../.." }
 
+[target.'cfg(target_os = "windows")'.dependencies]
+windows = { version = "0.58.0", features = ["Win32_System_Console"] }
+
 [target.'cfg(target_os = "windows")'.build-dependencies]
 winres = "0.1"
