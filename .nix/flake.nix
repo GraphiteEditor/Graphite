@@ -39,7 +39,6 @@
       };
 
       deps = {
-        rust = import ./deps/rust.nix { inherit pkgs inputs; };
         crane = import ./deps/crane.nix { inherit pkgs inputs; };
         cef = import ./deps/cef.nix { inherit pkgs inputs; };
         rustGPU = import ./deps/rust-gpu.nix { inherit pkgs inputs; };

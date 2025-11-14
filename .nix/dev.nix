@@ -1,4 +1,4 @@
-{ info, pkgs, inputs, deps, libs, tools, ... }:
+{ pkgs, deps, libs, tools, ... }:
 
 pkgs.mkShell ({
   packages = tools.all;
