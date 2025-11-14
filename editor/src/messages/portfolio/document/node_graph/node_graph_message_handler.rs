@@ -1614,8 +1614,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					return;
 				};
 
-				let viewport_bounds = viewport.bounds();
-				let viewport_bbox: [DVec2; 2] = viewport_bounds.into();
+				let viewport_bbox = [DVec2::ZERO, viewport.size().into_dvec2()];
 				let document_bbox: [DVec2; 2] = viewport_bbox.map(|p| network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse().transform_point2(p));
 
 				let mut nodes = Vec::new();
