@@ -406,6 +406,8 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(MouseMiddle); action_dispatch=NavigationMessage::BeginCanvasPan),
 		entry!(KeyDown(MouseLeft); modifiers=[Space], action_dispatch=NavigationMessage::BeginCanvasPan),
 		entry!(KeyDown(NumpadAdd); modifiers=[Accel], action_dispatch=NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }),
+		// `FakeKeyPlus` is a nonfunctional key mapping that must be accompanied by its real `Equal` key counterpart. This is used only to set the canonical key label so it shows "+" instead of "=" in the UI.
+		entry!(KeyDown(FakeKeyPlus); modifiers=[Accel], canonical, action_dispatch=NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }),
 		entry!(KeyDown(Equal); modifiers=[Accel], action_dispatch=NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }),
 		entry!(KeyDown(Minus); modifiers=[Accel], action_dispatch=NavigationMessage::CanvasZoomDecrease { center_on_mouse: false }),
 		entry!(KeyDown(KeyF); modifiers=[Alt], action_dispatch=NavigationMessage::CanvasFlip),
