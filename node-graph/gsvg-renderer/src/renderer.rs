@@ -904,7 +904,7 @@ impl Render for Table<Vector> {
 			let opacity = row.alpha_blending.opacity(render_params.for_mask);
 			if opacity < 1. || row.alpha_blending.blend_mode != BlendMode::default() {
 				layer = true;
-				let weight = row.element.style.stroke().unwrap().effective_width();
+				let weight = row.element.style.stroke().as_ref().map_or(0., Stroke::effective_width);
 				let quad = Quad::from_box(layer_bounds).inflate(weight * max_scale(applied_stroke_transform));
 				let layer_bounds = quad.bounding_box();
 				scene.push_layer(
@@ -1049,7 +1049,7 @@ impl Render for Table<Vector> {
 						});
 
 						let bounds = row.element.bounding_box_with_transform(multiplied_transform).unwrap_or(layer_bounds);
-						let weight = row.element.style.stroke().unwrap().effective_width();
+						let weight = row.element.style.stroke().as_ref().map_or(0., Stroke::effective_width);
 						let quad = Quad::from_box(bounds).inflate(weight * max_scale(applied_stroke_transform));
 						let bounds = quad.bounding_box();
 						let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
