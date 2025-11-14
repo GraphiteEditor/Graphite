@@ -7,22 +7,13 @@ use std::ops::Deref;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-/// Caches the output of a given Node and acts as a proxy
+/// Caches the output of a given node called with a specific input.
 ///
-/// ```text
-///                      ┌───────────────┐    ┌───────────────┐
-///                      │               │◄───┤               │◄─── EVAL (START)
-///                      │   CacheNode   │    │       F       │
-///                      │               ├───►│               │───► RESULT (END)
-/// ┌───────────────┐    ├───────────────┤    └───────────────┘
-/// │               │◄───┤               │
-/// │       G       │    │  Cached Data  │
-/// │               ├───►│               │
-/// └───────────────┘    └───────────────┘
-/// ```
+/// A cache miss occurs when the Option is None. In this case, the node evaluates the inner node and memoizes (stores) the result.
 ///
-/// The call from `F` directly reaches the `CacheNode` and the `CacheNode` can decide whether to call `G.eval(input_from_f)`
-/// in the event of a cache miss or just return the cached data in the event of a cache hit.
+/// A cache hit occurs when the Option is Some and has a stored hash matching the hash of the call argument. In this case, the node returns the cached value without re-evaluating the inner node.
+///
+/// Currently, only one input-output pair is cached. Subsequent calls with different inputs will overwrite the previous cache.
 #[derive(Default)]
 pub struct MemoNode<T, CachedNode> {
 	cache: Arc<Mutex<Option<(u64, T)>>>,
@@ -71,9 +62,8 @@ pub mod memo {
 }
 
 /// Caches the output of a given Node and acts as a proxy.
-/// In contrast to the regular `MemoNode`. This node ignores all input.
-/// Using this node might result in the document not updating properly,
-/// use with caution.
+/// In contrast to the regular `MemoNode`, this variant ignores all input.
+/// This node might result in the document not updating properly. Use with caution!
 #[derive(Default)]
 pub struct ImpureMemoNode<I, T, CachedNode> {
 	cache: Arc<Mutex<Option<T>>>,
@@ -86,8 +76,8 @@ where
 	CachedNode: for<'any_input> Node<'any_input, I>,
 	for<'a> <CachedNode as Node<'a, I>>::Output: Future<Output = T> + WasmNotSend,
 {
-	// TODO: This should return a reference to the cached cached_value
-	// but that requires a lot of lifetime magic <- This was suggested by copilot but is pretty accurate xD
+	// TODO: This should return a reference to the cached cached_value but that requires a lot of lifetime magic
+	// TODO: (This was suggested by copilot but is pretty accurate xD)
 	type Output = DynFuture<'i, T>;
 	fn eval(&'i self, input: I) -> Self::Output {
 		if let Some(cached_value) = self.cache.lock().as_ref().unwrap().deref() {

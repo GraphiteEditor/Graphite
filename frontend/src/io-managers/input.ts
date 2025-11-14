@@ -258,6 +258,11 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		const { target } = e;
 		const isTargetingCanvas = target instanceof Element && target.closest("[data-viewport], [data-viewport-container], [data-node-graph]");
 
+		// Prevent zooming the entire page when using Ctrl + scroll wheel outside of the viewport
+		if (e.ctrlKey && !isTargetingCanvas) {
+			e.preventDefault();
+		}
+
 		// Redirect vertical scroll wheel movement into a horizontal scroll on a horizontally scrollable element
 		// There seems to be no possible way to properly employ the browser's smooth scrolling interpolation
 		const horizontalScrollableElement = target instanceof Element && target.closest("[data-scrollable-x]");

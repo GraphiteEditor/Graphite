@@ -68,6 +68,10 @@ impl Window {
 		self.winit_window.surface_size()
 	}
 
+	pub(crate) fn scale_factor(&self) -> f64 {
+		self.winit_window.scale_factor()
+	}
+
 	pub(crate) fn minimize(&self) {
 		self.winit_window.set_minimized(true);
 	}

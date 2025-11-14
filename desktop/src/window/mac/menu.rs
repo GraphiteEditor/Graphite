@@ -1,6 +1,6 @@
 use muda::Menu as MudaMenu;
 use muda::accelerator::Accelerator;
-use muda::{AboutMetadataBuilder, CheckMenuItem, IsMenuItem, MenuEvent, MenuId, MenuItem, MenuItemKind, PredefinedMenuItem, Submenu};
+use muda::{AboutMetadataBuilder, CheckMenuItem, IsMenuItem, MenuEvent, MenuId, MenuItem, MenuItemKind, PredefinedMenuItem, Result, Submenu};
 
 use crate::event::{AppEvent, AppEventScheduler};
 use crate::wrapper::messages::MenuItem as WrapperMenuItem;
@@ -38,14 +38,26 @@ impl Menu {
 	}
 
 	pub(super) fn update(&self, entries: Vec<WrapperMenuItem>) {
-		// remove all items except the first (app menu)
-		self.inner.items().iter().skip(1).for_each(|item: &muda::MenuItemKind| {
-			self.inner.remove(menu_item_kind_to_dyn(item)).unwrap();
-		});
+		let new_entries = menu_items_from_wrapper(entries);
+		let existing_entries = self.inner.items();
 
-		let items = menu_items_from_wrapper(entries);
-		let items = items.iter().map(|item| menu_item_kind_to_dyn(item)).collect::<Vec<&dyn IsMenuItem>>();
-		self.inner.append_items(items.as_ref()).unwrap();
+		let mut new_entries_iter = new_entries.iter();
+		let mut existing_entries_iter = existing_entries.iter().skip(1); // Skip first menu (app menu)
+
+		let incremental_update_ok = std::iter::from_fn(move || match (existing_entries_iter.next(), new_entries_iter.next()) {
+			(Some(MenuItemKind::Submenu(old)), Some(MenuItemKind::Submenu(new))) if old.text() == new.text() => {
+				replace_children(old, 0, new.items());
+				Some(true)
+			}
+			(None, None) => None,
+			_ => Some(false),
+		})
+		.all(|b| b);
+
+		if !incremental_update_ok {
+			// Fallback to full replace
+			replace_children(&self.inner, 1, new_entries); // Skip first menu (app menu)
+		}
 	}
 }
 
@@ -96,4 +108,49 @@ fn u64_to_menu_id(id: u64) -> String {
 
 fn menu_id_to_u64(id: &MenuId) -> Option<u64> {
 	u64::from_str_radix(&id.0, 16).ok()
+}
+
+fn replace_children<'a, T: Into<MenuContainer<'a>>>(menu: T, skip: usize, new_items: Vec<MenuItemKind>) {
+	let menu: MenuContainer = menu.into();
+	let items = menu.items();
+	for item in items.iter().skip(skip) {
+		menu.remove(menu_item_kind_to_dyn(item)).unwrap();
+	}
+	let items = new_items.iter().map(|item| menu_item_kind_to_dyn(item)).collect::<Vec<&dyn IsMenuItem>>();
+	menu.append_items(items.as_ref()).unwrap();
+}
+
+enum MenuContainer<'a> {
+	Menu(&'a MudaMenu),
+	Submenu(&'a Submenu),
+}
+impl<'a> MenuContainer<'a> {
+	fn items(&self) -> Vec<MenuItemKind> {
+		match self {
+			MenuContainer::Menu(menu) => menu.items(),
+			MenuContainer::Submenu(submenu) => submenu.items(),
+		}
+	}
+	fn remove(&self, item: &dyn IsMenuItem) -> Result<()> {
+		match self {
+			MenuContainer::Menu(menu) => menu.remove(item),
+			MenuContainer::Submenu(submenu) => submenu.remove(item),
+		}
+	}
+	fn append_items(&self, items: &[&dyn IsMenuItem]) -> Result<()> {
+		match self {
+			MenuContainer::Menu(menu) => menu.append_items(items),
+			MenuContainer::Submenu(submenu) => submenu.append_items(items),
+		}
+	}
+}
+impl<'a> From<&'a MudaMenu> for MenuContainer<'a> {
+	fn from(menu: &'a MudaMenu) -> Self {
+		MenuContainer::Menu(menu)
+	}
+}
+impl<'a> From<&'a Submenu> for MenuContainer<'a> {
+	fn from(submenu: &'a Submenu) -> Self {
+		MenuContainer::Submenu(submenu)
+	}
 }

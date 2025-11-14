@@ -9,9 +9,7 @@ js = ["/js/youtube-embed.js"]
 css = ["/component/youtube-embed.css"]
 +++
 
-Welcome to the Graphite user manual. Keep reading to to learn how the software can help bring your 2D creative ideas to life.
-
-You may choose to read this sequentially and learn from the structured introduction and sample projects. Or you may jump to chapters of interest that also serve as quick reference.
+Welcome to the Graphite user manual. Keep reading to learn how the software can help bring your 2D creative ideas to life.
 
 ## More chapters on the way
 
