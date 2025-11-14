@@ -1,8 +1,30 @@
-pub trait ToNativeKeycode {
+use winit::keyboard::{Key, NamedKey, PhysicalKey};
+
+pub(crate) trait ToCharRepresentation {
+	fn to_char_representation(&self) -> char;
+}
+
+impl ToCharRepresentation for Key {
+	fn to_char_representation(&self) -> char {
+		match self {
+			Key::Named(named) => match named {
+				NamedKey::Tab => '\t',
+				NamedKey::Enter => '\r',
+				NamedKey::Backspace => '\x08',
+				NamedKey::Escape => '\x1b',
+				_ => '\0',
+			},
+			Key::Character(char) => char.chars().next().unwrap_or_default(),
+			_ => '\0',
+		}
+	}
+}
+
+pub(crate) trait ToNativeKeycode {
 	fn to_native_keycode(&self) -> i32;
 }
 
-impl ToNativeKeycode for winit::keyboard::PhysicalKey {
+impl ToNativeKeycode for PhysicalKey {
 	fn to_native_keycode(&self) -> i32 {
 		use winit::platform::scancode::PhysicalKeyExtScancode;
 
@@ -17,7 +39,6 @@ impl ToNativeKeycode for winit::keyboard::PhysicalKey {
 	}
 }
 
-// Windows Virtual keyboard binary representation
 pub(crate) trait ToVKBits {
 	fn to_vk_bits(&self) -> i32;
 }
@@ -32,10 +53,8 @@ macro_rules! map_enum {
 		}
 	};
 }
-
 impl ToVKBits for winit::keyboard::NamedKey {
 	fn to_vk_bits(&self) -> i32 {
-		use winit::keyboard::NamedKey;
 		map_enum!(
 			self,
 			NamedKey,
@@ -152,7 +171,6 @@ macro_rules! map {
 		}
 	};
 }
-
 impl ToVKBits for char {
 	fn to_vk_bits(&self) -> i32 {
 		map!(
