@@ -1,8 +1,7 @@
 name: Build Nix Package
 
 on:
-  push:
-  pull_request:
+  workflow_dispatch: {}
 
 jobs:
   build:
