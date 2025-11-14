@@ -94,7 +94,7 @@
           pkgs.samply
           pkgs.cargo-flamegraph
         ];
-        all = frontend ++ dev;
+        all = desktop ++ frontend ++ dev;
       };
     in
     {
