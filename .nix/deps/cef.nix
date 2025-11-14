@@ -1,4 +1,4 @@
-{ pkgs }:
+{ pkgs, inputs, ... }:
 
 let
   libcef = pkgs.libcef.overrideAttrs (_: _: {
@@ -22,5 +22,5 @@ let
   '';
 in
 {
-  CEF_PATH = cefPath;
+  env.CEF_PATH = cefPath;
 }
