@@ -1,18 +1,15 @@
-use crate::Vector;
-use crate::graphic::{Graphic, IntoGraphicTable};
+use crate::graphic::Graphic;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2, IVec2};
 use core_types::blending::AlphaBlending;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::math::quad::Quad;
-use raster_types::{CPU, GPU, Raster};
 use core_types::render_complexity::RenderComplexity;
 use core_types::table::{Table, TableRow};
-use core_types::transform::{Transform, TransformMut};
+use core_types::transform::Transform;
 use core_types::uuid::NodeId;
-use core_types::{CloneVarArgs, Color, Context, Ctx, ExtractAll, Node, OwnedContextImpl};
+use core_types::Color;
 use std::hash::Hash;
-use vector_types::GradientStops;
 
 /// Some [`ArtboardData`] with some optional clipping bounds that can be exported.
 #[derive(Clone, Debug, Hash, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]

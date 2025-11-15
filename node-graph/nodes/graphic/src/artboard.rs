@@ -1,4 +1,4 @@
-use core_types::{CloneVarArgs, Color, Context, Ctx, ExtractAll, Node, OwnedContextImpl, table::Table, transform::TransformMut};
+use core_types::{CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl, table::Table, transform::TransformMut};
 use graphic_types::{Artboard, Vector, graphic::{Graphic, IntoGraphicTable}};
 use glam::{DAffine2, DVec2, IVec2};
 use raster_types::{CPU, GPU, Raster};

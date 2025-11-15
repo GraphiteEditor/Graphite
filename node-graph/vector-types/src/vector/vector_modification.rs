@@ -1,11 +1,9 @@
 use super::*;
 use crate::subpath::BezierHandles;
 use crate::vector::misc::{HandleId, HandleType, point_to_dvec2};
-use core_types::Ctx;
-use core_types::table::{Table, TableRow};
-use core_types::uuid::{NodeId, generate_uuid};
+use core_types::uuid::generate_uuid;
 use dyn_any::DynAny;
-use glam::{DAffine2, DVec2};
+use glam::DVec2;
 use kurbo::{BezPath, PathEl, Point};
 use std::collections::{HashMap, HashSet};
 use std::hash::BuildHasher;
