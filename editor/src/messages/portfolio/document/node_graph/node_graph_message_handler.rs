@@ -1012,9 +1012,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						if let Some(disconnecting) = &self.disconnecting {
 							let mut disconnect_root_node = false;
 							if let Previewing::Yes { root_node_to_restore } = network_interface.previewing(selection_network_path)
-								&& root_node_to_restore.is_some() && *disconnecting == InputConnector::Export(0) {
-									disconnect_root_node = true;
-								}
+								&& root_node_to_restore.is_some()
+								&& *disconnecting == InputConnector::Export(0)
+							{
+								disconnect_root_node = true;
+							}
 							if disconnect_root_node {
 								responses.add(NodeGraphMessage::DisconnectRootNode);
 							} else {
@@ -1168,12 +1170,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					self.preview_on_mouse_up = None;
 				}
 				if let Some(node_to_deselect) = self.deselect_on_pointer_up.take()
-					&& !self.drag_start.as_ref().is_some_and(|t| t.1) {
-						let mut new_selected_nodes = selected_nodes.selected_nodes_ref().clone();
-						new_selected_nodes.remove(node_to_deselect);
-						responses.add(NodeGraphMessage::SelectedNodesSet { nodes: new_selected_nodes });
-						return;
-					}
+					&& !self.drag_start.as_ref().is_some_and(|t| t.1)
+				{
+					let mut new_selected_nodes = selected_nodes.selected_nodes_ref().clone();
+					new_selected_nodes.remove(node_to_deselect);
+					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: new_selected_nodes });
+					return;
+				}
 				let point = network_metadata
 					.persistent_metadata
 					.navigation_metadata

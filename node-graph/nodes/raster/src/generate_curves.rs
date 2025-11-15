@@ -1,8 +1,8 @@
 use crate::curve::{Curve, CurveManipulatorGroup, ValueMapperNode};
 use core_types::color::{Channel, Linear};
 use core_types::context::Ctx;
-use vector_types::vector::algorithms::bezpath_algorithms::pathseg_find_tvalues_for_x;
 use kurbo::{CubicBez, ParamCurve, PathSeg, Point};
+use vector_types::vector::algorithms::bezpath_algorithms::pathseg_find_tvalues_for_x;
 
 const WINDOW_SIZE: usize = 1024;
 

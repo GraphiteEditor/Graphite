@@ -1,8 +1,8 @@
 use super::Color;
-use crate::{Bitmap, BitmapMut};
 use crate::raster_types::{CPU, Raster};
-use core_types::table::{Table, TableRow};
+use crate::{Bitmap, BitmapMut};
 use core_types::AlphaBlending;
+use core_types::table::{Table, TableRow};
 use not_std_types::color::float_to_srgb_u8;
 // use crate::vector::Vector; // TODO: Check if Vector is actually used, if so handle differently
 use core::hash::{Hash, Hasher};

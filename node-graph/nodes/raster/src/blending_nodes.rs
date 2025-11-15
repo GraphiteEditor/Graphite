@@ -1,14 +1,14 @@
 use crate::adjust::Adjust;
 #[cfg(feature = "std")]
-use vector_types::GradientStops;
-#[cfg(feature = "std")]
-use raster_types::{CPU, Raster};
-#[cfg(feature = "std")]
 use core_types::table::Table;
 use not_std_types::Ctx;
 use not_std_types::blending::BlendMode;
 use not_std_types::color::{Color, Pixel};
 use not_std_types::registry::types::PercentageF32;
+#[cfg(feature = "std")]
+use raster_types::{CPU, Raster};
+#[cfg(feature = "std")]
+use vector_types::GradientStops;
 
 pub trait Blend<P: Pixel> {
 	fn blend(&self, under: &Self, blend_fn: impl Fn(P, P) -> P) -> Self;
@@ -23,9 +23,9 @@ impl Blend<Color> for Color {
 mod blend_std {
 	use super::*;
 	use core::cmp::Ordering;
+	use core_types::table::Table;
 	use raster_types::Image;
 	use raster_types::Raster;
-	use core_types::table::Table;
 
 	impl Blend<Color> for Table<Raster<CPU>> {
 		fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
@@ -191,9 +191,9 @@ fn color_overlay<T: Adjust<Color>>(
 mod test {
 	use core_types::blending::BlendMode;
 	use core_types::color::Color;
+	use core_types::table::Table;
 	use raster_types::Image;
 	use raster_types::Raster;
-	use core_types::table::Table;
 
 	#[tokio::test]
 	async fn color_overlay_multiply() {

@@ -12,9 +12,9 @@ impl Adjust<Color> for Color {
 #[cfg(feature = "std")]
 mod adjust_std {
 	use super::*;
-	use vector_types::GradientStops;
-	use raster_types::{CPU, Raster};
 	use core_types::table::Table;
+	use raster_types::{CPU, Raster};
+	use vector_types::GradientStops;
 
 	impl Adjust<Color> for Table<Raster<CPU>> {
 		fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {

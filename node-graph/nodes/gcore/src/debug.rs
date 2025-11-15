@@ -1,7 +1,7 @@
 use core_types::Ctx;
-use raster_types::{CPU, Raster};
 use core_types::table::Table;
 use glam::{DAffine2, DVec2};
+use raster_types::{CPU, Raster};
 
 /// Meant for debugging purposes, not general use. Logs the input value to the console and passes it through unchanged.
 #[node_macro::node(category("Debug"), name("Log to Console"))]

@@ -3,20 +3,20 @@
 use crate::adjust::Adjust;
 use crate::cubic_spline::CubicSplines;
 use core::fmt::Debug;
-use glam::{Vec3, Vec4};
-#[cfg(feature = "std")]
-use vector_types::GradientStops;
-#[cfg(feature = "std")]
-use raster_types::{CPU, Raster};
 #[cfg(feature = "std")]
 use core_types::table::Table;
+use glam::{Vec3, Vec4};
+use node_macro::BufferStruct;
 use not_std_types::color::Color;
 use not_std_types::context::Ctx;
 use not_std_types::registry::types::{AngleF32, PercentageF32, SignedPercentageF32};
-use node_macro::BufferStruct;
 use num_enum::{FromPrimitive, IntoPrimitive};
 #[cfg(not(feature = "std"))]
 use num_traits::float::Float;
+#[cfg(feature = "std")]
+use raster_types::{CPU, Raster};
+#[cfg(feature = "std")]
+use vector_types::GradientStops;
 
 // TODO: Implement the following:
 // Color Balance

@@ -1,5 +1,5 @@
-use glam::{DAffine2, DVec2};
 use core_types::table::{Table, TableRow};
+use glam::{DAffine2, DVec2};
 use parley::GlyphRun;
 use skrifa::GlyphId;
 use skrifa::instance::{LocationRef, NormalizedCoord, Size};

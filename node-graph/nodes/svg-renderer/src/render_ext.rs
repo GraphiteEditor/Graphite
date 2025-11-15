@@ -1,7 +1,7 @@
 use crate::renderer::{RenderParams, format_transform_matrix};
-use glam::DAffine2;
 use core_types::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WEIGHT};
 use core_types::uuid::generate_uuid;
+use glam::DAffine2;
 use graphic_types::vector_types::gradient::{Gradient, GradientType};
 use graphic_types::vector_types::vector::style::{Fill, PaintOrder, PathStyle, RenderMode, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use std::fmt::Write;

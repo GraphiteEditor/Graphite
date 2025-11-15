@@ -1,6 +1,5 @@
 use crate::graphic::Graphic;
-use dyn_any::DynAny;
-use glam::{DAffine2, DVec2, IVec2};
+use core_types::Color;
 use core_types::blending::AlphaBlending;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::math::quad::Quad;
@@ -8,7 +7,8 @@ use core_types::render_complexity::RenderComplexity;
 use core_types::table::{Table, TableRow};
 use core_types::transform::Transform;
 use core_types::uuid::NodeId;
-use core_types::Color;
+use dyn_any::DynAny;
+use glam::{DAffine2, DVec2, IVec2};
 use std::hash::Hash;
 
 /// Some [`ArtboardData`] with some optional clipping bounds that can be exported.

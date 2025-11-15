@@ -367,20 +367,19 @@ fn extend_path_with_next_segment(tool_data: &mut FreehandToolData, position: DVe
 		modification_type: VectorModificationType::InsertPoint { id, position },
 	});
 
-	if extend
-		&& let Some((_, previous_position)) = tool_data.end_point {
-			let next_id = SegmentId::generate();
-			let points = [previous_position, id];
+	if extend && let Some((_, previous_position)) = tool_data.end_point {
+		let next_id = SegmentId::generate();
+		let points = [previous_position, id];
 
-			responses.add(GraphOperationMessage::Vector {
-				layer,
-				modification_type: VectorModificationType::InsertSegment {
-					id: next_id,
-					points,
-					handles: [None, None],
-				},
-			});
-		}
+		responses.add(GraphOperationMessage::Vector {
+			layer,
+			modification_type: VectorModificationType::InsertSegment {
+				id: next_id,
+				points,
+				handles: [None, None],
+			},
+		});
+	}
 
 	tool_data.dragged = true;
 	tool_data.end_point = Some((position, id));

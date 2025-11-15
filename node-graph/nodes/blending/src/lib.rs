@@ -1,9 +1,9 @@
-use graphic_types::raster_types::{CPU, Raster};
 use core_types::registry::types::Percentage;
 use core_types::table::Table;
 use core_types::{BlendMode, Color, Ctx};
 use graphic_types::Graphic;
 use graphic_types::Vector;
+use graphic_types::raster_types::{CPU, Raster};
 use vector_types::GradientStops;
 
 pub(crate) trait MultiplyAlpha {

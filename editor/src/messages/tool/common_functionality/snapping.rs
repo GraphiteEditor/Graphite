@@ -277,19 +277,22 @@ impl SnapManager {
 		}
 
 		if document.snapping_state.target_enabled(SnapTarget::Grid(GridSnapTarget::Line))
-			&& let Some(closest_line) = get_closest_line(&snap_results.grid_lines) {
-				snapped_points.push(closest_line.clone());
-			}
+			&& let Some(closest_line) = get_closest_line(&snap_results.grid_lines)
+		{
+			snapped_points.push(closest_line.clone());
+		}
 
 		if !constrained {
 			if document.snapping_state.target_enabled(SnapTarget::Path(PathSnapTarget::IntersectionPoint))
-				&& let Some(closest_curves_intersection) = get_closest_intersection(point.document_point, &snap_results.curves) {
-					snapped_points.push(closest_curves_intersection);
-				}
+				&& let Some(closest_curves_intersection) = get_closest_intersection(point.document_point, &snap_results.curves)
+			{
+				snapped_points.push(closest_curves_intersection);
+			}
 			if document.snapping_state.target_enabled(SnapTarget::Grid(GridSnapTarget::Intersection))
-				&& let Some(closest_grid_intersection) = get_grid_intersection(point.document_point, &snap_results.grid_lines) {
-					snapped_points.push(closest_grid_intersection);
-				}
+				&& let Some(closest_grid_intersection) = get_grid_intersection(point.document_point, &snap_results.grid_lines)
+			{
+				snapped_points.push(closest_grid_intersection);
+			}
 		}
 
 		if to_path {

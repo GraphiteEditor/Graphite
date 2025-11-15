@@ -11,12 +11,12 @@ pub use artboard::Artboard;
 pub use graphic::{Graphic, IntoGraphicTable, Vector};
 
 pub mod migrations {
-	use dyn_any::DynAny;
-	use glam::DAffine2;
 	use core_types::{
 		AlphaBlending,
 		table::{Table, TableRow},
 	};
+	use dyn_any::DynAny;
+	use glam::DAffine2;
 	use vector_types::vector::{PathStyle, PointDomain, RegionDomain, SegmentDomain, misc::HandleId};
 
 	use crate::{Graphic, Vector};

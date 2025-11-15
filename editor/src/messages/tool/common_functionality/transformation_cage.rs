@@ -769,15 +769,17 @@ impl BoundingBoxManager {
 		let edges = self.check_selected_edges(input.mouse.position);
 
 		let is_near_square = edges.is_some_and(|hover_edge| self.over_extended_edge_midpoint(input.mouse.position, hover_edge));
-		if dragging_bounds && is_near_square
+		if dragging_bounds
+			&& is_near_square
 			&& let Some(skew_edge) = skew_edge
-				&& self.check_skew_handle(input.mouse.position, skew_edge) {
-					if skew_edge.0 || skew_edge.1 {
-						return MouseCursorIcon::EWResize;
-					} else if skew_edge.2 || skew_edge.3 {
-						return MouseCursorIcon::NSResize;
-					}
-				};
+			&& self.check_skew_handle(input.mouse.position, skew_edge)
+		{
+			if skew_edge.0 || skew_edge.1 {
+				return MouseCursorIcon::EWResize;
+			} else if skew_edge.2 || skew_edge.3 {
+				return MouseCursorIcon::NSResize;
+			}
+		};
 
 		match edges {
 			Some((top, bottom, left, right)) => match (top, bottom, left, right) {

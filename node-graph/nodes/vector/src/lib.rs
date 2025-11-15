@@ -7,8 +7,8 @@ mod vector_nodes;
 extern crate log;
 
 // Re-export for convenience
-pub use generator_nodes::*;
 pub use core_types as gcore;
+pub use generator_nodes::*;
 pub use graphic_types;
 pub use instance::*;
 pub use vector_modification_nodes::*;

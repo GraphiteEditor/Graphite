@@ -1,19 +1,19 @@
 use crate::adjustments::{CellularDistanceFunction, CellularReturnType, DomainWarpType, FractalType, NoiseType};
-use dyn_any::DynAny;
-use fastnoise_lite;
-use glam::{DAffine2, DVec2, Vec2};
 use core_types::blending::AlphaBlending;
 use core_types::color::Color;
 use core_types::color::{Alpha, AlphaMut, Channel, LinearChannel, Luminance, RGBMut};
 use core_types::context::{Ctx, ExtractFootprint};
 use core_types::math::bbox::Bbox;
+use core_types::table::{Table, TableRow};
+use core_types::transform::Transform;
+use dyn_any::DynAny;
+use fastnoise_lite;
+use glam::{DAffine2, DVec2, Vec2};
+use rand::prelude::*;
+use rand_chacha::ChaCha8Rng;
 use raster_types::Image;
 use raster_types::{Bitmap, BitmapMut};
 use raster_types::{CPU, Raster};
-use core_types::table::{Table, TableRow};
-use core_types::transform::Transform;
-use rand::prelude::*;
-use rand_chacha::ChaCha8Rng;
 use std::fmt::Debug;
 use std::hash::Hash;
 

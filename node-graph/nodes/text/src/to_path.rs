@@ -1,7 +1,7 @@
 use super::text_context::TextContext;
 use super::{Font, FontCache, TypesettingConfig};
-use glam::DVec2;
 use core_types::table::Table;
+use glam::DVec2;
 use parley::fontique::Blob;
 use std::sync::Arc;
 use vector_types::Vector;

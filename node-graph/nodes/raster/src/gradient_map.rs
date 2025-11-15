@@ -1,10 +1,10 @@
 //! Not immediately shader compatible due to needing [`GradientStops`] as a param, which needs [`Vec`]
 
 use crate::adjust::Adjust;
-use vector_types::GradientStops;
-use raster_types::{CPU, Raster};
 use core_types::table::Table;
 use core_types::{Color, Ctx};
+use raster_types::{CPU, Raster};
+use vector_types::GradientStops;
 
 // Aims for interoperable compatibility with:
 // https://www.adobe.com/devnet-apps/photoshop/fileformatashtml/#:~:text=%27grdm%27%20%3D%20Gradient%20Map

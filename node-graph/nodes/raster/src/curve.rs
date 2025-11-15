@@ -1,6 +1,6 @@
-use dyn_any::{DynAny, StaticType, StaticTypeSized};
 use core_types::Node;
 use core_types::color::{Channel, Linear, LuminanceMut};
+use dyn_any::{DynAny, StaticType, StaticTypeSized};
 use std::hash::{Hash, Hasher};
 use std::ops::{Add, Mul, Sub};
 

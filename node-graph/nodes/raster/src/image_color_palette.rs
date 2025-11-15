@@ -1,7 +1,7 @@
 use core_types::color::Color;
 use core_types::context::Ctx;
-use raster_types::{CPU, Raster};
 use core_types::table::{Table, TableRow};
+use raster_types::{CPU, Raster};
 
 #[node_macro::node(category("Color"))]
 async fn image_color_palette(
