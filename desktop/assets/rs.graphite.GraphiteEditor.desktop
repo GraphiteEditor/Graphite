@@ -2,7 +2,7 @@
 Name=Graphite
 GenericName=Vector & Raster Graphics Editor
 Comment=Open-source vector & raster graphics editor. Featuring node based procedural nondestructive editing workflow.
-Exec=graphite-editor
+Exec=graphite
 Terminal=false
 Type=Application
 Icon=graphite-icon-color

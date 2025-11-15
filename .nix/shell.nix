@@ -16,16 +16,13 @@
 # > nix-shell .nix --command "npm start"
 
 # Uses flake compat to provide a development shell that is identical to the one defined in the flake
-(import
-  (
-    let
-      lock = builtins.fromJSON (builtins.readFile ./flake.lock);
-      nodeName = lock.nodes.root.inputs.flake-compat;
-    in
-    fetchTarball {
-      url = lock.nodes.${nodeName}.locked.url;
-      sha256 = lock.nodes.${nodeName}.locked.narHash;
-    }
-  )
-  { src = ./.; }
-).shellNix
+(import (
+  let
+    lock = builtins.fromJSON (builtins.readFile ./flake.lock);
+    nodeName = lock.nodes.root.inputs.flake-compat;
+  in
+  fetchTarball {
+    url = lock.nodes.${nodeName}.locked.url;
+    sha256 = lock.nodes.${nodeName}.locked.narHash;
+  }
+) { src = ./.; }).shellNix
