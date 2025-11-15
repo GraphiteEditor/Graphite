@@ -1953,22 +1953,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "gcore-nodes"
-version = "0.1.0"
-dependencies = [
- "core-types",
- "dyn-any",
- "glam",
- "graphic-types",
- "log",
- "node-macro",
- "not-std-types",
- "raster-types",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "generic-array"
 version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2139,10 +2123,10 @@ dependencies = [
  "core-types",
  "criterion",
  "dyn-any",
- "gcore-nodes",
  "glam",
  "graph-craft",
  "graphene-application-io",
+ "graphene-core",
  "graphic-types",
  "iai-callgrind",
  "js-sys",
@@ -2199,6 +2183,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "graphene-core"
+version = "0.1.0"
+dependencies = [
+ "core-types",
+ "dyn-any",
+ "glam",
+ "graphic-types",
+ "log",
+ "node-macro",
+ "not-std-types",
+ "raster-types",
+ "serde",
+ "serde_json",
+ "specta",
+]
+
+[[package]]
 name = "graphene-std"
 version = "0.1.0"
 dependencies = [
@@ -2207,10 +2208,11 @@ dependencies = [
  "brush-nodes",
  "core-types",
  "dyn-any",
- "gcore-nodes",
  "glam",
  "graph-craft",
  "graphene-application-io",
+ "graphene-core",
+ "graphic-nodes",
  "graphic-types",
  "image",
  "log",
@@ -2231,6 +2233,20 @@ dependencies = [
  "wasm-bindgen-futures",
  "web-sys",
  "wgpu-executor",
+]
+
+[[package]]
+name = "graphic-nodes"
+version = "0.1.0"
+dependencies = [
+ "core-types",
+ "dyn-any",
+ "glam",
+ "graphic-types",
+ "node-macro",
+ "raster-types",
+ "serde",
+ "vector-types",
 ]
 
 [[package]]
@@ -2935,9 +2951,9 @@ dependencies = [
  "criterion",
  "dyn-any",
  "futures",
- "gcore-nodes",
  "glam",
  "graph-craft",
+ "graphene-core",
  "graphene-std",
  "iai-callgrind",
  "log",
@@ -6557,6 +6573,7 @@ dependencies = [
  "dyn-any",
  "futures",
  "glam",
+ "graphene-core",
  "graphic-types",
  "kurbo 0.12.0",
  "log",

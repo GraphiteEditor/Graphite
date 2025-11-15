@@ -1,5 +1,5 @@
 [package]
-name = "gcore-nodes"
+name = "graphene-core"
 version = "0.1.0"
 edition = "2024"
 description = "Core utility nodes for Graphene"
@@ -22,6 +22,7 @@ dyn-any = { workspace = true }
 glam = { workspace = true }
 log = { workspace = true }
 serde_json = { workspace = true }
+specta = { workspace = true }
 
 # Optional workspace dependencies
 serde = { workspace = true, optional = true }

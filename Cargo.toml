@@ -21,6 +21,7 @@ members = [
 	"node-graph/nodes/blending",
 	"node-graph/nodes/brush",
 	"node-graph/nodes/gcore",
+	"node-graph/nodes/graphic",
 	"node-graph/nodes/math",
 	"node-graph/nodes/path-bool",
 	"node-graph/nodes/raster",
@@ -32,7 +33,7 @@ members = [
 	"node-graph/nodes/vector",
 	"node-graph/graph-craft",
 	"node-graph/graphene-cli",
-	"node-graph/gstd",
+	"node-graph/nodes/gstd",
 	"node-graph/interpreted-executor",
 	"node-graph/node-macro",
 	"node-graph/preprocessor",
@@ -54,6 +55,7 @@ default-members = [
 	"node-graph/nodes/blending",
 	"node-graph/nodes/brush",
 	"node-graph/nodes/gcore",
+	"node-graph/nodes/graphic",
 	"node-graph/nodes/math",
 	"node-graph/nodes/path-bool",
 	"node-graph/nodes/raster",
@@ -64,7 +66,7 @@ default-members = [
 	"node-graph/nodes/vector",
 	"node-graph/graph-craft",
 	"node-graph/graphene-cli",
-	"node-graph/gstd",
+	"node-graph/nodes/gstd",
 	"node-graph/interpreted-executor",
 	"node-graph/node-macro",
 	"node-graph/preprocessor",
@@ -94,7 +96,8 @@ raster-types = { path = "node-graph/raster-types" }
 vector-types = { path = "node-graph/vector-types" }
 graphic-types = { path = "node-graph/graphic-types" }
 blending-nodes = { path = "node-graph/nodes/blending" }
-gcore-nodes = { path = "node-graph/nodes/gcore" }
+graphene-core = { path = "node-graph/nodes/gcore" }
+graphic-nodes = { path = "node-graph/nodes/graphic" }
 text-nodes = { path = "node-graph/nodes/text" }
 transform-nodes = { path = "node-graph/nodes/transform" }
 vector-nodes = { path = "node-graph/nodes/vector" }
@@ -102,7 +105,7 @@ math-nodes = { path = "node-graph/nodes/math" }
 path-bool-nodes = { path = "node-graph/nodes/path-bool" }
 graph-craft = { path = "node-graph/graph-craft" }
 raster-nodes = { path = "node-graph/nodes/raster" }
-graphene-std = { path = "node-graph/gstd" }
+graphene-std = { path = "node-graph/nodes/gstd" }
 svg-renderer = { path = "node-graph/nodes/svg-renderer" }
 interpreted-executor = { path = "node-graph/interpreted-executor" }
 node-macro = { path = "node-graph/node-macro" }

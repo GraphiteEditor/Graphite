@@ -354,7 +354,7 @@ impl ProtoNetwork {
 			ProtoNode {
 				construction_args: ConstructionArgs::Nodes(vec![memo_node_id, nullification_value_node_id]),
 				call_argument: concrete!(Context),
-				identifier: gcore_nodes::context_modification::context_modification::IDENTIFIER,
+				identifier: graphene_core::context_modification::context_modification::IDENTIFIER,
 				original_location: OriginalLocation {
 					path: path.clone(),
 					..Default::default()

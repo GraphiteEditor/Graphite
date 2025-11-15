@@ -4,11 +4,12 @@ pub mod text;
 #[cfg(feature = "wasm")]
 pub mod wasm_application_io;
 
-pub use ::graphic_types::artboard;
 pub use blending_nodes;
 pub use brush_nodes as brush;
 pub use core_types::*;
 pub use graphene_application_io as application_io;
+pub use graphene_core;
+pub use graphic_nodes;
 pub use math_nodes;
 pub use path_bool_nodes as path_bool;
 pub use raster_nodes;
@@ -39,8 +40,14 @@ pub mod vector {
 }
 
 pub mod graphic {
+	pub use graphic_nodes::graphic::*;
 	pub use graphic_types::Artboard;
 	pub use graphic_types::graphic::*;
+}
+
+pub mod artboard {
+	pub use graphic_nodes::artboard::*;
+	pub use graphic_types::artboard::*;
 }
 
 pub mod subpath {
@@ -64,7 +71,21 @@ pub mod math {
 	}
 }
 
-pub use gcore_nodes::debug;
+pub use graphene_core::debug;
+
+// Re-export graphene_core modules for backward compatibility
+pub mod ops {
+	pub use core_types::ops::*;
+	pub use graphene_core::ops::*;
+}
+
+pub mod extract_xy {
+	pub use graphene_core::extract_xy::*;
+}
+
+pub mod animation {
+	pub use graphene_core::animation::*;
+}
 
 // Re-export at top level for convenience
 pub use graphic_types::{Artboard, Graphic, Vector};

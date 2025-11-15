@@ -1,19 +1,10 @@
-use not_std_types::Ctx;
-
 use crate::{
-	ExtractFootprint, Node,
+	Node,
 	table::{Table, TableRow},
 	transform::Footprint,
 };
+use std::future::Future;
 use std::marker::PhantomData;
-
-// TODO: Rename to "Passthrough"
-/// Passes-through the input value without changing it.
-/// This is useful for rerouting wires for organization purposes.
-#[node_macro::node(skip_impl)]
-fn identity<'i, T: 'i + Send>(value: T) -> T {
-	value
-}
 
 // Type
 // TODO: Document this
@@ -47,11 +38,6 @@ impl<'i, N: for<'a> Node<'a, I> + Clone, I: 'i> Clone for TypeNode<N, I, <N as N
 	}
 }
 impl<'i, N: for<'a> Node<'a, I> + Copy, I: 'i> Copy for TypeNode<N, I, <N as Node<'i, I>>::Output> {}
-
-#[node_macro::node(skip_impl)]
-fn into<'i, T: 'i + Send + Into<O>, O: 'i + Send>(_: impl Ctx, value: T, _out_ty: PhantomData<O>) -> O {
-	value.into()
-}
 
 /// The [`Convert`] trait allows for conversion between Rust primitive numeric types.
 /// Because number casting is lossy, we cannot use the normal [`Into`] trait like we do for other types.
@@ -130,18 +116,3 @@ impl_convert!(i128);
 impl_convert!(u128);
 impl_convert!(isize);
 impl_convert!(usize);
-
-#[node_macro::node(skip_impl)]
-async fn convert<'i, T: 'i + Send + Convert<O, C>, O: 'i + Send, C: 'i + Send>(ctx: impl Ctx + ExtractFootprint, value: T, converter: C, _out_ty: PhantomData<O>) -> O {
-	value.convert(*ctx.try_footprint().unwrap_or(&Footprint::DEFAULT), converter).await
-}
-
-#[cfg(test)]
-mod test {
-	use super::*;
-
-	#[test]
-	pub fn identity_node() {
-		assert_eq!(identity(&4), &4);
-	}
-}

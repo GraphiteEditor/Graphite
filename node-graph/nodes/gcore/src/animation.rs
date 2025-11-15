@@ -1,4 +1,4 @@
-use crate::{Ctx, ExtractAnimationTime, ExtractRealTime};
+use core_types::{Ctx, ExtractAnimationTime, ExtractRealTime};
 
 const DAY: f64 = 1000. * 3600. * 24.;
 
