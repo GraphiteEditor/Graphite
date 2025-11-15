@@ -1,21 +1,21 @@
 use crate::brush_cache::BrushCache;
 use crate::brush_stroke::{BrushStroke, BrushStyle};
-use glam::{DAffine2, DVec2};
 use core_types::blending::BlendMode;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::color::{Alpha, Color, Pixel, Sample};
 use core_types::generic::FnNode;
 use core_types::math::bbox::{AxisAlignedBbox, Bbox};
-use raster_types::BitmapMut;
-use raster_types::Image;
-use raster_types::{CPU, Raster};
 use core_types::registry::FutureWrapperNode;
 use core_types::table::{Table, TableRow};
 use core_types::transform::Transform;
 use core_types::value::ClonedNode;
 use core_types::{Ctx, Node};
+use glam::{DAffine2, DVec2};
 use raster_nodes::blending_nodes::blend_colors;
 use raster_nodes::std_nodes::{empty_image, extend_image_to_bounds};
+use raster_types::BitmapMut;
+use raster_types::Image;
+use raster_types::{CPU, Raster};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct BrushStampGenerator<P: Pixel + Alpha> {
@@ -376,8 +376,8 @@ pub fn blend_stamp_closure(foreground: BrushStampGenerator<Color>, mut backgroun
 #[cfg(test)]
 mod test {
 	use super::*;
-	use glam::DAffine2;
 	use core_types::transform::Transform;
+	use glam::DAffine2;
 
 	#[test]
 	fn test_brush_texture() {

@@ -1,9 +1,9 @@
 use crate::brush_stroke::BrushStroke;
 use crate::brush_stroke::BrushStyle;
+use core_types::table::TableRow;
 use dyn_any::DynAny;
 use raster_types::CPU;
 use raster_types::Raster;
-use core_types::table::TableRow;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::hash::Hasher;

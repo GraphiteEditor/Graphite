@@ -1,9 +1,8 @@
-use glam::{DAffine2, DVec2};
-use vector_types::GradientStops;
 use core_types::registry::types::{Fraction, Percentage, PixelSize, TextArea};
 use core_types::table::Table;
 use core_types::transform::Footprint;
 use core_types::{Color, Ctx, num_traits};
+use glam::{DAffine2, DVec2};
 use log::warn;
 use math_parser::ast;
 use math_parser::context::{EvalContext, NothingMap, ValueProvider};
@@ -11,6 +10,7 @@ use math_parser::value::{Number, Value};
 use num_traits::Pow;
 use rand::{Rng, SeedableRng};
 use std::ops::{Add, Div, Mul, Rem, Sub};
+use vector_types::GradientStops;
 
 /// The struct that stores the context for the maths parser.
 /// This is currently just limited to supplying `a` and `b` until we add better node graph support and UI for variadic inputs.

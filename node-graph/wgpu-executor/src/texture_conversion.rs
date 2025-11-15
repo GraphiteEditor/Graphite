@@ -3,10 +3,10 @@ use core_types::Color;
 use core_types::Ctx;
 use core_types::color::SRGBA8;
 use core_types::ops::Convert;
-use raster_types::Image;
-use raster_types::{CPU, GPU, Raster};
 use core_types::table::{Table, TableRow};
 use core_types::transform::Footprint;
+use raster_types::Image;
+use raster_types::{CPU, GPU, Raster};
 use wgpu::util::{DeviceExt, TextureDataOrder};
 use wgpu::{Extent3d, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages};
 

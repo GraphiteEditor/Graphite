@@ -1,8 +1,8 @@
-use dyn_any::DynAny;
-use glam::DVec2;
 use core_types::blending::BlendMode;
 use core_types::color::Color;
 use core_types::math::bbox::AxisAlignedBbox;
+use dyn_any::DynAny;
+use glam::DVec2;
 use std::hash::{Hash, Hasher};
 
 /// The style of a brush.

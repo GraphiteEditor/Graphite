@@ -1,9 +1,5 @@
+use core_types::{ExtractFootprint, ops::Convert, transform::Footprint};
 use not_std_types::Ctx;
-use core_types::{
-	ExtractFootprint,
-	ops::Convert,
-	transform::Footprint,
-};
 use std::marker::PhantomData;
 
 // Re-export TypeNode from core-types for convenience

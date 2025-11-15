@@ -1,12 +1,12 @@
 use core::f64;
-use glam::{DAffine2, DVec2};
 use core_types::color::Color;
-use graphic_types::raster_types::{CPU, GPU, Raster};
 use core_types::table::Table;
 use core_types::transform::{ApplyTransform, Transform};
 use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, InjectFootprint, ModifyFootprint, OwnedContextImpl};
+use glam::{DAffine2, DVec2};
 use graphic_types::Graphic;
 use graphic_types::Vector;
+use graphic_types::raster_types::{CPU, GPU, Raster};
 use vector_types::GradientStops;
 
 /// Applies the specified transform to the input value, which may be a graphic type or another transform.

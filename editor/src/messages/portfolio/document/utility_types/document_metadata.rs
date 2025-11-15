@@ -93,13 +93,13 @@ impl DocumentMetadata {
 		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, network_interface);
 		if let Some(path_node) = graph_layer.upstream_visible_node_id_from_name_in_layer("Path")
 			&& let Some(&source) = self.first_element_source_ids.get(&layer.to_node())
-				&& !network_interface
-					.upstream_flow_back_from_nodes(vec![path_node], &[], FlowType::HorizontalFlow)
-					.any(|upstream| Some(upstream) == source)
-				{
-					use_local = false;
-					info!("Local transform is invalid — using the identity for the local transform instead")
-				}
+			&& !network_interface
+				.upstream_flow_back_from_nodes(vec![path_node], &[], FlowType::HorizontalFlow)
+				.any(|upstream| Some(upstream) == source)
+		{
+			use_local = false;
+			info!("Local transform is invalid — using the identity for the local transform instead")
+		}
 		let local_transform = use_local.then(|| self.local_transforms.get(&layer.to_node()).copied()).flatten().unwrap_or_default();
 
 		footprint * local_transform

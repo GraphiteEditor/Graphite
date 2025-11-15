@@ -1,6 +1,6 @@
+use core_types::{Color, render_complexity::RenderComplexity};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
-use core_types::{Color, render_complexity::RenderComplexity};
 
 #[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, DynAny, specta::Type, node_macro::ChoiceType)]
 #[widget(Radio)]

@@ -1,9 +1,9 @@
 use crate::WgpuContext;
 use crate::shader_runtime::{FULLSCREEN_VERTEX_SHADER_NAME, ShaderRuntime};
-use futures::lock::Mutex;
-use raster_types::{GPU, Raster};
 use core_types::shaders::buffer_struct::BufferStruct;
 use core_types::table::{Table, TableRow};
+use futures::lock::Mutex;
+use raster_types::{GPU, Raster};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
@@ -19,9 +19,9 @@ pub struct PerPixelAdjustShaderRuntime {
 }
 
 impl Default for PerPixelAdjustShaderRuntime {
-    fn default() -> Self {
-        Self::new()
-    }
+	fn default() -> Self {
+		Self::new()
+	}
 }
 
 impl PerPixelAdjustShaderRuntime {

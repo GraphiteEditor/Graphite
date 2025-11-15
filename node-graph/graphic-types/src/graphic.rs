@@ -1,10 +1,10 @@
+use core_types::Color;
 use core_types::blending::AlphaBlending;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::ops::TableConvert;
 use core_types::render_complexity::RenderComplexity;
 use core_types::table::{Table, TableRow};
 use core_types::uuid::NodeId;
-use core_types::Color;
 use dyn_any::DynAny;
 use glam::DAffine2;
 use raster_types::{CPU, GPU, Raster};

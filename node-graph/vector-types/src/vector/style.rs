@@ -1,7 +1,7 @@
 //! Contains stylistic options for SVG elements.
 
-use core_types::Color;
 pub use crate::gradient::*;
+use core_types::Color;
 use core_types::table::Table;
 use dyn_any::DynAny;
 use glam::DAffine2;

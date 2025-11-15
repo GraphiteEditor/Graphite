@@ -1,8 +1,6 @@
+use core_types::transform::Footprint;
 use dyn_any::{DynAny, StaticType, StaticTypeSized};
 use glam::{DAffine2, UVec2};
-use text_nodes::FontCache;
-use core_types::transform::Footprint;
-use vector_types::vector::style::RenderMode;
 use std::fmt::Debug;
 use std::future::Future;
 use std::hash::{Hash, Hasher};
@@ -10,6 +8,8 @@ use std::pin::Pin;
 use std::ptr::addr_of;
 use std::sync::Arc;
 use std::time::Duration;
+use text_nodes::FontCache;
+use vector_types::vector::style::RenderMode;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct SurfaceId(pub u64);

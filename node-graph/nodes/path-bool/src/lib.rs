@@ -1,12 +1,12 @@
+use core_types::table::{Table, TableRow, TableRowRef};
+use core_types::{Color, Ctx};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use graphic_types::vector_types::subpath::{ManipulatorGroup, PathSegPoints, Subpath, pathseg_points};
-use core_types::table::{Table, TableRow, TableRowRef};
+use graphic_types::vector_types::vector::PointId;
 use graphic_types::vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
 use graphic_types::vector_types::vector::style::Fill;
-use graphic_types::vector_types::vector::PointId;
 use graphic_types::{Graphic, Vector};
-use core_types::{Color, Ctx};
 pub use path_bool as path_bool_lib;
 use path_bool::{FillRule, PathBooleanOperation};
 use std::ops::Mul;

@@ -1,9 +1,9 @@
 use super::intersection::bezpath_intersections;
 use super::poisson_disk::poisson_disk_sample;
 use super::util::pathseg_tangent;
-use core_types::math::polynomial::pathseg_to_parametric_polynomial;
 use crate::vector::algorithms::offset_subpath::MAX_ABSOLUTE_DIFFERENCE;
 use crate::vector::misc::{PointSpacingType, dvec2_to_point, point_to_dvec2};
+use core_types::math::polynomial::pathseg_to_parametric_polynomial;
 use glam::{DMat2, DVec2};
 use kurbo::common::{solve_cubic, solve_quadratic};
 use kurbo::{BezPath, CubicBez, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveDeriv, PathEl, PathSeg, Point, QuadBez, Rect, Shape, Vec2};

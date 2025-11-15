@@ -1,9 +1,17 @@
-use core_types::{Ctx, blending::AlphaBlending, table::{Table, TableRow}, uuid::NodeId};
-use graphic_types::{Artboard, Vector, graphic::{Graphic, IntoGraphicTable}};
+use core_types::Color;
+use core_types::{
+	Ctx,
+	blending::AlphaBlending,
+	table::{Table, TableRow},
+	uuid::NodeId,
+};
 use glam::{DAffine2, DVec2};
+use graphic_types::{
+	Artboard, Vector,
+	graphic::{Graphic, IntoGraphicTable},
+};
 use raster_types::{CPU, GPU, Raster};
 use vector_types::GradientStops;
-use core_types::Color;
 
 /// Performs internal editor record-keeping that enables tools to target this network's layer.
 /// This node associates the ID of the network's parent layer to every element of output data.

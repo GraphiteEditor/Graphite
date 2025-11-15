@@ -3,11 +3,11 @@ use std::sync::{Arc, RwLock};
 use super::algorithms::{bezpath_algorithms::bezpath_is_inside_bezpath, intersection::filtered_segment_intersections};
 use super::misc::dvec2_to_point;
 use crate::math::QuadExt;
-use core_types::math::quad::Quad;
 use crate::subpath::Subpath;
-use core_types::transform::Transform;
 use crate::vector::PointId;
 use crate::vector::misc::point_to_dvec2;
+use core_types::math::quad::Quad;
+use core_types::transform::Transform;
 use glam::{DAffine2, DMat2, DVec2};
 use kurbo::{Affine, BezPath, ParamCurve, PathSeg, Shape};
 

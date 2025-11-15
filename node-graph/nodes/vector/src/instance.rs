@@ -1,10 +1,10 @@
-use glam::DVec2;
 use core_types::Color;
-use graphic_types::raster_types::{CPU, Raster};
 use core_types::table::{Table, TableRowRef};
 use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractIndex, ExtractVarArgs, InjectVarArgs, OwnedContextImpl};
+use glam::DVec2;
 use graphic_types::Graphic;
 use graphic_types::Vector;
+use graphic_types::raster_types::{CPU, Raster};
 use vector_types::GradientStops;
 
 use log::*;
@@ -124,15 +124,15 @@ async fn instance_index(ctx: impl Ctx + ExtractIndex, _primary: (), loop_level: 
 #[cfg(test)]
 mod test {
 	use super::*;
-	use vector_types::subpath::Subpath;
-	use graphic_types::Vector;
-	use glam::DVec2;
-	use core_types::Node;
-	use core_types::Ctx;
-	use graphene_core::extract_xy::{ExtractXyNode, XY};
 	use crate::generator_nodes::RectangleNode;
+	use core_types::Ctx;
+	use core_types::Node;
+	use glam::DVec2;
+	use graphene_core::extract_xy::{ExtractXyNode, XY};
+	use graphic_types::Vector;
 	use std::future::Future;
 	use std::pin::Pin;
+	use vector_types::subpath::Subpath;
 
 	#[derive(Clone)]
 	pub struct FutureWrapperNode<T: Clone>(T);

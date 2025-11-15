@@ -2,8 +2,8 @@ pub mod image;
 pub mod raster_types;
 
 // Re-exports for convenience
-pub use raster_types::*;
 pub use image::Image;
+pub use raster_types::*;
 
 // Re-export color types from not-std-types
 pub use not_std_types::color::*;

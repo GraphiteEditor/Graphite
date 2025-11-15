@@ -1,7 +1,7 @@
 use crate::subpath::Bezier;
+use crate::vector::misc::dvec2_to_point;
 use core_types::math::quad::Quad;
 use core_types::math::rect::Rect;
-use crate::vector::misc::dvec2_to_point;
 use kurbo::{Line, PathSeg};
 
 pub trait QuadExt {

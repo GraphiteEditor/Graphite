@@ -6,12 +6,12 @@ use crate::vector::click_target::{ClickTargetType, FreePoint};
 use crate::vector::misc::{HandleId, ManipulatorPointId};
 use crate::vector::vector_modification::VectorExt;
 use core::borrow::Borrow;
-use dyn_any::StaticType;
-use glam::{DAffine2, DVec2};
 use core_types::Color;
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::render_complexity::RenderComplexity;
 use core_types::transform::Transform;
+use dyn_any::StaticType;
+use glam::{DAffine2, DVec2};
 use kurbo::{Affine, BezPath, Rect, Shape};
 use std::collections::HashMap;
 

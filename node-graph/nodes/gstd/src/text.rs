@@ -1,7 +1,7 @@
-use graph_craft::wasm_application_io::WasmEditorApi;
-pub use text_nodes::*;
 use core_types::{Ctx, table::Table};
+use graph_craft::wasm_application_io::WasmEditorApi;
 use graphic_types::Vector;
+pub use text_nodes::*;
 
 #[node_macro::node(category(""))]
 fn text<'i: 'n>(
