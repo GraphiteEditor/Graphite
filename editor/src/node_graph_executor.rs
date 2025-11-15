@@ -272,7 +272,7 @@ impl NodeGraphExecutor {
 				use image::{ImageFormat, RgbImage, RgbaImage};
 
 				let Some(image) = RgbaImage::from_raw(width, height, data) else {
-					return Err(format!("Failed to create image buffer for export"));
+					return Err("Failed to create image buffer for export".to_string());
 				};
 
 				let mut encoded = Vec::new();
@@ -298,7 +298,7 @@ impl NodeGraphExecutor {
 						}
 					}
 					FileType::Svg => {
-						return Err(format!("SVG cannot be exported from an image buffer"));
+						return Err("SVG cannot be exported from an image buffer".to_string());
 					}
 				}
 

@@ -1,0 +1,18 @@
+[package]
+name = "graphic-nodes"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+# Local dependencies
+core-types = { workspace = true }
+graphic-types = { workspace = true }
+vector-types = { workspace = true }
+raster-types = { workspace = true }
+
+# Workspace dependencies
+dyn-any = { workspace = true }
+glam = { workspace = true }
+serde = { workspace = true }
+node-macro = { workspace = true }

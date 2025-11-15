@@ -1,9 +1,9 @@
 use crate::WgpuContext;
 use crate::shader_runtime::{FULLSCREEN_VERTEX_SHADER_NAME, ShaderRuntime};
+use core_types::shaders::buffer_struct::BufferStruct;
+use core_types::table::{Table, TableRow};
 use futures::lock::Mutex;
-use graphene_core::raster_types::{GPU, Raster};
-use graphene_core::shaders::buffer_struct::BufferStruct;
-use graphene_core::table::{Table, TableRow};
+use raster_types::{GPU, Raster};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use wgpu::util::{BufferInitDescriptor, DeviceExt};
@@ -16,6 +16,12 @@ use wgpu::{
 pub struct PerPixelAdjustShaderRuntime {
 	// TODO: PerPixelAdjustGraphicsPipeline already contains the key as `name`
 	pipeline_cache: Mutex<HashMap<String, PerPixelAdjustGraphicsPipeline>>,
+}
+
+impl Default for PerPixelAdjustShaderRuntime {
+	fn default() -> Self {
+		Self::new()
+	}
 }
 
 impl PerPixelAdjustShaderRuntime {

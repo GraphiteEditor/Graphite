@@ -290,10 +290,10 @@ impl Dispatcher {
 		list.extend(self.message_handlers.input_preprocessor_message_handler.actions());
 		list.extend(self.message_handlers.key_mapping_message_handler.actions());
 		list.extend(self.message_handlers.debug_message_handler.actions());
-		if let Some(document) = self.message_handlers.portfolio_message_handler.active_document() {
-			if !document.graph_view_overlay_open {
-				list.extend(self.message_handlers.tool_message_handler.actions());
-			}
+		if let Some(document) = self.message_handlers.portfolio_message_handler.active_document()
+			&& !document.graph_view_overlay_open
+		{
+			list.extend(self.message_handlers.tool_message_handler.actions());
 		}
 		list.extend(self.message_handlers.portfolio_message_handler.actions());
 		list

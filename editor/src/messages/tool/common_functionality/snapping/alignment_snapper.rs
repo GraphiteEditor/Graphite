@@ -67,34 +67,36 @@ impl AlignmentSnapper {
 			let target_position = target_point.document_point;
 
 			// Perpendicular snap for line's endpoints
-			if let Some(quad) = target_point.quad.map(|q| q.0) {
-				if quad[0] == quad[3] && quad[1] == quad[2] && quad[0] == target_point.document_point {
-					let [p1, p2, ..] = quad;
-					let Some(direction) = (p2 - p1).try_normalize() else { return };
-					let normal = DVec2::new(-direction.y, direction.x);
+			if let Some(quad) = target_point.quad.map(|q| q.0)
+				&& quad[0] == quad[3]
+				&& quad[1] == quad[2]
+				&& quad[0] == target_point.document_point
+			{
+				let [p1, p2, ..] = quad;
+				let Some(direction) = (p2 - p1).try_normalize() else { return };
+				let normal = DVec2::new(-direction.y, direction.x);
 
-					for endpoint in [p1, p2] {
-						if let Some(perpendicular_snap) = Quad::intersect_rays(point.document_point, direction, endpoint, normal) {
-							let distance_squared = point.document_point.distance_squared(perpendicular_snap);
-							if distance_squared < tolerance_squared {
-								let distance = distance_squared.sqrt();
-								let distance_to_align_target = perpendicular_snap.distance_squared(endpoint).sqrt();
+				for endpoint in [p1, p2] {
+					if let Some(perpendicular_snap) = Quad::intersect_rays(point.document_point, direction, endpoint, normal) {
+						let distance_squared = point.document_point.distance_squared(perpendicular_snap);
+						if distance_squared < tolerance_squared {
+							let distance = distance_squared.sqrt();
+							let distance_to_align_target = perpendicular_snap.distance_squared(endpoint).sqrt();
 
-								let snap_point = SnappedPoint {
-									snapped_point_document: perpendicular_snap,
-									source: point.source,
-									target: SnapTarget::Alignment(AlignmentSnapTarget::PerpendicularToEndpoint),
-									target_bounds: Some(Quad(quad)),
-									distance,
-									tolerance,
-									distance_to_align_target,
-									fully_constrained: false,
-									at_intersection: true,
-									alignment_target_horizontal: Some(endpoint),
-									..Default::default()
-								};
-								snap_results.points.push(snap_point);
-							}
+							let snap_point = SnappedPoint {
+								snapped_point_document: perpendicular_snap,
+								source: point.source,
+								target: SnapTarget::Alignment(AlignmentSnapTarget::PerpendicularToEndpoint),
+								target_bounds: Some(Quad(quad)),
+								distance,
+								tolerance,
+								distance_to_align_target,
+								fully_constrained: false,
+								at_intersection: true,
+								alignment_target_horizontal: Some(endpoint),
+								..Default::default()
+							};
+							snap_results.points.push(snap_point);
 						}
 					}
 				}

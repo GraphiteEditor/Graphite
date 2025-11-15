@@ -182,10 +182,11 @@ impl PerPixelAdjustCodegen<'_> {
 
 	fn codegen_gpu_node(&self) -> syn::Result<TokenStream> {
 		let gcore = self.crate_ident.gcore()?;
+		let raster_types = self.crate_ident.raster_types()?;
 		let wgpu_executor = self.crate_ident.wgpu_executor()?;
 
 		// adapt fields for gpu node
-		let raster_gpu: Type = parse_quote!(#gcore::table::Table<#gcore::raster_types::Raster<#gcore::raster_types::GPU>>);
+		let raster_gpu: Type = parse_quote!(#gcore::table::Table<#raster_types::Raster<#raster_types::GPU>>);
 		let mut fields = self
 			.parsed
 			.fields
