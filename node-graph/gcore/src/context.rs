@@ -27,7 +27,7 @@ pub trait ExtractAnimationTime {
 }
 
 pub trait ExtractIndex {
-	fn try_index(&self) -> Option<impl Iterator<Item = usize>>;
+	fn try_index(&self) -> Option<impl DoubleEndedIterator<Item = usize>>;
 }
 
 // Consider returning a slice or something like that
@@ -175,7 +175,7 @@ impl<T: ExtractAnimationTime + Sync> ExtractAnimationTime for Option<T> {
 	}
 }
 impl<T: ExtractIndex> ExtractIndex for Option<T> {
-	fn try_index(&self) -> Option<impl Iterator<Item = usize>> {
+	fn try_index(&self) -> Option<impl DoubleEndedIterator<Item = usize>> {
 		self.as_ref().and_then(|x| x.try_index())
 	}
 }
@@ -212,7 +212,7 @@ impl<T: ExtractAnimationTime + Sync> ExtractAnimationTime for Arc<T> {
 	}
 }
 impl<T: ExtractIndex> ExtractIndex for Arc<T> {
-	fn try_index(&self) -> Option<impl Iterator<Item = usize>> {
+	fn try_index(&self) -> Option<impl DoubleEndedIterator<Item = usize>> {
 		(**self).try_index()
 	}
 }
@@ -268,7 +268,7 @@ impl ExtractRealTime for ContextImpl<'_> {
 	}
 }
 impl ExtractIndex for ContextImpl<'_> {
-	fn try_index(&self) -> Option<impl Iterator<Item = usize>> {
+	fn try_index(&self) -> Option<impl DoubleEndedIterator<Item = usize>> {
 		self.index.clone().map(|x| x.into_iter())
 	}
 }
@@ -304,7 +304,7 @@ impl ExtractAnimationTime for OwnedContextImpl {
 	}
 }
 impl ExtractIndex for OwnedContextImpl {
-	fn try_index(&self) -> Option<impl Iterator<Item = usize>> {
+	fn try_index(&self) -> Option<impl DoubleEndedIterator<Item = usize>> {
 		self.index.clone().map(|x| x.into_iter())
 	}
 }
