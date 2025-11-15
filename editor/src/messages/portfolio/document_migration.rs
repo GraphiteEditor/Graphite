@@ -30,6 +30,26 @@ pub struct NodeReplacement<'a> {
 }
 
 const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
+	NodeReplacement {
+		node: graphene_std::memo::monitor::IDENTIFIER,
+		aliases: &["graphene_core::memo::MonitorNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::graphic_nodes::source_node_id::IDENTIFIER,
+		aliases: &["graphene_core::graphic::SourceNodeIdNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::vector_modification_nodes::path_modify::IDENTIFIER,
+		aliases: &["graphene_core::vector::vector_modification::PathModifyNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::transform_nodes::transform_nodes::transform::IDENTIFIER,
+		aliases: &["graphene_core::transform_nodes::TransformNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector_nodes::fill::IDENTIFIER,
+		aliases: &["graphene_core::vector::FillNode"],
+	},
 	// artboard
 	NodeReplacement {
 		node: graphene_std::artboard::create_artboard::IDENTIFIER,
@@ -46,6 +66,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 			"graphene_core::ToGraphicGroupNode",
 			"graphene_core::graphic_element::ToGroupNode",
 			"graphene_core::graphic_types::ToGroupNode",
+			"graphene_core::graphic::ToGraphicNode",
 		],
 	},
 	NodeReplacement {
@@ -55,6 +76,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 			"graphene_core::ToGraphicElementNode",
 			"graphene_core::graphic_element::ToElementNode",
 			"graphene_core::graphic_types::ToElementNode",
+			"graphene_core::graphic::WrapGraphicNode",
 		],
 	},
 	NodeReplacement {
@@ -70,6 +92,10 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		],
 	},
 	NodeReplacement {
+		node: graphene_std::graphic::extend::IDENTIFIER,
+		aliases: &["graphene_core::graphic::ExtendNode"],
+	},
+	NodeReplacement {
 		node: graphene_std::graphic::flatten_graphic::IDENTIFIER,
 		aliases: &["graphene_core::graphic_element::FlattenGroupNode", "graphene_core::graphic_types::FlattenGroupNode"],
 	},
@@ -79,11 +105,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	},
 	NodeReplacement {
 		node: graphene_std::graphic::index_elements::IDENTIFIER,
-		aliases: &[
-			"graphene_core::graphic_element::IndexNode",
-			"graphene_core::graphic::IndexNode",
-			"graphene_core::graphic_element::IndexNode",
-		],
+		aliases: &["graphene_core::graphic_element::IndexNode", "graphene_core::graphic::IndexNode"],
 	},
 	// math_nodes
 	NodeReplacement {
@@ -482,7 +504,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	},
 	NodeReplacement {
 		node: graphene_std::vector::generator_nodes::star::IDENTIFIER,
-		aliases: &["graphene_core::vector::generator_nodes::StarGenerator"],
+		aliases: &["graphene_core::vector::generator_nodes::StarGenerator", "graphene_core::vector::generator_nodes::StarNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::ops::identity::IDENTIFIER,
