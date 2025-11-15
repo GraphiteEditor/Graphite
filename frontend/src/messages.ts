@@ -305,6 +305,13 @@ export class UpdateViewportHolePunch extends JsMessage {
 	readonly active!: boolean;
 }
 
+export class UpdateViewportPhysicalBounds extends JsMessage {
+	readonly x!: number;
+	readonly y!: number;
+	readonly width!: number;
+	readonly height!: number;
+}
+
 export class UpdateInputHints extends JsMessage {
 	@Type(() => HintInfo)
 	readonly hintData!: HintData;
@@ -723,6 +730,8 @@ export class UpdateMouseCursor extends JsMessage {
 
 export class TriggerLoadFirstAutoSaveDocument extends JsMessage {}
 export class TriggerLoadRestAutoSaveDocuments extends JsMessage {}
+
+export class TriggerOpenLaunchDocuments extends JsMessage {}
 
 export class TriggerLoadPreferences extends JsMessage {}
 
@@ -1653,6 +1662,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerLoadFirstAutoSaveDocument,
 	TriggerLoadPreferences,
 	TriggerLoadRestAutoSaveDocuments,
+	TriggerOpenLaunchDocuments,
 	TriggerOpenDocument,
 	TriggerPaste,
 	TriggerSaveActiveDocument,
@@ -1705,6 +1715,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateToolOptionsLayout,
 	UpdateToolShelfLayout,
 	UpdateViewportHolePunch,
+	UpdateViewportPhysicalBounds,
 	UpdateVisibleNodes,
 	UpdateWirePathInProgress,
 	UpdateWorkingColorsLayout,

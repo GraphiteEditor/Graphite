@@ -164,7 +164,8 @@ fn convert_menu_bar_entry_to_menu_item(
 	}
 
 	let shortcut = match shortcut {
-		Some(ActionKeys::Keys(LayoutKeysGroup(keys))) => convert_layout_keys_to_shortcut(keys),
+		//TODO: Reenable shortcuts once a workaround for missing keyboard events is found
+		Some(ActionKeys::Keys(LayoutKeysGroup(keys))) if false => convert_layout_keys_to_shortcut(keys),
 		_ => None,
 	};
 
@@ -321,6 +322,7 @@ fn convert_layout_keys_to_shortcut(layout_keys: &Vec<LayoutKey>) -> Option<Short
 			Key::ScrollLock => key = Some(KeyCode::ScrollLock),
 			Key::Pause => key = Some(KeyCode::Pause),
 			Key::Unidentified => key = Some(KeyCode::Unidentified),
+			Key::FakeKeyPlus => key = Some(KeyCode::Equal),
 			_ => key = None,
 		}
 	}

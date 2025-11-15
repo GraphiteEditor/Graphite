@@ -37,13 +37,16 @@ impl MessageHandler<ViewportMessage, ()> for ViewportMessageHandler {
 			ViewportMessage::RepropagateUpdate => {}
 		}
 
-		let physical_bounds = self.bounds().to_physical();
-		responses.add(FrontendMessage::UpdateViewportPhysicalBounds {
-			x: physical_bounds.x(),
-			y: physical_bounds.y(),
-			width: physical_bounds.width(),
-			height: physical_bounds.height(),
-		});
+		#[cfg(not(target_family = "wasm"))]
+		{
+			let physical_bounds = self.bounds().to_physical();
+			responses.add(FrontendMessage::UpdateViewportPhysicalBounds {
+				x: physical_bounds.x(),
+				y: physical_bounds.y(),
+				width: physical_bounds.width(),
+				height: physical_bounds.height(),
+			});
+		}
 
 		responses.add(NavigationMessage::CanvasPan { delta: DVec2::ZERO });
 		responses.add(NodeGraphMessage::SetGridAlignedEdges);
