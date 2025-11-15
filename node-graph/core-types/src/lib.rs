@@ -1,27 +1,17 @@
-#[macro_use]
 extern crate log;
 
-// pub mod animation; // Moved to gcore-nodes crate
 pub mod bounds;
 pub mod consts;
 pub mod context;
-// pub mod context_modification; // Moved to gcore-nodes crate
-// pub mod debug; // Moved to gcore-nodes crate
-// pub mod extract_xy; // Moved to gcore-nodes crate
 pub mod generic;
-// pub mod logic; // Moved to gcore-nodes crate
 pub mod math;
 pub mod memo;
 pub mod misc;
 pub mod ops;
-// pub mod raster; // Moved to raster-types crate
-// pub mod raster_types; // Moved to raster-types crate
 pub mod registry;
 pub mod render_complexity;
 pub mod table;
-// pub mod text; // Moved to text-nodes crate
 pub mod transform;
-// pub mod transform_nodes; // Moved to transform-nodes crate
 pub mod uuid;
 pub mod value;
 
