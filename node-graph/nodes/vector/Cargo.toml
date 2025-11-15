@@ -28,5 +28,6 @@ log = { workspace = true }
 serde = { workspace = true, optional = true }
 
 [dev-dependencies]
+graphene-core = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt"] }
 futures = { workspace = true }

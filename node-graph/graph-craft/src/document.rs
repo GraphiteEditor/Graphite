@@ -2,12 +2,12 @@ pub mod value;
 
 use crate::document::value::TaggedValue;
 use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode};
-use dyn_any::DynAny;
-use glam::IVec2;
 use core_types::memo::MemoHashGuard;
 pub use core_types::uuid::NodeId;
 pub use core_types::uuid::generate_uuid;
 use core_types::{Context, ContextDependencies, Cow, MemoHash, ProtoNodeIdentifier, Type};
+use dyn_any::DynAny;
+use glam::IVec2;
 use log::Metadata;
 use rustc_hash::{FxBuildHasher, FxHashMap};
 use std::collections::HashMap;
@@ -318,7 +318,7 @@ pub enum DocumentNodeImplementation {
 
 impl Default for DocumentNodeImplementation {
 	fn default() -> Self {
-		Self::ProtoNode(ProtoNodeIdentifier::new("core_types::ops::IdentityNode"))
+		Self::ProtoNode(graphene_core::ops::identity::IDENTIFIER)
 	}
 }
 
@@ -520,11 +520,17 @@ pub struct NodeNetwork {
 	// TODO: Instead of storing import types in each NodeInput::Import connection, the types are stored here. This is similar to how types need to be defined for parameters when creating a function in Rust.
 	// pub import_types: Vec<Type>,
 	/// The list of all nodes in this network.
-	#[serde(serialize_with = "graphic_types::vector_types::vector::serialize_hashmap", deserialize_with = "graphic_types::vector_types::vector::deserialize_hashmap")]
+	#[serde(
+		serialize_with = "graphic_types::vector_types::vector::serialize_hashmap",
+		deserialize_with = "graphic_types::vector_types::vector::deserialize_hashmap"
+	)]
 	pub nodes: FxHashMap<NodeId, DocumentNode>,
 	/// A network may expose nodes as constants which can by used by other nodes using a `NodeInput::Scope(key)`.
 	#[serde(default)]
-	#[serde(serialize_with = "graphic_types::vector_types::vector::serialize_hashmap", deserialize_with = "graphic_types::vector_types::vector::deserialize_hashmap")]
+	#[serde(
+		serialize_with = "graphic_types::vector_types::vector::serialize_hashmap",
+		deserialize_with = "graphic_types::vector_types::vector::deserialize_hashmap"
+	)]
 	pub scope_injections: FxHashMap<String, (NodeId, Type)>,
 	#[serde(skip)]
 	pub generated: bool,
@@ -773,7 +779,7 @@ impl NodeNetwork {
 		};
 
 		// If the node is hidden, replace it with an identity node
-		let identity_node = DocumentNodeImplementation::ProtoNode("core_types::ops::IdentityNode".into());
+		let identity_node = DocumentNodeImplementation::ProtoNode(graphene_core::ops::identity::IDENTIFIER.into());
 		if !node.visible && node.implementation != identity_node {
 			node.implementation = identity_node;
 
@@ -938,7 +944,7 @@ impl NodeNetwork {
 	fn remove_id_node(&mut self, id: NodeId) -> Result<(), String> {
 		let node = self.nodes.get(&id).ok_or_else(|| format!("Node with id {id} does not exist"))?.clone();
 		if let DocumentNodeImplementation::ProtoNode(ident) = &node.implementation {
-			if ident.name == "core_types::ops::IdentityNode" {
+			if *ident == graphene_core::ops::identity::IDENTIFIER {
 				assert_eq!(node.inputs.len(), 1, "Id node has more than one input");
 				if let NodeInput::Node { node_id, output_index, .. } = node.inputs[0] {
 					let node_input_output_index = output_index;
@@ -985,13 +991,13 @@ impl NodeNetwork {
 		Ok(())
 	}
 
-	/// Strips out any [`core_types::ops::IdentityNode`]s that are unnecessary.
+	/// Strips out any [`graphene_core::ops::IdentityNode`]s that are unnecessary.
 	pub fn remove_redundant_id_nodes(&mut self) {
 		let id_nodes = self
 			.nodes
 			.iter()
 			.filter(|(_, node)| {
-				matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(ident) if ident == &ProtoNodeIdentifier::new("core_types::ops::IdentityNode"))
+				matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(ident) if ident == &graphene_core::ops::identity::IDENTIFIER)
 					&& node.inputs.len() == 1
 					&& matches!(node.inputs[0], NodeInput::Node { .. })
 			})
@@ -1195,7 +1201,7 @@ mod test {
 	fn extract_node() {
 		let id_node = DocumentNode {
 			inputs: vec![],
-			implementation: DocumentNodeImplementation::ProtoNode("core_types::ops::IdentityNode".into()),
+			implementation: DocumentNodeImplementation::ProtoNode(graphene_core::ops::identity::IDENTIFIER),
 			..Default::default()
 		};
 		// TODO: Extend test cases to test nested network
@@ -1393,7 +1399,7 @@ mod test {
 					NodeId(1),
 					DocumentNode {
 						inputs: vec![NodeInput::import(concrete!(u32), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode(core_types::ops::identity::IDENTIFIER),
+						implementation: DocumentNodeImplementation::ProtoNode(graphene_core::ops::identity::IDENTIFIER),
 						..Default::default()
 					},
 				),
@@ -1401,7 +1407,7 @@ mod test {
 					NodeId(2),
 					DocumentNode {
 						inputs: vec![NodeInput::import(concrete!(u32), 1)],
-						implementation: DocumentNodeImplementation::ProtoNode(core_types::ops::identity::IDENTIFIER),
+						implementation: DocumentNodeImplementation::ProtoNode(graphene_core::ops::identity::IDENTIFIER),
 						..Default::default()
 					},
 				),
@@ -1428,7 +1434,7 @@ mod test {
 					NodeId(2),
 					DocumentNode {
 						inputs: vec![result_node_input],
-						implementation: DocumentNodeImplementation::ProtoNode(core_types::ops::identity::IDENTIFIER),
+						implementation: DocumentNodeImplementation::ProtoNode(graphene_core::ops::identity::IDENTIFIER),
 						..Default::default()
 					},
 				),

@@ -41,7 +41,8 @@ svg-renderer = { workspace = true }
 graphene-application-io = { workspace = true }
 raster-nodes = { workspace = true }
 brush-nodes = { workspace = true }
-gcore-nodes = { workspace = true }
+graphene-core = { workspace = true }
+graphic-nodes = { workspace = true }
 
 # Workspace dependencies
 log = { workspace = true }

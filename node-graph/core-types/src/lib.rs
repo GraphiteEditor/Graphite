@@ -1,13 +1,13 @@
 #[macro_use]
 extern crate log;
 
-pub mod animation;
+// pub mod animation; // Moved to gcore-nodes crate
 pub mod bounds;
 pub mod consts;
 pub mod context;
 // pub mod context_modification; // Moved to gcore-nodes crate
 // pub mod debug; // Moved to gcore-nodes crate
-pub mod extract_xy;
+// pub mod extract_xy; // Moved to gcore-nodes crate
 pub mod generic;
 // pub mod logic; // Moved to gcore-nodes crate
 pub mod math;

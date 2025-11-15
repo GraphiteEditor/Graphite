@@ -129,7 +129,7 @@ mod test {
 	use glam::DVec2;
 	use core_types::Node;
 	use core_types::Ctx;
-	use core_types::extract_xy::{ExtractXyNode, XY};
+	use graphene_core::extract_xy::{ExtractXyNode, XY};
 	use crate::generator_nodes::RectangleNode;
 	use std::future::Future;
 	use std::pin::Pin;

@@ -111,13 +111,13 @@ fn image_to_bytes(_: impl Ctx, image: Table<Raster<CPU>>) -> Vec<u8> {
 #[node_macro::node(category("Web Request"))]
 async fn load_resource<'a: 'n>(_: impl Ctx, _primary: (), #[scope("editor-api")] editor: &'a WasmEditorApi, #[name("URL")] url: String) -> Arc<[u8]> {
 	let Some(api) = editor.application_io.as_ref() else {
-		return Arc::from(include_bytes!("../../graph-craft/src/null.png").to_vec());
+		return Arc::from(include_bytes!("../../../graph-craft/src/null.png").to_vec());
 	};
 	let Ok(data) = api.load_resource(url) else {
-		return Arc::from(include_bytes!("../../graph-craft/src/null.png").to_vec());
+		return Arc::from(include_bytes!("../../../graph-craft/src/null.png").to_vec());
 	};
 	let Ok(data) = data.await else {
-		return Arc::from(include_bytes!("../../graph-craft/src/null.png").to_vec());
+		return Arc::from(include_bytes!("../../../graph-craft/src/null.png").to_vec());
 	};
 
 	data
