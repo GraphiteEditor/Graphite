@@ -18,6 +18,12 @@ pub struct PerPixelAdjustShaderRuntime {
 	pipeline_cache: Mutex<HashMap<String, PerPixelAdjustGraphicsPipeline>>,
 }
 
+impl Default for PerPixelAdjustShaderRuntime {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl PerPixelAdjustShaderRuntime {
 	pub fn new() -> Self {
 		Self {

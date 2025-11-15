@@ -67,8 +67,8 @@ impl AlignmentSnapper {
 			let target_position = target_point.document_point;
 
 			// Perpendicular snap for line's endpoints
-			if let Some(quad) = target_point.quad.map(|q| q.0) {
-				if quad[0] == quad[3] && quad[1] == quad[2] && quad[0] == target_point.document_point {
+			if let Some(quad) = target_point.quad.map(|q| q.0)
+				&& quad[0] == quad[3] && quad[1] == quad[2] && quad[0] == target_point.document_point {
 					let [p1, p2, ..] = quad;
 					let Some(direction) = (p2 - p1).try_normalize() else { return };
 					let normal = DVec2::new(-direction.y, direction.x);
@@ -98,7 +98,6 @@ impl AlignmentSnapper {
 						}
 					}
 				}
-			}
 			let [point_on_x, point_on_y] = if let SnapConstraint::Line { origin, direction } = constraint {
 				[
 					Quad::intersect_rays(target_point.document_point, DVec2::Y, origin, direction),

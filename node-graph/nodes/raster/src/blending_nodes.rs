@@ -90,7 +90,7 @@ pub fn blend_colors(foreground: Color, background: Color, blend_mode: BlendMode,
 		blend_mode => apply_blend_mode(foreground, background, blend_mode),
 	};
 
-	background.alpha_blend(target_color.to_associated_alpha(opacity as f32))
+	background.alpha_blend(target_color.to_associated_alpha(opacity))
 }
 
 pub fn apply_blend_mode(foreground: Color, background: Color, blend_mode: BlendMode) -> Color {
@@ -173,7 +173,7 @@ fn color_overlay<T: Adjust<Color>>(
 	blend_mode: BlendMode,
 	#[default(100.)] opacity: PercentageF32,
 ) -> T {
-	let opacity = (opacity as f32 / 100.).clamp(0., 1.);
+	let opacity = (opacity / 100.).clamp(0., 1.);
 
 	image.adjust(|pixel| {
 		let image = pixel.map_rgb(|channel| channel * (1. - opacity));

@@ -560,11 +560,10 @@ impl Fsm for TextToolFsmState {
 						bounding_box_manager.render_quad(&mut overlay_context);
 						// Draw red overlay if text is clipped
 						let transformed_quad = layer_transform * bounds;
-						if let Some((text, font, typesetting, _)) = graph_modification_utils::get_text(layer.unwrap(), &document.network_interface) {
-							if lines_clipping(text.as_str(), font, font_cache, typesetting) {
+						if let Some((text, font, typesetting, _)) = graph_modification_utils::get_text(layer.unwrap(), &document.network_interface)
+							&& lines_clipping(text.as_str(), font, font_cache, typesetting) {
 								overlay_context.line(transformed_quad.0[2], transformed_quad.0[3], Some(COLOR_OVERLAY_RED), Some(3.));
 							}
-						}
 
 						bounding_box_manager.render_overlays(&mut overlay_context, false);
 					}
@@ -697,8 +696,8 @@ impl Fsm for TextToolFsmState {
 				TextToolFsmState::Dragging
 			}
 			(TextToolFsmState::ResizingBounds, TextToolMessage::PointerMove { center, lock_ratio }) => {
-				if let Some(bounds) = &mut tool_data.bounding_box_manager {
-					if let Some(movement) = &mut bounds.selected_edges {
+				if let Some(bounds) = &mut tool_data.bounding_box_manager
+					&& let Some(movement) = &mut bounds.selected_edges {
 						let (centered, constrain) = (input.keyboard.key(center), input.keyboard.key(lock_ratio));
 						let center_position = centered.then_some(bounds.center_of_transformation);
 
@@ -754,7 +753,6 @@ impl Fsm for TextToolFsmState {
 						];
 						tool_data.auto_panning.setup_by_mouse_position(input, viewport, &messages, responses);
 					}
-				}
 				TextToolFsmState::ResizingBounds
 			}
 			(_, TextToolMessage::PointerMove { .. }) => {
@@ -771,12 +769,11 @@ impl Fsm for TextToolFsmState {
 			}
 			(TextToolFsmState::ResizingBounds | TextToolFsmState::Dragging, TextToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning
-				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, viewport, responses) {
-					if let Some(bounds) = &mut tool_data.bounding_box_manager {
+				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, viewport, responses)
+					&& let Some(bounds) = &mut tool_data.bounding_box_manager {
 						bounds.center_of_transformation += shift;
 						bounds.original_bound_transform.translation += shift;
 					}
-				}
 
 				self
 			}
@@ -808,12 +805,11 @@ impl Fsm for TextToolFsmState {
 				let has_dragged = (start - end).length_squared() > DRAG_THRESHOLD * DRAG_THRESHOLD;
 
 				// Check if the user has clicked (no dragging) on some existing text
-				if !has_dragged {
-					if let Some(clicked_text_layer_path) = TextToolData::check_click(document, input, font_cache) {
+				if !has_dragged
+					&& let Some(clicked_text_layer_path) = TextToolData::check_click(document, input, font_cache) {
 						tool_data.start_editing_layer(clicked_text_layer_path, self, document, font_cache, responses);
 						return TextToolFsmState::Editing;
 					}
-				}
 
 				// Otherwise create some new text
 				let constraint_size = has_dragged.then_some((start - end).abs());
@@ -846,12 +842,11 @@ impl Fsm for TextToolFsmState {
 					bounds.original_transforms.clear();
 				}
 
-				if drag_too_small {
-					if let Some(layer_info) = &tool_data.layer_dragging {
+				if drag_too_small
+					&& let Some(layer_info) = &tool_data.layer_dragging {
 						tool_data.start_editing_layer(layer_info.id, self, document, font_cache, responses);
 						return TextToolFsmState::Editing;
 					}
-				}
 				tool_data.layer_dragging.take();
 
 				TextToolFsmState::Ready

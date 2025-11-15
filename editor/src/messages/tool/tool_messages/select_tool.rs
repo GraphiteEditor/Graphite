@@ -776,21 +776,19 @@ impl Fsm for SelectToolFsmState {
 
 				let is_resizing_or_rotating = matches!(self, SelectToolFsmState::ResizingBounds | SelectToolFsmState::SkewingBounds { .. } | SelectToolFsmState::RotatingBounds);
 
-				if overlay_context.visibility_settings.transform_cage() {
-					if let Some(bounds) = tool_data.bounding_box_manager.as_mut() {
+				if overlay_context.visibility_settings.transform_cage()
+					&& let Some(bounds) = tool_data.bounding_box_manager.as_mut() {
 						let edges = bounds.check_selected_edges(input.mouse.position);
 						let is_skewing = matches!(self, SelectToolFsmState::SkewingBounds { .. });
 						let is_near_square = edges.is_some_and(|hover_edge| bounds.over_extended_edge_midpoint(input.mouse.position, hover_edge));
 						if is_skewing || (dragging_bounds && is_near_square && !is_resizing_or_rotating) {
 							bounds.render_skew_gizmos(&mut overlay_context, tool_data.skew_edge);
 						}
-						if !is_skewing && dragging_bounds {
-							if let Some(edges) = edges {
+						if !is_skewing && dragging_bounds
+							&& let Some(edges) = edges {
 								tool_data.skew_edge = bounds.get_closest_edge(edges, input.mouse.position);
 							}
-						}
 					}
-				}
 
 				let might_resize_or_rotate = dragging_bounds || rotating_bounds;
 				let can_get_into_other_states = might_resize_or_rotate && !matches!(self, SelectToolFsmState::Dragging { .. });
@@ -887,9 +885,9 @@ impl Fsm for SelectToolFsmState {
 						compass_rose_state.axis_type().and_then(|axis| axis.is_constraint().then_some((axis, true)))
 					};
 
-					if show_compass_with_ring.is_some() {
-						if let Some((axis, hover)) = axis_state {
-							if axis.is_constraint() {
+					if show_compass_with_ring.is_some()
+						&& let Some((axis, hover)) = axis_state
+							&& axis.is_constraint() {
 								let e0 = tool_data
 									.bounding_box_manager
 									.as_ref()
@@ -913,8 +911,6 @@ impl Fsm for SelectToolFsmState {
 								let line_center = tool_data.line_center;
 								overlay_context.line(line_center - direction * viewport_diagonal, line_center + direction * viewport_diagonal, Some(color), None);
 							}
-						}
-					}
 
 					if axis_state.is_none_or(|(axis, _)| !axis.is_constraint()) && tool_data.axis_align {
 						let mouse_position = mouse_position - tool_data.drag_start;
@@ -1369,12 +1365,11 @@ impl Fsm for SelectToolFsmState {
 			}
 			(SelectToolFsmState::ResizingBounds | SelectToolFsmState::SkewingBounds { .. }, SelectToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning
-				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, viewport, responses) {
-					if let Some(bounds) = &mut tool_data.bounding_box_manager {
+				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, viewport, responses)
+					&& let Some(bounds) = &mut tool_data.bounding_box_manager {
 						bounds.center_of_transformation += shift;
 						bounds.original_bound_transform.translation += shift;
 					}
-				}
 
 				self
 			}
@@ -1499,11 +1494,10 @@ impl Fsm for SelectToolFsmState {
 				tool_data.axis_align = false;
 				tool_data.snap_manager.cleanup(responses);
 
-				if !matches!(self, SelectToolFsmState::DraggingPivot) {
-					if let Some(bounds) = &mut tool_data.bounding_box_manager {
+				if !matches!(self, SelectToolFsmState::DraggingPivot)
+					&& let Some(bounds) = &mut tool_data.bounding_box_manager {
 						bounds.original_transforms.clear();
 					}
-				}
 
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }

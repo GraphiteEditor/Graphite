@@ -1295,14 +1295,13 @@ impl Render for Table<Raster<CPU>> {
 			let opacity = alpha_blending.opacity(render_params.for_mask);
 			let mut layer = false;
 
-			if opacity < 1. || alpha_blending.blend_mode != BlendMode::default() {
-				if let RenderBoundingBox::Rectangle(bounds) = self.bounding_box(transform, false) {
+			if (opacity < 1. || alpha_blending.blend_mode != BlendMode::default())
+				&& let RenderBoundingBox::Rectangle(bounds) = self.bounding_box(transform, false) {
 					let blending = peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver);
 					let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
 					scene.push_layer(blending, opacity, kurbo::Affine::IDENTITY, &rect);
 					layer = true;
 				}
-			}
 
 			let image_brush = peniko::ImageBrush::new(peniko::ImageData {
 				data: image.to_flat_u8().0.into(),
@@ -1353,14 +1352,13 @@ impl Render for Table<Raster<GPU>> {
 		for row in self.iter() {
 			let blend_mode = *row.alpha_blending;
 			let mut layer = false;
-			if blend_mode != Default::default() {
-				if let RenderBoundingBox::Rectangle(bounds) = self.bounding_box(transform, true) {
+			if blend_mode != Default::default()
+				&& let RenderBoundingBox::Rectangle(bounds) = self.bounding_box(transform, true) {
 					let blending = peniko::BlendMode::new(blend_mode.blend_mode.to_peniko(), peniko::Compose::SrcOver);
 					let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
 					scene.push_layer(blending, blend_mode.opacity, kurbo::Affine::IDENTITY, &rect);
 					layer = true;
 				}
-			}
 
 			let width = row.element.data().width();
 			let height = row.element.data().height();

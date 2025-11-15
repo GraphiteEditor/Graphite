@@ -492,11 +492,9 @@ pub fn footprint_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 		);
 	}
 
-	let widgets = vec![
-		LayoutGroup::Row { widgets: location_widgets },
+	let widgets = [LayoutGroup::Row { widgets: location_widgets },
 		LayoutGroup::Row { widgets: scale_widgets },
-		LayoutGroup::Row { widgets: resolution_widgets },
-	];
+		LayoutGroup::Row { widgets: resolution_widgets }];
 	let (last, rest) = widgets.split_last().expect("Footprint widget should return multiple rows");
 	*extra_widgets = rest.to_vec();
 	last.clone()

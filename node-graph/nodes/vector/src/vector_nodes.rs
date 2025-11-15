@@ -99,11 +99,10 @@ where
 		if fill {
 			vector.element.style.set_fill(Fill::Solid(color));
 		}
-		if stroke {
-			if let Some(stroke) = vector.element.style.stroke().and_then(|stroke| stroke.with_color(&Some(color))) {
+		if stroke
+			&& let Some(stroke) = vector.element.style.stroke().and_then(|stroke| stroke.with_color(&Some(color))) {
 				vector.element.style.set_stroke(stroke);
 			}
-		}
 	}
 
 	content
@@ -1539,12 +1538,11 @@ async fn morph(_: impl Ctx, source: Table<Vector>, #[expose] target: Table<Vecto
 		if count != 0 {
 			// Remove the last segment as it is already appended to the new_segments.
 			let mut is_closed = false;
-			if let Some(last_element) = bezpath.pop() {
-				if last_element == PathEl::ClosePath {
+			if let Some(last_element) = bezpath.pop()
+				&& last_element == PathEl::ClosePath {
 					is_closed = true;
 					_ = bezpath.pop();
 				}
-			}
 
 			for segment in new_segments {
 				if bezpath.elements().is_empty() {

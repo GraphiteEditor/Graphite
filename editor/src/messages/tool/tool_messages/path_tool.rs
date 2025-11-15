@@ -750,8 +750,8 @@ impl PathToolData {
 
 			// If the point is already selected and shift (`extend_selection`) is used, keep the selection unchanged.
 			// Otherwise, select the first point within the threshold.
-			if !(already_selected && extend_selection) {
-				if let Some(updated_selection_info) = shape_editor.change_point_selection(
+			if !(already_selected && extend_selection)
+				&& let Some(updated_selection_info) = shape_editor.change_point_selection(
 					&document.network_interface,
 					input.mouse.position,
 					SELECTION_THRESHOLD,
@@ -761,7 +761,6 @@ impl PathToolData {
 				) {
 					selection_info = updated_selection_info;
 				}
-			}
 
 			if let Some(selected_points) = selection_info {
 				self.drag_start_pos = input.mouse.position;
@@ -778,8 +777,8 @@ impl PathToolData {
 					self.saved_selection_before_handle_drag = old_selection;
 				}
 
-				if handle_drag_from_anchor {
-					if let Some((layer, point)) = shape_editor.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD) {
+				if handle_drag_from_anchor
+					&& let Some((layer, point)) = shape_editor.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD) {
 						// Check that selected point is an anchor
 						if let (Some(point_id), Some(vector)) = (point.as_anchor(), document.network_interface.compute_modified_vector(layer)) {
 							let handles = vector.all_connected(point_id).collect::<Vec<_>>();
@@ -801,7 +800,6 @@ impl PathToolData {
 							responses.add(PathToolMessage::SelectedPointUpdated);
 						}
 					}
-				}
 
 				if let Some((Some(point), Some(vector), layer)) = shape_editor
 					.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD)
@@ -2098,8 +2096,8 @@ impl Fsm for PathToolFsmState {
 				let break_molding = input.keyboard.get(break_colinear_molding as usize);
 
 				// Logic for molding segment
-				if let Some(segment) = &mut tool_data.segment {
-					if let Some(molding_segment_handles) = tool_data.molding_info {
+				if let Some(segment) = &mut tool_data.segment
+					&& let Some(molding_segment_handles) = tool_data.molding_info {
 						tool_data.temporary_adjacent_handles_while_molding = segment.mold_handle_positions(
 							document,
 							responses,
@@ -2111,7 +2109,6 @@ impl Fsm for PathToolFsmState {
 
 						return PathToolFsmState::Dragging(tool_data.dragging_state);
 					}
-				}
 
 				let anchor_and_handle_toggled = input.keyboard.get(move_anchor_with_handles as usize);
 				let initial_press = anchor_and_handle_toggled && !tool_data.select_anchor_toggled;
@@ -3384,16 +3381,14 @@ fn update_dynamic_hints(
 			let at_least_one_point_selected = shape_editor.selected_points().count() >= 1;
 
 			let mut single_colinear_anchor_selected = false;
-			if single_anchor_selected {
-				if let (Some(anchor), Some(layer)) = (
+			if single_anchor_selected
+				&& let (Some(anchor), Some(layer)) = (
 					shape_editor.selected_points().next(),
 					document.network_interface.selected_nodes().selected_layers(document.metadata()).next(),
-				) {
-					if let Some(vector) = document.network_interface.compute_modified_vector(layer) {
+				)
+					&& let Some(vector) = document.network_interface.compute_modified_vector(layer) {
 						single_colinear_anchor_selected = vector.colinear(*anchor)
 					}
-				}
-			}
 
 			let drag_selected_hints = vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")];
 			let mut delete_selected_hints = vec![HintInfo::keys([Key::Delete], "Delete Selected")];
