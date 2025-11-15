@@ -8,9 +8,9 @@ use crate::messages::prelude::*;
 use choice::enum_choice;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
-use graph_craft::Type;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
+use graph_craft::{Type, concrete};
 use graphene_std::NodeInputDecleration;
 use graphene_std::animation::RealTimeMode;
 use graphene_std::extract_xy::XY;
@@ -85,7 +85,7 @@ pub fn start_widgets(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<Widget
 		description,
 		input_type,
 		blank_assist,
-		exposeable,
+		exposable,
 	} = parameter_widgets_info;
 
 	let Some(document_node) = document_node else {
@@ -99,7 +99,7 @@ pub fn start_widgets(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<Widget
 	};
 	let description = if description != "TODO" { description } else { String::new() };
 	let mut widgets = Vec::with_capacity(6);
-	if exposeable {
+	if exposable {
 		widgets.push(expose_widget(node_id, index, input_type, input.is_exposed()));
 	}
 	widgets.push(TextLabel::new(name).tooltip(description).widget_holder());
@@ -1128,7 +1128,7 @@ pub(crate) fn channel_mixer_properties(node_id: NodeId, context: &mut NodeProper
 
 	let is_monochrome = bool_widget(ParameterWidgetsInfo::new(node_id, MonochromeInput::INDEX, true, context), CheckboxInput::default());
 	let mut parameter_info = ParameterWidgetsInfo::new(node_id, OutputChannelInput::INDEX, true, context);
-	parameter_info.exposeable = false;
+	parameter_info.exposable = false;
 	let output_channel = enum_choice::<RedGreenBlue>().for_socket(parameter_info).property_row();
 
 	let document_node = match get_document_node(node_id, context) {
@@ -1185,7 +1185,7 @@ pub(crate) fn selective_color_properties(node_id: NodeId, context: &mut NodeProp
 	use graphene_std::raster::selective_color::*;
 
 	let mut default_info = ParameterWidgetsInfo::new(node_id, ColorsInput::INDEX, true, context);
-	default_info.exposeable = false;
+	default_info.exposable = false;
 	let colors = enum_choice::<SelectiveColorChoice>().for_socket(default_info).property_row();
 
 	let document_node = match get_document_node(node_id, context) {
@@ -1574,6 +1574,7 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 				let mut display_decimal_places = None;
 				let mut step = None;
 				let mut unit_suffix = None;
+
 				let input_type = match implementation {
 					DocumentNodeImplementation::ProtoNode(proto_node_identifier) => 'early_return: {
 						if let Some(field) = graphene_std::registry::NODE_METADATA
@@ -1610,7 +1611,12 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 
 						input_type.clone()
 					}
-					_ => context.network_interface.input_type(&InputConnector::node(node_id, input_index), context.selection_network_path).0,
+					_ => context
+						.network_interface
+						.input_type(&InputConnector::node(node_id, input_index), context.selection_network_path)
+						.compiled_nested_type()
+						.cloned()
+						.unwrap_or(concrete!(())),
 				};
 
 				property_from_type(node_id, input_index, &input_type, number_options, unit_suffix, display_decimal_places, step, context).unwrap_or_else(|value| value)
@@ -1989,13 +1995,16 @@ pub struct ParameterWidgetsInfo<'a> {
 	description: String,
 	input_type: FrontendGraphDataType,
 	blank_assist: bool,
-	exposeable: bool,
+	exposable: bool,
 }
 
 impl<'a> ParameterWidgetsInfo<'a> {
 	pub fn new(node_id: NodeId, index: usize, blank_assist: bool, context: &'a mut NodePropertiesContext) -> ParameterWidgetsInfo<'a> {
 		let (name, description) = context.network_interface.displayed_input_name_and_description(&node_id, index, context.selection_network_path);
-		let input_type = FrontendGraphDataType::from_type(&context.network_interface.input_type(&InputConnector::node(node_id, index), context.selection_network_path).0);
+		let input_type = context
+			.network_interface
+			.input_type(&InputConnector::node(node_id, index), context.selection_network_path)
+			.displayed_type();
 		let document_node = context.network_interface.document_node(&node_id, context.selection_network_path);
 
 		ParameterWidgetsInfo {
@@ -2006,7 +2015,7 @@ impl<'a> ParameterWidgetsInfo<'a> {
 			description,
 			input_type,
 			blank_assist,
-			exposeable: true,
+			exposable: true,
 		}
 	}
 }

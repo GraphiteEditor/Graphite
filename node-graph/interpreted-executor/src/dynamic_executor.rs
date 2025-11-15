@@ -39,11 +39,6 @@ pub struct NodeTypes {
 	pub output: Type,
 }
 
-#[derive(PartialEq, Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
-pub struct ResolvedDocumentNodeTypes {
-	pub types: HashMap<Vec<NodeId>, NodeTypes>,
-}
-
 type Path = Box<[NodeId]>;
 
 #[derive(PartialEq, Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
