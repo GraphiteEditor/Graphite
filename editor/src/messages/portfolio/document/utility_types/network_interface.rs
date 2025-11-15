@@ -671,7 +671,7 @@ impl NodeNetworkInterface {
 			resolved_type,
 			name,
 			description,
-			valid_types: self.valid_input_types(input_connector, network_path).iter().map(|ty| ty.to_string()).collect(),
+			valid_types: self.potential_valid_input_types(input_connector, network_path).iter().map(|ty| ty.to_string()).collect(),
 			connected_to,
 		})
 	}
