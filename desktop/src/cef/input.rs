@@ -95,16 +95,15 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 				key_event.unmodified_character = 1;
 			}
 
-			#[cfg(not(target_os = "macos"))]
-			{
-				if key_event.type_ == cef_key_event_type_t::KEYEVENT_CHAR.into() {
-					let mut key_down_event = key_event.clone();
-					key_down_event.type_ = cef_key_event_type_t::KEYEVENT_RAWKEYDOWN.into();
-					host.send_key_event(Some(&key_down_event));
 
-					key_event.windows_key_code = event.logical_key.to_char_representation() as i32;
-				}
+			if key_event.type_ == cef_key_event_type_t::KEYEVENT_CHAR.into() {
+				let mut key_down_event = key_event.clone();
+				key_down_event.type_ = cef_key_event_type_t::KEYEVENT_RAWKEYDOWN.into();
+				host.send_key_event(Some(&key_down_event));
+
+				key_event.windows_key_code = event.logical_key.to_char_representation() as i32;
 			}
+			
 
 			host.send_key_event(Some(&key_event));
 		}
