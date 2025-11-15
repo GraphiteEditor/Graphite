@@ -99,15 +99,14 @@ fn gaussian_blur_algorithm(mut original_buffer: Image<Color>, radius: f64, gamma
 				for (i, &weight) in kernel.iter().enumerate() {
 					let p = [x, y][pass] as i32 + (i as i32 - half_kernel as i32);
 
-					if p >= 0 && p < max as i32 {
-						if let Some(px) = old_buffer.get_pixel([p as u32, x][pass], [y, p as u32][pass]) {
+					if p >= 0 && p < max as i32
+						&& let Some(px) = old_buffer.get_pixel([p as u32, x][pass], [y, p as u32][pass]) {
 							r_sum += px.r() as f64 * weight;
 							g_sum += px.g() as f64 * weight;
 							b_sum += px.b() as f64 * weight;
 							a_sum += px.a() as f64 * weight;
 							weight_sum += weight;
 						}
-					}
 				}
 
 				// Normalize

@@ -239,7 +239,7 @@ impl<PointId: Identifier> Subpath<PointId> {
 		let mut start_angle = 0.;
 		let mut sweep_angle = sweep_angle.abs();
 
-		if (sweep_angle / std::f64::consts::TAU).floor() as u32 % 2 == 0 {
+		if ((sweep_angle / std::f64::consts::TAU).floor() as u32).is_multiple_of(2) {
 			sweep_angle %= std::f64::consts::TAU;
 		} else {
 			start_angle = sweep_angle % std::f64::consts::TAU;

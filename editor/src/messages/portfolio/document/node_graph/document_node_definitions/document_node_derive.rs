@@ -14,11 +14,10 @@ pub(super) fn post_process_nodes(mut custom: Vec<DocumentNodeDefinition>) -> Vec
 			..
 		} = node_template;
 
-		if let DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier { name }) = implementation {
-			if let Some((new_name, _suffix)) = name.rsplit_once("<") {
+		if let DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier { name }) = implementation
+			&& let Some((new_name, _suffix)) = name.rsplit_once("<") {
 				*name = Cow::Owned(new_name.to_string())
-			}
-		};
+			};
 	}
 
 	let node_registry = NODE_REGISTRY.lock().unwrap();

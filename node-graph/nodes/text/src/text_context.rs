@@ -40,11 +40,10 @@ impl TextContext {
 	/// Get or cache font information for a given font
 	fn get_font_info(&mut self, font: &Font, font_data: &Blob<u8>) -> Option<(String, FontInfo)> {
 		// Check if we already have the font info cached
-		if let Some((family_id, font_info)) = self.font_info_cache.get(font) {
-			if let Some(family_name) = self.font_context.collection.family_name(*family_id) {
+		if let Some((family_id, font_info)) = self.font_info_cache.get(font)
+			&& let Some(family_name) = self.font_context.collection.family_name(*family_id) {
 				return Some((family_name.to_string(), font_info.clone()));
 			}
-		}
 
 		// Register the font and cache the info
 		let families = self.font_context.collection.register_fonts(font_data.clone(), None);
@@ -107,11 +106,10 @@ impl TextContext {
 
 	/// Calculate the bounding box of text using the specified font and typesetting configuration
 	pub fn bounding_box(&mut self, text: &str, font: &Font, font_cache: &FontCache, typesetting: TypesettingConfig, for_clipping_test: bool) -> DVec2 {
-		if !for_clipping_test {
-			if let (Some(max_height), Some(max_width)) = (typesetting.max_height, typesetting.max_width) {
+		if !for_clipping_test
+			&& let (Some(max_height), Some(max_width)) = (typesetting.max_height, typesetting.max_width) {
 				return DVec2::new(max_width, max_height);
 			}
-		}
 
 		let Some(layout) = self.layout_text(text, font, font_cache, typesetting) else {
 			return DVec2::ZERO;

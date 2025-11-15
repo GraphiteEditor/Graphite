@@ -411,8 +411,8 @@ impl Fsm for BrushToolFsmState {
 			}
 
 			(BrushToolFsmState::Drawing, BrushToolMessage::PointerMove) => {
-				if let Some(layer) = tool_data.layer {
-					if let Some(stroke) = tool_data.strokes.last_mut() {
+				if let Some(layer) = tool_data.layer
+					&& let Some(stroke) = tool_data.strokes.last_mut() {
 						let layer_position = document
 							.network_interface
 							.document_metadata()
@@ -423,7 +423,6 @@ impl Fsm for BrushToolFsmState {
 
 						stroke.trace.push(BrushInputSample { position: layer_position })
 					}
-				}
 				tool_data.update_strokes(responses);
 
 				BrushToolFsmState::Drawing

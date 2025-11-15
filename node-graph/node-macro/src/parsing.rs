@@ -530,11 +530,10 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			})
 		})
 		.transpose()?;
-	if let Some(range) = &number_mode_range {
-		if range.elems.len() != 2 {
+	if let Some(range) = &number_mode_range
+		&& range.elems.len() != 2 {
 			return Err(Error::new_spanned(range, "Expected a tuple of two values for `range` for the min and max, respectively"));
 		}
-	}
 
 	let unit = extract_attribute(attrs, "unit")
 		.map(|attr| attr.parse_args::<LitStr>().map_err(|_e| Error::new_spanned(attr, "Expected a unit type as string".to_string())))
@@ -641,9 +640,9 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 fn parse_node_type(ty: &Type) -> (bool, Option<Type>, Option<Type>) {
 	if let Type::ImplTrait(impl_trait) = ty {
 		for bound in &impl_trait.bounds {
-			if let syn::TypeParamBound::Trait(trait_bound) = bound {
-				if trait_bound.path.segments.last().is_some_and(|seg| seg.ident == "Node") {
-					if let syn::PathArguments::AngleBracketed(args) = &trait_bound.path.segments.last().unwrap().arguments {
+			if let syn::TypeParamBound::Trait(trait_bound) = bound
+				&& trait_bound.path.segments.last().is_some_and(|seg| seg.ident == "Node")
+					&& let syn::PathArguments::AngleBracketed(args) = &trait_bound.path.segments.last().unwrap().arguments {
 						let input_type = args.args.iter().find_map(|arg| if let syn::GenericArgument::Type(ty) = arg { Some(ty.clone()) } else { None });
 						let output_type = args.args.iter().find_map(|arg| {
 							if let syn::GenericArgument::AssocType(assoc_type) = arg {
@@ -654,8 +653,6 @@ fn parse_node_type(ty: &Type) -> (bool, Option<Type>, Option<Type>) {
 						});
 						return (true, input_type, output_type);
 					}
-				}
-			}
 		}
 	}
 	(false, None, None)

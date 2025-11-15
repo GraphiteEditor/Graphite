@@ -692,11 +692,10 @@ impl NodeNetwork {
 	fn replace_node_inputs(&mut self, node_id: NodeId, old_input: (NodeId, usize), new_input: (NodeId, usize)) {
 		let Some(node) = self.nodes.get_mut(&node_id) else { return };
 		node.inputs.iter_mut().for_each(|input| {
-			if let NodeInput::Node { node_id: input_id, output_index, .. } = input {
-				if (*input_id, *output_index) == old_input {
+			if let NodeInput::Node { node_id: input_id, output_index, .. } = input
+				&& (*input_id, *output_index) == old_input {
 					(*input_id, *output_index) = new_input;
 				}
-			}
 		});
 	}
 
@@ -744,11 +743,10 @@ impl NodeNetwork {
 		let mut are_inputs_used = vec![false; number_of_inputs];
 		for node in &self.nodes {
 			for node_input in &node.1.inputs {
-				if let NodeInput::Import { import_index, .. } = node_input {
-					if let Some(is_used) = are_inputs_used.get_mut(*import_index) {
+				if let NodeInput::Import { import_index, .. } = node_input
+					&& let Some(is_used) = are_inputs_used.get_mut(*import_index) {
 						*is_used = true;
 					}
-				}
 			}
 		}
 		are_inputs_used
@@ -779,7 +777,7 @@ impl NodeNetwork {
 		};
 
 		// If the node is hidden, replace it with an identity node
-		let identity_node = DocumentNodeImplementation::ProtoNode(graphene_core::ops::identity::IDENTIFIER.into());
+		let identity_node = DocumentNodeImplementation::ProtoNode(graphene_core::ops::identity::IDENTIFIER);
 		if !node.visible && node.implementation != identity_node {
 			node.implementation = identity_node;
 
@@ -943,8 +941,8 @@ impl NodeNetwork {
 
 	fn remove_id_node(&mut self, id: NodeId) -> Result<(), String> {
 		let node = self.nodes.get(&id).ok_or_else(|| format!("Node with id {id} does not exist"))?.clone();
-		if let DocumentNodeImplementation::ProtoNode(ident) = &node.implementation {
-			if *ident == graphene_core::ops::identity::IDENTIFIER {
+		if let DocumentNodeImplementation::ProtoNode(ident) = &node.implementation
+			&& *ident == graphene_core::ops::identity::IDENTIFIER {
 				assert_eq!(node.inputs.len(), 1, "Id node has more than one input");
 				if let NodeInput::Node { node_id, output_index, .. } = node.inputs[0] {
 					let node_input_output_index = output_index;
@@ -963,8 +961,7 @@ impl NodeNetwork {
 								output_index: output_output_index,
 								..
 							} = input
-							{
-								if *output_node_id == id {
+								&& *output_node_id == id {
 									*output_node_id = input_node_id;
 									*output_output_index = node_input_output_index;
 
@@ -973,21 +970,18 @@ impl NodeNetwork {
 										input_source.insert(source, index);
 									}
 								}
-							}
 						}
 						for node_input in self.exports.iter_mut() {
-							if let NodeInput::Node { node_id, output_index, .. } = node_input {
-								if *node_id == id {
+							if let NodeInput::Node { node_id, output_index, .. } = node_input
+								&& *node_id == id {
 									*node_id = input_node_id;
 									*output_index = node_input_output_index;
 								}
-							}
 						}
 					}
 				}
 				self.nodes.remove(&id);
 			}
-		}
 		Ok(())
 	}
 
@@ -1053,8 +1047,8 @@ impl NodeNetwork {
 		let nodes: Vec<_> = self.nodes.into_iter().map(|(id, node)| (id, node.resolve_proto_node())).collect();
 
 		// Create a network to evaluate each output
-		if self.exports.len() == 1 {
-			if let NodeInput::Node { node_id, .. } = self.exports[0] {
+		if self.exports.len() == 1
+			&& let NodeInput::Node { node_id, .. } = self.exports[0] {
 				return vec![ProtoNetwork {
 					inputs: Vec::new(),
 					output: node_id,
@@ -1062,7 +1056,6 @@ impl NodeNetwork {
 				}]
 				.into_iter();
 			}
-		}
 
 		// Create a network to evaluate each output
 		let networks: Vec<_> = self

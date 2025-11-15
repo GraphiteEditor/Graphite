@@ -508,8 +508,8 @@ impl WidgetHolder {
 
 	/// Diffing updates self (where self is old) based on new, updating the list of modifications as it does so.
 	pub fn diff(&mut self, new: Self, widget_path: &mut [usize], widget_diffs: &mut Vec<WidgetDiff>) {
-		if let (Widget::PopoverButton(button1), Widget::PopoverButton(button2)) = (&mut self.widget, &new.widget) {
-			if button1.disabled == button2.disabled
+		if let (Widget::PopoverButton(button1), Widget::PopoverButton(button2)) = (&mut self.widget, &new.widget)
+			&& button1.disabled == button2.disabled
 				&& button1.style == button2.style
 				&& button1.menu_direction == button2.menu_direction
 				&& button1.icon == button2.icon
@@ -525,7 +525,6 @@ impl WidgetHolder {
 				}
 				return;
 			}
-		}
 
 		// If there have been changes to the actual widget (not just the id)
 		if self.widget != new.widget {
@@ -621,8 +620,8 @@ impl DiffUpdate {
 		let apply_shortcut_to_tooltip = |tooltip_shortcut: &mut ActionKeys, tooltip: &mut String| {
 			let shortcut_text = tooltip_shortcut.to_keys(action_input_mapping);
 
-			if let ActionKeys::Keys(_keys) = tooltip_shortcut {
-				if !shortcut_text.is_empty() {
+			if let ActionKeys::Keys(_keys) = tooltip_shortcut
+				&& !shortcut_text.is_empty() {
 					if !tooltip.is_empty() {
 						tooltip.push(' ');
 					}
@@ -630,7 +629,6 @@ impl DiffUpdate {
 					tooltip.push_str(&shortcut_text);
 					tooltip.push(')');
 				}
-			}
 		};
 
 		// Go through each widget to convert `ActionKeys::Action` to `ActionKeys::Keys` and append the key combination to the widget tooltip

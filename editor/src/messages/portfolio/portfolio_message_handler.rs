@@ -116,8 +116,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				self.menu_bar_message_handler.process_message(message, responses, ());
 			}
 			PortfolioMessage::Document(message) => {
-				if let Some(document_id) = self.active_document_id {
-					if let Some(document) = self.documents.get_mut(&document_id) {
+				if let Some(document_id) = self.active_document_id
+					&& let Some(document) = self.documents.get_mut(&document_id) {
 						let document_inputs = DocumentMessageContext {
 							document_id,
 							ipp,
@@ -132,7 +132,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						};
 						document.process_message(message, responses, document_inputs)
 					}
-				}
 			}
 
 			// Messages
@@ -175,12 +174,11 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				}
 			}
 			PortfolioMessage::AutoSaveActiveDocument => {
-				if let Some(document_id) = self.active_document_id {
-					if let Some(document) = self.active_document_mut() {
+				if let Some(document_id) = self.active_document_id
+					&& let Some(document) = self.active_document_mut() {
 						document.set_auto_save_state(true);
 						responses.add(PortfolioMessage::AutoSaveDocument { document_id });
 					}
-				}
 			}
 			PortfolioMessage::AutoSaveAllDocuments => {
 				for (document_id, document) in self.documents.iter_mut() {

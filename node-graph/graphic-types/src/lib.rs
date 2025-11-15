@@ -1,16 +1,14 @@
 pub mod artboard;
 pub mod graphic;
 
-// Re-export raster_types for convenience
+// Re-export all transitive dependencies so downstream crates only need to depend on graphic-types
+pub use core_types;
 pub use raster_types;
+pub use vector_types;
 
 // Re-export commonly used types at the crate root
 pub use artboard::Artboard;
 pub use graphic::{Graphic, IntoGraphicTable, Vector};
-
-// Re-export dependencies that users of this crate will need
-pub use core_types as gcore;
-pub use vector_types;
 
 pub mod migrations {
 	use dyn_any::DynAny;

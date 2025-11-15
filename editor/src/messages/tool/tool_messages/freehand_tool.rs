@@ -367,8 +367,8 @@ fn extend_path_with_next_segment(tool_data: &mut FreehandToolData, position: DVe
 		modification_type: VectorModificationType::InsertPoint { id, position },
 	});
 
-	if extend {
-		if let Some((_, previous_position)) = tool_data.end_point {
+	if extend
+		&& let Some((_, previous_position)) = tool_data.end_point {
 			let next_id = SegmentId::generate();
 			let points = [previous_position, id];
 
@@ -381,7 +381,6 @@ fn extend_path_with_next_segment(tool_data: &mut FreehandToolData, position: DVe
 				},
 			});
 		}
-	}
 
 	tool_data.dragged = true;
 	tool_data.end_point = Some((position, id));

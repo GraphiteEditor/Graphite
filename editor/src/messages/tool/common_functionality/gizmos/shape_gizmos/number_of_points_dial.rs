@@ -108,11 +108,10 @@ impl NumberOfPointsDial {
 					let viewport = document.metadata().transform_to_viewport(layer);
 					let center = viewport.transform_point2(DVec2::ZERO);
 
-					if let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, mouse_position, POINT_RADIUS_HANDLE_SEGMENT_THRESHOLD) {
-						if closest_segment.layer() == layer {
+					if let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, mouse_position, POINT_RADIUS_HANDLE_SEGMENT_THRESHOLD)
+						&& closest_segment.layer() == layer {
 							return;
 						}
-					}
 					let point_on_max_radius = star_vertex_position(viewport, 0, sides, radius1, radius2);
 
 					if inside_star(viewport, sides, radius1, radius2, mouse_position) && point_on_max_radius.distance(center) > GIZMO_HIDE_THRESHOLD {
@@ -126,11 +125,10 @@ impl NumberOfPointsDial {
 					let viewport = document.metadata().transform_to_viewport(layer);
 					let center = viewport.transform_point2(DVec2::ZERO);
 
-					if let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, mouse_position, POINT_RADIUS_HANDLE_SEGMENT_THRESHOLD) {
-						if closest_segment.layer() == layer {
+					if let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, mouse_position, POINT_RADIUS_HANDLE_SEGMENT_THRESHOLD)
+						&& closest_segment.layer() == layer {
 							return;
 						}
-					}
 					let point_on_max_radius = polygon_vertex_position(viewport, 0, sides, radius);
 
 					if inside_polygon(viewport, sides, radius, mouse_position) && point_on_max_radius.distance(center) > GIZMO_HIDE_THRESHOLD {
