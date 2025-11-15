@@ -1,22 +1,21 @@
 use super::DocumentNode;
 use crate::proto::{Any as DAny, FutureAny};
 use crate::wasm_application_io::WasmEditorApi;
+use brush_nodes::brush_cache::BrushCache;
+use brush_nodes::brush_stroke::BrushStroke;
+use core_types::table::Table;
+use core_types::uuid::NodeId;
+use core_types::{Color, ContextFeatures, MemoHash, Node, Type};
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
 use glam::{Affine2, Vec2};
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graphene_application_io::{ImageTexture, SurfaceFrame};
-use brush_nodes::brush_cache::BrushCache;
-use brush_nodes::brush_stroke::BrushStroke;
-use graphic_types::raster_types::Image;
-use graphic_types::raster_types::{CPU, Raster};
-use core_types::table::Table;
-use core_types::uuid::NodeId;
-use core_types::{Color, ContextFeatures, MemoHash, Node, Type};
-use svg_renderer::RenderMetadata;
 use graphic_types::Artboard;
 use graphic_types::Graphic;
 use graphic_types::Vector;
+use graphic_types::raster_types::Image;
+use graphic_types::raster_types::{CPU, Raster};
 use graphic_types::vector_types::vector;
 use graphic_types::vector_types::vector::ReferencePoint;
 use graphic_types::vector_types::vector::style::Fill;
@@ -26,6 +25,7 @@ use std::hash::Hash;
 use std::marker::PhantomData;
 use std::str::FromStr;
 pub use std::sync::Arc;
+use svg_renderer::RenderMetadata;
 
 pub struct TaggedValueTypeError;
 
@@ -192,10 +192,10 @@ tagged_value! {
 	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphic_types::migrations::migrate_vector"))] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "VectorData")]
 	Vector(Table<Vector>),
-	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "core_types::raster::image::migrate_image_frame"))] // TODO: Eventually remove this migration document upgrade code
+	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphic_types::raster_types::image::migrate_image_frame"))] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "ImageFrame", alias = "RasterData", alias = "Image")]
 	Raster(Table<Raster<CPU>>),
-	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphic_types::migrations::migrate_graphic"))] // TODO: Eventually remove this migration document upgrade code
+	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphic_types::graphic::migrate_graphic"))] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "GraphicGroup", alias = "Group")]
 	Graphic(Table<Graphic>),
 	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphic_types::artboard::migrate_artboard"))] // TODO: Eventually remove this migration document upgrade code
