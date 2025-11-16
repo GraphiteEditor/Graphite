@@ -173,22 +173,22 @@ fn migrate_type_descriptor_names<'de, D: serde::Deserializer<'de>>(deserializer:
 	let name = String::deserialize(deserializer)?;
 	let name = match name.as_str() {
 		"f32" => "f64".to_string(),
-		"core_types::transform::Footprint" => "std::option::Option<std::sync::Arc<core_types::context::OwnedContextImpl>>".to_string(),
-		"core_types::graphic_element::GraphicGroup" => "core_types::table::Table<core_types::graphic_types::Graphic>".to_string(),
-		"core_types::raster::image::ImageFrame<Color>"
-		| "core_types::raster::image::ImageFrame<core_types::raster::color::Color>"
-		| "core_types::instances::Instances<core_types::raster::image::ImageFrame<Color>>"
-		| "core_types::instances::Instances<core_types::raster::image::ImageFrame<core_types::raster::color::Color>>"
-		| "core_types::instances::Instances<core_types::raster::image::Image<core_types::raster::color::Color>>" => {
-			"core_types::table::Table<core_types::raster::image::Image<core_types::raster::color::Color>>".to_string()
+		"grahpene_core::transform::Footprint" => "std::option::Option<std::sync::Arc<grahpene_core::context::OwnedContextImpl>>".to_string(),
+		"grahpene_core::graphic_element::GraphicGroup" => "grahpene_core::table::Table<grahpene_core::graphic_types::Graphic>".to_string(),
+		"grahpene_core::raster::image::ImageFrame<Color>"
+		| "grahpene_core::raster::image::ImageFrame<grahpene_core::raster::color::Color>"
+		| "grahpene_core::instances::Instances<grahpene_core::raster::image::ImageFrame<Color>>"
+		| "grahpene_core::instances::Instances<grahpene_core::raster::image::ImageFrame<grahpene_core::raster::color::Color>>"
+		| "grahpene_core::instances::Instances<grahpene_core::raster::image::Image<grahpene_core::raster::color::Color>>" => {
+			"grahpene_core::table::Table<grahpene_core::raster::image::Image<grahpene_core::raster::color::Color>>".to_string()
 		}
-		"core_types::vector::vector_data::VectorData"
-		| "core_types::instances::Instances<core_types::vector::vector_data::VectorData>"
-		| "core_types::table::Table<core_types::vector::vector_data::VectorData>"
-		| "core_types::table::Table<core_types::vector::vector_data::Vector>" => "core_types::table::Table<core_types::vector::vector_types::Vector>".to_string(),
-		"core_types::instances::Instances<core_types::graphic_element::Artboard>" => "core_types::table::Table<core_types::artboard::Artboard>".to_string(),
-		"core_types::vector::vector_data::modification::VectorModification" => "core_types::vector::vector_modification::VectorModification".to_string(),
-		"core_types::table::Table<core_types::graphic_element::Graphic>" => "core_types::table::Table<core_types::graphic_types::Graphic>".to_string(),
+		"grahpene_core::vector::vector_data::VectorData"
+		| "grahpene_core::instances::Instances<grahpene_core::vector::vector_data::VectorData>"
+		| "grahpene_core::table::Table<grahpene_core::vector::vector_data::VectorData>"
+		| "grahpene_core::table::Table<grahpene_core::vector::vector_data::Vector>" => "grahpene_core::table::Table<grahpene_core::vector::vector_types::Vector>".to_string(),
+		"grahpene_core::instances::Instances<grahpene_core::graphic_element::Artboard>" => "grahpene_core::table::Table<grahpene_core::artboard::Artboard>".to_string(),
+		"grahpene_core::vector::vector_data::modification::VectorModification" => "grahpene_core::vector::vector_modification::VectorModification".to_string(),
+		"grahpene_core::table::Table<grahpene_core::graphic_element::Graphic>" => "grahpene_core::table::Table<grahpene_core::graphic_types::Graphic>".to_string(),
 		_ => name,
 	};
 

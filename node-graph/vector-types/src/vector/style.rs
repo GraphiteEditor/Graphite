@@ -544,7 +544,7 @@ impl PathStyle {
 	/// # Example
 	/// ```
 	/// # use vector_types::vector::style::{Fill, PathStyle};
-	/// # use core_types::raster::color::Color;
+	/// # use core_types::Color;
 	/// let fill = Fill::solid(Color::RED);
 	/// let style = PathStyle::new(None, fill.clone());
 	///
@@ -559,7 +559,7 @@ impl PathStyle {
 	/// # Example
 	/// ```
 	/// # use vector_types::vector::style::{Fill, Stroke, PathStyle};
-	/// # use core_types::raster::color::Color;
+	/// # use core_types::Color;
 	/// let stroke = Stroke::new(Some(Color::GREEN), 42.);
 	/// let style = PathStyle::new(Some(stroke.clone()), Fill::None);
 	///
@@ -574,7 +574,7 @@ impl PathStyle {
 	/// # Example
 	/// ```
 	/// # use vector_types::vector::style::{Fill, PathStyle};
-	/// # use core_types::raster::color::Color;
+	/// # use core_types::Color;
 	/// let mut style = PathStyle::default();
 	///
 	/// assert_eq!(*style.fill(), Fill::None);
@@ -599,7 +599,7 @@ impl PathStyle {
 	/// # Example
 	/// ```
 	/// # use vector_types::vector::style::{Stroke, PathStyle};
-	/// # use core_types::raster::color::Color;
+	/// # use core_types::Color;
 	/// let mut style = PathStyle::default();
 	///
 	/// assert_eq!(style.stroke(), None);
@@ -618,7 +618,7 @@ impl PathStyle {
 	/// # Example
 	/// ```
 	/// # use vector_types::vector::style::{Fill, PathStyle};
-	/// # use core_types::raster::color::Color;
+	/// # use core_types::Color;
 	/// let mut style = PathStyle::new(None, Fill::Solid(Color::RED));
 	///
 	/// assert_ne!(*style.fill(), Fill::None);
@@ -636,7 +636,7 @@ impl PathStyle {
 	/// # Example
 	/// ```
 	/// # use vector_types::vector::style::{Fill, Stroke, PathStyle};
-	/// # use core_types::raster::color::Color;
+	/// # use core_types::Color;
 	/// let mut style = PathStyle::new(Some(Stroke::new(Some(Color::GREEN), 42.)), Fill::None);
 	///
 	/// assert!(style.stroke().is_some());
