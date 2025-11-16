@@ -20,12 +20,12 @@ use graphic_types::vector_types::vector;
 use graphic_types::vector_types::vector::ReferencePoint;
 use graphic_types::vector_types::vector::style::Fill;
 use graphic_types::vector_types::vector::style::GradientStops;
+use rendering::RenderMetadata;
 use std::fmt::Display;
 use std::hash::Hash;
 use std::marker::PhantomData;
 use std::str::FromStr;
 pub use std::sync::Arc;
-use rendering::RenderMetadata;
 
 pub struct TaggedValueTypeError;
 

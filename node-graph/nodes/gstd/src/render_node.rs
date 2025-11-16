@@ -11,9 +11,9 @@ use graphic_types::Graphic;
 use graphic_types::Vector;
 use graphic_types::raster_types::Image;
 use graphic_types::raster_types::{CPU, Raster};
-use std::sync::Arc;
 use rendering::{Render, RenderOutputType as RenderOutputTypeRequest, RenderParams, RenderSvgSegmentList, SvgRender, format_transform_matrix};
 use rendering::{RenderMetadata, SvgSegment};
+use std::sync::Arc;
 use vector_types::GradientStops;
 use wgpu_executor::RenderContext;
 
