@@ -20,7 +20,7 @@ use crate::messages::tool::common_functionality::graph_modification_utils::get_c
 use crate::messages::tool::common_functionality::utility_functions::make_path_editable_is_allowed;
 use crate::messages::tool::tool_messages::tool_prelude::{Key, MouseMotion};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
-use crate::messages::viewport::{Position, Rect};
+use crate::messages::viewport::Position;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
 use graphene_std::math::math_ext::QuadExt;
@@ -1541,6 +1541,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(NodeGraphMessage::SendGraph);
 			}
+			NodeGraphMessage::UpdateNodeGraphWidth => {
+				network_interface.set_node_graph_width(viewport.size().x(), breadcrumb_network_path);
+				responses.add(NodeGraphMessage::UpdateImportsExports);
+			}
 			NodeGraphMessage::RemoveImport { import_index: usize } => {
 				network_interface.remove_import(usize, selection_network_path);
 				responses.add(NodeGraphMessage::UpdateImportsExports);
@@ -1657,14 +1661,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					});
 					responses.add(NodeGraphMessage::SendSelectedNodes);
 					self.update_node_graph_hints(responses);
-				}
-			}
-			NodeGraphMessage::SetGridAlignedEdges => {
-				if graph_view_overlay_open {
-					let viewport_bounds = viewport.bounds();
-					network_interface.set_grid_aligned_edges(DVec2::new(viewport_bounds.x() - viewport_bounds.width(), 0.), breadcrumb_network_path);
-					// Send the new edges to the frontend
-					responses.add(NodeGraphMessage::UpdateImportsExports);
 				}
 			}
 			NodeGraphMessage::SetInputValue { node_id, input_index, value } => {
