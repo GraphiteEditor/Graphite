@@ -10,7 +10,7 @@ use futures::lock::Mutex;
 use glam::UVec2;
 use graphene_application_io::{ApplicationIo, EditorApi, SurfaceHandle, SurfaceId};
 use std::sync::Arc;
-pub use svg_renderer::RenderContext;
+pub use rendering::RenderContext;
 use vello::{AaConfig, AaSupport, RenderParams, Renderer, RendererOptions, Scene};
 use wgpu::util::TextureBlitter;
 use wgpu::{Origin3d, SurfaceConfiguration, TextureAspect};

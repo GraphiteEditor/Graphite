@@ -1,5 +1,5 @@
 [package]
-name = "svg-renderer"
+name = "rendering"
 version = "0.1.0"
 edition = "2024"
 description = "SVG rendering for Graphene"

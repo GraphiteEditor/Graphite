@@ -27,7 +27,7 @@ members = [
 	"node-graph/nodes/raster",
 	"node-graph/nodes/raster/shaders",
 	"node-graph/nodes/raster/shaders/entrypoint",
-	"node-graph/nodes/svg-renderer",
+	"node-graph/rendering",
 	"node-graph/nodes/text",
 	"node-graph/nodes/transform",
 	"node-graph/nodes/vector",
@@ -60,7 +60,7 @@ default-members = [
 	"node-graph/nodes/path-bool",
 	"node-graph/nodes/raster",
 	"node-graph/nodes/raster/shaders",
-	"node-graph/nodes/svg-renderer",
+	"node-graph/rendering",
 	"node-graph/nodes/text",
 	"node-graph/nodes/transform",
 	"node-graph/nodes/vector",
@@ -106,7 +106,7 @@ path-bool-nodes = { path = "node-graph/nodes/path-bool" }
 graph-craft = { path = "node-graph/graph-craft" }
 raster-nodes = { path = "node-graph/nodes/raster" }
 graphene-std = { path = "node-graph/nodes/gstd" }
-svg-renderer = { path = "node-graph/nodes/svg-renderer" }
+rendering = { path = "node-graph/rendering" }
 interpreted-executor = { path = "node-graph/interpreted-executor" }
 node-macro = { path = "node-graph/node-macro" }
 wgpu-executor = { path = "node-graph/wgpu-executor" }

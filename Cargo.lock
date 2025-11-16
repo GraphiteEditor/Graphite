@@ -2134,12 +2134,12 @@ dependencies = [
  "path-bool-nodes",
  "pretty_assertions",
  "raster-nodes",
+ "rendering",
  "reqwest",
  "rustc-hash 2.1.1",
  "serde",
  "serde_json",
  "specta",
- "svg-renderer",
  "text-nodes",
  "tokio",
  "url",
@@ -2220,8 +2220,8 @@ dependencies = [
  "node-macro",
  "path-bool-nodes",
  "raster-nodes",
+ "rendering",
  "reqwest",
- "svg-renderer",
  "text-nodes",
  "tokio",
  "transform-nodes",
@@ -4899,6 +4899,24 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19b30a45b0cd0bcca8037f3d0dc3421eaf95327a17cad11964fb8179b4fc4832"
 
 [[package]]
+name = "rendering"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "core-types",
+ "dyn-any",
+ "glam",
+ "graphic-types",
+ "kurbo 0.12.0",
+ "log",
+ "num-traits",
+ "serde",
+ "usvg 0.45.1",
+ "vector-types",
+ "vello",
+]
+
+[[package]]
 name = "reqwest"
 version = "0.12.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5713,24 +5731,6 @@ name = "svg"
 version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "94afda9cd163c04f6bee8b4bf2501c91548deae308373c436f36aeff3cf3c4a3"
-
-[[package]]
-name = "svg-renderer"
-version = "0.1.0"
-dependencies = [
- "base64",
- "core-types",
- "dyn-any",
- "glam",
- "graphic-types",
- "kurbo 0.12.0",
- "log",
- "num-traits",
- "serde",
- "usvg 0.45.1",
- "vector-types",
- "vello",
-]
 
 [[package]]
 name = "svg_fmt"
@@ -7038,7 +7038,7 @@ dependencies = [
  "graphene-application-io",
  "node-macro",
  "raster-types",
- "svg-renderer",
+ "rendering",
  "vello",
  "web-sys",
  "wgpu",

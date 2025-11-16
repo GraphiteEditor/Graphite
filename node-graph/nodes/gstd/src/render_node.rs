@@ -12,8 +12,8 @@ use graphic_types::Vector;
 use graphic_types::raster_types::Image;
 use graphic_types::raster_types::{CPU, Raster};
 use std::sync::Arc;
-use svg_renderer::{Render, RenderOutputType as RenderOutputTypeRequest, RenderParams, RenderSvgSegmentList, SvgRender, format_transform_matrix};
-use svg_renderer::{RenderMetadata, SvgSegment};
+use rendering::{Render, RenderOutputType as RenderOutputTypeRequest, RenderParams, RenderSvgSegmentList, SvgRender, format_transform_matrix};
+use rendering::{RenderMetadata, SvgSegment};
 use vector_types::GradientStops;
 use wgpu_executor::RenderContext;
 
@@ -141,9 +141,9 @@ async fn render<'a: 'n>(
 
 	let data = match (render_params.render_output_type, &ty) {
 		(RenderOutputTypeRequest::Svg, RenderIntermediateType::Svg(svg_data)) => {
-			let mut svg_renderer = SvgRender::new();
+			let mut rendering = SvgRender::new();
 			if !contains_artboard && !render_params.hide_artboards {
-				svg_renderer.leaf_tag("rect", |attributes| {
+				rendering.leaf_tag("rect", |attributes| {
 					attributes.push("x", "0");
 					attributes.push("y", "0");
 					attributes.push("width", footprint.resolution.x.to_string());
@@ -155,14 +155,14 @@ async fn render<'a: 'n>(
 					attributes.push("fill", "white");
 				});
 			}
-			svg_renderer.svg.push(SvgSegment::from(svg_data.0.clone()));
-			svg_renderer.image_data = svg_data.1.clone();
-			svg_renderer.svg_defs = svg_data.2.clone();
+			rendering.svg.push(SvgSegment::from(svg_data.0.clone()));
+			rendering.image_data = svg_data.1.clone();
+			rendering.svg_defs = svg_data.2.clone();
 
-			svg_renderer.wrap_with_transform(footprint.transform, Some(footprint.resolution.as_dvec2()));
+			rendering.wrap_with_transform(footprint.transform, Some(footprint.resolution.as_dvec2()));
 			RenderOutputType::Svg {
-				svg: svg_renderer.svg.to_svg_string(),
-				image_data: svg_renderer.image_data,
+				svg: rendering.svg.to_svg_string(),
+				image_data: rendering.image_data,
 			}
 		}
 		(RenderOutputTypeRequest::Vello, RenderIntermediateType::Vello(vello_data)) => {

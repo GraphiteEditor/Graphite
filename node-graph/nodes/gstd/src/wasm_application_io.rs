@@ -21,7 +21,7 @@ use graphic_types::raster_types::{CPU, Raster};
 use graphic_types::vector_types::gradient::GradientStops;
 use std::sync::Arc;
 #[cfg(target_family = "wasm")]
-use svg_renderer::{Render, RenderParams, RenderSvgSegmentList, SvgRender};
+use rendering::{Render, RenderParams, RenderSvgSegmentList, SvgRender};
 #[cfg(target_family = "wasm")]
 use wasm_bindgen::JsCast;
 #[cfg(target_family = "wasm")]

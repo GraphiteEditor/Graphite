@@ -94,7 +94,7 @@ pub use graphic_types::{Artboard, Graphic, Vector};
 pub mod renderer {
 	pub use core_types::math::quad::Quad;
 	pub use core_types::math::rect::Rect;
-	pub use svg_renderer::*;
+	pub use rendering::*;
 }
 
 pub mod raster {

@@ -20,7 +20,7 @@ path-bool-nodes = { workspace = true }
 brush-nodes = { workspace = true }
 graphene-core = { workspace = true }
 graphene-application-io = { workspace = true }
-svg-renderer = { workspace = true }
+rendering = { workspace = true }
 raster-nodes = { workspace = true }
 graphic-types = { workspace = true }
 text-nodes = { workspace = true }

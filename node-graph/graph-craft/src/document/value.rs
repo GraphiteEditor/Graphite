@@ -25,7 +25,7 @@ use std::hash::Hash;
 use std::marker::PhantomData;
 use std::str::FromStr;
 pub use std::sync::Arc;
-use svg_renderer::RenderMetadata;
+use rendering::RenderMetadata;
 
 pub struct TaggedValueTypeError;
 

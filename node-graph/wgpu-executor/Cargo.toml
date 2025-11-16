@@ -9,7 +9,7 @@ license = "MIT OR Apache-2.0"
 core-types = { workspace = true }
 raster-types = { workspace = true, features = ["wgpu"] }
 graphene-application-io = { workspace = true, features = ["wgpu"] }
-svg-renderer = { workspace = true }
+rendering = { workspace = true }
 dyn-any = { workspace = true }
 node-macro = { workspace = true }
 

@@ -37,7 +37,7 @@ transform-nodes = { workspace = true }
 vector-nodes = { workspace = true }
 path-bool-nodes = { workspace = true }
 math-nodes = { workspace = true }
-svg-renderer = { workspace = true }
+rendering = { workspace = true }
 graphene-application-io = { workspace = true }
 raster-nodes = { workspace = true }
 brush-nodes = { workspace = true }
