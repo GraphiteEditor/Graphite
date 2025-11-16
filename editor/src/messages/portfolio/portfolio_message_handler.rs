@@ -63,6 +63,7 @@ pub struct PortfolioMessageHandler {
 	pub layers_panel_open: bool,
 	#[derivative(Default(value = "true"))]
 	pub properties_panel_open: bool,
+	pub render_native_node_graph: bool,
 }
 
 #[message_handler_data]
@@ -111,6 +112,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						(!metadata.selection_undo_history.is_empty(), !metadata.selection_redo_history.is_empty())
 					};
 					self.menu_bar_message_handler.make_path_editable_is_allowed = make_path_editable_is_allowed(&mut document.network_interface).is_some();
+					self.menu_bar_message_handler.render_native_node_graph = self.render_native_node_graph;
 				}
 
 				self.menu_bar_message_handler.process_message(message, responses, ());
@@ -129,6 +131,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 							data_panel_open: self.data_panel_open,
 							layers_panel_open: self.layers_panel_open,
 							properties_panel_open: self.properties_panel_open,
+							render_native_node_graph: self.render_native_node_graph,
 						};
 						document.process_message(message, responses, document_inputs)
 					}
@@ -170,6 +173,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						data_panel_open: self.data_panel_open,
 						layers_panel_open: self.layers_panel_open,
 						properties_panel_open: self.properties_panel_open,
+						render_native_node_graph: self.render_native_node_graph,
 					};
 					document.process_message(message, responses, document_inputs)
 				}
@@ -441,6 +445,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					to_front: false,
 					select_after_open: true,
 				});
+			}
+			PortfolioMessage::ToggleRenderNativeNodeGraph => {
+				self.render_native_node_graph = !self.render_native_node_graph;
+				responses.add(FrontendMessage::UpdateRenderNativeNodeGraph {
+					render_native_node_graph: self.render_native_node_graph,
+				});
+				responses.add(NodeGraphMessage::SendGraph);
 			}
 			PortfolioMessage::ToggleResetNodesToDefinitionsOnOpen => {
 				self.reset_node_definitions_on_open = !self.reset_node_definitions_on_open;
@@ -914,8 +925,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				responses.add(DocumentMessage::GraphViewOverlay { open: node_graph_open });
 				if node_graph_open {
 					responses.add(NodeGraphMessage::UpdateGraphBarRight);
-					responses.add(NodeGraphMessage::UnloadWires);
-					responses.add(NodeGraphMessage::SendWires)
+					responses.add(NodeGraphMessage::UnloadWiresOld);
+					responses.add(NodeGraphMessage::SendWiresOld)
 				} else {
 					responses.add(PortfolioMessage::UpdateDocumentWidgets);
 				}
