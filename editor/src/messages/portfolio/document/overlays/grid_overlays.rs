@@ -80,7 +80,9 @@ fn grid_overlay_rectangular_dot(document: &DocumentMessageHandler, overlay_conte
 		return;
 	};
 	let scale_is_adjusted = scaled_spacing != spacing;
-	let document_to_viewport = document.navigation_handler.calculate_offset_transform(overlay_context.size / 2., &document.document_ptz);
+	let document_to_viewport = document
+		.navigation_handler
+		.calculate_offset_transform(overlay_context.viewport.center_in_viewport_space().into(), &document.document_ptz);
 
 	let bounds = document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, overlay_context.viewport.size().into()]);
 
