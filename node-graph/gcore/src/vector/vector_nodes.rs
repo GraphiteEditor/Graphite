@@ -20,6 +20,7 @@ use crate::vector::{FillId, RegionId};
 use crate::{CloneVarArgs, Color, Context, Ctx, ExtractAll, ExtractVarArgs, Graphic, OwnedContextImpl};
 use core::f64::consts::PI;
 use core::hash::{Hash, Hasher};
+use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, PathEl, PathSeg, Shape};
 use rand::{Rng, SeedableRng};
@@ -224,7 +225,21 @@ where
 	content
 }
 
-#[node_macro::node(category("Instancing"), path(graphene_core::vector))]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[widget(Radio)]
+pub enum RepeatSpacingMethod {
+	#[default]
+	#[serde(rename = "span")]
+	Span,
+	#[serde(rename = "envelope")]
+	Envelope,
+	#[serde(rename = "pitch")]
+	Pitch,
+	#[serde(rename = "gap")]
+	Gap,
+}
+
+#[node_macro::node(category("Instancing"), path(graphene_core::vector), properties("repeat_properties"))]
 async fn repeat<I: 'n + Send + Clone>(
 	_: impl Ctx,
 	// TODO: Implement other graphical types.
@@ -234,16 +249,28 @@ async fn repeat<I: 'n + Send + Clone>(
 	direction: PixelSize,
 	angle: Angle,
 	#[default(4)] count: IntegerCount,
+	#[default(RepeatSpacingMethod::Span)] spacing_method: RepeatSpacingMethod,
+	#[default(0.)]
+	#[unit(" px")]
+	width: f64,
 ) -> Table<I> {
 	let angle = angle.to_radians();
 	let count = count.max(1);
 	let total = (count - 1) as f64;
+	let direction_normalized = direction.normalize();
+
+	let (pitch, offset) = match spacing_method {
+		RepeatSpacingMethod::Span => (direction.length() / total.max(1.), DVec2::ZERO),
+		RepeatSpacingMethod::Envelope => ((direction.length() - width) / total.max(1.), width / 2. * direction_normalized),
+		RepeatSpacingMethod::Pitch => (direction.length(), DVec2::ZERO),
+		RepeatSpacingMethod::Gap => (direction.length() + width, DVec2::ZERO),
+	};
 
 	let mut result_table = Table::new();
 
 	for index in 0..count {
-		let angle = index as f64 * angle / total;
-		let translation = index as f64 * direction / total;
+		let angle = index as f64 * angle / total.max(1.);
+		let translation = offset + index as f64 * pitch * direction_normalized;
 		let transform = DAffine2::from_angle(angle) * DAffine2::from_translation(translation);
 
 		for row in instance.iter() {
@@ -260,22 +287,34 @@ async fn repeat<I: 'n + Send + Clone>(
 	result_table
 }
 
-#[node_macro::node(category("Instancing"), path(graphene_core::vector))]
+#[node_macro::node(category("Instancing"), path(graphene_core::vector), properties("circular_repeat_properties"))]
 async fn circular_repeat<I: 'n + Send + Clone>(
 	_: impl Ctx,
 	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>)] instance: Table<I>,
-	start_angle: Angle,
+	#[default(0.)] start_angle: Angle,
+	#[default(360.)] end_angle: Angle,
 	#[unit(" px")]
 	#[default(5)]
 	radius: f64,
 	#[default(5)] count: IntegerCount,
+	#[default(RepeatSpacingMethod::Span)] angular_spacing_method: RepeatSpacingMethod,
 ) -> Table<I> {
 	let count = count.max(1);
+	let start_rad = start_angle.to_radians();
+	let end_rad = end_angle.to_radians();
+	let total_angle = end_rad - start_rad;
+	let total = (count - 1) as f64;
+
+	let angular_pitch = match angular_spacing_method {
+		RepeatSpacingMethod::Pitch => total_angle / count as f64,
+		_ => total_angle / total.max(1.),
+	};
 
 	let mut result_table = Table::new();
 
 	for index in 0..count {
-		let angle = DAffine2::from_angle((TAU / count as f64) * index as f64 + start_angle.to_radians());
+		let angle_rad = start_rad + index as f64 * angular_pitch;
+		let angle = DAffine2::from_angle(angle_rad);
 		let translation = DAffine2::from_translation(radius * DVec2::Y);
 		let transform = angle * translation;
 
@@ -2132,6 +2171,8 @@ mod test {
 			direction,
 			0.,
 			count,
+			super::RepeatSpacingMethod::Span,
+			0.,
 		)
 		.await;
 		let vector_table = super::flatten_path(Footprint::default(), repeated).await;
@@ -2151,6 +2192,8 @@ mod test {
 			direction,
 			0.,
 			count,
+			super::RepeatSpacingMethod::Span,
+			0.,
 		)
 		.await;
 		let vector_table = super::flatten_path(Footprint::default(), repeated).await;
@@ -2162,7 +2205,16 @@ mod test {
 	}
 	#[tokio::test]
 	async fn circular_repeat() {
-		let repeated = super::circular_repeat(Footprint::default(), vector_node_from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY)), 45., 4., 8).await;
+		let repeated = super::circular_repeat(
+			Footprint::default(),
+			vector_node_from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY)),
+			45.,
+			360.,
+			4.,
+			8,
+			super::RepeatSpacingMethod::Span,
+		)
+		.await;
 		let vector_table = super::flatten_path(Footprint::default(), repeated).await;
 		let vector = vector_table.iter().next().unwrap().element;
 		assert_eq!(vector.region_manipulator_groups().count(), 8);

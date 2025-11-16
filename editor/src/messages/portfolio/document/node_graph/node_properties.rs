@@ -23,6 +23,7 @@ use graphene_std::raster::{
 use graphene_std::table::{Table, TableRow};
 use graphene_std::text::{Font, TextAlign};
 use graphene_std::transform::{Footprint, ReferencePoint, Transform};
+use graphene_std::vector::RepeatSpacingMethod;
 use graphene_std::vector::misc::{ArcType, CentroidType, GridType, MergeByDistanceAlgorithm, PointSpacingType, SpiralType};
 use graphene_std::vector::style::{Fill, FillChoice, FillType, GradientStops, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 
@@ -218,6 +219,7 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<TextAlign>() => enum_choice::<TextAlign>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<MergeByDistanceAlgorithm>() => enum_choice::<MergeByDistanceAlgorithm>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<PointSpacingType>() => enum_choice::<PointSpacingType>().for_socket(default_info).property_row(),
+						Some(x) if x == TypeId::of::<RepeatSpacingMethod>() => enum_choice::<RepeatSpacingMethod>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<BooleanOperation>() => enum_choice::<BooleanOperation>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<CentroidType>() => enum_choice::<CentroidType>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<LuminanceCalculation>() => enum_choice::<LuminanceCalculation>().for_socket(default_info).property_row(),
@@ -1284,6 +1286,68 @@ pub(crate) fn grid_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	widgets.extend([LayoutGroup::Row { widgets: columns }, LayoutGroup::Row { widgets: rows }]);
 
 	widgets
+}
+
+pub(crate) fn repeat_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	const DIRECTION_INDEX: usize = 1;
+	const ANGLE_INDEX: usize = 2;
+	const COUNT_INDEX: usize = 3;
+	const SPACING_METHOD_INDEX: usize = 4;
+	const WIDTH_INDEX: usize = 5;
+
+	let direction = vec2_widget(ParameterWidgetsInfo::new(node_id, DIRECTION_INDEX, true, context), "X", "Y", " px", None, false);
+
+	let angle = number_widget(ParameterWidgetsInfo::new(node_id, ANGLE_INDEX, true, context), NumberInput::default().unit("°"));
+
+	let count = number_widget(ParameterWidgetsInfo::new(node_id, COUNT_INDEX, true, context), NumberInput::default().min(1.).int());
+
+	let spacing_method = enum_choice::<RepeatSpacingMethod>()
+		.for_socket(ParameterWidgetsInfo::new(node_id, SPACING_METHOD_INDEX, true, context))
+		.property_row();
+
+	let mut widgets = vec![direction, LayoutGroup::Row { widgets: angle }, LayoutGroup::Row { widgets: count }, spacing_method];
+
+	let document_node = match get_document_node(node_id, context) {
+		Ok(document_node) => document_node,
+		Err(_) => return widgets,
+	};
+
+	if let Some(&TaggedValue::RepeatSpacingMethod(method)) = document_node.inputs.get(SPACING_METHOD_INDEX).and_then(|i| i.as_non_exposed_value()) {
+		if matches!(method, RepeatSpacingMethod::Envelope | RepeatSpacingMethod::Gap) {
+			let width = number_widget(ParameterWidgetsInfo::new(node_id, WIDTH_INDEX, true, context), NumberInput::default().min(0.).unit(" px"));
+			widgets.push(LayoutGroup::Row { widgets: width });
+		}
+	}
+
+	widgets
+}
+
+pub(crate) fn circular_repeat_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
+	const START_ANGLE_INDEX: usize = 1;
+	const END_ANGLE_INDEX: usize = 2;
+	const RADIUS_INDEX: usize = 3;
+	const COUNT_INDEX: usize = 4;
+	const ANGULAR_SPACING_METHOD_INDEX: usize = 5;
+
+	let start_angle = number_widget(ParameterWidgetsInfo::new(node_id, START_ANGLE_INDEX, true, context), NumberInput::default().unit("°"));
+
+	let end_angle = number_widget(ParameterWidgetsInfo::new(node_id, END_ANGLE_INDEX, true, context), NumberInput::default().unit("°"));
+
+	let radius = number_widget(ParameterWidgetsInfo::new(node_id, RADIUS_INDEX, true, context), NumberInput::default().min(0.).unit(" px"));
+
+	let count = number_widget(ParameterWidgetsInfo::new(node_id, COUNT_INDEX, true, context), NumberInput::default().min(1.).int());
+
+	let angular_spacing_method = enum_choice::<RepeatSpacingMethod>()
+		.for_socket(ParameterWidgetsInfo::new(node_id, ANGULAR_SPACING_METHOD_INDEX, true, context))
+		.property_row();
+
+	vec![
+		LayoutGroup::Row { widgets: start_angle },
+		LayoutGroup::Row { widgets: end_angle },
+		LayoutGroup::Row { widgets: radius },
+		LayoutGroup::Row { widgets: count },
+		angular_spacing_method,
+	]
 }
 
 pub(crate) fn spiral_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {

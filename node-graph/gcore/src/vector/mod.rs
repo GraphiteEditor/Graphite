@@ -6,7 +6,7 @@ mod reference_point;
 pub mod style;
 mod vector_attributes;
 mod vector_modification;
-mod vector_nodes;
+pub mod vector_nodes;
 mod vector_types;
 
 pub use reference_point::*;
