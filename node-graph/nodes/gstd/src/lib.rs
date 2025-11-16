@@ -106,3 +106,8 @@ pub mod raster {
 pub mod raster_types {
 	pub use graphic_types::raster_types::*;
 }
+
+pub mod memo {
+	pub use core_types::memo::*;
+	pub use graphene_core::memo::*;
+}

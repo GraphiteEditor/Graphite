@@ -302,7 +302,7 @@ impl NodeRuntime {
 		self.monitor_nodes = proto_network
 			.nodes
 			.iter()
-			.filter(|(_, node)| node.identifier == "core_types::memo::MonitorNode".into())
+			.filter(|(_, node)| node.identifier == graphene_std::memo::monitor::IDENTIFIER)
 			.map(|(_, node)| node.original_location.path.clone().unwrap_or_default())
 			.collect::<Vec<_>>();
 

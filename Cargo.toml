@@ -232,12 +232,13 @@ cargo-gpu = { git = "https://github.com/Firestar99/cargo-gpu", rev = "3952a22d16
 unexpected_cfgs = { level = "allow", check-cfg = ['cfg(target_arch, values("spirv"))'] }
 
 [profile.dev]
-opt-level = 1
+opt-level = 0
 
 [profile.dev.package]
-graphite-editor = { opt-level = 1 }
+# graphite-editor = { opt-level = 1 }
 not-std-types = { opt-level = 1 }
-graphene-std = { opt-level = 1 }
+# graphene-std = { opt-level = 1 }
+core-types= { opt-level = 1 }
 interpreted-executor = { opt-level = 1 } # This is a mitigation for https://github.com/rustwasm/wasm-pack/issues/981 which is needed because the node_registry function is too large
 graphite-proc-macros = { opt-level = 1 }
 image = { opt-level = 2 }
@@ -245,7 +246,7 @@ rustc-hash = { opt-level = 3 }
 serde_derive = { opt-level = 1 }
 specta-macros = { opt-level = 1 }
 syn = { opt-level = 1 }
-node-macro = { opt-level = 3 }
+node-macro = { opt-level = 2 }
 
 [profile.release]
 lto = "thin"

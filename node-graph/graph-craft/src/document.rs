@@ -54,7 +54,7 @@ pub struct DocumentNode {
 	pub visible: bool,
 	/// When two different proto nodes hash to the same value (e.g. two value nodes each containing `2_u32` or two multiply nodes that have the same node IDs as input), the duplicates are removed.
 	/// See [`ProtoNetwork::generate_stable_node_ids`] for details.
-	/// However sometimes this is not desirable, for example in the case of a [`core_types::memo::MonitorNode`] that needs to be accessed outside of the graph.
+	/// However sometimes this is not desirable, for example in the case of a [`graphene_core::memo::MonitorNode`] that needs to be accessed outside of the graph.
 	#[serde(default)]
 	pub skip_deduplication: bool,
 	/// List of Extract and Inject annotations for the Context.
@@ -433,7 +433,7 @@ pub struct OldDocumentNode {
 	pub metadata: OldDocumentNodeMetadata,
 	/// When two different proto nodes hash to the same value (e.g. two value nodes each containing `2_u32` or two multiply nodes that have the same node IDs as input), the duplicates are removed.
 	/// See [`ProtoNetwork::generate_stable_node_ids`] for details.
-	/// However sometimes this is not desirable, for example in the case of a [`core_types::memo::MonitorNode`] that needs to be accessed outside of the graph.
+	/// However sometimes this is not desirable, for example in the case of a [`graphene_core::memo::MonitorNode`] that needs to be accessed outside of the graph.
 	#[serde(default)]
 	pub skip_deduplication: bool,
 	/// The path to this node and its inputs and outputs as of when [`NodeNetwork::generate_node_paths`] was called.

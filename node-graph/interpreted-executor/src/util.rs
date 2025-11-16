@@ -38,7 +38,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 				},
 				DocumentNode {
 					inputs: vec![NodeInput::node(NodeId(0), 0)],
-					implementation: DocumentNodeImplementation::ProtoNode(core_types::memo::memo::IDENTIFIER),
+					implementation: DocumentNodeImplementation::ProtoNode(graphene_core::memo::memo::IDENTIFIER),
 					..Default::default()
 				},
 				DocumentNode {

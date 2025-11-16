@@ -36,24 +36,17 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	},
 	NodeReplacement {
 		node: graphene_std::graphic_nodes::source_node_id::IDENTIFIER,
-		aliases: &["graphene_core::graphic::SourceNodeIdNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::vector::vector_modification_nodes::path_modify::IDENTIFIER,
-		aliases: &["graphene_core::vector::vector_modification::PathModifyNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::transform_nodes::transform_nodes::transform::IDENTIFIER,
-		aliases: &["graphene_core::transform_nodes::TransformNode"],
+		aliases: &["graphene_core::graphic::graphic::SourceNodeIdNode", "graphene_core::graphic::SourceNodeIdNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::vector_nodes::fill::IDENTIFIER,
-		aliases: &["graphene_core::vector::FillNode"],
+		aliases: &["graphene_core::vector::vector_nodes::FillNode", "graphene_core::vector::FillNode"],
 	},
 	// artboard
 	NodeReplacement {
 		node: graphene_std::artboard::create_artboard::IDENTIFIER,
 		aliases: &[
+			"graphene_core::artboard::CreateArtboardNode",
 			"graphene_core::ConstructArtboardNode",
 			"graphene_core::graphic_element::ToArtboardNode",
 			"graphene_core::artboard::ToArtboardNode",
@@ -93,15 +86,19 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	},
 	NodeReplacement {
 		node: graphene_std::graphic::extend::IDENTIFIER,
-		aliases: &["graphene_core::graphic::ExtendNode"],
+		aliases: &["graphene_core::graphic::graphic::ExtendNode", "graphene_core::graphic::ExtendNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::graphic::flatten_graphic::IDENTIFIER,
-		aliases: &["graphene_core::graphic_element::FlattenGroupNode", "graphene_core::graphic_types::FlattenGroupNode"],
+		aliases: &[
+			"graphene_core::graphic::FlattenGraphicNode",
+			"graphene_core::graphic_element::FlattenGroupNode",
+			"graphene_core::graphic_types::FlattenGroupNode",
+		],
 	},
 	NodeReplacement {
 		node: graphene_std::graphic::flatten_vector::IDENTIFIER,
-		aliases: &["graphene_core::graphic_element::FlattenVectorNode"],
+		aliases: &["graphene_core::graphic::FlattenVectorNode", "graphene_core::graphic_element::FlattenVectorNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::graphic::index_elements::IDENTIFIER,
@@ -110,123 +107,123 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	// math_nodes
 	NodeReplacement {
 		node: graphene_std::math_nodes::math::IDENTIFIER,
-		aliases: &["graphene_core::ops::MathNode"],
+		aliases: &["graphene_math_nodes::MathNode", "graphene_core::ops::MathNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::add::IDENTIFIER,
-		aliases: &["graphene_core::ops::AddNode"],
+		aliases: &["graphene_math_nodes::AddNode", "graphene_core::ops::AddNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::subtract::IDENTIFIER,
-		aliases: &["graphene_core::ops::SubtractNode"],
+		aliases: &["graphene_math_nodes::SubtractNode", "graphene_core::ops::SubtractNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::multiply::IDENTIFIER,
-		aliases: &["graphene_core::ops::MultiplyNode"],
+		aliases: &["graphene_math_nodes::MultiplyNode", "graphene_core::ops::MultiplyNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::divide::IDENTIFIER,
-		aliases: &["graphene_core::ops::DivideNode"],
+		aliases: &["graphene_math_nodes::DivideNode", "graphene_core::ops::DivideNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::modulo::IDENTIFIER,
-		aliases: &["graphene_core::ops::ModuloNode"],
+		aliases: &["graphene_math_nodes::ModuloNode", "graphene_core::ops::ModuloNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::exponent::IDENTIFIER,
-		aliases: &["graphene_core::ops::ExponentNode"],
+		aliases: &["graphene_math_nodes::ExponentNode", "graphene_core::ops::ExponentNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::root::IDENTIFIER,
-		aliases: &["graphene_core::ops::RootNode"],
+		aliases: &["graphene_math_nodes::RootNode", "graphene_core::ops::RootNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::absolute_value::IDENTIFIER,
-		aliases: &["graphene_core::ops::AbsoluteValueNode"],
+		aliases: &["graphene_math_nodes::AbsoluteValueNode", "graphene_core::ops::AbsoluteValueNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::logarithm::IDENTIFIER,
-		aliases: &["graphene_core::ops::LogarithmNode"],
+		aliases: &["graphene_math_nodes::LogarithmNode", "graphene_core::ops::LogarithmNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::sine::IDENTIFIER,
-		aliases: &["graphene_core::ops::SineNode"],
+		aliases: &["graphene_math_nodes::SineNode", "graphene_core::ops::SineNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::cosine::IDENTIFIER,
-		aliases: &["graphene_core::ops::CosineNode"],
+		aliases: &["graphene_math_nodes::CosineNode", "graphene_core::ops::CosineNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::tangent::IDENTIFIER,
-		aliases: &["graphene_core::ops::TangentNode"],
+		aliases: &["graphene_math_nodes::TangentNode", "graphene_core::ops::TangentNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::sine_inverse::IDENTIFIER,
-		aliases: &["graphene_core::ops::SineInverseNode"],
+		aliases: &["graphene_math_nodes::SineInverseNode", "graphene_core::ops::SineInverseNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::cosine_inverse::IDENTIFIER,
-		aliases: &["graphene_core::ops::CosineInverseNode"],
+		aliases: &["graphene_math_nodes::CosineInverseNode", "graphene_core::ops::CosineInverseNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::tangent_inverse::IDENTIFIER,
-		aliases: &["graphene_core::ops::TangentInverseNode"],
+		aliases: &["graphene_math_nodes::TangentInverseNode", "graphene_core::ops::TangentInverseNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::random::IDENTIFIER,
-		aliases: &["graphene_core::ops::RandomNode"],
+		aliases: &["graphene_math_nodes::RandomNode", "graphene_core::ops::RandomNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::to_u_32::IDENTIFIER,
-		aliases: &["graphene_core::ops::ToU32Node"],
+		aliases: &["graphene_math_nodes::ToU32Node", "graphene_core::ops::ToU32Node"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::to_u_64::IDENTIFIER,
-		aliases: &["graphene_core::ops::ToU64Node"],
+		aliases: &["graphene_math_nodes::ToU64Node", "graphene_core::ops::ToU64Node"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::to_f_64::IDENTIFIER,
-		aliases: &["graphene_core::ops::ToF64Node"],
+		aliases: &["graphene_math_nodes::ToF64Node", "graphene_core::ops::ToF64Node"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::round::IDENTIFIER,
-		aliases: &["graphene_core::ops::RoundNode"],
+		aliases: &["graphene_math_nodes::RoundNode", "graphene_core::ops::RoundNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::floor::IDENTIFIER,
-		aliases: &["graphene_core::ops::FloorNode"],
+		aliases: &["graphene_math_nodes::FloorNode", "graphene_core::ops::FloorNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::ceiling::IDENTIFIER,
-		aliases: &["graphene_core::ops::CeilingNode"],
+		aliases: &["graphene_math_nodes::CeilingNode", "graphene_core::ops::CeilingNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::min::IDENTIFIER,
-		aliases: &["graphene_core::ops::MinNode"],
+		aliases: &["graphene_math_nodes::MinNode", "graphene_core::ops::MinNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::max::IDENTIFIER,
-		aliases: &["graphene_core::ops::MaxNode"],
+		aliases: &["graphene_math_nodes::MaxNode", "graphene_core::ops::MaxNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::clamp::IDENTIFIER,
-		aliases: &["graphene_core::ops::ClampNode"],
+		aliases: &["graphene_math_nodes::ClampNode", "graphene_core::ops::ClampNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::equals::IDENTIFIER,
-		aliases: &["graphene_core::ops::EqualsNode"],
+		aliases: &["graphene_math_nodes::EqualsNode", "graphene_core::ops::EqualsNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::not_equals::IDENTIFIER,
-		aliases: &["graphene_core::ops::NotEqualsNode"],
+		aliases: &["graphene_math_nodes::NotEqualsNode", "graphene_core::ops::NotEqualsNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::less_than::IDENTIFIER,
-		aliases: &["graphene_core::ops::LessThanNode"],
+		aliases: &["graphene_math_nodes::LessThanNode", "graphene_core::ops::LessThanNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::greater_than::IDENTIFIER,
-		aliases: &["graphene_core::ops::GreaterThanNode"],
+		aliases: &["graphene_math_nodes::GreaterThanNode", "graphene_core::ops::GreaterThanNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::logical_or::IDENTIFIER,
@@ -242,15 +239,15 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::bool_value::IDENTIFIER,
-		aliases: &["graphene_core::ops::BoolValueNode"],
+		aliases: &["graphene_math_nodes::BoolValueNode", "graphene_core::ops::BoolValueNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::number_value::IDENTIFIER,
-		aliases: &["graphene_core::ops::NumberValueNode"],
+		aliases: &["graphene_math_nodes::NumberValueNode", "graphene_core::ops::NumberValueNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::percentage_value::IDENTIFIER,
-		aliases: &["graphene_core::ops::PercentageValueNode"],
+		aliases: &["graphene_math_nodes::PercentageValueNode", "graphene_core::ops::PercentageValueNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::vec_2_value::IDENTIFIER,
@@ -263,35 +260,35 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	},
 	NodeReplacement {
 		node: graphene_std::vector::cut_segments::IDENTIFIER,
-		aliases: &["graphene_core::vector::SplitSegmentsNode"],
+		aliases: &["graphene_core::vector::vector_nodes::SplitSegmentsNode", "graphene_core::vector::SplitSegmentsNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::vector::cut_path::IDENTIFIER,
-		aliases: &["graphene_core::vector::SplitPathNode"],
+		aliases: &["graphene_core::vector::vector_nodes::SplitPathNode", "graphene_core::vector::SplitPathNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::vector::vec_2_to_point::IDENTIFIER,
-		aliases: &["graphene_core::vector::PositionToPointNode"],
+		aliases: &["graphene_core::vector::vector_nodes::PositionToPointNode", "graphene_core::vector::PositionToPointNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::color_value::IDENTIFIER,
-		aliases: &["graphene_core::ops::ColorValueNode"],
+		aliases: &["graphene_math_nodes::ColorValueNode", "graphene_core::ops::ColorValueNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::gradient_value::IDENTIFIER,
-		aliases: &["graphene_core::ops::GradientValueNode"],
+		aliases: &["graphene_math_nodes::GradientValueNode", "graphene_core::ops::GradientValueNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::sample_gradient::IDENTIFIER,
-		aliases: &["graphene_core::ops::SampleGradientNode"],
+		aliases: &["graphene_math_nodes::SampleGradientNode", "graphene_core::ops::SampleGradientNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::string_value::IDENTIFIER,
-		aliases: &["graphene_core::ops::StringValueNode"],
+		aliases: &["graphene_math_nodes::StringValueNode", "graphene_core::ops::StringValueNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::dot_product::IDENTIFIER,
-		aliases: &["graphene_core::ops::DotProductNode"],
+		aliases: &["graphene_math_nodes::DotProductNode", "graphene_core::ops::DotProductNode"],
 	},
 	// debug
 	NodeReplacement {
@@ -317,24 +314,29 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	},
 	NodeReplacement {
 		node: graphene_std::blending_nodes::blend_mode::IDENTIFIER,
-		aliases: &["graphene_core::raster::BlendModeNode"],
+		aliases: &["graphene_core::raster::BlendModeNode", "graphene_core::blending_nodes::BlendModeNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::blending_nodes::opacity::IDENTIFIER,
-		aliases: &["graphene_core::raster::OpacityNode"],
+		aliases: &["graphene_core::raster::OpacityNode", "graphene_core::blending_nodes::OpacityNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::blending_nodes::blending::IDENTIFIER,
-		aliases: &["graphene_core::raster::BlendingNode"],
+		aliases: &["graphene_core::raster::BlendingNode", "graphene_core::blending_nodes::BlendingNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::vector::auto_tangents::IDENTIFIER,
-		aliases: &["graphene_core::vector::GenerateHandlesNode", "graphene_core::vector::RemoveHandlesNode"],
+		aliases: &[
+			"graphene_core::vector::vector_nodes::AutoTangentsNode",
+			"graphene_core::vector::GenerateHandlesNode",
+			"graphene_core::vector::RemoveHandlesNode",
+		],
 	},
 	// raster_nodes::blending_nodes
 	NodeReplacement {
 		node: graphene_std::raster_nodes::blending_nodes::blend::IDENTIFIER,
 		aliases: &[
+			"graphene_raster_nodes::adjustments::BlendNode",
 			"raster_nodes::adjustments::BlendNode",
 			"graphene_core::raster::adjustments::BlendNode",
 			"graphene_core::raster::BlendNode",
@@ -343,6 +345,8 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	NodeReplacement {
 		node: graphene_std::raster_nodes::blending_nodes::color_overlay::IDENTIFIER,
 		aliases: &[
+			"graphene_raster_nodes::adjustments::ColorOverlayNode",
+			"graphene_raster_nodes::generate_curves::ColorOverlayNode",
 			"raster_nodes::adjustments::ColorOverlayNode",
 			"graphene_core::raster::adjustments::ColorOverlayNode",
 			"raster_nodes::generate_curves::ColorOverlayNode",
@@ -351,35 +355,63 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	// raster_nodes::adjustments
 	NodeReplacement {
 		node: graphene_std::raster_nodes::adjustments::luminance::IDENTIFIER,
-		aliases: &["graphene_core::raster::adjustments::LuminanceNode", "graphene_core::raster::LuminanceNode"],
+		aliases: &[
+			"graphene_raster_nodes::adjustments::LuminanceNode",
+			"graphene_core::raster::adjustments::LuminanceNode",
+			"graphene_core::raster::LuminanceNode",
+		],
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::adjustments::extract_channel::IDENTIFIER,
-		aliases: &["graphene_core::raster::adjustments::ExtractChannelNode", "graphene_core::raster::ExtractChannelNode"],
+		aliases: &[
+			"graphene_raster_nodes::adjustments::ExtractChannelNode",
+			"graphene_core::raster::adjustments::ExtractChannelNode",
+			"graphene_core::raster::ExtractChannelNode",
+		],
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::adjustments::make_opaque::IDENTIFIER,
-		aliases: &["graphene_core::raster::adjustments::MakeOpaqueNode", "graphene_core::raster::ExtractOpaqueNode"],
+		aliases: &[
+			"graphene_raster_nodes::adjustments::MakeOpaqueNode",
+			"graphene_core::raster::adjustments::MakeOpaqueNode",
+			"graphene_core::raster::ExtractOpaqueNode",
+		],
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::adjustments::brightness_contrast::IDENTIFIER,
-		aliases: &["graphene_core::raster::adjustments::BrightnessContrastNode"],
+		aliases: &[
+			"graphene_raster_nodes::adjustments::BrightnessContrastNode",
+			"graphene_core::raster::adjustments::BrightnessContrastNode",
+		],
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::adjustments::levels::IDENTIFIER,
-		aliases: &["graphene_core::raster::adjustments::LevelsNode", "graphene_core::raster::LevelsNode"],
+		aliases: &[
+			"graphene_raster_nodes::adjustments::LevelsNode",
+			"graphene_core::raster::adjustments::LevelsNode",
+			"graphene_core::raster::LevelsNode",
+		],
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::adjustments::black_and_white::IDENTIFIER,
-		aliases: &["graphene_core::raster::adjustments::BlackAndWhiteNode", "graphene_core::raster::BlackAndWhiteNode"],
+		aliases: &[
+			"graphene_raster_nodes::adjustments::BlackAndWhiteNode",
+			"graphene_core::raster::adjustments::BlackAndWhiteNode",
+			"graphene_core::raster::BlackAndWhiteNode",
+		],
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::adjustments::hue_saturation::IDENTIFIER,
-		aliases: &["graphene_core::raster::adjustments::HueSaturationNode", "graphene_core::raster::HueSaturationNode"],
+		aliases: &[
+			"graphene_raster_nodes::adjustments::HueSaturationNode",
+			"graphene_core::raster::adjustments::HueSaturationNode",
+			"graphene_core::raster::HueSaturationNode",
+		],
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::adjustments::invert::IDENTIFIER,
 		aliases: &[
+			"graphene_raster_nodes::adjustments::InvertNode",
 			"graphene_core::raster::adjustments::InvertNode",
 			"graphene_core::raster::InvertNode",
 			"graphene_core::raster::InvertRGBNode",
@@ -387,32 +419,54 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::adjustments::threshold::IDENTIFIER,
-		aliases: &["graphene_core::raster::adjustments::ThresholdNode", "graphene_core::raster::ThresholdNode"],
+		aliases: &[
+			"graphene_raster_nodes::adjustments::ThresholdNode",
+			"graphene_core::raster::adjustments::ThresholdNode",
+			"graphene_core::raster::ThresholdNode",
+		],
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::adjustments::vibrance::IDENTIFIER,
-		aliases: &["graphene_core::raster::adjustments::VibranceNode", "graphene_core::raster::VibranceNode"],
+		aliases: &[
+			"graphene_raster_nodes::adjustments::VibranceNode",
+			"graphene_core::raster::adjustments::VibranceNode",
+			"graphene_core::raster::VibranceNode",
+		],
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::adjustments::channel_mixer::IDENTIFIER,
-		aliases: &["graphene_core::raster::adjustments::ChannelMixerNode", "graphene_core::raster::ChannelMixerNode"],
+		aliases: &[
+			"graphene_raster_nodes::adjustments::ChannelMixerNode",
+			"graphene_core::raster::adjustments::ChannelMixerNode",
+			"graphene_core::raster::ChannelMixerNode",
+		],
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::adjustments::selective_color::IDENTIFIER,
-		aliases: &["graphene_core::raster::adjustments::SelectiveColorNode"],
+		aliases: &["graphene_raster_nodes::adjustments::SelectiveColorNode", "graphene_core::raster::adjustments::SelectiveColorNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::adjustments::posterize::IDENTIFIER,
-		aliases: &["graphene_core::raster::adjustments::PosterizeNode", "graphene_core::raster::PosterizeNode"],
+		aliases: &[
+			"graphene_raster_nodes::adjustments::PosterizeNode",
+			"graphene_core::raster::adjustments::PosterizeNode",
+			"graphene_core::raster::PosterizeNode",
+		],
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::adjustments::exposure::IDENTIFIER,
-		aliases: &["graphene_core::raster::adjustments::ExposureNode", "graphene_core::raster::ExposureNode"],
+		aliases: &[
+			"graphene_raster_nodes::adjustments::ExposureNode",
+			"graphene_core::raster::adjustments::ExposureNode",
+			"graphene_core::raster::ExposureNode",
+		],
 	},
 	// raster_nodes::*
 	NodeReplacement {
 		node: graphene_std::raster_nodes::gradient_map::gradient_map::IDENTIFIER,
 		aliases: &[
+			"graphene_raster_nodes::gradient_map::GradientMapNode",
+			"graphene_raster_nodes::adjustments::GradientMapNode",
 			"raster_nodes::gradient_map::GradientMapNode",
 			"raster_nodes::adjustments::GradientMapNode",
 			"graphene_core::raster::adjustments::GradientMapNode",
@@ -421,70 +475,89 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::generate_curves::generate_curves::IDENTIFIER,
-		aliases: &["graphene_core::raster::adjustments::GenerateCurvesNode"],
+		aliases: &["graphene_raster_nodes::generate_curves::GenerateCurvesNode", "graphene_core::raster::adjustments::GenerateCurvesNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::dehaze::dehaze::IDENTIFIER,
-		aliases: &["graphene_std::dehaze::DehazeNode"],
+		aliases: &["graphene_raster_nodes::dehaze::DehazeNode", "graphene_std::dehaze::DehazeNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::filter::blur::IDENTIFIER,
-		aliases: &["graphene_std::filter::BlurNode"],
+		aliases: &["graphene_raster_nodes::filter::BlurNode", "graphene_std::filter::BlurNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::image_color_palette::image_color_palette::IDENTIFIER,
-		aliases: &["graphene_std::image_color_palette::ImageColorPaletteNode"],
+		aliases: &[
+			"graphene_raster_nodes::image_color_palette::ImageColorPaletteNode",
+			"graphene_std::image_color_palette::ImageColorPaletteNode",
+		],
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::std_nodes::sample_image::IDENTIFIER,
-		aliases: &["graphene_std::raster::SampleImageNode", "graphene_std::raster::SampleNode"],
+		aliases: &[
+			"graphene_raster_nodes::std_nodes::SampleImageNode",
+			"graphene_std::raster::SampleImageNode",
+			"graphene_std::raster::SampleNode",
+		],
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::std_nodes::combine_channels::IDENTIFIER,
-		aliases: &["graphene_std::raster::CombineChannelsNode"],
+		aliases: &["graphene_raster_nodes::std_nodes::CombineChannelsNode", "graphene_std::raster::CombineChannelsNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::std_nodes::mask::IDENTIFIER,
-		aliases: &["graphene_std::raster::MaskNode", "graphene_std::raster::MaskImageNode"],
+		aliases: &["graphene_raster_nodes::std_nodes::MaskNode", "graphene_std::raster::MaskNode", "graphene_std::raster::MaskImageNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::std_nodes::extend_image_to_bounds::IDENTIFIER,
-		aliases: &["graphene_std::raster::ExtendImageToBoundsNode"],
+		aliases: &["graphene_raster_nodes::std_nodes::ExtendImageToBoundsNode", "graphene_std::raster::ExtendImageToBoundsNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::std_nodes::empty_image::IDENTIFIER,
-		aliases: &["graphene_std::raster::EmptyImageNode"],
+		aliases: &["graphene_raster_nodes::std_nodes::EmptyImageNode", "graphene_std::raster::EmptyImageNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::std_nodes::image_value::IDENTIFIER,
-		aliases: &["graphene_std::raster::ImageValueNode", "graphene_std::raster::ImageNode"],
+		aliases: &[
+			"graphene_raster_nodes::std_nodes::ImageValueNode",
+			"graphene_std::raster::ImageValueNode",
+			"graphene_std::raster::ImageNode",
+		],
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::std_nodes::noise_pattern::IDENTIFIER,
-		aliases: &["graphene_std::raster::NoisePatternNode"],
+		aliases: &["graphene_raster_nodes::std_nodes::NoisePatternNode", "graphene_std::raster::NoisePatternNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::raster_nodes::std_nodes::mandelbrot::IDENTIFIER,
-		aliases: &["graphene_std::raster::MandelbrotNode"],
+		aliases: &["graphene_raster_nodes::std_nodes::MandelbrotNode", "graphene_std::raster::MandelbrotNode"],
 	},
 	// text
 	NodeReplacement {
 		node: graphene_std::text::text::IDENTIFIER,
-		aliases: &["graphene_core::text::TextGeneratorNode"],
+		aliases: &["graphene_core::text::text::TextNode", "graphene_core::text::TextGeneratorNode", "graphene_core::text::TextNode"],
 	},
 	// transform
 	NodeReplacement {
 		node: graphene_std::transform_nodes::replace_transform::IDENTIFIER,
-		aliases: &["graphene_core::transform::SetTransformNode", "graphene_core::transform::ReplaceTransformNode"],
+		aliases: &[
+			"graphene_core::transform_nodes::ReplaceTransformNode",
+			"graphene_core::transform::SetTransformNode",
+			"graphene_core::transform::ReplaceTransformNode",
+		],
 	},
 	NodeReplacement {
 		node: graphene_std::transform_nodes::transform::IDENTIFIER,
-		aliases: &["graphene_core::transform::TransformNode"],
+		aliases: &["graphene_core::transform_nodes::TransformNode", "graphene_core::transform::TransformNode"],
 	},
-	// ???
+	// vector
 	NodeReplacement {
 		node: graphene_std::vector::spline::IDENTIFIER,
-		aliases: &["graphene_core::vector::SplinesFromPointsNode"],
+		aliases: &[
+			"graphene_core::vector::vector_nodes::SplineNode",
+			"graphene_core::vector::SplinesFromPointsNode",
+			"graphene_core::vector::SplineNode",
+		],
 	},
 	NodeReplacement {
 		node: graphene_std::vector::generator_nodes::ellipse::IDENTIFIER,
@@ -518,28 +591,172 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	},
 	NodeReplacement {
 		node: graphene_std::vector::flatten_path::IDENTIFIER,
-		aliases: &["graphene_core::vector::FlattenVectorElementsNode"],
+		aliases: &["graphene_core::vector::vector_nodes::FlattenPathNode", "graphene_core::vector::FlattenVectorElementsNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::path_bool::boolean_operation::IDENTIFIER,
-		aliases: &["graphene_std::vector::BooleanOperationNode"],
+		aliases: &["graphene_path_bool::BooleanOperationNode", "graphene_std::vector::BooleanOperationNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::vector::path_modify::IDENTIFIER,
-		aliases: &["graphene_core::vector::vector_data::modification::PathModifyNode"],
+		aliases: &[
+			"graphene_core::vector::vector_modification_nodes::PathModifyNode",
+			"graphene_core::vector::vector_data::modification::PathModifyNode",
+			"graphene_core::vector::vector_modification::PathModifyNode",
+		],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::copy_to_points::IDENTIFIER,
+		aliases: &["graphene_core::vector::CopyToPointsNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::repeat::IDENTIFIER,
+		aliases: &["graphene_core::vector::RepeatNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::circular_repeat::IDENTIFIER,
+		aliases: &["graphene_core::vector::CircularRepeatNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::mirror::IDENTIFIER,
+		aliases: &["graphene_core::vector::MirrorNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::round_corners::IDENTIFIER,
+		aliases: &["graphene_core::vector::RoundCornersNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::merge_by_distance::IDENTIFIER,
+		aliases: &["graphene_core::vector::MergeByDistanceNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::box_warp::IDENTIFIER,
+		aliases: &["graphene_core::vector::BoxWarpNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::bounding_box::IDENTIFIER,
+		aliases: &["graphene_core::vector::BoundingBoxNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::dimensions::IDENTIFIER,
+		aliases: &["graphene_core::vector::DimensionsNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::points_to_polyline::IDENTIFIER,
+		aliases: &["graphene_core::vector::PointsToPolylineNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::offset_path::IDENTIFIER,
+		aliases: &["graphene_core::vector::OffsetPathNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::solidify_stroke::IDENTIFIER,
+		aliases: &["graphene_core::vector::SolidifyStrokeNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::separate_subpaths::IDENTIFIER,
+		aliases: &["graphene_core::vector::SeparateSubpathsNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::instance_vector::IDENTIFIER,
+		aliases: &["graphene_core::vector::InstanceVectorNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::instance_map::IDENTIFIER,
+		aliases: &["graphene_core::vector::InstanceMapNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::sample_polyline::IDENTIFIER,
+		aliases: &["graphene_core::vector::SamplePolylineNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::position_on_path::IDENTIFIER,
+		aliases: &["graphene_core::vector::PositionOnPathNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::tangent_on_path::IDENTIFIER,
+		aliases: &["graphene_core::vector::TangentOnPathNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::poisson_disk_points::IDENTIFIER,
+		aliases: &["graphene_core::vector::PoissonDiskPointsNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::subpath_segment_lengths::IDENTIFIER,
+		aliases: &["graphene_core::vector::SubpathSegmentLengthsNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::jitter_points::IDENTIFIER,
+		aliases: &["graphene_core::vector::JitterPointsNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::morph::IDENTIFIER,
+		aliases: &["graphene_core::vector::MorphNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::bevel::IDENTIFIER,
+		aliases: &["graphene_core::vector::BevelNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::close_path::IDENTIFIER,
+		aliases: &["graphene_core::vector::ClosePathNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::point_inside::IDENTIFIER,
+		aliases: &["graphene_core::vector::PointInsideNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::count_elements::IDENTIFIER,
+		aliases: &["graphene_core::vector::CountElementsNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::path_length::IDENTIFIER,
+		aliases: &["graphene_core::vector::PathLengthNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::area::IDENTIFIER,
+		aliases: &["graphene_core::vector::AreaNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::centroid::IDENTIFIER,
+		aliases: &["graphene_core::vector::CentroidNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::assign_colors::IDENTIFIER,
+		aliases: &["graphene_core::vector::AssignColorsNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::stroke::IDENTIFIER,
+		aliases: &["graphene_core::vector::StrokeNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::generator_nodes::circle::IDENTIFIER,
+		aliases: &["graphene_core::vector::generator_nodes::CircleNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::generator_nodes::arc::IDENTIFIER,
+		aliases: &["graphene_core::vector::generator_nodes::ArcNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::generator_nodes::spiral::IDENTIFIER,
+		aliases: &["graphene_core::vector::generator_nodes::SpiralNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::generator_nodes::grid::IDENTIFIER,
+		aliases: &["graphene_core::vector::generator_nodes::GridNode"],
 	},
 	// brush
 	NodeReplacement {
 		node: graphene_std::brush::brush::brush_stamp_generator::IDENTIFIER,
-		aliases: &["graphene_std::brush::BrushStampGeneratorNode"],
+		aliases: &["graphene_brush::BrushStampGeneratorNode", "graphene_std::brush::BrushStampGeneratorNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::brush::brush::blit::IDENTIFIER,
-		aliases: &["graphene_std::brush::BlitNode"],
+		aliases: &["graphene_brush::BlitNode", "graphene_std::brush::BlitNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::brush::brush::brush::IDENTIFIER,
-		aliases: &["graphene_std::brush::BrushNode"],
+		aliases: &["graphene_brush::BrushNode", "graphene_std::brush::BrushNode"],
 	},
 ];
 
