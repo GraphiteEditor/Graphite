@@ -81,6 +81,7 @@ pub enum PortfolioMessage {
 		to_front: bool,
 		select_after_open: bool,
 	},
+	ToggleRenderNativeNodeGraph,
 	ToggleResetNodesToDefinitionsOnOpen,
 	PasteIntoFolder {
 		clipboard: Clipboard,

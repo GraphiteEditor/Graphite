@@ -18,6 +18,7 @@ pub struct MenuBarMessageHandler {
 	pub has_selection_history: (bool, bool),
 	pub message_logging_verbosity: MessageLoggingVerbosity,
 	pub reset_node_definitions_on_open: bool,
+	pub render_native_node_graph: bool,
 	pub make_path_editable_is_allowed: bool,
 	pub data_panel_open: bool,
 	pub layers_panel_open: bool,
@@ -48,6 +49,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 		let message_logging_verbosity_names = self.message_logging_verbosity == MessageLoggingVerbosity::Names;
 		let message_logging_verbosity_contents = self.message_logging_verbosity == MessageLoggingVerbosity::Contents;
 		let reset_node_definitions_on_open = self.reset_node_definitions_on_open;
+		let render_native_node_graph = self.render_native_node_graph;
 		let make_path_editable_is_allowed = self.make_path_editable_is_allowed;
 
 		let menu_bar_entries = vec![
@@ -694,6 +696,12 @@ impl LayoutHolder for MenuBarMessageHandler {
 								label: "Reset Nodes to Definitions on Open".into(),
 								icon: Some(if reset_node_definitions_on_open { "CheckboxChecked" } else { "CheckboxUnchecked" }.into()),
 								action: MenuBarEntry::create_action(|_| PortfolioMessage::ToggleResetNodesToDefinitionsOnOpen.into()),
+								..MenuBarEntry::default()
+							}],
+							vec![MenuBarEntry {
+								label: " Render Native Node Graph UI".into(),
+								icon: Some(if render_native_node_graph { "CheckboxChecked" } else { "CheckboxUnchecked" }.into()),
+								action: MenuBarEntry::create_action(|_| PortfolioMessage::ToggleRenderNativeNodeGraph.into()),
 								..MenuBarEntry::default()
 							}],
 							vec![

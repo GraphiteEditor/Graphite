@@ -568,8 +568,7 @@
 							</canvas>
 						{/if}
 					</div>
-
-					<div class="graph-view" class:open={$document.graphViewOverlayOpen} style:--fade-artwork={`${$document.fadeArtwork}%`} data-graph>
+					<div class="graph-view" class:open={$document.graphViewOverlayOpen} data-graph>
 						<Graph />
 					</div>
 				</LayoutCol>
@@ -837,18 +836,6 @@
 							cursor: auto;
 							pointer-events: auto;
 							opacity: 1;
-						}
-
-						&::before {
-							content: "";
-							position: absolute;
-							top: 0;
-							left: 0;
-							width: 100%;
-							height: 100%;
-							background: var(--color-2-mildblack);
-							opacity: var(--fade-artwork);
-							pointer-events: none;
 						}
 					}
 
