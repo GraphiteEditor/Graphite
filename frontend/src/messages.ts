@@ -33,20 +33,7 @@ export class UpdateClickTargets extends JsMessage {
 	readonly clickTargets!: FrontendClickTargets | undefined;
 }
 
-const ContextTupleToVec2 = Transform((data) => {
-	if (data.obj.contextMenuInformation === undefined) return undefined;
-	const contextMenuCoordinates = data.obj.contextMenuInformation.contextMenuCoordinates;
-	let contextMenuData = data.obj.contextMenuInformation.contextMenuData;
-	if (contextMenuData.ToggleLayer !== undefined) {
-		contextMenuData = { nodeId: contextMenuData.ToggleLayer.nodeId, currentlyIsNode: contextMenuData.ToggleLayer.currentlyIsNode };
-	} else if (contextMenuData.CreateNode !== undefined) {
-		contextMenuData = { type: "CreateNode", compatibleType: contextMenuData.CreateNode.compatibleType };
-	}
-	return { contextMenuCoordinates, contextMenuData };
-});
-
 export class UpdateContextMenuInformation extends JsMessage {
-	@ContextTupleToVec2
 	readonly contextMenuInformation!: ContextMenuInformation | undefined;
 }
 
@@ -183,7 +170,7 @@ export type FrontendClickTargets = {
 
 export type ContextMenuInformation = {
 	contextMenuCoordinates: XY;
-	contextMenuData: "CreateNode" | { type: "CreateNode"; compatibleType: string } | { nodeId: bigint; currentlyIsNode: boolean };
+	contextMenuData: { type: "CreateNode"; data: { compatibleType: string | undefined } } | { type: "ModifyNode"; data: { canBeLayer: boolean; currentlyIsNode: boolean; nodeId: bigint } };
 };
 
 export type FrontendGraphDataType = "General" | "Number" | "Artboard" | "Graphic" | "Raster" | "Vector" | "Color" | "Invalid";

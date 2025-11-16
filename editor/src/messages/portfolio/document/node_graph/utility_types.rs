@@ -153,16 +153,18 @@ pub struct BoxSelection {
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[serde(tag = "type", content = "data")]
 pub enum ContextMenuData {
-	ToggleLayer {
-		#[serde(rename = "nodeId")]
-		node_id: NodeId,
+	ModifyNode {
+		#[serde(rename = "canBeLayer")]
+		can_be_layer: bool,
 		#[serde(rename = "currentlyIsNode")]
 		currently_is_node: bool,
+		#[serde(rename = "nodeId")]
+		node_id: NodeId,
 	},
 	CreateNode {
 		#[serde(rename = "compatibleType")]
-		#[serde(default)]
 		compatible_type: Option<String>,
 	},
 }

@@ -27,9 +27,6 @@
 
 	let graph: HTMLDivElement | undefined;
 
-	// Key value is node id + input/output index
-	// Imports/Export are stored at a key value of 0
-
 	$: gridSpacing = calculateGridSpacing($nodeGraph.transform.scale);
 	$: gridDotRadius = 1 + Math.floor($nodeGraph.transform.scale - 0.5 + 0.001) / 2;
 
@@ -115,15 +112,6 @@
 		return iconMap[icon] || "NodeNodes";
 	}
 
-	function toggleLayerDisplay(displayAsLayer: boolean, toggleId: bigint) {
-		let node = $nodeGraph.nodes.get(toggleId);
-		if (node) editor.handle.setToNodeOrLayer(node.id, displayAsLayer);
-	}
-
-	function canBeToggledBetweenNodeAndLayer(toggleDisplayAsLayerNodeId: bigint) {
-		return $nodeGraph.nodes.get(toggleDisplayAsLayerNodeId)?.canBeLayer || false;
-	}
-
 	function createNode(nodeType: string) {
 		if ($nodeGraph.contextMenuInformation === undefined) return;
 
@@ -176,24 +164,24 @@
 		return `M-2,-2 L${nodeWidth + 2},-2 L${nodeWidth + 2},${nodeHeight + 2} L-2,${nodeHeight + 2}z ${rectangles.join(" ")}`;
 	}
 
-	function dataTypeTooltip(value: FrontendGraphInput | FrontendGraphOutput): string {
-		return `Data Type: ${value.resolvedType}`;
-	}
+	// function dataTypeTooltip(value: FrontendGraphInput | FrontendGraphOutput): string {
+	// 	return `Data Type: ${value.resolvedType}`;
+	// }
 
 	// function validTypesText(value: FrontendGraphInput): string {
 	// 	const validTypes = value.validTypes.length > 0 ? value.validTypes.map((x) => `• ${x}`).join("\n") : "None";
 	// 	return `Valid Types:\n${validTypes}`;
 	// }
 
-	function outputConnectedToText(output: FrontendGraphOutput): string {
-		if (output.connectedTo.length === 0) return "Connected to nothing";
+	// function outputConnectedToText(output: FrontendGraphOutput): string {
+	// 	if (output.connectedTo.length === 0) return "Connected to nothing";
 
-		return `Connected to:\n${output.connectedTo.join("\n")}`;
-	}
+	// 	return `Connected to:\n${output.connectedTo.join("\n")}`;
+	// }
 
-	function inputConnectedToText(input: FrontendGraphInput): string {
-		return `Connected to:\n${input.connectedTo}`;
-	}
+	// function inputConnectedToText(input: FrontendGraphInput): string {
+	// 	return `Connected to:\n${input.connectedTo}`;
+	// }
 
 	function zipWithUndefined(arr1: FrontendGraphInput[], arr2: FrontendGraphOutput[]) {
 		const maxLength = Math.max(arr1.length, arr2.length);
@@ -224,29 +212,26 @@
 				top: `${$nodeGraph.contextMenuInformation.contextMenuCoordinates.y * $nodeGraph.transform.scale + $nodeGraph.transform.y}px`,
 			}}
 		>
-			{#if typeof $nodeGraph.contextMenuInformation.contextMenuData === "string" && $nodeGraph.contextMenuInformation.contextMenuData === "CreateNode"}
-				<NodeCatalog on:selectNodeType={(e) => createNode(e.detail)} />
-			{:else if $nodeGraph.contextMenuInformation.contextMenuData && "compatibleType" in $nodeGraph.contextMenuInformation.contextMenuData}
-				<NodeCatalog initialSearchTerm={$nodeGraph.contextMenuInformation.contextMenuData.compatibleType || ""} on:selectNodeType={(e) => createNode(e.detail)} />
-			{:else}
-				{@const contextMenuData = $nodeGraph.contextMenuInformation.contextMenuData}
+			{#if $nodeGraph.contextMenuInformation.contextMenuData.type == "CreateNode"}
+				<NodeCatalog initialSearchTerm={$nodeGraph.contextMenuInformation.contextMenuData.data.compatibleType || ""} on:selectNodeType={(e) => createNode(e.detail)} />
+			{:else if $nodeGraph.contextMenuInformation.contextMenuData.type == "ModifyNode"}
 				<LayoutRow class="toggle-layer-or-node">
 					<TextLabel>Display as</TextLabel>
 					<RadioInput
-						selectedIndex={contextMenuData.currentlyIsNode ? 0 : 1}
+						selectedIndex={$nodeGraph.contextMenuInformation.contextMenuData.data.currentlyIsNode ? 0 : 1}
 						entries={[
 							{
 								value: "node",
 								label: "Node",
-								action: () => toggleLayerDisplay(false, contextMenuData.nodeId),
+								action: () => editor.handle.setToNodeOrLayer($nodeGraph.contextMenuInformation.contextMenuData.data.nodeId, false),
 							},
 							{
 								value: "layer",
 								label: "Layer",
-								action: () => toggleLayerDisplay(true, contextMenuData.nodeId),
+								action: () => editor.handle.setToNodeOrLayer($nodeGraph.contextMenuInformation.contextMenuData.data.nodeId, true),
 							},
 						]}
-						disabled={!canBeToggledBetweenNodeAndLayer(contextMenuData.nodeId)}
+						disabled={!$nodeGraph.contextMenuInformation.contextMenuData.data.canBeLayer}
 					/>
 				</LayoutRow>
 				<Separator type="Section" direction="Vertical" />
@@ -264,7 +249,6 @@
 				style={`left: ${$nodeGraph.error.position.x}px;
            			top: ${$nodeGraph.error.position.y}px;`}
 				transition:fade={FADE_TRANSITION}
-				title=""
 				data-node-error>{$nodeGraph.error.error}</span
 			>
 			<span
@@ -272,7 +256,6 @@
 				style={`left: ${$nodeGraph.error.position.x}px;
            			top: ${$nodeGraph.error.position.y}px;`}
 				transition:fade={FADE_TRANSITION}
-				title=""
 				data-node-error>{$nodeGraph.error.error}</span
 			>
 		</div>
@@ -338,7 +321,6 @@
 						style:--offset-left={($nodeGraph.updateImportsExports.importPosition.x - 8) / 24}
 						style:--offset-top={($nodeGraph.updateImportsExports.importPosition.y - 8) / 24 + index}
 					>
-						<title>{`${dataTypeTooltip(frontendOutput)}\n\n${outputConnectedToText(frontendOutput)}`}</title>
 						{#if frontendOutput.connectedTo.length > 0}
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 						{:else}
@@ -382,7 +364,7 @@
 								}}
 							/>
 							{#if index > 0}
-								<div class="reorder-drag-grip" title="Reorder this export" />
+								<div class="reorder-drag-grip" />
 							{/if}
 						{/if}
 					</div>
@@ -410,7 +392,6 @@
 						style:--offset-left={($nodeGraph.updateImportsExports.exportPosition.x - 8) / 24}
 						style:--offset-top={($nodeGraph.updateImportsExports.exportPosition.y - 8) / 24 + index}
 					>
-						<title>{`${dataTypeTooltip(frontendInput)}\n\n${inputConnectedToText(frontendInput)}`}</title>
 						{#if frontendInput.connectedTo !== "nothing"}
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 						{:else}
@@ -428,7 +409,7 @@
 					>
 						{#if (hoveringExportIndex === index || editingNameExportIndex === index) && $nodeGraph.updateImportsExports.addImportExport}
 							{#if index > 0}
-								<div class="reorder-drag-grip" title="Reorder this export" />
+								<div class="reorder-drag-grip" />
 							{/if}
 							<IconButton
 								size={16}
