@@ -11,11 +11,9 @@ repository = "https://github.com/GraphiteEditor/Graphite"
 license = "Apache-2.0"
 
 [features]
-default = ["wasm", "gpu", "resvg", "vello"]
+default = ["wasm", "gpu" ]
 wasm = ["wasm-bindgen", "graphene-std/wasm"]
 gpu = ["interpreted-executor/gpu", "wgpu-executor"]
-resvg = ["graphene-std/resvg"]
-vello = ["graphene-std/vello", "resvg"]
 
 [dependencies]
 # Local dependencies
@@ -59,8 +57,3 @@ env_logger = { workspace = true }
 futures = { workspace = true }
 tokio = { workspace = true }
 
-[lints.rust]
-# TODO: figure out why we check these features when they do not exist
-unexpected_cfgs = { level = "warn", check-cfg = [
-	'cfg(feature, values("resvg", "vello"))',
-] }

@@ -7,7 +7,7 @@ authors = ["Graphite Authors <contact@graphite.rs>"]
 license = "MIT OR Apache-2.0"
 
 [features]
-default = ["wasm", "wgpu"]
+default = ["wasm", "wgpu", "shader-nodes"]
 gpu = []
 wgpu = ["gpu", "graph-craft/wgpu", "graphene-application-io/wgpu"]
 wasm = [
@@ -20,7 +20,6 @@ wasm = [
 image-compare = []
 vello = ["gpu"]
 resvg = []
-wayland = ["graph-craft/wayland"]
 shader-nodes = ["raster-nodes/shader-nodes"]
 
 [dependencies]

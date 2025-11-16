@@ -9,7 +9,6 @@ license = "MIT OR Apache-2.0"
 [features]
 default = ["wgpu"]
 wgpu = ["wgpu-executor", "gpu", "graphene-std/wgpu"]
-wayland = ["graphene-std/wayland"]
 gpu = ["interpreted-executor/gpu", "graphene-std/gpu", "wgpu-executor"]
 
 [dependencies]
