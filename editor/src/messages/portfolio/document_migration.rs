@@ -175,7 +175,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::to_u_32::IDENTIFIER,
-		aliases: &["graphene_math_nodes::ToU32Node", "graphene_core::ops::ToU32Node"],
+		aliases: &["graphene_math_nodes::ToU32Node", "graphene_core::ops::ToU32Node", "math_nodes::ToU32Node"],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::to_u_64::IDENTIFIER,
@@ -561,23 +561,23 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	},
 	NodeReplacement {
 		node: graphene_std::vector::generator_nodes::ellipse::IDENTIFIER,
-		aliases: &["graphene_core::vector::generator_nodes::EllipseGenerator"],
+		aliases: &["graphene_core::vector::generator_nodes::EllipseNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::vector::generator_nodes::line::IDENTIFIER,
-		aliases: &["graphene_core::vector::generator_nodes::LineGenerator"],
+		aliases: &["graphene_core::vector::generator_nodes::LineNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::vector::generator_nodes::rectangle::IDENTIFIER,
-		aliases: &["graphene_core::vector::generator_nodes::RectangleGenerator"],
+		aliases: &["graphene_core::vector::generator_nodes::RectangleNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::vector::generator_nodes::regular_polygon::IDENTIFIER,
-		aliases: &["graphene_core::vector::generator_nodes::RegularPolygonGenerator"],
+		aliases: &["graphene_core::vector::generator_nodes::RegularPolygonNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::vector::generator_nodes::star::IDENTIFIER,
-		aliases: &["graphene_core::vector::generator_nodes::StarGenerator", "graphene_core::vector::generator_nodes::StarNode"],
+		aliases: &["graphene_core::vector::generator_nodes::StarNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::ops::identity::IDENTIFIER,

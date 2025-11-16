@@ -139,7 +139,7 @@ pub struct ProtoNode {
 impl Default for ProtoNode {
 	fn default() -> Self {
 		Self {
-			identifier: ProtoNodeIdentifier::new("core_types::ops::IdentityNode"),
+			identifier: graphene_core::ops::identity::IDENTIFIER,
 			construction_args: ConstructionArgs::Value(value::TaggedValue::U32(0).into()),
 			call_argument: concrete!(()),
 			original_location: OriginalLocation::default(),

@@ -360,7 +360,7 @@ mod node_registry_macros {
 	macro_rules! into_node {
 		(from: $from:ty, to: $to:ty) => {
 			(
-				ProtoNodeIdentifier::new(concat!["graphene_std::ops::IntoNode<", stringify!($to), ">"]),
+				ProtoNodeIdentifier::new(concat!["graphene_core::ops::IntoNode<", stringify!($to), ">"]),
 				|mut args| {
 					Box::pin(async move {
 						let node = graphene_std::ops::IntoNode::new(
@@ -409,7 +409,7 @@ mod node_registry_macros {
 		};
 		(from: $from:ty, to: $to:ty, converter: $convert:ty) => {
 			(
-				ProtoNodeIdentifier::new(concat!["graphene_std::ops::ConvertNode<", stringify!($to), ">"]),
+				ProtoNodeIdentifier::new(concat!["graphene_core::ops::ConvertNode<", stringify!($to), ">"]),
 				|mut args| {
 					Box::pin(async move {
 						let mut args = args.drain(..);
