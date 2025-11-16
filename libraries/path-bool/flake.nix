@@ -11,20 +11,32 @@
     };
   };
 
-  outputs = {self, nixpkgs, flake-utils, rust-overlay }:
-    flake-utils.lib.eachDefaultSystem ( system:
+  outputs =
+    {
+      self,
+      nixpkgs,
+      flake-utils,
+      rust-overlay,
+    }:
+    flake-utils.lib.eachDefaultSystem (
+      system:
       let
         overlays = [ (import rust-overlay) ];
         pkgs = import nixpkgs {
           inherit system overlays;
         };
         toolchain = pkgs.rust-bin.stable.latest.default.override {
-          extensions = ["rust-src" "clippy" "rust-analyzer"];
+          extensions = [
+            "rust-src"
+            "clippy"
+            "rust-analyzer"
+          ];
         };
         buildInputs = with pkgs; [
-            llvm
+          llvm
         ];
-        in {
+      in
+      {
         devShells.default = pkgs.mkShell {
           stdenv = pkgs.clangStdenv;
           packages = with pkgs; [
@@ -40,7 +52,7 @@
             cargo
           ];
           inherit buildInputs;
-          
+
           LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath buildInputs;
         };
       }
