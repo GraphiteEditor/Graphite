@@ -2,7 +2,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::misc::{GridSnapping, GridType};
 use crate::messages::prelude::*;
-use glam::{DVec2};
+use glam::DVec2;
 use graphene_std::raster::color::Color;
 use graphene_std::renderer::Quad;
 use graphene_std::vector::style::FillChoice;
