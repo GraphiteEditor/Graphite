@@ -778,8 +778,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					}
 
 					let context_menu_data = if let Some(node_id) = clicked_id {
-						let currently_is_node = !network_interface.is_layer(&node_id, selection_network_path);
-						ContextMenuData::ToggleLayer { node_id, currently_is_node }
+						let currently_is_node = !network_interface.is_layer(&node_id, breadcrumb_network_path);
+						let can_be_layer = network_interface.is_eligible_to_be_layer(&node_id, breadcrumb_network_path);
+						ContextMenuData::ModifyNode {
+							can_be_layer,
+							currently_is_node,
+							node_id,
+						}
 					} else {
 						ContextMenuData::CreateNode { compatible_type: None }
 					};
