@@ -1,9 +1,8 @@
-use crate::consts::COLOR_OVERLAY_TRANSPARENT;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::misc::{GridSnapping, GridType};
 use crate::messages::prelude::*;
-use glam::{DVec2, UVec2};
+use glam::{DVec2};
 use graphene_std::raster::color::Color;
 use graphene_std::renderer::Quad;
 use graphene_std::vector::style::FillChoice;
@@ -68,13 +67,6 @@ fn grid_overlay_rectangular(document: &DocumentMessageHandler, overlay_context: 
 fn grid_overlay_rectangular_dot(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext, spacing: DVec2) {
 	let origin = document.snapping_state.grid.origin;
 	let grid_color = "#".to_string() + &document.snapping_state.grid.grid_color.to_rgba_hex_srgb();
-	let grid_color_minor = "#".to_string() + &document.snapping_state.grid.grid_color_minor.to_rgba_hex_srgb();
-	let Some(scaled_spacing) = GridSnapping::compute_rectangle_spacing(spacing, &document.snapping_state.grid.rectangular_major_interval, &document.document_ptz) else {
-		return;
-	};
-	let document_to_viewport = document
-		.navigation_handler
-		.calculate_offset_transform(overlay_context.viewport.center_in_viewport_space().into(), &document.document_ptz);
 	let grid_color_minor = "#".to_string() + &document.snapping_state.grid.grid_color_minor.to_rgba_hex_srgb();
 	let Some(scaled_spacing) = GridSnapping::compute_rectangle_spacing(spacing, &document.snapping_state.grid.rectangular_major_interval, &document.document_ptz) else {
 		return;
