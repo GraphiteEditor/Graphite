@@ -135,6 +135,7 @@ web-sys = { version = "=0.3.77", features = [
 	"ImageBitmapRenderingContext",
 ] }
 winit = { git = "https://github.com/rust-windowing/winit.git" }
+# winit = { path = "../winit/winit" }
 keyboard-types = "0.8"
 url = "2.5"
 tokio = { version = "1.29", features = ["fs", "macros", "io-std", "rt"] }

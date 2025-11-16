@@ -322,7 +322,7 @@ impl From<Key> for LayoutKey {
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct LayoutKey {
 	pub key: Key,
-	label: String,
+	pub label: String,
 }
 
 pub const NUMBER_OF_KEYS: usize = Key::_KeysVariantCount as usize - 1;

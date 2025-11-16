@@ -29,6 +29,12 @@ impl Menu {
 		menu.init_for_nsapp();
 
 		MenuEvent::set_event_handler(Some(move |event: MenuEvent| {
+			if event.main_menu_has_highlighted_item() {
+				println!("Keyboard input trigger");
+				return;
+			} else {
+				println!("fail");
+			}
 			if let Some(id) = menu_id_to_u64(event.id()) {
 				event_scheduler.schedule(AppEvent::MenuEvent { id });
 			}
@@ -65,16 +71,23 @@ fn menu_items_from_wrapper(entries: Vec<WrapperMenuItem>) -> Vec<MenuItemKind> {
 	let mut menu_items: Vec<MenuItemKind> = Vec::new();
 	for entry in entries {
 		match entry {
-			WrapperMenuItem::Action { id, text, enabled, shortcut } => {
+			WrapperMenuItem::Action { id, text, hint, enabled, shortcut } => {
 				let id = u64_to_menu_id(id);
 				let accelerator = shortcut.map(|s| Accelerator::new(Some(s.modifiers), s.key));
-				let item = MenuItem::with_id(id, text, enabled, accelerator);
+				let item = MenuItem::with_id(id, text, hint, enabled, accelerator);
 				menu_items.push(MenuItemKind::MenuItem(item));
 			}
-			WrapperMenuItem::Checkbox { id, text, enabled, shortcut, checked } => {
+			WrapperMenuItem::Checkbox {
+				id,
+				text,
+				hint,
+				enabled,
+				shortcut,
+				checked,
+			} => {
 				let id = u64_to_menu_id(id);
 				let accelerator = shortcut.map(|s| Accelerator::new(Some(s.modifiers), s.key));
-				let check = CheckMenuItem::with_id(id, text, enabled, checked, accelerator);
+				let check = CheckMenuItem::with_id(id, text, hint, enabled, checked, accelerator);
 				menu_items.push(MenuItemKind::Check(check));
 			}
 			WrapperMenuItem::SubMenu { text: name, items, .. } => {

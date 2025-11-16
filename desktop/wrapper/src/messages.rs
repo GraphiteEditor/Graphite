@@ -146,12 +146,14 @@ pub enum MenuItem {
 	Action {
 		id: u64,
 		text: String,
+		hint: Option<String>,
 		enabled: bool,
 		shortcut: Option<Shortcut>,
 	},
 	Checkbox {
 		id: u64,
 		text: String,
+		hint: Option<String>,
 		enabled: bool,
 		shortcut: Option<Shortcut>,
 		checked: bool,

@@ -163,9 +163,13 @@ fn convert_menu_bar_entry_to_menu_item(
 		return Some(MenuItem::SubMenu { id, text, enabled, items });
 	}
 
+	let hint = match shortcut {
+		Some(ActionKeys::Keys(LayoutKeysGroup(keys))) => Some(keys.iter().map(|k| k.label.clone()).collect::<Vec<String>>().join("")),
+		_ => None,
+	};
+
 	let shortcut = match shortcut {
-		//TODO: Reenable shortcuts once a workaround for missing keyboard events is found
-		Some(ActionKeys::Keys(LayoutKeysGroup(keys))) if false => convert_layout_keys_to_shortcut(keys),
+		Some(ActionKeys::Keys(LayoutKeysGroup(keys))) => convert_layout_keys_to_shortcut(keys),
 		_ => None,
 	};
 
@@ -175,6 +179,7 @@ fn convert_menu_bar_entry_to_menu_item(
 			return Some(MenuItem::Checkbox {
 				id,
 				text,
+				hint,
 				enabled,
 				shortcut,
 				checked: true,
@@ -184,6 +189,7 @@ fn convert_menu_bar_entry_to_menu_item(
 			return Some(MenuItem::Checkbox {
 				id,
 				text,
+				hint,
 				enabled,
 				shortcut,
 				checked: false,
@@ -192,7 +198,7 @@ fn convert_menu_bar_entry_to_menu_item(
 		_ => {}
 	}
 
-	Some(MenuItem::Action { id, text, shortcut, enabled })
+	Some(MenuItem::Action { id, text, hint, shortcut, enabled })
 }
 
 fn convert_menu_bar_entry_children_to_menu_items(children: &[Vec<MenuBarEntry>]) -> Vec<MenuItem> {
