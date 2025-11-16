@@ -213,10 +213,10 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 	}
 	let update_origin = |grid, update: fn(&mut GridSnapping) -> Option<&mut f64>| {
 		update_val::<NumberInput, _>(grid, move |grid, val| {
-			if let Some(val) = val.value {
-				if let Some(update) = update(grid) {
-					*update = val;
-				}
+			if let Some(val) = val.value
+				&& let Some(update) = update(grid)
+			{
+				*update = val;
 			}
 		})
 	};

@@ -492,7 +492,7 @@ pub fn footprint_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 		);
 	}
 
-	let widgets = vec![
+	let widgets = [
 		LayoutGroup::Row { widgets: location_widgets },
 		LayoutGroup::Row { widgets: scale_widgets },
 		LayoutGroup::Row { widgets: resolution_widgets },

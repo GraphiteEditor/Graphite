@@ -156,10 +156,10 @@ impl LayoutMessageHandler {
 							let blue = color.get("blue").and_then(|x| x.as_f64()).map(|x| x as f32);
 							let alpha = color.get("alpha").and_then(|x| x.as_f64()).map(|x| x as f32);
 
-							if let (Some(red), Some(green), Some(blue), Some(alpha)) = (red, green, blue, alpha) {
-								if let Some(color) = Color::from_rgbaf32(red, green, blue, alpha) {
-									return Some(color);
-								}
+							if let (Some(red), Some(green), Some(blue), Some(alpha)) = (red, green, blue, alpha)
+								&& let Some(color) = Color::from_rgbaf32(red, green, blue, alpha)
+							{
+								return Some(color);
 							}
 							None
 						};

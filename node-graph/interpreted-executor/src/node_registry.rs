@@ -308,10 +308,10 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		let mut new_name = id.name.replace('\n', " ");
 
 		// Remove struct generics for all nodes except for the IntoNode and ConvertNode
-		if !(new_name.contains("IntoNode") || new_name.contains("ConvertNode")) {
-			if let Some((path, _generics)) = new_name.split_once("<") {
-				new_name = path.to_string();
-			}
+		if !(new_name.contains("IntoNode") || new_name.contains("ConvertNode"))
+			&& let Some((path, _generics)) = new_name.split_once("<")
+		{
+			new_name = path.to_string();
 		}
 
 		let nid = ProtoNodeIdentifier { name: Cow::Owned(new_name) };
