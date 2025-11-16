@@ -115,15 +115,6 @@
 		return iconMap[icon] || "NodeNodes";
 	}
 
-	function toggleLayerDisplay(displayAsLayer: boolean, toggleId: bigint) {
-		let node = $nodeGraph.nodes.get(toggleId);
-		if (node) editor.handle.setToNodeOrLayer(node.id, displayAsLayer);
-	}
-
-	function canBeToggledBetweenNodeAndLayer(toggleDisplayAsLayerNodeId: bigint) {
-		return $nodeGraph.nodes.get(toggleDisplayAsLayerNodeId)?.canBeLayer || false;
-	}
-
 	function createNode(nodeType: string) {
 		if ($nodeGraph.contextMenuInformation === undefined) return;
 
@@ -224,29 +215,26 @@
 				top: `${$nodeGraph.contextMenuInformation.contextMenuCoordinates.y * $nodeGraph.transform.scale + $nodeGraph.transform.y}px`,
 			}}
 		>
-			{#if typeof $nodeGraph.contextMenuInformation.contextMenuData === "string" && $nodeGraph.contextMenuInformation.contextMenuData === "CreateNode"}
-				<NodeCatalog on:selectNodeType={(e) => createNode(e.detail)} />
-			{:else if $nodeGraph.contextMenuInformation.contextMenuData && "compatibleType" in $nodeGraph.contextMenuInformation.contextMenuData}
-				<NodeCatalog initialSearchTerm={$nodeGraph.contextMenuInformation.contextMenuData.compatibleType || ""} on:selectNodeType={(e) => createNode(e.detail)} />
-			{:else}
-				{@const contextMenuData = $nodeGraph.contextMenuInformation.contextMenuData}
+			{#if $nodeGraph.contextMenuInformation.contextMenuData.type == "CreateNode"}
+				<NodeCatalog initialSearchTerm={$nodeGraph.contextMenuInformation.contextMenuData.data.compatibleType || ""} on:selectNodeType={(e) => createNode(e.detail)} />
+			{:else if $nodeGraph.contextMenuInformation.contextMenuData.type == "ModifyNode"}
 				<LayoutRow class="toggle-layer-or-node">
 					<TextLabel>Display as</TextLabel>
 					<RadioInput
-						selectedIndex={contextMenuData.currentlyIsNode ? 0 : 1}
+						selectedIndex={$nodeGraph.contextMenuInformation.contextMenuData.data.currentlyIsNode ? 0 : 1}
 						entries={[
 							{
 								value: "node",
 								label: "Node",
-								action: () => toggleLayerDisplay(false, contextMenuData.nodeId),
+								action: () => editor.handle.setToNodeOrLayer($nodeGraph.contextMenuInformation.contextMenuData.data.nodeId, false),
 							},
 							{
 								value: "layer",
 								label: "Layer",
-								action: () => toggleLayerDisplay(true, contextMenuData.nodeId),
+								action: () => editor.handle.setToNodeOrLayer($nodeGraph.contextMenuInformation.contextMenuData.data.nodeId, true),
 							},
 						]}
-						disabled={!canBeToggledBetweenNodeAndLayer(contextMenuData.nodeId)}
+						disabled={!$nodeGraph.contextMenuInformation.contextMenuData.data.canBeLayer}
 					/>
 				</LayoutRow>
 				<Separator type="Section" direction="Vertical" />
