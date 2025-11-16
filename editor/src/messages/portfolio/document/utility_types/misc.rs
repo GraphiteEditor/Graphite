@@ -244,7 +244,8 @@ impl GridSnapping {
 			if iterations > 100 {
 				return None;
 			}
-			size *= 2.;
+			size.x *= if iterations == 0 { major_interval.x as f64 } else { 2. };
+			size.y *= if iterations == 0 { major_interval.y as f64 } else { 2. };
 			iterations += 1;
 		}
 		Some(size)
