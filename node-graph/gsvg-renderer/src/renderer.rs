@@ -3,8 +3,7 @@ use crate::to_peniko::BlendModeExt;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use graphene_core::blending::BlendMode;
-use graphene_core::bounds::BoundingBox;
-use graphene_core::bounds::RenderBoundingBox;
+use graphene_core::bounds::{BoundingBox, RenderBoundingBox};
 use graphene_core::color::Color;
 use graphene_core::gradient::GradientStops;
 use graphene_core::gradient::GradientType;
@@ -719,12 +718,7 @@ impl Render for Table<Vector> {
 			let bounds_matrix = DAffine2::from_scale_angle_translation(layer_bounds[1] - layer_bounds[0], 0., layer_bounds[0]);
 			let transformed_bounds_matrix = element_transform * DAffine2::from_scale_angle_translation(transformed_bounds[1] - transformed_bounds[0], 0., transformed_bounds[0]);
 
-			let mut path = String::new();
-
-			for mut bezpath in row.element.stroke_bezpath_iter() {
-				bezpath.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
-				path.push_str(bezpath.to_svg().as_str());
-			}
+			let is_branching = vector.is_branching_mesh();
 
 			let mask_type = if vector.style.stroke().map(|x| x.align) == Some(StrokeAlign::Inside) {
 				MaskType::Clip
@@ -732,130 +726,243 @@ impl Render for Table<Vector> {
 				MaskType::Mask
 			};
 
-			let path_is_closed = vector.stroke_bezier_paths().all(|path| path.closed());
-			let can_draw_aligned_stroke = path_is_closed && vector.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered());
-			let can_use_paint_order = !(row.element.style.fill().is_none() || !row.element.style.fill().is_opaque() || mask_type == MaskType::Clip);
+			// Helper closure to render a single path with given path string and closed status
+			let render_path = |render: &mut SvgRender, path: String, path_is_closed: bool| {
+				let can_draw_aligned_stroke = path_is_closed && vector.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered());
+				let can_use_paint_order = !(row.element.style.fill().is_none() || !row.element.style.fill().is_opaque() || mask_type == MaskType::Clip);
 
-			let needs_separate_fill = can_draw_aligned_stroke && !can_use_paint_order;
-			let wants_stroke_below = vector.style.stroke().map(|s| s.paint_order) == Some(PaintOrder::StrokeBelow);
+				let needs_separate_fill = can_draw_aligned_stroke && !can_use_paint_order;
+				let wants_stroke_below = vector.style.stroke().map(|s| s.paint_order) == Some(PaintOrder::StrokeBelow);
 
-			if needs_separate_fill && !wants_stroke_below {
+				// Render fill before stroke if needed
+				if needs_separate_fill && !wants_stroke_below {
+					render.leaf_tag("path", |attributes| {
+						attributes.push("d", path.clone());
+						let matrix = format_transform_matrix(element_transform);
+						if !matrix.is_empty() {
+							attributes.push("transform", matrix);
+						}
+						let mut style = row.element.style.clone();
+						style.clear_stroke();
+						let fill_and_stroke = style.render(
+							&mut attributes.0.svg_defs,
+							element_transform,
+							applied_stroke_transform,
+							bounds_matrix,
+							transformed_bounds_matrix,
+							render_params,
+						);
+						attributes.push_val(fill_and_stroke);
+					});
+				}
+
+				let push_id = needs_separate_fill.then_some({
+					let id = format!("alignment-{}", generate_uuid());
+
+					let mut element = row.element.clone();
+					element.style.clear_stroke();
+					element.style.set_fill(Fill::solid(Color::BLACK));
+
+					let vector_row = Table::new_from_row(TableRow {
+						element,
+						alpha_blending: *row.alpha_blending,
+						transform: *row.transform,
+						source_node_id: None,
+					});
+
+					(id, mask_type, vector_row)
+				});
+
+				// Main path rendering
 				render.leaf_tag("path", |attributes| {
 					attributes.push("d", path.clone());
 					let matrix = format_transform_matrix(element_transform);
 					if !matrix.is_empty() {
 						attributes.push("transform", matrix);
 					}
+
+					let defs = &mut attributes.0.svg_defs;
+					if let Some((ref id, mask_type, ref vector_row)) = push_id {
+						let mut svg = SvgRender::new();
+						vector_row.render_svg(&mut svg, &render_params.for_alignment(applied_stroke_transform));
+						let stroke = row.element.style.stroke().unwrap();
+						let weight = stroke.effective_width() * max_scale(applied_stroke_transform);
+						let quad = Quad::from_box(transformed_bounds).inflate(weight);
+						let (x, y) = quad.top_left().into();
+						let (width, height) = (quad.bottom_right() - quad.top_left()).into();
+
+						write!(defs, r##"{}"##, svg.svg_defs).unwrap();
+						let rect = format!(r##"<rect x="{x}" y="{y}" width="{width}" height="{height}" fill="white" />"##);
+
+						match mask_type {
+							MaskType::Clip => write!(defs, r##"<clipPath id="{id}">{}</clipPath>"##, svg.svg.to_svg_string()).unwrap(),
+							MaskType::Mask => write!(
+								defs,
+								r##"<mask id="{id}" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse" x="{x}" y="{y}" width="{width}" height="{height}">{}{}</mask>"##,
+								rect,
+								svg.svg.to_svg_string()
+							)
+							.unwrap(),
+						}
+					}
+
+					let mut render_params = render_params.clone();
+					render_params.aligned_strokes = can_draw_aligned_stroke;
+					render_params.override_paint_order = can_draw_aligned_stroke && can_use_paint_order;
+
 					let mut style = row.element.style.clone();
-					style.clear_stroke();
-					let fill_and_stroke = style.render(
-						&mut attributes.0.svg_defs,
-						element_transform,
-						applied_stroke_transform,
-						bounds_matrix,
-						transformed_bounds_matrix,
-						render_params,
-					);
+					if needs_separate_fill {
+						style.clear_fill();
+					}
+
+					let fill_and_stroke = style.render(defs, element_transform, applied_stroke_transform, bounds_matrix, transformed_bounds_matrix, &render_params);
+
+					if let Some((id, mask_type, _)) = push_id {
+						let selector = format!("url(#{id})");
+						attributes.push(mask_type.to_attribute(), selector);
+					}
 					attributes.push_val(fill_and_stroke);
-				});
-			}
 
-			let push_id = needs_separate_fill.then_some({
-				let id = format!("alignment-{}", generate_uuid());
+					let opacity = row.alpha_blending.opacity(render_params.for_mask);
+					if opacity < 1. {
+						attributes.push("opacity", opacity.to_string());
+					}
 
-				let mut element = row.element.clone();
-				element.style.clear_stroke();
-				element.style.set_fill(Fill::solid(Color::BLACK));
-
-				let vector_row = Table::new_from_row(TableRow {
-					element,
-					alpha_blending: *row.alpha_blending,
-					transform: *row.transform,
-					source_node_id: None,
+					if row.alpha_blending.blend_mode != BlendMode::default() {
+						attributes.push("style", row.alpha_blending.blend_mode.render());
+					}
 				});
 
-				(id, mask_type, vector_row)
-			});
-
-			render.leaf_tag("path", |attributes| {
-				attributes.push("d", path.clone());
-				let matrix = format_transform_matrix(element_transform);
-				if !matrix.is_empty() {
-					attributes.push("transform", matrix);
+				// Render fill after stroke if needed
+				if needs_separate_fill && wants_stroke_below {
+					render.leaf_tag("path", |attributes| {
+						attributes.push("d", path);
+						let matrix = format_transform_matrix(element_transform);
+						if !matrix.is_empty() {
+							attributes.push("transform", matrix);
+						}
+						let mut style = row.element.style.clone();
+						style.clear_stroke();
+						let fill_and_stroke = style.render(
+							&mut attributes.0.svg_defs,
+							element_transform,
+							applied_stroke_transform,
+							bounds_matrix,
+							transformed_bounds_matrix,
+							render_params,
+						);
+						attributes.push_val(fill_and_stroke);
+					});
 				}
+			};
 
-				let defs = &mut attributes.0.svg_defs;
-				if let Some((ref id, mask_type, ref vector_row)) = push_id {
-					let mut svg = SvgRender::new();
-					vector_row.render_svg(&mut svg, &render_params.for_alignment(applied_stroke_transform));
-					let stroke = row.element.style.stroke().unwrap();
-					let weight = stroke.effective_width() * max_scale(applied_stroke_transform);
-					let quad = Quad::from_box(transformed_bounds).inflate(weight);
-					let (x, y) = quad.top_left().into();
-					let (width, height) = (quad.bottom_right() - quad.top_left()).into();
+			if is_branching {
+				// For branching meshes, we need to handle fills and strokes separately
+				let fill_regions = vector.find_closed_regions();
+				let has_fill = vector.style.fill() != &Fill::None;
+				let has_stroke = vector.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke());
 
-					write!(defs, r##"{}"##, svg.svg_defs).unwrap();
-					let rect = format!(r##"<rect x="{x}" y="{y}" width="{width}" height="{height}" fill="white" />"##);
+				// Render fills for each region separately
+				if has_fill {
+					for region in &fill_regions {
+						let mut bezpath = region.to_bezpath(vector);
+						bezpath.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
+						let path = bezpath.to_svg();
 
-					match mask_type {
-						MaskType::Clip => write!(defs, r##"<clipPath id="{id}">{}</clipPath>"##, svg.svg.to_svg_string()).unwrap(),
-						MaskType::Mask => write!(
-							defs,
-							r##"<mask id="{id}" maskUnits="userSpaceOnUse" maskContentUnits="userSpaceOnUse" x="{x}" y="{y}" width="{width}" height="{height}">{}{}</mask>"##,
-							rect,
-							svg.svg.to_svg_string()
-						)
-						.unwrap(),
+						// Render fill-only path
+						render.leaf_tag("path", |attributes| {
+							attributes.push("d", path);
+							let matrix = format_transform_matrix(element_transform);
+							if !matrix.is_empty() {
+								attributes.push("transform", matrix);
+							}
+
+							let mut style = row.element.style.clone();
+							style.clear_stroke();
+							let fill_only = style.render(
+								&mut attributes.0.svg_defs,
+								element_transform,
+								applied_stroke_transform,
+								bounds_matrix,
+								transformed_bounds_matrix,
+								render_params,
+							);
+							attributes.push_val(fill_only);
+
+							let opacity = row.alpha_blending.opacity(render_params.for_mask);
+							if opacity < 1. {
+								attributes.push("opacity", opacity.to_string());
+							}
+
+							if row.alpha_blending.blend_mode != BlendMode::default() {
+								attributes.push("style", row.alpha_blending.blend_mode.render());
+							}
+						});
 					}
 				}
 
-				let mut render_params = render_params.clone();
-				render_params.aligned_strokes = can_draw_aligned_stroke;
-				render_params.override_paint_order = can_draw_aligned_stroke && can_use_paint_order;
-
-				let mut style = row.element.style.clone();
-				if needs_separate_fill {
-					style.clear_fill();
-				}
-
-				let fill_and_stroke = style.render(defs, element_transform, applied_stroke_transform, bounds_matrix, transformed_bounds_matrix, &render_params);
-
-				if let Some((id, mask_type, _)) = push_id {
-					let selector = format!("url(#{id})");
-					attributes.push(mask_type.to_attribute(), selector);
-				}
-				attributes.push_val(fill_and_stroke);
-
-				let opacity = row.alpha_blending.opacity(render_params.for_mask);
-				if opacity < 1. {
-					attributes.push("opacity", opacity.to_string());
-				}
-
-				if row.alpha_blending.blend_mode != BlendMode::default() {
-					attributes.push("style", row.alpha_blending.blend_mode.render());
-				}
-			});
-
-			// When splitting passes and stroke is below, draw the fill after the stroke.
-			if needs_separate_fill && wants_stroke_below {
-				render.leaf_tag("path", |attributes| {
-					attributes.push("d", path);
-					let matrix = format_transform_matrix(element_transform);
-					if !matrix.is_empty() {
-						attributes.push("transform", matrix);
+				// Render stroke once for the entire mesh
+				if has_stroke {
+					let mut combined_path = String::new();
+					for mut bezpath in row.element.stroke_bezpath_iter() {
+						bezpath.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
+						combined_path.push_str(bezpath.to_svg().as_str());
 					}
-					let mut style = row.element.style.clone();
-					style.clear_stroke();
-					let fill_and_stroke = style.render(
-						&mut attributes.0.svg_defs,
-						element_transform,
-						applied_stroke_transform,
-						bounds_matrix,
-						transformed_bounds_matrix,
-						render_params,
-					);
-					attributes.push_val(fill_and_stroke);
-				});
+
+					// Render the combined path with stroke only
+					render.leaf_tag("path", |attributes| {
+						attributes.push("d", combined_path);
+						let matrix = format_transform_matrix(element_transform);
+						if !matrix.is_empty() {
+							attributes.push("transform", matrix);
+						}
+
+						let mut style = row.element.style.clone();
+						style.clear_fill(); // Critical: Remove fill to only render stroke
+						let stroke_only = style.render(
+							&mut attributes.0.svg_defs,
+							element_transform,
+							applied_stroke_transform,
+							bounds_matrix,
+							transformed_bounds_matrix,
+							render_params,
+						);
+						attributes.push_val(stroke_only);
+
+						let opacity = row.alpha_blending.opacity(render_params.for_mask);
+						if opacity < 1. {
+							attributes.push("opacity", opacity.to_string());
+						}
+
+						if row.alpha_blending.blend_mode != BlendMode::default() {
+							attributes.push("style", row.alpha_blending.blend_mode.render());
+						}
+					});
+				}
+
+				// If no fill and no stroke, still render something
+				if !has_fill && !has_stroke {
+					let mut combined_path = String::new();
+					for region in &fill_regions {
+						let mut bezpath = region.to_bezpath(vector);
+						bezpath.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
+						combined_path.push_str(bezpath.to_svg().as_str());
+					}
+					let path_is_closed = fill_regions.iter().all(|r| r.is_closed());
+					render_path(render, combined_path, path_is_closed);
+				}
+			} else {
+				// For non-branching paths
+				let mut path = String::new();
+
+				for mut bezpath in row.element.stroke_bezpath_iter() {
+					bezpath.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
+					path.push_str(bezpath.to_svg().as_str());
+				}
+
+				let path_is_closed = vector.stroke_bezier_paths().all(|path| path.closed());
+
+				render_path(render, path, path_is_closed);
 			}
 		}
 	}
@@ -869,7 +976,8 @@ impl Render for Table<Vector> {
 
 		for row in self.iter() {
 			let multiplied_transform = parent_transform * *row.transform;
-			let has_real_stroke = row.element.style.stroke().filter(|stroke| stroke.weight() > 0.);
+			let vector = &row.element;
+			let has_real_stroke = vector.style.stroke().filter(|stroke| stroke.weight() > 0.);
 			let set_stroke_transform = has_real_stroke.map(|stroke| stroke.transform).filter(|transform| transform.matrix2.determinant() != 0.);
 			let mut applied_stroke_transform = set_stroke_transform.unwrap_or(multiplied_transform);
 			let mut element_transform = set_stroke_transform
@@ -883,16 +991,11 @@ impl Render for Table<Vector> {
 					multiplied_transform
 				};
 			}
-			let layer_bounds = row.element.bounding_box().unwrap_or_default();
+			let layer_bounds = vector.bounding_box().unwrap_or_default();
 
 			let to_point = |p: DVec2| kurbo::Point::new(p.x, p.y);
-			let mut path = kurbo::BezPath::new();
-			for mut bezpath in row.element.stroke_bezpath_iter() {
-				bezpath.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
-				for element in bezpath {
-					path.push(element);
-				}
-			}
+
+			let is_branching = vector.is_branching_mesh();
 
 			// If we're using opacity or a blend mode, we need to push a layer
 			let blend_mode = match render_params.render_mode {
@@ -904,7 +1007,7 @@ impl Render for Table<Vector> {
 			let opacity = row.alpha_blending.opacity(render_params.for_mask);
 			if opacity < 1. || row.alpha_blending.blend_mode != BlendMode::default() {
 				layer = true;
-				let weight = row.element.style.stroke().as_ref().map_or(0., Stroke::effective_width);
+				let weight = vector.style.stroke().as_ref().map_or(0., Stroke::effective_width);
 				let quad = Quad::from_box(layer_bounds).inflate(weight * max_scale(applied_stroke_transform));
 				let layer_bounds = quad.bounding_box();
 				scene.push_layer(
@@ -916,16 +1019,16 @@ impl Render for Table<Vector> {
 			}
 
 			let can_draw_aligned_stroke =
-				row.element.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered()) && row.element.stroke_bezier_paths().all(|path| path.closed());
+				vector.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered()) && vector.stroke_bezier_paths().all(|path| path.closed());
 
 			let use_layer = can_draw_aligned_stroke;
-			let wants_stroke_below = row.element.style.stroke().is_some_and(|s| s.paint_order == graphene_core::vector::style::PaintOrder::StrokeBelow);
+			let wants_stroke_below = vector.style.stroke().is_some_and(|s| s.paint_order == graphene_core::vector::style::PaintOrder::StrokeBelow);
 
-			// Closures to avoid duplicated fill/stroke drawing logic
-			let do_fill = |scene: &mut Scene| match row.element.style.fill() {
+			// Closure to fill a path with the element's fill style
+			let do_fill_path = |scene: &mut Scene, path: &kurbo::BezPath| match vector.style.fill() {
 				Fill::Solid(color) => {
 					let fill = peniko::Brush::Solid(peniko::Color::new([color.r(), color.g(), color.b(), color.a()]));
-					scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &fill, None, &path);
+					scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &fill, None, path);
 				}
 				Fill::Gradient(gradient) => {
 					let mut stops = peniko::ColorStops::new();
@@ -936,7 +1039,7 @@ impl Render for Table<Vector> {
 						});
 					}
 
-					let bounds = row.element.nonzero_bounding_box();
+					let bounds = vector.nonzero_bounding_box();
 					let bound_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
 
 					let inverse_parent_transform = if parent_transform.matrix2.determinant() != 0. {
@@ -977,13 +1080,13 @@ impl Render for Table<Vector> {
 						Default::default()
 					};
 					let brush_transform = kurbo::Affine::new((inverse_element_transform * parent_transform).to_cols_array());
-					scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &fill, Some(brush_transform), &path);
+					scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &fill, Some(brush_transform), path);
 				}
 				Fill::None => {}
 			};
 
-			let do_stroke = |scene: &mut Scene, width_scale: f64| {
-				if let Some(stroke) = row.element.style.stroke() {
+			let do_stroke_path = |scene: &mut Scene, path: &kurbo::BezPath, width_scale: f64| {
+				if let Some(stroke) = vector.style.stroke() {
 					let color = match stroke.color {
 						Some(color) => peniko::Color::new([color.r(), color.g(), color.b(), color.a()]),
 						None => peniko::Color::TRANSPARENT,
@@ -1009,7 +1112,7 @@ impl Render for Table<Vector> {
 					};
 
 					if stroke.width > 0. {
-						scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), color, None, &path);
+						scene.stroke(&stroke, kurbo::Affine::new(element_transform.to_cols_array()), color, None, path);
 					}
 				}
 			};
@@ -1017,6 +1120,14 @@ impl Render for Table<Vector> {
 			// Render the path
 			match render_params.render_mode {
 				RenderMode::Outline => {
+					let mut path = kurbo::BezPath::new();
+					for mut bezpath in vector.stroke_bezpath_iter() {
+						bezpath.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
+						for element in bezpath {
+							path.push(element);
+						}
+					}
+
 					let outline_stroke = kurbo::Stroke {
 						width: LAYER_OUTLINE_STROKE_WEIGHT,
 						miter_limit: 4.,
@@ -1036,70 +1147,188 @@ impl Render for Table<Vector> {
 					scene.stroke(&outline_stroke, kurbo::Affine::new(element_transform.to_cols_array()), outline_color, None, &path);
 				}
 				_ => {
-					if use_layer {
-						let mut element = row.element.clone();
-						element.style.clear_stroke();
-						element.style.set_fill(Fill::solid(Color::BLACK));
+					if is_branching {
+						// For branching meshes, handle fills and strokes separately
+						let fill_regions = vector.find_closed_regions();
+						let has_fill = vector.style.fill() != &Fill::None;
+						let has_stroke = vector.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke());
 
-						let vector_table = Table::new_from_row(TableRow {
-							element,
-							alpha_blending: *row.alpha_blending,
-							transform: *row.transform,
-							source_node_id: None,
-						});
+						// Render fills for each region separately
+						if has_fill {
+							for region in &fill_regions {
+								let mut bezpath = region.to_bezpath(vector);
+								bezpath.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
 
-						let bounds = row.element.bounding_box_with_transform(multiplied_transform).unwrap_or(layer_bounds);
-						let weight = row.element.style.stroke().as_ref().map_or(0., Stroke::effective_width);
-						let quad = Quad::from_box(bounds).inflate(weight * max_scale(applied_stroke_transform));
-						let bounds = quad.bounding_box();
-						let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
+								do_fill_path(scene, &bezpath);
+							}
+						}
 
-						let compose = if row.element.style.stroke().is_some_and(|x| x.align == StrokeAlign::Outside) {
-							peniko::Compose::SrcOut
-						} else {
-							peniko::Compose::SrcIn
-						};
+						// Render stroke once for the entire mesh
+						if has_stroke {
+							let mut combined_path = kurbo::BezPath::new();
+							for mut bezpath in vector.stroke_bezpath_iter() {
+								bezpath.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
+								for element in bezpath {
+									combined_path.push(element);
+								}
+							}
 
-						if wants_stroke_below {
-							scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
-							vector_table.render_to_vello(scene, parent_transform, _context, &render_params.for_alignment(applied_stroke_transform));
-							scene.push_layer(peniko::BlendMode::new(peniko::Mix::Normal, compose), 1., kurbo::Affine::IDENTITY, &rect);
+							do_stroke_path(scene, &combined_path, 1.);
+						}
 
-							do_stroke(scene, 2.);
+						// If no fill and no stroke, still render something
+						if !has_fill && !has_stroke {
+							let mut combined_path = kurbo::BezPath::new();
+							for region in &fill_regions {
+								let mut bezpath = region.to_bezpath(vector);
+								bezpath.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
+								for element in bezpath {
+									combined_path.push(element);
+								}
+							}
 
-							scene.pop_layer();
-							scene.pop_layer();
+							// Use the existing rendering logic for this fallback case
+							if use_layer {
+								let mut element = row.element.clone();
+								element.style.clear_stroke();
+								element.style.set_fill(Fill::solid(Color::BLACK));
 
-							do_fill(scene);
-						} else {
-							// Fill first (unclipped), then stroke (clipped) above
-							do_fill(scene);
+								let vector_table = Table::new_from_row(TableRow {
+									element,
+									alpha_blending: *row.alpha_blending,
+									transform: *row.transform,
+									source_node_id: None,
+								});
 
-							scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
-							vector_table.render_to_vello(scene, parent_transform, _context, &render_params.for_alignment(applied_stroke_transform));
-							scene.push_layer(peniko::BlendMode::new(peniko::Mix::Normal, compose), 1., kurbo::Affine::IDENTITY, &rect);
+								let bounds = vector.bounding_box_with_transform(multiplied_transform).unwrap_or(layer_bounds);
+								let weight = vector.style.stroke().as_ref().map_or(0., Stroke::effective_width);
+								let quad = Quad::from_box(bounds).inflate(weight * max_scale(applied_stroke_transform));
+								let bounds = quad.bounding_box();
+								let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
 
-							do_stroke(scene, 2.);
+								let compose = if vector.style.stroke().is_some_and(|x| x.align == StrokeAlign::Outside) {
+									peniko::Compose::SrcOut
+								} else {
+									peniko::Compose::SrcIn
+								};
 
-							scene.pop_layer();
-							scene.pop_layer();
+								if wants_stroke_below {
+									scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
+									vector_table.render_to_vello(scene, parent_transform, _context, &render_params.for_alignment(applied_stroke_transform));
+									scene.push_layer(peniko::BlendMode::new(peniko::Mix::Normal, compose), 1., kurbo::Affine::IDENTITY, &rect);
+
+									do_stroke_path(scene, &combined_path, 2.);
+
+									scene.pop_layer();
+									scene.pop_layer();
+
+									do_fill_path(scene, &combined_path);
+								} else {
+									do_fill_path(scene, &combined_path);
+
+									scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
+									vector_table.render_to_vello(scene, parent_transform, _context, &render_params.for_alignment(applied_stroke_transform));
+									scene.push_layer(peniko::BlendMode::new(peniko::Mix::Normal, compose), 1., kurbo::Affine::IDENTITY, &rect);
+
+									do_stroke_path(scene, &combined_path, 2.);
+
+									scene.pop_layer();
+									scene.pop_layer();
+								}
+							} else {
+								enum Op {
+									Fill,
+									Stroke,
+								}
+
+								let order = match vector.style.stroke().is_some_and(|stroke| !stroke.paint_order.is_default()) {
+									true => [Op::Stroke, Op::Fill],
+									false => [Op::Fill, Op::Stroke], // Default
+								};
+
+								for operation in order {
+									match operation {
+										Op::Fill => do_fill_path(scene, &combined_path),
+										Op::Stroke => do_stroke_path(scene, &combined_path, 1.),
+									}
+								}
+							}
 						}
 					} else {
-						// Non-aligned strokes or open paths: default order behavior
-						enum Op {
-							Fill,
-							Stroke,
+						// For non-branching paths, combine all bezpaths into a single path
+						let mut path = kurbo::BezPath::new();
+						for mut bezpath in vector.stroke_bezpath_iter() {
+							bezpath.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
+							for element in bezpath {
+								path.push(element);
+							}
 						}
 
-						let order = match row.element.style.stroke().is_some_and(|stroke| !stroke.paint_order.is_default()) {
-							true => [Op::Stroke, Op::Fill],
-							false => [Op::Fill, Op::Stroke], // Default
-						};
+						if use_layer {
+							let mut element = row.element.clone();
+							element.style.clear_stroke();
+							element.style.set_fill(Fill::solid(Color::BLACK));
 
-						for operation in order {
-							match operation {
-								Op::Fill => do_fill(scene),
-								Op::Stroke => do_stroke(scene, 1.),
+							let vector_table = Table::new_from_row(TableRow {
+								element,
+								alpha_blending: *row.alpha_blending,
+								transform: *row.transform,
+								source_node_id: None,
+							});
+
+							let bounds = vector.bounding_box_with_transform(multiplied_transform).unwrap_or(layer_bounds);
+							let weight = vector.style.stroke().as_ref().map_or(0., Stroke::effective_width);
+							let quad = Quad::from_box(bounds).inflate(weight * max_scale(applied_stroke_transform));
+							let bounds = quad.bounding_box();
+							let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
+
+							let compose = if vector.style.stroke().is_some_and(|x| x.align == StrokeAlign::Outside) {
+								peniko::Compose::SrcOut
+							} else {
+								peniko::Compose::SrcIn
+							};
+
+							if wants_stroke_below {
+								scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
+								vector_table.render_to_vello(scene, parent_transform, _context, &render_params.for_alignment(applied_stroke_transform));
+								scene.push_layer(peniko::BlendMode::new(peniko::Mix::Normal, compose), 1., kurbo::Affine::IDENTITY, &rect);
+
+								do_stroke_path(scene, &path, 2.);
+
+								scene.pop_layer();
+								scene.pop_layer();
+
+								do_fill_path(scene, &path);
+							} else {
+								// Fill first (unclipped), then stroke (clipped) above
+								do_fill_path(scene, &path);
+
+								scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
+								vector_table.render_to_vello(scene, parent_transform, _context, &render_params.for_alignment(applied_stroke_transform));
+								scene.push_layer(peniko::BlendMode::new(peniko::Mix::Normal, compose), 1., kurbo::Affine::IDENTITY, &rect);
+
+								do_stroke_path(scene, &path, 2.);
+
+								scene.pop_layer();
+								scene.pop_layer();
+							}
+						} else {
+							// Non-aligned strokes or open paths: default order behavior
+							enum Op {
+								Fill,
+								Stroke,
+							}
+
+							let order = match vector.style.stroke().is_some_and(|stroke| !stroke.paint_order.is_default()) {
+								true => [Op::Stroke, Op::Fill],
+								false => [Op::Fill, Op::Stroke], // Default
+							};
+
+							for operation in order {
+								match operation {
+									Op::Fill => do_fill_path(scene, &path),
+									Op::Stroke => do_stroke_path(scene, &path, 1.),
+								}
 							}
 						}
 					}
@@ -1302,14 +1531,13 @@ impl Render for Table<Raster<CPU>> {
 			let opacity = alpha_blending.opacity(render_params.for_mask);
 			let mut layer = false;
 
-			if opacity < 1. || alpha_blending.blend_mode != BlendMode::default() {
-				if let RenderBoundingBox::Rectangle(bounds) = self.bounding_box(transform, false) {
+			if (opacity < 1. || alpha_blending.blend_mode != BlendMode::default())
+				&& let RenderBoundingBox::Rectangle(bounds) = self.bounding_box(transform, false) {
 					let blending = peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver);
 					let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
 					scene.push_layer(blending, opacity, kurbo::Affine::IDENTITY, &rect);
 					layer = true;
 				}
-			}
 
 			let image_brush = peniko::ImageBrush::new(peniko::ImageData {
 				data: image.to_flat_u8().0.into(),
@@ -1361,14 +1589,13 @@ impl Render for Table<Raster<GPU>> {
 		for row in self.iter() {
 			let blend_mode = *row.alpha_blending;
 			let mut layer = false;
-			if blend_mode != Default::default() {
-				if let RenderBoundingBox::Rectangle(bounds) = self.bounding_box(transform, true) {
+			if blend_mode != Default::default()
+				&& let RenderBoundingBox::Rectangle(bounds) = self.bounding_box(transform, true) {
 					let blending = peniko::BlendMode::new(blend_mode.blend_mode.to_peniko(), peniko::Compose::SrcOver);
 					let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
 					scene.push_layer(blending, blend_mode.opacity, kurbo::Affine::IDENTITY, &rect);
 					layer = true;
 				}
-			}
 
 			let width = row.element.data().width();
 			let height = row.element.data().height();
