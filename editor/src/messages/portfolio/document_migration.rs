@@ -272,6 +272,22 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::vector::vector_nodes::PositionToPointNode", "graphene_core::vector::PositionToPointNode"],
 	},
 	NodeReplacement {
+		node: graphene_std::vector::instance_index::IDENTIFIER,
+		aliases: &["graphene_core::vector::InstanceIndexNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::instance_repeat::IDENTIFIER,
+		aliases: &["graphene_core::vector::InstanceRepeatNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::instance_position::IDENTIFIER,
+		aliases: &["graphene_core::vector::InstancePositionNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::vector::instance_on_points::IDENTIFIER,
+		aliases: &["graphene_core::vector::InstanceOnPointsNode"],
+	},
+	NodeReplacement {
 		node: graphene_std::math_nodes::color_value::IDENTIFIER,
 		aliases: &["graphene_math_nodes::ColorValueNode", "graphene_core::ops::ColorValueNode"],
 	},
@@ -341,6 +357,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 			"raster_nodes::adjustments::BlendNode",
 			"graphene_core::raster::adjustments::BlendNode",
 			"graphene_core::raster::BlendNode",
+			"graphene_raster_nodes::blending_nodes::BlendNode",
 		],
 	},
 	NodeReplacement {
