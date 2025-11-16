@@ -17,7 +17,7 @@ fn setup_run_cached(name: &str) -> DynamicExecutor {
 }
 
 #[library_benchmark]
-#[benches::with_setup(args = ["isometric-fountain", "painted-dreams", "procedural-string-lights", "parametric-dunescape", "red-dress", "valley-of-spires"], setup = setup_run_cached)]
+#[benches::with_setup(args = ["isometric-fountain", "painted-dreams", "parametric-dunescape", "red-dress", "valley-of-spires"], setup = setup_run_cached)]
 pub fn run_cached(executor: DynamicExecutor) {
 	let context = RenderConfig::default();
 	black_box(futures::executor::block_on(executor.tree().eval_tagged_value(executor.output(), black_box(context))).unwrap());

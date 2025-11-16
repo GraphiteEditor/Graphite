@@ -1,9 +1,11 @@
-const fs = require("fs");
-const https = require("https");
-const path = require("path");
+/* eslint-disable no-console */
 
-// Define basePath
-const basePath = path.resolve(__dirname);
+import fs from "fs";
+import https from "https";
+import path from "path";
+
+// Define basePath as the directory of the current script
+const basePath = import.meta.dirname;
 
 // Define files to copy as [source, destination] pairs
 // Files with the same destination will be concatenated
@@ -21,8 +23,8 @@ const DIRECTORIES_TO_COPY = [
 
 // Track processed destination files and CSS content
 const processedDestinations = new Set();
-const cssDestinations = new Set();
-const allCopiedFiles = new Set();
+const cssDestinations = new Set<string>();
+const allCopiedFiles = new Set<string>();
 
 // Process each file
 FILES_TO_COPY.forEach(([source, dest]) => {
@@ -68,8 +70,7 @@ FILES_TO_COPY.forEach(([source, dest]) => {
 	}
 });
 
-// Function to recursively copy a directory
-function copyDirectoryRecursive(source, destination) {
+function copyDirectoryRecursive(source: string, destination: string) {
 	// Ensure destination directory exists
 	if (!fs.existsSync(destination)) {
 		fs.mkdirSync(destination, { recursive: true });
@@ -130,7 +131,7 @@ cssDestinations.forEach((cssPath) => {
 });
 
 // Filter files that aren't referenced in CSS
-const unusedFiles = [];
+const unusedFiles: string[] = [];
 allCopiedFiles.forEach((filePath) => {
 	const fileName = path.basename(filePath);
 
@@ -185,10 +186,10 @@ https
 				fs.writeFileSync(textBalancerDest, data, "utf8");
 				console.log(`Downloaded and saved: ${textBalancerDest}`);
 			} catch (error) {
-				console.error(`Error saving text-balancer.js:`, error);
+				console.error("Error saving text-balancer.js:", error);
 			}
 		});
 	})
 	.on("error", (err) => {
-		console.error(`Error downloading text-balancer.js:`, err);
+		console.error("Error downloading text-balancer.js:", err);
 	});

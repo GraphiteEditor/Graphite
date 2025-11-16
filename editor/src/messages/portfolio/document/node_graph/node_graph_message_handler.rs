@@ -20,6 +20,7 @@ use crate::messages::tool::common_functionality::graph_modification_utils::{self
 use crate::messages::tool::common_functionality::utility_functions::make_path_editable_is_allowed;
 use crate::messages::tool::tool_messages::tool_prelude::{Key, MouseMotion};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
+use crate::messages::viewport::{Position, Rect};
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
@@ -43,6 +44,7 @@ pub struct NodeGraphMessageContext<'a> {
 	pub navigation_handler: &'a NavigationMessageHandler,
 	pub preferences: &'a PreferencesMessageHandler,
 	pub layers_panel_open: bool,
+	pub viewport: &'a ViewportMessageHandler,
 }
 
 #[derive(Debug, Clone, ExtractField)]
@@ -113,6 +115,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			navigation_handler,
 			preferences,
 			layers_panel_open,
+			viewport,
 		} = context;
 
 		match message {
@@ -783,12 +786,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 					// TODO: Create function
 					let node_graph_shift = if matches!(context_menu_data, ContextMenuData::CreateNode { compatible_type: None }) {
-						let appear_right_of_mouse = if click.x > ipp.viewport_bounds.size().x - 180. { -180. } else { 0. };
-						let appear_above_mouse = if click.y > ipp.viewport_bounds.size().y - 200. { -200. } else { 0. };
+						let appear_right_of_mouse = if click.x > viewport.size().x() - 180. { -180. } else { 0. };
+						let appear_above_mouse = if click.y > viewport.size().y() - 200. { -200. } else { 0. };
 						DVec2::new(appear_right_of_mouse, appear_above_mouse) / network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.matrix2.x_axis.x
 					} else {
-						let appear_right_of_mouse = if click.x > ipp.viewport_bounds.size().x - 173. { -173. } else { 0. };
-						let appear_above_mouse = if click.y > ipp.viewport_bounds.size().y - 34. { -34. } else { 0. };
+						let appear_right_of_mouse = if click.x > viewport.size().x() - 173. { -173. } else { 0. };
+						let appear_above_mouse = if click.y > viewport.size().y() - 34. { -34. } else { 0. };
 						DVec2::new(appear_right_of_mouse, appear_above_mouse) / network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.matrix2.x_axis.x
 					};
 
@@ -966,7 +969,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				}
 
 				// Clicked on the graph background so we box select
-				if !shift_click {
+				if !shift_click && !alt_click {
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: Vec::new() })
 				}
 				self.box_selection_start = Some((node_graph_point, false));
@@ -983,7 +986,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 				// Auto-panning
 				let messages = [NodeGraphMessage::PointerOutsideViewport { shift }.into(), NodeGraphMessage::PointerMove { shift }.into()];
-				self.auto_panning.setup_by_mouse_position(ipp, &messages, responses);
+				self.auto_panning.setup_by_mouse_position(ipp, viewport, &messages, responses);
 
 				let viewport_location = ipp.mouse.position;
 				let point = network_metadata
@@ -1218,8 +1221,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 							_ => Some(format!("type:{}", output_type.nested_type())),
 						};
 
-						let appear_right_of_mouse = if ipp.mouse.position.x > ipp.viewport_bounds.size().x - 173. { -173. } else { 0. };
-						let appear_above_mouse = if ipp.mouse.position.y > ipp.viewport_bounds.size().y - 34. { -34. } else { 0. };
+						let appear_right_of_mouse = if ipp.mouse.position.x > viewport.size().y() - 173. { -173. } else { 0. };
+						let appear_above_mouse = if ipp.mouse.position.y > viewport.size().y() - 34. { -34. } else { 0. };
 						let node_graph_shift = DVec2::new(appear_right_of_mouse, appear_above_mouse) / network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.matrix2.x_axis.x;
 
 						self.context_menu = Some(ContextMenuInformation {
@@ -1403,7 +1406,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}
 			NodeGraphMessage::PointerOutsideViewport { shift } => {
 				if self.drag_start.is_some() || self.box_selection_start.is_some() || (self.wire_in_progress_from_connector.is_some() && self.context_menu.is_none()) {
-					let _ = self.auto_panning.shift_viewport(ipp, responses);
+					let _ = self.auto_panning.shift_viewport(ipp, viewport, responses);
 				} else {
 					// Auto-panning
 					let messages = [NodeGraphMessage::PointerOutsideViewport { shift }.into(), NodeGraphMessage::PointerMove { shift }.into()];
@@ -1611,7 +1614,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					return;
 				};
 
-				let viewport_bbox = ipp.document_bounds();
+				let viewport_bbox = [DVec2::ZERO, viewport.size().into_dvec2()];
 				let document_bbox: [DVec2; 2] = viewport_bbox.map(|p| network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse().transform_point2(p));
 
 				let mut nodes = Vec::new();
@@ -1657,7 +1660,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}
 			NodeGraphMessage::SetGridAlignedEdges => {
 				if graph_view_overlay_open {
-					network_interface.set_grid_aligned_edges(DVec2::new(ipp.viewport_bounds.bottom_right.x - ipp.viewport_bounds.top_left.x, 0.), breadcrumb_network_path);
+					let viewport_bounds = viewport.bounds();
+					network_interface.set_grid_aligned_edges(DVec2::new(viewport_bounds.x() - viewport_bounds.width(), 0.), breadcrumb_network_path);
 					// Send the new edges to the frontend
 					responses.add(NodeGraphMessage::UpdateImportsExports);
 				}
@@ -1921,12 +1925,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						.transform_point2(ipp.mouse.position);
 
 					let shift = ipp.keyboard.get(Key::Shift as usize);
+					let alt = ipp.keyboard.get(Key::Alt as usize);
 					let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) else {
 						log::error!("Could not get selected nodes in UpdateBoxSelection");
 						return;
 					};
 					let previous_selection = selected_nodes.selected_nodes_ref().iter().cloned().collect::<HashSet<_>>();
-					let mut nodes = if shift {
+					let mut nodes = if shift || alt {
 						selected_nodes.selected_nodes_ref().iter().cloned().collect::<HashSet<_>>()
 					} else {
 						HashSet::new()
@@ -1939,7 +1944,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						};
 						let quad = Quad::from_box([box_selection_start, box_selection_end_graph]);
 						if click_targets.node_click_target.intersect_path(|| quad.to_lines(), DAffine2::IDENTITY) {
-							nodes.insert(node_id);
+							if alt {
+								nodes.remove(&node_id);
+							} else {
+								nodes.insert(node_id);
+							}
 						}
 					}
 					if nodes != previous_selection {
@@ -2734,7 +2743,11 @@ impl NodeGraphMessageHandler {
 		let mut hint_data = HintData(vec![
 			HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, "Add Node")]),
 			HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Select Node"), HintInfo::keys([Key::Shift], "Extend").prepend_plus()]),
-			HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"), HintInfo::keys([Key::Shift], "Extend").prepend_plus()]),
+			HintGroup(vec![
+				HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"),
+				HintInfo::keys([Key::Shift], "Extend").prepend_plus(),
+				HintInfo::keys([Key::Alt], "Subtract").prepend_plus(),
+			]),
 		]);
 		if self.has_selection {
 			hint_data.0.extend([

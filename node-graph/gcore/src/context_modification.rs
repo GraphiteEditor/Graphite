@@ -11,11 +11,12 @@ use core::f64;
 use glam::{DAffine2, DVec2};
 use graphene_core_shaders::color::Color;
 
-/// Node for filtering components of the context based on the specified requirements.
+/// Filters out what should be unused components of the context based on the specified requirements.
 /// This node is inserted by the compiler to "zero out" unused context components.
 #[node_macro::node(category("Internal"))]
 async fn context_modification<T>(
 	ctx: impl Ctx + CloneVarArgs + ExtractAll,
+	/// The data to pass through, evaluated with the stripped down context.
 	#[implementations(
 		Context -> (),
 		Context -> bool,
@@ -31,6 +32,7 @@ async fn context_modification<T>(
 		Context -> Vec<NodeId>,
 		Context -> Vec<f64>,
 		Context -> Vec<f32>,
+		Context -> Vec<String>,
 		Context -> Table<Vector>,
 		Context -> Table<Graphic>,
 		Context -> Table<Raster<CPU>>,
@@ -41,6 +43,7 @@ async fn context_modification<T>(
 		Context -> GradientStops,
 	)]
 	value: impl Node<Context<'static>, Output = T>,
+	/// The parts of the context to keep when evaluating the input value. All other parts are nullified.
 	features_to_keep: ContextFeatures,
 ) -> T {
 	let new_context = OwnedContextImpl::from_flags(ctx, features_to_keep);

@@ -114,6 +114,7 @@ pub fn migrate_artboard<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Re
 #[node_macro::node(category(""))]
 async fn create_artboard<T: Into<Table<Graphic>> + 'n>(
 	ctx: impl ExtractAll + CloneVarArgs + Ctx,
+	/// Graphics to include within the artboard.
 	#[implementations(
 		Context -> Table<Graphic>,
 		Context -> Table<Vector>,
@@ -124,10 +125,15 @@ async fn create_artboard<T: Into<Table<Graphic>> + 'n>(
 		Context -> DAffine2,
 	)]
 	content: impl Node<Context<'static>, Output = T>,
+	/// Name of the artboard, shown in parts of the editor.
 	label: String,
+	/// Coordinate of the top-left corner of the artboard within the document.
 	location: DVec2,
+	/// Width and height of the artboard within the document. Only integers are valid.
 	dimensions: DVec2,
+	/// Color of the artboard background. Only positive integers are valid.
 	background: Table<Color>,
+	/// Whether to cut off the contained content that extends outside the artboard, or keep it visible.
 	clip: bool,
 ) -> Table<Artboard> {
 	let location = location.as_ivec2();

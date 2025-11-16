@@ -122,7 +122,7 @@ impl<H: CefEventHandler> Clone for DisplayHandlerImpl<H> {
 		}
 		Self {
 			object: self.object,
-			event_handler: self.event_handler.clone(),
+			event_handler: self.event_handler.duplicate(),
 		}
 	}
 }

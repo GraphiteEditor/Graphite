@@ -234,6 +234,7 @@ pub struct TimingInformation {
 #[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct RenderConfig {
 	pub viewport: Footprint,
+	pub scale: f64,
 	pub export_format: ExportFormat,
 	pub time: TimingInformation,
 	#[serde(alias = "view_mode")]

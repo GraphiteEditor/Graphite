@@ -19,6 +19,7 @@ pub struct CheckboxInput {
 	pub tooltip: String,
 
 	#[serde(rename = "forLabel")]
+	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub for_label: CheckboxId,
 
 	#[serde(skip)]

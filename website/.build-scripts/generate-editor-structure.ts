@@ -1,21 +1,12 @@
-const fs = require("fs");
-const path = require("path");
+/* eslint-disable no-console */
 
-/**
- * Escapes characters that have special meaning in HTML.
- * @param {string} text The text to escape.
- * @returns {string} The escaped text.
- */
-function escapeHtml(text) {
-	return text.replace(/</g, "&lt;").replace(/>/g, "&gt;");
-}
+import fs from "fs";
+import path from "path";
 
-/**
- * Parses a single line of the input text.
- * @param {string} line The line to parse.
- * @returns {{ level: number, text: string, link: string | undefined }}
- */
-function parseLine(line) {
+type Entry = { level: number; text: string; link: string | undefined };
+
+/// Parses a single line of the input text.
+function parseLine(line: string) {
 	const linkRegex = /`([^`]+)`$/;
 	const linkMatch = line.match(linkRegex);
 	let link = undefined;
@@ -25,7 +16,10 @@ function parseLine(line) {
 		link = `https://github.com/GraphiteEditor/Graphite/blob/master/${filePath}`;
 	}
 
-	const textContent = line.replace(/^[\s│├└─]*/, "").replace(linkRegex, "").trim();
+	const textContent = line
+		.replace(/^[\s│├└─]*/, "")
+		.replace(linkRegex, "")
+		.trim();
 	const indentation = line.indexOf(textContent);
 	// Each level of indentation is 4 characters.
 	const level = Math.floor(indentation / 4);
@@ -33,14 +27,8 @@ function parseLine(line) {
 	return { level, text: textContent, link };
 }
 
-/**
- * Recursively builds the HTML list from the parsed nodes.
- * @param {Array} nodes The array of parsed node objects.
- * @param {number} currentIndex The current index in the nodes array.
- * @param {number} currentLevel The current indentation level.
- * @returns {{html: string, nextIndex: number}}
- */
-function buildHtmlList(nodes, currentIndex, currentLevel) {
+/// Recursively builds the HTML list from the parsed nodes.
+function buildHtmlList(nodes: Entry[], currentIndex: number, currentLevel: number) {
 	if (currentIndex >= nodes.length) {
 		return { html: "", nextIndex: currentIndex };
 	}
@@ -68,7 +56,7 @@ function buildHtmlList(nodes, currentIndex, currentLevel) {
 		} else {
 			escapedText = [escapeHtml(node.text)];
 		}
-		
+
 		let role = "message";
 		if (node.link) role = "subsystem";
 		else if (hasDeeperChildren) role = "submessage";
@@ -76,8 +64,10 @@ function buildHtmlList(nodes, currentIndex, currentLevel) {
 
 		const partOfMessageFromNamingConvention = ["Message", "MessageHandler", "MessageContext"].some((suffix) => node.text.replace(/(.*)<.*>/g, "$1").endsWith(suffix));
 		const partOfMessageViolatesNamingConvention = node.link && !partOfMessageFromNamingConvention;
-		const violatesNamingConvention = partOfMessageViolatesNamingConvention ? "<span class=\"warn\">(violates naming convention — should end with 'Message', 'MessageHandler', or 'MessageContext')</span>" : "";
-		
+		const violatesNamingConvention = partOfMessageViolatesNamingConvention
+			? "<span class=\"warn\">(violates naming convention — should end with 'Message', 'MessageHandler', or 'MessageContext')</span>"
+			: "";
+
 		if (hasDirectChildren) {
 			html += `<li><span class="tree-node"><span class="${role}">${escapedText}</span>${linkHtml}${violatesNamingConvention}</span>`;
 			const childResult = buildHtmlList(nodes, i + 1, node.level + 1);
@@ -96,12 +86,16 @@ function buildHtmlList(nodes, currentIndex, currentLevel) {
 	return { html, nextIndex: i };
 }
 
+function escapeHtml(text: string) {
+	return text.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 const inputFile = process.argv[2];
 const outputFile = process.argv[3];
 
 if (!inputFile || !outputFile) {
 	console.error("Error: Please provide the input text and output HTML file paths as arguments.");
-	console.log("Usage: node generate-editor-structure.js <input txt> <output html>");
+	console.log("Usage: node generate-editor-structure.ts <input txt> <output html>");
 	process.exit(1);
 }
 
@@ -112,7 +106,7 @@ if (!fs.existsSync(inputFile)) {
 
 try {
 	const fileContent = fs.readFileSync(inputFile, "utf-8");
-	const lines = fileContent.split(/\r?\n/).filter(line => line.trim() !== "" && !line.startsWith("// filepath:"));
+	const lines = fileContent.split(/\r?\n/).filter((line) => line.trim() !== "" && !line.startsWith("// filepath:"));
 	const parsedNodes = lines.map(parseLine);
 
 	const { html } = buildHtmlList(parsedNodes, 0, 0);

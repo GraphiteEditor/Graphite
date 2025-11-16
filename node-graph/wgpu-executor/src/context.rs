@@ -88,6 +88,7 @@ impl ContextBuilder {
 			required_limits: adapter.limits(),
 			memory_hints: Default::default(),
 			trace: wgpu::Trace::Off,
+			experimental_features: Default::default(),
 		};
 		adapter.request_device(&device_descriptor).await.ok()
 	}

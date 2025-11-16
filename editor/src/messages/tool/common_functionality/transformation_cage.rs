@@ -1,8 +1,8 @@
 use super::snapping::{self, SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnappedPoint};
 use crate::consts::{
-	BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, COLOR_OVERLAY_WHITE, MAX_LENGTH_FOR_NO_WIDTH_OR_HEIGHT, MAXIMUM_ALT_SCALE_FACTOR, MIN_LENGTH_FOR_CORNERS_VISIBILITY,
-	MIN_LENGTH_FOR_EDGE_RESIZE_PRIORITY_OVER_CORNERS, MIN_LENGTH_FOR_MIDPOINT_VISIBILITY, MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR, MIN_LENGTH_FOR_SKEW_TRIANGLE_VISIBILITY, RESIZE_HANDLE_SIZE,
-	SELECTION_DRAG_ANGLE, SKEW_TRIANGLE_OFFSET, SKEW_TRIANGLE_SIZE,
+	BOUNDS_ROTATE_THRESHOLD, BOUNDS_SELECT_THRESHOLD, MAX_LENGTH_FOR_NO_WIDTH_OR_HEIGHT, MAXIMUM_ALT_SCALE_FACTOR, MIN_LENGTH_FOR_CORNERS_VISIBILITY, MIN_LENGTH_FOR_EDGE_RESIZE_PRIORITY_OVER_CORNERS,
+	MIN_LENGTH_FOR_MIDPOINT_VISIBILITY, MIN_LENGTH_FOR_RESIZE_TO_INCLUDE_INTERIOR, MIN_LENGTH_FOR_SKEW_TRIANGLE_VISIBILITY, RESIZE_HANDLE_SIZE, SELECTION_DRAG_ANGLE, SKEW_TRIANGLE_OFFSET,
+	SKEW_TRIANGLE_SIZE,
 };
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -489,13 +489,7 @@ impl BoundingBoxManager {
 			if (end - start).length() < MIN_LENGTH_FOR_SKEW_TRIANGLE_VISIBILITY {
 				return;
 			}
-
-			let edge_dir = (end - start).normalize();
-			let mid = end.midpoint(start);
-
-			for edge in [edge_dir, -edge_dir] {
-				overlay_context.draw_triangle(mid + edge * (3. + SKEW_TRIANGLE_OFFSET), edge, SKEW_TRIANGLE_SIZE, None, None);
-			}
+			overlay_context.skew_handles(start, end);
 		};
 
 		if let Some([start, end]) = self.edge_endpoints_vector_from_edge_bool(hover_edge) {
@@ -565,11 +559,6 @@ impl BoundingBoxManager {
 			self.render_quad(overlay_context);
 		}
 
-		let mut draw_handle = |point: DVec2, angle: f64| {
-			let quad = DAffine2::from_angle_translation(angle, point) * Quad::from_box([DVec2::splat(-RESIZE_HANDLE_SIZE / 2.), DVec2::splat(RESIZE_HANDLE_SIZE / 2.)]);
-			overlay_context.quad(quad, None, Some(COLOR_OVERLAY_WHITE));
-		};
-
 		let horizontal_angle = (quad.top_left() - quad.bottom_left()).to_angle();
 		let vertical_angle = (quad.top_left() - quad.top_right()).to_angle();
 
@@ -579,7 +568,7 @@ impl BoundingBoxManager {
 			TransformCageSizeCategory::Full | TransformCageSizeCategory::Narrow | TransformCageSizeCategory::ReducedLandscape
 		) {
 			for point in horizontal_edges {
-				draw_handle(point, horizontal_angle);
+				overlay_context.resize_handle(point, horizontal_angle);
 			}
 		}
 
@@ -589,7 +578,7 @@ impl BoundingBoxManager {
 			TransformCageSizeCategory::Full | TransformCageSizeCategory::Narrow | TransformCageSizeCategory::ReducedPortrait
 		) {
 			for point in vertical_edges {
-				draw_handle(point, vertical_angle);
+				overlay_context.resize_handle(point, vertical_angle);
 			}
 		}
 
@@ -606,14 +595,14 @@ impl BoundingBoxManager {
 			TransformCageSizeCategory::Full | TransformCageSizeCategory::ReducedBoth | TransformCageSizeCategory::ReducedLandscape | TransformCageSizeCategory::ReducedPortrait
 		) {
 			for point in quad.0 {
-				draw_handle(point, angle);
+				overlay_context.resize_handle(point, angle);
 			}
 		}
 
 		// Draw the flat line endpoint drag handles
 		if category == TransformCageSizeCategory::Flat {
-			draw_handle(self.transform.transform_point2(self.bounds[0]), angle);
-			draw_handle(self.transform.transform_point2(self.bounds[1]), angle);
+			overlay_context.resize_handle(self.transform.transform_point2(self.bounds[0]), angle);
+			overlay_context.resize_handle(self.transform.transform_point2(self.bounds[1]), angle);
 		}
 	}
 

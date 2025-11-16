@@ -8,7 +8,7 @@
 		touch-action: pan-y pinch-zoom;
 		cursor: grab;
 
-		img {
+		:is(img, video) {
 			position: relative;
 			display: inline-block;
 			user-select: none;
@@ -33,7 +33,7 @@
 		}
 	}
 
-	&:not(.dragging, .jostling) .carousel-slide img {
+	&:not(.dragging, .jostling) .carousel-slide :is(img, video) {
 		transition: transform 500ms;
 	}
 
@@ -141,11 +141,11 @@
 		}
 	}
 
-	&.window-size-1 .carousel-slide img {
+	&.window-size-1 .carousel-slide :is(img, video) {
 		width: 100%;
 	}
 
-	&.window-size-2 .carousel-slide img {
+	&.window-size-2 .carousel-slide :is(img, video) {
 		width: calc((100% / 2) - 10px);
 		padding: 0 10px;
 
@@ -158,7 +158,7 @@
 		}
 	}
 
-	&.window-size-3 .carousel-slide img {
+	&.window-size-3 .carousel-slide :is(img, video) {
 		width: calc((100% / 3) - 10px * (4 / 3));
 		padding: 0 10px;
 

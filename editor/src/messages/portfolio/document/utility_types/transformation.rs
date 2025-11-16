@@ -456,7 +456,7 @@ impl TransformOperation {
 		}
 		let mut typing_hints = vec![HintInfo::keys([Key::Minus], "Negate Direction")];
 		if self.can_begin_typing() {
-			typing_hints.push(HintInfo::keys([Key::NumKeys], "Enter Number"));
+			typing_hints.push(HintInfo::keys([Key::FakeKeyNumbers], "Enter Number"));
 			if self.is_typing() {
 				typing_hints.push(HintInfo::keys([Key::Backspace], "Delete Digit"));
 			}

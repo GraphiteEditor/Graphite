@@ -579,10 +579,10 @@ fn binary_gcd<T: num_traits::int::PrimInt + std::ops::ShrAssign<i32> + std::ops:
 fn equals<T: std::cmp::PartialEq<T>>(
 	_: impl Ctx,
 	/// One of the two numbers to compare for equality.
-	#[implementations(f64, f32, u32, DVec2, &str, String)]
+	#[implementations(f64, f32, u32, DVec2, bool, &str, String)]
 	value: T,
 	/// The other of the two numbers to compare for equality.
-	#[implementations(f64, f32, u32, DVec2, &str, String)]
+	#[implementations(f64, f32, u32, DVec2, bool, &str, String)]
 	other_value: T,
 ) -> bool {
 	other_value == value
@@ -593,10 +593,10 @@ fn equals<T: std::cmp::PartialEq<T>>(
 fn not_equals<T: std::cmp::PartialEq<T>>(
 	_: impl Ctx,
 	/// One of the two numbers to compare for inequality.
-	#[implementations(f64, f32, u32, DVec2, &str)]
+	#[implementations(f64, f32, u32, DVec2, bool, &str)]
 	value: T,
 	/// The other of the two numbers to compare for inequality.
-	#[implementations(f64, f32, u32, DVec2, &str)]
+	#[implementations(f64, f32, u32, DVec2, bool, &str)]
 	other_value: T,
 ) -> bool {
 	other_value != value

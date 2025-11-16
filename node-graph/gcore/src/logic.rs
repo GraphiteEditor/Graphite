@@ -9,7 +9,7 @@ use crate::vector::Vector;
 use crate::{Context, Ctx};
 use glam::{DAffine2, DVec2};
 
-/// Type-asserts a value to be a string, so the automatic type conversion system can convert another type to a string.
+/// Type-asserts a value to be a string.
 #[node_macro::node(category("Debug"))]
 fn to_string(_: impl Ctx, value: String) -> String {
 	value
@@ -69,6 +69,30 @@ fn string_length(_: impl Ctx, string: String) -> f64 {
 	string.chars().count() as f64
 }
 
+/// Splits a string into a list of substrings based on the specified delimeter.
+/// For example, the delimeter "," will split "a,b,c" into the strings "a", "b", and "c".
+#[node_macro::node(category("Text"))]
+fn string_split(
+	_: impl Ctx,
+	/// The string to split into substrings.
+	string: String,
+	/// The character(s) that separate the substrings. These are not included in the outputs.
+	#[default("\\n")]
+	delimeter: String,
+	/// Whether to convert escape sequences found in the delimeter into their corresponding characters:
+	/// "\n" (newline), "\r" (carriage return), "\t" (tab), "\0" (null), and "\\" (backslash)
+	#[default(true)]
+	delimeter_escaping: bool,
+) -> Vec<String> {
+	let delimeter = if delimeter_escaping {
+		delimeter.replace("\\n", "\n").replace("\\r", "\r").replace("\\t", "\t").replace("\\0", "\0").replace("\\\\", "\\")
+	} else {
+		delimeter
+	};
+
+	string.split(&delimeter).map(str::to_string).collect()
+}
+
 /// Evaluates either the "If True" or "If False" input branch based on whether the input condition is true or false.
 #[node_macro::node(category("Math: Logic"))]
 async fn switch<T, C: Send + 'n + Clone>(
@@ -113,10 +137,5 @@ async fn switch<T, C: Send + 'n + Clone>(
 	)]
 	if_false: impl Node<C, Output = T>,
 ) -> T {
-	if condition {
-		// We can't remove these calls because we only want to evaluate the branch that we actually need
-		if_true.eval(ctx).await
-	} else {
-		if_false.eval(ctx).await
-	}
+	if condition { if_true.eval(ctx).await } else { if_false.eval(ctx).await }
 }

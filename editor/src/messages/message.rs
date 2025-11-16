@@ -33,6 +33,8 @@ pub enum Message {
 	Preferences(PreferencesMessage),
 	#[child]
 	Tool(ToolMessage),
+	#[child]
+	Viewport(ViewportMessage),
 
 	// Messages
 	Batched {

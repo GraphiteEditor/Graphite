@@ -45,6 +45,7 @@ impl VectorTableIterMut for Table<Vector> {
 	}
 }
 
+/// Uniquely sets the fill and/or stroke style of every vector element to individual colors sampled along a chosen gradient.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector))]
 async fn assign_colors<T>(
 	_: impl Ctx,
@@ -105,6 +106,7 @@ where
 	content
 }
 
+/// Applies a fill style to the vector content, giving an appearance to the area within the interior of the geometry.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("fill_properties"))]
 async fn fill<F: Into<Fill> + 'n + Send, V: VectorTableIterMut + 'n + Send>(
 	_: impl Ctx,
@@ -121,6 +123,7 @@ async fn fill<F: Into<Fill> + 'n + Send, V: VectorTableIterMut + 'n + Send>(
 	)]
 	mut content: V,
 	/// The fill to paint the path with.
+	#[default(Color::BLACK)]
 	#[implementations(
 		Fill,
 		Table<Color>,
@@ -131,7 +134,6 @@ async fn fill<F: Into<Fill> + 'n + Send, V: VectorTableIterMut + 'n + Send>(
 		Table<GradientStops>,
 		Gradient,
 	)]
-	#[default(Color::BLACK)]
 	fill: F,
 	_backup_color: Table<Color>,
 	_backup_gradient: Gradient,
@@ -144,12 +146,31 @@ async fn fill<F: Into<Fill> + 'n + Send, V: VectorTableIterMut + 'n + Send>(
 	content
 }
 
-/// Applies a stroke style to the vector contained in the input.
+trait IntoF64Vec {
+	fn into_vec(self) -> Vec<f64>;
+}
+impl IntoF64Vec for f64 {
+	fn into_vec(self) -> Vec<f64> {
+		vec![self]
+	}
+}
+impl IntoF64Vec for Vec<f64> {
+	fn into_vec(self) -> Vec<f64> {
+		self
+	}
+}
+impl IntoF64Vec for String {
+	fn into_vec(self) -> Vec<f64> {
+		self.split(&[',', ' ']).filter(|s| !s.is_empty()).filter_map(|s| s.parse::<f64>().ok()).collect()
+	}
+}
+
+/// Applies a stroke style to the vector content, giving an appearance to the area within the outline of the geometry.
 #[node_macro::node(category("Vector: Style"), path(graphene_core::vector), properties("stroke_properties"))]
-async fn stroke<V>(
+async fn stroke<V, L: IntoF64Vec>(
 	_: impl Ctx,
 	/// The content with vector paths to apply the stroke style to.
-	#[implementations(Table<Vector>, Table<Graphic>)]
+	#[implementations(Table<Vector>, Table<Vector>, Table<Vector>, Table<Graphic>, Table<Graphic>, Table<Graphic>)]
 	mut content: Table<V>,
 	/// The stroke color.
 	#[default(Color::BLACK)]
@@ -171,7 +192,8 @@ async fn stroke<V>(
 	/// <https://svgwg.org/svg2-draft/painting.html#PaintOrderProperty>
 	paint_order: PaintOrder,
 	/// The stroke dash lengths. Each length forms a distance in a pattern where the first length is a dash, the second is a gap, and so on. If the list is an odd length, the pattern repeats with solid-gap roles reversed.
-	dash_lengths: Vec<f64>,
+	#[implementations(Vec<f64>, f64, String, Vec<f64>, f64, String)]
+	dash_lengths: L,
 	/// The phase offset distance from the starting point of the dash pattern.
 	#[unit(" px")]
 	dash_offset: f64,
@@ -182,7 +204,7 @@ where
 	let stroke = Stroke {
 		color: color.into(),
 		weight,
-		dash_lengths,
+		dash_lengths: dash_lengths.into_vec(),
 		dash_offset,
 		cap,
 		join,
@@ -1119,11 +1141,11 @@ async fn sample_polyline(
 		.collect()
 }
 
-/// Cuts a path at a given progress from 0 to 1 along the path, creating two new subpaths from the original one (if the path is initially open) or one open subpath (if the path is initially closed).
+/// Cuts a path at a given progression from 0 to 1 along the path, creating two new subpaths from the original one (if the path is initially open) or one open subpath (if the path is initially closed).
 ///
-/// If multiple subpaths make up the path, the whole number part of the progress value selects the subpath and the decimal part determines the position along it.
+/// If multiple subpaths make up the path, the whole number part of the progression value selects the subpath and the decimal part determines the position along it.
 #[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
-async fn cut_path(_: impl Ctx, mut content: Table<Vector>, progress: Fraction, parameterized_distance: bool, reverse: bool) -> Table<Vector> {
+async fn cut_path(_: impl Ctx, mut content: Table<Vector>, progression: Fraction, parameterized_distance: bool, reverse: bool) -> Table<Vector> {
 	let euclidian = !parameterized_distance;
 
 	let bezpaths = content
@@ -1133,7 +1155,7 @@ async fn cut_path(_: impl Ctx, mut content: Table<Vector>, progress: Fraction, p
 		.collect::<Vec<_>>();
 
 	let bezpath_count = bezpaths.len() as f64;
-	let t_value = progress.clamp(0., bezpath_count);
+	let t_value = progression.clamp(0., bezpath_count);
 	let t_value = if reverse { bezpath_count - t_value } else { t_value };
 	let index = if t_value >= bezpath_count { (bezpath_count - 1.) as usize } else { t_value as usize };
 
@@ -1219,16 +1241,16 @@ async fn cut_segments(_: impl Ctx, mut content: Table<Vector>) -> Table<Vector> 
 	content
 }
 
-/// Determines the position of a point on the path, given by its progress from 0 to 1 along the path.
+/// Determines the position of a point on the path, given by its progression from 0 to 1 along the path.
 ///
-/// If multiple subpaths make up the path, the whole number part of the progress value selects the subpath and the decimal part determines the position along it.
+/// If multiple subpaths make up the path, the whole number part of the progression value selects the subpath and the decimal part determines the position along it.
 #[node_macro::node(name("Position on Path"), category("Vector: Measure"), path(graphene_core::vector))]
 async fn position_on_path(
 	_: impl Ctx,
 	/// The path to traverse.
 	content: Table<Vector>,
 	/// The factor from the start to the end of the path, 0–1 for one subpath, 1–2 for a second subpath, and so on.
-	progress: Fraction,
+	progression: Fraction,
 	/// Swap the direction of the path.
 	reverse: bool,
 	/// Traverse the path using each segment's Bézier curve parameterization instead of the Euclidean distance. Faster to compute but doesn't respect actual distances.
@@ -1244,12 +1266,12 @@ async fn position_on_path(
 		})
 		.collect::<Vec<_>>();
 	let bezpath_count = bezpaths.len() as f64;
-	let progress = progress.clamp(0., bezpath_count);
-	let progress = if reverse { bezpath_count - progress } else { progress };
-	let index = if progress >= bezpath_count { (bezpath_count - 1.) as usize } else { progress as usize };
+	let progression = progression.clamp(0., bezpath_count);
+	let progression = if reverse { bezpath_count - progression } else { progression };
+	let index = if progression >= bezpath_count { (bezpath_count - 1.) as usize } else { progression as usize };
 
 	bezpaths.get_mut(index).map_or(DVec2::ZERO, |(bezpath, transform)| {
-		let t = if progress == bezpath_count { 1. } else { progress.fract() };
+		let t = if progression == bezpath_count { 1. } else { progression.fract() };
 		let t = if euclidian { TValue::Euclidean(t) } else { TValue::Parametric(t) };
 
 		bezpath.apply_affine(Affine::new(transform.to_cols_array()));
@@ -1258,16 +1280,16 @@ async fn position_on_path(
 	})
 }
 
-/// Determines the angle of the tangent at a point on the path, given by its progress from 0 to 1 along the path.
+/// Determines the angle of the tangent at a point on the path, given by its progression from 0 to 1 along the path.
 ///
-/// If multiple subpaths make up the path, the whole number part of the progress value selects the subpath and the decimal part determines the position along it.
+/// If multiple subpaths make up the path, the whole number part of the progression value selects the subpath and the decimal part determines the position along it.
 #[node_macro::node(name("Tangent on Path"), category("Vector: Measure"), path(graphene_core::vector))]
 async fn tangent_on_path(
 	_: impl Ctx,
 	/// The path to traverse.
 	content: Table<Vector>,
 	/// The factor from the start to the end of the path, 0–1 for one subpath, 1–2 for a second subpath, and so on.
-	progress: Fraction,
+	progression: Fraction,
 	/// Swap the direction of the path.
 	reverse: bool,
 	/// Traverse the path using each segment's Bézier curve parameterization instead of the Euclidean distance. Faster to compute but doesn't respect actual distances.
@@ -1285,12 +1307,12 @@ async fn tangent_on_path(
 		})
 		.collect::<Vec<_>>();
 	let bezpath_count = bezpaths.len() as f64;
-	let progress = progress.clamp(0., bezpath_count);
-	let progress = if reverse { bezpath_count - progress } else { progress };
-	let index = if progress >= bezpath_count { (bezpath_count - 1.) as usize } else { progress as usize };
+	let progression = progression.clamp(0., bezpath_count);
+	let progression = if reverse { bezpath_count - progression } else { progression };
+	let index = if progression >= bezpath_count { (bezpath_count - 1.) as usize } else { progression as usize };
 
 	let angle = bezpaths.get_mut(index).map_or(0., |(bezpath, transform)| {
-		let t = if progress == bezpath_count { 1. } else { progress.fract() };
+		let t = if progression == bezpath_count { 1. } else { progression.fract() };
 		let t_value = |t: f64| if euclidian { TValue::Euclidean(t) } else { TValue::Parametric(t) };
 
 		bezpath.apply_affine(Affine::new(transform.to_cols_array()));
@@ -1954,11 +1976,39 @@ fn point_inside(_: impl Ctx, source: Table<Vector>, point: DVec2) -> bool {
 	source.into_iter().any(|row| row.element.check_point_inside_shape(row.transform, point))
 }
 
+trait Count {
+	fn count(&self) -> usize;
+}
+impl<T> Count for Table<T> {
+	fn count(&self) -> usize {
+		self.len()
+	}
+}
+impl<T> Count for Vec<T> {
+	fn count(&self) -> usize {
+		self.len()
+	}
+}
+
 // TODO: Return u32, u64, or usize instead of f64 after #1621 is resolved and has allowed us to implement automatic type conversion in the node graph for nodes with generic type inputs.
 // TODO: (Currently automatic type conversion only works for concrete types, via the Graphene preprocessor and not the full Graphene type system.)
 #[node_macro::node(category("General"), path(graphene_core::vector))]
-async fn count_elements<I>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>, Table<GradientStops>)] source: Table<I>) -> f64 {
-	source.len() as f64
+async fn count_elements<I: Count>(
+	_: impl Ctx,
+	#[implementations(
+		Table<Graphic>,
+		Table<Vector>,
+		Table<Raster<CPU>>,
+		Table<Raster<GPU>>,
+		Table<Color>,
+		Table<GradientStops>,
+		Vec<String>,
+		Vec<f64>,
+		Vec<DVec2>,
+	)]
+	source: I,
+) -> f64 {
+	source.count() as f64
 }
 
 #[node_macro::node(category("Vector: Measure"), path(graphene_core::vector))]
