@@ -776,8 +776,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					}
 
 					let context_menu_data = if let Some(node_id) = clicked_id {
-						let currently_is_node = !network_interface.is_layer(&node_id, selection_network_path);
-						ContextMenuData::ToggleLayer { node_id, currently_is_node }
+						let currently_is_node = !network_interface.is_layer(&node_id, breadcrumb_network_path);
+						let can_be_layer = network_interface.is_eligible_to_be_layer(&node_id, breadcrumb_network_path);
+						ContextMenuData::ModifyNode {
+							can_be_layer,
+							currently_is_node,
+							node_id,
+						}
 					} else {
 						ContextMenuData::CreateNode { compatible_type: None }
 					};
@@ -2592,18 +2597,18 @@ impl NodeGraphMessageHandler {
 	}
 
 	fn node_graph_error(&self, network_interface: &mut NodeNetworkInterface, breadcrumb_network_path: &[NodeId]) -> Option<NodeGraphError> {
-		let error = network_interface
+		let graph_error = network_interface
 			.resolved_types
 			.node_graph_errors
 			.iter()
 			.filter(|error| error.node_path.starts_with(breadcrumb_network_path) && error.node_path.len() > breadcrumb_network_path.len())
 			.next()?;
-		let error_node = error.node_path[breadcrumb_network_path.len()];
-		let error = if error.node_path.len() == breadcrumb_network_path.len() + 1 {
-			format!("{:?}", error.error)
+		let error = if graph_error.node_path.len() == breadcrumb_network_path.len() + 1 {
+			format!("{:?}", graph_error.error)
 		} else {
 			"Node graph type error within this node".to_string()
 		};
+		let error_node = graph_error.node_path[breadcrumb_network_path.len()];
 		let mut position = network_interface.position(&error_node, breadcrumb_network_path)?;
 		// Convert to graph space
 		position *= 24;

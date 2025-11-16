@@ -326,12 +326,9 @@ pub trait FrontendMessageTestUtils {
 
 impl FrontendMessageTestUtils for FrontendMessage {
 	fn check_node_graph_error(&self) {
-		let FrontendMessage::UpdateNodeGraphNodes { nodes, .. } = self else { return };
-
-		for node in nodes {
-			if let Some(error) = &node.errors {
-				panic!("error on {}: {}", node.display_name, error);
-			}
+		let FrontendMessage::UpdateNodeGraphError { error } = self else { return };
+		if let Some(error) = error {
+			panic!("error: {:?}", error);
 		}
 	}
 }
