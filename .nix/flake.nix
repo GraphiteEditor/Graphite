@@ -62,6 +62,7 @@
             pkgs.xorg.libX11
           ];
           desktop-all = desktop ++ desktop-x11;
+          all = desktop-all;
         };
 
         tools = rec {
