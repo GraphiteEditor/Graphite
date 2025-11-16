@@ -1,50 +1,10 @@
-use glam::{DVec2, IVec2};
+use glam::IVec2;
 use graph_craft::document::NodeId;
-use graph_craft::document::value::TaggedValue;
-use graphene_std::Type;
+use graphene_std::node_graph_overlay::types::{FrontendGraphDataType, FrontendGraphInputNew, FrontendGraphOutputNew, FrontendXY};
 use std::borrow::Cow;
 
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
-pub enum FrontendGraphDataType {
-	#[default]
-	General,
-	Number,
-	Artboard,
-	Graphic,
-	Raster,
-	Vector,
-	Color,
-	Gradient,
-	Typography,
-	Invalid,
-}
-
-impl FrontendGraphDataType {
-	pub fn from_type(input: &Type) -> Self {
-		match TaggedValue::from_type_or_none(input) {
-			TaggedValue::U32(_)
-			| TaggedValue::U64(_)
-			| TaggedValue::F32(_)
-			| TaggedValue::F64(_)
-			| TaggedValue::DVec2(_)
-			| TaggedValue::F64Array4(_)
-			| TaggedValue::VecF64(_)
-			| TaggedValue::VecDVec2(_)
-			| TaggedValue::DAffine2(_) => Self::Number,
-			TaggedValue::Artboard(_) => Self::Artboard,
-			TaggedValue::Graphic(_) => Self::Graphic,
-			TaggedValue::Raster(_) => Self::Raster,
-			TaggedValue::Vector(_) => Self::Vector,
-			TaggedValue::Color(_) => Self::Color,
-			TaggedValue::Gradient(_) | TaggedValue::GradientStops(_) | TaggedValue::GradientTable(_) => Self::Gradient,
-			TaggedValue::String(_) | TaggedValue::VecString(_) => Self::Typography,
-			_ => Self::General,
-		}
-	}
-}
-
-#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
-pub struct FrontendGraphInput {
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct FrontendGraphInputOld {
 	#[serde(rename = "dataType")]
 	pub data_type: FrontendGraphDataType,
 	pub name: String,
@@ -58,8 +18,8 @@ pub struct FrontendGraphInput {
 	pub connected_to: String,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
-pub struct FrontendGraphOutput {
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct FrontendGraphOutputOld {
 	#[serde(rename = "dataType")]
 	pub data_type: FrontendGraphDataType,
 	pub name: String,
@@ -72,8 +32,8 @@ pub struct FrontendGraphOutput {
 	pub connected_to: Vec<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
-pub struct FrontendNode {
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct FrontendNodeOld {
 	pub id: graph_craft::document::NodeId,
 	#[serde(rename = "isLayer")]
 	pub is_layer: bool,
@@ -83,13 +43,13 @@ pub struct FrontendNode {
 	#[serde(rename = "displayName")]
 	pub display_name: String,
 	#[serde(rename = "primaryInput")]
-	pub primary_input: Option<FrontendGraphInput>,
+	pub primary_input: Option<FrontendGraphInputOld>,
 	#[serde(rename = "exposedInputs")]
-	pub exposed_inputs: Vec<FrontendGraphInput>,
+	pub exposed_inputs: Vec<FrontendGraphInputOld>,
 	#[serde(rename = "primaryOutput")]
-	pub primary_output: Option<FrontendGraphOutput>,
+	pub primary_output: Option<FrontendGraphOutputOld>,
 	#[serde(rename = "exposedOutputs")]
-	pub exposed_outputs: Vec<FrontendGraphOutput>,
+	pub exposed_outputs: Vec<FrontendGraphOutputOld>,
 	#[serde(rename = "primaryOutputConnectedToLayer")]
 	pub primary_output_connected_to_layer: bool,
 	#[serde(rename = "primaryInputConnectedToLayer")]
@@ -98,6 +58,26 @@ pub struct FrontendNode {
 	pub visible: bool,
 	pub locked: bool,
 	pub previewed: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct FrontendExport {
+	pub port: FrontendGraphInputNew,
+	pub wire: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct FrontendExports {
+	/// If the primary export is not visible, then it is None.
+	pub exports: Vec<Option<FrontendExport>>,
+	#[serde(rename = "previewWire")]
+	pub preview_wire: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct FrontendImport {
+	pub port: FrontendGraphOutputNew,
+	pub wires: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -206,23 +186,4 @@ pub enum Direction {
 pub struct NodeGraphError {
 	pub position: FrontendXY,
 	pub error: String,
-}
-
-/// Stores node graph coordinates which are then transformed in svelte based on the node graph transform
-#[derive(Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize, specta::Type)]
-pub struct FrontendXY {
-	pub x: i32,
-	pub y: i32,
-}
-
-impl From<DVec2> for FrontendXY {
-	fn from(v: DVec2) -> Self {
-		FrontendXY { x: v.x as i32, y: v.y as i32 }
-	}
-}
-
-impl From<IVec2> for FrontendXY {
-	fn from(v: IVec2) -> Self {
-		FrontendXY { x: v.x as i32, y: v.y as i32 }
-	}
 }

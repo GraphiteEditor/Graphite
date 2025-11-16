@@ -4,7 +4,7 @@
 	import { fade } from "svelte/transition";
 
 	import type { Editor } from "@graphite/editor";
-	import type { FrontendGraphInput, FrontendGraphOutput } from "@graphite/messages";
+	import { type FrontendGraphInputOld, type FrontendGraphOutputOld, type FrontendGraphInputNew, type FrontendGraphOutputNew, UpdateRenderNativeNodeGraph } from "@graphite/messages";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import type { IconName } from "@graphite/utility-functions/icons";
 
@@ -183,7 +183,7 @@
 	// 	return `Connected to:\n${input.connectedTo}`;
 	// }
 
-	function zipWithUndefined(arr1: FrontendGraphInput[], arr2: FrontendGraphOutput[]) {
+	function zipWithUndefined(arr1: FrontendGraphInputOld[], arr2: FrontendGraphOutputOld[]) {
 		const maxLength = Math.max(arr1.length, arr2.length);
 		const result = [];
 		for (let i = 0; i < maxLength; i++) {
@@ -193,310 +193,31 @@
 	}
 </script>
 
-<div
-	class="graph"
-	bind:this={graph}
-	style:--grid-spacing={`${gridSpacing}px`}
-	style:--grid-offset-x={`${$nodeGraph.transform.x}px`}
-	style:--grid-offset-y={`${$nodeGraph.transform.y}px`}
-	style:--grid-dot-radius={`${gridDotRadius}px`}
-	data-node-graph
->
-	<!-- Right click menu for adding nodes -->
-	{#if $nodeGraph.contextMenuInformation}
-		<LayoutCol
-			class="context-menu"
-			data-context-menu
-			styles={{
-				left: `${$nodeGraph.contextMenuInformation.contextMenuCoordinates.x * $nodeGraph.transform.scale + $nodeGraph.transform.x}px`,
-				top: `${$nodeGraph.contextMenuInformation.contextMenuCoordinates.y * $nodeGraph.transform.scale + $nodeGraph.transform.y}px`,
-			}}
-		>
-			{#if $nodeGraph.contextMenuInformation.contextMenuData.type == "CreateNode"}
-				<NodeCatalog initialSearchTerm={$nodeGraph.contextMenuInformation.contextMenuData.data.compatibleType || ""} on:selectNodeType={(e) => createNode(e.detail)} />
-			{:else if $nodeGraph.contextMenuInformation.contextMenuData.type == "ModifyNode"}
-				<LayoutRow class="toggle-layer-or-node">
-					<TextLabel>Display as</TextLabel>
-					<RadioInput
-						selectedIndex={$nodeGraph.contextMenuInformation.contextMenuData.data.currentlyIsNode ? 0 : 1}
-						entries={[
-							{
-								value: "node",
-								label: "Node",
-								action: () => editor.handle.setToNodeOrLayer($nodeGraph.contextMenuInformation.contextMenuData.data.nodeId, false),
-							},
-							{
-								value: "layer",
-								label: "Layer",
-								action: () => editor.handle.setToNodeOrLayer($nodeGraph.contextMenuInformation.contextMenuData.data.nodeId, true),
-							},
-						]}
-						disabled={!$nodeGraph.contextMenuInformation.contextMenuData.data.canBeLayer}
-					/>
-				</LayoutRow>
-				<Separator type="Section" direction="Vertical" />
-				<LayoutRow class="merge-selected-nodes">
-					<TextButton label="Merge Selected Nodes" action={() => editor.handle.mergeSelectedNodes()} />
-				</LayoutRow>
-			{/if}
-		</LayoutCol>
-	{/if}
-
-	{#if $nodeGraph.error}
-		<div class="node-error-container" style:transform-origin="0 0" style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
-			<span
-				class="node-error faded"
-				style={`left: ${$nodeGraph.error.position.x}px;
-           			top: ${$nodeGraph.error.position.y}px;`}
-				transition:fade={FADE_TRANSITION}
-				data-node-error>{$nodeGraph.error.error}</span
-			>
-			<span
-				class="node-error hover"
-				style={`left: ${$nodeGraph.error.position.x}px;
-           			top: ${$nodeGraph.error.position.y}px;`}
-				transition:fade={FADE_TRANSITION}
-				data-node-error>{$nodeGraph.error.error}</span
-			>
-		</div>
-	{/if}
-
-	<!-- Click target debug visualizations -->
-	{#if $nodeGraph.clickTargets}
-		<div class="click-targets" style:transform-origin="0 0" style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
-			<svg>
-				{#each $nodeGraph.clickTargets.nodeClickTargets as pathString}
-					<path class="node" d={pathString} />
-				{/each}
-				{#each $nodeGraph.clickTargets.layerClickTargets as pathString}
-					<path class="layer" d={pathString} />
-				{/each}
-				{#each $nodeGraph.clickTargets.connectorClickTargets as pathString}
-					<path class="connector" d={pathString} />
-				{/each}
-				{#each $nodeGraph.clickTargets.iconClickTargets as pathString}
-					<path class="visibility" d={pathString} />
-				{/each}
-				<path class="all-nodes-bounding-box" d={$nodeGraph.clickTargets.allNodesBoundingBox} />
-				{#each $nodeGraph.clickTargets.modifyImportExport as pathString}
-					<path class="modify-import-export" d={pathString} />
-				{/each}
-			</svg>
-		</div>
-	{/if}
-
-	<!-- Thick vertical layer connection wires -->
-	<div class="wires" style:transform-origin="0 0" style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
-		<svg>
-			{#each $nodeGraph.wires.values() as map}
-				{#each map.values() as { pathString, dataType, thick, dashed }}
-					{#if thick}
-						<path
-							d={pathString}
-							style:--data-line-width="8px"
-							style:--data-color={`var(--color-data-${dataType.toLowerCase()})`}
-							style:--data-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
-							style:--data-dasharray={`3,${dashed ? 2 : 0}`}
-						/>
-					{/if}
-				{/each}
-			{/each}
-		</svg>
-	</div>
-
-	<!-- Import and Export connectors -->
-	<div class="imports-and-exports" style:transform-origin="0 0" style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
-		{#if $nodeGraph.updateImportsExports}
-			{#each $nodeGraph.updateImportsExports.imports as frontendOutput, index}
-				{#if frontendOutput}
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						viewBox="0 0 8 8"
-						class="connector"
-						data-connector="output"
-						data-datatype={frontendOutput.dataType}
-						style:--data-color={`var(--color-data-${frontendOutput.dataType.toLowerCase()})`}
-						style:--data-color-dim={`var(--color-data-${frontendOutput.dataType.toLowerCase()}-dim)`}
-						style:--offset-left={($nodeGraph.updateImportsExports.importPosition.x - 8) / 24}
-						style:--offset-top={($nodeGraph.updateImportsExports.importPosition.y - 8) / 24 + index}
-					>
-						{#if frontendOutput.connectedTo.length > 0}
-							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
-						{:else}
-							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
-						{/if}
-					</svg>
-
-					<div
-						on:pointerenter={() => (hoveringImportIndex = index)}
-						on:pointerleave={() => (hoveringImportIndex = undefined)}
-						class="edit-import-export import"
-						class:separator-bottom={index === 0 && $nodeGraph.updateImportsExports.addImportExport}
-						class:separator-top={index === 1 && $nodeGraph.updateImportsExports.addImportExport}
-						style:--offset-left={($nodeGraph.updateImportsExports.importPosition.x - 8) / 24}
-						style:--offset-top={($nodeGraph.updateImportsExports.importPosition.y - 8) / 24 + index}
-					>
-						{#if editingNameImportIndex == index}
-							<input
-								class="import-text-input"
-								type="text"
-								style:width={importsToEdgeTextInputWidth()}
-								bind:this={inputElement}
-								bind:value={editingNameText}
-								on:blur={setEditingImportName}
-								on:keydown={(e) => e.key === "Enter" && setEditingImportName(e)}
-							/>
-						{:else}
-							<p class="import-text" on:dblclick={() => setEditingImportNameIndex(index, frontendOutput.name)}>
-								{frontendOutput.name}
-							</p>
-						{/if}
-						{#if (hoveringImportIndex === index || editingNameImportIndex === index) && $nodeGraph.updateImportsExports.addImportExport}
-							<IconButton
-								size={16}
-								icon="Remove"
-								class="remove-button-import"
-								data-index={index}
-								data-import-text-edge
-								action={() => {
-									/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
-								}}
-							/>
-							{#if index > 0}
-								<div class="reorder-drag-grip" />
-							{/if}
-						{/if}
-					</div>
-				{:else}
-					<div
-						class="plus"
-						style:--offset-top={($nodeGraph.updateImportsExports.importPosition.y - 12) / 24}
-						style:--offset-left={($nodeGraph.updateImportsExports.importPosition.x - 12) / 24}
-					>
-						<IconButton size={24} icon="Add" action={() => editor.handle.addPrimaryImport()} />
-					</div>
-				{/if}
-			{/each}
-
-			{#each $nodeGraph.updateImportsExports.exports as frontendInput, index}
-				{#if frontendInput}
-					<svg
-						xmlns="http://www.w3.org/2000/svg"
-						viewBox="0 0 8 8"
-						class="connector"
-						data-connector="input"
-						data-datatype={frontendInput.dataType}
-						style:--data-color={`var(--color-data-${frontendInput.dataType.toLowerCase()})`}
-						style:--data-color-dim={`var(--color-data-${frontendInput.dataType.toLowerCase()}-dim)`}
-						style:--offset-left={($nodeGraph.updateImportsExports.exportPosition.x - 8) / 24}
-						style:--offset-top={($nodeGraph.updateImportsExports.exportPosition.y - 8) / 24 + index}
-					>
-						{#if frontendInput.connectedTo !== "nothing"}
-							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
-						{:else}
-							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
-						{/if}
-					</svg>
-					<div
-						on:pointerenter={() => (hoveringExportIndex = index)}
-						on:pointerleave={() => (hoveringExportIndex = undefined)}
-						class="edit-import-export export"
-						class:separator-bottom={index === 0 && $nodeGraph.updateImportsExports.addImportExport}
-						class:separator-top={index === 1 && $nodeGraph.updateImportsExports.addImportExport}
-						style:--offset-left={($nodeGraph.updateImportsExports.exportPosition.x - 8) / 24}
-						style:--offset-top={($nodeGraph.updateImportsExports.exportPosition.y - 8) / 24 + index}
-					>
-						{#if (hoveringExportIndex === index || editingNameExportIndex === index) && $nodeGraph.updateImportsExports.addImportExport}
-							{#if index > 0}
-								<div class="reorder-drag-grip" />
-							{/if}
-							<IconButton
-								size={16}
-								icon="Remove"
-								class="remove-button-export"
-								data-index={index}
-								data-export-text-edge
-								action={() => {
-									/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
-								}}
-							/>
-						{/if}
-						{#if editingNameExportIndex === index}
-							<input
-								type="text"
-								style:width={exportsToEdgeTextInputWidth()}
-								bind:this={inputElement}
-								bind:value={editingNameText}
-								on:blur={setEditingExportName}
-								on:keydown={(e) => e.key === "Enter" && setEditingExportName(e)}
-							/>
-						{:else}
-							<p class="export-text" on:dblclick={() => setEditingExportNameIndex(index, frontendInput.name)}>
-								{frontendInput.name}
-							</p>
-						{/if}
-					</div>
-				{:else}
-					<div
-						class="plus"
-						style:--offset-left={($nodeGraph.updateImportsExports.exportPosition.x - 12) / 24}
-						style:--offset-top={($nodeGraph.updateImportsExports.exportPosition.y - 12) / 24}
-					>
-						<IconButton size={24} icon="Add" action={() => editor.handle.addPrimaryExport()} />
-					</div>
-				{/if}
-			{/each}
-
-			{#if $nodeGraph.updateImportsExports.addImportExport == true}
-				<div
-					class="plus"
-					style:--offset-left={($nodeGraph.updateImportsExports.importPosition.x - 12) / 24}
-					style:--offset-top={($nodeGraph.updateImportsExports.importPosition.y - 12) / 24 + $nodeGraph.updateImportsExports.imports.length}
-				>
-					<IconButton size={24} icon="Add" action={() => editor.handle.addSecondaryImport()} />
-				</div>
-				<div
-					class="plus"
-					style:--offset-left={($nodeGraph.updateImportsExports.exportPosition.x - 12) / 24}
-					style:--offset-top={($nodeGraph.updateImportsExports.exportPosition.y - 12) / 24 + $nodeGraph.updateImportsExports.exports.length}
-				>
-					<IconButton size={24} icon="Add" action={() => editor.handle.addSecondaryExport()} />
-				</div>
-			{/if}
-
-			{#if $nodeGraph.reorderImportIndex !== undefined}
-				{@const position = {
-					x: Number($nodeGraph.updateImportsExports.importPosition.x),
-					y: Number($nodeGraph.updateImportsExports.importPosition.y) + Number($nodeGraph.reorderImportIndex) * 24,
-				}}
-				<div class="reorder-bar" style:--offset-left={(position.x - 48) / 24} style:--offset-top={(position.y - 12) / 24} />
-			{/if}
-
-			{#if $nodeGraph.reorderExportIndex !== undefined}
-				{@const position = {
-					x: Number($nodeGraph.updateImportsExports.exportPosition.x),
-					y: Number($nodeGraph.updateImportsExports.exportPosition.y) + Number($nodeGraph.reorderExportIndex) * 24,
-				}}
-				<div class="reorder-bar" style:--offset-left={position.x / 24} style:--offset-top={(position.y - 12) / 24} />
-			{/if}
-		{/if}
-	</div>
+{#if !$nodeGraph.renderNativeNodeGraphOld}
+	<div
+		class="graph-background"
+		style:--grid-spacing={`${gridSpacing}px`}
+		style:--grid-offset-x={`${$nodeGraph.transform.x}px`}
+		style:--grid-offset-y={`${$nodeGraph.transform.y}px`}
+		style:--grid-dot-radius={`${gridDotRadius}px`}
+		style:--fade-artwork={`${$nodeGraph.opacityOld}%`}
+	/>
 
 	<!-- Layers and nodes -->
 	<div class="layers-and-nodes" style:transform-origin="0 0" style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
 		<!-- Layers -->
-		{#each Array.from($nodeGraph.nodes)
-			.filter(([nodeId, node]) => node.isLayer && $nodeGraph.visibleNodes.has(nodeId))
+		{#each Array.from($nodeGraph.nodesOld)
+			.filter(([nodeId, node]) => node.isLayer && $nodeGraph.visibleNodesOld.has(nodeId))
 			.map(([_, node], nodeIndex) => ({ node, nodeIndex })) as { node, nodeIndex } (nodeIndex)}
 			{@const clipPathId = String(Math.random()).substring(2)}
 			{@const stackDataInput = node.exposedInputs[0]}
-			{@const layerAreaWidth = $nodeGraph.layerWidths.get(node.id) || 8}
-			{@const layerChainWidth = $nodeGraph.chainWidths.get(node.id) || 0}
-			{@const hasLeftInputWire = $nodeGraph.hasLeftInputWire.get(node.id) || false}
+			{@const layerAreaWidth = $nodeGraph.layerWidthsOld.get(node.id) || 8}
+			{@const layerChainWidth = $nodeGraph.chainWidthsOld.get(node.id) || 0}
+			{@const hasLeftInputWire = $nodeGraph.hasLeftInputWireOld.get(node.id) || false}
 			<div
 				class="layer"
-				class:selected={$nodeGraph.selected.includes(node.id)}
-				class:in-selected-network={$nodeGraph.inSelectedNetwork}
+				class:selected={$nodeGraph.selectedOld.includes(node.id)}
+				class:in-selected-network={$nodeGraph.inSelectedNetworkOld}
 				class:previewed={node.previewed}
 				class:disabled={!node.visible}
 				style:--offset-left={node.position?.x || 0}
@@ -600,43 +321,31 @@
 			</div>
 		{/each}
 
-		<!-- Node connection wires -->
+		<!-- All wires between nodes -->
 		<div class="wires">
 			<svg>
-				{#each $nodeGraph.wires.values() as map}
+				{#each $nodeGraph.wiresOld.values() as map}
 					{#each map.values() as { pathString, dataType, thick, dashed }}
-						{#if !thick}
-							<path
-								d={pathString}
-								style:--data-line-width="2px"
-								style:--data-color={`var(--color-data-${dataType.toLowerCase()})`}
-								style:--data-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
-								style:--data-dasharray={`3,${dashed ? 2 : 0}`}
-							/>
-						{/if}
+						<path
+							d={pathString}
+							style:--data-line-width={thick ? "8px" : "2px"}
+							style:--data-color={`var(--color-data-${dataType.toLowerCase()})`}
+							style:--data-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
+							style:--data-dasharray={`3,${dashed ? 2 : 0}`}
+						/>
 					{/each}
 				{/each}
-				{#if $nodeGraph.wirePathInProgress}
-					<path
-						d={$nodeGraph.wirePathInProgress?.pathString}
-						style:--data-line-width={`${$nodeGraph.wirePathInProgress.thick ? 8 : 2}px`}
-						style:--data-color={`var(--color-data-${$nodeGraph.wirePathInProgress.dataType.toLowerCase()})`}
-						style:--data-color-dim={`var(--color-data-${$nodeGraph.wirePathInProgress.dataType.toLowerCase()}-dim)`}
-						style:--data-dasharray={`3,${$nodeGraph.wirePathInProgress.dashed ? 2 : 0}`}
-					/>
-				{/if}
 			</svg>
 		</div>
 
-		<!-- Nodes -->
-		{#each Array.from($nodeGraph.nodes)
-			.filter(([nodeId, node]) => !node.isLayer && $nodeGraph.visibleNodes.has(nodeId))
+		{#each Array.from($nodeGraph.nodesOld)
+			.filter(([nodeId, node]) => !node.isLayer && $nodeGraph.visibleNodesOld.has(nodeId))
 			.map(([_, node], nodeIndex) => ({ node, nodeIndex })) as { node, nodeIndex } (nodeIndex)}
 			{@const exposedInputsOutputs = zipWithUndefined(node.exposedInputs, node.exposedOutputs)}
 			{@const clipPathId = String(Math.random()).substring(2)}
 			<div
 				class="node"
-				class:selected={$nodeGraph.selected.includes(node.id)}
+				class:selected={$nodeGraph.selectedOld.includes(node.id)}
 				class:previewed={node.previewed}
 				class:disabled={!node.visible}
 				style:--offset-left={node.position?.x || 0}
@@ -647,14 +356,14 @@
 				data-node={node.id}
 			>
 				<!-- Primary row -->
-				<div class="primary" class:in-selected-network={$nodeGraph.inSelectedNetwork} class:no-secondary-section={exposedInputsOutputs.length === 0}>
+				<div class="primary" class:in-selected-network={$nodeGraph.inSelectedNetworkOld} class:no-secondary-section={exposedInputsOutputs.length === 0}>
 					<IconLabel icon={nodeIcon(node.reference)} />
 					<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
 					<TextLabel>{node.displayName}</TextLabel>
 				</div>
 				<!-- Secondary rows -->
 				{#if exposedInputsOutputs.length > 0}
-					<div class="secondary" class:in-selected-network={$nodeGraph.inSelectedNetwork}>
+					<div class="secondary" class:in-selected-network={$nodeGraph.inSelectedNetworkOld}>
 						{#each exposedInputsOutputs as [input, output]}
 							<div class={`secondary-row expanded ${input !== undefined ? "input" : "output"}`}>
 								<TextLabel>
@@ -753,26 +462,330 @@
 			</div>
 		{/each}
 	</div>
+{/if}
+
+<div
+	class="graph"
+	bind:this={graph}
+	style:--grid-spacing={`${gridSpacing}px`}
+	style:--grid-offset-x={`${$nodeGraph.transform.x}px`}
+	style:--grid-offset-y={`${$nodeGraph.transform.y}px`}
+	style:--grid-dot-radius={`${gridDotRadius}px`}
+	data-node-graph
+>
+	<!-- Right click menu for adding nodes -->
+	{#if $nodeGraph.contextMenuInformation}
+		<LayoutCol
+			class="context-menu"
+			data-context-menu
+			styles={{
+				left: `${$nodeGraph.contextMenuInformation.contextMenuCoordinates.x * $nodeGraph.transform.scale + $nodeGraph.transform.x}px`,
+				top: `${$nodeGraph.contextMenuInformation.contextMenuCoordinates.y * $nodeGraph.transform.scale + $nodeGraph.transform.y}px`,
+			}}
+		>
+			{#if $nodeGraph.contextMenuInformation.contextMenuData.type == "CreateNode"}
+				<NodeCatalog initialSearchTerm={$nodeGraph.contextMenuInformation.contextMenuData.data.compatibleType || ""} on:selectNodeType={(e) => createNode(e.detail)} />
+			{:else if $nodeGraph.contextMenuInformation.contextMenuData.type == "ModifyNode"}
+				<LayoutRow class="toggle-layer-or-node">
+					<TextLabel>Display as</TextLabel>
+					<RadioInput
+						selectedIndex={$nodeGraph.contextMenuInformation.contextMenuData.data.currentlyIsNode ? 0 : 1}
+						entries={[
+							{
+								value: "node",
+								label: "Node",
+								action: () => editor.handle.setToNodeOrLayer($nodeGraph.contextMenuInformation.contextMenuData.data.nodeId, false),
+							},
+							{
+								value: "layer",
+								label: "Layer",
+								action: () => editor.handle.setToNodeOrLayer($nodeGraph.contextMenuInformation.contextMenuData.data.nodeId, true),
+							},
+						]}
+						disabled={!$nodeGraph.contextMenuInformation.contextMenuData.data.canBeLayer}
+					/>
+				</LayoutRow>
+				<Separator type="Section" direction="Vertical" />
+				<LayoutRow class="merge-selected-nodes">
+					<TextButton label="Merge Selected Nodes" action={() => editor.handle.mergeSelectedNodes()} />
+				</LayoutRow>
+			{/if}
+		</LayoutCol>
+	{/if}
+
+	{#if $nodeGraph.error}
+		<div class="node-error-container" style:transform-origin="0 0" style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
+			<span
+				class="node-error faded"
+				style={`left: ${$nodeGraph.error.position.x}px;
+           			top: ${$nodeGraph.error.position.y}px;`}
+				transition:fade={FADE_TRANSITION}
+				title=""
+				data-node-error>{$nodeGraph.error.error}</span
+			>
+			<span
+				class="node-error hover"
+				style={`left: ${$nodeGraph.error.position.x}px;
+           			top: ${$nodeGraph.error.position.y}px;`}
+				transition:fade={FADE_TRANSITION}
+				title=""
+				data-node-error>{$nodeGraph.error.error}</span
+			>
+		</div>
+	{/if}
+
+	<!-- Click target debug visualizations -->
+	{#if $nodeGraph.clickTargets}
+		<div class="click-targets" style:transform-origin="0 0" style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
+			<svg>
+				{#each $nodeGraph.clickTargets.nodeClickTargets as pathString}
+					<path class="node" d={pathString} />
+				{/each}
+				{#each $nodeGraph.clickTargets.layerClickTargets as pathString}
+					<path class="layer" d={pathString} />
+				{/each}
+				{#each $nodeGraph.clickTargets.connectorClickTargets as pathString}
+					<path class="connector" d={pathString} />
+				{/each}
+				{#each $nodeGraph.clickTargets.iconClickTargets as pathString}
+					<path class="visibility" d={pathString} />
+				{/each}
+				<path class="all-nodes-bounding-box" d={$nodeGraph.clickTargets.allNodesBoundingBox} />
+				{#each $nodeGraph.clickTargets.modifyImportExport as pathString}
+					<path class="modify-import-export" d={pathString} />
+				{/each}
+			</svg>
+		</div>
+	{/if}
+
+	<!-- Wire in Progress -->
+	<svg class="wire" style:transform-origin="0 0" style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
+		{#if $nodeGraph.wirePathInProgress}
+			<path
+				d={$nodeGraph.wirePathInProgress.wire}
+				style:--data-line-width={`${$nodeGraph.wirePathInProgress.thick ? 8 : 2}px`}
+				style:--data-color-dim={`var(--color-data-${$nodeGraph.wirePathInProgress.dataType.toLowerCase()}-dim)`}
+				style:--data-dasharray={"3,0"}
+			/>
+		{/if}
+	</svg>
+
+	<!-- Import and Export connectors -->
+	<div class="imports-and-exports" style:transform-origin="0 0" style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
+		{#if $nodeGraph.importsExports}
+			{#each $nodeGraph.importsExports.imports as frontendImport, index}
+				{#if frontendImport}
+					{@const frontendOutput = frontendImport.port}
+
+					{#each frontendImport.wires as wire}
+						<svg class="wire">
+							<path d={wire} style:--data-line-width={`2px`} style:--data-color-dim={`var(--color-data-${frontendOutput.dataType.toLowerCase()}-dim)`} style:--data-dasharray={"3, 0"} />
+						</svg>
+					{/each}
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						viewBox="0 0 8 8"
+						class="connector"
+						style:--data-color={`var(--color-data-${frontendOutput.dataType.toLowerCase()})`}
+						style:--data-color-dim={`var(--color-data-${frontendOutput.dataType.toLowerCase()}-dim)`}
+						style:--offset-left={($nodeGraph.importsExports.importPosition.x - 8) / 24}
+						style:--offset-top={($nodeGraph.importsExports.importPosition.y - 8) / 24 + index}
+					>
+						{#if frontendOutput.connected}
+							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
+						{:else}
+							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
+						{/if}
+					</svg>
+
+					<div
+						on:pointerenter={() => (hoveringImportIndex = index)}
+						on:pointerleave={() => (hoveringImportIndex = undefined)}
+						class="edit-import-export import"
+						class:separator-bottom={index === 0 && $nodeGraph.importsExports.addImportExport}
+						class:separator-top={index === 1 && $nodeGraph.importsExports.addImportExport}
+						style:--offset-left={($nodeGraph.importsExports.importPosition.x - 8) / 24}
+						style:--offset-top={($nodeGraph.importsExports.importPosition.y - 8) / 24 + index}
+					>
+						{#if editingNameImportIndex == index}
+							<input
+								class="import-text-input"
+								type="text"
+								style:width={importsToEdgeTextInputWidth()}
+								bind:this={inputElement}
+								bind:value={editingNameText}
+								on:blur={setEditingImportName}
+								on:keydown={(e) => e.key === "Enter" && setEditingImportName(e)}
+							/>
+						{:else}
+							<p class="import-text" on:dblclick={() => setEditingImportNameIndex(index, frontendOutput.name)}>
+								{frontendOutput.name}
+							</p>
+						{/if}
+						{#if (hoveringImportIndex === index || editingNameImportIndex === index) && $nodeGraph.importsExports.addImportExport}
+							<IconButton
+								size={16}
+								icon="Remove"
+								class="remove-button-import"
+								data-index={index}
+								data-import-text-edge
+								action={() => {
+									/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
+								}}
+							/>
+							{#if index > 0}
+								<div class="reorder-drag-grip" title="Reorder this export" />
+							{/if}
+						{/if}
+					</div>
+				{:else}
+					<div class="plus" style:--offset-top={($nodeGraph.importsExports.importPosition.y - 12) / 24} style:--offset-left={($nodeGraph.importsExports.importPosition.x - 12) / 24}>
+						<IconButton size={24} icon="Add" action={() => editor.handle.addPrimaryImport()} />
+					</div>
+				{/if}
+			{/each}
+
+			{#each $nodeGraph.importsExports.exports.exports as frontendExport, index}
+				{#if frontendExport}
+					{@const frontendInput = frontendExport.port}
+					{#if frontendExport.wire}
+						<svg class="wire">
+							<path
+								d={frontendExport.wire}
+								style:--data-line-width={`2px`}
+								style:--data-color-dim={`var(--color-data-${frontendInput.dataType.toLowerCase()}-dim)`}
+								style:--data-dasharray={"3, 0"}
+							/>
+						</svg>
+					{/if}
+					<svg
+						xmlns="http://www.w3.org/2000/svg"
+						viewBox="0 0 8 8"
+						class="connector"
+						style:--data-color={`var(--color-data-${frontendInput.dataType.toLowerCase()})`}
+						style:--data-color-dim={`var(--color-data-${frontendInput.dataType.toLowerCase()}-dim)`}
+						style:--offset-left={($nodeGraph.importsExports.exportPosition.x - 8) / 24}
+						style:--offset-top={($nodeGraph.importsExports.exportPosition.y - 8) / 24 + index}
+					>
+						{#if frontendInput.connectedToNode !== undefined}
+							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
+						{:else}
+							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
+						{/if}
+					</svg>
+					<div
+						on:pointerenter={() => (hoveringExportIndex = index)}
+						on:pointerleave={() => (hoveringExportIndex = undefined)}
+						class="edit-import-export export"
+						class:separator-bottom={index === 0 && $nodeGraph.importsExports.addImportExport}
+						class:separator-top={index === 1 && $nodeGraph.importsExports.addImportExport}
+						style:--offset-left={($nodeGraph.importsExports.exportPosition.x - 8) / 24}
+						style:--offset-top={($nodeGraph.importsExports.exportPosition.y - 8) / 24 + index}
+					>
+						{#if (hoveringExportIndex === index || editingNameExportIndex === index) && $nodeGraph.importsExports.addImportExport}
+							{#if index > 0}
+								<div class="reorder-drag-grip" title="Reorder this export" />
+							{/if}
+							<IconButton
+								size={16}
+								icon="Remove"
+								class="remove-button-export"
+								data-index={index}
+								data-export-text-edge
+								action={() => {
+									/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
+								}}
+							/>
+						{/if}
+						{#if editingNameExportIndex === index}
+							<input
+								type="text"
+								style:width={exportsToEdgeTextInputWidth()}
+								bind:this={inputElement}
+								bind:value={editingNameText}
+								on:blur={setEditingExportName}
+								on:keydown={(e) => e.key === "Enter" && setEditingExportName(e)}
+							/>
+						{:else}
+							<p class="export-text" on:dblclick={() => setEditingExportNameIndex(index, frontendInput.name)}>
+								{frontendInput.name}
+							</p>
+						{/if}
+					</div>
+				{:else}
+					<div class="plus" style:--offset-left={($nodeGraph.importsExports.exportPosition.x - 12) / 24} style:--offset-top={($nodeGraph.importsExports.exportPosition.y - 12) / 24}>
+						<IconButton size={24} icon="Add" action={() => editor.handle.addPrimaryExport()} />
+					</div>
+				{/if}
+			{/each}
+
+			{#if $nodeGraph.importsExports.exports.previewWire && $nodeGraph.importsExports.exports.exports[0] !== undefined}
+				<svg class="wire">
+					<path
+						d={$nodeGraph.importsExports.exports.previewWire}
+						style:--data-line-width={`2px`}
+						style:--data-color-dim={`var(--color-data-${$nodeGraph.importsExports.exports.exports[0].port.dataType.toLowerCase()}-dim)`}
+						style:--data-dasharray={"3, 2"}
+					/>
+				</svg>
+			{/if}
+
+			{#if $nodeGraph.importsExports.addImportExport == true}
+				<div
+					class="plus"
+					style:--offset-left={($nodeGraph.importsExports.importPosition.x - 12) / 24}
+					style:--offset-top={($nodeGraph.importsExports.importPosition.y - 12) / 24 + $nodeGraph.importsExports.imports.length}
+				>
+					<IconButton size={24} icon="Add" action={() => editor.handle.addSecondaryImport()} />
+				</div>
+				<div
+					class="plus"
+					style:--offset-left={($nodeGraph.importsExports.exportPosition.x - 12) / 24}
+					style:--offset-top={($nodeGraph.importsExports.exportPosition.y - 12) / 24 + $nodeGraph.importsExports.exports.exports.length}
+				>
+					<IconButton size={24} icon="Add" action={() => editor.handle.addSecondaryExport()} />
+				</div>
+			{/if}
+
+			{#if $nodeGraph.reorderImportIndex !== undefined}
+				{@const position = {
+					x: Number($nodeGraph.importsExports.importPosition.x),
+					y: Number($nodeGraph.importsExports.importPosition.y) + Number($nodeGraph.reorderImportIndex) * 24,
+				}}
+				<div class="reorder-bar" style:--offset-left={(position.x - 48) / 24} style:--offset-top={(position.y - 12) / 24} />
+			{/if}
+
+			{#if $nodeGraph.reorderExportIndex !== undefined}
+				{@const position = {
+					x: Number($nodeGraph.importsExports.exportPosition.x),
+					y: Number($nodeGraph.importsExports.exportPosition.y) + Number($nodeGraph.reorderExportIndex) * 24,
+				}}
+				<div class="reorder-bar" style:--offset-left={position.x / 24} style:--offset-top={(position.y - 12) / 24} />
+			{/if}
+		{/if}
+	</div>
 </div>
 
 <!-- Box selection widget -->
-{#if $nodeGraph.box}
+{#if $nodeGraph.selectionBox}
 	<div
 		class="box-selection"
-		style:left={`${Math.min($nodeGraph.box.startX, $nodeGraph.box.endX)}px`}
-		style:top={`${Math.min($nodeGraph.box.startY, $nodeGraph.box.endY)}px`}
-		style:width={`${Math.abs($nodeGraph.box.startX - $nodeGraph.box.endX)}px`}
-		style:height={`${Math.abs($nodeGraph.box.startY - $nodeGraph.box.endY)}px`}
+		style:left={`${Math.min($nodeGraph.selectionBox.startX, $nodeGraph.selectionBox.endX)}px`}
+		style:top={`${Math.min($nodeGraph.selectionBox.startY, $nodeGraph.selectionBox.endY)}px`}
+		style:width={`${Math.abs($nodeGraph.selectionBox.startX - $nodeGraph.selectionBox.endX)}px`}
+		style:height={`${Math.abs($nodeGraph.selectionBox.startY - $nodeGraph.selectionBox.endY)}px`}
 	></div>
 {/if}
 
 <style lang="scss" global>
-	.graph {
-		position: relative;
-		overflow: hidden;
-		display: flex;
-		flex-direction: row;
-		flex-grow: 1;
+	.graph-background {
+		position: absolute;
+		width: 100%;
+		height: 100%;
+		top: 0;
+		left: 0;
+		background: var(--color-2-mildblack);
+		opacity: var(--fade-artwork);
 
 		// We're displaying the dotted grid in a pseudo-element because `image-rendering` is an inherited property and we don't want it to apply to child elements
 		&::before {
@@ -780,6 +793,8 @@
 			position: absolute;
 			width: 100%;
 			height: 100%;
+
+			pointer-events: none;
 			background-size: var(--grid-spacing) var(--grid-spacing);
 			background-position: calc(var(--grid-offset-x) - var(--grid-dot-radius)) calc(var(--grid-offset-y) - var(--grid-dot-radius));
 			background-image: radial-gradient(circle at var(--grid-dot-radius) var(--grid-dot-radius), var(--color-3-darkgray) var(--grid-dot-radius), transparent 0);
@@ -787,266 +802,420 @@
 			image-rendering: pixelated;
 			mix-blend-mode: screen;
 		}
+	}
 
-		> img {
+	img {
+		position: absolute;
+		bottom: 0;
+	}
+
+	.breadcrumb-trail-buttons {
+		margin-top: 8px;
+		margin-left: 8px;
+	}
+
+	.context-menu {
+		width: max-content;
+		position: absolute;
+		box-sizing: border-box;
+		padding: 5px;
+		z-index: 3;
+		background-color: var(--color-3-darkgray);
+		border-radius: 4px;
+
+		.toggle-layer-or-node .text-label {
+			line-height: 24px;
+			margin-right: 8px;
+		}
+
+		.merge-selected-nodes {
+			justify-content: center;
+		}
+	}
+
+	.node-error-container {
+		position: absolute;
+		z-index: 1;
+
+		.node-error {
 			position: absolute;
-			bottom: 0;
-		}
-
-		.breadcrumb-trail-buttons {
-			margin-top: 8px;
-			margin-left: 8px;
-		}
-
-		.context-menu {
 			width: max-content;
-			position: absolute;
-			box-sizing: border-box;
-			padding: 5px;
-			z-index: 3;
-			background-color: var(--color-3-darkgray);
+			white-space: pre-wrap;
+			max-width: 600px;
+			line-height: 18px;
+			color: var(--color-2-mildblack);
+			background: var(--color-error-red);
+			padding: 8px;
 			border-radius: 4px;
+			transition: opacity 0.2s;
+			opacity: 0.5;
+			transform: translateY(-100%);
 
-			.toggle-layer-or-node .text-label {
-				line-height: 24px;
-				margin-right: 8px;
-			}
-
-			.merge-selected-nodes {
-				justify-content: center;
-			}
-		}
-
-		.node-error-container {
-			position: absolute;
-			z-index: 1;
-
-			.node-error {
+			// Tail
+			&::after {
+				content: "";
 				position: absolute;
-				width: max-content;
-				white-space: pre-wrap;
-				max-width: 600px;
-				line-height: 18px;
-				color: var(--color-2-mildblack);
-				background: var(--color-error-red);
-				padding: 8px;
-				border-radius: 4px;
-				transition: opacity 0.2s;
-				opacity: 0.5;
-				transform: translateY(-100%);
+				left: 6px;
+				bottom: -8px;
+				width: 0;
+				height: 0;
+				border-style: solid;
+				border-width: 8px 6px 0 6px;
+				border-color: var(--color-error-red) transparent transparent transparent;
+			}
 
-				// Tail
-				&::after {
-					content: "";
-					position: absolute;
-					left: 6px;
-					bottom: -8px;
-					width: 0;
-					height: 0;
-					border-style: solid;
-					border-width: 8px 6px 0 6px;
-					border-color: var(--color-error-red) transparent transparent transparent;
-				}
+			&.hover {
+				opacity: 0;
+				z-index: 1;
+				pointer-events: none;
+			}
 
-				&.hover {
-					opacity: 0;
-					z-index: 1;
-					pointer-events: none;
-				}
+			&.faded:hover + .hover {
+				opacity: 1;
+			}
 
-				&.faded:hover + .hover {
-					opacity: 1;
-				}
+			&.faded:hover {
+				z-index: 2;
+				opacity: 1;
+				-webkit-user-select: text;
+				user-select: text;
+				transition:
+					opacity 0.2s,
+					z-index 0s 0.2s;
 
-				&.faded:hover {
-					z-index: 2;
-					opacity: 1;
-					-webkit-user-select: text;
-					user-select: text;
-					transition:
-						opacity 0.2s,
-						z-index 0s 0.2s;
+				&::selection {
+					background-color: var(--color-e-nearwhite);
 
-					&::selection {
-						background-color: var(--color-e-nearwhite);
-
-						// Target only Safari
-						@supports (background: -webkit-named-image(i)) {
-							& {
-								// Setting an alpha value opts out of Safari's "fancy" (but not visible on dark backgrounds) selection highlight rendering
-								// https://stackoverflow.com/a/71753552/775283
-								background-color: rgba(var(--color-e-nearwhite-rgb), calc(254 / 255));
-							}
+					// Target only Safari
+					@supports (background: -webkit-named-image(i)) {
+						& {
+							// Setting an alpha value opts out of Safari's "fancy" (but not visible on dark backgrounds) selection highlight rendering
+							// https://stackoverflow.com/a/71753552/775283
+							background-color: rgba(var(--color-e-nearwhite-rgb), calc(254 / 255));
 						}
 					}
 				}
 			}
 		}
+	}
 
-		.click-targets {
-			position: absolute;
-			pointer-events: none;
-			width: 100%;
-			height: 100%;
-			z-index: 10;
+	// .wires {
+	// 	pointer-events: none;
+	// 	position: absolute;
+	// 	width: 100%;
+	// 	height: 100%;
 
-			svg {
-				overflow: visible;
-				width: 100%;
-				height: 100%;
-				stroke-width: 1;
-				fill: none;
+	// 	svg {
+	// 		width: 100%;
+	// 		height: 100%;
+	// 		overflow: visible;
 
-				.layer {
-					stroke: yellow;
-				}
+	// 		path {
+	// 			fill: none;
+	// 			stroke: var(--data-color-dim);
+	// 			stroke-width: var(--data-line-width);
+	// 			stroke-dasharray: var(--data-dasharray);
+	// 		}
+	// 	}
+	// }
 
-				.node {
-					stroke: blue;
-				}
+	// .imports-and-exports {
+	// 	width: 100%;
+	// 	height: 100%;
+	// 	position: absolute;
+	// 	// Keeps the connectors above the wires
+	// 	z-index: 1;
 
-				.connector {
-					stroke: green;
-				}
+	// 	.connector {
+	// 		position: absolute;
+	// 		width: 8px;
+	// 		height: 8px;
+	// 		margin-top: 4px;
+	// 		margin-left: 5px;
+	// 		top: calc(var(--offset-top) * 24px);
+	// 		left: calc(var(--offset-left) * 24px);
+	// 	}
 
-				.visibility {
-					stroke: red;
-				}
+	// 	.reorder-bar {
+	// 		position: absolute;
+	// 		top: calc(var(--offset-top) * 24px);
+	// 		left: calc(var(--offset-left) * 24px);
+	// 		width: 50px;
+	// 		height: 2px;
+	// 		background: white;
+	// 	}
 
-				.all-nodes-bounding-box {
-					stroke: purple;
-				}
+	// 	.plus {
+	// 		position: absolute;
+	// 		top: calc(var(--offset-top) * 24px);
+	// 		left: calc(var(--offset-left) * 24px);
+	// 	}
 
-				.modify-import-export {
-					stroke: orange;
-				}
-			}
+	// 	.edit-import-export {
+	// 		position: absolute;
+	// 		display: flex;
+	// 		align-items: center;
+	// 		top: calc(var(--offset-top) * 24px);
+	// 		margin-top: -5px;
+	// 		height: 24px;
+
+	// 		&.separator-bottom::after,
+	// 		&.separator-top::before {
+	// 			content: "";
+	// 			position: absolute;
+	// 			background: var(--color-8-uppergray);
+	// 			height: 1px;
+	// 			left: -4px;
+	// 			right: -4px;
+	// 		}
+
+	// 		&.separator-bottom::after {
+	// 			bottom: -1px;
+	// 		}
+
+	// 		&.separator-top::before {
+	// 			top: 0;
+	// 		}
+
+	// 		&.import {
+	// 			right: calc(100% - var(--offset-left) * 24px);
+	// 		}
+
+	// 		&.export {
+	// 			left: calc(var(--offset-left) * 24px + 17px);
+	// 		}
+
+	// 		.import-text {
+	// 			text-align: right;
+	// 			text-wrap: nowrap;
+	// 		}
+
+	// 		.export-text {
+	// 			text-wrap: nowrap;
+	// 		}
+
+	// 		.import-text-input {
+	// 			text-align: right;
+	// 		}
+
+	// 		.remove-button-import {
+	// 			margin-left: 3px;
+	// 		}
+
+	// 		.remove-button-export {
+	// 			margin-right: 3px;
+	// 		}
+
+	// 		.reorder-drag-grip {
+	// 			width: 8px;
+	// 			height: 24px;
+	// 			background-position: 2px 8px;
+	// 			border-radius: 2px;
+	// 			margin: -6px 0;
+	// 			background-image: var(--icon-drag-grip-hover);
+	// 		}
+	// 	}
+	// }
+
+	.layers-and-nodes {
+		position: absolute;
+		width: 100%;
+		height: 100%;
+	}
+
+	img {
+		position: absolute;
+		bottom: 0;
+	}
+
+	.breadcrumb-trail-buttons {
+		margin-top: 8px;
+		margin-left: 8px;
+	}
+
+	.context-menu {
+		width: max-content;
+		position: absolute;
+		box-sizing: border-box;
+		padding: 5px;
+		z-index: 3;
+		background-color: var(--color-3-darkgray);
+		border-radius: 4px;
+
+		.toggle-layer-or-node .text-label {
+			line-height: 24px;
+			margin-right: 8px;
 		}
 
-		.wires {
-			pointer-events: none;
-			position: absolute;
-			width: 100%;
-			height: 100%;
-
-			svg {
-				width: 100%;
-				height: 100%;
-				overflow: visible;
-
-				path {
-					fill: none;
-					stroke: var(--data-color-dim);
-					stroke-width: var(--data-line-width);
-					stroke-dasharray: var(--data-dasharray);
-				}
-			}
+		.merge-selected-nodes {
+			justify-content: center;
 		}
+	}
 
-		.imports-and-exports {
+	.click-targets {
+		position: absolute;
+		pointer-events: none;
+		width: 100%;
+		height: 100%;
+		z-index: 10;
+
+		svg {
+			overflow: visible;
 			width: 100%;
 			height: 100%;
-			position: absolute;
-			// Keeps the connectors above the wires
-			z-index: 1;
+			stroke-width: 1;
+			fill: none;
+
+			.layer {
+				stroke: yellow;
+			}
+
+			.node {
+				stroke: blue;
+			}
 
 			.connector {
-				position: absolute;
-				width: 8px;
-				height: 8px;
-				margin-top: 4px;
-				margin-left: 5px;
-				top: calc(var(--offset-top) * 24px);
-				left: calc(var(--offset-left) * 24px);
+				stroke: green;
 			}
 
-			.reorder-bar {
-				position: absolute;
-				top: calc(var(--offset-top) * 24px);
-				left: calc(var(--offset-left) * 24px);
-				width: 50px;
-				height: 2px;
-				background: white;
+			.visibility {
+				stroke: red;
 			}
 
-			.plus {
-				position: absolute;
-				top: calc(var(--offset-top) * 24px);
-				left: calc(var(--offset-left) * 24px);
+			.all-nodes-bounding-box {
+				stroke: purple;
 			}
 
-			.edit-import-export {
-				position: absolute;
-				display: flex;
-				align-items: center;
-				top: calc(var(--offset-top) * 24px);
-				margin-top: -5px;
-				height: 24px;
-
-				&.separator-bottom::after,
-				&.separator-top::before {
-					content: "";
-					position: absolute;
-					background: var(--color-8-uppergray);
-					height: 1px;
-					left: -4px;
-					right: -4px;
-				}
-
-				&.separator-bottom::after {
-					bottom: -1px;
-				}
-
-				&.separator-top::before {
-					top: 0;
-				}
-
-				&.import {
-					right: calc(100% - var(--offset-left) * 24px);
-				}
-
-				&.export {
-					left: calc(var(--offset-left) * 24px + 17px);
-				}
-
-				.import-text {
-					text-align: right;
-					text-wrap: nowrap;
-				}
-
-				.export-text {
-					text-wrap: nowrap;
-				}
-
-				.import-text-input {
-					text-align: right;
-				}
-
-				.remove-button-import {
-					margin-left: 3px;
-				}
-
-				.remove-button-export {
-					margin-right: 3px;
-				}
-
-				.reorder-drag-grip {
-					width: 8px;
-					height: 24px;
-					background-position: 2px 8px;
-					border-radius: 2px;
-					margin: -6px 0;
-					background-image: var(--icon-drag-grip-hover);
-				}
+			.modify-import-export {
+				stroke: orange;
 			}
 		}
+	}
 
-		.layers-and-nodes {
-			position: absolute;
+	.wires {
+		pointer-events: none;
+		position: absolute;
+		width: 100%;
+		height: 100%;
+
+		svg {
 			width: 100%;
 			height: 100%;
+			overflow: visible;
+
+			path {
+				fill: none;
+				stroke: var(--data-color-dim);
+				stroke-width: var(--data-line-width);
+				stroke-dasharray: var(--data-dasharray);
+			}
+		}
+	}
+
+	.imports-and-exports {
+		width: 100%;
+		height: 100%;
+		position: absolute;
+		// Keeps the connectors above the wires
+		z-index: 1;
+
+		.connector {
+			position: absolute;
+			width: 8px;
+			height: 8px;
+			margin-top: 4px;
+			margin-left: 5px;
+			top: calc(var(--offset-top) * 24px);
+			left: calc(var(--offset-left) * 24px);
 		}
 
+		.reorder-bar {
+			position: absolute;
+			top: calc(var(--offset-top) * 24px);
+			left: calc(var(--offset-left) * 24px);
+			width: 50px;
+			height: 2px;
+			background: white;
+		}
+
+		.plus {
+			position: absolute;
+			top: calc(var(--offset-top) * 24px);
+			left: calc(var(--offset-left) * 24px);
+		}
+
+		.edit-import-export {
+			position: absolute;
+			display: flex;
+			align-items: center;
+			top: calc(var(--offset-top) * 24px);
+			margin-top: -5px;
+			height: 24px;
+
+			&.separator-bottom::after,
+			&.separator-top::before {
+				content: "";
+				position: absolute;
+				background: var(--color-8-uppergray);
+				height: 1px;
+				left: -4px;
+				right: -4px;
+			}
+
+			&.separator-bottom::after {
+				bottom: -1px;
+			}
+
+			&.separator-top::before {
+				top: 0;
+			}
+
+			&.import {
+				right: calc(100% - var(--offset-left) * 24px);
+			}
+
+			&.export {
+				left: calc(var(--offset-left) * 24px + 17px);
+			}
+
+			.import-text {
+				text-align: right;
+				text-wrap: nowrap;
+			}
+
+			.export-text {
+				text-wrap: nowrap;
+			}
+
+			.import-text-input {
+				text-align: right;
+			}
+
+			.remove-button-import {
+				margin-left: 3px;
+			}
+
+			.remove-button-export {
+				margin-right: 3px;
+			}
+
+			.reorder-drag-grip {
+				width: 8px;
+				height: 24px;
+				background-position: 2px 8px;
+				border-radius: 2px;
+				margin: -6px 0;
+				background-image: var(--icon-drag-grip-hover);
+			}
+		}
+	}
+
+	.layers-and-nodes {
+		position: absolute;
+		top: 0;
+		left: 0;
+		width: 100%;
+		height: 100%;
 		.layer,
 		.node {
 			position: absolute;
@@ -1096,6 +1265,8 @@
 				position: absolute;
 				// Keeps the connectors above the wires
 				z-index: 1;
+
+				margin-top: -24px;
 
 				&.input {
 					left: -3px;
@@ -1267,20 +1438,6 @@
 				}
 			}
 
-			.connector {
-				&:first-of-type {
-					margin-top: calc((24px - 8px) / 2);
-
-					&:not(.primary-connector) {
-						margin-top: calc((24px - 8px) / 2 + 24px);
-					}
-				}
-
-				&:last-of-type {
-					margin-bottom: calc((24px - 8px) / 2);
-				}
-			}
-
 			.primary {
 				display: flex;
 				align-items: center;
@@ -1344,6 +1501,197 @@
 
 				&::after {
 					right: 0;
+				}
+			}
+
+			.connectors {
+				margin-top: -8px;
+			}
+		}
+	}
+
+	.wire {
+		position: absolute;
+		overflow: visible;
+		top: 0;
+		left: 0;
+		path {
+			fill: none;
+			stroke: var(--data-color-dim);
+			stroke-width: var(--data-line-width);
+			stroke-dasharray: var(--data-dasharray);
+		}
+	}
+
+	.graph {
+		position: relative;
+		overflow: hidden;
+		display: flex;
+		flex-direction: row;
+		flex-grow: 1;
+		> img {
+			position: absolute;
+			bottom: 0;
+		}
+
+		.breadcrumb-trail-buttons {
+			margin-top: 8px;
+			margin-left: 8px;
+		}
+
+		.context-menu {
+			width: max-content;
+			position: absolute;
+			box-sizing: border-box;
+			padding: 5px;
+			z-index: 3;
+			background-color: var(--color-3-darkgray);
+			border-radius: 4px;
+
+			.toggle-layer-or-node .text-label {
+				line-height: 24px;
+				margin-right: 8px;
+			}
+
+			.merge-selected-nodes {
+				justify-content: center;
+			}
+		}
+
+		.click-targets {
+			position: absolute;
+			pointer-events: none;
+			width: 100%;
+			height: 100%;
+			z-index: 10;
+
+			svg {
+				overflow: visible;
+				width: 100%;
+				height: 100%;
+				stroke-width: 1;
+				fill: none;
+
+				.layer {
+					stroke: yellow;
+				}
+
+				.node {
+					stroke: blue;
+				}
+
+				.connector {
+					stroke: green;
+				}
+
+				.visibility {
+					stroke: red;
+				}
+
+				.all-nodes-bounding-box {
+					stroke: purple;
+				}
+
+				.modify-import-export {
+					stroke: orange;
+				}
+			}
+		}
+
+		.imports-and-exports {
+			width: 100%;
+			height: 100%;
+			position: absolute;
+			// Keeps the connectors above the wires
+			z-index: 1;
+
+			.connector {
+				position: absolute;
+				width: 8px;
+				height: 8px;
+				margin-top: 4px;
+				margin-left: 5px;
+				top: calc(var(--offset-top) * 24px);
+				left: calc(var(--offset-left) * 24px);
+			}
+
+			.reorder-bar {
+				position: absolute;
+				top: calc(var(--offset-top) * 24px);
+				left: calc(var(--offset-left) * 24px);
+				width: 50px;
+				height: 2px;
+				background: white;
+			}
+
+			.plus {
+				position: absolute;
+				top: calc(var(--offset-top) * 24px);
+				left: calc(var(--offset-left) * 24px);
+			}
+
+			.edit-import-export {
+				position: absolute;
+				display: flex;
+				align-items: center;
+				top: calc(var(--offset-top) * 24px);
+				margin-top: -5px;
+				height: 24px;
+
+				&.separator-bottom::after,
+				&.separator-top::before {
+					content: "";
+					position: absolute;
+					background: var(--color-8-uppergray);
+					height: 1px;
+					left: -4px;
+					right: -4px;
+				}
+
+				&.separator-bottom::after {
+					bottom: -1px;
+				}
+
+				&.separator-top::before {
+					top: 0;
+				}
+
+				&.import {
+					right: calc(100% - var(--offset-left) * 24px);
+				}
+
+				&.export {
+					left: calc(var(--offset-left) * 24px + 17px);
+				}
+
+				.import-text {
+					text-align: right;
+					text-wrap: nowrap;
+				}
+
+				.export-text {
+					text-wrap: nowrap;
+				}
+
+				.import-text-input {
+					text-align: right;
+				}
+
+				.remove-button-import {
+					margin-left: 3px;
+				}
+
+				.remove-button-export {
+					margin-right: 3px;
+				}
+
+				.reorder-drag-grip {
+					width: 8px;
+					height: 24px;
+					background-position: 2px 8px;
+					border-radius: 2px;
+					margin: -6px 0;
+					background-image: var(--icon-drag-grip-hover);
 				}
 			}
 		}

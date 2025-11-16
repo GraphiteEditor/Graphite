@@ -25,33 +25,46 @@ export type XY = { x: number; y: number };
 // for details about how to transform the JSON from wasm-bindgen into classes.
 // ============================================================================
 
-export class UpdateBox extends JsMessage {
-	readonly box!: Box | undefined;
-}
-
 export class UpdateClickTargets extends JsMessage {
 	readonly clickTargets!: FrontendClickTargets | undefined;
+}
+
+export class FrontendSelectionBox {
+	readonly startX!: number;
+
+	readonly startY!: number;
+
+	readonly endX!: number;
+
+	readonly endY!: number;
+}
+
+export class UpdateNodeGraphSelectionBox extends JsMessage {
+	readonly box!: FrontendSelectionBox | undefined;
 }
 
 export class UpdateContextMenuInformation extends JsMessage {
 	readonly contextMenuInformation!: ContextMenuInformation | undefined;
 }
 
+export type ContextMenuInformation = {
+	contextMenuCoordinates: XY;
+	contextMenuData: { type: "CreateNode"; data: { compatibleType: string | undefined } } | { type: "ModifyNode"; data: { canBeLayer: boolean; currentlyIsNode: boolean; nodeId: bigint } };
+};
+
 export class UpdateImportsExports extends JsMessage {
-	readonly imports!: (FrontendGraphOutput | undefined)[];
+	readonly imports!: (FrontendImport | undefined)[];
 
-	readonly exports!: (FrontendGraphInput | undefined)[];
+	readonly exports!: FrontendExports;
 
-	@TupleToVec2
 	readonly importPosition!: XY;
 
-	@TupleToVec2
 	readonly exportPosition!: XY;
 
 	readonly addImportExport!: boolean;
 }
 
-export class UpdateInSelectedNetwork extends JsMessage {
+export class UpdateInSelectedNetworkOld extends JsMessage {
 	readonly inSelectedNetwork!: boolean;
 }
 
@@ -67,7 +80,7 @@ const LayerWidths = Transform(({ obj }) => obj.layerWidths);
 const ChainWidths = Transform(({ obj }) => obj.chainWidths);
 const HasLeftInputWire = Transform(({ obj }) => obj.hasLeftInputWire);
 
-export class UpdateLayerWidths extends JsMessage {
+export class UpdateLayerWidthsOld extends JsMessage {
 	@LayerWidths
 	readonly layerWidths!: Map<bigint, number>;
 	@ChainWidths
@@ -76,9 +89,9 @@ export class UpdateLayerWidths extends JsMessage {
 	readonly hasLeftInputWire!: Map<bigint, boolean>;
 }
 
-export class UpdateNodeGraphNodes extends JsMessage {
-	@Type(() => FrontendNode)
-	readonly nodes!: FrontendNode[];
+export class UpdateNodeGraphNodesOld extends JsMessage {
+	@Type(() => FrontendNodeOld)
+	readonly nodes!: FrontendNodeOld[];
 }
 
 export class UpdateNodeGraphError extends JsMessage {
@@ -90,15 +103,15 @@ export class NodeGraphError {
 	readonly error!: string;
 }
 
-export class UpdateVisibleNodes extends JsMessage {
+export class UpdateVisibleNodesOld extends JsMessage {
 	readonly nodes!: bigint[];
 }
 
-export class UpdateNodeGraphWires extends JsMessage {
-	readonly wires!: WireUpdate[];
+export class UpdateNodeGraphWiresOld extends JsMessage {
+	readonly wires!: WireUpdateOld[];
 }
 
-export class ClearAllNodeGraphWires extends JsMessage {}
+export class ClearAllNodeGraphWiresOld extends JsMessage {}
 
 export class UpdateNodeGraphTransform extends JsMessage {
 	readonly transform!: NodeGraphTransform;
@@ -109,7 +122,7 @@ const NodeDescriptions = Transform(({ obj }) => new Map(obj.nodeDescriptions));
 export class SendUIMetadata extends JsMessage {
 	@NodeDescriptions
 	readonly nodeDescriptions!: Map<string, string>;
-	@Type(() => FrontendNode)
+	@Type(() => FrontendNodeOld)
 	readonly nodeTypes!: FrontendNodeType[];
 }
 
@@ -119,7 +132,7 @@ export class UpdateNodeThumbnail extends JsMessage {
 	readonly value!: string;
 }
 
-export class UpdateNodeGraphSelection extends JsMessage {
+export class UpdateNodeGraphSelectionOld extends JsMessage {
 	@Type(() => BigInt)
 	readonly selected!: bigint[];
 }
@@ -129,8 +142,18 @@ export class UpdateOpenDocumentsList extends JsMessage {
 	readonly openDocuments!: OpenDocument[];
 }
 
+export class WirePathInProgress {
+	readonly wire!: string;
+	readonly thick!: boolean;
+	readonly dataType!: FrontendGraphDataType;
+}
+
 export class UpdateWirePathInProgress extends JsMessage {
-	readonly wirePath!: WirePath | undefined;
+	readonly wirePathInProgress!: WirePathInProgress | undefined;
+}
+
+export class UpdateRenderNativeNodeGraph extends JsMessage {
+	readonly renderNativeNodeGraph!: boolean;
 }
 
 export class OpenDocument {
@@ -148,14 +171,8 @@ export class DocumentDetails {
 	readonly isSaved!: boolean;
 }
 
-export class Box {
-	readonly startX!: number;
-
-	readonly startY!: number;
-
-	readonly endX!: number;
-
-	readonly endY!: number;
+export class FrontendDocumentDetails extends DocumentDetails {
+	readonly id!: bigint;
 }
 
 export type FrontendClickTargets = {
@@ -167,14 +184,9 @@ export type FrontendClickTargets = {
 	readonly modifyImportExport: string[];
 };
 
-export type ContextMenuInformation = {
-	contextMenuCoordinates: XY;
-	contextMenuData: { type: "CreateNode"; data: { compatibleType: string | undefined } } | { type: "ModifyNode"; data: { canBeLayer: boolean; currentlyIsNode: boolean; nodeId: bigint } };
-};
-
 export type FrontendGraphDataType = "General" | "Number" | "Artboard" | "Graphic" | "Raster" | "Vector" | "Color" | "Invalid";
 
-export class FrontendGraphInput {
+export class FrontendGraphInputOld {
 	readonly dataType!: FrontendGraphDataType;
 
 	readonly name!: string;
@@ -188,7 +200,15 @@ export class FrontendGraphInput {
 	readonly connectedTo!: string;
 }
 
-export class FrontendGraphOutput {
+export class FrontendGraphInputNew {
+	readonly dataType!: FrontendGraphDataType;
+
+	readonly name!: string;
+
+	readonly connectedToNode!: bigint | undefined;
+}
+
+export class FrontendGraphOutputOld {
 	readonly dataType!: FrontendGraphDataType;
 
 	readonly name!: string;
@@ -199,8 +219,30 @@ export class FrontendGraphOutput {
 
 	readonly connectedTo!: string[];
 }
+export class FrontendGraphOutputNew {
+	readonly dataType!: FrontendGraphDataType;
 
-export class FrontendNode {
+	readonly name!: string;
+
+	readonly connected!: boolean;
+}
+
+export class FrontendExport {
+	readonly port!: FrontendGraphInputNew;
+	readonly wire!: string | undefined;
+}
+
+export class FrontendExports {
+	readonly exports!: (FrontendExport | undefined)[];
+	readonly previewWire!: string | undefined;
+}
+
+export class FrontendImport {
+	readonly port!: FrontendGraphOutputNew;
+	readonly wires!: string[];
+}
+
+export class FrontendNodeOld {
 	readonly isLayer!: boolean;
 
 	readonly canBeLayer!: boolean;
@@ -211,13 +253,13 @@ export class FrontendNode {
 
 	readonly displayName!: string;
 
-	readonly primaryInput!: FrontendGraphInput | undefined;
+	readonly primaryInput!: FrontendGraphInputOld | undefined;
 
-	readonly exposedInputs!: FrontendGraphInput[];
+	readonly exposedInputs!: FrontendGraphInputOld[];
 
-	readonly primaryOutput!: FrontendGraphOutput | undefined;
+	readonly primaryOutput!: FrontendGraphOutputOld | undefined;
 
-	readonly exposedOutputs!: FrontendGraphOutput[];
+	readonly exposedOutputs!: FrontendGraphOutputOld[];
 
 	readonly primaryInputConnectedToLayer!: boolean;
 
@@ -251,17 +293,17 @@ export class NodeGraphTransform {
 	readonly y!: number;
 }
 
-export class WirePath {
+export class WirePathOld {
 	readonly pathString!: string;
 	readonly dataType!: FrontendGraphDataType;
 	readonly thick!: boolean;
 	readonly dashed!: boolean;
 }
 
-export class WireUpdate {
+export class WireUpdateOld {
 	readonly id!: bigint;
 	readonly inputIndex!: number;
-	readonly wirePathUpdate!: WirePath | undefined;
+	readonly wirePathUpdate!: WirePathOld | undefined;
 }
 
 export class TriggerPersistenceWriteDocument extends JsMessage {
@@ -695,7 +737,7 @@ export class UpdateGraphViewOverlay extends JsMessage {
 	open!: boolean;
 }
 
-export class UpdateGraphFadeArtwork extends JsMessage {
+export class UpdateGraphFadeArtworkOld extends JsMessage {
 	readonly percentage!: number;
 }
 
@@ -1627,7 +1669,7 @@ type JSMessageFactory = (data: any, wasm: WebAssembly.Memory, handle: EditorHand
 type MessageMaker = typeof JsMessage | JSMessageFactory;
 
 export const messageMakers: Record<string, MessageMaker> = {
-	ClearAllNodeGraphWires,
+	ClearAllNodeGraphWiresOld,
 	DisplayDialog,
 	DisplayDialogDismiss,
 	DisplayDialogPanic,
@@ -1656,7 +1698,6 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerTextCopy,
 	TriggerVisitLink,
 	UpdateActiveDocument,
-	UpdateBox,
 	UpdateClickTargets,
 	UpdateContextMenuInformation,
 	UpdateDialogButtons,
@@ -1671,25 +1712,26 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateDocumentScrollbars,
 	UpdateExportReorderIndex,
 	UpdateEyedropperSamplingState,
-	UpdateGraphFadeArtwork,
+	UpdateGraphFadeArtworkOld,
 	UpdateGraphViewOverlay,
 	UpdateImportReorderIndex,
 	UpdateImportsExports,
 	UpdateInputHints,
-	UpdateInSelectedNetwork,
+	UpdateInSelectedNetworkOld,
 	UpdateLayersPanelBottomBarLayout,
 	UpdateLayersPanelControlBarLeftLayout,
 	UpdateLayersPanelControlBarRightLayout,
-	UpdateLayerWidths,
+	UpdateLayerWidthsOld,
 	UpdateMaximized,
 	UpdateMenuBarLayout,
 	UpdateMouseCursor,
 	UpdateNodeGraphControlBarLayout,
-	UpdateNodeGraphNodes,
+	UpdateNodeGraphNodesOld,
 	UpdateNodeGraphError,
-	UpdateNodeGraphSelection,
+	UpdateNodeGraphSelectionOld,
+	UpdateNodeGraphSelectionBox,
 	UpdateNodeGraphTransform,
-	UpdateNodeGraphWires,
+	UpdateNodeGraphWiresOld,
 	UpdateNodeThumbnail,
 	UpdateOpenDocumentsList,
 	UpdatePlatform,
@@ -1701,8 +1743,9 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateToolOptionsLayout,
 	UpdateToolShelfLayout,
 	UpdateViewportHolePunch,
-	UpdateVisibleNodes,
+	UpdateVisibleNodesOld,
 	UpdateWirePathInProgress,
+	UpdateRenderNativeNodeGraph,
 	UpdateWorkingColorsLayout,
 } as const;
 export type JsMessageType = keyof typeof messageMakers;

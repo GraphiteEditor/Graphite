@@ -1,5 +1,4 @@
 use super::node_graph::document_node_definitions;
-use super::node_graph::utility_types::Transform;
 use super::overlays::utility_types::Pivot;
 use super::utility_types::error::EditorError;
 use super::utility_types::misc::{GroupFolderType, SNAP_FUNCTIONS_FOR_BOUNDING_BOXES, SNAP_FUNCTIONS_FOR_PATHS, SnappingOptions, SnappingState};
@@ -31,6 +30,7 @@ use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput, NodeNetwork, OldNodeNetwork};
 use graphene_std::math::quad::Quad;
+use graphene_std::node_graph_overlay::types::NodeGraphTransform;
 use graphene_std::path_bool::{boolean_intersect, path_bool_lib};
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Raster;
@@ -55,6 +55,7 @@ pub struct DocumentMessageContext<'a> {
 	pub data_panel_open: bool,
 	pub layers_panel_open: bool,
 	pub properties_panel_open: bool,
+	pub render_native_node_graph: bool,
 	pub viewport: &'a ViewportMessageHandler,
 }
 
@@ -201,6 +202,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			data_panel_open,
 			layers_panel_open,
 			properties_panel_open,
+			render_native_node_graph,
 		} = context;
 
 		match message {
@@ -263,6 +265,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						preferences,
 						layers_panel_open,
 						viewport,
+						render_native_node_graph,
 					},
 				);
 			}
@@ -470,7 +473,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::EnterNestedNetwork { node_id } => {
 				self.breadcrumb_network_path.push(node_id);
 				self.selection_network_path.clone_from(&self.breadcrumb_network_path);
-				responses.add(NodeGraphMessage::UnloadWires);
+				responses.add(NodeGraphMessage::UnloadWiresOld);
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(DocumentMessage::ZoomCanvasToFitAll);
 				responses.add(NodeGraphMessage::UpdateNodeGraphWidth);
@@ -490,7 +493,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					responses.add(FrontendMessage::UpdateContextMenuInformation { context_menu_information: None });
 					self.node_graph_handler.wire_in_progress_from_connector = None;
 					self.node_graph_handler.wire_in_progress_to_connector = None;
-					responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
+					responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path_in_progress: None });
 				} else if !self.breadcrumb_network_path.is_empty() {
 					// Exit one level up if inside a nested network
 					responses.add(DocumentMessage::ExitNestedNetwork { steps_back: 1 });
@@ -503,7 +506,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					self.breadcrumb_network_path.pop();
 					self.selection_network_path.clone_from(&self.breadcrumb_network_path);
 				}
-				responses.add(NodeGraphMessage::UnloadWires);
+				responses.add(NodeGraphMessage::UnloadWiresOld);
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(DocumentMessage::PTZUpdate);
 				responses.add(NodeGraphMessage::UpdateNodeGraphWidth);
@@ -560,7 +563,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.graph_view_overlay_open = open;
 
 				responses.add(FrontendMessage::UpdateGraphViewOverlay { open });
-				responses.add(FrontendMessage::UpdateGraphFadeArtwork {
+				responses.add(FrontendMessage::UpdateGraphFadeArtworkOld {
 					percentage: self.graph_fade_artwork_percentage,
 				});
 
@@ -570,20 +573,21 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(DocumentMessage::RenderRulers);
 				responses.add(DocumentMessage::RenderScrollbars);
 				if opened {
-					responses.add(NodeGraphMessage::UnloadWires);
+					responses.add(NodeGraphMessage::UnloadWiresOld);
 				}
 				if open {
 					responses.add(ToolMessage::DeactivateTools);
 					responses.add(OverlaysMessage::Draw); // Clear the overlays
 					responses.add(NavigationMessage::CanvasTiltSet { angle_radians: 0. });
 					responses.add(NodeGraphMessage::UpdateGraphBarRight);
-					responses.add(NodeGraphMessage::SendGraph);
 					responses.add(NodeGraphMessage::UpdateHints);
 					responses.add(NodeGraphMessage::UpdateEdges);
 				} else {
 					responses.add(ToolMessage::ActivateTool { tool_type: *current_tool });
 					responses.add(OverlaysMessage::Draw); // Redraw overlays when graph is closed
 				}
+
+				responses.add(NodeGraphMessage::SendGraph);
 			}
 			DocumentMessage::GraphViewOverlayToggle => {
 				responses.add(DocumentMessage::GraphViewOverlay { open: !self.graph_view_overlay_open });
@@ -1196,7 +1200,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 				responses.add(PropertiesPanelMessage::Refresh);
 				responses.add(NodeGraphMessage::UpdateLayerPanel);
-				responses.add(NodeGraphMessage::UpdateInSelectedNetwork);
+				responses.add(NodeGraphMessage::SendGraph);
 			}
 			DocumentMessage::SetBlendModeForSelectedLayers { blend_mode } => {
 				for layer in self.network_interface.selected_nodes().selected_layers_except_artboards(&self.network_interface) {
@@ -1205,7 +1209,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			}
 			DocumentMessage::SetGraphFadeArtwork { percentage } => {
 				self.graph_fade_artwork_percentage = percentage;
-				responses.add(FrontendMessage::UpdateGraphFadeArtwork { percentage });
+				responses.add(FrontendMessage::UpdateGraphFadeArtworkOld { percentage });
+				if render_native_node_graph {
+					responses.add(NodeGraphMessage::SendGraph);
+				}
 			}
 			DocumentMessage::SetNodePinned { node_id, pinned } => {
 				responses.add(DocumentMessage::AddTransaction);
@@ -1507,7 +1514,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					responses.add(NodeGraphMessage::UpdateImportsExports);
 
 					responses.add(FrontendMessage::UpdateNodeGraphTransform {
-						transform: Transform {
+						transform: NodeGraphTransform {
 							scale: transform.matrix2.x_axis.x,
 							x: transform.translation.x,
 							y: transform.translation.y,
@@ -1971,7 +1978,7 @@ impl DocumentMessageHandler {
 		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
 
 		// TODO: Remove once the footprint is used to load the imports/export distances from the edge
-		responses.add(NodeGraphMessage::UnloadWires);
+		responses.add(NodeGraphMessage::UnloadWiresOld);
 
 		Some(previous_network)
 	}
@@ -2002,8 +2009,8 @@ impl DocumentMessageHandler {
 		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 		responses.add(NodeGraphMessage::SelectedNodesUpdated);
 		responses.add(NodeGraphMessage::ForceRunDocumentGraph);
-		responses.add(NodeGraphMessage::UnloadWires);
-		responses.add(NodeGraphMessage::SendWires);
+		responses.add(NodeGraphMessage::UnloadWiresOld);
+		responses.add(NodeGraphMessage::SendWiresOld);
 		Some(previous_network)
 	}
 

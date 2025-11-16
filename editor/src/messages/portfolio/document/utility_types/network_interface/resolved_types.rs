@@ -4,11 +4,11 @@ use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNodeImplementation, InlineRust, NodeInput};
 use graph_craft::proto::GraphErrors;
 use graph_craft::{Type, concrete};
+use graphene_std::node_graph_overlay::types::FrontendGraphDataType;
 use graphene_std::uuid::NodeId;
 use interpreted_executor::dynamic_executor::{NodeTypes, ResolvedDocumentNodeTypesDelta};
 use interpreted_executor::node_registry::NODE_REGISTRY;
 
-use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface, OutputConnector};
 
 // This file contains utility methods for interfacing with the resolved types returned from the compiler

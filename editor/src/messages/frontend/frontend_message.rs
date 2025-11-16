@@ -2,14 +2,14 @@ use super::utility_types::{DocumentDetails, MouseCursorIcon, OpenDocument};
 use crate::messages::app_window::app_window_message_handler::AppWindowPlatform;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::{
-	BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeType, NodeGraphError, Transform,
+	BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendExports, FrontendImport, FrontendNodeOld, FrontendNodeType, NodeGraphError,
 };
 use crate::messages::portfolio::document::utility_types::nodes::{JsRawBuffer, LayerPanelEntry, RawBuffer};
-use crate::messages::portfolio::document::utility_types::wires::{WirePath, WirePathUpdate};
+use crate::messages::portfolio::document::utility_types::wires::{WirePathInProgress, WirePathUpdateOld};
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::HintData;
-use glam::IVec2;
 use graph_craft::document::NodeId;
+use graphene_std::node_graph_overlay::types::{FrontendXY, NodeGraphTransform};
 use graphene_std::raster::Image;
 use graphene_std::raster::color::Color;
 use graphene_std::text::{Font, TextAlign};
@@ -131,24 +131,23 @@ pub enum FrontendMessage {
 	},
 	UpdateImportsExports {
 		/// If the primary import is not visible, then it is None.
-		imports: Vec<Option<FrontendGraphOutput>>,
-		/// If the primary export is not visible, then it is None.
-		exports: Vec<Option<FrontendGraphInput>>,
+		imports: Vec<Option<FrontendImport>>,
+		exports: FrontendExports,
 		/// The primary import location.
 		#[serde(rename = "importPosition")]
-		import_position: IVec2,
+		import_position: FrontendXY,
 		/// The primary export location.
 		#[serde(rename = "exportPosition")]
-		export_position: IVec2,
+		export_position: FrontendXY,
 		/// The document network does not have an add import or export button.
 		#[serde(rename = "addImportExport")]
 		add_import_export: bool,
 	},
-	UpdateInSelectedNetwork {
+	UpdateInSelectedNetworkOld {
 		#[serde(rename = "inSelectedNetwork")]
 		in_selected_network: bool,
 	},
-	UpdateBox {
+	UpdateNodeGraphSelectionBox {
 		#[serde(rename = "box")]
 		box_selection: Option<BoxSelection>,
 	},
@@ -185,7 +184,7 @@ pub enum FrontendMessage {
 		#[serde(rename = "exportIndex")]
 		index: Option<usize>,
 	},
-	UpdateLayerWidths {
+	UpdateLayerWidthsOld {
 		#[serde(rename = "layerWidths")]
 		layer_widths: HashMap<NodeId, u32>,
 		#[serde(rename = "chainWidths")]
@@ -256,7 +255,7 @@ pub enum FrontendMessage {
 		#[serde(rename = "setColorChoice")]
 		set_color_choice: Option<String>,
 	},
-	UpdateGraphFadeArtwork {
+	UpdateGraphFadeArtworkOld {
 		percentage: f64,
 	},
 	UpdateInputHints {
@@ -286,29 +285,33 @@ pub enum FrontendMessage {
 	UpdateMouseCursor {
 		cursor: MouseCursorIcon,
 	},
-	UpdateNodeGraphNodes {
-		nodes: Vec<FrontendNode>,
+	UpdateNodeGraphNodesOld {
+		nodes: Vec<FrontendNodeOld>,
+	},
+	UpdateRenderNativeNodeGraph {
+		#[serde(rename = "renderNativeNodeGraph")]
+		render_native_node_graph: bool,
 	},
 	UpdateNodeGraphError {
 		error: Option<NodeGraphError>,
 	},
-	UpdateVisibleNodes {
+	UpdateVisibleNodesOld {
 		nodes: Vec<NodeId>,
 	},
-	UpdateNodeGraphWires {
-		wires: Vec<WirePathUpdate>,
+	UpdateNodeGraphWiresOld {
+		wires: Vec<WirePathUpdateOld>,
 	},
-	ClearAllNodeGraphWires,
+	ClearAllNodeGraphWiresOld,
 	UpdateNodeGraphControlBarLayout {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
 	},
-	UpdateNodeGraphSelection {
+	UpdateNodeGraphSelectionOld {
 		selected: Vec<NodeId>,
 	},
 	UpdateNodeGraphTransform {
-		transform: Transform,
+		transform: NodeGraphTransform,
 	},
 	UpdateNodeThumbnail {
 		id: NodeId,
@@ -334,8 +337,8 @@ pub enum FrontendMessage {
 		diff: Vec<WidgetDiff>,
 	},
 	UpdateWirePathInProgress {
-		#[serde(rename = "wirePath")]
-		wire_path: Option<WirePath>,
+		#[serde(rename = "wirePathInProgress")]
+		wire_path_in_progress: Option<WirePathInProgress>,
 	},
 	UpdateWorkingColorsLayout {
 		#[serde(rename = "layoutTarget")]
