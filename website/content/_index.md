@@ -25,7 +25,7 @@ meta_description = "Open source free software. A vector graphics creativity suit
 
 <h1 class="balance-text">Your <span>procedural</span> toolbox for 2D content creation</h1>
 
-<p class="balance-text">Graphite is a free, open source vector and raster graphics editor, available now in alpha. Get creative with a fully nondestructive editing workflow that combines layer-based compositing with node-based generative design.</p>
+<p class="balance-text">Graphite is a free, open source vector graphics editor and animation engine, available now in alpha. Get creative with a fully nondestructive editing workflow that combines layer-based compositing with node-based generative design.</p>
 
 </div>
 </section>
@@ -85,15 +85,15 @@ meta_description = "Open source free software. A vector graphics creativity suit
 <section id="screenshots" class="carousel window-size-1" data-carousel data-carousel-jostle-hint>
 
 <div class="carousel-slide" data-carousel-slide>
-	<img src="https://static.graphite.rs/content/index/gui-mockup-nodes__8.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image />
+	<img src="https://static.graphite.rs/content/index/gui-demo-creative-coding-poster.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image />
 	<!-- Above is a copy of the last -->
-	<img onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image width="1920" height="1080" loading="lazy" src="https://static.graphite.rs/content/index/gui-demo-painted-dreams__3.avif" />
-	<img onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image width="1920" height="1080" loading="lazy" src="https://static.graphite.rs/content/index/magazine-page-layout__2.avif" />
-	<img onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image width="1920" height="1080" loading="lazy" src="https://static.graphite.rs/content/index/gui-demo-node-graph-isometric-fountain.avif" />
-	<img onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image width="1920" height="1080" loading="lazy" src="https://static.graphite.rs/content/index/gui-demo-fractal__3.avif" />
-	<img onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image width="1920" height="1080" loading="lazy" src="https://static.graphite.rs/content/index/gui-mockup-nodes__8.avif" />
+	<img onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image width="1920" height="1080" loading="lazy" src="https://static.graphite.rs/content/index/gui-demo-painted-dreams__4.avif" />
+	<img onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image width="1920" height="1080" loading="lazy" src="https://static.graphite.rs/content/index/gui-demo-magazine-page-layout.avif" />
+	<video style="transform: translateX(-100%)" data-carousel-image width="1920" height="1080" loop muted disablepictureinpicture disableremoteplayback preload="none" poster="https://static.graphite.rs/content/index/gui-demo-animation-twirl-poster.avif"><source src="https://static.graphite.rs/content/index/gui-demo-animation-twirl.webm" type="video/webm" /><source src="https://static.graphite.rs/content/index/gui-demo-animation-twirl.mp4" type="video/mp4" /></video>
+	<video style="transform: translateX(-100%)" data-carousel-image width="1920" height="1080" loop muted disablepictureinpicture disableremoteplayback preload="none" poster="https://static.graphite.rs/content/index/gui-demo-creative-coding-poster.avif"><source src="https://static.graphite.rs/content/index/gui-demo-creative-coding.webm" type="video/webm" /><source src="https://static.graphite.rs/content/index/gui-demo-creative-coding.mp4" type="video/mp4" /></video>
+	<img onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image width="1920" height="1080" loading="lazy" src="https://static.graphite.rs/content/index/gui-demo-fractal__4.avif" />
 	<!-- Below is a copy of the first -->
-	<img src="https://static.graphite.rs/content/index/gui-demo-painted-dreams__3.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image />
+	<img src="https://static.graphite.rs/content/index/gui-demo-painted-dreams__4.png" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" style="transform: translateX(-100%)" data-carousel-image />
 </div>
 
 <div class="carousel-slide torn left" data-carousel-slide-torn-left></div>
@@ -139,13 +139,13 @@ meta_description = "Open source free software. A vector graphics creativity suit
 	Design for a magazine spread, a preview of the upcoming focus on desktop publishing
 </p>
 <p data-carousel-description>
-	<a href="https://editor.graphite.rs/#demo/isometric-fountain"><em>Isometric Fountain</em></a> — All layer stacks are represented, under the hood, by a nondestructive node graph
+	Procedurally generated animation demonstrating Graphite's approach to creative coding with nodes
+</p>
+<p data-carousel-description>
+	Procedurally generated animation demonstrating Graphite's approach to creative coding with nodes
 </p>
 <p data-carousel-description>
 	Mandelbrot fractal filled with a noise pattern, procedurally generated and infinitely scalable
-</p>
-<p data-carousel-description>
-	Coming soon: this user interface mockup shows the raster image editing features planned for 2025
 </p>
 
 </div>
@@ -189,7 +189,7 @@ The latest major update is out now! See what the team has been cooking up recent
 <div class="diptych sizzle-video">
 <div class="block text">
 
-Starting life as a vector editor, Graphite is evolving into a general-purpose, all-in-one graphics toolbox that is built more like a game engine than a conventional creative app. The editor's tools wrap its node graph core, providing user-friendly workflows for vector, raster, animation, and beyond.
+Starting life as a vector editor, Graphite is evolving into a general-purpose, all-in-one graphics toolbox that is built more like a game engine than a conventional creative app. The editor's tools wrap its node graph core, exposing user-friendly workflows for vector, raster, animation, and beyond.
 
 <a href="https://editor.graphite.rs" class="button arrow">Start creating</a>
 
@@ -299,7 +299,7 @@ Presently, Graphite is a lightweight offline web app with features primarily ori
 
 ## Desktop-first and web-ready
 
-Where's the download? The web app is [currently live](https://editor.graphite.rs) and desktop apps for Windows, Mac, and Linux will be available in Q4 2025.
+Where's the download? The web app is [currently live](https://editor.graphite.rs) and desktop apps for Windows, Mac, and Linux will be released in December 2025.
 
 Graphite is designed principally as a professional desktop application that is also accessible in a browser for quick access from anywhere. It's built for speed with (nearly) no JavaScript. And regardless of platform, it runs locally and privately on your own hardware— there is no server.
 

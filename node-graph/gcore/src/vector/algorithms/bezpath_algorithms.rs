@@ -249,7 +249,7 @@ pub fn pathseg_normals_to_point(segment: PathSeg, point: Point) -> Vec<f64> {
 	let y = y.coefficients_mut();
 	x[0] -= point.x;
 	y[0] -= point.y;
-	let poly = poly_cool::Poly::new([
+	let poly = polycool::Poly::new([
 		x[0] * x[1] + y[0] * y[1],
 		x[1] * x[1] + y[1] * y[1] + 2. * (x[0] * x[2] + y[0] * y[2]),
 		3. * (x[2] * x[1] + y[2] * y[1]) + 3. * (x[0] * x[3] + y[0] * y[3]),

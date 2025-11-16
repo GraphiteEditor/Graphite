@@ -350,6 +350,12 @@ pub enum FrontendMessage {
 	UpdateViewportHolePunch {
 		active: bool,
 	},
+	UpdateViewportPhysicalBounds {
+		x: f64,
+		y: f64,
+		width: f64,
+		height: f64,
+	},
 	#[cfg(not(target_family = "wasm"))]
 	RenderOverlays {
 		#[serde(skip, default = "OverlayContext::default")]

@@ -32,7 +32,8 @@ pub fn find_spline(document: &DocumentMessageHandler, layer: LayerNodeIdentifier
 
 /// Merge `second_layer` to the `first_layer`.
 pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIdentifier, second_layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
-	if first_layer == second_layer {
+	// Skip layers that are children of each other (or the same)
+	if first_layer.ancestors(document.metadata()).any(|l| l == second_layer) || second_layer.ancestors(document.metadata()).any(|l| l == first_layer) {
 		return;
 	}
 	// Calculate the downstream transforms in order to bring the other vector geometry into the same layer space
@@ -77,7 +78,7 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 		.default_node_template();
 	responses.add(NodeGraphMessage::InsertNode {
 		node_id: merge_node_id,
-		node_template: merge_node,
+		node_template: Box::new(merge_node),
 	});
 	responses.add(NodeGraphMessage::SetToNodeOrLayer {
 		node_id: merge_node_id,
@@ -103,7 +104,7 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 		.default_node_template();
 	responses.add(NodeGraphMessage::InsertNode {
 		node_id: flatten_node_id,
-		node_template: flatten_node,
+		node_template: Box::new(flatten_node),
 	});
 	responses.add(NodeGraphMessage::MoveNodeToChainStart {
 		node_id: flatten_node_id,
@@ -117,7 +118,7 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 		.default_node_template();
 	responses.add(NodeGraphMessage::InsertNode {
 		node_id: path_node_id,
-		node_template: path_node,
+		node_template: Box::new(path_node),
 	});
 	responses.add(NodeGraphMessage::MoveNodeToChainStart {
 		node_id: path_node_id,
@@ -132,7 +133,7 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 			.default_node_template();
 		responses.add(NodeGraphMessage::InsertNode {
 			node_id: spline_node_id,
-			node_template: spline_node,
+			node_template: Box::new(spline_node),
 		});
 		responses.add(NodeGraphMessage::MoveNodeToChainStart {
 			node_id: spline_node_id,
@@ -147,7 +148,7 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 		.default_node_template();
 	responses.add(NodeGraphMessage::InsertNode {
 		node_id: transform_node_id,
-		node_template: transform_node,
+		node_template: Box::new(transform_node),
 	});
 	responses.add(NodeGraphMessage::MoveNodeToChainStart {
 		node_id: transform_node_id,

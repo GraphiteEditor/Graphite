@@ -260,14 +260,26 @@ impl BoundingBox for Graphic {
 	}
 }
 
+/// Performs internal editor record-keeping that enables tools to target this network's layer.
+/// This node associates the ID of the network's parent layer to every element of output data.
+/// This technical detail may be ignored by users, and will be phased out in the future.
 #[node_macro::node(category(""))]
 async fn source_node_id<I: 'n + Send + Clone>(
 	_: impl Ctx,
-	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>, Table<GradientStops>)] content: Table<I>,
+	#[implementations(
+		Table<Artboard>,
+		Table<Graphic>,
+		Table<Vector>,
+		Table<Raster<CPU>>,
+		Table<Raster<GPU>>,
+		Table<Color>,
+		Table<GradientStops>,
+	)]
+	content: Table<I>,
 	node_path: Vec<NodeId>,
 ) -> Table<I> {
 	// Get the penultimate element of the node path, or None if the path is too short
-	// This is used to get the ID of the user-facing parent layer-style node (which encapsulates this internal node).
+	// This is used to get the ID of the user-facing parent layer node (whose network contains this internal node).
 	let source_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
 
 	let mut content = content;
@@ -297,6 +309,8 @@ async fn extend<I: 'n + Send + Clone>(
 }
 
 // TODO: Eventually remove this document upgrade code
+/// Performs an obsolete function as part of a migration from an older document format.
+/// Users are advised to delete this node and replace it with a new one.
 #[node_macro::node(category(""))]
 async fn legacy_layer_extend<I: 'n + Send + Clone>(
 	_: impl Ctx,
@@ -318,7 +332,8 @@ async fn legacy_layer_extend<I: 'n + Send + Clone>(
 	base
 }
 
-/// Places a table of graphical content into an element of a new wrapper graphic table.
+/// Nests the input graphical content in a wrapper graphic. This essentially "groups" the input.
+/// The inverse of this node is 'Flatten Graphic'.
 #[node_macro::node(category("General"))]
 async fn wrap_graphic<T: Into<Graphic> + 'n>(
 	_: impl Ctx,
@@ -441,9 +456,9 @@ async fn flatten_vector(_: impl Ctx, content: Table<Graphic>) -> Table<Vector> {
 }
 
 /// Returns the value at the specified index in the collection.
-/// If that index has no value, the type's default value is returned.
+/// If no value exists at that index, the type's default value is returned.
 #[node_macro::node(category("General"))]
-fn index<T: AtIndex + Clone + Default>(
+fn index_elements<T: AtIndex + Clone + Default>(
 	_: impl Ctx,
 	/// The collection of data, such as a list or table.
 	#[implementations(
@@ -451,6 +466,7 @@ fn index<T: AtIndex + Clone + Default>(
 		Vec<u32>,
 		Vec<u64>,
 		Vec<DVec2>,
+		Vec<String>,
 		Table<Artboard>,
 		Table<Graphic>,
 		Table<Vector>,
