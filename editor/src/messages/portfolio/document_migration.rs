@@ -252,6 +252,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	NodeReplacement {
 		node: graphene_std::math_nodes::vec_2_value::IDENTIFIER,
 		aliases: &[
+			"graphene_math_nodes::Vec2ValueNode",
 			"graphene_core::ops::ConstructVector2",
 			"graphene_core::ops::Vector2ValueNode",
 			"graphene_core::ops::CoordinateValueNode",
