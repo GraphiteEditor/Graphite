@@ -12,7 +12,6 @@ wgpu = ["dep:wgpu"]
 
 [dependencies]
 # Local dependencies
-not-std-types = { workspace = true, features = ["std"] }
 core-types = { workspace = true }
 node-macro = { workspace = true }
 

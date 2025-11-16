@@ -33,7 +33,7 @@ std = [
 
 [dependencies]
 # Local dependencies
-not-std-types = { workspace = true }
+no-std-types = { workspace = true }
 node-macro = { workspace = true }
 
 # Local std dependencies

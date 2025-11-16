@@ -14,7 +14,6 @@ default = ["serde"]
 core-types = { workspace = true }
 raster-types = { workspace = true }
 graphic-types = { workspace = true }
-not-std-types = { workspace = true }
 node-macro = { workspace = true }
 
 # Workspace dependencies

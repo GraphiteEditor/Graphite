@@ -12,7 +12,6 @@ default = ["serde"]
 [dependencies]
 # Local dependencies
 core-types = { workspace = true }
-not-std-types = { workspace = true }
 node-macro = { workspace = true }
 
 # Workspace dependencies

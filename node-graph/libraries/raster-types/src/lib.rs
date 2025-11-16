@@ -5,8 +5,8 @@ pub mod raster_types;
 pub use image::Image;
 pub use raster_types::*;
 
-// Re-export color types from not-std-types
-pub use not_std_types::color::*;
+// Re-export color types from no-std-types
+pub use core_types::color::*;
 
 /// as to not yet rename all references
 pub mod color {

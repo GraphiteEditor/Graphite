@@ -6,7 +6,7 @@ use std::ops::Deref;
 use std::pin::Pin;
 use std::sync::{LazyLock, Mutex};
 
-pub use not_std_types::registry::types;
+pub use no_std_types::registry::types;
 
 // Translation struct between macro and definition
 #[derive(Clone, Debug)]

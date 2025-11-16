@@ -1,5 +1,5 @@
 use crate::transform::Footprint;
-pub use not_std_types::context::{ArcCtx, Ctx};
+pub use no_std_types::context::{ArcCtx, Ctx};
 use std::any::Any;
 use std::borrow::Borrow;
 use std::hash::{Hash, Hasher};

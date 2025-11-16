@@ -1,4 +1,4 @@
-use not_std_types::color::Color;
+use no_std_types::color::Color;
 
 pub trait Adjust<P> {
 	fn adjust(&mut self, map_fn: impl Fn(&P) -> P);

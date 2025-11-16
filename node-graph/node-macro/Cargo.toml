@@ -27,4 +27,4 @@ proc-macro-error2 = "2"
 
 [dev-dependencies]
 core-types = { workspace = true }
-not-std-types = { workspace = true }
+no-std-types = { workspace = true }

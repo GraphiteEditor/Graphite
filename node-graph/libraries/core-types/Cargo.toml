@@ -14,7 +14,7 @@ dealloc_nodes = []
 
 [dependencies]
 # Local dependencies
-not-std-types = { workspace = true, features = ["std"] }
+no-std-types = { workspace = true, features = ["std"] }
 
 # Workspace dependencies
 bitflags = { workspace = true }

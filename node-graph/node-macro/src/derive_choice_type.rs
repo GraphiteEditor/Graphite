@@ -110,10 +110,10 @@ fn derive_enum(enum_attributes: &[Attribute], name: Ident, input: syn::DataEnum)
 		.collect();
 
 	let crate_name = {
-		let crate_name = proc_macro_crate::crate_name("not-std-types").or_else(|_e| proc_macro_crate::crate_name("core-types")).map_err(|e| {
+		let crate_name = proc_macro_crate::crate_name("no-std-types").or_else(|_e| proc_macro_crate::crate_name("core-types")).map_err(|e| {
 			syn::Error::new(
 				Span::call_site(),
-				format!("Failed to find location of 'not-std-types' or 'core-types'. Make sure it is imported as a dependency: {e}"),
+				format!("Failed to find location of 'no-std-types' or 'core-types'. Make sure it is imported as a dependency: {e}"),
 			)
 		})?;
 		match crate_name {

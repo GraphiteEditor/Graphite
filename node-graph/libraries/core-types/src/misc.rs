@@ -62,9 +62,9 @@ impl Clampable for DVec2 {
 }
 
 // TODO: Eventually remove this migration document upgrade code
-pub fn migrate_color<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<crate::table::Table<not_std_types::color::Color>, D::Error> {
+pub fn migrate_color<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<crate::table::Table<no_std_types::color::Color>, D::Error> {
 	use crate::table::Table;
-	use not_std_types::color::Color;
+	use no_std_types::color::Color;
 	use serde::Deserialize;
 
 	#[derive(serde::Serialize, serde::Deserialize)]

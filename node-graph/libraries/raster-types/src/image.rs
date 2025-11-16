@@ -1,11 +1,12 @@
-use super::Color;
 use crate::raster_types::{CPU, Raster};
 use crate::{Bitmap, BitmapMut};
 use core_types::AlphaBlending;
+use core_types::Color;
+use core_types::color::float_to_srgb_u8;
 use core_types::table::{Table, TableRow};
-use not_std_types::color::float_to_srgb_u8;
 // use crate::vector::Vector; // TODO: Check if Vector is actually used, if so handle differently
 use core::hash::{Hash, Hasher};
+use core_types::color::*;
 use dyn_any::{DynAny, StaticType};
 use glam::{DAffine2, DVec2};
 use std::vec::Vec;
@@ -13,8 +14,8 @@ use std::vec::Vec;
 mod base64_serde {
 	//! Basic wrapper for [`serde`] to perform [`base64`] encoding
 
-	use super::super::Pixel;
 	use base64::Engine;
+	use core_types::color::*;
 	use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 	pub fn as_base64<S: Serializer, P: Pixel>(key: &[P], serializer: S) -> Result<S::Ok, S::Error> {

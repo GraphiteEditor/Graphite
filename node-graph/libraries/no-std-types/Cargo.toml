@@ -1,5 +1,5 @@
 [package]
-name = "not-std-types"
+name = "no-std-types"
 version = "0.1.0"
 edition = "2024"
 description = "no_std types for Graphene (shader-compatible)"

@@ -6,10 +6,10 @@ use core::fmt::Debug;
 #[cfg(feature = "std")]
 use core_types::table::Table;
 use glam::{Vec3, Vec4};
+use no_std_types::color::Color;
+use no_std_types::context::Ctx;
+use no_std_types::registry::types::{AngleF32, PercentageF32, SignedPercentageF32};
 use node_macro::BufferStruct;
-use not_std_types::color::Color;
-use not_std_types::context::Ctx;
-use not_std_types::registry::types::{AngleF32, PercentageF32, SignedPercentageF32};
 use num_enum::{FromPrimitive, IntoPrimitive};
 #[cfg(not(feature = "std"))]
 use num_traits::float::Float;

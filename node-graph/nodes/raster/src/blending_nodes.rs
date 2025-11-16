@@ -1,10 +1,10 @@
 use crate::adjust::Adjust;
 #[cfg(feature = "std")]
 use core_types::table::Table;
-use not_std_types::Ctx;
-use not_std_types::blending::BlendMode;
-use not_std_types::color::{Color, Pixel};
-use not_std_types::registry::types::PercentageF32;
+use no_std_types::Ctx;
+use no_std_types::blending::BlendMode;
+use no_std_types::color::{Color, Pixel};
+use no_std_types::registry::types::PercentageF32;
 #[cfg(feature = "std")]
 use raster_types::{CPU, Raster};
 #[cfg(feature = "std")]
