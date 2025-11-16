@@ -8,6 +8,10 @@ repository = ""
 edition = "2024"
 rust-version = "1.87"
 
+[[bin]]
+name = "graphite"
+path = "src/main.rs"
+
 [features]
 default = ["recommended", "embedded_resources"]
 recommended = ["gpu", "accelerated_paint"]

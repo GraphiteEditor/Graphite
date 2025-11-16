@@ -33,42 +33,54 @@ let
   rustc-wasm = pkgs.rust-bin.stable.latest.default.override {
     targets = [ "wasm32-unknown-unknown" ];
     # wasm-pack needs this
-    extensions = [ "rust-src" "rust-analyzer" "clippy"];
+    extensions = [
+      "rust-src"
+      "rust-analyzer"
+      "clippy"
+    ];
   };
 in
-  # Make a shell with the dependencies we need
-  pkgs.mkShell {
-    packages = with pkgs; [
-      rustc-wasm
-      nodejs
-      cargo
-      cargo-watch
-      cargo-nextest
-      cargo-expand
-      wasm-pack
-      binaryen
-      wasm-bindgen-cli
-      vulkan-loader
-      libxkbcommon
-      llvm
-      gcc-unwrapped.lib
-      llvmPackages.libcxxStdenv
-      pkg-config
-      # used for profiling
-      gnuplot
-      samply
-      cargo-flamegraph
+# Make a shell with the dependencies we need
+pkgs.mkShell {
+  packages = with pkgs; [
+    rustc-wasm
+    nodejs
+    cargo
+    cargo-watch
+    cargo-nextest
+    cargo-expand
+    wasm-pack
+    binaryen
+    wasm-bindgen-cli
+    vulkan-loader
+    libxkbcommon
+    llvm
+    gcc-unwrapped.lib
+    llvmPackages.libcxxStdenv
+    pkg-config
+    # used for profiling
+    gnuplot
+    samply
+    cargo-flamegraph
 
-      # For Rawkit tests
-      libraw
+    # For Rawkit tests
+    libraw
 
-      # Use Mold as a linker
-      mold
-    ];
+    # Use Mold as a linker
+    mold
+  ];
 
-    # Hacky way to run Cargo through Mold
-    LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [pkgs.openssl pkgs.vulkan-loader pkgs.libxkbcommon pkgs.llvmPackages.libcxxStdenv pkgs.gcc-unwrapped.lib pkgs.llvm pkgs.libraw];
-    shellHook = ''
+  # Hacky way to run Cargo through Mold
+  LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath [
+    pkgs.openssl
+    pkgs.vulkan-loader
+    pkgs.libxkbcommon
+    pkgs.llvmPackages.libcxxStdenv
+    pkgs.gcc-unwrapped.lib
+    pkgs.llvm
+    pkgs.libraw
+  ];
+  shellHook = ''
     alias cargo='mold --run cargo'
-    '';
-  }
+  '';
+}
