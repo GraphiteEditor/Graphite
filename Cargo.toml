@@ -188,8 +188,9 @@ iai-callgrind = { version = "0.16" }
 ndarray = "0.16"
 strum = { version = "0.27", features = ["derive"] }
 dirs = "6.0"
-cef = { version = "141", features = ["accelerated_osr"] }
-cef-dll-sys = "141"
+# TODO: remove fork usage when https://github.com/tauri-apps/cef-rs/pull/272 is merged and published
+cef = { git = "https://github.com/timon-schelling/cef-rs.git", rev = "98493a182928f1ff8d5bf8b9eea61483235df75d" }
+cef-dll-sys = { git = "https://github.com/timon-schelling/cef-rs.git", rev = "98493a182928f1ff8d5bf8b9eea61483235df75d" }
 include_dir = "0.7"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing = "0.1"

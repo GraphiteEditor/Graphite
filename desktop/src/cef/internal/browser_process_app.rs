@@ -72,6 +72,14 @@ impl<H: CefEventHandler> ImplApp for BrowserProcessAppImpl<H> {
 				// Hide user prompt asking for keychain access
 				cmd.append_switch(Some(&CefString::from("use-mock-keychain")));
 			}
+
+			// Enable browser debugging via environment variable
+			if let Some(env) = std::env::var("GRAPHITE_BROWSER_DEBUG_PORT").ok()
+				&& let Some(port) = env.parse::<u16>().ok()
+			{
+				cmd.append_switch_with_value(Some(&CefString::from("remote-debugging-port")), Some(&CefString::from(port.to_string().as_str())));
+				cmd.append_switch_with_value(Some(&CefString::from("remote-allow-origins")), Some(&CefString::from("*")));
+			}
 		}
 	}
 
