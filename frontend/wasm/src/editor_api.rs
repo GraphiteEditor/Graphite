@@ -791,13 +791,6 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
-	/// Snaps the import/export edges to a grid space when the scroll bar is released
-	#[wasm_bindgen(js_name = setGridAlignedEdges)]
-	pub fn set_grid_aligned_edges(&self) {
-		let message = NodeGraphMessage::SetGridAlignedEdges;
-		self.dispatch(message);
-	}
-
 	/// Merge the selected nodes into a subnetwork
 	#[wasm_bindgen(js_name = mergeSelectedNodes)]
 	pub fn merge_nodes(&self) {
