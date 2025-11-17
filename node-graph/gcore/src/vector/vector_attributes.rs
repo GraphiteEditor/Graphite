@@ -4,7 +4,8 @@ use crate::vector::vector_types::Vector;
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use kurbo::{CubicBez, Line, PathSeg, QuadBez};
-use std::collections::HashMap;
+use log::debug;
+use std::collections::{HashMap, HashSet};
 use std::hash::{Hash, Hasher};
 use std::iter::zip;
 
@@ -678,6 +679,44 @@ impl FoundSubpath {
 	pub fn contains(&self, segment_id: SegmentId) -> bool {
 		self.edges.iter().any(|s| s.id == segment_id)
 	}
+
+	pub fn to_bezpath(&self, vector: &Vector) -> kurbo::BezPath {
+		let mut bezpath = kurbo::BezPath::new();
+
+		if let Some(first_edge) = self.edges.first() {
+			let start_pos = vector.point_domain.positions()[first_edge.start];
+			bezpath.move_to(dvec2_to_point(start_pos));
+		}
+
+		for edge in &self.edges {
+			let segment_index = vector.segment_domain.ids().iter().position(|&id| id == edge.id).expect("Segment ID must exist");
+
+			let mut handles = vector.segment_domain.handles()[segment_index];
+			if edge.reverse {
+				handles = handles.reversed();
+			}
+
+			let end_pos = vector.point_domain.positions()[edge.end];
+
+			match handles {
+				BezierHandles::Linear => {
+					bezpath.line_to(dvec2_to_point(end_pos));
+				}
+				BezierHandles::Quadratic { handle } => {
+					bezpath.quad_to(dvec2_to_point(handle), dvec2_to_point(end_pos));
+				}
+				BezierHandles::Cubic { handle_start, handle_end } => {
+					bezpath.curve_to(dvec2_to_point(handle_start), dvec2_to_point(handle_end), dvec2_to_point(end_pos));
+				}
+			}
+		}
+
+		if self.is_closed() {
+			bezpath.close_path();
+		}
+
+		bezpath
+	}
 }
 
 impl Vector {
@@ -984,6 +1023,134 @@ impl Vector {
 		self.point_domain.map_ids(&id_map);
 		self.segment_domain.map_ids(&id_map);
 		self.region_domain.map_ids(&id_map);
+	}
+
+	pub fn is_branching_mesh(&self) -> bool {
+		for point_index in 0..self.point_domain.len() {
+			let connection_count = self.segment_domain.connected_count(point_index);
+
+			if connection_count > 2 {
+				return true;
+			}
+		}
+
+		false
+	}
+
+	/// Compute signed area of a face using the shoelace formula.
+	/// Negative area indicates clockwise winding, positive indicates counterclockwise.
+	fn compute_signed_area(&self, face: &FoundSubpath) -> f64 {
+		let mut area = 0.0;
+		for edge in &face.edges {
+			let start_pos = self.point_domain.positions()[edge.start];
+			let end_pos = self.point_domain.positions()[edge.end];
+			area += (end_pos.x - start_pos.x) * (end_pos.y + start_pos.y);
+		}
+		area * 0.5
+	}
+
+	/// Find all minimal closed regions (faces) in a branching mesh vector.
+	pub fn find_closed_regions(&self) -> Vec<FoundSubpath> {
+		let mut regions = Vec::new();
+		let mut used_half_edges = HashSet::new();
+
+		// Build adjacency list sorted by angle for proper face traversal
+		let mut adjacency: HashMap<usize, Vec<(SegmentId, usize, bool)>> = HashMap::new();
+
+		for (segment_id, start, end, _) in self.segment_domain.iter() {
+			adjacency.entry(start).or_default().push((segment_id, end, false));
+			adjacency.entry(end).or_default().push((segment_id, start, true));
+		}
+
+		// Sort neighbors by angle to enable finding the "rightmost" path
+		for (&point_idx, neighbors) in adjacency.iter_mut() {
+			let start = self.point_domain.positions()[point_idx];
+
+			neighbors.sort_by(|a, b| {
+				let angles: [f64; 2] = [a, b].map(|&(segment_id, end_idx, reversed)| {
+					let end = self.point_domain.positions()[end_idx];
+					let curve = self.segment_domain.handles()[self.segment_domain.id_to_index(segment_id).unwrap()];
+					let curve = if reversed { curve.reversed() } else { curve };
+					let direction = curve.derivative_at_start(start, end);
+					direction.y.atan2(direction.x)
+				});
+				angles[0].partial_cmp(&angles[1]).unwrap_or(std::cmp::Ordering::Equal)
+			});
+		}
+
+		for (segment_id, start, end, _) in self.segment_domain.iter() {
+			for &reversed in &[false, true] {
+				let (from, to) = if reversed { (end, start) } else { (start, end) };
+				let half_edge_key = (segment_id, reversed);
+
+				if used_half_edges.contains(&half_edge_key) {
+					continue;
+				}
+
+				if let Some(face) = self.find_minimal_face_from_edge(segment_id, from, to, reversed, &adjacency, &mut used_half_edges) {
+					regions.push(face);
+				}
+			}
+		}
+
+		// Filter out outer (counterclockwise) faces, keeping only inner (clockwise) faces
+		regions.retain(|face| self.compute_signed_area(face) <= 0.0);
+		regions
+	}
+
+	/// Helper to find a minimal face (smallest cycle) starting from a half-edge
+	fn find_minimal_face_from_edge(
+		&self,
+		start_segment: SegmentId,
+		from_point: usize,
+		to_point: usize,
+		start_reversed: bool,
+		adjacency: &HashMap<usize, Vec<(SegmentId, usize, bool)>>,
+		used_half_edges: &mut HashSet<(SegmentId, bool)>,
+	) -> Option<FoundSubpath> {
+		let mut path = vec![HalfEdge::new(start_segment, from_point, to_point, start_reversed)];
+		let mut current = to_point;
+		let target = from_point;
+		let mut prev_segment = start_segment;
+
+		let max_iterations = adjacency.len() * 2;
+
+		// Follow the "rightmost" edge at each vertex to find minimal face
+		for _iteration in 1..=max_iterations {
+			let neighbors = adjacency.get(&current)?;
+
+			// Since neighbors are pre-sorted by angle, find the index of the edge we came from
+			// and take the next edge in the sorted circular list
+			let prev_index = neighbors.iter().position(|(seg, _next, _rev)| *seg == prev_segment)?;
+
+			// The next edge in the sorted list is the minimal face edge (rightmost turn)
+			// Wrap around using modulo to handle circular list
+			let next = neighbors[(prev_index + 1) % neighbors.len()];
+
+			let (next_segment, next_point, next_reversed) = next;
+
+			// Check if we've created a cycle (might not be back to start)
+			if path.iter().any(|e| e.end == next_point && e.id != next_segment) {
+				return None;
+			}
+
+			path.push(HalfEdge::new(next_segment, current, next_point, next_reversed));
+
+			// Check if we've completed the face
+			if next_point == target {
+				// Mark all half-edges as used
+				for edge in &path {
+					used_half_edges.insert((edge.id, edge.reverse));
+				}
+				return Some(FoundSubpath::new(path));
+			}
+
+			prev_segment = next_segment;
+			current = next_point;
+		}
+
+		// If we exit the loop without returning, the path didn't close
+		None
 	}
 }
 

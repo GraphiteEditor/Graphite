@@ -228,6 +228,24 @@ impl BezierHandles {
 			_ => self,
 		}
 	}
+
+	/// Returns the tangent vector at the start of the curve (t=0)
+	pub fn derivative_at_start(&self, start: DVec2, end: DVec2) -> DVec2 {
+		match self {
+			BezierHandles::Linear => end - start,
+			BezierHandles::Quadratic { handle } => 2.0 * (handle - start),
+			BezierHandles::Cubic { handle_start, .. } => 3.0 * (handle_start - start),
+		}
+	}
+
+	/// Returns the tangent vector at the end of the curve (t=1)
+	pub fn derivative_at_end(&self, start: DVec2, end: DVec2) -> DVec2 {
+		match self {
+			BezierHandles::Linear => end - start,
+			BezierHandles::Quadratic { handle } => 2.0 * (end - handle),
+			BezierHandles::Cubic { handle_end, .. } => 3.0 * (end - handle_end),
+		}
+	}
 }
 
 /// Representation of a bezier curve with 2D points.
