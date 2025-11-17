@@ -40,7 +40,7 @@ export function githubUrl(panicDetails: string): string {
 			Provide any further information or context that you think would be helpful in fixing the issue. Screenshots or video can be linked or attached to this issue.
 
 			**Browser and OS**
-			${browserVersion()}, ${operatingSystem(true).replace("Unknown", "YOUR OPERATING SYSTEM")}
+			${browserVersion()}, ${operatingSystem().replace("Unknown", "YOUR OPERATING SYSTEM")}
 
 			**Stack Trace**
 			Copied from the crash dialog in the Graphite editor:
