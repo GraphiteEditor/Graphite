@@ -244,6 +244,7 @@ tagged_value! {
 	MergeByDistanceAlgorithm(graphene_core::vector::misc::MergeByDistanceAlgorithm),
 	PointSpacingType(graphene_core::vector::misc::PointSpacingType),
 	SpiralType(graphene_core::vector::misc::SpiralType),
+	RepeatSpacingMethod(graphene_core::vector::RepeatSpacingMethod),
 	#[serde(alias = "LineCap")]
 	StrokeCap(graphene_core::vector::style::StrokeCap),
 	#[serde(alias = "LineJoin")]
