@@ -53,6 +53,7 @@ const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 /// Since we don't need to update the frontend multiple times per frame,
 /// we have a set of messages which we will buffer until the next frame is requested.
 const FRONTEND_UPDATE_MESSAGES: &[MessageDiscriminant] = &[
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::NodeGraph(NodeGraphMessageDiscriminant::SendGraph))),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::PropertiesPanel(
 		PropertiesPanelMessageDiscriminant::Refresh,
 	))),

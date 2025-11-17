@@ -1,7 +1,6 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::document_node_definitions::{NODE_OVERRIDES, NodePropertiesContext};
-use super::utility_types::FrontendGraphDataType;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::prelude::*;
@@ -14,6 +13,7 @@ use graph_craft::{Type, concrete};
 use graphene_std::NodeInputDecleration;
 use graphene_std::animation::RealTimeMode;
 use graphene_std::extract_xy::XY;
+use graphene_std::node_graph_overlay::types::FrontendGraphDataType;
 use graphene_std::path_bool::BooleanOperation;
 use graphene_std::raster::curve::Curve;
 use graphene_std::raster::{

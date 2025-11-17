@@ -569,7 +569,7 @@
 						{/if}
 					</div>
 
-					<div class="graph-view" class:open={$document.graphViewOverlayOpen} style:--fade-artwork={`${$document.fadeArtwork}%`} data-graph>
+					<div class="graph-view" class:open={$document.graphViewOverlayOpen} data-graph>
 						<Graph />
 					</div>
 				</LayoutCol>
@@ -768,7 +768,7 @@
 				.viewport-container-inner-2 {
 					flex: 1 1 100%;
 					position: relative;
-
+					overflow: hidden;
 					.viewport {
 						background: var(--color-2-mildblack);
 					}
@@ -852,7 +852,6 @@
 						}
 					}
 
-					.fade-artwork,
 					.graph {
 						position: absolute;
 						top: 0;
