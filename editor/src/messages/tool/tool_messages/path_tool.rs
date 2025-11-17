@@ -750,8 +750,8 @@ impl PathToolData {
 
 			// If the point is already selected and shift (`extend_selection`) is used, keep the selection unchanged.
 			// Otherwise, select the first point within the threshold.
-			if !(already_selected && extend_selection) {
-				if let Some(updated_selection_info) = shape_editor.change_point_selection(
+			if !(already_selected && extend_selection)
+				&& let Some(updated_selection_info) = shape_editor.change_point_selection(
 					&document.network_interface,
 					input.mouse.position,
 					SELECTION_THRESHOLD,
@@ -759,8 +759,7 @@ impl PathToolData {
 					path_overlay_mode,
 					self.frontier_handles_info.as_ref(),
 				) {
-					selection_info = updated_selection_info;
-				}
+				selection_info = updated_selection_info;
 			}
 
 			if let Some(selected_points) = selection_info {
@@ -778,28 +777,26 @@ impl PathToolData {
 					self.saved_selection_before_handle_drag = old_selection;
 				}
 
-				if handle_drag_from_anchor {
-					if let Some((layer, point)) = shape_editor.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD) {
-						// Check that selected point is an anchor
-						if let (Some(point_id), Some(vector)) = (point.as_anchor(), document.network_interface.compute_modified_vector(layer)) {
-							let handles = vector.all_connected(point_id).collect::<Vec<_>>();
-							self.alt_clicked_on_anchor = true;
-							for handle in &handles {
-								let modification_type = handle.set_relative_position(DVec2::ZERO);
-								responses.add(GraphOperationMessage::Vector { layer, modification_type });
-								for &handles in &vector.colinear_manipulators {
-									if handles.contains(handle) {
-										let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
-										responses.add(GraphOperationMessage::Vector { layer, modification_type });
-									}
+				if handle_drag_from_anchor && let Some((layer, point)) = shape_editor.find_nearest_point_indices(&document.network_interface, input.mouse.position, SELECTION_THRESHOLD) {
+					// Check that selected point is an anchor
+					if let (Some(point_id), Some(vector)) = (point.as_anchor(), document.network_interface.compute_modified_vector(layer)) {
+						let handles = vector.all_connected(point_id).collect::<Vec<_>>();
+						self.alt_clicked_on_anchor = true;
+						for handle in &handles {
+							let modification_type = handle.set_relative_position(DVec2::ZERO);
+							responses.add(GraphOperationMessage::Vector { layer, modification_type });
+							for &handles in &vector.colinear_manipulators {
+								if handles.contains(handle) {
+									let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
+									responses.add(GraphOperationMessage::Vector { layer, modification_type });
 								}
 							}
-
-							let manipulator_point_id = handles[0].to_manipulator_point();
-							shape_editor.deselect_all_points();
-							shape_editor.select_point_by_layer_and_id(manipulator_point_id, layer);
-							responses.add(PathToolMessage::SelectedPointUpdated);
 						}
+
+						let manipulator_point_id = handles[0].to_manipulator_point();
+						shape_editor.deselect_all_points();
+						shape_editor.select_point_by_layer_and_id(manipulator_point_id, layer);
+						responses.add(PathToolMessage::SelectedPointUpdated);
 					}
 				}
 
@@ -2098,19 +2095,19 @@ impl Fsm for PathToolFsmState {
 				let break_molding = input.keyboard.get(break_colinear_molding as usize);
 
 				// Logic for molding segment
-				if let Some(segment) = &mut tool_data.segment {
-					if let Some(molding_segment_handles) = tool_data.molding_info {
-						tool_data.temporary_adjacent_handles_while_molding = segment.mold_handle_positions(
-							document,
-							responses,
-							molding_segment_handles,
-							input.mouse.position,
-							break_molding,
-							tool_data.temporary_adjacent_handles_while_molding,
-						);
+				if let Some(segment) = &mut tool_data.segment
+					&& let Some(molding_segment_handles) = tool_data.molding_info
+				{
+					tool_data.temporary_adjacent_handles_while_molding = segment.mold_handle_positions(
+						document,
+						responses,
+						molding_segment_handles,
+						input.mouse.position,
+						break_molding,
+						tool_data.temporary_adjacent_handles_while_molding,
+					);
 
-						return PathToolFsmState::Dragging(tool_data.dragging_state);
-					}
+					return PathToolFsmState::Dragging(tool_data.dragging_state);
 				}
 
 				let anchor_and_handle_toggled = input.keyboard.get(move_anchor_with_handles as usize);
@@ -3384,15 +3381,13 @@ fn update_dynamic_hints(
 			let at_least_one_point_selected = shape_editor.selected_points().count() >= 1;
 
 			let mut single_colinear_anchor_selected = false;
-			if single_anchor_selected {
-				if let (Some(anchor), Some(layer)) = (
+			if single_anchor_selected
+				&& let (Some(anchor), Some(layer)) = (
 					shape_editor.selected_points().next(),
 					document.network_interface.selected_nodes().selected_layers(document.metadata()).next(),
-				) {
-					if let Some(vector) = document.network_interface.compute_modified_vector(layer) {
-						single_colinear_anchor_selected = vector.colinear(*anchor)
-					}
-				}
+				) && let Some(vector) = document.network_interface.compute_modified_vector(layer)
+			{
+				single_colinear_anchor_selected = vector.colinear(*anchor)
 			}
 
 			let drag_selected_hints = vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")];

@@ -411,18 +411,18 @@ impl Fsm for BrushToolFsmState {
 			}
 
 			(BrushToolFsmState::Drawing, BrushToolMessage::PointerMove) => {
-				if let Some(layer) = tool_data.layer {
-					if let Some(stroke) = tool_data.strokes.last_mut() {
-						let layer_position = document
-							.network_interface
-							.document_metadata()
-							.downstream_transform_to_viewport(layer)
-							.inverse()
-							.transform_point2(input.mouse.position);
-						let layer_position = tool_data.transform.inverse().transform_point2(layer_position);
+				if let Some(layer) = tool_data.layer
+					&& let Some(stroke) = tool_data.strokes.last_mut()
+				{
+					let layer_position = document
+						.network_interface
+						.document_metadata()
+						.downstream_transform_to_viewport(layer)
+						.inverse()
+						.transform_point2(input.mouse.position);
+					let layer_position = tool_data.transform.inverse().transform_point2(layer_position);
 
-						stroke.trace.push(BrushInputSample { position: layer_position })
-					}
+					stroke.trace.push(BrushInputSample { position: layer_position })
 				}
 				tool_data.update_strokes(responses);
 

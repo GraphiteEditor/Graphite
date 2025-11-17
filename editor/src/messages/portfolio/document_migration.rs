@@ -581,11 +581,9 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 }
 
 fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], document: &mut DocumentMessageHandler, reset_node_definitions_on_open: bool) -> Option<()> {
-	if reset_node_definitions_on_open {
-		if let Some(Some(reference)) = document.network_interface.reference(node_id, network_path) {
-			let node_definition = resolve_document_node_type(reference)?;
-			document.network_interface.replace_implementation(node_id, network_path, &mut node_definition.default_node_template());
-		}
+	if reset_node_definitions_on_open && let Some(Some(reference)) = document.network_interface.reference(node_id, network_path) {
+		let node_definition = resolve_document_node_type(reference)?;
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_definition.default_node_template());
 	}
 
 	// Upgrade old nodes to use `Context` instead of `()` or `Footprint` as their call argument
@@ -1018,11 +1016,11 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			.network_interface
 			.input_from_connector(&InputConnector::Node { node_id: *node_id, input_index: 3 }, network_path)?;
 
-		if let NodeInput::Value { tagged_value, exposed } = quantity_value {
-			if let TaggedValue::F64(value) = **tagged_value {
-				let new_quantity_value = NodeInput::value(TaggedValue::U32(value as u32), *exposed);
-				document.network_interface.set_input(&InputConnector::node(*node_id, 3), new_quantity_value, network_path);
-			}
+		if let NodeInput::Value { tagged_value, exposed } = quantity_value
+			&& let TaggedValue::F64(value) = **tagged_value
+		{
+			let new_quantity_value = NodeInput::value(TaggedValue::U32(value as u32), *exposed);
+			document.network_interface.set_input(&InputConnector::node(*node_id, 3), new_quantity_value, network_path);
 		}
 	}
 
@@ -1037,18 +1035,18 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 		let mut upgraded = false;
 
-		if let Some(NodeInput::Value { tagged_value, exposed: _ }) = index_3_value {
-			if matches!(*tagged_value, TaggedValue::DVec2(_)) {
-				// Move index 3 to the end
-				document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
-				document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
-				document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[2].clone(), network_path);
-				document.network_interface.set_input(&InputConnector::node(*node_id, 3), old_inputs[4].clone(), network_path);
-				document.network_interface.set_input(&InputConnector::node(*node_id, 4), old_inputs[5].clone(), network_path);
-				document.network_interface.set_input(&InputConnector::node(*node_id, 5), old_inputs[3].clone(), network_path);
+		if let Some(NodeInput::Value { tagged_value, exposed: _ }) = index_3_value
+			&& matches!(*tagged_value, TaggedValue::DVec2(_))
+		{
+			// Move index 3 to the end
+			document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+			document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
+			document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[2].clone(), network_path);
+			document.network_interface.set_input(&InputConnector::node(*node_id, 3), old_inputs[4].clone(), network_path);
+			document.network_interface.set_input(&InputConnector::node(*node_id, 4), old_inputs[5].clone(), network_path);
+			document.network_interface.set_input(&InputConnector::node(*node_id, 5), old_inputs[3].clone(), network_path);
 
-				upgraded = true;
-			}
+			upgraded = true;
 		}
 
 		if !upgraded {

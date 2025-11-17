@@ -20,7 +20,7 @@ use crate::messages::tool::common_functionality::graph_modification_utils::{self
 use crate::messages::tool::common_functionality::utility_functions::make_path_editable_is_allowed;
 use crate::messages::tool::tool_messages::tool_prelude::{Key, MouseMotion};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
-use crate::messages::viewport::{Position, Rect};
+use crate::messages::viewport::Position;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
@@ -1011,10 +1011,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						// Disconnect if the wire was previously connected to an input
 						if let Some(disconnecting) = &self.disconnecting {
 							let mut disconnect_root_node = false;
-							if let Previewing::Yes { root_node_to_restore } = network_interface.previewing(selection_network_path) {
-								if root_node_to_restore.is_some() && *disconnecting == InputConnector::Export(0) {
-									disconnect_root_node = true;
-								}
+							if let Previewing::Yes { root_node_to_restore } = network_interface.previewing(selection_network_path)
+								&& root_node_to_restore.is_some()
+								&& *disconnecting == InputConnector::Export(0)
+							{
+								disconnect_root_node = true;
 							}
 							if disconnect_root_node {
 								responses.add(NodeGraphMessage::DisconnectRootNode);
@@ -1168,13 +1169,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					responses.add(NodeGraphMessage::TogglePreview { node_id: preview_node });
 					self.preview_on_mouse_up = None;
 				}
-				if let Some(node_to_deselect) = self.deselect_on_pointer_up.take() {
-					if !self.drag_start.as_ref().is_some_and(|t| t.1) {
-						let mut new_selected_nodes = selected_nodes.selected_nodes_ref().clone();
-						new_selected_nodes.remove(node_to_deselect);
-						responses.add(NodeGraphMessage::SelectedNodesSet { nodes: new_selected_nodes });
-						return;
-					}
+				if let Some(node_to_deselect) = self.deselect_on_pointer_up.take()
+					&& !self.drag_start.as_ref().is_some_and(|t| t.1)
+				{
+					let mut new_selected_nodes = selected_nodes.selected_nodes_ref().clone();
+					new_selected_nodes.remove(node_to_deselect);
+					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: new_selected_nodes });
+					return;
 				}
 				let point = network_metadata
 					.persistent_metadata
@@ -1542,6 +1543,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(NodeGraphMessage::SendGraph);
 			}
+			NodeGraphMessage::UpdateNodeGraphWidth => {
+				network_interface.set_node_graph_width(viewport.size().x(), breadcrumb_network_path);
+				responses.add(NodeGraphMessage::UpdateImportsExports);
+			}
 			NodeGraphMessage::RemoveImport { import_index: usize } => {
 				network_interface.remove_import(usize, selection_network_path);
 				responses.add(NodeGraphMessage::UpdateImportsExports);
@@ -1656,14 +1661,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					});
 					responses.add(NodeGraphMessage::SendSelectedNodes);
 					self.update_node_graph_hints(responses);
-				}
-			}
-			NodeGraphMessage::SetGridAlignedEdges => {
-				if graph_view_overlay_open {
-					let viewport_bounds = viewport.bounds();
-					network_interface.set_grid_aligned_edges(DVec2::new(viewport_bounds.x() - viewport_bounds.width(), 0.), breadcrumb_network_path);
-					// Send the new edges to the frontend
-					responses.add(NodeGraphMessage::UpdateImportsExports);
 				}
 			}
 			NodeGraphMessage::SetInputValue { node_id, input_index, value } => {
