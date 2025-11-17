@@ -969,7 +969,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				}
 
 				// Clicked on the graph background so we box select
-				if !shift_click {
+				if !shift_click && !alt_click {
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: Vec::new() })
 				}
 				self.box_selection_start = Some((node_graph_point, false));
@@ -1011,10 +1011,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						// Disconnect if the wire was previously connected to an input
 						if let Some(disconnecting) = &self.disconnecting {
 							let mut disconnect_root_node = false;
-							if let Previewing::Yes { root_node_to_restore } = network_interface.previewing(selection_network_path) {
-								if root_node_to_restore.is_some() && *disconnecting == InputConnector::Export(0) {
-									disconnect_root_node = true;
-								}
+							if let Previewing::Yes { root_node_to_restore } = network_interface.previewing(selection_network_path)
+								&& root_node_to_restore.is_some()
+								&& *disconnecting == InputConnector::Export(0)
+							{
+								disconnect_root_node = true;
 							}
 							if disconnect_root_node {
 								responses.add(NodeGraphMessage::DisconnectRootNode);
@@ -1168,13 +1169,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					responses.add(NodeGraphMessage::TogglePreview { node_id: preview_node });
 					self.preview_on_mouse_up = None;
 				}
-				if let Some(node_to_deselect) = self.deselect_on_pointer_up.take() {
-					if !self.drag_start.as_ref().is_some_and(|t| t.1) {
-						let mut new_selected_nodes = selected_nodes.selected_nodes_ref().clone();
-						new_selected_nodes.remove(node_to_deselect);
-						responses.add(NodeGraphMessage::SelectedNodesSet { nodes: new_selected_nodes });
-						return;
-					}
+				if let Some(node_to_deselect) = self.deselect_on_pointer_up.take()
+					&& !self.drag_start.as_ref().is_some_and(|t| t.1)
+				{
+					let mut new_selected_nodes = selected_nodes.selected_nodes_ref().clone();
+					new_selected_nodes.remove(node_to_deselect);
+					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: new_selected_nodes });
+					return;
 				}
 				let point = network_metadata
 					.persistent_metadata
@@ -1614,8 +1615,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					return;
 				};
 
-				let viewport_bounds = viewport.bounds();
-				let viewport_bbox: [DVec2; 2] = viewport_bounds.into();
+				let viewport_bbox = [DVec2::ZERO, viewport.size().into_dvec2()];
 				let document_bbox: [DVec2; 2] = viewport_bbox.map(|p| network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse().transform_point2(p));
 
 				let mut nodes = Vec::new();
@@ -1926,12 +1926,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						.transform_point2(ipp.mouse.position);
 
 					let shift = ipp.keyboard.get(Key::Shift as usize);
+					let alt = ipp.keyboard.get(Key::Alt as usize);
 					let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) else {
 						log::error!("Could not get selected nodes in UpdateBoxSelection");
 						return;
 					};
 					let previous_selection = selected_nodes.selected_nodes_ref().iter().cloned().collect::<HashSet<_>>();
-					let mut nodes = if shift {
+					let mut nodes = if shift || alt {
 						selected_nodes.selected_nodes_ref().iter().cloned().collect::<HashSet<_>>()
 					} else {
 						HashSet::new()
@@ -1944,7 +1945,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						};
 						let quad = Quad::from_box([box_selection_start, box_selection_end_graph]);
 						if click_targets.node_click_target.intersect_path(|| quad.to_lines(), DAffine2::IDENTITY) {
-							nodes.insert(node_id);
+							if alt {
+								nodes.remove(&node_id);
+							} else {
+								nodes.insert(node_id);
+							}
 						}
 					}
 					if nodes != previous_selection {
@@ -2739,7 +2744,11 @@ impl NodeGraphMessageHandler {
 		let mut hint_data = HintData(vec![
 			HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, "Add Node")]),
 			HintGroup(vec![HintInfo::mouse(MouseMotion::Lmb, "Select Node"), HintInfo::keys([Key::Shift], "Extend").prepend_plus()]),
-			HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"), HintInfo::keys([Key::Shift], "Extend").prepend_plus()]),
+			HintGroup(vec![
+				HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"),
+				HintInfo::keys([Key::Shift], "Extend").prepend_plus(),
+				HintInfo::keys([Key::Alt], "Subtract").prepend_plus(),
+			]),
 		]);
 		if self.has_selection {
 			hint_data.0.extend([
