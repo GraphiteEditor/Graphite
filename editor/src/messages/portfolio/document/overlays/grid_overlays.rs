@@ -375,7 +375,6 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 					grid.dot_display = true;
 				})),
 			])
-			// .min_width(200)
 			.selected_index(Some(if grid.dot_display { 1 } else { 0 }))
 			.widget_holder(),
 		],
