@@ -533,18 +533,6 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 						}))
 						.widget_holder(),
 					Separator::new(SeparatorType::Related).widget_holder(),
-					NumberInput::new(Some(grid.isometric_major_interval.z as f64))
-						.label("A")
-						.int()
-						.min(1.)
-						.min_width(64)
-						.on_update(update_val(grid, |grid, val: &NumberInput| {
-							if let Some(val) = val.value {
-								grid.isometric_major_interval.z = val as u32;
-							}
-						}))
-						.widget_holder(),
-					Separator::new(SeparatorType::Related).widget_holder(),
 					NumberInput::new(Some(grid.isometric_major_interval.y as f64))
 						.label("B")
 						.int()
@@ -553,6 +541,18 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 						.on_update(update_val(grid, |grid, val: &NumberInput| {
 							if let Some(val) = val.value {
 								grid.isometric_major_interval.y = val as u32;
+							}
+						}))
+						.widget_holder(),
+					Separator::new(SeparatorType::Related).widget_holder(),
+					NumberInput::new(Some(grid.isometric_major_interval.z as f64))
+						.label("A")
+						.int()
+						.min(1.)
+						.min_width(64)
+						.on_update(update_val(grid, |grid, val: &NumberInput| {
+							if let Some(val) = val.value {
+								grid.isometric_major_interval.z = val as u32;
 							}
 						}))
 						.widget_holder(),
