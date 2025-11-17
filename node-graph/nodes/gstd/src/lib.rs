@@ -71,6 +71,10 @@ pub mod math {
 	}
 }
 
+pub mod logic {
+	pub use graphene_core::logic::*;
+}
+
 pub use graphene_core::debug;
 
 // Re-export graphene_core modules for backward compatibility
