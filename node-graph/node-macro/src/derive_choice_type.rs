@@ -50,14 +50,12 @@ impl BasicItem {
 			let token: LitStr = attribute.parse_args()?;
 			self.icon = Some(token.value());
 		}
-		if attribute.path().is_ident("doc") {
-			if let Meta::NameValue(meta_name_value) = &attribute.meta {
-				if let Expr::Lit(el) = &meta_name_value.value {
-					if let syn::Lit::Str(token) = &el.lit {
-						self.description = Some(token.value());
-					}
-				}
-			}
+		if attribute.path().is_ident("doc")
+			&& let Meta::NameValue(meta_name_value) = &attribute.meta
+			&& let Expr::Lit(el) = &meta_name_value.value
+			&& let syn::Lit::Str(token) = &el.lit
+		{
+			self.description = Some(token.value());
 		}
 		Ok(())
 	}

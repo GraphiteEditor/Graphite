@@ -474,10 +474,10 @@ impl Fsm for GradientToolFsmState {
 			}
 			(GradientToolFsmState::Drawing, GradientToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning
-				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, viewport, responses) {
-					if let Some(selected_gradient) = &mut tool_data.selected_gradient {
-						selected_gradient.transform.translation += shift;
-					}
+				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, viewport, responses)
+					&& let Some(selected_gradient) = &mut tool_data.selected_gradient
+				{
+					selected_gradient.transform.translation += shift;
 				}
 
 				GradientToolFsmState::Drawing
@@ -497,12 +497,11 @@ impl Fsm for GradientToolFsmState {
 				tool_data.snap_manager.cleanup(responses);
 				let was_dragging = tool_data.selected_gradient.is_some();
 
-				if !was_dragging {
-					if let Some(selected_layer) = document.click(input, viewport) {
-						if let Some(gradient) = get_gradient(selected_layer, &document.network_interface) {
-							tool_data.selected_gradient = Some(SelectedGradient::new(gradient, selected_layer, document));
-						}
-					}
+				if !was_dragging
+					&& let Some(selected_layer) = document.click(input, viewport)
+					&& let Some(gradient) = get_gradient(selected_layer, &document.network_interface)
+				{
+					tool_data.selected_gradient = Some(SelectedGradient::new(gradient, selected_layer, document));
 				}
 				GradientToolFsmState::Ready
 			}

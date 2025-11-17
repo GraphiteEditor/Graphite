@@ -272,7 +272,7 @@ fn calculate_isometric_top_line_points(columns: u32, rows: u32, spacing: DVec2, 
 	let offset = if columns == 1 || rows == 1 { DVec2::ZERO } else { DVec2::new(spacing.x * 0.5, 0.) };
 	let isometric_spacing = calculate_isometric_offset(spacing, angles);
 	let isometric_offset = DVec2::new(0., isometric_spacing.y);
-	let end_isometric_offset = if columns % 2 == 0 { DVec2::ZERO } else { DVec2::new(0., isometric_spacing.y) };
+	let end_isometric_offset = if columns.is_multiple_of(2) { DVec2::ZERO } else { DVec2::new(0., isometric_spacing.y) };
 
 	(top_left + offset - isometric_offset, top_right - offset - end_isometric_offset)
 }
@@ -282,7 +282,7 @@ fn calculate_isometric_bottom_line_points(columns: u32, rows: u32, spacing: DVec
 	let bottom_right = calculate_isometric_point(columns - 1, rows - 1, angles, spacing);
 
 	let offset = if columns == 1 || rows == 1 { DVec2::ZERO } else { DVec2::new(spacing.x * 0.5, 0.) };
-	let isometric_offset = if columns % 2 == 0 {
+	let isometric_offset = if columns.is_multiple_of(2) {
 		let offset = calculate_isometric_offset(spacing, angles);
 		DVec2::new(0., offset.y)
 	} else {
