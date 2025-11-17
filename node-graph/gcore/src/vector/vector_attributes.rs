@@ -1057,7 +1057,53 @@ impl Vector {
 				let pos_b = self.point_domain.positions()[b.1];
 				let angle_a = (pos_a - point_pos).y.atan2((pos_a - point_pos).x);
 				let angle_b = (pos_b - point_pos).y.atan2((pos_b - point_pos).x);
-				angle_a.partial_cmp(&angle_b).unwrap_or(std::cmp::Ordering::Equal)
+
+				// Compare angles
+				match angle_a.partial_cmp(&angle_b) {
+					Some(std::cmp::Ordering::Equal) | None => {
+						// Angles are equal (within floating point precision), use derivative as tiebreaker
+						const EPSILON: f64 = 1e-10;
+						if (angle_a - angle_b).abs() < EPSILON {
+							// Get segment indices to access handles
+							let seg_idx_a = self.segment_domain.ids().iter().position(|&id| id == a.0);
+							let seg_idx_b = self.segment_domain.ids().iter().position(|&id| id == b.0);
+
+							if let (Some(idx_a), Some(idx_b)) = (seg_idx_a, seg_idx_b) {
+								let handles_a = self.segment_domain.handles()[idx_a];
+								let handles_b = self.segment_domain.handles()[idx_b];
+
+								// Get start and end positions for the segments
+								let start_a = self.point_domain.positions()[self.segment_domain.start_point()[idx_a]];
+								let end_a = self.point_domain.positions()[self.segment_domain.end_point()[idx_a]];
+								let start_b = self.point_domain.positions()[self.segment_domain.start_point()[idx_b]];
+								let end_b = self.point_domain.positions()[self.segment_domain.end_point()[idx_b]];
+
+								// Determine derivative based on edge direction
+								// If reversed (a.2 == true), we're coming into the point, so use derivative_at_end
+								// Otherwise, we're leaving the point, so use derivative_at_start
+								let deriv_a = if a.2 {
+									handles_a.derivative_at_end(start_a, end_a)
+								} else {
+									handles_a.derivative_at_start(start_a, end_a)
+								};
+
+								let deriv_b = if b.2 {
+									handles_b.derivative_at_end(start_b, end_b)
+								} else {
+									handles_b.derivative_at_start(start_b, end_b)
+								};
+
+								// Compare derivative angles
+								let deriv_angle_a = deriv_a.y.atan2(deriv_a.x);
+								let deriv_angle_b = deriv_b.y.atan2(deriv_b.x);
+
+								return deriv_angle_a.partial_cmp(&deriv_angle_b).unwrap_or(std::cmp::Ordering::Equal);
+							}
+						}
+						std::cmp::Ordering::Equal
+					}
+					Some(ordering) => ordering,
+				}
 			});
 		}
 
