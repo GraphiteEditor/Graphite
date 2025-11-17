@@ -23,7 +23,6 @@ use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 use crate::messages::viewport::{Position, Rect};
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
-use graph_craft::proto::GraphErrors;
 use graphene_std::math::math_ext::QuadExt;
 use graphene_std::vector::algorithms::bezpath_algorithms::bezpath_is_inside_bezpath;
 use graphene_std::*;
@@ -51,7 +50,6 @@ pub struct NodeGraphMessageContext<'a> {
 pub struct NodeGraphMessageHandler {
 	// TODO: Remove network and move to NodeNetworkInterface
 	pub network: Vec<NodeId>,
-	pub node_graph_errors: GraphErrors,
 	has_selection: bool,
 	widgets: [LayoutGroup; 2],
 	/// Used to add a transaction for the first node move when dragging.
@@ -1623,7 +1621,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					if node_bbox[1].x >= document_bbox[0].x && node_bbox[0].x <= document_bbox[1].x && node_bbox[1].y >= document_bbox[0].y && node_bbox[0].y <= document_bbox[1].y {
 						nodes.push(*node_id);
 					}
-					for error in &self.node_graph_errors {
+					for error in &network_interface.resolved_types.node_graph_errors {
 						if error.node_path.contains(node_id) {
 							nodes.push(*node_id);
 						}
@@ -1995,8 +1993,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(NodeGraphMessage::SendGraph);
 			}
 			NodeGraphMessage::UpdateTypes { resolved_types, node_graph_errors } => {
-				network_interface.resolved_types.update(resolved_types);
-				self.node_graph_errors = node_graph_errors;
+				network_interface.resolved_types.update(resolved_types, node_graph_errors);
 			}
 			NodeGraphMessage::UpdateActionButtons => {
 				if selection_network_path == breadcrumb_network_path {
@@ -2557,13 +2554,14 @@ impl NodeGraphMessageHandler {
 
 			let locked = network_interface.is_locked(&node_id, breadcrumb_network_path);
 
-			let errors = self
+			let errors = network_interface
+				.resolved_types
 				.node_graph_errors
 				.iter()
 				.find(|error| error.node_path == node_id_path)
 				.map(|error| format!("{:?}", error.error.clone()))
 				.or_else(|| {
-					if self.node_graph_errors.iter().any(|error| error.node_path.starts_with(&node_id_path)) {
+					if network_interface.resolved_types.node_graph_errors.iter().any(|error| error.node_path.starts_with(&node_id_path)) {
 						Some("Node graph type error within this node".to_string())
 					} else {
 						None
@@ -2746,7 +2744,6 @@ impl Default for NodeGraphMessageHandler {
 	fn default() -> Self {
 		Self {
 			network: Vec::new(),
-			node_graph_errors: Vec::new(),
 			has_selection: false,
 			widgets: [LayoutGroup::Row { widgets: Vec::new() }, LayoutGroup::Row { widgets: Vec::new() }],
 			drag_start: None,
@@ -2778,7 +2775,6 @@ impl Default for NodeGraphMessageHandler {
 impl PartialEq for NodeGraphMessageHandler {
 	fn eq(&self, other: &Self) -> bool {
 		self.network == other.network
-			&& self.node_graph_errors == other.node_graph_errors
 			&& self.has_selection == other.has_selection
 			&& self.widgets == other.widgets
 			&& self.drag_start == other.drag_start

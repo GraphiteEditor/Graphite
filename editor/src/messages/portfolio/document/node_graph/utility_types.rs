@@ -16,6 +16,7 @@ pub enum FrontendGraphDataType {
 	Color,
 	Gradient,
 	Typography,
+	Invalid,
 }
 
 impl FrontendGraphDataType {
