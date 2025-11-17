@@ -751,14 +751,13 @@ dependencies = [
 [[package]]
 name = "cef"
 version = "141.4.0+141.0.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e05b0ae455c0cf0693da242b3336586cd0057702c0516731d8ba72962559a625"
+source = "git+https://github.com/timon-schelling/cef-rs.git?rev=98493a182928f1ff8d5bf8b9eea61483235df75d#98493a182928f1ff8d5bf8b9eea61483235df75d"
 dependencies = [
  "ash",
  "cef-dll-sys",
  "libc",
  "libloading",
- "metal 0.32.0",
+ "metal",
  "objc",
  "objc2-io-surface",
  "thiserror 2.0.16",
@@ -770,9 +769,8 @@ dependencies = [
 
 [[package]]
 name = "cef-dll-sys"
-version = "141.6.0+141.0.11"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4c95e419bbb8b2190df8b6eb3934ecc4137533803fcc5ae2b076e591ee789071"
+version = "141.4.0+141.0.9"
+source = "git+https://github.com/timon-schelling/cef-rs.git?rev=98493a182928f1ff8d5bf8b9eea61483235df75d#98493a182928f1ff8d5bf8b9eea61483235df75d"
 dependencies = [
  "anyhow",
  "cmake",
@@ -1041,17 +1039,6 @@ name = "core-foundation-sys"
 version = "0.8.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
-
-[[package]]
-name = "core-graphics-types"
-version = "0.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "45390e6114f68f718cc7a830514a96f903cccd70d02a8f6d9f643ac4ba45afaf"
-dependencies = [
- "bitflags 1.3.2",
- "core-foundation 0.9.4",
- "libc",
-]
 
 [[package]]
 name = "core-graphics-types"
@@ -1394,8 +1381,7 @@ checksum = "75b325c5dbd37f80359721ad39aca5a29fb04c89279657cffdda8736d0c0b9d2"
 [[package]]
 name = "download-cef"
 version = "2.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d98178d9254efef0f69c1f584713d69c790ec00668cd98f783a5085fbefdbddc"
+source = "git+https://github.com/timon-schelling/cef-rs.git?rev=98493a182928f1ff8d5bf8b9eea61483235df75d#98493a182928f1ff8d5bf8b9eea61483235df75d"
 dependencies = [
  "bzip2",
  "clap",
@@ -2267,22 +2253,17 @@ dependencies = [
 name = "graphite-desktop"
 version = "0.1.0"
 dependencies = [
- "ash",
  "bytemuck",
  "cef",
  "cef-dll-sys",
  "clap",
- "core-foundation 0.10.1",
  "derivative",
  "dirs",
  "futures",
  "glam",
  "graphite-desktop-embedded-resources",
  "graphite-desktop-wrapper",
- "libc",
- "metal 0.31.0",
  "muda",
- "objc",
  "open",
  "rand 0.9.2",
  "rfd",
@@ -3403,28 +3384,13 @@ dependencies = [
 
 [[package]]
 name = "metal"
-version = "0.31.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f569fb946490b5743ad69813cb19629130ce9374034abe31614a36402d18f99e"
-dependencies = [
- "bitflags 2.9.3",
- "block",
- "core-graphics-types 0.1.3",
- "foreign-types 0.5.0",
- "log",
- "objc",
- "paste",
-]
-
-[[package]]
-name = "metal"
 version = "0.32.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "00c15a6f673ff72ddcc22394663290f870fb224c1bfce55734a75c414150e605"
 dependencies = [
  "bitflags 2.9.3",
  "block",
- "core-graphics-types 0.2.0",
+ "core-graphics-types",
  "foreign-types 0.5.0",
  "log",
  "objc",
@@ -7057,7 +7023,7 @@ dependencies = [
  "bytemuck",
  "cfg-if",
  "cfg_aliases",
- "core-graphics-types 0.2.0",
+ "core-graphics-types",
  "glow",
  "glutin_wgl_sys",
  "gpu-alloc",
@@ -7069,7 +7035,7 @@ dependencies = [
  "libc",
  "libloading",
  "log",
- "metal 0.32.0",
+ "metal",
  "naga 27.0.3",
  "ndk-sys",
  "objc",

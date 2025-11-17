@@ -1,4 +1,5 @@
 use winit::event_loop::ActiveEventLoop;
+use winit::platform::macos::WindowAttributesMacOS;
 use winit::window::{Window, WindowAttributes};
 
 use crate::consts::APP_NAME;
@@ -11,7 +12,7 @@ pub(super) struct NativeWindowImpl {
 
 impl super::NativeWindow for NativeWindowImpl {
 	fn configure(attributes: WindowAttributes, _event_loop: &dyn ActiveEventLoop) -> WindowAttributes {
-		let mac_window = winit::platform::macos::WindowAttributesMacOS::default()
+		let mac_window = WindowAttributesMacOS::default()
 			.with_titlebar_transparent(true)
 			.with_fullsize_content_view(true)
 			.with_title_hidden(true);
