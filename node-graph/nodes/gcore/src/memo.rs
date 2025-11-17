@@ -4,7 +4,6 @@ use dyn_any::DynFuture;
 use std::future::Future;
 use std::hash::DefaultHasher;
 use std::hash::{Hash, Hasher};
-use std::ops::Deref;
 use std::sync::Arc;
 use std::sync::Mutex;
 

@@ -422,7 +422,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 			"graphene_core::ops::ConstructVector2",
 			"graphene_core::ops::Vector2ValueNode",
 			"graphene_core::ops::CoordinateValueNode",
-			"math_nodes::CoordinateValueNode",
+			"graphene_math_nodes::CoordinateValueNode",
 		],
 	},
 	// ================================
@@ -661,7 +661,11 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	},
 	NodeReplacement {
 		node: graphene_std::transform_nodes::extract_transform::IDENTIFIER,
-		aliases: &["graphene_core::transform_nodes::ExtractTransformNode", "graphene_core::transform::ExtractTransformNode"],
+		aliases: &[
+			"graphene_core::transform_nodes::ExtractTransformNode",
+			"graphene_core::transform::ExtractTransformNode",
+			"graphene_core::vector::ExtractTransformNode",
+		],
 	},
 	NodeReplacement {
 		node: graphene_std::transform_nodes::invert_transform::IDENTIFIER,
