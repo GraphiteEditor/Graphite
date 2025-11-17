@@ -92,6 +92,19 @@ jobs:
             echo "Failed to detect if the build command written in the comment should have been '!build-dev', '!build-profiling', or '!build'" >> $GITHUB_OUTPUT
           fi
 
+      - name: 💬 Comment Actions run link
+        id: comment_actions_run_link
+        uses: actions/github-script@v6
+        with:
+          script: |
+            return (await github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: '🚧 **Building Graphite with command** `${{ steps.build_command.outputs.command }}` ...\n\nYou can monitor the progress of this build [here](https://github.com/GraphiteEditor/Graphite/actions/runs' + context.runId + ').'
+            })).id;
+
+
       - name: 🌐 Build Graphite web code
         env:
           NODE_ENV: production
@@ -114,8 +127,8 @@ jobs:
         uses: actions/github-script@v6
         with:
           script: |
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
+            github.rest.issues.updateComment({
+              comment_id: ${{ steps.comment_actions_run_link.outputs.result }},
               owner: context.repo.owner,
               repo: context.repo.repo,
               body: '| 📦 **Build Complete for** ${{ steps.commit_info.outputs.sha }} |\n|-|\n| ${{ steps.cloudflare.outputs.url }} |'
