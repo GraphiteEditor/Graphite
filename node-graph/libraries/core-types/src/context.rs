@@ -269,7 +269,7 @@ impl ExtractRealTime for ContextImpl<'_> {
 }
 impl ExtractIndex for ContextImpl<'_> {
 	fn try_index(&self) -> Option<impl Iterator<Item = usize>> {
-		self.index.clone().map(|x| x.into_iter().rev())
+		self.index.clone().map(|x| x.into_iter())
 	}
 }
 impl ExtractVarArgs for ContextImpl<'_> {
@@ -305,7 +305,7 @@ impl ExtractAnimationTime for OwnedContextImpl {
 }
 impl ExtractIndex for OwnedContextImpl {
 	fn try_index(&self) -> Option<impl Iterator<Item = usize>> {
-		self.index.clone().map(|x| x.into_iter().rev())
+		self.index.clone().map(|x| x.into_iter())
 	}
 }
 impl ExtractVarArgs for OwnedContextImpl {

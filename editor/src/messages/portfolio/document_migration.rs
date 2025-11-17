@@ -87,11 +87,15 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	},
 	NodeReplacement {
 		node: graphene_std::memo::monitor::IDENTIFIER,
+		aliases: &["graphene_core::ops::IntoNode<&WgpuExecutor>"],
+	},
+	NodeReplacement {
+		node: graphene_std::memo::monitor::IDENTIFIER,
 		aliases: &["graphene_core::memo::MonitorNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::memo::memo::IDENTIFIER,
-		aliases: &["graphene_core::memo::MemoNode"],
+		aliases: &["graphene_core::memo::MemoNode", "graphene_core::memo::ImpureMemoNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::animation::real_time::IDENTIFIER,
@@ -698,6 +702,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		node: graphene_std::vector::auto_tangents::IDENTIFIER,
 		aliases: &[
 			"graphene_core::vector::vector_nodes::AutoTangentsNode",
+			"graphene_core::vector::AutoTangentsNode",
 			"graphene_core::vector::GenerateHandlesNode",
 			"graphene_core::vector::RemoveHandlesNode",
 		],
@@ -752,7 +757,11 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	},
 	NodeReplacement {
 		node: graphene_std::vector::flatten_path::IDENTIFIER,
-		aliases: &["graphene_core::vector::vector_nodes::FlattenPathNode", "graphene_core::vector::FlattenVectorElementsNode"],
+		aliases: &[
+			"graphene_core::vector::vector_nodes::FlattenPathNode",
+			"graphene_core::vector::FlattenVectorElementsNode",
+			"graphene_core::vector::FlattenPathNode",
+		],
 	},
 	NodeReplacement {
 		node: graphene_std::vector::generator_nodes::arc::IDENTIFIER,
@@ -904,7 +913,11 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	},
 	NodeReplacement {
 		node: graphene_std::vector::vec_2_to_point::IDENTIFIER,
-		aliases: &["graphene_core::vector::vector_nodes::PositionToPointNode", "graphene_core::vector::PositionToPointNode"],
+		aliases: &[
+			"graphene_core::vector::vector_nodes::PositionToPointNode",
+			"graphene_core::vector::PositionToPointNode",
+			"graphene_core::vector::Vec2ToPointNode",
+		],
 	},
 ];
 

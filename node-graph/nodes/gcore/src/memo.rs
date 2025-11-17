@@ -64,60 +64,6 @@ pub mod memo {
 	pub const IDENTIFIER: ProtoNodeIdentifier = ProtoNodeIdentifier::new("graphene_core::memo::MemoNode");
 }
 
-/// Caches the output of a given Node and acts as a proxy.
-/// In contrast to the regular `MemoNode`, this variant ignores all input.
-/// This node might result in the document not updating properly. Use with caution!
-#[derive(Default)]
-pub struct ImpureMemoNode<I, T, CachedNode> {
-	cache: Arc<Mutex<Option<T>>>,
-	node: CachedNode,
-	_phantom: std::marker::PhantomData<I>,
-}
-
-impl<'i, I: 'i, T: 'i + Clone + WasmNotSend, CachedNode: 'i> Node<'i, I> for ImpureMemoNode<I, T, CachedNode>
-where
-	CachedNode: for<'any_input> Node<'any_input, I>,
-	for<'a> <CachedNode as Node<'a, I>>::Output: Future<Output = T> + WasmNotSend,
-{
-	// TODO: This should return a reference to the cached cached_value but that requires a lot of lifetime magic
-	// TODO: (This was suggested by copilot but is pretty accurate xD)
-	type Output = DynFuture<'i, T>;
-	fn eval(&'i self, input: I) -> Self::Output {
-		if let Some(cached_value) = self.cache.lock().as_ref().unwrap().deref() {
-			let data = cached_value.clone();
-			Box::pin(async move { data })
-		} else {
-			let fut = self.node.eval(input);
-			let cache = self.cache.clone();
-			Box::pin(async move {
-				let value = fut.await;
-				*cache.lock().unwrap() = Some(value.clone());
-				value
-			})
-		}
-	}
-
-	fn reset(&self) {
-		self.cache.lock().unwrap().take();
-	}
-}
-
-impl<T, I, CachedNode> ImpureMemoNode<I, T, CachedNode> {
-	pub fn new(node: CachedNode) -> ImpureMemoNode<I, T, CachedNode> {
-		ImpureMemoNode {
-			cache: Default::default(),
-			node,
-			_phantom: std::marker::PhantomData,
-		}
-	}
-}
-
-pub mod impure_memo {
-	use core_types::ProtoNodeIdentifier;
-
-	pub const IDENTIFIER: ProtoNodeIdentifier = ProtoNodeIdentifier::new("graphene_core::memo::ImpureMemoNode");
-}
-
 /// Caches the output of the last graph evaluation for introspection
 #[derive(Default)]
 pub struct MonitorNode<I, T, N> {
