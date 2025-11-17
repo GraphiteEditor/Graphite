@@ -122,6 +122,18 @@ jobs:
         run: |
           cd frontend
           mold -run npm run ${{ steps.build_command.outputs.command }}
+      
+      - name: ❗ Warn on build failure
+        if: ${{ failure() }}
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: 'The build process has failed. Please check the [build logs](https://github.com/GraphiteEditor/Graphite/actions/runs/' + context.runId + ') for details.'
+            });
 
       - name: 📤 Publish to Cloudflare Pages
         id: cloudflare
@@ -133,6 +145,18 @@ jobs:
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
           projectName: graphite-dev
           directory: frontend/dist
+
+      - name: ❗ Warn on publish failure
+        if: ${{ failure() }}
+        uses: actions/github-script@v6
+        with:
+          script: |
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: 'The deployment to Cloudflare Pages has failed. Please check the [build logs](https://github.com/GraphiteEditor/Graphite/actions/runs/' + context.runId + ') for details.
+            });
 
       - name: 💬 Comment build link
         uses: actions/github-script@v6
