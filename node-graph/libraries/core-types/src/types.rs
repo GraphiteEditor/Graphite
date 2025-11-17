@@ -77,7 +77,7 @@ macro_rules! fn_type_fut {
 	};
 }
 
-#[derive(Clone, PartialEq, Eq, Hash, Default, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize)]
 pub struct NodeIOTypes {
 	pub call_argument: Type,
 	pub return_value: Type,
@@ -229,20 +229,8 @@ impl PartialEq for TypeDescriptor {
 	}
 }
 
-impl Ord for TypeDescriptor {
-	fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-		self.name.cmp(&other.name)
-	}
-}
-
-impl PartialOrd for TypeDescriptor {
-	fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-		Some(self.cmp(other))
-	}
-}
-
 /// Graph runtime type information used for type inference.
-#[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord, specta::Type, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, PartialEq, Eq, Hash, specta::Type, serde::Serialize, serde::Deserialize)]
 pub enum Type {
 	/// A wrapper for some type variable used within the inference system. Resolved at inference time and replaced with a concrete type.
 	Generic(Cow<'static, str>),

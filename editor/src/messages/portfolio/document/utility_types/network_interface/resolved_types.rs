@@ -2,7 +2,8 @@ use std::collections::{HashMap, HashSet};
 
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNodeImplementation, InlineRust, NodeInput};
-use graph_craft::{ProtoNodeIdentifier, Type, concrete};
+use graph_craft::proto::GraphErrors;
+use graph_craft::{Type, concrete};
 use graphene_std::uuid::NodeId;
 use interpreted_executor::dynamic_executor::{NodeTypes, ResolvedDocumentNodeTypesDelta};
 use interpreted_executor::node_registry::NODE_REGISTRY;
@@ -14,37 +15,42 @@ use crate::messages::portfolio::document::utility_types::network_interface::{Inp
 #[derive(Debug, Default)]
 pub struct ResolvedDocumentNodeTypes {
 	pub types: HashMap<Vec<NodeId>, NodeTypes>,
+	pub node_graph_errors: GraphErrors,
 }
 
 impl ResolvedDocumentNodeTypes {
-	pub fn update(&mut self, delta: ResolvedDocumentNodeTypesDelta) {
+	pub fn update(&mut self, delta: ResolvedDocumentNodeTypesDelta, errors: GraphErrors) {
 		for (path, node_type) in delta.add {
 			self.types.insert(path.to_vec(), node_type);
 		}
 		for path in delta.remove {
 			self.types.remove(&path.to_vec());
 		}
+		self.node_graph_errors = errors;
 	}
 }
 
 /// Represents the result of a type query for an input or output connector.
 #[derive(Debug, Clone, PartialEq)]
 pub enum TypeSource {
-	// A type that has been compiled based on all upstream types
+	/// A type that has been compiled based on all upstream types.
 	Compiled(Type),
-	// The type of value inputs
+	/// The type of value inputs.
 	TaggedValue(Type),
-	// A type that is guessed from the document node definition
-	DocumentNodeDefinition(Type),
-	// When the input is not compiled, the type is unknown and must be guessed from the valid types
+	/// When the input/output is not compiled. The Type is from the document node definition, or () if it doesn't exist.
 	Unknown,
-
+	/// When there is a node graph error for the inputs to a node. The Type is from the document node definition, or () if it doesn't exist.
+	Invalid,
+	/// When there is an error in the algorithm for determining the input/output type (indicates a bug in the editor).
 	Error(&'static str),
 }
 
 impl TypeSource {
 	/// The reduced set of frontend types for displaying color.
 	pub fn displayed_type(&self) -> FrontendGraphDataType {
+		if matches!(self, TypeSource::Invalid) {
+			return FrontendGraphDataType::Invalid;
+		};
 		match self.compiled_nested_type() {
 			Some(nested_type) => match TaggedValue::from_type_or_none(nested_type) {
 				TaggedValue::U32(_)
@@ -77,29 +83,60 @@ impl TypeSource {
 		}
 	}
 
-	/// If Some, the type should be displayed in the imports/exports, if None it should be replaced with "import/export index _".
-	pub fn compiled_nested_type_name(&self) -> Option<String> {
-		self.compiled_nested_type().map(|ty| ty.to_string())
-	}
-
 	/// Used when searching for nodes in the add Node popup.
 	pub fn add_node_string(self) -> Option<String> {
 		self.compiled_nested_type().map(|ty| format!("type:{}", ty.to_string()))
 	}
 
 	/// The type to display in the tooltip.
-	pub fn resolved_type_name(&self) -> String {
+	pub fn resolved_type_tooltip_string(&self) -> String {
+		match self {
+			TypeSource::Compiled(compiled_type) => format!("Data Type: {:?}", compiled_type.nested_type().to_string()),
+			TypeSource::TaggedValue(value_type) => format!("Data Type: {:?}", value_type.nested_type().to_string()),
+			TypeSource::Unknown => "Unknown Data Type".to_string(),
+			TypeSource::Invalid => "Invalid Type Combination".to_string(),
+			TypeSource::Error(_) => "Error Getting Data Type".to_string(),
+		}
+	}
+
+	/// The type to display in the node row.
+	pub fn resolved_type_node_string(&self) -> String {
 		match self {
 			TypeSource::Compiled(compiled_type) => compiled_type.nested_type().to_string(),
 			TypeSource::TaggedValue(value_type) => value_type.nested_type().to_string(),
-			TypeSource::DocumentNodeDefinition(_) => "Unknown".to_string(),
 			TypeSource::Unknown => "Unknown".to_string(),
+			TypeSource::Invalid => "Invalid".to_string(),
 			TypeSource::Error(_) => "Error".to_string(),
 		}
 	}
 }
 
 impl NodeNetworkInterface {
+	fn input_has_error(&mut self, input_connector: &InputConnector, network_path: &[NodeId]) -> bool {
+		match input_connector {
+			InputConnector::Node { node_id, input_index } => {
+				let Some(implementation) = self.implementation(node_id, network_path) else {
+					log::error!("Could not get implementation in input_has_error");
+					return false;
+				};
+				let node_path = [network_path, &[*node_id]].concat();
+				match implementation {
+					DocumentNodeImplementation::Network(_) => {
+						let Some(map) = self.outward_wires(&node_path) else { return false };
+						let Some(outward_wires) = map.get(&OutputConnector::Import(*input_index)) else { return false };
+						outward_wires.clone().iter().any(|connector| match connector {
+							InputConnector::Node { node_id, input_index } => self.input_has_error(&InputConnector::node(*node_id, *input_index), &node_path),
+							InputConnector::Export(_) => false,
+						})
+					}
+					DocumentNodeImplementation::ProtoNode(_) => self.resolved_types.node_graph_errors.iter().any(|error| error.node_path == node_path),
+					DocumentNodeImplementation::Extract => false,
+				}
+			}
+			InputConnector::Export(_) => false,
+		}
+	}
+
 	/// Get the [`TypeSource`] for any InputConnector.
 	/// If the input is not compiled, then an Unknown or default from the definition is returned.
 	pub fn input_type(&mut self, input_connector: &InputConnector, network_path: &[NodeId]) -> TypeSource {
@@ -109,25 +146,19 @@ impl NodeNetworkInterface {
 
 		match input {
 			NodeInput::Node { node_id, output_index } => {
-				let input_type = self.output_type(&OutputConnector::node(*node_id, *output_index), network_path);
-				if input_type == TypeSource::Unknown {
-					// If we are trying to get the input type of an unknown node, check if it has a reference to its definition and use that input type
-					if let InputConnector::Node { node_id, input_index } = input_connector {
-						if let Some(definition) = self.get_node_definition(node_id, network_path) {
-							if let Some(value) = definition.node_template.document_node.inputs.get(*input_index).and_then(|input| input.as_value()) {
-								return TypeSource::DocumentNodeDefinition(value.ty());
-							}
-						}
-					}
+				let output_connector = OutputConnector::node(*node_id, *output_index);
+				// First check if there is an error with this node or any protonodes it is connected to
+				if self.input_has_error(input_connector, network_path) {
+					return TypeSource::Invalid;
 				}
-				input_type
+				self.output_type(&output_connector, network_path)
 			}
 
 			NodeInput::Value { tagged_value, .. } => TypeSource::TaggedValue(tagged_value.ty()),
 			NodeInput::Import { import_index, .. } => {
 				// Get the input type of the encapsulating node input
 				let Some((encapsulating_node, encapsulating_path)) = network_path.split_last() else {
-					return TypeSource::Error("Could not get type of import in document network");
+					return TypeSource::Error("Could not get type of import in document network since it has no imports");
 				};
 				self.input_type(&InputConnector::node(*encapsulating_node, *import_index), encapsulating_path)
 			}
@@ -142,20 +173,16 @@ impl NodeNetworkInterface {
 		let guaranteed_type = match self.input_type(input_connector, network_path) {
 			TypeSource::Compiled(compiled) => compiled,
 			TypeSource::TaggedValue(value) => value,
-			TypeSource::DocumentNodeDefinition(definition) => definition,
-			TypeSource::Unknown => {
-				let mut valid_types = self.potential_valid_input_types(input_connector, network_path);
-
-				match valid_types.pop() {
-					Some(valid_type) => valid_type,
-					None => {
-						match self.random_type_for_connector(input_connector, network_path) {
-							Some(random_type) => random_type,
-							// If there are no connected protonodes then we give up and return the empty type
-							None => concrete!(()),
+			TypeSource::Unknown | TypeSource::Invalid => {
+				let mut ret = concrete!(());
+				if let InputConnector::Node { node_id, input_index } = input_connector {
+					if let Some(definition) = self.get_node_definition(node_id, network_path) {
+						if let Some(value) = definition.node_template.document_node.inputs.get(*input_index).and_then(|input| input.as_value()) {
+							ret = value.ty();
 						}
 					}
 				}
+				ret
 			}
 			TypeSource::Error(e) => {
 				log::error!("Error getting tagged_value_from_input for {input_connector:?} {e}");
@@ -172,18 +199,18 @@ impl NodeNetworkInterface {
 			return vec![graph_craft::generic!(T)];
 		};
 		let Some(implementation) = self.implementation(node_id, network_path) else {
-			log::error!("Could not get node implementation in valid_input_types");
+			log::error!("Could not get node implementation in potential_valid_input_types");
 			return Vec::new();
 		};
 		match implementation {
 			DocumentNodeImplementation::Network(_) => {
 				let nested_path = [network_path, &[*node_id]].concat();
 				let Some(outward_wires) = self.outward_wires(&nested_path) else {
-					log::error!("Could not get outward wires in valid_input_types");
+					log::error!("Could not get outward wires in potential_valid_input_types");
 					return Vec::new();
 				};
 				let Some(inputs_from_import) = outward_wires.get(&OutputConnector::Import(*input_index)) else {
-					log::error!("Could not get inputs from import in valid_input_types");
+					log::error!("Could not get inputs from import in potential_valid_input_types");
 					return Vec::new();
 				};
 
@@ -201,7 +228,7 @@ impl NodeNetworkInterface {
 			}
 			DocumentNodeImplementation::ProtoNode(proto_node_identifier) => {
 				let Some(implementations) = NODE_REGISTRY.get(proto_node_identifier) else {
-					log::error!("Protonode {proto_node_identifier:?} not found in registry");
+					log::error!("Protonode {proto_node_identifier:?} not found in registry in potential_valid_input_types");
 					return Vec::new();
 				};
 				let number_of_inputs = self.number_of_inputs(node_id, network_path);
@@ -230,13 +257,13 @@ impl NodeNetworkInterface {
 		match input_connector {
 			InputConnector::Node { node_id, input_index } => {
 				let Some(implementation) = self.implementation(node_id, network_path) else {
-					return Err(format!("Could not get node implementation for {:?} {} in valid_input_types", network_path, *node_id));
+					return Err(format!("Could not get node implementation for {:?} {} in complete_valid_input_types", network_path, *node_id));
 				};
 				match implementation {
 					DocumentNodeImplementation::Network(_) => self.valid_output_types(&OutputConnector::Import(input_connector.input_index()), &[network_path, &[*node_id]].concat()),
 					DocumentNodeImplementation::ProtoNode(proto_node_identifier) => {
 						let Some(implementations) = NODE_REGISTRY.get(proto_node_identifier) else {
-							return Err(format!("Protonode {proto_node_identifier:?} not found in registry"));
+							return Err(format!("Protonode {proto_node_identifier:?} not found in registry in complete_valid_input_types"));
 						};
 						let valid_output_types = match self.valid_output_types(&OutputConnector::node(*node_id, 0), network_path) {
 							Ok(valid_types) => valid_types,
@@ -273,9 +300,8 @@ impl NodeNetworkInterface {
 					Some((encapsulating_node, encapsulating_path)) => self.valid_output_types(&OutputConnector::node(*encapsulating_node, *export_index), encapsulating_path),
 					None => {
 						// Valid types for the export are all types that can be fed into the render node
-						// TODO: Use ::IDENTIFIER
-						let render_node = "graphene_std::wasm_application_io::RenderNode";
-						let Some(implementations) = NODE_REGISTRY.get(&ProtoNodeIdentifier::new(render_node)) else {
+						let render_node = graphene_std::render_node::render::IDENTIFIER;
+						let Some(implementations) = NODE_REGISTRY.get(&render_node) else {
 							return Err(format!("Protonode {render_node:?} not found in registry"));
 						};
 						Ok(implementations.iter().map(|(types, _)| types.inputs[1].clone()).collect())
@@ -303,19 +329,24 @@ impl NodeNetworkInterface {
 			}
 			OutputConnector::Import(import_index) => {
 				let Some((encapsulating_node, encapsulating_path)) = network_path.split_last() else {
-					return TypeSource::Error("Cannot get import type in document network");
+					return TypeSource::Error("Cannot get import type in document network since it has no imports");
 				};
-				self.input_type(&InputConnector::node(*encapsulating_node, *import_index), encapsulating_path)
+				let mut input_type = self.input_type(&InputConnector::node(*encapsulating_node, *import_index), encapsulating_path);
+				if matches!(input_type, TypeSource::Invalid) {
+					input_type = TypeSource::Unknown
+				}
+				return input_type;
 			}
 		}
 	}
-	// The valid output types are all types that are valid for each downstream connection
-	pub fn valid_output_types(&mut self, output_connector: &OutputConnector, network_path: &[NodeId]) -> Result<Vec<Type>, String> {
+
+	/// The valid output types are all types that are valid for each downstream connection.
+	fn valid_output_types(&mut self, output_connector: &OutputConnector, network_path: &[NodeId]) -> Result<Vec<Type>, String> {
 		let Some(outward_wires) = self.outward_wires(&network_path) else {
-			return Err("Could not get outward wires in valid_input_types".to_string());
+			return Err("Could not get outward wires in valid_output_types".to_string());
 		};
 		let Some(inputs_from_import) = outward_wires.get(output_connector) else {
-			return Err("Could not get inputs from import in valid_input_types".to_string());
+			return Err("Could not get inputs from import in valid_output_types".to_string());
 		};
 
 		let intersection = inputs_from_import
@@ -329,55 +360,5 @@ impl NodeNetworkInterface {
 			.unwrap_or_default();
 
 		Ok(intersection.into_iter().collect::<Vec<_>>())
-	}
-
-	/// Performs a downstream iteration from an input connector to the next protonode and selects a random type from its implementations.
-	pub fn random_type_for_connector(&mut self, input_connector: &InputConnector, network_path: &[NodeId]) -> Option<Type> {
-		match input_connector {
-			InputConnector::Node { node_id, input_index } => {
-				let Some(implementation) = self.implementation(node_id, network_path) else {
-					log::error!("Could not get node {node_id} in random_downstream_protonode_from_connector");
-					return None;
-				};
-				match implementation {
-					DocumentNodeImplementation::Network(_) => {
-						let Some(outward_wires) = self.outward_wires(&network_path) else {
-							log::error!("Could not get outward wires in random_downstream_protonode_from_connector");
-							return None;
-						};
-						let Some(inputs_from_import) = outward_wires.get(&OutputConnector::Import(*input_index)) else {
-							log::error!("Could not get inputs from import in valid_input_types");
-							return None;
-						};
-						let Some(first_input) = inputs_from_import.first().cloned() else {
-							return None;
-						};
-						self.random_type_for_connector(&first_input, &[network_path, &[*node_id]].concat())
-					}
-					DocumentNodeImplementation::ProtoNode(proto_node_identifier) => {
-						let Some(implementations) = NODE_REGISTRY.get(proto_node_identifier) else {
-							log::error!("Protonode {proto_node_identifier:?} not found in registry");
-							return None;
-						};
-						implementations.keys().min().and_then(|node_io| node_io.inputs.get(input_connector.input_index())).cloned()
-					}
-					DocumentNodeImplementation::Extract => None,
-				}
-			}
-			InputConnector::Export(export_index) => network_path.split_last().and_then(|(encapsulating_node, encapsulating_path)| {
-				let Some(outward_wires) = self.outward_wires(&encapsulating_path) else {
-					log::error!("Could not get outward wires in random_downstream_protonode_from_connector export");
-					return None;
-				};
-				let Some(inputs_from_import) = outward_wires.get(&OutputConnector::node(*encapsulating_node, *export_index)) else {
-					log::error!("Could not get inputs from import in valid_input_types");
-					return None;
-				};
-				let Some(first_input) = inputs_from_import.first().cloned() else {
-					return None;
-				};
-				self.random_type_for_connector(&first_input, encapsulating_path)
-			}),
-		}
 	}
 }

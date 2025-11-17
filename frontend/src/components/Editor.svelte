@@ -129,6 +129,8 @@
 		--color-data-gradient-dim: #6c489b;
 		--color-data-typography: #eea7a7;
 		--color-data-typography-dim: #955252;
+		--color-data-invalid: var(--color-error-red);
+		--color-data-invalid-dim: color-mix(in srgb, var(--color-error-red) 75%, black);
 
 		--color-none: white;
 		--color-none-repeat: no-repeat;

@@ -8,7 +8,7 @@ use super::nodes::SelectedNodes;
 use crate::consts::{EXPORTS_TO_RIGHT_EDGE_PIXEL_GAP, EXPORTS_TO_TOP_EDGE_PIXEL_GAP, GRID_SIZE, IMPORTS_TO_LEFT_EDGE_PIXEL_GAP, IMPORTS_TO_TOP_EDGE_PIXEL_GAP};
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DocumentNodeDefinition, resolve_document_node_type};
-use crate::messages::portfolio::document::node_graph::utility_types::{Direction, FrontendClickTargets, FrontendGraphInput, FrontendGraphOutput};
+use crate::messages::portfolio::document::node_graph::utility_types::{Direction, FrontendClickTargets, FrontendGraphDataType, FrontendGraphInput, FrontendGraphOutput};
 use crate::messages::portfolio::document::utility_types::network_interface::resolved_types::ResolvedDocumentNodeTypes;
 use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle, WirePath, WirePathUpdate, build_vector_wire};
 use crate::messages::tool::common_functionality::graph_modification_utils;
@@ -625,7 +625,7 @@ impl NodeNetworkInterface {
 		}
 		let input_type = self.input_type(input_connector, network_path);
 		let data_type = input_type.displayed_type();
-		let resolved_type = input_type.resolved_type_name();
+		let resolved_type = input_type.resolved_type_node_string();
 
 		let connected_to = self
 			.upstream_output_connector(input_connector, network_path)
@@ -656,7 +656,7 @@ impl NodeNetworkInterface {
 
 				let export_name = if !export_name.is_empty() {
 					export_name
-				} else if let Some(export_type_name) = input_type.compiled_nested_type_name() {
+				} else if let Some(export_type_name) = input_type.compiled_nested_type().map(|nested| nested.to_string()) {
 					export_type_name
 				} else {
 					format!("Export index {}", export_index)
@@ -679,7 +679,6 @@ impl NodeNetworkInterface {
 	/// Returns None if there is an error, it is the document network, a hidden primary output or import
 	pub fn frontend_output_from_connector(&mut self, output_connector: &OutputConnector, network_path: &[NodeId]) -> Option<FrontendGraphOutput> {
 		let output_type = self.output_type(output_connector, network_path);
-
 		let (name, description) = match output_connector {
 			OutputConnector::Node { node_id, output_index } => {
 				// Do not display the primary output port for a node if it is a network node with a hidden primary export
@@ -690,7 +689,7 @@ impl NodeNetworkInterface {
 				let node_metadata = self.node_metadata(node_id, network_path)?;
 				let output_name = node_metadata.persistent_metadata.output_names.get(*output_index).cloned().unwrap_or_default();
 
-				let output_name = if !output_name.is_empty() { output_name } else { output_type.resolved_type_name() };
+				let output_name = if !output_name.is_empty() { output_name } else { output_type.resolved_type_node_string() };
 				(output_name, String::new())
 			}
 			OutputConnector::Import(import_index) => {
@@ -707,7 +706,7 @@ impl NodeNetworkInterface {
 
 				let import_name = if !import_name.is_empty() {
 					import_name
-				} else if let Some(import_type_name) = output_type.compiled_nested_type_name() {
+				} else if let Some(import_type_name) = output_type.compiled_nested_type().map(|nested| nested.to_string()) {
 					import_type_name
 				} else {
 					format!("Import index {}", import_index)
@@ -717,7 +716,7 @@ impl NodeNetworkInterface {
 			}
 		};
 		let data_type = output_type.displayed_type();
-		let resolved_type = output_type.resolved_type_name();
+		let resolved_type = output_type.resolved_type_node_string();
 		let mut connected_to = self
 			.outward_wires(network_path)
 			.and_then(|outward_wires| outward_wires.get(output_connector))
@@ -977,7 +976,7 @@ impl NodeNetworkInterface {
 		};
 		let description = input_metadata.input_description.to_string();
 		let name = if input_metadata.input_name.is_empty() {
-			self.input_type(&InputConnector::node(*node_id, input_index), network_path).resolved_type_name()
+			self.input_type(&InputConnector::node(*node_id, input_index), network_path).resolved_type_node_string()
 		} else {
 			input_metadata.input_name.to_string()
 		};
@@ -1015,7 +1014,7 @@ impl NodeNetworkInterface {
 	pub fn description(&self, node_id: &NodeId, network_path: &[NodeId]) -> String {
 		self.get_node_definition(node_id, network_path)
 			.map(|node_definition| node_definition.description.to_string())
-			.filter(|description: &String| description != "TODO")
+			.filter(|description| description != "TODO")
 			.unwrap_or_default()
 	}
 
@@ -2455,7 +2454,10 @@ impl NodeNetworkInterface {
 	pub fn wire_path_from_input(&mut self, input: &InputConnector, graph_wire_style: GraphWireStyle, dashed: bool, network_path: &[NodeId]) -> Option<WirePath> {
 		let (vector_wire, thick) = self.vector_wire_from_input(input, graph_wire_style, network_path)?;
 		let path_string = vector_wire.to_svg();
-		let data_type = self.input_type(input, network_path).displayed_type();
+		let data_type = self
+			.upstream_output_connector(input, network_path)
+			.map(|output| self.output_type(&output, network_path).displayed_type())
+			.unwrap_or(FrontendGraphDataType::General);
 		Some(WirePath {
 			path_string,
 			data_type,

@@ -1574,7 +1574,6 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 				let mut display_decimal_places = None;
 				let mut step = None;
 				let mut unit_suffix = None;
-
 				let input_type = match implementation {
 					DocumentNodeImplementation::ProtoNode(proto_node_identifier) => 'early_return: {
 						if let Some(field) = graphene_std::registry::NODE_METADATA
