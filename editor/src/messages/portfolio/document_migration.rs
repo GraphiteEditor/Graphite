@@ -87,10 +87,6 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	},
 	NodeReplacement {
 		node: graphene_std::memo::monitor::IDENTIFIER,
-		aliases: &["graphene_core::ops::IntoNode<&WgpuExecutor>"],
-	},
-	NodeReplacement {
-		node: graphene_std::memo::monitor::IDENTIFIER,
 		aliases: &["graphene_core::memo::MonitorNode"],
 	},
 	NodeReplacement {
