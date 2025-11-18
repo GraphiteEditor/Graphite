@@ -83,6 +83,7 @@
             pkgs.cargo
             pkgs.rust-analyzer
             pkgs.clippy
+            pkgs.rustfmt
 
             pkgs.git
 
@@ -107,7 +108,7 @@
             args:
             (import ./pkgs/graphite.nix {
               pkgs = pkgs // {
-                inherit graphene-raster-nodes-shaders;
+                inherit raster-nodes-shaders;
               };
               inherit
                 info
@@ -126,7 +127,7 @@
             dev = true;
           };
           #TODO: graphene-cli = import ./pkgs/graphene-cli.nix { inherit info pkgs inputs deps libs tools; };
-          graphene-raster-nodes-shaders = import ./pkgs/graphene-raster-nodes-shaders.nix {
+          raster-nodes-shaders = import ./pkgs/raster-nodes-shaders.nix {
             inherit
               info
               pkgs

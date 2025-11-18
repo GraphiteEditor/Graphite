@@ -7,7 +7,7 @@ authors = ["Graphite Authors <contact@graphite.rs>"]
 license = "MIT OR Apache-2.0"
 
 [features]
-default = ["wasm", "wgpu", "shader-nodes"]
+default = ["wasm", "wgpu"]
 gpu = []
 wgpu = ["gpu", "graph-craft/wgpu", "graphene-application-io/wgpu"]
 wasm = [

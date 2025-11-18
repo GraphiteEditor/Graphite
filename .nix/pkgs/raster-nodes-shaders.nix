@@ -9,7 +9,7 @@
 }:
 
 (deps.crane.lib.overrideToolchain (_: deps.rustGPU.toolchain)).buildPackage {
-  pname = "graphene-raster-nodes-shaders";
+  pname = "raster-nodes-shaders";
   inherit (info) version src;
 
   cargoVendorDir = deps.crane.lib.vendorMultipleCargoDeps {
@@ -25,11 +25,11 @@
   env = deps.rustGPU.env;
 
   buildPhase = ''
-    cargo build -r -p graphene-raster-nodes-shaders
+    cargo build -r -p raster-nodes-shaders
   '';
 
   installPhase = ''
-    cp target/spirv-builder/spirv-unknown-naga-wgsl/release/deps/graphene_raster_nodes_shaders_entrypoint.wgsl $out
+    cp target/spirv-builder/spirv-unknown-naga-wgsl/release/deps/raster_nodes_shaders_entrypoint.wgsl $out
   '';
 
   doCheck = false;

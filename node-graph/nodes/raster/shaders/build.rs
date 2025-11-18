@@ -6,8 +6,8 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
 	env_logger::builder().filter_level(log::LevelFilter::Debug).init();
 
 	// Skip building the shader if they are provided externally
-	println!("cargo:rerun-if-env-changed=GRAPHENE_RASTER_NODES_SHADER_PATH");
-	if !std::env::var("GRAPHENE_RASTER_NODES_SHADER_PATH").unwrap_or_default().is_empty() {
+	println!("cargo:rerun-if-env-changed=RASTER_NODES_SHADER_PATH");
+	if !std::env::var("RASTER_NODES_SHADER_PATH").unwrap_or_default().is_empty() {
 		return Ok(());
 	}
 
@@ -49,6 +49,6 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
 	// needs to be fixed upstream
 	let path_to_wgsl = path_to_spv.with_extension("wgsl");
 
-	println!("cargo::rustc-env=GRAPHENE_RASTER_NODES_SHADER_PATH={}", path_to_wgsl.display());
+	println!("cargo::rustc-env=RASTER_NODES_SHADER_PATH={}", path_to_wgsl.display());
 	Ok(())
 }
