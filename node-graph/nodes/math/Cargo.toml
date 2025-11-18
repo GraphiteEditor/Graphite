@@ -1,0 +1,18 @@
+[package]
+name = "math-nodes"
+version = "0.1.0"
+edition = "2024"
+description = "Math operation nodes for Graphene"
+authors = ["Graphite Authors <contact@graphite.rs>"]
+license = "MIT OR Apache-2.0"
+
+[dependencies]
+core-types = { workspace = true }
+node-macro = { workspace = true }
+vector-types = { workspace = true }
+
+# Workspace dependencies
+glam = { workspace = true }
+rand = { workspace = true }
+math-parser = { workspace = true }
+log = { workspace = true }

@@ -1,0 +1,49 @@
+[package]
+name = "core-types"
+version = "0.1.0"
+edition = "2024"
+description = "Core types and traits for Graphene node system"
+authors = ["Graphite Authors <contact@graphite.rs>"]
+license = "MIT OR Apache-2.0"
+
+[features]
+default = ["serde"]
+nightly = []
+type_id_logging = []
+dealloc_nodes = []
+
+[dependencies]
+# Local dependencies
+no-std-types = { workspace = true, features = ["std"] }
+
+# Workspace dependencies
+bitflags = { workspace = true }
+bytemuck = { workspace = true }
+node-macro = { workspace = true }
+num-traits = { workspace = true }
+rand = { workspace = true }
+glam = { workspace = true }
+serde_json = { workspace = true }
+petgraph = { workspace = true }
+rustc-hash = { workspace = true }
+dyn-any = { workspace = true }
+ctor = { workspace = true }
+rand_chacha = { workspace = true }
+specta = { workspace = true }
+image = { workspace = true }
+tinyvec = { workspace = true }
+parley = { workspace = true }
+skrifa = { workspace = true }
+kurbo = { workspace = true }
+lyon_geom = { workspace = true }
+log = { workspace = true }
+base64 = { workspace = true }
+polycool = { workspace = true }
+
+# Optional workspace dependencies
+serde = { workspace = true, optional = true }
+
+[dev-dependencies]
+# Workspace dependencies
+tokio = { workspace = true }
+serde_json = { workspace = true }

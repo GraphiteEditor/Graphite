@@ -1,0 +1,66 @@
+[package]
+name = "raster-nodes"
+version = "0.1.0"
+edition = "2024"
+description = "Raster operation nodes for Graphene"
+authors = ["Graphite Authors <contact@graphite.rs>"]
+license = "MIT OR Apache-2.0"
+
+[lints]
+workspace = true
+
+[features]
+default = ["std"]
+shader-nodes = [
+	"std",
+	"dep:raster-nodes-shaders",
+	"dep:wgpu-executor",
+]
+std = [
+	"dep:core-types",
+	"dep:dyn-any",
+	"dep:raster-types",
+	"dep:vector-types",
+	"dep:image",
+	"dep:ndarray",
+	"dep:rand",
+	"dep:rand_chacha",
+	"dep:fastnoise-lite",
+	"dep:serde",
+	"dep:specta",
+	"dep:kurbo",
+]
+
+[dependencies]
+# Local dependencies
+no-std-types = { workspace = true }
+node-macro = { workspace = true }
+
+# Local std dependencies
+dyn-any = { workspace = true, optional = true }
+core-types = { workspace = true, optional = true }
+raster-types = { workspace = true, optional = true }
+vector-types = { workspace = true, optional = true }
+wgpu-executor = { workspace = true, optional = true }
+raster-nodes-shaders = { path = "./shaders", optional = true }
+
+# Workspace dependencies
+bytemuck = { workspace = true }
+glam = { workspace = true }
+spirv-std = { workspace = true }
+num-traits = { workspace = true }
+num_enum = { workspace = true }
+
+# Workspace std dependencies
+specta = { workspace = true, optional = true }
+image = { workspace = true, optional = true }
+ndarray = { workspace = true, optional = true }
+rand = { workspace = true, optional = true }
+rand_chacha = { workspace = true, optional = true }
+fastnoise-lite = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
+kurbo = { workspace = true, optional = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+futures = { workspace = true }

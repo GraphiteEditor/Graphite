@@ -23,8 +23,6 @@ crate-type = ["cdylib", "rlib"]
 # Local dependencies
 editor = { path = "../../editor", package = "graphite-editor", features = [
 	"gpu",
-	"resvg",
-	"vello",
 ] }
 graphene-std = { workspace = true }
 

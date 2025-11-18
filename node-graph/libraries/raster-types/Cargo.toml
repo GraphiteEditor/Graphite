@@ -1,0 +1,29 @@
+[package]
+name = "raster-types"
+version = "0.1.0"
+edition = "2024"
+description = "Raster data types for Graphene node system"
+authors = ["Graphite Authors <contact@graphite.rs>"]
+license = "MIT OR Apache-2.0"
+
+[features]
+default = ["serde"]
+wgpu = ["dep:wgpu"]
+
+[dependencies]
+# Local dependencies
+core-types = { workspace = true }
+node-macro = { workspace = true }
+
+# Workspace dependencies
+dyn-any = { workspace = true }
+glam = { workspace = true }
+base64 = { workspace = true }
+bytemuck = { workspace = true }
+specta = { workspace = true }
+image = { workspace = true }
+serde_json = { workspace = true }
+
+# Optional workspace dependencies
+serde = { workspace = true, optional = true }
+wgpu = { workspace = true, optional = true }

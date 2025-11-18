@@ -4,12 +4,12 @@ pub mod texture_conversion;
 
 use crate::shader_runtime::ShaderRuntime;
 use anyhow::Result;
+use core_types::{Color, Ctx};
 use dyn_any::StaticType;
 use futures::lock::Mutex;
 use glam::UVec2;
 use graphene_application_io::{ApplicationIo, EditorApi, SurfaceHandle, SurfaceId};
-use graphene_core::{Color, Ctx};
-pub use graphene_svg_renderer::RenderContext;
+pub use rendering::RenderContext;
 use std::sync::Arc;
 use vello::{AaConfig, AaSupport, RenderParams, Renderer, RendererOptions, Scene};
 use wgpu::util::TextureBlitter;

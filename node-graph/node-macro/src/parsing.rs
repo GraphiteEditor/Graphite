@@ -804,7 +804,7 @@ mod tests {
 
 	#[test]
 	fn test_basic_node() {
-		let attr = quote!(category("Math: Arithmetic"), path(graphene_core::TestNode), skip_impl);
+		let attr = quote!(category("Math: Arithmetic"), path(core_types::TestNode), skip_impl);
 		let input = quote!(
 			/// Multi
 			/// Line
@@ -819,7 +819,7 @@ mod tests {
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("Math: Arithmetic")),
 				display_name: None,
-				path: Some(parse_quote!(graphene_core::TestNode)),
+				path: Some(parse_quote!(core_types::TestNode)),
 				skip_impl: true,
 				properties_string: None,
 				cfg: None,
@@ -1080,7 +1080,7 @@ mod tests {
 
 	#[test]
 	fn test_number_min_max_range_mode() {
-		let attr = quote!(category("Math: Arithmetic"), path(graphene_core::TestNode));
+		let attr = quote!(category("Math: Arithmetic"), path(core_types::TestNode));
 		let input = quote!(
 			fn add(
 				a: f64,
@@ -1100,7 +1100,7 @@ mod tests {
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("Math: Arithmetic")),
 				display_name: None,
-				path: Some(parse_quote!(graphene_core::TestNode)),
+				path: Some(parse_quote!(core_types::TestNode)),
 				skip_impl: false,
 				properties_string: None,
 				cfg: None,

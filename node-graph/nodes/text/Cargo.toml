@@ -1,0 +1,26 @@
+[package]
+name = "text-nodes"
+version = "0.1.0"
+edition = "2024"
+description = "Text operation nodes for Graphene"
+authors = ["Graphite Authors <contact@graphite.rs>"]
+license = "MIT OR Apache-2.0"
+
+[features]
+default = ["serde"]
+
+[dependencies]
+# Local dependencies
+core-types = { workspace = true }
+vector-types = { workspace = true }
+node-macro = { workspace = true }
+
+# Workspace dependencies
+dyn-any = { workspace = true }
+glam = { workspace = true }
+parley = { workspace = true }
+skrifa = { workspace = true }
+log = { workspace = true }
+
+# Optional workspace dependencies
+serde = { workspace = true, optional = true }
