@@ -473,7 +473,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(NodeGraphMessage::UnloadWires);
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(DocumentMessage::ZoomCanvasToFitAll);
-				responses.add(NodeGraphMessage::SetGridAlignedEdges);
+				responses.add(NodeGraphMessage::UpdateNodeGraphWidth);
 			}
 			DocumentMessage::Escape => {
 				if self.node_graph_handler.drag_start.is_some() {
@@ -506,7 +506,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(NodeGraphMessage::UnloadWires);
 				responses.add(NodeGraphMessage::SendGraph);
 				responses.add(DocumentMessage::PTZUpdate);
-				responses.add(NodeGraphMessage::SetGridAlignedEdges);
+				responses.add(NodeGraphMessage::UpdateNodeGraphWidth);
 			}
 			DocumentMessage::FlipSelectedLayers { flip_axis } => {
 				let scale = match flip_axis {
@@ -576,10 +576,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					responses.add(ToolMessage::DeactivateTools);
 					responses.add(OverlaysMessage::Draw); // Clear the overlays
 					responses.add(NavigationMessage::CanvasTiltSet { angle_radians: 0. });
-					responses.add(NodeGraphMessage::SetGridAlignedEdges);
 					responses.add(NodeGraphMessage::UpdateGraphBarRight);
 					responses.add(NodeGraphMessage::SendGraph);
 					responses.add(NodeGraphMessage::UpdateHints);
+					responses.add(NodeGraphMessage::UpdateEdges);
 				} else {
 					responses.add(ToolMessage::ActivateTool { tool_type: *current_tool });
 					responses.add(OverlaysMessage::Draw); // Redraw overlays when graph is closed
@@ -1972,7 +1972,6 @@ impl DocumentMessageHandler {
 
 		// TODO: Remove once the footprint is used to load the imports/export distances from the edge
 		responses.add(NodeGraphMessage::UnloadWires);
-		responses.add(NodeGraphMessage::SetGridAlignedEdges);
 
 		Some(previous_network)
 	}

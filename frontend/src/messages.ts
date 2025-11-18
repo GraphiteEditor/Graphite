@@ -168,7 +168,6 @@ export type FrontendClickTargets = {
 	readonly connectorClickTargets: string[];
 	readonly iconClickTargets: string[];
 	readonly allNodesBoundingBox: string;
-	readonly importExportsBoundingBox: string;
 	readonly modifyImportExport: string[];
 };
 

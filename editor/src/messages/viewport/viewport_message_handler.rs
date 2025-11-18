@@ -33,6 +33,7 @@ impl MessageHandler<ViewportMessage, ()> for ViewportMessageHandler {
 					offset: Point { x, y },
 					size: Point { x: width, y: height },
 				};
+				responses.add(NodeGraphMessage::UpdateNodeGraphWidth);
 			}
 			ViewportMessage::RepropagateUpdate => {}
 		}
@@ -49,7 +50,6 @@ impl MessageHandler<ViewportMessage, ()> for ViewportMessageHandler {
 		}
 
 		responses.add(NavigationMessage::CanvasPan { delta: DVec2::ZERO });
-		responses.add(NodeGraphMessage::SetGridAlignedEdges);
 
 		responses.add(DeferMessage::AfterGraphRun {
 			messages: vec![

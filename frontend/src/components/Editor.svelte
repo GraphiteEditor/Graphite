@@ -61,7 +61,7 @@
 	});
 </script>
 
-<MainWindow platform={$appWindow.platform} maximized={$appWindow.maximized} viewportHolePunch={$appWindow.viewportHolePunch} />
+<MainWindow />
 
 <style lang="scss" global>
 	// Disable the spinning loading indicator
