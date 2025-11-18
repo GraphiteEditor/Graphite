@@ -233,7 +233,7 @@ cargo-gpu = { git = "https://github.com/Firestar99/cargo-gpu", rev = "3952a22d16
 unexpected_cfgs = { level = "allow", check-cfg = ['cfg(target_arch, values("spirv"))'] }
 
 [profile.dev]
-opt-level = 0
+opt-level = 1
 
 [profile.dev.package]
 no-std-types = { opt-level = 1 }
