@@ -150,10 +150,7 @@ impl NodeGraphExecutor {
 			viewport,
 			scale: viewport_scale,
 			time,
-			#[cfg(any(feature = "resvg", feature = "vello"))]
 			export_format: graphene_std::application_io::ExportFormat::Raster,
-			#[cfg(not(any(feature = "resvg", feature = "vello")))]
-			export_format: graphene_std::application_io::ExportFormat::Svg,
 			render_mode: document.render_mode,
 			hide_artboards: false,
 			for_export: false,

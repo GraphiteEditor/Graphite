@@ -15,7 +15,6 @@ gpu = ["graphite-editor/gpu", "graphene-std/shader-nodes"]
 # Local dependencies
 graphite-editor = { path = "../../editor", features = [
 	"gpu",
-	"vello",
 ] }
 graphene-std = { workspace = true }
 graph-craft = { workspace = true }

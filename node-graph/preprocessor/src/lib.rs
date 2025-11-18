@@ -31,8 +31,8 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 	let mut custom = HashMap::new();
 	// We pre initialize the node registry here to avoid a deadlock
 	let into_node_registry = &*interpreted_executor::node_registry::NODE_REGISTRY;
-	let node_registry = graphene_core::registry::NODE_REGISTRY.lock().unwrap();
-	for (id, metadata) in graphene_core::registry::NODE_METADATA.lock().unwrap().iter() {
+	let node_registry = core_types::registry::NODE_REGISTRY.lock().unwrap();
+	for (id, metadata) in core_types::registry::NODE_METADATA.lock().unwrap().iter() {
 		let id = id.clone();
 
 		let NodeMetadata { fields, .. } = metadata;

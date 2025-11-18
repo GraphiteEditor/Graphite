@@ -110,14 +110,12 @@ fn derive_enum(enum_attributes: &[Attribute], name: Ident, input: syn::DataEnum)
 		.collect();
 
 	let crate_name = {
-		let crate_name = proc_macro_crate::crate_name("graphene-core-shaders")
-			.or_else(|_e| proc_macro_crate::crate_name("graphene-core"))
-			.map_err(|e| {
-				syn::Error::new(
-					Span::call_site(),
-					format!("Failed to find location of 'graphene_core' or 'graphene-core-shaders'. Make sure it is imported as a dependency: {e}"),
-				)
-			})?;
+		let crate_name = proc_macro_crate::crate_name("no-std-types").or_else(|_e| proc_macro_crate::crate_name("core-types")).map_err(|e| {
+			syn::Error::new(
+				Span::call_site(),
+				format!("Failed to find location of 'no-std-types' or 'core-types'. Make sure it is imported as a dependency: {e}"),
+			)
+		})?;
 		match crate_name {
 			proc_macro_crate::FoundCrate::Itself => quote!(crate),
 			proc_macro_crate::FoundCrate::Name(name) => {
