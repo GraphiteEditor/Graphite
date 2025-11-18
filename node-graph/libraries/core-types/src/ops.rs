@@ -1,8 +1,7 @@
-use crate::{
-	Node,
-	table::{Table, TableRow},
-	transform::Footprint,
-};
+use crate::Node;
+use crate::table::{Table, TableRow};
+use crate::transform::Footprint;
+use glam::DVec2;
 use std::future::Future;
 use std::marker::PhantomData;
 
@@ -55,12 +54,10 @@ impl<T: ToString + Send> Convert<String, ()> for T {
 	}
 }
 
-// trait mentioning inner type in args
 pub trait TableConvert<U> {
 	fn convert_row(self) -> U;
 }
 
-//
 impl<U, T: TableConvert<U> + Send> Convert<Table<U>, ()> for Table<T> {
 	async fn convert(self, _: Footprint, _: ()) -> Table<U> {
 		let table: Table<U> = self
@@ -73,6 +70,12 @@ impl<U, T: TableConvert<U> + Send> Convert<Table<U>, ()> for Table<T> {
 			})
 			.collect();
 		table
+	}
+}
+
+impl Convert<DVec2, ()> for DVec2 {
+	async fn convert(self, _: Footprint, _: ()) -> DVec2 {
+		self
 	}
 }
 
@@ -100,6 +103,12 @@ macro_rules! impl_convert {
 		impl_convert!(u128, $to);
 		impl_convert!(isize, $to);
 		impl_convert!(usize, $to);
+
+		impl Convert<DVec2, ()> for $to {
+			async fn convert(self, _: Footprint, _: ()) -> DVec2 {
+				DVec2::splat(self as f64)
+			}
+		}
 	};
 }
 impl_convert!(f32);

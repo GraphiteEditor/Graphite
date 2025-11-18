@@ -57,6 +57,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		// into_node!(from: Table<Raster<CPU>>, to: Table<Raster<SRGBA8>>),
 		#[cfg(feature = "gpu")]
 		into_node!(from: &WasmEditorApi, to: &WgpuExecutor),
+		convert_node!(from: DVec2, to: DVec2),
 		convert_node!(from: String, to: String),
 		convert_node!(from: bool, to: String),
 		convert_node!(from: DVec2, to: String),
@@ -275,6 +276,8 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			convert_node!(from: u128, to: numbers),
 			convert_node!(from: isize, to: numbers),
 			convert_node!(from: usize, to: numbers),
+			convert_node!(from: numbers, to: DVec2),
+			convert_node!(from: numbers, to: String),
 		]
 		.into_iter()
 		.flatten(),
@@ -386,7 +389,25 @@ mod node_registry_macros {
 				convert_node!(from: $from, to: u128),
 				convert_node!(from: $from, to: isize),
 				convert_node!(from: $from, to: usize),
-				convert_node!(from: $from, to: String),
+			];
+			x
+		}};
+		(from: numbers, to: $to:ty) => {{
+			let x: Vec<(ProtoNodeIdentifier, NodeConstructor, NodeIOTypes)> = vec![
+				convert_node!(from: f32, to: $to),
+				convert_node!(from: f64, to: $to),
+				convert_node!(from: i8, to: $to),
+				convert_node!(from: u8, to: $to),
+				convert_node!(from: u16, to: $to),
+				convert_node!(from: i16, to: $to),
+				convert_node!(from: i32, to: $to),
+				convert_node!(from: u32, to: $to),
+				convert_node!(from: i64, to: $to),
+				convert_node!(from: u64, to: $to),
+				convert_node!(from: i128, to: $to),
+				convert_node!(from: u128, to: $to),
+				convert_node!(from: isize, to: $to),
+				convert_node!(from: usize, to: $to),
 			];
 			x
 		}};
