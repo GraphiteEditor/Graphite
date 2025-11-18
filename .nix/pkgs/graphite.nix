@@ -78,7 +78,7 @@ deps.crane.lib.buildPackage (
     env =
       common.env
       // {
-        GRAPHENE_RASTER_NODES_SHADER_PATH = pkgs.graphene-raster-nodes-shaders;
+        RASTER_NODES_SHADER_PATH = pkgs.raster-nodes-shaders;
       }
       // (
         if embeddedResources then
