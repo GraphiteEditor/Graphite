@@ -2,8 +2,9 @@
 	import { getContext, onMount } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import { type KeyRaw, type LayoutKeysGroup, type MenuBarEntry, type MenuListEntry, type AppWindowPlatform, UpdateMenuBarLayout } from "@graphite/messages";
-	import { platformIsMac } from "@graphite/utility-functions/platform";
+	import { type KeyRaw, type LayoutKeysGroup, type MenuBarEntry, type MenuListEntry, UpdateMenuBarLayout } from "@graphite/messages";
+	import type { AppWindowState } from "@graphite/state-providers/app-window";
+	import { operatingSystem } from "@graphite/utility-functions/platform";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
@@ -11,13 +12,11 @@
 	import WindowButtonsWeb from "@graphite/components/window/title-bar/WindowButtonsWeb.svelte";
 	import WindowButtonsWindows from "@graphite/components/window/title-bar/WindowButtonsWindows.svelte";
 
-	export let platform: AppWindowPlatform;
-	export let maximized: boolean;
-
+	const appWindow = getContext<AppWindowState>("appWindow");
 	const editor = getContext<Editor>("editor");
 
 	// TODO: Apparently, Safari does not support the Keyboard.lock() API but does relax its authority over certain keyboard shortcuts in fullscreen mode, which we should take advantage of
-	const ACCEL_KEY = platformIsMac() ? "Command" : "Control";
+	const ACCEL_KEY = operatingSystem() === "Mac" ? "Command" : "Control";
 	const LOCK_REQUIRING_SHORTCUTS: KeyRaw[][] = [
 		[ACCEL_KEY, "KeyW"],
 		[ACCEL_KEY, "KeyN"],
@@ -61,7 +60,7 @@
 <LayoutRow class="title-bar">
 	<!-- Menu bar -->
 	<LayoutRow>
-		{#if platform !== "Mac"}
+		{#if $appWindow.platform !== "Mac"}
 			{#each entries as entry}
 				<TextButton label={entry.label} icon={entry.icon} menuListChildren={entry.children} action={entry.action} flush={true} />
 			{/each}
@@ -71,12 +70,12 @@
 	<LayoutRow class="spacer" on:mousedown={() => editor.handle.appWindowDrag()} on:dblclick={() => editor.handle.appWindowMaximize()} />
 	<!-- Window buttons -->
 	<LayoutRow>
-		{#if platform === "Web"}
+		{#if $appWindow.platform === "Web"}
 			<WindowButtonsWeb />
-		{:else if platform === "Windows"}
-			<WindowButtonsWindows {maximized} />
-		{:else if platform === "Linux"}
-			<WindowButtonsLinux {maximized} />
+		{:else if $appWindow.platform === "Windows"}
+			<WindowButtonsWindows />
+		{:else if $appWindow.platform === "Linux"}
+			<WindowButtonsLinux />
 		{/if}
 	</LayoutRow>
 </LayoutRow>

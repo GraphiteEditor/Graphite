@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
-	import { platformIsMac } from "@graphite/utility-functions/platform";
+	import { operatingSystem } from "@graphite/utility-functions/platform";
 
 	import { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -31,7 +31,7 @@
 
 	let inputOrTextarea: HTMLInputElement | HTMLTextAreaElement | undefined;
 	let id = String(Math.random()).substring(2);
-	let macKeyboardLayout = platformIsMac();
+	let macKeyboardLayout = operatingSystem() === "Mac";
 
 	$: dispatch("value", value);
 

@@ -14,7 +14,7 @@
 	} from "@graphite/messages";
 	import type { DataBuffer, LayerPanelEntry } from "@graphite/messages";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
-	import { platformIsMac } from "@graphite/utility-functions/platform";
+	import { operatingSystem } from "@graphite/utility-functions/platform";
 	import { extractPixelData } from "@graphite/utility-functions/rasterization";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -177,7 +177,7 @@
 	}
 
 	function handleExpandArrowClickWithModifiers(e: MouseEvent, id: bigint) {
-		const accel = platformIsMac() ? e.metaKey : e.ctrlKey;
+		const accel = operatingSystem() === "Mac" ? e.metaKey : e.ctrlKey;
 		const collapseRecursive = e.altKey || accel;
 		editor.handle.toggleLayerExpansion(id, collapseRecursive);
 		e.stopPropagation();
@@ -226,7 +226,7 @@
 		// Get the pressed state of the modifier keys
 		const [ctrl, meta, shift, alt] = [e.ctrlKey, e.metaKey, e.shiftKey, e.altKey];
 		// Get the state of the platform's accel key and its opposite platform's accel key
-		const [accel, oppositeAccel] = platformIsMac() ? [meta, ctrl] : [ctrl, meta];
+		const [accel, oppositeAccel] = operatingSystem() === "Mac" ? [meta, ctrl] : [ctrl, meta];
 
 		// Alt-clicking to make a clipping mask
 		if (layerToClipAltKeyPressed && layerToClipUponClick && layerToClipUponClick.entry.clippable) clipLayer(layerToClipUponClick);

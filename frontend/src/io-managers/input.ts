@@ -7,7 +7,7 @@ import { type DocumentState } from "@graphite/state-providers/document";
 import { type FullscreenState } from "@graphite/state-providers/fullscreen";
 import { type PortfolioState } from "@graphite/state-providers/portfolio";
 import { makeKeyboardModifiersBitfield, textInputCleanup, getLocalizedScanCode } from "@graphite/utility-functions/keyboard-entry";
-import { platformIsMac } from "@graphite/utility-functions/platform";
+import { operatingSystem } from "@graphite/utility-functions/platform";
 import { extractPixelData } from "@graphite/utility-functions/rasterization";
 import { stripIndents } from "@graphite/utility-functions/strip-indents";
 import { updateBoundsOfViewports } from "@graphite/utility-functions/viewports";
@@ -82,7 +82,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		const key = await getLocalizedScanCode(e);
 
 		// TODO: Switch to a system where everything is sent to the backend, then the input preprocessor makes decisions and kicks some inputs back to the frontend
-		const accelKey = platformIsMac() ? e.metaKey : e.ctrlKey;
+		const accelKey = operatingSystem() === "Mac" ? e.metaKey : e.ctrlKey;
 
 		// Don't redirect user input from text entry into HTML elements
 		if (targetIsTextField(e.target || undefined) && key !== "Escape" && !(accelKey && ["Enter", "NumpadEnter"].includes(key))) return false;
