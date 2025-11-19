@@ -1008,7 +1008,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				let viewport_size = viewport.size().into_dvec2();
 				let viewport_mid = viewport.center_in_viewport_space().into_dvec2();
 				let [bounds1, bounds2] = if !self.graph_view_overlay_open {
-					self.metadata().document_bounds_viewport_space().unwrap_or([viewport_mid; 2])
+					self.network_interface.document_bounds_viewport_space(true).unwrap_or([viewport_mid; 2])
 				} else {
 					self.network_interface.graph_bounds_viewport_space(&self.breadcrumb_network_path).unwrap_or([viewport_mid; 2])
 				};
