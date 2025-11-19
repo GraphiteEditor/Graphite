@@ -539,7 +539,6 @@ impl ProtoNetwork {
 #[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum GraphErrorType {
 	NodeNotFound(NodeId),
-	InputNodeNotFound(NodeId),
 	UnexpectedGenerics { index: usize, inputs: Vec<Type> },
 	NoImplementations,
 	NoConstructor,
@@ -551,7 +550,6 @@ impl Debug for GraphErrorType {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			GraphErrorType::NodeNotFound(id) => write!(f, "Input node {id} is not present in the typing context"),
-			GraphErrorType::InputNodeNotFound(id) => write!(f, "Input node {id} is not present in the typing context"),
 			GraphErrorType::UnexpectedGenerics { index, inputs } => write!(f, "Generic inputs should not exist but found at {index}: {inputs:?}"),
 			GraphErrorType::NoImplementations => write!(f, "No implementations found"),
 			GraphErrorType::NoConstructor => write!(f, "No construct found for node"),
