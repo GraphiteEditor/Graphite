@@ -2160,6 +2160,7 @@ dependencies = [
  "futures",
  "graph-craft",
  "graphene-std",
+ "image",
  "interpreted-executor",
  "log",
  "preprocessor",
