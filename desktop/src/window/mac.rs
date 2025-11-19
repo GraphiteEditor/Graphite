@@ -5,11 +5,18 @@ use winit::window::{Window, WindowAttributes};
 use crate::event::AppEventScheduler;
 use crate::wrapper::messages::MenuItem;
 
+mod app;
+mod menu;
+
 pub(super) struct NativeWindowImpl {
 	menu: menu::Menu,
 }
 
 impl super::NativeWindow for NativeWindowImpl {
+	fn init() {
+		app::init();
+	}
+
 	fn configure(attributes: WindowAttributes, _event_loop: &dyn ActiveEventLoop) -> WindowAttributes {
 		let mac_window = WindowAttributesMacOS::default()
 			.with_titlebar_transparent(true)
@@ -28,5 +35,3 @@ impl super::NativeWindow for NativeWindowImpl {
 		self.menu.update(entries);
 	}
 }
-
-mod menu;
