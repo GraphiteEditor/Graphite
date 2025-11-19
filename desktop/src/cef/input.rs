@@ -89,8 +89,6 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 
 			key_event.character = event.logical_key.to_char_representation() as u16;
 
-			key_event.unmodified_character = event.key_without_modifiers.to_char_representation() as u16;
-
 			// Mitigation for CEF on Mac bug to prevent NSMenu being triggered by this key event.
 			//
 			// CEF converts the key event into an `NSEvent` internally and passes that to Chromium.
@@ -103,8 +101,9 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 			// See https://github.com/chromiumembedded/cef/issues/3857
 			//
 			// TODO: Remove mitigation once bug is fixed or a better solution is found.
-			if cfg!(target_os = "macos") && input_state.modifiers.alt_key() {
-				key_event.unmodified_character = 0;
+			#[cfg(not(target_os = "macos"))]
+			{
+				key_event.unmodified_character = event.key_without_modifiers.to_char_representation() as u16;
 			}
 
 			#[cfg(target_os = "macos")] // See https://www.magpcss.org/ceforum/viewtopic.php?start=10&t=11650
