@@ -20,10 +20,11 @@ impl Arrow {
 		let node_type = resolve_document_node_type("Arrow").expect("Arrow node does not exist");
 		node_type.node_template_input_override([
 			None,
-			Some(NodeInput::value(TaggedValue::F64(100.), false)), // length
-			Some(NodeInput::value(TaggedValue::F64(10.), false)),  // shaft_width
-			Some(NodeInput::value(TaggedValue::F64(30.), false)),  // head_width
-			Some(NodeInput::value(TaggedValue::F64(20.), false)),  // head_length
+			Some(NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false)),          // start
+			Some(NodeInput::value(TaggedValue::DVec2(DVec2::new(100., 0.)), false)), // end
+			Some(NodeInput::value(TaggedValue::F64(10.), false)),                    // shaft_width
+			Some(NodeInput::value(TaggedValue::F64(30.), false)),                    // head_width
+			Some(NodeInput::value(TaggedValue::F64(20.), false)),                    // head_length
 		])
 	}
 
@@ -56,31 +57,26 @@ impl Arrow {
 		let head_width = length * 0.3;
 		let head_length = length * 0.2;
 
-		// Update Arrow node parameters
+		// Update Arrow node parameters - now using start/end points instead of transform
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(node_id, 1),
-			input: NodeInput::value(TaggedValue::F64(length), false),
+			input: NodeInput::value(TaggedValue::DVec2(start), false),
 		});
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(node_id, 2),
-			input: NodeInput::value(TaggedValue::F64(shaft_width), false),
+			input: NodeInput::value(TaggedValue::DVec2(end), false),
 		});
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(node_id, 3),
-			input: NodeInput::value(TaggedValue::F64(head_width), false),
+			input: NodeInput::value(TaggedValue::F64(shaft_width), false),
 		});
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(node_id, 4),
-			input: NodeInput::value(TaggedValue::F64(head_length), false),
+			input: NodeInput::value(TaggedValue::F64(head_width), false),
 		});
-
-		// Set transform to position and rotate the arrow
-		let angle = delta.y.atan2(delta.x);
-		responses.add(GraphOperationMessage::TransformSet {
-			layer,
-			transform: DAffine2::from_scale_angle_translation(DVec2::ONE, angle, start),
-			transform_in: TransformIn::Viewport,
-			skip_rerender: false,
+		responses.add(NodeGraphMessage::SetInput {
+			input_connector: InputConnector::node(node_id, 5),
+			input: NodeInput::value(TaggedValue::F64(head_length), false),
 		});
 	}
 

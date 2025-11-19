@@ -317,20 +317,32 @@ impl<PointId: Identifier> Subpath<PointId> {
 		Self::from_anchors([p1, p2], false)
 	}
 
-	/// Constructs an arrow shape with parametric control over dimensions
-	pub fn new_arrow(length: f64, shaft_width: f64, head_width: f64, head_length: f64) -> Self {
+	/// Constructs an arrow shape from start and end points with parametric control over dimensions
+	pub fn new_arrow(start: DVec2, end: DVec2, shaft_width: f64, head_width: f64, head_length: f64) -> Self {
+		let delta = end - start;
+		let length = delta.length();
+
+		if length < 1e-10 {
+			// Degenerate case: return a point
+			return Self::from_anchors([start], true);
+		}
+
+		let direction = delta / length;
+		let perpendicular = DVec2::new(-direction.y, direction.x);
+
 		let half_shaft = shaft_width * 0.5;
 		let half_head = head_width * 0.5;
-		let head_base = length - head_length;
+		let head_base_distance = (length - head_length).max(0.);
+		let head_base = start + direction * head_base_distance;
 
 		let anchors = [
-			DVec2::new(0., -half_shaft),        // Tail bottom
-			DVec2::new(head_base, -half_shaft), // Head base bottom (shaft)
-			DVec2::new(head_base, -half_head),  // Head base bottom (wide)
-			DVec2::new(length, 0.),             // Tip
-			DVec2::new(head_base, half_head),   // Head base top (wide)
-			DVec2::new(head_base, half_shaft),  // Head base top (shaft)
-			DVec2::new(0., half_shaft),         // Tail top
+			start - perpendicular * half_shaft,     // Tail bottom
+			head_base - perpendicular * half_shaft, // Head base bottom (shaft)
+			head_base - perpendicular * half_head,  // Head base bottom (wide)
+			end,                                    // Tip
+			head_base + perpendicular * half_head,  // Head base top (wide)
+			head_base + perpendicular * half_shaft, // Head base top (shaft)
+			start + perpendicular * half_shaft,     // Tail top
 		];
 
 		Self::from_anchors(anchors, true)

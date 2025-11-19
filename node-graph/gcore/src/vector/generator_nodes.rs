@@ -183,9 +183,8 @@ fn star<T: AsU64>(
 fn arrow(
 	_: impl Ctx,
 	_primary: (),
-	#[unit(" px")]
-	#[default(100)]
-	length: f64,
+	#[default(0., 0.)] start: PixelSize,
+	#[default(100., 0.)] end: PixelSize,
 	#[unit(" px")]
 	#[default(10)]
 	shaft_width: f64,
@@ -196,7 +195,7 @@ fn arrow(
 	#[default(20)]
 	head_length: f64,
 ) -> Table<Vector> {
-	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_arrow(length, shaft_width, head_width, head_length)))
+	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_arrow(start, end, shaft_width, head_width, head_length)))
 }
 
 #[node_macro::node(category("Vector: Shape"))]
