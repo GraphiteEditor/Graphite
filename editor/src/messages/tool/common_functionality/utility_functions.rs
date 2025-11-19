@@ -582,7 +582,7 @@ pub fn make_path_editable_is_allowed(network_interface: &mut NodeNetworkInterfac
 	let node_id = NodeGraphLayer::new(first_layer, network_interface).horizontal_layer_flow().nth(1)?;
 
 	let output_type = network_interface.output_type(&OutputConnector::node(node_id, 0), &[]);
-	if output_type.compiled_nested_type().as_deref() != Some(&concrete!(Table<Vector>)) {
+	if output_type.compiled_nested_type() != Some(&concrete!(Table<Vector>)) {
 		return None;
 	}
 

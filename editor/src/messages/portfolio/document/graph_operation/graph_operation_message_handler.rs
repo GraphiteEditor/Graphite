@@ -142,6 +142,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 								skip_rerender: true,
 							});
 						}
+
 						// Set the bottom input of the artboard back to artboard
 						let bottom_input = NodeInput::value(TaggedValue::Artboard(Table::new()), true);
 						network_interface.set_input(&InputConnector::node(artboard_layer.to_node(), 0), bottom_input, &[]);
@@ -149,6 +150,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 						// We have some non layers (e.g. just a rectangle node). We disconnect the bottom input and connect it to the left input.
 						network_interface.disconnect_input(&InputConnector::node(artboard_layer.to_node(), 0), &[]);
 						network_interface.set_input(&InputConnector::node(artboard_layer.to_node(), 1), primary_input, &[]);
+
 						// Set the bottom input of the artboard back to artboard
 						let bottom_input = NodeInput::value(TaggedValue::Artboard(Table::new()), true);
 						network_interface.set_input(&InputConnector::node(artboard_layer.to_node(), 0), bottom_input, &[]);

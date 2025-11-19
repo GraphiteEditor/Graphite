@@ -85,7 +85,7 @@ impl TypeSource {
 
 	/// Used when searching for nodes in the add Node popup.
 	pub fn add_node_string(self) -> Option<String> {
-		self.compiled_nested_type().map(|ty| format!("type:{}", ty.to_string()))
+		self.compiled_nested_type().map(|ty| format!("type:{ty}"))
 	}
 
 	/// The type to display in the tooltip.
@@ -239,20 +239,17 @@ impl NodeNetworkInterface {
 					return Vec::new();
 				};
 				let number_of_inputs = self.number_of_inputs(node_id, network_path);
-				log::debug!("{proto_node_identifier}");
 				implementations
 					.iter()
 					.filter_map(|(node_io, _)| {
-						log::debug!("types: {node_io:?}");
 						// Check if this NodeIOTypes implementation is valid for the other inputs
 						let valid_implementation = (0..number_of_inputs).filter(|iterator_index| iterator_index != input_index).all(|iterator_index| {
 							let input_type = self.input_type_not_invalid(&InputConnector::node(*node_id, iterator_index), network_path);
-							log::debug!("itertor index: {iterator_index} type: {input_type:?}");
 							// TODO: Fix type checking for different call arguments
 							// For example a node input of (Footprint) -> Vector would not be compatible with a node that is called with () and returns Vector
 							node_io.inputs.get(iterator_index).map(|ty| ty.nested_type()) == input_type.compiled_nested_type()
 						});
-						log::debug!("valid: {valid_implementation}");
+
 						// If so, then return the input at the chosen index
 						if valid_implementation { node_io.inputs.get(*input_index).cloned() } else { None }
 					})
@@ -313,7 +310,7 @@ impl NodeNetworkInterface {
 							log::error!("Protonode {render_node:?} not found in registry");
 							return Vec::new();
 						};
-						implementations.iter().map(|(types, _)| types.inputs[1].clone()).collect()
+						implementations.keys().map(|types| types.inputs[1].clone()).collect()
 					}
 				}
 			}
@@ -344,14 +341,14 @@ impl NodeNetworkInterface {
 				if matches!(input_type, TypeSource::Invalid) {
 					input_type = TypeSource::Unknown
 				}
-				return input_type;
+				input_type
 			}
 		}
 	}
 
 	/// The valid output types are all types that are valid for each downstream connection.
 	fn valid_output_types(&mut self, output_connector: &OutputConnector, network_path: &[NodeId]) -> Vec<Type> {
-		let Some(outward_wires) = self.outward_wires(&network_path) else {
+		let Some(outward_wires) = self.outward_wires(network_path) else {
 			log::error!("Could not get outward wires in valid_output_types");
 			return Vec::new();
 		};
@@ -363,7 +360,7 @@ impl NodeNetworkInterface {
 		let intersection = inputs_from_import
 			.clone()
 			.iter()
-			.map(|input_connector| self.potential_valid_input_types(input_connector, &network_path).into_iter().collect::<HashSet<_>>())
+			.map(|input_connector| self.potential_valid_input_types(input_connector, network_path).into_iter().collect::<HashSet<_>>())
 			.fold(None, |acc: Option<HashSet<Type>>, set| match acc {
 				Some(acc_set) => Some(acc_set.intersection(&set).cloned().collect()),
 				None => Some(set),

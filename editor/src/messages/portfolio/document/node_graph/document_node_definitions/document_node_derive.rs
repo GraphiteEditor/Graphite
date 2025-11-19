@@ -18,12 +18,12 @@ fn traverse_node(node: &DocumentNode, node_metadata: &mut DocumentNodePersistent
 					.persistent_metadata
 					.node_metadata
 					.get_mut(nested_node_id)
-					.expect("Network metadata must have corresponding  node id");
+					.expect("Network metadata must have corresponding node id");
 				traverse_node(nested_node, &mut nested_metadata.persistent_metadata);
 			}
 		}
 		DocumentNodeImplementation::ProtoNode(proto_node_identifier) => {
-			if let Some(metadata) = NODE_METADATA.lock().unwrap().get(&proto_node_identifier) {
+			if let Some(metadata) = NODE_METADATA.lock().unwrap().get(proto_node_identifier) {
 				node_metadata.reference = Some(metadata.display_name.to_string());
 			}
 		}
