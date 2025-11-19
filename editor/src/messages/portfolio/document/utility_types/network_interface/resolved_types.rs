@@ -179,17 +179,17 @@ impl NodeNetworkInterface {
 			TypeSource::Compiled(compiled) => compiled,
 			TypeSource::TaggedValue(value) => value,
 			TypeSource::Unknown | TypeSource::Invalid => {
-				// Pick a random type from the valid types
+				// Pick a random type from the complete valid types
 				// TODO: Add a NodeInput::Indeterminate which can be resolved at compile time to be any type that prevents an error. This may require bidirectional typing.
 				self.complete_valid_input_types(input_connector, network_path)
 					.into_iter()
 					.min_by_key(|ty| ty.nested_type().to_string())
+					// Pick a random type from the potential valid types
 					.or_else(|| {
 						self.potential_valid_input_types(input_connector, network_path)
 							.into_iter()
 							.min_by_key(|ty| ty.nested_type().to_string())
-					})
-					.unwrap_or(concrete!(()))
+					}).unwrap_or(concrete!(()))
 			}
 			TypeSource::Error(e) => {
 				log::error!("Error getting tagged_value_from_input for {input_connector:?} {e}");

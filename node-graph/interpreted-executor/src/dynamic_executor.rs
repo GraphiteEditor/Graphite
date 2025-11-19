@@ -64,10 +64,34 @@ impl DynamicExecutor {
 
 	/// Updates the existing [`BorrowTree`] to reflect the new [`ProtoNetwork`], reusing nodes where possible.
 	#[cfg_attr(debug_assertions, inline(never))]
-	pub async fn update(&mut self, proto_network: ProtoNetwork) -> Result<ResolvedDocumentNodeTypesDelta, GraphErrors> {
+	pub async fn update(&mut self, proto_network: ProtoNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, GraphErrors)> {
 		self.output = proto_network.output;
-		self.typing_context.update(&proto_network)?;
-		let (add, orphaned) = self.tree.update(proto_network, &self.typing_context).await?;
+		self.typing_context.update(&proto_network).map_err(|e| {
+			// If there is an error then get types that have been resolved before the error
+			let add = proto_network
+				.nodes
+				.iter()
+				.filter_map(|(id, node)| node.original_location.path.as_ref().map(|path| (path.clone().into_boxed_slice(), self.typing_context.infer(*id, node))))
+				.take_while(|(_, r)| r.is_ok())
+				.map(|(path, r)| {
+					let r = r.unwrap();
+					(
+						path,
+						NodeTypes {
+							inputs: r.inputs,
+							output: r.return_value,
+						},
+					)
+				})
+				.collect::<Vec<_>>();
+			(ResolvedDocumentNodeTypesDelta { add, remove: Vec::new() }, e)
+		})?;
+
+		let (add, orphaned) = self
+			.tree
+			.update(proto_network, &self.typing_context)
+			.await
+			.map_err(|e| (ResolvedDocumentNodeTypesDelta::default(), e))?;
 		let old_to_remove = core::mem::replace(&mut self.orphaned_nodes, orphaned);
 		let mut remove = Vec::with_capacity(old_to_remove.len() - self.orphaned_nodes.len().min(old_to_remove.len()));
 		for node_id in old_to_remove {

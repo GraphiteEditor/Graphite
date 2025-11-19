@@ -873,13 +873,14 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					self.disconnecting = Some(*clicked_input);
 
 					let output_connector = if *clicked_input == InputConnector::Export(0) {
-						network_interface.root_node(selection_network_path).map(|root_node| root_node.to_connector())
+						network_interface.root_node(breadcrumb_network_path).map(|root_node| root_node.to_connector())
 					} else {
-						network_interface.upstream_output_connector(clicked_input, selection_network_path)
+						network_interface.upstream_output_connector(clicked_input, breadcrumb_network_path)
 					};
 					let Some(output_connector) = output_connector else { return };
-					self.wire_in_progress_from_connector = network_interface.output_position(&output_connector, selection_network_path);
-					self.wire_in_progress_type = network_interface.input_type(clicked_input, breadcrumb_network_path).displayed_type();
+					self.wire_in_progress_from_connector = network_interface.output_position(&output_connector, breadcrumb_network_path);
+
+					self.wire_in_progress_type = network_interface.output_type(&output_connector, breadcrumb_network_path).displayed_type();
 					return;
 				}
 

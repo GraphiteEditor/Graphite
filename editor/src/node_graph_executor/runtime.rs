@@ -286,7 +286,7 @@ impl NodeRuntime {
 		None
 	}
 
-	async fn update_network(&mut self, mut graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, String> {
+	async fn update_network(&mut self, mut graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, String)> {
 		preprocessor::expand_network(&mut graph, &self.substitutions);
 
 		let scoped_network = wrap_network_in_scope(graph, self.editor_api.clone());
@@ -297,7 +297,7 @@ impl NodeRuntime {
 		let c = Compiler {};
 		let proto_network = match c.compile_single(scoped_network) {
 			Ok(network) => network,
-			Err(e) => return Err(e),
+			Err(e) => return Err((ResolvedDocumentNodeTypesDelta::default(), e)),
 		};
 		self.monitor_nodes = proto_network
 			.nodes
@@ -307,9 +307,9 @@ impl NodeRuntime {
 			.collect::<Vec<_>>();
 
 		assert_ne!(proto_network.nodes.len(), 0, "No proto nodes exist?");
-		self.executor.update(proto_network).await.map_err(|e| {
+		self.executor.update(proto_network).await.map_err(|(types, e)| {
 			self.node_graph_errors.clone_from(&e);
-			format!("{e:?}")
+			(types, format!("{e:?}"))
 		})
 	}
 
