@@ -3,7 +3,7 @@ use graph_craft::graphene_compiler::Executor;
 use graphene_std::application_io::{ExportFormat, RenderConfig};
 use graphene_std::core_types::ops::Convert;
 use graphene_std::core_types::transform::Footprint;
-use graphene_std::raster_types::{Raster, CPU, GPU};
+use graphene_std::raster_types::{CPU, GPU, Raster};
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 use std::error::Error;
 use std::io::Cursor;
@@ -86,14 +86,7 @@ pub async fn export_document(
 	Ok(())
 }
 
-fn write_raster_image(
-	output_path: PathBuf,
-	file_type: FileType,
-	data: Vec<u8>,
-	width: u32,
-	height: u32,
-	transparent: bool,
-) -> Result<(), Box<dyn Error>> {
+fn write_raster_image(output_path: PathBuf, file_type: FileType, data: Vec<u8>, width: u32, height: u32, transparent: bool) -> Result<(), Box<dyn Error>> {
 	use image::{ImageFormat, RgbaImage};
 
 	let image = RgbaImage::from_raw(width, height, data).ok_or("Failed to create image from buffer")?;
