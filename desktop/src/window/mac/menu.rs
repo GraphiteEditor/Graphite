@@ -11,11 +11,8 @@ pub(super) struct Menu {
 
 impl Menu {
 	pub(super) fn new(event_scheduler: AppEventScheduler) -> Self {
-		let hide = PredefinedMenuItem::hide(None);
-		let hide_others = PredefinedMenuItem::hide_others(None);
-		let show_all = PredefinedMenuItem::show_all(None);
-		let quit = PredefinedMenuItem::quit(None);
-		let app_submenu = Submenu::with_items("", true, &[&PredefinedMenuItem::separator(), &hide, &hide_others, &show_all, &PredefinedMenuItem::separator(), &quit]).unwrap();
+		// TODO: Remove as much app submenu special handling as possible
+		let app_submenu = Submenu::with_items("", true, &[]).unwrap();
 
 		let menu = MudaMenu::new();
 		menu.prepend(&app_submenu).unwrap();
