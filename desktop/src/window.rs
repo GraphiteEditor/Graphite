@@ -8,7 +8,7 @@ use crate::window::mac::NativeWindowImpl;
 use crate::wrapper::messages::MenuItem;
 
 pub(crate) trait NativeWindow {
-	fn init();
+	fn init() {}
 	fn configure(attributes: WindowAttributes, event_loop: &dyn ActiveEventLoop) -> WindowAttributes;
 	fn new(window: &dyn WinitWindow, app_event_scheduler: AppEventScheduler) -> Self;
 	fn update_menu(&self, _entries: Vec<MenuItem>) {}
