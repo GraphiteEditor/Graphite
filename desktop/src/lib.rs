@@ -25,7 +25,7 @@ use event::CreateAppEventSchedulerEventLoopExt;
 
 mod mac_app_impl {
 	use objc2::{ClassType, define_class, msg_send};
-	use objc2_app_kit::{NSApplication, NSEvent, NSResponder};
+	use objc2_app_kit::{NSApplication, NSEvent, NSEventType, NSResponder};
 	use objc2_foundation::NSObject;
 
 	define_class!(
@@ -36,7 +36,7 @@ mod mac_app_impl {
 		impl GraphiteApplication {
 			#[unsafe(method(sendEvent:))]
 			fn send_event(&self, event: &NSEvent) {
-				if let Some(key_window) = self.keyWindow() {
+				if event.r#type() == NSEventType::KeyDown && let Some(key_window) = self.keyWindow() {
 					unsafe { msg_send![&key_window, sendEvent: event] }
 				} else {
 					unsafe { msg_send![super(self), sendEvent: event] }
