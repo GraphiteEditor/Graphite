@@ -56,7 +56,7 @@ enum Command {
 		#[clap(long, short = 'l')]
 		run_loop: bool,
 	},
-	PrintNodeIdentifiers,
+	ListNodeIdentifiers,
 }
 
 #[derive(Debug, Args)]
@@ -77,7 +77,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	let document_path = match app.command {
 		Command::Compile { ref document, .. } => document,
 		Command::Run { ref document, .. } => document,
-		Command::PrintNodeIdentifiers => {
+		Command::ListNodeIdentifiers => {
 			let mut ids: Vec<_> = graphene_std::registry::NODE_METADATA.lock().unwrap().keys().cloned().collect();
 			ids.sort_by_key(|x| x.name.clone());
 			for id in ids {
@@ -132,7 +132,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 				tokio::time::sleep(std::time::Duration::from_millis(16)).await;
 			}
 		}
-		_ => unreachable!("all other commands should be hadled before this match statement is run")
+		_ => unreachable!("All other commands should be handled before this match statement is run")
 	}
 
 	Ok(())
