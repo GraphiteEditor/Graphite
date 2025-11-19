@@ -32,8 +32,8 @@ impl<'a> DesktopWrapperMessageDispatcher<'a> {
 		self.desktop_wrapper_message_queue.push_back(message);
 	}
 
-	pub(super) fn queue_editor_message(&mut self, message: EditorMessage) {
-		if let Some(message) = intercept_editor_message(self, message) {
+	pub(super) fn queue_editor_message<T: Into<EditorMessage>>(&mut self, message: T) {
+		if let Some(message) = intercept_editor_message(self, message.into()) {
 			self.editor_message_queue.push(message);
 		}
 	}

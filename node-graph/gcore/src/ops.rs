@@ -4,7 +4,8 @@ use crate::{ExtractFootprint, Node, transform::Footprint};
 use std::marker::PhantomData;
 
 // TODO: Rename to "Passthrough"
-/// Passes-through the input value without changing it. This is useful for rerouting wires for organization purposes.
+/// Passes-through the input value without changing it.
+/// This is useful for rerouting wires for organization purposes.
 #[node_macro::node(skip_impl)]
 fn identity<'i, T: 'i + Send>(value: T) -> T {
 	value
