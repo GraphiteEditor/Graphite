@@ -29,6 +29,16 @@ impl Menu {
 		menu.init_for_nsapp();
 
 		MenuEvent::set_event_handler(Some(move |event: MenuEvent| {
+			let mtm = objc2::MainThreadMarker::new().expect("only ever called from main thread");
+			let is_shortcut_triggered = objc2_app_kit::NSApplication::sharedApplication(mtm)
+				.mainMenu()
+				.map(|m| m.highlightedItem().is_some())
+				.unwrap_or_default();
+			if is_shortcut_triggered {
+				tracing::error!("A keyboard input triggered a menu event. This is most likely a bug. Please report!");
+				return;
+			}
+
 			if let Some(id) = menu_id_to_u64(event.id()) {
 				event_scheduler.schedule(AppEvent::MenuEvent { id });
 			}

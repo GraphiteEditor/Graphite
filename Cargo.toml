@@ -182,7 +182,7 @@ image = { version = "0.25", default-features = false, features = [
 	"jpeg",
 	"bmp",
 ] }
-parley = "0.5"
+parley = "0.6"
 skrifa = "0.36"
 pretty_assertions = "1.4"
 fern = { version = "0.7", features = ["colored"] }

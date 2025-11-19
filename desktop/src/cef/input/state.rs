@@ -7,7 +7,7 @@ use crate::cef::consts::{MULTICLICK_ALLOWED_TRAVEL, MULTICLICK_TIMEOUT};
 
 #[derive(Default)]
 pub(crate) struct InputState {
-	modifiers: winit::keyboard::ModifiersState,
+	pub(super) modifiers: winit::keyboard::ModifiersState,
 	mouse_position: MousePosition,
 	mouse_state: MouseState,
 	mouse_click_tracker: ClickTracker,

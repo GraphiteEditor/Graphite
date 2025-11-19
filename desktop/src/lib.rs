@@ -23,8 +23,41 @@ use cef::CefHandler;
 use cli::Cli;
 use event::CreateAppEventSchedulerEventLoopExt;
 
+mod mac_app_impl {
+	use objc2::{ClassType, define_class, msg_send};
+	use objc2_app_kit::{NSApplication, NSEvent, NSResponder};
+	use objc2_foundation::NSObject;
+
+	define_class!(
+		#[unsafe(super(NSApplication, NSResponder, NSObject))]
+		#[name = "GraphiteApplication"]
+		pub(super) struct GraphiteApplication;
+
+		impl GraphiteApplication {
+			#[unsafe(method(sendEvent:))]
+			fn send_event(&self, event: &NSEvent) {
+				if let Some(key_window) = self.keyWindow() {
+					unsafe { msg_send![&key_window, sendEvent: event] }
+				} else {
+					unsafe { msg_send![super(self), sendEvent: event] }
+				}
+			}
+		}
+	);
+
+	impl GraphiteApplication {
+		pub(super) fn init() {
+			unsafe {
+				let _: &NSApplication = msg_send![GraphiteApplication::class(), sharedApplication];
+			}
+		}
+	}
+}
+
 pub fn start() {
 	tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();
+
+	mac_app_impl::GraphiteApplication::init();
 
 	let cef_context_builder = cef::CefContextBuilder::<CefHandler>::new();
 
