@@ -34,7 +34,6 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 	let node_registry = core_types::registry::NODE_REGISTRY.lock().unwrap();
 	for (id, metadata) in core_types::registry::NODE_METADATA.lock().unwrap().iter() {
 		let id = id.clone();
-		println!("{}", id.name);
 
 		let NodeMetadata { fields, .. } = metadata;
 		let Some(implementations) = &node_registry.get(&id) else { continue };

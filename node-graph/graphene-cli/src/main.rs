@@ -6,8 +6,8 @@ use graph_craft::graphene_compiler::{Compiler, Executor};
 use graph_craft::proto::ProtoNetwork;
 use graph_craft::util::load_network;
 use graph_craft::wasm_application_io::EditorPreferences;
+use graphene_std::text::FontCache;
 use graphene_std::application_io::{ApplicationIo, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
-use graphene_std::text_nodes::FontCache;
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 use interpreted_executor::util::wrap_network_in_scope;
@@ -56,6 +56,7 @@ enum Command {
 		#[clap(long, short = 'l')]
 		run_loop: bool,
 	},
+	PrintNodeIdentifiers,
 }
 
 #[derive(Debug, Args)]
@@ -76,6 +77,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	let document_path = match app.command {
 		Command::Compile { ref document, .. } => document,
 		Command::Run { ref document, .. } => document,
+		Command::PrintNodeIdentifiers => {
+			let mut ids: Vec<_> = graphene_std::registry::NODE_METADATA.lock().unwrap().keys().cloned().collect();
+			ids.sort_by_key(|x| x.name.clone());
+			for id in ids {
+				println!("{}", id.name)
+			}
+			return Ok(());
+		}
 	};
 
 	let document_string = std::fs::read_to_string(document_path).expect("Failed to read document");
@@ -123,6 +132,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 				tokio::time::sleep(std::time::Duration::from_millis(16)).await;
 			}
 		}
+		_ => unreachable!("all other commands should be hadled before this match statement is run")
 	}
 
 	Ok(())
@@ -168,7 +178,8 @@ fn fix_nodes(network: &mut NodeNetwork) {
 			// https://github.com/GraphiteEditor/Graphite/blob/d68f91ccca69e90e6d2df78d544d36cd1aaf348e/editor/src/messages/portfolio/portfolio_message_handler.rs#L535
 			// Since the CLI doesn't have the document node definitions, a less robust method of just patching the inputs is used.
 			DocumentNodeImplementation::ProtoNode(proto_node_identifier)
-				if (proto_node_identifier.name.starts_with("core_types::ConstructLayerNode") || proto_node_identifier.name.starts_with("core_types::AddArtboardNode")) && node.inputs.len() < 3 =>
+				if (proto_node_identifier.name.starts_with("graphene_core::ConstructLayerNode") || proto_node_identifier.name.starts_with("graphene_core::AddArtboardNode"))
+					&& node.inputs.len() < 3 =>
 			{
 				node.inputs.push(NodeInput::Reflection(DocumentNodeMetadata::DocumentNodePath));
 			}
