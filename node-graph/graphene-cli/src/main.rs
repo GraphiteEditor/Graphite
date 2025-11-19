@@ -6,8 +6,8 @@ use graph_craft::graphene_compiler::{Compiler, Executor};
 use graph_craft::proto::ProtoNetwork;
 use graph_craft::util::load_network;
 use graph_craft::wasm_application_io::EditorPreferences;
-use graphene_std::text::FontCache;
 use graphene_std::application_io::{ApplicationIo, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
+use graphene_std::text::FontCache;
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 use interpreted_executor::util::wrap_network_in_scope;
@@ -132,7 +132,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 				tokio::time::sleep(std::time::Duration::from_millis(16)).await;
 			}
 		}
-		_ => unreachable!("All other commands should be handled before this match statement is run")
+		_ => unreachable!("All other commands should be handled before this match statement is run"),
 	}
 
 	Ok(())
