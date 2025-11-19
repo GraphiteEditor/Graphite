@@ -2,7 +2,6 @@ use winit::event_loop::ActiveEventLoop;
 use winit::platform::macos::WindowAttributesMacOS;
 use winit::window::{Window, WindowAttributes};
 
-use crate::consts::APP_NAME;
 use crate::event::AppEventScheduler;
 use crate::wrapper::messages::MenuItem;
 
@@ -20,7 +19,7 @@ impl super::NativeWindow for NativeWindowImpl {
 	}
 
 	fn new(_window: &dyn Window, app_event_scheduler: AppEventScheduler) -> Self {
-		let menu = menu::Menu::new(app_event_scheduler, APP_NAME);
+		let menu = menu::Menu::new(app_event_scheduler);
 
 		NativeWindowImpl { menu }
 	}

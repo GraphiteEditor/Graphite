@@ -1,6 +1,6 @@
 use muda::Menu as MudaMenu;
 use muda::accelerator::Accelerator;
-use muda::{AboutMetadataBuilder, CheckMenuItem, IsMenuItem, MenuEvent, MenuId, MenuItem, MenuItemKind, PredefinedMenuItem, Result, Submenu};
+use muda::{CheckMenuItem, IsMenuItem, MenuEvent, MenuId, MenuItem, MenuItemKind, PredefinedMenuItem, Result, Submenu};
 
 use crate::event::{AppEvent, AppEventScheduler};
 use crate::wrapper::messages::MenuItem as WrapperMenuItem;
@@ -10,18 +10,12 @@ pub(super) struct Menu {
 }
 
 impl Menu {
-	pub(super) fn new(event_scheduler: AppEventScheduler, app_name: &str) -> Self {
-		let about = PredefinedMenuItem::about(None, Some(AboutMetadataBuilder::new().name(Some(app_name)).build()));
+	pub(super) fn new(event_scheduler: AppEventScheduler) -> Self {
 		let hide = PredefinedMenuItem::hide(None);
 		let hide_others = PredefinedMenuItem::hide_others(None);
 		let show_all = PredefinedMenuItem::show_all(None);
 		let quit = PredefinedMenuItem::quit(None);
-		let app_submenu = Submenu::with_items(
-			"",
-			true,
-			&[&about, &PredefinedMenuItem::separator(), &hide, &hide_others, &show_all, &PredefinedMenuItem::separator(), &quit],
-		)
-		.unwrap();
+		let app_submenu = Submenu::with_items("", true, &[&PredefinedMenuItem::separator(), &hide, &hide_others, &show_all, &PredefinedMenuItem::separator(), &quit]).unwrap();
 
 		let menu = MudaMenu::new();
 		menu.prepend(&app_submenu).unwrap();
