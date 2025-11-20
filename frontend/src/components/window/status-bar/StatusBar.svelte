@@ -3,7 +3,7 @@
 
 	import type { Editor } from "@graphite/editor";
 	import { type HintData, type HintInfo, type LayoutKeysGroup, UpdateInputHints } from "@graphite/messages";
-	import { platformIsMac } from "@graphite/utility-functions/platform";
+	import { operatingSystem } from "@graphite/utility-functions/platform";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
@@ -14,8 +14,7 @@
 	let hintData: HintData = [];
 
 	function inputKeysForPlatform(hint: HintInfo): LayoutKeysGroup[] {
-		if (platformIsMac() && hint.keyGroupsMac) return hint.keyGroupsMac;
-		return hint.keyGroups;
+		return operatingSystem() === "Mac" && hint.keyGroupsMac ? hint.keyGroupsMac : hint.keyGroups;
 	}
 
 	onMount(() => {

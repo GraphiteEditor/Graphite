@@ -449,7 +449,7 @@ impl TableRowLayout for Vector {
 
 				table_rows.push(vec![
 					TextLabel::new("Upstream Nested Layers").narrow(true).widget_holder(),
-					TextLabel::new(if self.upstream_nested_layers.is_some() {
+					TextLabel::new(if self.upstream_data.is_some() {
 						"Yes (this preserves references to its upstream nested layers for editing by tools)"
 					} else {
 						"No (this doesn't preserve references to its upstream nested layers for editing by tools)"

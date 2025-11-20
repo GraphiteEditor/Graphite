@@ -180,7 +180,6 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 			NavigationMessage::CanvasPanMouseWheel { use_y_as_x } => {
 				let delta = if use_y_as_x { (-ipp.mouse.scroll_delta.y, 0.).into() } else { -ipp.mouse.scroll_delta.as_dvec2() } * VIEWPORT_SCROLL_RATE;
 				responses.add(NavigationMessage::CanvasPan { delta });
-				responses.add(NodeGraphMessage::SetGridAlignedEdges);
 			}
 			NavigationMessage::CanvasTiltResetAndZoomTo100Percent => {
 				let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
@@ -195,7 +194,6 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 					responses.add(PortfolioMessage::UpdateDocumentWidgets);
 				}
 				responses.add(DocumentMessage::PTZUpdate);
-				responses.add(NodeGraphMessage::SetGridAlignedEdges);
 			}
 			NavigationMessage::CanvasTiltSet { angle_radians } => {
 				let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
@@ -274,7 +272,6 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 					responses.add(PortfolioMessage::UpdateDocumentWidgets);
 				}
 				responses.add(DocumentMessage::PTZUpdate);
-				responses.add(NodeGraphMessage::SetGridAlignedEdges);
 			}
 			NavigationMessage::CanvasFlip => {
 				if graph_view_overlay_open {
@@ -322,7 +319,6 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				} else {
 					responses.add(PortfolioMessage::UpdateDocumentWidgets);
 				}
-				responses.add(NodeGraphMessage::SetGridAlignedEdges);
 				// Reset the navigation operation now that it's done
 				self.navigation_operation = NavigationOperation::None;
 
@@ -384,7 +380,6 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 					responses.add(PortfolioMessage::UpdateDocumentWidgets);
 				}
 				responses.add(DocumentMessage::PTZUpdate);
-				responses.add(NodeGraphMessage::SetGridAlignedEdges);
 			}
 			// Fully zooms in on the selected
 			NavigationMessage::FitViewportToSelection => {
@@ -479,7 +474,6 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 						};
 
 						responses.add(NavigationMessage::CanvasZoomSet { zoom_factor: ptz.zoom() });
-						responses.add(NodeGraphMessage::SetGridAlignedEdges);
 					}
 				}
 

@@ -9,12 +9,10 @@ license = "MIT OR Apache-2.0"
 [features]
 default = ["wgpu"]
 wgpu = ["wgpu-executor", "gpu", "graphene-std/wgpu"]
-wayland = ["graphene-std/wayland"]
 gpu = ["interpreted-executor/gpu", "graphene-std/gpu", "wgpu-executor"]
 
 [dependencies]
 # Local dependencies
-graphene-core = { workspace = true }
 graphene-std = { workspace = true }
 interpreted-executor = { workspace = true }
 graph-craft = { workspace = true, features = ["loading"] }
@@ -28,6 +26,7 @@ chrono = { workspace = true }
 wgpu = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 clap = { workspace = true, features = ["cargo", "derive"] }
+image = { workspace = true }
 
 # Optional local dependencies
 wgpu-executor = { path = "../wgpu-executor", optional = true }

@@ -743,8 +743,8 @@ impl PenToolData {
 
 		// Store the segment
 		let id = SegmentId::generate();
-		if self.path_closed {
-			if let Some((handles, handle1_pos)) = match self.get_opposite_handle_type(TargetHandle::PreviewInHandle, &vector) {
+		if self.path_closed
+			&& let Some((handles, handle1_pos)) = match self.get_opposite_handle_type(TargetHandle::PreviewInHandle, &vector) {
 				TargetHandle::PriorOutHandle(segment) => {
 					let handles = [HandleId::end(id), HandleId::primary(segment)];
 					let handle1_pos = handles[1].to_manipulator_point().get_position(&vector);
@@ -757,15 +757,14 @@ impl PenToolData {
 				}
 				_ => None,
 			} {
-				let angle = (handle_end - next_point).angle_to(handle1_pos - next_point);
-				let pi = std::f64::consts::PI;
-				let colinear = (angle - pi).abs() < 1e-6 || (angle + pi).abs() < 1e-6;
-				responses.add(GraphOperationMessage::Vector {
-					layer,
-					modification_type: VectorModificationType::SetG1Continuous { handles, enabled: colinear },
-				});
-				self.cleanup(responses);
-			}
+			let angle = (handle_end - next_point).angle_to(handle1_pos - next_point);
+			let pi = std::f64::consts::PI;
+			let colinear = (angle - pi).abs() < 1e-6 || (angle + pi).abs() < 1e-6;
+			responses.add(GraphOperationMessage::Vector {
+				layer,
+				modification_type: VectorModificationType::SetG1Continuous { handles, enabled: colinear },
+			});
+			self.cleanup(responses);
 		}
 
 		self.prior_segment = Some(id);
@@ -953,10 +952,10 @@ impl PenToolData {
 	}
 
 	fn move_anchor_and_handles(&mut self, delta: DVec2, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>, vector: &Vector) {
-		if self.handle_end.is_none() {
-			if let Some(latest_pt) = self.latest_point_mut() {
-				latest_pt.pos += delta;
-			}
+		if self.handle_end.is_none()
+			&& let Some(latest_pt) = self.latest_point_mut()
+		{
+			latest_pt.pos += delta;
 		}
 
 		let Some(end_point) = self.prior_segment_endpoint else { return };
@@ -1225,10 +1224,11 @@ impl PenToolData {
 			snap.update_indicator(snapped);
 		}
 
-		if let Some(relative) = relative.map(|layer| transform.transform_point2(layer)) {
-			if (relative - document_pos) != DVec2::ZERO && (relative - document_pos).length_squared() > f64::EPSILON * 100. {
-				self.angle = -(relative - document_pos).angle_to(DVec2::X)
-			}
+		if let Some(relative) = relative.map(|layer| transform.transform_point2(layer))
+			&& (relative - document_pos) != DVec2::ZERO
+			&& (relative - document_pos).length_squared() > f64::EPSILON * 100.
+		{
+			self.angle = -(relative - document_pos).angle_to(DVec2::X)
 		}
 
 		transform.inverse().transform_point2(document_pos)
@@ -1260,20 +1260,20 @@ impl PenToolData {
 			self.current_layer = Some(layer);
 			self.extend_existing_path(document, layer, point, position);
 			return;
-		} else if preferences.vector_meshes {
-			if let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, viewport_vec, tolerance) {
-				let (point, segments) = closest_segment.adjusted_insert(responses);
-				let layer = closest_segment.layer();
-				let position = closest_segment.closest_point_document();
+		} else if preferences.vector_meshes
+			&& let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, viewport_vec, tolerance)
+		{
+			let (point, segments) = closest_segment.adjusted_insert(responses);
+			let layer = closest_segment.layer();
+			let position = closest_segment.closest_point_document();
 
-				// Setting any one of the new segments created as the previous segment
-				self.prior_segment_endpoint = Some(point);
-				self.prior_segment_layer = Some(layer);
-				self.prior_segments = Some(segments.to_vec());
+			// Setting any one of the new segments created as the previous segment
+			self.prior_segment_endpoint = Some(point);
+			self.prior_segment_layer = Some(layer);
+			self.prior_segments = Some(segments.to_vec());
 
-				self.extend_existing_path(document, layer, point, position);
-				return;
-			}
+			self.extend_existing_path(document, layer, point, position);
+			return;
 		}
 
 		if append {
@@ -1644,13 +1644,14 @@ impl Fsm for PenToolFsmState {
 				let viewport_vec = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
 
 				let close_to_point = closest_point(document, viewport_vec, tolerance, document.metadata().all_layers(), |_| false, preferences).is_some();
-				if preferences.vector_meshes && !close_to_point {
-					if let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, viewport_vec, tolerance) {
-						let pos = closest_segment.closest_point_to_viewport();
-						let perp = closest_segment.calculate_perp(document);
-						overlay_context.manipulator_anchor(pos, true, None);
-						overlay_context.line(pos - perp * SEGMENT_OVERLAY_SIZE, pos + perp * SEGMENT_OVERLAY_SIZE, Some(COLOR_OVERLAY_BLUE), None);
-					}
+				if preferences.vector_meshes
+					&& !close_to_point
+					&& let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, viewport_vec, tolerance)
+				{
+					let pos = closest_segment.closest_point_to_viewport();
+					let perp = closest_segment.calculate_perp(document);
+					overlay_context.manipulator_anchor(pos, true, None);
+					overlay_context.line(pos - perp * SEGMENT_OVERLAY_SIZE, pos + perp * SEGMENT_OVERLAY_SIZE, Some(COLOR_OVERLAY_BLUE), None);
 				}
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input, viewport), &mut overlay_context);
 				self
@@ -1773,13 +1774,11 @@ impl Fsm for PenToolFsmState {
 					let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input, viewport), &point, SnapTypeConfiguration::default());
 					let viewport = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
 					let close_to_point = closest_point(document, viewport, tolerance, document.metadata().all_layers(), |_| false, preferences).is_some();
-					if !close_to_point {
-						if let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, viewport, tolerance) {
-							let pos = closest_segment.closest_point_to_viewport();
-							let perp = closest_segment.calculate_perp(document);
-							overlay_context.manipulator_anchor(pos, true, None);
-							overlay_context.line(pos - perp * SEGMENT_OVERLAY_SIZE, pos + perp * SEGMENT_OVERLAY_SIZE, Some(COLOR_OVERLAY_BLUE), None);
-						}
+					if !close_to_point && let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, viewport, tolerance) {
+						let pos = closest_segment.closest_point_to_viewport();
+						let perp = closest_segment.calculate_perp(document);
+						overlay_context.manipulator_anchor(pos, true, None);
+						overlay_context.line(pos - perp * SEGMENT_OVERLAY_SIZE, pos + perp * SEGMENT_OVERLAY_SIZE, Some(COLOR_OVERLAY_BLUE), None);
 					}
 				}
 
