@@ -6,7 +6,6 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::prelude::*;
 use choice::enum_choice;
-use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
@@ -1572,51 +1571,33 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 		let number_of_inputs = context.network_interface.number_of_inputs(&node_id, context.selection_network_path);
 		for input_index in 1..number_of_inputs {
 			let row = context.call_widget_override(&node_id, input_index).unwrap_or_else(|| {
-				let Some(implementation) = context.network_interface.implementation(&node_id, context.selection_network_path) else {
-					log::error!("Could not get implementation for node {node_id}");
-					return Vec::new();
-				};
-
 				let mut number_options = (None, None, None);
 				let mut display_decimal_places = None;
 				let mut step = None;
 				let mut unit_suffix = None;
-				let input_type = match implementation {
-					DocumentNodeImplementation::ProtoNode(proto_node_identifier) => 'early_return: {
-						if let Some(field) = graphene_std::registry::NODE_METADATA
-							.lock()
-							.unwrap()
-							.get(proto_node_identifier)
-							.and_then(|metadata| metadata.fields.get(input_index))
-						{
-							number_options = (field.number_min, field.number_max, field.number_mode_range);
-							display_decimal_places = field.number_display_decimal_places;
-							unit_suffix = field.unit;
-							step = field.number_step;
-							if let Some(ref default) = field.default_type {
-								break 'early_return default.clone();
-							}
-						}
-
-						let Some(implementations) = &interpreted_executor::node_registry::NODE_REGISTRY.get(proto_node_identifier) else {
-							log::error!("Could not get implementation for protonode {proto_node_identifier:?}");
-							return Vec::new();
-						};
-
-						let mut input_types = implementations.keys().filter_map(|item| item.inputs.get(input_index)).collect::<Vec<_>>();
-						input_types.sort_by_key(|ty| ty.type_name());
-						let input_type = input_types.first().cloned();
-
-						let Some(input_type) = input_type else { return Vec::new() };
-						input_type.clone()
-					}
-					_ => context
-						.network_interface
-						.input_type(&InputConnector::node(node_id, input_index), context.selection_network_path)
-						.compiled_nested_type()
-						.cloned()
-						.unwrap_or(concrete!(())),
+				let input_type = context
+					.network_interface
+					.input_type(&InputConnector::node(node_id, input_index), context.selection_network_path)
+					.compiled_nested_type()
+					.cloned()
+					.unwrap_or(concrete!(()));
+				let Some(implementation) = context.network_interface.implementation(&node_id, context.selection_network_path) else {
+					log::error!("Could not get implementation for node {node_id}");
+					return Vec::new();
 				};
+				if let DocumentNodeImplementation::ProtoNode(proto_node_identifier) = implementation {
+					if let Some(field) = graphene_std::registry::NODE_METADATA
+						.lock()
+						.unwrap()
+						.get(proto_node_identifier)
+						.and_then(|metadata| metadata.fields.get(input_index))
+					{
+						number_options = (field.number_min, field.number_max, field.number_mode_range);
+						display_decimal_places = field.number_display_decimal_places;
+						unit_suffix = field.unit;
+						step = field.number_step;
+					}
+				}
 
 				property_from_type(node_id, input_index, &input_type, number_options, unit_suffix, display_decimal_places, step, context).unwrap_or_else(|value| value)
 			});
