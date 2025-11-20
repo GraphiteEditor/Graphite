@@ -233,7 +233,11 @@ pub(crate) fn property_from_type(
 										"This data can only be supplied through the node graph because no widget exists for its type:\n\
 										{}",
 										// TODO: Avoid needing to remove spaces here by fixing how `alias` is generated
-										concrete_type.alias.as_deref().map(|s| s.to_string().replace(" ", "")).unwrap_or(concrete_type.name.to_string())
+										concrete_type
+											.alias
+											.as_deref()
+											.map(|s| s.to_string().replace(" ", ""))
+											.unwrap_or_else(|| graphene_std::format_type(concrete_type.name.as_ref()))
 									))
 									.widget_holder(),
 							]);
