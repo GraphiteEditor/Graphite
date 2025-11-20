@@ -4,9 +4,11 @@ use winit::window::{Window as WinitWindow, WindowAttributes};
 
 use crate::consts::APP_NAME;
 use crate::event::AppEventScheduler;
+use crate::window::mac::NativeWindowImpl;
 use crate::wrapper::messages::MenuItem;
 
 pub(crate) trait NativeWindow {
+	fn init() {}
 	fn configure(attributes: WindowAttributes, event_loop: &dyn ActiveEventLoop) -> WindowAttributes;
 	fn new(window: &dyn WinitWindow, app_event_scheduler: AppEventScheduler) -> Self;
 	fn update_menu(&self, _entries: Vec<MenuItem>) {}
@@ -34,6 +36,10 @@ pub(crate) struct Window {
 }
 
 impl Window {
+	pub(crate) fn init() {
+		NativeWindowImpl::init();
+	}
+
 	pub(crate) fn new(event_loop: &dyn ActiveEventLoop, app_event_scheduler: AppEventScheduler) -> Self {
 		let mut attributes = WindowAttributes::default()
 			.with_title(APP_NAME)

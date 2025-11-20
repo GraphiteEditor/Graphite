@@ -1,6 +1,6 @@
 use muda::Menu as MudaMenu;
 use muda::accelerator::Accelerator;
-use muda::{AboutMetadataBuilder, CheckMenuItem, IsMenuItem, MenuEvent, MenuId, MenuItem, MenuItemKind, PredefinedMenuItem, Result, Submenu};
+use muda::{CheckMenuItem, IsMenuItem, MenuEvent, MenuId, MenuItem, MenuItemKind, PredefinedMenuItem, Result, Submenu};
 
 use crate::event::{AppEvent, AppEventScheduler};
 use crate::wrapper::messages::MenuItem as WrapperMenuItem;
@@ -10,18 +10,9 @@ pub(super) struct Menu {
 }
 
 impl Menu {
-	pub(super) fn new(event_scheduler: AppEventScheduler, app_name: &str) -> Self {
-		let about = PredefinedMenuItem::about(None, Some(AboutMetadataBuilder::new().name(Some(app_name)).build()));
-		let hide = PredefinedMenuItem::hide(None);
-		let hide_others = PredefinedMenuItem::hide_others(None);
-		let show_all = PredefinedMenuItem::show_all(None);
-		let quit = PredefinedMenuItem::quit(None);
-		let app_submenu = Submenu::with_items(
-			"",
-			true,
-			&[&about, &PredefinedMenuItem::separator(), &hide, &hide_others, &show_all, &PredefinedMenuItem::separator(), &quit],
-		)
-		.unwrap();
+	pub(super) fn new(event_scheduler: AppEventScheduler) -> Self {
+		// TODO: Remove as much app submenu special handling as possible
+		let app_submenu = Submenu::with_items("", true, &[]).unwrap();
 
 		let menu = MudaMenu::new();
 		menu.prepend(&app_submenu).unwrap();
@@ -29,6 +20,16 @@ impl Menu {
 		menu.init_for_nsapp();
 
 		MenuEvent::set_event_handler(Some(move |event: MenuEvent| {
+			let mtm = objc2::MainThreadMarker::new().expect("only ever called from main thread");
+			let is_shortcut_triggered = objc2_app_kit::NSApplication::sharedApplication(mtm)
+				.mainMenu()
+				.map(|m| m.highlightedItem().is_some())
+				.unwrap_or_default();
+			if is_shortcut_triggered {
+				tracing::error!("A keyboard input triggered a menu event. This is most likely a bug. Please report!");
+				return;
+			}
+
 			if let Some(id) = menu_id_to_u64(event.id()) {
 				event_scheduler.schedule(AppEvent::MenuEvent { id });
 			}

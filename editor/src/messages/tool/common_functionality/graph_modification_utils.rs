@@ -484,8 +484,8 @@ impl<'a> NodeGraphLayer<'a> {
 
 	/// Check if a layer is a raster layer
 	pub fn is_raster_layer(layer: LayerNodeIdentifier, network_interface: &mut NodeNetworkInterface) -> bool {
-		let layer_input_type = network_interface.input_type(&InputConnector::node(layer.to_node(), 1), &[]).0.nested_type().clone();
+		let layer_input_type = network_interface.input_type(&InputConnector::node(layer.to_node(), 1), &[]);
 
-		layer_input_type == concrete!(Table<Raster<CPU>>) || layer_input_type == concrete!(Table<Raster<GPU>>)
+		layer_input_type.compiled_nested_type() == Some(&concrete!(Table<Raster<CPU>>)) || layer_input_type.compiled_nested_type() == Some(&concrete!(Table<Raster<GPU>>))
 	}
 }

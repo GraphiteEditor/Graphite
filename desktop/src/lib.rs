@@ -36,6 +36,8 @@ pub fn start() {
 		return;
 	}
 
+	App::init();
+
 	let cli = Cli::parse();
 
 	let wgpu_context = futures::executor::block_on(gpu_context::create_wgpu_context());

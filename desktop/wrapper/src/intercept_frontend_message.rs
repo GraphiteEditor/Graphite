@@ -164,8 +164,7 @@ fn convert_menu_bar_entry_to_menu_item(
 	}
 
 	let shortcut = match shortcut {
-		//TODO: Reenable shortcuts once a workaround for missing keyboard events is found
-		Some(ActionKeys::Keys(LayoutKeysGroup(keys))) if false => convert_layout_keys_to_shortcut(keys),
+		Some(ActionKeys::Keys(LayoutKeysGroup(keys))) => convert_layout_keys_to_shortcut(keys),
 		_ => None,
 	};
 

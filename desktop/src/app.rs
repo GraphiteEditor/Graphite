@@ -44,6 +44,10 @@ pub(crate) struct App {
 }
 
 impl App {
+	pub(crate) fn init() {
+		Window::init();
+	}
+
 	pub(crate) fn new(
 		cef_context: Box<dyn cef::CefContext>,
 		cef_view_info_sender: Sender<cef::ViewInfoUpdate>,

@@ -37,7 +37,7 @@ pub struct ExecutionResponse {
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct CompilationResponse {
-	result: Result<ResolvedDocumentNodeTypesDelta, String>,
+	result: Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, String)>,
 	node_graph_errors: GraphErrors,
 }
 
@@ -371,7 +371,7 @@ impl NodeGraphExecutor {
 				NodeGraphUpdate::CompilationResponse(execution_response) => {
 					let CompilationResponse { node_graph_errors, result } = execution_response;
 					let type_delta = match result {
-						Err(e) => {
+						Err((incomplete_delta, e)) => {
 							// Clear the click targets while the graph is in an un-renderable state
 
 							document.network_interface.update_click_targets(HashMap::new());
@@ -380,7 +380,7 @@ impl NodeGraphExecutor {
 							log::trace!("{e}");
 
 							responses.add(NodeGraphMessage::UpdateTypes {
-								resolved_types: Default::default(),
+								resolved_types: incomplete_delta,
 								node_graph_errors,
 							});
 							responses.add(NodeGraphMessage::SendGraph);

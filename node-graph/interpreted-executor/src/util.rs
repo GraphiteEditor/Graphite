@@ -51,6 +51,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 					},
 					..Default::default()
 				},
+				// Keep this in sync with the protonode in valid_input_types
 				DocumentNode {
 					call_argument: concrete!(Context),
 					inputs: vec![NodeInput::scope("editor-api"), NodeInput::node(NodeId(2), 0), NodeInput::node(NodeId(1), 0)],
