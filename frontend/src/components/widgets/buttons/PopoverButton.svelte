@@ -1,6 +1,7 @@
 <script lang="ts">
+	import { type IconName, type PopoverButtonStyle } from "@graphite/icons";
+
 	import type { MenuDirection } from "@graphite/messages";
-	import { type IconName, type PopoverButtonStyle } from "@graphite/utility-functions/icons";
 
 	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";

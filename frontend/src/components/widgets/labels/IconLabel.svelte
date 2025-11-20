@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { type IconName, ICONS, ICON_SVG_STRINGS } from "@graphite/utility-functions/icons";
+	import { type IconName, ICONS, ICON_SVG_STRINGS } from "@graphite/icons";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 
