@@ -1,7 +1,7 @@
-import { type IconName } from "@graphite/icons";
 import { writable } from "svelte/store";
 
 import { type Editor } from "@graphite/editor";
+import { type IconName } from "@graphite/icons";
 import {
 	defaultWidgetLayout,
 	DisplayDialog,

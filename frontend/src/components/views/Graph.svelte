@@ -1,10 +1,10 @@
 <script lang="ts">
-	import type { IconName } from "@graphite/icons";
 	import { getContext } from "svelte";
 	import { cubicInOut } from "svelte/easing";
 	import { fade } from "svelte/transition";
 
 	import type { Editor } from "@graphite/editor";
+	import type { IconName } from "@graphite/icons";
 	import type { FrontendGraphInput, FrontendGraphOutput } from "@graphite/messages";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 
