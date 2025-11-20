@@ -81,7 +81,7 @@ impl LayoutHolder for NewDocumentDialogMessageHandler {
 				.widget_holder(),
 		];
 
-		let checkbox_id = CheckboxId::new();
+		let checkbox_id = CheckboxId::from_string("new-doc-infinite-canvas");
 		let infinite = vec![
 			TextLabel::new("Infinite Canvas").table_align(true).min_width("90px").for_checkbox(checkbox_id).widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),

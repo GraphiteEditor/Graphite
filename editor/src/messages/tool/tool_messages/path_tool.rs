@@ -243,7 +243,7 @@ impl LayoutHolder for PathTool {
 		})
 		// TODO: Remove `unwrap_or_default` once checkboxes are capable of displaying a mixed state
 		.unwrap_or_default();
-		let checkbox_id = CheckboxId::new();
+		let checkbox_id = CheckboxId::from_string("path-tool-colinear-handles");
 		let colinear_handle_checkbox = CheckboxInput::new(colinear_handles_state)
 			.disabled(!self.tool_data.can_toggle_colinearity)
 			.on_update(|&CheckboxInput { checked, .. }| {
