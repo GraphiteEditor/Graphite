@@ -11,6 +11,7 @@ import Checkmark from "@graphite-frontend/assets/icon-12px-solid/checkmark.svg";
 import Clipped from "@graphite-frontend/assets/icon-12px-solid/clipped.svg";
 import CloseX from "@graphite-frontend/assets/icon-12px-solid/close-x.svg";
 import Delay from "@graphite-frontend/assets/icon-12px-solid/delay.svg";
+import DotLarge from "@graphite-frontend/assets/icon-12px-solid/dot-large.svg";
 import Dot from "@graphite-frontend/assets/icon-12px-solid/dot.svg";
 import DropdownArrow from "@graphite-frontend/assets/icon-12px-solid/dropdown-arrow.svg";
 import Edit12px from "@graphite-frontend/assets/icon-12px-solid/edit-12px.svg";
@@ -58,6 +59,7 @@ const SOLID_12PX = {
 	Clipped: { svg: Clipped, size: 12 },
 	CloseX: { svg: CloseX, size: 12 },
 	Delay: { svg: Delay, size: 12 },
+	DotLarge: { svg: DotLarge, size: 12 },
 	Dot: { svg: Dot, size: 12 },
 	DropdownArrow: { svg: DropdownArrow, size: 12 },
 	Edit12px: { svg: Edit12px, size: 12 },

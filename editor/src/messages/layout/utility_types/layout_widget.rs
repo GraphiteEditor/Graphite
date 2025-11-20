@@ -516,6 +516,7 @@ impl WidgetHolder {
 			&& button1.tooltip == button2.tooltip
 			&& button1.tooltip_shortcut == button2.tooltip_shortcut
 			&& button1.popover_min_width == button2.popover_min_width
+			&& button1.popover_layout.len() == button2.popover_layout.len()
 		{
 			let mut new_widget_path = widget_path.to_vec();
 			for (i, (a, b)) in button1.popover_layout.iter_mut().zip(button2.popover_layout.iter()).enumerate() {
