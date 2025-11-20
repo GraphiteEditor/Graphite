@@ -246,5 +246,6 @@ fn median_filter_algorithm(mut original_buffer: Image<Color>, radius: u32, gamma
 fn median_quickselect(values: &mut [f32]) -> f32 {
 	let mid: usize = values.len() / 2;
 	// nth_unstable is like quickselect: average O(n)
-	*values.select_nth_unstable_by(mid, |a, b| a.partial_cmp(b).unwrap()).1
+	// Use total_cmp for safe NaN handling instead of partial_cmp().unwrap()
+	*values.select_nth_unstable_by(mid, |a, b| a.total_cmp(b)).1
 }
