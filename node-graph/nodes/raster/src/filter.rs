@@ -6,7 +6,7 @@ use raster_types::Image;
 use raster_types::{Bitmap, BitmapMut};
 use raster_types::{CPU, Raster};
 
-/// Blurs the image with a Gaussian, blur kernel or Median filter.
+/// Blurs the image with a Gaussian or box blur kernel filter.
 #[node_macro::node(category("Raster: Filter"))]
 async fn blur(
 	_: impl Ctx,
@@ -18,8 +18,6 @@ async fn blur(
 	radius: PixelLength,
 	/// Use a lower-quality box kernel instead of a circular Gaussian kernel. This is faster but produces boxy artifacts.
 	box_blur: bool,
-	/// Use a median filter instead of a blur. This is good for removing noise while preserving edges, but does not produce a smooth blur effect.
-	median: bool,
 	/// Opt to incorrectly apply the filter with color calculations in gamma space for compatibility with the results from other software.
 	gamma: bool,
 ) -> Table<Raster<CPU>> {
@@ -34,13 +32,43 @@ async fn blur(
 				image.clone()
 			} else if box_blur {
 				Raster::new_cpu(box_blur_algorithm(image.into_data(), radius, gamma))
-			} else if median {
-				Raster::new_cpu(median_filter_algorithm(image.into_data(), radius as u32, gamma))
 			} else {
 				Raster::new_cpu(gaussian_blur_algorithm(image.into_data(), radius, gamma))
 			};
 
 			row.element = blurred_image;
+			row
+		})
+		.collect()
+}
+
+/// Applies a median filter to reduce noise while preserving edges.
+#[node_macro::node(category("Raster: Filter"))]
+async fn median_filter(
+	_: impl Ctx,
+	/// The image to be filtered.
+	image_frame: Table<Raster<CPU>>,
+	/// The radius of the filter kernel. Larger values remove more noise but may blur fine details.
+	#[range((0., 50.))]
+	#[hard_min(0.)]
+	radius: PixelLength,
+	/// Opt to incorrectly apply the filter with color calculations in gamma space for compatibility with the results from other software.
+	gamma: bool,
+) -> Table<Raster<CPU>> {
+	image_frame
+		.into_iter()
+		.map(|mut row| {
+			let image = row.element.clone();
+
+			// Apply median filter
+			let filtered_image = if radius < 0.5 {
+				// Minimum filter radius
+				image.clone()
+			} else {
+				Raster::new_cpu(median_filter_algorithm(image.into_data(), radius as u32, gamma))
+			};
+
+			row.element = filtered_image;
 			row
 		})
 		.collect()
