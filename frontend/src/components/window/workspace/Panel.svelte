@@ -18,8 +18,8 @@
 
 	import type { Editor } from "@graphite/editor";
 	import { type LayoutKeysGroup, type Key } from "@graphite/messages";
-	import { platformIsMac, isEventSupported } from "@graphite/utility-functions/platform";
-
+	import type { AppWindowState } from "@graphite/state-providers/app-window";
+	import { operatingSystem, isEventSupported } from "@graphite/utility-functions/platform";
 	import { extractPixelData } from "@graphite/utility-functions/rasterization";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -30,8 +30,10 @@
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 	import UserInputLabel from "@graphite/components/widgets/labels/UserInputLabel.svelte";
 
+	const BUTTON_LEFT = 0;
 	const BUTTON_MIDDLE = 1;
 
+	const appWindow = getContext<AppWindowState>("appWindow");
 	const editor = getContext<Editor>("editor");
 
 	export let tabMinWidths = false;
@@ -41,6 +43,7 @@
 	export let panelType: PanelType | undefined = undefined;
 	export let clickAction: ((index: number) => void) | undefined = undefined;
 	export let closeAction: ((index: number) => void) | undefined = undefined;
+	export let emptySpaceAction: (() => void) | undefined = undefined;
 
 	let className = "";
 	export { className as class };
@@ -51,14 +54,18 @@
 
 	let tabElements: (LayoutRow | undefined)[] = [];
 
-	function platformModifiers(reservedKey: boolean): LayoutKeysGroup {
+	function platformModifiedAccelKey(browserReservedKey: boolean): LayoutKeysGroup {
 		// TODO: Remove this by properly feeding these keys from a layout provided by the backend
 
 		const ALT: Key = { key: "Alt", label: "Alt" };
 		const COMMAND: Key = { key: "Command", label: "Command" };
 		const CONTROL: Key = { key: "Control", label: "Ctrl" };
 
-		if (platformIsMac()) return reservedKey ? [ALT, COMMAND] : [COMMAND];
+		// Only consider the browser reserved key on web platforms
+		const reservedKey = $appWindow.platform === "Web" ? browserReservedKey : false;
+
+		// Return either Command (Mac) or Control (Windows/Linux), with Alt added if the browser reserves the shortcut
+		if (operatingSystem() === "Mac") return reservedKey ? [ALT, COMMAND] : [COMMAND];
 		return reservedKey ? [CONTROL, ALT] : [CONTROL];
 	}
 
@@ -93,6 +100,11 @@
 		});
 	}
 
+	function onEmptySpaceAction(e: MouseEvent) {
+		if (e.target !== e.currentTarget) return;
+		if (e.button === BUTTON_MIDDLE || (e.button === BUTTON_LEFT && e.detail === 2)) emptySpaceAction?.();
+	}
+
 	export async function scrollTabIntoView(newIndex: number) {
 		await tick();
 		tabElements[newIndex]?.div?.()?.scrollIntoView();
@@ -101,7 +113,7 @@
 
 <LayoutCol on:pointerdown={() => panelType && editor.handle.setActivePanel(panelType)} class={`panel ${className}`.trim()} {classes} style={styleName} {styles}>
 	<LayoutRow class="tab-bar" classes={{ "min-widths": tabMinWidths }}>
-		<LayoutRow class="tab-group" scrollableX={true}>
+		<LayoutRow class="tab-group" scrollableX={true} on:click={onEmptySpaceAction} on:auxclick={onEmptySpaceAction}>
 			{#each tabLabels as tabLabel, tabIndex}
 				<LayoutRow
 					class="tab"
@@ -159,42 +171,54 @@
 			<svelte:component this={PANEL_COMPONENTS[panelType]} />
 		{:else}
 			<LayoutCol class="empty-panel" on:dragover={(e) => e.preventDefault()} on:drop={dropFile}>
-				<LayoutCol class="content">
-					<LayoutRow class="logotype">
-						<IconLabel icon="GraphiteLogotypeSolid" />
-					</LayoutRow>
-					<LayoutRow class="actions">
-						<table>
-							<tbody>
-								<tr>
-									<td>
-										<TextButton label="New Document" icon="File" flush={true} action={() => editor.handle.newDocumentDialog()} />
-									</td>
-									<td>
-										<UserInputLabel keysWithLabelsGroups={[[...platformModifiers(true), { key: "KeyN", label: "N" }]]} />
-									</td>
-								</tr>
-								<tr>
-									<td>
-										<TextButton label="Open Document" icon="Folder" flush={true} action={() => editor.handle.openDocument()} />
-									</td>
-									<td>
-										<UserInputLabel keysWithLabelsGroups={[[...platformModifiers(false), { key: "KeyO", label: "O" }]]} />
-									</td>
-								</tr>
-								<tr>
-									<td colspan="2">
-										<TextButton label="Open Demo Artwork" icon="Image" flush={true} action={() => editor.handle.demoArtworkDialog()} />
-									</td>
-								</tr>
-								<tr>
-									<td colspan="2">
-										<TextButton label="Support the Development Fund" icon="Heart" flush={true} action={() => editor.handle.visitUrl("https://graphite.rs/donate/")} />
-									</td>
-								</tr>
-							</tbody>
-						</table>
-					</LayoutRow>
+				<LayoutCol class="top-spacer"></LayoutCol>
+				<LayoutCol class="content-container">
+					<LayoutCol class="content">
+						<LayoutRow class="logotype">
+							<IconLabel icon="GraphiteLogotypeSolid" />
+						</LayoutRow>
+						<LayoutRow class="actions">
+							<table>
+								<tbody>
+									<tr>
+										<td>
+											<TextButton label="New Document" icon="File" flush={true} action={() => editor.handle.newDocumentDialog()} />
+										</td>
+										<td>
+											<UserInputLabel keysWithLabelsGroups={[[...platformModifiedAccelKey(true), { key: "KeyN", label: "N" }]]} />
+										</td>
+									</tr>
+									<tr>
+										<td>
+											<TextButton label="Open Document" icon="Folder" flush={true} action={() => editor.handle.openDocument()} />
+										</td>
+										<td>
+											<UserInputLabel keysWithLabelsGroups={[[...platformModifiedAccelKey(false), { key: "KeyO", label: "O" }]]} />
+										</td>
+									</tr>
+									<tr>
+										<td colspan="2">
+											<TextButton label="Open Demo Artwork" icon="Image" flush={true} action={() => editor.handle.demoArtworkDialog()} />
+										</td>
+									</tr>
+									<tr>
+										<td colspan="2">
+											<TextButton label="Support the Development Fund" icon="Heart" flush={true} action={() => editor.handle.visitUrl("https://graphite.rs/donate/")} />
+										</td>
+									</tr>
+								</tbody>
+							</table>
+						</LayoutRow>
+					</LayoutCol>
+				</LayoutCol>
+				<LayoutCol class="bottom-message">
+					{#if new Date().getFullYear() === 2025}
+						<TextLabel italic={true} disabled={true}>
+							September 2025 release — <a href="https://youtube.com/watch?v=Vl5BA4g3QXM" target="_blank">What's new? (video)</a>
+							— Note: some older documents may render differently and require manual fixes.
+							<a href="https://ec6796b4.graphite-editor.pages.dev/" target="_blank">Need the old version?</a>
+						</TextLabel>
+					{/if}
 				</LayoutCol>
 			</LayoutCol>
 		{/if}
@@ -211,6 +235,7 @@
 			height: 28px;
 			min-height: auto;
 			background: var(--color-1-nearblack); // Needed for the viewport hole punch on desktop
+			flex-shrink: 0;
 
 			&.min-widths .tab-group .tab {
 				min-width: 120px;
@@ -333,30 +358,53 @@
 				background: var(--color-2-mildblack);
 				margin: 4px;
 				border-radius: 2px;
-				justify-content: center;
+				justify-content: space-between;
 
-				.content {
+				.content-container {
 					flex: 0 0 auto;
-					align-items: center;
+					justify-content: center;
 
-					.logotype {
-						margin-bottom: 40px;
+					.content {
+						flex: 0 0 auto;
+						align-items: center;
 
-						svg {
-							width: auto;
-							height: 120px;
-						}
-					}
+						.logotype {
+							margin-top: 8px;
+							margin-bottom: 40px;
 
-					.actions {
-						table {
-							border-spacing: 8px;
-							margin: -8px;
-
-							td {
-								padding: 0;
+							svg {
+								width: auto;
+								height: 120px;
 							}
 						}
+
+						.actions {
+							margin-bottom: 8px;
+
+							table {
+								border-spacing: 8px;
+								margin: -8px;
+
+								td {
+									padding: 0;
+								}
+							}
+						}
+					}
+				}
+
+				.top-spacer {
+					flex: 0 1 48px;
+				}
+
+				.bottom-message {
+					flex: 0 0 48px;
+					align-items: center;
+					justify-content: end;
+
+					.text-label {
+						white-space: wrap;
+						margin: 0 1em;
 					}
 				}
 			}

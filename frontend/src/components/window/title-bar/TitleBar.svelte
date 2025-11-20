@@ -2,26 +2,21 @@
 	import { getContext, onMount } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import { type KeyRaw, type LayoutKeysGroup, type MenuBarEntry, type MenuListEntry, type AppWindowPlatform, UpdateMenuBarLayout } from "@graphite/messages";
-	import type { PortfolioState } from "@graphite/state-providers/portfolio";
-	import { platformIsMac } from "@graphite/utility-functions/platform";
+	import { type KeyRaw, type LayoutKeysGroup, type MenuBarEntry, type MenuListEntry, UpdateMenuBarLayout } from "@graphite/messages";
+	import type { AppWindowState } from "@graphite/state-providers/app-window";
+	import { operatingSystem } from "@graphite/utility-functions/platform";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
 	import WindowButtonsLinux from "@graphite/components/window/title-bar/WindowButtonsLinux.svelte";
-	import WindowButtonsMac from "@graphite/components/window/title-bar/WindowButtonsMac.svelte";
 	import WindowButtonsWeb from "@graphite/components/window/title-bar/WindowButtonsWeb.svelte";
 	import WindowButtonsWindows from "@graphite/components/window/title-bar/WindowButtonsWindows.svelte";
-	import WindowTitle from "@graphite/components/window/title-bar/WindowTitle.svelte";
 
-	export let platform: AppWindowPlatform;
-	export let maximized: boolean;
-
+	const appWindow = getContext<AppWindowState>("appWindow");
 	const editor = getContext<Editor>("editor");
-	const portfolio = getContext<PortfolioState>("portfolio");
 
 	// TODO: Apparently, Safari does not support the Keyboard.lock() API but does relax its authority over certain keyboard shortcuts in fullscreen mode, which we should take advantage of
-	const ACCEL_KEY = platformIsMac() ? "Command" : "Control";
+	const ACCEL_KEY = operatingSystem() === "Mac" ? "Command" : "Control";
 	const LOCK_REQUIRING_SHORTCUTS: KeyRaw[][] = [
 		[ACCEL_KEY, "KeyW"],
 		[ACCEL_KEY, "KeyN"],
@@ -31,10 +26,6 @@
 	];
 
 	let entries: MenuListEntry[] = [];
-
-	$: docIndex = $portfolio.activeDocumentIndex;
-	$: displayName = $portfolio.documents[docIndex]?.displayName || "";
-	$: windowTitle = `${displayName}${displayName && " - "}Graphite`;
 
 	onMount(() => {
 		const arraysEqual = (a: KeyRaw[], b: KeyRaw[]): boolean => a.length === b.length && a.every((aValue, i) => aValue === b[i]);
@@ -67,30 +58,24 @@
 </script>
 
 <LayoutRow class="title-bar">
-	<!-- Menu bar (or on Mac: window buttons) -->
-	<LayoutRow class="left">
-		{#if platform === "Mac"}
-			<WindowButtonsMac />
-		{:else}
+	<!-- Menu bar -->
+	<LayoutRow>
+		{#if $appWindow.platform !== "Mac"}
 			{#each entries as entry}
 				<TextButton label={entry.label} icon={entry.icon} menuListChildren={entry.children} action={entry.action} flush={true} />
 			{/each}
 		{/if}
-		<LayoutRow on:mousedown={() => editor.handle.appWindowDrag()} on:dblclick={() => editor.handle.appWindowMaximize()} />
 	</LayoutRow>
-	<!-- Document title -->
-	<LayoutRow class="center" on:mousedown={() => editor.handle.appWindowDrag()} on:dblclick={() => editor.handle.appWindowMaximize()}>
-		<WindowTitle text={windowTitle} />
-	</LayoutRow>
-	<!-- Window buttons (except on Mac) -->
-	<LayoutRow class="right">
-		<LayoutRow on:mousedown={() => editor.handle.appWindowDrag()} on:dblclick={() => editor.handle.appWindowMaximize()} />
-		{#if platform === "Windows"}
-			<WindowButtonsWindows {maximized} />
-		{:else if platform === "Linux"}
-			<WindowButtonsLinux {maximized} />
-		{:else if platform === "Web"}
+	<!-- Spacer -->
+	<LayoutRow class="spacer" on:mousedown={() => editor.handle.appWindowDrag()} on:dblclick={() => editor.handle.appWindowMaximize()} />
+	<!-- Window buttons -->
+	<LayoutRow>
+		{#if $appWindow.platform === "Web"}
 			<WindowButtonsWeb />
+		{:else if $appWindow.platform === "Windows"}
+			<WindowButtonsWindows />
+		{:else if $appWindow.platform === "Linux"}
+			<WindowButtonsLinux />
 		{/if}
 	</LayoutRow>
 </LayoutRow>
@@ -101,23 +86,15 @@
 		flex: 0 0 auto;
 
 		> .layout-row {
-			flex: 1 1 100%;
+			flex: 0 0 auto;
 
-			&.left {
-				justify-content: flex-start;
+			&.spacer {
+				flex: 1 1 100%;
 			}
 
-			&.center {
-				justify-content: center;
+			.text-button {
+				height: 100%;
 			}
-
-			&.right {
-				justify-content: flex-end;
-			}
-		}
-
-		.text-button {
-			height: 28px;
 		}
 	}
 </style>

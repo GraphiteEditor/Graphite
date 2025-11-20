@@ -8,7 +8,7 @@ use crate::helpers::translate_key;
 use crate::{EDITOR_HANDLE, EDITOR_HAS_CRASHED, Error, MESSAGE_BUFFER};
 use editor::consts::FILE_EXTENSION;
 use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
-use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
+use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta};
 use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use editor::messages::portfolio::document::utility_types::network_interface::ImportOrExport;
 use editor::messages::portfolio::utility_types::Platform;
@@ -307,13 +307,6 @@ impl EditorHandle {
 		}
 	}
 
-	/// Minimizes the application window to the taskbar or dock
-	#[wasm_bindgen(js_name = appWindowMinimize)]
-	pub fn app_window_minimize(&self) {
-		let message = AppWindowMessage::AppWindowMinimize;
-		self.dispatch(message);
-	}
-
 	#[wasm_bindgen(js_name = addPrimaryImport)]
 	pub fn add_primary_import(&self) {
 		self.dispatch(DocumentMessage::AddTransaction);
@@ -336,6 +329,13 @@ impl EditorHandle {
 	pub fn add_secondary_export(&self) {
 		self.dispatch(DocumentMessage::AddTransaction);
 		self.dispatch(NodeGraphMessage::AddSecondaryExport);
+	}
+
+	/// Minimizes the application window to the taskbar or dock
+	#[wasm_bindgen(js_name = appWindowMinimize)]
+	pub fn app_window_minimize(&self) {
+		let message = AppWindowMessage::AppWindowMinimize;
+		self.dispatch(message);
 	}
 
 	/// Toggles minimizing or restoring down the application window
@@ -421,14 +421,18 @@ impl EditorHandle {
 	}
 
 	#[wasm_bindgen(js_name = loadPreferences)]
-	pub fn load_preferences(&self, preferences: String) {
-		let Ok(preferences) = serde_json::from_str(&preferences) else {
-			log::error!("Failed to deserialize preferences");
-			return;
+	pub fn load_preferences(&self, preferences: Option<String>) {
+		let preferences = if let Some(preferences) = preferences {
+			let Ok(preferences) = serde_json::from_str(&preferences) else {
+				log::error!("Failed to deserialize preferences");
+				return;
+			};
+			Some(preferences)
+		} else {
+			None
 		};
 
 		let message = PreferencesMessage::Load { preferences };
-
 		self.dispatch(message);
 	}
 
@@ -512,13 +516,10 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
-	/// Send new bounds when document panel viewports get resized or moved within the editor
-	/// [left, top, right, bottom]...
-	#[wasm_bindgen(js_name = boundsOfViewports)]
-	pub fn bounds_of_viewports(&self, bounds_of_viewports: &[f64]) {
-		let chunked: Vec<_> = bounds_of_viewports.chunks(4).map(ViewportBounds::from_slice).collect();
-
-		let message = InputPreprocessorMessage::BoundsOfViewports { bounds_of_viewports: chunked };
+	/// Send new viewport info to the backend
+	#[wasm_bindgen(js_name = updateViewport)]
+	pub fn update_viewport(&self, x: f64, y: f64, width: f64, height: f64, scale: f64) {
+		let message = ViewportMessage::Update { x, y, width, height, scale };
 		self.dispatch(message);
 	}
 
@@ -526,13 +527,6 @@ impl EditorHandle {
 	#[wasm_bindgen(js_name = zoomCanvasToFitAll)]
 	pub fn zoom_canvas_to_fit_all(&self) {
 		let message = DocumentMessage::ZoomCanvasToFitAll;
-		self.dispatch(message);
-	}
-
-	/// Inform the overlays system of the current device pixel ratio
-	#[wasm_bindgen(js_name = setDevicePixelRatio)]
-	pub fn set_device_pixel_ratio(&self, ratio: f64) {
-		let message = PortfolioMessage::SetDevicePixelRatio { ratio };
 		self.dispatch(message);
 	}
 
@@ -797,13 +791,6 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
-	/// Snaps the import/export edges to a grid space when the scroll bar is released
-	#[wasm_bindgen(js_name = setGridAlignedEdges)]
-	pub fn set_grid_aligned_edges(&self) {
-		let message = NodeGraphMessage::SetGridAlignedEdges;
-		self.dispatch(message);
-	}
-
 	/// Merge the selected nodes into a subnetwork
 	#[wasm_bindgen(js_name = mergeSelectedNodes)]
 	pub fn merge_nodes(&self) {
@@ -1051,8 +1038,12 @@ async fn poll_node_graph_evaluation() {
 			crate::NODE_GRAPH_ERROR_DISPLAYED.store(false, Ordering::SeqCst);
 		}
 
+		// Batch responses to pool frontend updates
+		let batched = Message::Batched {
+			messages: messages.into_iter().collect(),
+		};
 		// Send each `FrontendMessage` to the JavaScript frontend
-		for response in messages.into_iter().flat_map(|message| editor.handle_message(message)) {
+		for response in editor.handle_message(batched) {
 			handle.send_frontend_message_to_js(response);
 		}
 

@@ -18,7 +18,7 @@ function trackScrollHeadingInTOC() {
 
 		// If the next heading isn't fully visible, use the previous heading
 		if (heading && heading.getBoundingClientRect().bottom > window.innerHeight) {
-			prevHeading = firstVisible;
+			let prevHeading = firstVisible;
 			while (prevHeading && !prevHeading.tagName.match(/^H[1-6]$/)) {
 				if (!prevHeading.previousElementSibling) break;
 				prevHeading = prevHeading.previousElementSibling;
@@ -34,7 +34,7 @@ function trackScrollHeadingInTOC() {
 		}
 
 		// If there is no heading, use the first heading
-		if (!heading) heading = document.querySelector("article > h1");
+		if (!heading) heading = document.querySelector("article > h1") || undefined;
 
 		// Remove the existing active heading
 		const existingActive = document.querySelector("aside.contents li.active");
@@ -69,7 +69,7 @@ function listenForClickToOpenOrCloseTOC() {
 	// Close the chapter selection if the user clicks outside of it
 	document.querySelector("main")?.addEventListener("click", (e) => {
 		const chapters = document.querySelector("[data-chapters]");
-		if (chapters?.classList.contains("open") && !e.target.closest("[data-chapters]")) {
+		if (chapters?.classList.contains("open") && e.target instanceof HTMLElement && !e.target.closest("[data-chapters]")) {
 			chapters.classList.remove("open");
 		}
 	});

@@ -1,13 +1,15 @@
-use graphite_desktop_wrapper::NodeGraphExecutionResult;
-use graphite_desktop_wrapper::messages::DesktopWrapperMessage;
+use crate::wrapper::NodeGraphExecutionResult;
+use crate::wrapper::messages::DesktopWrapperMessage;
 
 pub(crate) enum AppEvent {
 	UiUpdate(wgpu::Texture),
+	CursorChange(winit::cursor::Cursor),
 	ScheduleBrowserWork(std::time::Instant),
 	WebCommunicationInitialized,
 	DesktopWrapperMessage(DesktopWrapperMessage),
 	NodeGraphExecutionResult(NodeGraphExecutionResult),
 	CloseWindow,
+	MenuEvent { id: u64 },
 }
 
 #[derive(Clone)]

@@ -1,5 +1,6 @@
 use rfd::AsyncFileDialog;
-use std::sync::Arc;
+use std::fs;
+use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
 use std::sync::mpsc::SyncSender;
@@ -7,27 +8,27 @@ use std::thread;
 use std::time::Duration;
 use std::time::Instant;
 use winit::application::ApplicationHandler;
+use winit::dpi::PhysicalSize;
 use winit::event::WindowEvent;
 use winit::event_loop::ActiveEventLoop;
 use winit::event_loop::ControlFlow;
-use winit::window::Window;
 use winit::window::WindowId;
 
 use crate::cef;
 use crate::consts::CEF_MESSAGE_LOOP_MAX_ITERATIONS;
 use crate::event::{AppEvent, AppEventScheduler};
-use crate::native_window;
 use crate::persist::PersistentData;
 use crate::render::GraphicsState;
-use graphite_desktop_wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, Platform};
-use graphite_desktop_wrapper::{DesktopWrapper, NodeGraphExecutionResult, WgpuContext, serialize_frontend_messages};
+use crate::window::Window;
+use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, Platform};
+use crate::wrapper::{DesktopWrapper, NodeGraphExecutionResult, WgpuContext, serialize_frontend_messages};
 
 pub(crate) struct App {
 	cef_context: Box<dyn cef::CefContext>,
-	window: Option<Arc<dyn Window>>,
-	native_window: native_window::NativeWindowHandle,
+	window: Option<Window>,
+	window_scale: f64,
 	cef_schedule: Option<Instant>,
-	cef_window_size_sender: Sender<cef::WindowSize>,
+	cef_view_info_sender: Sender<cef::ViewInfoUpdate>,
 	graphics_state: Option<GraphicsState>,
 	wgpu_context: WgpuContext,
 	app_event_receiver: Receiver<AppEvent>,
@@ -39,15 +40,21 @@ pub(crate) struct App {
 	web_communication_initialized: bool,
 	web_communication_startup_buffer: Vec<Vec<u8>>,
 	persistent_data: PersistentData,
+	launch_documents: Vec<PathBuf>,
 }
 
 impl App {
+	pub(crate) fn init() {
+		Window::init();
+	}
+
 	pub(crate) fn new(
 		cef_context: Box<dyn cef::CefContext>,
-		window_size_sender: Sender<cef::WindowSize>,
+		cef_view_info_sender: Sender<cef::ViewInfoUpdate>,
 		wgpu_context: WgpuContext,
 		app_event_receiver: Receiver<AppEvent>,
 		app_event_scheduler: AppEventScheduler,
+		launch_documents: Vec<PathBuf>,
 	) -> Self {
 		let rendering_app_event_scheduler = app_event_scheduler.clone();
 		let (start_render_sender, start_render_receiver) = std::sync::mpsc::sync_channel(1);
@@ -65,9 +72,10 @@ impl App {
 		Self {
 			cef_context,
 			window: None,
+			window_scale: 1.0,
 			cef_schedule: Some(Instant::now()),
 			graphics_state: None,
-			cef_window_size_sender: window_size_sender,
+			cef_view_info_sender,
 			wgpu_context,
 			app_event_receiver,
 			app_event_scheduler,
@@ -78,11 +86,11 @@ impl App {
 			web_communication_initialized: false,
 			web_communication_startup_buffer: Vec::new(),
 			persistent_data,
-			native_window: Default::default(),
+			launch_documents,
 		}
 	}
 
-	fn handle_desktop_frontend_message(&mut self, message: DesktopFrontendMessage) {
+	fn handle_desktop_frontend_message(&mut self, message: DesktopFrontendMessage, responses: &mut Vec<DesktopWrapperMessage>) {
 		match message {
 			DesktopFrontendMessage::ToWeb(messages) => {
 				let Some(bytes) = serialize_frontend_messages(messages) else {
@@ -102,7 +110,7 @@ impl App {
 					let show_dialog = async move { dialog.pick_file().await.map(|f| f.path().to_path_buf()) };
 
 					if let Some(path) = futures::executor::block_on(show_dialog)
-						&& let Ok(content) = std::fs::read(&path)
+						&& let Ok(content) = fs::read(&path)
 					{
 						let message = DesktopWrapperMessage::OpenFileDialogResult { path, content, context };
 						app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
@@ -135,7 +143,7 @@ impl App {
 				});
 			}
 			DesktopFrontendMessage::WriteFile { path, content } => {
-				if let Err(e) = std::fs::write(&path, content) {
+				if let Err(e) = fs::write(&path, content) {
 					tracing::error!("Failed to write file {}: {}", path.display(), e);
 				}
 			}
@@ -146,19 +154,19 @@ impl App {
 					}
 				});
 			}
-			DesktopFrontendMessage::UpdateViewportBounds { x, y, width, height } => {
+			DesktopFrontendMessage::UpdateViewportPhysicalBounds { x, y, width, height } => {
 				if let Some(graphics_state) = &mut self.graphics_state
 					&& let Some(window) = &self.window
 				{
 					let window_size = window.surface_size();
 
-					let viewport_offset_x = x / window_size.width as f32;
-					let viewport_offset_y = y / window_size.height as f32;
-					graphics_state.set_viewport_offset([viewport_offset_x, viewport_offset_y]);
+					let viewport_offset_x = x / window_size.width as f64;
+					let viewport_offset_y = y / window_size.height as f64;
+					graphics_state.set_viewport_offset([viewport_offset_x as f32, viewport_offset_y as f32]);
 
-					let viewport_scale_x = if width != 0.0 { window_size.width as f32 / width } else { 1.0 };
-					let viewport_scale_y = if height != 0.0 { window_size.height as f32 / height } else { 1.0 };
-					graphics_state.set_viewport_scale([viewport_scale_x, viewport_scale_y]);
+					let viewport_scale_x = if width != 0.0 { window_size.width as f64 / width } else { 1.0 };
+					let viewport_scale_y = if height != 0.0 { window_size.height as f64 / height } else { 1.0 };
+					graphics_state.set_viewport_scale([viewport_scale_x as f32, viewport_scale_y as f32]);
 				}
 			}
 			DesktopFrontendMessage::UpdateOverlays(scene) => {
@@ -166,15 +174,19 @@ impl App {
 					graphics_state.set_overlays_scene(scene);
 				}
 			}
-			DesktopFrontendMessage::UpdateWindowState { maximized, minimized } => {
+			DesktopFrontendMessage::MinimizeWindow => {
 				if let Some(window) = &self.window {
-					window.set_maximized(maximized);
-					window.set_minimized(minimized);
+					window.minimize();
+				}
+			}
+			DesktopFrontendMessage::MaximizeWindow => {
+				if let Some(window) = &self.window {
+					window.toggle_maximize();
 				}
 			}
 			DesktopFrontendMessage::DragWindow => {
 				if let Some(window) = &self.window {
-					let _ = window.drag_window();
+					window.start_drag();
 				}
 			}
 			DesktopFrontendMessage::CloseWindow => {
@@ -192,6 +204,14 @@ impl App {
 			DesktopFrontendMessage::PersistenceUpdateDocumentsList { ids } => {
 				self.persistent_data.set_document_order(ids);
 			}
+			DesktopFrontendMessage::PersistenceWritePreferences { preferences } => {
+				self.persistent_data.write_preferences(preferences);
+			}
+			DesktopFrontendMessage::PersistenceLoadPreferences => {
+				let preferences = self.persistent_data.load_preferences();
+				let message = DesktopWrapperMessage::LoadPreferences { preferences };
+				responses.push(message);
+			}
 			DesktopFrontendMessage::PersistenceLoadCurrentDocument => {
 				if let Some((id, document)) = self.persistent_data.current_document() {
 					let message = DesktopWrapperMessage::LoadDocument {
@@ -200,7 +220,7 @@ impl App {
 						to_front: false,
 						select_after_open: true,
 					};
-					self.dispatch_desktop_wrapper_message(message);
+					responses.push(message);
 				}
 			}
 			DesktopFrontendMessage::PersistenceLoadRemainingDocuments => {
@@ -211,7 +231,7 @@ impl App {
 						to_front: true,
 						select_after_open: false,
 					};
-					self.dispatch_desktop_wrapper_message(message);
+					responses.push(message);
 				}
 				for (id, document) in self.persistent_data.documents_after_current() {
 					let message = DesktopWrapperMessage::LoadDocument {
@@ -220,28 +240,46 @@ impl App {
 						to_front: false,
 						select_after_open: false,
 					};
-					self.dispatch_desktop_wrapper_message(message);
+					responses.push(message);
 				}
 				if let Some(id) = self.persistent_data.current_document_id() {
 					let message = DesktopWrapperMessage::SelectDocument { id };
-					self.dispatch_desktop_wrapper_message(message);
+					responses.push(message);
 				}
 			}
-			DesktopFrontendMessage::PersistenceWritePreferences { preferences } => {
-				self.persistent_data.write_preferences(preferences);
+			DesktopFrontendMessage::OpenLaunchDocuments => {
+				if self.launch_documents.is_empty() {
+					return;
+				}
+				let app_event_scheduler = self.app_event_scheduler.clone();
+				let launch_documents = std::mem::take(&mut self.launch_documents);
+				let _ = thread::spawn(move || {
+					for path in launch_documents {
+						tracing::info!("Opening file from command line: {}", path.display());
+						if let Ok(content) = fs::read(&path) {
+							let message = DesktopWrapperMessage::OpenFile { path, content };
+							app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
+						} else {
+							tracing::error!("Failed to read file: {}", path.display());
+						}
+					}
+				});
 			}
-			DesktopFrontendMessage::PersistenceLoadPreferences => {
-				if let Some(preferences) = self.persistent_data.load_preferences() {
-					let message = DesktopWrapperMessage::LoadPreferences { preferences };
-					self.dispatch_desktop_wrapper_message(message);
+			DesktopFrontendMessage::UpdateMenu { entries } => {
+				if let Some(window) = &self.window {
+					window.update_menu(entries);
 				}
 			}
 		}
 	}
 
 	fn handle_desktop_frontend_messages(&mut self, messages: Vec<DesktopFrontendMessage>) {
+		let mut responses = Vec::new();
 		for message in messages {
-			self.handle_desktop_frontend_message(message);
+			self.handle_desktop_frontend_message(message, &mut responses);
+		}
+		for message in responses {
+			self.dispatch_desktop_wrapper_message(message);
 		}
 	}
 
@@ -301,29 +339,36 @@ impl App {
 					self.cef_schedule = Some(instant);
 				}
 			}
+			AppEvent::CursorChange(cursor) => {
+				if let Some(window) = &self.window {
+					window.set_cursor(cursor);
+				}
+			}
 			AppEvent::CloseWindow => {
 				// TODO: Implement graceful shutdown
 
 				tracing::info!("Exiting main event loop");
 				event_loop.exit();
 			}
+			AppEvent::MenuEvent { id } => {
+				self.dispatch_desktop_wrapper_message(DesktopWrapperMessage::MenuEvent { id });
+			}
 		}
 	}
 }
 impl ApplicationHandler for App {
 	fn can_create_surfaces(&mut self, event_loop: &dyn ActiveEventLoop) {
-		let window_attributes = self.native_window.build(event_loop);
+		let window = Window::new(event_loop, self.app_event_scheduler.clone());
 
-		let window: Arc<dyn Window> = Arc::from(event_loop.create_window(window_attributes).unwrap());
-
-		self.native_window.setup(window.as_ref());
-
-		let graphics_state = GraphicsState::new(window.clone(), self.wgpu_context.clone());
+		self.window_scale = window.scale_factor();
+		let _ = self.cef_view_info_sender.send(cef::ViewInfoUpdate::Scale(self.window_scale));
+		self.cef_context.notify_view_info_changed();
 
 		self.window = Some(window);
-		self.graphics_state = Some(graphics_state);
 
-		tracing::info!("Winit window created and ready");
+		let graphics_state = GraphicsState::new(self.window.as_ref().unwrap(), self.wgpu_context.clone());
+
+		self.graphics_state = Some(graphics_state);
 
 		self.desktop_wrapper.init(self.wgpu_context.clone());
 
@@ -349,15 +394,27 @@ impl ApplicationHandler for App {
 			WindowEvent::CloseRequested => {
 				self.app_event_scheduler.schedule(AppEvent::CloseWindow);
 			}
-			WindowEvent::SurfaceResized(size) => {
-				let _ = self.cef_window_size_sender.send(size.into());
-				self.cef_context.notify_of_resize();
+			WindowEvent::SurfaceResized(PhysicalSize { width, height }) => {
+				let _ = self.cef_view_info_sender.send(cef::ViewInfoUpdate::Size {
+					width: width as usize,
+					height: height as usize,
+				});
+				self.cef_context.notify_view_info_changed();
+				if let Some(window) = &self.window {
+					let maximized = window.is_maximized();
+					self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(DesktopWrapperMessage::UpdateMaximized { maximized }));
+				}
+			}
+			WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+				self.window_scale = scale_factor;
+				let _ = self.cef_view_info_sender.send(cef::ViewInfoUpdate::Scale(self.window_scale));
+				self.cef_context.notify_view_info_changed();
 			}
 			WindowEvent::RedrawRequested => {
 				let Some(ref mut graphics_state) = self.graphics_state else { return };
 				// Only rerender once we have a new UI texture to display
 				if let Some(window) = &self.window {
-					match graphics_state.render(window.as_ref()) {
+					match graphics_state.render(window) {
 						Ok(_) => {}
 						Err(wgpu::SurfaceError::Lost) => {
 							tracing::warn!("lost surface");
@@ -372,7 +429,7 @@ impl ApplicationHandler for App {
 			}
 			WindowEvent::DragDropped { paths, .. } => {
 				for path in paths {
-					match std::fs::read(&path) {
+					match fs::read(&path) {
 						Ok(content) => {
 							let message = DesktopWrapperMessage::OpenFile { path, content };
 							self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));

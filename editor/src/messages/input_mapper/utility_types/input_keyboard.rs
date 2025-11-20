@@ -61,7 +61,7 @@ pub enum Key {
 	Digit7,
 	Digit8,
 	Digit9,
-	//
+
 	KeyA,
 	KeyB,
 	KeyC,
@@ -88,7 +88,7 @@ pub enum Key {
 	KeyX,
 	KeyY,
 	KeyZ,
-	//
+
 	Backquote,
 	Backslash,
 	BracketLeft,
@@ -197,6 +197,8 @@ pub enum Key {
 	Unidentified,
 
 	// Other keys that aren't part of the W3C spec
+	//
+	/// "Cmd" on Mac (not present on other platforms)
 	Command,
 	/// "Ctrl" on Windows/Linux, "Cmd" on Mac
 	Accel,
@@ -206,8 +208,14 @@ pub enum Key {
 	MouseBack,
 	MouseForward,
 
-	// This has to be the last element in the enum
-	NumKeys,
+	// Fake keys for displaying special labels in the UI
+	//
+	/// Not a physical key that can be pressed. May be used so that an actual shortcut bound to `Equal` can separately map this fake "key" as an additional binding to display the "+" shortcut label in the UI.
+	FakeKeyPlus,
+	/// Not a physical key that can be pressed. May be used so that an actual shortcut bound to all ten number keys (0, ..., 9) can separately map this fake "key" as an additional binding to display the "0–9" shortcut label in the UI.
+	FakeKeyNumbers,
+
+	_KeysVariantCount, // This has to be the last element in the enum
 }
 
 impl fmt::Display for Key {
@@ -293,7 +301,10 @@ impl fmt::Display for Key {
 			Self::MouseMiddle => "MMB",
 			Self::MouseBack => "Mouse Back",
 			Self::MouseForward => "Mouse Fwd",
-			Self::NumKeys => "0–9",
+
+			// Fake keys for displaying special labels in the UI
+			Self::FakeKeyPlus => "+",
+			Self::FakeKeyNumbers => "0–9",
 
 			_ => key_name.as_str(),
 		};
@@ -304,20 +315,17 @@ impl fmt::Display for Key {
 
 impl From<Key> for LayoutKey {
 	fn from(key: Key) -> Self {
-		Self {
-			key: format!("{key:?}"),
-			label: key.to_string(),
-		}
+		Self { key, label: key.to_string() }
 	}
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
-struct LayoutKey {
-	key: String,
+pub struct LayoutKey {
+	pub key: Key,
 	label: String,
 }
 
-pub const NUMBER_OF_KEYS: usize = Key::NumKeys as usize;
+pub const NUMBER_OF_KEYS: usize = Key::_KeysVariantCount as usize - 1;
 
 /// Only `Key`s that exist on a physical keyboard should be used.
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -359,7 +367,7 @@ impl From<KeysGroup> for String {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
-pub struct LayoutKeysGroup(Vec<LayoutKey>);
+pub struct LayoutKeysGroup(pub Vec<LayoutKey>);
 
 impl From<KeysGroup> for LayoutKeysGroup {
 	fn from(keys_group: KeysGroup) -> Self {

@@ -10,6 +10,7 @@ import {
 	TriggerLoadFirstAutoSaveDocument,
 	TriggerLoadRestAutoSaveDocuments,
 	TriggerSaveActiveDocument,
+	TriggerOpenLaunchDocuments,
 } from "@graphite/messages";
 import { type PortfolioState } from "@graphite/state-providers/portfolio";
 
@@ -147,9 +148,7 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 
 	async function loadPreferences() {
 		const preferences = await get<Record<string, unknown>>("preferences", graphiteStore);
-		if (!preferences) return;
-
-		editor.handle.loadPreferences(JSON.stringify(preferences));
+		editor.handle.loadPreferences(preferences ? JSON.stringify(preferences) : undefined);
 	}
 
 	// FRONTEND MESSAGE SUBSCRIPTIONS
@@ -172,6 +171,9 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerLoadRestAutoSaveDocuments, async () => {
 		await loadRestDocuments();
+	});
+	editor.subscriptions.subscribeJsMessage(TriggerOpenLaunchDocuments, async () => {
+		// TODO: Could be used to load documents from URL params or similar on launch
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerSaveActiveDocument, async (triggerSaveActiveDocument) => {
 		const documentId = String(triggerSaveActiveDocument.documentId);

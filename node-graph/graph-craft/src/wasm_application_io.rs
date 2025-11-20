@@ -143,7 +143,7 @@ impl WasmApplicationIo {
 		io
 	}
 	#[cfg(all(not(target_family = "wasm"), feature = "wgpu"))]
-	pub fn new_with_context(context: wgpu_executor::Context) -> Self {
+	pub fn new_with_context(context: wgpu_executor::WgpuContext) -> Self {
 		#[cfg(feature = "wgpu")]
 		let executor = WgpuExecutor::with_context(context);
 

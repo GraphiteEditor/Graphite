@@ -1,10 +1,11 @@
 use crate::consts::{
 	ARC_SWEEP_GIZMO_RADIUS, COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_50, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, COLOR_OVERLAY_YELLOW_DULL,
 	COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, DOWEL_PIN_RADIUS, MANIPULATOR_GROUP_MARKER_SIZE,
-	PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER,
+	PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER, RESIZE_HANDLE_SIZE, SKEW_TRIANGLE_OFFSET, SKEW_TRIANGLE_SIZE,
 };
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::Message;
+use crate::messages::prelude::ViewportMessageHandler;
 use core::borrow::Borrow;
 use core::f64::consts::{FRAC_PI_2, PI, TAU};
 use glam::{DAffine2, DVec2};
@@ -12,16 +13,29 @@ use graphene_std::Color;
 use graphene_std::math::quad::Quad;
 use graphene_std::subpath::{self, Subpath};
 use graphene_std::table::Table;
-use graphene_std::text::{TextAlign, TypesettingConfig, load_font, to_path};
+use graphene_std::text::TextContext;
+use graphene_std::text::{Font, FontCache, TextAlign, TypesettingConfig};
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::point_to_dvec2;
 use graphene_std::vector::{PointId, SegmentId, Vector};
 use kurbo::{self, BezPath, ParamCurve};
 use kurbo::{Affine, PathSeg};
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 use vello::Scene;
 use vello::peniko;
+
+// Global lazy initialized font cache and text context
+static GLOBAL_FONT_CACHE: LazyLock<FontCache> = LazyLock::new(|| {
+	let mut font_cache = FontCache::default();
+	// Initialize with the hardcoded font used by overlay text
+	const FONT_DATA: &[u8] = include_bytes!("source-sans-pro-regular.ttf");
+	let font = Font::new("Source Sans Pro".to_string(), "Regular".to_string());
+	font_cache.insert(font, String::new(), FONT_DATA.to_vec());
+	font_cache
+});
+
+static GLOBAL_TEXT_CONTEXT: LazyLock<Mutex<TextContext>> = LazyLock::new(|| Mutex::new(TextContext::default()));
 
 pub type OverlayProvider = fn(OverlayContext) -> Message;
 
@@ -144,24 +158,18 @@ pub struct OverlayContext {
 	#[serde(skip)]
 	#[specta(skip)]
 	internal: Arc<Mutex<OverlayContextInternal>>,
-	pub size: DVec2,
-	// The device pixel ratio is a property provided by the browser window and is the CSS pixel size divided by the physical monitor's pixel size.
-	// It allows better pixel density of visualizations on high-DPI displays where the OS display scaling is not 100%, or where the browser is zoomed.
-	pub device_pixel_ratio: f64,
+	pub viewport: ViewportMessageHandler,
 	pub visibility_settings: OverlaysVisibilitySettings,
 }
 
 impl Clone for OverlayContext {
 	fn clone(&self) -> Self {
 		let internal = self.internal.lock().expect("Failed to lock internal overlay context");
-		let size = internal.size;
-		let device_pixel_ratio = internal.device_pixel_ratio;
 		let visibility_settings = internal.visibility_settings;
 		drop(internal); // Explicitly release the lock before cloning the Arc<Mutex<_>>
 		Self {
 			internal: self.internal.clone(),
-			size,
-			device_pixel_ratio,
+			viewport: self.viewport,
 			visibility_settings,
 		}
 	}
@@ -170,7 +178,7 @@ impl Clone for OverlayContext {
 // Manual implementations since Scene doesn't implement PartialEq or Debug
 impl PartialEq for OverlayContext {
 	fn eq(&self, other: &Self) -> bool {
-		self.size == other.size && self.device_pixel_ratio == other.device_pixel_ratio && self.visibility_settings == other.visibility_settings
+		self.viewport == other.viewport && self.visibility_settings == other.visibility_settings
 	}
 }
 
@@ -178,8 +186,7 @@ impl std::fmt::Debug for OverlayContext {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("OverlayContext")
 			.field("scene", &"Scene { ... }")
-			.field("size", &self.size)
-			.field("device_pixel_ratio", &self.device_pixel_ratio)
+			.field("viewport", &self.viewport)
 			.field("visibility_settings", &self.visibility_settings)
 			.finish()
 	}
@@ -190,8 +197,7 @@ impl Default for OverlayContext {
 	fn default() -> Self {
 		Self {
 			internal: Mutex::new(OverlayContextInternal::default()).into(),
-			size: DVec2::ZERO,
-			device_pixel_ratio: 1.0,
+			viewport: ViewportMessageHandler::default(),
 			visibility_settings: OverlaysVisibilitySettings::default(),
 		}
 	}
@@ -204,18 +210,17 @@ impl core::hash::Hash for OverlayContext {
 
 impl OverlayContext {
 	#[allow(dead_code)]
-	pub(super) fn new(size: DVec2, device_pixel_ratio: f64, visibility_settings: OverlaysVisibilitySettings) -> Self {
+	pub(super) fn new(viewport: ViewportMessageHandler, visibility_settings: OverlaysVisibilitySettings) -> Self {
 		Self {
-			internal: Arc::new(Mutex::new(OverlayContextInternal::new(size, device_pixel_ratio, visibility_settings))),
-			size,
-			device_pixel_ratio,
+			internal: Arc::new(Mutex::new(OverlayContextInternal::new(viewport, visibility_settings))),
+			viewport,
 			visibility_settings,
 		}
 	}
 
 	pub fn take_scene(self) -> Scene {
 		let mut internal = self.internal.lock().expect("Failed to lock internal overlay context");
-		std::mem::take(&mut *internal).scene
+		std::mem::take(&mut internal.scene)
 	}
 
 	fn internal(&'_ self) -> MutexGuard<'_, OverlayContextInternal> {
@@ -267,6 +272,14 @@ impl OverlayContext {
 		self.internal().manipulator_anchor(position, selected, color);
 	}
 
+	pub fn resize_handle(&mut self, position: DVec2, rotation: f64) {
+		self.internal().resize_handle(position, rotation);
+	}
+
+	pub fn skew_handles(&mut self, edge_start: DVec2, edge_end: DVec2) {
+		self.internal().skew_handles(edge_start, edge_end);
+	}
+
 	pub fn square(&mut self, position: DVec2, size: Option<f64>, color_fill: Option<&str>, color_stroke: Option<&str>) {
 		self.internal().square(position, size, color_fill, color_stroke);
 	}
@@ -279,6 +292,7 @@ impl OverlayContext {
 		self.internal().circle(position, radius, color_fill, color_stroke);
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	pub fn dashed_ellipse(
 		&mut self,
 		center: DVec2,
@@ -408,28 +422,21 @@ pub enum DrawHandles {
 
 pub(super) struct OverlayContextInternal {
 	scene: Scene,
-	size: DVec2,
-	device_pixel_ratio: f64,
+	viewport: ViewportMessageHandler,
 	visibility_settings: OverlaysVisibilitySettings,
 }
 
 impl Default for OverlayContextInternal {
 	fn default() -> Self {
-		Self {
-			scene: Scene::new(),
-			size: DVec2::ZERO,
-			device_pixel_ratio: 1.0,
-			visibility_settings: OverlaysVisibilitySettings::default(),
-		}
+		Self::new(ViewportMessageHandler::default(), OverlaysVisibilitySettings::default())
 	}
 }
 
 impl OverlayContextInternal {
-	pub(super) fn new(size: DVec2, device_pixel_ratio: f64, visibility_settings: OverlaysVisibilitySettings) -> Self {
+	pub(super) fn new(viewport: ViewportMessageHandler, visibility_settings: OverlaysVisibilitySettings) -> Self {
 		Self {
 			scene: Scene::new(),
-			size,
-			device_pixel_ratio,
+			viewport,
 			visibility_settings,
 		}
 	}
@@ -465,7 +472,7 @@ impl OverlayContextInternal {
 
 		self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(color_fill), None, &path);
 
-		self.scene.stroke(&kurbo::Stroke::new(1.0), transform, Self::parse_color(color_stroke), None, &path);
+		self.scene.stroke(&kurbo::Stroke::new(1.), transform, Self::parse_color(color_stroke), None, &path);
 	}
 
 	fn dashed_quad(&mut self, quad: Quad, stroke_color: Option<&str>, color_fill: Option<&str>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
@@ -498,7 +505,7 @@ impl OverlayContextInternal {
 		}
 
 		let stroke_color = stroke_color.unwrap_or(COLOR_OVERLAY_BLUE);
-		let mut stroke = kurbo::Stroke::new(1.0);
+		let mut stroke = kurbo::Stroke::new(1.);
 
 		if let Some(dash_width) = dash_width {
 			let dash_gap = dash_gap_width.unwrap_or(1.);
@@ -543,7 +550,7 @@ impl OverlayContextInternal {
 		self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(fill), None, &circle);
 
 		self.scene
-			.stroke(&kurbo::Stroke::new(1.0), transform, Self::parse_color(color.unwrap_or(COLOR_OVERLAY_BLUE)), None, &circle);
+			.stroke(&kurbo::Stroke::new(1.), transform, Self::parse_color(color.unwrap_or(COLOR_OVERLAY_BLUE)), None, &circle);
 	}
 
 	fn hover_manipulator_handle(&mut self, position: DVec2, selected: bool) {
@@ -555,13 +562,13 @@ impl OverlayContextInternal {
 
 		let fill = COLOR_OVERLAY_BLUE_50;
 		self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(fill), None, &circle);
-		self.scene.stroke(&kurbo::Stroke::new(1.0), transform, Self::parse_color(COLOR_OVERLAY_BLUE_50), None, &circle);
+		self.scene.stroke(&kurbo::Stroke::new(1.), transform, Self::parse_color(COLOR_OVERLAY_BLUE_50), None, &circle);
 
 		let inner_circle = kurbo::Circle::new((position.x, position.y), MANIPULATOR_GROUP_MARKER_SIZE / 2.);
 
 		let color_fill = if selected { COLOR_OVERLAY_BLUE } else { COLOR_OVERLAY_WHITE };
 		self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(color_fill), None, &circle);
-		self.scene.stroke(&kurbo::Stroke::new(1.0), transform, Self::parse_color(COLOR_OVERLAY_BLUE), None, &inner_circle);
+		self.scene.stroke(&kurbo::Stroke::new(1.), transform, Self::parse_color(COLOR_OVERLAY_BLUE), None, &inner_circle);
 	}
 
 	fn manipulator_anchor(&mut self, position: DVec2, selected: bool, color: Option<&str>) {
@@ -576,8 +583,22 @@ impl OverlayContextInternal {
 		self.square(position, None, Some(color_fill), Some(COLOR_OVERLAY_BLUE));
 	}
 
+	fn resize_handle(&mut self, position: DVec2, rotation: f64) {
+		let quad = DAffine2::from_angle_translation(rotation, position) * Quad::from_box([DVec2::splat(-RESIZE_HANDLE_SIZE / 2.), DVec2::splat(RESIZE_HANDLE_SIZE / 2.)]);
+		self.quad(quad, None, Some(COLOR_OVERLAY_WHITE));
+	}
+
+	fn skew_handles(&mut self, edge_start: DVec2, edge_end: DVec2) {
+		let edge_dir = (edge_end - edge_start).normalize();
+		let mid = edge_end.midpoint(edge_start);
+
+		for edge in [edge_dir, -edge_dir] {
+			self.draw_triangle(mid + edge * 3. + SKEW_TRIANGLE_OFFSET, edge, SKEW_TRIANGLE_SIZE, None, None);
+		}
+	}
+
 	fn get_transform(&self) -> kurbo::Affine {
-		kurbo::Affine::scale(self.device_pixel_ratio)
+		kurbo::Affine::scale(self.viewport.scale())
 	}
 
 	fn square(&mut self, position: DVec2, size: Option<f64>, color_fill: Option<&str>, color_stroke: Option<&str>) {
@@ -593,7 +614,7 @@ impl OverlayContextInternal {
 
 		self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(color_fill), None, &rect);
 
-		self.scene.stroke(&kurbo::Stroke::new(1.0), transform, Self::parse_color(color_stroke), None, &rect);
+		self.scene.stroke(&kurbo::Stroke::new(1.), transform, Self::parse_color(color_stroke), None, &rect);
 	}
 
 	fn pixel(&mut self, position: DVec2, color: Option<&str>) {
@@ -619,9 +640,10 @@ impl OverlayContextInternal {
 
 		self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(color_fill), None, &circle);
 
-		self.scene.stroke(&kurbo::Stroke::new(1.0), transform, Self::parse_color(color_stroke), None, &circle);
+		self.scene.stroke(&kurbo::Stroke::new(1.), transform, Self::parse_color(color_stroke), None, &circle);
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	fn dashed_ellipse(
 		&mut self,
 		_center: DVec2,
@@ -670,7 +692,7 @@ impl OverlayContextInternal {
 			);
 		}
 
-		self.scene.stroke(&kurbo::Stroke::new(1.0), self.get_transform(), Self::parse_color(COLOR_OVERLAY_BLUE), None, &path);
+		self.scene.stroke(&kurbo::Stroke::new(1.), self.get_transform(), Self::parse_color(COLOR_OVERLAY_BLUE), None, &path);
 	}
 
 	fn draw_arc_gizmo_angle(&mut self, pivot: DVec2, bold_radius: f64, arc_radius: f64, offset_angle: f64, angle: f64) {
@@ -692,7 +714,7 @@ impl OverlayContextInternal {
 		let mut fill_color = Color::from_rgb_str(COLOR_OVERLAY_WHITE.strip_prefix('#').unwrap()).unwrap().with_alpha(0.05).to_rgba_hex_srgb();
 		fill_color.insert(0, '#');
 		let fill_color = Some(fill_color.as_str());
-		self.line(start + DVec2::X * radius * sign, start + DVec2::X * (radius * scale), None, None);
+		self.line(start + DVec2::X * radius * sign, start + DVec2::X * radius * scale.abs(), None, None);
 		self.circle(start, radius, fill_color, None);
 		self.circle(start, radius * scale.abs(), fill_color, None);
 		self.text(
@@ -706,14 +728,14 @@ impl OverlayContextInternal {
 	}
 
 	fn compass_rose(&mut self, compass_center: DVec2, angle: f64, show_compass_with_hover_ring: Option<bool>) {
-		const HOVER_RING_OUTER_RADIUS: f64 = COMPASS_ROSE_HOVER_RING_DIAMETER / 2.;
-		const MAIN_RING_OUTER_RADIUS: f64 = COMPASS_ROSE_MAIN_RING_DIAMETER / 2.;
-		const MAIN_RING_INNER_RADIUS: f64 = COMPASS_ROSE_RING_INNER_DIAMETER / 2.;
-		const ARROW_RADIUS: f64 = COMPASS_ROSE_ARROW_SIZE / 2.;
-		const HOVER_RING_STROKE_WIDTH: f64 = HOVER_RING_OUTER_RADIUS - MAIN_RING_INNER_RADIUS;
-		const HOVER_RING_CENTERLINE_RADIUS: f64 = (HOVER_RING_OUTER_RADIUS + MAIN_RING_INNER_RADIUS) / 2.;
-		const MAIN_RING_STROKE_WIDTH: f64 = MAIN_RING_OUTER_RADIUS - MAIN_RING_INNER_RADIUS;
-		const MAIN_RING_CENTERLINE_RADIUS: f64 = (MAIN_RING_OUTER_RADIUS + MAIN_RING_INNER_RADIUS) / 2.;
+		let hover_ring_outer_radius: f64 = COMPASS_ROSE_HOVER_RING_DIAMETER / 2.;
+		let main_ring_outer_radius: f64 = COMPASS_ROSE_MAIN_RING_DIAMETER / 2.;
+		let main_ring_inner_radius: f64 = COMPASS_ROSE_RING_INNER_DIAMETER / 2.;
+		let arrow_radius: f64 = COMPASS_ROSE_ARROW_SIZE / 2.;
+		let hover_ring_stroke_width: f64 = hover_ring_outer_radius - main_ring_inner_radius;
+		let hover_ring_centerline_radius: f64 = (hover_ring_outer_radius + main_ring_inner_radius) / 2.;
+		let main_ring_stroke_width: f64 = main_ring_outer_radius - main_ring_inner_radius;
+		let main_ring_centerline_radius: f64 = (main_ring_outer_radius + main_ring_inner_radius) / 2.;
 
 		let Some(show_hover_ring) = show_compass_with_hover_ring else { return };
 
@@ -725,9 +747,9 @@ impl OverlayContextInternal {
 			let mut fill_color = Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap()).unwrap().with_alpha(0.5).to_rgba_hex_srgb();
 			fill_color.insert(0, '#');
 
-			let circle = kurbo::Circle::new((center.x, center.y), HOVER_RING_CENTERLINE_RADIUS);
+			let circle = kurbo::Circle::new((center.x, center.y), hover_ring_centerline_radius);
 			self.scene
-				.stroke(&kurbo::Stroke::new(HOVER_RING_STROKE_WIDTH), transform, Self::parse_color(&fill_color), None, &circle);
+				.stroke(&kurbo::Stroke::new(hover_ring_stroke_width), transform, Self::parse_color(&fill_color), None, &circle);
 		}
 
 		// Arrows
@@ -735,11 +757,11 @@ impl OverlayContextInternal {
 			let direction = DVec2::from_angle(i as f64 * FRAC_PI_2 + angle);
 			let color = if i % 2 == 0 { COLOR_OVERLAY_RED } else { COLOR_OVERLAY_GREEN };
 
-			let tip = center + direction * HOVER_RING_OUTER_RADIUS;
-			let base = center + direction * (MAIN_RING_INNER_RADIUS + MAIN_RING_OUTER_RADIUS) / 2.;
+			let tip = center + direction * hover_ring_outer_radius;
+			let base = center + direction * (main_ring_inner_radius + main_ring_outer_radius) / 2.;
 
-			let r = (ARROW_RADIUS.powi(2) + MAIN_RING_INNER_RADIUS.powi(2)).sqrt();
-			let (cos, sin) = (MAIN_RING_INNER_RADIUS / r, ARROW_RADIUS / r);
+			let r = (arrow_radius.powi(2) + main_ring_inner_radius.powi(2)).sqrt();
+			let (cos, sin) = (main_ring_inner_radius / r, arrow_radius / r);
 			let side1 = center + r * DVec2::new(cos * direction.x - sin * direction.y, sin * direction.x + direction.y * cos);
 			let side2 = center + r * DVec2::new(cos * direction.x + sin * direction.y, -sin * direction.x + direction.y * cos);
 
@@ -756,9 +778,9 @@ impl OverlayContextInternal {
 		}
 
 		// Main ring
-		let circle = kurbo::Circle::new((center.x, center.y), MAIN_RING_CENTERLINE_RADIUS);
+		let circle = kurbo::Circle::new((center.x, center.y), main_ring_centerline_radius);
 		self.scene
-			.stroke(&kurbo::Stroke::new(MAIN_RING_STROKE_WIDTH), transform, Self::parse_color(COLOR_OVERLAY_BLUE), None, &circle);
+			.stroke(&kurbo::Stroke::new(main_ring_stroke_width), transform, Self::parse_color(COLOR_OVERLAY_BLUE), None, &circle);
 	}
 
 	fn pivot(&mut self, position: DVec2, angle: f64) {
@@ -772,22 +794,22 @@ impl OverlayContextInternal {
 		self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(COLOR_OVERLAY_YELLOW), None, &circle);
 
 		// Crosshair
-		const CROSSHAIR_RADIUS: f64 = (PIVOT_CROSSHAIR_LENGTH - PIVOT_CROSSHAIR_THICKNESS) / 2.;
+		let crosshair_radius: f64 = (PIVOT_CROSSHAIR_LENGTH - PIVOT_CROSSHAIR_THICKNESS) / 2.;
 
 		let mut stroke = kurbo::Stroke::new(PIVOT_CROSSHAIR_THICKNESS);
 		stroke = stroke.with_caps(kurbo::Cap::Round);
 
 		// Horizontal line
 		let mut path = BezPath::new();
-		path.move_to(kurbo::Point::new(x + CROSSHAIR_RADIUS * uv.x, y + CROSSHAIR_RADIUS * uv.y));
-		path.line_to(kurbo::Point::new(x - CROSSHAIR_RADIUS * uv.x, y - CROSSHAIR_RADIUS * uv.y));
+		path.move_to(kurbo::Point::new(x + crosshair_radius * uv.x, y + crosshair_radius * uv.y));
+		path.line_to(kurbo::Point::new(x - crosshair_radius * uv.x, y - crosshair_radius * uv.y));
 
 		self.scene.stroke(&stroke, transform, Self::parse_color(COLOR_OVERLAY_YELLOW), None, &path);
 
 		// Vertical line
 		let mut path = BezPath::new();
-		path.move_to(kurbo::Point::new(x - CROSSHAIR_RADIUS * uv.y, y + CROSSHAIR_RADIUS * uv.x));
-		path.line_to(kurbo::Point::new(x + CROSSHAIR_RADIUS * uv.y, y - CROSSHAIR_RADIUS * uv.x));
+		path.move_to(kurbo::Point::new(x - crosshair_radius * uv.y, y + crosshair_radius * uv.x));
+		path.line_to(kurbo::Point::new(x + crosshair_radius * uv.y, y - crosshair_radius * uv.x));
 
 		self.scene.stroke(&stroke, transform, Self::parse_color(COLOR_OVERLAY_YELLOW), None, &path);
 	}
@@ -801,15 +823,15 @@ impl OverlayContextInternal {
 		// Draw the background circle with a white fill and colored outline
 		let circle = kurbo::Circle::new((x, y), DOWEL_PIN_RADIUS);
 		self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(COLOR_OVERLAY_WHITE), None, &circle);
-		self.scene.stroke(&kurbo::Stroke::new(1.0), transform, Self::parse_color(color), None, &circle);
+		self.scene.stroke(&kurbo::Stroke::new(1.), transform, Self::parse_color(color), None, &circle);
 
 		// Draw the two filled sectors using paths
 		let mut path = BezPath::new();
 
 		// Top-left sector
 		path.move_to(kurbo::Point::new(x, y));
-		let end_x = x + DOWEL_PIN_RADIUS * (FRAC_PI_2 + angle).cos();
-		let end_y = y + DOWEL_PIN_RADIUS * (FRAC_PI_2 + angle).sin();
+		let end_x = x + DOWEL_PIN_RADIUS * (FRAC_PI_2 + angle.cos());
+		let end_y = y + DOWEL_PIN_RADIUS * (FRAC_PI_2 + angle.sin());
 		path.line_to(kurbo::Point::new(end_x, end_y));
 		// Draw arc manually
 		let arc = kurbo::Arc::new((x, y), (DOWEL_PIN_RADIUS, DOWEL_PIN_RADIUS), FRAC_PI_2 + angle, FRAC_PI_2, 0.0);
@@ -820,8 +842,8 @@ impl OverlayContextInternal {
 
 		// Bottom-right sector
 		path.move_to(kurbo::Point::new(x, y));
-		let end_x = x + DOWEL_PIN_RADIUS * (PI + FRAC_PI_2 + angle).cos();
-		let end_y = y + DOWEL_PIN_RADIUS * (PI + FRAC_PI_2 + angle).sin();
+		let end_x = x + DOWEL_PIN_RADIUS * (PI + FRAC_PI_2 + angle.cos());
+		let end_y = y + DOWEL_PIN_RADIUS * (PI + FRAC_PI_2 + angle.sin());
 		path.line_to(kurbo::Point::new(end_x, end_y));
 		// Draw arc manually
 		let arc = kurbo::Arc::new((x, y), (DOWEL_PIN_RADIUS, DOWEL_PIN_RADIUS), PI + FRAC_PI_2 + angle, FRAC_PI_2, 0.0);
@@ -853,7 +875,7 @@ impl OverlayContextInternal {
 			self.bezier_to_path(bezier, transform, move_to, &mut path);
 		}
 
-		self.scene.stroke(&kurbo::Stroke::new(1.0), vello_transform, Self::parse_color(COLOR_OVERLAY_BLUE), None, &path);
+		self.scene.stroke(&kurbo::Stroke::new(1.), vello_transform, Self::parse_color(COLOR_OVERLAY_BLUE), None, &path);
 	}
 
 	/// Used by the Pen tool in order to show how the bezier curve would look like.
@@ -862,7 +884,7 @@ impl OverlayContextInternal {
 		let mut path = BezPath::new();
 		self.bezier_to_path(bezier, transform, true, &mut path);
 
-		self.scene.stroke(&kurbo::Stroke::new(1.0), vello_transform, Self::parse_color(COLOR_OVERLAY_BLUE), None, &path);
+		self.scene.stroke(&kurbo::Stroke::new(1.), vello_transform, Self::parse_color(COLOR_OVERLAY_BLUE), None, &path);
 	}
 
 	/// Used by the path tool segment mode in order to show the selected segments.
@@ -955,7 +977,7 @@ impl OverlayContextInternal {
 			let path = self.push_path(subpaths.iter(), transform);
 			let color = color.unwrap_or(COLOR_OVERLAY_BLUE);
 
-			self.scene.stroke(&kurbo::Stroke::new(1.0), self.get_transform(), Self::parse_color(color), None, &path);
+			self.scene.stroke(&kurbo::Stroke::new(1.), self.get_transform(), Self::parse_color(color), None, &path);
 		}
 	}
 
@@ -990,15 +1012,20 @@ impl OverlayContextInternal {
 			data[index..index + 4].copy_from_slice(&rgba);
 		}
 
-		let image = peniko::Image {
-			data: data.into(),
-			format: peniko::ImageFormat::Rgba8,
-			width: PATTERN_WIDTH,
-			height: PATTERN_HEIGHT,
-			x_extend: peniko::Extend::Repeat,
-			y_extend: peniko::Extend::Repeat,
-			alpha: 1.0,
-			quality: peniko::ImageQuality::default(),
+		let image = peniko::ImageBrush {
+			image: peniko::ImageData {
+				data: data.into(),
+				format: peniko::ImageFormat::Rgba8,
+				width: PATTERN_WIDTH,
+				height: PATTERN_HEIGHT,
+				alpha_type: peniko::ImageAlphaType::Alpha,
+			},
+			sampler: peniko::ImageSampler {
+				x_extend: peniko::Extend::Repeat,
+				y_extend: peniko::Extend::Repeat,
+				quality: peniko::ImageQuality::default(),
+				alpha: 1.,
+			},
 		};
 
 		let path = self.push_path(subpaths, transform);
@@ -1007,7 +1034,7 @@ impl OverlayContextInternal {
 		self.scene.fill(peniko::Fill::NonZero, self.get_transform(), &brush, None, &path);
 	}
 
-	fn get_width(&self, text: &str) -> f64 {
+	fn get_width(&mut self, text: &str) -> f64 {
 		// Use the actual text-to-path system to get precise text width
 		const FONT_SIZE: f64 = 12.0;
 
@@ -1024,13 +1051,10 @@ impl OverlayContextInternal {
 		// Load Source Sans Pro font data
 		// TODO: Grab this from the node_modules folder (either with `include_bytes!` or ideally at runtime) instead of checking the font file into the repo.
 		// TODO: And maybe use the WOFF2 version (if it's supported) for its smaller, compressed file size.
-		const FONT_DATA: &[u8] = include_bytes!("source-sans-pro-regular.ttf");
-		let font_blob = Some(load_font(FONT_DATA));
-
-		// Convert text to paths and calculate actual bounds
-		let text_table = to_path(text, font_blob, typesetting, false);
-		let text_bounds = self.calculate_text_bounds(&text_table);
-		text_bounds.width()
+		let font = Font::new("Source Sans Pro".to_string(), "Regular".to_string());
+		let mut text_context = GLOBAL_TEXT_CONTEXT.lock().expect("Failed to lock global text context");
+		let bounds = text_context.bounding_box(text, &font, &GLOBAL_FONT_CACHE, typesetting, false);
+		bounds.x
 	}
 
 	fn text(&mut self, text: &str, font_color: &str, background_color: Option<&str>, transform: DAffine2, padding: f64, pivot: [Pivot; 2]) {
@@ -1051,15 +1075,18 @@ impl OverlayContextInternal {
 		// Load Source Sans Pro font data
 		// TODO: Grab this from the node_modules folder (either with `include_bytes!` or ideally at runtime) instead of checking the font file into the repo.
 		// TODO: And maybe use the WOFF2 version (if it's supported) for its smaller, compressed file size.
-		const FONT_DATA: &[u8] = include_bytes!("source-sans-pro-regular.ttf");
-		let font_blob = Some(load_font(FONT_DATA));
+		let font = Font::new("Source Sans Pro".to_string(), "Regular".to_string());
 
-		// Convert text to vector paths using the existing text system
-		let text_table = to_path(text, font_blob, typesetting, false);
-		// Calculate text bounds from the generated paths
-		let text_bounds = self.calculate_text_bounds(&text_table);
-		let text_width = text_bounds.width();
-		let text_height = text_bounds.height();
+		// Get text dimensions directly from layout
+		let mut text_context = GLOBAL_TEXT_CONTEXT.lock().expect("Failed to lock global text context");
+		let text_size = text_context.bounding_box(text, &font, &GLOBAL_FONT_CACHE, typesetting, false);
+		let text_width = text_size.x;
+		let text_height = text_size.y;
+		// Create a rect from the size (assuming text starts at origin)
+		let text_bounds = kurbo::Rect::new(0.0, 0.0, text_width, text_height);
+
+		// Convert text to vector paths for rendering
+		let text_table = text_context.to_path(text, &font, &GLOBAL_FONT_CACHE, typesetting, false);
 
 		// Calculate position based on pivot
 		let mut position = DVec2::ZERO;
@@ -1092,56 +1119,6 @@ impl OverlayContextInternal {
 
 		// Render the actual text paths
 		self.render_text_paths(&text_table, font_color, vello_transform);
-	}
-
-	// Calculate bounds of text from vector table
-	fn calculate_text_bounds(&self, text_table: &Table<Vector>) -> kurbo::Rect {
-		let mut min_x = f64::INFINITY;
-		let mut min_y = f64::INFINITY;
-		let mut max_x = f64::NEG_INFINITY;
-		let mut max_y = f64::NEG_INFINITY;
-
-		for row in text_table.iter() {
-			// Use the existing segment_bezier_iter to get all bezier curves
-			for (_, bezier, _, _) in row.element.segment_bezier_iter() {
-				let transformed_bezier = bezier.apply_transformation(|point| row.transform.transform_point2(point));
-
-				// Add start and end points to bounds
-				let points = [transformed_bezier.start, transformed_bezier.end];
-				for point in points {
-					min_x = min_x.min(point.x);
-					min_y = min_y.min(point.y);
-					max_x = max_x.max(point.x);
-					max_y = max_y.max(point.y);
-				}
-
-				// Add handle points if they exist
-				match transformed_bezier.handles {
-					subpath::BezierHandles::Quadratic { handle } => {
-						min_x = min_x.min(handle.x);
-						min_y = min_y.min(handle.y);
-						max_x = max_x.max(handle.x);
-						max_y = max_y.max(handle.y);
-					}
-					subpath::BezierHandles::Cubic { handle_start, handle_end } => {
-						for handle in [handle_start, handle_end] {
-							min_x = min_x.min(handle.x);
-							min_y = min_y.min(handle.y);
-							max_x = max_x.max(handle.x);
-							max_y = max_y.max(handle.y);
-						}
-					}
-					_ => {}
-				}
-			}
-		}
-
-		if min_x.is_finite() && min_y.is_finite() && max_x.is_finite() && max_y.is_finite() {
-			kurbo::Rect::new(min_x, min_y, max_x, max_y)
-		} else {
-			// Fallback for empty text
-			kurbo::Rect::new(0.0, 0.0, 0.0, 12.0)
-		}
 	}
 
 	// Render text paths to the vello scene using existing infrastructure

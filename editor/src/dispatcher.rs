@@ -8,6 +8,7 @@ use crate::messages::prelude::*;
 pub struct Dispatcher {
 	message_queues: Vec<VecDeque<Message>>,
 	pub responses: Vec<FrontendMessage>,
+	pub frontend_update_messages: Vec<Message>,
 	pub message_handlers: DispatcherMessageHandlers,
 }
 
@@ -26,6 +27,7 @@ pub struct DispatcherMessageHandlers {
 	pub portfolio_message_handler: PortfolioMessageHandler,
 	preferences_message_handler: PreferencesMessageHandler,
 	tool_message_handler: ToolMessageHandler,
+	viewport_message_handler: ViewportMessageHandler,
 }
 
 impl DispatcherMessageHandlers {
@@ -41,19 +43,24 @@ impl DispatcherMessageHandlers {
 /// The last occurrence of the message in the message queue is sufficient to ensure correct behavior.
 /// In addition, these messages do not change any state in the backend (aside from caches).
 const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
-	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::PropertiesPanel(
-		PropertiesPanelMessageDiscriminant::Refresh,
-	))),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::DocumentStructureChanged)),
-	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::Overlays(OverlaysMessageDiscriminant::Draw))),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::NodeGraph(
 		NodeGraphMessageDiscriminant::RunDocumentGraph,
 	))),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::SubmitActiveGraphRender),
+	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::TriggerFontLoad),
+];
+/// Since we don't need to update the frontend multiple times per frame,
+/// we have a set of messages which we will buffer until the next frame is requested.
+const FRONTEND_UPDATE_MESSAGES: &[MessageDiscriminant] = &[
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::PropertiesPanel(
+		PropertiesPanelMessageDiscriminant::Refresh,
+	))),
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::UpdateDocumentWidgets),
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::Overlays(OverlaysMessageDiscriminant::Draw))),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::RenderRulers)),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::Document(DocumentMessageDiscriminant::RenderScrollbars)),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateDocumentLayerStructure),
-	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::TriggerFontLoad),
 ];
 const DEBUG_MESSAGE_BLOCK_LIST: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Broadcast(BroadcastMessageDiscriminant::TriggerEvent(EventMessageDiscriminant::AnimationFrame)),
@@ -104,6 +111,19 @@ impl Dispatcher {
 
 		while let Some(message) = self.message_queues.last_mut().and_then(VecDeque::pop_front) {
 			// Skip processing of this message if it will be processed later (at the end of the shallowest level queue)
+			if FRONTEND_UPDATE_MESSAGES.contains(&message.to_discriminant()) {
+				let already_in_queue = self.message_queues.first().is_some_and(|queue| queue.contains(&message));
+				if already_in_queue {
+					self.cleanup_queues(false);
+					continue;
+				} else if self.message_queues.len() > 1 {
+					if !self.frontend_update_messages.contains(&message) {
+						self.frontend_update_messages.push(message);
+					}
+					self.cleanup_queues(false);
+					continue;
+				}
+			}
 			if SIDE_EFFECT_FREE_MESSAGES.contains(&message.to_discriminant()) {
 				let already_in_queue = self.message_queues.first().filter(|queue| queue.contains(&message)).is_some();
 				if already_in_queue {
@@ -127,6 +147,9 @@ impl Dispatcher {
 			// Process the action by forwarding it to the relevant message handler, or saving the FrontendMessage to be sent to the frontend
 			match message {
 				Message::Animation(message) => {
+					if let AnimationMessage::IncrementFrameCounter = &message {
+						self.message_queues[0].extend(self.frontend_update_messages.drain(..));
+					}
 					self.message_handlers.animation_message_handler.process_message(message, &mut queue, ());
 				}
 				Message::AppWindow(message) => {
@@ -146,7 +169,6 @@ impl Dispatcher {
 					let context = DialogMessageContext {
 						portfolio: &self.message_handlers.portfolio_message_handler,
 						preferences: &self.message_handlers.preferences_message_handler,
-						viewport_bounds: &self.message_handlers.input_preprocessor_message_handler.viewport_bounds,
 					};
 					self.message_handlers.dialog_message_handler.process_message(message, &mut queue, context);
 				}
@@ -169,9 +191,14 @@ impl Dispatcher {
 				Message::InputPreprocessor(message) => {
 					let keyboard_platform = GLOBAL_PLATFORM.get().copied().unwrap_or_default().as_keyboard_platform_layout();
 
-					self.message_handlers
-						.input_preprocessor_message_handler
-						.process_message(message, &mut queue, InputPreprocessorMessageContext { keyboard_platform });
+					self.message_handlers.input_preprocessor_message_handler.process_message(
+						message,
+						&mut queue,
+						InputPreprocessorMessageContext {
+							keyboard_platform,
+							viewport: &self.message_handlers.viewport_message_handler,
+						},
+					);
 				}
 				Message::KeyMapping(message) => {
 					let input = &self.message_handlers.input_preprocessor_message_handler;
@@ -195,6 +222,7 @@ impl Dispatcher {
 					let reset_node_definitions_on_open = self.message_handlers.portfolio_message_handler.reset_node_definitions_on_open;
 					let timing_information = self.message_handlers.animation_message_handler.timing_information();
 					let animation = &self.message_handlers.animation_message_handler;
+					let viewport = &self.message_handlers.viewport_message_handler;
 
 					self.message_handlers.portfolio_message_handler.process_message(
 						message,
@@ -207,6 +235,7 @@ impl Dispatcher {
 							reset_node_definitions_on_open,
 							timing_information,
 							animation,
+							viewport,
 						},
 					);
 				}
@@ -230,9 +259,13 @@ impl Dispatcher {
 						persistent_data: &self.message_handlers.portfolio_message_handler.persistent_data,
 						node_graph: &self.message_handlers.portfolio_message_handler.executor,
 						preferences: &self.message_handlers.preferences_message_handler,
+						viewport: &self.message_handlers.viewport_message_handler,
 					};
 
 					self.message_handlers.tool_message_handler.process_message(message, &mut queue, context);
+				}
+				Message::Viewport(message) => {
+					self.message_handlers.viewport_message_handler.process_message(message, &mut queue, ());
 				}
 				Message::NoOp => {}
 				Message::Batched { messages } => {
@@ -257,10 +290,10 @@ impl Dispatcher {
 		list.extend(self.message_handlers.input_preprocessor_message_handler.actions());
 		list.extend(self.message_handlers.key_mapping_message_handler.actions());
 		list.extend(self.message_handlers.debug_message_handler.actions());
-		if let Some(document) = self.message_handlers.portfolio_message_handler.active_document() {
-			if !document.graph_view_overlay_open {
-				list.extend(self.message_handlers.tool_message_handler.actions());
-			}
+		if let Some(document) = self.message_handlers.portfolio_message_handler.active_document()
+			&& !document.graph_view_overlay_open
+		{
+			list.extend(self.message_handlers.tool_message_handler.actions());
 		}
 		list.extend(self.message_handlers.portfolio_message_handler.actions());
 		list

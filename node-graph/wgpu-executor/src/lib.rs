@@ -1,24 +1,28 @@
 mod context;
 pub mod shader_runtime;
-pub mod texture_upload;
+pub mod texture_conversion;
 
 use crate::shader_runtime::ShaderRuntime;
 use anyhow::Result;
-pub use context::Context;
+use core_types::{Color, Ctx};
 use dyn_any::StaticType;
 use futures::lock::Mutex;
 use glam::UVec2;
 use graphene_application_io::{ApplicationIo, EditorApi, SurfaceHandle, SurfaceId};
-use graphene_core::{Color, Ctx};
-pub use graphene_svg_renderer::RenderContext;
+pub use rendering::RenderContext;
 use std::sync::Arc;
 use vello::{AaConfig, AaSupport, RenderParams, Renderer, RendererOptions, Scene};
 use wgpu::util::TextureBlitter;
 use wgpu::{Origin3d, SurfaceConfiguration, TextureAspect};
 
+pub use context::Context as WgpuContext;
+pub use context::ContextBuilder as WgpuContextBuilder;
+pub use wgpu::Backends as WgpuBackends;
+pub use wgpu::Features as WgpuFeatures;
+
 #[derive(dyn_any::DynAny)]
 pub struct WgpuExecutor {
-	pub context: Context,
+	pub context: WgpuContext,
 	vello_renderer: Mutex<Renderer>,
 	pub shader_runtime: ShaderRuntime,
 }
@@ -120,7 +124,7 @@ impl WgpuExecutor {
 				mip_level_count: 1,
 				sample_count: 1,
 				dimension: wgpu::TextureDimension::D2,
-				usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING,
+				usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC,
 				format: VELLO_SURFACE_FORMAT,
 				view_formats: &[],
 			});
@@ -139,18 +143,18 @@ impl WgpuExecutor {
 
 		{
 			let mut renderer = self.vello_renderer.lock().await;
-			for (image, texture) in context.resource_overrides.iter() {
+			for (image_brush, texture) in context.resource_overrides.iter() {
 				let texture_view = wgpu::TexelCopyTextureInfoBase {
 					texture: texture.clone(),
 					mip_level: 0,
 					origin: Origin3d::ZERO,
 					aspect: TextureAspect::All,
 				};
-				renderer.override_image(image, Some(texture_view));
+				renderer.override_image(&image_brush.image, Some(texture_view));
 			}
 			renderer.render_to_texture(&self.context.device, &self.context.queue, scene, &target_texture.view, &render_params)?;
-			for (image, _) in context.resource_overrides.iter() {
-				renderer.override_image(image, None);
+			for (image_brush, _) in context.resource_overrides.iter() {
+				renderer.override_image(&image_brush.image, None);
 			}
 		}
 		Ok(())
@@ -182,10 +186,10 @@ impl WgpuExecutor {
 
 impl WgpuExecutor {
 	pub async fn new() -> Option<Self> {
-		Self::with_context(Context::new().await?)
+		Self::with_context(WgpuContext::new().await?)
 	}
 
-	pub fn with_context(context: Context) -> Option<Self> {
+	pub fn with_context(context: WgpuContext) -> Option<Self> {
 		let vello_renderer = Renderer::new(
 			&context.device,
 			RendererOptions {

@@ -881,24 +881,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 			description: Cow::Borrowed("TODO"),
 			properties: None,
 		},
-		DocumentNodeDefinition {
-			identifier: "Memoize Impure",
-			category: "Debug",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::ProtoNode(memo::impure_memo::IDENTIFIER),
-					inputs: vec![NodeInput::value(TaggedValue::Raster(Default::default()), true)],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_metadata: vec![("Image", "TODO").into()],
-					output_names: vec!["Image".to_string()],
-					..Default::default()
-				},
-			},
-			description: Cow::Borrowed("TODO"),
-			properties: None,
-		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
 			identifier: "Create GPU Surface",
@@ -915,7 +897,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							},
 							DocumentNode {
 								inputs: vec![NodeInput::node(NodeId(0), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(memo::impure_memo::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(memo::memo::IDENTIFIER),
 								..Default::default()
 							},
 						]
@@ -980,13 +962,13 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 							DocumentNode {
 								inputs: vec![NodeInput::import(concrete!(Table<Raster<CPU>>), 0), NodeInput::node(NodeId(0), 0)],
 								call_argument: generic!(T),
-								implementation: DocumentNodeImplementation::ProtoNode(wgpu_executor::texture_upload::upload_texture::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(wgpu_executor::texture_conversion::upload_texture::IDENTIFIER),
 								..Default::default()
 							},
 							DocumentNode {
 								call_argument: generic!(T),
 								inputs: vec![NodeInput::node(NodeId(1), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(memo::impure_memo::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(memo::memo::IDENTIFIER),
 								..Default::default()
 							},
 						]
@@ -1073,7 +1055,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		// 	category: "Raster: Adjustment",
 		// 	node_template: NodeTemplate {
 		// 		document_node: DocumentNode {
-		// 			implementation: DocumentNodeImplementation::proto("graphene_core::raster::CurvesNode"),
+		// 			implementation: DocumentNodeImplementation::proto("core_types::raster::CurvesNode"),
 		// 			inputs: vec![
 		// 				NodeInput::value(TaggedValue::Raster(Default::default()), true),
 		// 				NodeInput::value(TaggedValue::Curve(Default::default()), false),

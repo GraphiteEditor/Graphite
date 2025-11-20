@@ -22,7 +22,7 @@ One is available now, and more will be released on a regular basis throughout ea
 <!-- You can follow along with this starter project either by watching the tutorial video or referencing the step-by-step breakdown. -->
 
 <div class="youtube-embed aspect-16x9">
-	<img data-youtube-embed="7gjUhl_3X10" src="https://static.graphite.rs/content/learn/introduction/tutorial-1-vector-art-quickstart-youtube.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite Tutorial 1 - Hands-On Quickstart" />
+	<img data-youtube-embed="7gjUhl_3X10" src="https://static.graphite.rs/content/learn/introduction/tutorial-1-vector-art-quickstart-youtube__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Vector Art Quickstart - Graphite, the Open Source 2D Graphics Suite" />
 </div>
 
 ### Video 2

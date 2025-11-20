@@ -1,0 +1,12 @@
+[package]
+name = "graphite-desktop-platform-linux"
+version = "0.0.0"
+description = "Graphite Desktop Platform Linux"
+authors = ["Graphite Authors <contact@graphite.rs>"]
+license = "Apache-2.0"
+repository = ""
+edition = "2024"
+rust-version = "1.87"
+
+[dependencies]
+graphite-desktop = { path = "../.." }

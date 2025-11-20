@@ -1,13 +1,13 @@
-pub use graphite_editor::messages::prelude::DocumentId;
 use graphite_editor::messages::prelude::FrontendMessage;
 use std::path::PathBuf;
 
 pub(crate) use graphite_editor::messages::prelude::Message as EditorMessage;
 
+pub use graphite_editor::messages::prelude::DocumentId;
 pub use graphite_editor::messages::prelude::PreferencesMessageHandler as Preferences;
-
 pub enum DesktopFrontendMessage {
 	ToWeb(Vec<FrontendMessage>),
+	OpenLaunchDocuments,
 	OpenFileDialog {
 		title: String,
 		filters: Vec<FileFilter>,
@@ -25,17 +25,15 @@ pub enum DesktopFrontendMessage {
 		content: Vec<u8>,
 	},
 	OpenUrl(String),
-	UpdateViewportBounds {
-		x: f32,
-		y: f32,
-		width: f32,
-		height: f32,
+	UpdateViewportPhysicalBounds {
+		x: f64,
+		y: f64,
+		width: f64,
+		height: f64,
 	},
 	UpdateOverlays(vello::Scene),
-	UpdateWindowState {
-		maximized: bool,
-		minimized: bool,
-	},
+	MinimizeWindow,
+	MaximizeWindow,
 	DragWindow,
 	CloseWindow,
 	PersistenceWriteDocument {
@@ -57,6 +55,9 @@ pub enum DesktopFrontendMessage {
 		preferences: Preferences,
 	},
 	PersistenceLoadPreferences,
+	UpdateMenu {
+		entries: Vec<MenuItem>,
+	},
 }
 
 pub enum DesktopWrapperMessage {
@@ -92,6 +93,9 @@ pub enum DesktopWrapperMessage {
 	},
 	PollNodeGraphEvaluation,
 	UpdatePlatform(Platform),
+	UpdateMaximized {
+		maximized: bool,
+	},
 	LoadDocument {
 		id: DocumentId,
 		document: Document,
@@ -102,7 +106,10 @@ pub enum DesktopWrapperMessage {
 		id: DocumentId,
 	},
 	LoadPreferences {
-		preferences: Preferences,
+		preferences: Option<Preferences>,
+	},
+	MenuEvent {
+		id: u64,
 	},
 }
 
@@ -133,4 +140,33 @@ pub enum Platform {
 	Windows,
 	Mac,
 	Linux,
+}
+
+pub enum MenuItem {
+	Action {
+		id: u64,
+		text: String,
+		enabled: bool,
+		shortcut: Option<Shortcut>,
+	},
+	Checkbox {
+		id: u64,
+		text: String,
+		enabled: bool,
+		shortcut: Option<Shortcut>,
+		checked: bool,
+	},
+	SubMenu {
+		id: u64,
+		text: String,
+		enabled: bool,
+		items: Vec<MenuItem>,
+	},
+	Separator,
+}
+
+pub use keyboard_types::{Code as KeyCode, Modifiers};
+pub struct Shortcut {
+	pub key: KeyCode,
+	pub modifiers: Modifiers,
 }

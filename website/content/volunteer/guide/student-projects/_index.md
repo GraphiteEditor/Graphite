@@ -95,12 +95,6 @@ Based on the experience and insight brought to the table by the student, the nat
 
 </details>
 
-### Native development
-
-#### Graphite desktop app engineering
-
-*This is a newly added project pending a full written overview. Come ask on Discord for details.*
-
 ### Rendering and graphics
 
 Several of these require a good understanding of computer graphics rendering techniques and algorithms. Experience in game development and writing your own rendering engines is a plus.
@@ -192,7 +186,7 @@ Several of these require a good understanding of computer graphics rendering tec
 
 *Graphite's raster editing features requires the implementation of Select mode, where users can draw a mask which becomes a marquee (marching ants) selection.*
 
-- **Possible Mentors:** [Keavon](/about#keavon), [Hypercube](/about#hypercube)
+- **Possible Mentors:** [Keavon](/about#keavon)
 - **Needed Skills:** Rust, computer graphics
 - **Project Size:** Large *(GSoC: 350 hours)*
 - **Difficulty:** Medium
@@ -229,7 +223,7 @@ The present system is very row-centric, which makes it challenging to create mul
 
 *Graphite has many areas that could benefit from better automated testing for bugs and performance regressions.*
 
-- **Possible Mentors:** [Dennis](/about#dennis), [Hypercube](/about#hypercube)
+- **Possible Mentors:** [Dennis](/about#dennis)
 - **Needed Skills:** Rust, unit testing
 - **Project Size:** Small *(GSoC: 90 hours)* or larger if proposed
 - **Difficulty:** Easy

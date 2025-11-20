@@ -13,8 +13,8 @@ license = "Apache-2.0"
 [features]
 default = ["gpu", "shader-nodes"]
 gpu = ["editor/gpu"]
-native = []
 shader-nodes = ["graphene-std/shader-nodes", "gpu"]
+native = []
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -23,8 +23,6 @@ crate-type = ["cdylib", "rlib"]
 # Local dependencies
 editor = { path = "../../editor", package = "graphite-editor", features = [
 	"gpu",
-	"resvg",
-	"vello",
 ] }
 graphene-std = { workspace = true }
 

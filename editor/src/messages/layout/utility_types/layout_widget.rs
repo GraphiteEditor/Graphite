@@ -484,11 +484,17 @@ impl LayoutGroup {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct WidgetHolder {
 	#[serde(rename = "widgetId")]
 	pub widget_id: WidgetId,
 	pub widget: Widget,
+}
+
+impl PartialEq for WidgetHolder {
+	fn eq(&self, other: &Self) -> bool {
+		self.widget == other.widget
+	}
 }
 
 impl WidgetHolder {
@@ -502,6 +508,24 @@ impl WidgetHolder {
 
 	/// Diffing updates self (where self is old) based on new, updating the list of modifications as it does so.
 	pub fn diff(&mut self, new: Self, widget_path: &mut [usize], widget_diffs: &mut Vec<WidgetDiff>) {
+		if let (Widget::PopoverButton(button1), Widget::PopoverButton(button2)) = (&mut self.widget, &new.widget)
+			&& button1.disabled == button2.disabled
+			&& button1.style == button2.style
+			&& button1.menu_direction == button2.menu_direction
+			&& button1.icon == button2.icon
+			&& button1.tooltip == button2.tooltip
+			&& button1.tooltip_shortcut == button2.tooltip_shortcut
+			&& button1.popover_min_width == button2.popover_min_width
+		{
+			let mut new_widget_path = widget_path.to_vec();
+			for (i, (a, b)) in button1.popover_layout.iter_mut().zip(button2.popover_layout.iter()).enumerate() {
+				new_widget_path.push(i);
+				a.diff(b.clone(), &mut new_widget_path, widget_diffs);
+				new_widget_path.pop();
+			}
+			return;
+		}
+
 		// If there have been changes to the actual widget (not just the id)
 		if self.widget != new.widget {
 			// We should update to the new widget value as well as a new widget id
@@ -596,15 +620,15 @@ impl DiffUpdate {
 		let apply_shortcut_to_tooltip = |tooltip_shortcut: &mut ActionKeys, tooltip: &mut String| {
 			let shortcut_text = tooltip_shortcut.to_keys(action_input_mapping);
 
-			if let ActionKeys::Keys(_keys) = tooltip_shortcut {
-				if !shortcut_text.is_empty() {
-					if !tooltip.is_empty() {
-						tooltip.push(' ');
-					}
-					tooltip.push('(');
-					tooltip.push_str(&shortcut_text);
-					tooltip.push(')');
+			if let ActionKeys::Keys(_keys) = tooltip_shortcut
+				&& !shortcut_text.is_empty()
+			{
+				if !tooltip.is_empty() {
+					tooltip.push(' ');
 				}
+				tooltip.push('(');
+				tooltip.push_str(&shortcut_text);
+				tooltip.push(')');
 			}
 		};
 
