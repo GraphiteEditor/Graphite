@@ -2022,47 +2022,6 @@ fn static_input_properties() -> InputProperties {
 		}),
 	);
 	map.insert(
-		"brightness".to_string(),
-		Box::new(|node_id, index, context| {
-			let document_node = node_properties::get_document_node(node_id, context)?;
-			let is_use_classic = document_node
-				.inputs
-				.iter()
-				.find_map(|input| match input.as_value() {
-					Some(&TaggedValue::Bool(use_classic)) => Some(use_classic),
-					_ => None,
-				})
-				.unwrap_or(false);
-			let (b_min, b_max) = if is_use_classic { (-100., 100.) } else { (-100., 150.) };
-			let brightness = node_properties::number_widget(
-				ParameterWidgetsInfo::new(node_id, index, true, context),
-				NumberInput::default().mode_range().range_min(Some(b_min)).range_max(Some(b_max)).unit("%").display_decimal_places(2),
-			);
-			Ok(vec![brightness.into()])
-		}),
-	);
-	map.insert(
-		"contrast".to_string(),
-		Box::new(|node_id, index, context| {
-			let document_node = node_properties::get_document_node(node_id, context)?;
-
-			let is_use_classic = document_node
-				.inputs
-				.iter()
-				.find_map(|input| match input.as_value() {
-					Some(&TaggedValue::Bool(use_classic)) => Some(use_classic),
-					_ => None,
-				})
-				.unwrap_or(false);
-			let (c_min, c_max) = if is_use_classic { (-100., 100.) } else { (-50., 100.) };
-			let contrast = node_properties::number_widget(
-				ParameterWidgetsInfo::new(node_id, index, true, context),
-				NumberInput::default().mode_range().range_min(Some(c_min)).range_max(Some(c_max)).unit("%").display_decimal_places(2),
-			);
-			Ok(vec![contrast.into()])
-		}),
-	);
-	map.insert(
 		"assign_colors_gradient".to_string(),
 		Box::new(|node_id, index, context| {
 			let gradient_row = node_properties::color_widget(ParameterWidgetsInfo::new(node_id, index, true, context), ColorInput::default().allow_none(false));
@@ -2089,21 +2048,6 @@ fn static_input_properties() -> InputProperties {
 				NumberInput::default().min(0.).int().disabled(randomize_enabled),
 			);
 			Ok(vec![repeat_every_row.into()])
-		}),
-	);
-	map.insert(
-		"mask_stencil".to_string(),
-		Box::new(|node_id, index, context| {
-			let mask = node_properties::color_widget(ParameterWidgetsInfo::new(node_id, index, true, context), ColorInput::default());
-			Ok(vec![mask])
-		}),
-	);
-	map.insert(
-		"spline_input".to_string(),
-		Box::new(|node_id, index, context| {
-			Ok(vec![LayoutGroup::Row {
-				widgets: node_properties::array_of_vec2_widget(ParameterWidgetsInfo::new(node_id, index, true, context), TextInput::default().centered(true)),
-			}])
 		}),
 	);
 	map.insert(
