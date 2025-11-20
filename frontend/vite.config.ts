@@ -32,7 +32,10 @@ export default defineConfig({
 		}),
 		viteMultipleAssets(
 			// Additional static asset directories besides `public/`
-			[{ input: "../demo-artwork/**", output: "demo-artwork" }],
+			[
+				{ input: "../demo-artwork/**", output: "demo-artwork" },
+				{ input: "../branding/favicons/**", output: "" },
+			],
 			// Options where we set custom MIME types
 			{ mimeTypes: { ".graphite": "application/json" } },
 		),
