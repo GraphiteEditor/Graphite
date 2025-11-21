@@ -63,9 +63,9 @@ pub struct NodeGraphMessageHandler {
 	pub drag_start_chain_nodes: Vec<NodeId>,
 	/// If dragging the background to create a box selection, this stores its starting point in node graph coordinates,
 	/// plus a flag indicating if it has been dragged since the mousedown began.
-	box_selection_start: Option<(DVec2, bool)>,
+	pub box_selection_start: Option<(DVec2, bool)>,
 	/// Restore the selection before box selection if it is aborted
-	selection_before_pointer_down: Vec<NodeId>,
+	pub selection_before_pointer_down: Vec<NodeId>,
 	/// If the grip icon is held during a drag, then shift without pushing other nodes
 	shift_without_push: bool,
 	disconnecting: Option<InputConnector>,
@@ -74,7 +74,7 @@ pub struct NodeGraphMessageHandler {
 	select_if_not_dragged: Option<NodeId>,
 	/// The start of the dragged line (cannot be moved), stored in node graph coordinates
 	pub wire_in_progress_from_connector: Option<DVec2>,
-	wire_in_progress_type: FrontendGraphDataType,
+	pub wire_in_progress_type: FrontendGraphDataType,
 	/// The end point of the dragged line (cannot be moved), stored in node graph coordinates
 	pub wire_in_progress_to_connector: Option<DVec2>,
 	/// State for the context menu popups.
