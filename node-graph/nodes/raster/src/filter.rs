@@ -52,8 +52,6 @@ async fn median_filter(
 	#[range((0., 50.))]
 	#[hard_min(0.)]
 	radius: PixelLength,
-	/// Opt to incorrectly apply the filter with color calculations in gamma space for compatibility with the results from other software.
-	gamma: bool,
 ) -> Table<Raster<CPU>> {
 	image_frame
 		.into_iter()
@@ -65,7 +63,7 @@ async fn median_filter(
 				// Minimum filter radius
 				image.clone()
 			} else {
-				Raster::new_cpu(median_filter_algorithm(image.into_data(), radius as u32, gamma))
+				Raster::new_cpu(median_filter_algorithm(image.into_data(), radius as u32))
 			};
 
 			row.element = filtered_image;
@@ -212,13 +210,7 @@ fn box_blur_algorithm(mut original_buffer: Image<Color>, radius: f64, gamma: boo
 	y_axis
 }
 
-fn median_filter_algorithm(mut original_buffer: Image<Color>, radius: u32, gamma: bool) -> Image<Color> {
-	if gamma {
-		original_buffer.map_pixels(|px| px.to_gamma_srgb().to_associated_alpha(px.a()));
-	} else {
-		original_buffer.map_pixels(|px| px.to_associated_alpha(px.a()));
-	}
-
+fn median_filter_algorithm(original_buffer: Image<Color>, radius: u32) -> Image<Color> {
 	let (width, height) = original_buffer.dimensions();
 	let mut output = Image::new(width, height, Color::TRANSPARENT);
 
@@ -260,17 +252,10 @@ fn median_filter_algorithm(mut original_buffer: Image<Color>, radius: u32, gamma
 		}
 	}
 
-	if gamma {
-		output.map_pixels(|px| px.to_linear_srgb().to_unassociated_alpha());
-	} else {
-		output.map_pixels(|px| px.to_unassociated_alpha());
-	}
-
 	output
 }
-
-/// Finds the median of a slice using quickselect for efficiency.
-/// This avoids the cost of full sorting (O(n log n)).
+/// Finds the median of a slice using quickselect for O(n) average case performance.
+/// This is more efficient than sorting the entire slice which would be O(n log n).
 fn median_quickselect(values: &mut [f32]) -> f32 {
 	let mid: usize = values.len() / 2;
 	// nth_unstable is like quickselect: average O(n)
