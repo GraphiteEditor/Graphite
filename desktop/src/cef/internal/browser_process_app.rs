@@ -33,6 +33,9 @@ impl<H: CefEventHandler> ImplApp for BrowserProcessAppImpl<H> {
 
 	fn on_before_command_line_processing(&self, _process_type: Option<&cef::CefString>, command_line: Option<&mut cef::CommandLine>) {
 		if let Some(cmd) = command_line {
+			// Limit renderer processes to 1
+			cmd.append_switch_with_value(Some(&CefString::from("renderer-process-limit")), Some(&CefString::from("1")));
+
 			#[cfg(not(feature = "accelerated_paint"))]
 			{
 				// Disable GPU acceleration when accelerated_paint feature is not enabled
