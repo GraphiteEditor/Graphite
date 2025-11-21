@@ -369,7 +369,7 @@ impl std::fmt::Debug for Type {
 			Self::Concrete(ty) => format!("Concrete<{}, {:?}>", ty.name, ty.id),
 			#[cfg(not(feature = "type_id_logging"))]
 			Self::Concrete(ty) => format_type(&ty.name),
-			Self::Fn(call_arg, return_value) => format!("{return_value:?} called with {call_arg:?}"),
+			Self::Fn(_, return_value) => format!("{return_value:?}"),
 			Self::Future(ty) => format!("{ty:?}"),
 		};
 		let result = result.replace("Option<Arc<OwnedContextImpl>>", "Context");
@@ -382,7 +382,7 @@ impl std::fmt::Display for Type {
 		let result = match self {
 			Type::Generic(name) => name.to_string(),
 			Type::Concrete(ty) => format_type(&ty.name),
-			Type::Fn(call_arg, return_value) => format!("{return_value} called with {call_arg}"),
+			Type::Fn(_, return_value) => format!("{return_value}"),
 			Type::Future(ty) => ty.to_string(),
 		};
 		let result = result.replace("Option<Arc<OwnedContextImpl>>", "Context");
