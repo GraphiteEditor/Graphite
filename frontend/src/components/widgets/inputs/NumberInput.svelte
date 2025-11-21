@@ -3,6 +3,7 @@
 
 	import { PRESS_REPEAT_DELAY_MS, PRESS_REPEAT_INTERVAL_MS } from "@graphite/io-managers/input";
 	import { type NumberInputMode, type NumberInputIncrementBehavior } from "@graphite/messages";
+	import { browserVersion } from "@graphite/utility-functions/platform";
 	import { evaluateMathExpression } from "@graphite-frontend/wasm/pkg/graphite_wasm.js";
 
 	import { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";
@@ -350,6 +351,10 @@
 
 		// Enter dragging state
 		target.requestPointerLock();
+
+		// Workaround for a Safari bug where it fails to hide the cursor during pointer lock.
+		if (browserVersion().toLowerCase().includes("safari")) document.body.classList.add("hide-cursor");
+
 		initialValueBeforeDragging = value;
 		cumulativeDragDelta = 0;
 
@@ -363,16 +368,14 @@
 
 		const pointerUp = () => {
 			// Confirm on release by setting the reset value to the current value, so once the pointer lock ends,
-			// the value is set to itself instead of the initial (abort) value in the "pointerlockchange" event handler function.
+			// the value is set to itself instead of the initial (abort) value in the `pointerlockchange` event handler function.
 			initialValueBeforeDragging = value;
 			cumulativeDragDelta = 0;
 
 			document.exitPointerLock();
 
-			// Fallback for Safari in case pointerlockchange never fires
-			setTimeout(() => {
-				if (!document.pointerLockElement) pointerLockChange();
-			}, 0);
+			// Fallback for Safari in case `pointerlockchange` never fires, so we don't get stuck dragging.
+			setTimeout(pointerLockChange, 0);
 		};
 		const pointerMove = (e: PointerEvent) => {
 			// Abort the drag if right click is down. This works here because a "pointermove" event is fired when right clicking even if the cursor didn't move.
@@ -409,6 +412,9 @@
 		const pointerLockChange = () => {
 			// Do nothing if we just entered, rather than exited, pointer lock.
 			if (document.pointerLockElement) return;
+
+			// Workaround for a Safari bug where it fails to hide the cursor during pointer lock.
+			if (browserVersion().toLowerCase().includes("safari")) document.body.classList.remove("hide-cursor");
 
 			// Reset the value to the initial value if the drag was aborted, or to the current value if it was just confirmed by changing the initial value to the current value.
 			updateValue(initialValueBeforeDragging);
