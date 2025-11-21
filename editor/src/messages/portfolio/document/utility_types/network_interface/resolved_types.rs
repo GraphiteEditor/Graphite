@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNodeImplementation, InlineRust, NodeInput};
-use graph_craft::proto::GraphErrors;
+use graph_craft::proto::{GraphErrorType, GraphErrors};
 use graph_craft::{Type, concrete};
 use graphene_std::uuid::NodeId;
 use interpreted_executor::dynamic_executor::{NodeTypes, ResolvedDocumentNodeTypesDelta};
@@ -129,7 +129,14 @@ impl NodeNetworkInterface {
 							InputConnector::Export(_) => false,
 						})
 					}
-					DocumentNodeImplementation::ProtoNode(_) => self.resolved_types.node_graph_errors.iter().any(|error| error.node_path == node_path),
+					DocumentNodeImplementation::ProtoNode(_) => self.resolved_types.node_graph_errors.iter().any(|error| {
+						error.node_path == node_path
+							&& match &error.error {
+								GraphErrorType::InvalidImplementations { error_inputs, .. } => error_inputs.iter().any(|solution| solution.iter().any(|(index, _)| index == input_index)),
+								_ => true,
+							}
+					}),
+
 					DocumentNodeImplementation::Extract => false,
 				}
 			}
