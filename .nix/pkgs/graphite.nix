@@ -14,6 +14,22 @@
 }:
 
 let
+  brandingTar = pkgs.fetchurl (
+    let
+      lockContent = builtins.readFile "${info.src}/.branding";
+      lines = builtins.filter (s: s != []) (builtins.split "\n" lockContent);
+      url = builtins.elemAt lines 0;
+      hash = builtins.elemAt lines 1;
+    in
+    {
+      url =  url;
+      sha256 = hash;
+    }
+  );
+  branding = pkgs.runCommand "${info.pname}-branding" { } ''
+    mkdir -p $out
+    tar -xvf ${brandingTar} -C $out --strip-components 1
+  '';
   resourcesCommon = {
     pname = "${info.pname}-resources";
     inherit (info) version src;
@@ -32,7 +48,7 @@ let
       npmDeps = pkgs.fetchNpmDeps {
         inherit (info) pname version;
         src = "${info.src}/frontend";
-        hash = "sha256-UWuJpKNYj2Xn34rpMDZ75pzMYUOLQjPeGuJ/QlPbX9A=";
+        hash = "sha256-D8VCNK+Ca3gxO+5wriBn8FszG8/x8n/zM6/MPo9E2j4=";
       };
 
       npmRoot = "frontend";
@@ -40,6 +56,12 @@ let
       makeCacheWritable = true;
 
       nativeBuildInputs = tools.frontend ++ [ pkgs.npmHooks.npmConfigHook ];
+
+      prePatch = ''
+        mkdir branding
+        cp -r ${branding}/* branding
+        cp ${info.src}/.branding branding/.branding
+      '';
 
       buildPhase = ''
         export HOME="$TMPDIR"
@@ -89,6 +111,11 @@ deps.crane.lib.buildPackage (
           { }
       );
 
+    postUnpack = ''
+      mkdir ./branding
+      cp -r ${branding}/* ./branding
+    '';
+
     installPhase = ''
       mkdir -p $out/bin
       cp target/${if dev then "debug" else "release"}/graphite $out/bin/graphite
@@ -97,7 +124,7 @@ deps.crane.lib.buildPackage (
       cp $src/desktop/assets/*.desktop $out/share/applications/
 
       mkdir -p $out/share/icons/hicolor/scalable/apps
-      cp $src/desktop/assets/graphite-icon-color.svg $out/share/icons/hicolor/scalable/apps/
+      cp ${branding}/app-icons/graphite.svg $out/share/icons/hicolor/scalable/apps/
     '';
 
     postFixup = ''

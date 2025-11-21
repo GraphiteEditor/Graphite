@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { type IconName, type IconSize } from "@graphite/utility-functions/icons";
+	import { type IconName, type IconSize } from "@graphite/icons";
 
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 

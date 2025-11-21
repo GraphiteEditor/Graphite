@@ -1,5 +1,5 @@
 pub(crate) const APP_NAME: &str = "Graphite";
-pub(crate) const APP_ID: &str = "rs.graphite.GraphiteEditor";
+pub(crate) const APP_ID: &str = "rs.graphite.Graphite";
 
 pub(crate) const APP_DIRECTORY_NAME: &str = "graphite-editor";
 pub(crate) const APP_STATE_FILE_NAME: &str = "state.ron";

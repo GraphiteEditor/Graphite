@@ -1,7 +1,7 @@
 import { plainToInstance } from "class-transformer";
 
+import { type EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm.js";
 import { type JsMessageType, messageMakers, type JsMessage } from "@graphite/messages";
-import { type EditorHandle } from "@graphite-frontend/wasm/pkg/graphite_wasm.js";
 
 type JsMessageCallback<T extends JsMessage> = (messageData: T) => void;
 // Don't know a better way of typing this since it can be any subclass of JsMessage
