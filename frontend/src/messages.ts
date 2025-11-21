@@ -35,7 +35,7 @@ export class UpdateClickTargets extends JsMessage {
 
 const ContextTupleToVec2 = Transform((data) => {
 	if (data.obj.contextMenuInformation === undefined) return undefined;
-	const contextMenuCoordinates = { x: data.obj.contextMenuInformation.contextMenuCoordinates[0], y: data.obj.contextMenuInformation.contextMenuCoordinates[1] };
+	const contextMenuCoordinates = data.obj.contextMenuInformation.contextMenuCoordinates;
 	let contextMenuData = data.obj.contextMenuInformation.contextMenuData;
 	if (contextMenuData.ToggleLayer !== undefined) {
 		contextMenuData = { nodeId: contextMenuData.ToggleLayer.nodeId, currentlyIsNode: contextMenuData.ToggleLayer.currentlyIsNode };
@@ -92,6 +92,15 @@ export class UpdateLayerWidths extends JsMessage {
 export class UpdateNodeGraphNodes extends JsMessage {
 	@Type(() => FrontendNode)
 	readonly nodes!: FrontendNode[];
+}
+
+export class UpdateNodeGraphError extends JsMessage {
+	readonly error!: NodeGraphError | undefined;
+}
+
+export class NodeGraphError {
+	readonly position!: XY;
+	readonly error!: string;
 }
 
 export class UpdateVisibleNodes extends JsMessage {
@@ -1700,6 +1709,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateMouseCursor,
 	UpdateNodeGraphControlBarLayout,
 	UpdateNodeGraphNodes,
+	UpdateNodeGraphError,
 	UpdateNodeGraphSelection,
 	UpdateNodeGraphTransform,
 	UpdateNodeGraphWires,

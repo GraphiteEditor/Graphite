@@ -257,6 +257,27 @@
 		</LayoutCol>
 	{/if}
 
+	{#if $nodeGraph.error}
+		<div class="node-error-container" style:transform-origin="0 0" style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
+			<span
+				class="node-error faded"
+				style={`left: ${$nodeGraph.error.position.x}px;
+           			top: ${$nodeGraph.error.position.y}px;`}
+				transition:fade={FADE_TRANSITION}
+				title=""
+				data-node-error>{$nodeGraph.error.error}</span
+			>
+			<span
+				class="node-error hover"
+				style={`left: ${$nodeGraph.error.position.x}px;
+           			top: ${$nodeGraph.error.position.y}px;`}
+				transition:fade={FADE_TRANSITION}
+				title=""
+				data-node-error>{$nodeGraph.error.error}</span
+			>
+		</div>
+	{/if}
+
 	<!-- Click target debug visualizations -->
 	{#if $nodeGraph.clickTargets}
 		<div class="click-targets" style:transform-origin="0 0" style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
@@ -508,10 +529,6 @@
 				title={`${node.displayName}\n\n${description || ""}`.trim() + (editor.handle.inDevelopmentMode() ? `\n\nNode ID: ${node.id}` : "")}
 				data-node={node.id}
 			>
-				{#if node.errors}
-					<span class="node-error faded" transition:fade={FADE_TRANSITION} title="" data-node-error>{node.errors}</span>
-					<span class="node-error hover" transition:fade={FADE_TRANSITION} title="" data-node-error>{node.errors}</span>
-				{/if}
 				<div class="thumbnail">
 					{#if $nodeGraph.thumbnails.has(node.id)}
 						{@html $nodeGraph.thumbnails.get(node.id)}
@@ -775,7 +792,6 @@
 </div>
 
 <!-- Box selection widget -->
-<!-- TODO: Make its initial corner stay put (in graph space) when panning around -->
 {#if $nodeGraph.box}
 	<div
 		class="box-selection"
@@ -834,6 +850,72 @@
 
 			.merge-selected-nodes {
 				justify-content: center;
+			}
+		}
+
+		.node-error-container {
+			position: absolute;
+			z-index: 1;
+
+			.node-error {
+				position: absolute;
+				width: max-content;
+				white-space: pre-wrap;
+				max-width: 600px;
+				line-height: 18px;
+				color: var(--color-2-mildblack);
+				background: var(--color-error-red);
+				padding: 8px;
+				border-radius: 4px;
+				transition: opacity 0.2s;
+				opacity: 0.5;
+				transform: translateY(-100%);
+
+				// Tail
+				&::after {
+					content: "";
+					position: absolute;
+					left: 6px;
+					bottom: -8px;
+					width: 0;
+					height: 0;
+					border-style: solid;
+					border-width: 8px 6px 0 6px;
+					border-color: var(--color-error-red) transparent transparent transparent;
+				}
+
+				&.hover {
+					opacity: 0;
+					z-index: 1;
+					pointer-events: none;
+				}
+
+				&.faded:hover + .hover {
+					opacity: 1;
+				}
+
+				&.faded:hover {
+					z-index: 2;
+					opacity: 1;
+					-webkit-user-select: text;
+					user-select: text;
+					transition:
+						opacity 0.2s,
+						z-index 0s 0.2s;
+
+					&::selection {
+						background-color: var(--color-e-nearwhite);
+
+						// Target only Safari
+						@supports (background: -webkit-named-image(i)) {
+							& {
+								// Setting an alpha value opts out of Safari's "fancy" (but not visible on dark backgrounds) selection highlight rendering
+								// https://stackoverflow.com/a/71753552/775283
+								background-color: rgba(var(--color-e-nearwhite-rgb), calc(254 / 255));
+							}
+						}
+					}
+				}
 			}
 		}
 
@@ -1015,68 +1097,6 @@
 			// See: https://stackoverflow.com/questions/75137879/bug-with-backdrop-filter-in-firefox
 			// backdrop-filter: blur(4px);
 			background: rgba(var(--color-0-black-rgb), 0.33);
-
-			.node-error {
-				position: absolute;
-				width: max-content;
-				white-space: pre-wrap;
-				max-width: 600px;
-				line-height: 18px;
-				color: var(--color-2-mildblack);
-				background: var(--color-error-red);
-				padding: 8px;
-				border-radius: 4px;
-				bottom: calc(100% + 12px);
-				z-index: -1;
-				transition: opacity 0.2s;
-				opacity: 0.5;
-
-				// Tail
-				&::after {
-					content: "";
-					position: absolute;
-					left: 6px;
-					bottom: -8px;
-					width: 0;
-					height: 0;
-					border-style: solid;
-					border-width: 8px 6px 0 6px;
-					border-color: var(--color-error-red) transparent transparent transparent;
-				}
-
-				&.hover {
-					opacity: 0;
-					z-index: 1;
-					pointer-events: none;
-				}
-
-				&.faded:hover + .hover {
-					opacity: 1;
-				}
-
-				&.faded:hover {
-					z-index: 2;
-					opacity: 1;
-					-webkit-user-select: text;
-					user-select: text;
-					transition:
-						opacity 0.2s,
-						z-index 0s 0.2s;
-
-					&::selection {
-						background-color: var(--color-e-nearwhite);
-
-						// Target only Safari
-						@supports (background: -webkit-named-image(i)) {
-							& {
-								// Setting an alpha value opts out of Safari's "fancy" (but not visible on dark backgrounds) selection highlight rendering
-								// https://stackoverflow.com/a/71753552/775283
-								background-color: rgba(var(--color-e-nearwhite-rgb), calc(254 / 255));
-							}
-						}
-					}
-				}
-			}
 
 			&::after {
 				content: "";
