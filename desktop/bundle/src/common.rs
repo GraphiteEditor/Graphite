@@ -5,6 +5,10 @@ use std::process::{Command, Stdio};
 
 pub(crate) const APP_NAME: &str = "Graphite";
 
+pub(crate) fn workspace_path() -> PathBuf {
+	PathBuf::from(env!("CARGO_WORKSPACE_DIR"))
+}
+
 fn profile_name() -> &'static str {
 	let mut profile = env!("CARGO_PROFILE");
 	if profile == "debug" {
@@ -14,7 +18,7 @@ fn profile_name() -> &'static str {
 }
 
 pub(crate) fn profile_path() -> PathBuf {
-	PathBuf::from(env!("CARGO_WORKSPACE_DIR")).join(format!("target/{}", env!("CARGO_PROFILE")))
+	workspace_path().join(format!("target/{}", env!("CARGO_PROFILE")))
 }
 
 pub(crate) fn cef_path() -> PathBuf {

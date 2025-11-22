@@ -10,9 +10,12 @@ const APP_ID: &str = "rs.graphite.Graphite";
 const PACKAGE: &str = "graphite-desktop-platform-mac";
 const HELPER_BIN: &str = "graphite-desktop-platform-mac-helper";
 
+const ICONS_FILE_NAME: &str = "graphite.icns";
+
 const EXEC_PATH: &str = "Contents/MacOS";
 const FRAMEWORKS_PATH: &str = "Contents/Frameworks";
-const FRAMEWORK: &str = "Chromium Embedded Framework.framework";
+const RESOURCES_PATH: &str = "Contents/Resources";
+const CEF_FRAMEWORK: &str = "Chromium Embedded Framework.framework";
 
 pub fn main() -> Result<(), Box<dyn Error>> {
 	let app_bin = build_bin(PACKAGE, None)?;
@@ -46,7 +49,13 @@ fn bundle(out_dir: &Path, app_bin: &Path, helper_bin: &Path) -> PathBuf {
 		create_app(&helper_app_dir, &helper_id, &helper_name, helper_bin, true);
 	}
 
-	copy_dir(&cef_path().join(FRAMEWORK), &app_dir.join(FRAMEWORKS_PATH).join(FRAMEWORK));
+	copy_dir(&cef_path().join(CEF_FRAMEWORK), &app_dir.join(FRAMEWORKS_PATH).join(CEF_FRAMEWORK));
+
+	let resource_dir = app_dir.join(RESOURCES_PATH);
+	fs::create_dir_all(&resource_dir).expect("failed to create app resource dir");
+
+	let icon_file = workspace_path().join("branding/app-icons").join(ICONS_FILE_NAME);
+	fs::copy(icon_file, resource_dir.join(ICONS_FILE_NAME)).expect("failed to copy icon file");
 
 	app_dir
 }
@@ -61,25 +70,22 @@ fn create_app(app_dir: &Path, id: &str, name: &str, bin: &Path, is_helper: bool)
 
 fn create_info_plist(dir: &Path, id: &str, exec_name: &str, is_helper: bool) -> Result<(), Box<dyn std::error::Error>> {
 	let info = InfoPlist {
-		cf_bundle_development_region: "en".to_string(),
+		cf_bundle_name: exec_name.to_string(),
+		cf_bundle_identifier: id.to_string(),
 		cf_bundle_display_name: exec_name.to_string(),
 		cf_bundle_executable: exec_name.to_string(),
-		cf_bundle_identifier: id.to_string(),
+		cf_bundle_icon_file: ICONS_FILE_NAME.to_string(),
 		cf_bundle_info_dictionary_version: "6.0".to_string(),
-		cf_bundle_name: exec_name.to_string(),
 		cf_bundle_package_type: "APPL".to_string(),
 		cf_bundle_signature: "????".to_string(),
 		cf_bundle_version: "0.0.0".to_string(),
 		cf_bundle_short_version_string: "0.0".to_string(),
+		cf_bundle_development_region: "en".to_string(),
 		ls_environment: [("MallocNanoZone".to_string(), "0".to_string())].iter().cloned().collect(),
 		ls_file_quarantine_enabled: true,
 		ls_minimum_system_version: "11.0".to_string(),
 		ls_ui_element: if is_helper { Some("1".to_string()) } else { None },
-		ns_bluetooth_always_usage_description: exec_name.to_string(),
 		ns_supports_automatic_graphics_switching: true,
-		ns_web_browser_publickey_credential_usage_description: exec_name.to_string(),
-		ns_camera_usage_description: exec_name.to_string(),
-		ns_microphone_usage_description: exec_name.to_string(),
 	};
 
 	let plist_file = dir.join("Info.plist");
@@ -89,18 +95,18 @@ fn create_info_plist(dir: &Path, id: &str, exec_name: &str, is_helper: bool) -> 
 
 #[derive(serde::Serialize)]
 struct InfoPlist {
-	#[serde(rename = "CFBundleDevelopmentRegion")]
-	cf_bundle_development_region: String,
+	#[serde(rename = "CFBundleName")]
+	cf_bundle_name: String,
+	#[serde(rename = "CFBundleIdentifier")]
+	cf_bundle_identifier: String,
 	#[serde(rename = "CFBundleDisplayName")]
 	cf_bundle_display_name: String,
 	#[serde(rename = "CFBundleExecutable")]
 	cf_bundle_executable: String,
-	#[serde(rename = "CFBundleIdentifier")]
-	cf_bundle_identifier: String,
+	#[serde(rename = "CFBundleIconFile")]
+	cf_bundle_icon_file: String,
 	#[serde(rename = "CFBundleInfoDictionaryVersion")]
 	cf_bundle_info_dictionary_version: String,
-	#[serde(rename = "CFBundleName")]
-	cf_bundle_name: String,
 	#[serde(rename = "CFBundlePackageType")]
 	cf_bundle_package_type: String,
 	#[serde(rename = "CFBundleSignature")]
@@ -109,6 +115,8 @@ struct InfoPlist {
 	cf_bundle_version: String,
 	#[serde(rename = "CFBundleShortVersionString")]
 	cf_bundle_short_version_string: String,
+	#[serde(rename = "CFBundleDevelopmentRegion")]
+	cf_bundle_development_region: String,
 	#[serde(rename = "LSEnvironment")]
 	ls_environment: HashMap<String, String>,
 	#[serde(rename = "LSFileQuarantineEnabled")]
@@ -117,14 +125,6 @@ struct InfoPlist {
 	ls_minimum_system_version: String,
 	#[serde(rename = "LSUIElement")]
 	ls_ui_element: Option<String>,
-	#[serde(rename = "NSBluetoothAlwaysUsageDescription")]
-	ns_bluetooth_always_usage_description: String,
 	#[serde(rename = "NSSupportsAutomaticGraphicsSwitching")]
 	ns_supports_automatic_graphics_switching: bool,
-	#[serde(rename = "NSWebBrowserPublicKeyCredentialUsageDescription")]
-	ns_web_browser_publickey_credential_usage_description: String,
-	#[serde(rename = "NSCameraUsageDescription")]
-	ns_camera_usage_description: String,
-	#[serde(rename = "NSMicrophoneUsageDescription")]
-	ns_microphone_usage_description: String,
 }
