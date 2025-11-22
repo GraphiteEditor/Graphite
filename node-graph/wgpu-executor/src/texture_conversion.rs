@@ -1,12 +1,12 @@
 use crate::WgpuExecutor;
-use graphene_core::Color;
-use graphene_core::Ctx;
-use graphene_core::color::SRGBA8;
-use graphene_core::ops::Convert;
-use graphene_core::raster::Image;
-use graphene_core::raster_types::{CPU, GPU, Raster};
-use graphene_core::table::{Table, TableRow};
-use graphene_core::transform::Footprint;
+use core_types::Color;
+use core_types::Ctx;
+use core_types::color::SRGBA8;
+use core_types::ops::Convert;
+use core_types::table::{Table, TableRow};
+use core_types::transform::Footprint;
+use raster_types::Image;
+use raster_types::{CPU, GPU, Raster};
 use wgpu::util::{DeviceExt, TextureDataOrder};
 use wgpu::{Extent3d, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages};
 

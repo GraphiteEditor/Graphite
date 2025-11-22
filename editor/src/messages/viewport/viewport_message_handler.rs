@@ -33,20 +33,23 @@ impl MessageHandler<ViewportMessage, ()> for ViewportMessageHandler {
 					offset: Point { x, y },
 					size: Point { x: width, y: height },
 				};
+				responses.add(NodeGraphMessage::UpdateNodeGraphWidth);
 			}
 			ViewportMessage::RepropagateUpdate => {}
 		}
 
-		let physical_bounds = self.bounds().to_physical();
-		responses.add(FrontendMessage::UpdateViewportPhysicalBounds {
-			x: physical_bounds.x(),
-			y: physical_bounds.y(),
-			width: physical_bounds.width(),
-			height: physical_bounds.height(),
-		});
+		#[cfg(not(target_family = "wasm"))]
+		{
+			let physical_bounds = self.bounds().to_physical();
+			responses.add(FrontendMessage::UpdateViewportPhysicalBounds {
+				x: physical_bounds.x(),
+				y: physical_bounds.y(),
+				width: physical_bounds.width(),
+				height: physical_bounds.height(),
+			});
+		}
 
 		responses.add(NavigationMessage::CanvasPan { delta: DVec2::ZERO });
-		responses.add(NodeGraphMessage::SetGridAlignedEdges);
 
 		responses.add(DeferMessage::AfterGraphRun {
 			messages: vec![
