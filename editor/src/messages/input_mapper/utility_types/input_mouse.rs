@@ -86,8 +86,21 @@ impl EditorMouseState {
 	}
 
 	pub fn to_mouse_state(&self, viewport: &ViewportMessageHandler) -> MouseState {
+		// FIX: Account for viewport bounds offset in physical/screen space before converting to logical coordinates.
+		// This fixes Apple Pencil offset issues on iPad where clientX/clientY include the viewport's screen position.
+		// 
+		// Coordinate pipeline:
+		// 1. Get physical (screen-space) viewport bounds by converting logical bounds to physical
+		// 2. Subtract physical viewport bounds from physical pointer position (editor_position)
+		// 3. Convert result to logical coordinates
+		// 
+		// This ensures we never mix physical and logical coordinate spaces, which was the root cause
+		// of the pointer offset issue on iPad.
+		let physical_bounds = viewport.bounds().to_physical();
+		let adjusted_position = self.editor_position - DVec2::new(physical_bounds.x(), physical_bounds.y());
+		
 		MouseState {
-			position: (viewport.logical(self.editor_position) - viewport.offset()).into(),
+			position: viewport.logical(adjusted_position).into(),
 			mouse_keys: self.mouse_keys,
 			scroll_delta: self.scroll_delta,
 		}
