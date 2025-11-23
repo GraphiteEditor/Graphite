@@ -23,7 +23,10 @@ impl std::fmt::Display for SurfaceId {
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SurfaceFrame {
 	pub surface_id: SurfaceId,
+	/// Logical resolution in CSS pixels (used for foreignObject dimensions)
 	pub resolution: UVec2,
+	/// Physical resolution in device pixels (used for actual canvas/texture dimensions)
+	pub physical_resolution: UVec2,
 	pub transform: DAffine2,
 }
 
@@ -101,10 +104,12 @@ impl Size for ImageTexture {
 
 impl<S: Size> From<SurfaceHandleFrame<S>> for SurfaceFrame {
 	fn from(x: SurfaceHandleFrame<S>) -> Self {
+		let size = x.surface_handle.surface.size();
 		Self {
 			surface_id: x.surface_handle.window_id,
 			transform: x.transform,
-			resolution: x.surface_handle.surface.size(),
+			resolution: size,
+			physical_resolution: size,
 		}
 	}
 }

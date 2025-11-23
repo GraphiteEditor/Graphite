@@ -4,6 +4,7 @@ use winit::window::{Window as WinitWindow, WindowAttributes};
 
 use crate::consts::APP_NAME;
 use crate::event::AppEventScheduler;
+#[cfg(target_os = "macos")]
 use crate::window::mac::NativeWindowImpl;
 use crate::wrapper::messages::MenuItem;
 
@@ -37,7 +38,7 @@ pub(crate) struct Window {
 
 impl Window {
 	pub(crate) fn init() {
-		NativeWindowImpl::init();
+		native::NativeWindowImpl::init();
 	}
 
 	pub(crate) fn new(event_loop: &dyn ActiveEventLoop, app_event_scheduler: AppEventScheduler) -> Self {

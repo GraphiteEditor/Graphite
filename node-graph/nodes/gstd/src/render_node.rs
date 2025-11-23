@@ -5,7 +5,7 @@ use core_types::{Color, Context, Ctx, ExtractFootprint, OwnedContextImpl, WasmNo
 use graph_craft::document::value::RenderOutput;
 pub use graph_craft::document::value::RenderOutputType;
 pub use graph_craft::wasm_application_io::*;
-use graphene_application_io::{ApplicationIo, ExportFormat, ImageTexture, RenderConfig, SurfaceFrame};
+use graphene_application_io::{ApplicationIo, ExportFormat, ImageTexture, RenderConfig};
 use graphic_types::Artboard;
 use graphic_types::Graphic;
 use graphic_types::Vector;
@@ -124,7 +124,6 @@ async fn render<'a: 'n>(
 	ctx: impl Ctx + ExtractFootprint + ExtractVarArgs,
 	editor_api: &'a WasmEditorApi,
 	data: RenderIntermediate,
-	_surface_handle: impl Node<Context<'static>, Output = Option<wgpu_executor::WgpuSurface>>,
 ) -> RenderOutput {
 	let footprint = ctx.footprint();
 	let render_params = ctx
@@ -171,14 +170,8 @@ async fn render<'a: 'n>(
 			};
 			let (child, context) = Arc::as_ref(vello_data);
 
-			let surface_handle = if cfg!(all(feature = "vello", target_family = "wasm")) {
-				_surface_handle.eval(None).await
-			} else {
-				None
-			};
-
-			// When rendering to a surface, we do not want to apply the scale
-			let scale = if surface_handle.is_none() { render_params.scale } else { 1. };
+			// Always apply scale when rendering to texture
+			let scale = render_params.scale;
 
 			let scale_transform = glam::DAffine2::from_scale(glam::DVec2::splat(scale));
 			let footprint_transform = scale_transform * footprint.transform;
@@ -204,25 +197,10 @@ async fn render<'a: 'n>(
 				background = Color::WHITE;
 			}
 
-			if let Some(surface_handle) = surface_handle {
-				exec.render_vello_scene(&scene, &surface_handle, resolution, context, background)
-					.await
-					.expect("Failed to render Vello scene");
+			// Always render to texture (unified path for both WASM and desktop)
+			let texture = exec.render_vello_scene_to_texture(&scene, resolution, context, background).await.expect("Failed to render Vello scene");
 
-				let frame = SurfaceFrame {
-					surface_id: surface_handle.window_id,
-					// TODO: Find a cleaner way to get the unscaled resolution here.
-					// This is done because the surface frame (canvas) is in logical pixels, not physical pixels.
-					resolution,
-					transform: glam::DAffine2::IDENTITY,
-				};
-
-				RenderOutputType::CanvasFrame(frame)
-			} else {
-				let texture = exec.render_vello_scene_to_texture(&scene, resolution, context, background).await.expect("Failed to render Vello scene");
-
-				RenderOutputType::Texture(ImageTexture { texture })
-			}
+			RenderOutputType::Texture(ImageTexture { texture })
 		}
 		_ => unreachable!("Render node did not receive its requested data type"),
 	};

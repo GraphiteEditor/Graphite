@@ -203,17 +203,28 @@
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			let canvas = (window as any).imageCanvases[canvasName];
 
-			if (canvasName !== "0" && canvas.parentElement) {
-				var newCanvas = window.document.createElement("canvas");
-				var context = newCanvas.getContext("2d");
+			// Get logical dimensions from foreignObject parent (set by backend)
+			const foreignObject = placeholder.parentElement;
+			if (!foreignObject) return;
+			const logicalWidth = parseInt(foreignObject.getAttribute("width") || "0");
+			const logicalHeight = parseInt(foreignObject.getAttribute("height") || "0");
 
-				newCanvas.width = canvas.width;
-				newCanvas.height = canvas.height;
+			// if (canvasName !== "0" && canvas.parentElement) {
+			// 	console.log("test");
+			// 	var newCanvas = window.document.createElement("canvas");
+			// 	var context = newCanvas.getContext("2d");
 
-				context?.drawImage(canvas, 0, 0);
+			// 	newCanvas.width = canvas.width;
+			// 	newCanvas.height = canvas.height;
 
-				canvas = newCanvas;
-			}
+			// 	context?.drawImage(canvas, 0, 0);
+
+			// 	canvas = newCanvas;
+			// }
+
+			// Set CSS size to logical resolution (for correct display size)
+			canvas.style.width = `${logicalWidth}px`;
+			canvas.style.height = `${logicalHeight}px`;
 
 			placeholder.replaceWith(canvas);
 		});
