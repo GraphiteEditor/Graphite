@@ -234,7 +234,7 @@ async fn repeat<I: 'n + Send + Clone>(
 	// TODO: When using a custom Properties panel layout in document_node_definitions.rs and this default is set, the widget weirdly doesn't show up in the Properties panel. Investigation is needed.
 	direction: PixelSize,
 	angle: Angle,
-	#[default(4)] count: IntegerCount,
+	#[default(5)] count: IntegerCount,
 ) -> Table<I> {
 	let angle = angle.to_radians();
 	let count = count.max(1);
@@ -849,12 +849,12 @@ async fn points_to_polyline(_: impl Ctx, mut points: Table<Vector>, #[default(tr
 
 		let points_count = row.element.point_domain.ids().len();
 
-		if points_count > 2 {
+		if points_count >= 2 {
 			(0..points_count - 1).for_each(|i| {
 				segment_domain.push(next_id.next_id(), i, i + 1, BezierHandles::Linear, StrokeId::generate());
 			});
 
-			if closed {
+			if closed && points_count != 2 {
 				segment_domain.push(next_id.next_id(), points_count - 1, 0, BezierHandles::Linear, StrokeId::generate());
 
 				row.element
@@ -2051,6 +2051,11 @@ async fn count_elements<I: Count>(
 	source: I,
 ) -> f64 {
 	source.count() as f64
+}
+
+#[node_macro::node(category("Vector: Measure"), path(graphene_core::vector))]
+async fn count_points(_: impl Ctx, source: Table<Vector>) -> f64 {
+	source.into_iter().map(|row| row.element.point_domain.positions().len() as f64).sum()
 }
 
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]

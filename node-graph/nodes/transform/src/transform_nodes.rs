@@ -3,7 +3,7 @@ use core_types::color::Color;
 use core_types::table::Table;
 use core_types::transform::{ApplyTransform, Transform};
 use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, InjectFootprint, ModifyFootprint, OwnedContextImpl};
-use glam::{DAffine2, DVec2};
+use glam::{DAffine2, DMat2, DVec2};
 use graphic_types::Graphic;
 use graphic_types::Vector;
 use graphic_types::raster_types::{CPU, GPU, Raster};
@@ -16,14 +16,14 @@ async fn transform<T: ApplyTransform + 'n + 'static>(
 	#[implementations(
 		Context -> DAffine2,
 		Context -> DVec2,
-		Context -> Table<Vector>,
 		Context -> Table<Graphic>,
+		Context -> Table<Vector>,
 		Context -> Table<Raster<CPU>>,
 		Context -> Table<Raster<GPU>>,
 		Context -> Table<Color>,
 		Context -> Table<GradientStops>,
 	)]
-	value: impl Node<Context<'static>, Output = T>,
+	content: impl Node<Context<'static>, Output = T>,
 	translation: DVec2,
 	rotation: f64,
 	scale: DVec2,
@@ -41,24 +41,75 @@ async fn transform<T: ApplyTransform + 'n + 'static>(
 		ctx = ctx.with_footprint(footprint);
 	}
 
-	let mut transform_target = value.eval(ctx.into_context()).await;
+	let mut transform_target = content.eval(ctx.into_context()).await;
 
 	transform_target.left_apply_transform(&matrix);
 
 	transform_target
 }
 
-/// Overwrites the transform of each element in the input table with the specified transform.
-#[node_macro::node(category(""))]
-fn replace_transform<Data, TransformInput: Transform>(
-	_: impl Ctx + InjectFootprint,
-	#[implementations(Table<Vector>, Table<Raster<CPU>>, Table<Graphic>, Table<Color>, Table<GradientStops>)] mut data: Table<Data>,
-	#[implementations(DAffine2)] transform: TransformInput,
-) -> Table<Data> {
-	for data_transform in data.iter_mut() {
-		*data_transform.transform = transform.transform();
+/// Resets the desired components of the input transform to their default values. If all components are reset, the output will be set to the identity transform.
+/// Shear is represented jointly by rotation and scale, so resetting both will also remove any shear.
+#[node_macro::node(category("Math: Transform"))]
+fn reset_transform<T>(
+	_: impl Ctx,
+	#[implementations(
+		Table<Graphic>,
+		Table<Vector>,
+		Table<Raster<CPU>>,
+		Table<Raster<GPU>>,
+		Table<Color>,
+		Table<GradientStops>,
+	)]
+	mut content: Table<T>,
+	#[default(true)] reset_translation: bool,
+	reset_rotation: bool,
+	reset_scale: bool,
+) -> Table<T> {
+	for row in content.iter_mut() {
+		// Translation
+		if reset_translation {
+			row.transform.translation = DVec2::ZERO;
+		}
+		// (Rotation, Scale)
+		match (reset_rotation, reset_scale) {
+			(true, true) => {
+				row.transform.matrix2 = DMat2::IDENTITY;
+			}
+			(true, false) => {
+				let scale = row.transform.decompose_scale();
+				row.transform.matrix2 = DMat2::from_diagonal(scale);
+			}
+			(false, true) => {
+				let rotation = row.transform.decompose_rotation();
+				let rotation_matrix = DMat2::from_angle(rotation);
+				row.transform.matrix2 = rotation_matrix;
+			}
+			(false, false) => {}
+		}
 	}
-	data
+	content
+}
+
+/// Overwrites the transform of each element in the input table with the specified transform.
+#[node_macro::node(category("Math: Transform"))]
+fn replace_transform<T>(
+	_: impl Ctx + InjectFootprint,
+	#[implementations(
+		Table<Graphic>,
+		Table<Vector>,
+		Table<Raster<CPU>>,
+		Table<Raster<GPU>>,
+		Table<Color>,
+		Table<GradientStops>,
+	)]
+	mut content: Table<T>,
+	transform: DAffine2,
+) -> Table<T> {
+	for row in content.iter_mut() {
+		*row.transform = transform.transform();
+	}
+	content
 }
 
 // TODO: Figure out how this node should behave once #2982 is implemented.
@@ -74,9 +125,9 @@ async fn extract_transform<T>(
 		Table<Color>,
 		Table<GradientStops>,
 	)]
-	vector: Table<T>,
+	content: Table<T>,
 ) -> DAffine2 {
-	vector.iter().next().map(|row| *row.transform).unwrap_or_default()
+	content.iter().next().map(|row| *row.transform).unwrap_or_default()
 }
 
 /// Produces the inverse of the input transform, which is the transform that undoes the effect of the original transform.
