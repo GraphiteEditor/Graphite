@@ -1041,18 +1041,24 @@ impl<Upstream> Iterator for StrokePathIter<'_, Upstream> {
 	type Item = (Vec<ManipulatorGroup<PointId>>, bool);
 
 	fn next(&mut self) -> Option<Self::Item> {
-		let current_start = if let Some((index, _)) = self.points.iter().enumerate().skip(self.skip).find(|(_, val)| val.connected() == 1) {
-			index
-		} else {
-			if !self.done_one {
-				self.done_one = true;
-				self.skip = 0;
-			}
-			self.points.iter().enumerate().skip(self.skip).find(|(_, val)| val.connected() > 0)?.0
-		};
-		self.skip = current_start + 1;
+		let mut current_start = None;
+		// First iterate over the single connected points
+		if !self.done_one {
+			current_start = self.points.iter().enumerate().skip(self.skip).find(|(_, val)| val.connected() == 1);
+			self.done_one = current_start.is_none();
+			self.skip = current_start.map_or(0, |(index, _)| index + 1);
+		}
 
-		// There will always be one (seeing as we checked above)
+		// If we've already done the single connected, then go through looking at multi connected
+		if current_start.is_none() {
+			current_start = self.points.iter().enumerate().skip(self.skip).find(|(_, val)| val.connected() > 0);
+			self.skip = current_start.map_or(self.points.len(), |(index, _)| index);
+		}
+
+		// If there is no starting point, exit
+		let current_start = current_start?.0;
+
+		// There will always be at least one segment connected to this one
 		let mut point_index = current_start;
 		let mut manipulators_list = Vec::new();
 		let mut in_handle = None;
