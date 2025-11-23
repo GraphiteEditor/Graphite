@@ -539,50 +539,56 @@ impl ProtoNetwork {
 #[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum GraphErrorType {
 	NodeNotFound(NodeId),
-	UnexpectedGenerics { index: usize, inputs: Vec<Type> },
+	UnexpectedGenerics {
+		index: usize,
+		inputs: Vec<Type>,
+	},
 	NoImplementations,
 	NoConstructor,
-	InvalidImplementations { inputs: String, error_inputs: Vec<Vec<(usize, (Type, Type))>> },
-	MultipleImplementations { inputs: String, valid: Vec<NodeIOTypes> },
+	// The first vec represents a list of correct NodeIOTypes
+	// The second vec represents what the input index and what it expects
+	InvalidImplementations {
+		identifier: ProtoNodeIdentifier,
+		inputs: String,
+		error_inputs: Vec<Vec<(usize, Type)>>,
+	},
+	MultipleImplementations {
+		inputs: String,
+		valid: Vec<NodeIOTypes>,
+	},
 }
 impl Debug for GraphErrorType {
-	// TODO: format with the document graph context so the input index is the same as in the graph UI.
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			GraphErrorType::NodeNotFound(id) => write!(f, "Input node {id} is not present in the typing context"),
 			GraphErrorType::UnexpectedGenerics { index, inputs } => write!(f, "Generic inputs should not exist but found at {index}: {inputs:?}"),
 			GraphErrorType::NoImplementations => write!(f, "No implementations found"),
 			GraphErrorType::NoConstructor => write!(f, "No construct found for node"),
-			GraphErrorType::InvalidImplementations { inputs, error_inputs } => {
-				let format_error = |(index, (found, expected)): &(usize, (Type, Type))| {
-					let index = index + 1;
-					format!(
-						"\
-						• Input {index}:\n\
-						…found:       {found}\n\
-						…expected: {expected}\
-						"
-					)
-				};
-				let format_error_list = |errors: &Vec<(usize, (Type, Type))>| errors.iter().map(format_error).collect::<Vec<_>>().join("\n");
-				let mut errors = error_inputs.iter().map(format_error_list).collect::<Vec<_>>();
-				errors.sort();
-				let errors = errors.join("\n");
-				let incompatibility = if errors.chars().filter(|&c| c == '•').count() == 1 {
-					"This input type is incompatible:"
-				} else {
-					"These input types are incompatible:"
-				};
-
+			GraphErrorType::InvalidImplementations { identifier, inputs, error_inputs } => {
+				let plural = if error_inputs.first().is_some_and(|first| first.len() > 1) { "s" } else { "" }.to_string();
+				let solutions = error_inputs
+					.iter()
+					.map(|expected_inputs| {
+						expected_inputs
+							.iter()
+							.enumerate()
+							.map(|(error_index, (input_index, expected_type))| {
+								let pre_text = if error_index == 0 { "• " } else { "  " };
+								format!("{}Input {} expected: {}\n", pre_text, input_index + 1, expected_type)
+							})
+							.collect::<String>()
+					})
+					.collect::<Vec<_>>()
+					.join("\n");
+				let node_name = identifier.name.to_string();
 				write!(
 					f,
-					"\
-					{incompatibility}\n\
-					{errors}\n\
-					\n\
-					The node is currently receiving all of the following input types:\n\
-					{inputs}\n\
-					This is not a supported arrangement of types for the node.\
+					"Potential solutions for invalid input{plural}:\n\
+					{solutions}\n\
+					The node is currently receiving the following input types:\n\
+					{inputs}\n\n\
+					This is not a supported arrangement of types for:\n\
+					{node_name}\
 					"
 				)
 			}
@@ -766,10 +772,7 @@ impl TypingContext {
 						.zip([&node_io.call_argument].into_iter().chain(&node_io.inputs).cloned())
 						.enumerate()
 						.filter(|(_, (p1, p2))| !valid_type(p1, p2))
-						.map(|(index, ty)| {
-							let i = node.original_location.inputs(index).min_by_key(|s| s.node.len()).map(|s| s.index).unwrap_or(index);
-							(i, ty)
-						})
+						.map(|(index, (_, expected))| (index - 1, expected))
 						.collect::<Vec<_>>();
 					if current_errors.len() < best_errors {
 						best_errors = current_errors.len();
@@ -779,14 +782,16 @@ impl TypingContext {
 						error_inputs.push(current_errors);
 					}
 				}
-				let inputs = [call_argument]
-					.into_iter()
-					.chain(&inputs)
-					.enumerate()
-					.filter_map(|(i, t)| if i == 0 { None } else { Some(format!("• Input {i}: {t}")) })
-					.collect::<Vec<_>>()
-					.join("\n");
-				Err(vec![GraphError::new(node, GraphErrorType::InvalidImplementations { inputs, error_inputs })])
+
+				let inputs = inputs.into_iter().enumerate().map(|(i, t)| format!("• Input {}: {}", i + 1, t)).collect::<Vec<_>>().join("\n");
+				Err(vec![GraphError::new(
+					node,
+					GraphErrorType::InvalidImplementations {
+						identifier: node.identifier.clone(),
+						inputs,
+						error_inputs,
+					},
+				)])
 			}
 			[(node_io, org_nio)] => {
 				let node_io = node_io.clone();
