@@ -2058,6 +2058,31 @@ async fn count_points(_: impl Ctx, source: Table<Vector>) -> f64 {
 	source.into_iter().map(|row| row.element.point_domain.positions().len() as f64).sum()
 }
 
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn index_points(_: impl Ctx, source: Table<Vector>, index: f64) -> DVec2 {
+	let points_count = source.iter().map(|row| row.element.point_domain.positions().len()).sum::<usize>();
+
+	// Clamp and allow negative indexing from the end
+	let index = index as isize;
+	let index = if index < 0 {
+		(points_count as isize + index).max(0) as usize
+	} else {
+		(index as usize).min(points_count - 1)
+	};
+
+	// Find the point at the given index across all vector elements
+	let mut accumulated = 0;
+	for row in source.iter() {
+		let row_point_count = row.element.point_domain.positions().len();
+		if index - accumulated < row_point_count {
+			return row.element.point_domain.positions()[index - accumulated];
+		}
+		accumulated += row_point_count;
+	}
+
+	DVec2::ZERO
+}
+
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
 async fn path_length(_: impl Ctx, source: Table<Vector>) -> f64 {
 	source
