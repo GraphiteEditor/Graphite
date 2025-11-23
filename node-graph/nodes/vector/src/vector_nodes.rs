@@ -21,7 +21,7 @@ use vector_types::vector::algorithms::bezpath_algorithms::{self, TValue, evaluat
 use vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
 use vector_types::vector::algorithms::offset_subpath::offset_bezpath;
 use vector_types::vector::algorithms::spline::{solve_spline_first_handle_closed, solve_spline_first_handle_open};
-use vector_types::vector::misc::{CentroidType, bezpath_from_manipulator_groups, bezpath_to_manipulator_groups, point_to_dvec2};
+use vector_types::vector::misc::{CentroidType, ExtrudeJoiningAlgorithm, bezpath_from_manipulator_groups, bezpath_to_manipulator_groups, point_to_dvec2};
 use vector_types::vector::misc::{MergeByDistanceAlgorithm, PointSpacingType, is_linear};
 use vector_types::vector::misc::{handles_to_segment, segment_to_handles};
 use vector_types::vector::style::{Fill, Gradient, GradientStops, Stroke};
@@ -578,6 +578,212 @@ pub fn merge_by_distance(
 			})
 			.collect(),
 	}
+}
+
+pub mod extrude_algorithms {
+	use kurbo::{ParamCurve, ParamCurveDeriv};
+
+	/// Convert [`vector_types::subpath::Bezier`] to [`kurbo::PathSeg`]
+	fn bezier_to_path_seg(bezier: vector_types::subpath::Bezier) -> kurbo::PathSeg {
+		let [start, end] = [(bezier.start().x, bezier.start().y), (bezier.end().x, bezier.end().y)];
+		match bezier.handles {
+			vector_types::subpath::BezierHandles::Linear => kurbo::Line::new(start, end).into(),
+			vector_types::subpath::BezierHandles::Quadratic { handle } => kurbo::QuadBez::new(start, (handle.x, handle.y), end).into(),
+			vector_types::subpath::BezierHandles::Cubic { handle_start, handle_end } => kurbo::CubicBez::new(start, (handle_start.x, handle_start.y), (handle_end.x, handle_end.y), end).into(),
+		}
+	}
+
+	/// Convert [`kurbo::CubicBez`] to [`vector_types::subpath::BezierHandles`]
+	fn cubic_to_handles(cubic_bez: kurbo::CubicBez) -> vector_types::subpath::BezierHandles {
+		vector_types::subpath::BezierHandles::Cubic {
+			handle_start: glam::DVec2::new(cubic_bez.p1.x, cubic_bez.p1.y),
+			handle_end: glam::DVec2::new(cubic_bez.p2.x, cubic_bez.p2.y),
+		}
+	}
+
+	/// Find the t values to split (where the tangent changes to be on the other side of the direction)
+	fn find_splits(cubic_segment: kurbo::CubicBez, direction: glam::DVec2) -> impl Iterator<Item = f64> {
+		let derivative = cubic_segment.deriv();
+		let convert = |x: kurbo::Point| glam::DVec2::new(x.x, x.y);
+		let derivative_pts = [derivative.p0, derivative.p1, derivative.p2].map(convert);
+
+		let t_squared = derivative_pts[0] - 2. * derivative_pts[1] + derivative_pts[2];
+		let t_scalar = -2. * derivative_pts[0] + 2. * derivative_pts[1];
+		let contant = derivative_pts[0];
+
+		kurbo::common::solve_quadratic(contant.perp_dot(direction), t_scalar.perp_dot(direction), t_squared.perp_dot(direction))
+			.into_iter()
+			.filter(|&t| t > 1e-6 && t < 1. - 1e-6)
+	}
+
+	/// Split so segements they do not have tangents on both sides of the direction vector
+	fn split(vector: &mut graphic_types::Vector, direction: glam::DVec2) {
+		let segment_count = vector.segment_domain.ids().len();
+		let mut next_point = vector.point_domain.next_id();
+		let mut next_segment = vector.segment_domain.next_id();
+		for segment_index in 0..segment_count {
+			let (_, _, bezier) = vector.segment_points_from_index(segment_index);
+			let mut start_index = vector.segment_domain.start_point()[segment_index];
+			let pathseg = bezier_to_path_seg(bezier).to_cubic();
+			let mut start_t = 0.;
+			for split_t in find_splits(pathseg, direction) {
+				let [first, second] = [pathseg.subsegment(start_t..split_t), pathseg.subsegment(split_t..1.)];
+				let [first_handles, second_handles] = [first, second].map(cubic_to_handles);
+				let middle_point = next_point.next_id();
+				let start_segment = next_segment.next_id();
+
+				let middle_point_index = vector.point_domain.len();
+				vector.point_domain.push(middle_point, glam::DVec2::new(first.end().x, first.end().y));
+				vector
+					.segment_domain
+					.push(start_segment, start_index, middle_point_index, first_handles, vector_types::vector::StrokeId::ZERO);
+				vector.segment_domain.set_start_point(segment_index, middle_point_index);
+				vector.segment_domain.set_handles(segment_index, second_handles);
+
+				start_t = split_t;
+				start_index = middle_point_index;
+			}
+		}
+	}
+
+	/// Copy all segements with the offset of `direction`
+	fn offset_copy_all_segments(vector: &mut graphic_types::Vector, direction: glam::DVec2) {
+		let points_count = vector.point_domain.ids().len();
+		let mut next_point = vector.point_domain.next_id();
+		for index in 0..points_count {
+			vector.point_domain.push(next_point.next_id(), vector.point_domain.positions()[index] + direction);
+		}
+
+		let segment_count = vector.segment_domain.ids().len();
+		let mut next_segment = vector.segment_domain.next_id();
+		for index in 0..segment_count {
+			vector.segment_domain.push(
+				next_segment.next_id(),
+				vector.segment_domain.start_point()[index] + points_count,
+				vector.segment_domain.end_point()[index] + points_count,
+				vector.segment_domain.handles()[index].apply_transformation(|x| x + direction),
+				vector.segment_domain.stroke()[index],
+			);
+		}
+	}
+
+	/// Join points from the original to the copied that are on alternate sides of the direction
+	fn join_extrema_edges(vector: &mut graphic_types::Vector, direction: glam::DVec2) {
+		#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+		enum Found {
+			#[default]
+			None,
+			Positive,
+			Negative,
+			Both,
+			Invalid,
+		}
+		impl Found {
+			fn update(&mut self, value: f64) {
+				*self = match (*self, value > 0.) {
+					(Found::None, true) => Found::Positive,
+					(Found::None, false) => Found::Negative,
+					(Found::Positive, true) | (Found::Negative, false) => Found::Both,
+					_ => Found::Invalid,
+				};
+			}
+		}
+		let first_half_points = vector.point_domain.len() / 2;
+		let mut points = vec![Found::None; first_half_points];
+		let first_half_segments = vector.segment_domain.ids().len() / 2;
+		for segment_id in 0..first_half_segments {
+			let index = [vector.segment_domain.start_point()[segment_id], vector.segment_domain.end_point()[segment_id]];
+			let position = index.map(|index| vector.point_domain.positions()[index]);
+
+			if position[0].abs_diff_eq(position[1], 1e-6) {
+				continue; // Skip zero length segments
+			}
+
+			points[index[0]].update(direction.perp_dot(position[1] - position[0]));
+			points[index[1]].update(direction.perp_dot(position[0] - position[1]));
+		}
+
+		let mut next_segment = vector.segment_domain.next_id();
+		for index in 0..first_half_points {
+			if points[index] != Found::Both {
+				continue;
+			}
+			vector.segment_domain.push(
+				next_segment.next_id(),
+				index,
+				index + first_half_points,
+				vector_types::subpath::BezierHandles::Linear,
+				vector_types::vector::StrokeId::ZERO,
+			);
+		}
+	}
+
+	/// Join all points from the original to the copied
+	fn join_all(vector: &mut graphic_types::Vector) {
+		let mut next_segment = vector.segment_domain.next_id();
+		let first_half = vector.point_domain.len() / 2;
+		for index in 0..first_half {
+			vector.segment_domain.push(
+				next_segment.next_id(),
+				index,
+				index + first_half,
+				vector_types::subpath::BezierHandles::Linear,
+				vector_types::vector::StrokeId::ZERO,
+			);
+		}
+	}
+
+	pub fn extrude(vector: &mut graphic_types::Vector, direction: glam::DVec2, joining_algorithm: vector_types::vector::misc::ExtrudeJoiningAlgorithm) {
+		split(vector, direction);
+		offset_copy_all_segments(vector, direction);
+		match joining_algorithm {
+			vector_types::vector::misc::ExtrudeJoiningAlgorithm::Extrema => join_extrema_edges(vector, direction),
+			vector_types::vector::misc::ExtrudeJoiningAlgorithm::All => join_all(vector),
+			vector_types::vector::misc::ExtrudeJoiningAlgorithm::None => {}
+		}
+	}
+
+	#[cfg(test)]
+	mod extrude_tests {
+		use glam::DVec2;
+		use kurbo::{ParamCurve, ParamCurveDeriv};
+
+		#[test]
+		fn split_cubic() {
+			let l1 = kurbo::CubicBez::new((0., 0.), (100., 0.), (100., 100.), (0., 100.));
+			assert_eq!(super::find_splits(l1, DVec2::Y).collect::<Vec<f64>>(), vec![0.5]);
+			assert!(super::find_splits(l1, DVec2::X).collect::<Vec<f64>>().is_empty());
+
+			let l2 = kurbo::CubicBez::new((0., 0.), (0., 0.), (100., 0.), (100., 0.));
+			assert!(super::find_splits(l2, DVec2::X).collect::<Vec<f64>>().is_empty());
+
+			let l3 = kurbo::PathSeg::Line(kurbo::Line::new((0., 0.), (100., 0.)));
+			assert!(super::find_splits(l3.to_cubic(), DVec2::X).collect::<Vec<f64>>().is_empty());
+
+			let l4 = kurbo::CubicBez::new((0., 0.), (100., -10.), (100., 110.), (0., 100.));
+			let splits = super::find_splits(l4, DVec2::X).map(|t| l4.deriv().eval(t)).collect::<Vec<_>>();
+			assert_eq!(splits.len(), 2);
+			assert!(splits.iter().all(|&deriv| deriv.y.abs() < 1e-8), "{splits:?}");
+		}
+
+		#[test]
+		fn split_vector() {
+			let curve = kurbo::PathSeg::Cubic(kurbo::CubicBez::new((0., 0.), (100., -10.), (100., 110.), (0., 100.)));
+			let mut vector = graphic_types::Vector::from_bezpath(kurbo::BezPath::from_path_segments([curve].into_iter()));
+			super::split(&mut vector, DVec2::X);
+			assert_eq!(vector.segment_ids().len(), 3);
+			assert_eq!(vector.point_domain.ids().len(), 4);
+		}
+	}
+}
+
+/// Attempt to inscribe circles at the anchors (that have exactly two segments connected).
+#[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
+async fn extrude(_: impl Ctx, mut source: Table<Vector>, direction: DVec2, joining_algorithm: ExtrudeJoiningAlgorithm) -> Table<Vector> {
+	for TableRowMut { element: source, .. } in source.iter_mut() {
+		extrude_algorithms::extrude(source, direction, joining_algorithm);
+	}
+	source
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
