@@ -553,7 +553,7 @@ async fn round_corners(
 		.collect()
 }
 
-/// Attempt to inscribe circles at the anchors (that have exactly two segments connected).
+/// Attempt to inscribe circles that start `radius`` away from the anchor points.
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
 async fn inscribe_circles(
 	_: impl Ctx,
@@ -591,7 +591,7 @@ async fn inscribe_circles(
 			};
 
 			// Split path based on inscription
-			let [first, second] = [first.subsegment(pos.time_1..1.0), second.subsegment(pos.time_2..1.0)];
+			let [first, second] = [first.subsegment(pos.t_first..1.0), second.subsegment(pos.t_second..1.0)];
 			let start_positions = [first, second].map(|segment| DVec2::new(segment.start().x, segment.start().y));
 
 			// Make round handles into circle shape
@@ -601,7 +601,10 @@ async fn inscribe_circles(
 				warn!("k is not finite corner {pos:?}, skipping");
 				continue;
 			}
-			let handle_positions = [start_positions[0] - start_tangents[0] * k * radius, start_positions[1] - start_tangents[1] * k * radius];
+			let handle_positions = [
+				start_positions[0] - start_tangents[0] * k * pos.radius_to_centre,
+				start_positions[1] - start_tangents[1] * k * pos.radius_to_centre,
+			];
 			let rounded_handles = BezierHandles::Cubic {
 				handle_start: handle_positions[0],
 				handle_end: handle_positions[1],
