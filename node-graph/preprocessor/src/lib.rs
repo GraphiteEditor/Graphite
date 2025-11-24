@@ -86,11 +86,13 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 							} else {
 								identity_node.clone()
 							};
-
+							let mut original_location = OriginalLocation::default();
+							original_location.auto_convert_index = Some(i);
 							DocumentNode {
 								inputs,
 								implementation: DocumentNodeImplementation::ProtoNode(proto_node),
 								visible: true,
+								original_location,
 								..Default::default()
 							}
 						}
