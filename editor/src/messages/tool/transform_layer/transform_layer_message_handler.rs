@@ -231,8 +231,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				match self.transform_operation {
 					TransformOperation::None => (),
 					TransformOperation::Grabbing(translation) => {
-						let translation_local = translation.to_dvec(&self.state);
-						let translation_viewport = (self.state.local_to_viewport_transform() * document_to_viewport).transform_vector2(translation_local);
+						let translation_viewport = self.state.local_to_viewport_transform().matrix2 * translation.to_dvec(&self.state, document);
 						let pivot = document_to_viewport.transform_point2(self.grab_target);
 						let quad = Quad::from_box([pivot, pivot + translation_viewport]);
 
@@ -242,7 +241,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 						});
 
 						let typed_string = (!self.typing.digits.is_empty() && self.transform_operation.can_begin_typing()).then(|| self.typing.string.clone());
-						overlay_context.translation_box(document_to_viewport.inverse().transform_vector2(translation_viewport), quad, typed_string);
+						overlay_context.translation_box(translation_viewport, quad, typed_string);
 					}
 					TransformOperation::Scaling(scale) => {
 						let scale = scale.to_f64(self.state.is_rounded_to_intervals);
@@ -537,8 +536,9 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 						TransformOperation::Grabbing(translation) => {
 							let delta_pos = input.mouse.position - self.mouse_position;
 							let delta_pos = (self.initial_transform * document_to_viewport.inverse()).transform_vector2(delta_pos);
-							let change = if self.slow { delta_pos / SLOWING_DIVISOR } else { delta_pos };
-							self.transform_operation = TransformOperation::Grabbing(translation.increment_amount(change));
+							let delta_viewport = if self.slow { delta_pos / SLOWING_DIVISOR } else { delta_pos };
+							let delta_scaled = delta_viewport / document_to_viewport.y_axis.length(); // Values are local to the viewport but scaled so values are relative to the current scale.
+							self.transform_operation = TransformOperation::Grabbing(translation.increment_amount(delta_scaled));
 							self.transform_operation.apply_transform_operation(&mut selected, &self.state, document);
 						}
 						TransformOperation::Rotating(rotation) => {

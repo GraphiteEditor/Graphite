@@ -156,7 +156,8 @@ pub struct Translation {
 }
 
 impl Translation {
-	pub fn to_dvec(self, state: &TransformationState) -> DVec2 {
+	pub fn to_dvec(self, state: &TransformationState, document: &DocumentMessageHandler) -> DVec2 {
+		let document_to_viewport = document.metadata().document_to_viewport;
 		let displacement = if let Some(value) = self.typed_distance {
 			match self.constraint {
 				Axis::X => DVec2::X * value,
@@ -170,6 +171,7 @@ impl Translation {
 				Axis::Y => DVec2::Y * self.dragged_distance.dot(state.constraint_axis(self.constraint).unwrap_or_default()),
 			}
 		};
+		let displacement = displacement * document_to_viewport.matrix2.y_axis.length(); // Values are local to the viewport but scaled so values are relative to the current scale.
 		if state.is_rounded_to_intervals { displacement.round() } else { displacement }
 	}
 
@@ -329,7 +331,7 @@ impl TransformOperation {
 	pub fn apply_transform_operation(&self, selected: &mut Selected, state: &TransformationState, document: &DocumentMessageHandler) {
 		if self != &TransformOperation::None {
 			let mut transformation = match self {
-				TransformOperation::Grabbing(translation) => DAffine2::from_translation(translation.to_dvec(state)),
+				TransformOperation::Grabbing(translation) => DAffine2::from_translation(translation.to_dvec(state, document)),
 				TransformOperation::Rotating(rotation) => DAffine2::from_angle(rotation.to_f64(state.is_rounded_to_intervals)),
 				TransformOperation::Scaling(scale) => DAffine2::from_scale(scale.to_dvec(state.is_rounded_to_intervals)),
 				TransformOperation::None => unreachable!(),
