@@ -33,10 +33,6 @@ export class UpdateClickTargets extends JsMessage {
 	readonly clickTargets!: FrontendClickTargets | undefined;
 }
 
-export class UpdateContextMenuInformation extends JsMessage {
-	readonly contextMenuInformation!: ContextMenuInformation | undefined;
-}
-
 export class UpdateImportsExports extends JsMessage {
 	readonly imports!: (FrontendGraphOutput | undefined)[];
 
@@ -81,7 +77,7 @@ export class UpdateNodeGraphNodes extends JsMessage {
 	readonly nodes!: FrontendNode[];
 }
 
-export class UpdateNodeGraphError extends JsMessage {
+export class UpdateNodeGraphErrorDiagnostic extends JsMessage {
 	readonly error!: NodeGraphError | undefined;
 }
 
@@ -172,6 +168,10 @@ export type ContextMenuInformation = {
 	contextMenuData: { type: "CreateNode"; data: { compatibleType: string | undefined } } | { type: "ModifyNode"; data: { canBeLayer: boolean; currentlyIsNode: boolean; nodeId: bigint } };
 };
 
+export class UpdateContextMenuInformation extends JsMessage {
+	readonly contextMenuInformation!: ContextMenuInformation | undefined;
+}
+
 export type FrontendGraphDataType = "General" | "Number" | "Artboard" | "Graphic" | "Raster" | "Vector" | "Color" | "Invalid";
 
 export class FrontendGraphInput {
@@ -201,11 +201,11 @@ export class FrontendGraphOutput {
 }
 
 export class FrontendNode {
+	readonly id!: bigint;
+
 	readonly isLayer!: boolean;
 
 	readonly canBeLayer!: boolean;
-
-	readonly id!: bigint;
 
 	readonly reference!: string | undefined;
 
@@ -232,9 +232,7 @@ export class FrontendNode {
 
 	readonly visible!: boolean;
 
-	readonly unlocked!: boolean;
-
-	readonly errors!: string | undefined;
+	readonly locked!: boolean;
 }
 
 export class FrontendNodeType {
@@ -1696,7 +1694,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateMouseCursor,
 	UpdateNodeGraphControlBarLayout,
 	UpdateNodeGraphNodes,
-	UpdateNodeGraphError,
+	UpdateNodeGraphErrorDiagnostic,
 	UpdateNodeGraphSelection,
 	UpdateNodeGraphTransform,
 	UpdateNodeGraphWires,

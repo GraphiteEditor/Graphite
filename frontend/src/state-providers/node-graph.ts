@@ -26,7 +26,7 @@ import {
 	UpdateNodeGraphTransform,
 	UpdateNodeThumbnail,
 	UpdateWirePathInProgress,
-	UpdateNodeGraphError,
+	UpdateNodeGraphErrorDiagnostic,
 } from "@graphite/messages";
 
 export function createNodeGraphState(editor: Editor) {
@@ -121,9 +121,9 @@ export function createNodeGraphState(editor: Editor) {
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphError, (updateNodeGraphError) => {
+	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphErrorDiagnostic, (updateNodeGraphErrorDiagnostic) => {
 		update((state) => {
-			state.error = updateNodeGraphError.error;
+			state.error = updateNodeGraphErrorDiagnostic.error;
 			return state;
 		});
 	});

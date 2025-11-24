@@ -90,14 +90,14 @@ pub struct FrontendNode {
 	pub primary_output: Option<FrontendGraphOutput>,
 	#[serde(rename = "exposedOutputs")]
 	pub exposed_outputs: Vec<FrontendGraphOutput>,
-	#[serde(rename = "primaryOutputConnectedToLayer")]
-	pub primary_output_connected_to_layer: bool,
 	#[serde(rename = "primaryInputConnectedToLayer")]
 	pub primary_input_connected_to_layer: bool,
+	#[serde(rename = "primaryOutputConnectedToLayer")]
+	pub primary_output_connected_to_layer: bool,
 	pub position: IVec2,
+	pub previewed: bool,
 	pub visible: bool,
 	pub locked: bool,
-	pub previewed: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -156,12 +156,12 @@ pub struct BoxSelection {
 #[serde(tag = "type", content = "data")]
 pub enum ContextMenuData {
 	ModifyNode {
+		#[serde(rename = "nodeId")]
+		node_id: NodeId,
 		#[serde(rename = "canBeLayer")]
 		can_be_layer: bool,
 		#[serde(rename = "currentlyIsNode")]
 		currently_is_node: bool,
-		#[serde(rename = "nodeId")]
-		node_id: NodeId,
 	},
 	CreateNode {
 		#[serde(rename = "compatibleType")]
@@ -179,7 +179,7 @@ pub struct ContextMenuInformation {
 }
 
 #[derive(Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize, specta::Type)]
-pub struct NodeGraphError {
+pub struct NodeGraphErrorDiagnostic {
 	pub position: FrontendXY,
 	pub error: String,
 }
@@ -208,7 +208,7 @@ pub enum Direction {
 	Right,
 }
 
-/// Stores node graph coordinates which are then transformed in svelte based on the node graph transform
+/// Stores node graph coordinates which are then transformed in Svelte based on the node graph transform
 #[derive(Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct FrontendXY {
 	pub x: i32,
@@ -223,6 +223,6 @@ impl From<DVec2> for FrontendXY {
 
 impl From<IVec2> for FrontendXY {
 	fn from(v: IVec2) -> Self {
-		FrontendXY { x: v.x as i32, y: v.y as i32 }
+		FrontendXY { x: v.x, y: v.y }
 	}
 }

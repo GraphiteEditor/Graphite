@@ -212,9 +212,9 @@
 				top: `${$nodeGraph.contextMenuInformation.contextMenuCoordinates.y * $nodeGraph.transform.scale + $nodeGraph.transform.y}px`,
 			}}
 		>
-			{#if $nodeGraph.contextMenuInformation.contextMenuData.type == "CreateNode"}
+			{#if $nodeGraph.contextMenuInformation.contextMenuData.type === "CreateNode"}
 				<NodeCatalog initialSearchTerm={$nodeGraph.contextMenuInformation.contextMenuData.data.compatibleType || ""} on:selectNodeType={(e) => createNode(e.detail)} />
-			{:else if $nodeGraph.contextMenuInformation.contextMenuData.type == "ModifyNode"}
+			{:else if $nodeGraph.contextMenuInformation.contextMenuData.type === "ModifyNode"}
 				<LayoutRow class="toggle-layer-or-node">
 					<TextLabel>Display as</TextLabel>
 					<RadioInput
@@ -223,12 +223,16 @@
 							{
 								value: "node",
 								label: "Node",
-								action: () => editor.handle.setToNodeOrLayer($nodeGraph.contextMenuInformation.contextMenuData.data.nodeId, false),
+								action: () =>
+									$nodeGraph.contextMenuInformation?.contextMenuData.type === "ModifyNode" &&
+									editor.handle.setToNodeOrLayer($nodeGraph.contextMenuInformation.contextMenuData.data.nodeId, false),
 							},
 							{
 								value: "layer",
 								label: "Layer",
-								action: () => editor.handle.setToNodeOrLayer($nodeGraph.contextMenuInformation.contextMenuData.data.nodeId, true),
+								action: () =>
+									$nodeGraph.contextMenuInformation?.contextMenuData.type === "ModifyNode" &&
+									editor.handle.setToNodeOrLayer($nodeGraph.contextMenuInformation.contextMenuData.data.nodeId, true),
 							},
 						]}
 						disabled={!$nodeGraph.contextMenuInformation.contextMenuData.data.canBeLayer}
@@ -244,20 +248,12 @@
 
 	{#if $nodeGraph.error}
 		<div class="node-error-container" style:transform-origin="0 0" style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
-			<span
-				class="node-error faded"
-				style={`left: ${$nodeGraph.error.position.x}px;
-           			top: ${$nodeGraph.error.position.y}px;`}
-				transition:fade={FADE_TRANSITION}
-				data-node-error>{$nodeGraph.error.error}</span
-			>
-			<span
-				class="node-error hover"
-				style={`left: ${$nodeGraph.error.position.x}px;
-           			top: ${$nodeGraph.error.position.y}px;`}
-				transition:fade={FADE_TRANSITION}
-				data-node-error>{$nodeGraph.error.error}</span
-			>
+			<span class="node-error faded" style:left={`${$nodeGraph.error.position.x}px`} style:top={`${$nodeGraph.error.position.y}px`} transition:fade={FADE_TRANSITION}>
+				{$nodeGraph.error.error}
+			</span>
+			<span class="node-error hover" style:left={`${$nodeGraph.error.position.x}px`} style:top={`${$nodeGraph.error.position.y}px`} transition:fade={FADE_TRANSITION}>
+				{$nodeGraph.error.error}
+			</span>
 		</div>
 	{/if}
 
@@ -337,7 +333,7 @@
 						style:--offset-left={($nodeGraph.updateImportsExports.importPosition.x - 8) / 24}
 						style:--offset-top={($nodeGraph.updateImportsExports.importPosition.y - 8) / 24 + index}
 					>
-						{#if editingNameImportIndex == index}
+						{#if editingNameImportIndex === index}
 							<input
 								class="import-text-input"
 								type="text"
@@ -449,7 +445,7 @@
 				{/if}
 			{/each}
 
-			{#if $nodeGraph.updateImportsExports.addImportExport == true}
+			{#if $nodeGraph.updateImportsExports.addImportExport}
 				<div
 					class="plus"
 					style:--offset-left={($nodeGraph.updateImportsExports.importPosition.x - 12) / 24}
@@ -657,10 +653,6 @@
 				title={`${node.displayName}\n\n${description || ""}`.trim() + (editor.handle.inDevelopmentMode() ? `\n\nNode ID: ${node.id}` : "")}
 				data-node={node.id}
 			>
-				{#if node.errors}
-					<span class="node-error faded" transition:fade={FADE_TRANSITION} title="" data-node-error>{node.errors}</span>
-					<span class="node-error hover" transition:fade={FADE_TRANSITION} title="" data-node-error>{node.errors}</span>
-				{/if}
 				<!-- Primary row -->
 				<div class="primary" class:in-selected-network={$nodeGraph.inSelectedNetwork} class:no-secondary-section={exposedInputsOutputs.length === 0}>
 					<IconLabel icon={nodeIcon(node.reference)} />
