@@ -1,6 +1,7 @@
 <script lang="ts">
-	import type { IconName } from "@graphite/icons";
 	import { getContext } from "svelte";
+
+	import type { IconName } from "@graphite/icons";
 
 	import { type KeyRaw, type LayoutKeysGroup, type Key, type MouseMotion } from "@graphite/messages";
 	import type { FullscreenState } from "@graphite/state-providers/fullscreen";
