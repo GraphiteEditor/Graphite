@@ -1980,7 +1980,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			NodeGraphMessage::UpdateLassoSelection => {
 				if let Some(lasso_selection_curr) = &mut self.lasso_selection_curr {
 					let Some(network_metadata) = network_interface.network_metadata(selection_network_path) else {
-						log::error!("Could not get network metadata in UpdateBoxSelection");
+						log::error!("Could not get network metadata in UpdateLassoSelection");
 						return;
 					};
 
@@ -2003,7 +2003,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					let shift = ipp.keyboard.get(Key::Shift as usize);
 					let alt = ipp.keyboard.get(Key::Alt as usize);
 					let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) else {
-						log::error!("Could not get selected nodes in UpdateBoxSelection");
+						log::error!("Could not get selected nodes in UpdateLassoSelection");
 						return;
 					};
 					let previous_selection = selected_nodes.selected_nodes_ref().iter().cloned().collect::<HashSet<_>>();
