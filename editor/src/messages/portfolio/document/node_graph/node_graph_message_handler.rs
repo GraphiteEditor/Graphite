@@ -64,10 +64,12 @@ pub struct NodeGraphMessageHandler {
 	pub drag_start_chain_nodes: Vec<NodeId>,
 	/// If dragging the background to create a box selection, this stores its starting point in node graph coordinates,
 	/// plus a flag indicating if it has been dragged since the mousedown began.
+	/// (We should only update hints when it has been dragged after the initial mousedown.)
 	box_selection_start: Option<(DVec2, bool)>,
-	/// If dragging the background to create a lasso selection, this stores its current lasso polygon in node graph coordinates,
-	/// plus a flag indicating if it has been dragged since the mousedown began.
-	lasso_selection_curr: Option<(Vec<DVec2>, bool)>,
+	/// If dragging the background to create a lasso selection, this stores its current lasso polygon in node graph coordinates.
+	/// Notice that it has been dragged since the mousedown began iff the polygon has at least two points.
+	/// (We should only update hints when it has been dragged after the initial mousedown.)
+	lasso_selection_curr: Option<Vec<DVec2>>,
 	/// Restore the selection before box selection if it is aborted
 	selection_before_pointer_down: Vec<NodeId>,
 	/// If the grip icon is held during a drag, then shift without pushing other nodes
@@ -989,7 +991,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				}
 
 				if control_click {
-					self.lasso_selection_curr = Some((vec![node_graph_point], false));
+					self.lasso_selection_curr = Some(vec![node_graph_point]);
 				} else {
 					self.box_selection_start = Some((node_graph_point, false));
 				}
@@ -1128,8 +1130,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					*box_selection_dragged = true;
 					responses.add(NodeGraphMessage::UpdateBoxSelection);
 					self.update_node_graph_hints(responses);
-				} else if let Some((_, lasso_selection_dragged)) = &mut self.lasso_selection_curr {
-					*lasso_selection_dragged = true;
+				} else if self.lasso_selection_curr.is_some() {
 					responses.add(NodeGraphMessage::UpdateLassoSelection);
 					self.update_node_graph_hints(responses);
 				} else if self.reordering_import.is_some() {
@@ -1921,15 +1922,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}
 			NodeGraphMessage::UpdateBoxSelection => {
 				if let Some((box_selection_start, _)) = self.box_selection_start {
-					// The mouse button was released but we missed the pointer up event
-					// if ((e.buttons & 1) === 0) {
-					// 	completeBoxSelection();
-					// 	boxSelection = undefined;
-					// } else if ((e.buttons & 2) !== 0) {
-					// 	editor.handle.selectNodes(new BigUint64Array(previousSelection));
-					// 	boxSelection = undefined;
-					// }
-
 					let Some(network_metadata) = network_interface.network_metadata(selection_network_path) else {
 						log::error!("Could not get network metadata in UpdateBoxSelection");
 						return;
@@ -1986,17 +1978,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				}
 			}
 			NodeGraphMessage::UpdateLassoSelection => {
-				if let Some((lasso_selection_curr, _)) = &mut self.lasso_selection_curr {
-					// WARNING WARNING WARNING: this commented-out code is copy pasted from UpdateBoxSelection above and has not been edited for lasso
-					// The mouse button was released but we missed the pointer up event
-					// if ((e.buttons & 1) === 0) {
-					// 	completeBoxSelection();
-					// 	boxSelection = undefined;
-					// } else if ((e.buttons & 2) !== 0) {
-					// 	editor.handle.selectNodes(new BigUint64Array(previousSelection));
-					// 	boxSelection = undefined;
-					// }
-
+				if let Some(lasso_selection_curr) = &mut self.lasso_selection_curr {
 					let Some(network_metadata) = network_interface.network_metadata(selection_network_path) else {
 						log::error!("Could not get network metadata in UpdateBoxSelection");
 						return;
@@ -2824,7 +2806,7 @@ impl NodeGraphMessageHandler {
 
 		// A box or lasso selection is in progress
 		let dragging_selection = self.box_selection_start.as_ref().is_some_and(|(_, box_selection_dragged)| *box_selection_dragged)
-			|| self.lasso_selection_curr.as_ref().is_some_and(|(_, lasso_selection_dragged)| *lasso_selection_dragged);
+			|| self.lasso_selection_curr.as_ref().is_some_and(|lasso_selection| lasso_selection.len() >= 2);
 
 		// Cancel the ongoing action
 		if wiring || dragging_nodes || dragging_selection {
