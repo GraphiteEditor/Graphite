@@ -241,7 +241,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 						});
 
 						let typed_string = (!self.typing.digits.is_empty() && self.transform_operation.can_begin_typing()).then(|| self.typing.string.clone());
-						overlay_context.translation_box(translation_viewport, quad, typed_string);
+						overlay_context.translation_box(translation_viewport / document_to_viewport.matrix2.y_axis.length(), quad, typed_string);
 					}
 					TransformOperation::Scaling(scale) => {
 						let scale = scale.to_f64(self.state.is_rounded_to_intervals);

@@ -171,8 +171,10 @@ impl Translation {
 				Axis::Y => DVec2::Y * self.dragged_distance.dot(state.constraint_axis(self.constraint).unwrap_or_default()),
 			}
 		};
-		let displacement = displacement * document_to_viewport.matrix2.y_axis.length(); // Values are local to the viewport but scaled so values are relative to the current scale.
-		if state.is_rounded_to_intervals { displacement.round() } else { displacement }
+		let displacement_viewport = displacement * document_to_viewport.matrix2.y_axis.length(); // Values are local to the viewport but scaled so values are relative to the current scale.
+		let displacement_document = document_to_viewport.inverse().transform_vector2(displacement_viewport);
+		let displacement_document = if state.is_rounded_to_intervals { displacement_document.round() } else { displacement_document }; // It rounds in document space?
+		document_to_viewport.transform_vector2(displacement_document)
 	}
 
 	#[must_use]
