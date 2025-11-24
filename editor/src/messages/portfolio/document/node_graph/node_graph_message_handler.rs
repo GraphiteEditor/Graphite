@@ -1984,21 +1984,15 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						return;
 					};
 
-					{
-						let node_graph_point = network_metadata
-							.persistent_metadata
-							.navigation_metadata
-							.node_graph_to_viewport
-							.inverse()
-							.transform_point2(ipp.mouse.position);
+					let node_graph_to_viewport = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport;
+					let viewport_to_node_graph = node_graph_to_viewport.inverse();
 
-						lasso_selection_curr.push(node_graph_point);
-					}
+					lasso_selection_curr.push(viewport_to_node_graph.transform_point2(ipp.mouse.position));
 
 					responses.add(FrontendMessage::UpdateLasso {
-						lasso_selection: Some(LassoSelection::from_iter(lasso_selection_curr.iter().map(|selection_point| {
-							network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.transform_point2(*selection_point)
-						}))),
+						lasso_selection: Some(LassoSelection::from_iter(
+							lasso_selection_curr.iter().map(|selection_point| node_graph_to_viewport.transform_point2(*selection_point)),
+						)),
 					});
 
 					let shift = ipp.keyboard.get(Key::Shift as usize);
