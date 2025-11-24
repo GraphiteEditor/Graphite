@@ -32,17 +32,17 @@ export function setupViewportResizeObserver(editor: Editor) {
 				physicalHeight = entry.contentBoxSize[0].blockSize * devicePixelRatio;
 			}
 
-			// Get logical dimensions from contentBoxSize (these may be fractional pixels)
-			const logicalWidth = entry.contentBoxSize[0].inlineSize;
-			const logicalHeight = entry.contentBoxSize[0].blockSize;
+			// Compute the logical size which corresponds to the physical size
+			const logicalWidth = physicalWidth / devicePixelRatio;
+			const logicalHeight = physicalHeight / devicePixelRatio;
 
 			// Get viewport position
 			const bounds = entry.target.getBoundingClientRect();
 
 			const scale = physicalWidth / logicalWidth;
 
-			// Send both logical and physical dimensions to the backend
 			// Logical dimensions are used for CSS/SVG sizing, physical for GPU textures
+			// TODO: Consider passing physical sizes as well to eliminate pixel inaccuracies since width and height could be rounded differently
 			editor.handle.updateViewport(bounds.x, bounds.y, logicalWidth, logicalHeight, scale);
 		}
 	});
