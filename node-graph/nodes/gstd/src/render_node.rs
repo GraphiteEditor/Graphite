@@ -133,7 +133,7 @@ async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, edito
 
 	let scale = render_params.scale;
 	let physical_resolution = render_params.footprint.resolution;
-	let logical_resolution = (render_params.footprint.resolution.as_dvec2() / scale).round().as_uvec2();
+	let logical_resolution = (render_params.footprint.resolution.as_dvec2() / scale);
 
 	let RenderIntermediate { ty, mut metadata, contains_artboard } = data;
 	metadata.apply_transform(footprint.transform);
@@ -158,7 +158,7 @@ async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, edito
 			rendering.image_data = svg_data.1.clone();
 			rendering.svg_defs = svg_data.2.clone();
 
-			rendering.wrap_with_transform(footprint.transform, Some(logical_resolution.as_dvec2()));
+			rendering.wrap_with_transform(footprint.transform, Some(logical_resolution));
 			RenderOutputType::Svg {
 				svg: rendering.svg.to_svg_string(),
 				image_data: rendering.image_data,
