@@ -1,6 +1,7 @@
 import { writable } from "svelte/store";
 
 import { type Editor } from "@graphite/editor";
+import type { NodeGraphError } from "@graphite/messages";
 import {
 	type Box,
 	type FrontendClickTargets,
@@ -25,6 +26,7 @@ import {
 	UpdateNodeGraphTransform,
 	UpdateNodeThumbnail,
 	UpdateWirePathInProgress,
+	UpdateNodeGraphErrorDiagnostic,
 } from "@graphite/messages";
 
 export function createNodeGraphState(editor: Editor) {
@@ -32,6 +34,7 @@ export function createNodeGraphState(editor: Editor) {
 		box: undefined as Box | undefined,
 		clickTargets: undefined as FrontendClickTargets | undefined,
 		contextMenuInformation: undefined as ContextMenuInformation | undefined,
+		error: undefined as NodeGraphError | undefined,
 		layerWidths: new Map<bigint, number>(),
 		chainWidths: new Map<bigint, number>(),
 		hasLeftInputWire: new Map<bigint, boolean>(),
@@ -115,6 +118,12 @@ export function createNodeGraphState(editor: Editor) {
 			updateNodeGraphNodes.nodes.forEach((node) => {
 				state.nodes.set(node.id, node);
 			});
+			return state;
+		});
+	});
+	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphErrorDiagnostic, (updateNodeGraphErrorDiagnostic) => {
+		update((state) => {
+			state.error = updateNodeGraphErrorDiagnostic.error;
 			return state;
 		});
 	});
