@@ -366,7 +366,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 					let scale = viewport.scale();
 					// Use exact physical dimensions from browser (via ResizeObserver's devicePixelContentBoxSize)
-					let physical_resolution = viewport.size().to_physical().into_dvec2().as_uvec2();
+					let physical_resolution = viewport.size().to_physical().into_dvec2().round().as_uvec2();
 
 					if let Ok(message) = self.executor.submit_node_graph_evaluation(
 						self.documents.get_mut(document_id).expect("Tried to render non-existent document"),

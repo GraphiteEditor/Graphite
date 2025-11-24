@@ -206,8 +206,8 @@
 			// Get logical dimensions from foreignObject parent (set by backend)
 			const foreignObject = placeholder.parentElement;
 			if (!foreignObject) return;
-			const logicalWidth = parseInt(foreignObject.getAttribute("width") || "0");
-			const logicalHeight = parseInt(foreignObject.getAttribute("height") || "0");
+			const logicalWidth = parseFloat(foreignObject.getAttribute("width") || "0");
+			const logicalHeight = parseFloat(foreignObject.getAttribute("height") || "0");
 
 			// Clone canvas for repeated instances (layers that appear multiple times)
 			// Viewport canvas is marked with data-is-viewport and should never be cloned

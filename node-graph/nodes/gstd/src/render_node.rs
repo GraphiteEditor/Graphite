@@ -133,7 +133,7 @@ async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, edito
 
 	let scale = render_params.scale;
 	let physical_resolution = render_params.footprint.resolution;
-	let logical_resolution = (render_params.footprint.resolution.as_dvec2() / scale);
+	let logical_resolution = render_params.footprint.resolution.as_dvec2() / scale;
 
 	let RenderIntermediate { ty, mut metadata, contains_artboard } = data;
 	metadata.apply_transform(footprint.transform);

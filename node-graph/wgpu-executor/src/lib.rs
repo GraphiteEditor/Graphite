@@ -4,7 +4,7 @@ pub mod texture_conversion;
 
 use crate::shader_runtime::ShaderRuntime;
 use anyhow::Result;
-use core_types::{Color, Ctx};
+use core_types::Color;
 use dyn_any::StaticType;
 use futures::lock::Mutex;
 use glam::UVec2;
@@ -176,10 +176,3 @@ impl WgpuExecutor {
 }
 
 pub type WindowHandle = Arc<SurfaceHandle<Window>>;
-
-#[node_macro::node(skip_impl)]
-fn create_gpu_surface<'a: 'n, Io: ApplicationIo<Executor = WgpuExecutor, Surface = Window> + 'a + Send + Sync>(_: impl Ctx + 'a, editor_api: &'a EditorApi<Io>) -> Option<WgpuSurface> {
-	let canvas = editor_api.application_io.as_ref()?.window()?;
-	let executor = editor_api.application_io.as_ref()?.gpu_executor()?;
-	Some(Arc::new(executor.create_surface(canvas).ok()?))
-}

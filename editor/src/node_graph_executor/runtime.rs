@@ -330,7 +330,6 @@ impl NodeRuntime {
 							let frame = graphene_std::application_io::SurfaceFrame {
 								surface_id: surface.window_id,
 								resolution: logical_resolution,
-								physical_resolution,
 								transform: glam::DAffine2::IDENTITY,
 							};
 
