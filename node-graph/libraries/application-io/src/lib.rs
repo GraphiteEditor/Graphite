@@ -1,6 +1,6 @@
 use core_types::transform::Footprint;
 use dyn_any::{DynAny, StaticType, StaticTypeSized};
-use glam::{DAffine2, UVec2};
+use glam::{DAffine2, DVec2, UVec2};
 use std::fmt::Debug;
 use std::future::Future;
 use std::hash::{Hash, Hasher};
@@ -24,7 +24,7 @@ impl std::fmt::Display for SurfaceId {
 pub struct SurfaceFrame {
 	pub surface_id: SurfaceId,
 	/// Logical resolution in CSS pixels (used for foreignObject dimensions)
-	pub resolution: UVec2,
+	pub resolution: DVec2,
 	/// Physical resolution in device pixels (used for actual canvas/texture dimensions)
 	pub physical_resolution: UVec2,
 	pub transform: DAffine2,
@@ -108,7 +108,7 @@ impl<S: Size> From<SurfaceHandleFrame<S>> for SurfaceFrame {
 		Self {
 			surface_id: x.surface_handle.window_id,
 			transform: x.transform,
-			resolution: size,
+			resolution: size.into(),
 			physical_resolution: size,
 		}
 	}
@@ -239,8 +239,6 @@ pub struct TimingInformation {
 #[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct RenderConfig {
 	pub viewport: Footprint,
-	/// Physical viewport resolution in device pixels (from ResizeObserver's devicePixelContentBoxSize)
-	pub physical_viewport_resolution: UVec2,
 	pub scale: f64,
 	pub export_format: ExportFormat,
 	pub time: TimingInformation,

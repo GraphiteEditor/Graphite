@@ -138,7 +138,6 @@ impl NodeGraphExecutor {
 		document: &mut DocumentMessageHandler,
 		document_id: DocumentId,
 		viewport_resolution: UVec2,
-		physical_viewport_resolution: UVec2,
 		viewport_scale: f64,
 		time: TimingInformation,
 	) -> Result<Message, String> {
@@ -149,7 +148,6 @@ impl NodeGraphExecutor {
 		};
 		let render_config = RenderConfig {
 			viewport,
-			physical_viewport_resolution,
 			scale: viewport_scale,
 			time,
 			export_format: graphene_std::application_io::ExportFormat::Raster,
@@ -173,14 +171,13 @@ impl NodeGraphExecutor {
 		document: &mut DocumentMessageHandler,
 		document_id: DocumentId,
 		viewport_resolution: UVec2,
-		physical_viewport_resolution: UVec2,
 		viewport_scale: f64,
 		time: TimingInformation,
 		node_to_inspect: Option<NodeId>,
 		ignore_hash: bool,
 	) -> Result<Message, String> {
 		self.update_node_graph(document, node_to_inspect, ignore_hash)?;
-		self.submit_current_node_graph_evaluation(document, document_id, viewport_resolution, physical_viewport_resolution, viewport_scale, time)
+		self.submit_current_node_graph_evaluation(document, document_id, viewport_resolution, viewport_scale, time)
 	}
 
 	/// Evaluates a node graph for export
@@ -209,8 +206,6 @@ impl NodeGraphExecutor {
 				transform,
 				..Default::default()
 			},
-			// For export, logical and physical are the same (no HiDPI scaling)
-			physical_viewport_resolution: resolution,
 			scale: export_config.scale_factor,
 			time: Default::default(),
 			export_format,
@@ -425,10 +420,9 @@ impl NodeGraphExecutor {
 				}
 				let matrix = format_transform_matrix(frame.transform);
 				let transform = if matrix.is_empty() { String::new() } else { format!(" transform=\"{matrix}\"") };
-				// Mark viewport canvas with data attribute so it won't be cloned for repeated instances
 				let svg = format!(
-					r#"<svg><foreignObject width="{}" height="{}"{transform}><div data-canvas-placeholder="{}" data-is-viewport="true"></div></foreignObject></svg>"#,
-					frame.resolution.x, frame.resolution.y, frame.surface_id.0
+					r#"<svg><foreignObject width="{}" height="{}"{transform}><div data-canvas-placeholder="{}" data-physical-width="{}" data-physical-height="{}" data-is-viewport="true"></div></foreignObject></svg>"#,
+					frame.resolution.x, frame.resolution.y, frame.surface_id.0, frame.physical_resolution.x, frame.physical_resolution.y
 				);
 				self.last_svg_canvas = Some(frame);
 				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });

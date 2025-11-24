@@ -6,8 +6,6 @@ use crate::messages::tool::tool_messages::tool_prelude::DVec2;
 #[derive(Debug, PartialEq, Clone, Copy, serde::Serialize, serde::Deserialize, specta::Type, ExtractField)]
 pub struct ViewportMessageHandler {
 	bounds: Bounds,
-	// Physical bounds in device pixels (exact pixel dimensions from browser)
-	physical_bounds: Bounds,
 	// Ratio of logical pixels to physical pixels
 	scale: f64,
 }
@@ -15,10 +13,6 @@ impl Default for ViewportMessageHandler {
 	fn default() -> Self {
 		Self {
 			bounds: Bounds {
-				offset: Point { x: 0.0, y: 0.0 },
-				size: Point { x: 0.0, y: 0.0 },
-			},
-			physical_bounds: Bounds {
 				offset: Point { x: 0.0, y: 0.0 },
 				size: Point { x: 0.0, y: 0.0 },
 			},
@@ -31,28 +25,13 @@ impl Default for ViewportMessageHandler {
 impl MessageHandler<ViewportMessage, ()> for ViewportMessageHandler {
 	fn process_message(&mut self, message: ViewportMessage, responses: &mut VecDeque<Message>, _: ()) {
 		match message {
-			ViewportMessage::Update {
-				x,
-				y,
-				width,
-				height,
-				scale,
-				physical_width,
-				physical_height,
-			} => {
+			ViewportMessage::Update { x, y, width, height, scale } => {
 				assert_ne!(scale, 0.0, "Viewport scale cannot be zero");
 				self.scale = scale;
 
 				self.bounds = Bounds {
 					offset: Point { x, y },
 					size: Point { x: width, y: height },
-				};
-				self.physical_bounds = Bounds {
-					offset: Point { x, y },
-					size: Point {
-						x: physical_width,
-						y: physical_height,
-					},
 				};
 				responses.add(NodeGraphMessage::UpdateNodeGraphWidth);
 			}
@@ -100,11 +79,6 @@ impl ViewportMessageHandler {
 
 	pub fn size(&self) -> LogicalPoint {
 		self.bounds.size().into_scaled(self.scale)
-	}
-
-	pub fn physical_size_uvec2(&self) -> glam::UVec2 {
-		let size = self.physical_bounds.size();
-		glam::UVec2::new(size.x.ceil() as u32, size.y.ceil() as u32)
 	}
 
 	#[expect(private_bounds)]

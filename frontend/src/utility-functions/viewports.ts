@@ -39,9 +39,11 @@ export function setupViewportResizeObserver(editor: Editor) {
 			// Get viewport position
 			const bounds = entry.target.getBoundingClientRect();
 
+			const scale = physicalWidth / logicalWidth;
+
 			// Send both logical and physical dimensions to the backend
 			// Logical dimensions are used for CSS/SVG sizing, physical for GPU textures
-			editor.handle.updateViewport(bounds.x, bounds.y, logicalWidth, logicalHeight, devicePixelRatio, physicalWidth, physicalHeight);
+			editor.handle.updateViewport(bounds.x, bounds.y, logicalWidth, logicalHeight, scale);
 		}
 	});
 

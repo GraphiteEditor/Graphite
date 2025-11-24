@@ -518,16 +518,8 @@ impl EditorHandle {
 
 	/// Send new viewport info to the backend
 	#[wasm_bindgen(js_name = updateViewport)]
-	pub fn update_viewport(&self, x: f64, y: f64, width: f64, height: f64, scale: f64, physical_width: f64, physical_height: f64) {
-		let message = ViewportMessage::Update {
-			x,
-			y,
-			width,
-			height,
-			scale,
-			physical_width,
-			physical_height,
-		};
+	pub fn update_viewport(&self, x: f64, y: f64, width: f64, height: f64, scale: f64) {
+		let message = ViewportMessage::Update { x, y, width, height, scale };
 		self.dispatch(message);
 	}
 

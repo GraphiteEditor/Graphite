@@ -120,11 +120,7 @@ async fn create_context<'a: 'n>(
 }
 
 #[node_macro::node(category(""))]
-async fn render<'a: 'n>(
-	ctx: impl Ctx + ExtractFootprint + ExtractVarArgs,
-	editor_api: &'a WasmEditorApi,
-	data: RenderIntermediate,
-) -> RenderOutput {
+async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, editor_api: &'a WasmEditorApi, data: RenderIntermediate) -> RenderOutput {
 	let footprint = ctx.footprint();
 	let render_params = ctx
 		.vararg(0)
@@ -134,6 +130,10 @@ async fn render<'a: 'n>(
 	let mut render_params = render_params.clone();
 	render_params.footprint = *footprint;
 	let render_params = &render_params;
+
+	let scale = render_params.scale;
+	let physical_resolution = render_params.footprint.resolution;
+	let logical_resolution = (render_params.footprint.resolution.as_dvec2() / scale).round().as_uvec2();
 
 	let RenderIntermediate { ty, mut metadata, contains_artboard } = data;
 	metadata.apply_transform(footprint.transform);
@@ -145,8 +145,8 @@ async fn render<'a: 'n>(
 				rendering.leaf_tag("rect", |attributes| {
 					attributes.push("x", "0");
 					attributes.push("y", "0");
-					attributes.push("width", footprint.resolution.x.to_string());
-					attributes.push("height", footprint.resolution.y.to_string());
+					attributes.push("width", logical_resolution.x.to_string());
+					attributes.push("height", logical_resolution.y.to_string());
 					let matrix = format_transform_matrix(footprint.transform.inverse());
 					if !matrix.is_empty() {
 						attributes.push("transform", matrix);
@@ -158,7 +158,7 @@ async fn render<'a: 'n>(
 			rendering.image_data = svg_data.1.clone();
 			rendering.svg_defs = svg_data.2.clone();
 
-			rendering.wrap_with_transform(footprint.transform, Some(footprint.resolution.as_dvec2()));
+			rendering.wrap_with_transform(footprint.transform, Some(logical_resolution.as_dvec2()));
 			RenderOutputType::Svg {
 				svg: rendering.svg.to_svg_string(),
 				image_data: rendering.image_data,
@@ -170,9 +170,6 @@ async fn render<'a: 'n>(
 			};
 			let (child, context) = Arc::as_ref(vello_data);
 
-			// Always apply scale when rendering to texture
-			let scale = render_params.scale;
-
 			let scale_transform = glam::DAffine2::from_scale(glam::DVec2::splat(scale));
 			let footprint_transform = scale_transform * footprint.transform;
 			let footprint_transform_vello = vello::kurbo::Affine::new(footprint_transform.to_cols_array());
@@ -180,11 +177,9 @@ async fn render<'a: 'n>(
 			let mut scene = vello::Scene::new();
 			scene.append(child, Some(footprint_transform_vello));
 
-			let resolution = (footprint.resolution.as_dvec2() * scale).as_uvec2();
-
 			// We now replace all transforms which are supposed to be infinite with a transform which covers the entire viewport
 			// See <https://xi.zulipchat.com/#narrow/channel/197075-vello/topic/Full.20screen.20color.2Fgradients/near/538435044> for more detail
-			let scaled_infinite_transform = vello::kurbo::Affine::scale_non_uniform(resolution.x as f64, resolution.y as f64);
+			let scaled_infinite_transform = vello::kurbo::Affine::scale_non_uniform(physical_resolution.x as f64, physical_resolution.y as f64);
 			let encoding = scene.encoding_mut();
 			for transform in encoding.transforms.iter_mut() {
 				if transform.matrix[0] == f32::INFINITY {
@@ -198,7 +193,10 @@ async fn render<'a: 'n>(
 			}
 
 			// Always render to texture (unified path for both WASM and desktop)
-			let texture = exec.render_vello_scene_to_texture(&scene, resolution, context, background).await.expect("Failed to render Vello scene");
+			let texture = exec
+				.render_vello_scene_to_texture(&scene, physical_resolution, context, background)
+				.await
+				.expect("Failed to render Vello scene");
 
 			RenderOutputType::Texture(ImageTexture { texture })
 		}
