@@ -239,6 +239,8 @@ pub struct TimingInformation {
 #[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct RenderConfig {
 	pub viewport: Footprint,
+	/// Physical viewport resolution in device pixels (from ResizeObserver's devicePixelContentBoxSize)
+	pub physical_viewport_resolution: UVec2,
 	pub scale: f64,
 	pub export_format: ExportFormat,
 	pub time: TimingInformation,

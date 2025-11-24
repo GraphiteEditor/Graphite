@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getContext, onMount, tick } from "svelte";
+	import { getContext, onMount, onDestroy, tick } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
 	import {
@@ -20,7 +20,7 @@
 	import type { DocumentState } from "@graphite/state-providers/document";
 	import { textInputCleanup } from "@graphite/utility-functions/keyboard-entry";
 	import { extractPixelData, rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
-	import { updateBoundsOfViewports as updateViewport } from "@graphite/utility-functions/viewports";
+	import { setupViewportResizeObserver, cleanupViewportResizeObserver } from "@graphite/utility-functions/viewports";
 
 	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "@graphite/components/floating-menus/EyedropperPreview.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -209,18 +209,20 @@
 			const logicalWidth = parseInt(foreignObject.getAttribute("width") || "0");
 			const logicalHeight = parseInt(foreignObject.getAttribute("height") || "0");
 
-			// if (canvasName !== "0" && canvas.parentElement) {
-			// 	console.log("test");
-			// 	var newCanvas = window.document.createElement("canvas");
-			// 	var context = newCanvas.getContext("2d");
+			// Clone canvas for repeated instances (layers that appear multiple times)
+			// Viewport canvas is marked with data-is-viewport and should never be cloned
+			const isViewport = placeholder.hasAttribute("data-is-viewport");
+			if (!isViewport && canvas.parentElement) {
+				const newCanvas = window.document.createElement("canvas");
+				const context = newCanvas.getContext("2d");
 
-			// 	newCanvas.width = canvas.width;
-			// 	newCanvas.height = canvas.height;
+				newCanvas.width = canvas.width;
+				newCanvas.height = canvas.height;
 
-			// 	context?.drawImage(canvas, 0, 0);
+				context?.drawImage(canvas, 0, 0);
 
-			// 	canvas = newCanvas;
-			// }
+				canvas = newCanvas;
+			}
 
 			// Set CSS size to logical resolution (for correct display size)
 			canvas.style.width = `${logicalWidth}px`;
@@ -404,8 +406,8 @@
 		rulerHorizontal?.resize();
 		rulerVertical?.resize();
 
-		// Send the new bounds of the viewports to the backend
-		if (viewport.parentElement) updateViewport(editor);
+		// Note: Viewport bounds are now sent to the backend by the ResizeObserver in viewports.ts
+		// which provides pixel-perfect physical dimensions via devicePixelContentBoxSize
 	}
 
 	onMount(() => {
@@ -484,13 +486,20 @@
 			displayRemoveEditableTextbox();
 		});
 
-		// Once this component is mounted, we want to resend the document bounds to the backend via the resize event handler which does that
-		window.dispatchEvent(new Event("resize"));
+		// Setup ResizeObserver for pixel-perfect viewport tracking with physical dimensions
+		// This must happen in onMount to ensure the viewport container element exists
+		setupViewportResizeObserver(editor);
 
+		// Also observe the inner viewport for canvas sizing and ruler updates
 		const viewportResizeObserver = new ResizeObserver(() => {
 			updateViewportInfo();
 		});
 		if (viewport) viewportResizeObserver.observe(viewport);
+	});
+
+	onDestroy(() => {
+		// Cleanup the viewport resize observer
+		cleanupViewportResizeObserver();
 	});
 </script>
 

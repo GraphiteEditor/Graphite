@@ -290,7 +290,7 @@ impl NodeRuntime {
 
 							// Use logical resolution for CSS sizing, physical resolution for the actual surface/texture
 							let logical_resolution = render_config.viewport.resolution;
-							let physical_resolution = (logical_resolution.as_dvec2() * render_config.scale).as_uvec2();
+							let physical_resolution = render_config.physical_viewport_resolution;
 
 							// Blit the texture to the surface
 							let mut encoder = executor.context.device.create_command_encoder(&vello::wgpu::CommandEncoderDescriptor {

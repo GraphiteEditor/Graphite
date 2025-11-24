@@ -364,12 +364,16 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					let node_to_inspect = self.node_to_inspect();
 
 					let scale = viewport.scale();
-					let resolution = viewport.size().into_dvec2().round().as_uvec2();
+					// Use logical dimensions for viewport resolution (foreignObject sizing)
+					let logical_resolution = viewport.size().into_dvec2().ceil().as_uvec2();
+					// Use exact physical dimensions from browser (via ResizeObserver's devicePixelContentBoxSize)
+					let physical_resolution = viewport.physical_size_uvec2();
 
 					if let Ok(message) = self.executor.submit_node_graph_evaluation(
 						self.documents.get_mut(document_id).expect("Tried to render non-existent document"),
 						*document_id,
-						resolution,
+						logical_resolution,
+						physical_resolution,
 						scale,
 						timing_information,
 						node_to_inspect,
@@ -970,11 +974,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				};
 
 				let scale = viewport.scale();
-				let resolution = viewport.size().into_dvec2().round().as_uvec2();
+				// Use logical dimensions for viewport resolution (foreignObject sizing)
+				let logical_resolution = viewport.size().into_dvec2().ceil().as_uvec2();
+				// Use exact physical dimensions from browser (via ResizeObserver's devicePixelContentBoxSize)
+				let physical_resolution = viewport.physical_size_uvec2();
 
 				let result = self
 					.executor
-					.submit_node_graph_evaluation(document, document_id, resolution, scale, timing_information, node_to_inspect, ignore_hash);
+					.submit_node_graph_evaluation(document, document_id, logical_resolution, physical_resolution, scale, timing_information, node_to_inspect, ignore_hash);
 
 				match result {
 					Err(description) => {
