@@ -232,7 +232,12 @@ pub(crate) fn property_from_type(
 									.tooltip(format!(
 										"This data can only be supplied through the node graph because no widget exists for its type:\n\
 										{}",
-										concrete_type.name
+										// TODO: Avoid needing to remove spaces here by fixing how `alias` is generated
+										concrete_type
+											.alias
+											.as_deref()
+											.map(|s| s.to_string().replace(" ", ""))
+											.unwrap_or_else(|| graphene_std::format_type(concrete_type.name.as_ref()))
 									))
 									.widget_holder(),
 							]);
@@ -1087,7 +1092,9 @@ pub(crate) fn brightness_contrast_properties(node_id: NodeId, context: &mut Node
 			return Vec::new();
 		}
 	};
-	let use_classic_value = match document_node.inputs[UseClassicInput::INDEX].as_value() {
+	let use_classic_value = document_node.inputs.get(UseClassicInput::INDEX);
+	let includes_use_classic = use_classic_value.is_some();
+	let use_classic_value = match use_classic_value.and_then(|input| input.as_value()) {
 		Some(TaggedValue::Bool(use_classic_choice)) => *use_classic_choice,
 		_ => false,
 	};
@@ -1114,11 +1121,11 @@ pub(crate) fn brightness_contrast_properties(node_id: NodeId, context: &mut Node
 			.range_max(Some(100.)),
 	);
 
-	let layout = vec![
-		LayoutGroup::Row { widgets: brightness },
-		LayoutGroup::Row { widgets: contrast },
-		LayoutGroup::Row { widgets: use_classic },
-	];
+	let mut layout = vec![LayoutGroup::Row { widgets: brightness }, LayoutGroup::Row { widgets: contrast }];
+	if includes_use_classic {
+		// TODO: When we no longer use this function in the temporary "Brightness/Contrast Classic" node, remove this conditional pushing and just always include this
+		layout.push(LayoutGroup::Row { widgets: use_classic });
+	}
 
 	layout
 }
@@ -1596,18 +1603,11 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 							return Vec::new();
 						};
 
-						let mut input_types = implementations
-							.keys()
-							.filter_map(|item| item.inputs.get(input_index))
-							.filter(|ty| property_from_type(node_id, input_index, ty, number_options, unit_suffix, display_decimal_places, step, context).is_ok())
-							.collect::<Vec<_>>();
+						let mut input_types = implementations.keys().filter_map(|item| item.inputs.get(input_index)).collect::<Vec<_>>();
 						input_types.sort_by_key(|ty| ty.type_name());
 						let input_type = input_types.first().cloned();
 
-						let Some(input_type) = input_type else {
-							return Vec::new();
-						};
-
+						let Some(input_type) = input_type else { return Vec::new() };
 						input_type.clone()
 					}
 					_ => context

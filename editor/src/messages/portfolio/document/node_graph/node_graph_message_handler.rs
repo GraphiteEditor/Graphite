@@ -6,7 +6,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::document_message_handler::navigation_controls;
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::NodePropertiesContext;
-use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType};
+use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType, NodeGraphErrorDiagnostic};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::portfolio::document::utility_types::network_interface::{
@@ -776,8 +776,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					}
 
 					let context_menu_data = if let Some(node_id) = clicked_id {
-						let currently_is_node = !network_interface.is_layer(&node_id, selection_network_path);
-						ContextMenuData::ToggleLayer { node_id, currently_is_node }
+						let currently_is_node = !network_interface.is_layer(&node_id, breadcrumb_network_path);
+						let can_be_layer = network_interface.is_eligible_to_be_layer(&node_id, breadcrumb_network_path);
+						ContextMenuData::ModifyNode {
+							can_be_layer,
+							currently_is_node,
+							node_id,
+						}
 					} else {
 						ContextMenuData::CreateNode { compatible_type: None }
 					};
@@ -793,10 +798,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						DVec2::new(appear_right_of_mouse, appear_above_mouse) / network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.matrix2.x_axis.x
 					};
 
-					let context_menu_coordinates = ((node_graph_point.x + node_graph_shift.x) as i32, (node_graph_point.y + node_graph_shift.y) as i32);
-
 					self.context_menu = Some(ContextMenuInformation {
-						context_menu_coordinates,
+						context_menu_coordinates: (node_graph_point + node_graph_shift).into(),
 						context_menu_data,
 					});
 
@@ -1222,7 +1225,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						let compatible_type = network_interface.output_type(&output_connector, selection_network_path).add_node_string();
 
 						self.context_menu = Some(ContextMenuInformation {
-							context_menu_coordinates: ((point.x + node_graph_shift.x) as i32, (point.y + node_graph_shift.y) as i32),
+							context_menu_coordinates: (point + node_graph_shift).into(),
 							context_menu_data: ContextMenuData::CreateNode { compatible_type },
 						});
 
@@ -1646,6 +1649,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					responses.add(FrontendMessage::UpdateNodeGraphNodes { nodes });
 					responses.add(NodeGraphMessage::UpdateVisibleNodes);
 
+					let error = self.node_graph_error(network_interface, breadcrumb_network_path);
+					responses.add(FrontendMessage::UpdateNodeGraphErrorDiagnostic { error });
 					let (layer_widths, chain_widths, has_left_input_wire) = network_interface.collect_layer_widths(breadcrumb_network_path);
 
 					responses.add(NodeGraphMessage::UpdateImportsExports);
@@ -2509,8 +2514,6 @@ impl NodeGraphMessageHandler {
 		};
 		let mut nodes = Vec::new();
 		for (node_id, visible) in network.nodes.iter().map(|(node_id, node)| (*node_id, node.visible)).collect::<Vec<_>>() {
-			let node_id_path = [breadcrumb_network_path, &[node_id]].concat();
-
 			let primary_input_connector = InputConnector::node(node_id, 0);
 
 			let primary_input = if network_interface
@@ -2552,20 +2555,6 @@ impl NodeGraphMessageHandler {
 
 			let locked = network_interface.is_locked(&node_id, breadcrumb_network_path);
 
-			let errors = network_interface
-				.resolved_types
-				.node_graph_errors
-				.iter()
-				.find(|error| error.node_path == node_id_path)
-				.map(|error| format!("{:?}", error.error.clone()))
-				.or_else(|| {
-					if network_interface.resolved_types.node_graph_errors.iter().any(|error| error.node_path.starts_with(&node_id_path)) {
-						Some("Node graph type error within this node".to_string())
-					} else {
-						None
-					}
-				});
-
 			nodes.push(FrontendNode {
 				id: node_id,
 				is_layer: network_interface
@@ -2584,7 +2573,6 @@ impl NodeGraphMessageHandler {
 				previewed,
 				visible,
 				locked,
-				errors,
 			});
 		}
 
@@ -2604,6 +2592,29 @@ impl NodeGraphMessageHandler {
 			current_network_path.push(*node_id)
 		}
 		Some(subgraph_names)
+	}
+
+	fn node_graph_error(&self, network_interface: &mut NodeNetworkInterface, breadcrumb_network_path: &[NodeId]) -> Option<NodeGraphErrorDiagnostic> {
+		let graph_error = network_interface
+			.resolved_types
+			.node_graph_errors
+			.iter()
+			.find(|error| error.node_path.starts_with(breadcrumb_network_path) && error.node_path.len() > breadcrumb_network_path.len())?;
+		let error = if graph_error.node_path.len() == breadcrumb_network_path.len() + 1 {
+			format!("{:?}", graph_error.error)
+		} else {
+			"Node graph type error within this node".to_string()
+		};
+		let error_node = graph_error.node_path[breadcrumb_network_path.len()];
+
+		let mut position = network_interface.position(&error_node, breadcrumb_network_path)?;
+		// Convert to graph space
+		position *= 24;
+		if network_interface.is_layer(&error_node, breadcrumb_network_path) {
+			position += IVec2::new(12, -12)
+		}
+
+		Some(NodeGraphErrorDiagnostic { position: position.into(), error })
 	}
 
 	fn update_layer_panel(network_interface: &NodeNetworkInterface, selection_network_path: &[NodeId], collapsed: &CollapsedLayers, layers_panel_open: bool, responses: &mut VecDeque<Message>) {
