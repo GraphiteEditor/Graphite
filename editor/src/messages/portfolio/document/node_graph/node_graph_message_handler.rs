@@ -1995,10 +1995,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						lasso_selection_curr.push(node_graph_point);
 					}
 
-					let lasso_selection_viewport: Vec<DVec2> = lasso_selection_curr
-						.iter()
-						.map(|selection_point| network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.transform_point2(*selection_point))
-						.collect();
+					responses.add(FrontendMessage::UpdateLasso {
+						lasso_selection: Some(LassoSelection::from_iter(lasso_selection_curr.iter().map(|selection_point| {
+							network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.transform_point2(*selection_point)
+						}))),
+					});
 
 					let shift = ipp.keyboard.get(Key::Shift as usize);
 					let alt = ipp.keyboard.get(Key::Alt as usize);
@@ -2044,9 +2045,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 							nodes: nodes.into_iter().collect::<Vec<_>>(),
 						});
 					}
-					responses.add(FrontendMessage::UpdateLasso {
-						lasso_selection: Some(LassoSelection::from_iter(lasso_selection_viewport.into_iter())),
-					})
 				}
 			}
 			NodeGraphMessage::UpdateImportsExports => {
