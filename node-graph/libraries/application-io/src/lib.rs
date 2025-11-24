@@ -1,6 +1,6 @@
 use core_types::transform::Footprint;
 use dyn_any::{DynAny, StaticType, StaticTypeSized};
-use glam::{DAffine2, UVec2};
+use glam::{DAffine2, DVec2, UVec2};
 use std::fmt::Debug;
 use std::future::Future;
 use std::hash::{Hash, Hasher};
@@ -23,7 +23,8 @@ impl std::fmt::Display for SurfaceId {
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct SurfaceFrame {
 	pub surface_id: SurfaceId,
-	pub resolution: UVec2,
+	/// Logical resolution in CSS pixels (used for foreignObject dimensions)
+	pub resolution: DVec2,
 	pub transform: DAffine2,
 }
 
@@ -101,10 +102,11 @@ impl Size for ImageTexture {
 
 impl<S: Size> From<SurfaceHandleFrame<S>> for SurfaceFrame {
 	fn from(x: SurfaceHandleFrame<S>) -> Self {
+		let size = x.surface_handle.surface.size();
 		Self {
 			surface_id: x.surface_handle.window_id,
 			transform: x.transform,
-			resolution: x.surface_handle.surface.size(),
+			resolution: size.into(),
 		}
 	}
 }
