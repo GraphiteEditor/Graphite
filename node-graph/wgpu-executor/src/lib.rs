@@ -13,7 +13,7 @@ pub use rendering::RenderContext;
 use std::sync::Arc;
 use vello::{AaConfig, AaSupport, RenderParams, Renderer, RendererOptions, Scene};
 use wgpu::util::TextureBlitter;
-use wgpu::{Origin3d, SurfaceConfiguration, TextureAspect};
+use wgpu::{Origin3d, TextureAspect};
 
 pub use context::Context as WgpuContext;
 pub use context::ContextBuilder as WgpuContextBuilder;
@@ -66,41 +66,6 @@ unsafe impl StaticType for Surface {
 const VELLO_SURFACE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 
 impl WgpuExecutor {
-	pub async fn render_vello_scene(&self, scene: &Scene, surface: &WgpuSurface, size: UVec2, context: &RenderContext, background: Color) -> Result<()> {
-		let mut guard = surface.surface.target_texture.lock().await;
-
-		let surface_inner = &surface.surface.inner;
-		let surface_caps = surface_inner.get_capabilities(&self.context.adapter);
-		surface_inner.configure(
-			&self.context.device,
-			&SurfaceConfiguration {
-				usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::STORAGE_BINDING,
-				format: VELLO_SURFACE_FORMAT,
-				width: size.x,
-				height: size.y,
-				present_mode: surface_caps.present_modes[0],
-				alpha_mode: wgpu::CompositeAlphaMode::Opaque,
-				view_formats: vec![],
-				desired_maximum_frame_latency: 2,
-			},
-		);
-
-		self.render_vello_scene_to_target_texture(scene, size, context, background, &mut guard).await?;
-
-		let surface_texture = surface_inner.get_current_texture()?;
-		let mut encoder = self.context.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Surface Blit") });
-		surface.surface.blitter.copy(
-			&self.context.device,
-			&mut encoder,
-			&guard.as_ref().unwrap().view,
-			&surface_texture.texture.create_view(&wgpu::TextureViewDescriptor::default()),
-		);
-		self.context.queue.submit([encoder.finish()]);
-		surface_texture.present();
-
-		Ok(())
-	}
-
 	pub async fn render_vello_scene_to_texture(&self, scene: &Scene, size: UVec2, context: &RenderContext, background: Color) -> Result<wgpu::Texture> {
 		let mut output = None;
 		self.render_vello_scene_to_target_texture(scene, size, context, background, &mut output).await?;
