@@ -192,7 +192,6 @@ async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, edito
 				background = Color::WHITE;
 			}
 
-			// Always render to texture (unified path for both WASM and desktop)
 			let texture = exec
 				.render_vello_scene_to_texture(&scene, physical_resolution, context, background)
 				.await
