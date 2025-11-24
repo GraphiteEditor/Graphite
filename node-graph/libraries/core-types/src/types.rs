@@ -354,7 +354,7 @@ impl Type {
 	}
 }
 
-fn format_type(ty: &str) -> String {
+pub fn format_type(ty: &str) -> String {
 	ty.split('<')
 		.map(|path| path.split(',').map(|path| path.split("::").last().unwrap_or(path)).collect::<Vec<_>>().join(","))
 		.collect::<Vec<_>>()

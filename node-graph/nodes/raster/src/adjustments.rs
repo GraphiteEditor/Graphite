@@ -141,9 +141,9 @@ fn make_opaque<T: Adjust<Color>>(
 	input
 }
 
-/// See [`brightness_contrast`]
+// TODO: Remove this once GPU shader nodes are able to support the non-classic algorithm
 #[node_macro::node(
-	name("Brightness/Contrast classic"),
+	name("Brightness/Contrast Classic"),
 	category("Raster: Adjustment"),
 	properties("brightness_contrast_properties"),
 	shader_node(PerPixelAdjust)
