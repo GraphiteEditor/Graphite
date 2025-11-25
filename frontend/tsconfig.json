@@ -16,7 +16,6 @@
 		"paths": {
 			"/*": ["./*"],
 			"@graphite/*": ["src/*"],
-			"@graphite/../*": ["./*"],
 			"@branding/*": ["../branding/*"]
 		},
 		"lib": ["ESNext", "DOM", "DOM.Iterable", "ScriptHost"]
