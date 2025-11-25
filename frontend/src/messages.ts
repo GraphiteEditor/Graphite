@@ -2,8 +2,8 @@
 
 import { Transform, Type, plainToClass } from "class-transformer";
 
-import { type PopoverButtonStyle, type IconName, type IconSize } from "@graphite/utility-functions/icons";
-import { type EditorHandle } from "@graphite-frontend/wasm/pkg/graphite_wasm.js";
+import { type EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm.js";
+import { type PopoverButtonStyle, type IconName, type IconSize } from "@graphite/icons";
 
 export class JsMessage {
 	// The marker provides a way to check if an object is a sub-class constructor for a jsMessage.

@@ -1,6 +1,7 @@
 <script lang="ts">
+	import type { IconName } from "@graphite/icons";
+
 	import type { MenuListEntry } from "@graphite/messages";
-	import type { IconName } from "@graphite/utility-functions/icons";
 
 	import MenuList from "@graphite/components/floating-menus/MenuList.svelte";
 	import ConditionalWrapper from "@graphite/components/layout/ConditionalWrapper.svelte";
