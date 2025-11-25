@@ -37,7 +37,7 @@ jobs:
       - name: 🚧 Install Node dependencies
         run: |
           cd frontend
-          npm setup
+          npm run setup
 
       - name: 🦀 Install the latest Rust
         run: |
