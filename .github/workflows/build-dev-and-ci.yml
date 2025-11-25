@@ -34,7 +34,7 @@ jobs:
         with:
           node-version: "latest"
 
-      - name: 🚧 Install Node dependencies
+      - name: 🚧 Install build dependencies
         run: |
           cd frontend
           npm run setup
