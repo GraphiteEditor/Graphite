@@ -20,7 +20,7 @@
 		"lint": "eslint . && tsc --noEmit",
 		"lint-fix": "eslint . --fix && tsc --noEmit",
 		"---------- INTERNAL ----------": "",
-		"setup": "node package-installer.js",
+		"setup": "node package-installer.js && node branding-installer.js",
 		"native:build-dev": "wasm-pack build ./wasm --dev --target=web --no-default-features --features native && vite build --mode dev",
 		"native:build-production": "wasm-pack build ./wasm --release --target=web --no-default-features --features native && vite build",
 		"wasm:build-dev": "wasm-pack build ./wasm --dev --target=web",
