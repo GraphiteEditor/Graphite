@@ -1,11 +1,11 @@
 // Demo artwork
-import ThumbnailChangingSeasons from "@graphite-frontend/assets/images/demo-artwork/thumbnail-changing-seasons.png";
-import ThumbnailIsometricFountain from "@graphite-frontend/assets/images/demo-artwork/thumbnail-isometric-fountain.png";
-import ThumbnailPaintedDreams from "@graphite-frontend/assets/images/demo-artwork/thumbnail-painted-dreams.png";
-import ThumbnailParametricDunescape from "@graphite-frontend/assets/images/demo-artwork/thumbnail-parametric-dunescape.png";
-import ThumbnailProceduralStringLights from "@graphite-frontend/assets/images/demo-artwork/thumbnail-procedural-string-lights.png";
-import ThumbnailRedDress from "@graphite-frontend/assets/images/demo-artwork/thumbnail-red-dress.png";
-import ThumbnailValleyOfSpires from "@graphite-frontend/assets/images/demo-artwork/thumbnail-valley-of-spires.png";
+import ThumbnailChangingSeasons from "@graphite/../assets/thumbnail-changing-seasons.png";
+import ThumbnailIsometricFountain from "@graphite/../assets/thumbnail-isometric-fountain.png";
+import ThumbnailPaintedDreams from "@graphite/../assets/thumbnail-painted-dreams.png";
+import ThumbnailParametricDunescape from "@graphite/../assets/thumbnail-parametric-dunescape.png";
+import ThumbnailProceduralStringLights from "@graphite/../assets/thumbnail-procedural-string-lights.png";
+import ThumbnailRedDress from "@graphite/../assets/thumbnail-red-dress.png";
+import ThumbnailValleyOfSpires from "@graphite/../assets/thumbnail-valley-of-spires.png";
 
 const DEMO_ARTWORK = {
 	ThumbnailChangingSeasons,

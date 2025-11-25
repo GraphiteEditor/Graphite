@@ -421,8 +421,8 @@ impl NodeGraphExecutor {
 				let matrix = format_transform_matrix(frame.transform);
 				let transform = if matrix.is_empty() { String::new() } else { format!(" transform=\"{matrix}\"") };
 				let svg = format!(
-					r#"<svg><foreignObject width="{}" height="{}"{transform}><div data-canvas-placeholder="{}"></div></foreignObject></svg>"#,
-					frame.resolution.x, frame.resolution.y, frame.surface_id.0
+					r#"<svg><foreignObject width="{}" height="{}"{transform}><div data-canvas-placeholder="{}" data-is-viewport="true"></div></foreignObject></svg>"#,
+					frame.resolution.x, frame.resolution.y, frame.surface_id.0,
 				);
 				self.last_svg_canvas = Some(frame);
 				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });

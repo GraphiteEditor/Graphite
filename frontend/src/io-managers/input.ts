@@ -10,7 +10,6 @@ import { makeKeyboardModifiersBitfield, textInputCleanup, getLocalizedScanCode }
 import { operatingSystem } from "@graphite/utility-functions/platform";
 import { extractPixelData } from "@graphite/utility-functions/rasterization";
 import { stripIndents } from "@graphite/utility-functions/strip-indents";
-import { updateBoundsOfViewports } from "@graphite/utility-functions/viewports";
 
 const BUTTON_LEFT = 0;
 const BUTTON_MIDDLE = 1;
@@ -43,7 +42,6 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const listeners: { target: EventListenerTarget; eventName: EventName; action: (event: any) => void; options?: AddEventListenerOptions }[] = [
-		{ target: window, eventName: "resize", action: () => updateBoundsOfViewports(editor) },
 		{ target: window, eventName: "beforeunload", action: (e: BeforeUnloadEvent) => onBeforeUnload(e) },
 		{ target: window, eventName: "keyup", action: (e: KeyboardEvent) => onKeyUp(e) },
 		{ target: window, eventName: "keydown", action: (e: KeyboardEvent) => onKeyDown(e) },
@@ -529,8 +527,6 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 	// Bind the event listeners
 	bindListeners();
-	// Resize on creation
-	updateBoundsOfViewports(editor);
 
 	// Return the destructor
 	return unbindListeners;

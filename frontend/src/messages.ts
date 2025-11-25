@@ -2,8 +2,8 @@
 
 import { Transform, Type, plainToClass } from "class-transformer";
 
-import { type PopoverButtonStyle, type IconName, type IconSize } from "@graphite/utility-functions/icons";
-import { type EditorHandle } from "@graphite-frontend/wasm/pkg/graphite_wasm.js";
+import { type EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm.js";
+import { type PopoverButtonStyle, type IconName, type IconSize } from "@graphite/icons";
 
 export class JsMessage {
 	// The marker provides a way to check if an object is a sub-class constructor for a jsMessage.
@@ -31,23 +31,6 @@ export class UpdateBox extends JsMessage {
 
 export class UpdateClickTargets extends JsMessage {
 	readonly clickTargets!: FrontendClickTargets | undefined;
-}
-
-const ContextTupleToVec2 = Transform((data) => {
-	if (data.obj.contextMenuInformation === undefined) return undefined;
-	const contextMenuCoordinates = { x: data.obj.contextMenuInformation.contextMenuCoordinates[0], y: data.obj.contextMenuInformation.contextMenuCoordinates[1] };
-	let contextMenuData = data.obj.contextMenuInformation.contextMenuData;
-	if (contextMenuData.ToggleLayer !== undefined) {
-		contextMenuData = { nodeId: contextMenuData.ToggleLayer.nodeId, currentlyIsNode: contextMenuData.ToggleLayer.currentlyIsNode };
-	} else if (contextMenuData.CreateNode !== undefined) {
-		contextMenuData = { type: "CreateNode", compatibleType: contextMenuData.CreateNode.compatibleType };
-	}
-	return { contextMenuCoordinates, contextMenuData };
-});
-
-export class UpdateContextMenuInformation extends JsMessage {
-	@ContextTupleToVec2
-	readonly contextMenuInformation!: ContextMenuInformation | undefined;
 }
 
 export class UpdateImportsExports extends JsMessage {
@@ -92,6 +75,15 @@ export class UpdateLayerWidths extends JsMessage {
 export class UpdateNodeGraphNodes extends JsMessage {
 	@Type(() => FrontendNode)
 	readonly nodes!: FrontendNode[];
+}
+
+export class UpdateNodeGraphErrorDiagnostic extends JsMessage {
+	readonly error!: NodeGraphError | undefined;
+}
+
+export class NodeGraphError {
+	readonly position!: XY;
+	readonly error!: string;
 }
 
 export class UpdateVisibleNodes extends JsMessage {
@@ -173,8 +165,12 @@ export type FrontendClickTargets = {
 
 export type ContextMenuInformation = {
 	contextMenuCoordinates: XY;
-	contextMenuData: "CreateNode" | { type: "CreateNode"; compatibleType: string } | { nodeId: bigint; currentlyIsNode: boolean };
+	contextMenuData: { type: "CreateNode"; data: { compatibleType: string | undefined } } | { type: "ModifyNode"; data: { canBeLayer: boolean; currentlyIsNode: boolean; nodeId: bigint } };
 };
+
+export class UpdateContextMenuInformation extends JsMessage {
+	readonly contextMenuInformation!: ContextMenuInformation | undefined;
+}
 
 export type FrontendGraphDataType = "General" | "Number" | "Artboard" | "Graphic" | "Raster" | "Vector" | "Color" | "Invalid";
 
@@ -205,11 +201,11 @@ export class FrontendGraphOutput {
 }
 
 export class FrontendNode {
+	readonly id!: bigint;
+
 	readonly isLayer!: boolean;
 
 	readonly canBeLayer!: boolean;
-
-	readonly id!: bigint;
 
 	readonly reference!: string | undefined;
 
@@ -236,9 +232,7 @@ export class FrontendNode {
 
 	readonly visible!: boolean;
 
-	readonly unlocked!: boolean;
-
-	readonly errors!: string | undefined;
+	readonly locked!: boolean;
 }
 
 export class FrontendNodeType {
@@ -1700,6 +1694,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateMouseCursor,
 	UpdateNodeGraphControlBarLayout,
 	UpdateNodeGraphNodes,
+	UpdateNodeGraphErrorDiagnostic,
 	UpdateNodeGraphSelection,
 	UpdateNodeGraphTransform,
 	UpdateNodeGraphWires,

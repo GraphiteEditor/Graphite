@@ -883,70 +883,6 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 		},
 		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
-			identifier: "Create GPU Surface",
-			category: "Debug: GPU",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(1), 0)],
-						nodes: [
-							DocumentNode {
-								inputs: vec![NodeInput::scope("editor-api")],
-								implementation: DocumentNodeImplementation::ProtoNode(wgpu_executor::create_gpu_surface::IDENTIFIER),
-								..Default::default()
-							},
-							DocumentNode {
-								inputs: vec![NodeInput::node(NodeId(0), 0)],
-								implementation: DocumentNodeImplementation::ProtoNode(memo::memo::IDENTIFIER),
-								..Default::default()
-							},
-						]
-						.into_iter()
-						.enumerate()
-						.map(|(id, node)| (NodeId(id as u64), node))
-						.collect(),
-						..Default::default()
-					}),
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					output_names: vec!["GPU Surface".to_string()],
-					network_metadata: Some(NodeNetworkMetadata {
-						persistent_metadata: NodeNetworkPersistentMetadata {
-							node_metadata: [
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "Create GPU Surface".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										display_name: "Cache".to_string(),
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-							]
-							.into_iter()
-							.enumerate()
-							.map(|(id, node)| (NodeId(id as u64), node))
-							.collect(),
-							..Default::default()
-						},
-						..Default::default()
-					}),
-					..Default::default()
-				},
-			},
-			description: Cow::Borrowed("TODO"),
-			properties: None,
-		},
-		#[cfg(feature = "gpu")]
-		DocumentNodeDefinition {
 			identifier: "Upload Texture",
 			category: "Debug: GPU",
 			node_template: NodeTemplate {
@@ -2022,47 +1958,6 @@ fn static_input_properties() -> InputProperties {
 		}),
 	);
 	map.insert(
-		"brightness".to_string(),
-		Box::new(|node_id, index, context| {
-			let document_node = node_properties::get_document_node(node_id, context)?;
-			let is_use_classic = document_node
-				.inputs
-				.iter()
-				.find_map(|input| match input.as_value() {
-					Some(&TaggedValue::Bool(use_classic)) => Some(use_classic),
-					_ => None,
-				})
-				.unwrap_or(false);
-			let (b_min, b_max) = if is_use_classic { (-100., 100.) } else { (-100., 150.) };
-			let brightness = node_properties::number_widget(
-				ParameterWidgetsInfo::new(node_id, index, true, context),
-				NumberInput::default().mode_range().range_min(Some(b_min)).range_max(Some(b_max)).unit("%").display_decimal_places(2),
-			);
-			Ok(vec![brightness.into()])
-		}),
-	);
-	map.insert(
-		"contrast".to_string(),
-		Box::new(|node_id, index, context| {
-			let document_node = node_properties::get_document_node(node_id, context)?;
-
-			let is_use_classic = document_node
-				.inputs
-				.iter()
-				.find_map(|input| match input.as_value() {
-					Some(&TaggedValue::Bool(use_classic)) => Some(use_classic),
-					_ => None,
-				})
-				.unwrap_or(false);
-			let (c_min, c_max) = if is_use_classic { (-100., 100.) } else { (-50., 100.) };
-			let contrast = node_properties::number_widget(
-				ParameterWidgetsInfo::new(node_id, index, true, context),
-				NumberInput::default().mode_range().range_min(Some(c_min)).range_max(Some(c_max)).unit("%").display_decimal_places(2),
-			);
-			Ok(vec![contrast.into()])
-		}),
-	);
-	map.insert(
 		"assign_colors_gradient".to_string(),
 		Box::new(|node_id, index, context| {
 			let gradient_row = node_properties::color_widget(ParameterWidgetsInfo::new(node_id, index, true, context), ColorInput::default().allow_none(false));
@@ -2089,21 +1984,6 @@ fn static_input_properties() -> InputProperties {
 				NumberInput::default().min(0.).int().disabled(randomize_enabled),
 			);
 			Ok(vec![repeat_every_row.into()])
-		}),
-	);
-	map.insert(
-		"mask_stencil".to_string(),
-		Box::new(|node_id, index, context| {
-			let mask = node_properties::color_widget(ParameterWidgetsInfo::new(node_id, index, true, context), ColorInput::default());
-			Ok(vec![mask])
-		}),
-	);
-	map.insert(
-		"spline_input".to_string(),
-		Box::new(|node_id, index, context| {
-			Ok(vec![LayoutGroup::Row {
-				widgets: node_properties::array_of_vec2_widget(ParameterWidgetsInfo::new(node_id, index, true, context), TextInput::default().centered(true)),
-			}])
 		}),
 	);
 	map.insert(
