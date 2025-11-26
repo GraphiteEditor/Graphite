@@ -1,4 +1,4 @@
-use cef::{Browser, ImplBrowser, ImplBrowserHost};
+use cef::{Browser, ImplBrowser, ImplBrowserHost, PaintElementType};
 use winit::event::WindowEvent;
 
 use crate::cef::input::InputState;
@@ -28,6 +28,11 @@ impl CefContext for SingleThreadedCefContext {
 		let host = self.browser.host().unwrap();
 		host.set_zoom_level(view_info.zoom());
 		host.was_resized();
+
+		// Fix for CEF not updating the view after resize on windows and mac
+		// TODO: remove once https://github.com/chromiumembedded/cef/issues/3822 is fixed
+		#[cfg(any(target_os = "windows", target_os = "macos"))]
+		host.invalidate(PaintElementType::default());
 	}
 
 	fn send_web_message(&self, message: Vec<u8>) {
