@@ -317,6 +317,18 @@ impl<PointId: Identifier> Subpath<PointId> {
 		Self::from_anchors([p1, p2], false)
 	}
 
+	/// Constructs a heart shape centered at the origin with the given radius.
+	pub fn new_heart(center: DVec2, radius: f64) -> Self {
+		let bottom = center + DVec2::new(0., radius);
+		let top = center + DVec2::new(0., -radius * 0.4);
+
+		let manipulator_groups = vec![
+			ManipulatorGroup::new(bottom, Some(bottom + DVec2::new(radius * 1.2, -radius * 0.9)), Some(bottom + DVec2::new(-radius * 1.2, -radius * 0.9))),
+			ManipulatorGroup::new(top, Some(top + DVec2::new(-radius * 1.2, -radius * 0.6)), Some(top + DVec2::new(radius * 1.2, -radius * 0.6))),
+		];
+		Self::new(manipulator_groups, true)
+	}
+
 	pub fn new_spiral(a: f64, outer_radius: f64, turns: f64, start_angle: f64, delta_theta: f64, spiral_type: SpiralType) -> Self {
 		let mut manipulator_groups = Vec::new();
 		let mut prev_in_handle = None;
