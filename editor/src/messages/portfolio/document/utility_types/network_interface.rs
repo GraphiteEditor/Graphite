@@ -4235,6 +4235,12 @@ impl NodeNetworkInterface {
 								if !delete_nodes.contains(downstream_id) || (*input_index == 0 && self.is_layer(downstream_id, network_path)) {
 									stack.push(*downstream_id);
 								}
+								// If the traversal reaches the primary input of the node to delete then do not delete it
+								if node_id == downstream_id && *input_index == 0 {
+									can_delete = false;
+									stack = Vec::new();
+									break;
+								}
 							}
 							// If the traversal reaches the export, then the current node is not a sole dependent and cannot be deleted
 							else {
