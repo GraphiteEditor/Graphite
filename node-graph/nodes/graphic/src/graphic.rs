@@ -1,15 +1,11 @@
 use core_types::Color;
-use core_types::{
-	Ctx,
-	blending::AlphaBlending,
-	table::{Table, TableRow},
-	uuid::NodeId,
-};
+use core_types::Ctx;
+use core_types::registry::types::SignedInteger;
+use core_types::table::{Table, TableRow};
+use core_types::uuid::NodeId;
 use glam::{DAffine2, DVec2};
-use graphic_types::{
-	Artboard, Vector,
-	graphic::{Graphic, IntoGraphicTable},
-};
+use graphic_types::graphic::{Graphic, IntoGraphicTable};
+use graphic_types::{Artboard, Vector};
 use raster_types::{CPU, GPU, Raster};
 use vector_types::GradientStops;
 
@@ -164,48 +160,8 @@ pub async fn flatten_graphic(_: impl Ctx, content: Table<Graphic>, fully_flatten
 
 /// Converts a graphic table into a vector table by deeply flattening any vector content it contains, and discarding any non-vector content.
 #[node_macro::node(category("Vector"))]
-pub async fn flatten_vector(_: impl Ctx, content: Table<Graphic>) -> Table<Vector> {
-	// TODO: Avoid mutable reference, instead return a new Table<Graphic>?
-	fn flatten_table(output_vector_table: &mut Table<Vector>, current_graphic_table: Table<Graphic>) {
-		for current_graphic_row in current_graphic_table.iter() {
-			let current_graphic = current_graphic_row.element.clone();
-			let source_node_id = *current_graphic_row.source_node_id;
-
-			match current_graphic {
-				// If we're allowed to recurse, flatten any tables we encounter
-				Graphic::Graphic(mut current_graphic_table) => {
-					// Apply the parent graphic's transform to all child elements
-					for graphic in current_graphic_table.iter_mut() {
-						*graphic.transform = *current_graphic_row.transform * *graphic.transform;
-					}
-
-					flatten_table(output_vector_table, current_graphic_table);
-				}
-				// Push any leaf Vector elements we encounter
-				Graphic::Vector(vector_table) => {
-					for current_vector_row in vector_table.iter() {
-						output_vector_table.push(TableRow {
-							element: current_vector_row.element.clone(),
-							transform: *current_graphic_row.transform * *current_vector_row.transform,
-							alpha_blending: AlphaBlending {
-								blend_mode: current_vector_row.alpha_blending.blend_mode,
-								opacity: current_graphic_row.alpha_blending.opacity * current_vector_row.alpha_blending.opacity,
-								fill: current_vector_row.alpha_blending.fill,
-								clip: current_vector_row.alpha_blending.clip,
-							},
-							source_node_id,
-						});
-					}
-				}
-				_ => {}
-			}
-		}
-	}
-
-	let mut output = Table::new();
-	flatten_table(&mut output, content);
-
-	output
+pub async fn flatten_vector<I: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Vector>)] content: I) -> Table<Vector> {
+	content.into_flattened_vector_table()
 }
 
 /// Returns the value at the specified index in the collection.
@@ -229,11 +185,18 @@ pub fn index_elements<T: graphic_types::graphic::AtIndex + Clone + Default>(
 		Table<GradientStops>,
 	)]
 	collection: T,
-	/// The index of the item to retrieve, starting from 0 for the first item.
-	index: u32,
+	/// The index of the item to retrieve, starting from 0 for the first item. Negative indices count backwards from the end of the collection, starting from -1 for the last item.
+	index: SignedInteger,
 ) -> T::Output
 where
 	T::Output: Clone + Default,
 {
-	collection.at_index(index as usize).unwrap_or_default()
+	let index = index as i32;
+
+	if index < 0 {
+		collection.at_index_from_end(-index as usize)
+	} else {
+		collection.at_index(index as usize)
+	}
+	.unwrap_or_default()
 }
