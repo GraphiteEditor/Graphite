@@ -305,7 +305,7 @@ impl ExtractAnimationTime for OwnedContextImpl {
 }
 impl ExtractIndex for OwnedContextImpl {
 	fn try_index(&self) -> Option<impl Iterator<Item = usize>> {
-		self.index.clone().map(|x| x.into_iter())
+		self.index.clone().map(|x| x.into_iter().rev())
 	}
 }
 impl ExtractVarArgs for OwnedContextImpl {
