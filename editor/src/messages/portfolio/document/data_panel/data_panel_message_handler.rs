@@ -502,10 +502,17 @@ impl TableRowLayout for Raster<CPU> {
 		format!("Raster ({}x{})", self.width, self.height)
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		let base64_string = self.data().base64_string.clone().unwrap_or_else(|| {
+		let raster = self.data();
+
+		if raster.width == 0 || raster.height == 0 {
+			let widgets = vec![TextLabel::new("Image has no area").widget_holder()];
+			return vec![LayoutGroup::Row { widgets }];
+		}
+
+		let base64_string = raster.base64_string.clone().unwrap_or_else(|| {
 			use base64::Engine;
 
-			let output = self.data().to_png();
+			let output = raster.to_png();
 			let preamble = "data:image/png;base64,";
 			let mut base64_string = String::with_capacity(preamble.len() + output.len() * 4);
 			base64_string.push_str(preamble);

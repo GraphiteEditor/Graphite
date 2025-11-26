@@ -234,7 +234,7 @@ async fn repeat<I: 'n + Send + Clone>(
 	// TODO: When using a custom Properties panel layout in document_node_definitions.rs and this default is set, the widget weirdly doesn't show up in the Properties panel. Investigation is needed.
 	direction: PixelSize,
 	angle: Angle,
-	#[default(4)] count: IntegerCount,
+	#[default(5)] count: IntegerCount,
 ) -> Table<I> {
 	let angle = angle.to_radians();
 	let count = count.max(1);
@@ -825,6 +825,7 @@ async fn dimensions(_: impl Ctx, content: Table<Vector>) -> DVec2 {
 		.unwrap_or_default()
 }
 
+// TODO: Replace this node with an automatic type conversion implementation of the `Convert` trait
 /// Converts a vec2 value into a vector path composed of a single anchor point.
 ///
 /// This is useful in conjunction with nodes that repeat it, followed by the "Points to Polyline" node to string together a path of the points.
@@ -848,12 +849,12 @@ async fn points_to_polyline(_: impl Ctx, mut points: Table<Vector>, #[default(tr
 
 		let points_count = row.element.point_domain.ids().len();
 
-		if points_count > 2 {
+		if points_count >= 2 {
 			(0..points_count - 1).for_each(|i| {
 				segment_domain.push(next_id.next_id(), i, i + 1, BezierHandles::Linear, StrokeId::generate());
 			});
 
-			if closed {
+			if closed && points_count != 2 {
 				segment_domain.push(next_id.next_id(), points_count - 1, 0, BezierHandles::Linear, StrokeId::generate());
 
 				row.element
@@ -2007,9 +2008,47 @@ async fn count_elements<I: Count>(
 		Vec<f64>,
 		Vec<DVec2>,
 	)]
-	source: I,
+	content: I,
 ) -> f64 {
-	source.count() as f64
+	content.count() as f64
+}
+
+#[node_macro::node(category("Vector: Measure"), path(graphene_core::vector))]
+async fn count_points(_: impl Ctx, content: Table<Vector>) -> f64 {
+	content.into_iter().map(|row| row.element.point_domain.positions().len() as f64).sum()
+}
+
+/// Retrieves the vec2 position (in local space) of the anchor point at the specified index in table of vector elements.
+/// If no value exists at that index, the position (0, 0) is returned.
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn index_points(
+	_: impl Ctx,
+	/// The vector element or elements containing the anchor points to be retrieved.
+	content: Table<Vector>,
+	/// The index of the points to retrieve, starting from 0 for the first point. Negative indices count backwards from the end, starting from -1 for the last item.
+	index: f64,
+) -> DVec2 {
+	let points_count = content.iter().map(|row| row.element.point_domain.positions().len()).sum::<usize>();
+
+	// Clamp and allow negative indexing from the end
+	let index = index as isize;
+	let index = if index < 0 {
+		(points_count as isize + index).max(0) as usize
+	} else {
+		(index as usize).min(points_count - 1)
+	};
+
+	// Find the point at the given index across all vector elements
+	let mut accumulated = 0;
+	for row in content.iter() {
+		let row_point_count = row.element.point_domain.positions().len();
+		if index - accumulated < row_point_count {
+			return row.element.point_domain.positions()[index - accumulated];
+		}
+		accumulated += row_point_count;
+	}
+
+	DVec2::ZERO
 }
 
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
