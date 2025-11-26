@@ -382,9 +382,6 @@
 		// Store initial drag position and select function for later use
 		dragStartPosition = { x: event.clientX, y: event.clientY };
 		draggingData = { select, insertParentId: undefined, insertDepth: 0, insertIndex: undefined, highlightFolder: false, markerHeight: 0 };
-
-		// Capture pointer to receive move events
-		(event.target as HTMLElement)?.setPointerCapture(event.pointerId);
 	}
 
 	function updateInsertLine(event: PointerEvent) {
@@ -409,9 +406,7 @@
 		if (list) draggingData = calculateDragIndex(list, event.clientY, draggingData?.select);
 	}
 
-	function handlePointerUp(event: PointerEvent) {
-		const wasDragging = isDragging;
-
+	function handlePointerUp() {
 		// If we were dragging, complete the move operation
 		if (isDragging && draggingData) {
 			const { select, insertParentId, insertIndex } = draggingData;
@@ -426,15 +421,6 @@
 		fakeHighlightOfNotYetSelectedLayerBeingDragged = undefined;
 		isDragging = false;
 		dragInPanel = false;
-
-		// Release pointer capture
-		if (wasDragging) {
-			try {
-				(event.target as HTMLElement)?.releasePointerCapture(event.pointerId);
-			} catch {
-				// Ignore errors - pointer might not be captured
-			}
-		}
 	}
 
 	function handleDrop(e: DragEvent) {
