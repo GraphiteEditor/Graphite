@@ -2802,7 +2802,13 @@ impl NodeGraphMessageHandler {
 
 		// Cancel the ongoing action
 		if wiring || dragging_nodes || dragging_selection {
-			let hint_data = HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]);
+			let hint_data = HintData(vec![
+				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+				HintGroup(vec![HintInfo::keys([Key::Shift], "Extend"), HintInfo::keys([Key::Alt], "Subtract")]),
+				// TODO: Re-select deselected layers during drag when Shift is pressed, and re-deselect if Shift is released before drag ends.
+				// TODO: (See https://discord.com/channels/731730685944922173/1216976541947531264/1321360311298818048)
+				// TODO: (Also remember to do this for the select tool; grep for these todo comments.)
+			]);
 			responses.add(FrontendMessage::UpdateInputHints { hint_data });
 			return;
 		}
