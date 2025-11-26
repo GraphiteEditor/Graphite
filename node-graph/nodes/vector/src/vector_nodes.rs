@@ -6,9 +6,9 @@ use core_types::table::{Table, TableRow, TableRowMut};
 use core_types::transform::{Footprint, Transform};
 use core_types::{CloneVarArgs, Color, Context, Ctx, ExtractAll, ExtractVarArgs, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
-use graphic_types::Graphic;
 use graphic_types::Vector;
 use graphic_types::raster_types::{CPU, GPU, Raster};
+use graphic_types::{Graphic, IntoGraphicTable};
 use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, PathEl, PathSeg, Shape};
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
@@ -1527,7 +1527,7 @@ async fn jitter_points(
 ///
 /// Based on the progression value, adjacent vector elements are blended together. From 0 until 1, the first element (bottom layer) morphs into the second element (next layer up). From 1 until 2, it then morphs into the third element, and so on until progression is capped at the last element (top layer).
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn morph<I: graphic_types::IntoGraphicTable + 'n + Send + Clone>(
+async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	_: impl Ctx,
 	/// The vector elements to interpolate between. Mixed graphic content is deeply flattened to keep only vector elements.
 	#[implementations(Table<Graphic>, Table<Vector>)]
@@ -2048,19 +2048,27 @@ async fn count_elements<I: Count>(
 		Vec<f64>,
 		Vec<DVec2>,
 	)]
-	source: I,
+	content: I,
 ) -> f64 {
-	source.count() as f64
+	content.count() as f64
 }
 
 #[node_macro::node(category("Vector: Measure"), path(graphene_core::vector))]
-async fn count_points(_: impl Ctx, source: Table<Vector>) -> f64 {
-	source.into_iter().map(|row| row.element.point_domain.positions().len() as f64).sum()
+async fn count_points(_: impl Ctx, content: Table<Vector>) -> f64 {
+	content.into_iter().map(|row| row.element.point_domain.positions().len() as f64).sum()
 }
 
+/// Retrieves the vec2 position (in local space) of the anchor point at the specified index in table of vector elements.
+/// If no value exists at that index, the position (0, 0) is returned.
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn index_points(_: impl Ctx, source: Table<Vector>, index: f64) -> DVec2 {
-	let points_count = source.iter().map(|row| row.element.point_domain.positions().len()).sum::<usize>();
+async fn index_points(
+	_: impl Ctx,
+	/// The vector element or elements containing the anchor points to be retrieved.
+	content: Table<Vector>,
+	/// The index of the points to retrieve, starting from 0 for the first point. Negative indices count backwards from the end, starting from -1 for the last item.
+	index: f64,
+) -> DVec2 {
+	let points_count = content.iter().map(|row| row.element.point_domain.positions().len()).sum::<usize>();
 
 	// Clamp and allow negative indexing from the end
 	let index = index as isize;
@@ -2072,7 +2080,7 @@ async fn index_points(_: impl Ctx, source: Table<Vector>, index: f64) -> DVec2 {
 
 	// Find the point at the given index across all vector elements
 	let mut accumulated = 0;
-	for row in source.iter() {
+	for row in content.iter() {
 		let row_point_count = row.element.point_domain.positions().len();
 		if index - accumulated < row_point_count {
 			return row.element.point_domain.positions()[index - accumulated];

@@ -160,7 +160,7 @@ pub async fn flatten_graphic(_: impl Ctx, content: Table<Graphic>, fully_flatten
 
 /// Converts a graphic table into a vector table by deeply flattening any vector content it contains, and discarding any non-vector content.
 #[node_macro::node(category("Vector"))]
-pub async fn flatten_vector<I: graphic_types::IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Vector>)] content: I) -> Table<Vector> {
+pub async fn flatten_vector<I: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Vector>)] content: I) -> Table<Vector> {
 	content.into_flattened_vector_table()
 }
 
