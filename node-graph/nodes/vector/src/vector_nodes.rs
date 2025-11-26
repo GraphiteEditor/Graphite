@@ -2375,12 +2375,12 @@ mod test {
 	}
 	#[tokio::test]
 	async fn morph() {
-		let source = Rect::new(0., 0., 100., 100.).to_path(DEFAULT_ACCURACY);
-		let target = Rect::new(-100., -100., 0., 0.).to_path(DEFAULT_ACCURACY);
-		let morphed = super::morph(Footprint::default(), vector_node_from_bezpath(source), vector_node_from_bezpath(target), 0.5).await;
-		let morphed = morphed.iter().next().unwrap().element;
+		let rectangle = vector_node_from_bezpath(Rect::new(0., 0., 100., 100.).to_path(DEFAULT_ACCURACY));
+		let rectangles = super::repeat(Footprint::default(), rectangle, DVec2::new(-100., -100.), 0., 2).await;
+		let morphed = super::morph(Footprint::default(), rectangles, 0.5).await;
+		let element = morphed.iter().next().unwrap().element;
 		assert_eq!(
-			&morphed.point_domain.positions()[..4],
+			&element.point_domain.positions()[..4],
 			vec![DVec2::new(-50., -50.), DVec2::new(50., -50.), DVec2::new(50., 50.), DVec2::new(-50., 50.)]
 		);
 	}
