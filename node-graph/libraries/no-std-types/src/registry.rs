@@ -19,6 +19,8 @@ pub mod types {
 	pub type Length = f64;
 	/// 0 to 1
 	pub type Fraction = f64;
+	/// Non-negative number broken into whole and fractional parts
+	pub type Progression = f64;
 	/// Signed integer that's actually a float because we don't handle type conversions very well yet
 	pub type SignedInteger = f64;
 	/// Unsigned integer

@@ -154,6 +154,7 @@ pub(crate) fn property_from_type(
 				Some("PixelLength") => number_widget(default_info, number_input.min(min(0.)).unit(unit.unwrap_or(" px"))).into(),
 				Some("Length") => number_widget(default_info, number_input.min(min(0.))).into(),
 				Some("Fraction") => number_widget(default_info, number_input.mode_range().min(min(0.)).max(max(1.))).into(),
+				Some("Progression") => progression_widget(default_info, number_input.min(min(0.))).into(),
 				Some("SignedInteger") => number_widget(default_info, number_input.int()).into(),
 				Some("IntegerCount") => number_widget(default_info, number_input.int().min(min(1.))).into(),
 				Some("SeedValue") => number_widget(default_info, number_input.int().min(min(0.))).into(),
@@ -792,6 +793,50 @@ pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetH
 		second_widgets = Some(second_row);
 	}
 	(first_widgets, second_widgets)
+}
+
+// Two number fields beside one another, the first for the fractional part (decimals, range mode) and the second for the whole part (integers, increment mode)
+pub fn progression_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props: NumberInput) -> Vec<WidgetHolder> {
+	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
+
+	let mut widgets = start_widgets(parameter_widgets_info);
+
+	let Some(document_node) = document_node else { return Vec::new() };
+	let Some(input) = document_node.inputs.get(index) else {
+		log::warn!("A widget failed to be built because its node's input index is invalid.");
+		return vec![];
+	};
+	if let Some(&TaggedValue::F64(x)) = input.as_non_exposed_value() {
+		let whole_part = x.trunc();
+		let fractional_part = x.fract();
+
+		widgets.extend_from_slice(&[
+			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			number_props
+				.clone()
+				.label("Progress")
+				.mode_range()
+				.min(0.)
+				.max(0.99999)
+				.value(Some(fractional_part))
+				.on_update(update_value(move |input: &NumberInput| TaggedValue::F64(whole_part + input.value.unwrap()), node_id, index))
+				.on_commit(commit_value)
+				.widget_holder(),
+			Separator::new(SeparatorType::Related).widget_holder(),
+			TextLabel::new("+").widget_holder(),
+			Separator::new(SeparatorType::Related).widget_holder(),
+			number_props
+				.label("Element #")
+				.mode_increment()
+				.min(0.)
+				.is_integer(true)
+				.value(Some(whole_part))
+				.on_update(update_value(move |input: &NumberInput| TaggedValue::F64(input.value.unwrap() + fractional_part), node_id, index))
+				.on_commit(commit_value)
+				.widget_holder(),
+		])
+	}
+	widgets
 }
 
 pub fn number_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props: NumberInput) -> Vec<WidgetHolder> {
