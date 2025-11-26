@@ -119,6 +119,55 @@ impl From<Table<GradientStops>> for Graphic {
 // Local trait to convert types to Table<Graphic> (avoids orphan rule issues)
 pub trait IntoGraphicTable {
 	fn into_graphic_table(self) -> Table<Graphic>;
+
+	/// Deeply flattens any vector content within a graphic table, discarding non-vector content, and returning a table of only vector elements.
+	fn into_flattened_vector_table(self) -> Table<Vector>
+	where
+		Self: std::marker::Sized,
+	{
+		let content = self.into_graphic_table();
+
+		// TODO: Avoid mutable reference, instead return a new Table<Graphic>?
+		fn flatten_table(output_vector_table: &mut Table<Vector>, current_graphic_table: Table<Graphic>) {
+			for current_graphic_row in current_graphic_table.iter() {
+				let current_graphic = current_graphic_row.element.clone();
+				let source_node_id = *current_graphic_row.source_node_id;
+
+				match current_graphic {
+					// If we're allowed to recurse, flatten any tables we encounter
+					Graphic::Graphic(mut current_graphic_table) => {
+						// Apply the parent graphic's transform to all child elements
+						for graphic in current_graphic_table.iter_mut() {
+							*graphic.transform = *current_graphic_row.transform * *graphic.transform;
+						}
+
+						flatten_table(output_vector_table, current_graphic_table);
+					}
+					// Push any leaf Vector elements we encounter
+					Graphic::Vector(vector_table) => {
+						for current_vector_row in vector_table.iter() {
+							output_vector_table.push(TableRow {
+								element: current_vector_row.element.clone(),
+								transform: *current_graphic_row.transform * *current_vector_row.transform,
+								alpha_blending: AlphaBlending {
+									blend_mode: current_vector_row.alpha_blending.blend_mode,
+									opacity: current_graphic_row.alpha_blending.opacity * current_vector_row.alpha_blending.opacity,
+									fill: current_vector_row.alpha_blending.fill,
+									clip: current_vector_row.alpha_blending.clip,
+								},
+								source_node_id,
+							});
+						}
+					}
+					_ => {}
+				}
+			}
+		}
+
+		let mut output = Table::new();
+		flatten_table(&mut output, content);
+		output
+	}
 }
 
 impl IntoGraphicTable for Table<Graphic> {
@@ -284,12 +333,17 @@ impl RenderComplexity for Graphic {
 pub trait AtIndex {
 	type Output;
 	fn at_index(&self, index: usize) -> Option<Self::Output>;
+	fn at_index_from_end(&self, index: usize) -> Option<Self::Output>;
 }
 impl<T: Clone> AtIndex for Vec<T> {
 	type Output = T;
 
 	fn at_index(&self, index: usize) -> Option<Self::Output> {
 		self.get(index).cloned()
+	}
+
+	fn at_index_from_end(&self, index: usize) -> Option<Self::Output> {
+		if index == 0 || index > self.len() { None } else { self.get(self.len() - index).cloned() }
 	}
 }
 impl<T: Clone> AtIndex for Table<T> {
@@ -298,6 +352,18 @@ impl<T: Clone> AtIndex for Table<T> {
 	fn at_index(&self, index: usize) -> Option<Self::Output> {
 		let mut result_table = Self::default();
 		if let Some(row) = self.iter().nth(index) {
+			result_table.push(row.into_cloned());
+			Some(result_table)
+		} else {
+			None
+		}
+	}
+
+	fn at_index_from_end(&self, index: usize) -> Option<Self::Output> {
+		let mut result_table = Self::default();
+		if index == 0 || index > self.len() {
+			None
+		} else if let Some(row) = self.iter().nth(self.len() - index) {
 			result_table.push(row.into_cloned());
 			Some(result_table)
 		} else {
