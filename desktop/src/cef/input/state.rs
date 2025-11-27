@@ -17,8 +17,13 @@ impl InputState {
 		self.modifiers = *modifiers;
 	}
 
-	pub(crate) fn cursor_move(&mut self, position: &PhysicalPosition<f64>) {
-		self.mouse_position = position.into();
+	pub(crate) fn cursor_move(&mut self, position: &PhysicalPosition<f64>) -> bool {
+		let new = position.into();
+		if self.mouse_position == new {
+			return false;
+		}
+		self.mouse_position = new;
+		true
 	}
 
 	pub(crate) fn mouse_input(&mut self, button: &MouseButton, state: &ElementState) -> ClickCount {
@@ -59,7 +64,7 @@ impl From<&mut InputState> for MouseEvent {
 	}
 }
 
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone, Copy, Eq, PartialEq)]
 pub(crate) struct MousePosition {
 	x: usize,
 	y: usize,
