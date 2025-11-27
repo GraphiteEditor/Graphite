@@ -13,14 +13,16 @@ use super::consts::{PINCH_ZOOM_SPEED, SCROLL_LINE_HEIGHT, SCROLL_LINE_WIDTH, SCR
 pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputState, event: &WindowEvent) {
 	match event {
 		WindowEvent::PointerMoved { position, .. } | WindowEvent::PointerEntered { position, .. } => {
-			input_state.cursor_move(position);
+			if !input_state.cursor_move(position) {
+				return;
+			}
 
 			let Some(host) = browser.host() else { return };
 			host.send_mouse_move_event(Some(&input_state.into()), 0);
 		}
 		WindowEvent::PointerLeft { position, .. } => {
 			if let Some(position) = position {
-				input_state.cursor_move(position);
+				let _ = input_state.cursor_move(position);
 			}
 
 			let Some(host) = browser.host() else { return };
