@@ -355,8 +355,22 @@
 		const target = e.target || undefined;
 		if (!(target instanceof HTMLElement)) return;
 
-		// Default to using pointer lock except on unsupported platforms (Safari and the native desktop app)
-		const usePointerLock = !browserVersion().toLowerCase().includes("safari") && !isDesktop();
+		// Default to using pointer lock except on unsupported platforms (Safari and the native desktop app).
+		// Even though Safari supposedly supports the PointerLock API, it implements an old (2016) version of the spec that requires an "engagement
+		// gesture" (<https://www.w3.org/TR/2016/REC-pointerlock-20161027/#glossary>) to initiate pointer lock, which the newer spec doesn't require.
+		// Because "mousemove" (and similarly, the "pointermove" event we use) is defined as not being a user-initiated "engagement gesture" event,
+		// Safari never lets us to enter pointer lock while the mouse button is held down and we are awaiting movement to begin dragging the slider.
+		const isSafari = browserVersion().toLowerCase().includes("safari");
+		const usePointerLock = !isSafari && !isDesktop();
+
+		// On Safari, we use a workaround involving an alternative strategy where we hide the cursor while it's within the web page
+		// (but we can't hide it when it ventures outside the page), taking advantage of a separate (helpful) Safari bug where it
+		// keeps reporting deltas to the pointer position even as it pushes up against edges of the screen. Like the PointerLock API,
+		// this allows infinite movement in each direction, but the downside is that the cursor remains visible outside the page and
+		// it ends up in that location when the drag ends. It isn't possible to take advantage of the PointerCapture API (yes, that's
+		// a different API than PointerLock) which is supposed to allow the CSS cursor style (such as `cursor: none`) to persist even
+		// while dragging it outside the browser window, because Safari has another bug where the cursor icon is unaffected by that API.
+		if (isSafari) document.body.classList.add("cursor-hidden");
 
 		// Enter dragging state
 		if (usePointerLock) target.requestPointerLock();
@@ -384,6 +398,8 @@
 			else pointerLockChange();
 		};
 		const pointerMove = (e: PointerEvent) => {
+			// TODO: Display a fake cursor over the top of the page which wraps around the edges of the editor.
+
 			// Abort the drag if right click is down. This works here because a "pointermove" event is fired when right clicking even if the cursor didn't move.
 			if (e.buttons & BUTTONS_RIGHT) {
 				if (usePointerLock) document.exitPointerLock();
@@ -420,6 +436,9 @@
 		const pointerLockChange = () => {
 			// Do nothing if we just entered, rather than exited, pointer lock.
 			if (usePointerLock && document.pointerLockElement) return;
+
+			// Un-hide the cursor if we're using the Safari workaround.
+			if (isSafari) document.body.classList.remove("cursor-hidden");
 
 			// Reset the value to the initial value if the drag was aborted, or to the current value if it was just confirmed by changing the initial value to the current value.
 			updateValue(initialValueBeforeDragging);

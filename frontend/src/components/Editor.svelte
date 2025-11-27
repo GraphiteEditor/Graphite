@@ -223,6 +223,10 @@
 		user-select: none;
 	}
 
+	body.cursor-hidden * {
+		cursor: none !important;
+	}
+
 	// Needed for the viewport hole punch on desktop
 	html:has(body > .viewport-hole-punch),
 	body:has(> .viewport-hole-punch) {
