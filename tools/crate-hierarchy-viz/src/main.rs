@@ -1,9 +1,9 @@
 use anyhow::{Context, Result};
 use clap::Parser;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(name = "crate-hierarchy-viz")]
@@ -13,21 +13,9 @@ struct Args {
 	#[arg(short, long)]
 	workspace: Option<PathBuf>,
 
-	/// Output format: dot, text
-	#[arg(short, long, default_value = "dot")]
-	format: String,
-
 	/// Output file (defaults to stdout)
 	#[arg(short, long)]
 	output: Option<PathBuf>,
-
-	/// Include external dependencies (workspace dependencies)
-	#[arg(long)]
-	include_external: bool,
-
-	/// Exclude dyn-any from the graph (it's used everywhere)
-	#[arg(long)]
-	exclude_dyn_any: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -41,16 +29,16 @@ struct WorkspaceConfig {
 	dependencies: Option<HashMap<String, WorkspaceDependency>>,
 }
 
+/// Represents a workspace-level dependency in Cargo.toml
+/// The Simple variant's String is needed for serde deserialization but never read directly
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
+#[allow(dead_code)]
 enum WorkspaceDependency {
 	Simple(String),
 	Detailed {
-		path: Option<String>,
-		version: Option<String>,
-		workspace: Option<bool>,
 		#[serde(flatten)]
-		other: HashMap<String, toml::Value>,
+		_other: HashMap<String, toml::Value>,
 	},
 }
 
@@ -65,15 +53,16 @@ struct PackageConfig {
 	name: String,
 }
 
+/// Represents a crate-level dependency in Cargo.toml
+/// The Simple variant's String is needed for serde deserialization but never read directly
 #[derive(Debug, Deserialize)]
 #[serde(untagged)]
+#[allow(dead_code)]
 enum CrateDependency {
 	Simple(String),
 	Detailed {
 		path: Option<String>,
 		workspace: Option<bool>,
-		version: Option<String>,
-		optional: Option<bool>,
 		#[serde(flatten)]
 		other: HashMap<String, toml::Value>,
 	},
@@ -184,11 +173,7 @@ fn main() -> Result<()> {
 	}
 
 	// Generate output
-	let output = match args.format.as_str() {
-		"dot" => generate_dot_format(&crates, args.include_external, args.exclude_dyn_any)?,
-		"text" => generate_text_format(&crates, args.include_external, args.exclude_dyn_any)?,
-		_ => anyhow::bail!("Unsupported format: {}", args.format),
-	};
+	let output = generate_dot_format(&crates)?;
 
 	// Write output
 	if let Some(output_path) = args.output {
@@ -201,7 +186,7 @@ fn main() -> Result<()> {
 	Ok(())
 }
 
-fn generate_dot_format(crates: &[CrateInfo], include_external: bool, exclude_dyn_any: bool) -> Result<String> {
+fn generate_dot_format(crates: &[CrateInfo]) -> Result<String> {
 	let mut output = String::new();
 	output.push_str("digraph CrateHierarchy {\n");
 	output.push_str("    rankdir=LR;\n");
@@ -214,7 +199,10 @@ fn generate_dot_format(crates: &[CrateInfo], include_external: bool, exclude_dyn
 	output.push_str("        style=filled;\n");
 	output.push_str("        fillcolor=lightgray;\n");
 
-	let core_crates: Vec<_> = crates.iter().filter(|c| c.name.starts_with("graphite-") || c.name == "editor").collect();
+	let core_crates: Vec<_> = crates
+		.iter()
+		.filter(|c| (c.name.starts_with("graphite-") || c.name == "editor" || c.name == "graphene-cli") && !c.name.contains("desktop"))
+		.collect();
 
 	for crate_info in &core_crates {
 		output.push_str(&format!("        \"{}\";\n", crate_info.name));
@@ -228,18 +216,28 @@ fn generate_dot_format(crates: &[CrateInfo], include_external: bool, exclude_dyn
 
 	let nodegraph_crates: Vec<_> = crates
 		.iter()
-		.filter(|c| {
-			c.name == "graph-craft"
-				|| c.name == "interpreted-executor"
-				|| c.name == "wgpu-executor"
-				|| c.name == "node-macro"
-				|| c.name == "preprocessor"
-				|| c.name == "rendering"
-				|| c.name.ends_with("-types")
-		})
+		.filter(|c| c.name == "graph-craft" || c.name == "interpreted-executor" || c.name == "node-macro" || c.name == "preprocessor" || c.name == "graphene-cli")
 		.collect();
 
 	for crate_info in &nodegraph_crates {
+		output.push_str(&format!("        \"{}\";\n", crate_info.name));
+	}
+	output.push_str("    }\n\n");
+
+	output.push_str("    subgraph cluster_node_libraries {\n");
+	output.push_str("        label=\"Node Graph Libraries\";\n");
+	output.push_str("        style=filled;\n");
+	output.push_str("        fillcolor=lightcyan;\n");
+
+	let node_library_crates: Vec<_> = crates
+		.iter()
+		.filter(|c| {
+			let path_str = c.path.to_string_lossy();
+			path_str.contains("node-graph/libraries")
+		})
+		.collect();
+
+	for crate_info in &node_library_crates {
 		output.push_str(&format!("        \"{}\";\n", crate_info.name));
 	}
 	output.push_str("    }\n\n");
@@ -251,7 +249,10 @@ fn generate_dot_format(crates: &[CrateInfo], include_external: bool, exclude_dyn
 
 	let node_crates: Vec<_> = crates
 		.iter()
-		.filter(|c| (c.name == "graphene-core" || c.name == "graphene-std" || c.name.contains("-nodes")) && !nodegraph_crates.contains(c))
+		.filter(|c| {
+			let path_str = c.path.to_string_lossy();
+			path_str.contains("node-graph/nodes")
+		})
 		.collect();
 
 	for crate_info in &node_crates {
@@ -259,26 +260,20 @@ fn generate_dot_format(crates: &[CrateInfo], include_external: bool, exclude_dyn
 	}
 	output.push_str("    }\n\n");
 
-	output.push_str("    subgraph cluster_libraries {\n");
-	output.push_str("        label=\"Libraries\";\n");
+	output.push_str("    subgraph cluster_desktop{\n");
+	output.push_str("        label=\"Desktop\";\n");
 	output.push_str("        style=filled;\n");
 	output.push_str("        fillcolor=lightgreen;\n");
 
-	let library_crates: Vec<_> = crates
+	let desktop_crates: Vec<_> = crates
 		.iter()
 		.filter(|c| {
-			!c.name.starts_with("graphite-")
-				&& !c.name.starts_with("graphene-")
-				&& c.name != "graph-craft"
-				&& c.name != "interpreted-executor"
-				&& c.name != "wgpu-executor"
-				&& c.name != "node-macro"
-				&& c.name != "preprocessor"
-				&& c.name != "editor"
+			let path_str = c.path.to_string_lossy();
+			path_str.contains("desktop")
 		})
 		.collect();
 
-	for crate_info in &library_crates {
+	for crate_info in &desktop_crates {
 		output.push_str(&format!("        \"{}\";\n", crate_info.name));
 	}
 	output.push_str("    }\n\n");
@@ -286,57 +281,13 @@ fn generate_dot_format(crates: &[CrateInfo], include_external: bool, exclude_dyn
 	// Add dependencies as edges
 	for crate_info in crates {
 		for dep in &crate_info.dependencies {
-			if exclude_dyn_any && (dep == "dyn-any" || dep == "node-macro") {
+			if dep == "dyn-any" || dep == "node-macro" {
 				continue;
 			}
 			output.push_str(&format!("    \"{}\" -> \"{}\";\n", crate_info.name, dep));
 		}
-
-		if include_external {
-			for dep in &crate_info.external_dependencies {
-				if exclude_dyn_any && dep == "dyn-any" {
-					continue;
-				}
-				output.push_str(&format!("    \"{}\" -> \"{}\" [style=dashed, color=red];\n", crate_info.name, dep));
-			}
-		}
 	}
 
 	output.push_str("}\n");
-	Ok(output)
-}
-
-fn generate_text_format(crates: &[CrateInfo], include_external: bool, exclude_dyn_any: bool) -> Result<String> {
-	let mut output = String::new();
-	output.push_str("Graphite Workspace Crate Hierarchy\n");
-	output.push_str("==================================\n\n");
-
-	for crate_info in crates {
-		output.push_str(&format!("Crate: {}\n", crate_info.name));
-		output.push_str(&format!("Path: {}\n", crate_info.path.display()));
-
-		let filtered_deps: Vec<_> = crate_info.dependencies.iter().filter(|dep| !exclude_dyn_any || *dep != "dyn-any").collect();
-
-		if !filtered_deps.is_empty() {
-			output.push_str("Workspace Dependencies:\n");
-			for dep in filtered_deps {
-				output.push_str(&format!("  - {}\n", dep));
-			}
-		}
-
-		if include_external {
-			let filtered_external_deps: Vec<_> = crate_info.external_dependencies.iter().filter(|dep| !exclude_dyn_any || *dep != "dyn-any").collect();
-
-			if !filtered_external_deps.is_empty() {
-				output.push_str("External Dependencies:\n");
-				for dep in filtered_external_deps {
-					output.push_str(&format!("  - {}\n", dep));
-				}
-			}
-		}
-
-		output.push_str("\n");
-	}
-
 	Ok(output)
 }
