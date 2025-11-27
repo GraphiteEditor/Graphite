@@ -39,6 +39,11 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 					modify_inputs.fill_set(fill);
 				}
 			}
+			GraphOperationMessage::CircularRepeatSet { layer, angle, radius, count } => {
+				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
+					modify_inputs.circular_repeat_set(angle, radius, count);
+				}
+			}
 			GraphOperationMessage::BlendingFillSet { layer, fill } => {
 				if let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) {
 					modify_inputs.blending_fill_set(fill);
