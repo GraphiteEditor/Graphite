@@ -245,6 +245,7 @@ tagged_value! {
 	GridType(vector::misc::GridType),
 	ArcType(vector::misc::ArcType),
 	MergeByDistanceAlgorithm(vector::misc::MergeByDistanceAlgorithm),
+	ExtrudeJoiningAlgorithm(vector::misc::ExtrudeJoiningAlgorithm),
 	PointSpacingType(vector::misc::PointSpacingType),
 	SpiralType(vector::misc::SpiralType),
 	#[serde(alias = "LineCap")]
