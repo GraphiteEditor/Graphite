@@ -447,7 +447,7 @@
 	}
 
 	function draggingPointerUp() {
-		if (internalDragState && internalDragState.active && draggingData) {
+		if (internalDragState?.active && draggingData) {
 			const { select, insertParentId, insertIndex } = draggingData;
 
 			// Commit the move
@@ -585,7 +585,7 @@
 		{/if}
 		<WidgetLayout layout={layersPanelControlBarRightLayout} />
 	</LayoutRow>
-	<LayoutRow class="list-area" scrollableY={true}>
+	<LayoutRow class="list-area" classes={{ "drag-ongoing": Boolean(internalDragState?.active && draggingData) }} scrollableY={true}>
 		<LayoutCol
 			class="list"
 			styles={{ cursor: layerToClipUponClick && layerToClipAltKeyPressed && layerToClipUponClick.entry.clippable ? "alias" : "auto" }}
@@ -723,9 +723,13 @@
 		// Layer hierarchy
 		.list-area {
 			position: relative;
-			margin-top: 4px;
+			padding-top: 4px;
 			// Combine with the bottom bar to avoid a double border
 			margin-bottom: -1px;
+
+			&.drag-ongoing .layer {
+				pointer-events: none;
+			}
 
 			.layer {
 				flex: 0 0 auto;
@@ -894,7 +898,7 @@
 				left: 4px;
 				right: 4px;
 				background: var(--color-e-nearwhite);
-				margin-top: -3px;
+				margin-top: 1px;
 				height: 5px;
 				z-index: 1;
 				pointer-events: none;
