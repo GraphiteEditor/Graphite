@@ -4,6 +4,7 @@
 	import { evaluateMathExpression } from "@graphite/../wasm/pkg/graphite_wasm.js";
 	import { PRESS_REPEAT_DELAY_MS, PRESS_REPEAT_INTERVAL_MS } from "@graphite/io-managers/input";
 	import { type NumberInputMode, type NumberInputIncrementBehavior } from "@graphite/messages";
+	import { browserVersion, isDesktop } from "@graphite/utility-functions/platform";
 
 	import { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";
 	import FieldInput from "@graphite/components/widgets/inputs/FieldInput.svelte";
@@ -315,10 +316,10 @@
 		// Remove the text entry cursor from any other selected text field
 		if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
 
-		// Don't drag the text value from is input element
+		// Don't drag the text value from its input element
 		e.preventDefault();
 
-		// Now we need to wait and see if the user follows this up with a mousemove or mouseup.
+		// Now we need to wait and see if the user follows this up with a mousemove or mouseup...
 
 		// For some reason, both events can get fired before their event listeners are removed, so we need to guard against both running.
 		let alreadyActedGuard = false;
@@ -327,16 +328,22 @@
 		const onMove = () => {
 			if (alreadyActedGuard) return;
 			alreadyActedGuard = true;
+
 			isDragging = true;
 			beginDrag(e);
+
 			removeEventListener("pointermove", onMove);
+			removeEventListener("pointerup", onUp);
 		};
 		// If it's a mouseup, we'll begin editing the text field.
 		const onUp = () => {
 			if (alreadyActedGuard) return;
 			alreadyActedGuard = true;
+
 			isDragging = false;
 			self?.focus();
+
+			removeEventListener("pointermove", onMove);
 			removeEventListener("pointerup", onUp);
 		};
 		addEventListener("pointermove", onMove);
@@ -348,8 +355,11 @@
 		const target = e.target || undefined;
 		if (!(target instanceof HTMLElement)) return;
 
+		// Default to using pointer lock except on unsupported platforms (Safari and the native desktop app)
+		const usePointerLock = !browserVersion().toLowerCase().includes("safari") && !isDesktop();
+
 		// Enter dragging state
-		target.requestPointerLock();
+		if (usePointerLock) target.requestPointerLock();
 		initialValueBeforeDragging = value;
 		cumulativeDragDelta = 0;
 
@@ -359,6 +369,9 @@
 		// We ignore the first event invocation's `e.movementX` value because it's unreliable.
 		// In both Chrome and Firefox (tested on Windows 10), the first `e.movementX` value is occasionally a very large number
 		// (around positive 1000, even if movement was in the negative direction). This seems to happen more often if the movement is rapid.
+		// TODO: On rarer occasions, it isn't sufficient to ignore just the first event, so this solution is imperfect.
+		// TODO: Using a counter to ignore more frames helps progressively decrease—but not eliminate—the issue, but it makes drag initiation feel delayed so we don't do that.
+		// TODO: A better solution will need to discard outlier movement values across multiple frames by basically implementing a time-series data analysis filtering algorithm.
 		let ignoredFirstMovement = false;
 
 		const pointerUp = () => {
@@ -367,24 +380,22 @@
 			initialValueBeforeDragging = value;
 			cumulativeDragDelta = 0;
 
-			document.exitPointerLock();
-
-			// Fallback for Safari in case pointerlockchange never fires
-			setTimeout(() => {
-				if (!document.pointerLockElement) pointerLockChange();
-			}, 0);
+			if (usePointerLock) document.exitPointerLock();
+			else pointerLockChange();
 		};
 		const pointerMove = (e: PointerEvent) => {
 			// Abort the drag if right click is down. This works here because a "pointermove" event is fired when right clicking even if the cursor didn't move.
 			if (e.buttons & BUTTONS_RIGHT) {
-				document.exitPointerLock();
+				if (usePointerLock) document.exitPointerLock();
+				else pointerLockChange();
 				return;
 			}
 
-			// If no buttons are down, we are stuck in the drag state after having released the mouse, so we should exit.
-			// For some reason on firefox in wayland the button is -1 and the buttons is 0.
+			// If no buttons are down, that means we are stuck in the drag state after having released the mouse, so we should exit.
+			// For some reason on Firefox in Wayland, `e.buttons` can be 0 while `e.button` is -1, but we don't want to exit in that state.
 			if (e.buttons === 0 && e.button !== -1) {
-				document.exitPointerLock();
+				if (usePointerLock) document.exitPointerLock();
+				else pointerLockChange();
 				return;
 			}
 
@@ -408,7 +419,7 @@
 		};
 		const pointerLockChange = () => {
 			// Do nothing if we just entered, rather than exited, pointer lock.
-			if (document.pointerLockElement) return;
+			if (usePointerLock && document.pointerLockElement) return;
 
 			// Reset the value to the initial value if the drag was aborted, or to the current value if it was just confirmed by changing the initial value to the current value.
 			updateValue(initialValueBeforeDragging);
@@ -418,12 +429,12 @@
 			// Clean up the event listeners.
 			removeEventListener("pointerup", pointerUp);
 			removeEventListener("pointermove", pointerMove);
-			document.removeEventListener("pointerlockchange", pointerLockChange);
+			if (usePointerLock) document.removeEventListener("pointerlockchange", pointerLockChange);
 		};
 
 		addEventListener("pointerup", pointerUp);
 		addEventListener("pointermove", pointerMove);
-		document.addEventListener("pointerlockchange", pointerLockChange);
+		if (usePointerLock) document.addEventListener("pointerlockchange", pointerLockChange);
 	}
 
 	// ===============================
