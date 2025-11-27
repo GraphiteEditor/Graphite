@@ -76,6 +76,47 @@ struct CrateInfo {
 	external_dependencies: Vec<String>,
 }
 
+/// Remove transitive dependencies from the crate list.
+/// If A depends on B and C, and B depends on C, then A->C is removed.
+fn remove_transitive_dependencies(crates: &mut [CrateInfo]) {
+	// Build a map from crate name to its dependencies for quick lookup
+	let dep_map: HashMap<String, HashSet<String>> = crates
+		.iter()
+		.map(|c| (c.name.clone(), c.dependencies.iter().cloned().collect()))
+		.collect();
+
+	// For each crate, compute which dependencies are reachable through other dependencies
+	for crate_info in crates.iter_mut() {
+		let mut transitive_deps = HashSet::new();
+
+		// For each direct dependency, find all its transitive dependencies
+		for direct_dep in &crate_info.dependencies {
+			// Recursively collect all transitive dependencies of this direct dependency
+			let mut visited = HashSet::new();
+			collect_all_dependencies(direct_dep, &dep_map, &mut visited);
+			// Remove the direct dependency itself from the visited set
+			visited.remove(direct_dep);
+			transitive_deps.extend(visited);
+		}
+
+		// Remove dependencies that are transitive
+		crate_info.dependencies.retain(|dep| !transitive_deps.contains(dep));
+	}
+}
+
+/// Recursively collect all dependencies of a crate
+fn collect_all_dependencies(crate_name: &str, dep_map: &HashMap<String, HashSet<String>>, visited: &mut HashSet<String>) {
+	if !visited.insert(crate_name.to_string()) {
+		return; // Already visited, avoid cycles
+	}
+
+	if let Some(deps) = dep_map.get(crate_name) {
+		for dep in deps {
+			collect_all_dependencies(dep, dep_map, visited);
+		}
+	}
+}
+
 fn main() -> Result<()> {
 	let args = Args::parse();
 
@@ -171,6 +212,9 @@ fn main() -> Result<()> {
 	for crate_info in &mut crates {
 		crate_info.dependencies.retain(|dep| workspace_crate_names.contains(dep));
 	}
+
+	// Remove transitive dependencies
+	remove_transitive_dependencies(&mut crates);
 
 	// Generate output
 	let output = generate_dot_format(&crates)?;
