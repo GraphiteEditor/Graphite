@@ -3,6 +3,9 @@ use graph_craft::wasm_application_io::WasmEditorApi;
 use graphic_types::Vector;
 pub use text_nodes::*;
 
+/// Converts text into editable vector shapes with customizable styling.
+/// Parameters control font, size, spacing, alignment, and layout.
+
 #[node_macro::node(category(""))]
 fn text<'i: 'n>(
 	_: impl Ctx,
@@ -25,7 +28,8 @@ fn text<'i: 'n>(
 	#[default(0.)]
 	tilt: f64,
 	align: TextAlign,
-	/// Splits each text glyph into its own row in the table of vector geometry.
+	/// When enabled, outputs a table with one Vector per character, allowing individual character manipulation.
+    /// When disabled, outputs a single Vector containing all characters combined. Default is disabled.
 	#[default(false)]
 	per_glyph_instances: bool,
 ) -> Table<Vector> {

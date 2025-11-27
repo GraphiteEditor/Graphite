@@ -57,6 +57,9 @@ impl<P: Pixel + Alpha> Sample for BrushStampGenerator<P> {
 	}
 }
 
+/// Controls the brush shape with diameter and hardness, plus color and opacity (via flow).
+/// The feather exponent is calculated from hardness to determine edge softness.
+/// Used internally to create the individual brush texture before stamping it repeatedly along a stroke path.
 #[node_macro::node(skip_impl)]
 fn brush_stamp_generator(#[unit(" px")] diameter: f64, color: Color, hardness: f64, flow: f64) -> BrushStampGenerator<Color> {
 	// Diameter
@@ -76,6 +79,7 @@ fn brush_stamp_generator(#[unit(" px")] diameter: f64, color: Color, hardness: f
 	BrushStampGenerator { color, feather_exponent, transform }
 }
 
+/// Used to efficiently paint brush strokes: applies the same texture repeatedly at different positions with proper blending and boundary handling.
 #[node_macro::node(skip_impl)]
 fn blit<BlendFn>(mut target: Table<Raster<CPU>>, texture: Raster<CPU>, positions: Vec<DVec2>, blend_mode: BlendFn) -> Table<Raster<CPU>>
 where

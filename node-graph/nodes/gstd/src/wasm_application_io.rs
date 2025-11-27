@@ -27,12 +27,14 @@ use wasm_bindgen::JsCast;
 #[cfg(target_family = "wasm")]
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
+/// Allocates GPU memory and rendering context for vector-to-raster conversion. Must be paired with the Rasterize node.
 #[cfg(feature = "wgpu")]
 #[node_macro::node(category("Debug: GPU"))]
 async fn create_surface<'a: 'n>(_: impl Ctx, editor: &'a WasmEditorApi) -> Arc<WasmSurfaceHandle> {
 	Arc::new(editor.application_io.as_ref().unwrap().create_window())
 }
 
+/// "Discard Result" runs asynchronously in the background without waiting. Useful for triggering webhooks or analytics without blocking.
 #[node_macro::node(category("Web Request"))]
 async fn get_request(_: impl Ctx, _primary: (), #[name("URL")] url: String, discard_result: bool) -> String {
 	#[cfg(target_family = "wasm")]
@@ -63,6 +65,7 @@ async fn get_request(_: impl Ctx, _primary: (), #[name("URL")] url: String, disc
 	response.text().await.ok().unwrap_or_default()
 }
 
+/// "Discard Result" runs asynchronously in the background. Useful for fire-and-forget operations like logging, webhooks, or notifications.
 #[node_macro::node(category("Web Request"))]
 async fn post_request(_: impl Ctx, _primary: (), #[name("URL")] url: String, body: Vec<u8>, discard_result: bool) -> String {
 	#[cfg(target_family = "wasm")]
@@ -97,17 +100,19 @@ async fn post_request(_: impl Ctx, _primary: (), #[name("URL")] url: String, bod
 	response.text().await.ok().unwrap_or_default()
 }
 
+/// Prepare text for transmission over HTTP or storage in binary file formats.
 #[node_macro::node(category("Web Request"), name("String to Bytes"))]
 fn string_to_bytes(_: impl Ctx, string: String) -> Vec<u8> {
 	string.into_bytes()
 }
 
+/// Extracts raw pixel data in RGBA format. Each pixel becomes 4 sequential bytes. Use before sending images over HTTP or writing to files.
 #[node_macro::node(category("Web Request"), name("Image to Bytes"))]
 fn image_to_bytes(_: impl Ctx, image: Table<Raster<CPU>>) -> Vec<u8> {
 	let Some(image) = image.iter().next() else { return vec![] };
 	image.element.data.iter().flat_map(|color| color.to_rgb8_srgb().into_iter()).collect::<Vec<u8>>()
 }
-
+/// Supports loading from URLs and local asset paths. Returns a transparent placeholder if the resource fails to load, allowing workflows to continue.
 #[node_macro::node(category("Web Request"))]
 async fn load_resource<'a: 'n>(_: impl Ctx, _primary: (), #[scope("editor-api")] editor: &'a WasmEditorApi, #[name("URL")] url: String) -> Arc<[u8]> {
 	let Some(api) = editor.application_io.as_ref() else {
@@ -123,6 +128,7 @@ async fn load_resource<'a: 'n>(_: impl Ctx, _primary: (), #[scope("editor-api")]
 	data
 }
 
+/// Works with any standard image format (PNG, JPEG, WebP, etc.). Automatically converts color space to linear sRGB for accurate compositing.
 #[node_macro::node(category("Web Request"))]
 fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> Table<Raster<CPU>> {
 	let Some(image) = image::load_from_memory(data.as_ref()).ok() else {
@@ -142,6 +148,7 @@ fn decode_image(_: impl Ctx, data: Arc<[u8]>) -> Table<Raster<CPU>> {
 	Table::new_from_element(Raster::new_cpu(image))
 }
 
+/// Renders with the resolution and transform defined by the footprint. Output respects vector strokes, gradients, and other styling details.
 #[cfg(target_family = "wasm")]
 #[node_macro::node(category(""))]
 async fn rasterize<T: WasmNotSend + 'n>(

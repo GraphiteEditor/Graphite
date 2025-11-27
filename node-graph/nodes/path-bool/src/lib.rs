@@ -14,7 +14,7 @@ use std::ops::Mul;
 // Import specta so derive macros can find it
 use core_types::specta;
 
-// TODO: Fix boolean ops to work by removing .transform() and .one_instnace_*() calls,
+// TODO: Fix boolean ops to work by removing .transform() and .one_instance_*() calls,
 // TODO: since before we used a Vec of single-row tables and now we use a single table
 // TODO: with multiple rows while still assuming a single row for the boolean operations.
 
