@@ -394,7 +394,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 							action: MenuBarEntry::no_action(),
 							disabled: no_active_document || !has_selected_layers,
 							children: MenuBarEntryChildren(vec![{
-								[(FlipAxis::X, "FlipHorizontal", "Horizontal"), (FlipAxis::Y, "FlipVertical", "Vertical")]
+								[(FlipAxis::X, "FlipHorizontal", "Flip Horizontal"), (FlipAxis::Y, "FlipVertical", "Flip Vertical")]
 									.into_iter()
 									.map(|(flip_axis, icon, name)| MenuBarEntry {
 										label: name.into(),
