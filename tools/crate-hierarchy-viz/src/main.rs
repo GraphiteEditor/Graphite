@@ -1,9 +1,20 @@
-use anyhow::{Context, Result};
-use clap::Parser;
+use anyhow::{Context, Result, anyhow};
+use clap::{Parser, ValueEnum};
 use serde::Deserialize;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::PathBuf;
+use std::process::Command;
+
+#[derive(Debug, Clone, ValueEnum)]
+enum OutputFormat {
+	/// Output DOT format (GraphViz)
+	Dot,
+	/// Output PNG image (requires GraphViz)
+	Png,
+	/// Output SVG image (requires GraphViz)
+	Svg,
+}
 
 #[derive(Parser)]
 #[command(name = "crate-hierarchy-viz")]
@@ -13,9 +24,13 @@ struct Args {
 	#[arg(short, long)]
 	workspace: Option<PathBuf>,
 
-	/// Output file (defaults to stdout)
+	/// Output file (defaults to stdout for DOT format, required for PNG/SVG)
 	#[arg(short, long)]
 	output: Option<PathBuf>,
+
+	/// Output format
+	#[arg(short, long, value_enum, default_value = "dot")]
+	format: OutputFormat,
 }
 
 #[derive(Debug, Deserialize)]
@@ -80,10 +95,7 @@ struct CrateInfo {
 /// If A depends on B and C, and B depends on C, then A->C is removed.
 fn remove_transitive_dependencies(crates: &mut [CrateInfo]) {
 	// Build a map from crate name to its dependencies for quick lookup
-	let dep_map: HashMap<String, HashSet<String>> = crates
-		.iter()
-		.map(|c| (c.name.clone(), c.dependencies.iter().cloned().collect()))
-		.collect();
+	let dep_map: HashMap<String, HashSet<String>> = crates.iter().map(|c| (c.name.clone(), c.dependencies.iter().cloned().collect())).collect();
 
 	// For each crate, compute which dependencies are reachable through other dependencies
 	for crate_info in crates.iter_mut() {
@@ -216,15 +228,67 @@ fn main() -> Result<()> {
 	// Remove transitive dependencies
 	remove_transitive_dependencies(&mut crates);
 
-	// Generate output
-	let output = generate_dot_format(&crates)?;
+	// Generate DOT format
+	let dot_content = generate_dot_format(&crates)?;
 
-	// Write output
-	if let Some(output_path) = args.output {
-		fs::write(&output_path, output).with_context(|| format!("Failed to write to {:?}", output_path))?;
-		println!("Output written to: {:?}", output_path);
-	} else {
-		print!("{}", output);
+	// Handle output based on format
+	match args.format {
+		OutputFormat::Dot => {
+			// Write DOT output
+			if let Some(output_path) = args.output {
+				fs::write(&output_path, &dot_content).with_context(|| format!("Failed to write to {:?}", output_path))?;
+				println!("DOT output written to: {:?}", output_path);
+			} else {
+				print!("{}", dot_content);
+			}
+		}
+		OutputFormat::Png | OutputFormat::Svg => {
+			// Require output file for PNG/SVG
+			let output_path = args.output.ok_or_else(|| anyhow!("Output file (-o/--output) is required for PNG/SVG formats"))?;
+
+			// Check if dot command is available
+			let dot_check = Command::new("dot").arg("-V").output();
+			if dot_check.is_err() || !dot_check.as_ref().unwrap().status.success() {
+				return Err(anyhow!(
+					"GraphViz 'dot' command not found. Please install GraphViz to generate PNG/SVG output.\n\
+					 On Ubuntu/Debian: sudo apt-get install graphviz\n\
+					 On macOS: brew install graphviz\n\
+					 On Windows: Download from https://graphviz.org/download/"
+				));
+			}
+
+			// Determine the format argument for dot
+			let format_arg = match args.format {
+				OutputFormat::Png => "png",
+				OutputFormat::Svg => "svg",
+				_ => unreachable!(),
+			};
+
+			// Run dot command to generate the output
+			let mut dot_process = Command::new("dot")
+				.arg(format!("-T{}", format_arg))
+				.arg("-o")
+				.arg(&output_path)
+				.stdin(std::process::Stdio::piped())
+				.spawn()
+				.with_context(|| "Failed to spawn 'dot' command")?;
+
+			// Write DOT content to stdin
+			use std::io::Write;
+			if let Some(mut stdin) = dot_process.stdin.take() {
+				stdin.write_all(dot_content.as_bytes()).with_context(|| "Failed to write DOT content to 'dot' command")?;
+				// Close stdin to signal EOF
+				drop(stdin);
+			}
+
+			// Wait for the command to complete
+			let status = dot_process.wait().with_context(|| "Failed to wait for 'dot' command")?;
+			if !status.success() {
+				return Err(anyhow!("'dot' command failed with exit code: {:?}", status.code()));
+			}
+
+			println!("{} output written to: {:?}", format_arg.to_uppercase(), output_path);
+		}
 	}
 
 	Ok(())
