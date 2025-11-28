@@ -112,6 +112,7 @@ fn image_to_bytes(_: impl Ctx, image: Table<Raster<CPU>>) -> Vec<u8> {
 	let Some(image) = image.iter().next() else { return vec![] };
 	image.element.data.iter().flat_map(|color| color.to_rgb8_srgb().into_iter()).collect::<Vec<u8>>()
 }
+
 /// Supports loading from URLs and local asset paths. Returns a transparent placeholder if the resource fails to load, allowing workflows to continue.
 #[node_macro::node(category("Web Request"))]
 async fn load_resource<'a: 'n>(_: impl Ctx, _primary: (), #[scope("editor-api")] editor: &'a WasmEditorApi, #[name("URL")] url: String) -> Arc<[u8]> {

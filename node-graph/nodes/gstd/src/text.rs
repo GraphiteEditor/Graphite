@@ -28,8 +28,9 @@ fn text<'i: 'n>(
 	#[default(0.)]
 	tilt: f64,
 	align: TextAlign,
-	/// When enabled, outputs a table with one Vector per character, allowing individual character manipulation.
-    /// When disabled, outputs a single Vector containing all characters combined. Default is disabled.
+    /// When disabled, outputs a single vector element containing all characters combined.
+	/// When enabled, outputs a table with one vector element per character,
+	/// allowing individual character manipulation by subsequent operations.
 	#[default(false)]
 	per_glyph_instances: bool,
 ) -> Table<Vector> {
