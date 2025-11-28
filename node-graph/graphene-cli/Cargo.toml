@@ -27,9 +27,7 @@ wgpu = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 clap = { workspace = true, features = ["cargo", "derive"] }
 image = { workspace = true }
-
-# Optional local dependencies
-wgpu-executor = { path = "../wgpu-executor", optional = true }
+wgpu-executor = { workspace = true, optional = true }
 
 [package.metadata.cargo-shear]
 ignored = ["wgpu-executor"]
