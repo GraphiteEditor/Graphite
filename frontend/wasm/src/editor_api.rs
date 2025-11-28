@@ -277,28 +277,28 @@ impl EditorHandle {
 	/// Minimizes the application window to the taskbar or dock
 	#[wasm_bindgen(js_name = appWindowMinimize)]
 	pub fn app_window_minimize(&self) {
-		let message = AppWindowMessage::AppWindowMinimize;
+		let message = AppWindowMessage::Minimize;
 		self.dispatch(message);
 	}
 
 	/// Toggles minimizing or restoring down the application window
 	#[wasm_bindgen(js_name = appWindowMaximize)]
 	pub fn app_window_maximize(&self) {
-		let message = AppWindowMessage::AppWindowMaximize;
+		let message = AppWindowMessage::Maximize;
 		self.dispatch(message);
 	}
 
 	/// Closes the application window
 	#[wasm_bindgen(js_name = appWindowClose)]
 	pub fn app_window_close(&self) {
-		let message = AppWindowMessage::AppWindowClose;
+		let message = AppWindowMessage::Close;
 		self.dispatch(message);
 	}
 
 	/// Drag the application window
 	#[wasm_bindgen(js_name = appWindowDrag)]
 	pub fn app_window_start_drag(&self) {
-		let message = AppWindowMessage::AppWindowDrag;
+		let message = AppWindowMessage::Drag;
 		self.dispatch(message);
 	}
 
