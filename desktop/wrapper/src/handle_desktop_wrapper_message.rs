@@ -158,5 +158,8 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 			};
 			dispatcher.queue_editor_message(message);
 		}
+		DesktopWrapperMessage::WindowPaste { content } => {
+			// let message = PortfolioMessage::PasteSerializedData { data: () }
+		}
 	}
 }

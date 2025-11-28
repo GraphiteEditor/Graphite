@@ -119,6 +119,9 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 
 			return Some(FrontendMessage::UpdateMenuBarLayout { layout, layout_target });
 		}
+		FrontendMessage::TriggerTextCopy { copy_text } => {
+			dispatcher.respond(DesktopFrontendMessage::WindowCopy { content: copy_text });
+		}
 		FrontendMessage::WindowClose => {
 			dispatcher.respond(DesktopFrontendMessage::WindowClose);
 		}

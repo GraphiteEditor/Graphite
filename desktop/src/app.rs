@@ -1,3 +1,4 @@
+use graphite_desktop_wrapper::messages;
 use rfd::AsyncFileDialog;
 use std::fs;
 use std::path::PathBuf;
@@ -250,6 +251,19 @@ impl App {
 			DesktopFrontendMessage::UpdateMenu { entries } => {
 				if let Some(window) = &self.window {
 					window.update_menu(entries);
+				}
+			}
+			DesktopFrontendMessage::WindowPaste => {
+				if let Some(window) = &self.window
+					&& let Some(content) = window.clipboard_read()
+				{
+					let message = DesktopWrapperMessage::WindowPaste { content };
+					self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
+				}
+			}
+			DesktopFrontendMessage::WindowCopy { content } => {
+				if let Some( window) = &mut self.window {
+					window.clipboard_write(content);
 				}
 			}
 			DesktopFrontendMessage::WindowClose => {

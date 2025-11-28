@@ -54,6 +54,10 @@ pub enum DesktopFrontendMessage {
 	UpdateMenu {
 		entries: Vec<MenuItem>,
 	},
+	WindowPaste,
+	WindowCopy {
+		content: String,
+	},
 	WindowClose,
 	WindowMinimize,
 	WindowMaximize,
@@ -112,6 +116,9 @@ pub enum DesktopWrapperMessage {
 	},
 	MenuEvent {
 		id: u64,
+	},
+	WindowPaste {
+		content: String,
 	},
 }
 

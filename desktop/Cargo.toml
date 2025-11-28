@@ -43,6 +43,7 @@ open = { workspace = true }
 rand = { workspace = true, features = ["thread_rng"] }
 serde = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
+window_clipboard = "0.5"
 
 # Windows-specific dependencies
 [target.'cfg(target_os = "windows")'.dependencies]
