@@ -86,6 +86,16 @@ pub enum MergeByDistanceAlgorithm {
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
 #[widget(Radio)]
+pub enum ExtrudeJoiningAlgorithm {
+	All,
+	#[default]
+	Extrema,
+	None,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[widget(Radio)]
 pub enum PointSpacingType {
 	#[default]
 	/// The desired spacing distance between points.

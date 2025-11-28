@@ -3,7 +3,6 @@
 
 	import { type Editor } from "@graphite/editor";
 	import { createClipboardManager } from "@graphite/io-managers/clipboard";
-	import { createDragManager } from "@graphite/io-managers/drag";
 	import { createHyperlinkManager } from "@graphite/io-managers/hyperlinks";
 	import { createInputManager } from "@graphite/io-managers/input";
 	import { createLocalizationManager } from "@graphite/io-managers/localization";
@@ -46,7 +45,6 @@
 	createLocalizationManager(editor);
 	createPanicManager(editor, dialog);
 	createPersistenceManager(editor, portfolio);
-	let dragManagerDestructor = createDragManager();
 	let inputManagerDestructor = createInputManager(editor, dialog, portfolio, document, fullscreen);
 
 	onMount(() => {
@@ -56,7 +54,6 @@
 
 	onDestroy(() => {
 		// Call the destructor for each manager
-		dragManagerDestructor();
 		inputManagerDestructor();
 	});
 </script>
@@ -221,6 +218,10 @@
 		overscroll-behavior: none;
 		-webkit-user-select: none; // Still required by Safari as of 2025
 		user-select: none;
+	}
+
+	body.cursor-hidden * {
+		cursor: none !important;
 	}
 
 	// Needed for the viewport hole punch on desktop

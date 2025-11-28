@@ -1,14 +1,14 @@
 use core::f64::consts::PI;
 use core::hash::{Hash, Hasher};
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
-use core_types::registry::types::{Angle, Fraction, IntegerCount, Length, Multiplier, Percentage, PixelLength, PixelSize, SeedValue};
+use core_types::registry::types::{Angle, IntegerCount, Length, Multiplier, Percentage, PixelLength, PixelSize, Progression, SeedValue};
 use core_types::table::{Table, TableRow, TableRowMut};
 use core_types::transform::{Footprint, Transform};
 use core_types::{CloneVarArgs, Color, Context, Ctx, ExtractAll, ExtractVarArgs, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
-use graphic_types::Graphic;
 use graphic_types::Vector;
 use graphic_types::raster_types::{CPU, GPU, Raster};
+use graphic_types::{Graphic, IntoGraphicTable};
 use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, PathEl, PathSeg, Shape};
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
@@ -21,7 +21,7 @@ use vector_types::vector::algorithms::bezpath_algorithms::{self, TValue, evaluat
 use vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
 use vector_types::vector::algorithms::offset_subpath::offset_bezpath;
 use vector_types::vector::algorithms::spline::{solve_spline_first_handle_closed, solve_spline_first_handle_open};
-use vector_types::vector::misc::{CentroidType, bezpath_from_manipulator_groups, bezpath_to_manipulator_groups, point_to_dvec2};
+use vector_types::vector::misc::{CentroidType, ExtrudeJoiningAlgorithm, bezpath_from_manipulator_groups, bezpath_to_manipulator_groups, point_to_dvec2};
 use vector_types::vector::misc::{MergeByDistanceAlgorithm, PointSpacingType, is_linear};
 use vector_types::vector::misc::{handles_to_segment, segment_to_handles};
 use vector_types::vector::style::{Fill, Gradient, GradientStops, Stroke};
@@ -234,7 +234,7 @@ async fn repeat<I: 'n + Send + Clone>(
 	// TODO: When using a custom Properties panel layout in document_node_definitions.rs and this default is set, the widget weirdly doesn't show up in the Properties panel. Investigation is needed.
 	direction: PixelSize,
 	angle: Angle,
-	#[default(4)] count: IntegerCount,
+	#[default(5)] count: IntegerCount,
 ) -> Table<I> {
 	let angle = angle.to_radians();
 	let count = count.max(1);
@@ -580,6 +580,210 @@ pub fn merge_by_distance(
 	}
 }
 
+pub mod extrude_algorithms {
+	use glam::DVec2;
+	use kurbo::{ParamCurve, ParamCurveDeriv};
+	use vector_types::subpath::BezierHandles;
+	use vector_types::vector::StrokeId;
+	use vector_types::vector::misc::ExtrudeJoiningAlgorithm;
+
+	/// Convert [`vector_types::subpath::Bezier`] to [`kurbo::PathSeg`].
+	fn bezier_to_path_seg(bezier: vector_types::subpath::Bezier) -> kurbo::PathSeg {
+		let [start, end] = [(bezier.start().x, bezier.start().y), (bezier.end().x, bezier.end().y)];
+		match bezier.handles {
+			BezierHandles::Linear => kurbo::Line::new(start, end).into(),
+			BezierHandles::Quadratic { handle } => kurbo::QuadBez::new(start, (handle.x, handle.y), end).into(),
+			BezierHandles::Cubic { handle_start, handle_end } => kurbo::CubicBez::new(start, (handle_start.x, handle_start.y), (handle_end.x, handle_end.y), end).into(),
+		}
+	}
+
+	/// Convert [`kurbo::CubicBez`] to [`vector_types::subpath::BezierHandles`].
+	fn cubic_to_handles(cubic_bez: kurbo::CubicBez) -> BezierHandles {
+		BezierHandles::Cubic {
+			handle_start: DVec2::new(cubic_bez.p1.x, cubic_bez.p1.y),
+			handle_end: DVec2::new(cubic_bez.p2.x, cubic_bez.p2.y),
+		}
+	}
+
+	/// Find the `t` values to split (where the tangent changes to be on the other side of the direction).
+	fn find_splits(cubic_segment: kurbo::CubicBez, direction: DVec2) -> impl Iterator<Item = f64> {
+		let derivative = cubic_segment.deriv();
+		let convert = |x: kurbo::Point| DVec2::new(x.x, x.y);
+		let derivative_points = [derivative.p0, derivative.p1, derivative.p2].map(convert);
+
+		let t_squared = derivative_points[0] - 2. * derivative_points[1] + derivative_points[2];
+		let t_scalar = -2. * derivative_points[0] + 2. * derivative_points[1];
+		let constant = derivative_points[0];
+
+		kurbo::common::solve_quadratic(constant.perp_dot(direction), t_scalar.perp_dot(direction), t_squared.perp_dot(direction))
+			.into_iter()
+			.filter(|&t| t > 1e-6 && t < 1. - 1e-6)
+	}
+
+	/// Split so segments no longer have tangents on both sides of the direction vector.
+	fn split(vector: &mut graphic_types::Vector, direction: DVec2) {
+		let segment_count = vector.segment_domain.ids().len();
+		let mut next_point = vector.point_domain.next_id();
+		let mut next_segment = vector.segment_domain.next_id();
+
+		for segment_index in 0..segment_count {
+			let (_, _, bezier) = vector.segment_points_from_index(segment_index);
+			let mut start_index = vector.segment_domain.start_point()[segment_index];
+			let pathseg = bezier_to_path_seg(bezier).to_cubic();
+			let mut start_t = 0.;
+
+			for split_t in find_splits(pathseg, direction) {
+				let [first, second] = [pathseg.subsegment(start_t..split_t), pathseg.subsegment(split_t..1.)];
+				let [first_handles, second_handles] = [first, second].map(cubic_to_handles);
+				let middle_point = next_point.next_id();
+				let start_segment = next_segment.next_id();
+
+				let middle_point_index = vector.point_domain.len();
+				vector.point_domain.push(middle_point, DVec2::new(first.end().x, first.end().y));
+				vector.segment_domain.push(start_segment, start_index, middle_point_index, first_handles, StrokeId::ZERO);
+				vector.segment_domain.set_start_point(segment_index, middle_point_index);
+				vector.segment_domain.set_handles(segment_index, second_handles);
+
+				start_t = split_t;
+				start_index = middle_point_index;
+			}
+		}
+	}
+
+	/// Copy all segments with the offset of `direction`.
+	fn offset_copy_all_segments(vector: &mut graphic_types::Vector, direction: DVec2) {
+		let points_count = vector.point_domain.ids().len();
+		let mut next_point = vector.point_domain.next_id();
+		for index in 0..points_count {
+			vector.point_domain.push(next_point.next_id(), vector.point_domain.positions()[index] + direction);
+		}
+
+		let segment_count = vector.segment_domain.ids().len();
+		let mut next_segment = vector.segment_domain.next_id();
+		for index in 0..segment_count {
+			vector.segment_domain.push(
+				next_segment.next_id(),
+				vector.segment_domain.start_point()[index] + points_count,
+				vector.segment_domain.end_point()[index] + points_count,
+				vector.segment_domain.handles()[index].apply_transformation(|x| x + direction),
+				vector.segment_domain.stroke()[index],
+			);
+		}
+	}
+
+	/// Join points from the original to the copied that are on opposite sides of the direction.
+	fn join_extrema_edges(vector: &mut graphic_types::Vector, direction: DVec2) {
+		#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+		enum Found {
+			#[default]
+			None,
+			Positive,
+			Negative,
+			Both,
+			Invalid,
+		}
+
+		impl Found {
+			fn update(&mut self, value: f64) {
+				*self = match (*self, value > 0.) {
+					(Found::None, true) => Found::Positive,
+					(Found::None, false) => Found::Negative,
+					(Found::Positive, true) | (Found::Negative, false) => Found::Both,
+					_ => Found::Invalid,
+				};
+			}
+		}
+
+		let first_half_points = vector.point_domain.len() / 2;
+		let mut points = vec![Found::None; first_half_points];
+		let first_half_segments = vector.segment_domain.ids().len() / 2;
+
+		for segment_id in 0..first_half_segments {
+			let index = [vector.segment_domain.start_point()[segment_id], vector.segment_domain.end_point()[segment_id]];
+			let position = index.map(|index| vector.point_domain.positions()[index]);
+
+			if position[0].abs_diff_eq(position[1], 1e-6) {
+				continue; // Skip zero length segments
+			}
+
+			points[index[0]].update(direction.perp_dot(position[1] - position[0]));
+			points[index[1]].update(direction.perp_dot(position[0] - position[1]));
+		}
+
+		let mut next_segment = vector.segment_domain.next_id();
+		for (index, &point) in points.iter().enumerate().take(first_half_points) {
+			if point != Found::Both {
+				continue;
+			}
+
+			vector
+				.segment_domain
+				.push(next_segment.next_id(), index, index + first_half_points, BezierHandles::Linear, StrokeId::ZERO);
+		}
+	}
+
+	/// Join all points from the original to the copied.
+	fn join_all(vector: &mut graphic_types::Vector) {
+		let mut next_segment = vector.segment_domain.next_id();
+		let first_half = vector.point_domain.len() / 2;
+		for index in 0..first_half {
+			vector.segment_domain.push(next_segment.next_id(), index, index + first_half, BezierHandles::Linear, StrokeId::ZERO);
+		}
+	}
+
+	pub fn extrude(vector: &mut graphic_types::Vector, direction: DVec2, joining_algorithm: ExtrudeJoiningAlgorithm) {
+		split(vector, direction);
+		offset_copy_all_segments(vector, direction);
+
+		match joining_algorithm {
+			ExtrudeJoiningAlgorithm::Extrema => join_extrema_edges(vector, direction),
+			ExtrudeJoiningAlgorithm::All => join_all(vector),
+			ExtrudeJoiningAlgorithm::None => {}
+		}
+	}
+
+	#[cfg(test)]
+	mod extrude_tests {
+		use glam::DVec2;
+		use kurbo::{ParamCurve, ParamCurveDeriv};
+
+		#[test]
+		fn split_cubic() {
+			let l1 = kurbo::CubicBez::new((0., 0.), (100., 0.), (100., 100.), (0., 100.));
+			assert_eq!(super::find_splits(l1, DVec2::Y).collect::<Vec<f64>>(), vec![0.5]);
+			assert!(super::find_splits(l1, DVec2::X).collect::<Vec<f64>>().is_empty());
+
+			let l2 = kurbo::CubicBez::new((0., 0.), (0., 0.), (100., 0.), (100., 0.));
+			assert!(super::find_splits(l2, DVec2::X).collect::<Vec<f64>>().is_empty());
+
+			let l3 = kurbo::PathSeg::Line(kurbo::Line::new((0., 0.), (100., 0.)));
+			assert!(super::find_splits(l3.to_cubic(), DVec2::X).collect::<Vec<f64>>().is_empty());
+
+			let l4 = kurbo::CubicBez::new((0., 0.), (100., -10.), (100., 110.), (0., 100.));
+			let splits = super::find_splits(l4, DVec2::X).map(|t| l4.deriv().eval(t)).collect::<Vec<_>>();
+			assert_eq!(splits.len(), 2);
+			assert!(splits.iter().all(|&deriv| deriv.y.abs() < 1e-8), "{splits:?}");
+		}
+
+		#[test]
+		fn split_vector() {
+			let curve = kurbo::PathSeg::Cubic(kurbo::CubicBez::new((0., 0.), (100., -10.), (100., 110.), (0., 100.)));
+			let mut vector = graphic_types::Vector::from_bezpath(kurbo::BezPath::from_path_segments([curve].into_iter()));
+			super::split(&mut vector, DVec2::X);
+			assert_eq!(vector.segment_ids().len(), 3);
+			assert_eq!(vector.point_domain.ids().len(), 4);
+		}
+	}
+}
+
+#[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
+async fn extrude(_: impl Ctx, mut source: Table<Vector>, direction: DVec2, joining_algorithm: ExtrudeJoiningAlgorithm) -> Table<Vector> {
+	for TableRowMut { element: source, .. } in source.iter_mut() {
+		extrude_algorithms::extrude(source, direction, joining_algorithm);
+	}
+	source
+}
+
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
 async fn box_warp(_: impl Ctx, content: Table<Vector>, #[expose] rectangle: Table<Vector>) -> Table<Vector> {
 	let Some((target, target_transform)) = rectangle.get(0).map(|rect| (rect.element, rect.transform)) else {
@@ -825,6 +1029,7 @@ async fn dimensions(_: impl Ctx, content: Table<Vector>) -> DVec2 {
 		.unwrap_or_default()
 }
 
+// TODO: Replace this node with an automatic type conversion implementation of the `Convert` trait
 /// Converts a vec2 value into a vector path composed of a single anchor point.
 ///
 /// This is useful in conjunction with nodes that repeat it, followed by the "Points to Polyline" node to string together a path of the points.
@@ -848,12 +1053,12 @@ async fn points_to_polyline(_: impl Ctx, mut points: Table<Vector>, #[default(tr
 
 		let points_count = row.element.point_domain.ids().len();
 
-		if points_count > 2 {
+		if points_count >= 2 {
 			(0..points_count - 1).for_each(|i| {
 				segment_domain.push(next_id.next_id(), i, i + 1, BezierHandles::Linear, StrokeId::generate());
 			});
 
-			if closed {
+			if closed && points_count != 2 {
 				segment_domain.push(next_id.next_id(), points_count - 1, 0, BezierHandles::Linear, StrokeId::generate());
 
 				row.element
@@ -1146,7 +1351,17 @@ async fn sample_polyline(
 ///
 /// If multiple subpaths make up the path, the whole number part of the progression value selects the subpath and the decimal part determines the position along it.
 #[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
-async fn cut_path(_: impl Ctx, mut content: Table<Vector>, progression: Fraction, parameterized_distance: bool, reverse: bool) -> Table<Vector> {
+async fn cut_path(
+	_: impl Ctx,
+	/// The path to insert a cut into.
+	mut content: Table<Vector>,
+	/// The factor from the start to the end of the path, 0–1 for one subpath, 1–2 for a second subpath, and so on.
+	progression: Progression,
+	/// Swap the direction of the path.
+	reverse: bool,
+	/// Traverse the path using each segment's Bézier curve parameterization instead of the Euclidean distance. Faster to compute but doesn't respect actual distances.
+	parameterized_distance: bool,
+) -> Table<Vector> {
 	let euclidian = !parameterized_distance;
 
 	let bezpaths = content
@@ -1251,7 +1466,7 @@ async fn position_on_path(
 	/// The path to traverse.
 	content: Table<Vector>,
 	/// The factor from the start to the end of the path, 0–1 for one subpath, 1–2 for a second subpath, and so on.
-	progression: Fraction,
+	progression: Progression,
 	/// Swap the direction of the path.
 	reverse: bool,
 	/// Traverse the path using each segment's Bézier curve parameterization instead of the Euclidean distance. Faster to compute but doesn't respect actual distances.
@@ -1290,7 +1505,7 @@ async fn tangent_on_path(
 	/// The path to traverse.
 	content: Table<Vector>,
 	/// The factor from the start to the end of the path, 0–1 for one subpath, 1–2 for a second subpath, and so on.
-	progression: Fraction,
+	progression: Progression,
 	/// Swap the direction of the path.
 	reverse: bool,
 	/// Traverse the path using each segment's Bézier curve parameterization instead of the Euclidean distance. Faster to compute but doesn't respect actual distances.
@@ -1512,8 +1727,18 @@ async fn jitter_points(
 		.collect()
 }
 
+/// Interpolates the geometry and styles between multiple vector layers, producing a single morphed vector shape.
+///
+/// Based on the progression value, adjacent vector elements are blended together. From 0 until 1, the first element (bottom layer) morphs into the second element (next layer up). From 1 until 2, it then morphs into the third element, and so on until progression is capped at the last element (top layer).
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn morph(_: impl Ctx, source: Table<Vector>, #[expose] target: Table<Vector>, #[default(0.5)] time: Fraction) -> Table<Vector> {
+async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
+	_: impl Ctx,
+	/// The vector elements to interpolate between. Mixed graphic content is deeply flattened to keep only vector elements.
+	#[implementations(Table<Graphic>, Table<Vector>)]
+	content: I,
+	/// The factor from one vector element to the next in sequence. The whole number part selects the source element, and the decimal part determines the interpolation amount towards the next element.
+	progression: Progression,
+) -> Table<Vector> {
 	/// Subdivides the last segment of the bezpath to until it appends 'count' number of segments.
 	fn make_new_segments(bezpath: &mut BezPath, count: usize) {
 		let bezpath_segment_count = bezpath.segments().count();
@@ -1557,127 +1782,147 @@ async fn morph(_: impl Ctx, source: Table<Vector>, #[expose] target: Table<Vecto
 		}
 	}
 
-	let time = time.clamp(0., 1.);
+	// Preserve original graphic table as upstream data so this group layer's nested layers can be edited by the tools.
+	let graphic_table_content = content.clone().into_graphic_table();
 
-	source
-		.into_iter()
-		.zip(target.into_iter())
-		.map(|(source_row, target_row)| {
-			let mut vector = Vector::default();
+	// If the input isn't a Table<Vector>, we convert it into one by flattening any Table<Graphic> content.
+	let content = content.into_flattened_vector_table();
 
-			// Lerp styles
-			let vector_alpha_blending = source_row.alpha_blending.lerp(&target_row.alpha_blending, time as f32);
-			vector.style = source_row.element.style.lerp(&target_row.element.style, time);
+	// Determine source and target indices and interpolation time fraction
+	let progression = progression.max(0.);
+	let source_index = progression.floor() as usize;
+	let time = progression.fract();
 
-			// Before and after transforms
-			let source_transform = source_row.transform;
-			let target_transform = target_row.transform;
+	// Not enough elements to interpolate between, so we return the input as-is
+	if content.len() <= 1 {
+		return content;
+	}
+	// Progression is at or past the last element, so we return the last element without interpolation
+	if source_index >= content.len() - 1 {
+		return content.into_iter().last().into_iter().collect();
+	}
 
-			// Before and after paths
-			let source_bezpaths = source_row.element.stroke_bezpath_iter();
-			let target_bezpaths = target_row.element.stroke_bezpath_iter();
+	// Interpolation between two elements
+	let mut content_iter = content.into_iter();
+	let source_row = content_iter.nth(source_index).unwrap();
+	let target_row = content_iter.next().unwrap();
 
-			for (mut source_bezpath, mut target_bezpath) in source_bezpaths.zip(target_bezpaths) {
-				if source_bezpath.elements().is_empty() || target_bezpath.elements().is_empty() {
-					continue;
+	let mut vector = Vector {
+		upstream_data: Some(graphic_table_content),
+		..Default::default()
+	};
+
+	// Lerp styles
+	let vector_alpha_blending = source_row.alpha_blending.lerp(&target_row.alpha_blending, time as f32);
+	vector.style = source_row.element.style.lerp(&target_row.element.style, time);
+
+	// Before and after transforms
+	let source_transform = source_row.transform;
+	let target_transform = target_row.transform;
+
+	// Before and after paths
+	let source_bezpaths = source_row.element.stroke_bezpath_iter();
+	let target_bezpaths = target_row.element.stroke_bezpath_iter();
+
+	for (mut source_bezpath, mut target_bezpath) in source_bezpaths.zip(target_bezpaths) {
+		if source_bezpath.elements().is_empty() || target_bezpath.elements().is_empty() {
+			continue;
+		}
+
+		source_bezpath.apply_affine(Affine::new(source_transform.to_cols_array()));
+		target_bezpath.apply_affine(Affine::new(target_transform.to_cols_array()));
+
+		let target_segment_len = target_bezpath.segments().count();
+		let source_segment_len = source_bezpath.segments().count();
+
+		// Insert new segments to align the number of segments in source_bezpath and target_bezpath.
+		make_new_segments(&mut source_bezpath, target_segment_len.max(source_segment_len) - source_segment_len);
+		make_new_segments(&mut target_bezpath, source_segment_len.max(target_segment_len) - target_segment_len);
+
+		let source_segments = source_bezpath.segments().collect::<Vec<PathSeg>>();
+		let target_segments = target_bezpath.segments().collect::<Vec<PathSeg>>();
+
+		// Interpolate anchors and handles
+		for (i, (source_element, target_element)) in source_bezpath.elements_mut().iter_mut().zip(target_bezpath.elements_mut().iter_mut()).enumerate() {
+			match source_element {
+				PathEl::MoveTo(point) => *point = point.lerp(target_element.end_point().unwrap(), time),
+				PathEl::ClosePath => {}
+				elm => {
+					let mut source_segment = source_segments.get(i - 1).unwrap().to_cubic();
+					let target_segment = target_segments.get(i - 1).unwrap().to_cubic();
+					source_segment.p0 = source_segment.p0.lerp(target_segment.p0, time);
+					source_segment.p1 = source_segment.p1.lerp(target_segment.p1, time);
+					source_segment.p2 = source_segment.p2.lerp(target_segment.p2, time);
+					source_segment.p3 = source_segment.p3.lerp(target_segment.p3, time);
+					*elm = PathSeg::Cubic(source_segment).as_path_el();
 				}
+			}
+		}
 
-				source_bezpath.apply_affine(Affine::new(source_transform.to_cols_array()));
-				target_bezpath.apply_affine(Affine::new(target_transform.to_cols_array()));
+		vector.append_bezpath(source_bezpath.clone());
+	}
 
-				let target_segment_len = target_bezpath.segments().count();
-				let source_segment_len = source_bezpath.segments().count();
+	// Deal with unmatched extra paths by collapsing them
+	let source_paths_count = source_row.element.stroke_bezpath_iter().count();
+	let target_paths_count = target_row.element.stroke_bezpath_iter().count();
+	let source_paths = source_row.element.stroke_bezpath_iter().skip(target_paths_count);
+	let target_paths = target_row.element.stroke_bezpath_iter().skip(source_paths_count);
 
-				// Insert new segments to align the number of segments in sorce_bezpath and target_bezpath.
-				make_new_segments(&mut source_bezpath, target_segment_len.max(source_segment_len) - source_segment_len);
-				make_new_segments(&mut target_bezpath, source_segment_len.max(target_segment_len) - target_segment_len);
+	for mut source_path in source_paths {
+		source_path.apply_affine(Affine::new(source_transform.to_cols_array()));
 
-				let source_segments = source_bezpath.segments().collect::<Vec<PathSeg>>();
-				let target_segments = target_bezpath.segments().collect::<Vec<PathSeg>>();
+		// Skip if the path has no segments else get the point at the end of the path.
+		let Some(end) = source_path.segments().last().map(|element| element.end()) else { continue };
 
-				// Interpolate anchors and handles
-				for (i, (source_element, target_element)) in source_bezpath.elements_mut().iter_mut().zip(target_bezpath.elements_mut().iter_mut()).enumerate() {
-					match source_element {
-						PathEl::MoveTo(point) => *point = point.lerp(target_element.end_point().unwrap(), time),
-						PathEl::ClosePath => {}
-						elm => {
-							let mut source_segment = source_segments.get(i - 1).unwrap().to_cubic();
-							let target_segment = target_segments.get(i - 1).unwrap().to_cubic();
-							source_segment.p0 = source_segment.p0.lerp(target_segment.p0, time);
-							source_segment.p1 = source_segment.p1.lerp(target_segment.p1, time);
-							source_segment.p2 = source_segment.p2.lerp(target_segment.p2, time);
-							source_segment.p3 = source_segment.p3.lerp(target_segment.p3, time);
-							*elm = PathSeg::Cubic(source_segment).as_path_el();
-						}
-					}
+		for element in source_path.elements_mut() {
+			match element {
+				PathEl::MoveTo(point) => *point = point.lerp(end, time),
+				PathEl::LineTo(point) => *point = point.lerp(end, time),
+				PathEl::QuadTo(point, point1) => {
+					*point = point.lerp(end, time);
+					*point1 = point1.lerp(end, time);
 				}
-
-				vector.append_bezpath(source_bezpath.clone());
-			}
-
-			// Deal with unmatched extra paths by collapsing them
-			let source_paths_count = source_row.element.stroke_bezpath_iter().count();
-			let target_paths_count = target_row.element.stroke_bezpath_iter().count();
-			let source_paths = source_row.element.stroke_bezpath_iter().skip(target_paths_count);
-			let target_paths = target_row.element.stroke_bezpath_iter().skip(source_paths_count);
-
-			for mut source_path in source_paths {
-				source_path.apply_affine(Affine::new(source_transform.to_cols_array()));
-
-				// Skip if the path has no segments else get the point at the end of the path.
-				let Some(end) = source_path.segments().last().map(|element| element.end()) else { continue };
-
-				for element in source_path.elements_mut() {
-					match element {
-						PathEl::MoveTo(point) => *point = point.lerp(end, time),
-						PathEl::LineTo(point) => *point = point.lerp(end, time),
-						PathEl::QuadTo(point, point1) => {
-							*point = point.lerp(end, time);
-							*point1 = point1.lerp(end, time);
-						}
-						PathEl::CurveTo(point, point1, point2) => {
-							*point = point.lerp(end, time);
-							*point1 = point1.lerp(end, time);
-							*point2 = point2.lerp(end, time);
-						}
-						PathEl::ClosePath => {}
-					}
+				PathEl::CurveTo(point, point1, point2) => {
+					*point = point.lerp(end, time);
+					*point1 = point1.lerp(end, time);
+					*point2 = point2.lerp(end, time);
 				}
-				vector.append_bezpath(source_path);
+				PathEl::ClosePath => {}
 			}
+		}
+		vector.append_bezpath(source_path);
+	}
 
-			for mut target_path in target_paths {
-				target_path.apply_affine(Affine::new(source_transform.to_cols_array()));
+	for mut target_path in target_paths {
+		target_path.apply_affine(Affine::new(source_transform.to_cols_array()));
 
-				// Skip if the path has no segments else get the point at the start of the path.
-				let Some(start) = target_path.segments().next().map(|element| element.start()) else { continue };
+		// Skip if the path has no segments else get the point at the start of the path.
+		let Some(start) = target_path.segments().next().map(|element| element.start()) else { continue };
 
-				for element in target_path.elements_mut() {
-					match element {
-						PathEl::MoveTo(point) => *point = start.lerp(*point, time),
-						PathEl::LineTo(point) => *point = start.lerp(*point, time),
-						PathEl::QuadTo(point, point1) => {
-							*point = start.lerp(*point, time);
-							*point1 = start.lerp(*point1, time);
-						}
-						PathEl::CurveTo(point, point1, point2) => {
-							*point = start.lerp(*point, time);
-							*point1 = start.lerp(*point1, time);
-							*point2 = start.lerp(*point2, time);
-						}
-						PathEl::ClosePath => {}
-					}
+		for element in target_path.elements_mut() {
+			match element {
+				PathEl::MoveTo(point) => *point = start.lerp(*point, time),
+				PathEl::LineTo(point) => *point = start.lerp(*point, time),
+				PathEl::QuadTo(point, point1) => {
+					*point = start.lerp(*point, time);
+					*point1 = start.lerp(*point1, time);
 				}
-				vector.append_bezpath(target_path);
+				PathEl::CurveTo(point, point1, point2) => {
+					*point = start.lerp(*point, time);
+					*point1 = start.lerp(*point1, time);
+					*point2 = start.lerp(*point2, time);
+				}
+				PathEl::ClosePath => {}
 			}
+		}
+		vector.append_bezpath(target_path);
+	}
 
-			TableRow {
-				element: vector,
-				alpha_blending: vector_alpha_blending,
-				..Default::default()
-			}
-		})
-		.collect()
+	Table::new_from_row(TableRow {
+		element: vector,
+		alpha_blending: vector_alpha_blending,
+		..Default::default()
+	})
 }
 
 fn bevel_algorithm(mut vector: Vector, transform: DAffine2, distance: f64) -> Vector {
@@ -1695,7 +1940,7 @@ fn bevel_algorithm(mut vector: Vector, transform: DAffine2, distance: f64) -> Ve
 			segments_connected_count[point_index] += 1;
 		}
 
-		// Zero out points without exactly two connectors. These are ignored
+		// Zero out points without exactly two connectors. These are ignored.
 		for count in &mut segments_connected_count {
 			if *count != 2 {
 				*count = 0;
@@ -1723,7 +1968,7 @@ fn bevel_algorithm(mut vector: Vector, transform: DAffine2, distance: f64) -> Ve
 		}
 	}
 
-	fn calculate_distance_to_spilt(bezier1: PathSeg, bezier2: PathSeg, bevel_length: f64) -> f64 {
+	fn calculate_distance_to_split(bezier1: PathSeg, bezier2: PathSeg, bevel_length: f64) -> f64 {
 		if is_linear(bezier1) && is_linear(bezier2) {
 			let v1 = (bezier1.end() - bezier1.start()).normalize();
 			let v2 = (bezier1.end() - bezier2.end()).normalize();
@@ -1860,7 +2105,7 @@ fn bevel_algorithm(mut vector: Vector, transform: DAffine2, distance: f64) -> Ve
 			let mut next_bezier = handles_to_segment(next_start, *next_handles, next_end);
 			next_bezier = Affine::new(transform.to_cols_array()) * next_bezier;
 
-			let spilt_distance = calculate_distance_to_spilt(bezier, next_bezier, distance);
+			let calculated_split_distance = calculate_distance_to_split(bezier, next_bezier, distance);
 
 			if is_linear(bezier) {
 				bezier = PathSeg::Line(Line::new(bezier.start(), bezier.end()));
@@ -1893,7 +2138,7 @@ fn bevel_algorithm(mut vector: Vector, transform: DAffine2, distance: f64) -> Ve
 			let valid_length = length > 1e-10;
 			if segments_connected[*end_point] > 0 && valid_length {
 				// Apply the bevel to the end
-				let distance = spilt_distance.min(original_length.min(next_original_length) / 2.);
+				let distance = calculated_split_distance.min(original_length.min(next_original_length) / 2.);
 				bezier = split_distance(bezier.reverse(), distance, length).reverse();
 
 				if index == 0 && next_index == 1 {
@@ -1912,7 +2157,7 @@ fn bevel_algorithm(mut vector: Vector, transform: DAffine2, distance: f64) -> Ve
 			let valid_length = next_length > 1e-10;
 			if segments_connected[*next_start_point] > 0 && valid_length {
 				// Apply the bevel to the start
-				let distance = spilt_distance.min(next_original_length.min(original_length) / 2.);
+				let distance = calculated_split_distance.min(next_original_length.min(original_length) / 2.);
 				next_bezier = split_distance(next_bezier, distance, next_length);
 				next_length = (next_length - distance).max(0.);
 
@@ -2007,9 +2252,47 @@ async fn count_elements<I: Count>(
 		Vec<f64>,
 		Vec<DVec2>,
 	)]
-	source: I,
+	content: I,
 ) -> f64 {
-	source.count() as f64
+	content.count() as f64
+}
+
+#[node_macro::node(category("Vector: Measure"), path(graphene_core::vector))]
+async fn count_points(_: impl Ctx, content: Table<Vector>) -> f64 {
+	content.into_iter().map(|row| row.element.point_domain.positions().len() as f64).sum()
+}
+
+/// Retrieves the vec2 position (in local space) of the anchor point at the specified index in table of vector elements.
+/// If no value exists at that index, the position (0, 0) is returned.
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn index_points(
+	_: impl Ctx,
+	/// The vector element or elements containing the anchor points to be retrieved.
+	content: Table<Vector>,
+	/// The index of the points to retrieve, starting from 0 for the first point. Negative indices count backwards from the end, starting from -1 for the last item.
+	index: f64,
+) -> DVec2 {
+	let points_count = content.iter().map(|row| row.element.point_domain.positions().len()).sum::<usize>();
+
+	// Clamp and allow negative indexing from the end
+	let index = index as isize;
+	let index = if index < 0 {
+		(points_count as isize + index).max(0) as usize
+	} else {
+		(index as usize).min(points_count - 1)
+	};
+
+	// Find the point at the given index across all vector elements
+	let mut accumulated = 0;
+	for row in content.iter() {
+		let row_point_count = row.element.point_domain.positions().len();
+		if index - accumulated < row_point_count {
+			return row.element.point_domain.positions()[index - accumulated];
+		}
+		accumulated += row_point_count;
+	}
+
+	DVec2::ZERO
 }
 
 #[node_macro::node(category("Vector: Measure"), path(core_types::vector))]
@@ -2304,12 +2587,12 @@ mod test {
 	}
 	#[tokio::test]
 	async fn morph() {
-		let source = Rect::new(0., 0., 100., 100.).to_path(DEFAULT_ACCURACY);
-		let target = Rect::new(-100., -100., 0., 0.).to_path(DEFAULT_ACCURACY);
-		let morphed = super::morph(Footprint::default(), vector_node_from_bezpath(source), vector_node_from_bezpath(target), 0.5).await;
-		let morphed = morphed.iter().next().unwrap().element;
+		let rectangle = vector_node_from_bezpath(Rect::new(0., 0., 100., 100.).to_path(DEFAULT_ACCURACY));
+		let rectangles = super::repeat(Footprint::default(), rectangle, DVec2::new(-100., -100.), 0., 2).await;
+		let morphed = super::morph(Footprint::default(), rectangles, 0.5).await;
+		let element = morphed.iter().next().unwrap().element;
 		assert_eq!(
-			&morphed.point_domain.positions()[..4],
+			&element.point_domain.positions()[..4],
 			vec![DVec2::new(-50., -50.), DVec2::new(50., -50.), DVec2::new(50., 50.), DVec2::new(-50., 50.)]
 		);
 	}

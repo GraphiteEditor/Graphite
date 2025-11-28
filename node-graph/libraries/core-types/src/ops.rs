@@ -79,6 +79,8 @@ impl Convert<DVec2, ()> for DVec2 {
 	}
 }
 
+// TODO: Add a DVec2 to Table<Vector> anchor point conversion implementation to replace the 'Vec2 to Point' node
+
 /// Implements the [`Convert`] trait for conversion between the cartesian product of Rust's primitive numeric types.
 macro_rules! impl_convert {
 	($from:ty, $to:ty) => {
