@@ -34,4 +34,16 @@ impl super::NativeWindow for NativeWindowImpl {
 	fn update_menu(&self, entries: Vec<MenuItem>) {
 		self.menu.update(entries);
 	}
+
+	fn hide(&self) {
+		app::hide();
+	}
+
+	fn hide_others(&self) {
+		app::hide_others();
+	}
+
+	fn show_all(&self) {
+		app::show_all();
+	}
 }

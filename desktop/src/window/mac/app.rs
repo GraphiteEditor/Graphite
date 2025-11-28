@@ -2,12 +2,6 @@ use objc2::{ClassType, define_class, msg_send};
 use objc2_app_kit::{NSApplication, NSEvent, NSEventType, NSResponder};
 use objc2_foundation::NSObject;
 
-pub(super) fn init() {
-	unsafe {
-		let _: &NSApplication = msg_send![GraphiteApplication::class(), sharedApplication];
-	}
-}
-
 define_class!(
 	#[unsafe(super(NSApplication, NSResponder, NSObject))]
 	#[name = "GraphiteApplication"]
@@ -25,3 +19,23 @@ define_class!(
 		}
 	}
 );
+
+fn instance() -> objc2::rc::Retained<NSApplication> {
+	unsafe { msg_send![GraphiteApplication::class(), sharedApplication] }
+}
+
+pub(super) fn init() {
+	let _ = instance();
+}
+
+pub(super) fn hide() {
+	instance().hide(None);
+}
+
+pub(super) fn hide_others() {
+	instance().hideOtherApplications(None);
+}
+
+pub(super) fn show_all() {
+	instance().unhideAllApplications(None);
+}

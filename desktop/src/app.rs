@@ -174,24 +174,6 @@ impl App {
 					graphics_state.set_overlays_scene(scene);
 				}
 			}
-			DesktopFrontendMessage::MinimizeWindow => {
-				if let Some(window) = &self.window {
-					window.minimize();
-				}
-			}
-			DesktopFrontendMessage::MaximizeWindow => {
-				if let Some(window) = &self.window {
-					window.toggle_maximize();
-				}
-			}
-			DesktopFrontendMessage::DragWindow => {
-				if let Some(window) = &self.window {
-					window.start_drag();
-				}
-			}
-			DesktopFrontendMessage::CloseWindow => {
-				self.app_event_scheduler.schedule(AppEvent::CloseWindow);
-			}
 			DesktopFrontendMessage::PersistenceWriteDocument { id, document } => {
 				self.persistent_data.write_document(id, document);
 			}
@@ -268,6 +250,39 @@ impl App {
 			DesktopFrontendMessage::UpdateMenu { entries } => {
 				if let Some(window) = &self.window {
 					window.update_menu(entries);
+				}
+			}
+			DesktopFrontendMessage::WindowClose => {
+				self.app_event_scheduler.schedule(AppEvent::CloseWindow);
+			}
+			DesktopFrontendMessage::WindowMinimize => {
+				if let Some(window) = &self.window {
+					window.minimize();
+				}
+			}
+			DesktopFrontendMessage::WindowMaximize => {
+				if let Some(window) = &self.window {
+					window.toggle_maximize();
+				}
+			}
+			DesktopFrontendMessage::WindowDrag => {
+				if let Some(window) = &self.window {
+					window.start_drag();
+				}
+			}
+			DesktopFrontendMessage::WindowHide => {
+				if let Some(window) = &self.window {
+					window.hide();
+				}
+			}
+			DesktopFrontendMessage::WindowHideOthers => {
+				if let Some(window) = &self.window {
+					window.hide_others();
+				}
+			}
+			DesktopFrontendMessage::WindowShowAll => {
+				if let Some(window) = &self.window {
+					window.show_all();
 				}
 			}
 		}

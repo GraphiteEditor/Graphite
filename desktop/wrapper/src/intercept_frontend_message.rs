@@ -67,18 +67,6 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		FrontendMessage::TriggerVisitLink { url } => {
 			dispatcher.respond(DesktopFrontendMessage::OpenUrl(url));
 		}
-		FrontendMessage::DragWindow => {
-			dispatcher.respond(DesktopFrontendMessage::DragWindow);
-		}
-		FrontendMessage::CloseWindow => {
-			dispatcher.respond(DesktopFrontendMessage::CloseWindow);
-		}
-		FrontendMessage::TriggerMinimizeWindow => {
-			dispatcher.respond(DesktopFrontendMessage::MinimizeWindow);
-		}
-		FrontendMessage::TriggerMaximizeWindow => {
-			dispatcher.respond(DesktopFrontendMessage::MaximizeWindow);
-		}
 		FrontendMessage::UpdateViewportPhysicalBounds { x, y, width, height } => {
 			dispatcher.respond(DesktopFrontendMessage::UpdateViewportPhysicalBounds { x, y, width, height });
 		}
@@ -131,6 +119,27 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 
 			return Some(FrontendMessage::UpdateMenuBarLayout { layout, layout_target });
 		}
+		FrontendMessage::WindowClose => {
+			dispatcher.respond(DesktopFrontendMessage::WindowClose);
+		}
+		FrontendMessage::WindowMinimize => {
+			dispatcher.respond(DesktopFrontendMessage::WindowMinimize);
+		}
+		FrontendMessage::WindowMaximize => {
+			dispatcher.respond(DesktopFrontendMessage::WindowMaximize);
+		}
+		FrontendMessage::WindowDrag => {
+			dispatcher.respond(DesktopFrontendMessage::WindowDrag);
+		}
+		FrontendMessage::WindowHide => {
+			dispatcher.respond(DesktopFrontendMessage::WindowHide);
+		}
+		FrontendMessage::WindowHideOthers => {
+			dispatcher.respond(DesktopFrontendMessage::WindowHideOthers);
+		}
+		FrontendMessage::WindowShowAll => {
+			dispatcher.respond(DesktopFrontendMessage::WindowShowAll);
+		}
 		m => return Some(m),
 	}
 	None
@@ -151,11 +160,7 @@ fn convert_menu_bar_entry_to_menu_item(
 	}: &MenuBarEntry,
 ) -> Option<MenuItem> {
 	let id = action.widget_id.0;
-	let text = if label.is_empty() {
-		return None;
-	} else {
-		label.clone()
-	};
+	let text = label.clone();
 	let enabled = !*disabled;
 
 	if !children.0.is_empty() {

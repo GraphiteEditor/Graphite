@@ -121,8 +121,6 @@ pub enum FrontendMessage {
 	TriggerVisitLink {
 		url: String,
 	},
-	TriggerMinimizeWindow,
-	TriggerMaximizeWindow,
 
 	// Update prefix: give the frontend a new value or state for it to use
 	UpdateActiveDocument {
@@ -348,8 +346,6 @@ pub enum FrontendMessage {
 	UpdateMaximized {
 		maximized: bool,
 	},
-	DragWindow,
-	CloseWindow,
 	UpdateViewportHolePunch {
 		active: bool,
 	},
@@ -365,4 +361,11 @@ pub enum FrontendMessage {
 		#[derivative(Debug = "ignore", PartialEq = "ignore")]
 		context: OverlayContext,
 	},
+	WindowClose,
+	WindowMinimize,
+	WindowMaximize,
+	WindowDrag,
+	WindowHide,
+	WindowHideOthers,
+	WindowShowAll,
 }
