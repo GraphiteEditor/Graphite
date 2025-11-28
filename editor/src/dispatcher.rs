@@ -285,6 +285,7 @@ impl Dispatcher {
 	pub fn collect_actions(&self) -> ActionList {
 		// TODO: Reduce the number of heap allocations
 		let mut list = Vec::new();
+		list.extend(self.message_handlers.app_window_message_handler.actions());
 		list.extend(self.message_handlers.dialog_message_handler.actions());
 		list.extend(self.message_handlers.animation_message_handler.actions());
 		list.extend(self.message_handlers.input_preprocessor_message_handler.actions());
