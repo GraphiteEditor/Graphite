@@ -1,13 +1,14 @@
 use cef::rc::{Rc, RcImpl};
 use cef::sys::{_cef_client_t, cef_base_ref_counted_t};
-use cef::{DisplayHandler, ImplClient, LifeSpanHandler, LoadHandler, RenderHandler, WrapClient};
+use cef::{ContextMenuHandler, DisplayHandler, ImplClient, LifeSpanHandler, LoadHandler, RenderHandler, WrapClient};
 
 use crate::cef::CefEventHandler;
 use crate::cef::ipc::{MessageType, UnpackMessage, UnpackedMessage};
 
-use super::browser_process_life_span_handler::BrowserProcessLifeSpanHandlerImpl;
-use super::browser_process_load_handler::LoadHandlerImpl;
+use super::context_menu_handler::ContextMenuHandlerImpl;
 use super::display_handler::DisplayHandlerImpl;
+use super::life_span_handler::LifeSpanHandlerImpl;
+use super::load_handler::LoadHandlerImpl;
 use super::render_handler::RenderHandlerImpl;
 
 pub(crate) struct BrowserProcessClientImpl<H: CefEventHandler> {
@@ -36,7 +37,7 @@ impl<H: CefEventHandler> ImplClient for BrowserProcessClientImpl<H> {
 		_frame: Option<&mut cef::Frame>,
 		_source_process: cef::ProcessId,
 		message: Option<&mut cef::ProcessMessage>,
-	) -> ::std::os::raw::c_int {
+	) -> std::ffi::c_int {
 		let unpacked_message = unsafe { message.and_then(|m| m.unpack()) };
 		match unpacked_message {
 			Some(UnpackedMessage {
@@ -65,11 +66,15 @@ impl<H: CefEventHandler> ImplClient for BrowserProcessClientImpl<H> {
 	}
 
 	fn life_span_handler(&self) -> Option<cef::LifeSpanHandler> {
-		Some(LifeSpanHandler::new(BrowserProcessLifeSpanHandlerImpl::new()))
+		Some(LifeSpanHandler::new(LifeSpanHandlerImpl::new()))
 	}
 
 	fn display_handler(&self) -> Option<cef::DisplayHandler> {
 		Some(self.display_handler.clone())
+	}
+
+	fn context_menu_handler(&self) -> Option<cef::ContextMenuHandler> {
+		Some(ContextMenuHandler::new(ContextMenuHandlerImpl::new()))
 	}
 
 	fn get_raw(&self) -> *mut _cef_client_t {
