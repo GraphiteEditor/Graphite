@@ -137,6 +137,9 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		FrontendMessage::WindowHideOthers => {
 			dispatcher.respond(DesktopFrontendMessage::WindowHideOthers);
 		}
+		FrontendMessage::WindowShowAll => {
+			dispatcher.respond(DesktopFrontendMessage::WindowShowAll);
+		}
 		m => return Some(m),
 	}
 	None

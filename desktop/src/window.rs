@@ -13,6 +13,7 @@ pub(crate) trait NativeWindow {
 	fn update_menu(&self, _entries: Vec<MenuItem>) {}
 	fn hide(&self) {}
 	fn hide_others(&self) {}
+	fn show_all(&self) {}
 }
 
 #[cfg(target_os = "linux")]
@@ -101,6 +102,10 @@ impl Window {
 
 	pub(crate) fn hide_others(&self) {
 		self.native_handle.hide_others();
+	}
+
+	pub(crate) fn show_all(&self) {
+		self.native_handle.show_all();
 	}
 
 	pub(crate) fn set_cursor(&self, cursor: winit::cursor::Cursor) {

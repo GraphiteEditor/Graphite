@@ -280,6 +280,11 @@ impl App {
 					window.hide_others();
 				}
 			}
+			DesktopFrontendMessage::WindowShowAll => {
+				if let Some(window) = &self.window {
+					window.show_all();
+				}
+			}
 		}
 	}
 

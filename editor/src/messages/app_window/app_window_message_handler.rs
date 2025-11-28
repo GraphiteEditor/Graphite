@@ -33,6 +33,9 @@ impl MessageHandler<AppWindowMessage, ()> for AppWindowMessageHandler {
 			AppWindowMessage::HideOthers => {
 				responses.add(FrontendMessage::WindowHideOthers);
 			}
+			AppWindowMessage::ShowAll => {
+				responses.add(FrontendMessage::WindowShowAll);
+			}
 		}
 	}
 	advertise_actions!(AppWindowMessageDiscriminant;

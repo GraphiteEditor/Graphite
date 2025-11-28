@@ -367,4 +367,5 @@ pub enum FrontendMessage {
 	WindowDrag,
 	WindowHide,
 	WindowHideOthers,
+	WindowShowAll,
 }

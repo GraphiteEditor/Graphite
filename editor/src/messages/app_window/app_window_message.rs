@@ -12,4 +12,5 @@ pub enum AppWindowMessage {
 	Drag,
 	Hide,
 	HideOthers,
+	ShowAll,
 }

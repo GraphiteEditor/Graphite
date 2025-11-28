@@ -60,6 +60,7 @@ pub enum DesktopFrontendMessage {
 	WindowDrag,
 	WindowHide,
 	WindowHideOthers,
+	WindowShowAll,
 }
 
 pub enum DesktopWrapperMessage {

@@ -35,3 +35,7 @@ pub(super) fn hide() {
 pub(super) fn hide_others() {
 	instance().hideOtherApplications(None);
 }
+
+pub(super) fn show_all() {
+	instance().unhideAllApplications(None);
+}

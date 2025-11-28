@@ -42,4 +42,8 @@ impl super::NativeWindow for NativeWindowImpl {
 	fn hide_others(&self) {
 		app::hide_others();
 	}
+
+	fn show_all(&self) {
+		app::show_all();
+	}
 }

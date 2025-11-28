@@ -51,7 +51,10 @@ impl LayoutHolder for MenuBarMessageHandler {
 		let make_path_editable_is_allowed = self.make_path_editable_is_allowed;
 
 		let about = MenuBarEntry {
+			#[cfg(not(target_os = "macos"))]
 			label: "About Graphite…".into(),
+			#[cfg(target_os = "macos")]
+			label: "About Graphite".into(),
 			icon: Some("GraphiteLogo".into()),
 			action: MenuBarEntry::create_action(|_| DialogMessage::RequestAboutGraphiteDialog.into()),
 			..MenuBarEntry::default()
@@ -91,9 +94,15 @@ impl LayoutHolder for MenuBarMessageHandler {
 							action: MenuBarEntry::create_action(|_| AppWindowMessage::HideOthers.into()),
 							..MenuBarEntry::default()
 						},
+						MenuBarEntry {
+							label: "Show All".into(),
+							shortcut: action_keys!(AppWindowMessageDiscriminant::ShowAll),
+							action: MenuBarEntry::create_action(|_| AppWindowMessage::ShowAll.into()),
+							..MenuBarEntry::default()
+						},
 					],
 					vec![MenuBarEntry {
-						label: "Quit".into(),
+						label: "Quit Graphite".into(),
 						shortcut: action_keys!(AppWindowMessageDiscriminant::Close),
 						action: MenuBarEntry::create_action(|_| AppWindowMessage::Close.into()),
 						..MenuBarEntry::default()
