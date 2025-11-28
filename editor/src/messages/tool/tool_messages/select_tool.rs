@@ -1754,7 +1754,7 @@ impl Fsm for SelectToolFsmState {
 					HintGroup(vec![HintInfo::keys([Key::Shift], "Extend"), HintInfo::keys([Key::Alt], "Subtract")]),
 					// TODO: Re-select deselected layers during drag when Shift is pressed, and re-deselect if Shift is released before drag ends.
 					// TODO: (See https://discord.com/channels/731730685944922173/1216976541947531264/1321360311298818048)
-					// HintGroup(vec![HintInfo::keys([Key::Shift], "Extend")])
+					// TODO: (Also remember to do this for the node graph; grep for these todo comments.)
 				]);
 				responses.add(FrontendMessage::UpdateInputHints { hint_data });
 			}
