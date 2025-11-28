@@ -80,7 +80,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 					vec![preferences],
 					vec![
 						MenuBarEntry {
-							label: "Hide".into(),
+							label: "Hide Graphite".into(),
 							shortcut: action_keys!(AppWindowMessageDiscriminant::Hide),
 							action: MenuBarEntry::create_action(|_| AppWindowMessage::Hide.into()),
 							..MenuBarEntry::default()
