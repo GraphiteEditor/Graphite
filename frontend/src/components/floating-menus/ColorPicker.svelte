@@ -535,6 +535,8 @@
 							min={0}
 							max={255}
 							minWidth={1}
+							step={1}
+							displayDecimalPlaces={0}
 							tooltip={`${{ r: "Red", g: "Green", b: "Blue" }[channel]} channel, integers 0–255`}
 						/>
 					{/each}
