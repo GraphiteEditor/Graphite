@@ -18,7 +18,7 @@ impl<H: CefEventHandler> LoadHandlerImpl<H> {
 }
 
 impl<H: CefEventHandler> ImplLoadHandler for LoadHandlerImpl<H> {
-	fn on_loading_state_change(&self, browser: Option<&mut cef::Browser>, is_loading: ::std::os::raw::c_int, _can_go_back: ::std::os::raw::c_int, _can_go_forward: ::std::os::raw::c_int) {
+	fn on_loading_state_change(&self, browser: Option<&mut cef::Browser>, is_loading: std::ffi::c_int, _can_go_back: std::ffi::c_int, _can_go_forward: std::ffi::c_int) {
 		let view_info = self.event_handler.view_info();
 
 		if let Some(browser) = browser

@@ -25,7 +25,7 @@ type CefCursorHandle = cef::CursorHandle;
 type CefCursorHandle = *mut u8;
 
 impl<H: CefEventHandler> ImplDisplayHandler for DisplayHandlerImpl<H> {
-	fn on_cursor_change(&self, _browser: Option<&mut cef::Browser>, _cursor: CefCursorHandle, cursor_type: cef::CursorType, _custom_cursor_info: Option<&cef::CursorInfo>) -> ::std::os::raw::c_int {
+	fn on_cursor_change(&self, _browser: Option<&mut cef::Browser>, _cursor: CefCursorHandle, cursor_type: cef::CursorType, _custom_cursor_info: Option<&cef::CursorInfo>) -> std::ffi::c_int {
 		let cursor = match cursor_type.into() {
 			CT_POINTER => CursorIcon::Default,
 			CT_CROSS => CursorIcon::Crosshair,
@@ -86,14 +86,7 @@ impl<H: CefEventHandler> ImplDisplayHandler for DisplayHandlerImpl<H> {
 		1 // We handled the cursor change.
 	}
 
-	fn on_console_message(
-		&self,
-		_browser: Option<&mut cef::Browser>,
-		level: cef::LogSeverity,
-		message: Option<&CefString>,
-		source: Option<&CefString>,
-		line: ::std::os::raw::c_int,
-	) -> ::std::os::raw::c_int {
+	fn on_console_message(&self, _browser: Option<&mut cef::Browser>, level: cef::LogSeverity, message: Option<&CefString>, source: Option<&CefString>, line: std::ffi::c_int) -> std::ffi::c_int {
 		let message = message.map(|m| m.to_string()).unwrap_or_default();
 		let source = source.map(|s| s.to_string()).unwrap_or_default();
 		let line = line as i64;
