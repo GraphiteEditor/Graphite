@@ -5,6 +5,7 @@ use core_types::registry::types::{Angle, IntegerCount, Length, Multiplier, Perce
 use core_types::table::{Table, TableRow, TableRowMut};
 use core_types::transform::{Footprint, Transform};
 use core_types::{CloneVarArgs, Color, Context, Ctx, ExtractAll, ExtractVarArgs, OwnedContextImpl};
+use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use graphic_types::Vector;
 use graphic_types::raster_types::{CPU, GPU, Raster};
@@ -225,8 +226,32 @@ where
 	content
 }
 
-#[node_macro::node(category("Instancing"), path(core_types::vector))]
-async fn repeat<I: 'n + Send + Clone>(
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
+#[widget(Radio)]
+pub enum RepeatSpacingMethod {
+	#[default]
+	#[serde(rename = "span")]
+	Span,
+	#[serde(rename = "envelope")]
+	Envelope,
+	#[serde(rename = "pitch")]
+	Pitch,
+	#[serde(rename = "gap")]
+	Gap,
+}
+
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, node_macro::ChoiceType)]
+#[widget(Radio)]
+pub enum AngularSpacingMethod {
+	#[default]
+	#[serde(rename = "span")]
+	Span,
+	#[serde(rename = "pitch")]
+	Pitch,
+}
+
+#[node_macro::node(category("Instancing"), path(graphene_core::vector), properties("repeat_properties"))]
+async fn repeat<I: 'n + Send + Clone + BoundingBox>(
 	_: impl Ctx,
 	// TODO: Implement other graphical types.
 	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>)] instance: Table<I>,
@@ -235,16 +260,38 @@ async fn repeat<I: 'n + Send + Clone>(
 	direction: PixelSize,
 	angle: Angle,
 	#[default(5)] count: IntegerCount,
+	#[default(RepeatSpacingMethod::Span)] spacing_method: RepeatSpacingMethod,
 ) -> Table<I> {
 	let angle = angle.to_radians();
 	let count = count.max(1);
 	let total = (count - 1) as f64;
+	let direction_normalized = direction.normalize();
+
+	let width = if matches!(spacing_method, RepeatSpacingMethod::Envelope | RepeatSpacingMethod::Gap) {
+		match instance.bounding_box(DAffine2::IDENTITY, false) {
+			RenderBoundingBox::Rectangle([min, max]) => {
+				let size = max - min;
+				let dir_abs = direction_normalized.abs();
+				size.x * dir_abs.x + size.y * dir_abs.y
+			}
+			_ => 0.0,
+		}
+	} else {
+		0.0
+	};
+
+	let (pitch, offset) = match spacing_method {
+		RepeatSpacingMethod::Span => (direction.length() / total.max(1.), DVec2::ZERO),
+		RepeatSpacingMethod::Envelope => ((direction.length() - width) / total.max(1.), DVec2::ZERO),
+		RepeatSpacingMethod::Pitch => (direction.length(), DVec2::ZERO),
+		RepeatSpacingMethod::Gap => (direction.length() + width, DVec2::ZERO),
+	};
 
 	let mut result_table = Table::new();
 
 	for index in 0..count {
-		let angle = index as f64 * angle / total;
-		let translation = index as f64 * direction / total;
+		let angle = index as f64 * angle / total.max(1.);
+		let translation = offset + index as f64 * pitch * direction_normalized;
 		let transform = DAffine2::from_angle(angle) * DAffine2::from_translation(translation);
 
 		for row in instance.iter() {
@@ -261,22 +308,32 @@ async fn repeat<I: 'n + Send + Clone>(
 	result_table
 }
 
-#[node_macro::node(category("Instancing"), path(core_types::vector))]
+#[node_macro::node(category("Instancing"), path(graphene_core::vector), properties("circular_repeat_properties"))]
 async fn circular_repeat<I: 'n + Send + Clone>(
 	_: impl Ctx,
 	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>)] instance: Table<I>,
-	start_angle: Angle,
+	#[default(0.)] start_angle: Angle,
+	#[default(360.)] end_angle: Angle,
 	#[unit(" px")]
 	#[default(5)]
 	radius: f64,
 	#[default(5)] count: IntegerCount,
+	#[default(AngularSpacingMethod::Span)] angular_spacing_method: AngularSpacingMethod,
 ) -> Table<I> {
 	let count = count.max(1);
+	let start_rad = start_angle.to_radians();
+	let end_rad = end_angle.to_radians();
+
+	let angular_pitch = match angular_spacing_method {
+		AngularSpacingMethod::Span => TAU / count as f64,
+		AngularSpacingMethod::Pitch => (end_rad - start_rad) / count as f64,
+	};
 
 	let mut result_table = Table::new();
 
 	for index in 0..count {
-		let angle = DAffine2::from_angle((TAU / count as f64) * index as f64 + start_angle.to_radians());
+		let angle_rad = start_rad + index as f64 * angular_pitch;
+		let angle = DAffine2::from_angle(angle_rad);
 		let translation = DAffine2::from_translation(radius * DVec2::Y);
 		let transform = angle * translation;
 
@@ -2417,6 +2474,7 @@ mod test {
 			direction,
 			0.,
 			count,
+			super::RepeatSpacingMethod::Span,
 		)
 		.await;
 		let vector_table = super::flatten_path(Footprint::default(), repeated).await;
@@ -2436,6 +2494,7 @@ mod test {
 			direction,
 			0.,
 			count,
+			super::RepeatSpacingMethod::Span,
 		)
 		.await;
 		let vector_table = super::flatten_path(Footprint::default(), repeated).await;
@@ -2447,7 +2506,16 @@ mod test {
 	}
 	#[tokio::test]
 	async fn circular_repeat() {
-		let repeated = super::circular_repeat(Footprint::default(), vector_node_from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY)), 45., 4., 8).await;
+		let repeated = super::circular_repeat(
+			Footprint::default(),
+			vector_node_from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY)),
+			45.,
+			360.,
+			4.,
+			8,
+			super::AngularSpacingMethod::Span,
+		)
+		.await;
 		let vector_table = super::flatten_path(Footprint::default(), repeated).await;
 		let vector = vector_table.iter().next().unwrap().element;
 		assert_eq!(vector.region_manipulator_groups().count(), 8);
@@ -2588,7 +2656,7 @@ mod test {
 	#[tokio::test]
 	async fn morph() {
 		let rectangle = vector_node_from_bezpath(Rect::new(0., 0., 100., 100.).to_path(DEFAULT_ACCURACY));
-		let rectangles = super::repeat(Footprint::default(), rectangle, DVec2::new(-100., -100.), 0., 2).await;
+		let rectangles = super::repeat(Footprint::default(), rectangle, DVec2::new(-100., -100.), 0., 2, super::RepeatSpacingMethod::Span).await;
 		let morphed = super::morph(Footprint::default(), rectangles, 0.5).await;
 		let element = morphed.iter().next().unwrap().element;
 		assert_eq!(
