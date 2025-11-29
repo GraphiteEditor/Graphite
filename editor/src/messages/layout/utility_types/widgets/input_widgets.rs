@@ -57,6 +57,17 @@ impl CheckboxId {
 	pub fn new() -> Self {
 		Self(graphene_std::uuid::generate_uuid())
 	}
+
+	/// Create a stable CheckboxId from a string identifier.
+	/// This ensures the same string always produces the same ID, preventing ID mismatches during layout updates.
+	pub fn from_string(s: &str) -> Self {
+		use std::collections::hash_map::DefaultHasher;
+		use std::hash::{Hash, Hasher};
+
+		let mut hasher = DefaultHasher::new();
+		s.hash(&mut hasher);
+		Self(hasher.finish())
+	}
 }
 impl Default for CheckboxId {
 	fn default() -> Self {
