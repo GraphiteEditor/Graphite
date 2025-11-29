@@ -221,7 +221,7 @@ version = "0.38.0+1.3.281"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0bb44936d800fea8f016d7f2311c6a4f97aebd5dc86f09906139ec848cf3a46f"
 dependencies = [
- "libloading",
+ "libloading 0.8.8",
 ]
 
 [[package]]
@@ -750,15 +750,17 @@ dependencies = [
 
 [[package]]
 name = "cef"
-version = "141.4.0+141.0.9"
-source = "git+https://github.com/timon-schelling/cef-rs.git?rev=98493a182928f1ff8d5bf8b9eea61483235df75d#98493a182928f1ff8d5bf8b9eea61483235df75d"
+version = "142.5.0+142.0.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32eab60854609591d365051497b1fb78b77b129d9e39ba69b1f71ee3f4ae9345"
 dependencies = [
  "ash",
  "cef-dll-sys",
  "libc",
- "libloading",
+ "libloading 0.9.0",
  "metal",
  "objc",
+ "objc2",
  "objc2-io-surface",
  "thiserror 2.0.16",
  "tracing",
@@ -769,8 +771,9 @@ dependencies = [
 
 [[package]]
 name = "cef-dll-sys"
-version = "141.4.0+141.0.9"
-source = "git+https://github.com/timon-schelling/cef-rs.git?rev=98493a182928f1ff8d5bf8b9eea61483235df75d#98493a182928f1ff8d5bf8b9eea61483235df75d"
+version = "142.5.0+142.0.17"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5a8c418c8eb6abff55f52668dbb8cba3cd5fcf057cf3eed46c04013a08ad9004"
 dependencies = [
  "anyhow",
  "cmake",
@@ -1370,7 +1373,7 @@ version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330c60081dcc4c72131f8eb70510f1ac07223e5d4163db481a04a0befcffa412"
 dependencies = [
- "libloading",
+ "libloading 0.8.8",
 ]
 
 [[package]]
@@ -1391,7 +1394,8 @@ checksum = "75b325c5dbd37f80359721ad39aca5a29fb04c89279657cffdda8736d0c0b9d2"
 [[package]]
 name = "download-cef"
 version = "2.2.0"
-source = "git+https://github.com/timon-schelling/cef-rs.git?rev=98493a182928f1ff8d5bf8b9eea61483235df75d#98493a182928f1ff8d5bf8b9eea61483235df75d"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d98178d9254efef0f69c1f584713d69c790ec00668cd98f783a5085fbefdbddc"
 dependencies = [
  "bzip2",
  "clap",
@@ -3114,7 +3118,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6aae1df220ece3c0ada96b8153459b67eebe9ae9212258bb0134ae60416fdf76"
 dependencies = [
  "libc",
- "libloading",
+ "libloading 0.8.8",
  "pkg-config",
 ]
 
@@ -3209,6 +3213,16 @@ checksum = "07033963ba89ebaf1584d767badaa2e8fcec21aedea6b8c0346d487d49c28667"
 dependencies = [
  "cfg-if",
  "windows-targets 0.53.3",
+]
+
+[[package]]
+name = "libloading"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "754ca22de805bb5744484a5b151a9e1a8e837d5dc232c2d7d8c2e3492edc8b60"
+dependencies = [
+ "cfg-if",
+ "windows-link 0.2.1",
 ]
 
 [[package]]
@@ -3764,9 +3778,9 @@ dependencies = [
 
 [[package]]
 name = "objc2"
-version = "0.6.2"
+version = "0.6.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "561f357ba7f3a2a61563a186a163d0a3a5247e1089524a3981d49adb775078bc"
+checksum = "b7c2599ce0ec54857b29ce62166b0ed9b4f6f1a70ccc9a71165b6154caca8c05"
 dependencies = [
  "objc2-encode",
 ]
@@ -6994,7 +7008,7 @@ dependencies = [
  "js-sys",
  "khronos-egl",
  "libc",
- "libloading",
+ "libloading 0.8.8",
  "log",
  "metal",
  "naga 27.0.3",
@@ -7701,7 +7715,7 @@ dependencies = [
  "as-raw-xcb-connection",
  "gethostname",
  "libc",
- "libloading",
+ "libloading 0.8.8",
  "once_cell",
  "rustix",
  "x11rb-protocol",
