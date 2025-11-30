@@ -37,7 +37,7 @@
 	class:table-align={tableAlign}
 	style:min-width={minWidth || undefined}
 	style={`${styleName} ${extraStyles}`.trim() || undefined}
-	title={tooltip}
+	data-tooltip={tooltip}
 	for={forCheckbox !== undefined ? `checkbox-input-${forCheckbox}` : undefined}
 >
 	<slot />

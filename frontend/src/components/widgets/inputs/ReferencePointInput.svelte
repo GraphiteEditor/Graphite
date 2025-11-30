@@ -14,7 +14,7 @@
 	}
 </script>
 
-<div class="reference-point-input" class:disabled title={tooltip}>
+<div class="reference-point-input" class:disabled data-tooltip={tooltip}>
 	<button on:click={() => setValue("TopLeft")} class="row-1 col-1" class:active={value === "TopLeft"} tabindex="-1" {disabled}><div /></button>
 	<button on:click={() => setValue("TopCenter")} class="row-1 col-2" class:active={value === "TopCenter"} tabindex="-1" {disabled}><div /></button>
 	<button on:click={() => setValue("TopRight")} class="row-1 col-3" class:active={value === "TopRight"} tabindex="-1" {disabled}><div /></button>

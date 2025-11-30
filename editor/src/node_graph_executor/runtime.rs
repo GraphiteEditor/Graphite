@@ -465,7 +465,7 @@ impl NodeRuntime {
 			if old.is_none_or(|v| !v.is_empty()) {
 				responses.push_back(FrontendMessage::UpdateNodeThumbnail {
 					id: parent_network_node_id,
-					value: "<svg viewBox=\"0 0 10 10\"><title>Dense thumbnail omitted for performance</title><line x1=\"0\" y1=\"10\" x2=\"10\" y2=\"0\" stroke=\"red\" /></svg>".to_string(),
+					value: "<svg viewBox=\"0 0 10 10\" data-tooltip=\"Dense thumbnail omitted for performance\"><line x1=\"0\" y1=\"10\" x2=\"10\" y2=\"0\" stroke=\"red\" /></svg>".to_string(),
 				});
 			}
 			return;

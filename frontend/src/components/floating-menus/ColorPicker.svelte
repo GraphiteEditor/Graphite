@@ -420,7 +420,12 @@
 	>
 		<LayoutCol class="pickers-and-gradient">
 			<LayoutRow class="pickers">
-				<LayoutCol class="saturation-value-picker" title={disabled ? "Saturation and value (disabled)" : "Saturation and value"} on:pointerdown={onPointerDown} data-saturation-value-picker>
+				<LayoutCol
+					class="saturation-value-picker"
+					data-tooltip={disabled ? "Saturation and value (disabled)" : "Saturation and value"}
+					on:pointerdown={onPointerDown}
+					data-saturation-value-picker
+				>
 					{#if !isNone}
 						<div class="selection-circle" style:top={`${(1 - value) * 100}%`} style:left={`${saturation * 100}%`} />
 					{/if}
@@ -434,12 +439,12 @@
 						/>
 					{/if}
 				</LayoutCol>
-				<LayoutCol class="hue-picker" title={disabled ? "Hue (disabled)" : "Hue"} on:pointerdown={onPointerDown} data-hue-picker>
+				<LayoutCol class="hue-picker" data-tooltip={disabled ? "Hue (disabled)" : "Hue"} on:pointerdown={onPointerDown} data-hue-picker>
 					{#if !isNone}
 						<div class="selection-needle" style:top={`${(1 - hue) * 100}%`} />
 					{/if}
 				</LayoutCol>
-				<LayoutCol class="alpha-picker" title={disabled ? "Alpha (disabled)" : "Alpha"} on:pointerdown={onPointerDown} data-alpha-picker>
+				<LayoutCol class="alpha-picker" data-tooltip={disabled ? "Alpha (disabled)" : "Alpha"} on:pointerdown={onPointerDown} data-alpha-picker>
 					{#if !isNone}
 						<div class="selection-needle" style:top={`${(1 - alpha) * 100}%`} />
 					{/if}
@@ -600,20 +605,20 @@
 			<LayoutRow class="leftover-space" />
 			<LayoutRow>
 				{#if allowNone && !gradient}
-					<button class="preset-color none" {disabled} on:click={() => setColorPreset("none")} title="Set to no color" tabindex="0"></button>
+					<button class="preset-color none" {disabled} on:click={() => setColorPreset("none")} data-tooltip="Set to no color" tabindex="0"></button>
 					<Separator type="Related" />
 				{/if}
-				<button class="preset-color black" {disabled} on:click={() => setColorPreset("black")} title="Set to black" tabindex="0"></button>
+				<button class="preset-color black" {disabled} on:click={() => setColorPreset("black")} data-tooltip="Set to black" tabindex="0"></button>
 				<Separator type="Related" />
-				<button class="preset-color white" {disabled} on:click={() => setColorPreset("white")} title="Set to white" tabindex="0"></button>
+				<button class="preset-color white" {disabled} on:click={() => setColorPreset("white")} data-tooltip="Set to white" tabindex="0"></button>
 				<Separator type="Related" />
 				<button class="preset-color pure" {disabled} on:click={setColorPresetSubtile} tabindex="-1">
-					<div data-pure-tile="red" style="--pure-color: #ff0000; --pure-color-gray: #4c4c4c" title="Set to red" />
-					<div data-pure-tile="yellow" style="--pure-color: #ffff00; --pure-color-gray: #e3e3e3" title="Set to yellow" />
-					<div data-pure-tile="green" style="--pure-color: #00ff00; --pure-color-gray: #969696" title="Set to green" />
-					<div data-pure-tile="cyan" style="--pure-color: #00ffff; --pure-color-gray: #b2b2b2" title="Set to cyan" />
-					<div data-pure-tile="blue" style="--pure-color: #0000ff; --pure-color-gray: #1c1c1c" title="Set to blue" />
-					<div data-pure-tile="magenta" style="--pure-color: #ff00ff; --pure-color-gray: #696969" title="Set to magenta" />
+					<div data-pure-tile="red" style="--pure-color: #ff0000; --pure-color-gray: #4c4c4c" data-tooltip="Set to red" />
+					<div data-pure-tile="yellow" style="--pure-color: #ffff00; --pure-color-gray: #e3e3e3" data-tooltip="Set to yellow" />
+					<div data-pure-tile="green" style="--pure-color: #00ff00; --pure-color-gray: #969696" data-tooltip="Set to green" />
+					<div data-pure-tile="cyan" style="--pure-color: #00ffff; --pure-color-gray: #b2b2b2" data-tooltip="Set to cyan" />
+					<div data-pure-tile="blue" style="--pure-color: #0000ff; --pure-color-gray: #1c1c1c" data-tooltip="Set to blue" />
+					<div data-pure-tile="magenta" style="--pure-color: #ff00ff; --pure-color-gray: #696969" data-tooltip="Set to magenta" />
 				</button>
 				<Separator type="Related" />
 				<IconButton icon="Eyedropper" size={24} {disabled} action={activateEyedropperSample} tooltip="Sample a pixel color from the document" />

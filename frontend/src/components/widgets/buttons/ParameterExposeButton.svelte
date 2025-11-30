@@ -16,7 +16,7 @@
 		style:--data-type-color={`var(--color-data-${dataType.toLowerCase()})`}
 		style:--data-type-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
 		on:click={action}
-		title={tooltip}
+		data-tooltip={tooltip}
 		tabindex="-1"
 	>
 		{#if !exposed}

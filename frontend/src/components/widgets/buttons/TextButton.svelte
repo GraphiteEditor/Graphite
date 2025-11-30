@@ -59,7 +59,7 @@
 		class:narrow
 		class:flush
 		style:min-width={minWidth > 0 ? `${minWidth}px` : undefined}
-		title={tooltip}
+		data-tooltip={tooltip}
 		data-emphasized={emphasized || undefined}
 		data-disabled={disabled || undefined}
 		data-text-button

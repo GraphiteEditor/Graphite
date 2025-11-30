@@ -28,7 +28,7 @@
 	class:active
 	on:click={action}
 	{disabled}
-	title={tooltip}
+	data-tooltip={tooltip}
 	tabindex={active ? -1 : 0}
 	{...$$restProps}
 >

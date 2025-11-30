@@ -13,7 +13,7 @@
 		.join(" ");
 </script>
 
-<img src={url} style:width style:height class={`image-label ${className} ${extraClasses}`.trim()} title={tooltip} alt="" />
+<img src={url} style:width style:height class={`image-label ${className} ${extraClasses}`.trim()} data-tooltip={tooltip} alt="" />
 
 <style lang="scss" global>
 	.image-label {

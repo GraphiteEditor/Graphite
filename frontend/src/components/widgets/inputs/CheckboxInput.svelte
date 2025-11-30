@@ -46,7 +46,7 @@
 		tabindex={disabled ? -1 : 0}
 		bind:this={inputElement}
 	/>
-	<label class:disabled class:checked for={`checkbox-input-${id}`} on:keydown={(e) => e.key === "Enter" && toggleCheckboxFromLabel(e)} title={tooltip}>
+	<label class:disabled class:checked for={`checkbox-input-${id}`} on:keydown={(e) => e.key === "Enter" && toggleCheckboxFromLabel(e)} data-tooltip={tooltip}>
 		<LayoutRow class="checkbox-box">
 			<IconLabel icon={displayIcon} />
 		</LayoutRow>

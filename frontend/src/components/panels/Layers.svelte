@@ -618,7 +618,7 @@
 							class="expand-arrow"
 							class:expanded={listing.entry.expanded}
 							disabled={!listing.entry.childrenPresent}
-							title={listing.entry.expanded
+							data-tooltip={listing.entry.expanded
 								? "Collapse (Click) / Collapse All (Alt Click)"
 								: `Expand (Click) / Expand All (Alt Click)${listing.entry.ancestorOfSelected ? "\n(A selected layer is contained within)" : ""}`}
 							on:click={(e) => handleExpandArrowClickWithModifiers(e, listing.entry.id)}
