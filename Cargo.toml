@@ -227,9 +227,8 @@ iai-callgrind = { version = "0.16" }
 ndarray = "0.16"
 strum = { version = "0.27", features = ["derive"] }
 dirs = "6.0"
-# TODO: remove fork usage when https://github.com/tauri-apps/cef-rs/pull/272 is merged and published
-cef = { git = "https://github.com/timon-schelling/cef-rs.git", rev = "98493a182928f1ff8d5bf8b9eea61483235df75d" }
-cef-dll-sys = { git = "https://github.com/timon-schelling/cef-rs.git", rev = "98493a182928f1ff8d5bf8b9eea61483235df75d" }
+cef = "142"
+cef-dll-sys = "142"
 include_dir = "0.7"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing = "0.1"
@@ -270,4 +269,3 @@ debug = true
 [patch.crates-io]
 # Force cargo to use only one version of the dpi crate (vendoring breaks without this)
 dpi = { git = "https://github.com/rust-windowing/winit.git" }
-

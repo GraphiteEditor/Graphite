@@ -1,19 +1,21 @@
 use cef::MouseEvent;
+use cef::sys::cef_event_flags_t;
 use std::time::Instant;
 use winit::dpi::PhysicalPosition;
 use winit::event::{ElementState, MouseButton};
+use winit::keyboard::{KeyLocation, ModifiersState};
 
 use crate::cef::consts::{MULTICLICK_ALLOWED_TRAVEL, MULTICLICK_TIMEOUT};
 
 #[derive(Default)]
 pub(crate) struct InputState {
-	modifiers: winit::keyboard::ModifiersState,
+	modifiers: ModifiersState,
 	mouse_position: MousePosition,
 	mouse_state: MouseState,
 	mouse_click_tracker: ClickTracker,
 }
 impl InputState {
-	pub(crate) fn modifiers_changed(&mut self, modifiers: &winit::keyboard::ModifiersState) {
+	pub(crate) fn modifiers_changed(&mut self, modifiers: &ModifiersState) {
 		self.modifiers = *modifiers;
 	}
 
@@ -31,18 +33,18 @@ impl InputState {
 		self.mouse_click_tracker.input(button, state, self.mouse_position)
 	}
 
-	pub(crate) fn cef_modifiers(&self, location: &winit::keyboard::KeyLocation, is_repeat: bool) -> CefModifiers {
+	pub(crate) fn cef_modifiers(&self, location: &KeyLocation, is_repeat: bool) -> CefModifiers {
 		CefModifiers::new(self, location, is_repeat)
 	}
 
 	pub(crate) fn cef_mouse_modifiers(&self) -> CefModifiers {
-		self.cef_modifiers(&winit::keyboard::KeyLocation::Standard, false)
+		self.cef_modifiers(&KeyLocation::Standard, false)
 	}
 }
 
 impl From<InputState> for CefModifiers {
 	fn from(val: InputState) -> Self {
-		CefModifiers::new(&val, &winit::keyboard::KeyLocation::Standard, false)
+		CefModifiers::new(&val, &KeyLocation::Standard, false)
 	}
 }
 impl From<&InputState> for MouseEvent {
@@ -50,7 +52,7 @@ impl From<&InputState> for MouseEvent {
 		MouseEvent {
 			x: val.mouse_position.x as i32,
 			y: val.mouse_position.y as i32,
-			modifiers: val.cef_mouse_modifiers().raw(),
+			modifiers: val.cef_mouse_modifiers().into(),
 		}
 	}
 }
@@ -59,7 +61,7 @@ impl From<&mut InputState> for MouseEvent {
 		MouseEvent {
 			x: val.mouse_position.x as i32,
 			y: val.mouse_position.y as i32,
-			modifiers: val.cef_mouse_modifiers().raw(),
+			modifiers: val.cef_mouse_modifiers().into(),
 		}
 	}
 }
@@ -197,51 +199,51 @@ impl Default for ClickRecord {
 	}
 }
 
-pub(crate) struct CefModifiers(u32);
+pub(crate) struct CefModifiers(cef_event_flags_t);
 impl CefModifiers {
-	fn new(input_state: &InputState, location: &winit::keyboard::KeyLocation, is_repeat: bool) -> Self {
-		use cef::sys::cef_event_flags_t;
-
-		let mut inner = 0;
+	fn new(input_state: &InputState, location: &KeyLocation, is_repeat: bool) -> Self {
+		let mut inner = cef_event_flags_t::EVENTFLAG_NONE;
 
 		if input_state.modifiers.shift_key() {
-			inner |= cef_event_flags_t::EVENTFLAG_SHIFT_DOWN as u32;
+			inner |= cef_event_flags_t::EVENTFLAG_SHIFT_DOWN;
 		}
 		if input_state.modifiers.control_key() {
-			inner |= cef_event_flags_t::EVENTFLAG_CONTROL_DOWN as u32;
+			inner |= cef_event_flags_t::EVENTFLAG_CONTROL_DOWN;
 		}
 		if input_state.modifiers.alt_key() {
-			inner |= cef_event_flags_t::EVENTFLAG_ALT_DOWN as u32;
+			inner |= cef_event_flags_t::EVENTFLAG_ALT_DOWN;
 		}
 		if input_state.modifiers.meta_key() {
-			inner |= cef_event_flags_t::EVENTFLAG_COMMAND_DOWN as u32;
+			inner |= cef_event_flags_t::EVENTFLAG_COMMAND_DOWN;
 		}
 
 		if input_state.mouse_state.left {
-			inner |= cef_event_flags_t::EVENTFLAG_LEFT_MOUSE_BUTTON as u32;
+			inner |= cef_event_flags_t::EVENTFLAG_LEFT_MOUSE_BUTTON;
 		}
 		if input_state.mouse_state.right {
-			inner |= cef_event_flags_t::EVENTFLAG_RIGHT_MOUSE_BUTTON as u32;
+			inner |= cef_event_flags_t::EVENTFLAG_RIGHT_MOUSE_BUTTON;
 		}
 		if input_state.mouse_state.middle {
-			inner |= cef_event_flags_t::EVENTFLAG_MIDDLE_MOUSE_BUTTON as u32;
+			inner |= cef_event_flags_t::EVENTFLAG_MIDDLE_MOUSE_BUTTON;
 		}
 
 		if is_repeat {
-			inner |= cef_event_flags_t::EVENTFLAG_IS_REPEAT as u32;
+			inner |= cef_event_flags_t::EVENTFLAG_IS_REPEAT;
 		}
 
 		inner |= match location {
-			winit::keyboard::KeyLocation::Left => cef_event_flags_t::EVENTFLAG_IS_LEFT as u32,
-			winit::keyboard::KeyLocation::Right => cef_event_flags_t::EVENTFLAG_IS_RIGHT as u32,
-			winit::keyboard::KeyLocation::Numpad => cef_event_flags_t::EVENTFLAG_IS_KEY_PAD as u32,
-			winit::keyboard::KeyLocation::Standard => 0,
+			KeyLocation::Left => cef_event_flags_t::EVENTFLAG_IS_LEFT,
+			KeyLocation::Right => cef_event_flags_t::EVENTFLAG_IS_RIGHT,
+			KeyLocation::Numpad => cef_event_flags_t::EVENTFLAG_IS_KEY_PAD,
+			KeyLocation::Standard => cef_event_flags_t::EVENTFLAG_NONE,
 		};
 
 		Self(inner)
 	}
+}
 
-	pub(crate) fn raw(&self) -> u32 {
-		self.0
+impl Into<u32> for CefModifiers {
+	fn into(self) -> u32 {
+		self.0.0 as u32
 	}
 }

@@ -325,6 +325,12 @@ pub struct LayoutKey {
 	label: String,
 }
 
+impl LayoutKey {
+	pub fn key(&self) -> Key {
+		self.key
+	}
+}
+
 pub const NUMBER_OF_KEYS: usize = Key::_KeysVariantCount as usize - 1;
 
 /// Only `Key`s that exist on a physical keyboard should be used.
