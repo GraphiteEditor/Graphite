@@ -283,6 +283,9 @@
 		clearTimeout(repeatTimeout);
 	}
 
+	// The widget might be destroyed, in which case it would be very bad to keep sending events pointing at the wrong index.
+	onDestroy(onIncrementPointerUp);
+
 	function incrementPressAbort(e: KeyboardEvent | MouseEvent) {
 		// Only abort if the user right clicks or presses Escape
 		if (e instanceof KeyboardEvent && e.key !== "Escape") return;
