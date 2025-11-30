@@ -1,5 +1,5 @@
 <script lang="ts" context="module">
-	export type MenuType = "Popover" | "Dropdown" | "Dialog" | "Cursor";
+	export type MenuType = "Popover" | "Tooltip" | "Dropdown" | "Dialog" | "Cursor";
 
 	/// Prevents the escape key from closing the parent floating menu of the given element.
 	/// This works by momentarily setting the `data-escape-does-not-close` attribute on the parent floating menu element.
@@ -64,7 +64,6 @@
 	let measuringOngoingGuard = false;
 	let minWidthParentWidth = 0;
 	let pointerStillDown = false;
-	let workspaceBounds = new DOMRect();
 	let floatingMenuBounds = new DOMRect();
 	let floatingMenuContentBounds = new DOMRect();
 
@@ -174,34 +173,50 @@
 	function positionAndStyleFloatingMenu() {
 		if (type === "Cursor") return;
 
-		const workspace = document.querySelector("[data-workspace]");
-
 		const floatingMenuContentDiv = floatingMenuContent?.div?.();
-		if (!workspace || !self || !floatingMenuContainer || !floatingMenuContent || !floatingMenuContentDiv) return;
+		if (!self || !floatingMenuContainer || !floatingMenuContent || !floatingMenuContentDiv) return;
 
-		const viewportBounds = document.documentElement.getBoundingClientRect();
-		workspaceBounds = workspace.getBoundingClientRect();
+		const windowBounds = document.documentElement.getBoundingClientRect();
 		floatingMenuBounds = self.getBoundingClientRect();
 		const floatingMenuContainerBounds = floatingMenuContainer.getBoundingClientRect();
 		floatingMenuContentBounds = floatingMenuContentDiv.getBoundingClientRect();
 
-		const inParentFloatingMenu = Boolean(floatingMenuContainer.closest("[data-floating-menu-content]"));
+		const overflowingLeft = floatingMenuContentBounds.left - windowEdgeMargin <= windowBounds.left;
+		const overflowingRight = floatingMenuContentBounds.right + windowEdgeMargin >= windowBounds.right;
+		const overflowingTop = floatingMenuContentBounds.top - windowEdgeMargin <= windowBounds.top;
+		const overflowingBottom = floatingMenuContentBounds.bottom + windowEdgeMargin >= windowBounds.bottom;
 
+		// TODO: Make this work for all types. This is currently limited to tooltips because they're inherently small and transient.
+		// TODO: But on popovers and dropdowns, it's a bit harder to do this right. First we check if it's overflowing and flip the direction to avoid the overflow.
+		// TODO: But once it's flipped, if the position moves and the menu would no longer be overflowing, we're still flipped and thus unable to automatically notice the need to flip back.
+		// TODO: So as a result, once flipped, it stays flipped forever even if the menu spawner element is moved back away from the edge of the window.
+		if (type === "Tooltip") {
+			// Flip direction if overflowing the edge of the window
+			if (direction === "Top" && overflowingTop) direction = "Bottom";
+			else if (direction === "Bottom" && overflowingBottom) direction = "Top";
+			else if (direction === "Left" && overflowingLeft) direction = "Right";
+			else if (direction === "Right" && overflowingRight) direction = "Left";
+		}
+
+		const inParentFloatingMenu = Boolean(floatingMenuContainer.closest("[data-floating-menu-content]"));
 		if (!inParentFloatingMenu) {
 			// Required to correctly position content when scrolled (it has a `position: fixed` to prevent clipping)
 			// We use `.style` on a div (instead of a style DOM attribute binding) because the binding causes the `afterUpdate()` hook to call the function we're in recursively forever
-			const tailOffset = type === "Popover" ? 10 : 0;
+			let tailOffset = 0;
+			if (type === "Popover") tailOffset = 10;
+			if (type === "Tooltip") tailOffset = direction === "Bottom" ? 20 : 10;
+
 			if (direction === "Bottom") floatingMenuContentDiv.style.top = `${tailOffset + floatingMenuBounds.y}px`;
-			if (direction === "Top") floatingMenuContentDiv.style.bottom = `${tailOffset + (viewportBounds.height - floatingMenuBounds.y)}px`;
+			if (direction === "Top") floatingMenuContentDiv.style.bottom = `${tailOffset + (windowBounds.height - floatingMenuBounds.y)}px`;
 			if (direction === "Right") floatingMenuContentDiv.style.left = `${tailOffset + floatingMenuBounds.x}px`;
-			if (direction === "Left") floatingMenuContentDiv.style.right = `${tailOffset + (viewportBounds.width - floatingMenuBounds.x)}px`;
+			if (direction === "Left") floatingMenuContentDiv.style.right = `${tailOffset + (windowBounds.width - floatingMenuBounds.x)}px`;
 
 			// Required to correctly position tail when scrolled (it has a `position: fixed` to prevent clipping)
 			// We use `.style` on a div (instead of a style DOM attribute binding) because the binding causes the `afterUpdate()` hook to call the function we're in recursively forever
 			if (tail && direction === "Bottom") tail.style.top = `${floatingMenuBounds.y}px`;
-			if (tail && direction === "Top") tail.style.bottom = `${viewportBounds.height - floatingMenuBounds.y}px`;
+			if (tail && direction === "Top") tail.style.bottom = `${windowBounds.height - floatingMenuBounds.y}px`;
 			if (tail && direction === "Right") tail.style.left = `${floatingMenuBounds.x}px`;
-			if (tail && direction === "Left") tail.style.right = `${viewportBounds.width - floatingMenuBounds.x}px`;
+			if (tail && direction === "Left") tail.style.right = `${windowBounds.width - floatingMenuBounds.x}px`;
 		}
 
 		type Edge = "Top" | "Bottom" | "Left" | "Right";
@@ -212,31 +227,31 @@
 			zeroedBorderVertical = direction === "Top" ? "Bottom" : "Top";
 
 			// We use `.style` on a div (instead of a style DOM attribute binding) because the binding causes the `afterUpdate()` hook to call the function we're in recursively forever
-			if (floatingMenuContentBounds.left - windowEdgeMargin <= workspaceBounds.left) {
+			if (overflowingLeft) {
 				floatingMenuContentDiv.style.left = `${windowEdgeMargin}px`;
-				if (workspaceBounds.left + floatingMenuContainerBounds.left === 12) zeroedBorderHorizontal = "Left";
+				if (windowBounds.left + floatingMenuContainerBounds.left === 12) zeroedBorderHorizontal = "Left";
 			}
-			if (floatingMenuContentBounds.right + windowEdgeMargin >= workspaceBounds.right) {
+			if (overflowingRight) {
 				floatingMenuContentDiv.style.right = `${windowEdgeMargin}px`;
-				if (workspaceBounds.right - floatingMenuContainerBounds.right === 12) zeroedBorderHorizontal = "Right";
+				if (windowBounds.right - floatingMenuContainerBounds.right === 12) zeroedBorderHorizontal = "Right";
 			}
 		}
 		if (direction === "Left" || direction === "Right") {
 			zeroedBorderHorizontal = direction === "Left" ? "Right" : "Left";
 
 			// We use `.style` on a div (instead of a style DOM attribute binding) because the binding causes the `afterUpdate()` hook to call the function we're in recursively forever
-			if (floatingMenuContentBounds.top - windowEdgeMargin <= workspaceBounds.top) {
+			if (overflowingTop) {
 				floatingMenuContentDiv.style.top = `${windowEdgeMargin}px`;
-				if (workspaceBounds.top + floatingMenuContainerBounds.top === 12) zeroedBorderVertical = "Top";
+				if (windowBounds.top + floatingMenuContainerBounds.top === 12) zeroedBorderVertical = "Top";
 			}
-			if (floatingMenuContentBounds.bottom + windowEdgeMargin >= workspaceBounds.bottom) {
+			if (overflowingBottom) {
 				floatingMenuContentDiv.style.bottom = `${windowEdgeMargin}px`;
-				if (workspaceBounds.bottom - floatingMenuContainerBounds.bottom === 12) zeroedBorderVertical = "Bottom";
+				if (windowBounds.bottom - floatingMenuContainerBounds.bottom === 12) zeroedBorderVertical = "Bottom";
 			}
 		}
 
 		// Remove the rounded corner from the content where the tail perfectly meets the corner
-		if (type === "Popover" && windowEdgeMargin === 6 && zeroedBorderVertical && zeroedBorderHorizontal) {
+		if (displayTail && windowEdgeMargin === 6 && zeroedBorderVertical && zeroedBorderHorizontal) {
 			// We use `.style` on a div (instead of a style DOM attribute binding) because the binding causes the `afterUpdate()` hook to call the function we're in recursively forever
 			switch (`${zeroedBorderVertical}${zeroedBorderHorizontal}`) {
 				case "TopLeft":
@@ -585,14 +600,18 @@
 			flex-direction: column;
 		}
 
-		&.top .tail {
+		&.top .tail,
+		&.topleft .tail,
+		&.topright .tail {
 			border-width: 8px 6px 0 6px;
 			border-color: var(--color-2-mildblack) transparent transparent transparent;
 			margin-left: -6px;
 			margin-bottom: 2px;
 		}
 
-		&.bottom .tail {
+		&.bottom .tail,
+		&.bottomleft .tail,
+		&.bottomright .tail {
 			border-width: 0 6px 8px 6px;
 			border-color: transparent transparent var(--color-2-mildblack) transparent;
 			margin-left: -6px;

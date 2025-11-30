@@ -122,7 +122,7 @@ impl ToolMetadata for SelectTool {
 	fn icon_name(&self) -> String {
 		"GeneralSelectTool".into()
 	}
-	fn tooltip(&self) -> String {
+	fn tooltip_label(&self) -> String {
 		"Select Tool".into()
 	}
 	fn tool_type(&self) -> crate::messages::tool::utility_types::ToolType {
@@ -146,10 +146,9 @@ impl SelectTool {
 
 		DropdownInput::new(vec![layer_selection_behavior_entries])
 			.selected_index(Some((self.tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest) as u32))
-			.tooltip(
-				"Selection Mode\n\
-				\n\
-				Shallow Select: clicks initially select the least-nested layers and double clicks drill deeper into the folder hierarchy.\n\
+			.tooltip_label("Selection Mode")
+			.tooltip_description(
+				"Shallow Select: clicks initially select the least-nested layers and double clicks drill deeper into the folder hierarchy.\n\
 				Deep Select: clicks directly select the most-nested layers in the folder hierarchy.",
 			)
 			.widget_holder()
@@ -160,7 +159,7 @@ impl SelectTool {
 			.into_iter()
 			.flat_map(|axis| [(axis, AlignAggregate::Min), (axis, AlignAggregate::Center), (axis, AlignAggregate::Max)])
 			.map(move |(axis, aggregate)| {
-				let (icon, tooltip) = match (axis, aggregate) {
+				let (icon, label) = match (axis, aggregate) {
 					(AlignAxis::X, AlignAggregate::Min) => ("AlignLeft", "Align Left"),
 					(AlignAxis::X, AlignAggregate::Center) => ("AlignHorizontalCenter", "Align Horizontal Center"),
 					(AlignAxis::X, AlignAggregate::Max) => ("AlignRight", "Align Right"),
@@ -169,7 +168,7 @@ impl SelectTool {
 					(AlignAxis::Y, AlignAggregate::Max) => ("AlignBottom", "Align Bottom"),
 				};
 				IconButton::new(icon, 24)
-					.tooltip(tooltip)
+					.tooltip_label(label)
 					.on_update(move |_| DocumentMessage::AlignSelectedLayers { axis, aggregate }.into())
 					.disabled(disabled)
 					.widget_holder()
@@ -177,21 +176,23 @@ impl SelectTool {
 	}
 
 	fn flip_widgets(&self, disabled: bool) -> impl Iterator<Item = WidgetHolder> + use<> {
-		[(FlipAxis::X, "Horizontal"), (FlipAxis::Y, "Vertical")].into_iter().map(move |(flip_axis, name)| {
-			IconButton::new("Flip".to_string() + name, 24)
-				.tooltip("Flip ".to_string() + name)
-				.on_update(move |_| DocumentMessage::FlipSelectedLayers { flip_axis }.into())
-				.disabled(disabled)
-				.widget_holder()
-		})
+		[(FlipAxis::X, "FlipHorizontal", "Flip Horizontal"), (FlipAxis::Y, "FlipVertical", "Flip Vertical")]
+			.into_iter()
+			.map(move |(flip_axis, icon, label)| {
+				IconButton::new(icon, 24)
+					.tooltip_label(label)
+					.on_update(move |_| DocumentMessage::FlipSelectedLayers { flip_axis }.into())
+					.disabled(disabled)
+					.widget_holder()
+			})
 	}
 
 	fn turn_widgets(&self, disabled: bool) -> impl Iterator<Item = WidgetHolder> + use<> {
 		[(-90., "TurnNegative90", "Turn -90°"), (90., "TurnPositive90", "Turn 90°")]
 			.into_iter()
-			.map(move |(degrees, icon, name)| {
+			.map(move |(degrees, icon, label)| {
 				IconButton::new(icon, 24)
-					.tooltip(name)
+					.tooltip_label(label)
 					.on_update(move |_| DocumentMessage::RotateSelectedLayers { degrees }.into())
 					.disabled(disabled)
 					.widget_holder()
@@ -201,13 +202,9 @@ impl SelectTool {
 	fn boolean_widgets(&self, selected_count: usize) -> impl Iterator<Item = WidgetHolder> + use<> {
 		let list = <BooleanOperation as graphene_std::choice_type::ChoiceTypeStatic>::list();
 		list.iter().flat_map(|i| i.iter()).map(move |(operation, info)| {
-			let mut tooltip = info.label.to_string();
-			if let Some(doc) = info.docstring {
-				tooltip.push_str("\n\n");
-				tooltip.push_str(doc);
-			}
 			IconButton::new(info.icon.unwrap(), 24)
-				.tooltip(tooltip)
+				.tooltip_label(info.label)
+				.tooltip_description(info.description.unwrap_or_default())
 				.disabled(selected_count == 0)
 				.on_update(move |_| {
 					let group_folder_type = GroupFolderType::BooleanOperation(*operation);

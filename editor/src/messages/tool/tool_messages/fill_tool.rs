@@ -27,7 +27,7 @@ impl ToolMetadata for FillTool {
 	fn icon_name(&self) -> String {
 		"GeneralFillTool".into()
 	}
-	fn tooltip(&self) -> String {
+	fn tooltip_label(&self) -> String {
 		"Fill Tool".into()
 	}
 	fn tool_type(&self) -> crate::messages::tool::utility_types::ToolType {

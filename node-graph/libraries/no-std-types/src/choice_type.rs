@@ -19,7 +19,7 @@ pub struct VariantMetadata {
 	pub label: &'static str,
 
 	/// User-facing documentation text.
-	pub docstring: Option<&'static str>,
+	pub description: Option<&'static str>,
 
 	/// Name of icon to display in radio buttons and such.
 	pub icon: Option<&'static str>,

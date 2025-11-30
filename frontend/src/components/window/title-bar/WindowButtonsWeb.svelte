@@ -8,8 +8,6 @@
 
 	const fullscreen = getContext<FullscreenState>("fullscreen");
 
-	$: requestFullscreenHotkeys = $fullscreen.keyboardLockApiSupported && !$fullscreen.keyboardLocked;
-
 	async function handleClick() {
 		if ($fullscreen.windowFullscreen) fullscreen.exitFullscreen();
 		else fullscreen.enterFullscreen();
@@ -19,8 +17,9 @@
 <LayoutRow
 	class="window-buttons-web"
 	on:click={handleClick}
-	tooltip={($fullscreen.windowFullscreen ? "Exit Fullscreen (F11)" : "Enter Fullscreen (F11)") +
-		(requestFullscreenHotkeys ? "\n\nThis provides access to hotkeys normally reserved by the browser" : "")}
+	tooltipLabel={$fullscreen.windowFullscreen ? "Exit Fullscreen" : "Enter Fullscreen"}
+	tooltipDescription={$fullscreen.keyboardLockApiSupported ? "While fullscreen, keyboard shortcuts normally reserved by the browser become available." : ""}
+	tooltipShortcut="F11"
 >
 	<IconLabel icon={$fullscreen.windowFullscreen ? "FullscreenExit" : "FullscreenEnter"} />
 </LayoutRow>

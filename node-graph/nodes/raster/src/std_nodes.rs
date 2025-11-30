@@ -296,7 +296,6 @@ pub fn empty_image(_: impl Ctx, transform: DAffine2, color: Table<Color>) -> Tab
 	result_table
 }
 
-/// Constructs a raster image.
 #[node_macro::node(category(""))]
 pub fn image_value(_: impl Ctx, _primary: (), image: Table<Raster<CPU>>) -> Table<Raster<CPU>> {
 	image

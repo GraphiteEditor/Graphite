@@ -137,7 +137,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			description: Cow::Borrowed("A default node network you can use to create your own custom nodes."),
+			description: Cow::Borrowed("An empty node network you can use to create your own custom nodes."),
 			properties: None,
 		},
 		DocumentNodeDefinition {
@@ -156,7 +156,10 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			description: Cow::Borrowed("TODO"),
+			description: Cow::Borrowed(
+				"Improves rendering performance if used in rare circumstances where automatic caching is not yet advanced enough to handle the situation.
+				Stores the last evaluated data that flowed through this node, and immediately returns that data on subsequent renders if the context has not changed.",
+			),
 			properties: None,
 		},
 		DocumentNodeDefinition {
@@ -1153,7 +1156,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			description: Cow::Borrowed("Generates different noise patterns."),
+			description: Cow::Borrowed("Generates customizable procedural noise patterns."),
 			properties: None,
 		},
 		DocumentNodeDefinition {
@@ -1335,7 +1338,9 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			description: Cow::Borrowed(
-				"Decomposes the X and Y components of a vec2.\n\nThe inverse of this node is \"Vec2 Value\", which can have either or both its X and Y parameters exposed as graph inputs.",
+				"Decomposes the X and Y components of a vec2.\n\
+				\n\
+				The inverse of this node is \"Vec2 Value\", which can have either or both its X and Y parameters exposed as graph inputs.",
 			),
 			properties: None,
 		},
@@ -2008,10 +2013,10 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					}),
 					input_metadata: vec![
 						("Content", "The shape to be resampled and converted into a polyline.").into(),
-						("Spacing", node_properties::SAMPLE_POLYLINE_TOOLTIP_SPACING).into(),
+						("Spacing", node_properties::SAMPLE_POLYLINE_DESCRIPTION_SPACING).into(),
 						InputMetadata::with_name_description_override(
 							"Separation",
-							node_properties::SAMPLE_POLYLINE_TOOLTIP_SEPARATION,
+							node_properties::SAMPLE_POLYLINE_DESCRIPTION_SEPARATION,
 							WidgetOverride::Number(NumberInputSettings {
 								min: Some(0.),
 								unit: Some(" px".to_string()),
@@ -2020,7 +2025,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						),
 						InputMetadata::with_name_description_override(
 							"Quantity",
-							node_properties::SAMPLE_POLYLINE_TOOLTIP_QUANTITY,
+							node_properties::SAMPLE_POLYLINE_DESCRIPTION_QUANTITY,
 							WidgetOverride::Number(NumberInputSettings {
 								min: Some(2.),
 								is_integer: true,
@@ -2029,7 +2034,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						),
 						InputMetadata::with_name_description_override(
 							"Start Offset",
-							node_properties::SAMPLE_POLYLINE_TOOLTIP_START_OFFSET,
+							node_properties::SAMPLE_POLYLINE_DESCRIPTION_START_OFFSET,
 							WidgetOverride::Number(NumberInputSettings {
 								min: Some(0.),
 								unit: Some(" px".to_string()),
@@ -2038,14 +2043,14 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 						),
 						InputMetadata::with_name_description_override(
 							"Stop Offset",
-							node_properties::SAMPLE_POLYLINE_TOOLTIP_STOP_OFFSET,
+							node_properties::SAMPLE_POLYLINE_DESCRIPTION_STOP_OFFSET,
 							WidgetOverride::Number(NumberInputSettings {
 								min: Some(0.),
 								unit: Some(" px".to_string()),
 								..Default::default()
 							}),
 						),
-						("Adaptive Spacing", node_properties::SAMPLE_POLYLINE_TOOLTIP_ADAPTIVE_SPACING).into(),
+						("Adaptive Spacing", node_properties::SAMPLE_POLYLINE_DESCRIPTION_ADAPTIVE_SPACING).into(),
 					],
 					output_names: vec!["Vector".to_string()],
 					..Default::default()

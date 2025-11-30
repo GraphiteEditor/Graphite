@@ -48,7 +48,7 @@ impl EditorTestUtils {
 				Err(e) => return Err(format!("update_node_graph_instrumented failed\n\n{e}")),
 			};
 
-			if let Err(e) = exector.submit_current_node_graph_evaluation(document, DocumentId(0), UVec2::ONE, 1.0, Default::default()) {
+			if let Err(e) = exector.submit_current_node_graph_evaluation(document, DocumentId(0), UVec2::ONE, 1., Default::default()) {
 				return Err(format!("submit_current_node_graph_evaluation failed\n\n{e}"));
 			}
 			runtime.run().await;
@@ -302,7 +302,7 @@ impl EditorTestUtils {
 			y: top_left.y,
 			width: bottom_right.x - top_left.x,
 			height: bottom_right.y - top_left.y,
-			scale: 1.0,
+			scale: 1.,
 		})
 		.await;
 	}

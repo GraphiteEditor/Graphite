@@ -25,7 +25,7 @@ impl ToolMetadata for EyedropperTool {
 	fn icon_name(&self) -> String {
 		"GeneralEyedropperTool".into()
 	}
-	fn tooltip(&self) -> String {
+	fn tooltip_label(&self) -> String {
 		"Eyedropper Tool".into()
 	}
 	fn tool_type(&self) -> crate::messages::tool::utility_types::ToolType {

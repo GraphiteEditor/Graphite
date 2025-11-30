@@ -90,7 +90,7 @@ impl ToolMetadata for BrushTool {
 	fn icon_name(&self) -> String {
 		"RasterBrushTool".into()
 	}
-	fn tooltip(&self) -> String {
+	fn tooltip_label(&self) -> String {
 		"Brush Tool".into()
 	}
 	fn tool_type(&self) -> crate::messages::tool::utility_types::ToolType {
@@ -215,7 +215,7 @@ impl LayoutHolder for BrushTool {
 		widgets.push(
 			DropdownInput::new(blend_mode_entries)
 				.selected_index(self.options.blend_mode.index_in_list().map(|index| index as u32))
-				.tooltip("The blend mode used with the background when performing a brush stroke. Only used in draw mode.")
+				.tooltip_description("The blend mode used with the background when performing a brush stroke. Only used in draw mode.")
 				.disabled(self.options.draw_mode != DrawMode::Draw)
 				.widget_holder(),
 		);

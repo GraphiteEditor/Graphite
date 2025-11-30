@@ -141,7 +141,7 @@ fn derive_enum(enum_attributes: &[Attribute], name: Ident, input: syn::DataEnum)
 					let vname = &variant.name;
 					let vname_str = variant.name.to_string();
 					let label = &variant.basic_item.label;
-					let docstring = match &variant.basic_item.description {
+					let description = match &variant.basic_item.description {
 						Some(s) => {
 							let s = s.trim();
 							quote! { Some(#s) }
@@ -157,7 +157,7 @@ fn derive_enum(enum_attributes: &[Attribute], name: Ident, input: syn::DataEnum)
 							#name::#vname, #crate_name::choice_type::VariantMetadata {
 								name: #vname_str,
 								label: #label,
-								docstring: #docstring,
+								description: #description,
 								icon: #icon,
 							}
 						),

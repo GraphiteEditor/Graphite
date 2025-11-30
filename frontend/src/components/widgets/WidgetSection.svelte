@@ -26,10 +26,10 @@
 <LayoutCol class={`widget-section ${className}`.trim()} {classes}>
 	<button class="header" class:expanded on:click|stopPropagation={() => (expanded = !expanded)} tabindex="0">
 		<div class="expand-arrow" />
-		<TextLabel tooltip={widgetData.description} bold={true}>{widgetData.name}</TextLabel>
+		<TextLabel tooltipLabel={widgetData.name} tooltipDescription={widgetData.description} bold={true}>{widgetData.name}</TextLabel>
 		<IconButton
 			icon={widgetData.pinned ? "PinActive" : "PinInactive"}
-			tooltip={widgetData.pinned ? "Unpin this node so it's no longer shown here when nothing is selected" : "Pin this node so it's shown here when nothing is selected"}
+			tooltipDescription={widgetData.pinned ? "Unpin this node so it's no longer shown here when nothing is selected." : "Pin this node so it's shown here when nothing is selected."}
 			size={24}
 			action={(e) => {
 				editor.handle.setNodePinned(widgetData.id, !widgetData.pinned);
@@ -39,7 +39,7 @@
 		/>
 		<IconButton
 			icon="Trash"
-			tooltip="Delete this node from the layer chain"
+			tooltipDescription="Delete this node from the layer chain."
 			size={24}
 			action={(e) => {
 				editor.handle.deleteNode(widgetData.id);
@@ -50,7 +50,7 @@
 		<IconButton
 			icon={widgetData.visible ? "EyeVisible" : "EyeHidden"}
 			hoverIcon={widgetData.visible ? "EyeHide" : "EyeShow"}
-			tooltip={widgetData.visible ? "Hide this node" : "Show this node"}
+			tooltipDescription={widgetData.visible ? "Hide this node." : "Show this node."}
 			size={24}
 			action={(e) => {
 				editor.handle.toggleNodeVisibilityLayerPanel(widgetData.id);

@@ -45,7 +45,7 @@
 	$: displayKeyboardLockNotice = requiresLock && !$fullscreen.keyboardLocked;
 
 	function watchKeyboardLockInfoMessage(keyboardLockApiSupported: boolean): string {
-		const RESERVED = "This hotkey is reserved by the browser. ";
+		const RESERVED = "This keyboard shortcut is reserved by the browser.";
 		const USE_FULLSCREEN = "It is made available in fullscreen mode.";
 		const USE_SECURE_CTX = "It is made available in fullscreen mode when this website is served from a secure context (https or localhost).";
 		const SWITCH_BROWSER = "Use a Chromium-based browser (like Chrome or Edge) in fullscreen mode to directly use the shortcut.";
@@ -118,7 +118,7 @@
 </script>
 
 {#if displayKeyboardLockNotice}
-	<IconLabel class="user-input-label keyboard-lock-notice" icon="Info" tooltip={keyboardLockInfoMessage} />
+	<IconLabel class="user-input-label keyboard-lock-notice" icon="Info" tooltipDescription={keyboardLockInfoMessage} />
 {:else}
 	<LayoutRow class="user-input-label" classes={{ "text-only": textOnly }}>
 		{#each keysWithLabelsGroups as keysWithLabels, groupIndex}
@@ -189,11 +189,13 @@
 				font-weight: 400;
 				text-align: center;
 				height: 16px;
-				box-sizing: border-box;
-				border: 1px solid;
 				border-radius: 4px;
-				border-color: var(--color-5-dullgray);
-				color: var(--color-e-nearwhite);
+				background: var(--color-3-darkgray);
+				color: var(--color-b-lightgray);
+
+				.icon-label {
+					fill: var(--color-b-lightgray);
+				}
 
 				.text-label {
 					// Firefox renders the text 1px lower than Chrome (tested on Windows) with 16px line-height,

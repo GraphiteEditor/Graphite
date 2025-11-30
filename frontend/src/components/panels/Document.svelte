@@ -698,7 +698,7 @@
 						.icon-button {
 							margin: 0;
 
-							&[title^="Coming Soon"] {
+							&[data-tooltip-description^="Coming soon."] {
 								opacity: 0.25;
 								transition: opacity 0.1s;
 

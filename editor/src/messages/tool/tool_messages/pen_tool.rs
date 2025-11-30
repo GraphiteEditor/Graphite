@@ -128,7 +128,7 @@ impl ToolMetadata for PenTool {
 	fn icon_name(&self) -> String {
 		"VectorPenTool".into()
 	}
-	fn tooltip(&self) -> String {
+	fn tooltip_label(&self) -> String {
 		"Pen Tool".into()
 	}
 	fn tool_type(&self) -> crate::messages::tool::utility_types::ToolType {
@@ -215,7 +215,8 @@ impl LayoutHolder for PenTool {
 			RadioInput::new(vec![
 				RadioEntryData::new("all")
 					.icon("HandleVisibilityAll")
-					.tooltip("Show all handles regardless of selection")
+					.tooltip_label("Show All Handles")
+					.tooltip_description("Show all handles regardless of selection.")
 					.on_update(move |_| {
 						PenToolMessage::UpdateOptions {
 							options: PenOptionsUpdate::OverlayModeType(PenOverlayMode::AllHandles),
@@ -224,7 +225,8 @@ impl LayoutHolder for PenTool {
 					}),
 				RadioEntryData::new("frontier")
 					.icon("HandleVisibilityFrontier")
-					.tooltip("Show only handles at the frontiers of the segments connected to selected points")
+					.tooltip_label("Show Frontier Handles")
+					.tooltip_description("Show only handles at the frontiers of the segments connected to selected points.")
 					.on_update(move |_| {
 						PenToolMessage::UpdateOptions {
 							options: PenOptionsUpdate::OverlayModeType(PenOverlayMode::FrontierHandles),

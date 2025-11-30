@@ -88,7 +88,7 @@ impl ToolMetadata for TextTool {
 	fn icon_name(&self) -> String {
 		"VectorTextTool".into()
 	}
-	fn tooltip(&self) -> String {
+	fn tooltip_label(&self) -> String {
 		"Text Tool".into()
 	}
 	fn tool_type(&self) -> crate::messages::tool::utility_types::ToolType {

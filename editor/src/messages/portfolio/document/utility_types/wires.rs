@@ -42,8 +42,8 @@ impl std::fmt::Display for GraphWireStyle {
 impl GraphWireStyle {
 	pub fn tooltip_description(&self) -> &'static str {
 		match self {
-			GraphWireStyle::GridAligned => "Wires follow the grid, running in straight lines between nodes",
-			GraphWireStyle::Direct => "Wires bend to run at an angle directly between nodes",
+			GraphWireStyle::GridAligned => "Wires follow the grid, running in straight lines between nodes.",
+			GraphWireStyle::Direct => "Wires bend to run at an angle directly between nodes.",
 		}
 	}
 

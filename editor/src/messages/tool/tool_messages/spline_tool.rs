@@ -79,7 +79,7 @@ impl ToolMetadata for SplineTool {
 	fn icon_name(&self) -> String {
 		"VectorSplineTool".into()
 	}
-	fn tooltip(&self) -> String {
+	fn tooltip_label(&self) -> String {
 		"Spline Tool".into()
 	}
 	fn tool_type(&self) -> crate::messages::tool::utility_types::ToolType {

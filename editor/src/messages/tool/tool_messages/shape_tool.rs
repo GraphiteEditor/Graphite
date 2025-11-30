@@ -432,7 +432,7 @@ impl ToolMetadata for ShapeTool {
 	fn icon_name(&self) -> String {
 		"VectorPolygonTool".into()
 	}
-	fn tooltip(&self) -> String {
+	fn tooltip_label(&self) -> String {
 		"Shape Tool".into()
 	}
 	fn tool_type(&self) -> ToolType {

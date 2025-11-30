@@ -63,7 +63,7 @@ pub mod memo {
 	pub const IDENTIFIER: ProtoNodeIdentifier = ProtoNodeIdentifier::new("graphene_core::memo::MemoNode");
 }
 
-/// Caches the output of the last graph evaluation for introspection
+/// Caches the output of the last graph evaluation for introspection.
 #[derive(Default)]
 pub struct MonitorNode<I, T, N> {
 	#[allow(clippy::type_complexity)]

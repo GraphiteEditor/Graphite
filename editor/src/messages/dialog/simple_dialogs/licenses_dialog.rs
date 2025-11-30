@@ -49,16 +49,19 @@ impl DialogLayoutHolder for LicensesDialog {
 
 impl LayoutHolder for LicensesDialog {
 	fn layout(&self) -> Layout {
-		let description = concat!(
-			"The Graphite logo and brand identity are copyright © [YEAR]\nGraphite Labs, LLC. See \"Graphite Logo\" for usage policy.",
-			"\n\n",
-			"The Graphite editor's icons and design assets are copyright\n© [YEAR] Graphite Labs, LLC. See \"Graphite Icons\" for details.",
-			"\n\n",
-			"Graphite code is copyright © [YEAR] Graphite contributors\nand is made available under the Apache 2.0 license. See\n\"Graphite License\" for details.",
-			"\n\n",
-			"Graphite is distributed with third-party open source code\ndependencies. See \"Other Licenses\" for details.",
-		)
-		.replace("[YEAR]", &self.localized_commit_year);
+		let year = &self.localized_commit_year;
+		let description = format!(
+			"
+			The Graphite logo and brand identity are copyright © {year}\nGraphite Labs, LLC. See \"Graphite Logo\" for usage policy.\n\
+			\n\
+			The Graphite editor's icons and design assets are copyright\n© {year} Graphite Labs, LLC. See \"Graphite Icons\" for details.\n\
+			\n\
+			Graphite code is copyright © {year} Graphite contributors\nand is made available under the Apache 2.0 license. See\n\"Graphite License\" for details.\n\
+			\n\
+			Graphite is distributed with third-party open source code\ndependencies. See \"Other Licenses\" for details.
+			"
+		);
+		let description = description.trim();
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![
 			LayoutGroup::Row {

@@ -24,7 +24,7 @@ impl ToolMetadata for NavigateTool {
 	fn icon_name(&self) -> String {
 		"GeneralNavigateTool".into()
 	}
-	fn tooltip(&self) -> String {
+	fn tooltip_label(&self) -> String {
 		"Navigate Tool".into()
 	}
 	fn tool_type(&self) -> crate::messages::tool::utility_types::ToolType {

@@ -87,7 +87,7 @@ impl ToolColorOptions {
 		} else {
 			let reset = IconButton::new("CloseX", 12)
 				.disabled(self.custom_color.is_none() && self.color_type == ToolColorType::Custom)
-				.tooltip("Clear Color")
+				.tooltip_label("Clear Color")
 				.on_update(reset_callback);
 
 			widgets.push(Separator::new(SeparatorType::Related).widget_holder());
@@ -101,8 +101,8 @@ impl ToolColorOptions {
 			("CustomColor", "Custom Color", ToolColorType::Custom),
 		]
 		.into_iter()
-		.map(|(icon, tooltip, color_type)| {
-			let mut entry = RadioEntryData::new(format!("{color_type:?}")).tooltip(tooltip).icon(icon);
+		.map(|(icon, label, color_type)| {
+			let mut entry = RadioEntryData::new(format!("{color_type:?}")).tooltip_label(label).icon(icon);
 			entry.on_update = radio_callback(color_type);
 			entry
 		})

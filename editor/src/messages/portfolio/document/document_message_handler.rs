@@ -2211,21 +2211,21 @@ impl DocumentMessageHandler {
 
 		let mut widgets = vec![
 			IconButton::new("PlaybackToStart", 24)
-				.tooltip("Restart Animation")
-				.tooltip_shortcut(action_keys!(AnimationMessageDiscriminant::RestartAnimation))
+				.tooltip_label("Restart Animation")
+				.shortcut_keys(action_keys!(AnimationMessageDiscriminant::RestartAnimation))
 				.on_update(|_| AnimationMessage::RestartAnimation.into())
 				.disabled(time == Duration::ZERO)
 				.widget_holder(),
 			IconButton::new(if animation_is_playing { "PlaybackPause" } else { "PlaybackPlay" }, 24)
-				.tooltip(if animation_is_playing { "Pause Animation" } else { "Play Animation" })
-				.tooltip_shortcut(action_keys!(AnimationMessageDiscriminant::ToggleLivePreview))
+				.tooltip_label(if animation_is_playing { "Pause Animation" } else { "Play Animation" })
+				.shortcut_keys(action_keys!(AnimationMessageDiscriminant::ToggleLivePreview))
 				.on_update(|_| AnimationMessage::ToggleLivePreview.into())
 				.widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			CheckboxInput::new(self.overlays_visibility_settings.all)
 				.icon("Overlays")
-				.tooltip("Overlays")
-				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::ToggleOverlaysVisibility))
+				.tooltip_label("Overlays")
+				.shortcut_keys(action_keys!(DocumentMessageDiscriminant::ToggleOverlaysVisibility))
 				.on_update(|optional_input: &CheckboxInput| {
 					DocumentMessage::SetOverlaysVisibility {
 						visible: optional_input.checked,
@@ -2473,8 +2473,8 @@ impl DocumentMessageHandler {
 			Separator::new(SeparatorType::Related).widget_holder(),
 			CheckboxInput::new(snapping_state.snapping_enabled)
 				.icon("Snapping")
-				.tooltip("Snapping")
-				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::ToggleSnapping))
+				.tooltip_label("Snapping")
+				.shortcut_keys(action_keys!(DocumentMessageDiscriminant::ToggleSnapping))
 				.on_update(move |optional_input: &CheckboxInput| {
 					DocumentMessage::SetSnapping {
 						closure: Some(|snapping_state| &mut snapping_state.snapping_enabled),
@@ -2494,7 +2494,7 @@ impl DocumentMessageHandler {
 						},
 					]
 					.into_iter()
-					.chain(SNAP_FUNCTIONS_FOR_BOUNDING_BOXES.into_iter().map(|(name, closure, tooltip)| LayoutGroup::Row {
+					.chain(SNAP_FUNCTIONS_FOR_BOUNDING_BOXES.into_iter().map(|(name, closure, description)| LayoutGroup::Row {
 						widgets: {
 							let checkbox_id = CheckboxId::new();
 							vec![
@@ -2506,17 +2506,18 @@ impl DocumentMessageHandler {
 										}
 										.into()
 									})
-									.tooltip(tooltip)
+									.tooltip_label(name)
+									.tooltip_description(description)
 									.for_label(checkbox_id)
 									.widget_holder(),
-								TextLabel::new(name).tooltip(tooltip).for_checkbox(checkbox_id).widget_holder(),
+								TextLabel::new(name).tooltip_label(name).tooltip_description(description).for_checkbox(checkbox_id).widget_holder(),
 							]
 						},
 					}))
 					.chain([LayoutGroup::Row {
 						widgets: vec![TextLabel::new(SnappingOptions::Paths.to_string()).widget_holder()],
 					}])
-					.chain(SNAP_FUNCTIONS_FOR_PATHS.into_iter().map(|(name, closure, tooltip)| LayoutGroup::Row {
+					.chain(SNAP_FUNCTIONS_FOR_PATHS.into_iter().map(|(name, closure, description)| LayoutGroup::Row {
 						widgets: {
 							let checkbox_id = CheckboxId::new();
 							vec![
@@ -2528,10 +2529,11 @@ impl DocumentMessageHandler {
 										}
 										.into()
 									})
-									.tooltip(tooltip)
+									.tooltip_label(name)
+									.tooltip_description(description)
 									.for_label(checkbox_id)
 									.widget_holder(),
-								TextLabel::new(name).tooltip(tooltip).for_checkbox(checkbox_id).widget_holder(),
+								TextLabel::new(name).tooltip_label(name).tooltip_description(description).for_checkbox(checkbox_id).widget_holder(),
 							]
 						},
 					}))
@@ -2541,8 +2543,8 @@ impl DocumentMessageHandler {
 			Separator::new(SeparatorType::Related).widget_holder(),
 			CheckboxInput::new(self.snapping_state.grid_snapping)
 				.icon("Grid")
-				.tooltip("Grid")
-				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::ToggleGridVisibility))
+				.tooltip_label("Grid")
+				.shortcut_keys(action_keys!(DocumentMessageDiscriminant::ToggleGridVisibility))
 				.on_update(|optional_input: &CheckboxInput| DocumentMessage::GridVisibility { visible: optional_input.checked }.into())
 				.widget_holder(),
 			PopoverButton::new()
@@ -2553,19 +2555,19 @@ impl DocumentMessageHandler {
 			RadioInput::new(vec![
 				RadioEntryData::new("Normal")
 					.icon("RenderModeNormal")
-					.tooltip("Render Mode: Normal")
+					.tooltip_label("Render Mode: Normal")
 					.on_update(|_| DocumentMessage::SetRenderMode { render_mode: RenderMode::Normal }.into()),
 				RadioEntryData::new("Outline")
 					.icon("RenderModeOutline")
-					.tooltip("Render Mode: Outline")
+					.tooltip_label("Render Mode: Outline")
 					.on_update(|_| DocumentMessage::SetRenderMode { render_mode: RenderMode::Outline }.into()),
 				// RadioEntryData::new("PixelPreview")
 				// 	.icon("RenderModePixels")
-				// 	.tooltip("Render Mode: Pixel Preview")
+				// 	.tooltip_label("Render Mode: Pixel Preview")
 				// 	.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(320) }.into()),
 				// RadioEntryData::new("SvgPreview")
 				// 	.icon("RenderModeSvg")
-				// 	.tooltip("Render Mode: SVG Preview")
+				// 	.tooltip_label("Render Mode: SVG Preview")
 				// 	.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(1845) }.into()),
 			])
 			.selected_index(Some(self.render_mode as u32))
@@ -2607,7 +2609,7 @@ impl DocumentMessageHandler {
 						}
 						.into()
 					})
-					.tooltip("Canvas Tilt")
+					.tooltip_label("Canvas Tilt")
 					.on_update(|number_input: &NumberInput| {
 						NavigationMessage::CanvasTiltSet {
 							angle_radians: number_input.value.unwrap().to_radians(),
@@ -2623,8 +2625,8 @@ impl DocumentMessageHandler {
 			TextButton::new("Node Graph")
 				.icon(Some((if self.graph_view_overlay_open { "GraphViewOpen" } else { "GraphViewClosed" }).into()))
 				.hover_icon(Some((if self.graph_view_overlay_open { "GraphViewClosed" } else { "GraphViewOpen" }).into()))
-				.tooltip(if self.graph_view_overlay_open { "Hide Node Graph" } else { "Show Node Graph" })
-				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::GraphViewOverlayToggle))
+				.tooltip_label(if self.graph_view_overlay_open { "Hide Node Graph" } else { "Show Node Graph" })
+				.shortcut_keys(action_keys!(DocumentMessageDiscriminant::GraphViewOverlayToggle))
 				.on_update(move |_| DocumentMessage::GraphViewOverlayToggle.into())
 				.widget_holder(),
 		]);
@@ -2723,7 +2725,7 @@ impl DocumentMessageHandler {
 				.disabled(disabled)
 				.draw_icon(false)
 				.max_width(100)
-				.tooltip("Blend Mode")
+				.tooltip_label("Blend Mode")
 				.widget_holder(),
 			Separator::new(SeparatorType::Related).widget_holder(),
 			NumberInput::new(opacity)
@@ -2745,7 +2747,7 @@ impl DocumentMessageHandler {
 				})
 				.on_commit(|_| DocumentMessage::AddTransaction.into())
 				.max_width(100)
-				.tooltip("Opacity")
+				.tooltip_label("Opacity")
 				.widget_holder(),
 			Separator::new(SeparatorType::Related).widget_holder(),
 			NumberInput::new(fill)
@@ -2767,7 +2769,7 @@ impl DocumentMessageHandler {
 				})
 				.on_commit(|_| DocumentMessage::AddTransaction.into())
 				.max_width(100)
-				.tooltip("Fill")
+				.tooltip_label("Fill")
 				.widget_holder(),
 		];
 		let layers_panel_control_bar_left = WidgetLayout::new(vec![LayoutGroup::Row { widgets }]);
@@ -2775,15 +2777,15 @@ impl DocumentMessageHandler {
 		let widgets = vec![
 			IconButton::new(if selection_all_locked { "PadlockLocked" } else { "PadlockUnlocked" }, 24)
 				.hover_icon(Some((if selection_all_locked { "PadlockUnlocked" } else { "PadlockLocked" }).into()))
-				.tooltip(if selection_all_locked { "Unlock Selected" } else { "Lock Selected" })
-				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::ToggleSelectedLocked))
+				.tooltip_label(if selection_all_locked { "Unlock Selected" } else { "Lock Selected" })
+				.shortcut_keys(action_keys!(DocumentMessageDiscriminant::ToggleSelectedLocked))
 				.on_update(|_| NodeGraphMessage::ToggleSelectedLocked.into())
 				.disabled(!has_selection)
 				.widget_holder(),
 			IconButton::new(if selection_all_visible { "EyeVisible" } else { "EyeHidden" }, 24)
 				.hover_icon(Some((if selection_all_visible { "EyeHide" } else { "EyeShow" }).into()))
-				.tooltip(if selection_all_visible { "Hide Selected" } else { "Show Selected" })
-				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::ToggleSelectedVisibility))
+				.tooltip_label(if selection_all_visible { "Hide Selected" } else { "Show Selected" })
+				.shortcut_keys(action_keys!(DocumentMessageDiscriminant::ToggleSelectedVisibility))
 				.on_update(|_| DocumentMessage::ToggleSelectedVisibility.into())
 				.disabled(!has_selection)
 				.widget_holder(),
@@ -2816,7 +2818,7 @@ impl DocumentMessageHandler {
 			PopoverButton::new()
 				.icon(Some("Node".to_string()))
 				.menu_direction(Some(MenuDirection::Top))
-				.tooltip("Add an operation to the end of this layer's chain of nodes")
+				.tooltip_description("Add an operation to the end of this layer's chain of nodes.")
 				.disabled(!has_selection || has_multiple_selection)
 				.popover_layout({
 					// Showing only compatible types for the layer based on the output type of the node upstream from its horizontal input
@@ -2847,8 +2849,8 @@ impl DocumentMessageHandler {
 				.widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			IconButton::new("Folder", 24)
-				.tooltip("Group Selected")
-				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::GroupSelectedLayers))
+				.tooltip_label("Group Selected")
+				.shortcut_keys(action_keys!(DocumentMessageDiscriminant::GroupSelectedLayers))
 				.on_update(|_| {
 					let group_folder_type = GroupFolderType::Layer;
 					DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
@@ -2856,13 +2858,13 @@ impl DocumentMessageHandler {
 				.disabled(!has_selection)
 				.widget_holder(),
 			IconButton::new("NewLayer", 24)
-				.tooltip("New Layer")
-				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder))
+				.tooltip_label("New Layer")
+				.shortcut_keys(action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder))
 				.on_update(|_| DocumentMessage::CreateEmptyFolder.into())
 				.widget_holder(),
 			IconButton::new("Trash", 24)
-				.tooltip("Delete Selected")
-				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::DeleteSelectedLayers))
+				.tooltip_label("Delete Selected")
+				.shortcut_keys(action_keys!(DocumentMessageDiscriminant::DeleteSelectedLayers))
 				.on_update(|_| DocumentMessage::DeleteSelectedLayers.into())
 				.disabled(!has_selection)
 				.widget_holder(),
@@ -3145,18 +3147,18 @@ impl<'a> ClickXRayIter<'a> {
 pub fn navigation_controls(ptz: &PTZ, navigation_handler: &NavigationMessageHandler, node_graph: bool) -> Vec<WidgetHolder> {
 	let mut list = vec![
 		IconButton::new("ZoomIn", 24)
-			.tooltip("Zoom In")
-			.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::CanvasZoomIncrease))
+			.tooltip_label("Zoom In")
+			.shortcut_keys(action_keys!(NavigationMessageDiscriminant::CanvasZoomIncrease))
 			.on_update(|_| NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }.into())
 			.widget_holder(),
 		IconButton::new("ZoomOut", 24)
-			.tooltip("Zoom Out")
-			.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::CanvasZoomDecrease))
+			.tooltip_label("Zoom Out")
+			.shortcut_keys(action_keys!(NavigationMessageDiscriminant::CanvasZoomDecrease))
 			.on_update(|_| NavigationMessage::CanvasZoomDecrease { center_on_mouse: false }.into())
 			.widget_holder(),
 		IconButton::new("ZoomReset", 24)
-			.tooltip("Reset Tilt and Zoom to 100%")
-			.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::CanvasTiltResetAndZoomTo100Percent))
+			.tooltip_label("Reset Tilt and Zoom to 100%")
+			.shortcut_keys(action_keys!(NavigationMessageDiscriminant::CanvasTiltResetAndZoomTo100Percent))
 			.on_update(|_| NavigationMessage::CanvasTiltResetAndZoomTo100Percent.into())
 			.disabled(ptz.tilt().abs() < 1e-4 && (ptz.zoom() - 1.).abs() < 1e-4)
 			.widget_holder(),
@@ -3164,8 +3166,9 @@ pub fn navigation_controls(ptz: &PTZ, navigation_handler: &NavigationMessageHand
 	if ptz.flip && !node_graph {
 		list.push(
 			IconButton::new("Reverse", 24)
-				.tooltip("Flip the canvas back to its standard orientation")
-				.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::CanvasFlip))
+				.tooltip_label("Unflip Canvas")
+				.tooltip_description("Flip the canvas back to its standard orientation.")
+				.shortcut_keys(action_keys!(NavigationMessageDiscriminant::CanvasFlip))
 				.on_update(|_| NavigationMessage::CanvasFlip.into())
 				.widget_holder(),
 		);
@@ -3176,7 +3179,7 @@ pub fn navigation_controls(ptz: &PTZ, navigation_handler: &NavigationMessageHand
 			.unit("%")
 			.min(0.000001)
 			.max(1000000.)
-			.tooltip(if node_graph { "Node Graph Zoom" } else { "Canvas Zoom" })
+			.tooltip_label(if node_graph { "Node Graph Zoom" } else { "Canvas Zoom" })
 			.on_update(|number_input: &NumberInput| {
 				NavigationMessage::CanvasZoomSet {
 					zoom_factor: number_input.value.unwrap() / 100.,

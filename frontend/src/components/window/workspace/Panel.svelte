@@ -38,7 +38,7 @@
 
 	export let tabMinWidths = false;
 	export let tabCloseButtons = false;
-	export let tabLabels: { name: string; unsaved?: boolean; tooltip?: string }[];
+	export let tabLabels: { name: string; unsaved?: boolean; tooltipDescription?: string; tooltipShortcut?: string }[];
 	export let tabActiveIndex: number;
 	export let panelType: PanelType | undefined = undefined;
 	export let clickAction: ((index: number) => void) | undefined = undefined;
@@ -118,7 +118,8 @@
 				<LayoutRow
 					class="tab"
 					classes={{ active: tabIndex === tabActiveIndex }}
-					tooltip={tabLabel.tooltip || undefined}
+					tooltipLabel={tabLabel.name}
+					tooltipDescription={tabLabel.tooltipDescription}
 					on:click={(e) => {
 						e.stopPropagation();
 						clickAction?.(tabIndex);

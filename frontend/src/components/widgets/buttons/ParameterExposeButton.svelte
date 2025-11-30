@@ -5,7 +5,9 @@
 
 	export let exposed: boolean;
 	export let dataType: FrontendGraphDataType;
-	export let tooltip: string | undefined = undefined;
+	export let tooltipLabel: string | undefined = undefined;
+	export let tooltipDescription: string | undefined = undefined;
+	export let tooltipShortcut: string | undefined = undefined;
 	// Callbacks
 	export let action: (e?: MouseEvent) => void;
 </script>
@@ -16,7 +18,9 @@
 		style:--data-type-color={`var(--color-data-${dataType.toLowerCase()})`}
 		style:--data-type-color-dim={`var(--color-data-${dataType.toLowerCase()}-dim)`}
 		on:click={action}
-		title={tooltip}
+		data-tooltip-label={tooltipLabel}
+		data-tooltip-description={tooltipDescription}
+		data-tooltip-shortcut={tooltipShortcut}
 		tabindex="-1"
 	>
 		{#if !exposed}
