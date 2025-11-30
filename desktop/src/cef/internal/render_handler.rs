@@ -38,8 +38,8 @@ impl<H: CefEventHandler> ImplRenderHandler for RenderHandlerImpl<H> {
 		_dirty_rect_count: usize,
 		_dirty_rects: Option<&Rect>,
 		buffer: *const u8,
-		width: ::std::os::raw::c_int,
-		height: ::std::os::raw::c_int,
+		width: std::ffi::c_int,
+		height: std::ffi::c_int,
 	) {
 		let buffer_size = (width * height * 4) as usize;
 		let buffer_slice = unsafe { std::slice::from_raw_parts(buffer, buffer_size) };

@@ -55,72 +55,15 @@ pub fn wasm_memory() -> JsValue {
 	wasm_bindgen::memory()
 }
 
-fn render_image_data_to_canvases(image_data: &[(u64, Image<Color>)]) {
-	let window = match window() {
-		Some(window) => window,
-		None => {
-			error!("Cannot render canvas: window object not found");
-			return;
-		}
-	};
-	let document = window.document().expect("window should have a document");
-	let window_obj = Object::from(window);
-	let image_canvases_key = JsValue::from_str("imageCanvases");
-
-	let canvases_obj = match Reflect::get(&window_obj, &image_canvases_key) {
-		Ok(obj) if !obj.is_undefined() && !obj.is_null() => obj,
-		_ => {
-			let new_obj = Object::new();
-			if Reflect::set(&window_obj, &image_canvases_key, &new_obj).is_err() {
-				error!("Failed to create and set imageCanvases object on window");
-				return;
-			}
-			new_obj.into()
-		}
-	};
-	let canvases_obj = Object::from(canvases_obj);
-
-	for (placeholder_id, image) in image_data.iter() {
-		let canvas_name = placeholder_id.to_string();
-		let js_key = JsValue::from_str(&canvas_name);
-
-		if Reflect::has(&canvases_obj, &js_key).unwrap_or(false) || image.width == 0 || image.height == 0 {
-			continue;
-		}
-
-		let canvas: HtmlCanvasElement = document
-			.create_element("canvas")
-			.expect("Failed to create canvas element")
-			.dyn_into::<HtmlCanvasElement>()
-			.expect("Failed to cast element to HtmlCanvasElement");
-
-		canvas.set_width(image.width);
-		canvas.set_height(image.height);
-
-		let context: CanvasRenderingContext2d = canvas
-			.get_context("2d")
-			.expect("Failed to get 2d context")
-			.expect("2d context was not found")
-			.dyn_into::<CanvasRenderingContext2d>()
-			.expect("Failed to cast context to CanvasRenderingContext2d");
-		let u8_data: Vec<u8> = image.data.iter().flat_map(|color| color.to_rgba8_srgb()).collect();
-		let clamped_u8_data = wasm_bindgen::Clamped(&u8_data[..]);
-		match ImageData::new_with_u8_clamped_array_and_sh(clamped_u8_data, image.width, image.height) {
-			Ok(image_data_obj) => {
-				if context.put_image_data(&image_data_obj, 0., 0.).is_err() {
-					error!("Failed to put image data on canvas for id: {placeholder_id}");
-				}
-			}
-			Err(e) => {
-				error!("Failed to create ImageData for id: {placeholder_id}: {e:?}");
-			}
-		}
-
-		let js_value = JsValue::from(canvas);
-
-		if Reflect::set(&canvases_obj, &js_key, &js_value).is_err() {
-			error!("Failed to set canvas '{canvas_name}' on imageCanvases object");
-		}
+#[wasm_bindgen(js_name = isPlatformNative)]
+pub fn is_platform_native() -> bool {
+	#[cfg(feature = "native")]
+	{
+		true
+	}
+	#[cfg(not(feature = "native"))]
+	{
+		false
 	}
 }
 
@@ -334,28 +277,28 @@ impl EditorHandle {
 	/// Minimizes the application window to the taskbar or dock
 	#[wasm_bindgen(js_name = appWindowMinimize)]
 	pub fn app_window_minimize(&self) {
-		let message = AppWindowMessage::AppWindowMinimize;
+		let message = AppWindowMessage::Minimize;
 		self.dispatch(message);
 	}
 
 	/// Toggles minimizing or restoring down the application window
 	#[wasm_bindgen(js_name = appWindowMaximize)]
 	pub fn app_window_maximize(&self) {
-		let message = AppWindowMessage::AppWindowMaximize;
+		let message = AppWindowMessage::Maximize;
 		self.dispatch(message);
 	}
 
 	/// Closes the application window
 	#[wasm_bindgen(js_name = appWindowClose)]
 	pub fn app_window_close(&self) {
-		let message = AppWindowMessage::AppWindowClose;
+		let message = AppWindowMessage::Close;
 		self.dispatch(message);
 	}
 
 	/// Drag the application window
 	#[wasm_bindgen(js_name = appWindowDrag)]
 	pub fn app_window_start_drag(&self) {
-		let message = AppWindowMessage::AppWindowDrag;
+		let message = AppWindowMessage::Drag;
 		self.dispatch(message);
 	}
 
@@ -1060,4 +1003,73 @@ fn auto_save_all_documents() {
 	handle(|handle| {
 		handle.dispatch(PortfolioMessage::AutoSaveAllDocuments);
 	});
+}
+
+fn render_image_data_to_canvases(image_data: &[(u64, Image<Color>)]) {
+	let window = match window() {
+		Some(window) => window,
+		None => {
+			error!("Cannot render canvas: window object not found");
+			return;
+		}
+	};
+	let document = window.document().expect("window should have a document");
+	let window_obj = Object::from(window);
+	let image_canvases_key = JsValue::from_str("imageCanvases");
+
+	let canvases_obj = match Reflect::get(&window_obj, &image_canvases_key) {
+		Ok(obj) if !obj.is_undefined() && !obj.is_null() => obj,
+		_ => {
+			let new_obj = Object::new();
+			if Reflect::set(&window_obj, &image_canvases_key, &new_obj).is_err() {
+				error!("Failed to create and set imageCanvases object on window");
+				return;
+			}
+			new_obj.into()
+		}
+	};
+	let canvases_obj = Object::from(canvases_obj);
+
+	for (placeholder_id, image) in image_data.iter() {
+		let canvas_name = placeholder_id.to_string();
+		let js_key = JsValue::from_str(&canvas_name);
+
+		if Reflect::has(&canvases_obj, &js_key).unwrap_or(false) || image.width == 0 || image.height == 0 {
+			continue;
+		}
+
+		let canvas: HtmlCanvasElement = document
+			.create_element("canvas")
+			.expect("Failed to create canvas element")
+			.dyn_into::<HtmlCanvasElement>()
+			.expect("Failed to cast element to HtmlCanvasElement");
+
+		canvas.set_width(image.width);
+		canvas.set_height(image.height);
+
+		let context: CanvasRenderingContext2d = canvas
+			.get_context("2d")
+			.expect("Failed to get 2d context")
+			.expect("2d context was not found")
+			.dyn_into::<CanvasRenderingContext2d>()
+			.expect("Failed to cast context to CanvasRenderingContext2d");
+		let u8_data: Vec<u8> = image.data.iter().flat_map(|color| color.to_rgba8_srgb()).collect();
+		let clamped_u8_data = wasm_bindgen::Clamped(&u8_data[..]);
+		match ImageData::new_with_u8_clamped_array_and_sh(clamped_u8_data, image.width, image.height) {
+			Ok(image_data_obj) => {
+				if context.put_image_data(&image_data_obj, 0., 0.).is_err() {
+					error!("Failed to put image data on canvas for id: {placeholder_id}");
+				}
+			}
+			Err(e) => {
+				error!("Failed to create ImageData for id: {placeholder_id}: {e:?}");
+			}
+		}
+
+		let js_value = JsValue::from(canvas);
+
+		if Reflect::set(&canvases_obj, &js_key, &js_value).is_err() {
+			error!("Failed to set canvas '{canvas_name}' on imageCanvases object");
+		}
+	}
 }

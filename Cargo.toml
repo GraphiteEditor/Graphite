@@ -19,6 +19,7 @@ members = [
 	"node-graph/libraries/vector-types",
 	"node-graph/libraries/graphic-types",
 	"node-graph/libraries/rendering",
+	"node-graph/libraries/wgpu-executor",
 	"node-graph/nodes/blending",
 	"node-graph/nodes/brush",
 	"node-graph/nodes/gcore",
@@ -37,8 +38,8 @@ members = [
 	"node-graph/interpreted-executor",
 	"node-graph/node-macro",
 	"node-graph/preprocessor",
-	"node-graph/wgpu-executor",
 	"proc-macros",
+	"tools/crate-hierarchy-viz"
 ]
 default-members = [
 	"editor",
@@ -53,6 +54,7 @@ default-members = [
 	"node-graph/libraries/vector-types",
 	"node-graph/libraries/graphic-types",
 	"node-graph/libraries/rendering",
+	"node-graph/libraries/wgpu-executor",
 	"node-graph/nodes/blending",
 	"node-graph/nodes/brush",
 	"node-graph/nodes/gcore",
@@ -70,11 +72,21 @@ default-members = [
 	"node-graph/interpreted-executor",
 	"node-graph/node-macro",
 	"node-graph/preprocessor",
-	"node-graph/wgpu-executor",
 	# blocked by https://github.com/rust-lang/cargo/issues/15890
 #	"proc-macros",
 ]
 resolver = "2"
+
+[workspace.package]
+rust-version = "1.88"
+edition = "2024"
+authors = ["Graphite Authors <contact@graphite.rs>"]
+homepage = "https://graphite.rs"
+repository = "https://github.com/GraphiteEditor/Graphite"
+license = "Apache-2.0"
+version = "0.0.0"
+readme = "README.md"
+publish = false
 
 [workspace.dependencies]
 # Local dependencies
@@ -109,7 +121,7 @@ raster-nodes = { path = "node-graph/nodes/raster" }
 graphene-std = { path = "node-graph/nodes/gstd" }
 interpreted-executor = { path = "node-graph/interpreted-executor" }
 node-macro = { path = "node-graph/node-macro" }
-wgpu-executor = { path = "node-graph/wgpu-executor" }
+wgpu-executor = { path = "node-graph/libraries/wgpu-executor" }
 graphite-proc-macros = { path = "proc-macros" }
 
 # Workspace dependencies
@@ -258,3 +270,4 @@ debug = true
 [patch.crates-io]
 # Force cargo to use only one version of the dpi crate (vendoring breaks without this)
 dpi = { git = "https://github.com/rust-windowing/winit.git" }
+

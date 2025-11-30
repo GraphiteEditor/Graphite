@@ -71,19 +71,29 @@ This narrow bar runs vertically down the left side of the Document panel beside 
 
 ### Tools
 
-Located at the top of the tool shelf area, the **tool shelf** provides a selection of **tools** for interactively editing the artwork.
+<img src="https://static.graphite.rs/content/learn/interface/document-panel/tool-shelf__2.avif" style="float: left; width: 64px; padding-right: 40px" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" onload="this.width = this.naturalWidth / 2" alt="The tool shelf" />
+
+Located at the top of the tool shelf area, the **tool shelf** provides a selection of **tools** for interactively editing the artwork. It is composed of three sections:
+
+<div style="margin-left: calc(64px + 40px)">
 
 | | |
 |-|-|
-| <img src="https://static.graphite.rs/content/learn/interface/document-panel/tool-shelf__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" onload="this.width = this.naturalWidth / 2" alt="The tool shelf" /> | <p>The tool shelf is split into three sections: the **general tools** (gray icons), **vector tools** (blue icons), and **raster tools** (orange icons).</p><p><ul><li>**General tools** are used for assorted editing tasks within the viewport.</li><li>**Vector tools** are used for drawing and editing vector shapes, paths, and text.</li><li>**Raster tools** are used for drawing and editing raster image content. The grayed out icons are placeholders for upcoming tools.</li></ul></p> |
+| **General tools** | (Gray icons) Used for assorted editing tasks within the viewport. |
+| **Vector tools** | (Blue icons) Used for drawing and editing vector shapes, paths, and text. |
+| **Raster tools** | (Orange icons) Used for drawing and editing raster image content. The grayed out icons are placeholders for upcoming tools. |
+
+</div>
+
+<div style="clear: both;"></div>
 
 ### Working colors
 
-The **working colors** are the two colors used by the active tool.
+<img src="https://static.graphite.rs/content/learn/interface/document-panel/working-colors.avif" style="float: left; width: 64px; padding-right: 40px;" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="The working colors" />
 
-| | |
-|-|-|
-| <img src="https://static.graphite.rs/content/learn/interface/document-panel/working-colors.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="The working colors" /> | <p>The upper circle is the **primary color**. The lower circle is the **secondary color**.</p><p>There are two buttons located underneath: **Swap** which reverses the current color choices, and **Reset** which restores the primary color to black and the secondary color to white.</p> |
+The **working colors** are the two colors used by the active tool. The upper circle is the **primary color**. The lower circle is the **secondary color**.
+
+There are two buttons located underneath: **Swap** which reverses the current color choices, and **Reset** which restores the primary color to black and the secondary color to white.
 
 The tool controls (above the viewport) for some of the tools offer choices for using the primary and secondary colors. For example, the vector drawing tools have **Fill** and **Stroke** options that use the current secondary and primary colors, respectively, as defaults:
 

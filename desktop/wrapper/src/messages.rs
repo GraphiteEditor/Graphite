@@ -32,10 +32,6 @@ pub enum DesktopFrontendMessage {
 		height: f64,
 	},
 	UpdateOverlays(vello::Scene),
-	MinimizeWindow,
-	MaximizeWindow,
-	DragWindow,
-	CloseWindow,
 	PersistenceWriteDocument {
 		id: DocumentId,
 		document: Document,
@@ -58,6 +54,13 @@ pub enum DesktopFrontendMessage {
 	UpdateMenu {
 		entries: Vec<MenuItem>,
 	},
+	WindowClose,
+	WindowMinimize,
+	WindowMaximize,
+	WindowDrag,
+	WindowHide,
+	WindowHideOthers,
+	WindowShowAll,
 }
 
 pub enum DesktopWrapperMessage {

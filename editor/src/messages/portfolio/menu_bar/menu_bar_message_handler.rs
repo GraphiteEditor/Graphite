@@ -50,12 +50,65 @@ impl LayoutHolder for MenuBarMessageHandler {
 		let reset_node_definitions_on_open = self.reset_node_definitions_on_open;
 		let make_path_editable_is_allowed = self.make_path_editable_is_allowed;
 
+		let about = MenuBarEntry {
+			#[cfg(not(target_os = "macos"))]
+			label: "About Graphite…".into(),
+			#[cfg(target_os = "macos")]
+			label: "About Graphite".into(),
+			icon: Some("GraphiteLogo".into()),
+			action: MenuBarEntry::create_action(|_| DialogMessage::RequestAboutGraphiteDialog.into()),
+			..MenuBarEntry::default()
+		};
+		let preferences = MenuBarEntry {
+			label: "Preferences…".into(),
+			icon: Some("Settings".into()),
+			shortcut: action_keys!(DialogMessageDiscriminant::RequestPreferencesDialog),
+			action: MenuBarEntry::create_action(|_| DialogMessage::RequestPreferencesDialog.into()),
+			..MenuBarEntry::default()
+		};
+
 		let menu_bar_entries = vec![
+			#[cfg(not(target_os = "macos"))]
 			MenuBarEntry {
 				icon: Some("GraphiteLogo".into()),
 				action: MenuBarEntry::create_action(|_| FrontendMessage::TriggerVisitLink { url: "https://graphite.rs".into() }.into()),
 				..Default::default()
 			},
+			#[cfg(target_os = "macos")]
+			MenuBarEntry::new_root(
+				"".into(),
+				false,
+				MenuBarEntryChildren(vec![
+					vec![about],
+					vec![preferences],
+					vec![
+						MenuBarEntry {
+							label: "Hide Graphite".into(),
+							shortcut: action_keys!(AppWindowMessageDiscriminant::Hide),
+							action: MenuBarEntry::create_action(|_| AppWindowMessage::Hide.into()),
+							..MenuBarEntry::default()
+						},
+						MenuBarEntry {
+							label: "Hide Others".into(),
+							shortcut: action_keys!(AppWindowMessageDiscriminant::HideOthers),
+							action: MenuBarEntry::create_action(|_| AppWindowMessage::HideOthers.into()),
+							..MenuBarEntry::default()
+						},
+						MenuBarEntry {
+							label: "Show All".into(),
+							shortcut: action_keys!(AppWindowMessageDiscriminant::ShowAll),
+							action: MenuBarEntry::create_action(|_| AppWindowMessage::ShowAll.into()),
+							..MenuBarEntry::default()
+						},
+					],
+					vec![MenuBarEntry {
+						label: "Quit Graphite".into(),
+						shortcut: action_keys!(AppWindowMessageDiscriminant::Close),
+						action: MenuBarEntry::create_action(|_| AppWindowMessage::Close.into()),
+						..MenuBarEntry::default()
+					}],
+				]),
+			),
 			MenuBarEntry::new_root(
 				"File".into(),
 				false,
@@ -137,13 +190,8 @@ impl LayoutHolder for MenuBarMessageHandler {
 							..MenuBarEntry::default()
 						},
 					],
-					vec![MenuBarEntry {
-						label: "Preferences…".into(),
-						icon: Some("Settings".into()),
-						shortcut: action_keys!(DialogMessageDiscriminant::RequestPreferencesDialog),
-						action: MenuBarEntry::create_action(|_| DialogMessage::RequestPreferencesDialog.into()),
-						..MenuBarEntry::default()
-					}],
+					#[cfg(not(target_os = "macos"))]
+					vec![preferences],
 				]),
 			),
 			MenuBarEntry::new_root(
@@ -394,7 +442,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 							action: MenuBarEntry::no_action(),
 							disabled: no_active_document || !has_selected_layers,
 							children: MenuBarEntryChildren(vec![{
-								[(FlipAxis::X, "FlipHorizontal", "Horizontal"), (FlipAxis::Y, "FlipVertical", "Vertical")]
+								[(FlipAxis::X, "FlipHorizontal", "Flip Horizontal"), (FlipAxis::Y, "FlipVertical", "Flip Vertical")]
 									.into_iter()
 									.map(|(flip_axis, icon, name)| MenuBarEntry {
 										label: name.into(),
@@ -633,12 +681,8 @@ impl LayoutHolder for MenuBarMessageHandler {
 				"Help".into(),
 				false,
 				MenuBarEntryChildren(vec![
-					vec![MenuBarEntry {
-						label: "About Graphite…".into(),
-						icon: Some("GraphiteLogo".into()),
-						action: MenuBarEntry::create_action(|_| DialogMessage::RequestAboutGraphiteDialog.into()),
-						..MenuBarEntry::default()
-					}],
+					#[cfg(not(target_os = "macos"))]
+					vec![about],
 					vec![
 						MenuBarEntry {
 							label: "Donate to Graphite".into(),

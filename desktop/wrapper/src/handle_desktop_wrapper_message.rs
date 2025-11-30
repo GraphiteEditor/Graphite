@@ -117,7 +117,7 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 				Platform::Mac => AppWindowPlatform::Mac,
 				Platform::Linux => AppWindowPlatform::Linux,
 			};
-			let message = AppWindowMessage::AppWindowUpdatePlatform { platform };
+			let message = AppWindowMessage::UpdatePlatform { platform };
 			dispatcher.queue_editor_message(message);
 		}
 		DesktopWrapperMessage::UpdateMaximized { maximized } => {

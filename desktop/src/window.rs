@@ -11,6 +11,9 @@ pub(crate) trait NativeWindow {
 	fn configure(attributes: WindowAttributes, event_loop: &dyn ActiveEventLoop) -> WindowAttributes;
 	fn new(window: &dyn WinitWindow, app_event_scheduler: AppEventScheduler) -> Self;
 	fn update_menu(&self, _entries: Vec<MenuItem>) {}
+	fn hide(&self) {}
+	fn hide_others(&self) {}
+	fn show_all(&self) {}
 }
 
 #[cfg(target_os = "linux")]
@@ -91,6 +94,18 @@ impl Window {
 
 	pub(crate) fn start_drag(&self) {
 		let _ = self.winit_window.drag_window();
+	}
+
+	pub(crate) fn hide(&self) {
+		self.native_handle.hide();
+	}
+
+	pub(crate) fn hide_others(&self) {
+		self.native_handle.hide_others();
+	}
+
+	pub(crate) fn show_all(&self) {
+		self.native_handle.show_all();
 	}
 
 	pub(crate) fn set_cursor(&self, cursor: winit::cursor::Cursor) {

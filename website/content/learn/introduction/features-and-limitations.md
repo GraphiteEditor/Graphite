@@ -13,9 +13,9 @@ A lot is planned on the future [roadmap](/features#roadmap), but here's an overv
 
 ### Vector illustration and graphic design
 
-| | |
-|-|-|
-| <p>Vector editing is the core competency of the Graphite editor at this stage in its development. That means you can create shape-based vector artwork and designs with the available tools.</p><p>Primitive geometry like rectangles and ellipses can be drawn and, as desired, modified into more complex shapes using the Path tool. Fully organic shapes may also be created from scratch with the Pen tool. They can then be given colors and gradients to add visual style. This cactus is an example of the style of artwork you can create with vector graphics.</p> | <img src="https://static.graphite.rs/content/learn/introduction/features-and-limitations/cactus-vector-art.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Example vector artwork of a potted cactus" style="max-width: unset" /> |
+<img src="https://static.graphite.rs/content/learn/introduction/features-and-limitations/cactus-vector-art.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Example vector artwork of a potted cactus" style="max-width: unset; float: right; margin-left: 40px" />
+
+Vector editing is the core competency of the Graphite editor at this stage in its development. That means you can create shape-based vector artwork and designs with the available tools.</p><p>Primitive geometry like rectangles and ellipses can be drawn and, as desired, modified into more complex shapes using the Path tool. Fully organic shapes may also be created from scratch with the Pen tool. They can then be given colors and gradients to add visual style. This cactus is an example of the style of artwork you can create with vector graphics.
 
 ### Procedural design
 
@@ -32,18 +32,13 @@ Starting from the left, the <img src="https://static.graphite.rs/content/learn/i
 Next, that is fed into the <img src="https://static.graphite.rs/content/learn/introduction/features-and-limitations/circular-repeat-node__3.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" onload="this.width = this.naturalWidth / 2" style="vertical-align: middle" alt="Circular Repeat" /> node which has several parameters you can modify and get different output data based on your choices, like in these examples:
 
 <style class="table-1-style">
-.table-1-style + table {
-	width: auto;
-}
-
 .table-1-style + table td {
 	vertical-align: middle;
-	text-align: center;
 }
 </style>
 
 | | |
-|-|-|
+|:-:|:-:|
 | <img src="https://static.graphite.rs/content/learn/introduction/features-and-limitations/circular-repeat-node-parameters-1__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" onload="this.width = this.naturalWidth / 2" alt="" /> | <img src="https://static.graphite.rs/content/learn/introduction/features-and-limitations/circular-repeat-node-output-1.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" onload="this.width = this.naturalWidth / 2" alt="" /> |
 | <img src="https://static.graphite.rs/content/learn/introduction/features-and-limitations/circular-repeat-node-parameters-2__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" onload="this.width = this.naturalWidth / 2" alt="" /> | <img src="https://static.graphite.rs/content/learn/introduction/features-and-limitations/circular-repeat-node-output-2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" onload="this.width = this.naturalWidth / 2" alt="" /> |
 | <img src="https://static.graphite.rs/content/learn/introduction/features-and-limitations/circular-repeat-node-parameters-3__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" onload="this.width = this.naturalWidth / 2" alt="" /> | <img src="https://static.graphite.rs/content/learn/introduction/features-and-limitations/circular-repeat-node-output-3.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" onload="this.width = this.naturalWidth / 2" alt="" /> |
@@ -57,31 +52,3 @@ The node's properties offer controls over settings like *Angle Offset* (what ang
 Raster image editing is a growing capability that will develop over time into the central focus of Graphite. Raster imagery is composed of pixels which are grids of color that can represent anything visual, like paintings and photographs. The current feature set lets you import images, manipulate them using the node-based compositor, and apply nondestructive global effects like color adjustment filters.
 
 A prototype <img src="https://static.graphite.rs/content/learn/introduction/features-and-limitations/brush-tool-icon.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" onload="this.width = this.naturalWidth / 2" alt="" style="vertical-align: bottom" /> Brush tool exists letting you draw simple doodles and sketches. However it is very limited in its capabilities and there are multiple bugs and performance issues with the feature. It can be used in a basic capacity, but don't expect to paint anything too impressive using raster brushes quite yet. The tool will be fully rewritten in the future.
-
-## Status and limitations
-
-Please make yourself aware of these factors to better understand and work around the rough edges in today's Graphite editor.
-
-### Evolving document format
-
-Saved documents will eventually fail to render in future versions of the Graphite editor because of code changes. Since node implementations and other systems are in flux, file format stability isn't possible yet during this alpha stage of development. If a file opens but there's a rendering error, you may need to open the node graph and replace outdated nodes by creating new ones near the site of an error. Later in the development roadmap, a redesigned file format with a `.gdd` (Graphite Design Document) extension will replace `.graphite` files and it will be built with seamless backwards-compatability in mind.
-
-### Limited raster tooling
-
-While you can import bitmap images, apply image effects in the node graph, and draw brush strokes, there is not much tooling yet to make the overall raster workflow that useful. Marquee selection is an upcoming feature slated for later in 2025 which will significantly improve the utility of raster editing in Graphite.
-
-Hardware accelerated rendering, to offload pixel processing from the CPU to GPU, is also planned for 2025. It will drastically improve the performance of working with millions of pixels.
-
-### Performance bottlenecks
-
-Graphite has several temporary performance bottlenecks that currently yield poor responsiveness when working with raster content, complex vector artwork, and large procedural node graphs. This is especially impactful for raster content. It also currently applies to large volumes of vector data, such as paragraphs worth of text (which is represented as vector paths).
-
-Each of these limitations will be resolved by finishing the implementations of incomplete systems that impose slowdowns in their current forms. For example, certain opportunities for node graph caching are not operational and GPU-accelerated rendering isn't enabled yet.
-
-Performance will be a high-priority focus throughout 2025.
-
-### Best-effort Safari support
-
-Old versions of Safari lack support for the web standards Graphite is built upon. The latest version of the browser still won't run Graphite as well as Chrome and you may encounter extra bugs because we have limited resources to regularly test for Safari issues. Feel free to file issues only if you're using the latest Safari version and find a bug that isn't present in Chrome.
-
-The latest Chrome, Edge, or Opera browser is recommended for the best-supported experience. Firefox works reasonably well, with only some minor loss of quality-of-life features. Brave is likely to encounter issues due to its aggressive degradation of web standards.

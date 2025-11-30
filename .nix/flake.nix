@@ -98,6 +98,9 @@
             pkgs.gnuplot
             pkgs.samply
             pkgs.cargo-flamegraph
+
+            # Plotting tools
+            pkgs.graphviz
           ];
           all = desktop ++ frontend ++ dev;
         };
