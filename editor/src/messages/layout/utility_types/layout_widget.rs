@@ -351,37 +351,73 @@ impl From<Vec<WidgetHolder>> for LayoutGroup {
 }
 
 impl LayoutGroup {
-	/// Applies a tooltip to all widgets in this row or column without a tooltip.
-	pub fn with_tooltip(self, tooltip: impl Into<String>) -> Self {
+	/// Applies a tooltip label to all widgets in this row or column without a tooltip.
+	pub fn with_tooltip_label(self, label: impl Into<String>) -> Self {
 		let (is_col, mut widgets) = match self {
 			LayoutGroup::Column { widgets } => (true, widgets),
 			LayoutGroup::Row { widgets } => (false, widgets),
 			_ => unimplemented!(),
 		};
-		let tooltip = tooltip.into();
+		let label = label.into();
 		for widget in &mut widgets {
 			let val = match &mut widget.widget {
-				Widget::CheckboxInput(x) => &mut x.tooltip,
-				Widget::ColorInput(x) => &mut x.tooltip,
-				Widget::CurveInput(x) => &mut x.tooltip,
-				Widget::DropdownInput(x) => &mut x.tooltip,
-				Widget::FontInput(x) => &mut x.tooltip,
-				Widget::IconButton(x) => &mut x.tooltip,
-				Widget::IconLabel(x) => &mut x.tooltip,
-				Widget::ImageButton(x) => &mut x.tooltip,
-				Widget::ImageLabel(x) => &mut x.tooltip,
-				Widget::NumberInput(x) => &mut x.tooltip,
-				Widget::ParameterExposeButton(x) => &mut x.tooltip,
-				Widget::PopoverButton(x) => &mut x.tooltip,
-				Widget::TextAreaInput(x) => &mut x.tooltip,
-				Widget::TextButton(x) => &mut x.tooltip,
-				Widget::TextInput(x) => &mut x.tooltip,
-				Widget::TextLabel(x) => &mut x.tooltip,
-				Widget::BreadcrumbTrailButtons(x) => &mut x.tooltip,
+				Widget::CheckboxInput(x) => &mut x.tooltip_label,
+				Widget::ColorInput(x) => &mut x.tooltip_label,
+				Widget::CurveInput(x) => &mut x.tooltip_label,
+				Widget::DropdownInput(x) => &mut x.tooltip_label,
+				Widget::FontInput(x) => &mut x.tooltip_label,
+				Widget::IconButton(x) => &mut x.tooltip_label,
+				Widget::IconLabel(x) => &mut x.tooltip_label,
+				Widget::ImageButton(x) => &mut x.tooltip_label,
+				Widget::ImageLabel(x) => &mut x.tooltip_label,
+				Widget::NumberInput(x) => &mut x.tooltip_label,
+				Widget::ParameterExposeButton(x) => &mut x.tooltip_label,
+				Widget::PopoverButton(x) => &mut x.tooltip_label,
+				Widget::TextAreaInput(x) => &mut x.tooltip_label,
+				Widget::TextButton(x) => &mut x.tooltip_label,
+				Widget::TextInput(x) => &mut x.tooltip_label,
+				Widget::TextLabel(x) => &mut x.tooltip_label,
+				Widget::BreadcrumbTrailButtons(x) => &mut x.tooltip_label,
 				Widget::InvisibleStandinInput(_) | Widget::ReferencePointInput(_) | Widget::RadioInput(_) | Widget::Separator(_) | Widget::WorkingColorsInput(_) | Widget::NodeCatalog(_) => continue,
 			};
 			if val.is_empty() {
-				val.clone_from(&tooltip);
+				val.clone_from(&label);
+			}
+		}
+		if is_col { Self::Column { widgets } } else { Self::Row { widgets } }
+	}
+
+	/// Applies a tooltip description to all widgets in this row or column without a tooltip.
+	pub fn with_tooltip_description(self, description: impl Into<String>) -> Self {
+		let (is_col, mut widgets) = match self {
+			LayoutGroup::Column { widgets } => (true, widgets),
+			LayoutGroup::Row { widgets } => (false, widgets),
+			_ => unimplemented!(),
+		};
+		let description = description.into();
+		for widget in &mut widgets {
+			let val = match &mut widget.widget {
+				Widget::CheckboxInput(x) => &mut x.tooltip_description,
+				Widget::ColorInput(x) => &mut x.tooltip_description,
+				Widget::CurveInput(x) => &mut x.tooltip_description,
+				Widget::DropdownInput(x) => &mut x.tooltip_description,
+				Widget::FontInput(x) => &mut x.tooltip_description,
+				Widget::IconButton(x) => &mut x.tooltip_description,
+				Widget::IconLabel(x) => &mut x.tooltip_description,
+				Widget::ImageButton(x) => &mut x.tooltip_description,
+				Widget::ImageLabel(x) => &mut x.tooltip_description,
+				Widget::NumberInput(x) => &mut x.tooltip_description,
+				Widget::ParameterExposeButton(x) => &mut x.tooltip_description,
+				Widget::PopoverButton(x) => &mut x.tooltip_description,
+				Widget::TextAreaInput(x) => &mut x.tooltip_description,
+				Widget::TextButton(x) => &mut x.tooltip_description,
+				Widget::TextInput(x) => &mut x.tooltip_description,
+				Widget::TextLabel(x) => &mut x.tooltip_description,
+				Widget::BreadcrumbTrailButtons(x) => &mut x.tooltip_description,
+				Widget::InvisibleStandinInput(_) | Widget::ReferencePointInput(_) | Widget::RadioInput(_) | Widget::Separator(_) | Widget::WorkingColorsInput(_) | Widget::NodeCatalog(_) => continue,
+			};
+			if val.is_empty() {
+				val.clone_from(&description);
 			}
 		}
 		if is_col { Self::Column { widgets } } else { Self::Row { widgets } }
@@ -513,8 +549,9 @@ impl WidgetHolder {
 			&& button1.style == button2.style
 			&& button1.menu_direction == button2.menu_direction
 			&& button1.icon == button2.icon
-			&& button1.tooltip == button2.tooltip
-			&& button1.tooltip_shortcut == button2.tooltip_shortcut
+			&& button1.tooltip_label == button2.tooltip_label
+			&& button1.tooltip_description == button2.tooltip_description
+			&& button1.shortcut_keys == button2.shortcut_keys
 			&& button1.popover_min_width == button2.popover_min_width
 		{
 			let mut new_widget_path = widget_path.to_vec();
@@ -617,36 +654,29 @@ impl DiffUpdate {
 	/// Append the keyboard shortcut to the tooltip where applicable
 	pub fn apply_keyboard_shortcut(&mut self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>) {
 		// Function used multiple times later in this code block to convert `ActionKeys::Action` to `ActionKeys::Keys` and append its shortcut to the tooltip
-		let apply_shortcut_to_tooltip = |tooltip_shortcut: &mut ActionKeys, tooltip: &mut String| {
-			let shortcut_text = tooltip_shortcut.to_keys(action_input_mapping);
+		let apply_shortcut_to_tooltip = |shortcut_keys: &mut ActionKeys, tooltip_shortcut: &mut String| {
+			let shortcut_text = shortcut_keys.to_keys(action_input_mapping);
 
-			if let ActionKeys::Keys(_keys) = tooltip_shortcut
-				&& !shortcut_text.is_empty()
-			{
-				if !tooltip.is_empty() {
-					tooltip.push(' ');
-				}
-				tooltip.push('(');
-				tooltip.push_str(&shortcut_text);
-				tooltip.push(')');
+			if matches!(shortcut_keys, ActionKeys::Keys(_)) && !shortcut_text.is_empty() {
+				tooltip_shortcut.push_str(&shortcut_text);
 			}
 		};
 
 		// Go through each widget to convert `ActionKeys::Action` to `ActionKeys::Keys` and append the key combination to the widget tooltip
 		let convert_tooltip = |widget_holder: &mut WidgetHolder| {
 			// Handle all the widgets that have tooltips
-			let mut tooltip_shortcut = match &mut widget_holder.widget {
-				Widget::BreadcrumbTrailButtons(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
-				Widget::CheckboxInput(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
-				Widget::ColorInput(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
-				Widget::DropdownInput(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
-				Widget::FontInput(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
-				Widget::IconButton(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
-				Widget::NumberInput(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
-				Widget::ParameterExposeButton(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
-				Widget::PopoverButton(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
-				Widget::TextButton(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
-				Widget::ImageButton(widget) => Some((&mut widget.tooltip, &mut widget.tooltip_shortcut)),
+			let mut shortcut_keys = match &mut widget_holder.widget {
+				Widget::BreadcrumbTrailButtons(widget) => Some((&mut widget.tooltip_shortcut, &mut widget.shortcut_keys)),
+				Widget::CheckboxInput(widget) => Some((&mut widget.tooltip_shortcut, &mut widget.shortcut_keys)),
+				Widget::ColorInput(widget) => Some((&mut widget.tooltip_shortcut, &mut widget.shortcut_keys)),
+				Widget::DropdownInput(widget) => Some((&mut widget.tooltip_shortcut, &mut widget.shortcut_keys)),
+				Widget::FontInput(widget) => Some((&mut widget.tooltip_shortcut, &mut widget.shortcut_keys)),
+				Widget::IconButton(widget) => Some((&mut widget.tooltip_shortcut, &mut widget.shortcut_keys)),
+				Widget::NumberInput(widget) => Some((&mut widget.tooltip_shortcut, &mut widget.shortcut_keys)),
+				Widget::ParameterExposeButton(widget) => Some((&mut widget.tooltip_shortcut, &mut widget.shortcut_keys)),
+				Widget::PopoverButton(widget) => Some((&mut widget.tooltip_shortcut, &mut widget.shortcut_keys)),
+				Widget::TextButton(widget) => Some((&mut widget.tooltip_shortcut, &mut widget.shortcut_keys)),
+				Widget::ImageButton(widget) => Some((&mut widget.tooltip_shortcut, &mut widget.shortcut_keys)),
 				Widget::IconLabel(_)
 				| Widget::ImageLabel(_)
 				| Widget::CurveInput(_)
@@ -660,20 +690,20 @@ impl DiffUpdate {
 				| Widget::TextLabel(_)
 				| Widget::WorkingColorsInput(_) => None,
 			};
-			if let Some((tooltip, Some(tooltip_shortcut))) = &mut tooltip_shortcut {
-				apply_shortcut_to_tooltip(tooltip_shortcut, tooltip);
+			if let Some((tooltip_shortcut, Some(shortcut_keys))) = &mut shortcut_keys {
+				apply_shortcut_to_tooltip(shortcut_keys, tooltip_shortcut);
 			}
 
 			// Handle RadioInput separately because its tooltips are children of the widget
 			if let Widget::RadioInput(radio_input) = &mut widget_holder.widget {
 				for radio_entry_data in &mut radio_input.entries {
 					if let RadioEntryData {
-						tooltip,
-						tooltip_shortcut: Some(tooltip_shortcut),
+						tooltip_shortcut,
+						shortcut_keys: Some(shortcut_keys),
 						..
 					} = radio_entry_data
 					{
-						apply_shortcut_to_tooltip(tooltip_shortcut, tooltip);
+						apply_shortcut_to_tooltip(shortcut_keys, tooltip_shortcut);
 					}
 				}
 			}

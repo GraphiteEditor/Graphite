@@ -16,7 +16,9 @@
 	export let disabled = false;
 	export let activeMarkerIndex = 0 as number | undefined;
 	// export let disabled = false;
-	// export let tooltip: string | undefined = undefined;
+	// export let tooltipLabel: string | undefined = undefined;
+	// export let tooltipDescription: string | undefined = undefined;
+	// export let tooltipShortcut: string | undefined = undefined;
 
 	let markerTrack: LayoutRow | undefined = undefined;
 	let positionRestore: number | undefined = undefined;

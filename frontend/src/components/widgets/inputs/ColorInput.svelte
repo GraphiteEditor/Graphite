@@ -17,7 +17,9 @@
 	export let allowNone = false;
 	export let menuDirection: MenuDirection = "Bottom";
 	// export let allowTransparency = false; // TODO: Implement
-	export let tooltip: string | undefined = undefined;
+	export let tooltipLabel: string | undefined = undefined;
+	export let tooltipDescription: string | undefined = undefined;
+	export let tooltipShortcut: string | undefined = undefined;
 
 	$: outlineFactor = contrastingOutlineFactor(value, ["--color-1-nearblack", "--color-3-darkgray"], 0.01);
 	$: outlined = outlineFactor > 0.0001;
@@ -26,7 +28,7 @@
 	$: transparency = value instanceof Gradient ? value.stops.some((stop) => stop.color.alpha < 1) : value.alpha < 1;
 </script>
 
-<LayoutCol class="color-button" classes={{ open, disabled, narrow, none, transparency, outlined, "direction-top": menuDirection === "Top" }} {tooltip}>
+<LayoutCol class="color-button" classes={{ open, disabled, narrow, none, transparency, outlined, "direction-top": menuDirection === "Top" }} {tooltipLabel} {tooltipDescription} {tooltipShortcut}>
 	<button style:--chosen-gradient={chosenGradient} style:--outline-amount={outlineFactor} on:click={() => (open = true)} tabindex="0" data-floating-menu-spawner>
 		<!-- {#if disabled && value instanceof Color && !value.none}
 			<TextLabel>sRGB</TextLabel>

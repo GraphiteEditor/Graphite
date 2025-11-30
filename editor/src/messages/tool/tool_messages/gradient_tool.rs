@@ -45,7 +45,7 @@ impl ToolMetadata for GradientTool {
 	fn icon_name(&self) -> String {
 		"GeneralGradientTool".into()
 	}
-	fn tooltip(&self) -> String {
+	fn tooltip_label(&self) -> String {
 		"Gradient Tool".into()
 	}
 	fn tool_type(&self) -> crate::messages::tool::utility_types::ToolType {
@@ -91,13 +91,13 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 impl LayoutHolder for GradientTool {
 	fn layout(&self) -> Layout {
 		let gradient_type = RadioInput::new(vec![
-			RadioEntryData::new("Linear").label("Linear").tooltip("Linear gradient").on_update(move |_| {
+			RadioEntryData::new("Linear").label("Linear").tooltip_label("Linear Gradient").on_update(move |_| {
 				GradientToolMessage::UpdateOptions {
 					options: GradientOptionsUpdate::Type(GradientType::Linear),
 				}
 				.into()
 			}),
-			RadioEntryData::new("Radial").label("Radial").tooltip("Radial gradient").on_update(move |_| {
+			RadioEntryData::new("Radial").label("Radial").tooltip_label("Radial Gradient").on_update(move |_| {
 				GradientToolMessage::UpdateOptions {
 					options: GradientOptionsUpdate::Type(GradientType::Radial),
 				}

@@ -609,7 +609,6 @@
 					styles={{ "--layer-indent-levels": `${listing.entry.depth - 1}` }}
 					data-layer
 					data-index={index}
-					tooltip={listing.entry.tooltip}
 					on:pointerdown={(e) => layerPointerDown(e, listing)}
 					on:click={(e) => selectLayerWithModifiers(e, listing)}
 				>
@@ -618,9 +617,12 @@
 							class="expand-arrow"
 							class:expanded={listing.entry.expanded}
 							disabled={!listing.entry.childrenPresent}
-							title={listing.entry.expanded
-								? "Collapse (Click) / Collapse All (Alt Click)"
-								: `Expand (Click) / Expand All (Alt Click)${listing.entry.ancestorOfSelected ? "\n(A selected layer is contained within)" : ""}`}
+							data-tooltip-label={listing.entry.expanded ? "Collapse (All)" : "Expand (All)"}
+							data-tooltip-description={(listing.entry.expanded
+								? "Hide the layers nested within. (To affect all open descendants, perform the shortcut shown.)"
+								: "Show the layers nested within. (To affect all closed descendants, perform the shortcut shown.)") +
+								(listing.entry.ancestorOfSelected && !listing.entry.expanded ? "\n\nNote: a selected layer is currently contained within.\n" : "")}
+							data-tooltip-shortcut="Alt Click"
 							on:click={(e) => handleExpandArrowClickWithModifiers(e, listing.entry.id)}
 							tabindex="0"
 						></button>
@@ -628,7 +630,12 @@
 						<div class="expand-arrow-none"></div>
 					{/if}
 					{#if listing.entry.clipped}
-						<IconLabel icon="Clipped" class="clipped-arrow" tooltip="Clipping mask is active (Alt-click border to release)" />
+						<IconLabel
+							icon="Clipped"
+							class="clipped-arrow"
+							tooltipDescription="Clipping mask is active. To release it, perform the shortcut on the layer border."
+							tooltipShortcut="Alt Click"
+						/>
 					{/if}
 					<div class="thumbnail">
 						{#if $nodeGraph.thumbnails.has(listing.entry.id)}
@@ -659,7 +666,8 @@
 							size={24}
 							icon={listing.entry.unlocked ? "PadlockUnlocked" : "PadlockLocked"}
 							hoverIcon={listing.entry.unlocked ? "PadlockLocked" : "PadlockUnlocked"}
-							tooltip={(listing.entry.unlocked ? "Lock" : "Unlock") + (!listing.entry.parentsUnlocked ? "\n(A parent of this layer is locked and that status is being inherited)" : "")}
+							tooltipLabel={listing.entry.unlocked ? "Lock" : "Unlock"}
+							tooltipDescription={!listing.entry.parentsUnlocked ? "A parent of this layer is locked and that status is being inherited." : ""}
 						/>
 					{/if}
 					<IconButton
@@ -669,7 +677,8 @@
 						size={24}
 						icon={listing.entry.visible ? "EyeVisible" : "EyeHidden"}
 						hoverIcon={listing.entry.visible ? "EyeHide" : "EyeShow"}
-						tooltip={(listing.entry.visible ? "Hide" : "Show") + (!listing.entry.parentsVisible ? "\n(A parent of this layer is hidden and that status is being inherited)" : "")}
+						tooltipLabel={listing.entry.visible ? "Hide" : "Show"}
+						tooltipDescription={!listing.entry.parentsVisible ? "A parent of this layer is hidden and that status is being inherited." : ""}
 					/>
 				</LayoutRow>
 			{/each}

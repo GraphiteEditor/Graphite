@@ -215,7 +215,7 @@ impl ProtoNetwork {
 	fn check_ref(&self, ref_id: &NodeId, id: &NodeId) {
 		debug_assert!(
 			self.nodes.iter().any(|(check_id, _)| check_id == ref_id),
-			"Node id:{id} has a reference which uses node id:{ref_id} which doesn't exist in network {self:#?}"
+			"Node with ID {id} has a reference which uses the node with ID {ref_id} which doesn't exist in network {self:#?}"
 		);
 	}
 

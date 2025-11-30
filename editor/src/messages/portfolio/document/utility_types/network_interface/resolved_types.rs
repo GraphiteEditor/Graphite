@@ -88,7 +88,7 @@ impl TypeSource {
 		self.compiled_nested_type().map(|ty| format!("type:{ty}"))
 	}
 
-	/// The type to display in the tooltip.
+	/// The type to display in the tooltip label.
 	pub fn resolved_type_tooltip_string(&self) -> String {
 		match self {
 			TypeSource::Compiled(compiled_type) => format!("Data Type: {:?}", compiled_type.nested_type().to_string()),

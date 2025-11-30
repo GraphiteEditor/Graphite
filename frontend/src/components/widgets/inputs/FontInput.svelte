@@ -23,7 +23,9 @@
 	export let fontStyle: string;
 	export let isStyle = false;
 	export let disabled = false;
-	export let tooltip: string | undefined = undefined;
+	export let tooltipLabel: string | undefined = undefined;
+	export let tooltipDescription: string | undefined = undefined;
+	export let tooltipShortcut: string | undefined = undefined;
 
 	let open = false;
 	let entries: MenuListEntry[] = [];
@@ -108,7 +110,9 @@
 		class="dropdown-box"
 		classes={{ disabled }}
 		styles={{ ...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}) }}
-		{tooltip}
+		{tooltipLabel}
+		{tooltipDescription}
+		{tooltipShortcut}
 		tabindex={disabled ? -1 : 0}
 		on:click={toggleOpen}
 		data-floating-menu-spawner

@@ -631,15 +631,12 @@ impl NodeNetworkInterface {
 			.upstream_output_connector(input_connector, network_path)
 			.map(|output_connector| match output_connector {
 				OutputConnector::Node { node_id, output_index } => {
-					let mut name = self.display_name(&node_id, network_path);
-					if cfg!(debug_assertions) {
-						name.push_str(&format!(" (id: {node_id})"));
-					}
-					format!("{name} output {output_index}")
+					let name = self.display_name(&node_id, network_path);
+					format!("Connected to output #{output_index} of \"{name}\", ID: {node_id}.")
 				}
-				OutputConnector::Import(import_index) => format!("Import index {import_index}"),
+				OutputConnector::Import(import_index) => format!("Connected to import #{import_index}."),
 			})
-			.unwrap_or("nothing".to_string());
+			.unwrap_or("Connected to nothing.".to_string());
 
 		let (name, description) = match input_connector {
 			InputConnector::Node { node_id, input_index } => self.displayed_input_name_and_description(node_id, *input_index, network_path),
@@ -659,7 +656,7 @@ impl NodeNetworkInterface {
 				} else if let Some(export_type_name) = input_type.compiled_nested_type().map(|nested| nested.to_string()) {
 					export_type_name
 				} else {
-					format!("Export index {}", export_index)
+					format!("Export #{}", export_index)
 				};
 
 				(export_name, String::new())
@@ -709,7 +706,7 @@ impl NodeNetworkInterface {
 				} else if let Some(import_type_name) = output_type.compiled_nested_type().map(|nested| nested.to_string()) {
 					import_type_name
 				} else {
-					format!("Import index {}", import_index)
+					format!("Import #{}", import_index)
 				};
 
 				(import_name, description)
@@ -724,19 +721,16 @@ impl NodeNetworkInterface {
 			.unwrap_or_default()
 			.iter()
 			.map(|input| match input {
-				InputConnector::Node { node_id, input_index } => {
-					let mut name = self.display_name(node_id, network_path);
-					if cfg!(debug_assertions) {
-						name.push_str(&format!(" (id: {node_id})"));
-					}
-					format!("{name} input {input_index}")
+				&InputConnector::Node { node_id, input_index } => {
+					let name = self.display_name(&node_id, network_path);
+					format!("Connected to input #{input_index} of \"{name}\", ID: {node_id}.")
 				}
-				InputConnector::Export(export_index) => format!("Export index {export_index}"),
+				InputConnector::Export(export_index) => format!("Connected to export #{export_index}."),
 			})
 			.collect::<Vec<_>>();
 
 		if connected_to.is_empty() {
-			connected_to.push("nothing".to_string());
+			connected_to.push("Connected to nothing.".to_string());
 		}
 
 		Some(FrontendGraphOutput {
@@ -1014,7 +1008,6 @@ impl NodeNetworkInterface {
 	pub fn description(&self, node_id: &NodeId, network_path: &[NodeId]) -> String {
 		self.get_node_definition(node_id, network_path)
 			.map(|node_definition| node_definition.description.to_string())
-			.filter(|description| description != "TODO")
 			.unwrap_or_default()
 	}
 
@@ -6170,7 +6163,7 @@ pub struct InputPersistentMetadata {
 	pub widget_override: Option<String>,
 	/// An empty input name means to use the type as the name.
 	pub input_name: String,
-	/// Displayed as the tooltip.
+	/// Displayed as the tooltip description.
 	pub input_description: String,
 }
 
@@ -6233,8 +6226,8 @@ impl InputPersistentMetadata {
 		self
 	}
 
-	pub fn with_description(mut self, tooltip: &str) -> Self {
-		self.input_description = tooltip.to_string();
+	pub fn with_description(mut self, description: &str) -> Self {
+		self.input_description = description.to_string();
 		self
 	}
 }
@@ -6314,9 +6307,9 @@ impl From<(&str, &str)> for InputMetadata {
 }
 
 impl InputMetadata {
-	pub fn with_name_description_override(input_name: &str, tooltip: &str, widget_override: WidgetOverride) -> Self {
+	pub fn with_name_description_override(input_name: &str, description: &str, widget_override: WidgetOverride) -> Self {
 		InputMetadata {
-			persistent_metadata: InputPersistentMetadata::default().with_name(input_name).with_description(tooltip).with_override(widget_override),
+			persistent_metadata: InputPersistentMetadata::default().with_name(input_name).with_description(description).with_override(widget_override),
 			..Default::default()
 		}
 	}

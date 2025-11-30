@@ -54,7 +54,7 @@ pub struct FrontendGraphInput {
 	#[serde(rename = "validTypes")]
 	pub valid_types: Vec<String>,
 	#[serde(rename = "connectedTo")]
-	/// Either "nothing", "import index {index}", or "{node name} output {output_index}".
+	/// Either "nothing", "import #{index}", or "{node name} #{output_index}".
 	pub connected_to: String,
 }
 

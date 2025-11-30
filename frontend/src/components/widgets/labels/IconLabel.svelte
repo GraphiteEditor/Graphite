@@ -9,7 +9,9 @@
 	export let icon: IconName;
 	export let iconSizeOverride: number | undefined = undefined;
 	export let disabled = false;
-	export let tooltip: string | undefined = undefined;
+	export let tooltipLabel: string | undefined = undefined;
+	export let tooltipDescription: string | undefined = undefined;
+	export let tooltipShortcut: string | undefined = undefined;
 
 	$: iconSizeClass = ((icon: IconName) => {
 		const iconData = ICONS[icon];
@@ -26,7 +28,7 @@
 		.join(" ");
 </script>
 
-<LayoutRow class={`icon-label ${iconSizeClass} ${className} ${extraClasses}`.trim()} classes={{ disabled }} {tooltip}>
+<LayoutRow class={`icon-label ${iconSizeClass} ${className} ${extraClasses}`.trim()} classes={{ disabled }} {tooltipLabel} {tooltipDescription} {tooltipShortcut}>
 	{@html ICON_SVG_STRINGS[icon] || "�"}
 </LayoutRow>
 

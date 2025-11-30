@@ -3,7 +3,7 @@
 
 	import { type Editor } from "@graphite/editor";
 	import { createClipboardManager } from "@graphite/io-managers/clipboard";
-	import { createHyperlinkManager } from "@graphite/io-managers/hyperlinks";
+	import { createHyperlinkManager } from "@graphite/io-managers/hyperlink";
 	import { createInputManager } from "@graphite/io-managers/input";
 	import { createLocalizationManager } from "@graphite/io-managers/localization";
 	import { createPanicManager } from "@graphite/io-managers/panic";
@@ -15,6 +15,7 @@
 	import { createFullscreenState } from "@graphite/state-providers/fullscreen";
 	import { createNodeGraphState } from "@graphite/state-providers/node-graph";
 	import { createPortfolioState } from "@graphite/state-providers/portfolio";
+	import { createTooltipState } from "@graphite/state-providers/tooltip";
 	import { operatingSystem } from "@graphite/utility-functions/platform";
 
 	import MainWindow from "@graphite/components/window/MainWindow.svelte";
@@ -26,6 +27,8 @@
 	// State provider systems
 	let dialog = createDialogState(editor);
 	setContext("dialog", dialog);
+	let tooltip = createTooltipState();
+	setContext("tooltip", tooltip);
 	let document = createDocumentState(editor);
 	setContext("document", document);
 	let fonts = createFontsState(editor);

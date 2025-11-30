@@ -97,13 +97,13 @@ impl DataPanelMessageHandler {
 
 			widgets.extend([
 				if is_layer {
-					IconLabel::new("Layer").tooltip("Name of the selected layer").widget_holder()
+					IconLabel::new("Layer").tooltip_description("Name of the selected layer.").widget_holder()
 				} else {
-					IconLabel::new("Node").tooltip("Name of the selected node").widget_holder()
+					IconLabel::new("Node").tooltip_description("Name of the selected node.").widget_holder()
 				},
 				Separator::new(SeparatorType::Related).widget_holder(),
 				TextInput::new(network_interface.display_name(&node_id, &[]))
-					.tooltip(if is_layer { "Name of the selected layer" } else { "Name of the selected node" })
+					.tooltip_description(if is_layer { "Name of the selected layer." } else { "Name of the selected node." })
 					.on_update(move |text_input| {
 						NodeGraphMessage::SetDisplayName {
 							node_id,

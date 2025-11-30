@@ -386,55 +386,55 @@ pub const SNAP_FUNCTIONS_FOR_BOUNDING_BOXES: [(&str, GetSnapState, &str); 5] = [
 	(
 		"Align with Edges",
 		(|snapping_state| &mut snapping_state.bounding_box.align_with_edges) as GetSnapState,
-		"Snaps to horizontal/vertical alignment with the edges of any layer's bounding box",
+		"Snaps to horizontal/vertical alignment with the edges of any layer's bounding box.",
 	),
 	(
 		"Corner Points",
 		(|snapping_state| &mut snapping_state.bounding_box.corner_point) as GetSnapState,
-		"Snaps to the four corners of any layer's bounding box",
+		"Snaps to the four corners of any layer's bounding box.",
 	),
 	(
 		"Center Points",
 		(|snapping_state| &mut snapping_state.bounding_box.center_point) as GetSnapState,
-		"Snaps to the center point of any layer's bounding box",
+		"Snaps to the center point of any layer's bounding box.",
 	),
 	(
 		"Edge Midpoints",
 		(|snapping_state| &mut snapping_state.bounding_box.edge_midpoint) as GetSnapState,
-		"Snaps to any of the four points at the middle of the edges of any layer's bounding box",
+		"Snaps to any of the four points at the middle of the edges of any layer's bounding box.",
 	),
 	(
 		"Distribute Evenly",
 		(|snapping_state| &mut snapping_state.bounding_box.distribute_evenly) as GetSnapState,
-		"Snaps to a consistent distance offset established by the bounding boxes of nearby layers",
+		"Snaps to a consistent distance offset established by the bounding boxes of nearby layers.",
 	),
 ];
 pub const SNAP_FUNCTIONS_FOR_PATHS: [(&str, GetSnapState, &str); 7] = [
 	(
 		"Align with Anchor Points",
 		(|snapping_state: &mut SnappingState| &mut snapping_state.path.align_with_anchor_point) as GetSnapState,
-		"Snaps to horizontal/vertical alignment with the anchor points of any vector path",
+		"Snaps to horizontal/vertical alignment with the anchor points of any vector path.",
 	),
 	(
 		"Anchor Points",
 		(|snapping_state: &mut SnappingState| &mut snapping_state.path.anchor_point) as GetSnapState,
-		"Snaps to the anchor point of any vector path",
+		"Snaps to the anchor point of any vector path.",
 	),
 	(
 		// TODO: Extend to the midpoints of curved segments and rename to "Segment Midpoint"
 		"Line Midpoints",
 		(|snapping_state: &mut SnappingState| &mut snapping_state.path.line_midpoint) as GetSnapState,
-		"Snaps to the point at the middle of any straight line segment of a vector path",
+		"Snaps to the point at the middle of any straight line segment of a vector path.",
 	),
 	(
 		"Path Intersection Points",
 		(|snapping_state: &mut SnappingState| &mut snapping_state.path.path_intersection_point) as GetSnapState,
-		"Snaps to any points where vector paths intersect",
+		"Snaps to any points where vector paths intersect.",
 	),
 	(
 		"Along Paths",
 		(|snapping_state: &mut SnappingState| &mut snapping_state.path.along_path) as GetSnapState,
-		"Snaps along the length of any vector path",
+		"Snaps along the length of any vector path.",
 	),
 	(
 		// TODO: This works correctly for line segments, but not curved segments.
@@ -442,7 +442,7 @@ pub const SNAP_FUNCTIONS_FOR_PATHS: [(&str, GetSnapState, &str); 7] = [
 		"Normal to Paths",
 		(|snapping_state: &mut SnappingState| &mut snapping_state.path.normal_to_path) as GetSnapState,
 		// TODO: Fix the bug/limitation that requires 'Intersections of Paths' to be enabled
-		"Snaps a line to a point perpendicular to a vector path\n(due to a bug, 'Intersections of Paths' must be enabled)",
+		"Snaps a line to a point perpendicular to a vector path.\n(Due to a bug, 'Intersections of Paths' must be enabled.)",
 	),
 	(
 		// TODO: This works correctly for line segments, but not curved segments.
@@ -450,7 +450,7 @@ pub const SNAP_FUNCTIONS_FOR_PATHS: [(&str, GetSnapState, &str); 7] = [
 		"Tangent to Paths",
 		(|snapping_state: &mut SnappingState| &mut snapping_state.path.tangent_to_path) as GetSnapState,
 		// TODO: Fix the bug/limitation that requires 'Intersections of Paths' to be enabled
-		"Snaps a line to a point tangent to a vector path\n(due to a bug, 'Intersections of Paths' must be enabled)",
+		"Snaps a line to a point tangent to a vector path.\n(Due to a bug, 'Intersections of Paths' must be enabled.)",
 	),
 ];
 
