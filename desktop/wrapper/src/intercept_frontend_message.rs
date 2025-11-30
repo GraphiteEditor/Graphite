@@ -218,7 +218,7 @@ fn convert_layout_keys_to_shortcut(layout_keys: &Vec<LayoutKey>) -> Option<Short
 	let mut key: Option<KeyCode> = None;
 	let mut modifiers = Modifiers::default();
 	for layout_key in layout_keys {
-		match layout_key.key {
+		match layout_key.key() {
 			Key::Shift => modifiers |= Modifiers::SHIFT,
 			Key::Control => modifiers |= Modifiers::CONTROL,
 			Key::Alt => modifiers |= Modifiers::ALT,
