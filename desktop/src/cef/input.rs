@@ -79,7 +79,7 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 				..Default::default()
 			};
 
-			key_event.modifiers = input_state.cef_modifiers(&event.location, event.repeat).0 as u32;
+			key_event.modifiers = input_state.cef_modifiers(&event.location, event.repeat).into();
 
 			key_event.windows_key_code = match &event.logical_key {
 				winit::keyboard::Key::Named(named) => named.to_vk_bits(),
