@@ -321,7 +321,7 @@ impl From<Key> for LayoutKey {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct LayoutKey {
-	key: Key,
+	pub key: Key,
 	label: String,
 }
 
