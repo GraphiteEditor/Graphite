@@ -38,7 +38,7 @@ var s_diffuse: sampler;
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-	let ui_linear = textureSample(t_ui, s_diffuse, in.tex_coords);
+	let ui_linear = srgb_to_linear(textureSample(t_ui, s_diffuse, in.tex_coords));
 	if (ui_linear.a >= 0.999) {
 		return ui_linear;
 	}

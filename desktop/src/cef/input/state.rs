@@ -83,7 +83,7 @@ impl From<&InputState> for MouseEvent {
 		MouseEvent {
 			x: val.mouse_position.x as i32,
 			y: val.mouse_position.y as i32,
-			modifiers: val.cef_mouse_modifiers().0,
+			modifiers: val.cef_mouse_modifiers().0 as u32,
 		}
 	}
 }
@@ -92,7 +92,7 @@ impl From<&mut InputState> for MouseEvent {
 		MouseEvent {
 			x: val.mouse_position.x as i32,
 			y: val.mouse_position.y as i32,
-			modifiers: val.cef_mouse_modifiers().0,
+			modifiers: val.cef_mouse_modifiers().0 as u32,
 		}
 	}
 }
