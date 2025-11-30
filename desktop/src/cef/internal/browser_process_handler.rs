@@ -19,7 +19,7 @@ impl<H: CefEventHandler> BrowserProcessHandlerImpl<H> {
 	}
 }
 
-impl<H: CefEventHandler + Clone> ImplBrowserProcessHandler for BrowserProcessHandlerImpl<H> {
+impl<H: CefEventHandler> ImplBrowserProcessHandler for BrowserProcessHandlerImpl<H> {
 	fn on_schedule_message_pump_work(&self, delay_ms: i64) {
 		self.event_handler.schedule_cef_message_loop_work(Instant::now() + Duration::from_millis(delay_ms as u64));
 	}
@@ -33,7 +33,7 @@ impl<H: CefEventHandler + Clone> ImplBrowserProcessHandler for BrowserProcessHan
 	}
 }
 
-impl<H: CefEventHandler + Clone> Clone for BrowserProcessHandlerImpl<H> {
+impl<H: CefEventHandler> Clone for BrowserProcessHandlerImpl<H> {
 	fn clone(&self) -> Self {
 		unsafe {
 			let rc_impl = &mut *self.object;
@@ -41,7 +41,7 @@ impl<H: CefEventHandler + Clone> Clone for BrowserProcessHandlerImpl<H> {
 		}
 		Self {
 			object: self.object,
-			event_handler: self.event_handler.clone(),
+			event_handler: self.event_handler.duplicate(),
 		}
 	}
 }
@@ -53,7 +53,7 @@ impl<H: CefEventHandler> Rc for BrowserProcessHandlerImpl<H> {
 		}
 	}
 }
-impl<H: CefEventHandler + Clone> WrapBrowserProcessHandler for BrowserProcessHandlerImpl<H> {
+impl<H: CefEventHandler> WrapBrowserProcessHandler for BrowserProcessHandlerImpl<H> {
 	fn wrap_rc(&mut self, object: *mut RcImpl<_cef_browser_process_handler_t, Self>) {
 		self.object = object;
 	}

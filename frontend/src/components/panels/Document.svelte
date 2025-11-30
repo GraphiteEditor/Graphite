@@ -20,7 +20,7 @@
 	import type { DocumentState } from "@graphite/state-providers/document";
 	import { textInputCleanup } from "@graphite/utility-functions/keyboard-entry";
 	import { extractPixelData, rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
-	import { updateBoundsOfViewports } from "@graphite/utility-functions/viewports";
+	import { updateBoundsOfViewports as updateViewport } from "@graphite/utility-functions/viewports";
 
 	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "@graphite/components/floating-menus/EyedropperPreview.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -74,21 +74,21 @@
 	let cursorEyedropperPreviewColorSecondary = "";
 
 	// Canvas dimensions
-	let canvasSvgWidth: number | undefined = undefined;
-	let canvasSvgHeight: number | undefined = undefined;
+	let canvasWidth: number | undefined = undefined;
+	let canvasHeight: number | undefined = undefined;
 
 	let devicePixelRatio: number | undefined;
 
 	// Dimension is rounded up to the nearest even number because resizing is centered, and dividing an odd number by 2 for centering causes antialiasing
-	$: canvasWidthRoundedToEven = canvasSvgWidth && (canvasSvgWidth % 2 === 1 ? canvasSvgWidth + 1 : canvasSvgWidth);
-	$: canvasHeightRoundedToEven = canvasSvgHeight && (canvasSvgHeight % 2 === 1 ? canvasSvgHeight + 1 : canvasSvgHeight);
+	$: canvasWidthRoundedToEven = canvasWidth && (canvasWidth % 2 === 1 ? canvasWidth + 1 : canvasWidth);
+	$: canvasHeightRoundedToEven = canvasHeight && (canvasHeight % 2 === 1 ? canvasHeight + 1 : canvasHeight);
 	// Used to set the canvas element size on the page.
 	// The value above in pixels, or if undefined, we fall back to 100% as a non-pixel-perfect backup that's hopefully short-lived
 	$: canvasWidthCSS = canvasWidthRoundedToEven ? `${canvasWidthRoundedToEven}px` : "100%";
 	$: canvasHeightCSS = canvasHeightRoundedToEven ? `${canvasHeightRoundedToEven}px` : "100%";
 
-	$: canvasWidthScaled = canvasSvgWidth && devicePixelRatio && Math.floor(canvasSvgWidth * devicePixelRatio);
-	$: canvasHeightScaled = canvasSvgHeight && devicePixelRatio && Math.floor(canvasSvgHeight * devicePixelRatio);
+	$: canvasWidthScaled = canvasWidth && devicePixelRatio && Math.floor(canvasWidth * devicePixelRatio);
+	$: canvasHeightScaled = canvasHeight && devicePixelRatio && Math.floor(canvasHeight * devicePixelRatio);
 
 	// Used to set the canvas rendering dimensions.
 	$: canvasWidthScaledRoundedToEven = canvasWidthScaled && (canvasWidthScaled % 2 === 1 ? canvasWidthScaled + 1 : canvasWidthScaled);
@@ -226,14 +226,14 @@
 		}
 		cursorEyedropper = true;
 
-		if (canvasSvgWidth === undefined || canvasSvgHeight === undefined) return undefined;
+		if (canvasWidth === undefined || canvasHeight === undefined) return undefined;
 
 		cursorLeft = mousePosition.x;
 		cursorTop = mousePosition.y;
 
 		// This works nearly perfectly, but sometimes at odd DPI scale factors like 1.25, the anti-aliasing color can yield slightly incorrect colors (potential room for future improvement)
 		const dpiFactor = window.devicePixelRatio;
-		const [width, height] = [canvasSvgWidth, canvasSvgHeight];
+		const [width, height] = [canvasWidth, canvasHeight];
 
 		const outsideArtboardsColor = getComputedStyle(window.document.documentElement).getPropertyValue("--color-2-mildblack");
 		const outsideArtboards = `<rect x="0" y="0" width="100%" height="100%" fill="${outsideArtboardsColor}" />`;
@@ -381,6 +381,22 @@
 		showTextInput = false;
 	}
 
+	function updateViewportInfo() {
+		if (!viewport) return;
+		// Resize the canvas
+		canvasWidth = Math.ceil(parseFloat(getComputedStyle(viewport).width));
+		canvasHeight = Math.ceil(parseFloat(getComputedStyle(viewport).height));
+
+		devicePixelRatio = window.devicePixelRatio || 1.0;
+
+		// Resize the rulers
+		rulerHorizontal?.resize();
+		rulerVertical?.resize();
+
+		// Send the new bounds of the viewports to the backend
+		if (viewport.parentElement) updateViewport(editor);
+	}
+
 	onMount(() => {
 		// Not compatible with Safari:
 		// <https://developer.mozilla.org/en-US/docs/Web/API/Window/devicePixelRatio#browser_compatibility>
@@ -393,8 +409,7 @@
 			mediaQueryList.addEventListener("change", updatePixelRatio);
 			removeUpdatePixelRatio = () => mediaQueryList.removeEventListener("change", updatePixelRatio);
 
-			devicePixelRatio = window.devicePixelRatio;
-			editor.handle.setDevicePixelRatio(devicePixelRatio);
+			updateViewportInfo();
 		};
 		updatePixelRatio();
 
@@ -462,18 +477,7 @@
 		window.dispatchEvent(new Event("resize"));
 
 		const viewportResizeObserver = new ResizeObserver(() => {
-			if (!viewport) return;
-
-			// Resize the canvas
-			canvasSvgWidth = Math.ceil(parseFloat(getComputedStyle(viewport).width));
-			canvasSvgHeight = Math.ceil(parseFloat(getComputedStyle(viewport).height));
-
-			// Resize the rulers
-			rulerHorizontal?.resize();
-			rulerVertical?.resize();
-
-			// Send the new bounds of the viewports to the backend
-			if (viewport.parentElement) updateBoundsOfViewports(editor);
+			updateViewportInfo();
 		});
 		if (viewport) viewportResizeObserver.observe(viewport);
 	});
@@ -588,7 +592,6 @@
 					thumbPosition={scrollbarPos.x}
 					on:trackShift={({ detail }) => editor.handle.panCanvasByFraction(detail, 0)}
 					on:thumbPosition={({ detail }) => panCanvasX(detail)}
-					on:thumbDragEnd={() => editor.handle.setGridAlignedEdges()}
 					on:thumbDragStart={() => editor.handle.panCanvasAbortPrepare(true)}
 					on:thumbDragAbort={() => editor.handle.panCanvasAbort(true)}
 				/>

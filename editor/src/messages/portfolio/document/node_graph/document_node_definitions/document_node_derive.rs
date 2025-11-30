@@ -6,7 +6,37 @@ use graphene_std::registry::*;
 use graphene_std::*;
 use std::collections::HashSet;
 
+/// Traverses a document node template and metadata in parallel to link the protonodes to their reference
+fn traverse_node(node: &DocumentNode, node_metadata: &mut DocumentNodePersistentMetadata) {
+	match &node.implementation {
+		DocumentNodeImplementation::Network(node_network) => {
+			for (nested_node_id, nested_node) in node_network.nodes.iter() {
+				let nested_metadata = node_metadata
+					.network_metadata
+					.as_mut()
+					.expect("Network node must have network metadata")
+					.persistent_metadata
+					.node_metadata
+					.get_mut(nested_node_id)
+					.expect("Network metadata must have corresponding node id");
+				traverse_node(nested_node, &mut nested_metadata.persistent_metadata);
+			}
+		}
+		DocumentNodeImplementation::ProtoNode(proto_node_identifier) => {
+			if let Some(metadata) = NODE_METADATA.lock().unwrap().get(proto_node_identifier) {
+				node_metadata.reference = Some(metadata.display_name.to_string());
+			}
+		}
+		DocumentNodeImplementation::Extract => {}
+	}
+}
+
 pub(super) fn post_process_nodes(mut custom: Vec<DocumentNodeDefinition>) -> Vec<DocumentNodeDefinition> {
+	// Link the protonodes with custom networks to their reference
+	for node in custom.iter_mut() {
+		traverse_node(&node.node_template.document_node, &mut node.node_template.persistent_node_metadata);
+	}
+
 	// Remove struct generics
 	for DocumentNodeDefinition { node_template, .. } in custom.iter_mut() {
 		let NodeTemplate {
@@ -14,10 +44,10 @@ pub(super) fn post_process_nodes(mut custom: Vec<DocumentNodeDefinition>) -> Vec
 			..
 		} = node_template;
 
-		if let DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier { name }) = implementation {
-			if let Some((new_name, _suffix)) = name.rsplit_once("<") {
-				*name = Cow::Owned(new_name.to_string())
-			}
+		if let DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier { name }) = implementation
+			&& let Some((new_name, _suffix)) = name.rsplit_once("<")
+		{
+			*name = Cow::Owned(new_name.to_string())
 		};
 	}
 

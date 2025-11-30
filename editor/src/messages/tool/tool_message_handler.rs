@@ -21,6 +21,7 @@ pub struct ToolMessageContext<'a> {
 	pub persistent_data: &'a PersistentData,
 	pub node_graph: &'a NodeGraphExecutor,
 	pub preferences: &'a PreferencesMessageHandler,
+	pub viewport: &'a ViewportMessageHandler,
 }
 
 #[derive(Debug, Default, ExtractField)]
@@ -41,6 +42,7 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 			persistent_data,
 			node_graph,
 			preferences,
+			viewport,
 		} = context;
 		let font_cache = &persistent_data.font_cache;
 
@@ -54,6 +56,7 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 					input,
 					tool_data: &self.tool_state.tool_data,
 					shape_editor: &mut self.shape_editor,
+					viewport,
 				},
 			),
 
@@ -123,6 +126,7 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 							shape_editor: &mut self.shape_editor,
 							node_graph,
 							preferences,
+							viewport,
 						};
 
 						if let Some(tool_abort_message) = tool.event_to_message_map().tool_abort {
@@ -230,6 +234,7 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 					shape_editor: &mut self.shape_editor,
 					node_graph,
 					preferences,
+					viewport,
 				};
 
 				// Set initial hints and cursor
@@ -336,6 +341,7 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 							shape_editor: &mut self.shape_editor,
 							node_graph,
 							preferences,
+							viewport,
 						};
 						if matches!(tool_message, ToolMessage::UpdateHints) {
 							if graph_view_overlay_open {

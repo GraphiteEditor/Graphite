@@ -139,12 +139,9 @@ export class UpdateWirePathInProgress extends JsMessage {
 
 export class OpenDocument {
 	readonly id!: bigint;
+
 	@Type(() => DocumentDetails)
 	readonly details!: DocumentDetails;
-
-	get displayName(): string {
-		return this.details.displayName;
-	}
 }
 
 export class DocumentDetails {
@@ -153,10 +150,6 @@ export class DocumentDetails {
 	readonly isAutoSaved!: boolean;
 
 	readonly isSaved!: boolean;
-
-	get displayName(): string {
-		return `${this.name}${this.isSaved ? "" : "*"}`;
-	}
 }
 
 export class Box {
@@ -175,7 +168,6 @@ export type FrontendClickTargets = {
 	readonly connectorClickTargets: string[];
 	readonly iconClickTargets: string[];
 	readonly allNodesBoundingBox: string;
-	readonly importExportsBoundingBox: string;
 	readonly modifyImportExport: string[];
 };
 
@@ -184,7 +176,7 @@ export type ContextMenuInformation = {
 	contextMenuData: "CreateNode" | { type: "CreateNode"; compatibleType: string } | { nodeId: bigint; currentlyIsNode: boolean };
 };
 
-export type FrontendGraphDataType = "General" | "Number" | "Artboard" | "Graphic" | "Raster" | "Vector" | "Color";
+export type FrontendGraphDataType = "General" | "Number" | "Artboard" | "Graphic" | "Raster" | "Vector" | "Color" | "Invalid";
 
 export class FrontendGraphInput {
 	readonly dataType!: FrontendGraphDataType;
@@ -312,6 +304,13 @@ export class UpdateViewportHolePunch extends JsMessage {
 	readonly active!: boolean;
 }
 
+export class UpdateViewportPhysicalBounds extends JsMessage {
+	readonly x!: number;
+	readonly y!: number;
+	readonly width!: number;
+	readonly height!: number;
+}
+
 export class UpdateInputHints extends JsMessage {
 	@Type(() => HintInfo)
 	readonly hintData!: HintData;
@@ -337,7 +336,7 @@ export class HintInfo {
 
 // Rust enum `Key`
 export type KeyRaw = string;
-// Serde converts a Rust `Key` enum variant into this format (via a custom serializer) with both the `Key` variant name (called `RawKey` in TS) and the localized `label` for the key
+// Serde converts a Rust `Key` enum variant into this format with both the `Key` variant name (called `RawKey` in TS) and the localized `label` for the key
 export type Key = { key: KeyRaw; label: string };
 export type LayoutKeysGroup = Key[];
 export type ActionKeys = { keys: LayoutKeysGroup };
@@ -730,6 +729,8 @@ export class UpdateMouseCursor extends JsMessage {
 
 export class TriggerLoadFirstAutoSaveDocument extends JsMessage {}
 export class TriggerLoadRestAutoSaveDocuments extends JsMessage {}
+
+export class TriggerOpenLaunchDocuments extends JsMessage {}
 
 export class TriggerLoadPreferences extends JsMessage {}
 
@@ -1660,6 +1661,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerLoadFirstAutoSaveDocument,
 	TriggerLoadPreferences,
 	TriggerLoadRestAutoSaveDocuments,
+	TriggerOpenLaunchDocuments,
 	TriggerOpenDocument,
 	TriggerPaste,
 	TriggerSaveActiveDocument,
@@ -1712,6 +1714,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateToolOptionsLayout,
 	UpdateToolShelfLayout,
 	UpdateViewportHolePunch,
+	UpdateViewportPhysicalBounds,
 	UpdateVisibleNodes,
 	UpdateWirePathInProgress,
 	UpdateWorkingColorsLayout,

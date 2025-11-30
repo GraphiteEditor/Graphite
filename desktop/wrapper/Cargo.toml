@@ -9,14 +9,12 @@ edition = "2024"
 rust-version = "1.87"
 
 [features]
-default = ["gpu"]
-gpu = ["graphite-editor/gpu"]
+gpu = ["graphite-editor/gpu", "graphene-std/shader-nodes"]
 
 [dependencies]
 # Local dependencies
 graphite-editor = { path = "../../editor", features = [
 	"gpu",
-	"vello",
 ] }
 graphene-std = { workspace = true }
 graph-craft = { workspace = true }
@@ -31,3 +29,5 @@ ron = { workspace = true}
 vello = { workspace = true }
 image = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
+keyboard-types = { workspace = true }

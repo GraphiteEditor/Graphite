@@ -8,17 +8,16 @@ repository = ""
 edition = "2024"
 rust-version = "1.87"
 
+[[bin]]
+name = "graphite"
+path = "src/main.rs"
+
 [features]
 default = ["recommended", "embedded_resources"]
 recommended = ["gpu", "accelerated_paint"]
 embedded_resources = ["dep:graphite-desktop-embedded-resources"]
 gpu = ["graphite-desktop-wrapper/gpu"]
-
-# Hardware acceleration features
-accelerated_paint = ["accelerated_paint_dmabuf", "accelerated_paint_d3d11", "accelerated_paint_iosurface"]
-accelerated_paint_dmabuf = ["libc", "ash"]
-accelerated_paint_d3d11 = ["windows", "ash"]
-accelerated_paint_iosurface = ["metal", "objc", "core-foundation"]
+accelerated_paint = ["cef/accelerated_osr"]
 
 [dependencies]
 # Local dependencies
@@ -45,31 +44,22 @@ rand = { workspace = true, features = ["thread_rng"] }
 serde = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
 
-# Hardware acceleration dependencies
-ash = { version = "0.38", optional = true }
-
 # Windows-specific dependencies
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.58.0", features = [
 	"Win32_Foundation",
-	"Win32_Graphics_Direct3D11",
-	"Win32_Graphics_Direct3D12",
-	"Win32_Graphics_Dxgi",
-	"Win32_Graphics_Dxgi_Common",
 	"Win32_Graphics_Dwm",
 	"Win32_Graphics_Gdi",
 	"Win32_System_LibraryLoader",
 	"Win32_UI_Controls",
 	"Win32_UI_WindowsAndMessaging",
 	"Win32_UI_HiDpi",
-], optional = true }
+] }
 
 # macOS-specific dependencies
 [target.'cfg(target_os = "macos")'.dependencies]
-metal = { version = "0.31.0", optional = true }
-objc = { version = "0.2", optional = true }
-core-foundation = { version = "0.10", optional = true }
+objc2 = { version = "0.6.1", default-features = false }
+objc2-foundation = { version = "0.3.2", default-features = false }
+objc2-app-kit = { version = "0.3.2", default-features = false }
+muda = { git = "https://github.com/tauri-apps/muda.git", rev = "3f460b8fbaed59cda6d95ceea6904f000f093f15", default-features = false }
 
-# Linux-specific dependencies
-[target.'cfg(target_os = "linux")'.dependencies]
-libc = { version = "0.2", optional = true }

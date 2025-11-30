@@ -503,8 +503,16 @@ impl ShapeState {
 	}
 
 	// Snap, returning a viewport delta
-	pub fn snap(&self, snap_manager: &mut SnapManager, snap_cache: &SnapCache, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, previous_mouse: DVec2) -> DVec2 {
-		let snap_data = SnapData::new_snap_cache(document, input, snap_cache);
+	pub fn snap(
+		&self,
+		snap_manager: &mut SnapManager,
+		snap_cache: &SnapCache,
+		document: &DocumentMessageHandler,
+		input: &InputPreprocessorMessageHandler,
+		viewport: &ViewportMessageHandler,
+		previous_mouse: DVec2,
+	) -> DVec2 {
+		let snap_data = SnapData::new_snap_cache(document, input, viewport, snap_cache);
 
 		let mouse_delta = document
 			.network_interface
@@ -683,10 +691,10 @@ impl ShapeState {
 		let mut selected_stack = Vec::new();
 		// Find all subpaths that have been clicked
 		for stroke in vector.stroke_bezier_paths() {
-			if stroke.contains_point(layer_mouse) {
-				if let Some(first) = stroke.manipulator_groups().first() {
-					selected_stack.push(first.id);
-				}
+			if stroke.contains_point(layer_mouse)
+				&& let Some(first) = stroke.manipulator_groups().first()
+			{
+				selected_stack.push(first.id);
 			}
 		}
 		state.clear_points();
@@ -921,20 +929,20 @@ impl ShapeState {
 			ManipulatorPointId::Anchor(point) => self.move_anchor(point, &vector, delta, layer, None, responses),
 			ManipulatorPointId::PrimaryHandle(segment) => {
 				self.move_primary(segment, delta, layer, responses);
-				if let Some(handle) = point.as_handle() {
-					if let Some(handles) = vector.colinear_manipulators.iter().find(|handles| handles[0] == handle || handles[1] == handle) {
-						let modification_type = VectorModificationType::SetG1Continuous { handles: *handles, enabled: false };
-						responses.add(GraphOperationMessage::Vector { layer, modification_type });
-					}
+				if let Some(handle) = point.as_handle()
+					&& let Some(handles) = vector.colinear_manipulators.iter().find(|handles| handles[0] == handle || handles[1] == handle)
+				{
+					let modification_type = VectorModificationType::SetG1Continuous { handles: *handles, enabled: false };
+					responses.add(GraphOperationMessage::Vector { layer, modification_type });
 				}
 			}
 			ManipulatorPointId::EndHandle(segment) => {
 				self.move_end(segment, delta, layer, responses);
-				if let Some(handle) = point.as_handle() {
-					if let Some(handles) = vector.colinear_manipulators.iter().find(|handles| handles[0] == handle || handles[1] == handle) {
-						let modification_type = VectorModificationType::SetG1Continuous { handles: *handles, enabled: false };
-						responses.add(GraphOperationMessage::Vector { layer, modification_type });
-					}
+				if let Some(handle) = point.as_handle()
+					&& let Some(handles) = vector.colinear_manipulators.iter().find(|handles| handles[0] == handle || handles[1] == handle)
+				{
+					let modification_type = VectorModificationType::SetG1Continuous { handles: *handles, enabled: false };
+					responses.add(GraphOperationMessage::Vector { layer, modification_type });
 				}
 			}
 		}
@@ -1070,10 +1078,10 @@ impl ShapeState {
 
 			for &point in layer_state.selected_points.iter() {
 				// Skip a point which has more than 2 segments connected (vector meshes)
-				if let ManipulatorPointId::Anchor(anchor) = point {
-					if vector.all_connected(anchor).count() > 2 {
-						continue;
-					}
+				if let ManipulatorPointId::Anchor(anchor) = point
+					&& vector.all_connected(anchor).count() > 2
+				{
+					continue;
 				}
 
 				// Here we take handles as the current handle and the most opposite non-colinear-handle
@@ -1401,10 +1409,11 @@ impl ShapeState {
 
 				match point {
 					ManipulatorPointId::Anchor(anchor) => {
-						if let Some(handles) = Self::dissolve_anchor(anchor, responses, layer, &vector) {
-							if !vector.all_connected(anchor).any(|a| selected_segments.contains(&a.segment)) && vector.all_connected(anchor).count() <= 2 {
-								missing_anchors.insert(anchor, handles);
-							}
+						if let Some(handles) = Self::dissolve_anchor(anchor, responses, layer, &vector)
+							&& !vector.all_connected(anchor).any(|a| selected_segments.contains(&a.segment))
+							&& vector.all_connected(anchor).count() <= 2
+						{
+							missing_anchors.insert(anchor, handles);
 						}
 						deleted_anchors.insert(anchor);
 					}
@@ -1635,11 +1644,11 @@ impl ShapeState {
 							responses.add(GraphOperationMessage::Vector { layer, modification_type });
 						}
 					}
-				} else if let Some(handle) = point.as_handle() {
-					if let Some(handles) = vector.colinear_manipulators.iter().find(|handles| handles[0] == handle || handles[1] == handle) {
-						let modification_type = VectorModificationType::SetG1Continuous { handles: *handles, enabled: false };
-						responses.add(GraphOperationMessage::Vector { layer, modification_type });
-					}
+				} else if let Some(handle) = point.as_handle()
+					&& let Some(handles) = vector.colinear_manipulators.iter().find(|handles| handles[0] == handle || handles[1] == handle)
+				{
+					let modification_type = VectorModificationType::SetG1Continuous { handles: *handles, enabled: false };
+					responses.add(GraphOperationMessage::Vector { layer, modification_type });
 				}
 			}
 		}
@@ -1720,17 +1729,20 @@ impl ShapeState {
 			let bezier = bezier.apply_transformation(|point| viewspace.transform_point2(point));
 			let valid = |handle: DVec2, control: DVec2| handle.distance_squared(control) > crate::consts::HIDE_HANDLE_DISTANCE.powi(2);
 
-			if let Some(primary_handle) = bezier.handle_start() {
-				if valid(primary_handle, bezier.start) && (bezier.handle_end().is_some() || valid(primary_handle, bezier.end)) && primary_handle.distance_squared(pos) <= closest_distance_squared {
-					closest_distance_squared = primary_handle.distance_squared(pos);
-					manipulator_point = Some(ManipulatorPointId::PrimaryHandle(segment_id));
-				}
+			if let Some(primary_handle) = bezier.handle_start()
+				&& valid(primary_handle, bezier.start)
+				&& (bezier.handle_end().is_some() || valid(primary_handle, bezier.end))
+				&& primary_handle.distance_squared(pos) <= closest_distance_squared
+			{
+				closest_distance_squared = primary_handle.distance_squared(pos);
+				manipulator_point = Some(ManipulatorPointId::PrimaryHandle(segment_id));
 			}
-			if let Some(end_handle) = bezier.handle_end() {
-				if valid(end_handle, bezier.end) && end_handle.distance_squared(pos) <= closest_distance_squared {
-					closest_distance_squared = end_handle.distance_squared(pos);
-					manipulator_point = Some(ManipulatorPointId::EndHandle(segment_id));
-				}
+			if let Some(end_handle) = bezier.handle_end()
+				&& valid(end_handle, bezier.end)
+				&& end_handle.distance_squared(pos) <= closest_distance_squared
+			{
+				closest_distance_squared = end_handle.distance_squared(pos);
+				manipulator_point = Some(ManipulatorPointId::EndHandle(segment_id));
 			}
 		}
 

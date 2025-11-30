@@ -1,4 +1,4 @@
-use graphite_desktop_wrapper::messages::{Document, DocumentId, Preferences};
+use crate::wrapper::messages::{Document, DocumentId, Preferences};
 
 #[derive(Default, serde::Serialize, serde::Deserialize)]
 pub(crate) struct PersistentData {

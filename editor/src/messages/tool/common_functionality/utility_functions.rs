@@ -262,6 +262,7 @@ pub fn resize_bounds(
 	snap_manager: &mut SnapManager,
 	snap_candidates: &mut Vec<SnapCandidatePoint>,
 	input: &InputPreprocessorMessageHandler,
+	viewport: &ViewportMessageHandler,
 	center: bool,
 	constrain: bool,
 	tool: ToolType,
@@ -271,7 +272,7 @@ pub fn resize_bounds(
 		let snap = Some(SizeSnapData {
 			manager: snap_manager,
 			points: snap_candidates,
-			snap_data: SnapData::ignore(document, input, dragging_layers),
+			snap_data: SnapData::ignore(document, input, viewport, dragging_layers),
 		});
 		let (position, size) = movement.new_size(input.mouse.position, bounds.original_bound_transform, center, constrain, snap);
 		let (delta, mut pivot) = movement.bounds_to_scale_transform(position, size);
@@ -580,17 +581,17 @@ pub fn make_path_editable_is_allowed(network_interface: &mut NodeNetworkInterfac
 	// Must be a layer of type Table<Vector>
 	let node_id = NodeGraphLayer::new(first_layer, network_interface).horizontal_layer_flow().nth(1)?;
 
-	let (output_type, _) = network_interface.output_type(&OutputConnector::node(node_id, 0), &[]);
-	if output_type.nested_type() != concrete!(Table<Vector>).nested_type() {
+	let output_type = network_interface.output_type(&OutputConnector::node(node_id, 0), &[]);
+	if output_type.compiled_nested_type() != Some(&concrete!(Table<Vector>)) {
 		return None;
 	}
 
 	// Must not already have an existing Path node, in the right-most part of the layer chain, which has an empty set of modifications
 	// (otherwise users could repeatedly keep running this command and stacking up empty Path nodes)
-	if let Some(TaggedValue::VectorModification(modifications)) = NodeGraphLayer::new(first_layer, network_interface).find_input("Path", 1) {
-		if modifications.as_ref() == &VectorModification::default() {
-			return None;
-		}
+	if let Some(TaggedValue::VectorModification(modifications)) = NodeGraphLayer::new(first_layer, network_interface).find_input("Path", 1)
+		&& modifications.as_ref() == &VectorModification::default()
+	{
+		return None;
 	}
 
 	Some(first_layer)

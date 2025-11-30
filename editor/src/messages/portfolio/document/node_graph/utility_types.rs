@@ -1,4 +1,3 @@
-use crate::messages::portfolio::document::utility_types::network_interface::TypeSource;
 use glam::IVec2;
 use graph_craft::document::NodeId;
 use graph_craft::document::value::TaggedValue;
@@ -17,6 +16,7 @@ pub enum FrontendGraphDataType {
 	Color,
 	Gradient,
 	Typography,
+	Invalid,
 }
 
 impl FrontendGraphDataType {
@@ -37,15 +37,8 @@ impl FrontendGraphDataType {
 			TaggedValue::Vector(_) => Self::Vector,
 			TaggedValue::Color(_) => Self::Color,
 			TaggedValue::Gradient(_) | TaggedValue::GradientStops(_) | TaggedValue::GradientTable(_) => Self::Gradient,
-			TaggedValue::String(_) => Self::Typography,
+			TaggedValue::String(_) | TaggedValue::VecString(_) => Self::Typography,
 			_ => Self::General,
-		}
-	}
-
-	pub fn displayed_type(input: &Type, type_source: &TypeSource) -> Self {
-		match type_source {
-			TypeSource::Error(_) | TypeSource::RandomProtonodeImplementation => Self::General,
-			_ => Self::from_type(input),
 		}
 	}
 }
@@ -196,8 +189,6 @@ pub struct FrontendClickTargets {
 	pub icon_click_targets: Vec<String>,
 	#[serde(rename = "allNodesBoundingBox")]
 	pub all_nodes_bounding_box: String,
-	#[serde(rename = "importExportsBoundingBox")]
-	pub import_exports_bounding_box: String,
 	#[serde(rename = "modifyImportExport")]
 	pub modify_import_export: Vec<String>,
 }

@@ -18,8 +18,8 @@
 
 	import type { Editor } from "@graphite/editor";
 	import { type LayoutKeysGroup, type Key } from "@graphite/messages";
-	import { platformIsMac, isEventSupported } from "@graphite/utility-functions/platform";
-
+	import type { AppWindowState } from "@graphite/state-providers/app-window";
+	import { operatingSystem, isEventSupported } from "@graphite/utility-functions/platform";
 	import { extractPixelData } from "@graphite/utility-functions/rasterization";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -30,8 +30,10 @@
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 	import UserInputLabel from "@graphite/components/widgets/labels/UserInputLabel.svelte";
 
+	const BUTTON_LEFT = 0;
 	const BUTTON_MIDDLE = 1;
 
+	const appWindow = getContext<AppWindowState>("appWindow");
 	const editor = getContext<Editor>("editor");
 
 	export let tabMinWidths = false;
@@ -41,6 +43,7 @@
 	export let panelType: PanelType | undefined = undefined;
 	export let clickAction: ((index: number) => void) | undefined = undefined;
 	export let closeAction: ((index: number) => void) | undefined = undefined;
+	export let emptySpaceAction: (() => void) | undefined = undefined;
 
 	let className = "";
 	export { className as class };
@@ -51,14 +54,18 @@
 
 	let tabElements: (LayoutRow | undefined)[] = [];
 
-	function platformModifiers(reservedKey: boolean): LayoutKeysGroup {
+	function platformModifiedAccelKey(browserReservedKey: boolean): LayoutKeysGroup {
 		// TODO: Remove this by properly feeding these keys from a layout provided by the backend
 
 		const ALT: Key = { key: "Alt", label: "Alt" };
 		const COMMAND: Key = { key: "Command", label: "Command" };
 		const CONTROL: Key = { key: "Control", label: "Ctrl" };
 
-		if (platformIsMac()) return reservedKey ? [ALT, COMMAND] : [COMMAND];
+		// Only consider the browser reserved key on web platforms
+		const reservedKey = $appWindow.platform === "Web" ? browserReservedKey : false;
+
+		// Return either Command (Mac) or Control (Windows/Linux), with Alt added if the browser reserves the shortcut
+		if (operatingSystem() === "Mac") return reservedKey ? [ALT, COMMAND] : [COMMAND];
 		return reservedKey ? [CONTROL, ALT] : [CONTROL];
 	}
 
@@ -93,6 +100,11 @@
 		});
 	}
 
+	function onEmptySpaceAction(e: MouseEvent) {
+		if (e.target !== e.currentTarget) return;
+		if (e.button === BUTTON_MIDDLE || (e.button === BUTTON_LEFT && e.detail === 2)) emptySpaceAction?.();
+	}
+
 	export async function scrollTabIntoView(newIndex: number) {
 		await tick();
 		tabElements[newIndex]?.div?.()?.scrollIntoView();
@@ -101,7 +113,7 @@
 
 <LayoutCol on:pointerdown={() => panelType && editor.handle.setActivePanel(panelType)} class={`panel ${className}`.trim()} {classes} style={styleName} {styles}>
 	<LayoutRow class="tab-bar" classes={{ "min-widths": tabMinWidths }}>
-		<LayoutRow class="tab-group" scrollableX={true}>
+		<LayoutRow class="tab-group" scrollableX={true} on:click={onEmptySpaceAction} on:auxclick={onEmptySpaceAction}>
 			{#each tabLabels as tabLabel, tabIndex}
 				<LayoutRow
 					class="tab"
@@ -173,7 +185,7 @@
 											<TextButton label="New Document" icon="File" flush={true} action={() => editor.handle.newDocumentDialog()} />
 										</td>
 										<td>
-											<UserInputLabel keysWithLabelsGroups={[[...platformModifiers(true), { key: "KeyN", label: "N" }]]} />
+											<UserInputLabel keysWithLabelsGroups={[[...platformModifiedAccelKey(true), { key: "KeyN", label: "N" }]]} />
 										</td>
 									</tr>
 									<tr>
@@ -181,7 +193,7 @@
 											<TextButton label="Open Document" icon="Folder" flush={true} action={() => editor.handle.openDocument()} />
 										</td>
 										<td>
-											<UserInputLabel keysWithLabelsGroups={[[...platformModifiers(false), { key: "KeyO", label: "O" }]]} />
+											<UserInputLabel keysWithLabelsGroups={[[...platformModifiedAccelKey(false), { key: "KeyO", label: "O" }]]} />
 										</td>
 									</tr>
 									<tr>

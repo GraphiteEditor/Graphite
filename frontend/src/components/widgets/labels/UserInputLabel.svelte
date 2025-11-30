@@ -4,7 +4,7 @@
 	import { type KeyRaw, type LayoutKeysGroup, type Key, type MouseMotion } from "@graphite/messages";
 	import type { FullscreenState } from "@graphite/state-providers/fullscreen";
 	import type { IconName } from "@graphite/utility-functions/icons";
-	import { platformIsMac } from "@graphite/utility-functions/platform";
+	import { operatingSystem } from "@graphite/utility-functions/platform";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
@@ -29,7 +29,7 @@
 		Enter: 2,
 		Tab: 2,
 		Space: 3,
-		...(platformIsMac() ? ICON_WIDTHS_MAC : {}),
+		...(operatingSystem() === "Mac" ? ICON_WIDTHS_MAC : {}),
 	};
 
 	const fullscreen = getContext<FullscreenState>("fullscreen");
@@ -65,7 +65,7 @@
 		const label = keyWithLabel.label;
 
 		// Replace Alt and Accel keys with their Mac-specific equivalents
-		if (platformIsMac()) {
+		if (operatingSystem() === "Mac") {
 			if (key === "Alt") key = "Option";
 			if (key === "Accel") key = "Command";
 		}

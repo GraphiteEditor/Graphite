@@ -1,8 +1,8 @@
 use crate::document::value::TaggedValue;
 use crate::document::{InlineRust, value};
 use crate::document::{NodeId, OriginalLocation};
-pub use graphene_core::registry::*;
-use graphene_core::*;
+pub use core_types::registry::*;
+use core_types::*;
 use rustc_hash::FxHashMap;
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
@@ -139,7 +139,7 @@ pub struct ProtoNode {
 impl Default for ProtoNode {
 	fn default() -> Self {
 		Self {
-			identifier: ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode"),
+			identifier: graphene_core::ops::identity::IDENTIFIER,
 			construction_args: ConstructionArgs::Value(value::TaggedValue::U32(0).into()),
 			call_argument: concrete!(()),
 			original_location: OriginalLocation::default(),
@@ -175,7 +175,7 @@ impl ProtoNode {
 			_ => 2,
 		};
 		Self {
-			identifier: ProtoNodeIdentifier::new("graphene_core::value::ClonedNode"),
+			identifier: ProtoNodeIdentifier::new("core_types::value::ClonedNode"),
 			construction_args: value,
 			call_argument: concrete!(Context),
 			original_location: OriginalLocation {
@@ -340,7 +340,7 @@ impl ProtoNetwork {
 			ProtoNode {
 				construction_args: ConstructionArgs::Value(MemoHash::new(TaggedValue::ContextFeatures(context_deps))),
 				call_argument: concrete!(Context),
-				identifier: ProtoNodeIdentifier::new("graphene_core::value::ClonedNode"),
+				identifier: ProtoNodeIdentifier::new("core_types::value::ClonedNode"),
 				original_location: OriginalLocation {
 					path: path.clone(),
 					..Default::default()
@@ -539,7 +539,6 @@ impl ProtoNetwork {
 #[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum GraphErrorType {
 	NodeNotFound(NodeId),
-	InputNodeNotFound(NodeId),
 	UnexpectedGenerics { index: usize, inputs: Vec<Type> },
 	NoImplementations,
 	NoConstructor,
@@ -551,7 +550,6 @@ impl Debug for GraphErrorType {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			GraphErrorType::NodeNotFound(id) => write!(f, "Input node {id} is not present in the typing context"),
-			GraphErrorType::InputNodeNotFound(id) => write!(f, "Input node {id} is not present in the typing context"),
 			GraphErrorType::UnexpectedGenerics { index, inputs } => write!(f, "Generic inputs should not exist but found at {index}: {inputs:?}"),
 			GraphErrorType::NoImplementations => write!(f, "No implementations found"),
 			GraphErrorType::NoConstructor => write!(f, "No construct found for node"),

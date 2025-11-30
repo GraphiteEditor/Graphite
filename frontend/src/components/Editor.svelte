@@ -61,7 +61,7 @@
 	});
 </script>
 
-<MainWindow platform={$appWindow.platform} maximized={$appWindow.maximized} viewportHolePunch={$appWindow.viewportHolePunch} />
+<MainWindow />
 
 <style lang="scss" global>
 	// Disable the spinning loading indicator
@@ -129,6 +129,8 @@
 		--color-data-gradient-dim: #6c489b;
 		--color-data-typography: #eea7a7;
 		--color-data-typography-dim: #955252;
+		--color-data-invalid: #d6536e; // Same as --color-error-red
+		--color-data-invalid-dim: #a7324a;
 
 		--color-none: white;
 		--color-none-repeat: no-repeat;

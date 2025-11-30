@@ -12,19 +12,28 @@ members = [
 	"libraries/dyn-any",
 	"libraries/path-bool",
 	"libraries/math-parser",
-	"node-graph/gapplication-io",
-	"node-graph/gbrush",
-	"node-graph/gcore",
-	"node-graph/gcore-shaders",
-	"node-graph/gmath-nodes",
-	"node-graph/gpath-bool",
+	"node-graph/libraries/application-io",
+	"node-graph/libraries/core-types",
+	"node-graph/libraries/no-std-types",
+	"node-graph/libraries/raster-types",
+	"node-graph/libraries/vector-types",
+	"node-graph/libraries/graphic-types",
+	"node-graph/libraries/rendering",
+	"node-graph/nodes/blending",
+	"node-graph/nodes/brush",
+	"node-graph/nodes/gcore",
+	"node-graph/nodes/graphic",
+	"node-graph/nodes/math",
+	"node-graph/nodes/path-bool",
+	"node-graph/nodes/raster",
+	"node-graph/nodes/raster/shaders",
+	"node-graph/nodes/raster/shaders/entrypoint",
+	"node-graph/nodes/text",
+	"node-graph/nodes/transform",
+	"node-graph/nodes/vector",
 	"node-graph/graph-craft",
 	"node-graph/graphene-cli",
-	"node-graph/graster-nodes",
-	"node-graph/graster-nodes/shaders",
-	"node-graph/graster-nodes/shaders/entrypoint",
-	"node-graph/gstd",
-	"node-graph/gsvg-renderer",
+	"node-graph/nodes/gstd",
 	"node-graph/interpreted-executor",
 	"node-graph/node-macro",
 	"node-graph/preprocessor",
@@ -37,18 +46,27 @@ default-members = [
 	"libraries/dyn-any",
 	"libraries/path-bool",
 	"libraries/math-parser",
-	"node-graph/gapplication-io",
-	"node-graph/gbrush",
-	"node-graph/gcore",
-	"node-graph/gcore-shaders",
-	"node-graph/graster-nodes/shaders",
-	"node-graph/gmath-nodes",
-	"node-graph/gpath-bool",
+	"node-graph/libraries/application-io",
+	"node-graph/libraries/core-types",
+	"node-graph/libraries/no-std-types",
+	"node-graph/libraries/raster-types",
+	"node-graph/libraries/vector-types",
+	"node-graph/libraries/graphic-types",
+	"node-graph/libraries/rendering",
+	"node-graph/nodes/blending",
+	"node-graph/nodes/brush",
+	"node-graph/nodes/gcore",
+	"node-graph/nodes/graphic",
+	"node-graph/nodes/math",
+	"node-graph/nodes/path-bool",
+	"node-graph/nodes/raster",
+	"node-graph/nodes/raster/shaders",
+	"node-graph/nodes/text",
+	"node-graph/nodes/transform",
+	"node-graph/nodes/vector",
 	"node-graph/graph-craft",
 	"node-graph/graphene-cli",
-	"node-graph/graster-nodes",
-	"node-graph/gstd",
-	"node-graph/gsvg-renderer",
+	"node-graph/nodes/gstd",
 	"node-graph/interpreted-executor",
 	"node-graph/node-macro",
 	"node-graph/preprocessor",
@@ -70,16 +88,25 @@ dyn-any = { path = "libraries/dyn-any", features = [
 preprocessor = { path = "node-graph/preprocessor" }
 math-parser = { path = "libraries/math-parser" }
 path-bool = { path = "libraries/path-bool" }
-graphene-application-io = { path = "node-graph/gapplication-io" }
-graphene-brush = { path = "node-graph/gbrush" }
-graphene-core = { path = "node-graph/gcore" }
-graphene-core-shaders = { path = "node-graph/gcore-shaders" }
-graphene-math-nodes = { path = "node-graph/gmath-nodes" }
-graphene-path-bool = { path = "node-graph/gpath-bool" }
+graphene-application-io = { path = "node-graph/libraries/application-io" }
+core-types = { path = "node-graph/libraries/core-types" }
+no-std-types = { path = "node-graph/libraries/no-std-types" }
+raster-types = { path = "node-graph/libraries/raster-types" }
+vector-types = { path = "node-graph/libraries/vector-types" }
+graphic-types = { path = "node-graph/libraries/graphic-types" }
+rendering = { path = "node-graph/libraries/rendering" }
+brush-nodes = { path = "node-graph/nodes/brush" }
+blending-nodes = { path = "node-graph/nodes/blending" }
+graphene-core = { path = "node-graph/nodes/gcore" }
+graphic-nodes = { path = "node-graph/nodes/graphic" }
+text-nodes = { path = "node-graph/nodes/text" }
+transform-nodes = { path = "node-graph/nodes/transform" }
+vector-nodes = { path = "node-graph/nodes/vector" }
+math-nodes = { path = "node-graph/nodes/math" }
+path-bool-nodes = { path = "node-graph/nodes/path-bool" }
 graph-craft = { path = "node-graph/graph-craft" }
-graphene-raster-nodes = { path = "node-graph/graster-nodes" }
-graphene-std = { path = "node-graph/gstd" }
-graphene-svg-renderer = { path = "node-graph/gsvg-renderer" }
+raster-nodes = { path = "node-graph/nodes/raster" }
+graphene-std = { path = "node-graph/nodes/gstd" }
 interpreted-executor = { path = "node-graph/interpreted-executor" }
 node-macro = { path = "node-graph/node-macro" }
 wgpu-executor = { path = "node-graph/wgpu-executor" }
@@ -106,7 +133,7 @@ quote = "1.0"
 chrono = "0.4"
 ron = "0.11"
 fastnoise-lite = "1.1"
-wgpu = { version = "25.0", features = [
+wgpu = { version = "27.0", features = [
 	# We don't have wgpu on multiple threads (yet) https://github.com/gfx-rs/wgpu/blob/trunk/CHANGELOG.md#wgpu-types-now-send-sync-on-wasm
 	"fragile-send-sync-non-atomic-wasm",
 	"spirv",
@@ -134,11 +161,12 @@ web-sys = { version = "=0.3.77", features = [
 	"HtmlImageElement",
 	"ImageBitmapRenderingContext",
 ] }
-winit = { git = "https://github.com/timon-schelling/winit.git", rev = "37221c7192ef1deec022a2278e54429331c01bad" }
+winit = { git = "https://github.com/rust-windowing/winit.git" }
+keyboard-types = "0.8"
 url = "2.5"
 tokio = { version = "1.29", features = ["fs", "macros", "io-std", "rt"] }
-vello = { git = "https://github.com/linebender/vello.git", rev = "87cc5bee6d3a34d15017dbbb58634ddc7f33ff9b" } # TODO switch back to stable when a release is made
-vello_encoding = { git = "https://github.com/linebender/vello.git", rev = "87cc5bee6d3a34d15017dbbb58634ddc7f33ff9b" } # TODO switch back to stable when a release is made
+vello = { git = "https://github.com/linebender/vello" }
+vello_encoding = { git = "https://github.com/linebender/vello" }
 resvg = "0.45"
 usvg = "0.45"
 rand = { version = "0.9", default-features = false, features = ["std_rng"] }
@@ -154,7 +182,7 @@ image = { version = "0.25", default-features = false, features = [
 	"jpeg",
 	"bmp",
 ] }
-parley = "0.5"
+parley = "0.6"
 skrifa = "0.36"
 pretty_assertions = "1.4"
 fern = { version = "0.7", features = ["colored"] }
@@ -177,7 +205,7 @@ syn = { version = "2.0", default-features = false, features = [
 	"extra-traits",
 	"proc-macro",
 ] }
-kurbo = { version = "0.11", features = ["serde"] }
+kurbo = { version = "0.12", features = ["serde"] }
 lyon_geom = "1.0"
 petgraph = { version = "0.7", default-features = false, features = ["graphmap"] }
 half = { version = "2.4", default-features = false, features = ["bytemuck"] }
@@ -187,14 +215,15 @@ iai-callgrind = { version = "0.16" }
 ndarray = "0.16"
 strum = { version = "0.27", features = ["derive"] }
 dirs = "6.0"
-cef = "140"
-cef-dll-sys = "140"
+# TODO: remove fork usage when https://github.com/tauri-apps/cef-rs/pull/272 is merged and published
+cef = { git = "https://github.com/timon-schelling/cef-rs.git", rev = "98493a182928f1ff8d5bf8b9eea61483235df75d" }
+cef-dll-sys = { git = "https://github.com/timon-schelling/cef-rs.git", rev = "98493a182928f1ff8d5bf8b9eea61483235df75d" }
 include_dir = "0.7"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing = "0.1"
 rfd = "0.15"
 open = "5.3"
-poly-cool = "0.3"
+polycool = "0.4"
 spin = "0.10"
 clap = "4.5"
 spirv-std = { git = "https://github.com/Firestar99/rust-gpu-new", rev = "c12f216121820580731440ee79ebc7403d6ea04f", features = ["bytemuck"] }
@@ -207,9 +236,8 @@ unexpected_cfgs = { level = "allow", check-cfg = ['cfg(target_arch, values("spir
 opt-level = 1
 
 [profile.dev.package]
-graphite-editor = { opt-level = 1 }
-graphene-core-shaders = { opt-level = 1 }
-graphene-std = { opt-level = 1 }
+no-std-types = { opt-level = 1 }
+core-types= { opt-level = 1 }
 interpreted-executor = { opt-level = 1 } # This is a mitigation for https://github.com/rustwasm/wasm-pack/issues/981 which is needed because the node_registry function is too large
 graphite-proc-macros = { opt-level = 1 }
 image = { opt-level = 2 }
@@ -217,6 +245,7 @@ rustc-hash = { opt-level = 3 }
 serde_derive = { opt-level = 1 }
 specta-macros = { opt-level = 1 }
 syn = { opt-level = 1 }
+node-macro = { opt-level = 2 }
 
 [profile.release]
 lto = "thin"
@@ -225,3 +254,7 @@ debug = true
 [profile.profiling]
 inherits = "release"
 debug = true
+
+[patch.crates-io]
+# Force cargo to use only one version of the dpi crate (vendoring breaks without this)
+dpi = { git = "https://github.com/rust-windowing/winit.git" }
