@@ -14,7 +14,8 @@
 	export let tableAlign = false;
 	export let minWidth = "";
 	export let multiline = false;
-	export let tooltip: string | undefined = undefined;
+	export let tooltipLabel: string | undefined = undefined;
+	export let tooltipDescription: string | undefined = undefined;
 	export let forCheckbox: bigint | undefined = undefined;
 
 	$: extraClasses = Object.entries(classes)
@@ -37,7 +38,8 @@
 	class:table-align={tableAlign}
 	style:min-width={minWidth || undefined}
 	style={`${styleName} ${extraStyles}`.trim() || undefined}
-	data-tooltip={tooltip}
+	data-tooltip-label={tooltipLabel}
+	data-tooltip-description={tooltipDescription}
 	for={forCheckbox !== undefined ? `checkbox-input-${forCheckbox}` : undefined}
 >
 	<slot />

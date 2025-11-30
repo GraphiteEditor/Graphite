@@ -50,10 +50,10 @@ pub fn expose_widget(node_id: NodeId, index: usize, data_type: FrontendGraphData
 	ParameterExposeButton::new()
 		.exposed(exposed)
 		.data_type(data_type)
-		.tooltip(if exposed {
-			"Stop exposing this parameter as a node input in the graph"
+		.tooltip_description(if exposed {
+			"Stop exposing this parameter as a node input in the graph."
 		} else {
-			"Expose this parameter as a node input in the graph"
+			"Expose this parameter as a node input in the graph."
 		})
 		.on_update(move |_parameter| Message::Batched {
 			messages: Box::new([NodeGraphMessage::ExposeInput {
@@ -97,12 +97,11 @@ pub fn start_widgets(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<Widget
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return vec![];
 	};
-	let description = if description != "TODO" { description } else { String::new() };
 	let mut widgets = Vec::with_capacity(6);
 	if exposable {
 		widgets.push(expose_widget(node_id, index, input_type, input.is_exposed()));
 	}
-	widgets.push(TextLabel::new(name).tooltip(description).widget_holder());
+	widgets.push(TextLabel::new(name).tooltip_description(description).widget_holder());
 	if blank_assist {
 		add_blank_assist(&mut widgets);
 	}
@@ -232,16 +231,16 @@ pub(crate) fn property_from_type(
 							widgets.extend_from_slice(&[
 								Separator::new(SeparatorType::Unrelated).widget_holder(),
 								TextLabel::new("-")
-									.tooltip(format!(
-										"This data can only be supplied through the node graph because no widget exists for its type:\n\
-										{}",
-										// TODO: Avoid needing to remove spaces here by fixing how `alias` is generated
+									.tooltip_label(format!(
+										"Data Type: {}",
 										concrete_type
 											.alias
 											.as_deref()
+											// TODO: Avoid needing to remove spaces here by fixing how `alias` is generated
 											.map(|s| s.to_string().replace(" ", ""))
-											.unwrap_or_else(|| graphene_std::format_type(concrete_type.name.as_ref()))
+											.unwrap_or_else(|| graphene_std::format_type(concrete_type.name.as_ref())),
 									))
+									.tooltip_description("This data can only be supplied through the node graph because no widget exists for its type.")
 									.widget_holder(),
 							]);
 							return Err(vec![widgets.into()]);
@@ -961,7 +960,7 @@ pub fn blend_mode_widget(parameter_widgets_info: ParameterWidgetsInfo) -> Layout
 				.widget_holder(),
 		]);
 	}
-	LayoutGroup::Row { widgets }.with_tooltip("Formula used for blending")
+	LayoutGroup::Row { widgets }.with_tooltip_description("Formula used for blending.")
 }
 
 pub fn color_widget(parameter_widgets_info: ParameterWidgetsInfo, color_button: ColorInput) -> LayoutGroup {
@@ -1400,12 +1399,12 @@ pub(crate) fn spiral_properties(node_id: NodeId, context: &mut NodePropertiesCon
 	widgets
 }
 
-pub(crate) const SAMPLE_POLYLINE_TOOLTIP_SPACING: &str = "Use a point sampling density controlled by a distance between, or specific number of, points.";
-pub(crate) const SAMPLE_POLYLINE_TOOLTIP_SEPARATION: &str = "Distance between each instance (exact if 'Adaptive Spacing' is disabled, approximate if enabled).";
-pub(crate) const SAMPLE_POLYLINE_TOOLTIP_QUANTITY: &str = "Number of points to place along the path.";
-pub(crate) const SAMPLE_POLYLINE_TOOLTIP_START_OFFSET: &str = "Exclude some distance from the start of the path before the first instance.";
-pub(crate) const SAMPLE_POLYLINE_TOOLTIP_STOP_OFFSET: &str = "Exclude some distance from the end of the path after the last instance.";
-pub(crate) const SAMPLE_POLYLINE_TOOLTIP_ADAPTIVE_SPACING: &str = "Round 'Separation' to a nearby value that divides into the path length evenly.";
+pub(crate) const SAMPLE_POLYLINE_DESCRIPTION_SPACING: &str = "Use a point sampling density controlled by a distance between, or specific number of, points.";
+pub(crate) const SAMPLE_POLYLINE_DESCRIPTION_SEPARATION: &str = "Distance between each instance (exact if 'Adaptive Spacing' is disabled, approximate if enabled).";
+pub(crate) const SAMPLE_POLYLINE_DESCRIPTION_QUANTITY: &str = "Number of points to place along the path.";
+pub(crate) const SAMPLE_POLYLINE_DESCRIPTION_START_OFFSET: &str = "Exclude some distance from the start of the path before the first instance.";
+pub(crate) const SAMPLE_POLYLINE_DESCRIPTION_STOP_OFFSET: &str = "Exclude some distance from the end of the path after the last instance.";
+pub(crate) const SAMPLE_POLYLINE_DESCRIPTION_ADAPTIVE_SPACING: &str = "Round 'Separation' to a nearby value that divides into the path length evenly.";
 
 pub(crate) fn sample_polyline_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
 	use graphene_std::vector::sample_polyline::*;
@@ -1434,15 +1433,15 @@ pub(crate) fn sample_polyline_properties(node_id: NodeId, context: &mut NodeProp
 	);
 
 	vec![
-		spacing.with_tooltip(SAMPLE_POLYLINE_TOOLTIP_SPACING),
+		spacing.with_tooltip_description(SAMPLE_POLYLINE_DESCRIPTION_SPACING),
 		match current_spacing {
-			Some(TaggedValue::PointSpacingType(PointSpacingType::Separation)) => LayoutGroup::Row { widgets: separation }.with_tooltip(SAMPLE_POLYLINE_TOOLTIP_SEPARATION),
-			Some(TaggedValue::PointSpacingType(PointSpacingType::Quantity)) => LayoutGroup::Row { widgets: quantity }.with_tooltip(SAMPLE_POLYLINE_TOOLTIP_QUANTITY),
+			Some(TaggedValue::PointSpacingType(PointSpacingType::Separation)) => LayoutGroup::Row { widgets: separation }.with_tooltip_description(SAMPLE_POLYLINE_DESCRIPTION_SEPARATION),
+			Some(TaggedValue::PointSpacingType(PointSpacingType::Quantity)) => LayoutGroup::Row { widgets: quantity }.with_tooltip_description(SAMPLE_POLYLINE_DESCRIPTION_QUANTITY),
 			_ => LayoutGroup::Row { widgets: vec![] },
 		},
-		LayoutGroup::Row { widgets: start_offset }.with_tooltip(SAMPLE_POLYLINE_TOOLTIP_START_OFFSET),
-		LayoutGroup::Row { widgets: stop_offset }.with_tooltip(SAMPLE_POLYLINE_TOOLTIP_STOP_OFFSET),
-		LayoutGroup::Row { widgets: adaptive_spacing }.with_tooltip(SAMPLE_POLYLINE_TOOLTIP_ADAPTIVE_SPACING),
+		LayoutGroup::Row { widgets: start_offset }.with_tooltip_description(SAMPLE_POLYLINE_DESCRIPTION_START_OFFSET),
+		LayoutGroup::Row { widgets: stop_offset }.with_tooltip_description(SAMPLE_POLYLINE_DESCRIPTION_STOP_OFFSET),
+		LayoutGroup::Row { widgets: adaptive_spacing }.with_tooltip_description(SAMPLE_POLYLINE_DESCRIPTION_ADAPTIVE_SPACING),
 	]
 }
 
@@ -1776,7 +1775,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			Fill::Solid(_) | Fill::None => add_blank_assist(&mut row),
 			Fill::Gradient(gradient) => {
 				let reverse_button = IconButton::new("Reverse", 24)
-					.tooltip("Reverse the gradient color stops")
+					.tooltip_description("Reverse the gradient color stops.")
 					.on_update(update_value(
 						{
 							let gradient = gradient.clone();
@@ -1826,7 +1825,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 					(gradient.start.x + gradient.start.y) < (gradient.end.x + gradient.end.y)
 				};
 				let reverse_radial_gradient_button = IconButton::new(if orientation { "ReverseRadialGradientToRight" } else { "ReverseRadialGradientToLeft" }, 24)
-					.tooltip("Reverse which end the gradient radiates from")
+					.tooltip_description("Reverse which end the gradient radiates from.")
 					.on_update(update_value(
 						{
 							let gradient = gradient.clone();
@@ -2027,9 +2026,9 @@ pub fn math_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> 
 	let operand_a_hint = vec![TextLabel::new("(Operand A is the primary input)").widget_holder()];
 
 	vec![
-		LayoutGroup::Row { widgets: expression }.with_tooltip(r#"A math expression that may incorporate "A" and/or "B", such as "sqrt(A + B) - B^2""#),
-		LayoutGroup::Row { widgets: operand_b }.with_tooltip(r#"The value of "B" when calculating the expression"#),
-		LayoutGroup::Row { widgets: operand_a_hint }.with_tooltip(r#""A" is fed by the value from the previous node in the primary data flow, or it is 0 if disconnected"#),
+		LayoutGroup::Row { widgets: expression }.with_tooltip_description(r#"A math expression that may incorporate "A" and/or "B", such as "sqrt(A + B) - B^2"."#),
+		LayoutGroup::Row { widgets: operand_b }.with_tooltip_description(r#"The value of "B" when calculating the expression."#),
+		LayoutGroup::Row { widgets: operand_a_hint }.with_tooltip_description(r#""A" is fed by the value from the previous node in the primary data flow, or it is 0 if disconnected."#),
 	]
 }
 
@@ -2149,13 +2148,12 @@ pub mod choice {
 				.map(|(item, var_meta)| {
 					let updater = updater_factory();
 					let committer = committer_factory();
-					let entry = RadioEntryData::new(var_meta.name).on_update(move |_| updater(item)).on_commit(committer);
-					match (var_meta.icon, var_meta.docstring) {
-						(None, None) => entry.label(var_meta.label),
-						(None, Some(doc)) => entry.label(var_meta.label).tooltip(doc),
-						(Some(icon), None) => entry.icon(icon).tooltip(var_meta.label),
-						(Some(icon), Some(doc)) => entry.icon(icon).tooltip(format!("{}\n\n{}", var_meta.label, doc)),
-					}
+					let entry = RadioEntryData::new(var_meta.name)
+						.on_update(move |_| updater(item))
+						.on_commit(committer)
+						.tooltip_label(var_meta.label)
+						.tooltip_description(var_meta.description.unwrap_or_default());
+					if let Some(icon) = var_meta.icon { entry.icon(icon) } else { entry.label(var_meta.label) }
 				})
 				.collect();
 			RadioInput::new(items).selected_index(Some(current.as_u32())).widget_holder()
@@ -2229,7 +2227,7 @@ pub mod choice {
 
 			let mut row = LayoutGroup::Row { widgets };
 			if let Some(desc) = self.widget_factory.description() {
-				row = row.with_tooltip(desc);
+				row = row.with_tooltip_label(desc);
 			}
 			row
 		}

@@ -8,7 +8,8 @@
 	export let size: IconSize;
 	export let disabled = false;
 	export let active = false;
-	export let tooltip: string | undefined = undefined;
+	export let tooltipLabel: string | undefined = undefined;
+	export let tooltipDescription: string | undefined = undefined;
 	// Callbacks
 	export let action: (e?: MouseEvent) => void;
 
@@ -28,7 +29,8 @@
 	class:active
 	on:click={action}
 	{disabled}
-	data-tooltip={tooltip}
+	data-tooltip-label={tooltipLabel}
+	data-tooltip-description={tooltipDescription}
 	tabindex={active ? -1 : 0}
 	{...$$restProps}
 >

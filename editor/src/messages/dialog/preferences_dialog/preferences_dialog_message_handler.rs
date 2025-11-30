@@ -42,17 +42,18 @@ impl PreferencesDialogMessageHandler {
 
 		let navigation_header = vec![TextLabel::new("Navigation").italic(true).widget_holder()];
 
-		let zoom_rate_tooltip = "Adjust how fast zooming occurs when using the scroll wheel or pinch gesture (relative to a default of 50)";
+		let zoom_rate_description = "Adjust how fast zooming occurs when using the scroll wheel or pinch gesture (relative to a default of 50).";
 		let zoom_rate_label = vec![
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			TextLabel::new("Zoom Rate").tooltip(zoom_rate_tooltip).widget_holder(),
+			TextLabel::new("Zoom Rate").tooltip_label("Zoom Rate").tooltip_description(zoom_rate_description).widget_holder(),
 		];
 		let zoom_rate = vec![
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			NumberInput::new(Some(map_zoom_rate_to_display(preferences.viewport_zoom_wheel_rate)))
-				.tooltip(zoom_rate_tooltip)
+				.tooltip_label("Zoom Rate")
+				.tooltip_description(zoom_rate_description)
 				.mode_range()
 				.int()
 				.min(1.)
@@ -69,12 +70,13 @@ impl PreferencesDialogMessageHandler {
 		];
 
 		let checkbox_id = CheckboxId::new();
-		let zoom_with_scroll_tooltip = "Use the scroll wheel for zooming instead of vertically panning (not recommended for trackpads)";
+		let zoom_with_scroll_description = "Use the scroll wheel for zooming instead of vertically panning (not recommended for trackpads).";
 		let zoom_with_scroll = vec![
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			CheckboxInput::new(preferences.zoom_with_scroll)
-				.tooltip(zoom_with_scroll_tooltip)
+				.tooltip_label("Zoom with Scroll")
+				.tooltip_description(zoom_with_scroll_description)
 				.on_update(|checkbox_input: &CheckboxInput| {
 					PreferencesMessage::ModifyLayout {
 						zoom_with_scroll: checkbox_input.checked,
@@ -84,9 +86,10 @@ impl PreferencesDialogMessageHandler {
 				.for_label(checkbox_id)
 				.widget_holder(),
 			TextLabel::new("Zoom with Scroll")
-				.table_align(true)
-				.tooltip(zoom_with_scroll_tooltip)
+				.tooltip_label("Zoom with Scroll")
+				.tooltip_description(zoom_with_scroll_description)
 				.for_checkbox(checkbox_id)
+				.table_align(true)
 				.widget_holder(),
 		];
 
@@ -105,7 +108,8 @@ impl PreferencesDialogMessageHandler {
 		let selection_mode = RadioInput::new(vec![
 			RadioEntryData::new(SelectionMode::Touched.to_string())
 				.label(SelectionMode::Touched.to_string())
-				.tooltip(SelectionMode::Touched.tooltip_description())
+				.tooltip_label(SelectionMode::Touched.to_string())
+				.tooltip_description(SelectionMode::Touched.tooltip_description())
 				.on_update(move |_| {
 					PreferencesMessage::SelectionMode {
 						selection_mode: SelectionMode::Touched,
@@ -114,7 +118,8 @@ impl PreferencesDialogMessageHandler {
 				}),
 			RadioEntryData::new(SelectionMode::Enclosed.to_string())
 				.label(SelectionMode::Enclosed.to_string())
-				.tooltip(SelectionMode::Enclosed.tooltip_description())
+				.tooltip_label(SelectionMode::Enclosed.to_string())
+				.tooltip_description(SelectionMode::Enclosed.tooltip_description())
 				.on_update(move |_| {
 					PreferencesMessage::SelectionMode {
 						selection_mode: SelectionMode::Enclosed,
@@ -123,7 +128,8 @@ impl PreferencesDialogMessageHandler {
 				}),
 			RadioEntryData::new(SelectionMode::Directional.to_string())
 				.label(SelectionMode::Directional.to_string())
-				.tooltip(SelectionMode::Directional.tooltip_description())
+				.tooltip_label(SelectionMode::Directional.to_string())
+				.tooltip_description(SelectionMode::Directional.tooltip_description())
 				.on_update(move |_| {
 					PreferencesMessage::SelectionMode {
 						selection_mode: SelectionMode::Directional,
@@ -145,20 +151,25 @@ impl PreferencesDialogMessageHandler {
 
 		let experimental_header = vec![TextLabel::new("Experimental").italic(true).widget_holder()];
 
-		let node_graph_section_tooltip = "Appearance of the wires running between node connections in the graph";
+		let node_graph_section_description = "Appearance of the wires running between node connections in the graph.";
 		let node_graph_wires_label = vec![
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			TextLabel::new("Node Graph Wires").tooltip(node_graph_section_tooltip).widget_holder(),
+			TextLabel::new("Node Graph Wires")
+				.tooltip_label("Node Graph Wires")
+				.tooltip_description(node_graph_section_description)
+				.widget_holder(),
 		];
 		let graph_wire_style = RadioInput::new(vec![
 			RadioEntryData::new(GraphWireStyle::Direct.to_string())
 				.label(GraphWireStyle::Direct.to_string())
-				.tooltip(GraphWireStyle::Direct.tooltip_description())
+				.tooltip_label(GraphWireStyle::Direct.to_string())
+				.tooltip_description(GraphWireStyle::Direct.tooltip_description())
 				.on_update(move |_| PreferencesMessage::GraphWireStyle { style: GraphWireStyle::Direct }.into()),
 			RadioEntryData::new(GraphWireStyle::GridAligned.to_string())
 				.label(GraphWireStyle::GridAligned.to_string())
-				.tooltip(GraphWireStyle::GridAligned.tooltip_description())
+				.tooltip_label(GraphWireStyle::GridAligned.to_string())
+				.tooltip_description(GraphWireStyle::GridAligned.tooltip_description())
 				.on_update(move |_| PreferencesMessage::GraphWireStyle { style: GraphWireStyle::GridAligned }.into()),
 		])
 		.selected_index(Some(preferences.graph_wire_style as u32))
@@ -170,36 +181,47 @@ impl PreferencesDialogMessageHandler {
 		];
 
 		let checkbox_id = CheckboxId::new();
-		let vello_tooltip = "Use the experimental Vello renderer (your browser must support WebGPU)";
+		let vello_description = "Use the experimental Vello renderer. (Your browser must support WebGPU).";
 		let use_vello = vec![
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			CheckboxInput::new(preferences.use_vello && preferences.supports_wgpu())
-				.tooltip(vello_tooltip)
+				.tooltip_label("Vello Renderer")
+				.tooltip_description(vello_description)
 				.disabled(!preferences.supports_wgpu())
 				.on_update(|checkbox_input: &CheckboxInput| PreferencesMessage::UseVello { use_vello: checkbox_input.checked }.into())
 				.for_label(checkbox_id)
 				.widget_holder(),
 			TextLabel::new("Vello Renderer")
-				.table_align(true)
-				.tooltip(vello_tooltip)
+				.tooltip_label("Vello Renderer")
+				.tooltip_description(vello_description)
 				.disabled(!preferences.supports_wgpu())
 				.for_checkbox(checkbox_id)
+				.table_align(true)
 				.widget_holder(),
 		];
 
 		let checkbox_id = CheckboxId::new();
-		let vector_mesh_tooltip =
-			"Allow tools to produce vector meshes, where more than two segments can connect to an anchor point.\n\nCurrently this does not properly handle stroke joins and fills.";
+		let vector_mesh_description = "
+			Allow tools to produce vector meshes, where more than two segments can connect to an anchor point.\n\
+			Currently this does not properly handle stroke joins and fills.
+			"
+		.trim();
 		let vector_meshes = vec![
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			CheckboxInput::new(preferences.vector_meshes)
-				.tooltip(vector_mesh_tooltip)
+				.tooltip_label("Vector Meshes")
+				.tooltip_description(vector_mesh_description)
 				.on_update(|checkbox_input: &CheckboxInput| PreferencesMessage::VectorMeshes { enabled: checkbox_input.checked }.into())
 				.for_label(checkbox_id)
 				.widget_holder(),
-			TextLabel::new("Vector Meshes").table_align(true).tooltip(vector_mesh_tooltip).for_checkbox(checkbox_id).widget_holder(),
+			TextLabel::new("Vector Meshes")
+				.tooltip_label("Vector Meshes")
+				.tooltip_description(vector_mesh_description)
+				.for_checkbox(checkbox_id)
+				.table_align(true)
+				.widget_holder(),
 		];
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![

@@ -5,7 +5,8 @@
 	let styleName = "";
 	export { styleName as style };
 	export let styles: Record<string, string | number | undefined> = {};
-	export let tooltip: string | undefined = undefined;
+	export let tooltipLabel: string | undefined = undefined;
+	export let tooltipDescription: string | undefined = undefined;
 	// TODO: Add middle-click drag scrolling
 	export let scrollableX = false;
 	export let scrollableY = false;
@@ -26,7 +27,8 @@
 
 <!-- Excluded events because these require `|passive` or `|nonpassive` modifiers. Use a <div> for these instead: `on:wheel`, `on:touchmove`, `on:touchstart` -->
 <div
-	data-tooltip={tooltip}
+	data-tooltip-label={tooltipLabel}
+	data-tooltip-description={tooltipDescription}
 	data-scrollable-x={scrollableX ? "" : undefined}
 	data-scrollable-y={scrollableY ? "" : undefined}
 	class={`layout-col ${className} ${extraClasses}`.trim()}

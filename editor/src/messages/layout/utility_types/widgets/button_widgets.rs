@@ -22,7 +22,11 @@ pub struct IconButton {
 
 	pub active: bool,
 
-	pub tooltip: String,
+	#[serde(rename = "tooltipLabel")]
+	pub tooltip_label: String,
+
+	#[serde(rename = "tooltipDescription")]
+	pub tooltip_description: String,
 
 	#[serde(skip)]
 	pub tooltip_shortcut: Option<ActionKeys>,
@@ -49,7 +53,11 @@ pub struct PopoverButton {
 
 	pub disabled: bool,
 
-	pub tooltip: String,
+	#[serde(rename = "tooltipLabel")]
+	pub tooltip_label: String,
+
+	#[serde(rename = "tooltipDescription")]
+	pub tooltip_description: String,
 
 	#[serde(skip)]
 	pub tooltip_shortcut: Option<ActionKeys>,
@@ -83,7 +91,11 @@ pub struct ParameterExposeButton {
 	#[serde(rename = "dataType")]
 	pub data_type: FrontendGraphDataType,
 
-	pub tooltip: String,
+	#[serde(rename = "tooltipLabel")]
+	pub tooltip_label: String,
+
+	#[serde(rename = "tooltipDescription")]
+	pub tooltip_description: String,
 
 	#[serde(skip)]
 	pub tooltip_shortcut: Option<ActionKeys>,
@@ -120,7 +132,11 @@ pub struct TextButton {
 
 	pub narrow: bool,
 
-	pub tooltip: String,
+	#[serde(rename = "tooltipLabel")]
+	pub tooltip_label: String,
+
+	#[serde(rename = "tooltipDescription")]
+	pub tooltip_description: String,
 
 	#[serde(skip)]
 	pub tooltip_shortcut: Option<ActionKeys>,
@@ -148,7 +164,11 @@ pub struct ImageButton {
 
 	pub height: Option<String>,
 
-	pub tooltip: String,
+	#[serde(rename = "tooltipLabel")]
+	pub tooltip_label: String,
+
+	#[serde(rename = "tooltipDescription")]
+	pub tooltip_description: String,
 
 	#[serde(skip)]
 	pub tooltip_shortcut: Option<ActionKeys>,
@@ -186,7 +206,11 @@ pub struct ColorInput {
 	#[serde(rename = "menuDirection")]
 	pub menu_direction: Option<MenuDirection>,
 
-	pub tooltip: String,
+	#[serde(rename = "tooltipLabel")]
+	pub tooltip_label: String,
+
+	#[serde(rename = "tooltipDescription")]
+	pub tooltip_description: String,
 
 	#[serde(skip)]
 	pub tooltip_shortcut: Option<ActionKeys>,
@@ -209,7 +233,11 @@ pub struct BreadcrumbTrailButtons {
 
 	pub disabled: bool,
 
-	pub tooltip: String,
+	#[serde(rename = "tooltipLabel")]
+	pub tooltip_label: String,
+
+	#[serde(rename = "tooltipDescription")]
+	pub tooltip_description: String,
 
 	#[serde(skip)]
 	pub tooltip_shortcut: Option<ActionKeys>,

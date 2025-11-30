@@ -16,7 +16,11 @@ pub struct CheckboxInput {
 
 	pub icon: String,
 
-	pub tooltip: String,
+	#[serde(rename = "tooltipLabel")]
+	pub tooltip_label: String,
+
+	#[serde(rename = "tooltipDescription")]
+	pub tooltip_description: String,
 
 	#[serde(rename = "forLabel")]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
@@ -41,7 +45,8 @@ impl Default for CheckboxInput {
 			checked: false,
 			disabled: false,
 			icon: "Checkmark".into(),
-			tooltip: Default::default(),
+			tooltip_label: Default::default(),
+			tooltip_description: Default::default(),
 			tooltip_shortcut: Default::default(),
 			for_label: CheckboxId::new(),
 			on_update: Default::default(),
@@ -90,7 +95,11 @@ pub struct DropdownInput {
 
 	pub narrow: bool,
 
-	pub tooltip: String,
+	#[serde(rename = "tooltipLabel")]
+	pub tooltip_label: String,
+
+	#[serde(rename = "tooltipDescription")]
+	pub tooltip_description: String,
 
 	#[serde(skip)]
 	pub tooltip_shortcut: Option<ActionKeys>,
@@ -154,7 +163,11 @@ pub struct FontInput {
 
 	pub disabled: bool,
 
-	pub tooltip: String,
+	#[serde(rename = "tooltipLabel")]
+	pub tooltip_label: String,
+
+	#[serde(rename = "tooltipDescription")]
+	pub tooltip_description: String,
 
 	#[serde(skip)]
 	pub tooltip_shortcut: Option<ActionKeys>,
@@ -190,7 +203,11 @@ pub struct NumberInput {
 	// Label
 	pub label: String,
 
-	pub tooltip: String,
+	#[serde(rename = "tooltipLabel")]
+	pub tooltip_label: String,
+
+	#[serde(rename = "tooltipDescription")]
+	pub tooltip_description: String,
 
 	#[serde(skip)]
 	pub tooltip_shortcut: Option<ActionKeys>,
@@ -359,7 +376,11 @@ pub struct RadioEntryData {
 
 	pub icon: String,
 
-	pub tooltip: String,
+	#[serde(rename = "tooltipLabel")]
+	pub tooltip_label: String,
+
+	#[serde(rename = "tooltipDescription")]
+	pub tooltip_description: String,
 
 	#[serde(skip)]
 	pub tooltip_shortcut: Option<ActionKeys>,
@@ -394,7 +415,11 @@ pub struct TextAreaInput {
 
 	pub disabled: bool,
 
-	pub tooltip: String,
+	#[serde(rename = "tooltipLabel")]
+	pub tooltip_label: String,
+
+	#[serde(rename = "tooltipDescription")]
+	pub tooltip_description: String,
 
 	// Callbacks
 	#[serde(skip)]
@@ -418,7 +443,11 @@ pub struct TextInput {
 
 	pub narrow: bool,
 
-	pub tooltip: String,
+	#[serde(rename = "tooltipLabel")]
+	pub tooltip_label: String,
+
+	#[serde(rename = "tooltipDescription")]
+	pub tooltip_description: String,
 
 	pub centered: bool,
 
@@ -446,7 +475,11 @@ pub struct CurveInput {
 
 	pub disabled: bool,
 
-	pub tooltip: String,
+	#[serde(rename = "tooltipLabel")]
+	pub tooltip_label: String,
+
+	#[serde(rename = "tooltipDescription")]
+	pub tooltip_description: String,
 
 	// Callbacks
 	#[serde(skip)]
@@ -466,7 +499,11 @@ pub struct ReferencePointInput {
 
 	pub disabled: bool,
 
-	pub tooltip: String,
+	#[serde(rename = "tooltipLabel")]
+	pub tooltip_label: String,
+
+	#[serde(rename = "tooltipDescription")]
+	pub tooltip_description: String,
 
 	// Callbacks
 	#[serde(skip)]

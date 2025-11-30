@@ -45,7 +45,7 @@
 	$: displayKeyboardLockNotice = requiresLock && !$fullscreen.keyboardLocked;
 
 	function watchKeyboardLockInfoMessage(keyboardLockApiSupported: boolean): string {
-		const RESERVED = "This hotkey is reserved by the browser. ";
+		const RESERVED = "This hotkey is reserved by the browser.";
 		const USE_FULLSCREEN = "It is made available in fullscreen mode.";
 		const USE_SECURE_CTX = "It is made available in fullscreen mode when this website is served from a secure context (https or localhost).";
 		const SWITCH_BROWSER = "Use a Chromium-based browser (like Chrome or Edge) in fullscreen mode to directly use the shortcut.";
@@ -118,7 +118,7 @@
 </script>
 
 {#if displayKeyboardLockNotice}
-	<IconLabel class="user-input-label keyboard-lock-notice" icon="Info" tooltip={keyboardLockInfoMessage} />
+	<IconLabel class="user-input-label keyboard-lock-notice" icon="Info" tooltipDescription={keyboardLockInfoMessage} />
 {:else}
 	<LayoutRow class="user-input-label" classes={{ "text-only": textOnly }}>
 		{#each keysWithLabelsGroups as keysWithLabels, groupIndex}

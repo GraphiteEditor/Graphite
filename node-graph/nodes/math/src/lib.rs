@@ -31,17 +31,17 @@ impl ValueProvider for MathNodeContext {
 	}
 }
 
-/// Calculates a mathematical expression with input values "A" and "B"
+/// Calculates a mathematical expression with input values "A" and "B".
 #[node_macro::node(category("Math: Arithmetic"), properties("math_properties"))]
 fn math<T: num_traits::float::Float>(
 	_: impl Ctx,
-	/// The value of "A" when calculating the expression
+	/// The value of "A" when calculating the expression.
 	#[implementations(f64, f32)]
 	operand_a: T,
-	/// A math expression that may incorporate "A" and/or "B", such as "sqrt(A + B) - B^2"
+	/// A math expression that may incorporate "A" and/or "B", such as "sqrt(A + B) - B^2".
 	#[default(A + B)]
 	expression: String,
-	/// The value of "B" when calculating the expression
+	/// The value of "B" when calculating the expression.
 	#[implementations(f64, f32)]
 	#[default(1.)]
 	operand_b: T,

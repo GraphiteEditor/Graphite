@@ -164,7 +164,7 @@
 		return `M-2,-2 L${nodeWidth + 2},-2 L${nodeWidth + 2},${nodeHeight + 2} L-2,${nodeHeight + 2}z ${rectangles.join(" ")}`;
 	}
 
-	function dataTypeTooltip(value: FrontendGraphInput | FrontendGraphOutput): string {
+	function dataTypeTooltipLabel(value: FrontendGraphInput | FrontendGraphOutput): string {
 		return `Data Type: ${value.resolvedType}`;
 	}
 
@@ -174,13 +174,11 @@
 	}
 
 	function outputConnectedToText(output: FrontendGraphOutput): string {
-		if (output.connectedTo.length === 0) return "Connected to nothing";
-
-		return `Connected to:\n${output.connectedTo.join("\n")}`;
+		return editor.handle.inDevelopmentMode() ? output.connectedTo.join("\n") : "";
 	}
 
 	function inputConnectedToText(input: FrontendGraphInput): string {
-		return `Connected to:\n${input.connectedTo}`;
+		return editor.handle.inDevelopmentMode() ? input.connectedTo : "";
 	}
 
 	function zipWithUndefined(arr1: FrontendGraphInput[], arr2: FrontendGraphOutput[]) {
@@ -310,7 +308,8 @@
 						viewBox="0 0 8 8"
 						class="connector"
 						data-connector="output"
-						data-tooltip={`${dataTypeTooltip(frontendOutput)}\n\n${outputConnectedToText(frontendOutput)}`}
+						data-tooltip-label={dataTypeTooltipLabel(frontendOutput)}
+						data-tooltip-description={outputConnectedToText(frontendOutput)}
 						data-datatype={frontendOutput.dataType}
 						style:--data-color={`var(--color-data-${frontendOutput.dataType.toLowerCase()})`}
 						style:--data-color-dim={`var(--color-data-${frontendOutput.dataType.toLowerCase()}-dim)`}
@@ -360,7 +359,7 @@
 								}}
 							/>
 							{#if index > 0}
-								<div class="reorder-drag-grip" data-tooltip="Reorder this export" />
+								<div class="reorder-drag-grip" data-tooltip-description="Reorder this export" />
 							{/if}
 						{/if}
 					</div>
@@ -382,14 +381,15 @@
 						viewBox="0 0 8 8"
 						class="connector"
 						data-connector="input"
-						data-tooltip={`${dataTypeTooltip(frontendInput)}\n\n${inputConnectedToText(frontendInput)}`}
+						data-tooltip-label={dataTypeTooltipLabel(frontendInput)}
+						data-tooltip-description={inputConnectedToText(frontendInput)}
 						data-datatype={frontendInput.dataType}
 						style:--data-color={`var(--color-data-${frontendInput.dataType.toLowerCase()})`}
 						style:--data-color-dim={`var(--color-data-${frontendInput.dataType.toLowerCase()}-dim)`}
 						style:--offset-left={($nodeGraph.updateImportsExports.exportPosition.x - 8) / 24}
 						style:--offset-top={($nodeGraph.updateImportsExports.exportPosition.y - 8) / 24 + index}
 					>
-						{#if frontendInput.connectedTo !== "nothing"}
+						{#if frontendInput.connectedTo !== "Connected to nothing."}
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 						{:else}
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
@@ -406,7 +406,7 @@
 					>
 						{#if (hoveringExportIndex === index || editingNameExportIndex === index) && $nodeGraph.updateImportsExports.addImportExport}
 							{#if index > 0}
-								<div class="reorder-drag-grip" data-tooltip="Reorder this export" />
+								<div class="reorder-drag-grip" data-tooltip-description="Reorder this export" />
 							{/if}
 							<IconButton
 								size={16}
@@ -505,8 +505,10 @@
 				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
 				style:--layer-area-width={layerAreaWidth}
 				style:--node-chain-area-left-extension={layerChainWidth !== 0 ? layerChainWidth + 0.5 : 0}
-				data-tooltip={`${node.displayName}\n\n${description || ""}`.trim() +
-					(editor.handle.inDevelopmentMode() ? `\n\nNode ID: ${node.id}, Position: (${node.position.x}, ${node.position.y})` : "")}
+				data-tooltip-label={node.displayName}
+				data-tooltip-description={`
+					${(description || "").trim()}${editor.handle.inDevelopmentMode() ? `\n\nNode ID: ${node.id}\nPosition: (${node.position.x}, ${node.position.y})` : ""}
+					`.trim()}
 				data-node={node.id}
 			>
 				<div class="thumbnail">
@@ -520,7 +522,8 @@
 							viewBox="0 0 8 12"
 							class="connector top"
 							data-connector="output"
-							data-tooltip={`${dataTypeTooltip(node.primaryOutput)}\n\n${outputConnectedToText(node.primaryOutput)}`}
+							data-tooltip-label={dataTypeTooltipLabel(node.primaryOutput)}
+							data-tooltip-description={outputConnectedToText(node.primaryOutput)}
 							data-datatype={node.primaryOutput.dataType}
 							style:--data-color={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()})`}
 							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()}-dim)`}
@@ -541,12 +544,13 @@
 						viewBox="0 0 8 12"
 						class="connector bottom"
 						data-connector="input"
-						data-tooltip={node.primaryInput ? `${dataTypeTooltip(node.primaryInput)}\n\n${validTypesText(node.primaryInput)}\n\n${inputConnectedToText(node.primaryInput)}` : ""}
+						data-tooltip-label={node.primaryInput ? dataTypeTooltipLabel(node.primaryInput) : ""}
+						data-tooltip-description={node.primaryInput ? `${validTypesText(node.primaryInput).trim()}\n\n${inputConnectedToText(node.primaryInput)}` : ""}
 						data-datatype={node.primaryInput?.dataType}
 						style:--data-color={`var(--color-data-${(node.primaryInput?.dataType || "General").toLowerCase()})`}
 						style:--data-color-dim={`var(--color-data-${(node.primaryInput?.dataType || "General").toLowerCase()}-dim)`}
 					>
-						{#if node.primaryInput?.connectedTo !== "nothing"}
+						{#if node.primaryInput?.connectedTo !== "Connected to nothing."}
 							<path d="M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z" fill="var(--data-color)" />
 							{#if node.primaryInputConnectedToLayer}
 								<path d="M0,10.95l2.52,-1.69c0.89,-0.6,2.06,-0.6,2.96,0l2.52,1.69v5.05h-8v-5.05z" fill="var(--data-color-dim)" />
@@ -563,7 +567,8 @@
 							xmlns="http://www.w3.org/2000/svg"
 							viewBox="0 0 8 8"
 							class="connector"
-							data-tooltip={`${dataTypeTooltip(stackDataInput)}\n\n${validTypesText(stackDataInput)}\n\n${inputConnectedToText(stackDataInput)}`}
+							data-tooltip-label={dataTypeTooltipLabel(stackDataInput)}
+							data-tooltip-description={`${validTypesText(stackDataInput).trim()}\n\n${inputConnectedToText(stackDataInput)}`}
 							data-connector="input"
 							data-datatype={stackDataInput.dataType}
 							style:--data-color={`var(--color-data-${stackDataInput.dataType.toLowerCase()})`}
@@ -581,7 +586,7 @@
 					<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
 					<TextLabel>{node.displayName}</TextLabel>
 				</div>
-				<div class="solo-drag-grip" data-tooltip="Drag only this layer without pushing others outside the stack"></div>
+				<div class="solo-drag-grip" data-tooltip-description="Drag only this layer without pushing others outside the stack"></div>
 				<IconButton
 					class="visibility"
 					data-visibility-button
@@ -590,7 +595,7 @@
 					action={() => {
 						/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
 					}}
-					tooltip={node.visible ? "Visible" : "Hidden"}
+					tooltipLabel={node.visible ? "Visible" : "Hidden"}
 				/>
 
 				<svg class="border-mask" width="0" height="0">
@@ -649,8 +654,10 @@
 				style:--clip-path-id={`url(#${clipPathId})`}
 				style:--data-color={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()})`}
 				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
-				data-tooltip={`${node.displayName}\n\n${description || ""}`.trim() +
-					(editor.handle.inDevelopmentMode() ? `\n\nNode ID: ${node.id}, Position: (${node.position.x}, ${node.position.y})` : "")}
+				data-tooltip-label={node.displayName}
+				data-tooltip-description={`
+					${(description || "").trim()}${editor.handle.inDevelopmentMode() ? `\n\nNode ID: ${node.id}\nPosition: (${node.position.x}, ${node.position.y})` : ""}
+					`.trim()}
 				data-node={node.id}
 			>
 				<!-- Primary row -->
@@ -664,7 +671,7 @@
 					<div class="secondary" class:in-selected-network={$nodeGraph.inSelectedNetwork}>
 						{#each exposedInputsOutputs as [input, output]}
 							<div class={`secondary-row expanded ${input !== undefined ? "input" : "output"}`}>
-								<TextLabel tooltip={(input !== undefined ? `${input.name}\n\n${input.description}` : `${output.name}\n\n${output.description}`).trim()}>
+								<TextLabel tooltipLabel={input !== undefined ? input.name : output.name} tooltipDescription={input !== undefined ? input.description : output.description}>
 									{input !== undefined ? input.name : output.name}
 								</TextLabel>
 							</div>
@@ -679,7 +686,8 @@
 							viewBox="0 0 8 8"
 							class="connector primary-connector"
 							data-connector="input"
-							data-tooltip={`${dataTypeTooltip(node.primaryInput)}\n\n${validTypesText(node.primaryInput)}\n\n${inputConnectedToText(node.primaryInput)}`}
+							data-tooltip-label={dataTypeTooltipLabel(node.primaryInput)}
+							data-tooltip-description={`${validTypesText(node.primaryInput).trim()}\n\n${inputConnectedToText(node.primaryInput)}`}
 							data-datatype={node.primaryInput?.dataType}
 							style:--data-color={`var(--color-data-${node.primaryInput.dataType.toLowerCase()})`}
 							style:--data-color-dim={`var(--color-data-${node.primaryInput.dataType.toLowerCase()}-dim)`}
@@ -698,7 +706,8 @@
 								viewBox="0 0 8 8"
 								class="connector"
 								data-connector="input"
-								data-tooltip={`${dataTypeTooltip(secondary)}\n\n${validTypesText(secondary)}\n\n${inputConnectedToText(secondary)}`}
+								data-tooltip-label={dataTypeTooltipLabel(secondary)}
+								data-tooltip-description={`${validTypesText(secondary).trim()}\n\n${inputConnectedToText(secondary)}`}
 								data-datatype={secondary.dataType}
 								style:--data-color={`var(--color-data-${secondary.dataType.toLowerCase()})`}
 								style:--data-color-dim={`var(--color-data-${secondary.dataType.toLowerCase()}-dim)`}
@@ -720,7 +729,8 @@
 							viewBox="0 0 8 8"
 							class="connector primary-connector"
 							data-connector="output"
-							data-tooltip={`${dataTypeTooltip(node.primaryOutput)}\n\n${outputConnectedToText(node.primaryOutput)}`}
+							data-tooltip-label={dataTypeTooltipLabel(node.primaryOutput)}
+							data-tooltip-description={`${outputConnectedToText(node.primaryOutput)}`}
 							data-datatype={node.primaryOutput.dataType}
 							style:--data-color={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()})`}
 							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()}-dim)`}
@@ -738,7 +748,8 @@
 							viewBox="0 0 8 8"
 							class="connector"
 							data-connector="output"
-							data-tooltip={`${dataTypeTooltip(secondary)}\n\n${outputConnectedToText(secondary)}`}
+							data-tooltip-label={dataTypeTooltipLabel(secondary)}
+							data-tooltip-description={`${outputConnectedToText(secondary)}`}
 							data-datatype={secondary.dataType}
 							style:--data-color={`var(--color-data-${secondary.dataType.toLowerCase()})`}
 							style:--data-color-dim={`var(--color-data-${secondary.dataType.toLowerCase()}-dim)`}

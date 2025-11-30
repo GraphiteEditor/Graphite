@@ -276,14 +276,14 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 	color_widgets.extend([
 		CheckboxInput::new(grid.dot_display)
 			.icon("GridDotted")
-			.tooltip("Display as dotted grid")
+			.tooltip_label("Display as Dotted Grid")
 			.on_update(update_display(grid, |grid| Some(&mut grid.dot_display)))
 			.widget_holder(),
 		Separator::new(SeparatorType::Related).widget_holder(),
 	]);
 	color_widgets.push(
 		ColorInput::new(FillChoice::Solid(grid.grid_color.to_gamma_srgb()))
-			.tooltip("Grid display color")
+			.tooltip_label("Grid Display Color")
 			.allow_none(false)
 			.on_update(update_color(grid, |grid| Some(&mut grid.grid_color)))
 			.widget_holder(),

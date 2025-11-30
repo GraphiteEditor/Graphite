@@ -254,11 +254,9 @@ impl<'i> Convert<Raster<CPU>, &'i WgpuExecutor> for Raster<GPU> {
 	}
 }
 
-/// Node for uploading textures from CPU to GPU. This Is now deprecated and
-/// we should use the Convert node in the future.
+/// Uploads an raster texture from the CPU to the GPU. This Is now deprecated and the Convert node should be used in the future.
 ///
-/// Accepts either individual rasters or tables of rasters and converts them
-/// to GPU format using the WgpuExecutor's device and queue.
+/// Accepts either individual raster data or a table of raster elements and converts it to the GPU format using the WgpuExecutor's device and queue.
 #[node_macro::node(category(""))]
 pub async fn upload_texture<'a: 'n, T: Convert<Table<Raster<GPU>>, &'a WgpuExecutor>>(
 	_: impl Ctx,

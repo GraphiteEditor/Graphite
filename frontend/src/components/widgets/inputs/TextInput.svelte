@@ -7,7 +7,8 @@
 
 	// Label
 	export let label: string | undefined = undefined;
-	export let tooltip: string | undefined = undefined;
+	export let tooltipLabel: string | undefined = undefined;
+	export let tooltipDescription: string | undefined = undefined;
 	export let placeholder: string | undefined = undefined;
 	// Disabled
 	export let disabled = false;
@@ -79,7 +80,8 @@
 	{label}
 	{disabled}
 	{narrow}
-	{tooltip}
+	{tooltipLabel}
+	{tooltipDescription}
 	{placeholder}
 	bind:this={self}
 />

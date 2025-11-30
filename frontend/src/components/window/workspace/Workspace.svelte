@@ -32,8 +32,8 @@
 		const unsaved = !doc.details.isSaved;
 		if (!editor.handle.inDevelopmentMode()) return { name, unsaved };
 
-		const tooltip = `Document ID: ${doc.id}`;
-		return { name, unsaved, tooltip };
+		const tooltipDescription = `Document ID: ${doc.id}`;
+		return { name, unsaved, tooltipDescription };
 	});
 
 	const editor = getContext<Editor>("editor");

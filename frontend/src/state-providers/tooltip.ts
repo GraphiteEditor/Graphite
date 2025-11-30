@@ -1,10 +1,8 @@
 import { writable } from "svelte/store";
 
-import { type Editor } from "@graphite/editor";
-
 const SHOW_TOOLTIP_DELAY_MS = 500;
 
-export function createTooltipState(editor: Editor) {
+export function createTooltipState() {
 	const { subscribe, update } = writable({
 		visible: false,
 		element: undefined as Element | undefined,
@@ -13,8 +11,9 @@ export function createTooltipState(editor: Editor) {
 
 	let tooltipTimeout: ReturnType<typeof setTimeout> | undefined = undefined;
 
+	// Listen for mouse movements onto tooltip-bearing HTML elements to track the future target of a tooltip
 	document.addEventListener("mouseover", (e) => {
-		const element = (e.target instanceof Element && e.target.closest("[data-tooltip]")) || undefined;
+		const element = (e.target instanceof Element && e.target.closest("[data-tooltip-label], [data-tooltip-description]")) || undefined;
 
 		update((state) => {
 			state.visible = false;
@@ -23,15 +22,7 @@ export function createTooltipState(editor: Editor) {
 		});
 	});
 
-	document.addEventListener("mousedown", () => {
-		// Stop showing a tooltip if the user clicks, and only reset by moving out of the element
-		update((state) => {
-			state.visible = false;
-			state.element = undefined;
-			return state;
-		});
-	});
-
+	// Listen for mouse movements to schedule and position the tooltip, or hide it immediately upon further movement
 	document.addEventListener("mousemove", (e) => {
 		// Hide the tooltip now that the cursor has moved
 		update((state) => {
@@ -53,6 +44,18 @@ export function createTooltipState(editor: Editor) {
 			});
 		}, SHOW_TOOLTIP_DELAY_MS);
 	});
+
+	document.addEventListener("mousedown", closeTooltip);
+	document.addEventListener("keydown", closeTooltip);
+
+	// Stop showing a tooltip if the user clicks or presses a key, and require the user to first move out of the element before it can re-appear
+	function closeTooltip() {
+		update((state) => {
+			state.visible = false;
+			state.element = undefined;
+			return state;
+		});
+	}
 
 	return {
 		subscribe,

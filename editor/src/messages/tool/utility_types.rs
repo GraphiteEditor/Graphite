@@ -124,12 +124,12 @@ impl DocumentToolData {
 			LayoutGroup::Row {
 				widgets: vec![
 					IconButton::new("SwapVertical", 16)
-						.tooltip("Swap")
+						.tooltip_label("Swap")
 						.tooltip_shortcut(action_keys!(ToolMessageDiscriminant::SwapColors))
 						.on_update(|_| ToolMessage::SwapColors.into())
 						.widget_holder(),
 					IconButton::new("WorkingColors", 16)
-						.tooltip("Reset")
+						.tooltip_label("Reset")
 						.tooltip_shortcut(action_keys!(ToolMessageDiscriminant::ResetColors))
 						.on_update(|_| ToolMessage::ResetColors.into())
 						.widget_holder(),
@@ -201,7 +201,11 @@ pub trait ToolTransition {
 
 pub trait ToolMetadata {
 	fn icon_name(&self) -> String;
-	fn tooltip(&self) -> String;
+	fn tooltip_label(&self) -> String;
+	fn tooltip_description(&self) -> String {
+		// TODO: Remove this to make tool descriptions mandatory once we've written them all
+		String::new()
+	}
 	fn tool_type(&self) -> ToolType;
 }
 
@@ -240,11 +244,12 @@ impl LayoutHolder for ToolData {
 						match tool_availability {
 							ToolAvailability::Available(tool) =>
 								ToolEntry::new(tool.tool_type(), tool.icon_name())
-									.tooltip(tool.tooltip())
+									.tooltip_label(tool.tooltip_label())
 									.tooltip_shortcut(action_keys!(tool_type_to_activate_tool_message(tool.tool_type()))),
 							ToolAvailability::AvailableAsShape(shape) =>
 								ToolEntry::new(shape.tool_type(), shape.icon_name())
-									.tooltip(shape.tooltip())
+									.tooltip_label(shape.tooltip_label())
+									.tooltip_description(shape.tooltip_description())
 									.tooltip_shortcut(action_keys!(tool_type_to_activate_tool_message(shape.tool_type()))),
 							ToolAvailability::ComingSoon(tool) => tool.clone(),
 						}
@@ -253,14 +258,15 @@ impl LayoutHolder for ToolData {
 			)
 			.flat_map(|group| {
 				let separator = std::iter::once(Separator::new(SeparatorType::Section).direction(SeparatorDirection::Vertical).widget_holder());
-				let buttons = group.into_iter().map(|ToolEntry { tooltip, tooltip_shortcut, tool_type, icon_name }| {
+				let buttons = group.into_iter().map(|ToolEntry { tooltip_label, tooltip_description, tooltip_shortcut, tool_type, icon_name }| {
 					IconButton::new(icon_name, 32)
 						.disabled(false)
 						.active(match tool_type {
 							ToolType::Line | ToolType::Ellipse | ToolType::Rectangle => { self.active_shape_type.is_some() && active_tool == tool_type }
 							_ => active_tool == tool_type,
 						})
-						.tooltip(tooltip.clone())
+						.tooltip_label(tooltip_label.clone())
+						.tooltip_description(tooltip_description)
 						.tooltip_shortcut(tooltip_shortcut)
 						.on_update(move |_| {
 							match tool_type {
@@ -269,7 +275,7 @@ impl LayoutHolder for ToolData {
 								ToolType::Ellipse => ToolMessage::ActivateToolShapeEllipse.into(),
 								ToolType::Shape => ToolMessage::ActivateToolShape.into(),
 								_ => {
-									if !tooltip.contains("Coming Soon") { (ToolMessage::ActivateTool { tool_type }).into() } else { (DialogMessage::RequestComingSoonDialog { issue: None }).into() }
+									if !tooltip_label.contains("Coming Soon") { (ToolMessage::ActivateTool { tool_type }).into() } else { (DialogMessage::RequestComingSoonDialog { issue: None }).into() }
 								}
 							}
 						})
@@ -295,7 +301,8 @@ pub struct ToolEntry {
 	pub tool_type: ToolType,
 	#[widget_builder(constructor)]
 	pub icon_name: String,
-	pub tooltip: String,
+	pub tooltip_label: String,
+	pub tooltip_description: String,
 	pub tooltip_shortcut: Option<ActionKeys>,
 }
 
@@ -414,11 +421,11 @@ fn list_tools_in_groups() -> Vec<Vec<ToolAvailability>> {
 		vec![
 			// Raster tool group
 			ToolAvailability::Available(Box::<brush_tool::BrushTool>::default()),
-			ToolAvailability::ComingSoon(ToolEntry::new(ToolType::Heal, "RasterHealTool").tooltip("Coming Soon: Heal Tool (J)")),
-			ToolAvailability::ComingSoon(ToolEntry::new(ToolType::Clone, "RasterCloneTool").tooltip("Coming Soon: Clone Tool (C)")),
-			ToolAvailability::ComingSoon(ToolEntry::new(ToolType::Patch, "RasterPatchTool").tooltip("Coming Soon: Patch Tool")),
-			ToolAvailability::ComingSoon(ToolEntry::new(ToolType::Detail, "RasterDetailTool").tooltip("Coming Soon: Detail Tool (D)")),
-			ToolAvailability::ComingSoon(ToolEntry::new(ToolType::Relight, "RasterRelightTool").tooltip("Coming Soon: Relight Tool (O)")),
+			ToolAvailability::ComingSoon(ToolEntry::new(ToolType::Heal, "RasterHealTool").tooltip_label("Coming Soon: Heal Tool (J)")),
+			ToolAvailability::ComingSoon(ToolEntry::new(ToolType::Clone, "RasterCloneTool").tooltip_label("Coming Soon: Clone Tool (C)")),
+			ToolAvailability::ComingSoon(ToolEntry::new(ToolType::Patch, "RasterPatchTool").tooltip_label("Coming Soon: Patch Tool")),
+			ToolAvailability::ComingSoon(ToolEntry::new(ToolType::Detail, "RasterDetailTool").tooltip_label("Coming Soon: Detail Tool (D)")),
+			ToolAvailability::ComingSoon(ToolEntry::new(ToolType::Relight, "RasterRelightTool").tooltip_label("Coming Soon: Relight Tool (O)")),
 		],
 	]
 }

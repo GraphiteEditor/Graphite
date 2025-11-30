@@ -9,7 +9,11 @@ pub struct IconLabel {
 
 	pub disabled: bool,
 
-	pub tooltip: String,
+	#[serde(rename = "tooltipLabel")]
+	pub tooltip_label: String,
+
+	#[serde(rename = "tooltipDescription")]
+	pub tooltip_description: String,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, WidgetBuilder, specta::Type)]
@@ -60,7 +64,11 @@ pub struct TextLabel {
 	#[serde(rename = "minWidth")]
 	pub min_width: String,
 
-	pub tooltip: String,
+	#[serde(rename = "tooltipLabel")]
+	pub tooltip_label: String,
+
+	#[serde(rename = "tooltipDescription")]
+	pub tooltip_description: String,
 
 	#[serde(rename = "forCheckbox")]
 	#[derivative(PartialEq = "ignore")]
@@ -81,7 +89,11 @@ pub struct ImageLabel {
 
 	pub height: Option<String>,
 
-	pub tooltip: String,
+	#[serde(rename = "tooltipLabel")]
+	pub tooltip_label: String,
+
+	#[serde(rename = "tooltipDescription")]
+	pub tooltip_description: String,
 }
 
 // TODO: Add UserInputLabel

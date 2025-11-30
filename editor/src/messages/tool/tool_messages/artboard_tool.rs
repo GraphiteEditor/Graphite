@@ -42,7 +42,7 @@ impl ToolMetadata for ArtboardTool {
 	fn icon_name(&self) -> String {
 		"GeneralArtboardTool".into()
 	}
-	fn tooltip(&self) -> String {
+	fn tooltip_label(&self) -> String {
 		"Artboard Tool".into()
 	}
 	fn tool_type(&self) -> crate::messages::tool::utility_types::ToolType {

@@ -30,7 +30,8 @@
 		<button
 			class:active={!mixed ? index === selectedIndex : undefined}
 			on:click={() => handleEntryClick(entry)}
-			data-tooltip={entry.tooltip}
+			data-tooltip-label={entry.tooltipLabel}
+			data-tooltip-description={entry.tooltipDescription}
 			tabindex={index === selectedIndex ? -1 : 0}
 			{disabled}
 		>

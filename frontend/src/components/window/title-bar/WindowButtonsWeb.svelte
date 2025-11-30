@@ -19,8 +19,8 @@
 <LayoutRow
 	class="window-buttons-web"
 	on:click={handleClick}
-	tooltip={($fullscreen.windowFullscreen ? "Exit Fullscreen (F11)" : "Enter Fullscreen (F11)") +
-		(requestFullscreenHotkeys ? "\n\nThis provides access to hotkeys normally reserved by the browser" : "")}
+	tooltipLabel={$fullscreen.windowFullscreen ? "Exit Fullscreen (F11)" : "Enter Fullscreen (F11)"}
+	tooltipDescription={requestFullscreenHotkeys ? "This provides access to hotkeys normally reserved by the browser." : ""}
 >
 	<IconLabel icon={$fullscreen.windowFullscreen ? "FullscreenExit" : "FullscreenEnter"} />
 </LayoutRow>

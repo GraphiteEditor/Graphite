@@ -11,7 +11,8 @@
 	export let checked = false;
 	export let disabled = false;
 	export let icon: IconName = "Checkmark";
-	export let tooltip: string | undefined = undefined;
+	export let tooltipLabel: string | undefined = undefined;
+	export let tooltipDescription: string | undefined = undefined;
 	export let forLabel: bigint | undefined = undefined;
 
 	let inputElement: HTMLInputElement | undefined;
@@ -46,7 +47,14 @@
 		tabindex={disabled ? -1 : 0}
 		bind:this={inputElement}
 	/>
-	<label class:disabled class:checked for={`checkbox-input-${id}`} on:keydown={(e) => e.key === "Enter" && toggleCheckboxFromLabel(e)} data-tooltip={tooltip}>
+	<label
+		class:disabled
+		class:checked
+		for={`checkbox-input-${id}`}
+		on:keydown={(e) => e.key === "Enter" && toggleCheckboxFromLabel(e)}
+		data-tooltip-label={tooltipLabel}
+		data-tooltip-description={tooltipDescription}
+	>
 		<LayoutRow class="checkbox-box">
 			<IconLabel icon={displayIcon} />
 		</LayoutRow>

@@ -1,23 +1,38 @@
 <script lang="ts">
 	import { getContext } from "svelte";
 
+	import type { Editor } from "@graphite/editor";
 	import type { TooltipState } from "@graphite/state-providers/tooltip";
 
 	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 
 	const tooltip = getContext<TooltipState>("tooltip");
+	const editor = getContext<Editor>("editor");
 
 	let self: FloatingMenu | undefined;
+
+	$: label = filterTodo($tooltip.element?.getAttribute("data-tooltip-label")?.trim());
+	$: description = filterTodo($tooltip.element?.getAttribute("data-tooltip-description")?.trim());
+
+	// TODO: Once all TODOs are replaced with real text, remove this function
+	function filterTodo(text: string | undefined): string | undefined {
+		if (text?.trim().toUpperCase() === "TODO" && !editor.handle.inDevelopmentMode()) return "";
+		return text;
+	}
 </script>
 
 <div class="tooltip" style:top={`${$tooltip.position.y}px`} style:left={`${$tooltip.position.x}px`}>
-	<FloatingMenu open={true} type="Tooltip" direction="Bottom" bind:this={self}>
-		{@const text = $tooltip.element?.getAttribute("data-tooltip")}
-		{#if text}
-			<TextLabel>{text}</TextLabel>
-		{/if}
-	</FloatingMenu>
+	{#if label || description}
+		<FloatingMenu open={true} type="Tooltip" direction="Bottom" bind:this={self}>
+			{#if label}
+				<TextLabel class="tooltip-label">{label}</TextLabel>
+			{/if}
+			{#if description}
+				<TextLabel class="tooltip-description">{description}</TextLabel>
+			{/if}
+		</FloatingMenu>
+	{/if}
 </div>
 
 <style lang="scss" global>
@@ -32,6 +47,14 @@
 
 			.text-label {
 				white-space: pre-wrap;
+
+				&.tooltip-label + .tooltip-description {
+					margin-top: 4px;
+				}
+
+				&.tooltip-description {
+					color: var(--color-b-lightgray);
+				}
 			}
 		}
 	}

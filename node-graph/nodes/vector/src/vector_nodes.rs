@@ -189,8 +189,8 @@ async fn stroke<V, L: IntoF64Vec>(
 	/// The threshold for when a miter-joined stroke is converted to a bevel-joined stroke when a sharp angle becomes pointier than this ratio.
 	#[default(4.)]
 	miter_limit: f64,
+	// <https://svgwg.org/svg2-draft/painting.html#PaintOrderProperty>
 	/// The order to paint the stroke on top of the fill, or the fill on top of the stroke.
-	/// <https://svgwg.org/svg2-draft/painting.html#PaintOrderProperty>
 	paint_order: PaintOrder,
 	/// The stroke dash lengths. Each length forms a distance in a pattern where the first length is a dash, the second is a gap, and so on. If the list is an odd length, the pattern repeats with solid-gap roles reversed.
 	#[implementations(Vec<f64>, f64, String, Vec<f64>, f64, String)]
