@@ -429,26 +429,26 @@ fn list_tools_in_groups() -> Vec<Vec<ToolAvailability>> {
 				ToolEntry::new(ToolType::Heal, "RasterHealTool")
 					.tooltip_label("Heal Tool")
 					.tooltip_description("Coming soon.")
-					.tooltip_shortcut("J"),
+					.tooltip_shortcut(Key::KeyJ.to_string()),
 			),
 			ToolAvailability::ComingSoon(
 				ToolEntry::new(ToolType::Clone, "RasterCloneTool")
 					.tooltip_label("Clone Tool")
 					.tooltip_description("Coming soon.")
-					.tooltip_shortcut("C"),
+					.tooltip_shortcut(Key::KeyC.to_string()),
 			),
 			ToolAvailability::ComingSoon(ToolEntry::new(ToolType::Patch, "RasterPatchTool").tooltip_label("Patch Tool").tooltip_description("Coming soon.")),
 			ToolAvailability::ComingSoon(
 				ToolEntry::new(ToolType::Detail, "RasterDetailTool")
 					.tooltip_label("Detail Tool")
 					.tooltip_description("Coming soon.")
-					.tooltip_shortcut("D"),
+					.tooltip_shortcut(Key::KeyD.to_string()),
 			),
 			ToolAvailability::ComingSoon(
 				ToolEntry::new(ToolType::Relight, "RasterRelightTool")
 					.tooltip_label("Relight Tool")
 					.tooltip_description("Coming soon.")
-					.tooltip_shortcut("O"),
+					.tooltip_shortcut(Key::KeyO.to_string()),
 			),
 		],
 	]

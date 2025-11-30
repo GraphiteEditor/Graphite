@@ -609,7 +609,6 @@
 					styles={{ "--layer-indent-levels": `${listing.entry.depth - 1}` }}
 					data-layer
 					data-index={index}
-					tooltipDescription={listing.entry.debugLayerIdTooltip}
 					on:pointerdown={(e) => layerPointerDown(e, listing)}
 					on:click={(e) => selectLayerWithModifiers(e, listing)}
 				>
@@ -623,7 +622,7 @@
 								? "Hide the layers nested within. (To affect all open descendants, perform the shortcut shown.)"
 								: "Show the layers nested within. (To affect all closed descendants, perform the shortcut shown.)") +
 								(listing.entry.ancestorOfSelected && !listing.entry.expanded ? "\n\nNote: a selected layer is currently contained within.\n" : "")}
-							data-tooltip-shortcut="Alt LMB"
+							data-tooltip-shortcut="Alt Click"
 							on:click={(e) => handleExpandArrowClickWithModifiers(e, listing.entry.id)}
 							tabindex="0"
 						></button>
@@ -635,7 +634,7 @@
 							icon="Clipped"
 							class="clipped-arrow"
 							tooltipDescription="Clipping mask is active. To release it, perform the shortcut on the layer border."
-							tooltipShortcut="Alt LMB"
+							tooltipShortcut="Alt Click"
 						/>
 					{/if}
 					<div class="thumbnail">

@@ -5,6 +5,7 @@
 	import type { TooltipState } from "@graphite/state-providers/tooltip";
 
 	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
+	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 
 	const tooltip = getContext<TooltipState>("tooltip");
@@ -26,14 +27,18 @@
 <div class="tooltip" style:top={`${$tooltip.position.y}px`} style:left={`${$tooltip.position.x}px`}>
 	{#if label || description}
 		<FloatingMenu open={true} type="Tooltip" direction="Bottom" bind:this={self}>
-			{#if label}
-				<TextLabel class="tooltip-label">{label}</TextLabel>
+			{#if label || shortcut}
+				<LayoutRow class="tooltip-header">
+					{#if label}
+						<TextLabel class="tooltip-label">{label}</TextLabel>
+					{/if}
+					{#if shortcut}
+						<TextLabel class="tooltip-shortcut">{shortcut}</TextLabel>
+					{/if}
+				</LayoutRow>
 			{/if}
 			{#if description}
 				<TextLabel class="tooltip-description">{description}</TextLabel>
-			{/if}
-			{#if shortcut}
-				<TextLabel class="tooltip-shortcut">Shortcut: {shortcut}</TextLabel>
 			{/if}
 		</FloatingMenu>
 	{/if}
@@ -49,17 +54,27 @@
 		.floating-menu-content {
 			max-width: Min(400px, 50vw);
 
+			.tooltip-header + .tooltip-description {
+				margin-top: 4px;
+			}
+
 			.text-label {
 				white-space: pre-wrap;
+			}
 
-				+ .text-label {
-					margin-top: 4px;
-				}
+			.text-label + .tooltip-shortcut {
+				margin-left: 8px;
+			}
 
-				&.tooltip-description,
-				&.tooltip-shortcut {
-					color: var(--color-b-lightgray);
-				}
+			.tooltip-shortcut {
+				color: var(--color-b-lightgray);
+				background: var(--color-3-darkgray);
+				padding: 0 4px;
+				border-radius: 4px;
+			}
+
+			.tooltip-description {
+				color: var(--color-b-lightgray);
 			}
 		}
 	}

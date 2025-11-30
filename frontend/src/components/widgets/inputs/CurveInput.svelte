@@ -79,7 +79,7 @@
 	}
 
 	function handleManipulatorPointerDown(e: PointerEvent, i: number) {
-		// Delete an anchor with RMB or MMB
+		// Delete an anchor with right click or middle click
 		if (e.button > 0 && i > 0 && i < manipulatorsList.length - 1) {
 			draggedNodeIndex = undefined;
 			selectedNodeIndex = undefined;

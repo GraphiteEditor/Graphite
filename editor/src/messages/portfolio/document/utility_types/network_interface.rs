@@ -632,7 +632,7 @@ impl NodeNetworkInterface {
 			.map(|output_connector| match output_connector {
 				OutputConnector::Node { node_id, output_index } => {
 					let name = self.display_name(&node_id, network_path);
-					format!("Connected to output #{output_index} of '{name}' (ID: {node_id}).")
+					format!("Connected to output #{output_index} of \"{name}\", ID: {node_id}.")
 				}
 				OutputConnector::Import(import_index) => format!("Connected to import #{import_index}."),
 			})
@@ -723,7 +723,7 @@ impl NodeNetworkInterface {
 			.map(|input| match input {
 				&InputConnector::Node { node_id, input_index } => {
 					let name = self.display_name(&node_id, network_path);
-					format!("Connected to input #{input_index} of '{name}' (ID: {node_id}).")
+					format!("Connected to input #{input_index} of \"{name}\", ID: {node_id}.")
 				}
 				InputConnector::Export(export_index) => format!("Connected to export #{export_index}."),
 			})

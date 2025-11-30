@@ -31,6 +31,14 @@
 		blue: [0, 0, 1],
 		magenta: [1, 0, 1],
 	};
+	const PURE_COLORS_GRAYABLE = [
+		["Red", "#ff0000", "#4c4c4c"],
+		["Yellow", "#ffff00", "#e3e3e3"],
+		["Green", "#00ff00", "#969696"],
+		["Cyan", "#00ffff", "#b2b2b2"],
+		["Blue", "#0000ff", "#1c1c1c"],
+		["Magenta", "#ff00ff", "#696969"],
+	];
 
 	const editor = getContext<Editor>("editor");
 
@@ -422,7 +430,8 @@
 			<LayoutRow class="pickers">
 				<LayoutCol
 					class="saturation-value-picker"
-					data-tooltip-label={disabled ? "Saturation and Value (Disabled)" : "Saturation and Value"}
+					data-tooltip-label="Saturation and Value"
+					data-tooltip-description={disabled ? "Disabled (read-only)." : ""}
 					on:pointerdown={onPointerDown}
 					data-saturation-value-picker
 				>
@@ -439,12 +448,24 @@
 						/>
 					{/if}
 				</LayoutCol>
-				<LayoutCol class="hue-picker" data-tooltip-label={disabled ? "Hue (Disabled)" : "Hue"} on:pointerdown={onPointerDown} data-hue-picker>
+				<LayoutCol
+					class="hue-picker"
+					data-tooltip-label="Hue"
+					data-tooltip-description={"The shade along the spectrum of the rainbow." + (disabled ? "\n\nDisabled (read-only)." : "")}
+					on:pointerdown={onPointerDown}
+					data-hue-picker
+				>
 					{#if !isNone}
 						<div class="selection-needle" style:top={`${(1 - hue) * 100}%`} />
 					{/if}
 				</LayoutCol>
-				<LayoutCol class="alpha-picker" data-tooltip-label={disabled ? "Alpha (Disabled)" : "Alpha"} on:pointerdown={onPointerDown} data-alpha-picker>
+				<LayoutCol
+					class="alpha-picker"
+					data-tooltip-label="Alpha"
+					data-tooltip-description={"The level of translucency." + (disabled ? "\n\nDisabled (read-only)." : "")}
+					on:pointerdown={onPointerDown}
+					data-alpha-picker
+				>
 					{#if !isNone}
 						<div class="selection-needle" style:top={`${(1 - alpha) * 100}%`} />
 					{/if}
@@ -484,7 +505,7 @@
 				class="choice-preview"
 				classes={{ outlined, transparency }}
 				styles={{ "--outline-amount": outlineFactor }}
-				tooltipDescription={!newColor.equals(oldColor) ? "Comparison between the present color choice (left) and the color before any change was made (right)." : "The present color choice."}
+				tooltipDescription={!newColor.equals(oldColor) ? "Comparison between the present color choice (left) and the color before it was changed (right)." : "The present color choice."}
 			>
 				{#if !newColor.equals(oldColor) && !disabled}
 					<div class="swap-button-background"></div>
@@ -503,7 +524,10 @@
 			</LayoutRow>
 			<!-- <DropdownInput entries={[[{ label: "sRGB" }]]} selectedIndex={0} disabled={true} tooltipDescription="Color model, color space, and HDR (coming soon)." /> -->
 			<LayoutRow>
-				<TextLabel tooltipDescription={"Color code in hexadecimal format. 6 digits if opaque, 8 with alpha.\nAccepts input of CSS color values including named colors."}>Hex</TextLabel>
+				<TextLabel
+					tooltipLabel="Hex Color Code"
+					tooltipDescription={"Color code in hexadecimal format. 6 digits if opaque, 8 with alpha.\nAccepts input of CSS color values including named colors."}>Hex</TextLabel
+				>
 				<Separator type="Related" />
 				<LayoutRow>
 					<TextInput
@@ -514,13 +538,14 @@
 							setColorCode(detail);
 						}}
 						centered={true}
+						tooltipLabel="Hex Color Code"
 						tooltipDescription={"Color code in hexadecimal format. 6 digits if opaque, 8 with alpha.\nAccepts input of CSS color values including named colors."}
 						bind:this={hexCodeInputWidget}
 					/>
 				</LayoutRow>
 			</LayoutRow>
 			<LayoutRow>
-				<TextLabel tooltipDescription="Red/Green/Blue channels of the color, integers 0–255.">RGB</TextLabel>
+				<TextLabel tooltipLabel="Red/Green/Blue" tooltipDescription="Integers 0–255.">RGB</TextLabel>
 				<Separator type="Related" />
 				<LayoutRow>
 					{#each rgbChannels as [channel, strength], index}
@@ -540,17 +565,17 @@
 							min={0}
 							max={255}
 							minWidth={1}
-							tooltipDescription={`${{ r: "Red", g: "Green", b: "Blue" }[channel]} channel, integers 0–255.`}
+							tooltipLabel={{ r: "Red Channel", g: "Green Channel", b: "Blue Channel" }[channel]}
+							tooltipDescription="Integers 0–255."
 						/>
 					{/each}
 				</LayoutRow>
 			</LayoutRow>
 			<LayoutRow>
 				<TextLabel
-					tooltipDescription={"Hue/Saturation/Value, also known as Hue/Saturation/Brightness (HSB).\nNot to be confused with Hue/Saturation/Lightness (HSL), a different color model."}
+					tooltipLabel="Hue/Saturation/Value"
+					tooltipDescription="Also known as Hue/Saturation/Brightness (HSB). Not to be confused with Hue/Saturation/Lightness (HSL), a different color model.">HSV</TextLabel
 				>
-					HSV
-				</TextLabel>
 				<Separator type="Related" />
 				<LayoutRow>
 					{#each hsvChannels as [channel, strength], index}
@@ -572,17 +597,22 @@
 							unit={channel === "h" ? "°" : "%"}
 							minWidth={1}
 							displayDecimalPlaces={1}
+							tooltipLabel={{
+								h: "Hue Component",
+								s: "Saturation Component",
+								v: "Value Component",
+							}[channel]}
 							tooltipDescription={{
-								h: `Hue component, the shade along the spectrum of the rainbow.`,
-								s: `Saturation component, the vividness from grayscale to full color.`,
-								v: "Value component, the brightness from black to full color.",
+								h: "The shade along the spectrum of the rainbow.",
+								s: "The vividness from grayscale to full color.",
+								v: "The brightness from black to full color.",
 							}[channel]}
 						/>
 					{/each}
 				</LayoutRow>
 			</LayoutRow>
 			<LayoutRow>
-				<TextLabel tooltipDescription="Scale of translucency, from transparent (0%) to opaque (100%), for the color's alpha channel.">Alpha</TextLabel>
+				<TextLabel tooltipLabel="Alpha" tooltipDescription="The level of translucency, from transparent (0%) to opaque (100%).">Alpha</TextLabel>
 				<Separator type="Related" />
 				<NumberInput
 					value={!isNone ? alpha * 100 : undefined}
@@ -601,29 +631,54 @@
 					unit="%"
 					mode="Range"
 					displayDecimalPlaces={1}
-					tooltipDescription="Scale of translucency, from transparent (0%) to opaque (100%), for the color's alpha channel."
+					tooltipLabel="Alpha"
+					tooltipDescription="The level of translucency, from transparent (0%) to opaque (100%)."
 				/>
 			</LayoutRow>
 			<LayoutRow class="leftover-space" />
 			<LayoutRow>
 				{#if allowNone && !gradient}
-					<button class="preset-color none" {disabled} on:click={() => setColorPreset("none")} data-tooltip-label="Set to No Color" tabindex="0"></button>
+					<button
+						class="preset-color none"
+						{disabled}
+						on:click={() => setColorPreset("none")}
+						data-tooltip-label="Set to No Color"
+						data-tooltip-description={disabled ? "Disabled (read-only)." : ""}
+						tabindex="0"
+					></button>
 					<Separator type="Related" />
 				{/if}
-				<button class="preset-color black" {disabled} on:click={() => setColorPreset("black")} data-tooltip-label="Set to Black" tabindex="0"></button>
+				<button
+					class="preset-color black"
+					{disabled}
+					on:click={() => setColorPreset("black")}
+					data-tooltip-label="Set to Black"
+					data-tooltip-description={disabled ? "Disabled (read-only)." : ""}
+					tabindex="0"
+				></button>
 				<Separator type="Related" />
-				<button class="preset-color white" {disabled} on:click={() => setColorPreset("white")} data-tooltip-label="Set to White" tabindex="0"></button>
+				<button
+					class="preset-color white"
+					{disabled}
+					on:click={() => setColorPreset("white")}
+					data-tooltip-label="Set to White"
+					data-tooltip-description={disabled ? "Disabled (read-only)." : ""}
+					tabindex="0"
+				></button>
 				<Separator type="Related" />
 				<button class="preset-color pure" {disabled} on:click={setColorPresetSubtile} tabindex="-1">
-					<div data-pure-tile="red" style="--pure-color: #ff0000; --pure-color-gray: #4c4c4c" data-tooltip-label="Set to Red" />
-					<div data-pure-tile="yellow" style="--pure-color: #ffff00; --pure-color-gray: #e3e3e3" data-tooltip-label="Set to Yellow" />
-					<div data-pure-tile="green" style="--pure-color: #00ff00; --pure-color-gray: #969696" data-tooltip-label="Set to Green" />
-					<div data-pure-tile="cyan" style="--pure-color: #00ffff; --pure-color-gray: #b2b2b2" data-tooltip-label="Set to Cyan" />
-					<div data-pure-tile="blue" style="--pure-color: #0000ff; --pure-color-gray: #1c1c1c" data-tooltip-label="Set to Blue" />
-					<div data-pure-tile="magenta" style="--pure-color: #ff00ff; --pure-color-gray: #696969" data-tooltip-label="Set to Magenta" />
+					{#each PURE_COLORS_GRAYABLE as [name, color, gray]}
+						<div
+							data-pure-tile={name.toLowerCase()}
+							style:--pure-color={color}
+							style:--pure-color-gray={gray}
+							data-tooltip-label="Set to Red"
+							data-tooltip-description={disabled ? "Disabled (read-only)." : ""}
+						/>
+					{/each}
 				</button>
 				<Separator type="Related" />
-				<IconButton icon="Eyedropper" size={24} {disabled} action={activateEyedropperSample} tooltipDescription="Sample a pixel color from the document." />
+				<IconButton icon="Eyedropper" size={24} {disabled} action={activateEyedropperSample} tooltipLabel="Eyedropper" tooltipDescription="Sample a pixel color from the document." />
 			</LayoutRow>
 		</LayoutCol>
 	</LayoutRow>

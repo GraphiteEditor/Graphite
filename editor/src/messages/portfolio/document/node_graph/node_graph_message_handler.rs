@@ -1,6 +1,7 @@
 use super::utility_types::{BoxSelection, ContextMenuInformation, DragStart, FrontendNode};
 use super::{document_node_definitions, node_properties};
 use crate::consts::GRID_SIZE;
+use crate::messages::input_mapper::utility_types::input_keyboard::KeysGroup;
 use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::document_message_handler::navigation_controls;
@@ -2107,7 +2108,7 @@ impl NodeGraphMessageHandler {
 				.icon(Some("Node".to_string()))
 				.tooltip_label("New Node")
 				.tooltip_description("To add a node at the pointer location, perform the shortcut in an open area of the graph.")
-				.tooltip_shortcut("RMB")
+				.tooltip_shortcut(Key::MouseRight.to_string())
 				.popover_layout({
 					// Showing only compatible types
 					let compatible_type = match (selection_includes_layers, has_multiple_selection, selected_layer) {
@@ -2224,7 +2225,7 @@ impl NodeGraphMessageHandler {
 					.icon(Some("FrameAll".to_string()))
 					.tooltip_label("Preview")
 					.tooltip_description("Temporarily set the graph output to the selected node or layer. Perform the shortcut on a node or layer for quick access.")
-					.tooltip_shortcut("Alt LMB")
+					.tooltip_shortcut(KeysGroup(vec![Key::Alt, Key::MouseLeft]))
 					.on_update(move |_| NodeGraphMessage::TogglePreview { node_id }.into())
 					.widget_holder();
 				widgets.extend([Separator::new(SeparatorType::Unrelated).widget_holder(), button]);
@@ -2684,7 +2685,6 @@ impl NodeGraphMessageHandler {
 				let data = LayerPanelEntry {
 					id: node_id,
 					alias: network_interface.display_name(&node_id, &[]),
-					debug_layer_id_tooltip: if cfg!(debug_assertions) { format!("Layer ID: {node_id}.") } else { "".into() },
 					in_selected_network: selection_network_path.is_empty(),
 					children_allowed,
 					children_present: layer.has_children(network_interface.document_metadata()),

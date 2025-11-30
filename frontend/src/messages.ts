@@ -335,7 +335,7 @@ export type Key = { key: KeyRaw; label: string };
 export type LayoutKeysGroup = Key[];
 export type ActionKeys = { keys: LayoutKeysGroup };
 
-export type MouseMotion = string;
+export type MouseMotion = "None" | "Lmb" | "Rmb" | "Mmb" | "ScrollUp" | "ScrollDown" | "Drag" | "LmbDouble" | "LmbDrag" | "RmbDrag" | "RmbDouble" | "MmbDrag";
 
 // Channels can have any range (0-1, 0-255, 0-100, 0-360) in the context they are being used in, these are just containers for the numbers
 export type HSVA = { h: number; s: number; v: number; a: number };

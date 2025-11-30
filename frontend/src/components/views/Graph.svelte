@@ -505,9 +505,9 @@
 				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
 				style:--layer-area-width={layerAreaWidth}
 				style:--node-chain-area-left-extension={layerChainWidth !== 0 ? layerChainWidth + 0.5 : 0}
-				data-tooltip-label={node.displayName}
+				data-tooltip-label={node.displayName === node.reference ? node.displayName : `${node.displayName} (${node.reference})`}
 				data-tooltip-description={`
-					${(description || "").trim()}${editor.handle.inDevelopmentMode() ? `\n\nNode ID: ${node.id}\nPosition: (${node.position.x}, ${node.position.y})` : ""}
+					${(description || "").trim()}${editor.handle.inDevelopmentMode() ? `\n\nID: ${node.id}. Position: (${node.position.x}, ${node.position.y}).` : ""}
 					`.trim()}
 				data-node={node.id}
 			>
@@ -654,9 +654,9 @@
 				style:--clip-path-id={`url(#${clipPathId})`}
 				style:--data-color={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()})`}
 				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
-				data-tooltip-label={node.displayName}
+				data-tooltip-label={node.displayName === node.reference ? node.displayName : `${node.displayName} (${node.reference})`}
 				data-tooltip-description={`
-					${(description || "").trim()}${editor.handle.inDevelopmentMode() ? `\n\nNode ID: ${node.id}\nPosition: (${node.position.x}, ${node.position.y})` : ""}
+					${(description || "").trim()}${editor.handle.inDevelopmentMode() ? `\n\nID: ${node.id}. Position: (${node.position.x}, ${node.position.y}).` : ""}
 					`.trim()}
 				data-node={node.id}
 			>
@@ -968,6 +968,7 @@
 		.imports-and-exports {
 			width: 100%;
 			height: 100%;
+			pointer-events: none;
 			position: absolute;
 			// Keeps the connectors above the wires
 			z-index: 1;
@@ -1065,8 +1066,14 @@
 
 		.layers-and-nodes {
 			position: absolute;
+			pointer-events: none;
 			width: 100%;
 			height: 100%;
+
+			// Zero specificity with `:where()` to allow other rules to override `pointer-events`
+			:where(& > *) {
+				pointer-events: auto;
+			}
 		}
 
 		.layer,

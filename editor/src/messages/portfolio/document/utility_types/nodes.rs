@@ -35,8 +35,6 @@ impl serde::Serialize for JsRawBuffer {
 pub struct LayerPanelEntry {
 	pub id: NodeId,
 	pub alias: String,
-	#[serde(rename = "debugLayerIdTooltip")]
-	pub debug_layer_id_tooltip: String,
 	#[serde(rename = "inSelectedNetwork")]
 	pub in_selected_network: bool,
 	#[serde(rename = "childrenAllowed")]
