@@ -303,6 +303,10 @@
 		&.disabled .gradient-strip {
 			transition: opacity 0.1s;
 
+			@media (prefers-reduced-motion) {
+				transition: none;
+			}
+
 			&:hover {
 				opacity: 0.5;
 			}

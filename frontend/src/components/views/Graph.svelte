@@ -846,6 +846,10 @@
 				opacity: 0.5;
 				transform: translateY(-100%);
 
+				@media (prefers-reduced-motion) {
+					transition: none;
+				}
+
 				// Tail
 				&::after {
 					content: "";

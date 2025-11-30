@@ -962,6 +962,10 @@
 						// We don't use the CSS `filter: grayscale(1);` property because it produces overly dark tones for bright colors with a noticeable jump on hover.
 						background: var(--pure-color-gray);
 						transition: background-color 0.1s;
+
+						@media (prefers-reduced-motion) {
+							transition: none;
+						}
 					}
 
 					&:hover div {
@@ -975,6 +979,10 @@
 		&.disabled .details .preset-color,
 		&.disabled .details .choice-preview {
 			transition: opacity 0.1s;
+
+			@media (prefers-reduced-motion) {
+				transition: none;
+			}
 
 			&:hover {
 				opacity: 0.5;

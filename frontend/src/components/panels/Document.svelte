@@ -702,6 +702,10 @@
 								opacity: 0.25;
 								transition: opacity 0.1s;
 
+								@media (prefers-reduced-motion) {
+									transition: none;
+								}
+
 								&:hover {
 									opacity: 1;
 								}
@@ -852,6 +856,10 @@
 						pointer-events: none;
 						transition: opacity 0.2s;
 						opacity: 0;
+
+						@media (prefers-reduced-motion) {
+							transition: none;
+						}
 
 						&.open {
 							cursor: auto;
