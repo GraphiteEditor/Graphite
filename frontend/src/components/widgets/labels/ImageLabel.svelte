@@ -8,13 +8,23 @@
 	export let height: string | undefined;
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
+	export let tooltipShortcut: string | undefined = undefined;
 
 	$: extraClasses = Object.entries(classes)
 		.flatMap(([className, stateName]) => (stateName ? [className] : []))
 		.join(" ");
 </script>
 
-<img src={url} style:width style:height class={`image-label ${className} ${extraClasses}`.trim()} data-tooltip-label={tooltipLabel} data-tooltip-description={tooltipDescription} alt="" />
+<img
+	src={url}
+	style:width
+	style:height
+	class={`image-label ${className} ${extraClasses}`.trim()}
+	data-tooltip-label={tooltipLabel}
+	data-tooltip-description={tooltipDescription}
+	data-tooltip-shortcut={tooltipShortcut}
+	alt=""
+/>
 
 <style lang="scss" global>
 	.image-label {

@@ -13,6 +13,7 @@
 	export let icon: IconName = "Checkmark";
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
+	export let tooltipShortcut: string | undefined = undefined;
 	export let forLabel: bigint | undefined = undefined;
 
 	let inputElement: HTMLInputElement | undefined;
@@ -54,6 +55,7 @@
 		on:keydown={(e) => e.key === "Enter" && toggleCheckboxFromLabel(e)}
 		data-tooltip-label={tooltipLabel}
 		data-tooltip-description={tooltipDescription}
+		data-tooltip-shortcut={tooltipShortcut}
 	>
 		<LayoutRow class="checkbox-box">
 			<IconLabel icon={displayIcon} />

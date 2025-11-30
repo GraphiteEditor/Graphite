@@ -32,6 +32,7 @@
 	export let virtualScrollingEntryHeight = 0;
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
+	export let tooltipShortcut: string | undefined = undefined;
 
 	// Keep the child references outside of the entries array so as to avoid infinite recursion.
 	let childReferences: MenuList[][] = [];
@@ -426,6 +427,7 @@
 					styles={{ height: virtualScrollingEntryHeight || "20px" }}
 					{tooltipLabel}
 					{tooltipDescription}
+					{tooltipShortcut}
 					on:click={() => !entry.disabled && onEntryClick(entry)}
 					on:pointerenter={() => !entry.disabled && onEntryPointerEnter(entry)}
 					on:pointerleave={() => !entry.disabled && onEntryPointerLeave(entry)}

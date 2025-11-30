@@ -23,6 +23,7 @@
 	export let narrow = false;
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
+	export let tooltipShortcut: string | undefined = undefined;
 	export let minWidth = 0;
 	export let maxWidth = 0;
 
@@ -101,6 +102,7 @@
 		classes={{ disabled, open }}
 		{tooltipLabel}
 		{tooltipDescription}
+		{tooltipShortcut}
 		on:click={() => !disabled && (open = true)}
 		on:blur={unFocusDropdownBox}
 		tabindex={disabled ? -1 : 0}

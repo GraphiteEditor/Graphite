@@ -9,6 +9,7 @@
 	export let label: string | undefined = undefined;
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
+	export let tooltipShortcut: string | undefined = undefined;
 	export let placeholder: string | undefined = undefined;
 	// Disabled
 	export let disabled = false;
@@ -82,6 +83,7 @@
 	{narrow}
 	{tooltipLabel}
 	{tooltipDescription}
+	{tooltipShortcut}
 	{placeholder}
 	bind:this={self}
 />

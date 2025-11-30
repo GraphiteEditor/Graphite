@@ -13,6 +13,7 @@
 	export let icon: IconName | undefined = undefined;
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
+	export let tooltipShortcut: string | undefined = undefined;
 	export let disabled = false;
 	export let popoverMinWidth = 1;
 
@@ -28,9 +29,20 @@
 </script>
 
 <LayoutRow class="popover-button" classes={{ "has-icon": icon !== undefined, "direction-top": menuDirection === "Top" }}>
-	<IconButton class="dropdown-icon" classes={{ open }} {disabled} action={() => onClick()} icon={style || "DropdownArrow"} size={16} {tooltipLabel} {tooltipDescription} data-floating-menu-spawner />
+	<IconButton
+		class="dropdown-icon"
+		classes={{ open }}
+		{disabled}
+		action={() => onClick()}
+		icon={style || "DropdownArrow"}
+		size={16}
+		{tooltipLabel}
+		{tooltipDescription}
+		{tooltipShortcut}
+		data-floating-menu-spawner
+	/>
 	{#if icon !== undefined}
-		<IconLabel class="descriptive-icon" classes={{ open }} {disabled} {icon} {tooltipLabel} {tooltipDescription} />
+		<IconLabel class="descriptive-icon" classes={{ open }} {disabled} {icon} {tooltipLabel} {tooltipDescription} {tooltipShortcut} />
 	{/if}
 
 	<FloatingMenu {open} on:open={({ detail }) => (open = detail)} minWidth={popoverMinWidth} type="Popover" direction={menuDirection || "Bottom"}>

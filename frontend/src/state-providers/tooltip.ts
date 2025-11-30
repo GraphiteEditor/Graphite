@@ -13,7 +13,7 @@ export function createTooltipState() {
 
 	// Listen for mouse movements onto tooltip-bearing HTML elements to track the future target of a tooltip
 	document.addEventListener("mouseover", (e) => {
-		const element = (e.target instanceof Element && e.target.closest("[data-tooltip-label], [data-tooltip-description]")) || undefined;
+		const element = (e.target instanceof Element && e.target.closest("[data-tooltip-label], [data-tooltip-description], [data-tooltip-shortcut]")) || undefined;
 
 		update((state) => {
 			state.visible = false;

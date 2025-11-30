@@ -14,6 +14,7 @@
 
 	$: label = filterTodo($tooltip.element?.getAttribute("data-tooltip-label")?.trim());
 	$: description = filterTodo($tooltip.element?.getAttribute("data-tooltip-description")?.trim());
+	$: shortcut = filterTodo($tooltip.element?.getAttribute("data-tooltip-shortcut")?.trim());
 
 	// TODO: Once all TODOs are replaced with real text, remove this function
 	function filterTodo(text: string | undefined): string | undefined {
@@ -30,6 +31,9 @@
 			{/if}
 			{#if description}
 				<TextLabel class="tooltip-description">{description}</TextLabel>
+			{/if}
+			{#if shortcut}
+				<TextLabel class="tooltip-shortcut">Shortcut: {shortcut}</TextLabel>
 			{/if}
 		</FloatingMenu>
 	{/if}
@@ -48,11 +52,12 @@
 			.text-label {
 				white-space: pre-wrap;
 
-				&.tooltip-label + .tooltip-description {
+				+ .text-label {
 					margin-top: 4px;
 				}
 
-				&.tooltip-description {
+				&.tooltip-description,
+				&.tooltip-shortcut {
 					color: var(--color-b-lightgray);
 				}
 			}

@@ -28,8 +28,11 @@ pub struct IconButton {
 	#[serde(rename = "tooltipDescription")]
 	pub tooltip_description: String,
 
+	#[serde(rename = "tooltipShortcut")]
+	pub tooltip_shortcut: String,
+
 	#[serde(skip)]
-	pub tooltip_shortcut: Option<ActionKeys>,
+	pub shortcut_keys: Option<ActionKeys>,
 
 	// Callbacks
 	#[serde(skip)]
@@ -59,8 +62,11 @@ pub struct PopoverButton {
 	#[serde(rename = "tooltipDescription")]
 	pub tooltip_description: String,
 
+	#[serde(rename = "tooltipShortcut")]
+	pub tooltip_shortcut: String,
+
 	#[serde(skip)]
-	pub tooltip_shortcut: Option<ActionKeys>,
+	pub shortcut_keys: Option<ActionKeys>,
 
 	#[serde(rename = "popoverLayout")]
 	pub popover_layout: SubLayout,
@@ -97,8 +103,11 @@ pub struct ParameterExposeButton {
 	#[serde(rename = "tooltipDescription")]
 	pub tooltip_description: String,
 
+	#[serde(rename = "tooltipShortcut")]
+	pub tooltip_shortcut: String,
+
 	#[serde(skip)]
-	pub tooltip_shortcut: Option<ActionKeys>,
+	pub shortcut_keys: Option<ActionKeys>,
 
 	// Callbacks
 	#[serde(skip)]
@@ -138,8 +147,11 @@ pub struct TextButton {
 	#[serde(rename = "tooltipDescription")]
 	pub tooltip_description: String,
 
+	#[serde(rename = "tooltipShortcut")]
+	pub tooltip_shortcut: String,
+
 	#[serde(skip)]
-	pub tooltip_shortcut: Option<ActionKeys>,
+	pub shortcut_keys: Option<ActionKeys>,
 
 	#[serde(rename = "menuListChildren")]
 	pub menu_list_children: MenuListEntrySections,
@@ -170,8 +182,11 @@ pub struct ImageButton {
 	#[serde(rename = "tooltipDescription")]
 	pub tooltip_description: String,
 
+	#[serde(rename = "tooltipShortcut")]
+	pub tooltip_shortcut: String,
+
 	#[serde(skip)]
-	pub tooltip_shortcut: Option<ActionKeys>,
+	pub shortcut_keys: Option<ActionKeys>,
 
 	// Callbacks
 	#[serde(skip)]
@@ -212,8 +227,11 @@ pub struct ColorInput {
 	#[serde(rename = "tooltipDescription")]
 	pub tooltip_description: String,
 
+	#[serde(rename = "tooltipShortcut")]
+	pub tooltip_shortcut: String,
+
 	#[serde(skip)]
-	pub tooltip_shortcut: Option<ActionKeys>,
+	pub shortcut_keys: Option<ActionKeys>,
 
 	// Callbacks
 	#[serde(skip)]
@@ -239,8 +257,11 @@ pub struct BreadcrumbTrailButtons {
 	#[serde(rename = "tooltipDescription")]
 	pub tooltip_description: String,
 
+	#[serde(rename = "tooltipShortcut")]
+	pub tooltip_shortcut: String,
+
 	#[serde(skip)]
-	pub tooltip_shortcut: Option<ActionKeys>,
+	pub shortcut_keys: Option<ActionKeys>,
 
 	// Callbacks
 	#[serde(skip)]

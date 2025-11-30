@@ -9,6 +9,7 @@
 	export let label: string | undefined = undefined;
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
+	export let tooltipShortcut: string | undefined = undefined;
 	export let disabled = false;
 
 	let self: FieldInput | undefined;
@@ -58,6 +59,7 @@
 	{disabled}
 	{tooltipLabel}
 	{tooltipDescription}
+	{tooltipShortcut}
 	bind:this={self}
 />
 

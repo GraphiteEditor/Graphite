@@ -6,11 +6,12 @@
 	export let disabled = false;
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
+	export let tooltipShortcut: string | undefined = undefined;
 	// Callbacks
 	export let action: (index: number) => void;
 </script>
 
-<LayoutRow class="breadcrumb-trail-buttons" {tooltipLabel} {tooltipDescription}>
+<LayoutRow class="breadcrumb-trail-buttons" {tooltipLabel} {tooltipDescription} {tooltipShortcut}>
 	{#each labels as label, index}
 		<TextButton {label} emphasized={index === labels.length - 1} {disabled} action={() => !disabled && index !== labels.length - 1 && action(index)} />
 	{/each}

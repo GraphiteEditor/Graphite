@@ -18,6 +18,7 @@
 	export let disabled = false;
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
+	export let tooltipShortcut: string | undefined = undefined;
 
 	const GRID_SIZE = 4;
 
@@ -189,7 +190,7 @@
 	}
 </script>
 
-<LayoutRow class="curve-input" classes={{ disabled, ...classes }} style={styleName} {styles} {tooltipLabel} {tooltipDescription}>
+<LayoutRow class="curve-input" classes={{ disabled, ...classes }} style={styleName} {styles} {tooltipLabel} {tooltipDescription} {tooltipShortcut}>
 	<svg viewBox="0 0 1 1" on:pointermove={handlePointerMove} on:pointerup={handlePointerUp}>
 		{#each { length: GRID_SIZE - 1 } as _, i}
 			<path class="grid" d={`M 0 ${(i + 1) / GRID_SIZE} L 1 ${(i + 1) / GRID_SIZE}`} />

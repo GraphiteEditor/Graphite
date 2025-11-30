@@ -7,6 +7,7 @@
 	export let dataType: FrontendGraphDataType;
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
+	export let tooltipShortcut: string | undefined = undefined;
 	// Callbacks
 	export let action: (e?: MouseEvent) => void;
 </script>
@@ -19,6 +20,7 @@
 		on:click={action}
 		data-tooltip-label={tooltipLabel}
 		data-tooltip-description={tooltipDescription}
+		data-tooltip-shortcut={tooltipShortcut}
 		tabindex="-1"
 	>
 		{#if !exposed}

@@ -10,6 +10,7 @@
 	export let active = false;
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
+	export let tooltipShortcut: string | undefined = undefined;
 	// Callbacks
 	export let action: (e?: MouseEvent) => void;
 
@@ -31,6 +32,7 @@
 	{disabled}
 	data-tooltip-label={tooltipLabel}
 	data-tooltip-description={tooltipDescription}
+	data-tooltip-shortcut={tooltipShortcut}
 	tabindex={active ? -1 : 0}
 	{...$$restProps}
 >

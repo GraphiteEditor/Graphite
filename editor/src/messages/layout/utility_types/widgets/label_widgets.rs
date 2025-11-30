@@ -14,6 +14,9 @@ pub struct IconLabel {
 
 	#[serde(rename = "tooltipDescription")]
 	pub tooltip_description: String,
+
+	#[serde(rename = "tooltipShortcut")]
+	pub tooltip_shortcut: String,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, WidgetBuilder, specta::Type)]
@@ -70,6 +73,9 @@ pub struct TextLabel {
 	#[serde(rename = "tooltipDescription")]
 	pub tooltip_description: String,
 
+	#[serde(rename = "tooltipShortcut")]
+	pub tooltip_shortcut: String,
+
 	#[serde(rename = "forCheckbox")]
 	#[derivative(PartialEq = "ignore")]
 	pub for_checkbox: CheckboxId,
@@ -94,6 +100,9 @@ pub struct ImageLabel {
 
 	#[serde(rename = "tooltipDescription")]
 	pub tooltip_description: String,
+
+	#[serde(rename = "tooltipShortcut")]
+	pub tooltip_shortcut: String,
 }
 
 // TODO: Add UserInputLabel

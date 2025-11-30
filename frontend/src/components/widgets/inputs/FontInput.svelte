@@ -25,6 +25,7 @@
 	export let disabled = false;
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
+	export let tooltipShortcut: string | undefined = undefined;
 
 	let open = false;
 	let entries: MenuListEntry[] = [];
@@ -111,6 +112,7 @@
 		styles={{ ...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}) }}
 		{tooltipLabel}
 		{tooltipDescription}
+		{tooltipShortcut}
 		tabindex={disabled ? -1 : 0}
 		on:click={toggleOpen}
 		data-floating-menu-spawner

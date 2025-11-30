@@ -618,8 +618,12 @@
 							class="expand-arrow"
 							class:expanded={listing.entry.expanded}
 							disabled={!listing.entry.childrenPresent}
-							data-tooltip-label={listing.entry.expanded ? "Collapse (Click) / Collapse All (Alt Click)" : `Expand (Click) / Expand All (Alt Click)`}
-							data-tooltip-description={listing.entry.ancestorOfSelected ? "A selected layer is contained within." : ""}
+							data-tooltip-label={listing.entry.expanded ? "Collapse (All)" : "Expand (All)"}
+							data-tooltip-description={(listing.entry.expanded
+								? "Hide the layers nested within. (To affect all open descendants, perform the shortcut shown.)"
+								: "Show the layers nested within. (To affect all closed descendants, perform the shortcut shown.)") +
+								(listing.entry.ancestorOfSelected && !listing.entry.expanded ? "\n\nNote: a selected layer is currently contained within.\n" : "")}
+							data-tooltip-shortcut="Alt LMB"
 							on:click={(e) => handleExpandArrowClickWithModifiers(e, listing.entry.id)}
 							tabindex="0"
 						></button>
@@ -627,7 +631,12 @@
 						<div class="expand-arrow-none"></div>
 					{/if}
 					{#if listing.entry.clipped}
-						<IconLabel icon="Clipped" class="clipped-arrow" tooltipDescription="Clipping mask is active (Alt-click border to release)." />
+						<IconLabel
+							icon="Clipped"
+							class="clipped-arrow"
+							tooltipDescription="Clipping mask is active. To release it, perform the shortcut on the layer border."
+							tooltipShortcut="Alt LMB"
+						/>
 					{/if}
 					<div class="thumbnail">
 						{#if $nodeGraph.thumbnails.has(listing.entry.id)}

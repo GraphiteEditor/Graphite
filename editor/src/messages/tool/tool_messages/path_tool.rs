@@ -268,14 +268,16 @@ impl LayoutHolder for PathTool {
 			// TODO(Keavon): Replace with a real icon
 			.icon("Dot")
 			.tooltip_label("Point Editing Mode")
-			.tooltip_description("Shift + click to select both modes.")
+			.tooltip_description("To multi-select modes, perform the shortcut shown.")
+			.tooltip_shortcut("Shift LMB")
 			.on_update(|_| PathToolMessage::TogglePointEditing.into())
 			.widget_holder();
 		let segment_editing_mode = CheckboxInput::new(self.options.path_editing_mode.segment_editing_mode)
 			// TODO(Keavon): Replace with a real icon
 			.icon("Remove")
 			.tooltip_label("Segment Editing Mode")
-			.tooltip_description("Shift + click to select both modes.")
+			.tooltip_description("To multi-select modes, perform the shortcut shown.")
+			.tooltip_shortcut("Shift LMB")
 			.on_update(|_| PathToolMessage::ToggleSegmentEditing.into())
 			.widget_holder();
 

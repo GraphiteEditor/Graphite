@@ -22,6 +22,7 @@
 	export let narrow = false;
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
+	export let tooltipShortcut: string | undefined = undefined;
 	export let menuListChildren: MenuListEntry[][] | undefined = undefined;
 
 	// Callbacks
@@ -62,6 +63,7 @@
 		style:min-width={minWidth > 0 ? `${minWidth}px` : undefined}
 		data-tooltip-label={tooltipLabel}
 		data-tooltip-description={tooltipDescription}
+		data-tooltip-shortcut={tooltipShortcut}
 		data-emphasized={emphasized || undefined}
 		data-disabled={disabled || undefined}
 		data-text-button

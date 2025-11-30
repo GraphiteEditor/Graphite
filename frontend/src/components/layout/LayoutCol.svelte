@@ -7,6 +7,7 @@
 	export let styles: Record<string, string | number | undefined> = {};
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
+	export let tooltipShortcut: string | undefined = undefined;
 	// TODO: Add middle-click drag scrolling
 	export let scrollableX = false;
 	export let scrollableY = false;
@@ -29,6 +30,7 @@
 <div
 	data-tooltip-label={tooltipLabel}
 	data-tooltip-description={tooltipDescription}
+	data-tooltip-shortcut={tooltipShortcut}
 	data-scrollable-x={scrollableX ? "" : undefined}
 	data-scrollable-y={scrollableY ? "" : undefined}
 	class={`layout-col ${className} ${extraClasses}`.trim()}
