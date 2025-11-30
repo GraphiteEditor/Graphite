@@ -270,7 +270,7 @@ impl LayoutHolder for PathTool {
 			.icon("Dot")
 			.tooltip_label("Point Editing Mode")
 			.tooltip_description("To multi-select modes, perform the shortcut shown.")
-			.tooltip_shortcut(KeysGroup(vec![Key::Shift, Key::MouseLeft]))
+			.tooltip_shortcut(KeysGroup(vec![Key::Shift, Key::MouseLeft]).to_string())
 			.on_update(|_| PathToolMessage::TogglePointEditing.into())
 			.widget_holder();
 		let segment_editing_mode = CheckboxInput::new(self.options.path_editing_mode.segment_editing_mode)
@@ -278,7 +278,7 @@ impl LayoutHolder for PathTool {
 			.icon("Remove")
 			.tooltip_label("Segment Editing Mode")
 			.tooltip_description("To multi-select modes, perform the shortcut shown.")
-			.tooltip_shortcut(KeysGroup(vec![Key::Shift, Key::MouseLeft]))
+			.tooltip_shortcut(KeysGroup(vec![Key::Shift, Key::MouseLeft]).to_string())
 			.on_update(|_| PathToolMessage::ToggleSegmentEditing.into())
 			.widget_holder();
 

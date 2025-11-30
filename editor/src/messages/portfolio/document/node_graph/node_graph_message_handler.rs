@@ -2225,7 +2225,7 @@ impl NodeGraphMessageHandler {
 					.icon(Some("FrameAll".to_string()))
 					.tooltip_label("Preview")
 					.tooltip_description("Temporarily set the graph output to the selected node or layer. Perform the shortcut on a node or layer for quick access.")
-					.tooltip_shortcut(KeysGroup(vec![Key::Alt, Key::MouseLeft]))
+					.tooltip_shortcut(KeysGroup(vec![Key::Alt, Key::MouseLeft]).to_string())
 					.on_update(move |_| NodeGraphMessage::TogglePreview { node_id }.into())
 					.widget_holder();
 				widgets.extend([Separator::new(SeparatorType::Unrelated).widget_holder(), button]);
