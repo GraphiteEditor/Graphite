@@ -65,7 +65,7 @@ async fn get_request(_: impl Ctx, _primary: (), #[name("URL")] url: String, disc
 	response.text().await.ok().unwrap_or_default()
 }
 
-/// "Discard Result" runs asynchronously in the background. Useful for fire-and-forget operations like logging, webhooks, or notifications.
+/// Fetches data from a URL via HTTP GET. When "Discard Result" is enabled, runs asynchronously without waiting for a response.
 #[node_macro::node(category("Web Request"))]
 async fn post_request(_: impl Ctx, _primary: (), #[name("URL")] url: String, body: Vec<u8>, discard_result: bool) -> String {
 	#[cfg(target_family = "wasm")]
