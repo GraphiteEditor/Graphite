@@ -98,6 +98,62 @@ export function createFontsState(editor: Editor) {
 }
 export type FontsState = ReturnType<typeof createFontsState>;
 
+export type FontProvider = {
+	/**
+	 * A display name for the font provider to show in the UI.
+	 */
+	displayName: string;
+
+	/**
+	 * 32px icon for the font provider to show in the font management window.
+	 */
+	iconLarge: string;
+
+	needsBrowserPermissions: boolean;
+	needsNetwork: boolean;
+	web: boolean;
+	desktop: ("windows" | "macos" | "linux")[] | boolean;
+
+	/**
+	 * Index all available typefaces.
+	 */
+	index(): Promise<void>;
+
+	/**
+	 * Get a typeface by its name.
+	 */
+	getTypeface(name: string): Promise<Typeface | undefined>;
+
+	/**
+	 * Load a font file for a given typeface and style.
+	 */
+	loadFont(typeface: string, styleName: string): Promise<Uint8Array>;
+
+	/**
+	 * Get weight ranges for each font, for a given typeface.
+	 */
+	getWeights(typeface: string, styleName?: string): Promise<Record<string, [number, number]> | undefined>;
+};
+
+export type Typeface = {
+	postScriptName: string;
+	familyName: string;
+	fonts: FontStyle[];
+	isVariable: boolean;
+	isColorful: boolean;
+	hasMultipleWeights: boolean;
+	hasItalicVariants: boolean;
+	category: "serif" | "sans-serif" | "display" | "handwriting" | "monospace" | "other";
+};
+
+export type FontStyle = {
+	styleName: string;
+	group?: string;
+	weights: number | [number, number];
+	isItalic: boolean;
+	axes?: Record<string, [number, number]>;
+};
+
 const fontListAPI = "https://api.graphite.rs/font-list";
 
 // From https://developer.mozilla.org/en-US/docs/Web/CSS/font-weight#common_weight_name_mapping
