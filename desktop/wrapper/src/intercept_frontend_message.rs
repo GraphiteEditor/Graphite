@@ -2,8 +2,8 @@ use std::path::PathBuf;
 
 use graphite_editor::messages::input_mapper::utility_types::input_keyboard::{Key, LayoutKey, LayoutKeysGroup};
 use graphite_editor::messages::input_mapper::utility_types::misc::ActionKeys;
-use graphite_editor::messages::layout::utility_types::widgets::menu_widgets::MenuBarEntry;
 use graphite_editor::messages::prelude::FrontendMessage;
+use graphite_editor::messages::tool::tool_messages::tool_prelude::{Layout, LayoutGroup, MenuListEntry, Widget};
 
 use super::DesktopWrapperMessageDispatcher;
 use super::messages::{DesktopFrontendMessage, Document, FileFilter, KeyCode, MenuItem, Modifiers, OpenFileDialogContext, SaveFileDialogContext, Shortcut};
@@ -113,11 +113,10 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		FrontendMessage::TriggerLoadPreferences => {
 			dispatcher.respond(DesktopFrontendMessage::PersistenceLoadPreferences);
 		}
-		FrontendMessage::UpdateMenuBarLayout { layout_target, layout } => {
+		#[cfg(target_os = "macos")]
+		FrontendMessage::UpdateMenuBarForMac { layout } => {
 			let entries = convert_menu_bar_entries_to_menu_items(&layout);
 			dispatcher.respond(DesktopFrontendMessage::UpdateMenu { entries });
-
-			return Some(FrontendMessage::UpdateMenuBarLayout { layout, layout_target });
 		}
 		FrontendMessage::WindowClose => {
 			dispatcher.respond(DesktopFrontendMessage::WindowClose);
@@ -145,65 +144,89 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 	None
 }
 
-fn convert_menu_bar_entries_to_menu_items(layout: &[MenuBarEntry]) -> Vec<MenuItem> {
-	layout.iter().filter_map(convert_menu_bar_entry_to_menu_item).collect()
+fn convert_menu_bar_entries_to_menu_items(layout: Layout) -> Vec<MenuItem> {
+	let widget_layout = match layout {
+		Layout::WidgetLayout(widget_layout) => widget_layout,
+	};
+	let layout_groups = widget_layout.layout;
+	let layout_group = match layout_groups.as_slice() {
+		&[layout_group] => layout_group,
+		_ => panic!("Menu bar layout is supposed to have exactly one layout group"),
+	};
+	let LayoutGroup::Row { widgets } = layout_group else {
+		panic!("Menu bar layout group is supposed to be a row");
+	};
+	widgets
+		.into_iter()
+		.map(|widget| {
+			let text_button = match widget.widget {
+				Widget::TextButton(text_button) => text_button,
+				_ => panic!("Menu bar layout top-level widgets are supposed to be text buttons"),
+			};
+
+			MenuItem::SubMenu {
+				id: widget.widget_id,
+				text: text_button.label,
+				enabled: !text_button.disabled,
+				items: convert_menu_bar_layout_to_menu_item(layout),
+			}
+		})
+		.collect::<Vec<MenuItem>>();
 }
 
-fn convert_menu_bar_entry_to_menu_item(
-	MenuBarEntry {
+fn convert_menu_bar_layout_to_menu_item(entry: &MenuListEntry) -> MenuItem {
+	let MenuListEntry {
 		label,
 		icon,
-		shortcut,
-		action,
+		shortcut_keys,
 		children,
 		disabled,
-	}: &MenuBarEntry,
-) -> Option<MenuItem> {
-	let id = action.widget_id.0;
+		..
+	}: &MenuListEntry = entry;
+	let id = on_commit.widget_id.0;
 	let text = label.clone();
 	let enabled = !*disabled;
 
 	if !children.0.is_empty() {
 		let items = convert_menu_bar_entry_children_to_menu_items(&children.0);
-		return Some(MenuItem::SubMenu { id, text, enabled, items });
+		return MenuItem::SubMenu { id, text, enabled, items };
 	}
 
-	let shortcut = match shortcut {
+	let shortcut = match shortcut_keys {
 		Some(ActionKeys::Keys(LayoutKeysGroup(keys))) => convert_layout_keys_to_shortcut(keys),
 		_ => None,
 	};
 
-	// TODO: Find a better way to determine if this is a checkbox
 	match icon.as_deref() {
 		Some("CheckboxChecked") => {
-			return Some(MenuItem::Checkbox {
+			return MenuItem::Checkbox {
 				id,
 				text,
 				enabled,
 				shortcut,
 				checked: true,
-			});
+			};
 		}
 		Some("CheckboxUnchecked") => {
-			return Some(MenuItem::Checkbox {
+			return MenuItem::Checkbox {
 				id,
 				text,
 				enabled,
 				shortcut,
 				checked: false,
-			});
+			};
 		}
 		_ => {}
 	}
 
-	Some(MenuItem::Action { id, text, shortcut, enabled })
+	MenuItem::Action { id, text, shortcut, enabled }
 }
 
-fn convert_menu_bar_entry_children_to_menu_items(children: &[Vec<MenuBarEntry>]) -> Vec<MenuItem> {
+fn convert_menu_bar_entry_children_to_menu_items(children: &[Vec<MenuListEntry>]) -> Vec<MenuItem> {
 	let mut items = Vec::new();
 	for (i, section) in children.iter().enumerate() {
 		for entry in section.iter() {
-			if let Some(item) = convert_menu_bar_entry_to_menu_item(entry) {
+			if let Some(item) = convert_menu_bar_layout_to_menu_item(entry) {
 				items.push(item);
 			}
 		}

@@ -281,6 +281,10 @@ pub enum FrontendMessage {
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
 	},
+	#[cfg(target_os = "macos")]
+	UpdateMenuBarForMac {
+		layout: Layout,
+	},
 	UpdateMouseCursor {
 		cursor: MouseCursorIcon,
 	},
