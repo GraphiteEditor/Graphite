@@ -65,7 +65,7 @@ async fn get_request(_: impl Ctx, _primary: (), #[name("URL")] url: String, disc
 	response.text().await.ok().unwrap_or_default()
 }
 
-/// Fetches data from a URL via HTTP GET. When "Discard Result" is enabled, runs asynchronously without waiting for a response.
+/// Sends binary data to a URL via HTTP POST. When "Discard Result" is enabled, runs asynchronously without waiting for a response.
 #[node_macro::node(category("Web Request"))]
 async fn post_request(_: impl Ctx, _primary: (), #[name("URL")] url: String, body: Vec<u8>, discard_result: bool) -> String {
 	#[cfg(target_family = "wasm")]
