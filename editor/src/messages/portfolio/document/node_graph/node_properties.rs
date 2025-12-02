@@ -2112,7 +2112,7 @@ pub mod choice {
 		}
 
 		/// Not yet implemented!
-		pub fn into_menu_entries(self, _action: impl Fn(E) -> Message + 'static + Send + Sync) -> Vec<Vec<MenuBarEntry>> {
+		pub fn into_menu_entries(self, _action: impl Fn(E) -> Message + 'static + Send + Sync) -> MenuListEntrySections {
 			todo!()
 		}
 

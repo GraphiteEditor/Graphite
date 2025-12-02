@@ -157,7 +157,8 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 				},
 			},
 			description: Cow::Borrowed(
-				"Improves rendering performance if used in rare circumstances where automatic caching is not yet advanced enough to handle the situation.
+				"Improves rendering performance if used in rare circumstances where automatic caching is not yet advanced enough to handle the situation.\n\
+				\n\
 				Stores the last evaluated data that flowed through this node, and immediately returns that data on subsequent renders if the context has not changed.",
 			),
 			properties: None,
@@ -1014,7 +1015,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			description: Cow::Borrowed("Loads an image from a given URL"),
+			description: Cow::Borrowed("Loads an image from a given URL."),
 			properties: None,
 		},
 		#[cfg(all(feature = "gpu", target_family = "wasm"))]

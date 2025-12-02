@@ -19,8 +19,16 @@
 	let scroller: LayoutCol | undefined;
 	let searchTextInput: TextInput | undefined;
 
-	const dispatch = createEventDispatcher<{ open: boolean; activeEntry: MenuListEntry; hoverInEntry: MenuListEntry; hoverOutEntry: undefined; naturalWidth: number }>();
+	const dispatch = createEventDispatcher<{
+		open: boolean;
+		activeEntry: MenuListEntry;
+		selectedEntryValuePath: string[];
+		hoverInEntry: MenuListEntry;
+		hoverOutEntry: undefined;
+		naturalWidth: number;
+	}>();
 
+	export let parentsValuePath: string[] = [];
 	export let entries: MenuListEntry[][];
 	export let activeEntry: MenuListEntry | undefined = undefined;
 	export let open: boolean;
@@ -30,9 +38,6 @@
 	export let interactive = false;
 	export let scrollableY = false;
 	export let virtualScrollingEntryHeight = 0;
-	export let tooltipLabel: string | undefined = undefined;
-	export let tooltipDescription: string | undefined = undefined;
-	export let tooltipShortcut: string | undefined = undefined;
 
 	// Keep the child references outside of the entries array so as to avoid infinite recursion.
 	let childReferences: MenuList[][] = [];
@@ -149,11 +154,9 @@
 	}
 
 	function onEntryClick(menuListEntry: MenuListEntry) {
-		// Call the action if available
-		if (menuListEntry.action) menuListEntry.action();
-
 		// Notify the parent about the clicked entry as the new active entry
 		dispatch("activeEntry", menuListEntry);
+		dispatch("selectedEntryValuePath", [...parentsValuePath, menuListEntry.value]);
 
 		// Close the containing menu
 		let childReference = getChildReference(menuListEntry);
@@ -425,9 +428,9 @@
 					class="row"
 					classes={{ open: isEntryOpen(entry), active: entry.label === highlighted?.label, disabled: Boolean(entry.disabled) }}
 					styles={{ height: virtualScrollingEntryHeight || "20px" }}
-					{tooltipLabel}
-					{tooltipDescription}
-					{tooltipShortcut}
+					tooltipLabel={entry.tooltipLabel}
+					tooltipDescription={entry.tooltipDescription}
+					tooltipShortcut={entry.tooltipShortcut}
 					on:click={() => !entry.disabled && onEntryClick(entry)}
 					on:pointerenter={() => !entry.disabled && onEntryPointerEnter(entry)}
 					on:pointerleave={() => !entry.disabled && onEntryPointerLeave(entry)}
@@ -444,8 +447,8 @@
 
 					<TextLabel class="entry-label" styles={{ "font-family": `${!entry.font ? "inherit" : entry.value}` }}>{entry.label}</TextLabel>
 
-					{#if entry.shortcut?.keys.length}
-						<UserInputLabel keysWithLabelsGroups={[entry.shortcut.keys]} requiresLock={entry.shortcutRequiresLock} textOnly={true} />
+					{#if entry.shortcutKeys?.keys.length}
+						<UserInputLabel keysWithLabelsGroups={[entry.shortcutKeys.keys]} requiresLock={entry.shortcutRequiresLock} textOnly={true} />
 					{/if}
 
 					{#if entry.children?.length}
@@ -462,6 +465,8 @@
 								// See explanation at <https://github.com/sveltejs/language-tools/issues/452#issuecomment-723148184>.
 								dispatch("naturalWidth", detail);
 							}}
+							on:selectedEntryValuePath={({ detail }) => dispatch("selectedEntryValuePath", detail)}
+							parentsValuePath={[...parentsValuePath, entry.value]}
 							open={getChildReference(entry)?.open || false}
 							direction="TopRight"
 							entries={entry.children}

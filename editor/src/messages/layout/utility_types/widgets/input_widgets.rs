@@ -133,14 +133,27 @@ pub struct MenuListEntry {
 
 	pub label: String,
 
+	pub font: String,
+
 	pub icon: String,
 
-	pub shortcut: Vec<String>,
+	pub disabled: bool,
+
+	#[serde(rename = "tooltipLabel")]
+	pub tooltip_label: String,
+
+	#[serde(rename = "tooltipDescription")]
+	pub tooltip_description: String,
+
+	#[serde(rename = "tooltipShortcut")]
+	pub tooltip_shortcut: String,
+
+	// TODO: Make this serde(skip)
+	#[serde(rename = "shortcutKeys")]
+	pub shortcut_keys: Option<ActionKeys>,
 
 	#[serde(rename = "shortcutRequiresLock")]
 	pub shortcut_requires_lock: bool,
-
-	pub disabled: bool,
 
 	pub children: MenuListEntrySections,
 
@@ -186,21 +199,6 @@ pub struct FontInput {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<FontInput>,
-
-	#[serde(skip)]
-	#[derivative(Debug = "ignore", PartialEq = "ignore")]
-	pub on_commit: WidgetCallback<()>,
-}
-
-/// This widget allows for the flexible use of the layout system.
-/// In a custom layout, one can define a widget that is just used to trigger code on the backend.
-/// This is used in MenuLayout to pipe the triggering of messages from the frontend to backend.
-#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Default, WidgetBuilder, specta::Type)]
-#[derivative(Debug, PartialEq)]
-pub struct InvisibleStandinInput {
-	#[serde(skip)]
-	#[derivative(Debug = "ignore", PartialEq = "ignore")]
-	pub on_update: WidgetCallback<()>,
 
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]

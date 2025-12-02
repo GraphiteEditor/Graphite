@@ -495,13 +495,22 @@
 		--floating-menu-content-offset: 0;
 
 		.tail {
-			width: 0;
-			height: 0;
-			border-style: solid;
 			// Put the tail above the floating menu's shadow
 			z-index: 10;
 			// Draw over the application without being clipped by the containing panel's `overflow: hidden`
 			position: fixed;
+
+			&,
+			&::before {
+				width: 0;
+				height: 0;
+				border-style: solid;
+			}
+
+			&::before {
+				content: "";
+				position: absolute;
+			}
 		}
 
 		.floating-menu-container {
@@ -510,6 +519,7 @@
 			.floating-menu-content {
 				background: var(--color-2-mildblack);
 				box-shadow: rgba(var(--color-0-black-rgb), 0.5) 0 2px 4px;
+				border: 1px solid var(--color-4-dimgray);
 				border-radius: 4px;
 				color: var(--color-e-nearwhite);
 				font-size: inherit;
@@ -517,6 +527,8 @@
 				z-index: 0;
 				// Draw over the application without being clipped by the containing panel's `overflow: hidden`
 				position: fixed;
+				// Counteract the rightward shift caused by the border
+				margin-left: -1px;
 			}
 		}
 
@@ -603,33 +615,69 @@
 		&.top .tail,
 		&.topleft .tail,
 		&.topright .tail {
-			border-width: 8px 6px 0 6px;
-			border-color: var(--color-2-mildblack) transparent transparent transparent;
-			margin-left: -6px;
-			margin-bottom: 2px;
+			border-color: var(--color-4-dimgray) transparent transparent transparent;
+
+			&::before {
+				border-color: var(--color-2-mildblack) transparent transparent transparent;
+				bottom: 0;
+			}
+
+			&,
+			&::before {
+				border-width: 8px 6px 0 6px;
+				margin-left: -6px;
+				margin-bottom: 2px;
+			}
 		}
 
 		&.bottom .tail,
 		&.bottomleft .tail,
 		&.bottomright .tail {
-			border-width: 0 6px 8px 6px;
-			border-color: transparent transparent var(--color-2-mildblack) transparent;
-			margin-left: -6px;
-			margin-top: 2px;
+			border-color: transparent transparent var(--color-4-dimgray) transparent;
+
+			&::before {
+				border-color: transparent transparent var(--color-2-mildblack) transparent;
+				top: 0;
+			}
+
+			&,
+			&::before {
+				border-width: 0 6px 8px 6px;
+				margin-left: -6px;
+				margin-top: 2px;
+			}
 		}
 
 		&.left .tail {
-			border-width: 6px 0 6px 8px;
-			border-color: transparent transparent transparent var(--color-2-mildblack);
-			margin-top: -6px;
-			margin-right: 2px;
+			border-color: transparent transparent transparent var(--color-4-dimgray);
+
+			&::before {
+				border-color: transparent transparent transparent var(--color-2-mildblack);
+				right: 0;
+			}
+
+			&,
+			&::before {
+				border-width: 6px 0 6px 8px;
+				margin-top: -6px;
+				margin-right: 2px;
+			}
 		}
 
 		&.right .tail {
-			border-width: 6px 8px 6px 0;
-			border-color: transparent var(--color-2-mildblack) transparent transparent;
-			margin-top: -6px;
-			margin-left: 2px;
+			border-color: transparent var(--color-4-dimgray) transparent transparent;
+
+			&::before {
+				border-color: transparent var(--color-2-mildblack) transparent transparent;
+				left: 0;
+			}
+
+			&,
+			&::before {
+				border-width: 6px 8px 6px 0;
+				margin-top: -6px;
+				margin-left: 2px;
+			}
 		}
 
 		&.top .floating-menu-container {

@@ -203,6 +203,7 @@
 		window.removeEventListener("pointermove", onPointerMove);
 		window.removeEventListener("mousedown", onMouseDown);
 		window.removeEventListener("keydown", onKeyDown);
+		clearTimeout(repeatTimeout);
 	}
 </script>
 

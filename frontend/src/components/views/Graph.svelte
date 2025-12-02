@@ -9,13 +9,11 @@
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 
 	import NodeCatalog from "@graphite/components/floating-menus/NodeCatalog.svelte";
+	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
-	import RadioInput from "@graphite/components/widgets/inputs/RadioInput.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
-	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 
 	const GRID_COLLAPSE_SPACING = 10;
@@ -202,46 +200,44 @@
 >
 	<!-- Right click menu for adding nodes -->
 	{#if $nodeGraph.contextMenuInformation}
-		<LayoutCol
+		<FloatingMenu
 			class="context-menu"
 			data-context-menu
 			styles={{
 				left: `${$nodeGraph.contextMenuInformation.contextMenuCoordinates.x * $nodeGraph.transform.scale + $nodeGraph.transform.x}px`,
 				top: `${$nodeGraph.contextMenuInformation.contextMenuCoordinates.y * $nodeGraph.transform.scale + $nodeGraph.transform.y}px`,
 			}}
+			open={true}
+			type="Popover"
+			direction="BottomLeft"
 		>
 			{#if $nodeGraph.contextMenuInformation.contextMenuData.type === "CreateNode"}
 				<NodeCatalog initialSearchTerm={$nodeGraph.contextMenuInformation.contextMenuData.data.compatibleType || ""} on:selectNodeType={(e) => createNode(e.detail)} />
 			{:else if $nodeGraph.contextMenuInformation.contextMenuData.type === "ModifyNode"}
-				<LayoutRow class="toggle-layer-or-node">
-					<TextLabel>Display as</TextLabel>
-					<RadioInput
-						selectedIndex={$nodeGraph.contextMenuInformation.contextMenuData.data.currentlyIsNode ? 0 : 1}
-						entries={[
-							{
-								value: "node",
-								label: "Node",
-								action: () =>
-									$nodeGraph.contextMenuInformation?.contextMenuData.type === "ModifyNode" &&
-									editor.handle.setToNodeOrLayer($nodeGraph.contextMenuInformation.contextMenuData.data.nodeId, false),
-							},
-							{
-								value: "layer",
-								label: "Layer",
-								action: () =>
-									$nodeGraph.contextMenuInformation?.contextMenuData.type === "ModifyNode" &&
-									editor.handle.setToNodeOrLayer($nodeGraph.contextMenuInformation.contextMenuData.data.nodeId, true),
-							},
-						]}
-						disabled={!$nodeGraph.contextMenuInformation.contextMenuData.data.canBeLayer}
+				<LayoutCol class="modify-node-menu">
+					<TextButton
+						label="Merge Selected Nodes"
+						action={() => {
+							editor.handle.mergeSelectedNodes();
+							nodeGraph.closeContextMenu();
+						}}
+						flush={true}
 					/>
-				</LayoutRow>
-				<Separator type="Section" direction="Vertical" />
-				<LayoutRow class="merge-selected-nodes">
-					<TextButton label="Merge Selected Nodes" action={() => editor.handle.mergeSelectedNodes()} />
-				</LayoutRow>
+					{@const currentlyIsNode = $nodeGraph.contextMenuInformation.contextMenuData.data.currentlyIsNode}
+					<TextButton
+						label={currentlyIsNode ? "Display as Layer" : "Display as Node"}
+						action={() => {
+							if ($nodeGraph.contextMenuInformation?.contextMenuData.type === "ModifyNode") {
+								editor.handle.setToNodeOrLayer($nodeGraph.contextMenuInformation.contextMenuData.data.nodeId, currentlyIsNode);
+							}
+							nodeGraph.closeContextMenu();
+						}}
+						disabled={!$nodeGraph.contextMenuInformation.contextMenuData.data.canBeLayer}
+						flush={true}
+					/>
+				</LayoutCol>
 			{/if}
-		</LayoutCol>
+		</FloatingMenu>
 	{/if}
 
 	{#if $nodeGraph.error}
@@ -822,20 +818,17 @@
 
 		.context-menu {
 			width: max-content;
-			position: absolute;
-			box-sizing: border-box;
-			padding: 5px;
-			z-index: 3;
-			background-color: var(--color-3-darkgray);
-			border-radius: 4px;
 
-			.toggle-layer-or-node .text-label {
-				line-height: 24px;
-				margin-right: 8px;
+			.modify-node-menu {
+				margin: -4px;
+
+				.text-button {
+					justify-content: left;
+				}
 			}
 
-			.merge-selected-nodes {
-				justify-content: center;
+			.tail {
+				display: none;
 			}
 		}
 
@@ -1071,7 +1064,7 @@
 			height: 100%;
 
 			// Zero specificity with `:where()` to allow other rules to override `pointer-events`
-			:where(& > *) {
+			:where(.graph-view.open & > *) {
 				pointer-events: auto;
 			}
 		}

@@ -25,7 +25,6 @@ impl MessageHandler<LayoutMessage, LayoutMessageContext<'_>> for LayoutMessageHa
 			LayoutMessage::ResendActiveWidget { layout_target, widget_id } => {
 				// Find the updated diff based on the specified layout target
 				let Some(diff) = (match &self.layouts[layout_target as usize] {
-					Layout::MenuLayout(_) => return,
 					Layout::WidgetLayout(layout) => Self::get_widget_path(layout, widget_id).map(|(widget, widget_path)| {
 						// Create a widget update diff for the relevant id
 						let new_value = DiffUpdate::Widget(widget.clone());
@@ -112,7 +111,10 @@ impl LayoutMessageHandler {
 			return;
 		};
 
-		let Some(widget_holder) = layout.iter_mut().find(|widget| widget.widget_id == widget_id) else {
+		let mut layout_iter = match layout {
+			Layout::WidgetLayout(widget_layout) => widget_layout.iter_mut(),
+		};
+		let Some(widget_holder) = layout_iter.find(|widget| widget.widget_id == widget_id) else {
 			warn!("handle_widget_callback was called referencing an invalid widget ID, although the layout target was valid. `widget_id: {widget_id}`, `layout_target: {layout_target:?}`",);
 			return;
 		};
@@ -309,14 +311,6 @@ impl LayoutMessageHandler {
 			}
 			Widget::ImageLabel(_) => {}
 			Widget::IconLabel(_) => {}
-			Widget::InvisibleStandinInput(invisible) => {
-				let callback_message = match action {
-					WidgetValueAction::Commit => (invisible.on_commit.callback)(&()),
-					WidgetValueAction::Update => (invisible.on_update.callback)(&()),
-				};
-
-				responses.add(callback_message);
-			}
 			Widget::NodeCatalog(node_type_input) => match action {
 				WidgetValueAction::Commit => {
 					let callback_message = (node_type_input.on_commit.callback)(&());
@@ -411,7 +405,34 @@ impl LayoutMessageHandler {
 			Widget::TextButton(text_button) => {
 				let callback_message = match action {
 					WidgetValueAction::Commit => (text_button.on_commit.callback)(&()),
-					WidgetValueAction::Update => (text_button.on_update.callback)(text_button),
+					WidgetValueAction::Update => {
+						let Some(value_path) = value.as_array() else {
+							error!("TextButton update was not of type: array");
+							return;
+						};
+
+						// Process the text button click, since no menu is involved if we're given an empty array.
+						if value_path.is_empty() {
+							(text_button.on_update.callback)(text_button)
+						}
+						// Process the text button's menu list entry click, since we have a path to the value of the contained menu entry.
+						else {
+							let mut current_submenu = &text_button.menu_list_children;
+							let mut final_entry: Option<&MenuListEntry> = None;
+
+							// Loop through all menu entry value strings in the path until we reach the final entry (which we store).
+							// Otherwise we exit early if we can't traverse the full path.
+							for value in value_path.iter().filter_map(|v| v.as_str().map(|s| s.to_string())) {
+								let Some(next_entry) = current_submenu.iter().flatten().find(|e| e.value == value) else { return };
+
+								current_submenu = &next_entry.children;
+								final_entry = Some(next_entry);
+							}
+
+							// If we've reached here without returning early, we have a final entry in the path and we should now execute its callback.
+							(final_entry.unwrap().on_commit.callback)(&())
+						}
+					}
 				};
 
 				responses.add(callback_message);
@@ -447,31 +468,17 @@ impl LayoutMessageHandler {
 		match new_layout {
 			Layout::WidgetLayout(_) => {
 				let mut widget_diffs = Vec::new();
-				self.layouts[layout_target as usize].diff(new_layout, &mut Vec::new(), &mut widget_diffs);
 
-				// Skip sending if no diff.
+				let Layout::WidgetLayout(current) = &mut self.layouts[layout_target as usize];
+				let Layout::WidgetLayout(new) = new_layout;
+				current.diff(new, &mut Vec::new(), &mut widget_diffs);
+
+				// Skip sending if no diff
 				if widget_diffs.is_empty() {
 					return;
 				}
 
 				self.send_diff(widget_diffs, layout_target, responses, action_input_mapping);
-			}
-			// We don't diff the menu bar layout yet.
-			Layout::MenuLayout(_) => {
-				// Skip update if the same
-				if self.layouts[layout_target as usize] == new_layout {
-					return;
-				}
-
-				// Update the backend storage
-				self.layouts[layout_target as usize] = new_layout;
-
-				// Update the UI
-				let Some(layout) = self.layouts[layout_target as usize].clone().as_menu_layout(action_input_mapping).map(|x| x.layout) else {
-					error!("Called unwrap_menu_layout on a widget layout");
-					return;
-				};
-				responses.add(FrontendMessage::UpdateMenuBarLayout { layout_target, layout });
 			}
 		}
 	}
@@ -481,18 +488,18 @@ impl LayoutMessageHandler {
 		diff.iter_mut().for_each(|diff| diff.new_value.apply_keyboard_shortcut(action_input_mapping));
 
 		let message = match layout_target {
-			LayoutTarget::MenuBar => unreachable!("Menu bar is not diffed"),
+			LayoutTarget::DataPanel => FrontendMessage::UpdateDataPanelLayout { layout_target, diff },
 			LayoutTarget::DialogButtons => FrontendMessage::UpdateDialogButtons { layout_target, diff },
 			LayoutTarget::DialogColumn1 => FrontendMessage::UpdateDialogColumn1 { layout_target, diff },
 			LayoutTarget::DialogColumn2 => FrontendMessage::UpdateDialogColumn2 { layout_target, diff },
 			LayoutTarget::DocumentBar => FrontendMessage::UpdateDocumentBarLayout { layout_target, diff },
 			LayoutTarget::DocumentMode => FrontendMessage::UpdateDocumentModeLayout { layout_target, diff },
-			LayoutTarget::DataPanel => FrontendMessage::UpdateDataPanelLayout { layout_target, diff },
+			LayoutTarget::LayersPanelBottomBar => FrontendMessage::UpdateLayersPanelBottomBarLayout { layout_target, diff },
 			LayoutTarget::LayersPanelControlLeftBar => FrontendMessage::UpdateLayersPanelControlBarLeftLayout { layout_target, diff },
 			LayoutTarget::LayersPanelControlRightBar => FrontendMessage::UpdateLayersPanelControlBarRightLayout { layout_target, diff },
-			LayoutTarget::LayersPanelBottomBar => FrontendMessage::UpdateLayersPanelBottomBarLayout { layout_target, diff },
-			LayoutTarget::PropertiesPanel => FrontendMessage::UpdatePropertiesPanelLayout { layout_target, diff },
+			LayoutTarget::MenuBar => FrontendMessage::UpdateMenuBarLayout { layout_target, diff },
 			LayoutTarget::NodeGraphControlBar => FrontendMessage::UpdateNodeGraphControlBarLayout { layout_target, diff },
+			LayoutTarget::PropertiesPanel => FrontendMessage::UpdatePropertiesPanelLayout { layout_target, diff },
 			LayoutTarget::ToolOptions => FrontendMessage::UpdateToolOptionsLayout { layout_target, diff },
 			LayoutTarget::ToolShelf => FrontendMessage::UpdateToolShelfLayout { layout_target, diff },
 			LayoutTarget::WorkingColors => FrontendMessage::UpdateWorkingColorsLayout { layout_target, diff },
