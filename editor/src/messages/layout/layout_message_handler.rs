@@ -499,6 +499,8 @@ impl LayoutMessageHandler {
 			LayoutTarget::LayersPanelControlRightBar => FrontendMessage::UpdateLayersPanelControlBarRightLayout { layout_target, diff },
 			#[cfg(not(target_os = "macos"))]
 			LayoutTarget::MenuBar => FrontendMessage::UpdateMenuBarLayout { layout_target, diff },
+			#[cfg(target_os = "macos")]
+			LayoutTarget::MenuBar => panic!("LayoutTarget::MenuBar should not be called on Mac"),
 			LayoutTarget::NodeGraphControlBar => FrontendMessage::UpdateNodeGraphControlBarLayout { layout_target, diff },
 			LayoutTarget::PropertiesPanel => FrontendMessage::UpdatePropertiesPanelLayout { layout_target, diff },
 			LayoutTarget::ToolOptions => FrontendMessage::UpdateToolOptionsLayout { layout_target, diff },

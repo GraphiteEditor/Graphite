@@ -114,8 +114,8 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 			dispatcher.respond(DesktopFrontendMessage::PersistenceLoadPreferences);
 		}
 		#[cfg(target_os = "macos")]
-		FrontendMessage::UpdateMenuBarForMac { layout } => {
-			let entries = convert_menu_bar_entries_to_menu_items(&layout);
+		FrontendMessage::UpdateMenuBarLayoutForMac { layout } => {
+			let entries = convert_menu_bar_entries_to_menu_items(layout);
 			dispatcher.respond(DesktopFrontendMessage::UpdateMenu { entries });
 		}
 		FrontendMessage::WindowClose => {
@@ -150,7 +150,7 @@ fn convert_menu_bar_entries_to_menu_items(layout: Layout) -> Vec<MenuItem> {
 	};
 	let layout_groups = widget_layout.layout;
 	let layout_group = match layout_groups.as_slice() {
-		&[layout_group] => layout_group,
+		[layout_group] => layout_group,
 		_ => panic!("Menu bar layout is supposed to have exactly one layout group"),
 	};
 	let LayoutGroup::Row { widgets } = layout_group else {
@@ -159,23 +159,36 @@ fn convert_menu_bar_entries_to_menu_items(layout: Layout) -> Vec<MenuItem> {
 	widgets
 		.into_iter()
 		.map(|widget| {
-			let text_button = match widget.widget {
+			let text_button = match &widget.widget {
 				Widget::TextButton(text_button) => text_button,
 				_ => panic!("Menu bar layout top-level widgets are supposed to be text buttons"),
 			};
 
 			MenuItem::SubMenu {
-				id: widget.widget_id,
-				text: text_button.label,
+				id: widget.widget_id.to_string(),
+				text: text_button.label.clone(),
 				enabled: !text_button.disabled,
-				items: convert_menu_bar_layout_to_menu_item(layout),
+				items: convert_menu_bar_entry_children_to_menu_items(&text_button.menu_list_children, widget.widget_id.0, Vec::new()),
 			}
 		})
-		.collect::<Vec<MenuItem>>();
+		.collect::<Vec<MenuItem>>()
 }
 
-fn convert_menu_bar_layout_to_menu_item(entry: &MenuListEntry) -> MenuItem {
+fn item_path_to_string(widget_id: u64, path: Vec<String>) -> String {
+	let path = path
+		.into_iter()
+		.map(|element| {
+			use base64::prelude::*;
+			base64::engine::general_purpose::STANDARD.encode(element)
+		})
+		.collect::<Vec<_>>()
+		.join(":");
+	format!("{widget_id}:{path}")
+}
+
+fn convert_menu_bar_layout_to_menu_item(entry: &MenuListEntry, root_widget_id: u64, mut path: Vec<String>) -> MenuItem {
 	let MenuListEntry {
+		value,
 		label,
 		icon,
 		shortcut_keys,
@@ -183,12 +196,13 @@ fn convert_menu_bar_layout_to_menu_item(entry: &MenuListEntry) -> MenuItem {
 		disabled,
 		..
 	}: &MenuListEntry = entry;
-	let id = on_commit.widget_id.0;
+	path.push(value.clone());
+	let id = item_path_to_string(root_widget_id, path.clone());
 	let text = label.clone();
 	let enabled = !*disabled;
 
-	if !children.0.is_empty() {
-		let items = convert_menu_bar_entry_children_to_menu_items(&children.0);
+	if !children.is_empty() {
+		let items = convert_menu_bar_entry_children_to_menu_items(&children, root_widget_id, path.clone());
 		return MenuItem::SubMenu { id, text, enabled, items };
 	}
 
@@ -197,8 +211,8 @@ fn convert_menu_bar_layout_to_menu_item(entry: &MenuListEntry) -> MenuItem {
 		_ => None,
 	};
 
-	match icon.as_deref() {
-		Some("CheckboxChecked") => {
+	match icon.as_str() {
+		"CheckboxChecked" => {
 			return MenuItem::Checkbox {
 				id,
 				text,
@@ -207,7 +221,7 @@ fn convert_menu_bar_layout_to_menu_item(entry: &MenuListEntry) -> MenuItem {
 				checked: true,
 			};
 		}
-		Some("CheckboxUnchecked") => {
+		"CheckboxUnchecked" => {
 			return MenuItem::Checkbox {
 				id,
 				text,
@@ -222,13 +236,11 @@ fn convert_menu_bar_layout_to_menu_item(entry: &MenuListEntry) -> MenuItem {
 	MenuItem::Action { id, text, shortcut, enabled }
 }
 
-fn convert_menu_bar_entry_children_to_menu_items(children: &[Vec<MenuListEntry>]) -> Vec<MenuItem> {
+fn convert_menu_bar_entry_children_to_menu_items(children: &[Vec<MenuListEntry>], root_widget_id: u64, path: Vec<String>) -> Vec<MenuItem> {
 	let mut items = Vec::new();
 	for (i, section) in children.iter().enumerate() {
 		for entry in section.iter() {
-			if let Some(item) = convert_menu_bar_layout_to_menu_item(entry) {
-				items.push(item);
-			}
+			items.push(convert_menu_bar_layout_to_menu_item(entry, root_widget_id, path.clone()));
 		}
 		if i != children.len() - 1 {
 			items.push(MenuItem::Separator);

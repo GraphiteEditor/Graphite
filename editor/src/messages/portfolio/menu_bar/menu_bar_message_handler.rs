@@ -32,7 +32,7 @@ impl MessageHandler<MenuBarMessage, ()> for MenuBarMessageHandler {
 				#[cfg(not(target_os = "macos"))]
 				self.send_layout(responses, LayoutTarget::MenuBar);
 				#[cfg(target_os = "macos")]
-				responses.push(FrontendMessage::UpdateMenuBarLayoutForMac { layout: self.layout() }.into());
+				responses.push_back(FrontendMessage::UpdateMenuBarLayoutForMac { layout: self.layout() }.into());
 			}
 		}
 	}

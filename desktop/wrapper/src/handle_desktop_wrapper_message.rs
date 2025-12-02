@@ -151,10 +151,26 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 			dispatcher.queue_editor_message(message);
 		}
 		DesktopWrapperMessage::MenuEvent { id } => {
+			let mut id_parts = id.split(':');
+			let Some(widget_id) = id_parts.next() else {
+				tracing::error!("Received a malformed MenuEvent id");
+				return;
+			};
+			let widget_id = widget_id.parse::<u64>().unwrap();
+
+			let value = id_parts
+				.map(|part| {
+					use base64::prelude::*;
+					let bytes = base64::engine::general_purpose::STANDARD.decode(part).unwrap();
+					String::from_utf8(bytes).unwrap()
+				})
+				.collect::<Vec<_>>();
+			let value = serde_json::to_value(value).unwrap();
+
 			let message = LayoutMessage::WidgetValueUpdate {
 				layout_target: LayoutTarget::MenuBar,
-				widget_id: WidgetId(id),
-				value: serde_json::Value::Bool(true),
+				widget_id: WidgetId(widget_id),
+				value,
 			};
 			dispatcher.queue_editor_message(message);
 		}

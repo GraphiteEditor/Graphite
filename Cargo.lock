@@ -2328,6 +2328,7 @@ dependencies = [
 name = "graphite-desktop-wrapper"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "dirs",
  "futures",
  "graph-craft",
