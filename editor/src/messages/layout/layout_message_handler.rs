@@ -478,6 +478,15 @@ impl LayoutMessageHandler {
 					return;
 				}
 
+				// On Mac we need the full MenuBar layout to construct the native menu
+				#[cfg(target_os = "macos")]
+				if layout_target == LayoutTarget::MenuBar {
+					widget_diffs = vec![WidgetDiff {
+						widget_path: Vec::new(),
+						new_value: DiffUpdate::SubLayout(current.layout.clone()),
+					}]
+				}
+
 				self.send_diff(widget_diffs, layout_target, responses, action_input_mapping);
 			}
 		}
@@ -497,10 +506,7 @@ impl LayoutMessageHandler {
 			LayoutTarget::LayersPanelBottomBar => FrontendMessage::UpdateLayersPanelBottomBarLayout { layout_target, diff },
 			LayoutTarget::LayersPanelControlLeftBar => FrontendMessage::UpdateLayersPanelControlBarLeftLayout { layout_target, diff },
 			LayoutTarget::LayersPanelControlRightBar => FrontendMessage::UpdateLayersPanelControlBarRightLayout { layout_target, diff },
-			#[cfg(not(target_os = "macos"))]
 			LayoutTarget::MenuBar => FrontendMessage::UpdateMenuBarLayout { layout_target, diff },
-			#[cfg(target_os = "macos")]
-			LayoutTarget::MenuBar => panic!("LayoutTarget::MenuBar should not be called on Mac"),
 			LayoutTarget::NodeGraphControlBar => FrontendMessage::UpdateNodeGraphControlBarLayout { layout_target, diff },
 			LayoutTarget::PropertiesPanel => FrontendMessage::UpdatePropertiesPanelLayout { layout_target, diff },
 			LayoutTarget::ToolOptions => FrontendMessage::UpdateToolOptionsLayout { layout_target, diff },
@@ -509,6 +515,7 @@ impl LayoutMessageHandler {
 
 			LayoutTarget::LayoutTargetLength => panic!("`LayoutTargetLength` is not a valid Layout Target and is used for array indexing"),
 		};
+
 		responses.add(message);
 	}
 }

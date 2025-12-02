@@ -29,10 +29,7 @@ impl MessageHandler<MenuBarMessage, ()> for MenuBarMessageHandler {
 	fn process_message(&mut self, message: MenuBarMessage, responses: &mut VecDeque<Message>, _: ()) {
 		match message {
 			MenuBarMessage::SendLayout => {
-				#[cfg(not(target_os = "macos"))]
 				self.send_layout(responses, LayoutTarget::MenuBar);
-				#[cfg(target_os = "macos")]
-				responses.push_back(FrontendMessage::UpdateMenuBarLayoutForMac { layout: self.layout() }.into());
 			}
 		}
 	}
