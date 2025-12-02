@@ -77,15 +77,15 @@ impl LayoutHolder for MenuBarMessageHandler {
 		let menu_bar_buttons = vec![
 			#[cfg(not(target_os = "macos"))]
 			TextButton::new("Graphite")
-				.flush(true)
 				.label("")
+				.flush(true)
 				.icon(Some("GraphiteLogo".into()))
 				.on_commit(|_| FrontendMessage::TriggerVisitLink { url: "https://graphite.rs".into() }.into())
 				.widget_holder(),
 			#[cfg(target_os = "macos")]
 			TextButton::new("Graphite")
-				.flush(true)
 				.label("")
+				.flush(true)
 				.menu_list_children(vec![
 					vec![about],
 					vec![preferences],
@@ -112,8 +112,8 @@ impl LayoutHolder for MenuBarMessageHandler {
 				])
 				.widget_holder(),
 			TextButton::new("File")
-				.flush(true)
 				.label("File")
+				.flush(true)
 				.menu_list_children(vec![
 					vec![
 						MenuListEntry::new("New…")
@@ -121,735 +121,623 @@ impl LayoutHolder for MenuBarMessageHandler {
 							.icon("File")
 							.on_commit(|_| DialogMessage::RequestNewDocumentDialog.into())
 							.shortcut_keys(action_keys!(DialogMessageDiscriminant::RequestNewDocumentDialog)),
-						MenuListEntry {
-							value: "Open…".into(),
-							label: "Open…".into(),
-							icon: "Folder".into(),
-							shortcut_keys: action_keys!(PortfolioMessageDiscriminant::OpenDocument),
-							on_commit: WidgetCallback::new(|_| PortfolioMessage::OpenDocument.into()),
-							..MenuListEntry::default()
-						},
-						MenuListEntry {
-							value: "Open Demo Artwork…".into(),
-							label: "Open Demo Artwork…".into(),
-							icon: "Image".into(),
-							on_commit: WidgetCallback::new(|_| DialogMessage::RequestDemoArtworkDialog.into()),
-							..MenuListEntry::default()
-						},
+						MenuListEntry::new("Open…")
+							.label("Open…")
+							.icon("Folder")
+							.shortcut_keys(action_keys!(PortfolioMessageDiscriminant::OpenDocument))
+							.on_commit(|_| PortfolioMessage::OpenDocument.into()),
+						MenuListEntry::new("Open Demo Artwork…")
+							.label("Open Demo Artwork…")
+							.icon("Image")
+							.on_commit(|_| DialogMessage::RequestDemoArtworkDialog.into()),
 					],
 					vec![
-						MenuListEntry {
-							value: "Close".into(),
-							label: "Close".into(),
-							icon: "Close".into(),
-							shortcut_keys: action_keys!(PortfolioMessageDiscriminant::CloseActiveDocumentWithConfirmation),
-							on_commit: WidgetCallback::new(|_| PortfolioMessage::CloseActiveDocumentWithConfirmation.into()),
-							disabled: no_active_document,
-							..MenuListEntry::default()
-						},
-						MenuListEntry {
-							value: "Close All".into(),
-							label: "Close All".into(),
-							icon: "CloseAll".into(),
-							shortcut_keys: action_keys!(PortfolioMessageDiscriminant::CloseAllDocumentsWithConfirmation),
-							on_commit: WidgetCallback::new(|_| PortfolioMessage::CloseAllDocumentsWithConfirmation.into()),
-							disabled: no_active_document,
-							..MenuListEntry::default()
-						},
+						MenuListEntry::new("Close")
+							.label("Close")
+							.icon("Close")
+							.shortcut_keys(action_keys!(PortfolioMessageDiscriminant::CloseActiveDocumentWithConfirmation))
+							.on_commit(|_| PortfolioMessage::CloseActiveDocumentWithConfirmation.into())
+							.disabled(no_active_document),
+						MenuListEntry::new("Close All")
+							.label("Close All")
+							.icon("CloseAll")
+							.shortcut_keys(action_keys!(PortfolioMessageDiscriminant::CloseAllDocumentsWithConfirmation))
+							.on_commit(|_| PortfolioMessage::CloseAllDocumentsWithConfirmation.into())
+							.disabled(no_active_document),
 					],
 					vec![
-						MenuListEntry {
-							value: "Save".into(),
-							label: "Save".into(),
-							icon: "Save".into(),
-							shortcut_keys: action_keys!(DocumentMessageDiscriminant::SaveDocument),
-							on_commit: WidgetCallback::new(|_| DocumentMessage::SaveDocument.into()),
-							disabled: no_active_document,
-							..MenuListEntry::default()
-						},
+						MenuListEntry::new("Save")
+							.label("Save")
+							.icon("Save")
+							.shortcut_keys(action_keys!(DocumentMessageDiscriminant::SaveDocument))
+							.on_commit(|_| DocumentMessage::SaveDocument.into())
+							.disabled(no_active_document),
 						#[cfg(not(target_family = "wasm"))]
-						MenuListEntry {
-							value: "Save As…".into(),
-							label: "Save As…".into(),
-							icon: "Save".into(),
-							shortcut_keys: action_keys!(DocumentMessageDiscriminant::SaveDocumentAs),
-							on_commit: WidgetCallback::new(|_| DocumentMessage::SaveDocumentAs.into()),
-							disabled: no_active_document,
-							..MenuListEntry::default()
-						},
+						MenuListEntry::new("Save As…")
+							.label("Save As…")
+							.icon("Save")
+							.shortcut_keys(action_keys!(DocumentMessageDiscriminant::SaveDocumentAs))
+							.on_commit(|_| DocumentMessage::SaveDocumentAs.into())
+							.disabled(no_active_document),
 					],
 					vec![
-						MenuListEntry {
-							value: "Import…".into(),
-							label: "Import…".into(),
-							icon: "FileImport".into(),
-							shortcut_keys: action_keys!(PortfolioMessageDiscriminant::Import),
-							on_commit: WidgetCallback::new(|_| PortfolioMessage::Import.into()),
-							..MenuListEntry::default()
-						},
-						MenuListEntry {
-							value: "Export…".into(),
-							label: "Export…".into(),
-							icon: "FileExport".into(),
-							shortcut_keys: action_keys!(DialogMessageDiscriminant::RequestExportDialog),
-							on_commit: WidgetCallback::new(|_| DialogMessage::RequestExportDialog.into()),
-							disabled: no_active_document,
-							..MenuListEntry::default()
-						},
+						MenuListEntry::new("Import…")
+							.label("Import…")
+							.icon("FileImport")
+							.shortcut_keys(action_keys!(PortfolioMessageDiscriminant::Import))
+							.on_commit(|_| PortfolioMessage::Import.into()),
+						MenuListEntry::new("Export…")
+							.label("Export…")
+							.icon("FileExport")
+							.shortcut_keys(action_keys!(DialogMessageDiscriminant::RequestExportDialog))
+							.on_commit(|_| DialogMessage::RequestExportDialog.into())
+							.disabled(no_active_document),
 					],
 					#[cfg(not(target_os = "macos"))]
 					vec![preferences],
 				])
 				.widget_holder(),
 			TextButton::new("Edit")
-				.flush(true)
 				.label("Edit")
+				.flush(true)
 				.menu_list_children(vec![
 					vec![
-						MenuListEntry {
-							value: "Undo".into(),
-							label: "Undo".into(),
-							icon: "HistoryUndo".into(),
-							shortcut_keys: action_keys!(DocumentMessageDiscriminant::Undo),
-							on_commit: WidgetCallback::new(|_| DocumentMessage::Undo.into()),
-							disabled: no_active_document,
-							..MenuListEntry::default()
-						},
-						MenuListEntry {
-							value: "Redo".into(),
-							label: "Redo".into(),
-							icon: "HistoryRedo".into(),
-							shortcut_keys: action_keys!(DocumentMessageDiscriminant::Redo),
-							on_commit: WidgetCallback::new(|_| DocumentMessage::Redo.into()),
-							disabled: no_active_document,
-							..MenuListEntry::default()
-						},
+						MenuListEntry::new("Undo")
+							.label("Undo")
+							.icon("HistoryUndo")
+							.shortcut_keys(action_keys!(DocumentMessageDiscriminant::Undo))
+							.on_commit(|_| DocumentMessage::Undo.into())
+							.disabled(no_active_document),
+						MenuListEntry::new("Redo")
+							.label("Redo")
+							.icon("HistoryRedo")
+							.shortcut_keys(action_keys!(DocumentMessageDiscriminant::Redo))
+							.on_commit(|_| DocumentMessage::Redo.into())
+							.disabled(no_active_document),
 					],
 					vec![
-						MenuListEntry {
-							value: "Cut".into(),
-							label: "Cut".into(),
-							icon: "Cut".into(),
-							shortcut_keys: action_keys!(PortfolioMessageDiscriminant::Cut),
-							on_commit: WidgetCallback::new(|_| PortfolioMessage::Cut { clipboard: Clipboard::Device }.into()),
-							disabled: no_active_document || !has_selected_layers,
-							..MenuListEntry::default()
-						},
-						MenuListEntry {
-							value: "Copy".into(),
-							label: "Copy".into(),
-							icon: "Copy".into(),
-							shortcut_keys: action_keys!(PortfolioMessageDiscriminant::Copy),
-							on_commit: WidgetCallback::new(|_| PortfolioMessage::Copy { clipboard: Clipboard::Device }.into()),
-							disabled: no_active_document || !has_selected_layers,
-							..MenuListEntry::default()
-						},
-						MenuListEntry {
-							value: "Paste".into(),
-							label: "Paste".into(),
-							icon: "Paste".into(),
-							shortcut_keys: action_keys!(FrontendMessageDiscriminant::TriggerPaste),
-							on_commit: WidgetCallback::new(|_| FrontendMessage::TriggerPaste.into()),
-							disabled: no_active_document,
-							..MenuListEntry::default()
-						},
+						MenuListEntry::new("Cut")
+							.label("Cut")
+							.icon("Cut")
+							.shortcut_keys(action_keys!(PortfolioMessageDiscriminant::Cut))
+							.on_commit(|_| PortfolioMessage::Cut { clipboard: Clipboard::Device }.into())
+							.disabled(no_active_document || !has_selected_layers),
+						MenuListEntry::new("Copy")
+							.label("Copy")
+							.icon("Copy")
+							.shortcut_keys(action_keys!(PortfolioMessageDiscriminant::Copy))
+							.on_commit(|_| PortfolioMessage::Copy { clipboard: Clipboard::Device }.into())
+							.disabled(no_active_document || !has_selected_layers),
+						MenuListEntry::new("Paste")
+							.label("Paste")
+							.icon("Paste")
+							.shortcut_keys(action_keys!(FrontendMessageDiscriminant::TriggerPaste))
+							.on_commit(|_| FrontendMessage::TriggerPaste.into())
+							.disabled(no_active_document),
 					],
 					vec![
-						MenuListEntry {
-							value: "Duplicate".into(),
-							label: "Duplicate".into(),
-							icon: "Copy".into(),
-							shortcut_keys: action_keys!(DocumentMessageDiscriminant::DuplicateSelectedLayers),
-							on_commit: WidgetCallback::new(|_| DocumentMessage::DuplicateSelectedLayers.into()),
-							disabled: no_active_document || !has_selected_nodes,
-							..MenuListEntry::default()
-						},
-						MenuListEntry {
-							value: "Delete".into(),
-							label: "Delete".into(),
-							icon: "Trash".into(),
-							shortcut_keys: action_keys!(DocumentMessageDiscriminant::DeleteSelectedLayers),
-							on_commit: WidgetCallback::new(|_| DocumentMessage::DeleteSelectedLayers.into()),
-							disabled: no_active_document || !has_selected_nodes,
-							..MenuListEntry::default()
-						},
+						MenuListEntry::new("Duplicate")
+							.label("Duplicate")
+							.icon("Copy")
+							.shortcut_keys(action_keys!(DocumentMessageDiscriminant::DuplicateSelectedLayers))
+							.on_commit(|_| DocumentMessage::DuplicateSelectedLayers.into())
+							.disabled(no_active_document || !has_selected_nodes),
+						MenuListEntry::new("Delete")
+							.label("Delete")
+							.icon("Trash")
+							.shortcut_keys(action_keys!(DocumentMessageDiscriminant::DeleteSelectedLayers))
+							.on_commit(|_| DocumentMessage::DeleteSelectedLayers.into())
+							.disabled(no_active_document || !has_selected_nodes),
 					],
-					vec![MenuListEntry {
-						value: "Convert to Infinite Canvas".into(),
-						label: "Convert to Infinite Canvas".into(),
-						icon: "Artboard".into(),
-						on_commit: WidgetCallback::new(|_| DocumentMessage::RemoveArtboards.into()),
-						disabled: no_active_document,
-						..MenuListEntry::default()
-					}],
+					vec![
+						MenuListEntry::new("Convert to Infinite Canvas")
+							.label("Convert to Infinite Canvas")
+							.icon("Artboard")
+							.on_commit(|_| DocumentMessage::RemoveArtboards.into())
+							.disabled(no_active_document),
+					],
 				])
 				.widget_holder(),
 			TextButton::new("Layer")
-				.flush(true)
 				.label("Layer")
+				.flush(true)
 				.disabled(no_active_document)
 				.menu_list_children(vec![
-					vec![MenuListEntry {
-						value: "New".into(),
-						label: "New".into(),
-						icon: "NewLayer".into(),
-						shortcut_keys: action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder),
-						on_commit: WidgetCallback::new(|_| DocumentMessage::CreateEmptyFolder.into()),
-						disabled: no_active_document,
-						..MenuListEntry::default()
-					}],
 					vec![
-						MenuListEntry {
-							value: "Group".into(),
-							label: "Group".into(),
-							icon: "Folder".into(),
-							shortcut_keys: action_keys!(DocumentMessageDiscriminant::GroupSelectedLayers),
-							on_commit: WidgetCallback::new(|_| {
+						MenuListEntry::new("New")
+							.label("New")
+							.icon("NewLayer")
+							.shortcut_keys(action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder))
+							.on_commit(|_| DocumentMessage::CreateEmptyFolder.into())
+							.disabled(no_active_document),
+					],
+					vec![
+						MenuListEntry::new("Group")
+							.label("Group")
+							.icon("Folder")
+							.shortcut_keys(action_keys!(DocumentMessageDiscriminant::GroupSelectedLayers))
+							.on_commit(|_| {
 								DocumentMessage::GroupSelectedLayers {
 									group_folder_type: GroupFolderType::Layer,
 								}
 								.into()
-							}),
-							disabled: no_active_document || !has_selected_layers,
-							..MenuListEntry::default()
-						},
-						MenuListEntry {
-							value: "Ungroup".into(),
-							label: "Ungroup".into(),
-							icon: "FolderOpen".into(),
-							shortcut_keys: action_keys!(DocumentMessageDiscriminant::UngroupSelectedLayers),
-							on_commit: WidgetCallback::new(|_| DocumentMessage::UngroupSelectedLayers.into()),
-							disabled: no_active_document || !has_selected_layers,
-							..MenuListEntry::default()
-						},
+							})
+							.disabled(no_active_document || !has_selected_layers),
+						MenuListEntry::new("Ungroup")
+							.label("Ungroup")
+							.icon("FolderOpen")
+							.shortcut_keys(action_keys!(DocumentMessageDiscriminant::UngroupSelectedLayers))
+							.on_commit(|_| DocumentMessage::UngroupSelectedLayers.into())
+							.disabled(no_active_document || !has_selected_layers),
 					],
 					vec![
-						MenuListEntry {
-							value: "Hide/Show".into(),
-							label: "Hide/Show".into(),
-							icon: "EyeHide".into(),
-							shortcut_keys: action_keys!(DocumentMessageDiscriminant::ToggleSelectedVisibility),
-							on_commit: WidgetCallback::new(|_| DocumentMessage::ToggleSelectedVisibility.into()),
-							disabled: no_active_document || !has_selected_layers,
-							..MenuListEntry::default()
-						},
-						MenuListEntry {
-							value: "Lock/Unlock".into(),
-							label: "Lock/Unlock".into(),
-							icon: "PadlockLocked".into(),
-							shortcut_keys: action_keys!(DocumentMessageDiscriminant::ToggleSelectedLocked),
-							on_commit: WidgetCallback::new(|_| DocumentMessage::ToggleSelectedLocked.into()),
-							disabled: no_active_document || !has_selected_layers,
-							..MenuListEntry::default()
-						},
+						MenuListEntry::new("Hide/Show")
+							.label("Hide/Show")
+							.icon("EyeHide")
+							.shortcut_keys(action_keys!(DocumentMessageDiscriminant::ToggleSelectedVisibility))
+							.on_commit(|_| DocumentMessage::ToggleSelectedVisibility.into())
+							.disabled(no_active_document || !has_selected_layers),
+						MenuListEntry::new("Lock/Unlock")
+							.label("Lock/Unlock")
+							.icon("PadlockLocked")
+							.shortcut_keys(action_keys!(DocumentMessageDiscriminant::ToggleSelectedLocked))
+							.on_commit(|_| DocumentMessage::ToggleSelectedLocked.into())
+							.disabled(no_active_document || !has_selected_layers),
 					],
 					vec![
-						MenuListEntry {
-							value: "Grab".into(),
-							label: "Grab".into(),
-							icon: "TransformationGrab".into(),
-							shortcut_keys: action_keys!(TransformLayerMessageDiscriminant::BeginGrab),
-							on_commit: WidgetCallback::new(|_| TransformLayerMessage::BeginGrab.into()),
-							disabled: no_active_document || !has_selected_layers,
-							..MenuListEntry::default()
-						},
-						MenuListEntry {
-							value: "Rotate".into(),
-							label: "Rotate".into(),
-							icon: "TransformationRotate".into(),
-							shortcut_keys: action_keys!(TransformLayerMessageDiscriminant::BeginRotate),
-							on_commit: WidgetCallback::new(|_| TransformLayerMessage::BeginRotate.into()),
-							disabled: no_active_document || !has_selected_layers,
-							..MenuListEntry::default()
-						},
-						MenuListEntry {
-							value: "Scale".into(),
-							label: "Scale".into(),
-							icon: "TransformationScale".into(),
-							shortcut_keys: action_keys!(TransformLayerMessageDiscriminant::BeginScale),
-							on_commit: WidgetCallback::new(|_| TransformLayerMessage::BeginScale.into()),
-							disabled: no_active_document || !has_selected_layers,
-							..MenuListEntry::default()
-						},
+						MenuListEntry::new("Grab")
+							.label("Grab")
+							.icon("TransformationGrab")
+							.shortcut_keys(action_keys!(TransformLayerMessageDiscriminant::BeginGrab))
+							.on_commit(|_| TransformLayerMessage::BeginGrab.into())
+							.disabled(no_active_document || !has_selected_layers),
+						MenuListEntry::new("Rotate")
+							.label("Rotate")
+							.icon("TransformationRotate")
+							.shortcut_keys(action_keys!(TransformLayerMessageDiscriminant::BeginRotate))
+							.on_commit(|_| TransformLayerMessage::BeginRotate.into())
+							.disabled(no_active_document || !has_selected_layers),
+						MenuListEntry::new("Scale")
+							.label("Scale")
+							.icon("TransformationScale")
+							.shortcut_keys(action_keys!(TransformLayerMessageDiscriminant::BeginScale))
+							.on_commit(|_| TransformLayerMessage::BeginScale.into())
+							.disabled(no_active_document || !has_selected_layers),
 					],
 					vec![
-						MenuListEntry {
-							value: "Arrange".into(),
-							label: "Arrange".into(),
-							icon: "StackHollow".into(),
-							disabled: no_active_document || !has_selected_layers,
-							children: (vec![
+						MenuListEntry::new("Arrange")
+							.label("Arrange")
+							.icon("StackHollow")
+							.disabled(no_active_document || !has_selected_layers)
+							.children(vec![
 								vec![
-									MenuListEntry {
-										value: "Raise To Front".into(),
-										label: "Raise To Front".into(),
-										icon: "Stack".into(),
-										shortcut_keys: action_keys!(DocumentMessageDiscriminant::SelectedLayersRaiseToFront),
-										on_commit: WidgetCallback::new(|_| DocumentMessage::SelectedLayersRaiseToFront.into()),
-										disabled: no_active_document || !has_selected_layers,
-										..MenuListEntry::default()
-									},
-									MenuListEntry {
-										value: "Raise".into(),
-										label: "Raise".into(),
-										icon: "StackRaise".into(),
-										shortcut_keys: action_keys!(DocumentMessageDiscriminant::SelectedLayersRaise),
-										on_commit: WidgetCallback::new(|_| DocumentMessage::SelectedLayersRaise.into()),
-										disabled: no_active_document || !has_selected_layers,
-										..MenuListEntry::default()
-									},
-									MenuListEntry {
-										value: "Lower".into(),
-										label: "Lower".into(),
-										icon: "StackLower".into(),
-										shortcut_keys: action_keys!(DocumentMessageDiscriminant::SelectedLayersLower),
-										on_commit: WidgetCallback::new(|_| DocumentMessage::SelectedLayersLower.into()),
-										disabled: no_active_document || !has_selected_layers,
-										..MenuListEntry::default()
-									},
-									MenuListEntry {
-										value: "Lower to Back".into(),
-										label: "Lower to Back".into(),
-										icon: "StackBottom".into(),
-										shortcut_keys: action_keys!(DocumentMessageDiscriminant::SelectedLayersLowerToBack),
-										on_commit: WidgetCallback::new(|_| DocumentMessage::SelectedLayersLowerToBack.into()),
-										disabled: no_active_document || !has_selected_layers,
-										..MenuListEntry::default()
-									},
+									MenuListEntry::new("Raise To Front")
+										.label("Raise To Front")
+										.icon("Stack")
+										.shortcut_keys(action_keys!(DocumentMessageDiscriminant::SelectedLayersRaiseToFront))
+										.on_commit(|_| DocumentMessage::SelectedLayersRaiseToFront.into())
+										.disabled(no_active_document || !has_selected_layers),
+									MenuListEntry::new("Raise")
+										.label("Raise")
+										.icon("StackRaise")
+										.shortcut_keys(action_keys!(DocumentMessageDiscriminant::SelectedLayersRaise))
+										.on_commit(|_| DocumentMessage::SelectedLayersRaise.into())
+										.disabled(no_active_document || !has_selected_layers),
+									MenuListEntry::new("Lower")
+										.label("Lower")
+										.icon("StackLower")
+										.shortcut_keys(action_keys!(DocumentMessageDiscriminant::SelectedLayersLower))
+										.on_commit(|_| DocumentMessage::SelectedLayersLower.into())
+										.disabled(no_active_document || !has_selected_layers),
+									MenuListEntry::new("Lower to Back")
+										.label("Lower to Back")
+										.icon("StackBottom")
+										.shortcut_keys(action_keys!(DocumentMessageDiscriminant::SelectedLayersLowerToBack))
+										.on_commit(|_| DocumentMessage::SelectedLayersLowerToBack.into())
+										.disabled(no_active_document || !has_selected_layers),
 								],
-								vec![MenuListEntry {
-									value: "Reverse".into(),
-									label: "Reverse".into(),
-									icon: "StackReverse".into(),
-									on_commit: WidgetCallback::new(|_| DocumentMessage::SelectedLayersReverse.into()),
-									disabled: no_active_document || !has_selected_layers,
-									..MenuListEntry::default()
-								}],
+								vec![
+									MenuListEntry::new("Reverse")
+										.label("Reverse")
+										.icon("StackReverse")
+										.on_commit(|_| DocumentMessage::SelectedLayersReverse.into())
+										.disabled(no_active_document || !has_selected_layers),
+								],
 							]),
-							..MenuListEntry::default()
-						},
-						MenuListEntry {
-							value: "Align".into(),
-							label: "Align".into(),
-							icon: "AlignVerticalCenter".into(),
-							disabled: no_active_document || !has_selected_layers,
-							children: ({
-								let choices = [
-									[
-										(AlignAxis::X, AlignAggregate::Min, "AlignLeft", "Align Left"),
-										(AlignAxis::X, AlignAggregate::Center, "AlignHorizontalCenter", "Align Horizontal Center"),
-										(AlignAxis::X, AlignAggregate::Max, "AlignRight", "Align Right"),
-									],
-									[
-										(AlignAxis::Y, AlignAggregate::Min, "AlignTop", "Align Top"),
-										(AlignAxis::Y, AlignAggregate::Center, "AlignVerticalCenter", "Align Vertical Center"),
-										(AlignAxis::Y, AlignAggregate::Max, "AlignBottom", "Align Bottom"),
-									],
-								];
-
-								choices
-									.into_iter()
-									.map(|section| {
-										section
-											.into_iter()
-											.map(|(axis, aggregate, icon, name)| MenuListEntry {
-												value: name.into(),
-												label: name.into(),
-												icon: icon.into(),
-												on_commit: WidgetCallback::new(move |_| DocumentMessage::AlignSelectedLayers { axis, aggregate }.into()),
-												disabled: no_active_document || !has_selected_layers,
-												..MenuListEntry::default()
-											})
-											.collect()
+						MenuListEntry::new("Align")
+							.label("Align")
+							.icon("AlignVerticalCenter")
+							.disabled(no_active_document || !has_selected_layers)
+							.children(vec![
+								vec![
+									MenuListEntry::new("Align Left")
+										.label("Align Left")
+										.icon("AlignLeft")
+										.on_commit(|_| {
+											DocumentMessage::AlignSelectedLayers {
+												axis: AlignAxis::X,
+												aggregate: AlignAggregate::Min,
+											}
+											.into()
+										})
+										.disabled(no_active_document || !has_selected_layers),
+									MenuListEntry::new("Align Horizontal Center")
+										.label("Align Horizontal Center")
+										.icon("AlignHorizontalCenter")
+										.on_commit(|_| {
+											DocumentMessage::AlignSelectedLayers {
+												axis: AlignAxis::X,
+												aggregate: AlignAggregate::Center,
+											}
+											.into()
+										})
+										.disabled(no_active_document || !has_selected_layers),
+									MenuListEntry::new("Align Right")
+										.label("Align Right")
+										.icon("AlignRight")
+										.on_commit(|_| {
+											DocumentMessage::AlignSelectedLayers {
+												axis: AlignAxis::X,
+												aggregate: AlignAggregate::Max,
+											}
+											.into()
+										})
+										.disabled(no_active_document || !has_selected_layers),
+								],
+								vec![
+									MenuListEntry::new("Align Top")
+										.label("Align Top")
+										.icon("AlignTop")
+										.on_commit(|_| {
+											DocumentMessage::AlignSelectedLayers {
+												axis: AlignAxis::Y,
+												aggregate: AlignAggregate::Min,
+											}
+											.into()
+										})
+										.disabled(no_active_document || !has_selected_layers),
+									MenuListEntry::new("Align Vertical Center")
+										.label("Align Vertical Center")
+										.icon("AlignVerticalCenter")
+										.on_commit(|_| {
+											DocumentMessage::AlignSelectedLayers {
+												axis: AlignAxis::Y,
+												aggregate: AlignAggregate::Center,
+											}
+											.into()
+										})
+										.disabled(no_active_document || !has_selected_layers),
+									MenuListEntry::new("Align Bottom")
+										.label("Align Bottom")
+										.icon("AlignBottom")
+										.on_commit(|_| {
+											DocumentMessage::AlignSelectedLayers {
+												axis: AlignAxis::Y,
+												aggregate: AlignAggregate::Max,
+											}
+											.into()
+										})
+										.disabled(no_active_document || !has_selected_layers),
+								],
+							]),
+						MenuListEntry::new("Flip")
+							.label("Flip")
+							.icon("FlipVertical")
+							.disabled(no_active_document || !has_selected_layers)
+							.children(vec![vec![
+								MenuListEntry::new("Flip Horizontal")
+									.label("Flip Horizontal")
+									.icon("FlipHorizontal")
+									.on_commit(|_| DocumentMessage::FlipSelectedLayers { flip_axis: FlipAxis::X }.into())
+									.disabled(no_active_document || !has_selected_layers),
+								MenuListEntry::new("Flip Vertical")
+									.label("Flip Vertical")
+									.icon("FlipVertical")
+									.on_commit(|_| DocumentMessage::FlipSelectedLayers { flip_axis: FlipAxis::Y }.into())
+									.disabled(no_active_document || !has_selected_layers),
+							]]),
+						MenuListEntry::new("Turn")
+							.label("Turn")
+							.icon("TurnPositive90")
+							.disabled(no_active_document || !has_selected_layers)
+							.children(vec![vec![
+								MenuListEntry::new("Turn -90°")
+									.label("Turn -90°")
+									.icon("TurnNegative90")
+									.on_commit(|_| DocumentMessage::RotateSelectedLayers { degrees: -90. }.into())
+									.disabled(no_active_document || !has_selected_layers),
+								MenuListEntry::new("Turn 90°")
+									.label("Turn 90°")
+									.icon("TurnPositive90")
+									.on_commit(|_| DocumentMessage::RotateSelectedLayers { degrees: 90. }.into())
+									.disabled(no_active_document || !has_selected_layers),
+							]]),
+						MenuListEntry::new("Boolean")
+							.label("Boolean")
+							.icon("BooleanSubtractFront")
+							.disabled(no_active_document || !has_selected_layers)
+							.children(vec![vec![
+								MenuListEntry::new("Union")
+									.label("Union")
+									.icon("BooleanUnion")
+									.on_commit(|_| {
+										let group_folder_type = GroupFolderType::BooleanOperation(BooleanOperation::Union);
+										DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
 									})
-									.collect()
-							}),
-							..MenuListEntry::default()
-						},
-						MenuListEntry {
-							value: "Flip".into(),
-							label: "Flip".into(),
-							icon: "FlipVertical".into(),
-							disabled: no_active_document || !has_selected_layers,
-							children: (vec![{
-								[(FlipAxis::X, "FlipHorizontal", "Flip Horizontal"), (FlipAxis::Y, "FlipVertical", "Flip Vertical")]
-									.into_iter()
-									.map(|(flip_axis, icon, name)| MenuListEntry {
-										value: name.into(),
-										label: name.into(),
-										icon: icon.into(),
-										on_commit: WidgetCallback::new(move |_| DocumentMessage::FlipSelectedLayers { flip_axis }.into()),
-										disabled: no_active_document || !has_selected_layers,
-										..MenuListEntry::default()
+									.disabled(no_active_document || !has_selected_layers),
+								MenuListEntry::new("Subtract Front")
+									.label("Subtract Front")
+									.icon("BooleanSubtractFront")
+									.on_commit(|_| {
+										let group_folder_type = GroupFolderType::BooleanOperation(BooleanOperation::SubtractFront);
+										DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
 									})
-									.collect()
-							}]),
-							..MenuListEntry::default()
-						},
-						MenuListEntry {
-							value: "Turn".into(),
-							label: "Turn".into(),
-							icon: "TurnPositive90".into(),
-							disabled: no_active_document || !has_selected_layers,
-							children: (vec![{
-								[(-90., "TurnNegative90", "Turn -90°"), (90., "TurnPositive90", "Turn 90°")]
-									.into_iter()
-									.map(|(degrees, icon, name)| MenuListEntry {
-										value: name.into(),
-										label: name.into(),
-										icon: icon.into(),
-										on_commit: WidgetCallback::new(move |_| DocumentMessage::RotateSelectedLayers { degrees }.into()),
-										disabled: no_active_document || !has_selected_layers,
-										..MenuListEntry::default()
+									.disabled(no_active_document || !has_selected_layers),
+								MenuListEntry::new("Subtract Back")
+									.label("Subtract Back")
+									.icon("BooleanSubtractBack")
+									.on_commit(|_| {
+										let group_folder_type = GroupFolderType::BooleanOperation(BooleanOperation::SubtractBack);
+										DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
 									})
-									.collect()
-							}]),
-							..MenuListEntry::default()
-						},
-						MenuListEntry {
-							value: "Boolean".into(),
-							label: "Boolean".into(),
-							icon: "BooleanSubtractFront".into(),
-							disabled: no_active_document || !has_selected_layers,
-							children: (vec![{
-								let list = <BooleanOperation as graphene_std::choice_type::ChoiceTypeStatic>::list();
-								list.iter()
-									.flat_map(|i| i.iter())
-									.map(move |(operation, info)| MenuListEntry {
-										value: info.label.to_string(),
-										label: info.label.to_string(),
-										icon: info.icon.as_ref().map(|i| i.to_string()).unwrap_or_default(),
-										on_commit: WidgetCallback::new(move |_| {
-											let group_folder_type = GroupFolderType::BooleanOperation(*operation);
-											DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
-										}),
-										disabled: no_active_document || !has_selected_layers,
-										..MenuListEntry::default()
+									.disabled(no_active_document || !has_selected_layers),
+								MenuListEntry::new("Intersect")
+									.label("Intersect")
+									.icon("BooleanIntersect")
+									.on_commit(|_| {
+										let group_folder_type = GroupFolderType::BooleanOperation(BooleanOperation::Intersect);
+										DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
 									})
-									.collect()
-							}]),
-							..MenuListEntry::default()
-						},
+									.disabled(no_active_document || !has_selected_layers),
+								MenuListEntry::new("Difference")
+									.label("Difference")
+									.icon("BooleanDifference")
+									.on_commit(|_| {
+										let group_folder_type = GroupFolderType::BooleanOperation(BooleanOperation::Difference);
+										DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
+									})
+									.disabled(no_active_document || !has_selected_layers),
+							]]),
 					],
-					vec![MenuListEntry {
-						value: "Make Path Editable".into(),
-						label: "Make Path Editable".into(),
-						icon: "NodeShape".into(),
-						on_commit: WidgetCallback::new(|_| NodeGraphMessage::AddPathNode.into()),
-						disabled: !make_path_editable_is_allowed,
-						..MenuListEntry::default()
-					}],
+					vec![
+						MenuListEntry::new("Make Path Editable")
+							.label("Make Path Editable")
+							.icon("NodeShape")
+							.on_commit(|_| NodeGraphMessage::AddPathNode.into())
+							.disabled(!make_path_editable_is_allowed),
+					],
 				])
 				.widget_holder(),
 			TextButton::new("Select")
-				.flush(true)
 				.label("Select")
+				.flush(true)
 				.disabled(no_active_document)
 				.menu_list_children(vec![
 					vec![
-						MenuListEntry {
-							value: "Select All".into(),
-							label: "Select All".into(),
-							icon: "SelectAll".into(),
-							shortcut_keys: action_keys!(DocumentMessageDiscriminant::SelectAllLayers),
-							on_commit: WidgetCallback::new(|_| DocumentMessage::SelectAllLayers.into()),
-							disabled: no_active_document,
-							..MenuListEntry::default()
-						},
-						MenuListEntry {
-							value: "Deselect All".into(),
-							label: "Deselect All".into(),
-							icon: "DeselectAll".into(),
-							shortcut_keys: action_keys!(DocumentMessageDiscriminant::DeselectAllLayers),
-							on_commit: WidgetCallback::new(|_| DocumentMessage::DeselectAllLayers.into()),
-							disabled: no_active_document || !has_selected_nodes,
-							..MenuListEntry::default()
-						},
-						MenuListEntry {
-							value: "Select Parent".into(),
-							label: "Select Parent".into(),
-							icon: "SelectParent".into(),
-							shortcut_keys: action_keys!(DocumentMessageDiscriminant::SelectParentLayer),
-							on_commit: WidgetCallback::new(|_| DocumentMessage::SelectParentLayer.into()),
-							disabled: no_active_document || !has_selected_nodes,
-							..MenuListEntry::default()
-						},
+						MenuListEntry::new("Select All")
+							.label("Select All")
+							.icon("SelectAll")
+							.shortcut_keys(action_keys!(DocumentMessageDiscriminant::SelectAllLayers))
+							.on_commit(|_| DocumentMessage::SelectAllLayers.into())
+							.disabled(no_active_document),
+						MenuListEntry::new("Deselect All")
+							.label("Deselect All")
+							.icon("DeselectAll")
+							.shortcut_keys(action_keys!(DocumentMessageDiscriminant::DeselectAllLayers))
+							.on_commit(|_| DocumentMessage::DeselectAllLayers.into())
+							.disabled(no_active_document || !has_selected_nodes),
+						MenuListEntry::new("Select Parent")
+							.label("Select Parent")
+							.icon("SelectParent")
+							.shortcut_keys(action_keys!(DocumentMessageDiscriminant::SelectParentLayer))
+							.on_commit(|_| DocumentMessage::SelectParentLayer.into())
+							.disabled(no_active_document || !has_selected_nodes),
 					],
 					vec![
-						MenuListEntry {
-							value: "Previous Selection".into(),
-							label: "Previous Selection".into(),
-							icon: "HistoryUndo".into(),
-							shortcut_keys: action_keys!(DocumentMessageDiscriminant::SelectionStepBack),
-							on_commit: WidgetCallback::new(|_| DocumentMessage::SelectionStepBack.into()),
-							disabled: !has_selection_history.0,
-							..MenuListEntry::default()
-						},
-						MenuListEntry {
-							value: "Next Selection".into(),
-							label: "Next Selection".into(),
-							icon: "HistoryRedo".into(),
-							shortcut_keys: action_keys!(DocumentMessageDiscriminant::SelectionStepForward),
-							on_commit: WidgetCallback::new(|_| DocumentMessage::SelectionStepForward.into()),
-							disabled: !has_selection_history.1,
-							..MenuListEntry::default()
-						},
+						MenuListEntry::new("Previous Selection")
+							.label("Previous Selection")
+							.icon("HistoryUndo")
+							.shortcut_keys(action_keys!(DocumentMessageDiscriminant::SelectionStepBack))
+							.on_commit(|_| DocumentMessage::SelectionStepBack.into())
+							.disabled(!has_selection_history.0),
+						MenuListEntry::new("Next Selection")
+							.label("Next Selection")
+							.icon("HistoryRedo")
+							.shortcut_keys(action_keys!(DocumentMessageDiscriminant::SelectionStepForward))
+							.on_commit(|_| DocumentMessage::SelectionStepForward.into())
+							.disabled(!has_selection_history.1),
 					],
 				])
 				.widget_holder(),
 			TextButton::new("View")
-				.flush(true)
 				.label("View")
+				.flush(true)
 				.disabled(no_active_document)
 				.menu_list_children(vec![
 					vec![
-						MenuListEntry {
-							value: "Tilt".into(),
-							label: "Tilt".into(),
-							icon: "Tilt".into(),
-							shortcut_keys: action_keys!(NavigationMessageDiscriminant::BeginCanvasTilt),
-							on_commit: WidgetCallback::new(|_| NavigationMessage::BeginCanvasTilt { was_dispatched_from_menu: true }.into()),
-							disabled: no_active_document || node_graph_open,
-							..MenuListEntry::default()
-						},
-						MenuListEntry {
-							value: "Reset Tilt".into(),
-							label: "Reset Tilt".into(),
-							icon: "TiltReset".into(),
-							shortcut_keys: action_keys!(NavigationMessageDiscriminant::CanvasTiltSet),
-							on_commit: WidgetCallback::new(|_| NavigationMessage::CanvasTiltSet { angle_radians: 0.into() }.into()),
-							disabled: no_active_document || node_graph_open || !self.canvas_tilted,
-							..MenuListEntry::default()
-						},
+						MenuListEntry::new("Tilt")
+							.label("Tilt")
+							.icon("Tilt")
+							.shortcut_keys(action_keys!(NavigationMessageDiscriminant::BeginCanvasTilt))
+							.on_commit(|_| NavigationMessage::BeginCanvasTilt { was_dispatched_from_menu: true }.into())
+							.disabled(no_active_document || node_graph_open),
+						MenuListEntry::new("Reset Tilt")
+							.label("Reset Tilt")
+							.icon("TiltReset")
+							.shortcut_keys(action_keys!(NavigationMessageDiscriminant::CanvasTiltSet))
+							.on_commit(|_| NavigationMessage::CanvasTiltSet { angle_radians: 0.into() }.into())
+							.disabled(no_active_document || node_graph_open || !self.canvas_tilted),
 					],
 					vec![
-						MenuListEntry {
-							value: "Zoom In".into(),
-							label: "Zoom In".into(),
-							icon: "ZoomIn".into(),
-							shortcut_keys: action_keys!(NavigationMessageDiscriminant::CanvasZoomIncrease),
-							on_commit: WidgetCallback::new(|_| NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }.into()),
-							disabled: no_active_document,
-							..MenuListEntry::default()
-						},
-						MenuListEntry {
-							value: "Zoom Out".into(),
-							label: "Zoom Out".into(),
-							icon: "ZoomOut".into(),
-							shortcut_keys: action_keys!(NavigationMessageDiscriminant::CanvasZoomDecrease),
-							on_commit: WidgetCallback::new(|_| NavigationMessage::CanvasZoomDecrease { center_on_mouse: false }.into()),
-							disabled: no_active_document,
-							..MenuListEntry::default()
-						},
-						MenuListEntry {
-							value: "Zoom to Selection".into(),
-							label: "Zoom to Selection".into(),
-							icon: "FrameSelected".into(),
-							shortcut_keys: action_keys!(NavigationMessageDiscriminant::FitViewportToSelection),
-							on_commit: WidgetCallback::new(|_| NavigationMessage::FitViewportToSelection.into()),
-							disabled: no_active_document || !has_selected_layers,
-							..MenuListEntry::default()
-						},
-						MenuListEntry {
-							value: "Zoom to Fit".into(),
-							label: "Zoom to Fit".into(),
-							icon: "FrameAll".into(),
-							shortcut_keys: action_keys!(DocumentMessageDiscriminant::ZoomCanvasToFitAll),
-							on_commit: WidgetCallback::new(|_| DocumentMessage::ZoomCanvasToFitAll.into()),
-							disabled: no_active_document,
-							..MenuListEntry::default()
-						},
-						MenuListEntry {
-							value: "Zoom to 100%".into(),
-							label: "Zoom to 100%".into(),
-							icon: "Zoom1x".into(),
-							shortcut_keys: action_keys!(DocumentMessageDiscriminant::ZoomCanvasTo100Percent),
-							on_commit: WidgetCallback::new(|_| DocumentMessage::ZoomCanvasTo100Percent.into()),
-							disabled: no_active_document,
-							..MenuListEntry::default()
-						},
-						MenuListEntry {
-							value: "Zoom to 200%".into(),
-							label: "Zoom to 200%".into(),
-							icon: "Zoom2x".into(),
-							shortcut_keys: action_keys!(DocumentMessageDiscriminant::ZoomCanvasTo200Percent),
-							on_commit: WidgetCallback::new(|_| DocumentMessage::ZoomCanvasTo200Percent.into()),
-							disabled: no_active_document,
-							..MenuListEntry::default()
-						},
+						MenuListEntry::new("Zoom In")
+							.label("Zoom In")
+							.icon("ZoomIn")
+							.shortcut_keys(action_keys!(NavigationMessageDiscriminant::CanvasZoomIncrease))
+							.on_commit(|_| NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }.into())
+							.disabled(no_active_document),
+						MenuListEntry::new("Zoom Out")
+							.label("Zoom Out")
+							.icon("ZoomOut")
+							.shortcut_keys(action_keys!(NavigationMessageDiscriminant::CanvasZoomDecrease))
+							.on_commit(|_| NavigationMessage::CanvasZoomDecrease { center_on_mouse: false }.into())
+							.disabled(no_active_document),
+						MenuListEntry::new("Zoom to Selection")
+							.label("Zoom to Selection")
+							.icon("FrameSelected")
+							.shortcut_keys(action_keys!(NavigationMessageDiscriminant::FitViewportToSelection))
+							.on_commit(|_| NavigationMessage::FitViewportToSelection.into())
+							.disabled(no_active_document || !has_selected_layers),
+						MenuListEntry::new("Zoom to Fit")
+							.label("Zoom to Fit")
+							.icon("FrameAll")
+							.shortcut_keys(action_keys!(DocumentMessageDiscriminant::ZoomCanvasToFitAll))
+							.on_commit(|_| DocumentMessage::ZoomCanvasToFitAll.into())
+							.disabled(no_active_document),
+						MenuListEntry::new("Zoom to 100%")
+							.label("Zoom to 100%")
+							.icon("Zoom1x")
+							.shortcut_keys(action_keys!(DocumentMessageDiscriminant::ZoomCanvasTo100Percent))
+							.on_commit(|_| DocumentMessage::ZoomCanvasTo100Percent.into())
+							.disabled(no_active_document),
+						MenuListEntry::new("Zoom to 200%")
+							.label("Zoom to 200%")
+							.icon("Zoom2x")
+							.shortcut_keys(action_keys!(DocumentMessageDiscriminant::ZoomCanvasTo200Percent))
+							.on_commit(|_| DocumentMessage::ZoomCanvasTo200Percent.into())
+							.disabled(no_active_document),
 					],
-					vec![MenuListEntry {
-						value: "Flip".into(),
-						label: "Flip".into(),
-						icon: if self.canvas_flipped { "CheckboxChecked" } else { "CheckboxUnchecked" }.into(),
-						shortcut_keys: action_keys!(NavigationMessageDiscriminant::CanvasFlip),
-						on_commit: WidgetCallback::new(|_| NavigationMessage::CanvasFlip.into()),
-						disabled: no_active_document || node_graph_open,
-						..MenuListEntry::default()
-					}],
-					vec![MenuListEntry {
-						value: "Rulers".into(),
-						label: "Rulers".into(),
-						icon: if self.rulers_visible { "CheckboxChecked" } else { "CheckboxUnchecked" }.into(),
-						shortcut_keys: action_keys!(PortfolioMessageDiscriminant::ToggleRulers),
-						on_commit: WidgetCallback::new(|_| PortfolioMessage::ToggleRulers.into()),
-						disabled: no_active_document,
-						..MenuListEntry::default()
-					}],
+					vec![
+						MenuListEntry::new("Flip")
+							.label("Flip")
+							.icon(if self.canvas_flipped { "CheckboxChecked" } else { "CheckboxUnchecked" })
+							.shortcut_keys(action_keys!(NavigationMessageDiscriminant::CanvasFlip))
+							.on_commit(|_| NavigationMessage::CanvasFlip.into())
+							.disabled(no_active_document || node_graph_open),
+					],
+					vec![
+						MenuListEntry::new("Rulers")
+							.label("Rulers")
+							.icon(if self.rulers_visible { "CheckboxChecked" } else { "CheckboxUnchecked" })
+							.shortcut_keys(action_keys!(PortfolioMessageDiscriminant::ToggleRulers))
+							.on_commit(|_| PortfolioMessage::ToggleRulers.into())
+							.disabled(no_active_document),
+					],
 				])
 				.widget_holder(),
 			TextButton::new("Window")
-				.flush(true)
 				.label("Window")
+				.flush(true)
 				.menu_list_children(vec![
 					vec![
-						MenuListEntry {
-							value: "Properties".into(),
-							label: "Properties".into(),
-							icon: if self.properties_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" }.into(),
-							shortcut_keys: action_keys!(PortfolioMessageDiscriminant::TogglePropertiesPanelOpen),
-							on_commit: WidgetCallback::new(|_| PortfolioMessage::TogglePropertiesPanelOpen.into()),
-							..MenuListEntry::default()
-						},
-						MenuListEntry {
-							value: "Layers".into(),
-							label: "Layers".into(),
-							icon: if self.layers_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" }.into(),
-							shortcut_keys: action_keys!(PortfolioMessageDiscriminant::ToggleLayersPanelOpen),
-							on_commit: WidgetCallback::new(|_| PortfolioMessage::ToggleLayersPanelOpen.into()),
-							..MenuListEntry::default()
-						},
+						MenuListEntry::new("Properties")
+							.label("Properties")
+							.icon(if self.properties_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" })
+							.shortcut_keys(action_keys!(PortfolioMessageDiscriminant::TogglePropertiesPanelOpen))
+							.on_commit(|_| PortfolioMessage::TogglePropertiesPanelOpen.into()),
+						MenuListEntry::new("Layers")
+							.label("Layers")
+							.icon(if self.layers_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" })
+							.shortcut_keys(action_keys!(PortfolioMessageDiscriminant::ToggleLayersPanelOpen))
+							.on_commit(|_| PortfolioMessage::ToggleLayersPanelOpen.into()),
 					],
-					vec![MenuListEntry {
-						value: "Data".into(),
-						label: "Data".into(),
-						icon: if self.data_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" }.into(),
-						shortcut_keys: action_keys!(PortfolioMessageDiscriminant::ToggleDataPanelOpen),
-						on_commit: WidgetCallback::new(|_| PortfolioMessage::ToggleDataPanelOpen.into()),
-						..MenuListEntry::default()
-					}],
+					vec![
+						MenuListEntry::new("Data")
+							.label("Data")
+							.icon(if self.data_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" })
+							.shortcut_keys(action_keys!(PortfolioMessageDiscriminant::ToggleDataPanelOpen))
+							.on_commit(|_| PortfolioMessage::ToggleDataPanelOpen.into()),
+					],
 				])
 				.widget_holder(),
 			TextButton::new("Help")
-				.flush(true)
 				.label("Help")
+				.flush(true)
 				.menu_list_children(vec![
 					#[cfg(not(target_os = "macos"))]
 					vec![about],
 					vec![
-						MenuListEntry {
-							value: "Donate to Graphite".into(),
-							label: "Donate to Graphite".into(),
-							icon: "Heart".into(),
-							on_commit: WidgetCallback::new(|_| {
-								FrontendMessage::TriggerVisitLink {
-									url: "https://graphite.rs/donate/".into(),
-								}
-								.into()
-							}),
-							..MenuListEntry::default()
-						},
-						MenuListEntry {
-							value: "User Manual".into(),
-							label: "User Manual".into(),
-							icon: "UserManual".into(),
-							on_commit: WidgetCallback::new(|_| {
-								FrontendMessage::TriggerVisitLink {
-									url: "https://graphite.rs/learn/".into(),
-								}
-								.into()
-							}),
-							..MenuListEntry::default()
-						},
-						MenuListEntry {
-							value: "Report a Bug".into(),
-							label: "Report a Bug".into(),
-							icon: "Bug".into(),
-							on_commit: WidgetCallback::new(|_| {
-								FrontendMessage::TriggerVisitLink {
-									url: "https://github.com/GraphiteEditor/Graphite/issues/new".into(),
-								}
-								.into()
-							}),
-							..MenuListEntry::default()
-						},
-						MenuListEntry {
-							value: "Visit on GitHub".into(),
-							label: "Visit on GitHub".into(),
-							icon: "Website".into(),
-							on_commit: WidgetCallback::new(|_| {
-								FrontendMessage::TriggerVisitLink {
-									url: "https://github.com/GraphiteEditor/Graphite".into(),
-								}
-								.into()
-							}),
-							..MenuListEntry::default()
-						},
+						MenuListEntry::new("Donate to Graphite").label("Donate to Graphite").icon("Heart").on_commit(|_| {
+							FrontendMessage::TriggerVisitLink {
+								url: "https://graphite.rs/donate/".into(),
+							}
+							.into()
+						}),
+						MenuListEntry::new("User Manual").label("User Manual").icon("UserManual").on_commit(|_| {
+							FrontendMessage::TriggerVisitLink {
+								url: "https://graphite.rs/learn/".into(),
+							}
+							.into()
+						}),
+						MenuListEntry::new("Report a Bug").label("Report a Bug").icon("Bug").on_commit(|_| {
+							FrontendMessage::TriggerVisitLink {
+								url: "https://github.com/GraphiteEditor/Graphite/issues/new".into(),
+							}
+							.into()
+						}),
+						MenuListEntry::new("Visit on GitHub").label("Visit on GitHub").icon("Website").on_commit(|_| {
+							FrontendMessage::TriggerVisitLink {
+								url: "https://github.com/GraphiteEditor/Graphite".into(),
+							}
+							.into()
+						}),
 					],
-					vec![MenuListEntry {
-						value: "Developer Debug".into(),
-						label: "Developer Debug".into(),
-						icon: "Code".into(),
-						children: (vec![
-							vec![MenuListEntry {
-								value: "Reset Nodes to Definitions on Open".into(),
-								label: "Reset Nodes to Definitions on Open".into(),
-								icon: if reset_node_definitions_on_open { "CheckboxChecked" } else { "CheckboxUnchecked" }.into(),
-								on_commit: WidgetCallback::new(|_| PortfolioMessage::ToggleResetNodesToDefinitionsOnOpen.into()),
-								..MenuListEntry::default()
-							}],
-							vec![
-								MenuListEntry {
-									value: "Print Trace Logs".into(),
-									label: "Print Trace Logs".into(),
-									icon: if log::max_level() == log::LevelFilter::Trace { "CheckboxChecked" } else { "CheckboxUnchecked" }.into(),
-									on_commit: WidgetCallback::new(|_| DebugMessage::ToggleTraceLogs.into()),
-									..MenuListEntry::default()
-								},
-								MenuListEntry {
-									value: "Print Messages: Off".into(),
-									label: "Print Messages: Off".into(),
+					vec![MenuListEntry::new("Developer Debug").label("Developer Debug").icon("Code").children(vec![
+						vec![
+							MenuListEntry::new("Reset Nodes to Definitions on Open")
+								.label("Reset Nodes to Definitions on Open")
+								.icon(if reset_node_definitions_on_open { "CheckboxChecked" } else { "CheckboxUnchecked" })
+								.on_commit(|_| PortfolioMessage::ToggleResetNodesToDefinitionsOnOpen.into()),
+						],
+						vec![
+							MenuListEntry::new("Print Trace Logs")
+								.label("Print Trace Logs")
+								.icon(if log::max_level() == log::LevelFilter::Trace { "CheckboxChecked" } else { "CheckboxUnchecked" })
+								.on_commit(|_| DebugMessage::ToggleTraceLogs.into()),
+							MenuListEntry::new("Print Messages: Off")
+								.label("Print Messages: Off")
+								.icon(message_logging_verbosity_off.then_some({
 									#[cfg(not(target_os = "macos"))]
-									icon: message_logging_verbosity_off.then_some("SmallDot".into()).unwrap_or_default(),
+									{
+										"SmallDot".to_string()
+									}
 									#[cfg(target_os = "macos")]
-									icon: message_logging_verbosity_off.then_some("CheckboxChecked".into()).unwrap_or_default(),
-									shortcut_keys: action_keys!(DebugMessageDiscriminant::MessageOff),
-									on_commit: WidgetCallback::new(|_| DebugMessage::MessageOff.into()),
-									..MenuListEntry::default()
-								},
-								MenuListEntry {
-									value: "Print Messages: Only Names".into(),
-									label: "Print Messages: Only Names".into(),
+									{
+										"CheckboxChecked".to_string()
+									}
+								}).unwrap_or_default())
+								.shortcut_keys(action_keys!(DebugMessageDiscriminant::MessageOff))
+								.on_commit(|_| DebugMessage::MessageOff.into()),
+							MenuListEntry::new("Print Messages: Only Names")
+								.label("Print Messages: Only Names")
+								.icon(message_logging_verbosity_names.then_some({
 									#[cfg(not(target_os = "macos"))]
-									icon: message_logging_verbosity_names.then_some("SmallDot".into()).unwrap_or_default(),
+									{
+										"SmallDot".to_string()
+									}
 									#[cfg(target_os = "macos")]
-									icon: message_logging_verbosity_names.then_some("CheckboxChecked".into()).unwrap_or_default(),
-									shortcut_keys: action_keys!(DebugMessageDiscriminant::MessageNames),
-									on_commit: WidgetCallback::new(|_| DebugMessage::MessageNames.into()),
-									..MenuListEntry::default()
-								},
-								MenuListEntry {
-									value: "Print Messages: Full Contents".into(),
-									label: "Print Messages: Full Contents".into(),
+									{
+										"CheckboxChecked".to_string()
+									}
+								}).unwrap_or_default())
+								.shortcut_keys(action_keys!(DebugMessageDiscriminant::MessageNames))
+								.on_commit(|_| DebugMessage::MessageNames.into()),
+							MenuListEntry::new("Print Messages: Full Contents")
+								.label("Print Messages: Full Contents")
+								.icon(message_logging_verbosity_contents.then_some({
 									#[cfg(not(target_os = "macos"))]
-									icon: message_logging_verbosity_contents.then_some("SmallDot".into()).unwrap_or_default(),
+									{
+										"SmallDot".to_string()
+									}
 									#[cfg(target_os = "macos")]
-									icon: message_logging_verbosity_contents.then_some("CheckboxChecked".into()).unwrap_or_default(),
-									shortcut_keys: action_keys!(DebugMessageDiscriminant::MessageContents),
-									on_commit: WidgetCallback::new(|_| DebugMessage::MessageContents.into()),
-									..MenuListEntry::default()
-								},
-							],
-							vec![MenuListEntry {
-								value: "Trigger a Crash".into(),
-								label: "Trigger a Crash".into(),
-								icon: "Warning".into(),
-								on_commit: WidgetCallback::new(|_| panic!()),
-								..MenuListEntry::default()
-							}],
-						]),
-						..MenuListEntry::default()
-					}],
+									{
+										"CheckboxChecked".to_string()
+									}
+								}).unwrap_or_default())
+								.shortcut_keys(action_keys!(DebugMessageDiscriminant::MessageContents))
+								.on_commit(|_| DebugMessage::MessageContents.into()),
+						],
+						vec![MenuListEntry::new("Trigger a Crash").label("Trigger a Crash").icon("Warning").on_commit(|_| panic!())],
+					])],
 				])
 				.widget_holder(),
 		];

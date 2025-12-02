@@ -961,10 +961,15 @@
 		.imports-and-exports {
 			width: 100%;
 			height: 100%;
-			pointer-events: none;
 			position: absolute;
+			pointer-events: none;
 			// Keeps the connectors above the wires
 			z-index: 1;
+
+			// Zero specificity with `:where()` to allow other rules to override `pointer-events`
+			:where(.graph-view.open & > *) {
+				pointer-events: auto;
+			}
 
 			.connector {
 				position: absolute;
