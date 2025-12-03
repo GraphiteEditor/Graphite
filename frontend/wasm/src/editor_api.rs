@@ -405,15 +405,9 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
-	#[wasm_bindgen(js_name = openDocument)]
-	pub fn open_document(&self) {
-		let message = PortfolioMessage::OpenDocument;
-		self.dispatch(message);
-	}
-
-	#[wasm_bindgen(js_name = demoArtworkDialog)]
-	pub fn demo_artwork_dialog(&self) {
-		let message = DialogMessage::RequestDemoArtworkDialog;
+	#[wasm_bindgen(js_name = requestWelcomeScreenButtonsLayout)]
+	pub fn request_welcome_screen_buttons_layout(&self) {
+		let message = PortfolioMessage::RequestWelcomeScreenButtonsLayout;
 		self.dispatch(message);
 	}
 
@@ -648,13 +642,6 @@ impl EditorHandle {
 		self.dispatch(message);
 
 		Ok(())
-	}
-
-	/// Visit the given URL
-	#[wasm_bindgen(js_name = visitUrl)]
-	pub fn visit_url(&self, url: String) {
-		let message = FrontendMessage::TriggerVisitLink { url };
-		self.dispatch(message);
 	}
 
 	/// Paste layers from a serialized JSON representation

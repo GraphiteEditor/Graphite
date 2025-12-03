@@ -19,6 +19,8 @@ impl core::fmt::Display for WidgetId {
 #[derive(PartialEq, Clone, Debug, Hash, Eq, Copy, serde::Serialize, serde::Deserialize, specta::Type)]
 #[repr(u8)]
 pub enum LayoutTarget {
+	/// The spreadsheet panel allows for the visualisation of data in the graph.
+	DataPanel,
 	/// Contains the action buttons at the bottom of the dialog. Must be shown with the `FrontendMessage::DisplayDialog` message.
 	DialogButtons,
 	/// Contains the contents of the dialog's primary column. Must be shown with the `FrontendMessage::DisplayDialog` message.
@@ -29,24 +31,24 @@ pub enum LayoutTarget {
 	DocumentBar,
 	/// Contains the dropdown for design / select / guide mode found on the top left of the canvas.
 	DocumentMode,
+	/// Controls for adding, grouping, and deleting layers at the bottom of the Layers panel.
+	LayersPanelBottomBar,
 	/// Blending options at the top of the Layers panel.
 	LayersPanelControlLeftBar,
 	/// Selected layer status (locked/hidden) at the top of the Layers panel.
 	LayersPanelControlRightBar,
-	/// Controls for adding, grouping, and deleting layers at the bottom of the Layers panel.
-	LayersPanelBottomBar,
 	/// The dropdown menu at the very top of the application: File, Edit, etc.
 	MenuBar,
 	/// Bar at the top of the node graph containing the location and the "Preview" and "Hide" buttons.
 	NodeGraphControlBar,
 	/// The body of the Properties panel containing many collapsable sections.
 	PropertiesPanel,
-	/// The spredsheet panel allows for the visualisation of data in the graph.
-	DataPanel,
 	/// The bar directly above the canvas, left-aligned and to the right of the document mode dropdown.
 	ToolOptions,
 	/// The vertical buttons for all of the tools on the left of the canvas.
 	ToolShelf,
+	/// The quick access buttons found on the welcome screen, shown when no documents are open.
+	WelcomeScreenButtons,
 	/// The color swatch for the working colors and a flip and reset button found at the bottom of the tool shelf.
 	WorkingColors,
 
@@ -197,7 +199,7 @@ impl<'a> Iterator for WidgetIter<'a> {
 				self.current_slice = Some(widgets);
 				self.next()
 			}
-			Some(LayoutGroup::Table { rows }) => {
+			Some(LayoutGroup::Table { rows, .. }) => {
 				self.table.extend(rows.iter().flatten().rev());
 				self.next()
 			}
@@ -247,7 +249,7 @@ impl<'a> Iterator for WidgetIterMut<'a> {
 				self.current_slice = Some(widgets);
 				self.next()
 			}
-			Some(LayoutGroup::Table { rows }) => {
+			Some(LayoutGroup::Table { rows, .. }) => {
 				self.table.extend(rows.iter_mut().flatten().rev());
 				self.next()
 			}
@@ -280,6 +282,7 @@ pub enum LayoutGroup {
 	Table {
 		#[serde(rename = "tableWidgets")]
 		rows: Vec<Vec<WidgetHolder>>,
+		unstyled: bool,
 	},
 	#[serde(rename = "section")]
 	Section {

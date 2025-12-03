@@ -76,7 +76,7 @@
 	}
 </script>
 
-<LayoutRow class="user-input-label">
+<LayoutRow class="shortcut-label">
 	{#each keysWithLabelsGroups as keysWithLabels}
 		<div class="input-key">
 			{#each keyTextOrIconList(keysWithLabels) as keyInfo}
@@ -96,7 +96,7 @@
 </LayoutRow>
 
 <style lang="scss" global>
-	.user-input-label {
+	.shortcut-label {
 		flex: 0 0 auto;
 		align-items: center;
 		white-space: nowrap;

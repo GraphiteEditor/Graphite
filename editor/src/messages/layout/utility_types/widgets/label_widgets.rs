@@ -107,4 +107,4 @@ pub struct ImageLabel {
 	pub tooltip_shortcut: Option<ActionKeys>,
 }
 
-// TODO: Add UserInputLabel
+// TODO: Add ShortcutLabel

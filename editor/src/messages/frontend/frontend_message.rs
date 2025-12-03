@@ -335,6 +335,11 @@ pub enum FrontendMessage {
 		#[serde(rename = "wirePath")]
 		wire_path: Option<WirePath>,
 	},
+	UpdateWelcomeScreenButtonsLayout {
+		#[serde(rename = "layoutTarget")]
+		layout_target: LayoutTarget,
+		diff: Vec<WidgetDiff>,
+	},
 	UpdateWorkingColorsLayout {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,

@@ -5,10 +5,11 @@
 
 	export let widgetData: WidgetTableFromJsMessages;
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	export let layoutTarget: any; // TODO: Give this a real type
+	export let layoutTarget: any;
+	export let unstyled = false;
 </script>
 
-<table>
+<table class:unstyled>
 	<tbody>
 		{#each widgetData.tableWidgets as row}
 			<tr>
@@ -23,7 +24,7 @@
 </table>
 
 <style lang="scss">
-	table {
+	table:not(.unstyled) {
 		background: var(--color-3-darkgray);
 		border: none;
 		border-spacing: 4px;

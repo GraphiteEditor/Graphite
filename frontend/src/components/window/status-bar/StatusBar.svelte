@@ -7,8 +7,8 @@
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
+	import ShortcutLabel from "@graphite/components/widgets/labels/ShortcutLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
-	import UserInputLabel from "@graphite/components/widgets/labels/UserInputLabel.svelte";
 
 	const editor = getContext<Editor>("editor");
 
@@ -38,7 +38,7 @@
 				{#if hint.slash}
 					<TextLabel bold={true} class="slash">/</TextLabel>
 				{/if}
-				<UserInputLabel mouseMotion={hint.mouse} keysWithLabelsGroups={inputKeysForPlatform(hint)} />
+				<ShortcutLabel mouseMotion={hint.mouse} keysWithLabelsGroups={inputKeysForPlatform(hint)} />
 				{#if hint.label}
 					<TextLabel class="hint-text">{hint.label}</TextLabel>
 				{/if}
@@ -60,16 +60,16 @@
 			overflow: hidden;
 
 			.separator.section {
-				// Width of section separator (12px) minus the margin of the surrounding user input labels (8px)
+				// Width of section separator (12px) minus the margin of the surrounding shortcut labels (8px)
 				margin: 0 calc(12px - 8px);
 			}
 
-			:is(.plus, .slash, .hint-text, .user-input-label) {
+			:is(.plus, .slash, .hint-text, .shortcut-label) {
 				white-space: nowrap;
 				line-height: 24px;
 				margin: 0 8px;
 
-				+ :is(.plus, .slash, .user-input-label) {
+				+ :is(.plus, .slash, .shortcut-label) {
 					margin-left: 0;
 				}
 			}

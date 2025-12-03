@@ -39,6 +39,11 @@ impl MessageHandler<LayoutMessage, LayoutMessageContext<'_>> for LayoutMessageHa
 			LayoutMessage::SendLayout { layout, layout_target } => {
 				self.diff_and_send_layout_to_frontend(layout_target, layout, responses, action_input_mapping);
 			}
+			LayoutMessage::DestroyLayout { layout_target } => {
+				if let Some(layout) = self.layouts.get_mut(layout_target as usize) {
+					*layout = Default::default();
+				}
+			}
 			LayoutMessage::WidgetValueCommit { layout_target, widget_id, value } => {
 				self.handle_widget_callback(layout_target, widget_id, value, WidgetValueAction::Commit, responses);
 			}
@@ -78,7 +83,7 @@ impl LayoutMessageHandler {
 				LayoutGroup::Section { layout, .. } => {
 					stack.extend(layout.iter().enumerate().map(|(index, val)| ([widget_path.as_slice(), &[index]].concat(), val)));
 				}
-				LayoutGroup::Table { rows } => {
+				LayoutGroup::Table { rows, .. } => {
 					for (row_index, row) in rows.iter().enumerate() {
 						for (cell_index, cell) in row.iter().enumerate() {
 							// Return if this is the correct ID
@@ -511,6 +516,7 @@ impl LayoutMessageHandler {
 			LayoutTarget::PropertiesPanel => FrontendMessage::UpdatePropertiesPanelLayout { layout_target, diff },
 			LayoutTarget::ToolOptions => FrontendMessage::UpdateToolOptionsLayout { layout_target, diff },
 			LayoutTarget::ToolShelf => FrontendMessage::UpdateToolShelfLayout { layout_target, diff },
+			LayoutTarget::WelcomeScreenButtons => FrontendMessage::UpdateWelcomeScreenButtonsLayout { layout_target, diff },
 			LayoutTarget::WorkingColors => FrontendMessage::UpdateWorkingColorsLayout { layout_target, diff },
 
 			LayoutTarget::LayoutTargetLength => panic!("`LayoutTargetLength` is not a valid Layout Target and is used for array indexing"),

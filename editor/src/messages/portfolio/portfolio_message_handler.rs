@@ -882,6 +882,51 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					responses.add(PortfolioMessage::SelectDocument { document_id: prev_id });
 				}
 			}
+			PortfolioMessage::RequestWelcomeScreenButtonsLayout => {
+				let donate = "https://graphite.rs/donate/";
+
+				let table = LayoutGroup::Table {
+					unstyled: true,
+					rows: vec![
+						vec![
+							TextButton::new("New Document")
+								.icon(Some("File".into()))
+								.flush(true)
+								.on_commit(|_| DialogMessage::RequestNewDocumentDialog.into())
+								.widget_holder(),
+						],
+						vec![
+							TextButton::new("Open Document")
+								.icon(Some("Folder".into()))
+								.flush(true)
+								.on_commit(|_| PortfolioMessage::OpenDocument.into())
+								.widget_holder(),
+						],
+						vec![
+							TextButton::new("Open Demo Artwork")
+								.icon(Some("Image".into()))
+								.flush(true)
+								.on_commit(|_| DialogMessage::RequestDemoArtworkDialog.into())
+								.widget_holder(),
+						],
+						vec![
+							TextButton::new("Support the Development Fund")
+								.icon(Some("Heart".into()))
+								.flush(true)
+								.on_commit(move |_| FrontendMessage::TriggerVisitLink { url: donate.to_string() }.into())
+								.widget_holder(),
+						],
+					],
+				};
+
+				responses.add(LayoutMessage::DestroyLayout {
+					layout_target: LayoutTarget::WelcomeScreenButtons,
+				});
+				responses.add(LayoutMessage::SendLayout {
+					layout: Layout::WidgetLayout(WidgetLayout::new(vec![table])),
+					layout_target: LayoutTarget::WelcomeScreenButtons,
+				});
+			}
 			PortfolioMessage::SetActivePanel { panel } => {
 				self.active_panel = panel;
 				responses.add(DocumentMessage::SetActivePanel { active_panel: self.active_panel });

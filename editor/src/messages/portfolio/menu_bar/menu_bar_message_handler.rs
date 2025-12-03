@@ -238,7 +238,6 @@ impl LayoutHolder for MenuBarMessageHandler {
 			TextButton::new("Layer")
 				.label("Layer")
 				.flush(true)
-				.disabled(no_active_document)
 				.menu_list_children(vec![
 					vec![
 						MenuListEntry::new("New")
@@ -508,7 +507,6 @@ impl LayoutHolder for MenuBarMessageHandler {
 			TextButton::new("Select")
 				.label("Select")
 				.flush(true)
-				.disabled(no_active_document)
 				.menu_list_children(vec![
 					vec![
 						MenuListEntry::new("Select All")
@@ -549,7 +547,6 @@ impl LayoutHolder for MenuBarMessageHandler {
 			TextButton::new("View")
 				.label("View")
 				.flush(true)
-				.disabled(no_active_document)
 				.menu_list_children(vec![
 					vec![
 						MenuListEntry::new("Tilt")

@@ -7,8 +7,8 @@
 
 	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
+	import ShortcutLabel from "@graphite/components/widgets/labels/ShortcutLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
-	import UserInputLabel from "@graphite/components/widgets/labels/UserInputLabel.svelte";
 
 	const tooltip = getContext<TooltipState>("tooltip");
 	const editor = getContext<Editor>("editor");
@@ -43,7 +43,7 @@
 						<TextLabel class="tooltip-label">{label}</TextLabel>
 					{/if}
 					{#if shortcutKeys}
-						<UserInputLabel keysWithLabelsGroups={[shortcutKeys]} />
+						<ShortcutLabel keysWithLabelsGroups={[shortcutKeys]} />
 					{/if}
 				</LayoutRow>
 			{/if}
@@ -72,7 +72,7 @@
 				white-space: pre-wrap;
 			}
 
-			.text-label + .user-input-label {
+			.text-label + .shortcut-label {
 				margin-left: 8px;
 			}
 

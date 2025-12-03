@@ -1584,7 +1584,7 @@ export function isWidgetSpanRow(layoutRow: LayoutGroup): layoutRow is WidgetSpan
 	return Boolean((layoutRow as WidgetSpanRow)?.rowWidgets);
 }
 
-export type WidgetTable = { tableWidgets: Widget[][] };
+export type WidgetTable = { tableWidgets: Widget[][]; unstyled: boolean };
 export function isWidgetTable(layoutTable: LayoutGroup): layoutTable is WidgetTable {
 	return Boolean((layoutTable as WidgetTable)?.tableWidgets);
 }
@@ -1641,6 +1641,7 @@ function createLayoutGroup(layoutGroup: any): LayoutGroup {
 	if (layoutGroup.table) {
 		const result: WidgetTable = {
 			tableWidgets: layoutGroup.table.tableWidgets.map(hoistWidgetHolders),
+			unstyled: layoutGroup.table.unstyled,
 		};
 		return result;
 	}
@@ -1669,6 +1670,8 @@ export class UpdateMenuBarLayout extends WidgetDiffUpdate {}
 
 export class UpdateNodeGraphControlBarLayout extends WidgetDiffUpdate {}
 
+export class UpdateWelcomeScreenButtonsLayout extends WidgetDiffUpdate {}
+
 export class UpdatePropertiesPanelLayout extends WidgetDiffUpdate {}
 
 export class UpdateDataPanelLayout extends WidgetDiffUpdate {}
@@ -1694,21 +1697,21 @@ export const messageMakers: Record<string, MessageMaker> = {
 	SendUIMetadata,
 	TriggerAboutGraphiteLocalizedCommitDate,
 	TriggerDisplayThirdPartyLicensesDialog,
-	TriggerSaveDocument,
-	TriggerSaveFile,
 	TriggerExportImage,
 	TriggerFetchAndOpenDocument,
 	TriggerFontLoad,
 	TriggerImport,
-	TriggerPersistenceRemoveDocument,
-	TriggerPersistenceWriteDocument,
 	TriggerLoadFirstAutoSaveDocument,
 	TriggerLoadPreferences,
 	TriggerLoadRestAutoSaveDocuments,
-	TriggerOpenLaunchDocuments,
 	TriggerOpenDocument,
+	TriggerOpenLaunchDocuments,
 	TriggerPaste,
+	TriggerPersistenceRemoveDocument,
+	TriggerPersistenceWriteDocument,
 	TriggerSaveActiveDocument,
+	TriggerSaveDocument,
+	TriggerSaveFile,
 	TriggerSavePreferences,
 	TriggerTextCommit,
 	TriggerTextCopy,
@@ -1717,6 +1720,8 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateBox,
 	UpdateClickTargets,
 	UpdateContextMenuInformation,
+	UpdateDataPanelLayout,
+	UpdateDataPanelState,
 	UpdateDialogButtons,
 	UpdateDialogColumn1,
 	UpdateDialogColumn2,
@@ -1738,13 +1743,14 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateLayersPanelBottomBarLayout,
 	UpdateLayersPanelControlBarLeftLayout,
 	UpdateLayersPanelControlBarRightLayout,
+	UpdateLayersPanelState,
 	UpdateLayerWidths,
 	UpdateMaximized,
 	UpdateMenuBarLayout,
 	UpdateMouseCursor,
 	UpdateNodeGraphControlBarLayout,
-	UpdateNodeGraphNodes,
 	UpdateNodeGraphErrorDiagnostic,
+	UpdateNodeGraphNodes,
 	UpdateNodeGraphSelection,
 	UpdateNodeGraphTransform,
 	UpdateNodeGraphWires,
@@ -1752,15 +1758,13 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateOpenDocumentsList,
 	UpdatePlatform,
 	UpdatePropertiesPanelLayout,
-	UpdateDataPanelLayout,
-	UpdateDataPanelState,
 	UpdatePropertiesPanelState,
-	UpdateLayersPanelState,
 	UpdateToolOptionsLayout,
 	UpdateToolShelfLayout,
 	UpdateViewportHolePunch,
 	UpdateViewportPhysicalBounds,
 	UpdateVisibleNodes,
+	UpdateWelcomeScreenButtonsLayout,
 	UpdateWirePathInProgress,
 	UpdateWorkingColorsLayout,
 } as const;
