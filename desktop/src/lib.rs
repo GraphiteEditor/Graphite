@@ -38,7 +38,7 @@ pub fn start() {
 		return;
 	}
 
-	let mut lock = pidlock::Pidlock::new_validated(APP_LOCK_FILE_NAME).unwrap();
+	let mut lock = pidlock::Pidlock::new_validated(dirs::app_data_dir().join(APP_LOCK_FILE_NAME)).unwrap();
 	match lock.acquire() {
 		Ok(lock) => {
 			tracing::info!("Acquired application lock");
