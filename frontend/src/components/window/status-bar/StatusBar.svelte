@@ -7,6 +7,7 @@
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
+	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 	import UserInputLabel from "@graphite/components/widgets/labels/UserInputLabel.svelte";
 
 	const editor = getContext<Editor>("editor");
@@ -26,18 +27,21 @@
 
 <LayoutRow class="status-bar">
 	<LayoutRow class="hint-groups">
-		{#each hintData as hintGroup, index (hintGroup)}
+		{#each hintData as hintGroup, index}
 			{#if index !== 0}
 				<Separator type="Section" />
 			{/if}
-			{#each hintGroup as hint (hint)}
+			{#each hintGroup as hint}
 				{#if hint.plus}
-					<LayoutRow class="plus">+</LayoutRow>
+					<TextLabel bold={true} class="plus">+</TextLabel>
 				{/if}
 				{#if hint.slash}
-					<LayoutRow class="slash">/</LayoutRow>
+					<TextLabel bold={true} class="slash">/</TextLabel>
 				{/if}
-				<UserInputLabel mouseMotion={hint.mouse} keysWithLabelsGroups={inputKeysForPlatform(hint)}>{hint.label}</UserInputLabel>
+				<UserInputLabel mouseMotion={hint.mouse} keysWithLabelsGroups={inputKeysForPlatform(hint)} />
+				{#if hint.label}
+					<TextLabel class="hint-text">{hint.label}</TextLabel>
+				{/if}
 			{/each}
 		{/each}
 	</LayoutRow>
@@ -60,19 +64,18 @@
 				margin: 0 calc(12px - 8px);
 			}
 
-			.plus,
-			.slash {
-				flex: 0 0 auto;
-				align-items: center;
-				font-weight: 700;
-			}
-
-			.user-input-label {
+			:is(.plus, .slash, .hint-text, .user-input-label) {
+				white-space: nowrap;
+				line-height: 24px;
 				margin: 0 8px;
 
-				& + .user-input-label {
+				+ :is(.plus, .slash, .user-input-label) {
 					margin-left: 0;
 				}
+			}
+
+			.hint-text {
+				margin-left: -4px;
 			}
 		}
 	}

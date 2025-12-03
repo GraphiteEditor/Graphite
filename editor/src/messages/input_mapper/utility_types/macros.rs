@@ -124,7 +124,16 @@ macro_rules! action_keys {
 	};
 }
 
+macro_rules! action_keys_manual {
+	($($keys:expr),*) => {
+		Some(crate::messages::input_mapper::utility_types::misc::ActionKeys::Keys(
+			crate::messages::input_mapper::utility_types::input_keyboard::KeysGroup(vec![$($keys),*]).into(),
+		))
+	};
+}
+
 pub(crate) use action_keys;
+pub(crate) use action_keys_manual;
 pub(crate) use entry;
 pub(crate) use mapping;
 pub(crate) use modifiers;

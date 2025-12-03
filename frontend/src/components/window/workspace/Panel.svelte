@@ -323,7 +323,7 @@
 						left: -1px;
 						width: 1px;
 						height: 16px;
-						background: var(--color-4-dimgray);
+						background: var(--color-5-dullgray);
 					}
 
 					&:last-of-type {
@@ -335,7 +335,7 @@
 							right: -1px;
 							width: 1px;
 							height: 16px;
-							background: var(--color-4-dimgray);
+							background: var(--color-5-dullgray);
 						}
 					}
 				}

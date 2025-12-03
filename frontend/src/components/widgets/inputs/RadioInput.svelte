@@ -30,7 +30,7 @@
 			on:click={() => handleEntryClick(entry)}
 			data-tooltip-label={entry.tooltipLabel}
 			data-tooltip-description={entry.tooltipDescription}
-			data-tooltip-shortcut={entry.tooltipShortcut}
+			data-tooltip-shortcut={entry.tooltipShortcut?.keys ? JSON.stringify(entry.tooltipShortcut.keys) : undefined}
 			tabindex={index === selectedIndex ? -1 : 0}
 			{disabled}
 		>

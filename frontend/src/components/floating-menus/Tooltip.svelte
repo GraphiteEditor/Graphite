@@ -2,11 +2,13 @@
 	import { getContext } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
+	import type { LayoutKeysGroup } from "@graphite/messages";
 	import type { TooltipState } from "@graphite/state-providers/tooltip";
 
 	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+	import UserInputLabel from "@graphite/components/widgets/labels/UserInputLabel.svelte";
 
 	const tooltip = getContext<TooltipState>("tooltip");
 	const editor = getContext<Editor>("editor");
@@ -15,7 +17,15 @@
 
 	$: label = filterTodo($tooltip.element?.getAttribute("data-tooltip-label")?.trim());
 	$: description = filterTodo($tooltip.element?.getAttribute("data-tooltip-description")?.trim());
-	$: shortcut = filterTodo($tooltip.element?.getAttribute("data-tooltip-shortcut")?.trim());
+	$: shortcut = $tooltip.element?.getAttribute("data-tooltip-shortcut")?.trim();
+	$: shortcutKeys = ((shortcut) => {
+		if (!shortcut) return undefined;
+		try {
+			return JSON.parse(shortcut) as LayoutKeysGroup;
+		} catch {
+			return undefined;
+		}
+	})(shortcut);
 
 	// TODO: Once all TODOs are replaced with real text, remove this function
 	function filterTodo(text: string | undefined): string | undefined {
@@ -27,13 +37,13 @@
 <div class="tooltip" style:top={`${$tooltip.position.y}px`} style:left={`${$tooltip.position.x}px`}>
 	{#if label || description}
 		<FloatingMenu open={true} type="Tooltip" direction="Bottom" bind:this={self}>
-			{#if label || shortcut}
+			{#if label || shortcutKeys}
 				<LayoutRow class="tooltip-header">
 					{#if label}
 						<TextLabel class="tooltip-label">{label}</TextLabel>
 					{/if}
-					{#if shortcut}
-						<TextLabel class="tooltip-shortcut">{shortcut}</TextLabel>
+					{#if shortcutKeys}
+						<UserInputLabel keysWithLabelsGroups={[shortcutKeys]} />
 					{/if}
 				</LayoutRow>
 			{/if}
@@ -62,15 +72,8 @@
 				white-space: pre-wrap;
 			}
 
-			.text-label + .tooltip-shortcut {
+			.text-label + .user-input-label {
 				margin-left: 8px;
-			}
-
-			.tooltip-shortcut {
-				color: var(--color-b-lightgray);
-				background: var(--color-3-darkgray);
-				padding: 0 4px;
-				border-radius: 4px;
 			}
 
 			.tooltip-description {

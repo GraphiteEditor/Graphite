@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { getContext, onMount, onDestroy, tick } from "svelte";
 
+	import { shortcutAltClick } from "@graphite/../wasm/pkg/graphite_wasm.js";
 	import type { Editor } from "@graphite/editor";
 	import {
 		defaultWidgetLayout,
@@ -72,6 +73,8 @@
 	let layersPanelControlBarLeftLayout = defaultWidgetLayout();
 	let layersPanelControlBarRightLayout = defaultWidgetLayout();
 	let layersPanelBottomBarLayout = defaultWidgetLayout();
+
+	const altClickKeys = shortcutAltClick();
 
 	onMount(() => {
 		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarLeftLayout, (updateLayersPanelControlBarLeftLayout) => {
@@ -622,7 +625,7 @@
 								? "Hide the layers nested within. (To affect all open descendants, perform the shortcut shown.)"
 								: "Show the layers nested within. (To affect all closed descendants, perform the shortcut shown.)") +
 								(listing.entry.ancestorOfSelected && !listing.entry.expanded ? "\n\nNote: a selected layer is currently contained within.\n" : "")}
-							data-tooltip-shortcut="Alt Click"
+							data-tooltip-shortcut={altClickKeys?.keys ? JSON.stringify(altClickKeys.keys) : undefined}
 							on:click={(e) => handleExpandArrowClickWithModifiers(e, listing.entry.id)}
 							tabindex="0"
 						></button>
@@ -634,7 +637,7 @@
 							icon="Clipped"
 							class="clipped-arrow"
 							tooltipDescription="Clipping mask is active. To release it, perform the shortcut on the layer border."
-							tooltipShortcut="Alt Click"
+							tooltipShortcut={altClickKeys}
 						/>
 					{/if}
 					<div class="thumbnail">

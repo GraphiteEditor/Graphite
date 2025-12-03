@@ -3,7 +3,6 @@ use super::widgets::input_widgets::*;
 use super::widgets::label_widgets::*;
 use crate::application::generate_uuid;
 use crate::messages::input_mapper::utility_types::input_keyboard::KeysGroup;
-use crate::messages::input_mapper::utility_types::misc::ActionKeys;
 use crate::messages::prelude::*;
 use std::sync::Arc;
 
@@ -506,7 +505,7 @@ impl WidgetHolder {
 			&& button1.icon == button2.icon
 			&& button1.tooltip_label == button2.tooltip_label
 			&& button1.tooltip_description == button2.tooltip_description
-			&& button1.shortcut_keys == button2.shortcut_keys
+			&& button1.tooltip_shortcut == button2.tooltip_shortcut
 			&& button1.popover_min_width == button2.popover_min_width
 		{
 			let mut new_widget_path = widget_path.to_vec();
@@ -607,30 +606,21 @@ pub enum DiffUpdate {
 impl DiffUpdate {
 	/// Append the keyboard shortcut to the tooltip where applicable
 	pub fn apply_keyboard_shortcut(&mut self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>) {
-		// Function used multiple times later in this code block to convert `ActionKeys::Action` to `ActionKeys::Keys` and append its shortcut to the tooltip
-		let apply_shortcut_to_tooltip = |shortcut_keys: &mut ActionKeys, tooltip_shortcut: &mut String| {
-			let shortcut_text = shortcut_keys.to_keys(action_input_mapping);
-
-			if matches!(shortcut_keys, ActionKeys::Keys(_)) && !shortcut_text.is_empty() {
-				tooltip_shortcut.push_str(&shortcut_text);
-			}
-		};
-
 		// Go through each widget to convert `ActionKeys::Action` to `ActionKeys::Keys` and append the key combination to the widget tooltip
 		let convert_tooltip = |widget_holder: &mut WidgetHolder| {
 			// Handle all the widgets that have tooltips
-			let mut shortcut_keys = match &mut widget_holder.widget {
-				Widget::BreadcrumbTrailButtons(widget) => Some((&mut widget.tooltip_shortcut, &mut widget.shortcut_keys)),
-				Widget::CheckboxInput(widget) => Some((&mut widget.tooltip_shortcut, &mut widget.shortcut_keys)),
-				Widget::ColorInput(widget) => Some((&mut widget.tooltip_shortcut, &mut widget.shortcut_keys)),
-				Widget::DropdownInput(widget) => Some((&mut widget.tooltip_shortcut, &mut widget.shortcut_keys)),
-				Widget::FontInput(widget) => Some((&mut widget.tooltip_shortcut, &mut widget.shortcut_keys)),
-				Widget::IconButton(widget) => Some((&mut widget.tooltip_shortcut, &mut widget.shortcut_keys)),
-				Widget::NumberInput(widget) => Some((&mut widget.tooltip_shortcut, &mut widget.shortcut_keys)),
-				Widget::ParameterExposeButton(widget) => Some((&mut widget.tooltip_shortcut, &mut widget.shortcut_keys)),
-				Widget::PopoverButton(widget) => Some((&mut widget.tooltip_shortcut, &mut widget.shortcut_keys)),
-				Widget::TextButton(widget) => Some((&mut widget.tooltip_shortcut, &mut widget.shortcut_keys)),
-				Widget::ImageButton(widget) => Some((&mut widget.tooltip_shortcut, &mut widget.shortcut_keys)),
+			let tooltip_shortcut = match &mut widget_holder.widget {
+				Widget::BreadcrumbTrailButtons(widget) => widget.tooltip_shortcut.as_mut(),
+				Widget::CheckboxInput(widget) => widget.tooltip_shortcut.as_mut(),
+				Widget::ColorInput(widget) => widget.tooltip_shortcut.as_mut(),
+				Widget::DropdownInput(widget) => widget.tooltip_shortcut.as_mut(),
+				Widget::FontInput(widget) => widget.tooltip_shortcut.as_mut(),
+				Widget::IconButton(widget) => widget.tooltip_shortcut.as_mut(),
+				Widget::NumberInput(widget) => widget.tooltip_shortcut.as_mut(),
+				Widget::ParameterExposeButton(widget) => widget.tooltip_shortcut.as_mut(),
+				Widget::PopoverButton(widget) => widget.tooltip_shortcut.as_mut(),
+				Widget::TextButton(widget) => widget.tooltip_shortcut.as_mut(),
+				Widget::ImageButton(widget) => widget.tooltip_shortcut.as_mut(),
 				Widget::IconLabel(_)
 				| Widget::ImageLabel(_)
 				| Widget::CurveInput(_)
@@ -643,21 +633,17 @@ impl DiffUpdate {
 				| Widget::TextLabel(_)
 				| Widget::WorkingColorsInput(_) => None,
 			};
-			if let Some((tooltip_shortcut, Some(shortcut_keys))) = &mut shortcut_keys {
-				apply_shortcut_to_tooltip(shortcut_keys, tooltip_shortcut);
+
+			// Convert `ActionKeys::Action` to `ActionKeys::Keys`
+			if let Some(tooltip_shortcut) = tooltip_shortcut {
+				tooltip_shortcut.to_keys(action_input_mapping);
 			}
 
 			// Handle RadioInput separately because its tooltips are children of the widget
 			if let Widget::RadioInput(radio_input) = &mut widget_holder.widget {
 				for radio_entry_data in &mut radio_input.entries {
-					if let RadioEntryData {
-						tooltip_shortcut,
-						shortcut_keys: Some(shortcut_keys),
-						..
-					} = radio_entry_data
-					{
-						apply_shortcut_to_tooltip(shortcut_keys, tooltip_shortcut);
-					}
+					// Convert `ActionKeys::Action` to `ActionKeys::Keys`
+					radio_entry_data.tooltip_shortcut.as_mut().map(|entry| entry.to_keys(action_input_mapping));
 				}
 			}
 		};
@@ -668,9 +654,9 @@ impl DiffUpdate {
 			let recursive_wrapper = RecursiveWrapper(&|entry_sections: &mut MenuListEntrySections, recursive_wrapper| {
 				for entries in entry_sections {
 					for entry in entries {
-						// Convert the shortcut actions to keys for this menu entry
-						if let Some(shortcut_keys) = &mut entry.shortcut_keys {
-							shortcut_keys.to_keys(action_input_mapping);
+						if let Some(tooltip_shortcut) = &mut entry.tooltip_shortcut {
+							// Convert `ActionKeys::Action` to `ActionKeys::Keys`
+							tooltip_shortcut.to_keys(action_input_mapping);
 						}
 
 						// Recursively call this inner closure on the menu's children

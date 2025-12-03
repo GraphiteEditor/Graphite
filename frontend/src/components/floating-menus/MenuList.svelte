@@ -447,8 +447,8 @@
 
 					<TextLabel class="entry-label" styles={{ "font-family": `${!entry.font ? "inherit" : entry.value}` }}>{entry.label}</TextLabel>
 
-					{#if entry.shortcutKeys?.keys.length}
-						<UserInputLabel keysWithLabelsGroups={[entry.shortcutKeys.keys]} requiresLock={entry.shortcutRequiresLock} textOnly={true} />
+					{#if entry.tooltipShortcut?.keys.length}
+						<UserInputLabel keysWithLabelsGroups={[entry.tooltipShortcut.keys]} />
 					{/if}
 
 					{#if entry.children?.length}
@@ -499,7 +499,7 @@
 				margin: 4px 0;
 
 				div {
-					background: var(--color-4-dimgray);
+					background: var(--color-3-darkgray);
 				}
 			}
 

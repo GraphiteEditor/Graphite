@@ -910,8 +910,8 @@ export class CheckboxInput extends WidgetProps {
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipDescription!: string | undefined;
 
-	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltipShortcut!: string | undefined;
+	@Transform(({ value }: { value: ActionKeys }) => value || undefined)
+	tooltipShortcut!: ActionKeys | undefined;
 
 	forLabel!: bigint | undefined;
 }
@@ -954,8 +954,8 @@ export class ColorInput extends WidgetProps {
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipDescription!: string | undefined;
 
-	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltipShortcut!: string | undefined;
+	@Transform(({ value }: { value: ActionKeys }) => value || undefined)
+	tooltipShortcut!: ActionKeys | undefined;
 }
 
 export type FillChoice = Color | Gradient;
@@ -1000,9 +1000,7 @@ export type MenuListEntry = {
 	disabled?: boolean;
 	tooltipLabel?: string;
 	tooltipDescription?: string;
-	tooltipShortcut?: string;
-	shortcutKeys?: ActionKeys;
-	shortcutRequiresLock?: boolean;
+	tooltipShortcut?: ActionKeys;
 	children?: MenuListEntry[][];
 };
 
@@ -1028,8 +1026,8 @@ export class CurveInput extends WidgetProps {
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipDescription!: string | undefined;
 
-	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltipShortcut!: string | undefined;
+	@Transform(({ value }: { value: ActionKeys }) => value || undefined)
+	tooltipShortcut!: ActionKeys | undefined;
 }
 
 export class DropdownInput extends WidgetProps {
@@ -1051,8 +1049,8 @@ export class DropdownInput extends WidgetProps {
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipDescription!: string | undefined;
 
-	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltipShortcut!: string | undefined;
+	@Transform(({ value }: { value: ActionKeys }) => value || undefined)
+	tooltipShortcut!: ActionKeys | undefined;
 
 	// Styling
 
@@ -1076,8 +1074,8 @@ export class FontInput extends WidgetProps {
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipDescription!: string | undefined;
 
-	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltipShortcut!: string | undefined;
+	@Transform(({ value }: { value: ActionKeys }) => value || undefined)
+	tooltipShortcut!: ActionKeys | undefined;
 }
 
 export class IconButton extends WidgetProps {
@@ -1097,8 +1095,8 @@ export class IconButton extends WidgetProps {
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipDescription!: string | undefined;
 
-	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltipShortcut!: string | undefined;
+	@Transform(({ value }: { value: ActionKeys }) => value || undefined)
+	tooltipShortcut!: ActionKeys | undefined;
 }
 
 export class IconLabel extends WidgetProps {
@@ -1112,8 +1110,8 @@ export class IconLabel extends WidgetProps {
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipDescription!: string | undefined;
 
-	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltipShortcut!: string | undefined;
+	@Transform(({ value }: { value: ActionKeys }) => value || undefined)
+	tooltipShortcut!: ActionKeys | undefined;
 }
 
 export class ImageButton extends WidgetProps {
@@ -1131,8 +1129,8 @@ export class ImageButton extends WidgetProps {
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipDescription!: string | undefined;
 
-	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltipShortcut!: string | undefined;
+	@Transform(({ value }: { value: ActionKeys }) => value || undefined)
+	tooltipShortcut!: ActionKeys | undefined;
 }
 
 export class ImageLabel extends WidgetProps {
@@ -1150,8 +1148,8 @@ export class ImageLabel extends WidgetProps {
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipDescription!: string | undefined;
 
-	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltipShortcut!: string | undefined;
+	@Transform(({ value }: { value: ActionKeys }) => value || undefined)
+	tooltipShortcut!: ActionKeys | undefined;
 }
 
 export type NumberInputIncrementBehavior = "Add" | "Multiply" | "Callback" | "None";
@@ -1168,8 +1166,8 @@ export class NumberInput extends WidgetProps {
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipDescription!: string | undefined;
 
-	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltipShortcut!: string | undefined;
+	@Transform(({ value }: { value: ActionKeys }) => value || undefined)
+	tooltipShortcut!: ActionKeys | undefined;
 
 	// Disabled
 
@@ -1234,8 +1232,8 @@ export class PopoverButton extends WidgetProps {
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipDescription!: string | undefined;
 
-	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltipShortcut!: string | undefined;
+	@Transform(({ value }: { value: ActionKeys }) => value || undefined)
+	tooltipShortcut!: ActionKeys | undefined;
 
 	// Body
 	popoverLayout!: LayoutGroup[];
@@ -1251,7 +1249,7 @@ export type RadioEntryData = {
 	icon?: IconName;
 	tooltipLabel?: string;
 	tooltipDescription?: string;
-	tooltipShortcut?: string;
+	tooltipShortcut?: ActionKeys;
 };
 export type RadioEntries = RadioEntryData[];
 
@@ -1297,8 +1295,8 @@ export class TextAreaInput extends WidgetProps {
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipDescription!: string | undefined;
 
-	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltipShortcut!: string | undefined;
+	@Transform(({ value }: { value: ActionKeys }) => value || undefined)
+	tooltipShortcut!: ActionKeys | undefined;
 }
 
 export class ParameterExposeButton extends WidgetProps {
@@ -1312,8 +1310,8 @@ export class ParameterExposeButton extends WidgetProps {
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipDescription!: string | undefined;
 
-	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltipShortcut!: string | undefined;
+	@Transform(({ value }: { value: ActionKeys }) => value || undefined)
+	tooltipShortcut!: ActionKeys | undefined;
 }
 
 export class TextButton extends WidgetProps {
@@ -1339,8 +1337,8 @@ export class TextButton extends WidgetProps {
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipDescription!: string | undefined;
 
-	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltipShortcut!: string | undefined;
+	@Transform(({ value }: { value: ActionKeys }) => value || undefined)
+	tooltipShortcut!: ActionKeys | undefined;
 
 	menuListChildren!: MenuListEntry[][];
 }
@@ -1356,8 +1354,8 @@ export class BreadcrumbTrailButtons extends WidgetProps {
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipDescription!: string | undefined;
 
-	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltipShortcut!: string | undefined;
+	@Transform(({ value }: { value: ActionKeys }) => value || undefined)
+	tooltipShortcut!: ActionKeys | undefined;
 }
 
 export class TextInput extends WidgetProps {
@@ -1379,8 +1377,8 @@ export class TextInput extends WidgetProps {
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipDescription!: string | undefined;
 
-	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltipShortcut!: string | undefined;
+	@Transform(({ value }: { value: ActionKeys }) => value || undefined)
+	tooltipShortcut!: ActionKeys | undefined;
 }
 
 export class TextLabel extends WidgetProps {
@@ -1412,8 +1410,8 @@ export class TextLabel extends WidgetProps {
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipDescription!: string | undefined;
 
-	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltipShortcut!: string | undefined;
+	@Transform(({ value }: { value: ActionKeys }) => value || undefined)
+	tooltipShortcut!: ActionKeys | undefined;
 
 	forCheckbox!: bigint | undefined;
 }
@@ -1431,8 +1429,8 @@ export class ReferencePointInput extends WidgetProps {
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipDescription!: string | undefined;
 
-	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltipShortcut!: string | undefined;
+	@Transform(({ value }: { value: ActionKeys }) => value || undefined)
+	tooltipShortcut!: ActionKeys | undefined;
 }
 
 // WIDGET

@@ -29,10 +29,7 @@ pub struct IconButton {
 	pub tooltip_description: String,
 
 	#[serde(rename = "tooltipShortcut")]
-	pub tooltip_shortcut: String,
-
-	#[serde(skip)]
-	pub shortcut_keys: Option<ActionKeys>,
+	pub tooltip_shortcut: Option<ActionKeys>,
 
 	// Callbacks
 	#[serde(skip)]
@@ -63,10 +60,7 @@ pub struct PopoverButton {
 	pub tooltip_description: String,
 
 	#[serde(rename = "tooltipShortcut")]
-	pub tooltip_shortcut: String,
-
-	#[serde(skip)]
-	pub shortcut_keys: Option<ActionKeys>,
+	pub tooltip_shortcut: Option<ActionKeys>,
 
 	#[serde(rename = "popoverLayout")]
 	pub popover_layout: SubLayout,
@@ -104,10 +98,7 @@ pub struct ParameterExposeButton {
 	pub tooltip_description: String,
 
 	#[serde(rename = "tooltipShortcut")]
-	pub tooltip_shortcut: String,
-
-	#[serde(skip)]
-	pub shortcut_keys: Option<ActionKeys>,
+	pub tooltip_shortcut: Option<ActionKeys>,
 
 	// Callbacks
 	#[serde(skip)]
@@ -148,10 +139,7 @@ pub struct TextButton {
 	pub tooltip_description: String,
 
 	#[serde(rename = "tooltipShortcut")]
-	pub tooltip_shortcut: String,
-
-	#[serde(skip)]
-	pub shortcut_keys: Option<ActionKeys>,
+	pub tooltip_shortcut: Option<ActionKeys>,
 
 	#[serde(rename = "menuListChildren")]
 	pub menu_list_children: MenuListEntrySections,
@@ -183,10 +171,7 @@ pub struct ImageButton {
 	pub tooltip_description: String,
 
 	#[serde(rename = "tooltipShortcut")]
-	pub tooltip_shortcut: String,
-
-	#[serde(skip)]
-	pub shortcut_keys: Option<ActionKeys>,
+	pub tooltip_shortcut: Option<ActionKeys>,
 
 	// Callbacks
 	#[serde(skip)]
@@ -228,10 +213,7 @@ pub struct ColorInput {
 	pub tooltip_description: String,
 
 	#[serde(rename = "tooltipShortcut")]
-	pub tooltip_shortcut: String,
-
-	#[serde(skip)]
-	pub shortcut_keys: Option<ActionKeys>,
+	pub tooltip_shortcut: Option<ActionKeys>,
 
 	// Callbacks
 	#[serde(skip)]
@@ -258,10 +240,7 @@ pub struct BreadcrumbTrailButtons {
 	pub tooltip_description: String,
 
 	#[serde(rename = "tooltipShortcut")]
-	pub tooltip_shortcut: String,
-
-	#[serde(skip)]
-	pub shortcut_keys: Option<ActionKeys>,
+	pub tooltip_shortcut: Option<ActionKeys>,
 
 	// Callbacks
 	#[serde(skip)]

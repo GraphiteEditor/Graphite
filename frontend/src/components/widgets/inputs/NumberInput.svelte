@@ -3,7 +3,7 @@
 
 	import { evaluateMathExpression } from "@graphite/../wasm/pkg/graphite_wasm.js";
 	import { PRESS_REPEAT_DELAY_MS, PRESS_REPEAT_INTERVAL_MS } from "@graphite/io-managers/input";
-	import { type NumberInputMode, type NumberInputIncrementBehavior } from "@graphite/messages";
+	import type { NumberInputMode, NumberInputIncrementBehavior, ActionKeys } from "@graphite/messages";
 	import { browserVersion, isDesktop } from "@graphite/utility-functions/platform";
 
 	import { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";
@@ -20,7 +20,7 @@
 	export let label: string | undefined = undefined;
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
-	export let tooltipShortcut: string | undefined = undefined;
+	export let tooltipShortcut: ActionKeys | undefined = undefined;
 
 	// Disabled
 	export let disabled = false;

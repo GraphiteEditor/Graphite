@@ -1,4 +1,6 @@
 <script lang="ts">
+	import type { ActionKeys } from "@graphite/messages";
+
 	let className = "";
 	export { className as class };
 	export let classes: Record<string, boolean> = {};
@@ -7,7 +9,7 @@
 	export let styles: Record<string, string | number | undefined> = {};
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
-	export let tooltipShortcut: string | undefined = undefined;
+	export let tooltipShortcut: ActionKeys | undefined = undefined;
 	// TODO: Add middle-click drag scrolling
 	export let scrollableX = false;
 	export let scrollableY = false;
@@ -30,7 +32,7 @@
 <div
 	data-tooltip-label={tooltipLabel}
 	data-tooltip-description={tooltipDescription}
-	data-tooltip-shortcut={tooltipShortcut}
+	data-tooltip-shortcut={tooltipShortcut?.keys ? JSON.stringify(tooltipShortcut.keys) : undefined}
 	data-scrollable-x={scrollableX ? "" : undefined}
 	data-scrollable-y={scrollableY ? "" : undefined}
 	class={`layout-row ${className} ${extraClasses}`.trim()}

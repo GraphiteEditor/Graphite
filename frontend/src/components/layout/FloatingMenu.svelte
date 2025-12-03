@@ -519,7 +519,7 @@
 			.floating-menu-content {
 				background: var(--color-2-mildblack);
 				box-shadow: rgba(var(--color-0-black-rgb), 0.5) 0 2px 4px;
-				border: 1px solid var(--color-4-dimgray);
+				border: 1px solid var(--color-3-darkgray);
 				border-radius: 4px;
 				color: var(--color-e-nearwhite);
 				font-size: inherit;
@@ -615,7 +615,7 @@
 		&.top .tail,
 		&.topleft .tail,
 		&.topright .tail {
-			border-color: var(--color-4-dimgray) transparent transparent transparent;
+			border-color: var(--color-3-darkgray) transparent transparent transparent;
 
 			&::before {
 				border-color: var(--color-2-mildblack) transparent transparent transparent;
@@ -633,7 +633,7 @@
 		&.bottom .tail,
 		&.bottomleft .tail,
 		&.bottomright .tail {
-			border-color: transparent transparent var(--color-4-dimgray) transparent;
+			border-color: transparent transparent var(--color-3-darkgray) transparent;
 
 			&::before {
 				border-color: transparent transparent var(--color-2-mildblack) transparent;
@@ -649,7 +649,7 @@
 		}
 
 		&.left .tail {
-			border-color: transparent transparent transparent var(--color-4-dimgray);
+			border-color: transparent transparent transparent var(--color-3-darkgray);
 
 			&::before {
 				border-color: transparent transparent transparent var(--color-2-mildblack);
@@ -665,7 +665,7 @@
 		}
 
 		&.right .tail {
-			border-color: transparent var(--color-4-dimgray) transparent transparent;
+			border-color: transparent var(--color-3-darkgray) transparent transparent;
 
 			&::before {
 				border-color: transparent var(--color-2-mildblack) transparent transparent;

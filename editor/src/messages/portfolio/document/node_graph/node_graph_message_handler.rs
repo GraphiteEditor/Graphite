@@ -1,8 +1,7 @@
 use super::utility_types::{BoxSelection, ContextMenuInformation, DragStart, FrontendNode};
 use super::{document_node_definitions, node_properties};
 use crate::consts::GRID_SIZE;
-use crate::messages::input_mapper::utility_types::input_keyboard::KeysGroup;
-use crate::messages::input_mapper::utility_types::macros::action_keys;
+use crate::messages::input_mapper::utility_types::macros::{action_keys, action_keys_manual};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::document_message_handler::navigation_controls;
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
@@ -2108,7 +2107,7 @@ impl NodeGraphMessageHandler {
 				.icon(Some("Node".to_string()))
 				.tooltip_label("New Node")
 				.tooltip_description("To add a node at the pointer location, perform the shortcut in an open area of the graph.")
-				.tooltip_shortcut(Key::MouseRight.to_string())
+				.tooltip_shortcut(action_keys_manual!(Key::MouseRight))
 				.popover_layout({
 					// Showing only compatible types
 					let compatible_type = match (selection_includes_layers, has_multiple_selection, selected_layer) {
@@ -2154,7 +2153,7 @@ impl NodeGraphMessageHandler {
 			//
 			IconButton::new("Folder", 24)
 				.tooltip_label("Group Selected")
-				.shortcut_keys(action_keys!(DocumentMessageDiscriminant::GroupSelectedLayers))
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::GroupSelectedLayers))
 				.on_update(|_| {
 					let group_folder_type = GroupFolderType::Layer;
 					DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
@@ -2163,12 +2162,12 @@ impl NodeGraphMessageHandler {
 				.widget_holder(),
 			IconButton::new("NewLayer", 24)
 				.tooltip_label("New Layer")
-				.shortcut_keys(action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder))
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder))
 				.on_update(|_| DocumentMessage::CreateEmptyFolder.into())
 				.widget_holder(),
 			IconButton::new("Trash", 24)
 				.tooltip_label("Delete Selected")
-				.shortcut_keys(action_keys!(DocumentMessageDiscriminant::DeleteSelectedLayers))
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::DeleteSelectedLayers))
 				.on_update(|_| DocumentMessage::DeleteSelectedLayers.into())
 				.disabled(!has_selection)
 				.widget_holder(),
@@ -2178,14 +2177,14 @@ impl NodeGraphMessageHandler {
 			IconButton::new(if selection_all_locked { "PadlockLocked" } else { "PadlockUnlocked" }, 24)
 				.hover_icon(Some((if selection_all_locked { "PadlockUnlocked" } else { "PadlockLocked" }).into()))
 				.tooltip_label(if selection_all_locked { "Unlock Selected" } else { "Lock Selected" })
-				.shortcut_keys(action_keys!(NodeGraphMessageDiscriminant::ToggleSelectedLocked))
+				.tooltip_shortcut(action_keys!(NodeGraphMessageDiscriminant::ToggleSelectedLocked))
 				.on_update(|_| NodeGraphMessage::ToggleSelectedLocked.into())
 				.disabled(!has_selection || !selection_includes_layers)
 				.widget_holder(),
 			IconButton::new(if selection_all_visible { "EyeVisible" } else { "EyeHidden" }, 24)
 				.hover_icon(Some((if selection_all_visible { "EyeHide" } else { "EyeShow" }).into()))
 				.tooltip_label(if selection_all_visible { "Hide Selected" } else { "Show Selected" })
-				.shortcut_keys(action_keys!(NodeGraphMessageDiscriminant::ToggleSelectedVisibility))
+				.tooltip_shortcut(action_keys!(NodeGraphMessageDiscriminant::ToggleSelectedVisibility))
 				.on_update(|_| NodeGraphMessage::ToggleSelectedVisibility.into())
 				.disabled(!has_selection)
 				.widget_holder(),
@@ -2225,7 +2224,7 @@ impl NodeGraphMessageHandler {
 					.icon(Some("FrameAll".to_string()))
 					.tooltip_label("Preview")
 					.tooltip_description("Temporarily set the graph output to the selected node or layer. Perform the shortcut on a node or layer for quick access.")
-					.tooltip_shortcut(KeysGroup(vec![Key::Alt, Key::MouseLeft]).to_string())
+					.tooltip_shortcut(action_keys_manual!(Key::Alt, Key::MouseLeft))
 					.on_update(move |_| NodeGraphMessage::TogglePreview { node_id }.into())
 					.widget_holder();
 				widgets.extend([Separator::new(SeparatorType::Unrelated).widget_holder(), button]);
@@ -2284,7 +2283,7 @@ impl NodeGraphMessageHandler {
 				.icon(Some("GraphViewOpen".into()))
 				.hover_icon(Some("GraphViewClosed".into()))
 				.tooltip_label("Hide Node Graph")
-				.shortcut_keys(action_keys!(DocumentMessageDiscriminant::GraphViewOverlayToggle))
+				.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::GraphViewOverlayToggle))
 				.on_update(move |_| DocumentMessage::GraphViewOverlayToggle.into())
 				.widget_holder(),
 		]);

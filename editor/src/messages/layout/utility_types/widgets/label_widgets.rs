@@ -1,3 +1,5 @@
+use crate::messages::input_mapper::utility_types::misc::ActionKeys;
+
 use super::input_widgets::CheckboxId;
 use derivative::*;
 use graphite_proc_macros::WidgetBuilder;
@@ -16,7 +18,7 @@ pub struct IconLabel {
 	pub tooltip_description: String,
 
 	#[serde(rename = "tooltipShortcut")]
-	pub tooltip_shortcut: String,
+	pub tooltip_shortcut: Option<ActionKeys>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, WidgetBuilder, specta::Type)]
@@ -74,7 +76,7 @@ pub struct TextLabel {
 	pub tooltip_description: String,
 
 	#[serde(rename = "tooltipShortcut")]
-	pub tooltip_shortcut: String,
+	pub tooltip_shortcut: Option<ActionKeys>,
 
 	#[serde(rename = "forCheckbox")]
 	#[derivative(PartialEq = "ignore")]
@@ -102,7 +104,7 @@ pub struct ImageLabel {
 	pub tooltip_description: String,
 
 	#[serde(rename = "tooltipShortcut")]
-	pub tooltip_shortcut: String,
+	pub tooltip_shortcut: Option<ActionKeys>,
 }
 
 // TODO: Add UserInputLabel
