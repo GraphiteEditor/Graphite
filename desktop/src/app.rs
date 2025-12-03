@@ -56,6 +56,13 @@ impl App {
 		app_event_scheduler: AppEventScheduler,
 		launch_documents: Vec<PathBuf>,
 	) -> Self {
+		let ctrlc_app_event_scheduler = app_event_scheduler.clone();
+		ctrlc::set_handler(move || {
+			tracing::info!("Termination signal received, exiting...");
+			ctrlc_app_event_scheduler.schedule(AppEvent::CloseWindow);
+		})
+		.expect("Error setting Ctrl-C handler");
+
 		let rendering_app_event_scheduler = app_event_scheduler.clone();
 		let (start_render_sender, start_render_receiver) = std::sync::mpsc::sync_channel(1);
 		std::thread::spawn(move || {
