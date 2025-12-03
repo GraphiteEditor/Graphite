@@ -9,7 +9,10 @@ pub(crate) enum AppEvent {
 	DesktopWrapperMessage(DesktopWrapperMessage),
 	NodeGraphExecutionResult(NodeGraphExecutionResult),
 	CloseWindow,
-	MenuEvent { id: String },
+	#[cfg(target_os = "macos")]
+	MenuEvent {
+		id: String,
+	},
 }
 
 #[derive(Clone)]

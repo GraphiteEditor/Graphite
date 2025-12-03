@@ -23,6 +23,8 @@ use cef::CefHandler;
 use cli::Cli;
 use event::CreateAppEventSchedulerEventLoopExt;
 
+use crate::consts::APP_LOCK_FILE_NAME;
+
 pub fn start() {
 	tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();
 
@@ -35,6 +37,22 @@ pub fn start() {
 		tracing::warn!("Cef subprocess failed with error: {error}");
 		return;
 	}
+
+	let mut lock = pidlock::Pidlock::new_validated(dirs::app_data_dir().join(APP_LOCK_FILE_NAME)).unwrap();
+	match lock.acquire() {
+		Ok(lock) => {
+			tracing::info!("Acquired application lock");
+			lock
+		}
+		Err(pidlock::PidlockError::LockExists) => {
+			tracing::error!("Another instance is already running, Exiting.");
+			exit(0);
+		}
+		Err(err) => {
+			tracing::error!("Failed to acquire application lock: {err}");
+			exit(1);
+		}
+	};
 
 	App::init();
 
@@ -56,7 +74,7 @@ pub fn start() {
 		}
 		Err(cef::InitError::AlreadyRunning) => {
 			tracing::error!("Another instance is already running, Exiting.");
-			exit(0);
+			exit(1);
 		}
 		Err(cef::InitError::InitializationFailed(code)) => {
 			tracing::error!("Cef initialization failed with code: {code}");

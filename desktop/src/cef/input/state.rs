@@ -240,10 +240,17 @@ impl CefModifiers {
 
 		Self(inner)
 	}
+
+	pub(super) const PINCH_MODIFIERS: Self = Self(cef_event_flags_t(
+		cef_event_flags_t::EVENTFLAG_CONTROL_DOWN.0 | cef_event_flags_t::EVENTFLAG_PRECISION_SCROLLING_DELTA.0,
+	));
 }
 
-impl Into<u32> for CefModifiers {
-	fn into(self) -> u32 {
-		self.0.0 as u32
+impl From<CefModifiers> for u32 {
+	fn from(val: CefModifiers) -> Self {
+		#[cfg(not(target_os = "windows"))]
+		return val.0.0;
+		#[cfg(target_os = "windows")]
+		return val.0.0 as u32;
 	}
 }

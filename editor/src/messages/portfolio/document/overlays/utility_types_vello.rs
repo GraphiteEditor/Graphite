@@ -593,7 +593,7 @@ impl OverlayContextInternal {
 		let mid = edge_end.midpoint(edge_start);
 
 		for edge in [edge_dir, -edge_dir] {
-			self.draw_triangle(mid + edge * 3. + SKEW_TRIANGLE_OFFSET, edge, SKEW_TRIANGLE_SIZE, None, None);
+			self.draw_triangle(mid + edge * (3. + SKEW_TRIANGLE_OFFSET), edge, SKEW_TRIANGLE_SIZE, None, None);
 		}
 	}
 

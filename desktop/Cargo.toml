@@ -43,6 +43,8 @@ open = { workspace = true }
 rand = { workspace = true, features = ["thread_rng"] }
 serde = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
+pidlock = "0.2.2"
+ctrlc = "3.5.1"
 
 # Windows-specific dependencies
 [target.'cfg(target_os = "windows")'.dependencies]

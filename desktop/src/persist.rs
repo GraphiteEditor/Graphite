@@ -125,13 +125,13 @@ impl PersistentData {
 	}
 
 	fn state_file_path() -> std::path::PathBuf {
-		let mut path = crate::dirs::graphite_data_dir();
+		let mut path = crate::dirs::app_data_dir();
 		path.push(crate::consts::APP_STATE_FILE_NAME);
 		path
 	}
 
 	fn preferences_file_path() -> std::path::PathBuf {
-		let mut path = crate::dirs::graphite_data_dir();
+		let mut path = crate::dirs::app_data_dir();
 		path.push(crate::consts::APP_PREFERENCES_FILE_NAME);
 		path
 	}
@@ -189,7 +189,7 @@ impl DocumentStore {
 	}
 
 	fn document_path(id: &DocumentId) -> std::path::PathBuf {
-		let mut path = crate::dirs::graphite_autosave_documents_dir();
+		let mut path = crate::dirs::app_autosave_documents_dir();
 		path.push(format!("{:x}.graphite", id.0));
 		path
 	}
