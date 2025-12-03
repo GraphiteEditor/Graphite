@@ -110,6 +110,7 @@
 		removeEventListener("keydown", trackCtrl);
 		removeEventListener("keyup", trackCtrl);
 		removeEventListener("mousemove", trackCtrl);
+		clearTimeout(repeatTimeout);
 	});
 
 	// ===============================

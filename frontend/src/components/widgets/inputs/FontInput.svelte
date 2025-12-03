@@ -84,8 +84,8 @@
 	async function getEntries(): Promise<MenuListEntry[]> {
 		const x = isStyle ? fonts.getFontStyles(fontFamily) : fonts.fontNames();
 		return (await x).map((entry: { name: string; url: URL | undefined }) => ({
-			label: entry.name,
 			value: entry.name,
+			label: entry.name,
 			font: entry.url,
 			action: () => selectFont(entry.name),
 		}));

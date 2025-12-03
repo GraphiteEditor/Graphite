@@ -991,30 +991,19 @@ export function contrastingOutlineFactor(value: FillChoice, proximityColor: stri
 	return contrast(value);
 }
 
-type MenuEntryCommon = {
-	label: string;
-	icon?: IconName;
-	shortcut?: ActionKeys;
-};
-
-// The entry in the expanded menu or a sub-menu as received from the Rust backend
-export type MenuBarEntry = MenuEntryCommon & {
-	action: Widget;
-	children?: MenuBarEntry[][];
-	disabled?: boolean;
-};
-
 // An entry in the all-encompassing MenuList component which defines all types of menus (which are spawned by widgets like `TextButton` and `DropdownInput`)
-export type MenuListEntry = MenuEntryCommon & {
-	action?: () => void;
-	children?: MenuListEntry[][];
-
+export type MenuListEntry = {
 	value: string;
-	shortcutRequiresLock?: boolean;
+	label: string;
+	font?: URL;
+	icon?: IconName;
 	disabled?: boolean;
 	tooltipLabel?: string;
 	tooltipDescription?: string;
-	font?: URL;
+	tooltipShortcut?: string;
+	shortcutKeys?: ActionKeys;
+	shortcutRequiresLock?: boolean;
+	children?: MenuListEntry[][];
 };
 
 export class CurveManipulatorGroup {
@@ -1263,9 +1252,6 @@ export type RadioEntryData = {
 	tooltipLabel?: string;
 	tooltipDescription?: string;
 	tooltipShortcut?: string;
-
-	// Callbacks
-	action?: () => void;
 };
 export type RadioEntries = RadioEntryData[];
 
@@ -1358,27 +1344,6 @@ export class TextButton extends WidgetProps {
 
 	menuListChildren!: MenuListEntry[][];
 }
-
-export type TextButtonWidget = {
-	tooltipLabel?: string;
-	tooltipDescription?: string;
-	message?: string | object;
-	callback?: () => void;
-	props: {
-		kind: "TextButton";
-		label: string;
-		icon?: IconName;
-		emphasized?: boolean;
-		flush?: boolean;
-		minWidth?: number;
-		disabled?: boolean;
-		tooltipLabel?: string;
-		tooltipDescription?: string;
-
-		// Callbacks
-		// `action` is used via `IconButtonWidget.callback`
-	};
-};
 
 export class BreadcrumbTrailButtons extends WidgetProps {
 	labels!: string[];
@@ -1552,7 +1517,7 @@ export class WidgetDiffUpdate extends JsMessage {
 	diff!: WidgetDiff[];
 }
 
-type UIItem = LayoutGroup[] | LayoutGroup | Widget | Widget[] | MenuBarEntry[] | MenuBarEntry;
+type UIItem = LayoutGroup[] | LayoutGroup | Widget | Widget[];
 type WidgetDiff = { widgetPath: number[]; newValue: UIItem };
 
 export function defaultWidgetLayout(): WidgetLayout {
@@ -1581,8 +1546,6 @@ export function patchWidgetLayout(layout: /* &mut */ WidgetLayout, updates: Widg
 				console.error("Tried to index widget");
 				return targetLayout;
 			}
-			// This is a path traversal so we can assume from the backend that it exists
-			if (targetLayout && "action" in targetLayout) return targetLayout.children![index];
 
 			return targetLayout?.[index];
 		}, layout.layout as UIItem);
@@ -1704,14 +1667,7 @@ export class UpdateLayersPanelControlBarRightLayout extends WidgetDiffUpdate {}
 
 export class UpdateLayersPanelBottomBarLayout extends WidgetDiffUpdate {}
 
-// Extends JsMessage instead of WidgetDiffUpdate because the menu bar isn't diffed
-export class UpdateMenuBarLayout extends JsMessage {
-	layoutTarget!: unknown;
-
-	// TODO: Replace `any` with correct typing
-	@Transform(({ value }: { value: any }) => createMenuLayout(value))
-	layout!: MenuBarEntry[];
-}
+export class UpdateMenuBarLayout extends WidgetDiffUpdate {}
 
 export class UpdateNodeGraphControlBarLayout extends WidgetDiffUpdate {}
 
@@ -1724,23 +1680,6 @@ export class UpdateToolOptionsLayout extends WidgetDiffUpdate {}
 export class UpdateToolShelfLayout extends WidgetDiffUpdate {}
 
 export class UpdateWorkingColorsLayout extends WidgetDiffUpdate {}
-
-function createMenuLayout(menuBarEntry: any[]): MenuBarEntry[] {
-	return menuBarEntry.map((entry) => ({
-		...entry,
-		children: createMenuLayoutRecursive(entry.children),
-	}));
-}
-function createMenuLayoutRecursive(children: any[][]): MenuBarEntry[][] {
-	return children.map((groups) =>
-		groups.map((entry) => ({
-			...entry,
-			action: hoistWidgetHolders([entry.action])[0],
-			children: entry.children ? createMenuLayoutRecursive(entry.children) : undefined,
-			disabled: entry.disabled ?? false,
-		})),
-	);
-}
 
 // `any` is used since the type of the object should be known from the Rust side
 type JSMessageFactory = (data: any, wasm: WebAssembly.Memory, handle: EditorHandle) => JsMessage;

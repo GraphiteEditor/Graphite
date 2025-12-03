@@ -54,6 +54,13 @@ export function createNodeGraphState(editor: Editor) {
 		reorderExportIndex: undefined as number | undefined,
 	});
 
+	function closeContextMenu() {
+		update((state) => {
+			state.contextMenuInformation = undefined;
+			return state;
+		});
+	}
+
 	// Set up message subscriptions on creation
 	editor.subscriptions.subscribeJsMessage(SendUIMetadata, (uiMetadata) => {
 		update((state) => {
@@ -184,6 +191,7 @@ export function createNodeGraphState(editor: Editor) {
 
 	return {
 		subscribe,
+		closeContextMenu,
 	};
 }
 export type NodeGraphState = ReturnType<typeof createNodeGraphState>;

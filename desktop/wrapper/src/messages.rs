@@ -112,7 +112,7 @@ pub enum DesktopWrapperMessage {
 		preferences: Option<Preferences>,
 	},
 	MenuEvent {
-		id: u64,
+		id: String,
 	},
 }
 
@@ -147,20 +147,20 @@ pub enum Platform {
 
 pub enum MenuItem {
 	Action {
-		id: u64,
+		id: String,
 		text: String,
 		enabled: bool,
 		shortcut: Option<Shortcut>,
 	},
 	Checkbox {
-		id: u64,
+		id: String,
 		text: String,
 		enabled: bool,
 		shortcut: Option<Shortcut>,
 		checked: bool,
 	},
 	SubMenu {
-		id: u64,
+		id: String,
 		text: String,
 		enabled: bool,
 		items: Vec<MenuItem>,

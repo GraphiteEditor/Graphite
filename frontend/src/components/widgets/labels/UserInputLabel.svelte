@@ -231,7 +231,7 @@
 
 		.input-mouse {
 			.bright {
-				fill: var(--color-e-nearwhite);
+				fill: var(--color-b-lightgray);
 			}
 
 			.dim {

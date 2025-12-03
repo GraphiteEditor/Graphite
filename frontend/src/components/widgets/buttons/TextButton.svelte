@@ -1,12 +1,15 @@
 <script lang="ts">
-	import type { IconName } from "@graphite/icons";
+	import { createEventDispatcher } from "svelte";
 
+	import type { IconName } from "@graphite/icons";
 	import type { MenuListEntry } from "@graphite/messages";
 
 	import MenuList from "@graphite/components/floating-menus/MenuList.svelte";
 	import ConditionalWrapper from "@graphite/components/layout/ConditionalWrapper.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+
+	const dispatch = createEventDispatcher<{ selectedEntryValuePath: string[] }>();
 
 	let self: MenuList;
 
@@ -36,7 +39,7 @@
 		// If there's no menu to open, trigger the action
 		if ((menuListChildren?.length ?? 0) === 0) {
 			// Call the action
-			if (action && !disabled) action();
+			if (!disabled) action?.();
 
 			// Exit early so we don't continue on and try to open the menu
 			return;
@@ -84,6 +87,7 @@
 	{#if menuListChildrenExists}
 		<MenuList
 			on:open={({ detail }) => self && (self.open = detail)}
+			on:selectedEntryValuePath={({ detail }) => dispatch("selectedEntryValuePath", detail)}
 			open={self?.open || false}
 			entries={menuListChildren || []}
 			direction="Bottom"
@@ -164,6 +168,11 @@
 			&:hover,
 			&.open {
 				--button-background-color: var(--color-5-dullgray);
+			}
+
+			&.disabled {
+				--button-text-color: var(--color-8-uppergray);
+				--button-background-color: none;
 			}
 		}
 

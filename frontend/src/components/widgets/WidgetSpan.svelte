@@ -177,7 +177,7 @@
 		{/if}
 		{@const textButton = narrowWidgetProps(component.props, "TextButton")}
 		{#if textButton}
-			<TextButton {...exclude(textButton)} action={() => widgetValueCommitAndUpdate(index, undefined)} />
+			<TextButton {...exclude(textButton)} action={() => widgetValueCommitAndUpdate(index, [])} on:selectedEntryValuePath={({ detail }) => widgetValueCommitAndUpdate(index, detail)} />
 		{/if}
 		{@const breadcrumbTrailButtons = narrowWidgetProps(component.props, "BreadcrumbTrailButtons")}
 		{#if breadcrumbTrailButtons}

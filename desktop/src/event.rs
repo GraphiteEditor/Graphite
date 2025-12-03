@@ -9,7 +9,7 @@ pub(crate) enum AppEvent {
 	DesktopWrapperMessage(DesktopWrapperMessage),
 	NodeGraphExecutionResult(NodeGraphExecutionResult),
 	CloseWindow,
-	MenuEvent { id: u64 },
+	MenuEvent { id: String },
 }
 
 #[derive(Clone)]

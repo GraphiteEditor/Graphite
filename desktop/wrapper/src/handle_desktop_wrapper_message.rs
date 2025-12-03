@@ -1,14 +1,10 @@
 use graphene_std::Color;
 use graphene_std::raster::Image;
 use graphite_editor::messages::app_window::app_window_message_handler::AppWindowPlatform;
-use graphite_editor::messages::layout::LayoutMessage;
 use graphite_editor::messages::prelude::*;
-use graphite_editor::messages::tool::tool_messages::tool_prelude::{LayoutTarget, WidgetId};
-
-use crate::messages::Platform;
 
 use super::DesktopWrapperMessageDispatcher;
-use super::messages::{DesktopFrontendMessage, DesktopWrapperMessage, EditorMessage, OpenFileDialogContext, SaveFileDialogContext};
+use super::messages::{DesktopFrontendMessage, DesktopWrapperMessage, EditorMessage, OpenFileDialogContext, Platform, SaveFileDialogContext};
 
 pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMessageDispatcher, message: DesktopWrapperMessage) {
 	match message {
@@ -150,13 +146,15 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 			let message = PreferencesMessage::Load { preferences };
 			dispatcher.queue_editor_message(message);
 		}
+		#[cfg(target_os = "macos")]
 		DesktopWrapperMessage::MenuEvent { id } => {
-			let message = LayoutMessage::WidgetValueUpdate {
-				layout_target: LayoutTarget::MenuBar,
-				widget_id: WidgetId(id),
-				value: serde_json::Value::Bool(true),
-			};
-			dispatcher.queue_editor_message(message);
+			if let Some(message) = crate::utils::menu::parse_item_path(id) {
+				dispatcher.queue_editor_message(message);
+			} else {
+				tracing::error!("Received a malformed MenuEvent id");
+			}
 		}
+		#[cfg(not(target_os = "macos"))]
+		DesktopWrapperMessage::MenuEvent { id: _ } => {}
 	}
 }

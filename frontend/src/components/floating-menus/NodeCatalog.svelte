@@ -4,6 +4,7 @@
 	import type { FrontendNodeType } from "@graphite/messages";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 
+	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
 	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
@@ -109,8 +110,8 @@
 	});
 </script>
 
-<div class="node-catalog">
-	<TextInput placeholder="Search Nodes..." value={searchTerm} on:value={({ detail }) => (searchTerm = detail)} bind:this={nodeSearchInput} />
+<LayoutCol class="node-catalog">
+	<TextInput placeholder="Search Nodes…" value={searchTerm} on:value={({ detail }) => (searchTerm = detail)} bind:this={nodeSearchInput} />
 	<div class="list-results" on:wheel|passive|stopPropagation>
 		{#each nodeCategories as nodeCategory}
 			<details open={nodeCategory[1].open}>
@@ -131,15 +132,12 @@
 			<TextLabel>No search results</TextLabel>
 		{/each}
 	</div>
-</div>
+</LayoutCol>
 
 <style lang="scss" global>
 	.node-catalog {
 		max-height: 30vh;
 		min-width: 250px;
-		display: flex;
-		flex-direction: column;
-		align-items: stretch;
 
 		.text-input {
 			flex: 0 0 auto;
@@ -149,13 +147,10 @@
 		.list-results {
 			overflow-y: auto;
 			flex: 1 1 auto;
-			// Together with the `margin-right: 4px;` on `details` below, this keeps a gap between the listings and the scrollbar
-			margin-right: -4px;
 
 			details {
 				cursor: pointer;
 				position: relative;
-				// Together with the `margin-right: -4px;` on `.list-results` above, this keeps a gap between the listings and the scrollbar
 				margin-right: 4px;
 
 				&[open] summary .text-label::before {
@@ -164,8 +159,6 @@
 
 				summary {
 					display: flex;
-					align-items: center;
-					gap: 2px;
 
 					.text-label {
 						padding-left: 16px;
@@ -189,6 +182,11 @@
 				.text-button {
 					width: 100%;
 					margin: 4px 0;
+					text-align: left;
+				}
+
+				&:last-child .text-button {
+					margin-bottom: 0;
 				}
 			}
 		}

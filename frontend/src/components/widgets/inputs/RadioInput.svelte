@@ -20,8 +20,6 @@
 	function handleEntryClick(radioEntryData: RadioEntryData) {
 		const index = entries.indexOf(radioEntryData);
 		dispatch("selectedIndex", index);
-
-		radioEntryData.action?.();
 	}
 </script>
 

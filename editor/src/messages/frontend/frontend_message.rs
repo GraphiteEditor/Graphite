@@ -279,7 +279,7 @@ pub enum FrontendMessage {
 	UpdateMenuBarLayout {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
-		layout: Vec<MenuBarEntry>,
+		diff: Vec<WidgetDiff>,
 	},
 	UpdateMouseCursor {
 		cursor: MouseCursorIcon,

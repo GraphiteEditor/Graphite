@@ -776,7 +776,7 @@
 					margin-right: 16px;
 				}
 
-				.right-scrollbar .scrollbar-input {
+				&:has(.top-ruler) .right-scrollbar .scrollbar-input {
 					margin-top: -16px;
 				}
 
