@@ -365,6 +365,7 @@ impl App {
 				tracing::info!("Exiting main event loop");
 				event_loop.exit();
 			}
+			#[cfg(target_os = "macos")]
 			AppEvent::MenuEvent { id } => {
 				self.dispatch_desktop_wrapper_message(DesktopWrapperMessage::MenuEvent { id });
 			}
