@@ -1,6 +1,6 @@
-use crate::messages::input_mapper::utility_types::misc::ActionKeys;
-
 use super::input_widgets::CheckboxId;
+use crate::messages::input_mapper::utility_types::misc::ActionKeys;
+use crate::messages::tool::tool_messages::tool_prelude::MouseMotion;
 use derivative::*;
 use graphite_proc_macros::WidgetBuilder;
 
@@ -107,4 +107,12 @@ pub struct ImageLabel {
 	pub tooltip_shortcut: Option<ActionKeys>,
 }
 
-// TODO: Add ShortcutLabel
+#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Default, WidgetBuilder, specta::Type)]
+#[derivative(Debug, PartialEq)]
+pub struct ShortcutLabel {
+	#[widget_builder(constructor)]
+	pub shortcuts: Vec<ActionKeys>,
+
+	#[serde(rename = "mouseMotion")]
+	pub mouse_motion: Option<MouseMotion>,
+}

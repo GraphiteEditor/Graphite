@@ -43,7 +43,7 @@
 						<TextLabel class="tooltip-label">{label}</TextLabel>
 					{/if}
 					{#if shortcutKeys}
-						<ShortcutLabel keysWithLabelsGroups={[shortcutKeys]} />
+						<ShortcutLabel shortcuts={[{ keys: shortcutKeys }]} />
 					{/if}
 				</LayoutRow>
 			{/if}

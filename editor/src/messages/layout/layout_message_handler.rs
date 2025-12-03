@@ -315,6 +315,7 @@ impl LayoutMessageHandler {
 				responses.add(callback_message);
 			}
 			Widget::ImageLabel(_) => {}
+			Widget::ShortcutLabel(_) => {}
 			Widget::IconLabel(_) => {}
 			Widget::NodeCatalog(node_type_input) => match action {
 				WidgetValueAction::Commit => {

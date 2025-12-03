@@ -1152,6 +1152,14 @@ export class ImageLabel extends WidgetProps {
 	tooltipShortcut!: ActionKeys | undefined;
 }
 
+export class ShortcutLabel extends WidgetProps {
+	@Transform(({ value }: { value: ActionKeys[] }) => value || undefined)
+	shortcuts!: ActionKeys[] | undefined;
+
+	@Transform(({ value }: { value: MouseMotion }) => value || undefined)
+	mouseMotion!: MouseMotion | undefined;
+}
+
 export type NumberInputIncrementBehavior = "Add" | "Multiply" | "Callback" | "None";
 export type NumberInputMode = "Increment" | "Range";
 
@@ -1445,6 +1453,7 @@ const widgetSubTypes = [
 	{ value: IconButton, name: "IconButton" },
 	{ value: ImageButton, name: "ImageButton" },
 	{ value: ImageLabel, name: "ImageLabel" },
+	{ value: ShortcutLabel, name: "ShortcutLabel" },
 	{ value: IconLabel, name: "IconLabel" },
 	{ value: NodeCatalog, name: "NodeCatalog" },
 	{ value: NumberInput, name: "NumberInput" },

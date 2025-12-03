@@ -448,7 +448,7 @@
 					<TextLabel class="entry-label" styles={{ "font-family": `${!entry.font ? "inherit" : entry.value}` }}>{entry.label}</TextLabel>
 
 					{#if entry.tooltipShortcut?.keys.length}
-						<ShortcutLabel keysWithLabelsGroups={[entry.tooltipShortcut.keys]} />
+						<ShortcutLabel shortcuts={[entry.tooltipShortcut]} />
 					{/if}
 
 					{#if entry.children?.length}

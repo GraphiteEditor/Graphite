@@ -365,13 +365,6 @@ impl fmt::Display for KeysGroup {
 	}
 }
 
-impl From<KeysGroup> for String {
-	fn from(keys: KeysGroup) -> Self {
-		let layout_keys: LayoutKeysGroup = keys.into();
-		serde_json::to_string(&layout_keys).expect("Failed to serialize KeysGroup")
-	}
-}
-
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct LayoutKeysGroup(pub Vec<LayoutKey>);
 

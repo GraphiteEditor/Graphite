@@ -7,6 +7,7 @@ use crate::messages::animation::TimingInformation;
 use crate::messages::debug::utility_types::MessageLoggingVerbosity;
 use crate::messages::dialog::simple_dialogs;
 use crate::messages::frontend::utility_types::{DocumentDetails, OpenDocument};
+use crate::messages::input_mapper::utility_types::macros::action_keys;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::DocumentMessageContext;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
@@ -894,6 +895,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 								.flush(true)
 								.on_commit(|_| DialogMessage::RequestNewDocumentDialog.into())
 								.widget_holder(),
+							ShortcutLabel::new(action_keys!(DialogMessageDiscriminant::RequestNewDocumentDialog).into_iter().collect()).widget_holder(),
 						],
 						vec![
 							TextButton::new("Open Document")
@@ -901,6 +903,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 								.flush(true)
 								.on_commit(|_| PortfolioMessage::OpenDocument.into())
 								.widget_holder(),
+							ShortcutLabel::new(action_keys!(PortfolioMessageDiscriminant::OpenDocument).into_iter().collect()).widget_holder(),
 						],
 						vec![
 							TextButton::new("Open Demo Artwork")

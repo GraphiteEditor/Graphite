@@ -2,7 +2,7 @@
 	import { getContext, onMount } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import { type HintData, type HintInfo, type LayoutKeysGroup, UpdateInputHints } from "@graphite/messages";
+	import { type ActionKeys, type HintData, type HintInfo, UpdateInputHints } from "@graphite/messages";
 	import { operatingSystem } from "@graphite/utility-functions/platform";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -14,8 +14,8 @@
 
 	let hintData: HintData = [];
 
-	function inputKeysForPlatform(hint: HintInfo): LayoutKeysGroup[] {
-		return operatingSystem() === "Mac" && hint.keyGroupsMac ? hint.keyGroupsMac : hint.keyGroups;
+	function inputKeysForPlatform(hint: HintInfo): ActionKeys[] {
+		return operatingSystem() === "Mac" && hint.keyGroupsMac ? hint.keyGroupsMac.map((keys) => ({ keys })) : hint.keyGroups.map((keys) => ({ keys }));
 	}
 
 	onMount(() => {
@@ -38,7 +38,7 @@
 				{#if hint.slash}
 					<TextLabel bold={true} class="slash">/</TextLabel>
 				{/if}
-				<ShortcutLabel mouseMotion={hint.mouse} keysWithLabelsGroups={inputKeysForPlatform(hint)} />
+				<ShortcutLabel mouseMotion={hint.mouse} shortcuts={inputKeysForPlatform(hint)} />
 				{#if hint.label}
 					<TextLabel class="hint-text">{hint.label}</TextLabel>
 				{/if}
@@ -66,6 +66,7 @@
 
 			:is(.plus, .slash, .hint-text, .shortcut-label) {
 				white-space: nowrap;
+				flex-shrink: 0;
 				line-height: 24px;
 				margin: 0 8px;
 

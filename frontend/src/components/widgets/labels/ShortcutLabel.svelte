@@ -1,13 +1,13 @@
 <script lang="ts">
 	import type { IconName } from "@graphite/icons";
-	import { type KeyRaw, type LayoutKeysGroup, type MouseMotion } from "@graphite/messages";
+	import type { ActionKeys, KeyRaw, LayoutKeysGroup, MouseMotion } from "@graphite/messages";
 	import { operatingSystem } from "@graphite/utility-functions/platform";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 
-	export let keysWithLabelsGroups: LayoutKeysGroup[] = [];
+	export let shortcuts: ActionKeys[] = [];
 	export let mouseMotion: MouseMotion | undefined = undefined;
 
 	function keyTextOrIconList(keyGroup: LayoutKeysGroup): { label?: string; icon?: IconName }[] {
@@ -77,9 +77,9 @@
 </script>
 
 <LayoutRow class="shortcut-label">
-	{#each keysWithLabelsGroups as keysWithLabels}
+	{#each shortcuts as shortcut}
 		<div class="input-key">
-			{#each keyTextOrIconList(keysWithLabels) as keyInfo}
+			{#each keyTextOrIconList(shortcut.keys) as keyInfo}
 				{#if keyInfo.icon}
 					<IconLabel icon={keyInfo.icon} />
 				{:else if keyInfo.label !== undefined}

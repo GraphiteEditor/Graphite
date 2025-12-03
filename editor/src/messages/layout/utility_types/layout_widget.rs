@@ -334,7 +334,7 @@ impl LayoutGroup {
 				Widget::TextInput(x) => &mut x.tooltip_label,
 				Widget::TextLabel(x) => &mut x.tooltip_label,
 				Widget::BreadcrumbTrailButtons(x) => &mut x.tooltip_label,
-				Widget::ReferencePointInput(_) | Widget::RadioInput(_) | Widget::Separator(_) | Widget::WorkingColorsInput(_) | Widget::NodeCatalog(_) => continue,
+				Widget::ReferencePointInput(_) | Widget::RadioInput(_) | Widget::Separator(_) | Widget::ShortcutLabel(_) | Widget::WorkingColorsInput(_) | Widget::NodeCatalog(_) => continue,
 			};
 			if val.is_empty() {
 				val.clone_from(&label);
@@ -370,7 +370,7 @@ impl LayoutGroup {
 				Widget::TextInput(x) => &mut x.tooltip_description,
 				Widget::TextLabel(x) => &mut x.tooltip_description,
 				Widget::BreadcrumbTrailButtons(x) => &mut x.tooltip_description,
-				Widget::ReferencePointInput(_) | Widget::RadioInput(_) | Widget::Separator(_) | Widget::WorkingColorsInput(_) | Widget::NodeCatalog(_) => continue,
+				Widget::ReferencePointInput(_) | Widget::RadioInput(_) | Widget::Separator(_) | Widget::ShortcutLabel(_) | Widget::WorkingColorsInput(_) | Widget::NodeCatalog(_) => continue,
 			};
 			if val.is_empty() {
 				val.clone_from(&description);
@@ -566,6 +566,7 @@ pub enum Widget {
 	IconLabel(IconLabel),
 	ImageButton(ImageButton),
 	ImageLabel(ImageLabel),
+	ShortcutLabel(ShortcutLabel),
 	NodeCatalog(NodeCatalog),
 	NumberInput(NumberInput),
 	ParameterExposeButton(ParameterExposeButton),
@@ -625,6 +626,7 @@ impl DiffUpdate {
 				Widget::TextButton(widget) => widget.tooltip_shortcut.as_mut(),
 				Widget::ImageButton(widget) => widget.tooltip_shortcut.as_mut(),
 				Widget::IconLabel(_)
+				| Widget::ShortcutLabel(_)
 				| Widget::ImageLabel(_)
 				| Widget::CurveInput(_)
 				| Widget::NodeCatalog(_)
@@ -640,6 +642,14 @@ impl DiffUpdate {
 			// Convert `ActionKeys::Action` to `ActionKeys::Keys`
 			if let Some(tooltip_shortcut) = tooltip_shortcut {
 				tooltip_shortcut.to_keys(action_input_mapping);
+			}
+
+			// Handle ShortcutLabel separately because it can have multiple shortcuts
+			if let Widget::ShortcutLabel(shortcut_label) = &mut widget_holder.widget {
+				shortcut_label.shortcuts.iter_mut().for_each(|shortcut| {
+					// Convert `ActionKeys::Action` to `ActionKeys::Keys`
+					shortcut.to_keys(action_input_mapping);
+				});
 			}
 
 			// Handle RadioInput separately because its tooltips are children of the widget
