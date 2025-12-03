@@ -1,11 +1,10 @@
 use graphene_std::Color;
 use graphene_std::raster::Image;
 use graphite_editor::messages::app_window::app_window_message_handler::AppWindowPlatform;
-use graphite_editor::messages::layout::LayoutMessage;
 use graphite_editor::messages::prelude::*;
-use graphite_editor::messages::tool::tool_messages::tool_prelude::{LayoutTarget, WidgetId};
 
 use crate::messages::Platform;
+use crate::utils::menu::parse_item_path;
 
 use super::DesktopWrapperMessageDispatcher;
 use super::messages::{DesktopFrontendMessage, DesktopWrapperMessage, EditorMessage, OpenFileDialogContext, SaveFileDialogContext};
@@ -151,28 +150,11 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 			dispatcher.queue_editor_message(message);
 		}
 		DesktopWrapperMessage::MenuEvent { id } => {
-			let mut id_parts = id.split(':');
-			let Some(widget_id) = id_parts.next() else {
+			if let Some(message) = parse_item_path(id) {
+				dispatcher.queue_editor_message(message);
+			} else {
 				tracing::error!("Received a malformed MenuEvent id");
-				return;
-			};
-			let widget_id = widget_id.parse::<u64>().unwrap();
-
-			let value = id_parts
-				.map(|part| {
-					use base64::prelude::*;
-					let bytes = base64::engine::general_purpose::STANDARD.decode(part).unwrap();
-					String::from_utf8(bytes).unwrap()
-				})
-				.collect::<Vec<_>>();
-			let value = serde_json::to_value(value).unwrap();
-
-			let message = LayoutMessage::WidgetValueUpdate {
-				layout_target: LayoutTarget::MenuBar,
-				widget_id: WidgetId(widget_id),
-				value,
-			};
-			dispatcher.queue_editor_message(message);
+			}
 		}
 	}
 }

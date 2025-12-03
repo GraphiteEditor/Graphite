@@ -484,7 +484,7 @@ impl LayoutMessageHandler {
 					widget_diffs = vec![WidgetDiff {
 						widget_path: Vec::new(),
 						new_value: DiffUpdate::SubLayout(current.layout.clone()),
-					}]
+					}];
 				}
 
 				self.send_diff(widget_diffs, layout_target, responses, action_input_mapping);

@@ -1,12 +1,16 @@
 #[cfg(target_os = "macos")]
 pub(crate) mod menu {
+	use base64::engine::Engine;
+	use base64::engine::general_purpose::STANDARD as BASE64;
+
 	use graphite_editor::messages::input_mapper::utility_types::input_keyboard::{Key, LayoutKey, LayoutKeysGroup};
 	use graphite_editor::messages::input_mapper::utility_types::misc::ActionKeys;
-	use graphite_editor::messages::tool::tool_messages::tool_prelude::{LayoutGroup, MenuListEntry, SubLayout, Widget};
+	use graphite_editor::messages::layout::LayoutMessage;
+	use graphite_editor::messages::tool::tool_messages::tool_prelude::{LayoutGroup, LayoutTarget, MenuListEntry, SubLayout, Widget, WidgetId};
 
-	use crate::messages::{KeyCode, MenuItem, Modifiers, Shortcut};
+	use crate::messages::{EditorMessage, KeyCode, MenuItem, Modifiers, Shortcut};
 
-	pub(crate) fn convert_menu_bar_entries_to_menu_items(layout: &SubLayout) -> Vec<MenuItem> {
+	pub(crate) fn convert_menu_bar_layout_to_menu_items(layout: &SubLayout) -> Vec<MenuItem> {
 		let layout_group = match layout.as_slice() {
 			[layout_group] => layout_group,
 			_ => panic!("Menu bar layout is supposed to have exactly one layout group"),
@@ -14,7 +18,6 @@ pub(crate) mod menu {
 		let LayoutGroup::Row { widgets } = layout_group else {
 			panic!("Menu bar layout group is supposed to be a row");
 		};
-		println!("");
 		widgets
 			.into_iter()
 			.map(|widget| {
@@ -22,7 +25,7 @@ pub(crate) mod menu {
 					Widget::TextButton(text_button) => text_button,
 					_ => panic!("Menu bar layout top-level widgets are supposed to be text buttons"),
 				};
-                
+
 				MenuItem::SubMenu {
 					id: widget.widget_id.to_string(),
 					text: text_button.label.clone(),
@@ -33,15 +36,30 @@ pub(crate) mod menu {
 			.collect::<Vec<MenuItem>>()
 	}
 
-	fn item_path_to_string(widget_id: u64, path: Vec<String>) -> String {
-		let path = path
-			.into_iter()
-			.map(|element| {
-				use base64::prelude::*;
-				base64::engine::general_purpose::STANDARD.encode(element)
+	pub(crate) fn parse_item_path(id: String) -> Option<EditorMessage> {
+		let mut id_parts = id.split(':');
+		let widget_id = id_parts.next()?.parse::<u64>().ok()?;
+
+		let value = id_parts
+			.map(|part| {
+				let bytes = BASE64.decode(part).ok()?;
+				String::from_utf8(bytes).ok()
 			})
-			.collect::<Vec<_>>()
-			.join(":");
+			.collect::<Option<Vec<String>>>()?;
+		let value = serde_json::to_value(value).ok()?;
+
+		Some(
+			LayoutMessage::WidgetValueUpdate {
+				layout_target: LayoutTarget::MenuBar,
+				widget_id: WidgetId(widget_id),
+				value,
+			}
+			.into(),
+		)
+	}
+
+	fn item_path_to_string(widget_id: u64, path: Vec<String>) -> String {
+		let path = path.into_iter().map(|element| BASE64.encode(element)).collect::<Vec<_>>().join(":");
 		format!("{widget_id}:{path}")
 	}
 

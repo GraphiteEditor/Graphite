@@ -123,13 +123,10 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 						new_value: DiffUpdate::SubLayout(layout),
 					},
 				] if widget_path.is_empty() => {
-					let entries = crate::utils::menu::convert_menu_bar_entries_to_menu_items(layout);
+					let entries = crate::utils::menu::convert_menu_bar_layout_to_menu_items(layout);
 					dispatcher.respond(DesktopFrontendMessage::UpdateMenu { entries });
 				}
-				u => {
-					dbg!(u);
-					tracing::error!("received invalid MeneBar update")
-				}
+				_ => {}
 			}
 		}
 		FrontendMessage::WindowClose => {
