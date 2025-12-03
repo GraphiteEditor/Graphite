@@ -1546,8 +1546,6 @@ export function patchWidgetLayout(layout: /* &mut */ WidgetLayout, updates: Widg
 				console.error("Tried to index widget");
 				return targetLayout;
 			}
-			// This is a path traversal so we can assume from the backend that it exists
-			if (targetLayout && "action" in targetLayout) return targetLayout.children![index];
 
 			return targetLayout?.[index];
 		}, layout.layout as UIItem);
