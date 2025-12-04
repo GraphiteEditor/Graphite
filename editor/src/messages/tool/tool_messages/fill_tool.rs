@@ -37,7 +37,7 @@ impl ToolMetadata for FillTool {
 
 impl LayoutHolder for FillTool {
 	fn layout(&self) -> Layout {
-		Layout::WidgetLayout(WidgetLayout::default())
+		Layout::default()
 	}
 }
 

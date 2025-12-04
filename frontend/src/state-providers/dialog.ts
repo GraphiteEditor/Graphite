@@ -2,25 +2,17 @@ import { writable } from "svelte/store";
 
 import { type Editor } from "@graphite/editor";
 import { type IconName } from "@graphite/icons";
-import {
-	DisplayDialog,
-	DisplayDialogDismiss,
-	UpdateDialogButtons,
-	UpdateDialogColumn1,
-	UpdateDialogColumn2,
-	patchWidgetLayout,
-	TriggerDisplayThirdPartyLicensesDialog,
-	type LayoutGroup,
-} from "@graphite/messages";
+import { DisplayDialog, DisplayDialogDismiss, UpdateDialogButtons, UpdateDialogColumn1, UpdateDialogColumn2, patchLayout, TriggerDisplayThirdPartyLicensesDialog } from "@graphite/messages";
+import type { Layout } from "@graphite/messages";
 
 export function createDialogState(editor: Editor) {
 	const { subscribe, update } = writable({
 		visible: false,
 		title: "",
 		icon: "" as IconName,
-		buttons: [] as LayoutGroup[],
-		column1: [] as LayoutGroup[],
-		column2: [] as LayoutGroup[],
+		buttons: [] as Layout,
+		column1: [] as Layout,
+		column2: [] as Layout,
 		// Special case for the crash dialog because we cannot handle button widget callbacks from Rust once the editor has panicked
 		panicDetails: "",
 	});
@@ -65,21 +57,21 @@ export function createDialogState(editor: Editor) {
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateDialogButtons, (updateDialogButtons) => {
 		update((state) => {
-			patchWidgetLayout(state.buttons, updateDialogButtons);
+			patchLayout(state.buttons, updateDialogButtons);
 
 			return state;
 		});
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateDialogColumn1, (updateDialogColumn1) => {
 		update((state) => {
-			patchWidgetLayout(state.column1, updateDialogColumn1);
+			patchLayout(state.column1, updateDialogColumn1);
 
 			return state;
 		});
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateDialogColumn2, (updateDialogColumn2) => {
 		update((state) => {
-			patchWidgetLayout(state.column2, updateDialogColumn2);
+			patchLayout(state.column2, updateDialogColumn2);
 
 			return state;
 		});

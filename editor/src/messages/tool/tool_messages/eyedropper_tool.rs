@@ -35,7 +35,7 @@ impl ToolMetadata for EyedropperTool {
 
 impl LayoutHolder for EyedropperTool {
 	fn layout(&self) -> Layout {
-		Layout::WidgetLayout(WidgetLayout::default())
+		Layout::default()
 	}
 }
 

@@ -1218,7 +1218,7 @@ export class PopoverButton extends WidgetProps {
 	tooltipShortcut!: ActionShortcut | undefined;
 
 	// Body
-	popoverLayout!: LayoutGroup[];
+	popoverLayout!: Layout;
 
 	popoverMinWidth: number | undefined;
 }
@@ -1453,19 +1453,14 @@ export function narrowWidgetProps<K extends WidgetPropsNames>(props: WidgetProps
 	else return undefined;
 }
 
-export class Widget {
-	constructor(props: WidgetPropsSet, widgetId: bigint) {
-		this.props = props;
-		this.widgetId = widgetId;
-	}
-
+export class WidgetInstance {
 	@Type(() => WidgetProps, { discriminator: { property: "kind", subTypes: [...widgetSubTypes] }, keepDiscriminatorProperty: true })
 	props!: WidgetPropsSet;
 
 	widgetId!: bigint;
 }
 
-function hoistWidgetInstance(widgetInstance: any): Widget {
+function hoistWidgetInstance(widgetInstance: any): WidgetInstance {
 	const kind = Object.keys(widgetInstance.widget)[0];
 	const props = widgetInstance.widget[kind];
 	props.kind = kind;
@@ -1476,10 +1471,10 @@ function hoistWidgetInstance(widgetInstance: any): Widget {
 
 	const { widgetId } = widgetInstance;
 
-	return plainToClass(Widget, { props, widgetId });
+	return plainToClass(WidgetInstance, { props, widgetId });
 }
 
-function hoistWidgetInstances(widgetInstance: any[]): Widget[] {
+function hoistWidgetInstances(widgetInstance: any[]): WidgetInstance[] {
 	return widgetInstance.map(hoistWidgetInstance);
 }
 
@@ -1506,15 +1501,29 @@ export type LayoutTarget =
 
 export class WidgetDiffUpdate extends JsMessage {
 	// TODO: Replace `any` with correct typing
-	@Transform(({ value }: { value: any }) => createWidgetDiff(value))
+	@Transform(({ value }: { value: WidgetDiff[] }) => {
+		// Unpacking rust types to more usable type in the frontend
+		return value.map((diff) => {
+			const { widgetPath, newValue } = diff;
+
+			if ("layout" in newValue) return { widgetPath, newValue: newValue.layout.map(createLayoutGroup) };
+			if ("layoutGroup" in newValue) return { widgetPath, newValue: createLayoutGroup(newValue.layoutGroup) };
+			if ("widget" in newValue) return { widgetPath, newValue: hoistWidgetInstance(newValue.widget) };
+
+			// This code should be unreachable
+			throw new Error("DiffUpdate invalid");
+		});
+	})
 	diff!: WidgetDiff[];
 }
 
-type UIItem = LayoutGroup[] | LayoutGroup | Widget[] | Widget;
-type WidgetDiff = { widgetPath: number[]; newValue: UIItem };
+type DiffUpdate = { layout: Layout } | { layoutGroup: LayoutGroup } | { widget: WidgetInstance };
+type WidgetDiff = { widgetPath: number[]; newValue: DiffUpdate };
+
+type UIItem = Layout | LayoutGroup | WidgetInstance[] | WidgetInstance;
 
 // Updates a widget layout based on a list of updates, giving the new layout by mutating the `layout` argument
-export function patchWidgetLayout(layout: /* &mut */ LayoutGroup[], updates: WidgetDiffUpdate) {
+export function patchLayout(layout: /* &mut */ Layout, updates: WidgetDiffUpdate) {
 	updates.diff.forEach((update) => {
 		// Find the object where the diff applies to
 		const diffObject = update.widgetPath.reduce((targetLayout: UIItem | undefined, index: number): UIItem | undefined => {
@@ -1522,7 +1531,7 @@ export function patchWidgetLayout(layout: /* &mut */ LayoutGroup[], updates: Wid
 			if (targetLayout && "rowWidgets" in targetLayout) return targetLayout.rowWidgets[index];
 			if (targetLayout && "tableWidgets" in targetLayout) return targetLayout.tableWidgets[index];
 			if (targetLayout && "layout" in targetLayout) return targetLayout.layout[index];
-			if (targetLayout instanceof Widget) {
+			if (targetLayout instanceof WidgetInstance) {
 				if (targetLayout.props.kind === "PopoverButton" && targetLayout.props instanceof PopoverButton && targetLayout.props.popoverLayout) {
 					return targetLayout.props.popoverLayout[index];
 				}
@@ -1540,7 +1549,7 @@ export function patchWidgetLayout(layout: /* &mut */ LayoutGroup[], updates: Wid
 		// tries to update the layout, it attempts to insert only the changes against the old layout that no longer exists.
 		if (diffObject === undefined) {
 			// eslint-disable-next-line no-console
-			console.error("In `patchWidgetLayout`, the `diffObject` is undefined. The layout has not been updated. See the source code comment above this error for hints.");
+			console.error("In `patchLayout`, the `diffObject` is undefined. The layout has not been updated. See the source code comment above this error for hints.");
 			return;
 		}
 
@@ -1559,43 +1568,26 @@ export function patchWidgetLayout(layout: /* &mut */ LayoutGroup[], updates: Wid
 }
 
 export type LayoutGroup = WidgetSpanRow | WidgetSpanColumn | WidgetTable | WidgetSection;
+export type Layout = LayoutGroup[];
 
-export type WidgetSpanColumn = { columnWidgets: Widget[] };
+export type WidgetSpanColumn = { columnWidgets: WidgetInstance[] };
 export function isWidgetSpanColumn(layoutColumn: LayoutGroup): layoutColumn is WidgetSpanColumn {
 	return Boolean((layoutColumn as WidgetSpanColumn)?.columnWidgets);
 }
 
-export type WidgetSpanRow = { rowWidgets: Widget[] };
+export type WidgetSpanRow = { rowWidgets: WidgetInstance[] };
 export function isWidgetSpanRow(layoutRow: LayoutGroup): layoutRow is WidgetSpanRow {
 	return Boolean((layoutRow as WidgetSpanRow)?.rowWidgets);
 }
 
-export type WidgetTable = { tableWidgets: Widget[][]; unstyled: boolean };
+export type WidgetTable = { tableWidgets: WidgetInstance[][]; unstyled: boolean };
 export function isWidgetTable(layoutTable: LayoutGroup): layoutTable is WidgetTable {
 	return Boolean((layoutTable as WidgetTable)?.tableWidgets);
 }
 
-export type WidgetSection = { name: string; description: string; visible: boolean; pinned: boolean; id: bigint; layout: LayoutGroup[] };
+export type WidgetSection = { name: string; description: string; visible: boolean; pinned: boolean; id: bigint; layout: Layout };
 export function isWidgetSection(layoutRow: LayoutGroup): layoutRow is WidgetSection {
 	return Boolean((layoutRow as WidgetSection)?.layout);
-}
-
-// Unpacking rust types to more usable type in the frontend
-function createWidgetDiff(diffs: any[]): WidgetDiff[] {
-	return diffs.map((diff) => {
-		const { widgetPath, newValue } = diff;
-		if (newValue.widgetLayout) {
-			return { widgetPath, newValue: newValue.widgetLayout.map(createLayoutGroup) };
-		}
-		if (newValue.layoutGroup) {
-			return { widgetPath, newValue: createLayoutGroup(newValue.layoutGroup) };
-		}
-		if (newValue.widget) {
-			return { widgetPath, newValue: hoistWidgetInstance(newValue.widget) };
-		}
-		// This code should be unreachable
-		throw new Error("DiffUpdate invalid");
-	});
 }
 
 // Unpacking a layout group

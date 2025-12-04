@@ -66,7 +66,7 @@ impl DialogLayoutHolder for NewDocumentDialogMessageHandler {
 			TextButton::new("Cancel").on_update(|_| FrontendMessage::DisplayDialogDismiss.into()).widget_instance(),
 		];
 
-		Layout::WidgetLayout(WidgetLayout(vec![LayoutGroup::Row { widgets }]))
+		Layout(vec![LayoutGroup::Row { widgets }])
 	}
 }
 
@@ -117,10 +117,6 @@ impl LayoutHolder for NewDocumentDialogMessageHandler {
 				.widget_instance(),
 		];
 
-		Layout::WidgetLayout(WidgetLayout(vec![
-			LayoutGroup::Row { widgets: name },
-			LayoutGroup::Row { widgets: infinite },
-			LayoutGroup::Row { widgets: scale },
-		]))
+		Layout(vec![LayoutGroup::Row { widgets: name }, LayoutGroup::Row { widgets: infinite }, LayoutGroup::Row { widgets: scale }])
 	}
 }

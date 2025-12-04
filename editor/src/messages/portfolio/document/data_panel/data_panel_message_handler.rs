@@ -1,5 +1,5 @@
 use super::VectorTableTab;
-use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, LayoutTarget, WidgetLayout};
+use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, LayoutTarget};
 use crate::messages::portfolio::document::data_panel::DataPanelMessage;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::prelude::*;
@@ -83,11 +83,12 @@ impl DataPanelMessageHandler {
 		};
 
 		// Main data visualization
-		let mut layout = self
-			.introspected_data
-			.as_ref()
-			.map(|instrospected_data| generate_layout(instrospected_data, &mut layout_data).unwrap_or_else(|| label("Visualization of this data type is not yet supported")))
-			.unwrap_or_default();
+		let mut layout = Layout(
+			self.introspected_data
+				.as_ref()
+				.map(|instrospected_data| generate_layout(instrospected_data, &mut layout_data).unwrap_or_else(|| label("Visualization of this data type is not yet supported")))
+				.unwrap_or_default(),
+		);
 
 		let mut widgets = Vec::new();
 
@@ -127,11 +128,11 @@ impl DataPanelMessageHandler {
 		}
 
 		if !widgets.is_empty() {
-			layout.insert(0, LayoutGroup::Row { widgets });
+			layout.0.insert(0, LayoutGroup::Row { widgets });
 		}
 
 		responses.add(LayoutMessage::SendLayout {
-			layout: Layout::WidgetLayout(WidgetLayout(layout)),
+			layout,
 			layout_target: LayoutTarget::DataPanel,
 		});
 	}

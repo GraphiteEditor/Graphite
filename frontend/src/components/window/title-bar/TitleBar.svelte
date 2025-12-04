@@ -2,8 +2,8 @@
 	import { getContext, onMount } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import type { LayoutGroup } from "@graphite/messages";
-	import { patchWidgetLayout, UpdateMenuBarLayout } from "@graphite/messages";
+	import type { Layout } from "@graphite/messages";
+	import { patchLayout, UpdateMenuBarLayout } from "@graphite/messages";
 	import type { AppWindowState } from "@graphite/state-providers/app-window";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -15,11 +15,11 @@
 	const appWindow = getContext<AppWindowState>("appWindow");
 	const editor = getContext<Editor>("editor");
 
-	let menuBarLayout: LayoutGroup[] = [];
+	let menuBarLayout: Layout = [];
 
 	onMount(() => {
 		editor.subscriptions.subscribeJsMessage(UpdateMenuBarLayout, (updateMenuBarLayout) => {
-			patchWidgetLayout(menuBarLayout, updateMenuBarLayout);
+			patchLayout(menuBarLayout, updateMenuBarLayout);
 			menuBarLayout = menuBarLayout;
 		});
 	});

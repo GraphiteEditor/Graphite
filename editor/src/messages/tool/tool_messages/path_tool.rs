@@ -342,7 +342,7 @@ impl LayoutHolder for PathTool {
 
 		let _pin_pivot = pin_pivot_widget(self.tool_data.pivot_gizmo.pin_active(), false, PivotToolSource::Path);
 
-		Layout::WidgetLayout(WidgetLayout(vec![LayoutGroup::Row {
+		Layout(vec![LayoutGroup::Row {
 			widgets: vec![
 				x_location,
 				related_seperator.clone(),
@@ -367,7 +367,7 @@ impl LayoutHolder for PathTool {
 				// related_seperator.clone(),
 				// pin_pivot,
 			],
-		}]))
+		}])
 	}
 }
 

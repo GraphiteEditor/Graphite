@@ -117,7 +117,7 @@ pub struct DocumentToolData {
 
 impl DocumentToolData {
 	pub fn update_working_colors(&self, responses: &mut VecDeque<Message>) {
-		let layout = WidgetLayout(vec![
+		let layout = Layout(vec![
 			LayoutGroup::Row {
 				widgets: vec![WorkingColorsInput::new(self.primary_color.to_gamma_srgb(), self.secondary_color.to_gamma_srgb()).widget_instance()],
 			},
@@ -138,7 +138,7 @@ impl DocumentToolData {
 		]);
 
 		responses.add(LayoutMessage::SendLayout {
-			layout: Layout::WidgetLayout(layout),
+			layout,
 			layout_target: LayoutTarget::WorkingColors,
 		});
 
@@ -290,7 +290,7 @@ impl LayoutHolder for ToolData {
 			.skip(1)
 			.collect();
 
-		Layout::WidgetLayout(WidgetLayout(vec![LayoutGroup::Row { widgets: tool_groups_layout }]))
+		Layout(vec![LayoutGroup::Row { widgets: tool_groups_layout }])
 	}
 }
 
@@ -545,7 +545,7 @@ impl HintData {
 			}
 		}
 
-		Layout::WidgetLayout(WidgetLayout(vec![LayoutGroup::Row { widgets }]))
+		Layout(vec![LayoutGroup::Row { widgets }])
 	}
 
 	pub fn send_layout(&self, responses: &mut VecDeque<Message>) {
@@ -557,7 +557,7 @@ impl HintData {
 
 	pub fn clear_layout(responses: &mut VecDeque<Message>) {
 		responses.add(LayoutMessage::SendLayout {
-			layout: Layout::WidgetLayout(WidgetLayout(vec![])),
+			layout: Layout::default(),
 			layout_target: LayoutTarget::StatusBarHints,
 		});
 	}
