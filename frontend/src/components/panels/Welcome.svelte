@@ -2,8 +2,8 @@
 	import { getContext, onMount, onDestroy } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import type { LayoutGroup } from "@graphite/messages";
-	import { patchWidgetLayout, UpdateWelcomeScreenButtonsLayout } from "@graphite/messages";
+	import type { Layout } from "@graphite/messages";
+	import { patchLayout, UpdateWelcomeScreenButtonsLayout } from "@graphite/messages";
 	import { extractPixelData } from "@graphite/utility-functions/rasterization";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -14,11 +14,11 @@
 
 	const editor = getContext<Editor>("editor");
 
-	let welcomePanelButtonsLayout: LayoutGroup[] = [];
+	let welcomePanelButtonsLayout: Layout = [];
 
 	onMount(() => {
 		editor.subscriptions.subscribeJsMessage(UpdateWelcomeScreenButtonsLayout, (updateWelcomeScreenButtonsLayout) => {
-			patchWidgetLayout(welcomePanelButtonsLayout, updateWelcomeScreenButtonsLayout);
+			patchLayout(welcomePanelButtonsLayout, updateWelcomeScreenButtonsLayout);
 			welcomePanelButtonsLayout = welcomePanelButtonsLayout;
 		});
 

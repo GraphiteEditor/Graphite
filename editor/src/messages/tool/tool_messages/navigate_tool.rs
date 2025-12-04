@@ -34,7 +34,7 @@ impl ToolMetadata for NavigateTool {
 
 impl LayoutHolder for NavigateTool {
 	fn layout(&self) -> Layout {
-		Layout::WidgetLayout(WidgetLayout::default())
+		Layout::default()
 	}
 }
 

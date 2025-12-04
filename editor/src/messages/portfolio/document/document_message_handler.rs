@@ -323,17 +323,17 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				// Clear the control bar
 				responses.add(LayoutMessage::SendLayout {
-					layout: Layout::WidgetLayout(Default::default()),
+					layout: Layout::default(),
 					layout_target: LayoutTarget::LayersPanelControlLeftBar,
 				});
 				responses.add(LayoutMessage::SendLayout {
-					layout: Layout::WidgetLayout(Default::default()),
+					layout: Layout::default(),
 					layout_target: LayoutTarget::LayersPanelControlRightBar,
 				});
 
 				// Clear the bottom bar
 				responses.add(LayoutMessage::SendLayout {
-					layout: Layout::WidgetLayout(Default::default()),
+					layout: Layout::default(),
 					layout_target: LayoutTarget::LayersPanelBottomBar,
 				});
 			}
@@ -2175,7 +2175,7 @@ impl DocumentMessageHandler {
 	pub fn update_document_widgets(&self, responses: &mut VecDeque<Message>, animation_is_playing: bool, time: Duration) {
 		// Document mode (dropdown menu at the left of the bar above the viewport, before the tool options)
 
-		let document_mode_layout = WidgetLayout(vec![LayoutGroup::Row {
+		let layout = Layout(vec![LayoutGroup::Row {
 			widgets: vec![
 				// DropdownInput::new(
 				// 	vec![vec![
@@ -2200,7 +2200,7 @@ impl DocumentMessageHandler {
 		}]);
 
 		responses.add(LayoutMessage::SendLayout {
-			layout: Layout::WidgetLayout(document_mode_layout),
+			layout,
 			layout_target: LayoutTarget::DocumentMode,
 		});
 
@@ -2235,7 +2235,7 @@ impl DocumentMessageHandler {
 				})
 				.widget_instance(),
 			PopoverButton::new()
-				.popover_layout(WidgetLayout(vec![
+				.popover_layout(Layout(vec![
 					LayoutGroup::Row {
 						widgets: vec![TextLabel::new("Overlays").bold(true).widget_instance()],
 					},
@@ -2484,7 +2484,7 @@ impl DocumentMessageHandler {
 				})
 				.widget_instance(),
 			PopoverButton::new()
-				.popover_layout(WidgetLayout(
+				.popover_layout(Layout(
 					[
 						LayoutGroup::Row {
 							widgets: vec![TextLabel::new("Snapping").bold(true).widget_instance()],
@@ -2548,7 +2548,7 @@ impl DocumentMessageHandler {
 				.on_update(|optional_input: &CheckboxInput| DocumentMessage::GridVisibility { visible: optional_input.checked }.into())
 				.widget_instance(),
 			PopoverButton::new()
-				.popover_layout(WidgetLayout(overlay_options(&self.snapping_state.grid)))
+				.popover_layout(Layout(overlay_options(&self.snapping_state.grid)))
 				.popover_min_width(Some(320))
 				.widget_instance(),
 			Separator::new(SeparatorType::Unrelated).widget_instance(),
@@ -2574,7 +2574,7 @@ impl DocumentMessageHandler {
 			.narrow(true)
 			.widget_instance(),
 			// PopoverButton::new().popover_layout(
-			// 	WidgetLayout(vec![
+			// 	Layout(vec![
 			// 		LayoutGroup::Row {
 			// 			widgets: vec![TextLabel::new("Render Mode").bold(true).widget_instance()],
 			// 		},
@@ -2632,10 +2632,8 @@ impl DocumentMessageHandler {
 				.widget_instance(),
 		]);
 
-		let document_bar_layout = WidgetLayout(vec![LayoutGroup::Row { widgets }]);
-
 		responses.add(LayoutMessage::SendLayout {
-			layout: Layout::WidgetLayout(document_bar_layout),
+			layout: Layout(vec![LayoutGroup::Row { widgets }]),
 			layout_target: LayoutTarget::DocumentBar,
 		});
 		responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -2773,7 +2771,7 @@ impl DocumentMessageHandler {
 				.tooltip_label("Fill")
 				.widget_instance(),
 		];
-		let layers_panel_control_bar_left = WidgetLayout(vec![LayoutGroup::Row { widgets }]);
+		let layers_panel_control_bar_left = Layout(vec![LayoutGroup::Row { widgets }]);
 
 		let widgets = vec![
 			IconButton::new(if selection_all_locked { "PadlockLocked" } else { "PadlockUnlocked" }, 24)
@@ -2791,14 +2789,14 @@ impl DocumentMessageHandler {
 				.disabled(!has_selection)
 				.widget_instance(),
 		];
-		let layers_panel_control_bar_right = WidgetLayout(vec![LayoutGroup::Row { widgets }]);
+		let layers_panel_control_bar_right = Layout(vec![LayoutGroup::Row { widgets }]);
 
 		responses.add(LayoutMessage::SendLayout {
-			layout: Layout::WidgetLayout(layers_panel_control_bar_left),
+			layout: layers_panel_control_bar_left,
 			layout_target: LayoutTarget::LayersPanelControlLeftBar,
 		});
 		responses.add(LayoutMessage::SendLayout {
-			layout: Layout::WidgetLayout(layers_panel_control_bar_right),
+			layout: layers_panel_control_bar_right,
 			layout_target: LayoutTarget::LayersPanelControlRightBar,
 		});
 	}
@@ -2845,7 +2843,7 @@ impl DocumentMessageHandler {
 							}
 						})
 						.widget_instance();
-					WidgetLayout(vec![LayoutGroup::Row { widgets: vec![node_chooser] }])
+					Layout(vec![LayoutGroup::Row { widgets: vec![node_chooser] }])
 				})
 				.widget_instance(),
 			Separator::new(SeparatorType::Unrelated).widget_instance(),
@@ -2870,10 +2868,8 @@ impl DocumentMessageHandler {
 				.disabled(!has_selection)
 				.widget_instance(),
 		];
-		let layers_panel_bottom_bar = WidgetLayout(vec![LayoutGroup::Row { widgets }]);
-
 		responses.add(LayoutMessage::SendLayout {
-			layout: Layout::WidgetLayout(layers_panel_bottom_bar),
+			layout: Layout(vec![LayoutGroup::Row { widgets }]),
 			layout_target: LayoutTarget::LayersPanelBottomBar,
 		});
 	}

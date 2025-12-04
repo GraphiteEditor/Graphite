@@ -4,14 +4,14 @@
 	import { shortcutAltClick } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { Editor } from "@graphite/editor";
 	import {
-		patchWidgetLayout,
+		patchLayout,
 		UpdateDocumentLayerDetails,
 		UpdateDocumentLayerStructureJs,
 		UpdateLayersPanelControlBarLeftLayout,
 		UpdateLayersPanelControlBarRightLayout,
 		UpdateLayersPanelBottomBarLayout,
 	} from "@graphite/messages";
-	import type { ActionShortcut, DataBuffer, LayerPanelEntry, LayoutGroup } from "@graphite/messages";
+	import type { ActionShortcut, DataBuffer, LayerPanelEntry, Layout } from "@graphite/messages";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import { operatingSystem } from "@graphite/utility-functions/platform";
 	import { extractPixelData } from "@graphite/utility-functions/rasterization";
@@ -69,25 +69,25 @@
 	let layerToClipAltKeyPressed = false;
 
 	// Layouts
-	let layersPanelControlBarLeftLayout: LayoutGroup[] = [];
-	let layersPanelControlBarRightLayout: LayoutGroup[] = [];
-	let layersPanelBottomBarLayout: LayoutGroup[] = [];
+	let layersPanelControlBarLeftLayout: Layout = [];
+	let layersPanelControlBarRightLayout: Layout = [];
+	let layersPanelBottomBarLayout: Layout = [];
 
 	const altClickKeys: ActionShortcut = shortcutAltClick();
 
 	onMount(() => {
 		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarLeftLayout, (updateLayersPanelControlBarLeftLayout) => {
-			patchWidgetLayout(layersPanelControlBarLeftLayout, updateLayersPanelControlBarLeftLayout);
+			patchLayout(layersPanelControlBarLeftLayout, updateLayersPanelControlBarLeftLayout);
 			layersPanelControlBarLeftLayout = layersPanelControlBarLeftLayout;
 		});
 
 		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarRightLayout, (updateLayersPanelControlBarRightLayout) => {
-			patchWidgetLayout(layersPanelControlBarRightLayout, updateLayersPanelControlBarRightLayout);
+			patchLayout(layersPanelControlBarRightLayout, updateLayersPanelControlBarRightLayout);
 			layersPanelControlBarRightLayout = layersPanelControlBarRightLayout;
 		});
 
 		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelBottomBarLayout, (updateLayersPanelBottomBarLayout) => {
-			patchWidgetLayout(layersPanelBottomBarLayout, updateLayersPanelBottomBarLayout);
+			patchLayout(layersPanelBottomBarLayout, updateLayersPanelBottomBarLayout);
 			layersPanelBottomBarLayout = layersPanelBottomBarLayout;
 		});
 

@@ -1,11 +1,11 @@
 <script lang="ts">
-	import { isWidgetSpanColumn, isWidgetSpanRow, isWidgetSection, type LayoutGroup, isWidgetTable, type LayoutTarget } from "@graphite/messages";
+	import { isWidgetSpanColumn, isWidgetSpanRow, isWidgetSection, type Layout, isWidgetTable, type LayoutTarget } from "@graphite/messages";
 
 	import WidgetSection from "@graphite/components/widgets/WidgetSection.svelte";
 	import WidgetSpan from "@graphite/components/widgets/WidgetSpan.svelte";
 	import WidgetTable from "@graphite/components/widgets/WidgetTable.svelte";
 
-	export let layout: LayoutGroup[];
+	export let layout: Layout;
 	export let layoutTarget: LayoutTarget;
 	let className = "";
 	export { className as class };

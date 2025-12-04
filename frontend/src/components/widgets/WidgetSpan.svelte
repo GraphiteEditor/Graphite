@@ -2,7 +2,7 @@
 	import { getContext } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import type { LayoutTarget, Widget, WidgetSpanColumn, WidgetSpanRow } from "@graphite/messages";
+	import type { LayoutTarget, WidgetInstance, WidgetSpanColumn, WidgetSpanRow } from "@graphite/messages";
 	import { narrowWidgetProps, isWidgetSpanColumn, isWidgetSpanRow } from "@graphite/messages";
 	import { debouncer } from "@graphite/utility-functions/debounce";
 
@@ -54,8 +54,8 @@
 		if (isWidgetSpanColumn(widgetData)) return "column";
 	}
 
-	function watchWidgets(widgetData: WidgetSpanRow | WidgetSpanColumn): Widget[] {
-		let widgets: Widget[] = [];
+	function watchWidgets(widgetData: WidgetSpanRow | WidgetSpanColumn): WidgetInstance[] {
+		let widgets: WidgetInstance[] = [];
 		if (isWidgetSpanRow(widgetData)) widgets = widgetData.rowWidgets;
 		else if (isWidgetSpanColumn(widgetData)) widgets = widgetData.columnWidgets;
 		return widgets;

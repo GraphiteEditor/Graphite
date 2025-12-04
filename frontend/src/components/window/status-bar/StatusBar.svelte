@@ -2,19 +2,19 @@
 	import { getContext, onMount } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import type { LayoutGroup } from "@graphite/messages";
-	import { patchWidgetLayout, UpdateStatusBarHintsLayout } from "@graphite/messages";
+	import type { Layout } from "@graphite/messages";
+	import { patchLayout, UpdateStatusBarHintsLayout } from "@graphite/messages";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
 
 	const editor = getContext<Editor>("editor");
 
-	let statusBarHintsLayout: LayoutGroup[] = [];
+	let statusBarHintsLayout: Layout = [];
 
 	onMount(() => {
 		editor.subscriptions.subscribeJsMessage(UpdateStatusBarHintsLayout, (updateStatusBarHintsLayout) => {
-			patchWidgetLayout(statusBarHintsLayout, updateStatusBarHintsLayout);
+			patchLayout(statusBarHintsLayout, updateStatusBarHintsLayout);
 			statusBarHintsLayout = statusBarHintsLayout;
 		});
 	});

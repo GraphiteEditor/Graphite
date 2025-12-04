@@ -63,7 +63,7 @@ pub struct PopoverButton {
 	pub tooltip_shortcut: Option<ActionShortcut>,
 
 	#[serde(rename = "popoverLayout")]
-	pub popover_layout: WidgetLayout,
+	pub popover_layout: Layout,
 
 	#[serde(rename = "popoverMinWidth")]
 	pub popover_min_width: Option<u32>,

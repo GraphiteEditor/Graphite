@@ -2,18 +2,18 @@
 	import { getContext, onMount, onDestroy } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import { patchWidgetLayout, UpdatePropertiesPanelLayout, type LayoutGroup } from "@graphite/messages";
+	import { patchLayout, UpdatePropertiesPanelLayout, type Layout } from "@graphite/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
 
 	const editor = getContext<Editor>("editor");
 
-	let propertiesPanelLayout: LayoutGroup[] = [];
+	let propertiesPanelLayout: Layout = [];
 
 	onMount(() => {
 		editor.subscriptions.subscribeJsMessage(UpdatePropertiesPanelLayout, (updatePropertiesPanelLayout) => {
-			patchWidgetLayout(propertiesPanelLayout, updatePropertiesPanelLayout);
+			patchLayout(propertiesPanelLayout, updatePropertiesPanelLayout);
 			propertiesPanelLayout = propertiesPanelLayout;
 		});
 	});

@@ -103,24 +103,11 @@ pub trait DialogLayoutHolder: LayoutHolder {
 	}
 }
 
-// TODO: Unwrap this enum
-/// Wraps a choice of layout type. The chosen layout contains an arrangement of widgets mounted somewhere specific in the frontend.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
-pub enum Layout {
-	WidgetLayout(WidgetLayout),
-}
-
-impl Default for Layout {
-	fn default() -> Self {
-		Self::WidgetLayout(WidgetLayout::default())
-	}
-}
-
-// TODO: Unwrap this struct
+/// Contains an arrangement of widgets mounted somewhere specific in the frontend.
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize, PartialEq, specta::Type)]
-pub struct WidgetLayout(pub Vec<LayoutGroup>);
+pub struct Layout(pub Vec<LayoutGroup>);
 
-impl WidgetLayout {
+impl Layout {
 	pub fn iter(&self) -> WidgetIter<'_> {
 		WidgetIter {
 			stack: self.0.iter().collect(),
@@ -144,7 +131,7 @@ impl WidgetLayout {
 			self.0.clone_from(&new.0);
 
 			// Push an update sublayout to the diff
-			let new = DiffUpdate::WidgetLayout(new);
+			let new = DiffUpdate::Layout(new);
 			widget_diffs.push(WidgetDiff {
 				widget_path: widget_path.to_vec(),
 				new_value: new,
@@ -285,7 +272,7 @@ pub enum LayoutGroup {
 		visible: bool,
 		pinned: bool,
 		id: u64,
-		layout: WidgetLayout,
+		layout: Layout,
 	},
 }
 
@@ -588,12 +575,10 @@ pub struct WidgetDiff {
 }
 
 /// The new value of the UI, sent as part of a diff.
-///
-/// An update can represent a single widget or an entire WidgetLayout, or just a single layout group.
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum DiffUpdate {
-	#[serde(rename = "widgetLayout")]
-	WidgetLayout(WidgetLayout),
+	#[serde(rename = "layout")]
+	Layout(Layout),
 	#[serde(rename = "layoutGroup")]
 	LayoutGroup(LayoutGroup),
 	#[serde(rename = "widget")]
@@ -675,7 +660,7 @@ impl DiffUpdate {
 		};
 
 		match self {
-			Self::WidgetLayout(widget_layout) => widget_layout.0.iter_mut().flat_map(|layout_group| layout_group.iter_mut()).for_each(|widget_instance| {
+			Self::Layout(layout) => layout.0.iter_mut().flat_map(|layout_group| layout_group.iter_mut()).for_each(|widget_instance| {
 				convert_tooltip(widget_instance);
 				convert_menu_lists(widget_instance);
 			}),

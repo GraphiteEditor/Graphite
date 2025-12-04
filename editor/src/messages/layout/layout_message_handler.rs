@@ -24,12 +24,10 @@ impl MessageHandler<LayoutMessage, LayoutMessageContext<'_>> for LayoutMessageHa
 		match message {
 			LayoutMessage::ResendActiveWidget { layout_target, widget_id } => {
 				// Find the updated diff based on the specified layout target
-				let Some(diff) = (match &self.layouts[layout_target as usize] {
-					Layout::WidgetLayout(layout) => Self::get_widget_path(layout, widget_id).map(|(widget, widget_path)| {
-						// Create a widget update diff for the relevant id
-						let new_value = DiffUpdate::Widget(widget.clone());
-						WidgetDiff { widget_path, new_value }
-					}),
+				let Some(diff) = Self::get_widget_path(&self.layouts[layout_target as usize], widget_id).map(|(widget, widget_path)| {
+					// Create a widget update diff for the relevant id
+					let new_value = DiffUpdate::Widget(widget.clone());
+					WidgetDiff { widget_path, new_value }
 				}) else {
 					return;
 				};
@@ -41,7 +39,7 @@ impl MessageHandler<LayoutMessage, LayoutMessageContext<'_>> for LayoutMessageHa
 			}
 			LayoutMessage::DestroyLayout { layout_target } => {
 				if let Some(layout) = self.layouts.get_mut(layout_target as usize) {
-					*layout = Default::default();
+					*layout = Layout::default();
 				}
 			}
 			LayoutMessage::WidgetValueCommit { layout_target, widget_id, value } => {
@@ -61,7 +59,7 @@ impl MessageHandler<LayoutMessage, LayoutMessageContext<'_>> for LayoutMessageHa
 
 impl LayoutMessageHandler {
 	/// Get the widget path for the widget with the specified id
-	fn get_widget_path(widget_layout: &WidgetLayout, widget_id: WidgetId) -> Option<(&WidgetInstance, Vec<usize>)> {
+	fn get_widget_path(widget_layout: &Layout, widget_id: WidgetId) -> Option<(&WidgetInstance, Vec<usize>)> {
 		let mut stack = widget_layout.0.iter().enumerate().map(|(index, val)| (vec![index], val)).collect::<Vec<_>>();
 		while let Some((mut widget_path, layout_group)) = stack.pop() {
 			match layout_group {
@@ -124,10 +122,7 @@ impl LayoutMessageHandler {
 			return;
 		};
 
-		let mut layout_iter = match layout {
-			Layout::WidgetLayout(widget_layout) => widget_layout.iter_mut(),
-		};
-		let Some(widget_instance) = layout_iter.find(|widget| widget.widget_id == widget_id) else {
+		let Some(widget_instance) = layout.iter_mut().find(|widget| widget.widget_id == widget_id) else {
 			warn!("handle_widget_callback was called referencing an invalid widget ID, although the layout target was valid. `widget_id: {widget_id}`, `layout_target: {layout_target:?}`",);
 			return;
 		};
@@ -479,31 +474,25 @@ impl LayoutMessageHandler {
 		responses: &mut VecDeque<Message>,
 		action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>,
 	) {
-		match new_layout {
-			Layout::WidgetLayout(_) => {
-				let mut widget_diffs = Vec::new();
+		let mut widget_diffs = Vec::new();
 
-				let Layout::WidgetLayout(current) = &mut self.layouts[layout_target as usize];
-				let Layout::WidgetLayout(new) = new_layout;
-				current.diff(new, &mut Vec::new(), &mut widget_diffs);
+		self.layouts[layout_target as usize].diff(new_layout, &mut Vec::new(), &mut widget_diffs);
 
-				// Skip sending if no diff
-				if widget_diffs.is_empty() {
-					return;
-				}
-
-				// On Mac we need the full MenuBar layout to construct the native menu
-				#[cfg(target_os = "macos")]
-				if layout_target == LayoutTarget::MenuBar {
-					widget_diffs = vec![WidgetDiff {
-						widget_path: Vec::new(),
-						new_value: DiffUpdate::WidgetLayout(current.layout.clone()),
-					}];
-				}
-
-				self.send_diff(widget_diffs, layout_target, responses, action_input_mapping);
-			}
+		// Skip sending if no diff
+		if widget_diffs.is_empty() {
+			return;
 		}
+
+		// On Mac we need the full MenuBar layout to construct the native menu
+		#[cfg(target_os = "macos")]
+		if layout_target == LayoutTarget::MenuBar {
+			widget_diffs = vec![WidgetDiff {
+				widget_path: Vec::new(),
+				new_value: DiffUpdate::Layout(current.layout.clone()),
+			}];
+		}
+
+		self.send_diff(widget_diffs, layout_target, responses, action_input_mapping);
 	}
 
 	/// Send a diff to the frontend based on the layout target.

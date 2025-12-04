@@ -75,7 +75,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Artb
 
 impl LayoutHolder for ArtboardTool {
 	fn layout(&self) -> Layout {
-		Layout::WidgetLayout(WidgetLayout::default())
+		Layout::default()
 	}
 }
 

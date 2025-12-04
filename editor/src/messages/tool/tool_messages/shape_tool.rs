@@ -335,7 +335,7 @@ impl LayoutHolder for ShapeTool {
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
 		widgets.push(create_weight_widget(self.options.line_weight));
 
-		Layout::WidgetLayout(WidgetLayout(vec![LayoutGroup::Row { widgets }]))
+		Layout(vec![LayoutGroup::Row { widgets }])
 	}
 }
 
