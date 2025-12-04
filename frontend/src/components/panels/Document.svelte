@@ -126,7 +126,7 @@
 			totalToolRowsFor2Columns,
 			totalToolRowsFor3Columns,
 		};
-	})($document.toolShelfLayout.layout[0]);
+	})($document.toolShelfLayout[0]);
 
 	function dropFile(e: DragEvent) {
 		const { dataTransfer } = e;
@@ -506,12 +506,12 @@
 <LayoutCol class="document" on:dragover={(e) => e.preventDefault()} on:drop={dropFile}>
 	<LayoutRow class="control-bar" classes={{ "for-graph": $document.graphViewOverlayOpen }} scrollableX={true}>
 		{#if !$document.graphViewOverlayOpen}
-			<WidgetLayout layout={$document.documentModeLayout} />
-			<WidgetLayout layout={$document.toolOptionsLayout} />
+			<WidgetLayout layout={$document.documentModeLayout} layoutTarget="DocumentMode" />
+			<WidgetLayout layout={$document.toolOptionsLayout} layoutTarget="ToolOptions" />
 			<LayoutRow class="spacer" />
-			<WidgetLayout layout={$document.documentBarLayout} />
+			<WidgetLayout layout={$document.documentBarLayout} layoutTarget="DocumentBar" />
 		{:else}
-			<WidgetLayout layout={$document.nodeGraphControlBarLayout} />
+			<WidgetLayout layout={$document.nodeGraphControlBarLayout} layoutTarget="NodeGraphControlBar" />
 		{/if}
 	</LayoutRow>
 	<LayoutRow
@@ -526,13 +526,13 @@
 		<LayoutCol class="tool-shelf">
 			{#if !$document.graphViewOverlayOpen}
 				<LayoutCol class="tools" scrollableY={true}>
-					<WidgetLayout layout={$document.toolShelfLayout} />
+					<WidgetLayout layout={$document.toolShelfLayout} layoutTarget="ToolShelf" />
 				</LayoutCol>
 			{:else}
 				<LayoutRow class="spacer" />
 			{/if}
 			<LayoutCol class="tool-shelf-bottom-widgets">
-				<WidgetLayout class="working-colors-input-area" layout={$document.workingColorsLayout} />
+				<WidgetLayout class="working-colors-input-area" layout={$document.workingColorsLayout} layoutTarget="WorkingColors" />
 			</LayoutCol>
 		</LayoutCol>
 		<LayoutCol class="viewport-container">

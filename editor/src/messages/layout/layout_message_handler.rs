@@ -62,7 +62,7 @@ impl MessageHandler<LayoutMessage, LayoutMessageContext<'_>> for LayoutMessageHa
 impl LayoutMessageHandler {
 	/// Get the widget path for the widget with the specified id
 	fn get_widget_path(widget_layout: &WidgetLayout, widget_id: WidgetId) -> Option<(&WidgetInstance, Vec<usize>)> {
-		let mut stack = widget_layout.layout.iter().enumerate().map(|(index, val)| (vec![index], val)).collect::<Vec<_>>();
+		let mut stack = widget_layout.0.iter().enumerate().map(|(index, val)| (vec![index], val)).collect::<Vec<_>>();
 		while let Some((mut widget_path, layout_group)) = stack.pop() {
 			match layout_group {
 				// Check if any of the widgets in the current column or row have the correct id
@@ -75,13 +75,20 @@ impl LayoutMessageHandler {
 						}
 
 						if let Widget::PopoverButton(popover) = &widget.widget {
-							stack.extend(popover.popover_layout.iter().enumerate().map(|(child, val)| ([widget_path.as_slice(), &[index, child]].concat(), val)));
+							stack.extend(
+								popover
+									.popover_layout
+									.0
+									.iter()
+									.enumerate()
+									.map(|(child, val)| ([widget_path.as_slice(), &[index, child]].concat(), val)),
+							);
 						}
 					}
 				}
 				// A section contains more LayoutGroups which we add to the stack.
 				LayoutGroup::Section { layout, .. } => {
-					stack.extend(layout.iter().enumerate().map(|(index, val)| ([widget_path.as_slice(), &[index]].concat(), val)));
+					stack.extend(layout.0.iter().enumerate().map(|(index, val)| ([widget_path.as_slice(), &[index]].concat(), val)));
 				}
 				LayoutGroup::Table { rows, .. } => {
 					for (row_index, row) in rows.iter().enumerate() {
@@ -97,6 +104,7 @@ impl LayoutMessageHandler {
 								stack.extend(
 									popover
 										.popover_layout
+										.0
 										.iter()
 										.enumerate()
 										.map(|(child, val)| ([widget_path.as_slice(), &[row_index, cell_index, child]].concat(), val)),
@@ -489,7 +497,7 @@ impl LayoutMessageHandler {
 				if layout_target == LayoutTarget::MenuBar {
 					widget_diffs = vec![WidgetDiff {
 						widget_path: Vec::new(),
-						new_value: DiffUpdate::SubLayout(current.layout.clone()),
+						new_value: DiffUpdate::WidgetLayout(current.layout.clone()),
 					}];
 				}
 
@@ -503,23 +511,23 @@ impl LayoutMessageHandler {
 		diff.iter_mut().for_each(|diff| diff.new_value.apply_keyboard_shortcut(action_input_mapping));
 
 		let message = match layout_target {
-			LayoutTarget::DataPanel => FrontendMessage::UpdateDataPanelLayout { layout_target, diff },
-			LayoutTarget::DialogButtons => FrontendMessage::UpdateDialogButtons { layout_target, diff },
-			LayoutTarget::DialogColumn1 => FrontendMessage::UpdateDialogColumn1 { layout_target, diff },
-			LayoutTarget::DialogColumn2 => FrontendMessage::UpdateDialogColumn2 { layout_target, diff },
-			LayoutTarget::DocumentBar => FrontendMessage::UpdateDocumentBarLayout { layout_target, diff },
-			LayoutTarget::DocumentMode => FrontendMessage::UpdateDocumentModeLayout { layout_target, diff },
-			LayoutTarget::LayersPanelBottomBar => FrontendMessage::UpdateLayersPanelBottomBarLayout { layout_target, diff },
-			LayoutTarget::LayersPanelControlLeftBar => FrontendMessage::UpdateLayersPanelControlBarLeftLayout { layout_target, diff },
-			LayoutTarget::LayersPanelControlRightBar => FrontendMessage::UpdateLayersPanelControlBarRightLayout { layout_target, diff },
-			LayoutTarget::MenuBar => FrontendMessage::UpdateMenuBarLayout { layout_target, diff },
-			LayoutTarget::NodeGraphControlBar => FrontendMessage::UpdateNodeGraphControlBarLayout { layout_target, diff },
-			LayoutTarget::PropertiesPanel => FrontendMessage::UpdatePropertiesPanelLayout { layout_target, diff },
-			LayoutTarget::StatusBarHints => FrontendMessage::UpdateStatusBarHintsLayout { layout_target, diff },
-			LayoutTarget::ToolOptions => FrontendMessage::UpdateToolOptionsLayout { layout_target, diff },
-			LayoutTarget::ToolShelf => FrontendMessage::UpdateToolShelfLayout { layout_target, diff },
-			LayoutTarget::WelcomeScreenButtons => FrontendMessage::UpdateWelcomeScreenButtonsLayout { layout_target, diff },
-			LayoutTarget::WorkingColors => FrontendMessage::UpdateWorkingColorsLayout { layout_target, diff },
+			LayoutTarget::DataPanel => FrontendMessage::UpdateDataPanelLayout { diff },
+			LayoutTarget::DialogButtons => FrontendMessage::UpdateDialogButtons { diff },
+			LayoutTarget::DialogColumn1 => FrontendMessage::UpdateDialogColumn1 { diff },
+			LayoutTarget::DialogColumn2 => FrontendMessage::UpdateDialogColumn2 { diff },
+			LayoutTarget::DocumentBar => FrontendMessage::UpdateDocumentBarLayout { diff },
+			LayoutTarget::DocumentMode => FrontendMessage::UpdateDocumentModeLayout { diff },
+			LayoutTarget::LayersPanelBottomBar => FrontendMessage::UpdateLayersPanelBottomBarLayout { diff },
+			LayoutTarget::LayersPanelControlLeftBar => FrontendMessage::UpdateLayersPanelControlBarLeftLayout { diff },
+			LayoutTarget::LayersPanelControlRightBar => FrontendMessage::UpdateLayersPanelControlBarRightLayout { diff },
+			LayoutTarget::MenuBar => FrontendMessage::UpdateMenuBarLayout { diff },
+			LayoutTarget::NodeGraphControlBar => FrontendMessage::UpdateNodeGraphControlBarLayout { diff },
+			LayoutTarget::PropertiesPanel => FrontendMessage::UpdatePropertiesPanelLayout { diff },
+			LayoutTarget::StatusBarHints => FrontendMessage::UpdateStatusBarHintsLayout { diff },
+			LayoutTarget::ToolOptions => FrontendMessage::UpdateToolOptionsLayout { diff },
+			LayoutTarget::ToolShelf => FrontendMessage::UpdateToolShelfLayout { diff },
+			LayoutTarget::WelcomeScreenButtons => FrontendMessage::UpdateWelcomeScreenButtonsLayout { diff },
+			LayoutTarget::WorkingColors => FrontendMessage::UpdateWorkingColorsLayout { diff },
 
 			LayoutTarget::LayoutTargetLength => panic!("`LayoutTargetLength` is not a valid Layout Target and is used for array indexing"),
 		};

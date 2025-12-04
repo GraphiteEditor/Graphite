@@ -252,14 +252,14 @@ impl LayoutHolder for SelectTool {
 		widgets.extend(self.alignment_widgets(disabled));
 		// widgets.push(
 		// 	PopoverButton::new()
-		// 		.popover_layout(vec![
+		// 		.popover_layout(WidgetLayout(vec![
 		// 			LayoutGroup::Row {
 		// 				widgets: vec![TextLabel::new("Align").bold(true).widget_instance()],
 		// 			},
 		// 			LayoutGroup::Row {
 		// 				widgets: vec![TextLabel::new("Coming soon").widget_instance()],
 		// 			},
-		// 		])
+		// 		]))
 		// 		.disabled(disabled)
 		// 		.widget_instance(),
 		// );
@@ -277,7 +277,7 @@ impl LayoutHolder for SelectTool {
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
 		widgets.extend(self.boolean_widgets(self.tool_data.selected_layers_count));
 
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
+		Layout::WidgetLayout(WidgetLayout(vec![LayoutGroup::Row { widgets }]))
 	}
 }
 

@@ -170,8 +170,6 @@ pub enum FrontendMessage {
 		open: bool,
 	},
 	UpdateDataPanelLayout {
-		#[serde(rename = "layoutTarget")]
-		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
 	},
 	UpdateImportReorderIndex {
@@ -191,18 +189,12 @@ pub enum FrontendMessage {
 		has_left_input_wire: HashMap<NodeId, bool>,
 	},
 	UpdateDialogButtons {
-		#[serde(rename = "layoutTarget")]
-		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
 	},
 	UpdateDialogColumn1 {
-		#[serde(rename = "layoutTarget")]
-		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
 	},
 	UpdateDialogColumn2 {
-		#[serde(rename = "layoutTarget")]
-		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
 	},
 	UpdateDocumentArtwork {
@@ -212,8 +204,6 @@ pub enum FrontendMessage {
 		image_data: Vec<(u64, Image<Color>)>,
 	},
 	UpdateDocumentBarLayout {
-		#[serde(rename = "layoutTarget")]
-		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
 	},
 	UpdateDocumentLayerDetails {
@@ -228,8 +218,6 @@ pub enum FrontendMessage {
 		data_buffer: JsRawBuffer,
 	},
 	UpdateDocumentModeLayout {
-		#[serde(rename = "layoutTarget")]
-		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
 	},
 	UpdateDocumentRulers {
@@ -257,23 +245,15 @@ pub enum FrontendMessage {
 		percentage: f64,
 	},
 	UpdateLayersPanelControlBarLeftLayout {
-		#[serde(rename = "layoutTarget")]
-		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
 	},
 	UpdateLayersPanelControlBarRightLayout {
-		#[serde(rename = "layoutTarget")]
-		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
 	},
 	UpdateLayersPanelBottomBarLayout {
-		#[serde(rename = "layoutTarget")]
-		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
 	},
 	UpdateMenuBarLayout {
-		#[serde(rename = "layoutTarget")]
-		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
 	},
 	UpdateMouseCursor {
@@ -293,8 +273,6 @@ pub enum FrontendMessage {
 	},
 	ClearAllNodeGraphWires,
 	UpdateNodeGraphControlBarLayout {
-		#[serde(rename = "layoutTarget")]
-		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
 	},
 	UpdateNodeGraphSelection {
@@ -312,18 +290,12 @@ pub enum FrontendMessage {
 		open_documents: Vec<OpenDocument>,
 	},
 	UpdatePropertiesPanelLayout {
-		#[serde(rename = "layoutTarget")]
-		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
 	},
 	UpdateToolOptionsLayout {
-		#[serde(rename = "layoutTarget")]
-		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
 	},
 	UpdateToolShelfLayout {
-		#[serde(rename = "layoutTarget")]
-		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
 	},
 	UpdateWirePathInProgress {
@@ -331,18 +303,12 @@ pub enum FrontendMessage {
 		wire_path: Option<WirePath>,
 	},
 	UpdateWelcomeScreenButtonsLayout {
-		#[serde(rename = "layoutTarget")]
-		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
 	},
 	UpdateStatusBarHintsLayout {
-		#[serde(rename = "layoutTarget")]
-		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
 	},
 	UpdateWorkingColorsLayout {
-		#[serde(rename = "layoutTarget")]
-		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
 	},
 	UpdatePlatform {

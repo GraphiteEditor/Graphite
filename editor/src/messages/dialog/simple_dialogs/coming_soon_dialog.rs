@@ -13,7 +13,7 @@ impl DialogLayoutHolder for ComingSoonDialog {
 	fn layout_buttons(&self) -> Layout {
 		let widgets = vec![TextButton::new("OK").emphasized(true).on_update(|_| FrontendMessage::DisplayDialogDismiss.into()).widget_instance()];
 
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
+		Layout::WidgetLayout(WidgetLayout(vec![LayoutGroup::Row { widgets }]))
 	}
 }
 
@@ -43,6 +43,6 @@ impl LayoutHolder for ComingSoonDialog {
 			rows.push(LayoutGroup::Row { widgets: row3 });
 		}
 
-		Layout::WidgetLayout(WidgetLayout::new(rows))
+		Layout::WidgetLayout(WidgetLayout(rows))
 	}
 }

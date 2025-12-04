@@ -2,7 +2,8 @@
 	import { getContext, onMount, onDestroy } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import { defaultWidgetLayout, patchWidgetLayout, UpdateWelcomeScreenButtonsLayout } from "@graphite/messages";
+	import type { LayoutGroup } from "@graphite/messages";
+	import { patchWidgetLayout, UpdateWelcomeScreenButtonsLayout } from "@graphite/messages";
 	import { extractPixelData } from "@graphite/utility-functions/rasterization";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -13,7 +14,7 @@
 
 	const editor = getContext<Editor>("editor");
 
-	let welcomePanelButtonsLayout = defaultWidgetLayout();
+	let welcomePanelButtonsLayout: LayoutGroup[] = [];
 
 	onMount(() => {
 		editor.subscriptions.subscribeJsMessage(UpdateWelcomeScreenButtonsLayout, (updateWelcomeScreenButtonsLayout) => {
@@ -68,7 +69,7 @@
 				<IconLabel icon="GraphiteLogotypeSolid" />
 			</LayoutRow>
 			<LayoutRow class="actions">
-				<WidgetLayout layout={welcomePanelButtonsLayout} />
+				<WidgetLayout layout={welcomePanelButtonsLayout} layoutTarget="WelcomeScreenButtons" />
 			</LayoutRow>
 		</LayoutCol>
 	</LayoutCol>

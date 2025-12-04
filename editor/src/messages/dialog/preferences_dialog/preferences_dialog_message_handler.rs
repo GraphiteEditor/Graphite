@@ -224,7 +224,7 @@ impl PreferencesDialogMessageHandler {
 				.widget_instance(),
 		];
 
-		Layout::WidgetLayout(WidgetLayout::new(vec![
+		Layout::WidgetLayout(WidgetLayout(vec![
 			LayoutGroup::Row { widgets: navigation_header },
 			LayoutGroup::Row { widgets: zoom_rate_label },
 			LayoutGroup::Row { widgets: zoom_rate },
@@ -272,7 +272,7 @@ impl PreferencesDialogMessageHandler {
 			TextButton::new("Reset to Defaults").on_update(|_| PreferencesMessage::ResetToDefaults.into()).widget_instance(),
 		];
 
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
+		Layout::WidgetLayout(WidgetLayout(vec![LayoutGroup::Row { widgets }]))
 	}
 
 	fn send_layout_buttons(&self, responses: &mut VecDeque<Message>, layout_target: LayoutTarget) {

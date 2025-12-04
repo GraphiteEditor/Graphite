@@ -4,7 +4,6 @@
 	import { shortcutAltClick } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { Editor } from "@graphite/editor";
 	import {
-		defaultWidgetLayout,
 		patchWidgetLayout,
 		UpdateDocumentLayerDetails,
 		UpdateDocumentLayerStructureJs,
@@ -12,7 +11,7 @@
 		UpdateLayersPanelControlBarRightLayout,
 		UpdateLayersPanelBottomBarLayout,
 	} from "@graphite/messages";
-	import type { ActionShortcut, DataBuffer, LayerPanelEntry } from "@graphite/messages";
+	import type { ActionShortcut, DataBuffer, LayerPanelEntry, LayoutGroup } from "@graphite/messages";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import { operatingSystem } from "@graphite/utility-functions/platform";
 	import { extractPixelData } from "@graphite/utility-functions/rasterization";
@@ -70,9 +69,9 @@
 	let layerToClipAltKeyPressed = false;
 
 	// Layouts
-	let layersPanelControlBarLeftLayout = defaultWidgetLayout();
-	let layersPanelControlBarRightLayout = defaultWidgetLayout();
-	let layersPanelBottomBarLayout = defaultWidgetLayout();
+	let layersPanelControlBarLeftLayout: LayoutGroup[] = [];
+	let layersPanelControlBarRightLayout: LayoutGroup[] = [];
+	let layersPanelBottomBarLayout: LayoutGroup[] = [];
 
 	const altClickKeys: ActionShortcut = shortcutAltClick();
 
@@ -582,11 +581,11 @@
 
 <LayoutCol class="layers" on:dragleave={() => (dragInPanel = false)}>
 	<LayoutRow class="control-bar" scrollableX={true}>
-		<WidgetLayout layout={layersPanelControlBarLeftLayout} />
-		{#if layersPanelControlBarLeftLayout?.layout?.length > 0 && layersPanelControlBarRightLayout?.layout?.length > 0}
+		<WidgetLayout layout={layersPanelControlBarLeftLayout} layoutTarget="LayersPanelControlLeftBar" />
+		{#if layersPanelControlBarLeftLayout?.length > 0 && layersPanelControlBarRightLayout?.length > 0}
 			<Separator />
 		{/if}
-		<WidgetLayout layout={layersPanelControlBarRightLayout} />
+		<WidgetLayout layout={layersPanelControlBarRightLayout} layoutTarget="LayersPanelControlRightBar" />
 	</LayoutRow>
 	<LayoutRow class="list-area" classes={{ "drag-ongoing": Boolean(internalDragState?.active && draggingData) }} scrollableY={true}>
 		<LayoutCol
@@ -691,7 +690,7 @@
 		{/if}
 	</LayoutRow>
 	<LayoutRow class="bottom-bar" scrollableX={true}>
-		<WidgetLayout layout={layersPanelBottomBarLayout} />
+		<WidgetLayout layout={layersPanelBottomBarLayout} layoutTarget="LayersPanelBottomBar" />
 	</LayoutRow>
 </LayoutCol>
 

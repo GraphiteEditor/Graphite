@@ -2,7 +2,7 @@
 	import { getContext } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import type { Widget, WidgetSpanColumn, WidgetSpanRow } from "@graphite/messages";
+	import type { LayoutTarget, Widget, WidgetSpanColumn, WidgetSpanRow } from "@graphite/messages";
 	import { narrowWidgetProps, isWidgetSpanColumn, isWidgetSpanRow } from "@graphite/messages";
 	import { debouncer } from "@graphite/utility-functions/debounce";
 
@@ -34,8 +34,7 @@
 	const editor = getContext<Editor>("editor");
 
 	export let widgetData: WidgetSpanRow | WidgetSpanColumn;
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	export let layoutTarget: any;
+	export let layoutTarget: LayoutTarget;
 
 	let className = "";
 	export { className as class };
@@ -162,7 +161,7 @@
 		{@const popoverButton = narrowWidgetProps(component.props, "PopoverButton")}
 		{#if popoverButton}
 			<PopoverButton {...exclude(popoverButton, ["popoverLayout"])}>
-				<WidgetLayout layout={{ layout: popoverButton.popoverLayout, layoutTarget: layoutTarget }} />
+				<WidgetLayout layout={popoverButton.popoverLayout} {layoutTarget} />
 			</PopoverButton>
 		{/if}
 		{@const radioInput = narrowWidgetProps(component.props, "RadioInput")}

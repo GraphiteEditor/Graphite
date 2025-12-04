@@ -2,7 +2,8 @@
 	import { getContext, onMount } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import { defaultWidgetLayout, patchWidgetLayout, UpdateMenuBarLayout } from "@graphite/messages";
+	import type { LayoutGroup } from "@graphite/messages";
+	import { patchWidgetLayout, UpdateMenuBarLayout } from "@graphite/messages";
 	import type { AppWindowState } from "@graphite/state-providers/app-window";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -14,7 +15,7 @@
 	const appWindow = getContext<AppWindowState>("appWindow");
 	const editor = getContext<Editor>("editor");
 
-	let menuBarLayout = defaultWidgetLayout();
+	let menuBarLayout: LayoutGroup[] = [];
 
 	onMount(() => {
 		editor.subscriptions.subscribeJsMessage(UpdateMenuBarLayout, (updateMenuBarLayout) => {
@@ -28,7 +29,7 @@
 	<!-- Menu bar -->
 	<LayoutRow>
 		{#if $appWindow.platform !== "Mac"}
-			<WidgetLayout layout={menuBarLayout} />
+			<WidgetLayout layout={menuBarLayout} layoutTarget="MenuBar" />
 		{/if}
 	</LayoutRow>
 	<!-- Spacer -->

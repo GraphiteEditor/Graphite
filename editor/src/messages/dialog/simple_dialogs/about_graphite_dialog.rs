@@ -15,7 +15,7 @@ impl DialogLayoutHolder for AboutGraphiteDialog {
 	fn layout_buttons(&self) -> Layout {
 		let widgets = vec![TextButton::new("OK").emphasized(true).on_update(|_| FrontendMessage::DisplayDialogDismiss.into()).widget_instance()];
 
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
+		Layout::WidgetLayout(WidgetLayout(vec![LayoutGroup::Row { widgets }]))
 	}
 
 	fn layout_column_2(&self) -> Layout {
@@ -51,13 +51,13 @@ impl DialogLayoutHolder for AboutGraphiteDialog {
 				.widget_instance(),
 		);
 
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Column { widgets }]))
+		Layout::WidgetLayout(WidgetLayout(vec![LayoutGroup::Column { widgets }]))
 	}
 }
 
 impl LayoutHolder for AboutGraphiteDialog {
 	fn layout(&self) -> Layout {
-		Layout::WidgetLayout(WidgetLayout::new(vec![
+		Layout::WidgetLayout(WidgetLayout(vec![
 			LayoutGroup::Row {
 				widgets: vec![TextLabel::new("About this release").bold(true).widget_instance()],
 			},

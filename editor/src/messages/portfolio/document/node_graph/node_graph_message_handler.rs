@@ -2069,7 +2069,7 @@ impl NodeGraphMessageHandler {
 	/// Send the cached layout to the frontend for the control bar at the top of the node panel
 	fn send_node_bar_layout(&self, responses: &mut VecDeque<Message>) {
 		responses.add(LayoutMessage::SendLayout {
-			layout: Layout::WidgetLayout(WidgetLayout::new(self.widgets.to_vec())),
+			layout: Layout::WidgetLayout(WidgetLayout(self.widgets.to_vec())),
 			layout_target: LayoutTarget::NodeGraphControlBar,
 		});
 	}
@@ -2145,7 +2145,7 @@ impl NodeGraphMessageHandler {
 							}
 						})
 						.widget_instance();
-					vec![LayoutGroup::Row { widgets: vec![node_chooser] }]
+					WidgetLayout(vec![LayoutGroup::Row { widgets: vec![node_chooser] }])
 				})
 				.widget_instance(),
 			//
@@ -2443,7 +2443,7 @@ impl NodeGraphMessageHandler {
 										.into()
 									})
 									.widget_instance();
-								vec![LayoutGroup::Row { widgets: vec![node_chooser] }]
+								WidgetLayout(vec![LayoutGroup::Row { widgets: vec![node_chooser] }])
 							})
 							.widget_instance(),
 						Separator::new(SeparatorType::Related).widget_instance(),

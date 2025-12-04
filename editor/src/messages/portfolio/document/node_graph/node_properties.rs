@@ -1699,7 +1699,7 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 		visible,
 		pinned,
 		id: node_id.0,
-		layout,
+		layout: WidgetLayout(layout),
 	}
 }
 

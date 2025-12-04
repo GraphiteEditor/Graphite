@@ -1485,33 +1485,36 @@ function hoistWidgetInstances(widgetInstance: any[]): Widget[] {
 
 // WIDGET LAYOUT
 
-export type WidgetLayout = {
-	layoutTarget: unknown;
-	layout: LayoutGroup[];
-};
+export type LayoutTarget =
+	| "DataPanel"
+	| "DialogButtons"
+	| "DialogColumn1"
+	| "DialogColumn2"
+	| "DocumentBar"
+	| "DocumentMode"
+	| "LayersPanelBottomBar"
+	| "LayersPanelControlLeftBar"
+	| "LayersPanelControlRightBar"
+	| "MenuBar"
+	| "NodeGraphControlBar"
+	| "PropertiesPanel"
+	| "StatusBarHints"
+	| "ToolOptions"
+	| "ToolShelf"
+	| "WelcomeScreenButtons"
+	| "WorkingColors";
 
 export class WidgetDiffUpdate extends JsMessage {
-	layoutTarget!: unknown;
-
 	// TODO: Replace `any` with correct typing
 	@Transform(({ value }: { value: any }) => createWidgetDiff(value))
 	diff!: WidgetDiff[];
 }
 
-type UIItem = LayoutGroup[] | LayoutGroup | Widget | Widget[];
+type UIItem = LayoutGroup[] | LayoutGroup | Widget[] | Widget;
 type WidgetDiff = { widgetPath: number[]; newValue: UIItem };
 
-export function defaultWidgetLayout(): WidgetLayout {
-	return {
-		layoutTarget: undefined,
-		layout: [],
-	};
-}
-
 // Updates a widget layout based on a list of updates, giving the new layout by mutating the `layout` argument
-export function patchWidgetLayout(layout: /* &mut */ WidgetLayout, updates: WidgetDiffUpdate) {
-	layout.layoutTarget = updates.layoutTarget;
-
+export function patchWidgetLayout(layout: /* &mut */ LayoutGroup[], updates: WidgetDiffUpdate) {
 	updates.diff.forEach((update) => {
 		// Find the object where the diff applies to
 		const diffObject = update.widgetPath.reduce((targetLayout: UIItem | undefined, index: number): UIItem | undefined => {
@@ -1529,7 +1532,7 @@ export function patchWidgetLayout(layout: /* &mut */ WidgetLayout, updates: Widg
 			}
 
 			return targetLayout?.[index];
-		}, layout.layout as UIItem);
+		}, layout as UIItem);
 
 		// Exit if we failed to produce a valid patch for the existing layout.
 		// This means that the backend assumed an existing layout that doesn't exist in the frontend. This can happen, for
@@ -1581,8 +1584,8 @@ export function isWidgetSection(layoutRow: LayoutGroup): layoutRow is WidgetSect
 function createWidgetDiff(diffs: any[]): WidgetDiff[] {
 	return diffs.map((diff) => {
 		const { widgetPath, newValue } = diff;
-		if (newValue.subLayout) {
-			return { widgetPath, newValue: newValue.subLayout.map(createLayoutGroup) };
+		if (newValue.widgetLayout) {
+			return { widgetPath, newValue: newValue.widgetLayout.map(createLayoutGroup) };
 		}
 		if (newValue.layoutGroup) {
 			return { widgetPath, newValue: createLayoutGroup(newValue.layoutGroup) };

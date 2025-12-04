@@ -2,14 +2,15 @@
 	import { getContext, onMount } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import { defaultWidgetLayout, patchWidgetLayout, UpdateStatusBarHintsLayout } from "@graphite/messages";
+	import type { LayoutGroup } from "@graphite/messages";
+	import { patchWidgetLayout, UpdateStatusBarHintsLayout } from "@graphite/messages";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
 
 	const editor = getContext<Editor>("editor");
 
-	let statusBarHintsLayout = defaultWidgetLayout();
+	let statusBarHintsLayout: LayoutGroup[] = [];
 
 	onMount(() => {
 		editor.subscriptions.subscribeJsMessage(UpdateStatusBarHintsLayout, (updateStatusBarHintsLayout) => {
@@ -20,7 +21,7 @@
 </script>
 
 <LayoutRow class="status-bar">
-	<WidgetLayout class="hints" layout={statusBarHintsLayout} />
+	<WidgetLayout class="hints" layout={statusBarHintsLayout} layoutTarget="StatusBarHints" />
 </LayoutRow>
 
 <style lang="scss" global>

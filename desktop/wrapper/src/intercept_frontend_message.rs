@@ -120,7 +120,7 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 				[
 					WidgetDiff {
 						widget_path,
-						new_value: DiffUpdate::SubLayout(layout),
+						new_value: DiffUpdate::WidgetLayout(layout),
 					},
 				] if widget_path.is_empty() => {
 					let entries = crate::utils::menu::convert_menu_bar_layout_to_menu_items(layout);

@@ -3,7 +3,6 @@ import { writable } from "svelte/store";
 import { type Editor } from "@graphite/editor";
 import { type IconName } from "@graphite/icons";
 import {
-	defaultWidgetLayout,
 	DisplayDialog,
 	DisplayDialogDismiss,
 	UpdateDialogButtons,
@@ -11,6 +10,7 @@ import {
 	UpdateDialogColumn2,
 	patchWidgetLayout,
 	TriggerDisplayThirdPartyLicensesDialog,
+	type LayoutGroup,
 } from "@graphite/messages";
 
 export function createDialogState(editor: Editor) {
@@ -18,9 +18,9 @@ export function createDialogState(editor: Editor) {
 		visible: false,
 		title: "",
 		icon: "" as IconName,
-		buttons: defaultWidgetLayout(),
-		column1: defaultWidgetLayout(),
-		column2: defaultWidgetLayout(),
+		buttons: [] as LayoutGroup[],
+		column1: [] as LayoutGroup[],
+		column2: [] as LayoutGroup[],
 		// Special case for the crash dialog because we cannot handle button widget callbacks from Rust once the editor has panicked
 		panicDetails: "",
 	});
@@ -44,9 +44,9 @@ export function createDialogState(editor: Editor) {
 			state.title = "Crash";
 			state.panicDetails = panicDetails;
 
-			state.column1 = defaultWidgetLayout();
-			state.column2 = defaultWidgetLayout();
-			state.buttons = defaultWidgetLayout();
+			state.column1 = [];
+			state.column2 = [];
+			state.buttons = [];
 
 			return state;
 		});

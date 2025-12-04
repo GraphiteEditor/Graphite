@@ -22,7 +22,7 @@ impl DialogLayoutHolder for DemoArtworkDialog {
 	fn layout_buttons(&self) -> Layout {
 		let widgets = vec![TextButton::new("Close").emphasized(true).on_update(|_| FrontendMessage::DisplayDialogDismiss.into()).widget_instance()];
 
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
+		Layout::WidgetLayout(WidgetLayout(vec![LayoutGroup::Row { widgets }]))
 	}
 }
 
@@ -59,6 +59,6 @@ impl LayoutHolder for DemoArtworkDialog {
 			.collect();
 		let _ = rows_of_images_with_buttons.pop();
 
-		Layout::WidgetLayout(WidgetLayout::new(rows_of_images_with_buttons))
+		Layout::WidgetLayout(WidgetLayout(rows_of_images_with_buttons))
 	}
 }

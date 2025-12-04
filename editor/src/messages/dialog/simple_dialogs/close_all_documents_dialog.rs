@@ -24,7 +24,7 @@ impl DialogLayoutHolder for CloseAllDocumentsDialog {
 			TextButton::new("Cancel").on_update(|_| FrontendMessage::DisplayDialogDismiss.into()).widget_instance(),
 		];
 
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
+		Layout::WidgetLayout(WidgetLayout(vec![LayoutGroup::Row { widgets }]))
 	}
 }
 
@@ -32,7 +32,7 @@ impl LayoutHolder for CloseAllDocumentsDialog {
 	fn layout(&self) -> Layout {
 		let unsaved_list = "• ".to_string() + &self.unsaved_document_names.join("\n• ");
 
-		Layout::WidgetLayout(WidgetLayout::new(vec![
+		Layout::WidgetLayout(WidgetLayout(vec![
 			LayoutGroup::Row {
 				widgets: vec![TextLabel::new("Save documents before closing them?").bold(true).multiline(true).widget_instance()],
 			},

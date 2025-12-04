@@ -203,7 +203,7 @@ impl LayoutHolder for TextTool {
 			},
 		));
 
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
+		Layout::WidgetLayout(WidgetLayout(vec![LayoutGroup::Row { widgets }]))
 	}
 }
 

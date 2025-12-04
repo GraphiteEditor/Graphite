@@ -1,11 +1,10 @@
 <script lang="ts">
-	import { type WidgetTable as WidgetTableFromJsMessages } from "@graphite/messages";
+	import { type LayoutTarget, type WidgetTable as WidgetTableFromJsMessages } from "@graphite/messages";
 
 	import WidgetSpan from "@graphite/components/widgets/WidgetSpan.svelte";
 
 	export let widgetData: WidgetTableFromJsMessages;
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	export let layoutTarget: any;
+	export let layoutTarget: LayoutTarget;
 	export let unstyled = false;
 
 	$: columns = widgetData.tableWidgets.length > 0 ? widgetData.tableWidgets[0].length : 0;

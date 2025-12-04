@@ -6,11 +6,11 @@ pub(crate) mod menu {
 	use graphite_editor::messages::input_mapper::utility_types::input_keyboard::{Key, LabeledKey, LabeledShortcut};
 	use graphite_editor::messages::input_mapper::utility_types::misc::ActionShortcut;
 	use graphite_editor::messages::layout::LayoutMessage;
-	use graphite_editor::messages::tool::tool_messages::tool_prelude::{LayoutGroup, LayoutTarget, MenuListEntry, SubLayout, Widget, WidgetId};
+	use graphite_editor::messages::tool::tool_messages::tool_prelude::{LayoutGroup, LayoutTarget, MenuListEntry, Widget, WidgetId, WidgetLayout};
 
 	use crate::messages::{EditorMessage, KeyCode, MenuItem, Modifiers, Shortcut};
 
-	pub(crate) fn convert_menu_bar_layout_to_menu_items(layout: &SubLayout) -> Vec<MenuItem> {
+	pub(crate) fn convert_menu_bar_layout_to_menu_items(layout: &WidgetLayout) -> Vec<MenuItem> {
 		let layout_group = match layout.as_slice() {
 			[layout_group] => layout_group,
 			_ => panic!("Menu bar layout is supposed to have exactly one layout group"),

@@ -118,25 +118,19 @@ impl Default for Layout {
 
 // TODO: Unwrap this struct
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize, PartialEq, specta::Type)]
-pub struct WidgetLayout {
-	pub layout: SubLayout,
-}
+pub struct WidgetLayout(pub Vec<LayoutGroup>);
 
 impl WidgetLayout {
-	pub fn new(layout: SubLayout) -> Self {
-		Self { layout }
-	}
-
 	pub fn iter(&self) -> WidgetIter<'_> {
 		WidgetIter {
-			stack: self.layout.iter().collect(),
+			stack: self.0.iter().collect(),
 			..Default::default()
 		}
 	}
 
 	pub fn iter_mut(&mut self) -> WidgetIterMut<'_> {
 		WidgetIterMut {
-			stack: self.layout.iter_mut().collect(),
+			stack: self.0.iter_mut().collect(),
 			..Default::default()
 		}
 	}
@@ -145,12 +139,12 @@ impl WidgetLayout {
 	pub fn diff(&mut self, new: Self, widget_path: &mut Vec<usize>, widget_diffs: &mut Vec<WidgetDiff>) {
 		// Check if the length of items is different
 		// TODO: Diff insersion and deletion of items
-		if self.layout.len() != new.layout.len() {
+		if self.0.len() != new.0.len() {
 			// Update the layout to the new layout
-			self.layout.clone_from(&new.layout);
+			self.0.clone_from(&new.0);
 
 			// Push an update sublayout to the diff
-			let new = DiffUpdate::SubLayout(new.layout);
+			let new = DiffUpdate::WidgetLayout(new);
 			widget_diffs.push(WidgetDiff {
 				widget_path: widget_path.to_vec(),
 				new_value: new,
@@ -158,7 +152,7 @@ impl WidgetLayout {
 			return;
 		}
 		// Diff all of the children
-		for (index, (current_child, new_child)) in self.layout.iter_mut().zip(new.layout).enumerate() {
+		for (index, (current_child, new_child)) in self.0.iter_mut().zip(new.0).enumerate() {
 			widget_path.push(index);
 			current_child.diff(new_child, widget_path, widget_diffs);
 			widget_path.pop();
@@ -185,7 +179,7 @@ impl<'a> Iterator for WidgetIter<'a> {
 
 		if let Some(item) = widget {
 			if let WidgetInstance { widget: Widget::PopoverButton(p), .. } = item {
-				self.stack.extend(p.popover_layout.iter());
+				self.stack.extend(p.popover_layout.0.iter());
 				return self.next();
 			}
 
@@ -206,7 +200,7 @@ impl<'a> Iterator for WidgetIter<'a> {
 				self.next()
 			}
 			Some(LayoutGroup::Section { layout, .. }) => {
-				for layout_row in layout {
+				for layout_row in &layout.0 {
 					self.stack.push(layout_row);
 				}
 				self.next()
@@ -235,7 +229,7 @@ impl<'a> Iterator for WidgetIterMut<'a> {
 
 		if let Some(widget) = widget {
 			if let WidgetInstance { widget: Widget::PopoverButton(p), .. } = widget {
-				self.stack.extend(p.popover_layout.iter_mut());
+				self.stack.extend(p.popover_layout.0.iter_mut());
 				return self.next();
 			}
 
@@ -256,7 +250,7 @@ impl<'a> Iterator for WidgetIterMut<'a> {
 				self.next()
 			}
 			Some(LayoutGroup::Section { layout, .. }) => {
-				for layout_row in layout {
+				for layout_row in &mut layout.0 {
 					self.stack.push(layout_row);
 				}
 				self.next()
@@ -265,8 +259,6 @@ impl<'a> Iterator for WidgetIterMut<'a> {
 		}
 	}
 }
-
-pub type SubLayout = Vec<LayoutGroup>;
 
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum LayoutGroup {
@@ -293,7 +285,7 @@ pub enum LayoutGroup {
 		visible: bool,
 		pinned: bool,
 		id: u64,
-		layout: SubLayout,
+		layout: WidgetLayout,
 	},
 }
 
@@ -425,7 +417,7 @@ impl LayoutGroup {
 			) => {
 				// Resend the entire panel if the lengths, names, visibility, or node IDs are different
 				// TODO: Diff insersion and deletion of items
-				if current_layout.len() != new_layout.len()
+				if current_layout.0.len() != new_layout.0.len()
 					|| *current_name != new_name
 					|| *current_description != new_description
 					|| *current_visible != new_visible
@@ -454,7 +446,7 @@ impl LayoutGroup {
 				}
 				// Diff all of the children
 				else {
-					for (index, (current_child, new_child)) in current_layout.iter_mut().zip(new_layout).enumerate() {
+					for (index, (current_child, new_child)) in current_layout.0.iter_mut().zip(new_layout.0).enumerate() {
 						widget_path.push(index);
 						current_child.diff(new_child, widget_path, widget_diffs);
 						widget_path.pop();
@@ -478,7 +470,6 @@ impl LayoutGroup {
 	}
 }
 
-// TODO: Rename to WidgetInstance
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct WidgetInstance {
 	#[serde(rename = "widgetId")]
@@ -514,7 +505,7 @@ impl WidgetInstance {
 			&& button1.popover_min_width == button2.popover_min_width
 		{
 			let mut new_widget_path = widget_path.to_vec();
-			for (i, (a, b)) in button1.popover_layout.iter_mut().zip(button2.popover_layout.iter()).enumerate() {
+			for (i, (a, b)) in button1.popover_layout.0.iter_mut().zip(button2.popover_layout.0.iter()).enumerate() {
 				new_widget_path.push(i);
 				a.diff(b.clone(), &mut new_widget_path, widget_diffs);
 				new_widget_path.pop();
@@ -598,11 +589,11 @@ pub struct WidgetDiff {
 
 /// The new value of the UI, sent as part of a diff.
 ///
-/// An update can represent a single widget or an entire SubLayout, or just a single layout group.
+/// An update can represent a single widget or an entire WidgetLayout, or just a single layout group.
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum DiffUpdate {
-	#[serde(rename = "subLayout")]
-	SubLayout(SubLayout),
+	#[serde(rename = "widgetLayout")]
+	WidgetLayout(WidgetLayout),
 	#[serde(rename = "layoutGroup")]
 	LayoutGroup(LayoutGroup),
 	#[serde(rename = "widget")]
@@ -684,7 +675,7 @@ impl DiffUpdate {
 		};
 
 		match self {
-			Self::SubLayout(sub_layout) => sub_layout.iter_mut().flat_map(|layout_group| layout_group.iter_mut()).for_each(|widget_instance| {
+			Self::WidgetLayout(widget_layout) => widget_layout.0.iter_mut().flat_map(|layout_group| layout_group.iter_mut()).for_each(|widget_instance| {
 				convert_tooltip(widget_instance);
 				convert_menu_lists(widget_instance);
 			}),

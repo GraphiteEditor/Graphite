@@ -131,7 +131,7 @@ impl DataPanelMessageHandler {
 		}
 
 		responses.add(LayoutMessage::SendLayout {
-			layout: Layout::WidgetLayout(WidgetLayout { layout }),
+			layout: Layout::WidgetLayout(WidgetLayout(layout)),
 			layout_target: LayoutTarget::DataPanel,
 		});
 	}

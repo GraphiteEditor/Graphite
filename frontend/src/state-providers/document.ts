@@ -4,7 +4,6 @@ import { writable } from "svelte/store";
 import { type Editor } from "@graphite/editor";
 
 import {
-	defaultWidgetLayout,
 	patchWidgetLayout,
 	UpdateDocumentBarLayout,
 	UpdateDocumentModeLayout,
@@ -14,17 +13,18 @@ import {
 	UpdateNodeGraphControlBarLayout,
 	UpdateGraphViewOverlay,
 	UpdateGraphFadeArtwork,
+	type LayoutGroup,
 } from "@graphite/messages";
 
 export function createDocumentState(editor: Editor) {
 	const state = writable({
 		// Layouts
-		documentModeLayout: defaultWidgetLayout(),
-		toolOptionsLayout: defaultWidgetLayout(),
-		documentBarLayout: defaultWidgetLayout(),
-		toolShelfLayout: defaultWidgetLayout(),
-		workingColorsLayout: defaultWidgetLayout(),
-		nodeGraphControlBarLayout: defaultWidgetLayout(),
+		documentModeLayout: [] as LayoutGroup[],
+		toolOptionsLayout: [] as LayoutGroup[],
+		documentBarLayout: [] as LayoutGroup[],
+		toolShelfLayout: [] as LayoutGroup[],
+		workingColorsLayout: [] as LayoutGroup[],
+		nodeGraphControlBarLayout: [] as LayoutGroup[],
 		// Graph view overlay
 		graphViewOverlayOpen: false,
 		fadeArtwork: 100,

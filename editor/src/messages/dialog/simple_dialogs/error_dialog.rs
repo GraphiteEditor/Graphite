@@ -14,13 +14,13 @@ impl DialogLayoutHolder for ErrorDialog {
 	fn layout_buttons(&self) -> Layout {
 		let widgets = vec![TextButton::new("OK").emphasized(true).on_update(|_| FrontendMessage::DisplayDialogDismiss.into()).widget_instance()];
 
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
+		Layout::WidgetLayout(WidgetLayout(vec![LayoutGroup::Row { widgets }]))
 	}
 }
 
 impl LayoutHolder for ErrorDialog {
 	fn layout(&self) -> Layout {
-		Layout::WidgetLayout(WidgetLayout::new(vec![
+		Layout::WidgetLayout(WidgetLayout(vec![
 			LayoutGroup::Row {
 				widgets: vec![TextLabel::new(&self.title).bold(true).widget_instance()],
 			},

@@ -924,7 +924,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					layout_target: LayoutTarget::WelcomeScreenButtons,
 				});
 				responses.add(LayoutMessage::SendLayout {
-					layout: Layout::WidgetLayout(WidgetLayout::new(vec![table])),
+					layout: Layout::WidgetLayout(WidgetLayout(vec![table])),
 					layout_target: LayoutTarget::WelcomeScreenButtons,
 				});
 			}

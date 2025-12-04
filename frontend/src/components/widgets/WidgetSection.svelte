@@ -2,7 +2,7 @@
 	import { getContext } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import { isWidgetSpanRow, isWidgetSpanColumn, isWidgetSection, type WidgetSection as WidgetSectionFromJsMessages } from "@graphite/messages";
+	import { isWidgetSpanRow, isWidgetSection, type WidgetSection as WidgetSectionFromJsMessages, type LayoutTarget } from "@graphite/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
@@ -10,8 +10,7 @@
 	import WidgetSpan from "@graphite/components/widgets/WidgetSpan.svelte";
 
 	export let widgetData: WidgetSectionFromJsMessages;
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	export let layoutTarget: any; // TODO: Give type
+	export let layoutTarget: LayoutTarget;
 
 	let className = "";
 	export { className as class };
@@ -64,12 +63,8 @@
 			{#each widgetData.layout as layoutGroup}
 				{#if isWidgetSpanRow(layoutGroup)}
 					<WidgetSpan widgetData={layoutGroup} {layoutTarget} />
-				{:else if isWidgetSpanColumn(layoutGroup)}
-					<TextLabel styles={{ color: "#d6536e" }}>Error: The WidgetSpan used here should be a row not a column</TextLabel>
 				{:else if isWidgetSection(layoutGroup)}
 					<svelte:self widgetData={layoutGroup} {layoutTarget} />
-				{:else}
-					<TextLabel styles={{ color: "#d6536e" }}>Error: The widget that belongs here has an invalid layout group type</TextLabel>
 				{/if}
 			{/each}
 		</LayoutCol>
