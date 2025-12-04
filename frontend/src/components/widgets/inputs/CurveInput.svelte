@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
-	import type { Curve, CurveManipulatorGroup } from "@graphite/messages";
+	import type { Curve, CurveManipulatorGroup, ActionShortcut } from "@graphite/messages";
 	import { clamp } from "@graphite/utility-functions/math";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -18,7 +18,7 @@
 	export let disabled = false;
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
-	export let tooltipShortcut: string | undefined = undefined;
+	export let tooltipShortcut: ActionShortcut | undefined = undefined;
 
 	const GRID_SIZE = 4;
 

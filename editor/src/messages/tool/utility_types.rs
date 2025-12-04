@@ -4,9 +4,9 @@ use super::common_functionality::shape_editor::ShapeState;
 use super::tool_messages::*;
 use crate::messages::broadcast::BroadcastMessage;
 use crate::messages::broadcast::event::EventMessage;
-use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, LayoutKeysGroup, MouseMotion};
-use crate::messages::input_mapper::utility_types::macros::action_keys;
-use crate::messages::input_mapper::utility_types::misc::ActionKeys;
+use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, LabeledKeyOrMouseMotion, LabeledShortcut, MouseMotion};
+use crate::messages::input_mapper::utility_types::macros::{action_shortcut, action_shortcut_manual};
+use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayProvider;
 use crate::messages::preferences::PreferencesMessageHandler;
@@ -125,12 +125,12 @@ impl DocumentToolData {
 				widgets: vec![
 					IconButton::new("SwapVertical", 16)
 						.tooltip_label("Swap")
-						.shortcut_keys(action_keys!(ToolMessageDiscriminant::SwapColors))
+						.tooltip_shortcut(action_shortcut!(ToolMessageDiscriminant::SwapColors))
 						.on_update(|_| ToolMessage::SwapColors.into())
 						.widget_holder(),
 					IconButton::new("WorkingColors", 16)
 						.tooltip_label("Reset")
-						.shortcut_keys(action_keys!(ToolMessageDiscriminant::ResetColors))
+						.tooltip_shortcut(action_shortcut!(ToolMessageDiscriminant::ResetColors))
 						.on_update(|_| ToolMessage::ResetColors.into())
 						.widget_holder(),
 				],
@@ -245,12 +245,12 @@ impl LayoutHolder for ToolData {
 							ToolAvailability::Available(tool) =>
 								ToolEntry::new(tool.tool_type(), tool.icon_name())
 									.tooltip_label(tool.tooltip_label())
-									.shortcut_keys(action_keys!(tool_type_to_activate_tool_message(tool.tool_type()))),
+									.tooltip_shortcut(action_shortcut!(tool_type_to_activate_tool_message(tool.tool_type()))),
 							ToolAvailability::AvailableAsShape(shape) =>
 								ToolEntry::new(shape.tool_type(), shape.icon_name())
 									.tooltip_label(shape.tooltip_label())
 									.tooltip_description(shape.tooltip_description())
-									.shortcut_keys(action_keys!(tool_type_to_activate_tool_message(shape.tool_type()))),
+									.tooltip_shortcut(action_shortcut!(tool_type_to_activate_tool_message(shape.tool_type()))),
 							ToolAvailability::ComingSoon(tool) => tool.clone(),
 						}
 					})
@@ -258,7 +258,7 @@ impl LayoutHolder for ToolData {
 			)
 			.flat_map(|group| {
 				let separator = std::iter::once(Separator::new(SeparatorType::Section).direction(SeparatorDirection::Vertical).widget_holder());
-				let buttons = group.into_iter().map(|ToolEntry { tooltip_label, tooltip_description, tooltip_shortcut, shortcut_keys, tool_type, icon_name }| {
+				let buttons = group.into_iter().map(|ToolEntry { tooltip_label, tooltip_description, tooltip_shortcut, tool_type, icon_name }| {
 					let coming_soon = tooltip_description.contains("Coming soon.");
 
 					IconButton::new(icon_name, 32)
@@ -270,7 +270,6 @@ impl LayoutHolder for ToolData {
 						.tooltip_label(tooltip_label.clone())
 						.tooltip_description(tooltip_description)
 						.tooltip_shortcut(tooltip_shortcut)
-						.shortcut_keys(shortcut_keys)
 						.on_update(move |_| {
 							match tool_type {
 								ToolType::Line => ToolMessage::ActivateToolShapeLine.into(),
@@ -306,8 +305,7 @@ pub struct ToolEntry {
 	pub icon_name: String,
 	pub tooltip_label: String,
 	pub tooltip_description: String,
-	pub tooltip_shortcut: String,
-	pub shortcut_keys: Option<ActionKeys>,
+	pub tooltip_shortcut: Option<ActionShortcut>,
 }
 
 #[derive(Debug)]
@@ -429,26 +427,26 @@ fn list_tools_in_groups() -> Vec<Vec<ToolAvailability>> {
 				ToolEntry::new(ToolType::Heal, "RasterHealTool")
 					.tooltip_label("Heal Tool")
 					.tooltip_description("Coming soon.")
-					.tooltip_shortcut(Key::KeyJ.to_string()),
+					.tooltip_shortcut(action_shortcut_manual!(Key::KeyJ)),
 			),
 			ToolAvailability::ComingSoon(
 				ToolEntry::new(ToolType::Clone, "RasterCloneTool")
 					.tooltip_label("Clone Tool")
 					.tooltip_description("Coming soon.")
-					.tooltip_shortcut(Key::KeyC.to_string()),
+					.tooltip_shortcut(action_shortcut_manual!(Key::KeyC)),
 			),
 			ToolAvailability::ComingSoon(ToolEntry::new(ToolType::Patch, "RasterPatchTool").tooltip_label("Patch Tool").tooltip_description("Coming soon.")),
 			ToolAvailability::ComingSoon(
 				ToolEntry::new(ToolType::Detail, "RasterDetailTool")
 					.tooltip_label("Detail Tool")
 					.tooltip_description("Coming soon.")
-					.tooltip_shortcut(Key::KeyD.to_string()),
+					.tooltip_shortcut(action_shortcut_manual!(Key::KeyD)),
 			),
 			ToolAvailability::ComingSoon(
 				ToolEntry::new(ToolType::Relight, "RasterRelightTool")
 					.tooltip_label("Relight Tool")
 					.tooltip_description("Coming soon.")
-					.tooltip_shortcut(Key::KeyO.to_string()),
+					.tooltip_shortcut(action_shortcut_manual!(Key::KeyO)),
 			),
 		],
 	]
@@ -518,6 +516,55 @@ pub fn tool_type_to_activate_tool_message(tool_type: ToolType) -> ToolMessageDis
 #[derive(Debug, Default, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct HintData(pub Vec<HintGroup>);
 
+impl HintData {
+	pub fn to_layout(&self) -> Layout {
+		let mut widgets = Vec::new();
+
+		for (index, hint_group) in self.0.iter().enumerate() {
+			if index > 0 {
+				widgets.push(Separator::new(SeparatorType::Section).widget_holder());
+			}
+			for hint in &hint_group.0 {
+				if hint.plus {
+					widgets.push(TextLabel::new("+").bold(true).widget_holder());
+				}
+				if hint.slash {
+					widgets.push(TextLabel::new("/").bold(true).widget_holder());
+				}
+
+				for shortcut in &hint.key_groups {
+					widgets.push(ShortcutLabel::new(Some(ActionShortcut::Shortcut(shortcut.clone()))).widget_holder());
+				}
+				if let Some(mouse_movement) = &hint.mouse {
+					let mouse_movement = LabeledShortcut(vec![LabeledKeyOrMouseMotion::MouseMotion(mouse_movement.clone())]);
+					let shortcut = ActionShortcut::Shortcut(mouse_movement);
+					widgets.push(ShortcutLabel::new(Some(shortcut)).widget_holder());
+				}
+
+				if !hint.label.is_empty() {
+					widgets.push(TextLabel::new(hint.label.clone()).widget_holder());
+				}
+			}
+		}
+
+		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
+	}
+
+	pub fn send_layout(&self, responses: &mut VecDeque<Message>) {
+		responses.add(LayoutMessage::SendLayout {
+			layout: self.to_layout(),
+			layout_target: LayoutTarget::StatusBarHints,
+		});
+	}
+
+	pub fn clear_layout(responses: &mut VecDeque<Message>) {
+		responses.add(LayoutMessage::SendLayout {
+			layout: Layout::WidgetLayout(WidgetLayout::new(vec![])),
+			layout_target: LayoutTarget::StatusBarHints,
+		});
+	}
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct HintGroup(pub Vec<HintInfo>);
 
@@ -526,10 +573,10 @@ pub struct HintInfo {
 	/// A `KeysGroup` specifies all the keys pressed simultaneously to perform an action (like "Ctrl C" to copy).
 	/// Usually at most one is given, but less commonly, multiple can be used to describe additional hotkeys not used simultaneously (like the four different arrow keys to nudge a layer).
 	#[serde(rename = "keyGroups")]
-	pub key_groups: Vec<LayoutKeysGroup>,
+	pub key_groups: Vec<LabeledShortcut>,
 	/// `None` means that the regular `key_groups` should be used for all platforms, `Some` is an override for a Mac-only input hint.
 	#[serde(rename = "keyGroupsMac")]
-	pub key_groups_mac: Option<Vec<LayoutKeysGroup>>,
+	pub key_groups_mac: Option<Vec<LabeledShortcut>>,
 	/// An optional `MouseMotion` that can indicate the mouse action, like which mouse button is used and whether a drag occurs.
 	/// No such icon is shown if `None` is given, and it can be combined with `key_groups` if desired.
 	pub mouse: Option<MouseMotion>,

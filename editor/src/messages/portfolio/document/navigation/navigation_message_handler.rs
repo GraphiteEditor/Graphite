@@ -77,9 +77,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 			NavigationMessage::BeginCanvasPan => {
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Grabbing });
 
-				responses.add(FrontendMessage::UpdateInputHints {
-					hint_data: HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
-				});
+				HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]).send_layout(responses);
 
 				self.mouse_position = ipp.mouse.position;
 				let Some(ptz) = get_ptz(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
@@ -96,12 +94,11 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 					responses.add(NavigationMessage::BeginCanvasPan);
 				} else {
 					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
-					responses.add(FrontendMessage::UpdateInputHints {
-						hint_data: HintData(vec![
-							HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
-							HintGroup(vec![HintInfo::keys([Key::Shift], "15° Increments")]),
-						]),
-					});
+					HintData(vec![
+						HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+						HintGroup(vec![HintInfo::keys([Key::Shift], "15° Increments")]),
+					])
+					.send_layout(responses);
 
 					self.navigation_operation = NavigationOperation::Tilt {
 						tilt_original_for_abort: ptz.tilt(),
@@ -119,12 +116,11 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				};
 
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::ZoomIn });
-				responses.add(FrontendMessage::UpdateInputHints {
-					hint_data: HintData(vec![
-						HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
-						HintGroup(vec![HintInfo::keys([Key::Shift], "Increments")]),
-					]),
-				});
+				HintData(vec![
+					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+					HintGroup(vec![HintInfo::keys([Key::Shift], "Increments")]),
+				])
+				.send_layout(responses);
 
 				self.navigation_operation = NavigationOperation::Zoom {
 					zoom_raw_not_snapped: ptz.zoom(),

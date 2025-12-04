@@ -3,8 +3,8 @@ pub(crate) mod menu {
 	use base64::engine::Engine;
 	use base64::engine::general_purpose::STANDARD as BASE64;
 
-	use graphite_editor::messages::input_mapper::utility_types::input_keyboard::{Key, LayoutKey, LayoutKeysGroup};
-	use graphite_editor::messages::input_mapper::utility_types::misc::ActionKeys;
+	use graphite_editor::messages::input_mapper::utility_types::input_keyboard::{Key, LabeledKey, LabeledShortcut};
+	use graphite_editor::messages::input_mapper::utility_types::misc::ActionShortcut;
 	use graphite_editor::messages::layout::LayoutMessage;
 	use graphite_editor::messages::tool::tool_messages::tool_prelude::{LayoutGroup, LayoutTarget, MenuListEntry, SubLayout, Widget, WidgetId};
 
@@ -84,7 +84,7 @@ pub(crate) mod menu {
 		}
 
 		let shortcut = match shortcut_keys {
-			Some(ActionKeys::Keys(LayoutKeysGroup(keys))) => convert_layout_keys_to_shortcut(keys),
+			Some(ActionShortcut::Shortcut(LabeledShortcut(shortcut))) => convert_labeled_keys_to_shortcut(shortcut),
 			_ => None,
 		};
 
@@ -126,11 +126,11 @@ pub(crate) mod menu {
 		items
 	}
 
-	fn convert_layout_keys_to_shortcut(layout_keys: &Vec<LayoutKey>) -> Option<Shortcut> {
+	fn convert_labeled_keys_to_shortcut(labeled_keys: &Vec<LabeledKey>) -> Option<Shortcut> {
 		let mut key: Option<KeyCode> = None;
 		let mut modifiers = Modifiers::default();
-		for layout_key in layout_keys {
-			match layout_key.key() {
+		for labeled_key in labeled_keys {
+			match labeled_key.key() {
 				Key::Shift => modifiers |= Modifiers::SHIFT,
 				Key::Control => modifiers |= Modifiers::CONTROL,
 				Key::Alt => modifiers |= Modifiers::ALT,

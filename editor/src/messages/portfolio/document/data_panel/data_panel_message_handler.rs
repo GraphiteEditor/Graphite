@@ -232,7 +232,7 @@ impl<T: TableRowLayout> TableRowLayout for Vec<T> {
 
 		rows.insert(0, column_headings(&["", "element"]));
 
-		vec![LayoutGroup::Table { rows }]
+		vec![LayoutGroup::Table { rows, unstyled: false }]
 	}
 }
 
@@ -274,7 +274,7 @@ impl<T: TableRowLayout> TableRowLayout for Table<T> {
 
 		rows.insert(0, column_headings(&["", "element", "transform", "alpha_blending", "source_node_id"]));
 
-		vec![LayoutGroup::Table { rows }]
+		vec![LayoutGroup::Table { rows, unstyled: false }]
 	}
 }
 
@@ -490,7 +490,7 @@ impl TableRowLayout for Vector {
 			}
 		}
 
-		vec![LayoutGroup::Row { widgets: table_tabs }, LayoutGroup::Table { rows: table_rows }]
+		vec![LayoutGroup::Row { widgets: table_tabs }, LayoutGroup::Table { rows: table_rows, unstyled: false }]
 	}
 }
 

@@ -109,6 +109,7 @@ pub enum PortfolioMessage {
 		parent_and_insert_index: Option<(LayerNodeIdentifier, usize)>,
 	},
 	PrevDocument,
+	RequestWelcomeScreenButtonsLayout,
 	SetActivePanel {
 		panel: PanelType,
 	},

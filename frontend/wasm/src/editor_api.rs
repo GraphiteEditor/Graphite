@@ -7,8 +7,9 @@
 use crate::helpers::translate_key;
 use crate::{EDITOR_HANDLE, EDITOR_HAS_CRASHED, Error, MESSAGE_BUFFER};
 use editor::consts::FILE_EXTENSION;
-use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
+use editor::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, ModifierKeys};
 use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta};
+use editor::messages::input_mapper::utility_types::misc::ActionShortcut;
 use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use editor::messages::portfolio::document::utility_types::network_interface::ImportOrExport;
 use editor::messages::portfolio::utility_types::Platform;
@@ -65,6 +66,18 @@ pub fn is_platform_native() -> bool {
 	{
 		false
 	}
+}
+
+#[wasm_bindgen(js_name = shortcutAltClick)]
+pub fn shortcut_alt_click() -> JsValue {
+	let shortcut = Some(ActionShortcut::Shortcut(KeysGroup(vec![Key::Alt, Key::MouseLeft]).into()));
+	serde_wasm_bindgen::to_value(&shortcut).unwrap()
+}
+
+#[wasm_bindgen(js_name = shortcutF11)]
+pub fn shortcut_f11() -> JsValue {
+	let shortcut = Some(ActionShortcut::Shortcut(KeysGroup(vec![Key::F11]).into()));
+	serde_wasm_bindgen::to_value(&shortcut).unwrap()
 }
 
 // ============================================================================
@@ -392,15 +405,9 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
-	#[wasm_bindgen(js_name = openDocument)]
-	pub fn open_document(&self) {
-		let message = PortfolioMessage::OpenDocument;
-		self.dispatch(message);
-	}
-
-	#[wasm_bindgen(js_name = demoArtworkDialog)]
-	pub fn demo_artwork_dialog(&self) {
-		let message = DialogMessage::RequestDemoArtworkDialog;
+	#[wasm_bindgen(js_name = requestWelcomeScreenButtonsLayout)]
+	pub fn request_welcome_screen_buttons_layout(&self) {
+		let message = PortfolioMessage::RequestWelcomeScreenButtonsLayout;
 		self.dispatch(message);
 	}
 
@@ -635,13 +642,6 @@ impl EditorHandle {
 		self.dispatch(message);
 
 		Ok(())
-	}
-
-	/// Visit the given URL
-	#[wasm_bindgen(js_name = visitUrl)]
-	pub fn visit_url(&self, url: String) {
-		let message = FrontendMessage::TriggerVisitLink { url };
-		self.dispatch(message);
 	}
 
 	/// Paste layers from a serialized JSON representation

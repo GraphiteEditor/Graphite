@@ -1,4 +1,4 @@
-import { isPlatformNative } from "@graphite/../wasm/pkg/graphite_wasm.js";
+import { isPlatformNative } from "@graphite/../wasm/pkg/graphite_wasm";
 
 export function browserVersion(): string {
 	const agent = window.navigator.userAgent;

@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { FrontendGraphDataType } from "@graphite/messages";
+	import type { FrontendGraphDataType, ActionShortcut } from "@graphite/messages";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 
@@ -7,7 +7,7 @@
 	export let dataType: FrontendGraphDataType;
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
-	export let tooltipShortcut: string | undefined = undefined;
+	export let tooltipShortcut: ActionShortcut | undefined = undefined;
 	// Callbacks
 	export let action: (e?: MouseEvent) => void;
 </script>
@@ -20,7 +20,7 @@
 		on:click={action}
 		data-tooltip-label={tooltipLabel}
 		data-tooltip-description={tooltipDescription}
-		data-tooltip-shortcut={tooltipShortcut}
+		data-tooltip-shortcut={tooltipShortcut?.shortcut ? JSON.stringify(tooltipShortcut.shortcut) : undefined}
 		tabindex="-1"
 	>
 		{#if !exposed}

@@ -18,7 +18,7 @@
 	// export let disabled = false;
 	// export let tooltipLabel: string | undefined = undefined;
 	// export let tooltipDescription: string | undefined = undefined;
-	// export let tooltipShortcut: string | undefined = undefined;
+	// export let tooltipShortcut: ActionShortcut | undefined = undefined;
 
 	let markerTrack: LayoutRow | undefined = undefined;
 	let positionRestore: number | undefined = undefined;

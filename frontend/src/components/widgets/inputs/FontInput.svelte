@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { createEventDispatcher, getContext, onMount, tick } from "svelte";
 
-	import type { MenuListEntry } from "@graphite/messages";
+	import type { MenuListEntry, ActionShortcut } from "@graphite/messages";
 	import type { FontsState } from "@graphite/state-providers/fonts";
 
 	import MenuList from "@graphite/components/floating-menus/MenuList.svelte";
@@ -25,7 +25,7 @@
 	export let disabled = false;
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
-	export let tooltipShortcut: string | undefined = undefined;
+	export let tooltipShortcut: ActionShortcut | undefined = undefined;
 
 	let open = false;
 	let entries: MenuListEntry[] = [];

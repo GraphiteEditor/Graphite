@@ -452,8 +452,7 @@ impl TransformOperation {
 		}
 		hint_groups.push(HintGroup(typing_hints));
 
-		let hint_data = HintData(hint_groups);
-		responses.add(FrontendMessage::UpdateInputHints { hint_data });
+		HintData(hint_groups).send_layout(responses);
 	}
 
 	pub fn is_constraint_to_axis(&self) -> bool {

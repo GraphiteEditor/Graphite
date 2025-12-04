@@ -12,8 +12,8 @@
 	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
+	import ShortcutLabel from "@graphite/components/widgets/labels/ShortcutLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
-	import UserInputLabel from "@graphite/components/widgets/labels/UserInputLabel.svelte";
 
 	let self: FloatingMenu | undefined;
 	let scroller: LayoutCol | undefined;
@@ -447,8 +447,8 @@
 
 					<TextLabel class="entry-label" styles={{ "font-family": `${!entry.font ? "inherit" : entry.value}` }}>{entry.label}</TextLabel>
 
-					{#if entry.shortcutKeys?.keys.length}
-						<UserInputLabel keysWithLabelsGroups={[entry.shortcutKeys.keys]} requiresLock={entry.shortcutRequiresLock} textOnly={true} />
+					{#if entry.tooltipShortcut?.shortcut.length}
+						<ShortcutLabel shortcut={entry.tooltipShortcut} />
 					{/if}
 
 					{#if entry.children?.length}
@@ -499,7 +499,7 @@
 				margin: 4px 0;
 
 				div {
-					background: var(--color-4-dimgray);
+					background: var(--color-3-darkgray);
 				}
 			}
 
@@ -535,7 +535,7 @@
 					margin: 0 4px;
 				}
 
-				.user-input-label {
+				.shortcut-label {
 					margin-left: 12px;
 				}
 

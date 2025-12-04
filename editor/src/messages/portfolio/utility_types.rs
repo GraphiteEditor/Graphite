@@ -41,6 +41,7 @@ pub enum KeyboardPlatformLayout {
 pub enum PanelType {
 	#[default]
 	Document,
+	Welcome,
 	Layers,
 	Properties,
 	DataPanel,
@@ -50,6 +51,7 @@ impl From<String> for PanelType {
 	fn from(value: String) -> Self {
 		match value.as_str() {
 			"Document" => PanelType::Document,
+			"Welcome" => PanelType::Welcome,
 			"Layers" => PanelType::Layers,
 			"Properties" => PanelType::Properties,
 			"Data" => PanelType::DataPanel,

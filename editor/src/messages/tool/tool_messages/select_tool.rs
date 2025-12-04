@@ -1728,7 +1728,7 @@ impl Fsm for SelectToolFsmState {
 						HintInfo::keys([Key::Control, Key::KeyD], "Duplicate").add_mac_keys([Key::Command, Key::KeyD]),
 					]),
 				]);
-				responses.add(FrontendMessage::UpdateInputHints { hint_data });
+				hint_data.send_layout(responses);
 			}
 			SelectToolFsmState::Dragging { axis, using_compass, has_dragged, .. } if *has_dragged => {
 				let mut hint_data = vec![
@@ -1743,7 +1743,7 @@ impl Fsm for SelectToolFsmState {
 					hint_data.push(HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain to Axis")]));
 				};
 				let hint_data = HintData(hint_data);
-				responses.add(FrontendMessage::UpdateInputHints { hint_data });
+				hint_data.send_layout(responses);
 			}
 			SelectToolFsmState::Drawing { has_drawn, .. } if *has_drawn => {
 				let hint_data = HintData(vec![
@@ -1753,7 +1753,7 @@ impl Fsm for SelectToolFsmState {
 					// TODO: (See https://discord.com/channels/731730685944922173/1216976541947531264/1321360311298818048)
 					// HintGroup(vec![HintInfo::keys([Key::Shift], "Extend")])
 				]);
-				responses.add(FrontendMessage::UpdateInputHints { hint_data });
+				hint_data.send_layout(responses);
 			}
 			SelectToolFsmState::Drawing { .. } | SelectToolFsmState::Dragging { .. } => {}
 			SelectToolFsmState::ResizingBounds => {
@@ -1761,25 +1761,25 @@ impl Fsm for SelectToolFsmState {
 					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 					HintGroup(vec![HintInfo::keys([Key::Alt], "From Pivot"), HintInfo::keys([Key::Shift], "Preserve Aspect Ratio")]),
 				]);
-				responses.add(FrontendMessage::UpdateInputHints { hint_data });
+				hint_data.send_layout(responses);
 			}
 			SelectToolFsmState::RotatingBounds => {
 				let hint_data = HintData(vec![
 					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 					HintGroup(vec![HintInfo::keys([Key::Shift], "15° Increments")]),
 				]);
-				responses.add(FrontendMessage::UpdateInputHints { hint_data });
+				hint_data.send_layout(responses);
 			}
 			SelectToolFsmState::SkewingBounds { .. } => {
 				let hint_data = HintData(vec![
 					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 					HintGroup(vec![HintInfo::keys([Key::Control], "Unlock Slide")]),
 				]);
-				responses.add(FrontendMessage::UpdateInputHints { hint_data });
+				hint_data.send_layout(responses);
 			}
 			SelectToolFsmState::DraggingPivot => {
 				let hint_data = HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]);
-				responses.add(FrontendMessage::UpdateInputHints { hint_data });
+				hint_data.send_layout(responses);
 			}
 		}
 	}

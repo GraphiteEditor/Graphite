@@ -2,6 +2,7 @@
 	import { createEventDispatcher } from "svelte";
 
 	import type { IconName } from "@graphite/icons";
+	import type { ActionShortcut } from "@graphite/messages";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
@@ -13,7 +14,7 @@
 	export let icon: IconName = "Checkmark";
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
-	export let tooltipShortcut: string | undefined = undefined;
+	export let tooltipShortcut: ActionShortcut | undefined = undefined;
 	export let forLabel: bigint | undefined = undefined;
 
 	let inputElement: HTMLInputElement | undefined;
@@ -55,7 +56,7 @@
 		on:keydown={(e) => e.key === "Enter" && toggleCheckboxFromLabel(e)}
 		data-tooltip-label={tooltipLabel}
 		data-tooltip-description={tooltipDescription}
-		data-tooltip-shortcut={tooltipShortcut}
+		data-tooltip-shortcut={tooltipShortcut?.shortcut ? JSON.stringify(tooltipShortcut.shortcut) : undefined}
 	>
 		<LayoutRow class="checkbox-box">
 			<IconLabel icon={displayIcon} />

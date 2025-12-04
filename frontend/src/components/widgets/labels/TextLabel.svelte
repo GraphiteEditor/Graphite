@@ -1,4 +1,6 @@
 <script lang="ts">
+	import type { ActionShortcut } from "@graphite/messages";
+
 	let className = "";
 	export { className as class };
 	export let classes: Record<string, boolean> = {};
@@ -16,7 +18,7 @@
 	export let multiline = false;
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
-	export let tooltipShortcut: string | undefined = undefined;
+	export let tooltipShortcut: ActionShortcut | undefined = undefined;
 	export let forCheckbox: bigint | undefined = undefined;
 
 	$: extraClasses = Object.entries(classes)
@@ -41,7 +43,7 @@
 	style={`${styleName} ${extraStyles}`.trim() || undefined}
 	data-tooltip-label={tooltipLabel}
 	data-tooltip-description={tooltipDescription}
-	data-tooltip-shortcut={tooltipShortcut}
+	data-tooltip-shortcut={tooltipShortcut?.shortcut ? JSON.stringify(tooltipShortcut.shortcut) : undefined}
 	for={forCheckbox !== undefined ? `checkbox-input-${forCheckbox}` : undefined}
 >
 	<slot />

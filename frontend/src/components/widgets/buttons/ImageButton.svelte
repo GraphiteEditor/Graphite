@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { ActionShortcut } from "@graphite/messages";
 	import { IMAGE_BASE64_STRINGS } from "@graphite/utility-functions/images";
 
 	let className = "";
@@ -10,7 +11,7 @@
 	export let height: string | undefined;
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
-	export let tooltipShortcut: string | undefined = undefined;
+	export let tooltipShortcut: ActionShortcut | undefined = undefined;
 	// Callbacks
 	export let action: (e?: MouseEvent) => void;
 
@@ -26,7 +27,7 @@
 	class={`image-button ${className} ${extraClasses}`.trim()}
 	data-tooltip-label={tooltipLabel}
 	data-tooltip-description={tooltipDescription}
-	data-tooltip-shortcut={tooltipShortcut}
+	data-tooltip-shortcut={tooltipShortcut?.shortcut ? JSON.stringify(tooltipShortcut.shortcut) : undefined}
 	alt=""
 	on:click={action}
 />

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
-	import type { FillChoice, MenuDirection } from "@graphite/messages";
+	import type { FillChoice, MenuDirection, ActionShortcut } from "@graphite/messages";
 	import { Color, contrastingOutlineFactor, Gradient } from "@graphite/messages";
 
 	import ColorPicker from "@graphite/components/floating-menus/ColorPicker.svelte";
@@ -19,7 +19,7 @@
 	// export let allowTransparency = false; // TODO: Implement
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
-	export let tooltipShortcut: string | undefined = undefined;
+	export let tooltipShortcut: ActionShortcut | undefined = undefined;
 
 	$: outlineFactor = contrastingOutlineFactor(value, ["--color-1-nearblack", "--color-3-darkgray"], 0.01);
 	$: outlined = outlineFactor > 0.0001;

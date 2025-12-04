@@ -7,7 +7,7 @@ use super::utility_types::network_interface::{self, NodeNetworkInterface, Transa
 use super::utility_types::nodes::{CollapsedLayers, SelectedNodes};
 use crate::application::{GRAPHITE_GIT_COMMIT_HASH, generate_uuid};
 use crate::consts::{ASYMPTOTIC_EFFECT, COLOR_OVERLAY_GRAY, DEFAULT_DOCUMENT_NAME, FILE_EXTENSION, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ROTATE_SNAP_INTERVAL};
-use crate::messages::input_mapper::utility_types::macros::action_keys;
+use crate::messages::input_mapper::utility_types::macros::action_shortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::data_panel::{DataPanelMessageContext, DataPanelMessageHandler};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
@@ -2212,20 +2212,20 @@ impl DocumentMessageHandler {
 		let mut widgets = vec![
 			IconButton::new("PlaybackToStart", 24)
 				.tooltip_label("Restart Animation")
-				.shortcut_keys(action_keys!(AnimationMessageDiscriminant::RestartAnimation))
+				.tooltip_shortcut(action_shortcut!(AnimationMessageDiscriminant::RestartAnimation))
 				.on_update(|_| AnimationMessage::RestartAnimation.into())
 				.disabled(time == Duration::ZERO)
 				.widget_holder(),
 			IconButton::new(if animation_is_playing { "PlaybackPause" } else { "PlaybackPlay" }, 24)
 				.tooltip_label(if animation_is_playing { "Pause Animation" } else { "Play Animation" })
-				.shortcut_keys(action_keys!(AnimationMessageDiscriminant::ToggleLivePreview))
+				.tooltip_shortcut(action_shortcut!(AnimationMessageDiscriminant::ToggleLivePreview))
 				.on_update(|_| AnimationMessage::ToggleLivePreview.into())
 				.widget_holder(),
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			CheckboxInput::new(self.overlays_visibility_settings.all)
 				.icon("Overlays")
 				.tooltip_label("Overlays")
-				.shortcut_keys(action_keys!(DocumentMessageDiscriminant::ToggleOverlaysVisibility))
+				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::ToggleOverlaysVisibility))
 				.on_update(|optional_input: &CheckboxInput| {
 					DocumentMessage::SetOverlaysVisibility {
 						visible: optional_input.checked,
@@ -2474,7 +2474,7 @@ impl DocumentMessageHandler {
 			CheckboxInput::new(snapping_state.snapping_enabled)
 				.icon("Snapping")
 				.tooltip_label("Snapping")
-				.shortcut_keys(action_keys!(DocumentMessageDiscriminant::ToggleSnapping))
+				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::ToggleSnapping))
 				.on_update(move |optional_input: &CheckboxInput| {
 					DocumentMessage::SetSnapping {
 						closure: Some(|snapping_state| &mut snapping_state.snapping_enabled),
@@ -2544,7 +2544,7 @@ impl DocumentMessageHandler {
 			CheckboxInput::new(self.snapping_state.grid_snapping)
 				.icon("Grid")
 				.tooltip_label("Grid")
-				.shortcut_keys(action_keys!(DocumentMessageDiscriminant::ToggleGridVisibility))
+				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::ToggleGridVisibility))
 				.on_update(|optional_input: &CheckboxInput| DocumentMessage::GridVisibility { visible: optional_input.checked }.into())
 				.widget_holder(),
 			PopoverButton::new()
@@ -2626,7 +2626,7 @@ impl DocumentMessageHandler {
 				.icon(Some((if self.graph_view_overlay_open { "GraphViewOpen" } else { "GraphViewClosed" }).into()))
 				.hover_icon(Some((if self.graph_view_overlay_open { "GraphViewClosed" } else { "GraphViewOpen" }).into()))
 				.tooltip_label(if self.graph_view_overlay_open { "Hide Node Graph" } else { "Show Node Graph" })
-				.shortcut_keys(action_keys!(DocumentMessageDiscriminant::GraphViewOverlayToggle))
+				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::GraphViewOverlayToggle))
 				.on_update(move |_| DocumentMessage::GraphViewOverlayToggle.into())
 				.widget_holder(),
 		]);
@@ -2778,14 +2778,14 @@ impl DocumentMessageHandler {
 			IconButton::new(if selection_all_locked { "PadlockLocked" } else { "PadlockUnlocked" }, 24)
 				.hover_icon(Some((if selection_all_locked { "PadlockUnlocked" } else { "PadlockLocked" }).into()))
 				.tooltip_label(if selection_all_locked { "Unlock Selected" } else { "Lock Selected" })
-				.shortcut_keys(action_keys!(DocumentMessageDiscriminant::ToggleSelectedLocked))
+				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::ToggleSelectedLocked))
 				.on_update(|_| NodeGraphMessage::ToggleSelectedLocked.into())
 				.disabled(!has_selection)
 				.widget_holder(),
 			IconButton::new(if selection_all_visible { "EyeVisible" } else { "EyeHidden" }, 24)
 				.hover_icon(Some((if selection_all_visible { "EyeHide" } else { "EyeShow" }).into()))
 				.tooltip_label(if selection_all_visible { "Hide Selected" } else { "Show Selected" })
-				.shortcut_keys(action_keys!(DocumentMessageDiscriminant::ToggleSelectedVisibility))
+				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::ToggleSelectedVisibility))
 				.on_update(|_| DocumentMessage::ToggleSelectedVisibility.into())
 				.disabled(!has_selection)
 				.widget_holder(),
@@ -2850,7 +2850,7 @@ impl DocumentMessageHandler {
 			Separator::new(SeparatorType::Unrelated).widget_holder(),
 			IconButton::new("Folder", 24)
 				.tooltip_label("Group Selected")
-				.shortcut_keys(action_keys!(DocumentMessageDiscriminant::GroupSelectedLayers))
+				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::GroupSelectedLayers))
 				.on_update(|_| {
 					let group_folder_type = GroupFolderType::Layer;
 					DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
@@ -2859,12 +2859,12 @@ impl DocumentMessageHandler {
 				.widget_holder(),
 			IconButton::new("NewLayer", 24)
 				.tooltip_label("New Layer")
-				.shortcut_keys(action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder))
+				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::CreateEmptyFolder))
 				.on_update(|_| DocumentMessage::CreateEmptyFolder.into())
 				.widget_holder(),
 			IconButton::new("Trash", 24)
 				.tooltip_label("Delete Selected")
-				.shortcut_keys(action_keys!(DocumentMessageDiscriminant::DeleteSelectedLayers))
+				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::DeleteSelectedLayers))
 				.on_update(|_| DocumentMessage::DeleteSelectedLayers.into())
 				.disabled(!has_selection)
 				.widget_holder(),
@@ -3148,17 +3148,17 @@ pub fn navigation_controls(ptz: &PTZ, navigation_handler: &NavigationMessageHand
 	let mut list = vec![
 		IconButton::new("ZoomIn", 24)
 			.tooltip_label("Zoom In")
-			.shortcut_keys(action_keys!(NavigationMessageDiscriminant::CanvasZoomIncrease))
+			.tooltip_shortcut(action_shortcut!(NavigationMessageDiscriminant::CanvasZoomIncrease))
 			.on_update(|_| NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }.into())
 			.widget_holder(),
 		IconButton::new("ZoomOut", 24)
 			.tooltip_label("Zoom Out")
-			.shortcut_keys(action_keys!(NavigationMessageDiscriminant::CanvasZoomDecrease))
+			.tooltip_shortcut(action_shortcut!(NavigationMessageDiscriminant::CanvasZoomDecrease))
 			.on_update(|_| NavigationMessage::CanvasZoomDecrease { center_on_mouse: false }.into())
 			.widget_holder(),
 		IconButton::new("ZoomReset", 24)
 			.tooltip_label("Reset Tilt and Zoom to 100%")
-			.shortcut_keys(action_keys!(NavigationMessageDiscriminant::CanvasTiltResetAndZoomTo100Percent))
+			.tooltip_shortcut(action_shortcut!(NavigationMessageDiscriminant::CanvasTiltResetAndZoomTo100Percent))
 			.on_update(|_| NavigationMessage::CanvasTiltResetAndZoomTo100Percent.into())
 			.disabled(ptz.tilt().abs() < 1e-4 && (ptz.zoom() - 1.).abs() < 1e-4)
 			.widget_holder(),
@@ -3168,7 +3168,7 @@ pub fn navigation_controls(ptz: &PTZ, navigation_handler: &NavigationMessageHand
 			IconButton::new("Reverse", 24)
 				.tooltip_label("Unflip Canvas")
 				.tooltip_description("Flip the canvas back to its standard orientation.")
-				.shortcut_keys(action_keys!(NavigationMessageDiscriminant::CanvasFlip))
+				.tooltip_shortcut(action_shortcut!(NavigationMessageDiscriminant::CanvasFlip))
 				.on_update(|_| NavigationMessage::CanvasFlip.into())
 				.widget_holder(),
 		);

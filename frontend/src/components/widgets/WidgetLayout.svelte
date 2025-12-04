@@ -18,7 +18,7 @@
 	{:else if isWidgetSection(layoutGroup)}
 		<WidgetSection widgetData={layoutGroup} layoutTarget={layout.layoutTarget} class={className} {classes} />
 	{:else if isWidgetTable(layoutGroup)}
-		<WidgetTable widgetData={layoutGroup} layoutTarget={layout.layoutTarget} />
+		<WidgetTable widgetData={layoutGroup} unstyled={layoutGroup.unstyled} layoutTarget={layout.layoutTarget} />
 	{:else}
 		<TextLabel styles={{ color: "#d6536e" }}>Error: The widget layout that belongs here has an invalid layout group type</TextLabel>
 	{/if}

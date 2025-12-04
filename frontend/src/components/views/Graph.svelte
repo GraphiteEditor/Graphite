@@ -588,10 +588,11 @@
 					data-visibility-button
 					size={24}
 					icon={node.visible ? "EyeVisible" : "EyeHidden"}
+					hoverIcon={node.visible ? "EyeHide" : "EyeShow"}
 					action={() => {
 						/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
 					}}
-					tooltipLabel={node.visible ? "Visible" : "Hidden"}
+					tooltipLabel={node.visible ? "Hide" : "Show"}
 				/>
 
 				<svg class="border-mask" width="0" height="0">

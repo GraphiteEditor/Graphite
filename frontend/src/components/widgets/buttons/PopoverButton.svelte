@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { type IconName, type PopoverButtonStyle } from "@graphite/icons";
 
-	import type { MenuDirection } from "@graphite/messages";
+	import type { MenuDirection, ActionShortcut } from "@graphite/messages";
 
 	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -13,7 +13,7 @@
 	export let icon: IconName | undefined = undefined;
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
-	export let tooltipShortcut: string | undefined = undefined;
+	export let tooltipShortcut: ActionShortcut | undefined = undefined;
 	export let disabled = false;
 	export let popoverMinWidth = 1;
 
