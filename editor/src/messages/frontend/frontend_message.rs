@@ -1,5 +1,6 @@
 use super::utility_types::{DocumentDetails, MouseCursorIcon, OpenDocument};
 use crate::messages::app_window::app_window_message_handler::AppWindowPlatform;
+use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::{
 	BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeType, NodeGraphErrorDiagnostic, Transform,
@@ -57,6 +58,12 @@ pub enum FrontendMessage {
 		node_descriptions: Vec<(String, String)>,
 		#[serde(rename = "nodeTypes")]
 		node_types: Vec<FrontendNodeType>,
+	},
+	SendShortcutF11 {
+		shortcut: Option<ActionShortcut>,
+	},
+	SendShortcutAltClick {
+		shortcut: Option<ActionShortcut>,
 	},
 
 	// Trigger prefix: cause a browser API to do something

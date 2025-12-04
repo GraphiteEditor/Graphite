@@ -109,6 +109,16 @@ export class SendUIMetadata extends JsMessage {
 	readonly nodeTypes!: FrontendNodeType[];
 }
 
+export class SendShortcutF11 extends JsMessage {
+	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
+	readonly shortcut!: ActionShortcut | undefined;
+}
+
+export class SendShortcutAltClick extends JsMessage {
+	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
+	readonly shortcut!: ActionShortcut | undefined;
+}
+
 export class UpdateNodeThumbnail extends JsMessage {
 	readonly id!: bigint;
 
@@ -1675,6 +1685,8 @@ export const messageMakers: Record<string, MessageMaker> = {
 	DisplayEditableTextboxTransform,
 	DisplayRemoveEditableTextbox,
 	SendUIMetadata,
+	SendShortcutF11,
+	SendShortcutAltClick,
 	TriggerAboutGraphiteLocalizedCommitDate,
 	TriggerDisplayThirdPartyLicensesDialog,
 	TriggerExportImage,

@@ -1,7 +1,6 @@
 <script lang="ts">
 	import { getContext, onMount, onDestroy, tick } from "svelte";
 
-	import { shortcutAltClick } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { Editor } from "@graphite/editor";
 	import {
 		patchLayout,
@@ -10,6 +9,7 @@
 		UpdateLayersPanelControlBarLeftLayout,
 		UpdateLayersPanelControlBarRightLayout,
 		UpdateLayersPanelBottomBarLayout,
+		SendShortcutAltClick,
 	} from "@graphite/messages";
 	import type { ActionShortcut, DataBuffer, LayerPanelEntry, Layout } from "@graphite/messages";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
@@ -73,9 +73,13 @@
 	let layersPanelControlBarRightLayout: Layout = [];
 	let layersPanelBottomBarLayout: Layout = [];
 
-	const altClickKeys: ActionShortcut = shortcutAltClick();
+	let altClickShortcut: ActionShortcut | undefined;
 
 	onMount(() => {
+		editor.subscriptions.subscribeJsMessage(SendShortcutAltClick, async (data) => {
+			altClickShortcut = data.shortcut;
+		});
+
 		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarLeftLayout, (updateLayersPanelControlBarLeftLayout) => {
 			patchLayout(layersPanelControlBarLeftLayout, updateLayersPanelControlBarLeftLayout);
 			layersPanelControlBarLeftLayout = layersPanelControlBarLeftLayout;
@@ -624,7 +628,7 @@
 								? "Hide the layers nested within. (To affect all open descendants, perform the shortcut shown.)"
 								: "Show the layers nested within. (To affect all closed descendants, perform the shortcut shown.)") +
 								(listing.entry.ancestorOfSelected && !listing.entry.expanded ? "\n\nNote: a selected layer is currently contained within.\n" : "")}
-							data-tooltip-shortcut={altClickKeys?.shortcut ? JSON.stringify(altClickKeys.shortcut) : undefined}
+							data-tooltip-shortcut={altClickShortcut?.shortcut ? JSON.stringify(altClickShortcut.shortcut) : undefined}
 							on:click={(e) => handleExpandArrowClickWithModifiers(e, listing.entry.id)}
 							tabindex="0"
 						></button>
@@ -636,7 +640,7 @@
 							icon="Clipped"
 							class="clipped-arrow"
 							tooltipDescription="Clipping mask is active. To release it, perform the shortcut on the layer border."
-							tooltipShortcut={altClickKeys}
+							tooltipShortcut={altClickShortcut}
 						/>
 					{/if}
 					<div class="thumbnail">

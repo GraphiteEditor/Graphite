@@ -13,7 +13,7 @@ pub struct LayoutMessageContext<'a> {
 
 #[derive(Debug, Clone, Default, ExtractField)]
 pub struct LayoutMessageHandler {
-	layouts: [Layout; LayoutTarget::LayoutTargetLength as usize],
+	layouts: [Layout; LayoutTarget::_LayoutTargetLength as usize],
 }
 
 #[message_handler_data]
@@ -518,7 +518,8 @@ impl LayoutMessageHandler {
 			LayoutTarget::WelcomeScreenButtons => FrontendMessage::UpdateWelcomeScreenButtonsLayout { diff },
 			LayoutTarget::WorkingColors => FrontendMessage::UpdateWorkingColorsLayout { diff },
 
-			LayoutTarget::LayoutTargetLength => panic!("`LayoutTargetLength` is not a valid Layout Target and is used for array indexing"),
+			// KEEP THIS ENUM LAST
+			LayoutTarget::_LayoutTargetLength => panic!("`_LayoutTargetLength` is not a valid `LayoutTarget` and is used for array indexing"),
 		};
 
 		responses.add(message);

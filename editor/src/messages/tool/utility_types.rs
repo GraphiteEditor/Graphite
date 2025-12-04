@@ -533,8 +533,8 @@ impl HintData {
 				for shortcut in &hint.key_groups {
 					widgets.push(ShortcutLabel::new(Some(ActionShortcut::Shortcut(shortcut.clone()))).widget_instance());
 				}
-				if let Some(mouse_movement) = &hint.mouse {
-					let mouse_movement = LabeledShortcut(vec![LabeledKeyOrMouseMotion::MouseMotion(mouse_movement.clone())]);
+				if let Some(mouse_movement) = hint.mouse {
+					let mouse_movement = LabeledShortcut(vec![LabeledKeyOrMouseMotion::MouseMotion(mouse_movement)]);
 					let shortcut = ActionShortcut::Shortcut(mouse_movement);
 					widgets.push(ShortcutLabel::new(Some(shortcut)).widget_instance());
 				}

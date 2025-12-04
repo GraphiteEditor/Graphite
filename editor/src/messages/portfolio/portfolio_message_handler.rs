@@ -7,7 +7,8 @@ use crate::messages::animation::TimingInformation;
 use crate::messages::debug::utility_types::MessageLoggingVerbosity;
 use crate::messages::dialog::simple_dialogs;
 use crate::messages::frontend::utility_types::{DocumentDetails, OpenDocument};
-use crate::messages::input_mapper::utility_types::macros::action_shortcut;
+use crate::messages::input_mapper::utility_types::input_keyboard::Key;
+use crate::messages::input_mapper::utility_types::macros::{action_shortcut, action_shortcut_manual};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::DocumentMessageContext;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
@@ -153,6 +154,17 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					node_descriptions: document_node_definitions::collect_node_descriptions(),
 					node_types: document_node_definitions::collect_node_types(),
 				});
+
+				// Send shortcuts for widgets created in the frontend which need shortcut tooltips
+				responses.add(FrontendMessage::SendShortcutF11 {
+					shortcut: action_shortcut_manual!(Key::F11),
+				});
+				responses.add(FrontendMessage::SendShortcutAltClick {
+					shortcut: action_shortcut_manual!(Key::Alt, Key::MouseLeft),
+				});
+
+				// Before loading any documents, initially prepare the welcome screen buttons layout
+				responses.add(PortfolioMessage::RequestWelcomeScreenButtonsLayout);
 
 				// Tell frontend to finish loading persistent documents
 				responses.add(FrontendMessage::TriggerLoadRestAutoSaveDocuments);
@@ -1117,7 +1129,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						})
 					})
 					.collect::<Vec<_>>();
+
+				let no_open_documents = open_documents.is_empty();
+
 				responses.add(FrontendMessage::UpdateOpenDocumentsList { open_documents });
+
+				if no_open_documents {
+					responses.add(PortfolioMessage::RequestWelcomeScreenButtonsLayout);
+				}
 			}
 			PortfolioMessage::UpdateVelloPreference => {
 				let active = if cfg!(target_family = "wasm") { false } else { preferences.use_vello };

@@ -21,8 +21,6 @@
 			patchLayout(welcomePanelButtonsLayout, updateWelcomeScreenButtonsLayout);
 			welcomePanelButtonsLayout = welcomePanelButtonsLayout;
 		});
-
-		editor.handle.requestWelcomeScreenButtonsLayout();
 	});
 
 	onDestroy(() => {

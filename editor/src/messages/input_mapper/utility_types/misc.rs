@@ -136,16 +136,11 @@ pub enum ActionShortcut {
 
 impl ActionShortcut {
 	pub fn realize_shortcut(&mut self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>) {
-		match self {
-			Self::Action(action) => {
-				if let Some(keys) = action_input_mapping(action) {
-					*self = Self::Shortcut(keys.into());
-				} else {
-					*self = Self::Shortcut(KeysGroup::default().into());
-				}
-			}
-			Self::Shortcut(shortcut) => {
-				warn!("Calling `.to_keys()` on a `ActionShortcut::Shortcut` is a mistake/bug. Shortcut is: {shortcut:?}.");
+		if let Self::Action(action) = self {
+			if let Some(keys) = action_input_mapping(action) {
+				*self = Self::Shortcut(keys.into());
+			} else {
+				*self = Self::Shortcut(KeysGroup::default().into());
 			}
 		}
 	}

@@ -689,7 +689,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 								.on_commit(|_| DebugMessage::ToggleTraceLogs.into()),
 							MenuListEntry::new("Print Messages: Off")
 								.label("Print Messages: Off")
-								.icon(message_logging_verbosity_off.then_some({
+								.icon(if message_logging_verbosity_off {
 									#[cfg(not(target_os = "macos"))]
 									{
 										"SmallDot".to_string()
@@ -698,12 +698,12 @@ impl LayoutHolder for MenuBarMessageHandler {
 									{
 										"CheckboxChecked".to_string()
 									}
-								}).unwrap_or_default())
+								} else { Default::default() })
 								.tooltip_shortcut(action_shortcut!(DebugMessageDiscriminant::MessageOff))
 								.on_commit(|_| DebugMessage::MessageOff.into()),
 							MenuListEntry::new("Print Messages: Only Names")
 								.label("Print Messages: Only Names")
-								.icon(message_logging_verbosity_names.then_some({
+								.icon(if message_logging_verbosity_names {
 									#[cfg(not(target_os = "macos"))]
 									{
 										"SmallDot".to_string()
@@ -712,12 +712,12 @@ impl LayoutHolder for MenuBarMessageHandler {
 									{
 										"CheckboxChecked".to_string()
 									}
-								}).unwrap_or_default())
+								} else { Default::default() })
 								.tooltip_shortcut(action_shortcut!(DebugMessageDiscriminant::MessageNames))
 								.on_commit(|_| DebugMessage::MessageNames.into()),
 							MenuListEntry::new("Print Messages: Full Contents")
 								.label("Print Messages: Full Contents")
-								.icon(message_logging_verbosity_contents.then_some({
+								.icon(if message_logging_verbosity_contents {
 									#[cfg(not(target_os = "macos"))]
 									{
 										"SmallDot".to_string()
@@ -726,7 +726,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 									{
 										"CheckboxChecked".to_string()
 									}
-								}).unwrap_or_default())
+								} else { Default::default() })
 								.tooltip_shortcut(action_shortcut!(DebugMessageDiscriminant::MessageContents))
 								.on_commit(|_| DebugMessage::MessageContents.into()),
 						],

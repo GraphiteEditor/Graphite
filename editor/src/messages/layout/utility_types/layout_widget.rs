@@ -56,7 +56,7 @@ pub enum LayoutTarget {
 
 	// KEEP THIS ENUM LAST
 	// This is a marker that is used to define an array that is used to hold widgets
-	LayoutTargetLength,
+	_LayoutTargetLength,
 }
 
 /// For use by structs that define a UI widget layout by implementing the layout() function belonging to this trait.
