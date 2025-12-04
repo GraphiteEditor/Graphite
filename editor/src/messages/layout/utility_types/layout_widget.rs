@@ -43,6 +43,8 @@ pub enum LayoutTarget {
 	NodeGraphControlBar,
 	/// The body of the Properties panel containing many collapsable sections.
 	PropertiesPanel,
+	/// The contextual input key/mouse combination shortcuts shown in the status bar at the bottom of the window.
+	StatusBarHints,
 	/// The bar directly above the canvas, left-aligned and to the right of the document mode dropdown.
 	ToolOptions,
 	/// The vertical buttons for all of the tools on the left of the canvas.
@@ -610,7 +612,7 @@ pub enum DiffUpdate {
 impl DiffUpdate {
 	/// Append the keyboard shortcut to the tooltip where applicable
 	pub fn apply_keyboard_shortcut(&mut self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>) {
-		// Go through each widget to convert `ActionKeys::Action` to `ActionKeys::Keys` and append the key combination to the widget tooltip
+		// Go through each widget to convert `ActionShortcut::Action` to `ActionShortcut::Shortcut` and append the key combination to the widget tooltip
 		let convert_tooltip = |widget_holder: &mut WidgetHolder| {
 			// Handle all the widgets that have tooltips
 			let tooltip_shortcut = match &mut widget_holder.widget {
@@ -625,8 +627,8 @@ impl DiffUpdate {
 				Widget::PopoverButton(widget) => widget.tooltip_shortcut.as_mut(),
 				Widget::TextButton(widget) => widget.tooltip_shortcut.as_mut(),
 				Widget::ImageButton(widget) => widget.tooltip_shortcut.as_mut(),
+				Widget::ShortcutLabel(widget) => widget.shortcut.as_mut(),
 				Widget::IconLabel(_)
-				| Widget::ShortcutLabel(_)
 				| Widget::ImageLabel(_)
 				| Widget::CurveInput(_)
 				| Widget::NodeCatalog(_)
@@ -639,37 +641,31 @@ impl DiffUpdate {
 				| Widget::WorkingColorsInput(_) => None,
 			};
 
-			// Convert `ActionKeys::Action` to `ActionKeys::Keys`
+			// Convert `ActionShortcut::Action` to `ActionShortcut::Shortcut`
 			if let Some(tooltip_shortcut) = tooltip_shortcut {
-				tooltip_shortcut.to_keys(action_input_mapping);
-			}
-
-			// Handle ShortcutLabel separately because it can have multiple shortcuts
-			if let Widget::ShortcutLabel(shortcut_label) = &mut widget_holder.widget {
-				shortcut_label.shortcuts.iter_mut().for_each(|shortcut| {
-					// Convert `ActionKeys::Action` to `ActionKeys::Keys`
-					shortcut.to_keys(action_input_mapping);
-				});
+				tooltip_shortcut.realize_shortcut(action_input_mapping);
 			}
 
 			// Handle RadioInput separately because its tooltips are children of the widget
 			if let Widget::RadioInput(radio_input) = &mut widget_holder.widget {
 				for radio_entry_data in &mut radio_input.entries {
-					// Convert `ActionKeys::Action` to `ActionKeys::Keys`
-					radio_entry_data.tooltip_shortcut.as_mut().map(|entry| entry.to_keys(action_input_mapping));
+					// Convert `ActionShortcut::Action` to `ActionShortcut::Shortcut`
+					if let Some(tooltip_shortcut) = radio_entry_data.tooltip_shortcut.as_mut() {
+						tooltip_shortcut.realize_shortcut(action_input_mapping);
+					}
 				}
 			}
 		};
 
 		// Recursively fill menu list entries with their realized shortcut keys specific to the current bindings and platform
-		let apply_action_keys_to_menu_lists = |entry_sections: &mut MenuListEntrySections| {
+		let apply_action_shortcut_to_menu_lists = |entry_sections: &mut MenuListEntrySections| {
 			struct RecursiveWrapper<'a>(&'a dyn Fn(&mut MenuListEntrySections, &RecursiveWrapper));
 			let recursive_wrapper = RecursiveWrapper(&|entry_sections: &mut MenuListEntrySections, recursive_wrapper| {
 				for entries in entry_sections {
 					for entry in entries {
+						// Convert `ActionShortcut::Action` to `ActionShortcut::Shortcut`
 						if let Some(tooltip_shortcut) = &mut entry.tooltip_shortcut {
-							// Convert `ActionKeys::Action` to `ActionKeys::Keys`
-							tooltip_shortcut.to_keys(action_input_mapping);
+							tooltip_shortcut.realize_shortcut(action_input_mapping);
 						}
 
 						// Recursively call this inner closure on the menu's children
@@ -682,8 +678,8 @@ impl DiffUpdate {
 
 		// Apply shortcut conversions to all widgets that have menu lists
 		let convert_menu_lists = |widget_holder: &mut WidgetHolder| match &mut widget_holder.widget {
-			Widget::DropdownInput(dropdown_input) => apply_action_keys_to_menu_lists(&mut dropdown_input.entries),
-			Widget::TextButton(text_button) => apply_action_keys_to_menu_lists(&mut text_button.menu_list_children),
+			Widget::DropdownInput(dropdown_input) => apply_action_shortcut_to_menu_lists(&mut dropdown_input.entries),
+			Widget::TextButton(text_button) => apply_action_shortcut_to_menu_lists(&mut text_button.menu_list_children),
 			_ => {}
 		};
 

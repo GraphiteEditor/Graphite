@@ -7,7 +7,6 @@ use crate::messages::portfolio::document::node_graph::utility_types::{
 use crate::messages::portfolio::document::utility_types::nodes::{JsRawBuffer, LayerPanelEntry, RawBuffer};
 use crate::messages::portfolio::document::utility_types::wires::{WirePath, WirePathUpdate};
 use crate::messages::prelude::*;
-use crate::messages::tool::utility_types::HintData;
 use glam::IVec2;
 use graph_craft::document::NodeId;
 use graphene_std::raster::Image;
@@ -257,10 +256,6 @@ pub enum FrontendMessage {
 	UpdateGraphFadeArtwork {
 		percentage: f64,
 	},
-	UpdateInputHints {
-		#[serde(rename = "hintData")]
-		hint_data: HintData,
-	},
 	UpdateLayersPanelControlBarLeftLayout {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
@@ -336,6 +331,11 @@ pub enum FrontendMessage {
 		wire_path: Option<WirePath>,
 	},
 	UpdateWelcomeScreenButtonsLayout {
+		#[serde(rename = "layoutTarget")]
+		layout_target: LayoutTarget,
+		diff: Vec<WidgetDiff>,
+	},
+	UpdateStatusBarHintsLayout {
 		#[serde(rename = "layoutTarget")]
 		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,

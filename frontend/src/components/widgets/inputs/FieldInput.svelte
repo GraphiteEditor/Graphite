@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
-	import type { ActionKeys } from "@graphite/messages";
+	import type { ActionShortcut } from "@graphite/messages";
 	import { operatingSystem } from "@graphite/utility-functions/platform";
 
 	import { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";
@@ -28,7 +28,7 @@
 	export let textarea = false;
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
-	export let tooltipShortcut: ActionKeys | undefined = undefined;
+	export let tooltipShortcut: ActionShortcut | undefined = undefined;
 	export let placeholder: string | undefined = undefined;
 	export let hideContextMenu = false;
 

@@ -515,6 +515,7 @@ impl LayoutMessageHandler {
 			LayoutTarget::MenuBar => FrontendMessage::UpdateMenuBarLayout { layout_target, diff },
 			LayoutTarget::NodeGraphControlBar => FrontendMessage::UpdateNodeGraphControlBarLayout { layout_target, diff },
 			LayoutTarget::PropertiesPanel => FrontendMessage::UpdatePropertiesPanelLayout { layout_target, diff },
+			LayoutTarget::StatusBarHints => FrontendMessage::UpdateStatusBarHintsLayout { layout_target, diff },
 			LayoutTarget::ToolOptions => FrontendMessage::UpdateToolOptionsLayout { layout_target, diff },
 			LayoutTarget::ToolShelf => FrontendMessage::UpdateToolShelfLayout { layout_target, diff },
 			LayoutTarget::WelcomeScreenButtons => FrontendMessage::UpdateWelcomeScreenButtonsLayout { layout_target, diff },

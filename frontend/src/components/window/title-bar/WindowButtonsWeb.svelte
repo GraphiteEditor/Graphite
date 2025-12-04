@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { getContext } from "svelte";
 
-	import { shortcutF11 } from "@graphite/../wasm/pkg/graphite_wasm.js";
+	import { shortcutF11 } from "@graphite/../wasm/pkg/graphite_wasm";
+	import type { ActionShortcut } from "@graphite/messages";
 	import type { FullscreenState } from "@graphite/state-providers/fullscreen";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -9,7 +10,7 @@
 
 	const fullscreen = getContext<FullscreenState>("fullscreen");
 
-	const f11Keys = shortcutF11();
+	const f11Keys: ActionShortcut = shortcutF11();
 
 	async function handleClick() {
 		if ($fullscreen.windowFullscreen) fullscreen.exitFullscreen();

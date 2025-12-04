@@ -503,7 +503,7 @@ impl Fsm for SplineToolFsmState {
 			SplineToolFsmState::MergingEndpoints => HintData(vec![]),
 		};
 
-		responses.add(FrontendMessage::UpdateInputHints { hint_data });
+		hint_data.send_layout(responses);
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {

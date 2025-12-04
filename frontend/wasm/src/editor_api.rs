@@ -9,7 +9,7 @@ use crate::{EDITOR_HANDLE, EDITOR_HAS_CRASHED, Error, MESSAGE_BUFFER};
 use editor::consts::FILE_EXTENSION;
 use editor::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, ModifierKeys};
 use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta};
-use editor::messages::input_mapper::utility_types::misc::ActionKeys;
+use editor::messages::input_mapper::utility_types::misc::ActionShortcut;
 use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use editor::messages::portfolio::document::utility_types::network_interface::ImportOrExport;
 use editor::messages::portfolio::utility_types::Platform;
@@ -70,14 +70,14 @@ pub fn is_platform_native() -> bool {
 
 #[wasm_bindgen(js_name = shortcutAltClick)]
 pub fn shortcut_alt_click() -> JsValue {
-	let keys = Some(ActionKeys::Keys(KeysGroup(vec![Key::Alt, Key::MouseLeft]).into()));
-	serde_wasm_bindgen::to_value(&keys).unwrap()
+	let shortcut = Some(ActionShortcut::Shortcut(KeysGroup(vec![Key::Alt, Key::MouseLeft]).into()));
+	serde_wasm_bindgen::to_value(&shortcut).unwrap()
 }
 
 #[wasm_bindgen(js_name = shortcutF11)]
 pub fn shortcut_f11() -> JsValue {
-	let keys = Some(ActionKeys::Keys(KeysGroup(vec![Key::F11]).into()));
-	serde_wasm_bindgen::to_value(&keys).unwrap()
+	let shortcut = Some(ActionShortcut::Shortcut(KeysGroup(vec![Key::F11]).into()));
+	serde_wasm_bindgen::to_value(&shortcut).unwrap()
 }
 
 // ============================================================================

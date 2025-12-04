@@ -1,4 +1,4 @@
-use crate::messages::input_mapper::utility_types::misc::ActionKeys;
+use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
 use crate::messages::tool::tool_messages::tool_prelude::WidgetCallback;
@@ -29,7 +29,7 @@ pub struct IconButton {
 	pub tooltip_description: String,
 
 	#[serde(rename = "tooltipShortcut")]
-	pub tooltip_shortcut: Option<ActionKeys>,
+	pub tooltip_shortcut: Option<ActionShortcut>,
 
 	// Callbacks
 	#[serde(skip)]
@@ -60,7 +60,7 @@ pub struct PopoverButton {
 	pub tooltip_description: String,
 
 	#[serde(rename = "tooltipShortcut")]
-	pub tooltip_shortcut: Option<ActionKeys>,
+	pub tooltip_shortcut: Option<ActionShortcut>,
 
 	#[serde(rename = "popoverLayout")]
 	pub popover_layout: SubLayout,
@@ -98,7 +98,7 @@ pub struct ParameterExposeButton {
 	pub tooltip_description: String,
 
 	#[serde(rename = "tooltipShortcut")]
-	pub tooltip_shortcut: Option<ActionKeys>,
+	pub tooltip_shortcut: Option<ActionShortcut>,
 
 	// Callbacks
 	#[serde(skip)]
@@ -139,7 +139,7 @@ pub struct TextButton {
 	pub tooltip_description: String,
 
 	#[serde(rename = "tooltipShortcut")]
-	pub tooltip_shortcut: Option<ActionKeys>,
+	pub tooltip_shortcut: Option<ActionShortcut>,
 
 	#[serde(rename = "menuListChildren")]
 	pub menu_list_children: MenuListEntrySections,
@@ -171,7 +171,7 @@ pub struct ImageButton {
 	pub tooltip_description: String,
 
 	#[serde(rename = "tooltipShortcut")]
-	pub tooltip_shortcut: Option<ActionKeys>,
+	pub tooltip_shortcut: Option<ActionShortcut>,
 
 	// Callbacks
 	#[serde(skip)]
@@ -213,7 +213,7 @@ pub struct ColorInput {
 	pub tooltip_description: String,
 
 	#[serde(rename = "tooltipShortcut")]
-	pub tooltip_shortcut: Option<ActionKeys>,
+	pub tooltip_shortcut: Option<ActionShortcut>,
 
 	// Callbacks
 	#[serde(skip)]
@@ -240,7 +240,7 @@ pub struct BreadcrumbTrailButtons {
 	pub tooltip_description: String,
 
 	#[serde(rename = "tooltipShortcut")]
-	pub tooltip_shortcut: Option<ActionKeys>,
+	pub tooltip_shortcut: Option<ActionShortcut>,
 
 	// Callbacks
 	#[serde(skip)]

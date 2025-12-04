@@ -2,7 +2,7 @@
 	import { createEventDispatcher } from "svelte";
 
 	import type { IconName } from "@graphite/icons";
-	import type { MenuListEntry, ActionKeys } from "@graphite/messages";
+	import type { MenuListEntry, ActionShortcut } from "@graphite/messages";
 
 	import MenuList from "@graphite/components/floating-menus/MenuList.svelte";
 	import ConditionalWrapper from "@graphite/components/layout/ConditionalWrapper.svelte";
@@ -25,7 +25,7 @@
 	export let narrow = false;
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
-	export let tooltipShortcut: ActionKeys | undefined = undefined;
+	export let tooltipShortcut: ActionShortcut | undefined = undefined;
 	export let menuListChildren: MenuListEntry[][] | undefined = undefined;
 
 	// Callbacks
@@ -66,7 +66,7 @@
 		style:min-width={minWidth > 0 ? `${minWidth}px` : undefined}
 		data-tooltip-label={tooltipLabel}
 		data-tooltip-description={tooltipDescription}
-		data-tooltip-shortcut={tooltipShortcut?.keys ? JSON.stringify(tooltipShortcut.keys) : undefined}
+		data-tooltip-shortcut={tooltipShortcut?.shortcut ? JSON.stringify(tooltipShortcut.shortcut) : undefined}
 		data-emphasized={emphasized || undefined}
 		data-disabled={disabled || undefined}
 		data-text-button

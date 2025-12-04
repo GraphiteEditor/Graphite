@@ -1,20 +1,22 @@
 <script lang="ts">
 	import type { IconName } from "@graphite/icons";
-	import type { ActionKeys, KeyRaw, LayoutKeysGroup, MouseMotion } from "@graphite/messages";
+	import type { ActionShortcut, KeyRaw, LabeledShortcut, MouseMotion } from "@graphite/messages";
 	import { operatingSystem } from "@graphite/utility-functions/platform";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 
-	export let shortcuts: ActionKeys[] = [];
-	export let mouseMotion: MouseMotion | undefined = undefined;
+	export let shortcut: ActionShortcut;
 
-	function keyTextOrIconList(keyGroup: LayoutKeysGroup): { label?: string; icon?: IconName }[] {
-		const list = keyGroup.map((keyWithLabel) => {
+	function keyTextOrIconList(keyGroup: LabeledShortcut): { label?: string; icon?: IconName; mouseMotion?: MouseMotion }[] {
+		const list = keyGroup.map((labeledKeyOrMouseMotion) => {
+			// Use a mouse icon if it's a mouse motion instead of a key
+			if (typeof labeledKeyOrMouseMotion === "string") return { mouseMotion: labeledKeyOrMouseMotion };
+
 			// `key` is the name of the `Key` enum in Rust, while `label` is the localized string to display (if it doesn't become an icon)
-			let key = keyWithLabel.key;
-			const label = keyWithLabel.label;
+			let key = labeledKeyOrMouseMotion.key;
+			const label = labeledKeyOrMouseMotion.label;
 
 			// Replace Alt and Accel keys with their Mac-specific equivalents
 			if (operatingSystem() === "Mac") {
@@ -77,60 +79,38 @@
 </script>
 
 <LayoutRow class="shortcut-label">
-	{#each shortcuts as shortcut}
-		<div class="input-key">
-			{#each keyTextOrIconList(shortcut.keys) as keyInfo}
-				{#if keyInfo.icon}
-					<IconLabel icon={keyInfo.icon} />
-				{:else if keyInfo.label !== undefined}
-					<TextLabel>{keyInfo.label}</TextLabel>
-				{/if}
-			{/each}
-		</div>
+	{#each keyTextOrIconList(shortcut.shortcut) as { label, icon, mouseMotion }}
+		{#if label}
+			<div class="key-label">
+				<TextLabel>{label}</TextLabel>
+			</div>
+		{:else if icon}
+			<div class="key-icon">
+				<IconLabel {icon} />
+			</div>
+		{:else if mouseMotion}
+			<div class="mouse-icon">
+				<IconLabel icon={mouseHintIcon(mouseMotion)} />
+			</div>
+		{/if}
 	{/each}
-	{#if mouseMotion}
-		<div class="input-mouse">
-			<IconLabel icon={mouseHintIcon(mouseMotion)} />
-		</div>
-	{/if}
 </LayoutRow>
 
 <style lang="scss" global>
 	.shortcut-label {
-		flex: 0 0 auto;
-		align-items: center;
-		white-space: nowrap;
-
-		.input-key {
+		.key-icon,
+		.key-label {
 			display: flex;
 			align-items: center;
 			height: 16px;
+			padding: 0 4px;
 			border-radius: 4px;
 			background: var(--color-3-darkgray);
 			color: var(--color-b-lightgray);
-
-			> * {
-				margin: 0 4px;
-
-				+ * {
-					margin-left: 0;
-				}
-			}
-
-			.icon-label {
-				fill: var(--color-b-lightgray);
-			}
-
-			+ .input-key {
-				margin-left: 4px;
-			}
-
-			+ .input-mouse {
-				margin-left: 2px;
-			}
+			fill: var(--color-b-lightgray);
 		}
 
-		.icon-label svg {
+		svg {
 			fill: var(--color-b-lightgray);
 
 			.dim {
@@ -139,24 +119,32 @@
 		}
 
 		.floating-menu-content .row > & {
-			.input-key {
+			.key-label,
+			.key-icon,
+			.mouse-icon {
 				color: var(--color-8-uppergray);
 				background: none;
 
-				> :first-child {
-					margin-left: 0;
+				&:first-child {
+					padding-left: 0;
 				}
 
-				> :last-child {
-					margin-right: 0;
+				&:last-child {
+					padding-right: 0;
 				}
 			}
 
-			.icon-label svg {
+			.key-icon svg {
 				fill: var(--color-8-uppergray);
+			}
+
+			.mouse-icon svg {
+				// 3 shades brighter than the 8-uppergray of key labels/icons
+				fill: var(--color-b-lightgray);
 
 				.dim {
-					fill: var(--color-3-darkgray);
+					// 3 shades darker than the 8-uppergray of key labels/icons
+					fill: var(--color-5-dullgray);
 				}
 			}
 		}

@@ -2288,7 +2288,7 @@ impl Fsm for PenToolFsmState {
 			}
 		};
 
-		responses.add(FrontendMessage::UpdateInputHints { hint_data });
+		hint_data.send_layout(responses);
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {

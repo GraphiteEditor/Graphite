@@ -138,7 +138,7 @@ impl Fsm for EyedropperToolFsmState {
 			}
 		};
 
-		responses.add(FrontendMessage::UpdateInputHints { hint_data });
+		hint_data.send_layout(responses);
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {

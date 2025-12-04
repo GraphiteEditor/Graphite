@@ -1,5 +1,5 @@
 use crate::messages::debug::utility_types::MessageLoggingVerbosity;
-use crate::messages::input_mapper::utility_types::macros::action_keys;
+use crate::messages::input_mapper::utility_types::macros::action_shortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GroupFolderType};
@@ -68,7 +68,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 		let preferences = MenuListEntry::new("Preferences…")
 			.label("Preferences…")
 			.icon("Settings")
-			.tooltip_shortcut(action_keys!(DialogMessageDiscriminant::RequestPreferencesDialog))
+			.tooltip_shortcut(action_shortcut!(DialogMessageDiscriminant::RequestPreferencesDialog))
 			.on_commit(|_| DialogMessage::RequestPreferencesDialog.into());
 
 		let menu_bar_buttons = vec![
@@ -89,21 +89,21 @@ impl LayoutHolder for MenuBarMessageHandler {
 					vec![
 						MenuListEntry::new("Hide Graphite")
 							.label("Hide Graphite")
-							.tooltip_shortcut(action_keys!(AppWindowMessageDiscriminant::Hide))
+							.tooltip_shortcut(action_shortcut!(AppWindowMessageDiscriminant::Hide))
 							.on_commit(|_| AppWindowMessage::Hide.into()),
 						MenuListEntry::new("Hide Others")
 							.label("Hide Others")
-							.tooltip_shortcut(action_keys!(AppWindowMessageDiscriminant::HideOthers))
+							.tooltip_shortcut(action_shortcut!(AppWindowMessageDiscriminant::HideOthers))
 							.on_commit(|_| AppWindowMessage::HideOthers.into()),
 						MenuListEntry::new("Show All")
 							.label("Show All")
-							.tooltip_shortcut(action_keys!(AppWindowMessageDiscriminant::ShowAll))
+							.tooltip_shortcut(action_shortcut!(AppWindowMessageDiscriminant::ShowAll))
 							.on_commit(|_| AppWindowMessage::ShowAll.into()),
 					],
 					vec![
 						MenuListEntry::new("Quit Graphite")
 							.label("Quit Graphite")
-							.tooltip_shortcut(action_keys!(AppWindowMessageDiscriminant::Close))
+							.tooltip_shortcut(action_shortcut!(AppWindowMessageDiscriminant::Close))
 							.on_commit(|_| AppWindowMessage::Close.into()),
 					],
 				])
@@ -117,11 +117,11 @@ impl LayoutHolder for MenuBarMessageHandler {
 							.label("New…")
 							.icon("File")
 							.on_commit(|_| DialogMessage::RequestNewDocumentDialog.into())
-							.tooltip_shortcut(action_keys!(DialogMessageDiscriminant::RequestNewDocumentDialog)),
+							.tooltip_shortcut(action_shortcut!(DialogMessageDiscriminant::RequestNewDocumentDialog)),
 						MenuListEntry::new("Open…")
 							.label("Open…")
 							.icon("Folder")
-							.tooltip_shortcut(action_keys!(PortfolioMessageDiscriminant::OpenDocument))
+							.tooltip_shortcut(action_shortcut!(PortfolioMessageDiscriminant::OpenDocument))
 							.on_commit(|_| PortfolioMessage::OpenDocument.into()),
 						MenuListEntry::new("Open Demo Artwork…")
 							.label("Open Demo Artwork…")
@@ -132,13 +132,13 @@ impl LayoutHolder for MenuBarMessageHandler {
 						MenuListEntry::new("Close")
 							.label("Close")
 							.icon("Close")
-							.tooltip_shortcut(action_keys!(PortfolioMessageDiscriminant::CloseActiveDocumentWithConfirmation))
+							.tooltip_shortcut(action_shortcut!(PortfolioMessageDiscriminant::CloseActiveDocumentWithConfirmation))
 							.on_commit(|_| PortfolioMessage::CloseActiveDocumentWithConfirmation.into())
 							.disabled(no_active_document),
 						MenuListEntry::new("Close All")
 							.label("Close All")
 							.icon("CloseAll")
-							.tooltip_shortcut(action_keys!(PortfolioMessageDiscriminant::CloseAllDocumentsWithConfirmation))
+							.tooltip_shortcut(action_shortcut!(PortfolioMessageDiscriminant::CloseAllDocumentsWithConfirmation))
 							.on_commit(|_| PortfolioMessage::CloseAllDocumentsWithConfirmation.into())
 							.disabled(no_active_document),
 					],
@@ -146,14 +146,14 @@ impl LayoutHolder for MenuBarMessageHandler {
 						MenuListEntry::new("Save")
 							.label("Save")
 							.icon("Save")
-							.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::SaveDocument))
+							.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::SaveDocument))
 							.on_commit(|_| DocumentMessage::SaveDocument.into())
 							.disabled(no_active_document),
 						#[cfg(not(target_family = "wasm"))]
 						MenuListEntry::new("Save As…")
 							.label("Save As…")
 							.icon("Save")
-							.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::SaveDocumentAs))
+							.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::SaveDocumentAs))
 							.on_commit(|_| DocumentMessage::SaveDocumentAs.into())
 							.disabled(no_active_document),
 					],
@@ -161,12 +161,12 @@ impl LayoutHolder for MenuBarMessageHandler {
 						MenuListEntry::new("Import…")
 							.label("Import…")
 							.icon("FileImport")
-							.tooltip_shortcut(action_keys!(PortfolioMessageDiscriminant::Import))
+							.tooltip_shortcut(action_shortcut!(PortfolioMessageDiscriminant::Import))
 							.on_commit(|_| PortfolioMessage::Import.into()),
 						MenuListEntry::new("Export…")
 							.label("Export…")
 							.icon("FileExport")
-							.tooltip_shortcut(action_keys!(DialogMessageDiscriminant::RequestExportDialog))
+							.tooltip_shortcut(action_shortcut!(DialogMessageDiscriminant::RequestExportDialog))
 							.on_commit(|_| DialogMessage::RequestExportDialog.into())
 							.disabled(no_active_document),
 					],
@@ -182,13 +182,13 @@ impl LayoutHolder for MenuBarMessageHandler {
 						MenuListEntry::new("Undo")
 							.label("Undo")
 							.icon("HistoryUndo")
-							.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::Undo))
+							.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::Undo))
 							.on_commit(|_| DocumentMessage::Undo.into())
 							.disabled(no_active_document),
 						MenuListEntry::new("Redo")
 							.label("Redo")
 							.icon("HistoryRedo")
-							.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::Redo))
+							.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::Redo))
 							.on_commit(|_| DocumentMessage::Redo.into())
 							.disabled(no_active_document),
 					],
@@ -196,19 +196,19 @@ impl LayoutHolder for MenuBarMessageHandler {
 						MenuListEntry::new("Cut")
 							.label("Cut")
 							.icon("Cut")
-							.tooltip_shortcut(action_keys!(PortfolioMessageDiscriminant::Cut))
+							.tooltip_shortcut(action_shortcut!(PortfolioMessageDiscriminant::Cut))
 							.on_commit(|_| PortfolioMessage::Cut { clipboard: Clipboard::Device }.into())
 							.disabled(no_active_document || !has_selected_layers),
 						MenuListEntry::new("Copy")
 							.label("Copy")
 							.icon("Copy")
-							.tooltip_shortcut(action_keys!(PortfolioMessageDiscriminant::Copy))
+							.tooltip_shortcut(action_shortcut!(PortfolioMessageDiscriminant::Copy))
 							.on_commit(|_| PortfolioMessage::Copy { clipboard: Clipboard::Device }.into())
 							.disabled(no_active_document || !has_selected_layers),
 						MenuListEntry::new("Paste")
 							.label("Paste")
 							.icon("Paste")
-							.tooltip_shortcut(action_keys!(FrontendMessageDiscriminant::TriggerPaste))
+							.tooltip_shortcut(action_shortcut!(FrontendMessageDiscriminant::TriggerPaste))
 							.on_commit(|_| FrontendMessage::TriggerPaste.into())
 							.disabled(no_active_document),
 					],
@@ -216,13 +216,13 @@ impl LayoutHolder for MenuBarMessageHandler {
 						MenuListEntry::new("Duplicate")
 							.label("Duplicate")
 							.icon("Copy")
-							.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::DuplicateSelectedLayers))
+							.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::DuplicateSelectedLayers))
 							.on_commit(|_| DocumentMessage::DuplicateSelectedLayers.into())
 							.disabled(no_active_document || !has_selected_nodes),
 						MenuListEntry::new("Delete")
 							.label("Delete")
 							.icon("Trash")
-							.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::DeleteSelectedLayers))
+							.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::DeleteSelectedLayers))
 							.on_commit(|_| DocumentMessage::DeleteSelectedLayers.into())
 							.disabled(no_active_document || !has_selected_nodes),
 					],
@@ -243,7 +243,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 						MenuListEntry::new("New")
 							.label("New")
 							.icon("NewLayer")
-							.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::CreateEmptyFolder))
+							.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::CreateEmptyFolder))
 							.on_commit(|_| DocumentMessage::CreateEmptyFolder.into())
 							.disabled(no_active_document),
 					],
@@ -251,7 +251,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 						MenuListEntry::new("Group")
 							.label("Group")
 							.icon("Folder")
-							.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::GroupSelectedLayers))
+							.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::GroupSelectedLayers))
 							.on_commit(|_| {
 								DocumentMessage::GroupSelectedLayers {
 									group_folder_type: GroupFolderType::Layer,
@@ -262,7 +262,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 						MenuListEntry::new("Ungroup")
 							.label("Ungroup")
 							.icon("FolderOpen")
-							.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::UngroupSelectedLayers))
+							.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::UngroupSelectedLayers))
 							.on_commit(|_| DocumentMessage::UngroupSelectedLayers.into())
 							.disabled(no_active_document || !has_selected_layers),
 					],
@@ -270,13 +270,13 @@ impl LayoutHolder for MenuBarMessageHandler {
 						MenuListEntry::new("Hide/Show")
 							.label("Hide/Show")
 							.icon("EyeHide")
-							.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::ToggleSelectedVisibility))
+							.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::ToggleSelectedVisibility))
 							.on_commit(|_| DocumentMessage::ToggleSelectedVisibility.into())
 							.disabled(no_active_document || !has_selected_layers),
 						MenuListEntry::new("Lock/Unlock")
 							.label("Lock/Unlock")
 							.icon("PadlockLocked")
-							.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::ToggleSelectedLocked))
+							.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::ToggleSelectedLocked))
 							.on_commit(|_| DocumentMessage::ToggleSelectedLocked.into())
 							.disabled(no_active_document || !has_selected_layers),
 					],
@@ -284,19 +284,19 @@ impl LayoutHolder for MenuBarMessageHandler {
 						MenuListEntry::new("Grab")
 							.label("Grab")
 							.icon("TransformationGrab")
-							.tooltip_shortcut(action_keys!(TransformLayerMessageDiscriminant::BeginGrab))
+							.tooltip_shortcut(action_shortcut!(TransformLayerMessageDiscriminant::BeginGrab))
 							.on_commit(|_| TransformLayerMessage::BeginGrab.into())
 							.disabled(no_active_document || !has_selected_layers),
 						MenuListEntry::new("Rotate")
 							.label("Rotate")
 							.icon("TransformationRotate")
-							.tooltip_shortcut(action_keys!(TransformLayerMessageDiscriminant::BeginRotate))
+							.tooltip_shortcut(action_shortcut!(TransformLayerMessageDiscriminant::BeginRotate))
 							.on_commit(|_| TransformLayerMessage::BeginRotate.into())
 							.disabled(no_active_document || !has_selected_layers),
 						MenuListEntry::new("Scale")
 							.label("Scale")
 							.icon("TransformationScale")
-							.tooltip_shortcut(action_keys!(TransformLayerMessageDiscriminant::BeginScale))
+							.tooltip_shortcut(action_shortcut!(TransformLayerMessageDiscriminant::BeginScale))
 							.on_commit(|_| TransformLayerMessage::BeginScale.into())
 							.disabled(no_active_document || !has_selected_layers),
 					],
@@ -310,25 +310,25 @@ impl LayoutHolder for MenuBarMessageHandler {
 									MenuListEntry::new("Raise To Front")
 										.label("Raise To Front")
 										.icon("Stack")
-										.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::SelectedLayersRaiseToFront))
+										.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::SelectedLayersRaiseToFront))
 										.on_commit(|_| DocumentMessage::SelectedLayersRaiseToFront.into())
 										.disabled(no_active_document || !has_selected_layers),
 									MenuListEntry::new("Raise")
 										.label("Raise")
 										.icon("StackRaise")
-										.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::SelectedLayersRaise))
+										.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::SelectedLayersRaise))
 										.on_commit(|_| DocumentMessage::SelectedLayersRaise.into())
 										.disabled(no_active_document || !has_selected_layers),
 									MenuListEntry::new("Lower")
 										.label("Lower")
 										.icon("StackLower")
-										.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::SelectedLayersLower))
+										.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::SelectedLayersLower))
 										.on_commit(|_| DocumentMessage::SelectedLayersLower.into())
 										.disabled(no_active_document || !has_selected_layers),
 									MenuListEntry::new("Lower to Back")
 										.label("Lower to Back")
 										.icon("StackBottom")
-										.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::SelectedLayersLowerToBack))
+										.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::SelectedLayersLowerToBack))
 										.on_commit(|_| DocumentMessage::SelectedLayersLowerToBack.into())
 										.disabled(no_active_document || !has_selected_layers),
 								],
@@ -512,19 +512,19 @@ impl LayoutHolder for MenuBarMessageHandler {
 						MenuListEntry::new("Select All")
 							.label("Select All")
 							.icon("SelectAll")
-							.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::SelectAllLayers))
+							.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::SelectAllLayers))
 							.on_commit(|_| DocumentMessage::SelectAllLayers.into())
 							.disabled(no_active_document),
 						MenuListEntry::new("Deselect All")
 							.label("Deselect All")
 							.icon("DeselectAll")
-							.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::DeselectAllLayers))
+							.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::DeselectAllLayers))
 							.on_commit(|_| DocumentMessage::DeselectAllLayers.into())
 							.disabled(no_active_document || !has_selected_nodes),
 						MenuListEntry::new("Select Parent")
 							.label("Select Parent")
 							.icon("SelectParent")
-							.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::SelectParentLayer))
+							.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::SelectParentLayer))
 							.on_commit(|_| DocumentMessage::SelectParentLayer.into())
 							.disabled(no_active_document || !has_selected_nodes),
 					],
@@ -532,13 +532,13 @@ impl LayoutHolder for MenuBarMessageHandler {
 						MenuListEntry::new("Previous Selection")
 							.label("Previous Selection")
 							.icon("HistoryUndo")
-							.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::SelectionStepBack))
+							.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::SelectionStepBack))
 							.on_commit(|_| DocumentMessage::SelectionStepBack.into())
 							.disabled(!has_selection_history.0),
 						MenuListEntry::new("Next Selection")
 							.label("Next Selection")
 							.icon("HistoryRedo")
-							.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::SelectionStepForward))
+							.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::SelectionStepForward))
 							.on_commit(|_| DocumentMessage::SelectionStepForward.into())
 							.disabled(!has_selection_history.1),
 					],
@@ -552,13 +552,13 @@ impl LayoutHolder for MenuBarMessageHandler {
 						MenuListEntry::new("Tilt")
 							.label("Tilt")
 							.icon("Tilt")
-							.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::BeginCanvasTilt))
+							.tooltip_shortcut(action_shortcut!(NavigationMessageDiscriminant::BeginCanvasTilt))
 							.on_commit(|_| NavigationMessage::BeginCanvasTilt { was_dispatched_from_menu: true }.into())
 							.disabled(no_active_document || node_graph_open),
 						MenuListEntry::new("Reset Tilt")
 							.label("Reset Tilt")
 							.icon("TiltReset")
-							.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::CanvasTiltSet))
+							.tooltip_shortcut(action_shortcut!(NavigationMessageDiscriminant::CanvasTiltSet))
 							.on_commit(|_| NavigationMessage::CanvasTiltSet { angle_radians: 0.into() }.into())
 							.disabled(no_active_document || node_graph_open || !self.canvas_tilted),
 					],
@@ -566,37 +566,37 @@ impl LayoutHolder for MenuBarMessageHandler {
 						MenuListEntry::new("Zoom In")
 							.label("Zoom In")
 							.icon("ZoomIn")
-							.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::CanvasZoomIncrease))
+							.tooltip_shortcut(action_shortcut!(NavigationMessageDiscriminant::CanvasZoomIncrease))
 							.on_commit(|_| NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }.into())
 							.disabled(no_active_document),
 						MenuListEntry::new("Zoom Out")
 							.label("Zoom Out")
 							.icon("ZoomOut")
-							.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::CanvasZoomDecrease))
+							.tooltip_shortcut(action_shortcut!(NavigationMessageDiscriminant::CanvasZoomDecrease))
 							.on_commit(|_| NavigationMessage::CanvasZoomDecrease { center_on_mouse: false }.into())
 							.disabled(no_active_document),
 						MenuListEntry::new("Zoom to Selection")
 							.label("Zoom to Selection")
 							.icon("FrameSelected")
-							.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::FitViewportToSelection))
+							.tooltip_shortcut(action_shortcut!(NavigationMessageDiscriminant::FitViewportToSelection))
 							.on_commit(|_| NavigationMessage::FitViewportToSelection.into())
 							.disabled(no_active_document || !has_selected_layers),
 						MenuListEntry::new("Zoom to Fit")
 							.label("Zoom to Fit")
 							.icon("FrameAll")
-							.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::ZoomCanvasToFitAll))
+							.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::ZoomCanvasToFitAll))
 							.on_commit(|_| DocumentMessage::ZoomCanvasToFitAll.into())
 							.disabled(no_active_document),
 						MenuListEntry::new("Zoom to 100%")
 							.label("Zoom to 100%")
 							.icon("Zoom1x")
-							.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::ZoomCanvasTo100Percent))
+							.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::ZoomCanvasTo100Percent))
 							.on_commit(|_| DocumentMessage::ZoomCanvasTo100Percent.into())
 							.disabled(no_active_document),
 						MenuListEntry::new("Zoom to 200%")
 							.label("Zoom to 200%")
 							.icon("Zoom2x")
-							.tooltip_shortcut(action_keys!(DocumentMessageDiscriminant::ZoomCanvasTo200Percent))
+							.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::ZoomCanvasTo200Percent))
 							.on_commit(|_| DocumentMessage::ZoomCanvasTo200Percent.into())
 							.disabled(no_active_document),
 					],
@@ -604,7 +604,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 						MenuListEntry::new("Flip")
 							.label("Flip")
 							.icon(if self.canvas_flipped { "CheckboxChecked" } else { "CheckboxUnchecked" })
-							.tooltip_shortcut(action_keys!(NavigationMessageDiscriminant::CanvasFlip))
+							.tooltip_shortcut(action_shortcut!(NavigationMessageDiscriminant::CanvasFlip))
 							.on_commit(|_| NavigationMessage::CanvasFlip.into())
 							.disabled(no_active_document || node_graph_open),
 					],
@@ -612,7 +612,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 						MenuListEntry::new("Rulers")
 							.label("Rulers")
 							.icon(if self.rulers_visible { "CheckboxChecked" } else { "CheckboxUnchecked" })
-							.tooltip_shortcut(action_keys!(PortfolioMessageDiscriminant::ToggleRulers))
+							.tooltip_shortcut(action_shortcut!(PortfolioMessageDiscriminant::ToggleRulers))
 							.on_commit(|_| PortfolioMessage::ToggleRulers.into())
 							.disabled(no_active_document),
 					],
@@ -626,19 +626,19 @@ impl LayoutHolder for MenuBarMessageHandler {
 						MenuListEntry::new("Properties")
 							.label("Properties")
 							.icon(if self.properties_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" })
-							.tooltip_shortcut(action_keys!(PortfolioMessageDiscriminant::TogglePropertiesPanelOpen))
+							.tooltip_shortcut(action_shortcut!(PortfolioMessageDiscriminant::TogglePropertiesPanelOpen))
 							.on_commit(|_| PortfolioMessage::TogglePropertiesPanelOpen.into()),
 						MenuListEntry::new("Layers")
 							.label("Layers")
 							.icon(if self.layers_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" })
-							.tooltip_shortcut(action_keys!(PortfolioMessageDiscriminant::ToggleLayersPanelOpen))
+							.tooltip_shortcut(action_shortcut!(PortfolioMessageDiscriminant::ToggleLayersPanelOpen))
 							.on_commit(|_| PortfolioMessage::ToggleLayersPanelOpen.into()),
 					],
 					vec![
 						MenuListEntry::new("Data")
 							.label("Data")
 							.icon(if self.data_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" })
-							.tooltip_shortcut(action_keys!(PortfolioMessageDiscriminant::ToggleDataPanelOpen))
+							.tooltip_shortcut(action_shortcut!(PortfolioMessageDiscriminant::ToggleDataPanelOpen))
 							.on_commit(|_| PortfolioMessage::ToggleDataPanelOpen.into()),
 					],
 				])
@@ -699,7 +699,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 										"CheckboxChecked".to_string()
 									}
 								}).unwrap_or_default())
-								.tooltip_shortcut(action_keys!(DebugMessageDiscriminant::MessageOff))
+								.tooltip_shortcut(action_shortcut!(DebugMessageDiscriminant::MessageOff))
 								.on_commit(|_| DebugMessage::MessageOff.into()),
 							MenuListEntry::new("Print Messages: Only Names")
 								.label("Print Messages: Only Names")
@@ -713,7 +713,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 										"CheckboxChecked".to_string()
 									}
 								}).unwrap_or_default())
-								.tooltip_shortcut(action_keys!(DebugMessageDiscriminant::MessageNames))
+								.tooltip_shortcut(action_shortcut!(DebugMessageDiscriminant::MessageNames))
 								.on_commit(|_| DebugMessage::MessageNames.into()),
 							MenuListEntry::new("Print Messages: Full Contents")
 								.label("Print Messages: Full Contents")
@@ -727,7 +727,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 										"CheckboxChecked".to_string()
 									}
 								}).unwrap_or_default())
-								.tooltip_shortcut(action_keys!(DebugMessageDiscriminant::MessageContents))
+								.tooltip_shortcut(action_shortcut!(DebugMessageDiscriminant::MessageContents))
 								.on_commit(|_| DebugMessage::MessageContents.into()),
 						],
 						vec![MenuListEntry::new("Trigger a Crash").label("Trigger a Crash").icon("Warning").on_commit(|_| panic!())],

@@ -129,8 +129,9 @@
 			<IconLabel {...exclude(iconLabel)} />
 		{/if}
 		{@const shortcutLabel = narrowWidgetProps(component.props, "ShortcutLabel")}
-		{#if shortcutLabel}
-			<ShortcutLabel {...exclude(shortcutLabel)} />
+		{@const shortcutLabelShortcut = shortcutLabel?.shortcut ? { ...shortcutLabel, shortcut: shortcutLabel.shortcut } : undefined}
+		{#if shortcutLabel && shortcutLabelShortcut}
+			<ShortcutLabel {...exclude(shortcutLabelShortcut)} />
 		{/if}
 		{@const imageLabel = narrowWidgetProps(component.props, "ImageLabel")}
 		{#if imageLabel}

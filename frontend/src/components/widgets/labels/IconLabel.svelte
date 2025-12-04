@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { type IconName, ICONS, ICON_SVG_STRINGS } from "@graphite/icons";
-	import type { ActionKeys } from "@graphite/messages";
+	import type { ActionShortcut } from "@graphite/messages";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 
@@ -12,7 +12,7 @@
 	export let disabled = false;
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
-	export let tooltipShortcut: ActionKeys | undefined = undefined;
+	export let tooltipShortcut: ActionShortcut | undefined = undefined;
 
 	$: iconSizeClass = ((icon: IconName) => {
 		const iconData = ICONS[icon];

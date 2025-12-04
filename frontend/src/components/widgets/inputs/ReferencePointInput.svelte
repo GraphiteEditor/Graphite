@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
-	import type { ReferencePoint, ActionKeys } from "@graphite/messages";
+	import type { ReferencePoint, ActionShortcut } from "@graphite/messages";
 
 	const dispatch = createEventDispatcher<{ value: ReferencePoint }>();
 
@@ -9,7 +9,7 @@
 	export let disabled = false;
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
-	export let tooltipShortcut: ActionKeys | undefined = undefined;
+	export let tooltipShortcut: ActionShortcut | undefined = undefined;
 
 	function setValue(newValue: ReferencePoint) {
 		dispatch("value", newValue);
@@ -21,7 +21,7 @@
 	class:disabled
 	data-tooltip-label={tooltipLabel}
 	data-tooltip-description={tooltipDescription}
-	data-tooltip-shortcut={tooltipShortcut?.keys ? JSON.stringify(tooltipShortcut.keys) : undefined}
+	data-tooltip-shortcut={tooltipShortcut?.shortcut ? JSON.stringify(tooltipShortcut.shortcut) : undefined}
 >
 	<button on:click={() => setValue("TopLeft")} class="row-1 col-1" class:active={value === "TopLeft"} tabindex="-1" {disabled}><div /></button>
 	<button on:click={() => setValue("TopCenter")} class="row-1 col-2" class:active={value === "TopCenter"} tabindex="-1" {disabled}><div /></button>

@@ -7,7 +7,7 @@ use crate::messages::portfolio::document::overlays::utility_types::OverlayProvid
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 use crate::messages::tool::transform_layer::transform_layer_message_handler::TransformLayerMessageContext;
-use crate::messages::tool::utility_types::ToolType;
+use crate::messages::tool::utility_types::{HintData, ToolType};
 use crate::node_graph_executor::NodeGraphExecutor;
 use graphene_std::raster::color::Color;
 
@@ -190,7 +190,7 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 
 				responses.add(OverlaysMessage::RemoveProvider { provider: ARTBOARD_OVERLAY_PROVIDER });
 
-				responses.add(FrontendMessage::UpdateInputHints { hint_data: Default::default() });
+				HintData::clear_layout(responses);
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: Default::default() });
 
 				self.tool_is_active = false;

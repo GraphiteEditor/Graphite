@@ -7,7 +7,7 @@ use crate::messages::animation::TimingInformation;
 use crate::messages::debug::utility_types::MessageLoggingVerbosity;
 use crate::messages::dialog::simple_dialogs;
 use crate::messages::frontend::utility_types::{DocumentDetails, OpenDocument};
-use crate::messages::input_mapper::utility_types::macros::action_keys;
+use crate::messages::input_mapper::utility_types::macros::action_shortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::DocumentMessageContext;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
@@ -21,7 +21,7 @@ use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::utility_functions::make_path_editable_is_allowed;
-use crate::messages::tool::utility_types::{HintData, HintGroup, ToolType};
+use crate::messages::tool::utility_types::{HintData, ToolType};
 use crate::messages::viewport::ToPhysical;
 use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
 use derivative::*;
@@ -219,8 +219,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					responses.add(PropertiesPanelMessage::Clear);
 					responses.add(DocumentMessage::ClearLayersPanel);
 					responses.add(DataPanelMessage::ClearLayout);
-					let hint_data = HintData(vec![HintGroup(vec![])]);
-					responses.add(FrontendMessage::UpdateInputHints { hint_data });
+					HintData::clear_layout(responses);
 				}
 
 				for document_id in &self.document_ids {
@@ -244,8 +243,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					responses.add(PropertiesPanelMessage::Clear);
 					responses.add(DocumentMessage::ClearLayersPanel);
 					responses.add(DataPanelMessage::ClearLayout);
-					let hint_data = HintData(vec![HintGroup(vec![])]);
-					responses.add(FrontendMessage::UpdateInputHints { hint_data });
+					HintData::clear_layout(responses);
 				}
 
 				// Actually delete the document (delay to delete document is required to let the document and properties panel messages above get processed)
@@ -895,7 +893,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 								.flush(true)
 								.on_commit(|_| DialogMessage::RequestNewDocumentDialog.into())
 								.widget_holder(),
-							ShortcutLabel::new(action_keys!(DialogMessageDiscriminant::RequestNewDocumentDialog).into_iter().collect()).widget_holder(),
+							ShortcutLabel::new(action_shortcut!(DialogMessageDiscriminant::RequestNewDocumentDialog)).widget_holder(),
 						],
 						vec![
 							TextButton::new("Open Document")
@@ -903,7 +901,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 								.flush(true)
 								.on_commit(|_| PortfolioMessage::OpenDocument.into())
 								.widget_holder(),
-							ShortcutLabel::new(action_keys!(PortfolioMessageDiscriminant::OpenDocument).into_iter().collect()).widget_holder(),
+							ShortcutLabel::new(action_shortcut!(PortfolioMessageDiscriminant::OpenDocument)).widget_holder(),
 						],
 						vec![
 							TextButton::new("Open Demo Artwork")

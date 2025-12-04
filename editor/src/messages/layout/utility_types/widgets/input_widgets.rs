@@ -1,4 +1,4 @@
-use crate::messages::input_mapper::utility_types::misc::ActionKeys;
+use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use derivative::*;
 use graphene_std::Color;
@@ -23,7 +23,7 @@ pub struct CheckboxInput {
 	pub tooltip_description: String,
 
 	#[serde(rename = "tooltipShortcut")]
-	pub tooltip_shortcut: Option<ActionKeys>,
+	pub tooltip_shortcut: Option<ActionShortcut>,
 
 	#[serde(rename = "forLabel")]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
@@ -102,7 +102,7 @@ pub struct DropdownInput {
 	pub tooltip_description: String,
 
 	#[serde(rename = "tooltipShortcut")]
-	pub tooltip_shortcut: Option<ActionKeys>,
+	pub tooltip_shortcut: Option<ActionShortcut>,
 
 	// Styling
 	#[serde(rename = "minWidth")]
@@ -139,7 +139,7 @@ pub struct MenuListEntry {
 	pub tooltip_description: String,
 
 	#[serde(rename = "tooltipShortcut")]
-	pub tooltip_shortcut: Option<ActionKeys>,
+	pub tooltip_shortcut: Option<ActionShortcut>,
 
 	pub children: MenuListEntrySections,
 
@@ -176,7 +176,7 @@ pub struct FontInput {
 	pub tooltip_description: String,
 
 	#[serde(rename = "tooltipShortcut")]
-	pub tooltip_shortcut: Option<ActionKeys>,
+	pub tooltip_shortcut: Option<ActionShortcut>,
 
 	// Callbacks
 	#[serde(skip)]
@@ -201,7 +201,7 @@ pub struct NumberInput {
 	pub tooltip_description: String,
 
 	#[serde(rename = "tooltipShortcut")]
-	pub tooltip_shortcut: Option<ActionKeys>,
+	pub tooltip_shortcut: Option<ActionShortcut>,
 
 	// Disabled
 	pub disabled: bool,
@@ -374,7 +374,7 @@ pub struct RadioEntryData {
 	pub tooltip_description: String,
 
 	#[serde(rename = "tooltipShortcut")]
-	pub tooltip_shortcut: Option<ActionKeys>,
+	pub tooltip_shortcut: Option<ActionShortcut>,
 
 	// Callbacks
 	#[serde(skip)]
@@ -413,7 +413,7 @@ pub struct TextAreaInput {
 	pub tooltip_description: String,
 
 	#[serde(rename = "tooltipShortcut")]
-	pub tooltip_shortcut: Option<ActionKeys>,
+	pub tooltip_shortcut: Option<ActionShortcut>,
 
 	// Callbacks
 	#[serde(skip)]
@@ -444,7 +444,7 @@ pub struct TextInput {
 	pub tooltip_description: String,
 
 	#[serde(rename = "tooltipShortcut")]
-	pub tooltip_shortcut: Option<ActionKeys>,
+	pub tooltip_shortcut: Option<ActionShortcut>,
 
 	pub centered: bool,
 
@@ -479,7 +479,7 @@ pub struct CurveInput {
 	pub tooltip_description: String,
 
 	#[serde(rename = "tooltipShortcut")]
-	pub tooltip_shortcut: Option<ActionKeys>,
+	pub tooltip_shortcut: Option<ActionShortcut>,
 
 	// Callbacks
 	#[serde(skip)]
@@ -506,7 +506,7 @@ pub struct ReferencePointInput {
 	pub tooltip_description: String,
 
 	#[serde(rename = "tooltipShortcut")]
-	pub tooltip_shortcut: Option<ActionKeys>,
+	pub tooltip_shortcut: Option<ActionShortcut>,
 
 	// Callbacks
 	#[serde(skip)]

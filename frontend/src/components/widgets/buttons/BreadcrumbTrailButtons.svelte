@@ -1,5 +1,5 @@
 <script lang="ts">
-	import type { ActionKeys } from "@graphite/messages";
+	import type { ActionShortcut } from "@graphite/messages";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
@@ -8,7 +8,7 @@
 	export let disabled = false;
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
-	export let tooltipShortcut: ActionKeys | undefined = undefined;
+	export let tooltipShortcut: ActionShortcut | undefined = undefined;
 	// Callbacks
 	export let action: (index: number) => void;
 </script>
