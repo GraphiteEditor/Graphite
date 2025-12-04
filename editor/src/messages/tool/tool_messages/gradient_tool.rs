@@ -105,7 +105,7 @@ impl LayoutHolder for GradientTool {
 			}),
 		])
 		.selected_index(Some((self.selected_gradient().unwrap_or(self.options.gradient_type) == GradientType::Radial) as u32))
-		.widget_holder();
+		.widget_instance();
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets: vec![gradient_type] }]))
 	}

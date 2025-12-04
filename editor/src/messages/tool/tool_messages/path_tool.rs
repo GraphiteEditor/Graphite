@@ -215,7 +215,7 @@ impl LayoutHolder for PathTool {
 					Message::NoOp
 				}
 			})
-			.widget_holder();
+			.widget_instance();
 
 		let y_location = NumberInput::new(y)
 			.unit(" px")
@@ -231,10 +231,10 @@ impl LayoutHolder for PathTool {
 					Message::NoOp
 				}
 			})
-			.widget_holder();
+			.widget_instance();
 
-		let related_seperator = Separator::new(SeparatorType::Related).widget_holder();
-		let unrelated_seperator = Separator::new(SeparatorType::Unrelated).widget_holder();
+		let related_seperator = Separator::new(SeparatorType::Related).widget_instance();
+		let unrelated_seperator = Separator::new(SeparatorType::Unrelated).widget_instance();
 
 		let colinear_handles_description = "Keep both handles unbent, each 180° apart, when moving either.";
 		let colinear_handles_state = manipulator_angle.and_then(|angle| match angle {
@@ -257,13 +257,13 @@ impl LayoutHolder for PathTool {
 			.tooltip_label("Colinear Handles")
 			.tooltip_description(colinear_handles_description)
 			.for_label(checkbox_id)
-			.widget_holder();
+			.widget_instance();
 		let colinear_handles_label = TextLabel::new("Colinear Handles")
 			.disabled(!self.tool_data.can_toggle_colinearity)
 			.tooltip_label("Colinear Handles")
 			.tooltip_description(colinear_handles_description)
 			.for_checkbox(checkbox_id)
-			.widget_holder();
+			.widget_instance();
 
 		let point_editing_mode = CheckboxInput::new(self.options.path_editing_mode.point_editing_mode)
 			// TODO(Keavon): Replace with a real icon
@@ -272,7 +272,7 @@ impl LayoutHolder for PathTool {
 			.tooltip_description("To multi-select modes, perform the shortcut shown.")
 			.tooltip_shortcut(action_shortcut_manual!(Key::Shift, Key::MouseLeft))
 			.on_update(|_| PathToolMessage::TogglePointEditing.into())
-			.widget_holder();
+			.widget_instance();
 		let segment_editing_mode = CheckboxInput::new(self.options.path_editing_mode.segment_editing_mode)
 			// TODO(Keavon): Replace with a real icon
 			.icon("Remove")
@@ -280,7 +280,7 @@ impl LayoutHolder for PathTool {
 			.tooltip_description("To multi-select modes, perform the shortcut shown.")
 			.tooltip_shortcut(action_shortcut_manual!(Key::Shift, Key::MouseLeft))
 			.on_update(|_| PathToolMessage::ToggleSegmentEditing.into())
-			.widget_holder();
+			.widget_instance();
 
 		let path_overlay_mode_widget = RadioInput::new(vec![
 			RadioEntryData::new("all")
@@ -315,7 +315,7 @@ impl LayoutHolder for PathTool {
 				}),
 		])
 		.selected_index(Some(self.options.path_overlay_mode as u32))
-		.widget_holder();
+		.widget_instance();
 
 		// Works only if a single layer is selected and its type is Vector
 		let path_node_button = TextButton::new("Make Path Editable")
@@ -326,7 +326,7 @@ impl LayoutHolder for PathTool {
 			)
 			.on_update(|_| NodeGraphMessage::AddPathNode.into())
 			.disabled(!self.tool_data.make_path_editable_is_allowed)
-			.widget_holder();
+			.widget_instance();
 
 		let [_checkbox, _dropdown] = {
 			let pivot_gizmo_type_widget = pivot_gizmo_type_widget(self.tool_data.pivot_gizmo.state, PivotToolSource::Path);

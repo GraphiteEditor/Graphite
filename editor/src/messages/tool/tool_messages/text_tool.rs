@@ -96,7 +96,7 @@ impl ToolMetadata for TextTool {
 	}
 }
 
-fn create_text_widgets(tool: &TextTool) -> Vec<WidgetHolder> {
+fn create_text_widgets(tool: &TextTool) -> Vec<WidgetInstance> {
 	let font = FontInput::new(&tool.options.font_name, &tool.options.font_style)
 		.is_style_picker(false)
 		.on_update(|font_input: &FontInput| {
@@ -108,7 +108,7 @@ fn create_text_widgets(tool: &TextTool) -> Vec<WidgetHolder> {
 			}
 			.into()
 		})
-		.widget_holder();
+		.widget_instance();
 	let style = FontInput::new(&tool.options.font_name, &tool.options.font_style)
 		.is_style_picker(true)
 		.on_update(|font_input: &FontInput| {
@@ -120,7 +120,7 @@ fn create_text_widgets(tool: &TextTool) -> Vec<WidgetHolder> {
 			}
 			.into()
 		})
-		.widget_holder();
+		.widget_instance();
 	let size = NumberInput::new(Some(tool.options.font_size))
 		.unit(" px")
 		.label("Size")
@@ -133,7 +133,7 @@ fn create_text_widgets(tool: &TextTool) -> Vec<WidgetHolder> {
 			}
 			.into()
 		})
-		.widget_holder();
+		.widget_instance();
 	let line_height_ratio = NumberInput::new(Some(tool.options.line_height_ratio))
 		.label("Line Height")
 		.int()
@@ -146,7 +146,7 @@ fn create_text_widgets(tool: &TextTool) -> Vec<WidgetHolder> {
 			}
 			.into()
 		})
-		.widget_holder();
+		.widget_instance();
 	let align_entries: Vec<_> = [TextAlign::Left, TextAlign::Center, TextAlign::Right, TextAlign::JustifyLeft]
 		.into_iter()
 		.map(|align| {
@@ -158,16 +158,16 @@ fn create_text_widgets(tool: &TextTool) -> Vec<WidgetHolder> {
 			})
 		})
 		.collect();
-	let align = RadioInput::new(align_entries).selected_index(Some(tool.options.align as u32)).widget_holder();
+	let align = RadioInput::new(align_entries).selected_index(Some(tool.options.align as u32)).widget_instance();
 	vec![
 		font,
-		Separator::new(SeparatorType::Related).widget_holder(),
+		Separator::new(SeparatorType::Related).widget_instance(),
 		style,
-		Separator::new(SeparatorType::Related).widget_holder(),
+		Separator::new(SeparatorType::Related).widget_instance(),
 		size,
-		Separator::new(SeparatorType::Related).widget_holder(),
+		Separator::new(SeparatorType::Related).widget_instance(),
 		line_height_ratio,
-		Separator::new(SeparatorType::Related).widget_holder(),
+		Separator::new(SeparatorType::Related).widget_instance(),
 		align,
 	]
 }
@@ -176,7 +176,7 @@ impl LayoutHolder for TextTool {
 	fn layout(&self) -> Layout {
 		let mut widgets = create_text_widgets(self);
 
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+		widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
 
 		widgets.append(&mut self.options.fill.create_widgets(
 			"Fill",

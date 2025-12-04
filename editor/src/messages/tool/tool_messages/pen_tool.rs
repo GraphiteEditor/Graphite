@@ -136,7 +136,7 @@ impl ToolMetadata for PenTool {
 	}
 }
 
-fn create_weight_widget(line_weight: f64) -> WidgetHolder {
+fn create_weight_widget(line_weight: f64) -> WidgetInstance {
 	NumberInput::new(Some(line_weight))
 		.unit(" px")
 		.label("Weight")
@@ -148,7 +148,7 @@ fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 			}
 			.into()
 		})
-		.widget_holder()
+		.widget_instance()
 }
 
 impl LayoutHolder for PenTool {
@@ -178,7 +178,7 @@ impl LayoutHolder for PenTool {
 			},
 		);
 
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+		widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
 
 		widgets.append(&mut self.options.stroke.create_widgets(
 			"Stroke",
@@ -205,11 +205,11 @@ impl LayoutHolder for PenTool {
 			},
 		));
 
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+		widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
 
 		widgets.push(create_weight_widget(self.options.line_weight));
 
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+		widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
 
 		widgets.push(
 			RadioInput::new(vec![
@@ -235,7 +235,7 @@ impl LayoutHolder for PenTool {
 					}),
 			])
 			.selected_index(Some(self.options.pen_overlay_mode as u32))
-			.widget_holder(),
+			.widget_instance(),
 		);
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))

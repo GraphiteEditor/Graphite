@@ -107,8 +107,8 @@ impl LayoutHolder for BrushTool {
 				.max(BRUSH_MAX_SIZE) /* Anything bigger would cause the application to be unresponsive and eventually die */
 				.unit(" px")
 				.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions { options: BrushToolMessageOptionsUpdate::Diameter(number_input.value.unwrap()) }.into())
-				.widget_holder(),
-			Separator::new(SeparatorType::Related).widget_holder(),
+				.widget_instance(),
+			Separator::new(SeparatorType::Related).widget_instance(),
 			NumberInput::new(Some(self.options.hardness))
 				.label("Hardness")
 				.min(0.)
@@ -121,8 +121,8 @@ impl LayoutHolder for BrushTool {
 					}
 					.into()
 				})
-				.widget_holder(),
-			Separator::new(SeparatorType::Related).widget_holder(),
+				.widget_instance(),
+			Separator::new(SeparatorType::Related).widget_instance(),
 			NumberInput::new(Some(self.options.flow))
 				.label("Flow")
 				.min(1.)
@@ -135,8 +135,8 @@ impl LayoutHolder for BrushTool {
 					}
 					.into()
 				})
-				.widget_holder(),
-			Separator::new(SeparatorType::Related).widget_holder(),
+				.widget_instance(),
+			Separator::new(SeparatorType::Related).widget_instance(),
 			NumberInput::new(Some(self.options.spacing))
 				.label("Spacing")
 				.min(1.)
@@ -149,10 +149,10 @@ impl LayoutHolder for BrushTool {
 					}
 					.into()
 				})
-				.widget_holder(),
+				.widget_instance(),
 		];
 
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+		widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
 
 		let draw_mode_entries: Vec<_> = [DrawMode::Draw, DrawMode::Erase, DrawMode::Restore]
 			.into_iter()
@@ -165,9 +165,9 @@ impl LayoutHolder for BrushTool {
 				})
 			})
 			.collect();
-		widgets.push(RadioInput::new(draw_mode_entries).selected_index(Some(self.options.draw_mode as u32)).widget_holder());
+		widgets.push(RadioInput::new(draw_mode_entries).selected_index(Some(self.options.draw_mode as u32)).widget_instance());
 
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+		widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
 
 		widgets.append(&mut self.options.color.create_widgets(
 			"Color",
@@ -194,7 +194,7 @@ impl LayoutHolder for BrushTool {
 			},
 		));
 
-		widgets.push(Separator::new(SeparatorType::Related).widget_holder());
+		widgets.push(Separator::new(SeparatorType::Related).widget_instance());
 
 		let blend_mode_entries: Vec<Vec<_>> = BlendMode::list()
 			.iter()
@@ -217,7 +217,7 @@ impl LayoutHolder for BrushTool {
 				.selected_index(self.options.blend_mode.index_in_list().map(|index| index as u32))
 				.tooltip_description("The blend mode used with the background when performing a brush stroke. Only used in draw mode.")
 				.disabled(self.options.draw_mode != DrawMode::Draw)
-				.widget_holder(),
+				.widget_instance(),
 		);
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))

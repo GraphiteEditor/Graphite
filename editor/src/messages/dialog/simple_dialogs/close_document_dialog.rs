@@ -23,7 +23,7 @@ impl DialogLayoutHolder for CloseDocumentDialog {
 					}
 					.into()
 				})
-				.widget_holder(),
+				.widget_instance(),
 			TextButton::new("Discard")
 				.on_update(move |_| {
 					DialogMessage::CloseDialogAndThen {
@@ -31,8 +31,8 @@ impl DialogLayoutHolder for CloseDocumentDialog {
 					}
 					.into()
 				})
-				.widget_holder(),
-			TextButton::new("Cancel").on_update(|_| FrontendMessage::DisplayDialogDismiss.into()).widget_holder(),
+				.widget_instance(),
+			TextButton::new("Cancel").on_update(|_| FrontendMessage::DisplayDialogDismiss.into()).widget_instance(),
 		];
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
@@ -53,10 +53,10 @@ impl LayoutHolder for CloseDocumentDialog {
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![
 			LayoutGroup::Row {
-				widgets: vec![TextLabel::new("Save document before closing it?").bold(true).widget_holder()],
+				widgets: vec![TextLabel::new("Save document before closing it?").bold(true).widget_instance()],
 			},
 			LayoutGroup::Row {
-				widgets: vec![TextLabel::new(format!("\"{name}{ellipsis}\"{break_lines}has unsaved changes")).multiline(true).widget_holder()],
+				widgets: vec![TextLabel::new(format!("\"{name}{ellipsis}\"{break_lines}has unsaved changes")).multiline(true).widget_instance()],
 			},
 		]))
 	}

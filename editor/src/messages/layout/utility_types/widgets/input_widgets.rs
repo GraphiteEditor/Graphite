@@ -119,7 +119,7 @@ pub type MenuListEntrySections = Vec<Vec<MenuListEntry>>;
 
 #[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Default, WidgetBuilder, specta::Type)]
 #[derivative(Debug, PartialEq)]
-#[widget_builder(not_widget_holder)]
+#[widget_builder(not_widget_instance)]
 pub struct MenuListEntry {
 	#[widget_builder(constructor)]
 	pub value: String,
@@ -358,7 +358,7 @@ pub struct RadioInput {
 
 #[derive(Clone, Default, Derivative, serde::Serialize, serde::Deserialize, WidgetBuilder, specta::Type)]
 #[derivative(Debug, PartialEq)]
-#[widget_builder(not_widget_holder)]
+#[widget_builder(not_widget_instance)]
 pub struct RadioEntryData {
 	#[widget_builder(constructor)]
 	pub value: String,

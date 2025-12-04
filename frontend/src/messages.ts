@@ -1465,22 +1465,22 @@ export class Widget {
 	widgetId!: bigint;
 }
 
-function hoistWidgetHolder(widgetHolder: any): Widget {
-	const kind = Object.keys(widgetHolder.widget)[0];
-	const props = widgetHolder.widget[kind];
+function hoistWidgetInstance(widgetInstance: any): Widget {
+	const kind = Object.keys(widgetInstance.widget)[0];
+	const props = widgetInstance.widget[kind];
 	props.kind = kind;
 
 	if (kind === "PopoverButton") {
 		props.popoverLayout = props.popoverLayout.map(createLayoutGroup);
 	}
 
-	const { widgetId } = widgetHolder;
+	const { widgetId } = widgetInstance;
 
 	return plainToClass(Widget, { props, widgetId });
 }
 
-function hoistWidgetHolders(widgetHolders: any[]): Widget[] {
-	return widgetHolders.map(hoistWidgetHolder);
+function hoistWidgetInstances(widgetInstance: any[]): Widget[] {
+	return widgetInstance.map(hoistWidgetInstance);
 }
 
 // WIDGET LAYOUT
@@ -1588,7 +1588,7 @@ function createWidgetDiff(diffs: any[]): WidgetDiff[] {
 			return { widgetPath, newValue: createLayoutGroup(newValue.layoutGroup) };
 		}
 		if (newValue.widget) {
-			return { widgetPath, newValue: hoistWidgetHolder(newValue.widget) };
+			return { widgetPath, newValue: hoistWidgetInstance(newValue.widget) };
 		}
 		// This code should be unreachable
 		throw new Error("DiffUpdate invalid");
@@ -1598,14 +1598,14 @@ function createWidgetDiff(diffs: any[]): WidgetDiff[] {
 // Unpacking a layout group
 function createLayoutGroup(layoutGroup: any): LayoutGroup {
 	if (layoutGroup.column) {
-		const columnWidgets = hoistWidgetHolders(layoutGroup.column.columnWidgets);
+		const columnWidgets = hoistWidgetInstances(layoutGroup.column.columnWidgets);
 
 		const result: WidgetSpanColumn = { columnWidgets };
 		return result;
 	}
 
 	if (layoutGroup.row) {
-		const result: WidgetSpanRow = { rowWidgets: hoistWidgetHolders(layoutGroup.row.rowWidgets) };
+		const result: WidgetSpanRow = { rowWidgets: hoistWidgetInstances(layoutGroup.row.rowWidgets) };
 		return result;
 	}
 
@@ -1623,7 +1623,7 @@ function createLayoutGroup(layoutGroup: any): LayoutGroup {
 
 	if (layoutGroup.table) {
 		const result: WidgetTable = {
-			tableWidgets: layoutGroup.table.tableWidgets.map(hoistWidgetHolders),
+			tableWidgets: layoutGroup.table.tableWidgets.map(hoistWidgetInstances),
 			unstyled: layoutGroup.table.unstyled,
 		};
 		return result;

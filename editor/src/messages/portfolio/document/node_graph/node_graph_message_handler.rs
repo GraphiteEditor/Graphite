@@ -2144,12 +2144,12 @@ impl NodeGraphMessageHandler {
 								}
 							}
 						})
-						.widget_holder();
+						.widget_instance();
 					vec![LayoutGroup::Row { widgets: vec![node_chooser] }]
 				})
-				.widget_holder(),
+				.widget_instance(),
 			//
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_instance(),
 			//
 			IconButton::new("Folder", 24)
 				.tooltip_label("Group Selected")
@@ -2159,20 +2159,20 @@ impl NodeGraphMessageHandler {
 					DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
 				})
 				.disabled(!has_selection)
-				.widget_holder(),
+				.widget_instance(),
 			IconButton::new("NewLayer", 24)
 				.tooltip_label("New Layer")
 				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::CreateEmptyFolder))
 				.on_update(|_| DocumentMessage::CreateEmptyFolder.into())
-				.widget_holder(),
+				.widget_instance(),
 			IconButton::new("Trash", 24)
 				.tooltip_label("Delete Selected")
 				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::DeleteSelectedLayers))
 				.on_update(|_| DocumentMessage::DeleteSelectedLayers.into())
 				.disabled(!has_selection)
-				.widget_holder(),
+				.widget_instance(),
 			//
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_instance(),
 			//
 			IconButton::new(if selection_all_locked { "PadlockLocked" } else { "PadlockUnlocked" }, 24)
 				.hover_icon(Some((if selection_all_locked { "PadlockUnlocked" } else { "PadlockLocked" }).into()))
@@ -2180,14 +2180,14 @@ impl NodeGraphMessageHandler {
 				.tooltip_shortcut(action_shortcut!(NodeGraphMessageDiscriminant::ToggleSelectedLocked))
 				.on_update(|_| NodeGraphMessage::ToggleSelectedLocked.into())
 				.disabled(!has_selection || !selection_includes_layers)
-				.widget_holder(),
+				.widget_instance(),
 			IconButton::new(if selection_all_visible { "EyeVisible" } else { "EyeHidden" }, 24)
 				.hover_icon(Some((if selection_all_visible { "EyeHide" } else { "EyeShow" }).into()))
 				.tooltip_label(if selection_all_visible { "Hide Selected" } else { "Show Selected" })
 				.tooltip_shortcut(action_shortcut!(NodeGraphMessageDiscriminant::ToggleSelectedVisibility))
 				.on_update(|_| NodeGraphMessage::ToggleSelectedVisibility.into())
 				.disabled(!has_selection)
-				.widget_holder(),
+				.widget_instance(),
 		];
 
 		let mut selection = selected_nodes.selected_nodes();
@@ -2212,8 +2212,8 @@ impl NodeGraphMessageHandler {
 				.icon(Some("FrameAll".to_string()))
 				.tooltip_description("Restore preview to the graph output.")
 				.on_update(move |_| NodeGraphMessage::TogglePreview { node_id }.into())
-				.widget_holder();
-			widgets.extend([Separator::new(SeparatorType::Unrelated).widget_holder(), button]);
+				.widget_instance();
+			widgets.extend([Separator::new(SeparatorType::Unrelated).widget_instance(), button]);
 		} else if let Some(&node_id) = selection {
 			let selection_is_not_already_the_output = !network
 				.exports
@@ -2226,15 +2226,15 @@ impl NodeGraphMessageHandler {
 					.tooltip_description("Temporarily set the graph output to the selected node or layer. Perform the shortcut on a node or layer for quick access.")
 					.tooltip_shortcut(action_shortcut_manual!(Key::Alt, Key::MouseLeft))
 					.on_update(move |_| NodeGraphMessage::TogglePreview { node_id }.into())
-					.widget_holder();
-				widgets.extend([Separator::new(SeparatorType::Unrelated).widget_holder(), button]);
+					.widget_instance();
+				widgets.extend([Separator::new(SeparatorType::Unrelated).widget_instance(), button]);
 			}
 		}
 
 		let subgraph_path_names_length = subgraph_path_names.len();
 		if subgraph_path_names_length >= 2 {
 			widgets.extend([
-				Separator::new(SeparatorType::Unrelated).widget_holder(),
+				Separator::new(SeparatorType::Unrelated).widget_instance(),
 				BreadcrumbTrailButtons::new(subgraph_path_names)
 					.on_update(move |index| {
 						DocumentMessage::ExitNestedNetwork {
@@ -2242,7 +2242,7 @@ impl NodeGraphMessageHandler {
 						}
 						.into()
 					})
-					.widget_holder(),
+					.widget_instance(),
 			]);
 		}
 
@@ -2273,19 +2273,19 @@ impl NodeGraphMessageHandler {
 					}
 					.into()
 				})
-				.widget_holder(),
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
+				.widget_instance(),
+			Separator::new(SeparatorType::Unrelated).widget_instance(),
 		];
 		widgets.extend(navigation_controls(node_graph_ptz, navigation_handler, true));
 		widgets.extend([
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_instance(),
 			TextButton::new("Node Graph")
 				.icon(Some("GraphViewOpen".into()))
 				.hover_icon(Some("GraphViewClosed".into()))
 				.tooltip_label("Hide Node Graph")
 				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::GraphViewOverlayToggle))
 				.on_update(move |_| DocumentMessage::GraphViewOverlayToggle.into())
-				.widget_holder(),
+				.widget_instance(),
 		]);
 
 		self.widgets[1] = LayoutGroup::Row { widgets };
@@ -2332,9 +2332,9 @@ impl NodeGraphMessageHandler {
 					if let [node_id] = *nodes.as_slice() {
 						properties.push(LayoutGroup::Row {
 							widgets: vec![
-								Separator::new(SeparatorType::Related).widget_holder(),
-								IconLabel::new("Node").tooltip_description("Name of the selected node.").widget_holder(),
-								Separator::new(SeparatorType::Related).widget_holder(),
+								Separator::new(SeparatorType::Related).widget_instance(),
+								IconLabel::new("Node").tooltip_description("Name of the selected node.").widget_instance(),
+								Separator::new(SeparatorType::Related).widget_instance(),
 								TextInput::new(context.network_interface.display_name(&node_id, context.selection_network_path))
 									.tooltip_description("Name of the selected node.")
 									.on_update(move |text_input| {
@@ -2345,8 +2345,8 @@ impl NodeGraphMessageHandler {
 										}
 										.into()
 									})
-									.widget_holder(),
-								Separator::new(SeparatorType::Related).widget_holder(),
+									.widget_instance(),
+								Separator::new(SeparatorType::Related).widget_instance(),
 							],
 						});
 					}
@@ -2360,14 +2360,14 @@ impl NodeGraphMessageHandler {
 				// This may require store a separate path for the properties panel
 				let mut properties = vec![LayoutGroup::Row {
 					widgets: vec![
-						Separator::new(SeparatorType::Related).widget_holder(),
-						IconLabel::new("File").tooltip_description("Name of the current document.").widget_holder(),
-						Separator::new(SeparatorType::Related).widget_holder(),
+						Separator::new(SeparatorType::Related).widget_instance(),
+						IconLabel::new("File").tooltip_description("Name of the current document.").widget_instance(),
+						Separator::new(SeparatorType::Related).widget_instance(),
 						TextInput::new(context.document_name)
 							.tooltip_description("Name of the current document.")
 							.on_update(|text_input| DocumentMessage::RenameDocument { new_name: text_input.value.clone() }.into())
-							.widget_holder(),
-						Separator::new(SeparatorType::Related).widget_holder(),
+							.widget_instance(),
+						Separator::new(SeparatorType::Related).widget_instance(),
 					],
 				}];
 
@@ -2407,9 +2407,9 @@ impl NodeGraphMessageHandler {
 
 				let mut layer_properties = vec![LayoutGroup::Row {
 					widgets: vec![
-						Separator::new(SeparatorType::Related).widget_holder(),
-						IconLabel::new("Layer").tooltip_description("Name of the selected layer.").widget_holder(),
-						Separator::new(SeparatorType::Related).widget_holder(),
+						Separator::new(SeparatorType::Related).widget_instance(),
+						IconLabel::new("Layer").tooltip_description("Name of the selected layer.").widget_instance(),
+						Separator::new(SeparatorType::Related).widget_instance(),
 						TextInput::new(context.network_interface.display_name(&layer, context.selection_network_path))
 							.tooltip_description("Name of the selected layer.")
 							.on_update(move |text_input| {
@@ -2420,8 +2420,8 @@ impl NodeGraphMessageHandler {
 								}
 								.into()
 							})
-							.widget_holder(),
-						Separator::new(SeparatorType::Related).widget_holder(),
+							.widget_instance(),
+						Separator::new(SeparatorType::Related).widget_instance(),
 						PopoverButton::new()
 							.icon(Some("Node".to_string()))
 							.tooltip_description("Add an operation to the end of this layer's chain of nodes.")
@@ -2442,11 +2442,11 @@ impl NodeGraphMessageHandler {
 										}
 										.into()
 									})
-									.widget_holder();
+									.widget_instance();
 								vec![LayoutGroup::Row { widgets: vec![node_chooser] }]
 							})
-							.widget_holder(),
-						Separator::new(SeparatorType::Related).widget_holder(),
+							.widget_instance(),
+						Separator::new(SeparatorType::Related).widget_instance(),
 					],
 				}];
 

@@ -61,7 +61,7 @@ impl MessageHandler<LayoutMessage, LayoutMessageContext<'_>> for LayoutMessageHa
 
 impl LayoutMessageHandler {
 	/// Get the widget path for the widget with the specified id
-	fn get_widget_path(widget_layout: &WidgetLayout, widget_id: WidgetId) -> Option<(&WidgetHolder, Vec<usize>)> {
+	fn get_widget_path(widget_layout: &WidgetLayout, widget_id: WidgetId) -> Option<(&WidgetInstance, Vec<usize>)> {
 		let mut stack = widget_layout.layout.iter().enumerate().map(|(index, val)| (vec![index], val)).collect::<Vec<_>>();
 		while let Some((mut widget_path, layout_group)) = stack.pop() {
 			match layout_group {
@@ -119,12 +119,12 @@ impl LayoutMessageHandler {
 		let mut layout_iter = match layout {
 			Layout::WidgetLayout(widget_layout) => widget_layout.iter_mut(),
 		};
-		let Some(widget_holder) = layout_iter.find(|widget| widget.widget_id == widget_id) else {
+		let Some(widget_instance) = layout_iter.find(|widget| widget.widget_id == widget_id) else {
 			warn!("handle_widget_callback was called referencing an invalid widget ID, although the layout target was valid. `widget_id: {widget_id}`, `layout_target: {layout_target:?}`",);
 			return;
 		};
 
-		match &mut widget_holder.widget {
+		match &mut widget_instance.widget {
 			Widget::BreadcrumbTrailButtons(breadcrumb_trail_buttons) => {
 				let callback_message = match action {
 					WidgetValueAction::Commit => (breadcrumb_trail_buttons.on_commit.callback)(&()),

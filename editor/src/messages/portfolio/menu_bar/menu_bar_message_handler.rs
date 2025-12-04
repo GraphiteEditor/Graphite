@@ -78,7 +78,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 				.flush(true)
 				.icon(Some("GraphiteLogo".into()))
 				.on_commit(|_| FrontendMessage::TriggerVisitLink { url: "https://graphite.rs".into() }.into())
-				.widget_holder(),
+				.widget_instance(),
 			#[cfg(target_os = "macos")]
 			TextButton::new("Graphite")
 				.label("")
@@ -107,7 +107,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 							.on_commit(|_| AppWindowMessage::Close.into()),
 					],
 				])
-				.widget_holder(),
+				.widget_instance(),
 			TextButton::new("File")
 				.label("File")
 				.flush(true)
@@ -173,7 +173,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 					#[cfg(not(target_os = "macos"))]
 					vec![preferences],
 				])
-				.widget_holder(),
+				.widget_instance(),
 			TextButton::new("Edit")
 				.label("Edit")
 				.flush(true)
@@ -234,7 +234,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 							.disabled(no_active_document),
 					],
 				])
-				.widget_holder(),
+				.widget_instance(),
 			TextButton::new("Layer")
 				.label("Layer")
 				.flush(true)
@@ -503,7 +503,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 							.disabled(!make_path_editable_is_allowed),
 					],
 				])
-				.widget_holder(),
+				.widget_instance(),
 			TextButton::new("Select")
 				.label("Select")
 				.flush(true)
@@ -543,7 +543,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 							.disabled(!has_selection_history.1),
 					],
 				])
-				.widget_holder(),
+				.widget_instance(),
 			TextButton::new("View")
 				.label("View")
 				.flush(true)
@@ -617,7 +617,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 							.disabled(no_active_document),
 					],
 				])
-				.widget_holder(),
+				.widget_instance(),
 			TextButton::new("Window")
 				.label("Window")
 				.flush(true)
@@ -642,7 +642,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 							.on_commit(|_| PortfolioMessage::ToggleDataPanelOpen.into()),
 					],
 				])
-				.widget_holder(),
+				.widget_instance(),
 			TextButton::new("Help")
 				.label("Help")
 				.flush(true)
@@ -733,7 +733,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 						vec![MenuListEntry::new("Trigger a Crash").label("Trigger a Crash").icon("Warning").on_commit(|_| panic!())],
 					])],
 				])
-				.widget_holder(),
+				.widget_instance(),
 		];
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets: menu_bar_buttons }]))

@@ -119,7 +119,7 @@ impl DocumentToolData {
 	pub fn update_working_colors(&self, responses: &mut VecDeque<Message>) {
 		let layout = WidgetLayout::new(vec![
 			LayoutGroup::Row {
-				widgets: vec![WorkingColorsInput::new(self.primary_color.to_gamma_srgb(), self.secondary_color.to_gamma_srgb()).widget_holder()],
+				widgets: vec![WorkingColorsInput::new(self.primary_color.to_gamma_srgb(), self.secondary_color.to_gamma_srgb()).widget_instance()],
 			},
 			LayoutGroup::Row {
 				widgets: vec![
@@ -127,12 +127,12 @@ impl DocumentToolData {
 						.tooltip_label("Swap")
 						.tooltip_shortcut(action_shortcut!(ToolMessageDiscriminant::SwapColors))
 						.on_update(|_| ToolMessage::SwapColors.into())
-						.widget_holder(),
+						.widget_instance(),
 					IconButton::new("WorkingColors", 16)
 						.tooltip_label("Reset")
 						.tooltip_shortcut(action_shortcut!(ToolMessageDiscriminant::ResetColors))
 						.on_update(|_| ToolMessage::ResetColors.into())
-						.widget_holder(),
+						.widget_instance(),
 				],
 			},
 		]);
@@ -257,7 +257,7 @@ impl LayoutHolder for ToolData {
 					.collect::<Vec<_>>()
 			)
 			.flat_map(|group| {
-				let separator = std::iter::once(Separator::new(SeparatorType::Section).direction(SeparatorDirection::Vertical).widget_holder());
+				let separator = std::iter::once(Separator::new(SeparatorType::Section).direction(SeparatorDirection::Vertical).widget_instance());
 				let buttons = group.into_iter().map(|ToolEntry { tooltip_label, tooltip_description, tooltip_shortcut, tool_type, icon_name }| {
 					let coming_soon = tooltip_description.contains("Coming soon.");
 
@@ -281,7 +281,7 @@ impl LayoutHolder for ToolData {
 								}
 							}
 						})
-						.widget_holder()
+						.widget_instance()
 				});
 
 				separator.chain(buttons)
@@ -297,7 +297,7 @@ impl LayoutHolder for ToolData {
 }
 
 #[derive(Debug, Clone, Default, WidgetBuilder)]
-#[widget_builder(not_widget_holder)]
+#[widget_builder(not_widget_instance)]
 pub struct ToolEntry {
 	#[widget_builder(constructor)]
 	pub tool_type: ToolType,
@@ -522,27 +522,27 @@ impl HintData {
 
 		for (index, hint_group) in self.0.iter().enumerate() {
 			if index > 0 {
-				widgets.push(Separator::new(SeparatorType::Section).widget_holder());
+				widgets.push(Separator::new(SeparatorType::Section).widget_instance());
 			}
 			for hint in &hint_group.0 {
 				if hint.plus {
-					widgets.push(TextLabel::new("+").bold(true).widget_holder());
+					widgets.push(TextLabel::new("+").bold(true).widget_instance());
 				}
 				if hint.slash {
-					widgets.push(TextLabel::new("/").bold(true).widget_holder());
+					widgets.push(TextLabel::new("/").bold(true).widget_instance());
 				}
 
 				for shortcut in &hint.key_groups {
-					widgets.push(ShortcutLabel::new(Some(ActionShortcut::Shortcut(shortcut.clone()))).widget_holder());
+					widgets.push(ShortcutLabel::new(Some(ActionShortcut::Shortcut(shortcut.clone()))).widget_instance());
 				}
 				if let Some(mouse_movement) = &hint.mouse {
 					let mouse_movement = LabeledShortcut(vec![LabeledKeyOrMouseMotion::MouseMotion(mouse_movement.clone())]);
 					let shortcut = ActionShortcut::Shortcut(mouse_movement);
-					widgets.push(ShortcutLabel::new(Some(shortcut)).widget_holder());
+					widgets.push(ShortcutLabel::new(Some(shortcut)).widget_instance());
 				}
 
 				if !hint.label.is_empty() {
-					widgets.push(TextLabel::new(hint.label.clone()).widget_holder());
+					widgets.push(TextLabel::new(hint.label.clone()).widget_instance());
 				}
 			}
 		}

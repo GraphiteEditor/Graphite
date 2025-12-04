@@ -10,7 +10,7 @@ impl DialogLayoutHolder for LicensesThirdPartyDialog {
 	const TITLE: &'static str = "Third-Party Software License Notices";
 
 	fn layout_buttons(&self) -> Layout {
-		let widgets = vec![TextButton::new("OK").emphasized(true).on_update(|_| FrontendMessage::DisplayDialogDismiss.into()).widget_holder()];
+		let widgets = vec![TextButton::new("OK").emphasized(true).on_update(|_| FrontendMessage::DisplayDialogDismiss.into()).widget_instance()];
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
 	}
@@ -37,7 +37,7 @@ impl LayoutHolder for LicensesThirdPartyDialog {
 					.monospace(true)
 					.multiline(true)
 					.min_width(format!("{non_wrapping_column_width}ch"))
-					.widget_holder(),
+					.widget_instance(),
 			],
 		}]))
 	}

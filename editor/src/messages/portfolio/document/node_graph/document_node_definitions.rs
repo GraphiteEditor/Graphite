@@ -2536,7 +2536,7 @@ fn static_input_properties() -> InputProperties {
 			};
 			if let Some(&TaggedValue::F64(val)) = input.as_non_exposed_value() {
 				widgets.extend_from_slice(&[
-					Separator::new(SeparatorType::Unrelated).widget_holder(),
+					Separator::new(SeparatorType::Unrelated).widget_instance(),
 					NumberInput::new(Some(val))
 						.unit("°")
 						.mode(NumberInputMode::Range)
@@ -2548,7 +2548,7 @@ fn static_input_properties() -> InputProperties {
 							index,
 						))
 						.on_commit(node_properties::commit_value)
-						.widget_holder(),
+						.widget_instance(),
 				]);
 			}
 
@@ -2567,7 +2567,7 @@ fn static_input_properties() -> InputProperties {
 			};
 			if let Some(&TaggedValue::DVec2(val)) = input.as_non_exposed_value() {
 				widgets.extend_from_slice(&[
-					Separator::new(SeparatorType::Unrelated).widget_holder(),
+					Separator::new(SeparatorType::Unrelated).widget_instance(),
 					NumberInput::new(Some(val.x))
 						.label("X")
 						.unit("°")
@@ -2579,8 +2579,8 @@ fn static_input_properties() -> InputProperties {
 							index,
 						))
 						.on_commit(node_properties::commit_value)
-						.widget_holder(),
-					Separator::new(SeparatorType::Related).widget_holder(),
+						.widget_instance(),
+					Separator::new(SeparatorType::Related).widget_instance(),
 					NumberInput::new(Some(val.y))
 						.label("Y")
 						.unit("°")
@@ -2592,7 +2592,7 @@ fn static_input_properties() -> InputProperties {
 							index,
 						))
 						.on_commit(node_properties::commit_value)
-						.widget_holder(),
+						.widget_instance(),
 				]);
 			}
 

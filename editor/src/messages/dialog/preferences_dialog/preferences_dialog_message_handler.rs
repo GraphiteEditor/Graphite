@@ -40,17 +40,17 @@ impl PreferencesDialogMessageHandler {
 		// NAVIGATION
 		// ==========
 
-		let navigation_header = vec![TextLabel::new("Navigation").italic(true).widget_holder()];
+		let navigation_header = vec![TextLabel::new("Navigation").italic(true).widget_instance()];
 
 		let zoom_rate_description = "Adjust how fast zooming occurs when using the scroll wheel or pinch gesture (relative to a default of 50).";
 		let zoom_rate_label = vec![
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			TextLabel::new("Zoom Rate").tooltip_label("Zoom Rate").tooltip_description(zoom_rate_description).widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			TextLabel::new("Zoom Rate").tooltip_label("Zoom Rate").tooltip_description(zoom_rate_description).widget_instance(),
 		];
 		let zoom_rate = vec![
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			Separator::new(SeparatorType::Unrelated).widget_instance(),
 			NumberInput::new(Some(map_zoom_rate_to_display(preferences.viewport_zoom_wheel_rate)))
 				.tooltip_label("Zoom Rate")
 				.tooltip_description(zoom_rate_description)
@@ -66,14 +66,14 @@ impl PreferencesDialogMessageHandler {
 						PreferencesMessage::ViewportZoomWheelRate { rate: VIEWPORT_ZOOM_WHEEL_RATE }.into()
 					}
 				})
-				.widget_holder(),
+				.widget_instance(),
 		];
 
 		let checkbox_id = CheckboxId::new();
 		let zoom_with_scroll_description = "Use the scroll wheel for zooming instead of vertically panning (not recommended for trackpads).";
 		let zoom_with_scroll = vec![
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			Separator::new(SeparatorType::Unrelated).widget_instance(),
 			CheckboxInput::new(preferences.zoom_with_scroll)
 				.tooltip_label("Zoom with Scroll")
 				.tooltip_description(zoom_with_scroll_description)
@@ -84,25 +84,25 @@ impl PreferencesDialogMessageHandler {
 					.into()
 				})
 				.for_label(checkbox_id)
-				.widget_holder(),
+				.widget_instance(),
 			TextLabel::new("Zoom with Scroll")
 				.tooltip_label("Zoom with Scroll")
 				.tooltip_description(zoom_with_scroll_description)
 				.for_checkbox(checkbox_id)
 				.table_align(true)
-				.widget_holder(),
+				.widget_instance(),
 		];
 
 		// =======
 		// EDITING
 		// =======
 
-		let editing_header = vec![TextLabel::new("Editing").italic(true).widget_holder()];
+		let editing_header = vec![TextLabel::new("Editing").italic(true).widget_instance()];
 
 		let selection_label = vec![
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			TextLabel::new("Selection").widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			TextLabel::new("Selection").widget_instance(),
 		];
 
 		let selection_mode = RadioInput::new(vec![
@@ -138,10 +138,10 @@ impl PreferencesDialogMessageHandler {
 				}),
 		])
 		.selected_index(Some(preferences.selection_mode as u32))
-		.widget_holder();
+		.widget_instance();
 		let selection_mode = vec![
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			Separator::new(SeparatorType::Unrelated).widget_instance(),
 			selection_mode,
 		];
 
@@ -149,16 +149,16 @@ impl PreferencesDialogMessageHandler {
 		// EXPERIMENTAL
 		// ============
 
-		let experimental_header = vec![TextLabel::new("Experimental").italic(true).widget_holder()];
+		let experimental_header = vec![TextLabel::new("Experimental").italic(true).widget_instance()];
 
 		let node_graph_section_description = "Appearance of the wires running between node connections in the graph.";
 		let node_graph_wires_label = vec![
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			Separator::new(SeparatorType::Unrelated).widget_instance(),
 			TextLabel::new("Node Graph Wires")
 				.tooltip_label("Node Graph Wires")
 				.tooltip_description(node_graph_section_description)
-				.widget_holder(),
+				.widget_instance(),
 		];
 		let graph_wire_style = RadioInput::new(vec![
 			RadioEntryData::new(GraphWireStyle::Direct.to_string())
@@ -173,32 +173,32 @@ impl PreferencesDialogMessageHandler {
 				.on_update(move |_| PreferencesMessage::GraphWireStyle { style: GraphWireStyle::GridAligned }.into()),
 		])
 		.selected_index(Some(preferences.graph_wire_style as u32))
-		.widget_holder();
+		.widget_instance();
 		let graph_wire_style = vec![
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			Separator::new(SeparatorType::Unrelated).widget_instance(),
 			graph_wire_style,
 		];
 
 		let checkbox_id = CheckboxId::new();
 		let vello_description = "Use the experimental Vello renderer. (Your browser must support WebGPU).";
 		let use_vello = vec![
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			Separator::new(SeparatorType::Unrelated).widget_instance(),
 			CheckboxInput::new(preferences.use_vello && preferences.supports_wgpu())
 				.tooltip_label("Vello Renderer")
 				.tooltip_description(vello_description)
 				.disabled(!preferences.supports_wgpu())
 				.on_update(|checkbox_input: &CheckboxInput| PreferencesMessage::UseVello { use_vello: checkbox_input.checked }.into())
 				.for_label(checkbox_id)
-				.widget_holder(),
+				.widget_instance(),
 			TextLabel::new("Vello Renderer")
 				.tooltip_label("Vello Renderer")
 				.tooltip_description(vello_description)
 				.disabled(!preferences.supports_wgpu())
 				.for_checkbox(checkbox_id)
 				.table_align(true)
-				.widget_holder(),
+				.widget_instance(),
 		];
 
 		let checkbox_id = CheckboxId::new();
@@ -208,20 +208,20 @@ impl PreferencesDialogMessageHandler {
 			"
 		.trim();
 		let vector_meshes = vec![
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			Separator::new(SeparatorType::Unrelated).widget_instance(),
 			CheckboxInput::new(preferences.vector_meshes)
 				.tooltip_label("Vector Meshes")
 				.tooltip_description(vector_mesh_description)
 				.on_update(|checkbox_input: &CheckboxInput| PreferencesMessage::VectorMeshes { enabled: checkbox_input.checked }.into())
 				.for_label(checkbox_id)
-				.widget_holder(),
+				.widget_instance(),
 			TextLabel::new("Vector Meshes")
 				.tooltip_label("Vector Meshes")
 				.tooltip_description(vector_mesh_description)
 				.for_checkbox(checkbox_id)
 				.table_align(true)
-				.widget_holder(),
+				.widget_instance(),
 		];
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![
@@ -268,8 +268,8 @@ impl PreferencesDialogMessageHandler {
 					}
 					.into()
 				})
-				.widget_holder(),
-			TextButton::new("Reset to Defaults").on_update(|_| PreferencesMessage::ResetToDefaults.into()).widget_holder(),
+				.widget_instance(),
+			TextButton::new("Reset to Defaults").on_update(|_| PreferencesMessage::ResetToDefaults.into()).widget_instance(),
 		];
 
 		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))

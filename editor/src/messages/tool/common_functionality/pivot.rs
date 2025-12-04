@@ -12,7 +12,7 @@ use graphene_std::transform::ReferencePoint;
 use graphene_std::vector::misc::ManipulatorPointId;
 use std::fmt;
 
-pub fn pin_pivot_widget(active: bool, enabled: bool, source: PivotToolSource) -> WidgetHolder {
+pub fn pin_pivot_widget(active: bool, enabled: bool, source: PivotToolSource) -> WidgetInstance {
 	IconButton::new(if active { "PinActive" } else { "PinInactive" }, 24)
 		.tooltip_label(if active { "Unpin Custom Pivot" } else { "Pin Custom Pivot" })
 		.tooltip_description("Unless pinned, the pivot will return to its prior reference point when a new selection is made.")
@@ -27,10 +27,10 @@ pub fn pin_pivot_widget(active: bool, enabled: bool, source: PivotToolSource) ->
 			}
 			.into(),
 		})
-		.widget_holder()
+		.widget_instance()
 }
 
-pub fn pivot_reference_point_widget(disabled: bool, reference_point: ReferencePoint, source: PivotToolSource) -> WidgetHolder {
+pub fn pivot_reference_point_widget(disabled: bool, reference_point: ReferencePoint, source: PivotToolSource) -> WidgetInstance {
 	ReferencePointInput::new(reference_point)
 		.tooltip_label("Custom Pivot Reference Point")
 		.tooltip_description("Places the pivot at a corner, edge, or center of the selection bounds, unless it is dragged elsewhere.")
@@ -39,10 +39,10 @@ pub fn pivot_reference_point_widget(disabled: bool, reference_point: ReferencePo
 			PivotToolSource::Select => SelectToolMessage::SetPivot { position: pivot_input.value }.into(),
 			PivotToolSource::Path => PathToolMessage::SetPivot { position: pivot_input.value }.into(),
 		})
-		.widget_holder()
+		.widget_instance()
 }
 
-pub fn pivot_gizmo_type_widget(state: PivotGizmoState, source: PivotToolSource) -> Vec<WidgetHolder> {
+pub fn pivot_gizmo_type_widget(state: PivotGizmoState, source: PivotToolSource) -> Vec<WidgetInstance> {
 	let gizmo_type_entries = [PivotGizmoType::Pivot, PivotGizmoType::Average, PivotGizmoType::Active]
 		.iter()
 		.map(|gizmo_type| {
@@ -82,8 +82,8 @@ pub fn pivot_gizmo_type_widget(state: PivotGizmoState, source: PivotToolSource) 
 				}
 				.into(),
 			})
-			.widget_holder(),
-		Separator::new(SeparatorType::Related).widget_holder(),
+			.widget_instance(),
+		Separator::new(SeparatorType::Related).widget_instance(),
 		DropdownInput::new(vec![gizmo_type_entries])
 			.selected_index(Some(match state.gizmo_type {
 				PivotGizmoType::Pivot => 0,
@@ -102,7 +102,7 @@ pub fn pivot_gizmo_type_widget(state: PivotGizmoState, source: PivotToolSource) 
 				.trim(),
 			)
 			.disabled(state.disabled)
-			.widget_holder(),
+			.widget_instance(),
 	]
 }
 

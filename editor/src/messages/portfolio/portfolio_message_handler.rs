@@ -892,30 +892,30 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 								.icon(Some("File".into()))
 								.flush(true)
 								.on_commit(|_| DialogMessage::RequestNewDocumentDialog.into())
-								.widget_holder(),
-							ShortcutLabel::new(action_shortcut!(DialogMessageDiscriminant::RequestNewDocumentDialog)).widget_holder(),
+								.widget_instance(),
+							ShortcutLabel::new(action_shortcut!(DialogMessageDiscriminant::RequestNewDocumentDialog)).widget_instance(),
 						],
 						vec![
 							TextButton::new("Open Document")
 								.icon(Some("Folder".into()))
 								.flush(true)
 								.on_commit(|_| PortfolioMessage::OpenDocument.into())
-								.widget_holder(),
-							ShortcutLabel::new(action_shortcut!(PortfolioMessageDiscriminant::OpenDocument)).widget_holder(),
+								.widget_instance(),
+							ShortcutLabel::new(action_shortcut!(PortfolioMessageDiscriminant::OpenDocument)).widget_instance(),
 						],
 						vec![
 							TextButton::new("Open Demo Artwork")
 								.icon(Some("Image".into()))
 								.flush(true)
 								.on_commit(|_| DialogMessage::RequestDemoArtworkDialog.into())
-								.widget_holder(),
+								.widget_instance(),
 						],
 						vec![
 							TextButton::new("Support the Development Fund")
 								.icon(Some("Heart".into()))
 								.flush(true)
 								.on_commit(move |_| FrontendMessage::TriggerVisitLink { url: donate.to_string() }.into())
-								.widget_holder(),
+								.widget_instance(),
 						],
 					],
 				};
