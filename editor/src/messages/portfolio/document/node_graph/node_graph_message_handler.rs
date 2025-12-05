@@ -63,20 +63,21 @@ pub struct NodeGraphMessageHandler {
 	pub drag_start_chain_nodes: Vec<NodeId>,
 	/// If dragging the background to create a box selection, this stores its starting point in node graph coordinates,
 	/// plus a flag indicating if it has been dragged since the mousedown began.
-	box_selection_start: Option<(DVec2, bool)>,
+	pub box_selection_start: Option<(DVec2, bool)>,
 	/// Restore the selection before box selection if it is aborted
-	selection_before_pointer_down: Vec<NodeId>,
+	pub selection_before_pointer_down: Vec<NodeId>,
 	/// If the grip icon is held during a drag, then shift without pushing other nodes
 	shift_without_push: bool,
 	disconnecting: Option<InputConnector>,
 	initial_disconnecting: bool,
 	/// Node to select on pointer up if multiple nodes are selected and they were not dragged.
 	select_if_not_dragged: Option<NodeId>,
-	/// The start of the dragged line (cannot be moved), stored in node graph coordinates
+	/// The start of the dragged line (cannot be moved), stored in node graph coordinates.
 	pub wire_in_progress_from_connector: Option<DVec2>,
-	wire_in_progress_type: FrontendGraphDataType,
-	/// The end point of the dragged line (cannot be moved), stored in node graph coordinates
+	/// The end point of the dragged line (cannot be moved), stored in node graph coordinates.
 	pub wire_in_progress_to_connector: Option<DVec2>,
+	/// The data type determining the color of the wire being dragged.
+	pub wire_in_progress_type: FrontendGraphDataType,
 	/// State for the context menu popups.
 	pub context_menu: Option<ContextMenuInformation>,
 	/// Index of selected node to be deselected on pointer up when shift clicking an already selected node
@@ -295,8 +296,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					}
 
 					self.wire_in_progress_from_connector = None;
-					self.wire_in_progress_type = FrontendGraphDataType::General;
 					self.wire_in_progress_to_connector = None;
+					self.wire_in_progress_type = FrontendGraphDataType::General;
 				}
 				responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
 				responses.add(FrontendMessage::UpdateContextMenuInformation {
@@ -768,8 +769,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					// Abort dragging a wire
 					if self.wire_in_progress_from_connector.is_some() {
 						self.wire_in_progress_from_connector = None;
-						self.wire_in_progress_type = FrontendGraphDataType::General;
 						self.wire_in_progress_to_connector = None;
+						self.wire_in_progress_type = FrontendGraphDataType::General;
+
 						responses.add(DocumentMessage::AbortTransaction);
 						responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
 						return;
@@ -850,8 +852,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				if self.context_menu.is_some() {
 					self.context_menu = None;
 					self.wire_in_progress_from_connector = None;
-					self.wire_in_progress_type = FrontendGraphDataType::General;
 					self.wire_in_progress_to_connector = None;
+					self.wire_in_progress_type = FrontendGraphDataType::General;
+
 					responses.add(FrontendMessage::UpdateContextMenuInformation {
 						context_menu_information: self.context_menu.clone(),
 					});
@@ -1388,14 +1391,18 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					});
 					responses.add(DocumentMessage::EndTransaction);
 				}
+
 				self.drag_start = None;
 				self.begin_dragging = false;
 				self.box_selection_start = None;
+
 				self.wire_in_progress_from_connector = None;
-				self.wire_in_progress_type = FrontendGraphDataType::General;
 				self.wire_in_progress_to_connector = None;
+				self.wire_in_progress_type = FrontendGraphDataType::General;
+
 				self.reordering_export = None;
 				self.reordering_import = None;
+
 				responses.add(DocumentMessage::EndTransaction);
 				responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
 				responses.add(FrontendMessage::UpdateBox { box_selection: None });

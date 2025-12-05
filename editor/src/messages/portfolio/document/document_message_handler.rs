@@ -12,6 +12,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::data_panel::{DataPanelMessageContext, DataPanelMessageHandler};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::NodeGraphMessageContext;
+use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
 use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay, overlay_options};
 use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType, OverlaysVisibilitySettings};
 use crate::messages::portfolio::document::properties_panel::properties_panel_message_handler::PropertiesPanelMessageContext;
@@ -476,25 +477,44 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(NodeGraphMessage::UpdateNodeGraphWidth);
 			}
 			DocumentMessage::Escape => {
+				// Abort dragging nodes
 				if self.node_graph_handler.drag_start.is_some() {
 					responses.add(DocumentMessage::AbortTransaction);
 					self.node_graph_handler.drag_start = None;
-				} else if self
+				}
+				// Abort box selection
+				else if self.node_graph_handler.box_selection_start.is_some() {
+					self.node_graph_handler.box_selection_start = None;
+					responses.add(NodeGraphMessage::SelectedNodesSet {
+						nodes: self.node_graph_handler.selection_before_pointer_down.clone(),
+					});
+					responses.add(FrontendMessage::UpdateBox { box_selection: None });
+				}
+				// Abort wire in progress of being connected
+				else if self.node_graph_handler.wire_in_progress_from_connector.is_some() {
+					self.node_graph_handler.wire_in_progress_from_connector = None;
+					self.node_graph_handler.wire_in_progress_to_connector = None;
+					self.node_graph_handler.wire_in_progress_type = FrontendGraphDataType::General;
+
+					responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
+					responses.add(DocumentMessage::AbortTransaction);
+				}
+				// Close the context menu if it's open
+				else if self
 					.node_graph_handler
 					.context_menu
 					.as_ref()
 					.is_some_and(|context_menu| matches!(context_menu.context_menu_data, super::node_graph::utility_types::ContextMenuData::CreateNode { compatible_type: None }))
 				{
-					// Close the context menu
 					self.node_graph_handler.context_menu = None;
 					responses.add(FrontendMessage::UpdateContextMenuInformation { context_menu_information: None });
-					self.node_graph_handler.wire_in_progress_from_connector = None;
-					self.node_graph_handler.wire_in_progress_to_connector = None;
-					responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
-				} else if !self.breadcrumb_network_path.is_empty() {
-					// Exit one level up if inside a nested network
+				}
+				// Exit one level up if inside a nested network
+				else if !self.breadcrumb_network_path.is_empty() {
 					responses.add(DocumentMessage::ExitNestedNetwork { steps_back: 1 });
-				} else {
+				}
+				// Close the graph view overlay if it's open
+				else {
 					responses.add(DocumentMessage::GraphViewOverlay { open: false });
 				}
 			}
