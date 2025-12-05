@@ -325,7 +325,7 @@ pub fn input_mappings() -> Mapping {
 		//
 		// DocumentMessage
 		entry!(KeyDown(Space); modifiers=[Control], action_dispatch=DocumentMessage::GraphViewOverlayToggle),
-		entry!(KeyUp(Escape); action_dispatch=DocumentMessage::Escape),
+		entry!(KeyDownNoRepeat(Escape); action_dispatch=DocumentMessage::Escape),
 		entry!(KeyDown(Delete); action_dispatch=DocumentMessage::DeleteSelectedLayers),
 		entry!(KeyDown(Backspace); action_dispatch=DocumentMessage::DeleteSelectedLayers),
 		entry!(KeyDown(KeyO); modifiers=[Alt], action_dispatch=DocumentMessage::ToggleOverlaysVisibility),
