@@ -4,7 +4,7 @@ use crate::wrapper::{Color, WgpuContext, WgpuExecutor};
 
 #[derive(derivative::Derivative)]
 #[derivative(Debug)]
-pub(crate) struct GraphicsState {
+pub(crate) struct RenderState {
 	surface: wgpu::Surface<'static>,
 	context: WgpuContext,
 	executor: WgpuExecutor,
@@ -22,7 +22,7 @@ pub(crate) struct GraphicsState {
 	overlays_scene: Option<vello::Scene>,
 }
 
-impl GraphicsState {
+impl RenderState {
 	pub(crate) fn new(window: &Window, context: WgpuContext) -> Self {
 		let size = window.surface_size();
 		let surface = window.create_surface(context.instance.clone());
@@ -230,12 +230,15 @@ impl GraphicsState {
 		self.bind_overlays_texture(texture);
 	}
 
-	pub(crate) fn render(&mut self, window: &Window) -> Result<(), wgpu::SurfaceError> {
+	pub(crate) fn render(&mut self, window: &Window) -> Result<(), RenderError> {
 		if let Some(scene) = self.overlays_scene.take() {
 			self.render_overlays(scene);
 		}
 
-		let output = self.surface.get_current_texture()?;
+		let output = self.surface.get_current_texture().map_err(|e| RenderError::SurfaceError(e))?;
+		let output_width = output.texture.width();
+		let output_height = output.texture.height();
+
 		let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
 
 		let mut encoder = self.context.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("Render Encoder") });
@@ -277,6 +280,12 @@ impl GraphicsState {
 		window.pre_present_notify();
 		output.present();
 
+		if let Some(ui_texture) = &self.ui_texture
+			&& (output_width != ui_texture.width() || output_height != ui_texture.height())
+		{
+			return Err(RenderError::OutdatedUITextureError);
+		}
+
 		Ok(())
 	}
 
@@ -310,6 +319,11 @@ impl GraphicsState {
 
 		self.bind_group = Some(bind_group);
 	}
+}
+
+pub(crate) enum RenderError {
+	OutdatedUITextureError,
+	SurfaceError(wgpu::SurfaceError),
 }
 
 #[repr(C)]
