@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use crate::common::*;
 
 const PACKAGE: &str = "graphite-desktop-platform-win";
-const EXECUTABLE: &str = "graphite-editor.exe";
+const EXECUTABLE: &str = "graphite.exe";
 
 pub fn main() -> Result<(), Box<dyn Error>> {
 	let app_bin = build_bin(PACKAGE, None)?;
