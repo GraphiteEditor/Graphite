@@ -43,7 +43,7 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 	let ui_coordinate = in.tex_coords * constants.ui_scale;
 	if (ui_coordinate.x < 0.0 || ui_coordinate.x > 1.0 ||
 		ui_coordinate.y < 0.0 || ui_coordinate.y > 1.0) {
-		return srgb_to_linear(vec4<f32>(0.1289, 0.1289, 0.1289, 1.0));
+		return srgb_to_linear(constants.background_color);
 	}
 
 	let ui_linear = srgb_to_linear(textureSample(t_ui, s_diffuse, ui_coordinate));
@@ -55,6 +55,10 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 	let ui_srgb = linear_to_srgb(unpremultiply(ui_linear));
 
 	let viewport_coordinate = (in.tex_coords - constants.viewport_offset) * constants.viewport_scale;
+	if (viewport_coordinate.x < 0.0 || viewport_coordinate.x > 1.0 ||
+		viewport_coordinate.y < 0.0 || viewport_coordinate.y > 1.0) {
+		return srgb_to_linear(constants.background_color);
+	}
 
 	let overlay_srgb = textureSample(t_overlays, s_diffuse, viewport_coordinate);
 	let viewport_srgb = textureSample(t_viewport, s_diffuse, viewport_coordinate);

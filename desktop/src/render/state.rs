@@ -285,7 +285,8 @@ impl RenderState {
 					viewport_scale: self.viewport_scale,
 					viewport_offset: self.viewport_offset,
 					ui_scale: ui_scale.unwrap_or([1., 1.]),
-					background_color: [255. / 33., 255. / 33., 255. / 33., 255. / 33.], // #212121
+					_pad: [0., 0.],
+					background_color: [33. / 255., 33. / 255., 33. / 255., 1.], // #212121
 				}),
 			);
 			if let Some(bind_group) = &self.bind_group {
@@ -349,5 +350,6 @@ struct Constants {
 	viewport_scale: [f32; 2],
 	viewport_offset: [f32; 2],
 	ui_scale: [f32; 2],
+	_pad: [f32; 2],
 	background_color: [f32; 4],
 }
