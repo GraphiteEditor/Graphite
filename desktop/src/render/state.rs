@@ -188,6 +188,12 @@ impl RenderState {
 	pub(crate) fn resize(&mut self, width: u32, height: u32) {
 		self.desired_width = width;
 		self.desired_height = height;
+
+		if width > 0 && height > 0 && (self.config.width != width || self.config.height != height) {
+			self.config.width = width;
+			self.config.height = height;
+			self.surface.configure(&self.context.device, &self.config);
+		}
 	}
 
 	pub(crate) fn bind_viewport_texture(&mut self, viewport_texture: wgpu::Texture) {
@@ -201,17 +207,8 @@ impl RenderState {
 	}
 
 	pub(crate) fn bind_ui_texture(&mut self, bind_ui_texture: wgpu::Texture) {
-		let width = bind_ui_texture.width();
-		let height = bind_ui_texture.height();
-
 		self.ui_texture = Some(bind_ui_texture);
 		self.update_bindgroup();
-
-		if width > 0 && height > 0 && (self.config.width != width || self.config.height != height) {
-			self.config.width = width;
-			self.config.height = height;
-			self.surface.configure(&self.context.device, &self.config);
-		}
 	}
 
 	pub(crate) fn set_viewport_scale(&mut self, scale: [f32; 2]) {
