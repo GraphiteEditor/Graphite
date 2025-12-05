@@ -43,13 +43,18 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 		return ui_linear;
 	}
 
+	// UI texture is premultiplied, we need to unpremultiply before blending
+	let ui_srgb = linear_to_srgb(unpremultiply(ui_linear));
+
 	let viewport_coordinate = (in.tex_coords - constants.viewport_offset) * constants.viewport_scale;
+
+	if (viewport_coordinate.x < 0.0 || viewport_coordinate.x > 1.0 ||
+		viewport_coordinate.y < 0.0 || viewport_coordinate.y > 1.0) {
+		return srgb_to_linear(blend(ui_srgb, vec4<f32>(0.1289, 0.1289, 0.1289, 1.0)));
+	}
 
 	let overlay_srgb = textureSample(t_overlays, s_diffuse, viewport_coordinate);
 	let viewport_srgb = textureSample(t_viewport, s_diffuse, viewport_coordinate);
-
-	// UI texture is premultiplied, we need to unpremultiply before blending
-	let ui_srgb = linear_to_srgb(unpremultiply(ui_linear));
 
 	if (overlay_srgb.a < 0.001) {
 		if (ui_srgb.a < 0.001) {

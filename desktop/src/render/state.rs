@@ -12,6 +12,8 @@ pub(crate) struct RenderState {
 	render_pipeline: wgpu::RenderPipeline,
 	transparent_texture: wgpu::Texture,
 	sampler: wgpu::Sampler,
+	desired_width: u32,
+	desired_height: u32,
 	viewport_scale: [f32; 2],
 	viewport_offset: [f32; 2],
 	viewport_texture: Option<wgpu::Texture>,
@@ -171,6 +173,8 @@ impl RenderState {
 			render_pipeline,
 			transparent_texture,
 			sampler,
+			desired_width: size.width,
+			desired_height: size.height,
 			viewport_scale: [1.0, 1.0],
 			viewport_offset: [0.0, 0.0],
 			viewport_texture: None,
@@ -182,11 +186,8 @@ impl RenderState {
 	}
 
 	pub(crate) fn resize(&mut self, width: u32, height: u32) {
-		if width > 0 && height > 0 && (self.config.width != width || self.config.height != height) {
-			self.config.width = width;
-			self.config.height = height;
-			self.surface.configure(&self.context.device, &self.config);
-		}
+		self.desired_width = width;
+		self.desired_height = height;
 	}
 
 	pub(crate) fn bind_viewport_texture(&mut self, viewport_texture: wgpu::Texture) {
@@ -200,8 +201,17 @@ impl RenderState {
 	}
 
 	pub(crate) fn bind_ui_texture(&mut self, bind_ui_texture: wgpu::Texture) {
+		let width = bind_ui_texture.width();
+		let height = bind_ui_texture.height();
+
 		self.ui_texture = Some(bind_ui_texture);
 		self.update_bindgroup();
+
+		if width > 0 && height > 0 && (self.config.width != width || self.config.height != height) {
+			self.config.width = width;
+			self.config.height = height;
+			self.surface.configure(&self.context.device, &self.config);
+		}
 	}
 
 	pub(crate) fn set_viewport_scale(&mut self, scale: [f32; 2]) {
@@ -235,9 +245,7 @@ impl RenderState {
 			self.render_overlays(scene);
 		}
 
-		let output = self.surface.get_current_texture().map_err(|e| RenderError::SurfaceError(e))?;
-		let output_width = output.texture.width();
-		let output_height = output.texture.height();
+		let output = self.surface.get_current_texture().map_err(RenderError::SurfaceError)?;
 
 		let view = output.texture.create_view(&wgpu::TextureViewDescriptor::default());
 
@@ -245,7 +253,7 @@ impl RenderState {
 
 		{
 			let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-				label: Some("Render Pass"),
+				label: Some("Graphite Composition Render Pass"),
 				color_attachments: &[Some(wgpu::RenderPassColorAttachment {
 					view: &view,
 					resolve_target: None,
@@ -271,7 +279,7 @@ impl RenderState {
 			);
 			if let Some(bind_group) = &self.bind_group {
 				render_pass.set_bind_group(0, bind_group, &[]);
-				render_pass.draw(0..6, 0..1); // Draw 3 vertices for fullscreen triangle
+				render_pass.draw(0..3, 0..1); // Draw 3 vertices for fullscreen triangle
 			} else {
 				tracing::warn!("No bind group available - showing clear color only");
 			}
@@ -281,7 +289,7 @@ impl RenderState {
 		output.present();
 
 		if let Some(ui_texture) = &self.ui_texture
-			&& (output_width != ui_texture.width() || output_height != ui_texture.height())
+			&& (self.desired_width != ui_texture.width() || self.desired_height != ui_texture.height())
 		{
 			return Err(RenderError::OutdatedUITextureError);
 		}
