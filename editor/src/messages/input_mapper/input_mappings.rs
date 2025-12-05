@@ -411,6 +411,7 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(Equal); modifiers=[Accel], action_dispatch=NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }),
 		entry!(KeyDown(Minus); modifiers=[Accel], action_dispatch=NavigationMessage::CanvasZoomDecrease { center_on_mouse: false }),
 		entry!(WheelScroll; modifiers=[Control], action_dispatch=NavigationMessage::CanvasZoomMouseWheel),
+		entry!(WheelScroll; modifiers=[Command], action_dispatch=NavigationMessage::CanvasZoomMouseWheel),
 		entry!(WheelScroll; modifiers=[Shift], action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: true }),
 		entry!(WheelScroll; action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: false }),
 		entry!(KeyDown(PageUp); modifiers=[Shift], action_dispatch=NavigationMessage::CanvasPanByViewportFraction { delta: DVec2::new(1., 0.) }),

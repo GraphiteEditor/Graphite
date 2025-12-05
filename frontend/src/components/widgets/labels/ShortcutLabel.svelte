@@ -9,8 +9,8 @@
 
 	export let shortcut: ActionShortcut;
 
-	function keyTextOrIconList(keyGroup: LabeledShortcut): { label?: string; icon?: IconName; mouseMotion?: MouseMotion }[] {
-		const list = keyGroup.map((labeledKeyOrMouseMotion) => {
+	function keyTextOrIconList(keyGroup: LabeledShortcut): ({ label?: string; icon?: IconName }[] | { mouseMotion?: MouseMotion }[])[] {
+		const list = keyGroup.map((labeledKeyOrMouseMotion): { label?: string; icon?: IconName; mouseMotion?: MouseMotion } => {
 			// Use a mouse icon if it's a mouse motion instead of a key
 			if (typeof labeledKeyOrMouseMotion === "string") return { mouseMotion: labeledKeyOrMouseMotion };
 
@@ -33,11 +33,25 @@
 		});
 
 		// Consolidate consecutive labels into a concatenated single label
-		const consolidatedList: typeof list = [];
-		list.forEach((item) => {
-			const lastItem = consolidatedList[consolidatedList.length - 1];
-			if (item.label && lastItem?.label) lastItem.label += " " + item.label;
-			else consolidatedList.push(item);
+		const consolidatedList: ReturnType<typeof keyTextOrIconList> = [];
+		list.forEach((currentItem) => {
+			const lastGroup = consolidatedList.length > 0 ? consolidatedList[consolidatedList.length - 1] : undefined;
+			const lastItem = lastGroup !== undefined ? lastGroup[lastGroup.length - 1] : undefined;
+
+			// If current and last are both labels, concatenate both within their existing label
+			if (currentItem.label && lastItem && "label" in lastItem && lastItem.label) {
+				lastItem.label += " " + currentItem.label;
+				return;
+			}
+
+			// If current and last are both of the same group type (both icons/labels, or both mouseMotion), join them within their existing
+			if (lastItem && (((currentItem.label || currentItem.icon) && ("label" in lastItem || "icon" in lastItem)) || (currentItem.mouseMotion && "mouseMotion" in lastItem))) {
+				lastGroup?.push(currentItem);
+				return;
+			}
+
+			// Otherwise, start a new group with the first item of its group type
+			consolidatedList.push([currentItem]);
 		});
 		return consolidatedList;
 	}
@@ -73,32 +87,38 @@
 		}
 	}
 
-	function mouseHintIcon(input?: MouseMotion): IconName {
+	function mouseHintIcon(input: MouseMotion): IconName {
 		return `MouseHint${input}` as IconName;
 	}
 </script>
 
 <LayoutRow class="shortcut-label">
-	{#each keyTextOrIconList(shortcut.shortcut) as { label, icon, mouseMotion }}
-		{#if label}
+	{#each keyTextOrIconList(shortcut.shortcut) as group}
+		{#if "label" in group[0] || "icon" in group[0]}
 			<div class="key-label">
-				<TextLabel>{label}</TextLabel>
+				{#each group as item}
+					{#if "label" in item && item.label}
+						<TextLabel>{item.label}</TextLabel>
+					{:else if "icon" in item && item.icon}
+						<IconLabel icon={item.icon} />
+					{/if}
+				{/each}
 			</div>
-		{:else if icon}
-			<div class="key-icon">
-				<IconLabel {icon} />
-			</div>
-		{:else if mouseMotion}
-			<div class="mouse-icon">
-				<IconLabel icon={mouseHintIcon(mouseMotion)} />
-			</div>
+		{/if}
+		{#if "mouseMotion" in group[0]}
+			{#each group as item}
+				{#if "mouseMotion" in item && item.mouseMotion}
+					<div class="mouse-icon">
+						<IconLabel icon={mouseHintIcon(item.mouseMotion)} />
+					</div>
+				{/if}
+			{/each}
 		{/if}
 	{/each}
 </LayoutRow>
 
 <style lang="scss" global>
 	.shortcut-label {
-		.key-icon,
 		.key-label {
 			display: flex;
 			align-items: center;
@@ -108,6 +128,10 @@
 			background: var(--color-3-darkgray);
 			color: var(--color-b-lightgray);
 			fill: var(--color-b-lightgray);
+
+			* + * {
+				margin-left: 4px;
+			}
 		}
 
 		svg {
@@ -120,7 +144,6 @@
 
 		.floating-menu-content .row > & {
 			.key-label,
-			.key-icon,
 			.mouse-icon {
 				color: var(--color-8-uppergray);
 				background: none;
@@ -134,7 +157,7 @@
 				}
 			}
 
-			.key-icon svg {
+			.key-label svg {
 				fill: var(--color-8-uppergray);
 			}
 
