@@ -1496,7 +1496,6 @@ export type LayoutTarget =
 	| "DialogColumn1"
 	| "DialogColumn2"
 	| "DocumentBar"
-	| "DocumentMode"
 	| "LayersPanelBottomBar"
 	| "LayersPanelControlLeftBar"
 	| "LayersPanelControlRightBar"
@@ -1646,8 +1645,6 @@ export class UpdateDialogColumn2 extends WidgetDiffUpdate {}
 
 export class UpdateDocumentBarLayout extends WidgetDiffUpdate {}
 
-export class UpdateDocumentModeLayout extends WidgetDiffUpdate {}
-
 export class UpdateLayersPanelControlBarLeftLayout extends WidgetDiffUpdate {}
 
 export class UpdateLayersPanelControlBarRightLayout extends WidgetDiffUpdate {}
@@ -1721,7 +1718,6 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateDocumentBarLayout,
 	UpdateDocumentLayerDetails,
 	UpdateDocumentLayerStructureJs,
-	UpdateDocumentModeLayout,
 	UpdateDocumentRulers,
 	UpdateDocumentScrollbars,
 	UpdateExportReorderIndex,

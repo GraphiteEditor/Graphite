@@ -204,7 +204,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			NodeGraphMessage::CreateWire { output_connector, input_connector } => {
 				// TODO: Add support for flattening NodeInput::Import exports in flatten_with_fns https://github.com/GraphiteEditor/Graphite/issues/1762
 				if matches!(input_connector, InputConnector::Export(_)) && matches!(output_connector, OutputConnector::Import { .. }) {
-					responses.add(DialogMessage::RequestComingSoonDialog { issue: Some(1762) });
+					// We return early for now until this case becomes supported, then we can remove this
 					return;
 				}
 				network_interface.create_wire(&output_connector, &input_connector, selection_network_path);

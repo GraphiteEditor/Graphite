@@ -26,33 +26,33 @@ pub enum AlignAggregate {
 	Center,
 }
 
-#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
-pub enum DocumentMode {
-	#[default]
-	DesignMode,
-	SelectMode,
-	GuideMode,
-}
+// #[derive(Default, PartialEq, Eq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
+// pub enum DocumentMode {
+// 	#[default]
+// 	DesignMode,
+// 	SelectMode,
+// 	GuideMode,
+// }
 
-impl fmt::Display for DocumentMode {
-	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		match self {
-			DocumentMode::DesignMode => write!(f, "Design Mode"),
-			DocumentMode::SelectMode => write!(f, "Select Mode"),
-			DocumentMode::GuideMode => write!(f, "Guide Mode"),
-		}
-	}
-}
+// impl fmt::Display for DocumentMode {
+// 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+// 		match self {
+// 			DocumentMode::DesignMode => write!(f, "Design Mode"),
+// 			DocumentMode::SelectMode => write!(f, "Select Mode"),
+// 			DocumentMode::GuideMode => write!(f, "Guide Mode"),
+// 		}
+// 	}
+// }
 
-impl DocumentMode {
-	pub fn icon_name(&self) -> String {
-		match self {
-			DocumentMode::DesignMode => "ViewportDesignMode".to_string(),
-			DocumentMode::SelectMode => "ViewportSelectMode".to_string(),
-			DocumentMode::GuideMode => "ViewportGuideMode".to_string(),
-		}
-	}
-}
+// impl DocumentMode {
+// 	pub fn icon_name(&self) -> String {
+// 		match self {
+// 			DocumentMode::DesignMode => "ViewportDesignMode".to_string(),
+// 			DocumentMode::SelectMode => "ViewportSelectMode".to_string(),
+// 			DocumentMode::GuideMode => "ViewportGuideMode".to_string(),
+// 		}
+// 	}
+// }
 
 /// SnappingState determines the current individual snapping states
 #[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]

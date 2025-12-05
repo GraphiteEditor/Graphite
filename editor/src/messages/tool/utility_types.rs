@@ -5,7 +5,7 @@ use super::tool_messages::*;
 use crate::messages::broadcast::BroadcastMessage;
 use crate::messages::broadcast::event::EventMessage;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeysGroup, LabeledKeyOrMouseMotion, LabeledShortcut, MouseMotion};
-use crate::messages::input_mapper::utility_types::macros::{action_shortcut, action_shortcut_manual};
+use crate::messages::input_mapper::utility_types::macros::action_shortcut;
 use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayProvider;
@@ -251,7 +251,7 @@ impl LayoutHolder for ToolData {
 									.tooltip_label(shape.tooltip_label())
 									.tooltip_description(shape.tooltip_description())
 									.tooltip_shortcut(action_shortcut!(tool_type_to_activate_tool_message(shape.tool_type()))),
-							ToolAvailability::ComingSoon(tool) => tool.clone(),
+							// ToolAvailability::ComingSoon(tool) => tool.clone(),
 						}
 					})
 					.collect::<Vec<_>>()
@@ -259,8 +259,6 @@ impl LayoutHolder for ToolData {
 			.flat_map(|group| {
 				let separator = std::iter::once(Separator::new(SeparatorType::Section).direction(SeparatorDirection::Vertical).widget_instance());
 				let buttons = group.into_iter().map(|ToolEntry { tooltip_label, tooltip_description, tooltip_shortcut, tool_type, icon_name }| {
-					let coming_soon = tooltip_description.contains("Coming soon.");
-
 					IconButton::new(icon_name, 32)
 						.disabled(false)
 						.active(match tool_type {
@@ -276,9 +274,8 @@ impl LayoutHolder for ToolData {
 								ToolType::Rectangle => ToolMessage::ActivateToolShapeRectangle.into(),
 								ToolType::Ellipse => ToolMessage::ActivateToolShapeEllipse.into(),
 								ToolType::Shape => ToolMessage::ActivateToolShape.into(),
-								_ => {
-									if !coming_soon { (ToolMessage::ActivateTool { tool_type }).into() } else { (DialogMessage::RequestComingSoonDialog { issue: None }).into() }
-								}
+								_ => ToolMessage::ActivateTool { tool_type }.into(),
+								// _ => if !tooltip_description.contains("Coming soon.") { ToolMessage::ActivateTool { tool_type }.into() } else { Message::NoOp },
 							}
 						})
 						.widget_instance()
@@ -324,7 +321,7 @@ impl Default for ToolFsmState {
 					.filter_map(|tool| match tool {
 						ToolAvailability::Available(tool) => Some((tool.tool_type(), tool)),
 						ToolAvailability::AvailableAsShape(_) => None,
-						ToolAvailability::ComingSoon(_) => None,
+						// ToolAvailability::ComingSoon(_) => None,
 					})
 					.collect(),
 			},
@@ -391,7 +388,7 @@ impl ToolType {
 enum ToolAvailability {
 	Available(Box<Tool>),
 	AvailableAsShape(ShapeType),
-	ComingSoon(ToolEntry),
+	// ComingSoon(ToolEntry),
 }
 
 /// List of all the tools in their conventional ordering and grouping.
@@ -421,31 +418,29 @@ fn list_tools_in_groups() -> Vec<Vec<ToolAvailability>> {
 		vec![
 			// Raster tool group
 			ToolAvailability::Available(Box::<brush_tool::BrushTool>::default()),
-			ToolAvailability::ComingSoon(
-				ToolEntry::new(ToolType::Heal, "RasterHealTool")
-					.tooltip_label("Heal Tool")
-					.tooltip_description("Coming soon.")
-					.tooltip_shortcut(action_shortcut_manual!(Key::KeyJ)),
-			),
-			ToolAvailability::ComingSoon(
-				ToolEntry::new(ToolType::Clone, "RasterCloneTool")
-					.tooltip_label("Clone Tool")
-					.tooltip_description("Coming soon.")
-					.tooltip_shortcut(action_shortcut_manual!(Key::KeyC)),
-			),
-			ToolAvailability::ComingSoon(ToolEntry::new(ToolType::Patch, "RasterPatchTool").tooltip_label("Patch Tool").tooltip_description("Coming soon.")),
-			ToolAvailability::ComingSoon(
-				ToolEntry::new(ToolType::Detail, "RasterDetailTool")
-					.tooltip_label("Detail Tool")
-					.tooltip_description("Coming soon.")
-					.tooltip_shortcut(action_shortcut_manual!(Key::KeyD)),
-			),
-			ToolAvailability::ComingSoon(
-				ToolEntry::new(ToolType::Relight, "RasterRelightTool")
-					.tooltip_label("Relight Tool")
-					.tooltip_description("Coming soon.")
-					.tooltip_shortcut(action_shortcut_manual!(Key::KeyO)),
-			),
+			// ToolAvailability::ComingSoon(
+			// 	ToolEntry::new(ToolType::Heal, "RasterHealTool")
+			// 		.tooltip_label("Heal Tool")
+			// 		.tooltip_shortcut(action_shortcut_manual!(Key::KeyJ)),
+			// ),
+			// ToolAvailability::ComingSoon(
+			// 	ToolEntry::new(ToolType::Clone, "RasterCloneTool")
+			// 		.tooltip_label("Clone Tool")
+			// 		.tooltip_shortcut(action_shortcut_manual!(Key::KeyC)),
+			// ),
+			// ToolAvailability::ComingSoon(ToolEntry::new(ToolType::Patch, "RasterPatchTool")
+			// 		.tooltip_label("Patch Tool"),
+			// ),
+			// ToolAvailability::ComingSoon(
+			// 	ToolEntry::new(ToolType::Detail, "RasterDetailTool")
+			// 		.tooltip_label("Detail Tool")
+			// 		.tooltip_shortcut(action_shortcut_manual!(Key::KeyD)),
+			// ),
+			// ToolAvailability::ComingSoon(
+			// 	ToolEntry::new(ToolType::Relight, "RasterRelightTool")
+			// 		.tooltip_label("Relight Tool")
+			// 		.tooltip_shortcut(action_shortcut_manual!(Key::KeyO)),
+			// ),
 		],
 	]
 }

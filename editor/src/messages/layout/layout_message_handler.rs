@@ -505,7 +505,6 @@ impl LayoutMessageHandler {
 			LayoutTarget::DialogColumn1 => FrontendMessage::UpdateDialogColumn1 { diff },
 			LayoutTarget::DialogColumn2 => FrontendMessage::UpdateDialogColumn2 { diff },
 			LayoutTarget::DocumentBar => FrontendMessage::UpdateDocumentBarLayout { diff },
-			LayoutTarget::DocumentMode => FrontendMessage::UpdateDocumentModeLayout { diff },
 			LayoutTarget::LayersPanelBottomBar => FrontendMessage::UpdateLayersPanelBottomBarLayout { diff },
 			LayoutTarget::LayersPanelControlLeftBar => FrontendMessage::UpdateLayersPanelControlBarLeftLayout { diff },
 			LayoutTarget::LayersPanelControlRightBar => FrontendMessage::UpdateLayersPanelControlBarRightLayout { diff },

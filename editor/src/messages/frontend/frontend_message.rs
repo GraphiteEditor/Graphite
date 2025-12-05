@@ -224,9 +224,6 @@ pub enum FrontendMessage {
 		#[serde(rename = "dataBuffer")]
 		data_buffer: JsRawBuffer,
 	},
-	UpdateDocumentModeLayout {
-		diff: Vec<WidgetDiff>,
-	},
 	UpdateDocumentRulers {
 		origin: (f64, f64),
 		spacing: f64,
