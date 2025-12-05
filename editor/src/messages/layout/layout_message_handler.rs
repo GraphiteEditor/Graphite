@@ -488,7 +488,7 @@ impl LayoutMessageHandler {
 		if layout_target == LayoutTarget::MenuBar {
 			widget_diffs = vec![WidgetDiff {
 				widget_path: Vec::new(),
-				new_value: DiffUpdate::Layout(current.layout.clone()),
+				new_value: DiffUpdate::Layout(self.layouts[LayoutTarget::MenuBar as usize].clone()),
 			}];
 		}
 

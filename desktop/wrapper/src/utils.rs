@@ -10,7 +10,7 @@ pub(crate) mod menu {
 
 	use crate::messages::{EditorMessage, KeyCode, MenuItem, Modifiers, Shortcut};
 
-	pub(crate) fn convert_menu_bar_layout_to_menu_items(layout: &Layout) -> Vec<MenuItem> {
+	pub(crate) fn convert_menu_bar_layout_to_menu_items(Layout(layout): &Layout) -> Vec<MenuItem> {
 		let layout_group = match layout.as_slice() {
 			[layout_group] => layout_group,
 			_ => panic!("Menu bar layout is supposed to have exactly one layout group"),

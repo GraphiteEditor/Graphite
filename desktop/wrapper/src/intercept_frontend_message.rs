@@ -111,10 +111,7 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 			dispatcher.respond(DesktopFrontendMessage::PersistenceLoadPreferences);
 		}
 		#[cfg(target_os = "macos")]
-		FrontendMessage::UpdateMenuBarLayout {
-			layout_target: graphite_editor::messages::tool::tool_messages::tool_prelude::LayoutTarget::MenuBar,
-			diff,
-		} => {
+		FrontendMessage::UpdateMenuBarLayout { diff } => {
 			use graphite_editor::messages::tool::tool_messages::tool_prelude::{DiffUpdate, WidgetDiff};
 			match diff.as_slice() {
 				[
