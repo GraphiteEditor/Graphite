@@ -186,6 +186,10 @@ impl RenderState {
 	}
 
 	pub(crate) fn resize(&mut self, width: u32, height: u32) {
+		if width == self.desired_width && height == self.desired_height {
+			return;
+		}
+
 		self.desired_width = width;
 		self.desired_height = height;
 
@@ -238,6 +242,14 @@ impl RenderState {
 	}
 
 	pub(crate) fn render(&mut self, window: &Window) -> Result<(), RenderError> {
+		let ui_scale = if let Some(ui_texture) = &self.ui_texture
+			&& (self.desired_width != ui_texture.width() || self.desired_height != ui_texture.height())
+		{
+			Some([self.desired_width as f32 / ui_texture.width() as f32, self.desired_height as f32 / ui_texture.height() as f32])
+		} else {
+			None
+		};
+
 		if let Some(scene) = self.overlays_scene.take() {
 			self.render_overlays(scene);
 		}
@@ -255,7 +267,7 @@ impl RenderState {
 					view: &view,
 					resolve_target: None,
 					ops: wgpu::Operations {
-						load: wgpu::LoadOp::Clear(wgpu::Color { r: 0.01, g: 0.01, b: 0.01, a: 1.0 }),
+						load: wgpu::LoadOp::Clear(wgpu::Color { r: 0.01, g: 0.01, b: 0.01, a: 1. }),
 						store: wgpu::StoreOp::Store,
 					},
 					depth_slice: None,
@@ -272,6 +284,8 @@ impl RenderState {
 				bytemuck::bytes_of(&Constants {
 					viewport_scale: self.viewport_scale,
 					viewport_offset: self.viewport_offset,
+					ui_scale: ui_scale.unwrap_or([1., 1.]),
+					background_color: [255. / 33., 255. / 33., 255. / 33., 255. / 33.], // #212121
 				}),
 			);
 			if let Some(bind_group) = &self.bind_group {
@@ -285,9 +299,7 @@ impl RenderState {
 		window.pre_present_notify();
 		output.present();
 
-		if let Some(ui_texture) = &self.ui_texture
-			&& (self.desired_width != ui_texture.width() || self.desired_height != ui_texture.height())
-		{
+		if ui_scale.is_some() {
 			return Err(RenderError::OutdatedUITextureError);
 		}
 
@@ -336,4 +348,6 @@ pub(crate) enum RenderError {
 struct Constants {
 	viewport_scale: [f32; 2],
 	viewport_offset: [f32; 2],
+	ui_scale: [f32; 2],
+	background_color: [f32; 4],
 }

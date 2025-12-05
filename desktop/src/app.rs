@@ -442,6 +442,9 @@ impl ApplicationHandler for App {
 			WindowEvent::RedrawRequested => {
 				let Some(render_state) = &mut self.render_state else { return };
 				if let Some(window) = &self.window {
+					let size = window.surface_size();
+					render_state.resize(size.width, size.height);
+
 					match render_state.render(window) {
 						Ok(_) => {}
 						Err(RenderError::OutdatedUITextureError) => {
