@@ -17,7 +17,7 @@ use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay
 use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType, OverlaysVisibilitySettings};
 use crate::messages::portfolio::document::properties_panel::properties_panel_message_handler::PropertiesPanelMessageContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
-use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, DocumentMode, FlipAxis, PTZ};
+use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, PTZ};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate};
 use crate::messages::portfolio::document::utility_types::nodes::RawBuffer;
 use crate::messages::portfolio::utility_types::PanelType;
@@ -91,8 +91,6 @@ pub struct DocumentMessageHandler {
 	pub commit_hash: String,
 	/// The current pan, tilt, and zoom state of the viewport's view of the document canvas.
 	pub document_ptz: PTZ,
-	/// The current mode that the document is in, which starts out as Design Mode. This choice affects the editing behavior of the tools.
-	pub document_mode: DocumentMode,
 	/// The current mode that the user has set for rendering the document within the viewport.
 	/// This is usually "Normal" but can be set to "Outline" or "Pixels" to see the canvas differently.
 	#[serde(alias = "view_mode")]
@@ -164,7 +162,6 @@ impl Default for DocumentMessageHandler {
 			collapsed: CollapsedLayers::default(),
 			commit_hash: GRAPHITE_GIT_COMMIT_HASH.to_string(),
 			document_ptz: PTZ::default(),
-			document_mode: DocumentMode::DesignMode,
 			render_mode: RenderMode::default(),
 			overlays_visibility_settings: OverlaysVisibilitySettings::default(),
 			rulers_visible: true,
@@ -1859,8 +1856,6 @@ impl DocumentMessageHandler {
 					pub commit_hash: String,
 					/// The current pan, tilt, and zoom state of the viewport's view of the document canvas.
 					pub document_ptz: PTZ,
-					/// The current mode that the document is in, which starts out as Design Mode. This choice affects the editing behavior of the tools.
-					pub document_mode: DocumentMode,
 					/// The current mode that the user has set for rendering the document within the viewport.
 					/// This is usually "Normal" but can be set to "Outline" or "Pixels" to see the canvas differently.
 					pub view_mode: RenderMode,
@@ -1880,7 +1875,6 @@ impl DocumentMessageHandler {
 					collapsed: old_message_handler.collapsed,
 					commit_hash: old_message_handler.commit_hash,
 					document_ptz: old_message_handler.document_ptz,
-					document_mode: old_message_handler.document_mode,
 					render_mode: old_message_handler.view_mode,
 					overlays_visibility_settings: old_message_handler.overlays_visibility_settings,
 					rulers_visible: old_message_handler.rulers_visible,
@@ -2193,36 +2187,36 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn update_document_widgets(&self, responses: &mut VecDeque<Message>, animation_is_playing: bool, time: Duration) {
-		// Document mode (dropdown menu at the left of the bar above the viewport, before the tool options)
-
-		let layout = Layout(vec![LayoutGroup::Row {
-			widgets: vec![
-				// DropdownInput::new(
-				// 	vec![vec![
-				// 		MenuListEntry::new(format!("{:?}", DocumentMode::DesignMode))
-				// 			.label(DocumentMode::DesignMode.to_string())
-				// 			.icon(DocumentMode::DesignMode.icon_name()),
-				// 		MenuListEntry::new(format!("{:?}", DocumentMode::SelectMode))
-				// 			.label(DocumentMode::SelectMode.to_string())
-				// 			.icon(DocumentMode::SelectMode.icon_name())
-				// 			.on_commit(|_| DialogMessage::RequestComingSoonDialog { issue: Some(330) }.into()),
-				// 		MenuListEntry::new(format!("{:?}", DocumentMode::GuideMode))
-				// 			.label(DocumentMode::GuideMode.to_string())
-				// 			.icon(DocumentMode::GuideMode.icon_name())
-				// 			.on_commit(|_| DialogMessage::RequestComingSoonDialog { issue: Some(331) }.into()),
-				// 	]])
-				// 	.selected_index(Some(self.document_mode as u32))
-				// 	.draw_icon(true)
-				// 	.interactive(false) // TODO: set to true when dialogs are not spawned
-				// 	.widget_instance(),
-				// Separator::new(SeparatorType::Section).widget_instance(),
-			],
-		}]);
-
-		responses.add(LayoutMessage::SendLayout {
-			layout,
-			layout_target: LayoutTarget::DocumentMode,
-		});
+		// // Document mode (dropdown menu at the left of the bar above the viewport, before the tool options)
+		// let layout = Layout(vec![LayoutGroup::Row {
+		// 	widgets: vec![
+		// 		DropdownInput::new(
+		// 			vec![vec![
+		// 				MenuListEntry::new(format!("{:?}", DocumentMode::DesignMode))
+		// 					.label(DocumentMode::DesignMode.to_string())
+		// 					.icon(DocumentMode::DesignMode.icon_name()),
+		// 				// TODO: See issue #330
+		// 				MenuListEntry::new(format!("{:?}", DocumentMode::SelectMode))
+		// 					.label(DocumentMode::SelectMode.to_string())
+		// 					.icon(DocumentMode::SelectMode.icon_name())
+		// 					.on_commit(|_| todo!()),
+		// 				// TODO: See issue #331
+		// 				MenuListEntry::new(format!("{:?}", DocumentMode::GuideMode))
+		// 					.label(DocumentMode::GuideMode.to_string())
+		// 					.icon(DocumentMode::GuideMode.icon_name())
+		// 					.on_commit(|_| todo!()),
+		// 			]])
+		// 			.selected_index(Some(self.document_mode as u32))
+		// 			.draw_icon(true)
+		// 			.interactive(false)
+		// 			.widget_instance(),
+		// 		Separator::new(SeparatorType::Section).widget_instance(),
+		// 	],
+		// }]);
+		// responses.add(LayoutMessage::SendLayout {
+		// 	layout,
+		// 	layout_target: LayoutTarget::DocumentMode,
+		// });
 
 		// Document bar (right portion of the bar above the viewport)
 
@@ -2581,29 +2575,20 @@ impl DocumentMessageHandler {
 					.icon("RenderModeOutline")
 					.tooltip_label("Render Mode: Outline")
 					.on_update(|_| DocumentMessage::SetRenderMode { render_mode: RenderMode::Outline }.into()),
+				// TODO: See issue #320
 				// RadioEntryData::new("PixelPreview")
 				// 	.icon("RenderModePixels")
 				// 	.tooltip_label("Render Mode: Pixel Preview")
-				// 	.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(320) }.into()),
+				// 	.on_update(|_| todo!()),
+				// TODO: See issue #1845
 				// RadioEntryData::new("SvgPreview")
 				// 	.icon("RenderModeSvg")
 				// 	.tooltip_label("Render Mode: SVG Preview")
-				// 	.on_update(|_| DialogMessage::RequestComingSoonDialog { issue: Some(1845) }.into()),
+				// 	.on_update(|_| todo!()),
 			])
 			.selected_index(Some(self.render_mode as u32))
 			.narrow(true)
 			.widget_instance(),
-			// PopoverButton::new().popover_layout(
-			// 	Layout(vec![
-			// 		LayoutGroup::Row {
-			// 			widgets: vec![TextLabel::new("Render Mode").bold(true).widget_instance()],
-			// 		},
-			// 		LayoutGroup::Row {
-			// 			widgets: vec![TextLabel::new("Coming soon").widget_instance()],
-			// 		},
-			// 	])
-			// 	.widget_instance(),
-			// ),
 			Separator::new(SeparatorType::Unrelated).widget_instance(),
 		];
 

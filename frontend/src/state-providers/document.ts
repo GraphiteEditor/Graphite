@@ -6,7 +6,6 @@ import { type Editor } from "@graphite/editor";
 import {
 	patchLayout,
 	UpdateDocumentBarLayout,
-	UpdateDocumentModeLayout,
 	UpdateToolOptionsLayout,
 	UpdateToolShelfLayout,
 	UpdateWorkingColorsLayout,
@@ -19,7 +18,6 @@ import type { Layout } from "@graphite/messages";
 export function createDocumentState(editor: Editor) {
 	const state = writable({
 		// Layouts
-		documentModeLayout: [] as Layout,
 		toolOptionsLayout: [] as Layout,
 		documentBarLayout: [] as Layout,
 		toolShelfLayout: [] as Layout,
@@ -35,14 +33,6 @@ export function createDocumentState(editor: Editor) {
 	editor.subscriptions.subscribeJsMessage(UpdateGraphFadeArtwork, (updateGraphFadeArtwork) => {
 		update((state) => {
 			state.fadeArtwork = updateGraphFadeArtwork.percentage;
-			return state;
-		});
-	});
-	editor.subscriptions.subscribeJsMessage(UpdateDocumentModeLayout, async (updateDocumentModeLayout) => {
-		await tick();
-
-		update((state) => {
-			patchLayout(state.documentModeLayout, updateDocumentModeLayout);
 			return state;
 		});
 	});

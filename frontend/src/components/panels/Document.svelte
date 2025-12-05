@@ -506,7 +506,6 @@
 <LayoutCol class="document" on:dragover={(e) => e.preventDefault()} on:drop={dropFile}>
 	<LayoutRow class="control-bar" classes={{ "for-graph": $document.graphViewOverlayOpen }} scrollableX={true}>
 		{#if !$document.graphViewOverlayOpen}
-			<WidgetLayout layout={$document.documentModeLayout} layoutTarget="DocumentMode" />
 			<WidgetLayout layout={$document.toolOptionsLayout} layoutTarget="ToolOptions" />
 			<LayoutRow class="spacer" />
 			<WidgetLayout layout={$document.documentBarLayout} layoutTarget="DocumentBar" />
@@ -698,14 +697,14 @@
 						.icon-button {
 							margin: 0;
 
-							&[data-tooltip-description^="Coming soon."] {
-								opacity: 0.25;
-								transition: opacity 0.1s;
+							// &[data-tooltip-description^="Coming soon."] {
+							// 	opacity: 0.25;
+							// 	transition: opacity 0.1s;
 
-								&:hover {
-									opacity: 1;
-								}
-							}
+							// 	&:hover {
+							// 		opacity: 1;
+							// 	}
+							// }
 
 							&:not(.active) {
 								.color-general {

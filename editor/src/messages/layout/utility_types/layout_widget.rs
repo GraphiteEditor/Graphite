@@ -29,8 +29,6 @@ pub enum LayoutTarget {
 	DialogColumn2,
 	/// Contains the widgets located directly above the canvas to the right, for example the zoom in and out buttons.
 	DocumentBar,
-	/// Contains the dropdown for design / select / guide mode found on the top left of the canvas.
-	DocumentMode,
 	/// Controls for adding, grouping, and deleting layers at the bottom of the Layers panel.
 	LayersPanelBottomBar,
 	/// Blending options at the top of the Layers panel.
@@ -45,7 +43,7 @@ pub enum LayoutTarget {
 	PropertiesPanel,
 	/// The contextual input key/mouse combination shortcuts shown in the status bar at the bottom of the window.
 	StatusBarHints,
-	/// The bar directly above the canvas, left-aligned and to the right of the document mode dropdown.
+	/// The left side of the control bar directly above the canvas.
 	ToolOptions,
 	/// The vertical buttons for all of the tools on the left of the canvas.
 	ToolShelf,

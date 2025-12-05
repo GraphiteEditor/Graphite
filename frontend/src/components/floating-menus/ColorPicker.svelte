@@ -1,7 +1,6 @@
 <script lang="ts">
-	import { onDestroy, createEventDispatcher, getContext } from "svelte";
+	import { onDestroy, createEventDispatcher } from "svelte";
 
-	import type { Editor } from "@graphite/editor";
 	import type { HSV, RGB, FillChoice } from "@graphite/messages";
 	import type { MenuDirection } from "@graphite/messages";
 	import { Color, contrastingOutlineFactor, Gradient } from "@graphite/messages";
@@ -39,8 +38,6 @@
 		["Blue", "#0000ff", "#1c1c1c"],
 		["Magenta", "#ff00ff", "#696969"],
 	];
-
-	const editor = getContext<Editor>("editor");
 
 	const dispatch = createEventDispatcher<{ colorOrGradient: FillChoice; startHistoryTransaction: undefined }>();
 
@@ -378,13 +375,14 @@
 		oldIsNone = none;
 	}
 
-	async function activateEyedropperSample() {
-		// TODO: Replace this temporary solution that only works in Chromium-based browsers with the custom color sampler used by the Eyedropper tool
+	// TODO: Replace this temporary usage of the browser eyedropper API, that only works in Chromium-based browsers, with the custom color sampler system used by the Eyedropper tool
+	function eyedropperSupported(): boolean {
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
-		if (!(window as any).EyeDropper) {
-			editor.handle.eyedropperSampleForColorPicker();
-			return;
-		}
+		return Boolean((window as any).EyeDropper);
+	}
+
+	async function activateEyedropperSample() {
+		if (!eyedropperSupported()) return;
 
 		try {
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -451,7 +449,7 @@
 				<LayoutCol
 					class="hue-picker"
 					data-tooltip-label="Hue"
-					data-tooltip-description={"The shade along the spectrum of the rainbow." + (disabled ? "\n\nDisabled (read-only)." : "")}
+					data-tooltip-description={`The shade along the spectrum of the rainbow.${disabled ? "\n\nDisabled (read-only)." : ""}`}
 					on:pointerdown={onPointerDown}
 					data-hue-picker
 				>
@@ -462,7 +460,7 @@
 				<LayoutCol
 					class="alpha-picker"
 					data-tooltip-label="Alpha"
-					data-tooltip-description={"The level of translucency." + (disabled ? "\n\nDisabled (read-only)." : "")}
+					data-tooltip-description={`The level of translucency.${disabled ? "\n\nDisabled (read-only)." : ""}`}
 					on:pointerdown={onPointerDown}
 					data-alpha-picker
 				>
@@ -526,7 +524,7 @@
 			<LayoutRow>
 				<TextLabel
 					tooltipLabel="Hex Color Code"
-					tooltipDescription={"Color code in hexadecimal format. 6 digits if opaque, 8 with alpha.\nAccepts input of CSS color values including named colors."}>Hex</TextLabel
+					tooltipDescription="Color code in hexadecimal format. 6 digits if opaque, 8 with alpha.\nAccepts input of CSS color values including named colors.">Hex</TextLabel
 				>
 				<Separator type="Related" />
 				<LayoutRow>
@@ -539,7 +537,7 @@
 						}}
 						centered={true}
 						tooltipLabel="Hex Color Code"
-						tooltipDescription={"Color code in hexadecimal format. 6 digits if opaque, 8 with alpha.\nAccepts input of CSS color values including named colors."}
+						tooltipDescription="Color code in hexadecimal format. 6 digits if opaque, 8 with alpha.\nAccepts input of CSS color values including named colors."
 						bind:this={hexCodeInputWidget}
 					/>
 				</LayoutRow>
@@ -677,8 +675,10 @@
 						/>
 					{/each}
 				</button>
-				<Separator type="Related" />
-				<IconButton icon="Eyedropper" size={24} {disabled} action={activateEyedropperSample} tooltipLabel="Eyedropper" tooltipDescription="Sample a pixel color from the document." />
+				{#if eyedropperSupported()}
+					<Separator type="Related" />
+					<IconButton icon="Eyedropper" size={24} {disabled} action={activateEyedropperSample} tooltipLabel="Eyedropper" tooltipDescription="Sample a pixel color from the document." />
+				{/if}
 			</LayoutRow>
 		</LayoutCol>
 	</LayoutRow>

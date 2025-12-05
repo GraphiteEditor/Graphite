@@ -8,6 +8,7 @@ use crate::messages::input_mapper::utility_types::misc::{KeyMappingEntries, Mapp
 use crate::messages::portfolio::document::node_graph::utility_types::Direction;
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
+use crate::messages::portfolio::utility_types::KeyboardPlatformLayout;
 use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::brush_tool::BrushToolMessageOptionsUpdate;
 use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
@@ -493,16 +494,20 @@ pub fn input_mappings() -> Mapping {
 pub fn zoom_with_scroll() -> Mapping {
 	use InputMapperMessage::*;
 
+	// On Mac, the OS already converts Shift+scroll into horizontal scrolling so we have to reverse the behavior from normal to produce the same outcome
+	let keyboard_platform = GLOBAL_PLATFORM.get().copied().unwrap_or_default().as_keyboard_platform_layout();
+
 	let mut mapping = input_mappings();
 
 	let remove = [
 		entry!(WheelScroll; modifiers=[Control], action_dispatch=NavigationMessage::CanvasZoomMouseWheel),
+		entry!(WheelScroll; modifiers=[Command], action_dispatch=NavigationMessage::CanvasZoomMouseWheel),
 		entry!(WheelScroll; modifiers=[Shift], action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: true }),
 		entry!(WheelScroll; action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: false }),
 	];
 	let add = [
-		entry!(WheelScroll; modifiers=[Control], action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: true }),
-		entry!(WheelScroll; modifiers=[Shift], action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: false }),
+		entry!(WheelScroll; modifiers=[Control], action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: keyboard_platform == KeyboardPlatformLayout::Mac }),
+		entry!(WheelScroll; modifiers=[Shift], action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: keyboard_platform != KeyboardPlatformLayout::Mac }),
 		entry!(WheelScroll; action_dispatch=NavigationMessage::CanvasZoomMouseWheel),
 	];
 
