@@ -341,8 +341,10 @@ impl App {
 				NodeGraphExecutionResult::NotRun => {}
 			},
 			AppEvent::UiUpdate(texture) => {
+				let width = texture.width();
+				let height = texture.height();
 				if let Some(graphics_state) = self.graphics_state.as_mut() {
-					graphics_state.resize(texture.width(), texture.height());
+					graphics_state.resize(width, height);
 					graphics_state.bind_ui_texture(texture);
 					let elapsed = self.last_ui_update.elapsed().as_secs_f32();
 					self.last_ui_update = Instant::now();
@@ -351,6 +353,20 @@ impl App {
 					}
 				}
 				if let Some(window) = &self.window {
+					// Workaround for missing resize events on mac
+					// TODO: Find a cleaner solution
+					#[cfg(target_os = "macos")]
+					{
+						let surface_size = window.surface_size();
+						if width != surface_size.width || height != surface_size.height {
+							let _ = self.cef_view_info_sender.send(cef::ViewInfoUpdate::Size {
+								width: surface_size.width as usize,
+								height: surface_size.height as usize,
+							});
+							self.cef_context.notify_view_info_changed();
+						}
+					}
+
 					window.request_redraw();
 				}
 			}
