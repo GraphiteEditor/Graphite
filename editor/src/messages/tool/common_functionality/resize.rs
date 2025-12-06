@@ -11,6 +11,8 @@ pub struct Resize {
 	pub drag_start: DVec2,
 	pub layer: Option<LayerNodeIdentifier>,
 	pub snap_manager: SnapManager,
+	/// Last mouse position in viewport while Space is held, for offsetting during drag
+	last_mouse_viewport_for_space: Option<DVec2>,
 }
 
 impl Resize {
@@ -80,6 +82,21 @@ impl Resize {
 		let start = self.viewport_drag_start(document);
 		let mouse = input.mouse.position;
 		let document_to_viewport = document.navigation_handler.calculate_offset_transform(input.viewport_bounds.center(), &document.document_ptz);
+		
+		let space_down = input.keyboard.get(Key::Space as usize);
+		if space_down {
+			if let Some(previous_mouse) = self.last_mouse_viewport_for_space {
+				let delta_viewport = mouse - previous_mouse;
+				if delta_viewport.length_squared() > 0. {
+					let delta_document = document_to_viewport.inverse().transform_vector2(delta_viewport);
+					self.drag_start += delta_document;
+				}
+			}
+			self.last_mouse_viewport_for_space = Some(mouse);
+		} else {
+			self.last_mouse_viewport_for_space = None;
+		}
+		
 		let drag_start = self.drag_start;
 		let mut points_viewport = [start, mouse];
 
@@ -146,5 +163,6 @@ impl Resize {
 	pub fn cleanup(&mut self, responses: &mut VecDeque<Message>) {
 		self.snap_manager.cleanup(responses);
 		self.layer = None;
+		self.last_mouse_viewport_for_space = None;
 	}
 }
