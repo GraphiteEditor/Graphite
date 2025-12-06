@@ -286,7 +286,7 @@ impl RenderState {
 					viewport_offset: self.viewport_offset,
 					ui_scale: ui_scale.unwrap_or([1., 1.]),
 					_pad: [0., 0.],
-					background_color: [33. / 255., 33. / 255., 33. / 255., 1.], // #212121
+					background_color: [0x22 as f32 / 0xff as f32, 0x22 as f32 / 0xff as f32, 0x22 as f32 / 0xff as f32, 1.], // #222222
 				}),
 			);
 			if let Some(bind_group) = &self.bind_group {

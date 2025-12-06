@@ -395,6 +395,12 @@ impl ApplicationHandler for App {
 
 		self.window_scale = window.scale_factor();
 		let _ = self.cef_view_info_sender.send(cef::ViewInfoUpdate::Scale(self.window_scale));
+
+		// Ensures the CEF texture does not remain at 1x1 pixels until the window is resized by the user
+		// Affects only some Mac devices (issue found on 2023 M2 Mac Mini).
+		let PhysicalSize { width, height } = window.surface_size();
+		let _ = self.cef_view_info_sender.send(cef::ViewInfoUpdate::Size { width, height });
+
 		self.cef_context.notify_view_info_changed();
 
 		self.window = Some(window);
