@@ -1,7 +1,7 @@
 // TODO: Eventually remove this document upgrade code
 // This file contains lots of hacky code for upgrading old documents to the new format
 
-use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate, OutputConnector};
 use crate::messages::prelude::DocumentMessageHandler;
@@ -9,11 +9,8 @@ use glam::{DVec2, IVec2};
 use graph_craft::document::DocumentNode;
 use graph_craft::document::{DocumentNodeImplementation, NodeInput, value::TaggedValue};
 use graphene_std::ProtoNodeIdentifier;
-use graphene_std::subpath::Subpath;
-use graphene_std::table::Table;
 use graphene_std::text::{TextAlign, TypesettingConfig};
 use graphene_std::uuid::NodeId;
-use graphene_std::vector::Vector;
 use graphene_std::vector::style::{PaintOrder, StrokeAlign};
 use std::collections::HashMap;
 use std::f64::consts::PI;
@@ -1023,8 +1020,8 @@ pub fn document_migration_upgrades(document: &mut DocumentMessageHandler, reset_
 }
 
 fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], document: &mut DocumentMessageHandler, reset_node_definitions_on_open: bool) -> Option<()> {
-	if reset_node_definitions_on_open && let Some(Some(reference)) = document.network_interface.reference(node_id, network_path) {
-		let node_definition = resolve_document_node_type(reference)?;
+	if reset_node_definitions_on_open && let Some(reference) = document.network_interface.reference(node_id, network_path) {
+		let node_definition = resolve_document_node_type(&reference)?;
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_definition.default_node_template());
 	}
 
@@ -1034,13 +1031,12 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	}
 
 	// Only nodes that have not been modified and still refer to a definition can be updated
-	let reference = document.network_interface.reference(node_id, network_path).cloned().flatten()?;
-	let reference = &reference;
+	let reference = &document.network_interface.reference(node_id, network_path)?;
 
 	let inputs_count = node.inputs.len();
 
 	// Upgrade Stroke node to reorder parameters and add "Align" and "Paint Order" (#2644)
-	if reference == "Stroke" && inputs_count == 8 {
+	if reference == &DefinitionIdentifier::ProtoNode(graphene_std::vector::solidify_stroke::IDENTIFIER) && inputs_count == 8 {
 		let mut node_template = resolve_document_node_type(reference)?.default_node_template();
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 
@@ -1059,86 +1055,9 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.set_input(&InputConnector::node(*node_id, 9), old_inputs[4].clone(), network_path);
 	}
 
-	// Rename the old "Splines from Points" node to "Spline" and upgrade it to the new "Spline" node
-	if reference == "Splines from Points" {
-		document.network_interface.set_reference(node_id, network_path, Some("Spline".to_string()));
-	}
-
-	// Upgrade the old "Spline" node to the new "Spline" node
-	if reference == "Spline" {
-		// Retrieve the proto node identifier and verify it is the old "Spline" node, otherwise skip it if this is the new "Spline" node
-		let identifier = document
-			.network_interface
-			.implementation(node_id, network_path)
-			.and_then(|implementation| implementation.get_proto_node());
-		if identifier.map(|identifier| &identifier.name) != Some(&"graphene_core::vector::generator_nodes::SplineNode".into()) {
-			return None;
-		}
-
-		// Obtain the document node for the given node ID, extract the vector points, and create a Vector path from the list of points
-		let node = document.network_interface.document_node(node_id, network_path)?;
-		let Some(TaggedValue::VecDVec2(points)) = node.inputs.get(1).and_then(|tagged_value| tagged_value.as_value()) else {
-			log::error!("The old Spline node's input at index 1 is not a TaggedValue::VecDVec2");
-			return None;
-		};
-		let vector = Vector::from_subpath(Subpath::from_anchors_linear(points.to_vec(), false));
-
-		// Retrieve the output connectors linked to the "Spline" node's output connector
-		let Some(spline_outputs) = document.network_interface.outward_wires(network_path)?.get(&OutputConnector::node(*node_id, 0)).cloned() else {
-			log::error!("Vec of InputConnector Spline node is connected to its output connector 0.");
-			return None;
-		};
-
-		// Get the node's current position in the graph
-		let Some(node_position) = document.network_interface.position(node_id, network_path) else {
-			log::error!("Could not get position of spline node.");
-			return None;
-		};
-
-		// Get the "Path" node definition and fill it in with the Vector path and default vector modification
-		let Some(path_node_type) = resolve_document_node_type("Path") else {
-			log::error!("Path node does not exist.");
-			return None;
-		};
-		let path_node = path_node_type.node_template_input_override([
-			Some(NodeInput::value(TaggedValue::Vector(Table::new_from_element(vector)), true)),
-			Some(NodeInput::value(TaggedValue::VectorModification(Default::default()), false)),
-		]);
-
-		// Get the "Spline" node definition and wire it up with the "Path" node as input
-		let Some(spline_node_type) = resolve_document_node_type("Spline") else {
-			log::error!("Spline node does not exist.");
-			return None;
-		};
-		let spline_node = spline_node_type.node_template_input_override([Some(NodeInput::node(NodeId(1), 0))]);
-
-		// Create a new node group with the "Path" and "Spline" nodes and generate new node IDs for them
-		let nodes = vec![(NodeId(1), path_node), (NodeId(0), spline_node)];
-		let new_ids = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect::<HashMap<_, _>>();
-		let new_spline_id = *new_ids.get(&NodeId(0))?;
-		let new_path_id = *new_ids.get(&NodeId(1))?;
-
-		// Remove the old "Spline" node from the document
-		document.network_interface.delete_nodes(vec![*node_id], false, network_path);
-
-		// Insert the new "Path" and "Spline" nodes into the network interface with generated IDs
-		document.network_interface.insert_node_group(nodes.clone(), new_ids, network_path);
-
-		// Reposition the new "Spline" node to match the original "Spline" node's position
-		document.network_interface.shift_node(&new_spline_id, node_position, network_path);
-
-		// Reposition the new "Path" node with an offset relative to the original "Spline" node's position
-		document.network_interface.shift_node(&new_path_id, node_position + IVec2::new(-7, 0), network_path);
-
-		// Redirect each output connection from the old node to the new "Spline" node's output connector
-		for input_connector in spline_outputs {
-			document.network_interface.set_input(&input_connector, NodeInput::node(new_spline_id, 0), network_path);
-		}
-	}
-
 	// Upgrade Text node to include line height and character spacing, which were previously hardcoded to 1, from https://github.com/GraphiteEditor/Graphite/pull/2016
-	if reference == "Text" && inputs_count != 11 {
-		let mut template = resolve_document_node_type(reference)?.default_node_template();
+	if reference == &DefinitionIdentifier::Network("Text".to_string()) && inputs_count != 11 {
+		let mut template: NodeTemplate = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut template);
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut template)?;
 
@@ -1212,8 +1131,12 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	}
 
 	// Upgrade Sine, Cosine, and Tangent nodes to include a boolean input for whether the output should be in radians, which was previously the only option but is now not the default
-	if (reference == "Sine" || reference == "Cosine" || reference == "Tangent") && inputs_count == 1 {
-		let mut node_template = resolve_document_node_type(reference)?.default_node_template();
+	if (reference == &DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::sine::IDENTIFIER)
+		|| reference == &DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::cosine::IDENTIFIER)
+		|| reference == &DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::tangent::IDENTIFIER))
+		&& inputs_count == 1
+	{
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
@@ -1225,8 +1148,8 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	}
 
 	// Upgrade the 'Tangent on Path' node to include a boolean input for whether the output should be in radians, which was previously the only option but is now not the default
-	if (reference == "Tangent on Path") && inputs_count == 4 {
-		let mut node_template = resolve_document_node_type(reference)?.default_node_template();
+	if reference == &DefinitionIdentifier::ProtoNode(graphene_std::vector::tangent_on_path::IDENTIFIER) && inputs_count == 4 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
@@ -1241,8 +1164,8 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	}
 
 	// Upgrade the Modulo node to include a boolean input for whether the output should be always positive, which was previously not an option
-	if reference == "Modulo" && inputs_count == 2 {
-		let mut node_template = resolve_document_node_type(reference)?.default_node_template();
+	if reference == &DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::modulo::IDENTIFIER) && inputs_count == 2 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
@@ -1255,8 +1178,8 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	}
 
 	// Upgrade the Mirror node to add the `keep_original` boolean input
-	if reference == "Mirror" && inputs_count == 3 {
-		let mut node_template = resolve_document_node_type(reference)?.default_node_template();
+	if reference == &DefinitionIdentifier::ProtoNode(graphene_std::vector::mirror::IDENTIFIER) && inputs_count == 3 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
@@ -1270,8 +1193,8 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	}
 
 	// Upgrade the Mirror node to add the `reference_point` input and change `offset` from `DVec2` to `f64`
-	if reference == "Mirror" && inputs_count == 4 {
-		let mut node_template = resolve_document_node_type(reference)?.default_node_template();
+	if reference == &DefinitionIdentifier::ProtoNode(graphene_std::vector::mirror::IDENTIFIER) && inputs_count == 4 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
@@ -1293,24 +1216,23 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	}
 
 	// Upgrade artboard name being passed as hidden value input to "Create Artboard"
-	if reference == "Artboard" && reset_node_definitions_on_open {
+	if reference == &DefinitionIdentifier::Network("Artboard".to_string()) && reset_node_definitions_on_open {
 		let label = document.network_interface.display_name(node_id, network_path);
 		document
 			.network_interface
 			.set_input(&InputConnector::node(NodeId(0), 1), NodeInput::value(TaggedValue::String(label), false), &[*node_id]);
 	}
 
-	if reference == "Image" && inputs_count == 1 {
-		let mut node_template = resolve_document_node_type(reference)?.default_node_template();
+	if reference == &DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::image_value::IDENTIFIER) && inputs_count == 1 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
 		// Insert a new empty input for the image
 		document.network_interface.add_import(TaggedValue::None, false, 0, "Empty", "", &[*node_id]);
-		document.network_interface.set_reference(node_id, network_path, Some("Image".to_string()));
 	}
 
-	if reference == "Noise Pattern" && inputs_count == 15 {
-		let mut node_template = resolve_document_node_type(reference)?.default_node_template();
+	if reference == &DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::std_nodes::noise_pattern::IDENTIFIER) && inputs_count == 15 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
@@ -1323,8 +1245,8 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		}
 	}
 
-	if reference == "Instance on Points" && inputs_count == 2 {
-		let mut node_template = resolve_document_node_type(reference)?.default_node_template();
+	if reference == &DefinitionIdentifier::ProtoNode(graphene_std::vector::instance_on_points::IDENTIFIER) && inputs_count == 2 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
@@ -1333,8 +1255,8 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
 	}
 
-	if reference == "Morph" && inputs_count == 4 {
-		let mut node_template = resolve_document_node_type(reference)?.default_node_template();
+	if reference == &DefinitionIdentifier::ProtoNode(graphene_std::vector::instance_on_points::IDENTIFIER) && inputs_count == 4 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
@@ -1345,8 +1267,8 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		// We have removed the last input, so we don't add index 3
 	}
 
-	if reference == "Brush" && inputs_count == 4 {
-		let mut node_template = resolve_document_node_type(reference)?.default_node_template();
+	if reference == &DefinitionIdentifier::ProtoNode(graphene_std::brush::brush::brush::IDENTIFIER) && inputs_count == 4 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
@@ -1357,51 +1279,8 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[3].clone(), network_path);
 	}
 
-	if reference == "Flatten Vector Elements" {
-		let mut node_template = resolve_document_node_type(reference)?.default_node_template();
-		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
-
-		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
-
-		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
-
-		document.network_interface.replace_reference_name(node_id, network_path, "Flatten Path".to_string());
-	}
-
-	if reference == "Remove Handles" {
-		let mut node_template = resolve_document_node_type(reference)?.default_node_template();
-		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
-
-		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
-
-		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
-		document
-			.network_interface
-			.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::F64(0.), false), network_path);
-		document
-			.network_interface
-			.set_input(&InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::Bool(false), false), network_path);
-
-		document.network_interface.replace_reference_name(node_id, network_path, "Auto-Tangents".to_string());
-	}
-
-	if reference == "Generate Handles" {
-		let mut node_template = resolve_document_node_type("Auto-Tangents")?.default_node_template();
-		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
-
-		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
-
-		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
-		document
-			.network_interface
-			.set_input(&InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::Bool(true), false), network_path);
-
-		document.network_interface.replace_reference_name(node_id, network_path, "Auto-Tangents".to_string());
-	}
-
-	if reference == "Merge by Distance" && inputs_count == 2 {
-		let mut node_template = resolve_document_node_type(reference)?.default_node_template();
+	if reference == &DefinitionIdentifier::ProtoNode(graphene_std::vector::merge_by_distance::IDENTIFIER) && inputs_count == 2 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
@@ -1415,8 +1294,8 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		);
 	}
 
-	if reference == "Spatial Merge by Distance" {
-		let mut node_template = resolve_document_node_type("Merge by Distance")?.default_node_template();
+	if reference == &DefinitionIdentifier::ProtoNode(graphene_std::vector::merge_by_distance::IDENTIFIER) {
+		let mut node_template = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::vector::merge_by_distance::IDENTIFIER))?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
@@ -1428,12 +1307,10 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			NodeInput::value(TaggedValue::MergeByDistanceAlgorithm(graphene_std::vector::misc::MergeByDistanceAlgorithm::Spatial), false),
 			network_path,
 		);
-
-		document.network_interface.replace_reference_name(node_id, network_path, "Merge by Distance".to_string());
 	}
 
-	if reference == "Sample Points" && inputs_count == 5 {
-		let mut node_template = resolve_document_node_type("Sample Polyline")?.default_node_template();
+	if reference == &DefinitionIdentifier::ProtoNode(graphene_std::vector::sample_polyline::IDENTIFIER) && inputs_count == 5 {
+		let mut node_template = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::vector::sample_polyline::IDENTIFIER))?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
@@ -1448,11 +1325,11 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.set_input(&InputConnector::node(*node_id, 5), old_inputs[3].clone(), network_path);
 		document.network_interface.set_input(&InputConnector::node(*node_id, 6), old_inputs[4].clone(), network_path);
 
-		document.network_interface.replace_reference_name(node_id, network_path, "Sample Polyline".to_string());
+		document.network_interface.set_reference(node_id, network_path, Some("Sample Polyline".to_string()));
 	}
 
 	// Make the "Quantity" parameter a u32 instead of f64
-	if reference == "Sample Polyline" {
+	if reference == &DefinitionIdentifier::ProtoNode(graphene_std::vector::sample_polyline::IDENTIFIER) {
 		// Get the inputs, obtain the quantity value, and put the inputs back
 		let quantity_value = document
 			.network_interface
@@ -1467,8 +1344,8 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	}
 
 	// Make the "Grid" node, if its input of index 3 is a DVec2 for "angles" instead of a u32 for the "columns" input that now succeeds "angles", move the angle to index 5 (after "columns" and "rows")
-	if reference == "Grid" && inputs_count == 6 {
-		let node_definition = resolve_document_node_type(reference)?;
+	if reference == &DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::grid::IDENTIFIER) && inputs_count == 6 {
+		let node_definition = resolve_document_node_type(&reference)?;
 		let mut new_node_template = node_definition.default_node_template();
 
 		let mut current_node_template = document.network_interface.create_node_template(node_id, network_path)?;
@@ -1497,8 +1374,8 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	}
 
 	// Add the "Depth" parameter to the "Instance Index" node
-	if reference == "Instance Index" && inputs_count == 0 {
-		let mut node_template = resolve_document_node_type(reference)?.default_node_template();
+	if reference == &DefinitionIdentifier::ProtoNode(graphene_std::vector::instance_index::IDENTIFIER) && inputs_count == 0 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 		document.network_interface.set_display_name(node_id, "Instance Index".to_string(), network_path);
 
@@ -1510,8 +1387,8 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	}
 
 	// Migrate the Transform node to use degrees instead of radians
-	if reference == "Transform" && node.inputs.get(6).is_none() {
-		let mut node_template = resolve_document_node_type("Transform")?.default_node_template();
+	if reference == &DefinitionIdentifier::Network("Transform".to_string()) && node.inputs.get(6).is_none() {
+		let mut node_template = resolve_document_node_type(&DefinitionIdentifier::Network("Transform".to_string()))?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
@@ -1547,7 +1424,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			}
 			NodeInput::Node { .. } => {
 				// Construct a new Multiply node for converting from degrees to radians
-				let Some(multiply_node) = resolve_document_node_type("Multiply") else {
+				let Some(multiply_node) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::multiply::IDENTIFIER)) else {
 					log::error!("Could not get multiply node from definition when upgrading transform");
 					return None;
 				};
@@ -1587,7 +1464,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	// The old version would zip the source and target table rows, interpoleating each pair together.
 	// The migrated version will instead deeply flatten both merged tables and morph sequentially between all source vectors and all target vector elements.
 	// This migration assumes most usages didn't involve multiple parallel vector elements, and instead morphed from a single source to a single target vector element.
-	if reference == "Morph" && inputs_count == 3 {
+	if reference == &DefinitionIdentifier::ProtoNode(graphene_std::vector::morph::IDENTIFIER) && inputs_count == 3 {
 		// Old signature:
 		// async fn morph(_: impl Ctx, source: Table<Vector>, #[expose] target: Table<Vector>, #[default(0.5)] time: Fraction) -> Table<Vector> { ... }
 		//
@@ -1598,7 +1475,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 
 		// Create a new Merge node
-		let Some(merge_node_type) = resolve_document_node_type("Merge") else {
+		let Some(merge_node_type) = resolve_document_node_type(&DefinitionIdentifier::Network("Merge".to_string())) else {
 			log::error!("Could not get merge node from definition when upgrading morph");
 			return None;
 		};
@@ -1631,7 +1508,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 	// Add context features to nodes that don't have them (fine-grained context caching migration)
 	if node.context_features == graphene_std::ContextDependencies::default()
-		&& let Some(reference) = document.network_interface.reference(node_id, network_path).cloned().flatten()
+		&& let Some(reference) = document.network_interface.reference(node_id, network_path).clone()
 		&& let Some(node_definition) = resolve_document_node_type(&reference)
 	{
 		let context_features = node_definition.node_template.document_node.context_features;
