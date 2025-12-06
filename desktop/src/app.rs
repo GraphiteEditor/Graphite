@@ -97,17 +97,6 @@ impl App {
 		}
 	}
 
-	fn resize_window(&mut self, width: u32, height: u32) {
-		let _ = self.cef_view_info_sender.send(cef::ViewInfoUpdate::Size { width, height });
-		self.cef_context.notify_view_info_changed();
-		if let Some(render_state) = &mut self.render_state {
-			render_state.resize(width, height);
-		}
-		if let Some(window) = &self.window {
-			window.request_redraw();
-		}
-	}
-
 	fn handle_desktop_frontend_message(&mut self, message: DesktopFrontendMessage, responses: &mut Vec<DesktopWrapperMessage>) {
 		match message {
 			DesktopFrontendMessage::ToWeb(messages) => {
@@ -433,11 +422,18 @@ impl ApplicationHandler for App {
 				self.app_event_scheduler.schedule(AppEvent::CloseWindow);
 			}
 			WindowEvent::SurfaceResized(PhysicalSize { width, height }) => {
-				self.resize_window(width, height);
+				let _ = self.cef_view_info_sender.send(cef::ViewInfoUpdate::Size { width, height });
+				self.cef_context.notify_view_info_changed();
+
+				if let Some(render_state) = &mut self.render_state {
+					render_state.resize(width, height);
+				}
 
 				if let Some(window) = &self.window {
 					let maximized = window.is_maximized();
 					self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(DesktopWrapperMessage::UpdateMaximized { maximized }));
+
+					window.request_redraw();
 				}
 			}
 			WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
