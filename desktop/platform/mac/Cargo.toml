@@ -9,7 +9,11 @@ edition = "2024"
 rust-version = "1.87"
 
 [[bin]]
-name = "graphite-desktop-platform-mac-helper"
+name = "graphite"
+path = "src/main.rs"
+
+[[bin]]
+name = "helper"
 path = "src/helper.rs"
 
 [dependencies]

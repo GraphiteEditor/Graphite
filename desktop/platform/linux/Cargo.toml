@@ -8,5 +8,9 @@ repository = ""
 edition = "2024"
 rust-version = "1.87"
 
+[[bin]]
+name = "graphite"
+path = "src/main.rs"
+
 [dependencies]
 graphite-desktop = { path = "../.." }
