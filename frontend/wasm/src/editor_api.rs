@@ -9,6 +9,7 @@ use crate::{EDITOR_HANDLE, EDITOR_HAS_CRASHED, Error, MESSAGE_BUFFER};
 use editor::consts::FILE_EXTENSION;
 use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
 use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta};
+use editor::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use editor::messages::portfolio::document::utility_types::network_interface::ImportOrExport;
 use editor::messages::portfolio::utility_types::Platform;
@@ -715,11 +716,13 @@ impl EditorHandle {
 
 	/// Creates a new document node in the node graph
 	#[wasm_bindgen(js_name = createNode)]
-	pub fn create_node(&self, node_type: String, x: i32, y: i32) {
+	pub fn create_node(&self, node_type: JsValue, x: i32, y: i32) {
+		let value: serde_json::Value = serde_wasm_bindgen::from_value(node_type).unwrap();
+
 		let id = NodeId::new();
 		let message = NodeGraphMessage::CreateNodeFromContextMenu {
 			node_id: Some(id),
-			node_type,
+			node_type: value.into(),
 			xy: Some((x / 24, y / 24)),
 			add_transaction: true,
 		};

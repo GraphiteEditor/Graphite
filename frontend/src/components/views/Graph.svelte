@@ -5,7 +5,7 @@
 
 	import type { Editor } from "@graphite/editor";
 	import type { IconName } from "@graphite/icons";
-	import type { FrontendGraphInput, FrontendGraphOutput } from "@graphite/messages";
+	import type { DefinitionIdentifier, FrontendGraphInput, FrontendGraphOutput } from "@graphite/messages";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 
 	import NodeCatalog from "@graphite/components/floating-menus/NodeCatalog.svelte";
@@ -110,10 +110,10 @@
 		return iconMap[icon] || "NodeNodes";
 	}
 
-	function createNode(nodeType: string) {
+	function createNode(identifier: DefinitionIdentifier) {
 		if ($nodeGraph.contextMenuInformation === undefined) return;
 
-		editor.handle.createNode(nodeType, $nodeGraph.contextMenuInformation.contextMenuCoordinates.x, $nodeGraph.contextMenuInformation.contextMenuCoordinates.y);
+		editor.handle.createNode(identifier, $nodeGraph.contextMenuInformation.contextMenuCoordinates.x, $nodeGraph.contextMenuInformation.contextMenuCoordinates.y);
 	}
 
 	function nodeBorderMask(nodeWidth: number, primaryInputExists: boolean, exposedSecondaryInputs: number, primaryOutputExists: boolean, exposedSecondaryOutputs: number): string {

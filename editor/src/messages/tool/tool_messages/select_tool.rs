@@ -4,6 +4,7 @@ use super::tool_prelude::*;
 use crate::consts::*;
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GroupFolderType};
@@ -623,7 +624,7 @@ impl Fsm for SelectToolFsmState {
 						let layer_to_viewport = document.metadata().transform_to_viewport(layer);
 						overlay_context.outline(document.metadata().layer_with_free_points_outline(layer), layer_to_viewport, None);
 
-						if is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text") {
+						if is_layer_fed_by_node_of_name(layer, &document.network_interface, &DefinitionIdentifier::Network("Text".to_string())) {
 							let transformed_quad = layer_to_viewport * text_bounding_box(layer, document, font_cache);
 							overlay_context.dashed_quad(transformed_quad, None, None, Some(7.), Some(5.), None);
 						}
@@ -1577,7 +1578,7 @@ impl Fsm for SelectToolFsmState {
 
 				if let Some(layer) = selected_layers.next() {
 					// Check that only one layer is selected
-					if selected_layers.next().is_none() && is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text") {
+					if selected_layers.next().is_none() && is_layer_fed_by_node_of_name(layer, &document.network_interface, &DefinitionIdentifier::Network("Text".to_string())) {
 						responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Text });
 						responses.add(TextToolMessage::EditSelected);
 					}
@@ -1931,7 +1932,7 @@ fn edit_layer_shallowest_manipulation(document: &DocumentMessageHandler, layer: 
 /// Called when a double click on a layer in deep select mode.
 /// If the layer is text, the text tool is selected.
 fn edit_layer_deepest_manipulation(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface, responses: &mut VecDeque<Message>) {
-	if is_layer_fed_by_node_of_name(layer, network_interface, "Text") {
+	if is_layer_fed_by_node_of_name(layer, network_interface, &DefinitionIdentifier::Network("Text".to_string())) {
 		responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Text });
 		responses.add(TextToolMessage::EditSelected);
 	}

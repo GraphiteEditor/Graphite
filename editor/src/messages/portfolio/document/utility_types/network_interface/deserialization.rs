@@ -1,4 +1,6 @@
-use crate::messages::portfolio::document::utility_types::network_interface::{DocumentNodePersistentMetadata, InputMetadata, InputPersistentMetadata, NodeNetworkMetadata, NodeTypePersistentMetadata};
+use crate::messages::portfolio::document::{
+	utility_types::network_interface::{DocumentNodePersistentMetadata, InputMetadata, InputPersistentMetadata, NodeNetworkMetadata, NodeTypePersistentMetadata},
+};
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -23,7 +25,6 @@ impl From<DocumentNodePersistentMetadataInputNames> for DocumentNodePersistentMe
 	fn from(old: DocumentNodePersistentMetadataInputNames) -> Self {
 		DocumentNodePersistentMetadata {
 			input_metadata: Vec::new(),
-			reference: old.reference,
 			display_name: old.display_name,
 			output_names: old.output_names,
 			locked: old.locked,
@@ -75,7 +76,6 @@ impl From<DocumentNodePersistentMetadataPropertiesRow> for DocumentNodePersisten
 			})
 		}
 		DocumentNodePersistentMetadata {
-			reference: old.reference,
 			display_name: old.display_name,
 			input_metadata: Vec::new(),
 			output_names: old.output_names,
@@ -107,7 +107,38 @@ pub struct DocumentNodePersistentMetadataHasPrimaryOutput {
 impl From<DocumentNodePersistentMetadataHasPrimaryOutput> for DocumentNodePersistentMetadata {
 	fn from(old: DocumentNodePersistentMetadataHasPrimaryOutput) -> Self {
 		DocumentNodePersistentMetadata {
-			reference: old.reference,
+			display_name: old.display_name,
+			input_metadata: old.input_metadata,
+			output_names: old.output_names,
+			locked: old.locked,
+			pinned: old.pinned,
+			node_type_metadata: old.node_type_metadata,
+			network_metadata: old.network_metadata,
+		}
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+struct DocumentNodePersistentMetadataStringReference {
+	pub reference: Option<String>,
+	#[serde(default)]
+	pub display_name: String,
+	pub input_metadata: Vec<InputMetadata>,
+	pub output_names: Vec<String>,
+	#[serde(default)]
+	pub locked: bool,
+	#[serde(default)]
+	pub pinned: bool,
+	pub node_type_metadata: NodeTypePersistentMetadata,
+	pub network_metadata: Option<NodeNetworkMetadata>,
+}
+
+impl From<DocumentNodePersistentMetadataStringReference> for DocumentNodePersistentMetadata {
+	fn from(mut old: DocumentNodePersistentMetadataStringReference) -> Self {
+		if let Some(metadata) = old.network_metadata.as_mut() {
+			metadata.persistent_metadata.reference = old.reference;
+		}
+		DocumentNodePersistentMetadata {
 			display_name: old.display_name,
 			input_metadata: old.input_metadata,
 			output_names: old.output_names,
@@ -126,13 +157,16 @@ where
 	use serde::Deserialize;
 
 	let value = Value::deserialize(deserializer)?;
-	if let Ok(document) = serde_json::from_value::<DocumentNodePersistentMetadataHasPrimaryOutput>(value.clone()) {
-		return Ok(document.into());
-	};
 	if let Ok(document) = serde_json::from_value::<DocumentNodePersistentMetadata>(value.clone()) {
 		return Ok(document);
 	};
+	if let Ok(document) = serde_json::from_value::<DocumentNodePersistentMetadataHasPrimaryOutput>(value.clone()) {
+		return Ok(document.into());
+	};
 	if let Ok(document) = serde_json::from_value::<DocumentNodePersistentMetadataPropertiesRow>(value.clone()) {
+		return Ok(document.into());
+	};
+	if let Ok(document) = serde_json::from_value::<DocumentNodePersistentMetadataStringReference>(value.clone()) {
 		return Ok(document.into());
 	};
 	match serde_json::from_value::<DocumentNodePersistentMetadataInputNames>(value.clone()) {
