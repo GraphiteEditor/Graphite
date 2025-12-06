@@ -3,10 +3,10 @@ name = "graphite-wasm"
 publish = false
 version = "0.0.0"
 rust-version = "1.88"
-authors = ["Graphite Authors <contact@graphite.rs>"]
+authors = ["Graphite Authors <contact@graphite.art>"]
 edition = "2024"
 readme = "../../README.md"
-homepage = "https://graphite.rs"
+homepage = "https://graphite.art"
 repository = "https://github.com/GraphiteEditor/Graphite"
 license = "Apache-2.0"
 

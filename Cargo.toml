@@ -80,8 +80,8 @@ resolver = "2"
 [workspace.package]
 rust-version = "1.88"
 edition = "2024"
-authors = ["Graphite Authors <contact@graphite.rs>"]
-homepage = "https://graphite.rs"
+authors = ["Graphite Authors <contact@graphite.art>"]
+homepage = "https://graphite.art"
 repository = "https://github.com/GraphiteEditor/Graphite"
 license = "Apache-2.0"
 version = "0.0.0"

@@ -8,4 +8,4 @@ Type=Application
 Icon=graphite
 Categories=Graphics;VectorGraphics;RasterGraphics;
 Keywords=graphite;editor;vector;raster;procedural;design;
-StartupWMClass=rs.graphite.Graphite
+StartupWMClass=art.graphite.Graphite

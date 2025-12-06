@@ -30,7 +30,7 @@ export function githubUrl(panicDetails: string): string {
 
 			**Steps To Reproduce**
 			Describe precisely how the crash occurred, step by step, starting with a new editor window.
-			1. Open the Graphite editor at https://editor.graphite.rs
+			1. Open the Graphite editor at https://editor.graphite.art
 			2. 
 			3. 
 			4. 

@@ -1,6 +1,6 @@
 pub(crate) const APP_NAME: &str = "Graphite";
 #[cfg(target_os = "linux")]
-pub(crate) const APP_ID: &str = "rs.graphite.Graphite";
+pub(crate) const APP_ID: &str = "art.graphite.Graphite";
 
 pub(crate) const APP_DIRECTORY_NAME: &str = "graphite";
 pub(crate) const APP_LOCK_FILE_NAME: &str = "instance.lock";

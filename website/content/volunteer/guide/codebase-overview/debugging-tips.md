@@ -9,7 +9,7 @@ The Wasm-based editor has some unique limitations about how you are able to debu
 
 ## Comparing with deployed builds
 
-When tracking down a bug, first check if the issue you are noticing also exists in `master` or just your branch. Open up [dev.graphite.rs](https://dev.graphite.rs) which always deploys the lastest commit, compared to [editor.graphite.rs](https://editor.graphite.rs) which is manually deployed from time to time for the sake of stability.
+When tracking down a bug, first check if the issue you are noticing also exists in `master` or just your branch. Open up [dev.graphite.art](https://dev.graphite.art) which always deploys the lastest commit, compared to [editor.graphite.art](https://editor.graphite.art) which is manually deployed from time to time for the sake of stability.
 
 Use *Help* > *About Graphite* in the editor to view any build's Git commit hash.
 

@@ -20,7 +20,7 @@ impl DialogLayoutHolder for LicensesDialog {
 		let button_definitions: &[(&str, &str, fn() -> Message)] = &[
 			("GraphiteLogo", "Graphite Logo", || {
 				FrontendMessage::TriggerVisitLink {
-					url: "https://graphite.rs/logo/".into(),
+					url: "https://graphite.art/logo/".into(),
 				}
 				.into()
 			}),
@@ -32,7 +32,7 @@ impl DialogLayoutHolder for LicensesDialog {
 			}),
 			("License", "Graphite License", || {
 				FrontendMessage::TriggerVisitLink {
-					url: "https://graphite.rs/license/".into(),
+					url: "https://graphite.art/license/".into(),
 				}
 				.into()
 			}),

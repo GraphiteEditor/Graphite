@@ -77,7 +77,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 				.label("")
 				.flush(true)
 				.icon(Some("GraphiteLogo".into()))
-				.on_commit(|_| FrontendMessage::TriggerVisitLink { url: "https://graphite.rs".into() }.into())
+				.on_commit(|_| FrontendMessage::TriggerVisitLink { url: "https://graphite.art".into() }.into())
 				.widget_instance(),
 			#[cfg(target_os = "macos")]
 			TextButton::new("Graphite")
@@ -652,13 +652,13 @@ impl LayoutHolder for MenuBarMessageHandler {
 					vec![
 						MenuListEntry::new("Donate to Graphite").label("Donate to Graphite").icon("Heart").on_commit(|_| {
 							FrontendMessage::TriggerVisitLink {
-								url: "https://graphite.rs/donate/".into(),
+								url: "https://graphite.art/donate/".into(),
 							}
 							.into()
 						}),
 						MenuListEntry::new("User Manual").label("User Manual").icon("UserManual").on_commit(|_| {
 							FrontendMessage::TriggerVisitLink {
-								url: "https://graphite.rs/learn/".into(),
+								url: "https://graphite.art/learn/".into(),
 							}
 							.into()
 						}),

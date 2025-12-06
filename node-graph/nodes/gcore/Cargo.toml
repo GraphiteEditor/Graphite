@@ -3,7 +3,7 @@ name = "graphene-core"
 version = "0.1.0"
 edition = "2024"
 description = "Core utility nodes for Graphene"
-authors = ["Graphite Authors <contact@graphite.rs>"]
+authors = ["Graphite Authors <contact@graphite.art>"]
 license = "MIT OR Apache-2.0"
 
 [features]

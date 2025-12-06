@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 
 use crate::common::*;
 
-const APP_ID: &str = "rs.graphite.Graphite";
+const APP_ID: &str = "art.graphite.Graphite";
 
 const PACKAGE: &str = "graphite-desktop-platform-mac";
 const HELPER_BIN: &str = "graphite-desktop-platform-mac-helper";

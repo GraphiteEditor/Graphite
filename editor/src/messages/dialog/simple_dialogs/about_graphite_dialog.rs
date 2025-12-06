@@ -20,9 +20,9 @@ impl DialogLayoutHolder for AboutGraphiteDialog {
 
 	fn layout_column_2(&self) -> Layout {
 		let links = [
-			("Heart", "Donate", "https://graphite.rs/donate/"),
-			("GraphiteLogo", "Website", "https://graphite.rs"),
-			("Volunteer", "Volunteer", "https://graphite.rs/volunteer/"),
+			("Heart", "Donate", "https://graphite.art/donate/"),
+			("GraphiteLogo", "Website", "https://graphite.art"),
+			("Volunteer", "Volunteer", "https://graphite.art/volunteer/"),
 			("Credits", "Credits", "https://github.com/GraphiteEditor/Graphite/graphs/contributors"),
 		];
 		let mut widgets = links

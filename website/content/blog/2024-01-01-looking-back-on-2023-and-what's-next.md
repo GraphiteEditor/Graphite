@@ -3,8 +3,8 @@ title = "Looking back on 2023 and what's next"
 date = 2024-01-01
 
 [extra]
-banner = "https://static.graphite.rs/content/blog/2024-01-01-looking-back-on-2023-and-what's-next.avif"
-banner_png = "https://static.graphite.rs/content/blog/2024-01-01-looking-back-on-2023-and-what's-next.png"
+banner = "https://static.graphite.art/content/blog/2024-01-01-looking-back-on-2023-and-what's-next.avif"
+banner_png = "https://static.graphite.art/content/blog/2024-01-01-looking-back-on-2023-and-what's-next.png"
 author = "Keavon Chambers"
 summary = "Looking back on 2023, we reflect on our significant achievements and milestones. As we move forward, we're excited to share what's next, promising a year filled with innovation and progress."
 reddit = "https://www.reddit.com/r/graphite/comments/18xmoti/blog_post_looking_back_on_2023_and_whats_next/"
@@ -22,12 +22,12 @@ I am grateful to everyone who has placed their faith in my vision for Graphite s
 
 <div class="video-background" style="text-align: center">
 	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-		<source src="https://static.graphite.rs/content/blog/2024-01-01-looking-back-on-2023-and-what's-next/christmas-tree-lights.webm" type="video/webm" />
-		<source src="https://static.graphite.rs/content/blog/2024-01-01-looking-back-on-2023-and-what's-next/christmas-tree-lights.mp4" type="video/mp4" />
+		<source src="https://static.graphite.art/content/blog/2024-01-01-looking-back-on-2023-and-what's-next/christmas-tree-lights.webm" type="video/webm" />
+		<source src="https://static.graphite.art/content/blog/2024-01-01-looking-back-on-2023-and-what's-next/christmas-tree-lights.mp4" type="video/mp4" />
 	</video>
 </div>
 
-<center><em>Happy Holidays from the Graphite team!<br />These procedural light strands are powered by the newly completed node graph features.<br /><a href="https://editor.graphite.rs/#demo/procedural-string-lights">Click here to explore this demo</a> — drag the wire layer's points with the Path tool.</em></center>
+<center><em>Happy Holidays from the Graphite team!<br />These procedural light strands are powered by the newly completed node graph features.<br /><a href="https://editor.graphite.art/#demo/procedural-string-lights">Click here to explore this demo</a> — drag the wire layer's points with the Path tool.</em></center>
 
 ## The Alpha 2 release series
 
@@ -39,7 +39,7 @@ In March, I attended the Game Developers Conference (GDC) in nearby San Francisc
 
 Later, in May, I went to another Rust developers meetup here in the Bay Area together with [Leonard Pauli](https://twitter.com/leonardpauli), a Graphite community member and code contributor who was in town on a visit all the way from Sweden. The event was headlined with a [presentation](https://www.youtube.com/watch?v=XjbVnwBtVEk) by [Raph Levien](https://raphlinus.github.io/) about [Xilem](https://github.com/linebender/xilem), an under-development GUI toolkit that Graphite may adopt someday for its promise of powering native, speedy desktop user interfaces. Raph Levien is a researcher and expert in the fields of 2D vector graphics, GPU-accelerated rendering, and the mathematics of splines and curves— topics considerably overlapping with Graphite's own technical disciplines. The meetup was a nice face-to-face introduction before I'd end up seeing Raph and Leonard each again very soon.
 
-<p><img src="https://static.graphite.rs/content/blog/2024-01-01-looking-back-on-2023-and-what's-next/bay-area-rust-meetup.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="Raph Levien speaking about Xilem" /></p>
+<p><img src="https://static.graphite.art/content/blog/2024-01-01-looking-back-on-2023-and-what's-next/bay-area-rust-meetup.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="Raph Levien speaking about Xilem" /></p>
 
 <center><em>Raph gives his talk about Xilem and GUIs in Rust</em></center>
 
@@ -47,7 +47,7 @@ The next week I accepted Raph's invitation to visit him at his employer, Google,
 
 ## Embark Studios visit in Stockholm, Sweden
 
-<p><img src="https://static.graphite.rs/content/blog/2024-01-01-looking-back-on-2023-and-what's-next/embark.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="Leonard and Keavon in front of the Embark office sign" /></p>
+<p><img src="https://static.graphite.art/content/blog/2024-01-01-looking-back-on-2023-and-what's-next/embark.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="Leonard and Keavon in front of the Embark office sign" /></p>
 
 <center><em>Leonard (left) and Keavon (right) at Embark Studios</em></center>
 
@@ -55,7 +55,7 @@ In June, as part of a vacation with my family to Europe, I caught up again with 
 
 ## Blender visit in Amsterdam, The Netherlands
 
-<p><img src="https://static.graphite.rs/content/blog/2024-01-01-looking-back-on-2023-and-what's-next/blender-hq.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="Graphite and Blender team members in front of the Blender building" /></p>
+<p><img src="https://static.graphite.art/content/blog/2024-01-01-looking-back-on-2023-and-what's-next/blender-hq.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="Graphite and Blender team members in front of the Blender building" /></p>
 
 <center><em>Left to right: Dalai, Dennis, Keavon, Ton, Francesco</em></center>
 
@@ -63,7 +63,7 @@ The next month in July, together with Graphite's lead engineer [Dennis Kobert](/
 
 At the invitation of Francesco Siddi, COO of the Blender Foundation whom I'd met earlier at GDC, Dennis and I presented a lunchtime talk for the staff to introduce the Graphite project. Ton Roosendaal, Blender's founder, kindly cooked up some scrumptious, lovingly-made meals of fried eggs for us and his team. We spent a couple hours mingling— answering and asking questions and chatting about design and technical topics ranging from our Rust node graph language infrastructure to Blender's experience with color science standards.
 
-<p><img src="https://static.graphite.rs/content/blog/2024-01-01-looking-back-on-2023-and-what's-next/blender-presentation.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="Keavon presents in front of a projector screen at Blender's offices" /></p>
+<p><img src="https://static.graphite.art/content/blog/2024-01-01-looking-back-on-2023-and-what's-next/blender-presentation.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="Keavon presents in front of a projector screen at Blender's offices" /></p>
 
 <center><em>Keavon presents to the Blender staff</em></center>
 
@@ -71,7 +71,7 @@ Ton also very generously gave us his time and full attention with an office hour
 
 ## Graphite developer retreat in Karlsruhe, Germany
 
-<p><img src="https://static.graphite.rs/content/blog/2024-01-01-looking-back-on-2023-and-what's-next/karlsruhe.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="Keavon and Dennis in front of Karlsruhe Palace" /></p>
+<p><img src="https://static.graphite.art/content/blog/2024-01-01-looking-back-on-2023-and-what's-next/karlsruhe.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="Keavon and Dennis in front of Karlsruhe Palace" /></p>
 
 <center><em>Keavon (left) and Dennis (right) at Karlsruhe Palace</em></center>
 
@@ -79,7 +79,7 @@ The week before the Blender visit, I arrived in Karlsruhe, Germany for a two-wee
 
 ## SIGGRAPH in Los Angeles, California
 
-<p><img src="https://static.graphite.rs/content/blog/2024-01-01-looking-back-on-2023-and-what's-next/siggraph.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="Keavon and Oliver standing in front of the SIGGRAPH conference sign" /></p>
+<p><img src="https://static.graphite.art/content/blog/2024-01-01-looking-back-on-2023-and-what's-next/siggraph.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="Keavon and Oliver standing in front of the SIGGRAPH conference sign" /></p>
 
 <center><em>Keavon (left) and Oliver (right) at SIGGRAPH</em></center>
 
@@ -94,14 +94,14 @@ The next big news of August was my formation of [Graphite Labs, LLC](https://www
 I allocated my time at several points throughout the year into growing and evolving this website with a refreshed and more visually-appealing home page, dedicated pages for information [about](/about) the project and its [features](/features), an area providing resources and help for [volunteers](/volunteer) and [code contributors](/volunteer/guide), and just this month— a [user manual](/learn) complete with an introductory tutorial series. The first video went up yesterday:
 
 <div class="youtube-embed aspect-16x9">
-	<img data-youtube-embed="7gjUhl_3X10" src="https://static.graphite.rs/content/learn/introduction/tutorial-1-vector-art-quickstart-youtube__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Vector Art Quickstart - Graphite, the Open Source 2D Graphics Suite" />
+	<img data-youtube-embed="7gjUhl_3X10" src="https://static.graphite.art/content/learn/introduction/tutorial-1-vector-art-quickstart-youtube__2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Vector Art Quickstart - Graphite, the Open Source 2D Graphics Suite" />
 </div>
 
 The user manual and tutorial series will continue expanding throughout the coming weeks. Additional website features including user accounts, forums, and other community features are being planned.
 
 ## 2023 development progress report
 
-<p><img src="https://static.graphite.rs/content/blog/2024-01-01-looking-back-on-2023-and-what's-next/commit-rate-graph.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graph visualizing the number of code commits each week of 2023" /></p>
+<p><img src="https://static.graphite.art/content/blog/2024-01-01-looking-back-on-2023-and-what's-next/commit-rate-graph.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graph visualizing the number of code commits each week of 2023" /></p>
 
 <center><em>Weekly code commit rate in 2023</em></center>
 
@@ -116,7 +116,7 @@ But 2023 wasn't only put towards refactoring code. New features were added all t
 - The (still rudimentary) Brush tool was added for drawing simple raster-based sketches.
 - Drawing custom vector shapes with the Pen and Path tools saw usability improvements with point selection, nudging/transformation, and entering exact numerical positions.
 - Number input boxes in the UI can now be dragged to update their values and have math expressions evaluated automatically for convenience. Double a value just by typing `*2` at the end, or take the square root by wrapping it within `sqrt(` and `)`.
-- A button to quickly open [pre-made sample art](https://editor.graphite.rs/#demo/valley-of-spires) documents was included at the suggestion of the fine folks at Blender. This helps new users see Graphite in action instead of just opening up an overwhelmingly barren blank canvas.
+- A button to quickly open [pre-made sample art](https://editor.graphite.art/#demo/valley-of-spires) documents was included at the suggestion of the fine folks at Blender. This helps new users see Graphite in action instead of just opening up an overwhelmingly barren blank canvas.
 
 ## Integrating the node graph
 
@@ -124,25 +124,25 @@ With so much to change in the goal of rewriting nearly every system with its Gra
 
 The previous, intentionally-temporary layer system supported folders, vector shapes, text, bitmap images, and dynamic AI art (part of the Imaginate image generation feature).
 
-<p><img src="https://static.graphite.rs/content/blog/2024-01-01-looking-back-on-2023-and-what's-next/migration-block-diagram-1.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Block diagram of a Graphite document before the node graph" /></p>
+<p><img src="https://static.graphite.art/content/blog/2024-01-01-looking-back-on-2023-and-what's-next/migration-block-diagram-1.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Block diagram of a Graphite document before the node graph" /></p>
 
 <center><em>Block diagram before the node graph</em></center>
 
 To begin the incremental integration of nodes, we first added another type of layer, housing an instance of a Graphene node graph, which would supersede the other types. Then began the long process of porting all the other "legacy" layer types—and the viewport tools that operated on them—to become nodes. So the text layer type became a Text node managed by the Text tool, for example. This first phase was completed by April.
 
-<p><img src="https://static.graphite.rs/content/blog/2024-01-01-looking-back-on-2023-and-what's-next/migration-block-diagram-2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Block diagram of a Graphite document after the first phase of migration" /></p>
+<p><img src="https://static.graphite.art/content/blog/2024-01-01-looking-back-on-2023-and-what's-next/migration-block-diagram-2.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Block diagram of a Graphite document after the first phase of migration" /></p>
 
 <center><em>Block diagram after the first phase</em></center>
 
 Just folders and graph-driven legacy layers remained, but for the second phase, these (as well as artboards which were a separate temporary system) had to be combined into a single graph. Even with graph-based legacy layers, nodes couldn't yet interact between layer graphs to create interesting procedural designs. The Graphite vision calls for a single unified graph per document where all content lives, organized by layers, folders, and artboards collectively living within that graph. So phase two began with adding another node graph instance attached to the document itself instead of any particular layer. Then the old artboard system was replaced by artboard nodes in that graph, providing white backgrounds for the pages of artwork drawn atop by layers. Next, we built a new form of layer that would live in the node graph itself to provide organizational structure, acting as both a container for artwork nodes and a folder for other layers. By August, users could edit the document graph by hand but the viewport tools, folder hierarchy, rendering pipeline, and numerous other systems all still used the legacy layers.
 
-<p><img src="https://static.graphite.rs/content/blog/2024-01-01-looking-back-on-2023-and-what's-next/migration-block-diagram-3.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Block diagram of a Graphite document after the second phase of migration" /></p>
+<p><img src="https://static.graphite.art/content/blog/2024-01-01-looking-back-on-2023-and-what's-next/migration-block-diagram-3.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Block diagram of a Graphite document after the second phase of migration" /></p>
 
 <center><em>Block diagram after the second phase</em></center>
 
 For the third phase, we had to yet again port each of the viewport tools so they would operate on the unified document graph instead of the legacy layer graphs. But the incremental approach ended here— this last phase had to happen all at once, which posed a challenge for developing the editor while numerous features were fully broken pending rework. We began with a separate development branch, always kept up-to-date with the latest editor code changes, for a couple months until breakages were reduced to an acceptable level, then integrated with the main codebase in October. By tracking and burning down the list of [62 outstanding issues and regressions](https://github.com/GraphiteEditor/Graphite/issues/1394) one-by-one, in mid-December we finally reached our long-sought goal: deploying a new stable release of Graphite featuring the unified node graph! I'd like to extend an extra big thank-you to core team member ["Hypercube"](/about#hypercube) for the dedication and persistence in grinding through most of these.
 
-<p><img src="https://static.graphite.rs/content/blog/2024-01-01-looking-back-on-2023-and-what's-next/migration-block-diagram-4.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Block diagram of a Graphite document now that the migration is complete" /></p>
+<p><img src="https://static.graphite.art/content/blog/2024-01-01-looking-back-on-2023-and-what's-next/migration-block-diagram-4.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Block diagram of a Graphite document now that the migration is complete" /></p>
 
 <center><em>Block diagram of the completed integration</em></center>
 
@@ -182,7 +182,7 @@ Achieving everything listed above is ambitious, but it's ambition that has broug
 - Graphic designers and artists who put the time into using Graphite on a regular basis and helping us learn its practical strengths and weaknesses would also be valuable contributors. Helping with the creative parts of maintaining the app and assisting new users who have questions in the growing community would relieve the burden from the core team.
 - And spread the word! Create tutorial videos. Show off your creations on social media. Use it in your classroom. 2024 is the year Graphite is ready to come out of the shadows and get discovered.
 
-If your New Year's resolution is joining an open source project, consider Graphite! We work hard to help new community contributors get up to speed with resources and guidance. We frequently hear praise that Graphite is a very inviting and supportive project from volunteers who have not had great prior experiences trying to get involved in open source. Join the Graphite [Discord server](https://discord.graphite.rs) and reach out to me (@Keavon) about how you'd like to get involved.
+If your New Year's resolution is joining an open source project, consider Graphite! We work hard to help new community contributors get up to speed with resources and guidance. We frequently hear praise that Graphite is a very inviting and supportive project from volunteers who have not had great prior experiences trying to get involved in open source. Join the Graphite [Discord server](https://discord.graphite.art) and reach out to me (@Keavon) about how you'd like to get involved.
 
 ## Launching our supporter fund
 
@@ -198,4 +198,4 @@ Please help launch Graphite towards the 2024 goal of attaining self-sufficiency 
 
 Thank you to our community for an incredible year. Passing [5000 stars](https://github.com/GraphiteEditor/Graphite/stargazers) on the project GitHub repository was a wonderful gift this holiday season. Everyone who has given advice, written code, and expressed enthusiasm has inspired me every day to stay focused and motivated. It was especially a pleasure and honor to visit the many people and organizations mentioned in this post throughout the past year. The reception by all has been heartwarming and I look forward to staying connected with them and a growing Graphite community in the promising year that now lies ahead. I am most of all excited for the awesome state Graphite will be in when it comes time to write this post again next year.
 
-Now go [make some awesome art](https://editor.graphite.rs)!
+Now go [make some awesome art](https://editor.graphite.art)!

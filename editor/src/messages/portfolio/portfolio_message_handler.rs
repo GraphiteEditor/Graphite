@@ -894,7 +894,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				}
 			}
 			PortfolioMessage::RequestWelcomeScreenButtonsLayout => {
-				let donate = "https://graphite.rs/donate/";
+				let donate = "https://graphite.art/donate/";
 
 				let table = LayoutGroup::Table {
 					unstyled: true,
