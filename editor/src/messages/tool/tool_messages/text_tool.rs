@@ -3,6 +3,7 @@
 use super::tool_prelude::*;
 use crate::consts::{COLOR_OVERLAY_BLUE, COLOR_OVERLAY_RED, DRAG_THRESHOLD};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
@@ -446,7 +447,7 @@ impl TextToolData {
 		document
 			.metadata()
 			.all_layers()
-			.filter(|&layer| is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text"))
+			.filter(|&layer| is_layer_fed_by_node_of_name(layer, &document.network_interface, &DefinitionIdentifier::Network("Text".to_string())))
 			.find(|&layer| {
 				let transformed_quad = document.metadata().transform_to_viewport(layer) * text_bounding_box(layer, document, font_cache);
 				let mouse = DVec2::new(input.mouse.position.x, input.mouse.position.y);
@@ -475,7 +476,7 @@ fn can_edit_selected(document: &DocumentMessageHandler) -> Option<LayerNodeIdent
 		return None;
 	}
 
-	if !is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text") {
+	if !is_layer_fed_by_node_of_name(layer, &document.network_interface, &DefinitionIdentifier::Network("Text".to_string())) {
 		return None;
 	}
 
@@ -543,7 +544,7 @@ impl Fsm for TextToolFsmState {
 				// TODO: implement bounding box for multiple layers
 				let selected = document.network_interface.selected_nodes();
 				let mut all_layers = selected.selected_visible_and_unlocked_layers(&document.network_interface);
-				let layer = all_layers.find(|layer| is_layer_fed_by_node_of_name(*layer, &document.network_interface, "Text"));
+				let layer = all_layers.find(|layer| is_layer_fed_by_node_of_name(*layer, &document.network_interface, &DefinitionIdentifier::Network("Text".to_string())));
 				let bounds = layer.map(|layer| text_bounding_box(layer, document, font_cache));
 				let layer_transform = layer.map(|layer| document.metadata().transform_to_viewport(layer)).unwrap_or(DAffine2::IDENTITY);
 
@@ -604,7 +605,7 @@ impl Fsm for TextToolFsmState {
 
 				let selected = document.network_interface.selected_nodes();
 				let mut all_selected = selected.selected_visible_and_unlocked_layers(&document.network_interface);
-				let selected = all_selected.find(|layer| is_layer_fed_by_node_of_name(*layer, &document.network_interface, "Text"));
+				let selected = all_selected.find(|layer| is_layer_fed_by_node_of_name(*layer, &document.network_interface, &DefinitionIdentifier::Network("Text".to_string())));
 
 				if dragging_bounds.is_some() {
 					responses.add(DocumentMessage::StartTransaction);
@@ -643,7 +644,7 @@ impl Fsm for TextToolFsmState {
 				// This ensures the cursor only changes if a layer is selected
 				let selected = document.network_interface.selected_nodes();
 				let mut all_selected = selected.selected_visible_and_unlocked_layers(&document.network_interface);
-				let layer = all_selected.find(|&layer| is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text"));
+				let layer = all_selected.find(|&layer| is_layer_fed_by_node_of_name(layer, &document.network_interface, &DefinitionIdentifier::Network("Text".to_string())));
 
 				let mut cursor = tool_data
 					.bounding_box_manager
