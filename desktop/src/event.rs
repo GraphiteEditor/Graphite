@@ -3,7 +3,7 @@ use crate::wrapper::messages::DesktopWrapperMessage;
 
 pub(crate) enum AppEvent {
 	UiUpdate(wgpu::Texture),
-	CursorChange(winit::cursor::Cursor),
+	CursorChange(crate::window::Cursor),
 	ScheduleBrowserWork(std::time::Instant),
 	WebCommunicationInitialized,
 	DesktopWrapperMessage(DesktopWrapperMessage),
