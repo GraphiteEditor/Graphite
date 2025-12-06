@@ -361,8 +361,8 @@ impl App {
 				}
 			}
 			AppEvent::CursorChange(cursor) => {
-				if let Some(window) = &self.window {
-					window.set_cursor(cursor);
+				if let Some(window) = &mut self.window {
+					window.set_cursor(event_loop, cursor);
 				}
 			}
 			AppEvent::CloseWindow => {
