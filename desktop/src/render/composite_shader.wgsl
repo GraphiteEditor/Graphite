@@ -23,6 +23,8 @@ fn vs_main(@builtin(vertex_index) vertex_index: u32) -> VertexOutput {
 struct Constants {
 	viewport_scale: vec2<f32>,
 	viewport_offset: vec2<f32>,
+	ui_scale: vec2<f32>,
+	background_color: vec4<f32>,
 };
 
 var<push_constant> constants: Constants;
@@ -38,18 +40,28 @@ var s_diffuse: sampler;
 
 @fragment
 fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
-	let ui_linear = srgb_to_linear(textureSample(t_ui, s_diffuse, in.tex_coords));
+	let ui_coordinate = in.tex_coords * constants.ui_scale;
+	if (ui_coordinate.x < 0.0 || ui_coordinate.x > 1.0 ||
+		ui_coordinate.y < 0.0 || ui_coordinate.y > 1.0) {
+		return srgb_to_linear(constants.background_color);
+	}
+
+	let ui_linear = srgb_to_linear(textureSample(t_ui, s_diffuse, ui_coordinate));
 	if (ui_linear.a >= 0.999) {
 		return ui_linear;
 	}
 
+	// UI texture is premultiplied, we need to unpremultiply before blending
+	let ui_srgb = linear_to_srgb(unpremultiply(ui_linear));
+
 	let viewport_coordinate = (in.tex_coords - constants.viewport_offset) * constants.viewport_scale;
+	if (viewport_coordinate.x < 0.0 || viewport_coordinate.x > 1.0 ||
+		viewport_coordinate.y < 0.0 || viewport_coordinate.y > 1.0) {
+		return srgb_to_linear(constants.background_color);
+	}
 
 	let overlay_srgb = textureSample(t_overlays, s_diffuse, viewport_coordinate);
 	let viewport_srgb = textureSample(t_viewport, s_diffuse, viewport_coordinate);
-
-	// UI texture is premultiplied, we need to unpremultiply before blending
-	let ui_srgb = linear_to_srgb(unpremultiply(ui_linear));
 
 	if (overlay_srgb.a < 0.001) {
 		if (ui_srgb.a < 0.001) {

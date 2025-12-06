@@ -55,8 +55,8 @@ pub(crate) trait CefEventHandler: Send + Sync + 'static {
 
 #[derive(Clone, Copy)]
 pub(crate) struct ViewInfo {
-	width: usize,
-	height: usize,
+	width: u32,
+	height: u32,
 	scale: f64,
 }
 impl ViewInfo {
@@ -78,10 +78,10 @@ impl ViewInfo {
 	pub(crate) fn zoom(&self) -> f64 {
 		self.scale.ln() / 1.2_f64.ln()
 	}
-	pub(crate) fn width(&self) -> usize {
+	pub(crate) fn width(&self) -> u32 {
 		self.width
 	}
-	pub(crate) fn height(&self) -> usize {
+	pub(crate) fn height(&self) -> u32 {
 		self.height
 	}
 }
@@ -92,7 +92,7 @@ impl Default for ViewInfo {
 }
 
 pub(crate) enum ViewInfoUpdate {
-	Size { width: usize, height: usize },
+	Size { width: u32, height: u32 },
 	Scale(f64),
 }
 
