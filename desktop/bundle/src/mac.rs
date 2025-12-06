@@ -8,7 +8,7 @@ use crate::common::*;
 const APP_ID: &str = "art.graphite.Graphite";
 
 const PACKAGE: &str = "graphite-desktop-platform-mac";
-const HELPER_BIN: &str = "graphite-desktop-platform-mac-helper";
+const HELPER_BIN: &str = "helper";
 
 const ICONS_FILE_NAME: &str = "graphite.icns";
 
