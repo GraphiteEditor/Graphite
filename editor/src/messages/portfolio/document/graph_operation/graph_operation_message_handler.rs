@@ -1,6 +1,7 @@
 use super::transform_utils;
 use super::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::portfolio::document::utility_types::nodes::CollapsedLayers;
@@ -382,7 +383,7 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 
 			modify_inputs.insert_vector(subpaths, layer, true, path.fill().is_some(), path.stroke().is_some());
 
-			if let Some(transform_node_id) = modify_inputs.existing_node_id("Transform", true) {
+			if let Some(transform_node_id) = modify_inputs.existing_node_id(&DefinitionIdentifier::Network("Transform".to_string()), true) {
 				transform_utils::update_transform(modify_inputs.network_interface, &transform_node_id, transform * usvg_transform(node.abs_transform()));
 			}
 
