@@ -3,14 +3,14 @@ pub(crate) mod menu {
 	use base64::engine::Engine;
 	use base64::engine::general_purpose::STANDARD as BASE64;
 
-	use graphite_editor::messages::input_mapper::utility_types::input_keyboard::{Key, LabeledKey, LabeledShortcut};
+	use graphite_editor::messages::input_mapper::utility_types::input_keyboard::{Key, LabeledKeyOrMouseMotion, LabeledShortcut};
 	use graphite_editor::messages::input_mapper::utility_types::misc::ActionShortcut;
 	use graphite_editor::messages::layout::LayoutMessage;
 	use graphite_editor::messages::tool::tool_messages::tool_prelude::{Layout, LayoutGroup, LayoutTarget, MenuListEntry, Widget, WidgetId};
 
 	use crate::messages::{EditorMessage, KeyCode, MenuItem, Modifiers, Shortcut};
 
-	pub(crate) fn convert_menu_bar_layout_to_menu_items(layout: &Layout) -> Vec<MenuItem> {
+	pub(crate) fn convert_menu_bar_layout_to_menu_items(Layout(layout): &Layout) -> Vec<MenuItem> {
 		let layout_group = match layout.as_slice() {
 			[layout_group] => layout_group,
 			_ => panic!("Menu bar layout is supposed to have exactly one layout group"),
@@ -68,9 +68,9 @@ pub(crate) mod menu {
 			value,
 			label,
 			icon,
-			shortcut_keys,
-			children,
 			disabled,
+			tooltip_shortcut,
+			children,
 			..
 		}: &MenuListEntry = entry;
 		path.push(value.clone());
@@ -83,7 +83,7 @@ pub(crate) mod menu {
 			return MenuItem::SubMenu { id, text, enabled, items };
 		}
 
-		let shortcut = match shortcut_keys {
+		let shortcut = match tooltip_shortcut {
 			Some(ActionShortcut::Shortcut(LabeledShortcut(shortcut))) => convert_labeled_keys_to_shortcut(shortcut),
 			_ => None,
 		};
@@ -126,10 +126,14 @@ pub(crate) mod menu {
 		items
 	}
 
-	fn convert_labeled_keys_to_shortcut(labeled_keys: &Vec<LabeledKey>) -> Option<Shortcut> {
+	fn convert_labeled_keys_to_shortcut(labeled_keys: &Vec<LabeledKeyOrMouseMotion>) -> Option<Shortcut> {
 		let mut key: Option<KeyCode> = None;
 		let mut modifiers = Modifiers::default();
 		for labeled_key in labeled_keys {
+			let LabeledKeyOrMouseMotion::Key(labeled_key) = labeled_key else {
+				// Return None for shortcuts that include mouse motion because we can't show them in native menu
+				return None;
+			};
 			match labeled_key.key() {
 				Key::Shift => modifiers |= Modifiers::SHIFT,
 				Key::Control => modifiers |= Modifiers::CONTROL,
