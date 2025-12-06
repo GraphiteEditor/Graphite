@@ -2,7 +2,8 @@ use glam::{DVec2, IVec2};
 use graph_craft::document::NodeId;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::Type;
-use std::borrow::Cow;
+
+use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum FrontendGraphDataType {
@@ -79,7 +80,7 @@ pub struct FrontendNode {
 	pub is_layer: bool,
 	#[serde(rename = "canBeLayer")]
 	pub can_be_layer: bool,
-	pub reference: Option<String>,
+	pub reference: Option<DefinitionIdentifier>,
 	#[serde(rename = "displayName")]
 	pub display_name: String,
 	#[serde(rename = "primaryInput")]
@@ -102,29 +103,13 @@ pub struct FrontendNode {
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct FrontendNodeType {
-	pub name: Cow<'static, str>,
-	pub category: Cow<'static, str>,
+	pub identifier: DefinitionIdentifier,
+	pub name: String,
+	pub category: String,
 	#[serde(rename = "inputTypes")]
-	pub input_types: Option<Vec<Cow<'static, str>>>,
+	pub input_types: Vec<String>,
 }
 
-impl FrontendNodeType {
-	pub fn new(name: impl Into<Cow<'static, str>>, category: impl Into<Cow<'static, str>>) -> Self {
-		Self {
-			name: name.into(),
-			category: category.into(),
-			input_types: None,
-		}
-	}
-
-	pub fn with_input_types(name: impl Into<Cow<'static, str>>, category: impl Into<Cow<'static, str>>, input_types: Vec<Cow<'static, str>>) -> Self {
-		Self {
-			name: name.into(),
-			category: category.into(),
-			input_types: Some(input_types),
-		}
-	}
-}
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct DragStart {
 	pub start_x: f64,

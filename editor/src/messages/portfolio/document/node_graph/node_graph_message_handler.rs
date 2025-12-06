@@ -1,11 +1,11 @@
+use super::node_properties;
 use super::utility_types::{BoxSelection, ContextMenuInformation, DragStart, FrontendNode};
-use super::{document_node_definitions, node_properties};
 use crate::consts::GRID_SIZE;
 use crate::messages::input_mapper::utility_types::macros::{action_shortcut, action_shortcut_manual};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::document_message_handler::navigation_controls;
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::NodePropertiesContext;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, NodePropertiesContext, resolve_document_node_type};
 use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType, NodeGraphErrorDiagnostic};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
@@ -130,7 +130,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}
 			NodeGraphMessage::AddPathNode => {
 				if let Some(layer) = make_path_editable_is_allowed(network_interface) {
-					responses.add(NodeGraphMessage::CreateNodeInLayerWithTransaction { node_type: "Path".to_string(), layer });
+					responses.add(NodeGraphMessage::CreateNodeInLayerWithTransaction {
+						node_type: DefinitionIdentifier::Network("Path".to_string()),
+						layer,
+					});
 					responses.add(EventMessage::SelectionChanged);
 				}
 			}
@@ -271,10 +274,10 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 				let node_id = node_id.unwrap_or_else(NodeId::new);
 
-				let Some(document_node_type) = document_node_definitions::resolve_document_node_type(&node_type) else {
+				let Some(document_node_type) = resolve_document_node_type(&node_type) else {
 					responses.add(DialogMessage::DisplayDialogError {
 						title: "Cannot insert node".to_string(),
-						description: format!("The document node '{node_type}' does not exist in the document node list"),
+						description: format!("The document node '{node_type:?}' does not exist in the document node list"),
 					});
 					return;
 				};
@@ -636,7 +639,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 				// Use the network interface to add a default node, then set the imports, exports, paste the nodes inside, and connect them to the imports/exports
 				let encapsulating_node_id = NodeId::new();
-				let mut default_node_template = document_node_definitions::resolve_document_node_type("Default Network")
+				let mut default_node_template = resolve_document_node_type(&DefinitionIdentifier::Network("Default Network".to_string()))
 					.expect("Default Network node should exist")
 					.default_node_template();
 				let Some(center_of_selected_nodes) = network_interface.selected_nodes_bounding_box(breadcrumb_network_path).map(|[a, b]| (a + b) / 2.) else {
@@ -1698,7 +1701,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					input,
 				});
 				responses.add(PropertiesPanelMessage::Refresh);
-				if !(network_interface.reference(&node_id, selection_network_path).is_none() || input_index == 0) && network_interface.connected_to_output(&node_id, selection_network_path) {
+				if network_interface.connected_to_output(&node_id, selection_network_path) {
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
 			}
@@ -2150,9 +2153,10 @@ impl NodeGraphMessageHandler {
 
 					let node_chooser = node_chooser
 						.on_update(move |node_type| {
+							let node_type = node_type.clone();
 							if let (true, Some(layer)) = (single_layer_selected, selected_layer) {
 								NodeGraphMessage::CreateNodeInLayerWithTransaction {
-									node_type: node_type.clone(),
+									node_type,
 									layer: LayerNodeIdentifier::new_unchecked(layer.to_node()),
 								}
 								.into()
@@ -2162,7 +2166,7 @@ impl NodeGraphMessageHandler {
 									messages: Box::new([
 										NodeGraphMessage::CreateNodeFromContextMenu {
 											node_id: Some(node_id),
-											node_type: node_type.clone(),
+											node_type,
 											xy: None,
 											add_transaction: true,
 										}
@@ -2593,7 +2597,7 @@ impl NodeGraphMessageHandler {
 					.node_metadata(&node_id, breadcrumb_network_path)
 					.is_some_and(|node_metadata| node_metadata.persistent_metadata.is_layer()),
 				can_be_layer: network_interface.is_eligible_to_be_layer(&node_id, breadcrumb_network_path),
-				reference: network_interface.reference(&node_id, breadcrumb_network_path).cloned().unwrap_or_default(),
+				reference: network_interface.reference(&node_id, breadcrumb_network_path),
 				display_name: network_interface.display_name(&node_id, breadcrumb_network_path),
 				primary_input,
 				exposed_inputs,

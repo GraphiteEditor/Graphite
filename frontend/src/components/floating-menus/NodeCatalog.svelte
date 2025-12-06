@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { createEventDispatcher, getContext, onMount } from "svelte";
 
-	import type { FrontendNodeType } from "@graphite/messages";
+	import type { DefinitionIdentifier, FrontendNodeType } from "@graphite/messages";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -9,7 +9,7 @@
 	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 
-	const dispatch = createEventDispatcher<{ selectNodeType: string }>();
+	const dispatch = createEventDispatcher<{ selectNodeType: DefinitionIdentifier }>();
 	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
 
 	export let disabled = false;
@@ -123,8 +123,8 @@
 						{disabled}
 						label={nodeType.name}
 						tooltipLabel={nodeType.name}
-						tooltipDescription={$nodeGraph.nodeDescriptions.get(nodeType.name)}
-						action={() => dispatch("selectNodeType", nodeType.name)}
+						tooltipDescription={$nodeGraph.nodeDescriptions.get(nodeType.identifier)}
+						action={() => dispatch("selectNodeType", nodeType.identifier)}
 					/>
 				{/each}
 			</details>
