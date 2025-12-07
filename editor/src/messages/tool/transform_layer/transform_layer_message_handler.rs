@@ -291,9 +291,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 						let text = format!("{}°", format_rounded(display_angle, 2));
 						const FONT_SIZE: f64 = 12.;
 
-						let text_width = text_width(&text, FONT_SIZE);
-
-						let text_texture_width = text_width / 2.;
+						let text_texture_width = text_width(&text, FONT_SIZE) / 2.;
 						let text_texture_height = 12.;
 						let text_angle_on_unit_circle = DVec2::from_angle((angle % TAU) / 2. + offset_angle);
 						let text_texture_position = DVec2::new(
