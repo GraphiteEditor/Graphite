@@ -622,7 +622,7 @@ impl Render for Table<Graphic> {
 
 					scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
 					mask_element.render_to_vello(scene, transform_mask, context, &render_params.for_clipper());
-					scene.push_clip_layer(kurbo::Affine::IDENTITY, &rect);
+					scene.push_layer(peniko::BlendMode::new(peniko::Mix::Normal, peniko::Compose::SrcIn), 1., kurbo::Affine::IDENTITY, &rect);
 				}
 
 				row.element.render_to_vello(scene, transform, context, render_params);
