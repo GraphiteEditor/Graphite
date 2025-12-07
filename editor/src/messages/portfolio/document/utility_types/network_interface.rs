@@ -1053,7 +1053,11 @@ impl NodeNetworkInterface {
 			log::error!("Could not get downstream_connectors in primary_output_connected_to_layer");
 			return false;
 		};
-		let downstream_nodes = downstream_connectors.iter().filter_map(|connector| connector.node_id()).collect::<Vec<_>>();
+
+		let downstream_nodes = downstream_connectors
+			.iter()
+			.filter_map(|connector| connector.node_id().filter(|_| connector.input_index() == 0))
+			.collect::<Vec<_>>();
 		downstream_nodes.iter().any(|node_id| self.is_layer(node_id, network_path))
 	}
 
