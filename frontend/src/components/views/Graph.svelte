@@ -4,7 +4,6 @@
 	import { fade } from "svelte/transition";
 
 	import type { Editor } from "@graphite/editor";
-	import type { IconName } from "@graphite/icons";
 	import type { DefinitionIdentifier, FrontendGraphInput, FrontendGraphOutput, FrontendNode } from "@graphite/messages";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 
@@ -13,7 +12,6 @@
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
-	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 
 	const GRID_COLLAPSE_SPACING = 10;
@@ -159,11 +157,11 @@
 	}
 
 	function nodeNameTooltipLabel(node: FrontendNode): string {
-		let name = node.displayName
-		if (node.displayName !== node.implementationName ){
-			name += ` (${node.implementationName})`
+		let name = node.displayName;
+		if (node.displayName !== node.implementationName) {
+			name += ` (${node.implementationName})`;
 		}
-		return name
+		return name;
 	}
 
 	function validTypesText(value: FrontendGraphInput): string {
