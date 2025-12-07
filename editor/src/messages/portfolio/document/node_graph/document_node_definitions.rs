@@ -95,7 +95,7 @@ impl From<Value> for DefinitionIdentifier {
 /// TODO: Use this to prevent storing a copy of the implementation, if the document node is unchanged from the definition.
 #[derive(Debug, Clone)]
 pub struct DocumentNodeDefinition {
-	/// Used to create the DefinitionIdentifier::Network identifer
+	/// Used to create the DefinitionIdentifier::Network identifier
 	pub identifier: &'static str,
 
 	/// All data required to construct a [`DocumentNode`] and [`DocumentNodeMetadata`]
@@ -113,12 +113,13 @@ pub struct DocumentNodeDefinition {
 	pub properties: Option<&'static str>,
 }
 
-// We use the once cell to use the document node definitions through the editor without passing a reference
+// We use the once cell to use the document node definitions throughout the editor without passing a reference
 // TODO: If dynamic node library is required, use a Mutex as well
 static DOCUMENT_NODE_TYPES: once_cell::sync::Lazy<HashMap<DefinitionIdentifier, DocumentNodeDefinition>> = once_cell::sync::Lazy::new(node_definitions);
 
 /// Defines the "signature" or "header file"-like metadata for the document nodes, but not the implementation (which is defined in the node registry).
 /// The [`DocumentNode`] is the instance while these [`DocumentNodeDefinition`]s are the "classes" or "blueprints" from which the instances are built.
+/// Only the position can be set for protonodes within a definition. The rest of the metadata comes from the node macro in NODE_METADATA
 fn node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefinition> {
 	let custom = vec![
 		// TODO: Auto-generate this from its proto node macro
@@ -2636,7 +2637,7 @@ pub fn resolve_document_node_type(identifier: &DefinitionIdentifier) -> Option<&
 	DOCUMENT_NODE_TYPES.get(identifier)
 }
 
-pub fn default_display_name(identifier: &DefinitionIdentifier) -> String {
+pub fn implementation_name_from_identifier(identifier: &DefinitionIdentifier) -> String {
 	match identifier {
 		DefinitionIdentifier::Network(name) => name.clone(),
 		DefinitionIdentifier::ProtoNode(proto_node_identifier) => registry::NODE_METADATA
@@ -2644,7 +2645,11 @@ pub fn default_display_name(identifier: &DefinitionIdentifier) -> String {
 			.unwrap()
 			.get(proto_node_identifier)
 			.map(|metadata| metadata.display_name.to_string())
-			.unwrap_or_default(),
+			.unwrap_or_else(|| {
+				let mut last_segment = proto_node_identifier.name.split("::").last().unwrap_or_default().to_string();
+				last_segment = last_segment.strip_suffix("Node").unwrap_or(&last_segment).to_string();
+				last_segment
+			}),
 	}
 }
 
@@ -2660,10 +2665,13 @@ pub fn collect_node_types() -> Vec<FrontendNodeType> {
 				.iter()
 				.map(|node_input| node_input.as_value().map(|node_value| node_value.ty().nested_type().to_string()).unwrap_or_default())
 				.collect::<Vec<String>>();
-
+			let mut name = definition.node_template.persistent_node_metadata.display_name.clone();
+			if name.is_empty() {
+				name = implementation_name_from_identifier(identifier)
+			}
 			FrontendNodeType {
 				identifier: identifier.clone(),
-				name: default_display_name(identifier),
+				name,
 				category: definition.category.to_string(),
 				input_types,
 			}

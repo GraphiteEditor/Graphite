@@ -5,7 +5,7 @@
 
 	import type { Editor } from "@graphite/editor";
 	import type { IconName } from "@graphite/icons";
-	import type { DefinitionIdentifier, FrontendGraphInput, FrontendGraphOutput } from "@graphite/messages";
+	import type { DefinitionIdentifier, FrontendGraphInput, FrontendGraphOutput, FrontendNode } from "@graphite/messages";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 
 	import NodeCatalog from "@graphite/components/floating-menus/NodeCatalog.svelte";
@@ -102,14 +102,6 @@
 		return sparse;
 	}
 
-	function nodeIcon(icon?: string): IconName {
-		if (!icon) return "NodeNodes";
-		const iconMap: Record<string, IconName> = {
-			Output: "NodeOutput",
-		};
-		return iconMap[icon] || "NodeNodes";
-	}
-
 	function createNode(identifier: DefinitionIdentifier) {
 		if ($nodeGraph.contextMenuInformation === undefined) return;
 
@@ -164,6 +156,14 @@
 
 	function dataTypeTooltipLabel(value: FrontendGraphInput | FrontendGraphOutput): string {
 		return `Data Type: ${value.resolvedType}`;
+	}
+
+	function nodeNameTooltipLabel(node: FrontendNode): string {
+		let name = node.displayName
+		if (node.displayName !== node.implementationName ){
+			name += ` (${node.implementationName})`
+		}
+		return name
 	}
 
 	function validTypesText(value: FrontendGraphInput): string {
@@ -501,7 +501,7 @@
 				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
 				style:--layer-area-width={layerAreaWidth}
 				style:--node-chain-area-left-extension={layerChainWidth !== 0 ? layerChainWidth + 0.5 : 0}
-				data-tooltip-label={node.displayName === node.reference ? node.displayName : `${node.displayName} (${node.reference})`}
+				data-tooltip-label={nodeNameTooltipLabel(node)}
 				data-tooltip-description={`
 					${(description || "").trim()}${editor.handle.inDevelopmentMode() ? `\n\nID: ${node.id}. Position: (${node.position.x}, ${node.position.y}).` : ""}
 					`.trim()}
@@ -651,7 +651,7 @@
 				style:--clip-path-id={`url(#${clipPathId})`}
 				style:--data-color={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()})`}
 				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
-				data-tooltip-label={node.displayName === node.reference ? node.displayName : `${node.displayName} (${node.reference})`}
+				data-tooltip-label={nodeNameTooltipLabel(node)}
 				data-tooltip-description={`
 					${(description || "").trim()}${editor.handle.inDevelopmentMode() ? `\n\nID: ${node.id}. Position: (${node.position.x}, ${node.position.y}).` : ""}
 					`.trim()}
@@ -659,7 +659,6 @@
 			>
 				<!-- Primary row -->
 				<div class="primary" class:in-selected-network={$nodeGraph.inSelectedNetwork} class:no-secondary-section={exposedInputsOutputs.length === 0}>
-					<IconLabel icon={nodeIcon(node.reference)} />
 					<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
 					<TextLabel>{node.displayName}</TextLabel>
 				</div>

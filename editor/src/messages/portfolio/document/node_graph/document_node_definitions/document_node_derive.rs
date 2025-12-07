@@ -25,6 +25,10 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 	// Add the rest of the protonodes from the macro
 	let node_registry = NODE_REGISTRY.lock().unwrap();
 	for (id, metadata) in NODE_METADATA.lock().unwrap().iter() {
+		let identifier = DefinitionIdentifier::ProtoNode(id.clone());
+		if definitions_map.contains_key(&identifier) {
+			continue;
+		};
 		let NodeMetadata {
 			display_name,
 			category,
@@ -43,7 +47,7 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 
 		let inputs = preprocessor::node_inputs(fields, first_node_io);
 		definitions_map.insert(
-			DefinitionIdentifier::ProtoNode(id.clone()),
+			identifier,
 			DocumentNodeDefinition {
 				identifier: display_name,
 				node_template: NodeTemplate {
@@ -76,6 +80,16 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 				properties: *properties,
 			},
 		);
+	}
+
+	// If any protonode does not have metadata then set its display name to its identifier string
+	for definition in definitions_map.values_mut() {
+		let metadata = NODE_METADATA.lock().unwrap();
+		if let DocumentNodeImplementation::ProtoNode(id) = &definition.node_template.document_node.implementation {
+			if !metadata.contains_key(id) {
+				definition.node_template.persistent_node_metadata.display_name = definition.identifier.to_string();
+			}
+		}
 	}
 
 	// Add the rest of the network nodes to the map and add the metadata for their internal protonodes
