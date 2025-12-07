@@ -457,8 +457,7 @@ impl Render for Artboard {
 		scene.pop_layer();
 
 		if self.clip {
-			let blend_mode = peniko::BlendMode::new(peniko::Mix::Normal, peniko::Compose::SrcOver);
-			scene.push_layer(blend_mode, 1., kurbo::Affine::new(transform.to_cols_array()), &rect);
+			scene.push_clip_layer(kurbo::Affine::new(transform.to_cols_array()), &rect);
 		}
 		// Since the content's transform is right multiplied in when rendering the content, we just need to right multiply by the artboard offset here.
 		let child_transform = transform * DAffine2::from_translation(self.location.as_dvec2());
