@@ -2599,6 +2599,7 @@ impl NodeGraphMessageHandler {
 				can_be_layer: network_interface.is_eligible_to_be_layer(&node_id, breadcrumb_network_path),
 				reference: network_interface.reference(&node_id, breadcrumb_network_path),
 				display_name: network_interface.display_name(&node_id, breadcrumb_network_path),
+				implementation_name: network_interface.implementation_name(&node_id, breadcrumb_network_path),
 				primary_input,
 				exposed_inputs,
 				primary_output,
