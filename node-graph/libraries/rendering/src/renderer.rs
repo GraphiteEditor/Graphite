@@ -457,7 +457,8 @@ impl Render for Artboard {
 		scene.pop_layer();
 
 		if self.clip {
-			scene.push_clip_layer(kurbo::Affine::new(transform.to_cols_array()), &rect);
+			let blend_mode = peniko::BlendMode::new(peniko::Mix::Normal, peniko::Compose::SrcOver);
+			scene.push_layer(blend_mode, 1., kurbo::Affine::new(transform.to_cols_array()), &rect);
 		}
 		// Since the content's transform is right multiplied in when rendering the content, we just need to right multiply by the artboard offset here.
 		let child_transform = transform * DAffine2::from_translation(self.location.as_dvec2());
@@ -622,7 +623,7 @@ impl Render for Table<Graphic> {
 
 					scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
 					mask_element.render_to_vello(scene, transform_mask, context, &render_params.for_clipper());
-					scene.push_clip_layer(kurbo::Affine::IDENTITY, &rect);
+					scene.push_layer(peniko::BlendMode::new(peniko::Mix::Normal, peniko::Compose::SrcIn), 1., kurbo::Affine::IDENTITY, &rect);
 				}
 
 				row.element.render_to_vello(scene, transform, context, render_params);
