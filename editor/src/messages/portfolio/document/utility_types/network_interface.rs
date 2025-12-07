@@ -7,7 +7,7 @@ use super::misc::PTZ;
 use super::nodes::SelectedNodes;
 use crate::consts::{EXPORTS_TO_RIGHT_EDGE_PIXEL_GAP, EXPORTS_TO_TOP_EDGE_PIXEL_GAP, GRID_SIZE, IMPORTS_TO_LEFT_EDGE_PIXEL_GAP, IMPORTS_TO_TOP_EDGE_PIXEL_GAP};
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, DocumentNodeDefinition, default_display_name, resolve_document_node_type};
+use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, implementation_name_from_identifier, resolve_document_node_type};
 use crate::messages::portfolio::document::node_graph::utility_types::{Direction, FrontendClickTargets, FrontendGraphDataType, FrontendGraphInput, FrontendGraphOutput};
 use crate::messages::portfolio::document::overlays::utility_functions::text_width;
 use crate::messages::portfolio::document::utility_types::network_interface::resolved_types::ResolvedDocumentNodeTypes;
@@ -19,7 +19,6 @@ use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::Type;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
-use graph_craft::proto::NODE_METADATA;
 use graphene_std::ContextDependencies;
 use graphene_std::math::quad::Quad;
 use graphene_std::subpath::Subpath;
@@ -469,33 +468,6 @@ impl NodeNetworkInterface {
 			}
 		}
 		node_template
-	}
-
-	/// Try and get the [`DocumentNodeDefinition`] for a node
-	pub fn node_definition(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<&DocumentNodeDefinition> {
-		let implementation = self.implementation(node_id, network_path)?;
-		match implementation {
-			DocumentNodeImplementation::Network(_) => {
-				let metadata = self.node_metadata(node_id, network_path)?;
-				let metadata = metadata.persistent_metadata.network_metadata.as_ref()?;
-				let reference = metadata.persistent_metadata.reference.clone()?;
-				let identifier = DefinitionIdentifier::Network(reference.clone());
-				let Some(definition) = resolve_document_node_type(&identifier) else {
-					log::error!("Could not get definition for node id {node_id} with reference {reference}");
-					return None;
-				};
-				Some(definition)
-			}
-			DocumentNodeImplementation::ProtoNode(proto_node_identifier) => {
-				let identifier = DefinitionIdentifier::ProtoNode(proto_node_identifier.clone());
-				let Some(definition) = resolve_document_node_type(&identifier) else {
-					log::error!("Could not get definition for node id {node_id} with proto_node_identifier {proto_node_identifier}");
-					return None;
-				};
-				Some(definition)
-			}
-			DocumentNodeImplementation::Extract => None,
-		}
 	}
 
 	pub fn input_from_connector(&self, input_connector: &InputConnector, network_path: &[NodeId]) -> Option<&NodeInput> {
@@ -957,7 +929,7 @@ impl NodeNetworkInterface {
 					.persistent_metadata
 					.reference
 					.clone()
-					.map(|reference| DefinitionIdentifier::Network(reference))
+					.map(DefinitionIdentifier::Network)
 			}
 			DocumentNodeImplementation::ProtoNode(protonode_id) => Some(DefinitionIdentifier::ProtoNode(protonode_id.clone())),
 			_ => None,
@@ -1045,7 +1017,7 @@ impl NodeNetworkInterface {
 	/// The uneditable name in the properties panel which represents the function name of the node implementation
 	pub fn implementation_name(&self, node_id: &NodeId, network_path: &[NodeId]) -> String {
 		self.reference(&node_id, network_path)
-			.map(|identifier| default_display_name(&identifier))
+			.map(|identifier| implementation_name_from_identifier(&identifier))
 			.unwrap_or("Custom Node".to_string())
 	}
 
@@ -3755,7 +3727,9 @@ impl NodeNetworkInterface {
 		let Some(metadata) = self.node_metadata_mut(node_id, network_path) else { return };
 		for added_input_index in metadata.persistent_metadata.input_metadata.len()..number_of_inputs {
 			let input_metadata = self
-				.node_definition(node_id, network_path)
+				.reference(node_id, network_path)
+				.as_ref()
+				.and_then(resolve_document_node_type)
 				.and_then(|definition| definition.node_template.persistent_node_metadata.input_metadata.get(added_input_index))
 				.cloned();
 			let Some(metadata) = self.node_metadata_mut(node_id, network_path) else { return };
@@ -6254,7 +6228,8 @@ struct InputTransientMetadata {
 /// Persistent metadata for each node in the network, which must be included when creating, serializing, and deserializing saving a node.
 #[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct DocumentNodePersistentMetadata {
-	/// A name chosen by the user for this instance of the node. Empty indicates no given name, in which case the reference name is displayed to the user in italics.
+	/// A name chosen by the user for this instance of the node. Empty indicates no given name, in which case the implementation name is displayed to the user in italics.
+	/// This is empty for all newly created nodes, except protonodes with #[skip_impl]
 	#[serde(default)]
 	pub display_name: String,
 	/// Stores metadata to override the properties in the properties panel for each input. These can either be generated automatically based on the type, or with a custom function.

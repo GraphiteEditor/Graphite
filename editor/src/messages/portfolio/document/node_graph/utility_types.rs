@@ -83,6 +83,8 @@ pub struct FrontendNode {
 	pub reference: Option<DefinitionIdentifier>,
 	#[serde(rename = "displayName")]
 	pub display_name: String,
+	#[serde(rename = "implementationName")]
+	pub implementation_name: String,
 	#[serde(rename = "primaryInput")]
 	pub primary_input: Option<FrontendGraphInput>,
 	#[serde(rename = "exposedInputs")]

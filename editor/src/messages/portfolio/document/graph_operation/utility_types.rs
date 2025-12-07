@@ -366,7 +366,7 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn blend_mode_set(&mut self, blend_mode: BlendMode) {
-		let Some(blend_node_id) = self.existing_node_id(&DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::blending_nodes::blend::IDENTIFIER), true) else {
+		let Some(blend_node_id) = self.existing_node_id(&DefinitionIdentifier::ProtoNode(graphene_std::blending_nodes::blending::IDENTIFIER), true) else {
 			return;
 		};
 		let input_connector = InputConnector::node(blend_node_id, 1);
@@ -374,7 +374,7 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn opacity_set(&mut self, opacity: f64) {
-		let Some(blend_node_id) = self.existing_node_id(&DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::blending_nodes::blend::IDENTIFIER), true) else {
+		let Some(blend_node_id) = self.existing_node_id(&DefinitionIdentifier::ProtoNode(graphene_std::blending_nodes::blending::IDENTIFIER), true) else {
 			return;
 		};
 		let input_connector = InputConnector::node(blend_node_id, 2);
@@ -382,7 +382,7 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn blending_fill_set(&mut self, fill: f64) {
-		let Some(blend_node_id) = self.existing_node_id(&DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::blending_nodes::blend::IDENTIFIER), true) else {
+		let Some(blend_node_id) = self.existing_node_id(&DefinitionIdentifier::ProtoNode(graphene_std::blending_nodes::blending::IDENTIFIER), true) else {
 			return;
 		};
 		let input_connector = InputConnector::node(blend_node_id, 3);
@@ -391,7 +391,7 @@ impl<'a> ModifyInputsContext<'a> {
 
 	pub fn clip_mode_toggle(&mut self, clip_mode: Option<bool>) {
 		let clip = !clip_mode.unwrap_or(false);
-		let Some(clip_node_id) = self.existing_node_id(&DefinitionIdentifier::ProtoNode(graphene_std::raster_nodes::blending_nodes::blend::IDENTIFIER), true) else {
+		let Some(clip_node_id) = self.existing_node_id(&DefinitionIdentifier::ProtoNode(graphene_std::blending_nodes::blending::IDENTIFIER), true) else {
 			return;
 		};
 		let input_connector = InputConnector::node(clip_node_id, 4);
