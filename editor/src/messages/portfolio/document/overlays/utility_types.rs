@@ -962,10 +962,6 @@ impl OverlayContext {
 		self.render_context.fill();
 	}
 
-	pub fn get_width(&self, text: &str) -> f64 {
-		self.render_context.measure_text(text).expect("Failed to measure text dimensions").width()
-	}
-
 	pub fn text(&self, text: &str, font_color: &str, background_color: Option<&str>, transform: DAffine2, padding: f64, pivot: [Pivot; 2]) {
 		let metrics = self.render_context.measure_text(text).expect("Failed to measure the text dimensions");
 		let x = match pivot[0] {

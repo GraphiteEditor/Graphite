@@ -3,6 +3,7 @@ use crate::consts::{
 	COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, DOWEL_PIN_RADIUS, MANIPULATOR_GROUP_MARKER_SIZE,
 	PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER, RESIZE_HANDLE_SIZE, SKEW_TRIANGLE_OFFSET, SKEW_TRIANGLE_SIZE,
 };
+use crate::messages::portfolio::document::overlays::utility_functions::{GLOBAL_FONT_CACHE, GLOBAL_TEXT_CONTEXT};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::Message;
 use crate::messages::prelude::ViewportMessageHandler;
@@ -24,18 +25,6 @@ use std::collections::HashMap;
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
 use vello::Scene;
 use vello::peniko;
-
-// Global lazy initialized font cache and text context
-static GLOBAL_FONT_CACHE: LazyLock<FontCache> = LazyLock::new(|| {
-	let mut font_cache = FontCache::default();
-	// Initialize with the hardcoded font used by overlay text
-	const FONT_DATA: &[u8] = include_bytes!("source-sans-pro-regular.ttf");
-	let font = Font::new("Source Sans Pro".to_string(), "Regular".to_string());
-	font_cache.insert(font, String::new(), FONT_DATA.to_vec());
-	font_cache
-});
-
-static GLOBAL_TEXT_CONTEXT: LazyLock<Mutex<TextContext>> = LazyLock::new(|| Mutex::new(TextContext::default()));
 
 pub type OverlayProvider = fn(OverlayContext) -> Message;
 
@@ -391,10 +380,6 @@ impl OverlayContext {
 	/// Used by the fill tool to show the area to be filled.
 	pub fn fill_path_pattern(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color) {
 		self.internal().fill_path_pattern(subpaths, transform, color);
-	}
-
-	pub fn get_width(&self, text: &str) -> f64 {
-		self.internal().get_width(text)
 	}
 
 	pub fn text(&self, text: &str, font_color: &str, background_color: Option<&str>, transform: DAffine2, padding: f64, pivot: [Pivot; 2]) {
@@ -1032,29 +1017,6 @@ impl OverlayContextInternal {
 		let brush = peniko::Brush::Image(image);
 
 		self.scene.fill(peniko::Fill::NonZero, self.get_transform(), &brush, None, &path);
-	}
-
-	fn get_width(&mut self, text: &str) -> f64 {
-		// Use the actual text-to-path system to get precise text width
-		const FONT_SIZE: f64 = 12.0;
-
-		let typesetting = TypesettingConfig {
-			font_size: FONT_SIZE,
-			line_height_ratio: 1.2,
-			character_spacing: 0.0,
-			max_width: None,
-			max_height: None,
-			tilt: 0.0,
-			align: TextAlign::Left,
-		};
-
-		// Load Source Sans Pro font data
-		// TODO: Grab this from the node_modules folder (either with `include_bytes!` or ideally at runtime) instead of checking the font file into the repo.
-		// TODO: And maybe use the WOFF2 version (if it's supported) for its smaller, compressed file size.
-		let font = Font::new("Source Sans Pro".to_string(), "Regular".to_string());
-		let mut text_context = GLOBAL_TEXT_CONTEXT.lock().expect("Failed to lock global text context");
-		let bounds = text_context.bounding_box(text, &font, &GLOBAL_FONT_CACHE, typesetting, false);
-		bounds.x
 	}
 
 	fn text(&mut self, text: &str, font_color: &str, background_color: Option<&str>, transform: DAffine2, padding: f64, pivot: [Pivot; 2]) {

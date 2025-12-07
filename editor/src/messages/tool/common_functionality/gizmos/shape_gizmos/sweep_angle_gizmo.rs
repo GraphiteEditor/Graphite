@@ -1,5 +1,6 @@
 use crate::consts::{ARC_SNAP_THRESHOLD, GIZMO_HIDE_THRESHOLD};
 use crate::messages::message::Message;
+use crate::messages::portfolio::document::overlays::utility_functions::text_width;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
@@ -176,7 +177,11 @@ impl SweepAngleGizmo {
 			.to_degrees();
 
 		let text = format!("{}°", format_rounded(display_angle, 2));
-		let text_texture_width = overlay_context.get_width(&text) / 2.;
+		const FONT_SIZE: f64 = 12.;
+
+		let text_width = text_width(&text, FONT_SIZE);
+
+		let text_texture_width = text_width / 2.;
 
 		let transform = calculate_arc_text_transform(angle, offset_angle, center, text_texture_width);
 
