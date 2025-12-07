@@ -9,6 +9,7 @@ use crate::consts::{EXPORTS_TO_RIGHT_EDGE_PIXEL_GAP, EXPORTS_TO_TOP_EDGE_PIXEL_G
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DocumentNodeDefinition, resolve_document_node_type};
 use crate::messages::portfolio::document::node_graph::utility_types::{Direction, FrontendClickTargets, FrontendGraphDataType, FrontendGraphInput, FrontendGraphOutput};
+use crate::messages::portfolio::document::overlays::utility_functions::text_width;
 use crate::messages::portfolio::document::utility_types::network_interface::resolved_types::ResolvedDocumentNodeTypes;
 use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle, WirePath, WirePathUpdate, build_vector_wire};
 use crate::messages::tool::common_functionality::graph_modification_utils;
@@ -1052,7 +1053,11 @@ impl NodeNetworkInterface {
 			log::error!("Could not get downstream_connectors in primary_output_connected_to_layer");
 			return false;
 		};
-		let downstream_nodes = downstream_connectors.iter().filter_map(|connector| connector.node_id()).collect::<Vec<_>>();
+
+		let downstream_nodes = downstream_connectors
+			.iter()
+			.filter_map(|connector| connector.node_id().filter(|_| connector.input_index() == 0))
+			.collect::<Vec<_>>();
 		downstream_nodes.iter().any(|node_id| self.is_layer(node_id, network_path))
 	}
 
@@ -1312,57 +1317,6 @@ impl NodeNetworkInterface {
 	pub fn is_node_upstream_of_another_by_horizontal_flow(&self, node: NodeId, network_path: &[NodeId], potentially_upstream_node: NodeId) -> bool {
 		self.upstream_flow_back_from_nodes(vec![node], network_path, FlowType::HorizontalFlow)
 			.any(|id| id == potentially_upstream_node)
-	}
-
-	#[cfg(not(target_family = "wasm"))]
-	fn text_width(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<f64> {
-		warn!("Failed to find width of {node_id:#?} in network_path {network_path:?} due to non-wasm arch");
-		Some(0.)
-	}
-
-	#[cfg(target_family = "wasm")]
-	fn text_width(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<f64> {
-		let document = web_sys::window().unwrap().document().unwrap();
-		let div = match document.create_element("div") {
-			Ok(div) => div,
-			Err(err) => {
-				log::error!("Error creating div: {:?}", err);
-				return None;
-			}
-		};
-
-		// Set the div's style to make it offscreen and single line
-		match div.set_attribute("style", "position: absolute; top: -9999px; left: -9999px; white-space: nowrap;") {
-			Err(err) => {
-				log::error!("Error setting attribute: {:?}", err);
-				return None;
-			}
-			_ => {}
-		};
-
-		let name = self.display_name(node_id, network_path);
-
-		div.set_text_content(Some(&name));
-
-		// Append the div to the document body
-		match document.body().unwrap().append_child(&div) {
-			Err(err) => {
-				log::error!("Error setting adding child to document {:?}", err);
-				return None;
-			}
-			_ => {}
-		};
-
-		// Measure the width
-		let text_width = div.get_bounding_client_rect().width();
-
-		// Remove the div from the document
-		match document.body().unwrap().remove_child(&div) {
-			Err(_) => log::error!("Could not remove child when rendering text"),
-			_ => {}
-		};
-
-		Some(text_width)
 	}
 
 	pub fn from_old_network(old_network: OldNodeNetwork) -> Self {
@@ -2121,19 +2075,19 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn load_layer_width(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
+		const GAP_WIDTH: f64 = 8.;
+		const FONT_SIZE: f64 = 14.;
 		let left_thumbnail_padding = GRID_SIZE as f64 / 2.;
 		let thumbnail_width = 3. * GRID_SIZE as f64;
-		let gap_width = 8.;
-		let text_width = self.text_width(node_id, network_path).unwrap_or_else(|| {
-			log::error!("Could not get text width for node {node_id}");
-			0.
-		});
+		let layer_text = self.display_name(node_id, network_path);
+
+		let text_width = text_width(&layer_text, FONT_SIZE);
 
 		let grip_padding = 4.;
 		let grip_width = 8.;
 		let icon_overhang_width = GRID_SIZE as f64 / 2.;
 
-		let layer_width_pixels = left_thumbnail_padding + thumbnail_width + gap_width + text_width + grip_padding + grip_width + icon_overhang_width;
+		let layer_width_pixels = left_thumbnail_padding + thumbnail_width + GAP_WIDTH + text_width + grip_padding + grip_width + icon_overhang_width;
 		let layer_width = ((layer_width_pixels / 24.).ceil() as u32).max(8);
 
 		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {

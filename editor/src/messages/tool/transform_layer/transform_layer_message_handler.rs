@@ -1,5 +1,6 @@
 use crate::consts::{ANGLE_MEASURE_RADIUS_FACTOR, ARC_MEASURE_RADIUS_FACTOR_RANGE, COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GRAY, SLOWING_DIVISOR};
 use crate::messages::input_mapper::utility_types::input_mouse::{DocumentPosition, ViewportPosition};
+use crate::messages::portfolio::document::overlays::utility_functions::text_width;
 use crate::messages::portfolio::document::overlays::utility_types::{OverlayProvider, Pivot};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::PTZ;
@@ -288,7 +289,9 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 							angle_in_degrees
 						};
 						let text = format!("{}°", format_rounded(display_angle, 2));
-						let text_texture_width = overlay_context.get_width(&text) / 2.;
+						const FONT_SIZE: f64 = 12.;
+
+						let text_texture_width = text_width(&text, FONT_SIZE) / 2.;
 						let text_texture_height = 12.;
 						let text_angle_on_unit_circle = DVec2::from_angle((angle % TAU) / 2. + offset_angle);
 						let text_texture_position = DVec2::new(

@@ -1,6 +1,5 @@
 use super::node_graph::document_node_definitions;
 use super::node_graph::utility_types::Transform;
-use super::overlays::utility_types::Pivot;
 use super::utility_types::error::EditorError;
 use super::utility_types::misc::{GroupFolderType, SNAP_FUNCTIONS_FOR_BOUNDING_BOXES, SNAP_FUNCTIONS_FOR_PATHS, SnappingOptions, SnappingState};
 use super::utility_types::network_interface::{self, NodeNetworkInterface, TransactionStatus};
@@ -14,7 +13,7 @@ use crate::messages::portfolio::document::graph_operation::utility_types::Transf
 use crate::messages::portfolio::document::node_graph::NodeGraphMessageContext;
 use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
 use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay, overlay_options};
-use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType, OverlaysVisibilitySettings};
+use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType, OverlaysVisibilitySettings, Pivot};
 use crate::messages::portfolio::document::properties_panel::properties_panel_message_handler::PropertiesPanelMessageContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, PTZ};

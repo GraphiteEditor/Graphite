@@ -6,9 +6,11 @@ use crate::messages::tool::common_functionality::shape_editor::{SelectedLayerSta
 use crate::messages::tool::tool_messages::tool_prelude::{DocumentMessageHandler, PreferencesMessageHandler};
 use glam::{DAffine2, DVec2};
 use graphene_std::subpath::{Bezier, BezierHandles};
+use graphene_std::text::{Font, FontCache, TextAlign, TextContext, TypesettingConfig};
 use graphene_std::vector::misc::ManipulatorPointId;
 use graphene_std::vector::{PointId, SegmentId, Vector};
 use std::collections::HashMap;
+use std::sync::{LazyLock, Mutex};
 use wasm_bindgen::JsCast;
 
 pub fn overlay_canvas_element() -> Option<web_sys::HtmlCanvasElement> {
@@ -217,4 +219,36 @@ pub fn path_endpoint_overlays(document: &DocumentMessageHandler, shape_editor: &
 			overlay_context.manipulator_anchor(position, is_selected(selected, ManipulatorPointId::Anchor(point)), None);
 		}
 	}
+}
+
+// Global lazy initialized font cache and text context
+pub static GLOBAL_FONT_CACHE: LazyLock<FontCache> = LazyLock::new(|| {
+	let mut font_cache = FontCache::default();
+	// Initialize with the hardcoded font used by overlay text
+	const FONT_DATA: &[u8] = include_bytes!("source-sans-pro-regular.ttf");
+	let font = Font::new("Source Sans Pro".to_string(), "Regular".to_string());
+	font_cache.insert(font, String::new(), FONT_DATA.to_vec());
+	font_cache
+});
+
+pub static GLOBAL_TEXT_CONTEXT: LazyLock<Mutex<TextContext>> = LazyLock::new(|| Mutex::new(TextContext::default()));
+
+pub fn text_width(text: &str, font_size: f64) -> f64 {
+	let typesetting = TypesettingConfig {
+		font_size,
+		line_height_ratio: 1.2,
+		character_spacing: 0.0,
+		max_width: None,
+		max_height: None,
+		tilt: 0.0,
+		align: TextAlign::Left,
+	};
+
+	// Load Source Sans Pro font data
+	// TODO: Grab this from the node_modules folder (either with `include_bytes!` or ideally at runtime) instead of checking the font file into the repo.
+	// TODO: And maybe use the WOFF2 version (if it's supported) for its smaller, compressed file size.
+	let font = Font::new("Source Sans Pro".to_string(), "Regular".to_string());
+	let mut text_context = GLOBAL_TEXT_CONTEXT.lock().expect("Failed to lock global text context");
+	let bounds = text_context.bounding_box(text, &font, &GLOBAL_FONT_CACHE, typesetting, false);
+	bounds.x
 }
