@@ -2704,15 +2704,23 @@ impl NodeNetworkInterface {
 			log::error!("Could not get nested network_metadata in collect_frontend_click_targets");
 			return FrontendClickTargets::default();
 		};
-		network_metadata.persistent_metadata.node_metadata.keys().copied().collect::<Vec<_>>().into_iter().for_each(|node_id| {
-			if let (Some(import_export_click_targets), Some(node_click_targets)) = (self.import_export_ports(network_path).cloned(), self.node_click_targets(&node_id, network_path)) {
+		let nodes = network_metadata.persistent_metadata.node_metadata.keys().copied().collect::<Vec<_>>();
+		if let Some(import_export_click_targets) = self.import_export_ports(network_path).cloned() {
+			for port in import_export_click_targets.click_targets() {
+				if let ClickTargetType::Subpath(subpath) = port.target_type() {
+					connector_click_targets.push(subpath.to_bezpath().to_svg());
+				}
+			}
+		}
+		nodes.into_iter().for_each(|node_id| {
+			if let Some(node_click_targets) = self.node_click_targets(&node_id, network_path) {
 				let mut node_path = String::new();
 
 				if let ClickTargetType::Subpath(subpath) = node_click_targets.node_click_target.target_type() {
 					node_path.push_str(subpath.to_bezpath().to_svg().as_str())
 				}
 				all_node_click_targets.push((node_id, node_path));
-				for port in node_click_targets.port_click_targets.click_targets().chain(import_export_click_targets.click_targets()) {
+				for port in node_click_targets.port_click_targets.click_targets() {
 					if let ClickTargetType::Subpath(subpath) = port.target_type() {
 						connector_click_targets.push(subpath.to_bezpath().to_svg());
 					}
@@ -2879,19 +2887,18 @@ impl NodeNetworkInterface {
 			.collect::<Vec<_>>()
 			.iter()
 			.filter_map(|node_id| {
-				self.node_click_targets(node_id, network_path)
-					.and_then(|transient_node_metadata| {
-						transient_node_metadata
-							.port_click_targets
-							.clicked_input_port_from_point(point)
-							.map(|port| InputConnector::node(*node_id, port))
-					})
-					.or_else(|| {
-						self.import_export_ports(network_path)
-							.and_then(|import_export_ports| import_export_ports.clicked_input_port_from_point(point).map(InputConnector::Export))
-					})
+				self.node_click_targets(node_id, network_path).and_then(|transient_node_metadata| {
+					transient_node_metadata
+						.port_click_targets
+						.clicked_input_port_from_point(point)
+						.map(|port| InputConnector::node(*node_id, port))
+				})
 			})
 			.next()
+			.or_else(|| {
+				self.import_export_ports(network_path)
+					.and_then(|import_export_ports| import_export_ports.clicked_input_port_from_point(point).map(InputConnector::Export))
+			})
 	}
 
 	pub fn output_connector_from_click(&mut self, click: DVec2, network_path: &[NodeId]) -> Option<OutputConnector> {
@@ -2909,19 +2916,18 @@ impl NodeNetworkInterface {
 		nodes
 			.iter()
 			.filter_map(|node_id| {
-				self.node_click_targets(node_id, network_path)
-					.and_then(|transient_node_metadata| {
-						transient_node_metadata
-							.port_click_targets
-							.clicked_output_port_from_point(point)
-							.map(|output_index| OutputConnector::node(*node_id, output_index))
-					})
-					.or_else(|| {
-						self.import_export_ports(network_path)
-							.and_then(|import_export_ports| import_export_ports.clicked_output_port_from_point(point).map(OutputConnector::Import))
-					})
+				self.node_click_targets(node_id, network_path).and_then(|transient_node_metadata| {
+					transient_node_metadata
+						.port_click_targets
+						.clicked_output_port_from_point(point)
+						.map(|output_index| OutputConnector::node(*node_id, output_index))
+				})
 			})
 			.next()
+			.or_else(|| {
+				self.import_export_ports(network_path)
+					.and_then(|import_export_ports| import_export_ports.clicked_output_port_from_point(point).map(OutputConnector::Import))
+			})
 	}
 
 	pub fn input_position(&mut self, input_connector: &InputConnector, network_path: &[NodeId]) -> Option<DVec2> {

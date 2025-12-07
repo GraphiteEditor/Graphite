@@ -203,8 +203,30 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}
 			NodeGraphMessage::CreateWire { output_connector, input_connector } => {
 				// TODO: Add support for flattening NodeInput::Import exports in flatten_with_fns https://github.com/GraphiteEditor/Graphite/issues/1762
-				if matches!(input_connector, InputConnector::Export(_)) && matches!(output_connector, OutputConnector::Import { .. }) {
-					// We return early for now until this case becomes supported, then we can remove this
+				if let (InputConnector::Export(_), OutputConnector::Import(_)) = (input_connector, output_connector) {
+					let mid_point = (network_interface.get_output_center(&output_connector, breadcrumb_network_path).unwrap()
+						+ network_interface.get_input_center(&input_connector, breadcrumb_network_path).unwrap())
+						/ 2.;
+					let node_template = Box::new(document_node_definitions::resolve_document_node_type("Passthrough").unwrap().default_node_template());
+
+					let node_id = NodeId::new();
+					responses.add(NodeGraphMessage::InsertNode { node_id, node_template });
+					responses.add(NodeGraphMessage::ShiftNodePosition {
+						node_id,
+						x: (mid_point.x / 24.) as i32,
+						y: (mid_point.y / 24.) as i32,
+					});
+					let node_input_connector = InputConnector::node(node_id, 0);
+					let node_output_connector = OutputConnector::node(node_id, 0);
+					responses.add(NodeGraphMessage::CreateWire {
+						output_connector,
+						input_connector: node_input_connector,
+					});
+					responses.add(NodeGraphMessage::CreateWire {
+						output_connector: node_output_connector,
+						input_connector,
+					});
+
 					return;
 				}
 				network_interface.create_wire(&output_connector, &input_connector, selection_network_path);
@@ -745,7 +767,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				let clicked_input = network_interface.input_connector_from_click(click, selection_network_path);
 				let clicked_output = network_interface.output_connector_from_click(click, selection_network_path);
 				let network_metadata = network_interface.network_metadata(selection_network_path).unwrap();
-
 				// Create the add node popup on right click, then exit
 				if right_click {
 					// Abort dragging a node
