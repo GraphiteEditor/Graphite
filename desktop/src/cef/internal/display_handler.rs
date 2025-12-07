@@ -1,6 +1,6 @@
 use cef::rc::{Rc, RcImpl};
 use cef::sys::{_cef_display_handler_t, cef_base_ref_counted_t, cef_cursor_type_t::*, cef_log_severity_t::*};
-use cef::{CefString, ImplDisplayHandler, WrapDisplayHandler};
+use cef::{CefString, ImplDisplayHandler, Point, Size, WrapDisplayHandler};
 use winit::cursor::CursorIcon;
 
 use crate::cef::CefEventHandler;
@@ -25,7 +25,21 @@ type CefCursorHandle = cef::CursorHandle;
 type CefCursorHandle = *mut u8;
 
 impl<H: CefEventHandler> ImplDisplayHandler for DisplayHandlerImpl<H> {
-	fn on_cursor_change(&self, _browser: Option<&mut cef::Browser>, _cursor: CefCursorHandle, cursor_type: cef::CursorType, _custom_cursor_info: Option<&cef::CursorInfo>) -> std::ffi::c_int {
+	fn on_cursor_change(&self, _browser: Option<&mut cef::Browser>, _cursor: CefCursorHandle, cursor_type: cef::CursorType, custom_cursor_info: Option<&cef::CursorInfo>) -> std::ffi::c_int {
+		if let Some(custom_cursor_info) = custom_cursor_info {
+			let Size { width, height } = custom_cursor_info.size;
+			let Point { x: hotspot_x, y: hotspot_y } = custom_cursor_info.hotspot;
+			let buffer_size = (width * height * 4) as usize;
+			let buffer_ptr = custom_cursor_info.buffer as *const u8;
+
+			if !buffer_ptr.is_null() && buffer_ptr.align_offset(std::mem::align_of::<u8>()) == 0 {
+				let buffer = unsafe { std::slice::from_raw_parts(buffer_ptr, buffer_size) }.to_vec();
+				let cursor = winit::cursor::CustomCursorSource::from_rgba(buffer, width as u16, height as u16, hotspot_x as u16, hotspot_y as u16).unwrap();
+				self.event_handler.cursor_change(cursor.into());
+				return 1; // We handled the cursor change.
+			}
+		}
+
 		let cursor = match cursor_type.into() {
 			CT_POINTER => CursorIcon::Default,
 			CT_CROSS => CursorIcon::Crosshair,
@@ -72,7 +86,6 @@ impl<H: CefEventHandler> ImplDisplayHandler for DisplayHandlerImpl<H> {
 			CT_GRABBING => CursorIcon::Grabbing,
 			CT_MIDDLE_PANNING_VERTICAL => CursorIcon::AllScroll,
 			CT_MIDDLE_PANNING_HORIZONTAL => CursorIcon::AllScroll,
-			CT_CUSTOM => CursorIcon::Default,
 			CT_DND_NONE => CursorIcon::Default,
 			CT_DND_MOVE => CursorIcon::Move,
 			CT_DND_COPY => CursorIcon::Copy,
