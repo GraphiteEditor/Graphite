@@ -7,9 +7,6 @@ use crate::common::*;
 
 const APP_ID: &str = "art.graphite.Graphite";
 
-const PACKAGE: &str = "graphite-desktop-platform-mac";
-const HELPER_BIN: &str = "graphite-desktop-platform-mac-helper";
-
 const ICONS_FILE_NAME: &str = "graphite.icns";
 
 const EXEC_PATH: &str = "Contents/MacOS";
@@ -18,8 +15,8 @@ const RESOURCES_PATH: &str = "Contents/Resources";
 const CEF_FRAMEWORK: &str = "Chromium Embedded Framework.framework";
 
 pub fn main() -> Result<(), Box<dyn Error>> {
-	let app_bin = build_bin(PACKAGE, None)?;
-	let helper_bin = build_bin(PACKAGE, Some(HELPER_BIN))?;
+	let app_bin = build_bin("graphite-desktop-platform-mac", None)?;
+	let helper_bin = build_bin("graphite-desktop-platform-mac", Some("helper"))?;
 
 	let profile_path = profile_path();
 	let app_dir = bundle(&profile_path, &app_bin, &helper_bin);
