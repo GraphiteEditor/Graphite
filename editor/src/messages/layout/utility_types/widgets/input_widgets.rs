@@ -26,7 +26,6 @@ pub struct CheckboxInput {
 	pub tooltip_shortcut: Option<ActionShortcut>,
 
 	#[serde(rename = "forLabel")]
-	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub for_label: CheckboxId,
 
 	// Callbacks
@@ -55,8 +54,8 @@ impl Default for CheckboxInput {
 	}
 }
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct CheckboxId(u64);
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct CheckboxId(pub u64);
 
 impl CheckboxId {
 	pub fn new() -> Self {

@@ -78,7 +78,6 @@ pub struct TextLabel {
 	pub tooltip_shortcut: Option<ActionShortcut>,
 
 	#[serde(rename = "forCheckbox")]
-	#[derivative(PartialEq = "ignore")]
 	pub for_checkbox: CheckboxId,
 
 	// Body

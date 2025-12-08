@@ -4,6 +4,9 @@ use super::widgets::label_widgets::*;
 use crate::application::generate_uuid;
 use crate::messages::input_mapper::utility_types::input_keyboard::KeysGroup;
 use crate::messages::prelude::*;
+use std::collections::HashMap;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 #[repr(transparent)]
@@ -111,6 +114,43 @@ pub trait Diffable: Clone + PartialEq {
 
 	/// Computes the diff between self (old) and new, updating self and recording changes.
 	fn diff(&mut self, new: Self, widget_path: &mut Vec<usize>, widget_diffs: &mut Vec<WidgetDiff>);
+
+	/// Collects all CheckboxIds currently in use in this layout, computing stable replacements.
+	fn collect_checkbox_ids(&self, layout_target: LayoutTarget, widget_path: &mut Vec<usize>, checkbox_map: &mut HashMap<CheckboxId, CheckboxId>);
+
+	/// Replaces all widget IDs with deterministic IDs based on position and type.
+	/// Also replaces CheckboxIds using the provided mapping.
+	fn replace_widget_ids(&mut self, layout_target: LayoutTarget, widget_path: &mut Vec<usize>, checkbox_map: &HashMap<CheckboxId, CheckboxId>);
+}
+
+/// Computes a deterministic WidgetId based on layout target, path, and widget type.
+fn compute_widget_id(layout_target: LayoutTarget, widget_path: &[usize], widget: &Widget) -> WidgetId {
+	let mut hasher = DefaultHasher::new();
+
+	// Hash the layout target
+	(layout_target as u8).hash(&mut hasher);
+
+	// Hash the widget path
+	widget_path.hash(&mut hasher);
+
+	// Hash the widget type discriminant
+	std::mem::discriminant(widget).hash(&mut hasher);
+
+	WidgetId(hasher.finish())
+}
+
+/// Computes a deterministic CheckboxId based on the same WidgetId algorithm.
+fn compute_checkbox_id(layout_target: LayoutTarget, widget_path: &[usize], widget: &Widget) -> CheckboxId {
+	let mut hasher = DefaultHasher::new();
+
+	(layout_target as u8).hash(&mut hasher);
+	widget_path.hash(&mut hasher);
+	std::mem::discriminant(widget).hash(&mut hasher);
+
+	// Add extra salt for checkbox to differentiate from widget ID
+	"checkbox".hash(&mut hasher);
+
+	CheckboxId(hasher.finish())
 }
 
 /// Contains an arrangement of widgets mounted somewhere specific in the frontend.
@@ -156,6 +196,22 @@ impl Diffable for Layout {
 		for (index, (current_child, new_child)) in self.0.iter_mut().zip(new.0).enumerate() {
 			widget_path.push(index);
 			current_child.diff(new_child, widget_path, widget_diffs);
+			widget_path.pop();
+		}
+	}
+
+	fn collect_checkbox_ids(&self, layout_target: LayoutTarget, widget_path: &mut Vec<usize>, checkbox_map: &mut HashMap<CheckboxId, CheckboxId>) {
+		for (index, child) in self.0.iter().enumerate() {
+			widget_path.push(index);
+			child.collect_checkbox_ids(layout_target, widget_path, checkbox_map);
+			widget_path.pop();
+		}
+	}
+
+	fn replace_widget_ids(&mut self, layout_target: LayoutTarget, widget_path: &mut Vec<usize>, checkbox_map: &HashMap<CheckboxId, CheckboxId>) {
+		for (index, child) in self.0.iter_mut().enumerate() {
+			widget_path.push(index);
+			child.replace_widget_ids(layout_target, widget_path, checkbox_map);
 			widget_path.pop();
 		}
 	}
@@ -474,6 +530,58 @@ impl Diffable for LayoutGroup {
 			}
 		}
 	}
+
+	fn collect_checkbox_ids(&self, layout_target: LayoutTarget, widget_path: &mut Vec<usize>, checkbox_map: &mut HashMap<CheckboxId, CheckboxId>) {
+		match self {
+			Self::Column { widgets } | Self::Row { widgets } => {
+				for (index, widget) in widgets.iter().enumerate() {
+					widget_path.push(index);
+					widget.collect_checkbox_ids(layout_target, widget_path, checkbox_map);
+					widget_path.pop();
+				}
+			}
+			Self::Table { rows, .. } => {
+				for (row_idx, row) in rows.iter().enumerate() {
+					for (col_idx, widget) in row.iter().enumerate() {
+						widget_path.push(row_idx);
+						widget_path.push(col_idx);
+						widget.collect_checkbox_ids(layout_target, widget_path, checkbox_map);
+						widget_path.pop();
+						widget_path.pop();
+					}
+				}
+			}
+			Self::Section { layout, .. } => {
+				layout.collect_checkbox_ids(layout_target, widget_path, checkbox_map);
+			}
+		}
+	}
+
+	fn replace_widget_ids(&mut self, layout_target: LayoutTarget, widget_path: &mut Vec<usize>, checkbox_map: &HashMap<CheckboxId, CheckboxId>) {
+		match self {
+			Self::Column { widgets } | Self::Row { widgets } => {
+				for (index, widget) in widgets.iter_mut().enumerate() {
+					widget_path.push(index);
+					widget.replace_widget_ids(layout_target, widget_path, checkbox_map);
+					widget_path.pop();
+				}
+			}
+			Self::Table { rows, .. } => {
+				for (row_idx, row) in rows.iter_mut().enumerate() {
+					for (col_idx, widget) in row.iter_mut().enumerate() {
+						widget_path.push(row_idx);
+						widget_path.push(col_idx);
+						widget.replace_widget_ids(layout_target, widget_path, checkbox_map);
+						widget_path.pop();
+						widget_path.pop();
+					}
+				}
+			}
+			Self::Section { layout, .. } => {
+				layout.replace_widget_ids(layout_target, widget_path, checkbox_map);
+			}
+		}
+	}
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -485,7 +593,7 @@ pub struct WidgetInstance {
 
 impl PartialEq for WidgetInstance {
 	fn eq(&self, other: &Self) -> bool {
-		self.widget == other.widget
+		self.widget_id == other.widget_id && self.widget == other.widget
 	}
 }
 
@@ -535,6 +643,62 @@ impl Diffable for WidgetInstance {
 		} else {
 			// Required to update the callback function, which the PartialEq check above skips
 			self.widget = new.widget;
+		}
+	}
+
+	fn collect_checkbox_ids(&self, layout_target: LayoutTarget, widget_path: &mut Vec<usize>, checkbox_map: &mut HashMap<CheckboxId, CheckboxId>) {
+		match &self.widget {
+			Widget::CheckboxInput(checkbox) => {
+				// Compute stable ID based on position and insert mapping
+				let checkbox_id = checkbox.for_label;
+				let stable_id = compute_checkbox_id(layout_target, widget_path, &self.widget);
+				checkbox_map.entry(checkbox_id).or_insert(stable_id);
+			}
+			Widget::TextLabel(label) => {
+				// Compute stable ID based on position and insert mapping
+				let checkbox_id = label.for_checkbox;
+				let stable_id = compute_checkbox_id(layout_target, widget_path, &self.widget);
+				checkbox_map.entry(checkbox_id).or_insert(stable_id);
+			}
+			Widget::PopoverButton(button) => {
+				// Recursively collect from nested popover layout
+				for (index, child) in button.popover_layout.0.iter().enumerate() {
+					widget_path.push(index);
+					child.collect_checkbox_ids(layout_target, widget_path, checkbox_map);
+					widget_path.pop();
+				}
+			}
+			_ => {}
+		}
+	}
+
+	fn replace_widget_ids(&mut self, layout_target: LayoutTarget, widget_path: &mut Vec<usize>, checkbox_map: &HashMap<CheckboxId, CheckboxId>) {
+		// 1. Generate deterministic WidgetId
+		self.widget_id = compute_widget_id(layout_target, widget_path, &self.widget);
+
+		// 2. Replace CheckboxIds if present
+		match &mut self.widget {
+			Widget::CheckboxInput(checkbox) => {
+				let old_id = checkbox.for_label;
+				if let Some(&new_id) = checkbox_map.get(&old_id) {
+					checkbox.for_label = new_id;
+				}
+			}
+			Widget::TextLabel(label) => {
+				let old_id = label.for_checkbox;
+				if let Some(&new_id) = checkbox_map.get(&old_id) {
+					label.for_checkbox = new_id;
+				}
+			}
+			Widget::PopoverButton(button) => {
+				// Recursively replace in nested popover layout
+				for (index, child) in button.popover_layout.0.iter_mut().enumerate() {
+					widget_path.push(index);
+					child.replace_widget_ids(layout_target, widget_path, checkbox_map);
+					widget_path.pop();
+				}
+			}
+			_ => {}
 		}
 	}
 }
