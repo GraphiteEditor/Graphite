@@ -4,6 +4,9 @@ use super::widgets::label_widgets::*;
 use crate::application::generate_uuid;
 use crate::messages::input_mapper::utility_types::input_keyboard::KeysGroup;
 use crate::messages::prelude::*;
+use std::collections::HashMap;
+use std::collections::hash_map::DefaultHasher;
+use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 #[repr(transparent)]
@@ -101,6 +104,50 @@ pub trait DialogLayoutHolder: LayoutHolder {
 	}
 }
 
+/// Trait for types that can compute incremental diffs for UI updates.
+///
+/// This trait unifies the diffing behavior across Layout, LayoutGroup, and WidgetInstance,
+/// allowing each type to specify how it should be represented in a DiffUpdate.
+pub trait Diffable: Clone + PartialEq {
+	/// Converts this value into a DiffUpdate variant.
+	fn into_diff_update(self) -> DiffUpdate;
+
+	/// Computes the diff between self (old) and new, updating self and recording changes.
+	fn diff(&mut self, new: Self, widget_path: &mut Vec<usize>, widget_diffs: &mut Vec<WidgetDiff>);
+
+	/// Collects all CheckboxIds currently in use in this layout, computing stable replacements.
+	fn collect_checkbox_ids(&self, layout_target: LayoutTarget, widget_path: &mut Vec<usize>, checkbox_map: &mut HashMap<CheckboxId, CheckboxId>);
+
+	/// Replaces all widget IDs with deterministic IDs based on position and type.
+	/// Also replaces CheckboxIds using the provided mapping.
+	fn replace_widget_ids(&mut self, layout_target: LayoutTarget, widget_path: &mut Vec<usize>, checkbox_map: &HashMap<CheckboxId, CheckboxId>);
+}
+
+/// Computes a deterministic WidgetId based on layout target, path, and widget type.
+fn compute_widget_id(layout_target: LayoutTarget, widget_path: &[usize], widget: &Widget) -> WidgetId {
+	let mut hasher = DefaultHasher::new();
+
+	(layout_target as u8).hash(&mut hasher);
+	widget_path.hash(&mut hasher);
+	std::mem::discriminant(widget).hash(&mut hasher);
+
+	WidgetId(hasher.finish())
+}
+
+/// Computes a deterministic CheckboxId based on the same WidgetId algorithm.
+fn compute_checkbox_id(layout_target: LayoutTarget, widget_path: &[usize], widget: &Widget) -> CheckboxId {
+	let mut hasher = DefaultHasher::new();
+
+	(layout_target as u8).hash(&mut hasher);
+	widget_path.hash(&mut hasher);
+	std::mem::discriminant(widget).hash(&mut hasher);
+
+	// Add extra salt for checkbox to differentiate from widget ID
+	"checkbox".hash(&mut hasher);
+
+	CheckboxId(hasher.finish())
+}
+
 /// Contains an arrangement of widgets mounted somewhere specific in the frontend.
 #[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize, PartialEq, specta::Type)]
 pub struct Layout(pub Vec<LayoutGroup>);
@@ -119,9 +166,14 @@ impl Layout {
 			..Default::default()
 		}
 	}
+}
 
-	/// Diffing updates self (where self is old) based on new, updating the list of modifications as it does so.
-	pub fn diff(&mut self, new: Self, widget_path: &mut Vec<usize>, widget_diffs: &mut Vec<WidgetDiff>) {
+impl Diffable for Layout {
+	fn into_diff_update(self) -> DiffUpdate {
+		DiffUpdate::Layout(self)
+	}
+
+	fn diff(&mut self, new: Self, widget_path: &mut Vec<usize>, widget_diffs: &mut Vec<WidgetDiff>) {
 		// Check if the length of items is different
 		// TODO: Diff insersion and deletion of items
 		if self.0.len() != new.0.len() {
@@ -129,10 +181,9 @@ impl Layout {
 			self.0.clone_from(&new.0);
 
 			// Push an update sublayout to the diff
-			let new = DiffUpdate::Layout(new);
 			widget_diffs.push(WidgetDiff {
 				widget_path: widget_path.to_vec(),
-				new_value: new,
+				new_value: new.into_diff_update(),
 			});
 			return;
 		}
@@ -140,6 +191,22 @@ impl Layout {
 		for (index, (current_child, new_child)) in self.0.iter_mut().zip(new.0).enumerate() {
 			widget_path.push(index);
 			current_child.diff(new_child, widget_path, widget_diffs);
+			widget_path.pop();
+		}
+	}
+
+	fn collect_checkbox_ids(&self, layout_target: LayoutTarget, widget_path: &mut Vec<usize>, checkbox_map: &mut HashMap<CheckboxId, CheckboxId>) {
+		for (index, child) in self.0.iter().enumerate() {
+			widget_path.push(index);
+			child.collect_checkbox_ids(layout_target, widget_path, checkbox_map);
+			widget_path.pop();
+		}
+	}
+
+	fn replace_widget_ids(&mut self, layout_target: LayoutTarget, widget_path: &mut Vec<usize>, checkbox_map: &HashMap<CheckboxId, CheckboxId>) {
+		for (index, child) in self.0.iter_mut().enumerate() {
+			widget_path.push(index);
+			child.replace_widget_ids(layout_target, widget_path, checkbox_map);
 			widget_path.pop();
 		}
 	}
@@ -358,8 +425,20 @@ impl LayoutGroup {
 		if is_col { Self::Column { widgets } } else { Self::Row { widgets } }
 	}
 
-	/// Diffing updates self (where self is old) based on new, updating the list of modifications as it does so.
-	pub fn diff(&mut self, new: Self, widget_path: &mut Vec<usize>, widget_diffs: &mut Vec<WidgetDiff>) {
+	pub fn iter_mut(&mut self) -> WidgetIterMut<'_> {
+		WidgetIterMut {
+			stack: vec![self],
+			..Default::default()
+		}
+	}
+}
+
+impl Diffable for LayoutGroup {
+	fn into_diff_update(self) -> DiffUpdate {
+		DiffUpdate::LayoutGroup(self)
+	}
+
+	fn diff(&mut self, new: Self, widget_path: &mut Vec<usize>, widget_diffs: &mut Vec<WidgetDiff>) {
 		let is_column = matches!(new, Self::Column { .. });
 		match (self, new) {
 			(Self::Column { widgets: current_widgets }, Self::Column { widgets: new_widgets }) | (Self::Row { widgets: current_widgets }, Self::Row { widgets: new_widgets }) => {
@@ -370,7 +449,7 @@ impl LayoutGroup {
 					current_widgets.clone_from(&new_widgets);
 
 					// Push back a LayoutGroup update to the diff
-					let new_value = DiffUpdate::LayoutGroup(if is_column { Self::Column { widgets: new_widgets } } else { Self::Row { widgets: new_widgets } });
+					let new_value = (if is_column { Self::Column { widgets: new_widgets } } else { Self::Row { widgets: new_widgets } }).into_diff_update();
 					let widget_path = widget_path.to_vec();
 					widget_diffs.push(WidgetDiff { widget_path, new_value });
 					return;
@@ -418,14 +497,15 @@ impl LayoutGroup {
 					current_layout.clone_from(&new_layout);
 
 					// Push an update layout group to the diff
-					let new_value = DiffUpdate::LayoutGroup(Self::Section {
+					let new_value = Self::Section {
 						name: new_name,
 						description: new_description,
 						visible: new_visible,
 						pinned: new_pinned,
 						id: new_id,
 						layout: new_layout,
-					});
+					}
+					.into_diff_update();
 					let widget_path = widget_path.to_vec();
 					widget_diffs.push(WidgetDiff { widget_path, new_value });
 				}
@@ -440,17 +520,62 @@ impl LayoutGroup {
 			}
 			(current, new) => {
 				*current = new.clone();
-				let new_value = DiffUpdate::LayoutGroup(new);
+				let new_value = new.into_diff_update();
 				let widget_path = widget_path.to_vec();
 				widget_diffs.push(WidgetDiff { widget_path, new_value });
 			}
 		}
 	}
 
-	pub fn iter_mut(&mut self) -> WidgetIterMut<'_> {
-		WidgetIterMut {
-			stack: vec![self],
-			..Default::default()
+	fn collect_checkbox_ids(&self, layout_target: LayoutTarget, widget_path: &mut Vec<usize>, checkbox_map: &mut HashMap<CheckboxId, CheckboxId>) {
+		match self {
+			Self::Column { widgets } | Self::Row { widgets } => {
+				for (index, widget) in widgets.iter().enumerate() {
+					widget_path.push(index);
+					widget.collect_checkbox_ids(layout_target, widget_path, checkbox_map);
+					widget_path.pop();
+				}
+			}
+			Self::Table { rows, .. } => {
+				for (row_idx, row) in rows.iter().enumerate() {
+					for (col_idx, widget) in row.iter().enumerate() {
+						widget_path.push(row_idx);
+						widget_path.push(col_idx);
+						widget.collect_checkbox_ids(layout_target, widget_path, checkbox_map);
+						widget_path.pop();
+						widget_path.pop();
+					}
+				}
+			}
+			Self::Section { layout, .. } => {
+				layout.collect_checkbox_ids(layout_target, widget_path, checkbox_map);
+			}
+		}
+	}
+
+	fn replace_widget_ids(&mut self, layout_target: LayoutTarget, widget_path: &mut Vec<usize>, checkbox_map: &HashMap<CheckboxId, CheckboxId>) {
+		match self {
+			Self::Column { widgets } | Self::Row { widgets } => {
+				for (index, widget) in widgets.iter_mut().enumerate() {
+					widget_path.push(index);
+					widget.replace_widget_ids(layout_target, widget_path, checkbox_map);
+					widget_path.pop();
+				}
+			}
+			Self::Table { rows, .. } => {
+				for (row_idx, row) in rows.iter_mut().enumerate() {
+					for (col_idx, widget) in row.iter_mut().enumerate() {
+						widget_path.push(row_idx);
+						widget_path.push(col_idx);
+						widget.replace_widget_ids(layout_target, widget_path, checkbox_map);
+						widget_path.pop();
+						widget_path.pop();
+					}
+				}
+			}
+			Self::Section { layout, .. } => {
+				layout.replace_widget_ids(layout_target, widget_path, checkbox_map);
+			}
 		}
 	}
 }
@@ -464,7 +589,7 @@ pub struct WidgetInstance {
 
 impl PartialEq for WidgetInstance {
 	fn eq(&self, other: &Self) -> bool {
-		self.widget == other.widget
+		self.widget_id == other.widget_id && self.widget == other.widget
 	}
 }
 
@@ -476,40 +601,103 @@ impl WidgetInstance {
 			widget,
 		}
 	}
+}
 
-	/// Diffing updates self (where self is old) based on new, updating the list of modifications as it does so.
-	pub fn diff(&mut self, new: Self, widget_path: &mut [usize], widget_diffs: &mut Vec<WidgetDiff>) {
-		if let (Widget::PopoverButton(button1), Widget::PopoverButton(button2)) = (&mut self.widget, &new.widget)
-			&& button1.disabled == button2.disabled
-			&& button1.style == button2.style
-			&& button1.menu_direction == button2.menu_direction
-			&& button1.icon == button2.icon
-			&& button1.tooltip_label == button2.tooltip_label
-			&& button1.tooltip_description == button2.tooltip_description
-			&& button1.tooltip_shortcut == button2.tooltip_shortcut
-			&& button1.popover_min_width == button2.popover_min_width
-		{
-			let mut new_widget_path = widget_path.to_vec();
-			for (i, (a, b)) in button1.popover_layout.0.iter_mut().zip(button2.popover_layout.0.iter()).enumerate() {
-				new_widget_path.push(i);
-				a.diff(b.clone(), &mut new_widget_path, widget_diffs);
-				new_widget_path.pop();
-			}
+impl Diffable for WidgetInstance {
+	fn into_diff_update(self) -> DiffUpdate {
+		DiffUpdate::Widget(self)
+	}
+
+	fn diff(&mut self, new: Self, widget_path: &mut Vec<usize>, widget_diffs: &mut Vec<WidgetDiff>) {
+		if self == &new {
+			// Still need to update callbacks since PartialEq skips them
+			self.widget = new.widget;
 			return;
 		}
 
-		// If there have been changes to the actual widget (not just the id)
-		if self.widget != new.widget {
-			// We should update to the new widget value as well as a new widget id
-			*self = new.clone();
+		// Special handling for PopoverButton: recursively diff nested layout if only the layout changed
+		if let (Widget::PopoverButton(button1), Widget::PopoverButton(button2)) = (&mut self.widget, &new.widget) {
+			// Check if only the popover layout changed (all other fields are the same)
+			if self.widget_id == new.widget_id
+				&& button1.disabled == button2.disabled
+				&& button1.style == button2.style
+				&& button1.menu_direction == button2.menu_direction
+				&& button1.icon == button2.icon
+				&& button1.tooltip_label == button2.tooltip_label
+				&& button1.tooltip_description == button2.tooltip_description
+				&& button1.tooltip_shortcut == button2.tooltip_shortcut
+				&& button1.popover_min_width == button2.popover_min_width
+			{
+				// Only the popover layout differs, diff it recursively
+				for (i, (a, b)) in button1.popover_layout.0.iter_mut().zip(button2.popover_layout.0.iter()).enumerate() {
+					widget_path.push(i);
+					a.diff(b.clone(), widget_path, widget_diffs);
+					widget_path.pop();
+				}
+				return;
+			}
+		}
 
-			// Push a widget update to the diff
-			let new_value = DiffUpdate::Widget(new);
-			let widget_path = widget_path.to_vec();
-			widget_diffs.push(WidgetDiff { widget_path, new_value });
-		} else {
-			// Required to update the callback function, which the PartialEq check above skips
-			self.widget = new.widget;
+		// Widget or ID changed, send full update
+		*self = new.clone();
+		let new_value = new.into_diff_update();
+		let widget_path = widget_path.to_vec();
+		widget_diffs.push(WidgetDiff { widget_path, new_value });
+	}
+
+	fn collect_checkbox_ids(&self, layout_target: LayoutTarget, widget_path: &mut Vec<usize>, checkbox_map: &mut HashMap<CheckboxId, CheckboxId>) {
+		match &self.widget {
+			Widget::CheckboxInput(checkbox) => {
+				// Compute stable ID based on position and insert mapping
+				let checkbox_id = checkbox.for_label;
+				let stable_id = compute_checkbox_id(layout_target, widget_path, &self.widget);
+				checkbox_map.entry(checkbox_id).or_insert(stable_id);
+			}
+			Widget::TextLabel(label) => {
+				// Compute stable ID based on position and insert mapping
+				let checkbox_id = label.for_checkbox;
+				let stable_id = compute_checkbox_id(layout_target, widget_path, &self.widget);
+				checkbox_map.entry(checkbox_id).or_insert(stable_id);
+			}
+			Widget::PopoverButton(button) => {
+				// Recursively collect from nested popover layout
+				for (index, child) in button.popover_layout.0.iter().enumerate() {
+					widget_path.push(index);
+					child.collect_checkbox_ids(layout_target, widget_path, checkbox_map);
+					widget_path.pop();
+				}
+			}
+			_ => {}
+		}
+	}
+
+	fn replace_widget_ids(&mut self, layout_target: LayoutTarget, widget_path: &mut Vec<usize>, checkbox_map: &HashMap<CheckboxId, CheckboxId>) {
+		// 1. Generate deterministic WidgetId
+		self.widget_id = compute_widget_id(layout_target, widget_path, &self.widget);
+
+		// 2. Replace CheckboxIds if present
+		match &mut self.widget {
+			Widget::CheckboxInput(checkbox) => {
+				let old_id = checkbox.for_label;
+				if let Some(&new_id) = checkbox_map.get(&old_id) {
+					checkbox.for_label = new_id;
+				}
+			}
+			Widget::TextLabel(label) => {
+				let old_id = label.for_checkbox;
+				if let Some(&new_id) = checkbox_map.get(&old_id) {
+					label.for_checkbox = new_id;
+				}
+			}
+			Widget::PopoverButton(button) => {
+				// Recursively replace in nested popover layout
+				for (index, child) in button.popover_layout.0.iter_mut().enumerate() {
+					widget_path.push(index);
+					child.replace_widget_ids(layout_target, widget_path, checkbox_map);
+					widget_path.pop();
+				}
+			}
+			_ => {}
 		}
 	}
 }

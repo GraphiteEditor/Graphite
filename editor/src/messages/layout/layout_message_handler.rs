@@ -5,6 +5,7 @@ use graphene_std::raster::color::Color;
 use graphene_std::text::Font;
 use graphene_std::vector::style::{FillChoice, GradientStops};
 use serde_json::Value;
+use std::collections::HashMap;
 
 #[derive(ExtractField)]
 pub struct LayoutMessageContext<'a> {
@@ -470,10 +471,18 @@ impl LayoutMessageHandler {
 	fn diff_and_send_layout_to_frontend(
 		&mut self,
 		layout_target: LayoutTarget,
-		new_layout: Layout,
+		mut new_layout: Layout,
 		responses: &mut VecDeque<Message>,
 		action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>,
 	) {
+		// Step 1: Collect CheckboxId mappings from new layout
+		let mut checkbox_map = HashMap::new();
+		new_layout.collect_checkbox_ids(layout_target, &mut Vec::new(), &mut checkbox_map);
+
+		// Step 2: Replace all IDs in new layout with deterministic ones
+		new_layout.replace_widget_ids(layout_target, &mut Vec::new(), &checkbox_map);
+
+		// Step 3: Diff with deterministic IDs
 		let mut widget_diffs = Vec::new();
 
 		self.layouts[layout_target as usize].diff(new_layout, &mut Vec::new(), &mut widget_diffs);
