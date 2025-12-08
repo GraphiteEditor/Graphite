@@ -127,13 +127,8 @@ pub trait Diffable: Clone + PartialEq {
 fn compute_widget_id(layout_target: LayoutTarget, widget_path: &[usize], widget: &Widget) -> WidgetId {
 	let mut hasher = DefaultHasher::new();
 
-	// Hash the layout target
 	(layout_target as u8).hash(&mut hasher);
-
-	// Hash the widget path
 	widget_path.hash(&mut hasher);
-
-	// Hash the widget type discriminant
 	std::mem::discriminant(widget).hash(&mut hasher);
 
 	WidgetId(hasher.finish())
@@ -509,7 +504,8 @@ impl Diffable for LayoutGroup {
 						pinned: new_pinned,
 						id: new_id,
 						layout: new_layout,
-					}.into_diff_update();
+					}
+					.into_diff_update();
 					let widget_path = widget_path.to_vec();
 					widget_diffs.push(WidgetDiff { widget_path, new_value });
 				}
@@ -613,37 +609,40 @@ impl Diffable for WidgetInstance {
 	}
 
 	fn diff(&mut self, new: Self, widget_path: &mut Vec<usize>, widget_diffs: &mut Vec<WidgetDiff>) {
-		if let (Widget::PopoverButton(button1), Widget::PopoverButton(button2)) = (&mut self.widget, &new.widget)
-			&& button1.disabled == button2.disabled
-			&& button1.style == button2.style
-			&& button1.menu_direction == button2.menu_direction
-			&& button1.icon == button2.icon
-			&& button1.tooltip_label == button2.tooltip_label
-			&& button1.tooltip_description == button2.tooltip_description
-			&& button1.tooltip_shortcut == button2.tooltip_shortcut
-			&& button1.popover_min_width == button2.popover_min_width
-		{
-			for (i, (a, b)) in button1.popover_layout.0.iter_mut().zip(button2.popover_layout.0.iter()).enumerate() {
-				widget_path.push(i);
-				a.diff(b.clone(), widget_path, widget_diffs);
-				widget_path.pop();
-			}
+		if self == &new {
+			// Still need to update callbacks since PartialEq skips them
+			self.widget = new.widget;
 			return;
 		}
 
-		// If there have been changes to the actual widget (not just the id)
-		if self.widget != new.widget {
-			// We should update to the new widget value as well as a new widget id
-			*self = new.clone();
-
-			// Push a widget update to the diff
-			let new_value = new.into_diff_update();
-			let widget_path = widget_path.to_vec();
-			widget_diffs.push(WidgetDiff { widget_path, new_value });
-		} else {
-			// Required to update the callback function, which the PartialEq check above skips
-			self.widget = new.widget;
+		// Special handling for PopoverButton: recursively diff nested layout if only the layout changed
+		if let (Widget::PopoverButton(button1), Widget::PopoverButton(button2)) = (&mut self.widget, &new.widget) {
+			// Check if only the popover layout changed (all other fields are the same)
+			if self.widget_id == new.widget_id
+				&& button1.disabled == button2.disabled
+				&& button1.style == button2.style
+				&& button1.menu_direction == button2.menu_direction
+				&& button1.icon == button2.icon
+				&& button1.tooltip_label == button2.tooltip_label
+				&& button1.tooltip_description == button2.tooltip_description
+				&& button1.tooltip_shortcut == button2.tooltip_shortcut
+				&& button1.popover_min_width == button2.popover_min_width
+			{
+				// Only the popover layout differs, diff it recursively
+				for (i, (a, b)) in button1.popover_layout.0.iter_mut().zip(button2.popover_layout.0.iter()).enumerate() {
+					widget_path.push(i);
+					a.diff(b.clone(), widget_path, widget_diffs);
+					widget_path.pop();
+				}
+				return;
+			}
 		}
+
+		// Widget or ID changed, send full update
+		*self = new.clone();
+		let new_value = new.into_diff_update();
+		let widget_path = widget_path.to_vec();
+		widget_diffs.push(WidgetDiff { widget_path, new_value });
 	}
 
 	fn collect_checkbox_ids(&self, layout_target: LayoutTarget, widget_path: &mut Vec<usize>, checkbox_map: &mut HashMap<CheckboxId, CheckboxId>) {
