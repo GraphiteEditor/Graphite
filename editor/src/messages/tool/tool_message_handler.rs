@@ -101,7 +101,7 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 				let tool_type = tool_type.get_tool();
 
 				responses.add(ToolMessage::RefreshToolOptions);
-				tool_data.send_layout(responses, LayoutTarget::ToolShelf);
+				responses.add(ToolMessage::RefreshToolShelf);
 
 				// Do nothing if switching to the same tool
 				if self.tool_is_active && tool_type == old_tool {
@@ -176,7 +176,7 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 				responses.add(ToolMessage::RefreshToolOptions);
 
 				// Notify the frontend about the new active tool to be displayed
-				tool_data.send_layout(responses, LayoutTarget::ToolShelf);
+				responses.add(ToolMessage::RefreshToolShelf);
 			}
 			ToolMessage::DeactivateTools => {
 				let tool_data = &mut self.tool_state.tool_data;
@@ -220,7 +220,7 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 				tool_data.tools.get(active_tool).unwrap().send_layout(responses, LayoutTarget::ToolOptions);
 
 				// Notify the frontend about the initial active tool
-				tool_data.send_layout(responses, LayoutTarget::ToolShelf);
+				tool_data.send_layout(responses, LayoutTarget::ToolShelf, preferences.brush_tool);
 
 				// Notify the frontend about the initial working colors
 				document_data.update_working_colors(responses);
@@ -258,6 +258,10 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 			ToolMessage::RefreshToolOptions => {
 				let tool_data = &mut self.tool_state.tool_data;
 				tool_data.tools.get(&tool_data.active_tool_type).unwrap().send_layout(responses, LayoutTarget::ToolOptions);
+			}
+			ToolMessage::RefreshToolShelf => {
+				let tool_data = &mut self.tool_state.tool_data;
+				tool_data.send_layout(responses, LayoutTarget::ToolShelf, preferences.brush_tool);
 			}
 			ToolMessage::ResetColors => {
 				let document_data = &mut self.tool_state.document_tool_data;

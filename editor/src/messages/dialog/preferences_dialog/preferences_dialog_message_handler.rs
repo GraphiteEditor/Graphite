@@ -89,7 +89,6 @@ impl PreferencesDialogMessageHandler {
 				.tooltip_label("Zoom with Scroll")
 				.tooltip_description(zoom_with_scroll_description)
 				.for_checkbox(checkbox_id)
-				.table_align(true)
 				.widget_instance(),
 		];
 
@@ -102,7 +101,10 @@ impl PreferencesDialogMessageHandler {
 		let selection_label = vec![
 			Separator::new(SeparatorType::Unrelated).widget_instance(),
 			Separator::new(SeparatorType::Unrelated).widget_instance(),
-			TextLabel::new("Selection").widget_instance(),
+			TextLabel::new("Selection")
+				.tooltip_label("Selection")
+				.tooltip_description("Choose how targets are selected within dragged rectangular and lasso areas.")
+				.widget_instance(),
 		];
 
 		let selection_mode = RadioInput::new(vec![
@@ -151,7 +153,7 @@ impl PreferencesDialogMessageHandler {
 
 		let experimental_header = vec![TextLabel::new("Experimental").italic(true).widget_instance()];
 
-		let node_graph_section_description = "Appearance of the wires running between node connections in the graph.";
+		let node_graph_section_description = "Configure the appearance of the wires running between node connections in the graph.";
 		let node_graph_wires_label = vec![
 			Separator::new(SeparatorType::Unrelated).widget_instance(),
 			Separator::new(SeparatorType::Unrelated).widget_instance(),
@@ -181,13 +183,18 @@ impl PreferencesDialogMessageHandler {
 		];
 
 		let checkbox_id = CheckboxId::new();
-		let vello_description = "Use the experimental Vello renderer. (Your browser must support WebGPU).";
+		let vello_description = "Use the experimental Vello renderer instead of SVG-based rendering.".to_string();
+		#[cfg(target_family = "wasm")]
+		let mut vello_description = vello_description;
+		#[cfg(target_family = "wasm")]
+		vello_description.push_str("\n\n(Your browser must support WebGPU.)");
+
 		let use_vello = vec![
 			Separator::new(SeparatorType::Unrelated).widget_instance(),
 			Separator::new(SeparatorType::Unrelated).widget_instance(),
 			CheckboxInput::new(preferences.use_vello && preferences.supports_wgpu())
 				.tooltip_label("Vello Renderer")
-				.tooltip_description(vello_description)
+				.tooltip_description(vello_description.clone())
 				.disabled(!preferences.supports_wgpu())
 				.on_update(|checkbox_input: &CheckboxInput| PreferencesMessage::UseVello { use_vello: checkbox_input.checked }.into())
 				.for_label(checkbox_id)
@@ -197,14 +204,14 @@ impl PreferencesDialogMessageHandler {
 				.tooltip_description(vello_description)
 				.disabled(!preferences.supports_wgpu())
 				.for_checkbox(checkbox_id)
-				.table_align(true)
 				.widget_instance(),
 		];
 
 		let checkbox_id = CheckboxId::new();
 		let vector_mesh_description = "
-			Allow tools to produce vector meshes, where more than two segments can connect to an anchor point.\n\
-			Currently this does not properly handle stroke joins and fills.
+			Allow the Pen tool to produce branching geometry, where more than two segments may be connected to one anchor point.\n\
+			\n\
+			Currently, vector meshes do not properly render strokes (branching joins) and fills (multiple regions).
 			"
 		.trim();
 		let vector_meshes = vec![
@@ -220,23 +227,58 @@ impl PreferencesDialogMessageHandler {
 				.tooltip_label("Vector Meshes")
 				.tooltip_description(vector_mesh_description)
 				.for_checkbox(checkbox_id)
-				.table_align(true)
+				.widget_instance(),
+		];
+
+		let checkbox_id = CheckboxId::new();
+		let brush_tool_description = "
+			Enable the Brush tool to support basic raster-based layer painting.\n\
+			\n\
+			This legacy tool has performance and quality limitations and is slated for replacement in future versions of Graphite that will focus on raster graphics editing.
+			"
+		.trim();
+		let brush_tool = vec![
+			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			CheckboxInput::new(preferences.brush_tool)
+				.tooltip_label("Brush Tool")
+				.tooltip_description(brush_tool_description)
+				.on_update(|checkbox_input: &CheckboxInput| PreferencesMessage::BrushTool { enabled: checkbox_input.checked }.into())
+				.for_label(checkbox_id)
+				.widget_instance(),
+			TextLabel::new("Brush Tool")
+				.tooltip_label("Brush Tool")
+				.tooltip_description(brush_tool_description)
+				.for_checkbox(checkbox_id)
 				.widget_instance(),
 		];
 
 		Layout(vec![
+			// NAVIGATION
 			LayoutGroup::Row { widgets: navigation_header },
+			// Navigation: Zoom Rate
 			LayoutGroup::Row { widgets: zoom_rate_label },
 			LayoutGroup::Row { widgets: zoom_rate },
+			// Navigation: Zoom with Scroll
 			LayoutGroup::Row { widgets: zoom_with_scroll },
+			//
+			// EDITING
 			LayoutGroup::Row { widgets: editing_header },
+			// Editing: Selection
 			LayoutGroup::Row { widgets: selection_label },
 			LayoutGroup::Row { widgets: selection_mode },
+			//
+			// EXPERIMENTAL
 			LayoutGroup::Row { widgets: experimental_header },
+			// Experimental: Node Graph Wires
 			LayoutGroup::Row { widgets: node_graph_wires_label },
 			LayoutGroup::Row { widgets: graph_wire_style },
+			// Experimental: Vello Renderer
 			LayoutGroup::Row { widgets: use_vello },
+			// Experimental: Vector Meshes
 			LayoutGroup::Row { widgets: vector_meshes },
+			// Experimental: Brush Tool
+			LayoutGroup::Row { widgets: brush_tool },
 		])
 	}
 

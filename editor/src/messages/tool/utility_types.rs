@@ -231,8 +231,15 @@ impl ToolData {
 	}
 }
 
-impl LayoutHolder for ToolData {
-	fn layout(&self) -> Layout {
+impl ToolData {
+	pub fn send_layout(&self, responses: &mut VecDeque<Message>, layout_target: LayoutTarget, brush_tool: bool) {
+		responses.add(LayoutMessage::SendLayout {
+			layout: self.layout(brush_tool),
+			layout_target,
+		});
+	}
+
+	fn layout(&self, brush_tool: bool) -> Layout {
 		let active_tool = self.active_shape_type.unwrap_or(self.active_tool_type);
 
 		let tool_groups_layout = list_tools_in_groups()
@@ -240,22 +247,26 @@ impl LayoutHolder for ToolData {
 			.map(|tool_group|
 				tool_group
 					.iter()
-					.map(|tool_availability| {
-						match tool_availability {
-							ToolAvailability::Available(tool) =>
+					.filter_map(|tool_availability| {
+						if !brush_tool && let ToolRole::Normal(tool) = tool_availability && tool.tool_type() == ToolType::Brush {
+							return None;
+						}
+
+						Some(match tool_availability {
+							ToolRole::Normal(tool) =>
 								ToolEntry::new(tool.tool_type(), tool.icon_name())
 									.tooltip_label(tool.tooltip_label())
 									.tooltip_shortcut(action_shortcut!(tool_type_to_activate_tool_message(tool.tool_type()))),
-							ToolAvailability::AvailableAsShape(shape) =>
+							ToolRole::Shape(shape) =>
 								ToolEntry::new(shape.tool_type(), shape.icon_name())
 									.tooltip_label(shape.tooltip_label())
 									.tooltip_description(shape.tooltip_description())
 									.tooltip_shortcut(action_shortcut!(tool_type_to_activate_tool_message(shape.tool_type()))),
-							// ToolAvailability::ComingSoon(tool) => tool.clone(),
-						}
+						})
 					})
 					.collect::<Vec<_>>()
 			)
+			.filter(|group| !group.is_empty())
 			.flat_map(|group| {
 				let separator = std::iter::once(Separator::new(SeparatorType::Section).direction(SeparatorDirection::Vertical).widget_instance());
 				let buttons = group.into_iter().map(|ToolEntry { tooltip_label, tooltip_description, tooltip_shortcut, tool_type, icon_name }| {
@@ -319,9 +330,8 @@ impl Default for ToolFsmState {
 					.into_iter()
 					.flatten()
 					.filter_map(|tool| match tool {
-						ToolAvailability::Available(tool) => Some((tool.tool_type(), tool)),
-						ToolAvailability::AvailableAsShape(_) => None,
-						// ToolAvailability::ComingSoon(_) => None,
+						ToolRole::Normal(tool) => Some((tool.tool_type(), tool)),
+						ToolRole::Shape(_) => None,
 					})
 					.collect(),
 			},
@@ -369,7 +379,6 @@ pub enum ToolType {
 	Patch,
 	Detail,
 	Relight,
-	Frame,
 }
 
 impl ToolType {
@@ -385,58 +394,57 @@ impl ToolType {
 	}
 }
 
-enum ToolAvailability {
-	Available(Box<Tool>),
-	AvailableAsShape(ShapeType),
-	// ComingSoon(ToolEntry),
+enum ToolRole {
+	Normal(Box<Tool>),
+	Shape(ShapeType),
 }
 
 /// List of all the tools in their conventional ordering and grouping.
-fn list_tools_in_groups() -> Vec<Vec<ToolAvailability>> {
+fn list_tools_in_groups() -> Vec<Vec<ToolRole>> {
 	vec![
 		vec![
 			// General tool group
-			ToolAvailability::Available(Box::<select_tool::SelectTool>::default()),
-			ToolAvailability::Available(Box::<artboard_tool::ArtboardTool>::default()),
-			ToolAvailability::Available(Box::<navigate_tool::NavigateTool>::default()),
-			ToolAvailability::Available(Box::<eyedropper_tool::EyedropperTool>::default()),
-			ToolAvailability::Available(Box::<fill_tool::FillTool>::default()),
-			ToolAvailability::Available(Box::<gradient_tool::GradientTool>::default()),
+			ToolRole::Normal(Box::<select_tool::SelectTool>::default()),
+			ToolRole::Normal(Box::<artboard_tool::ArtboardTool>::default()),
+			ToolRole::Normal(Box::<navigate_tool::NavigateTool>::default()),
+			ToolRole::Normal(Box::<eyedropper_tool::EyedropperTool>::default()),
+			ToolRole::Normal(Box::<fill_tool::FillTool>::default()),
+			ToolRole::Normal(Box::<gradient_tool::GradientTool>::default()),
 		],
 		vec![
 			// Vector tool group
-			ToolAvailability::Available(Box::<path_tool::PathTool>::default()),
-			ToolAvailability::Available(Box::<pen_tool::PenTool>::default()),
-			ToolAvailability::Available(Box::<freehand_tool::FreehandTool>::default()),
-			ToolAvailability::Available(Box::<spline_tool::SplineTool>::default()),
-			ToolAvailability::AvailableAsShape(ShapeType::Line),
-			ToolAvailability::AvailableAsShape(ShapeType::Rectangle),
-			ToolAvailability::AvailableAsShape(ShapeType::Ellipse),
-			ToolAvailability::Available(Box::<shape_tool::ShapeTool>::default()),
-			ToolAvailability::Available(Box::<text_tool::TextTool>::default()),
+			ToolRole::Normal(Box::<path_tool::PathTool>::default()),
+			ToolRole::Normal(Box::<pen_tool::PenTool>::default()),
+			ToolRole::Normal(Box::<freehand_tool::FreehandTool>::default()),
+			ToolRole::Normal(Box::<spline_tool::SplineTool>::default()),
+			ToolRole::Shape(ShapeType::Line),
+			ToolRole::Shape(ShapeType::Rectangle),
+			ToolRole::Shape(ShapeType::Ellipse),
+			ToolRole::Normal(Box::<shape_tool::ShapeTool>::default()),
+			ToolRole::Normal(Box::<text_tool::TextTool>::default()),
 		],
 		vec![
 			// Raster tool group
-			ToolAvailability::Available(Box::<brush_tool::BrushTool>::default()),
-			// ToolAvailability::ComingSoon(
+			ToolRole::Normal(Box::<brush_tool::BrushTool>::default()),
+			// ToolRole::Normal(
 			// 	ToolEntry::new(ToolType::Heal, "RasterHealTool")
 			// 		.tooltip_label("Heal Tool")
 			// 		.tooltip_shortcut(action_shortcut_manual!(Key::KeyJ)),
 			// ),
-			// ToolAvailability::ComingSoon(
+			// ToolRole::Normal(
 			// 	ToolEntry::new(ToolType::Clone, "RasterCloneTool")
 			// 		.tooltip_label("Clone Tool")
 			// 		.tooltip_shortcut(action_shortcut_manual!(Key::KeyC)),
 			// ),
-			// ToolAvailability::ComingSoon(ToolEntry::new(ToolType::Patch, "RasterPatchTool")
+			// ToolRole::Normal(ToolEntry::new(ToolType::Patch, "RasterPatchTool")
 			// 		.tooltip_label("Patch Tool"),
 			// ),
-			// ToolAvailability::ComingSoon(
+			// ToolRole::Normal(
 			// 	ToolEntry::new(ToolType::Detail, "RasterDetailTool")
 			// 		.tooltip_label("Detail Tool")
 			// 		.tooltip_shortcut(action_shortcut_manual!(Key::KeyD)),
 			// ),
-			// ToolAvailability::ComingSoon(
+			// ToolRole::Normal(
 			// 	ToolEntry::new(ToolType::Relight, "RasterRelightTool")
 			// 		.tooltip_label("Relight Tool")
 			// 		.tooltip_shortcut(action_shortcut_manual!(Key::KeyO)),
