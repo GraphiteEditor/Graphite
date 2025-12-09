@@ -109,7 +109,7 @@ pub struct Polygon;
 
 impl Polygon {
 	pub fn create_node(vertices: u32) -> NodeTemplate {
-		let identifier = DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::line::IDENTIFIER);
+		let identifier = DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::regular_polygon::IDENTIFIER);
 		let node_type = resolve_document_node_type(&identifier).expect("Regular Polygon can't be found");
 		node_type.node_template_input_override([None, Some(NodeInput::value(TaggedValue::U32(vertices), false)), Some(NodeInput::value(TaggedValue::F64(0.5), false))])
 	}
