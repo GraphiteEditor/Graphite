@@ -9,8 +9,11 @@ use glam::{DVec2, IVec2};
 use graph_craft::document::DocumentNode;
 use graph_craft::document::{DocumentNodeImplementation, NodeInput, value::TaggedValue};
 use graphene_std::ProtoNodeIdentifier;
+use graphene_std::subpath::Subpath;
+use graphene_std::table::Table;
 use graphene_std::text::{TextAlign, TypesettingConfig};
 use graphene_std::uuid::NodeId;
+use graphene_std::vector::Vector;
 use graphene_std::vector::style::{PaintOrder, StrokeAlign};
 use std::collections::HashMap;
 use std::f64::consts::PI;
@@ -1055,6 +1058,82 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.set_input(&InputConnector::node(*node_id, 9), old_inputs[4].clone(), network_path);
 	}
 
+	// Upgrade the old "Spline" node to the new "Spline" node
+	if reference == &DefinitionIdentifier::ProtoNode(graphene_std::vector::spline::IDENTIFIER)
+		|| reference == &DefinitionIdentifier::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::generator_nodes::SplineNode"))
+		|| reference == &DefinitionIdentifier::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::SplineNode"))
+		|| reference == &DefinitionIdentifier::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::SplinesFromPointsNode"))
+	{
+		// Retrieve the proto node identifier and verify it is the old "Spline" node, otherwise skip it if this is the new "Spline" node
+		let identifier = document
+			.network_interface
+			.implementation(node_id, network_path)
+			.and_then(|implementation| implementation.get_proto_node());
+		if identifier.map(|identifier| &identifier.name) != Some(&"graphene_core::vector::generator_nodes::SplineNode".into()) {
+			return None;
+		}
+
+		// Obtain the document node for the given node ID, extract the vector points, and create a Vector path from the list of points
+		let node = document.network_interface.document_node(node_id, network_path)?;
+		let Some(TaggedValue::VecDVec2(points)) = node.inputs.get(1).and_then(|tagged_value| tagged_value.as_value()) else {
+			log::error!("The old Spline node's input at index 1 is not a TaggedValue::VecDVec2");
+			return None;
+		};
+		let vector = Vector::from_subpath(Subpath::from_anchors_linear(points.to_vec(), false));
+
+		// Retrieve the output connectors linked to the "Spline" node's output connector
+		let Some(spline_outputs) = document.network_interface.outward_wires(network_path)?.get(&OutputConnector::node(*node_id, 0)).cloned() else {
+			log::error!("Vec of InputConnector Spline node is connected to its output connector 0.");
+			return None;
+		};
+
+		// Get the node's current position in the graph
+		let Some(node_position) = document.network_interface.position(node_id, network_path) else {
+			log::error!("Could not get position of spline node.");
+			return None;
+		};
+
+		// Get the "Path" node definition and fill it in with the Vector path and default vector modification
+		let Some(path_node_type) = resolve_document_node_type(&DefinitionIdentifier::Network("Path".to_string())) else {
+			log::error!("Path node does not exist.");
+			return None;
+		};
+		let path_node = path_node_type.node_template_input_override([
+			Some(NodeInput::value(TaggedValue::Vector(Table::new_from_element(vector)), true)),
+			Some(NodeInput::value(TaggedValue::VectorModification(Default::default()), false)),
+		]);
+
+		// Get the "Spline" node definition and wire it up with the "Path" node as input
+		let Some(spline_node_type) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::vector::spline::IDENTIFIER)) else {
+			log::error!("Spline node does not exist.");
+			return None;
+		};
+		let spline_node = spline_node_type.node_template_input_override([Some(NodeInput::node(NodeId(1), 0))]);
+
+		// Create a new node group with the "Path" and "Spline" nodes and generate new node IDs for them
+		let nodes = vec![(NodeId(1), path_node), (NodeId(0), spline_node)];
+		let new_ids = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect::<HashMap<_, _>>();
+		let new_spline_id = *new_ids.get(&NodeId(0))?;
+		let new_path_id = *new_ids.get(&NodeId(1))?;
+
+		// Remove the old "Spline" node from the document
+		document.network_interface.delete_nodes(vec![*node_id], false, network_path);
+
+		// Insert the new "Path" and "Spline" nodes into the network interface with generated IDs
+		document.network_interface.insert_node_group(nodes.clone(), new_ids, network_path);
+
+		// Reposition the new "Spline" node to match the original "Spline" node's position
+		document.network_interface.shift_node(&new_spline_id, node_position, network_path);
+
+		// Reposition the new "Path" node with an offset relative to the original "Spline" node's position
+		document.network_interface.shift_node(&new_path_id, node_position + IVec2::new(-7, 0), network_path);
+
+		// Redirect each output connection from the old node to the new "Spline" node's output connector
+		for input_connector in spline_outputs {
+			document.network_interface.set_input(&input_connector, NodeInput::node(new_spline_id, 0), network_path);
+		}
+	}
+
 	// Upgrade Text node to include line height and character spacing, which were previously hardcoded to 1, from https://github.com/GraphiteEditor/Graphite/pull/2016
 	if reference == &DefinitionIdentifier::Network("Text".to_string()) && inputs_count != 11 {
 		let mut template: NodeTemplate = resolve_document_node_type(&reference)?.default_node_template();
@@ -1277,6 +1356,19 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		// We have removed the second input ("bounds"), so we don't add index 1 and we shift the rest of the inputs down by one
 		document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[2].clone(), network_path);
 		document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[3].clone(), network_path);
+	}
+
+	if reference == &DefinitionIdentifier::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::GenerateHandlesNode")) {
+		let mut node_template = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::vector::auto_tangents::IDENTIFIER))?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
+		document
+			.network_interface
+			.set_input(&InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::Bool(true), false), network_path);
 	}
 
 	if reference == &DefinitionIdentifier::ProtoNode(graphene_std::vector::merge_by_distance::IDENTIFIER) && inputs_count == 2 {
