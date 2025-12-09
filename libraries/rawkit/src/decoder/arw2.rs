@@ -1,8 +1,8 @@
 use crate::tiff::file::{Endian, TiffRead};
 use crate::tiff::tags::{BitsPerSample, CfaPattern, CfaPatternDim, Compression, ImageLength, ImageWidth, SonyToneCurve, StripByteCounts, StripOffsets, Tag, WhiteBalanceRggbLevels};
-use crate::tiff::values::CurveLookupTable;
+use crate::tiff::values::{CompressionValue, CurveLookupTable};
 use crate::tiff::{Ifd, TiffError};
-use crate::{RawImage, SubtractBlack, Transform};
+use crate::{OrientationValue, RawImage, SubtractBlack};
 use rawkit_proc_macros::Tag;
 use std::io::{Read, Seek};
 
@@ -26,7 +26,7 @@ pub fn decode<R: Read + Seek>(ifd: Ifd, file: &mut TiffRead<R>) -> RawImage {
 
 	assert!(ifd.strip_offsets.len() == ifd.strip_byte_counts.len());
 	assert!(ifd.strip_offsets.len() == 1);
-	assert!(ifd.compression == 32767);
+	assert!(ifd.compression == CompressionValue::Sony_ARW_Compressed);
 
 	let image_width: usize = ifd.image_width.try_into().unwrap();
 	let image_height: usize = ifd.image_height.try_into().unwrap();
@@ -49,7 +49,7 @@ pub fn decode<R: Read + Seek>(ifd: Ifd, file: &mut TiffRead<R>) -> RawImage {
 		cfa_pattern: ifd.cfa_pattern.try_into().unwrap(),
 		maximum: (1 << 14) - 1,
 		black: SubtractBlack::CfaGrid([512, 512, 512, 512]), // TODO: Find the correct way to do this
-		transform: Transform::Horizontal,
+		orientation: OrientationValue::Horizontal,
 		camera_model: None,
 		camera_white_balance: ifd.white_balance_levels.map(|arr| arr.map(|x| x as f64)),
 		white_balance: None,
