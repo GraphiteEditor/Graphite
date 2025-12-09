@@ -10,7 +10,6 @@ use editor::consts::FILE_EXTENSION;
 use editor::messages::clipboard::utility_types::ClipboardContentRaw;
 use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
 use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta};
-use editor::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use editor::messages::portfolio::document::utility_types::network_interface::ImportOrExport;
 use editor::messages::portfolio::utility_types::{FontCatalog, FontCatalogFamily, Platform};
