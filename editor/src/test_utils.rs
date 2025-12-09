@@ -341,6 +341,7 @@ pub mod test_prelude {
 	pub use crate::float_eq;
 	pub use crate::messages::input_mapper::utility_types::input_keyboard::{Key, ModifierKeys};
 	pub use crate::messages::input_mapper::utility_types::input_mouse::MouseKeys;
+	pub use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 	pub use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 	pub use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 	pub use crate::messages::prelude::*;
