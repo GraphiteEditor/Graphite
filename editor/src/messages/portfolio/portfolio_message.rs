@@ -13,8 +13,6 @@ use std::path::PathBuf;
 pub enum PortfolioMessage {
 	// Sub-messages
 	#[child]
-	MenuBar(MenuBarMessage),
-	#[child]
 	Document(DocumentMessage),
 
 	// Messages

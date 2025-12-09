@@ -4,7 +4,6 @@ use super::utility_types::{PanelType, PersistentData};
 use crate::application::generate_uuid;
 use crate::consts::{DEFAULT_DOCUMENT_NAME, DEFAULT_STROKE_WIDTH, FILE_EXTENSION};
 use crate::messages::animation::TimingInformation;
-use crate::messages::debug::utility_types::MessageLoggingVerbosity;
 use crate::messages::dialog::simple_dialogs;
 use crate::messages::frontend::utility_types::{DocumentDetails, OpenDocument};
 use crate::messages::input_mapper::utility_types::input_keyboard::Key;
@@ -21,7 +20,6 @@ use crate::messages::portfolio::document_migration::*;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
-use crate::messages::tool::common_functionality::utility_functions::make_path_editable_is_allowed;
 use crate::messages::tool::utility_types::{HintData, ToolType};
 use crate::messages::viewport::ToPhysical;
 use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
@@ -42,7 +40,6 @@ pub struct PortfolioMessageContext<'a> {
 	pub preferences: &'a PreferencesMessageHandler,
 	pub animation: &'a AnimationMessageHandler,
 	pub current_tool: &'a ToolType,
-	pub message_logging_verbosity: MessageLoggingVerbosity,
 	pub reset_node_definitions_on_open: bool,
 	pub timing_information: TimingInformation,
 	pub viewport: &'a ViewportMessageHandler,
@@ -51,7 +48,6 @@ pub struct PortfolioMessageContext<'a> {
 #[derive(Debug, Derivative, ExtractField)]
 #[derivative(Default)]
 pub struct PortfolioMessageHandler {
-	menu_bar_message_handler: MenuBarMessageHandler,
 	pub documents: HashMap<DocumentId, DocumentMessageHandler>,
 	document_ids: VecDeque<DocumentId>,
 	active_panel: PanelType,
@@ -76,7 +72,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			preferences,
 			animation,
 			current_tool,
-			message_logging_verbosity,
 			reset_node_definitions_on_open,
 			timing_information,
 			viewport,
@@ -84,40 +79,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 		match message {
 			// Sub-messages
-			PortfolioMessage::MenuBar(message) => {
-				self.menu_bar_message_handler.has_active_document = false;
-				self.menu_bar_message_handler.canvas_tilted = false;
-				self.menu_bar_message_handler.canvas_flipped = false;
-				self.menu_bar_message_handler.rulers_visible = false;
-				self.menu_bar_message_handler.node_graph_open = false;
-				self.menu_bar_message_handler.has_selected_nodes = false;
-				self.menu_bar_message_handler.has_selected_layers = false;
-				self.menu_bar_message_handler.has_selection_history = (false, false);
-				self.menu_bar_message_handler.make_path_editable_is_allowed = false;
-				self.menu_bar_message_handler.data_panel_open = self.data_panel_open;
-				self.menu_bar_message_handler.layers_panel_open = self.layers_panel_open;
-				self.menu_bar_message_handler.properties_panel_open = self.properties_panel_open;
-				self.menu_bar_message_handler.message_logging_verbosity = message_logging_verbosity;
-				self.menu_bar_message_handler.reset_node_definitions_on_open = reset_node_definitions_on_open;
-
-				if let Some(document) = self.active_document_id.and_then(|document_id| self.documents.get_mut(&document_id)) {
-					self.menu_bar_message_handler.has_active_document = true;
-					self.menu_bar_message_handler.canvas_tilted = document.document_ptz.tilt() != 0.;
-					self.menu_bar_message_handler.canvas_flipped = document.document_ptz.flip;
-					self.menu_bar_message_handler.rulers_visible = document.rulers_visible;
-					self.menu_bar_message_handler.node_graph_open = document.is_graph_overlay_open();
-					let selected_nodes = document.network_interface.selected_nodes();
-					self.menu_bar_message_handler.has_selected_nodes = selected_nodes.selected_nodes().next().is_some();
-					self.menu_bar_message_handler.has_selected_layers = selected_nodes.selected_visible_layers(&document.network_interface).next().is_some();
-					self.menu_bar_message_handler.has_selection_history = {
-						let metadata = &document.network_interface.document_network_metadata().persistent_metadata;
-						(!metadata.selection_undo_history.is_empty(), !metadata.selection_redo_history.is_empty())
-					};
-					self.menu_bar_message_handler.make_path_editable_is_allowed = make_path_editable_is_allowed(&mut document.network_interface).is_some();
-				}
-
-				self.menu_bar_message_handler.process_message(message, responses, ());
-			}
 			PortfolioMessage::Document(message) => {
 				if let Some(document_id) = self.active_document_id
 					&& let Some(document) = self.documents.get_mut(&document_id)

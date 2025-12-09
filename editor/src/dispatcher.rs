@@ -3,6 +3,7 @@ use crate::messages::defer::DeferMessageContext;
 use crate::messages::dialog::DialogMessageContext;
 use crate::messages::layout::layout_message_handler::LayoutMessageContext;
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::utility_functions::make_path_editable_is_allowed;
 
 #[derive(Debug, Default)]
 pub struct Dispatcher {
@@ -24,6 +25,7 @@ pub struct DispatcherMessageHandlers {
 	input_preprocessor_message_handler: InputPreprocessorMessageHandler,
 	key_mapping_message_handler: KeyMappingMessageHandler,
 	layout_message_handler: LayoutMessageHandler,
+	menu_bar_message_handler: MenuBarMessageHandler,
 	pub portfolio_message_handler: PortfolioMessageHandler,
 	preferences_message_handler: PreferencesMessageHandler,
 	tool_message_handler: ToolMessageHandler,
@@ -215,29 +217,60 @@ impl Dispatcher {
 					self.message_handlers.layout_message_handler.process_message(message, &mut queue, context);
 				}
 				Message::Portfolio(message) => {
-					let ipp = &self.message_handlers.input_preprocessor_message_handler;
-					let preferences = &self.message_handlers.preferences_message_handler;
-					let current_tool = &self.message_handlers.tool_message_handler.tool_state.tool_data.active_tool_type;
-					let message_logging_verbosity = self.message_handlers.debug_message_handler.message_logging_verbosity;
-					let reset_node_definitions_on_open = self.message_handlers.portfolio_message_handler.reset_node_definitions_on_open;
-					let timing_information = self.message_handlers.animation_message_handler.timing_information();
-					let animation = &self.message_handlers.animation_message_handler;
-					let viewport = &self.message_handlers.viewport_message_handler;
-
 					self.message_handlers.portfolio_message_handler.process_message(
 						message,
 						&mut queue,
 						PortfolioMessageContext {
-							ipp,
-							preferences,
-							current_tool,
-							message_logging_verbosity,
-							reset_node_definitions_on_open,
-							timing_information,
-							animation,
-							viewport,
+							ipp: &self.message_handlers.input_preprocessor_message_handler,
+							preferences: &self.message_handlers.preferences_message_handler,
+							current_tool: &self.message_handlers.tool_message_handler.tool_state.tool_data.active_tool_type,
+							reset_node_definitions_on_open: self.message_handlers.portfolio_message_handler.reset_node_definitions_on_open,
+							timing_information: self.message_handlers.animation_message_handler.timing_information(),
+							animation: &self.message_handlers.animation_message_handler,
+							viewport: &self.message_handlers.viewport_message_handler,
 						},
 					);
+				}
+				Message::MenuBar(message) => {
+					let menu_bar_message_handler = &mut self.message_handlers.menu_bar_message_handler;
+
+					menu_bar_message_handler.data_panel_open = self.message_handlers.portfolio_message_handler.data_panel_open;
+					menu_bar_message_handler.layers_panel_open = self.message_handlers.portfolio_message_handler.layers_panel_open;
+					menu_bar_message_handler.properties_panel_open = self.message_handlers.portfolio_message_handler.properties_panel_open;
+					menu_bar_message_handler.message_logging_verbosity = self.message_handlers.debug_message_handler.message_logging_verbosity;
+					menu_bar_message_handler.reset_node_definitions_on_open = self.message_handlers.portfolio_message_handler.reset_node_definitions_on_open;
+
+					if let Some(document) = self
+						.message_handlers
+						.portfolio_message_handler
+						.active_document_id
+						.and_then(|document_id| self.message_handlers.portfolio_message_handler.documents.get_mut(&document_id))
+					{
+						let selected_nodes = document.network_interface.selected_nodes();
+						let metadata = &document.network_interface.document_network_metadata().persistent_metadata;
+
+						menu_bar_message_handler.has_active_document = true;
+						menu_bar_message_handler.canvas_tilted = document.document_ptz.tilt() != 0.;
+						menu_bar_message_handler.canvas_flipped = document.document_ptz.flip;
+						menu_bar_message_handler.rulers_visible = document.rulers_visible;
+						menu_bar_message_handler.node_graph_open = document.is_graph_overlay_open();
+						menu_bar_message_handler.has_selected_nodes = selected_nodes.selected_nodes().next().is_some();
+						menu_bar_message_handler.has_selected_layers = selected_nodes.selected_visible_layers(&document.network_interface).next().is_some();
+						menu_bar_message_handler.has_selection_history = (!metadata.selection_undo_history.is_empty(), !metadata.selection_redo_history.is_empty());
+						menu_bar_message_handler.make_path_editable_is_allowed = make_path_editable_is_allowed(&mut document.network_interface).is_some();
+					} else {
+						menu_bar_message_handler.has_active_document = false;
+						menu_bar_message_handler.canvas_tilted = false;
+						menu_bar_message_handler.canvas_flipped = false;
+						menu_bar_message_handler.rulers_visible = false;
+						menu_bar_message_handler.node_graph_open = false;
+						menu_bar_message_handler.has_selected_nodes = false;
+						menu_bar_message_handler.has_selected_layers = false;
+						menu_bar_message_handler.has_selection_history = (false, false);
+						menu_bar_message_handler.make_path_editable_is_allowed = false;
+					}
+
+					menu_bar_message_handler.process_message(message, &mut queue, ());
 				}
 				Message::Preferences(message) => {
 					self.message_handlers.preferences_message_handler.process_message(message, &mut queue, ());
