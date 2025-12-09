@@ -332,7 +332,8 @@ impl PointRadiusHandle {
 	fn calculate_snap_radii(document: &DocumentMessageHandler, layer: LayerNodeIdentifier, radius_index: usize) -> Vec<f64> {
 		let mut snap_radii = Vec::new();
 
-		let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::star::IDENTIFIER)) else {
+		let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::star::IDENTIFIER))
+		else {
 			return snap_radii;
 		};
 
@@ -450,7 +451,8 @@ impl PointRadiusHandle {
 	}
 
 	fn check_if_radius_flipped(&mut self, original_radius: f64, new_radius: f64, document: &DocumentMessageHandler, layer: LayerNodeIdentifier, radius_index: usize) {
-		let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::star::IDENTIFIER)) else {
+		let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::star::IDENTIFIER))
+		else {
 			return;
 		};
 

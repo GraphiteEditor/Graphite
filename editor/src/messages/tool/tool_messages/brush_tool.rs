@@ -1,7 +1,7 @@
 use super::tool_prelude::*;
 use crate::consts::DEFAULT_BRUSH_SIZE;
 use crate::messages::portfolio::document::graph_operation::transform_utils::get_current_transform;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::{resolve_document_node_type, DefinitionIdentifier};
+use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::FlowType;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
@@ -475,7 +475,9 @@ impl Fsm for BrushToolFsmState {
 fn new_brush_layer(document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
 	responses.add(DocumentMessage::DeselectAllLayers);
 
-	let brush_node = resolve_document_node_type(&DefinitionIdentifier::Network("Brush".to_string())).expect("Brush node does not exist").default_node_template();
+	let brush_node = resolve_document_node_type(&DefinitionIdentifier::Network("Brush".to_string()))
+		.expect("Brush node does not exist")
+		.default_node_template();
 
 	let id = NodeId::new();
 	responses.add(GraphOperationMessage::NewCustomLayer {

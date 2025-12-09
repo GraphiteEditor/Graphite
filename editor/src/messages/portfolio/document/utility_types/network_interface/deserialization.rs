@@ -1,6 +1,4 @@
-use crate::messages::portfolio::document::{
-	utility_types::network_interface::{DocumentNodePersistentMetadata, InputMetadata, InputPersistentMetadata, NodeNetworkMetadata, NodeTypePersistentMetadata},
-};
+use crate::messages::portfolio::document::utility_types::network_interface::{DocumentNodePersistentMetadata, InputMetadata, InputPersistentMetadata, NodeNetworkMetadata, NodeTypePersistentMetadata};
 use serde_json::Value;
 use std::collections::HashMap;
 
