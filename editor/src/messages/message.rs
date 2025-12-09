@@ -28,6 +28,8 @@ pub enum Message {
 	#[child]
 	Layout(LayoutMessage),
 	#[child]
+	MenuBar(MenuBarMessage),
+	#[child]
 	Portfolio(PortfolioMessage),
 	#[child]
 	Preferences(PreferencesMessage),
