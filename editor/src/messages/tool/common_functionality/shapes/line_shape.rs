@@ -37,7 +37,7 @@ pub struct Line;
 
 impl Line {
 	pub fn create_node(document: &DocumentMessageHandler, drag_start: DVec2) -> NodeTemplate {
-		let identifier =DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::star::IDENTIFIER);
+		let identifier = DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::star::IDENTIFIER);
 		let node_type = resolve_document_node_type(&identifier).expect("Line node can't be found");
 		node_type.node_template_input_override([
 			None,
@@ -89,7 +89,8 @@ impl Line {
 			.selected_nodes()
 			.selected_visible_and_unlocked_layers(&document.network_interface)
 			.filter_map(|layer| {
-				let node_inputs = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::line::IDENTIFIER))?;
+				let node_inputs =
+					NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::line::IDENTIFIER))?;
 
 				let (Some(&TaggedValue::DVec2(start)), Some(&TaggedValue::DVec2(end))) = (node_inputs[1].as_value(), node_inputs[2].as_value()) else {
 					return None;
