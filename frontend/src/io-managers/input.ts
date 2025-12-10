@@ -1,7 +1,7 @@
 import { get } from "svelte/store";
 
 import { type Editor } from "@graphite/editor";
-import { TriggerPaste } from "@graphite/messages";
+import { TriggerClipboardRead } from "@graphite/messages";
 import { type DialogState } from "@graphite/state-providers/dialog";
 import { type DocumentState } from "@graphite/state-providers/document";
 import { type FullscreenState } from "@graphite/state-providers/fullscreen";
@@ -406,7 +406,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 	// Frontend message subscriptions
 
-	editor.subscriptions.subscribeJsMessage(TriggerPaste, async () => {
+	editor.subscriptions.subscribeJsMessage(TriggerClipboardRead, async () => {
 		// In the try block, attempt to read from the Clipboard API, which may not have permission and may not be supported in all browsers
 		// In the catch block, explain to the user why the paste failed and how to fix or work around the problem
 		try {

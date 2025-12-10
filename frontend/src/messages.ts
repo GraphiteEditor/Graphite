@@ -725,7 +725,7 @@ export class TriggerOpenDocument extends JsMessage {}
 
 export class TriggerImport extends JsMessage {}
 
-export class TriggerPaste extends JsMessage {}
+export class TriggerClipboardRead extends JsMessage {}
 
 export class TriggerSaveDocument extends JsMessage {
 	readonly documentId!: bigint;
@@ -1703,7 +1703,6 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerLoadRestAutoSaveDocuments,
 	TriggerOpenDocument,
 	TriggerOpenLaunchDocuments,
-	TriggerPaste,
 	TriggerPersistenceRemoveDocument,
 	TriggerPersistenceWriteDocument,
 	TriggerSaveActiveDocument,
@@ -1711,6 +1710,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerSaveFile,
 	TriggerSavePreferences,
 	TriggerTextCommit,
+	TriggerClipboardRead,
 	TriggerClipboardWrite,
 	TriggerSelectionRead,
 	TriggerSelectionWrite,

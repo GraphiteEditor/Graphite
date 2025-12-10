@@ -111,7 +111,6 @@ pub enum FrontendMessage {
 	TriggerOpenLaunchDocuments,
 	TriggerLoadPreferences,
 	TriggerOpenDocument,
-	TriggerPaste,
 	TriggerSavePreferences {
 		preferences: PreferencesMessageHandler,
 	},
