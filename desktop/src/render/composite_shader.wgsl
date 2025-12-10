@@ -61,7 +61,11 @@ fn fs_main(in: VertexOutput) -> @location(0) vec4<f32> {
 	}
 
 	let overlay_srgb = textureSample(t_overlays, s_diffuse, viewport_coordinate);
-	let viewport_srgb = textureSample(t_viewport, s_diffuse, viewport_coordinate);
+	var viewport_srgb = textureSample(t_viewport, s_diffuse, viewport_coordinate);
+
+	if (viewport_srgb.a < 0.001) {
+		viewport_srgb = constants.background_color;
+	}
 
 	if (overlay_srgb.a < 0.001) {
 		if (ui_srgb.a < 0.001) {
