@@ -4,8 +4,7 @@
 	import { fade } from "svelte/transition";
 
 	import type { Editor } from "@graphite/editor";
-	import type { IconName } from "@graphite/icons";
-	import type { FrontendGraphInput, FrontendGraphOutput } from "@graphite/messages";
+	import type { DefinitionIdentifier, FrontendGraphInput, FrontendGraphOutput, FrontendNode } from "@graphite/messages";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 
 	import NodeCatalog from "@graphite/components/floating-menus/NodeCatalog.svelte";
@@ -13,8 +12,22 @@
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
-	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+
+	// These components will continue to be rendered in svelte after the first stage of native node graph rendering.
+	// - Import and export ports
+	// - Wires to import and export
+	// - Wire in progress
+	// - Add Node context menu
+	// - Toggle Layer context menu
+	// - Error dialog
+	// - Node/Input/Output Tooltips
+	// - Solo drag grip tooltip
+
+	// These elements will be not be rendered in svelte when rendering the native node graph. They are rendered below all other components
+	// - Dot grid background
+	// - Nodes/Layers
+	// - Wires between nodes/layers
 
 	const GRID_COLLAPSE_SPACING = 10;
 	const GRID_SIZE = 24;
@@ -102,18 +115,10 @@
 		return sparse;
 	}
 
-	function nodeIcon(icon?: string): IconName {
-		if (!icon) return "NodeNodes";
-		const iconMap: Record<string, IconName> = {
-			Output: "NodeOutput",
-		};
-		return iconMap[icon] || "NodeNodes";
-	}
-
-	function createNode(nodeType: string) {
+	function createNode(identifier: DefinitionIdentifier) {
 		if ($nodeGraph.contextMenuInformation === undefined) return;
 
-		editor.handle.createNode(nodeType, $nodeGraph.contextMenuInformation.contextMenuCoordinates.x, $nodeGraph.contextMenuInformation.contextMenuCoordinates.y);
+		editor.handle.createNode(identifier, $nodeGraph.contextMenuInformation.contextMenuCoordinates.x, $nodeGraph.contextMenuInformation.contextMenuCoordinates.y);
 	}
 
 	function nodeBorderMask(nodeWidth: number, primaryInputExists: boolean, exposedSecondaryInputs: number, primaryOutputExists: boolean, exposedSecondaryOutputs: number): string {
@@ -164,6 +169,14 @@
 
 	function dataTypeTooltipLabel(value: FrontendGraphInput | FrontendGraphOutput): string {
 		return `Data Type: ${value.resolvedType}`;
+	}
+
+	function nodeNameTooltipLabel(node: FrontendNode): string {
+		let name = node.displayName;
+		if (node.displayName !== node.implementationName) {
+			name += ` (${node.implementationName})`;
+		}
+		return name;
 	}
 
 	function validTypesText(value: FrontendGraphInput): string {
@@ -501,7 +514,7 @@
 				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
 				style:--layer-area-width={layerAreaWidth}
 				style:--node-chain-area-left-extension={layerChainWidth !== 0 ? layerChainWidth + 0.5 : 0}
-				data-tooltip-label={node.displayName === node.reference ? node.displayName : `${node.displayName} (${node.reference})`}
+				data-tooltip-label={nodeNameTooltipLabel(node)}
 				data-tooltip-description={`
 					${(description || "").trim()}${editor.handle.inDevelopmentMode() ? `\n\nID: ${node.id}. Position: (${node.position.x}, ${node.position.y}).` : ""}
 					`.trim()}
@@ -624,11 +637,10 @@
 				{/each}
 				{#if $nodeGraph.wirePathInProgress}
 					<path
-						d={$nodeGraph.wirePathInProgress?.pathString}
+						d={$nodeGraph.wirePathInProgress?.wire}
 						style:--data-line-width={`${$nodeGraph.wirePathInProgress.thick ? 8 : 2}px`}
 						style:--data-color={`var(--color-data-${$nodeGraph.wirePathInProgress.dataType.toLowerCase()})`}
 						style:--data-color-dim={`var(--color-data-${$nodeGraph.wirePathInProgress.dataType.toLowerCase()}-dim)`}
-						style:--data-dasharray={`3,${$nodeGraph.wirePathInProgress.dashed ? 2 : 0}`}
 					/>
 				{/if}
 			</svg>
@@ -651,7 +663,7 @@
 				style:--clip-path-id={`url(#${clipPathId})`}
 				style:--data-color={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()})`}
 				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
-				data-tooltip-label={node.displayName === node.reference ? node.displayName : `${node.displayName} (${node.reference})`}
+				data-tooltip-label={nodeNameTooltipLabel(node)}
 				data-tooltip-description={`
 					${(description || "").trim()}${editor.handle.inDevelopmentMode() ? `\n\nID: ${node.id}. Position: (${node.position.x}, ${node.position.y}).` : ""}
 					`.trim()}
@@ -659,7 +671,6 @@
 			>
 				<!-- Primary row -->
 				<div class="primary" class:in-selected-network={$nodeGraph.inSelectedNetwork} class:no-secondary-section={exposedInputsOutputs.length === 0}>
-					<IconLabel icon={nodeIcon(node.reference)} />
 					<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
 					<TextLabel>{node.displayName}</TextLabel>
 				</div>
@@ -775,13 +786,13 @@
 </div>
 
 <!-- Box selection widget -->
-{#if $nodeGraph.box}
+{#if $nodeGraph.selectionBox}
 	<div
 		class="box-selection"
-		style:left={`${Math.min($nodeGraph.box.startX, $nodeGraph.box.endX)}px`}
-		style:top={`${Math.min($nodeGraph.box.startY, $nodeGraph.box.endY)}px`}
-		style:width={`${Math.abs($nodeGraph.box.startX - $nodeGraph.box.endX)}px`}
-		style:height={`${Math.abs($nodeGraph.box.startY - $nodeGraph.box.endY)}px`}
+		style:left={`${Math.min($nodeGraph.selectionBox.startX, $nodeGraph.selectionBox.endX)}px`}
+		style:top={`${Math.min($nodeGraph.selectionBox.startY, $nodeGraph.selectionBox.endY)}px`}
+		style:width={`${Math.abs($nodeGraph.selectionBox.startX - $nodeGraph.selectionBox.endX)}px`}
+		style:height={`${Math.abs($nodeGraph.selectionBox.startY - $nodeGraph.selectionBox.endY)}px`}
 	></div>
 {/if}
 

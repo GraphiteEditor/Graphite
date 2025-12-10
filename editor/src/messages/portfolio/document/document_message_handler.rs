@@ -1,5 +1,5 @@
 use super::node_graph::document_node_definitions;
-use super::node_graph::utility_types::Transform;
+use super::node_graph::utility_types::NodeGraphTransform;
 use super::utility_types::error::EditorError;
 use super::utility_types::misc::{GroupFolderType, SNAP_FUNCTIONS_FOR_BOUNDING_BOXES, SNAP_FUNCTIONS_FOR_PATHS, SnappingOptions, SnappingState};
 use super::utility_types::network_interface::{self, NodeNetworkInterface, TransactionStatus};
@@ -11,6 +11,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::data_panel::{DataPanelMessageContext, DataPanelMessageHandler};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::NodeGraphMessageContext;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
 use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay, overlay_options};
 use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType, OverlaysVisibilitySettings, Pivot};
@@ -22,6 +23,7 @@ use crate::messages::portfolio::document::utility_types::nodes::RawBuffer;
 use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
+
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_blend_mode, get_fill, get_opacity};
 use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
@@ -484,7 +486,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					responses.add(NodeGraphMessage::SelectedNodesSet {
 						nodes: self.node_graph_handler.selection_before_pointer_down.clone(),
 					});
-					responses.add(FrontendMessage::UpdateBox { box_selection: None });
+					responses.add(FrontendMessage::UpdateNodeGraphSelectionBox { selection_box: None });
 				}
 				// Abort wire in progress of being connected
 				else if self.node_graph_handler.wire_in_progress_from_connector.is_some() {
@@ -492,7 +494,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					self.node_graph_handler.wire_in_progress_to_connector = None;
 					self.node_graph_handler.wire_in_progress_type = FrontendGraphDataType::General;
 
-					responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: None });
+					responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path_in_progress: None });
 					responses.add(DocumentMessage::AbortTransaction);
 				}
 				// Close the context menu if it's open
@@ -1523,7 +1525,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					responses.add(NodeGraphMessage::UpdateImportsExports);
 
 					responses.add(FrontendMessage::UpdateNodeGraphTransform {
-						transform: Transform {
+						transform: NodeGraphTransform {
 							scale: transform.matrix2.x_axis.x,
 							x: transform.translation.x,
 							y: transform.translation.y,
@@ -1548,7 +1550,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				// Create an artboard and set its dimensions to the bounding box size and location
 				let node_id = NodeId::new();
 				let node_layer_id = LayerNodeIdentifier::new_unchecked(node_id);
-				let new_artboard_node = document_node_definitions::resolve_document_node_type("Artboard")
+				let new_artboard_node = document_node_definitions::resolve_document_node_type(&DefinitionIdentifier::Network("Artboard".to_string()))
 					.expect("Failed to create artboard node")
 					.default_node_template();
 				responses.add(NodeGraphMessage::InsertNode {
@@ -2133,8 +2135,7 @@ impl DocumentMessageHandler {
 					network_interface.upstream_flow_back_from_nodes(vec![selected_id.to_node()], &[], FlowType::HorizontalFlow).find(|id| {
 						network_interface
 							.reference(id, &[])
-							.map(|name| name.as_deref().unwrap_or_default() == "Boolean Operation")
-							.unwrap_or_default()
+							.is_some_and(|reference| reference == DefinitionIdentifier::Network("Boolean Operation".to_string()))
 					})
 				});
 

@@ -25,12 +25,22 @@ export type XY = { x: number; y: number };
 // for details about how to transform the JSON from wasm-bindgen into classes.
 // ============================================================================
 
-export class UpdateBox extends JsMessage {
-	readonly box!: Box | undefined;
-}
-
 export class UpdateClickTargets extends JsMessage {
 	readonly clickTargets!: FrontendClickTargets | undefined;
+}
+
+export class NodeGraphSelectionBox {
+	readonly startX!: number;
+
+	readonly startY!: number;
+
+	readonly endX!: number;
+
+	readonly endY!: number;
+}
+
+export class UpdateNodeGraphSelectionBox extends JsMessage {
+	readonly selectionBox!: NodeGraphSelectionBox | undefined;
 }
 
 export class UpdateImportsExports extends JsMessage {
@@ -104,8 +114,8 @@ const NodeDescriptions = Transform(({ obj }) => new Map(obj.nodeDescriptions));
 
 export class SendUIMetadata extends JsMessage {
 	@NodeDescriptions
-	readonly nodeDescriptions!: Map<string, string>;
-	@Type(() => FrontendNode)
+	readonly nodeDescriptions!: Map<DefinitionIdentifier, string>;
+
 	readonly nodeTypes!: FrontendNodeType[];
 }
 
@@ -135,8 +145,14 @@ export class UpdateOpenDocumentsList extends JsMessage {
 	readonly openDocuments!: OpenDocument[];
 }
 
+export class WirePathInProgress {
+	readonly wire!: string;
+	readonly thick!: boolean;
+	readonly dataType!: FrontendGraphDataType;
+}
+
 export class UpdateWirePathInProgress extends JsMessage {
-	readonly wirePath!: WirePath | undefined;
+	readonly wirePathInProgress!: WirePathInProgress | undefined;
 }
 
 export class OpenDocument {
@@ -152,16 +168,6 @@ export class DocumentDetails {
 	readonly isAutoSaved!: boolean;
 
 	readonly isSaved!: boolean;
-}
-
-export class Box {
-	readonly startX!: number;
-
-	readonly startY!: number;
-
-	readonly endX!: number;
-
-	readonly endY!: number;
 }
 
 export type FrontendClickTargets = {
@@ -217,9 +223,11 @@ export class FrontendNode {
 
 	readonly canBeLayer!: boolean;
 
-	readonly reference!: string | undefined;
+	readonly reference!: DefinitionIdentifier | undefined;
 
 	readonly displayName!: string;
+
+	readonly implementationName!: string;
 
 	readonly primaryInput!: FrontendGraphInput | undefined;
 
@@ -246,12 +254,16 @@ export class FrontendNode {
 }
 
 export class FrontendNodeType {
+	readonly identifier!: DefinitionIdentifier;
+
 	readonly name!: string;
 
 	readonly category!: string;
 
 	readonly inputTypes!: string[];
 }
+
+export type DefinitionIdentifier = { type: "Network"; data: string } | { type: "ProtoNode"; data: string };
 
 export class NodeGraphTransform {
 	readonly scale!: number;
@@ -1706,7 +1718,6 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerTextCopy,
 	TriggerVisitLink,
 	UpdateActiveDocument,
-	UpdateBox,
 	UpdateClickTargets,
 	UpdateContextMenuInformation,
 	UpdateDataPanelLayout,
@@ -1739,6 +1750,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateNodeGraphErrorDiagnostic,
 	UpdateNodeGraphNodes,
 	UpdateNodeGraphSelection,
+	UpdateNodeGraphSelectionBox,
 	UpdateNodeGraphTransform,
 	UpdateNodeGraphWires,
 	UpdateNodeThumbnail,
