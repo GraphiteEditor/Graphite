@@ -4,6 +4,7 @@ use super::utility_types::{PanelType, PersistentData};
 use crate::application::generate_uuid;
 use crate::consts::{DEFAULT_DOCUMENT_NAME, DEFAULT_STROKE_WIDTH, FILE_EXTENSION};
 use crate::messages::animation::TimingInformation;
+use crate::messages::clipboard::utility_types::ClipboardContent;
 use crate::messages::dialog::simple_dialogs;
 use crate::messages::frontend::utility_types::{DocumentDetails, OpenDocument};
 use crate::messages::input_mapper::utility_types::input_keyboard::Key;
@@ -243,10 +244,20 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				}
 			}
 			PortfolioMessage::Copy { clipboard } => {
+				if context.current_tool == &ToolType::Path {
+					responses.add(PathToolMessage::Copy { clipboard });
+					return;
+				}
+
 				// We can't use `self.active_document()` because it counts as an immutable borrow of the entirety of `self`
 				let Some(active_document) = self.active_document_id.and_then(|id| self.documents.get_mut(&id)) else {
 					return;
 				};
+
+				if active_document.graph_view_overlay_open() {
+					responses.add(NodeGraphMessage::Copy);
+					return;
+				}
 
 				let mut copy_val = |buffer: &mut Vec<CopyBufferEntry>| {
 					let mut ordered_last_elements = active_document.network_interface.shallowest_unique_layers(&[]).collect::<Vec<_>>();
@@ -283,10 +294,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				if clipboard == Clipboard::Device {
 					let mut buffer = Vec::new();
 					copy_val(&mut buffer);
-					let mut copy_text = String::from("graphite/layer: ");
-					copy_text += &serde_json::to_string(&buffer).expect("Could not serialize paste");
-
-					responses.add(FrontendMessage::TriggerTextCopy { copy_text });
+					let Ok(data) = serde_json::to_string(&buffer) else {
+						log::error!("Failed to serialize nodes for clipboard");
+						return;
+					};
+					responses.add(ClipboardMessage::Write {
+						content: ClipboardContent::Layer(data),
+					});
 				} else {
 					let copy_buffer = &mut self.copy_buffer;
 					copy_buffer[clipboard as usize].clear();
@@ -294,6 +308,18 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				}
 			}
 			PortfolioMessage::Cut { clipboard } => {
+				if context.current_tool == &ToolType::Path {
+					responses.add(PathToolMessage::Cut { clipboard });
+					return;
+				}
+
+				if let Some(active_document) = self.active_document()
+					&& active_document.graph_view_overlay_open()
+				{
+					responses.add(NodeGraphMessage::Copy);
+					return;
+				}
+
 				responses.add(PortfolioMessage::Copy { clipboard });
 				responses.add(DocumentMessage::DeleteSelectedLayers);
 			}

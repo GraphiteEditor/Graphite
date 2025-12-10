@@ -18,6 +18,7 @@ pub struct DispatcherMessageHandlers {
 	animation_message_handler: AnimationMessageHandler,
 	app_window_message_handler: AppWindowMessageHandler,
 	broadcast_message_handler: BroadcastMessageHandler,
+	clipboard_message_handler: ClipboardMessageHandler,
 	debug_message_handler: DebugMessageHandler,
 	defer_message_handler: DeferMessageHandler,
 	dialog_message_handler: DialogMessageHandler,
@@ -158,6 +159,7 @@ impl Dispatcher {
 					self.message_handlers.app_window_message_handler.process_message(message, &mut queue, ());
 				}
 				Message::Broadcast(message) => self.message_handlers.broadcast_message_handler.process_message(message, &mut queue, ()),
+				Message::Clipboard(message) => self.message_handlers.clipboard_message_handler.process_message(message, &mut queue, ()),
 				Message::Debug(message) => {
 					self.message_handlers.debug_message_handler.process_message(message, &mut queue, ());
 				}
@@ -319,6 +321,7 @@ impl Dispatcher {
 		// TODO: Reduce the number of heap allocations
 		let mut list = Vec::new();
 		list.extend(self.message_handlers.app_window_message_handler.actions());
+		list.extend(self.message_handlers.clipboard_message_handler.actions());
 		list.extend(self.message_handlers.dialog_message_handler.actions());
 		list.extend(self.message_handlers.animation_message_handler.actions());
 		list.extend(self.message_handlers.input_preprocessor_message_handler.actions());

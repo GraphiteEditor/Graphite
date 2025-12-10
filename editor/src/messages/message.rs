@@ -12,6 +12,8 @@ pub enum Message {
 	#[child]
 	Broadcast(BroadcastMessage),
 	#[child]
+	Clipboard(ClipboardMessage),
+	#[child]
 	Debug(DebugMessage),
 	#[child]
 	Defer(DeferMessage),

@@ -868,8 +868,16 @@ export class TriggerVisitLink extends JsMessage {
 
 export class TriggerTextCommit extends JsMessage {}
 
-export class TriggerTextCopy extends JsMessage {
-	readonly copyText!: string;
+export class TriggerClipboardWrite extends JsMessage {
+	readonly content!: string;
+}
+
+export class TriggerSelectionRead extends JsMessage {
+	readonly cut!: boolean;
+}
+
+export class TriggerSelectionWrite extends JsMessage {
+	readonly content!: string;
 }
 
 export class TriggerAboutGraphiteLocalizedCommitDate extends JsMessage {
@@ -1703,7 +1711,9 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerSaveFile,
 	TriggerSavePreferences,
 	TriggerTextCommit,
-	TriggerTextCopy,
+	TriggerClipboardWrite,
+	TriggerSelectionRead,
+	TriggerSelectionWrite,
 	TriggerVisitLink,
 	UpdateActiveDocument,
 	UpdateBox,

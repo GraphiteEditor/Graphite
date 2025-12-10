@@ -7,6 +7,7 @@
 use crate::helpers::translate_key;
 use crate::{EDITOR_HANDLE, EDITOR_HAS_CRASHED, Error, MESSAGE_BUFFER};
 use editor::consts::FILE_EXTENSION;
+use editor::messages::clipboard::utility_types::ClipboardContentRaw;
 use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
 use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta};
 use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -616,20 +617,6 @@ impl EditorHandle {
 		Ok(())
 	}
 
-	/// Paste layers from a serialized JSON representation
-	#[wasm_bindgen(js_name = pasteSerializedData)]
-	pub fn paste_serialized_data(&self, data: String) {
-		let message = PortfolioMessage::PasteSerializedData { data };
-		self.dispatch(message);
-	}
-
-	/// Paste vector into a new layer from a serialized JSON representation
-	#[wasm_bindgen(js_name = pasteSerializedVector)]
-	pub fn paste_serialized_vector(&self, data: String) {
-		let message = PortfolioMessage::PasteSerializedVector { data };
-		self.dispatch(message);
-	}
-
 	#[wasm_bindgen(js_name = clipLayer)]
 	pub fn clip_layer(&self, id: u64) {
 		let id = NodeId(id);
@@ -726,10 +713,19 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
-	/// Pastes the nodes based on serialized data
-	#[wasm_bindgen(js_name = pasteSerializedNodes)]
-	pub fn paste_serialized_nodes(&self, serialized_nodes: String) {
-		let message = NodeGraphMessage::PasteNodes { serialized_nodes };
+	/// Respond to selection read
+	#[wasm_bindgen(js_name = readSelection)]
+	pub fn read_selection(&self, content: Option<String>, cut: bool) {
+		let message = ClipboardMessage::ReadSelection { content, cut };
+		self.dispatch(message);
+	}
+
+	/// Paste from a serialized JSON representation
+	#[wasm_bindgen(js_name = pasteText)]
+	pub fn paste_text(&self, data: String) {
+		let message = ClipboardMessage::ReadClipboard {
+			content: ClipboardContentRaw::Text(data),
+		};
 		self.dispatch(message);
 	}
 

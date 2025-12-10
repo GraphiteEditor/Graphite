@@ -1,10 +1,10 @@
 import { type Editor } from "@graphite/editor";
-import { TriggerTextCopy } from "@graphite/messages";
+import { TriggerClipboardWrite } from "@graphite/messages";
 
 export function createClipboardManager(editor: Editor) {
 	// Subscribe to process backend event
-	editor.subscriptions.subscribeJsMessage(TriggerTextCopy, (triggerTextCopy) => {
+	editor.subscriptions.subscribeJsMessage(TriggerClipboardWrite, (triggerTextCopy) => {
 		// If the Clipboard API is supported in the browser, copy text to the clipboard
-		navigator.clipboard?.writeText?.(triggerTextCopy.copyText);
+		navigator.clipboard?.writeText?.(triggerTextCopy.content);
 	});
 }

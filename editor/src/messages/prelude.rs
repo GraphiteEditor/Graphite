@@ -7,6 +7,7 @@ pub use crate::messages::animation::{AnimationMessage, AnimationMessageDiscrimin
 pub use crate::messages::app_window::{AppWindowMessage, AppWindowMessageDiscriminant, AppWindowMessageHandler};
 pub use crate::messages::broadcast::event::{EventMessage, EventMessageContext, EventMessageDiscriminant, EventMessageHandler};
 pub use crate::messages::broadcast::{BroadcastMessage, BroadcastMessageDiscriminant, BroadcastMessageHandler};
+pub use crate::messages::clipboard::{ClipboardMessage, ClipboardMessageDiscriminant, ClipboardMessageHandler};
 pub use crate::messages::debug::{DebugMessage, DebugMessageDiscriminant, DebugMessageHandler};
 pub use crate::messages::defer::{DeferMessage, DeferMessageDiscriminant, DeferMessageHandler};
 pub use crate::messages::dialog::export_dialog::{ExportDialogMessage, ExportDialogMessageContext, ExportDialogMessageDiscriminant, ExportDialogMessageHandler};
