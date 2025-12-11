@@ -21,7 +21,6 @@ use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::utility_functions::make_path_editable_is_allowed;
 use crate::messages::tool::utility_types::{HintData, HintGroup, ToolType};
-use crate::messages::viewport::ToPhysical;
 use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
 use derivative::*;
 use glam::{DAffine2, DVec2};
@@ -365,13 +364,12 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					let node_to_inspect = self.node_to_inspect();
 
 					let scale = viewport.scale();
-					// Use exact physical dimensions from browser (via ResizeObserver's devicePixelContentBoxSize)
-					let physical_resolution = viewport.size().to_physical().into_dvec2().round().as_uvec2();
+					let resolution = viewport.size().into_dvec2().round().as_uvec2();
 
 					if let Ok(message) = self.executor.submit_node_graph_evaluation(
 						self.documents.get_mut(document_id).expect("Tried to render non-existent document"),
 						*document_id,
-						physical_resolution,
+						resolution,
 						scale,
 						timing_information,
 						node_to_inspect,
@@ -972,12 +970,11 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				};
 
 				let scale = viewport.scale();
-				// Use exact physical dimensions from browser (via ResizeObserver's devicePixelContentBoxSize)
-				let physical_resolution = viewport.size().to_physical().into_dvec2().round().as_uvec2();
+				let resolution = viewport.size().into_dvec2().round().as_uvec2();
 
 				let result = self
 					.executor
-					.submit_node_graph_evaluation(document, document_id, physical_resolution, scale, timing_information, node_to_inspect, ignore_hash);
+					.submit_node_graph_evaluation(document, document_id, resolution, scale, timing_information, node_to_inspect, ignore_hash);
 
 				match result {
 					Err(description) => {

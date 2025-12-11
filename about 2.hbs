@@ -1,0 +1,27 @@
+{{!
+Be careful to prevent auto-formatting from breaking this file's indentation.
+Replace this file with JSON output once this is resolved: https://github.com/EmbarkStudios/cargo-about/issues/73
+
+The `GENERATED_BY_CARGO_ABOUT` prefix is a JS labeled statement
+(<https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Statements/label>)
+used so the reader of the generated file can verify the file does indeed start with that string,
+while remaining valid JS for subsequent parsing.
+}}
+GENERATED_BY_CARGO_ABOUT: [
+	{{#each licenses}}
+	{
+		licenseName: `{{name}}`,
+		licenseText: `{{text}}`,
+		packages: [
+			{{#each used_by}}
+			{
+				name: `{{crate.name}}`,
+				version: `{{crate.version}}`,
+				author: `{{crate.authors}}`,
+				repository: `{{crate.repository}}`,
+			},
+			{{/each}}
+		],
+	},
+	{{/each}}
+]
