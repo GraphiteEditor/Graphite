@@ -92,6 +92,7 @@ pub enum PathToolMessage {
 	NudgeSelectedPoints {
 		delta_x: f64,
 		delta_y: f64,
+		nudge_alt: bool,
 	},
 	PointerMove {
 		equidistant: Key,
@@ -1148,7 +1149,7 @@ impl PathToolData {
 		let drag_start = self.drag_start_pos;
 		let opposite_delta = drag_start - current_mouse;
 
-		shape_editor.move_selected_points_and_segments(None, document, opposite_delta, false, true, false, None, false, responses);
+		shape_editor.move_selected_points_and_segments(None, document, opposite_delta, false, true, false, None, false, responses, false);
 
 		// Calculate the projected delta and shift the points along that delta
 		let delta = current_mouse - drag_start;
@@ -1160,7 +1161,7 @@ impl PathToolData {
 			_ => DVec2::new(delta.x, 0.),
 		};
 
-		shape_editor.move_selected_points_and_segments(None, document, projected_delta, false, true, false, None, false, responses);
+		shape_editor.move_selected_points_and_segments(None, document, projected_delta, false, true, false, None, false, responses, false);
 	}
 
 	fn stop_snap_along_axis(&mut self, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
@@ -1176,12 +1177,12 @@ impl PathToolData {
 			_ => DVec2::new(opposite_delta.x, 0.),
 		};
 
-		shape_editor.move_selected_points_and_segments(None, document, opposite_projected_delta, false, true, false, None, false, responses);
+		shape_editor.move_selected_points_and_segments(None, document, opposite_projected_delta, false, true, false, None, false, responses, false);
 
 		// Calculate what actually would have been the original delta for the point, and apply that
 		let delta = current_mouse - drag_start;
 
-		shape_editor.move_selected_points_and_segments(None, document, delta, false, true, false, None, false, responses);
+		shape_editor.move_selected_points_and_segments(None, document, delta, false, true, false, None, false, responses, false);
 
 		self.snapping_axis = None;
 	}
@@ -1504,7 +1505,7 @@ impl PathToolData {
 				self.temporary_colinear_handles = false;
 				skip_opposite = true;
 			}
-			shape_editor.move_selected_points_and_segments(handle_lengths, document, snapped_delta, equidistant, true, was_alt_dragging, opposite, skip_opposite, responses);
+			shape_editor.move_selected_points_and_segments(handle_lengths, document, snapped_delta, equidistant, true, was_alt_dragging, opposite, skip_opposite, responses, false);
 			self.previous_mouse_position += document_to_viewport.inverse().transform_vector2(snapped_delta);
 		} else {
 			let Some(axis) = self.snapping_axis else { return };
@@ -1513,7 +1514,7 @@ impl PathToolData {
 				Axis::Y => DVec2::new(0., unsnapped_delta.y),
 				_ => DVec2::new(unsnapped_delta.x, 0.),
 			};
-			shape_editor.move_selected_points_and_segments(handle_lengths, document, projected_delta, equidistant, true, false, opposite, false, responses);
+			shape_editor.move_selected_points_and_segments(handle_lengths, document, projected_delta, equidistant, true, false, opposite, false, responses, false);
 			self.previous_mouse_position += document_to_viewport.inverse().transform_vector2(unsnapped_delta);
 		}
 
@@ -3063,7 +3064,7 @@ impl Fsm for PathToolFsmState {
 				responses.add(OverlaysMessage::Draw);
 				PathToolFsmState::Ready
 			}
-			(_, PathToolMessage::NudgeSelectedPoints { delta_x, delta_y }) => {
+			(_, PathToolMessage::NudgeSelectedPoints { delta_x, delta_y, nudge_alt}) => {
 				shape_editor.move_selected_points_and_segments(
 					tool_data.opposing_handle_lengths.take(),
 					document,
@@ -3074,6 +3075,7 @@ impl Fsm for PathToolFsmState {
 					tool_data.opposite_handle_position,
 					false,
 					responses,
+					nudge_alt,
 				);
 
 				PathToolFsmState::Ready
