@@ -100,7 +100,7 @@ impl Fsm for EyedropperToolFsmState {
 			// Sampling -> Sampling
 			(EyedropperToolFsmState::SamplingPrimary | EyedropperToolFsmState::SamplingSecondary, EyedropperToolMessage::PointerMove) => {
 				let mouse_position = viewport.logical(input.mouse.position);
-				if viewport.is_in_bounds(mouse_position) {
+				if viewport.is_in_bounds(mouse_position + viewport.offset()) {
 					update_cursor_preview(responses, input, global_tool_data, None);
 				} else {
 					disable_cursor_preview(responses);
