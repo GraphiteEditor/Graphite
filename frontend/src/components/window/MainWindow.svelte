@@ -18,7 +18,9 @@
 </script>
 
 <LayoutCol class="main-window" classes={{ "viewport-hole-punch": $appWindow.viewportHolePunch }}>
-	<TitleBar />
+	{#if !($appWindow.platform == "Mac" && $appWindow.fullscreen)}
+		<TitleBar />
+	{/if}
 	<Workspace />
 	<StatusBar />
 	{#if $dialog.visible}

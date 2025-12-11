@@ -99,6 +99,10 @@ impl Window {
 		self.winit_window.is_maximized()
 	}
 
+	pub(crate) fn is_fullscreen(&self) -> bool {
+		self.winit_window.fullscreen().is_some()
+	}
+
 	pub(crate) fn start_drag(&self) {
 		let _ = self.winit_window.drag_window();
 	}

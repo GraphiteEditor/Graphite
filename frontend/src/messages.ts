@@ -302,6 +302,10 @@ export class UpdateMaximized extends JsMessage {
 	readonly maximized!: boolean;
 }
 
+export class UpdateFullscreen extends JsMessage {
+	readonly fullscreen!: boolean;
+}
+
 export class CloseWindow extends JsMessage {}
 
 export class UpdateViewportHolePunch extends JsMessage {
@@ -1742,7 +1746,6 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateLayersPanelControlBarRightLayout,
 	UpdateLayersPanelState,
 	UpdateLayerWidths,
-	UpdateMaximized,
 	UpdateMenuBarLayout,
 	UpdateMouseCursor,
 	UpdateNodeGraphControlBarLayout,
@@ -1754,6 +1757,8 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateNodeThumbnail,
 	UpdateOpenDocumentsList,
 	UpdatePlatform,
+	UpdateMaximized,
+	UpdateFullscreen,
 	UpdatePropertiesPanelLayout,
 	UpdatePropertiesPanelState,
 	UpdateStatusBarHintsLayout,

@@ -121,6 +121,10 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 			let message = FrontendMessage::UpdateMaximized { maximized };
 			dispatcher.queue_editor_message(message);
 		}
+		DesktopWrapperMessage::UpdateFullscreen { fullscreen } => {
+			let message = FrontendMessage::UpdateFullscreen { fullscreen };
+			dispatcher.queue_editor_message(message);
+		}
 		DesktopWrapperMessage::LoadDocument {
 			id,
 			document,

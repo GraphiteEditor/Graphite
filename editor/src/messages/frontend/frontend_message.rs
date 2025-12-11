@@ -326,6 +326,9 @@ pub enum FrontendMessage {
 	UpdateMaximized {
 		maximized: bool,
 	},
+	UpdateFullscreen {
+		fullscreen: bool,
+	},
 	UpdateViewportHolePunch {
 		active: bool,
 	},
