@@ -1506,7 +1506,7 @@ impl PathToolData {
 				self.temporary_colinear_handles = false;
 				skip_opposite = true;
 			}
-			shape_editor.move_selected_points_and_segments(handle_lengths, document, snapped_delta, equidistant, true, was_alt_dragging, opposite, skip_opposite, responses, false, false,);
+			shape_editor.move_selected_points_and_segments(handle_lengths, document, snapped_delta, equidistant, true, was_alt_dragging, opposite, skip_opposite, responses, false, false);
 			self.previous_mouse_position += document_to_viewport.inverse().transform_vector2(snapped_delta);
 		} else {
 			let Some(axis) = self.snapping_axis else { return };
@@ -3065,7 +3065,15 @@ impl Fsm for PathToolFsmState {
 				responses.add(OverlaysMessage::Draw);
 				PathToolFsmState::Ready
 			}
-			(_, PathToolMessage::NudgeSelectedPoints { delta_x, delta_y, nudge_alt, nudge_ctrl}) => {
+			(
+				_,
+				PathToolMessage::NudgeSelectedPoints {
+					delta_x,
+					delta_y,
+					nudge_alt,
+					nudge_ctrl,
+				},
+			) => {
 				shape_editor.move_selected_points_and_segments(
 					tool_data.opposing_handle_lengths.take(),
 					document,

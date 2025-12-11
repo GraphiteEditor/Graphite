@@ -1224,10 +1224,7 @@ impl ShapeState {
 			let delta = delta_transform.inverse().transform_vector2(delta);
 
 			let center = if bot_right || top_left {
-				let points: Vec<DVec2> = state
-				.selected_points()
-				.filter_map(|point| point.get_position(&vector))
-				.collect();
+				let points: Vec<DVec2> = state.selected_points().filter_map(|point| point.get_position(&vector)).collect();
 				if points.is_empty() {
 					continue;
 				}
