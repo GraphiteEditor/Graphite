@@ -1,4 +1,5 @@
 pub mod auto_panning;
+pub mod blue_layer_origin_cross;
 pub mod color_selector;
 pub mod compass_rose;
 pub mod gizmos;

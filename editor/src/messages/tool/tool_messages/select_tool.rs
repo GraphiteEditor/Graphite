@@ -610,6 +610,8 @@ impl Fsm for SelectToolFsmState {
 			(_, SelectToolMessage::Overlays { context: mut overlay_context }) => {
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input, viewport), &mut overlay_context);
 
+				crate::messages::tool::common_functionality::blue_layer_origin_cross::draw_for_selected_layers(&mut overlay_context, &document);
+
 				let selected_layers_count = document.network_interface.selected_nodes().selected_unlocked_layers(&document.network_interface).count();
 				tool_data.selected_layers_changed = selected_layers_count != tool_data.selected_layers_count;
 				tool_data.selected_layers_count = selected_layers_count;
@@ -731,6 +733,7 @@ impl Fsm for SelectToolFsmState {
 				if let Some(bounds) = bounds {
 					let bounding_box_manager = tool_data.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
 
+					// TODO: It is very bad to bounding box calculations only here as the user can disable overlays which breaks the bounding box based resizing.
 					bounding_box_manager.bounds = bounds;
 					bounding_box_manager.transform = transform;
 					bounding_box_manager.transform_tampered = transform_tampered;

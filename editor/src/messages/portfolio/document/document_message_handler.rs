@@ -1262,6 +1262,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					OverlaysType::TransformCage => visibility_settings.transform_cage = visible,
 					OverlaysType::HoverOutline => visibility_settings.hover_outline = visible,
 					OverlaysType::SelectionOutline => visibility_settings.selection_outline = visible,
+					OverlaysType::BlueLayerOriginCross => visibility_settings.blue_layer_origin_cross = visible,
 					OverlaysType::Pivot => visibility_settings.pivot = visible,
 					OverlaysType::Origin => visibility_settings.origin = visible,
 					OverlaysType::Path => visibility_settings.path = visible,
@@ -2391,6 +2392,24 @@ impl DocumentMessageHandler {
 									.for_label(checkbox_id)
 									.widget_instance(),
 								TextLabel::new("Selection Outline".to_string()).for_checkbox(checkbox_id).widget_instance(),
+							]
+						},
+					},
+					LayoutGroup::Row {
+						widgets: {
+							let checkbox_id = CheckboxId::new();
+							vec![
+								CheckboxInput::new(self.overlays_visibility_settings.blue_layer_origin_cross)
+									.on_update(|optional_input: &CheckboxInput| {
+										DocumentMessage::SetOverlaysVisibility {
+											visible: optional_input.checked,
+											overlays_type: Some(OverlaysType::BlueLayerOriginCross),
+										}
+										.into()
+									})
+									.for_label(checkbox_id)
+									.widget_instance(),
+								TextLabel::new("Blue Layer Origin Cross".to_string()).for_checkbox(checkbox_id).widget_instance(),
 							]
 						},
 					},
