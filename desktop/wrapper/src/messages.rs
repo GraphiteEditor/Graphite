@@ -103,6 +103,9 @@ pub enum DesktopWrapperMessage {
 	UpdateMaximized {
 		maximized: bool,
 	},
+	UpdateFullscreen {
+		fullscreen: bool,
+	},
 	LoadDocument {
 		id: DocumentId,
 		document: Document,

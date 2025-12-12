@@ -28,6 +28,9 @@ pub(crate) struct App {
 	wgpu_context: WgpuContext,
 	window: Option<Window>,
 	window_scale: f64,
+	window_size: PhysicalSize<u32>,
+	window_maximized: bool,
+	window_fullscreen: bool,
 	app_event_receiver: Receiver<AppEvent>,
 	app_event_scheduler: AppEventScheduler,
 	desktop_wrapper: DesktopWrapper,
@@ -81,6 +84,9 @@ impl App {
 			wgpu_context,
 			window: None,
 			window_scale: 1.,
+			window_size: PhysicalSize { width: 0, height: 0 },
+			window_maximized: false,
+			window_fullscreen: false,
 			app_event_receiver,
 			app_event_scheduler,
 			desktop_wrapper: DesktopWrapper::new(),
@@ -95,6 +101,56 @@ impl App {
 			persistent_data,
 			launch_documents,
 		}
+	}
+
+	fn resize(&mut self) {
+		let Some(window) = &self.window else {
+			tracing::error!("Resize failed due to missing window");
+			return;
+		};
+
+		let maximized = window.is_maximized();
+		if maximized != self.window_maximized {
+			self.window_maximized = maximized;
+			self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(DesktopWrapperMessage::UpdateMaximized { maximized }));
+		}
+
+		let fullscreen = window.is_fullscreen();
+		if fullscreen != self.window_fullscreen {
+			self.window_fullscreen = fullscreen;
+			self.app_event_scheduler
+				.schedule(AppEvent::DesktopWrapperMessage(DesktopWrapperMessage::UpdateFullscreen { fullscreen }));
+		}
+
+		let size = window.surface_size();
+		let scale = window.scale_factor();
+		let is_new_size = size != self.window_size;
+		let is_new_scale = scale != self.window_scale;
+
+		if !is_new_size && !is_new_scale {
+			return;
+		}
+
+		if is_new_size {
+			let _ = self.cef_view_info_sender.send(cef::ViewInfoUpdate::Size {
+				width: size.width,
+				height: size.height,
+			});
+		}
+		if is_new_scale {
+			let _ = self.cef_view_info_sender.send(cef::ViewInfoUpdate::Scale(scale));
+		}
+
+		self.cef_context.notify_view_info_changed();
+
+		if let Some(render_state) = &mut self.render_state {
+			render_state.resize(size.width, size.height);
+		}
+
+		window.request_redraw();
+
+		self.window_size = size;
+		self.window_scale = scale;
 	}
 
 	fn handle_desktop_frontend_message(&mut self, message: DesktopFrontendMessage, responses: &mut Vec<DesktopWrapperMessage>) {
@@ -393,21 +449,12 @@ impl App {
 impl ApplicationHandler for App {
 	fn can_create_surfaces(&mut self, event_loop: &dyn ActiveEventLoop) {
 		let window = Window::new(event_loop, self.app_event_scheduler.clone());
-
-		self.window_scale = window.scale_factor();
-		let _ = self.cef_view_info_sender.send(cef::ViewInfoUpdate::Scale(self.window_scale));
-
-		// Ensures the CEF texture does not remain at 1x1 pixels until the window is resized by the user
-		// Affects only some Mac devices (issue found on 2023 M2 Mac Mini).
-		let PhysicalSize { width, height } = window.surface_size();
-		let _ = self.cef_view_info_sender.send(cef::ViewInfoUpdate::Size { width, height });
-
-		self.cef_context.notify_view_info_changed();
-
 		self.window = Some(window);
 
 		let render_state = RenderState::new(self.window.as_ref().unwrap(), self.wgpu_context.clone());
 		self.render_state = Some(render_state);
+
+		self.resize();
 
 		self.desktop_wrapper.init(self.wgpu_context.clone());
 
@@ -433,32 +480,15 @@ impl ApplicationHandler for App {
 			WindowEvent::CloseRequested => {
 				self.app_event_scheduler.schedule(AppEvent::CloseWindow);
 			}
-			WindowEvent::SurfaceResized(PhysicalSize { width, height }) => {
-				let _ = self.cef_view_info_sender.send(cef::ViewInfoUpdate::Size { width, height });
-				self.cef_context.notify_view_info_changed();
-
-				if let Some(render_state) = &mut self.render_state {
-					render_state.resize(width, height);
-				}
-
-				if let Some(window) = &self.window {
-					let maximized = window.is_maximized();
-					self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(DesktopWrapperMessage::UpdateMaximized { maximized }));
-
-					window.request_redraw();
-				}
-			}
-			WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
-				self.window_scale = scale_factor;
-				let _ = self.cef_view_info_sender.send(cef::ViewInfoUpdate::Scale(self.window_scale));
-				self.cef_context.notify_view_info_changed();
+			WindowEvent::SurfaceResized(_) | WindowEvent::ScaleFactorChanged { .. } => {
+				self.resize();
 			}
 			WindowEvent::RedrawRequested => {
+				#[cfg(target_os = "macos")]
+				self.resize();
+
 				let Some(render_state) = &mut self.render_state else { return };
 				if let Some(window) = &self.window {
-					let size = window.surface_size();
-					render_state.resize(size.width, size.height);
-
 					match render_state.render(window) {
 						Ok(_) => {}
 						Err(RenderError::OutdatedUITextureError) => {
