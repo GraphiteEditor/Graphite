@@ -1,13 +1,13 @@
 import { get } from "svelte/store";
 
 import { type Editor } from "@graphite/editor";
-import { TriggerPaste } from "@graphite/messages";
+import { TriggerClipboardRead } from "@graphite/messages";
 import { type DialogState } from "@graphite/state-providers/dialog";
 import { type DocumentState } from "@graphite/state-providers/document";
 import { type FullscreenState } from "@graphite/state-providers/fullscreen";
 import { type PortfolioState } from "@graphite/state-providers/portfolio";
 import { makeKeyboardModifiersBitfield, textInputCleanup, getLocalizedScanCode } from "@graphite/utility-functions/keyboard-entry";
-import { operatingSystem } from "@graphite/utility-functions/platform";
+import { isDesktop, operatingSystem } from "@graphite/utility-functions/platform";
 import { extractPixelData } from "@graphite/utility-functions/rasterization";
 import { stripIndents } from "@graphite/utility-functions/strip-indents";
 
@@ -82,10 +82,13 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		// TODO: Switch to a system where everything is sent to the backend, then the input preprocessor makes decisions and kicks some inputs back to the frontend
 		const accelKey = operatingSystem() === "Mac" ? e.metaKey : e.ctrlKey;
 
+		// Cut, copy, and paste is handled in the backend on desktop
+		if (isDesktop() && accelKey && ["KeyX", "KeyC", "KeyV"].includes(key)) return true;
+
 		// Don't redirect user input from text entry into HTML elements
 		if (targetIsTextField(e.target || undefined) && key !== "Escape" && !(accelKey && ["Enter", "NumpadEnter"].includes(key))) return false;
 
-		// Don't redirect paste
+		// Don't redirect paste in web
 		if (key === "KeyV" && accelKey) return false;
 
 		// Don't redirect a fullscreen request
@@ -306,20 +309,10 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		if (!dataTransfer || targetIsTextField(e.target || undefined)) return;
 		e.preventDefault();
 
-		const LAYER_DATA = "graphite/layer: ";
-		const NODES_DATA = "graphite/nodes: ";
-		const VECTOR_DATA = "graphite/vector: ";
-
 		Array.from(dataTransfer.items).forEach(async (item) => {
 			if (item.type === "text/plain") {
 				item.getAsString((text) => {
-					if (text.startsWith(LAYER_DATA)) {
-						editor.handle.pasteSerializedData(text.substring(LAYER_DATA.length, text.length));
-					} else if (text.startsWith(NODES_DATA)) {
-						editor.handle.pasteSerializedNodes(text.substring(NODES_DATA.length, text.length));
-					} else if (text.startsWith(VECTOR_DATA)) {
-						editor.handle.pasteSerializedVector(text.substring(VECTOR_DATA.length, text.length));
-					}
+					editor.handle.pasteText(text);
 				});
 			}
 
@@ -413,7 +406,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 	// Frontend message subscriptions
 
-	editor.subscriptions.subscribeJsMessage(TriggerPaste, async () => {
+	editor.subscriptions.subscribeJsMessage(TriggerClipboardRead, async () => {
 		// In the try block, attempt to read from the Clipboard API, which may not have permission and may not be supported in all browsers
 		// In the catch block, explain to the user why the paste failed and how to fix or work around the problem
 		try {
@@ -437,10 +430,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 						const reader = new FileReader();
 						reader.onload = () => {
 							const text = reader.result as string;
-
-							if (text.startsWith("graphite/layer: ")) {
-								editor.handle.pasteSerializedData(text.substring(16, text.length));
-							}
+							editor.handle.pasteText(text);
 						};
 						reader.readAsText(blob);
 						return true;

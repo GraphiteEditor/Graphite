@@ -725,7 +725,7 @@ export class TriggerOpenDocument extends JsMessage {}
 
 export class TriggerImport extends JsMessage {}
 
-export class TriggerPaste extends JsMessage {}
+export class TriggerClipboardRead extends JsMessage {}
 
 export class TriggerSaveDocument extends JsMessage {
 	readonly documentId!: bigint;
@@ -868,8 +868,16 @@ export class TriggerVisitLink extends JsMessage {
 
 export class TriggerTextCommit extends JsMessage {}
 
-export class TriggerTextCopy extends JsMessage {
-	readonly copyText!: string;
+export class TriggerClipboardWrite extends JsMessage {
+	readonly content!: string;
+}
+
+export class TriggerSelectionRead extends JsMessage {
+	readonly cut!: boolean;
+}
+
+export class TriggerSelectionWrite extends JsMessage {
+	readonly content!: string;
 }
 
 export class TriggerAboutGraphiteLocalizedCommitDate extends JsMessage {
@@ -1695,7 +1703,6 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerLoadRestAutoSaveDocuments,
 	TriggerOpenDocument,
 	TriggerOpenLaunchDocuments,
-	TriggerPaste,
 	TriggerPersistenceRemoveDocument,
 	TriggerPersistenceWriteDocument,
 	TriggerSaveActiveDocument,
@@ -1703,7 +1710,10 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerSaveFile,
 	TriggerSavePreferences,
 	TriggerTextCommit,
-	TriggerTextCopy,
+	TriggerClipboardRead,
+	TriggerClipboardWrite,
+	TriggerSelectionRead,
+	TriggerSelectionWrite,
 	TriggerVisitLink,
 	UpdateActiveDocument,
 	UpdateBox,

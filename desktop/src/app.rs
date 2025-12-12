@@ -259,6 +259,18 @@ impl App {
 					window.update_menu(entries);
 				}
 			}
+			DesktopFrontendMessage::ClipboardRead => {
+				if let Some(window) = &self.window {
+					let content = window.clipboard_read();
+					let message = DesktopWrapperMessage::ClipboardReadResult { content };
+					self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
+				}
+			}
+			DesktopFrontendMessage::ClipboardWrite { content } => {
+				if let Some(window) = &mut self.window {
+					window.clipboard_write(content);
+				}
+			}
 			DesktopFrontendMessage::WindowClose => {
 				self.app_event_scheduler.schedule(AppEvent::CloseWindow);
 			}

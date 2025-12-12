@@ -1,6 +1,7 @@
 use super::utility_types::{BoxSelection, ContextMenuInformation, DragStart, FrontendNode};
 use super::{document_node_definitions, node_properties};
 use crate::consts::GRID_SIZE;
+use crate::messages::clipboard::utility_types::ClipboardContent;
 use crate::messages::input_mapper::utility_types::macros::{action_shortcut, action_shortcut_manual};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::document_message_handler::navigation_controls;
@@ -237,11 +238,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				let new_ids = &all_selected_nodes.iter().enumerate().map(|(new, old)| (*old, NodeId(new as u64))).collect();
 				let copied_nodes = network_interface.copy_nodes(new_ids, selection_network_path).collect::<Vec<_>>();
 
-				// Prefix to show that these are nodes
-				let mut copy_text = String::from("graphite/nodes: ");
-				copy_text += &serde_json::to_string(&copied_nodes).expect("Could not serialize copy");
-
-				responses.add(FrontendMessage::TriggerTextCopy { copy_text });
+				let Ok(data) = serde_json::to_string(&copied_nodes) else {
+					log::error!("Failed to serialize nodes for clipboard");
+					return;
+				};
+				responses.add(ClipboardMessage::Write {
+					content: ClipboardContent::Nodes(data),
+				});
 			}
 			NodeGraphMessage::CreateNodeInLayerNoTransaction { node_type, layer } => {
 				let Some(mut modify_inputs) = ModifyInputsContext::new_with_layer(layer, network_interface, responses) else {

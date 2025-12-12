@@ -4,6 +4,7 @@ use crate::consts::{
 	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GRAY, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, DEFAULT_STROKE_WIDTH, DOUBLE_CLICK_MILLISECONDS, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD,
 	DRILL_THROUGH_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD, SELECTION_TOLERANCE,
 };
+use crate::messages::clipboard::utility_types::ClipboardContent;
 use crate::messages::input_mapper::utility_types::macros::action_shortcut_manual;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
@@ -2732,10 +2733,13 @@ impl Fsm for PathToolFsmState {
 				}
 
 				if clipboard == Clipboard::Device {
-					let mut copy_text = String::from("graphite/vector: ");
-					copy_text += &serde_json::to_string(&buffer).expect("Could not serialize paste");
-
-					responses.add(FrontendMessage::TriggerTextCopy { copy_text });
+					if let Ok(data) = serde_json::to_string(&buffer) {
+						responses.add(ClipboardMessage::Write {
+							content: ClipboardContent::Vector(data),
+						});
+					} else {
+						log::error!("Failed to serialize nodes for clipboard");
+					}
 				}
 				// TODO: Add implementation for internal clipboard
 

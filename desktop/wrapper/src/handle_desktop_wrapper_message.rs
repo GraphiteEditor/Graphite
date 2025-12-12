@@ -1,6 +1,7 @@
 use graphene_std::Color;
 use graphene_std::raster::Image;
 use graphite_editor::messages::app_window::app_window_message_handler::AppWindowPlatform;
+use graphite_editor::messages::clipboard::utility_types::ClipboardContentRaw;
 use graphite_editor::messages::prelude::*;
 
 use super::DesktopWrapperMessageDispatcher;
@@ -156,5 +157,13 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 		}
 		#[cfg(not(target_os = "macos"))]
 		DesktopWrapperMessage::MenuEvent { id: _ } => {}
+		DesktopWrapperMessage::ClipboardReadResult { content } => {
+			if let Some(content) = content {
+				let message = ClipboardMessage::ReadClipboard {
+					content: ClipboardContentRaw::Text(content),
+				};
+				dispatcher.queue_editor_message(message);
+			}
+		}
 	}
 }

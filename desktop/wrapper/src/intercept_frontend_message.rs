@@ -126,6 +126,12 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 				_ => {}
 			}
 		}
+		FrontendMessage::TriggerClipboardRead => {
+			dispatcher.respond(DesktopFrontendMessage::ClipboardRead);
+		}
+		FrontendMessage::TriggerClipboardWrite { content } => {
+			dispatcher.respond(DesktopFrontendMessage::ClipboardWrite { content });
+		}
 		FrontendMessage::WindowClose => {
 			dispatcher.respond(DesktopFrontendMessage::WindowClose);
 		}

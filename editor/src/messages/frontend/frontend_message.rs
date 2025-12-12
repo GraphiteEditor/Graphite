@@ -66,7 +66,7 @@ pub enum FrontendMessage {
 		shortcut: Option<ActionShortcut>,
 	},
 
-	// Trigger prefix: cause a browser API to do something
+	// Trigger prefix: cause a frontend specific API to do something
 	TriggerAboutGraphiteLocalizedCommitDate {
 		#[serde(rename = "commitDate")]
 		commit_date: String,
@@ -111,7 +111,6 @@ pub enum FrontendMessage {
 	TriggerOpenLaunchDocuments,
 	TriggerLoadPreferences,
 	TriggerOpenDocument,
-	TriggerPaste,
 	TriggerSavePreferences {
 		preferences: PreferencesMessageHandler,
 	},
@@ -120,12 +119,18 @@ pub enum FrontendMessage {
 		document_id: DocumentId,
 	},
 	TriggerTextCommit,
-	TriggerTextCopy {
-		#[serde(rename = "copyText")]
-		copy_text: String,
-	},
 	TriggerVisitLink {
 		url: String,
+	},
+	TriggerClipboardRead,
+	TriggerClipboardWrite {
+		content: String,
+	},
+	TriggerSelectionRead {
+		cut: bool,
+	},
+	TriggerSelectionWrite {
+		content: String,
 	},
 
 	// Update prefix: give the frontend a new value or state for it to use
@@ -330,12 +335,15 @@ pub enum FrontendMessage {
 		width: f64,
 		height: f64,
 	},
+
 	#[cfg(not(target_family = "wasm"))]
 	RenderOverlays {
 		#[serde(skip, default = "OverlayContext::default")]
 		#[derivative(Debug = "ignore", PartialEq = "ignore")]
 		context: OverlayContext,
 	},
+
+	// Window prefix: cause the application window to do something
 	WindowClose,
 	WindowMinimize,
 	WindowMaximize,

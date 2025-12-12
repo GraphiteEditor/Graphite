@@ -6469,7 +6469,7 @@ mod network_interface_tests {
 		let serialized_nodes = frontend_messages
 			.into_iter()
 			.find_map(|msg| match msg {
-				FrontendMessage::TriggerTextCopy { copy_text } => Some(copy_text),
+				FrontendMessage::TriggerClipboardWrite { content } => Some(content),
 				_ => None,
 			})
 			.expect("copy message should be dispatched")

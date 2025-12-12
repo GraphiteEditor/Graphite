@@ -54,6 +54,10 @@ pub enum DesktopFrontendMessage {
 	UpdateMenu {
 		entries: Vec<MenuItem>,
 	},
+	ClipboardRead,
+	ClipboardWrite {
+		content: String,
+	},
 	WindowClose,
 	WindowMinimize,
 	WindowMaximize,
@@ -113,6 +117,9 @@ pub enum DesktopWrapperMessage {
 	},
 	MenuEvent {
 		id: String,
+	},
+	ClipboardReadResult {
+		content: Option<String>,
 	},
 }
 

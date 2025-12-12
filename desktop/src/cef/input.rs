@@ -91,6 +91,10 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 
 			key_event.character = event.logical_key.to_char_representation() as u16;
 
+			if event.state == ElementState::Pressed && key_event.character != 0 {
+				key_event.type_ = cef_key_event_type_t::KEYEVENT_CHAR.into();
+			}
+
 			// Mitigation for CEF on Mac bug to prevent NSMenu being triggered by this key event.
 			//
 			// CEF converts the key event into an `NSEvent` internally and passes that to Chromium.

@@ -54,6 +54,11 @@ pub fn input_mappings() -> Mapping {
 		// Hack to prevent Left Click + Accel + Z combo (this effectively blocks you from making a double undo with AbortTransaction)
 		entry!(KeyDown(KeyZ); modifiers=[Accel, MouseLeft], action_dispatch=DocumentMessage::Noop),
 		//
+		// ClipboardMessage
+		entry!(KeyDown(KeyX); modifiers=[Accel], action_dispatch=ClipboardMessage::Cut),
+		entry!(KeyDown(KeyC); modifiers=[Accel], action_dispatch=ClipboardMessage::Copy),
+		entry!(KeyDown(KeyV); modifiers=[Accel], action_dispatch=ClipboardMessage::Paste),
+		//
 		// NodeGraphMessage
 		entry!(KeyDown(MouseLeft); action_dispatch=NodeGraphMessage::PointerDown { shift_click: false, control_click: false, alt_click: false, right_click: false }),
 		entry!(KeyDown(MouseLeft); modifiers=[Shift], action_dispatch=NodeGraphMessage::PointerDown { shift_click: true, control_click: false, alt_click: false, right_click: false }),
@@ -432,9 +437,6 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(KeyC); modifiers=[Accel], action_dispatch=PortfolioMessage::Copy { clipboard: Clipboard::Device }),
 		entry!(KeyDown(KeyR); modifiers=[Alt], action_dispatch=PortfolioMessage::ToggleRulers),
 		entry!(KeyDown(KeyD); modifiers=[Alt], action_dispatch=PortfolioMessage::ToggleDataPanelOpen),
-		//
-		// FrontendMessage
-		entry!(KeyDown(KeyV); modifiers=[Accel], action_dispatch=FrontendMessage::TriggerPaste),
 		//
 		// DialogMessage
 		entry!(KeyDown(KeyE); modifiers=[Accel], action_dispatch=DialogMessage::RequestExportDialog),
