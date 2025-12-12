@@ -70,9 +70,9 @@ impl FontCache {
 	}
 
 	/// Insert a new font into the cache
-	pub fn insert(&mut self, font: Font, perview_url: String, data: Vec<u8>) {
+	pub fn insert(&mut self, font: Font, preview_url: String, data: Vec<u8>) {
 		self.font_file_data.insert(font.clone(), data);
-		self.preview_urls.insert(font, perview_url);
+		self.preview_urls.insert(font, preview_url);
 	}
 
 	/// Gets the preview URL for showing in text field when live editing
