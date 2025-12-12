@@ -132,6 +132,7 @@ pub enum PortfolioMessage {
 	ToggleLayersPanelOpen,
 	ToggleRulers,
 	UpdateDocumentWidgets,
+	ToggleGuidelines,
 	UpdateOpenDocumentsList,
 	UpdateVelloPreference,
 }
