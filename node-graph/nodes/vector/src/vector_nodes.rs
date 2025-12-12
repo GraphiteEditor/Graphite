@@ -712,7 +712,8 @@ pub mod extrude_algorithms {
 
 		let mut next_segment = vector.segment_domain.next_id();
 		for (index, &point) in points.iter().enumerate().take(first_half_points) {
-			if point != Found::Both {
+			// Extrema are single connected points or points with both psotive and negative values
+			if !matches!(point, Found::Both | Found::Positive | Found::Negative) {
 				continue;
 			}
 
