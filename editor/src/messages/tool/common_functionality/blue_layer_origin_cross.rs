@@ -4,6 +4,7 @@
 
 use crate::consts::{BLUE_LAYER_ORIGIN_CROSS_DIAMETER, BLUE_LAYER_ORIGIN_CROSS_THICKNESS, COLOR_OVERLAY_BLUE};
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::tool_messages::tool_prelude::DocumentMessageHandler;
 use glam::DVec2;
 
@@ -16,6 +17,16 @@ pub fn draw_for_selected_layers(overlay_context: &mut OverlayContext, document: 
 	for layer in document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface) {
 		// Don't show artboards
 		if document.network_interface.is_artboard(&layer.to_node(), &[]) {
+			continue;
+		}
+
+		// Don't crash if we accidentally have the root.
+		if layer == LayerNodeIdentifier::ROOT_PARENT {
+			continue;
+		}
+
+		// Some layers such as groups don't have a local transform.
+		if !document.metadata().local_transforms.contains_key(&layer.to_node()) {
 			continue;
 		}
 
