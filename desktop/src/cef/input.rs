@@ -45,7 +45,7 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 				MouseButton::Left => cef::MouseButtonType::from(cef_mouse_button_type_t::MBT_LEFT),
 				MouseButton::Right => cef::MouseButtonType::from(cef_mouse_button_type_t::MBT_RIGHT),
 				MouseButton::Middle => cef::MouseButtonType::from(cef_mouse_button_type_t::MBT_MIDDLE),
-				_ => return, //TODO: Handle Forward and Back button
+				_ => return,
 			};
 
 			let Some(host) = browser.host() else { return };

@@ -12,6 +12,9 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 		DesktopWrapperMessage::FromWeb(message) => {
 			dispatcher.queue_editor_message(*message);
 		}
+		DesktopWrapperMessage::Input(message) => {
+			dispatcher.queue_editor_message(EditorMessage::InputPreprocessor(message));
+		}
 		DesktopWrapperMessage::OpenFileDialogResult { path, content, context } => match context {
 			OpenFileDialogContext::Document => {
 				dispatcher.queue_desktop_wrapper_message(DesktopWrapperMessage::OpenDocument { path, content });
