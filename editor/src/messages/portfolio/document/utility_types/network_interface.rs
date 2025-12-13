@@ -5477,36 +5477,42 @@ impl NodeNetworkInterface {
 		let height_below_layer = lowest_y_position - layer_to_move_position.y - 3;
 
 		// If there is an upstream node in the new location for the layer, create space for the moved layer by shifting the upstream node down
-		if let Some(upstream_node_id) = post_node_input.as_node() {
-			// Select the layer to move to ensure the shifting works correctly
-			let Some(selected_nodes) = self.selected_nodes_mut(network_path) else {
-				log::error!("Could not get selected nodes in move_layer_to_stack");
-				return;
-			};
-			let old_selected_nodes = selected_nodes.replace_with(vec![upstream_node_id]);
+		// if let Some(upstream_node_id) = post_node_input.as_node() {
+		// 	// Select the layer to move to ensure the shifting works correctly
+		// 	let Some(selected_nodes) = self.selected_nodes_mut(network_path) else {
+		// 		log::error!("Could not get selected nodes in move_layer_to_stack");
+		// 		return;
+		// 	};
+		// 	let old_selected_nodes = selected_nodes.replace_with(vec![upstream_node_id]);
 
-			// Create the minimum amount space for the moved layer
-			for _ in 0..3 {
-				self.vertical_shift_with_push(&upstream_node_id, 1, &mut HashSet::new(), network_path);
-			}
+		// 	// Create the minimum amount space for the moved layer
+		// 	for _ in 0..3 {
+		// 		self.vertical_shift_with_push(&upstream_node_id, 1, &mut HashSet::new(), network_path);
+		// 	}
 
-			let Some(stack_position) = self.position(&upstream_node_id, network_path) else {
-				log::error!("Could not get stack position in move_layer_to_stack");
-				return;
-			};
+		// 	let Some(stack_position) = self.position(&upstream_node_id, network_path) else {
+		// 		log::error!("Could not get stack position in move_layer_to_stack");
+		// 		return;
+		// 	};
 
-			let current_gap = stack_position.y - (after_move_post_layer_position.y + 2);
-			let target_gap = 1 + height_above_layer + 2 + height_below_layer + 1;
+		// 	let current_gap = stack_position.y - (after_move_post_layer_position.y + 2);
+		// 	let target_gap = 1 + height_above_layer + 2 + height_below_layer + 1;
 
-			for _ in 0..(target_gap - current_gap).max(0) {
-				self.vertical_shift_with_push(&upstream_node_id, 1, &mut HashSet::new(), network_path);
-			}
+		// 	for _ in 0..(target_gap - current_gap).max(0) {
+		// 		self.vertical_shift_with_push(&upstream_node_id, 1, &mut HashSet::new(), network_path);
+		// 	}
 
-			let _ = self.selected_nodes_mut(network_path).unwrap().replace_with(old_selected_nodes);
-		}
+		// 	let _ = self.selected_nodes_mut(network_path).unwrap().replace_with(old_selected_nodes);
+		// }
 
-		// If inserting into a stack with a parent, ensure the parent stack has enough space for the child stack
-		if parent != LayerNodeIdentifier::ROOT_PARENT
+		let top_of_single_layer_stack = insert_index == 0
+			&& self.upstream_output_connector(&InputConnector::node(layer.to_node(), 1), network_path).is_some_and(|current_top| {
+				self.outward_wires(network_path)
+					.is_some_and(|wires| wires.get(&current_top).is_some_and(|outward_wires| outward_wires.len() == 1))
+			});
+		// If inserting into a stack with a single parent, ensure the parent stack has enough space for the child stack
+		if top_of_single_layer_stack
+			&& parent != LayerNodeIdentifier::ROOT_PARENT
 			&& let Some(upstream_sibling) = parent.next_sibling(&self.document_metadata)
 		{
 			let Some(parent_position) = self.position(&parent.to_node(), network_path) else {
@@ -5555,6 +5561,9 @@ impl NodeNetworkInterface {
 			let _ = self.selected_nodes_mut(network_path).unwrap().replace_with(old_selected_nodes);
 		}
 
+		// If true, this node should be inserted before the post node (toward root from the layer), and all outward wires from the pre node should be moved to its output.
+		let mut insert_node_after_post = false;
+
 		// Connect the layer to a parent layer/node at the top of the stack, or a non layer node midway down the stack
 		if !inserting_into_stack {
 			match post_node_input {
@@ -5576,7 +5585,7 @@ impl NodeNetworkInterface {
 					let final_layer_position = IVec2::new(stack_top_position.x, after_move_post_layer_position.y + 3 + height_above_layer);
 					let shift = final_layer_position - previous_layer_position;
 					self.shift_absolute_node_position(&layer.to_node(), shift, network_path);
-					self.insert_node_between(&layer.to_node(), &post_node, 0, network_path);
+					insert_node_after_post = true;
 				}
 				NodeInput::Import { .. } => {
 					log::error!("Cannot move post node to parent which connects to the imports")
@@ -5595,11 +5604,35 @@ impl NodeNetworkInterface {
 					let final_layer_position = after_move_post_layer_position + IVec2::new(0, 3 + height_above_layer);
 					let shift = final_layer_position - previous_layer_position;
 					self.shift_absolute_node_position(&layer.to_node(), shift, network_path);
-					self.insert_node_between(&layer.to_node(), &post_node, 0, network_path);
+					insert_node_after_post = true;
 				}
 				NodeInput::Import { .. } => {
 					log::error!("Cannot move post node to parent which connects to the imports")
 				}
+			}
+		}
+
+		if insert_node_after_post {
+			self.insert_node_between(&layer.to_node(), &post_node, 0, network_path);
+
+			// Get the other wires which need to be moved to the output of the moved layer
+			let layer_input_connector = InputConnector::node(layer.to_node(), 0);
+			let other_outward_wires = self
+				.upstream_output_connector(&layer_input_connector, network_path)
+				.and_then(|pre_node_output| self.outward_wires(network_path).and_then(|wires| wires.get(&pre_node_output)))
+				.map(|other| {
+					other
+						.iter()
+						.filter(|other_input_connector| **other_input_connector != layer_input_connector)
+						.cloned()
+						.collect::<Vec<_>>()
+				})
+				.unwrap_or_default();
+
+			// Disconnect and reconnect
+			for other_outward_wire in &other_outward_wires {
+				self.disconnect_input(other_outward_wire, network_path);
+				self.create_wire(&OutputConnector::node(layer.to_node(), 0), other_outward_wire, network_path);
 			}
 		}
 		self.unload_upstream_node_click_targets(vec![layer.to_node()], network_path);
