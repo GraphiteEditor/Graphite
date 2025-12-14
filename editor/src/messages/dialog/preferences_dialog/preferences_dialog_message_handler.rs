@@ -1,4 +1,6 @@
-use crate::consts::{VIEWPORT_ZOOM_WHEEL_RATE, VIEWPORT_ZOOM_WHEEL_RATE_CHANGE};
+use base64::display;
+
+use crate::consts::{UI_SCALE_DEFAULT, UI_SCALE_MAX, UI_SCALE_MIN, VIEWPORT_ZOOM_WHEEL_RATE, VIEWPORT_ZOOM_WHEEL_RATE_CHANGE};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::wires::GraphWireStyle;
 use crate::messages::preferences::SelectionMode;
@@ -147,6 +149,39 @@ impl PreferencesDialogMessageHandler {
 			selection_mode,
 		];
 
+		// ==========
+		// UI
+		// ==========
+
+		let ui_header = vec![TextLabel::new("UI").italic(true).widget_instance()];
+
+		let scale_description = "Adjust the scale of the user interface (100 is default).";
+		let scale_label = vec![
+			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			TextLabel::new("Scale").tooltip_label("Scale").tooltip_description(scale_description).widget_instance(),
+		];
+		let scale = vec![
+			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			NumberInput::new(Some(ui_scale_to_display(preferences.ui_scale)))
+				.tooltip_label("Scale")
+				.tooltip_description(scale_description)
+				.mode_range()
+				.int()
+				.min(ui_scale_to_display(UI_SCALE_MIN))
+				.max(ui_scale_to_display(UI_SCALE_MAX))
+				.on_update(|number_input: &NumberInput| {
+					if let Some(display_value) = number_input.value {
+						let scale = map_display_to_ui_scale(display_value);
+						PreferencesMessage::UIScale { scale }.into()
+					} else {
+						PreferencesMessage::UIScale { scale: UI_SCALE_DEFAULT }.into()
+					}
+				})
+				.widget_instance(),
+		];
+
 		// ============
 		// EXPERIMENTAL
 		// ============
@@ -268,6 +303,12 @@ impl PreferencesDialogMessageHandler {
 			LayoutGroup::Row { widgets: selection_label },
 			LayoutGroup::Row { widgets: selection_mode },
 			//
+			// UI
+			LayoutGroup::Row { widgets: ui_header },
+			// UI: Scale
+			LayoutGroup::Row { widgets: scale_label },
+			LayoutGroup::Row { widgets: scale },
+			//
 			// EXPERIMENTAL
 			LayoutGroup::Row { widgets: experimental_header },
 			// Experimental: Node Graph Wires
@@ -350,4 +391,14 @@ fn map_zoom_rate_to_display(rate: f64) -> f64 {
 	let distance_from_reference = 50. * scaling_factor.ln() / VIEWPORT_ZOOM_WHEEL_RATE_CHANGE;
 	let display = 50. + distance_from_reference;
 	display.clamp(1., 100.).round()
+}
+
+/// Maps display values in percent to actual ui scale.
+fn map_display_to_ui_scale(display: f64) -> f64 {
+	display / 100.
+}
+
+/// Maps actual ui scale back to display values in percent.
+fn ui_scale_to_display(scale: f64) -> f64 {
+	scale * 100.
 }

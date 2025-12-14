@@ -35,6 +35,9 @@ pub enum DesktopFrontendMessage {
 		width: f64,
 		height: f64,
 	},
+	UpdateUIScale {
+		scale: f64,
+	},
 	UpdateOverlays(vello::Scene),
 	PersistenceWriteDocument {
 		id: DocumentId,

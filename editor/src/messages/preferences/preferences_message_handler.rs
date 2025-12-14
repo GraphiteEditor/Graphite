@@ -1,4 +1,4 @@
-use crate::consts::VIEWPORT_ZOOM_WHEEL_RATE;
+use crate::consts::{UI_SCALE_DEFAULT, VIEWPORT_ZOOM_WHEEL_RATE};
 use crate::messages::input_mapper::key_mapping::MappingVariant;
 use crate::messages::portfolio::document::utility_types::wires::GraphWireStyle;
 use crate::messages::preferences::SelectionMode;
@@ -14,6 +14,7 @@ pub struct PreferencesMessageHandler {
 	pub brush_tool: bool,
 	pub graph_wire_style: GraphWireStyle,
 	pub viewport_zoom_wheel_rate: f64,
+	pub ui_scale: f64,
 }
 
 impl PreferencesMessageHandler {
@@ -42,6 +43,7 @@ impl Default for PreferencesMessageHandler {
 			brush_tool: false,
 			graph_wire_style: GraphWireStyle::default(),
 			viewport_zoom_wheel_rate: VIEWPORT_ZOOM_WHEEL_RATE,
+			ui_scale: UI_SCALE_DEFAULT,
 		}
 	}
 }
@@ -61,6 +63,7 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 				responses.add(PreferencesMessage::ModifyLayout {
 					zoom_with_scroll: self.zoom_with_scroll,
 				});
+				responses.add(FrontendMessage::UpdateUIScale { scale: self.ui_scale });
 			}
 			PreferencesMessage::ResetToDefaults => {
 				refresh_dialog(responses);
@@ -98,6 +101,10 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 			}
 			PreferencesMessage::ViewportZoomWheelRate { rate } => {
 				self.viewport_zoom_wheel_rate = rate;
+			}
+			PreferencesMessage::UIScale { scale } => {
+				self.ui_scale = scale;
+				responses.add(FrontendMessage::UpdateUIScale { scale: self.ui_scale });
 			}
 		}
 
