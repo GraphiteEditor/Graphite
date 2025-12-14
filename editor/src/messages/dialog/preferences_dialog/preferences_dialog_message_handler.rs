@@ -1,5 +1,3 @@
-use base64::display;
-
 use crate::consts::{UI_SCALE_DEFAULT, UI_SCALE_MAX, UI_SCALE_MIN, VIEWPORT_ZOOM_WHEEL_RATE, VIEWPORT_ZOOM_WHEEL_RATE_CHANGE};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::wires::GraphWireStyle;
