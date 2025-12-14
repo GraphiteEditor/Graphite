@@ -943,10 +943,10 @@ impl Render for Table<Vector> {
 			let wants_stroke_below = row.element.style.stroke().is_some_and(|s| s.paint_order == vector::style::PaintOrder::StrokeBelow);
 
 			// Closures to avoid duplicated fill/stroke drawing logic
-			let do_fill = |scene: &mut Scene| match row.element.style.fill() {
+			let do_fill_path = |scene: &mut Scene, path: &kurbo::BezPath| match row.element.style.fill() {
 				Fill::Solid(color) => {
 					let fill = peniko::Brush::Solid(peniko::Color::new([color.r(), color.g(), color.b(), color.a()]));
-					scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &fill, None, &path);
+					scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &fill, None, path);
 				}
 				Fill::Gradient(gradient) => {
 					let mut stops = peniko::ColorStops::new();
@@ -998,9 +998,26 @@ impl Render for Table<Vector> {
 						Default::default()
 					};
 					let brush_transform = kurbo::Affine::new((inverse_element_transform * parent_transform).to_cols_array());
-					scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &fill, Some(brush_transform), &path);
+					scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &fill, Some(brush_transform), path);
 				}
 				Fill::None => {}
+			};
+
+			let do_fill = |scene: &mut Scene| {
+				if row.element.is_branching() {
+					// For branching paths, fill each face separately
+					for mut face_path in row.element.construct_faces().filter(|face| !(face.area() < 0.0)) {
+						face_path.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
+						let mut kurbo_path = kurbo::BezPath::new();
+						for element in face_path {
+							kurbo_path.push(element);
+						}
+						do_fill_path(scene, &kurbo_path);
+					}
+				} else {
+					// Simple fill of the entire path
+					do_fill_path(scene, &path);
+				}
 			};
 
 			let do_stroke = |scene: &mut Scene, width_scale: f64| {
@@ -1117,7 +1134,7 @@ impl Render for Table<Vector> {
 							false => [Op::Fill, Op::Stroke], // Default
 						};
 
-						for operation in order {
+						for operation in &order {
 							match operation {
 								Op::Fill => do_fill(scene),
 								Op::Stroke => do_stroke(scene, 1.),
