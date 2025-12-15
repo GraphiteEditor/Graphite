@@ -63,9 +63,9 @@ pub enum NodeGraphMessage {
 	EnterNestedNetwork,
 	DuplicateSelectedNodes,
 	ExposeInput {
-		input_connector: InputConnector,
-		set_to_exposed: bool,
-		start_transaction: bool,
+		node_id: NodeId,
+		input_index: usize,
+		exposed: bool,
 	},
 	ExposeEncapsulatingPrimaryInput {
 		exposed: bool,

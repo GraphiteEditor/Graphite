@@ -1292,46 +1292,28 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add_front(NodeGraphMessage::RunDocumentGraph);
 			}
 			DocumentMessage::AddTransaction => {
-				// Reverse order since they are added to the front
-				responses.add_front(DocumentMessage::CommitTransaction);
-				responses.add_front(DocumentMessage::StartTransaction);
+				self.start_transaction(responses);
+				self.commit_transaction(responses);
 			}
 			// Note: A transaction should never be started in a scope that mutates the network interface, since it will only be run after that scope ends.
 			DocumentMessage::StartTransaction => {
-				self.network_interface.start_transaction();
-				let network_interface_clone = self.network_interface.clone();
-				self.document_undo_history.push_back(network_interface_clone);
-				if self.document_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
-					self.document_undo_history.pop_front();
-				}
-				// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
-				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+				self.start_transaction(responses);
 			}
 			// Commits the transaction if the network was mutated since the transaction started, otherwise it cancels the transaction
 			DocumentMessage::EndTransaction => match self.network_interface.transaction_status() {
 				TransactionStatus::Started => {
-					responses.add_front(DocumentMessage::CancelTransaction);
+					self.network_interface.finish_transaction();
+					self.document_undo_history.pop_back();
 				}
 				TransactionStatus::Modified => {
-					responses.add_front(DocumentMessage::CommitTransaction);
+					self.commit_transaction(responses);
 				}
 				TransactionStatus::Finished => {}
 			},
-			DocumentMessage::CancelTransaction => {
-				self.network_interface.finish_transaction();
-				self.document_undo_history.pop_back();
-			}
-			DocumentMessage::CommitTransaction => {
-				if self.network_interface.transaction_status() == TransactionStatus::Finished {
-					return;
-				}
-				self.network_interface.finish_transaction();
-				self.document_redo_history.clear();
-				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
-			}
 			DocumentMessage::AbortTransaction => match self.network_interface.transaction_status() {
 				TransactionStatus::Started => {
-					responses.add_front(DocumentMessage::CancelTransaction);
+					self.network_interface.finish_transaction();
+					self.document_undo_history.pop_back();
 				}
 				TransactionStatus::Modified => {
 					responses.add(DocumentMessage::RepeatedAbortTransaction { undo_count: 1 });
@@ -1827,6 +1809,26 @@ impl DocumentMessageHandler {
 		let val = serde_json::to_string(self);
 		// We fully expect the serialization to succeed
 		val.unwrap()
+	}
+
+	pub fn start_transaction(&mut self, responses: &mut VecDeque<Message>) {
+		self.network_interface.start_transaction();
+		let network_interface_clone = self.network_interface.clone();
+		self.document_undo_history.push_back(network_interface_clone);
+		if self.document_undo_history.len() > crate::consts::MAX_UNDO_HISTORY_LEN {
+			self.document_undo_history.pop_front();
+		}
+		// Push the UpdateOpenDocumentsList message to the bus in order to update the save status of the open documents
+		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+	}
+
+	pub fn commit_transaction(&mut self, responses: &mut VecDeque<Message>) {
+		if self.network_interface.transaction_status() == TransactionStatus::Finished {
+			return;
+		}
+		self.network_interface.finish_transaction();
+		self.document_redo_history.clear();
+		responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 	}
 
 	pub fn deserialize_document(serialized_content: &str) -> Result<Self, EditorError> {

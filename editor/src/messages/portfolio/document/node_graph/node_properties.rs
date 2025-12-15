@@ -47,7 +47,7 @@ pub fn commit_value<T>(_: &T) -> Message {
 	DocumentMessage::AddTransaction.into()
 }
 
-pub fn expose_widget(node_id: NodeId, index: usize, data_type: FrontendGraphDataType, exposed: bool) -> WidgetInstance {
+pub fn expose_widget(node_id: NodeId, input_index: usize, data_type: FrontendGraphDataType, exposed: bool) -> WidgetInstance {
 	ParameterExposeButton::new()
 		.exposed(exposed)
 		.data_type(data_type)
@@ -58,9 +58,9 @@ pub fn expose_widget(node_id: NodeId, index: usize, data_type: FrontendGraphData
 		})
 		.on_update(move |_parameter| Message::Batched {
 			messages: Box::new([NodeGraphMessage::ExposeInput {
-				input_connector: InputConnector::node(node_id, index),
-				set_to_exposed: !exposed,
-				start_transaction: true,
+				node_id,
+				input_index,
+				exposed: !exposed,
 			}
 			.into()]),
 		})

@@ -182,8 +182,6 @@ pub enum DocumentMessage {
 	AddTransaction,
 	StartTransaction,
 	EndTransaction,
-	CommitTransaction,
-	CancelTransaction,
 	AbortTransaction,
 	RepeatedAbortTransaction {
 		undo_count: usize,
