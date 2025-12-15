@@ -27,6 +27,7 @@ pub(crate) struct App {
 	window_size: PhysicalSize<u32>,
 	window_maximized: bool,
 	window_fullscreen: bool,
+	ui_scale: f64,
 	app_event_receiver: Receiver<AppEvent>,
 	app_event_scheduler: AppEventScheduler,
 	desktop_wrapper: DesktopWrapper,
@@ -83,6 +84,7 @@ impl App {
 			window_size: PhysicalSize { width: 0, height: 0 },
 			window_maximized: false,
 			window_fullscreen: false,
+			ui_scale: 1.,
 			app_event_receiver,
 			app_event_scheduler,
 			desktop_wrapper: DesktopWrapper::new(),
@@ -119,7 +121,7 @@ impl App {
 		}
 
 		let size = window.surface_size();
-		let scale = window.scale_factor();
+		let scale = window.scale_factor() * self.ui_scale;
 		let is_new_size = size != self.window_size;
 		let is_new_scale = scale != self.window_scale;
 
@@ -227,6 +229,10 @@ impl App {
 					let viewport_scale_y = if height != 0.0 { window_size.height as f64 / height } else { 1.0 };
 					render_state.set_viewport_scale([viewport_scale_x as f32, viewport_scale_y as f32]);
 				}
+			}
+			DesktopFrontendMessage::UpdateUIScale { scale } => {
+				self.ui_scale = scale;
+				self.resize();
 			}
 			DesktopFrontendMessage::UpdateOverlays(scene) => {
 				if let Some(render_state) = &mut self.render_state {

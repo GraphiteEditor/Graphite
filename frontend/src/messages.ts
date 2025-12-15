@@ -319,6 +319,10 @@ export class UpdateViewportPhysicalBounds extends JsMessage {
 	readonly height!: number;
 }
 
+export class UpdateUIScale extends JsMessage {
+	readonly scale!: number;
+}
+
 // Rust enum `Key`
 export type KeyRaw = string;
 // Serde converts a Rust `Key` enum variant into this format with both the `Key` variant name (called `RawKey` in TS) and the localized `label` for the key
@@ -1766,6 +1770,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateToolShelfLayout,
 	UpdateViewportHolePunch,
 	UpdateViewportPhysicalBounds,
+	UpdateUIScale,
 	UpdateVisibleNodes,
 	UpdateWelcomeScreenButtonsLayout,
 	UpdateWirePathInProgress,

@@ -338,6 +338,9 @@ pub enum FrontendMessage {
 		width: f64,
 		height: f64,
 	},
+	UpdateUIScale {
+		scale: f64,
+	},
 
 	#[cfg(not(target_family = "wasm"))]
 	RenderOverlays {

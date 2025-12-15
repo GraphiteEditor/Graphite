@@ -17,6 +17,9 @@
 
 	let menuBarLayout: Layout = [];
 
+	// On mac menu bar needs to be scaled with inverse of UI scale to match native menu buttons.
+	$: height = $appWindow.platform === "Mac" ? 28 * (1 / $appWindow.uiScale) : 28;
+
 	onMount(() => {
 		editor.subscriptions.subscribeJsMessage(UpdateMenuBarLayout, (updateMenuBarLayout) => {
 			patchLayout(menuBarLayout, updateMenuBarLayout);
@@ -25,7 +28,7 @@
 	});
 </script>
 
-<LayoutRow class="title-bar">
+<LayoutRow class="title-bar" styles={{ height: height + "px" }}>
 	<!-- Menu bar -->
 	<LayoutRow>
 		{#if $appWindow.platform !== "Mac"}
@@ -48,7 +51,6 @@
 
 <style lang="scss" global>
 	.title-bar {
-		height: 28px;
 		flex: 0 0 auto;
 
 		> .layout-row {
