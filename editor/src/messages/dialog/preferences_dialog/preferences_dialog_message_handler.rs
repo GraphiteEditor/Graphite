@@ -178,6 +178,7 @@ impl PreferencesDialogMessageHandler {
 					.int()
 					.min(ui_scale_to_display(UI_SCALE_MIN))
 					.max(ui_scale_to_display(UI_SCALE_MAX))
+					.unit("%")
 					.on_update(|number_input: &NumberInput| {
 						if let Some(display_value) = number_input.value {
 							let scale = map_display_to_ui_scale(display_value);
