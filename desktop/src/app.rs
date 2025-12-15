@@ -1,17 +1,13 @@
 use rfd::AsyncFileDialog;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::mpsc::Receiver;
-use std::sync::mpsc::Sender;
-use std::sync::mpsc::SyncSender;
+use std::sync::mpsc::{Receiver, Sender, SyncSender};
 use std::thread;
-use std::time::Duration;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalSize;
-use winit::event::WindowEvent;
-use winit::event_loop::ActiveEventLoop;
-use winit::event_loop::ControlFlow;
+use winit::event::{ButtonSource, ElementState, MouseButton, WindowEvent};
+use winit::event_loop::{ActiveEventLoop, ControlFlow};
 use winit::window::WindowId;
 
 use crate::cef;
@@ -20,7 +16,7 @@ use crate::event::{AppEvent, AppEventScheduler};
 use crate::persist::PersistentData;
 use crate::render::{RenderError, RenderState};
 use crate::window::Window;
-use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, Platform};
+use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, InputMessage, MouseKeys, MouseState, Platform};
 use crate::wrapper::{DesktopWrapper, NodeGraphExecutionResult, WgpuContext, serialize_frontend_messages};
 
 pub(crate) struct App {
@@ -518,6 +514,32 @@ impl ApplicationHandler for App {
 							return;
 						}
 					};
+				}
+			}
+
+			// Forward and Back buttons are not supported by CEF and thus need to be directly forwarded the editor
+			WindowEvent::PointerButton {
+				button: ButtonSource::Mouse(button),
+				state: ElementState::Pressed,
+				..
+			} => {
+				let mouse_keys = match button {
+					MouseButton::Back => Some(MouseKeys::BACK),
+					MouseButton::Forward => Some(MouseKeys::FORWARD),
+					_ => None,
+				};
+				if let Some(mouse_keys) = mouse_keys {
+					let message = DesktopWrapperMessage::Input(InputMessage::PointerDown {
+						editor_mouse_state: MouseState { mouse_keys, ..Default::default() },
+						modifier_keys: Default::default(),
+					});
+					self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
+
+					let message = DesktopWrapperMessage::Input(InputMessage::PointerUp {
+						editor_mouse_state: Default::default(),
+						modifier_keys: Default::default(),
+					});
+					self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
 				}
 			}
 			_ => {}
