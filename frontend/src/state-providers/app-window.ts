@@ -9,6 +9,7 @@ export function createAppWindowState(editor: Editor) {
 		maximized: false,
 		fullscreen: false,
 		viewportHolePunch: false,
+		uiScale: 1.0,
 	});
 
 	// Set up message subscriptions on creation
@@ -38,7 +39,7 @@ export function createAppWindowState(editor: Editor) {
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateUIScale, (uiScale) => {
 		update((state) => {
-			window.document.body.style.zoom = uiScale.scale.toString();
+			state.uiScale = uiScale.scale;
 			return state;
 		});
 	});

@@ -69,6 +69,7 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		}
 		FrontendMessage::UpdateUIScale { scale } => {
 			dispatcher.respond(DesktopFrontendMessage::UpdateUIScale { scale });
+			return Some(FrontendMessage::UpdateUIScale { scale });
 		}
 		FrontendMessage::TriggerPersistenceWriteDocument { document_id, document, details } => {
 			dispatcher.respond(DesktopFrontendMessage::PersistenceWriteDocument {
