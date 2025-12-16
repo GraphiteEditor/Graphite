@@ -2186,39 +2186,6 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn update_document_widgets(&self, responses: &mut VecDeque<Message>, animation_is_playing: bool, time: Duration) {
-		// // Document mode (dropdown menu at the left of the bar above the viewport, before the tool options)
-		// let layout = Layout(vec![LayoutGroup::Row {
-		// 	widgets: vec![
-		// 		DropdownInput::new(
-		// 			vec![vec![
-		// 				MenuListEntry::new(format!("{:?}", DocumentMode::DesignMode))
-		// 					.label(DocumentMode::DesignMode.to_string())
-		// 					.icon(DocumentMode::DesignMode.icon_name()),
-		// 				// TODO: See issue #330
-		// 				MenuListEntry::new(format!("{:?}", DocumentMode::SelectMode))
-		// 					.label(DocumentMode::SelectMode.to_string())
-		// 					.icon(DocumentMode::SelectMode.icon_name())
-		// 					.on_commit(|_| todo!()),
-		// 				// TODO: See issue #331
-		// 				MenuListEntry::new(format!("{:?}", DocumentMode::GuideMode))
-		// 					.label(DocumentMode::GuideMode.to_string())
-		// 					.icon(DocumentMode::GuideMode.icon_name())
-		// 					.on_commit(|_| todo!()),
-		// 			]])
-		// 			.selected_index(Some(self.document_mode as u32))
-		// 			.draw_icon(true)
-		// 			.interactive(false)
-		// 			.widget_instance(),
-		// 		Separator::new(SeparatorType::Section).widget_instance(),
-		// 	],
-		// }]);
-		// responses.add(LayoutMessage::SendLayout {
-		// 	layout,
-		// 	layout_target: LayoutTarget::DocumentMode,
-		// });
-
-		// Document bar (right portion of the bar above the viewport)
-
 		let mut snapping_state = self.snapping_state.clone();
 		let mut snapping_state2 = self.snapping_state.clone();
 

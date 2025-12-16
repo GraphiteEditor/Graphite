@@ -1062,25 +1062,6 @@ export class DropdownInput extends WidgetProps {
 	maxWidth!: number;
 }
 
-export class FontInput extends WidgetProps {
-	fontFamily!: string;
-
-	fontStyle!: string;
-
-	isStyle!: boolean;
-
-	disabled!: boolean;
-
-	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltipLabel!: string | undefined;
-
-	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltipDescription!: string | undefined;
-
-	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
-	tooltipShortcut!: ActionShortcut | undefined;
-}
-
 export class IconButton extends WidgetProps {
 	icon!: IconName;
 
@@ -1449,7 +1430,6 @@ const widgetSubTypes = [
 	{ value: ColorInput, name: "ColorInput" },
 	{ value: CurveInput, name: "CurveInput" },
 	{ value: DropdownInput, name: "DropdownInput" },
-	{ value: FontInput, name: "FontInput" },
 	{ value: IconButton, name: "IconButton" },
 	{ value: ImageButton, name: "ImageButton" },
 	{ value: ImageLabel, name: "ImageLabel" },

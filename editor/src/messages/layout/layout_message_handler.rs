@@ -264,44 +264,6 @@ impl LayoutMessageHandler {
 
 				responses.add(callback_message);
 			}
-			Widget::FontInput(font_input) => {
-				let callback_message = match action {
-					WidgetValueAction::Commit => (font_input.on_commit.callback)(&()),
-					WidgetValueAction::Update => {
-						let Some(update_value) = value.as_object() else {
-							error!("FontInput update was not of type: object");
-							return;
-						};
-						let Some(font_family_value) = update_value.get("fontFamily") else {
-							error!("FontInput update does not have a fontFamily");
-							return;
-						};
-						let Some(font_style_value) = update_value.get("fontStyle") else {
-							error!("FontInput update does not have a fontStyle");
-							return;
-						};
-
-						let Some(font_family) = font_family_value.as_str() else {
-							error!("FontInput update fontFamily was not of type: string");
-							return;
-						};
-						let Some(font_style) = font_style_value.as_str() else {
-							error!("FontInput update fontStyle was not of type: string");
-							return;
-						};
-
-						font_input.font_family = font_family.into();
-						font_input.font_style = font_style.into();
-
-						responses.add(PortfolioMessage::LoadFont {
-							font: Font::new(font_family.into(), font_style.into()),
-						});
-						(font_input.on_update.callback)(font_input)
-					}
-				};
-
-				responses.add(callback_message);
-			}
 			Widget::IconButton(icon_button) => {
 				let callback_message = match action {
 					WidgetValueAction::Commit => (icon_button.on_commit.callback)(&()),

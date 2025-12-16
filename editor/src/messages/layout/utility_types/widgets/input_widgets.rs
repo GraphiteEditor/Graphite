@@ -154,41 +154,6 @@ pub struct MenuListEntry {
 
 #[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, WidgetBuilder, specta::Type)]
 #[derivative(Debug, PartialEq, Default)]
-pub struct FontInput {
-	#[serde(rename = "fontFamily")]
-	#[widget_builder(constructor)]
-	pub font_family: String,
-
-	#[serde(rename = "fontStyle")]
-	#[widget_builder(constructor)]
-	pub font_style: String,
-
-	#[serde(rename = "isStyle")]
-	pub is_style_picker: bool,
-
-	pub disabled: bool,
-
-	#[serde(rename = "tooltipLabel")]
-	pub tooltip_label: String,
-
-	#[serde(rename = "tooltipDescription")]
-	pub tooltip_description: String,
-
-	#[serde(rename = "tooltipShortcut")]
-	pub tooltip_shortcut: Option<ActionShortcut>,
-
-	// Callbacks
-	#[serde(skip)]
-	#[derivative(Debug = "ignore", PartialEq = "ignore")]
-	pub on_update: WidgetCallback<FontInput>,
-
-	#[serde(skip)]
-	#[derivative(Debug = "ignore", PartialEq = "ignore")]
-	pub on_commit: WidgetCallback<()>,
-}
-
-#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, WidgetBuilder, specta::Type)]
-#[derivative(Debug, PartialEq, Default)]
 pub struct NumberInput {
 	// Label
 	pub label: String,

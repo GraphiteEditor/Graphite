@@ -17,7 +17,6 @@
 	import ColorInput from "@graphite/components/widgets/inputs/ColorInput.svelte";
 	import CurveInput from "@graphite/components/widgets/inputs/CurveInput.svelte";
 	import DropdownInput from "@graphite/components/widgets/inputs/DropdownInput.svelte";
-	import FontInput from "@graphite/components/widgets/inputs/FontInput.svelte";
 	import NumberInput from "@graphite/components/widgets/inputs/NumberInput.svelte";
 	import RadioInput from "@graphite/components/widgets/inputs/RadioInput.svelte";
 	import ReferencePointInput from "@graphite/components/widgets/inputs/ReferencePointInput.svelte";
@@ -110,10 +109,6 @@
 				}}
 				on:selectedIndex={({ detail }) => widgetValueCommitAndUpdate(index, detail)}
 			/>
-		{/if}
-		{@const fontInput = narrowWidgetProps(component.props, "FontInput")}
-		{#if fontInput}
-			<FontInput {...exclude(fontInput)} on:changeFont={({ detail }) => widgetValueCommitAndUpdate(index, detail)} />
 		{/if}
 		{@const parameterExposeButton = narrowWidgetProps(component.props, "ParameterExposeButton")}
 		{#if parameterExposeButton}
