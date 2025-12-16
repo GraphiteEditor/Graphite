@@ -20,9 +20,11 @@ The hexagon represents one unit in the lattice grid chemical structure of graphe
 
 ## Usage policy
 
-The Graphite logo is made available for community use, with some limitations. While the software is free and open source, the brand identity is more restrictive. Please be respectful of the Graphite brand by reviewing the usage policy.
+The Graphite logo is made available for community use, with some limitations. While the software is free and open source, the brand identity is more restrictive. Please be respectful of the Graphite brand by reviewing this usage policy.
 
-Please be advised that the logo is not part of the software's Apache 2.0 [license](/license). Users of the logo must adhere to the usage policy:
+Be aware that the logo is not covered under the [Apache License 2.0](/license#source-code) of Graphite's source code. Its usage within Graphite software distributions is covered by the [Graphite Branding License](/license#branding).
+
+Outside the context of the Graphite application (or derivatives), community usage of the logo must adhere to the usage policy:
 
 1. Do not use the Graphite logo as your own. It should not be used as your primary—or most visually prominent—branding, and may never be incorporated into your own logo. Your usage should not imply that it's a part of the official Graphite project, nor that it's endorsed or affiliated.
 2. Your (product, service, website, company, channel, etc.) brand name should not begin with "Graphite", or use it as the most prominent word in the name. It may only be used as a secondary or descriptive word that comes after your own unique name. For example: "XYZ for Graphite" is acceptable, but "Graphite XYZ" is not since it implies affiliation.
