@@ -11,7 +11,7 @@
 	import { createAppWindowState } from "@graphite/state-providers/app-window";
 	import { createDialogState } from "@graphite/state-providers/dialog";
 	import { createDocumentState } from "@graphite/state-providers/document";
-	import { createFontsState } from "@graphite/state-providers/fonts";
+	import { createFontsManager } from "/src/io-managers/fonts";
 	import { createFullscreenState } from "@graphite/state-providers/fullscreen";
 	import { createNodeGraphState } from "@graphite/state-providers/node-graph";
 	import { createPortfolioState } from "@graphite/state-providers/portfolio";
@@ -31,8 +31,6 @@
 	setContext("tooltip", tooltip);
 	let document = createDocumentState(editor);
 	setContext("document", document);
-	let fonts = createFontsState(editor);
-	setContext("fonts", fonts);
 	let fullscreen = createFullscreenState(editor);
 	setContext("fullscreen", fullscreen);
 	let nodeGraph = createNodeGraphState(editor);
@@ -48,6 +46,7 @@
 	createLocalizationManager(editor);
 	createPanicManager(editor, dialog);
 	createPersistenceManager(editor, portfolio);
+	createFontsManager(editor);
 	let inputManagerDestructor = createInputManager(editor, dialog, portfolio, document, fullscreen);
 
 	onMount(() => {

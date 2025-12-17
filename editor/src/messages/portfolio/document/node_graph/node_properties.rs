@@ -4,6 +4,7 @@ use super::document_node_definitions::{NODE_OVERRIDES, NodePropertiesContext};
 use super::utility_types::FrontendGraphDataType;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
+use crate::messages::portfolio::utility_types::{FontCatalogStyle, PersistentData};
 use crate::messages::prelude::*;
 use choice::enum_choice;
 use dyn_any::DynAny;
@@ -34,7 +35,7 @@ pub(crate) fn string_properties(text: &str) -> Vec<LayoutGroup> {
 fn optionally_update_value<T>(value: impl Fn(&T) -> Option<TaggedValue> + 'static + Send + Sync, node_id: NodeId, input_index: usize) -> impl Fn(&T) -> Message + 'static + Send + Sync {
 	move |input_value: &T| match value(input_value) {
 		Some(value) => NodeGraphMessage::SetInputValue { node_id, input_index, value }.into(),
-		_ => Message::NoOp,
+		None => Message::NoOp,
 	}
 }
 
@@ -86,6 +87,7 @@ pub fn start_widgets(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<Widget
 		input_type,
 		blank_assist,
 		exposable,
+		..
 	} = parameter_widgets_info;
 
 	let Some(document_node) = document_node else {
@@ -759,36 +761,146 @@ pub fn array_of_vec2_widget(parameter_widgets_info: ParameterWidgetsInfo, text_p
 }
 
 pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetInstance>, Option<Vec<WidgetInstance>>) {
-	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
+	let ParameterWidgetsInfo {
+		persistent_data,
+		document_node,
+		node_id,
+		index,
+		..
+	} = parameter_widgets_info;
 
 	let mut first_widgets = start_widgets(parameter_widgets_info);
 	let mut second_widgets = None;
-
-	let from_font_input = |font: &FontInput| TaggedValue::Font(Font::new(font.font_family.clone(), font.font_style.clone()));
 
 	let Some(document_node) = document_node else { return (Vec::new(), None) };
 	let Some(input) = document_node.inputs.get(index) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return (vec![], None);
 	};
+
 	if let Some(TaggedValue::Font(font)) = &input.as_non_exposed_value() {
 		first_widgets.extend_from_slice(&[
 			Separator::new(SeparatorType::Unrelated).widget_instance(),
-			FontInput::new(font.font_family.clone(), font.font_style.clone())
-				.on_update(update_value(from_font_input, node_id, index))
-				.on_commit(commit_value)
-				.widget_instance(),
+			DropdownInput::new(vec![
+				persistent_data
+					.font_catalog
+					.0
+					.iter()
+					.map(|family| {
+						MenuListEntry::new(family.name.clone())
+							.label(family.name.clone())
+							.font({
+								// Get the URL for the stylesheet of a subsetted font preview for the font style closest to weight 400
+								let preview_name = family.name.replace(' ', "+");
+								let preview_weight = family.closest_style(400, false).weight;
+								format!("https://fonts.googleapis.com/css2?display=swap&family={preview_name}:wght@{preview_weight}&text={preview_name}")
+							})
+							.on_update({
+								// Construct the new font using the new family and the initial or previous style, although this style might not exist in the catalog
+								let mut new_font = Font::new(family.name.clone(), font.font_style_to_restore.clone().unwrap_or_else(|| font.font_style.clone()));
+								new_font.font_style_to_restore = font.font_style_to_restore.clone();
+
+								// If not already, store the initial style so it can be restored if the user switches to another family
+								if new_font.font_style_to_restore.is_none() {
+									new_font.font_style_to_restore = Some(new_font.font_style.clone());
+								}
+
+								// Use the closest style available in the family for the new font to ensure the style exists
+								let FontCatalogStyle { weight, italic, .. } = FontCatalogStyle::from_named_style(&new_font.font_style, "");
+								new_font.font_style = family.closest_style(weight, italic).to_named_style();
+
+								move |_| {
+									let new_font = new_font.clone();
+
+									Message::Batched {
+										messages: Box::new([
+											PortfolioMessage::LoadFontData { font: new_font.clone() }.into(),
+											update_value(move |_| TaggedValue::Font(new_font.clone()), node_id, index)(&()),
+										]),
+									}
+								}
+							})
+							.on_commit({
+								// Use the new value from the user selection
+								let font_family = family.name.clone();
+
+								// Use the previous style selection and extract its weight and italic properties, then find the closest style in the new family
+								let FontCatalogStyle { weight, italic, .. } = FontCatalogStyle::from_named_style(&font.font_style, "");
+								let font_style = family.closest_style(weight, italic).to_named_style();
+
+								move |_| {
+									let new_font = Font::new(font_family.clone(), font_style.clone());
+
+									DeferMessage::AfterGraphRun {
+										messages: vec![update_value(move |_| TaggedValue::Font(new_font.clone()), node_id, index)(&()), commit_value(&())],
+									}
+									.into()
+								}
+							})
+					})
+					.collect::<Vec<_>>(),
+			])
+			.selected_index(persistent_data.font_catalog.0.iter().position(|family| family.name == font.font_family).map(|i| i as u32))
+			.virtual_scrolling(true)
+			.widget_instance(),
 		]);
 
 		let mut second_row = vec![TextLabel::new("").widget_instance()];
 		add_blank_assist(&mut second_row);
 		second_row.extend_from_slice(&[
 			Separator::new(SeparatorType::Unrelated).widget_instance(),
-			FontInput::new(font.font_family.clone(), font.font_style.clone())
-				.is_style_picker(true)
-				.on_update(update_value(from_font_input, node_id, index))
-				.on_commit(commit_value)
-				.widget_instance(),
+			DropdownInput::new({
+				persistent_data
+					.font_catalog
+					.0
+					.iter()
+					.find(|family| family.name == font.font_family)
+					.map(|family| {
+						let build_entry = |style: &FontCatalogStyle| {
+							let font_style = style.to_named_style();
+							MenuListEntry::new(font_style.clone())
+								.label(font_style.clone())
+								.on_update({
+									let font_family = font.font_family.clone();
+									let font_style = font_style.clone();
+
+									move |_| {
+										// Keep the existing family
+										let new_font = Font::new(font_family.clone(), font_style.clone());
+
+										Message::Batched {
+											messages: Box::new([
+												PortfolioMessage::LoadFontData { font: new_font.clone() }.into(),
+												update_value(move |_| TaggedValue::Font(new_font.clone()), node_id, index)(&()),
+											]),
+										}
+									}
+								})
+								.on_commit(commit_value)
+						};
+
+						vec![
+							family.styles.iter().filter(|style| !style.italic).map(build_entry).collect::<Vec<_>>(),
+							family.styles.iter().filter(|style| style.italic).map(build_entry).collect::<Vec<_>>(),
+						]
+					})
+					.filter(|styles| !styles.is_empty())
+					.unwrap_or_default()
+			})
+			.selected_index(
+				persistent_data
+					.font_catalog
+					.0
+					.iter()
+					.find(|family| family.name == font.font_family)
+					.and_then(|family| {
+						let not_italic = family.styles.iter().filter(|style| !style.italic);
+						let italic = family.styles.iter().filter(|style| style.italic);
+						not_italic.chain(italic).position(|style| style.to_named_style() == font.font_style)
+					})
+					.map(|i| i as u32),
+			)
+			.widget_instance(),
 		]);
 		second_widgets = Some(second_row);
 	}
@@ -2033,6 +2145,7 @@ pub fn math_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> 
 }
 
 pub struct ParameterWidgetsInfo<'a> {
+	persistent_data: &'a PersistentData,
 	document_node: Option<&'a DocumentNode>,
 	node_id: NodeId,
 	index: usize,
@@ -2053,6 +2166,7 @@ impl<'a> ParameterWidgetsInfo<'a> {
 		let document_node = context.network_interface.document_node(&node_id, context.selection_network_path);
 
 		ParameterWidgetsInfo {
+			persistent_data: context.persistent_data,
 			document_node,
 			node_id,
 			index,
@@ -2227,7 +2341,7 @@ pub mod choice {
 
 			let mut row = LayoutGroup::Row { widgets };
 			if let Some(desc) = self.widget_factory.description() {
-				row = row.with_tooltip_label(desc);
+				row = row.with_tooltip_description(desc);
 			}
 			row
 		}

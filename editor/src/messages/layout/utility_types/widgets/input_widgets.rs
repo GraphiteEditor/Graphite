@@ -80,6 +80,10 @@ pub struct DropdownInput {
 	#[widget_builder(constructor)]
 	pub entries: MenuListEntrySections,
 
+	#[serde(rename = "entriesHash")]
+	#[widget_builder(skip)]
+	pub entries_hash: u64,
+
 	// This uses `u32` instead of `usize` since it will be serialized as a normal JS number (replace this with `usize` after switching to a Rust-based GUI)
 	#[serde(rename = "selectedIndex")]
 	pub selected_index: Option<u32>,
@@ -93,6 +97,9 @@ pub struct DropdownInput {
 	pub disabled: bool,
 
 	pub narrow: bool,
+
+	#[serde(rename = "virtualScrolling")]
+	pub virtual_scrolling: bool,
 
 	#[serde(rename = "tooltipLabel")]
 	pub tooltip_label: String,
@@ -142,6 +149,10 @@ pub struct MenuListEntry {
 
 	pub children: MenuListEntrySections,
 
+	#[serde(rename = "childrenHash")]
+	#[widget_builder(skip)]
+	pub children_hash: u64,
+
 	// Callbacks
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
@@ -150,6 +161,15 @@ pub struct MenuListEntry {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_commit: WidgetCallback<()>,
+}
+
+impl std::hash::Hash for MenuListEntry {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		self.value.hash(state);
+		self.label.hash(state);
+		self.icon.hash(state);
+		self.disabled.hash(state);
+	}
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, WidgetBuilder, specta::Type)]

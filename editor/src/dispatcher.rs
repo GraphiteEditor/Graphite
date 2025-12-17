@@ -51,7 +51,7 @@ const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 		NodeGraphMessageDiscriminant::RunDocumentGraph,
 	))),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::SubmitActiveGraphRender),
-	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::TriggerFontLoad),
+	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::TriggerFontDataLoad),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateUIScale),
 ];
 /// Since we don't need to update the frontend multiple times per frame,
@@ -69,6 +69,7 @@ const FRONTEND_UPDATE_MESSAGES: &[MessageDiscriminant] = &[
 const DEBUG_MESSAGE_BLOCK_LIST: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Broadcast(BroadcastMessageDiscriminant::TriggerEvent(EventMessageDiscriminant::AnimationFrame)),
 	MessageDiscriminant::Animation(AnimationMessageDiscriminant::IncrementFrameCounter),
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::AutoSaveAllDocuments),
 ];
 // TODO: Find a way to combine these with the list above. We use strings for now since these are the standard variant names used by multiple messages. But having these also type-checked would be best.
 const DEBUG_MESSAGE_ENDING_BLOCK_LIST: &[&str] = &["PointerMove", "PointerOutsideViewport", "Overlays", "Draw", "CurrentTime", "Time"];
@@ -179,7 +180,7 @@ impl Dispatcher {
 				}
 				Message::Frontend(message) => {
 					// Handle these messages immediately by returning early
-					if let FrontendMessage::TriggerFontLoad { .. } = message {
+					if let FrontendMessage::TriggerFontDataLoad { .. } | FrontendMessage::TriggerFontCatalogLoad = message {
 						self.responses.push(message);
 						self.cleanup_queues(false);
 
@@ -359,8 +360,9 @@ impl Dispatcher {
 	fn log_message(&self, message: &Message, queues: &[VecDeque<Message>], message_logging_verbosity: MessageLoggingVerbosity) {
 		let discriminant = MessageDiscriminant::from(message);
 		let is_blocked = DEBUG_MESSAGE_BLOCK_LIST.contains(&discriminant) || DEBUG_MESSAGE_ENDING_BLOCK_LIST.iter().any(|blocked_name| discriminant.local_name().ends_with(blocked_name));
+		let is_empty_batched = if let Message::Batched { messages } = message { messages.is_empty() } else { false };
 
-		if !is_blocked {
+		if !is_blocked && !is_empty_batched {
 			match message_logging_verbosity {
 				MessageLoggingVerbosity::Off => {}
 				MessageLoggingVerbosity::Names => {

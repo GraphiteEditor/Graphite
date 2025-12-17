@@ -353,42 +353,7 @@ impl From<Vec<WidgetInstance>> for LayoutGroup {
 }
 
 impl LayoutGroup {
-	/// Applies a tooltip label to all widgets in this row or column without a tooltip.
-	pub fn with_tooltip_label(self, label: impl Into<String>) -> Self {
-		let (is_col, mut widgets) = match self {
-			LayoutGroup::Column { widgets } => (true, widgets),
-			LayoutGroup::Row { widgets } => (false, widgets),
-			_ => unimplemented!(),
-		};
-		let label = label.into();
-		for widget in &mut widgets {
-			let val = match &mut widget.widget {
-				Widget::CheckboxInput(x) => &mut x.tooltip_label,
-				Widget::ColorInput(x) => &mut x.tooltip_label,
-				Widget::CurveInput(x) => &mut x.tooltip_label,
-				Widget::DropdownInput(x) => &mut x.tooltip_label,
-				Widget::IconButton(x) => &mut x.tooltip_label,
-				Widget::IconLabel(x) => &mut x.tooltip_label,
-				Widget::ImageButton(x) => &mut x.tooltip_label,
-				Widget::ImageLabel(x) => &mut x.tooltip_label,
-				Widget::NumberInput(x) => &mut x.tooltip_label,
-				Widget::ParameterExposeButton(x) => &mut x.tooltip_label,
-				Widget::PopoverButton(x) => &mut x.tooltip_label,
-				Widget::TextAreaInput(x) => &mut x.tooltip_label,
-				Widget::TextButton(x) => &mut x.tooltip_label,
-				Widget::TextInput(x) => &mut x.tooltip_label,
-				Widget::TextLabel(x) => &mut x.tooltip_label,
-				Widget::BreadcrumbTrailButtons(x) => &mut x.tooltip_label,
-				Widget::ReferencePointInput(_) | Widget::RadioInput(_) | Widget::Separator(_) | Widget::ShortcutLabel(_) | Widget::WorkingColorsInput(_) | Widget::NodeCatalog(_) => continue,
-			};
-			if val.is_empty() {
-				val.clone_from(&label);
-			}
-		}
-		if is_col { Self::Column { widgets } } else { Self::Row { widgets } }
-	}
-
-	/// Applies a tooltip description to all widgets in this row or column without a tooltip.
+	/// Applies a tooltip description to all widgets without a tooltip in this row or column.
 	pub fn with_tooltip_description(self, description: impl Into<String>) -> Self {
 		let (is_col, mut widgets) = match self {
 			LayoutGroup::Column { widgets } => (true, widgets),
@@ -407,14 +372,19 @@ impl LayoutGroup {
 				Widget::ImageButton(x) => &mut x.tooltip_description,
 				Widget::ImageLabel(x) => &mut x.tooltip_description,
 				Widget::NumberInput(x) => &mut x.tooltip_description,
-				Widget::ParameterExposeButton(x) => &mut x.tooltip_description,
 				Widget::PopoverButton(x) => &mut x.tooltip_description,
 				Widget::TextAreaInput(x) => &mut x.tooltip_description,
 				Widget::TextButton(x) => &mut x.tooltip_description,
 				Widget::TextInput(x) => &mut x.tooltip_description,
 				Widget::TextLabel(x) => &mut x.tooltip_description,
 				Widget::BreadcrumbTrailButtons(x) => &mut x.tooltip_description,
-				Widget::ReferencePointInput(_) | Widget::RadioInput(_) | Widget::Separator(_) | Widget::ShortcutLabel(_) | Widget::WorkingColorsInput(_) | Widget::NodeCatalog(_) => continue,
+				Widget::ReferencePointInput(_)
+				| Widget::RadioInput(_)
+				| Widget::Separator(_)
+				| Widget::ShortcutLabel(_)
+				| Widget::WorkingColorsInput(_)
+				| Widget::NodeCatalog(_)
+				| Widget::ParameterExposeButton(_) => continue,
 			};
 			if val.is_empty() {
 				val.clone_from(&description);
@@ -834,10 +804,38 @@ impl DiffUpdate {
 			(recursive_wrapper.0)(entry_sections, &recursive_wrapper)
 		};
 
+		// Hash the menu list entry sections for caching purposes
+		let hash_menu_list_entry_sections = |entry_sections: &MenuListEntrySections| {
+			struct RecursiveHasher<'a> {
+				hasher: DefaultHasher,
+				hash_fn: &'a dyn Fn(&mut RecursiveHasher, &MenuListEntrySections),
+			}
+			let mut recursive_hasher = RecursiveHasher {
+				hasher: DefaultHasher::new(),
+				hash_fn: &|recursive_hasher, entry_sections| {
+					for (index, entries) in entry_sections.iter().enumerate() {
+						index.hash(&mut recursive_hasher.hasher);
+						for entry in entries {
+							entry.hash(&mut recursive_hasher.hasher);
+							(recursive_hasher.hash_fn)(recursive_hasher, &entry.children);
+						}
+					}
+				},
+			};
+			(recursive_hasher.hash_fn)(&mut recursive_hasher, entry_sections);
+			recursive_hasher.hasher.finish()
+		};
+
 		// Apply shortcut conversions to all widgets that have menu lists
 		let convert_menu_lists = |widget_instance: &mut WidgetInstance| match &mut widget_instance.widget {
-			Widget::DropdownInput(dropdown_input) => apply_action_shortcut_to_menu_lists(&mut dropdown_input.entries),
-			Widget::TextButton(text_button) => apply_action_shortcut_to_menu_lists(&mut text_button.menu_list_children),
+			Widget::DropdownInput(dropdown_input) => {
+				apply_action_shortcut_to_menu_lists(&mut dropdown_input.entries);
+				dropdown_input.entries_hash = hash_menu_list_entry_sections(&dropdown_input.entries);
+			}
+			Widget::TextButton(text_button) => {
+				apply_action_shortcut_to_menu_lists(&mut text_button.menu_list_children);
+				text_button.menu_list_children_hash = hash_menu_list_entry_sections(&text_button.menu_list_children);
+			}
 			_ => {}
 		};
 
