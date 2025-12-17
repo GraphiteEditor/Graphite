@@ -159,8 +159,9 @@ fn regular_polygon<T: AsU64>(
 	radius: f64,
 ) -> Table<Vector> {
 	let points = sides.as_u64();
-	let radius: f64 = radius * 2.;
-	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_regular_polygon(DVec2::splat(-radius), points, radius)))
+	let sides = points as f64;
+	let outer_radius = radius / (std::f64::consts::PI / sides).cos();
+	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_regular_polygon(DVec2::splat(-outer_radius), points, outer_radius),))
 }
 
 /// Generates an n-pointed star shape with inner and outer points at chosen radii from the center.
