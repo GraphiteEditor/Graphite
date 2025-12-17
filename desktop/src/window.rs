@@ -70,6 +70,7 @@ impl Window {
 
 	pub(crate) fn show(&self) {
 		self.winit_window.set_visible(true);
+		self.winit_window.focus_window();
 	}
 
 	pub(crate) fn request_redraw(&self) {
