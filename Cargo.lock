@@ -4833,13 +4833,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "raster-nodes-shaders-entrypoint"
-version = "0.1.0"
-dependencies = [
- "raster-nodes",
-]
-
-[[package]]
 name = "raster-types"
 version = "0.1.0"
 dependencies = [
