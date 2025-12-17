@@ -30,7 +30,7 @@ pub(super) struct NativeWindowHandle {
 impl NativeWindowHandle {
 	pub(super) fn new(window: &dyn Window) -> NativeWindowHandle {
 		// Extract Win32 HWND from winit.
-		let hwnd = match window.window_handle().expect("No window handle").as_raw() {
+		let main = match window.window_handle().expect("No window handle").as_raw() {
 			RawWindowHandle::Win32(h) => HWND(h.hwnd.get() as *mut std::ffi::c_void),
 			_ => panic!("Not a Win32 window"),
 		};
@@ -57,47 +57,61 @@ impl NativeWindowHandle {
 				None,
 				HINSTANCE(std::ptr::null_mut()),
 				// Pass the main window's HWND to WM_NCCREATE so the helper can store it.
-				Some(&hwnd as *const _ as _),
+				Some(&main as *const _ as _),
 			)
 		}
 		.expect("CreateWindowExW failed");
 
 		// Subclass the main window.
 		// https://learn.microsoft.com/windows/win32/api/winuser/nf-winuser-setwindowlongptra
-		let prev_window_message_handler = unsafe { SetWindowLongPtrW(hwnd, GWLP_WNDPROC, main_window_handle_message as isize) };
+		let prev_window_message_handler = unsafe { SetWindowLongPtrW(main, GWLP_WNDPROC, main_window_handle_message as isize) };
 		if prev_window_message_handler == 0 {
 			let _ = unsafe { DestroyWindow(helper) };
 			panic!("SetWindowLongPtrW failed");
 		}
 
-		let inner = NativeWindowHandle {
-			main: hwnd,
+		let native_handle = NativeWindowHandle {
+			main,
 			helper,
 			prev_window_message_handler,
 		};
-		registry::insert(&inner);
+		registry::insert(&native_handle);
 
 		// Place the helper over the main window and show it without activation.
-		unsafe { position_helper(hwnd, helper) };
+		unsafe { position_helper(main, helper) };
 		let _ = unsafe { ShowWindow(helper, SW_SHOWNOACTIVATE) };
 
 		// DwmExtendFrameIntoClientArea is needed to keep native window frame (but no titlebar).
 		// https://learn.microsoft.com/windows/win32/api/dwmapi/nf-dwmapi-dwmextendframeintoclientarea
 		// https://learn.microsoft.com/windows/win32/api/dwmapi/ne-dwmapi-dwmwindowattribute
 		let mut boarder_size: u32 = 1;
-		let _ = unsafe { DwmGetWindowAttribute(hwnd, DWMWA_VISIBLE_FRAME_BORDER_THICKNESS, &mut boarder_size as *mut _ as *mut _, size_of::<u32>() as u32) };
+		let _ = unsafe { DwmGetWindowAttribute(main, DWMWA_VISIBLE_FRAME_BORDER_THICKNESS, &mut boarder_size as *mut _ as *mut _, size_of::<u32>() as u32) };
 		let margins = MARGINS {
 			cxLeftWidth: 0,
 			cxRightWidth: 0,
 			cyBottomHeight: 0,
 			cyTopHeight: boarder_size as i32,
 		};
-		let _ = unsafe { DwmExtendFrameIntoClientArea(hwnd, &margins) };
+		let _ = unsafe { DwmExtendFrameIntoClientArea(main, &margins) };
+
+		let hinst = unsafe { GetModuleHandleW(None) }.unwrap();
+
+		// Set taskbar icon
+		if let Ok(big) = unsafe { LoadImageW(hinst, PCWSTR(1usize as *const u16), IMAGE_ICON, GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON), LR_SHARED) } {
+			unsafe { SetClassLongPtrW(main, GCLP_HICON, big.0 as isize) };
+			unsafe { SendMessageW(main, WM_SETICON, WPARAM(ICON_BIG as usize), LPARAM(big.0 as isize)) };
+		}
+
+		// Set window icon
+		if let Ok(small) = unsafe { LoadImageW(hinst, PCWSTR(1usize as *const u16), IMAGE_ICON, GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), LR_SHARED) } {
+			unsafe { SetClassLongPtrW(main, GCLP_HICONSM, small.0 as isize) };
+			unsafe { SendMessageW(main, WM_SETICON, WPARAM(ICON_SMALL as usize), LPARAM(small.0 as isize)) };
+		}
 
 		// Force window update
-		let _ = unsafe { SetWindowPos(hwnd, None, 0, 0, 0, 0, SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER) };
+		let _ = unsafe { SetWindowPos(main, None, 0, 0, 0, 0, SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER) };
 
-		inner
+		native_handle
 	}
 
 	pub(super) fn destroy(&self) {
@@ -105,7 +119,7 @@ impl NativeWindowHandle {
 
 		// Undo subclassing and destroy the helper window.
 		let _ = unsafe { SetWindowLongPtrW(self.main, GWLP_WNDPROC, self.prev_window_message_handler) };
-		if self.helper.0 != std::ptr::null_mut() {
+		if !self.helper.is_invalid() {
 			let _ = unsafe { DestroyWindow(self.helper) };
 		}
 	}
@@ -264,16 +278,17 @@ unsafe extern "system" fn helper_window_handle_message(hwnd: HWND, msg: u32, wpa
 	unsafe { DefWindowProcW(hwnd, msg, wparam, lparam) }
 }
 
+const RESIZE_BAND_THICKNESS: i32 = 8;
+
 // Position the helper window to match the main window's location and size (plus the resize band size).
 unsafe fn position_helper(main: HWND, helper: HWND) {
 	let mut r = RECT::default();
 	let _ = unsafe { GetWindowRect(main, &mut r) };
 
-	const RESIZE_BAND_SIZE: i32 = 8;
-	let x = r.left - RESIZE_BAND_SIZE;
-	let y = r.top - RESIZE_BAND_SIZE;
-	let w = (r.right - r.left) + RESIZE_BAND_SIZE * 2;
-	let h = (r.bottom - r.top) + RESIZE_BAND_SIZE * 2;
+	let x = r.left - RESIZE_BAND_THICKNESS;
+	let y = r.top - RESIZE_BAND_THICKNESS;
+	let w = (r.right - r.left) + RESIZE_BAND_THICKNESS * 2;
+	let h = (r.bottom - r.top) + RESIZE_BAND_THICKNESS * 2;
 
 	let _ = unsafe { SetWindowPos(helper, main, x, y, w, h, SWP_NOACTIVATE) };
 }
@@ -285,7 +300,6 @@ unsafe fn calculate_hit(helper: HWND, lparam: LPARAM) -> u32 {
 	let mut r = RECT::default();
 	let _ = unsafe { GetWindowRect(helper, &mut r) };
 
-	const RESIZE_BAND_THICKNESS: i32 = 8;
 	let on_top = y < (r.top + RESIZE_BAND_THICKNESS) as u32;
 	let on_right = x >= (r.right - RESIZE_BAND_THICKNESS) as u32;
 	let on_bottom = y >= (r.bottom - RESIZE_BAND_THICKNESS) as u32;

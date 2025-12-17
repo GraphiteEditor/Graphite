@@ -10,13 +10,13 @@ fn main() {
 		// TODO: Replace with actual version
 		res.set_version_info(winres::VersionInfo::FILEVERSION, {
 			const MAJOR: u64 = 0;
-			const MINOR: u64 = 999;
+			const MINOR: u64 = 0;
 			const PATCH: u64 = 0;
 			const RELEASE: u64 = 0;
 			(MAJOR << 48) | (MINOR << 32) | (PATCH << 16) | RELEASE
 		});
-		res.set("FileVersion", "0.999.0.0");
-		res.set("ProductVersion", "0.999.0.0");
+		res.set("FileVersion", "0.0.0.0");
+		res.set("ProductVersion", "0.0.0.0");
 
 		res.set("OriginalFilename", "Graphite.exe");
 

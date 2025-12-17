@@ -1,5 +1,5 @@
 pub(crate) const APP_NAME: &str = "Graphite";
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 pub(crate) const APP_ID: &str = "art.graphite.Graphite";
 
 pub(crate) const APP_DIRECTORY_NAME: &str = "graphite";

@@ -52,6 +52,7 @@ impl Window {
 			.with_min_surface_size(winit::dpi::LogicalSize::new(400, 300))
 			.with_surface_size(winit::dpi::LogicalSize::new(1200, 800))
 			.with_resizable(true)
+			.with_visible(false)
 			.with_theme(Some(winit::window::Theme::Dark));
 
 		attributes = native::NativeWindowImpl::configure(attributes, event_loop);
@@ -65,6 +66,10 @@ impl Window {
 			custom_cursors: HashMap::new(),
 			clipboard,
 		}
+	}
+
+	pub(crate) fn show(&self) {
+		self.winit_window.set_visible(true);
 	}
 
 	pub(crate) fn request_redraw(&self) {
