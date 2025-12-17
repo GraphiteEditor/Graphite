@@ -9,7 +9,8 @@
 //! - The helper window is a invisible window that never activates, so it doesn't steal focus from the main window.
 //! - The main window needs to update the helper window's position and size whenever it moves or resizes.
 
-use std::sync::OnceLock;
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Instant;
 use wgpu::rwh::{HasWindowHandle, RawWindowHandle};
 use windows::Win32::Foundation::*;
 use windows::Win32::Graphics::Dwm::*;
@@ -21,11 +22,18 @@ use windows::Win32::UI::WindowsAndMessaging::*;
 use windows::core::PCWSTR;
 use winit::window::Window;
 
+#[derive(Default)]
+struct NativeWindowState {
+	can_render: bool,
+	can_render_since: Option<Instant>,
+}
+
 #[derive(Clone)]
 pub(super) struct NativeWindowHandle {
 	main: HWND,
 	helper: HWND,
 	prev_window_message_handler: isize,
+	state: Arc<Mutex<NativeWindowState>>,
 }
 impl NativeWindowHandle {
 	pub(super) fn new(window: &dyn Window) -> NativeWindowHandle {
@@ -74,6 +82,7 @@ impl NativeWindowHandle {
 			main,
 			helper,
 			prev_window_message_handler,
+			state: Arc::new(Mutex::new(NativeWindowState::default())),
 		};
 		registry::insert(&native_handle);
 
@@ -122,6 +131,32 @@ impl NativeWindowHandle {
 		if !self.helper.is_invalid() {
 			let _ = unsafe { DestroyWindow(self.helper) };
 		}
+	}
+
+	// Rendering should be disabled when window is minimized
+	// Rendering also needs to be disabled during minimize and restore animations
+	// Reenabling rendering is done after a small delay to account for restore animation
+	// TODO: Find a cleaner solution that doesn't depend on a timeout
+	pub(super) fn can_render(&self) -> bool {
+		let can_render = !unsafe { IsIconic(self.main).into() } && unsafe { IsWindowVisible(self.main).into() };
+		let Ok(mut state) = self.state.lock() else {
+			tracing::error!("Failed to lock NativeWindowState");
+			return true;
+		};
+		match (can_render, state.can_render, state.can_render_since) {
+			(true, false, None) => {
+				state.can_render_since = Some(Instant::now());
+			}
+			(true, false, Some(can_render_since)) if can_render_since.elapsed().as_millis() > 50 => {
+				state.can_render = true;
+				state.can_render_since = None;
+			}
+			(false, true, _) => {
+				state.can_render = false;
+			}
+			_ => {}
+		}
+		state.can_render
 	}
 }
 
@@ -226,7 +261,7 @@ unsafe extern "system" fn main_window_handle_message(hwnd: HWND, msg: u32, wpara
 	// Call the previous window message handler, this is a standard subclassing pattern.
 	let prev_window_message_handler_fn_ptr: *const () = std::ptr::without_provenance(handle.prev_window_message_handler as usize);
 	let prev_window_message_handler_fn = unsafe { std::mem::transmute::<_, _>(prev_window_message_handler_fn_ptr) };
-	return unsafe { CallWindowProcW(Some(prev_window_message_handler_fn), hwnd, msg, wparam, lparam) };
+	unsafe { CallWindowProcW(Some(prev_window_message_handler_fn), hwnd, msg, wparam, lparam) }
 }
 
 // Helper window message handler, called on the UI thread for every message the helper window receives.
@@ -290,7 +325,7 @@ unsafe fn position_helper(main: HWND, helper: HWND) {
 	let w = (r.right - r.left) + RESIZE_BAND_THICKNESS * 2;
 	let h = (r.bottom - r.top) + RESIZE_BAND_THICKNESS * 2;
 
-	let _ = unsafe { SetWindowPos(helper, main, x, y, w, h, SWP_NOACTIVATE) };
+	let _ = unsafe { SetWindowPos(helper, main, x, y, w, h, SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOSENDCHANGING) };
 }
 
 unsafe fn calculate_hit(helper: HWND, lparam: LPARAM) -> u32 {
