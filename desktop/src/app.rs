@@ -456,6 +456,10 @@ impl ApplicationHandler for App {
 		let render_state = RenderState::new(self.window.as_ref().unwrap(), self.wgpu_context.clone());
 		self.render_state = Some(render_state);
 
+		if let Some(window) = &self.window.as_ref() {
+			window.show();
+		}
+
 		self.resize();
 
 		self.desktop_wrapper.init(self.wgpu_context.clone());
