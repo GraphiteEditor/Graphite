@@ -84,7 +84,7 @@ pub struct OriginalLocation {
 	pub dependants: Vec<Vec<NodeId>>,
 	/// A list of flags indicating whether the input is exposed in the UI
 	pub inputs_exposed: Vec<bool>,
-	// For automatically inserted convert and into nodes, if there is an error display it on the node it is connect to
+	/// For automatically inserted Convert and Into nodes, if there is an error, display it on the node it is connect to.
 	pub auto_convert_index: Option<usize>,
 }
 

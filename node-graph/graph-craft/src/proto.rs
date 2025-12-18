@@ -539,13 +539,23 @@ impl ProtoNetwork {
 #[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum GraphErrorType {
 	NodeNotFound(NodeId),
-	UnexpectedGenerics { index: usize, inputs: Vec<Type> },
+	UnexpectedGenerics {
+		index: usize,
+		inputs: Vec<Type>,
+	},
 	NoImplementations,
 	NoConstructor,
-	// The first vec represents a list of correct NodeIOTypes
-	// The second vec represents what the input index and what it expects
-	InvalidImplementations { inputs: String, error_inputs: Vec<Vec<(usize, (Type, Type))>> },
-	MultipleImplementations { inputs: String, valid: Vec<NodeIOTypes> },
+	/// The `inputs` represents a formatted list of input indices corresponding to their types.
+	/// Each element in `error_inputs` represents a valid `NodeIOTypes` implementation.
+	/// The inner Vec stores the inputs which need to be changed and what type each needs to be changed to.
+	InvalidImplementations {
+		inputs: String,
+		error_inputs: Vec<Vec<(usize, (Type, Type))>>,
+	},
+	MultipleImplementations {
+		inputs: String,
+		valid: Vec<NodeIOTypes>,
+	},
 }
 impl Debug for GraphErrorType {
 	// TODO: format with the document graph context so the input index is the same as in the graph UI.
@@ -762,7 +772,7 @@ impl TypingContext {
 				let mut best_errors = usize::MAX;
 				let mut error_inputs = Vec::new();
 				for node_io in impls.keys() {
-					// For errors on convert nodes, add to the input index to it is correct for the node it is connected to
+					// For errors on Convert nodes, offset the input index so it correctly corresponds to the node it is connected to.
 					let current_errors = [call_argument]
 						.into_iter()
 						.chain(&inputs)
