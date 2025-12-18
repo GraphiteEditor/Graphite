@@ -2048,7 +2048,7 @@ impl<'a> ParameterWidgetsInfo<'a> {
 		let (name, description) = context.network_interface.displayed_input_name_and_description(&node_id, index, context.selection_network_path);
 		let input_type = context
 			.network_interface
-			.input_type(&InputConnector::node(node_id, index), context.selection_network_path)
+			.input_type_not_invalid(&InputConnector::node(node_id, index), context.selection_network_path)
 			.displayed_type();
 		let document_node = context.network_interface.document_node(&node_id, context.selection_network_path);
 

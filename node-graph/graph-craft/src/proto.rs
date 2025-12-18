@@ -539,11 +539,23 @@ impl ProtoNetwork {
 #[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum GraphErrorType {
 	NodeNotFound(NodeId),
-	UnexpectedGenerics { index: usize, inputs: Vec<Type> },
+	UnexpectedGenerics {
+		index: usize,
+		inputs: Vec<Type>,
+	},
 	NoImplementations,
 	NoConstructor,
-	InvalidImplementations { inputs: String, error_inputs: Vec<Vec<(usize, (Type, Type))>> },
-	MultipleImplementations { inputs: String, valid: Vec<NodeIOTypes> },
+	/// The `inputs` represents a formatted list of input indices corresponding to their types.
+	/// Each element in `error_inputs` represents a valid `NodeIOTypes` implementation.
+	/// The inner Vec stores the inputs which need to be changed and what type each needs to be changed to.
+	InvalidImplementations {
+		inputs: String,
+		error_inputs: Vec<Vec<(usize, (Type, Type))>>,
+	},
+	MultipleImplementations {
+		inputs: String,
+		valid: Vec<NodeIOTypes>,
+	},
 }
 impl Debug for GraphErrorType {
 	// TODO: format with the document graph context so the input index is the same as in the graph UI.
@@ -756,9 +768,11 @@ impl TypingContext {
 
 		match valid_impls.as_slice() {
 			[] => {
+				let convert_node_index_offset = node.original_location.auto_convert_index.unwrap_or(0);
 				let mut best_errors = usize::MAX;
 				let mut error_inputs = Vec::new();
 				for node_io in impls.keys() {
+					// For errors on Convert nodes, offset the input index so it correctly corresponds to the node it is connected to.
 					let current_errors = [call_argument]
 						.into_iter()
 						.chain(&inputs)
@@ -766,10 +780,7 @@ impl TypingContext {
 						.zip([&node_io.call_argument].into_iter().chain(&node_io.inputs).cloned())
 						.enumerate()
 						.filter(|(_, (p1, p2))| !valid_type(p1, p2))
-						.map(|(index, ty)| {
-							let i = node.original_location.inputs(index).min_by_key(|s| s.node.len()).map(|s| s.index).unwrap_or(index);
-							(i, ty)
-						})
+						.map(|(index, expected)| (index - 1 + convert_node_index_offset, expected))
 						.collect::<Vec<_>>();
 					if current_errors.len() < best_errors {
 						best_errors = current_errors.len();
@@ -783,7 +794,7 @@ impl TypingContext {
 					.into_iter()
 					.chain(&inputs)
 					.enumerate()
-					.filter_map(|(i, t)| if i == 0 { None } else { Some(format!("• Input {i}: {t}")) })
+					.filter_map(|(i, t)| if i == 0 { None } else { Some(format!("• Input {}: {t}", i + convert_node_index_offset)) })
 					.collect::<Vec<_>>()
 					.join("\n");
 				Err(vec![GraphError::new(node, GraphErrorType::InvalidImplementations { inputs, error_inputs })])
