@@ -2,6 +2,7 @@ use crate::application::Editor;
 use crate::application::set_uuid_seed;
 use crate::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
 use crate::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, MouseKeys, ScrollDelta, ViewportPosition};
+use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::utility_types::Platform;
 use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
@@ -307,11 +308,11 @@ impl EditorTestUtils {
 		.await;
 	}
 
-	pub async fn create_node_by_name(&mut self, name: impl Into<String>) -> NodeId {
+	pub async fn create_node_by_name(&mut self, node_type: DefinitionIdentifier) -> NodeId {
 		let node_id = NodeId::new();
 		self.handle_message(NodeGraphMessage::CreateNodeFromContextMenu {
 			node_id: Some(node_id),
-			node_type: name.into(),
+			node_type,
 			xy: None,
 			add_transaction: true,
 		})
@@ -340,6 +341,7 @@ pub mod test_prelude {
 	pub use crate::float_eq;
 	pub use crate::messages::input_mapper::utility_types::input_keyboard::{Key, ModifierKeys};
 	pub use crate::messages::input_mapper::utility_types::input_mouse::MouseKeys;
+	pub use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 	pub use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 	pub use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 	pub use crate::messages::prelude::*;
