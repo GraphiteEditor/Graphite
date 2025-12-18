@@ -316,7 +316,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				if let Some(active_document) = self.active_document()
 					&& active_document.graph_view_overlay_open()
 				{
-					responses.add(NodeGraphMessage::Copy);
+					responses.add(NodeGraphMessage::Cut);
 					return;
 				}
 
