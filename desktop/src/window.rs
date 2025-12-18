@@ -12,6 +12,9 @@ pub(crate) trait NativeWindow {
 	fn init() {}
 	fn configure(attributes: WindowAttributes, event_loop: &dyn ActiveEventLoop) -> WindowAttributes;
 	fn new(window: &dyn WinitWindow, app_event_scheduler: AppEventScheduler) -> Self;
+	fn can_render(&self) -> bool {
+		true
+	}
 	fn update_menu(&self, _entries: Vec<MenuItem>) {}
 	fn hide(&self) {}
 	fn hide_others(&self) {}
@@ -83,6 +86,10 @@ impl Window {
 
 	pub(crate) fn pre_present_notify(&self) {
 		self.winit_window.pre_present_notify();
+	}
+
+	pub(crate) fn can_render(&self) -> bool {
+		self.native_handle.can_render()
 	}
 
 	pub(crate) fn surface_size(&self) -> winit::dpi::PhysicalSize<u32> {

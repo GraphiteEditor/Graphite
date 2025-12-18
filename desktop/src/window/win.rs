@@ -28,6 +28,10 @@ impl super::NativeWindow for NativeWindowImpl {
 		let native_handle = native_handle::NativeWindowHandle::new(window);
 		NativeWindowImpl { native_handle }
 	}
+
+	fn can_render(&self) -> bool {
+		self.native_handle.can_render()
+	}
 }
 
 impl Drop for NativeWindowImpl {

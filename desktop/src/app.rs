@@ -495,6 +495,10 @@ impl ApplicationHandler for App {
 
 				let Some(render_state) = &mut self.render_state else { return };
 				if let Some(window) = &self.window {
+					if !window.can_render() {
+						return;
+					}
+
 					match render_state.render(window) {
 						Ok(_) => {}
 						Err(RenderError::OutdatedUITextureError) => {
