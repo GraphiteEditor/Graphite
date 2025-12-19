@@ -1575,6 +1575,7 @@ impl Fsm for PathToolFsmState {
 
 				shape_editor.set_selected_layers(target_layers);
 
+				responses.add(MenuBarMessage::SendLayout);
 				responses.add(OverlaysMessage::Draw);
 				self
 			}
@@ -3127,6 +3128,9 @@ impl Fsm for PathToolFsmState {
 
 				tool_data.make_path_editable_is_allowed = make_path_editable_is_allowed(&mut document.network_interface).is_some();
 				tool_data.update_selection_status(shape_editor, document);
+				
+				responses.add(MenuBarMessage::SendLayout);
+
 				self
 			}
 			(_, PathToolMessage::ManipulatorMakeHandlesColinear) => {
