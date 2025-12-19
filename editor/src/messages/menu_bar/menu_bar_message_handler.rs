@@ -30,6 +30,10 @@ impl MessageHandler<MenuBarMessage, ()> for MenuBarMessageHandler {
 			MenuBarMessage::SendLayout => {
 				self.send_layout(responses, LayoutTarget::MenuBar);
 			}
+			MenuBarMessage::UpdateMakePathEditableState { allowed } => {
+				self.make_path_editable_is_allowed = allowed;
+				self.send_layout(responses, LayoutTarget::MenuBar);
+			}
 		}
 	}
 

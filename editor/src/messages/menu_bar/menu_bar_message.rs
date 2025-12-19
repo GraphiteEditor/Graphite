@@ -5,4 +5,5 @@ use crate::messages::prelude::*;
 pub enum MenuBarMessage {
 	// Messages
 	SendLayout,
+	UpdateMakePathEditableState { allowed: bool },
 }
