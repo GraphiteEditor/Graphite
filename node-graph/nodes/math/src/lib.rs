@@ -142,6 +142,19 @@ where
 	numerator / denominator
 }
 
+/// The reciprocal operation (`1/x`) calculates the multiplicative inverse of a number.
+///
+/// Produces 0 if the input is 0.
+#[node_macro::node(category("Math: Arithmetic"))]
+fn reciprocal<T: num_traits::float::Float>(
+	_: impl Ctx,
+	/// The number for which the reciprocal is calculated.
+	#[implementations(f64, f32)]
+	value: T,
+) -> T {
+	if value == T::from(0.).unwrap() { T::from(0.).unwrap() } else { T::from(1.).unwrap() / value }
+}
+
 /// The modulo operation (`%`) calculates the remainder from the division of two scalar numbers or vectors.
 ///
 /// The sign of the result shares the sign of the numerator unless *Always Positive* is enabled.
@@ -778,6 +791,51 @@ fn dot_product(
 	} else {
 		vector_a.dot(vector_b)
 	}
+}
+
+/// Calculates the angle swept between two vectors.
+///
+/// The value is always positive and ranges from 0° (both vectors point the same direction) to 180° (both vectors point opposite directions).
+#[node_macro::node(category("Math: Vector"))]
+fn angle_between(_: impl Ctx, vector_a: DVec2, vector_b: DVec2, radians: bool) -> f64 {
+	let dot_product = vector_a.normalize_or_zero().dot(vector_b.normalize_or_zero());
+	let angle = dot_product.acos();
+	if radians { angle } else { angle.to_degrees() }
+}
+
+pub trait ToPosition {
+	fn to_position(self) -> DVec2;
+}
+impl ToPosition for DVec2 {
+	fn to_position(self) -> DVec2 {
+		self
+	}
+}
+impl ToPosition for DAffine2 {
+	fn to_position(self) -> DVec2 {
+		self.translation
+	}
+}
+
+/// Calculates the angle needed for a rightward-facing object placed at the observer position to turn so it points toward the target position.
+#[node_macro::node(category("Math: Vector"))]
+fn angle_to<T: ToPosition, U: ToPosition>(
+	_: impl Ctx,
+	/// The position from which the angle is measured.
+	#[implementations(DVec2, DAffine2, DVec2, DAffine2)]
+	observer: T,
+	/// The position toward which the angle is measured.
+	#[expose]
+	#[implementations(DVec2, DVec2, DAffine2, DAffine2)]
+	target: U,
+	/// Whether the resulting angle should be given in as radians instead of degrees.
+	radians: bool,
+) -> f64 {
+	let from = observer.to_position();
+	let to = target.to_position();
+	let delta = to - from;
+	let angle = delta.y.atan2(delta.x);
+	if radians { angle } else { angle.to_degrees() }
 }
 
 // TODO: Rename to "Magnitude"
