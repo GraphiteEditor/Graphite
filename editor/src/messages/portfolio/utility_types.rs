@@ -72,6 +72,14 @@ impl FontCatalogStyle {
 		let italic = named_style.contains("Italic (");
 		FontCatalogStyle { weight, italic, url: url.into() }
 	}
+
+	/// Get the URL for the stylesheet for loading a font preview for this style of the given family name, subsetted to only the letters in the family name.
+	pub fn preview_url(&self, family: impl Into<String>) -> String {
+		let name = family.into().replace(' ', "+");
+		let italic = if self.italic { "ital," } else { "" };
+		let weight = self.weight;
+		format!("https://fonts.googleapis.com/css2?display=swap&family={name}:{italic}wght@{weight}&text={name}")
+	}
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Default, Debug, serde::Serialize, serde::Deserialize)]

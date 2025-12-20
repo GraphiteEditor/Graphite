@@ -33,8 +33,7 @@ pub struct TextOptions {
 	font_size: f64,
 	line_height_ratio: f64,
 	character_spacing: f64,
-	font_name: String,
-	font_style: String,
+	font: Font,
 	fill: ToolColorOptions,
 	tilt: f64,
 	align: TextAlign,
@@ -46,8 +45,7 @@ impl Default for TextOptions {
 			font_size: 24.,
 			line_height_ratio: 1.2,
 			character_spacing: 0.,
-			font_name: graphene_std::consts::DEFAULT_FONT_FAMILY.into(),
-			font_style: graphene_std::consts::DEFAULT_FONT_STYLE.into(),
+			font: Font::new(graphene_std::consts::DEFAULT_FONT_FAMILY.into(), graphene_std::consts::DEFAULT_FONT_STYLE.into()),
 			fill: ToolColorOptions::new_primary(),
 			tilt: 0.,
 			align: TextAlign::default(),
@@ -80,7 +78,7 @@ pub enum TextToolMessage {
 pub enum TextOptionsUpdate {
 	FillColor(Option<Color>),
 	FillColorType(ToolColorType),
-	Font { family: String, style: String },
+	Font { font: Font },
 	FontSize(f64),
 	LineHeightRatio(f64),
 	Align(TextAlign),
@@ -100,49 +98,39 @@ impl ToolMetadata for TextTool {
 }
 
 fn create_text_widgets(tool: &TextTool, font_catalog: &FontCatalog) -> Vec<WidgetInstance> {
+	fn update_options(font: Font, commit_style: Option<String>) -> impl Fn(&()) -> Message + Clone {
+		let mut font = font;
+		if let Some(style) = commit_style {
+			font.font_style = style;
+		}
+
+		move |_| {
+			TextToolMessage::UpdateOptions {
+				options: TextOptionsUpdate::Font { font: font.clone() },
+			}
+			.into()
+		}
+	}
+
 	let font = DropdownInput::new(vec![
 		font_catalog
 			.0
 			.iter()
 			.map(|family| {
+				let font = Font::new(family.name.clone(), tool.options.font.font_style.clone());
+				let commit_style = font_catalog.find_font_style_in_catalog(&tool.options.font).map(|style| style.to_named_style());
+				let update = update_options(font.clone(), None);
+				let commit = update_options(font, commit_style);
+
 				MenuListEntry::new(family.name.clone())
 					.label(family.name.clone())
-					.font({
-						// Get the URL for the stylesheet of a subsetted font preview for the font style closest to weight 400
-						let preview_name = family.name.replace(' ', "+");
-						let preview_weight = family.closest_style(400, false).weight;
-						format!("https://fonts.googleapis.com/css2?display=swap&family={preview_name}:wght@{preview_weight}&text={preview_name}")
-					})
-					.on_update({
-						let family = family.name.clone();
-						let style = tool.options.font_style.clone();
-						move |_| {
-							TextToolMessage::UpdateOptions {
-								options: TextOptionsUpdate::Font {
-									family: family.clone(),
-									style: style.clone(),
-								},
-							}
-							.into()
-						}
-					})
-					.on_commit({
-						let family = family.name.clone();
-						let style = tool.options.font_style.clone();
-						move |_| {
-							TextToolMessage::UpdateOptions {
-								options: TextOptionsUpdate::Font {
-									family: family.clone(),
-									style: style.clone(),
-								},
-							}
-							.into()
-						}
-					})
+					.font(family.closest_style(400, false).preview_url(&family.name))
+					.on_update(update)
+					.on_commit(commit)
 			})
 			.collect::<Vec<_>>(),
 	])
-	.selected_index(font_catalog.0.iter().position(|family| family.name == tool.options.font_name).map(|i| i as u32))
+	.selected_index(font_catalog.0.iter().position(|family| family.name == tool.options.font.font_family).map(|i| i as u32))
 	.virtual_scrolling(true)
 	.widget_instance();
 
@@ -150,42 +138,17 @@ fn create_text_widgets(tool: &TextTool, font_catalog: &FontCatalog) -> Vec<Widge
 		font_catalog
 			.0
 			.iter()
-			.find(|family| family.name == tool.options.font_name)
+			.find(|family| family.name == tool.options.font.font_family)
 			.map(|family| {
 				let build_entry = |style: &FontCatalogStyle| {
 					let font_style = style.to_named_style();
-					MenuListEntry::new(font_style.clone())
-						.on_update({
-							// Keep the existing family
-							let font_family = tool.options.font_name.clone();
-							// Use the new style
-							let font_style = font_style.clone();
-							move |_| {
-								TextToolMessage::UpdateOptions {
-									options: TextOptionsUpdate::Font {
-										family: font_family.clone(),
-										style: font_style.clone(),
-									},
-								}
-								.into()
-							}
-						})
-						.on_commit({
-							// Keep the existing family
-							let font_family = tool.options.font_name.clone();
-							// Use the new style
-							let font_style = font_style.clone();
-							move |_| {
-								TextToolMessage::UpdateOptions {
-									options: TextOptionsUpdate::Font {
-										family: font_family.clone(),
-										style: font_style.clone(),
-									},
-								}
-								.into()
-							}
-						})
-						.label(font_style)
+
+					let font = Font::new(tool.options.font.font_family.clone(), font_style.clone());
+					let commit_style = font_catalog.find_font_style_in_catalog(&tool.options.font).map(|style| style.to_named_style());
+					let update = update_options(font.clone(), None);
+					let commit = update_options(font, commit_style);
+
+					MenuListEntry::new(font_style.clone()).on_update(update).on_commit(commit).label(font_style)
 				};
 
 				vec![
@@ -200,11 +163,13 @@ fn create_text_widgets(tool: &TextTool, font_catalog: &FontCatalog) -> Vec<Widge
 		font_catalog
 			.0
 			.iter()
-			.find(|family| family.name == tool.options.font_name)
+			.find(|family| family.name == tool.options.font.font_family)
 			.and_then(|family| {
 				let not_italic = family.styles.iter().filter(|style| !style.italic);
 				let italic = family.styles.iter().filter(|style| style.italic);
-				not_italic.chain(italic).position(|style| style.to_named_style() == tool.options.font_style)
+				not_italic
+					.chain(italic)
+					.position(|style| Some(style) == font_catalog.find_font_style_in_catalog(&tool.options.font).as_ref())
 			})
 			.map(|i| i as u32),
 	)
@@ -317,9 +282,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 			return;
 		};
 		match options {
-			TextOptionsUpdate::Font { family, style } => {
-				self.options.font_name = family;
-				self.options.font_style = style;
+			TextOptionsUpdate::Font { font } => {
+				self.options.font = font;
 			}
 			TextOptionsUpdate::FontSize(font_size) => self.options.font_size = font_size,
 			TextOptionsUpdate::LineHeightRatio(line_height_ratio) => self.options.line_height_ratio = line_height_ratio,
@@ -930,7 +894,7 @@ impl Fsm for TextToolFsmState {
 						tilt: tool_options.tilt,
 						align: tool_options.align,
 					},
-					font: Font::new(tool_options.font_name.clone(), tool_options.font_style.clone()),
+					font: Font::new(tool_options.font.font_family.clone(), tool_options.font.font_style.clone()),
 					color: tool_options.fill.active_color(),
 				};
 				tool_data.new_text(document, editing_text, font_cache, responses);
@@ -956,7 +920,7 @@ impl Fsm for TextToolFsmState {
 				TextToolFsmState::Ready
 			}
 			(TextToolFsmState::Editing, TextToolMessage::RefreshEditingFontData) => {
-				let font = Font::new(tool_options.font_name.clone(), tool_options.font_style.clone());
+				let font = Font::new(tool_options.font.font_family.clone(), tool_options.font.font_style.clone());
 				responses.add(FrontendMessage::DisplayEditableTextboxUpdateFontData {
 					font_data: font_cache.get(&font).map(|(data, _)| data.clone()).unwrap_or_default(),
 				});

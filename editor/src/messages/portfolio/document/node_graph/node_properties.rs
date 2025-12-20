@@ -789,12 +789,7 @@ pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetI
 					.map(|family| {
 						MenuListEntry::new(family.name.clone())
 							.label(family.name.clone())
-							.font({
-								// Get the URL for the stylesheet of a subsetted font preview for the font style closest to weight 400
-								let preview_name = family.name.replace(' ', "+");
-								let preview_weight = family.closest_style(400, false).weight;
-								format!("https://fonts.googleapis.com/css2?display=swap&family={preview_name}:wght@{preview_weight}&text={preview_name}")
-							})
+							.font(family.closest_style(400, false).preview_url(&family.name))
 							.on_update({
 								// Construct the new font using the new family and the initial or previous style, although this style might not exist in the catalog
 								let mut new_font = Font::new(family.name.clone(), font.font_style_to_restore.clone().unwrap_or_else(|| font.font_style.clone()));
