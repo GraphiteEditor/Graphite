@@ -1577,7 +1577,6 @@ impl Fsm for PathToolFsmState {
 
 				let new_state = make_path_editable_is_allowed(&mut document.network_interface).is_some();
 				if tool_data.make_path_editable_is_allowed != new_state {
-					tool_data.make_path_editable_is_allowed = new_state;
 					responses.add(MenuBarMessage::SendLayout);
 				}
 				responses.add(OverlaysMessage::Draw);
@@ -3135,7 +3134,9 @@ impl Fsm for PathToolFsmState {
 				tool_data.make_path_editable_is_allowed = make_path_editable_is_allowed(&mut document.network_interface).is_some();
 				tool_data.update_selection_status(shape_editor, document);
 				
-				responses.add(MenuBarMessage::SendLayout);
+				if state_changed {
+					responses.add(MenuBarMessage::SendLayout);
+				}
 
 				self
 			}
