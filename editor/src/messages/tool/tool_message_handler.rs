@@ -384,8 +384,6 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 			ActivateToolShape,
 			ActivateToolText,
 
-			ActivateToolBrush,
-
 			ToggleSelectVsPath,
 
 			SelectRandomWorkingColor,
@@ -396,6 +394,20 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 		);
 		list.extend(self.tool_state.tool_data.active_tool().actions());
 		list.extend(self.transform_layer_handler.actions());
+
+		list
+	}
+}
+
+impl ToolMessageHandler {
+	pub fn actions_with_preferences(&self, preferences: &PreferencesMessageHandler) -> ActionList {
+		let mut list = self.actions();
+
+		if preferences.brush_tool {
+			list.extend(actions!(ToolMessageDiscriminant;
+				ActivateToolBrush,
+			));
+		}
 
 		list
 	}

@@ -283,7 +283,9 @@ impl PreferencesDialogMessageHandler {
 			let brush_tool_description = "
 			Enable the Brush tool to support basic raster-based layer painting.\n\
 			\n\
-			This legacy tool has performance and quality limitations and is slated for replacement in future versions of Graphite that will focus on raster graphics editing.
+			This legacy experimental tool has performance and quality limitations and is slated for replacement in future versions of Graphite that will focus on raster graphics editing.\n\
+			\n\
+			Content created with the Brush tool may not be compatible with future versions of Graphite.
 			"
 			.trim();
 			let brush_tool = vec![
