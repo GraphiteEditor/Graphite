@@ -274,7 +274,7 @@ fn static_nodes() -> Vec<DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			description: Cow::Borrowed("Merges new content as an entry into the graphic table that represents a layer compositing stack."),
+			description: Cow::Borrowed("Merges the provided content as a new element in the graphic table that represents a layer compositing stack."),
 			properties: None,
 		},
 		DocumentNodeDefinition {

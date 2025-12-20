@@ -2,7 +2,6 @@ use crate::messages::input_mapper::utility_types::input_keyboard::KeysGroup;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 use graphene_std::raster::color::Color;
-use graphene_std::text::Font;
 use graphene_std::vector::style::{FillChoice, GradientStops};
 use serde_json::Value;
 use std::collections::HashMap;
@@ -48,7 +47,6 @@ impl MessageHandler<LayoutMessage, LayoutMessageContext<'_>> for LayoutMessageHa
 			}
 			LayoutMessage::WidgetValueUpdate { layout_target, widget_id, value } => {
 				self.handle_widget_callback(layout_target, widget_id, value, WidgetValueAction::Update, responses);
-				responses.add(LayoutMessage::ResendActiveWidget { layout_target, widget_id });
 			}
 		}
 	}
@@ -259,44 +257,6 @@ impl LayoutMessageHandler {
 							return;
 						};
 						(entry.on_update.callback)(&())
-					}
-				};
-
-				responses.add(callback_message);
-			}
-			Widget::FontInput(font_input) => {
-				let callback_message = match action {
-					WidgetValueAction::Commit => (font_input.on_commit.callback)(&()),
-					WidgetValueAction::Update => {
-						let Some(update_value) = value.as_object() else {
-							error!("FontInput update was not of type: object");
-							return;
-						};
-						let Some(font_family_value) = update_value.get("fontFamily") else {
-							error!("FontInput update does not have a fontFamily");
-							return;
-						};
-						let Some(font_style_value) = update_value.get("fontStyle") else {
-							error!("FontInput update does not have a fontStyle");
-							return;
-						};
-
-						let Some(font_family) = font_family_value.as_str() else {
-							error!("FontInput update fontFamily was not of type: string");
-							return;
-						};
-						let Some(font_style) = font_style_value.as_str() else {
-							error!("FontInput update fontStyle was not of type: string");
-							return;
-						};
-
-						font_input.font_family = font_family.into();
-						font_input.font_style = font_style.into();
-
-						responses.add(PortfolioMessage::LoadFont {
-							font: Font::new(font_family.into(), font_style.into()),
-						});
-						(font_input.on_update.callback)(font_input)
 					}
 				};
 

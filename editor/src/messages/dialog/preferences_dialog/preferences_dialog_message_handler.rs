@@ -1,4 +1,4 @@
-use crate::consts::{UI_SCALE_DEFAULT, UI_SCALE_MAX, UI_SCALE_MIN, VIEWPORT_ZOOM_WHEEL_RATE, VIEWPORT_ZOOM_WHEEL_RATE_CHANGE};
+use crate::consts::{VIEWPORT_ZOOM_WHEEL_RATE, VIEWPORT_ZOOM_WHEEL_RATE_CHANGE};
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::wires::GraphWireStyle;
 use crate::messages::preferences::SelectionMode;
@@ -155,14 +155,14 @@ impl PreferencesDialogMessageHandler {
 			rows.extend_from_slice(&[header, selection_label, selection_mode]);
 		}
 
-		// ==========
-		// UI
-		// ==========
+		// =========
+		// INTERFACE
+		// =========
 		#[cfg(not(target_family = "wasm"))]
 		{
-			let header = vec![TextLabel::new("UI").italic(true).widget_instance()];
+			let header = vec![TextLabel::new("Interface").italic(true).widget_instance()];
 
-			let scale_description = "Adjust the scale of the user interface (100 is default).";
+			let scale_description = "Adjust the scale of the entire user interface (100% is default).";
 			let scale_label = vec![
 				Separator::new(SeparatorType::Unrelated).widget_instance(),
 				Separator::new(SeparatorType::Unrelated).widget_instance(),
@@ -176,15 +176,18 @@ impl PreferencesDialogMessageHandler {
 					.tooltip_description(scale_description)
 					.mode_range()
 					.int()
-					.min(ui_scale_to_display(UI_SCALE_MIN))
-					.max(ui_scale_to_display(UI_SCALE_MAX))
+					.min(ui_scale_to_display(crate::consts::UI_SCALE_MIN))
+					.max(ui_scale_to_display(crate::consts::UI_SCALE_MAX))
 					.unit("%")
 					.on_update(|number_input: &NumberInput| {
 						if let Some(display_value) = number_input.value {
 							let scale = map_display_to_ui_scale(display_value);
 							PreferencesMessage::UIScale { scale }.into()
 						} else {
-							PreferencesMessage::UIScale { scale: UI_SCALE_DEFAULT }.into()
+							PreferencesMessage::UIScale {
+								scale: crate::consts::UI_SCALE_DEFAULT,
+							}
+							.into()
 						}
 					})
 					.widget_instance(),
@@ -280,7 +283,9 @@ impl PreferencesDialogMessageHandler {
 			let brush_tool_description = "
 			Enable the Brush tool to support basic raster-based layer painting.\n\
 			\n\
-			This legacy tool has performance and quality limitations and is slated for replacement in future versions of Graphite that will focus on raster graphics editing.
+			This legacy experimental tool has performance and quality limitations and is slated for replacement in future versions of Graphite that will focus on raster graphics editing.\n\
+			\n\
+			Content created with the Brush tool may not be compatible with future versions of Graphite.
 			"
 			.trim();
 			let brush_tool = vec![
@@ -376,11 +381,13 @@ fn map_zoom_rate_to_display(rate: f64) -> f64 {
 }
 
 /// Maps display values in percent to actual ui scale.
+#[cfg(not(target_family = "wasm"))]
 fn map_display_to_ui_scale(display: f64) -> f64 {
 	display / 100.
 }
 
 /// Maps actual ui scale back to display values in percent.
+#[cfg(not(target_family = "wasm"))]
 fn ui_scale_to_display(scale: f64) -> f64 {
 	scale * 100.
 }

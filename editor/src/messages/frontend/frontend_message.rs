@@ -39,13 +39,18 @@ pub enum FrontendMessage {
 		#[serde(rename = "fontSize")]
 		font_size: f64,
 		color: Color,
-		url: String,
+		#[serde(rename = "fontData")]
+		font_data: Vec<u8>,
 		transform: [f64; 6],
 		#[serde(rename = "maxWidth")]
 		max_width: Option<f64>,
 		#[serde(rename = "maxHeight")]
 		max_height: Option<f64>,
 		align: TextAlign,
+	},
+	DisplayEditableTextboxUpdateFontData {
+		#[serde(rename = "fontData")]
+		font_data: Vec<u8>,
 	},
 	DisplayEditableTextboxTransform {
 		transform: [f64; 6],
@@ -63,6 +68,9 @@ pub enum FrontendMessage {
 		shortcut: Option<ActionShortcut>,
 	},
 	SendShortcutAltClick {
+		shortcut: Option<ActionShortcut>,
+	},
+	SendShortcutShiftClick {
 		shortcut: Option<ActionShortcut>,
 	},
 
@@ -92,8 +100,10 @@ pub enum FrontendMessage {
 		name: String,
 		filename: String,
 	},
-	TriggerFontLoad {
+	TriggerFontCatalogLoad,
+	TriggerFontDataLoad {
 		font: Font,
+		url: String,
 	},
 	TriggerImport,
 	TriggerPersistenceRemoveDocument {

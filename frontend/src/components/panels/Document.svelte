@@ -6,6 +6,7 @@
 		type MouseCursorIcon,
 		type XY,
 		DisplayEditableTextbox,
+		DisplayEditableTextboxUpdateFontData,
 		DisplayEditableTextboxTransform,
 		DisplayRemoveEditableTextbox,
 		TriggerTextCommit,
@@ -360,10 +361,14 @@
 			if (!textInput) return;
 			editor.handle.updateBounds(textInputCleanup(textInput.innerText));
 		};
+
 		textInputMatrix = displayEditableTextbox.transform;
-		const newFont = new FontFace("text-font", `url(${displayEditableTextbox.url})`);
-		window.document.fonts.add(newFont);
-		textInput.style.fontFamily = "text-font";
+
+		const data = new Uint8Array(displayEditableTextbox.fontData);
+		if (data.length > 0) {
+			window.document.fonts.add(new FontFace("text-font", data));
+			textInput.style.fontFamily = "text-font";
+		}
 
 		// Necessary to select contenteditable: https://stackoverflow.com/questions/6139107/programmatically-select-text-in-a-contenteditable-html-element/6150060#6150060
 
@@ -470,6 +475,15 @@
 			await tick();
 
 			displayEditableTextbox(data);
+		});
+		editor.subscriptions.subscribeJsMessage(DisplayEditableTextboxUpdateFontData, async (data) => {
+			await tick();
+
+			const fontData = new Uint8Array(data.fontData);
+			if (fontData.length > 0 && textInput) {
+				window.document.fonts.add(new FontFace("text-font", fontData));
+				textInput.style.fontFamily = "text-font";
+			}
 		});
 		editor.subscriptions.subscribeJsMessage(DisplayEditableTextboxTransform, async (data) => {
 			textInputMatrix = data.transform;

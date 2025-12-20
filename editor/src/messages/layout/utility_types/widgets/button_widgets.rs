@@ -144,6 +144,10 @@ pub struct TextButton {
 	#[serde(rename = "menuListChildren")]
 	pub menu_list_children: MenuListEntrySections,
 
+	#[serde(rename = "menuListChildrenHash")]
+	#[widget_builder(skip)]
+	pub menu_list_children_hash: u64,
+
 	// Callbacks
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
