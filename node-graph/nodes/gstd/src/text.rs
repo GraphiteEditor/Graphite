@@ -8,7 +8,7 @@ fn text<'i: 'n>(
 	_: impl Ctx,
 	editor: &'i WasmEditorApi,
 	text: String,
-	font_name: Font,
+	font: Font,
 	#[unit(" px")]
 	#[default(24.)]
 	font_size: f64,
@@ -39,5 +39,5 @@ fn text<'i: 'n>(
 		align,
 	};
 
-	to_path(&text, &font_name, &editor.font_cache, typesetting, per_glyph_instances)
+	to_path(&text, &font, &editor.font_cache, typesetting, per_glyph_instances)
 }

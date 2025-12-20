@@ -9,12 +9,12 @@ use crate::messages::input_mapper::utility_types::macros::action_shortcut;
 use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayProvider;
+use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::preferences::PreferencesMessageHandler;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::shapes::shape_utility::ShapeType;
 use crate::node_graph_executor::NodeGraphExecutor;
 use graphene_std::raster::color::Color;
-use graphene_std::text::FontCache;
 use std::borrow::Cow;
 use std::fmt::{self, Debug};
 
@@ -24,17 +24,27 @@ pub struct ToolActionMessageContext<'a> {
 	pub document_id: DocumentId,
 	pub global_tool_data: &'a DocumentToolData,
 	pub input: &'a InputPreprocessorMessageHandler,
-	pub font_cache: &'a FontCache,
+	pub persistent_data: &'a PersistentData,
 	pub shape_editor: &'a mut ShapeState,
 	pub node_graph: &'a NodeGraphExecutor,
 	pub preferences: &'a PreferencesMessageHandler,
 	pub viewport: &'a ViewportMessageHandler,
 }
 
-pub trait ToolCommon: for<'a, 'b> MessageHandler<ToolMessage, &'b mut ToolActionMessageContext<'a>> + LayoutHolder + ToolTransition + ToolMetadata {}
-impl<T> ToolCommon for T where T: for<'a, 'b> MessageHandler<ToolMessage, &'b mut ToolActionMessageContext<'a>> + LayoutHolder + ToolTransition + ToolMetadata {}
+pub trait ToolCommon: for<'a, 'b> MessageHandler<ToolMessage, &'b mut ToolActionMessageContext<'a>> + ToolRefreshOptions + ToolTransition + ToolMetadata {}
+impl<T> ToolCommon for T where T: for<'a, 'b> MessageHandler<ToolMessage, &'b mut ToolActionMessageContext<'a>> + ToolRefreshOptions + ToolTransition + ToolMetadata {}
 
 type Tool = dyn ToolCommon + Send + Sync;
+
+pub trait ToolRefreshOptions {
+	fn refresh_options(&self, responses: &mut VecDeque<Message>, _persistent_data: &PersistentData);
+}
+
+impl<T: LayoutHolder> ToolRefreshOptions for T {
+	fn refresh_options(&self, responses: &mut VecDeque<Message>, _persistent_data: &PersistentData) {
+		self.send_layout(responses, LayoutTarget::ToolOptions);
+	}
+}
 
 /// The FSM (finite state machine) is a flowchart between different operating states that a specific tool might be in.
 /// It is the central "core" logic area of each tool which is in charge of maintaining the state of the tool and responding to events coming from outside (like user input).

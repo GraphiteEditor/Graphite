@@ -72,7 +72,8 @@
 			font-style: italic;
 		}
 
-		&.monospace {
+		&.monospace,
+		code {
 			font-family: "Source Code Pro", monospace;
 			font-size: 12px;
 		}
@@ -93,6 +94,11 @@
 
 		a {
 			color: inherit;
+		}
+
+		code {
+			background: var(--color-3-darkgray);
+			padding: 0 2px;
 		}
 	}
 </style>

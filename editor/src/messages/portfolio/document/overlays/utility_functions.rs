@@ -227,7 +227,7 @@ pub static GLOBAL_FONT_CACHE: LazyLock<FontCache> = LazyLock::new(|| {
 	// Initialize with the hardcoded font used by overlay text
 	const FONT_DATA: &[u8] = include_bytes!("source-sans-pro-regular.ttf");
 	let font = Font::new("Source Sans Pro".to_string(), "Regular".to_string());
-	font_cache.insert(font, String::new(), FONT_DATA.to_vec());
+	font_cache.insert(font, FONT_DATA.to_vec());
 	font_cache
 });
 

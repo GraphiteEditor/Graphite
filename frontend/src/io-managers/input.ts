@@ -481,11 +481,11 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 				The browser's clipboard permission has been denied.
 
 				Open the browser's website settings (usually accessible
-				just left of the URL) to allow this permission.
+				just left of the URL bar) to allow this permission.
 				`;
 			const nothing = stripIndents`
 				No valid clipboard data was found. You may have better
-				luck pasting with the standard keyboard shortcut instead.
+				success pasting with the standard keyboard shortcut instead.
 				`;
 
 			const matchMessage = {

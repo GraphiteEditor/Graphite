@@ -574,7 +574,6 @@ fn vibrance<T: Adjust<Color>>(
 	image
 }
 
-/// Color Channel
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType, BufferStruct, FromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
@@ -586,7 +585,6 @@ pub enum RedGreenBlue {
 	Blue,
 }
 
-/// Color Channel
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType, bytemuck::NoUninit, BufferStruct, FromPrimitive, IntoPrimitive)]
 #[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 #[widget(Radio)]
@@ -599,7 +597,7 @@ pub enum RedGreenBlueAlpha {
 	Alpha,
 }
 
-/// Style of noise pattern
+/// Style of noise pattern.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
 #[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 #[widget(Dropdown)]
@@ -616,9 +614,9 @@ pub enum NoiseType {
 	WhiteNoise,
 }
 
+/// Style of layered levels of the noise pattern.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
 #[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
-/// Style of layered levels of the noise pattern
 pub enum FractalType {
 	#[default]
 	None,
@@ -632,7 +630,7 @@ pub enum FractalType {
 	DomainWarpIndependent,
 }
 
-/// Distance function used by the cellular noise
+/// Distance function used by the cellular noise.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
 #[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 pub enum CellularDistanceFunction {
@@ -663,7 +661,6 @@ pub enum CellularReturnType {
 	Division,
 }
 
-/// Type of domain warp
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash, node_macro::ChoiceType)]
 #[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 #[widget(Dropdown)]

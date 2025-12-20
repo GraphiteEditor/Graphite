@@ -3,9 +3,16 @@ use crate::messages::input_mapper::key_mapping::MappingVariant;
 use crate::messages::portfolio::document::utility_types::wires::GraphWireStyle;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
+use crate::messages::tool::utility_types::ToolType;
 use graph_craft::wasm_application_io::EditorPreferences;
 
+#[derive(ExtractField)]
+pub struct PreferencesMessageContext<'a> {
+	pub tool_message_handler: &'a ToolMessageHandler,
+}
+
 #[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize, specta::Type, ExtractField)]
+#[serde(default)]
 pub struct PreferencesMessageHandler {
 	pub selection_mode: SelectionMode,
 	pub zoom_with_scroll: bool,
@@ -49,8 +56,10 @@ impl Default for PreferencesMessageHandler {
 }
 
 #[message_handler_data]
-impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
-	fn process_message(&mut self, message: PreferencesMessage, responses: &mut VecDeque<Message>, _: ()) {
+impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for PreferencesMessageHandler {
+	fn process_message(&mut self, message: PreferencesMessage, responses: &mut VecDeque<Message>, context: PreferencesMessageContext) {
+		let PreferencesMessageContext { tool_message_handler } = context;
+
 		match message {
 			// Management messages
 			PreferencesMessage::Load { preferences } => {
@@ -83,6 +92,11 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 			}
 			PreferencesMessage::BrushTool { enabled } => {
 				self.brush_tool = enabled;
+
+				if !enabled && tool_message_handler.tool_state.tool_data.active_tool_type == ToolType::Brush {
+					responses.add(ToolMessage::ActivateToolSelect);
+				}
+
 				responses.add(ToolMessage::RefreshToolShelf);
 			}
 			PreferencesMessage::ModifyLayout { zoom_with_scroll } => {

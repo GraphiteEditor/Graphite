@@ -59,7 +59,7 @@
 		/>
 	</button>
 	{#if expanded}
-		<LayoutCol class="body">
+		<LayoutCol class="body" data-block-hover-transfer>
 			{#each widgetData.layout as layoutGroup}
 				{#if isWidgetSpanRow(layoutGroup)}
 					<WidgetSpan widgetData={layoutGroup} {layoutTarget} />

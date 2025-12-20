@@ -9,10 +9,10 @@
 		UpdateLayersPanelControlBarLeftLayout,
 		UpdateLayersPanelControlBarRightLayout,
 		UpdateLayersPanelBottomBarLayout,
-		SendShortcutAltClick,
 	} from "@graphite/messages";
-	import type { ActionShortcut, DataBuffer, LayerPanelEntry, Layout } from "@graphite/messages";
+	import type { DataBuffer, LayerPanelEntry, Layout } from "@graphite/messages";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
+	import type { TooltipState } from "@graphite/state-providers/tooltip";
 	import { operatingSystem } from "@graphite/utility-functions/platform";
 	import { extractPixelData } from "@graphite/utility-functions/rasterization";
 
@@ -49,6 +49,7 @@
 
 	const editor = getContext<Editor>("editor");
 	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
+	const tooltip = getContext<TooltipState>("tooltip");
 
 	let list: LayoutCol | undefined;
 
@@ -73,13 +74,7 @@
 	let layersPanelControlBarRightLayout: Layout = [];
 	let layersPanelBottomBarLayout: Layout = [];
 
-	let altClickShortcut: ActionShortcut | undefined;
-
 	onMount(() => {
-		editor.subscriptions.subscribeJsMessage(SendShortcutAltClick, async (data) => {
-			altClickShortcut = data.shortcut;
-		});
-
 		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarLeftLayout, (updateLayersPanelControlBarLeftLayout) => {
 			patchLayout(layersPanelControlBarLeftLayout, updateLayersPanelControlBarLeftLayout);
 			layersPanelControlBarLeftLayout = layersPanelControlBarLeftLayout;
@@ -627,8 +622,8 @@
 							data-tooltip-description={(listing.entry.expanded
 								? "Hide the layers nested within. (To affect all open descendants, perform the shortcut shown.)"
 								: "Show the layers nested within. (To affect all closed descendants, perform the shortcut shown.)") +
-								(listing.entry.ancestorOfSelected && !listing.entry.expanded ? "\n\nNote: a selected layer is currently contained within.\n" : "")}
-							data-tooltip-shortcut={altClickShortcut?.shortcut ? JSON.stringify(altClickShortcut.shortcut) : undefined}
+								(listing.entry.ancestorOfSelected && !listing.entry.expanded ? "\n\nA selected layer is currently contained within.\n" : "")}
+							data-tooltip-shortcut={$tooltip.altClickShortcut?.shortcut ? JSON.stringify($tooltip.altClickShortcut.shortcut) : undefined}
 							on:click={(e) => handleExpandArrowClickWithModifiers(e, listing.entry.id)}
 							tabindex="0"
 						></button>
@@ -639,8 +634,9 @@
 						<IconLabel
 							icon="Clipped"
 							class="clipped-arrow"
-							tooltipDescription="Clipping mask is active. To release it, perform the shortcut on the layer border."
-							tooltipShortcut={altClickShortcut}
+							tooltipLabel="Layer Clipped"
+							tooltipDescription="Clipping mask is active. To release it, target the bottom border of the layer and perform the shortcut shown."
+							tooltipShortcut={$tooltip.altClickShortcut}
 						/>
 					{/if}
 					<div class="thumbnail">
