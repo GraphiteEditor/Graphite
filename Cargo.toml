@@ -14,6 +14,8 @@ members = [
 	"libraries/math-parser",
 	"node-graph/libraries/*",
 	"node-graph/nodes/*",
+	"node-graph/nodes/raster/shaders",
+	"node-graph/nodes/raster/shaders/entrypoint",
 	"node-graph/graph-craft",
 	"node-graph/graphene-cli",
 	"node-graph/nodes/gstd",
@@ -29,21 +31,12 @@ default-members = [
 	"libraries/dyn-any",
 	"libraries/path-bool",
 	"libraries/math-parser",
-	"node-graph/libraries/application-io",
-	"node-graph/libraries/core-types",
-	"node-graph/libraries/no-std-types",
-	"node-graph/libraries/raster-types",
-	"node-graph/libraries/vector-types",
-	"node-graph/libraries/graphic-types",
-	"node-graph/libraries/rendering",
-	"node-graph/libraries/wgpu-executor",
-	"node-graph/nodes/*",
 	"node-graph/graph-craft",
 	"node-graph/graphene-cli",
 	"node-graph/interpreted-executor",
 	"node-graph/node-macro",
 	"node-graph/preprocessor",
-	# blocked by https://github.com/rust-lang/cargo/issues/15890
+	# blocked by https://github.com/rust-lang/cargo/issues/16000
 #	"proc-macros",
 ]
 resolver = "2"
