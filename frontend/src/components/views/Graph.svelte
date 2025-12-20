@@ -501,7 +501,7 @@
 				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
 				style:--layer-area-width={layerAreaWidth}
 				style:--node-chain-area-left-extension={layerChainWidth !== 0 ? layerChainWidth + 0.5 : 0}
-				data-tooltip-label={node.displayName === node.reference ? node.displayName : `${node.displayName} (${node.reference})`}
+				data-tooltip-label={node.displayName === node.reference || !node.reference ? node.displayName : `${node.displayName} (${node.reference})`}
 				data-tooltip-description={`
 					${(description || "").trim()}${editor.handle.inDevelopmentMode() ? `\n\nID: ${node.id}. Position: (${node.position.x}, ${node.position.y}).` : ""}
 					`.trim()}
@@ -651,7 +651,7 @@
 				style:--clip-path-id={`url(#${clipPathId})`}
 				style:--data-color={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()})`}
 				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
-				data-tooltip-label={node.displayName === node.reference ? node.displayName : `${node.displayName} (${node.reference})`}
+				data-tooltip-label={node.displayName === node.reference || !node.reference ? node.displayName : `${node.displayName} (${node.reference})`}
 				data-tooltip-description={`
 					${(description || "").trim()}${editor.handle.inDevelopmentMode() ? `\n\nID: ${node.id}. Position: (${node.position.x}, ${node.position.y}).` : ""}
 					`.trim()}

@@ -27,7 +27,7 @@
 	// State provider systems
 	let dialog = createDialogState(editor);
 	setContext("dialog", dialog);
-	let tooltip = createTooltipState();
+	let tooltip = createTooltipState(editor);
 	setContext("tooltip", tooltip);
 	let document = createDocumentState(editor);
 	setContext("document", document);
