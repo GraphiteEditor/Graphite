@@ -80,15 +80,16 @@
 		.join(" ");
 
 	// Called only when `open` is changed from outside this component
-	// SOLUTION: Update the watchOpenChange function to NOT disable scrolling for dialogs
-
 	async function watchOpenChange(isOpen: boolean) {
 		// Mitigate a Safari rendering bug which clips the floating menu extending beyond a scrollable container.
+		// The bug is possibly related to <https://bugs.webkit.org/show_bug.cgi?id=160953>, but in our case it happens when `overflow` of a parent is `auto` rather than `hidden`.
 		// IMPORTANT: Don't apply this workaround to menus in scrollable containers since we want them to scroll with their buttons
 		const inScrollableContainer = Boolean(self?.closest("[data-scrollable-x], [data-scrollable-y]"));
 		if (browserVersion().toLowerCase().includes("safari") && !inScrollableContainer) {
 			const scrollable = self?.closest("[data-scrollable-x], [data-scrollable-y]");
 			if (scrollable instanceof HTMLElement) {
+				// The issue exists when the container is set to `overflow: auto` but fine when `overflow: hidden`. So this workaround temporarily sets
+				// the scrollable container to `overflow: hidden`, thus removing the scrollbars and ability to scroll until the floating menu is closed.
 				scrollable.style.overflow = isOpen ? "hidden" : "";
 			}
 		}
@@ -105,6 +106,8 @@
 			window.addEventListener("pointerdown", pointerDownHandler);
 			// Cancel the subsequent click event to prevent the floating menu from reopening if the floating menu's button is the click event target
 			window.addEventListener("pointerup", pointerUpHandler);
+
+			// Floating menu min-width resize observer
 
 			await tick();
 
@@ -181,10 +184,6 @@
 		minWidthParentWidth = entries[0].contentRect.width;
 	}
 
-	// DEBUGGING VERSION - Replace your positionAndStyleFloatingMenu function with this:
-
-	// COMPLETE WORKING SOLUTION - Replace positionAndStyleFloatingMenu function:
-
 	function positionAndStyleFloatingMenu() {
 		if (type === "Cursor") return;
 
@@ -202,6 +201,9 @@
 		const overflowingBottom = floatingMenuContentBounds.bottom + windowEdgeMargin >= windowBounds.bottom;
 
 		// TODO: Make this work for all types. This is currently limited to tooltips because they're inherently small and transient.
+		// TODO: But on popovers and dropdowns, it's a bit harder to do this right. First we check if it's overflowing and flip the direction to avoid the overflow.
+		// TODO: But once it's flipped, if the position moves and the menu would no longer be overflowing, we're still flipped and thus unable to automatically notice the need to flip back.
+		// TODO: So as a result, once flipped, it stays flipped forever even if the menu spawner element is moved back away from the edge of the window.
 		if (type === "Tooltip") {
 			// Flip direction if overflowing the edge of the window
 			if (direction === "Top" && overflowingTop) direction = "Bottom";
@@ -217,7 +219,7 @@
 		const isInScrollableContainer = Boolean(scrollableParent);
 
 		if (!inParentFloatingMenu) {
-			// Required to correctly position content when scrolled
+			// Required to correctly position content when scrolled (it has a `position: fixed` to prevent clipping)
 			// We use `.style` on a div (instead of a style DOM attribute binding) because the binding causes the `afterUpdate()` hook to call the function we're in recursively forever
 			let tailOffset = 0;
 			if (type === "Popover") tailOffset = 10;
