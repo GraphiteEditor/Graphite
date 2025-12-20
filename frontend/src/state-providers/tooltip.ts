@@ -1,12 +1,18 @@
 import { writable } from "svelte/store";
 
+import { type Editor } from "@graphite/editor";
+import { SendShortcutAltClick, SendShortcutF11, SendShortcutShiftClick, type ActionShortcut } from "@graphite/messages";
+
 const SHOW_TOOLTIP_DELAY_MS = 500;
 
-export function createTooltipState() {
+export function createTooltipState(editor: Editor) {
 	const { subscribe, update } = writable({
 		visible: false,
 		element: undefined as Element | undefined,
 		position: { x: 0, y: 0 },
+		shiftClickShortcut: undefined as ActionShortcut | undefined,
+		altClickShortcut: undefined as ActionShortcut | undefined,
+		f11Shortcut: undefined as ActionShortcut | undefined,
 	});
 
 	let tooltipTimeout: ReturnType<typeof setTimeout> | undefined = undefined;
@@ -43,6 +49,25 @@ export function createTooltipState() {
 				return state;
 			});
 		}, SHOW_TOOLTIP_DELAY_MS);
+	});
+
+	editor.subscriptions.subscribeJsMessage(SendShortcutShiftClick, async (data) => {
+		update((state) => {
+			state.shiftClickShortcut = data.shortcut;
+			return state;
+		});
+	});
+	editor.subscriptions.subscribeJsMessage(SendShortcutAltClick, async (data) => {
+		update((state) => {
+			state.altClickShortcut = data.shortcut;
+			return state;
+		});
+	});
+	editor.subscriptions.subscribeJsMessage(SendShortcutF11, async (data) => {
+		update((state) => {
+			state.f11Shortcut = data.shortcut;
+			return state;
+		});
 	});
 
 	document.addEventListener("mousedown", closeTooltip);

@@ -124,6 +124,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				responses.add(FrontendMessage::SendShortcutAltClick {
 					shortcut: action_shortcut_manual!(Key::Alt, Key::MouseLeft),
 				});
+				responses.add(FrontendMessage::SendShortcutShiftClick {
+					shortcut: action_shortcut_manual!(Key::Shift, Key::MouseLeft),
+				});
 
 				// Before loading any documents, initially prepare the welcome screen buttons layout
 				responses.add(PortfolioMessage::RequestWelcomeScreenButtonsLayout);

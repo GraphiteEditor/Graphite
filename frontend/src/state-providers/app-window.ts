@@ -9,7 +9,7 @@ export function createAppWindowState(editor: Editor) {
 		maximized: false,
 		fullscreen: false,
 		viewportHolePunch: false,
-		uiScale: 1.0,
+		uiScale: 1,
 	});
 
 	// Set up message subscriptions on creation

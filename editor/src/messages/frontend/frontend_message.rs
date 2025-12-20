@@ -70,6 +70,9 @@ pub enum FrontendMessage {
 	SendShortcutAltClick {
 		shortcut: Option<ActionShortcut>,
 	},
+	SendShortcutShiftClick {
+		shortcut: Option<ActionShortcut>,
+	},
 
 	// Trigger prefix: cause a frontend specific API to do something
 	TriggerAboutGraphiteLocalizedCommitDate {

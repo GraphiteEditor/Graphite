@@ -119,6 +119,11 @@ export class SendShortcutAltClick extends JsMessage {
 	readonly shortcut!: ActionShortcut | undefined;
 }
 
+export class SendShortcutShiftClick extends JsMessage {
+	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
+	readonly shortcut!: ActionShortcut | undefined;
+}
+
 export class UpdateNodeThumbnail extends JsMessage {
 	readonly id!: bigint;
 
@@ -1696,6 +1701,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	SendUIMetadata,
 	SendShortcutF11,
 	SendShortcutAltClick,
+	SendShortcutShiftClick,
 	TriggerAboutGraphiteLocalizedCommitDate,
 	TriggerDisplayThirdPartyLicensesDialog,
 	TriggerExportImage,

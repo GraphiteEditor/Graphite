@@ -1,9 +1,9 @@
 <script lang="ts">
-	import { onDestroy, createEventDispatcher } from "svelte";
+	import { getContext, onDestroy, createEventDispatcher } from "svelte";
 
-	import type { HSV, RGB, FillChoice } from "@graphite/messages";
-	import type { MenuDirection } from "@graphite/messages";
+	import type { HSV, RGB, FillChoice, MenuDirection } from "@graphite/messages";
 	import { Color, contrastingOutlineFactor, Gradient } from "@graphite/messages";
+	import type { TooltipState } from "@graphite/state-providers/tooltip";
 	import { clamp } from "@graphite/utility-functions/math";
 
 	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
@@ -40,6 +40,7 @@
 	];
 
 	const dispatch = createEventDispatcher<{ colorOrGradient: FillChoice; startHistoryTransaction: undefined }>();
+	const tooltip = getContext<TooltipState>("tooltip");
 
 	export let colorOrGradient: FillChoice;
 	export let allowNone = false;
@@ -424,12 +425,16 @@
 			"--opaque-color-contrasting": (newColor.opaque() || new Color(0, 0, 0, 1)).contrastingColor(),
 		}}
 	>
+		{@const hueDescription = "The shade along the spectrum of the rainbow."}
+		{@const saturationDescription = "The vividness from grayscale to full color."}
+		{@const valueDescription = "The brightness from black to full color."}
 		<LayoutCol class="pickers-and-gradient">
 			<LayoutRow class="pickers">
 				<LayoutCol
 					class="saturation-value-picker"
 					data-tooltip-label="Saturation and Value"
-					data-tooltip-description={disabled ? "Disabled (read-only)." : ""}
+					data-tooltip-description={`To move only along the saturation (X) or value (Y) axis, perform the shortcut shown.${disabled ? "\n\nDisabled (read-only)." : ""}`}
+					data-tooltip-shortcut={$tooltip.shiftClickShortcut?.shortcut ? JSON.stringify($tooltip.shiftClickShortcut.shortcut) : undefined}
 					on:pointerdown={onPointerDown}
 					data-saturation-value-picker
 				>
@@ -449,7 +454,7 @@
 				<LayoutCol
 					class="hue-picker"
 					data-tooltip-label="Hue"
-					data-tooltip-description={`The shade along the spectrum of the rainbow.${disabled ? "\n\nDisabled (read-only)." : ""}`}
+					data-tooltip-description={`${hueDescription}${disabled ? "\n\nDisabled (read-only)." : ""}`}
 					on:pointerdown={onPointerDown}
 					data-hue-picker
 				>
@@ -522,10 +527,8 @@
 			</LayoutRow>
 			<!-- <DropdownInput entries={[[{ label: "sRGB" }]]} selectedIndex={0} disabled={true} tooltipDescription="Color model, color space, and HDR (coming soon)." /> -->
 			<LayoutRow>
-				<TextLabel
-					tooltipLabel="Hex Color Code"
-					tooltipDescription="Color code in hexadecimal format. 6 digits if opaque, 8 with alpha.\nAccepts input of CSS color values including named colors.">Hex</TextLabel
-				>
+				{@const hexDescription = "Color code in hexadecimal format. 6 digits if opaque, 8 with alpha. Accepts input of CSS color values including named colors."}
+				<TextLabel tooltipLabel="Hex Color Code" tooltipDescription={hexDescription}>Hex</TextLabel>
 				<Separator type="Related" />
 				<LayoutRow>
 					<TextInput
@@ -537,7 +540,7 @@
 						}}
 						centered={true}
 						tooltipLabel="Hex Color Code"
-						tooltipDescription="Color code in hexadecimal format. 6 digits if opaque, 8 with alpha.\nAccepts input of CSS color values including named colors."
+						tooltipDescription={hexDescription}
 						bind:this={hexCodeInputWidget}
 					/>
 				</LayoutRow>
@@ -601,16 +604,17 @@
 								v: "Value Component",
 							}[channel]}
 							tooltipDescription={{
-								h: "The shade along the spectrum of the rainbow.",
-								s: "The vividness from grayscale to full color.",
-								v: "The brightness from black to full color.",
+								h: hueDescription,
+								s: saturationDescription,
+								v: valueDescription,
 							}[channel]}
 						/>
 					{/each}
 				</LayoutRow>
 			</LayoutRow>
 			<LayoutRow>
-				<TextLabel tooltipLabel="Alpha" tooltipDescription="The level of translucency, from transparent (0%) to opaque (100%).">Alpha</TextLabel>
+				{@const alphaDescription = "The level of translucency, from transparent (0%) to opaque (100%)."}
+				<TextLabel tooltipLabel="Alpha" tooltipDescription={alphaDescription}>Alpha</TextLabel>
 				<Separator type="Related" />
 				<NumberInput
 					value={!isNone ? alpha * 100 : undefined}
@@ -630,7 +634,7 @@
 					mode="Range"
 					displayDecimalPlaces={1}
 					tooltipLabel="Alpha"
-					tooltipDescription="The level of translucency, from transparent (0%) to opaque (100%)."
+					tooltipDescription={alphaDescription}
 				/>
 			</LayoutRow>
 			<LayoutRow class="leftover-space" />
@@ -670,7 +674,7 @@
 							data-pure-tile={name.toLowerCase()}
 							style:--pure-color={color}
 							style:--pure-color-gray={gray}
-							data-tooltip-label="Set to Red"
+							data-tooltip-label={`Set to ${name}`}
 							data-tooltip-description={disabled ? "Disabled (read-only)." : ""}
 						/>
 					{/each}
