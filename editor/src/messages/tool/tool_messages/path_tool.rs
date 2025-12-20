@@ -3132,7 +3132,7 @@ impl Fsm for PathToolFsmState {
 				let old = tool_data.make_path_editable_is_allowed;
 				tool_data.make_path_editable_is_allowed = make_path_editable_is_allowed(&mut document.network_interface).is_some();
 				tool_data.update_selection_status(shape_editor, document);
-				
+
 				if old != tool_data.make_path_editable_is_allowed {
 					responses.add(MenuBarMessage::SendLayout);
 				}
