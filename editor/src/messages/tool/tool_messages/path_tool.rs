@@ -2,7 +2,8 @@ use super::select_tool::extend_lasso;
 use super::tool_prelude::*;
 use crate::consts::{
 	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GRAY, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, DEFAULT_STROKE_WIDTH, DOUBLE_CLICK_MILLISECONDS, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD,
-	DRILL_THROUGH_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD, SELECTION_TOLERANCE,
+	DRILL_THROUGH_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, PEEL_SEGMENT_OFFSET_FACTOR, SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD, SELECTION_TOLERANCE,
+	SEPARATE_SEGMENT_OFFSET_FACTOR,
 };
 use crate::messages::clipboard::utility_types::ClipboardContent;
 use crate::messages::input_mapper::utility_types::macros::action_shortcut_manual;
@@ -25,12 +26,12 @@ use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandi
 use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, find_two_param_best_approximate, make_path_editable_is_allowed};
 use graphene_std::Color;
 use graphene_std::renderer::Quad;
-use graphene_std::subpath::pathseg_points;
+use graphene_std::subpath::{Bezier, BezierHandles, pathseg_points};
 use graphene_std::transform::ReferencePoint;
 use graphene_std::uuid::NodeId;
 use graphene_std::vector::algorithms::util::pathseg_tangent;
 use graphene_std::vector::click_target::ClickTargetType;
-use graphene_std::vector::misc::{HandleId, ManipulatorPointId, dvec2_to_point, point_to_dvec2};
+use graphene_std::vector::misc::{HandleId, HandleType, ManipulatorPointId, dvec2_to_point, point_to_dvec2};
 use graphene_std::vector::{HandleExt, NoHashBuilder, PointId, SegmentId, Vector, VectorModificationType};
 use kurbo::{DEFAULT_ACCURACY, ParamCurve, ParamCurveNearest, PathSeg, Rect};
 use std::vec;
@@ -147,6 +148,8 @@ pub enum PathToolMessage {
 	Duplicate,
 	TogglePointEditing,
 	ToggleSegmentEditing,
+	SeparateSegment,
+	PeelSegment,
 }
 
 #[derive(PartialEq, Eq, Hash, Copy, Clone, Debug, Default, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -329,6 +332,18 @@ impl LayoutHolder for PathTool {
 			.disabled(!self.tool_data.make_path_editable_is_allowed)
 			.widget_instance();
 
+		let separate_segment_button = IconButton::new("Folder", 24)
+			.tooltip("Separate selected segment")
+			.on_update(|_| PathToolMessage::SeparateSegment.into())
+			.disabled(!self.tool_data.segment_separation_enabled)
+			.widget_holder();
+
+		let peel_segment_button = IconButton::new("Folder", 24)
+			.tooltip("Peel selected segment")
+			.on_update(|_| PathToolMessage::PeelSegment.into())
+			.disabled(!self.tool_data.segment_separation_enabled)
+			.widget_holder();
+
 		let [_checkbox, _dropdown] = {
 			let pivot_gizmo_type_widget = pivot_gizmo_type_widget(self.tool_data.pivot_gizmo.state, PivotToolSource::Path);
 			[pivot_gizmo_type_widget[0].clone(), pivot_gizmo_type_widget[2].clone()]
@@ -360,6 +375,10 @@ impl LayoutHolder for PathTool {
 				path_overlay_mode_widget,
 				unrelated_seperator.clone(),
 				path_node_button,
+				unrelated_seperator.clone(),
+				separate_segment_button,
+				peel_segment_button,
+				unrelated_seperator.clone(),
 				// checkbox.clone(),
 				// related_seperator.clone(),
 				// dropdown.clone(),
@@ -455,7 +474,9 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Path
 				Paste,
 				Duplicate,
 				TogglePointEditing,
-				ToggleSegmentEditing
+				ToggleSegmentEditing,
+				SeparateSegment,
+				PeelSegment
 			),
 			PathToolFsmState::Dragging(_) => actions!(PathToolMessageDiscriminant;
 				Escape,
@@ -604,6 +625,7 @@ struct PathToolData {
 	hovered_layers: Vec<LayerNodeIdentifier>,
 	ghost_outline: Vec<(Vec<ClickTargetType>, LayerNodeIdentifier)>,
 	make_path_editable_is_allowed: bool,
+	segment_separation_enabled: bool,
 }
 
 impl PathToolData {
@@ -663,6 +685,15 @@ impl PathToolData {
 			SelectionStatus::Multiple(_) => true,
 		};
 		self.selection_status = selection_status;
+	}
+
+	fn update_separate_segment_toggle(&mut self, shape_editor: &mut ShapeState, document: &DocumentMessageHandler) {
+		//TODO: Implement this
+		if single_segment_selected(shape_editor, document).is_some() {
+			self.segment_separation_enabled = true;
+		} else {
+			self.segment_separation_enabled = false;
+		}
 	}
 
 	fn remove_saved_points(&mut self) {
@@ -3127,6 +3158,7 @@ impl Fsm for PathToolFsmState {
 
 				tool_data.make_path_editable_is_allowed = make_path_editable_is_allowed(&mut document.network_interface).is_some();
 				tool_data.update_selection_status(shape_editor, document);
+				tool_data.update_separate_segment_toggle(shape_editor, document);
 				self
 			}
 			(_, PathToolMessage::ManipulatorMakeHandlesColinear) => {
@@ -3151,6 +3183,191 @@ impl Fsm for PathToolFsmState {
 				let pivot_gizmo = tool_data.pivot_gizmo();
 				responses.add(TransformLayerMessage::SetPivotGizmo { pivot_gizmo });
 				responses.add(NodeGraphMessage::RunDocumentGraph);
+
+				self
+			}
+			(_, PathToolMessage::SeparateSegment) => {
+				let Some((layer, vector, old_segment)) = single_segment_selected(shape_editor, document) else {
+					return self;
+				};
+
+				let (_, bezier, start, end) = vector.segment_bezier_iter().find(|(id, _, _, _)| *id == old_segment).expect(" Couldn't get segment data");
+
+				// Need to collect all of the connections of start and end points
+				let start_conections = vector.all_connected(start).collect::<Vec<_>>();
+				let end_connections = vector.all_connected(end).collect::<Vec<_>>();
+
+				// TODO: Prevent all edge cases of a hanging segmentS
+				if start_conections.len() < 2 || end_connections.len() < 2 {
+					return self;
+				}
+
+				responses.add(DocumentMessage::StartTransaction);
+
+				let start_pos = ManipulatorPointId::Anchor(start).get_position(&vector).expect("No position for point");
+				let end_pos = ManipulatorPointId::Anchor(end).get_position(&vector).expect("No position for point");
+
+				let direction = start_pos - end_pos;
+				let perp = direction.perp();
+
+				// first remove the points start and end
+				let modification_type = VectorModificationType::RemovePoint { id: start };
+				responses.add(GraphOperationMessage::Vector { layer, modification_type });
+
+				let modification_type = VectorModificationType::RemovePoint { id: end };
+				responses.add(GraphOperationMessage::Vector { layer, modification_type });
+
+				let offset = perp.try_normalize().unwrap_or_default() * SEPARATE_SEGMENT_OFFSET_FACTOR;
+
+				// (start point, end point) for both new segments
+				let new_points = [(PointId::generate(), PointId::generate()), (PointId::generate(), PointId::generate())];
+
+				let handles = |bezier: Bezier| -> [Option<DVec2>; 2] {
+					match bezier.handles {
+						BezierHandles::Linear => [None, None],
+						BezierHandles::Quadratic { handle } => [Some(handle - bezier.start), None],
+						BezierHandles::Cubic { handle_start, handle_end } => [Some(handle_start - bezier.start), Some(handle_end - bezier.end)],
+					}
+				};
+
+				for ((new_start, new_end), factor) in new_points.iter().zip([-1., 1.]) {
+					let offset = offset * factor;
+					let new_start_pos = start_pos + offset;
+					let new_end_pos = end_pos + offset;
+
+					let modification_type = VectorModificationType::InsertPoint {
+						id: *new_start,
+						position: new_start_pos,
+					};
+					responses.add(GraphOperationMessage::Vector { layer, modification_type });
+
+					let modification_type = VectorModificationType::InsertPoint { id: *new_end, position: new_end_pos };
+					responses.add(GraphOperationMessage::Vector { layer, modification_type });
+
+					// Insert the bezier between new start and new end
+					let id = SegmentId::generate();
+					let points = [*new_start, *new_end];
+					let handles = handles(bezier);
+					let modification_type = VectorModificationType::InsertSegment { id, points, handles };
+					responses.add(GraphOperationMessage::Vector { layer, modification_type });
+				}
+
+				// Now add connections
+				for connection in start_conections {
+					let segment = connection.segment;
+					let other_point_id = connection.opposite().to_manipulator_point().get_anchor(&vector).unwrap();
+					let connection_bez = vector.segment_from_id(segment).unwrap();
+					let other_pos = match (connection_bez.handles, connection.ty) {
+						(BezierHandles::Cubic { handle_start, handle_end: _ }, HandleType::Primary) => {
+							if handle_start.distance(connection_bez.start) < 1e-8 {
+								connection_bez.end
+							} else {
+								handle_start
+							}
+						}
+						(BezierHandles::Cubic { handle_start: _, handle_end }, HandleType::End) => {
+							if handle_end.distance(connection_bez.end) < 1e-8 {
+								connection_bez.start
+							} else {
+								handle_end
+							}
+						}
+						(BezierHandles::Quadratic { handle }, _) => handle,
+						(BezierHandles::Linear, _) => connection.opposite().to_manipulator_point().get_anchor_position(&vector).unwrap(),
+					};
+					let connection_direction = start_pos - other_pos;
+					let new_segment = SegmentId::generate();
+					let points = if connection_direction.dot(offset) > 0. {
+						if connection.ty == HandleType::Primary {
+							[new_points[0].0, other_point_id]
+						} else {
+							[other_point_id, new_points[0].0]
+						}
+					} else {
+						if connection.ty == HandleType::Primary {
+							[new_points[1].0, other_point_id]
+						} else {
+							[other_point_id, new_points[1].0]
+						}
+					};
+					let handles = handles(connection_bez);
+					let modification_type = VectorModificationType::InsertSegment { id: new_segment, points, handles };
+					responses.add(GraphOperationMessage::Vector { layer, modification_type });
+				}
+
+				for connection in end_connections {
+					let other_point_id = connection.opposite().to_manipulator_point().get_anchor(&vector).unwrap();
+					let connection_bez = vector.segment_from_id(connection.segment).unwrap();
+					let other_pos = match (connection_bez.handles, connection.ty) {
+						(BezierHandles::Cubic { handle_start, handle_end: _ }, HandleType::Primary) => {
+							// handle_start
+							if handle_start.distance(connection_bez.start) < 1e-8 { connection_bez.end } else { handle_start }
+						}
+						(BezierHandles::Cubic { handle_start: _, handle_end }, HandleType::End) => {
+							if handle_end.distance(connection_bez.end) < 1e-8 {
+								connection_bez.start
+							} else {
+								handle_end
+							}
+						}
+						(BezierHandles::Quadratic { handle }, _) => handle,
+						(BezierHandles::Linear, _) => connection.opposite().to_manipulator_point().get_anchor_position(&vector).unwrap(),
+					};
+					let connection_direction = end_pos - other_pos;
+					let new_segment = SegmentId::generate();
+					let points = if connection_direction.dot(offset) > 0. {
+						if connection.ty == HandleType::Primary {
+							[new_points[0].1, other_point_id]
+						} else {
+							[other_point_id, new_points[0].1]
+						}
+					} else {
+						if connection.ty == HandleType::Primary {
+							[new_points[1].1, other_point_id]
+						} else {
+							[other_point_id, new_points[1].1]
+						}
+					};
+					let handles = handles(connection_bez);
+					let modification_type = VectorModificationType::InsertSegment { id: new_segment, points, handles };
+					responses.add(GraphOperationMessage::Vector { layer, modification_type });
+				}
+
+				responses.add(DocumentMessage::EndTransaction);
+
+				self
+			}
+			(_, PathToolMessage::PeelSegment) => {
+				let Some((layer, vector, old_segment)) = single_segment_selected(shape_editor, document) else {
+					return self;
+				};
+				responses.add(DocumentMessage::StartTransaction);
+
+				let (_, bezier, start, end) = vector.segment_bezier_iter().find(|(id, _, _, _)| *id == old_segment).expect(" Couldn't get segment data");
+
+				// Calculate the perpendicular direction to the start and end point and nudge the handles in that direction to give peel effect
+				let start_pos = ManipulatorPointId::Anchor(start).get_position(&vector).expect("No position for point");
+				let end_pos = ManipulatorPointId::Anchor(end).get_position(&vector).expect("No position for point");
+
+				let direction = start_pos - end_pos;
+				let perp = direction.perp();
+				let offset = perp.try_normalize().unwrap_or_default() * PEEL_SEGMENT_OFFSET_FACTOR;
+
+				// Generate a new id and insert new bezier
+				let id = SegmentId::generate();
+				let points = [start, end];
+				let handles = |bezier: Bezier| -> [Option<DVec2>; 2] {
+					match bezier.handles {
+						BezierHandles::Linear => [None, None],
+						BezierHandles::Quadratic { handle } => [Some(handle - bezier.start + offset), None],
+						BezierHandles::Cubic { handle_start, handle_end } => [Some(handle_start - bezier.start + offset), Some(handle_end - bezier.end + offset)],
+					}
+				};
+				let handles = handles(bezier);
+				let modification_type = VectorModificationType::InsertSegment { id, points, handles };
+				responses.add(GraphOperationMessage::Vector { layer, modification_type });
+
+				responses.add(DocumentMessage::EndTransaction);
 
 				self
 			}
@@ -3594,4 +3811,24 @@ fn update_dynamic_hints(
 		PathToolFsmState::SlidingPoint => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
 	};
 	hint_data.send_layout(responses);
+}
+
+fn single_segment_selected(shape_editor: &mut ShapeState, document: &DocumentMessageHandler) -> Option<(LayerNodeIdentifier, Vector, SegmentId)> {
+	let mut non_empty_layers = shape_editor.selected_shape_state.iter().filter(|(_, state)| !state.is_empty());
+
+	let (layer, _) = non_empty_layers.next()?;
+	if non_empty_layers.next().is_some() {
+		return None;
+	}
+
+	let segments = shape_editor.selected_segments().collect::<Vec<_>>();
+	if segments.len() != 1 {
+		return None;
+	}
+
+	let old_segment = segments[0];
+
+	let vector = document.network_interface.compute_modified_vector(*layer)?;
+
+	Some((*layer, vector, *old_segment))
 }
