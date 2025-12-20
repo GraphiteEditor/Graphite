@@ -27,6 +27,7 @@
 	export let tooltipDescription: string | undefined = undefined;
 	export let tooltipShortcut: ActionShortcut | undefined = undefined;
 	export let menuListChildren: MenuListEntry[][] | undefined = undefined;
+	export let menuListChildrenHash: bigint | undefined = undefined;
 
 	// Callbacks
 	// TODO: Replace this with an event binding (and on other components that do this)
@@ -90,6 +91,7 @@
 			on:selectedEntryValuePath={({ detail }) => dispatch("selectedEntryValuePath", detail)}
 			open={self?.open || false}
 			entries={menuListChildren || []}
+			entriesHash={menuListChildrenHash || 0n}
 			direction="Bottom"
 			minWidth={240}
 			drawIcon={true}

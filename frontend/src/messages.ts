@@ -793,7 +793,7 @@ export class DisplayEditableTextbox extends JsMessage {
 	@Type(() => Color)
 	readonly color!: Color;
 
-	readonly url!: string;
+	readonly fontData!: ArrayBuffer;
 
 	readonly transform!: number[];
 
@@ -802,6 +802,10 @@ export class DisplayEditableTextbox extends JsMessage {
 	readonly maxHeight!: undefined | number;
 
 	readonly align!: TextAlign;
+}
+
+export class DisplayEditableTextboxUpdateFontData extends JsMessage {
+	readonly fontData!: ArrayBuffer;
 }
 
 export class DisplayEditableTextboxTransform extends JsMessage {
@@ -865,9 +869,13 @@ export class Font {
 	fontStyle!: string;
 }
 
-export class TriggerFontLoad extends JsMessage {
+export class TriggerFontCatalogLoad extends JsMessage {}
+
+export class TriggerFontDataLoad extends JsMessage {
 	@Type(() => Font)
 	font!: Font;
+
+	url!: string;
 }
 
 export class TriggerVisitLink extends JsMessage {
@@ -998,13 +1006,14 @@ export function contrastingOutlineFactor(value: FillChoice, proximityColor: stri
 export type MenuListEntry = {
 	value: string;
 	label: string;
-	font?: URL;
+	font?: string;
 	icon?: IconName;
 	disabled?: boolean;
 	tooltipLabel?: string;
 	tooltipDescription?: string;
 	tooltipShortcut?: ActionShortcut;
 	children?: MenuListEntry[][];
+	childrenHash?: bigint;
 };
 
 export class CurveManipulatorGroup {
@@ -1036,6 +1045,8 @@ export class CurveInput extends WidgetProps {
 export class DropdownInput extends WidgetProps {
 	entries!: MenuListEntry[][];
 
+	entriesHash!: bigint;
+
 	selectedIndex!: number | undefined;
 
 	drawIcon!: boolean;
@@ -1045,6 +1056,8 @@ export class DropdownInput extends WidgetProps {
 	disabled!: boolean;
 
 	narrow!: boolean;
+
+	virtualScrolling!: boolean;
 
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipLabel!: string | undefined;
@@ -1060,25 +1073,6 @@ export class DropdownInput extends WidgetProps {
 	minWidth!: number;
 
 	maxWidth!: number;
-}
-
-export class FontInput extends WidgetProps {
-	fontFamily!: string;
-
-	fontStyle!: string;
-
-	isStyle!: boolean;
-
-	disabled!: boolean;
-
-	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltipLabel!: string | undefined;
-
-	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltipDescription!: string | undefined;
-
-	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
-	tooltipShortcut!: ActionShortcut | undefined;
 }
 
 export class IconButton extends WidgetProps {
@@ -1349,6 +1343,8 @@ export class TextButton extends WidgetProps {
 	tooltipShortcut!: ActionShortcut | undefined;
 
 	menuListChildren!: MenuListEntry[][];
+
+	menuListChildrenHash!: bigint;
 }
 
 export class BreadcrumbTrailButtons extends WidgetProps {
@@ -1449,7 +1445,6 @@ const widgetSubTypes = [
 	{ value: ColorInput, name: "ColorInput" },
 	{ value: CurveInput, name: "CurveInput" },
 	{ value: DropdownInput, name: "DropdownInput" },
-	{ value: FontInput, name: "FontInput" },
 	{ value: IconButton, name: "IconButton" },
 	{ value: ImageButton, name: "ImageButton" },
 	{ value: ImageLabel, name: "ImageLabel" },
@@ -1695,6 +1690,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	DisplayDialogDismiss,
 	DisplayDialogPanic,
 	DisplayEditableTextbox,
+	DisplayEditableTextboxUpdateFontData,
 	DisplayEditableTextboxTransform,
 	DisplayRemoveEditableTextbox,
 	SendUIMetadata,
@@ -1704,7 +1700,8 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerDisplayThirdPartyLicensesDialog,
 	TriggerExportImage,
 	TriggerFetchAndOpenDocument,
-	TriggerFontLoad,
+	TriggerFontCatalogLoad,
+	TriggerFontDataLoad,
 	TriggerImport,
 	TriggerLoadFirstAutoSaveDocument,
 	TriggerLoadPreferences,
