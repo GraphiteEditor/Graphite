@@ -1575,7 +1575,11 @@ impl Fsm for PathToolFsmState {
 
 				shape_editor.set_selected_layers(target_layers);
 
-				responses.add(MenuBarMessage::SendLayout);
+				let new_state = make_path_editable_is_allowed(&mut document.network_interface).is_some();
+				if tool_data.make_path_editable_is_allowed != new_state {
+					tool_data.make_path_editable_is_allowed = new_state;
+					responses.add(MenuBarMessage::SendLayout);
+				}
 				responses.add(OverlaysMessage::Draw);
 				self
 			}
@@ -3126,6 +3130,8 @@ impl Fsm for PathToolFsmState {
 					colinear,
 				};
 
+				let new_state = make_path_editable_is_allowed(&mut document.network_interface).is_some();
+                let state_changed = tool_data.make_path_editable_is_allowed != new_state;
 				tool_data.make_path_editable_is_allowed = make_path_editable_is_allowed(&mut document.network_interface).is_some();
 				tool_data.update_selection_status(shape_editor, document);
 				
