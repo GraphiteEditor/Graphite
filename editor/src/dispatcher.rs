@@ -2,6 +2,7 @@ use crate::messages::debug::utility_types::MessageLoggingVerbosity;
 use crate::messages::defer::DeferMessageContext;
 use crate::messages::dialog::DialogMessageContext;
 use crate::messages::layout::layout_message_handler::LayoutMessageContext;
+use crate::messages::preferences::preferences_message_handler::PreferencesMessageContext;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::utility_functions::make_path_editable_is_allowed;
 
@@ -277,7 +278,11 @@ impl Dispatcher {
 					menu_bar_message_handler.process_message(message, &mut queue, ());
 				}
 				Message::Preferences(message) => {
-					self.message_handlers.preferences_message_handler.process_message(message, &mut queue, ());
+					let context = PreferencesMessageContext {
+						tool_message_handler: &self.message_handlers.tool_message_handler,
+					};
+
+					self.message_handlers.preferences_message_handler.process_message(message, &mut queue, context);
 				}
 				Message::Tool(message) => {
 					let Some(document_id) = self.message_handlers.portfolio_message_handler.active_document_id() else {
@@ -332,7 +337,7 @@ impl Dispatcher {
 		if let Some(document) = self.message_handlers.portfolio_message_handler.active_document()
 			&& !document.graph_view_overlay_open
 		{
-			list.extend(self.message_handlers.tool_message_handler.actions());
+			list.extend(self.message_handlers.tool_message_handler.actions_with_preferences(&self.message_handlers.preferences_message_handler));
 		}
 		list.extend(self.message_handlers.portfolio_message_handler.actions());
 		list

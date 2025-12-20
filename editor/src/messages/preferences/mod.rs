@@ -1,5 +1,5 @@
 mod preferences_message;
-mod preferences_message_handler;
+pub mod preferences_message_handler;
 pub mod utility_types;
 
 #[doc(inline)]
