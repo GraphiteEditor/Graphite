@@ -1,4 +1,6 @@
 <script lang="ts">
+	import type { ActionShortcut } from "@graphite/messages";
+
 	let className = "";
 	export { className as class };
 	export let classes: Record<string, boolean> = {};
@@ -14,7 +16,9 @@
 	export let tableAlign = false;
 	export let minWidth = "";
 	export let multiline = false;
-	export let tooltip: string | undefined = undefined;
+	export let tooltipLabel: string | undefined = undefined;
+	export let tooltipDescription: string | undefined = undefined;
+	export let tooltipShortcut: ActionShortcut | undefined = undefined;
 	export let forCheckbox: bigint | undefined = undefined;
 
 	$: extraClasses = Object.entries(classes)
@@ -37,7 +41,9 @@
 	class:table-align={tableAlign}
 	style:min-width={minWidth || undefined}
 	style={`${styleName} ${extraStyles}`.trim() || undefined}
-	title={tooltip}
+	data-tooltip-label={tooltipLabel}
+	data-tooltip-description={tooltipDescription}
+	data-tooltip-shortcut={tooltipShortcut?.shortcut ? JSON.stringify(tooltipShortcut.shortcut) : undefined}
 	for={forCheckbox !== undefined ? `checkbox-input-${forCheckbox}` : undefined}
 >
 	<slot />
@@ -66,7 +72,8 @@
 			font-style: italic;
 		}
 
-		&.monospace {
+		&.monospace,
+		code {
 			font-family: "Source Code Pro", monospace;
 			font-size: 12px;
 		}
@@ -87,6 +94,11 @@
 
 		a {
 			color: inherit;
+		}
+
+		code {
+			background: var(--color-3-darkgray);
+			padding: 0 2px;
 		}
 	}
 </style>

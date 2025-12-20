@@ -11,7 +11,7 @@ Graphite offers a number of opportunities for students to contribute by building
 
 Student projects require adherence to a set schedule with regular check-ins, milestones, and evaluations. The structured setting is designed to provide a supportive environment for students to learn and grow as developers while gaining real-world industry experience from collaborating on a sizable software product and remaining accountable to stakeholders. It's our goal to make sure you succeed!
 
-Use this [contributor guide](..) to start out with the code. Then when you're ready, reach out through [Discord](https://discord.graphite.rs) and use the `#🎓student-projects` channel to discuss and work towards proposing a project with the Graphite core team.
+Use this [contributor guide](..) to start out with the code. Then when you're ready, reach out through [Discord](https://discord.graphite.art) and use the `#🎓student-projects` channel to discuss and work towards proposing a project with the Graphite core team.
 
 ## Google Summer of Code
 

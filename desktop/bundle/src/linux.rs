@@ -2,10 +2,8 @@ use std::error::Error;
 
 use crate::common::*;
 
-const PACKAGE: &str = "graphite-desktop-platform-linux";
-
 pub fn main() -> Result<(), Box<dyn Error>> {
-	let app_bin = build_bin(PACKAGE, None)?;
+	let app_bin = build_bin("graphite-desktop-platform-linux", None)?;
 
 	// TODO: Implement bundling for linux
 

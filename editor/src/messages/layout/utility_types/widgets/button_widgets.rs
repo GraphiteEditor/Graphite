@@ -1,4 +1,4 @@
-use crate::messages::input_mapper::utility_types::misc::ActionKeys;
+use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
 use crate::messages::tool::tool_messages::tool_prelude::WidgetCallback;
@@ -22,10 +22,14 @@ pub struct IconButton {
 
 	pub active: bool,
 
-	pub tooltip: String,
+	#[serde(rename = "tooltipLabel")]
+	pub tooltip_label: String,
 
-	#[serde(skip)]
-	pub tooltip_shortcut: Option<ActionKeys>,
+	#[serde(rename = "tooltipDescription")]
+	pub tooltip_description: String,
+
+	#[serde(rename = "tooltipShortcut")]
+	pub tooltip_shortcut: Option<ActionShortcut>,
 
 	// Callbacks
 	#[serde(skip)]
@@ -49,13 +53,17 @@ pub struct PopoverButton {
 
 	pub disabled: bool,
 
-	pub tooltip: String,
+	#[serde(rename = "tooltipLabel")]
+	pub tooltip_label: String,
 
-	#[serde(skip)]
-	pub tooltip_shortcut: Option<ActionKeys>,
+	#[serde(rename = "tooltipDescription")]
+	pub tooltip_description: String,
+
+	#[serde(rename = "tooltipShortcut")]
+	pub tooltip_shortcut: Option<ActionShortcut>,
 
 	#[serde(rename = "popoverLayout")]
-	pub popover_layout: SubLayout,
+	pub popover_layout: Layout,
 
 	#[serde(rename = "popoverMinWidth")]
 	pub popover_min_width: Option<u32>,
@@ -83,10 +91,14 @@ pub struct ParameterExposeButton {
 	#[serde(rename = "dataType")]
 	pub data_type: FrontendGraphDataType,
 
-	pub tooltip: String,
+	#[serde(rename = "tooltipLabel")]
+	pub tooltip_label: String,
 
-	#[serde(skip)]
-	pub tooltip_shortcut: Option<ActionKeys>,
+	#[serde(rename = "tooltipDescription")]
+	pub tooltip_description: String,
+
+	#[serde(rename = "tooltipShortcut")]
+	pub tooltip_shortcut: Option<ActionShortcut>,
 
 	// Callbacks
 	#[serde(skip)]
@@ -120,13 +132,21 @@ pub struct TextButton {
 
 	pub narrow: bool,
 
-	pub tooltip: String,
+	#[serde(rename = "tooltipLabel")]
+	pub tooltip_label: String,
 
-	#[serde(skip)]
-	pub tooltip_shortcut: Option<ActionKeys>,
+	#[serde(rename = "tooltipDescription")]
+	pub tooltip_description: String,
+
+	#[serde(rename = "tooltipShortcut")]
+	pub tooltip_shortcut: Option<ActionShortcut>,
 
 	#[serde(rename = "menuListChildren")]
 	pub menu_list_children: MenuListEntrySections,
+
+	#[serde(rename = "menuListChildrenHash")]
+	#[widget_builder(skip)]
+	pub menu_list_children_hash: u64,
 
 	// Callbacks
 	#[serde(skip)]
@@ -148,10 +168,14 @@ pub struct ImageButton {
 
 	pub height: Option<String>,
 
-	pub tooltip: String,
+	#[serde(rename = "tooltipLabel")]
+	pub tooltip_label: String,
 
-	#[serde(skip)]
-	pub tooltip_shortcut: Option<ActionKeys>,
+	#[serde(rename = "tooltipDescription")]
+	pub tooltip_description: String,
+
+	#[serde(rename = "tooltipShortcut")]
+	pub tooltip_shortcut: Option<ActionShortcut>,
 
 	// Callbacks
 	#[serde(skip)]
@@ -186,10 +210,14 @@ pub struct ColorInput {
 	#[serde(rename = "menuDirection")]
 	pub menu_direction: Option<MenuDirection>,
 
-	pub tooltip: String,
+	#[serde(rename = "tooltipLabel")]
+	pub tooltip_label: String,
 
-	#[serde(skip)]
-	pub tooltip_shortcut: Option<ActionKeys>,
+	#[serde(rename = "tooltipDescription")]
+	pub tooltip_description: String,
+
+	#[serde(rename = "tooltipShortcut")]
+	pub tooltip_shortcut: Option<ActionShortcut>,
 
 	// Callbacks
 	#[serde(skip)]
@@ -209,10 +237,14 @@ pub struct BreadcrumbTrailButtons {
 
 	pub disabled: bool,
 
-	pub tooltip: String,
+	#[serde(rename = "tooltipLabel")]
+	pub tooltip_label: String,
 
-	#[serde(skip)]
-	pub tooltip_shortcut: Option<ActionKeys>,
+	#[serde(rename = "tooltipDescription")]
+	pub tooltip_description: String,
+
+	#[serde(rename = "tooltipShortcut")]
+	pub tooltip_shortcut: Option<ActionShortcut>,
 
 	// Callbacks
 	#[serde(skip)]

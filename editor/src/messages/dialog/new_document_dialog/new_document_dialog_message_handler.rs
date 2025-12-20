@@ -62,38 +62,38 @@ impl DialogLayoutHolder for NewDocumentDialogMessageHandler {
 					}
 					.into()
 				})
-				.widget_holder(),
-			TextButton::new("Cancel").on_update(|_| FrontendMessage::DisplayDialogDismiss.into()).widget_holder(),
+				.widget_instance(),
+			TextButton::new("Cancel").on_update(|_| FrontendMessage::DisplayDialogDismiss.into()).widget_instance(),
 		];
 
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
+		Layout(vec![LayoutGroup::Row { widgets }])
 	}
 }
 
 impl LayoutHolder for NewDocumentDialogMessageHandler {
 	fn layout(&self) -> Layout {
 		let name = vec![
-			TextLabel::new("Name").table_align(true).min_width("90px").widget_holder(),
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			TextLabel::new("Name").table_align(true).min_width("90px").widget_instance(),
+			Separator::new(SeparatorType::Unrelated).widget_instance(),
 			TextInput::new(&self.name)
 				.on_update(|text_input: &TextInput| NewDocumentDialogMessage::Name { name: text_input.value.clone() }.into())
 				.min_width(204) // Matches the 100px of both NumberInputs below + the 4px of the Unrelated-type separator
-				.widget_holder(),
+				.widget_instance(),
 		];
 
 		let checkbox_id = CheckboxId::new();
 		let infinite = vec![
-			TextLabel::new("Infinite Canvas").table_align(true).min_width("90px").for_checkbox(checkbox_id).widget_holder(),
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			TextLabel::new("Infinite Canvas").table_align(true).min_width("90px").for_checkbox(checkbox_id).widget_instance(),
+			Separator::new(SeparatorType::Unrelated).widget_instance(),
 			CheckboxInput::new(self.infinite)
 				.on_update(|checkbox_input: &CheckboxInput| NewDocumentDialogMessage::Infinite { infinite: checkbox_input.checked }.into())
 				.for_label(checkbox_id)
-				.widget_holder(),
+				.widget_instance(),
 		];
 
 		let scale = vec![
-			TextLabel::new("Dimensions").table_align(true).min_width("90px").widget_holder(),
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			TextLabel::new("Dimensions").table_align(true).min_width("90px").widget_instance(),
+			Separator::new(SeparatorType::Unrelated).widget_instance(),
 			NumberInput::new(Some(self.dimensions.x as f64))
 				.label("W")
 				.unit(" px")
@@ -103,8 +103,8 @@ impl LayoutHolder for NewDocumentDialogMessageHandler {
 				.disabled(self.infinite)
 				.min_width(100)
 				.on_update(|number_input: &NumberInput| NewDocumentDialogMessage::DimensionsX { width: number_input.value.unwrap() }.into())
-				.widget_holder(),
-			Separator::new(SeparatorType::Related).widget_holder(),
+				.widget_instance(),
+			Separator::new(SeparatorType::Related).widget_instance(),
 			NumberInput::new(Some(self.dimensions.y as f64))
 				.label("H")
 				.unit(" px")
@@ -114,13 +114,9 @@ impl LayoutHolder for NewDocumentDialogMessageHandler {
 				.disabled(self.infinite)
 				.min_width(100)
 				.on_update(|number_input: &NumberInput| NewDocumentDialogMessage::DimensionsY { height: number_input.value.unwrap() }.into())
-				.widget_holder(),
+				.widget_instance(),
 		];
 
-		Layout::WidgetLayout(WidgetLayout::new(vec![
-			LayoutGroup::Row { widgets: name },
-			LayoutGroup::Row { widgets: infinite },
-			LayoutGroup::Row { widgets: scale },
-		]))
+		Layout(vec![LayoutGroup::Row { widgets: name }, LayoutGroup::Row { widgets: infinite }, LayoutGroup::Row { widgets: scale }])
 	}
 }

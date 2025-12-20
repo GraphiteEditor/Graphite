@@ -72,11 +72,11 @@ impl DialogLayoutHolder for ExportDialogMessageHandler {
 					}
 					.into()
 				})
-				.widget_holder(),
-			TextButton::new("Cancel").on_update(|_| FrontendMessage::DisplayDialogDismiss.into()).widget_holder(),
+				.widget_instance(),
+			TextButton::new("Cancel").on_update(|_| FrontendMessage::DisplayDialogDismiss.into()).widget_instance(),
 		];
 
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
+		Layout(vec![LayoutGroup::Row { widgets }])
 	}
 }
 
@@ -92,14 +92,14 @@ impl LayoutHolder for ExportDialogMessageHandler {
 			.collect();
 
 		let export_type = vec![
-			TextLabel::new("File Type").table_align(true).min_width("100px").widget_holder(),
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			RadioInput::new(entries).selected_index(Some(self.file_type as u32)).widget_holder(),
+			TextLabel::new("File Type").table_align(true).min_width("100px").widget_instance(),
+			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			RadioInput::new(entries).selected_index(Some(self.file_type as u32)).widget_instance(),
 		];
 
 		let resolution = vec![
-			TextLabel::new("Scale Factor").table_align(true).min_width("100px").widget_holder(),
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			TextLabel::new("Scale Factor").table_align(true).min_width("100px").widget_instance(),
+			Separator::new(SeparatorType::Unrelated).widget_instance(),
 			NumberInput::new(Some(self.scale_factor))
 				.unit("")
 				.min(0.)
@@ -107,7 +107,7 @@ impl LayoutHolder for ExportDialogMessageHandler {
 				.disabled(self.file_type == FileType::Svg)
 				.on_update(|number_input: &NumberInput| ExportDialogMessage::ScaleFactor { factor: number_input.value.unwrap() }.into())
 				.min_width(200)
-				.widget_holder(),
+				.widget_instance(),
 		];
 
 		let standard_bounds = vec![
@@ -144,27 +144,27 @@ impl LayoutHolder for ExportDialogMessageHandler {
 		}
 
 		let export_area = vec![
-			TextLabel::new("Bounds").table_align(true).min_width("100px").widget_holder(),
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
-			DropdownInput::new(entries).selected_index(Some(index as u32)).widget_holder(),
+			TextLabel::new("Bounds").table_align(true).min_width("100px").widget_instance(),
+			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			DropdownInput::new(entries).selected_index(Some(index as u32)).widget_instance(),
 		];
 
 		let checkbox_id = CheckboxId::new();
 		let transparent_background = vec![
-			TextLabel::new("Transparency").table_align(true).min_width("100px").for_checkbox(checkbox_id).widget_holder(),
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			TextLabel::new("Transparency").table_align(true).min_width("100px").for_checkbox(checkbox_id).widget_instance(),
+			Separator::new(SeparatorType::Unrelated).widget_instance(),
 			CheckboxInput::new(self.transparent_background)
 				.disabled(self.file_type == FileType::Jpg)
 				.on_update(move |value: &CheckboxInput| ExportDialogMessage::TransparentBackground { transparent: value.checked }.into())
 				.for_label(checkbox_id)
-				.widget_holder(),
+				.widget_instance(),
 		];
 
-		Layout::WidgetLayout(WidgetLayout::new(vec![
+		Layout(vec![
 			LayoutGroup::Row { widgets: export_type },
 			LayoutGroup::Row { widgets: resolution },
 			LayoutGroup::Row { widgets: export_area },
 			LayoutGroup::Row { widgets: transparent_background },
-		]))
+		])
 	}
 }

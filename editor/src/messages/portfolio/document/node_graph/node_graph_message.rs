@@ -113,6 +113,7 @@ pub enum NodeGraphMessage {
 		shift: Key,
 	},
 	ShakeNode,
+	UpdateNodeGraphWidth,
 	RemoveImport {
 		import_index: usize,
 	},
@@ -144,7 +145,6 @@ pub enum NodeGraphMessage {
 	SendWires,
 	UpdateVisibleNodes,
 	SendGraph,
-	SetGridAlignedEdges,
 	SetInputValue {
 		node_id: NodeId,
 		input_index: usize,

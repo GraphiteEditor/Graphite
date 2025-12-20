@@ -11,28 +11,41 @@ pub struct AppWindowMessageHandler {
 impl MessageHandler<AppWindowMessage, ()> for AppWindowMessageHandler {
 	fn process_message(&mut self, message: AppWindowMessage, responses: &mut std::collections::VecDeque<Message>, _: ()) {
 		match message {
-			AppWindowMessage::AppWindowMaximize => {
-				responses.add(FrontendMessage::TriggerMaximizeWindow);
-			}
-			AppWindowMessage::AppWindowMinimize => {
-				responses.add(FrontendMessage::TriggerMinimizeWindow);
-			}
-			AppWindowMessage::AppWindowUpdatePlatform { platform } => {
+			AppWindowMessage::UpdatePlatform { platform } => {
 				self.platform = platform;
 				responses.add(FrontendMessage::UpdatePlatform { platform: self.platform });
 			}
-			AppWindowMessage::AppWindowDrag => {
-				responses.add(FrontendMessage::DragWindow);
+			AppWindowMessage::Close => {
+				responses.add(FrontendMessage::WindowClose);
 			}
-			AppWindowMessage::AppWindowClose => {
-				responses.add(FrontendMessage::CloseWindow);
+			AppWindowMessage::Minimize => {
+				responses.add(FrontendMessage::WindowMinimize);
+			}
+			AppWindowMessage::Maximize => {
+				responses.add(FrontendMessage::WindowMaximize);
+			}
+			AppWindowMessage::Drag => {
+				responses.add(FrontendMessage::WindowDrag);
+			}
+			AppWindowMessage::Hide => {
+				responses.add(FrontendMessage::WindowHide);
+			}
+			AppWindowMessage::HideOthers => {
+				responses.add(FrontendMessage::WindowHideOthers);
+			}
+			AppWindowMessage::ShowAll => {
+				responses.add(FrontendMessage::WindowShowAll);
 			}
 		}
 	}
-
-	fn actions(&self) -> ActionList {
-		actions!(AppWindowMessageDiscriminant;)
-	}
+	advertise_actions!(AppWindowMessageDiscriminant;
+		Close,
+		Minimize,
+		Maximize,
+		Drag,
+		Hide,
+		HideOthers,
+	);
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Default, Debug, serde::Serialize, serde::Deserialize, specta::Type)]

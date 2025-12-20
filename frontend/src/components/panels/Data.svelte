@@ -2,18 +2,18 @@
 	import { getContext, onMount, onDestroy } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import { defaultWidgetLayout, patchWidgetLayout, UpdateDataPanelLayout } from "@graphite/messages";
+	import { patchLayout, UpdateDataPanelLayout, type Layout } from "@graphite/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
 
 	const editor = getContext<Editor>("editor");
 
-	let dataPanelLayout = defaultWidgetLayout();
+	let dataPanelLayout: Layout = [];
 
 	onMount(() => {
 		editor.subscriptions.subscribeJsMessage(UpdateDataPanelLayout, (updateDataPanelLayout) => {
-			patchWidgetLayout(dataPanelLayout, updateDataPanelLayout);
+			patchLayout(dataPanelLayout, updateDataPanelLayout);
 			dataPanelLayout = dataPanelLayout;
 		});
 	});
@@ -25,7 +25,7 @@
 
 <LayoutCol class="data-panel">
 	<LayoutCol class="body" scrollableY={true}>
-		<WidgetLayout layout={dataPanelLayout} />
+		<WidgetLayout layout={dataPanelLayout} layoutTarget="DataPanel" />
 	</LayoutCol>
 </LayoutCol>
 

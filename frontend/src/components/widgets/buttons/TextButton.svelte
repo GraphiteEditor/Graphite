@@ -1,11 +1,15 @@
 <script lang="ts">
-	import type { MenuListEntry } from "@graphite/messages";
-	import type { IconName } from "@graphite/utility-functions/icons";
+	import { createEventDispatcher } from "svelte";
+
+	import type { IconName } from "@graphite/icons";
+	import type { MenuListEntry, ActionShortcut } from "@graphite/messages";
 
 	import MenuList from "@graphite/components/floating-menus/MenuList.svelte";
 	import ConditionalWrapper from "@graphite/components/layout/ConditionalWrapper.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
+
+	const dispatch = createEventDispatcher<{ selectedEntryValuePath: string[] }>();
 
 	let self: MenuList;
 
@@ -19,8 +23,11 @@
 	export let minWidth = 0;
 	export let disabled = false;
 	export let narrow = false;
-	export let tooltip: string | undefined = undefined;
+	export let tooltipLabel: string | undefined = undefined;
+	export let tooltipDescription: string | undefined = undefined;
+	export let tooltipShortcut: ActionShortcut | undefined = undefined;
 	export let menuListChildren: MenuListEntry[][] | undefined = undefined;
+	export let menuListChildrenHash: bigint | undefined = undefined;
 
 	// Callbacks
 	// TODO: Replace this with an event binding (and on other components that do this)
@@ -33,7 +40,7 @@
 		// If there's no menu to open, trigger the action
 		if ((menuListChildren?.length ?? 0) === 0) {
 			// Call the action
-			if (action && !disabled) action();
+			if (!disabled) action?.();
 
 			// Exit early so we don't continue on and try to open the menu
 			return;
@@ -58,12 +65,15 @@
 		class:narrow
 		class:flush
 		style:min-width={minWidth > 0 ? `${minWidth}px` : undefined}
-		title={tooltip}
+		data-tooltip-label={tooltipLabel}
+		data-tooltip-description={tooltipDescription}
+		data-tooltip-shortcut={tooltipShortcut?.shortcut ? JSON.stringify(tooltipShortcut.shortcut) : undefined}
 		data-emphasized={emphasized || undefined}
 		data-disabled={disabled || undefined}
 		data-text-button
 		tabindex={disabled ? -1 : 0}
-		data-floating-menu-spawner={menuListChildrenExists ? "" : "no-hover-transfer"}
+		data-floating-menu-spawner
+		data-block-hover-transfer={menuListChildrenExists ? undefined : ""}
 		on:click={onClick}
 	>
 		{#if icon}
@@ -79,8 +89,10 @@
 	{#if menuListChildrenExists}
 		<MenuList
 			on:open={({ detail }) => self && (self.open = detail)}
+			on:selectedEntryValuePath={({ detail }) => dispatch("selectedEntryValuePath", detail)}
 			open={self?.open || false}
 			entries={menuListChildren || []}
+			entriesHash={menuListChildrenHash || 0n}
 			direction="Bottom"
 			minWidth={240}
 			drawIcon={true}
@@ -159,6 +171,11 @@
 			&:hover,
 			&.open {
 				--button-background-color: var(--color-5-dullgray);
+			}
+
+			&.disabled {
+				--button-text-color: var(--color-8-uppergray);
+				--button-background-color: none;
 			}
 		}
 

@@ -1,5 +1,5 @@
 #[derive(clap::Parser)]
-#[clap(name = "graphite-editor", version)]
+#[clap(name = "graphite", version)]
 pub struct Cli {
 	#[arg(help = "Files to open on startup")]
 	pub files: Vec<std::path::PathBuf>,

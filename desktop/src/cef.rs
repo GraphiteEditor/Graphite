@@ -12,15 +12,18 @@
 //!
 //! The system gracefully falls back to CPU textures when hardware acceleration is unavailable.
 
-use crate::event::{AppEvent, AppEventScheduler};
-use crate::render::FrameBufferRef;
-use crate::wrapper::{WgpuContext, deserialize_editor_message};
 use std::fs::File;
-use std::io::{Cursor, Read};
+use std::io;
+use std::io::Read;
 use std::path::PathBuf;
 use std::sync::mpsc::Receiver;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
+
+use crate::event::{AppEvent, AppEventScheduler};
+use crate::render::FrameBufferRef;
+use crate::window::Cursor;
+use crate::wrapper::{WgpuContext, deserialize_editor_message};
 
 mod consts;
 mod context;
@@ -42,7 +45,7 @@ pub(crate) trait CefEventHandler: Send + Sync + 'static {
 	#[cfg(feature = "accelerated_paint")]
 	fn draw_gpu(&self, shared_texture: SharedTextureHandle);
 	fn load_resource(&self, path: PathBuf) -> Option<Resource>;
-	fn cursor_change(&self, cursor: winit::cursor::Cursor);
+	fn cursor_change(&self, cursor: Cursor);
 	/// Schedule the main event loop to run the CEF event loop after the timeout.
 	/// See [`_cef_browser_process_handler_t::on_schedule_message_pump_work`] for more documentation.
 	fn schedule_cef_message_loop_work(&self, scheduled_time: Instant);
@@ -55,8 +58,8 @@ pub(crate) trait CefEventHandler: Send + Sync + 'static {
 
 #[derive(Clone, Copy)]
 pub(crate) struct ViewInfo {
-	width: usize,
-	height: usize,
+	width: u32,
+	height: u32,
 	scale: f64,
 }
 impl ViewInfo {
@@ -78,10 +81,10 @@ impl ViewInfo {
 	pub(crate) fn zoom(&self) -> f64 {
 		self.scale.ln() / 1.2_f64.ln()
 	}
-	pub(crate) fn width(&self) -> usize {
+	pub(crate) fn width(&self) -> u32 {
 		self.width
 	}
-	pub(crate) fn height(&self) -> usize {
+	pub(crate) fn height(&self) -> u32 {
 		self.height
 	}
 }
@@ -92,7 +95,7 @@ impl Default for ViewInfo {
 }
 
 pub(crate) enum ViewInfoUpdate {
-	Size { width: usize, height: usize },
+	Size { width: u32, height: u32 },
 	Scale(f64),
 }
 
@@ -105,7 +108,7 @@ pub(crate) struct Resource {
 #[expect(dead_code)]
 #[derive(Clone)]
 pub(crate) enum ResourceReader {
-	Embedded(Cursor<&'static [u8]>),
+	Embedded(io::Cursor<&'static [u8]>),
 	File(Arc<File>),
 }
 impl Read for ResourceReader {
@@ -158,7 +161,7 @@ impl CefEventHandler for CefHandler {
 			mip_level_count: 1,
 			sample_count: 1,
 			dimension: wgpu::TextureDimension::D2,
-			format: wgpu::TextureFormat::Bgra8UnormSrgb,
+			format: wgpu::TextureFormat::Bgra8Unorm,
 			usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
 			view_formats: &[],
 		});
@@ -227,7 +230,7 @@ impl CefEventHandler for CefHandler {
 				&& let Some(file) = resources.get_file(&path)
 			{
 				return Some(Resource {
-					reader: ResourceReader::Embedded(Cursor::new(file.contents())),
+					reader: ResourceReader::Embedded(io::Cursor::new(file.contents())),
 					mimetype,
 				});
 			}
@@ -252,7 +255,7 @@ impl CefEventHandler for CefHandler {
 		None
 	}
 
-	fn cursor_change(&self, cursor: winit::cursor::Cursor) {
+	fn cursor_change(&self, cursor: Cursor) {
 		self.app_event_scheduler.schedule(AppEvent::CursorChange(cursor));
 	}
 

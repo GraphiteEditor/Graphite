@@ -4,6 +4,11 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
 pub(crate) const APP_NAME: &str = "Graphite";
+pub(crate) const APP_BIN: &str = "graphite";
+
+pub(crate) fn workspace_path() -> PathBuf {
+	PathBuf::from(env!("CARGO_WORKSPACE_DIR"))
+}
 
 fn profile_name() -> &'static str {
 	let mut profile = env!("CARGO_PROFILE");
@@ -14,7 +19,7 @@ fn profile_name() -> &'static str {
 }
 
 pub(crate) fn profile_path() -> PathBuf {
-	PathBuf::from(env!("CARGO_WORKSPACE_DIR")).join(format!("target/{}", env!("CARGO_PROFILE")))
+	workspace_path().join(format!("target/{}", env!("CARGO_PROFILE")))
 }
 
 pub(crate) fn cef_path() -> PathBuf {
@@ -30,7 +35,7 @@ pub(crate) fn build_bin(package: &str, bin: Option<&str>) -> Result<PathBuf, Box
 	}
 	run_command("cargo", &args)?;
 	let profile_path = profile_path();
-	let mut bin_path = if let Some(bin) = bin { profile_path.join(bin) } else { profile_path.join(package) };
+	let mut bin_path = if let Some(bin) = bin { profile_path.join(bin) } else { profile_path.join(APP_BIN) };
 	if cfg!(target_os = "windows") {
 		bin_path.set_extension("exe");
 	}

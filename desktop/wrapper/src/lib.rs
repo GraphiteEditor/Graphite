@@ -20,6 +20,8 @@ mod handle_desktop_wrapper_message;
 mod intercept_editor_message;
 mod intercept_frontend_message;
 
+pub(crate) mod utils;
+
 pub struct DesktopWrapper {
 	editor: Editor,
 }

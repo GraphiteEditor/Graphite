@@ -483,23 +483,44 @@ img {
 }
 
 table {
-	margin: 20px -20px;
-	width: calc(100% + 40px);
+	margin: 40px -10px;
+	width: calc(100% + 20px);
+	font-size: 16px;
+	border-collapse: collapse;
 
 	th,
 	td {
-		border: 20px solid transparent;
+		border: solid var(--color-fog);
+		border-width: 1px 0;
 		vertical-align: top;
 		margin: 0;
-		padding: 0;
+		padding: 20px;
+
+		&:first-child {
+			padding-left: 10px;
+		}
+
+		&:last-child {
+			padding-right: 10px;
+		}
+
+		&:not(:first-child) img {
+			max-width: 100%;
+		}
 	}
 
-	th:not(:first-child) img,
-	td:not(:first-child) img {
-		max-width: 100%;
+	thead:not(:has(tr th:not(:empty))) {
+		th {
+			padding: 0;
+		}
+
+		+ tbody tr:first-child td {
+			border: none;
+		}
 	}
 
-	th:empty {
+	tr th,
+	tr:last-child td {
 		border: none;
 	}
 

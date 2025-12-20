@@ -11,7 +11,7 @@ use super::CefContext;
 use super::singlethreaded::SingleThreadedCefContext;
 use crate::cef::CefEventHandler;
 use crate::cef::consts::{RESOURCE_DOMAIN, RESOURCE_SCHEME};
-use crate::cef::dirs::create_instance_dir;
+use crate::cef::dirs::{create_instance_dir, delete_instance_dirs};
 use crate::cef::input::InputState;
 use crate::cef::internal::{BrowserProcessAppImpl, BrowserProcessClientImpl, RenderProcessAppImpl, SchemeHandlerFactoryImpl};
 
@@ -85,6 +85,7 @@ impl<H: CefEventHandler> CefContextBuilder<H> {
 
 	#[cfg(target_os = "macos")]
 	pub(crate) fn initialize(self, event_handler: H, disable_gpu_acceleration: bool) -> Result<impl CefContext, InitError> {
+		delete_instance_dirs();
 		let instance_dir = create_instance_dir();
 
 		let exe = std::env::current_exe().expect("cannot get current exe path");
@@ -105,6 +106,7 @@ impl<H: CefEventHandler> CefContextBuilder<H> {
 
 	#[cfg(not(target_os = "macos"))]
 	pub(crate) fn initialize(self, event_handler: H, disable_gpu_acceleration: bool) -> Result<impl CefContext, InitError> {
+		delete_instance_dirs();
 		let instance_dir = create_instance_dir();
 
 		let settings = Settings {

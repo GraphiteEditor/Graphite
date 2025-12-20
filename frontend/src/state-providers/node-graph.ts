@@ -1,6 +1,7 @@
 import { writable } from "svelte/store";
 
 import { type Editor } from "@graphite/editor";
+import type { NodeGraphError } from "@graphite/messages";
 import {
 	type Box,
 	type FrontendClickTargets,
@@ -25,6 +26,7 @@ import {
 	UpdateNodeGraphTransform,
 	UpdateNodeThumbnail,
 	UpdateWirePathInProgress,
+	UpdateNodeGraphErrorDiagnostic,
 } from "@graphite/messages";
 
 export function createNodeGraphState(editor: Editor) {
@@ -32,6 +34,7 @@ export function createNodeGraphState(editor: Editor) {
 		box: undefined as Box | undefined,
 		clickTargets: undefined as FrontendClickTargets | undefined,
 		contextMenuInformation: undefined as ContextMenuInformation | undefined,
+		error: undefined as NodeGraphError | undefined,
 		layerWidths: new Map<bigint, number>(),
 		chainWidths: new Map<bigint, number>(),
 		hasLeftInputWire: new Map<bigint, boolean>(),
@@ -50,6 +53,13 @@ export function createNodeGraphState(editor: Editor) {
 		reorderImportIndex: undefined as number | undefined,
 		reorderExportIndex: undefined as number | undefined,
 	});
+
+	function closeContextMenu() {
+		update((state) => {
+			state.contextMenuInformation = undefined;
+			return state;
+		});
+	}
 
 	// Set up message subscriptions on creation
 	editor.subscriptions.subscribeJsMessage(SendUIMetadata, (uiMetadata) => {
@@ -118,6 +128,12 @@ export function createNodeGraphState(editor: Editor) {
 			return state;
 		});
 	});
+	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphErrorDiagnostic, (updateNodeGraphErrorDiagnostic) => {
+		update((state) => {
+			state.error = updateNodeGraphErrorDiagnostic.error;
+			return state;
+		});
+	});
 	editor.subscriptions.subscribeJsMessage(UpdateVisibleNodes, (updateVisibleNodes) => {
 		update((state) => {
 			state.visibleNodes = new Set<bigint>(updateVisibleNodes.nodes);
@@ -175,6 +191,7 @@ export function createNodeGraphState(editor: Editor) {
 
 	return {
 		subscribe,
+		closeContextMenu,
 	};
 }
 export type NodeGraphState = ReturnType<typeof createNodeGraphState>;

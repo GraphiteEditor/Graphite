@@ -20,14 +20,20 @@
 	function handleEntryClick(radioEntryData: RadioEntryData) {
 		const index = entries.indexOf(radioEntryData);
 		dispatch("selectedIndex", index);
-
-		radioEntryData.action?.();
 	}
 </script>
 
 <LayoutRow class="radio-input" classes={{ disabled, narrow, mixed }} styles={{ ...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}) }}>
 	{#each entries as entry, index}
-		<button class:active={!mixed ? index === selectedIndex : undefined} on:click={() => handleEntryClick(entry)} title={entry.tooltip} tabindex={index === selectedIndex ? -1 : 0} {disabled}>
+		<button
+			class:active={!mixed ? index === selectedIndex : undefined}
+			on:click={() => handleEntryClick(entry)}
+			data-tooltip-label={entry.tooltipLabel}
+			data-tooltip-description={entry.tooltipDescription}
+			data-tooltip-shortcut={entry.tooltipShortcut?.shortcut ? JSON.stringify(entry.tooltipShortcut.shortcut) : undefined}
+			tabindex={index === selectedIndex ? -1 : 0}
+			{disabled}
+		>
 			{#if entry.icon}
 				<IconLabel icon={entry.icon} />
 			{/if}

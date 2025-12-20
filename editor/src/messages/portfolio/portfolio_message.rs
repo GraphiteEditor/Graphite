@@ -2,6 +2,7 @@ use super::document::utility_types::document_metadata::LayerNodeIdentifier;
 use super::utility_types::PanelType;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
+use crate::messages::portfolio::utility_types::FontCatalog;
 use crate::messages::prelude::*;
 use graphene_std::Color;
 use graphene_std::raster::Image;
@@ -12,8 +13,6 @@ use std::path::PathBuf;
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum PortfolioMessage {
 	// Sub-messages
-	#[child]
-	MenuBar(MenuBarMessage),
 	#[child]
 	Document(DocumentMessage),
 
@@ -48,18 +47,20 @@ pub enum PortfolioMessage {
 	},
 	DestroyAllDocuments,
 	EditorPreferences,
+	FontCatalogLoaded {
+		catalog: FontCatalog,
+	},
+	LoadFontData {
+		font: Font,
+	},
 	FontLoaded {
 		font_family: String,
 		font_style: String,
-		preview_url: String,
 		data: Vec<u8>,
 	},
 	Import,
 	LoadDocumentResources {
 		document_id: DocumentId,
-	},
-	LoadFont {
-		font: Font,
 	},
 	NewDocumentWithName {
 		name: String,
@@ -109,6 +110,7 @@ pub enum PortfolioMessage {
 		parent_and_insert_index: Option<(LayerNodeIdentifier, usize)>,
 	},
 	PrevDocument,
+	RequestWelcomeScreenButtonsLayout,
 	SetActivePanel {
 		panel: PanelType,
 	},

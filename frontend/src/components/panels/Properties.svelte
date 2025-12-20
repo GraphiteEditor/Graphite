@@ -2,18 +2,18 @@
 	import { getContext, onMount, onDestroy } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import { defaultWidgetLayout, patchWidgetLayout, UpdatePropertiesPanelLayout } from "@graphite/messages";
+	import { patchLayout, UpdatePropertiesPanelLayout, type Layout } from "@graphite/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
 
 	const editor = getContext<Editor>("editor");
 
-	let propertiesPanelLayout = defaultWidgetLayout();
+	let propertiesPanelLayout: Layout = [];
 
 	onMount(() => {
 		editor.subscriptions.subscribeJsMessage(UpdatePropertiesPanelLayout, (updatePropertiesPanelLayout) => {
-			patchWidgetLayout(propertiesPanelLayout, updatePropertiesPanelLayout);
+			patchLayout(propertiesPanelLayout, updatePropertiesPanelLayout);
 			propertiesPanelLayout = propertiesPanelLayout;
 		});
 	});
@@ -25,7 +25,7 @@
 
 <LayoutCol class="properties">
 	<LayoutCol class="sections" scrollableY={true}>
-		<WidgetLayout layout={propertiesPanelLayout} />
+		<WidgetLayout layout={propertiesPanelLayout} layoutTarget="PropertiesPanel" />
 	</LayoutCol>
 </LayoutCol>
 

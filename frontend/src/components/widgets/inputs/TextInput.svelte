@@ -1,13 +1,17 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
+	import type { ActionShortcut } from "@graphite/messages";
+
 	import FieldInput from "@graphite/components/widgets/inputs/FieldInput.svelte";
 
 	const dispatch = createEventDispatcher<{ commitText: string }>();
 
 	// Label
 	export let label: string | undefined = undefined;
-	export let tooltip: string | undefined = undefined;
+	export let tooltipLabel: string | undefined = undefined;
+	export let tooltipDescription: string | undefined = undefined;
+	export let tooltipShortcut: ActionShortcut | undefined = undefined;
 	export let placeholder: string | undefined = undefined;
 	// Disabled
 	export let disabled = false;
@@ -79,7 +83,9 @@
 	{label}
 	{disabled}
 	{narrow}
-	{tooltip}
+	{tooltipLabel}
+	{tooltipDescription}
+	{tooltipShortcut}
 	{placeholder}
 	bind:this={self}
 />

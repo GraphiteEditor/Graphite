@@ -1,6 +1,6 @@
 title = "Graphite"
 description = "2D raster & vector editor that melds traditional layers & tools with a modern node-based procedural workflow."
-base_url = "https://graphite.rs"
+base_url = "https://graphite.art"
 feed_filenames = ["rss.xml"]
 
 compile_sass = true

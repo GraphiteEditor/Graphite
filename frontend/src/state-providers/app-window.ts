@@ -1,13 +1,15 @@
 import { writable } from "svelte/store";
 
 import { type Editor } from "@graphite/editor";
-import { type AppWindowPlatform, UpdatePlatform, UpdateViewportHolePunch, UpdateMaximized as UpdateMaximized } from "@graphite/messages";
+import { type AppWindowPlatform, UpdatePlatform, UpdateViewportHolePunch, UpdateMaximized, UpdateFullscreen, UpdateUIScale } from "@graphite/messages";
 
 export function createAppWindowState(editor: Editor) {
 	const { subscribe, update } = writable({
 		platform: "Web" as AppWindowPlatform,
 		maximized: false,
+		fullscreen: false,
 		viewportHolePunch: false,
+		uiScale: 1,
 	});
 
 	// Set up message subscriptions on creation
@@ -23,9 +25,21 @@ export function createAppWindowState(editor: Editor) {
 			return state;
 		});
 	});
+	editor.subscriptions.subscribeJsMessage(UpdateFullscreen, (updateFullscreen) => {
+		update((state) => {
+			state.fullscreen = updateFullscreen.fullscreen;
+			return state;
+		});
+	});
 	editor.subscriptions.subscribeJsMessage(UpdateViewportHolePunch, (viewportHolePunch) => {
 		update((state) => {
 			state.viewportHolePunch = viewportHolePunch.active;
+			return state;
+		});
+	});
+	editor.subscriptions.subscribeJsMessage(UpdateUIScale, (uiScale) => {
+		update((state) => {
+			state.uiScale = uiScale.scale;
 			return state;
 		});
 	});

@@ -5,8 +5,8 @@ authors = ["Keavon Chambers"]
 description = "Join Graphite in Google Summer of Code 2024 for a unique opportunity to contribute to open-source software development in Rust and computer graphics. Get paid while learning, working on self-contained projects under experienced mentors, and help Graphite grow."
 
 [extra]
-banner = "https://static.graphite.rs/content/blog/2024-02-22-graphite-internships-announcing-participation-in-gsoc-2024.avif"
-banner_png = "https://static.graphite.rs/content/blog/2024-02-22-graphite-internships-announcing-participation-in-gsoc-2024.png"
+banner = "https://static.graphite.art/content/blog/2024-02-22-graphite-internships-announcing-participation-in-gsoc-2024.avif"
+banner_png = "https://static.graphite.art/content/blog/2024-02-22-graphite-internships-announcing-participation-in-gsoc-2024.png"
 reddit = "https://www.reddit.com/r/graphite/comments/1ax3l8z/blog_post_graphite_internships_announcing/"
 twitter = "https://twitter.com/GraphiteEditor/status/1760619083396165703"
 +++

@@ -1,5 +1,5 @@
 use super::VectorTableTab;
-use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, LayoutTarget, WidgetLayout};
+use crate::messages::layout::utility_types::layout_widget::{Layout, LayoutGroup, LayoutTarget};
 use crate::messages::portfolio::document::data_panel::DataPanelMessage;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::prelude::*;
@@ -83,11 +83,12 @@ impl DataPanelMessageHandler {
 		};
 
 		// Main data visualization
-		let mut layout = self
-			.introspected_data
-			.as_ref()
-			.map(|instrospected_data| generate_layout(instrospected_data, &mut layout_data).unwrap_or_else(|| label("Visualization of this data type is not yet supported")))
-			.unwrap_or_default();
+		let mut layout = Layout(
+			self.introspected_data
+				.as_ref()
+				.map(|instrospected_data| generate_layout(instrospected_data, &mut layout_data).unwrap_or_else(|| label("Visualization of this data type is not yet supported")))
+				.unwrap_or_default(),
+		);
 
 		let mut widgets = Vec::new();
 
@@ -97,13 +98,13 @@ impl DataPanelMessageHandler {
 
 			widgets.extend([
 				if is_layer {
-					IconLabel::new("Layer").tooltip("Name of the selected layer").widget_holder()
+					IconLabel::new("Layer").tooltip_description("Name of the selected layer.").widget_instance()
 				} else {
-					IconLabel::new("Node").tooltip("Name of the selected node").widget_holder()
+					IconLabel::new("Node").tooltip_description("Name of the selected node.").widget_instance()
 				},
-				Separator::new(SeparatorType::Related).widget_holder(),
+				Separator::new(SeparatorType::Related).widget_instance(),
 				TextInput::new(network_interface.display_name(&node_id, &[]))
-					.tooltip(if is_layer { "Name of the selected layer" } else { "Name of the selected node" })
+					.tooltip_description(if is_layer { "Name of the selected layer." } else { "Name of the selected node." })
 					.on_update(move |text_input| {
 						NodeGraphMessage::SetDisplayName {
 							node_id,
@@ -113,8 +114,8 @@ impl DataPanelMessageHandler {
 						.into()
 					})
 					.max_width(200)
-					.widget_holder(),
-				Separator::new(SeparatorType::Unrelated).widget_holder(),
+					.widget_instance(),
+				Separator::new(SeparatorType::Unrelated).widget_instance(),
 			]);
 		}
 
@@ -122,16 +123,16 @@ impl DataPanelMessageHandler {
 		if !layout_data.breadcrumbs.is_empty() {
 			let breadcrumb = BreadcrumbTrailButtons::new(layout_data.breadcrumbs)
 				.on_update(|&len| DataPanelMessage::TruncateElementPath { len: len as usize }.into())
-				.widget_holder();
+				.widget_instance();
 			widgets.push(breadcrumb);
 		}
 
 		if !widgets.is_empty() {
-			layout.insert(0, LayoutGroup::Row { widgets });
+			layout.0.insert(0, LayoutGroup::Row { widgets });
 		}
 
 		responses.add(LayoutMessage::SendLayout {
-			layout: Layout::WidgetLayout(WidgetLayout { layout }),
+			layout,
 			layout_target: LayoutTarget::DataPanel,
 		});
 	}
@@ -177,12 +178,12 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 	])
 }
 
-fn column_headings(value: &[&str]) -> Vec<WidgetHolder> {
-	value.iter().map(|text| TextLabel::new(*text).widget_holder()).collect()
+fn column_headings(value: &[&str]) -> Vec<WidgetInstance> {
+	value.iter().map(|text| TextLabel::new(*text).widget_instance()).collect()
 }
 
 fn label(x: impl Into<String>) -> Vec<LayoutGroup> {
-	let error = vec![TextLabel::new(x).widget_holder()];
+	let error = vec![TextLabel::new(x).widget_instance()];
 	vec![LayoutGroup::Row { widgets: error }]
 }
 
@@ -193,11 +194,11 @@ trait TableRowLayout {
 		data.breadcrumbs.push(self.identifier());
 		self.element_page(data)
 	}
-	fn element_widget(&self, index: usize) -> WidgetHolder {
+	fn element_widget(&self, index: usize) -> WidgetInstance {
 		TextButton::new(self.identifier())
 			.on_update(move |_| DataPanelMessage::PushToElementPath { index }.into())
 			.narrow(true)
-			.widget_holder()
+			.widget_instance()
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		vec![]
@@ -227,12 +228,12 @@ impl<T: TableRowLayout> TableRowLayout for Vec<T> {
 		let mut rows = self
 			.iter()
 			.enumerate()
-			.map(|(index, row)| vec![TextLabel::new(format!("{index}")).narrow(true).widget_holder(), row.element_widget(index)])
+			.map(|(index, row)| vec![TextLabel::new(format!("{index}")).narrow(true).widget_instance(), row.element_widget(index)])
 			.collect::<Vec<_>>();
 
 		rows.insert(0, column_headings(&["", "element"]));
 
-		vec![LayoutGroup::Table { rows }]
+		vec![LayoutGroup::Table { rows, unstyled: false }]
 	}
 }
 
@@ -261,20 +262,20 @@ impl<T: TableRowLayout> TableRowLayout for Table<T> {
 			.enumerate()
 			.map(|(index, row)| {
 				vec![
-					TextLabel::new(format!("{index}")).narrow(true).widget_holder(),
+					TextLabel::new(format!("{index}")).narrow(true).widget_instance(),
 					row.element.element_widget(index),
-					TextLabel::new(format_transform_matrix(row.transform)).narrow(true).widget_holder(),
-					TextLabel::new(format!("{}", row.alpha_blending)).narrow(true).widget_holder(),
+					TextLabel::new(format_transform_matrix(row.transform)).narrow(true).widget_instance(),
+					TextLabel::new(format!("{}", row.alpha_blending)).narrow(true).widget_instance(),
 					TextLabel::new(row.source_node_id.map_or_else(|| "-".to_string(), |id| format!("{}", id.0)))
 						.narrow(true)
-						.widget_holder(),
+						.widget_instance(),
 				]
 			})
 			.collect::<Vec<_>>();
 
 		rows.insert(0, column_headings(&["", "element", "transform", "alpha_blending", "source_node_id"]));
 
-		vec![LayoutGroup::Table { rows }]
+		vec![LayoutGroup::Table { rows, unstyled: false }]
 	}
 }
 
@@ -342,7 +343,7 @@ impl TableRowLayout for Vector {
 					.on_update(move |_| DataPanelMessage::ViewVectorTableTab { tab }.into())
 			})
 			.collect();
-		let table_tabs = vec![RadioInput::new(table_tab_entries).selected_index(Some(data.vector_table_tab as u32)).widget_holder()];
+		let table_tabs = vec![RadioInput::new(table_tab_entries).selected_index(Some(data.vector_table_tab as u32)).widget_instance()];
 
 		let mut table_rows = Vec::new();
 		match data.vector_table_tab {
@@ -351,37 +352,37 @@ impl TableRowLayout for Vector {
 
 				match self.style.fill.clone() {
 					Fill::None => table_rows.push(vec![
-						TextLabel::new("Fill").narrow(true).widget_holder(),
-						ColorInput::new(FillChoice::None).disabled(true).menu_direction(Some(MenuDirection::Top)).narrow(true).widget_holder(),
+						TextLabel::new("Fill").narrow(true).widget_instance(),
+						ColorInput::new(FillChoice::None).disabled(true).menu_direction(Some(MenuDirection::Top)).narrow(true).widget_instance(),
 					]),
 					Fill::Solid(color) => table_rows.push(vec![
-						TextLabel::new("Fill").narrow(true).widget_holder(),
+						TextLabel::new("Fill").narrow(true).widget_instance(),
 						ColorInput::new(FillChoice::Solid(color))
 							.disabled(true)
 							.menu_direction(Some(MenuDirection::Top))
 							.narrow(true)
-							.widget_holder(),
+							.widget_instance(),
 					]),
 					Fill::Gradient(gradient) => {
 						table_rows.push(vec![
-							TextLabel::new("Fill").narrow(true).widget_holder(),
+							TextLabel::new("Fill").narrow(true).widget_instance(),
 							ColorInput::new(FillChoice::Gradient(gradient.stops))
 								.disabled(true)
 								.menu_direction(Some(MenuDirection::Top))
 								.narrow(true)
-								.widget_holder(),
+								.widget_instance(),
 						]);
 						table_rows.push(vec![
-							TextLabel::new("Fill Gradient Type").narrow(true).widget_holder(),
-							TextLabel::new(gradient.gradient_type.to_string()).narrow(true).widget_holder(),
+							TextLabel::new("Fill Gradient Type").narrow(true).widget_instance(),
+							TextLabel::new(gradient.gradient_type.to_string()).narrow(true).widget_instance(),
 						]);
 						table_rows.push(vec![
-							TextLabel::new("Fill Gradient Start").narrow(true).widget_holder(),
-							TextLabel::new(format_dvec2(gradient.start)).narrow(true).widget_holder(),
+							TextLabel::new("Fill Gradient Start").narrow(true).widget_instance(),
+							TextLabel::new(format_dvec2(gradient.start)).narrow(true).widget_instance(),
 						]);
 						table_rows.push(vec![
-							TextLabel::new("Fill Gradient End").narrow(true).widget_holder(),
-							TextLabel::new(format_dvec2(gradient.end)).narrow(true).widget_holder(),
+							TextLabel::new("Fill Gradient End").narrow(true).widget_instance(),
+							TextLabel::new(format_dvec2(gradient.end)).narrow(true).widget_instance(),
 						]);
 					}
 				}
@@ -389,81 +390,81 @@ impl TableRowLayout for Vector {
 				if let Some(stroke) = self.style.stroke.clone() {
 					let color = if let Some(color) = stroke.color { FillChoice::Solid(color) } else { FillChoice::None };
 					table_rows.push(vec![
-						TextLabel::new("Stroke").narrow(true).widget_holder(),
-						ColorInput::new(color).disabled(true).menu_direction(Some(MenuDirection::Top)).narrow(true).widget_holder(),
+						TextLabel::new("Stroke").narrow(true).widget_instance(),
+						ColorInput::new(color).disabled(true).menu_direction(Some(MenuDirection::Top)).narrow(true).widget_instance(),
 					]);
 					table_rows.push(vec![
-						TextLabel::new("Stroke Weight").narrow(true).widget_holder(),
-						TextLabel::new(format!("{} px", stroke.weight)).narrow(true).widget_holder(),
+						TextLabel::new("Stroke Weight").narrow(true).widget_instance(),
+						TextLabel::new(format!("{} px", stroke.weight)).narrow(true).widget_instance(),
 					]);
 					table_rows.push(vec![
-						TextLabel::new("Stroke Dash Lengths").narrow(true).widget_holder(),
+						TextLabel::new("Stroke Dash Lengths").narrow(true).widget_instance(),
 						TextLabel::new(if stroke.dash_lengths.is_empty() {
 							"-".to_string()
 						} else {
 							format!("[{}]", stroke.dash_lengths.iter().map(|x| format!("{x} px")).collect::<Vec<_>>().join(", "))
 						})
 						.narrow(true)
-						.widget_holder(),
+						.widget_instance(),
 					]);
 					table_rows.push(vec![
-						TextLabel::new("Stroke Dash Offset").narrow(true).widget_holder(),
-						TextLabel::new(format!("{}", stroke.dash_offset)).narrow(true).widget_holder(),
+						TextLabel::new("Stroke Dash Offset").narrow(true).widget_instance(),
+						TextLabel::new(format!("{}", stroke.dash_offset)).narrow(true).widget_instance(),
 					]);
 					table_rows.push(vec![
-						TextLabel::new("Stroke Cap").narrow(true).widget_holder(),
-						TextLabel::new(stroke.cap.to_string()).narrow(true).widget_holder(),
+						TextLabel::new("Stroke Cap").narrow(true).widget_instance(),
+						TextLabel::new(stroke.cap.to_string()).narrow(true).widget_instance(),
 					]);
 					table_rows.push(vec![
-						TextLabel::new("Stroke Join").narrow(true).widget_holder(),
-						TextLabel::new(stroke.join.to_string()).narrow(true).widget_holder(),
+						TextLabel::new("Stroke Join").narrow(true).widget_instance(),
+						TextLabel::new(stroke.join.to_string()).narrow(true).widget_instance(),
 					]);
 					table_rows.push(vec![
-						TextLabel::new("Stroke Join Miter Limit").narrow(true).widget_holder(),
-						TextLabel::new(format!("{}", stroke.join_miter_limit)).narrow(true).widget_holder(),
+						TextLabel::new("Stroke Join Miter Limit").narrow(true).widget_instance(),
+						TextLabel::new(format!("{}", stroke.join_miter_limit)).narrow(true).widget_instance(),
 					]);
 					table_rows.push(vec![
-						TextLabel::new("Stroke Align").narrow(true).widget_holder(),
-						TextLabel::new(stroke.align.to_string()).narrow(true).widget_holder(),
+						TextLabel::new("Stroke Align").narrow(true).widget_instance(),
+						TextLabel::new(stroke.align.to_string()).narrow(true).widget_instance(),
 					]);
 					table_rows.push(vec![
-						TextLabel::new("Stroke Transform").narrow(true).widget_holder(),
-						TextLabel::new(format_transform_matrix(&stroke.transform)).narrow(true).widget_holder(),
+						TextLabel::new("Stroke Transform").narrow(true).widget_instance(),
+						TextLabel::new(format_transform_matrix(&stroke.transform)).narrow(true).widget_instance(),
 					]);
 					table_rows.push(vec![
-						TextLabel::new("Stroke Non-Scaling").narrow(true).widget_holder(),
-						TextLabel::new((if stroke.non_scaling { "Yes" } else { "No" }).to_string()).narrow(true).widget_holder(),
+						TextLabel::new("Stroke Non-Scaling").narrow(true).widget_instance(),
+						TextLabel::new((if stroke.non_scaling { "Yes" } else { "No" }).to_string()).narrow(true).widget_instance(),
 					]);
 					table_rows.push(vec![
-						TextLabel::new("Stroke Paint Order").narrow(true).widget_holder(),
-						TextLabel::new(stroke.paint_order.to_string()).narrow(true).widget_holder(),
+						TextLabel::new("Stroke Paint Order").narrow(true).widget_instance(),
+						TextLabel::new(stroke.paint_order.to_string()).narrow(true).widget_instance(),
 					]);
 				}
 
 				let colinear = self.colinear_manipulators.iter().map(|[a, b]| format!("[{a} / {b}]")).collect::<Vec<_>>().join(", ");
 				let colinear = if colinear.is_empty() { "-".to_string() } else { colinear };
 				table_rows.push(vec![
-					TextLabel::new("Colinear Handle IDs").narrow(true).widget_holder(),
-					TextLabel::new(colinear).narrow(true).widget_holder(),
+					TextLabel::new("Colinear Handle IDs").narrow(true).widget_instance(),
+					TextLabel::new(colinear).narrow(true).widget_instance(),
 				]);
 
 				table_rows.push(vec![
-					TextLabel::new("Upstream Nested Layers").narrow(true).widget_holder(),
-					TextLabel::new(if self.upstream_nested_layers.is_some() {
+					TextLabel::new("Upstream Nested Layers").narrow(true).widget_instance(),
+					TextLabel::new(if self.upstream_data.is_some() {
 						"Yes (this preserves references to its upstream nested layers for editing by tools)"
 					} else {
 						"No (this doesn't preserve references to its upstream nested layers for editing by tools)"
 					})
 					.narrow(true)
-					.widget_holder(),
+					.widget_instance(),
 				]);
 			}
 			VectorTableTab::Points => {
 				table_rows.push(column_headings(&["", "position"]));
 				table_rows.extend(self.point_domain.iter().map(|(id, position)| {
 					vec![
-						TextLabel::new(format!("{}", id.inner())).narrow(true).widget_holder(),
-						TextLabel::new(format!("{position}")).narrow(true).widget_holder(),
+						TextLabel::new(format!("{}", id.inner())).narrow(true).widget_instance(),
+						TextLabel::new(format!("{position}")).narrow(true).widget_instance(),
 					]
 				}));
 			}
@@ -471,10 +472,10 @@ impl TableRowLayout for Vector {
 				table_rows.push(column_headings(&["", "start_index", "end_index", "handles"]));
 				table_rows.extend(self.segment_domain.iter().map(|(id, start, end, handles)| {
 					vec![
-						TextLabel::new(format!("{}", id.inner())).narrow(true).widget_holder(),
-						TextLabel::new(format!("{start}")).narrow(true).widget_holder(),
-						TextLabel::new(format!("{end}")).narrow(true).widget_holder(),
-						TextLabel::new(format!("{handles:?}")).narrow(true).widget_holder(),
+						TextLabel::new(format!("{}", id.inner())).narrow(true).widget_instance(),
+						TextLabel::new(format!("{start}")).narrow(true).widget_instance(),
+						TextLabel::new(format!("{end}")).narrow(true).widget_instance(),
+						TextLabel::new(format!("{handles:?}")).narrow(true).widget_instance(),
 					]
 				}));
 			}
@@ -482,15 +483,15 @@ impl TableRowLayout for Vector {
 				table_rows.push(column_headings(&["", "segment_range", "fill"]));
 				table_rows.extend(self.region_domain.iter().map(|(id, segment_range, fill)| {
 					vec![
-						TextLabel::new(format!("{}", id.inner())).narrow(true).widget_holder(),
-						TextLabel::new(format!("{segment_range:?}")).narrow(true).widget_holder(),
-						TextLabel::new(format!("{}", fill.inner())).narrow(true).widget_holder(),
+						TextLabel::new(format!("{}", id.inner())).narrow(true).widget_instance(),
+						TextLabel::new(format!("{segment_range:?}")).narrow(true).widget_instance(),
+						TextLabel::new(format!("{}", fill.inner())).narrow(true).widget_instance(),
 					]
 				}));
 			}
 		}
 
-		vec![LayoutGroup::Row { widgets: table_tabs }, LayoutGroup::Table { rows: table_rows }]
+		vec![LayoutGroup::Row { widgets: table_tabs }, LayoutGroup::Table { rows: table_rows, unstyled: false }]
 	}
 }
 
@@ -502,10 +503,17 @@ impl TableRowLayout for Raster<CPU> {
 		format!("Raster ({}x{})", self.width, self.height)
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		let base64_string = self.data().base64_string.clone().unwrap_or_else(|| {
+		let raster = self.data();
+
+		if raster.width == 0 || raster.height == 0 {
+			let widgets = vec![TextLabel::new("Image has no area").widget_instance()];
+			return vec![LayoutGroup::Row { widgets }];
+		}
+
+		let base64_string = raster.base64_string.clone().unwrap_or_else(|| {
 			use base64::Engine;
 
-			let output = self.data().to_png();
+			let output = raster.to_png();
 			let preamble = "data:image/png;base64,";
 			let mut base64_string = String::with_capacity(preamble.len() + output.len() * 4);
 			base64_string.push_str(preamble);
@@ -513,7 +521,7 @@ impl TableRowLayout for Raster<CPU> {
 			base64_string
 		});
 
-		let widgets = vec![ImageLabel::new(base64_string).widget_holder()];
+		let widgets = vec![ImageLabel::new(base64_string).widget_instance()];
 		vec![LayoutGroup::Row { widgets }]
 	}
 }
@@ -526,7 +534,7 @@ impl TableRowLayout for Raster<GPU> {
 		format!("Raster ({}x{})", self.data().width(), self.data().height())
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		let widgets = vec![TextLabel::new("Raster is a texture on the GPU and cannot currently be displayed here").widget_holder()];
+		let widgets = vec![TextLabel::new("Raster is a texture on the GPU and cannot currently be displayed here").widget_instance()];
 		vec![LayoutGroup::Row { widgets }]
 	}
 }
@@ -538,12 +546,12 @@ impl TableRowLayout for Color {
 	fn identifier(&self) -> String {
 		format!("Color (#{})", self.to_gamma_srgb().to_rgba_hex_srgb())
 	}
-	fn element_widget(&self, _index: usize) -> WidgetHolder {
+	fn element_widget(&self, _index: usize) -> WidgetInstance {
 		ColorInput::new(FillChoice::Solid(*self))
 			.disabled(true)
 			.menu_direction(Some(MenuDirection::Top))
 			.narrow(true)
-			.widget_holder()
+			.widget_instance()
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		let widgets = vec![self.element_widget(0)];
@@ -558,12 +566,12 @@ impl TableRowLayout for GradientStops {
 	fn identifier(&self) -> String {
 		format!("Gradient ({} stops)", self.0.len())
 	}
-	fn element_widget(&self, _index: usize) -> WidgetHolder {
+	fn element_widget(&self, _index: usize) -> WidgetInstance {
 		ColorInput::new(FillChoice::Gradient(self.clone()))
 			.menu_direction(Some(MenuDirection::Top))
 			.disabled(true)
 			.narrow(true)
-			.widget_holder()
+			.widget_instance()
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		let widgets = vec![self.element_widget(0)];
@@ -579,7 +587,7 @@ impl TableRowLayout for f64 {
 		"Number (f64)".to_string()
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		let widgets = vec![TextLabel::new(self.to_string()).widget_holder()];
+		let widgets = vec![TextLabel::new(self.to_string()).widget_instance()];
 		vec![LayoutGroup::Row { widgets }]
 	}
 }
@@ -592,7 +600,7 @@ impl TableRowLayout for u32 {
 		"Number (u32)".to_string()
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		let widgets = vec![TextLabel::new(self.to_string()).widget_holder()];
+		let widgets = vec![TextLabel::new(self.to_string()).widget_instance()];
 		vec![LayoutGroup::Row { widgets }]
 	}
 }
@@ -605,7 +613,7 @@ impl TableRowLayout for u64 {
 		"Number (u64)".to_string()
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		let widgets = vec![TextLabel::new(self.to_string()).widget_holder()];
+		let widgets = vec![TextLabel::new(self.to_string()).widget_instance()];
 		vec![LayoutGroup::Row { widgets }]
 	}
 }
@@ -618,7 +626,7 @@ impl TableRowLayout for bool {
 		"Bool".to_string()
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		let widgets = vec![TextLabel::new(self.to_string()).widget_holder()];
+		let widgets = vec![TextLabel::new(self.to_string()).widget_instance()];
 		vec![LayoutGroup::Row { widgets }]
 	}
 }
@@ -637,7 +645,7 @@ impl TableRowLayout for String {
 		}
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		let widgets = vec![TextAreaInput::new(self.to_string()).disabled(true).widget_holder()];
+		let widgets = vec![TextAreaInput::new(self.to_string()).disabled(true).widget_instance()];
 		vec![LayoutGroup::Row { widgets }]
 	}
 }
@@ -650,7 +658,7 @@ impl TableRowLayout for Option<f64> {
 		"Option<f64>".to_string()
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		let widgets = vec![TextLabel::new(format!("{self:?}")).widget_holder()];
+		let widgets = vec![TextLabel::new(format!("{self:?}")).widget_instance()];
 		vec![LayoutGroup::Row { widgets }]
 	}
 }
@@ -663,7 +671,7 @@ impl TableRowLayout for DVec2 {
 		"Vec2".to_string()
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		let widgets = vec![TextLabel::new(format!("({}, {})", self.x, self.y)).widget_holder()];
+		let widgets = vec![TextLabel::new(format!("({}, {})", self.x, self.y)).widget_instance()];
 		vec![LayoutGroup::Row { widgets }]
 	}
 }
@@ -676,7 +684,7 @@ impl TableRowLayout for Vec2 {
 		"Vec2".to_string()
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		let widgets = vec![TextLabel::new(format!("({}, {})", self.x, self.y)).widget_holder()];
+		let widgets = vec![TextLabel::new(format!("({}, {})", self.x, self.y)).widget_instance()];
 		vec![LayoutGroup::Row { widgets }]
 	}
 }
@@ -689,7 +697,7 @@ impl TableRowLayout for DAffine2 {
 		"Transform".to_string()
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
-		let widgets = vec![TextLabel::new(format_transform_matrix(self)).widget_holder()];
+		let widgets = vec![TextLabel::new(format_transform_matrix(self)).widget_instance()];
 		vec![LayoutGroup::Row { widgets }]
 	}
 }
@@ -703,7 +711,7 @@ impl TableRowLayout for Affine2 {
 	}
 	fn element_page(&self, _data: &mut LayoutData) -> Vec<LayoutGroup> {
 		let matrix = DAffine2::from_cols_array(&self.to_cols_array().map(|x| x as f64));
-		let widgets = vec![TextLabel::new(format_transform_matrix(&matrix)).widget_holder()];
+		let widgets = vec![TextLabel::new(format_transform_matrix(&matrix)).widget_instance()];
 		vec![LayoutGroup::Row { widgets }]
 	}
 }
