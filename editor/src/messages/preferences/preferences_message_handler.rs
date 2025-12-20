@@ -6,6 +6,7 @@ use crate::messages::prelude::*;
 use graph_craft::wasm_application_io::EditorPreferences;
 
 #[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize, specta::Type, ExtractField)]
+#[serde(default)]
 pub struct PreferencesMessageHandler {
 	pub selection_mode: SelectionMode,
 	pub zoom_with_scroll: bool,
