@@ -1850,27 +1850,45 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		let entries = vec![
 			RadioEntryData::new("Linear")
 				.label("Linear")
-				.on_update(update_value(
-					move |_| {
-						let mut new_gradient = new_gradient1.clone();
-						new_gradient.gradient_type = GradientType::Linear;
-						TaggedValue::Fill(Fill::Gradient(new_gradient))
-					},
-					node_id,
-					FillInput::<Color>::INDEX,
-				))
+				.on_update(move |_| Message::Batched {
+					messages: Box::new([
+						NodeGraphMessage::SetInputValue {
+							node_id,
+							input_index: FillInput::<Color>::INDEX,
+							value: TaggedValue::Fill(Fill::Gradient({
+								let mut new_gradient = new_gradient1.clone();
+								new_gradient.gradient_type = GradientType::Linear;
+								new_gradient
+							})),
+						}
+						.into(),
+						GradientToolMessage::UpdateOptions {
+							options: GradientOptionsUpdate::Type(GradientType::Linear),
+						}
+						.into(),
+					]),
+				})
 				.on_commit(commit_value),
 			RadioEntryData::new("Radial")
 				.label("Radial")
-				.on_update(update_value(
-					move |_| {
-						let mut new_gradient = new_gradient2.clone();
-						new_gradient.gradient_type = GradientType::Radial;
-						TaggedValue::Fill(Fill::Gradient(new_gradient))
-					},
-					node_id,
-					FillInput::<Color>::INDEX,
-				))
+				.on_update(move |_| Message::Batched {
+					messages: Box::new([
+						NodeGraphMessage::SetInputValue {
+							node_id,
+							input_index: FillInput::<Color>::INDEX,
+							value: TaggedValue::Fill(Fill::Gradient({
+								let mut new_gradient = new_gradient2.clone();
+								new_gradient.gradient_type = GradientType::Radial;
+								new_gradient
+							})),
+						}
+						.into(),
+						GradientToolMessage::UpdateOptions {
+							options: GradientOptionsUpdate::Type(GradientType::Radial),
+						}
+						.into(),
+					]),
+				})
 				.on_commit(commit_value),
 		];
 

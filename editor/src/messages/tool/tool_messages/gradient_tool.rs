@@ -74,6 +74,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 						selected_gradient.render_gradient(responses);
 					}
 				}
+				responses.add(ToolMessage::RefreshToolOptions);
 			}
 		}
 	}
@@ -104,7 +105,7 @@ impl LayoutHolder for GradientTool {
 				.into()
 			}),
 		])
-		.selected_index(Some((self.selected_gradient().unwrap_or(self.options.gradient_type) == GradientType::Radial) as u32))
+		.selected_index(Some((self.options.gradient_type == GradientType::Radial) as u32))
 		.widget_instance();
 
 		Layout(vec![LayoutGroup::Row { widgets: vec![gradient_type] }])
