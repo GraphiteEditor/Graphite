@@ -19,5 +19,5 @@ quote = { workspace = true }
 syn = { workspace = true }
 
 # Required dependencies
-toml = "0.8.19"
-proc-macro2 = "1.0.89"
+toml = "0.9.10+spec-1.1.0"
+proc-macro2 = "1.0.103"
