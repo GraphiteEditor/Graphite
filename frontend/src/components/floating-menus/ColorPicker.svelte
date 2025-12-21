@@ -95,7 +95,19 @@
 
 	$: oldColor = generateColor(oldHue, oldSaturation, oldValue, oldAlpha, oldIsNone);
 	$: newColor = generateColor(hue, saturation, value, alpha, isNone);
-	$: rgbChannels = Object.entries(newColor.toRgb255() ? { r: Math.round( newColor.red * 255 ), g: Math.round( newColor.green * 255 ), b: Math.round( newColor.blue * 255 )} : { r: undefined, g: undefined, b: undefined }) as [keyof RGB, number | undefined][];
+	$: rgbChannels = Object.entries(
+		newColor.toRgb255()
+			? {
+					r: Math.round(newColor.red * 255),
+					g: Math.round(newColor.green * 255),
+					b: Math.round(newColor.blue * 255),
+				}
+			: {
+					r: undefined,
+					g: undefined,
+					b: undefined,
+				},
+	) as [keyof RGB, number | undefined][];
 	$: hsvChannels = Object.entries(!isNone ? { h: hue * 360, s: saturation * 100, v: value * 100 } : { h: undefined, s: undefined, v: undefined }) as [keyof HSV, number | undefined][];
 	$: opaqueHueColor = new Color({ h: hue, s: 1, v: 1, a: 1 });
 	$: outlineFactor = Math.max(contrastingOutlineFactor(newColor, "--color-2-mildblack", 0.01), contrastingOutlineFactor(oldColor, "--color-2-mildblack", 0.01));
