@@ -258,50 +258,53 @@ pub trait Tangent {
 	}
 }
 
-impl Tangent for kurbo::Line {
-	fn tangent_at(&self, _t: f64) -> DVec2 {
-		self.tangent_at_start()
-	}
+trait ControlPoints {
+	type Points: AsRef<[Point]>;
+	fn control_points(&self) -> Self::Points;
+}
 
-	fn tangent_at_start(&self) -> DVec2 {
-		let delta = self.p1 - self.p0;
-		DVec2 { x: delta.x, y: delta.y }
-	}
-
-	fn tangent_at_end(&self) -> DVec2 {
-		self.tangent_at_start()
+impl ControlPoints for kurbo::Line {
+	type Points = [Point; 2];
+	fn control_points(&self) -> Self::Points {
+		[self.p0, self.p1]
 	}
 }
 
-impl Tangent for kurbo::QuadBez {
-	fn tangent_at(&self, t: f64) -> DVec2 {
-		let deriv = self.deriv();
-		let tangent = deriv.eval(t);
-		DVec2 { x: tangent.x, y: tangent.y }
-	}
-
-	fn tangent_at_start(&self) -> DVec2 {
-		if self.p0 == self.p1 { self.deriv().tangent_at_start() } else { self.tangent_at(0.0) }
-	}
-
-	fn tangent_at_end(&self) -> DVec2 {
-		if self.p2 == self.p1 { self.deriv().tangent_at_end() } else { self.tangent_at(1.0) }
+impl ControlPoints for kurbo::QuadBez {
+	type Points = [Point; 3];
+	fn control_points(&self) -> Self::Points {
+		[self.p0, self.p1, self.p2]
 	}
 }
 
-impl Tangent for kurbo::CubicBez {
+impl ControlPoints for kurbo::CubicBez {
+	type Points = [Point; 4];
+	fn control_points(&self) -> Self::Points {
+		[self.p0, self.p1, self.p2, self.p3]
+	}
+}
+
+impl<T: ControlPoints + ParamCurveDeriv> Tangent for T {
 	fn tangent_at(&self, t: f64) -> DVec2 {
-		let deriv = self.deriv();
-		let tangent = deriv.eval(t);
-		DVec2 { x: tangent.x, y: tangent.y }
+		point_to_dvec2(self.deriv().eval(t))
 	}
 
 	fn tangent_at_start(&self) -> DVec2 {
-		if self.p0 == self.p1 { self.deriv().tangent_at_start() } else { self.tangent_at(0.0) }
+		let pts = self.control_points();
+		let pts = pts.as_ref();
+		let mut iter = pts.iter();
+		iter.next()
+			.and_then(|&start| iter.find(|&&p| p != start).map(|&p| DVec2 { x: p.x - start.x, y: p.y - start.y }))
+			.unwrap_or_default()
 	}
 
 	fn tangent_at_end(&self) -> DVec2 {
-		if self.p3 == self.p2 { self.deriv().tangent_at_end() } else { self.tangent_at(1.0) }
+		let pts = self.control_points();
+		let pts = pts.as_ref();
+		let mut iter = pts.iter().rev();
+		iter.next()
+			.and_then(|&end| iter.find(|&&p| p != end).map(|&p| DVec2 { x: end.x - p.x, y: end.y - p.y }))
+			.unwrap_or_default()
 	}
 }
 
@@ -311,6 +314,22 @@ impl Tangent for kurbo::PathSeg {
 			PathSeg::Line(line) => line.tangent_at(t),
 			PathSeg::Quad(quad) => quad.tangent_at(t),
 			PathSeg::Cubic(cubic) => cubic.tangent_at(t),
+		}
+	}
+
+	fn tangent_at_start(&self) -> DVec2 {
+		match self {
+			PathSeg::Line(line) => line.tangent_at_start(),
+			PathSeg::Quad(quad) => quad.tangent_at_start(),
+			PathSeg::Cubic(cubic) => cubic.tangent_at_start(),
+		}
+	}
+
+	fn tangent_at_end(&self) -> DVec2 {
+		match self {
+			PathSeg::Line(line) => line.tangent_at_end(),
+			PathSeg::Quad(quad) => quad.tangent_at_end(),
+			PathSeg::Cubic(cubic) => cubic.tangent_at_end(),
 		}
 	}
 }
