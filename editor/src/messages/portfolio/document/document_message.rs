@@ -49,8 +49,6 @@ pub enum DocumentMessage {
 	},
 	DeleteSelectedLayers,
 	DeselectAllLayers,
-	DocumentHistoryBackward,
-	DocumentHistoryForward,
 	DocumentStructureChanged,
 	DrawArtboardOverlays {
 		context: OverlayContext,
@@ -110,7 +108,6 @@ pub enum DocumentMessage {
 		mouse: Option<(f64, f64)>,
 		parent_and_insert_index: Option<(LayerNodeIdentifier, usize)>,
 	},
-	Redo,
 	RenameDocument {
 		new_name: String,
 	},
@@ -179,10 +176,23 @@ pub enum DocumentMessage {
 	SetRenderMode {
 		render_mode: RenderMode,
 	},
+	Undo,
+	Redo,
+	DocumentHistoryBackward,
+	DocumentHistoryForward,
+	// TODO: Rename to HistoryStepPush
+	/// Create a snapshot of the document at this point in time, by immediately starting and committing a transaction.
 	AddTransaction,
+	// TODO: Rename to HistoryTransactionStart
+	/// Take a snapshot of the document to an intermediate state, and then depending on what we do next, we might either commit or abort it.
 	StartTransaction,
+	// TODO: Rename to HistoryTransactionEnd
+	/// Either commit (creating a new history step) or cancel (removing the last history step, as if it never happened) the last transaction started with `StartTransaction`.
 	EndTransaction,
+	/// Cause the document to revert back to the state when the transaction was started. For example, the user may be dragging
+	/// something around and hits Escape to abort the drag. This jumps the document back to the point before the drag began.
 	AbortTransaction,
+	/// The same as `AbortTransaction` with one step back, but it can also be called with multiple steps back in the history of undos.
 	RepeatedAbortTransaction {
 		undo_count: usize,
 	},
@@ -206,7 +216,6 @@ pub enum DocumentMessage {
 	UpdateClipTargets {
 		clip_targets: HashSet<NodeId>,
 	},
-	Undo,
 	UngroupSelectedLayers,
 	UngroupLayer {
 		layer: LayerNodeIdentifier,

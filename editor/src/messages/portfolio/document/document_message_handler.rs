@@ -372,8 +372,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
 				self.layer_range_selection_reference = None;
 			}
-			DocumentMessage::DocumentHistoryBackward => self.undo_with_history(viewport, responses),
-			DocumentMessage::DocumentHistoryForward => self.redo_with_history(viewport, responses),
 			DocumentMessage::DocumentStructureChanged => {
 				if layers_panel_open {
 					self.network_interface.load_structure();
@@ -953,15 +951,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
 				responses.add(ToolMessage::ActivateTool { tool_type: ToolType::Select });
 			}
-			DocumentMessage::Redo => {
-				if self.network_interface.transaction_status() != TransactionStatus::Finished {
-					return;
-				}
-				responses.add(SelectToolMessage::Abort);
-				responses.add(DocumentMessage::DocumentHistoryForward);
-				responses.add(ToolMessage::Redo);
-				responses.add(OverlaysMessage::Draw);
-			}
 			DocumentMessage::RenameDocument { new_name } => {
 				self.name = new_name.clone();
 
@@ -1291,6 +1280,27 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.render_mode = render_mode;
 				responses.add_front(NodeGraphMessage::RunDocumentGraph);
 			}
+			DocumentMessage::Undo => {
+				if self.network_interface.transaction_status() != TransactionStatus::Finished {
+					return;
+				}
+				responses.add(ToolMessage::PreUndo);
+				responses.add(DocumentMessage::DocumentHistoryBackward);
+				responses.add(OverlaysMessage::Draw);
+				responses.add(ToolMessage::Undo);
+			}
+			DocumentMessage::Redo => {
+				if self.network_interface.transaction_status() != TransactionStatus::Finished {
+					return;
+				}
+				responses.add(SelectToolMessage::Abort);
+				responses.add(DocumentMessage::DocumentHistoryForward);
+				responses.add(ToolMessage::Redo);
+				responses.add(OverlaysMessage::Draw);
+			}
+			DocumentMessage::DocumentHistoryBackward => self.undo_with_history(viewport, responses),
+			DocumentMessage::DocumentHistoryForward => self.redo_with_history(viewport, responses),
+			// Create a snapshot of the document at this point in time, by immediately starting and committing a transaction.
 			DocumentMessage::AddTransaction => {
 				self.start_transaction(responses);
 				self.commit_transaction(responses);
@@ -1299,37 +1309,50 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::StartTransaction => {
 				self.start_transaction(responses);
 			}
-			// Commits the transaction if the network was mutated since the transaction started, otherwise it cancels the transaction
+			// Either commit (creating a new history step) or cancel (removing the last history step, as if it never happened) the last transaction started with `StartTransaction`.
 			DocumentMessage::EndTransaction => match self.network_interface.transaction_status() {
+				// This is used if, between the start and end of the transaction, the changes were undone by the user.
+				// For example, dragging something around and then dropping it back at its exact original position.
+				// So we cancel the transaction to return to the point before the transaction was started.
 				TransactionStatus::Started => {
 					self.network_interface.finish_transaction();
 					self.document_undo_history.pop_back();
 				}
+				// This is used if, between the start and end of the transaction, actual changes did occur and we want to keep them as part of a history step that the user can undo/redo.
 				TransactionStatus::Modified => {
 					self.commit_transaction(responses);
 				}
 				TransactionStatus::Finished => {}
 			},
 			DocumentMessage::AbortTransaction => match self.network_interface.transaction_status() {
+				// If we abort a transaction without any changes having been made, we simply remove the transaction as if it never occurred.
 				TransactionStatus::Started => {
 					self.network_interface.finish_transaction();
 					self.document_undo_history.pop_back();
 				}
+				// If we abort a transaction after changes have been made, we need to undo those changes.
 				TransactionStatus::Modified => {
 					responses.add(DocumentMessage::RepeatedAbortTransaction { undo_count: 1 });
 				}
+				// This is an erroneous state indicating that a transaction is being aborted without having ever been started.
 				TransactionStatus::Finished => {}
 			},
+			// The same as `AbortTransaction` with one step back, but it can also be called with multiple steps back in the history of undos.
 			DocumentMessage::RepeatedAbortTransaction { undo_count } => {
+				// This prevents us from aborting a transaction multiple times in a row, which would be erroneous.
 				if self.network_interface.transaction_status() == TransactionStatus::Finished {
 					return;
 				}
 
+				// Sometimes (like successive G/R/S transformations) we may need to undo multiple steps to fully abort the transaction, before we finish.
 				for _ in 0..undo_count {
 					self.undo(viewport, responses);
 				}
 
+				// Finally finish the transaction, ensuring that any future operations are not erroneously redone as part of this aborted transaction.
 				self.network_interface.finish_transaction();
+
+				// Refresh state
 				responses.add(OverlaysMessage::Draw);
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 			}
@@ -1400,15 +1423,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			}
 			DocumentMessage::UpdateClipTargets { clip_targets } => {
 				self.network_interface.update_clip_targets(clip_targets);
-			}
-			DocumentMessage::Undo => {
-				if self.network_interface.transaction_status() != TransactionStatus::Finished {
-					return;
-				}
-				responses.add(ToolMessage::PreUndo);
-				responses.add(DocumentMessage::DocumentHistoryBackward);
-				responses.add(OverlaysMessage::Draw);
-				responses.add(ToolMessage::Undo);
 			}
 			DocumentMessage::UngroupSelectedLayers => {
 				if !self.selection_network_path.is_empty() {
