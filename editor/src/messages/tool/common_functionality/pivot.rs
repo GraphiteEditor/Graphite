@@ -169,6 +169,7 @@ pub struct PivotGizmoState {
 
 impl PivotGizmoState {
 	pub fn is_pivot_type(&self) -> bool {
+		// A disabled pivot is considered a pivot-type gizmo that is always centered
 		self.gizmo_type == PivotGizmoType::Pivot || self.disabled
 	}
 

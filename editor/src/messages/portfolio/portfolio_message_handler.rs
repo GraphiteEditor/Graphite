@@ -124,6 +124,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				responses.add(FrontendMessage::SendShortcutAltClick {
 					shortcut: action_shortcut_manual!(Key::Alt, Key::MouseLeft),
 				});
+				responses.add(FrontendMessage::SendShortcutShiftClick {
+					shortcut: action_shortcut_manual!(Key::Shift, Key::MouseLeft),
+				});
 
 				// Before loading any documents, initially prepare the welcome screen buttons layout
 				responses.add(PortfolioMessage::RequestWelcomeScreenButtonsLayout);
@@ -316,7 +319,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				if let Some(active_document) = self.active_document()
 					&& active_document.graph_view_overlay_open()
 				{
-					responses.add(NodeGraphMessage::Copy);
+					responses.add(NodeGraphMessage::Cut);
 					return;
 				}
 
@@ -349,16 +352,31 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				self.active_document_id = None;
 				responses.add(MenuBarMessage::SendLayout);
 			}
-			PortfolioMessage::FontLoaded {
-				font_family,
-				font_style,
-				preview_url,
-				data,
-			} => {
-				let font = Font::new(font_family, font_style);
+			PortfolioMessage::FontCatalogLoaded { catalog } => {
+				self.persistent_data.font_catalog = catalog;
 
-				self.persistent_data.font_cache.insert(font, preview_url, data);
+				if let Some(document_id) = self.active_document_id {
+					responses.add(PortfolioMessage::LoadDocumentResources { document_id });
+				}
+
+				// Load the default font
+				let font = Font::new(graphene_std::consts::DEFAULT_FONT_FAMILY.into(), graphene_std::consts::DEFAULT_FONT_STYLE.into());
+				responses.add(PortfolioMessage::LoadFontData { font });
+			}
+			PortfolioMessage::LoadFontData { font } => {
+				if let Some(style) = self.persistent_data.font_catalog.find_font_style_in_catalog(&font) {
+					let font = Font::new(font.font_family, style.to_named_style());
+
+					if !self.persistent_data.font_cache.loaded_font(&font) {
+						responses.add(FrontendMessage::TriggerFontDataLoad { font, url: style.url });
+					}
+				}
+			}
+			PortfolioMessage::FontLoaded { font_family, font_style, data } => {
+				let font = Font::new(font_family, font_style);
+				self.persistent_data.font_cache.insert(font, data);
 				self.executor.update_font_cache(self.persistent_data.font_cache.clone());
+
 				for document_id in self.document_ids.iter() {
 					let node_to_inspect = self.node_to_inspect();
 
@@ -382,6 +400,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				if self.active_document_mut().is_some() {
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
+
+				if current_tool == &ToolType::Text {
+					responses.add(TextToolMessage::RefreshEditingFontData);
+				}
 			}
 			PortfolioMessage::EditorPreferences => self.executor.update_editor_preferences(preferences.editor_preferences()),
 			PortfolioMessage::Import => {
@@ -389,13 +411,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				responses.add(FrontendMessage::TriggerImport);
 			}
 			PortfolioMessage::LoadDocumentResources { document_id } => {
-				if let Some(document) = self.document_mut(document_id) {
-					document.load_layer_resources(responses);
+				let catalog = &self.persistent_data.font_catalog;
+
+				if catalog.0.is_empty() {
+					log::error!("Tried to load document resources before font catalog was loaded");
 				}
-			}
-			PortfolioMessage::LoadFont { font } => {
-				if !self.persistent_data.font_cache.loaded_font(&font) {
-					responses.add_front(FrontendMessage::TriggerFontLoad { font });
+
+				if let Some(document) = self.documents.get_mut(&document_id) {
+					document.load_layer_resources(responses, catalog);
 				}
 			}
 			PortfolioMessage::NewDocumentWithName { name } => {
@@ -592,7 +615,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 								added_nodes = true;
 							}
 
-							document.load_layer_resources(responses);
+							document.load_layer_resources(responses, &self.persistent_data.font_catalog);
 							let new_ids: HashMap<_, _> = entry.nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
 							let layer = LayerNodeIdentifier::new_unchecked(new_ids[&NodeId(0)]);
 							all_new_ids.extend(new_ids.values().cloned());
@@ -973,7 +996,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				};
 				if !document.is_loaded {
 					document.is_loaded = true;
-					responses.add(PortfolioMessage::LoadDocumentResources { document_id });
+					if self.persistent_data.font_catalog.0.is_empty() {
+						responses.add_front(FrontendMessage::TriggerFontCatalogLoad);
+					}
 					responses.add(PortfolioMessage::UpdateDocumentWidgets);
 					responses.add(PropertiesPanelMessage::Clear);
 				}
@@ -1229,10 +1254,6 @@ impl PortfolioMessageHandler {
 		if self.active_document().is_some() {
 			responses.add(EventMessage::ToolAbort);
 			responses.add(ToolMessage::DeactivateTools);
-		} else {
-			// Load the default font upon creating the first document
-			let font = Font::new(graphene_std::consts::DEFAULT_FONT_FAMILY.into(), graphene_std::consts::DEFAULT_FONT_STYLE.into());
-			responses.add(FrontendMessage::TriggerFontLoad { font });
 		}
 
 		// TODO: Remove this and find a way to fix the issue where creating a new document when the node graph is open causes the transform in the new document to be incorrect

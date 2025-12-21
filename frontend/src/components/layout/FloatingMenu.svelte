@@ -372,6 +372,9 @@
 		// Start with the parent of the spawner for this floating menu and keep widening the search for any other valid spawners that are hover-transferrable
 		let currentAncestor = (targetSpawner && ownSpawner?.parentElement) || undefined;
 		while (currentAncestor) {
+			// If the current ancestor blocks hover transfer, stop searching
+			if (currentAncestor.hasAttribute("data-block-hover-transfer")) break;
+
 			const ownSpawnerDepthFromCurrentAncestor = ownSpawner && getDepthFromAncestor(ownSpawner, currentAncestor);
 			const currentAncestor2 = currentAncestor; // This duplicate variable avoids an ESLint warning
 
@@ -382,8 +385,8 @@
 				const notOurself = !ownDescendantMenuSpawners.includes(item);
 				// And filter away unequal depths from the current ancestor
 				const notUnequalDepths = notOurself && getDepthFromAncestor(item, currentAncestor2) === ownSpawnerDepthFromCurrentAncestor;
-				// And filter away elements that explicitly disable hover transfer
-				return notUnequalDepths && !(item as HTMLElement).getAttribute?.("data-floating-menu-spawner")?.includes("no-hover-transfer");
+				// And filter away descendants that explicitly disable hover transfer
+				return notUnequalDepths && !(item instanceof HTMLElement && item.hasAttribute("data-block-hover-transfer"));
 			});
 
 			// If none were found, widen the search by a level and keep trying (or stop looping if the root was reached)

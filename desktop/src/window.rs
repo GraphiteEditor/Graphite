@@ -12,6 +12,9 @@ pub(crate) trait NativeWindow {
 	fn init() {}
 	fn configure(attributes: WindowAttributes, event_loop: &dyn ActiveEventLoop) -> WindowAttributes;
 	fn new(window: &dyn WinitWindow, app_event_scheduler: AppEventScheduler) -> Self;
+	fn can_render(&self) -> bool {
+		true
+	}
 	fn update_menu(&self, _entries: Vec<MenuItem>) {}
 	fn hide(&self) {}
 	fn hide_others(&self) {}
@@ -52,6 +55,7 @@ impl Window {
 			.with_min_surface_size(winit::dpi::LogicalSize::new(400, 300))
 			.with_surface_size(winit::dpi::LogicalSize::new(1200, 800))
 			.with_resizable(true)
+			.with_visible(false)
 			.with_theme(Some(winit::window::Theme::Dark));
 
 		attributes = native::NativeWindowImpl::configure(attributes, event_loop);
@@ -67,6 +71,11 @@ impl Window {
 		}
 	}
 
+	pub(crate) fn show(&self) {
+		self.winit_window.set_visible(true);
+		self.winit_window.focus_window();
+	}
+
 	pub(crate) fn request_redraw(&self) {
 		self.winit_window.request_redraw();
 	}
@@ -77,6 +86,10 @@ impl Window {
 
 	pub(crate) fn pre_present_notify(&self) {
 		self.winit_window.pre_present_notify();
+	}
+
+	pub(crate) fn can_render(&self) -> bool {
+		self.native_handle.can_render()
 	}
 
 	pub(crate) fn surface_size(&self) -> winit::dpi::PhysicalSize<u32> {

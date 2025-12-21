@@ -400,6 +400,7 @@ struct SelectToolData {
 	selected_layers_changed: bool,
 	snap_candidates: Vec<SnapCandidatePoint>,
 	auto_panning: AutoPanning,
+	drag_start_center: ViewportPosition,
 }
 
 impl SelectToolData {
@@ -599,7 +600,7 @@ impl Fsm for SelectToolFsmState {
 			document,
 			input,
 			viewport,
-			font_cache,
+			persistent_data,
 			..
 		} = tool_action_data;
 
@@ -624,7 +625,7 @@ impl Fsm for SelectToolFsmState {
 						overlay_context.outline(document.metadata().layer_with_free_points_outline(layer), layer_to_viewport, None);
 
 						if is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text") {
-							let transformed_quad = layer_to_viewport * text_bounding_box(layer, document, font_cache);
+							let transformed_quad = layer_to_viewport * text_bounding_box(layer, document, &persistent_data.font_cache);
 							overlay_context.dashed_quad(transformed_quad, None, None, Some(7.), Some(5.), None);
 						}
 					}
@@ -911,11 +912,10 @@ impl Fsm for SelectToolFsmState {
 						let angle = -mouse_position.angle_to(DVec2::X);
 						let snapped_angle = (angle / snap_resolution).round() * snap_resolution;
 
-						let extension = tool_data.drag_current - tool_data.drag_start;
-						let origin = compass_center - extension;
+						let origin = tool_data.drag_start_center;
 						let viewport_diagonal = viewport.size().into_dvec2().length();
 
-						let edge = DVec2::from_angle(snapped_angle).normalize_or(DVec2::X) * viewport_diagonal;
+						let edge = DVec2::from_angle(snapped_angle).normalize_or(DVec2::X);
 						let perp = edge.perp();
 
 						let (edge_color, perp_color) = if edge.x.abs() > edge.y.abs() {
@@ -1031,6 +1031,8 @@ impl Fsm for SelectToolFsmState {
 
 				let position = tool_data.pivot_gizmo().position(document);
 				let (resize, rotate, skew) = transforming_transform_cage(document, &mut tool_data.bounding_box_manager, input, responses, &mut tool_data.layers_dragging, Some(position));
+
+				tool_data.drag_start_center = position;
 
 				// If the user is dragging the bounding box bounds, go into ResizingBounds mode.
 				// If the user is dragging the rotate trigger, go into RotatingBounds mode.

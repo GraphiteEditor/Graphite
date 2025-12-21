@@ -6,6 +6,7 @@ use crate::messages::portfolio::document::graph_operation::utility_types::Transf
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
+use crate::messages::portfolio::utility_types::{FontCatalog, FontCatalogStyle, PersistentData};
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::color_selector::{ToolColorOptions, ToolColorType};
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, is_layer_fed_by_node_of_name};
@@ -13,6 +14,7 @@ use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData};
 use crate::messages::tool::common_functionality::transformation_cage::*;
 use crate::messages::tool::common_functionality::utility_functions::text_bounding_box;
+use crate::messages::tool::utility_types::ToolRefreshOptions;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::Color;
@@ -31,8 +33,7 @@ pub struct TextOptions {
 	font_size: f64,
 	line_height_ratio: f64,
 	character_spacing: f64,
-	font_name: String,
-	font_style: String,
+	font: Font,
 	fill: ToolColorOptions,
 	tilt: f64,
 	align: TextAlign,
@@ -44,8 +45,7 @@ impl Default for TextOptions {
 			font_size: 24.,
 			line_height_ratio: 1.2,
 			character_spacing: 0.,
-			font_name: graphene_std::consts::DEFAULT_FONT_FAMILY.into(),
-			font_style: graphene_std::consts::DEFAULT_FONT_STYLE.into(),
+			font: Font::new(graphene_std::consts::DEFAULT_FONT_FAMILY.into(), graphene_std::consts::DEFAULT_FONT_STYLE.into()),
 			fill: ToolColorOptions::new_primary(),
 			tilt: 0.,
 			align: TextAlign::default(),
@@ -71,13 +71,14 @@ pub enum TextToolMessage {
 	TextChange { new_text: String, is_left_or_right_click: bool },
 	UpdateBounds { new_text: String },
 	UpdateOptions { options: TextOptionsUpdate },
+	RefreshEditingFontData,
 }
 
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum TextOptionsUpdate {
 	FillColor(Option<Color>),
 	FillColorType(ToolColorType),
-	Font { family: String, style: String },
+	Font { font: Font },
 	FontSize(f64),
 	LineHeightRatio(f64),
 	Align(TextAlign),
@@ -96,31 +97,84 @@ impl ToolMetadata for TextTool {
 	}
 }
 
-fn create_text_widgets(tool: &TextTool) -> Vec<WidgetInstance> {
-	let font = FontInput::new(&tool.options.font_name, &tool.options.font_style)
-		.is_style_picker(false)
-		.on_update(|font_input: &FontInput| {
+fn create_text_widgets(tool: &TextTool, font_catalog: &FontCatalog) -> Vec<WidgetInstance> {
+	fn update_options(font: Font, commit_style: Option<String>) -> impl Fn(&()) -> Message + Clone {
+		let mut font = font;
+		if let Some(style) = commit_style {
+			font.font_style = style;
+		}
+
+		move |_| {
 			TextToolMessage::UpdateOptions {
-				options: TextOptionsUpdate::Font {
-					family: font_input.font_family.clone(),
-					style: font_input.font_style.clone(),
-				},
+				options: TextOptionsUpdate::Font { font: font.clone() },
 			}
 			.into()
-		})
-		.widget_instance();
-	let style = FontInput::new(&tool.options.font_name, &tool.options.font_style)
-		.is_style_picker(true)
-		.on_update(|font_input: &FontInput| {
-			TextToolMessage::UpdateOptions {
-				options: TextOptionsUpdate::Font {
-					family: font_input.font_family.clone(),
-					style: font_input.font_style.clone(),
-				},
-			}
-			.into()
-		})
-		.widget_instance();
+		}
+	}
+
+	let font = DropdownInput::new(vec![
+		font_catalog
+			.0
+			.iter()
+			.map(|family| {
+				let font = Font::new(family.name.clone(), tool.options.font.font_style.clone());
+				let commit_style = font_catalog.find_font_style_in_catalog(&tool.options.font).map(|style| style.to_named_style());
+				let update = update_options(font.clone(), None);
+				let commit = update_options(font, commit_style);
+
+				MenuListEntry::new(family.name.clone())
+					.label(family.name.clone())
+					.font(family.closest_style(400, false).preview_url(&family.name))
+					.on_update(update)
+					.on_commit(commit)
+			})
+			.collect::<Vec<_>>(),
+	])
+	.selected_index(font_catalog.0.iter().position(|family| family.name == tool.options.font.font_family).map(|i| i as u32))
+	.virtual_scrolling(true)
+	.widget_instance();
+
+	let style = DropdownInput::new({
+		font_catalog
+			.0
+			.iter()
+			.find(|family| family.name == tool.options.font.font_family)
+			.map(|family| {
+				let build_entry = |style: &FontCatalogStyle| {
+					let font_style = style.to_named_style();
+
+					let font = Font::new(tool.options.font.font_family.clone(), font_style.clone());
+					let commit_style = font_catalog.find_font_style_in_catalog(&tool.options.font).map(|style| style.to_named_style());
+					let update = update_options(font.clone(), None);
+					let commit = update_options(font, commit_style);
+
+					MenuListEntry::new(font_style.clone()).on_update(update).on_commit(commit).label(font_style)
+				};
+
+				vec![
+					family.styles.iter().filter(|style| !style.italic).map(build_entry).collect::<Vec<_>>(),
+					family.styles.iter().filter(|style| style.italic).map(build_entry).collect::<Vec<_>>(),
+				]
+			})
+			.filter(|styles| !styles.is_empty())
+			.unwrap_or_default()
+	})
+	.selected_index(
+		font_catalog
+			.0
+			.iter()
+			.find(|family| family.name == tool.options.font.font_family)
+			.and_then(|family| {
+				let not_italic = family.styles.iter().filter(|style| !style.italic);
+				let italic = family.styles.iter().filter(|style| style.italic);
+				not_italic
+					.chain(italic)
+					.position(|style| Some(style) == font_catalog.find_font_style_in_catalog(&tool.options.font).as_ref())
+			})
+			.map(|i| i as u32),
+	)
+	.widget_instance();
+
 	let size = NumberInput::new(Some(tool.options.font_size))
 		.unit(" px")
 		.label("Size")
@@ -172,9 +226,22 @@ fn create_text_widgets(tool: &TextTool) -> Vec<WidgetInstance> {
 	]
 }
 
-impl LayoutHolder for TextTool {
-	fn layout(&self) -> Layout {
-		let mut widgets = create_text_widgets(self);
+impl ToolRefreshOptions for TextTool {
+	fn refresh_options(&self, responses: &mut VecDeque<Message>, persistent_data: &PersistentData) {
+		self.send_layout(responses, LayoutTarget::ToolOptions, &persistent_data.font_catalog);
+	}
+}
+
+impl TextTool {
+	fn send_layout(&self, responses: &mut VecDeque<Message>, layout_target: LayoutTarget, font_catalog: &FontCatalog) {
+		responses.add(LayoutMessage::SendLayout {
+			layout: self.layout(font_catalog),
+			layout_target,
+		});
+	}
+
+	fn layout(&self, font_catalog: &FontCatalog) -> Layout {
+		let mut widgets = create_text_widgets(self, font_catalog);
 
 		widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
 
@@ -215,11 +282,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 			return;
 		};
 		match options {
-			TextOptionsUpdate::Font { family, style } => {
-				self.options.font_name = family;
-				self.options.font_style = style;
-
-				self.send_layout(responses, LayoutTarget::ToolOptions);
+			TextOptionsUpdate::Font { font } => {
+				self.options.font = font;
 			}
 			TextOptionsUpdate::FontSize(font_size) => self.options.font_size = font_size,
 			TextOptionsUpdate::LineHeightRatio(line_height_ratio) => self.options.line_height_ratio = line_height_ratio,
@@ -235,7 +299,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 			}
 		}
 
-		self.send_layout(responses, LayoutTarget::ToolOptions);
+		self.send_layout(responses, LayoutTarget::ToolOptions, &context.persistent_data.font_catalog);
 	}
 
 	fn actions(&self) -> ActionList {
@@ -339,6 +403,7 @@ impl TextToolData {
 
 		TextToolFsmState::Ready
 	}
+
 	/// Set the editing state of the currently modifying layer
 	fn set_editing(&self, editable: bool, font_cache: &FontCache, responses: &mut VecDeque<Message>) {
 		if let Some(editing_text) = self.editing_text.as_ref().filter(|_| editable) {
@@ -347,7 +412,7 @@ impl TextToolData {
 				line_height_ratio: editing_text.typesetting.line_height_ratio,
 				font_size: editing_text.typesetting.font_size,
 				color: editing_text.color.unwrap_or(Color::BLACK),
-				url: font_cache.get_preview_url(&editing_text.font).cloned().unwrap_or_default(),
+				font_data: font_cache.get(&editing_text.font).map(|(data, _)| data.clone()).unwrap_or_default(),
 				transform: editing_text.transform.to_cols_array(),
 				max_width: editing_text.typesetting.max_width,
 				max_height: editing_text.typesetting.max_height,
@@ -411,6 +476,7 @@ impl TextToolData {
 
 		self.layer = LayerNodeIdentifier::new_unchecked(NodeId::new());
 
+		responses.add(PortfolioMessage::LoadFontData { font: editing_text.font.clone() });
 		responses.add(GraphOperationMessage::NewTextLayer {
 			id: self.layer.to_node(),
 			text: String::new(),
@@ -498,10 +564,11 @@ impl Fsm for TextToolFsmState {
 			document,
 			global_tool_data,
 			input,
-			font_cache,
+			persistent_data,
 			viewport,
 			..
 		} = transition_data;
+		let font_cache = &persistent_data.font_cache;
 		let fill_color = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
 			.unwrap()
 			.with_alpha(0.05)
@@ -827,7 +894,7 @@ impl Fsm for TextToolFsmState {
 						tilt: tool_options.tilt,
 						align: tool_options.align,
 					},
-					font: Font::new(tool_options.font_name.clone(), tool_options.font_style.clone()),
+					font: Font::new(tool_options.font.font_family.clone(), tool_options.font.font_style.clone()),
 					color: tool_options.fill.active_color(),
 				};
 				tool_data.new_text(document, editing_text, font_cache, responses);
@@ -852,6 +919,14 @@ impl Fsm for TextToolFsmState {
 
 				TextToolFsmState::Ready
 			}
+			(TextToolFsmState::Editing, TextToolMessage::RefreshEditingFontData) => {
+				let font = Font::new(tool_options.font.font_family.clone(), tool_options.font.font_style.clone());
+				responses.add(FrontendMessage::DisplayEditableTextboxUpdateFontData {
+					font_data: font_cache.get(&font).map(|(data, _)| data.clone()).unwrap_or_default(),
+				});
+
+				TextToolFsmState::Editing
+			}
 			(TextToolFsmState::Editing, TextToolMessage::TextChange { new_text, is_left_or_right_click }) => {
 				tool_data.new_text = new_text;
 
@@ -871,6 +946,7 @@ impl Fsm for TextToolFsmState {
 					}
 
 					responses.add(FrontendMessage::TriggerTextCommit);
+
 					TextToolFsmState::Editing
 				}
 			}

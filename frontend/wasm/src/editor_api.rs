@@ -12,7 +12,7 @@ use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
 use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta};
 use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use editor::messages::portfolio::document::utility_types::network_interface::ImportOrExport;
-use editor::messages::portfolio::utility_types::Platform;
+use editor::messages::portfolio::utility_types::{FontCatalog, FontCatalogFamily, Platform};
 use editor::messages::prelude::*;
 use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
 use graph_craft::document::NodeId;
@@ -116,7 +116,6 @@ impl EditorHandle {
 	#[cfg(not(feature = "native"))]
 	fn dispatch<T: Into<Message>>(&self, message: T) {
 		// Process no further messages after a crash to avoid spamming the console
-
 		use crate::MESSAGE_BUFFER;
 		if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
 			return;
@@ -330,21 +329,43 @@ impl EditorHandle {
 
 	/// Update the value of a given UI widget, but don't commit it to the history (unless `commit_layout()` is called, which handles that)
 	#[wasm_bindgen(js_name = widgetValueUpdate)]
-	pub fn widget_value_update(&self, layout_target: JsValue, widget_id: u64, value: JsValue) -> Result<(), JsValue> {
+	pub fn widget_value_update(&self, layout_target: JsValue, widget_id: u64, value: JsValue, resend_widget: bool) -> Result<(), JsValue> {
+		self.widget_value_update_helper(layout_target, widget_id, value, resend_widget)
+	}
+
+	/// Commit the value of a given UI widget to the history
+	#[wasm_bindgen(js_name = widgetValueCommit)]
+	pub fn widget_value_commit(&self, layout_target: JsValue, widget_id: u64, value: JsValue) -> Result<(), JsValue> {
+		self.widget_value_commit_helper(layout_target, widget_id, value)
+	}
+
+	/// Update the value of a given UI widget, and commit it to the history
+	#[wasm_bindgen(js_name = widgetValueCommitAndUpdate)]
+	pub fn widget_value_commit_and_update(&self, layout_target: JsValue, widget_id: u64, value: JsValue, resend_widget: bool) -> Result<(), JsValue> {
+		self.widget_value_commit_helper(layout_target.clone(), widget_id, value.clone())?;
+		self.widget_value_update_helper(layout_target, widget_id, value, resend_widget)?;
+		Ok(())
+	}
+
+	pub fn widget_value_update_helper(&self, layout_target: JsValue, widget_id: u64, value: JsValue, resend_widget: bool) -> Result<(), JsValue> {
 		let widget_id = WidgetId(widget_id);
 		match (from_value(layout_target), from_value(value)) {
 			(Ok(layout_target), Ok(value)) => {
 				let message = LayoutMessage::WidgetValueUpdate { layout_target, widget_id, value };
 				self.dispatch(message);
+
+				if resend_widget {
+					let resend_message = LayoutMessage::ResendActiveWidget { layout_target, widget_id };
+					self.dispatch(resend_message);
+				}
+
 				Ok(())
 			}
 			(target, val) => Err(Error::new(&format!("Could not update UI\nDetails:\nTarget: {target:?}\nValue: {val:?}")).into()),
 		}
 	}
 
-	/// Commit the value of a given UI widget to the history
-	#[wasm_bindgen(js_name = widgetValueCommit)]
-	pub fn widget_value_commit(&self, layout_target: JsValue, widget_id: u64, value: JsValue) -> Result<(), JsValue> {
+	pub fn widget_value_commit_helper(&self, layout_target: JsValue, widget_id: u64, value: JsValue) -> Result<(), JsValue> {
 		let widget_id = WidgetId(widget_id);
 		match (from_value(layout_target), from_value(value)) {
 			(Ok(layout_target), Ok(value)) => {
@@ -354,14 +375,6 @@ impl EditorHandle {
 			}
 			(target, val) => Err(Error::new(&format!("Could not commit UI\nDetails:\nTarget: {target:?}\nValue: {val:?}")).into()),
 		}
-	}
-
-	/// Update the value of a given UI widget, and commit it to the history
-	#[wasm_bindgen(js_name = widgetValueCommitAndUpdate)]
-	pub fn widget_value_commit_and_update(&self, layout_target: JsValue, widget_id: u64, value: JsValue) -> Result<(), JsValue> {
-		self.widget_value_commit(layout_target.clone(), widget_id, value.clone())?;
-		self.widget_value_update(layout_target, widget_id, value)?;
-		Ok(())
 	}
 
 	#[wasm_bindgen(js_name = loadPreferences)]
@@ -562,15 +575,21 @@ impl EditorHandle {
 		Ok(())
 	}
 
+	/// The font catalog has been loaded
+	#[wasm_bindgen(js_name = onFontCatalogLoad)]
+	pub fn on_font_catalog_load(&self, catalog: JsValue) -> Result<(), JsValue> {
+		// Deserializing from TS type: `{ name: string; styles: { weight: number, italic: boolean, url: string }[] }[]`
+		let families = serde_wasm_bindgen::from_value::<Vec<FontCatalogFamily>>(catalog)?;
+		let message = PortfolioMessage::FontCatalogLoaded { catalog: FontCatalog(families) };
+		self.dispatch(message);
+
+		Ok(())
+	}
+
 	/// A font has been downloaded
 	#[wasm_bindgen(js_name = onFontLoad)]
-	pub fn on_font_load(&self, font_family: String, font_style: String, preview_url: String, data: Vec<u8>) -> Result<(), JsValue> {
-		let message = PortfolioMessage::FontLoaded {
-			font_family,
-			font_style,
-			preview_url,
-			data,
-		};
+	pub fn on_font_load(&self, font_family: String, font_style: String, data: Vec<u8>) -> Result<(), JsValue> {
+		let message = PortfolioMessage::FontLoaded { font_family, font_style, data };
 		self.dispatch(message);
 
 		Ok(())

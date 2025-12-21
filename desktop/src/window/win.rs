@@ -1,9 +1,10 @@
-use winit::dpi::PhysicalSize;
+use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx};
+use windows::Win32::UI::Shell::SetCurrentProcessExplicitAppUserModelID;
+use windows::core::HSTRING;
 use winit::event_loop::ActiveEventLoop;
-use winit::icon::Icon;
-use winit::platform::windows::{WinIcon, WindowAttributesWindows};
 use winit::window::{Window, WindowAttributes};
 
+use crate::consts::APP_ID;
 use crate::event::AppEventScheduler;
 
 pub(super) struct NativeWindowImpl {
@@ -11,16 +12,25 @@ pub(super) struct NativeWindowImpl {
 }
 
 impl super::NativeWindow for NativeWindowImpl {
+	fn init() {
+		let app_id = HSTRING::from(APP_ID);
+		unsafe {
+			let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok();
+			SetCurrentProcessExplicitAppUserModelID(&app_id).ok();
+		}
+	}
+
 	fn configure(attributes: WindowAttributes, _event_loop: &dyn ActiveEventLoop) -> WindowAttributes {
-		let icon = WinIcon::from_resource(1, Some(PhysicalSize::new(256, 256))).ok().map(|icon| Icon(std::sync::Arc::new(icon)));
-		let win_window = WindowAttributesWindows::default().with_taskbar_icon(icon);
-		let icon = WinIcon::from_resource(1, None).ok().map(|icon| Icon(std::sync::Arc::new(icon)));
-		attributes.with_window_icon(icon).with_platform_attributes(Box::new(win_window))
+		attributes
 	}
 
 	fn new(window: &dyn Window, _app_event_scheduler: AppEventScheduler) -> Self {
 		let native_handle = native_handle::NativeWindowHandle::new(window);
 		NativeWindowImpl { native_handle }
+	}
+
+	fn can_render(&self) -> bool {
+		self.native_handle.can_render()
 	}
 }
 

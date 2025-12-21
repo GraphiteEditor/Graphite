@@ -3,6 +3,10 @@ use std::path::PathBuf;
 
 pub(crate) use graphite_editor::messages::prelude::Message as EditorMessage;
 
+pub use graphite_editor::messages::input_mapper::utility_types::input_keyboard::{Key, ModifierKeys};
+pub use graphite_editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState as MouseState, EditorPosition as Position, MouseKeys};
+pub use graphite_editor::messages::prelude::InputPreprocessorMessage as InputMessage;
+
 pub use graphite_editor::messages::prelude::DocumentId;
 pub use graphite_editor::messages::prelude::PreferencesMessageHandler as Preferences;
 pub enum DesktopFrontendMessage {
@@ -30,6 +34,9 @@ pub enum DesktopFrontendMessage {
 		y: f64,
 		width: f64,
 		height: f64,
+	},
+	UpdateUIScale {
+		scale: f64,
 	},
 	UpdateOverlays(vello::Scene),
 	PersistenceWriteDocument {
@@ -69,6 +76,7 @@ pub enum DesktopFrontendMessage {
 
 pub enum DesktopWrapperMessage {
 	FromWeb(Box<EditorMessage>),
+	Input(InputMessage),
 	OpenFileDialogResult {
 		path: PathBuf,
 		content: Vec<u8>,

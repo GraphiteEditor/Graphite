@@ -7,7 +7,7 @@ use glam::DVec2;
 use kurbo::{BezPath, CubicBez, Line, ParamCurve, ParamCurveDeriv, PathSeg, Point, QuadBez};
 use std::ops::Sub;
 
-/// Represents different ways of calculating the centroid.
+/// Represents different geometric interpretations of calculating the centroid (center of mass).
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
 #[widget(Radio)]
 pub enum CentroidType {

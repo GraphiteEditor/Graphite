@@ -1,17 +1,13 @@
 use rfd::AsyncFileDialog;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::mpsc::Receiver;
-use std::sync::mpsc::Sender;
-use std::sync::mpsc::SyncSender;
+use std::sync::mpsc::{Receiver, Sender, SyncSender};
 use std::thread;
-use std::time::Duration;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use winit::application::ApplicationHandler;
 use winit::dpi::PhysicalSize;
-use winit::event::WindowEvent;
-use winit::event_loop::ActiveEventLoop;
-use winit::event_loop::ControlFlow;
+use winit::event::{ButtonSource, ElementState, MouseButton, WindowEvent};
+use winit::event_loop::{ActiveEventLoop, ControlFlow};
 use winit::window::WindowId;
 
 use crate::cef;
@@ -20,7 +16,7 @@ use crate::event::{AppEvent, AppEventScheduler};
 use crate::persist::PersistentData;
 use crate::render::{RenderError, RenderState};
 use crate::window::Window;
-use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, Platform};
+use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, InputMessage, MouseKeys, MouseState, Platform};
 use crate::wrapper::{DesktopWrapper, NodeGraphExecutionResult, WgpuContext, serialize_frontend_messages};
 
 pub(crate) struct App {
@@ -31,6 +27,7 @@ pub(crate) struct App {
 	window_size: PhysicalSize<u32>,
 	window_maximized: bool,
 	window_fullscreen: bool,
+	ui_scale: f64,
 	app_event_receiver: Receiver<AppEvent>,
 	app_event_scheduler: AppEventScheduler,
 	desktop_wrapper: DesktopWrapper,
@@ -87,6 +84,7 @@ impl App {
 			window_size: PhysicalSize { width: 0, height: 0 },
 			window_maximized: false,
 			window_fullscreen: false,
+			ui_scale: 1.,
 			app_event_receiver,
 			app_event_scheduler,
 			desktop_wrapper: DesktopWrapper::new(),
@@ -123,7 +121,7 @@ impl App {
 		}
 
 		let size = window.surface_size();
-		let scale = window.scale_factor();
+		let scale = window.scale_factor() * self.ui_scale;
 		let is_new_size = size != self.window_size;
 		let is_new_scale = scale != self.window_scale;
 
@@ -231,6 +229,10 @@ impl App {
 					let viewport_scale_y = if height != 0.0 { window_size.height as f64 / height } else { 1.0 };
 					render_state.set_viewport_scale([viewport_scale_x as f32, viewport_scale_y as f32]);
 				}
+			}
+			DesktopFrontendMessage::UpdateUIScale { scale } => {
+				self.ui_scale = scale;
+				self.resize();
 			}
 			DesktopFrontendMessage::UpdateOverlays(scene) => {
 				if let Some(render_state) = &mut self.render_state {
@@ -454,6 +456,10 @@ impl ApplicationHandler for App {
 		let render_state = RenderState::new(self.window.as_ref().unwrap(), self.wgpu_context.clone());
 		self.render_state = Some(render_state);
 
+		if let Some(window) = &self.window.as_ref() {
+			window.show();
+		}
+
 		self.resize();
 
 		self.desktop_wrapper.init(self.wgpu_context.clone());
@@ -489,6 +495,10 @@ impl ApplicationHandler for App {
 
 				let Some(render_state) = &mut self.render_state else { return };
 				if let Some(window) = &self.window {
+					if !window.can_render() {
+						return;
+					}
+
 					match render_state.render(window) {
 						Ok(_) => {}
 						Err(RenderError::OutdatedUITextureError) => {
@@ -518,6 +528,32 @@ impl ApplicationHandler for App {
 							return;
 						}
 					};
+				}
+			}
+
+			// Forward and Back buttons are not supported by CEF and thus need to be directly forwarded the editor
+			WindowEvent::PointerButton {
+				button: ButtonSource::Mouse(button),
+				state: ElementState::Pressed,
+				..
+			} => {
+				let mouse_keys = match button {
+					MouseButton::Back => Some(MouseKeys::BACK),
+					MouseButton::Forward => Some(MouseKeys::FORWARD),
+					_ => None,
+				};
+				if let Some(mouse_keys) = mouse_keys {
+					let message = DesktopWrapperMessage::Input(InputMessage::PointerDown {
+						editor_mouse_state: MouseState { mouse_keys, ..Default::default() },
+						modifier_keys: Default::default(),
+					});
+					self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
+
+					let message = DesktopWrapperMessage::Input(InputMessage::PointerUp {
+						editor_mouse_state: Default::default(),
+						modifier_keys: Default::default(),
+					});
+					self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
 				}
 			}
 			_ => {}
