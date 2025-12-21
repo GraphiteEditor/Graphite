@@ -79,21 +79,27 @@
 		.flatMap((styleAndValue) => (styleAndValue[1] !== undefined ? [`${styleAndValue[0]}: ${styleAndValue[1]};`] : []))
 		.join(" ");
 
-	function getUsableWindowBounds(): DOMRect {
+	function getUsableWindowBounds(excludeDetailsPanel: boolean = true): DOMRect {
 		const windowBounds = document.documentElement.getBoundingClientRect();
 
-		// Check for the details panel (right sidebar)
-		const detailsPanel = document.querySelector('[data-subdivision-name="details"]');
-		if (detailsPanel) {
-			const detailsBounds = detailsPanel.getBoundingClientRect();
-			// If details panel is visible and on the right side, reduce usable width
-			if (detailsBounds.width > 0 && detailsBounds.left > windowBounds.left) {
-				return new DOMRect(
-					windowBounds.left,
-					windowBounds.top,
-					detailsBounds.left - windowBounds.left, // Usable width ends where details panel begins
-					windowBounds.height,
-				);
+		// Only exclude the details panel if requested AND the menu is not inside it
+		if (excludeDetailsPanel) {
+			const detailsPanel = document.querySelector('[data-subdivision-name="details"]');
+
+			// Check if this floating menu's spawner is inside the details panel
+			const isInsideDetailsPanel = self?.closest('[data-subdivision-name="details"]');
+
+			if (detailsPanel && !isInsideDetailsPanel) {
+				const detailsBounds = detailsPanel.getBoundingClientRect();
+				// If details panel is visible and on the right side, reduce usable width
+				if (detailsBounds.width > 0 && detailsBounds.left > windowBounds.left) {
+					return new DOMRect(
+						windowBounds.left,
+						windowBounds.top,
+						detailsBounds.left - windowBounds.left, // Usable width ends where details panel begins
+						windowBounds.height,
+					);
+				}
 			}
 		}
 
