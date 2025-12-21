@@ -31,3 +31,4 @@ tinyvec = { workspace = true }
 
 # Optional workspace dependencies
 serde = { workspace = true, optional = true }
+fixedbitset = "0.5.7"
