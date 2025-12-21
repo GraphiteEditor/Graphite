@@ -3,7 +3,7 @@ use crate::consts::HIDE_HANDLE_DISTANCE;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::tool::common_functionality::shape_editor::{SelectedLayerState, ShapeState};
-use crate::messages::tool::tool_messages::tool_prelude::{DocumentMessageHandler, PreferencesMessageHandler};
+use crate::messages::tool::tool_messages::tool_prelude::DocumentMessageHandler;
 use glam::{DAffine2, DVec2};
 use graphene_std::subpath::{Bezier, BezierHandles};
 use graphene_std::text::{Font, FontCache, TextAlign, TextContext, TypesettingConfig};
@@ -200,7 +200,7 @@ pub fn path_overlays(document: &DocumentMessageHandler, draw_handles: DrawHandle
 	}
 }
 
-pub fn path_endpoint_overlays(document: &DocumentMessageHandler, shape_editor: &mut ShapeState, overlay_context: &mut OverlayContext, preferences: &PreferencesMessageHandler) {
+pub fn path_endpoint_overlays(document: &DocumentMessageHandler, shape_editor: &mut ShapeState, overlay_context: &mut OverlayContext) {
 	if !overlay_context.visibility_settings.anchors() {
 		return;
 	}
@@ -213,7 +213,7 @@ pub fn path_endpoint_overlays(document: &DocumentMessageHandler, shape_editor: &
 		let selected = shape_editor.selected_shape_state.get(&layer);
 		let is_selected = |selected: Option<&SelectedLayerState>, point: ManipulatorPointId| selected.is_some_and(|selected| selected.is_point_selected(point));
 
-		for point in vector.extendable_points(preferences.vector_meshes) {
+		for point in vector.extendable_points() {
 			let Some(position) = vector.point_domain.position_from_id(point) else { continue };
 			let position = transform.transform_point2(position);
 			overlay_context.manipulator_anchor(position, is_selected(selected, ManipulatorPointId::Anchor(point)), None);
