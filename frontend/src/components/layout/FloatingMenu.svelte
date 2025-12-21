@@ -112,9 +112,30 @@
 			await tick();
 
 			// Add scroll listener for ALL menu types in scrollable containers
+			// Add scroll listener for ALL menu types in scrollable containers
 			const scrollableParent = self?.closest("[data-scrollable-x], [data-scrollable-y]");
 			if (scrollableParent) {
-				scrollableParent.addEventListener("scroll", positionAndStyleFloatingMenu);
+				const scrollHandler = () => {
+					// Close menu if button is no longer visible in viewport
+					if (self) {
+						const buttonBounds = self.getBoundingClientRect();
+						const windowBounds = document.documentElement.getBoundingClientRect();
+
+						// Check if button is off-screen
+						const isOffScreen =
+							buttonBounds.right < windowBounds.left || buttonBounds.left > windowBounds.right || buttonBounds.bottom < windowBounds.top || buttonBounds.top > windowBounds.bottom;
+
+						if (isOffScreen) {
+							dispatch("open", false);
+							return;
+						}
+					}
+
+					// Otherwise, update position
+					positionAndStyleFloatingMenu();
+				};
+
+				scrollableParent.addEventListener("scroll", scrollHandler);
 			}
 
 			// Start a new observation of the now-open floating menu
@@ -193,19 +214,16 @@
 		const windowBounds = document.documentElement.getBoundingClientRect();
 		floatingMenuBounds = self.getBoundingClientRect();
 		const floatingMenuContainerBounds = floatingMenuContainer.getBoundingClientRect();
-		floatingMenuContentBounds = floatingMenuContentDiv.getBoundingClientRect();
-
-		const overflowingLeft = floatingMenuContentBounds.left - windowEdgeMargin <= windowBounds.left;
-		const overflowingRight = floatingMenuContentBounds.right + windowEdgeMargin >= windowBounds.right;
-		const overflowingTop = floatingMenuContentBounds.top - windowEdgeMargin <= windowBounds.top;
-		const overflowingBottom = floatingMenuContentBounds.bottom + windowEdgeMargin >= windowBounds.bottom;
 
 		// TODO: Make this work for all types. This is currently limited to tooltips because they're inherently small and transient.
-		// TODO: But on popovers and dropdowns, it's a bit harder to do this right. First we check if it's overflowing and flip the direction to avoid the overflow.
-		// TODO: But once it's flipped, if the position moves and the menu would no longer be overflowing, we're still flipped and thus unable to automatically notice the need to flip back.
-		// TODO: So as a result, once flipped, it stays flipped forever even if the menu spawner element is moved back away from the edge of the window.
 		if (type === "Tooltip") {
 			// Flip direction if overflowing the edge of the window
+			const floatingMenuContentBounds = floatingMenuContentDiv.getBoundingClientRect();
+			const overflowingTop = floatingMenuContentBounds.top - windowEdgeMargin <= windowBounds.top;
+			const overflowingBottom = floatingMenuContentBounds.bottom + windowEdgeMargin >= windowBounds.bottom;
+			const overflowingLeft = floatingMenuContentBounds.left - windowEdgeMargin <= windowBounds.left;
+			const overflowingRight = floatingMenuContentBounds.right + windowEdgeMargin >= windowBounds.right;
+
 			if (direction === "Top" && overflowingTop) direction = "Bottom";
 			else if (direction === "Bottom" && overflowingBottom) direction = "Top";
 			else if (direction === "Left" && overflowingLeft) direction = "Right";
@@ -230,12 +248,6 @@
 				// Keep using fixed positioning but update the coordinates dynamically
 				floatingMenuContentDiv.style.position = "fixed";
 
-				// Clear all position properties first
-				floatingMenuContentDiv.style.top = "";
-				floatingMenuContentDiv.style.bottom = "";
-				floatingMenuContentDiv.style.left = "";
-				floatingMenuContentDiv.style.right = "";
-
 				// Calculate center position of the button
 				const buttonCenterX = floatingMenuBounds.x + floatingMenuBounds.width / 2;
 				const buttonCenterY = floatingMenuBounds.y + floatingMenuBounds.height / 2;
@@ -244,19 +256,54 @@
 				if (direction === "Bottom") {
 					floatingMenuContentDiv.style.top = `${tailOffset + floatingMenuBounds.y}px`;
 					floatingMenuContentDiv.style.left = `${buttonCenterX}px`;
+					floatingMenuContentDiv.style.bottom = "";
+					floatingMenuContentDiv.style.right = "";
 					floatingMenuContentDiv.style.transform = "translateX(-50%)";
 				} else if (direction === "Top") {
 					floatingMenuContentDiv.style.bottom = `${tailOffset + (windowBounds.height - floatingMenuBounds.y)}px`;
 					floatingMenuContentDiv.style.left = `${buttonCenterX}px`;
+					floatingMenuContentDiv.style.top = "";
+					floatingMenuContentDiv.style.right = "";
 					floatingMenuContentDiv.style.transform = "translateX(-50%)";
 				} else if (direction === "Right") {
 					floatingMenuContentDiv.style.left = `${tailOffset + floatingMenuBounds.x}px`;
 					floatingMenuContentDiv.style.top = `${buttonCenterY}px`;
+					floatingMenuContentDiv.style.bottom = "";
+					floatingMenuContentDiv.style.right = "";
 					floatingMenuContentDiv.style.transform = "translateY(-50%)";
 				} else if (direction === "Left") {
 					floatingMenuContentDiv.style.right = `${tailOffset + (windowBounds.width - floatingMenuBounds.x)}px`;
 					floatingMenuContentDiv.style.top = `${buttonCenterY}px`;
+					floatingMenuContentDiv.style.bottom = "";
+					floatingMenuContentDiv.style.left = "";
 					floatingMenuContentDiv.style.transform = "translateY(-50%)";
+				}
+
+				// NOW recalculate bounds after positioning to check for overflow
+				floatingMenuContentBounds = floatingMenuContentDiv.getBoundingClientRect();
+
+				const overflowingLeft = floatingMenuContentBounds.left - windowEdgeMargin <= windowBounds.left;
+				const overflowingRight = floatingMenuContentBounds.right + windowEdgeMargin >= windowBounds.right;
+				const overflowingTop = floatingMenuContentBounds.top - windowEdgeMargin <= windowBounds.top;
+				const overflowingBottom = floatingMenuContentBounds.bottom + windowEdgeMargin >= windowBounds.bottom;
+
+				// Handle overflow by adjusting position
+				if (direction === "Bottom" || direction === "Top") {
+					if (overflowingLeft) {
+						const overflow = windowEdgeMargin - floatingMenuContentBounds.left;
+						floatingMenuContentDiv.style.left = `${buttonCenterX + overflow}px`;
+					} else if (overflowingRight) {
+						const overflow = floatingMenuContentBounds.right + windowEdgeMargin - windowBounds.right;
+						floatingMenuContentDiv.style.left = `${buttonCenterX - overflow}px`;
+					}
+				} else if (direction === "Left" || direction === "Right") {
+					if (overflowingTop) {
+						const overflow = windowEdgeMargin - floatingMenuContentBounds.top;
+						floatingMenuContentDiv.style.top = `${buttonCenterY + overflow}px`;
+					} else if (overflowingBottom) {
+						const overflow = floatingMenuContentBounds.bottom + windowEdgeMargin - windowBounds.bottom;
+						floatingMenuContentDiv.style.top = `${buttonCenterY - overflow}px`;
+					}
 				}
 			} else {
 				// Use fixed positioning for non-scrollable contexts
@@ -293,57 +340,62 @@
 			}
 		}
 
-		type Edge = "Top" | "Bottom" | "Left" | "Right";
-		let zeroedBorderVertical: Edge | undefined;
-		let zeroedBorderHorizontal: Edge | undefined;
+		// Handle overflow for non-scrollable contexts
+		if (!isInScrollableContainer) {
+			floatingMenuContentBounds = floatingMenuContentDiv.getBoundingClientRect();
 
-		const skipOverflowHandling = isInScrollableContainer;
+			const overflowingLeft = floatingMenuContentBounds.left - windowEdgeMargin <= windowBounds.left;
+			const overflowingRight = floatingMenuContentBounds.right + windowEdgeMargin >= windowBounds.right;
+			const overflowingTop = floatingMenuContentBounds.top - windowEdgeMargin <= windowBounds.top;
+			const overflowingBottom = floatingMenuContentBounds.bottom + windowEdgeMargin >= windowBounds.bottom;
 
-		if (direction === "Top" || direction === "Bottom") {
-			zeroedBorderVertical = direction === "Top" ? "Bottom" : "Top";
+			type Edge = "Top" | "Bottom" | "Left" | "Right";
+			let zeroedBorderVertical: Edge | undefined;
+			let zeroedBorderHorizontal: Edge | undefined;
 
-			// We use `.style` on a div (instead of a style DOM attribute binding) because the binding causes the `afterUpdate()` hook to call the function we're in recursively forever
-			if (overflowingLeft && !skipOverflowHandling) {
-				floatingMenuContentDiv.style.left = `${windowEdgeMargin}px`;
-				if (windowBounds.left + floatingMenuContainerBounds.left === 12) zeroedBorderHorizontal = "Left";
+			if (direction === "Top" || direction === "Bottom") {
+				zeroedBorderVertical = direction === "Top" ? "Bottom" : "Top";
+
+				if (overflowingLeft) {
+					floatingMenuContentDiv.style.left = `${windowEdgeMargin}px`;
+					if (windowBounds.left + floatingMenuContainerBounds.left === 12) zeroedBorderHorizontal = "Left";
+				}
+				if (overflowingRight) {
+					floatingMenuContentDiv.style.right = `${windowEdgeMargin}px`;
+					if (windowBounds.right - floatingMenuContainerBounds.right === 12) zeroedBorderHorizontal = "Right";
+				}
 			}
-			if (overflowingRight && !skipOverflowHandling) {
-				floatingMenuContentDiv.style.right = `${windowEdgeMargin}px`;
-				if (windowBounds.right - floatingMenuContainerBounds.right === 12) zeroedBorderHorizontal = "Right";
-			}
-		}
-		if (direction === "Left" || direction === "Right") {
-			zeroedBorderHorizontal = direction === "Left" ? "Right" : "Left";
+			if (direction === "Left" || direction === "Right") {
+				zeroedBorderHorizontal = direction === "Left" ? "Right" : "Left";
 
-			// We use `.style` on a div (instead of a style DOM attribute binding) because the binding causes the `afterUpdate()` hook to call the function we're in recursively forever
-			if (overflowingTop && !skipOverflowHandling) {
-				floatingMenuContentDiv.style.top = `${windowEdgeMargin}px`;
-				if (windowBounds.top + floatingMenuContainerBounds.top === 12) zeroedBorderVertical = "Top";
+				if (overflowingTop) {
+					floatingMenuContentDiv.style.top = `${windowEdgeMargin}px`;
+					if (windowBounds.top + floatingMenuContainerBounds.top === 12) zeroedBorderVertical = "Top";
+				}
+				if (overflowingBottom) {
+					floatingMenuContentDiv.style.bottom = `${windowEdgeMargin}px`;
+					if (windowBounds.bottom - floatingMenuContainerBounds.bottom === 12) zeroedBorderVertical = "Bottom";
+				}
 			}
-			if (overflowingBottom && !skipOverflowHandling) {
-				floatingMenuContentDiv.style.bottom = `${windowEdgeMargin}px`;
-				if (windowBounds.bottom - floatingMenuContainerBounds.bottom === 12) zeroedBorderVertical = "Bottom";
-			}
-		}
 
-		// Remove the rounded corner from the content where the tail perfectly meets the corner
-		if (displayTail && windowEdgeMargin === 6 && zeroedBorderVertical && zeroedBorderHorizontal) {
-			// We use `.style` on a div (instead of a style DOM attribute binding) because the binding causes the `afterUpdate()` hook to call the function we're in recursively forever
-			switch (`${zeroedBorderVertical}${zeroedBorderHorizontal}`) {
-				case "TopLeft":
-					floatingMenuContentDiv.style.borderTopLeftRadius = "0";
-					break;
-				case "TopRight":
-					floatingMenuContentDiv.style.borderTopRightRadius = "0";
-					break;
-				case "BottomLeft":
-					floatingMenuContentDiv.style.borderBottomLeftRadius = "0";
-					break;
-				case "BottomRight":
-					floatingMenuContentDiv.style.borderBottomRightRadius = "0";
-					break;
-				default:
-					break;
+			// Remove the rounded corner from the content where the tail perfectly meets the corner
+			if (displayTail && windowEdgeMargin === 6 && zeroedBorderVertical && zeroedBorderHorizontal) {
+				switch (`${zeroedBorderVertical}${zeroedBorderHorizontal}`) {
+					case "TopLeft":
+						floatingMenuContentDiv.style.borderTopLeftRadius = "0";
+						break;
+					case "TopRight":
+						floatingMenuContentDiv.style.borderTopRightRadius = "0";
+						break;
+					case "BottomLeft":
+						floatingMenuContentDiv.style.borderBottomLeftRadius = "0";
+						break;
+					case "BottomRight":
+						floatingMenuContentDiv.style.borderBottomRightRadius = "0";
+						break;
+					default:
+						break;
+				}
 			}
 		}
 	}
