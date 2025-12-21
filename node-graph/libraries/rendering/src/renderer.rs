@@ -22,6 +22,7 @@ use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
 use graphic_types::vector_types::vector::style::{Fill, PaintOrder, RenderMode, Stroke, StrokeAlign};
 use graphic_types::{Artboard, Graphic};
 use kurbo::Affine;
+use kurbo::Shape;
 use num_traits::Zero;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
@@ -729,10 +730,10 @@ impl Render for Table<Vector> {
 			let can_draw_aligned_stroke = path_is_closed && vector.style.stroke().is_some_and(|stroke| stroke.has_renderable_stroke() && stroke.align.is_not_centered());
 			let can_use_paint_order = !(row.element.style.fill().is_none() || !row.element.style.fill().is_opaque() || mask_type == MaskType::Clip);
 
-			let needs_separate_fill = can_draw_aligned_stroke && !can_use_paint_order;
+			let needs_separate_alignment_fill = can_draw_aligned_stroke && !can_use_paint_order;
 			let wants_stroke_below = vector.style.stroke().map(|s| s.paint_order) == Some(PaintOrder::StrokeBelow);
 
-			if needs_separate_fill && !wants_stroke_below {
+			if needs_separate_alignment_fill && !wants_stroke_below {
 				render.leaf_tag("path", |attributes| {
 					attributes.push("d", path.clone());
 					let matrix = format_transform_matrix(element_transform);
@@ -753,7 +754,7 @@ impl Render for Table<Vector> {
 				});
 			}
 
-			let push_id = needs_separate_fill.then_some({
+			let push_id = needs_separate_alignment_fill.then_some({
 				let id = format!("alignment-{}", generate_uuid());
 
 				let mut element = row.element.clone();
@@ -769,6 +770,32 @@ impl Render for Table<Vector> {
 
 				(id, mask_type, vector_row)
 			});
+
+			if vector.is_branching() {
+				for mut face_path in vector.construct_faces().filter(|face| !(face.area() < 0.0)) {
+					face_path.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
+
+					let face_d = face_path.to_svg();
+					render.leaf_tag("path", |attributes| {
+						attributes.push("d", face_d.clone());
+						let matrix = format_transform_matrix(element_transform);
+						if !matrix.is_empty() {
+							attributes.push("transform", matrix);
+						}
+						let mut style = row.element.style.clone();
+						style.clear_stroke();
+						let fill_only = style.render(
+							&mut attributes.0.svg_defs,
+							element_transform,
+							applied_stroke_transform,
+							bounds_matrix,
+							transformed_bounds_matrix,
+							render_params,
+						);
+						attributes.push_val(fill_only);
+					});
+				}
+			}
 
 			render.leaf_tag("path", |attributes| {
 				attributes.push("d", path.clone());
@@ -807,7 +834,7 @@ impl Render for Table<Vector> {
 				render_params.override_paint_order = can_draw_aligned_stroke && can_use_paint_order;
 
 				let mut style = row.element.style.clone();
-				if needs_separate_fill {
+				if needs_separate_alignment_fill || vector.is_branching() {
 					style.clear_fill();
 				}
 
@@ -830,7 +857,7 @@ impl Render for Table<Vector> {
 			});
 
 			// When splitting passes and stroke is below, draw the fill after the stroke.
-			if needs_separate_fill && wants_stroke_below {
+			if needs_separate_alignment_fill && wants_stroke_below {
 				render.leaf_tag("path", |attributes| {
 					attributes.push("d", path);
 					let matrix = format_transform_matrix(element_transform);
@@ -916,10 +943,10 @@ impl Render for Table<Vector> {
 			let wants_stroke_below = row.element.style.stroke().is_some_and(|s| s.paint_order == vector::style::PaintOrder::StrokeBelow);
 
 			// Closures to avoid duplicated fill/stroke drawing logic
-			let do_fill = |scene: &mut Scene| match row.element.style.fill() {
+			let do_fill_path = |scene: &mut Scene, path: &kurbo::BezPath| match row.element.style.fill() {
 				Fill::Solid(color) => {
 					let fill = peniko::Brush::Solid(peniko::Color::new([color.r(), color.g(), color.b(), color.a()]));
-					scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &fill, None, &path);
+					scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &fill, None, path);
 				}
 				Fill::Gradient(gradient) => {
 					let mut stops = peniko::ColorStops::new();
@@ -971,9 +998,26 @@ impl Render for Table<Vector> {
 						Default::default()
 					};
 					let brush_transform = kurbo::Affine::new((inverse_element_transform * parent_transform).to_cols_array());
-					scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &fill, Some(brush_transform), &path);
+					scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(element_transform.to_cols_array()), &fill, Some(brush_transform), path);
 				}
 				Fill::None => {}
+			};
+
+			let do_fill = |scene: &mut Scene| {
+				if row.element.is_branching() {
+					// For branching paths, fill each face separately
+					for mut face_path in row.element.construct_faces().filter(|face| !(face.area() < 0.0)) {
+						face_path.apply_affine(Affine::new(applied_stroke_transform.to_cols_array()));
+						let mut kurbo_path = kurbo::BezPath::new();
+						for element in face_path {
+							kurbo_path.push(element);
+						}
+						do_fill_path(scene, &kurbo_path);
+					}
+				} else {
+					// Simple fill of the entire path
+					do_fill_path(scene, &path);
+				}
 			};
 
 			let do_stroke = |scene: &mut Scene, width_scale: f64| {
@@ -1090,7 +1134,7 @@ impl Render for Table<Vector> {
 							false => [Op::Fill, Op::Stroke], // Default
 						};
 
-						for operation in order {
+						for operation in &order {
 							match operation {
 								Op::Fill => do_fill(scene),
 								Op::Stroke => do_stroke(scene, 1.),
