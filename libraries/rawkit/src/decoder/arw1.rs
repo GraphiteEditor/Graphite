@@ -38,7 +38,7 @@ fn read_and_huffman_decode_file<R: Read + Seek, E: Endianness>(huff: &[u16], fil
 	let huffman_table = &huff[1..];
 
 	// `number_of_bits` will be no more than 32, so the result is put into a u32
-	let bits: u32 = file.read(number_of_bits).unwrap();
+	let bits: u32 = file.read_var(number_of_bits).unwrap();
 	let bits = bits as usize;
 
 	let bits_to_seek_from = huffman_table[bits].to_le_bytes()[1] as i64 - number_of_bits as i64;
@@ -49,7 +49,7 @@ fn read_and_huffman_decode_file<R: Read + Seek, E: Endianness>(huff: &[u16], fil
 
 fn read_n_bits_from_file<R: Read + Seek, E: Endianness>(number_of_bits: u32, file: &mut BitReader<R, E>) -> u32 {
 	// `number_of_bits` will be no more than 32, so the result is put into a u32
-	file.read(number_of_bits).unwrap()
+	file.read_var(number_of_bits).unwrap()
 }
 
 /// ljpeg is a lossless variant of JPEG which gets used for decoding the embedded (thumbnail) preview images in raw files
