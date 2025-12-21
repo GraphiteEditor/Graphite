@@ -3800,8 +3800,8 @@ impl NodeNetworkInterface {
 			return;
 		};
 
-		// When changing a NodeInput::Node to a NodeInput::Node, the input should first be disconnected to ensure proper side effects
-		if (matches!(previous_input, NodeInput::Node { .. }) && matches!(new_input, NodeInput::Node { .. })) {
+		// When changing a NodeInput::Node to another input, the input should first be disconnected to ensure proper side effects
+		if matches!(previous_input, NodeInput::Node { .. }) {
 			self.disconnect_input(input_connector, network_path);
 			self.set_input(input_connector, new_input, network_path);
 			return;
@@ -3856,7 +3856,7 @@ impl NodeNetworkInterface {
 			return;
 		}
 
-		// It is necessary to ensure the grpah is acyclic before calling `self.position` as it sometimes crashes with cyclic graphs #3227
+		// It is necessary to ensure the graph is acyclic before calling `self.position` as it sometimes crashes with cyclic graphs #3227
 		let previous_metadata = match &previous_input {
 			NodeInput::Node { node_id, .. } => self.position(node_id, network_path).map(|position| (*node_id, position)),
 			_ => None,
