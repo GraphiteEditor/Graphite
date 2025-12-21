@@ -236,7 +236,6 @@ impl Fsm for FreehandToolFsmState {
 			global_tool_data,
 			input,
 			shape_editor,
-			preferences,
 			viewport,
 			..
 		} = tool_action_data;
@@ -244,7 +243,7 @@ impl Fsm for FreehandToolFsmState {
 		let ToolMessage::Freehand(event) = event else { return self };
 		match (self, event) {
 			(_, FreehandToolMessage::Overlays { context: mut overlay_context }) => {
-				path_endpoint_overlays(document, shape_editor, &mut overlay_context, tool_action_data.preferences);
+				path_endpoint_overlays(document, shape_editor, &mut overlay_context);
 
 				self
 			}
@@ -258,7 +257,7 @@ impl Fsm for FreehandToolFsmState {
 				// Extend an endpoint of the selected path
 				let selected_nodes = document.network_interface.selected_nodes();
 				let tolerance = crate::consts::SNAP_POINT_TOLERANCE;
-				if let Some((layer, point, position)) = should_extend(document, input.mouse.position, tolerance, selected_nodes.selected_layers(document.metadata()), preferences) {
+				if let Some((layer, point, position)) = should_extend(document, input.mouse.position, tolerance, selected_nodes.selected_layers(document.metadata())) {
 					tool_data.layer = Some(layer);
 					tool_data.end_point = Some((position, point));
 
@@ -519,7 +518,7 @@ mod test_freehand {
 			initial_segment_count
 		);
 
-		let extendable_points = initial_vector.extendable_points(false).collect::<Vec<_>>();
+		let extendable_points = initial_vector.extendable_points().collect::<Vec<_>>();
 		assert!(!extendable_points.is_empty(), "No extendable points found in the path");
 
 		let endpoint_id = extendable_points[0];

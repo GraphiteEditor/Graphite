@@ -823,7 +823,7 @@ impl PathToolData {
 						.filter(|handle| handle.length(&vector) < 1e-6)
 						.map(|handle| handle.to_manipulator_point())
 						.collect::<Vec<_>>();
-					let endpoint = vector.extendable_points(false).any(|anchor| point == anchor);
+					let endpoint = vector.extendable_points_no_vector_meshes().any(|anchor| point == anchor);
 
 					if drag_zero_handle && (handles.len() == 1 && !endpoint) {
 						shape_editor.deselect_all_points();
@@ -2662,7 +2662,7 @@ impl Fsm for PathToolFsmState {
 			}
 			(_, PathToolMessage::ClosePath) => {
 				responses.add(DocumentMessage::AddTransaction);
-				shape_editor.close_selected_path(document, responses, tool_action_data.preferences.vector_meshes);
+				shape_editor.close_selected_path(document, responses);
 				responses.add(DocumentMessage::EndTransaction);
 
 				responses.add(OverlaysMessage::Draw);

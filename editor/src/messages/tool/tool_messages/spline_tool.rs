@@ -294,7 +294,6 @@ impl Fsm for SplineToolFsmState {
 			global_tool_data,
 			input,
 			shape_editor,
-			preferences,
 			viewport,
 			..
 		} = tool_action_data;
@@ -303,7 +302,7 @@ impl Fsm for SplineToolFsmState {
 		match (self, event) {
 			(_, SplineToolMessage::CanvasTransformed) => self,
 			(_, SplineToolMessage::Overlays { context: mut overlay_context }) => {
-				path_endpoint_overlays(document, shape_editor, &mut overlay_context, preferences);
+				path_endpoint_overlays(document, shape_editor, &mut overlay_context);
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input, viewport), &mut overlay_context);
 				self
 			}
@@ -351,7 +350,7 @@ impl Fsm for SplineToolFsmState {
 					.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]));
 
 				// Extend an endpoint of the selected path
-				if let Some((layer, point, position)) = should_extend(document, viewport_vec, SNAP_POINT_TOLERANCE, layers, preferences) {
+				if let Some((layer, point, position)) = should_extend(document, viewport_vec, SNAP_POINT_TOLERANCE, layers) {
 					if find_spline(document, layer).is_some() {
 						// If the point is the part of Spline then we extend it.
 						tool_data.current_layer = Some(layer);
@@ -417,7 +416,7 @@ impl Fsm for SplineToolFsmState {
 					extend_spline(tool_data, false, responses);
 					tool_data.preview_point = preview_point;
 
-					if try_merging_lastest_endpoint(document, tool_data, preferences).is_some() {
+					if try_merging_lastest_endpoint(document, tool_data).is_some() {
 						responses.add(SplineToolMessage::Confirm);
 					}
 				}
@@ -427,7 +426,7 @@ impl Fsm for SplineToolFsmState {
 			(SplineToolFsmState::Drawing, SplineToolMessage::PointerMove) => {
 				let Some(layer) = tool_data.current_layer else { return SplineToolFsmState::Ready };
 				let ignore = |cp: PointId| tool_data.preview_point.is_some_and(|pp| pp == cp) || tool_data.points.last().is_some_and(|(ep, _)| *ep == cp);
-				let join_point = closest_point(document, input.mouse.position, PATH_JOIN_THRESHOLD, vec![layer].into_iter(), ignore, preferences);
+				let join_point = closest_point(document, input.mouse.position, PATH_JOIN_THRESHOLD, vec![layer].into_iter(), ignore);
 
 				// Endpoints snapping
 				if let Some((_, _, point)) = join_point {
@@ -511,7 +510,7 @@ impl Fsm for SplineToolFsmState {
 	}
 }
 
-fn try_merging_lastest_endpoint(document: &DocumentMessageHandler, tool_data: &mut SplineToolData, preferences: &PreferencesMessageHandler) -> Option<()> {
+fn try_merging_lastest_endpoint(document: &DocumentMessageHandler, tool_data: &mut SplineToolData) -> Option<()> {
 	if tool_data.points.len() < 2 {
 		return None;
 	};
@@ -526,7 +525,7 @@ fn try_merging_lastest_endpoint(document: &DocumentMessageHandler, tool_data: &m
 	let exclude = |p: PointId| preview_point.is_some_and(|pp| pp == p) || *last_endpoint == p;
 	let position = document.metadata().transform_to_viewport(current_layer).transform_point2(*last_endpoint_position);
 
-	let (layer, endpoint, _) = closest_point(document, position, PATH_JOIN_THRESHOLD, layers, exclude, preferences)?;
+	let (layer, endpoint, _) = closest_point(document, position, PATH_JOIN_THRESHOLD, layers, exclude)?;
 	tool_data.merge_layers.insert(layer);
 	tool_data.merge_endpoints.push((EndpointPosition::End, endpoint));
 
@@ -647,7 +646,7 @@ mod test_spline_tool {
 		let layer_to_viewport = document.metadata().transform_to_viewport(spline_layer);
 
 		let endpoints: Vec<(PointId, DVec2)> = first_vector
-			.extendable_points(false)
+			.extendable_points_no_vector_meshes()
 			.filter_map(|point_id| first_vector.point_domain.position_from_id(point_id).map(|pos| (point_id, layer_to_viewport.transform_point2(pos))))
 			.collect();
 

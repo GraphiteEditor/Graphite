@@ -257,29 +257,6 @@ impl PreferencesDialogMessageHandler {
 			];
 
 			let checkbox_id = CheckboxId::new();
-			let vector_mesh_description = "
-			Allow the Pen tool to produce branching geometry, where more than two segments may be connected to one anchor point.\n\
-			\n\
-			Currently, vector meshes do not properly render strokes (branching joins) and fills (multiple regions).
-			"
-			.trim();
-			let vector_meshes = vec![
-				Separator::new(SeparatorType::Unrelated).widget_instance(),
-				Separator::new(SeparatorType::Unrelated).widget_instance(),
-				CheckboxInput::new(preferences.vector_meshes)
-					.tooltip_label("Vector Meshes")
-					.tooltip_description(vector_mesh_description)
-					.on_update(|checkbox_input: &CheckboxInput| PreferencesMessage::VectorMeshes { enabled: checkbox_input.checked }.into())
-					.for_label(checkbox_id)
-					.widget_instance(),
-				TextLabel::new("Vector Meshes")
-					.tooltip_label("Vector Meshes")
-					.tooltip_description(vector_mesh_description)
-					.for_checkbox(checkbox_id)
-					.widget_instance(),
-			];
-
-			let checkbox_id = CheckboxId::new();
 			let brush_tool_description = "
 			Enable the Brush tool to support basic raster-based layer painting.\n\
 			\n\
@@ -304,7 +281,7 @@ impl PreferencesDialogMessageHandler {
 					.widget_instance(),
 			];
 
-			rows.extend_from_slice(&[header, node_graph_wires_label, graph_wire_style, use_vello, vector_meshes, brush_tool]);
+			rows.extend_from_slice(&[header, node_graph_wires_label, graph_wire_style, use_vello, brush_tool]);
 		}
 
 		Layout(rows.into_iter().map(|r| LayoutGroup::Row { widgets: r }).collect())
