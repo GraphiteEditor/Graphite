@@ -79,6 +79,27 @@
 		.flatMap((styleAndValue) => (styleAndValue[1] !== undefined ? [`${styleAndValue[0]}: ${styleAndValue[1]};`] : []))
 		.join(" ");
 
+	function getUsableWindowBounds(): DOMRect {
+		const windowBounds = document.documentElement.getBoundingClientRect();
+
+		// Check for the details panel (right sidebar)
+		const detailsPanel = document.querySelector('[data-subdivision-name="details"]');
+		if (detailsPanel) {
+			const detailsBounds = detailsPanel.getBoundingClientRect();
+			// If details panel is visible and on the right side, reduce usable width
+			if (detailsBounds.width > 0 && detailsBounds.left > windowBounds.left) {
+				return new DOMRect(
+					windowBounds.left,
+					windowBounds.top,
+					detailsBounds.left - windowBounds.left, // Usable width ends where details panel begins
+					windowBounds.height,
+				);
+			}
+		}
+
+		return windowBounds;
+	}
+
 	// Called only when `open` is changed from outside this component
 	async function watchOpenChange(isOpen: boolean) {
 		// Mitigate a Safari rendering bug which clips the floating menu extending beyond a scrollable container.
@@ -119,7 +140,7 @@
 					// Close menu if button is no longer visible in viewport
 					if (self) {
 						const buttonBounds = self.getBoundingClientRect();
-						const windowBounds = document.documentElement.getBoundingClientRect();
+						const windowBounds = getUsableWindowBounds();
 
 						// Check if button is off-screen
 						const isOffScreen =
@@ -211,7 +232,7 @@
 		const floatingMenuContentDiv = floatingMenuContent?.div?.();
 		if (!self || !floatingMenuContainer || !floatingMenuContent || !floatingMenuContentDiv) return;
 
-		const windowBounds = document.documentElement.getBoundingClientRect();
+		const windowBounds = getUsableWindowBounds();
 		floatingMenuBounds = self.getBoundingClientRect();
 		const floatingMenuContainerBounds = floatingMenuContainer.getBoundingClientRect();
 
@@ -316,26 +337,43 @@
 			}
 
 			// Update tail position (always update it, even in scrollable containers)
+			// Update tail position (always update it, even in scrollable containers)
 			if (tail) {
 				// Calculate center position for the tail
 				const buttonCenterX = floatingMenuBounds.x + floatingMenuBounds.width / 2;
 				const buttonCenterY = floatingMenuBounds.y + floatingMenuBounds.height / 2;
 
-				if (direction === "Bottom") {
-					tail.style.top = `${floatingMenuBounds.y}px`;
-					tail.style.left = `${buttonCenterX}px`;
-				}
-				if (direction === "Top") {
-					tail.style.bottom = `${windowBounds.height - floatingMenuBounds.y}px`;
-					tail.style.left = `${buttonCenterX}px`;
-				}
-				if (direction === "Right") {
-					tail.style.left = `${floatingMenuBounds.x}px`;
-					tail.style.top = `${buttonCenterY}px`;
-				}
-				if (direction === "Left") {
-					tail.style.right = `${windowBounds.width - floatingMenuBounds.x}px`;
-					tail.style.top = `${buttonCenterY}px`;
+				// Get dialog bounds to constrain tail position
+				const dialogBounds = floatingMenuContentDiv.getBoundingClientRect();
+				const borderRadius = 4; // From CSS: border-radius: 4px
+				const tailWidth = 12; // Tail is 12px wide (6px on each side from CSS)
+
+				if (direction === "Bottom" || direction === "Top") {
+					// Constrain tail X position to stay within dialog bounds (minus border radius)
+					const minX = dialogBounds.left + borderRadius + tailWidth / 2;
+					const maxX = dialogBounds.right - borderRadius - tailWidth / 2;
+					const constrainedX = Math.max(minX, Math.min(maxX, buttonCenterX));
+
+					if (direction === "Bottom") {
+						tail.style.top = `${floatingMenuBounds.y}px`;
+						tail.style.left = `${constrainedX}px`;
+					} else {
+						tail.style.bottom = `${windowBounds.height - floatingMenuBounds.y}px`;
+						tail.style.left = `${constrainedX}px`;
+					}
+				} else if (direction === "Left" || direction === "Right") {
+					// Constrain tail Y position to stay within dialog bounds (minus border radius)
+					const minY = dialogBounds.top + borderRadius + tailWidth / 2;
+					const maxY = dialogBounds.bottom - borderRadius - tailWidth / 2;
+					const constrainedY = Math.max(minY, Math.min(maxY, buttonCenterY));
+
+					if (direction === "Right") {
+						tail.style.left = `${floatingMenuBounds.x}px`;
+						tail.style.top = `${constrainedY}px`;
+					} else {
+						tail.style.right = `${windowBounds.width - floatingMenuBounds.x}px`;
+						tail.style.top = `${constrainedY}px`;
+					}
 				}
 			}
 		}
