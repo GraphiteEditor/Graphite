@@ -135,14 +135,13 @@ pub fn path_overlays(document: &DocumentMessageHandler, draw_handles: DrawHandle
 			overlay_context.outline_vector(&vector, transform);
 		}
 
-		let Some(selected_shape_state) = shape_editor.selected_shape_state.get_mut(&layer) else {
-			continue;
-		};
-
+		let selected_shape_state = shape_editor.selected_shape_state.entry(layer).or_default();
 		// Get the selected segments and then add a bold line overlay on them
-		for (segment_id, bezier, _, _) in vector.segment_iter() {
-			if selected_shape_state.is_segment_selected(segment_id) {
-				overlay_context.outline_select_bezier(bezier, transform);
+		if !selected_shape_state.selected_points().collect::<Vec<_>>().is_empty() {
+			for (segment_id, bezier, _, _) in vector.segment_iter() {
+				if selected_shape_state.is_segment_selected(segment_id) {
+					overlay_context.outline_select_bezier(bezier, transform);
+				}
 			}
 		}
 
