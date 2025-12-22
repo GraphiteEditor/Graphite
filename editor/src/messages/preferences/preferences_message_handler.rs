@@ -17,7 +17,6 @@ pub struct PreferencesMessageHandler {
 	pub selection_mode: SelectionMode,
 	pub zoom_with_scroll: bool,
 	pub use_vello: bool,
-	pub vector_meshes: bool,
 	pub brush_tool: bool,
 	pub graph_wire_style: GraphWireStyle,
 	pub viewport_zoom_wheel_rate: f64,
@@ -46,7 +45,6 @@ impl Default for PreferencesMessageHandler {
 			selection_mode: SelectionMode::Touched,
 			zoom_with_scroll: matches!(MappingVariant::default(), MappingVariant::ZoomWithScroll),
 			use_vello: EditorPreferences::default().use_vello,
-			vector_meshes: false,
 			brush_tool: false,
 			graph_wire_style: GraphWireStyle::default(),
 			viewport_zoom_wheel_rate: VIEWPORT_ZOOM_WHEEL_RATE,
@@ -86,9 +84,6 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 				self.use_vello = use_vello;
 				responses.add(PortfolioMessage::UpdateVelloPreference);
 				responses.add(PortfolioMessage::EditorPreferences);
-			}
-			PreferencesMessage::VectorMeshes { enabled } => {
-				self.vector_meshes = enabled;
 			}
 			PreferencesMessage::BrushTool { enabled } => {
 				self.brush_tool = enabled;

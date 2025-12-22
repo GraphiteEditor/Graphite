@@ -556,7 +556,6 @@ impl Fsm for ShapeToolFsmState {
 			document,
 			global_tool_data,
 			input,
-			preferences,
 			shape_editor,
 			viewport,
 			..
@@ -762,7 +761,6 @@ impl Fsm for ShapeToolFsmState {
 					SNAP_POINT_TOLERANCE,
 					document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface),
 					|_| false,
-					preferences,
 				) && clicked_on_line_endpoints(layer, document, input, tool_data)
 					&& !input.keyboard.key(Key::Control)
 				{

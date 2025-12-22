@@ -6716,6 +6716,7 @@ dependencies = [
  "bytemuck",
  "core-types",
  "dyn-any",
+ "fixedbitset",
  "glam",
  "kurbo 0.12.0",
  "log",

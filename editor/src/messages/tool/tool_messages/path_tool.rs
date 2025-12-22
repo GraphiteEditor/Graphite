@@ -823,7 +823,7 @@ impl PathToolData {
 						.filter(|handle| handle.length(&vector) < 1e-6)
 						.map(|handle| handle.to_manipulator_point())
 						.collect::<Vec<_>>();
-					let endpoint = vector.extendable_points(false).any(|anchor| point == anchor);
+					let endpoint = vector.extendable_points_no_vector_meshes().any(|anchor| point == anchor);
 
 					if drag_zero_handle && (handles.len() == 1 && !endpoint) {
 						shape_editor.deselect_all_points();
@@ -1575,6 +1575,10 @@ impl Fsm for PathToolFsmState {
 
 				shape_editor.set_selected_layers(target_layers);
 
+				let new_state = make_path_editable_is_allowed(&mut document.network_interface).is_some();
+				if tool_data.make_path_editable_is_allowed != new_state {
+					responses.add(MenuBarMessage::SendLayout);
+				}
 				responses.add(OverlaysMessage::Draw);
 				self
 			}
@@ -2658,7 +2662,7 @@ impl Fsm for PathToolFsmState {
 			}
 			(_, PathToolMessage::ClosePath) => {
 				responses.add(DocumentMessage::AddTransaction);
-				shape_editor.close_selected_path(document, responses, tool_action_data.preferences.vector_meshes);
+				shape_editor.close_selected_path(document, responses);
 				responses.add(DocumentMessage::EndTransaction);
 
 				responses.add(OverlaysMessage::Draw);
@@ -3125,8 +3129,14 @@ impl Fsm for PathToolFsmState {
 					colinear,
 				};
 
+				let old = tool_data.make_path_editable_is_allowed;
 				tool_data.make_path_editable_is_allowed = make_path_editable_is_allowed(&mut document.network_interface).is_some();
 				tool_data.update_selection_status(shape_editor, document);
+
+				if old != tool_data.make_path_editable_is_allowed {
+					responses.add(MenuBarMessage::SendLayout);
+				}
+
 				self
 			}
 			(_, PathToolMessage::ManipulatorMakeHandlesColinear) => {
