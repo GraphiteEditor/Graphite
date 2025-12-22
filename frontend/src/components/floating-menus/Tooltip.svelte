@@ -33,11 +33,18 @@
 		return text;
 	}
 
+	function escapeHtml(text: string): string {
+		return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+	}
+
 	function parseMarkdown(markdown: string | undefined): string | undefined {
 		if (!markdown) return undefined;
 
+		// First, escape HTML special characters to prevent interpretation as HTML tags
+		const escaped = escapeHtml(markdown);
+
 		return (
-			markdown
+			escaped
 				// .split("\n")
 				// .map((line) => line.trim())
 				// .join("\n")
