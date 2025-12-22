@@ -1,6 +1,7 @@
-use cef::sys::{cef_key_event_type_t, cef_mouse_button_type_t};
+use cef::sys::{cef_event_flags_t, cef_key_event_type_t, cef_mouse_button_type_t};
 use cef::{Browser, ImplBrowser, ImplBrowserHost, KeyEvent, MouseEvent};
 use winit::event::{ButtonSource, ElementState, MouseButton, MouseScrollDelta, WindowEvent};
+use winit::keyboard::Key;
 
 mod keymap;
 use keymap::{ToCharRepresentation, ToNativeKeycode, ToVKBits};
@@ -80,6 +81,35 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 			};
 
 			key_event.modifiers = input_state.cef_modifiers(&event.location, event.repeat).into();
+
+			match (&event.logical_key, event.state) {
+				(Key::Named(winit::keyboard::NamedKey::Control), ElementState::Pressed) => {
+					key_event.modifiers |= cef_event_flags_t::EVENTFLAG_CONTROL_DOWN.0;
+				}
+				(Key::Named(winit::keyboard::NamedKey::Control), ElementState::Released) => {
+					key_event.modifiers &= !(cef_event_flags_t::EVENTFLAG_CONTROL_DOWN.0);
+				}
+				(Key::Named(winit::keyboard::NamedKey::Shift), ElementState::Pressed) => {
+					key_event.modifiers |= cef_event_flags_t::EVENTFLAG_SHIFT_DOWN.0;
+				}
+				(Key::Named(winit::keyboard::NamedKey::Shift), ElementState::Released) => {
+					key_event.modifiers &= !(cef_event_flags_t::EVENTFLAG_SHIFT_DOWN.0);
+				}
+				(Key::Named(winit::keyboard::NamedKey::Alt), ElementState::Pressed) => {
+					key_event.modifiers |= cef_event_flags_t::EVENTFLAG_ALT_DOWN.0;
+				}
+				(Key::Named(winit::keyboard::NamedKey::Alt), ElementState::Released) => {
+					key_event.modifiers &= !(cef_event_flags_t::EVENTFLAG_ALT_DOWN.0);
+				}
+				(Key::Named(winit::keyboard::NamedKey::Meta), ElementState::Pressed) => {
+					key_event.modifiers |= cef_event_flags_t::EVENTFLAG_COMMAND_DOWN.0;
+				}
+				(Key::Named(winit::keyboard::NamedKey::Meta), ElementState::Released) => {
+					key_event.modifiers &= !(cef_event_flags_t::EVENTFLAG_COMMAND_DOWN.0);
+				}
+
+				_ => {}
+			}
 
 			key_event.windows_key_code = match &event.logical_key {
 				winit::keyboard::Key::Named(named) => named.to_vk_bits(),
