@@ -21,7 +21,7 @@ pub(crate) mod menu {
 		widgets
 			.into_iter()
 			.map(|widget| {
-				let text_button = match &widget.widget {
+				let text_button = match widget.widget.as_ref() {
 					Widget::TextButton(text_button) => text_button,
 					_ => panic!("Menu bar layout top-level widgets are supposed to be text buttons"),
 				};

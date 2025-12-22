@@ -32,7 +32,7 @@
 		}
 
 		&:hover {
-			background: var(--color-6-lowergray);
+			background: #2d2d2d;
 
 			svg {
 				fill: var(--color-f-white);
@@ -40,7 +40,7 @@
 		}
 
 		&:last-of-type:hover {
-			background: #e81123;
+			background: #c42b1c;
 		}
 	}
 </style>
