@@ -1,4 +1,6 @@
 <script lang="ts">
+	import type { ActionShortcut } from "@graphite/messages";
+
 	let className = "";
 	export { className as class };
 	export let classes: Record<string, boolean> = {};
@@ -6,13 +8,17 @@
 	export { styleName as style };
 	export let styles: Record<string, string | number | undefined> = {};
 	export let disabled = false;
+	export let narrow = false;
 	export let bold = false;
 	export let italic = false;
+	export let monospace = false;
 	export let centerAlign = false;
 	export let tableAlign = false;
-	export let minWidth = 0;
+	export let minWidth = "";
 	export let multiline = false;
-	export let tooltip: string | undefined = undefined;
+	export let tooltipLabel: string | undefined = undefined;
+	export let tooltipDescription: string | undefined = undefined;
+	export let tooltipShortcut: ActionShortcut | undefined = undefined;
 	export let forCheckbox: bigint | undefined = undefined;
 
 	$: extraClasses = Object.entries(classes)
@@ -26,14 +32,18 @@
 <label
 	class={`text-label ${className} ${extraClasses}`.trim()}
 	class:disabled
+	class:narrow
 	class:bold
 	class:italic
+	class:monospace
 	class:multiline
 	class:center-align={centerAlign}
 	class:table-align={tableAlign}
-	style:min-width={minWidth > 0 ? `${minWidth}px` : undefined}
+	style:min-width={minWidth || undefined}
 	style={`${styleName} ${extraStyles}`.trim() || undefined}
-	title={tooltip}
+	data-tooltip-label={tooltipLabel}
+	data-tooltip-description={tooltipDescription}
+	data-tooltip-shortcut={tooltipShortcut?.shortcut ? JSON.stringify(tooltipShortcut.shortcut) : undefined}
 	for={forCheckbox !== undefined ? `checkbox-input-${forCheckbox}` : undefined}
 >
 	<slot />
@@ -46,6 +56,10 @@
 		// Force Safari to not draw a text cursor, even though this element has `user-select: none`
 		cursor: default;
 
+		&.narrow.narrow {
+			--widget-height: 20px;
+		}
+
 		&.disabled {
 			color: var(--color-8-uppergray);
 		}
@@ -56,6 +70,12 @@
 
 		&.italic {
 			font-style: italic;
+		}
+
+		&.monospace,
+		code {
+			font-family: "Source Code Pro", monospace;
+			font-size: 12px;
 		}
 
 		&.multiline {
@@ -70,6 +90,15 @@
 		&.table-align {
 			flex: 0 0 30%;
 			text-align: right;
+		}
+
+		a {
+			color: inherit;
+		}
+
+		code {
+			background: var(--color-3-darkgray);
+			padding: 0 2px;
 		}
 	}
 </style>

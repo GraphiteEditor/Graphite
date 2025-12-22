@@ -51,7 +51,7 @@ pub fn commit_info_localized(localized_commit_date: &str) -> String {
 		{}",
 		GRAPHITE_RELEASE_SERIES,
 		GRAPHITE_GIT_COMMIT_BRANCH,
-		&GRAPHITE_GIT_COMMIT_HASH[..8],
+		GRAPHITE_GIT_COMMIT_HASH.get(..8).unwrap_or(GRAPHITE_GIT_COMMIT_HASH),
 		localized_commit_date
 	)
 }

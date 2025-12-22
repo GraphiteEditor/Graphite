@@ -1,3 +1,6 @@
+#[macro_use]
+extern crate log;
+
 use graph_craft::document::value::*;
 use graph_craft::document::*;
 use graph_craft::proto::RegistryValueSource;
@@ -26,8 +29,10 @@ pub fn expand_network(network: &mut NodeNetwork, substitutions: &HashMap<ProtoNo
 
 pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNode> {
 	let mut custom = HashMap::new();
-	let node_registry = graphene_core::registry::NODE_REGISTRY.lock().unwrap();
-	for (id, metadata) in graphene_core::registry::NODE_METADATA.lock().unwrap().iter() {
+	// We pre initialize the node registry here to avoid a deadlock
+	let into_node_registry = &*interpreted_executor::node_registry::NODE_REGISTRY;
+	let node_registry = core_types::registry::NODE_REGISTRY.lock().unwrap();
+	for (id, metadata) in core_types::registry::NODE_METADATA.lock().unwrap().iter() {
 		let id = id.clone();
 
 		let NodeMetadata { fields, .. } = metadata;
@@ -51,8 +56,6 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 
 		let identity_node = ops::identity::IDENTIFIER;
 
-		let into_node_registry = &interpreted_executor::node_registry::NODE_REGISTRY;
-
 		let mut generated_nodes = 0;
 		let mut nodes: HashMap<_, _, _> = node_io_types
 			.iter()
@@ -61,9 +64,10 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 				(
 					NodeId(i as u64),
 					match inputs.len() {
-						1 if false => {
+						1 => {
 							let input = inputs.iter().next().unwrap();
 							let input_ty = input.nested_type();
+							let mut inputs = vec![NodeInput::import(input.clone(), i)];
 
 							let into_node_identifier = ProtoNodeIdentifier {
 								name: format!("graphene_core::ops::IntoNode<{}>", input_ty.clone()).into(),
@@ -77,21 +81,23 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 								into_node_identifier
 							} else if into_node_registry.keys().any(|ident| ident.name.as_ref() == convert_node_identifier.name.as_ref()) {
 								generated_nodes += 1;
+								inputs.push(NodeInput::value(TaggedValue::None, false));
 								convert_node_identifier
 							} else {
 								identity_node.clone()
 							};
-
+							let mut original_location = OriginalLocation::default();
+							original_location.auto_convert_index = Some(i);
 							DocumentNode {
-								inputs: vec![NodeInput::network(input.clone(), i)],
-								// manual_composition: Some(fn_input.clone()),
+								inputs,
 								implementation: DocumentNodeImplementation::ProtoNode(proto_node),
 								visible: true,
+								original_location,
 								..Default::default()
 							}
 						}
 						_ => DocumentNode {
-							inputs: vec![NodeInput::network(generic!(X), i)],
+							inputs: vec![NodeInput::import(generic!(X), i)],
 							implementation: DocumentNodeImplementation::ProtoNode(identity_node.clone()),
 							visible: false,
 							..Default::default()
@@ -107,10 +113,11 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 
 		let document_node = DocumentNode {
 			inputs: network_inputs,
-			manual_composition: Some(input_type.clone()),
-			implementation: DocumentNodeImplementation::ProtoNode(id.clone().into()),
+			call_argument: input_type.clone(),
+			implementation: DocumentNodeImplementation::ProtoNode(id.clone()),
 			visible: true,
 			skip_deduplication: false,
+			context_features: ContextDependencies::from(metadata.context_features.as_slice()),
 			..Default::default()
 		};
 
@@ -118,12 +125,11 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 
 		let node = DocumentNode {
 			inputs,
-			manual_composition: Some(input_type.clone()),
+			call_argument: input_type.clone(),
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
 				exports: vec![NodeInput::Node {
 					node_id: NodeId(input_count as u64),
 					output_index: 0,
-					lambda: false,
 				}],
 				nodes,
 				scope_injections: Default::default(),
@@ -151,7 +157,14 @@ pub fn node_inputs(fields: &[registry::FieldMetadata], first_node_io: &NodeIOTyp
 
 			match field.value_source {
 				RegistryValueSource::None => {}
-				RegistryValueSource::Default(data) => return NodeInput::value(TaggedValue::from_primitive_string(data, ty).unwrap_or(TaggedValue::None), exposed),
+				RegistryValueSource::Default(data) => {
+					if let Some(custom_default) = TaggedValue::from_primitive_string(data, ty) {
+						return NodeInput::value(custom_default, exposed);
+					} else {
+						// It is incredibly useful to get a warning when the default type cannot be parsed rather than defaulting to `()`.
+						warn!("Failed to parse default value for type {ty:?} with data {data}");
+					}
+				}
 				RegistryValueSource::Scope(data) => return NodeInput::scope(Cow::Borrowed(data)),
 			};
 

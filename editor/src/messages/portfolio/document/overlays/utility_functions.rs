@@ -1,12 +1,16 @@
 use super::utility_types::{DrawHandles, OverlayContext};
 use crate::consts::HIDE_HANDLE_DISTANCE;
+use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::tool::common_functionality::shape_editor::{SelectedLayerState, ShapeState};
-use crate::messages::tool::tool_messages::tool_prelude::{DocumentMessageHandler, PreferencesMessageHandler};
-use bezier_rs::{Bezier, BezierHandles};
+use crate::messages::tool::tool_messages::tool_prelude::DocumentMessageHandler;
 use glam::{DAffine2, DVec2};
+use graphene_std::subpath::{Bezier, BezierHandles};
+use graphene_std::text::{Font, FontCache, TextAlign, TextContext, TypesettingConfig};
 use graphene_std::vector::misc::ManipulatorPointId;
-use graphene_std::vector::{PointId, SegmentId};
+use graphene_std::vector::{PointId, SegmentId, Vector};
+use std::collections::HashMap;
+use std::sync::{LazyLock, Mutex};
 use wasm_bindgen::JsCast;
 
 pub fn overlay_canvas_element() -> Option<web_sys::HtmlCanvasElement> {
@@ -24,33 +28,40 @@ pub fn overlay_canvas_context() -> web_sys::CanvasRenderingContext2d {
 	create_context().expect("Failed to get canvas context")
 }
 
-pub fn selected_segments(network_interface: &NodeNetworkInterface, shape_editor: &ShapeState) -> Vec<SegmentId> {
-	let selected_points = shape_editor.selected_points();
-	let selected_anchors = selected_points
-		.filter_map(|point_id| if let ManipulatorPointId::Anchor(p) = point_id { Some(*p) } else { None })
+pub fn selected_segments(network_interface: &NodeNetworkInterface, shape_editor: &ShapeState) -> HashMap<LayerNodeIdentifier, Vec<SegmentId>> {
+	let mut map = HashMap::new();
+
+	for (layer, state) in &shape_editor.selected_shape_state {
+		let Some(vector) = network_interface.compute_modified_vector(*layer) else { continue };
+		let selected_segments = selected_segments_for_layer(&vector, state);
+
+		map.insert(*layer, selected_segments);
+	}
+
+	map
+}
+
+pub fn selected_segments_for_layer(vector: &Vector, state: &SelectedLayerState) -> Vec<SegmentId> {
+	let selected_anchors = state
+		.selected_points()
+		.filter_map(|point| if let ManipulatorPointId::Anchor(p) = point { Some(p) } else { None })
 		.collect::<Vec<_>>();
 
 	// Collect the segments whose handles are selected
-	let mut selected_segments = shape_editor
+	let mut selected_segments = state
 		.selected_points()
 		.filter_map(|point_id| match point_id {
-			ManipulatorPointId::PrimaryHandle(segment_id) | ManipulatorPointId::EndHandle(segment_id) => Some(*segment_id),
+			ManipulatorPointId::PrimaryHandle(segment_id) | ManipulatorPointId::EndHandle(segment_id) => Some(segment_id),
 			ManipulatorPointId::Anchor(_) => None,
 		})
 		.collect::<Vec<_>>();
 
-	// TODO: Currently if there are two duplicate layers, both of their segments get overlays
 	// Adding segments which are are connected to selected anchors
-	for layer in network_interface.selected_nodes().selected_layers(network_interface.document_metadata()) {
-		let Some(vector) = network_interface.compute_modified_vector(layer) else { continue };
-
-		for (segment_id, _bezier, start, end) in vector.segment_bezier_iter() {
-			if selected_anchors.contains(&start) || selected_anchors.contains(&end) {
-				selected_segments.push(segment_id);
-			}
+	for (segment_id, _bezier, start, end) in vector.segment_bezier_iter() {
+		if selected_anchors.contains(&start) || selected_anchors.contains(&end) {
+			selected_segments.push(segment_id);
 		}
 	}
-
 	selected_segments
 }
 
@@ -124,22 +135,21 @@ pub fn path_overlays(document: &DocumentMessageHandler, draw_handles: DrawHandle
 			overlay_context.outline_vector(&vector, transform);
 		}
 
-		// Get the selected segments and then add a bold line overlay on them
-		for (segment_id, bezier, _, _) in vector.segment_bezier_iter() {
-			let Some(selected_shape_state) = shape_editor.selected_shape_state.get_mut(&layer) else {
-				continue;
-			};
+		let Some(selected_shape_state) = shape_editor.selected_shape_state.get_mut(&layer) else {
+			continue;
+		};
 
+		// Get the selected segments and then add a bold line overlay on them
+		for (segment_id, bezier, _, _) in vector.segment_iter() {
 			if selected_shape_state.is_segment_selected(segment_id) {
 				overlay_context.outline_select_bezier(bezier, transform);
 			}
 		}
 
-		let selected = shape_editor.selected_shape_state.get(&layer);
-		let is_selected = |point: ManipulatorPointId| selected.is_some_and(|selected| selected.is_point_selected(point));
+		let is_selected = |point: ManipulatorPointId| selected_shape_state.is_point_selected(point);
 
 		if display_handles {
-			let opposite_handles_data: Vec<(PointId, SegmentId)> = shape_editor.selected_points().filter_map(|point_id| vector.adjacent_segment(point_id)).collect();
+			let opposite_handles_data = selected_shape_state.selected_points().filter_map(|point_id| vector.adjacent_segment(&point_id)).collect::<Vec<_>>();
 
 			match draw_handles {
 				DrawHandles::All => {
@@ -148,9 +158,11 @@ pub fn path_overlays(document: &DocumentMessageHandler, draw_handles: DrawHandle
 					});
 				}
 				DrawHandles::SelectedAnchors(ref selected_segments) => {
+					let Some(focused_segments) = selected_segments.get(&layer) else { continue };
+
 					vector
 						.segment_bezier_iter()
-						.filter(|(segment_id, ..)| selected_segments.contains(segment_id))
+						.filter(|(segment_id, ..)| focused_segments.contains(segment_id))
 						.for_each(|(segment_id, bezier, _start, _end)| {
 							overlay_bezier_handles(bezier, segment_id, transform, is_selected, overlay_context);
 						});
@@ -161,7 +173,9 @@ pub fn path_overlays(document: &DocumentMessageHandler, draw_handles: DrawHandle
 						}
 					}
 				}
-				DrawHandles::FrontierHandles(ref segment_endpoints) => {
+				DrawHandles::FrontierHandles(ref segment_endpoints_by_layer) => {
+					let Some(segment_endpoints) = segment_endpoints_by_layer.get(&layer) else { continue };
+
 					vector
 						.segment_bezier_iter()
 						.filter(|(segment_id, ..)| segment_endpoints.contains_key(segment_id))
@@ -186,7 +200,7 @@ pub fn path_overlays(document: &DocumentMessageHandler, draw_handles: DrawHandle
 	}
 }
 
-pub fn path_endpoint_overlays(document: &DocumentMessageHandler, shape_editor: &mut ShapeState, overlay_context: &mut OverlayContext, preferences: &PreferencesMessageHandler) {
+pub fn path_endpoint_overlays(document: &DocumentMessageHandler, shape_editor: &mut ShapeState, overlay_context: &mut OverlayContext) {
 	if !overlay_context.visibility_settings.anchors() {
 		return;
 	}
@@ -195,15 +209,46 @@ pub fn path_endpoint_overlays(document: &DocumentMessageHandler, shape_editor: &
 		let Some(vector) = document.network_interface.compute_modified_vector(layer) else {
 			continue;
 		};
-		//let document_to_viewport = document.navigation_handler.calculate_offset_transform(overlay_context.size / 2., &document.document_ptz);
 		let transform = document.metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
 		let selected = shape_editor.selected_shape_state.get(&layer);
 		let is_selected = |selected: Option<&SelectedLayerState>, point: ManipulatorPointId| selected.is_some_and(|selected| selected.is_point_selected(point));
 
-		for point in vector.extendable_points(preferences.vector_meshes) {
+		for point in vector.anchor_points() {
 			let Some(position) = vector.point_domain.position_from_id(point) else { continue };
 			let position = transform.transform_point2(position);
 			overlay_context.manipulator_anchor(position, is_selected(selected, ManipulatorPointId::Anchor(point)), None);
 		}
 	}
+}
+
+// Global lazy initialized font cache and text context
+pub static GLOBAL_FONT_CACHE: LazyLock<FontCache> = LazyLock::new(|| {
+	let mut font_cache = FontCache::default();
+	// Initialize with the hardcoded font used by overlay text
+	const FONT_DATA: &[u8] = include_bytes!("source-sans-pro-regular.ttf");
+	let font = Font::new("Source Sans Pro".to_string(), "Regular".to_string());
+	font_cache.insert(font, FONT_DATA.to_vec());
+	font_cache
+});
+
+pub static GLOBAL_TEXT_CONTEXT: LazyLock<Mutex<TextContext>> = LazyLock::new(|| Mutex::new(TextContext::default()));
+
+pub fn text_width(text: &str, font_size: f64) -> f64 {
+	let typesetting = TypesettingConfig {
+		font_size,
+		line_height_ratio: 1.2,
+		character_spacing: 0.0,
+		max_width: None,
+		max_height: None,
+		tilt: 0.0,
+		align: TextAlign::Left,
+	};
+
+	// Load Source Sans Pro font data
+	// TODO: Grab this from the node_modules folder (either with `include_bytes!` or ideally at runtime) instead of checking the font file into the repo.
+	// TODO: And maybe use the WOFF2 version (if it's supported) for its smaller, compressed file size.
+	let font = Font::new("Source Sans Pro".to_string(), "Regular".to_string());
+	let mut text_context = GLOBAL_TEXT_CONTEXT.lock().expect("Failed to lock global text context");
+	let bounds = text_context.bounding_box(text, &font, &GLOBAL_FONT_CACHE, typesetting, false);
+	bounds.x
 }

@@ -1,6 +1,5 @@
 use crate::parsing::*;
 use convert_case::{Case, Casing};
-use proc_macro_crate::FoundCrate;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{ToTokens, format_ident, quote, quote_spanned};
 use std::sync::atomic::AtomicU64;
@@ -10,7 +9,7 @@ use syn::token::Comma;
 use syn::{Error, Ident, PatIdent, Token, WhereClause, WherePredicate, parse_quote};
 static NODE_ID: AtomicU64 = AtomicU64::new(0);
 
-pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStream2> {
+pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn) -> syn::Result<TokenStream2> {
 	let ParsedNodeFn {
 		vis,
 		attributes,
@@ -24,10 +23,10 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		is_async,
 		fields,
 		body,
-		crate_name: graphene_core_crate,
 		description,
 		..
 	} = parsed;
+	let core_types = crate_ident.gcore()?;
 
 	let category = &attributes.category.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
 	let mod_name = format_ident!("_{}_mod", mod_name);
@@ -41,19 +40,14 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 	let struct_generics: Vec<Ident> = fields.iter().enumerate().map(|(i, _)| format_ident!("Node{}", i)).collect();
 	let input_ident = &input.pat_ident;
 
-	let field_idents: Vec<_> = fields
-		.iter()
-		.map(|field| match field {
-			ParsedField::Regular { pat_ident, .. } | ParsedField::Node { pat_ident, .. } => pat_ident,
-		})
-		.collect();
+	let context_features = &input.context_features;
+
+	let field_idents: Vec<_> = fields.iter().map(|f| &f.pat_ident).collect();
 	let field_names: Vec<_> = field_idents.iter().map(|pat_ident| &pat_ident.ident).collect();
 
 	let input_names: Vec<_> = fields
 		.iter()
-		.map(|field| match field {
-			ParsedField::Regular { name, .. } | ParsedField::Node { name, .. } => name,
-		})
+		.map(|f| &f.name)
 		.zip(field_names.iter())
 		.map(|zipped| match zipped {
 			(Some(name), _) => name.value(),
@@ -61,59 +55,48 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		})
 		.collect();
 
-	let input_descriptions: Vec<_> = fields
-		.iter()
-		.map(|field| match field {
-			ParsedField::Regular { description, .. } | ParsedField::Node { description, .. } => description,
-		})
-		.collect();
+	let input_descriptions: Vec<_> = fields.iter().map(|f| &f.description).collect();
 
 	let struct_fields = field_names.iter().zip(struct_generics.iter()).map(|(name, r#gen)| {
 		quote! { pub(super) #name: #r#gen }
 	});
 
-	let graphene_core = match graphene_core_crate {
-		FoundCrate::Itself => quote!(crate),
-		FoundCrate::Name(name) => {
-			let ident = Ident::new(name, proc_macro2::Span::call_site());
-			quote!( #ident )
-		}
-	};
-
 	let mut future_idents = Vec::new();
 
 	let field_types: Vec<_> = fields
 		.iter()
-		.map(|field| match field {
-			ParsedField::Regular { ty, .. } => ty.clone(),
-			ParsedField::Node { output_type, input_type, .. } => match parsed.is_async {
-				true => parse_quote!(&'n impl #graphene_core::Node<'n, #input_type, Output = impl core::future::Future<Output=#output_type>>),
-				false => parse_quote!(&'n impl #graphene_core::Node<'n, #input_type, Output = #output_type>),
+		.map(|field| match &field.ty {
+			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => ty.clone(),
+			ParsedFieldType::Node(NodeParsedField { output_type, input_type, .. }) => match parsed.is_async {
+				true => parse_quote!(&'n impl #core_types::Node<'n, #input_type, Output = impl core::future::Future<Output=#output_type>>),
+				false => parse_quote!(&'n impl #core_types::Node<'n, #input_type, Output = #output_type>),
 			},
 		})
 		.collect();
 
 	let widget_override: Vec<_> = fields
 		.iter()
-		.map(|field| {
-			let parsed_widget_override = match field {
-				ParsedField::Regular { widget_override, .. } => widget_override,
-				ParsedField::Node { widget_override, .. } => widget_override,
-			};
-			match parsed_widget_override {
-				ParsedWidgetOverride::None => quote!(RegistryWidgetOverride::None),
-				ParsedWidgetOverride::Hidden => quote!(RegistryWidgetOverride::Hidden),
-				ParsedWidgetOverride::String(lit_str) => quote!(RegistryWidgetOverride::String(#lit_str)),
-				ParsedWidgetOverride::Custom(lit_str) => quote!(RegistryWidgetOverride::Custom(#lit_str)),
-			}
+		.map(|field| match &field.widget_override {
+			ParsedWidgetOverride::None => quote!(RegistryWidgetOverride::None),
+			ParsedWidgetOverride::Hidden => quote!(RegistryWidgetOverride::Hidden),
+			ParsedWidgetOverride::String(lit_str) => quote!(RegistryWidgetOverride::String(#lit_str)),
+			ParsedWidgetOverride::Custom(lit_str) => quote!(RegistryWidgetOverride::Custom(#lit_str)),
 		})
 		.collect();
 
 	let value_sources: Vec<_> = fields
 		.iter()
-		.map(|field| match field {
-			ParsedField::Regular { value_source, .. } => match value_source {
-				ParsedValueSource::Default(data) => quote!(RegistryValueSource::Default(stringify!(#data))),
+		.map(|field| match &field.ty {
+			ParsedFieldType::Regular(RegularParsedField { value_source, .. }) => match value_source {
+				ParsedValueSource::Default(data) => {
+					// Check if the data is a string literal by parsing the token stream
+					let data_str = data.to_string();
+					if data_str.starts_with('"') && data_str.ends_with('"') && data_str.len() >= 2 {
+						quote!(RegistryValueSource::Default(#data))
+					} else {
+						quote!(RegistryValueSource::Default(stringify!(#data)))
+					}
+				}
 				ParsedValueSource::Scope(data) => quote!(RegistryValueSource::Scope(#data)),
 				_ => quote!(RegistryValueSource::None),
 			},
@@ -123,8 +106,8 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 
 	let default_types: Vec<_> = fields
 		.iter()
-		.map(|field| match field {
-			ParsedField::Regular { implementations, .. } => match implementations.first() {
+		.map(|field| match &field.ty {
+			ParsedFieldType::Regular(RegularParsedField { implementations, .. }) => match implementations.first() {
 				Some(ty) => quote!(Some(concrete!(#ty))),
 				_ => quote!(None),
 			},
@@ -134,8 +117,8 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 
 	let number_min_values: Vec<_> = fields
 		.iter()
-		.map(|field| match field {
-			ParsedField::Regular { number_soft_min, number_hard_min, .. } => match (number_soft_min, number_hard_min) {
+		.map(|field| match &field.ty {
+			ParsedFieldType::Regular(RegularParsedField { number_soft_min, number_hard_min, .. }) => match (number_soft_min, number_hard_min) {
 				(Some(soft_min), _) => quote!(Some(#soft_min)),
 				(None, Some(hard_min)) => quote!(Some(#hard_min)),
 				(None, None) => quote!(None),
@@ -145,8 +128,8 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		.collect();
 	let number_max_values: Vec<_> = fields
 		.iter()
-		.map(|field| match field {
-			ParsedField::Regular { number_soft_max, number_hard_max, .. } => match (number_soft_max, number_hard_max) {
+		.map(|field| match &field.ty {
+			ParsedFieldType::Regular(RegularParsedField { number_soft_max, number_hard_max, .. }) => match (number_soft_max, number_hard_max) {
 				(Some(soft_max), _) => quote!(Some(#soft_max)),
 				(None, Some(hard_max)) => quote!(Some(#hard_max)),
 				(None, None) => quote!(None),
@@ -156,100 +139,66 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		.collect();
 	let number_mode_range_values: Vec<_> = fields
 		.iter()
-		.map(|field| match field {
-			ParsedField::Regular {
+		.map(|field| match &field.ty {
+			ParsedFieldType::Regular(RegularParsedField {
 				number_mode_range: Some(number_mode_range),
 				..
-			} => quote!(Some(#number_mode_range)),
+			}) => quote!(Some(#number_mode_range)),
 			_ => quote!(None),
 		})
 		.collect();
 	let number_display_decimal_places: Vec<_> = fields
 		.iter()
-		.map(|field| match field {
-			ParsedField::Regular {
-				number_display_decimal_places: Some(decimal_places),
-				..
-			}
-			| ParsedField::Node {
-				number_display_decimal_places: Some(decimal_places),
-				..
-			} => {
-				quote!(Some(#decimal_places))
-			}
-			_ => quote!(None),
-		})
+		.map(|field| field.number_display_decimal_places.as_ref().map_or(quote!(None), |i| quote!(Some(#i))))
 		.collect();
-	let number_step: Vec<_> = fields
-		.iter()
-		.map(|field| match field {
-			ParsedField::Regular { number_step: Some(step), .. } | ParsedField::Node { number_step: Some(step), .. } => {
-				quote!(Some(#step))
-			}
-			_ => quote!(None),
-		})
-		.collect();
+	let number_step: Vec<_> = fields.iter().map(|field| field.number_step.as_ref().map_or(quote!(None), |i| quote!(Some(#i)))).collect();
 
-	let unit_suffix: Vec<_> = fields
-		.iter()
-		.map(|field| match field {
-			ParsedField::Regular { unit: Some(unit), .. } | ParsedField::Node { unit: Some(unit), .. } => {
-				quote!(Some(#unit))
-			}
-			_ => quote!(None),
-		})
-		.collect();
+	let unit_suffix: Vec<_> = fields.iter().map(|field| field.unit.as_ref().map_or(quote!(None), |i| quote!(Some(#i)))).collect();
 
 	let exposed: Vec<_> = fields
 		.iter()
-		.map(|field| match field {
-			ParsedField::Regular { exposed, .. } => quote!(#exposed),
+		.map(|field| match &field.ty {
+			ParsedFieldType::Regular(RegularParsedField { exposed, .. }) => quote!(#exposed),
 			_ => quote!(true),
 		})
 		.collect();
 
-	let eval_args = fields.iter().map(|field| match field {
-		ParsedField::Regular { pat_ident, .. } => {
-			let name = &pat_ident.ident;
-			quote! { let #name = self.#name.eval(__input.clone()).await; }
-		}
-		ParsedField::Node { pat_ident, .. } => {
-			let name = &pat_ident.ident;
-			quote! { let #name = &self.#name; }
+	let eval_args = fields.iter().map(|field| {
+		let name = &field.pat_ident.ident;
+		match &field.ty {
+			ParsedFieldType::Regular { .. } => {
+				quote! { let #name = self.#name.eval(__input.clone()).await; }
+			}
+			ParsedFieldType::Node { .. } => {
+				quote! { let #name = &self.#name; }
+			}
 		}
 	});
 
-	let min_max_args = fields.iter().map(|field| match field {
-		ParsedField::Regular {
-			pat_ident,
-			number_hard_min,
-			number_hard_max,
-			..
-		} => {
-			let name = &pat_ident.ident;
+	let min_max_args = fields.iter().map(|field| match &field.ty {
+		ParsedFieldType::Regular(RegularParsedField { number_hard_min, number_hard_max, .. }) => {
+			let name = &field.pat_ident.ident;
 			let mut tokens = quote!();
 			if let Some(min) = number_hard_min {
 				tokens.extend(quote_spanned! {min.span()=>
-					let #name = #graphene_core::misc::Clampable::clamp_hard_min(#name, #min);
+					let #name = #core_types::misc::Clampable::clamp_hard_min(#name, #min);
 				});
 			}
 
 			if let Some(max) = number_hard_max {
 				tokens.extend(quote_spanned! {max.span()=>
-					let #name = #graphene_core::misc::Clampable::clamp_hard_max(#name, #max);
+					let #name = #core_types::misc::Clampable::clamp_hard_max(#name, #max);
 				});
 			}
 			tokens
 		}
-		ParsedField::Node { .. } => {
-			quote!()
-		}
+		ParsedFieldType::Node { .. } => quote!(),
 	});
 
-	let all_implementation_types = fields.iter().flat_map(|field| match field {
-		ParsedField::Regular { implementations, .. } => implementations.into_iter().cloned().collect::<Vec<_>>(),
-		ParsedField::Node { implementations, .. } => implementations
-			.into_iter()
+	let all_implementation_types = fields.iter().flat_map(|field| match &field.ty {
+		ParsedFieldType::Regular(RegularParsedField { implementations, .. }) => implementations.iter().cloned().collect::<Vec<_>>(),
+		ParsedFieldType::Node(NodeParsedField { implementations, .. }) => implementations
+			.iter()
 			.flat_map(|implementation| [implementation.input.clone(), implementation.output.clone()])
 			.collect(),
 	});
@@ -260,11 +209,11 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 	let mut clampable_clauses = Vec::new();
 
 	for (field, name) in fields.iter().zip(struct_generics.iter()) {
-		clauses.push(match (field, *is_async) {
+		clauses.push(match (&field.ty, *is_async) {
 			(
-				ParsedField::Regular {
+				ParsedFieldType::Regular(RegularParsedField {
 					ty, number_hard_min, number_hard_max, ..
-				},
+				}),
 				_,
 			) => {
 				let all_lifetime_ty = substitute_lifetimes(ty.clone(), "all");
@@ -275,26 +224,26 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 				// Add Clampable bound if this field uses hard_min or hard_max
 				if number_hard_min.is_some() || number_hard_max.is_some() {
 					// The bound applies to the Output type of the future, which is #ty
-					clampable_clauses.push(quote!(#ty: #graphene_core::misc::Clampable));
+					clampable_clauses.push(quote!(#ty: #core_types::misc::Clampable));
 				}
 
 				quote!(
-					#fut_ident: core::future::Future<Output = #ty> + #graphene_core::WasmNotSend + 'n,
-					for<'all> #all_lifetime_ty: #graphene_core::WasmNotSend,
-					#name: #graphene_core::Node<'n, #input_type, Output = #fut_ident> + #graphene_core::WasmNotSync
+					#fut_ident: core::future::Future<Output = #ty> + #core_types::WasmNotSend + 'n,
+					for<'all> #all_lifetime_ty: #core_types::WasmNotSend,
+					#name: #core_types::Node<'n, #input_type, Output = #fut_ident> + #core_types::WasmNotSync
 				)
 			}
-			(ParsedField::Node { input_type, output_type, .. }, true) => {
+			(ParsedFieldType::Node(NodeParsedField { input_type, output_type, .. }), true) => {
 				let id = future_idents.len();
 				let fut_ident = format_ident!("F{}", id);
 				future_idents.push(fut_ident.clone());
 
 				quote!(
-					#fut_ident: core::future::Future<Output = #output_type> + #graphene_core::WasmNotSend + 'n,
-					#name: #graphene_core::Node<'n, #input_type, Output = #fut_ident > + #graphene_core::WasmNotSync
+					#fut_ident: core::future::Future<Output = #output_type> + #core_types::WasmNotSend + 'n,
+					#name: #core_types::Node<'n, #input_type, Output = #fut_ident > + #core_types::WasmNotSync
 				)
 			}
-			(ParsedField::Node { .. }, false) => unreachable!(),
+			(ParsedFieldType::Node { .. }, false) => unreachable!("Found node which takes an impl Node<> input but is not async"),
 		});
 	}
 	let where_clause = where_clause.clone().unwrap_or(WhereClause {
@@ -318,11 +267,11 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 	let await_keyword = is_async.then(|| quote!(.await));
 
 	let eval_impl = quote! {
-		type Output = #graphene_core::registry::DynFuture<'n, #output_type>;
+		type Output = #core_types::registry::DynFuture<'n, #output_type>;
 		#[inline]
 		fn eval(&'n self, __input: #input_type) -> Self::Output {
 			Box::pin(async move {
-				use #graphene_core::misc::Clampable;
+				use #core_types::misc::Clampable;
 
 				#(#eval_args)*
 				#(#min_max_args)*
@@ -345,8 +294,10 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 
 	let properties = &attributes.properties_string.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
 
-	let cfg = crate::shader_nodes::modify_cfg(&attributes);
-	let node_input_accessor = generate_node_input_references(parsed, fn_generics, &field_idents, &graphene_core, &identifier, &cfg);
+	let cfg = crate::shader_nodes::modify_cfg(attributes);
+	let node_input_accessor = generate_node_input_references(parsed, fn_generics, &field_idents, core_types, &identifier, &cfg);
+	let ShaderTokens { shader_entry_point, gpu_node } = attributes.shader_node.as_ref().map(|n| n.codegen(crate_ident, parsed)).unwrap_or(Ok(ShaderTokens::default()))?;
+
 	Ok(quote! {
 		/// Underlying implementation for [#struct_name]
 		#[inline]
@@ -355,15 +306,15 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 
 		#cfg
 		#[automatically_derived]
-		impl<'n, #(#fn_generics,)* #(#struct_generics,)* #(#future_idents,)*> #graphene_core::Node<'n, #input_type> for #mod_name::#struct_name<#(#struct_generics,)*>
+		impl<'n, #(#fn_generics,)* #(#struct_generics,)* #(#future_idents,)*> #core_types::Node<'n, #input_type> for #mod_name::#struct_name<#(#struct_generics,)*>
 		#struct_where_clause
 		{
 			#eval_impl
 		}
 
 		#cfg
-		const fn #identifier() -> #graphene_core::ProtoNodeIdentifier {
-			#graphene_core::ProtoNodeIdentifier::new(std::concat!(#identifier_path, "::", std::stringify!(#struct_name)))
+		const fn #identifier() -> #core_types::ProtoNodeIdentifier {
+			#core_types::ProtoNodeIdentifier::new(std::concat!(#identifier_path, "::", std::stringify!(#struct_name)))
 		}
 
 		#cfg
@@ -375,10 +326,11 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 
 		#cfg
 		#[doc(hidden)]
+		#[allow(clippy::module_inception)]
 		mod #mod_name {
 			use super::*;
-			use #graphene_core as gcore;
-			use gcore::{Node, NodeIOTypes, concrete, fn_type, fn_type_fut, future, ProtoNodeIdentifier, WasmNotSync, NodeIO};
+			use #core_types as gcore;
+			use gcore::{Node, NodeIOTypes, concrete, fn_type, fn_type_fut, future, ProtoNodeIdentifier, WasmNotSync, NodeIO, ContextFeature};
 			use gcore::value::ClonedNode;
 			use gcore::ops::TypeNode;
 			use gcore::registry::{NodeMetadata, FieldMetadata, NODE_REGISTRY, NODE_METADATA, DynAnyNode, DowncastBothNode, DynFuture, TypeErasedBox, PanicNode, RegistryValueSource, RegistryWidgetOverride};
@@ -413,6 +365,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 					category: #category,
 					description: #description,
 					properties: #properties,
+					context_features: vec![#(ContextFeature::#context_features,)*],
 					fields: vec![
 						#(
 							FieldMetadata {
@@ -435,6 +388,10 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 				NODE_METADATA.lock().unwrap().insert(#identifier(), metadata);
 			}
 		}
+
+		#shader_entry_point
+
+		#gpu_node
 	})
 }
 
@@ -443,7 +400,7 @@ fn generate_node_input_references(
 	parsed: &ParsedNodeFn,
 	fn_generics: &[crate::GenericParam],
 	field_idents: &[&PatIdent],
-	graphene_core: &TokenStream2,
+	core_types: &TokenStream2,
 	identifier: &Ident,
 	cfg: &TokenStream2,
 ) -> TokenStream2 {
@@ -454,9 +411,9 @@ fn generate_node_input_references(
 		let (mut modified, mut generic_collector) = FilterUsedGenerics::new(fn_generics);
 
 		for (input_index, (parsed_input, input_ident)) in parsed.fields.iter().zip(field_idents).enumerate() {
-			let mut ty = match parsed_input {
-				ParsedField::Regular { ty, .. } => ty,
-				ParsedField::Node { output_type, .. } => output_type,
+			let mut ty = match &parsed_input.ty {
+				ParsedFieldType::Regular(RegularParsedField { ty, .. }) => ty,
+				ParsedFieldType::Node(NodeParsedField { output_type, .. }) => output_type,
 			}
 			.clone();
 
@@ -479,9 +436,9 @@ fn generate_node_input_references(
 				}
 			});
 			generated_input_accessor.push(quote! {
-				impl <#(#used),*> #graphene_core::NodeInputDecleration for #struct_name <#(#fn_generic_params),*> {
+				impl <#(#used),*> #core_types::NodeInputDecleration for #struct_name <#(#fn_generic_params),*> {
 					const INDEX: usize = #input_index;
-					fn identifier() -> #graphene_core::ProtoNodeIdentifier {
+					fn identifier() -> #core_types::ProtoNodeIdentifier {
 						#inputs_module_name::IDENTIFIER.clone()
 					}
 					type Result = #ty;
@@ -496,7 +453,7 @@ fn generate_node_input_references(
 			use super::*;
 
 			/// The `ProtoNodeIdentifier` of this node without any generics attached to it
-			pub const IDENTIFIER: #graphene_core::ProtoNodeIdentifier = #identifier();
+			pub const IDENTIFIER: #core_types::ProtoNodeIdentifier = #identifier();
 			#(#generated_input_accessor)*
 		}
 	}
@@ -540,20 +497,20 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 		.fields
 		.iter()
 		.map(|field| {
-			match field {
-				ParsedField::Regular { implementations, ty, .. } => {
+			match &field.ty {
+				ParsedFieldType::Regular(RegularParsedField { implementations, ty, .. }) => {
 					if !implementations.is_empty() {
 						implementations.iter().map(|ty| (&unit, ty)).collect()
 					} else {
 						vec![(&unit, ty)]
 					}
 				}
-				ParsedField::Node {
+				ParsedFieldType::Node(NodeParsedField {
 					implementations,
 					input_type,
 					output_type,
 					..
-				} => {
+				}) => {
 					if !implementations.is_empty() {
 						implementations.iter().map(|impl_| (&impl_.input, &impl_.output)).collect()
 					} else {
@@ -578,7 +535,7 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 			let field_name = field_names[j];
 			let (input_type, output_type) = &types[i.min(types.len() - 1)];
 
-			let node = matches!(parsed.fields[j], ParsedField::Node { .. });
+			let node = matches!(parsed.fields[j].ty, ParsedFieldType::Node { .. });
 
 			let downcast_node = quote!(
 				let #field_name: DowncastBothNode<#input_type, #output_type> = DowncastBothNode::new(args[#j].clone());
@@ -637,6 +594,8 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 	})
 }
 
+use crate::crate_ident::CrateIdent;
+use crate::shader_nodes::{ShaderCodegen, ShaderTokens};
 use syn::visit_mut::VisitMut;
 use syn::{GenericArgument, Lifetime, Type};
 

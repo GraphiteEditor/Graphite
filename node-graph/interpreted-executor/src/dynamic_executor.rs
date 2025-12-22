@@ -39,11 +39,6 @@ pub struct NodeTypes {
 	pub output: Type,
 }
 
-#[derive(PartialEq, Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
-pub struct ResolvedDocumentNodeTypes {
-	pub types: HashMap<Vec<NodeId>, NodeTypes>,
-}
-
 type Path = Box<[NodeId]>;
 
 #[derive(PartialEq, Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
@@ -69,10 +64,34 @@ impl DynamicExecutor {
 
 	/// Updates the existing [`BorrowTree`] to reflect the new [`ProtoNetwork`], reusing nodes where possible.
 	#[cfg_attr(debug_assertions, inline(never))]
-	pub async fn update(&mut self, proto_network: ProtoNetwork) -> Result<ResolvedDocumentNodeTypesDelta, GraphErrors> {
+	pub async fn update(&mut self, proto_network: ProtoNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, GraphErrors)> {
 		self.output = proto_network.output;
-		self.typing_context.update(&proto_network)?;
-		let (add, orphaned) = self.tree.update(proto_network, &self.typing_context).await?;
+		self.typing_context.update(&proto_network).map_err(|e| {
+			// If there is an error then get types that have been resolved before the error
+			let add = proto_network
+				.nodes
+				.iter()
+				.filter_map(|(id, node)| node.original_location.path.as_ref().map(|path| (path.clone().into_boxed_slice(), self.typing_context.infer(*id, node))))
+				.take_while(|(_, r)| r.is_ok())
+				.map(|(path, r)| {
+					let r = r.unwrap();
+					(
+						path,
+						NodeTypes {
+							inputs: r.inputs,
+							output: r.return_value,
+						},
+					)
+				})
+				.collect::<Vec<_>>();
+			(ResolvedDocumentNodeTypesDelta { add, remove: Vec::new() }, e)
+		})?;
+
+		let (add, orphaned) = self
+			.tree
+			.update(proto_network, &self.typing_context)
+			.await
+			.map_err(|e| (ResolvedDocumentNodeTypesDelta::default(), e))?;
 		let old_to_remove = core::mem::replace(&mut self.orphaned_nodes, orphaned);
 		let mut remove = Vec::with_capacity(old_to_remove.len() - self.orphaned_nodes.len().min(old_to_remove.len()));
 		for node_id in old_to_remove {
@@ -150,8 +169,8 @@ pub enum IntrospectError {
 impl std::fmt::Display for IntrospectError {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
-			IntrospectError::PathNotFound(path) => write!(f, "Path not found: {:?}", path),
-			IntrospectError::ProtoNodeNotFound(id) => write!(f, "ProtoNode not found: {:?}", id),
+			IntrospectError::PathNotFound(path) => write!(f, "Path not found: {path:?}"),
+			IntrospectError::ProtoNodeNotFound(id) => write!(f, "ProtoNode not found: {id:?}"),
 			IntrospectError::NoData => write!(f, "No data found for this node"),
 			IntrospectError::RuntimeNotReady => write!(f, "Node runtime is not ready"),
 		}
@@ -278,24 +297,24 @@ impl BorrowTree {
 	///     let (proto_network, node_id, proto_node) = ProtoNetwork::example();
 	///     let typing_context = TypingContext::new(&node_registry::NODE_REGISTRY);
 	///     let mut borrow_tree = BorrowTree::new(proto_network, &typing_context).await?;
-	///     
+	///
 	///     // Assert that the node exists in the BorrowTree
 	///     assert!(borrow_tree.get(node_id).is_some(), "Node should exist before removal");
-	///     
+	///
 	///     // Remove the node
 	///     let removed_path = borrow_tree.free_node(node_id);
-	///     
+	///
 	///     // Assert that the node was successfully removed
 	///     assert!(removed_path.is_some(), "Node removal should return a path");
 	///     assert!(borrow_tree.get(node_id).is_none(), "Node should not exist after removal");
-	///     
+	///
 	///     // Try to remove the same node again
 	///     let second_removal = borrow_tree.free_node(node_id);
-	///     
+	///
 	///     assert_eq!(second_removal, None, "Second removal should return None");
-	///     
+	///
 	///     println!("All assertions passed. free_node function works as expected.");
-	///     
+	///
 	///     Ok(())
 	/// }
 	/// ```
@@ -393,7 +412,7 @@ impl BorrowTree {
 			}
 			ConstructionArgs::Inline(_) => unimplemented!("Inline nodes are not supported yet"),
 			ConstructionArgs::Nodes(ids) => {
-				let ids: Vec<_> = ids.iter().map(|(id, _)| *id).collect();
+				let ids = ids.to_vec();
 				let construction_nodes = self.node_deps(&ids);
 				let constructor = typing_context.constructor(id).ok_or_else(|| vec![GraphError::new(&proto_node, GraphErrorType::NoConstructor)])?;
 				let node = constructor(construction_nodes).await;

@@ -2,17 +2,16 @@ use cef::{ImplV8Handler, ImplV8Value, V8Value, WrapV8Handler, rc::Rc, v8_context
 
 use crate::cef::ipc::{MessageType, SendMessage};
 
-pub struct BrowserProcessV8HandlerImpl {
+pub struct RenderProcessV8HandlerImpl {
 	object: *mut cef::rc::RcImpl<cef::sys::_cef_v8_handler_t, Self>,
 }
-
-impl BrowserProcessV8HandlerImpl {
+impl RenderProcessV8HandlerImpl {
 	pub(crate) fn new() -> Self {
 		Self { object: std::ptr::null_mut() }
 	}
 }
 
-impl ImplV8Handler for BrowserProcessV8HandlerImpl {
+impl ImplV8Handler for RenderProcessV8HandlerImpl {
 	fn execute(
 		&self,
 		name: Option<&cef::CefString>,
@@ -20,9 +19,12 @@ impl ImplV8Handler for BrowserProcessV8HandlerImpl {
 		arguments: Option<&[Option<V8Value>]>,
 		_retval: Option<&mut Option<V8Value>>,
 		_exception: Option<&mut cef::CefString>,
-	) -> ::std::os::raw::c_int {
-		if let Some(name) = name {
-			if name.to_string() == "sendNativeMessage" {
+	) -> std::ffi::c_int {
+		match name.map(|s| s.to_string()).unwrap_or_default().as_str() {
+			"initializeNativeCommunication" => {
+				v8_context_get_current_context().send_message(MessageType::Initialized, vec![0u8].as_slice());
+			}
+			"sendNativeMessage" => {
 				let Some(args) = arguments else {
 					tracing::error!("No arguments provided to sendNativeMessage");
 					return 0;
@@ -48,6 +50,9 @@ impl ImplV8Handler for BrowserProcessV8HandlerImpl {
 
 				return 1;
 			}
+			name => {
+				tracing::error!("Unknown V8 function called: {}", name);
+			}
 		}
 		1
 	}
@@ -57,7 +62,7 @@ impl ImplV8Handler for BrowserProcessV8HandlerImpl {
 	}
 }
 
-impl Clone for BrowserProcessV8HandlerImpl {
+impl Clone for RenderProcessV8HandlerImpl {
 	fn clone(&self) -> Self {
 		unsafe {
 			let rc_impl = &mut *self.object;
@@ -66,8 +71,7 @@ impl Clone for BrowserProcessV8HandlerImpl {
 		Self { object: self.object }
 	}
 }
-
-impl Rc for BrowserProcessV8HandlerImpl {
+impl Rc for RenderProcessV8HandlerImpl {
 	fn as_base(&self) -> &cef::sys::cef_base_ref_counted_t {
 		unsafe {
 			let base = &*self.object;
@@ -75,8 +79,7 @@ impl Rc for BrowserProcessV8HandlerImpl {
 		}
 	}
 }
-
-impl WrapV8Handler for BrowserProcessV8HandlerImpl {
+impl WrapV8Handler for RenderProcessV8HandlerImpl {
 	fn wrap_rc(&mut self, object: *mut cef::rc::RcImpl<cef::sys::_cef_v8_handler_t, Self>) {
 		self.object = object;
 	}

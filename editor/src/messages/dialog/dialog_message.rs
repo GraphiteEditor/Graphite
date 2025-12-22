@@ -25,13 +25,13 @@ pub enum DialogMessage {
 		localized_commit_date: String,
 		localized_commit_year: String,
 	},
-	RequestComingSoonDialog {
-		issue: Option<u32>,
-	},
 	RequestDemoArtworkDialog,
 	RequestExportDialog,
 	RequestLicensesDialogWithLocalizedCommitDate {
 		localized_commit_year: String,
+	},
+	RequestLicensesThirdPartyDialogWithLicenseText {
+		license_text: String,
 	},
 	RequestNewDocumentDialog,
 	RequestPreferencesDialog,

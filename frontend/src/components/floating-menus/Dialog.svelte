@@ -34,8 +34,8 @@
 	</LayoutRow>
 	<LayoutRow class={`content ${$dialog.title === "Demo Artwork" ? "center" : "" /* TODO: Replace this with a less hacky approach that's compatible with localization/translation */}`}>
 		<LayoutCol class="column-1">
-			{#if $dialog.column1.layout.length > 0}
-				<WidgetLayout layout={$dialog.column1} class="details" />
+			{#if $dialog.column1.length > 0}
+				<WidgetLayout layout={$dialog.column1} layoutTarget="DialogColumn1" class="details" />
 			{/if}
 			{#if $dialog.panicDetails}
 				<div class="widget-layout details">
@@ -57,15 +57,15 @@
 				</div>
 			{/if}
 		</LayoutCol>
-		{#if $dialog.column2.layout.length > 0}
+		{#if $dialog.column2.length > 0}
 			<LayoutCol class="column-2">
-				<WidgetLayout layout={$dialog.column2} class="details" />
+				<WidgetLayout layout={$dialog.column2} layoutTarget="DialogColumn2" class="details" />
 			</LayoutCol>
 		{/if}
 	</LayoutRow>
 	<LayoutRow class="footer-area">
-		{#if $dialog.buttons.layout.length > 0}
-			<WidgetLayout layout={$dialog.buttons} class="details" />
+		{#if $dialog.buttons.length > 0}
+			<WidgetLayout layout={$dialog.buttons} layoutTarget="DialogButtons" class="details" />
 		{/if}
 		{#if $dialog.panicDetails}
 			<TextButton label="Copy Error Log" action={() => navigator.clipboard.writeText($dialog.panicDetails)} />
@@ -89,6 +89,7 @@
 		.header-area,
 		.footer-area {
 			background: var(--color-1-nearblack);
+			flex: 0 0 auto;
 		}
 
 		.header-area,
@@ -113,6 +114,8 @@
 
 		.content {
 			margin: -4px 0;
+			padding-right: calc(24px + 1px * var(--even-integer-subpixel-expansion-x));
+			padding-bottom: calc(16px + 1px * var(--even-integer-subpixel-expansion-y));
 
 			&.center .row {
 				justify-content: center;
@@ -126,16 +129,20 @@
 				}
 			}
 
-			.details.text-label {
-				-webkit-user-select: text; // Required as of Safari 15.0 (Graphite's minimum version) through the latest release
-				user-select: text;
-				white-space: pre-wrap;
-				max-width: 400px;
-				height: auto;
-			}
-
 			.radio-input button {
 				flex-grow: 1;
+			}
+
+			.text-label.multiline {
+				-webkit-user-select: text; // Still required by Safari as of 2025
+				user-select: text;
+			}
+
+			// Used by the "Third-Party Software License Notices" dialog
+			.details:has(.text-label.multiline.monospace) {
+				max-height: 60vh;
+				max-width: 80vw;
+				overflow: auto;
 			}
 
 			// Used by the "Open Demo Artwork" dialog

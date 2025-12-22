@@ -8,6 +8,7 @@ use crate::messages::input_mapper::utility_types::misc::{KeyMappingEntries, Mapp
 use crate::messages::portfolio::document::node_graph::utility_types::Direction;
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
+use crate::messages::portfolio::utility_types::KeyboardPlatformLayout;
 use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::brush_tool::BrushToolMessageOptionsUpdate;
 use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
@@ -53,6 +54,11 @@ pub fn input_mappings() -> Mapping {
 		// Hack to prevent Left Click + Accel + Z combo (this effectively blocks you from making a double undo with AbortTransaction)
 		entry!(KeyDown(KeyZ); modifiers=[Accel, MouseLeft], action_dispatch=DocumentMessage::Noop),
 		//
+		// ClipboardMessage
+		entry!(KeyDown(KeyX); modifiers=[Accel], action_dispatch=ClipboardMessage::Cut),
+		entry!(KeyDown(KeyC); modifiers=[Accel], action_dispatch=ClipboardMessage::Copy),
+		entry!(KeyDown(KeyV); modifiers=[Accel], action_dispatch=ClipboardMessage::Paste),
+		//
 		// NodeGraphMessage
 		entry!(KeyDown(MouseLeft); action_dispatch=NodeGraphMessage::PointerDown { shift_click: false, control_click: false, alt_click: false, right_click: false }),
 		entry!(KeyDown(MouseLeft); modifiers=[Shift], action_dispatch=NodeGraphMessage::PointerDown { shift_click: true, control_click: false, alt_click: false, right_click: false }),
@@ -96,7 +102,7 @@ pub fn input_mappings() -> Mapping {
 		entry!(PointerMove; refresh_keys=[Control, Shift], action_dispatch=TransformLayerMessage::PointerMove { slow_key: Shift, increments_key: Control }),
 		//
 		// SelectToolMessage
-		entry!(PointerMove; refresh_keys=[Control, Alt, Shift], action_dispatch=SelectToolMessage::PointerMove(SelectToolPointerKeys { axis_align: Shift, snap_angle: Shift, center: Alt, duplicate: Alt })),
+		entry!(PointerMove; refresh_keys=[Control, Alt, Shift], action_dispatch=SelectToolMessage::PointerMove { modifier_keys: SelectToolPointerKeys { axis_align: Shift, snap_angle: Shift, center: Alt, duplicate: Alt } }),
 		entry!(KeyDown(MouseLeft); action_dispatch=SelectToolMessage::DragStart { extend_selection: Shift, remove_from_selection: Alt, select_deepest: Accel, lasso_select: Control, skew: Control }),
 		entry!(KeyUp(MouseLeft); action_dispatch=SelectToolMessage::DragStop { remove_from_selection: Alt }),
 		entry!(KeyDown(Enter); action_dispatch=SelectToolMessage::Enter),
@@ -178,7 +184,7 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(Escape); action_dispatch=ShapeToolMessage::Abort),
 		entry!(KeyDown(BracketLeft); action_dispatch=ShapeToolMessage::DecreaseSides),
 		entry!(KeyDown(BracketRight); action_dispatch=ShapeToolMessage::IncreaseSides),
-		entry!(PointerMove; refresh_keys=[Alt, Shift, Control], action_dispatch=ShapeToolMessage::PointerMove([Alt, Shift, Control])),
+		entry!(PointerMove; refresh_keys=[Alt, Shift, Control], action_dispatch=ShapeToolMessage::PointerMove { modifier: [Alt, Shift, Control] }),
 		entry!(KeyDown(ArrowUp); modifiers=[Shift, ArrowLeft], action_dispatch=ShapeToolMessage::NudgeSelectedLayers { delta_x: -BIG_NUDGE_AMOUNT, delta_y: -BIG_NUDGE_AMOUNT, resize: Alt, resize_opposite_corner: Control }),
 		entry!(KeyDown(ArrowUp); modifiers=[Shift, ArrowRight], action_dispatch=ShapeToolMessage::NudgeSelectedLayers { delta_x: BIG_NUDGE_AMOUNT, delta_y: -BIG_NUDGE_AMOUNT, resize: Alt, resize_opposite_corner: Control }),
 		entry!(KeyDown(ArrowUp); modifiers=[Shift], action_dispatch=ShapeToolMessage::NudgeSelectedLayers { delta_x: 0., delta_y: -BIG_NUDGE_AMOUNT, resize: Alt, resize_opposite_corner: Control }),
@@ -223,9 +229,9 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(KeyS); action_dispatch=PathToolMessage::GRS { key: KeyS }),
 		entry!(PointerMove; refresh_keys=[KeyC, Space, Control, Shift, Alt], action_dispatch=PathToolMessage::PointerMove { toggle_colinear: KeyC, equidistant: Alt, move_anchor_with_handles: Space, snap_angle: Shift, lock_angle: Control, delete_segment: Alt, break_colinear_molding: Alt, segment_editing_modifier: Control }),
 		entry!(KeyDown(Delete); action_dispatch=PathToolMessage::Delete),
-		entry!(KeyDown(KeyA); modifiers=[Accel], action_dispatch=PathToolMessage::SelectAllAnchors),
-		entry!(KeyDown(KeyA); modifiers=[Accel, Shift], canonical, action_dispatch=PathToolMessage::DeselectAllPoints),
-		entry!(KeyDown(KeyA); modifiers=[Alt], action_dispatch=PathToolMessage::DeselectAllPoints),
+		entry!(KeyDown(KeyA); modifiers=[Accel], action_dispatch=PathToolMessage::SelectAll),
+		entry!(KeyDown(KeyA); modifiers=[Accel, Shift], canonical, action_dispatch=PathToolMessage::DeselectAllSelected),
+		entry!(KeyDown(KeyA); modifiers=[Alt], action_dispatch=PathToolMessage::DeselectAllSelected),
 		entry!(KeyDown(Backspace); action_dispatch=PathToolMessage::Delete),
 		entry!(KeyUp(MouseLeft); action_dispatch=PathToolMessage::DragStop { extend_selection: Shift, shrink_selection: Alt }),
 		entry!(KeyDown(Enter); action_dispatch=PathToolMessage::Enter { extend_selection: Shift, shrink_selection: Alt }),
@@ -297,8 +303,8 @@ pub fn input_mappings() -> Mapping {
 		entry!(PointerMove; action_dispatch=BrushToolMessage::PointerMove),
 		entry!(KeyDown(MouseLeft); action_dispatch=BrushToolMessage::DragStart),
 		entry!(KeyUp(MouseLeft); action_dispatch=BrushToolMessage::DragStop),
-		entry!(KeyDown(BracketLeft); action_dispatch=BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::ChangeDiameter(-BRUSH_SIZE_CHANGE_KEYBOARD))),
-		entry!(KeyDown(BracketRight); action_dispatch=BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::ChangeDiameter(BRUSH_SIZE_CHANGE_KEYBOARD))),
+		entry!(KeyDown(BracketLeft); action_dispatch=BrushToolMessage::UpdateOptions { options: BrushToolMessageOptionsUpdate::ChangeDiameter(-BRUSH_SIZE_CHANGE_KEYBOARD) }),
+		entry!(KeyDown(BracketRight); action_dispatch=BrushToolMessage::UpdateOptions { options: BrushToolMessageOptionsUpdate::ChangeDiameter(BRUSH_SIZE_CHANGE_KEYBOARD) }),
 		entry!(KeyDown(MouseRight); action_dispatch=BrushToolMessage::Abort),
 		entry!(KeyDown(Escape); action_dispatch=BrushToolMessage::Abort),
 		//
@@ -325,7 +331,7 @@ pub fn input_mappings() -> Mapping {
 		//
 		// DocumentMessage
 		entry!(KeyDown(Space); modifiers=[Control], action_dispatch=DocumentMessage::GraphViewOverlayToggle),
-		entry!(KeyUp(Escape); action_dispatch=DocumentMessage::Escape),
+		entry!(KeyDownNoRepeat(Escape); action_dispatch=DocumentMessage::Escape),
 		entry!(KeyDown(Delete); action_dispatch=DocumentMessage::DeleteSelectedLayers),
 		entry!(KeyDown(Backspace); action_dispatch=DocumentMessage::DeleteSelectedLayers),
 		entry!(KeyDown(KeyO); modifiers=[Alt], action_dispatch=DocumentMessage::ToggleOverlaysVisibility),
@@ -340,6 +346,7 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(KeyA); modifiers=[Accel, Shift], canonical, action_dispatch=DocumentMessage::DeselectAllLayers),
 		entry!(KeyDown(KeyA); modifiers=[Alt], action_dispatch=DocumentMessage::DeselectAllLayers),
 		entry!(KeyDown(KeyS); modifiers=[Accel], action_dispatch=DocumentMessage::SaveDocument),
+		entry!(KeyDown(KeyS); modifiers=[Accel, Shift], action_dispatch=DocumentMessage::SaveDocumentAs),
 		entry!(KeyDown(KeyD); modifiers=[Accel], canonical, action_dispatch=DocumentMessage::DuplicateSelectedLayers),
 		entry!(KeyDown(KeyJ); modifiers=[Accel], action_dispatch=DocumentMessage::DuplicateSelectedLayers),
 		entry!(KeyDown(KeyG); modifiers=[Accel], action_dispatch=DocumentMessage::GroupSelectedLayers { group_folder_type: GroupFolderType::Layer }),
@@ -405,10 +412,12 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(MouseMiddle); action_dispatch=NavigationMessage::BeginCanvasPan),
 		entry!(KeyDown(MouseLeft); modifiers=[Space], action_dispatch=NavigationMessage::BeginCanvasPan),
 		entry!(KeyDown(NumpadAdd); modifiers=[Accel], action_dispatch=NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }),
+		// `FakeKeyPlus` is a nonfunctional key mapping that must be accompanied by its real `Equal` key counterpart. This is used only to set the canonical key label so it shows "+" instead of "=" in the UI.
+		entry!(KeyDown(FakeKeyPlus); modifiers=[Accel], canonical, action_dispatch=NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }),
 		entry!(KeyDown(Equal); modifiers=[Accel], action_dispatch=NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }),
 		entry!(KeyDown(Minus); modifiers=[Accel], action_dispatch=NavigationMessage::CanvasZoomDecrease { center_on_mouse: false }),
-		entry!(KeyDown(KeyF); modifiers=[Alt], action_dispatch=NavigationMessage::CanvasFlip),
 		entry!(WheelScroll; modifiers=[Control], action_dispatch=NavigationMessage::CanvasZoomMouseWheel),
+		entry!(WheelScroll; modifiers=[Command], action_dispatch=NavigationMessage::CanvasZoomMouseWheel),
 		entry!(WheelScroll; modifiers=[Shift], action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: true }),
 		entry!(WheelScroll; action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: false }),
 		entry!(KeyDown(PageUp); modifiers=[Shift], action_dispatch=NavigationMessage::CanvasPanByViewportFraction { delta: DVec2::new(1., 0.) }),
@@ -427,9 +436,7 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(KeyX); modifiers=[Accel], action_dispatch=PortfolioMessage::Cut { clipboard: Clipboard::Device }),
 		entry!(KeyDown(KeyC); modifiers=[Accel], action_dispatch=PortfolioMessage::Copy { clipboard: Clipboard::Device }),
 		entry!(KeyDown(KeyR); modifiers=[Alt], action_dispatch=PortfolioMessage::ToggleRulers),
-		//
-		// FrontendMessage
-		entry!(KeyDown(KeyV); modifiers=[Accel], action_dispatch=FrontendMessage::TriggerPaste),
+		entry!(KeyDown(KeyD); modifiers=[Alt], action_dispatch=PortfolioMessage::ToggleDataPanelOpen),
 		//
 		// DialogMessage
 		entry!(KeyDown(KeyE); modifiers=[Accel], action_dispatch=DialogMessage::RequestExportDialog),
@@ -464,7 +471,7 @@ pub fn input_mappings() -> Mapping {
 	// Sort `pointer_shake`
 	sort(&mut pointer_shake);
 
-	Mapping {
+	let mut mapping = Mapping {
 		key_up,
 		key_down,
 		key_up_no_repeat,
@@ -473,23 +480,36 @@ pub fn input_mappings() -> Mapping {
 		wheel_scroll,
 		pointer_move,
 		pointer_shake,
+	};
+
+	if cfg!(target_os = "macos") {
+		let remove: [&[&[MappingEntry; 0]; 0]; 0] = [];
+		let add = [entry!(KeyDown(KeyQ); modifiers=[Accel], action_dispatch=AppWindowMessage::Close)];
+
+		apply_mapping_patch(&mut mapping, remove, add);
 	}
+
+	mapping
 }
 
 /// Default mappings except that scrolling without modifier keys held down is bound to zooming instead of vertical panning
 pub fn zoom_with_scroll() -> Mapping {
 	use InputMapperMessage::*;
 
+	// On Mac, the OS already converts Shift+scroll into horizontal scrolling so we have to reverse the behavior from normal to produce the same outcome
+	let keyboard_platform = GLOBAL_PLATFORM.get().copied().unwrap_or_default().as_keyboard_platform_layout();
+
 	let mut mapping = input_mappings();
 
 	let remove = [
 		entry!(WheelScroll; modifiers=[Control], action_dispatch=NavigationMessage::CanvasZoomMouseWheel),
+		entry!(WheelScroll; modifiers=[Command], action_dispatch=NavigationMessage::CanvasZoomMouseWheel),
 		entry!(WheelScroll; modifiers=[Shift], action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: true }),
 		entry!(WheelScroll; action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: false }),
 	];
 	let add = [
-		entry!(WheelScroll; modifiers=[Control], action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: true }),
-		entry!(WheelScroll; modifiers=[Shift], action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: false }),
+		entry!(WheelScroll; modifiers=[Control], action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: keyboard_platform == KeyboardPlatformLayout::Mac }),
+		entry!(WheelScroll; modifiers=[Shift], action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: keyboard_platform != KeyboardPlatformLayout::Mac }),
 		entry!(WheelScroll; action_dispatch=NavigationMessage::CanvasZoomMouseWheel),
 	];
 

@@ -1,5 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-	<path d="M20,6v12H4V6H20 M22,4H2v16h20V4L22,4z" />
-	<!-- M0,0L24,24 is drawn invisibly and used to defeat Firefox's attempts to round the rectangle to the integer grid -->
-	<path class="color-vector" d="M0,0L24,24 M5.5,7.5v9h13v-9h-13" />
-</svg>

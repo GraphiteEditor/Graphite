@@ -7,10 +7,12 @@ use crate::messages::portfolio::document::utility_types::nodes::CollapsedLayers;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::get_clip_mode;
 use glam::{DAffine2, DVec2, IVec2};
+use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::Color;
 use graphene_std::renderer::Quad;
 use graphene_std::renderer::convert_usvg_path::convert_usvg_path;
+use graphene_std::table::Table;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::style::{Fill, Gradient, GradientStops, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 
@@ -108,6 +110,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 			GraphOperationMessage::NewArtboard { id, artboard } => {
 				let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
 
+				let artboard_location = artboard.location;
 				let artboard_layer = modify_inputs.create_artboard(id, artboard);
 				network_interface.move_layer_to_stack(artboard_layer, LayerNodeIdentifier::ROOT_PARENT, 0, &[]);
 
@@ -116,13 +119,41 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 					log::error!("Artboard not created");
 					return;
 				};
+				let document_metadata = network_interface.document_metadata();
+
 				let primary_input = artboard.inputs.first().expect("Artboard should have a primary input").clone();
 				if let NodeInput::Node { node_id, .. } = &primary_input {
-					if network_interface.is_layer(node_id, &[]) && !network_interface.is_artboard(node_id, &[]) {
-						network_interface.move_layer_to_stack(LayerNodeIdentifier::new(*node_id, network_interface), artboard_layer, 0, &[]);
+					if network_interface.is_artboard(node_id, &[]) {
+						// Nothing to do here: we have a stack full of artboards!
+					} else if network_interface.is_layer(node_id, &[]) {
+						// We have a stack of non-layer artboards.
+						for (insert_index, layer) in LayerNodeIdentifier::ROOT_PARENT.children(document_metadata).filter(|&layer| layer != artboard_layer).enumerate() {
+							// Parent the layer to our new artboard (retaining ordering)
+							responses.add(NodeGraphMessage::MoveLayerToStack {
+								layer,
+								parent: artboard_layer,
+								insert_index,
+							});
+							// Apply a translation to prevent the content from shifting
+							responses.add(GraphOperationMessage::TransformChange {
+								layer,
+								transform: DAffine2::from_translation(-artboard_location.as_dvec2()),
+								transform_in: TransformIn::Local,
+								skip_rerender: true,
+							});
+						}
+
+						// Set the bottom input of the artboard back to artboard
+						let bottom_input = NodeInput::value(TaggedValue::Artboard(Table::new()), true);
+						network_interface.set_input(&InputConnector::node(artboard_layer.to_node(), 0), bottom_input, &[]);
 					} else {
+						// We have some non layers (e.g. just a rectangle node). We disconnect the bottom input and connect it to the left input.
 						network_interface.disconnect_input(&InputConnector::node(artboard_layer.to_node(), 0), &[]);
-						network_interface.set_input(&InputConnector::node(id, 0), primary_input, &[]);
+						network_interface.set_input(&InputConnector::node(artboard_layer.to_node(), 1), primary_input, &[]);
+
+						// Set the bottom input of the artboard back to artboard
+						let bottom_input = NodeInput::value(TaggedValue::Artboard(Table::new()), true);
+						network_interface.set_input(&InputConnector::node(artboard_layer.to_node(), 0), bottom_input, &[]);
 					}
 				}
 				responses.add_front(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] });
@@ -426,7 +457,6 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, t
 			Fill::Gradient(Gradient {
 				start,
 				end,
-				transform: DAffine2::IDENTITY,
 				gradient_type: GradientType::Linear,
 				stops,
 			})
@@ -453,7 +483,6 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, t
 			Fill::Gradient(Gradient {
 				start,
 				end,
-				transform: DAffine2::IDENTITY,
 				gradient_type: GradientType::Radial,
 				stops,
 			})

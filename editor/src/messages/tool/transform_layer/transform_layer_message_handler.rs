@@ -1,5 +1,6 @@
 use crate::consts::{ANGLE_MEASURE_RADIUS_FACTOR, ARC_MEASURE_RADIUS_FACTOR_RANGE, COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GRAY, SLOWING_DIVISOR};
 use crate::messages::input_mapper::utility_types::input_mouse::{DocumentPosition, ViewportPosition};
+use crate::messages::portfolio::document::overlays::utility_functions::text_width;
 use crate::messages::portfolio::document::overlays::utility_types::{OverlayProvider, Pivot};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::PTZ;
@@ -7,6 +8,7 @@ use crate::messages::portfolio::document::utility_types::transformation::{Axis, 
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::pivot::{PivotGizmo, PivotGizmoType};
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
+use crate::messages::tool::tool_messages::select_tool;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::{ToolData, ToolType};
 use glam::{DAffine2, DVec2};
@@ -16,7 +18,7 @@ use graphene_std::vector::misc::ManipulatorPointId;
 use graphene_std::vector::{Vector, VectorModificationType};
 use std::f64::consts::{PI, TAU};
 
-const TRANSFORM_GRS_OVERLAY_PROVIDER: OverlayProvider = |context| TransformLayerMessage::Overlays(context).into();
+const TRANSFORM_GRS_OVERLAY_PROVIDER: OverlayProvider = |context| TransformLayerMessage::Overlays { context }.into();
 
 // TODO: Get these from the input mapper
 const SLOW_KEY: Key = Key::Shift;
@@ -28,45 +30,73 @@ pub struct TransformLayerMessageContext<'a> {
 	pub input: &'a InputPreprocessorMessageHandler,
 	pub tool_data: &'a ToolData,
 	pub shape_editor: &'a mut ShapeState,
+	pub viewport: &'a ViewportMessageHandler,
+}
+
+#[derive(Debug, Clone, Default, ExtractField)]
+pub struct TransformationState {
+	pub is_rounded_to_intervals: bool,
+	pub is_transforming_in_local_space: bool,
+	pub local_transform_axes: [DVec2; 2],
+	pub document_space_pivot: DocumentPosition,
+}
+
+impl TransformationState {
+	pub fn pivot_viewport(&self, document: &DocumentMessageHandler) -> DVec2 {
+		document.metadata().document_to_viewport.transform_point2(self.document_space_pivot)
+	}
+
+	pub fn constraint_axis(&self, axis_constraint: Axis) -> Option<DVec2> {
+		match axis_constraint {
+			Axis::X => Some(if self.is_transforming_in_local_space { self.local_transform_axes[0] } else { DVec2::X }),
+			Axis::Y => Some(if self.is_transforming_in_local_space { self.local_transform_axes[1] } else { DVec2::Y }),
+			_ => None,
+		}
+	}
+
+	pub fn project_onto_constrained(&self, vector: DVec2, axis_constraint: Axis) -> DVec2 {
+		self.constraint_axis(axis_constraint).map_or(vector, |direction| vector.project_onto_normalized(direction))
+	}
+
+	pub fn local_to_viewport_transform(&self) -> DAffine2 {
+		if self.is_transforming_in_local_space {
+			DAffine2::from_cols(self.local_transform_axes[0], self.local_transform_axes[1], DVec2::ZERO)
+		} else {
+			DAffine2::IDENTITY
+		}
+	}
 }
 
 #[derive(Debug, Clone, Default, ExtractField)]
 pub struct TransformLayerMessageHandler {
 	pub transform_operation: TransformOperation,
-
+	state: TransformationState,
 	slow: bool,
-	increments: bool,
-	local: bool,
 	layer_bounding_box: Quad,
 	typing: Typing,
-
 	mouse_position: ViewportPosition,
 	start_mouse: ViewportPosition,
-
 	original_transforms: OriginalTransforms,
 	pivot_gizmo: PivotGizmo,
 	pivot: ViewportPosition,
-
 	path_bounds: Option<[DVec2; 2]>,
-
-	local_pivot: DocumentPosition,
 	local_mouse_start: DocumentPosition,
 	grab_target: DocumentPosition,
-
 	ptz: PTZ,
 	initial_transform: DAffine2,
-
 	operation_count: usize,
+	was_grabbing: bool,
 
 	// Pen tool (outgoing handle GRS manipulation)
 	handle: DVec2,
 	last_point: DVec2,
 	grs_pen_handle: bool,
 
-	// Ghost outlines for Path Tool
+	// Path tool (ghost outlines showing pre-transform geometry)
 	ghost_outline: Vec<(Vec<ClickTargetType>, DAffine2)>,
 }
 
+#[message_handler_data]
 impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for TransformLayerMessageHandler {
 	fn process_message(&mut self, message: TransformLayerMessage, responses: &mut VecDeque<Message>, context: TransformLayerMessageContext) {
 		let TransformLayerMessageContext {
@@ -74,6 +104,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 			input,
 			tool_data,
 			shape_editor,
+			viewport,
 		} = context;
 
 		let using_path_tool = tool_data.active_tool_type == ToolType::Path;
@@ -119,10 +150,10 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 			if !using_path_tool {
 				self.pivot_gizmo.recalculate_transform(document);
 				*selected.pivot = self.pivot_gizmo.position(document);
-				self.local_pivot = document.metadata().document_to_viewport.inverse().transform_point2(*selected.pivot);
-				self.grab_target = self.local_pivot;
+				self.state.document_space_pivot = document.metadata().document_to_viewport.inverse().transform_point2(*selected.pivot);
+				self.grab_target = self.state.document_space_pivot;
 			}
-			// Here vector data from all layers is not considered which can be a problem in pivot calculation
+			// TODO: Here vector data from all layers is not considered which can be a problem in pivot calculation
 			else if let Some(vector) = selected_layers.first().and_then(|&layer| document.network_interface.compute_modified_vector(layer)) {
 				*selected.original_transforms = OriginalTransforms::default();
 
@@ -151,7 +182,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 					*selected.pivot = new_pivot;
 					self.path_bounds = bounds;
 
-					self.local_pivot = document_to_viewport.inverse().transform_point2(*selected.pivot);
+					self.state.document_space_pivot = document_to_viewport.inverse().transform_point2(*selected.pivot);
 					self.grab_target = document_to_viewport.inverse().transform_point2(grab_target);
 				} else {
 					log::warn!("Failed to calculate pivot.");
@@ -170,7 +201,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 
 		match message {
 			// Overlays
-			TransformLayerMessage::Overlays(mut overlay_context) => {
+			TransformLayerMessage::Overlays { context: mut overlay_context } => {
 				if !overlay_context.visibility_settings.transform_measurement() {
 					return;
 				}
@@ -181,12 +212,12 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 					}
 				}
 
-				let viewport_box = input.viewport_bounds.size();
+				let viewport_box = viewport.size().into_dvec2();
 				let axis_constraint = self.transform_operation.axis_constraint();
 
 				let format_rounded = |value: f64, precision: usize| {
 					if self.typing.digits.is_empty() || !self.transform_operation.can_begin_typing() {
-						format!("{:.*}", precision, value).trim_end_matches('0').trim_end_matches('.').to_string()
+						format!("{value:.precision$}").trim_end_matches('0').trim_end_matches('.').to_string()
 					} else {
 						self.typing.string.clone()
 					}
@@ -201,52 +232,52 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				match self.transform_operation {
 					TransformOperation::None => (),
 					TransformOperation::Grabbing(translation) => {
-						let translation = translation.to_dvec(self.initial_transform, self.increments);
-						let viewport_translate = document_to_viewport.transform_vector2(translation);
+						let translation_viewport = self.state.local_to_viewport_transform().matrix2 * translation.to_dvec(&self.state, document);
 						let pivot = document_to_viewport.transform_point2(self.grab_target);
-						let quad = Quad::from_box([pivot, pivot + viewport_translate]);
+						let quad = Quad::from_box([pivot, pivot + translation_viewport]);
 
 						responses.add(SelectToolMessage::PivotShift {
-							offset: Some(viewport_translate),
+							offset: Some(translation_viewport),
 							flush: false,
 						});
 
 						let typed_string = (!self.typing.digits.is_empty() && self.transform_operation.can_begin_typing()).then(|| self.typing.string.clone());
-						overlay_context.translation_box(translation, quad, typed_string);
+						overlay_context.translation_box(translation_viewport / document_to_viewport.matrix2.y_axis.length(), quad, typed_string);
 					}
 					TransformOperation::Scaling(scale) => {
-						let scale = scale.to_f64(self.increments);
+						let scale = scale.to_f64(self.state.is_rounded_to_intervals);
 						let text = format!("{}x", format_rounded(scale, 3));
-						let pivot = document_to_viewport.transform_point2(self.local_pivot);
 						let start_mouse = document_to_viewport.transform_point2(self.local_mouse_start);
-						let local_edge = start_mouse - pivot;
-						let local_edge = project_edge_to_quad(local_edge, &self.layer_bounding_box, self.local, axis_constraint);
-						let boundary_point = pivot + local_edge * scale.min(1.);
-						let end_point = pivot + local_edge * scale.max(1.);
+						let local_edge = start_mouse - self.state.pivot_viewport(document);
+						let local_edge = self.state.project_onto_constrained(local_edge, axis_constraint);
+						let boundary_point = self.state.pivot_viewport(document) + local_edge * scale.min(1.);
+						let end_point = self.state.pivot_viewport(document) + local_edge * scale.max(1.);
 
 						if scale > 0. {
-							overlay_context.dashed_line(pivot, boundary_point, None, None, Some(2.), Some(2.), Some(0.5));
+							overlay_context.dashed_line(self.state.pivot_viewport(document), boundary_point, None, None, Some(2.), Some(2.), Some(0.5));
 						}
 						overlay_context.line(boundary_point, end_point, None, None);
 
-						let transform = DAffine2::from_translation(boundary_point.midpoint(pivot) + local_edge.perp().normalize_or(DVec2::X) * local_edge.element_product().signum() * 24.);
+						let transform = DAffine2::from_translation(
+							boundary_point.midpoint(self.state.pivot_viewport(document)) + local_edge.perp().normalize_or(DVec2::X) * local_edge.element_product().signum() * 24.,
+						);
 						overlay_context.text(&text, COLOR_OVERLAY_BLUE, None, transform, 16., [Pivot::Middle, Pivot::Middle]);
 					}
 					TransformOperation::Rotating(rotation) => {
-						let angle = rotation.to_f64(self.increments);
-						let pivot = document_to_viewport.transform_point2(self.local_pivot);
+						let angle = rotation.to_f64(self.state.is_rounded_to_intervals);
 						let start_mouse = document_to_viewport.transform_point2(self.local_mouse_start);
 						let offset_angle = if self.grs_pen_handle {
 							self.handle - self.last_point
 						} else if using_path_tool {
-							start_mouse - pivot
+							start_mouse - self.state.pivot_viewport(document)
 						} else {
+							// TODO: This is always zero breaking the `.to_angle()` below?
 							self.layer_bounding_box.top_right() - self.layer_bounding_box.top_right()
 						};
 						let tilt_offset = document.document_ptz.unmodified_tilt();
 						let offset_angle = offset_angle.to_angle() + tilt_offset;
 						let width = viewport_box.max_element();
-						let radius = start_mouse.distance(pivot);
+						let radius = start_mouse.distance(self.state.pivot_viewport(document));
 						let arc_radius = ANGLE_MEASURE_RADIUS_FACTOR * width;
 						let radius = radius.clamp(ARC_MEASURE_RADIUS_FACTOR_RANGE.0 * width, ARC_MEASURE_RADIUS_FACTOR_RANGE.1 * width);
 						let angle_in_degrees = angle.to_degrees();
@@ -258,15 +289,17 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 							angle_in_degrees
 						};
 						let text = format!("{}°", format_rounded(display_angle, 2));
-						let text_texture_width = overlay_context.get_width(&text) / 2.;
+						const FONT_SIZE: f64 = 12.;
+
+						let text_texture_width = text_width(&text, FONT_SIZE) / 2.;
 						let text_texture_height = 12.;
 						let text_angle_on_unit_circle = DVec2::from_angle((angle % TAU) / 2. + offset_angle);
 						let text_texture_position = DVec2::new(
 							(arc_radius + 4. + text_texture_width) * text_angle_on_unit_circle.x,
 							(arc_radius + text_texture_height) * text_angle_on_unit_circle.y,
 						);
-						let transform = DAffine2::from_translation(text_texture_position + pivot);
-						overlay_context.draw_angle(pivot, radius, arc_radius, offset_angle, angle);
+						let transform = DAffine2::from_translation(text_texture_position + self.state.pivot_viewport(document));
+						overlay_context.draw_angle(self.state.pivot_viewport(document), radius, arc_radius, offset_angle, angle);
 						overlay_context.text(&text, COLOR_OVERLAY_BLUE, None, transform, 16., [Pivot::Middle, Pivot::Middle]);
 					}
 				}
@@ -301,7 +334,10 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				responses.add(SelectToolMessage::PivotShift { offset: None, flush: true });
 
 				if final_transform {
-					responses.add(OverlaysMessage::RemoveProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
+					self.was_grabbing = false;
+					responses.add(OverlaysMessage::RemoveProvider {
+						provider: TRANSFORM_GRS_OVERLAY_PROVIDER,
+					});
 				}
 			}
 			TransformLayerMessage::BeginTransformOperation { operation } => {
@@ -312,6 +348,8 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 					TransformType::Scale => TransformOperation::Scaling(Default::default()),
 				};
 				self.layer_bounding_box = selected.bounding_box();
+				let bounding_box = select_tool::create_bounding_box_transform(document);
+				self.state.local_transform_axes = [bounding_box.x_axis, bounding_box.y_axis].map(|axis| axis.normalize_or_zero());
 			}
 			TransformLayerMessage::BeginGrabPen { last_point, handle } | TransformLayerMessage::BeginRotatePen { last_point, handle } | TransformLayerMessage::BeginScalePen { last_point, handle } => {
 				self.typing.clear();
@@ -324,11 +362,13 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 
 				let top_left = DVec2::new(last_point.x, handle.y);
 				let bottom_right = DVec2::new(handle.x, last_point.y);
-				self.local = false;
+				self.state.is_transforming_in_local_space = false;
 				self.layer_bounding_box = Quad::from_box([top_left, bottom_right]);
+				let normalized_along = (handle - last_point).normalize_or_zero();
+				self.state.local_transform_axes = [normalized_along, normalized_along.perp()];
 				self.grab_target = document.metadata().document_to_viewport.inverse().transform_point2(handle);
-				self.pivot = last_point;
-				self.local_pivot = document.metadata().document_to_viewport.inverse().transform_point2(self.pivot);
+				let pivot = last_point;
+				self.state.document_space_pivot = document.metadata().document_to_viewport.inverse().transform_point2(pivot);
 				self.local_mouse_start = document.metadata().document_to_viewport.inverse().transform_point2(self.start_mouse);
 				self.handle = handle;
 
@@ -340,7 +380,9 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 					_ => unreachable!(), // Safe because the match arms are exhaustive
 				};
 
-				responses.add(OverlaysMessage::AddProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
+				responses.add(OverlaysMessage::AddProvider {
+					provider: TRANSFORM_GRS_OVERLAY_PROVIDER,
+				});
 				// Find a way better than this hack
 				responses.add(TransformLayerMessage::PointerMove {
 					slow_key: SLOW_KEY,
@@ -356,46 +398,78 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 					if (selected_points.is_empty() && selected_segments.is_empty())
 						|| (!using_path_tool && !using_select_tool && !using_pen_tool && !using_shape_tool)
 						|| selected_layers.is_empty()
-						|| transform_type.equivalent_to(self.transform_operation)
+						|| (transform_type.equivalent_to(self.transform_operation) && !self.was_grabbing)
 					{
 						return;
 					}
+
+					if using_path_tool && transform_type == TransformType::Grab {
+						// Check if a single point is selected and it's a colinear point
+						let single_anchor_selected = shape_editor.selected_points().count() == 1 && shape_editor.selected_points().any(|point| point.as_anchor().is_some());
+
+						if single_anchor_selected && transform_type.equivalent_to(self.transform_operation) && self.was_grabbing {
+							let selected_nodes = &document.network_interface.selected_nodes();
+
+							let Some(layer) = selected_nodes.selected_layers(document.metadata()).next() else { return };
+							let Some(vector_data) = document.network_interface.compute_modified_vector(layer) else { return };
+							let Some(anchor) = shape_editor.selected_points().next() else { return };
+
+							if vector_data.colinear(*anchor) {
+								responses.add(TransformLayerMessage::CancelTransformOperation);
+
+								// Start sliding point
+								responses.add(DeferMessage::AfterGraphRun {
+									messages: vec![PathToolMessage::StartSlidingPoint.into()],
+								});
+							}
+
+							return;
+						}
+
+						if transform_type.equivalent_to(self.transform_operation) {
+							return;
+						}
+
+						self.was_grabbing = true;
+					}
 				}
 
-				if let Some(vector) = selected_layers.first().and_then(|&layer| document.network_interface.compute_modified_vector(layer)) {
-					if let [point] = selected_points.as_slice() {
-						if matches!(point, ManipulatorPointId::Anchor(_)) {
-							if let Some([handle1, handle2]) = point.get_handle_pair(&vector) {
-								let handle1_length = handle1.length(&vector);
-								let handle2_length = handle2.length(&vector);
+				if let Some(vector) = selected_layers.first().and_then(|&layer| document.network_interface.compute_modified_vector(layer))
+					&& let [point] = selected_points.as_slice()
+				{
+					if matches!(point, ManipulatorPointId::Anchor(_)) {
+						if let Some([handle1, handle2]) = point.get_handle_pair(&vector) {
+							let handle1_length = handle1.length(&vector);
+							let handle2_length = handle2.length(&vector);
 
-								if (handle1_length == 0. && handle2_length == 0. && !using_select_tool) || (handle1_length == f64::MAX && handle2_length == f64::MAX && !using_select_tool) {
-									// G should work for this point but not R and S
-									if matches!(transform_type, TransformType::Rotate | TransformType::Scale) {
-										selected.original_transforms.clear();
-										return;
-									}
+							if (handle1_length == 0. && handle2_length == 0. && !using_select_tool) || (handle1_length == f64::MAX && handle2_length == f64::MAX && !using_select_tool) {
+								// G should work for this point but not R and S
+								if matches!(transform_type, TransformType::Rotate | TransformType::Scale) {
+									selected.original_transforms.clear();
+									return;
 								}
 							}
-						} else {
-							let handle_length = point.as_handle().map(|handle| handle.length(&vector));
+						}
+					} else {
+						let handle_length = point.as_handle().map(|handle| handle.length(&vector));
 
-							if handle_length == Some(0.) {
-								selected.original_transforms.clear();
-								return;
-							}
+						if handle_length == Some(0.) {
+							selected.original_transforms.clear();
+							return;
 						}
 					}
 				}
 
-				self.local = false;
+				self.state.is_transforming_in_local_space = false;
 				self.operation_count += 1;
 
 				let chain_operation = self.transform_operation != TransformOperation::None;
 				if chain_operation {
 					responses.add(TransformLayerMessage::ApplyTransformOperation { final_transform: false });
 				} else {
-					responses.add(OverlaysMessage::AddProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
+					responses.add(OverlaysMessage::AddProvider {
+						provider: TRANSFORM_GRS_OVERLAY_PROVIDER,
+					});
 				}
 				responses.add(TransformLayerMessage::BeginTransformOperation { operation: transform_type });
 				responses.add(TransformLayerMessage::PointerMove {
@@ -409,6 +483,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 			TransformLayerMessage::CancelTransformOperation => {
 				if using_path_tool {
 					self.ghost_outline.clear();
+					self.was_grabbing = false;
 				}
 
 				if using_pen_tool {
@@ -431,53 +506,17 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				}
 
 				responses.add(SelectToolMessage::PivotShift { offset: None, flush: false });
-				responses.add(OverlaysMessage::RemoveProvider(TRANSFORM_GRS_OVERLAY_PROVIDER));
+				responses.add(OverlaysMessage::RemoveProvider {
+					provider: TRANSFORM_GRS_OVERLAY_PROVIDER,
+				});
 			}
 			TransformLayerMessage::ConstrainX => {
-				let pivot = document_to_viewport.transform_point2(self.local_pivot);
-				self.local = self.transform_operation.constrain_axis(
-					Axis::X,
-					&mut selected,
-					self.increments,
-					self.local,
-					self.layer_bounding_box,
-					document_to_viewport,
-					pivot,
-					self.initial_transform,
-				);
-				self.transform_operation.grs_typed(
-					self.typing.evaluate(),
-					&mut selected,
-					self.increments,
-					self.local,
-					self.layer_bounding_box,
-					document_to_viewport,
-					pivot,
-					self.initial_transform,
-				);
+				self.state.is_transforming_in_local_space = self.transform_operation.constrain_axis(Axis::X, &mut selected, &self.state, document);
+				self.transform_operation.grs_typed(self.typing.evaluate(), &mut selected, &self.state, document);
 			}
 			TransformLayerMessage::ConstrainY => {
-				let pivot = document_to_viewport.transform_point2(self.local_pivot);
-				self.local = self.transform_operation.constrain_axis(
-					Axis::Y,
-					&mut selected,
-					self.increments,
-					self.local,
-					self.layer_bounding_box,
-					document_to_viewport,
-					pivot,
-					self.initial_transform,
-				);
-				self.transform_operation.grs_typed(
-					self.typing.evaluate(),
-					&mut selected,
-					self.increments,
-					self.local,
-					self.layer_bounding_box,
-					document_to_viewport,
-					pivot,
-					self.initial_transform,
-				);
+				self.state.is_transforming_in_local_space = self.transform_operation.constrain_axis(Axis::Y, &mut selected, &self.state, document);
+				self.transform_operation.grs_typed(self.typing.evaluate(), &mut selected, &self.state, document);
 			}
 			TransformLayerMessage::PointerMove { slow_key, increments_key } => {
 				self.slow = input.keyboard.get(slow_key as usize);
@@ -488,60 +527,42 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 					return;
 				}
 
-				let pivot = document_to_viewport.transform_point2(self.local_pivot);
-
 				let new_increments = input.keyboard.get(increments_key as usize);
-				if new_increments != self.increments {
-					self.increments = new_increments;
-					self.transform_operation
-						.apply_transform_operation(&mut selected, self.increments, self.local, self.layer_bounding_box, document_to_viewport, pivot, self.initial_transform);
+				if new_increments != self.state.is_rounded_to_intervals {
+					self.state.is_rounded_to_intervals = new_increments;
+					self.transform_operation.apply_transform_operation(&mut selected, &self.state, document);
 				}
 
 				if self.typing.digits.is_empty() || !self.transform_operation.can_begin_typing() {
 					match self.transform_operation {
-						TransformOperation::None => unreachable!(),
+						TransformOperation::None => {}
 						TransformOperation::Grabbing(translation) => {
 							let delta_pos = input.mouse.position - self.mouse_position;
 							let delta_pos = (self.initial_transform * document_to_viewport.inverse()).transform_vector2(delta_pos);
-							let change = if self.slow { delta_pos / SLOWING_DIVISOR } else { delta_pos };
-							self.transform_operation = TransformOperation::Grabbing(translation.increment_amount(change));
-							self.transform_operation.apply_transform_operation(
-								&mut selected,
-								self.increments,
-								self.local,
-								self.layer_bounding_box,
-								document_to_viewport,
-								pivot,
-								self.initial_transform,
-							);
+							let delta_viewport = if self.slow { delta_pos / SLOWING_DIVISOR } else { delta_pos };
+							let delta_scaled = delta_viewport / document_to_viewport.y_axis.length(); // Values are local to the viewport but scaled so values are relative to the current scale.
+							self.transform_operation = TransformOperation::Grabbing(translation.increment_amount(delta_scaled));
+							self.transform_operation.apply_transform_operation(&mut selected, &self.state, document);
 						}
 						TransformOperation::Rotating(rotation) => {
-							let start_offset = pivot - self.mouse_position;
-							let end_offset = pivot - input.mouse.position;
+							let start_offset = self.state.pivot_viewport(document) - self.mouse_position;
+							let end_offset = self.state.pivot_viewport(document) - input.mouse.position;
 							let angle = start_offset.angle_to(end_offset);
 
 							let change = if self.slow { angle / SLOWING_DIVISOR } else { angle };
 
 							self.transform_operation = TransformOperation::Rotating(rotation.increment_amount(change));
-							self.transform_operation.apply_transform_operation(
-								&mut selected,
-								self.increments,
-								self.local,
-								self.layer_bounding_box,
-								document_to_viewport,
-								pivot,
-								self.initial_transform,
-							);
+							self.transform_operation.apply_transform_operation(&mut selected, &self.state, document);
 						}
 						TransformOperation::Scaling(mut scale) => {
 							let axis_constraint = scale.constraint;
-							let to_mouse_final = self.mouse_position - pivot;
-							let to_mouse_final_old = input.mouse.position - pivot;
-							let to_mouse_start = self.start_mouse - pivot;
+							let to_mouse_final = self.mouse_position - self.state.pivot_viewport(document);
+							let to_mouse_final_old = input.mouse.position - self.state.pivot_viewport(document);
+							let to_mouse_start = self.start_mouse - self.state.pivot_viewport(document);
 
-							let to_mouse_final = project_edge_to_quad(to_mouse_final, &self.layer_bounding_box, self.local, axis_constraint);
-							let to_mouse_final_old = project_edge_to_quad(to_mouse_final_old, &self.layer_bounding_box, self.local, axis_constraint);
-							let to_mouse_start = project_edge_to_quad(to_mouse_start, &self.layer_bounding_box, self.local, axis_constraint);
+							let to_mouse_final = self.state.project_onto_constrained(to_mouse_final, axis_constraint);
+							let to_mouse_final_old = self.state.project_onto_constrained(to_mouse_final_old, axis_constraint);
+							let to_mouse_start = self.state.project_onto_constrained(to_mouse_start, axis_constraint);
 
 							let change = {
 								let previous_frame_dist = to_mouse_final.dot(to_mouse_start);
@@ -554,15 +575,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 
 							scale = scale.increment_amount(change);
 							self.transform_operation = TransformOperation::Scaling(scale);
-							self.transform_operation.apply_transform_operation(
-								&mut selected,
-								self.increments,
-								self.local,
-								self.layer_bounding_box,
-								document_to_viewport,
-								pivot,
-								self.initial_transform,
-							);
+							self.transform_operation.apply_transform_operation(&mut selected, &self.state, document);
 						}
 					};
 				}
@@ -574,69 +587,27 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				shape_editor.set_selected_layers(target_layers);
 			}
 			TransformLayerMessage::TypeBackspace => {
-				let pivot = document_to_viewport.transform_point2(self.local_pivot);
 				if self.typing.digits.is_empty() && self.typing.negative {
-					self.transform_operation
-						.negate(&mut selected, self.increments, self.local, self.layer_bounding_box, document_to_viewport, pivot, self.initial_transform);
+					self.transform_operation.negate(&mut selected, &self.state, document);
 					self.typing.type_negate();
 				}
-				self.transform_operation.grs_typed(
-					self.typing.type_backspace(),
-					&mut selected,
-					self.increments,
-					self.local,
-					self.layer_bounding_box,
-					document_to_viewport,
-					pivot,
-					self.initial_transform,
-				);
+				self.transform_operation.grs_typed(self.typing.type_backspace(), &mut selected, &self.state, document);
 			}
 			TransformLayerMessage::TypeDecimalPoint => {
-				let pivot = document_to_viewport.transform_point2(self.local_pivot);
 				if self.transform_operation.can_begin_typing() {
-					self.transform_operation.grs_typed(
-						self.typing.type_decimal_point(),
-						&mut selected,
-						self.increments,
-						self.local,
-						self.layer_bounding_box,
-						document_to_viewport,
-						pivot,
-						self.initial_transform,
-					)
+					self.transform_operation.grs_typed(self.typing.type_decimal_point(), &mut selected, &self.state, document)
 				}
 			}
 			TransformLayerMessage::TypeDigit { digit } => {
 				if self.transform_operation.can_begin_typing() {
-					let pivot = document_to_viewport.transform_point2(self.local_pivot);
-					self.transform_operation.grs_typed(
-						self.typing.type_number(digit),
-						&mut selected,
-						self.increments,
-						self.local,
-						self.layer_bounding_box,
-						document_to_viewport,
-						pivot,
-						self.initial_transform,
-					)
+					self.transform_operation.grs_typed(self.typing.type_number(digit), &mut selected, &self.state, document)
 				}
 			}
 			TransformLayerMessage::TypeNegate => {
-				let pivot = document_to_viewport.transform_point2(self.local_pivot);
 				if self.typing.digits.is_empty() {
-					self.transform_operation
-						.negate(&mut selected, self.increments, self.local, self.layer_bounding_box, document_to_viewport, pivot, self.initial_transform);
+					self.transform_operation.negate(&mut selected, &self.state, document);
 				}
-				self.transform_operation.grs_typed(
-					self.typing.type_negate(),
-					&mut selected,
-					self.increments,
-					self.local,
-					self.layer_bounding_box,
-					document_to_viewport,
-					pivot,
-					self.initial_transform,
-				)
+				self.transform_operation.grs_typed(self.typing.type_negate(), &mut selected, &self.state, document)
 			}
 			TransformLayerMessage::SetPivotGizmo { pivot_gizmo } => {
 				self.pivot_gizmo = pivot_gizmo;
@@ -676,7 +647,7 @@ impl TransformLayerMessageHandler {
 	}
 
 	pub fn hints(&self, responses: &mut VecDeque<Message>) {
-		self.transform_operation.hints(responses, self.local);
+		self.transform_operation.hints(responses, self.state.is_transforming_in_local_space);
 	}
 
 	fn set_ghost_outline(ghost_outline: &mut Vec<(Vec<ClickTargetType>, DAffine2)>, shape_editor: &ShapeState, document: &DocumentMessageHandler) {
@@ -749,26 +720,6 @@ fn calculate_pivot(
 			let position = position();
 			(Some((position, position)), bounds)
 		}
-	}
-}
-
-fn project_edge_to_quad(edge: DVec2, quad: &Quad, local: bool, axis_constraint: Axis) -> DVec2 {
-	match axis_constraint {
-		Axis::X => {
-			if local {
-				edge.project_onto(quad.top_right() - quad.top_left())
-			} else {
-				edge.with_y(0.)
-			}
-		}
-		Axis::Y => {
-			if local {
-				edge.project_onto(quad.bottom_left() - quad.top_left())
-			} else {
-				edge.with_x(0.)
-			}
-		}
-		_ => edge,
 	}
 }
 
@@ -849,7 +800,7 @@ mod test_transform_layer {
 		let final_transform = get_layer_transform(&mut editor, layer).await.unwrap();
 
 		let translation_diff = (final_transform.translation - original_transform.translation).length();
-		assert!(translation_diff > 10., "Transform should have changed after applying transformation. Diff: {}", translation_diff);
+		assert!(translation_diff > 10., "Transform should have changed after applying transformation. Diff: {translation_diff}");
 	}
 
 	#[tokio::test]
@@ -884,9 +835,7 @@ mod test_transform_layer {
 		// Verify transform is either restored to original OR reset to identity
 		assert!(
 			(final_translation - original_translation).length() < 5. || final_translation.length() < 0.001,
-			"Transform neither restored to original nor reset to identity. Original: {:?}, Final: {:?}",
-			original_translation,
-			final_translation
+			"Transform neither restored to original nor reset to identity. Original: {original_translation:?}, Final: {final_translation:?}"
 		);
 	}
 
@@ -915,11 +864,11 @@ mod test_transform_layer {
 		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
 
 		let final_transform = get_layer_transform(&mut editor, layer).await.unwrap();
-		println!("Final transform: {:?}", final_transform);
+		println!("Final transform: {final_transform:?}");
 
 		// Check matrix components have changed (rotation affects matrix2)
 		let matrix_diff = (final_transform.matrix2.x_axis - original_transform.matrix2.x_axis).length();
-		assert!(matrix_diff > 0.1, "Rotation should have changed the transform matrix. Diff: {}", matrix_diff);
+		assert!(matrix_diff > 0.1, "Rotation should have changed the transform matrix. Diff: {matrix_diff}");
 	}
 
 	#[tokio::test]
@@ -941,7 +890,7 @@ mod test_transform_layer {
 		assert!(!after_cancel.translation.y.is_nan(), "Transform is NaN after cancel");
 
 		let translation_diff = (after_cancel.translation - original_transform.translation).length();
-		assert!(translation_diff < 1., "Translation component changed too much: {}", translation_diff);
+		assert!(translation_diff < 1., "Translation component changed too much: {translation_diff}");
 	}
 
 	#[tokio::test]
@@ -976,9 +925,7 @@ mod test_transform_layer {
 
 		assert!(
 			scale_diff_x > 0.1 || scale_diff_y > 0.1,
-			"Scaling should have changed the transform matrix. Diffs: x={}, y={}",
-			scale_diff_x,
-			scale_diff_y
+			"Scaling should have changed the transform matrix. Diffs: x={scale_diff_x}, y={scale_diff_y}"
 		);
 	}
 
@@ -1007,7 +954,7 @@ mod test_transform_layer {
 
 		// Also check translation component is similar
 		let translation_diff = (after_cancel.translation - original_transform.translation).length();
-		assert!(translation_diff < 1., "Translation component changed too much: {}", translation_diff);
+		assert!(translation_diff < 1., "Translation component changed too much: {translation_diff}");
 	}
 
 	#[tokio::test]
@@ -1034,9 +981,7 @@ mod test_transform_layer {
 		let actual_translation = after_grab_transform.translation - original_transform.translation;
 		assert!(
 			(actual_translation - expected_translation).length() < 1e-5,
-			"Expected translation of {:?}, got {:?}",
-			expected_translation,
-			actual_translation
+			"Expected translation of {expected_translation:?}, got {actual_translation:?}"
 		);
 
 		// 2. Chain to rotation - from current position to create ~45 degree rotation
@@ -1072,9 +1017,7 @@ mod test_transform_layer {
 		let after_scale_det = after_scale_transform.matrix2.determinant();
 		assert!(
 			after_scale_det >= 2. * before_scale_det,
-			"Scale should increase the determinant of the matrix (before: {}, after: {})",
-			before_scale_det,
-			after_scale_det
+			"Scale should increase the determinant of the matrix (before: {before_scale_det}, after: {after_scale_det})"
 		);
 
 		editor.handle_message(TransformLayerMessage::ApplyTransformOperation { final_transform: true }).await;
@@ -1106,8 +1049,8 @@ mod test_transform_layer {
 		let scale_x = final_transform.matrix2.x_axis.length() / original_transform.matrix2.x_axis.length();
 		let scale_y = final_transform.matrix2.y_axis.length() / original_transform.matrix2.y_axis.length();
 
-		assert!((scale_x - 2.).abs() < 0.1, "Expected scale factor X of 2, got: {}", scale_x);
-		assert!((scale_y - 2.).abs() < 0.1, "Expected scale factor Y of 2, got: {}", scale_y);
+		assert!((scale_x - 2.).abs() < 0.1, "Expected scale factor X of 2, got: {scale_x}");
+		assert!((scale_y - 2.).abs() < 0.1, "Expected scale factor Y of 2, got: {scale_y}");
 	}
 
 	#[tokio::test]
@@ -1132,8 +1075,8 @@ mod test_transform_layer {
 		let scale_x = final_transform.matrix2.x_axis.length() / original_transform.matrix2.x_axis.length();
 		let scale_y = final_transform.matrix2.y_axis.length() / original_transform.matrix2.y_axis.length();
 
-		assert!((scale_x - 2.).abs() < 0.1, "Expected scale factor X of 2, got: {}", scale_x);
-		assert!((scale_y - 2.).abs() < 0.1, "Expected scale factor Y of 2, got: {}", scale_y);
+		assert!((scale_x - 2.).abs() < 0.1, "Expected scale factor X of 2, got: {scale_x}");
+		assert!((scale_y - 2.).abs() < 0.1, "Expected scale factor Y of 2, got: {scale_y}");
 	}
 
 	#[tokio::test]
@@ -1148,11 +1091,7 @@ mod test_transform_layer {
 
 		// Rotate the document view (45 degrees)
 		editor.handle_message(NavigationMessage::BeginCanvasTilt { was_dispatched_from_menu: false }).await;
-		editor
-			.handle_message(NavigationMessage::CanvasTiltSet {
-				angle_radians: (45. as f64).to_radians(),
-			})
-			.await;
+		editor.handle_message(NavigationMessage::CanvasTiltSet { angle_radians: 45_f64.to_radians() }).await;
 		editor.handle_message(TransformLayerMessage::BeginRotate).await;
 
 		editor.handle_message(TransformLayerMessage::TypeDigit { digit: 9 }).await;
@@ -1167,7 +1106,7 @@ mod test_transform_layer {
 
 		// Normalize angle between 0 and 360
 		let angle_change = ((angle_change % 360.) + 360.) % 360.;
-		assert!((angle_change - 90.).abs() < 0.1, "Expected rotation of 90 degrees, got: {}", angle_change);
+		assert!((angle_change - 90.).abs() < 0.1, "Expected rotation of 90 degrees, got: {angle_change}");
 	}
 
 	#[tokio::test]
@@ -1222,8 +1161,8 @@ mod test_transform_layer {
 		// Verify scale is near zero.
 		let scale_x = near_zero_transform.matrix2.x_axis.length();
 		let scale_y = near_zero_transform.matrix2.y_axis.length();
-		assert!(scale_x < 0.001, "Scale factor X should be near zero, got: {}", scale_x);
-		assert!(scale_y < 0.001, "Scale factor Y should be near zero, got: {}", scale_y);
+		assert!(scale_x < 0.001, "Scale factor X should be near zero, got: {scale_x}");
+		assert!(scale_y < 0.001, "Scale factor Y should be near zero, got: {scale_y}");
 		assert!(scale_x > 0., "Scale factor X should not be exactly zero");
 		assert!(scale_y > 0., "Scale factor Y should not be exactly zero");
 

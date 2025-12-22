@@ -1,27 +1,31 @@
 <script lang="ts">
-	import { getContext, onMount } from "svelte";
+	import { getContext, onMount, onDestroy } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import { defaultWidgetLayout, patchWidgetLayout, UpdatePropertyPanelSectionsLayout } from "@graphite/messages";
+	import { patchLayout, UpdatePropertiesPanelLayout, type Layout } from "@graphite/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
 
 	const editor = getContext<Editor>("editor");
 
-	let propertiesSectionsLayout = defaultWidgetLayout();
+	let propertiesPanelLayout: Layout = [];
 
 	onMount(() => {
-		editor.subscriptions.subscribeJsMessage(UpdatePropertyPanelSectionsLayout, (updatePropertyPanelSectionsLayout) => {
-			patchWidgetLayout(propertiesSectionsLayout, updatePropertyPanelSectionsLayout);
-			propertiesSectionsLayout = propertiesSectionsLayout;
+		editor.subscriptions.subscribeJsMessage(UpdatePropertiesPanelLayout, (data) => {
+			patchLayout(propertiesPanelLayout, data);
+			propertiesPanelLayout = propertiesPanelLayout;
 		});
+	});
+
+	onDestroy(() => {
+		editor.subscriptions.unsubscribeJsMessage(UpdatePropertiesPanelLayout);
 	});
 </script>
 
 <LayoutCol class="properties">
 	<LayoutCol class="sections" scrollableY={true}>
-		<WidgetLayout layout={propertiesSectionsLayout} />
+		<WidgetLayout layout={propertiesPanelLayout} layoutTarget="PropertiesPanel" />
 	</LayoutCol>
 </LayoutCol>
 

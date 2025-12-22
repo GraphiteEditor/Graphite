@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { type IconName, type IconSize } from "@graphite/utility-functions/icons";
+	import { type IconName, type IconSize } from "@graphite/icons";
+	import type { ActionShortcut } from "@graphite/messages";
 
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 
@@ -8,7 +9,9 @@
 	export let size: IconSize;
 	export let disabled = false;
 	export let active = false;
-	export let tooltip: string | undefined = undefined;
+	export let tooltipLabel: string | undefined = undefined;
+	export let tooltipDescription: string | undefined = undefined;
+	export let tooltipShortcut: ActionShortcut | undefined = undefined;
 	// Callbacks
 	export let action: (e?: MouseEvent) => void;
 
@@ -28,7 +31,9 @@
 	class:active
 	on:click={action}
 	{disabled}
-	title={tooltip}
+	data-tooltip-label={tooltipLabel}
+	data-tooltip-description={tooltipDescription}
+	data-tooltip-shortcut={tooltipShortcut?.shortcut ? JSON.stringify(tooltipShortcut.shortcut) : undefined}
 	tabindex={active ? -1 : 0}
 	{...$$restProps}
 >

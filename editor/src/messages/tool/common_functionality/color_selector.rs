@@ -79,20 +79,20 @@ impl ToolColorOptions {
 		reset_callback: impl Fn(&IconButton) -> Message + 'static + Send + Sync,
 		radio_callback: fn(ToolColorType) -> WidgetCallback<()>,
 		color_callback: impl Fn(&ColorInput) -> Message + 'static + Send + Sync,
-	) -> Vec<WidgetHolder> {
-		let mut widgets = vec![TextLabel::new(label_text).widget_holder()];
+	) -> Vec<WidgetInstance> {
+		let mut widgets = vec![TextLabel::new(label_text).widget_instance()];
 
 		if !color_allow_none {
-			widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+			widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
 		} else {
 			let reset = IconButton::new("CloseX", 12)
 				.disabled(self.custom_color.is_none() && self.color_type == ToolColorType::Custom)
-				.tooltip("Clear Color")
+				.tooltip_label("Clear Color")
 				.on_update(reset_callback);
 
-			widgets.push(Separator::new(SeparatorType::Related).widget_holder());
-			widgets.push(reset.widget_holder());
-			widgets.push(Separator::new(SeparatorType::Related).widget_holder());
+			widgets.push(Separator::new(SeparatorType::Related).widget_instance());
+			widgets.push(reset.widget_instance());
+			widgets.push(Separator::new(SeparatorType::Related).widget_instance());
 		};
 
 		let entries = vec![
@@ -101,22 +101,22 @@ impl ToolColorOptions {
 			("CustomColor", "Custom Color", ToolColorType::Custom),
 		]
 		.into_iter()
-		.map(|(icon, tooltip, color_type)| {
-			let mut entry = RadioEntryData::new(format!("{color_type:?}")).tooltip(tooltip).icon(icon);
+		.map(|(icon, label, color_type)| {
+			let mut entry = RadioEntryData::new(format!("{color_type:?}")).tooltip_label(label).icon(icon);
 			entry.on_update = radio_callback(color_type);
 			entry
 		})
 		.collect();
-		let radio = RadioInput::new(entries).selected_index(Some(self.color_type.clone() as u32)).widget_holder();
+		let radio = RadioInput::new(entries).selected_index(Some(self.color_type.clone() as u32)).widget_instance();
 		widgets.push(radio);
-		widgets.push(Separator::new(SeparatorType::Related).widget_holder());
+		widgets.push(Separator::new(SeparatorType::Related).widget_instance());
 
 		let fill_choice = match self.active_color() {
 			Some(color) => FillChoice::Solid(color.to_gamma_srgb()),
 			None => FillChoice::None,
 		};
 		let color_button = ColorInput::new(fill_choice).allow_none(color_allow_none).on_update(color_callback);
-		widgets.push(color_button.widget_holder());
+		widgets.push(color_button.widget_instance());
 
 		widgets
 	}

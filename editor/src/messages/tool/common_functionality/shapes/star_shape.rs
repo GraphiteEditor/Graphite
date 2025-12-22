@@ -58,13 +58,13 @@ impl ShapeGizmoHandler for StarGizmoHandler {
 		&self,
 		document: &DocumentMessageHandler,
 		selected_star_layer: Option<LayerNodeIdentifier>,
-		input: &InputPreprocessorMessageHandler,
+		_input: &InputPreprocessorMessageHandler,
 		shape_editor: &mut &mut ShapeState,
 		mouse_position: DVec2,
 		overlay_context: &mut OverlayContext,
 	) {
 		self.number_of_points_dial.overlays(document, selected_star_layer, shape_editor, mouse_position, overlay_context);
-		self.point_radius_handle.overlays(selected_star_layer, document, input, overlay_context);
+		self.point_radius_handle.overlays(selected_star_layer, document, overlay_context);
 
 		star_outline(selected_star_layer, document, overlay_context);
 	}
@@ -72,7 +72,7 @@ impl ShapeGizmoHandler for StarGizmoHandler {
 	fn dragging_overlays(
 		&self,
 		document: &DocumentMessageHandler,
-		input: &InputPreprocessorMessageHandler,
+		_input: &InputPreprocessorMessageHandler,
 		shape_editor: &mut &mut ShapeState,
 		mouse_position: DVec2,
 		overlay_context: &mut OverlayContext,
@@ -82,7 +82,7 @@ impl ShapeGizmoHandler for StarGizmoHandler {
 		}
 
 		if self.point_radius_handle.is_dragging_or_snapped() {
-			self.point_radius_handle.overlays(None, document, input, overlay_context);
+			self.point_radius_handle.overlays(None, document, overlay_context);
 		}
 	}
 
@@ -121,6 +121,7 @@ impl Star {
 	pub fn update_shape(
 		document: &DocumentMessageHandler,
 		ipp: &InputPreprocessorMessageHandler,
+		viewport: &ViewportMessageHandler,
 		layer: LayerNodeIdentifier,
 		shape_tool_data: &mut ShapeToolData,
 		modifier: ShapeToolModifierKey,
@@ -128,7 +129,7 @@ impl Star {
 	) {
 		let [center, lock_ratio, _] = modifier;
 
-		if let Some([start, end]) = shape_tool_data.data.calculate_points(document, ipp, center, lock_ratio) {
+		if let Some([start, end]) = shape_tool_data.data.calculate_points(document, ipp, viewport, center, lock_ratio) {
 			// TODO: We need to determine how to allow the polygon node to make irregular shapes
 			update_radius_sign(end, start, layer, document, responses);
 

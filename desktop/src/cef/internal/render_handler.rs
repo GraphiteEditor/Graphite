@@ -17,34 +17,43 @@ impl<H: CefEventHandler> RenderHandlerImpl<H> {
 		}
 	}
 }
+
 impl<H: CefEventHandler> ImplRenderHandler for RenderHandlerImpl<H> {
 	fn view_rect(&self, _browser: Option<&mut Browser>, rect: Option<&mut Rect>) {
 		if let Some(rect) = rect {
-			let view = self.event_handler.window_size();
+			let view_info = self.event_handler.view_info();
 			*rect = Rect {
 				x: 0,
 				y: 0,
-				width: view.width as i32,
-				height: view.height as i32,
+				width: view_info.width() as i32,
+				height: view_info.height() as i32,
 			};
 		}
 	}
 
-	fn on_paint(
-		&self,
-		_browser: Option<&mut Browser>,
-		_type_: PaintElementType,
-		_dirty_rect_count: usize,
-		_dirty_rects: Option<&Rect>,
-		buffer: *const u8,
-		width: ::std::os::raw::c_int,
-		height: ::std::os::raw::c_int,
-	) {
+	fn on_paint(&self, _browser: Option<&mut Browser>, _type_: PaintElementType, _dirty_rects: Option<&[Rect]>, buffer: *const u8, width: std::ffi::c_int, height: std::ffi::c_int) {
 		let buffer_size = (width * height * 4) as usize;
 		let buffer_slice = unsafe { std::slice::from_raw_parts(buffer, buffer_size) };
 		let frame_buffer = FrameBufferRef::new(buffer_slice, width as usize, height as usize).expect("Failed to create frame buffer");
 
 		self.event_handler.draw(frame_buffer)
+	}
+
+	#[cfg(feature = "accelerated_paint")]
+	fn on_accelerated_paint(&self, _browser: Option<&mut Browser>, type_: PaintElementType, _dirty_rects: Option<&[Rect]>, info: Option<&cef::AcceleratedPaintInfo>) {
+		use cef::osr_texture_import::SharedTextureHandle;
+
+		if type_ != PaintElementType::default() {
+			return;
+		}
+
+		let shared_handle = SharedTextureHandle::new(info.unwrap());
+		if let SharedTextureHandle::Unsupported = shared_handle {
+			tracing::error!("Platform does not support accelerated painting");
+			return;
+		}
+
+		self.event_handler.draw_gpu(shared_handle);
 	}
 
 	fn get_raw(&self) -> *mut _cef_render_handler_t {
@@ -60,7 +69,7 @@ impl<H: CefEventHandler> Clone for RenderHandlerImpl<H> {
 		}
 		Self {
 			object: self.object,
-			event_handler: self.event_handler.clone(),
+			event_handler: self.event_handler.duplicate(),
 		}
 	}
 }

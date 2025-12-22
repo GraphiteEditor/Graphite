@@ -3,27 +3,24 @@ name = "graphite-editor"
 publish = false
 version = "0.0.0"
 rust-version = "1.88"
-authors = ["Graphite Authors <contact@graphite.rs>"]
+authors = ["Graphite Authors <contact@graphite.art>"]
 edition = "2024"
 readme = "../README.md"
-homepage = "https://graphite.rs"
+homepage = "https://graphite.art"
 repository = "https://github.com/GraphiteEditor/Graphite"
 license = "Apache-2.0"
 
 [features]
-default = ["wasm"]
-wasm = ["wasm-bindgen", "graphene-std/wasm", "wasm-bindgen-futures"]
+default = ["wasm", "gpu"]
+wasm = ["wasm-bindgen", "graphene-std/wasm"]
 gpu = ["interpreted-executor/gpu", "wgpu-executor"]
-resvg = ["graphene-std/resvg"]
-vello = ["graphene-std/vello", "resvg"]
-ron = ["dep:ron"]
 
 [dependencies]
 # Local dependencies
 graphite-proc-macros = { workspace = true }
 graph-craft = { workspace = true }
 interpreted-executor = { workspace = true }
-graphene-std = { workspace = true }
+graphene-std = { workspace = true } # NOTE: `core-types` should not be added here because `graphene-std` re-exports its contents
 preprocessor = { workspace = true }
 
 # Workspace dependencies
@@ -33,7 +30,6 @@ bitflags = { workspace = true }
 thiserror = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
-bezier-rs = { workspace = true }
 kurbo = { workspace = true }
 futures = { workspace = true }
 glam = { workspace = true }
@@ -44,29 +40,19 @@ num_enum = { workspace = true }
 usvg = { workspace = true }
 once_cell = { workspace = true }
 web-sys = { workspace = true }
-bytemuck = { workspace = true }
 vello = { workspace = true }
-tracing = { workspace = true }
-
-# Required dependencies
-spin = "0.9.8"
+base64 = { workspace = true }
+spin = { workspace = true }
+image = { workspace = true }
 
 # Optional local dependencies
 wgpu-executor = { workspace = true, optional = true }
 
 # Optional workspace dependencies
 wasm-bindgen = { workspace = true, optional = true }
-wasm-bindgen-futures = { workspace = true, optional = true }
-ron = { workspace = true, optional = true }
 
 [dev-dependencies]
 # Workspace dependencies
 env_logger = { workspace = true }
 futures = { workspace = true }
 tokio = { workspace = true }
-
-[lints.rust]
-# TODO: figure out why we check these features when they do not exist
-unexpected_cfgs = { level = "warn", check-cfg = [
-	'cfg(feature, values("resvg", "vello"))',
-] }

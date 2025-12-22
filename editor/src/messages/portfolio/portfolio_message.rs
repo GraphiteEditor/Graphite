@@ -2,21 +2,19 @@ use super::document::utility_types::document_metadata::LayerNodeIdentifier;
 use super::utility_types::PanelType;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
+use crate::messages::portfolio::utility_types::FontCatalog;
 use crate::messages::prelude::*;
 use graphene_std::Color;
 use graphene_std::raster::Image;
 use graphene_std::text::Font;
+use std::path::PathBuf;
 
 #[impl_message(Message, Portfolio)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum PortfolioMessage {
 	// Sub-messages
 	#[child]
-	MenuBar(MenuBarMessage),
-	#[child]
 	Document(DocumentMessage),
-	#[child]
-	Spreadsheet(SpreadsheetMessage),
 
 	// Messages
 	Init,
@@ -49,18 +47,20 @@ pub enum PortfolioMessage {
 	},
 	DestroyAllDocuments,
 	EditorPreferences,
+	FontCatalogLoaded {
+		catalog: FontCatalog,
+	},
+	LoadFontData {
+		font: Font,
+	},
 	FontLoaded {
 		font_family: String,
 		font_style: String,
-		preview_url: String,
 		data: Vec<u8>,
 	},
 	Import,
 	LoadDocumentResources {
 		document_id: DocumentId,
-	},
-	LoadFont {
-		font: Font,
 	},
 	NewDocumentWithName {
 		name: String,
@@ -68,18 +68,21 @@ pub enum PortfolioMessage {
 	NextDocument,
 	OpenDocument,
 	OpenDocumentFile {
-		document_name: String,
+		document_name: Option<String>,
+		document_path: Option<PathBuf>,
 		document_serialized_content: String,
 	},
-	ToggleResetNodesToDefinitionsOnOpen,
 	OpenDocumentFileWithId {
 		document_id: DocumentId,
-		document_name: String,
+		document_name: Option<String>,
+		document_path: Option<PathBuf>,
 		document_is_auto_saved: bool,
 		document_is_saved: bool,
 		document_serialized_content: String,
 		to_front: bool,
+		select_after_open: bool,
 	},
+	ToggleResetNodesToDefinitionsOnOpen,
 	PasteIntoFolder {
 		clipboard: Clipboard,
 		parent: LayerNodeIdentifier,
@@ -107,17 +110,15 @@ pub enum PortfolioMessage {
 		parent_and_insert_index: Option<(LayerNodeIdentifier, usize)>,
 	},
 	PrevDocument,
+	RequestWelcomeScreenButtonsLayout,
 	SetActivePanel {
 		panel: PanelType,
-	},
-	SetDevicePixelRatio {
-		ratio: f64,
 	},
 	SelectDocument {
 		document_id: DocumentId,
 	},
 	SubmitDocumentExport {
-		file_name: String,
+		name: String,
 		file_type: FileType,
 		scale_factor: f64,
 		bounds: ExportBounds,
@@ -128,6 +129,9 @@ pub enum PortfolioMessage {
 		document_id: DocumentId,
 		ignore_hash: bool,
 	},
+	ToggleDataPanelOpen,
+	TogglePropertiesPanelOpen,
+	ToggleLayersPanelOpen,
 	ToggleRulers,
 	UpdateDocumentWidgets,
 	UpdateOpenDocumentsList,

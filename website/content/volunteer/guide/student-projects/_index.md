@@ -11,7 +11,7 @@ Graphite offers a number of opportunities for students to contribute by building
 
 Student projects require adherence to a set schedule with regular check-ins, milestones, and evaluations. The structured setting is designed to provide a supportive environment for students to learn and grow as developers while gaining real-world industry experience from collaborating on a sizable software product and remaining accountable to stakeholders. It's our goal to make sure you succeed!
 
-Use this [contributor guide](..) to start out with the code. Then when you're ready, reach out through [Discord](https://discord.graphite.rs) and use the `#🎓student-projects` channel to discuss and work towards proposing a project with the Graphite core team.
+Use this [contributor guide](..) to start out with the code. Then when you're ready, reach out through [Discord](https://discord.graphite.art) and use the `#🎓student-projects` channel to discuss and work towards proposing a project with the Graphite core team.
 
 ## Google Summer of Code
 
@@ -94,12 +94,6 @@ Another potential direction is to find a portable, modular, lightweight approach
 Based on the experience and insight brought to the table by the student, the nature of the project should be defined through preliminary discussions with the mentors and codified in the proposal. Machine learning and MLOps are fields that Graphite's team lack deep expertise in, so we are looking for a knowledgable student who can bring forth a well-researched and well-architected proposal and then execute on it.
 
 </details>
-
-### Native development
-
-#### Graphite desktop app engineering
-
-*This is a newly added project pending a full written overview. Come ask on Discord for details.*
 
 ### Rendering and graphics
 
@@ -192,7 +186,7 @@ Several of these require a good understanding of computer graphics rendering tec
 
 *Graphite's raster editing features requires the implementation of Select mode, where users can draw a mask which becomes a marquee (marching ants) selection.*
 
-- **Possible Mentors:** [Keavon](/about#keavon), [Hypercube](/about#hypercube)
+- **Possible Mentors:** [Keavon](/about#keavon)
 - **Needed Skills:** Rust, computer graphics
 - **Project Size:** Large *(GSoC: 350 hours)*
 - **Difficulty:** Medium
@@ -229,7 +223,7 @@ The present system is very row-centric, which makes it challenging to create mul
 
 *Graphite has many areas that could benefit from better automated testing for bugs and performance regressions.*
 
-- **Possible Mentors:** [Dennis](/about#dennis), [Hypercube](/about#hypercube)
+- **Possible Mentors:** [Dennis](/about#dennis)
 - **Needed Skills:** Rust, unit testing
 - **Project Size:** Small *(GSoC: 90 hours)* or larger if proposed
 - **Difficulty:** Easy
@@ -335,7 +329,7 @@ Duration: 9 months
 Students: Hannah Li, Rob Nadal, Thomas Cheng, Linda Zheng, Jackie Chen
 
 - [Bezier-rs library](https://crates.io/crates/bezier-rs)
-- [Interactive web demo](/libraries/bezier-rs/)
+- [Interactive web demo](https://keavon.github.io/Bezier-rs/)
 
 **Outcomes:** The student group designed an API for representing and manipulating Bezier curves and paths as a standalone Rust library which was published to crates.io. It now serves as the underlying vector data format used in Graphite, and acts as a testbed for new computational geometry algorithms. The team also built an interactive web demo catalog to showcase many of the algorithms, which are also handily embedded in the library's [documentation](https://docs.rs/bezier-rs/latest/bezier_rs/).
 

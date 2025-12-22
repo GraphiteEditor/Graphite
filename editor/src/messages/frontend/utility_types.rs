@@ -1,14 +1,22 @@
+use std::path::PathBuf;
+
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
 
 #[derive(PartialEq, Eq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
-pub struct FrontendDocumentDetails {
-	#[serde(rename = "isAutoSaved")]
-	pub is_auto_saved: bool,
+pub struct OpenDocument {
+	pub id: DocumentId,
+	pub details: DocumentDetails,
+}
+
+#[derive(PartialEq, Eq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct DocumentDetails {
+	pub name: String,
+	pub path: Option<PathBuf>,
 	#[serde(rename = "isSaved")]
 	pub is_saved: bool,
-	pub name: String,
-	pub id: DocumentId,
+	#[serde(rename = "isAutoSaved")]
+	pub is_auto_saved: bool,
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]

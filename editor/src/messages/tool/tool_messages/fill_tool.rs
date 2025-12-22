@@ -14,7 +14,7 @@ pub enum FillToolMessage {
 	// Standard messages
 	Abort,
 	WorkingColorChanged,
-	Overlays(OverlayContext),
+	Overlays { context: OverlayContext },
 
 	// Tool-specific messages
 	PointerMove,
@@ -27,7 +27,7 @@ impl ToolMetadata for FillTool {
 	fn icon_name(&self) -> String {
 		"GeneralFillTool".into()
 	}
-	fn tooltip(&self) -> String {
+	fn tooltip_label(&self) -> String {
 		"Fill Tool".into()
 	}
 	fn tool_type(&self) -> crate::messages::tool::utility_types::ToolType {
@@ -37,7 +37,7 @@ impl ToolMetadata for FillTool {
 
 impl LayoutHolder for FillTool {
 	fn layout(&self) -> Layout {
-		Layout::WidgetLayout(WidgetLayout::default())
+		Layout::default()
 	}
 }
 
@@ -67,7 +67,7 @@ impl ToolTransition for FillTool {
 		EventToMessageMap {
 			tool_abort: Some(FillToolMessage::Abort.into()),
 			working_color_changed: Some(FillToolMessage::WorkingColorChanged.into()),
-			overlay_provider: Some(|overlay_context| FillToolMessage::Overlays(overlay_context).into()),
+			overlay_provider: Some(|context| FillToolMessage::Overlays { context }.into()),
 			..Default::default()
 		}
 	}
@@ -94,18 +94,22 @@ impl Fsm for FillToolFsmState {
 		responses: &mut VecDeque<Message>,
 	) -> Self {
 		let ToolActionMessageContext {
-			document, global_tool_data, input, ..
+			document,
+			global_tool_data,
+			input,
+			viewport,
+			..
 		} = handler_data;
 
 		let ToolMessage::Fill(event) = event else { return self };
 		match (self, event) {
-			(_, FillToolMessage::Overlays(mut overlay_context)) => {
+			(_, FillToolMessage::Overlays { context: mut overlay_context }) => {
 				// Choose the working color to preview
 				let use_secondary = input.keyboard.get(Key::Shift as usize);
 				let preview_color = if use_secondary { global_tool_data.secondary_color } else { global_tool_data.primary_color };
 
 				// Get the layer the user is hovering over
-				if let Some(layer) = document.click(input) {
+				if let Some(layer) = document.click(input, viewport) {
 					overlay_context.fill_path_pattern(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer), &preview_color);
 				}
 
@@ -117,7 +121,7 @@ impl Fsm for FillToolFsmState {
 				self
 			}
 			(FillToolFsmState::Ready, color_event) => {
-				let Some(layer_identifier) = document.click(input) else {
+				let Some(layer_identifier) = document.click(input, viewport) else {
 					return self;
 				};
 				// If the layer is a raster layer, don't fill it, wait till the flood fill tool is implemented
@@ -154,7 +158,7 @@ impl Fsm for FillToolFsmState {
 			FillToolFsmState::Filling => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
 		};
 
-		responses.add(FrontendMessage::UpdateInputHints { hint_data });
+		hint_data.send_layout(responses);
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {

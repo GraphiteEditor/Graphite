@@ -1,4 +1,4 @@
-use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, OutputConnector, TypeSource};
+use glam::{DVec2, IVec2};
 use graph_craft::document::NodeId;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::Type;
@@ -14,6 +14,9 @@ pub enum FrontendGraphDataType {
 	Raster,
 	Vector,
 	Color,
+	Gradient,
+	Typography,
+	Invalid,
 }
 
 impl FrontendGraphDataType {
@@ -21,6 +24,7 @@ impl FrontendGraphDataType {
 		match TaggedValue::from_type_or_none(input) {
 			TaggedValue::U32(_)
 			| TaggedValue::U64(_)
+			| TaggedValue::F32(_)
 			| TaggedValue::F64(_)
 			| TaggedValue::DVec2(_)
 			| TaggedValue::F64Array4(_)
@@ -31,15 +35,10 @@ impl FrontendGraphDataType {
 			TaggedValue::Graphic(_) => Self::Graphic,
 			TaggedValue::Raster(_) => Self::Raster,
 			TaggedValue::Vector(_) => Self::Vector,
-			TaggedValue::ColorTable(_) | TaggedValue::Color(_) | TaggedValue::OptionalColor(_) => Self::Color,
+			TaggedValue::Color(_) => Self::Color,
+			TaggedValue::Gradient(_) | TaggedValue::GradientStops(_) | TaggedValue::GradientTable(_) => Self::Gradient,
+			TaggedValue::String(_) | TaggedValue::VecString(_) => Self::Typography,
 			_ => Self::General,
-		}
-	}
-
-	pub fn displayed_type(input: &Type, type_source: &TypeSource) -> Self {
-		match type_source {
-			TypeSource::Error(_) | TypeSource::RandomProtonodeImplementation => Self::General,
-			_ => Self::from_type(input),
 		}
 	}
 }
@@ -55,7 +54,8 @@ pub struct FrontendGraphInput {
 	#[serde(rename = "validTypes")]
 	pub valid_types: Vec<String>,
 	#[serde(rename = "connectedTo")]
-	pub connected_to: Option<OutputConnector>,
+	/// Either "nothing", "import #{index}", or "{node name} #{output_index}".
+	pub connected_to: String,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -63,11 +63,13 @@ pub struct FrontendGraphOutput {
 	#[serde(rename = "dataType")]
 	pub data_type: FrontendGraphDataType,
 	pub name: String,
-	pub description: String,
 	#[serde(rename = "resolvedType")]
 	pub resolved_type: String,
+	pub description: String,
+	/// If connected to an export, it is "export index {index}".
+	/// If connected to a node, it is "{node name} input {input_index}".
 	#[serde(rename = "connectedTo")]
-	pub connected_to: Vec<InputConnector>,
+	pub connected_to: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -88,13 +90,14 @@ pub struct FrontendNode {
 	pub primary_output: Option<FrontendGraphOutput>,
 	#[serde(rename = "exposedOutputs")]
 	pub exposed_outputs: Vec<FrontendGraphOutput>,
-	pub position: (i32, i32),
+	#[serde(rename = "primaryInputConnectedToLayer")]
+	pub primary_input_connected_to_layer: bool,
+	#[serde(rename = "primaryOutputConnectedToLayer")]
+	pub primary_output_connected_to_layer: bool,
+	pub position: IVec2,
+	pub previewed: bool,
 	pub visible: bool,
 	pub locked: bool,
-	pub previewed: bool,
-	pub errors: Option<String>,
-	#[serde(rename = "uiOnly")]
-	pub ui_only: bool,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -150,16 +153,18 @@ pub struct BoxSelection {
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[serde(tag = "type", content = "data")]
 pub enum ContextMenuData {
-	ToggleLayer {
+	ModifyNode {
 		#[serde(rename = "nodeId")]
 		node_id: NodeId,
+		#[serde(rename = "canBeLayer")]
+		can_be_layer: bool,
 		#[serde(rename = "currentlyIsNode")]
 		currently_is_node: bool,
 	},
 	CreateNode {
 		#[serde(rename = "compatibleType")]
-		#[serde(default)]
 		compatible_type: Option<String>,
 	},
 }
@@ -168,9 +173,15 @@ pub enum ContextMenuData {
 pub struct ContextMenuInformation {
 	// Stores whether the context menu is open and its position in graph coordinates
 	#[serde(rename = "contextMenuCoordinates")]
-	pub context_menu_coordinates: (i32, i32),
+	pub context_menu_coordinates: FrontendXY,
 	#[serde(rename = "contextMenuData")]
 	pub context_menu_data: ContextMenuData,
+}
+
+#[derive(Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct NodeGraphErrorDiagnostic {
+	pub position: FrontendXY,
+	pub error: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -179,14 +190,12 @@ pub struct FrontendClickTargets {
 	pub node_click_targets: Vec<String>,
 	#[serde(rename = "layerClickTargets")]
 	pub layer_click_targets: Vec<String>,
-	#[serde(rename = "portClickTargets")]
-	pub port_click_targets: Vec<String>,
+	#[serde(rename = "connectorClickTargets")]
+	pub connector_click_targets: Vec<String>,
 	#[serde(rename = "iconClickTargets")]
 	pub icon_click_targets: Vec<String>,
 	#[serde(rename = "allNodesBoundingBox")]
 	pub all_nodes_bounding_box: String,
-	#[serde(rename = "importExportsBoundingBox")]
-	pub import_exports_bounding_box: String,
 	#[serde(rename = "modifyImportExport")]
 	pub modify_import_export: Vec<String>,
 }
@@ -197,4 +206,23 @@ pub enum Direction {
 	Down,
 	Left,
 	Right,
+}
+
+/// Stores node graph coordinates which are then transformed in Svelte based on the node graph transform
+#[derive(Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct FrontendXY {
+	pub x: i32,
+	pub y: i32,
+}
+
+impl From<DVec2> for FrontendXY {
+	fn from(v: DVec2) -> Self {
+		FrontendXY { x: v.x as i32, y: v.y as i32 }
+	}
+}
+
+impl From<IVec2> for FrontendXY {
+	fn from(v: IVec2) -> Self {
+		FrontendXY { x: v.x, y: v.y }
+	}
 }

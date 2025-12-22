@@ -10,54 +10,66 @@ impl DialogLayoutHolder for LicensesDialog {
 	const TITLE: &'static str = "Licenses";
 
 	fn layout_buttons(&self) -> Layout {
-		let widgets = vec![TextButton::new("OK").emphasized(true).on_update(|_| FrontendMessage::DisplayDialogDismiss.into()).widget_holder()];
+		let widgets = vec![TextButton::new("OK").emphasized(true).on_update(|_| FrontendMessage::DisplayDialogDismiss.into()).widget_instance()];
 
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
+		Layout(vec![LayoutGroup::Row { widgets }])
 	}
 
 	fn layout_column_2(&self) -> Layout {
-		let icons_license_link = "https://raw.githubusercontent.com/GraphiteEditor/Graphite/master/frontend/assets/LICENSE.md";
-		let links = [
-			("GraphiteLogo", "Graphite Logo", "https://graphite.rs/logo/"),
-			("IconsGrid", "Graphite Icons", icons_license_link),
-			("License", "Graphite License", "https://graphite.rs/license/"),
-			("License", "Other Licenses", "/third-party-licenses.txt"),
+		#[allow(clippy::type_complexity)]
+		let button_definitions: &[(&str, &str, fn() -> Message)] = &[
+			("GraphiteLogo", "Graphite Logo", || {
+				FrontendMessage::TriggerVisitLink {
+					url: "https://graphite.art/logo/".into(),
+				}
+				.into()
+			}),
+			("IconsGrid", "Graphite Icons", || {
+				FrontendMessage::TriggerVisitLink {
+					url: "https://raw.githubusercontent.com/GraphiteEditor/Graphite/master/frontend/assets/LICENSE.md".into(),
+				}
+				.into()
+			}),
+			("License", "Graphite License", || {
+				FrontendMessage::TriggerVisitLink {
+					url: "https://graphite.art/license/".into(),
+				}
+				.into()
+			}),
+			("License", "Other Licenses", || FrontendMessage::TriggerDisplayThirdPartyLicensesDialog.into()),
 		];
-		let widgets = links
-			.into_iter()
-			.map(|(icon, label, url)| {
-				TextButton::new(label)
-					.icon(Some(icon.into()))
-					.flush(true)
-					.on_update(|_| FrontendMessage::TriggerVisitLink { url: url.into() }.into())
-					.widget_holder()
-			})
+		let widgets = button_definitions
+			.iter()
+			.map(|&(icon, label, message_factory)| TextButton::new(label).icon(Some((icon).into())).flush(true).on_update(move |_| message_factory()).widget_instance())
 			.collect();
 
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Column { widgets }]))
+		Layout(vec![LayoutGroup::Column { widgets }])
 	}
 }
 
 impl LayoutHolder for LicensesDialog {
 	fn layout(&self) -> Layout {
-		let description = concat!(
-			"The Graphite logo and brand identity are copyright © [YEAR]\nGraphite Labs, LLC. See \"Graphite Logo\" for usage policy.",
-			"\n\n",
-			"The Graphite editor's icons and design assets are copyright\n© [YEAR] Graphite Labs, LLC. See \"Graphite Icons\" for details.",
-			"\n\n",
-			"Graphite code is copyright © [YEAR] Graphite contributors\nand is made available under the Apache 2.0 license. See\n\"Graphite License\" for details.",
-			"\n\n",
-			"Graphite is distributed with third-party open source code\ndependencies. See \"Other Licenses\" for details.",
-		)
-		.replace("[YEAR]", &self.localized_commit_year);
+		let year = &self.localized_commit_year;
+		let description = format!(
+			"
+			The Graphite logo and brand identity are copyright © {year}\nGraphite Labs, LLC. See \"Graphite Logo\" for usage policy.\n\
+			\n\
+			The Graphite editor's icons and design assets are copyright\n© {year} Graphite Labs, LLC. See \"Graphite Icons\" for details.\n\
+			\n\
+			Graphite code is copyright © {year} Graphite contributors\nand is made available under the Apache 2.0 license. See\n\"Graphite License\" for details.\n\
+			\n\
+			Graphite is distributed with third-party open source code\ndependencies. See \"Other Licenses\" for details.
+			"
+		);
+		let description = description.trim();
 
-		Layout::WidgetLayout(WidgetLayout::new(vec![
+		Layout(vec![
 			LayoutGroup::Row {
-				widgets: vec![TextLabel::new("Graphite is free, open source software").bold(true).widget_holder()],
+				widgets: vec![TextLabel::new("Graphite is free, open source software").bold(true).widget_instance()],
 			},
 			LayoutGroup::Row {
-				widgets: vec![TextLabel::new(description).multiline(true).widget_holder()],
+				widgets: vec![TextLabel::new(description).multiline(true).widget_instance()],
 			},
-		]))
+		])
 	}
 }

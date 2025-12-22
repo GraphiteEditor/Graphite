@@ -53,7 +53,7 @@ pub fn system_desc_derive(input: TokenStream) -> TokenStream {
 }
 
 fn replace_lifetimes(generics: &syn::Generics, replacement: &str) -> Vec<proc_macro2::TokenStream> {
-	let params = generics
+	generics
 		.params
 		.iter()
 		.map(|param| {
@@ -72,6 +72,5 @@ fn replace_lifetimes(generics: &syn::Generics, replacement: &str) -> Vec<proc_ma
 			};
 			quote! {#param}
 		})
-		.collect::<Vec<_>>();
-	params
+		.collect::<Vec<_>>()
 }

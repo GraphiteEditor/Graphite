@@ -89,26 +89,22 @@ impl Circle {
 	pub fn update_shape(
 		document: &DocumentMessageHandler,
 		ipp: &InputPreprocessorMessageHandler,
+		viewport: &ViewportMessageHandler,
 		layer: LayerNodeIdentifier,
 		shape_tool_data: &mut ShapeToolData,
 		modifier: ShapeToolModifierKey,
 		responses: &mut VecDeque<Message>,
 	) {
 		let center = modifier[0];
-		let [start, end] = shape_tool_data.data.calculate_circle_points(document, ipp, center);
+		let [start, end] = shape_tool_data.data.calculate_circle_points(document, ipp, viewport, center);
 		let Some(node_id) = graph_modification_utils::get_circle_id(layer, &document.network_interface) else {
 			return;
 		};
 
 		let dimensions = (start - end).abs();
-		let radius: f64;
 
 		// We keep the smaller dimension's scale at 1 and scale the other dimension accordingly
-		if dimensions.x > dimensions.y {
-			radius = dimensions.y / 2.;
-		} else {
-			radius = dimensions.x / 2.;
-		}
+		let radius: f64 = if dimensions.x > dimensions.y { dimensions.y / 2. } else { dimensions.x / 2. };
 
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(node_id, 1),

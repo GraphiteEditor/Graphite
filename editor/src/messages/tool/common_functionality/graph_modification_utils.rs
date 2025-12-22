@@ -3,7 +3,6 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeNetworkInterface, NodeTemplate};
 use crate::messages::prelude::*;
-use bezier_rs::Subpath;
 use glam::DVec2;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
@@ -12,10 +11,11 @@ use graphene_std::Color;
 use graphene_std::NodeInputDecleration;
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::{CPU, GPU, Raster};
+use graphene_std::subpath::Subpath;
 use graphene_std::table::Table;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::misc::ManipulatorPointId;
-use graphene_std::vector::style::Gradient;
+use graphene_std::vector::style::{Fill, Gradient};
 use graphene_std::vector::{PointId, SegmentId, VectorModificationType};
 use std::collections::VecDeque;
 
@@ -32,7 +32,8 @@ pub fn find_spline(document: &DocumentMessageHandler, layer: LayerNodeIdentifier
 
 /// Merge `second_layer` to the `first_layer`.
 pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIdentifier, second_layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>) {
-	if first_layer == second_layer {
+	// Skip layers that are children of each other (or the same)
+	if first_layer.ancestors(document.metadata()).any(|l| l == second_layer) || second_layer.ancestors(document.metadata()).any(|l| l == first_layer) {
 		return;
 	}
 	// Calculate the downstream transforms in order to bring the other vector geometry into the same layer space
@@ -77,7 +78,7 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 		.default_node_template();
 	responses.add(NodeGraphMessage::InsertNode {
 		node_id: merge_node_id,
-		node_template: merge_node,
+		node_template: Box::new(merge_node),
 	});
 	responses.add(NodeGraphMessage::SetToNodeOrLayer {
 		node_id: merge_node_id,
@@ -103,7 +104,7 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 		.default_node_template();
 	responses.add(NodeGraphMessage::InsertNode {
 		node_id: flatten_node_id,
-		node_template: flatten_node,
+		node_template: Box::new(flatten_node),
 	});
 	responses.add(NodeGraphMessage::MoveNodeToChainStart {
 		node_id: flatten_node_id,
@@ -117,7 +118,7 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 		.default_node_template();
 	responses.add(NodeGraphMessage::InsertNode {
 		node_id: path_node_id,
-		node_template: path_node,
+		node_template: Box::new(path_node),
 	});
 	responses.add(NodeGraphMessage::MoveNodeToChainStart {
 		node_id: path_node_id,
@@ -132,7 +133,7 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 			.default_node_template();
 		responses.add(NodeGraphMessage::InsertNode {
 			node_id: spline_node_id,
-			node_template: spline_node,
+			node_template: Box::new(spline_node),
 		});
 		responses.add(NodeGraphMessage::MoveNodeToChainStart {
 			node_id: spline_node_id,
@@ -147,7 +148,7 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 		.default_node_template();
 	responses.add(NodeGraphMessage::InsertNode {
 		node_id: transform_node_id,
-		node_template: transform_node,
+		node_template: Box::new(transform_node),
 	});
 	responses.add(NodeGraphMessage::MoveNodeToChainStart {
 		node_id: transform_node_id,
@@ -246,11 +247,11 @@ pub fn new_custom(id: NodeId, nodes: Vec<(NodeId, NodeTemplate)>, parent: LayerN
 	LayerNodeIdentifier::new_unchecked(id)
 }
 
-/// Locate the origin of the transform node
+/// Locate the origin of the "Transform" node.
 pub fn get_origin(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<DVec2> {
-	use graphene_std::transform_nodes::transform::TranslateInput;
+	use graphene_std::transform_nodes::transform::*;
 
-	if let TaggedValue::DVec2(origin) = NodeGraphLayer::new(layer, network_interface).find_input("Transform", TranslateInput::INDEX)? {
+	if let TaggedValue::DVec2(origin) = NodeGraphLayer::new(layer, network_interface).find_input("Transform", TranslationInput::INDEX)? {
 		Some(*origin)
 	} else {
 		None
@@ -273,7 +274,7 @@ pub fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkI
 	let fill_index = 1;
 
 	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs("Fill")?;
-	let TaggedValue::Fill(graphene_std::vector::style::Fill::Gradient(gradient)) = inputs.get(fill_index)?.as_value()? else {
+	let TaggedValue::Fill(Fill::Gradient(gradient)) = inputs.get(fill_index)?.as_value()? else {
 		return None;
 	};
 	Some(gradient.clone())
@@ -284,7 +285,7 @@ pub fn get_fill_color(layer: LayerNodeIdentifier, network_interface: &NodeNetwor
 	let fill_index = 1;
 
 	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs("Fill")?;
-	let TaggedValue::Fill(graphene_std::vector::style::Fill::Solid(color)) = inputs.get(fill_index)?.as_value()? else {
+	let TaggedValue::Fill(Fill::Solid(color)) = inputs.get(fill_index)?.as_value()? else {
 		return None;
 	};
 	Some(color.to_linear_srgb())
@@ -363,8 +364,16 @@ pub fn get_arc_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInt
 	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name("Arc")
 }
 
+pub fn get_spiral_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
+	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name("Spiral")
+}
+
 pub fn get_text_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
 	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name("Text")
+}
+
+pub fn get_grid_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
+	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name("Grid")
 }
 
 /// Gets properties from the Text node
@@ -475,8 +484,8 @@ impl<'a> NodeGraphLayer<'a> {
 
 	/// Check if a layer is a raster layer
 	pub fn is_raster_layer(layer: LayerNodeIdentifier, network_interface: &mut NodeNetworkInterface) -> bool {
-		let layer_input_type = network_interface.input_type(&InputConnector::node(layer.to_node(), 1), &[]).0.nested_type().clone();
+		let layer_input_type = network_interface.input_type(&InputConnector::node(layer.to_node(), 1), &[]);
 
-		layer_input_type == concrete!(Table<Raster<CPU>>) || layer_input_type == concrete!(Table<Raster<GPU>>)
+		layer_input_type.compiled_nested_type() == Some(&concrete!(Table<Raster<CPU>>)) || layer_input_type.compiled_nested_type() == Some(&concrete!(Table<Raster<GPU>>))
 	}
 }

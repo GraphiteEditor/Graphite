@@ -1,5 +1,5 @@
 <script lang="ts" context="module">
-	export type MenuType = "Popover" | "Dropdown" | "Dialog" | "Cursor";
+	export type MenuType = "Popover" | "Tooltip" | "Dropdown" | "Dialog" | "Cursor";
 
 	/// Prevents the escape key from closing the parent floating menu of the given element.
 	/// This works by momentarily setting the `data-escape-does-not-close` attribute on the parent floating menu element.
@@ -64,7 +64,6 @@
 	let measuringOngoingGuard = false;
 	let minWidthParentWidth = 0;
 	let pointerStillDown = false;
-	let workspaceBounds = new DOMRect();
 	let floatingMenuBounds = new DOMRect();
 	let floatingMenuContentBounds = new DOMRect();
 
@@ -137,20 +136,23 @@
 		// This solves antialiasing issues when the content isn't cleanly divisible by 2 and gets translated by (-50%, -50%) causing all its content to be blurry.
 		const floatingMenuContentDiv = floatingMenuContent?.div?.();
 		if (type === "Dialog" && floatingMenuContentDiv) {
-			// TODO: Also use https://developer.mozilla.org/en-US/docs/Web/API/MutationObserver to detect any changes which may affect the size of the content.
-			// TODO: The current method only notices when the dialog size increases but can't detect when it decreases.
 			const resizeObserver = new ResizeObserver((entries) => {
 				entries.forEach((entry) => {
-					let { width, height } = entry.contentRect;
+					const existingWidth = Number(floatingMenuContentDiv.style.getPropertyValue("--even-integer-subpixel-expansion-x"));
+					const existingHeight = Number(floatingMenuContentDiv.style.getPropertyValue("--even-integer-subpixel-expansion-y"));
 
-					width = Math.ceil(width);
-					if (width % 2 === 1) width += 1;
-					height = Math.ceil(height);
-					if (height % 2 === 1) height += 1;
+					let { width, height } = entry.contentRect;
+					width -= existingWidth;
+					height -= existingHeight;
+
+					let targetWidth = Math.ceil(width);
+					if (targetWidth % 2 === 1) targetWidth += 1;
+					let targetHeight = Math.ceil(height);
+					if (targetHeight % 2 === 1) targetHeight += 1;
 
 					// We have to set the style properties directly because attempting to do it through a Svelte bound property results in `afterUpdate()` being triggered
-					floatingMenuContentDiv.style.setProperty("min-width", width === 0 ? "unset" : `${width}px`);
-					floatingMenuContentDiv.style.setProperty("min-height", height === 0 ? "unset" : `${height}px`);
+					floatingMenuContentDiv.style.setProperty("--even-integer-subpixel-expansion-x", `${targetWidth - width}`);
+					floatingMenuContentDiv.style.setProperty("--even-integer-subpixel-expansion-y", `${targetHeight - height}`);
 				});
 			});
 			resizeObserver.observe(floatingMenuContentDiv);
@@ -158,14 +160,6 @@
 	});
 
 	afterUpdate(() => {
-		// Remove the size constraint after the content updates so the resize observer can measure the content and reapply a newly calculated one
-		const floatingMenuContentDiv = floatingMenuContent?.div?.();
-		if (type === "Dialog" && floatingMenuContentDiv) {
-			// We have to set the style properties directly because attempting to do it through a Svelte bound property results in `afterUpdate()` being triggered
-			floatingMenuContentDiv.style.setProperty("min-width", "unset");
-			floatingMenuContentDiv.style.setProperty("min-height", "unset");
-		}
-
 		// Gets the client bounds of the elements and apply relevant styles to them.
 		// TODO: Use DOM attribute bindings more whilst not causing recursive updates. Turning measuring on and off both causes the component to change,
 		// TODO: which causes the `afterUpdate()` Svelte event to fire extraneous times (hurting performance and sometimes causing an infinite loop).
@@ -179,34 +173,50 @@
 	function positionAndStyleFloatingMenu() {
 		if (type === "Cursor") return;
 
-		const workspace = document.querySelector("[data-workspace]");
-
 		const floatingMenuContentDiv = floatingMenuContent?.div?.();
-		if (!workspace || !self || !floatingMenuContainer || !floatingMenuContent || !floatingMenuContentDiv) return;
+		if (!self || !floatingMenuContainer || !floatingMenuContent || !floatingMenuContentDiv) return;
 
-		const viewportBounds = document.documentElement.getBoundingClientRect();
-		workspaceBounds = workspace.getBoundingClientRect();
+		const windowBounds = document.documentElement.getBoundingClientRect();
 		floatingMenuBounds = self.getBoundingClientRect();
 		const floatingMenuContainerBounds = floatingMenuContainer.getBoundingClientRect();
 		floatingMenuContentBounds = floatingMenuContentDiv.getBoundingClientRect();
 
-		const inParentFloatingMenu = Boolean(floatingMenuContainer.closest("[data-floating-menu-content]"));
+		const overflowingLeft = floatingMenuContentBounds.left - windowEdgeMargin <= windowBounds.left;
+		const overflowingRight = floatingMenuContentBounds.right + windowEdgeMargin >= windowBounds.right;
+		const overflowingTop = floatingMenuContentBounds.top - windowEdgeMargin <= windowBounds.top;
+		const overflowingBottom = floatingMenuContentBounds.bottom + windowEdgeMargin >= windowBounds.bottom;
 
+		// TODO: Make this work for all types. This is currently limited to tooltips because they're inherently small and transient.
+		// TODO: But on popovers and dropdowns, it's a bit harder to do this right. First we check if it's overflowing and flip the direction to avoid the overflow.
+		// TODO: But once it's flipped, if the position moves and the menu would no longer be overflowing, we're still flipped and thus unable to automatically notice the need to flip back.
+		// TODO: So as a result, once flipped, it stays flipped forever even if the menu spawner element is moved back away from the edge of the window.
+		if (type === "Tooltip") {
+			// Flip direction if overflowing the edge of the window
+			if (direction === "Top" && overflowingTop) direction = "Bottom";
+			else if (direction === "Bottom" && overflowingBottom) direction = "Top";
+			else if (direction === "Left" && overflowingLeft) direction = "Right";
+			else if (direction === "Right" && overflowingRight) direction = "Left";
+		}
+
+		const inParentFloatingMenu = Boolean(floatingMenuContainer.closest("[data-floating-menu-content]"));
 		if (!inParentFloatingMenu) {
 			// Required to correctly position content when scrolled (it has a `position: fixed` to prevent clipping)
 			// We use `.style` on a div (instead of a style DOM attribute binding) because the binding causes the `afterUpdate()` hook to call the function we're in recursively forever
-			const tailOffset = type === "Popover" ? 10 : 0;
+			let tailOffset = 0;
+			if (type === "Popover") tailOffset = 10;
+			if (type === "Tooltip") tailOffset = direction === "Bottom" ? 20 : 10;
+
 			if (direction === "Bottom") floatingMenuContentDiv.style.top = `${tailOffset + floatingMenuBounds.y}px`;
-			if (direction === "Top") floatingMenuContentDiv.style.bottom = `${tailOffset + (viewportBounds.height - floatingMenuBounds.y)}px`;
+			if (direction === "Top") floatingMenuContentDiv.style.bottom = `${tailOffset + (windowBounds.height - floatingMenuBounds.y)}px`;
 			if (direction === "Right") floatingMenuContentDiv.style.left = `${tailOffset + floatingMenuBounds.x}px`;
-			if (direction === "Left") floatingMenuContentDiv.style.right = `${tailOffset + (viewportBounds.width - floatingMenuBounds.x)}px`;
+			if (direction === "Left") floatingMenuContentDiv.style.right = `${tailOffset + (windowBounds.width - floatingMenuBounds.x)}px`;
 
 			// Required to correctly position tail when scrolled (it has a `position: fixed` to prevent clipping)
 			// We use `.style` on a div (instead of a style DOM attribute binding) because the binding causes the `afterUpdate()` hook to call the function we're in recursively forever
 			if (tail && direction === "Bottom") tail.style.top = `${floatingMenuBounds.y}px`;
-			if (tail && direction === "Top") tail.style.bottom = `${viewportBounds.height - floatingMenuBounds.y}px`;
+			if (tail && direction === "Top") tail.style.bottom = `${windowBounds.height - floatingMenuBounds.y}px`;
 			if (tail && direction === "Right") tail.style.left = `${floatingMenuBounds.x}px`;
-			if (tail && direction === "Left") tail.style.right = `${viewportBounds.width - floatingMenuBounds.x}px`;
+			if (tail && direction === "Left") tail.style.right = `${windowBounds.width - floatingMenuBounds.x}px`;
 		}
 
 		type Edge = "Top" | "Bottom" | "Left" | "Right";
@@ -217,31 +227,31 @@
 			zeroedBorderVertical = direction === "Top" ? "Bottom" : "Top";
 
 			// We use `.style` on a div (instead of a style DOM attribute binding) because the binding causes the `afterUpdate()` hook to call the function we're in recursively forever
-			if (floatingMenuContentBounds.left - windowEdgeMargin <= workspaceBounds.left) {
+			if (overflowingLeft) {
 				floatingMenuContentDiv.style.left = `${windowEdgeMargin}px`;
-				if (workspaceBounds.left + floatingMenuContainerBounds.left === 12) zeroedBorderHorizontal = "Left";
+				if (windowBounds.left + floatingMenuContainerBounds.left === 12) zeroedBorderHorizontal = "Left";
 			}
-			if (floatingMenuContentBounds.right + windowEdgeMargin >= workspaceBounds.right) {
+			if (overflowingRight) {
 				floatingMenuContentDiv.style.right = `${windowEdgeMargin}px`;
-				if (workspaceBounds.right - floatingMenuContainerBounds.right === 12) zeroedBorderHorizontal = "Right";
+				if (windowBounds.right - floatingMenuContainerBounds.right === 12) zeroedBorderHorizontal = "Right";
 			}
 		}
 		if (direction === "Left" || direction === "Right") {
 			zeroedBorderHorizontal = direction === "Left" ? "Right" : "Left";
 
 			// We use `.style` on a div (instead of a style DOM attribute binding) because the binding causes the `afterUpdate()` hook to call the function we're in recursively forever
-			if (floatingMenuContentBounds.top - windowEdgeMargin <= workspaceBounds.top) {
+			if (overflowingTop) {
 				floatingMenuContentDiv.style.top = `${windowEdgeMargin}px`;
-				if (workspaceBounds.top + floatingMenuContainerBounds.top === 12) zeroedBorderVertical = "Top";
+				if (windowBounds.top + floatingMenuContainerBounds.top === 12) zeroedBorderVertical = "Top";
 			}
-			if (floatingMenuContentBounds.bottom + windowEdgeMargin >= workspaceBounds.bottom) {
+			if (overflowingBottom) {
 				floatingMenuContentDiv.style.bottom = `${windowEdgeMargin}px`;
-				if (workspaceBounds.bottom - floatingMenuContainerBounds.bottom === 12) zeroedBorderVertical = "Bottom";
+				if (windowBounds.bottom - floatingMenuContainerBounds.bottom === 12) zeroedBorderVertical = "Bottom";
 			}
 		}
 
 		// Remove the rounded corner from the content where the tail perfectly meets the corner
-		if (type === "Popover" && windowEdgeMargin === 6 && zeroedBorderVertical && zeroedBorderHorizontal) {
+		if (displayTail && windowEdgeMargin === 6 && zeroedBorderVertical && zeroedBorderHorizontal) {
 			// We use `.style` on a div (instead of a style DOM attribute binding) because the binding causes the `afterUpdate()` hook to call the function we're in recursively forever
 			switch (`${zeroedBorderVertical}${zeroedBorderHorizontal}`) {
 				case "TopLeft":
@@ -362,6 +372,9 @@
 		// Start with the parent of the spawner for this floating menu and keep widening the search for any other valid spawners that are hover-transferrable
 		let currentAncestor = (targetSpawner && ownSpawner?.parentElement) || undefined;
 		while (currentAncestor) {
+			// If the current ancestor blocks hover transfer, stop searching
+			if (currentAncestor.hasAttribute("data-block-hover-transfer")) break;
+
 			const ownSpawnerDepthFromCurrentAncestor = ownSpawner && getDepthFromAncestor(ownSpawner, currentAncestor);
 			const currentAncestor2 = currentAncestor; // This duplicate variable avoids an ESLint warning
 
@@ -372,8 +385,8 @@
 				const notOurself = !ownDescendantMenuSpawners.includes(item);
 				// And filter away unequal depths from the current ancestor
 				const notUnequalDepths = notOurself && getDepthFromAncestor(item, currentAncestor2) === ownSpawnerDepthFromCurrentAncestor;
-				// And filter away elements that explicitly disable hover transfer
-				return notUnequalDepths && !(item as HTMLElement).getAttribute?.("data-floating-menu-spawner")?.includes("no-hover-transfer");
+				// And filter away descendants that explicitly disable hover transfer
+				return notUnequalDepths && !(item instanceof HTMLElement && item.hasAttribute("data-block-hover-transfer"));
 			});
 
 			// If none were found, widen the search by a level and keep trying (or stop looping if the root was reached)
@@ -485,13 +498,22 @@
 		--floating-menu-content-offset: 0;
 
 		.tail {
-			width: 0;
-			height: 0;
-			border-style: solid;
 			// Put the tail above the floating menu's shadow
 			z-index: 10;
 			// Draw over the application without being clipped by the containing panel's `overflow: hidden`
 			position: fixed;
+
+			&,
+			&::before {
+				width: 0;
+				height: 0;
+				border-style: solid;
+			}
+
+			&::before {
+				content: "";
+				position: absolute;
+			}
 		}
 
 		.floating-menu-container {
@@ -500,6 +522,7 @@
 			.floating-menu-content {
 				background: var(--color-2-mildblack);
 				box-shadow: rgba(var(--color-0-black-rgb), 0.5) 0 2px 4px;
+				border: 1px solid var(--color-3-darkgray);
 				border-radius: 4px;
 				color: var(--color-e-nearwhite);
 				font-size: inherit;
@@ -507,6 +530,8 @@
 				z-index: 0;
 				// Draw over the application without being clipped by the containing panel's `overflow: hidden`
 				position: fixed;
+				// Counteract the rightward shift caused by the border
+				margin-left: -1px;
 			}
 		}
 
@@ -590,32 +615,72 @@
 			flex-direction: column;
 		}
 
-		&.top .tail {
-			border-width: 8px 6px 0 6px;
-			border-color: var(--color-2-mildblack) transparent transparent transparent;
-			margin-left: -6px;
-			margin-bottom: 2px;
+		&.top .tail,
+		&.topleft .tail,
+		&.topright .tail {
+			border-color: var(--color-3-darkgray) transparent transparent transparent;
+
+			&::before {
+				border-color: var(--color-2-mildblack) transparent transparent transparent;
+				bottom: 0;
+			}
+
+			&,
+			&::before {
+				border-width: 8px 6px 0 6px;
+				margin-left: -6px;
+				margin-bottom: 2px;
+			}
 		}
 
-		&.bottom .tail {
-			border-width: 0 6px 8px 6px;
-			border-color: transparent transparent var(--color-2-mildblack) transparent;
-			margin-left: -6px;
-			margin-top: 2px;
+		&.bottom .tail,
+		&.bottomleft .tail,
+		&.bottomright .tail {
+			border-color: transparent transparent var(--color-3-darkgray) transparent;
+
+			&::before {
+				border-color: transparent transparent var(--color-2-mildblack) transparent;
+				top: 0;
+			}
+
+			&,
+			&::before {
+				border-width: 0 6px 8px 6px;
+				margin-left: -6px;
+				margin-top: 2px;
+			}
 		}
 
 		&.left .tail {
-			border-width: 6px 0 6px 8px;
-			border-color: transparent transparent transparent var(--color-2-mildblack);
-			margin-top: -6px;
-			margin-right: 2px;
+			border-color: transparent transparent transparent var(--color-3-darkgray);
+
+			&::before {
+				border-color: transparent transparent transparent var(--color-2-mildblack);
+				right: 0;
+			}
+
+			&,
+			&::before {
+				border-width: 6px 0 6px 8px;
+				margin-top: -6px;
+				margin-right: 2px;
+			}
 		}
 
 		&.right .tail {
-			border-width: 6px 8px 6px 0;
-			border-color: transparent var(--color-2-mildblack) transparent transparent;
-			margin-top: -6px;
-			margin-left: 2px;
+			border-color: transparent var(--color-3-darkgray) transparent transparent;
+
+			&::before {
+				border-color: transparent var(--color-2-mildblack) transparent transparent;
+				left: 0;
+			}
+
+			&,
+			&::before {
+				border-width: 6px 8px 6px 0;
+				margin-top: -6px;
+				margin-left: 2px;
+			}
 		}
 
 		&.top .floating-menu-container {

@@ -4,8 +4,7 @@ use crate::messages::prelude::*;
 #[derive(ExtractField)]
 pub struct OverlaysMessageContext<'a> {
 	pub visibility_settings: OverlaysVisibilitySettings,
-	pub ipp: &'a InputPreprocessorMessageHandler,
-	pub device_pixel_ratio: f64,
+	pub viewport: &'a ViewportMessageHandler,
 }
 
 #[derive(Debug, Clone, Default, ExtractField)]
@@ -20,19 +19,14 @@ pub struct OverlaysMessageHandler {
 #[message_handler_data]
 impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMessageHandler {
 	fn process_message(&mut self, message: OverlaysMessage, responses: &mut VecDeque<Message>, context: OverlaysMessageContext) {
-		let OverlaysMessageContext {
-			visibility_settings,
-			ipp,
-			device_pixel_ratio,
-			..
-		} = context;
+		let OverlaysMessageContext { visibility_settings, viewport, .. } = context;
 
 		match message {
 			#[cfg(target_family = "wasm")]
 			OverlaysMessage::Draw => {
 				use super::utility_functions::overlay_canvas_element;
 				use super::utility_types::OverlayContext;
-				use glam::{DAffine2, DVec2};
+				use crate::messages::viewport::{Position, ToPhysical};
 				use wasm_bindgen::JsCast;
 
 				let canvas = match &self.canvas {
@@ -48,26 +42,26 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 					canvas_context.dyn_into().expect("Context should be a canvas 2d context")
 				});
 
-				let size = ipp.viewport_bounds.size().as_uvec2();
+				let size_logical = viewport.size();
+				let size_physical = size_logical.to_physical();
+				let width = size_logical.x().max(size_physical.x());
+				let height = size_logical.y().max(size_physical.y());
 
-				let [a, b, c, d, e, f] = DAffine2::from_scale(DVec2::splat(device_pixel_ratio)).to_cols_array();
-				let _ = canvas_context.set_transform(a, b, c, d, e, f);
-				canvas_context.clear_rect(0., 0., ipp.viewport_bounds.size().x, ipp.viewport_bounds.size().y);
-				let _ = canvas_context.reset_transform();
+				canvas_context.clear_rect(0., 0., width, height);
 
 				if visibility_settings.all() {
-					responses.add(DocumentMessage::GridOverlays(OverlayContext {
-						render_context: canvas_context.clone(),
-						size: size.as_dvec2(),
-						device_pixel_ratio,
-						visibility_settings: visibility_settings.clone(),
-					}));
+					responses.add(DocumentMessage::GridOverlays {
+						context: OverlayContext {
+							render_context: canvas_context.clone(),
+							visibility_settings: visibility_settings.clone(),
+							viewport: *viewport,
+						},
+					});
 					for provider in &self.overlay_providers {
 						responses.add(provider(OverlayContext {
 							render_context: canvas_context.clone(),
-							size: size.as_dvec2(),
-							device_pixel_ratio,
 							visibility_settings: visibility_settings.clone(),
+							viewport: *viewport,
 						}));
 					}
 				}
@@ -76,27 +70,25 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 			OverlaysMessage::Draw => {
 				use super::utility_types::OverlayContext;
 
-				let size = ipp.viewport_bounds.size();
-
-				let overlay_context = OverlayContext::new(size, device_pixel_ratio, visibility_settings);
+				let overlay_context = OverlayContext::new(*viewport, visibility_settings);
 
 				if visibility_settings.all() {
-					responses.add(DocumentMessage::GridOverlays(overlay_context.clone()));
+					responses.add(DocumentMessage::GridOverlays { context: overlay_context.clone() });
 
 					for provider in &self.overlay_providers {
 						responses.add(provider(overlay_context.clone()));
 					}
 				}
-				responses.add(FrontendMessage::RenderOverlays(overlay_context));
+				responses.add(FrontendMessage::RenderOverlays { context: overlay_context });
 			}
 			#[cfg(all(not(target_family = "wasm"), test))]
 			OverlaysMessage::Draw => {
-				let _ = (responses, visibility_settings, ipp, device_pixel_ratio);
+				let _ = (responses, visibility_settings, viewport);
 			}
-			OverlaysMessage::AddProvider(message) => {
+			OverlaysMessage::AddProvider { provider: message } => {
 				self.overlay_providers.insert(message);
 			}
-			OverlaysMessage::RemoveProvider(message) => {
+			OverlaysMessage::RemoveProvider { provider: message } => {
 				self.overlay_providers.remove(&message);
 			}
 		}

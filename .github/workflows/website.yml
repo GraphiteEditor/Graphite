@@ -12,7 +12,7 @@ on:
   workflow_dispatch: {}
 env:
   CARGO_TERM_COLOR: always
-  INDEX_HTML_HEAD_INCLUSION: <script defer data-domain="graphite.rs" data-api="/visit/event" src="/visit/script.hash.js"></script>
+  INDEX_HTML_HEAD_INCLUSION: <script defer data-domain="graphite.art" data-api="/visit/event" src="/visit/script.hash.js"></script>
 
 jobs:
   build:
@@ -25,6 +25,14 @@ jobs:
     steps:
       - name: 📥 Clone and checkout repository
         uses: actions/checkout@v3
+
+      # We can remove this step once `ubuntu-latest` has Node.js 22 or newer for its native TypeScript support. See:
+      # https://github.com/actions/runner-images?tab=readme-ov-file#available-images
+      # https://nodejs.org/en/learn/typescript/run-natively
+      - name: 📦 Install the latest Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "latest"
 
       - name: 🕸 Install Zola
         uses: taiki-e/install-action@v2
@@ -63,54 +71,23 @@ jobs:
           mkdir artifacts
           mv hierarchical_message_system_tree.txt artifacts/hierarchical_message_system_tree.txt
 
-      - name: 🚚 Move `artifacts` contents to `website/other/editor-structure`
+      - name: 🚚 Move `artifacts` contents to the project root
         run: |
-          mv artifacts/* website/other/editor-structure
+          mv artifacts/* .
 
       - name: 🔧 Build auto-generated code docs artifacts into HTML
         run: |
-          cd website/other/editor-structure
-          node generate.js hierarchical_message_system_tree.txt replacement.html
+          cd website
+          npm run generate-editor-structure
 
       - name: 🌐 Build Graphite website with Zola
         env:
           MODE: prod
         run: |
           cd website
-          npm run install-fonts
+          npm ci
+          npm run lint
           zola --config config.toml build --minify
-
-      - name: 💿 Restore cache of `website/other/dist` directory, if available and `website/other` didn't change
-        if: steps.changes.outputs.website-other != 'true'
-        id: cache-website-other-dist
-        uses: actions/cache/restore@v3
-        with:
-          path: website/other/dist
-          key: website-other-dist-${{ runner.os }}
-
-      - name: 🟢 Set up Node only if we are going to build in the next step
-        if: steps.cache-website-other-dist.outputs.cache-hit != 'true'
-        uses: actions/setup-node@v4
-        with:
-          node-version: "latest"
-
-      - name: 📁 Build `website/other` directory only if changed or not cached
-        if: steps.cache-website-other-dist.outputs.cache-hit != 'true'
-        id: build-website-other
-        run: |
-          sh website/other/build.sh
-
-      - name: 💾 Save cache of `website/other/dist` directory if it was built above
-        if: steps.cache-website-other-dist.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v3
-        with:
-          path: website/other/dist
-          key: ${{ steps.cache-website-other-dist.outputs.cache-primary-key }}
-
-      - name: 🚚 Move `website/other/dist` contents to `website/public`
-        run: |
-          mkdir -p website/public
-          mv website/other/dist/* website/public
 
       - name: 📤 Publish to Cloudflare Pages
         id: cloudflare

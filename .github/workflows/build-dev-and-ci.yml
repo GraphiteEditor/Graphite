@@ -7,7 +7,7 @@ on:
   pull_request: {}
 env:
   CARGO_TERM_COLOR: always
-  INDEX_HTML_HEAD_REPLACEMENT: <script defer data-domain="dev.graphite.rs" data-api="https://graphite.rs/visit/event" src="https://graphite.rs/visit/script.hash.js"></script>
+  INDEX_HTML_HEAD_REPLACEMENT: <script defer data-domain="dev.graphite.art" data-api="https://graphite.art/visit/event" src="https://graphite.art/visit/script.hash.js"></script>
 
 jobs:
   build:
@@ -34,10 +34,10 @@ jobs:
         with:
           node-version: "latest"
 
-      - name: 🚧 Install Node dependencies
+      - name: 🚧 Install build dependencies
         run: |
           cd frontend
-          npm ci
+          npm run setup
 
       - name: 🦀 Install the latest Rust
         run: |
@@ -46,6 +46,11 @@ jobs:
           rustup update stable
           echo "Latest updated version:"
           rustc --version
+
+      - name: 🦀 Fetch Rust dependencies
+        run: |
+          echo "If it fails here, the committed Cargo.lock may be out of date"
+          cargo fetch --locked
 
       - name: ✂ Replace template in <head> of index.html
         run: |
@@ -103,7 +108,7 @@ jobs:
 
       - name: 🧪 Run Rust tests
         run: |
-          mold -run cargo test --all-features --workspace
+          mold -run cargo test --all-features
 
       - name: 📃 Generate code documentation info for website
         if: github.ref == 'refs/heads/master'

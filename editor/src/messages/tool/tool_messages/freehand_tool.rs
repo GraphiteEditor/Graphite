@@ -40,7 +40,7 @@ impl Default for FreehandOptions {
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum FreehandToolMessage {
 	// Standard messages
-	Overlays(OverlayContext),
+	Overlays { context: OverlayContext },
 	Abort,
 	WorkingColorChanged,
 
@@ -48,7 +48,7 @@ pub enum FreehandToolMessage {
 	DragStart { append_to_selected: Key },
 	DragStop,
 	PointerMove,
-	UpdateOptions(FreehandOptionsUpdate),
+	UpdateOptions { options: FreehandOptionsUpdate },
 }
 
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -72,7 +72,7 @@ impl ToolMetadata for FreehandTool {
 	fn icon_name(&self) -> String {
 		"VectorFreehandTool".into()
 	}
-	fn tooltip(&self) -> String {
+	fn tooltip_label(&self) -> String {
 		"Freehand Tool".into()
 	}
 	fn tool_type(&self) -> crate::messages::tool::utility_types::ToolType {
@@ -80,14 +80,19 @@ impl ToolMetadata for FreehandTool {
 	}
 }
 
-fn create_weight_widget(line_weight: f64) -> WidgetHolder {
+fn create_weight_widget(line_weight: f64) -> WidgetInstance {
 	NumberInput::new(Some(line_weight))
 		.unit(" px")
 		.label("Weight")
 		.min(1.)
 		.max((1_u64 << f64::MANTISSA_DIGITS) as f64)
-		.on_update(|number_input: &NumberInput| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::LineWeight(number_input.value.unwrap())).into())
-		.widget_holder()
+		.on_update(|number_input: &NumberInput| {
+			FreehandToolMessage::UpdateOptions {
+				options: FreehandOptionsUpdate::LineWeight(number_input.value.unwrap()),
+			}
+			.into()
+		})
+		.widget_instance()
 }
 
 impl LayoutHolder for FreehandTool {
@@ -95,35 +100,69 @@ impl LayoutHolder for FreehandTool {
 		let mut widgets = self.options.fill.create_widgets(
 			"Fill",
 			true,
-			|_| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::FillColor(None)).into(),
-			|color_type: ToolColorType| WidgetCallback::new(move |_| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::FillColorType(color_type.clone())).into()),
-			|color: &ColorInput| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::FillColor(color.value.as_solid().map(|color| color.to_linear_srgb()))).into(),
+			|_| {
+				FreehandToolMessage::UpdateOptions {
+					options: FreehandOptionsUpdate::FillColor(None),
+				}
+				.into()
+			},
+			|color_type: ToolColorType| {
+				WidgetCallback::new(move |_| {
+					FreehandToolMessage::UpdateOptions {
+						options: FreehandOptionsUpdate::FillColorType(color_type.clone()),
+					}
+					.into()
+				})
+			},
+			|color: &ColorInput| {
+				FreehandToolMessage::UpdateOptions {
+					options: FreehandOptionsUpdate::FillColor(color.value.as_solid().map(|color| color.to_linear_srgb())),
+				}
+				.into()
+			},
 		);
 
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+		widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
 
 		widgets.append(&mut self.options.stroke.create_widgets(
 			"Stroke",
 			true,
-			|_| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::StrokeColor(None)).into(),
-			|color_type: ToolColorType| WidgetCallback::new(move |_| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::StrokeColorType(color_type.clone())).into()),
-			|color: &ColorInput| FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::StrokeColor(color.value.as_solid().map(|color| color.to_linear_srgb()))).into(),
+			|_| {
+				FreehandToolMessage::UpdateOptions {
+					options: FreehandOptionsUpdate::StrokeColor(None),
+				}
+				.into()
+			},
+			|color_type: ToolColorType| {
+				WidgetCallback::new(move |_| {
+					FreehandToolMessage::UpdateOptions {
+						options: FreehandOptionsUpdate::StrokeColorType(color_type.clone()),
+					}
+					.into()
+				})
+			},
+			|color: &ColorInput| {
+				FreehandToolMessage::UpdateOptions {
+					options: FreehandOptionsUpdate::StrokeColor(color.value.as_solid().map(|color| color.to_linear_srgb())),
+				}
+				.into()
+			},
 		));
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+		widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
 		widgets.push(create_weight_widget(self.options.line_weight));
 
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
+		Layout(vec![LayoutGroup::Row { widgets }])
 	}
 }
 
 #[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for FreehandTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
-		let ToolMessage::Freehand(FreehandToolMessage::UpdateOptions(action)) = message else {
+		let ToolMessage::Freehand(FreehandToolMessage::UpdateOptions { options }) = message else {
 			self.fsm_state.process_event(message, &mut self.data, context, &self.options, responses, true);
 			return;
 		};
-		match action {
+		match options {
 			FreehandOptionsUpdate::FillColor(color) => {
 				self.options.fill.custom_color = color;
 				self.options.fill.color_type = ToolColorType::Custom;
@@ -164,7 +203,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Free
 impl ToolTransition for FreehandTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
-			overlay_provider: Some(|overlay_context: OverlayContext| FreehandToolMessage::Overlays(overlay_context).into()),
+			overlay_provider: Some(|context: OverlayContext| FreehandToolMessage::Overlays { context }.into()),
 			tool_abort: Some(FreehandToolMessage::Abort.into()),
 			working_color_changed: Some(FreehandToolMessage::WorkingColorChanged.into()),
 			..Default::default()
@@ -197,14 +236,14 @@ impl Fsm for FreehandToolFsmState {
 			global_tool_data,
 			input,
 			shape_editor,
-			preferences,
+			viewport,
 			..
 		} = tool_action_data;
 
 		let ToolMessage::Freehand(event) = event else { return self };
 		match (self, event) {
-			(_, FreehandToolMessage::Overlays(mut overlay_context)) => {
-				path_endpoint_overlays(document, shape_editor, &mut overlay_context, tool_action_data.preferences);
+			(_, FreehandToolMessage::Overlays { context: mut overlay_context }) => {
+				path_endpoint_overlays(document, shape_editor, &mut overlay_context);
 
 				self
 			}
@@ -218,7 +257,7 @@ impl Fsm for FreehandToolFsmState {
 				// Extend an endpoint of the selected path
 				let selected_nodes = document.network_interface.selected_nodes();
 				let tolerance = crate::consts::SNAP_POINT_TOLERANCE;
-				if let Some((layer, point, position)) = should_extend(document, input.mouse.position, tolerance, selected_nodes.selected_layers(document.metadata()), preferences) {
+				if let Some((layer, point, position)) = should_extend(document, input.mouse.position, tolerance, selected_nodes.selected_layers(document.metadata())) {
 					tool_data.layer = Some(layer);
 					tool_data.end_point = Some((position, point));
 
@@ -244,7 +283,7 @@ impl Fsm for FreehandToolFsmState {
 
 				responses.add(DocumentMessage::DeselectAllLayers);
 
-				let parent = document.new_layer_bounding_artboard(input);
+				let parent = document.new_layer_bounding_artboard(input, viewport);
 
 				let node_type = resolve_document_node_type("Path").expect("Path node does not exist");
 				let node = node_type.default_node_template();
@@ -287,10 +326,9 @@ impl Fsm for FreehandToolFsmState {
 				FreehandToolFsmState::Ready
 			}
 			(_, FreehandToolMessage::WorkingColorChanged) => {
-				responses.add(FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::WorkingColors(
-					Some(global_tool_data.primary_color),
-					Some(global_tool_data.secondary_color),
-				)));
+				responses.add(FreehandToolMessage::UpdateOptions {
+					options: FreehandOptionsUpdate::WorkingColors(Some(global_tool_data.primary_color), Some(global_tool_data.secondary_color)),
+				});
 				self
 			}
 			_ => self,
@@ -307,7 +345,7 @@ impl Fsm for FreehandToolFsmState {
 			FreehandToolFsmState::Drawing => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
 		};
 
-		responses.add(FrontendMessage::UpdateInputHints { hint_data });
+		hint_data.send_layout(responses);
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
@@ -328,20 +366,18 @@ fn extend_path_with_next_segment(tool_data: &mut FreehandToolData, position: DVe
 		modification_type: VectorModificationType::InsertPoint { id, position },
 	});
 
-	if extend {
-		if let Some((_, previous_position)) = tool_data.end_point {
-			let next_id = SegmentId::generate();
-			let points = [previous_position, id];
+	if extend && let Some((_, previous_position)) = tool_data.end_point {
+		let next_id = SegmentId::generate();
+		let points = [previous_position, id];
 
-			responses.add(GraphOperationMessage::Vector {
-				layer,
-				modification_type: VectorModificationType::InsertSegment {
-					id: next_id,
-					points,
-					handles: [None, None],
-				},
-			});
-		}
+		responses.add(GraphOperationMessage::Vector {
+			layer,
+			modification_type: VectorModificationType::InsertSegment {
+				id: next_id,
+				points,
+				handles: [None, None],
+			},
+		});
 	}
 
 	tool_data.dragged = true;
@@ -378,7 +414,10 @@ mod test_freehand {
 	fn verify_path_points(vector_and_transform_list: &[(Vector, DAffine2)], expected_captured_points: &[DVec2], tolerance: f64) -> Result<(), String> {
 		assert_eq!(vector_and_transform_list.len(), 1, "There should be one row of Vector geometry");
 
-		let (vector, transform) = vector_and_transform_list.iter().find(|(data, _)| data.point_domain.ids().len() > 0).ok_or("Could not find path data")?;
+		let (vector, transform) = vector_and_transform_list
+			.iter()
+			.find(|(data, _)| !data.point_domain.ids().is_empty())
+			.ok_or("Could not find path data")?;
 
 		let point_count = vector.point_domain.ids().len();
 		let segment_count = vector.segment_domain.ids().len();
@@ -386,7 +425,7 @@ mod test_freehand {
 		let actual_positions: Vec<DVec2> = vector.point_domain.positions().iter().map(|&position| transform.transform_point2(position)).collect();
 
 		if segment_count != point_count - 1 {
-			return Err(format!("Expected segments to be one less than points, got {} segments for {} points", segment_count, point_count));
+			return Err(format!("Expected segments to be one less than points, got {segment_count} segments for {point_count} points"));
 		}
 
 		if point_count != expected_captured_points.len() {
@@ -396,7 +435,7 @@ mod test_freehand {
 		for (i, (&expected, &actual)) in expected_captured_points.iter().zip(actual_positions.iter()).enumerate() {
 			let distance = (expected - actual).length();
 			if distance >= tolerance {
-				return Err(format!("Point {} position mismatch: expected {:?}, got {:?} (distance: {})", i, expected, actual, distance));
+				return Err(format!("Point {i} position mismatch: expected {expected:?}, got {actual:?} (distance: {distance})"));
 			}
 		}
 
@@ -470,7 +509,7 @@ mod test_freehand {
 		let initial_point_count = initial_vector.point_domain.ids().len();
 		let initial_segment_count = initial_vector.segment_domain.ids().len();
 
-		assert!(initial_point_count >= 2, "Expected at least 2 points in initial path, found {}", initial_point_count);
+		assert!(initial_point_count >= 2, "Expected at least 2 points in initial path, found {initial_point_count}");
 		assert_eq!(
 			initial_segment_count,
 			initial_point_count - 1,
@@ -479,10 +518,10 @@ mod test_freehand {
 			initial_segment_count
 		);
 
-		let extendable_points = initial_vector.extendable_points(false).collect::<Vec<_>>();
-		assert!(!extendable_points.is_empty(), "No extendable points found in the path");
+		let endpoints = initial_vector.anchor_endpoints().collect::<Vec<_>>();
+		assert!(!endpoints.is_empty(), "No extendable points found in the path");
 
-		let endpoint_id = extendable_points[0];
+		let endpoint_id = endpoints[0];
 		let endpoint_pos_option = initial_vector.point_domain.position_from_id(endpoint_id);
 		assert!(endpoint_pos_option.is_some(), "Could not find position for endpoint");
 
@@ -531,17 +570,13 @@ mod test_freehand {
 
 		assert!(
 			extended_point_count > initial_point_count,
-			"Expected more points after extension, initial: {}, after extension: {}",
-			initial_point_count,
-			extended_point_count
+			"Expected more points after extension, initial: {initial_point_count}, after extension: {extended_point_count}"
 		);
 
 		assert_eq!(
 			extended_segment_count,
 			extended_point_count - 1,
-			"Expected segments to be one less than points, points: {}, segments: {}",
-			extended_point_count,
-			extended_segment_count
+			"Expected segments to be one less than points, points: {extended_point_count}, segments: {extended_segment_count}"
 		);
 
 		let layer_count = {
@@ -589,8 +624,8 @@ mod test_freehand {
 
 		let existing_layer_id = {
 			let document = editor.active_document();
-			let layer = document.metadata().all_layers().next().unwrap();
-			layer
+
+			document.metadata().all_layers().next().unwrap()
 		};
 
 		editor
@@ -647,9 +682,7 @@ mod test_freehand {
 
 		assert!(
 			final_point_count > initial_point_count,
-			"Expected more points after appending to layer, initial: {}, after append: {}",
-			initial_point_count,
-			final_point_count
+			"Expected more points after appending to layer, initial: {initial_point_count}, after append: {final_point_count}"
 		);
 
 		let expected_new_points = second_path_points.len();
@@ -679,7 +712,9 @@ mod test_freehand {
 
 		let custom_line_weight = 5.;
 		editor
-			.handle_message(ToolMessage::Freehand(FreehandToolMessage::UpdateOptions(FreehandOptionsUpdate::LineWeight(custom_line_weight))))
+			.handle_message(ToolMessage::Freehand(FreehandToolMessage::UpdateOptions {
+				options: FreehandOptionsUpdate::LineWeight(custom_line_weight),
+			}))
 			.await;
 
 		let points = [DVec2::new(100., 100.), DVec2::new(200., 200.), DVec2::new(300., 100.)];

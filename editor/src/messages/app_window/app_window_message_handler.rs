@@ -5,41 +5,47 @@ use graphite_proc_macros::{ExtractField, message_handler_data};
 #[derive(Debug, Clone, Default, ExtractField)]
 pub struct AppWindowMessageHandler {
 	platform: AppWindowPlatform,
-	maximized: bool,
-	viewport_hole_punch_active: bool,
 }
 
 #[message_handler_data]
 impl MessageHandler<AppWindowMessage, ()> for AppWindowMessageHandler {
 	fn process_message(&mut self, message: AppWindowMessage, responses: &mut std::collections::VecDeque<Message>, _: ()) {
 		match message {
-			AppWindowMessage::AppWindowMinimize => {
-				self.platform = if self.platform == AppWindowPlatform::Mac {
-					AppWindowPlatform::Windows
-				} else {
-					AppWindowPlatform::Mac
-				};
+			AppWindowMessage::UpdatePlatform { platform } => {
+				self.platform = platform;
 				responses.add(FrontendMessage::UpdatePlatform { platform: self.platform });
 			}
-			AppWindowMessage::AppWindowMaximize => {
-				self.maximized = !self.maximized;
-				responses.add(FrontendMessage::UpdateMaximized { maximized: self.maximized });
-
-				self.viewport_hole_punch_active = !self.viewport_hole_punch_active;
-				responses.add(FrontendMessage::UpdateViewportHolePunch {
-					active: self.viewport_hole_punch_active,
-				});
+			AppWindowMessage::Close => {
+				responses.add(FrontendMessage::WindowClose);
 			}
-			AppWindowMessage::AppWindowClose => {
-				self.platform = AppWindowPlatform::Web;
-				responses.add(FrontendMessage::UpdatePlatform { platform: self.platform });
+			AppWindowMessage::Minimize => {
+				responses.add(FrontendMessage::WindowMinimize);
+			}
+			AppWindowMessage::Maximize => {
+				responses.add(FrontendMessage::WindowMaximize);
+			}
+			AppWindowMessage::Drag => {
+				responses.add(FrontendMessage::WindowDrag);
+			}
+			AppWindowMessage::Hide => {
+				responses.add(FrontendMessage::WindowHide);
+			}
+			AppWindowMessage::HideOthers => {
+				responses.add(FrontendMessage::WindowHideOthers);
+			}
+			AppWindowMessage::ShowAll => {
+				responses.add(FrontendMessage::WindowShowAll);
 			}
 		}
 	}
-
-	fn actions(&self) -> ActionList {
-		actions!(AppWindowMessageDiscriminant;)
-	}
+	advertise_actions!(AppWindowMessageDiscriminant;
+		Close,
+		Minimize,
+		Maximize,
+		Drag,
+		Hide,
+		HideOthers,
+	);
 }
 
 #[derive(PartialEq, Eq, Clone, Copy, Default, Debug, serde::Serialize, serde::Deserialize, specta::Type)]

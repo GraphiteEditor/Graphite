@@ -18,7 +18,11 @@ pub enum NodeGraphMessage {
 	},
 	AddPathNode,
 	AddImport,
+	AddPrimaryImport,
+	AddSecondaryImport,
 	AddExport,
+	AddPrimaryExport,
+	AddSecondaryExport,
 	Init,
 	SelectedNodesUpdated,
 	Copy,
@@ -63,9 +67,16 @@ pub enum NodeGraphMessage {
 		set_to_exposed: bool,
 		start_transaction: bool,
 	},
+	ExposeEncapsulatingPrimaryInput {
+		exposed: bool,
+	},
+	ExposePrimaryExport {
+		exposed: bool,
+	},
 	InsertNode {
 		node_id: NodeId,
-		node_template: NodeTemplate,
+		// Boxed to reduce size of enum (1120 bytes to 8 bytes)
+		node_template: Box<NodeTemplate>,
 	},
 	InsertNodeBetween {
 		node_id: NodeId,
@@ -102,6 +113,7 @@ pub enum NodeGraphMessage {
 		shift: Key,
 	},
 	ShakeNode,
+	UpdateNodeGraphWidth,
 	RemoveImport {
 		import_index: usize,
 	},
@@ -133,7 +145,6 @@ pub enum NodeGraphMessage {
 	SendWires,
 	UpdateVisibleNodes,
 	SendGraph,
-	SetGridAlignedEdges,
 	SetInputValue {
 		node_id: NodeId,
 		input_index: usize,

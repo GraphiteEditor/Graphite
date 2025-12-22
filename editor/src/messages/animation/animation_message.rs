@@ -1,6 +1,5 @@
-use crate::messages::prelude::*;
-
 use super::animation_message_handler::AnimationTimeMode;
+use crate::messages::prelude::*;
 
 #[impl_message(Message, Animation)]
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]

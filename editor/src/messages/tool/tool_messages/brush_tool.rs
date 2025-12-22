@@ -62,7 +62,7 @@ pub enum BrushToolMessage {
 	DragStart,
 	DragStop,
 	PointerMove,
-	UpdateOptions(BrushToolMessageOptionsUpdate),
+	UpdateOptions { options: BrushToolMessageOptionsUpdate },
 }
 
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -90,7 +90,7 @@ impl ToolMetadata for BrushTool {
 	fn icon_name(&self) -> String {
 		"RasterBrushTool".into()
 	}
-	fn tooltip(&self) -> String {
+	fn tooltip_label(&self) -> String {
 		"Brush Tool".into()
 	}
 	fn tool_type(&self) -> crate::messages::tool::utility_types::ToolType {
@@ -106,60 +106,95 @@ impl LayoutHolder for BrushTool {
 				.min(1.)
 				.max(BRUSH_MAX_SIZE) /* Anything bigger would cause the application to be unresponsive and eventually die */
 				.unit(" px")
-				.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Diameter(number_input.value.unwrap())).into())
-				.widget_holder(),
-			Separator::new(SeparatorType::Related).widget_holder(),
+				.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions { options: BrushToolMessageOptionsUpdate::Diameter(number_input.value.unwrap()) }.into())
+				.widget_instance(),
+			Separator::new(SeparatorType::Related).widget_instance(),
 			NumberInput::new(Some(self.options.hardness))
 				.label("Hardness")
 				.min(0.)
 				.max(100.)
 				.mode_range()
 				.unit("%")
-				.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Hardness(number_input.value.unwrap())).into())
-				.widget_holder(),
-			Separator::new(SeparatorType::Related).widget_holder(),
+				.on_update(|number_input: &NumberInput| {
+					BrushToolMessage::UpdateOptions {
+						options: BrushToolMessageOptionsUpdate::Hardness(number_input.value.unwrap()),
+					}
+					.into()
+				})
+				.widget_instance(),
+			Separator::new(SeparatorType::Related).widget_instance(),
 			NumberInput::new(Some(self.options.flow))
 				.label("Flow")
 				.min(1.)
 				.max(100.)
 				.mode_range()
 				.unit("%")
-				.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Flow(number_input.value.unwrap())).into())
-				.widget_holder(),
-			Separator::new(SeparatorType::Related).widget_holder(),
+				.on_update(|number_input: &NumberInput| {
+					BrushToolMessage::UpdateOptions {
+						options: BrushToolMessageOptionsUpdate::Flow(number_input.value.unwrap()),
+					}
+					.into()
+				})
+				.widget_instance(),
+			Separator::new(SeparatorType::Related).widget_instance(),
 			NumberInput::new(Some(self.options.spacing))
 				.label("Spacing")
 				.min(1.)
 				.max(100.)
 				.mode_range()
 				.unit("%")
-				.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Spacing(number_input.value.unwrap())).into())
-				.widget_holder(),
+				.on_update(|number_input: &NumberInput| {
+					BrushToolMessage::UpdateOptions {
+						options: BrushToolMessageOptionsUpdate::Spacing(number_input.value.unwrap()),
+					}
+					.into()
+				})
+				.widget_instance(),
 		];
 
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+		widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
 
 		let draw_mode_entries: Vec<_> = [DrawMode::Draw, DrawMode::Erase, DrawMode::Restore]
 			.into_iter()
 			.map(|draw_mode| {
-				RadioEntryData::new(format!("{draw_mode:?}"))
-					.label(format!("{draw_mode:?}"))
-					.on_update(move |_| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::DrawMode(draw_mode)).into())
+				RadioEntryData::new(format!("{draw_mode:?}")).label(format!("{draw_mode:?}")).on_update(move |_| {
+					BrushToolMessage::UpdateOptions {
+						options: BrushToolMessageOptionsUpdate::DrawMode(draw_mode),
+					}
+					.into()
+				})
 			})
 			.collect();
-		widgets.push(RadioInput::new(draw_mode_entries).selected_index(Some(self.options.draw_mode as u32)).widget_holder());
+		widgets.push(RadioInput::new(draw_mode_entries).selected_index(Some(self.options.draw_mode as u32)).widget_instance());
 
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+		widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
 
 		widgets.append(&mut self.options.color.create_widgets(
 			"Color",
 			false,
-			|_| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Color(None)).into(),
-			|color_type: ToolColorType| WidgetCallback::new(move |_| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::ColorType(color_type.clone())).into()),
-			|color: &ColorInput| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::Color(color.value.as_solid().map(|color| color.to_linear_srgb()))).into(),
+			|_| {
+				BrushToolMessage::UpdateOptions {
+					options: BrushToolMessageOptionsUpdate::Color(None),
+				}
+				.into()
+			},
+			|color_type: ToolColorType| {
+				WidgetCallback::new(move |_| {
+					BrushToolMessage::UpdateOptions {
+						options: BrushToolMessageOptionsUpdate::ColorType(color_type.clone()),
+					}
+					.into()
+				})
+			},
+			|color: &ColorInput| {
+				BrushToolMessage::UpdateOptions {
+					options: BrushToolMessageOptionsUpdate::Color(color.value.as_solid().map(|color| color.to_linear_srgb())),
+				}
+				.into()
+			},
 		));
 
-		widgets.push(Separator::new(SeparatorType::Related).widget_holder());
+		widgets.push(Separator::new(SeparatorType::Related).widget_instance());
 
 		let blend_mode_entries: Vec<Vec<_>> = BlendMode::list()
 			.iter()
@@ -167,9 +202,12 @@ impl LayoutHolder for BrushTool {
 				section
 					.iter()
 					.map(|blend_mode| {
-						MenuListEntry::new(format!("{blend_mode:?}"))
-							.label(blend_mode.to_string())
-							.on_commit(|_| BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::BlendMode(*blend_mode)).into())
+						MenuListEntry::new(format!("{blend_mode:?}")).label(blend_mode.to_string()).on_commit(|_| {
+							BrushToolMessage::UpdateOptions {
+								options: BrushToolMessageOptionsUpdate::BlendMode(*blend_mode),
+							}
+							.into()
+						})
 					})
 					.collect()
 			})
@@ -177,23 +215,23 @@ impl LayoutHolder for BrushTool {
 		widgets.push(
 			DropdownInput::new(blend_mode_entries)
 				.selected_index(self.options.blend_mode.index_in_list().map(|index| index as u32))
-				.tooltip("The blend mode used with the background when performing a brush stroke. Only used in draw mode.")
+				.tooltip_description("The blend mode used with the background when performing a brush stroke. Only used in draw mode.")
 				.disabled(self.options.draw_mode != DrawMode::Draw)
-				.widget_holder(),
+				.widget_instance(),
 		);
 
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
+		Layout(vec![LayoutGroup::Row { widgets }])
 	}
 }
 
 #[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for BrushTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
-		let ToolMessage::Brush(BrushToolMessage::UpdateOptions(action)) = message else {
+		let ToolMessage::Brush(BrushToolMessage::UpdateOptions { options }) = message else {
 			self.fsm_state.process_event(message, &mut self.data, context, &self.options, responses, true);
 			return;
 		};
-		match action {
+		match options {
 			BrushToolMessageOptionsUpdate::BlendMode(blend_mode) => self.options.blend_mode = blend_mode,
 			BrushToolMessageOptionsUpdate::ChangeDiameter(change) => {
 				let needs_rounding = ((self.options.diameter + change.abs() / 2.) % change.abs() - change.abs() / 2.).abs() > 0.5;
@@ -373,18 +411,18 @@ impl Fsm for BrushToolFsmState {
 			}
 
 			(BrushToolFsmState::Drawing, BrushToolMessage::PointerMove) => {
-				if let Some(layer) = tool_data.layer {
-					if let Some(stroke) = tool_data.strokes.last_mut() {
-						let layer_position = document
-							.network_interface
-							.document_metadata()
-							.downstream_transform_to_viewport(layer)
-							.inverse()
-							.transform_point2(input.mouse.position);
-						let layer_position = tool_data.transform.inverse().transform_point2(layer_position);
+				if let Some(layer) = tool_data.layer
+					&& let Some(stroke) = tool_data.strokes.last_mut()
+				{
+					let layer_position = document
+						.network_interface
+						.document_metadata()
+						.downstream_transform_to_viewport(layer)
+						.inverse()
+						.transform_point2(input.mouse.position);
+					let layer_position = tool_data.transform.inverse().transform_point2(layer_position);
 
-						stroke.trace.push(BrushInputSample { position: layer_position })
-					}
+					stroke.trace.push(BrushInputSample { position: layer_position })
 				}
 				tool_data.update_strokes(responses);
 
@@ -408,10 +446,9 @@ impl Fsm for BrushToolFsmState {
 				BrushToolFsmState::Ready
 			}
 			(_, BrushToolMessage::WorkingColorChanged) => {
-				responses.add(BrushToolMessage::UpdateOptions(BrushToolMessageOptionsUpdate::WorkingColors(
-					Some(global_tool_data.primary_color),
-					Some(global_tool_data.secondary_color),
-				)));
+				responses.add(BrushToolMessage::UpdateOptions {
+					options: BrushToolMessageOptionsUpdate::WorkingColors(Some(global_tool_data.primary_color), Some(global_tool_data.secondary_color)),
+				});
 				self
 			}
 			_ => self,
@@ -427,7 +464,7 @@ impl Fsm for BrushToolFsmState {
 			BrushToolFsmState::Drawing => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
 		};
 
-		responses.add(FrontendMessage::UpdateInputHints { hint_data });
+		hint_data.send_layout(responses);
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
