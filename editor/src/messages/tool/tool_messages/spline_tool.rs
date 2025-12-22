@@ -646,7 +646,7 @@ mod test_spline_tool {
 		let layer_to_viewport = document.metadata().transform_to_viewport(spline_layer);
 
 		let endpoints: Vec<(PointId, DVec2)> = first_vector
-			.extendable_points(false)
+			.extendable_points_no_vector_meshes()
 			.filter_map(|point_id| first_vector.point_domain.position_from_id(point_id).map(|pos| (point_id, layer_to_viewport.transform_point2(pos))))
 			.collect();
 
