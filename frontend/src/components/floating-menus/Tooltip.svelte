@@ -34,7 +34,7 @@
 	}
 
 	function escapeHtml(text: string): string {
-		return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+		return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
 	}
 
 	function parseMarkdown(markdown: string | undefined): string | undefined {
