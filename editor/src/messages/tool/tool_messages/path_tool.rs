@@ -331,10 +331,10 @@ impl LayoutHolder for PathTool {
 			.widget_instance();
 
 		let merge_button = IconButton::new("Folder", 24)
-			.tooltip("Merge selected points")
+			.tooltip_label("Merge selected points")
 			.on_update(|_| PathToolMessage::MergeSelectedPoints.into())
 			.disabled(!self.tool_data.merging_points_enabled)
-			.widget_holder();
+			.widget_instance();
 
 		let [_checkbox, _dropdown] = {
 			let pivot_gizmo_type_widget = pivot_gizmo_type_widget(self.tool_data.pivot_gizmo.state, PivotToolSource::Path);
@@ -3202,7 +3202,7 @@ impl Fsm for PathToolFsmState {
 				let old = tool_data.make_path_editable_is_allowed;
 				tool_data.make_path_editable_is_allowed = make_path_editable_is_allowed(&mut document.network_interface).is_some();
 				tool_data.update_selection_status(shape_editor, document);
-				tool_data.update_merge_point_toggle(shape_editor, document, tool_action_data.preferences.vector_meshes);
+				tool_data.update_merge_point_toggle(shape_editor, document, true);
 
 				// TODO: Here add a toggle for the disable of the merge points button
 
