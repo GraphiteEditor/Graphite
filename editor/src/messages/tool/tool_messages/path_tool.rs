@@ -5,7 +5,7 @@ use crate::consts::{
 	DRILL_THROUGH_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD, SELECTION_TOLERANCE,
 };
 use crate::messages::clipboard::utility_types::ClipboardContent;
-use crate::messages::input_mapper::utility_types::macros::action_shortcut_manual;
+use crate::messages::input_mapper::utility_types::macros::{action_shortcut, action_shortcut_manual};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::overlays::utility_functions::{path_overlays, selected_segments};
@@ -329,6 +329,56 @@ impl LayoutHolder for PathTool {
 			.disabled(!self.tool_data.make_path_editable_is_allowed)
 			.widget_instance();
 
+		// Check if there are any selected points
+		let has_selected_points = !matches!(self.tool_data.selection_status, SelectionStatus::None);
+
+		// Here we add a text button with menu list children
+		let action_menu = TextButton::new("Action")
+			.icon(Some("DropdownArrow".into()))
+			.tooltip_label("Actions Menu")
+			.menu_list_children(vec![
+				vec![
+					MenuListEntry::new("Delete")
+						.label("Delete")
+						.icon("Trash")
+						.tooltip_shortcut(action_shortcut!(PathToolMessageDiscriminant::Delete))
+						.disabled(!has_selected_points)
+						.on_commit(|_| PathToolMessage::Delete.into()),
+					MenuListEntry::new("Delete no dissolve")
+						.label("Delete no dissolve")
+						.icon("Trash")
+						.tooltip_shortcut(action_shortcut!(PathToolMessageDiscriminant::DeleteAndBreakPath))
+						.disabled(!has_selected_points)
+						.on_commit(|_| PathToolMessage::DeleteAndBreakPath.into()),
+					MenuListEntry::new("Cut Anchor")
+						.label("Cut Anchor")
+						.icon("Cut")
+						.tooltip_shortcut(action_shortcut!(PathToolMessageDiscriminant::BreakPath))
+						.disabled(!has_selected_points)
+						.on_commit(|_| PathToolMessage::BreakPath.into()),
+				],
+				vec![
+					MenuListEntry::new("Toggle smooth & sharp")
+						.label("Toggle smooth & sharp")
+						.icon("Edit")
+						.tooltip_shortcut(action_shortcut!(PathToolMessageDiscriminant::ManipulatorMakeHandlesFree))
+						.disabled(!self.tool_data.can_toggle_colinearity)
+						.on_commit(move |_| {
+							if colinear_handles_state {
+								PathToolMessage::ManipulatorMakeHandlesFree.into()
+							} else {
+								PathToolMessage::ManipulatorMakeHandlesColinear.into()
+							}
+						}),
+					MenuListEntry::new("Join")
+						.label("Join")
+						.icon("NodeShape")
+						.tooltip_shortcut(action_shortcut!(PathToolMessageDiscriminant::ClosePath))
+						.on_commit(|_| PathToolMessage::ClosePath.into()),
+				],
+			])
+			.widget_instance();
+
 		let [_checkbox, _dropdown] = {
 			let pivot_gizmo_type_widget = pivot_gizmo_type_widget(self.tool_data.pivot_gizmo.state, PivotToolSource::Path);
 			[pivot_gizmo_type_widget[0].clone(), pivot_gizmo_type_widget[2].clone()]
@@ -360,6 +410,8 @@ impl LayoutHolder for PathTool {
 				path_overlay_mode_widget,
 				unrelated_seperator.clone(),
 				path_node_button,
+				unrelated_seperator.clone(),
+				action_menu,
 				// checkbox.clone(),
 				// related_seperator.clone(),
 				// dropdown.clone(),
