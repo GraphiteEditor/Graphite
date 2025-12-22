@@ -36,8 +36,10 @@
 	function parseMarkdown(markdown: string | undefined): string | undefined {
 		if (!markdown) return undefined;
 
+		let text = markdown.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+
 		return (
-			markdown
+			text
 				// .split("\n")
 				// .map((line) => line.trim())
 				// .join("\n")
