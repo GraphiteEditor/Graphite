@@ -823,7 +823,7 @@ impl PathToolData {
 						.filter(|handle| handle.length(&vector) < 1e-6)
 						.map(|handle| handle.to_manipulator_point())
 						.collect::<Vec<_>>();
-					let endpoint = vector.extendable_points_no_vector_meshes().any(|anchor| point == anchor);
+					let endpoint = vector.anchor_endpoints().any(|anchor| point == anchor);
 
 					if drag_zero_handle && (handles.len() == 1 && !endpoint) {
 						shape_editor.deselect_all_points();

@@ -13,8 +13,8 @@
 	let statusBarHintsLayout: Layout = [];
 
 	onMount(() => {
-		editor.subscriptions.subscribeJsMessage(UpdateStatusBarHintsLayout, (updateStatusBarHintsLayout) => {
-			patchLayout(statusBarHintsLayout, updateStatusBarHintsLayout);
+		editor.subscriptions.subscribeJsMessage(UpdateStatusBarHintsLayout, (data) => {
+			patchLayout(statusBarHintsLayout, data);
 			statusBarHintsLayout = statusBarHintsLayout;
 		});
 	});

@@ -3,9 +3,9 @@ import { TriggerClipboardWrite, TriggerSelectionRead, TriggerSelectionWrite } fr
 
 export function createClipboardManager(editor: Editor) {
 	// Subscribe to process backend event
-	editor.subscriptions.subscribeJsMessage(TriggerClipboardWrite, (triggerTextCopy) => {
+	editor.subscriptions.subscribeJsMessage(TriggerClipboardWrite, (data) => {
 		// If the Clipboard API is supported in the browser, copy text to the clipboard
-		navigator.clipboard?.writeText?.(triggerTextCopy.content);
+		navigator.clipboard?.writeText?.(data.content);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerSelectionRead, async (data) => {
 		editor.handle.readSelection(readAtCaret(data.cut), data.cut);

@@ -43,7 +43,7 @@ where
 	for layer in layers {
 		let viewspace = document.metadata().transform_to_viewport(layer);
 		let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
-		for id in vector.extendable_points() {
+		for id in vector.anchor_points() {
 			if exclude(id) {
 				continue;
 			}

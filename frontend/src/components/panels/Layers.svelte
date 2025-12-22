@@ -75,28 +75,28 @@
 	let layersPanelBottomBarLayout: Layout = [];
 
 	onMount(() => {
-		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarLeftLayout, (updateLayersPanelControlBarLeftLayout) => {
-			patchLayout(layersPanelControlBarLeftLayout, updateLayersPanelControlBarLeftLayout);
+		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarLeftLayout, (data) => {
+			patchLayout(layersPanelControlBarLeftLayout, data);
 			layersPanelControlBarLeftLayout = layersPanelControlBarLeftLayout;
 		});
 
-		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarRightLayout, (updateLayersPanelControlBarRightLayout) => {
-			patchLayout(layersPanelControlBarRightLayout, updateLayersPanelControlBarRightLayout);
+		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarRightLayout, (data) => {
+			patchLayout(layersPanelControlBarRightLayout, data);
 			layersPanelControlBarRightLayout = layersPanelControlBarRightLayout;
 		});
 
-		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelBottomBarLayout, (updateLayersPanelBottomBarLayout) => {
-			patchLayout(layersPanelBottomBarLayout, updateLayersPanelBottomBarLayout);
+		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelBottomBarLayout, (data) => {
+			patchLayout(layersPanelBottomBarLayout, data);
 			layersPanelBottomBarLayout = layersPanelBottomBarLayout;
 		});
 
-		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerStructureJs, (updateDocumentLayerStructure) => {
-			const structure = newUpdateDocumentLayerStructure(updateDocumentLayerStructure.dataBuffer);
+		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerStructureJs, (data) => {
+			const structure = newUpdateDocumentLayerStructure(data.dataBuffer);
 			rebuildLayerHierarchy(structure);
 		});
 
-		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerDetails, (updateDocumentLayerDetails) => {
-			const targetLayer = updateDocumentLayerDetails.data;
+		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerDetails, (data) => {
+			const targetLayer = data.data;
 			const targetId = targetLayer.id;
 
 			updateLayerInTree(targetId, targetLayer);

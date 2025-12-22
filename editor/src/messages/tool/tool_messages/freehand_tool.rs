@@ -518,10 +518,10 @@ mod test_freehand {
 			initial_segment_count
 		);
 
-		let extendable_points = initial_vector.extendable_points().collect::<Vec<_>>();
-		assert!(!extendable_points.is_empty(), "No extendable points found in the path");
+		let endpoints = initial_vector.anchor_endpoints().collect::<Vec<_>>();
+		assert!(!endpoints.is_empty(), "No extendable points found in the path");
 
-		let endpoint_id = extendable_points[0];
+		let endpoint_id = endpoints[0];
 		let endpoint_pos_option = initial_vector.point_domain.position_from_id(endpoint_id);
 		assert!(endpoint_pos_option.is_some(), "Could not find position for endpoint");
 

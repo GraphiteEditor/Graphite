@@ -364,22 +364,14 @@ impl<Upstream> Vector<Upstream> {
 		number != 0
 	}
 
-	/// Points that can be extended from.
-	///
-	/// This may be points with more than one connection because of vector meshes.
-	pub fn extendable_points(&self) -> impl Iterator<Item = PointId> + '_ {
+	/// Iterator over all anchor points.
+	pub fn anchor_points(&self) -> impl Iterator<Item = PointId> + '_ {
 		self.point_domain.ids().iter().copied()
 	}
 
-	// TODO: Avoid needing this special function that's used in only one place. See: <https://github.com/GraphiteEditor/Graphite/commit/6e7f218068a55cc22659ee2cf4f0f2cf26d37774#r173283173>
-	/// Points that can be extended from.
-	///
-	/// This includes only points with exactly one connection because vector meshes are ignored.
-	pub fn extendable_points_no_vector_meshes(&self) -> impl Iterator<Item = PointId> + '_ {
-		self.extendable_points()
-			.enumerate()
-			.filter(|&(index, _)| self.segment_domain.connected_count(index) == 1)
-			.map(|(_, id)| id)
+	/// Anchor points at the ends of open subpaths. These are points with exactly one connection by a segment to another anchor.
+	pub fn anchor_endpoints(&self) -> impl Iterator<Item = PointId> + '_ {
+		self.anchor_points().enumerate().filter(|&(index, _)| self.segment_domain.connected_count(index) == 1).map(|(_, id)| id)
 	}
 
 	/// Computes if all the connected handles are colinear for an anchor, or if that handle is colinear for a handle.

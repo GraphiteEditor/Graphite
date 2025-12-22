@@ -154,17 +154,17 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 	// FRONTEND MESSAGE SUBSCRIPTIONS
 
 	// Subscribe to process backend events
-	editor.subscriptions.subscribeJsMessage(TriggerSavePreferences, async (preferences) => {
-		await savePreferences(preferences.preferences);
+	editor.subscriptions.subscribeJsMessage(TriggerSavePreferences, async (data) => {
+		await savePreferences(data.preferences);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerLoadPreferences, async () => {
 		await loadPreferences();
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerPersistenceWriteDocument, async (autoSaveDocument) => {
-		await storeDocument(autoSaveDocument);
+	editor.subscriptions.subscribeJsMessage(TriggerPersistenceWriteDocument, async (data) => {
+		await storeDocument(data);
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerPersistenceRemoveDocument, async (removeAutoSaveDocument) => {
-		await removeDocument(removeAutoSaveDocument.documentId);
+	editor.subscriptions.subscribeJsMessage(TriggerPersistenceRemoveDocument, async (data) => {
+		await removeDocument(data.documentId);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerLoadFirstAutoSaveDocument, async () => {
 		await loadFirstDocument();
@@ -175,8 +175,8 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 	editor.subscriptions.subscribeJsMessage(TriggerOpenLaunchDocuments, async () => {
 		// TODO: Could be used to load documents from URL params or similar on launch
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerSaveActiveDocument, async (triggerSaveActiveDocument) => {
-		const documentId = String(triggerSaveActiveDocument.documentId);
+	editor.subscriptions.subscribeJsMessage(TriggerSaveActiveDocument, async (data) => {
+		const documentId = String(data.documentId);
 		const previouslySavedDocuments = await get<Record<string, TriggerPersistenceWriteDocument>>("documents", graphiteStore);
 		if (!previouslySavedDocuments) return;
 		if (documentId in previouslySavedDocuments) {
