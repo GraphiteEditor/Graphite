@@ -566,6 +566,7 @@
 							min={0}
 							max={255}
 							minWidth={1}
+							displayDecimalPlaces={0}
 							tooltipLabel={{ r: "Red Channel", g: "Green Channel", b: "Blue Channel" }[channel]}
 							tooltipDescription="Integers 0–255."
 						/>
