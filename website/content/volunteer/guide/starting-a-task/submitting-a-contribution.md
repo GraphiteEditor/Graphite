@@ -25,7 +25,7 @@ Later on when you are building larger features, a PR should be opened once you h
 
 Here's the important part: when you open a PR, it should be marked as a draft unless it is currently ready for review. The left image shows how to open a new PR as a draft, and the right image shows how to convert an existing PR to a draft.
 
-<p><img src="https://static.graphite.rs/content/volunteer/guide/draft-pr.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Screenhots showing GitHub's &quot;Create pull request (arrow) > Create draft pull request&quot; and &quot;Still in progress? Convert to draft&quot; buttons" /></p>
+<p><img src="https://static.graphite.art/content/volunteer/guide/draft-pr.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Screenhots showing GitHub's &quot;Create pull request (arrow) > Create draft pull request&quot; and &quot;Still in progress? Convert to draft&quot; buttons" /></p>
 
 <center><em>Open a new PR as a draft / convert an existing PR to a draft</em></center>
 
@@ -81,7 +81,7 @@ As time goes on and `master` accumulates new commits, your branch will become ou
 
 When your branch can be updated with `master` without conflicts, you can click the "Update branch" button below the CI status. If you click the dropdown button beside it, you can choose instead to update with a rebase. If this can be done without conflicts, this is preferred because it maintains a clean, linear history for your branch.
 
-<p><img src="https://static.graphite.rs/content/volunteer/guide/update-branch-with-rebase.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" onload="this.width = this.naturalWidth / 2" alt="Screenhots showing GitHub's &quot;Update with rebase&quot; button" /></p>
+<p><img src="https://static.graphite.art/content/volunteer/guide/update-branch-with-rebase.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" onload="this.width = this.naturalWidth / 2" alt="Screenhots showing GitHub's &quot;Update with rebase&quot; button" /></p>
 
 Be sure to pull the rebased, or updated-with-a-merge-commit, branch after you or a maintainer updates it (or pushes other commits to it) to ensure you are working on the latest code.
 

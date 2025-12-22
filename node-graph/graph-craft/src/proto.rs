@@ -1,7 +1,8 @@
+use crate::document::value::TaggedValue;
 use crate::document::{InlineRust, value};
 use crate::document::{NodeId, OriginalLocation};
-pub use graphene_core::registry::*;
-use graphene_core::*;
+pub use core_types::registry::*;
+use core_types::*;
 use rustc_hash::FxHashMap;
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
@@ -132,16 +133,18 @@ pub struct ProtoNode {
 	pub identifier: ProtoNodeIdentifier,
 	pub original_location: OriginalLocation,
 	pub skip_deduplication: bool,
+	pub(crate) context_features: ContextDependencies,
 }
 
 impl Default for ProtoNode {
 	fn default() -> Self {
 		Self {
-			identifier: ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode"),
+			identifier: graphene_core::ops::identity::IDENTIFIER,
 			construction_args: ConstructionArgs::Value(value::TaggedValue::U32(0).into()),
 			call_argument: concrete!(()),
 			original_location: OriginalLocation::default(),
 			skip_deduplication: false,
+			context_features: Default::default(),
 		}
 	}
 }
@@ -172,7 +175,7 @@ impl ProtoNode {
 			_ => 2,
 		};
 		Self {
-			identifier: ProtoNodeIdentifier::new("graphene_core::value::ClonedNode"),
+			identifier: ProtoNodeIdentifier::new("core_types::value::ClonedNode"),
 			construction_args: value,
 			call_argument: concrete!(Context),
 			original_location: OriginalLocation {
@@ -181,6 +184,7 @@ impl ProtoNode {
 				..Default::default()
 			},
 			skip_deduplication: false,
+			context_features: Default::default(),
 		}
 	}
 
@@ -211,7 +215,7 @@ impl ProtoNetwork {
 	fn check_ref(&self, ref_id: &NodeId, id: &NodeId) {
 		debug_assert!(
 			self.nodes.iter().any(|(check_id, _)| check_id == ref_id),
-			"Node id:{id} has a reference which uses node id:{ref_id} which doesn't exist in network {self:#?}"
+			"Node with ID {id} has a reference which uses the node with ID {ref_id} which doesn't exist in network {self:#?}"
 		);
 	}
 
@@ -290,15 +294,137 @@ impl ProtoNetwork {
 		(inwards_edges, id_map)
 	}
 
-	/// Performs topological sort and reorders ids.
-	pub fn resolve_inputs(&mut self) -> Result<(), String> {
+	/// Inserts context nullification nodes to optimize caching.
+	/// This analysis is performed after topological sorting to ensure proper dependency tracking.
+	pub fn insert_context_nullification_nodes(&mut self) -> Result<(), String> {
 		// Perform topological sort once
+		self.reorder_ids()?;
+
+		self.find_context_dependencies(self.output);
+
+		// Perform topological sort a second time to integrate the new nodes
 		self.reorder_ids()?;
 
 		Ok(())
 	}
 
-	/// Update all of the references to a node ID in the graph with a new ID named `replacement_node_id`.
+	fn insert_context_nullification_node(&mut self, node_id: NodeId, context_deps: ContextFeatures) -> NodeId {
+		let (_, node) = &self.nodes[node_id.0 as usize];
+		let mut path = node.original_location.path.clone();
+
+		// Add a path extension with a placeholder value which should not conflict with existing paths
+		if let Some(p) = path.as_mut() {
+			p.push(NodeId(10))
+		}
+
+		let memo_node_id = NodeId(self.nodes.len() as u64);
+
+		self.nodes.push((
+			memo_node_id,
+			ProtoNode {
+				construction_args: ConstructionArgs::Nodes(vec![node_id]),
+				call_argument: concrete!(Context),
+				identifier: graphene_core::memo::memo::IDENTIFIER,
+				original_location: OriginalLocation {
+					path: path.clone(),
+					..Default::default()
+				},
+				..Default::default()
+			},
+		));
+
+		let nullification_value_node_id = NodeId(self.nodes.len() as u64);
+
+		self.nodes.push((
+			nullification_value_node_id,
+			ProtoNode {
+				construction_args: ConstructionArgs::Value(MemoHash::new(TaggedValue::ContextFeatures(context_deps))),
+				call_argument: concrete!(Context),
+				identifier: ProtoNodeIdentifier::new("core_types::value::ClonedNode"),
+				original_location: OriginalLocation {
+					path: path.clone(),
+					..Default::default()
+				},
+				..Default::default()
+			},
+		));
+		let nullification_node_id = NodeId(self.nodes.len() as u64);
+		self.nodes.push((
+			nullification_node_id,
+			ProtoNode {
+				construction_args: ConstructionArgs::Nodes(vec![memo_node_id, nullification_value_node_id]),
+				call_argument: concrete!(Context),
+				identifier: graphene_core::context_modification::context_modification::IDENTIFIER,
+				original_location: OriginalLocation {
+					path: path.clone(),
+					..Default::default()
+				},
+				..Default::default()
+			},
+		));
+		nullification_node_id
+	}
+
+	fn find_context_dependencies(&mut self, id: NodeId) -> (ContextFeatures, Option<NodeId>) {
+		let mut branch_dependencies = Vec::new();
+		let mut combined_deps = ContextFeatures::default();
+		let node_index = id.0 as usize;
+
+		let context_features = self.nodes[node_index].1.context_features;
+
+		let mut inputs = match &self.nodes[node_index].1.construction_args {
+			// We pretend like we have already placed context modification nodes after ourselves because value nodes don't need to be cached
+			ConstructionArgs::Value(_) => return (context_features.extract, Some(id)),
+			ConstructionArgs::Nodes(items) => items.clone(),
+			ConstructionArgs::Inline(_) => return (context_features.extract, Some(id)),
+		};
+
+		// Compute the dependencies for each branch and combine all of them
+		for &node in &inputs {
+			let branch = self.find_context_dependencies(node);
+
+			branch_dependencies.push(branch);
+			combined_deps |= branch.0;
+		}
+		let mut new_deps = combined_deps;
+
+		// Remove requirements which this node provides
+		new_deps &= !context_features.inject;
+		// Add requirements we have
+		new_deps |= context_features.extract;
+
+		// If we either introduce new dependencies, we can cache all children which don't yet need that dependency
+		let we_introduce_new_deps = !combined_deps.contains(new_deps);
+
+		// For diverging branches, we can add a cache node for all branches which don't reqire all dependencies
+		for (child_node, (deps, new_id)) in inputs.iter_mut().zip(branch_dependencies.into_iter()) {
+			if let Some(new_id) = new_id {
+				*child_node = new_id;
+			} else if we_introduce_new_deps || deps != combined_deps {
+				*child_node = self.insert_context_nullification_node(*child_node, deps);
+			}
+		}
+		self.nodes[node_index].1.construction_args = ConstructionArgs::Nodes(inputs);
+
+		// Which dependencies do we supply (and don't need ourselves)?
+		let net_injections = context_features.inject.difference(context_features.extract);
+
+		// Which dependencies still need to be met after this node?
+		let remaining_deps_from_children = combined_deps.difference(net_injections);
+
+		// Do we satisfy any existing dependencies?
+		let we_supply_existing_deps = !combined_deps.difference(remaining_deps_from_children).is_empty();
+
+		let mut new_id = None;
+		if we_supply_existing_deps {
+			// Our set of context dependencies has shrunk so we can add a cache node after the current node
+			new_id = Some(self.insert_context_nullification_node(id, new_deps));
+		}
+
+		(new_deps, new_id)
+	}
+
+	/// Update all of the references to a node ID in the graph with a new ID named `compose_node_id`.
 	fn replace_node_id(&mut self, outwards_edges: &HashMap<NodeId, Vec<NodeId>>, node_id: NodeId, replacement_node_id: NodeId) {
 		// Update references in other nodes to use the new node
 		if let Some(referring_nodes) = outwards_edges.get(&node_id) {
@@ -413,19 +539,29 @@ impl ProtoNetwork {
 #[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum GraphErrorType {
 	NodeNotFound(NodeId),
-	InputNodeNotFound(NodeId),
-	UnexpectedGenerics { index: usize, inputs: Vec<Type> },
+	UnexpectedGenerics {
+		index: usize,
+		inputs: Vec<Type>,
+	},
 	NoImplementations,
 	NoConstructor,
-	InvalidImplementations { inputs: String, error_inputs: Vec<Vec<(usize, (Type, Type))>> },
-	MultipleImplementations { inputs: String, valid: Vec<NodeIOTypes> },
+	/// The `inputs` represents a formatted list of input indices corresponding to their types.
+	/// Each element in `error_inputs` represents a valid `NodeIOTypes` implementation.
+	/// The inner Vec stores the inputs which need to be changed and what type each needs to be changed to.
+	InvalidImplementations {
+		inputs: String,
+		error_inputs: Vec<Vec<(usize, (Type, Type))>>,
+	},
+	MultipleImplementations {
+		inputs: String,
+		valid: Vec<NodeIOTypes>,
+	},
 }
 impl Debug for GraphErrorType {
 	// TODO: format with the document graph context so the input index is the same as in the graph UI.
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			GraphErrorType::NodeNotFound(id) => write!(f, "Input node {id} is not present in the typing context"),
-			GraphErrorType::InputNodeNotFound(id) => write!(f, "Input node {id} is not present in the typing context"),
 			GraphErrorType::UnexpectedGenerics { index, inputs } => write!(f, "Generic inputs should not exist but found at {index}: {inputs:?}"),
 			GraphErrorType::NoImplementations => write!(f, "No implementations found"),
 			GraphErrorType::NoConstructor => write!(f, "No construct found for node"),
@@ -632,9 +768,11 @@ impl TypingContext {
 
 		match valid_impls.as_slice() {
 			[] => {
+				let convert_node_index_offset = node.original_location.auto_convert_index.unwrap_or(0);
 				let mut best_errors = usize::MAX;
 				let mut error_inputs = Vec::new();
 				for node_io in impls.keys() {
+					// For errors on Convert nodes, offset the input index so it correctly corresponds to the node it is connected to.
 					let current_errors = [call_argument]
 						.into_iter()
 						.chain(&inputs)
@@ -642,10 +780,7 @@ impl TypingContext {
 						.zip([&node_io.call_argument].into_iter().chain(&node_io.inputs).cloned())
 						.enumerate()
 						.filter(|(_, (p1, p2))| !valid_type(p1, p2))
-						.map(|(index, ty)| {
-							let i = node.original_location.inputs(index).min_by_key(|s| s.node.len()).map(|s| s.index).unwrap_or(index);
-							(i, ty)
-						})
+						.map(|(index, expected)| (index - 1 + convert_node_index_offset, expected))
 						.collect::<Vec<_>>();
 					if current_errors.len() < best_errors {
 						best_errors = current_errors.len();
@@ -659,7 +794,7 @@ impl TypingContext {
 					.into_iter()
 					.chain(&inputs)
 					.enumerate()
-					.filter_map(|(i, t)| if i == 0 { None } else { Some(format!("• Input {i}: {t}")) })
+					.filter_map(|(i, t)| if i == 0 { None } else { Some(format!("• Input {}: {t}", i + convert_node_index_offset)) })
 					.collect::<Vec<_>>()
 					.join("\n");
 				Err(vec![GraphError::new(node, GraphErrorType::InvalidImplementations { inputs, error_inputs })])
@@ -801,7 +936,9 @@ mod test {
 	#[test]
 	fn stable_node_id_generation() {
 		let mut construction_network = test_network();
-		construction_network.resolve_inputs().expect("Error when calling 'resolve_inputs' on 'construction_network.");
+		construction_network
+			.insert_context_nullification_nodes()
+			.expect("Error when calling 'insert_context_nullification_nodes' on 'construction_network.");
 		construction_network.generate_stable_node_ids();
 		assert_eq!(construction_network.nodes[0].1.identifier.name.as_ref(), "value");
 		let ids: Vec<_> = construction_network.nodes.iter().map(|(id, _)| *id).collect();

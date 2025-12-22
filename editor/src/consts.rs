@@ -132,6 +132,7 @@ pub const ARC_SNAP_THRESHOLD: f64 = 5.;
 pub const ARC_SWEEP_GIZMO_RADIUS: f64 = 14.;
 pub const ARC_SWEEP_GIZMO_TEXT_HEIGHT: f64 = 12.;
 pub const GIZMO_HIDE_THRESHOLD: f64 = 20.;
+pub const GRID_ROW_COLUMN_GIZMO_OFFSET: f64 = 15.;
 
 // SCROLLBARS
 pub const SCROLLBAR_SPACING: f64 = 0.1;
@@ -158,3 +159,8 @@ pub const AUTO_SAVE_TIMEOUT_SECONDS: u64 = 1;
 
 // INPUT
 pub const DOUBLE_CLICK_MILLISECONDS: u64 = 500;
+
+// UI
+pub const UI_SCALE_DEFAULT: f64 = 1.;
+pub const UI_SCALE_MIN: f64 = 0.5;
+pub const UI_SCALE_MAX: f64 = 3.;

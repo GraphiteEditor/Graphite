@@ -6,26 +6,34 @@
 		"type": "git",
 		"url": "git+https://github.com/GraphiteEditor/Graphite.git"
 	},
-	"author": "Graphite Authors <contact@graphite.rs>",
+	"author": "Graphite Authors <contact@graphite.art>",
 	"license": "Apache-2.0",
-	"homepage": "https://graphite.rs",
+	"homepage": "https://graphite.art",
+	"type": "module",
 	"scripts": {
-		"install-fonts": "npm ci && node build-scripts/install-fonts.js",
-		"generate-editor-structure": "node build-scripts/generate-editor-structure.js ../hierarchical_message_system_tree.txt ../hierarchical_message_system_tree.html"
+		"postinstall": "node .build-scripts/install-fonts.ts",
+		"generate-editor-structure": "node .build-scripts/generate-editor-structure.ts ../hierarchical_message_system_tree.txt ../hierarchical_message_system_tree.html",
+		"lint": "eslint . && tsc --noEmit",
+		"lint-fix": "eslint . --fix && tsc --noEmit"
 	},
 	"devDependencies": {
-		"@typescript-eslint/eslint-plugin": "^8.7.0",
-		"@typescript-eslint/parser": "^8.7.0",
-		"eslint": "^9.11.1",
-		"eslint-config-prettier": "^9.1.0",
-		"eslint-import-resolver-typescript": "^3.6.3",
-		"eslint-plugin-import": "^2.30.0",
-		"eslint-plugin-prettier": "^5.2.1",
-		"prettier": "^3.3.3",
-		"sass": "1.78.0"
+		"@eslint/compat": "^1.4.1",
+		"@eslint/eslintrc": "^3.3.1",
+		"@eslint/js": "^9.39.1",
+		"@types/node": "^24.10.0",
+		"@typescript-eslint/eslint-plugin": "^8.46.3",
+		"@typescript-eslint/parser": "^8.46.3",
+		"eslint-config-prettier": "^10.1.8",
+		"eslint-import-resolver-typescript": "^4.4.4",
+		"eslint-plugin-import": "^2.32.0",
+		"eslint-plugin-prettier": "^5.5.4",
+		"eslint": "^9.39.1",
+		"prettier": "^3.6.2",
+		"sass": "1.93.3",
+		"typescript-eslint": "^8.46.3"
 	},
 	"dependencies": {
-		"@fontsource-variable/inter": "^5.2.5",
-		"@fontsource/bona-nova": "^5.2.5"
+		"@fontsource-variable/inter": "^5.2.8",
+		"@fontsource/bona-nova": "^5.2.8"
 	}
 }

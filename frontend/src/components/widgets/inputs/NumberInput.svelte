@@ -1,9 +1,10 @@
 <script lang="ts">
 	import { createEventDispatcher, onMount, onDestroy } from "svelte";
 
+	import { evaluateMathExpression } from "@graphite/../wasm/pkg/graphite_wasm";
 	import { PRESS_REPEAT_DELAY_MS, PRESS_REPEAT_INTERVAL_MS } from "@graphite/io-managers/input";
-	import { type NumberInputMode, type NumberInputIncrementBehavior } from "@graphite/messages";
-	import { evaluateMathExpression } from "@graphite-frontend/wasm/pkg/graphite_wasm.js";
+	import type { NumberInputMode, NumberInputIncrementBehavior, ActionShortcut } from "@graphite/messages";
+	import { browserVersion, isDesktop } from "@graphite/utility-functions/platform";
 
 	import { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";
 	import FieldInput from "@graphite/components/widgets/inputs/FieldInput.svelte";
@@ -17,10 +18,15 @@
 
 	// Label
 	export let label: string | undefined = undefined;
-	export let tooltip: string | undefined = undefined;
+	export let tooltipLabel: string | undefined = undefined;
+	export let tooltipDescription: string | undefined = undefined;
+	export let tooltipShortcut: ActionShortcut | undefined = undefined;
 
 	// Disabled
 	export let disabled = false;
+
+	// Narrow
+	export let narrow = false;
 
 	// Value
 	// When `value` is not provided (i.e. it's `undefined`), a dash is displayed.
@@ -104,6 +110,7 @@
 		removeEventListener("keydown", trackCtrl);
 		removeEventListener("keyup", trackCtrl);
 		removeEventListener("mousemove", trackCtrl);
+		clearTimeout(repeatTimeout);
 	});
 
 	// ===============================
@@ -312,10 +319,10 @@
 		// Remove the text entry cursor from any other selected text field
 		if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
 
-		// Don't drag the text value from is input element
+		// Don't drag the text value from its input element
 		e.preventDefault();
 
-		// Now we need to wait and see if the user follows this up with a mousemove or mouseup.
+		// Now we need to wait and see if the user follows this up with a mousemove or mouseup...
 
 		// For some reason, both events can get fired before their event listeners are removed, so we need to guard against both running.
 		let alreadyActedGuard = false;
@@ -324,16 +331,22 @@
 		const onMove = () => {
 			if (alreadyActedGuard) return;
 			alreadyActedGuard = true;
+
 			isDragging = true;
 			beginDrag(e);
+
 			removeEventListener("pointermove", onMove);
+			removeEventListener("pointerup", onUp);
 		};
 		// If it's a mouseup, we'll begin editing the text field.
 		const onUp = () => {
 			if (alreadyActedGuard) return;
 			alreadyActedGuard = true;
+
 			isDragging = false;
 			self?.focus();
+
+			removeEventListener("pointermove", onMove);
 			removeEventListener("pointerup", onUp);
 		};
 		addEventListener("pointermove", onMove);
@@ -345,8 +358,25 @@
 		const target = e.target || undefined;
 		if (!(target instanceof HTMLElement)) return;
 
+		// Default to using pointer lock except on unsupported platforms (Safari and the native desktop app).
+		// Even though Safari supposedly supports the PointerLock API, it implements an old (2016) version of the spec that requires an "engagement
+		// gesture" (<https://www.w3.org/TR/2016/REC-pointerlock-20161027/#glossary>) to initiate pointer lock, which the newer spec doesn't require.
+		// Because "mousemove" (and similarly, the "pointermove" event we use) is defined as not being a user-initiated "engagement gesture" event,
+		// Safari never lets us to enter pointer lock while the mouse button is held down and we are awaiting movement to begin dragging the slider.
+		const isSafari = browserVersion().toLowerCase().includes("safari");
+		const usePointerLock = !isSafari && !isDesktop();
+
+		// On Safari, we use a workaround involving an alternative strategy where we hide the cursor while it's within the web page
+		// (but we can't hide it when it ventures outside the page), taking advantage of a separate (helpful) Safari bug where it
+		// keeps reporting deltas to the pointer position even as it pushes up against edges of the screen. Like the PointerLock API,
+		// this allows infinite movement in each direction, but the downside is that the cursor remains visible outside the page and
+		// it ends up in that location when the drag ends. It isn't possible to take advantage of the PointerCapture API (yes, that's
+		// a different API than PointerLock) which is supposed to allow the CSS cursor style (such as `cursor: none`) to persist even
+		// while dragging it outside the browser window, because Safari has another bug where the cursor icon is unaffected by that API.
+		if (isSafari) document.body.classList.add("cursor-hidden");
+
 		// Enter dragging state
-		target.requestPointerLock();
+		if (usePointerLock) target.requestPointerLock();
 		initialValueBeforeDragging = value;
 		cumulativeDragDelta = 0;
 
@@ -356,6 +386,9 @@
 		// We ignore the first event invocation's `e.movementX` value because it's unreliable.
 		// In both Chrome and Firefox (tested on Windows 10), the first `e.movementX` value is occasionally a very large number
 		// (around positive 1000, even if movement was in the negative direction). This seems to happen more often if the movement is rapid.
+		// TODO: On rarer occasions, it isn't sufficient to ignore just the first event, so this solution is imperfect.
+		// TODO: Using a counter to ignore more frames helps progressively decrease—but not eliminate—the issue, but it makes drag initiation feel delayed so we don't do that.
+		// TODO: A better solution will need to discard outlier movement values across multiple frames by basically implementing a time-series data analysis filtering algorithm.
 		let ignoredFirstMovement = false;
 
 		const pointerUp = () => {
@@ -364,24 +397,24 @@
 			initialValueBeforeDragging = value;
 			cumulativeDragDelta = 0;
 
-			document.exitPointerLock();
-
-			// Fallback for Safari in case pointerlockchange never fires
-			setTimeout(() => {
-				if (!document.pointerLockElement) pointerLockChange();
-			}, 0);
+			if (usePointerLock) document.exitPointerLock();
+			else pointerLockChange();
 		};
 		const pointerMove = (e: PointerEvent) => {
+			// TODO: Display a fake cursor over the top of the page which wraps around the edges of the editor.
+
 			// Abort the drag if right click is down. This works here because a "pointermove" event is fired when right clicking even if the cursor didn't move.
 			if (e.buttons & BUTTONS_RIGHT) {
-				document.exitPointerLock();
+				if (usePointerLock) document.exitPointerLock();
+				else pointerLockChange();
 				return;
 			}
 
-			// If no buttons are down, we are stuck in the drag state after having released the mouse, so we should exit.
-			// For some reason on firefox in wayland the button is -1 and the buttons is 0.
+			// If no buttons are down, that means we are stuck in the drag state after having released the mouse, so we should exit.
+			// For some reason on Firefox in Wayland, `e.buttons` can be 0 while `e.button` is -1, but we don't want to exit in that state.
 			if (e.buttons === 0 && e.button !== -1) {
-				document.exitPointerLock();
+				if (usePointerLock) document.exitPointerLock();
+				else pointerLockChange();
 				return;
 			}
 
@@ -405,7 +438,10 @@
 		};
 		const pointerLockChange = () => {
 			// Do nothing if we just entered, rather than exited, pointer lock.
-			if (document.pointerLockElement) return;
+			if (usePointerLock && document.pointerLockElement) return;
+
+			// Un-hide the cursor if we're using the Safari workaround.
+			if (isSafari) document.body.classList.remove("cursor-hidden");
 
 			// Reset the value to the initial value if the drag was aborted, or to the current value if it was just confirmed by changing the initial value to the current value.
 			updateValue(initialValueBeforeDragging);
@@ -415,12 +451,12 @@
 			// Clean up the event listeners.
 			removeEventListener("pointerup", pointerUp);
 			removeEventListener("pointermove", pointerMove);
-			document.removeEventListener("pointerlockchange", pointerLockChange);
+			if (usePointerLock) document.removeEventListener("pointerlockchange", pointerLockChange);
 		};
 
 		addEventListener("pointerup", pointerUp);
 		addEventListener("pointermove", pointerMove);
-		document.addEventListener("pointerlockchange", pointerLockChange);
+		if (usePointerLock) document.addEventListener("pointerlockchange", pointerLockChange);
 	}
 
 	// ===============================
@@ -642,6 +678,7 @@
 <FieldInput
 	class="number-input"
 	classes={{
+		narrow,
 		increment: mode === "Increment",
 		range: mode === "Range",
 	}}
@@ -653,7 +690,10 @@
 	on:pointerdown={onDragPointerDown}
 	{label}
 	{disabled}
-	{tooltip}
+	{narrow}
+	{tooltipLabel}
+	{tooltipDescription}
+	{tooltipShortcut}
 	{styles}
 	hideContextMenu={true}
 	spellcheck={false}
@@ -709,7 +749,13 @@
 			text-align: center;
 		}
 
+		&.narrow {
+			--widget-height: 20px;
+		}
+
 		&.increment {
+			--arrow-radius: 3px;
+
 			// Widen the label and input margins from the edges by an extra 8px to make room for the increment arrows
 			label {
 				margin-left: 8px;
@@ -738,7 +784,7 @@
 				position: absolute;
 				top: 0;
 				margin: 0;
-				padding: 9px 0;
+				padding: calc(var(--widget-height) / 2 - var(--arrow-radius)) 0;
 				border: none;
 				border-radius: 2px;
 				background: rgba(var(--color-1-nearblack-rgb), 0.5);
@@ -759,7 +805,7 @@
 						width: 0;
 						height: 0;
 						border-style: solid;
-						border-width: 3px 0 3px 3px;
+						border-width: var(--arrow-radius) 0 var(--arrow-radius) var(--arrow-radius);
 						border-color: transparent transparent transparent var(--color-e-nearwhite);
 					}
 				}
@@ -775,7 +821,7 @@
 						width: 0;
 						height: 0;
 						border-style: solid;
-						border-width: 3px 3px 3px 0;
+						border-width: var(--arrow-radius) var(--arrow-radius) var(--arrow-radius) 0;
 						border-color: transparent var(--color-e-nearwhite) transparent transparent;
 					}
 				}
@@ -845,7 +891,7 @@
 					appearance: none;
 					border-radius: 2px;
 					width: 4px;
-					height: 22px;
+					height: calc(var(--widget-height) - 2px);
 					background: #494949; // Becomes var(--color-5-dullgray) with screen blend mode over var(--color-1-nearblack) background
 				}
 
@@ -862,7 +908,7 @@
 					border: none;
 					border-radius: 2px;
 					width: 4px;
-					height: 22px;
+					height: calc(var(--widget-height) - 2px);
 					background: #494949; // Becomes var(--color-5-dullgray) with screen blend mode over var(--color-1-nearblack) background
 				}
 
@@ -900,7 +946,7 @@
 					border-radius: 2px;
 					margin-left: -2px;
 					width: 4px;
-					height: 22px;
+					height: calc(var(--widget-height) - 2px);
 					top: 1px;
 					left: calc(var(--progress-factor) * 100%);
 					background: #5b5b5b; // Becomes var(--color-6-lowergray) with screen blend mode over var(--color-1-nearblack) background

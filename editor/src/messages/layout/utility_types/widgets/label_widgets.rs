@@ -1,4 +1,5 @@
 use super::input_widgets::CheckboxId;
+use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
 use derivative::*;
 use graphite_proc_macros::WidgetBuilder;
 
@@ -9,7 +10,14 @@ pub struct IconLabel {
 
 	pub disabled: bool,
 
-	pub tooltip: String,
+	#[serde(rename = "tooltipLabel")]
+	pub tooltip_label: String,
+
+	#[serde(rename = "tooltipDescription")]
+	pub tooltip_description: String,
+
+	#[serde(rename = "tooltipShortcut")]
+	pub tooltip_shortcut: Option<ActionShortcut>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, WidgetBuilder, specta::Type)]
@@ -36,9 +44,12 @@ pub enum SeparatorType {
 	Section,
 }
 
-#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Debug, PartialEq, Eq, Default, WidgetBuilder, specta::Type)]
+#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Debug, Eq, Default, WidgetBuilder, specta::Type)]
+#[derivative(PartialEq)]
 pub struct TextLabel {
 	pub disabled: bool,
+
+	pub narrow: bool,
 
 	pub bold: bool,
 
@@ -57,7 +68,14 @@ pub struct TextLabel {
 	#[serde(rename = "minWidth")]
 	pub min_width: String,
 
-	pub tooltip: String,
+	#[serde(rename = "tooltipLabel")]
+	pub tooltip_label: String,
+
+	#[serde(rename = "tooltipDescription")]
+	pub tooltip_description: String,
+
+	#[serde(rename = "tooltipShortcut")]
+	pub tooltip_shortcut: Option<ActionShortcut>,
 
 	#[serde(rename = "forCheckbox")]
 	pub for_checkbox: CheckboxId,
@@ -77,7 +95,20 @@ pub struct ImageLabel {
 
 	pub height: Option<String>,
 
-	pub tooltip: String,
+	#[serde(rename = "tooltipLabel")]
+	pub tooltip_label: String,
+
+	#[serde(rename = "tooltipDescription")]
+	pub tooltip_description: String,
+
+	#[serde(rename = "tooltipShortcut")]
+	pub tooltip_shortcut: Option<ActionShortcut>,
 }
 
-// TODO: Add UserInputLabel
+#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Default, WidgetBuilder, specta::Type)]
+#[derivative(Debug, PartialEq)]
+pub struct ShortcutLabel {
+	// This is wrapped in an Option to satisfy the requirement that widgets implement Default
+	#[widget_builder(constructor)]
+	pub shortcut: Option<ActionShortcut>,
+}

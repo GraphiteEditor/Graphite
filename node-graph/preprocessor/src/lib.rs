@@ -29,8 +29,10 @@ pub fn expand_network(network: &mut NodeNetwork, substitutions: &HashMap<ProtoNo
 
 pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNode> {
 	let mut custom = HashMap::new();
-	let node_registry = graphene_core::registry::NODE_REGISTRY.lock().unwrap();
-	for (id, metadata) in graphene_core::registry::NODE_METADATA.lock().unwrap().iter() {
+	// We pre initialize the node registry here to avoid a deadlock
+	let into_node_registry = &*interpreted_executor::node_registry::NODE_REGISTRY;
+	let node_registry = core_types::registry::NODE_REGISTRY.lock().unwrap();
+	for (id, metadata) in core_types::registry::NODE_METADATA.lock().unwrap().iter() {
 		let id = id.clone();
 
 		let NodeMetadata { fields, .. } = metadata;
@@ -54,8 +56,6 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 
 		let identity_node = ops::identity::IDENTIFIER;
 
-		let into_node_registry = &interpreted_executor::node_registry::NODE_REGISTRY;
-
 		let mut generated_nodes = 0;
 		let mut nodes: HashMap<_, _, _> = node_io_types
 			.iter()
@@ -67,6 +67,7 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 						1 => {
 							let input = inputs.iter().next().unwrap();
 							let input_ty = input.nested_type();
+							let mut inputs = vec![NodeInput::import(input.clone(), i)];
 
 							let into_node_identifier = ProtoNodeIdentifier {
 								name: format!("graphene_core::ops::IntoNode<{}>", input_ty.clone()).into(),
@@ -80,21 +81,23 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 								into_node_identifier
 							} else if into_node_registry.keys().any(|ident| ident.name.as_ref() == convert_node_identifier.name.as_ref()) {
 								generated_nodes += 1;
+								inputs.push(NodeInput::value(TaggedValue::None, false));
 								convert_node_identifier
 							} else {
 								identity_node.clone()
 							};
-
+							let mut original_location = OriginalLocation::default();
+							original_location.auto_convert_index = Some(i);
 							DocumentNode {
-								inputs: vec![NodeInput::network(input.clone(), i)],
+								inputs,
 								implementation: DocumentNodeImplementation::ProtoNode(proto_node),
 								visible: true,
-								call_argument: concrete!(Context),
+								original_location,
 								..Default::default()
 							}
 						}
 						_ => DocumentNode {
-							inputs: vec![NodeInput::network(generic!(X), i)],
+							inputs: vec![NodeInput::import(generic!(X), i)],
 							implementation: DocumentNodeImplementation::ProtoNode(identity_node.clone()),
 							visible: false,
 							..Default::default()
@@ -114,6 +117,7 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 			implementation: DocumentNodeImplementation::ProtoNode(id.clone()),
 			visible: true,
 			skip_deduplication: false,
+			context_features: ContextDependencies::from(metadata.context_features.as_slice()),
 			..Default::default()
 		};
 

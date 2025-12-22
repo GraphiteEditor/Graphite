@@ -3,8 +3,7 @@ use std::path::PathBuf;
 use super::utility_types::misc::{GroupFolderType, SnappingState};
 use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 use crate::messages::portfolio::document::data_panel::DataPanelMessage;
-use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
-use crate::messages::portfolio::document::overlays::utility_types::OverlaysType;
+use crate::messages::portfolio::document::overlays::utility_types::{OverlayContext, OverlaysType};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GridSnapping};
 use crate::messages::portfolio::utility_types::PanelType;
@@ -16,7 +15,7 @@ use graphene_std::raster::BlendMode;
 use graphene_std::raster::Image;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::click_target::ClickTarget;
-use graphene_std::vector::style::ViewMode;
+use graphene_std::vector::style::RenderMode;
 
 #[impl_message(Message, PortfolioMessage, Document)]
 #[derive(derivative::Derivative, Clone, serde::Serialize, serde::Deserialize)]
@@ -122,6 +121,7 @@ pub enum DocumentMessage {
 	SavedDocument {
 		path: Option<PathBuf>,
 	},
+	MarkAsSaved,
 	SelectParentLayer,
 	SelectAllLayers,
 	SelectedLayersLower,
@@ -176,13 +176,14 @@ pub enum DocumentMessage {
 		node_id: NodeId,
 		is_layer: bool,
 	},
-	SetViewMode {
-		view_mode: ViewMode,
+	SetRenderMode {
+		render_mode: RenderMode,
 	},
 	AddTransaction,
 	StartTransaction,
 	EndTransaction,
 	CommitTransaction,
+	CancelTransaction,
 	AbortTransaction,
 	RepeatedAbortTransaction {
 		undo_count: usize,

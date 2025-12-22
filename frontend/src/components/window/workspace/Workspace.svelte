@@ -3,10 +3,8 @@
 
 	import type { Editor } from "@graphite/editor";
 	import type { OpenDocument } from "@graphite/messages";
-	import type { DialogState } from "@graphite/state-providers/dialog";
 	import type { PortfolioState } from "@graphite/state-providers/portfolio";
 
-	import Dialog from "@graphite/components/floating-menus/Dialog.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import Panel from "@graphite/components/window/workspace/Panel.svelte";
@@ -30,17 +28,16 @@
 	$: documentPanel?.scrollTabIntoView($portfolio.activeDocumentIndex);
 
 	$: documentTabLabels = $portfolio.documents.map((doc: OpenDocument) => {
-		const name = doc.displayName;
+		const name = doc.details.name;
+		const unsaved = !doc.details.isSaved;
+		if (!editor.handle.inDevelopmentMode()) return { name, unsaved };
 
-		if (!editor.handle.inDevelopmentMode()) return { name };
-
-		const tooltip = `Document ID: ${doc.id}`;
-		return { name, tooltip };
+		const tooltipDescription = `Document ID: ${doc.id}`;
+		return { name, unsaved, tooltipLabel: name, tooltipDescription };
 	});
 
 	const editor = getContext<Editor>("editor");
 	const portfolio = getContext<PortfolioState>("portfolio");
-	const dialog = getContext<DialogState>("dialog");
 
 	function resizePanel(e: PointerEvent) {
 		const gutter = (e.target || undefined) as HTMLDivElement | undefined;
@@ -138,10 +135,11 @@
 			<LayoutRow class="workspace-grid-subdivision" styles={{ "flex-grow": panelSizes["document"] }} data-subdivision-name="document">
 				<Panel
 					class="document-panel"
-					panelType={$portfolio.documents.length > 0 ? "Document" : undefined}
+					panelType={$portfolio.documents.length > 0 ? "Document" : "Welcome"}
 					tabCloseButtons={true}
 					tabMinWidths={true}
 					tabLabels={documentTabLabels}
+					emptySpaceAction={() => editor.handle.newDocumentDialog()}
 					clickAction={(tabIndex) => editor.handle.selectDocument($portfolio.documents[tabIndex].id)}
 					closeAction={(tabIndex) => editor.handle.closeDocumentWithConfirmation($portfolio.documents[tabIndex].id)}
 					tabActiveIndex={$portfolio.activeDocumentIndex}
@@ -174,9 +172,6 @@
 			</LayoutCol>
 		{/if}
 	</LayoutRow>
-	{#if $dialog.visible}
-		<Dialog />
-	{/if}
 </LayoutRow>
 
 <style lang="scss" global>

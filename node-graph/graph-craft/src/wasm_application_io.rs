@@ -26,7 +26,7 @@ struct WindowWrapper {
 	#[cfg(target_family = "wasm")]
 	window: SurfaceHandle<HtmlCanvasElement>,
 	#[cfg(not(target_family = "wasm"))]
-	window: SurfaceHandle<Arc<winit::window::Window>>,
+	window: SurfaceHandle<Arc<dyn winit::window::Window>>,
 }
 
 #[cfg(target_family = "wasm")]
@@ -143,7 +143,7 @@ impl WasmApplicationIo {
 		io
 	}
 	#[cfg(all(not(target_family = "wasm"), feature = "wgpu"))]
-	pub fn new_with_context(context: wgpu_executor::Context) -> Self {
+	pub fn new_with_context(context: wgpu_executor::WgpuContext) -> Self {
 		#[cfg(feature = "wgpu")]
 		let executor = WgpuExecutor::with_context(context);
 
@@ -187,7 +187,7 @@ impl ApplicationIo for WasmApplicationIo {
 	#[cfg(target_family = "wasm")]
 	type Surface = HtmlCanvasElement;
 	#[cfg(not(target_family = "wasm"))]
-	type Surface = Arc<winit::window::Window>;
+	type Surface = Arc<dyn winit::window::Window>;
 	#[cfg(feature = "wgpu")]
 	type Executor = WgpuExecutor;
 	#[cfg(not(feature = "wgpu"))]

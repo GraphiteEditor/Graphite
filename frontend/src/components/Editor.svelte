@@ -3,8 +3,7 @@
 
 	import { type Editor } from "@graphite/editor";
 	import { createClipboardManager } from "@graphite/io-managers/clipboard";
-	import { createDragManager } from "@graphite/io-managers/drag";
-	import { createHyperlinkManager } from "@graphite/io-managers/hyperlinks";
+	import { createHyperlinkManager } from "@graphite/io-managers/hyperlink";
 	import { createInputManager } from "@graphite/io-managers/input";
 	import { createLocalizationManager } from "@graphite/io-managers/localization";
 	import { createPanicManager } from "@graphite/io-managers/panic";
@@ -12,10 +11,11 @@
 	import { createAppWindowState } from "@graphite/state-providers/app-window";
 	import { createDialogState } from "@graphite/state-providers/dialog";
 	import { createDocumentState } from "@graphite/state-providers/document";
-	import { createFontsState } from "@graphite/state-providers/fonts";
+	import { createFontsManager } from "/src/io-managers/fonts";
 	import { createFullscreenState } from "@graphite/state-providers/fullscreen";
 	import { createNodeGraphState } from "@graphite/state-providers/node-graph";
 	import { createPortfolioState } from "@graphite/state-providers/portfolio";
+	import { createTooltipState } from "@graphite/state-providers/tooltip";
 	import { operatingSystem } from "@graphite/utility-functions/platform";
 
 	import MainWindow from "@graphite/components/window/MainWindow.svelte";
@@ -27,10 +27,10 @@
 	// State provider systems
 	let dialog = createDialogState(editor);
 	setContext("dialog", dialog);
+	let tooltip = createTooltipState(editor);
+	setContext("tooltip", tooltip);
 	let document = createDocumentState(editor);
 	setContext("document", document);
-	let fonts = createFontsState(editor);
-	setContext("fonts", fonts);
 	let fullscreen = createFullscreenState(editor);
 	setContext("fullscreen", fullscreen);
 	let nodeGraph = createNodeGraphState(editor);
@@ -46,7 +46,7 @@
 	createLocalizationManager(editor);
 	createPanicManager(editor, dialog);
 	createPersistenceManager(editor, portfolio);
-	let dragManagerDestructor = createDragManager();
+	createFontsManager(editor);
 	let inputManagerDestructor = createInputManager(editor, dialog, portfolio, document, fullscreen);
 
 	onMount(() => {
@@ -56,12 +56,11 @@
 
 	onDestroy(() => {
 		// Call the destructor for each manager
-		dragManagerDestructor();
 		inputManagerDestructor();
 	});
 </script>
 
-<MainWindow platform={$appWindow.platform} maximized={$appWindow.maximized} viewportHolePunch={$appWindow.viewportHolePunch} />
+<MainWindow />
 
 <style lang="scss" global>
 	// Disable the spinning loading indicator
@@ -129,6 +128,8 @@
 		--color-data-gradient-dim: #6c489b;
 		--color-data-typography: #eea7a7;
 		--color-data-typography-dim: #955252;
+		--color-data-invalid: #d6536e; // Same as --color-error-red
+		--color-data-invalid-dim: #a7324a;
 
 		--color-none: white;
 		--color-none-repeat: no-repeat;
@@ -219,6 +220,10 @@
 		overscroll-behavior: none;
 		-webkit-user-select: none; // Still required by Safari as of 2025
 		user-select: none;
+	}
+
+	body.cursor-hidden * {
+		cursor: none !important;
 	}
 
 	// Needed for the viewport hole punch on desktop

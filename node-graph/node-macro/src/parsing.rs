@@ -7,11 +7,12 @@ use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::token::{Comma, RArrow};
 use syn::{
-	AttrStyle, Attribute, Error, Expr, ExprTuple, FnArg, GenericParam, Ident, ItemFn, Lit, LitFloat, LitInt, LitStr, Meta, Pat, PatIdent, PatType, Path, ReturnType, Type, TypeParam, Visibility,
-	WhereClause, parse_quote,
+	AttrStyle, Attribute, Error, Expr, ExprTuple, FnArg, GenericParam, Ident, ItemFn, Lit, LitFloat, LitInt, LitStr, Meta, Pat, PatIdent, PatType, Path, ReturnType, TraitBound, Type, TypeImplTrait,
+	TypeParam, TypeParamBound, Visibility, WhereClause, parse_quote,
 };
 
 use crate::codegen::generate_node_code;
+use crate::crate_ident::CrateIdent;
 use crate::shader_nodes::ShaderNodeType;
 
 #[derive(Clone, Debug)]
@@ -35,11 +36,10 @@ pub(crate) struct ParsedNodeFn {
 	pub(crate) is_async: bool,
 	pub(crate) fields: Vec<ParsedField>,
 	pub(crate) body: TokenStream2,
-	pub(crate) crate_name: proc_macro_crate::FoundCrate,
 	pub(crate) description: String,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub(crate) struct NodeFnAttributes {
 	pub(crate) category: Option<LitStr>,
 	pub(crate) display_name: Option<LitStr>,
@@ -144,11 +144,12 @@ pub struct NodeParsedField {
 	pub implementations: Punctuated<Implementation, Comma>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct Input {
 	pub(crate) pat_ident: PatIdent,
 	pub(crate) ty: Type,
 	pub(crate) implementations: Punctuated<Type, Comma>,
+	pub(crate) context_features: Vec<Ident>,
 }
 
 impl Parse for Implementation {
@@ -313,12 +314,6 @@ fn parse_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<ParsedNo
 	let output_type = parse_output(&input_fn.sig.output)?;
 	let where_clause = input_fn.sig.generics.where_clause;
 	let body = input_fn.block.to_token_stream();
-	let crate_name = proc_macro_crate::crate_name("graphene-core").map_err(|e| {
-		Error::new(
-			proc_macro2::Span::call_site(),
-			format!("Failed to find location of graphene_core. Make sure it is imported as a dependency: {e}"),
-		)
-	})?;
 	let description = input_fn
 		.attrs
 		.iter()
@@ -349,7 +344,6 @@ fn parse_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<ParsedNo
 		fields,
 		where_clause,
 		body,
-		crate_name,
 		description,
 	})
 }
@@ -384,10 +378,12 @@ fn parse_inputs(inputs: &Punctuated<FnArg, Comma>) -> syn::Result<(Input, Vec<Pa
 					.map(|attr| parse_implementations(attr, &pat_ident.ident))
 					.transpose()?
 					.unwrap_or_default();
+				let context_features = parse_context_feature_idents(ty);
 				input = Some(Input {
 					pat_ident,
 					ty: (**ty).clone(),
 					implementations,
+					context_features,
 				});
 			} else if let Pat::Ident(pat_ident) = &**pat {
 				let field = parse_field(pat_ident.clone(), (**ty).clone(), attrs).map_err(|e| Error::new_spanned(pat_ident, format!("Failed to parse argument '{}': {}", pat_ident.ident, e)))?;
@@ -402,6 +398,41 @@ fn parse_inputs(inputs: &Punctuated<FnArg, Comma>) -> syn::Result<(Input, Vec<Pa
 
 	let input = input.ok_or_else(|| Error::new_spanned(inputs, "Expected at least one input argument. The first argument should be the node input type."))?;
 	Ok((input, fields))
+}
+
+/// Parse context feature identifiers from the trait bounds of a context parameter.
+fn parse_context_feature_idents(ty: &Type) -> Vec<Ident> {
+	let mut features = Vec::new();
+
+	// Check if this is an impl trait (impl Ctx + ...)
+	if let Type::ImplTrait(TypeImplTrait { bounds, .. }) = ty {
+		for bound in bounds {
+			if let TypeParamBound::Trait(TraitBound { path, .. }) = bound {
+				// Extract the last segment of the trait path
+				if let Some(segment) = path.segments.last() {
+					match segment.ident.to_string().as_str() {
+						"ExtractFootprint"
+						| "ExtractRealTime"
+						| "ExtractAnimationTime"
+						| "ExtractIndex"
+						| "ExtractVarArgs"
+						| "InjectFootprint"
+						| "InjectRealTime"
+						| "InjectAnimationTime"
+						| "InjectIndex"
+						| "InjectVarArgs" => {
+							features.push(segment.ident.clone());
+						}
+						// Skip Modify* traits as they don't affect usage tracking
+						// Also ignore other traits like Ctx, ExtractAll, etc.
+						_ => {}
+					}
+				}
+			}
+		}
+	}
+
+	features
 }
 
 fn parse_implementations(attr: &Attribute, name: &Ident) -> syn::Result<Punctuated<Type, Comma>> {
@@ -499,10 +530,10 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			})
 		})
 		.transpose()?;
-	if let Some(range) = &number_mode_range {
-		if range.elems.len() != 2 {
-			return Err(Error::new_spanned(range, "Expected a tuple of two values for `range` for the min and max, respectively"));
-		}
+	if let Some(range) = &number_mode_range
+		&& range.elems.len() != 2
+	{
+		return Err(Error::new_spanned(range, "Expected a tuple of two values for `range` for the min and max, respectively"));
 	}
 
 	let unit = extract_attribute(attrs, "unit")
@@ -610,20 +641,19 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 fn parse_node_type(ty: &Type) -> (bool, Option<Type>, Option<Type>) {
 	if let Type::ImplTrait(impl_trait) = ty {
 		for bound in &impl_trait.bounds {
-			if let syn::TypeParamBound::Trait(trait_bound) = bound {
-				if trait_bound.path.segments.last().is_some_and(|seg| seg.ident == "Node") {
-					if let syn::PathArguments::AngleBracketed(args) = &trait_bound.path.segments.last().unwrap().arguments {
-						let input_type = args.args.iter().find_map(|arg| if let syn::GenericArgument::Type(ty) = arg { Some(ty.clone()) } else { None });
-						let output_type = args.args.iter().find_map(|arg| {
-							if let syn::GenericArgument::AssocType(assoc_type) = arg {
-								if assoc_type.ident == "Output" { Some(assoc_type.ty.clone()) } else { None }
-							} else {
-								None
-							}
-						});
-						return (true, input_type, output_type);
+			if let syn::TypeParamBound::Trait(trait_bound) = bound
+				&& trait_bound.path.segments.last().is_some_and(|seg| seg.ident == "Node")
+				&& let syn::PathArguments::AngleBracketed(args) = &trait_bound.path.segments.last().unwrap().arguments
+			{
+				let input_type = args.args.iter().find_map(|arg| if let syn::GenericArgument::Type(ty) = arg { Some(ty.clone()) } else { None });
+				let output_type = args.args.iter().find_map(|arg| {
+					if let syn::GenericArgument::AssocType(assoc_type) = arg {
+						if assoc_type.ident == "Output" { Some(assoc_type.ty.clone()) } else { None }
+					} else {
+						None
 					}
-				}
+				});
+				return (true, input_type, output_type);
 			}
 		}
 	}
@@ -642,28 +672,16 @@ fn extract_attribute<'a>(attrs: &'a [Attribute], name: &str) -> Option<&'a Attri
 }
 
 // Modify the new_node_fn function to use the code generation
-pub fn new_node_fn(attr: TokenStream2, item: TokenStream2) -> TokenStream2 {
-	let parse_result = parse_node_fn(attr, item.clone());
-	let Ok(mut parsed_node) = parse_result else {
-		let e = parse_result.unwrap_err();
-		return Error::new(e.span(), format!("Failed to parse node function: {e}")).to_compile_error();
-	};
-
+pub fn new_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<TokenStream2> {
+	let crate_ident = CrateIdent::default();
+	let mut parsed_node = parse_node_fn(attr, item.clone()).map_err(|e| Error::new(e.span(), format!("Failed to parse node function: {e}")))?;
 	parsed_node.replace_impl_trait_in_input();
-	if let Err(e) = crate::validation::validate_node_fn(&parsed_node) {
-		return Error::new(e.span(), format!("Validation Error:\n{e}")).to_compile_error();
-	}
-	match generate_node_code(&parsed_node) {
-		Ok(parsed) => parsed,
-		Err(e) => {
-			// Return the error as a compile error
-			Error::new(e.span(), format!("Failed to parse node function: {e}")).to_compile_error()
-		}
-	}
+	crate::validation::validate_node_fn(&parsed_node).map_err(|e| Error::new(e.span(), format!("Validation Error: {e}")))?;
+	generate_node_code(&crate_ident, &parsed_node).map_err(|e| Error::new(e.span(), format!("Failed to generate node code: {e}")))
 }
 
 impl ParsedNodeFn {
-	fn replace_impl_trait_in_input(&mut self) {
+	pub fn replace_impl_trait_in_input(&mut self) {
 		if let Type::ImplTrait(impl_trait) = self.input.ty.clone() {
 			let ident = Ident::new("_Input", impl_trait.span());
 			let mut bounds = impl_trait.bounds;
@@ -690,7 +708,6 @@ impl ParsedNodeFn {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use proc_macro_crate::FoundCrate;
 	use proc_macro2::Span;
 	use quote::{quote, quote_spanned};
 	use syn::parse_quote;
@@ -787,7 +804,7 @@ mod tests {
 
 	#[test]
 	fn test_basic_node() {
-		let attr = quote!(category("Math: Arithmetic"), path(graphene_core::TestNode), skip_impl);
+		let attr = quote!(category("Math: Arithmetic"), path(core_types::TestNode), skip_impl);
 		let input = quote!(
 			/// Multi
 			/// Line
@@ -802,7 +819,7 @@ mod tests {
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("Math: Arithmetic")),
 				display_name: None,
-				path: Some(parse_quote!(graphene_core::TestNode)),
+				path: Some(parse_quote!(core_types::TestNode)),
 				skip_impl: true,
 				properties_string: None,
 				cfg: None,
@@ -817,6 +834,7 @@ mod tests {
 				pat_ident: pat_ident("a"),
 				ty: parse_quote!(f64),
 				implementations: Punctuated::new(),
+				context_features: vec![],
 			},
 			output_type: parse_quote!(f64),
 			is_async: false,
@@ -842,7 +860,6 @@ mod tests {
 				unit: None,
 			}],
 			body: TokenStream2::new(),
-			crate_name: FoundCrate::Itself,
 			description: String::from("Multi\nLine\n"),
 		};
 
@@ -883,6 +900,7 @@ mod tests {
 				pat_ident: pat_ident("footprint"),
 				ty: parse_quote!(Footprint),
 				implementations: Punctuated::new(),
+				context_features: vec![],
 			},
 			output_type: parse_quote!(T),
 			is_async: false,
@@ -924,7 +942,6 @@ mod tests {
 				},
 			],
 			body: TokenStream2::new(),
-			crate_name: FoundCrate::Itself,
 			description: String::from("Hello\n\t\t\t\tWorld\n"),
 		};
 
@@ -936,7 +953,7 @@ mod tests {
 		let attr = quote!(category("Vector: Shape"));
 		let input = quote!(
 			/// Test
-			fn circle(_: impl Ctx, #[default(50.)] radius: f64) -> Vector {
+			fn circle(_: impl Ctx + ExtractFootprint, #[default(50.)] radius: f64) -> Vector {
 				// Implementation details...
 			}
 		);
@@ -960,8 +977,9 @@ mod tests {
 			where_clause: None,
 			input: Input {
 				pat_ident: pat_ident("_"),
-				ty: parse_quote!(impl Ctx),
+				ty: parse_quote!(impl Ctx + ExtractFootprint),
 				implementations: Punctuated::new(),
+				context_features: vec![format_ident!("ExtractFootprint")],
 			},
 			output_type: parse_quote!(Vector),
 			is_async: false,
@@ -987,7 +1005,6 @@ mod tests {
 				unit: None,
 			}],
 			body: TokenStream2::new(),
-			crate_name: FoundCrate::Itself,
 			description: "Test\n".into(),
 		};
 
@@ -1024,6 +1041,7 @@ mod tests {
 				pat_ident: pat_ident("image"),
 				ty: parse_quote!(Table<Raster<P>>),
 				implementations: Punctuated::new(),
+				context_features: vec![],
 			},
 			output_type: parse_quote!(Table<Raster<P>>),
 			is_async: false,
@@ -1054,7 +1072,6 @@ mod tests {
 				unit: None,
 			}],
 			body: TokenStream2::new(),
-			crate_name: FoundCrate::Itself,
 			description: String::new(),
 		};
 
@@ -1063,7 +1080,7 @@ mod tests {
 
 	#[test]
 	fn test_number_min_max_range_mode() {
-		let attr = quote!(category("Math: Arithmetic"), path(graphene_core::TestNode));
+		let attr = quote!(category("Math: Arithmetic"), path(core_types::TestNode));
 		let input = quote!(
 			fn add(
 				a: f64,
@@ -1083,7 +1100,7 @@ mod tests {
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("Math: Arithmetic")),
 				display_name: None,
-				path: Some(parse_quote!(graphene_core::TestNode)),
+				path: Some(parse_quote!(core_types::TestNode)),
 				skip_impl: false,
 				properties_string: None,
 				cfg: None,
@@ -1098,6 +1115,7 @@ mod tests {
 				pat_ident: pat_ident("a"),
 				ty: parse_quote!(f64),
 				implementations: Punctuated::new(),
+				context_features: vec![],
 			},
 			output_type: parse_quote!(f64),
 			is_async: false,
@@ -1123,7 +1141,6 @@ mod tests {
 				unit: None,
 			}],
 			body: TokenStream2::new(),
-			crate_name: FoundCrate::Itself,
 			description: String::new(),
 		};
 
@@ -1160,6 +1177,7 @@ mod tests {
 				pat_ident: pat_ident("api"),
 				ty: parse_quote!(&WasmEditorApi),
 				implementations: Punctuated::new(),
+				context_features: vec![],
 			},
 			output_type: parse_quote!(Table<Raster<CPU>>),
 			is_async: true,
@@ -1185,7 +1203,6 @@ mod tests {
 				unit: None,
 			}],
 			body: TokenStream2::new(),
-			crate_name: FoundCrate::Itself,
 			description: String::new(),
 		};
 
@@ -1222,12 +1239,12 @@ mod tests {
 				pat_ident: pat_ident("input"),
 				ty: parse_quote!(i32),
 				implementations: Punctuated::new(),
+				context_features: vec![],
 			},
 			output_type: parse_quote!(i32),
 			is_async: false,
 			fields: vec![],
 			body: TokenStream2::new(),
-			crate_name: FoundCrate::Itself,
 			description: String::new(),
 		};
 

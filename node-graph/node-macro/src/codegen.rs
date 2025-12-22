@@ -1,6 +1,5 @@
 use crate::parsing::*;
 use convert_case::{Case, Casing};
-use proc_macro_crate::FoundCrate;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::{ToTokens, format_ident, quote, quote_spanned};
 use std::sync::atomic::AtomicU64;
@@ -10,7 +9,7 @@ use syn::token::Comma;
 use syn::{Error, Ident, PatIdent, Token, WhereClause, WherePredicate, parse_quote};
 static NODE_ID: AtomicU64 = AtomicU64::new(0);
 
-pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStream2> {
+pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn) -> syn::Result<TokenStream2> {
 	let ParsedNodeFn {
 		vis,
 		attributes,
@@ -24,10 +23,10 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		is_async,
 		fields,
 		body,
-		crate_name: graphene_core_crate,
 		description,
 		..
 	} = parsed;
+	let core_types = crate_ident.gcore()?;
 
 	let category = &attributes.category.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
 	let mod_name = format_ident!("_{}_mod", mod_name);
@@ -40,6 +39,8 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 
 	let struct_generics: Vec<Ident> = fields.iter().enumerate().map(|(i, _)| format_ident!("Node{}", i)).collect();
 	let input_ident = &input.pat_ident;
+
+	let context_features = &input.context_features;
 
 	let field_idents: Vec<_> = fields.iter().map(|f| &f.pat_ident).collect();
 	let field_names: Vec<_> = field_idents.iter().map(|pat_ident| &pat_ident.ident).collect();
@@ -60,14 +61,6 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		quote! { pub(super) #name: #r#gen }
 	});
 
-	let graphene_core = match graphene_core_crate {
-		FoundCrate::Itself => quote!(crate),
-		FoundCrate::Name(name) => {
-			let ident = Ident::new(name, proc_macro2::Span::call_site());
-			quote!( #ident )
-		}
-	};
-
 	let mut future_idents = Vec::new();
 
 	let field_types: Vec<_> = fields
@@ -75,8 +68,8 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		.map(|field| match &field.ty {
 			ParsedFieldType::Regular(RegularParsedField { ty, .. }) => ty.clone(),
 			ParsedFieldType::Node(NodeParsedField { output_type, input_type, .. }) => match parsed.is_async {
-				true => parse_quote!(&'n impl #graphene_core::Node<'n, #input_type, Output = impl core::future::Future<Output=#output_type>>),
-				false => parse_quote!(&'n impl #graphene_core::Node<'n, #input_type, Output = #output_type>),
+				true => parse_quote!(&'n impl #core_types::Node<'n, #input_type, Output = impl core::future::Future<Output=#output_type>>),
+				false => parse_quote!(&'n impl #core_types::Node<'n, #input_type, Output = #output_type>),
 			},
 		})
 		.collect();
@@ -95,7 +88,15 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		.iter()
 		.map(|field| match &field.ty {
 			ParsedFieldType::Regular(RegularParsedField { value_source, .. }) => match value_source {
-				ParsedValueSource::Default(data) => quote!(RegistryValueSource::Default(stringify!(#data))),
+				ParsedValueSource::Default(data) => {
+					// Check if the data is a string literal by parsing the token stream
+					let data_str = data.to_string();
+					if data_str.starts_with('"') && data_str.ends_with('"') && data_str.len() >= 2 {
+						quote!(RegistryValueSource::Default(#data))
+					} else {
+						quote!(RegistryValueSource::Default(stringify!(#data)))
+					}
+				}
 				ParsedValueSource::Scope(data) => quote!(RegistryValueSource::Scope(#data)),
 				_ => quote!(RegistryValueSource::None),
 			},
@@ -180,13 +181,13 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 			let mut tokens = quote!();
 			if let Some(min) = number_hard_min {
 				tokens.extend(quote_spanned! {min.span()=>
-					let #name = #graphene_core::misc::Clampable::clamp_hard_min(#name, #min);
+					let #name = #core_types::misc::Clampable::clamp_hard_min(#name, #min);
 				});
 			}
 
 			if let Some(max) = number_hard_max {
 				tokens.extend(quote_spanned! {max.span()=>
-					let #name = #graphene_core::misc::Clampable::clamp_hard_max(#name, #max);
+					let #name = #core_types::misc::Clampable::clamp_hard_max(#name, #max);
 				});
 			}
 			tokens
@@ -223,13 +224,13 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 				// Add Clampable bound if this field uses hard_min or hard_max
 				if number_hard_min.is_some() || number_hard_max.is_some() {
 					// The bound applies to the Output type of the future, which is #ty
-					clampable_clauses.push(quote!(#ty: #graphene_core::misc::Clampable));
+					clampable_clauses.push(quote!(#ty: #core_types::misc::Clampable));
 				}
 
 				quote!(
-					#fut_ident: core::future::Future<Output = #ty> + #graphene_core::WasmNotSend + 'n,
-					for<'all> #all_lifetime_ty: #graphene_core::WasmNotSend,
-					#name: #graphene_core::Node<'n, #input_type, Output = #fut_ident> + #graphene_core::WasmNotSync
+					#fut_ident: core::future::Future<Output = #ty> + #core_types::WasmNotSend + 'n,
+					for<'all> #all_lifetime_ty: #core_types::WasmNotSend,
+					#name: #core_types::Node<'n, #input_type, Output = #fut_ident> + #core_types::WasmNotSync
 				)
 			}
 			(ParsedFieldType::Node(NodeParsedField { input_type, output_type, .. }), true) => {
@@ -238,11 +239,11 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 				future_idents.push(fut_ident.clone());
 
 				quote!(
-					#fut_ident: core::future::Future<Output = #output_type> + #graphene_core::WasmNotSend + 'n,
-					#name: #graphene_core::Node<'n, #input_type, Output = #fut_ident > + #graphene_core::WasmNotSync
+					#fut_ident: core::future::Future<Output = #output_type> + #core_types::WasmNotSend + 'n,
+					#name: #core_types::Node<'n, #input_type, Output = #fut_ident > + #core_types::WasmNotSync
 				)
 			}
-			(ParsedFieldType::Node { .. }, false) => unreachable!(),
+			(ParsedFieldType::Node { .. }, false) => unreachable!("Found node which takes an impl Node<> input but is not async"),
 		});
 	}
 	let where_clause = where_clause.clone().unwrap_or(WhereClause {
@@ -266,11 +267,11 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 	let await_keyword = is_async.then(|| quote!(.await));
 
 	let eval_impl = quote! {
-		type Output = #graphene_core::registry::DynFuture<'n, #output_type>;
+		type Output = #core_types::registry::DynFuture<'n, #output_type>;
 		#[inline]
 		fn eval(&'n self, __input: #input_type) -> Self::Output {
 			Box::pin(async move {
-				use #graphene_core::misc::Clampable;
+				use #core_types::misc::Clampable;
 
 				#(#eval_args)*
 				#(#min_max_args)*
@@ -294,8 +295,9 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 	let properties = &attributes.properties_string.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
 
 	let cfg = crate::shader_nodes::modify_cfg(attributes);
-	let node_input_accessor = generate_node_input_references(parsed, fn_generics, &field_idents, &graphene_core, &identifier, &cfg);
-	let shader_entry_point = attributes.shader_node.as_ref().map(|n| n.codegen_shader_entry_point(parsed)).unwrap_or(Ok(TokenStream2::new()))?;
+	let node_input_accessor = generate_node_input_references(parsed, fn_generics, &field_idents, core_types, &identifier, &cfg);
+	let ShaderTokens { shader_entry_point, gpu_node } = attributes.shader_node.as_ref().map(|n| n.codegen(crate_ident, parsed)).unwrap_or(Ok(ShaderTokens::default()))?;
+
 	Ok(quote! {
 		/// Underlying implementation for [#struct_name]
 		#[inline]
@@ -304,15 +306,15 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 
 		#cfg
 		#[automatically_derived]
-		impl<'n, #(#fn_generics,)* #(#struct_generics,)* #(#future_idents,)*> #graphene_core::Node<'n, #input_type> for #mod_name::#struct_name<#(#struct_generics,)*>
+		impl<'n, #(#fn_generics,)* #(#struct_generics,)* #(#future_idents,)*> #core_types::Node<'n, #input_type> for #mod_name::#struct_name<#(#struct_generics,)*>
 		#struct_where_clause
 		{
 			#eval_impl
 		}
 
 		#cfg
-		const fn #identifier() -> #graphene_core::ProtoNodeIdentifier {
-			#graphene_core::ProtoNodeIdentifier::new(std::concat!(#identifier_path, "::", std::stringify!(#struct_name)))
+		const fn #identifier() -> #core_types::ProtoNodeIdentifier {
+			#core_types::ProtoNodeIdentifier::new(std::concat!(#identifier_path, "::", std::stringify!(#struct_name)))
 		}
 
 		#cfg
@@ -327,8 +329,8 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		#[allow(clippy::module_inception)]
 		mod #mod_name {
 			use super::*;
-			use #graphene_core as gcore;
-			use gcore::{Node, NodeIOTypes, concrete, fn_type, fn_type_fut, future, ProtoNodeIdentifier, WasmNotSync, NodeIO};
+			use #core_types as gcore;
+			use gcore::{Node, NodeIOTypes, concrete, fn_type, fn_type_fut, future, ProtoNodeIdentifier, WasmNotSync, NodeIO, ContextFeature};
 			use gcore::value::ClonedNode;
 			use gcore::ops::TypeNode;
 			use gcore::registry::{NodeMetadata, FieldMetadata, NODE_REGISTRY, NODE_METADATA, DynAnyNode, DowncastBothNode, DynFuture, TypeErasedBox, PanicNode, RegistryValueSource, RegistryWidgetOverride};
@@ -363,6 +365,7 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 					category: #category,
 					description: #description,
 					properties: #properties,
+					context_features: vec![#(ContextFeature::#context_features,)*],
 					fields: vec![
 						#(
 							FieldMetadata {
@@ -387,6 +390,8 @@ pub(crate) fn generate_node_code(parsed: &ParsedNodeFn) -> syn::Result<TokenStre
 		}
 
 		#shader_entry_point
+
+		#gpu_node
 	})
 }
 
@@ -395,7 +400,7 @@ fn generate_node_input_references(
 	parsed: &ParsedNodeFn,
 	fn_generics: &[crate::GenericParam],
 	field_idents: &[&PatIdent],
-	graphene_core: &TokenStream2,
+	core_types: &TokenStream2,
 	identifier: &Ident,
 	cfg: &TokenStream2,
 ) -> TokenStream2 {
@@ -431,9 +436,9 @@ fn generate_node_input_references(
 				}
 			});
 			generated_input_accessor.push(quote! {
-				impl <#(#used),*> #graphene_core::NodeInputDecleration for #struct_name <#(#fn_generic_params),*> {
+				impl <#(#used),*> #core_types::NodeInputDecleration for #struct_name <#(#fn_generic_params),*> {
 					const INDEX: usize = #input_index;
-					fn identifier() -> #graphene_core::ProtoNodeIdentifier {
+					fn identifier() -> #core_types::ProtoNodeIdentifier {
 						#inputs_module_name::IDENTIFIER.clone()
 					}
 					type Result = #ty;
@@ -448,7 +453,7 @@ fn generate_node_input_references(
 			use super::*;
 
 			/// The `ProtoNodeIdentifier` of this node without any generics attached to it
-			pub const IDENTIFIER: #graphene_core::ProtoNodeIdentifier = #identifier();
+			pub const IDENTIFIER: #core_types::ProtoNodeIdentifier = #identifier();
 			#(#generated_input_accessor)*
 		}
 	}
@@ -589,7 +594,8 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 	})
 }
 
-use crate::shader_nodes::CodegenShaderEntryPoint;
+use crate::crate_ident::CrateIdent;
+use crate::shader_nodes::{ShaderCodegen, ShaderTokens};
 use syn::visit_mut::VisitMut;
 use syn::{GenericArgument, Lifetime, Type};
 

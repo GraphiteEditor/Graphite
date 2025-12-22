@@ -2,7 +2,7 @@
 name = "path-bool"
 version = "0.1.0"
 rust-version = "1.85"
-authors = ["Graphite Authors <contact@graphite.rs>", "Adam Platkevič"]
+authors = ["Graphite Authors <contact@graphite.art>", "Adam Platkevič"]
 edition = "2024"
 keywords = [
 	"bezier",

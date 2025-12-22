@@ -1,6 +1,7 @@
 import { writable } from "svelte/store";
 
 import { type Editor } from "@graphite/editor";
+import type { NodeGraphError } from "@graphite/messages";
 import {
 	type Box,
 	type FrontendClickTargets,
@@ -25,6 +26,7 @@ import {
 	UpdateNodeGraphTransform,
 	UpdateNodeThumbnail,
 	UpdateWirePathInProgress,
+	UpdateNodeGraphErrorDiagnostic,
 } from "@graphite/messages";
 
 export function createNodeGraphState(editor: Editor) {
@@ -32,6 +34,7 @@ export function createNodeGraphState(editor: Editor) {
 		box: undefined as Box | undefined,
 		clickTargets: undefined as FrontendClickTargets | undefined,
 		contextMenuInformation: undefined as ContextMenuInformation | undefined,
+		error: undefined as NodeGraphError | undefined,
 		layerWidths: new Map<bigint, number>(),
 		chainWidths: new Map<bigint, number>(),
 		hasLeftInputWire: new Map<bigint, boolean>(),
@@ -51,82 +54,95 @@ export function createNodeGraphState(editor: Editor) {
 		reorderExportIndex: undefined as number | undefined,
 	});
 
+	function closeContextMenu() {
+		update((state) => {
+			state.contextMenuInformation = undefined;
+			return state;
+		});
+	}
+
 	// Set up message subscriptions on creation
-	editor.subscriptions.subscribeJsMessage(SendUIMetadata, (uiMetadata) => {
+	editor.subscriptions.subscribeJsMessage(SendUIMetadata, (data) => {
 		update((state) => {
-			state.nodeDescriptions = uiMetadata.nodeDescriptions;
-			state.nodeTypes = uiMetadata.nodeTypes;
+			state.nodeDescriptions = data.nodeDescriptions;
+			state.nodeTypes = data.nodeTypes;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateBox, (updateBox) => {
+	editor.subscriptions.subscribeJsMessage(UpdateBox, (data) => {
 		update((state) => {
-			state.box = updateBox.box;
+			state.box = data.box;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateClickTargets, (UpdateClickTargets) => {
+	editor.subscriptions.subscribeJsMessage(UpdateClickTargets, (data) => {
 		update((state) => {
-			state.clickTargets = UpdateClickTargets.clickTargets;
+			state.clickTargets = data.clickTargets;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateContextMenuInformation, (updateContextMenuInformation) => {
+	editor.subscriptions.subscribeJsMessage(UpdateContextMenuInformation, (data) => {
 		update((state) => {
-			state.contextMenuInformation = updateContextMenuInformation.contextMenuInformation;
+			state.contextMenuInformation = data.contextMenuInformation;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateImportReorderIndex, (updateImportReorderIndex) => {
+	editor.subscriptions.subscribeJsMessage(UpdateImportReorderIndex, (data) => {
 		update((state) => {
-			state.reorderImportIndex = updateImportReorderIndex.importIndex;
+			state.reorderImportIndex = data.importIndex;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateExportReorderIndex, (updateExportReorderIndex) => {
+	editor.subscriptions.subscribeJsMessage(UpdateExportReorderIndex, (data) => {
 		update((state) => {
-			state.reorderExportIndex = updateExportReorderIndex.exportIndex;
+			state.reorderExportIndex = data.exportIndex;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateImportsExports, (updateImportsExports) => {
+	editor.subscriptions.subscribeJsMessage(UpdateImportsExports, (data) => {
 		update((state) => {
-			state.updateImportsExports = updateImportsExports;
+			state.updateImportsExports = data;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateInSelectedNetwork, (updateInSelectedNetwork) => {
+	editor.subscriptions.subscribeJsMessage(UpdateInSelectedNetwork, (data) => {
 		update((state) => {
-			state.inSelectedNetwork = updateInSelectedNetwork.inSelectedNetwork;
+			state.inSelectedNetwork = data.inSelectedNetwork;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateLayerWidths, (updateLayerWidths) => {
+	editor.subscriptions.subscribeJsMessage(UpdateLayerWidths, (data) => {
 		update((state) => {
-			state.layerWidths = updateLayerWidths.layerWidths;
-			state.chainWidths = updateLayerWidths.chainWidths;
-			state.hasLeftInputWire = updateLayerWidths.hasLeftInputWire;
+			state.layerWidths = data.layerWidths;
+			state.chainWidths = data.chainWidths;
+			state.hasLeftInputWire = data.hasLeftInputWire;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphNodes, (updateNodeGraphNodes) => {
+	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphNodes, (data) => {
 		update((state) => {
 			state.nodes.clear();
-			updateNodeGraphNodes.nodes.forEach((node) => {
+			data.nodes.forEach((node) => {
 				state.nodes.set(node.id, node);
 			});
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateVisibleNodes, (updateVisibleNodes) => {
+	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphErrorDiagnostic, (data) => {
 		update((state) => {
-			state.visibleNodes = new Set<bigint>(updateVisibleNodes.nodes);
+			state.error = data.error;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphWires, (updateNodeWires) => {
+	editor.subscriptions.subscribeJsMessage(UpdateVisibleNodes, (data) => {
 		update((state) => {
-			updateNodeWires.wires.forEach((wireUpdate) => {
+			state.visibleNodes = new Set<bigint>(data.nodes);
+			return state;
+		});
+	});
+	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphWires, (data) => {
+		update((state) => {
+			data.wires.forEach((wireUpdate) => {
 				let inputMap = state.wires.get(wireUpdate.id);
 				// If it doesn't exist, create it and set it in the outer map
 				if (!inputMap) {
@@ -142,39 +158,40 @@ export function createNodeGraphState(editor: Editor) {
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(ClearAllNodeGraphWires, (_) => {
+	editor.subscriptions.subscribeJsMessage(ClearAllNodeGraphWires, () => {
 		update((state) => {
 			state.wires.clear();
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphSelection, (updateNodeGraphSelection) => {
+	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphSelection, (data) => {
 		update((state) => {
-			state.selected = updateNodeGraphSelection.selected;
+			state.selected = data.selected;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphTransform, (updateNodeGraphTransform) => {
+	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphTransform, (data) => {
 		update((state) => {
-			state.transform = updateNodeGraphTransform.transform;
+			state.transform = data.transform;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateNodeThumbnail, (updateNodeThumbnail) => {
+	editor.subscriptions.subscribeJsMessage(UpdateNodeThumbnail, (data) => {
 		update((state) => {
-			state.thumbnails.set(updateNodeThumbnail.id, updateNodeThumbnail.value);
+			state.thumbnails.set(data.id, data.value);
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateWirePathInProgress, (updateWirePathInProgress) => {
+	editor.subscriptions.subscribeJsMessage(UpdateWirePathInProgress, (data) => {
 		update((state) => {
-			state.wirePathInProgress = updateWirePathInProgress.wirePath;
+			state.wirePathInProgress = data.wirePath;
 			return state;
 		});
 	});
 
 	return {
 		subscribe,
+		closeContextMenu,
 	};
 }
 export type NodeGraphState = ReturnType<typeof createNodeGraphState>;

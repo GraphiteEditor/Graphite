@@ -3,7 +3,6 @@ mod portfolio_message_handler;
 
 pub mod document;
 pub mod document_migration;
-pub mod menu_bar;
 pub mod utility_types;
 
 #[doc(inline)]

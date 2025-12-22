@@ -5,8 +5,10 @@ use graphite_editor::messages::prelude::{FrontendMessage, Message};
 // TODO: Remove usage of this reexport in desktop create and remove this line
 pub use graphene_std::Color;
 
-pub use wgpu_executor::Context as WgpuContext;
+pub use wgpu_executor::WgpuContext;
+pub use wgpu_executor::WgpuContextBuilder;
 pub use wgpu_executor::WgpuExecutor;
+pub use wgpu_executor::WgpuFeatures;
 
 pub mod messages;
 use messages::{DesktopFrontendMessage, DesktopWrapperMessage};
@@ -17,6 +19,8 @@ use message_dispatcher::DesktopWrapperMessageDispatcher;
 mod handle_desktop_wrapper_message;
 mod intercept_editor_message;
 mod intercept_frontend_message;
+
+pub(crate) mod utils;
 
 pub struct DesktopWrapper {
 	editor: Editor,

@@ -91,16 +91,14 @@ impl DocumentMetadata {
 
 		let mut use_local = true;
 		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, network_interface);
-		if let Some(path_node) = graph_layer.upstream_visible_node_id_from_name_in_layer("Path") {
-			if let Some(&source) = self.first_element_source_ids.get(&layer.to_node()) {
-				if !network_interface
-					.upstream_flow_back_from_nodes(vec![path_node], &[], FlowType::HorizontalFlow)
-					.any(|upstream| Some(upstream) == source)
-				{
-					use_local = false;
-					info!("Local transform is invalid — using the identity for the local transform instead")
-				}
-			}
+		if let Some(path_node) = graph_layer.upstream_visible_node_id_from_name_in_layer("Path")
+			&& let Some(&source) = self.first_element_source_ids.get(&layer.to_node())
+			&& !network_interface
+				.upstream_flow_back_from_nodes(vec![path_node], &[], FlowType::HorizontalFlow)
+				.any(|upstream| Some(upstream) == source)
+		{
+			use_local = false;
+			info!("Local transform is invalid — using the identity for the local transform instead")
 		}
 		let local_transform = use_local.then(|| self.local_transforms.get(&layer.to_node()).copied()).flatten().unwrap_or_default();
 
@@ -154,10 +152,7 @@ impl DocumentMetadata {
 	pub fn bounding_box_with_transform(&self, layer: LayerNodeIdentifier, transform: DAffine2) -> Option<[DVec2; 2]> {
 		self.click_targets(layer)?
 			.iter()
-			.filter_map(|click_target| match click_target.target_type() {
-				ClickTargetType::Subpath(subpath) => subpath.bounding_box_with_transform(transform),
-				ClickTargetType::FreePoint(_) => click_target.bounding_box_with_transform(transform),
-			})
+			.filter_map(|click_target| click_target.bounding_box_with_transform(transform))
 			.reduce(Quad::combine_bounds)
 	}
 

@@ -13,7 +13,7 @@ pub(crate) struct BrowserProcessAppImpl<H: CefEventHandler> {
 	object: *mut RcImpl<_cef_app_t, Self>,
 	event_handler: H,
 }
-impl<H: CefEventHandler + Clone> BrowserProcessAppImpl<H> {
+impl<H: CefEventHandler> BrowserProcessAppImpl<H> {
 	pub(crate) fn new(event_handler: H) -> Self {
 		Self {
 			object: std::ptr::null_mut(),
@@ -22,9 +22,9 @@ impl<H: CefEventHandler + Clone> BrowserProcessAppImpl<H> {
 	}
 }
 
-impl<H: CefEventHandler + Clone> ImplApp for BrowserProcessAppImpl<H> {
+impl<H: CefEventHandler> ImplApp for BrowserProcessAppImpl<H> {
 	fn browser_process_handler(&self) -> Option<BrowserProcessHandler> {
-		Some(BrowserProcessHandler::new(BrowserProcessHandlerImpl::new(self.event_handler.clone())))
+		Some(BrowserProcessHandler::new(BrowserProcessHandlerImpl::new(self.event_handler.duplicate())))
 	}
 
 	fn on_register_custom_schemes(&self, registrar: Option<&mut SchemeRegistrar>) {
@@ -33,6 +33,16 @@ impl<H: CefEventHandler + Clone> ImplApp for BrowserProcessAppImpl<H> {
 
 	fn on_before_command_line_processing(&self, _process_type: Option<&cef::CefString>, command_line: Option<&mut cef::CommandLine>) {
 		if let Some(cmd) = command_line {
+			cmd.append_switch_with_value(Some(&CefString::from("renderer-process-limit")), Some(&CefString::from("1")));
+			cmd.append_switch_with_value(Some(&CefString::from("disk-cache-size")), Some(&CefString::from("0")));
+			cmd.append_switch(Some(&CefString::from("incognito")));
+			cmd.append_switch(Some(&CefString::from("no-first-run")));
+			cmd.append_switch(Some(&CefString::from("disable-file-system")));
+			cmd.append_switch(Some(&CefString::from("disable-local-storage")));
+			cmd.append_switch(Some(&CefString::from("disable-background-networking")));
+			cmd.append_switch(Some(&CefString::from("disable-audio-input")));
+			cmd.append_switch(Some(&CefString::from("disable-audio-output")));
+
 			#[cfg(not(feature = "accelerated_paint"))]
 			{
 				// Disable GPU acceleration when accelerated_paint feature is not enabled
@@ -66,6 +76,20 @@ impl<H: CefEventHandler + Clone> ImplApp for BrowserProcessAppImpl<H> {
 					cmd.append_switch_with_value(Some(&CefString::from("ozone-platform")), Some(&CefString::from("wayland")));
 				}
 			}
+
+			#[cfg(target_os = "macos")]
+			{
+				// Hide user prompt asking for keychain access
+				cmd.append_switch(Some(&CefString::from("use-mock-keychain")));
+			}
+
+			// Enable browser debugging via environment variable
+			if let Some(env) = std::env::var("GRAPHITE_BROWSER_DEBUG_PORT").ok()
+				&& let Some(port) = env.parse::<u16>().ok()
+			{
+				cmd.append_switch_with_value(Some(&CefString::from("remote-debugging-port")), Some(&CefString::from(port.to_string().as_str())));
+				cmd.append_switch_with_value(Some(&CefString::from("remote-allow-origins")), Some(&CefString::from("*")));
+			}
 		}
 	}
 
@@ -74,7 +98,7 @@ impl<H: CefEventHandler + Clone> ImplApp for BrowserProcessAppImpl<H> {
 	}
 }
 
-impl<H: CefEventHandler + Clone> Clone for BrowserProcessAppImpl<H> {
+impl<H: CefEventHandler> Clone for BrowserProcessAppImpl<H> {
 	fn clone(&self) -> Self {
 		unsafe {
 			let rc_impl = &mut *self.object;
@@ -82,7 +106,7 @@ impl<H: CefEventHandler + Clone> Clone for BrowserProcessAppImpl<H> {
 		}
 		Self {
 			object: self.object,
-			event_handler: self.event_handler.clone(),
+			event_handler: self.event_handler.duplicate(),
 		}
 	}
 }
@@ -94,7 +118,7 @@ impl<H: CefEventHandler> Rc for BrowserProcessAppImpl<H> {
 		}
 	}
 }
-impl<H: CefEventHandler + Clone> WrapApp for BrowserProcessAppImpl<H> {
+impl<H: CefEventHandler> WrapApp for BrowserProcessAppImpl<H> {
 	fn wrap_rc(&mut self, object: *mut RcImpl<_cef_app_t, Self>) {
 		self.object = object;
 	}

@@ -15,8 +15,8 @@
 		"baseUrl": ".",
 		"paths": {
 			"/*": ["./*"],
-			"@graphite-frontend/*": ["./*"],
-			"@graphite/*": ["src/*"]
+			"@graphite/*": ["src/*"],
+			"@branding/*": ["../branding/*"]
 		},
 		"lib": ["ESNext", "DOM", "DOM.Iterable", "ScriptHost"]
 	},
