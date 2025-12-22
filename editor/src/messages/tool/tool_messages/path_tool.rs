@@ -332,7 +332,6 @@ impl LayoutHolder for PathTool {
 		// Check if there are any selected points
 		let has_selected_points = !matches!(self.tool_data.selection_status, SelectionStatus::None);
 
-		// Here we add a text button with menu list children
 		let action_menu = TextButton::new("Action")
 			.icon(Some("DropdownArrow".into()))
 			.tooltip_label("Actions Menu")
