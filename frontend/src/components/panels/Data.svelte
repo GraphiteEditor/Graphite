@@ -12,8 +12,8 @@
 	let dataPanelLayout: Layout = [];
 
 	onMount(() => {
-		editor.subscriptions.subscribeJsMessage(UpdateDataPanelLayout, (updateDataPanelLayout) => {
-			patchLayout(dataPanelLayout, updateDataPanelLayout);
+		editor.subscriptions.subscribeJsMessage(UpdateDataPanelLayout, (data) => {
+			patchLayout(dataPanelLayout, data);
 			dataPanelLayout = dataPanelLayout;
 		});
 	});

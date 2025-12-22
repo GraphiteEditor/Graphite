@@ -17,8 +17,8 @@
 	let welcomePanelButtonsLayout: Layout = [];
 
 	onMount(() => {
-		editor.subscriptions.subscribeJsMessage(UpdateWelcomeScreenButtonsLayout, (updateWelcomeScreenButtonsLayout) => {
-			patchLayout(welcomePanelButtonsLayout, updateWelcomeScreenButtonsLayout);
+		editor.subscriptions.subscribeJsMessage(UpdateWelcomeScreenButtonsLayout, (data) => {
+			patchLayout(welcomePanelButtonsLayout, data);
 			welcomePanelButtonsLayout = welcomePanelButtonsLayout;
 		});
 	});

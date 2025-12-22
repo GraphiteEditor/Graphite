@@ -652,7 +652,7 @@ impl PenToolData {
 	}
 
 	fn close_path_on_point(&mut self, snap_data: SnapData, vector: &Vector, document: &DocumentMessageHandler, id: PointId, transform: &DAffine2) -> bool {
-		for id in vector.extendable_points().filter(|&point| point != id) {
+		for id in vector.anchor_points().filter(|&point| point != id) {
 			let Some(pos) = vector.point_domain.position_from_id(id) else { continue };
 			let transformed_distance_between_squared = transform.transform_point2(pos).distance_squared(transform.transform_point2(self.next_point));
 			let snap_point_tolerance_squared = crate::consts::SNAP_POINT_TOLERANCE.powi(2);
@@ -701,7 +701,7 @@ impl PenToolData {
 		let vector = document.network_interface.compute_modified_vector(layer)?;
 		let start = self.latest_point()?.id;
 		let transform = document.metadata().document_to_viewport * transform;
-		for id in vector.extendable_points().filter(|&point| point != start) {
+		for id in vector.anchor_points().filter(|&point| point != start) {
 			let Some(pos) = vector.point_domain.position_from_id(id) else { continue };
 			let transformed_distance_between_squared = transform.transform_point2(pos).distance_squared(transform.transform_point2(next_point));
 			let snap_point_tolerance_squared = crate::consts::SNAP_POINT_TOLERANCE.powi(2);
@@ -1126,7 +1126,7 @@ impl PenToolData {
 		let layer = selected_layers.next().filter(|_| selected_layers.next().is_none()).or(self.current_layer)?;
 		let vector = document.network_interface.compute_modified_vector(layer)?;
 		let transform = document.metadata().document_to_viewport * transform;
-		for point in vector.extendable_points() {
+		for point in vector.anchor_points() {
 			let Some(pos) = vector.point_domain.position_from_id(point) else { continue };
 			let transformed_distance_between_squared = transform.transform_point2(pos).distance_squared(transform.transform_point2(self.next_point));
 			let snap_point_tolerance_squared = crate::consts::SNAP_POINT_TOLERANCE.powi(2);
@@ -1755,7 +1755,7 @@ impl Fsm for PenToolFsmState {
 					if let Some(layer) = layer
 						&& let Some(mut vector) = document.network_interface.compute_modified_vector(layer)
 					{
-						let closest_point = vector.extendable_points().filter(|&id| id != start).find(|&id| {
+						let closest_point = vector.anchor_points().filter(|&id| id != start).find(|&id| {
 							vector.point_domain.position_from_id(id).is_some_and(|pos| {
 								let dist_sq = transform.transform_point2(pos).distance_squared(transform.transform_point2(next_point));
 								dist_sq < crate::consts::SNAP_POINT_TOLERANCE.powi(2)
