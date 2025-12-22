@@ -71,7 +71,7 @@ impl LayoutMessageHandler {
 							return Some((widget, widget_path));
 						}
 
-						if let Widget::PopoverButton(popover) = &widget.widget {
+						if let Widget::PopoverButton(popover) = &*widget.widget {
 							stack.extend(
 								popover
 									.popover_layout
@@ -97,7 +97,7 @@ impl LayoutMessageHandler {
 								return Some((cell, widget_path));
 							}
 
-							if let Widget::PopoverButton(popover) = &cell.widget {
+							if let Widget::PopoverButton(popover) = &*cell.widget {
 								stack.extend(
 									popover
 										.popover_layout
@@ -126,7 +126,7 @@ impl LayoutMessageHandler {
 			return;
 		};
 
-		match &mut widget_instance.widget {
+		match &mut *widget_instance.widget {
 			Widget::BreadcrumbTrailButtons(breadcrumb_trail_buttons) => {
 				let callback_message = match action {
 					WidgetValueAction::Commit => (breadcrumb_trail_buttons.on_commit.callback)(&()),

@@ -594,7 +594,7 @@ mod test {
 				if let FrontendMessage::UpdateDialogColumn1 { diff } = response {
 					if let DiffUpdate::Layout(sub_layout) = &diff[0].new_value {
 						if let LayoutGroup::Row { widgets } = &sub_layout.0[0] {
-							if let Widget::TextLabel(TextLabel { value, .. }) = &widgets[0].widget {
+							if let Widget::TextLabel(TextLabel { value, .. }) = &*widgets[0].widget {
 								print_problem_to_terminal_on_failure(value);
 							}
 						}
