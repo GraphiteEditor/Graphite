@@ -518,7 +518,7 @@ mod test_freehand {
 			initial_segment_count
 		);
 
-		let extendable_points = initial_vector.extendable_points(false).collect::<Vec<_>>();
+		let extendable_points = initial_vector.extendable_points().collect::<Vec<_>>();
 		assert!(!extendable_points.is_empty(), "No extendable points found in the path");
 
 		let endpoint_id = extendable_points[0];
