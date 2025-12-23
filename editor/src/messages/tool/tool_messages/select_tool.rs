@@ -2,7 +2,7 @@
 
 use super::tool_prelude::*;
 use crate::consts::*;
-use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
+use crate::messages::input_mapper::utility_types::input_mouse::{ViewportPosition, MouseKeys};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
@@ -606,6 +606,7 @@ impl Fsm for SelectToolFsmState {
 
 		let ToolMessage::Select(event) = event else { return self };
 		match (self, event) {
+			(SelectToolFsmState::Dragging { .. }, SelectToolMessage::Overlays { .. }) => self,
 			(_, SelectToolMessage::Overlays { context: mut overlay_context }) => {
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input, viewport), &mut overlay_context);
 
@@ -1393,8 +1394,11 @@ impl Fsm for SelectToolFsmState {
 
 				state
 			}
-			(SelectToolFsmState::Dragging { has_dragged, remove, deepest, .. }, SelectToolMessage::DragStop { remove_from_selection }) => {
+			(SelectToolFsmState::Dragging { has_dragged, remove, deepest, axis, using_compass }, SelectToolMessage::DragStop { remove_from_selection }) => {
 				// Deselect layer if not snap dragging
+				if input.mouse.mouse_keys.contains(MouseKeys::LEFT) {
+					return SelectToolFsmState::Dragging { has_dragged, remove, deepest, axis, using_compass };
+				}
 				responses.add(DocumentMessage::EndTransaction);
 				tool_data.axis_align = false;
 
