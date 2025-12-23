@@ -827,12 +827,9 @@ export class UpdateDocumentLayerDetails extends JsMessage {
 export class LayerPanelEntry {
 	id!: bigint;
 
-	name!: string;
+	reference!: string;
 
 	alias!: string;
-
-	@Transform(({ value }: { value: string }) => value || undefined)
-	debugLayerIdTooltip!: string | undefined;
 
 	inSelectedNetwork!: boolean;
 

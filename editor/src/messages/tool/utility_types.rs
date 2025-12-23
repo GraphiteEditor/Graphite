@@ -134,12 +134,12 @@ impl DocumentToolData {
 			LayoutGroup::Row {
 				widgets: vec![
 					IconButton::new("SwapVertical", 16)
-						.tooltip_label("Swap")
+						.tooltip_label("Swap Working Colors")
 						.tooltip_shortcut(action_shortcut!(ToolMessageDiscriminant::SwapColors))
 						.on_update(|_| ToolMessage::SwapColors.into())
 						.widget_instance(),
 					IconButton::new("WorkingColors", 16)
-						.tooltip_label("Reset")
+						.tooltip_label("Reset Working Colors")
 						.tooltip_shortcut(action_shortcut!(ToolMessageDiscriminant::ResetColors))
 						.on_update(|_| ToolMessage::ResetColors.into())
 						.widget_instance(),

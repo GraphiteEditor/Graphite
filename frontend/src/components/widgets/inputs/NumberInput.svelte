@@ -745,10 +745,6 @@
 
 <style lang="scss" global>
 	.number-input {
-		input {
-			text-align: center;
-		}
-
 		&.narrow {
 			--widget-height: 20px;
 		}
@@ -972,6 +968,10 @@
 					border-radius: 1px 0 0 1px;
 				}
 			}
+		}
+
+		input {
+			text-align: center;
 		}
 	}
 </style>
