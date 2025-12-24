@@ -94,6 +94,8 @@ pub struct TransformLayerMessageHandler {
 
 	// Path tool (ghost outlines showing pre-transform geometry)
 	ghost_outline: Vec<(Vec<ClickTargetType>, DAffine2)>,
+
+	bounding_box_transform: DAffine2,
 }
 
 #[message_handler_data]
@@ -232,9 +234,33 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				match self.transform_operation {
 					TransformOperation::None => (),
 					TransformOperation::Grabbing(translation) => {
-						let translation_viewport = self.state.local_to_viewport_transform().matrix2 * translation.to_dvec(&self.state, document);
+						if !self.state.is_transforming_in_local_space {
+							let translation_viewport = translation.to_dvec(&self.state, document);
+							let pivot = document_to_viewport.transform_point2(self.grab_target);
+							let quad = Quad::from_box([pivot, pivot + translation_viewport]);
+							let scale = document_to_viewport.matrix2.y_axis.length();
+
+							responses.add(SelectToolMessage::PivotShift {
+								offset: Some(translation_viewport),
+								flush: false,
+							});
+
+							let typed_string = (!self.typing.digits.is_empty() && self.transform_operation.can_begin_typing()).then(|| self.typing.string.clone());
+							overlay_context.translation_box(translation_viewport / scale, quad, typed_string);
+							return;
+						}
+
+						let local_to_viewport = self.state.local_to_viewport_transform();
+						let translation_viewport = local_to_viewport.matrix2 * translation.to_dvec(&self.state, document);
 						let pivot = document_to_viewport.transform_point2(self.grab_target);
-						let quad = Quad::from_box([pivot, pivot + translation_viewport]);
+
+						let [local_x_axis, local_y_axis] = self.state.local_transform_axes;
+						let local_components = DVec2::new(translation_viewport.dot(local_x_axis), translation_viewport.dot(local_y_axis));
+						let local_quad = Quad::from_box([DVec2::ZERO, local_components]);
+						let quad = DAffine2::from_translation(pivot) * local_to_viewport * local_quad;
+
+						let scale = self.bounding_box_transform.matrix2.y_axis.length();
+						let translation_for_display = local_components / scale;
 
 						responses.add(SelectToolMessage::PivotShift {
 							offset: Some(translation_viewport),
@@ -242,7 +268,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 						});
 
 						let typed_string = (!self.typing.digits.is_empty() && self.transform_operation.can_begin_typing()).then(|| self.typing.string.clone());
-						overlay_context.translation_box(translation_viewport / document_to_viewport.matrix2.y_axis.length(), quad, typed_string);
+						overlay_context.translation_box(translation_for_display, quad, typed_string);
 					}
 					TransformOperation::Scaling(scale) => {
 						let scale = scale.to_f64(self.state.is_rounded_to_intervals);
@@ -349,7 +375,9 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				};
 				self.layer_bounding_box = selected.bounding_box();
 				let bounding_box = select_tool::create_bounding_box_transform(document);
+				self.bounding_box_transform = bounding_box;
 				self.state.local_transform_axes = [bounding_box.x_axis, bounding_box.y_axis].map(|axis| axis.normalize_or_zero());
+				self.state.is_transforming_in_local_space = matches!(operation, TransformType::Grab) && self.state.local_transform_axes[0].dot(DVec2::X).abs() < 0.999;
 			}
 			TransformLayerMessage::BeginGrabPen { last_point, handle } | TransformLayerMessage::BeginRotatePen { last_point, handle } | TransformLayerMessage::BeginScalePen { last_point, handle } => {
 				self.typing.clear();
@@ -537,10 +565,17 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 					match self.transform_operation {
 						TransformOperation::None => {}
 						TransformOperation::Grabbing(translation) => {
-							let delta_pos = input.mouse.position - self.mouse_position;
-							let delta_pos = (self.initial_transform * document_to_viewport.inverse()).transform_vector2(delta_pos);
-							let delta_viewport = if self.slow { delta_pos / SLOWING_DIVISOR } else { delta_pos };
-							let delta_scaled = delta_viewport / document_to_viewport.y_axis.length(); // Values are local to the viewport but scaled so values are relative to the current scale.
+							let viewport_delta = input.mouse.position - self.mouse_position;
+							let document_space_transform = self.initial_transform * document_to_viewport.inverse();
+							let delta_pos = if self.state.is_transforming_in_local_space {
+								let [local_x_axis, local_y_axis] = self.state.local_transform_axes;
+								let local_components = DVec2::new(viewport_delta.dot(local_x_axis), viewport_delta.dot(local_y_axis));
+								document_space_transform.matrix2 * local_components
+							} else {
+								document_space_transform.transform_vector2(viewport_delta)
+							};
+							let scale = document_to_viewport.y_axis.length();
+							let delta_scaled = (if self.slow { delta_pos / SLOWING_DIVISOR } else { delta_pos }) / scale;
 							self.transform_operation = TransformOperation::Grabbing(translation.increment_amount(delta_scaled));
 							self.transform_operation.apply_transform_operation(&mut selected, &self.state, document);
 						}
