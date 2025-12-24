@@ -108,7 +108,7 @@ impl LayoutHolder for BrushTool {
 				.unit(" px")
 				.on_update(|number_input: &NumberInput| BrushToolMessage::UpdateOptions { options: BrushToolMessageOptionsUpdate::Diameter(number_input.value.unwrap()) }.into())
 				.widget_instance(),
-			Separator::new(SeparatorType::Related).widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
 			NumberInput::new(Some(self.options.hardness))
 				.label("Hardness")
 				.min(0.)
@@ -122,7 +122,7 @@ impl LayoutHolder for BrushTool {
 					.into()
 				})
 				.widget_instance(),
-			Separator::new(SeparatorType::Related).widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
 			NumberInput::new(Some(self.options.flow))
 				.label("Flow")
 				.min(1.)
@@ -136,7 +136,7 @@ impl LayoutHolder for BrushTool {
 					.into()
 				})
 				.widget_instance(),
-			Separator::new(SeparatorType::Related).widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
 			NumberInput::new(Some(self.options.spacing))
 				.label("Spacing")
 				.min(1.)
@@ -152,7 +152,7 @@ impl LayoutHolder for BrushTool {
 				.widget_instance(),
 		];
 
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
+		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 
 		let draw_mode_entries: Vec<_> = [DrawMode::Draw, DrawMode::Erase, DrawMode::Restore]
 			.into_iter()
@@ -167,7 +167,7 @@ impl LayoutHolder for BrushTool {
 			.collect();
 		widgets.push(RadioInput::new(draw_mode_entries).selected_index(Some(self.options.draw_mode as u32)).widget_instance());
 
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
+		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 
 		widgets.append(&mut self.options.color.create_widgets(
 			"Color",
@@ -194,7 +194,7 @@ impl LayoutHolder for BrushTool {
 			},
 		));
 
-		widgets.push(Separator::new(SeparatorType::Related).widget_instance());
+		widgets.push(Separator::new(SeparatorStyle::Related).widget_instance());
 
 		let blend_mode_entries: Vec<Vec<_>> = BlendMode::list()
 			.iter()
