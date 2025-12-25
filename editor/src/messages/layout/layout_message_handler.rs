@@ -481,6 +481,7 @@ impl LayoutMessageHandler {
 			LayoutTarget::NodeGraphControlBar => FrontendMessage::UpdateNodeGraphControlBarLayout { diff },
 			LayoutTarget::PropertiesPanel => FrontendMessage::UpdatePropertiesPanelLayout { diff },
 			LayoutTarget::StatusBarHints => FrontendMessage::UpdateStatusBarHintsLayout { diff },
+			LayoutTarget::StatusBarInfo => FrontendMessage::UpdateStatusBarInfoLayout { diff },
 			LayoutTarget::ToolOptions => FrontendMessage::UpdateToolOptionsLayout { diff },
 			LayoutTarget::ToolShelf => FrontendMessage::UpdateToolShelfLayout { diff },
 			LayoutTarget::WelcomeScreenButtons => FrontendMessage::UpdateWelcomeScreenButtonsLayout { diff },

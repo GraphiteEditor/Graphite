@@ -223,12 +223,12 @@ impl LayoutHolder for SelectTool {
 		widgets.push(self.deep_selection_widget());
 
 		// Pivot gizmo type (checkbox + dropdown for pivot/origin)
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
+		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 		widgets.extend(pivot_gizmo_type_widget(self.tool_data.pivot_gizmo.state, PivotToolSource::Select));
 
 		if self.tool_data.pivot_gizmo.state.is_pivot_type() {
 			// Nine-position reference point widget
-			widgets.push(Separator::new(SeparatorType::Related).widget_instance());
+			widgets.push(Separator::new(SeparatorStyle::Related).widget_instance());
 			widgets.push(pivot_reference_point_widget(
 				self.tool_data.selected_layers_count == 0 || !self.tool_data.pivot_gizmo.state.is_pivot(),
 				self.tool_data.pivot_gizmo.pivot.to_pivot_position(),
@@ -236,7 +236,7 @@ impl LayoutHolder for SelectTool {
 			));
 
 			// Pivot pin button
-			widgets.push(Separator::new(SeparatorType::Related).widget_instance());
+			widgets.push(Separator::new(SeparatorStyle::Related).widget_instance());
 
 			let pin_active = self.tool_data.pivot_gizmo.pin_active();
 			let pin_enabled = self.tool_data.pivot_gizmo.pivot.old_pivot_position == ReferencePoint::None && !self.tool_data.pivot_gizmo.state.disabled;
@@ -248,20 +248,20 @@ impl LayoutHolder for SelectTool {
 
 		// Align
 		let disabled = self.tool_data.selected_layers_count < 2;
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
+		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 		widgets.extend(self.alignment_widgets(disabled));
 
 		// Flip
 		let disabled = self.tool_data.selected_layers_count == 0;
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
+		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 		widgets.extend(self.flip_widgets(disabled));
 
 		// Turn
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
+		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 		widgets.extend(self.turn_widgets(disabled));
 
 		// Boolean
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
+		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 		widgets.extend(self.boolean_widgets(self.tool_data.selected_layers_count));
 
 		Layout(vec![LayoutGroup::Row { widgets }])

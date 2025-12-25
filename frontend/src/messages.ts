@@ -827,12 +827,9 @@ export class UpdateDocumentLayerDetails extends JsMessage {
 export class LayerPanelEntry {
 	id!: bigint;
 
-	name!: string;
+	reference!: string;
 
 	alias!: string;
-
-	@Transform(({ value }: { value: string }) => value || undefined)
-	debugLayerIdTooltip!: string | undefined;
 
 	inSelectedNetwork!: boolean;
 
@@ -914,25 +911,23 @@ export abstract class WidgetProps {
 }
 
 export class CheckboxInput extends WidgetProps {
+	// Content
 	checked!: boolean;
-
+	icon!: IconName;
+	forLabel!: bigint | undefined;
 	disabled!: boolean;
 
-	icon!: IconName;
-
+	// Tooltips
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipLabel!: string | undefined;
-
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipDescription!: string | undefined;
-
 	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
 	tooltipShortcut!: ActionShortcut | undefined;
-
-	forLabel!: bigint | undefined;
 }
 
 export class ColorInput extends WidgetProps {
+	// Content
 	@Transform(({ value }) => {
 		if (value instanceof Gradient) return value;
 		const gradient = value["Gradient"];
@@ -953,23 +948,19 @@ export class ColorInput extends WidgetProps {
 		return new Color("none");
 	})
 	value!: FillChoice;
-
 	allowNone!: boolean;
-
+	// allowTransparency!: boolean; // TODO: Implement
+	menuDirection!: MenuDirection | undefined;
 	disabled!: boolean;
 
+	// Styling
 	narrow!: boolean;
 
-	menuDirection!: MenuDirection | undefined;
-
-	// allowTransparency!: boolean; // TODO: Implement
-
+	// Tooltips
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipLabel!: string | undefined;
-
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipDescription!: string | undefined;
-
 	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
 	tooltipShortcut!: ActionShortcut | undefined;
 }
@@ -1009,16 +1000,23 @@ export function contrastingOutlineFactor(value: FillChoice, proximityColor: stri
 
 // An entry in the all-encompassing MenuList component which defines all types of menus (which are spawned by widgets like `TextButton` and `DropdownInput`)
 export type MenuListEntry = {
+	// Content
 	value: string;
 	label: string;
-	font?: string;
 	icon?: IconName;
 	disabled?: boolean;
+
+	// Children
+	children?: MenuListEntry[][];
+	childrenHash?: bigint;
+
+	// Styling
+	font?: string;
+
+	// Tooltips
 	tooltipLabel?: string;
 	tooltipDescription?: string;
 	tooltipShortcut?: ActionShortcut;
-	children?: MenuListEntry[][];
-	childrenHash?: bigint;
 };
 
 export class CurveManipulatorGroup {
@@ -1033,128 +1031,117 @@ export class Curve {
 }
 
 export class CurveInput extends WidgetProps {
+	// Content
 	value!: Curve;
 
-	disabled!: boolean;
-
+	// Tooltips
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipLabel!: string | undefined;
-
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipDescription!: string | undefined;
-
 	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
 	tooltipShortcut!: ActionShortcut | undefined;
 }
 
 export class DropdownInput extends WidgetProps {
-	entries!: MenuListEntry[][];
-
-	entriesHash!: bigint;
-
+	// Content
 	selectedIndex!: number | undefined;
-
 	drawIcon!: boolean;
-
-	interactive!: boolean;
-
 	disabled!: boolean;
 
-	narrow!: boolean;
-
-	virtualScrolling!: boolean;
-
-	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltipLabel!: string | undefined;
-
-	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltipDescription!: string | undefined;
-
-	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
-	tooltipShortcut!: ActionShortcut | undefined;
+	// Children
+	entries!: MenuListEntry[][];
+	entriesHash!: bigint;
 
 	// Styling
+	narrow!: boolean;
 
+	// Behavior
+	virtualScrolling!: boolean;
+	interactive!: boolean;
+
+	// Sizing
 	minWidth!: number;
-
 	maxWidth!: number;
+
+	// Tooltips
+	@Transform(({ value }: { value: string }) => value || undefined)
+	tooltipLabel!: string | undefined;
+	@Transform(({ value }: { value: string }) => value || undefined)
+	tooltipDescription!: string | undefined;
+	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
+	tooltipShortcut!: ActionShortcut | undefined;
 }
 
 export class IconButton extends WidgetProps {
+	// Content
 	icon!: IconName;
-
 	hoverIcon!: IconName | undefined;
-
 	size!: IconSize;
-
 	disabled!: boolean;
 
-	active!: boolean;
+	// Styling
+	emphasized!: boolean;
 
+	// Tooltips
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipLabel!: string | undefined;
-
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipDescription!: string | undefined;
-
 	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
 	tooltipShortcut!: ActionShortcut | undefined;
 }
 
 export class IconLabel extends WidgetProps {
+	// Content
 	icon!: IconName;
-
 	disabled!: boolean;
 
+	// Tooltips
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipLabel!: string | undefined;
-
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipDescription!: string | undefined;
-
 	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
 	tooltipShortcut!: ActionShortcut | undefined;
 }
 
 export class ImageButton extends WidgetProps {
+	// Content
 	image!: IconName;
-
 	@Transform(({ value }: { value: string }) => value || undefined)
 	width!: string | undefined;
-
 	@Transform(({ value }: { value: string }) => value || undefined)
 	height!: string | undefined;
 
+	// Tooltips
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipLabel!: string | undefined;
-
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipDescription!: string | undefined;
-
 	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
 	tooltipShortcut!: ActionShortcut | undefined;
 }
 
 export class ImageLabel extends WidgetProps {
+	// Content
 	url!: string;
-
 	@Transform(({ value }: { value: string }) => value || undefined)
 	width!: string | undefined;
-
 	@Transform(({ value }: { value: string }) => value || undefined)
 	height!: string | undefined;
 
+	// Tooltips
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipLabel!: string | undefined;
-
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipDescription!: string | undefined;
-
 	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
 	tooltipShortcut!: ActionShortcut | undefined;
 }
 
 export class ShortcutLabel extends WidgetProps {
+	// Content
 	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
 	shortcut!: ActionShortcut | undefined;
 }
@@ -1163,281 +1150,249 @@ export type NumberInputIncrementBehavior = "Add" | "Multiply" | "Callback" | "No
 export type NumberInputMode = "Increment" | "Range";
 
 export class NumberInput extends WidgetProps {
-	// Label
-
+	// Content
+	value!: number | undefined;
 	label!: string | undefined;
-
-	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltipLabel!: string | undefined;
-
-	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltipDescription!: string | undefined;
-
-	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
-	tooltipShortcut!: ActionShortcut | undefined;
-
-	// Disabled
-
 	disabled!: boolean;
 
-	// Narrow
+	// Styling
 	narrow!: boolean;
 
-	// Value
-
-	value!: number | undefined;
-
+	// Behavior
+	mode!: NumberInputMode;
 	min!: number | undefined;
-
 	max!: number | undefined;
-
+	rangeMin!: number | undefined;
+	rangeMax!: number | undefined;
+	step!: number;
 	isInteger!: boolean;
-
-	// Number presentation
-
+	incrementBehavior!: NumberInputIncrementBehavior;
 	displayDecimalPlaces!: number;
-
 	unit!: string;
-
 	unitIsHiddenWhenEditing!: boolean;
 
-	// Mode behavior
-
-	mode!: NumberInputMode;
-
-	incrementBehavior!: NumberInputIncrementBehavior;
-
-	step!: number;
-
-	rangeMin!: number | undefined;
-
-	rangeMax!: number | undefined;
-
-	// Styling
-
+	// Sizing
 	minWidth!: number;
-
 	maxWidth!: number;
+
+	// Tooltips
+	@Transform(({ value }: { value: string }) => value || undefined)
+	tooltipLabel!: string | undefined;
+	@Transform(({ value }: { value: string }) => value || undefined)
+	tooltipDescription!: string | undefined;
+	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
+	tooltipShortcut!: ActionShortcut | undefined;
 }
 
 export class NodeCatalog extends WidgetProps {
+	// Content
 	disabled!: boolean;
+
+	// Behavior
+	initialSearchTerm!: string;
 }
 
 export class PopoverButton extends WidgetProps {
+	// Content
 	style!: PopoverButtonStyle | undefined;
-
-	menuDirection!: MenuDirection | undefined;
-
 	icon!: IconName | undefined;
-
 	disabled!: boolean;
 
+	// Children
+	popoverLayout!: Layout;
+	popoverMinWidth!: number | undefined;
+	menuDirection!: MenuDirection | undefined;
+
+	// Tooltips
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipLabel!: string | undefined;
-
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipDescription!: string | undefined;
-
 	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
 	tooltipShortcut!: ActionShortcut | undefined;
-
-	// Body
-	popoverLayout!: Layout;
-
-	popoverMinWidth: number | undefined;
 }
 
 export type MenuDirection = "Top" | "Bottom" | "Left" | "Right" | "TopLeft" | "TopRight" | "BottomLeft" | "BottomRight" | "Center";
 
 export type RadioEntryData = {
+	// Content
 	value?: string;
 	label?: string;
 	icon?: IconName;
+
+	// Tooltips
 	tooltipLabel?: string;
 	tooltipDescription?: string;
 	tooltipShortcut?: ActionShortcut;
 };
-export type RadioEntries = RadioEntryData[];
 
 export class RadioInput extends WidgetProps {
-	entries!: RadioEntries;
-
+	// Content
+	selectedIndex!: number | undefined;
 	disabled!: boolean;
 
+	// Children
+	entries!: RadioEntryData[];
+
+	// Styling
 	narrow!: boolean;
 
-	selectedIndex!: number | undefined;
-
+	// Sizing
 	minWidth!: number;
 }
 
 export type SeparatorDirection = "Horizontal" | "Vertical";
-export type SeparatorType = "Related" | "Unrelated" | "Section";
+export type SeparatorStyle = "Related" | "Unrelated" | "Section";
 
 export class Separator extends WidgetProps {
+	// Content
 	direction!: SeparatorDirection;
-
-	type!: SeparatorType;
+	style!: SeparatorStyle;
 }
 
 export class WorkingColorsInput extends WidgetProps {
+	// Content
 	@Type(() => Color)
 	primary!: Color;
-
 	@Type(() => Color)
 	secondary!: Color;
 }
 
 export class TextAreaInput extends WidgetProps {
+	// Content
 	value!: string;
-
 	label!: string | undefined;
-
 	disabled!: boolean;
 
+	// Tooltips
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipLabel!: string | undefined;
-
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipDescription!: string | undefined;
-
 	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
 	tooltipShortcut!: ActionShortcut | undefined;
 }
 
 export class ParameterExposeButton extends WidgetProps {
+	// Content
 	exposed!: boolean;
-
 	dataType!: FrontendGraphDataType;
 
+	// Tooltips
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipLabel!: string | undefined;
-
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipDescription!: string | undefined;
-
 	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
 	tooltipShortcut!: ActionShortcut | undefined;
 }
 
 export class TextButton extends WidgetProps {
+	// Content
 	label!: string;
-
 	icon!: IconName | undefined;
-
 	hoverIcon!: IconName | undefined;
-
-	emphasized!: boolean;
-
-	flush!: boolean;
-
-	minWidth!: number;
-
 	disabled!: boolean;
 
+	// Children
+	menuListChildren!: MenuListEntry[][];
+	menuListChildrenHash!: bigint;
+
+	// Styling
+	emphasized!: boolean;
+	flush!: boolean;
 	narrow!: boolean;
 
+	// Sizing
+	minWidth!: number;
+
+	// Tooltips
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipLabel!: string | undefined;
-
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipDescription!: string | undefined;
-
 	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
 	tooltipShortcut!: ActionShortcut | undefined;
-
-	menuListChildren!: MenuListEntry[][];
-
-	menuListChildrenHash!: bigint;
 }
 
 export class BreadcrumbTrailButtons extends WidgetProps {
+	// Content
 	labels!: string[];
-
 	disabled!: boolean;
 
+	// Tooltips
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipLabel!: string | undefined;
-
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipDescription!: string | undefined;
-
 	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
 	tooltipShortcut!: ActionShortcut | undefined;
 }
 
 export class TextInput extends WidgetProps {
+	// Content
 	value!: string;
-
 	label!: string | undefined;
-
+	placeholder!: string | undefined;
 	disabled!: boolean;
 
+	// Styling
 	narrow!: boolean;
+	centered!: boolean;
 
+	// Sizing
 	minWidth!: number;
-
 	maxWidth!: number;
 
+	// Tooltips
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipLabel!: string | undefined;
-
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipDescription!: string | undefined;
-
 	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
 	tooltipShortcut!: ActionShortcut | undefined;
 }
 
 export class TextLabel extends WidgetProps {
-	// Body
+	// Content
 	value!: string;
-
-	// Props
 	disabled!: boolean;
+	forCheckbox!: bigint | undefined;
 
+	// Styling
 	narrow!: boolean;
-
 	bold!: boolean;
-
 	italic!: boolean;
-
 	monospace!: boolean;
-
 	multiline!: boolean;
-
 	centerAlign!: boolean;
-
 	tableAlign!: boolean;
 
-	minWidth!: string;
+	// Sizing
+	minWidth!: number;
+	minWidthCharacters!: number;
 
+	// Tooltips
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipLabel!: string | undefined;
-
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipDescription!: string | undefined;
-
 	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
 	tooltipShortcut!: ActionShortcut | undefined;
-
-	forCheckbox!: bigint | undefined;
 }
 
 export type ReferencePoint = "None" | "TopLeft" | "TopCenter" | "TopRight" | "CenterLeft" | "Center" | "CenterRight" | "BottomLeft" | "BottomCenter" | "BottomRight";
 
 export class ReferencePointInput extends WidgetProps {
+	// Content
 	value!: ReferencePoint;
-
 	disabled!: boolean;
 
+	// Tooltips
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipLabel!: string | undefined;
-
 	@Transform(({ value }: { value: string }) => value || undefined)
 	tooltipDescription!: string | undefined;
-
 	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
 	tooltipShortcut!: ActionShortcut | undefined;
 }
@@ -1519,6 +1474,7 @@ export type LayoutTarget =
 	| "NodeGraphControlBar"
 	| "PropertiesPanel"
 	| "StatusBarHints"
+	| "StatusBarInfo"
 	| "ToolOptions"
 	| "ToolShelf"
 	| "WelcomeScreenButtons"
@@ -1679,6 +1635,8 @@ export class UpdateDataPanelLayout extends WidgetDiffUpdate {}
 
 export class UpdateStatusBarHintsLayout extends WidgetDiffUpdate {}
 
+export class UpdateStatusBarInfoLayout extends WidgetDiffUpdate {}
+
 export class UpdateToolOptionsLayout extends WidgetDiffUpdate {}
 
 export class UpdateToolShelfLayout extends WidgetDiffUpdate {}
@@ -1769,6 +1727,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdatePropertiesPanelLayout,
 	UpdatePropertiesPanelState,
 	UpdateStatusBarHintsLayout,
+	UpdateStatusBarInfoLayout,
 	UpdateToolOptionsLayout,
 	UpdateToolShelfLayout,
 	UpdateViewportHolePunch,

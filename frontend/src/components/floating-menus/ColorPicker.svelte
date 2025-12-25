@@ -529,7 +529,7 @@
 			<LayoutRow>
 				{@const hexDescription = "Color code in hexadecimal format. 6 digits if opaque, 8 with alpha. Accepts input of CSS color values including named colors."}
 				<TextLabel tooltipLabel="Hex Color Code" tooltipDescription={hexDescription}>Hex</TextLabel>
-				<Separator type="Related" />
+				<Separator style="Related" />
 				<LayoutRow>
 					<TextInput
 						value={newColor.toHexOptionalAlpha() || "-"}
@@ -547,11 +547,11 @@
 			</LayoutRow>
 			<LayoutRow>
 				<TextLabel tooltipLabel="Red/Green/Blue" tooltipDescription="Integers 0–255.">RGB</TextLabel>
-				<Separator type="Related" />
+				<Separator style="Related" />
 				<LayoutRow>
 					{#each rgbChannels as [channel, strength], index}
 						{#if index > 0}
-							<Separator type="Related" />
+							<Separator style="Related" />
 						{/if}
 						<NumberInput
 							value={strength}
@@ -578,11 +578,11 @@
 					tooltipLabel="Hue/Saturation/Value"
 					tooltipDescription="Also known as Hue/Saturation/Brightness (HSB). Not to be confused with Hue/Saturation/Lightness (HSL), a different color model.">HSV</TextLabel
 				>
-				<Separator type="Related" />
+				<Separator style="Related" />
 				<LayoutRow>
 					{#each hsvChannels as [channel, strength], index}
 						{#if index > 0}
-							<Separator type="Related" />
+							<Separator style="Related" />
 						{/if}
 						<NumberInput
 							value={strength}
@@ -616,7 +616,7 @@
 			<LayoutRow>
 				{@const alphaDescription = "The level of translucency, from transparent (0%) to opaque (100%)."}
 				<TextLabel tooltipLabel="Alpha" tooltipDescription={alphaDescription}>Alpha</TextLabel>
-				<Separator type="Related" />
+				<Separator style="Related" />
 				<NumberInput
 					value={!isNone ? alpha * 100 : undefined}
 					{disabled}
@@ -649,7 +649,7 @@
 						data-tooltip-description={disabled ? "Disabled (read-only)." : ""}
 						tabindex="0"
 					></button>
-					<Separator type="Related" />
+					<Separator style="Related" />
 				{/if}
 				<button
 					class="preset-color black"
@@ -659,7 +659,7 @@
 					data-tooltip-description={disabled ? "Disabled (read-only)." : ""}
 					tabindex="0"
 				></button>
-				<Separator type="Related" />
+				<Separator style="Related" />
 				<button
 					class="preset-color white"
 					{disabled}
@@ -668,7 +668,7 @@
 					data-tooltip-description={disabled ? "Disabled (read-only)." : ""}
 					tabindex="0"
 				></button>
-				<Separator type="Related" />
+				<Separator style="Related" />
 				<button class="preset-color pure" {disabled} on:click={setColorPresetSubtile} tabindex="-1">
 					{#each PURE_COLORS_GRAYABLE as [name, color, gray]}
 						<div
@@ -681,7 +681,7 @@
 					{/each}
 				</button>
 				{#if eyedropperSupported()}
-					<Separator type="Related" />
+					<Separator style="Related" />
 					<IconButton icon="Eyedropper" size={24} {disabled} action={activateEyedropperSample} tooltipLabel="Eyedropper" tooltipDescription="Sample a pixel color from the document." />
 				{/if}
 			</LayoutRow>

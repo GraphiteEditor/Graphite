@@ -7,19 +7,26 @@
 	let styleName = "";
 	export { styleName as style };
 	export let styles: Record<string, string | number | undefined> = {};
+
+	// Content
+	// `value` is passed via slot
 	export let disabled = false;
+	export let forCheckbox: bigint | undefined = undefined;
+	// Styling
 	export let narrow = false;
 	export let bold = false;
 	export let italic = false;
 	export let monospace = false;
+	export let multiline = false;
 	export let centerAlign = false;
 	export let tableAlign = false;
-	export let minWidth = "";
-	export let multiline = false;
+	// Sizing
+	export let minWidth = 0;
+	export let minWidthCharacters = 0;
+	// Tooltips
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
 	export let tooltipShortcut: ActionShortcut | undefined = undefined;
-	export let forCheckbox: bigint | undefined = undefined;
 
 	$: extraClasses = Object.entries(classes)
 		.flatMap(([className, stateName]) => (stateName ? [className] : []))
@@ -39,7 +46,7 @@
 	class:multiline
 	class:center-align={centerAlign}
 	class:table-align={tableAlign}
-	style:min-width={minWidth || undefined}
+	style:min-width={minWidthCharacters ? `${minWidthCharacters}ch` : minWidth || undefined}
 	style={`${styleName} ${extraStyles}`.trim() || undefined}
 	data-tooltip-label={tooltipLabel}
 	data-tooltip-description={tooltipDescription}

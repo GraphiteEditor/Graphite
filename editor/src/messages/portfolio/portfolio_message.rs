@@ -111,6 +111,7 @@ pub enum PortfolioMessage {
 	},
 	PrevDocument,
 	RequestWelcomeScreenButtonsLayout,
+	RequestStatusBarInfoLayout,
 	SetActivePanel {
 		panel: PanelType,
 	},

@@ -46,6 +46,8 @@ pub enum LayoutTarget {
 	PropertiesPanel,
 	/// The contextual input key/mouse combination shortcuts shown in the status bar at the bottom of the window.
 	StatusBarHints,
+	/// The version information shown in the status bar at the bottom right of the window.
+	StatusBarInfo,
 	/// The left side of the control bar directly above the canvas.
 	ToolOptions,
 	/// The vertical buttons for all of the tools on the left of the canvas.

@@ -1,12 +1,13 @@
 <script lang="ts">
-	import { type SeparatorDirection, type SeparatorType } from "@graphite/messages";
+	import { type SeparatorDirection, type SeparatorStyle } from "@graphite/messages";
 
+	// Content
 	export let direction: SeparatorDirection = "Horizontal";
-	export let type: SeparatorType = "Unrelated";
+	export let style: SeparatorStyle = "Unrelated";
 </script>
 
-<div class={`separator ${direction.toLowerCase()} ${type.toLowerCase()}`}>
-	{#if type === "Section"}
+<div class={`separator ${direction.toLowerCase()} ${style.toLowerCase()}`}>
+	{#if style === "Section"}
 		<div />
 	{/if}
 </div>

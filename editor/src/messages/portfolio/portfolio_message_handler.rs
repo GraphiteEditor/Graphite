@@ -131,6 +131,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				// Before loading any documents, initially prepare the welcome screen buttons layout
 				responses.add(PortfolioMessage::RequestWelcomeScreenButtonsLayout);
 
+				// Request status bar info layout
+				responses.add(PortfolioMessage::RequestStatusBarInfoLayout);
+
 				// Tell frontend to finish loading persistent documents
 				responses.add(FrontendMessage::TriggerLoadRestAutoSaveDocuments);
 
@@ -948,6 +951,16 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				responses.add(LayoutMessage::SendLayout {
 					layout: Layout(vec![table]),
 					layout_target: LayoutTarget::WelcomeScreenButtons,
+				});
+			}
+			PortfolioMessage::RequestStatusBarInfoLayout => {
+				let row = LayoutGroup::Row {
+					widgets: vec![TextLabel::new("Graphite (beta) 1.0.0-RC1").disabled(true).widget_instance()],
+				};
+
+				responses.add(LayoutMessage::SendLayout {
+					layout: Layout(vec![row]),
+					layout_target: LayoutTarget::StatusBarInfo,
 				});
 			}
 			PortfolioMessage::SetActivePanel { panel } => {

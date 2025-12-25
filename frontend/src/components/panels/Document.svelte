@@ -714,7 +714,7 @@
 							// 	}
 							// }
 
-							&:not(.active) {
+							&:not(.emphasized) {
 								.color-general {
 									fill: var(--color-data-general);
 								}

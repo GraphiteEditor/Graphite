@@ -215,13 +215,13 @@ fn create_text_widgets(tool: &TextTool, font_catalog: &FontCatalog) -> Vec<Widge
 	let align = RadioInput::new(align_entries).selected_index(Some(tool.options.align as u32)).widget_instance();
 	vec![
 		font,
-		Separator::new(SeparatorType::Related).widget_instance(),
+		Separator::new(SeparatorStyle::Related).widget_instance(),
 		style,
-		Separator::new(SeparatorType::Related).widget_instance(),
+		Separator::new(SeparatorStyle::Related).widget_instance(),
 		size,
-		Separator::new(SeparatorType::Related).widget_instance(),
+		Separator::new(SeparatorStyle::Related).widget_instance(),
 		line_height_ratio,
-		Separator::new(SeparatorType::Related).widget_instance(),
+		Separator::new(SeparatorStyle::Related).widget_instance(),
 		align,
 	]
 }
@@ -243,7 +243,7 @@ impl TextTool {
 	fn layout(&self, font_catalog: &FontCatalog) -> Layout {
 		let mut widgets = create_text_widgets(self, font_catalog);
 
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
+		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 
 		widgets.append(&mut self.options.fill.create_widgets(
 			"Fill",

@@ -437,7 +437,7 @@
 		{/if}
 		{#each reactiveEntries as section, sectionIndex (sectionIndex)}
 			{#if includeSeparator(reactiveEntries, section, sectionIndex, search)}
-				<Separator type="Section" direction="Vertical" />
+				<Separator style="Section" direction="Vertical" />
 			{/if}
 			{#each currentEntries(section, virtualScrollingEntryHeight, virtualScrollingStartIndex, virtualScrollingEndIndex, search) as entry, entryIndex (entryIndex + startIndex)}
 				<LayoutRow

@@ -253,30 +253,30 @@ impl LayoutHolder for ShapeTool {
 
 		if !self.tool_data.hide_shape_option_widget {
 			widgets.push(create_shape_option_widget(self.options.shape_type));
-			widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
+			widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 
 			if self.options.shape_type == ShapeType::Polygon || self.options.shape_type == ShapeType::Star {
 				widgets.push(create_sides_widget(self.options.vertices));
-				widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
+				widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 			}
 
 			if self.options.shape_type == ShapeType::Arc {
 				widgets.push(create_arc_type_widget(self.options.arc_type));
-				widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
+				widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 			}
 		}
 
 		if self.options.shape_type == ShapeType::Spiral {
 			widgets.push(create_spiral_type_widget(self.options.spiral_type));
-			widgets.push(Separator::new(SeparatorType::Related).widget_instance());
+			widgets.push(Separator::new(SeparatorStyle::Related).widget_instance());
 
 			widgets.push(create_turns_widget(self.options.turns));
-			widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
+			widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 		}
 
 		if self.options.shape_type == ShapeType::Grid {
 			widgets.push(create_grid_type_widget(self.options.grid_type));
-			widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
+			widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 		}
 
 		if self.options.shape_type != ShapeType::Line {
@@ -305,7 +305,7 @@ impl LayoutHolder for ShapeTool {
 				},
 			));
 
-			widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
+			widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 		}
 
 		widgets.append(&mut self.options.stroke.create_widgets(
@@ -332,7 +332,7 @@ impl LayoutHolder for ShapeTool {
 				.into()
 			},
 		));
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
+		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 		widgets.push(create_weight_widget(self.options.line_weight));
 
 		Layout(vec![LayoutGroup::Row { widgets }])

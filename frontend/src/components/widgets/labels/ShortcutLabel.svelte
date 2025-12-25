@@ -7,6 +7,7 @@
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 
+	// Content
 	export let shortcut: ActionShortcut;
 
 	function keyTextOrIconList(keyGroup: LabeledShortcut): ({ label?: string; icon?: IconName }[] | { mouseMotion?: MouseMotion }[])[] {

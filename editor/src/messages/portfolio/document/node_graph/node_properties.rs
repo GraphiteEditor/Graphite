@@ -71,9 +71,9 @@ pub fn expose_widget(node_id: NodeId, index: usize, data_type: FrontendGraphData
 pub fn add_blank_assist(widgets: &mut Vec<WidgetInstance>) {
 	widgets.extend_from_slice(&[
 		// Custom CSS specific to the Properties panel converts this Section separator into the width of an assist (24px).
-		Separator::new(SeparatorType::Section).widget_instance(),
+		Separator::new(SeparatorStyle::Section).widget_instance(),
 		// This last one is the separator after the 24px assist.
-		Separator::new(SeparatorType::Unrelated).widget_instance(),
+		Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 	]);
 }
 
@@ -231,7 +231,7 @@ pub(crate) fn property_from_type(
 						_ => {
 							let mut widgets = start_widgets(default_info);
 							widgets.extend_from_slice(&[
-								Separator::new(SeparatorType::Unrelated).widget_instance(),
+								Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 								TextLabel::new("-")
 									.tooltip_label(format!(
 										"Data Type: {}",
@@ -273,7 +273,7 @@ pub fn text_widget(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<WidgetIn
 	};
 	if let Some(TaggedValue::String(x)) = &input.as_non_exposed_value() {
 		widgets.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			TextInput::new(x.clone())
 				.on_update(update_value(|x: &TextInput| TaggedValue::String(x.value.clone()), node_id, index))
 				.on_commit(commit_value)
@@ -295,7 +295,7 @@ pub fn text_area_widget(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<Wid
 	};
 	if let Some(TaggedValue::String(x)) = &input.as_non_exposed_value() {
 		widgets.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			TextAreaInput::new(x.clone())
 				.on_update(update_value(|x: &TextAreaInput| TaggedValue::String(x.value.clone()), node_id, index))
 				.on_commit(commit_value)
@@ -317,7 +317,7 @@ pub fn bool_widget(parameter_widgets_info: ParameterWidgetsInfo, checkbox_input:
 	};
 	if let Some(&TaggedValue::Bool(x)) = input.as_non_exposed_value() {
 		widgets.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			checkbox_input
 				.checked(x)
 				.on_update(update_value(|x: &CheckboxInput| TaggedValue::Bool(x.checked), node_id, index))
@@ -340,7 +340,7 @@ pub fn reference_point_widget(parameter_widgets_info: ParameterWidgetsInfo, disa
 	};
 	if let Some(&TaggedValue::ReferencePoint(reference_point)) = input.as_non_exposed_value() {
 		widgets.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			CheckboxInput::new(reference_point != ReferencePoint::None)
 				.on_update(update_value(
 					move |x: &CheckboxInput| TaggedValue::ReferencePoint(if x.checked { ReferencePoint::Center } else { ReferencePoint::None }),
@@ -349,7 +349,7 @@ pub fn reference_point_widget(parameter_widgets_info: ParameterWidgetsInfo, disa
 				))
 				.disabled(disabled)
 				.widget_instance(),
-			Separator::new(SeparatorType::Related).widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
 			ReferencePointInput::new(reference_point)
 				.on_update(update_value(move |x: &ReferencePointInput| TaggedValue::ReferencePoint(x.value), node_id, index))
 				.disabled(disabled)
@@ -363,15 +363,15 @@ pub fn footprint_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
 
 	let mut location_widgets = start_widgets(parameter_widgets_info);
-	location_widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
+	location_widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 
 	let mut scale_widgets = vec![TextLabel::new("").widget_instance()];
 	add_blank_assist(&mut scale_widgets);
-	scale_widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
+	scale_widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 
 	let mut resolution_widgets = vec![TextLabel::new("").widget_instance()];
 	add_blank_assist(&mut resolution_widgets);
-	resolution_widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
+	resolution_widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 
 	let Some(document_node) = document_node else { return LayoutGroup::default() };
 	let Some(input) = document_node.inputs.get(index) else {
@@ -408,7 +408,7 @@ pub fn footprint_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 				))
 				.on_commit(commit_value)
 				.widget_instance(),
-			Separator::new(SeparatorType::Related).widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
 			NumberInput::new(Some(top_left.y))
 				.label("Y")
 				.unit(" px")
@@ -455,7 +455,7 @@ pub fn footprint_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 				))
 				.on_commit(commit_value)
 				.widget_instance(),
-			Separator::new(SeparatorType::Related).widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
 			NumberInput::new(Some(bounds.y))
 				.label("H")
 				.unit(" px")
@@ -515,15 +515,15 @@ pub fn transform_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
 
 	let mut location_widgets = start_widgets(parameter_widgets_info);
-	location_widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
+	location_widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 
 	let mut rotation_widgets = vec![TextLabel::new("").widget_instance()];
 	add_blank_assist(&mut rotation_widgets);
-	rotation_widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
+	rotation_widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 
 	let mut scale_widgets = vec![TextLabel::new("").widget_instance()];
 	add_blank_assist(&mut scale_widgets);
-	scale_widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
+	scale_widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 
 	let Some(document_node) = document_node else { return LayoutGroup::default() };
 	let Some(input) = document_node.inputs.get(index) else {
@@ -551,7 +551,7 @@ pub fn transform_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 				))
 				.on_commit(commit_value)
 				.widget_instance(),
-			Separator::new(SeparatorType::Related).widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
 			NumberInput::new(Some(translation.y))
 				.label("Y")
 				.unit(" px")
@@ -598,7 +598,7 @@ pub fn transform_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 				))
 				.on_commit(commit_value)
 				.widget_instance(),
-			Separator::new(SeparatorType::Related).widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
 			NumberInput::new(Some(scale.y))
 				.label("H")
 				.unit("x")
@@ -644,7 +644,7 @@ pub fn vec2_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, y: &st
 	match input.as_non_exposed_value() {
 		Some(&TaggedValue::DVec2(dvec2)) => {
 			widgets.extend_from_slice(&[
-				Separator::new(SeparatorType::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 				NumberInput::new(Some(dvec2.x))
 					.label(x)
 					.unit(unit)
@@ -654,7 +654,7 @@ pub fn vec2_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, y: &st
 					.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(input.value.unwrap(), dvec2.y)), node_id, index))
 					.on_commit(commit_value)
 					.widget_instance(),
-				Separator::new(SeparatorType::Related).widget_instance(),
+				Separator::new(SeparatorStyle::Related).widget_instance(),
 				NumberInput::new(Some(dvec2.y))
 					.label(y)
 					.unit(unit)
@@ -668,7 +668,7 @@ pub fn vec2_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, y: &st
 		}
 		Some(&TaggedValue::F64(value)) => {
 			widgets.extend_from_slice(&[
-				Separator::new(SeparatorType::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 				NumberInput::new(Some(value))
 					.label(x)
 					.unit(unit)
@@ -678,7 +678,7 @@ pub fn vec2_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, y: &st
 					.on_update(update_value(move |input: &NumberInput| TaggedValue::DVec2(DVec2::new(input.value.unwrap(), value)), node_id, index))
 					.on_commit(commit_value)
 					.widget_instance(),
-				Separator::new(SeparatorType::Related).widget_instance(),
+				Separator::new(SeparatorStyle::Related).widget_instance(),
 				NumberInput::new(Some(value))
 					.label(y)
 					.unit(unit)
@@ -718,7 +718,7 @@ pub fn array_of_number_widget(parameter_widgets_info: ParameterWidgetsInfo, text
 	};
 	if let Some(TaggedValue::VecF64(x)) = &input.as_non_exposed_value() {
 		widgets.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			text_input
 				.value(x.iter().map(|v| v.to_string()).collect::<Vec<_>>().join(", "))
 				.on_update(optionally_update_value(move |x: &TextInput| from_string(&x.value), node_id, index))
@@ -750,7 +750,7 @@ pub fn array_of_vec2_widget(parameter_widgets_info: ParameterWidgetsInfo, text_p
 	};
 	if let Some(TaggedValue::VecDVec2(x)) = &input.as_non_exposed_value() {
 		widgets.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			text_props
 				.value(x.iter().map(|v| format!("({}, {})", v.x, v.y)).collect::<Vec<_>>().join(", "))
 				.on_update(optionally_update_value(move |x: &TextInput| from_string(&x.value), node_id, index))
@@ -780,7 +780,7 @@ pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetI
 
 	if let Some(TaggedValue::Font(font)) = &input.as_non_exposed_value() {
 		first_widgets.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			DropdownInput::new(vec![
 				persistent_data
 					.font_catalog
@@ -843,7 +843,7 @@ pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetI
 		let mut second_row = vec![TextLabel::new("").widget_instance()];
 		add_blank_assist(&mut second_row);
 		second_row.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			DropdownInput::new({
 				persistent_data
 					.font_catalog
@@ -918,7 +918,7 @@ pub fn progression_widget(parameter_widgets_info: ParameterWidgetsInfo, number_p
 		let fractional_part = x.fract();
 
 		widgets.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			number_props
 				.clone()
 				.label("Progress")
@@ -929,9 +929,9 @@ pub fn progression_widget(parameter_widgets_info: ParameterWidgetsInfo, number_p
 				.on_update(update_value(move |input: &NumberInput| TaggedValue::F64(whole_part + input.value.unwrap()), node_id, index))
 				.on_commit(commit_value)
 				.widget_instance(),
-			Separator::new(SeparatorType::Related).widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
 			TextLabel::new("+").widget_instance(),
-			Separator::new(SeparatorType::Related).widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
 			number_props
 				.label("Element #")
 				.mode_increment()
@@ -958,7 +958,7 @@ pub fn number_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props:
 	};
 	match input.as_non_exposed_value() {
 		Some(&TaggedValue::F64(x)) => widgets.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			number_props
 				.value(Some(x))
 				.on_update(update_value(move |x: &NumberInput| TaggedValue::F64(x.value.unwrap()), node_id, index))
@@ -966,7 +966,7 @@ pub fn number_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props:
 				.widget_instance(),
 		]),
 		Some(&TaggedValue::F32(x)) => widgets.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			number_props
 				.value(Some(x as f64))
 				.on_update(update_value(move |x: &NumberInput| TaggedValue::F32(x.value.unwrap() as f32), node_id, index))
@@ -974,7 +974,7 @@ pub fn number_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props:
 				.widget_instance(),
 		]),
 		Some(&TaggedValue::U32(x)) => widgets.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			number_props
 				.value(Some(x as f64))
 				.on_update(update_value(move |x: &NumberInput| TaggedValue::U32((x.value.unwrap()) as u32), node_id, index))
@@ -982,7 +982,7 @@ pub fn number_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props:
 				.widget_instance(),
 		]),
 		Some(&TaggedValue::U64(x)) => widgets.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			number_props
 				.value(Some(x as f64))
 				.on_update(update_value(move |x: &NumberInput| TaggedValue::U64((x.value.unwrap()) as u64), node_id, index))
@@ -993,15 +993,15 @@ pub fn number_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props:
 			// TODO: Don't wipe out the previously set value (setting it back to the default of 100) when reenabling this checkbox back to Some from None
 			let toggle_enabled = move |checkbox_input: &CheckboxInput| TaggedValue::OptionalF64(if checkbox_input.checked { Some(100.) } else { None });
 			widgets.extend_from_slice(&[
-				Separator::new(SeparatorType::Unrelated).widget_instance(),
-				Separator::new(SeparatorType::Related).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Related).widget_instance(),
 				// The checkbox toggles if the value is Some or None
 				CheckboxInput::new(x.is_some())
 					.on_update(update_value(toggle_enabled, node_id, index))
 					.on_commit(commit_value)
 					.widget_instance(),
-				Separator::new(SeparatorType::Related).widget_instance(),
-				Separator::new(SeparatorType::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Related).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 				number_props
 					.value(x)
 					.on_update(update_value(move |x: &NumberInput| TaggedValue::OptionalF64(x.value), node_id, index))
@@ -1011,7 +1011,7 @@ pub fn number_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props:
 			]);
 		}
 		Some(&TaggedValue::DVec2(dvec2)) => widgets.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			number_props
 			// We use an arbitrary `y` instead of an arbitrary `x` here because the "Grid" node's "Spacing" value's height should be used from rectangular mode when transferred to "Y Spacing" in isometric mode
 				.value(Some(dvec2.y))
@@ -1020,7 +1020,7 @@ pub fn number_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props:
 				.widget_instance(),
 		]),
 		Some(&TaggedValue::FVec2(vec2)) => widgets.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			number_props
 				// We use an arbitrary `y` instead of an arbitrary `x` here because the "Grid" node's "Spacing" value's height should be used from rectangular mode when transferred to "Y Spacing" in isometric mode
 				.value(Some(vec2.y as f64))
@@ -1061,7 +1061,7 @@ pub fn blend_mode_widget(parameter_widgets_info: ParameterWidgetsInfo) -> Layout
 			.collect();
 
 		widgets.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			DropdownInput::new(entries)
 				.selected_index(blend_mode.index_in_list_svg_subset().map(|index| index as u32))
 				.widget_instance(),
@@ -1082,7 +1082,7 @@ pub fn color_widget(parameter_widgets_info: ParameterWidgetsInfo, color_button: 
 	};
 
 	// Add a separator
-	widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
+	widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 
 	// Add the color input
 	match &**tagged_value {
@@ -1164,7 +1164,7 @@ pub fn curve_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup
 	};
 	if let Some(TaggedValue::Curve(curve)) = &input.as_non_exposed_value() {
 		widgets.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			CurveInput::new(curve.clone())
 				.on_update(update_value(|x: &CurveInput| TaggedValue::Curve(x.value.clone()), node_id, index))
 				.on_commit(commit_value)
@@ -1574,9 +1574,9 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 
 	// Corner Radius
 	let mut corner_radius_row_1 = start_widgets(ParameterWidgetsInfo::new(node_id, CornerRadiusInput::<f64>::INDEX, true, context));
-	corner_radius_row_1.push(Separator::new(SeparatorType::Unrelated).widget_instance());
+	corner_radius_row_1.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 
-	let mut corner_radius_row_2 = vec![Separator::new(SeparatorType::Unrelated).widget_instance()];
+	let mut corner_radius_row_2 = vec![Separator::new(SeparatorStyle::Unrelated).widget_instance()];
 	corner_radius_row_2.push(TextLabel::new("").widget_instance());
 	add_blank_assist(&mut corner_radius_row_2);
 
@@ -1837,7 +1837,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	let backup_color_fill: Fill = backup_color.clone().into();
 	let backup_gradient_fill: Fill = backup_gradient.clone().into();
 
-	widgets_first_row.push(Separator::new(SeparatorType::Unrelated).widget_instance());
+	widgets_first_row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 	widgets_first_row.push(
 		ColorInput::default()
 			.value(fill.clone().into())
@@ -1896,7 +1896,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 						FillInput::<Color>::INDEX,
 					))
 					.widget_instance();
-				row.push(Separator::new(SeparatorType::Unrelated).widget_instance());
+				row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 				row.push(reverse_button);
 			}
 		}
@@ -1913,7 +1913,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		];
 
 		row.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			RadioInput::new(entries).selected_index(Some(if fill.as_gradient().is_some() { 1 } else { 0 })).widget_instance(),
 		]);
 
@@ -1946,7 +1946,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 						FillInput::<Color>::INDEX,
 					))
 					.widget_instance();
-				row.push(Separator::new(SeparatorType::Unrelated).widget_instance());
+				row.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 				row.push(reverse_radial_gradient_button);
 			}
 		}
@@ -1982,7 +1982,7 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		];
 
 		row.extend_from_slice(&[
-			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			RadioInput::new(entries).selected_index(Some(gradient.gradient_type as u32)).widget_instance(),
 		]);
 
@@ -2103,7 +2103,7 @@ pub fn math_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> 
 		};
 		if let Some(TaggedValue::String(x)) = &input.as_non_exposed_value() {
 			widgets.extend_from_slice(&[
-				Separator::new(SeparatorType::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 				TextInput::new(x.clone())
 					.centered(true)
 					.on_update(update_value(
@@ -2331,7 +2331,7 @@ pub mod choice {
 				let committer = || super::commit_value;
 				let updater = || super::update_value(move |v: &W::Value| TaggedValue::from(v.clone()), node_id, index);
 				let widget = self.widget_factory.build(current, updater, committer);
-				widgets.extend_from_slice(&[Separator::new(SeparatorType::Unrelated).widget_instance(), widget]);
+				widgets.extend_from_slice(&[Separator::new(SeparatorStyle::Unrelated).widget_instance(), widget]);
 			}
 
 			let mut row = LayoutGroup::Row { widgets };
