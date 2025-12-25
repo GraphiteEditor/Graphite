@@ -209,9 +209,9 @@ Graphite Branding License
 
 Copyright (c) 2021-2025 Graphite Labs, LLC. All rights reserved.
 
-This repository includes proprietary assets (the "Assets"), including but not limited to logos, icons, and branding materials. The Assets are not software source code and are consequently not licensed under the same terms as the other works of Graphite software materials. The intention of this license is to maintain the full permissiveness of the software code while reserving protections for the brand and visual identity of the official Graphite product.
+The repository `https://github.com/Keavon/graphite-branded-assets/` includes proprietary assets (the "Assets"), including but not limited to logos, icons, and branding materials. The Assets are not software source code and are consequently not licensed under the same terms as the other works of Graphite software materials. The intention of this license is to maintain the full permissiveness of the software code while reserving protections for the brand and visual identity of the official Graphite product.
 
-Permission is granted to use, reproduce, and distribute the Assets solely as part of unmodified build artifacts produced from the official Graphite repository at https://github.com/GraphiteEditor/Graphite, on master branch commits, using the official build process as documented therein. Any other use of the Assets—including copying, extraction, incorporation into modified or forked builds, or use in other projects or contexts—is prohibited without prior written permission from the copyright holder.
+Permission is granted to use, reproduce, and distribute the Assets solely as part of unmodified build artifacts produced from the official Graphite repository at `https://github.com/GraphiteEditor/Graphite`, on master branch commits, using the official build process as documented therein. Any other use of the Assets—including copying, extraction, incorporation into modified or forked builds, or use in other projects or contexts—is prohibited without prior written permission from the copyright holder.
 
 This license does not grant any rights under trademark law or affect the licensing of the software source code.
 

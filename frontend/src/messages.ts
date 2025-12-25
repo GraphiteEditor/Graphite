@@ -1474,6 +1474,7 @@ export type LayoutTarget =
 	| "NodeGraphControlBar"
 	| "PropertiesPanel"
 	| "StatusBarHints"
+	| "StatusBarInfo"
 	| "ToolOptions"
 	| "ToolShelf"
 	| "WelcomeScreenButtons"
@@ -1634,6 +1635,8 @@ export class UpdateDataPanelLayout extends WidgetDiffUpdate {}
 
 export class UpdateStatusBarHintsLayout extends WidgetDiffUpdate {}
 
+export class UpdateStatusBarInfoLayout extends WidgetDiffUpdate {}
+
 export class UpdateToolOptionsLayout extends WidgetDiffUpdate {}
 
 export class UpdateToolShelfLayout extends WidgetDiffUpdate {}
@@ -1724,6 +1727,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdatePropertiesPanelLayout,
 	UpdatePropertiesPanelState,
 	UpdateStatusBarHintsLayout,
+	UpdateStatusBarInfoLayout,
 	UpdateToolOptionsLayout,
 	UpdateToolShelfLayout,
 	UpdateViewportHolePunch,

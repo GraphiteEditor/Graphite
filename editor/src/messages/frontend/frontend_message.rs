@@ -327,6 +327,9 @@ pub enum FrontendMessage {
 	UpdateStatusBarHintsLayout {
 		diff: Vec<WidgetDiff>,
 	},
+	UpdateStatusBarInfoLayout {
+		diff: Vec<WidgetDiff>,
+	},
 	UpdateWorkingColorsLayout {
 		diff: Vec<WidgetDiff>,
 	},
