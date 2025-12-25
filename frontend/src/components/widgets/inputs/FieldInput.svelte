@@ -81,7 +81,7 @@
 <!-- This is a base component, extended by others like NumberInput and TextInput. It should not be used directly. -->
 <LayoutRow
 	class={`field-input ${className}`}
-	classes={{ disabled, narrow, monospace, ...classes }}
+	classes={{ disabled, narrow, monospace, "auto-width": autoWidth, ...classes }}
 	style={styleName}
 	styles={{
 		...styles,
@@ -92,10 +92,10 @@
 	{tooltipDescription}
 	{tooltipShortcut}
 >
-
 	{#if !textarea}
 		{#if label}
 			<label for={`field-input-${id}`} on:pointerdown>{label}</label>
+			<div class="after-label-spacer"></div>
 		{/if}
 		<input
 			type="text"
@@ -139,11 +139,26 @@
 
 <style lang="scss">
 	.field-input {
-		min-width: 80px;
 		height: auto;
 		position: relative;
+		overflow: hidden;
 		border-radius: 2px;
 		background: var(--color-1-nearblack);
+
+		// This property seems likely to be supported soon in Firefox: https://bugzilla.mozilla.org/show_bug.cgi?id=1832409
+		// Meanwhile, Firefox and Safari pre-26.2 (Dec 2025) assume the input text field is 30px wide, as set by `min-width: 30px` in FieldInput.svelte.
+		@supports (field-sizing: content) {
+			input[type="text"]:not(:focus).has-label {
+				field-sizing: content;
+				flex: 0 0 auto;
+				width: auto;
+				min-width: auto;
+			}
+
+			label {
+				flex: 1 1 0;
+			}
+		}
 
 		&.narrow.narrow {
 			--widget-height: 20px;
@@ -157,14 +172,24 @@
 		}
 
 		label {
-			flex: 0 0 auto;
+			flex: 1 1 auto;
 			line-height: calc(var(--widget-height) - 6px);
 			padding: 3px 0;
-			padding-right: 4px;
 			margin-left: 8px;
 			overflow: hidden;
 			text-overflow: ellipsis;
 			white-space: nowrap;
+
+			// This keeps the label, when abbreviated by ellipsis, from touching the number value.
+			// This only shrinks after the label has shrunk to 0 (which is why this is a separate element, not margin or padding on the label or input).
+			+ .after-label-spacer {
+				width: 4px;
+				flex: 0 1 auto;
+			}
+		}
+
+		&.auto-width label {
+			flex: 1 0 auto;
 		}
 
 		&:not(.disabled) label {

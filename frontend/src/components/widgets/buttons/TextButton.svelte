@@ -70,7 +70,9 @@
 		class:disabled
 		class:narrow
 		class:flush
+		class:auto-width={autoWidth}
 		style:min-width={minWidth > 0 ? `${minWidth}px` : undefined}
+		style:max-width={maxWidth > 0 ? `${maxWidth}px` : undefined}
 		data-tooltip-label={tooltipLabel}
 		data-tooltip-description={tooltipDescription}
 		data-tooltip-shortcut={tooltipShortcut?.shortcut ? JSON.stringify(tooltipShortcut.shortcut) : undefined}
@@ -111,11 +113,16 @@
 	.text-button-container {
 		position: relative;
 		display: flex;
+		flex: 1 1 auto;
+
+		&:has(.auto-width) {
+			flex: 1 0 auto;
+		}
 	}
 
 	.text-button {
 		display: flex;
-		flex: 0 0 auto;
+		flex: 1 1 auto;
 		justify-content: center;
 		align-items: center;
 		white-space: nowrap;
@@ -130,6 +137,10 @@
 		--button-background-color: var(--color-4-dimgray);
 		--button-text-color: var(--color-e-nearwhite);
 		--widget-height: 24px;
+
+		&.auto-width {
+			flex: 1 0 auto;
+		}
 
 		&.narrow.narrow {
 			--widget-height: 20px;

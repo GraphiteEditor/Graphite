@@ -186,10 +186,6 @@
 					flex-grow: 1;
 				}
 
-				> .radio-input button {
-					flex: 1 1 100%;
-				}
-
 				> .parameter-expose-button + .text-label ~ .number-input:last-child {
 					margin-left: auto;
 				}
