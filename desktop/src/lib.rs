@@ -58,8 +58,12 @@ pub fn start() {
 
 	let cli = Cli::parse();
 
-	let wgpu_context = futures::executor::block_on(gpu_context::create_wgpu_context());
+	if cli.list_gpu_adapters {
+		futures::executor::block_on(gpu_context::list_adapters());
+		exit(0);
+	}
 
+	let wgpu_context = futures::executor::block_on(gpu_context::create_wgpu_context());
 	let event_loop = EventLoop::new().unwrap();
 	let (app_event_sender, app_event_receiver) = std::sync::mpsc::channel();
 	let app_event_scheduler = event_loop.create_app_event_scheduler(app_event_sender);
