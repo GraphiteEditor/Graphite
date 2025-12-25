@@ -13,8 +13,6 @@ js = ["/js/youtube-embed.js"]
 
 The current alpha version of Graphite is a tool for vector art and graphic design. It also supports a limited, experimental raster editing toolset. This tooling is built around a procedural graphics engine, letting artists build complex graphics and animations in its visual scripting language.
 
-In 2025, stay tuned for performance improvements, a native multiplatform desktop app, and the beginnings of a full raster editing tool suite.
-
 </div>
 </section>
 
@@ -133,20 +131,20 @@ Marrying vector and raster under one roof enables both art forms to complement e
 			<span>Layer clipping masks</span>
 		</div>
 		<div class="feature-icon complete" title="Development Complete">
+			<img class="atlas" style="--atlas-index: 12" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
+			<span>GPU acceleration infrastructure</span>
+		</div>
+		<div class="feature-icon complete" title="Development Complete">
 			<img class="atlas" style="--atlas-index: 66" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
 			<span>All-around performance optimizations</span>
 		</div>
-		<div class="feature-icon ongoing" title="Development Ongoing">
-			<img class="atlas" style="--atlas-index: 73" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
-			<span>Blend tool to morph between shapes</span>
-		</div>
-		<div class="feature-icon ongoing" title="Development Ongoing">
+		<div class="feature-icon complete" title="Development Complete">
 			<img class="atlas" style="--atlas-index: 7" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
 			<span>Desktop app (Windows, Mac, Linux)</span>
 		</div>
 		<div class="feature-icon ongoing" title="Development Ongoing">
-			<img class="atlas" style="--atlas-index: 12" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
-			<span>GPU-accelerated raster rendering</span>
+			<img class="atlas" style="--atlas-index: 73" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
+			<span>Blend tool to morph between shapes</span>
 		</div>
 		<div class="feature-icon ongoing" title="Development Ongoing">
 			<img class="atlas" style="--atlas-index: 10" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
@@ -155,10 +153,6 @@ Marrying vector and raster under one roof enables both art forms to complement e
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 51" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
 			<span>Context menus throughout the editor</span>
-		</div>
-		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 40" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
-			<span>Simplified main properties panel</span>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 64" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
@@ -171,6 +165,10 @@ Marrying vector and raster under one roof enables both art forms to complement e
 		<!-- Beta 1 -->
 		<div class="feature-icon heading" data-year="2026">
 			<h3>— Beta 1 —</h3>
+		</div>
+		<div class="feature-icon">
+			<img class="atlas" style="--atlas-index: 40" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
+			<span>Simplified main properties panel</span>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 53" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
@@ -199,6 +197,10 @@ Marrying vector and raster under one roof enables both art forms to complement e
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 28" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
 			<span>Physical measurement units</span>
+		</div>
+		<div class="feature-icon">
+			<img class="atlas" style="--atlas-index: 12" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
+			<span>GPU-accelerated raster rendering</span>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 65" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />

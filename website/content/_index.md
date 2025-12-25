@@ -299,7 +299,7 @@ Presently, Graphite is a lightweight offline web app with features primarily ori
 
 ## Desktop-first and web-ready
 
-Where's the download? The web app is [currently live](https://editor.graphite.art) and desktop apps for Windows, Mac, and Linux will be released in December 2025.
+Where's the download? The [web app](https://editor.graphite.art) is currently live and desktop apps for Windows, Mac, and Linux are now in a release candidate stage. Check the `#🔥announcements` channel of [the Discord](https://discord.graphite.art) for download links if you would like to partake in testing prior to the impending launch.
 
 Graphite is designed principally as a professional desktop application that is also accessible in a browser for quick access from anywhere. It's built for speed with (nearly) no JavaScript. And regardless of platform, it runs locally and privately on your own hardware— there is no server.
 
