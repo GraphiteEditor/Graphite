@@ -261,42 +261,8 @@
 		.scrollable-x,
 		.scrollable-y {
 			overflow: hidden;
-
 			scrollbar-width: thin;
-			// Not supported in Safari
-			scrollbar-color: var(--color-5-dullgray) transparent;
-
-			// Safari (more capable, removed from recent versions of Chromium, possibly still supported in Safari but not tested)
-			&::-webkit-scrollbar {
-				width: calc(2px + 6px + 2px);
-				height: calc(2px + 6px + 2px);
-			}
-
-			&::-webkit-scrollbar-track {
-				box-shadow: inset 0 0 0 1px var(--color-5-dullgray);
-				border: 2px solid transparent;
-				border-radius: 10px;
-			}
-
-			&:hover::-webkit-scrollbar-track {
-				box-shadow: inset 0 0 0 1px var(--color-6-lowergray);
-			}
-
-			&::-webkit-scrollbar-thumb {
-				background-clip: padding-box;
-				background-color: var(--color-5-dullgray);
-				border: 2px solid transparent;
-				border-radius: 10px;
-				margin: 2px;
-			}
-
-			&:hover::-webkit-scrollbar-thumb {
-				background-color: var(--color-6-lowergray);
-			}
-
-			&::-webkit-scrollbar-corner {
-				background: none;
-			}
+			scrollbar-color: var(--color-4-dimgray) transparent;
 		}
 
 		.scrollable-x.scrollable-y {
@@ -304,6 +270,7 @@
 		}
 
 		.scrollable-x:not(.scrollable-y) {
+			scrollbar-width: none;
 			overflow: auto hidden;
 		}
 

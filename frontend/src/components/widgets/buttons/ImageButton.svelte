@@ -6,9 +6,11 @@
 	export { className as class };
 	export let classes: Record<string, boolean> = {};
 
+	// Content
 	export let image: string;
 	export let width: string | undefined;
 	export let height: string | undefined;
+	// Tooltips
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
 	export let tooltipShortcut: ActionShortcut | undefined = undefined;

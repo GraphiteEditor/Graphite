@@ -5,8 +5,10 @@
 
 	const dispatch = createEventDispatcher<{ value: ReferencePoint }>();
 
+	// Content
 	export let value: string;
 	export let disabled = false;
+	// Tooltips
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
 	export let tooltipShortcut: ActionShortcut | undefined = undefined;

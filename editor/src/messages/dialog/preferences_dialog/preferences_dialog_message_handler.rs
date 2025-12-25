@@ -46,13 +46,13 @@ impl PreferencesDialogMessageHandler {
 
 			let zoom_rate_description = "Adjust how fast zooming occurs when using the scroll wheel or pinch gesture (relative to a default of 50).";
 			let zoom_rate_label = vec![
-				Separator::new(SeparatorType::Unrelated).widget_instance(),
-				Separator::new(SeparatorType::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 				TextLabel::new("Zoom Rate").tooltip_label("Zoom Rate").tooltip_description(zoom_rate_description).widget_instance(),
 			];
 			let zoom_rate = vec![
-				Separator::new(SeparatorType::Unrelated).widget_instance(),
-				Separator::new(SeparatorType::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 				NumberInput::new(Some(map_zoom_rate_to_display(preferences.viewport_zoom_wheel_rate)))
 					.tooltip_label("Zoom Rate")
 					.tooltip_description(zoom_rate_description)
@@ -74,8 +74,8 @@ impl PreferencesDialogMessageHandler {
 			let checkbox_id = CheckboxId::new();
 			let zoom_with_scroll_description = "Use the scroll wheel for zooming instead of vertically panning (not recommended for trackpads).";
 			let zoom_with_scroll = vec![
-				Separator::new(SeparatorType::Unrelated).widget_instance(),
-				Separator::new(SeparatorType::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 				CheckboxInput::new(preferences.zoom_with_scroll)
 					.tooltip_label("Zoom with Scroll")
 					.tooltip_description(zoom_with_scroll_description)
@@ -104,8 +104,8 @@ impl PreferencesDialogMessageHandler {
 			let header = vec![TextLabel::new("Editing").italic(true).widget_instance()];
 
 			let selection_label = vec![
-				Separator::new(SeparatorType::Unrelated).widget_instance(),
-				Separator::new(SeparatorType::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 				TextLabel::new("Selection")
 					.tooltip_label("Selection")
 					.tooltip_description("Choose how targets are selected within dragged rectangular and lasso areas.")
@@ -147,8 +147,8 @@ impl PreferencesDialogMessageHandler {
 			.selected_index(Some(preferences.selection_mode as u32))
 			.widget_instance();
 			let selection_mode = vec![
-				Separator::new(SeparatorType::Unrelated).widget_instance(),
-				Separator::new(SeparatorType::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 				selection_mode,
 			];
 
@@ -164,13 +164,13 @@ impl PreferencesDialogMessageHandler {
 
 			let scale_description = "Adjust the scale of the entire user interface (100% is default).";
 			let scale_label = vec![
-				Separator::new(SeparatorType::Unrelated).widget_instance(),
-				Separator::new(SeparatorType::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 				TextLabel::new("Scale").tooltip_label("Scale").tooltip_description(scale_description).widget_instance(),
 			];
 			let scale = vec![
-				Separator::new(SeparatorType::Unrelated).widget_instance(),
-				Separator::new(SeparatorType::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 				NumberInput::new(Some(ui_scale_to_display(preferences.ui_scale)))
 					.tooltip_label("Scale")
 					.tooltip_description(scale_description)
@@ -204,8 +204,8 @@ impl PreferencesDialogMessageHandler {
 
 			let node_graph_section_description = "Configure the appearance of the wires running between node connections in the graph.";
 			let node_graph_wires_label = vec![
-				Separator::new(SeparatorType::Unrelated).widget_instance(),
-				Separator::new(SeparatorType::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 				TextLabel::new("Node Graph Wires")
 					.tooltip_label("Node Graph Wires")
 					.tooltip_description(node_graph_section_description)
@@ -226,8 +226,8 @@ impl PreferencesDialogMessageHandler {
 			.selected_index(Some(preferences.graph_wire_style as u32))
 			.widget_instance();
 			let graph_wire_style = vec![
-				Separator::new(SeparatorType::Unrelated).widget_instance(),
-				Separator::new(SeparatorType::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 				graph_wire_style,
 			];
 
@@ -239,8 +239,8 @@ impl PreferencesDialogMessageHandler {
 			vello_description.push_str("\n\n(Your browser must support WebGPU.)");
 
 			let use_vello = vec![
-				Separator::new(SeparatorType::Unrelated).widget_instance(),
-				Separator::new(SeparatorType::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 				CheckboxInput::new(preferences.use_vello && preferences.supports_wgpu())
 					.tooltip_label("Vello Renderer")
 					.tooltip_description(vello_description.clone())
@@ -266,8 +266,8 @@ impl PreferencesDialogMessageHandler {
 			"
 			.trim();
 			let brush_tool = vec![
-				Separator::new(SeparatorType::Unrelated).widget_instance(),
-				Separator::new(SeparatorType::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 				CheckboxInput::new(preferences.brush_tool)
 					.tooltip_label("Brush Tool")
 					.tooltip_description(brush_tool_description)

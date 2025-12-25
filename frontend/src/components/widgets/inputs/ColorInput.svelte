@@ -9,17 +9,20 @@
 
 	const dispatch = createEventDispatcher<{ value: FillChoice; startHistoryTransaction: undefined }>();
 
-	let open = false;
-
+	// Content
 	export let value: FillChoice;
-	export let disabled = false;
-	export let narrow = false;
 	export let allowNone = false;
-	export let menuDirection: MenuDirection = "Bottom";
 	// export let allowTransparency = false; // TODO: Implement
+	export let menuDirection: MenuDirection = "Bottom";
+	export let disabled = false;
+	// Styling
+	export let narrow = false;
+	// Tooltips
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
 	export let tooltipShortcut: ActionShortcut | undefined = undefined;
+
+	let open = false;
 
 	$: outlineFactor = contrastingOutlineFactor(value, ["--color-1-nearblack", "--color-3-darkgray"], 0.01);
 	$: outlined = outlineFactor > 0.0001;

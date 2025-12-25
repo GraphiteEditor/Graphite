@@ -1250,6 +1250,7 @@ where
 
 						output.element.concat(other, transform, collision_hash_seed);
 
+						// TODO: Make this instead use the first encountered style
 						// Use the last encountered style as the output style
 						output.element.style = row.element.style.clone();
 					}

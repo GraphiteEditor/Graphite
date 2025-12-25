@@ -12,7 +12,9 @@
 	const dispatch = createEventDispatcher<{ selectNodeType: string }>();
 	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
 
+	// Content
 	export let disabled = false;
+	// Behavior
 	export let initialSearchTerm = "";
 
 	let nodeSearchInput: TextInput | undefined = undefined;

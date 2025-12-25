@@ -2208,7 +2208,7 @@ impl DocumentMessageHandler {
 				.tooltip_shortcut(action_shortcut!(AnimationMessageDiscriminant::ToggleLivePreview))
 				.on_update(|_| AnimationMessage::ToggleLivePreview.into())
 				.widget_instance(),
-			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			CheckboxInput::new(self.overlays_visibility_settings.all)
 				.icon("Overlays")
 				.tooltip_label("Overlays")
@@ -2457,7 +2457,7 @@ impl DocumentMessageHandler {
 					},
 				]))
 				.widget_instance(),
-			Separator::new(SeparatorType::Related).widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
 			CheckboxInput::new(snapping_state.snapping_enabled)
 				.icon("Snapping")
 				.tooltip_label("Snapping")
@@ -2527,7 +2527,7 @@ impl DocumentMessageHandler {
 					.collect(),
 				))
 				.widget_instance(),
-			Separator::new(SeparatorType::Related).widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
 			CheckboxInput::new(self.snapping_state.grid_snapping)
 				.icon("Grid")
 				.tooltip_label("Grid")
@@ -2538,7 +2538,7 @@ impl DocumentMessageHandler {
 				.popover_layout(Layout(overlay_options(&self.snapping_state.grid)))
 				.popover_min_width(Some(320))
 				.widget_instance(),
-			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			RadioInput::new(vec![
 				RadioEntryData::new("Normal")
 					.icon("RenderModeNormal")
@@ -2562,7 +2562,7 @@ impl DocumentMessageHandler {
 			.selected_index(Some(self.render_mode as u32))
 			.narrow(true)
 			.widget_instance(),
-			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 		];
 
 		widgets.extend(navigation_controls(&self.document_ptz, &self.navigation_handler, false));
@@ -2570,7 +2570,7 @@ impl DocumentMessageHandler {
 		let tilt_value = self.navigation_handler.snapped_tilt(self.document_ptz.tilt()) / (std::f64::consts::PI / 180.);
 		if tilt_value.abs() > 0.00001 {
 			widgets.extend([
-				Separator::new(SeparatorType::Related).widget_instance(),
+				Separator::new(SeparatorStyle::Related).widget_instance(),
 				NumberInput::new(Some(tilt_value))
 					.unit("°")
 					.increment_behavior(NumberInputIncrementBehavior::Callback)
@@ -2600,7 +2600,7 @@ impl DocumentMessageHandler {
 		}
 
 		widgets.extend([
-			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			TextButton::new("Node Graph")
 				.icon(Some((if self.graph_view_overlay_open { "GraphViewOpen" } else { "GraphViewClosed" }).into()))
 				.hover_icon(Some((if self.graph_view_overlay_open { "GraphViewClosed" } else { "GraphViewOpen" }).into()))
@@ -2704,7 +2704,7 @@ impl DocumentMessageHandler {
 				.max_width(100)
 				.tooltip_label("Blend Mode")
 				.widget_instance(),
-			Separator::new(SeparatorType::Related).widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
 			NumberInput::new(opacity)
 				.label("Opacity")
 				.unit("%")
@@ -2726,7 +2726,7 @@ impl DocumentMessageHandler {
 				.max_width(100)
 				.tooltip_label("Opacity")
 				.widget_instance(),
-			Separator::new(SeparatorType::Related).widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
 			NumberInput::new(fill)
 				.label("Fill")
 				.unit("%")
@@ -2824,7 +2824,7 @@ impl DocumentMessageHandler {
 					Layout(vec![LayoutGroup::Row { widgets: vec![node_chooser] }])
 				})
 				.widget_instance(),
-			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			IconButton::new("Folder", 24)
 				.tooltip_label("Group Selected")
 				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::GroupSelectedLayers))
@@ -3149,7 +3149,7 @@ pub fn navigation_controls(ptz: &PTZ, navigation_handler: &NavigationMessageHand
 		);
 	}
 	list.extend([
-		Separator::new(SeparatorType::Related).widget_instance(),
+		Separator::new(SeparatorStyle::Related).widget_instance(),
 		NumberInput::new(Some(navigation_handler.snapped_zoom(ptz.zoom()) * 100.))
 			.unit("%")
 			.min(0.000001)

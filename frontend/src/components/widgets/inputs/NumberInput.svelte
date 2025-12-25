@@ -16,51 +16,44 @@
 
 	const dispatch = createEventDispatcher<{ value: number | undefined; startHistoryTransaction: undefined }>();
 
-	// Label
+	// Content
+	/// When `value` is not provided (i.e. it's `undefined`), a dash is displayed.
+	export let value: number | undefined = undefined;
 	export let label: string | undefined = undefined;
-	export let tooltipLabel: string | undefined = undefined;
-	export let tooltipDescription: string | undefined = undefined;
-	export let tooltipShortcut: ActionShortcut | undefined = undefined;
-
-	// Disabled
 	export let disabled = false;
-
-	// Narrow
+	// Styling
 	export let narrow = false;
-
-	// Value
-	// When `value` is not provided (i.e. it's `undefined`), a dash is displayed.
-	export let value: number | undefined = undefined; // NOTE: Do not update this directly, do so by calling `updateValue()` instead.
+	// Behavior
+	/// Mode behavior
+	/// "Increment" shows arrows and allows dragging left/right to change the value.
+	/// "Range" shows a range slider between some minimum and maximum value.
+	export let mode: NumberInputMode = "Increment";
 	export let min: number | undefined = undefined;
 	export let max: number | undefined = undefined;
+	/// `rangeMin` and `rangeMax` are only applicable with a `mode` of "Range".
+	/// They set the lower and upper values of the slider to drag between.
+	export let rangeMin = 0;
+	export let rangeMax = 1;
+	/// When `mode` is "Increment", `step` is the multiplier or addend used with `incrementBehavior`.
+	/// When `mode` is "Range", `step` is the range slider's snapping increment if `isInteger` is `true`.
+	export let step = 1;
 	export let isInteger = false;
-
-	// Number presentation
+	/// `incrementBehavior` is only applicable with a `mode` of "Increment".
+	/// "Add"/"Multiply": The value is added or multiplied by `step`.
+	/// "None": the increment arrows are not shown.
+	/// "Callback": the functions `incrementCallbackIncrease` and `incrementCallbackDecrease` call custom behavior.
+	export let incrementBehavior: NumberInputIncrementBehavior = "Add";
 	export let displayDecimalPlaces = 2;
 	export let unit = "";
 	export let unitIsHiddenWhenEditing = true;
 
-	// Mode behavior
-	// "Increment" shows arrows and allows dragging left/right to change the value.
-	// "Range" shows a range slider between some minimum and maximum value.
-	export let mode: NumberInputMode = "Increment";
-	// When `mode` is "Increment", `step` is the multiplier or addend used with `incrementBehavior`.
-	// When `mode` is "Range", `step` is the range slider's snapping increment if `isInteger` is `true`.
-	export let step = 1;
-	// `incrementBehavior` is only applicable with a `mode` of "Increment".
-	// "Add"/"Multiply": The value is added or multiplied by `step`.
-	// "None": the increment arrows are not shown.
-	// "Callback": the functions `incrementCallbackIncrease` and `incrementCallbackDecrease` call custom behavior.
-	export let incrementBehavior: NumberInputIncrementBehavior = "Add";
-	// `rangeMin` and `rangeMax` are only applicable with a `mode` of "Range".
-	// They set the lower and upper values of the slider to drag between.
-	export let rangeMin = 0;
-	export let rangeMax = 1;
-
-	// Styling
+	// Sizing
 	export let minWidth = 0;
 	export let maxWidth = 0;
-
+	// Tooltips
+	export let tooltipLabel: string | undefined = undefined;
+	export let tooltipDescription: string | undefined = undefined;
+	export let tooltipShortcut: ActionShortcut | undefined = undefined;
 	// Callbacks
 	export let incrementCallbackIncrease: (() => void) | undefined = undefined;
 	export let incrementCallbackDecrease: (() => void) | undefined = undefined;
@@ -91,7 +84,6 @@
 	let ctrlKeyDown = false;
 
 	$: watchValue(value, unit);
-
 	$: sliderStepValue = isInteger ? (step === undefined ? 1 : step) : "any";
 	$: styles = {
 		...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}),
@@ -745,10 +737,6 @@
 
 <style lang="scss" global>
 	.number-input {
-		input {
-			text-align: center;
-		}
-
 		&.narrow {
 			--widget-height: 20px;
 		}
@@ -972,6 +960,10 @@
 					border-radius: 1px 0 0 1px;
 				}
 			}
+		}
+
+		input {
+			text-align: center;
 		}
 	}
 </style>
