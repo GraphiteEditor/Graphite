@@ -231,6 +231,9 @@ impl NodeRuntime {
 						}
 					}
 
+					// Clone for_export flag before moving render_config
+					let for_export = render_config.for_export;
+
 					let result = self.execute_network(render_config).await;
 					let mut responses = VecDeque::new();
 					// TODO: Only process monitor nodes if the graph has changed, not when only the Footprint changes
@@ -244,7 +247,7 @@ impl NodeRuntime {
 						Ok(TaggedValue::RenderOutput(RenderOutput {
 							data: RenderOutputType::Texture(image_texture),
 							metadata,
-						})) if render_config.for_export => {
+						})) if for_export => {
 							let executor = self
 								.editor_api
 								.application_io
@@ -269,7 +272,7 @@ impl NodeRuntime {
 						Ok(TaggedValue::RenderOutput(RenderOutput {
 							data: RenderOutputType::Texture(image_texture),
 							metadata,
-						})) if !render_config.for_export => {
+						})) if !for_export => {
 							// On WASM, for viewport rendering, blit the texture to a surface and return a CanvasFrame
 							let app_io = self.editor_api.application_io.as_ref().unwrap();
 							let executor = app_io.gpu_executor().expect("GPU executor should be available when we receive a texture");
