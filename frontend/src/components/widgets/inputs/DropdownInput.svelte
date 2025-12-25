@@ -110,7 +110,7 @@
 
 <LayoutRow
 	class="dropdown-input"
-	classes={{ narrow }}
+	classes={{ narrow, "auto-width": autoWidth }}
 	styles={{
 		...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}),
 		...(maxWidth > 0 ? { "max-width": `${maxWidth}px` } : {}),
@@ -156,7 +156,12 @@
 <style lang="scss" global>
 	.dropdown-input {
 		position: relative;
+		flex: 1 1 auto;
 		--widget-height: 24px;
+
+		&.auto-width {
+			flex: 1 0 auto;
+		}
 
 		&.narrow.narrow {
 			--widget-height: 20px;
@@ -172,7 +177,9 @@
 			.dropdown-label {
 				margin: 0;
 				margin-left: 8px;
-				flex: 1 1 100%;
+				flex: 1 1 auto;
+				overflow: hidden;
+				text-overflow: ellipsis;
 			}
 
 			.dropdown-icon {

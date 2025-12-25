@@ -29,7 +29,14 @@
 	}
 </script>
 
-<LayoutRow class="radio-input" classes={{ disabled, narrow, mixed }} styles={{ ...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}) }}>
+<LayoutRow
+	class="radio-input"
+	classes={{ disabled, narrow, mixed, "auto-width": autoWidth }}
+	styles={{
+		...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}),
+		...(maxWidth > 0 ? { "max-width": `${maxWidth}px` } : {}),
+	}}
+>
 	{#each entries as entry, index}
 		<button
 			class:active={!mixed ? index === selectedIndex : undefined}
@@ -70,8 +77,7 @@
 			justify-content: center;
 			// `min-width: fit-content` and `flex: 1 1 0` together allow us to occupy space such that we're always at least the content width,
 			// but if the container is set wider, we distribute the space evenly (so buttons with short and long labels would have equal widths).
-			min-width: fit-content;
-			flex: 1 1 0;
+			flex: 1 1 100%;
 
 			&:first-of-type {
 				margin-left: 2px;
@@ -110,8 +116,13 @@
 			.text-label {
 				margin: 0 8px;
 				overflow: hidden;
-				flex: 0 0 auto;
+				flex: 0 1 auto;
+				text-overflow: ellipsis;
 			}
+		}
+
+		&.auto-width button .text-label {
+			flex: 0 0 auto;
 		}
 
 		&.narrow.narrow {

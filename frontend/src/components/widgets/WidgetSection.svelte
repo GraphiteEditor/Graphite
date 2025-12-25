@@ -175,10 +175,6 @@
 				> .text-button {
 					flex-grow: 1;
 				}
-
-				> .radio-input button {
-					flex: 1 1 100%;
-				}
 			}
 		}
 	}

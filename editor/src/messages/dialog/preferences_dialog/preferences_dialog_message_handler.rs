@@ -145,6 +145,7 @@ impl PreferencesDialogMessageHandler {
 					}),
 			])
 			.selected_index(Some(preferences.selection_mode as u32))
+			.auto_width(true)
 			.widget_instance();
 			let selection_mode = vec![
 				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
@@ -224,6 +225,7 @@ impl PreferencesDialogMessageHandler {
 					.on_update(move |_| PreferencesMessage::GraphWireStyle { style: GraphWireStyle::GridAligned }.into()),
 			])
 			.selected_index(Some(preferences.graph_wire_style as u32))
+			.auto_width(true)
 			.widget_instance();
 			let graph_wire_style = vec![
 				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
