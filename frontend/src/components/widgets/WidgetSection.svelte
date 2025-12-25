@@ -359,7 +359,7 @@
 				}
 
 				> .text-label:first-of-type {
-					flex: 0 0 25%;
+					flex: 0 0 20%;
 					margin-left: 16px;
 				}
 
@@ -369,7 +369,7 @@
 
 					// Shortened by the indent so the widgets after it stay aligned with other rows
 					+ .text-label {
-						flex-basis: calc(25% - 20px);
+						flex-basis: calc(20% - 20px);
 					}
 				}
 

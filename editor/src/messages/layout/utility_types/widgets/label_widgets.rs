@@ -72,6 +72,8 @@ pub struct TextLabel {
 	pub table_align: bool,
 
 	// Sizing
+	#[serde(rename = "autoWidth")]
+	pub auto_width: bool,
 	#[serde(rename = "minWidth")]
 	pub min_width: u32,
 	#[serde(rename = "maxWidth")]
