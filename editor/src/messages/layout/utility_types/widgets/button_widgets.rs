@@ -126,8 +126,12 @@ pub struct TextButton {
 	pub narrow: bool,
 
 	// Sizing
+	#[serde(rename = "autoWidth")]
+	pub auto_width: bool,
 	#[serde(rename = "minWidth")]
 	pub min_width: u32,
+	#[serde(rename = "maxWidth")]
+	pub max_width: u32,
 
 	// Tooltips
 	#[serde(rename = "tooltipLabel")]

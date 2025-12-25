@@ -83,6 +83,8 @@ pub struct DropdownInput {
 	pub interactive: bool,
 
 	// Sizing
+	#[serde(rename = "autoWidth")]
+	pub auto_width: bool,
 	#[serde(rename = "minWidth")]
 	pub min_width: u32,
 	#[serde(rename = "maxWidth")]
@@ -185,6 +187,8 @@ pub struct NumberInput {
 	pub unit_is_hidden_when_editing: bool,
 
 	// Sizing
+	#[serde(rename = "autoWidth")]
+	pub auto_width: bool,
 	#[serde(rename = "minWidth")]
 	pub min_width: u32,
 	#[serde(rename = "maxWidth")]
@@ -296,8 +300,12 @@ pub struct RadioInput {
 	pub narrow: bool,
 
 	// Sizing
+	#[serde(rename = "autoWidth")]
+	pub auto_width: bool,
 	#[serde(rename = "minWidth")]
 	pub min_width: u32,
+	#[serde(rename = "maxWidth")]
+	pub max_width: u32,
 	//
 	// Callbacks exists on the `RadioEntryData` children, not this parent `RadioInput`
 }
@@ -380,6 +388,8 @@ pub struct TextInput {
 	pub centered: bool,
 
 	// Sizing
+	#[serde(rename = "autoWidth")]
+	pub auto_width: bool,
 	#[serde(rename = "minWidth")]
 	pub min_width: u32,
 	#[serde(rename = "maxWidth")]

@@ -27,6 +27,7 @@
 	export let virtualScrolling = false;
 	export let interactive = true;
 	// Sizing
+	export let autoWidth = false;
 	export let minWidth = 0;
 	export let maxWidth = 0;
 	// Tooltips

@@ -1061,6 +1061,7 @@ export class DropdownInput extends WidgetProps {
 	interactive!: boolean;
 
 	// Sizing
+	autoWidth!: boolean;
 	minWidth!: number;
 	maxWidth!: number;
 
@@ -1172,6 +1173,7 @@ export class NumberInput extends WidgetProps {
 	unitIsHiddenWhenEditing!: boolean;
 
 	// Sizing
+	autoWidth!: boolean;
 	minWidth!: number;
 	maxWidth!: number;
 
@@ -1238,7 +1240,9 @@ export class RadioInput extends WidgetProps {
 	narrow!: boolean;
 
 	// Sizing
+	autoWidth!: boolean;
 	minWidth!: number;
+	maxWidth!: number;
 }
 
 export type SeparatorDirection = "Horizontal" | "Vertical";
@@ -1304,7 +1308,9 @@ export class TextButton extends WidgetProps {
 	narrow!: boolean;
 
 	// Sizing
+	autoWidth!: boolean;
 	minWidth!: number;
+	maxWidth!: number;
 
 	// Tooltips
 	@Transform(({ value }: { value: string }) => value || undefined)
@@ -1341,6 +1347,7 @@ export class TextInput extends WidgetProps {
 	centered!: boolean;
 
 	// Sizing
+	autoWidth!: boolean;
 	minWidth!: number;
 	maxWidth!: number;
 
@@ -1369,7 +1376,9 @@ export class TextLabel extends WidgetProps {
 	tableAlign!: boolean;
 
 	// Sizing
+	autoWidth!: boolean;
 	minWidth!: number;
+	maxWidth!: number;
 	minWidthCharacters!: number;
 
 	// Tooltips

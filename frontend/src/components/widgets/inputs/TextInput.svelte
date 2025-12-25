@@ -16,6 +16,7 @@
 	export let narrow = false;
 	export let centered = false;
 	// Sizing
+	export let autoWidth = false;
 	export let minWidth = 0;
 	export let maxWidth = 0;
 	// Tooltips
@@ -69,10 +70,6 @@
 <FieldInput
 	class={`text-input ${className}`.trim()}
 	classes={{ centered, ...classes }}
-	styles={{
-		...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}),
-		...(maxWidth > 0 ? { "max-width": `${maxWidth}px` } : {}),
-	}}
 	{value}
 	on:value
 	on:textFocused={onTextFocused}
@@ -86,6 +83,9 @@
 	{tooltipDescription}
 	{tooltipShortcut}
 	{placeholder}
+	{autoWidth}
+	{minWidth}
+	{maxWidth}
 	bind:this={self}
 />
 
