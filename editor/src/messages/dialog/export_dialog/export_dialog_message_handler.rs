@@ -92,14 +92,14 @@ impl LayoutHolder for ExportDialogMessageHandler {
 			.collect();
 
 		let export_type = vec![
-			TextLabel::new("File Type").table_align(true).min_width("100px").widget_instance(),
-			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			TextLabel::new("File Type").table_align(true).min_width(100).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			RadioInput::new(entries).selected_index(Some(self.file_type as u32)).widget_instance(),
 		];
 
 		let resolution = vec![
-			TextLabel::new("Scale Factor").table_align(true).min_width("100px").widget_instance(),
-			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			TextLabel::new("Scale Factor").table_align(true).min_width(100).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			NumberInput::new(Some(self.scale_factor))
 				.unit("")
 				.min(0.)
@@ -144,15 +144,15 @@ impl LayoutHolder for ExportDialogMessageHandler {
 		}
 
 		let export_area = vec![
-			TextLabel::new("Bounds").table_align(true).min_width("100px").widget_instance(),
-			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			TextLabel::new("Bounds").table_align(true).min_width(100).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			DropdownInput::new(entries).selected_index(Some(index as u32)).widget_instance(),
 		];
 
 		let checkbox_id = CheckboxId::new();
 		let transparent_background = vec![
-			TextLabel::new("Transparency").table_align(true).min_width("100px").for_checkbox(checkbox_id).widget_instance(),
-			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			TextLabel::new("Transparency").table_align(true).min_width(100).for_checkbox(checkbox_id).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			CheckboxInput::new(self.transparent_background)
 				.disabled(self.file_type == FileType::Jpg)
 				.on_update(move |value: &CheckboxInput| ExportDialogMessage::TransparentBackground { transparent: value.checked }.into())

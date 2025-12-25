@@ -1,22 +1,28 @@
 <script lang="ts">
 	import { type IconName, type PopoverButtonStyle } from "@graphite/icons";
 
-	import type { MenuDirection, ActionShortcut } from "@graphite/messages";
+	import type { MenuDirection, ActionShortcut, Layout, LayoutTarget } from "@graphite/messages";
 
 	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
+	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
 
+	export let layoutTarget: LayoutTarget;
+
+	// Content
 	export let style: PopoverButtonStyle = "DropdownArrow";
-	export let menuDirection: MenuDirection = "Bottom";
 	export let icon: IconName | undefined = undefined;
+	export let disabled = false;
+	// Children
+	export let popoverLayout: Layout;
+	export let popoverMinWidth = 1;
+	export let menuDirection: MenuDirection = "Bottom";
+	// Tooltips
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
 	export let tooltipShortcut: ActionShortcut | undefined = undefined;
-	export let disabled = false;
-	export let popoverMinWidth = 1;
-
 	// Callbacks
 	export let action: (() => void) | undefined = undefined;
 
@@ -46,7 +52,7 @@
 	{/if}
 
 	<FloatingMenu {open} on:open={({ detail }) => (open = detail)} minWidth={popoverMinWidth} type="Popover" direction={menuDirection || "Bottom"}>
-		<slot />
+		<WidgetLayout layout={popoverLayout} {layoutTarget} />
 	</FloatingMenu>
 </LayoutRow>
 

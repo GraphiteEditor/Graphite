@@ -3,8 +3,10 @@
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 
+	// Content
 	export let exposed: boolean;
 	export let dataType: FrontendGraphDataType;
+	// Tooltips
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
 	export let tooltipShortcut: ActionShortcut | undefined = undefined;

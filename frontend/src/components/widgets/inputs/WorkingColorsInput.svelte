@@ -10,6 +10,7 @@
 
 	const editor = getContext<Editor>("editor");
 
+	// Content
 	export let primary: Color;
 	export let secondary: Color;
 

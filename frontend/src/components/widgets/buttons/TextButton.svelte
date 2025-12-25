@@ -13,22 +13,27 @@
 
 	let self: MenuList;
 
-	// Note: IconButton should be used if only an icon, but no label, is desired.
+	// Note: IconButton should instead be used if only an icon, but no label, is desired.
 	// However, if multiple TextButton widgets are used in a group with only some having no label, this component is able to accommodate that.
+
+	// Content
 	export let label: string;
 	export let icon: IconName | undefined = undefined;
 	export let hoverIcon: IconName | undefined = undefined;
+	export let disabled = false;
+	// Children
+	export let menuListChildren: MenuListEntry[][] | undefined = undefined;
+	export let menuListChildrenHash: bigint | undefined = undefined;
+	// Styling
 	export let emphasized = false;
 	export let flush = false;
-	export let minWidth = 0;
-	export let disabled = false;
 	export let narrow = false;
+	// Sizing
+	export let minWidth = 0;
+	// Tooltips
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
 	export let tooltipShortcut: ActionShortcut | undefined = undefined;
-	export let menuListChildren: MenuListEntry[][] | undefined = undefined;
-	export let menuListChildrenHash: bigint | undefined = undefined;
-
 	// Callbacks
 	// TODO: Replace this with an event binding (and on other components that do this)
 	export let action: (() => void) | undefined;
