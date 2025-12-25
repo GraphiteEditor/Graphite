@@ -250,8 +250,8 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 
 						let typed_string = (!self.typing.digits.is_empty() && self.transform_operation.can_begin_typing()).then(|| self.typing.string.clone());
 						// A transformation to the local space of the transformation from the document
-						let document_to_local = glam::DMat2::from_cols(self.state.local_transform_axes[0], self.state.local_transform_axes[1]).inverse();
-						let transform_local = document_to_local * document_to_viewport.matrix2.inverse() * translation_viewport;
+						let viewport_to_local = glam::DMat2::from_cols(self.state.local_transform_axes[0], self.state.local_transform_axes[1]).inverse();
+						let transform_local = viewport_to_local * translation_viewport / document_to_viewport.matrix2.y_axis.length();
 						overlay_context.translation_box(transform_local, quad, typed_string);
 					}
 					TransformOperation::Scaling(scale) => {
