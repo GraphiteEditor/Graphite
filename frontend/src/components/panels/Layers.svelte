@@ -700,7 +700,7 @@
 			justify-content: space-between;
 
 			.widget-span:first-child {
-				flex: 1 1 auto;
+				flex: 1 0 auto;
 			}
 
 			&:not(:has(*)) {

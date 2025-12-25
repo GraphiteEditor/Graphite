@@ -22,6 +22,7 @@
 	export let centerAlign = false;
 	export let tableAlign = false;
 	// Sizing
+	export let autoWidth = false;
 	export let minWidth = 0;
 	export let maxWidth = 0;
 	export let minWidthCharacters = 0;

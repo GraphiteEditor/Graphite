@@ -174,7 +174,7 @@
 				}
 
 				> .text-label:first-of-type {
-					flex: 0 0 25%;
+					flex: 0 0 20%;
 					margin-left: 16px;
 				}
 

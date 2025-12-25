@@ -53,6 +53,7 @@
 	export let unitIsHiddenWhenEditing = true;
 
 	// Sizing
+	export let autoWidth = false;
 	export let minWidth = 0;
 	export let maxWidth = 0;
 	// Tooltips
@@ -101,11 +102,6 @@
 
 	$: watchValue(value, unit);
 	$: sliderStepValue = isInteger ? (step === undefined ? 1 : step) : "any";
-	$: styles = {
-		...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}),
-		...(maxWidth > 0 ? { "max-width": `${maxWidth}px` } : {}),
-		...(mode === "Range" ? { "--progress-factor": Math.min(Math.max((rangeSliderValueAsRendered - rangeMin) / (rangeMax - rangeMin), 0), 1) } : {}),
-	};
 
 	// Keep track of the Shift and Ctrl key being held down.
 	const trackShiftAndCtrl = (e: KeyboardEvent | MouseEvent) => {
@@ -775,7 +771,12 @@
 	{tooltipLabel}
 	{tooltipDescription}
 	{tooltipShortcut}
-	{styles}
+	styles={{
+		...(mode === "Range" ? { "--progress-factor": Math.min(Math.max((rangeSliderValueAsRendered - rangeMin) / (rangeMax - rangeMin), 0), 1) } : {}),
+	}}
+	{autoWidth}
+	{minWidth}
+	{maxWidth}
 	hideContextMenu={true}
 	spellcheck={false}
 	bind:this={self}

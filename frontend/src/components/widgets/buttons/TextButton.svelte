@@ -28,7 +28,9 @@
 	export let flush = false;
 	export let narrow = false;
 	// Sizing
+	export let autoWidth = false;
 	export let minWidth = 0;
+	export let maxWidth = 0;
 	// Tooltips
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
@@ -107,15 +109,15 @@
 
 <style lang="scss">
 	.text-button-container {
-		display: flex;
 		position: relative;
+		display: flex;
 	}
 
 	.text-button {
 		display: flex;
+		flex: 0 0 auto;
 		justify-content: center;
 		align-items: center;
-		flex: 0 0 auto;
 		white-space: nowrap;
 		height: var(--widget-height);
 		margin: 0;

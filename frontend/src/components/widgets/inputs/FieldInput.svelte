@@ -25,6 +25,9 @@
 	export let monospace = false;
 	export let narrow = false;
 	export let textarea = false;
+	export let autoWidth = false;
+	export let minWidth = 0;
+	export let maxWidth = 0;
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
 	export let tooltipShortcut: ActionShortcut | undefined = undefined;
@@ -76,8 +79,24 @@
 </script>
 
 <!-- This is a base component, extended by others like NumberInput and TextInput. It should not be used directly. -->
-<LayoutRow class={`field-input ${className}`} classes={{ disabled, narrow, monospace, ...classes }} style={styleName} {styles} {tooltipLabel} {tooltipDescription} {tooltipShortcut}>
+<LayoutRow
+	class={`field-input ${className}`}
+	classes={{ disabled, narrow, monospace, ...classes }}
+	style={styleName}
+	styles={{
+		...styles,
+		...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}),
+		...(maxWidth > 0 ? { "max-width": `${maxWidth}px` } : {}),
+	}}
+	{tooltipLabel}
+	{tooltipDescription}
+	{tooltipShortcut}
+>
+
 	{#if !textarea}
+		{#if label}
+			<label for={`field-input-${id}`} on:pointerdown>{label}</label>
+		{/if}
 		<input
 			type="text"
 			class:has-label={label}
@@ -115,9 +134,6 @@
 			on:contextmenu={(e) => hideContextMenu && e.preventDefault()}
 		></textarea>
 	{/if}
-	{#if label}
-		<label for={`field-input-${id}`} on:pointerdown>{label}</label>
-	{/if}
 	<slot />
 </LayoutRow>
 
@@ -128,7 +144,6 @@
 		position: relative;
 		border-radius: 2px;
 		background: var(--color-1-nearblack);
-		flex-direction: row-reverse;
 
 		&.narrow.narrow {
 			--widget-height: 20px;
@@ -182,11 +197,11 @@
 
 			&:focus {
 				text-align: left;
-
-				& + label {
-					display: none;
-				}
 			}
+		}
+
+		label:has(+ input:focus) {
+			display: none;
 		}
 
 		textarea {
