@@ -60,7 +60,7 @@ pub fn start() {
 
 	if cli.list_gpu_adapters {
 		futures::executor::block_on(gpu_context::list_adapters());
-		exit(0);
+		return;
 	}
 
 	let wgpu_context = futures::executor::block_on(gpu_context::create_wgpu_context());
