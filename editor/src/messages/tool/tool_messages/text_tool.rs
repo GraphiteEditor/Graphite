@@ -323,6 +323,7 @@ struct TextToolData {
 	snap_candidates: Vec<SnapCandidatePoint>,
 	// TODO: Handle multiple layers in the future
 	layer_dragging: Option<ResizingLayer>,
+	last_mouse_viewport_for_space: Option<DVec2>,
 }
 
 impl TextToolData {
@@ -674,17 +675,43 @@ impl Fsm for TextToolFsmState {
 			}
 			(TextToolFsmState::Dragging, TextToolMessage::PointerMove { center, lock_ratio }) => {
 				if let Some(dragging_layer) = &tool_data.layer_dragging {
-					let delta = input.mouse.position - tool_data.drag_current;
-					tool_data.drag_current = input.mouse.position;
+					let mut mouse_offset = DVec2::ZERO;
+					let current_mouse = input.mouse.position;
+					let space_down = input.keyboard.get(Key::Space as usize);
 
-					responses.add(GraphOperationMessage::TransformChange {
-						layer: dragging_layer.id,
-						transform: DAffine2::from_translation(delta),
-						transform_in: TransformIn::Viewport,
-						skip_rerender: false,
-					});
+					if space_down {
+						if tool_data.last_mouse_viewport_for_space.is_none() {
+							tool_data.last_mouse_viewport_for_space = Some(current_mouse);
+						}
+						mouse_offset = current_mouse - tool_data.last_mouse_viewport_for_space.unwrap();
+					} else if let Some(initial_mouse) = tool_data.last_mouse_viewport_for_space {
+						let total_offset = current_mouse - initial_mouse;
+						tool_data.drag_current += total_offset;
+						tool_data.drag_start += total_offset;
+						tool_data.last_mouse_viewport_for_space = None;
+					}
 
-					responses.add(NodeGraphMessage::RunDocumentGraph);
+					if !space_down {
+						let delta = current_mouse - tool_data.drag_current;
+						tool_data.drag_current = current_mouse;
+
+						responses.add(GraphOperationMessage::TransformChange {
+							layer: dragging_layer.id,
+							transform: DAffine2::from_translation(delta),
+							transform_in: TransformIn::Viewport,
+							skip_rerender: false,
+						});
+
+						responses.add(NodeGraphMessage::RunDocumentGraph);
+					} else if mouse_offset != DVec2::ZERO {
+						responses.add(GraphOperationMessage::TransformSet {
+							layer: dragging_layer.id,
+							transform: DAffine2::from_translation(current_mouse - tool_data.drag_start) * document.metadata().document_to_viewport * dragging_layer.original_transform,
+							transform_in: TransformIn::Viewport,
+							skip_rerender: false,
+						});
+						responses.add(NodeGraphMessage::RunDocumentGraph);
+					}
 
 					// Auto-panning
 					let messages = [
@@ -698,6 +725,22 @@ impl Fsm for TextToolFsmState {
 			}
 			(TextToolFsmState::ResizingBounds, TextToolMessage::PointerMove { center, lock_ratio }) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
+					let mut mouse_offset = DVec2::ZERO;
+					let current_mouse = input.mouse.position;
+					let space_down = input.keyboard.key(Key::Space);
+
+					if space_down {
+						if tool_data.last_mouse_viewport_for_space.is_none() {
+							tool_data.last_mouse_viewport_for_space = Some(current_mouse);
+						}
+						mouse_offset = current_mouse - tool_data.last_mouse_viewport_for_space.unwrap();
+					} else if let Some(initial_mouse) = tool_data.last_mouse_viewport_for_space {
+						let total_offset = current_mouse - initial_mouse;
+						bounds.center_of_transformation += total_offset;
+						bounds.original_bound_transform.translation += total_offset;
+						tool_data.last_mouse_viewport_for_space = None;
+					}
+
 					if let Some(movement) = &mut bounds.selected_edges {
 						let (centered, constrain) = (input.keyboard.key(center), input.keyboard.key(lock_ratio));
 						let center_position = centered.then_some(bounds.center_of_transformation);
@@ -716,7 +759,7 @@ impl Fsm for TextToolFsmState {
 							snap_data: SnapData::ignore(document, input, &selected),
 						});
 
-						let (position, size) = movement.new_size(input.mouse.position, bounds.original_bound_transform, center_position, constrain, snap);
+						let (position, size) = movement.new_size(current_mouse - mouse_offset, bounds.original_bound_transform, center_position, constrain, snap);
 						// Normalize so the size is always positive
 						let (position, size) = (position.min(position + size), size.abs());
 
@@ -729,7 +772,7 @@ impl Fsm for TextToolFsmState {
 						let size_layer = transform_to_layer.transform_vector2(size);
 
 						// Find the translation necessary from the original position in viewport space
-						let translation_viewport = bounds.original_bound_transform.transform_vector2(translation_bounds_space);
+						let translation_viewport = bounds.original_bound_transform.transform_vector2(translation_bounds_space) + mouse_offset;
 
 						responses.add(NodeGraphMessage::SetInput {
 							input_connector: InputConnector::node(node_id, 6),
@@ -776,6 +819,8 @@ impl Fsm for TextToolFsmState {
 						bounds.center_of_transformation += shift;
 						bounds.original_bound_transform.translation += shift;
 					}
+					tool_data.drag_start += shift;
+					tool_data.drag_current += shift;
 				}
 
 				self
@@ -796,6 +841,7 @@ impl Fsm for TextToolFsmState {
 				responses.add(response);
 
 				tool_data.resize.snap_manager.cleanup(responses);
+				tool_data.last_mouse_viewport_for_space = None;
 
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					bounds.original_transforms.clear();
@@ -841,6 +887,7 @@ impl Fsm for TextToolFsmState {
 				responses.add(response);
 
 				tool_data.resize.snap_manager.cleanup(responses);
+				tool_data.last_mouse_viewport_for_space = None;
 
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					bounds.original_transforms.clear();
@@ -882,6 +929,14 @@ impl Fsm for TextToolFsmState {
 				tool_data.new_text = new_text;
 				responses.add(OverlaysMessage::Draw);
 				TextToolFsmState::Editing
+			}
+			(TextToolFsmState::Dragging | TextToolFsmState::ResizingBounds, TextToolMessage::Abort) => {
+				responses.add(DocumentMessage::AbortTransaction);
+				tool_data.resize.snap_manager.cleanup(responses);
+				tool_data.last_mouse_viewport_for_space = None;
+				responses.add(OverlaysMessage::Draw);
+
+				TextToolFsmState::Ready
 			}
 			(_, TextToolMessage::WorkingColorChanged) => {
 				responses.add(TextToolMessage::UpdateOptions {

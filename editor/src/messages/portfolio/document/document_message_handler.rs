@@ -1492,6 +1492,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 							snap_angle: Key::Shift,
 							center: Key::Alt,
 							duplicate: Key::Alt,
+							space_drag: Key::Space,
 						},
 					});
 					responses.add(NodeGraphMessage::RunDocumentGraph);

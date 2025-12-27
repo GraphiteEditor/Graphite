@@ -12,7 +12,9 @@ pub struct Resize {
 	pub layer: Option<LayerNodeIdentifier>,
 	pub snap_manager: SnapManager,
 	/// Last mouse position in viewport while Space is held, for offsetting during drag
-	last_mouse_viewport_for_space: Option<DVec2>,
+	pub last_mouse_viewport_for_space: Option<DVec2>,
+	/// Snapshot of the drag start position when Space was first pressed
+	pub base_drag_start: DVec2,
 }
 
 impl Resize {
@@ -22,6 +24,8 @@ impl Resize {
 		let point = SnapCandidatePoint::handle(root_transform.inverse().transform_point2(input.mouse.position));
 		let snapped = self.snap_manager.free_snap(&SnapData::new(document, input), &point, SnapTypeConfiguration::default());
 		self.drag_start = snapped.snapped_point_document;
+		self.base_drag_start = self.drag_start;
+		self.last_mouse_viewport_for_space = None;
 	}
 
 	/// Calculate the drag start position in viewport space.
@@ -82,21 +86,25 @@ impl Resize {
 		let start = self.viewport_drag_start(document);
 		let mouse = input.mouse.position;
 		let document_to_viewport = document.navigation_handler.calculate_offset_transform(input.viewport_bounds.center(), &document.document_ptz);
-		
+
 		let space_down = input.keyboard.get(Key::Space as usize);
 		if space_down {
-			if let Some(previous_mouse) = self.last_mouse_viewport_for_space {
-				let delta_viewport = mouse - previous_mouse;
-				if delta_viewport.length_squared() > 0. {
-					let delta_document = document_to_viewport.inverse().transform_vector2(delta_viewport);
-					self.drag_start += delta_document;
-				}
+			if self.last_mouse_viewport_for_space.is_none() {
+				self.last_mouse_viewport_for_space = Some(mouse);
+				self.base_drag_start = self.drag_start;
 			}
-			self.last_mouse_viewport_for_space = Some(mouse);
+			let total_offset_viewport = mouse - self.last_mouse_viewport_for_space.unwrap();
+			let total_offset_document = document_to_viewport.inverse().transform_vector2(total_offset_viewport);
+			self.drag_start = self.base_drag_start + total_offset_document;
 		} else {
+			if let Some(initial_mouse) = self.last_mouse_viewport_for_space {
+				let total_offset_viewport = mouse - initial_mouse;
+				let total_offset_document = document_to_viewport.inverse().transform_vector2(total_offset_viewport);
+				self.drag_start = self.base_drag_start + total_offset_document;
+			}
 			self.last_mouse_viewport_for_space = None;
 		}
-		
+
 		let drag_start = self.drag_start;
 		let mut points_viewport = [start, mouse];
 

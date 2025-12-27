@@ -116,6 +116,7 @@ struct ArtboardToolData {
 	snap_candidates: Vec<SnapCandidatePoint>,
 	dragging_current_artboard_location: glam::IVec2,
 	draw: Resize,
+	last_mouse_viewport_for_space: Option<DVec2>,
 }
 
 impl ArtboardToolData {
@@ -280,6 +281,7 @@ impl Fsm for ArtboardToolFsmState {
 				self
 			}
 			(ArtboardToolFsmState::Ready { .. }, ArtboardToolMessage::PointerDown) => {
+				tool_data.last_mouse_viewport_for_space = None;
 				let to_viewport = document.metadata().document_to_viewport;
 				let to_document = to_viewport.inverse();
 				tool_data.drag_start = to_document.transform_point2(input.mouse.position);
@@ -301,6 +303,32 @@ impl Fsm for ArtboardToolFsmState {
 				state
 			}
 			(ArtboardToolFsmState::ResizingBounds, ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }) => {
+				let current_mouse = input.mouse.position;
+				let space_down = input.keyboard.get(Key::Space as usize);
+				if space_down {
+					if let Some(previous_mouse) = tool_data.last_mouse_viewport_for_space {
+						let delta_viewport = current_mouse - previous_mouse;
+						if delta_viewport.length_squared() > 0. {
+							let document_to_viewport = document.metadata().document_to_viewport;
+							let delta_document = document_to_viewport.inverse().transform_vector2(delta_viewport);
+
+							if let Some(bounds) = &mut tool_data.bounding_box_manager {
+								bounds.center_of_transformation += delta_viewport;
+								if let Some(movement) = &mut bounds.selected_edges {
+									movement.bounds[0] += delta_document;
+									movement.bounds[1] += delta_document;
+								}
+								tool_data.drag_start += delta_document;
+							}
+						}
+					}
+					tool_data.last_mouse_viewport_for_space = Some(current_mouse);
+				} else {
+					tool_data.last_mouse_viewport_for_space = None;
+				}
+
+				responses.add(OverlaysMessage::Draw);
+
 				let from_center = input.keyboard.get(center as usize);
 				let constrain_square = input.keyboard.get(constrain_axis_or_aspect as usize);
 				tool_data.resize_artboard(responses, document, input, from_center, constrain_square);
@@ -315,6 +343,22 @@ impl Fsm for ArtboardToolFsmState {
 				ArtboardToolFsmState::ResizingBounds
 			}
 			(ArtboardToolFsmState::Dragging, ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }) => {
+				let current_mouse = input.mouse.position;
+				if input.keyboard.get(Key::Space as usize) {
+					if let Some(previous_mouse) = tool_data.last_mouse_viewport_for_space {
+						let delta_viewport = current_mouse - previous_mouse;
+						if delta_viewport.length_squared() > 0. {
+							let document_to_viewport = document.metadata().document_to_viewport;
+							let delta_document = document_to_viewport.inverse().transform_vector2(delta_viewport);
+							tool_data.drag_start += delta_document;
+							tool_data.drag_current += delta_document;
+						}
+					}
+					tool_data.last_mouse_viewport_for_space = Some(current_mouse);
+				} else {
+					tool_data.last_mouse_viewport_for_space = None;
+				}
+
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					let axis_align = input.keyboard.get(constrain_axis_or_aspect as usize);
 
@@ -354,6 +398,22 @@ impl Fsm for ArtboardToolFsmState {
 				ArtboardToolFsmState::Dragging
 			}
 			(ArtboardToolFsmState::Drawing, ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }) => {
+				let current_mouse = input.mouse.position;
+				let space_down = input.keyboard.get(Key::Space as usize);
+				if space_down {
+					if let Some(previous_mouse) = tool_data.last_mouse_viewport_for_space {
+						let delta_viewport = current_mouse - previous_mouse;
+						if delta_viewport.length_squared() > 0. {
+							let document_to_viewport = document.metadata().document_to_viewport;
+							let delta_document = document_to_viewport.inverse().transform_vector2(delta_viewport);
+							tool_data.drag_start += delta_document;
+						}
+					}
+					tool_data.last_mouse_viewport_for_space = Some(current_mouse);
+				} else {
+					tool_data.last_mouse_viewport_for_space = None;
+				}
+
 				let [start, end] = tool_data.draw.calculate_points_ignore_layer(document, input, center, constrain_axis_or_aspect, true);
 				let viewport_to_document = document.metadata().document_to_viewport.inverse();
 				let [start, end] = [start, end].map(|point| viewport_to_document.transform_point2(point));

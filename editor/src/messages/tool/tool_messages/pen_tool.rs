@@ -424,6 +424,7 @@ struct PenToolData {
 	handle_end_offset: Option<DVec2>,
 
 	snap_cache: SnapCache,
+	pub last_mouse_for_space: Option<DVec2>,
 }
 
 impl PenToolData {
@@ -936,31 +937,18 @@ impl PenToolData {
 		Some(PenToolFsmState::DraggingHandle(self.handle_mode))
 	}
 
-	fn move_anchor_and_handles(&mut self, delta: DVec2, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>, vector: &Vector) {
-		if self.handle_end.is_none() {
-			if let Some(latest_pt) = self.latest_point_mut() {
-				latest_pt.pos += delta;
-			}
+	fn move_anchor_and_handles(&mut self, delta: DVec2, layer: LayerNodeIdentifier, responses: &mut VecDeque<Message>, _vector: &Vector) {
+		self.next_point += delta;
+		self.next_handle_start += delta;
+		if let Some(handle) = self.handle_end.as_mut() {
+			*handle += delta;
 		}
 
-		let Some(end_point) = self.prior_segment_endpoint else { return };
-
-		let modification_type_anchor = VectorModificationType::ApplyPointDelta { point: end_point, delta };
-		responses.add(GraphOperationMessage::Vector {
-			layer,
-			modification_type: modification_type_anchor,
-		});
-
-		let reference_handle = if self.path_closed { TargetHandle::PreviewInHandle } else { TargetHandle::FuturePreviewOutHandle };
-
-		// Move the end handle
-		let end_handle_type = self.get_opposite_handle_type(reference_handle, vector);
-		match end_handle_type {
-			TargetHandle::PriorInHandle(..) | TargetHandle::PriorOutHandle(..) => {
-				let Some(handle_pos) = self.target_handle_position(end_handle_type, vector) else { return };
-				self.update_target_handle_pos(end_handle_type, self.next_point, responses, handle_pos + delta, layer);
-			}
-			_ => {}
+		for point in &mut self.latest_points {
+			point.pos += delta;
+			point.handle_start += delta;
+			let modification_type = VectorModificationType::ApplyPointDelta { point: point.id, delta };
+			responses.add(GraphOperationMessage::Vector { layer, modification_type });
 		}
 	}
 
@@ -2011,6 +1999,25 @@ impl Fsm for PenToolFsmState {
 					colinear: input.keyboard.key(colinear),
 					move_anchor_with_handles: input.keyboard.key(move_anchor_with_handles),
 				};
+
+				let space_down = input.keyboard.get(Key::Space as usize);
+				if space_down {
+					if let Some(previous_mouse) = tool_data.last_mouse_for_space {
+						let delta_viewport = input.mouse.position - previous_mouse;
+						if delta_viewport.length_squared() > 0. {
+							let document_to_viewport = document.metadata().document_to_viewport;
+							let delta_document = document_to_viewport.inverse().transform_vector2(delta_viewport);
+
+							if let Some(layer) = layer {
+								let vector = document.network_interface.compute_modified_vector(layer).unwrap();
+								tool_data.move_anchor_and_handles(delta_document, layer, responses, &vector);
+							}
+						}
+					}
+					tool_data.last_mouse_for_space = Some(input.mouse.position);
+				} else {
+					tool_data.last_mouse_for_space = None;
+				}
 				let state = tool_data
 					.place_anchor(SnapData::new(document, input), transform, input.mouse.position, preferences, responses)
 					.unwrap_or(PenToolFsmState::Ready);

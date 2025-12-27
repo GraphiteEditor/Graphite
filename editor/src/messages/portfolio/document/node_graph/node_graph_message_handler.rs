@@ -95,6 +95,7 @@ pub struct NodeGraphMessageHandler {
 	frontend_nodes: Vec<NodeId>,
 	/// Used to keep track of what wires are sent to the front end so the old ones can be removed
 	frontend_wires: HashSet<(NodeId, usize)>,
+	last_mouse_viewport_for_space: Option<DVec2>,
 }
 
 /// NodeGraphMessageHandler always modifies the network which the selected nodes are in. No GraphOperationMessages should be added here, since those messages will always affect the document network.
@@ -719,6 +720,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				alt_click,
 				right_click,
 			} => {
+				self.last_mouse_viewport_for_space = None;
+
 				if selection_network_path != breadcrumb_network_path {
 					log::error!("Selection network path does not match breadcrumb network path in PointerDown");
 					return;
@@ -981,9 +984,26 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					return;
 				};
 
-				// Auto-panning
-				let messages = [NodeGraphMessage::PointerOutsideViewport { shift }.into(), NodeGraphMessage::PointerMove { shift }.into()];
-				self.auto_panning.setup_by_mouse_position(ipp, &messages, responses);
+				if ipp.keyboard.get(Key::Space as usize) {
+					if let Some(last_mouse) = self.last_mouse_viewport_for_space {
+						let delta = ipp.mouse.position - last_mouse;
+						if let Some((box_start, _)) = &mut self.box_selection_start {
+							let graph_delta = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse().transform_vector2(delta);
+							*box_start += graph_delta;
+						} else {
+							responses.add(NavigationMessage::CanvasPan { delta });
+						}
+					}
+					self.last_mouse_viewport_for_space = Some(ipp.mouse.position);
+				} else {
+					self.last_mouse_viewport_for_space = None;
+				}
+
+				if self.last_mouse_viewport_for_space.is_none() {
+					// Auto-panning
+					let messages = [NodeGraphMessage::PointerOutsideViewport { shift }.into(), NodeGraphMessage::PointerMove { shift }.into()];
+					self.auto_panning.setup_by_mouse_position(ipp, &messages, responses);
+				}
 
 				let viewport_location = ipp.mouse.position;
 				let point = network_metadata
@@ -1148,6 +1168,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				}
 			}
 			NodeGraphMessage::PointerUp => {
+				self.last_mouse_viewport_for_space = None;
+
 				if selection_network_path != breadcrumb_network_path {
 					log::error!("Selection network path does not match breadcrumb network path in PointerUp");
 					return;
@@ -1403,7 +1425,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			}
 			NodeGraphMessage::PointerOutsideViewport { shift } => {
 				if self.drag_start.is_some() || self.box_selection_start.is_some() || (self.wire_in_progress_from_connector.is_some() && self.context_menu.is_none()) {
-					let _ = self.auto_panning.shift_viewport(ipp, responses);
+					if self.last_mouse_viewport_for_space.is_none() {
+						let _ = self.auto_panning.shift_viewport(ipp, responses);
+					}
 				} else {
 					// Auto-panning
 					let messages = [NodeGraphMessage::PointerOutsideViewport { shift }.into(), NodeGraphMessage::PointerMove { shift }.into()];
@@ -2783,6 +2807,7 @@ impl Default for NodeGraphMessageHandler {
 			end_index: None,
 			frontend_nodes: Vec::new(),
 			frontend_wires: HashSet::new(),
+			last_mouse_viewport_for_space: None,
 		}
 	}
 }
@@ -2802,5 +2827,6 @@ impl PartialEq for NodeGraphMessageHandler {
 			&& self.wire_in_progress_from_connector == other.wire_in_progress_from_connector
 			&& self.wire_in_progress_to_connector == other.wire_in_progress_to_connector
 			&& self.context_menu == other.context_menu
+			&& self.last_mouse_viewport_for_space == other.last_mouse_viewport_for_space
 	}
 }

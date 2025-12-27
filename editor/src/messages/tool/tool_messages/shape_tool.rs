@@ -498,6 +498,8 @@ pub struct ShapeToolData {
 
 	// Gizmos
 	gizmo_manager: GizmoManager,
+
+	last_mouse_viewport_for_space: Option<DVec2>,
 }
 
 impl ShapeToolData {
@@ -789,7 +791,7 @@ impl Fsm for ShapeToolFsmState {
 							return ShapeToolFsmState::ResizingBounds;
 						}
 						(false, true, false) => {
-							tool_data.data.drag_start = mouse_pos;
+							tool_data.data.drag_start = input.mouse.position;
 							update_cursor_and_pointer(tool_data, responses);
 
 							return ShapeToolFsmState::RotatingBounds;
@@ -906,6 +908,25 @@ impl Fsm for ShapeToolFsmState {
 			}
 			(ShapeToolFsmState::ResizingBounds, ShapeToolMessage::PointerMove { modifier }) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
+					let space_down = input.keyboard.get(Key::Space as usize);
+					let current_mouse = input.mouse.position;
+
+					if space_down {
+						if tool_data.last_mouse_viewport_for_space.is_none() {
+							tool_data.last_mouse_viewport_for_space = Some(current_mouse);
+						}
+						let previous = tool_data.last_mouse_viewport_for_space.unwrap();
+						let delta = current_mouse - previous;
+						if delta.length_squared() > 0. {
+							bounds.center_of_transformation += delta;
+							bounds.original_bound_transform.translation += delta;
+							bounds.original_transforms.shift(delta, document.metadata());
+							tool_data.last_mouse_viewport_for_space = Some(current_mouse);
+						}
+					} else {
+						tool_data.last_mouse_viewport_for_space = None;
+					}
+
 					let messages = [ShapeToolMessage::PointerOutsideViewport { modifier }.into(), ShapeToolMessage::PointerMove { modifier }.into()];
 					resize_bounds(
 						document,
@@ -927,6 +948,26 @@ impl Fsm for ShapeToolFsmState {
 			}
 			(ShapeToolFsmState::RotatingBounds, ShapeToolMessage::PointerMove { modifier }) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
+					let space_down = input.keyboard.get(Key::Space as usize);
+					let current_mouse = input.mouse.position;
+
+					if space_down {
+						if tool_data.last_mouse_viewport_for_space.is_none() {
+							tool_data.last_mouse_viewport_for_space = Some(current_mouse);
+						}
+						let previous = tool_data.last_mouse_viewport_for_space.unwrap();
+						let delta = current_mouse - previous;
+						if delta.length_squared() > 0. {
+							bounds.center_of_transformation += delta;
+							bounds.original_bound_transform.translation += delta;
+							bounds.original_transforms.shift(delta, document.metadata());
+							tool_data.data.drag_start += delta;
+							tool_data.last_mouse_viewport_for_space = Some(current_mouse);
+						}
+					} else {
+						tool_data.last_mouse_viewport_for_space = None;
+					}
+
 					rotate_bounds(
 						document,
 						responses,
@@ -943,6 +984,26 @@ impl Fsm for ShapeToolFsmState {
 			}
 			(ShapeToolFsmState::SkewingBounds { skew }, ShapeToolMessage::PointerMove { .. }) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
+					let space_down = input.keyboard.get(Key::Space as usize);
+					let current_mouse = input.mouse.position;
+
+					if space_down {
+						if tool_data.last_mouse_viewport_for_space.is_none() {
+							tool_data.last_mouse_viewport_for_space = Some(current_mouse);
+						}
+						let previous = tool_data.last_mouse_viewport_for_space.unwrap();
+						let delta = current_mouse - previous;
+						if delta.length_squared() > 0. {
+							bounds.center_of_transformation += delta;
+							bounds.original_bound_transform.translation += delta;
+							bounds.original_transforms.shift(delta, document.metadata());
+							tool_data.last_mouse_viewport_for_space = Some(current_mouse);
+						}
+					} else {
+						tool_data.last_mouse_viewport_for_space = None;
+					}
+
+					// let messages = [ShapeToolMessage::PointerOutsideViewport { modifier }.into(), ShapeToolMessage::PointerMove { modifier }.into()];
 					skew_bounds(
 						document,
 						responses,
@@ -979,13 +1040,28 @@ impl Fsm for ShapeToolFsmState {
 				responses.add(OverlaysMessage::Draw);
 				self
 			}
-			(ShapeToolFsmState::ResizingBounds | ShapeToolFsmState::SkewingBounds { .. }, ShapeToolMessage::PointerOutsideViewport { .. }) => {
+			(ShapeToolFsmState::ResizingBounds | ShapeToolFsmState::SkewingBounds { .. } | ShapeToolFsmState::RotatingBounds, ShapeToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning
-				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, responses)
-					&& let Some(bounds) = &mut tool_data.bounding_box_manager
-				{
-					bounds.center_of_transformation += shift;
-					bounds.original_bound_transform.translation += shift;
+				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, responses) {
+					if let Some(bounds) = &mut tool_data.bounding_box_manager {
+						bounds.center_of_transformation += shift;
+						if !matches!(self, ShapeToolFsmState::RotatingBounds) {
+							bounds.original_bound_transform.translation += shift;
+						}
+					}
+					if matches!(self, ShapeToolFsmState::RotatingBounds) {
+						tool_data.data.drag_start += shift;
+					}
+				}
+
+				self
+			}
+			(ShapeToolFsmState::Drawing(_) | ShapeToolFsmState::DraggingLineEndpoints, ShapeToolMessage::PointerOutsideViewport { .. }) => {
+				// Auto-panning
+				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, responses) {
+					let root_transform = document.metadata().document_to_viewport;
+					let delta_document = root_transform.inverse().transform_vector2(shift);
+					tool_data.data.drag_start += delta_document;
 				}
 
 				self

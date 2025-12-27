@@ -57,6 +57,23 @@ impl Line {
 
 		shape_tool_data.line_data.drag_current = ipp.mouse.position;
 
+		let current_mouse = ipp.mouse.position;
+		let space_down = ipp.keyboard.key(Key::Space);
+
+		if space_down {
+			if let Some(previous_mouse) = shape_tool_data.data.last_mouse_viewport_for_space {
+				let delta_viewport = current_mouse - previous_mouse;
+				if delta_viewport.length_squared() > 0. {
+					let document_to_viewport = document.metadata().document_to_viewport;
+					let delta_document = document_to_viewport.inverse().transform_vector2(delta_viewport);
+					shape_tool_data.data.drag_start += delta_document;
+				}
+			}
+			shape_tool_data.data.last_mouse_viewport_for_space = Some(current_mouse);
+		} else {
+			shape_tool_data.data.last_mouse_viewport_for_space = None;
+		}
+
 		let keyboard = &ipp.keyboard;
 		let ignore = [layer];
 		let snap_data = SnapData::ignore(document, ipp, &ignore);

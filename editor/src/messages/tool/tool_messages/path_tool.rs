@@ -30,7 +30,7 @@ use graphene_std::vector::algorithms::util::pathseg_tangent;
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::{HandleId, ManipulatorPointId, dvec2_to_point, point_to_dvec2};
 use graphene_std::vector::{HandleExt, NoHashBuilder, PointId, SegmentId, Vector, VectorModificationType};
-use kurbo::{DEFAULT_ACCURACY, ParamCurve, ParamCurveNearest, PathSeg, Rect};
+use kurbo::{DEFAULT_ACCURACY, ParamCurve, ParamCurveNearest, PathSeg, Rect, Vec2};
 use std::vec;
 
 #[derive(Default, ExtractField)]
@@ -590,6 +590,7 @@ struct PathToolData {
 	hovered_layers: Vec<LayerNodeIdentifier>,
 	ghost_outline: Vec<(Vec<ClickTargetType>, LayerNodeIdentifier)>,
 	make_path_editable_is_allowed: bool,
+	last_mouse_for_space: Option<DVec2>,
 }
 
 impl PathToolData {
@@ -711,6 +712,7 @@ impl PathToolData {
 		segment_editing_mode: bool,
 		point_editing_mode: bool,
 	) -> PathToolFsmState {
+		self.last_mouse_for_space = None;
 		self.double_click_handled = false;
 		self.opposing_handle_lengths = None;
 
@@ -2020,14 +2022,31 @@ impl Fsm for PathToolFsmState {
 					segment_editing_modifier,
 				},
 			) => {
-				tool_data.previous_mouse_position = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
+				let current_mouse = input.mouse.position;
+				let space_down = input.keyboard.get(move_anchor_with_handles as usize);
+
+				if space_down {
+					if let Some(previous_mouse) = tool_data.last_mouse_for_space {
+						let delta_viewport = current_mouse - previous_mouse;
+						tool_data.drag_start_pos += delta_viewport;
+
+						for point in &mut tool_data.lasso_polygon {
+							*point += delta_viewport;
+						}
+					}
+					tool_data.last_mouse_for_space = Some(current_mouse);
+				} else {
+					tool_data.last_mouse_for_space = None;
+
+					if selection_shape == SelectionShapeType::Lasso {
+						extend_lasso(&mut tool_data.lasso_polygon, current_mouse);
+					}
+				}
+
+				tool_data.previous_mouse_position = document.metadata().document_to_viewport.inverse().transform_point2(current_mouse);
 
 				tool_data.started_drawing_from_inside = false;
 				tool_data.stored_selection = None;
-
-				if selection_shape == SelectionShapeType::Lasso {
-					extend_lasso(&mut tool_data.lasso_polygon, input.mouse.position);
-				}
 
 				responses.add(OverlaysMessage::Draw);
 
@@ -2073,6 +2092,57 @@ impl Fsm for PathToolFsmState {
 					segment_editing_modifier,
 				},
 			) => {
+				let current_mouse = input.mouse.position;
+				let space_down = input.keyboard.get(move_anchor_with_handles as usize);
+				if space_down {
+					if let Some(previous_mouse) = tool_data.last_mouse_for_space {
+						let delta_viewport = current_mouse - previous_mouse;
+						if delta_viewport.length_squared() > 0. {
+							let document_to_viewport = document.metadata().document_to_viewport;
+							let delta_document = document_to_viewport.inverse().transform_vector2(delta_viewport);
+
+							tool_data.drag_start_pos += delta_viewport;
+							tool_data.previous_mouse_position += delta_document;
+
+							shape_editor.move_selected_points_and_segments(None, document, delta_document, false, true, false, None, false, responses);
+						}
+					}
+					tool_data.last_mouse_for_space = Some(current_mouse);
+
+					// Auto-panning
+					let messages = [
+						PathToolMessage::PointerOutsideViewport {
+							toggle_colinear,
+							equidistant,
+							move_anchor_with_handles,
+							snap_angle,
+							lock_angle,
+							delete_segment,
+							break_colinear_molding,
+							segment_editing_modifier,
+						}
+						.into(),
+						PathToolMessage::PointerMove {
+							toggle_colinear,
+							equidistant,
+							move_anchor_with_handles,
+							snap_angle,
+							lock_angle,
+							delete_segment,
+							break_colinear_molding,
+							segment_editing_modifier,
+						}
+						.into(),
+					];
+					tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
+
+					responses.add(OverlaysMessage::Draw);
+
+					return PathToolFsmState::Dragging(tool_data.dragging_state);
+				} else {
+					tool_data.last_mouse_for_space = None;
+				}
+
 				let selected_only_handles = !shape_editor.selected_points().any(|point| matches!(point, ManipulatorPointId::Anchor(_)));
 				tool_data.stored_selection = None;
 
@@ -2177,8 +2247,78 @@ impl Fsm for PathToolFsmState {
 
 				PathToolFsmState::Dragging(tool_data.dragging_state)
 			}
-			(PathToolFsmState::SlidingPoint, PathToolMessage::PointerMove { .. }) => {
+			(
+				PathToolFsmState::SlidingPoint,
+				PathToolMessage::PointerMove {
+					move_anchor_with_handles,
+					equidistant,
+					toggle_colinear,
+					snap_angle,
+					lock_angle,
+					delete_segment,
+					break_colinear_molding,
+					segment_editing_modifier,
+				},
+			) => {
+				let current_mouse = input.mouse.position;
+				let space_down = input.keyboard.get(move_anchor_with_handles as usize);
+				if space_down {
+					if let Some(previous_mouse) = tool_data.last_mouse_for_space {
+						let delta_viewport = current_mouse - previous_mouse;
+						if delta_viewport.length_squared() > 0. {
+							let document_to_viewport = document.metadata().document_to_viewport;
+							let delta_document = document_to_viewport.inverse().transform_vector2(delta_viewport);
+
+							tool_data.drag_start_pos += delta_viewport;
+							tool_data.previous_mouse_position += delta_document;
+
+							if let Some(info) = &mut tool_data.sliding_point_info {
+								let delta_kurbo = Vec2::new(delta_document.x, delta_document.y);
+								for segment in &mut info.connected_segments {
+									segment.bezier = match segment.bezier {
+										PathSeg::Line(line) => PathSeg::Line(kurbo::Line::new(line.p0 + delta_kurbo, line.p1 + delta_kurbo)),
+										PathSeg::Quad(quad) => PathSeg::Quad(kurbo::QuadBez::new(quad.p0 + delta_kurbo, quad.p1 + delta_kurbo, quad.p2 + delta_kurbo)),
+										PathSeg::Cubic(cubic) => PathSeg::Cubic(kurbo::CubicBez::new(cubic.p0 + delta_kurbo, cubic.p1 + delta_kurbo, cubic.p2 + delta_kurbo, cubic.p3 + delta_kurbo)),
+									};
+								}
+
+								shape_editor.move_selected_points_and_segments(None, document, delta_document, false, true, false, None, false, responses);
+							}
+						}
+					}
+					tool_data.last_mouse_for_space = Some(current_mouse);
+				} else {
+					tool_data.last_mouse_for_space = None;
+				}
+
 				tool_data.slide_point(input.mouse.position, responses, &document.network_interface, shape_editor);
+
+				let messages = [
+					PathToolMessage::PointerOutsideViewport {
+						equidistant,
+						toggle_colinear,
+						move_anchor_with_handles,
+						snap_angle,
+						lock_angle,
+						delete_segment,
+						break_colinear_molding,
+						segment_editing_modifier,
+					}
+					.into(),
+					PathToolMessage::PointerMove {
+						equidistant,
+						toggle_colinear,
+						move_anchor_with_handles,
+						snap_angle,
+						lock_angle,
+						delete_segment,
+						break_colinear_molding,
+						segment_editing_modifier,
+					}
+					.into(),
+				];
+				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
+
 				PathToolFsmState::SlidingPoint
 			}
 			(
