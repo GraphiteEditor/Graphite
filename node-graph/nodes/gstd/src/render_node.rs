@@ -113,6 +113,7 @@ async fn create_context<'a: 'n>(
 		.with_footprint(footprint)
 		.with_real_time(render_config.time.time)
 		.with_animation_time(render_config.time.animation_time.as_secs_f64())
+		.with_pointer(render_config.pointer)
 		.with_vararg(Box::new(render_params))
 		.into_context();
 
