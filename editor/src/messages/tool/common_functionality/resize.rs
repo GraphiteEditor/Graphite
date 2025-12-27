@@ -11,6 +11,9 @@ pub struct Resize {
 	pub drag_start: DVec2,
 	pub layer: Option<LayerNodeIdentifier>,
 	pub snap_manager: SnapManager,
+
+	pub last_mouse_viewport_for_space: Option<DVec2>,
+	pub base_drag_start: DVec2,
 }
 
 impl Resize {
@@ -20,6 +23,8 @@ impl Resize {
 		let point = SnapCandidatePoint::handle(root_transform.inverse().transform_point2(input.mouse.position));
 		let snapped = self.snap_manager.free_snap(&SnapData::new(document, input, viewport), &point, SnapTypeConfiguration::default());
 		self.drag_start = snapped.snapped_point_document;
+		self.base_drag_start = self.drag_start;
+		self.last_mouse_viewport_for_space = None;
 	}
 
 	/// Calculate the drag start position in viewport space.
@@ -118,6 +123,24 @@ impl Resize {
 
 		let ignore = if let Some(layer) = self.layer { vec![layer] } else { vec![] };
 		let snap_data = &SnapData::ignore(document, input, viewport, &ignore);
+
+		let space_down = input.keyboard.get(Key::Space as usize);
+		if space_down {
+			if self.last_mouse_viewport_for_space.is_none() {
+				self.last_mouse_viewport_for_space = Some(mouse);
+				self.base_drag_start = self.drag_start;
+			}
+			let total_offset_viewport = mouse - self.last_mouse_viewport_for_space.unwrap();
+			let total_offset_document = document_to_viewport.inverse().transform_vector2(total_offset_viewport);
+			self.drag_start = self.base_drag_start + total_offset_document;
+		} else {
+			if let Some(initial_mouse) = self.last_mouse_viewport_for_space {
+				let total_offset_viewport = mouse - initial_mouse;
+				let total_offset_document = document_to_viewport.inverse().transform_vector2(total_offset_viewport);
+				self.drag_start = self.base_drag_start + total_offset_document;
+			}
+			self.last_mouse_viewport_for_space = None;
+		}
 
 		if lock_ratio {
 			let viewport_size = points_viewport[1] - points_viewport[0];
