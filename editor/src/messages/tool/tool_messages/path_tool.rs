@@ -73,6 +73,11 @@ pub enum PathToolMessage {
 	},
 	Escape,
 	ClosePath,
+	RestoreSelectionAndClosePath {
+		layer: LayerNodeIdentifier,
+		start_index: usize,
+		end_index: usize,
+	},
 	DoubleClick {
 		extend_selection: Key,
 		shrink_selection: Key,
@@ -2666,6 +2671,35 @@ impl Fsm for PathToolFsmState {
 				responses.add(DocumentMessage::EndTransaction);
 
 				responses.add(OverlaysMessage::Draw);
+
+				self
+			}
+			(_, PathToolMessage::RestoreSelectionAndClosePath { layer, start_index, end_index }) => {
+				// Get the merged vector
+				let Some(vector) = document.network_interface.compute_modified_vector(layer) else {
+					return self;
+				};
+
+				// Get the point IDs at the calculated indices
+				let point_ids = vector.point_domain.ids();
+
+				if start_index >= point_ids.len() || end_index >= point_ids.len() {
+					return self;
+				}
+
+				let start_point_id = point_ids[start_index];
+				let end_point_id = point_ids[end_index];
+
+				// Clear existing selection and select the merged layer
+				shape_editor.deselect_all_points();
+				shape_editor.set_selected_layers(vec![layer]);
+
+				// Select the two points
+				shape_editor.select_point_by_layer_and_id(ManipulatorPointId::Anchor(start_point_id), layer);
+				shape_editor.select_point_by_layer_and_id(ManipulatorPointId::Anchor(end_point_id), layer);
+
+				// Now call ClosePath which will see the selection and create the segment
+				responses.add(PathToolMessage::ClosePath);
 
 				self
 			}

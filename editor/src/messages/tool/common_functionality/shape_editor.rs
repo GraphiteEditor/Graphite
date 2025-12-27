@@ -447,6 +447,7 @@ impl ShapeState {
 			let (layer2, end_point) = all_selected_points[1];
 
 			if layer1 == layer2 {
+				// Same layer: create segment directly
 				if start_point == end_point {
 					return;
 				}
@@ -459,16 +460,31 @@ impl ShapeState {
 				};
 				responses.add(GraphOperationMessage::Vector { layer: layer1, modification_type });
 			} else {
-				// Merge the layers
-				merge_layers(document, layer1, layer2, responses);
-				// Create segment between the two points
-				let segment_id = SegmentId::generate();
-				let modification_type = VectorModificationType::InsertSegment {
-					id: segment_id,
-					points: [end_point, start_point],
-					handles: [None, None],
-				};
-				responses.add(GraphOperationMessage::Vector { layer: layer1, modification_type });
+				// Different layers: merge first, then create segment
+
+				// Get the indices of the selected points in their respective vectors
+				let start_index = document.network_interface.compute_modified_vector(layer1)
+					.and_then(|v| v.point_domain.resolve_id(start_point));
+				let end_index = document.network_interface.compute_modified_vector(layer2)
+					.and_then(|v| v.point_domain.resolve_id(end_point));
+
+				// Get the number of points in layer1 (this will be the offset for layer2 points after merge)
+				let layer1_point_count = document.network_interface.compute_modified_vector(layer1)
+					.map(|v| v.point_domain.ids().len());
+
+				if let (Some(start_idx), Some(end_idx), Some(point_offset)) = (start_index, end_index, layer1_point_count) {
+					// Merge the layers
+					merge_layers(document, layer1, layer2, responses);
+
+					// After the graph runs and the merge is complete, restore selection and close path
+					responses.add(DeferMessage::AfterGraphRun {
+						messages: vec![ToolMessage::Path(PathToolMessage::RestoreSelectionAndClosePath {
+							layer: layer1,
+							start_index: start_idx,
+							end_index: end_idx + point_offset,
+						}).into()],
+					});
+				}
 			}
 			return;
 		}
