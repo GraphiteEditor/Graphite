@@ -143,6 +143,8 @@ struct SelectedGradient {
 	transform: DAffine2,
 	gradient: Gradient,
 	dragging: GradientDragTarget,
+	base_start: DVec2,
+	base_end: DVec2,
 }
 
 impl SelectedGradient {
@@ -151,6 +153,8 @@ impl SelectedGradient {
 		Self {
 			layer: Some(layer),
 			transform,
+			base_start: gradient.start,
+			base_end: gradient.end,
 			gradient,
 			dragging: GradientDragTarget::End,
 		}
@@ -161,8 +165,15 @@ impl SelectedGradient {
 		self
 	}
 
-	pub fn update_gradient(&mut self, mut mouse: DVec2, responses: &mut VecDeque<Message>, snap_rotate: bool, gradient_type: GradientType) {
+	pub fn capture_base(&mut self) {
+		self.base_start = self.gradient.start;
+		self.base_end = self.gradient.end;
+	}
+
+	pub fn update_gradient(&mut self, mut mouse: DVec2, responses: &mut VecDeque<Message>, snap_rotate: bool, gradient_type: GradientType, mouse_offset: DVec2) {
 		self.gradient.gradient_type = gradient_type;
+
+		let mut adjusted_mouse = mouse - mouse_offset;
 
 		if snap_rotate && matches!(self.dragging, GradientDragTarget::End | GradientDragTarget::Start) {
 			let point = if self.dragging == GradientDragTarget::Start {
@@ -171,7 +182,7 @@ impl SelectedGradient {
 				self.transform.transform_point2(self.gradient.start)
 			};
 
-			let delta = point - mouse;
+			let delta = point - adjusted_mouse;
 
 			let length = delta.length();
 			let mut angle = -delta.angle_to(DVec2::X);
@@ -180,10 +191,10 @@ impl SelectedGradient {
 			angle = (angle / snap_resolution).round() * snap_resolution;
 
 			let rotated = DVec2::new(length * angle.cos(), length * angle.sin());
-			mouse = point - rotated;
+			adjusted_mouse = point - rotated;
 		}
 
-		let transformed_mouse = self.transform.inverse().transform_point2(mouse);
+		let transformed_mouse = self.transform.inverse().transform_point2(adjusted_mouse);
 
 		match self.dragging {
 			GradientDragTarget::Start => self.gradient.start = transformed_mouse,
@@ -192,7 +203,7 @@ impl SelectedGradient {
 				let (start, end) = (self.transform.transform_point2(self.gradient.start), self.transform.transform_point2(self.gradient.end));
 
 				// Calculate the new position by finding the closest point on the line
-				let new_pos = ((end - start).angle_to(mouse - start)).cos() * start.distance(mouse) / start.distance(end);
+				let new_pos = ((end - start).angle_to(adjusted_mouse - start)).cos() * start.distance(adjusted_mouse) / start.distance(end);
 
 				// Should not go off end but can swap
 				let clamped = new_pos.clamp(0., 1.);
@@ -203,6 +214,17 @@ impl SelectedGradient {
 				self.dragging = GradientDragTarget::Step(self.gradient.stops.iter().position(|x| *x == new_pos).unwrap());
 			}
 		}
+
+		if mouse_offset != DVec2::ZERO {
+			let delta_gradient = self.transform.inverse().transform_vector2(mouse_offset);
+			self.gradient.start = self.base_start + delta_gradient;
+			self.gradient.end = self.base_end + delta_gradient;
+		} else {
+			// Update base coordinates while not panning so they are ready for the next Space press
+			self.base_start = self.gradient.start;
+			self.base_end = self.gradient.end;
+		}
+
 		self.render_gradient(responses);
 	}
 
@@ -239,6 +261,7 @@ struct GradientToolData {
 	selected_gradient: Option<SelectedGradient>,
 	snap_manager: SnapManager,
 	drag_start: DVec2,
+	last_mouse_viewport_for_space: Option<DVec2>,
 	auto_panning: AutoPanning,
 }
 
@@ -400,6 +423,9 @@ impl Fsm for GradientToolFsmState {
 							tool_data.selected_gradient = Some(SelectedGradient {
 								layer: Some(layer),
 								transform,
+
+								base_start: gradient.start,
+								base_end: gradient.end,
 								gradient: gradient.clone(),
 								dragging: GradientDragTarget::Step(index),
 							})
@@ -414,6 +440,8 @@ impl Fsm for GradientToolFsmState {
 							tool_data.selected_gradient = Some(SelectedGradient {
 								layer: Some(layer),
 								transform,
+								base_start: gradient.start,
+								base_end: gradient.end,
 								gradient: gradient.clone(),
 								dragging: dragging_target,
 							})
@@ -460,7 +488,25 @@ impl Fsm for GradientToolFsmState {
 			(GradientToolFsmState::Drawing, GradientToolMessage::PointerMove { constrain_axis }) => {
 				if let Some(selected_gradient) = &mut tool_data.selected_gradient {
 					let mouse = input.mouse.position; // tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
-					selected_gradient.update_gradient(mouse, responses, input.keyboard.get(constrain_axis as usize), selected_gradient.gradient.gradient_type);
+
+					let mut mouse_offset = DVec2::ZERO;
+
+					if input.keyboard.key(Key::Space) {
+						if tool_data.last_mouse_viewport_for_space.is_none() {
+							tool_data.last_mouse_viewport_for_space = Some(mouse);
+							selected_gradient.capture_base();
+						}
+						mouse_offset = mouse - tool_data.last_mouse_viewport_for_space.unwrap();
+					} else if let Some(initial_mouse) = tool_data.last_mouse_viewport_for_space {
+						let total_offset = mouse - initial_mouse;
+						let delta_gradient = selected_gradient.transform.inverse().transform_vector2(total_offset);
+						selected_gradient.gradient.start = selected_gradient.base_start + delta_gradient;
+						selected_gradient.gradient.end = selected_gradient.base_end + delta_gradient;
+						tool_data.last_mouse_viewport_for_space = None;
+						responses.add(OverlaysMessage::Draw);
+					}
+
+					selected_gradient.update_gradient(mouse, responses, input.keyboard.get(constrain_axis as usize), selected_gradient.gradient.gradient_type, mouse_offset);
 				}
 
 				// Auto-panning
@@ -509,6 +555,7 @@ impl Fsm for GradientToolFsmState {
 			(GradientToolFsmState::Drawing, GradientToolMessage::Abort) => {
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.snap_manager.cleanup(responses);
+				tool_data.last_mouse_viewport_for_space = None;
 				responses.add(OverlaysMessage::Draw);
 
 				GradientToolFsmState::Ready
