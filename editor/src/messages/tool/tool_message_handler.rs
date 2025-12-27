@@ -126,6 +126,7 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 							preferences,
 							viewport,
 							persistent_data,
+							is_transforming: self.transform_layer_handler.is_transforming(),
 						};
 
 						if let Some(tool_abort_message) = tool.event_to_message_map().tool_abort {
@@ -234,6 +235,7 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 					preferences,
 					viewport,
 					persistent_data,
+					is_transforming: self.transform_layer_handler.is_transforming(),
 				};
 
 				// Set initial hints and cursor
@@ -346,6 +348,7 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 							preferences,
 							viewport,
 							persistent_data,
+							is_transforming: self.transform_layer_handler.is_transforming(),
 						};
 						if matches!(tool_message, ToolMessage::UpdateHints) {
 							if graph_view_overlay_open {

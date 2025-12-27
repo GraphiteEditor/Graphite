@@ -1566,6 +1566,10 @@ impl Fsm for PathToolFsmState {
 			..
 		} = tool_action_data;
 
+		if !tool_action_data.is_transforming {
+			update_dynamic_hints(self, responses, shape_editor, document, tool_data, tool_options, input.mouse.position);
+		}
+
 		let ToolMessage::Path(event) = event else { return self };
 
 		// TODO(mTvare6): Remove once gizmos are implemented for path_tool
