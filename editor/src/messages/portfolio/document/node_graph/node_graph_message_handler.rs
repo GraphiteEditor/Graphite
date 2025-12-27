@@ -97,6 +97,8 @@ pub struct NodeGraphMessageHandler {
 	frontend_nodes: Vec<NodeId>,
 	/// Used to keep track of what wires are sent to the front end so the old ones can be removed
 	frontend_wires: HashSet<(NodeId, usize)>,
+	/// The last mouse position in viewport coordinates when space was pressed
+	last_mouse_viewport_for_space: Option<DVec2>,
 }
 
 /// NodeGraphMessageHandler always modifies the network which the selected nodes are in. No GraphOperationMessages should be added here, since those messages will always affect the document network.
@@ -1016,6 +1018,21 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				// Auto-panning
 				let messages = [NodeGraphMessage::PointerOutsideViewport { shift }.into(), NodeGraphMessage::PointerMove { shift }.into()];
 				self.auto_panning.setup_by_mouse_position(ipp, viewport, &messages, responses);
+
+				if ipp.keyboard.get(Key::Space as usize) {
+					if let Some(last_mouse) = self.last_mouse_viewport_for_space {
+						let delta = ipp.mouse.position - last_mouse;
+						if let Some((box_start, _)) = &mut self.box_selection_start {
+							let graph_delta = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse().transform_vector2(delta);
+							*box_start += graph_delta;
+						} else {
+							responses.add(NavigationMessage::CanvasPan { delta });
+						}
+					}
+					self.last_mouse_viewport_for_space = Some(ipp.mouse.position);
+				} else {
+					self.last_mouse_viewport_for_space = None;
+				}
 
 				let viewport_location = ipp.mouse.position;
 				let point = network_metadata
@@ -2811,6 +2828,7 @@ impl Default for NodeGraphMessageHandler {
 			end_index: None,
 			frontend_nodes: Vec::new(),
 			frontend_wires: HashSet::new(),
+			last_mouse_viewport_for_space: None,
 		}
 	}
 }
@@ -2829,5 +2847,6 @@ impl PartialEq for NodeGraphMessageHandler {
 			&& self.wire_in_progress_from_connector == other.wire_in_progress_from_connector
 			&& self.wire_in_progress_to_connector == other.wire_in_progress_to_connector
 			&& self.context_menu == other.context_menu
+			&& self.last_mouse_viewport_for_space == other.last_mouse_viewport_for_space
 	}
 }
