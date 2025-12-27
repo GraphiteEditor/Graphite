@@ -71,6 +71,7 @@ pub struct SelectToolPointerKeys {
 	pub snap_angle: Key,
 	pub center: Key,
 	pub duplicate: Key,
+	pub space_drag: Key,
 }
 
 #[impl_message(Message, ToolMessage, Select)]
@@ -401,6 +402,7 @@ struct SelectToolData {
 	snap_candidates: Vec<SnapCandidatePoint>,
 	auto_panning: AutoPanning,
 	drag_start_center: ViewportPosition,
+	last_mouse_viewport_for_space: Option<DVec2>,
 }
 
 impl SelectToolData {
@@ -1170,6 +1172,23 @@ impl Fsm for SelectToolFsmState {
 
 				tool_data.axis_align = input.keyboard.key(modifier_keys.axis_align);
 
+				let current_mouse = input.mouse.position;
+				let space_down = input.keyboard.get(Key::Space as usize);
+				if space_down {
+					if tool_data.last_mouse_viewport_for_space.is_none() {
+						tool_data.last_mouse_viewport_for_space = Some(current_mouse);
+					}
+					let previous = tool_data.last_mouse_viewport_for_space.unwrap();
+					let delta_viewport = current_mouse - previous;
+					if delta_viewport.length_squared() > 0. {
+						tool_data.drag_start += delta_viewport;
+						tool_data.drag_current += delta_viewport;
+						tool_data.last_mouse_viewport_for_space = Some(current_mouse);
+					}
+				} else {
+					tool_data.last_mouse_viewport_for_space = None;
+				}
+
 				// Ignore the non duplicated layers if the current layers have not spawned yet.
 				let layers_exist = tool_data.layers_dragging.iter().all(|&layer| document.metadata().click_targets(layer).is_some());
 				let ignore = tool_data.non_duplicated_layers.as_ref().filter(|_| !layers_exist).unwrap_or(&tool_data.layers_dragging);
@@ -1217,6 +1236,26 @@ impl Fsm for SelectToolFsmState {
 			}
 			(SelectToolFsmState::ResizingBounds, SelectToolMessage::PointerMove { modifier_keys }) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
+					let space_down = input.keyboard.get(Key::Space as usize);
+					let current_mouse = input.mouse.position;
+					if space_down {
+						if tool_data.last_mouse_viewport_for_space.is_none() {
+							tool_data.last_mouse_viewport_for_space = Some(current_mouse);
+						}
+						let previous = tool_data.last_mouse_viewport_for_space.unwrap();
+						let delta = current_mouse - previous;
+						if delta.length_squared() > 0. {
+							bounds.center_of_transformation += delta;
+							bounds.original_bound_transform.translation += delta;
+							bounds.original_transforms.shift(delta, document.metadata());
+							tool_data.drag_start += delta;
+							tool_data.drag_current += delta;
+							tool_data.last_mouse_viewport_for_space = Some(current_mouse);
+						}
+					} else {
+						tool_data.last_mouse_viewport_for_space = None;
+					}
+
 					resize_bounds(
 						document,
 						responses,
@@ -1240,6 +1279,27 @@ impl Fsm for SelectToolFsmState {
 			}
 			(SelectToolFsmState::SkewingBounds { skew }, SelectToolMessage::PointerMove { .. }) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
+					let space_down = input.keyboard.get(Key::Space as usize);
+					let current_mouse = input.mouse.position;
+
+					if space_down {
+						if tool_data.last_mouse_viewport_for_space.is_none() {
+							tool_data.last_mouse_viewport_for_space = Some(current_mouse);
+						}
+						let previous = tool_data.last_mouse_viewport_for_space.unwrap();
+						let delta = current_mouse - previous;
+						if delta.length_squared() > 0. {
+							bounds.center_of_transformation += delta;
+							bounds.original_bound_transform.translation += delta;
+							bounds.original_transforms.shift(delta, document.metadata());
+							tool_data.drag_start += delta;
+							tool_data.drag_current += delta;
+							tool_data.last_mouse_viewport_for_space = Some(current_mouse);
+						}
+					} else {
+						tool_data.last_mouse_viewport_for_space = None;
+					}
+
 					skew_bounds(
 						document,
 						responses,
@@ -1254,6 +1314,27 @@ impl Fsm for SelectToolFsmState {
 			}
 			(SelectToolFsmState::RotatingBounds, SelectToolMessage::PointerMove { .. }) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
+					let space_down = input.keyboard.get(Key::Space as usize);
+					let current_mouse = input.mouse.position;
+
+					if space_down {
+						if tool_data.last_mouse_viewport_for_space.is_none() {
+							tool_data.last_mouse_viewport_for_space = Some(current_mouse);
+						}
+						let previous = tool_data.last_mouse_viewport_for_space.unwrap();
+						let delta = current_mouse - previous;
+						if delta.length_squared() > 0. {
+							bounds.center_of_transformation += delta;
+							bounds.original_bound_transform.translation += delta;
+							bounds.original_transforms.shift(delta, document.metadata());
+							tool_data.drag_start += delta;
+							tool_data.drag_current += delta;
+							tool_data.last_mouse_viewport_for_space = Some(current_mouse);
+						}
+					} else {
+						tool_data.last_mouse_viewport_for_space = None;
+					}
+
 					rotate_bounds(
 						document,
 						responses,
@@ -1291,6 +1372,20 @@ impl Fsm for SelectToolFsmState {
 				}
 
 				tool_data.drag_current = input.mouse.position;
+
+				let current_mouse = input.mouse.position;
+				let space_down = input.keyboard.get(Key::Space as usize);
+				if space_down {
+					let delta = current_mouse - tool_data.drag_current;
+					tool_data.drag_start += delta;
+
+					if selection_shape == SelectionShapeType::Lasso {
+						for point in &mut tool_data.lasso_polygon {
+							*point += delta;
+						}
+					}
+				}
+				tool_data.drag_current = current_mouse;
 				responses.add(OverlaysMessage::Draw);
 
 				if selection_shape == SelectionShapeType::Lasso {
@@ -1375,10 +1470,16 @@ impl Fsm for SelectToolFsmState {
 
 				self
 			}
-			(SelectToolFsmState::Drawing { .. }, SelectToolMessage::PointerOutsideViewport { .. }) => {
+			(SelectToolFsmState::Drawing { selection_shape, .. }, SelectToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning
 				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, viewport, responses) {
 					tool_data.drag_start += shift;
+
+					if selection_shape == SelectionShapeType::Lasso {
+						for point in &mut tool_data.lasso_polygon {
+							*point += shift;
+						}
+					}
 				}
 
 				self
