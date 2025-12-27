@@ -1,11 +1,12 @@
 <script lang="ts">
-	import { getContext, onMount, tick } from "svelte";
+	import { getContext, onMount, onDestroy, tick } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
 	import {
 		type MouseCursorIcon,
 		type XY,
 		DisplayEditableTextbox,
+		DisplayEditableTextboxUpdateFontData,
 		DisplayEditableTextboxTransform,
 		DisplayRemoveEditableTextbox,
 		TriggerTextCommit,
@@ -20,7 +21,7 @@
 	import type { DocumentState } from "@graphite/state-providers/document";
 	import { textInputCleanup } from "@graphite/utility-functions/keyboard-entry";
 	import { extractPixelData, rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
-	import { updateBoundsOfViewports } from "@graphite/utility-functions/viewports";
+	import { setupViewportResizeObserver, cleanupViewportResizeObserver } from "@graphite/utility-functions/viewports";
 
 	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "@graphite/components/floating-menus/EyedropperPreview.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -74,21 +75,21 @@
 	let cursorEyedropperPreviewColorSecondary = "";
 
 	// Canvas dimensions
-	let canvasSvgWidth: number | undefined = undefined;
-	let canvasSvgHeight: number | undefined = undefined;
+	let canvasWidth: number | undefined = undefined;
+	let canvasHeight: number | undefined = undefined;
 
 	let devicePixelRatio: number | undefined;
 
 	// Dimension is rounded up to the nearest even number because resizing is centered, and dividing an odd number by 2 for centering causes antialiasing
-	$: canvasWidthRoundedToEven = canvasSvgWidth && (canvasSvgWidth % 2 === 1 ? canvasSvgWidth + 1 : canvasSvgWidth);
-	$: canvasHeightRoundedToEven = canvasSvgHeight && (canvasSvgHeight % 2 === 1 ? canvasSvgHeight + 1 : canvasSvgHeight);
+	$: canvasWidthRoundedToEven = canvasWidth && (canvasWidth % 2 === 1 ? canvasWidth + 1 : canvasWidth);
+	$: canvasHeightRoundedToEven = canvasHeight && (canvasHeight % 2 === 1 ? canvasHeight + 1 : canvasHeight);
 	// Used to set the canvas element size on the page.
 	// The value above in pixels, or if undefined, we fall back to 100% as a non-pixel-perfect backup that's hopefully short-lived
 	$: canvasWidthCSS = canvasWidthRoundedToEven ? `${canvasWidthRoundedToEven}px` : "100%";
 	$: canvasHeightCSS = canvasHeightRoundedToEven ? `${canvasHeightRoundedToEven}px` : "100%";
 
-	$: canvasWidthScaled = canvasSvgWidth && devicePixelRatio && Math.floor(canvasSvgWidth * devicePixelRatio);
-	$: canvasHeightScaled = canvasSvgHeight && devicePixelRatio && Math.floor(canvasSvgHeight * devicePixelRatio);
+	$: canvasWidthScaled = canvasWidth && devicePixelRatio && Math.floor(canvasWidth * devicePixelRatio);
+	$: canvasHeightScaled = canvasHeight && devicePixelRatio && Math.floor(canvasHeight * devicePixelRatio);
 
 	// Used to set the canvas rendering dimensions.
 	$: canvasWidthScaledRoundedToEven = canvasWidthScaled && (canvasWidthScaled % 2 === 1 ? canvasWidthScaled + 1 : canvasWidthScaled);
@@ -126,7 +127,7 @@
 			totalToolRowsFor2Columns,
 			totalToolRowsFor3Columns,
 		};
-	})($document.toolShelfLayout.layout[0]);
+	})($document.toolShelfLayout[0]);
 
 	function dropFile(e: DragEvent) {
 		const { dataTransfer } = e;
@@ -203,9 +204,18 @@
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			let canvas = (window as any).imageCanvases[canvasName];
 
-			if (canvasName !== "0" && canvas.parentElement) {
-				var newCanvas = window.document.createElement("canvas");
-				var context = newCanvas.getContext("2d");
+			// Get logical dimensions from foreignObject parent (set by backend)
+			const foreignObject = placeholder.parentElement;
+			if (!foreignObject) return;
+			const logicalWidth = parseFloat(foreignObject.getAttribute("width") || "0");
+			const logicalHeight = parseFloat(foreignObject.getAttribute("height") || "0");
+
+			// Clone canvas for repeated instances (layers that appear multiple times)
+			// Viewport canvas is marked with data-is-viewport and should never be cloned
+			const isViewport = placeholder.hasAttribute("data-is-viewport");
+			if (!isViewport && canvas.parentElement) {
+				const newCanvas = window.document.createElement("canvas");
+				const context = newCanvas.getContext("2d");
 
 				newCanvas.width = canvas.width;
 				newCanvas.height = canvas.height;
@@ -214,6 +224,10 @@
 
 				canvas = newCanvas;
 			}
+
+			// Set CSS size to logical resolution (for correct display size)
+			canvas.style.width = `${logicalWidth}px`;
+			canvas.style.height = `${logicalHeight}px`;
 
 			placeholder.replaceWith(canvas);
 		});
@@ -226,14 +240,14 @@
 		}
 		cursorEyedropper = true;
 
-		if (canvasSvgWidth === undefined || canvasSvgHeight === undefined) return undefined;
+		if (canvasWidth === undefined || canvasHeight === undefined) return undefined;
 
 		cursorLeft = mousePosition.x;
 		cursorTop = mousePosition.y;
 
 		// This works nearly perfectly, but sometimes at odd DPI scale factors like 1.25, the anti-aliasing color can yield slightly incorrect colors (potential room for future improvement)
 		const dpiFactor = window.devicePixelRatio;
-		const [width, height] = [canvasSvgWidth, canvasSvgHeight];
+		const [width, height] = [canvasWidth, canvasHeight];
 
 		const outsideArtboardsColor = getComputedStyle(window.document.documentElement).getPropertyValue("--color-2-mildblack");
 		const outsideArtboards = `<rect x="0" y="0" width="100%" height="100%" fill="${outsideArtboardsColor}" />`;
@@ -291,14 +305,8 @@
 		if (cursor === "custom-rotate") {
 			const svg = `
 				<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" width="20" height="20">
-					<path transform="translate(2 2)" fill="black" stroke="black" stroke-width="2px" d="
-					M8,15.2C4,15.2,0.8,12,0.8,8C0.8,4,4,0.8,8,0.8c2,0,3.9,0.8,5.3,2.3l-1,1C11.2,2.9,9.6,2.2,8,2.2C4.8,2.2,2.2,4.8,2.2,8s2.6,5.8,5.8,5.8s5.8-2.6,5.8-5.8h1.4C15.2,12,12,15.2,8,15.2z
-					" />
-					<polygon transform="translate(2 2)" fill="black" stroke="black" stroke-width="2px" points="12.6,0 15.5,5 9.7,5" />
-					<path transform="translate(2 2)" fill="white" d="
-					M8,15.2C4,15.2,0.8,12,0.8,8C0.8,4,4,0.8,8,0.8c2,0,3.9,0.8,5.3,2.3l-1,1C11.2,2.9,9.6,2.2,8,2.2C4.8,2.2,2.2,4.8,2.2,8s2.6,5.8,5.8,5.8s5.8-2.6,5.8-5.8h1.4C15.2,12,12,15.2,8,15.2z
-					" />
-					<polygon transform="translate(2 2)" fill="white" points="12.6,0 15.5,5 9.7,5" />
+					<path fill="none" stroke="black" stroke-width="2" d="M10,15.8c-3.2,0-5.8-2.6-5.8-5.8S6.8,4.2,10,4.2c0.999,0,1.999,0.273,2.877,0.771L11.7,7h5.8l-2.9-5l-1.013,1.746C12.5,3.125,11.271,2.8,10,2.8C6,2.8,2.8,6,2.8,10S6,17.2,10,17.2s7.2-3.2,7.2-7.2h-1.4C15.8,13.2,13.2,15.8,10,15.8z" />
+					<path fill="white" d="M10,15.8c-3.2,0-5.8-2.6-5.8-5.8S6.8,4.2,10,4.2c0.999,0,1.999,0.273,2.877,0.771L11.7,7h5.8l-2.9-5l-1.013,1.746C12.5,3.125,11.271,2.8,10,2.8C6,2.8,2.8,6,2.8,10S6,17.2,10,17.2s7.2-3.2,7.2-7.2h-1.4C15.8,13.2,13.2,15.8,10,15.8z" />
 				</svg>
 				`
 				.split("\n")
@@ -324,7 +332,7 @@
 		editor.handle.onChangeText(textCleaned, false);
 	}
 
-	export async function displayEditableTextbox(displayEditableTextbox: DisplayEditableTextbox) {
+	export async function displayEditableTextbox(data: DisplayEditableTextbox) {
 		showTextInput = true;
 
 		await tick();
@@ -332,31 +340,35 @@
 		if (!textInput) return;
 
 		// eslint-disable-next-line svelte/no-dom-manipulating
-		if (displayEditableTextbox.text === "") textInput.textContent = "";
+		if (data.text === "") textInput.textContent = "";
 		// eslint-disable-next-line svelte/no-dom-manipulating
-		else textInput.textContent = `${displayEditableTextbox.text}\n`;
+		else textInput.textContent = `${data.text}\n`;
 
 		// Make it so `maxHeight` is a multiple of `lineHeight`
-		const lineHeight = displayEditableTextbox.lineHeightRatio * displayEditableTextbox.fontSize;
-		let height = displayEditableTextbox.maxHeight === undefined ? "auto" : `${Math.floor(displayEditableTextbox.maxHeight / lineHeight) * lineHeight}px`;
+		const lineHeight = data.lineHeightRatio * data.fontSize;
+		let height = data.maxHeight === undefined ? "auto" : `${Math.floor(data.maxHeight / lineHeight) * lineHeight}px`;
 
 		textInput.contentEditable = "true";
 		textInput.style.transformOrigin = "0 0";
-		textInput.style.width = displayEditableTextbox.maxWidth ? `${displayEditableTextbox.maxWidth}px` : "max-content";
+		textInput.style.width = data.maxWidth ? `${data.maxWidth}px` : "max-content";
 		textInput.style.height = height;
-		textInput.style.lineHeight = `${displayEditableTextbox.lineHeightRatio}`;
-		textInput.style.fontSize = `${displayEditableTextbox.fontSize}px`;
-		textInput.style.color = displayEditableTextbox.color.toHexOptionalAlpha() || "transparent";
-		textInput.style.textAlign = displayEditableTextbox.align;
+		textInput.style.lineHeight = `${data.lineHeightRatio}`;
+		textInput.style.fontSize = `${data.fontSize}px`;
+		textInput.style.color = data.color.toHexOptionalAlpha() || "transparent";
+		textInput.style.textAlign = data.align;
 
 		textInput.oninput = () => {
 			if (!textInput) return;
 			editor.handle.updateBounds(textInputCleanup(textInput.innerText));
 		};
-		textInputMatrix = displayEditableTextbox.transform;
-		const newFont = new FontFace("text-font", `url(${displayEditableTextbox.url})`);
-		window.document.fonts.add(newFont);
-		textInput.style.fontFamily = "text-font";
+
+		textInputMatrix = data.transform;
+
+		const bytes = new Uint8Array(data.fontData);
+		if (bytes.length > 0) {
+			window.document.fonts.add(new FontFace("text-font", bytes));
+			textInput.style.fontFamily = "text-font";
+		}
 
 		// Necessary to select contenteditable: https://stackoverflow.com/questions/6139107/programmatically-select-text-in-a-contenteditable-html-element/6150060#6150060
 
@@ -381,6 +393,22 @@
 		showTextInput = false;
 	}
 
+	function updateViewportInfo() {
+		if (!viewport) return;
+		// Resize the canvas
+		canvasWidth = Math.ceil(parseFloat(getComputedStyle(viewport).width));
+		canvasHeight = Math.ceil(parseFloat(getComputedStyle(viewport).height));
+
+		devicePixelRatio = window.devicePixelRatio || 1.0;
+
+		// Resize the rulers
+		rulerHorizontal?.resize();
+		rulerVertical?.resize();
+
+		// Note: Viewport bounds are now sent to the backend by the ResizeObserver in viewports.ts
+		// which provides pixel-perfect physical dimensions via devicePixelContentBoxSize
+	}
+
 	onMount(() => {
 		// Not compatible with Safari:
 		// <https://developer.mozilla.org/en-US/docs/Web/API/Window/devicePixelRatio#browser_compatibility>
@@ -393,8 +421,7 @@
 			mediaQueryList.addEventListener("change", updatePixelRatio);
 			removeUpdatePixelRatio = () => mediaQueryList.removeEventListener("change", updatePixelRatio);
 
-			devicePixelRatio = window.devicePixelRatio;
-			editor.handle.setDevicePixelRatio(devicePixelRatio);
+			updateViewportInfo();
 		};
 		updatePixelRatio();
 
@@ -449,6 +476,15 @@
 
 			displayEditableTextbox(data);
 		});
+		editor.subscriptions.subscribeJsMessage(DisplayEditableTextboxUpdateFontData, async (data) => {
+			await tick();
+
+			const fontData = new Uint8Array(data.fontData);
+			if (fontData.length > 0 && textInput) {
+				window.document.fonts.add(new FontFace("text-font", fontData));
+				textInput.style.fontFamily = "text-font";
+			}
+		});
 		editor.subscriptions.subscribeJsMessage(DisplayEditableTextboxTransform, async (data) => {
 			textInputMatrix = data.transform;
 		});
@@ -458,36 +494,31 @@
 			displayRemoveEditableTextbox();
 		});
 
-		// Once this component is mounted, we want to resend the document bounds to the backend via the resize event handler which does that
-		window.dispatchEvent(new Event("resize"));
+		// Setup ResizeObserver for pixel-perfect viewport tracking with physical dimensions
+		// This must happen in onMount to ensure the viewport container element exists
+		setupViewportResizeObserver(editor);
 
+		// Also observe the inner viewport for canvas sizing and ruler updates
 		const viewportResizeObserver = new ResizeObserver(() => {
-			if (!viewport) return;
-
-			// Resize the canvas
-			canvasSvgWidth = Math.ceil(parseFloat(getComputedStyle(viewport).width));
-			canvasSvgHeight = Math.ceil(parseFloat(getComputedStyle(viewport).height));
-
-			// Resize the rulers
-			rulerHorizontal?.resize();
-			rulerVertical?.resize();
-
-			// Send the new bounds of the viewports to the backend
-			if (viewport.parentElement) updateBoundsOfViewports(editor);
+			updateViewportInfo();
 		});
 		if (viewport) viewportResizeObserver.observe(viewport);
+	});
+
+	onDestroy(() => {
+		// Cleanup the viewport resize observer
+		cleanupViewportResizeObserver();
 	});
 </script>
 
 <LayoutCol class="document" on:dragover={(e) => e.preventDefault()} on:drop={dropFile}>
 	<LayoutRow class="control-bar" classes={{ "for-graph": $document.graphViewOverlayOpen }} scrollableX={true}>
 		{#if !$document.graphViewOverlayOpen}
-			<WidgetLayout layout={$document.documentModeLayout} />
-			<WidgetLayout layout={$document.toolOptionsLayout} />
+			<WidgetLayout layout={$document.toolOptionsLayout} layoutTarget="ToolOptions" />
 			<LayoutRow class="spacer" />
-			<WidgetLayout layout={$document.documentBarLayout} />
+			<WidgetLayout layout={$document.documentBarLayout} layoutTarget="DocumentBar" />
 		{:else}
-			<WidgetLayout layout={$document.nodeGraphControlBarLayout} />
+			<WidgetLayout layout={$document.nodeGraphControlBarLayout} layoutTarget="NodeGraphControlBar" />
 		{/if}
 	</LayoutRow>
 	<LayoutRow
@@ -502,13 +533,13 @@
 		<LayoutCol class="tool-shelf">
 			{#if !$document.graphViewOverlayOpen}
 				<LayoutCol class="tools" scrollableY={true}>
-					<WidgetLayout layout={$document.toolShelfLayout} />
+					<WidgetLayout layout={$document.toolShelfLayout} layoutTarget="ToolShelf" />
 				</LayoutCol>
 			{:else}
 				<LayoutRow class="spacer" />
 			{/if}
 			<LayoutCol class="tool-shelf-bottom-widgets">
-				<WidgetLayout class="working-colors-input-area" layout={$document.workingColorsLayout} />
+				<WidgetLayout class="working-colors-input-area" layout={$document.workingColorsLayout} layoutTarget="WorkingColors" />
 			</LayoutCol>
 		</LayoutCol>
 		<LayoutCol class="viewport-container">
@@ -588,7 +619,6 @@
 					thumbPosition={scrollbarPos.x}
 					on:trackShift={({ detail }) => editor.handle.panCanvasByFraction(detail, 0)}
 					on:thumbPosition={({ detail }) => panCanvasX(detail)}
-					on:thumbDragEnd={() => editor.handle.setGridAlignedEdges()}
 					on:thumbDragStart={() => editor.handle.panCanvasAbortPrepare(true)}
 					on:thumbDragAbort={() => editor.handle.panCanvasAbort(true)}
 				/>
@@ -675,16 +705,16 @@
 						.icon-button {
 							margin: 0;
 
-							&[title^="Coming Soon"] {
-								opacity: 0.25;
-								transition: opacity 0.1s;
+							// &[data-tooltip-description^="Coming soon."] {
+							// 	opacity: 0.25;
+							// 	transition: opacity 0.1s;
 
-								&:hover {
-									opacity: 1;
-								}
-							}
+							// 	&:hover {
+							// 		opacity: 1;
+							// 	}
+							// }
 
-							&:not(.active) {
+							&:not(.emphasized) {
 								.color-general {
 									fill: var(--color-data-general);
 								}
@@ -753,7 +783,7 @@
 					margin-right: 16px;
 				}
 
-				.right-scrollbar .scrollbar-input {
+				&:has(.top-ruler) .right-scrollbar .scrollbar-input {
 					margin-top: -16px;
 				}
 

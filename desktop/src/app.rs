@@ -1,37 +1,39 @@
 use rfd::AsyncFileDialog;
 use std::fs;
 use std::path::PathBuf;
-use std::sync::mpsc::Receiver;
-use std::sync::mpsc::Sender;
-use std::sync::mpsc::SyncSender;
+use std::sync::mpsc::{Receiver, Sender, SyncSender};
 use std::thread;
-use std::time::Duration;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use winit::application::ApplicationHandler;
-use winit::event::WindowEvent;
-use winit::event_loop::ActiveEventLoop;
-use winit::event_loop::ControlFlow;
+use winit::dpi::PhysicalSize;
+use winit::event::{ButtonSource, ElementState, MouseButton, WindowEvent};
+use winit::event_loop::{ActiveEventLoop, ControlFlow};
 use winit::window::WindowId;
 
 use crate::cef;
 use crate::consts::CEF_MESSAGE_LOOP_MAX_ITERATIONS;
 use crate::event::{AppEvent, AppEventScheduler};
 use crate::persist::PersistentData;
-use crate::render::GraphicsState;
+use crate::render::{RenderError, RenderState};
 use crate::window::Window;
-use graphite_desktop_wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, Platform};
-use graphite_desktop_wrapper::{DesktopWrapper, NodeGraphExecutionResult, WgpuContext, serialize_frontend_messages};
+use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, InputMessage, MouseKeys, MouseState, Platform};
+use crate::wrapper::{DesktopWrapper, NodeGraphExecutionResult, WgpuContext, serialize_frontend_messages};
 
 pub(crate) struct App {
-	cef_context: Box<dyn cef::CefContext>,
-	window: Option<Window>,
-	cef_schedule: Option<Instant>,
-	cef_window_size_sender: Sender<cef::WindowSize>,
-	graphics_state: Option<GraphicsState>,
+	render_state: Option<RenderState>,
 	wgpu_context: WgpuContext,
+	window: Option<Window>,
+	window_scale: f64,
+	window_size: PhysicalSize<u32>,
+	window_maximized: bool,
+	window_fullscreen: bool,
+	ui_scale: f64,
 	app_event_receiver: Receiver<AppEvent>,
 	app_event_scheduler: AppEventScheduler,
 	desktop_wrapper: DesktopWrapper,
+	cef_context: Box<dyn cef::CefContext>,
+	cef_schedule: Option<Instant>,
+	cef_view_info_sender: Sender<cef::ViewInfoUpdate>,
 	last_ui_update: Instant,
 	avg_frame_time: f32,
 	start_render_sender: SyncSender<()>,
@@ -42,14 +44,25 @@ pub(crate) struct App {
 }
 
 impl App {
+	pub(crate) fn init() {
+		Window::init();
+	}
+
 	pub(crate) fn new(
 		cef_context: Box<dyn cef::CefContext>,
-		window_size_sender: Sender<cef::WindowSize>,
+		cef_view_info_sender: Sender<cef::ViewInfoUpdate>,
 		wgpu_context: WgpuContext,
 		app_event_receiver: Receiver<AppEvent>,
 		app_event_scheduler: AppEventScheduler,
 		launch_documents: Vec<PathBuf>,
 	) -> Self {
+		let ctrlc_app_event_scheduler = app_event_scheduler.clone();
+		ctrlc::set_handler(move || {
+			tracing::info!("Termination signal received, exiting...");
+			ctrlc_app_event_scheduler.schedule(AppEvent::CloseWindow);
+		})
+		.expect("Error setting Ctrl-C handler");
+
 		let rendering_app_event_scheduler = app_event_scheduler.clone();
 		let (start_render_sender, start_render_receiver) = std::sync::mpsc::sync_channel(1);
 		std::thread::spawn(move || {
@@ -64,16 +77,21 @@ impl App {
 		persistent_data.load_from_disk();
 
 		Self {
-			cef_context,
-			window: None,
-			cef_schedule: Some(Instant::now()),
-			graphics_state: None,
-			cef_window_size_sender: window_size_sender,
+			render_state: None,
 			wgpu_context,
+			window: None,
+			window_scale: 1.,
+			window_size: PhysicalSize { width: 0, height: 0 },
+			window_maximized: false,
+			window_fullscreen: false,
+			ui_scale: 1.,
 			app_event_receiver,
 			app_event_scheduler,
 			desktop_wrapper: DesktopWrapper::new(),
 			last_ui_update: Instant::now(),
+			cef_context,
+			cef_schedule: Some(Instant::now()),
+			cef_view_info_sender,
 			avg_frame_time: 0.,
 			start_render_sender,
 			web_communication_initialized: false,
@@ -81,6 +99,56 @@ impl App {
 			persistent_data,
 			launch_documents,
 		}
+	}
+
+	fn resize(&mut self) {
+		let Some(window) = &self.window else {
+			tracing::error!("Resize failed due to missing window");
+			return;
+		};
+
+		let maximized = window.is_maximized();
+		if maximized != self.window_maximized {
+			self.window_maximized = maximized;
+			self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(DesktopWrapperMessage::UpdateMaximized { maximized }));
+		}
+
+		let fullscreen = window.is_fullscreen();
+		if fullscreen != self.window_fullscreen {
+			self.window_fullscreen = fullscreen;
+			self.app_event_scheduler
+				.schedule(AppEvent::DesktopWrapperMessage(DesktopWrapperMessage::UpdateFullscreen { fullscreen }));
+		}
+
+		let size = window.surface_size();
+		let scale = window.scale_factor() * self.ui_scale;
+		let is_new_size = size != self.window_size;
+		let is_new_scale = scale != self.window_scale;
+
+		if !is_new_size && !is_new_scale {
+			return;
+		}
+
+		if is_new_size {
+			let _ = self.cef_view_info_sender.send(cef::ViewInfoUpdate::Size {
+				width: size.width,
+				height: size.height,
+			});
+		}
+		if is_new_scale {
+			let _ = self.cef_view_info_sender.send(cef::ViewInfoUpdate::Scale(scale));
+		}
+
+		self.cef_context.notify_view_info_changed();
+
+		if let Some(render_state) = &mut self.render_state {
+			render_state.resize(size.width, size.height);
+		}
+
+		window.request_redraw();
+
+		self.window_size = size;
+		self.window_scale = scale;
 	}
 
 	fn handle_desktop_frontend_message(&mut self, message: DesktopFrontendMessage, responses: &mut Vec<DesktopWrapperMessage>) {
@@ -147,43 +215,29 @@ impl App {
 					}
 				});
 			}
-			DesktopFrontendMessage::UpdateViewportBounds { x, y, width, height } => {
-				if let Some(graphics_state) = &mut self.graphics_state
+			DesktopFrontendMessage::UpdateViewportPhysicalBounds { x, y, width, height } => {
+				if let Some(render_state) = &mut self.render_state
 					&& let Some(window) = &self.window
 				{
 					let window_size = window.surface_size();
 
-					let viewport_offset_x = x / window_size.width as f32;
-					let viewport_offset_y = y / window_size.height as f32;
-					graphics_state.set_viewport_offset([viewport_offset_x, viewport_offset_y]);
+					let viewport_offset_x = x / window_size.width as f64;
+					let viewport_offset_y = y / window_size.height as f64;
+					render_state.set_viewport_offset([viewport_offset_x as f32, viewport_offset_y as f32]);
 
-					let viewport_scale_x = if width != 0.0 { window_size.width as f32 / width } else { 1.0 };
-					let viewport_scale_y = if height != 0.0 { window_size.height as f32 / height } else { 1.0 };
-					graphics_state.set_viewport_scale([viewport_scale_x, viewport_scale_y]);
+					let viewport_scale_x = if width != 0.0 { window_size.width as f64 / width } else { 1.0 };
+					let viewport_scale_y = if height != 0.0 { window_size.height as f64 / height } else { 1.0 };
+					render_state.set_viewport_scale([viewport_scale_x as f32, viewport_scale_y as f32]);
 				}
+			}
+			DesktopFrontendMessage::UpdateUIScale { scale } => {
+				self.ui_scale = scale;
+				self.resize();
 			}
 			DesktopFrontendMessage::UpdateOverlays(scene) => {
-				if let Some(graphics_state) = &mut self.graphics_state {
-					graphics_state.set_overlays_scene(scene);
+				if let Some(render_state) = &mut self.render_state {
+					render_state.set_overlays_scene(scene);
 				}
-			}
-			DesktopFrontendMessage::MinimizeWindow => {
-				if let Some(window) = &self.window {
-					window.minimize();
-				}
-			}
-			DesktopFrontendMessage::MaximizeWindow => {
-				if let Some(window) = &self.window {
-					window.toggle_maximize();
-				}
-			}
-			DesktopFrontendMessage::DragWindow => {
-				if let Some(window) = &self.window {
-					let _ = window.start_drag();
-				}
-			}
-			DesktopFrontendMessage::CloseWindow => {
-				self.app_event_scheduler.schedule(AppEvent::CloseWindow);
 			}
 			DesktopFrontendMessage::PersistenceWriteDocument { id, document } => {
 				self.persistent_data.write_document(id, document);
@@ -258,6 +312,56 @@ impl App {
 					}
 				});
 			}
+			DesktopFrontendMessage::UpdateMenu { entries } => {
+				if let Some(window) = &self.window {
+					window.update_menu(entries);
+				}
+			}
+			DesktopFrontendMessage::ClipboardRead => {
+				if let Some(window) = &self.window {
+					let content = window.clipboard_read();
+					let message = DesktopWrapperMessage::ClipboardReadResult { content };
+					self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
+				}
+			}
+			DesktopFrontendMessage::ClipboardWrite { content } => {
+				if let Some(window) = &mut self.window {
+					window.clipboard_write(content);
+				}
+			}
+			DesktopFrontendMessage::WindowClose => {
+				self.app_event_scheduler.schedule(AppEvent::CloseWindow);
+			}
+			DesktopFrontendMessage::WindowMinimize => {
+				if let Some(window) = &self.window {
+					window.minimize();
+				}
+			}
+			DesktopFrontendMessage::WindowMaximize => {
+				if let Some(window) = &self.window {
+					window.toggle_maximize();
+				}
+			}
+			DesktopFrontendMessage::WindowDrag => {
+				if let Some(window) = &self.window {
+					window.start_drag();
+				}
+			}
+			DesktopFrontendMessage::WindowHide => {
+				if let Some(window) = &self.window {
+					window.hide();
+				}
+			}
+			DesktopFrontendMessage::WindowHideOthers => {
+				if let Some(window) = &self.window {
+					window.hide_others();
+				}
+			}
+			DesktopFrontendMessage::WindowShowAll => {
+				if let Some(window) = &self.window {
+					window.show_all();
+				}
+			}
 		}
 	}
 
@@ -297,19 +401,18 @@ impl App {
 				NodeGraphExecutionResult::HasRun(texture) => {
 					self.dispatch_desktop_wrapper_message(DesktopWrapperMessage::PollNodeGraphEvaluation);
 					if let Some(texture) = texture
-						&& let Some(graphics_state) = self.graphics_state.as_mut()
+						&& let Some(render_state) = self.render_state.as_mut()
 						&& let Some(window) = self.window.as_ref()
 					{
-						graphics_state.bind_viewport_texture(texture);
+						render_state.bind_viewport_texture(texture);
 						window.request_redraw();
 					}
 				}
 				NodeGraphExecutionResult::NotRun => {}
 			},
 			AppEvent::UiUpdate(texture) => {
-				if let Some(graphics_state) = self.graphics_state.as_mut() {
-					graphics_state.resize(texture.width(), texture.height());
-					graphics_state.bind_ui_texture(texture);
+				if let Some(render_state) = self.render_state.as_mut() {
+					render_state.bind_ui_texture(texture);
 					let elapsed = self.last_ui_update.elapsed().as_secs_f32();
 					self.last_ui_update = Instant::now();
 					if elapsed < 0.5 {
@@ -328,8 +431,8 @@ impl App {
 				}
 			}
 			AppEvent::CursorChange(cursor) => {
-				if let Some(window) = &self.window {
-					window.set_cursor(cursor);
+				if let Some(window) = &mut self.window {
+					window.set_cursor(event_loop, cursor);
 				}
 			}
 			AppEvent::CloseWindow => {
@@ -338,19 +441,26 @@ impl App {
 				tracing::info!("Exiting main event loop");
 				event_loop.exit();
 			}
+			#[cfg(target_os = "macos")]
+			AppEvent::MenuEvent { id } => {
+				self.dispatch_desktop_wrapper_message(DesktopWrapperMessage::MenuEvent { id });
+			}
 		}
 	}
 }
 impl ApplicationHandler for App {
 	fn can_create_surfaces(&mut self, event_loop: &dyn ActiveEventLoop) {
-		let window = Window::new(event_loop);
+		let window = Window::new(event_loop, self.app_event_scheduler.clone());
 		self.window = Some(window);
 
-		let graphics_state = GraphicsState::new(self.window.as_ref().unwrap(), self.wgpu_context.clone());
+		let render_state = RenderState::new(self.window.as_ref().unwrap(), self.wgpu_context.clone());
+		self.render_state = Some(render_state);
 
-		self.graphics_state = Some(graphics_state);
+		if let Some(window) = &self.window.as_ref() {
+			window.show();
+		}
 
-		tracing::info!("Winit window created and ready");
+		self.resize();
 
 		self.desktop_wrapper.init(self.wgpu_context.clone());
 
@@ -376,27 +486,32 @@ impl ApplicationHandler for App {
 			WindowEvent::CloseRequested => {
 				self.app_event_scheduler.schedule(AppEvent::CloseWindow);
 			}
-			WindowEvent::SurfaceResized(size) => {
-				let _ = self.cef_window_size_sender.send(size.into());
-				self.cef_context.notify_of_resize();
-				if let Some(window) = &self.window {
-					let maximized = window.is_maximized();
-					self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(DesktopWrapperMessage::UpdateMaximized { maximized }));
-				}
+			WindowEvent::SurfaceResized(_) | WindowEvent::ScaleFactorChanged { .. } => {
+				self.resize();
 			}
 			WindowEvent::RedrawRequested => {
-				let Some(ref mut graphics_state) = self.graphics_state else { return };
-				// Only rerender once we have a new UI texture to display
+				#[cfg(target_os = "macos")]
+				self.resize();
+
+				let Some(render_state) = &mut self.render_state else { return };
 				if let Some(window) = &self.window {
-					match graphics_state.render(window) {
+					if !window.can_render() {
+						return;
+					}
+
+					match render_state.render(window) {
 						Ok(_) => {}
-						Err(wgpu::SurfaceError::Lost) => {
+						Err(RenderError::OutdatedUITextureError) => {
+							self.cef_context.notify_view_info_changed();
+						}
+						Err(RenderError::SurfaceError(wgpu::SurfaceError::Lost)) => {
 							tracing::warn!("lost surface");
 						}
-						Err(wgpu::SurfaceError::OutOfMemory) => {
+						Err(RenderError::SurfaceError(wgpu::SurfaceError::OutOfMemory)) => {
+							tracing::error!("GPU out of memory");
 							event_loop.exit();
 						}
-						Err(e) => tracing::error!("{:?}", e),
+						Err(RenderError::SurfaceError(e)) => tracing::error!("Render error: {:?}", e),
 					}
 					let _ = self.start_render_sender.try_send(());
 				}
@@ -413,6 +528,32 @@ impl ApplicationHandler for App {
 							return;
 						}
 					};
+				}
+			}
+
+			// Forward and Back buttons are not supported by CEF and thus need to be directly forwarded the editor
+			WindowEvent::PointerButton {
+				button: ButtonSource::Mouse(button),
+				state: ElementState::Pressed,
+				..
+			} => {
+				let mouse_keys = match button {
+					MouseButton::Back => Some(MouseKeys::BACK),
+					MouseButton::Forward => Some(MouseKeys::FORWARD),
+					_ => None,
+				};
+				if let Some(mouse_keys) = mouse_keys {
+					let message = DesktopWrapperMessage::Input(InputMessage::PointerDown {
+						editor_mouse_state: MouseState { mouse_keys, ..Default::default() },
+						modifier_keys: Default::default(),
+					});
+					self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
+
+					let message = DesktopWrapperMessage::Input(InputMessage::PointerUp {
+						editor_mouse_state: Default::default(),
+						modifier_keys: Default::default(),
+					});
+					self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
 				}
 			}
 			_ => {}

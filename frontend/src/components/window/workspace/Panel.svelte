@@ -3,8 +3,10 @@
 	import Document from "@graphite/components/panels/Document.svelte";
 	import Layers from "@graphite/components/panels/Layers.svelte";
 	import Properties from "@graphite/components/panels/Properties.svelte";
+	import Welcome from "@graphite/components/panels/Welcome.svelte";
 
 	const PANEL_COMPONENTS = {
+		Welcome,
 		Document,
 		Layers,
 		Properties,
@@ -17,30 +19,26 @@
 	import { getContext, tick } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import { type LayoutKeysGroup, type Key } from "@graphite/messages";
-	import { platformIsMac, isEventSupported } from "@graphite/utility-functions/platform";
-
-	import { extractPixelData } from "@graphite/utility-functions/rasterization";
+	import { isEventSupported } from "@graphite/utility-functions/platform";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
-	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
-	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
-	import UserInputLabel from "@graphite/components/widgets/labels/UserInputLabel.svelte";
 
+	const BUTTON_LEFT = 0;
 	const BUTTON_MIDDLE = 1;
 
 	const editor = getContext<Editor>("editor");
 
 	export let tabMinWidths = false;
 	export let tabCloseButtons = false;
-	export let tabLabels: { name: string; unsaved?: boolean; tooltip?: string }[];
+	export let tabLabels: { name: string; unsaved?: boolean; tooltipLabel?: string; tooltipDescription?: string; tooltipShortcut?: string }[];
 	export let tabActiveIndex: number;
 	export let panelType: PanelType | undefined = undefined;
 	export let clickAction: ((index: number) => void) | undefined = undefined;
 	export let closeAction: ((index: number) => void) | undefined = undefined;
+	export let emptySpaceAction: (() => void) | undefined = undefined;
 
 	let className = "";
 	export { className as class };
@@ -51,46 +49,9 @@
 
 	let tabElements: (LayoutRow | undefined)[] = [];
 
-	function platformModifiers(reservedKey: boolean): LayoutKeysGroup {
-		// TODO: Remove this by properly feeding these keys from a layout provided by the backend
-
-		const ALT: Key = { key: "Alt", label: "Alt" };
-		const COMMAND: Key = { key: "Command", label: "Command" };
-		const CONTROL: Key = { key: "Control", label: "Ctrl" };
-
-		if (platformIsMac()) return reservedKey ? [ALT, COMMAND] : [COMMAND];
-		return reservedKey ? [CONTROL, ALT] : [CONTROL];
-	}
-
-	function dropFile(e: DragEvent) {
-		if (!e.dataTransfer) return;
-
-		e.preventDefault();
-
-		Array.from(e.dataTransfer.items).forEach(async (item) => {
-			const file = item.getAsFile();
-			if (!file) return;
-
-			if (file.type.includes("svg")) {
-				const svgData = await file.text();
-				editor.handle.pasteSvg(file.name, svgData);
-				return;
-			}
-
-			if (file.type.startsWith("image")) {
-				const imageData = await extractPixelData(file);
-				editor.handle.pasteImage(file.name, new Uint8Array(imageData.data), imageData.width, imageData.height);
-				return;
-			}
-
-			const graphiteFileSuffix = "." + editor.handle.fileExtension();
-			if (file.name.endsWith(graphiteFileSuffix)) {
-				const content = await file.text();
-				const documentName = file.name.slice(0, -graphiteFileSuffix.length);
-				editor.handle.openDocumentFile(documentName, content);
-				return;
-			}
-		});
+	function onEmptySpaceAction(e: MouseEvent) {
+		if (e.target !== e.currentTarget) return;
+		if (e.button === BUTTON_MIDDLE || (e.button === BUTTON_LEFT && e.detail === 2)) emptySpaceAction?.();
 	}
 
 	export async function scrollTabIntoView(newIndex: number) {
@@ -101,12 +62,13 @@
 
 <LayoutCol on:pointerdown={() => panelType && editor.handle.setActivePanel(panelType)} class={`panel ${className}`.trim()} {classes} style={styleName} {styles}>
 	<LayoutRow class="tab-bar" classes={{ "min-widths": tabMinWidths }}>
-		<LayoutRow class="tab-group" scrollableX={true}>
+		<LayoutRow class="tab-group" scrollableX={true} on:click={onEmptySpaceAction} on:auxclick={onEmptySpaceAction}>
 			{#each tabLabels as tabLabel, tabIndex}
 				<LayoutRow
 					class="tab"
 					classes={{ active: tabIndex === tabActiveIndex }}
-					tooltip={tabLabel.tooltip || undefined}
+					tooltipLabel={tabLabel.tooltipLabel}
+					tooltipDescription={tabLabel.tooltipDescription}
 					on:click={(e) => {
 						e.stopPropagation();
 						clickAction?.(tabIndex);
@@ -149,66 +111,10 @@
 				</LayoutRow>
 			{/each}
 		</LayoutRow>
-		<!-- <PopoverButton style="VerticalEllipsis">
-			<TextLabel bold={true}>Panel Options</TextLabel>
-			<TextLabel multiline={true}>Coming soon</TextLabel>
-		</PopoverButton> -->
 	</LayoutRow>
 	<LayoutCol class="panel-body">
 		{#if panelType}
 			<svelte:component this={PANEL_COMPONENTS[panelType]} />
-		{:else}
-			<LayoutCol class="empty-panel" on:dragover={(e) => e.preventDefault()} on:drop={dropFile}>
-				<LayoutCol class="top-spacer"></LayoutCol>
-				<LayoutCol class="content-container">
-					<LayoutCol class="content">
-						<LayoutRow class="logotype">
-							<IconLabel icon="GraphiteLogotypeSolid" />
-						</LayoutRow>
-						<LayoutRow class="actions">
-							<table>
-								<tbody>
-									<tr>
-										<td>
-											<TextButton label="New Document" icon="File" flush={true} action={() => editor.handle.newDocumentDialog()} />
-										</td>
-										<td>
-											<UserInputLabel keysWithLabelsGroups={[[...platformModifiers(true), { key: "KeyN", label: "N" }]]} />
-										</td>
-									</tr>
-									<tr>
-										<td>
-											<TextButton label="Open Document" icon="Folder" flush={true} action={() => editor.handle.openDocument()} />
-										</td>
-										<td>
-											<UserInputLabel keysWithLabelsGroups={[[...platformModifiers(false), { key: "KeyO", label: "O" }]]} />
-										</td>
-									</tr>
-									<tr>
-										<td colspan="2">
-											<TextButton label="Open Demo Artwork" icon="Image" flush={true} action={() => editor.handle.demoArtworkDialog()} />
-										</td>
-									</tr>
-									<tr>
-										<td colspan="2">
-											<TextButton label="Support the Development Fund" icon="Heart" flush={true} action={() => editor.handle.visitUrl("https://graphite.rs/donate/")} />
-										</td>
-									</tr>
-								</tbody>
-							</table>
-						</LayoutRow>
-					</LayoutCol>
-				</LayoutCol>
-				<LayoutCol class="bottom-message">
-					{#if new Date().getFullYear() === 2025}
-						<TextLabel italic={true} disabled={true}>
-							September 2025 release — <a href="https://youtube.com/watch?v=Vl5BA4g3QXM" target="_blank">What's new? (video)</a>
-							— Note: some older documents may render differently and require manual fixes.
-							<a href="https://ec6796b4.graphite-editor.pages.dev/" target="_blank">Need the old version?</a>
-						</TextLabel>
-					{/if}
-				</LayoutCol>
-			</LayoutCol>
 		{/if}
 	</LayoutCol>
 </LayoutCol>
@@ -310,7 +216,7 @@
 						left: -1px;
 						width: 1px;
 						height: 16px;
-						background: var(--color-4-dimgray);
+						background: var(--color-5-dullgray);
 					}
 
 					&:last-of-type {
@@ -322,15 +228,11 @@
 							right: -1px;
 							width: 1px;
 							height: 16px;
-							background: var(--color-4-dimgray);
+							background: var(--color-5-dullgray);
 						}
 					}
 				}
 			}
-
-			// .popover-button {
-			// 	margin: 2px 4px;
-			// }
 		}
 
 		.panel-body {
@@ -341,66 +243,11 @@
 			> div {
 				padding-bottom: 4px;
 			}
-
-			.empty-panel {
-				background: var(--color-2-mildblack);
-				margin: 4px;
-				border-radius: 2px;
-				justify-content: space-between;
-
-				.content-container {
-					flex: 0 0 auto;
-					justify-content: center;
-
-					.content {
-						flex: 0 0 auto;
-						align-items: center;
-
-						.logotype {
-							margin-top: 8px;
-							margin-bottom: 40px;
-
-							svg {
-								width: auto;
-								height: 120px;
-							}
-						}
-
-						.actions {
-							margin-bottom: 8px;
-
-							table {
-								border-spacing: 8px;
-								margin: -8px;
-
-								td {
-									padding: 0;
-								}
-							}
-						}
-					}
-				}
-
-				.top-spacer {
-					flex: 0 1 48px;
-				}
-
-				.bottom-message {
-					flex: 0 0 48px;
-					align-items: center;
-					justify-content: end;
-
-					.text-label {
-						white-space: wrap;
-						margin: 0 1em;
-					}
-				}
-			}
 		}
 
 		// Needed for the viewport hole punch on desktop
 		.viewport-hole-punch &.document-panel,
-		.viewport-hole-punch &.document-panel .panel-body:not(:has(.empty-panel)) {
+		.viewport-hole-punch &.document-panel .panel-body:not(:has(.welcome-panel)) {
 			background: none;
 		}
 	}

@@ -12,6 +12,8 @@ pub enum Message {
 	#[child]
 	Broadcast(BroadcastMessage),
 	#[child]
+	Clipboard(ClipboardMessage),
+	#[child]
 	Debug(DebugMessage),
 	#[child]
 	Defer(DeferMessage),
@@ -28,11 +30,15 @@ pub enum Message {
 	#[child]
 	Layout(LayoutMessage),
 	#[child]
+	MenuBar(MenuBarMessage),
+	#[child]
 	Portfolio(PortfolioMessage),
 	#[child]
 	Preferences(PreferencesMessage),
 	#[child]
 	Tool(ToolMessage),
+	#[child]
+	Viewport(ViewportMessage),
 
 	// Messages
 	Batched {

@@ -13,64 +13,71 @@ import { DynamicPublicDirectory as viteMultipleAssets } from "vite-multiple-asse
 const projectRootDir = path.resolve(__dirname);
 
 // https://vitejs.dev/config/
-export default defineConfig({
-	plugins: [
-		svelte({
-			preprocess: [sveltePreprocess()],
-			onwarn(warning, defaultHandler) {
-				const suppressed = [
-					"css-unused-selector", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
-					"vite-plugin-svelte-css-no-scopable-elements", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
-					"a11y-no-static-element-interactions", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
-					"a11y-no-noninteractive-element-interactions", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
-					"a11y-click-events-have-key-events", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
-				];
-				if (suppressed.includes(warning.code)) return;
+export default defineConfig(({ mode }) => {
+	return {
+		plugins: [
+			svelte({
+				preprocess: [sveltePreprocess()],
+				onwarn(warning, defaultHandler) {
+					const suppressed = [
+						"css-unused-selector", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
+						"vite-plugin-svelte-css-no-scopable-elements", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
+						"a11y-no-static-element-interactions", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
+						"a11y-no-noninteractive-element-interactions", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
+						"a11y-click-events-have-key-events", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
+					];
+					if (suppressed.includes(warning.code)) return;
 
-				defaultHandler?.(warning);
-			},
-		}),
-		viteMultipleAssets(
-			// Additional static asset directories besides `public/`
-			[{ input: "../demo-artwork/**", output: "demo-artwork" }],
-			// Options where we set custom MIME types
-			{ mimeTypes: { ".graphite": "application/json" } },
-		),
-	],
-	resolve: {
-		alias: [
-			{ find: /@graphite-frontend\/(.*\.svg)/, replacement: path.resolve(projectRootDir, "$1?raw") },
-			{ find: "@graphite-frontend", replacement: projectRootDir },
-			{ find: "@graphite/../assets", replacement: path.resolve(projectRootDir, "assets") },
-			{ find: "@graphite/../public", replacement: path.resolve(projectRootDir, "public") },
-			{ find: "@graphite", replacement: path.resolve(projectRootDir, "src") },
+					defaultHandler?.(warning);
+				},
+			}),
+			viteMultipleAssets(
+				// Additional static asset directories besides `public/`
+				[
+					{ input: "../demo-artwork/**", output: "demo-artwork" },
+					{ input: "../branding/favicons/**", output: "" },
+				],
+				// Options where we set custom MIME types
+				{ mimeTypes: { ".graphite": "application/json" } },
+			),
 		],
-	},
-	server: {
-		port: 8080,
-		host: "0.0.0.0",
-	},
-	build: {
-		rollupOptions: {
-			plugins: [
-				rollupPluginLicense({
-					thirdParty: {
-						includePrivate: false,
-						multipleVersions: true,
-						allow: {
-							test: `(${getAcceptedLicenses()})`,
-							failOnUnlicensed: true,
-							failOnViolation: true,
-						},
-						output: {
-							file: path.resolve(__dirname, "./dist/third-party-licenses.txt"),
-							template: formatThirdPartyLicenses,
-						},
-					},
-				}),
+		resolve: {
+			alias: [
+				{ find: /@branding\/(.*\.svg)/, replacement: path.resolve(projectRootDir, "../branding", "$1?raw") },
+				{ find: "@graphite/../assets", replacement: path.resolve(projectRootDir, "assets") },
+				{ find: "@graphite/../public", replacement: path.resolve(projectRootDir, "public") },
+				{ find: "@graphite", replacement: path.resolve(projectRootDir, "src") },
 			],
 		},
-	},
+		server: {
+			port: 8080,
+			host: "0.0.0.0",
+		},
+		build: {
+			rollupOptions: {
+				plugins:
+					mode !== "dev"
+						? [
+								rollupPluginLicense({
+									thirdParty: {
+										includePrivate: false,
+										multipleVersions: true,
+										allow: {
+											test: `(${getAcceptedLicenses()})`,
+											failOnUnlicensed: true,
+											failOnViolation: true,
+										},
+										output: {
+											file: path.resolve(__dirname, "./dist/third-party-licenses.txt"),
+											template: formatThirdPartyLicenses,
+										},
+									},
+								}),
+							]
+						: [],
+			},
+		},
+	};
 });
 
 type LicenseInfo = {
@@ -190,7 +197,7 @@ function formatThirdPartyLicenses(jsLicenses: Dependency[]): string {
 				!(packageInfo.repository && packageInfo.repository.toLowerCase().includes("github.com/GraphiteEditor/Graphite".toLowerCase())) &&
 				!(
 					packageInfo.author &&
-					packageInfo.author.toLowerCase().includes("contact@graphite.rs") &&
+					packageInfo.author.toLowerCase().includes("contact@graphite.art") &&
 					// Exclude a comma which indicates multiple authors, which we need to not filter out
 					!packageInfo.author.toLowerCase().includes(",")
 				),

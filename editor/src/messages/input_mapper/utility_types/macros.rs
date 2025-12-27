@@ -117,14 +117,23 @@ macro_rules! mapping {
 	}};
 }
 
-/// Constructs an `ActionKeys` macro with a certain `Action` variant, conveniently wrapped in `Some()`.
-macro_rules! action_keys {
+/// Constructs an `ActionShortcut` macro with a certain `Action` variant, conveniently wrapped in `Some()`.
+macro_rules! action_shortcut {
 	($action:expr_2021) => {
-		Some(crate::messages::input_mapper::utility_types::misc::ActionKeys::Action($action.into()))
+		Some(crate::messages::input_mapper::utility_types::misc::ActionShortcut::Action($action.into()))
 	};
 }
 
-pub(crate) use action_keys;
+macro_rules! action_shortcut_manual {
+	($($keys:expr),*) => {
+		Some(crate::messages::input_mapper::utility_types::misc::ActionShortcut::Shortcut(
+			crate::messages::input_mapper::utility_types::input_keyboard::LabeledShortcut(vec![$($keys.into()),*]).into(),
+		))
+	};
+}
+
+pub(crate) use action_shortcut;
+pub(crate) use action_shortcut_manual;
 pub(crate) use entry;
 pub(crate) use mapping;
 pub(crate) use modifiers;
