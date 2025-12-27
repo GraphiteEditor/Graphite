@@ -1561,7 +1561,6 @@ impl Fsm for PathToolFsmState {
 			..
 		} = tool_action_data;
 
-
 		let ToolMessage::Path(event) = event else { return self };
 
 		// TODO(mTvare6): Remove once gizmos are implemented for path_tool
