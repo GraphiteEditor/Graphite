@@ -227,6 +227,29 @@ impl<PointId: Identifier> Subpath<PointId> {
 		Self::new(manipulator_groups, true)
 	}
 
+	/// Constructs a teardrop with `corner1` and `corner2` as the two corners of the bounding box.
+	pub fn new_teardrop(corner1: DVec2, corner2: DVec2) -> Self {
+		let size = (corner1 - corner2).abs();
+		let center = (corner1 + corner2) / 2.;
+		let top = DVec2::new(center.x, corner1.y);
+		let bottom = DVec2::new(center.x, corner2.y);
+		let left = DVec2::new(corner1.x, center.y / 2.);
+		let right = DVec2::new(corner2.x, center.y / 2.);
+
+		// Based on https://pomax.github.io/bezierinfo/#circles_cubic
+		const HANDLE_OFFSET_FACTOR: f64 = 0.551784777779014;
+		let bottom_handle_offset = size * HANDLE_OFFSET_FACTOR * 0.5;
+		let sides_handle_offset = size * HANDLE_OFFSET_FACTOR * 0.375; //*0.5*0.75
+
+		let manipulator_groups = vec![
+			ManipulatorGroup::new(top, None, None),
+			ManipulatorGroup::new(right, Some(right - sides_handle_offset * DVec2::Y), Some(right + bottom_handle_offset * DVec2::Y)),
+			ManipulatorGroup::new(bottom, Some(bottom + bottom_handle_offset * DVec2::X), Some(bottom - bottom_handle_offset * DVec2::X)),
+			ManipulatorGroup::new(left, Some(left + bottom_handle_offset * DVec2::Y), Some(left - sides_handle_offset * DVec2::Y)),
+		];
+		Self::new(manipulator_groups, true)
+	}
+
 	/// Constructs an arc by a `radius`, `angle_start` and `angle_size`. Angles must be in radians. Slice option makes it look like pie or pacman.
 	pub fn new_arc(radius: f64, start_angle: f64, sweep_angle: f64, arc_type: ArcType) -> Self {
 		// Prevents glitches from numerical imprecision that have been observed during animation playback after about a minute

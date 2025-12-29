@@ -368,6 +368,10 @@ pub fn get_spiral_id(layer: LayerNodeIdentifier, network_interface: &NodeNetwork
 	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name("Spiral")
 }
 
+pub fn get_teardrop_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
+	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name("Teardrop")
+}
+
 pub fn get_text_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
 	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name("Text")
 }

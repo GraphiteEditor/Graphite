@@ -16,6 +16,7 @@ use crate::messages::tool::common_functionality::shapes::polygon_shape::Polygon;
 use crate::messages::tool::common_functionality::shapes::shape_utility::{ShapeToolModifierKey, ShapeType, anchor_overlays, transform_cage_overlays};
 use crate::messages::tool::common_functionality::shapes::spiral_shape::Spiral;
 use crate::messages::tool::common_functionality::shapes::star_shape::Star;
+use crate::messages::tool::common_functionality::shapes::teardrop_shape::Teardrop;
 use crate::messages::tool::common_functionality::shapes::{Ellipse, Line, Rectangle};
 use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData, SnapTypeConfiguration};
 use crate::messages::tool::common_functionality::transformation_cage::{BoundingBoxManager, EdgeBool};
@@ -147,6 +148,12 @@ fn create_shape_option_widget(shape_type: ShapeType) -> WidgetInstance {
 		MenuListEntry::new("Circle").label("Circle").on_commit(move |_| {
 			ShapeToolMessage::UpdateOptions {
 				options: ShapeOptionsUpdate::ShapeType(ShapeType::Circle),
+			}
+			.into()
+		}),
+		MenuListEntry::new("Teardrop").label("Teardrop").on_commit(move |_| {
+			ShapeToolMessage::UpdateOptions {
+				options: ShapeOptionsUpdate::ShapeType(ShapeType::Teardrop),
 			}
 			.into()
 		}),
@@ -804,7 +811,15 @@ impl Fsm for ShapeToolFsmState {
 				};
 
 				match tool_data.current_shape {
-					ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Spiral | ShapeType::Grid | ShapeType::Rectangle | ShapeType::Ellipse => {
+					ShapeType::Polygon
+					| ShapeType::Star
+					| ShapeType::Circle
+					| ShapeType::Teardrop
+					| ShapeType::Arc
+					| ShapeType::Spiral
+					| ShapeType::Grid
+					| ShapeType::Rectangle
+					| ShapeType::Ellipse => {
 						tool_data.data.start(document, input, viewport);
 					}
 					ShapeType::Line => {
@@ -823,6 +838,7 @@ impl Fsm for ShapeToolFsmState {
 					ShapeType::Polygon => Polygon::create_node(tool_options.vertices),
 					ShapeType::Star => Star::create_node(tool_options.vertices),
 					ShapeType::Circle => Circle::create_node(),
+					ShapeType::Teardrop => Teardrop::create_node(),
 					ShapeType::Arc => Arc::create_node(tool_options.arc_type),
 					ShapeType::Spiral => Spiral::create_node(tool_options.spiral_type, tool_options.turns),
 					ShapeType::Grid => Grid::create_node(tool_options.grid_type),
@@ -837,7 +853,15 @@ impl Fsm for ShapeToolFsmState {
 				let defered_responses = &mut VecDeque::new();
 
 				match tool_data.current_shape {
-					ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Spiral | ShapeType::Grid | ShapeType::Rectangle | ShapeType::Ellipse => {
+					ShapeType::Polygon
+					| ShapeType::Star
+					| ShapeType::Circle
+					| ShapeType::Teardrop
+					| ShapeType::Arc
+					| ShapeType::Spiral
+					| ShapeType::Grid
+					| ShapeType::Rectangle
+					| ShapeType::Ellipse => {
 						defered_responses.add(GraphOperationMessage::TransformSet {
 							layer,
 							transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., input.mouse.position),
@@ -873,6 +897,7 @@ impl Fsm for ShapeToolFsmState {
 					ShapeType::Polygon => Polygon::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
 					ShapeType::Star => Star::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
 					ShapeType::Circle => Circle::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
+					ShapeType::Teardrop => Teardrop::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
 					ShapeType::Arc => Arc::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
 					ShapeType::Spiral => Spiral::update_shape(document, input, viewport, layer, tool_data, responses),
 					ShapeType::Grid => Grid::update_shape(document, input, layer, tool_options.grid_type, tool_data, modifier, responses),
@@ -1120,6 +1145,10 @@ fn update_dynamic_hints(state: &ShapeToolFsmState, responses: &mut VecDeque<Mess
 					HintInfo::mouse(MouseMotion::LmbDrag, "Draw Circle"),
 					HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
 				])],
+				ShapeType::Teardrop => vec![HintGroup(vec![
+					HintInfo::mouse(MouseMotion::LmbDrag, "Draw Teardrop"),
+					HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
+				])],
 				ShapeType::Arc => vec![HintGroup(vec![
 					HintInfo::mouse(MouseMotion::LmbDrag, "Draw Arc"),
 					HintInfo::keys([Key::Shift], "Constrain Arc").prepend_plus(),
@@ -1145,7 +1174,7 @@ fn update_dynamic_hints(state: &ShapeToolFsmState, responses: &mut VecDeque<Mess
 					HintInfo::keys([Key::Alt], "From Center"),
 					HintInfo::keys([Key::Control], "Lock Angle"),
 				]),
-				ShapeType::Circle => HintGroup(vec![HintInfo::keys([Key::Alt], "From Center")]),
+				ShapeType::Circle | ShapeType::Teardrop => HintGroup(vec![HintInfo::keys([Key::Alt], "From Center")]),
 				ShapeType::Spiral => HintGroup(vec![]),
 			};
 
