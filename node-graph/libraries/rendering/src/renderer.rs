@@ -1246,21 +1246,17 @@ impl Render for Table<Raster<CPU>> {
 			}
 
 			if render_params.to_canvas() {
-				let id = row.source_node_id.map(|x| x.0).unwrap_or_else(|| {
-					let mut state = DefaultHasher::new();
-					image.data().hash(&mut state);
-					state.finish()
-				});
-				if !render.image_data.iter().any(|(old_id, _)| *old_id == id) {
-					let mut image = image.data().clone();
-					image.map_pixels(|p| p.to_unassociated_alpha());
-					render.image_data.push((id, image));
-				}
+				let id = row.source_node_id.map(|x| x.0).unwrap_or_else(core_types::uuid::generate_uuid);
+				let mut image = image.data().clone();
+				image.map_pixels(|p| p.to_unassociated_alpha());
+				let image_width = image.width;
+				let image_height = image.height;
+				render.image_data.push((id, image));
 				render.parent_tag(
 					"foreignObject",
 					|attributes| {
 						let mut transform_values = transform.to_scale_angle_translation();
-						let size = DVec2::new(image.width as f64, image.height as f64);
+						let size = DVec2::new(image_width as f64, image_height as f64);
 						transform_values.0 /= size;
 
 						let matrix = DAffine2::from_scale_angle_translation(transform_values.0, transform_values.1, transform_values.2);
