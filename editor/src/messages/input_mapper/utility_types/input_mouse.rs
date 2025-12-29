@@ -76,7 +76,7 @@ pub struct EditorMouseState {
 
 impl EditorMouseState {
 	pub fn from_keys_and_editor_position(keys: u8, editor_position: EditorPosition) -> Self {
-		let mouse_keys = MouseKeys::from_bits(keys).expect("Invalid decoding of MouseKeys");
+		let mouse_keys = MouseKeys::from_bits_truncate(keys);
 
 		Self {
 			editor_position,
