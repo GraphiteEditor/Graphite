@@ -462,26 +462,28 @@ impl ShapeState {
 			} else {
 				// Different layers: merge first, then create segment
 
-				// Get the indices of the selected points in their respective vectors
-				let start_index = document.network_interface.compute_modified_vector(layer1)
-					.and_then(|v| v.point_domain.resolve_id(start_point));
-				let end_index = document.network_interface.compute_modified_vector(layer2)
-					.and_then(|v| v.point_domain.resolve_id(end_point));
+				// Get the local positions of the selected points
+				let start_local_pos = document.network_interface.compute_modified_vector(layer1)
+					.and_then(|v| v.point_domain.position_from_id(start_point));
+				let end_local_pos = document.network_interface.compute_modified_vector(layer2)
+					.and_then(|v| v.point_domain.position_from_id(end_point));
 
-				// Get the number of points in layer1 (this will be the offset for layer2 points after merge)
-				let layer1_point_count = document.network_interface.compute_modified_vector(layer1)
-					.map(|v| v.point_domain.ids().len());
+				// Transform to document/world space
+				let start_transform = document.metadata().transform_to_document(layer1);
+				let end_transform = document.metadata().transform_to_document(layer2);
 
-				if let (Some(start_idx), Some(end_idx), Some(point_offset)) = (start_index, end_index, layer1_point_count) {
-					// Merge the layers
+				if let (Some(start_local), Some(end_local)) = (start_local_pos, end_local_pos) {
+					let start_pos = start_transform.transform_point2(start_local);
+					let end_pos = end_transform.transform_point2(end_local);
+
 					merge_layers(document, layer1, layer2, responses);
 
-					// After the graph runs and the merge is complete, restore selection and close path
+					// Connect the points
 					responses.add(DeferMessage::AfterGraphRun {
-						messages: vec![ToolMessage::Path(PathToolMessage::RestoreSelectionAndClosePath {
+						messages: vec![ToolMessage::Path(PathToolMessage::ConnectPointsByPosition {
 							layer: layer1,
-							start_index: start_idx,
-							end_index: end_idx + point_offset,
+							start_position: start_pos,
+							end_position: end_pos,
 						}).into()],
 					});
 				}
