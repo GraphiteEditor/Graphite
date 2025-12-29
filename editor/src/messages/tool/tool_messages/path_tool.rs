@@ -73,10 +73,10 @@ pub enum PathToolMessage {
 	},
 	Escape,
 	ClosePath,
-	RestoreSelectionAndClosePath {
+	ConnectPointsByPosition {
 		layer: LayerNodeIdentifier,
-		start_index: usize,
-		end_index: usize,
+		start_position: DVec2,
+		end_position: DVec2,
 	},
 	DoubleClick {
 		extend_selection: Key,
@@ -2674,32 +2674,43 @@ impl Fsm for PathToolFsmState {
 
 				self
 			}
-			(_, PathToolMessage::RestoreSelectionAndClosePath { layer, start_index, end_index }) => {
+			(_, PathToolMessage::ConnectPointsByPosition { layer, start_position, end_position }) => {
 				// Get the merged vector
 				let Some(vector) = document.network_interface.compute_modified_vector(layer) else {
 					return self;
 				};
 
-				// Get the point IDs at the calculated indices
+				// Find points by their positions (with small tolerance for floating point comparison)
+				const POSITION_TOLERANCE: f64 = 0.01;
+
+				let positions = vector.point_domain.positions();
 				let point_ids = vector.point_domain.ids();
 
-				if start_index >= point_ids.len() || end_index >= point_ids.len() {
-					return self;
+				let mut start_point_id = None;
+				let mut end_point_id = None;
+
+				for (i, &pos) in positions.iter().enumerate() {
+					if start_point_id.is_none() && (pos - start_position).length() < POSITION_TOLERANCE {
+						start_point_id = Some(point_ids[i]);
+					}
+					if end_point_id.is_none() && (pos - end_position).length() < POSITION_TOLERANCE {
+						end_point_id = Some(point_ids[i]);
+					}
+					if start_point_id.is_some() && end_point_id.is_some() {
+						break;
+					}
 				}
 
-				let start_point_id = point_ids[start_index];
-				let end_point_id = point_ids[end_index];
+				if let (Some(start_id), Some(end_id)) = (start_point_id, end_point_id) {
+					// Clear existing selection 
+					shape_editor.deselect_all_points();
+					shape_editor.set_selected_layers(vec![layer]);
 
-				// Clear existing selection and select the merged layer
-				shape_editor.deselect_all_points();
-				shape_editor.set_selected_layers(vec![layer]);
+					shape_editor.select_point_by_layer_and_id(ManipulatorPointId::Anchor(start_id), layer);
+					shape_editor.select_point_by_layer_and_id(ManipulatorPointId::Anchor(end_id), layer);
 
-				// Select the two points
-				shape_editor.select_point_by_layer_and_id(ManipulatorPointId::Anchor(start_point_id), layer);
-				shape_editor.select_point_by_layer_and_id(ManipulatorPointId::Anchor(end_point_id), layer);
-
-				// Now call ClosePath which will see the selection and create the segment
-				responses.add(PathToolMessage::ClosePath);
+					responses.add(PathToolMessage::ClosePath);
+				}
 
 				self
 			}
