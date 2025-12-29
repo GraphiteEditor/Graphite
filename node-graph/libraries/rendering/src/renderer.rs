@@ -26,7 +26,7 @@ use kurbo::Shape;
 use num_traits::Zero;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
-use std::hash::{DefaultHasher, Hash, Hasher};
+use std::hash::{Hash, Hasher};
 use std::ops::Deref;
 use std::sync::{Arc, LazyLock};
 use vello::*;
