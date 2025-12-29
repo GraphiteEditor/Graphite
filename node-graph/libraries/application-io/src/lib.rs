@@ -239,6 +239,7 @@ pub struct RenderConfig {
 	pub scale: f64,
 	pub export_format: ExportFormat,
 	pub time: TimingInformation,
+	pub pointer: DVec2,
 	#[serde(alias = "view_mode")]
 	pub render_mode: RenderMode,
 	pub hide_artboards: bool,
