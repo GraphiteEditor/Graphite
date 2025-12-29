@@ -121,6 +121,26 @@ impl FontCache {
 	}
 
 	/// Insert a new font into the cache
+	pub fn insert(&mut self, font: Font, preview_url: String, data: Vec<u8>) {
+		self.font_file_data.insert(font.clone(), data);
+		self.preview_urls.insert(font, preview_url);
+	}
+
+	/// Gets the preview URL for showing in text field when live editing
+	pub fn get_preview_url(&self, font: &Font) -> Option<&String> {
+		self.preview_urls.get(font)
+	}
+}
+
+impl std::hash::Hash for FontCache {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		self.preview_urls.len().hash(state);
+		self.preview_urls.iter().for_each(|(font, url)| {
+			font.hash(state);
+			url.hash(state)
+		});
+		self.font_file_data.len().hash(state);
+		self.font_file_data.keys().for_each(|font| font.hash(state));
 	pub fn insert(&mut self, font: Font, data: Vec<u8>) {
 		self.font_file_data.insert(font.clone(), data);
 	}
