@@ -3,11 +3,12 @@ pub struct MessageData {
 	name: String,
 	fields: Vec<(String, usize)>,
 	path: &'static str,
+	line_number: usize,
 }
 
 impl MessageData {
-	pub fn new(name: String, fields: Vec<(String, usize)>, path: &'static str) -> MessageData {
-		MessageData { name, fields, path }
+	pub fn new(name: String, fields: Vec<(String, usize)>, path: &'static str, line_number: usize) -> MessageData {
+		MessageData { name, fields, path, line_number }
 	}
 
 	pub fn name(&self) -> &str {
@@ -21,6 +22,10 @@ impl MessageData {
 	pub fn path(&self) -> &'static str {
 		self.path
 	}
+
+	pub fn line_number(&self) -> usize {
+		self.line_number
+	}
 }
 
 #[derive(Debug)]
@@ -31,6 +36,7 @@ pub struct DebugMessageTree {
 	message_handler: Option<MessageData>,
 	message_handler_data: Option<MessageData>,
 	path: &'static str,
+	line_number: usize,
 }
 
 impl DebugMessageTree {
@@ -42,6 +48,7 @@ impl DebugMessageTree {
 			message_handler: None,
 			message_handler_data: None,
 			path: "",
+			line_number: 0,
 		}
 	}
 
@@ -51,6 +58,10 @@ impl DebugMessageTree {
 
 	pub fn set_path(&mut self, path: &'static str) {
 		self.path = path;
+	}
+
+	pub fn set_line_number(&mut self, line_number: usize) {
+		self.line_number = line_number
 	}
 
 	pub fn add_variant(&mut self, variant: DebugMessageTree) {
@@ -79,6 +90,10 @@ impl DebugMessageTree {
 
 	pub fn path(&self) -> &'static str {
 		self.path
+	}
+
+	pub fn line_number(&self) -> usize {
+		self.line_number
 	}
 
 	pub fn variants(&self) -> Option<&Vec<DebugMessageTree>> {
