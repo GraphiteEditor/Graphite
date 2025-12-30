@@ -1,0 +1,110 @@
+name: Bug
+description: File a bug/issue
+labels: ["Bug"]
+title: "[BUG] <title>"
+body:
+  - type: markdown
+    attributes:
+      value: "## Thank you for reporting an issue!"
+  - type: checkboxes
+    attributes:
+      label: Does an issue for this already exist?
+      description: Please search to see if an issue already exists for the bug you encountered.
+      options:
+        - label: I have searched the existing issues
+        - label: I have ensured my environment (operating system, app launcher, etc) is up to date
+          required: true
+  - type: input
+    id: distro
+    attributes:
+      label: Operating System and Version
+      description: What is your Linux Distro? What version?
+      placeholder: Debian, Void, Gentoo, etc.
+    validations:
+      required: true
+  - type: dropdown
+    id: install
+    attributes:
+      label: App Installation
+      description: How is the app installed?
+      multiple: false
+      options:
+        - AppImage
+        - Source Compilation
+        - Other
+      default: 0
+    validations:
+      required: true
+  - type: input
+    id: other-install
+    attributes:
+      label: Other Install
+      description: Please tell us how the app was installed
+  - type: input
+    attributes:
+      label: Build Version
+      description: What version of Graphite2D?
+      placeholder: 1.x, 2.x
+    validations:
+      required: true
+  - type: input
+    id: de-wm
+    attributes:
+      label: Desktop Environment
+      description: What is your Desktop Environment/Window Manager?
+      placeholder: GNOME, KDE, SwayWM, niri, etc.
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: Please describe the issue as cleary as you can.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Please list each step taken to reproduce the bug.
+      placeholder: |
+        1. First I install...
+        2. Then I run...
+        3. Next I click...
+        ...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      description: Please describe what you expect to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: screenshots
+    attributes:
+      label: Screenshots
+      description: Paste or attach any relevant screenshots or videos here.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: Paste or attach any relevant logs or errors here.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: config
+    attributes:
+      label: Config
+      description: Paste or attach any relevant config files here.
+  - type: checkboxes
+    id: self-service
+    attributes:
+      label: Self-service
+      description: "Would you be willing to fix this issue yourself?"
+      options:
+        - label: I'd be willing to fix this issue myself.
