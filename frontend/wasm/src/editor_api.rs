@@ -721,11 +721,13 @@ impl EditorHandle {
 
 	/// Creates a new document node in the node graph
 	#[wasm_bindgen(js_name = createNode)]
-	pub fn create_node(&self, node_type: String, x: i32, y: i32) {
+	pub fn create_node(&self, node_type: JsValue, x: i32, y: i32) {
+		let value: serde_json::Value = serde_wasm_bindgen::from_value(node_type).unwrap();
+
 		let id = NodeId::new();
 		let message = NodeGraphMessage::CreateNodeFromContextMenu {
 			node_id: Some(id),
-			node_type,
+			node_type: value.into(),
 			xy: Some((x / 24, y / 24)),
 			add_transaction: true,
 		};

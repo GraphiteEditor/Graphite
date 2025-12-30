@@ -287,11 +287,7 @@ impl LayoutMessageHandler {
 					responses.add(callback_message);
 				}
 				WidgetValueAction::Update => {
-					let Some(value) = value.as_str().map(|s| s.to_string()) else {
-						error!("NodeCatalog update was not of type String");
-						return;
-					};
-					let callback_message = (node_type_input.on_update.callback)(&value);
+					let callback_message = (node_type_input.on_update.callback)(&value.into());
 					responses.add(callback_message);
 				}
 			},
