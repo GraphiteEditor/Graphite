@@ -2336,6 +2336,14 @@ async fn centroid(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: impl Node<
 		return DVec2::ZERO;
 	}
 
+	// Calculate the bounding box of all vectors in the table
+	let bounding_box = vector.bounding_box(DAffine2::IDENTITY, false);
+	if let RenderBoundingBox::Rectangle([min, max]) = bounding_box {
+		// Return the center of the bounding box
+		return (min + max) / 2.;
+	}
+
+	// Fallback to the original method if bounding box calculation fails
 	// All subpath centroid positions added together as if they were vectors from the origin.
 	let mut centroid = DVec2::ZERO;
 	// Cumulative area or length of all subpaths
