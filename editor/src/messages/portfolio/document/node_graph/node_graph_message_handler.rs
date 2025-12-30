@@ -2723,7 +2723,7 @@ impl NodeGraphMessageHandler {
 				let clippable = layer.can_be_clipped(network_interface.document_metadata());
 				let data = LayerPanelEntry {
 					id: node_id,
-					reference: network_interface.reference(&node_id, &[]).and_then(|x| x.as_ref()).cloned().unwrap_or_default(),
+					reference: network_interface.reference(&node_id, &[]).unwrap_or(DefinitionIdentifier::Network("".to_string())),
 					alias: network_interface.display_name(&node_id, &[]),
 					in_selected_network: selection_network_path.is_empty(),
 					children_allowed,

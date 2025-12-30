@@ -19,12 +19,14 @@ pub struct DocumentNodePersistentMetadataInputNames {
 	pub network_metadata: Option<NodeNetworkMetadata>,
 }
 
-impl From<DocumentNodePersistentMetadataInputNames> for DocumentNodePersistentMetadata {
+impl From<DocumentNodePersistentMetadataInputNames> for DocumentNodePersistentMetadataPropertiesRow {
 	fn from(old: DocumentNodePersistentMetadataInputNames) -> Self {
-		DocumentNodePersistentMetadata {
-			input_metadata: Vec::new(),
+		DocumentNodePersistentMetadataPropertiesRow {
+			reference: old.reference,
+			input_properties: Vec::new(),
 			display_name: old.display_name,
 			output_names: old.output_names,
+			has_primary_output: old.has_primary_output,
 			locked: old.locked,
 			pinned: old.pinned,
 			node_type_metadata: old.node_type_metadata,
@@ -59,7 +61,7 @@ pub struct PropertiesRow {
 	pub input_description: String,
 }
 
-impl From<DocumentNodePersistentMetadataPropertiesRow> for DocumentNodePersistentMetadata {
+impl From<DocumentNodePersistentMetadataPropertiesRow> for DocumentNodePersistentMetadataHasPrimaryOutput {
 	fn from(old: DocumentNodePersistentMetadataPropertiesRow) -> Self {
 		let mut input_metadata = Vec::new();
 		for properties_row in old.input_properties {
@@ -73,10 +75,12 @@ impl From<DocumentNodePersistentMetadataPropertiesRow> for DocumentNodePersisten
 				..Default::default()
 			})
 		}
-		DocumentNodePersistentMetadata {
+		DocumentNodePersistentMetadataHasPrimaryOutput {
+			reference: old.reference,
 			display_name: old.display_name,
 			input_metadata: Vec::new(),
 			output_names: old.output_names,
+			has_primary_output: old.has_primary_output,
 			locked: old.locked,
 			pinned: old.pinned,
 			node_type_metadata: old.node_type_metadata,
@@ -102,9 +106,10 @@ pub struct DocumentNodePersistentMetadataHasPrimaryOutput {
 	pub network_metadata: Option<NodeNetworkMetadata>,
 }
 
-impl From<DocumentNodePersistentMetadataHasPrimaryOutput> for DocumentNodePersistentMetadata {
+impl From<DocumentNodePersistentMetadataHasPrimaryOutput> for DocumentNodePersistentMetadataStringReference {
 	fn from(old: DocumentNodePersistentMetadataHasPrimaryOutput) -> Self {
-		DocumentNodePersistentMetadata {
+		DocumentNodePersistentMetadataStringReference {
+			reference: old.reference,
 			display_name: old.display_name,
 			input_metadata: old.input_metadata,
 			output_names: old.output_names,
@@ -133,6 +138,7 @@ struct DocumentNodePersistentMetadataStringReference {
 
 impl From<DocumentNodePersistentMetadataStringReference> for DocumentNodePersistentMetadata {
 	fn from(mut old: DocumentNodePersistentMetadataStringReference) -> Self {
+		log::debug!("Converting from DocumentNodePersistentMetadataStringReference with reference: {:?}", old.reference);
 		if let Some(metadata) = old.network_metadata.as_mut() {
 			metadata.persistent_metadata.reference = old.reference;
 		}
@@ -148,6 +154,21 @@ impl From<DocumentNodePersistentMetadataStringReference> for DocumentNodePersist
 	}
 }
 
+#[derive(serde::Deserialize)]
+#[serde(untagged)]
+enum DocumentNodePersistentMetadataVersioned {
+	// Newest first
+	Current(DocumentNodePersistentMetadata),
+
+	StringReference(DocumentNodePersistentMetadataStringReference),
+
+	HasPrimaryOutput(DocumentNodePersistentMetadataHasPrimaryOutput),
+
+	PropertiesRow(DocumentNodePersistentMetadataPropertiesRow),
+
+	InputNames(DocumentNodePersistentMetadataInputNames),
+}
+
 pub fn deserialize_node_persistent_metadata<'de, D>(deserializer: D) -> Result<DocumentNodePersistentMetadata, D::Error>
 where
 	D: serde::Deserializer<'de>,
@@ -155,20 +176,35 @@ where
 	use serde::Deserialize;
 
 	let value = Value::deserialize(deserializer)?;
-	if let Ok(document) = serde_json::from_value::<DocumentNodePersistentMetadata>(value.clone()) {
-		return Ok(document);
+
+	let versioned_document = serde_json::from_value::<DocumentNodePersistentMetadataVersioned>(value).map_err(serde::de::Error::custom)?;
+
+	let current: DocumentNodePersistentMetadata = match versioned_document {
+		DocumentNodePersistentMetadataVersioned::Current(v) => v,
+
+		DocumentNodePersistentMetadataVersioned::StringReference(v) => {
+			let v: DocumentNodePersistentMetadataStringReference = v;
+			v.into()
+		}
+
+		DocumentNodePersistentMetadataVersioned::HasPrimaryOutput(v) => {
+			let v: DocumentNodePersistentMetadataStringReference = v.into();
+			v.into()
+		}
+
+		DocumentNodePersistentMetadataVersioned::PropertiesRow(v) => {
+			let v: DocumentNodePersistentMetadataHasPrimaryOutput = v.into();
+			let v: DocumentNodePersistentMetadataStringReference = v.into();
+			v.into()
+		}
+
+		DocumentNodePersistentMetadataVersioned::InputNames(v) => {
+			let v: DocumentNodePersistentMetadataPropertiesRow = v.into();
+			let v: DocumentNodePersistentMetadataHasPrimaryOutput = v.into();
+			let v: DocumentNodePersistentMetadataStringReference = v.into();
+			v.into()
+		}
 	};
-	if let Ok(document) = serde_json::from_value::<DocumentNodePersistentMetadataHasPrimaryOutput>(value.clone()) {
-		return Ok(document.into());
-	};
-	if let Ok(document) = serde_json::from_value::<DocumentNodePersistentMetadataPropertiesRow>(value.clone()) {
-		return Ok(document.into());
-	};
-	if let Ok(document) = serde_json::from_value::<DocumentNodePersistentMetadataStringReference>(value.clone()) {
-		return Ok(document.into());
-	};
-	match serde_json::from_value::<DocumentNodePersistentMetadataInputNames>(value.clone()) {
-		Ok(document) => Ok(document.into()),
-		Err(e) => Err(serde::de::Error::custom(e)),
-	}
+
+	Ok(current)
 }

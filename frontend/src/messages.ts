@@ -833,7 +833,7 @@ export class UpdateDocumentLayerDetails extends JsMessage {
 export class LayerPanelEntry {
 	id!: bigint;
 
-	reference!: string;
+	reference!: DefinitionIdentifier;
 
 	alias!: string;
 

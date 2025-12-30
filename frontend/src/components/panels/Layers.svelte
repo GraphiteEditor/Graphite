@@ -644,7 +644,7 @@
 							{@html $nodeGraph.thumbnails.get(listing.entry.id)}
 						{/if}
 					</div>
-					{#if listing.entry.reference === "Artboard"}
+					{#if listing.entry.reference.type === "Network" && listing.entry.reference.data === "Artboard"}
 						<IconLabel icon="Artboard" class="layer-type-icon" tooltipLabel="Artboard" />
 					{/if}
 					<LayoutRow class="layer-name" on:dblclick={() => onEditLayerName(listing)}>
