@@ -1,4 +1,5 @@
 use crate::transform::Footprint;
+use glam::DVec2;
 pub use no_std_types::context::{ArcCtx, Ctx};
 use std::any::Any;
 use std::borrow::Borrow;
@@ -26,6 +27,10 @@ pub trait ExtractAnimationTime {
 	fn try_animation_time(&self) -> Option<f64>;
 }
 
+pub trait ExtractPointer {
+	fn try_pointer(&self) -> Option<DVec2>;
+}
+
 pub trait ExtractIndex {
 	fn try_index(&self) -> Option<impl Iterator<Item = usize>>;
 }
@@ -47,6 +52,7 @@ pub trait CloneVarArgs: ExtractVarArgs {
 pub trait InjectFootprint {}
 pub trait InjectRealTime {}
 pub trait InjectAnimationTime {}
+pub trait InjectPointer {}
 pub trait InjectIndex {}
 pub trait InjectVarArgs {}
 
@@ -54,23 +60,26 @@ pub trait InjectVarArgs {}
 pub trait ModifyFootprint: ExtractFootprint + InjectFootprint {}
 pub trait ModifyRealTime: ExtractRealTime + InjectRealTime {}
 pub trait ModifyAnimationTime: ExtractAnimationTime + InjectAnimationTime {}
+pub trait ModifyPointer: ExtractPointer + InjectPointer {}
 pub trait ModifyIndex: ExtractIndex + InjectIndex {}
 pub trait ModifyVarArgs: ExtractVarArgs + InjectVarArgs {}
 
-pub trait ExtractAll: ExtractFootprint + ExtractIndex + ExtractRealTime + ExtractAnimationTime + ExtractVarArgs {}
+pub trait ExtractAll: ExtractFootprint + ExtractIndex + ExtractRealTime + ExtractAnimationTime + ExtractPointer + ExtractVarArgs {}
 
-impl<T: ?Sized + ExtractFootprint + ExtractIndex + ExtractRealTime + ExtractAnimationTime + ExtractVarArgs> ExtractAll for T {}
+impl<T: ?Sized + ExtractFootprint + ExtractIndex + ExtractRealTime + ExtractAnimationTime + ExtractPointer + ExtractVarArgs> ExtractAll for T {}
 
 impl<T: Ctx> InjectFootprint for T {}
 impl<T: Ctx> InjectRealTime for T {}
 impl<T: Ctx> InjectIndex for T {}
 impl<T: Ctx> InjectAnimationTime for T {}
+impl<T: Ctx> InjectPointer for T {}
 impl<T: Ctx> InjectVarArgs for T {}
 
 impl<T: Ctx + InjectFootprint + ExtractFootprint> ModifyFootprint for T {}
 impl<T: Ctx + InjectRealTime + ExtractRealTime> ModifyRealTime for T {}
 impl<T: Ctx + InjectIndex + ExtractIndex> ModifyIndex for T {}
 impl<T: Ctx + InjectAnimationTime + ExtractAnimationTime> ModifyAnimationTime for T {}
+impl<T: Ctx + InjectPointer + ExtractPointer> ModifyPointer for T {}
 impl<T: Ctx + InjectVarArgs + ExtractVarArgs> ModifyVarArgs for T {}
 
 // Public enum for flexible node macro codegen
@@ -79,11 +88,13 @@ pub enum ContextFeature {
 	ExtractFootprint,
 	ExtractRealTime,
 	ExtractAnimationTime,
+	ExtractPointer,
 	ExtractIndex,
 	ExtractVarArgs,
 	InjectFootprint,
 	InjectRealTime,
 	InjectAnimationTime,
+	InjectPointer,
 	InjectIndex,
 	InjectVarArgs,
 }
@@ -96,8 +107,9 @@ bitflags! {
 		const FOOTPRINT = 1 << 0;
 		const REAL_TIME = 1 << 1;
 		const ANIMATION_TIME = 1 << 2;
-		const INDEX = 1 << 3;
-		const VARARGS = 1 << 4;
+		const POINTER = 1 << 3;
+		const INDEX = 1 << 4;
+		const VARARGS = 1 << 5;
 	}
 }
 
@@ -116,6 +128,7 @@ impl From<&[ContextFeature]> for ContextDependencies {
 				ContextFeature::ExtractFootprint => ContextFeatures::FOOTPRINT,
 				ContextFeature::ExtractRealTime => ContextFeatures::REAL_TIME,
 				ContextFeature::ExtractAnimationTime => ContextFeatures::ANIMATION_TIME,
+				ContextFeature::ExtractPointer => ContextFeatures::POINTER,
 				ContextFeature::ExtractIndex => ContextFeatures::INDEX,
 				ContextFeature::ExtractVarArgs => ContextFeatures::VARARGS,
 				_ => ContextFeatures::empty(),
@@ -124,6 +137,7 @@ impl From<&[ContextFeature]> for ContextDependencies {
 				ContextFeature::InjectFootprint => ContextFeatures::FOOTPRINT,
 				ContextFeature::InjectRealTime => ContextFeatures::REAL_TIME,
 				ContextFeature::InjectAnimationTime => ContextFeatures::ANIMATION_TIME,
+				ContextFeature::InjectPointer => ContextFeatures::POINTER,
 				ContextFeature::InjectIndex => ContextFeatures::INDEX,
 				ContextFeature::InjectVarArgs => ContextFeatures::VARARGS,
 				_ => ContextFeatures::empty(),
@@ -174,6 +188,11 @@ impl<T: ExtractAnimationTime + Sync> ExtractAnimationTime for Option<T> {
 		self.as_ref().and_then(|x| x.try_animation_time())
 	}
 }
+impl<T: ExtractPointer + Sync> ExtractPointer for Option<T> {
+	fn try_pointer(&self) -> Option<DVec2> {
+		self.as_ref().and_then(|x| x.try_pointer())
+	}
+}
 impl<T: ExtractIndex> ExtractIndex for Option<T> {
 	fn try_index(&self) -> Option<impl Iterator<Item = usize>> {
 		self.as_ref().and_then(|x| x.try_index())
@@ -209,6 +228,11 @@ impl<T: ExtractRealTime + Sync> ExtractRealTime for Arc<T> {
 impl<T: ExtractAnimationTime + Sync> ExtractAnimationTime for Arc<T> {
 	fn try_animation_time(&self) -> Option<f64> {
 		(**self).try_animation_time()
+	}
+}
+impl<T: ExtractPointer + Sync> ExtractPointer for Arc<T> {
+	fn try_pointer(&self) -> Option<DVec2> {
+		(**self).try_pointer()
 	}
 }
 impl<T: ExtractIndex> ExtractIndex for Arc<T> {
@@ -303,6 +327,11 @@ impl ExtractAnimationTime for OwnedContextImpl {
 		self.animation_time
 	}
 }
+impl ExtractPointer for OwnedContextImpl {
+	fn try_pointer(&self) -> Option<DVec2> {
+		self.pointer
+	}
+}
 impl ExtractIndex for OwnedContextImpl {
 	fn try_index(&self) -> Option<impl Iterator<Item = usize>> {
 		self.index.clone().map(|x| x.into_iter().rev())
@@ -363,6 +392,7 @@ pub struct OwnedContextImpl {
 	index: Option<Vec<usize>>,
 	real_time: Option<f64>,
 	animation_time: Option<f64>,
+	pointer: Option<DVec2>,
 }
 
 impl std::fmt::Debug for OwnedContextImpl {
@@ -374,6 +404,7 @@ impl std::fmt::Debug for OwnedContextImpl {
 			.field("index", &self.index)
 			.field("real_time", &self.real_time)
 			.field("animation_time", &self.animation_time)
+			.field("pointer", &self.pointer)
 			.finish()
 	}
 }
@@ -392,6 +423,7 @@ impl Hash for OwnedContextImpl {
 		self.index.hash(state);
 		self.real_time.map(|x| x.to_bits()).hash(state);
 		self.animation_time.map(|x| x.to_bits()).hash(state);
+		self.pointer.map(|v| (v.x.to_bits(), v.y.to_bits())).hash(state);
 	}
 }
 
@@ -400,12 +432,14 @@ impl OwnedContextImpl {
 	pub fn from<T: ExtractAll + CloneVarArgs>(value: T) -> Self {
 		OwnedContextImpl::from_flags(value, ContextFeatures::all())
 	}
+
 	#[track_caller]
 	pub fn from_flags<T: ExtractAll + CloneVarArgs>(value: T, bitflags: ContextFeatures) -> Self {
 		let footprint = bitflags.contains(ContextFeatures::FOOTPRINT).then(|| value.try_footprint().copied()).flatten();
 		let index = bitflags.contains(ContextFeatures::INDEX).then(|| value.try_index()).flatten();
 		let real_time = bitflags.contains(ContextFeatures::REAL_TIME).then(|| value.try_real_time()).flatten();
 		let animation_time = bitflags.contains(ContextFeatures::ANIMATION_TIME).then(|| value.try_animation_time()).flatten();
+		let pointer = bitflags.contains(ContextFeatures::POINTER).then(|| value.try_pointer()).flatten();
 		let parent = bitflags
 			.contains(ContextFeatures::VARARGS)
 			.then(|| match value.varargs_len() {
@@ -421,8 +455,10 @@ impl OwnedContextImpl {
 			index: index.map(|x| x.collect()),
 			real_time,
 			animation_time,
+			pointer,
 		}
 	}
+
 	pub const fn empty() -> Self {
 		OwnedContextImpl {
 			footprint: None,
@@ -431,6 +467,7 @@ impl OwnedContextImpl {
 			index: None,
 			real_time: None,
 			animation_time: None,
+			pointer: None,
 		}
 	}
 }
@@ -473,6 +510,10 @@ impl OwnedContextImpl {
 	}
 	pub fn with_animation_time(mut self, animation_time: f64) -> Self {
 		self.animation_time = Some(animation_time);
+		self
+	}
+	pub fn with_pointer(mut self, pointer: DVec2) -> Self {
+		self.pointer = Some(pointer);
 		self
 	}
 	pub fn with_vararg(mut self, value: Box<dyn AnyHash + Send + Sync>) -> Self {
