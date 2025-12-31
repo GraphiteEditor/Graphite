@@ -1,6 +1,7 @@
 use super::transform_utils;
 use super::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::portfolio::document::utility_types::nodes::CollapsedLayers;
@@ -234,12 +235,6 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 					return;
 				}
 
-				responses.add(DocumentMessage::AddTransaction);
-				responses.add(NodeGraphMessage::DeleteNodes {
-					node_ids: network_interface.all_artboards().iter().map(|layer_node| layer_node.to_node()).collect(),
-					delete_children: false,
-				});
-
 				let mut artboard_data: HashMap<NodeId, ArtboardInfo> = HashMap::new();
 
 				// Go through all artboards and create merge nodes
@@ -264,8 +259,8 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 						},
 					);
 
-					let mut modify_inputs = ModifyInputsContext::new(network_interface, responses);
-					modify_inputs.create_layer(node_id);
+					let new_merge_node = resolve_document_node_type("Merge").expect("Merge node").default_node_template();
+					network_interface.insert_node(node_id, new_merge_node, &[]);
 
 					responses.add(NodeGraphMessage::SetDisplayName {
 						node_id,
@@ -310,6 +305,10 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 					});
 				}
 
+				responses.add(NodeGraphMessage::DeleteNodes {
+					node_ids: network_interface.all_artboards().iter().map(|layer_node| layer_node.to_node()).collect(),
+					delete_children: false,
+				});
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(NodeGraphMessage::SelectedNodesUpdated);
 				responses.add(NodeGraphMessage::SendGraph);
