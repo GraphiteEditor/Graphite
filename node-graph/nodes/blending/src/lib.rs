@@ -1,4 +1,4 @@
-use core_types::color::Alpha;
+use core_types::color::{AlphaMut};
 use core_types::registry::types::Percentage;
 use core_types::table::Table;
 use core_types::{BlendMode, Color, Ctx};
@@ -40,7 +40,7 @@ impl MultiplyAlpha for Table<Raster<CPU>> {
 impl MultiplyAlpha for Table<Color> {
 	fn multiply_alpha(&mut self, factor: f64) {
 		for row in self.iter_mut() {
-			*row.element = row.element.multiplied_alpha(factor as f32);
+			row.element.set_alpha(factor as f32);
 			row.alpha_blending.opacity *= factor as f32;
 		}
 	}
