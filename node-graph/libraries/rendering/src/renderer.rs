@@ -60,6 +60,9 @@ pub struct SvgRender {
 	pub svg_defs: String,
 	pub transform: DAffine2,
 	pub image_data: Vec<(u64, Image<Color>)>,
+	/// HashMap for O(1) lookup: content_hash -> (id, full_image_for_collision_check)
+	/// Used in deduplicating images efficiently
+	image_lookup: HashMap<u64, Vec<(u64, Image<Color>)>>,
 	indent: usize,
 }
 
@@ -70,6 +73,7 @@ impl SvgRender {
 			svg_defs: String::new(),
 			transform: DAffine2::IDENTITY,
 			image_data: Vec::new(),
+			image_lookup: HashMap::new(),
 			indent: 0,
 		}
 	}
@@ -1246,15 +1250,38 @@ impl Render for Table<Raster<CPU>> {
 			}
 
 			if render_params.to_canvas() {
+				// Use source_node_id if available, otherwise look up or generate a unique ID
 				let id = row.source_node_id.map(|x| x.0).unwrap_or_else(|| {
-					let mut state = DefaultHasher::new();
+					// Compute hash of the image for O(1) lookup
+					let mut state = std::hash::DefaultHasher::new();
 					image.data().hash(&mut state);
-					state.finish()
+					let content_hash = state.finish();
+
+					if let Some(candidates) = render.image_lookup.get(&content_hash) {
+						// Hash collision possible - verify with full equality check
+						// Only iterates through images with the same hash (usually 1)
+						if let Some((existing_id, _)) = candidates.iter().find(|(_, img)| img == image.data()) {
+							return *existing_id;
+						}
+					}
+
+					// New unique image - generate a UUID
+					core_types::uuid::generate_uuid()
 				});
-				if !render.image_data.iter().any(|(old_id, _)| *old_id == id) {
-					let mut image = image.data().clone();
-					image.map_pixels(|p| p.to_unassociated_alpha());
-					render.image_data.push((id, image));
+
+				// Only add if we don't already have this ID
+				if !render.image_lookup.values().any(|candidates| candidates.iter().any(|(existing_id, _)| *existing_id == id)) {
+					let mut image_clone = image.data().clone();
+					image_clone.map_pixels(|p| p.to_unassociated_alpha());
+
+					// Compute hash again for storage
+					let mut state = std::hash::DefaultHasher::new();
+					image.data().hash(&mut state);
+					let content_hash = state.finish();
+
+					// Add to both Vec (for API) and HashMap (for fast lookup)
+					render.image_data.push((id, image_clone.clone()));
+					render.image_lookup.entry(content_hash).or_insert_with(Vec::new).push((id, image_clone));
 				}
 				render.parent_tag(
 					"foreignObject",
