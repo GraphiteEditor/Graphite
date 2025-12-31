@@ -785,7 +785,7 @@ async fn extrude(_: impl Ctx, mut source: Table<Vector>, direction: DVec2, joini
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn box_warp(_: impl Ctx, content: Table<Vector>, #[expose] rectangle: Table<Vector>) -> Table<Vector> {
+async fn box_warp(_: impl Ctx, content: Table<Vector>, #[expose] rectangle: Table<Vector>, #[expose] combined: bool) -> Table<Vector> {
 	let Some((target, target_transform)) = rectangle.get(0).map(|rect| (rect.element, rect.transform)) else {
 		return content;
 	};
