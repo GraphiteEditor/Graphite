@@ -1,3 +1,4 @@
+use core_types::color::Alpha;
 use core_types::registry::types::Percentage;
 use core_types::table::Table;
 use core_types::{BlendMode, Color, Ctx};
