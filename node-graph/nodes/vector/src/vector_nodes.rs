@@ -789,6 +789,22 @@ async fn box_warp(_: impl Ctx, content: Table<Vector>, #[expose] rectangle: Tabl
 	let Some((target, target_transform)) = rectangle.get(0).map(|rect| (rect.element, rect.transform)) else {
 		return content;
 	};
+	
+    // Compute combined bounding box if needed
+    let combined_bbox = if combined {
+        content.iter().fold(None, |acc: Option<[DVec2; 2]>, row| {
+            let bbox = row.element.bounding_box_with_transform(row.transform);
+            match (acc, bbox) {
+                (None, Some(bbox)) => Some(bbox),
+                (Some([min, max]), Some([bbox_min, bbox_max])) => {
+                    Some([min.min(bbox_min), max.max(bbox_max)])
+                }
+                (acc, None) => acc,
+            }
+        })
+    } else {
+        None
+    };
 
 	content
 		.into_iter()
@@ -797,7 +813,7 @@ async fn box_warp(_: impl Ctx, content: Table<Vector>, #[expose] rectangle: Tabl
 			let vector = row.element;
 
 			// Get the bounding box of the source vector geometry
-			let source_bbox = vector.bounding_box_with_transform(transform).unwrap_or([DVec2::ZERO, DVec2::ONE]);
+			let source_bbox = combined_bbox.unwrap_or_else(|| vector.bounding_box_with_transform(transform).unwrap_or([DVec2::ZERO, DVec2::ONE]));
 
 			// Extract first 4 points from target shape to form the quadrilateral
 			// Apply the target's transform to get points in world space
