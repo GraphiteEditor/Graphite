@@ -11,15 +11,15 @@ body:
       label: Does an issue for this already exist?
       description: Please search to see if an issue already exists for the bug you encountered.
       options:
-        - label: I have searched the existing issues
-        - label: I have ensured my environment (operating system, app launcher, etc) is up to date
+        - label: I have searched the existing issues.
+        - label: I have ensured my environment (operating system, app launcher, etc) is up to date.
           required: true
   - type: input
-    id: distro
+    id: os
     attributes:
       label: Operating System and Version
-      description: What is your Linux Distro? What version?
-      placeholder: Debian, Void, Gentoo, etc.
+      description: What is your Operating System? What version?
+      placeholder: Debian, Void, Gentoo, Windows, macOS etc.
     validations:
       required: true
   - type: dropdown
@@ -30,7 +30,14 @@ body:
       multiple: false
       options:
         - AppImage
+        - DMG (macOS)
+        - EXE (Windows)
+        - Flatpak
+        - Nixpkg
+        - PKG
+        - Snap
         - Source Compilation
+        - Steam
         - Other
       default: 0
     validations:
@@ -39,11 +46,11 @@ body:
     id: other-install
     attributes:
       label: Other Install
-      description: Please tell us how the app was installed
+      description: Please tell us how the app was installed.
   - type: input
     attributes:
       label: Build Version
-      description: What version of Graphite2D?
+      description: What version of Graphite?
       placeholder: 1.x, 2.x
     validations:
       required: true
@@ -51,7 +58,7 @@ body:
     id: de-wm
     attributes:
       label: Desktop Environment
-      description: What is your Desktop Environment/Window Manager?
+      description: What is your Desktop Environment/Window Manager? (N/A for macOS/Windows)
       placeholder: GNOME, KDE, SwayWM, niri, etc.
     validations:
       required: true
