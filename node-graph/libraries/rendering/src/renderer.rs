@@ -26,7 +26,7 @@ use kurbo::Shape;
 use num_traits::Zero;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
-use std::hash::{DefaultHasher, Hash, Hasher};
+use std::hash::{Hash, Hasher};
 use std::ops::Deref;
 use std::sync::{Arc, LazyLock};
 use vello::*;
@@ -59,10 +59,7 @@ pub struct SvgRender {
 	pub svg: Vec<SvgSegment>,
 	pub svg_defs: String,
 	pub transform: DAffine2,
-	pub image_data: Vec<(u64, Image<Color>)>,
-	/// HashMap for O(1) lookup: content_hash -> (id, full_image_for_collision_check)
-	/// Used in deduplicating images efficiently
-	image_lookup: HashMap<u64, Vec<(u64, Image<Color>)>>,
+	pub image_data: HashMap<Image<Color>, u64>,
 	indent: usize,
 }
 
@@ -72,8 +69,7 @@ impl SvgRender {
 			svg: Vec::default(),
 			svg_defs: String::new(),
 			transform: DAffine2::IDENTITY,
-			image_data: Vec::new(),
-			image_lookup: HashMap::new(),
+			image_data: HashMap::new(),
 			indent: 0,
 		}
 	}
@@ -1243,6 +1239,7 @@ impl Render for Table<Raster<CPU>> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for row in self.iter() {
 			let image = row.element;
+
 			let transform = *row.transform;
 
 			if image.data.is_empty() {
@@ -1250,39 +1247,13 @@ impl Render for Table<Raster<CPU>> {
 			}
 
 			if render_params.to_canvas() {
-				// Use source_node_id if available, otherwise look up or generate a unique ID
-				let id = row.source_node_id.map(|x| x.0).unwrap_or_else(|| {
-					// Compute hash of the image for O(1) lookup
-					let mut state = std::hash::DefaultHasher::new();
-					image.data().hash(&mut state);
-					let content_hash = state.finish();
+				let mut image_copy = image.clone();
+				image_copy.data_mut().map_pixels(|p| p.to_unassociated_alpha());
+				let id = match render.image_data.entry(image_copy.into_data()) {
+					std::collections::hash_map::Entry::Occupied(occupied_entry) => *occupied_entry.get(),
+					std::collections::hash_map::Entry::Vacant(vacant_entry) => *vacant_entry.insert(generate_uuid()),
+				};
 
-					if let Some(candidates) = render.image_lookup.get(&content_hash) {
-						// Hash collision possible - verify with full equality check
-						// Only iterates through images with the same hash (usually 1)
-						if let Some((existing_id, _)) = candidates.iter().find(|(_, img)| img == image.data()) {
-							return *existing_id;
-						}
-					}
-
-					// New unique image - generate a UUID
-					core_types::uuid::generate_uuid()
-				});
-
-				// Only add if we don't already have this ID
-				if !render.image_lookup.values().any(|candidates| candidates.iter().any(|(existing_id, _)| *existing_id == id)) {
-					let mut image_clone = image.data().clone();
-					image_clone.map_pixels(|p| p.to_unassociated_alpha());
-
-					// Compute hash again for storage
-					let mut state = std::hash::DefaultHasher::new();
-					image.data().hash(&mut state);
-					let content_hash = state.finish();
-
-					// Add to both Vec (for API) and HashMap (for fast lookup)
-					render.image_data.push((id, image_clone.clone()));
-					render.image_lookup.entry(content_hash).or_insert_with(Vec::new).push((id, image_clone));
-				}
 				render.parent_tag(
 					"foreignObject",
 					|attributes| {
