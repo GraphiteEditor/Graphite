@@ -510,13 +510,19 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 	// Validate data field attributes
 	if is_data_field {
 		if default_value.is_some() {
-			return Err(Error::new_spanned(&pat_ident, "Data fields (#[data]) cannot have #[default] attribute. They are automatically initialized with Default::default()"));
+			return Err(Error::new_spanned(
+				&pat_ident,
+				"Data fields (#[data]) cannot have #[default] attribute. They are automatically initialized with Default::default()",
+			));
 		}
 		if scope.is_some() {
 			return Err(Error::new_spanned(&pat_ident, "Data fields (#[data]) cannot have #[scope] attribute"));
 		}
 		if exposed {
-			return Err(Error::new_spanned(&pat_ident, "Data fields (#[data]) cannot be exposed (#[expose]). They are internal state, not node parameters"));
+			return Err(Error::new_spanned(
+				&pat_ident,
+				"Data fields (#[data]) cannot be exposed (#[expose]). They are internal state, not node parameters",
+			));
 		}
 	}
 
@@ -619,7 +625,10 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 	if is_node {
 		// Data fields cannot be impl Node types
 		if is_data_field {
-			return Err(Error::new_spanned(&ty, "Data fields (#[data]) cannot be of type `impl Node`. Data fields must be concrete types that implement Default"));
+			return Err(Error::new_spanned(
+				&ty,
+				"Data fields (#[data]) cannot be of type `impl Node`. Data fields must be concrete types that implement Default",
+			));
 		}
 
 		let (input_type, output_type) = node_input_type
@@ -864,7 +873,7 @@ mod tests {
 				properties_string: None,
 				cfg: None,
 				shader_node: None,
-			serialize: None,
+				serialize: None,
 			},
 			fn_name: Ident::new("add", Span::call_site()),
 			struct_name: Ident::new("Add", Span::call_site()),
@@ -899,7 +908,7 @@ mod tests {
 				number_display_decimal_places: None,
 				number_step: None,
 				unit: None,
-			is_data_field: false,
+				is_data_field: false,
 			}],
 			body: TokenStream2::new(),
 			description: String::from("Multi\nLine\n"),
@@ -932,7 +941,7 @@ mod tests {
 				properties_string: None,
 				cfg: None,
 				shader_node: None,
-			serialize: None,
+				serialize: None,
 			},
 			fn_name: Ident::new("transform", Span::call_site()),
 			struct_name: Ident::new("Transform", Span::call_site()),
@@ -961,7 +970,7 @@ mod tests {
 					number_display_decimal_places: None,
 					number_step: None,
 					unit: None,
-			is_data_field: false,
+					is_data_field: false,
 				},
 				ParsedField {
 					pat_ident: pat_ident("translate"),
@@ -983,7 +992,7 @@ mod tests {
 					number_display_decimal_places: None,
 					number_step: None,
 					unit: None,
-			is_data_field: false,
+					is_data_field: false,
 				},
 			],
 			body: TokenStream2::new(),
@@ -1014,7 +1023,7 @@ mod tests {
 				properties_string: None,
 				cfg: None,
 				shader_node: None,
-			serialize: None,
+				serialize: None,
 			},
 			fn_name: Ident::new("circle", Span::call_site()),
 			struct_name: Ident::new("Circle", Span::call_site()),
@@ -1049,7 +1058,7 @@ mod tests {
 				number_display_decimal_places: None,
 				number_step: None,
 				unit: None,
-			is_data_field: false,
+				is_data_field: false,
 			}],
 			body: TokenStream2::new(),
 			description: "Test\n".into(),
@@ -1078,7 +1087,7 @@ mod tests {
 				properties_string: None,
 				cfg: None,
 				shader_node: None,
-			serialize: None,
+				serialize: None,
 			},
 			fn_name: Ident::new("levels", Span::call_site()),
 			struct_name: Ident::new("Levels", Span::call_site()),
@@ -1118,7 +1127,7 @@ mod tests {
 				number_display_decimal_places: None,
 				number_step: None,
 				unit: None,
-			is_data_field: false,
+				is_data_field: false,
 			}],
 			body: TokenStream2::new(),
 			description: String::new(),
@@ -1154,7 +1163,7 @@ mod tests {
 				properties_string: None,
 				cfg: None,
 				shader_node: None,
-			serialize: None,
+				serialize: None,
 			},
 			fn_name: Ident::new("add", Span::call_site()),
 			struct_name: Ident::new("Add", Span::call_site()),
@@ -1189,7 +1198,7 @@ mod tests {
 				number_display_decimal_places: None,
 				number_step: None,
 				unit: None,
-			is_data_field: false,
+				is_data_field: false,
 			}],
 			body: TokenStream2::new(),
 			description: String::new(),
@@ -1218,7 +1227,7 @@ mod tests {
 				properties_string: None,
 				cfg: None,
 				shader_node: None,
-			serialize: None,
+				serialize: None,
 			},
 			fn_name: Ident::new("load_image", Span::call_site()),
 			struct_name: Ident::new("LoadImage", Span::call_site()),
@@ -1253,7 +1262,7 @@ mod tests {
 				number_display_decimal_places: None,
 				number_step: None,
 				unit: None,
-			is_data_field: false,
+				is_data_field: false,
 			}],
 			body: TokenStream2::new(),
 			description: String::new(),
@@ -1282,7 +1291,7 @@ mod tests {
 				properties_string: None,
 				cfg: None,
 				shader_node: None,
-			serialize: None,
+				serialize: None,
 			},
 			fn_name: Ident::new("custom_node", Span::call_site()),
 			struct_name: Ident::new("CustomNode", Span::call_site()),
