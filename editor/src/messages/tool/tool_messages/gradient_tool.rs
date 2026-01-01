@@ -170,7 +170,7 @@ impl SelectedGradient {
 		self.base_end = self.gradient.end;
 	}
 
-	pub fn update_gradient(&mut self, mut mouse: DVec2, responses: &mut VecDeque<Message>, snap_rotate: bool, gradient_type: GradientType, mouse_offset: DVec2) {
+	pub fn update_gradient(&mut self, mouse: DVec2, responses: &mut VecDeque<Message>, snap_rotate: bool, gradient_type: GradientType, mouse_offset: DVec2) {
 		self.gradient.gradient_type = gradient_type;
 
 		let mut adjusted_mouse = mouse - mouse_offset;
