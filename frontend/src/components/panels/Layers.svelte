@@ -458,6 +458,7 @@
 
 			if (distance > DRAG_THRESHOLD) {
 				internalDragState.active = true;
+				draggedLayerIndex = internalDragState.listing.folderIndex;
 				dragInPanel = true;
 
 				const layer = internalDragState.listing.entry;
@@ -468,14 +469,14 @@
 		}
 
 		// Perform drag calculations if a drag is occurring
-		if (internalDragState.active) {
+		if (internalDragState.active && draggedLayerIndex !== undefined) {
 			const select = () => {
 				if (internalDragState && !$nodeGraph.selected.includes(internalDragState.layerId)) {
 					selectLayer(internalDragState.listing, false, false);
 				}
 			};
 
-			draggingData = calculateDragIndex(list, e.clientY, select);
+			draggingData = calculateDragIndex(list, e.clientY,draggedLayerIndex, select);
 		}
 	}
 
