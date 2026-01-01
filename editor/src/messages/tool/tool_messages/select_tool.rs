@@ -1371,19 +1371,27 @@ impl Fsm for SelectToolFsmState {
 					responses.add(ToolMessage::UpdateHints);
 				}
 
-				tool_data.drag_current = input.mouse.position;
-
 				let current_mouse = input.mouse.position;
 				let space_down = input.keyboard.get(Key::Space as usize);
 				if space_down {
-					let delta = current_mouse - tool_data.drag_current;
-					tool_data.drag_start += delta;
-
-					if selection_shape == SelectionShapeType::Lasso {
-						for point in &mut tool_data.lasso_polygon {
-							*point += delta;
-						}
+					if tool_data.last_mouse_viewport_for_space.is_none() {
+						tool_data.last_mouse_viewport_for_space = Some(current_mouse);
 					}
+					let previous = tool_data.last_mouse_viewport_for_space.unwrap();
+					let delta = current_mouse - previous;
+					if delta.length_squared() > 0. {
+						tool_data.drag_start += delta;
+
+						if selection_shape == SelectionShapeType::Lasso {
+							for point in &mut tool_data.lasso_polygon {
+								*point += delta;
+							}
+						}
+
+						tool_data.last_mouse_viewport_for_space = Some(current_mouse);
+					}
+				} else {
+					tool_data.last_mouse_viewport_for_space = None;
 				}
 				tool_data.drag_current = current_mouse;
 				responses.add(OverlaysMessage::Draw);
