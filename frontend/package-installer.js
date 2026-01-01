@@ -32,7 +32,7 @@ if (isInstallNeeded()) {
 		console.log("Finished installing npm packages.");
 	} catch (_) {
 		// eslint-disable-next-line no-console
-		console.error("Failed to install npm packages. Please run `npm install` from the `/frontend` directory.");
+		console.error("Failed to install npm packages. Please delete the `node_modules` folder and run `npm install` from the `/frontend` directory.");
 		process.exit(1);
 	}
 } else {

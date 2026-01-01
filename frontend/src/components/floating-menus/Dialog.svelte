@@ -34,8 +34,8 @@
 	</LayoutRow>
 	<LayoutRow class={`content ${$dialog.title === "Demo Artwork" ? "center" : "" /* TODO: Replace this with a less hacky approach that's compatible with localization/translation */}`}>
 		<LayoutCol class="column-1">
-			{#if $dialog.column1.layout.length > 0}
-				<WidgetLayout layout={$dialog.column1} class="details" />
+			{#if $dialog.column1.length > 0}
+				<WidgetLayout layout={$dialog.column1} layoutTarget="DialogColumn1" class="details" />
 			{/if}
 			{#if $dialog.panicDetails}
 				<div class="widget-layout details">
@@ -57,15 +57,15 @@
 				</div>
 			{/if}
 		</LayoutCol>
-		{#if $dialog.column2.layout.length > 0}
+		{#if $dialog.column2.length > 0}
 			<LayoutCol class="column-2">
-				<WidgetLayout layout={$dialog.column2} class="details" />
+				<WidgetLayout layout={$dialog.column2} layoutTarget="DialogColumn2" class="details" />
 			</LayoutCol>
 		{/if}
 	</LayoutRow>
 	<LayoutRow class="footer-area">
-		{#if $dialog.buttons.layout.length > 0}
-			<WidgetLayout layout={$dialog.buttons} class="details" />
+		{#if $dialog.buttons.length > 0}
+			<WidgetLayout layout={$dialog.buttons} layoutTarget="DialogButtons" class="details" />
 		{/if}
 		{#if $dialog.panicDetails}
 			<TextButton label="Copy Error Log" action={() => navigator.clipboard.writeText($dialog.panicDetails)} />

@@ -30,11 +30,11 @@ impl CefContext for MultiThreadedCefContextProxy {
 		});
 	}
 
-	fn notify_of_resize(&self) {
+	fn notify_view_info_changed(&self) {
 		run_on_ui_thread(move || {
 			CONTEXT.with(|b| {
 				if let Some(context) = b.borrow_mut().as_mut() {
-					context.notify_of_resize();
+					context.notify_view_info_changed();
 				}
 			});
 		});

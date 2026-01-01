@@ -12,11 +12,11 @@ css = ["/layout/reading-material.css"]
 
 <article>
 
-Graphite is open source software built by its community and distributed by *Graphite Labs, LLC*, the official [organization](/about#organization) that operates the project. Builds of the application are free to use by anyone for any purpose, even commercially. The artwork you produce is solely yours.
+Graphite is open source software made by its community and distributed by *Graphite Labs, LLC*, the official [organization](/about#organization) that operates the project. Builds of the application are free to use by anyone for any purpose, even commercially. The artwork you produce is solely yours.
 
-The source code [available on GitHub](https://github.com/GraphiteEditor/Graphite) (including the Graphite editor application, libraries, and other software materials) is shared under the Apache 2.0 license posted below, unless otherwise noted within the repository.
+## Source code
 
-Visual assets, including but not limited to brand graphics, logos, fonts, icon sets, SVG files, and sample artworks are excluded from this code license and held under copyright by their respective owners. Derivative works must substitute these assets before distributing modified releases of the software. This protects the integrity of the [brand](/logo) and encourages the community to [contribute](/volunteer) back to the official project instead of fragmenting the ecosystem.
+The source code [available on GitHub](https://github.com/GraphiteEditor/Graphite) (including the Graphite editor application, libraries, and other software materials) is shared under the Apache License 2.0 posted below, unless otherwise noted within the repository.
 
 ---
 
@@ -196,6 +196,28 @@ TERMS AND CONDITIONS FOR USE, REPRODUCTION, AND DISTRIBUTION
 	of your accepting any such warranty or additional liability.
 
 END OF TERMS AND CONDITIONS
+
+## Branding
+
+Assets that contribute to the visual identity of the Graphite brand and software (including [logos](/logo) and icon sets) are not considered software code, and are licensed separately from the [source code license](#source-code) described above. These are kept in a [separate repository](https://github.com/Keavon/graphite-branded-assets/) because they are designed independently and are not within scope of the open source project.
+
+Official builds of Graphite may be compiled and redistributed freely under the terms of the Graphite Branding License, but derivative works (i.e. forks) must substitute these assets before distributing modified releases of the software. This protects the integrity of the brand and encourages developers to [contribute](/volunteer) back in support of the official community-based project instead of fragmenting the ecosystem with lookalikes.
+
+---
+
+Graphite Branding License
+
+Copyright © 2021-2025 Graphite Labs, LLC. All rights reserved.
+
+The repository `https://github.com/Keavon/graphite-branded-assets/` includes proprietary assets (the "Assets"), including but not limited to logos, icons, and branding materials. The Assets are not software source code and are consequently not licensed under the same terms as the other works of Graphite software materials. The intention of this license is to maintain the full permissiveness of the software code while reserving protections for the brand and visual identity of the official Graphite product.
+
+Permission is granted to use, reproduce, and distribute the Assets solely as part of unmodified build artifacts produced from the official Graphite repository at `https://github.com/GraphiteEditor/Graphite`, on master branch commits, using the official build process as documented therein. Any other use of the Assets—including copying, extraction, incorporation into modified or forked builds, or use in other projects or contexts—is prohibited without prior written permission from the copyright holder.
+
+This license does not grant any rights under trademark law or affect the licensing of the software source code.
+
+THE ASSETS ARE PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, OR NONINFRINGEMENT. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES, OR OTHER LIABILITY ARISING FROM THE USE OF THE ASSETS.
+
+This license is automatically terminated if the terms herein are violated.
 
 </article>
 

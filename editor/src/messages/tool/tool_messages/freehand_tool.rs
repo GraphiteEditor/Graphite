@@ -72,7 +72,7 @@ impl ToolMetadata for FreehandTool {
 	fn icon_name(&self) -> String {
 		"VectorFreehandTool".into()
 	}
-	fn tooltip(&self) -> String {
+	fn tooltip_label(&self) -> String {
 		"Freehand Tool".into()
 	}
 	fn tool_type(&self) -> crate::messages::tool::utility_types::ToolType {
@@ -80,7 +80,7 @@ impl ToolMetadata for FreehandTool {
 	}
 }
 
-fn create_weight_widget(line_weight: f64) -> WidgetHolder {
+fn create_weight_widget(line_weight: f64) -> WidgetInstance {
 	NumberInput::new(Some(line_weight))
 		.unit(" px")
 		.label("Weight")
@@ -92,7 +92,7 @@ fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 			}
 			.into()
 		})
-		.widget_holder()
+		.widget_instance()
 }
 
 impl LayoutHolder for FreehandTool {
@@ -122,7 +122,7 @@ impl LayoutHolder for FreehandTool {
 			},
 		);
 
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 
 		widgets.append(&mut self.options.stroke.create_widgets(
 			"Stroke",
@@ -148,10 +148,10 @@ impl LayoutHolder for FreehandTool {
 				.into()
 			},
 		));
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 		widgets.push(create_weight_widget(self.options.line_weight));
 
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
+		Layout(vec![LayoutGroup::Row { widgets }])
 	}
 }
 
@@ -236,14 +236,14 @@ impl Fsm for FreehandToolFsmState {
 			global_tool_data,
 			input,
 			shape_editor,
-			preferences,
+			viewport,
 			..
 		} = tool_action_data;
 
 		let ToolMessage::Freehand(event) = event else { return self };
 		match (self, event) {
 			(_, FreehandToolMessage::Overlays { context: mut overlay_context }) => {
-				path_endpoint_overlays(document, shape_editor, &mut overlay_context, tool_action_data.preferences);
+				path_endpoint_overlays(document, shape_editor, &mut overlay_context);
 
 				self
 			}
@@ -257,7 +257,7 @@ impl Fsm for FreehandToolFsmState {
 				// Extend an endpoint of the selected path
 				let selected_nodes = document.network_interface.selected_nodes();
 				let tolerance = crate::consts::SNAP_POINT_TOLERANCE;
-				if let Some((layer, point, position)) = should_extend(document, input.mouse.position, tolerance, selected_nodes.selected_layers(document.metadata()), preferences) {
+				if let Some((layer, point, position)) = should_extend(document, input.mouse.position, tolerance, selected_nodes.selected_layers(document.metadata())) {
 					tool_data.layer = Some(layer);
 					tool_data.end_point = Some((position, point));
 
@@ -283,7 +283,7 @@ impl Fsm for FreehandToolFsmState {
 
 				responses.add(DocumentMessage::DeselectAllLayers);
 
-				let parent = document.new_layer_bounding_artboard(input);
+				let parent = document.new_layer_bounding_artboard(input, viewport);
 
 				let node_type = resolve_document_node_type("Path").expect("Path node does not exist");
 				let node = node_type.default_node_template();
@@ -345,7 +345,7 @@ impl Fsm for FreehandToolFsmState {
 			FreehandToolFsmState::Drawing => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
 		};
 
-		responses.add(FrontendMessage::UpdateInputHints { hint_data });
+		hint_data.send_layout(responses);
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
@@ -366,20 +366,18 @@ fn extend_path_with_next_segment(tool_data: &mut FreehandToolData, position: DVe
 		modification_type: VectorModificationType::InsertPoint { id, position },
 	});
 
-	if extend {
-		if let Some((_, previous_position)) = tool_data.end_point {
-			let next_id = SegmentId::generate();
-			let points = [previous_position, id];
+	if extend && let Some((_, previous_position)) = tool_data.end_point {
+		let next_id = SegmentId::generate();
+		let points = [previous_position, id];
 
-			responses.add(GraphOperationMessage::Vector {
-				layer,
-				modification_type: VectorModificationType::InsertSegment {
-					id: next_id,
-					points,
-					handles: [None, None],
-				},
-			});
-		}
+		responses.add(GraphOperationMessage::Vector {
+			layer,
+			modification_type: VectorModificationType::InsertSegment {
+				id: next_id,
+				points,
+				handles: [None, None],
+			},
+		});
 	}
 
 	tool_data.dragged = true;
@@ -520,10 +518,10 @@ mod test_freehand {
 			initial_segment_count
 		);
 
-		let extendable_points = initial_vector.extendable_points(false).collect::<Vec<_>>();
-		assert!(!extendable_points.is_empty(), "No extendable points found in the path");
+		let endpoints = initial_vector.anchor_endpoints().collect::<Vec<_>>();
+		assert!(!endpoints.is_empty(), "No extendable points found in the path");
 
-		let endpoint_id = extendable_points[0];
+		let endpoint_id = endpoints[0];
 		let endpoint_pos_option = initial_vector.point_domain.position_from_id(endpoint_id);
 		assert!(endpoint_pos_option.is_some(), "Could not find position for endpoint");
 

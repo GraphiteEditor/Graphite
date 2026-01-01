@@ -91,13 +91,13 @@ Graphite is fully funded by its community and beholden to no investors, ensuring
 
 With great power comes great accessibility. Graphite is built on the belief that the best creative tools can be powerful and within reach of all, from students to studios.
 
-Graphite is designed with a friendly and intuitive interface where a delightful user experience is of first-class importance. It is available for free under an open source [license](/license) and usable [instantly through a web browser](https://editor.graphite.rs) or an upcoming native client on Windows, Mac, and Linux.
+Graphite is designed with a friendly and intuitive interface where a delightful user experience is of first-class importance. It is available for free under an open source [license](/license) and usable [instantly through a web browser](https://editor.graphite.art) or an upcoming native client on Windows, Mac, and Linux.
 
 It's easy to learn and teach, yet Graphite's accessible design does not sacrifice versatility for simplicity. The node-based workflow opens doors to an ecosystem of powerful capabilities catering to casual and professional users alike.
 
 </div>
 <div class="graphic">
-	<img src="https://static.graphite.rs/content/index/brush__2.svg" alt="" />
+	<img src="https://static.graphite.art/content/index/brush__2.svg" alt="" />
 </div>
 </section> -->
 
@@ -112,9 +112,9 @@ It's easy to learn and teach, yet Graphite's accessible design does not sacrific
 
 <div class="block" id="keavon">
 
-<img src="https://static.graphite.rs/content/about/core-team-photo-keavon-chambers.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Photo of Keavon Chambers" />
+<img src="https://static.graphite.art/content/about/core-team-photo-keavon-chambers.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Photo of Keavon Chambers" />
 
-## Keavon Chambers <span class="handle">(@Keavon)</span> <img src="https://static.graphite.rs/icons/flags/us.png" class="flag" title="American" />
+## Keavon Chambers <span class="handle">(@Keavon)</span> <img src="https://static.graphite.art/icons/flags/us.png" class="flag" title="American" />
 
 ***Founder, UI & product design, frontend, editor systems***
 
@@ -123,9 +123,9 @@ Keavon is a creative generalist with a love for the fusion of arts and technolog
 </div>
 <div class="block" id="dennis">
 
-<img src="https://static.graphite.rs/content/about/core-team-photo-dennis-kobert.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Photo of Dennis Kobert" />
+<img src="https://static.graphite.art/content/about/core-team-photo-dennis-kobert.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Photo of Dennis Kobert" />
 
-## Dennis Kobert <span class="handle">(@TrueDoctor)</span> <img src="https://static.graphite.rs/icons/flags/de.png" class="flag" title="German" />
+## Dennis Kobert <span class="handle">(@TrueDoctor)</span> <img src="https://static.graphite.art/icons/flags/de.png" class="flag" title="German" />
 
 ***Graphene node engine, research, architecture***
 
@@ -138,9 +138,9 @@ Dennis is a mix between a mathematician and a mad scientist. While still enjoyin
 
 <div class="block" id="timon">
 
-<img src="https://static.graphite.rs/content/about/core-team-photo-timon-schelling.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Photo of Timon Schelling" />
+<img src="https://static.graphite.art/content/about/core-team-photo-timon-schelling.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Photo of Timon Schelling" />
 
-## Timon Schelling <span class="handle">(@timon-schelling)</span> <img src="https://static.graphite.rs/icons/flags/de.png" class="flag" title="German" />
+## Timon Schelling <span class="handle">(@timon-schelling)</span> <img src="https://static.graphite.art/icons/flags/de.png" class="flag" title="German" />
 
 ***Desktop application engineering***
 
@@ -150,9 +150,9 @@ Timon believes open source tools are essential to grant digital artists freedom 
 
 <div class="block" id="adam">
 
-<img src="https://static.graphite.rs/content/about/core-team-photo-adam-gerhant.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Photo of Adam Gerhant" />
+<img src="https://static.graphite.art/content/about/core-team-photo-adam-gerhant.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Photo of Adam Gerhant" />
 
-## Adam Gerhant <span class="handle">(@pendapia)</span> <img src="https://static.graphite.rs/icons/flags/us.png" class="flag" title="American" />
+## Adam Gerhant <span class="handle">(@pendapia)</span> <img src="https://static.graphite.art/icons/flags/us.png" class="flag" title="American" />
 
 ***Editor node graph tooling***
 

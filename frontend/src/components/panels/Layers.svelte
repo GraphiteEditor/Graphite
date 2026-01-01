@@ -2,19 +2,18 @@
 	import { getContext, onMount, onDestroy, tick } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import { beginDraggingElement } from "@graphite/io-managers/drag";
 	import {
-		defaultWidgetLayout,
-		patchWidgetLayout,
+		patchLayout,
 		UpdateDocumentLayerDetails,
 		UpdateDocumentLayerStructureJs,
 		UpdateLayersPanelControlBarLeftLayout,
 		UpdateLayersPanelControlBarRightLayout,
 		UpdateLayersPanelBottomBarLayout,
 	} from "@graphite/messages";
-	import type { DataBuffer, LayerPanelEntry } from "@graphite/messages";
+	import type { DataBuffer, LayerPanelEntry, Layout } from "@graphite/messages";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
-	import { platformIsMac } from "@graphite/utility-functions/platform";
+	import type { TooltipState } from "@graphite/state-providers/tooltip";
+	import { operatingSystem } from "@graphite/utility-functions/platform";
 	import { extractPixelData } from "@graphite/utility-functions/rasterization";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -40,8 +39,17 @@
 		markerHeight: number;
 	};
 
+	type InternalDragState = {
+		active: boolean;
+		layerId: bigint;
+		listing: LayerListingInfo;
+		startX: number;
+		startY: number;
+	};
+
 	const editor = getContext<Editor>("editor");
 	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
+	const tooltip = getContext<TooltipState>("tooltip");
 
 	let list: LayoutCol | undefined;
 
@@ -52,7 +60,9 @@
 	// Interactive dragging
 	let draggable = true;
 	let draggingData: undefined | DraggingData = undefined;
+	let internalDragState: InternalDragState | undefined = undefined;
 	let fakeHighlightOfNotYetSelectedLayerBeingDragged: undefined | bigint = undefined;
+	let justFinishedDrag = false; // Used to prevent click events after a drag
 	let dragInPanel = false;
 
 	// Interactive clipping
@@ -60,37 +70,42 @@
 	let layerToClipAltKeyPressed = false;
 
 	// Layouts
-	let layersPanelControlBarLeftLayout = defaultWidgetLayout();
-	let layersPanelControlBarRightLayout = defaultWidgetLayout();
-	let layersPanelBottomBarLayout = defaultWidgetLayout();
+	let layersPanelControlBarLeftLayout: Layout = [];
+	let layersPanelControlBarRightLayout: Layout = [];
+	let layersPanelBottomBarLayout: Layout = [];
 
 	onMount(() => {
-		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarLeftLayout, (updateLayersPanelControlBarLeftLayout) => {
-			patchWidgetLayout(layersPanelControlBarLeftLayout, updateLayersPanelControlBarLeftLayout);
+		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarLeftLayout, (data) => {
+			patchLayout(layersPanelControlBarLeftLayout, data);
 			layersPanelControlBarLeftLayout = layersPanelControlBarLeftLayout;
 		});
 
-		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarRightLayout, (updateLayersPanelControlBarRightLayout) => {
-			patchWidgetLayout(layersPanelControlBarRightLayout, updateLayersPanelControlBarRightLayout);
+		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarRightLayout, (data) => {
+			patchLayout(layersPanelControlBarRightLayout, data);
 			layersPanelControlBarRightLayout = layersPanelControlBarRightLayout;
 		});
 
-		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelBottomBarLayout, (updateLayersPanelBottomBarLayout) => {
-			patchWidgetLayout(layersPanelBottomBarLayout, updateLayersPanelBottomBarLayout);
+		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelBottomBarLayout, (data) => {
+			patchLayout(layersPanelBottomBarLayout, data);
 			layersPanelBottomBarLayout = layersPanelBottomBarLayout;
 		});
 
-		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerStructureJs, (updateDocumentLayerStructure) => {
-			const structure = newUpdateDocumentLayerStructure(updateDocumentLayerStructure.dataBuffer);
+		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerStructureJs, (data) => {
+			const structure = newUpdateDocumentLayerStructure(data.dataBuffer);
 			rebuildLayerHierarchy(structure);
 		});
 
-		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerDetails, (updateDocumentLayerDetails) => {
-			const targetLayer = updateDocumentLayerDetails.data;
+		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerDetails, (data) => {
+			const targetLayer = data.data;
 			const targetId = targetLayer.id;
 
 			updateLayerInTree(targetId, targetLayer);
 		});
+
+		addEventListener("pointerup", draggingPointerUp);
+		addEventListener("pointermove", draggingPointerMove);
+		addEventListener("mousedown", draggingMouseDown);
+		addEventListener("keydown", draggingKeyDown);
 
 		addEventListener("pointermove", clippingHover);
 		addEventListener("keydown", clippingKeyPress);
@@ -103,6 +118,11 @@
 		editor.subscriptions.unsubscribeJsMessage(UpdateLayersPanelBottomBarLayout);
 		editor.subscriptions.unsubscribeJsMessage(UpdateDocumentLayerStructureJs);
 		editor.subscriptions.unsubscribeJsMessage(UpdateDocumentLayerDetails);
+
+		removeEventListener("pointerup", draggingPointerUp);
+		removeEventListener("pointermove", draggingPointerMove);
+		removeEventListener("mousedown", draggingMouseDown);
+		removeEventListener("keydown", draggingKeyDown);
 
 		removeEventListener("pointermove", clippingHover);
 		removeEventListener("keydown", clippingKeyPress);
@@ -177,7 +197,7 @@
 	}
 
 	function handleExpandArrowClickWithModifiers(e: MouseEvent, id: bigint) {
-		const accel = platformIsMac() ? e.metaKey : e.ctrlKey;
+		const accel = operatingSystem() === "Mac" ? e.metaKey : e.ctrlKey;
 		const collapseRecursive = e.altKey || accel;
 		editor.handle.toggleLayerExpansion(id, collapseRecursive);
 		e.stopPropagation();
@@ -223,10 +243,17 @@
 	}
 
 	function selectLayerWithModifiers(e: MouseEvent, listing: LayerListingInfo) {
+		if (justFinishedDrag) {
+			justFinishedDrag = false;
+			// Prevent bubbling to deselectAllLayers
+			e.stopPropagation();
+			return;
+		}
+
 		// Get the pressed state of the modifier keys
 		const [ctrl, meta, shift, alt] = [e.ctrlKey, e.metaKey, e.shiftKey, e.altKey];
 		// Get the state of the platform's accel key and its opposite platform's accel key
-		const [accel, oppositeAccel] = platformIsMac() ? [meta, ctrl] : [ctrl, meta];
+		const [accel, oppositeAccel] = operatingSystem() === "Mac" ? [meta, ctrl] : [ctrl, meta];
 
 		// Alt-clicking to make a clipping mask
 		if (layerToClipAltKeyPressed && layerToClipUponClick && layerToClipUponClick.entry.clippable) clipLayer(layerToClipUponClick);
@@ -255,7 +282,7 @@
 			return;
 		}
 
-		// Check if the cursor is near the border btween two layers
+		// Check if the cursor is near the border between two layers
 		const DISTANCE = 6;
 		const distanceFromTop = e.clientY - target.getBoundingClientRect().top;
 		const distanceFromBottom = target.getBoundingClientRect().bottom - e.clientY;
@@ -288,6 +315,11 @@
 	}
 
 	async function deselectAllLayers() {
+		if (justFinishedDrag) {
+			justFinishedDrag = false;
+			return;
+		}
+
 		editor.handle.deselectAllLayers();
 	}
 
@@ -403,94 +435,141 @@
 		};
 	}
 
-	async function dragStart(event: DragEvent, listing: LayerListingInfo) {
-		const layer = listing.entry;
-		dragInPanel = true;
-		if (!$nodeGraph.selected.includes(layer.id)) {
-			fakeHighlightOfNotYetSelectedLayerBeingDragged = layer.id;
-		}
-		const select = () => {
-			if (!$nodeGraph.selected.includes(layer.id)) selectLayer(listing, false, false);
+	function layerPointerDown(e: PointerEvent, listing: LayerListingInfo) {
+		// Only left click drags
+		if (e.button !== 0 || !draggable) return;
+
+		internalDragState = {
+			active: false,
+			layerId: listing.entry.id,
+			listing: listing,
+			startX: e.clientX,
+			startY: e.clientY,
 		};
+	}
 
-		const target = (event.target instanceof HTMLElement && event.target) || undefined;
-		const closest = target?.closest("[data-layer]") || undefined;
-		const draggingELement = (closest instanceof HTMLElement && closest) || undefined;
-		if (draggingELement) {
-			beginDraggingElement(draggingELement);
-			// Store the index of the layer being dragged
-			draggedLayerIndex = parseInt(draggingELement.getAttribute("data-index") ?? "0", 10);
+	function draggingPointerMove(e: PointerEvent) {
+		if (!internalDragState || !list) return;
+
+		// Calculate distance moved
+		if (!internalDragState.active) {
+			const distance = Math.hypot(e.clientX - internalDragState.startX, e.clientY - internalDragState.startY);
+			const DRAG_THRESHOLD = 5;
+
+			if (distance > DRAG_THRESHOLD) {
+				internalDragState.active = true;
+				dragInPanel = true;
+
+				const layer = internalDragState.listing.entry;
+				if (!$nodeGraph.selected.includes(layer.id)) {
+					fakeHighlightOfNotYetSelectedLayerBeingDragged = layer.id;
+				}
+			}
 		}
 
-		// Set style of cursor for drag
-		if (event.dataTransfer) {
-			event.dataTransfer.dropEffect = "move";
-			event.dataTransfer.effectAllowed = "move";
+		// Perform drag calculations if a drag is occurring
+		if (internalDragState.active) {
+			const select = () => {
+				if (internalDragState && !$nodeGraph.selected.includes(internalDragState.layerId)) {
+					selectLayer(internalDragState.listing, false, false);
+				}
+			};
+
+			draggingData = calculateDragIndex(list, e.clientY, select);
+		}
+	}
+
+	function draggingPointerUp() {
+		if (internalDragState?.active && draggingData) {
+			const { select, insertParentId, insertIndex } = draggingData;
+
+			// Commit the move
+			select?.();
+			editor.handle.moveLayerInTree(insertParentId, insertIndex);
+
+			// Prevent the subsequent click event from processing
+			justFinishedDrag = true;
+		} else if (justFinishedDrag) {
+			// Avoid right-click abort getting stuck with `justFinishedDrag` set and blocking the first subsequent click to select a layer
+			setTimeout(() => {
+				justFinishedDrag = false;
+			}, 0);
 		}
 
-		if (list && draggedLayerIndex !== undefined) {
-			draggingData = calculateDragIndex(list, event.clientY, draggedLayerIndex, select);
+		// Reset state
+		abortDrag();
+	}
+
+	function abortDrag() {
+		internalDragState = undefined;
+		draggingData = undefined;
+		fakeHighlightOfNotYetSelectedLayerBeingDragged = undefined;
+		dragInPanel = false;
+	}
+
+	function draggingMouseDown(e: MouseEvent) {
+		// Abort if a drag is active and the user presses the right mouse button (button 2)
+		if (e.button === 2 && internalDragState?.active) {
+			justFinishedDrag = true;
+			abortDrag();
+		}
+	}
+
+	function draggingKeyDown(e: KeyboardEvent) {
+		if (e.key === "Escape" && internalDragState?.active) {
+			justFinishedDrag = true;
+			abortDrag();
 		}
 	}
 
 	let draggedLayerIndex: number | undefined;
 
-	function updateInsertLine(event: DragEvent) {
-		if (!draggable) return;
+	function fileDragOver(e: DragEvent) {
+		if (!draggable || !e.dataTransfer || !e.dataTransfer.types.includes("Files")) return;
 
 		// Stop the drag from being shown as cancelled
-		event.preventDefault();
+		e.preventDefault();
 		dragInPanel = true;
 
 		// Use the stored index from dragStart
 		if (list && draggedLayerIndex !== undefined) {
-			draggingData = calculateDragIndex(list, event.clientY, draggedLayerIndex, draggingData?.select);
+			draggingData = calculateDragIndex(list, e.clientY, draggedLayerIndex, draggingData?.select);
 		}
 	}
 
-	function drop(e: DragEvent) {
-		if (!draggingData) return;
-		const { select, insertParentId, insertIndex } = draggingData;
+
+	function fileDrop(e: DragEvent) {
+		if (!draggingData || !e.dataTransfer || !e.dataTransfer.types.includes("Files")) return;
+
+		const { insertParentId, insertIndex } = draggingData;
 
 		e.preventDefault();
 
-		if (e.dataTransfer) {
-			// Moving layers
-			if (e.dataTransfer.items.length === 0) {
-				if (draggable && dragInPanel) {
-					select?.();
-					editor.handle.moveLayerInTree(insertParentId, insertIndex);
-				}
+		Array.from(e.dataTransfer.items).forEach(async (item) => {
+			const file = item.getAsFile();
+			if (!file) return;
+
+			if (file.type.includes("svg")) {
+				const svgData = await file.text();
+				editor.handle.pasteSvg(file.name, svgData, undefined, undefined, insertParentId, insertIndex);
+				return;
 			}
-			// Importing files
-			else {
-				Array.from(e.dataTransfer.items).forEach(async (item) => {
-					const file = item.getAsFile();
-					if (!file) return;
 
-					if (file.type.includes("svg")) {
-						const svgData = await file.text();
-						editor.handle.pasteSvg(file.name, svgData, undefined, undefined, insertParentId, insertIndex);
-						return;
-					}
-
-					if (file.type.startsWith("image")) {
-						const imageData = await extractPixelData(file);
-						editor.handle.pasteImage(file.name, new Uint8Array(imageData.data), imageData.width, imageData.height, undefined, undefined, insertParentId, insertIndex);
-						return;
-					}
-
-					// When we eventually have sub-documents, this should be changed to import the document instead of opening it in a separate tab
-					const graphiteFileSuffix = "." + editor.handle.fileExtension();
-					if (file.name.endsWith(graphiteFileSuffix)) {
-						const content = await file.text();
-						const documentName = file.name.slice(0, -graphiteFileSuffix.length);
-						editor.handle.openDocumentFile(documentName, content);
-						return;
-					}
-				});
+			if (file.type.startsWith("image")) {
+				const imageData = await extractPixelData(file);
+				editor.handle.pasteImage(file.name, new Uint8Array(imageData.data), imageData.width, imageData.height, undefined, undefined, insertParentId, insertIndex);
+				return;
 			}
-		}
+
+			// When we eventually have sub-documents, this should be changed to import the document instead of opening it in a separate tab
+			const graphiteFileSuffix = "." + editor.handle.fileExtension();
+			if (file.name.endsWith(graphiteFileSuffix)) {
+				const content = await file.text();
+				const documentName = file.name.slice(0, -graphiteFileSuffix.length);
+				editor.handle.openDocumentFile(documentName, content);
+				return;
+			}
+		});
 
 		draggingData = undefined;
 		fakeHighlightOfNotYetSelectedLayerBeingDragged = undefined;
@@ -540,22 +619,21 @@
 
 <LayoutCol class="layers" on:dragleave={() => (dragInPanel = false)}>
 	<LayoutRow class="control-bar" scrollableX={true}>
-		<WidgetLayout layout={layersPanelControlBarLeftLayout} />
-		{#if layersPanelControlBarLeftLayout?.layout?.length > 0 && layersPanelControlBarRightLayout?.layout?.length > 0}
+		<WidgetLayout layout={layersPanelControlBarLeftLayout} layoutTarget="LayersPanelControlLeftBar" />
+		{#if layersPanelControlBarLeftLayout?.length > 0 && layersPanelControlBarRightLayout?.length > 0}
 			<Separator />
 		{/if}
-		<WidgetLayout layout={layersPanelControlBarRightLayout} />
+		<WidgetLayout layout={layersPanelControlBarRightLayout} layoutTarget="LayersPanelControlRightBar" />
 	</LayoutRow>
-	<LayoutRow class="list-area" scrollableY={true}>
+	<LayoutRow class="list-area" classes={{ "drag-ongoing": Boolean(internalDragState?.active && draggingData) }} scrollableY={true}>
 		<LayoutCol
 			class="list"
 			styles={{ cursor: layerToClipUponClick && layerToClipAltKeyPressed && layerToClipUponClick.entry.clippable ? "alias" : "auto" }}
 			data-layer-panel
 			bind:this={list}
 			on:click={() => deselectAllLayers()}
-			on:dragover={updateInsertLine}
-			on:dragend={drop}
-			on:drop={drop}
+			on:dragover={fileDragOver}
+			on:drop={fileDrop}
 		>
 			{#each layers as listing, index}
 				{@const selected = fakeHighlightOfNotYetSelectedLayerBeingDragged !== undefined ? fakeHighlightOfNotYetSelectedLayerBeingDragged === listing.entry.id : listing.entry.selected}
@@ -571,9 +649,7 @@
 					styles={{ "--layer-indent-levels": `${listing.entry.depth - 1}` }}
 					data-layer
 					data-index={index}
-					tooltip={listing.entry.tooltip}
-					{draggable}
-					on:dragstart={(e) => draggable && dragStart(e, listing)}
+					on:pointerdown={(e) => layerPointerDown(e, listing)}
 					on:click={(e) => selectLayerWithModifiers(e, listing)}
 				>
 					{#if listing.entry.childrenAllowed}
@@ -581,9 +657,12 @@
 							class="expand-arrow"
 							class:expanded={listing.entry.expanded}
 							disabled={!listing.entry.childrenPresent}
-							title={listing.entry.expanded
-								? "Collapse (Click) / Collapse All (Alt Click)"
-								: `Expand (Click) / Expand All (Alt Click)${listing.entry.ancestorOfSelected ? "\n(A selected layer is contained within)" : ""}`}
+							data-tooltip-label={listing.entry.expanded ? "Collapse (All)" : "Expand (All)"}
+							data-tooltip-description={(listing.entry.expanded
+								? "Hide the layers nested within. (To affect all open descendants, perform the shortcut shown.)"
+								: "Show the layers nested within. (To affect all closed descendants, perform the shortcut shown.)") +
+								(listing.entry.ancestorOfSelected && !listing.entry.expanded ? "\n\nA selected layer is currently contained within.\n" : "")}
+							data-tooltip-shortcut={$tooltip.altClickShortcut?.shortcut ? JSON.stringify($tooltip.altClickShortcut.shortcut) : undefined}
 							on:click={(e) => handleExpandArrowClickWithModifiers(e, listing.entry.id)}
 							tabindex="0"
 						></button>
@@ -591,22 +670,28 @@
 						<div class="expand-arrow-none"></div>
 					{/if}
 					{#if listing.entry.clipped}
-						<IconLabel icon="Clipped" class="clipped-arrow" tooltip="Clipping mask is active (Alt-click border to release)" />
+						<IconLabel
+							icon="Clipped"
+							class="clipped-arrow"
+							tooltipLabel="Layer Clipped"
+							tooltipDescription="Clipping mask is active. To release it, target the bottom border of the layer and perform the shortcut shown."
+							tooltipShortcut={$tooltip.altClickShortcut}
+						/>
 					{/if}
 					<div class="thumbnail">
 						{#if $nodeGraph.thumbnails.has(listing.entry.id)}
 							{@html $nodeGraph.thumbnails.get(listing.entry.id)}
 						{/if}
 					</div>
-					{#if listing.entry.name === "Artboard"}
-						<IconLabel icon="Artboard" class="layer-type-icon" />
+					{#if listing.entry.reference === "Artboard"}
+						<IconLabel icon="Artboard" class="layer-type-icon" tooltipLabel="Artboard" />
 					{/if}
 					<LayoutRow class="layer-name" on:dblclick={() => onEditLayerName(listing)}>
 						<input
 							data-text-input
 							type="text"
 							value={listing.entry.alias}
-							placeholder={listing.entry.name}
+							placeholder={listing.entry.reference}
 							disabled={!listing.editingName}
 							on:blur={() => onEditLayerNameDeselect(listing)}
 							on:keydown={(e) => e.key === "Escape" && onEditLayerNameDeselect(listing)}
@@ -622,7 +707,8 @@
 							size={24}
 							icon={listing.entry.unlocked ? "PadlockUnlocked" : "PadlockLocked"}
 							hoverIcon={listing.entry.unlocked ? "PadlockLocked" : "PadlockUnlocked"}
-							tooltip={(listing.entry.unlocked ? "Lock" : "Unlock") + (!listing.entry.parentsUnlocked ? "\n(A parent of this layer is locked and that status is being inherited)" : "")}
+							tooltipLabel={listing.entry.unlocked ? "Lock" : "Unlock"}
+							tooltipDescription={!listing.entry.parentsUnlocked ? "A parent of this layer is locked and that status is being inherited." : ""}
 						/>
 					{/if}
 					<IconButton
@@ -632,7 +718,8 @@
 						size={24}
 						icon={listing.entry.visible ? "EyeVisible" : "EyeHidden"}
 						hoverIcon={listing.entry.visible ? "EyeHide" : "EyeShow"}
-						tooltip={(listing.entry.visible ? "Hide" : "Show") + (!listing.entry.parentsVisible ? "\n(A parent of this layer is hidden and that status is being inherited)" : "")}
+						tooltipLabel={listing.entry.visible ? "Hide" : "Show"}
+						tooltipDescription={!listing.entry.parentsVisible ? "A parent of this layer is hidden and that status is being inherited." : ""}
 					/>
 				</LayoutRow>
 			{/each}
@@ -642,7 +729,7 @@
 		{/if}
 	</LayoutRow>
 	<LayoutRow class="bottom-bar" scrollableX={true}>
-		<WidgetLayout layout={layersPanelBottomBarLayout} />
+		<WidgetLayout layout={layersPanelBottomBarLayout} layoutTarget="LayersPanelBottomBar" />
 	</LayoutRow>
 </LayoutCol>
 
@@ -686,9 +773,13 @@
 		// Layer hierarchy
 		.list-area {
 			position: relative;
-			margin-top: 4px;
+			padding-top: 4px;
 			// Combine with the bottom bar to avoid a double border
 			margin-bottom: -1px;
+
+			&.drag-ongoing .layer {
+				pointer-events: none;
+			}
 
 			.layer {
 				flex: 0 0 auto;
@@ -790,7 +881,6 @@
 				}
 
 				.layer-type-icon {
-					flex: 0 0 auto;
 					margin-left: 8px;
 					margin-right: -4px;
 				}
@@ -857,7 +947,7 @@
 				left: 4px;
 				right: 4px;
 				background: var(--color-e-nearwhite);
-				margin-top: -3px;
+				margin-top: 1px;
 				height: 5px;
 				z-index: 1;
 				pointer-events: none;

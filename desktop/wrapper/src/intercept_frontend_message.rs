@@ -64,17 +64,12 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		FrontendMessage::TriggerVisitLink { url } => {
 			dispatcher.respond(DesktopFrontendMessage::OpenUrl(url));
 		}
-		FrontendMessage::DragWindow => {
-			dispatcher.respond(DesktopFrontendMessage::DragWindow);
+		FrontendMessage::UpdateViewportPhysicalBounds { x, y, width, height } => {
+			dispatcher.respond(DesktopFrontendMessage::UpdateViewportPhysicalBounds { x, y, width, height });
 		}
-		FrontendMessage::CloseWindow => {
-			dispatcher.respond(DesktopFrontendMessage::CloseWindow);
-		}
-		FrontendMessage::TriggerMinimizeWindow => {
-			dispatcher.respond(DesktopFrontendMessage::MinimizeWindow);
-		}
-		FrontendMessage::TriggerMaximizeWindow => {
-			dispatcher.respond(DesktopFrontendMessage::MaximizeWindow);
+		FrontendMessage::UpdateUIScale { scale } => {
+			dispatcher.respond(DesktopFrontendMessage::UpdateUIScale { scale });
+			return Some(FrontendMessage::UpdateUIScale { scale });
 		}
 		FrontendMessage::TriggerPersistenceWriteDocument { document_id, document, details } => {
 			dispatcher.respond(DesktopFrontendMessage::PersistenceWriteDocument {
@@ -118,6 +113,49 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		}
 		FrontendMessage::TriggerLoadPreferences => {
 			dispatcher.respond(DesktopFrontendMessage::PersistenceLoadPreferences);
+		}
+		#[cfg(target_os = "macos")]
+		FrontendMessage::UpdateMenuBarLayout { diff } => {
+			use graphite_editor::messages::tool::tool_messages::tool_prelude::{DiffUpdate, WidgetDiff};
+			match diff.as_slice() {
+				[
+					WidgetDiff {
+						widget_path,
+						new_value: DiffUpdate::Layout(layout),
+					},
+				] if widget_path.is_empty() => {
+					let entries = crate::utils::menu::convert_menu_bar_layout_to_menu_items(layout);
+					dispatcher.respond(DesktopFrontendMessage::UpdateMenu { entries });
+				}
+				_ => {}
+			}
+		}
+		FrontendMessage::TriggerClipboardRead => {
+			dispatcher.respond(DesktopFrontendMessage::ClipboardRead);
+		}
+		FrontendMessage::TriggerClipboardWrite { content } => {
+			dispatcher.respond(DesktopFrontendMessage::ClipboardWrite { content });
+		}
+		FrontendMessage::WindowClose => {
+			dispatcher.respond(DesktopFrontendMessage::WindowClose);
+		}
+		FrontendMessage::WindowMinimize => {
+			dispatcher.respond(DesktopFrontendMessage::WindowMinimize);
+		}
+		FrontendMessage::WindowMaximize => {
+			dispatcher.respond(DesktopFrontendMessage::WindowMaximize);
+		}
+		FrontendMessage::WindowDrag => {
+			dispatcher.respond(DesktopFrontendMessage::WindowDrag);
+		}
+		FrontendMessage::WindowHide => {
+			dispatcher.respond(DesktopFrontendMessage::WindowHide);
+		}
+		FrontendMessage::WindowHideOthers => {
+			dispatcher.respond(DesktopFrontendMessage::WindowHideOthers);
+		}
+		FrontendMessage::WindowShowAll => {
+			dispatcher.respond(DesktopFrontendMessage::WindowShowAll);
 		}
 		m => return Some(m),
 	}

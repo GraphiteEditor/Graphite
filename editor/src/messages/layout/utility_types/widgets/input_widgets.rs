@@ -1,4 +1,4 @@
-use crate::messages::input_mapper::utility_types::misc::ActionKeys;
+use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use derivative::*;
 use graphene_std::Color;
@@ -7,50 +7,36 @@ use graphene_std::transform::ReferencePoint;
 use graphite_proc_macros::WidgetBuilder;
 
 #[derive(Clone, Derivative, serde::Serialize, serde::Deserialize, WidgetBuilder, specta::Type)]
-#[derivative(Debug, PartialEq)]
+#[derivative(Debug, Default, PartialEq)]
 pub struct CheckboxInput {
+	// Content
 	#[widget_builder(constructor)]
 	pub checked: bool,
-
-	pub disabled: bool,
-
+	#[derivative(Default(value = "\"Checkmark\".to_string()"))]
 	pub icon: String,
-
-	pub tooltip: String,
-
 	#[serde(rename = "forLabel")]
 	pub for_label: CheckboxId,
+	pub disabled: bool,
 
-	#[serde(skip)]
-	pub tooltip_shortcut: Option<ActionKeys>,
+	// Tooltips
+	#[serde(rename = "tooltipLabel")]
+	pub tooltip_label: String,
+	#[serde(rename = "tooltipDescription")]
+	pub tooltip_description: String,
+	#[serde(rename = "tooltipShortcut")]
+	pub tooltip_shortcut: Option<ActionShortcut>,
 
 	// Callbacks
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<CheckboxInput>,
-
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_commit: WidgetCallback<()>,
 }
 
-impl Default for CheckboxInput {
-	fn default() -> Self {
-		Self {
-			checked: false,
-			disabled: false,
-			icon: "Checkmark".into(),
-			tooltip: Default::default(),
-			tooltip_shortcut: Default::default(),
-			for_label: CheckboxId::new(),
-			on_update: Default::default(),
-			on_commit: Default::default(),
-		}
-	}
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
-pub struct CheckboxId(u64);
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct CheckboxId(pub u64);
 
 impl CheckboxId {
 	pub fn new() -> Self {
@@ -72,193 +58,156 @@ impl specta::Type for CheckboxId {
 #[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, WidgetBuilder, specta::Type)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct DropdownInput {
-	#[widget_builder(constructor)]
-	pub entries: MenuListEntrySections,
-
-	// This uses `u32` instead of `usize` since it will be serialized as a normal JS number (replace this with `usize` after switching to a Rust-based GUI)
+	// Content
+	// This uses `u32` instead of `usize` since it will be serialized as a normal JS number (we can replace this with `usize` if we switch to a Rust-based GUI)
 	#[serde(rename = "selectedIndex")]
 	pub selected_index: Option<u32>,
-
 	#[serde(rename = "drawIcon")]
 	pub draw_icon: bool,
+	pub disabled: bool,
 
+	// Children
+	#[widget_builder(constructor)]
+	pub entries: MenuListEntrySections,
+	#[serde(rename = "entriesHash")]
+	#[widget_builder(skip)]
+	pub entries_hash: u64,
+
+	// Styling
+	pub narrow: bool,
+
+	// Behavior
+	#[serde(rename = "virtualScrolling")]
+	pub virtual_scrolling: bool,
 	#[derivative(Default(value = "true"))]
 	pub interactive: bool,
 
-	pub disabled: bool,
-
-	pub narrow: bool,
-
-	pub tooltip: String,
-
-	#[serde(skip)]
-	pub tooltip_shortcut: Option<ActionKeys>,
-
-	// Styling
+	// Sizing
 	#[serde(rename = "minWidth")]
 	pub min_width: u32,
-
 	#[serde(rename = "maxWidth")]
 	pub max_width: u32,
+
+	// Tooltips
+	#[serde(rename = "tooltipLabel")]
+	pub tooltip_label: String,
+	#[serde(rename = "tooltipDescription")]
+	pub tooltip_description: String,
+	#[serde(rename = "tooltipShortcut")]
+	pub tooltip_shortcut: Option<ActionShortcut>,
 	//
-	// Callbacks
-	// `on_update` exists on the `MenuListEntry`, not this parent `DropdownInput`
+	// Callbacks exists on the `MenuListEntry` children, not this parent `DropdownInput`
 }
 
 pub type MenuListEntrySections = Vec<Vec<MenuListEntry>>;
 
 #[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Default, WidgetBuilder, specta::Type)]
 #[derivative(Debug, PartialEq)]
-#[widget_builder(not_widget_holder)]
+#[widget_builder(not_widget_instance)]
 pub struct MenuListEntry {
+	// Content
 	#[widget_builder(constructor)]
 	pub value: String,
-
 	pub label: String,
-
 	pub icon: String,
-
-	pub shortcut: Vec<String>,
-
-	#[serde(rename = "shortcutRequiresLock")]
-	pub shortcut_requires_lock: bool,
-
 	pub disabled: bool,
 
+	// Children
 	pub children: MenuListEntrySections,
+	#[serde(rename = "childrenHash")]
+	#[widget_builder(skip)]
+	pub children_hash: u64,
+
+	// Styling
+	pub font: String,
+
+	// Tooltips
+	#[serde(rename = "tooltipLabel")]
+	pub tooltip_label: String,
+	#[serde(rename = "tooltipDescription")]
+	pub tooltip_description: String,
+	#[serde(rename = "tooltipShortcut")]
+	pub tooltip_shortcut: Option<ActionShortcut>,
 
 	// Callbacks
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<()>,
-
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_commit: WidgetCallback<()>,
 }
 
-#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, WidgetBuilder, specta::Type)]
-#[derivative(Debug, PartialEq, Default)]
-pub struct FontInput {
-	#[serde(rename = "fontFamily")]
-	#[widget_builder(constructor)]
-	pub font_family: String,
-
-	#[serde(rename = "fontStyle")]
-	#[widget_builder(constructor)]
-	pub font_style: String,
-
-	#[serde(rename = "isStyle")]
-	pub is_style_picker: bool,
-
-	pub disabled: bool,
-
-	pub tooltip: String,
-
-	#[serde(skip)]
-	pub tooltip_shortcut: Option<ActionKeys>,
-
-	// Callbacks
-	#[serde(skip)]
-	#[derivative(Debug = "ignore", PartialEq = "ignore")]
-	pub on_update: WidgetCallback<FontInput>,
-
-	#[serde(skip)]
-	#[derivative(Debug = "ignore", PartialEq = "ignore")]
-	pub on_commit: WidgetCallback<()>,
-}
-
-/// This widget allows for the flexible use of the layout system.
-/// In a custom layout, one can define a widget that is just used to trigger code on the backend.
-/// This is used in MenuLayout to pipe the triggering of messages from the frontend to backend.
-#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Default, WidgetBuilder, specta::Type)]
-#[derivative(Debug, PartialEq)]
-pub struct InvisibleStandinInput {
-	#[serde(skip)]
-	#[derivative(Debug = "ignore", PartialEq = "ignore")]
-	pub on_update: WidgetCallback<()>,
-
-	#[serde(skip)]
-	#[derivative(Debug = "ignore", PartialEq = "ignore")]
-	pub on_commit: WidgetCallback<()>,
+impl std::hash::Hash for MenuListEntry {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		self.value.hash(state);
+		self.label.hash(state);
+		self.icon.hash(state);
+		self.disabled.hash(state);
+	}
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, WidgetBuilder, specta::Type)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct NumberInput {
-	// Label
-	pub label: String,
-
-	pub tooltip: String,
-
-	#[serde(skip)]
-	pub tooltip_shortcut: Option<ActionKeys>,
-
-	// Disabled
-	pub disabled: bool,
-
-	pub narrow: bool,
-
-	// Value
+	// Content
 	#[widget_builder(constructor)]
 	pub value: Option<f64>,
+	pub label: String,
+	pub disabled: bool,
 
+	// Styling
+	pub narrow: bool,
+
+	// Behavior
+	pub mode: NumberInputMode,
 	#[widget_builder(skip)]
 	pub min: Option<f64>,
-
 	#[widget_builder(skip)]
 	pub max: Option<f64>,
-
+	// TODO: Make this (and range_max) apply to both Range and Increment modes when dragging with the mouse
+	#[serde(rename = "rangeMin")]
+	pub range_min: Option<f64>,
+	#[serde(rename = "rangeMax")]
+	pub range_max: Option<f64>,
+	#[derivative(Default(value = "1."))]
+	pub step: f64,
 	#[serde(rename = "isInteger")]
 	pub is_integer: bool,
-
-	// Number presentation
+	#[serde(rename = "incrementBehavior")]
+	pub increment_behavior: NumberInputIncrementBehavior,
 	#[serde(rename = "displayDecimalPlaces")]
 	#[derivative(Default(value = "2"))]
 	pub display_decimal_places: u32,
-
 	pub unit: String,
-
 	#[serde(rename = "unitIsHiddenWhenEditing")]
 	#[derivative(Default(value = "true"))]
 	pub unit_is_hidden_when_editing: bool,
 
-	// Mode behavior
-	pub mode: NumberInputMode,
-
-	#[serde(rename = "incrementBehavior")]
-	pub increment_behavior: NumberInputIncrementBehavior,
-
-	#[derivative(Default(value = "1."))]
-	pub step: f64,
-
-	// TODO: Make this (and range_max) apply to both Range and Increment modes when dragging with the mouse
-	#[serde(rename = "rangeMin")]
-	pub range_min: Option<f64>,
-
-	#[serde(rename = "rangeMax")]
-	pub range_max: Option<f64>,
-
-	// Styling
+	// Sizing
 	#[serde(rename = "minWidth")]
 	pub min_width: u32,
-
 	#[serde(rename = "maxWidth")]
 	pub max_width: u32,
+
+	// Tooltips
+	#[serde(rename = "tooltipLabel")]
+	pub tooltip_label: String,
+	#[serde(rename = "tooltipDescription")]
+	pub tooltip_description: String,
+	#[serde(rename = "tooltipShortcut")]
+	pub tooltip_shortcut: Option<ActionShortcut>,
 
 	// Callbacks
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub increment_callback_increase: WidgetCallback<NumberInput>,
-
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub increment_callback_decrease: WidgetCallback<NumberInput>,
-
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<NumberInput>,
-
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_commit: WidgetCallback<()>,
@@ -314,8 +263,10 @@ pub enum NumberInputMode {
 #[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, WidgetBuilder, specta::Type)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct NodeCatalog {
+	// Content
 	pub disabled: bool,
 
+	// Behavior
 	#[serde(rename = "initialSearchTerm")]
 	pub intial_search: String,
 
@@ -323,7 +274,6 @@ pub struct NodeCatalog {
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<String>,
-
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_commit: WidgetCallback<()>,
@@ -332,42 +282,48 @@ pub struct NodeCatalog {
 #[derive(Clone, Default, Derivative, serde::Serialize, serde::Deserialize, WidgetBuilder, specta::Type)]
 #[derivative(Debug, PartialEq)]
 pub struct RadioInput {
-	#[widget_builder(constructor)]
-	pub entries: Vec<RadioEntryData>,
-
-	pub disabled: bool,
-
-	pub narrow: bool,
-
+	// Content
 	// This uses `u32` instead of `usize` since it will be serialized as a normal JS number (replace this with `usize` after switching to a Rust-based GUI)
 	#[serde(rename = "selectedIndex")]
 	pub selected_index: Option<u32>,
+	pub disabled: bool,
 
+	// Children
+	#[widget_builder(constructor)]
+	pub entries: Vec<RadioEntryData>,
+
+	// Styling
+	pub narrow: bool,
+
+	// Sizing
 	#[serde(rename = "minWidth")]
 	pub min_width: u32,
+	//
+	// Callbacks exists on the `RadioEntryData` children, not this parent `RadioInput`
 }
 
 #[derive(Clone, Default, Derivative, serde::Serialize, serde::Deserialize, WidgetBuilder, specta::Type)]
 #[derivative(Debug, PartialEq)]
-#[widget_builder(not_widget_holder)]
+#[widget_builder(not_widget_instance)]
 pub struct RadioEntryData {
+	// Content
 	#[widget_builder(constructor)]
 	pub value: String,
-
 	pub label: String,
-
 	pub icon: String,
 
-	pub tooltip: String,
-
-	#[serde(skip)]
-	pub tooltip_shortcut: Option<ActionKeys>,
+	// Tooltips
+	#[serde(rename = "tooltipLabel")]
+	pub tooltip_label: String,
+	#[serde(rename = "tooltipDescription")]
+	pub tooltip_description: String,
+	#[serde(rename = "tooltipShortcut")]
+	pub tooltip_shortcut: Option<ActionShortcut>,
 
 	// Callbacks
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<()>,
-
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_commit: WidgetCallback<()>,
@@ -376,9 +332,9 @@ pub struct RadioEntryData {
 #[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, WidgetBuilder, specta::Type)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct WorkingColorsInput {
+	// Content
 	#[widget_builder(constructor)]
 	pub primary: Color,
-
 	#[widget_builder(constructor)]
 	pub secondary: Color,
 }
@@ -386,20 +342,24 @@ pub struct WorkingColorsInput {
 #[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, WidgetBuilder, specta::Type)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct TextAreaInput {
+	// Content
 	#[widget_builder(constructor)]
 	pub value: String,
-
 	pub label: Option<String>,
-
 	pub disabled: bool,
 
-	pub tooltip: String,
+	// Tooltips
+	#[serde(rename = "tooltipLabel")]
+	pub tooltip_label: String,
+	#[serde(rename = "tooltipDescription")]
+	pub tooltip_description: String,
+	#[serde(rename = "tooltipShortcut")]
+	pub tooltip_shortcut: Option<ActionShortcut>,
 
 	// Callbacks
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<TextAreaInput>,
-
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_commit: WidgetCallback<()>,
@@ -408,30 +368,35 @@ pub struct TextAreaInput {
 #[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, WidgetBuilder, specta::Type)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct TextInput {
+	// Content
 	#[widget_builder(constructor)]
 	pub value: String,
-
 	pub label: Option<String>,
-
+	pub placeholder: Option<String>,
 	pub disabled: bool,
 
+	// Styling
 	pub narrow: bool,
-
-	pub tooltip: String,
-
 	pub centered: bool,
 
+	// Sizing
 	#[serde(rename = "minWidth")]
 	pub min_width: u32,
-
 	#[serde(rename = "maxWidth")]
 	pub max_width: u32,
+
+	// Tooltips
+	#[serde(rename = "tooltipLabel")]
+	pub tooltip_label: String,
+	#[serde(rename = "tooltipDescription")]
+	pub tooltip_description: String,
+	#[serde(rename = "tooltipShortcut")]
+	pub tooltip_shortcut: Option<ActionShortcut>,
 
 	// Callbacks
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<TextInput>,
-
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_commit: WidgetCallback<()>,
@@ -440,18 +405,22 @@ pub struct TextInput {
 #[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, WidgetBuilder, specta::Type)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct CurveInput {
+	// Content
 	#[widget_builder(constructor)]
 	pub value: Curve,
 
-	pub disabled: bool,
-
-	pub tooltip: String,
+	// Tooltips
+	#[serde(rename = "tooltipLabel")]
+	pub tooltip_label: String,
+	#[serde(rename = "tooltipDescription")]
+	pub tooltip_description: String,
+	#[serde(rename = "tooltipShortcut")]
+	pub tooltip_shortcut: Option<ActionShortcut>,
 
 	// Callbacks
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<CurveInput>,
-
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_commit: WidgetCallback<()>,
@@ -460,18 +429,23 @@ pub struct CurveInput {
 #[derive(Clone, Default, Derivative, serde::Serialize, serde::Deserialize, WidgetBuilder, specta::Type)]
 #[derivative(Debug, PartialEq)]
 pub struct ReferencePointInput {
+	// Content
 	#[widget_builder(constructor)]
 	pub value: ReferencePoint,
-
 	pub disabled: bool,
 
-	pub tooltip: String,
+	// Tooltips
+	#[serde(rename = "tooltipLabel")]
+	pub tooltip_label: String,
+	#[serde(rename = "tooltipDescription")]
+	pub tooltip_description: String,
+	#[serde(rename = "tooltipShortcut")]
+	pub tooltip_shortcut: Option<ActionShortcut>,
 
 	// Callbacks
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_update: WidgetCallback<ReferencePointInput>,
-
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_commit: WidgetCallback<()>,

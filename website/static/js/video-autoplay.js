@@ -7,16 +7,18 @@ window.addEventListener("DOMContentLoaded", () => {
 
 		let loaded = false;
 
-		new IntersectionObserver((entries) => {
-			entries.forEach((entry) => {
-				if (!loaded && entry.intersectionRatio > VISIBILITY_COVERAGE_FRACTION) {
-					player.removeAttribute("preload");
-					player.setAttribute("autoplay", "");
+		new IntersectionObserver(
+			(entries) => {
+				entries.forEach((entry) => {
+					if (!loaded && entry.intersectionRatio > VISIBILITY_COVERAGE_FRACTION) {
+						player.removeAttribute("preload");
+						player.setAttribute("autoplay", "");
 
-					loaded = true;
-				};
-			});
-		}, { threshold: VISIBILITY_COVERAGE_FRACTION })
-		.observe(player);
+						loaded = true;
+					}
+				});
+			},
+			{ threshold: VISIBILITY_COVERAGE_FRACTION },
+		).observe(player);
 	});
 });
