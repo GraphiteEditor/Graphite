@@ -2403,7 +2403,7 @@ dependencies = [
  "graphene-std",
  "graphite-editor",
  "image",
- "keyboard-types",
+ "keyboard-types 0.8.1",
  "ron",
  "serde",
  "serde_json",
@@ -3172,6 +3172,17 @@ dependencies = [
 
 [[package]]
 name = "keyboard-types"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b750dcadc39a09dbadd74e118f6dd6598df77fa01df0cfcdc52c28dece74528a"
+dependencies = [
+ "bitflags 2.9.3",
+ "serde",
+ "unicode-segmentation",
+]
+
+[[package]]
+name = "keyboard-types"
 version = "0.8.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "53cea01d04c8251f945a9f16c5364da6cdb8bce69a61382663302c62f4186d13"
@@ -3516,11 +3527,11 @@ dependencies = [
 [[package]]
 name = "muda"
 version = "0.17.1"
-source = "git+https://github.com/tauri-apps/muda.git?rev=3f460b8fbaed59cda6d95ceea6904f000f093f15#3f460b8fbaed59cda6d95ceea6904f000f093f15"
+source = "git+https://github.com/tauri-apps/muda.git?rev=dca083660d04209109ae854b9a9436a809daf409#dca083660d04209109ae854b9a9436a809daf409"
 dependencies = [
  "crossbeam-channel",
  "dpi",
- "keyboard-types",
+ "keyboard-types 0.7.0",
  "objc2 0.6.3",
  "objc2-app-kit 0.3.2",
  "objc2-core-foundation",
@@ -7816,7 +7827,7 @@ dependencies = [
  "bitflags 2.9.3",
  "cursor-icon",
  "dpi",
- "keyboard-types",
+ "keyboard-types 0.8.1",
  "raw-window-handle",
  "serde",
  "smol_str",
