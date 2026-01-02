@@ -216,6 +216,13 @@ impl std::hash::Hash for TypeDescriptor {
 	}
 }
 
+impl std::fmt::Display for TypeDescriptor {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		let text = make_type_user_readable(&format_type(&self.name));
+		write!(f, "{text}")
+	}
+}
+
 impl PartialEq for TypeDescriptor {
 	fn eq(&self, other: &Self) -> bool {
 		match (self.id, other.id) {
@@ -361,9 +368,13 @@ pub fn format_type(ty: &str) -> String {
 		.join("<")
 }
 
+pub fn make_type_user_readable(ty: &str) -> String {
+	ty.replace("Option<Arc<OwnedContextImpl>>", "Context").replace("Vector<Option<Table<Graphic>>>", "Vector")
+}
+
 impl std::fmt::Debug for Type {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		let result = match self {
+		let text = match self {
 			Self::Generic(name) => name.to_string(),
 			#[cfg(feature = "type_id_logging")]
 			Self::Concrete(ty) => format!("Concrete<{}, {:?}>", ty.name, ty.id),
@@ -372,20 +383,20 @@ impl std::fmt::Debug for Type {
 			Self::Fn(call_arg, return_value) => format!("{return_value:?} called with {call_arg:?}"),
 			Self::Future(ty) => format!("{ty:?}"),
 		};
-		let result = result.replace("Option<Arc<OwnedContextImpl>>", "Context");
-		write!(f, "{result}")
+		let text = make_type_user_readable(&text);
+		write!(f, "{text}")
 	}
 }
 
 impl std::fmt::Display for Type {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		let result = match self {
+		let text = match self {
 			Type::Generic(name) => name.to_string(),
 			Type::Concrete(ty) => format_type(&ty.name),
 			Type::Fn(call_arg, return_value) => format!("{return_value} called with {call_arg}"),
 			Type::Future(ty) => ty.to_string(),
 		};
-		let result = result.replace("Option<Arc<OwnedContextImpl>>", "Context");
-		write!(f, "{result}")
+		let text = make_type_user_readable(&text);
+		write!(f, "{text}")
 	}
 }
