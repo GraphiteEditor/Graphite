@@ -2689,11 +2689,20 @@ impl Fsm for PathToolFsmState {
 				let mut start_point_id = None;
 				let mut end_point_id = None;
 
-				for (i, &pos) in positions.iter().enumerate() {
-					if start_point_id.is_none() && (pos - start_position).length() < POSITION_TOLERANCE {
+				// Get the merged layer's transform to convert local positions to document space
+				let layer_transform = document.metadata().transform_to_document(layer);
+
+				for (i, &local_pos) in positions.iter().enumerate() {
+					// Transform the local position to document space for comparison
+					let doc_pos = layer_transform.transform_point2(local_pos);
+
+					let start_distance = (doc_pos - start_position).length();
+					let end_distance = (doc_pos - end_position).length();
+
+					if start_point_id.is_none() && start_distance < POSITION_TOLERANCE {
 						start_point_id = Some(point_ids[i]);
 					}
-					if end_point_id.is_none() && (pos - end_position).length() < POSITION_TOLERANCE {
+					if end_point_id.is_none() && end_distance < POSITION_TOLERANCE {
 						end_point_id = Some(point_ids[i]);
 					}
 					if start_point_id.is_some() && end_point_id.is_some() {
@@ -2701,18 +2710,23 @@ impl Fsm for PathToolFsmState {
 					}
 				}
 
-				if let (Some(start_id), Some(end_id)) = (start_point_id, end_point_id) {
-					// Clear existing selection 
-					shape_editor.deselect_all_points();
-					shape_editor.set_selected_layers(vec![layer]);
+			if let (Some(start_id), Some(end_id)) = (start_point_id, end_point_id) {
+				// Create segment directly
+				responses.add(DocumentMessage::StartTransaction);
 
-					shape_editor.select_point_by_layer_and_id(ManipulatorPointId::Anchor(start_id), layer);
-					shape_editor.select_point_by_layer_and_id(ManipulatorPointId::Anchor(end_id), layer);
+				let segment_id = SegmentId::generate();
+				let modification_type = VectorModificationType::InsertSegment {
+					id: segment_id,
+					points: [end_id, start_id],
+					handles: [None, None],
+				};
 
-					responses.add(PathToolMessage::ClosePath);
-				}
+				responses.add(GraphOperationMessage::Vector { layer, modification_type });
+				responses.add(DocumentMessage::EndTransaction);
+				responses.add(OverlaysMessage::Draw);
+			}
 
-				self
+			self
 			}
 			(_, PathToolMessage::StartSlidingPoint) => {
 				responses.add(DocumentMessage::StartTransaction);
