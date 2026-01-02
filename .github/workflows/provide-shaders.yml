@@ -1,11 +1,11 @@
-name: Build and upload shaders for graphene raster nodes to artifacts Repository
+name: Build and Upload Shaders
 
 on:
   push:
   pull_request:
 
 jobs:
-  check:
+  build:
     runs-on: ubuntu-latest
     permissions:
       contents: read
