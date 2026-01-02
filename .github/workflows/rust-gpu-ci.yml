@@ -1,0 +1,59 @@
+name: "Rust GPU Shaders"
+
+on:
+  pull_request:
+    paths:
+      - "node-graph/**"
+      - "Cargo.lock"
+      - "Cargo.toml"
+      - ".github/workflows/rust-gpu-ci.yml"
+  workflow_dispatch: {}
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  build-shaders:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            clang \
+            cmake \
+            ninja-build \
+            pkg-config \
+            python3
+
+      - name: Install Rust (stable)
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: stable
+
+      - name: Cache cargo registry and git
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+
+      - name: Cache rust-gpu toolchain build artifacts
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/rust-gpu
+          key: rust-gpu-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+
+      - name: Fetch dependencies
+        run: cargo fetch --locked
+
+      - name: Build rust-gpu shaders
+        run: cargo build --locked --release -p raster-nodes-shaders
