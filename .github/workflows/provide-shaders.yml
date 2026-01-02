@@ -1,8 +1,10 @@
-name: Build and Upload Shaders
+name: Provide Shaders
 
 on:
   push:
-  pull_request:
+    branches:
+      - master
+  workflow_dispatch: {}
 
 jobs:
   build:
