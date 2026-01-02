@@ -1496,8 +1496,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				if !self.graph_view_overlay_open {
 					let transform = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
 					self.network_interface.set_document_to_viewport_transform(transform);
-					// Ensure selection box is kept in sync with the pointer when the PTZ changes
-					responses.add(SelectToolMessage::PointerMove {
+					// Ensure dragging operations are kept in sync with the pointer when the PTZ changes
+					// Using DocumentPTZUpdate allows tools to recalculate viewport positions from document-space
+					responses.add(SelectToolMessage::DocumentPTZUpdate {
 						modifier_keys: SelectToolPointerKeys {
 							axis_align: Key::Shift,
 							snap_angle: Key::Shift,
