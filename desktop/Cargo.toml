@@ -66,4 +66,4 @@ windows = { version = "0.58.0", features = [
 objc2 = { version = "0.6.1", default-features = false }
 objc2-foundation = { version = "0.3.2", default-features = false }
 objc2-app-kit = { version = "0.3.2", default-features = false }
-muda = { git = "https://github.com/tauri-apps/muda.git", rev = "3f460b8fbaed59cda6d95ceea6904f000f093f15", default-features = false }
+muda = { git = "https://github.com/tauri-apps/muda.git", rev = "dca083660d04209109ae854b9a9436a809daf409", default-features = false }
