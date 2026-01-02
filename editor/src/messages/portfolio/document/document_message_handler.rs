@@ -620,145 +620,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(OverlaysMessage::Draw);
 			}
 			DocumentMessage::GroupSelectedLayers { group_folder_type } => {
-				responses.add(DocumentMessage::AddTransaction);
-
-				let mut parent_per_selected_nodes: HashMap<LayerNodeIdentifier, Vec<NodeId>> = HashMap::new();
-				let artboards = LayerNodeIdentifier::ROOT_PARENT
-					.children(self.metadata())
-					.filter(|x| self.network_interface.is_artboard(&x.to_node(), &self.selection_network_path))
-					.collect::<Vec<_>>();
-				let selected_nodes = self.network_interface.selected_nodes();
-
-				// Non-artboard (infinite canvas) workflow
-				if artboards.is_empty() {
-					let Some(parent) = self.network_interface.deepest_common_ancestor(&selected_nodes, &self.selection_network_path, false) else {
-						return;
-					};
-					let Some(selected_nodes) = &self.network_interface.selected_nodes_in_nested_network(&self.selection_network_path) else {
-						return;
-					};
-					let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), selected_nodes, parent);
-
-					DocumentMessageHandler::group_layers(responses, insert_index, parent, group_folder_type, &mut self.network_interface);
-				}
-				// Artboard workflow
-				else {
-					for artboard in artboards {
-						let selected_descendants = artboard.descendants(self.metadata()).filter(|x| selected_nodes.selected_layers_contains(*x, self.metadata()));
-						for selected_descendant in selected_descendants {
-							parent_per_selected_nodes.entry(artboard).or_default().push(selected_descendant.to_node());
-						}
-					}
-
-					let mut new_folders: Vec<NodeId> = Vec::new();
-
-					for children in parent_per_selected_nodes.into_values() {
-						let child_selected_nodes = SelectedNodes(children);
-						let Some(parent) = self.network_interface.deepest_common_ancestor(&child_selected_nodes, &self.selection_network_path, false) else {
-							continue;
-						};
-						let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), &child_selected_nodes, parent);
-
-						responses.add(NodeGraphMessage::SelectedNodesSet { nodes: child_selected_nodes.0 });
-
-						new_folders.push(DocumentMessageHandler::group_layers(responses, insert_index, parent, group_folder_type, &mut self.network_interface));
-					}
-
-					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: new_folders });
-				}
+				self.handle_group_selected_layers(group_folder_type, responses);
 			}
 			DocumentMessage::MoveSelectedLayersTo { parent, insert_index } => {
-				if !self.selection_network_path.is_empty() {
-					log::error!("Moving selected layers is only supported for the Document Network");
-					return;
-				}
-
-				// Disallow trying to insert into self.
-				if self
-					.network_interface
-					.selected_nodes()
-					.selected_layers(self.metadata())
-					.any(|layer| parent.ancestors(self.metadata()).any(|ancestor| ancestor == layer))
-				{
-					return;
-				}
-				// Artboards can only have `ROOT_PARENT` as the parent.
-				let any_artboards = self
-					.network_interface
-					.selected_nodes()
-					.selected_layers(self.metadata())
-					.any(|layer| self.network_interface.is_artboard(&layer.to_node(), &self.selection_network_path));
-				if any_artboards && parent != LayerNodeIdentifier::ROOT_PARENT {
-					return;
-				}
-
-				// Non-artboards cannot be put at the top level if artboards also exist there
-				let selected_any_non_artboards = self
-					.network_interface
-					.selected_nodes()
-					.selected_layers(self.metadata())
-					.any(|layer| !self.network_interface.is_artboard(&layer.to_node(), &self.selection_network_path));
-
-				let top_level_artboards = LayerNodeIdentifier::ROOT_PARENT
-					.children(self.metadata())
-					.any(|layer| self.network_interface.is_artboard(&layer.to_node(), &self.selection_network_path));
-
-				if selected_any_non_artboards && parent == LayerNodeIdentifier::ROOT_PARENT && top_level_artboards {
-					return;
-				}
-
-				let layers_to_move = self.network_interface.shallowest_unique_layers_sorted(&self.selection_network_path);
-				// Offset the index for layers to move that are below another layer to move. For example when moving 1 and 2 between 3 and 4, 2 should be inserted at the same index as 1 since 1 is moved first.
-				let layers_to_move_with_insert_offset = layers_to_move
-					.iter()
-					.map(|layer| {
-						if layer.parent(self.metadata()) != Some(parent) {
-							return (*layer, 0);
-						}
-
-						let upstream_selected_siblings = layer
-							.downstream_siblings(self.network_interface.document_metadata())
-							.filter(|sibling| {
-								sibling != layer
-									&& layers_to_move.iter().any(|layer| {
-										layer == sibling
-											&& layer
-												.parent(self.metadata())
-												.is_some_and(|parent| parent.children(self.metadata()).position(|child| child == *layer) < Some(insert_index))
-									})
-							})
-							.count();
-						(*layer, upstream_selected_siblings)
-					})
-					.collect::<Vec<_>>();
-
-				responses.add(DocumentMessage::AddTransaction);
-
-				for (layer_index, (layer_to_move, insert_offset)) in layers_to_move_with_insert_offset.into_iter().enumerate() {
-					responses.add(NodeGraphMessage::MoveLayerToStack {
-						layer: layer_to_move,
-						parent,
-						insert_index: insert_index + layer_index - insert_offset,
-					});
-
-					if layer_to_move.parent(self.metadata()) != Some(parent) {
-						// TODO: Fix this so it works when dragging a layer into a group parent which has a Transform node, which used to work before #2689 caused this regression by removing the empty vector table row.
-						// TODO: See #2688 for this issue.
-						let layer_local_transform = self.network_interface.document_metadata().transform_to_viewport(layer_to_move);
-						let undo_transform = self.network_interface.document_metadata().transform_to_viewport(parent).inverse();
-						let transform = undo_transform * layer_local_transform;
-
-						responses.add(GraphOperationMessage::TransformSet {
-							layer: layer_to_move,
-							transform,
-							transform_in: TransformIn::Local,
-							skip_rerender: false,
-						});
-					}
-				}
-
-				responses.add(NodeGraphMessage::RunDocumentGraph);
-				responses.add(NodeGraphMessage::SendGraph);
+				self.handle_move_selected_layers_to(parent, insert_index, responses);
 			}
 			DocumentMessage::MoveSelectedLayersToGroup { parent } => {
 				// Group all shallowest unique selected layers in order
@@ -783,83 +648,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				resize,
 				resize_opposite_corner,
 			} => {
-				responses.add(DocumentMessage::AddTransaction);
-
-				let resize = ipp.keyboard.key(resize);
-				let resize_opposite_corner = ipp.keyboard.key(resize_opposite_corner);
-
-				let can_move = |layer| {
-					let selected = self.network_interface.selected_nodes();
-					selected.layer_visible(layer, &self.network_interface) && !selected.layer_locked(layer, &self.network_interface)
-				};
-
-				// Nudge translation without resizing
-				if !resize {
-					let transform = DAffine2::from_translation(DVec2::from_angle(-self.document_ptz.tilt()).rotate(DVec2::new(delta_x, delta_y)));
-					responses.add(SelectToolMessage::ShiftSelectedNodes { offset: transform.translation });
-
-					for layer in self.network_interface.shallowest_unique_layers(&[]).filter(|layer| can_move(*layer)) {
-						responses.add(GraphOperationMessage::TransformChange {
-							layer,
-							transform,
-							transform_in: TransformIn::Local,
-							skip_rerender: false,
-						});
-					}
-
-					return;
-				}
-
-				let selected_bounding_box = self.network_interface.selected_bounds_document_space(false, &[]);
-				let Some([existing_top_left, existing_bottom_right]) = selected_bounding_box else { return };
-
-				// Swap and negate coordinates as needed to match the resize direction that's closest to the current tilt angle
-				let tilt = (self.document_ptz.tilt() + std::f64::consts::TAU) % std::f64::consts::TAU;
-				let (delta_x, delta_y, opposite_x, opposite_y) = match ((tilt + std::f64::consts::FRAC_PI_4) / std::f64::consts::FRAC_PI_2).floor() as i32 % 4 {
-					0 => (delta_x, delta_y, false, false),
-					1 => (delta_y, -delta_x, false, true),
-					2 => (-delta_x, -delta_y, true, true),
-					3 => (-delta_y, delta_x, true, false),
-					_ => unreachable!(),
-				};
-
-				let size = existing_bottom_right - existing_top_left;
-				// TODO: This is a hacky band-aid. It still results in the shape becoming zero-sized. Properly fix this using the correct math.
-				// If size is zero we clamp it to minimun value to avoid dividing by zero vector to calculate enlargement.
-				let size = size.max(DVec2::ONE);
-				let enlargement = DVec2::new(
-					if resize_opposite_corner != opposite_x { -delta_x } else { delta_x },
-					if resize_opposite_corner != opposite_y { -delta_y } else { delta_y },
-				);
-				let enlargement_factor = (enlargement + size) / size;
-
-				let position = DVec2::new(
-					existing_top_left.x + if resize_opposite_corner != opposite_x { delta_x } else { 0. },
-					existing_top_left.y + if resize_opposite_corner != opposite_y { delta_y } else { 0. },
-				);
-				let mut pivot = (existing_top_left * enlargement_factor - position) / (enlargement_factor - DVec2::ONE);
-				if !pivot.x.is_finite() {
-					pivot.x = 0.;
-				}
-				if !pivot.y.is_finite() {
-					pivot.y = 0.;
-				}
-				let scale = DAffine2::from_scale(enlargement_factor);
-				let pivot = DAffine2::from_translation(pivot);
-				let transformation = pivot * scale * pivot.inverse();
-				let document_to_viewport = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
-
-				for layer in self.network_interface.shallowest_unique_layers(&[]).filter(|layer| can_move(*layer)) {
-					let to = document_to_viewport.inverse() * self.metadata().downstream_transform_to_viewport(layer);
-					let original_transform = self.metadata().upstream_transform(layer.to_node());
-					let new = to.inverse() * transformation * to * original_transform;
-					responses.add(GraphOperationMessage::TransformSet {
-						layer,
-						transform: new,
-						transform_in: TransformIn::Local,
-						skip_rerender: false,
-					});
-				}
+				self.handle_nudge_selected_layers(delta_x, delta_y, resize, resize_opposite_corner, ipp, viewport, responses);
 			}
 			DocumentMessage::PasteImage {
 				name,
@@ -2168,6 +1957,235 @@ impl DocumentMessageHandler {
 		responses.add(DocumentMessage::MoveSelectedLayersToGroup { parent: new_group_folder });
 
 		folder_id
+	}
+
+	/// Helper method for GroupSelectedLayers message.
+	/// Handles grouping layers in both artboard and non-artboard workflows.
+	fn handle_group_selected_layers(&mut self, group_folder_type: GroupFolderType, responses: &mut VecDeque<Message>) {
+		responses.add(DocumentMessage::AddTransaction);
+
+		let mut parent_per_selected_nodes: HashMap<LayerNodeIdentifier, Vec<NodeId>> = HashMap::new();
+		let artboards = LayerNodeIdentifier::ROOT_PARENT
+			.children(self.metadata())
+			.filter(|x| self.network_interface.is_artboard(&x.to_node(), &self.selection_network_path))
+			.collect::<Vec<_>>();
+		let selected_nodes = self.network_interface.selected_nodes();
+
+		// Non-artboard (infinite canvas) workflow
+		if artboards.is_empty() {
+			let Some(parent) = self.network_interface.deepest_common_ancestor(&selected_nodes, &self.selection_network_path, false) else {
+				return;
+			};
+			let Some(selected_nodes) = &self.network_interface.selected_nodes_in_nested_network(&self.selection_network_path) else {
+				return;
+			};
+			let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), selected_nodes, parent);
+
+			DocumentMessageHandler::group_layers(responses, insert_index, parent, group_folder_type, &mut self.network_interface);
+		}
+		// Artboard workflow
+		else {
+			for artboard in artboards {
+				let selected_descendants = artboard.descendants(self.metadata()).filter(|x| selected_nodes.selected_layers_contains(*x, self.metadata()));
+				for selected_descendant in selected_descendants {
+					parent_per_selected_nodes.entry(artboard).or_default().push(selected_descendant.to_node());
+				}
+			}
+
+			let mut new_folders: Vec<NodeId> = Vec::new();
+
+			for children in parent_per_selected_nodes.into_values() {
+				let child_selected_nodes = SelectedNodes(children);
+				let Some(parent) = self.network_interface.deepest_common_ancestor(&child_selected_nodes, &self.selection_network_path, false) else {
+					continue;
+				};
+				let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), &child_selected_nodes, parent);
+
+				responses.add(NodeGraphMessage::SelectedNodesSet { nodes: child_selected_nodes.0 });
+
+				new_folders.push(DocumentMessageHandler::group_layers(responses, insert_index, parent, group_folder_type, &mut self.network_interface));
+			}
+
+			responses.add(NodeGraphMessage::SelectedNodesSet { nodes: new_folders });
+		}
+	}
+
+	/// Helper method for MoveSelectedLayersTo message.
+	/// Handles moving selected layers to a new parent with proper transform preservation.
+	fn handle_move_selected_layers_to(&mut self, parent: LayerNodeIdentifier, insert_index: usize, responses: &mut VecDeque<Message>) {
+		if !self.selection_network_path.is_empty() {
+			log::error!("Moving selected layers is only supported for the Document Network");
+			return;
+		}
+
+		// Disallow trying to insert into self.
+		if self
+			.network_interface
+			.selected_nodes()
+			.selected_layers(self.metadata())
+			.any(|layer| parent.ancestors(self.metadata()).any(|ancestor| ancestor == layer))
+		{
+			return;
+		}
+		// Artboards can only have `ROOT_PARENT` as the parent.
+		let any_artboards = self
+			.network_interface
+			.selected_nodes()
+			.selected_layers(self.metadata())
+			.any(|layer| self.network_interface.is_artboard(&layer.to_node(), &self.selection_network_path));
+		if any_artboards && parent != LayerNodeIdentifier::ROOT_PARENT {
+			return;
+		}
+
+		// Non-artboards cannot be put at the top level if artboards also exist there
+		let selected_any_non_artboards = self
+			.network_interface
+			.selected_nodes()
+			.selected_layers(self.metadata())
+			.any(|layer| !self.network_interface.is_artboard(&layer.to_node(), &self.selection_network_path));
+
+		let top_level_artboards = LayerNodeIdentifier::ROOT_PARENT
+			.children(self.metadata())
+			.any(|layer| self.network_interface.is_artboard(&layer.to_node(), &self.selection_network_path));
+
+		if selected_any_non_artboards && parent == LayerNodeIdentifier::ROOT_PARENT && top_level_artboards {
+			return;
+		}
+
+		let layers_to_move = self.network_interface.shallowest_unique_layers_sorted(&self.selection_network_path);
+		// Offset the index for layers to move that are below another layer to move. For example when moving 1 and 2 between 3 and 4, 2 should be inserted at the same index as 1 since 1 is moved first.
+		let layers_to_move_with_insert_offset = layers_to_move
+			.iter()
+			.map(|layer| {
+				if layer.parent(self.metadata()) != Some(parent) {
+					return (*layer, 0);
+				}
+
+				let upstream_selected_siblings = layer
+					.downstream_siblings(self.network_interface.document_metadata())
+					.filter(|sibling| {
+						sibling != layer
+							&& layers_to_move.iter().any(|layer| {
+								layer == sibling
+									&& layer
+										.parent(self.metadata())
+										.is_some_and(|parent| parent.children(self.metadata()).position(|child| child == *layer) < Some(insert_index))
+							})
+					})
+					.count();
+				(*layer, upstream_selected_siblings)
+			})
+			.collect::<Vec<_>>();
+
+		responses.add(DocumentMessage::AddTransaction);
+
+		for (layer_index, (layer_to_move, insert_offset)) in layers_to_move_with_insert_offset.into_iter().enumerate() {
+			responses.add(NodeGraphMessage::MoveLayerToStack {
+				layer: layer_to_move,
+				parent,
+				insert_index: insert_index + layer_index - insert_offset,
+			});
+
+			if layer_to_move.parent(self.metadata()) != Some(parent) {
+				// TODO: Fix this so it works when dragging a layer into a group parent which has a Transform node, which used to work before #2689 caused this regression by removing the empty vector table row.
+				// TODO: See #2688 for this issue.
+				let layer_local_transform = self.network_interface.document_metadata().transform_to_viewport(layer_to_move);
+				let undo_transform = self.network_interface.document_metadata().transform_to_viewport(parent).inverse();
+				let transform = undo_transform * layer_local_transform;
+
+				responses.add(GraphOperationMessage::TransformSet {
+					layer: layer_to_move,
+					transform,
+					transform_in: TransformIn::Local,
+					skip_rerender: false,
+				});
+			}
+		}
+
+		responses.add(NodeGraphMessage::RunDocumentGraph);
+		responses.add(NodeGraphMessage::SendGraph);
+	}
+
+	/// Helper method for NudgeSelectedLayers message.
+	/// Handles keyboard nudging of selected layers with optional resize mode.
+	fn handle_nudge_selected_layers(&mut self, delta_x: f64, delta_y: f64, resize: Key, resize_opposite_corner: Key, ipp: &InputPreprocessorMessageHandler, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) {
+		responses.add(DocumentMessage::AddTransaction);
+
+		let resize = ipp.keyboard.key(resize);
+		let resize_opposite_corner = ipp.keyboard.key(resize_opposite_corner);
+
+		let can_move = |layer| {
+			let selected = self.network_interface.selected_nodes();
+			selected.layer_visible(layer, &self.network_interface) && !selected.layer_locked(layer, &self.network_interface)
+		};
+
+		// Nudge translation without resizing
+		if !resize {
+			let transform = DAffine2::from_translation(DVec2::from_angle(-self.document_ptz.tilt()).rotate(DVec2::new(delta_x, delta_y)));
+			responses.add(SelectToolMessage::ShiftSelectedNodes { offset: transform.translation });
+
+			for layer in self.network_interface.shallowest_unique_layers(&[]).filter(|layer| can_move(*layer)) {
+				responses.add(GraphOperationMessage::TransformChange {
+					layer,
+					transform,
+					transform_in: TransformIn::Local,
+					skip_rerender: false,
+				});
+			}
+
+			return;
+		}
+
+		let selected_bounding_box = self.network_interface.selected_bounds_document_space(false, &[]);
+		let Some([existing_top_left, existing_bottom_right]) = selected_bounding_box else { return };
+
+		// Swap and negate coordinates as needed to match the resize direction that's closest to the current tilt angle
+		let tilt = (self.document_ptz.tilt() + std::f64::consts::TAU) % std::f64::consts::TAU;
+		let (delta_x, delta_y, opposite_x, opposite_y) = match ((tilt + std::f64::consts::FRAC_PI_4) / std::f64::consts::FRAC_PI_2).floor() as i32 % 4 {
+			0 => (delta_x, delta_y, false, false),
+			1 => (delta_y, -delta_x, false, true),
+			2 => (-delta_x, -delta_y, true, true),
+			3 => (-delta_y, delta_x, true, false),
+			_ => unreachable!(),
+		};
+
+		let size = existing_bottom_right - existing_top_left;
+		// TODO: This is a hacky band-aid. It still results in the shape becoming zero-sized. Properly fix this using the correct math.
+		// If size is zero we clamp it to minimun value to avoid dividing by zero vector to calculate enlargement.
+		let size = size.max(DVec2::ONE);
+		let enlargement = DVec2::new(
+			if resize_opposite_corner != opposite_x { -delta_x } else { delta_x },
+			if resize_opposite_corner != opposite_y { -delta_y } else { delta_y },
+		);
+		let enlargement_factor = (enlargement + size) / size;
+
+		let position = DVec2::new(
+			existing_top_left.x + if resize_opposite_corner != opposite_x { delta_x } else { 0. },
+			existing_top_left.y + if resize_opposite_corner != opposite_y { delta_y } else { 0. },
+		);
+		let mut pivot = (existing_top_left * enlargement_factor - position) / (enlargement_factor - DVec2::ONE);
+		if !pivot.x.is_finite() {
+			pivot.x = 0.;
+		}
+		if !pivot.y.is_finite() {
+			pivot.y = 0.;
+		}
+		let scale = DAffine2::from_scale(enlargement_factor);
+		let pivot = DAffine2::from_translation(pivot);
+		let transformation = pivot * scale * pivot.inverse();
+		let document_to_viewport = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
+
+		for layer in self.network_interface.shallowest_unique_layers(&[]).filter(|layer| can_move(*layer)) {
+			let to = document_to_viewport.inverse() * self.metadata().downstream_transform_to_viewport(layer);
+			let original_transform = self.metadata().upstream_transform(layer.to_node());
+			let new = to.inverse() * transformation * to * original_transform;
+			responses.add(GraphOperationMessage::TransformSet {
+				layer,
+				transform: new,
+				transform_in: TransformIn::Local,
+				skip_rerender: false,
+			});
+		}
 	}
 
 	/// Loads all of the fonts in the document.
