@@ -18,7 +18,9 @@ use graphene_std::vector::algorithms::bezpath_algorithms::pathseg_compute_lookup
 use graphene_std::vector::misc::{HandleId, ManipulatorPointId, dvec2_to_point, point_to_dvec2};
 use graphene_std::vector::{HandleExt, PointId, SegmentId, Vector, VectorModificationType};
 use kurbo::{Affine, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveNearest, PathSeg, Rect, Shape};
+use std::collections::hash_map::DefaultHasher;
 use std::f64::consts::TAU;
+use std::hash::{Hash, Hasher};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub enum SelectionChange {
@@ -461,6 +463,16 @@ impl ShapeState {
 			} else {
 				// Merge the layers
 				merge_layers(document, layer1, layer2, responses);
+
+				let resolve_id = |layer: LayerNodeIdentifier, point_id: PointId, index: usize| {
+					let mut hasher = DefaultHasher::new();
+					(index, 0_usize, layer).hash(&mut hasher);
+					point_id.generate_from_hash(hasher.finish())
+				};
+
+				let start_point = resolve_id(layer1, start_point, 0);
+				let end_point = resolve_id(layer2, end_point, 1);
+
 				// Create segment between the two points
 				let segment_id = SegmentId::generate();
 				let modification_type = VectorModificationType::InsertSegment {
