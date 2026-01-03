@@ -421,6 +421,52 @@ impl ShapeState {
 		(point.as_handle().is_some() && self.ignore_handles) || (point.as_anchor().is_some() && self.ignore_anchors)
 	}
 
+	/// Creates a dummy modification to trigger graph reorganization.
+	fn add_dummy_modification_to_trigger_graph_reorganization(layer: LayerNodeIdentifier, start_point: PointId, _end_point: PointId, responses: &mut VecDeque<Message>) {
+		// Apply a zero-delta to one of the points to trigger reorganization
+		let dummy_modification = VectorModificationType::ApplyPointDelta {
+			point: start_point,
+			delta: DVec2::ZERO,
+		};
+		responses.add(GraphOperationMessage::Vector {
+			layer,
+			modification_type: dummy_modification,
+		});
+		responses.add(NodeGraphMessage::RunDocumentGraph);
+	}
+
+	/// a two-step process: trigger reorganization, then use position-based lookup.
+	fn handle_grouped_transform_close_path(document: &DocumentMessageHandler, layer: LayerNodeIdentifier, start_point: PointId, end_point: PointId, responses: &mut VecDeque<Message>) {
+		// Get the layer's transform (handles rotation, scaling, translation)
+		let layer_transform = document.metadata().transform_to_document(layer);
+
+		let start_local_pos = document.network_interface.compute_modified_vector(layer).and_then(|v| v.point_domain.position_from_id(start_point));
+		let end_local_pos = document.network_interface.compute_modified_vector(layer).and_then(|v| v.point_domain.position_from_id(end_point));
+
+		if let (Some(start_local), Some(end_local)) = (start_local_pos, end_local_pos) {
+			// Transform positions to document/world space
+			// These positions are stable (won't change during reorganization)
+			let start_pos = layer_transform.transform_point2(start_local);
+			let end_pos = layer_transform.transform_point2(end_local);
+
+			// This zero-delta modification triggers point domain reorganization
+			Self::add_dummy_modification_to_trigger_graph_reorganization(layer, start_point, end_point, responses);
+
+			// Defer position-based connection to run after reorganization completes
+			// By then, PointIds will be stable with their new remapped values
+			responses.add(DeferMessage::AfterGraphRun {
+				messages: vec![
+					ToolMessage::Path(PathToolMessage::ConnectPointsByPosition {
+						layer,
+						start_position: start_pos,
+						end_position: end_pos,
+					})
+					.into(),
+				],
+			});
+		}
+	}
+
 	pub fn close_selected_path(&self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		// First collect all selected anchor points across all layers
 		let all_selected_points: Vec<(LayerNodeIdentifier, PointId)> = self
@@ -447,28 +493,56 @@ impl ShapeState {
 			let (layer2, end_point) = all_selected_points[1];
 
 			if layer1 == layer2 {
+				// Same layer case
 				if start_point == end_point {
 					return;
 				}
 
-				let segment_id = SegmentId::generate();
-				let modification_type = VectorModificationType::InsertSegment {
-					id: segment_id,
-					points: [end_point, start_point],
-					handles: [None, None],
-				};
-				responses.add(GraphOperationMessage::Vector { layer: layer1, modification_type });
+				// Check if this layer has multiple children (is a merged/grouped layer created with Cmd+G)
+				let num_children = layer1.children(document.metadata()).count();
+				let is_grouped = num_children > 1;
+
+				if is_grouped {
+					// Grouped/merged layer: use helper function to handle reorganization
+					Self::handle_grouped_transform_close_path(document, layer1, start_point, end_point, responses);
+				} else {
+					// Single segment: PointIDs are stable, use immediate insertion
+					let segment_id = SegmentId::generate();
+					let modification_type = VectorModificationType::InsertSegment {
+						id: segment_id,
+						points: [end_point, start_point],
+						handles: [None, None],
+					};
+					responses.add(GraphOperationMessage::Vector { layer: layer1, modification_type });
+				}
 			} else {
-				// Merge the layers
-				merge_layers(document, layer1, layer2, responses);
-				// Create segment between the two points
-				let segment_id = SegmentId::generate();
-				let modification_type = VectorModificationType::InsertSegment {
-					id: segment_id,
-					points: [end_point, start_point],
-					handles: [None, None],
-				};
-				responses.add(GraphOperationMessage::Vector { layer: layer1, modification_type });
+				// Different layers: merge first, then create segment
+
+				// Get the local positions of the selected points
+				let start_local_pos = document.network_interface.compute_modified_vector(layer1).and_then(|v| v.point_domain.position_from_id(start_point));
+				let end_local_pos = document.network_interface.compute_modified_vector(layer2).and_then(|v| v.point_domain.position_from_id(end_point));
+
+				// Transform to document/world space
+				let start_transform = document.metadata().transform_to_document(layer1);
+				let end_transform = document.metadata().transform_to_document(layer2);
+
+				if let (Some(start_local), Some(end_local)) = (start_local_pos, end_local_pos) {
+					let start_pos = start_transform.transform_point2(start_local);
+					let end_pos = end_transform.transform_point2(end_local);
+
+					merge_layers(document, layer1, layer2, responses);
+
+					responses.add(DeferMessage::AfterGraphRun {
+						messages: vec![
+							ToolMessage::Path(PathToolMessage::ConnectPointsByPosition {
+								layer: layer1,
+								start_position: start_pos,
+								end_position: end_pos,
+							})
+							.into(),
+						],
+					});
+				}
 			}
 			return;
 		}
