@@ -498,6 +498,8 @@ pub struct ShapeToolData {
 
 	// Gizmos
 	gizmo_manager: GizmoManager,
+
+	last_mouse_viewport_for_space: Option<DVec2>,
 }
 
 impl ShapeToolData {
@@ -908,6 +910,25 @@ impl Fsm for ShapeToolFsmState {
 			}
 			(ShapeToolFsmState::ResizingBounds, ShapeToolMessage::PointerMove { modifier }) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
+					let space_down = input.keyboard.get(Key::Space as usize);
+					let current_mouse = input.mouse.position;
+
+					if space_down {
+						if tool_data.last_mouse_viewport_for_space.is_none() {
+							tool_data.last_mouse_viewport_for_space = Some(current_mouse);
+						}
+						let previous = tool_data.last_mouse_viewport_for_space.unwrap();
+						let delta = current_mouse - previous;
+						if delta.length_squared() > 0. {
+							bounds.center_of_transformation += delta;
+							bounds.original_bound_transform.translation += delta;
+							bounds.original_transforms.shift(delta, document.metadata());
+							tool_data.last_mouse_viewport_for_space = Some(current_mouse);
+						}
+					} else {
+						tool_data.last_mouse_viewport_for_space = None;
+					}
+
 					let messages = [ShapeToolMessage::PointerOutsideViewport { modifier }.into(), ShapeToolMessage::PointerMove { modifier }.into()];
 					resize_bounds(
 						document,
@@ -930,6 +951,26 @@ impl Fsm for ShapeToolFsmState {
 			}
 			(ShapeToolFsmState::RotatingBounds, ShapeToolMessage::PointerMove { modifier }) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
+					let space_down = input.keyboard.get(Key::Space as usize);
+					let current_mouse = input.mouse.position;
+
+					if space_down {
+						if tool_data.last_mouse_viewport_for_space.is_none() {
+							tool_data.last_mouse_viewport_for_space = Some(current_mouse);
+						}
+						let previous = tool_data.last_mouse_viewport_for_space.unwrap();
+						let delta = current_mouse - previous;
+						if delta.length_squared() > 0. {
+							bounds.center_of_transformation += delta;
+							bounds.original_bound_transform.translation += delta;
+							bounds.original_transforms.shift(delta, document.metadata());
+							tool_data.data.drag_start += delta;
+							tool_data.last_mouse_viewport_for_space = Some(current_mouse);
+						}
+					} else {
+						tool_data.last_mouse_viewport_for_space = None;
+					}
+
 					rotate_bounds(
 						document,
 						responses,
@@ -946,6 +987,25 @@ impl Fsm for ShapeToolFsmState {
 			}
 			(ShapeToolFsmState::SkewingBounds { skew }, ShapeToolMessage::PointerMove { .. }) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
+					let space_down = input.keyboard.get(Key::Space as usize);
+					let current_mouse = input.mouse.position;
+
+					if space_down {
+						if tool_data.last_mouse_viewport_for_space.is_none() {
+							tool_data.last_mouse_viewport_for_space = Some(current_mouse);
+						}
+						let previous = tool_data.last_mouse_viewport_for_space.unwrap();
+						let delta = current_mouse - previous;
+						if delta.length_squared() > 0. {
+							bounds.center_of_transformation += delta;
+							bounds.original_bound_transform.translation += delta;
+							bounds.original_transforms.shift(delta, document.metadata());
+							tool_data.last_mouse_viewport_for_space = Some(current_mouse);
+						}
+					} else {
+						tool_data.last_mouse_viewport_for_space = None;
+					}
+
 					skew_bounds(
 						document,
 						responses,
