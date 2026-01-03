@@ -188,7 +188,13 @@ fn star<T: AsU64>(
 
 /// Generates a QR code from the input text.
 #[node_macro::node(category("Vector: Shape"))]
-fn qr_code(_: impl Ctx, _primary: (), #[default("https://graphite.art")] text: String
+fn qr_code(
+	_: impl Ctx,
+	_primary: (),
+	#[default("https://graphite.art")] text: String,
+	#[default(true)]
+	#[name("Merge Adjacent Tiles")]
+	merge: bool,
 ) -> Table<Vector> {
 	let ecc = qrcodegen::QrCodeEcc::Medium;
 
@@ -201,11 +207,23 @@ fn qr_code(_: impl Ctx, _primary: (), #[default("https://graphite.art")] text: S
 	let offset = DVec2::splat(size as f64 / -2.);
 
 	for y in 0..size {
-		for x in 0..size {
+		let mut x = 0;
+		while x < size {
 			if qr_code.get_module(x, y) {
-				let corner1 = offset + DVec2::new(x as f64, y as f64);
-				let corner2 = corner1 + DVec2::splat(1.);
+				let start_x = x;
+				x += 1;
+				if merge {
+					while x < size && qr_code.get_module(x, y) {
+						x += 1;
+					}
+				}
+				let end_x = x;
+
+				let corner1 = offset + DVec2::new(start_x as f64, y as f64);
+				let corner2 = offset + DVec2::new(end_x as f64, (y + 1) as f64);
 				vector.append_subpath(subpath::Subpath::new_rect(corner1, corner2), false);
+			} else {
+				x += 1;
 			}
 		}
 	}
@@ -389,7 +407,7 @@ mod tests {
 
 	#[test]
 	fn qr_code_test() {
-		let qr = qr_code((), (), "https://graphite.art".to_string());
+		let qr = qr_code((), (), "https://graphite.art".to_string(), true);
 		assert!(qr.iter().next().unwrap().element.point_domain.ids().len() > 0);
 		assert!(qr.iter().next().unwrap().element.segment_domain.ids().len() > 0);
 	}
