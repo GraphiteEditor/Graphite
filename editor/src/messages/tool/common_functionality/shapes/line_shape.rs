@@ -1,5 +1,6 @@
 use super::shape_utility::ShapeToolModifierKey;
 use crate::consts::{BOUNDS_SELECT_THRESHOLD, LINE_ROTATE_SNAP_ANGLE};
+use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type};
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -36,13 +37,13 @@ pub struct LineToolData {
 pub struct Line;
 
 impl Line {
-	pub fn create_node(document: &DocumentMessageHandler, drag_start: DVec2) -> NodeTemplate {
+	pub fn create_node(_document: &DocumentMessageHandler, _drag_start: DVec2) -> NodeTemplate {
 		let identifier = DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::line::IDENTIFIER);
 		let node_type = resolve_document_node_type(&identifier).expect("Line node can't be found");
 		node_type.node_template_input_override([
 			None,
-			Some(NodeInput::value(TaggedValue::DVec2(document.metadata().document_to_viewport.transform_point2(drag_start)), false)),
-			Some(NodeInput::value(TaggedValue::DVec2(document.metadata().document_to_viewport.transform_point2(drag_start)), false)),
+			Some(NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false)),
+			Some(NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false)),
 		])
 	}
 
@@ -68,17 +69,27 @@ impl Line {
 			document_points.swap(0, 1);
 		}
 
+		let viewport_points = document_points.map(|point| document.metadata().document_to_viewport.transform_point2(point));
+		let midpoint = viewport_points[0].midpoint(viewport_points[1]);
+
 		let Some(node_id) = graph_modification_utils::get_line_id(layer, &document.network_interface) else {
 			return;
 		};
 
+		responses.add(GraphOperationMessage::TransformSet {
+			layer,
+			transform: DAffine2::from_translation(midpoint),
+			transform_in: TransformIn::Viewport,
+			skip_rerender: true,
+		});
+
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(node_id, 1),
-			input: NodeInput::value(TaggedValue::DVec2(document_points[0]), false),
+			input: NodeInput::value(TaggedValue::DVec2(viewport_points[0] - midpoint), false),
 		});
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(node_id, 2),
-			input: NodeInput::value(TaggedValue::DVec2(document_points[1]), false),
+			input: NodeInput::value(TaggedValue::DVec2(viewport_points[1] - midpoint), false),
 		});
 		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
@@ -195,7 +206,7 @@ pub fn clicked_on_line_endpoints(layer: LayerNodeIdentifier, document: &Document
 
 	if start_click || end_click {
 		shape_tool_data.line_data.dragging_endpoint = Some(if end_click { LineEnd::End } else { LineEnd::Start });
-		shape_tool_data.data.drag_start = if end_click { document_start } else { document_end };
+		shape_tool_data.data.drag_start = document.metadata().transform_to_document(layer).transform_point2(if end_click { document_start } else { document_end });
 		shape_tool_data.line_data.editing_layer = Some(layer);
 		return true;
 	}
@@ -233,12 +244,8 @@ mod test_line_tool {
 		editor.new_document().await;
 		editor.drag_tool(ToolType::Line, 0., 0., 100., 100., ModifierKeys::empty()).await;
 		if let Some((start_input, end_input)) = get_line_node_inputs(&mut editor).await {
-			match (start_input, end_input) {
-				(start_input, end_input) => {
-					assert!((start_input - DVec2::ZERO).length() < 1., "Start point should be near (0,0)");
-					assert!((end_input - DVec2::new(100., 100.)).length() < 1., "End point should be near (100,100)");
-				}
-			}
+			assert!((start_input - DVec2::new(-50., -50.)).length() < 1., "Start point should be near (-50, -50)");
+			assert!((end_input - DVec2::new(50., 50.)).length() < 1., "End point should be near (50, 50)");
 		}
 	}
 
@@ -255,16 +262,16 @@ mod test_line_tool {
 			let document_to_viewport = document.metadata().document_to_viewport;
 			let viewport_to_document = document_to_viewport.inverse();
 
-			let expected_start = viewport_to_document.transform_point2(DVec2::ZERO);
-			let expected_end = viewport_to_document.transform_point2(DVec2::new(100., 100.));
+			let expected_start = DVec2::new(-50., -50.);
+			let expected_end = DVec2::new(50., 50.);
 
 			assert!(
 				(start_input - expected_start).length() < 1.,
-				"Start point should match expected document coordinates. Got {start_input:?}, expected {expected_start:?}"
+				"Start point should match expected viewport coordinates. Got {start_input:?}, expected {expected_start:?}"
 			);
 			assert!(
 				(end_input - expected_end).length() < 1.,
-				"End point should match expected document coordinates. Got {end_input:?}, expected {expected_end:?}"
+				"End point should match expected viewport coordinates. Got {end_input:?}, expected {expected_end:?}"
 			);
 		} else {
 			panic!("Line was not created successfully with transformed viewport");
