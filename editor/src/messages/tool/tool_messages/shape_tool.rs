@@ -1147,6 +1147,7 @@ fn update_dynamic_hints(state: &ShapeToolFsmState, responses: &mut VecDeque<Mess
 				])],
 				ShapeType::Teardrop => vec![HintGroup(vec![
 					HintInfo::mouse(MouseMotion::LmbDrag, "Draw Teardrop"),
+					HintInfo::keys([Key::Shift], "Constrain Circular").prepend_plus(),
 					HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
 				])],
 				ShapeType::Arc => vec![HintGroup(vec![
@@ -1167,14 +1168,14 @@ fn update_dynamic_hints(state: &ShapeToolFsmState, responses: &mut VecDeque<Mess
 			let tool_hint_group = match shape {
 				ShapeType::Polygon | ShapeType::Star | ShapeType::Arc => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Regular"), HintInfo::keys([Key::Alt], "From Center")]),
 				ShapeType::Rectangle => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Square"), HintInfo::keys([Key::Alt], "From Center")]),
-				ShapeType::Ellipse => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Circular"), HintInfo::keys([Key::Alt], "From Center")]),
+				ShapeType::Ellipse | ShapeType::Teardrop => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Circular"), HintInfo::keys([Key::Alt], "From Center")]),
 				ShapeType::Grid => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Regular"), HintInfo::keys([Key::Alt], "From Center")]),
 				ShapeType::Line => HintGroup(vec![
 					HintInfo::keys([Key::Shift], "15° Increments"),
 					HintInfo::keys([Key::Alt], "From Center"),
 					HintInfo::keys([Key::Control], "Lock Angle"),
 				]),
-				ShapeType::Circle | ShapeType::Teardrop => HintGroup(vec![HintInfo::keys([Key::Alt], "From Center")]),
+				ShapeType::Circle => HintGroup(vec![HintInfo::keys([Key::Alt], "From Center")]),
 				ShapeType::Spiral => HintGroup(vec![]),
 			};
 
