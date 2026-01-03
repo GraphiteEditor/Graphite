@@ -86,11 +86,12 @@ impl PointRadiusHandle {
 				}
 
 				// Draw the point handle gizmo for the polygon shape
-				if let Some((sides, radius)) = extract_polygon_parameters(Some(layer), document) {
+				if let Some((sides, radius, is_inner_radius)) = extract_polygon_parameters(Some(layer), document) {
 					let viewport = document.metadata().transform_to_viewport(layer);
+					let effective_radius = if is_inner_radius { radius / (PI / sides as f64).cos() } else { radius };
 
 					for i in 0..sides {
-						let point = polygon_vertex_position(viewport, i as i32, sides, radius);
+						let point = polygon_vertex_position(viewport, i as i32, sides, effective_radius);
 						let center = viewport.transform_point2(DVec2::ZERO);
 
 						// If the user zooms out such that shape is very small hide the gizmo
@@ -129,8 +130,9 @@ impl PointRadiusHandle {
 				}
 
 				// Polygon
-				if let Some((sides, radius)) = extract_polygon_parameters(Some(layer), document) {
-					let point = polygon_vertex_position(viewport, self.point as i32, sides, radius);
+				if let Some((sides, radius, is_inner_radius)) = extract_polygon_parameters(Some(layer), document) {
+					let effective_radius = if is_inner_radius { radius / (PI / sides as f64).cos() } else { radius };
+					let point = polygon_vertex_position(viewport, self.point as i32, sides, effective_radius);
 
 					if matches!(&self.handle_state, PointRadiusHandleState::Hover) && (mouse_position - point).length() > 5. {
 						self.update_state(PointRadiusHandleState::Inactive);
@@ -165,11 +167,12 @@ impl PointRadiusHandle {
 				}
 
 				// Draw the point handle gizmo for the Polygon shape
-				if let Some((sides, radius)) = extract_polygon_parameters(Some(layer), document) {
+				if let Some((sides, radius, is_inner_radius)) = extract_polygon_parameters(Some(layer), document) {
 					let viewport = document.metadata().transform_to_viewport(layer);
+					let effective_radius = if is_inner_radius { radius / (PI / sides as f64).cos() } else { radius };
 
 					for i in 0..sides {
-						let point = polygon_vertex_position(viewport, i as i32, sides, radius);
+						let point = polygon_vertex_position(viewport, i as i32, sides, effective_radius);
 						let center = viewport.transform_point2(DVec2::ZERO);
 
 						// If the user zooms out such that shape is very small hide the gizmo
@@ -210,8 +213,9 @@ impl PointRadiusHandle {
 				}
 
 				// Polygon
-				if let Some((sides, radius)) = extract_polygon_parameters(Some(layer), document) {
-					let point = polygon_vertex_position(viewport, self.point as i32, sides, radius);
+				if let Some((sides, radius, is_inner_radius)) = extract_polygon_parameters(Some(layer), document) {
+					let effective_radius = if is_inner_radius { radius / (PI / sides as f64).cos() } else { radius };
+					let point = polygon_vertex_position(viewport, self.point as i32, sides, effective_radius);
 
 					let Some(direction) = (point - center).try_normalize() else { return };
 
@@ -419,17 +423,23 @@ impl PointRadiusHandle {
 		};
 
 		let viewport_transform = document.network_interface.document_metadata().transform_to_viewport(layer);
-		let center = viewport_transform.transform_point2(DVec2::ZERO);
+
 		let radius_index = self.radius_index;
 
 		let original_radius = self.initial_radius;
 
-		let delta = viewport_transform.inverse().transform_point2(input.mouse.position) - viewport_transform.inverse().transform_point2(drag_start);
-		let radius = drag_start - center;
+		let drag_start = viewport_transform.inverse().transform_point2(drag_start);
+		let delta = viewport_transform.inverse().transform_point2(input.mouse.position) - drag_start;
+		let radius = drag_start;
 		let projection = delta.project_onto(radius);
 		let sign = radius.dot(delta).signum();
 
 		let mut net_delta = projection.length() * sign * original_radius.signum();
+		if let Some((sides, _, is_inner_radius)) = extract_polygon_parameters(Some(layer), document) {
+			if is_inner_radius {
+				net_delta *= (PI / sides as f64).cos();
+			}
+		}
 		let new_radius = original_radius + net_delta;
 
 		self.update_state(PointRadiusHandleState::Dragging);
