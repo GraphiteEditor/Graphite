@@ -501,11 +501,11 @@ impl ShapeState {
 					return;
 				}
 
-				// Check if this is a grouped layer with multiple disconnected segments
-				let has_multiple_segments = document.network_interface.compute_modified_vector(layer1).map(|v| v.segment_domain.ids().len() > 1).unwrap_or(false);
+				// Check if this layer itself has children (is a merged/grouped layer created with Cmd+G)
+				let is_grouped = layer1.has_children(document.metadata());
 
-				if has_multiple_segments {
-					// Grouped paths: use helper function to handle reorganization
+				if is_grouped {
+					// Grouped/merged layer: use helper function to handle reorganization
 					Self::handle_grouped_transform_close_path(document, layer1, start_point, end_point, responses);
 				} else {
 					// Single segment: PointIDs are stable, use immediate insertion
