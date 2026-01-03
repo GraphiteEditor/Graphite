@@ -201,6 +201,19 @@ fn line(
 	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_line(start, end)))
 }
 
+/// Generates a heart shape with a chosen radius.
+#[node_macro::node(category("Vector: Shape"))]
+fn heart(
+	_: impl Ctx,
+	_primary: (),
+	#[unit(" px")]
+	#[default(50.)]
+	radius: f64,
+) -> Table<Vector> {
+	let radius = radius.abs();
+	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_heart(DVec2::ZERO, radius)))
+}
+
 trait GridSpacing {
 	fn as_dvec2(&self) -> DVec2;
 }
