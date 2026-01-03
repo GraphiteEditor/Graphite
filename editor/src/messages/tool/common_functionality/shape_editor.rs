@@ -501,8 +501,9 @@ impl ShapeState {
 					return;
 				}
 
-				// Check if this layer itself has children (is a merged/grouped layer created with Cmd+G)
-				let is_grouped = layer1.has_children(document.metadata());
+				// Check if this layer has multiple children (is a merged/grouped layer created with Cmd+G)
+				let num_children = layer1.children(document.metadata()).count();
+				let is_grouped = num_children > 1;
 
 				if is_grouped {
 					// Grouped/merged layer: use helper function to handle reorganization
