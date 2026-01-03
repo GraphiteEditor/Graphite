@@ -1,6 +1,7 @@
 branding/
 target/
 result/
+.flatpak-builder/
 *.spv
 *.exrc
 perf.data*
