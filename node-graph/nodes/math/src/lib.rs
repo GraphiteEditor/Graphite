@@ -471,12 +471,41 @@ fn ceiling<T: num_traits::float::Float>(
 	value.ceil()
 }
 
+trait AbsoluteValue {
+	fn abs(self) -> Self;
+}
+impl AbsoluteValue for DVec2 {
+	fn abs(self) -> Self {
+		DVec2::new(self.x.abs(), self.y.abs())
+	}
+}
+impl AbsoluteValue for f32 {
+	fn abs(self) -> Self {
+		self.abs()
+	}
+}
+impl AbsoluteValue for f64 {
+	fn abs(self) -> Self {
+		self.abs()
+	}
+}
+impl AbsoluteValue for i32 {
+	fn abs(self) -> Self {
+		self.abs()
+	}
+}
+impl AbsoluteValue for i64 {
+	fn abs(self) -> Self {
+		self.abs()
+	}
+}
+
 /// The absolute value function (`abs`) removes the negative sign from an input value, if present.
 #[node_macro::node(category("Math: Numeric"))]
-fn absolute_value<T: num_traits::sign::Signed>(
+fn absolute_value<T: AbsoluteValue>(
 	_: impl Ctx,
 	/// The number to be made positive.
-	#[implementations(f64, f32, i32, i64)]
+	#[implementations(f64, f32, i32, i64, DVec2)]
 	value: T,
 ) -> T {
 	value.abs()
