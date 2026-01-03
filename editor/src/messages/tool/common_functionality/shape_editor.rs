@@ -421,15 +421,12 @@ impl ShapeState {
 		(point.as_handle().is_some() && self.ignore_handles) || (point.as_anchor().is_some() && self.ignore_anchors)
 	}
 
-	/// Creates a dummy segment insertion to trigger graph reorganization.
-	/// This dummy segment will fail to insert (because PointIds become invalid during execution),
-	/// but the important side effect is that it triggers the reorganization we need.
-	fn create_dummy_segment_to_trigger_graph_reorganization(layer: LayerNodeIdentifier, start_point: PointId, end_point: PointId, responses: &mut VecDeque<Message>) {
-		let dummy_segment_id = SegmentId::generate();
-		let dummy_modification = VectorModificationType::InsertSegment {
-			id: dummy_segment_id,
-			points: [start_point, end_point],
-			handles: [None, None],
+	/// Creates a dummy modification to trigger graph reorganization.
+	fn add_dummy_modification_to_trigger_graph_reorganization(layer: LayerNodeIdentifier, start_point: PointId, _end_point: PointId, responses: &mut VecDeque<Message>) {
+		// Apply a zero-delta to one of the points to trigger reorganization
+		let dummy_modification = VectorModificationType::ApplyPointDelta {
+			point: start_point,
+			delta: DVec2::ZERO,
 		};
 		responses.add(GraphOperationMessage::Vector {
 			layer,
@@ -452,8 +449,8 @@ impl ShapeState {
 			let start_pos = layer_transform.transform_point2(start_local);
 			let end_pos = layer_transform.transform_point2(end_local);
 
-			// This segment insertion will fail, but causes point domain reorganization
-			Self::create_dummy_segment_to_trigger_graph_reorganization(layer, start_point, end_point, responses);
+			// This zero-delta modification triggers point domain reorganization
+			Self::add_dummy_modification_to_trigger_graph_reorganization(layer, start_point, end_point, responses);
 
 			// Defer position-based connection to run after reorganization completes
 			// By then, PointIds will be stable with their new remapped values

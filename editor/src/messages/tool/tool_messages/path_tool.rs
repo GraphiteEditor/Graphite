@@ -2710,23 +2710,23 @@ impl Fsm for PathToolFsmState {
 					}
 				}
 
-			if let (Some(start_id), Some(end_id)) = (start_point_id, end_point_id) {
-				// Create segment directly
-				responses.add(DocumentMessage::StartTransaction);
+				if let (Some(start_id), Some(end_id)) = (start_point_id, end_point_id) {
+					// Create segment directly
+					responses.add(DocumentMessage::StartTransaction);
 
-				let segment_id = SegmentId::generate();
-				let modification_type = VectorModificationType::InsertSegment {
-					id: segment_id,
-					points: [end_id, start_id],
-					handles: [None, None],
-				};
+					let segment_id = SegmentId::generate();
+					let modification_type = VectorModificationType::InsertSegment {
+						id: segment_id,
+						points: [end_id, start_id],
+						handles: [None, None],
+					};
 
-				responses.add(GraphOperationMessage::Vector { layer, modification_type });
-				responses.add(DocumentMessage::EndTransaction);
-				responses.add(OverlaysMessage::Draw);
-			}
+					responses.add(GraphOperationMessage::Vector { layer, modification_type });
+					responses.add(DocumentMessage::EndTransaction);
+					responses.add(OverlaysMessage::Draw);
+				}
 
-			self
+				self
 			}
 			(_, PathToolMessage::StartSlidingPoint) => {
 				responses.add(DocumentMessage::StartTransaction);
