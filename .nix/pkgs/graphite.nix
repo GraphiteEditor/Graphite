@@ -124,7 +124,7 @@ deps.crane.lib.buildPackage (
       cp $src/desktop/assets/*.desktop $out/share/applications/
 
       mkdir -p $out/share/icons/hicolor/scalable/apps
-      cp ${branding}/app-icons/graphite.svg $out/share/icons/hicolor/scalable/apps/
+      cp ${branding}/app-icons/graphite.svg $out/share/icons/hicolor/scalable/apps/art.graphite.Graphite.svg
     '';
 
     postFixup = ''

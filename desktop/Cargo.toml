@@ -43,7 +43,7 @@ open = { workspace = true }
 rand = { workspace = true, features = ["thread_rng"] }
 serde = { workspace = true }
 clap = { workspace = true, features = ["derive"] }
-pidlock = "0.2.2"
+fd-lock = "4.0.4"
 ctrlc = "3.5.1"
 window_clipboard = "0.5"
 
