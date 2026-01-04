@@ -216,7 +216,7 @@ impl Pixel for Luma {}
 /// The other components (RGB) are stored as `f32` that range from `0.0` up to `f32::MAX`,
 /// the values encode the brightness of each channel proportional to the light intensity in cd/m² (nits) in HDR, and `0.0` (black) to `1.0` (white) in SDR color.
 #[repr(C)]
-#[derive(Debug, Default, Clone, Copy, PartialEq, Pod, Zeroable, BufferStruct)]
+#[derive(Debug, Default, Clone, Copy, Pod, Zeroable, BufferStruct)]
 #[cfg_attr(feature = "std", derive(dyn_any::DynAny, specta::Type, serde::Serialize, serde::Deserialize))]
 pub struct Color {
 	red: f32,
@@ -224,6 +224,14 @@ pub struct Color {
 	blue: f32,
 	alpha: f32,
 }
+
+impl PartialEq for Color {
+	fn eq(&self, other: &Self) -> bool {
+		self.red == other.red && self.green == other.green && self.blue == other.blue && self.alpha == other.alpha
+	}
+}
+
+impl Eq for Color {}
 
 #[allow(clippy::derived_hash_with_manual_eq)]
 impl Hash for Color {

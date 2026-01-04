@@ -13,12 +13,13 @@ use graphic_types::raster_types::Image;
 use graphic_types::raster_types::{CPU, Raster};
 use rendering::{Render, RenderOutputType as RenderOutputTypeRequest, RenderParams, RenderSvgSegmentList, SvgRender, format_transform_matrix};
 use rendering::{RenderMetadata, SvgSegment};
+use std::collections::HashMap;
 use std::sync::Arc;
 use vector_types::GradientStops;
 use wgpu_executor::RenderContext;
 
 /// List of (canvas id, image data) pairs for embedding images as canvases in the final SVG string.
-type ImageData = Vec<(u64, Image<Color>)>;
+type ImageData = HashMap<Image<Color>, u64>;
 
 #[derive(Clone, dyn_any::DynAny)]
 pub enum RenderIntermediateType {
@@ -162,7 +163,7 @@ async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, edito
 			rendering.wrap_with_transform(footprint.transform, Some(logical_resolution));
 			RenderOutputType::Svg {
 				svg: rendering.svg.to_svg_string(),
-				image_data: rendering.image_data,
+				image_data: rendering.image_data.into_iter().map(|(image, id)| (id, image)).collect(),
 			}
 		}
 		(RenderOutputTypeRequest::Vello, RenderIntermediateType::Vello(vello_data)) => {
