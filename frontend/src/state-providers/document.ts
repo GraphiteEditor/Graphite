@@ -14,8 +14,9 @@ import {
 	UpdateGraphFadeArtwork,
 } from "@graphite/messages";
 import type { Layout } from "@graphite/messages";
+import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 
-export function createDocumentState(editor: Editor) {
+export function createDocumentState(editor: Editor, nodeGraph?: NodeGraphState) {
 	const state = writable({
 		// Layouts
 		toolOptionsLayout: [] as Layout,
@@ -79,6 +80,10 @@ export function createDocumentState(editor: Editor) {
 	editor.subscriptions.subscribeJsMessage(UpdateGraphViewOverlay, (data) => {
 		update((state) => {
 			state.graphViewOverlayOpen = data.open;
+			// Close the context menu when the graph view overlay is closed
+			if (!data.open && nodeGraph) {
+				nodeGraph.closeContextMenu();
+			}
 			return state;
 		});
 	});
