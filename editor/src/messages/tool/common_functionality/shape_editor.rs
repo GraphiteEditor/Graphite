@@ -436,38 +436,54 @@ impl ShapeState {
 	}
 
 	/// a two-step process: trigger reorganization, then use position-based lookup.
-	fn handle_grouped_transform_close_path(document: &DocumentMessageHandler, layer: LayerNodeIdentifier, start_point: PointId, end_point: PointId, responses: &mut VecDeque<Message>) {
-		// Get the layer's transform (handles rotation, scaling, translation)
-		let layer_transform = document.metadata().transform_to_document(layer);
+	/// Helper function to connect two points by their positions after graph reorganization.
+	/// This transforms local point positions to document space and defers the connection until after the graph runs.
+	fn defer_connect_points_by_position(
+		document: &DocumentMessageHandler,
+		layer1: LayerNodeIdentifier,
+		start_point: PointId,
+		layer2: LayerNodeIdentifier,
+		end_point: PointId,
+		target_layer: LayerNodeIdentifier,
+		responses: &mut VecDeque<Message>,
+	) {
+		// Get the local positions of the selected points
+		let start_local_pos = document.network_interface.compute_modified_vector(layer1).and_then(|v| v.point_domain.position_from_id(start_point));
+		let end_local_pos = document.network_interface.compute_modified_vector(layer2).and_then(|v| v.point_domain.position_from_id(end_point));
 
-		let start_local_pos = document.network_interface.compute_modified_vector(layer).and_then(|v| v.point_domain.position_from_id(start_point));
-		let end_local_pos = document.network_interface.compute_modified_vector(layer).and_then(|v| v.point_domain.position_from_id(end_point));
+		// Transform to document/world space
+		let start_transform = document.metadata().transform_to_document(layer1);
+		let end_transform = document.metadata().transform_to_document(layer2);
 
 		let (Some(start_local), Some(end_local)) = (start_local_pos, end_local_pos) else {
 			warn!("Unable to resolve point ids for joining");
 			return;
 		};
-			// Transform positions to document/world space
-			// These positions are stable (won't change during reorganization)
-			let start_pos = layer_transform.transform_point2(start_local);
-			let end_pos = layer_transform.transform_point2(end_local);
+		// Transform positions to document/world space
+		// These positions are stable (won't change during reorganization)
+		let start_pos = start_transform.transform_point2(start_local);
+		let end_pos = end_transform.transform_point2(end_local);
 
-			// This zero-delta modification triggers point domain reorganization
-			Self::add_dummy_modification_to_trigger_graph_reorganization(layer, start_point, end_point, responses);
-
-			// Defer position-based connection to run after reorganization completes
-			// By then, PointIds will be stable with their new remapped values
-			responses.add(DeferMessage::AfterGraphRun {
-				messages: vec![
-					ToolMessage::Path(PathToolMessage::ConnectPointsByPosition {
-						layer,
-						start_position: start_pos,
-						end_position: end_pos,
-					})
-					.into(),
-				],
+		// Defer position-based connection to run after reorganization completes
+		// By then, PointIds will be stable with their new remapped values
+		responses.add(DeferMessage::AfterGraphRun {
+			messages: vec![
+				ToolMessage::Path(PathToolMessage::ConnectPointsByPosition {
+					layer: target_layer,
+					start_position: start_pos,
+					end_position: end_pos,
+				})
+				.into(),
+			],
 			});
-		}
+	}
+
+	fn handle_grouped_transform_close_path(document: &DocumentMessageHandler, layer: LayerNodeIdentifier, start_point: PointId, end_point: PointId, responses: &mut VecDeque<Message>) {
+		// This zero-delta modification triggers point domain reorganization
+		Self::add_dummy_modification_to_trigger_graph_reorganization(layer, start_point, end_point, responses);
+
+		// Use the helper to defer the connection until after reorganization
+		Self::defer_connect_points_by_position(document, layer, start_point, layer, end_point, layer, responses);
 	}
 
 	pub fn close_selected_path(&self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
@@ -520,32 +536,10 @@ impl ShapeState {
 				}
 			} else {
 				// Different layers: merge first, then create segment
+				merge_layers(document, layer1, layer2, responses);
 
-				// Get the local positions of the selected points
-				let start_local_pos = document.network_interface.compute_modified_vector(layer1).and_then(|v| v.point_domain.position_from_id(start_point));
-				let end_local_pos = document.network_interface.compute_modified_vector(layer2).and_then(|v| v.point_domain.position_from_id(end_point));
-
-				// Transform to document/world space
-				let start_transform = document.metadata().transform_to_document(layer1);
-				let end_transform = document.metadata().transform_to_document(layer2);
-
-				if let (Some(start_local), Some(end_local)) = (start_local_pos, end_local_pos) {
-					let start_pos = start_transform.transform_point2(start_local);
-					let end_pos = end_transform.transform_point2(end_local);
-
-					merge_layers(document, layer1, layer2, responses);
-
-					responses.add(DeferMessage::AfterGraphRun {
-						messages: vec![
-							ToolMessage::Path(PathToolMessage::ConnectPointsByPosition {
-								layer: layer1,
-								start_position: start_pos,
-								end_position: end_pos,
-							})
-							.into(),
-						],
-					});
-				}
+				// Use the helper to defer the connection until after reorganization
+				Self::defer_connect_points_by_position(document, layer1, start_point, layer2, end_point, layer1, responses);
 			}
 			return;
 		}
