@@ -1249,10 +1249,7 @@ impl Render for Table<Raster<CPU>> {
 			if render_params.to_canvas() {
 				let mut image_copy = image.clone();
 				image_copy.data_mut().map_pixels(|p| p.to_unassociated_alpha());
-				let id = match render.image_data.entry(image_copy.into_data()) {
-					std::collections::hash_map::Entry::Occupied(occupied_entry) => *occupied_entry.get(),
-					std::collections::hash_map::Entry::Vacant(vacant_entry) => *vacant_entry.insert(generate_uuid()),
-				};
+				let id = *render.image_data.entry(image_copy.into_data()).or_insert_with(generate_uuid);
 
 				render.parent_tag(
 					"foreignObject",
