@@ -443,7 +443,10 @@ impl ShapeState {
 		let start_local_pos = document.network_interface.compute_modified_vector(layer).and_then(|v| v.point_domain.position_from_id(start_point));
 		let end_local_pos = document.network_interface.compute_modified_vector(layer).and_then(|v| v.point_domain.position_from_id(end_point));
 
-		if let (Some(start_local), Some(end_local)) = (start_local_pos, end_local_pos) {
+		let (Some(start_local), Some(end_local)) = (start_local_pos, end_local_pos) else {
+			warn!("Unable to resolve point ids for joining");
+			return;
+		};
 			// Transform positions to document/world space
 			// These positions are stable (won't change during reorganization)
 			let start_pos = layer_transform.transform_point2(start_local);
