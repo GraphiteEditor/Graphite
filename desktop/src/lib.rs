@@ -106,7 +106,7 @@ pub fn start() {
 
 	// Explicitly drop the instance lock
 	drop(lock);
-  
+
 	// Workaround for a Windows-specific exception that occurs when `app` is dropped.
 	// The issue causes the window to hang for a few seconds before closing.
 	// Appears to be related to CEF object destruction order.
