@@ -435,9 +435,6 @@ impl ShapeState {
 		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
 
-	/// a two-step process: trigger reorganization, then use position-based lookup.
-	/// Helper function to connect two points by their positions after graph reorganization.
-	/// This transforms local point positions to document space and defers the connection until after the graph runs.
 	fn defer_connect_points_by_position(
 		document: &DocumentMessageHandler,
 		layer1: LayerNodeIdentifier,
@@ -475,7 +472,7 @@ impl ShapeState {
 				})
 				.into(),
 			],
-			});
+		});
 	}
 
 	fn handle_grouped_transform_close_path(document: &DocumentMessageHandler, layer: LayerNodeIdentifier, start_point: PointId, end_point: PointId, responses: &mut VecDeque<Message>) {
