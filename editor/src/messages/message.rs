@@ -42,7 +42,7 @@ pub enum Message {
 
 	// Messages
 	Batched {
-		messages: Box<[Message]>,
+		messages: Box<[Self]>,
 	},
 	NoOp,
 }

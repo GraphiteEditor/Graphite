@@ -20,16 +20,16 @@ impl ReferencePoint {
 	pub fn point_in_bounding_box(&self, bounding_box: AxisAlignedBbox) -> Option<DVec2> {
 		let size = bounding_box.size();
 		let offset = match self {
-			ReferencePoint::None => return None,
-			ReferencePoint::TopLeft => DVec2::ZERO,
-			ReferencePoint::TopCenter => DVec2::new(size.x / 2., 0.),
-			ReferencePoint::TopRight => DVec2::new(size.x, 0.),
-			ReferencePoint::CenterLeft => DVec2::new(0., size.y / 2.),
-			ReferencePoint::Center => DVec2::new(size.x / 2., size.y / 2.),
-			ReferencePoint::CenterRight => DVec2::new(size.x, size.y / 2.),
-			ReferencePoint::BottomLeft => DVec2::new(0., size.y),
-			ReferencePoint::BottomCenter => DVec2::new(size.x / 2., size.y),
-			ReferencePoint::BottomRight => DVec2::new(size.x, size.y),
+			Self::None => return None,
+			Self::TopLeft => DVec2::ZERO,
+			Self::TopCenter => DVec2::new(size.x / 2., 0.),
+			Self::TopRight => DVec2::new(size.x, 0.),
+			Self::CenterLeft => DVec2::new(0., size.y / 2.),
+			Self::Center => DVec2::new(size.x / 2., size.y / 2.),
+			Self::CenterRight => DVec2::new(size.x, size.y / 2.),
+			Self::BottomLeft => DVec2::new(0., size.y),
+			Self::BottomCenter => DVec2::new(size.x / 2., size.y),
+			Self::BottomRight => DVec2::new(size.x, size.y),
 		};
 		Some(bounding_box.start + offset)
 	}
@@ -38,16 +38,16 @@ impl ReferencePoint {
 impl From<&str> for ReferencePoint {
 	fn from(input: &str) -> Self {
 		match input {
-			"None" => ReferencePoint::None,
-			"TopLeft" => ReferencePoint::TopLeft,
-			"TopCenter" => ReferencePoint::TopCenter,
-			"TopRight" => ReferencePoint::TopRight,
-			"CenterLeft" => ReferencePoint::CenterLeft,
-			"Center" => ReferencePoint::Center,
-			"CenterRight" => ReferencePoint::CenterRight,
-			"BottomLeft" => ReferencePoint::BottomLeft,
-			"BottomCenter" => ReferencePoint::BottomCenter,
-			"BottomRight" => ReferencePoint::BottomRight,
+			"None" => Self::None,
+			"TopLeft" => Self::TopLeft,
+			"TopCenter" => Self::TopCenter,
+			"TopRight" => Self::TopRight,
+			"CenterLeft" => Self::CenterLeft,
+			"Center" => Self::Center,
+			"CenterRight" => Self::CenterRight,
+			"BottomLeft" => Self::BottomLeft,
+			"BottomCenter" => Self::BottomCenter,
+			"BottomRight" => Self::BottomRight,
 			_ => panic!("Failed parsing unrecognized ReferencePosition enum value '{input}'"),
 		}
 	}
@@ -75,29 +75,29 @@ impl From<DVec2> for ReferencePoint {
 		const TOLERANCE: f64 = 1e-5_f64;
 		if input.y.abs() < TOLERANCE {
 			if input.x.abs() < TOLERANCE {
-				return ReferencePoint::TopLeft;
+				return Self::TopLeft;
 			} else if (input.x - 0.5).abs() < TOLERANCE {
-				return ReferencePoint::TopCenter;
+				return Self::TopCenter;
 			} else if (input.x - 1.).abs() < TOLERANCE {
-				return ReferencePoint::TopRight;
+				return Self::TopRight;
 			}
 		} else if (input.y - 0.5).abs() < TOLERANCE {
 			if input.x.abs() < TOLERANCE {
-				return ReferencePoint::CenterLeft;
+				return Self::CenterLeft;
 			} else if (input.x - 0.5).abs() < TOLERANCE {
-				return ReferencePoint::Center;
+				return Self::Center;
 			} else if (input.x - 1.).abs() < TOLERANCE {
-				return ReferencePoint::CenterRight;
+				return Self::CenterRight;
 			}
 		} else if (input.y - 1.).abs() < TOLERANCE {
 			if input.x.abs() < TOLERANCE {
-				return ReferencePoint::BottomLeft;
+				return Self::BottomLeft;
 			} else if (input.x - 0.5).abs() < TOLERANCE {
-				return ReferencePoint::BottomCenter;
+				return Self::BottomCenter;
 			} else if (input.x - 1.).abs() < TOLERANCE {
-				return ReferencePoint::BottomRight;
+				return Self::BottomRight;
 			}
 		}
-		ReferencePoint::None
+		Self::None
 	}
 }

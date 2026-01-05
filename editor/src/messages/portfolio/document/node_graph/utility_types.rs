@@ -217,12 +217,12 @@ pub struct FrontendXY {
 
 impl From<DVec2> for FrontendXY {
 	fn from(v: DVec2) -> Self {
-		FrontendXY { x: v.x as i32, y: v.y as i32 }
+		Self { x: v.x as i32, y: v.y as i32 }
 	}
 }
 
 impl From<IVec2> for FrontendXY {
 	fn from(v: IVec2) -> Self {
-		FrontendXY { x: v.x, y: v.y }
+		Self { x: v.x, y: v.y }
 	}
 }

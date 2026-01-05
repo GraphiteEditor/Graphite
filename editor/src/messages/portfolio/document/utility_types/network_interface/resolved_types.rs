@@ -48,7 +48,7 @@ pub enum TypeSource {
 impl TypeSource {
 	/// The reduced set of frontend types for displaying color.
 	pub fn displayed_type(&self) -> FrontendGraphDataType {
-		if matches!(self, TypeSource::Invalid) {
+		if matches!(self, Self::Invalid) {
 			return FrontendGraphDataType::Invalid;
 		};
 		match self.compiled_nested_type() {
@@ -77,8 +77,8 @@ impl TypeSource {
 
 	pub fn compiled_nested_type(&self) -> Option<&Type> {
 		match self {
-			TypeSource::Compiled(compiled_type) => Some(compiled_type.nested_type()),
-			TypeSource::TaggedValue(value_type) => Some(value_type.nested_type()),
+			Self::Compiled(compiled_type) => Some(compiled_type.nested_type()),
+			Self::TaggedValue(value_type) => Some(value_type.nested_type()),
 			_ => None,
 		}
 	}
@@ -91,22 +91,22 @@ impl TypeSource {
 	/// The type to display in the tooltip label.
 	pub fn resolved_type_tooltip_string(&self) -> String {
 		match self {
-			TypeSource::Compiled(compiled_type) => format!("Data Type: {:?}", compiled_type.nested_type().to_string()),
-			TypeSource::TaggedValue(value_type) => format!("Data Type: {:?}", value_type.nested_type().to_string()),
-			TypeSource::Unknown => "Unknown Data Type".to_string(),
-			TypeSource::Invalid => "Invalid Type Combination".to_string(),
-			TypeSource::Error(_) => "Error Getting Data Type".to_string(),
+			Self::Compiled(compiled_type) => format!("Data Type: {:?}", compiled_type.nested_type().to_string()),
+			Self::TaggedValue(value_type) => format!("Data Type: {:?}", value_type.nested_type().to_string()),
+			Self::Unknown => "Unknown Data Type".to_string(),
+			Self::Invalid => "Invalid Type Combination".to_string(),
+			Self::Error(_) => "Error Getting Data Type".to_string(),
 		}
 	}
 
 	/// The type to display in the node row.
 	pub fn resolved_type_node_string(&self) -> String {
 		match self {
-			TypeSource::Compiled(compiled_type) => compiled_type.nested_type().to_string(),
-			TypeSource::TaggedValue(value_type) => value_type.nested_type().to_string(),
-			TypeSource::Unknown => "Unknown".to_string(),
-			TypeSource::Invalid => "Invalid".to_string(),
-			TypeSource::Error(_) => "Error".to_string(),
+			Self::Compiled(compiled_type) => compiled_type.nested_type().to_string(),
+			Self::TaggedValue(value_type) => value_type.nested_type().to_string(),
+			Self::Unknown => "Unknown".to_string(),
+			Self::Invalid => "Invalid".to_string(),
+			Self::Error(_) => "Error".to_string(),
 		}
 	}
 }

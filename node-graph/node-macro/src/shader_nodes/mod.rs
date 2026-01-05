@@ -43,8 +43,8 @@ impl Parse for ShaderNodeType {
 	fn parse(input: ParseStream) -> syn::Result<Self> {
 		let ident: Ident = input.parse()?;
 		Ok(match ident.to_string().as_str() {
-			"None" => ShaderNodeType::None,
-			"PerPixelAdjust" => ShaderNodeType::PerPixelAdjust(PerPixelAdjust::parse(input)?),
+			"None" => Self::None,
+			"PerPixelAdjust" => Self::PerPixelAdjust(PerPixelAdjust::parse(input)?),
 			_ => return Err(Error::new_spanned(&ident, format!("attr 'shader_node' must be one of {:?}", Self::VARIANTS))),
 		})
 	}
@@ -57,7 +57,7 @@ pub trait ShaderCodegen {
 impl ShaderCodegen for ShaderNodeType {
 	fn codegen(&self, crate_ident: &CrateIdent, parsed: &ParsedNodeFn) -> syn::Result<ShaderTokens> {
 		match self {
-			ShaderNodeType::None | ShaderNodeType::ShaderNode => (),
+			Self::None | Self::ShaderNode => (),
 			_ => {
 				if parsed.is_async {
 					return Err(Error::new_spanned(&parsed.fn_name, "Shader nodes must not be async"));
@@ -66,8 +66,8 @@ impl ShaderCodegen for ShaderNodeType {
 		}
 
 		match self {
-			ShaderNodeType::None | ShaderNodeType::ShaderNode => Ok(ShaderTokens::default()),
-			ShaderNodeType::PerPixelAdjust(x) => x.codegen(crate_ident, parsed),
+			Self::None | Self::ShaderNode => Ok(ShaderTokens::default()),
+			Self::PerPixelAdjust(x) => x.codegen(crate_ident, parsed),
 		}
 	}
 }

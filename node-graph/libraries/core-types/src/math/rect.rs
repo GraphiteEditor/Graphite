@@ -114,6 +114,6 @@ impl std::ops::IndexMut<usize> for Rect {
 
 impl From<Rect> for Quad {
 	fn from(val: Rect) -> Self {
-		Quad::from_box(val.0)
+		Self::from_box(val.0)
 	}
 }

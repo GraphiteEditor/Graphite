@@ -351,8 +351,8 @@ impl Default for LayoutGroup {
 	}
 }
 impl From<Vec<WidgetInstance>> for LayoutGroup {
-	fn from(widgets: Vec<WidgetInstance>) -> LayoutGroup {
-		LayoutGroup::Row { widgets }
+	fn from(widgets: Vec<WidgetInstance>) -> Self {
+		Self::Row { widgets }
 	}
 }
 
@@ -360,8 +360,8 @@ impl LayoutGroup {
 	/// Applies a tooltip description to all widgets without a tooltip in this row or column.
 	pub fn with_tooltip_description(self, description: impl Into<String>) -> Self {
 		let (is_col, mut widgets) = match self {
-			LayoutGroup::Column { widgets } => (true, widgets),
-			LayoutGroup::Row { widgets } => (false, widgets),
+			Self::Column { widgets } => (true, widgets),
+			Self::Row { widgets } => (false, widgets),
 			_ => unimplemented!(),
 		};
 		let description = description.into();

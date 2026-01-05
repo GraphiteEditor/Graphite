@@ -167,8 +167,8 @@ impl SelectedNodes {
 		std::mem::replace(&mut self.0, new)
 	}
 
-	pub fn filtered_selected_nodes(&self, filter: impl Fn(&NodeId) -> bool) -> SelectedNodes {
-		SelectedNodes(self.0.iter().copied().filter(filter).collect())
+	pub fn filtered_selected_nodes(&self, filter: impl Fn(&NodeId) -> bool) -> Self {
+		Self(self.0.iter().copied().filter(filter).collect())
 	}
 }
 

@@ -3182,7 +3182,7 @@ impl NodeNetworkInterface {
 
 // Public mutable methods
 impl NodeNetworkInterface {
-	pub fn copy_all_navigation_metadata(&mut self, other_interface: &NodeNetworkInterface) {
+	pub fn copy_all_navigation_metadata(&mut self, other_interface: &Self) {
 		let mut stack = vec![vec![]];
 		while let Some(path) = stack.pop() {
 			let Some(self_network_metadata) = self.network_metadata_mut(&path) else {
@@ -5719,25 +5719,24 @@ pub enum InputConnector {
 
 impl Default for InputConnector {
 	fn default() -> Self {
-		InputConnector::Export(0)
+		Self::Export(0)
 	}
 }
 
 impl InputConnector {
 	pub fn node(node_id: NodeId, input_index: usize) -> Self {
-		InputConnector::Node { node_id, input_index }
+		Self::Node { node_id, input_index }
 	}
 
 	pub fn input_index(&self) -> usize {
 		match self {
-			InputConnector::Node { input_index, .. } => *input_index,
-			InputConnector::Export(input_index) => *input_index,
+			Self::Node { input_index, .. } | Self::Export(input_index) => *input_index,
 		}
 	}
 
 	pub fn node_id(&self) -> Option<NodeId> {
 		match self {
-			InputConnector::Node { node_id, .. } => Some(*node_id),
+			Self::Node { node_id, .. } => Some(*node_id),
 			_ => None,
 		}
 	}
@@ -5759,25 +5758,24 @@ pub enum OutputConnector {
 
 impl Default for OutputConnector {
 	fn default() -> Self {
-		OutputConnector::Import(0)
+		Self::Import(0)
 	}
 }
 
 impl OutputConnector {
 	pub fn node(node_id: NodeId, output_index: usize) -> Self {
-		OutputConnector::Node { node_id, output_index }
+		Self::Node { node_id, output_index }
 	}
 
 	pub fn index(&self) -> usize {
 		match self {
-			OutputConnector::Node { output_index, .. } => *output_index,
-			OutputConnector::Import(output_index) => *output_index,
+			Self::Node { output_index, .. } | Self::Import(output_index) => *output_index,
 		}
 	}
 
 	pub fn node_id(&self) -> Option<NodeId> {
 		match self {
-			OutputConnector::Node { node_id, .. } => Some(*node_id),
+			Self::Node { node_id, .. } => Some(*node_id),
 			_ => None,
 		}
 	}
@@ -5804,8 +5802,8 @@ impl Default for Ports {
 }
 
 impl Ports {
-	pub fn new() -> Ports {
-		Ports {
+	pub fn new() -> Self {
+		Self {
 			input_ports: Vec::new(),
 			output_ports: Vec::new(),
 		}
@@ -5934,7 +5932,7 @@ pub struct NodeNetworkMetadata {
 
 impl Clone for NodeNetworkMetadata {
 	fn clone(&self) -> Self {
-		NodeNetworkMetadata {
+		Self {
 			persistent_metadata: self.persistent_metadata.clone(),
 			transient_metadata: Default::default(),
 		}
@@ -5965,7 +5963,7 @@ impl NodeNetworkMetadata {
 
 		for segment in nested_path {
 			network_metadata = network_metadata
-				.and_then(|network: &mut NodeNetworkMetadata| network.persistent_metadata.node_metadata.get_mut(segment))
+				.and_then(|network: &mut Self| network.persistent_metadata.node_metadata.get_mut(segment))
 				.and_then(|node| node.persistent_metadata.network_metadata.as_mut());
 		}
 		network_metadata
@@ -6007,7 +6005,7 @@ impl<T> TransientMetadata<T> {
 	}
 
 	pub fn is_loaded(&self) -> bool {
-		matches!(self, TransientMetadata::Loaded(_))
+		matches!(self, Self::Loaded(_))
 	}
 }
 
@@ -6067,7 +6065,7 @@ pub struct DocumentNodeMetadata {
 
 impl Clone for DocumentNodeMetadata {
 	fn clone(&self) -> Self {
-		DocumentNodeMetadata {
+		Self {
 			persistent_metadata: self.persistent_metadata.clone(),
 			transient_metadata: Default::default(),
 		}
@@ -6095,7 +6093,7 @@ pub struct NumberInputSettings {
 
 impl Default for NumberInputSettings {
 	fn default() -> Self {
-		NumberInputSettings {
+		Self {
 			unit: None,
 			min: None,
 			max: None,
@@ -6259,7 +6257,7 @@ pub struct InputMetadata {
 
 impl Clone for InputMetadata {
 	fn clone(&self) -> Self {
-		InputMetadata {
+		Self {
 			persistent_metadata: self.persistent_metadata.clone(),
 			transient_metadata: Default::default(),
 		}
@@ -6274,7 +6272,7 @@ impl PartialEq for InputMetadata {
 
 impl From<(&str, &str)> for InputMetadata {
 	fn from(input_name_and_description: (&str, &str)) -> Self {
-		InputMetadata {
+		Self {
 			persistent_metadata: InputPersistentMetadata::default()
 				.with_name(input_name_and_description.0)
 				.with_description(input_name_and_description.1),
@@ -6285,7 +6283,7 @@ impl From<(&str, &str)> for InputMetadata {
 
 impl InputMetadata {
 	pub fn with_name_description_override(input_name: &str, description: &str, widget_override: WidgetOverride) -> Self {
-		InputMetadata {
+		Self {
 			persistent_metadata: InputPersistentMetadata::default().with_name(input_name).with_description(description).with_override(widget_override),
 			..Default::default()
 		}
@@ -6300,18 +6298,18 @@ pub enum NodeTypePersistentMetadata {
 
 impl Default for NodeTypePersistentMetadata {
 	fn default() -> Self {
-		NodeTypePersistentMetadata::node(IVec2::ZERO)
+		Self::node(IVec2::ZERO)
 	}
 }
 
 impl NodeTypePersistentMetadata {
-	pub fn node(position: IVec2) -> NodeTypePersistentMetadata {
-		NodeTypePersistentMetadata::Node(NodePersistentMetadata {
+	pub fn node(position: IVec2) -> Self {
+		Self::Node(NodePersistentMetadata {
 			position: NodePosition::Absolute(position),
 		})
 	}
-	pub fn layer(position: IVec2) -> NodeTypePersistentMetadata {
-		NodeTypePersistentMetadata::Layer(LayerPersistentMetadata {
+	pub fn layer(position: IVec2) -> Self {
+		Self::Layer(LayerPersistentMetadata {
 			position: LayerPosition::Absolute(position),
 			owned_nodes: TransientMetadata::default(),
 		})

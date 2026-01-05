@@ -117,30 +117,30 @@ enum MenuContainer<'a> {
 impl<'a> MenuContainer<'a> {
 	fn items(&self) -> Vec<MenuItemKind> {
 		match self {
-			MenuContainer::Menu(menu) => menu.items(),
-			MenuContainer::Submenu(submenu) => submenu.items(),
+			Self::Menu(menu) => menu.items(),
+			Self::Submenu(submenu) => submenu.items(),
 		}
 	}
 	fn remove(&self, item: &dyn IsMenuItem) -> Result<()> {
 		match self {
-			MenuContainer::Menu(menu) => menu.remove(item),
-			MenuContainer::Submenu(submenu) => submenu.remove(item),
+			Self::Menu(menu) => menu.remove(item),
+			Self::Submenu(submenu) => submenu.remove(item),
 		}
 	}
 	fn append_items(&self, items: &[&dyn IsMenuItem]) -> Result<()> {
 		match self {
-			MenuContainer::Menu(menu) => menu.append_items(items),
-			MenuContainer::Submenu(submenu) => submenu.append_items(items),
+			Self::Menu(menu) => menu.append_items(items),
+			Self::Submenu(submenu) => submenu.append_items(items),
 		}
 	}
 }
 impl<'a> From<&'a MudaMenu> for MenuContainer<'a> {
 	fn from(menu: &'a MudaMenu) -> Self {
-		MenuContainer::Menu(menu)
+		Self::Menu(menu)
 	}
 }
 impl<'a> From<&'a Submenu> for MenuContainer<'a> {
 	fn from(submenu: &'a Submenu) -> Self {
-		MenuContainer::Submenu(submenu)
+		Self::Submenu(submenu)
 	}
 }

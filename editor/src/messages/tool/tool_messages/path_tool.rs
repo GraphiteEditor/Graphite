@@ -2034,7 +2034,7 @@ impl Fsm for PathToolFsmState {
 				)
 			}
 			(
-				PathToolFsmState::Drawing { selection_shape },
+				Self::Drawing { selection_shape },
 				PathToolMessage::PointerMove {
 					equidistant,
 					toggle_colinear,
@@ -2084,10 +2084,10 @@ impl Fsm for PathToolFsmState {
 				];
 				tool_data.auto_panning.setup_by_mouse_position(input, viewport, &messages, responses);
 
-				PathToolFsmState::Drawing { selection_shape }
+				Self::Drawing { selection_shape }
 			}
 			(
-				PathToolFsmState::Dragging(_),
+				Self::Dragging(_),
 				PathToolMessage::PointerMove {
 					equidistant,
 					toggle_colinear,
@@ -2125,7 +2125,7 @@ impl Fsm for PathToolFsmState {
 						tool_data.temporary_adjacent_handles_while_molding,
 					);
 
-					return PathToolFsmState::Dragging(tool_data.dragging_state);
+					return Self::Dragging(tool_data.dragging_state);
 				}
 
 				let anchor_and_handle_toggled = input.keyboard.get(move_anchor_with_handles as usize);
@@ -2202,14 +2202,14 @@ impl Fsm for PathToolFsmState {
 				];
 				tool_data.auto_panning.setup_by_mouse_position(input, viewport, &messages, responses);
 
-				PathToolFsmState::Dragging(tool_data.dragging_state)
+				Self::Dragging(tool_data.dragging_state)
 			}
-			(PathToolFsmState::SlidingPoint, PathToolMessage::PointerMove { .. }) => {
+			(Self::SlidingPoint, PathToolMessage::PointerMove { .. }) => {
 				tool_data.slide_point(input.mouse.position, responses, &document.network_interface, shape_editor);
-				PathToolFsmState::SlidingPoint
+				Self::SlidingPoint
 			}
 			(
-				PathToolFsmState::Ready,
+				Self::Ready,
 				PathToolMessage::PointerMove {
 					delete_segment,
 					segment_editing_modifier,
@@ -2245,21 +2245,21 @@ impl Fsm for PathToolFsmState {
 
 				self
 			}
-			(PathToolFsmState::Drawing { selection_shape: selection_type }, PathToolMessage::PointerOutsideViewport { .. }) => {
+			(Self::Drawing { selection_shape: selection_type }, PathToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning
 				if let Some(offset) = tool_data.auto_panning.shift_viewport(input, viewport, responses) {
 					tool_data.drag_start_pos += offset;
 				}
 
-				PathToolFsmState::Drawing { selection_shape: selection_type }
+				Self::Drawing { selection_shape: selection_type }
 			}
-			(PathToolFsmState::Dragging(dragging_state), PathToolMessage::PointerOutsideViewport { .. }) => {
+			(Self::Dragging(dragging_state), PathToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning
 				if let Some(offset) = tool_data.auto_panning.shift_viewport(input, viewport, responses) {
 					tool_data.drag_start_pos += offset;
 				}
 
-				PathToolFsmState::Dragging(dragging_state)
+				Self::Dragging(dragging_state)
 			}
 			(
 				state,
@@ -2303,7 +2303,7 @@ impl Fsm for PathToolFsmState {
 
 				state
 			}
-			(PathToolFsmState::Drawing { selection_shape }, PathToolMessage::Enter { extend_selection, shrink_selection }) => {
+			(Self::Drawing { selection_shape }, PathToolMessage::Enter { extend_selection, shrink_selection }) => {
 				let extend_selection = input.keyboard.get(extend_selection as usize);
 				let shrink_selection = input.keyboard.get(shrink_selection as usize);
 
@@ -2355,9 +2355,9 @@ impl Fsm for PathToolFsmState {
 
 				responses.add(OverlaysMessage::Draw);
 
-				PathToolFsmState::Ready
+				Self::Ready
 			}
-			(PathToolFsmState::Dragging { .. }, PathToolMessage::Escape | PathToolMessage::RightClick) => {
+			(Self::Dragging { .. }, PathToolMessage::Escape | PathToolMessage::RightClick) => {
 				if tool_data.handle_drag_toggle && tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD {
 					shape_editor.deselect_all_points();
 					shape_editor.deselect_all_segments();
@@ -2377,22 +2377,22 @@ impl Fsm for PathToolFsmState {
 				tool_data.angle_locked = false;
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.snap_manager.cleanup(responses);
-				PathToolFsmState::Ready
+				Self::Ready
 			}
-			(PathToolFsmState::Drawing { .. }, PathToolMessage::Escape | PathToolMessage::RightClick) => {
+			(Self::Drawing { .. }, PathToolMessage::Escape | PathToolMessage::RightClick) => {
 				tool_data.snap_manager.cleanup(responses);
-				PathToolFsmState::Ready
+				Self::Ready
 			}
-			(PathToolFsmState::SlidingPoint, PathToolMessage::Escape | PathToolMessage::RightClick) => {
+			(Self::SlidingPoint, PathToolMessage::Escape | PathToolMessage::RightClick) => {
 				tool_data.sliding_point_info = None;
 
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.snap_manager.cleanup(responses);
 
-				PathToolFsmState::Ready
+				Self::Ready
 			}
 			// Mouse up
-			(PathToolFsmState::Drawing { selection_shape }, PathToolMessage::DragStop { extend_selection, shrink_selection }) => {
+			(Self::Drawing { selection_shape }, PathToolMessage::DragStop { extend_selection, shrink_selection }) => {
 				let extend_selection = input.keyboard.get(extend_selection as usize);
 				let shrink_selection = input.keyboard.get(shrink_selection as usize);
 
@@ -2452,7 +2452,7 @@ impl Fsm for PathToolFsmState {
 				responses.add(OverlaysMessage::Draw);
 				responses.add(PathToolMessage::SelectedPointUpdated);
 
-				PathToolFsmState::Ready
+				Self::Ready
 			}
 			(_, PathToolMessage::DragStop { extend_selection, .. }) => {
 				tool_data.ghost_outline.clear();
@@ -2500,7 +2500,7 @@ impl Fsm for PathToolFsmState {
 
 					if segment_dissolved || point_inserted {
 						responses.add(DocumentMessage::EndTransaction);
-						return PathToolFsmState::Ready;
+						return Self::Ready;
 					}
 				}
 
@@ -2632,7 +2632,7 @@ impl Fsm for PathToolFsmState {
 				tool_data.snap_manager.cleanup(responses);
 				tool_data.opposite_handle_position = None;
 
-				PathToolFsmState::Ready
+				Self::Ready
 			}
 
 			// Delete key
@@ -2650,15 +2650,15 @@ impl Fsm for PathToolFsmState {
 				}
 				responses.add(PathToolMessage::SelectionChanged);
 
-				PathToolFsmState::Ready
+				Self::Ready
 			}
 			(_, PathToolMessage::BreakPath) => {
 				shape_editor.break_path_at_selected_point(document, responses);
-				PathToolFsmState::Ready
+				Self::Ready
 			}
 			(_, PathToolMessage::DeleteAndBreakPath) => {
 				shape_editor.delete_point_and_break_path(document, responses);
-				PathToolFsmState::Ready
+				Self::Ready
 			}
 			(_, PathToolMessage::ClosePath) => {
 				responses.add(DocumentMessage::AddTransaction);
@@ -2671,11 +2671,7 @@ impl Fsm for PathToolFsmState {
 			}
 			(_, PathToolMessage::StartSlidingPoint) => {
 				responses.add(DocumentMessage::StartTransaction);
-				if tool_data.start_sliding_point(shape_editor, document) {
-					PathToolFsmState::SlidingPoint
-				} else {
-					PathToolFsmState::Ready
-				}
+				if tool_data.start_sliding_point(shape_editor, document) { Self::SlidingPoint } else { Self::Ready }
 			}
 			(_, PathToolMessage::Copy { clipboard }) => {
 				// TODO: Add support for selected segments
@@ -2721,7 +2717,7 @@ impl Fsm for PathToolFsmState {
 						if both_ends_selected || segment_selected {
 							let Some((start_index, end_index)) = find_index(start).zip(find_index(end)) else {
 								error!("Point does not exist in point domain");
-								return PathToolFsmState::Ready;
+								return Self::Ready;
 							};
 							new_vector.segment_domain.push(segment_id, start_index, end_index, bezier.handles, *stroke);
 						}
@@ -2747,14 +2743,14 @@ impl Fsm for PathToolFsmState {
 				}
 				// TODO: Add implementation for internal clipboard
 
-				PathToolFsmState::Ready
+				Self::Ready
 			}
 			(_, PathToolMessage::Cut { clipboard }) => {
 				responses.add(PathToolMessage::Copy { clipboard });
 				// Delete the selected points/segments
 				responses.add(PathToolMessage::DeleteSelected);
 
-				PathToolFsmState::Ready
+				Self::Ready
 			}
 			(_, PathToolMessage::Paste { data }) => {
 				// Deserialize the data
@@ -2865,14 +2861,14 @@ impl Fsm for PathToolFsmState {
 					}
 				}
 
-				PathToolFsmState::Ready
+				Self::Ready
 			}
 			(_, PathToolMessage::DeleteSelected) => {
 				// Delete the selected points and segments
 				let deleted_some_point = shape_editor.delete_point_and_break_path(document, responses);
 				shape_editor.delete_selected_segments(document, responses, !deleted_some_point);
 
-				PathToolFsmState::Ready
+				Self::Ready
 			}
 			(_, PathToolMessage::Duplicate) => {
 				responses.add(DocumentMessage::AddTransaction);
@@ -2964,7 +2960,7 @@ impl Fsm for PathToolFsmState {
 					}
 				}
 
-				PathToolFsmState::Ready
+				Self::Ready
 			}
 			(_, PathToolMessage::DoubleClick { extend_selection, shrink_selection }) => {
 				// Double-clicked on a point (flip smooth/sharp behavior)
@@ -2998,7 +2994,7 @@ impl Fsm for PathToolFsmState {
 						});
 					}
 
-					return PathToolFsmState::Ready;
+					return Self::Ready;
 				}
 				// Double-clicked on a filled region
 				else if let Some(layer) = &get_drill_through_layer() {
@@ -3065,11 +3061,11 @@ impl Fsm for PathToolFsmState {
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![] });
 				}
 
-				PathToolFsmState::Ready
+				Self::Ready
 			}
 			(_, PathToolMessage::Abort) => {
 				responses.add(OverlaysMessage::Draw);
-				PathToolFsmState::Ready
+				Self::Ready
 			}
 			(_, PathToolMessage::NudgeSelectedPoints { delta_x, delta_y }) => {
 				shape_editor.move_selected_points_and_segments(
@@ -3084,7 +3080,7 @@ impl Fsm for PathToolFsmState {
 					responses,
 				);
 
-				PathToolFsmState::Ready
+				Self::Ready
 			}
 			(_, PathToolMessage::SelectAll) => {
 				shape_editor.select_all_anchors_in_selected_layers(document);
@@ -3100,7 +3096,7 @@ impl Fsm for PathToolFsmState {
 				}
 
 				responses.add(OverlaysMessage::Draw);
-				PathToolFsmState::Ready
+				Self::Ready
 			}
 			(_, PathToolMessage::DeselectAllSelected) => {
 				shape_editor.deselect_all_points();
@@ -3108,19 +3104,19 @@ impl Fsm for PathToolFsmState {
 
 				responses.add(OverlaysMessage::Draw);
 
-				PathToolFsmState::Ready
+				Self::Ready
 			}
 			(_, PathToolMessage::SelectedPointXChanged { new_x }) => {
 				if let Some(&SingleSelectedPoint { coordinates, id, layer, .. }) = tool_data.selection_status.as_one() {
 					shape_editor.reposition_control_point(&id, &document.network_interface, DVec2::new(new_x, coordinates.y), layer, responses);
 				}
-				PathToolFsmState::Ready
+				Self::Ready
 			}
 			(_, PathToolMessage::SelectedPointYChanged { new_y }) => {
 				if let Some(&SingleSelectedPoint { coordinates, id, layer, .. }) = tool_data.selection_status.as_one() {
 					shape_editor.reposition_control_point(&id, &document.network_interface, DVec2::new(coordinates.x, new_y), layer, responses);
 				}
-				PathToolFsmState::Ready
+				Self::Ready
 			}
 			(_, PathToolMessage::SelectedPointUpdated) => {
 				let colinear = shape_editor.selected_manipulator_angles(&document.network_interface);
@@ -3144,13 +3140,13 @@ impl Fsm for PathToolFsmState {
 				shape_editor.convert_selected_manipulators_to_colinear_handles(responses, document);
 				responses.add(DocumentMessage::EndTransaction);
 				responses.add(PathToolMessage::SelectionChanged);
-				PathToolFsmState::Ready
+				Self::Ready
 			}
 			(_, PathToolMessage::ManipulatorMakeHandlesFree) => {
 				responses.add(DocumentMessage::StartTransaction);
 				shape_editor.disable_colinear_handles_state_on_selected(&document.network_interface, responses);
 				responses.add(DocumentMessage::EndTransaction);
-				PathToolFsmState::Ready
+				Self::Ready
 			}
 			(_, PathToolMessage::SetPivot { position }) => {
 				responses.add(DocumentMessage::StartTransaction);
@@ -3164,7 +3160,7 @@ impl Fsm for PathToolFsmState {
 
 				self
 			}
-			(_, _) => PathToolFsmState::Ready,
+			(_, _) => Self::Ready,
 		}
 	}
 
@@ -3188,7 +3184,7 @@ enum SelectionStatus {
 impl SelectionStatus {
 	fn as_one(&self) -> Option<&SingleSelectedPoint> {
 		match self {
-			SelectionStatus::One(one) => Some(one),
+			Self::One(one) => Some(one),
 			_ => None,
 		}
 	}

@@ -18,19 +18,19 @@ pub enum EvalError {
 impl Node {
 	pub fn eval<V: ValueProvider, F: FunctionProvider>(&self, context: &EvalContext<V, F>) -> Result<Value, EvalError> {
 		match self {
-			Node::Lit(lit) => match lit {
+			Self::Lit(lit) => match lit {
 				Literal::Float(num) => Ok(Value::from_f64(*num)),
 				Literal::Complex(num) => Ok(Value::Number(Number::Complex(*num))),
 			},
 
-			Node::BinOp { lhs, op, rhs } => match (lhs.eval(context)?, rhs.eval(context)?) {
+			Self::BinOp { lhs, op, rhs } => match (lhs.eval(context)?, rhs.eval(context)?) {
 				(Value::Number(lhs), Value::Number(rhs)) => Ok(Value::Number(lhs.binary_op(*op, rhs))),
 			},
-			Node::UnaryOp { expr, op } => match expr.eval(context)? {
+			Self::UnaryOp { expr, op } => match expr.eval(context)? {
 				Value::Number(num) => Ok(Value::Number(num.unary_op(*op))),
 			},
-			Node::Var(name) => context.get_value(name).ok_or_else(|| EvalError::MissingValue(name.clone())),
-			Node::FnCall { name, expr } => {
+			Self::Var(name) => context.get_value(name).ok_or_else(|| EvalError::MissingValue(name.clone())),
+			Self::FnCall { name, expr } => {
 				let values = expr.iter().map(|expr| expr.eval(context)).collect::<Result<Vec<Value>, EvalError>>()?;
 				if let Some(function) = DEFAULT_FUNCTIONS.get(&name.as_str()) {
 					function(&values).ok_or(EvalError::TypeError)

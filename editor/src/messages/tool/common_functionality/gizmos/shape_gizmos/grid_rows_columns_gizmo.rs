@@ -381,33 +381,33 @@ impl RowColumnGizmoType {
 
 	pub fn direction(&self, viewport: DAffine2) -> DVec2 {
 		match self {
-			RowColumnGizmoType::Top => viewport.transform_vector2(-DVec2::Y),
-			RowColumnGizmoType::Bottom => viewport.transform_vector2(DVec2::Y),
-			RowColumnGizmoType::Right => viewport.transform_vector2(DVec2::X),
-			RowColumnGizmoType::Left => viewport.transform_vector2(-DVec2::X),
-			RowColumnGizmoType::None => panic!("RowColumnGizmoType::None does not have a line"),
+			Self::Top => viewport.transform_vector2(-DVec2::Y),
+			Self::Bottom => viewport.transform_vector2(DVec2::Y),
+			Self::Right => viewport.transform_vector2(DVec2::X),
+			Self::Left => viewport.transform_vector2(-DVec2::X),
+			Self::None => panic!("RowColumnGizmoType::None does not have a line"),
 		}
 	}
 
 	fn initial_dimension(&self, rows: u32, columns: u32) -> u32 {
 		match self {
-			RowColumnGizmoType::Top | RowColumnGizmoType::Bottom => rows,
-			RowColumnGizmoType::Left | RowColumnGizmoType::Right => columns,
-			RowColumnGizmoType::None => panic!("RowColumnGizmoType::None does not have a mouse_icon"),
+			Self::Top | Self::Bottom => rows,
+			Self::Left | Self::Right => columns,
+			Self::None => panic!("RowColumnGizmoType::None does not have a mouse_icon"),
 		}
 	}
 
 	fn spacing(&self, spacing: DVec2, grid_type: GridType, angles: DVec2) -> f64 {
 		match self {
-			RowColumnGizmoType::Top | RowColumnGizmoType::Bottom => spacing.y,
-			RowColumnGizmoType::Left | RowColumnGizmoType::Right => {
+			Self::Top | Self::Bottom => spacing.y,
+			Self::Left | Self::Right => {
 				if grid_type == GridType::Rectangular {
 					spacing.x
 				} else {
 					spacing.y / (angles.x.to_radians().tan() + angles.y.to_radians().tan())
 				}
 			}
-			RowColumnGizmoType::None => panic!("RowColumnGizmoType::None does not have a mouse_icon"),
+			Self::None => panic!("RowColumnGizmoType::None does not have a mouse_icon"),
 		}
 	}
 
@@ -415,17 +415,17 @@ impl RowColumnGizmoType {
 		use graphene_std::vector::generator_nodes::grid::*;
 
 		match self {
-			RowColumnGizmoType::Top | RowColumnGizmoType::Bottom => RowsInput::INDEX,
-			RowColumnGizmoType::Left | RowColumnGizmoType::Right => ColumnsInput::INDEX,
-			RowColumnGizmoType::None => panic!("RowColumnGizmoType::None does not have a mouse_icon"),
+			Self::Top | Self::Bottom => RowsInput::INDEX,
+			Self::Left | Self::Right => ColumnsInput::INDEX,
+			Self::None => panic!("RowColumnGizmoType::None does not have a mouse_icon"),
 		}
 	}
 
 	pub fn mouse_icon(&self) -> MouseCursorIcon {
 		match self {
-			RowColumnGizmoType::Top | RowColumnGizmoType::Bottom => MouseCursorIcon::NSResize,
-			RowColumnGizmoType::Left | RowColumnGizmoType::Right => MouseCursorIcon::EWResize,
-			RowColumnGizmoType::None => panic!("RowColumnGizmoType::None does not have a mouse_icon"),
+			Self::Top | Self::Bottom => MouseCursorIcon::NSResize,
+			Self::Left | Self::Right => MouseCursorIcon::EWResize,
+			Self::None => panic!("RowColumnGizmoType::None does not have a mouse_icon"),
 		}
 	}
 

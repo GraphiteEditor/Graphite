@@ -31,7 +31,7 @@ impl From<f64> for Value {
 impl core::fmt::Display for Value {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
-			Value::Number(num) => num.fmt(f),
+			Self::Number(num) => num.fmt(f),
 		}
 	}
 }
@@ -45,16 +45,16 @@ pub enum Number {
 impl std::fmt::Display for Number {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
-			Number::Real(real) => real.fmt(f),
-			Number::Complex(complex) => complex.fmt(f),
+			Self::Real(real) => real.fmt(f),
+			Self::Complex(complex) => complex.fmt(f),
 		}
 	}
 }
 
 impl Number {
-	pub fn binary_op(self, op: BinaryOp, other: Number) -> Number {
+	pub fn binary_op(self, op: BinaryOp, other: Self) -> Self {
 		match (self, other) {
-			(Number::Real(lhs), Number::Real(rhs)) => {
+			(Self::Real(lhs), Self::Real(rhs)) => {
 				let result = match op {
 					BinaryOp::Add => lhs + rhs,
 					BinaryOp::Sub => lhs - rhs,
@@ -62,10 +62,10 @@ impl Number {
 					BinaryOp::Div => lhs / rhs,
 					BinaryOp::Pow => lhs.powf(rhs),
 				};
-				Number::Real(result)
+				Self::Real(result)
 			}
 
-			(Number::Complex(lhs), Number::Complex(rhs)) => {
+			(Self::Complex(lhs), Self::Complex(rhs)) => {
 				let result = match op {
 					BinaryOp::Add => lhs + rhs,
 					BinaryOp::Sub => lhs - rhs,
@@ -73,10 +73,10 @@ impl Number {
 					BinaryOp::Div => lhs / rhs,
 					BinaryOp::Pow => lhs.powc(rhs),
 				};
-				Number::Complex(result)
+				Self::Complex(result)
 			}
 
-			(Number::Real(lhs), Number::Complex(rhs)) => {
+			(Self::Real(lhs), Self::Complex(rhs)) => {
 				let lhs_complex = Complex::new(lhs, 0.0);
 				let result = match op {
 					BinaryOp::Add => lhs_complex + rhs,
@@ -85,10 +85,10 @@ impl Number {
 					BinaryOp::Div => lhs_complex / rhs,
 					BinaryOp::Pow => lhs_complex.powc(rhs),
 				};
-				Number::Complex(result)
+				Self::Complex(result)
 			}
 
-			(Number::Complex(lhs), Number::Real(rhs)) => {
+			(Self::Complex(lhs), Self::Real(rhs)) => {
 				let rhs_complex = Complex::new(rhs, 0.0);
 				let result = match op {
 					BinaryOp::Add => lhs + rhs_complex,
@@ -97,23 +97,23 @@ impl Number {
 					BinaryOp::Div => lhs / rhs_complex,
 					BinaryOp::Pow => lhs.powf(rhs),
 				};
-				Number::Complex(result)
+				Self::Complex(result)
 			}
 		}
 	}
 
-	pub fn unary_op(self, op: UnaryOp) -> Number {
+	pub fn unary_op(self, op: UnaryOp) -> Self {
 		match self {
-			Number::Real(real) => match op {
-				UnaryOp::Neg => Number::Real(-real),
-				UnaryOp::Sqrt => Number::Real(real.sqrt()),
+			Self::Real(real) => match op {
+				UnaryOp::Neg => Self::Real(-real),
+				UnaryOp::Sqrt => Self::Real(real.sqrt()),
 
 				UnaryOp::Fac => todo!("Implement factorial"),
 			},
 
-			Number::Complex(complex) => match op {
-				UnaryOp::Neg => Number::Complex(-complex),
-				UnaryOp::Sqrt => Number::Complex(complex.sqrt()),
+			Self::Complex(complex) => match op {
+				UnaryOp::Neg => Self::Complex(-complex),
+				UnaryOp::Sqrt => Self::Complex(complex.sqrt()),
 
 				UnaryOp::Fac => todo!("Implement factorial"),
 			},

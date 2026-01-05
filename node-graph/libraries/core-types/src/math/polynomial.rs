@@ -14,13 +14,13 @@ impl<const N: usize> Polynomial<N> {
 	/// Create a new polynomial from the coefficients given in the array.
 	///
 	/// The coefficient for nth degree is at the nth index in array. Therefore the order of coefficients are reversed than the usual order for writing polynomials mathematically.
-	pub fn new(coefficients: [f64; N]) -> Polynomial<N> {
-		Polynomial { coefficients }
+	pub fn new(coefficients: [f64; N]) -> Self {
+		Self { coefficients }
 	}
 
 	/// Create a polynomial where all its coefficients are zero.
-	pub fn zero() -> Polynomial<N> {
-		Polynomial { coefficients: [0.; N] }
+	pub fn zero() -> Self {
+		Self { coefficients: [0.; N] }
 	}
 
 	/// Return an immutable reference to the coefficients.
@@ -78,7 +78,7 @@ impl<const N: usize> Polynomial<N> {
 	}
 
 	/// Computes the polynomial's derivative.
-	pub fn derivative(&self) -> Polynomial<N> {
+	pub fn derivative(&self) -> Self {
 		let mut ans = *self;
 		ans.derivative_mut();
 		ans
@@ -87,7 +87,7 @@ impl<const N: usize> Polynomial<N> {
 	/// Computes the antiderivative at `C = 0`.
 	///
 	/// Returns `None` if the polynomial is not big enough to accommodate the extra degree.
-	pub fn antiderivative(&self) -> Option<Polynomial<N>> {
+	pub fn antiderivative(&self) -> Option<Self> {
 		let mut ans = *self;
 		ans.antiderivative_mut()?;
 		Some(ans)
@@ -126,8 +126,8 @@ impl<const N: usize> Display for Polynomial<N> {
 	}
 }
 
-impl<const N: usize> AddAssign<&Polynomial<N>> for Polynomial<N> {
-	fn add_assign(&mut self, rhs: &Polynomial<N>) {
+impl<const N: usize> AddAssign<&Self> for Polynomial<N> {
+	fn add_assign(&mut self, rhs: &Self) {
 		self.coefficients.iter_mut().zip(rhs.coefficients.iter()).for_each(|(a, b)| *a += b);
 	}
 }
@@ -153,16 +153,16 @@ impl<const N: usize> Neg for &Polynomial<N> {
 }
 
 impl<const N: usize> Neg for Polynomial<N> {
-	type Output = Polynomial<N>;
+	type Output = Self;
 
-	fn neg(mut self) -> Polynomial<N> {
+	fn neg(mut self) -> Self {
 		self.coefficients.iter_mut().for_each(|x| *x = -*x);
 		self
 	}
 }
 
-impl<const N: usize> SubAssign<&Polynomial<N>> for Polynomial<N> {
-	fn sub_assign(&mut self, rhs: &Polynomial<N>) {
+impl<const N: usize> SubAssign<&Self> for Polynomial<N> {
+	fn sub_assign(&mut self, rhs: &Self) {
 		self.coefficients.iter_mut().zip(rhs.coefficients.iter()).for_each(|(a, b)| *a -= b);
 	}
 }
@@ -177,8 +177,8 @@ impl<const N: usize> Sub for &Polynomial<N> {
 	}
 }
 
-impl<const N: usize> MulAssign<&Polynomial<N>> for Polynomial<N> {
-	fn mul_assign(&mut self, rhs: &Polynomial<N>) {
+impl<const N: usize> MulAssign<&Self> for Polynomial<N> {
+	fn mul_assign(&mut self, rhs: &Self) {
 		for i in (0..N).rev() {
 			self.coefficients[i] = self.coefficients[i] * rhs.coefficients[0];
 			for j in 0..i {

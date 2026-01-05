@@ -26,13 +26,13 @@ pub trait Linear {
 impl Linear for f32 {
 	#[inline(always)] fn from_f32(x: f32) -> Self { x }
 	#[inline(always)] fn to_f32(self) -> f32 { self }
-	#[inline(always)] fn from_f64(x: f64) -> Self { x as f32 }
+	#[inline(always)] fn from_f64(x: f64) -> Self { x as Self }
 	#[inline(always)] fn to_f64(self) -> f64 { self as f64 }
 }
 
 #[rustfmt::skip]
 impl Linear for f64 {
-	#[inline(always)] fn from_f32(x: f32) -> Self { x as f64 }
+	#[inline(always)] fn from_f32(x: f32) -> Self { x as Self }
 	#[inline(always)] fn to_f32(self) -> f32 { self as f32 }
 	#[inline(always)] fn from_f64(x: f64) -> Self { x }
 	#[inline(always)] fn to_f64(self) -> f64 { self }

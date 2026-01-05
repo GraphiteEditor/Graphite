@@ -39,7 +39,7 @@ impl<PointId: Identifier> Subpath<PointId> {
 	/// Create a `Subpath` consisting of 2 manipulator groups from a `Bezier`.
 	pub fn from_bezier(segment: PathSeg) -> Self {
 		let PathSegPoints { p0, p1, p2, p3 } = pathseg_points(segment);
-		Subpath::new(vec![ManipulatorGroup::new(p0, None, p1), ManipulatorGroup::new(p3, p2, None)], false)
+		Self::new(vec![ManipulatorGroup::new(p0, None, p1), ManipulatorGroup::new(p3, p2, None)], false)
 	}
 
 	/// Creates a subpath from a slice of [Bezier]. When two consecutive Beziers do not share an end and start point, this function
@@ -47,7 +47,7 @@ impl<PointId: Identifier> Subpath<PointId> {
 	pub fn from_beziers(beziers: &[PathSeg], closed: bool) -> Self {
 		assert!(!closed || beziers.len() > 1, "A closed Subpath must contain at least 1 Bezier.");
 		if beziers.is_empty() {
-			return Subpath::new(vec![], closed);
+			return Self::new(vec![], closed);
 		}
 
 		let beziers: Vec<_> = beziers.iter().map(|b| pathseg_points(*b)).collect();
@@ -78,11 +78,11 @@ impl<PointId: Identifier> Subpath<PointId> {
 				out_handle: None,
 				id: PointId::new(),
 			});
-			return Subpath::new(manipulator_groups, false);
+			return Self::new(manipulator_groups, false);
 		}
 
 		manipulator_groups[0].in_handle = last.p2;
-		Subpath::new(manipulator_groups, true)
+		Self::new(manipulator_groups, true)
 	}
 
 	/// Returns true if the `Subpath` contains no [ManipulatorGroup].

@@ -73,7 +73,7 @@ impl<PointId: Identifier> ManipulatorGroup<PointId> {
 	}
 
 	/// Create a bezier curve that starts at the current manipulator group and finishes in the `end_group` manipulator group.
-	pub fn to_bezier(&self, end_group: &ManipulatorGroup<PointId>) -> PathSeg {
+	pub fn to_bezier(&self, end_group: &Self) -> PathSeg {
 		let start = self.anchor;
 		let end = end_group.anchor;
 		let out_handle = self.out_handle;
@@ -153,9 +153,9 @@ impl std::hash::Hash for BezierHandles {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		std::mem::discriminant(self).hash(state);
 		match self {
-			BezierHandles::Linear => {}
-			BezierHandles::Quadratic { handle } => handle.to_array().map(|v| v.to_bits()).hash(state),
-			BezierHandles::Cubic { handle_start, handle_end } => [handle_start, handle_end].map(|handle| handle.to_array().map(|v| v.to_bits())).hash(state),
+			Self::Linear => {}
+			Self::Quadratic { handle } => handle.to_array().map(|v| v.to_bits()).hash(state),
+			Self::Cubic { handle_start, handle_end } => [handle_start, handle_end].map(|handle| handle.to_array().map(|v| v.to_bits())).hash(state),
 		}
 	}
 }
@@ -167,16 +167,16 @@ impl BezierHandles {
 
 	pub fn is_finite(&self) -> bool {
 		match self {
-			BezierHandles::Linear => true,
-			BezierHandles::Quadratic { handle } => handle.is_finite(),
-			BezierHandles::Cubic { handle_start, handle_end } => handle_start.is_finite() && handle_end.is_finite(),
+			Self::Linear => true,
+			Self::Quadratic { handle } => handle.is_finite(),
+			Self::Cubic { handle_start, handle_end } => handle_start.is_finite() && handle_end.is_finite(),
 		}
 	}
 
 	/// Get the coordinates of the bezier segment's first handle point. This represents the only handle in a quadratic segment.
 	pub fn start(&self) -> Option<DVec2> {
 		match *self {
-			BezierHandles::Cubic { handle_start, .. } | BezierHandles::Quadratic { handle: handle_start } => Some(handle_start),
+			Self::Cubic { handle_start, .. } | Self::Quadratic { handle: handle_start } => Some(handle_start),
 			_ => None,
 		}
 	}
@@ -184,19 +184,19 @@ impl BezierHandles {
 	/// Get the coordinates of the second handle point. This will return `None` for a quadratic segment.
 	pub fn end(&self) -> Option<DVec2> {
 		match *self {
-			BezierHandles::Cubic { handle_end, .. } => Some(handle_end),
+			Self::Cubic { handle_end, .. } => Some(handle_end),
 			_ => None,
 		}
 	}
 
 	pub fn move_start(&mut self, delta: DVec2) {
-		if let BezierHandles::Cubic { handle_start, .. } | BezierHandles::Quadratic { handle: handle_start } = self {
+		if let Self::Cubic { handle_start, .. } | Self::Quadratic { handle: handle_start } = self {
 			*handle_start += delta
 		}
 	}
 
 	pub fn move_end(&mut self, delta: DVec2) {
-		if let BezierHandles::Cubic { handle_end, .. } = self {
+		if let Self::Cubic { handle_end, .. } = self {
 			*handle_end += delta
 		}
 	}
@@ -205,12 +205,12 @@ impl BezierHandles {
 	#[must_use]
 	pub fn apply_transformation(&self, transformation_function: impl Fn(DVec2) -> DVec2) -> Self {
 		match *self {
-			BezierHandles::Linear => Self::Linear,
-			BezierHandles::Quadratic { handle } => {
+			Self::Linear => Self::Linear,
+			Self::Quadratic { handle } => {
 				let handle = transformation_function(handle);
 				Self::Quadratic { handle }
 			}
-			BezierHandles::Cubic { handle_start, handle_end } => {
+			Self::Cubic { handle_start, handle_end } => {
 				let handle_start = transformation_function(handle_start);
 				let handle_end = transformation_function(handle_end);
 				Self::Cubic { handle_start, handle_end }
@@ -221,7 +221,7 @@ impl BezierHandles {
 	#[must_use]
 	pub fn reversed(self) -> Self {
 		match self {
-			BezierHandles::Cubic { handle_start, handle_end } => Self::Cubic {
+			Self::Cubic { handle_start, handle_end } => Self::Cubic {
 				handle_start: handle_end,
 				handle_end: handle_start,
 			},
@@ -335,7 +335,7 @@ impl Bezier {
 	// TODO: Consider removing this function
 	/// Create a linear bezier using the provided coordinates as the start and end points.
 	pub fn from_linear_coordinates(x1: f64, y1: f64, x2: f64, y2: f64) -> Self {
-		Bezier {
+		Self {
 			start: DVec2::new(x1, y1),
 			handles: BezierHandles::Linear,
 			end: DVec2::new(x2, y2),
@@ -344,7 +344,7 @@ impl Bezier {
 
 	/// Create a linear bezier using the provided DVec2s as the start and end points.
 	pub fn from_linear_dvec2(p1: DVec2, p2: DVec2) -> Self {
-		Bezier {
+		Self {
 			start: p1,
 			handles: BezierHandles::Linear,
 			end: p2,
@@ -354,7 +354,7 @@ impl Bezier {
 	// TODO: Consider removing this function
 	/// Create a quadratic bezier using the provided coordinates as the start, handle, and end points.
 	pub fn from_quadratic_coordinates(x1: f64, y1: f64, x2: f64, y2: f64, x3: f64, y3: f64) -> Self {
-		Bezier {
+		Self {
 			start: DVec2::new(x1, y1),
 			handles: BezierHandles::Quadratic { handle: DVec2::new(x2, y2) },
 			end: DVec2::new(x3, y3),
@@ -363,7 +363,7 @@ impl Bezier {
 
 	/// Create a quadratic bezier using the provided DVec2s as the start, handle, and end points.
 	pub fn from_quadratic_dvec2(p1: DVec2, p2: DVec2, p3: DVec2) -> Self {
-		Bezier {
+		Self {
 			start: p1,
 			handles: BezierHandles::Quadratic { handle: p2 },
 			end: p3,
@@ -374,7 +374,7 @@ impl Bezier {
 	/// Create a cubic bezier using the provided coordinates as the start, handles, and end points.
 	#[allow(clippy::too_many_arguments)]
 	pub fn from_cubic_coordinates(x1: f64, y1: f64, x2: f64, y2: f64, x3: f64, y3: f64, x4: f64, y4: f64) -> Self {
-		Bezier {
+		Self {
 			start: DVec2::new(x1, y1),
 			handles: BezierHandles::Cubic {
 				handle_start: DVec2::new(x2, y2),
@@ -386,7 +386,7 @@ impl Bezier {
 
 	/// Create a cubic bezier using the provided DVec2s as the start, handles, and end points.
 	pub fn from_cubic_dvec2(p1: DVec2, p2: DVec2, p3: DVec2, p4: DVec2) -> Self {
-		Bezier {
+		Self {
 			start: p1,
 			handles: BezierHandles::Cubic { handle_start: p2, handle_end: p3 },
 			end: p4,
@@ -394,7 +394,7 @@ impl Bezier {
 	}
 
 	/// Returns a Bezier curve that results from applying the transformation function to each point in the Bezier.
-	pub fn apply_transformation(&self, transformation_function: impl Fn(DVec2) -> DVec2) -> Bezier {
+	pub fn apply_transformation(&self, transformation_function: impl Fn(DVec2) -> DVec2) -> Self {
 		Self {
 			start: transformation_function(self.start),
 			end: transformation_function(self.end),
@@ -402,7 +402,7 @@ impl Bezier {
 		}
 	}
 
-	pub fn intersections(&self, other: &Bezier, accuracy: Option<f64>, minimum_separation: Option<f64>) -> Vec<f64> {
+	pub fn intersections(&self, other: &Self, accuracy: Option<f64>, minimum_separation: Option<f64>) -> Vec<f64> {
 		let this = handles_to_segment(self.start, self.handles, self.end);
 		let other = handles_to_segment(other.start, other.handles, other.end);
 		filtered_segment_intersections(this, other, accuracy, minimum_separation)

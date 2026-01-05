@@ -29,7 +29,7 @@ pub struct CheckboxInput {
 	// Callbacks
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
-	pub on_update: WidgetCallback<CheckboxInput>,
+	pub on_update: WidgetCallback<Self>,
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_commit: WidgetCallback<()>,
@@ -201,13 +201,13 @@ pub struct NumberInput {
 	// Callbacks
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
-	pub increment_callback_increase: WidgetCallback<NumberInput>,
+	pub increment_callback_increase: WidgetCallback<Self>,
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
-	pub increment_callback_decrease: WidgetCallback<NumberInput>,
+	pub increment_callback_decrease: WidgetCallback<Self>,
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
-	pub on_update: WidgetCallback<NumberInput>,
+	pub on_update: WidgetCallback<Self>,
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_commit: WidgetCallback<()>,
@@ -359,7 +359,7 @@ pub struct TextAreaInput {
 	// Callbacks
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
-	pub on_update: WidgetCallback<TextAreaInput>,
+	pub on_update: WidgetCallback<Self>,
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_commit: WidgetCallback<()>,
@@ -396,7 +396,7 @@ pub struct TextInput {
 	// Callbacks
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
-	pub on_update: WidgetCallback<TextInput>,
+	pub on_update: WidgetCallback<Self>,
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_commit: WidgetCallback<()>,
@@ -420,7 +420,7 @@ pub struct CurveInput {
 	// Callbacks
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
-	pub on_update: WidgetCallback<CurveInput>,
+	pub on_update: WidgetCallback<Self>,
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_commit: WidgetCallback<()>,
@@ -445,7 +445,7 @@ pub struct ReferencePointInput {
 	// Callbacks
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
-	pub on_update: WidgetCallback<ReferencePointInput>,
+	pub on_update: WidgetCallback<Self>,
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_commit: WidgetCallback<()>,

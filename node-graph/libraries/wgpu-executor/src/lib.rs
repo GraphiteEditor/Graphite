@@ -60,7 +60,7 @@ pub type Window = web_sys::HtmlCanvasElement;
 pub type Window = Arc<dyn winit::window::Window>;
 
 unsafe impl StaticType for Surface {
-	type Static = Surface;
+	type Static = Self;
 }
 
 const VELLO_SURFACE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;

@@ -247,7 +247,7 @@ impl Fsm for FreehandToolFsmState {
 
 				self
 			}
-			(FreehandToolFsmState::Ready, FreehandToolMessage::DragStart { append_to_selected }) => {
+			(Self::Ready, FreehandToolMessage::DragStart { append_to_selected }) => {
 				responses.add(DocumentMessage::StartTransaction);
 
 				tool_data.dragged = false;
@@ -263,7 +263,7 @@ impl Fsm for FreehandToolFsmState {
 
 					extend_path_with_next_segment(tool_data, position, true, responses);
 
-					return FreehandToolFsmState::Drawing;
+					return Self::Drawing;
 				}
 
 				if input.keyboard.key(append_to_selected) {
@@ -277,7 +277,7 @@ impl Fsm for FreehandToolFsmState {
 
 						extend_path_with_next_segment(tool_data, position, false, responses);
 
-						return FreehandToolFsmState::Drawing;
+						return Self::Drawing;
 					}
 				}
 
@@ -294,9 +294,9 @@ impl Fsm for FreehandToolFsmState {
 				tool_options.stroke.apply_stroke(tool_data.weight, layer, responses);
 				tool_data.layer = Some(layer);
 
-				FreehandToolFsmState::Drawing
+				Self::Drawing
 			}
-			(FreehandToolFsmState::Drawing, FreehandToolMessage::PointerMove) => {
+			(Self::Drawing, FreehandToolMessage::PointerMove) => {
 				if let Some(layer) = tool_data.layer {
 					let transform = document.metadata().transform_to_viewport(layer);
 					let position = transform.inverse().transform_point2(input.mouse.position);
@@ -304,9 +304,9 @@ impl Fsm for FreehandToolFsmState {
 					extend_path_with_next_segment(tool_data, position, true, responses);
 				}
 
-				FreehandToolFsmState::Drawing
+				Self::Drawing
 			}
-			(FreehandToolFsmState::Drawing, FreehandToolMessage::DragStop) => {
+			(Self::Drawing, FreehandToolMessage::DragStop) => {
 				if tool_data.dragged {
 					responses.add(DocumentMessage::CommitTransaction);
 				} else {
@@ -316,14 +316,14 @@ impl Fsm for FreehandToolFsmState {
 				tool_data.end_point = None;
 				tool_data.layer = None;
 
-				FreehandToolFsmState::Ready
+				Self::Ready
 			}
-			(FreehandToolFsmState::Drawing, FreehandToolMessage::Abort) => {
+			(Self::Drawing, FreehandToolMessage::Abort) => {
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.layer = None;
 				tool_data.end_point = None;
 
-				FreehandToolFsmState::Ready
+				Self::Ready
 			}
 			(_, FreehandToolMessage::WorkingColorChanged) => {
 				responses.add(FreehandToolMessage::UpdateOptions {
@@ -337,12 +337,12 @@ impl Fsm for FreehandToolFsmState {
 
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
-			FreehandToolFsmState::Ready => HintData(vec![HintGroup(vec![
+			Self::Ready => HintData(vec![HintGroup(vec![
 				HintInfo::mouse(MouseMotion::LmbDrag, "Draw Polyline"),
 				// TODO: Only show this if a single layer is selected and it's of a valid type (e.g. a vector path but not raster or artboard)
 				HintInfo::keys([Key::Shift], "Append to Selected Layer").prepend_plus(),
 			])]),
-			FreehandToolFsmState::Drawing => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
+			Self::Drawing => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
 		};
 
 		hint_data.send_layout(responses);

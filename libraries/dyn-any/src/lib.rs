@@ -242,7 +242,7 @@ impl<'n, T: StaticType + 'n> IntoDynAny<'n> for T {}
 
 #[cfg(feature = "alloc")]
 impl From<()> for Box<dyn DynAny<'static>> {
-	fn from(_: ()) -> Box<dyn DynAny<'static>> {
+	fn from(_: ()) -> Self {
 		Box::new(())
 	}
 }

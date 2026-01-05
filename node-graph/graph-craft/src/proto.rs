@@ -117,9 +117,9 @@ impl Hash for ConstructionArgs {
 impl ConstructionArgs {
 	pub fn new_function_args(&self) -> Vec<String> {
 		match self {
-			ConstructionArgs::Nodes(nodes) => nodes.iter().map(|n| format!("n{:0x}", n.0)).collect(),
-			ConstructionArgs::Value(value) => vec![value.to_primitive_string()],
-			ConstructionArgs::Inline(inline) => vec![inline.expr.clone()],
+			Self::Nodes(nodes) => nodes.iter().map(|n| format!("n{:0x}", n.0)).collect(),
+			Self::Value(value) => vec![value.to_primitive_string()],
+			Self::Inline(inline) => vec![inline.expr.clone()],
 		}
 	}
 }
@@ -223,7 +223,7 @@ impl ProtoNetwork {
 	pub fn example() -> (Self, NodeId, ProtoNode) {
 		let node_id = NodeId(1);
 		let proto_node = ProtoNode::default();
-		let proto_network = ProtoNetwork {
+		let proto_network = Self {
 			inputs: vec![node_id],
 			output: node_id,
 			nodes: vec![(node_id, proto_node.clone())],
@@ -561,11 +561,11 @@ impl Debug for GraphErrorType {
 	// TODO: format with the document graph context so the input index is the same as in the graph UI.
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
-			GraphErrorType::NodeNotFound(id) => write!(f, "Input node {id} is not present in the typing context"),
-			GraphErrorType::UnexpectedGenerics { index, inputs } => write!(f, "Generic inputs should not exist but found at {index}: {inputs:?}"),
-			GraphErrorType::NoImplementations => write!(f, "No implementations found"),
-			GraphErrorType::NoConstructor => write!(f, "No construct found for node"),
-			GraphErrorType::InvalidImplementations { inputs, error_inputs } => {
+			Self::NodeNotFound(id) => write!(f, "Input node {id} is not present in the typing context"),
+			Self::UnexpectedGenerics { index, inputs } => write!(f, "Generic inputs should not exist but found at {index}: {inputs:?}"),
+			Self::NoImplementations => write!(f, "No implementations found"),
+			Self::NoConstructor => write!(f, "No construct found for node"),
+			Self::InvalidImplementations { inputs, error_inputs } => {
 				let format_error = |(index, (found, expected)): &(usize, (Type, Type))| {
 					let index = index + 1;
 					format!(
@@ -598,7 +598,7 @@ impl Debug for GraphErrorType {
 					"
 				)
 			}
-			GraphErrorType::MultipleImplementations { inputs, valid } => write!(f, "Multiple implementations found ({inputs}):\n{valid:#?}"),
+			Self::MultipleImplementations { inputs, valid } => write!(f, "Multiple implementations found ({inputs}):\n{valid:#?}"),
 		}
 	}
 }

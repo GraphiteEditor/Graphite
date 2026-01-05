@@ -21,7 +21,7 @@ pub fn detect_file_type(path: &Path) -> Result<FileType, String> {
 		Some("svg") => Ok(FileType::Svg),
 		Some("png") => Ok(FileType::Png),
 		Some("jpg" | "jpeg") => Ok(FileType::Jpg),
-		_ => Err(format!("Unsupported file extension. Supported formats: .svg, .png, .jpg")),
+		_ => Err("Unsupported file extension. Supported formats: .svg, .png, .jpg".to_string()),
 	}
 }
 

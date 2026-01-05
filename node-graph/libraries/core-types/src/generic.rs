@@ -12,6 +12,6 @@ impl<'i, T: Fn(I) -> O + 'i, O: 'i, I: 'i> Node<'i, I> for FnNode<T, I, O> {
 
 impl<T: Fn(I) -> O, I, O> FnNode<T, I, O> {
 	pub fn new(f: T) -> Self {
-		FnNode(f, PhantomData)
+		Self(f, PhantomData)
 	}
 }

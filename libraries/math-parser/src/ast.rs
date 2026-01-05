@@ -17,16 +17,16 @@ impl Default for Unit {
 }
 
 impl Unit {
-	pub const BASE_UNIT: Unit = Unit { length: 0, mass: 0, time: 0 };
+	pub const BASE_UNIT: Self = Self { length: 0, mass: 0, time: 0 };
 
-	pub const LENGTH: Unit = Unit { length: 1, mass: 0, time: 0 };
-	pub const MASS: Unit = Unit { length: 0, mass: 1, time: 0 };
-	pub const TIME: Unit = Unit { length: 0, mass: 0, time: 1 };
+	pub const LENGTH: Self = Self { length: 1, mass: 0, time: 0 };
+	pub const MASS: Self = Self { length: 0, mass: 1, time: 0 };
+	pub const TIME: Self = Self { length: 0, mass: 0, time: 1 };
 
-	pub const VELOCITY: Unit = Unit { length: 1, mass: 0, time: -1 };
-	pub const ACCELERATION: Unit = Unit { length: 1, mass: 0, time: -2 };
+	pub const VELOCITY: Self = Self { length: 1, mass: 0, time: -1 };
+	pub const ACCELERATION: Self = Self { length: 1, mass: 0, time: -2 };
 
-	pub const FORCE: Unit = Unit { length: 1, mass: 1, time: -2 };
+	pub const FORCE: Self = Self { length: 1, mass: 1, time: -2 };
 
 	pub fn base_unit() -> Self {
 		Self::BASE_UNIT
@@ -69,7 +69,7 @@ pub enum UnaryOp {
 pub enum Node {
 	Lit(Literal),
 	Var(String),
-	FnCall { name: String, expr: Vec<Node> },
-	BinOp { lhs: Box<Node>, op: BinaryOp, rhs: Box<Node> },
-	UnaryOp { expr: Box<Node>, op: UnaryOp },
+	FnCall { name: String, expr: Vec<Self> },
+	BinOp { lhs: Box<Self>, op: BinaryOp, rhs: Box<Self> },
+	UnaryOp { expr: Box<Self>, op: UnaryOp },
 }

@@ -292,7 +292,7 @@ impl Fsm for GradientToolFsmState {
 
 				self
 			}
-			(GradientToolFsmState::Ready, GradientToolMessage::DeleteStop) => {
+			(Self::Ready, GradientToolMessage::DeleteStop) => {
 				let Some(selected_gradient) = &mut tool_data.selected_gradient else {
 					return self;
 				};
@@ -383,7 +383,7 @@ impl Fsm for GradientToolFsmState {
 
 				self
 			}
-			(GradientToolFsmState::Ready, GradientToolMessage::PointerDown) => {
+			(Self::Ready, GradientToolMessage::PointerDown) => {
 				let mouse = input.mouse.position;
 				tool_data.drag_start = mouse;
 				let tolerance = (MANIPULATOR_GROUP_MARKER_SIZE * 2.).powi(2);
@@ -422,7 +422,7 @@ impl Fsm for GradientToolFsmState {
 				}
 
 				let gradient_state = if dragging {
-					GradientToolFsmState::Drawing
+					Self::Drawing
 				} else {
 					let selected_layer = document.click(input, viewport);
 
@@ -430,7 +430,7 @@ impl Fsm for GradientToolFsmState {
 					if let Some(layer) = selected_layer {
 						// Add check for raster layer
 						if NodeGraphLayer::is_raster_layer(layer, &mut document.network_interface) {
-							return GradientToolFsmState::Ready;
+							return Self::Ready;
 						}
 						if !document.network_interface.selected_nodes().selected_layers_contains(layer, document.metadata()) {
 							let nodes = vec![layer.to_node()];
@@ -449,15 +449,15 @@ impl Fsm for GradientToolFsmState {
 
 						tool_data.selected_gradient = Some(selected_gradient);
 
-						GradientToolFsmState::Drawing
+						Self::Drawing
 					} else {
-						GradientToolFsmState::Ready
+						Self::Ready
 					}
 				};
 				responses.add(DocumentMessage::StartTransaction);
 				gradient_state
 			}
-			(GradientToolFsmState::Drawing, GradientToolMessage::PointerMove { constrain_axis }) => {
+			(Self::Drawing, GradientToolMessage::PointerMove { constrain_axis }) => {
 				if let Some(selected_gradient) = &mut tool_data.selected_gradient {
 					let mouse = input.mouse.position; // tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
 					selected_gradient.update_gradient(mouse, responses, input.keyboard.get(constrain_axis as usize), selected_gradient.gradient.gradient_type);
@@ -470,9 +470,9 @@ impl Fsm for GradientToolFsmState {
 				];
 				tool_data.auto_panning.setup_by_mouse_position(input, viewport, &messages, responses);
 
-				GradientToolFsmState::Drawing
+				Self::Drawing
 			}
-			(GradientToolFsmState::Drawing, GradientToolMessage::PointerOutsideViewport { .. }) => {
+			(Self::Drawing, GradientToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning
 				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, viewport, responses)
 					&& let Some(selected_gradient) = &mut tool_data.selected_gradient
@@ -480,7 +480,7 @@ impl Fsm for GradientToolFsmState {
 					selected_gradient.transform.translation += shift;
 				}
 
-				GradientToolFsmState::Drawing
+				Self::Drawing
 			}
 			(state, GradientToolMessage::PointerOutsideViewport { constrain_axis }) => {
 				// Auto-panning
@@ -492,7 +492,7 @@ impl Fsm for GradientToolFsmState {
 
 				state
 			}
-			(GradientToolFsmState::Drawing, GradientToolMessage::PointerUp) => {
+			(Self::Drawing, GradientToolMessage::PointerUp) => {
 				input.mouse.finish_transaction(tool_data.drag_start, responses);
 				tool_data.snap_manager.cleanup(responses);
 				let was_dragging = tool_data.selected_gradient.is_some();
@@ -503,28 +503,28 @@ impl Fsm for GradientToolFsmState {
 				{
 					tool_data.selected_gradient = Some(SelectedGradient::new(gradient, selected_layer, document));
 				}
-				GradientToolFsmState::Ready
+				Self::Ready
 			}
 
-			(GradientToolFsmState::Drawing, GradientToolMessage::Abort) => {
+			(Self::Drawing, GradientToolMessage::Abort) => {
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.snap_manager.cleanup(responses);
 				responses.add(OverlaysMessage::Draw);
 
-				GradientToolFsmState::Ready
+				Self::Ready
 			}
-			(_, GradientToolMessage::Abort) => GradientToolFsmState::Ready,
+			(_, GradientToolMessage::Abort) => Self::Ready,
 			_ => self,
 		}
 	}
 
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
-			GradientToolFsmState::Ready => HintData(vec![HintGroup(vec![
+			Self::Ready => HintData(vec![HintGroup(vec![
 				HintInfo::mouse(MouseMotion::LmbDrag, "Draw Gradient"),
 				HintInfo::keys([Key::Shift], "15° Increments").prepend_plus(),
 			])]),
-			GradientToolFsmState::Drawing => HintData(vec![
+			Self::Drawing => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 				HintGroup(vec![HintInfo::keys([Key::Shift], "15° Increments")]),
 			]),

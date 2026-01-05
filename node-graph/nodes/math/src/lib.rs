@@ -329,13 +329,13 @@ pub trait TangentInverse {
 	fn atan(self, radians: bool) -> Self::Output;
 }
 impl TangentInverse for f32 {
-	type Output = f32;
+	type Output = Self;
 	fn atan(self, radians: bool) -> Self::Output {
 		if radians { self.atan() } else { self.atan().to_degrees() }
 	}
 }
 impl TangentInverse for f64 {
-	type Output = f64;
+	type Output = Self;
 	fn atan(self, radians: bool) -> Self::Output {
 		if radians { self.atan() } else { self.atan().to_degrees() }
 	}
@@ -476,7 +476,7 @@ trait AbsoluteValue {
 }
 impl AbsoluteValue for DVec2 {
 	fn abs(self) -> Self {
-		DVec2::new(self.x.abs(), self.y.abs())
+		Self::new(self.x.abs(), self.y.abs())
 	}
 }
 impl AbsoluteValue for f32 {

@@ -12,7 +12,7 @@ pub(crate) trait MultiplyAlpha {
 
 impl MultiplyAlpha for Color {
 	fn multiply_alpha(&mut self, factor: f64) {
-		*self = Color::from_rgbaf32_unchecked(self.r(), self.g(), self.b(), (self.a() * factor as f32).clamp(0., 1.))
+		*self = Self::from_rgbaf32_unchecked(self.r(), self.g(), self.b(), (self.a() * factor as f32).clamp(0., 1.))
 	}
 }
 impl MultiplyAlpha for Table<Vector> {
@@ -56,7 +56,7 @@ pub(crate) trait MultiplyFill {
 }
 impl MultiplyFill for Color {
 	fn multiply_fill(&mut self, factor: f64) {
-		*self = Color::from_rgbaf32_unchecked(self.r(), self.g(), self.b(), (self.a() * factor as f32).clamp(0., 1.))
+		*self = Self::from_rgbaf32_unchecked(self.r(), self.g(), self.b(), (self.a() * factor as f32).clamp(0., 1.))
 	}
 }
 impl MultiplyFill for Table<Vector> {

@@ -7,14 +7,14 @@ pub(crate) trait ToCharRepresentation {
 impl ToCharRepresentation for Key {
 	fn to_char_representation(&self) -> char {
 		match self {
-			Key::Named(named) => match named {
+			Self::Named(named) => match named {
 				NamedKey::Tab => '\t',
 				NamedKey::Enter => '\r',
 				NamedKey::Backspace => '\x08',
 				NamedKey::Escape => '\x1b',
 				_ => '\0',
 			},
-			Key::Character(char) => char.chars().next().unwrap_or_default(),
+			Self::Character(char) => char.chars().next().unwrap_or_default(),
 			_ => '\0',
 		}
 	}

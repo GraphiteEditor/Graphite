@@ -276,9 +276,9 @@ pub enum BoundingBoxSnapSource {
 impl fmt::Display for BoundingBoxSnapSource {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
-			BoundingBoxSnapSource::CornerPoint => write!(f, "Bounding Box: Corner Point"),
-			BoundingBoxSnapSource::CenterPoint => write!(f, "Bounding Box: Center Point"),
-			BoundingBoxSnapSource::EdgeMidpoint => write!(f, "Bounding Box: Edge Midpoint"),
+			Self::CornerPoint => write!(f, "Bounding Box: Corner Point"),
+			Self::CenterPoint => write!(f, "Bounding Box: Center Point"),
+			Self::EdgeMidpoint => write!(f, "Bounding Box: Edge Midpoint"),
 		}
 	}
 }
@@ -292,8 +292,8 @@ pub enum ArtboardSnapSource {
 impl fmt::Display for ArtboardSnapSource {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
-			ArtboardSnapSource::CornerPoint => write!(f, "Artboard: Corner Point"),
-			ArtboardSnapSource::CenterPoint => write!(f, "Artboard: Center Point"),
+			Self::CornerPoint => write!(f, "Artboard: Corner Point"),
+			Self::CenterPoint => write!(f, "Artboard: Center Point"),
 		}
 	}
 }
@@ -310,10 +310,10 @@ pub enum PathSnapSource {
 impl fmt::Display for PathSnapSource {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
-			PathSnapSource::AnchorPointWithColinearHandles | PathSnapSource::AnchorPointWithFreeHandles => write!(f, "Path: Anchor Point"),
-			PathSnapSource::HandlePoint => write!(f, "Path: Handle Point"),
-			PathSnapSource::LineMidpoint => write!(f, "Path: Line Midpoint"),
-			PathSnapSource::IntersectionPoint => write!(f, "Path: Intersection Point"),
+			Self::AnchorPointWithColinearHandles | Self::AnchorPointWithFreeHandles => write!(f, "Path: Anchor Point"),
+			Self::HandlePoint => write!(f, "Path: Handle Point"),
+			Self::LineMidpoint => write!(f, "Path: Line Midpoint"),
+			Self::IntersectionPoint => write!(f, "Path: Intersection Point"),
 		}
 	}
 }
@@ -330,11 +330,11 @@ pub enum AlignmentSnapSource {
 impl fmt::Display for AlignmentSnapSource {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
-			AlignmentSnapSource::BoundingBoxCornerPoint => write!(f, "{}", BoundingBoxSnapSource::CornerPoint),
-			AlignmentSnapSource::BoundingBoxCenterPoint => write!(f, "{}", BoundingBoxSnapSource::CenterPoint),
-			AlignmentSnapSource::BoundingBoxEdgeMidpoint => write!(f, "{}", BoundingBoxSnapSource::EdgeMidpoint),
-			AlignmentSnapSource::ArtboardCornerPoint => write!(f, "{}", ArtboardSnapSource::CornerPoint),
-			AlignmentSnapSource::ArtboardCenterPoint => write!(f, "{}", ArtboardSnapSource::CenterPoint),
+			Self::BoundingBoxCornerPoint => write!(f, "{}", BoundingBoxSnapSource::CornerPoint),
+			Self::BoundingBoxCenterPoint => write!(f, "{}", BoundingBoxSnapSource::CenterPoint),
+			Self::BoundingBoxEdgeMidpoint => write!(f, "{}", BoundingBoxSnapSource::EdgeMidpoint),
+			Self::ArtboardCornerPoint => write!(f, "{}", ArtboardSnapSource::CornerPoint),
+			Self::ArtboardCenterPoint => write!(f, "{}", ArtboardSnapSource::CenterPoint),
 		}
 	}
 }
@@ -372,11 +372,11 @@ impl SnapSource {
 impl fmt::Display for SnapSource {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
-			SnapSource::None => write!(f, "None"),
-			SnapSource::BoundingBox(bounding_box_snap_source) => write!(f, "{bounding_box_snap_source}"),
-			SnapSource::Artboard(artboard_snap_source) => write!(f, "{artboard_snap_source}"),
-			SnapSource::Path(path_snap_source) => write!(f, "{path_snap_source}"),
-			SnapSource::Alignment(alignment_snap_source) => write!(f, "{alignment_snap_source}"),
+			Self::None => write!(f, "None"),
+			Self::BoundingBox(bounding_box_snap_source) => write!(f, "{bounding_box_snap_source}"),
+			Self::Artboard(artboard_snap_source) => write!(f, "{artboard_snap_source}"),
+			Self::Path(path_snap_source) => write!(f, "{path_snap_source}"),
+			Self::Alignment(alignment_snap_source) => write!(f, "{alignment_snap_source}"),
 		}
 	}
 }
@@ -464,9 +464,9 @@ pub enum BoundingBoxSnapTarget {
 impl fmt::Display for BoundingBoxSnapTarget {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
-			BoundingBoxSnapTarget::CornerPoint => write!(f, "Bounding Box: Corner Point"),
-			BoundingBoxSnapTarget::CenterPoint => write!(f, "Bounding Box: Center Point"),
-			BoundingBoxSnapTarget::EdgeMidpoint => write!(f, "Bounding Box: Edge Midpoint"),
+			Self::CornerPoint => write!(f, "Bounding Box: Corner Point"),
+			Self::CenterPoint => write!(f, "Bounding Box: Center Point"),
+			Self::EdgeMidpoint => write!(f, "Bounding Box: Edge Midpoint"),
 		}
 	}
 }
@@ -486,13 +486,13 @@ pub enum PathSnapTarget {
 impl fmt::Display for PathSnapTarget {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
-			PathSnapTarget::AnchorPointWithColinearHandles | PathSnapTarget::AnchorPointWithFreeHandles => write!(f, "Path: Anchor Point"),
-			PathSnapTarget::LineMidpoint => write!(f, "Path: Line Midpoint"),
-			PathSnapTarget::AlongPath => write!(f, "Path: Along Path"),
-			PathSnapTarget::NormalToPath => write!(f, "Path: Normal to Path"),
-			PathSnapTarget::TangentToPath => write!(f, "Path: Tangent to Path"),
-			PathSnapTarget::IntersectionPoint => write!(f, "Path: Intersection Point"),
-			PathSnapTarget::PerpendicularToEndpoint => write!(f, "Path: Perp. to Endpoint"),
+			Self::AnchorPointWithColinearHandles | Self::AnchorPointWithFreeHandles => write!(f, "Path: Anchor Point"),
+			Self::LineMidpoint => write!(f, "Path: Line Midpoint"),
+			Self::AlongPath => write!(f, "Path: Along Path"),
+			Self::NormalToPath => write!(f, "Path: Normal to Path"),
+			Self::TangentToPath => write!(f, "Path: Tangent to Path"),
+			Self::IntersectionPoint => write!(f, "Path: Intersection Point"),
+			Self::PerpendicularToEndpoint => write!(f, "Path: Perp. to Endpoint"),
 		}
 	}
 }
@@ -507,9 +507,9 @@ pub enum ArtboardSnapTarget {
 impl fmt::Display for ArtboardSnapTarget {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
-			ArtboardSnapTarget::CornerPoint => write!(f, "Artboard: Corner Point"),
-			ArtboardSnapTarget::CenterPoint => write!(f, "Artboard: Center Point"),
-			ArtboardSnapTarget::AlongEdge => write!(f, "Artboard: Along Edge"),
+			Self::CornerPoint => write!(f, "Artboard: Corner Point"),
+			Self::CenterPoint => write!(f, "Artboard: Center Point"),
+			Self::AlongEdge => write!(f, "Artboard: Along Edge"),
 		}
 	}
 }
@@ -524,9 +524,9 @@ pub enum GridSnapTarget {
 impl fmt::Display for GridSnapTarget {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
-			GridSnapTarget::Line => write!(f, "Grid: Along Line"),
-			GridSnapTarget::LineNormal => write!(f, "Grid: Normal to Line"),
-			GridSnapTarget::Intersection => write!(f, "Grid: Intersection Point"),
+			Self::Line => write!(f, "Grid: Along Line"),
+			Self::LineNormal => write!(f, "Grid: Normal to Line"),
+			Self::Intersection => write!(f, "Grid: Intersection Point"),
 		}
 	}
 }
@@ -545,13 +545,13 @@ pub enum AlignmentSnapTarget {
 impl fmt::Display for AlignmentSnapTarget {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
-			AlignmentSnapTarget::BoundingBoxCornerPoint => write!(f, "{}", BoundingBoxSnapTarget::CornerPoint),
-			AlignmentSnapTarget::BoundingBoxCenterPoint => write!(f, "{}", BoundingBoxSnapTarget::CenterPoint),
-			AlignmentSnapTarget::ArtboardCornerPoint => write!(f, "{}", ArtboardSnapTarget::CornerPoint),
-			AlignmentSnapTarget::ArtboardCenterPoint => write!(f, "{}", ArtboardSnapTarget::CenterPoint),
-			AlignmentSnapTarget::AlignWithAnchorPoint => write!(f, "{}", PathSnapTarget::AnchorPointWithColinearHandles),
-			AlignmentSnapTarget::IntersectionPoint => write!(f, "{}", PathSnapTarget::IntersectionPoint),
-			AlignmentSnapTarget::PerpendicularToEndpoint => write!(f, "{}", PathSnapTarget::PerpendicularToEndpoint),
+			Self::BoundingBoxCornerPoint => write!(f, "{}", BoundingBoxSnapTarget::CornerPoint),
+			Self::BoundingBoxCenterPoint => write!(f, "{}", BoundingBoxSnapTarget::CenterPoint),
+			Self::ArtboardCornerPoint => write!(f, "{}", ArtboardSnapTarget::CornerPoint),
+			Self::ArtboardCenterPoint => write!(f, "{}", ArtboardSnapTarget::CenterPoint),
+			Self::AlignWithAnchorPoint => write!(f, "{}", PathSnapTarget::AnchorPointWithColinearHandles),
+			Self::IntersectionPoint => write!(f, "{}", PathSnapTarget::IntersectionPoint),
+			Self::PerpendicularToEndpoint => write!(f, "{}", PathSnapTarget::PerpendicularToEndpoint),
 		}
 	}
 }
@@ -570,13 +570,13 @@ pub enum DistributionSnapTarget {
 impl fmt::Display for DistributionSnapTarget {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
-			DistributionSnapTarget::X => write!(f, "Distribute: X"),
-			DistributionSnapTarget::Y => write!(f, "Distribute: Y"),
-			DistributionSnapTarget::Right => write!(f, "Distribute: Right"),
-			DistributionSnapTarget::Left => write!(f, "Distribute: Left"),
-			DistributionSnapTarget::Up => write!(f, "Distribute: Up"),
-			DistributionSnapTarget::Down => write!(f, "Distribute: Down"),
-			DistributionSnapTarget::XY => write!(f, "Distribute: XY"),
+			Self::X => write!(f, "Distribute: X"),
+			Self::Y => write!(f, "Distribute: Y"),
+			Self::Right => write!(f, "Distribute: Right"),
+			Self::Left => write!(f, "Distribute: Left"),
+			Self::Up => write!(f, "Distribute: Up"),
+			Self::Down => write!(f, "Distribute: Down"),
+			Self::XY => write!(f, "Distribute: XY"),
 		}
 	}
 }
@@ -614,13 +614,13 @@ impl SnapTarget {
 impl fmt::Display for SnapTarget {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
-			SnapTarget::None => write!(f, "None"),
-			SnapTarget::BoundingBox(bounding_box_snap_target) => write!(f, "{bounding_box_snap_target}"),
-			SnapTarget::Path(path_snap_target) => write!(f, "{path_snap_target}"),
-			SnapTarget::Artboard(artboard_snap_target) => write!(f, "{artboard_snap_target}"),
-			SnapTarget::Grid(grid_snap_target) => write!(f, "{grid_snap_target}"),
-			SnapTarget::Alignment(alignment_snap_target) => write!(f, "{alignment_snap_target}"),
-			SnapTarget::DistributeEvenly(distribution_snap_target) => write!(f, "{distribution_snap_target}"),
+			Self::None => write!(f, "None"),
+			Self::BoundingBox(bounding_box_snap_target) => write!(f, "{bounding_box_snap_target}"),
+			Self::Path(path_snap_target) => write!(f, "{path_snap_target}"),
+			Self::Artboard(artboard_snap_target) => write!(f, "{artboard_snap_target}"),
+			Self::Grid(grid_snap_target) => write!(f, "{grid_snap_target}"),
+			Self::Alignment(alignment_snap_target) => write!(f, "{alignment_snap_target}"),
+			Self::DistributeEvenly(distribution_snap_target) => write!(f, "{distribution_snap_target}"),
 		}
 	}
 }
@@ -634,8 +634,8 @@ pub enum SnappingOptions {
 impl fmt::Display for SnappingOptions {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
-			SnappingOptions::BoundingBoxes => write!(f, "Bounding Boxes"),
-			SnappingOptions::Paths => write!(f, "Paths"),
+			Self::BoundingBoxes => write!(f, "Bounding Boxes"),
+			Self::Paths => write!(f, "Paths"),
 		}
 	}
 }

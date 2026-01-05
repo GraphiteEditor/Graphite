@@ -51,8 +51,8 @@ where
 }
 
 impl<T, CachedNode> MemoNode<T, CachedNode> {
-	pub fn new(node: CachedNode) -> MemoNode<T, CachedNode> {
-		MemoNode { cache: Default::default(), node }
+	pub fn new(node: CachedNode) -> Self {
+		Self { cache: Default::default(), node }
 	}
 }
 
@@ -95,8 +95,8 @@ where
 }
 
 impl<I, T, N> MonitorNode<I, T, N> {
-	pub fn new(node: N) -> MonitorNode<I, T, N> {
-		MonitorNode { io: Arc::new(Mutex::new(None)), node }
+	pub fn new(node: N) -> Self {
+		Self { io: Arc::new(Mutex::new(None)), node }
 	}
 }
 

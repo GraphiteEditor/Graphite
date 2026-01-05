@@ -48,9 +48,9 @@ pub enum FileType {
 impl FileType {
 	pub fn to_mime(self) -> &'static str {
 		match self {
-			FileType::Png => "image/png",
-			FileType::Jpg => "image/jpeg",
-			FileType::Svg => "image/svg+xml",
+			Self::Png => "image/png",
+			Self::Jpg => "image/jpeg",
+			Self::Svg => "image/svg+xml",
 		}
 	}
 }

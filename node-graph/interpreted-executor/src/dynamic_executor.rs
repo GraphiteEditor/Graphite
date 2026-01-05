@@ -169,10 +169,10 @@ pub enum IntrospectError {
 impl std::fmt::Display for IntrospectError {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
-			IntrospectError::PathNotFound(path) => write!(f, "Path not found: {path:?}"),
-			IntrospectError::ProtoNodeNotFound(id) => write!(f, "ProtoNode not found: {id:?}"),
-			IntrospectError::NoData => write!(f, "No data found for this node"),
-			IntrospectError::RuntimeNotReady => write!(f, "Node runtime is not ready"),
+			Self::PathNotFound(path) => write!(f, "Path not found: {path:?}"),
+			Self::ProtoNodeNotFound(id) => write!(f, "ProtoNode not found: {id:?}"),
+			Self::NoData => write!(f, "No data found for this node"),
+			Self::RuntimeNotReady => write!(f, "Node runtime is not ready"),
 		}
 	}
 }
@@ -204,8 +204,8 @@ pub struct BorrowTree {
 }
 
 impl BorrowTree {
-	pub async fn new(proto_network: ProtoNetwork, typing_context: &TypingContext) -> Result<BorrowTree, GraphErrors> {
-		let mut nodes = BorrowTree::default();
+	pub async fn new(proto_network: ProtoNetwork, typing_context: &TypingContext) -> Result<Self, GraphErrors> {
+		let mut nodes = Self::default();
 		for (id, node) in proto_network.nodes {
 			nodes.push_node(id, node, typing_context).await?
 		}

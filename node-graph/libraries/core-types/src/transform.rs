@@ -139,7 +139,7 @@ impl Footprint {
 
 impl From<()> for Footprint {
 	fn from(_: ()) -> Self {
-		Footprint::default()
+		Self::default()
 	}
 }
 

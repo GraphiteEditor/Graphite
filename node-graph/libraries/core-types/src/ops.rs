@@ -73,8 +73,8 @@ impl<U, T: TableConvert<U> + Send> Convert<Table<U>, ()> for Table<T> {
 	}
 }
 
-impl Convert<DVec2, ()> for DVec2 {
-	async fn convert(self, _: Footprint, _: ()) -> DVec2 {
+impl Convert<Self, ()> for DVec2 {
+	async fn convert(self, _: Footprint, _: ()) -> Self {
 		self
 	}
 }

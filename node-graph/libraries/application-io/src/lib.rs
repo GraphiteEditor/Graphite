@@ -36,7 +36,7 @@ impl Hash for SurfaceFrame {
 }
 
 unsafe impl StaticType for SurfaceFrame {
-	type Static = SurfaceFrame;
+	type Static = Self;
 }
 
 pub trait Size {
@@ -90,7 +90,7 @@ impl PartialEq for ImageTexture {
 }
 
 unsafe impl StaticType for ImageTexture {
-	type Static = ImageTexture;
+	type Static = Self;
 }
 
 #[cfg(feature = "wgpu")]
@@ -129,7 +129,7 @@ impl<S: Size> Size for SurfaceHandle<S> {
 }
 
 unsafe impl<T: 'static> StaticType for SurfaceHandle<T> {
-	type Static = SurfaceHandle<T>;
+	type Static = Self;
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -139,7 +139,7 @@ pub struct SurfaceHandleFrame<Surface> {
 }
 
 unsafe impl<T: 'static> StaticType for SurfaceHandleFrame<T> {
-	type Static = SurfaceHandleFrame<T>;
+	type Static = Self;
 }
 
 #[cfg(feature = "wasm")]

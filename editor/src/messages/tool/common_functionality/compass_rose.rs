@@ -86,9 +86,9 @@ impl CompassRoseState {
 
 	pub fn axis_type(&self) -> Option<Axis> {
 		match self {
-			CompassRoseState::AxisX => Some(Axis::X),
-			CompassRoseState::AxisY => Some(Axis::Y),
-			CompassRoseState::Ring => Some(Axis::None),
+			Self::AxisX => Some(Axis::X),
+			Self::AxisY => Some(Axis::Y),
+			Self::Ring => Some(Axis::None),
 			_ => None,
 		}
 	}
@@ -111,9 +111,9 @@ impl Axis {
 impl From<Axis> for DVec2 {
 	fn from(value: Axis) -> Self {
 		match value {
-			Axis::X => DVec2::X,
-			Axis::Y => DVec2::Y,
-			Axis::None => DVec2::ZERO,
+			Axis::X => Self::X,
+			Axis::Y => Self::Y,
+			Axis::None => Self::ZERO,
 		}
 	}
 }

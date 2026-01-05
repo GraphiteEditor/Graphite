@@ -53,11 +53,11 @@ use glam::DVec2;
 impl Clampable for DVec2 {
 	#[inline(always)]
 	fn clamp_hard_min(self, min: f64) -> Self {
-		self.max(DVec2::splat(min))
+		self.max(Self::splat(min))
 	}
 	#[inline(always)]
 	fn clamp_hard_max(self, max: f64) -> Self {
-		self.min(DVec2::splat(max))
+		self.min(Self::splat(max))
 	}
 }
 

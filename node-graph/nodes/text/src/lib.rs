@@ -32,10 +32,10 @@ pub enum TextAlign {
 impl From<TextAlign> for parley::Alignment {
 	fn from(val: TextAlign) -> Self {
 		match val {
-			TextAlign::Left => parley::Alignment::Left,
-			TextAlign::Center => parley::Alignment::Center,
-			TextAlign::Right => parley::Alignment::Right,
-			TextAlign::JustifyLeft => parley::Alignment::Justify,
+			TextAlign::Left => Self::Left,
+			TextAlign::Center => Self::Center,
+			TextAlign::Right => Self::Right,
+			TextAlign::JustifyLeft => Self::Justify,
 		}
 	}
 }

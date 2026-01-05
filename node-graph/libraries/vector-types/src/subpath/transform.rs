@@ -20,12 +20,12 @@ impl<PointId: Identifier> Subpath<PointId> {
 
 	/// Returns a [Subpath] with a reversed winding order.
 	/// Note that a reversed closed subpath will start on the same manipulator group and simply wind the other direction
-	pub fn reverse(&self) -> Subpath<PointId> {
-		let mut reversed = Subpath::reverse_manipulator_groups(self.manipulator_groups());
+	pub fn reverse(&self) -> Self {
+		let mut reversed = Self::reverse_manipulator_groups(self.manipulator_groups());
 		if self.closed {
 			reversed.rotate_right(1);
 		};
-		Subpath {
+		Self {
 			manipulator_groups: reversed,
 			closed: self.closed,
 		}
@@ -39,7 +39,7 @@ impl<PointId: Identifier> Subpath<PointId> {
 	}
 
 	/// Returns a subpath that results from rotating this subpath around the origin by the given angle (in radians).
-	pub fn rotate(&self, angle: f64) -> Subpath<PointId> {
+	pub fn rotate(&self, angle: f64) -> Self {
 		let mut rotated_subpath = self.clone();
 
 		let affine_transform: DAffine2 = DAffine2::from_angle(angle);
@@ -49,7 +49,7 @@ impl<PointId: Identifier> Subpath<PointId> {
 	}
 
 	/// Returns a subpath that results from rotating this subpath around the provided point by the given angle (in radians).
-	pub fn rotate_about_point(&self, angle: f64, pivot: DVec2) -> Subpath<PointId> {
+	pub fn rotate_about_point(&self, angle: f64, pivot: DVec2) -> Self {
 		// Translate before and after the rotation to account for the pivot
 		let translate: DAffine2 = DAffine2::from_translation(pivot);
 		let rotate: DAffine2 = DAffine2::from_angle(angle);

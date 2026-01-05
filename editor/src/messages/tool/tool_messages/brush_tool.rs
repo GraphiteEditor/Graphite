@@ -358,7 +358,7 @@ impl Fsm for BrushToolFsmState {
 
 		let ToolMessage::Brush(event) = event else { return self };
 		match (self, event) {
-			(BrushToolFsmState::Ready, BrushToolMessage::DragStart) => {
+			(Self::Ready, BrushToolMessage::DragStart) => {
 				responses.add(DocumentMessage::StartTransaction);
 				let loaded_layer = tool_data.load_existing_strokes(document);
 
@@ -397,7 +397,7 @@ impl Fsm for BrushToolFsmState {
 					});
 
 					tool_data.update_strokes(responses);
-					BrushToolFsmState::Drawing
+					Self::Drawing
 				}
 				// Create the new layer, wait for the render output to return its transform, and then create the rest of the layer
 				else {
@@ -406,11 +406,11 @@ impl Fsm for BrushToolFsmState {
 					responses.add(DeferMessage::AfterGraphRun {
 						messages: vec![BrushToolMessage::DragStart.into()],
 					});
-					BrushToolFsmState::Ready
+					Self::Ready
 				}
 			}
 
-			(BrushToolFsmState::Drawing, BrushToolMessage::PointerMove) => {
+			(Self::Drawing, BrushToolMessage::PointerMove) => {
 				if let Some(layer) = tool_data.layer
 					&& let Some(stroke) = tool_data.strokes.last_mut()
 				{
@@ -426,10 +426,10 @@ impl Fsm for BrushToolFsmState {
 				}
 				tool_data.update_strokes(responses);
 
-				BrushToolFsmState::Drawing
+				Self::Drawing
 			}
 
-			(BrushToolFsmState::Drawing, BrushToolMessage::DragStop) => {
+			(Self::Drawing, BrushToolMessage::DragStop) => {
 				if !tool_data.strokes.is_empty() {
 					responses.add(DocumentMessage::EndTransaction);
 				} else {
@@ -437,13 +437,13 @@ impl Fsm for BrushToolFsmState {
 				}
 				tool_data.strokes.clear();
 
-				BrushToolFsmState::Ready
+				Self::Ready
 			}
-			(BrushToolFsmState::Drawing, BrushToolMessage::Abort) => {
+			(Self::Drawing, BrushToolMessage::Abort) => {
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.strokes.clear();
 
-				BrushToolFsmState::Ready
+				Self::Ready
 			}
 			(_, BrushToolMessage::WorkingColorChanged) => {
 				responses.add(BrushToolMessage::UpdateOptions {
@@ -457,11 +457,11 @@ impl Fsm for BrushToolFsmState {
 
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
-			BrushToolFsmState::Ready => HintData(vec![
+			Self::Ready => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Draw")]),
 				HintGroup(vec![HintInfo::multi_keys([[Key::BracketLeft], [Key::BracketRight]], "Shrink/Grow Brush")]),
 			]),
-			BrushToolFsmState::Drawing => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
+			Self::Drawing => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
 		};
 
 		hint_data.send_layout(responses);

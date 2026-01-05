@@ -83,16 +83,16 @@ impl Parse for ParsedWidgetOverride {
 			let variant = &path.segments[1].ident;
 
 			match variant.to_string().as_str() {
-				"Hidden" => Ok(ParsedWidgetOverride::Hidden),
+				"Hidden" => Ok(Self::Hidden),
 				"String" => {
 					input.parse::<syn::Token![=]>()?;
 					let lit: LitStr = input.parse()?;
-					Ok(ParsedWidgetOverride::String(lit))
+					Ok(Self::String(lit))
 				}
 				"Custom" => {
 					input.parse::<syn::Token![=]>()?;
 					let lit: LitStr = input.parse()?;
-					Ok(ParsedWidgetOverride::Custom(lit))
+					Ok(Self::Custom(lit))
 				}
 				_ => Err(Error::new(variant.span(), "Unknown ParsedWidgetOverride variant")),
 			}
@@ -184,7 +184,7 @@ impl Parse for Implementation {
 			)
 		})?;
 
-		Ok(Implementation {
+		Ok(Self {
 			input: input_type,
 			_arrow: arrow,
 			output: output_type,
@@ -287,7 +287,7 @@ impl Parse for NodeFnAttributes {
 			}
 		}
 
-		Ok(NodeFnAttributes {
+		Ok(Self {
 			category,
 			display_name,
 			path,

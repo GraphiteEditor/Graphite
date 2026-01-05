@@ -13,8 +13,8 @@ use vector_types::GradientStops;
 pub trait Blend<P: Pixel> {
 	fn blend(&self, under: &Self, blend_fn: impl Fn(P, P) -> P) -> Self;
 }
-impl Blend<Color> for Color {
-	fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
+impl Blend<Self> for Color {
+	fn blend(&self, under: &Self, blend_fn: impl Fn(Self, Self) -> Self) -> Self {
 		blend_fn(*self, *under)
 	}
 }
@@ -75,7 +75,7 @@ mod blend_std {
 					(position, color)
 				})
 				.collect::<Vec<_>>();
-			GradientStops::new(stops)
+			Self::new(stops)
 		}
 	}
 }

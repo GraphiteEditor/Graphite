@@ -216,7 +216,7 @@ pub enum DocumentNodeMetadata {
 impl DocumentNodeMetadata {
 	pub fn ty(&self) -> Type {
 		match self {
-			DocumentNodeMetadata::DocumentNodePath => concrete!(Vec<NodeId>),
+			Self::DocumentNodePath => concrete!(Vec<NodeId>),
 		}
 	}
 }
@@ -240,45 +240,45 @@ impl NodeInput {
 	}
 
 	fn map_ids(&mut self, f: impl Fn(NodeId) -> NodeId) {
-		if let &mut NodeInput::Node { node_id, output_index } = self {
-			*self = NodeInput::Node { node_id: f(node_id), output_index }
+		if let &mut Self::Node { node_id, output_index } = self {
+			*self = Self::Node { node_id: f(node_id), output_index }
 		}
 	}
 
 	pub fn is_exposed(&self) -> bool {
 		match self {
-			NodeInput::Node { .. } => true,
-			NodeInput::Value { exposed, .. } => *exposed,
-			NodeInput::Import { .. } => true,
-			NodeInput::Inline(_) => false,
-			NodeInput::Scope(_) => false,
-			NodeInput::Reflection(_) => false,
+			Self::Node { .. } => true,
+			Self::Value { exposed, .. } => *exposed,
+			Self::Import { .. } => true,
+			Self::Inline(_) => false,
+			Self::Scope(_) => false,
+			Self::Reflection(_) => false,
 		}
 	}
 
 	pub fn ty(&self) -> Type {
 		match self {
-			NodeInput::Node { .. } => unreachable!("ty() called on NodeInput::Node"),
-			NodeInput::Value { tagged_value, .. } => tagged_value.ty(),
-			NodeInput::Import { import_type, .. } => import_type.clone(),
-			NodeInput::Inline(_) => panic!("ty() called on NodeInput::Inline"),
-			NodeInput::Scope(_) => panic!("ty() called on NodeInput::Scope"),
-			NodeInput::Reflection(_) => concrete!(Metadata),
+			Self::Node { .. } => unreachable!("ty() called on NodeInput::Node"),
+			Self::Value { tagged_value, .. } => tagged_value.ty(),
+			Self::Import { import_type, .. } => import_type.clone(),
+			Self::Inline(_) => panic!("ty() called on NodeInput::Inline"),
+			Self::Scope(_) => panic!("ty() called on NodeInput::Scope"),
+			Self::Reflection(_) => concrete!(Metadata),
 		}
 	}
 
 	pub fn as_value(&self) -> Option<&TaggedValue> {
-		if let NodeInput::Value { tagged_value, .. } = self { Some(tagged_value) } else { None }
+		if let Self::Value { tagged_value, .. } = self { Some(tagged_value) } else { None }
 	}
 	pub fn as_value_mut(&mut self) -> Option<MemoHashGuard<'_, TaggedValue>> {
-		if let NodeInput::Value { tagged_value, .. } = self { Some(tagged_value.inner_mut()) } else { None }
+		if let Self::Value { tagged_value, .. } = self { Some(tagged_value.inner_mut()) } else { None }
 	}
 	pub fn as_non_exposed_value(&self) -> Option<&TaggedValue> {
-		if let NodeInput::Value { tagged_value, exposed: false } = self { Some(tagged_value) } else { None }
+		if let Self::Value { tagged_value, exposed: false } = self { Some(tagged_value) } else { None }
 	}
 
 	pub fn as_node(&self) -> Option<NodeId> {
-		if let NodeInput::Node { node_id, .. } = self { Some(*node_id) } else { None }
+		if let Self::Node { node_id, .. } = self { Some(*node_id) } else { None }
 	}
 }
 
@@ -335,28 +335,28 @@ impl Default for DocumentNodeImplementation {
 impl DocumentNodeImplementation {
 	pub fn get_network(&self) -> Option<&NodeNetwork> {
 		match self {
-			DocumentNodeImplementation::Network(n) => Some(n),
+			Self::Network(n) => Some(n),
 			_ => None,
 		}
 	}
 
 	pub fn get_network_mut(&mut self) -> Option<&mut NodeNetwork> {
 		match self {
-			DocumentNodeImplementation::Network(n) => Some(n),
+			Self::Network(n) => Some(n),
 			_ => None,
 		}
 	}
 
 	pub fn get_proto_node(&self) -> Option<&ProtoNodeIdentifier> {
 		match self {
-			DocumentNodeImplementation::ProtoNode(p) => Some(p),
+			Self::ProtoNode(p) => Some(p),
 			_ => None,
 		}
 	}
 
 	pub fn output_count(&self) -> usize {
 		match self {
-			DocumentNodeImplementation::Network(network) => network.exports.len(),
+			Self::Network(network) => network.exports.len(),
 			_ => 1,
 		}
 	}

@@ -21,7 +21,7 @@ pub struct DocumentNodePersistentMetadataInputNames {
 
 impl From<DocumentNodePersistentMetadataInputNames> for DocumentNodePersistentMetadata {
 	fn from(old: DocumentNodePersistentMetadataInputNames) -> Self {
-		DocumentNodePersistentMetadata {
+		Self {
 			input_metadata: Vec::new(),
 			reference: old.reference,
 			display_name: old.display_name,
@@ -74,7 +74,7 @@ impl From<DocumentNodePersistentMetadataPropertiesRow> for DocumentNodePersisten
 				..Default::default()
 			})
 		}
-		DocumentNodePersistentMetadata {
+		Self {
 			reference: old.reference,
 			display_name: old.display_name,
 			input_metadata: Vec::new(),
@@ -106,7 +106,7 @@ pub struct DocumentNodePersistentMetadataHasPrimaryOutput {
 
 impl From<DocumentNodePersistentMetadataHasPrimaryOutput> for DocumentNodePersistentMetadata {
 	fn from(old: DocumentNodePersistentMetadataHasPrimaryOutput) -> Self {
-		DocumentNodePersistentMetadata {
+		Self {
 			reference: old.reference,
 			display_name: old.display_name,
 			input_metadata: old.input_metadata,

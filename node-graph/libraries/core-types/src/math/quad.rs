@@ -87,7 +87,7 @@ impl Quad {
 	/// Expand a quad by a certain amount on all sides.
 	///
 	/// Not currently very optimized
-	pub fn inflate(&self, offset: f64) -> Quad {
+	pub fn inflate(&self, offset: f64) -> Self {
 		let offset = |index_before, index, index_after| {
 			let [point_before, point, point_after]: [DVec2; 3] = [self.0[index_before], self.0[index], self.0[index_after]];
 			let [line_in, line_out] = [point - point_before, point_after - point];
@@ -129,7 +129,7 @@ impl Quad {
 		(t.is_finite() && u.is_finite()).then(|| a + t * a_direction)
 	}
 
-	pub fn intersects(&self, other: Quad) -> bool {
+	pub fn intersects(&self, other: Self) -> bool {
 		let intersects = self
 			.all_edges()
 			.into_iter()

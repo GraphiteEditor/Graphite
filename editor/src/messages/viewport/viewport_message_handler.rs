@@ -158,10 +158,10 @@ struct Point {
 }
 impl Point {
 	fn convert_to_logical(&self, scale: f64) -> LogicalPoint {
-		Point { x: self.x(), y: self.y() }.into_scaled(scale)
+		Self { x: self.x(), y: self.y() }.into_scaled(scale)
 	}
 	fn convert_to_physical(&self, scale: f64) -> PhysicalPoint {
-		Point {
+		Self {
 			x: self.x() / scale,
 			y: self.y() / scale,
 		}
@@ -385,133 +385,133 @@ impl FromWithScale<Bounds> for PhysicalBounds {
 }
 
 impl Mul<f64> for Point {
-	type Output = Point;
+	type Output = Self;
 	fn mul(self, rhs: f64) -> Self::Output {
 		assert_ne!(rhs, 0.0, "Cannot multiply point by zero");
-		Point { x: self.x * rhs, y: self.y * rhs }
+		Self { x: self.x * rhs, y: self.y * rhs }
 	}
 }
 impl Div<f64> for Point {
-	type Output = Point;
+	type Output = Self;
 	fn div(self, rhs: f64) -> Self::Output {
 		assert_ne!(rhs, 0.0, "Cannot divide point by zero");
-		Point { x: self.x / rhs, y: self.y / rhs }
+		Self { x: self.x / rhs, y: self.y / rhs }
 	}
 }
 impl Add<f64> for Point {
-	type Output = Point;
+	type Output = Self;
 	fn add(self, rhs: f64) -> Self::Output {
-		Point { x: self.x + rhs, y: self.y + rhs }
+		Self { x: self.x + rhs, y: self.y + rhs }
 	}
 }
 impl Sub<f64> for Point {
-	type Output = Point;
+	type Output = Self;
 	fn sub(self, rhs: f64) -> Self::Output {
-		Point { x: self.x - rhs, y: self.y - rhs }
+		Self { x: self.x - rhs, y: self.y - rhs }
 	}
 }
-impl Mul<Point> for Point {
-	type Output = Point;
-	fn mul(self, rhs: Point) -> Self::Output {
+impl Mul<Self> for Point {
+	type Output = Self;
+	fn mul(self, rhs: Self) -> Self::Output {
 		assert_ne!(rhs.x, 0.0, "Cannot multiply point by zero");
 		assert_ne!(rhs.y, 0.0, "Cannot multiply point by zero");
-		Point { x: self.x * rhs.x, y: self.y * rhs.y }
+		Self { x: self.x * rhs.x, y: self.y * rhs.y }
 	}
 }
-impl Div<Point> for Point {
-	type Output = Point;
-	fn div(self, rhs: Point) -> Self::Output {
+impl Div<Self> for Point {
+	type Output = Self;
+	fn div(self, rhs: Self) -> Self::Output {
 		assert_ne!(rhs.x, 0.0, "Cannot multiply point by zero");
 		assert_ne!(rhs.y, 0.0, "Cannot multiply point by zero");
-		Point { x: self.x / rhs.x, y: self.y / rhs.y }
+		Self { x: self.x / rhs.x, y: self.y / rhs.y }
 	}
 }
-impl Add<Point> for Point {
-	type Output = Point;
-	fn add(self, rhs: Point) -> Self::Output {
-		Point { x: self.x + rhs.x, y: self.y + rhs.y }
+impl Add<Self> for Point {
+	type Output = Self;
+	fn add(self, rhs: Self) -> Self::Output {
+		Self { x: self.x + rhs.x, y: self.y + rhs.y }
 	}
 }
-impl Sub<Point> for Point {
-	type Output = Point;
-	fn sub(self, rhs: Point) -> Self::Output {
-		Point { x: self.x - rhs.x, y: self.y - rhs.y }
+impl Sub<Self> for Point {
+	type Output = Self;
+	fn sub(self, rhs: Self) -> Self::Output {
+		Self { x: self.x - rhs.x, y: self.y - rhs.y }
 	}
 }
 
 impl Mul<f64> for Bounds {
-	type Output = Bounds;
+	type Output = Self;
 	fn mul(self, rhs: f64) -> Self::Output {
 		assert_ne!(rhs, 0.0, "Cannot multiply bounds by zero");
-		Bounds {
+		Self {
 			offset: self.offset * rhs,
 			size: self.size * rhs,
 		}
 	}
 }
 impl Div<f64> for Bounds {
-	type Output = Bounds;
+	type Output = Self;
 	fn div(self, rhs: f64) -> Self::Output {
 		assert_ne!(rhs, 0.0, "Cannot divide bounds by zero");
-		Bounds {
+		Self {
 			offset: self.offset / rhs,
 			size: self.size / rhs,
 		}
 	}
 }
 
-impl Mul<LogicalPoint> for LogicalPoint {
-	type Output = LogicalPoint;
-	fn mul(self, rhs: LogicalPoint) -> Self::Output {
+impl Mul<Self> for LogicalPoint {
+	type Output = Self;
+	fn mul(self, rhs: Self) -> Self::Output {
 		assert_scale(&self, &rhs);
 		(self.as_point() * rhs.as_point()).into_scaled(self.scale())
 	}
 }
-impl Div<LogicalPoint> for LogicalPoint {
-	type Output = LogicalPoint;
-	fn div(self, rhs: LogicalPoint) -> Self::Output {
+impl Div<Self> for LogicalPoint {
+	type Output = Self;
+	fn div(self, rhs: Self) -> Self::Output {
 		assert_scale(&self, &rhs);
 		(self.as_point() / rhs.as_point()).into_scaled(self.scale())
 	}
 }
-impl Add<LogicalPoint> for LogicalPoint {
-	type Output = LogicalPoint;
-	fn add(self, rhs: LogicalPoint) -> Self::Output {
+impl Add<Self> for LogicalPoint {
+	type Output = Self;
+	fn add(self, rhs: Self) -> Self::Output {
 		assert_scale(&self, &rhs);
 		(self.as_point() + rhs.as_point()).into_scaled(self.scale())
 	}
 }
-impl Sub<LogicalPoint> for LogicalPoint {
-	type Output = LogicalPoint;
-	fn sub(self, rhs: LogicalPoint) -> Self::Output {
+impl Sub<Self> for LogicalPoint {
+	type Output = Self;
+	fn sub(self, rhs: Self) -> Self::Output {
 		assert_scale(&self, &rhs);
 		(self.as_point() - rhs.as_point()).into_scaled(self.scale())
 	}
 }
-impl Mul<PhysicalPoint> for PhysicalPoint {
-	type Output = PhysicalPoint;
-	fn mul(self, rhs: PhysicalPoint) -> Self::Output {
+impl Mul<Self> for PhysicalPoint {
+	type Output = Self;
+	fn mul(self, rhs: Self) -> Self::Output {
 		assert_scale(&self, &rhs);
 		(self.as_point() * rhs.as_point()).into_scaled(self.scale())
 	}
 }
-impl Div<PhysicalPoint> for PhysicalPoint {
-	type Output = PhysicalPoint;
-	fn div(self, rhs: PhysicalPoint) -> Self::Output {
+impl Div<Self> for PhysicalPoint {
+	type Output = Self;
+	fn div(self, rhs: Self) -> Self::Output {
 		assert_scale(&self, &rhs);
 		(self.as_point() / rhs.as_point()).into_scaled(self.scale())
 	}
 }
-impl Add<PhysicalPoint> for PhysicalPoint {
-	type Output = PhysicalPoint;
-	fn add(self, rhs: PhysicalPoint) -> Self::Output {
+impl Add<Self> for PhysicalPoint {
+	type Output = Self;
+	fn add(self, rhs: Self) -> Self::Output {
 		assert_scale(&self, &rhs);
 		(self.as_point() + rhs.as_point()).into_scaled(self.scale())
 	}
 }
-impl Sub<PhysicalPoint> for PhysicalPoint {
-	type Output = PhysicalPoint;
-	fn sub(self, rhs: PhysicalPoint) -> Self::Output {
+impl Sub<Self> for PhysicalPoint {
+	type Output = Self;
+	fn sub(self, rhs: Self) -> Self::Output {
 		assert_scale(&self, &rhs);
 		(self.as_point() - rhs.as_point()).into_scaled(self.scale())
 	}
@@ -562,12 +562,12 @@ impl From<glam::DVec2> for Point {
 }
 impl From<LogicalPoint> for glam::DVec2 {
 	fn from(val: LogicalPoint) -> Self {
-		glam::DVec2::new(val.x(), val.y())
+		Self::new(val.x(), val.y())
 	}
 }
 impl From<PhysicalPoint> for glam::DVec2 {
 	fn from(val: PhysicalPoint) -> Self {
-		glam::DVec2::new(val.x(), val.y())
+		Self::new(val.x(), val.y())
 	}
 }
 
