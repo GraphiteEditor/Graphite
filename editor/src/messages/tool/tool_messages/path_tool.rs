@@ -2681,7 +2681,7 @@ impl Fsm for PathToolFsmState {
 				};
 
 				// Find points by their positions (with small tolerance for floating point comparison)
-				const POSITION_TOLERANCE: f64 = 0.01;
+				const POSITION_TOLERANCE: f64 = 1e-6;
 
 				let positions = vector.point_domain.positions();
 				let point_ids = vector.point_domain.ids();
