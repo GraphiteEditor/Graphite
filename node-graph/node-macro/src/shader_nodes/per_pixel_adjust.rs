@@ -245,6 +245,7 @@ impl PerPixelAdjustCodegen<'_> {
 			number_display_decimal_places: None,
 			number_step: None,
 			unit: None,
+			is_data_field: false,
 		});
 
 		// find exactly one gpu_image field, runtime doesn't support more than 1 atm
