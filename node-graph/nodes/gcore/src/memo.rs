@@ -12,7 +12,7 @@ use std::sync::Mutex;
 /// A cache hit occurs when the Option is Some and has a stored hash matching the hash of the call argument. In this case, the node returns the cached value without re-evaluating the inner node.
 ///
 /// Currently, only one input-output pair is cached. Subsequent calls with different inputs will overwrite the previous cache.
-#[node_macro::node(category("Memo"), path(graphene_core::memo), skip_impl)]
+#[node_macro::node(category(""), path(graphene_core::memo), skip_impl)]
 async fn memo<I: Hash + Send + 'n, T: Clone + WasmNotSend>(input: I, #[data] cache: Arc<Mutex<Option<(u64, T)>>>, node: impl Node<I, Output = T>) -> T {
 	let mut hasher = DefaultHasher::new();
 	input.hash(&mut hasher);
