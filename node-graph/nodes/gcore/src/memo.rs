@@ -30,7 +30,7 @@ async fn memo<I: Hash + Send + 'n, T: Clone + WasmNotSend>(input: I, #[data] cac
 type MonitorValue<I, T> = Arc<Mutex<Option<Arc<IORecord<I, T>>>>>;
 
 /// Caches the output of the last graph evaluation for introspection.
-#[node_macro::node(category("Monitor"), path(graphene_core::memo), serialize(serialize_monitor), skip_impl)]
+#[node_macro::node(category(""), path(graphene_core::memo), serialize(serialize_monitor), skip_impl)]
 async fn monitor<I: Clone + 'static + Send + Sync, T: Clone + 'static + Send + Sync>(
 	input: I,
 	#[allow(clippy::type_complexity)]
