@@ -1,5 +1,6 @@
 use super::simple_dialogs::{self, AboutGraphiteDialog, DemoArtworkDialog, LicensesDialog};
 use crate::messages::dialog::simple_dialogs::LicensesThirdPartyDialog;
+use crate::messages::frontend::utility_types::ExportBounds;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 
@@ -84,6 +85,13 @@ impl MessageHandler<DialogMessage, DialogMessageContext<'_>> for DialogMessageHa
 						.collect();
 
 					self.export_dialog.artboards = artboards;
+
+					if let ExportBounds::Artboard(layer) = self.export_dialog.bounds {
+						if !self.export_dialog.artboards.contains_key(&layer) {
+							self.export_dialog.bounds = ExportBounds::AllArtwork;
+						}
+					}
+
 					self.export_dialog.has_selection = document.network_interface.selected_nodes().selected_layers(document.metadata()).next().is_some();
 					self.export_dialog.send_dialog_to_frontend(responses);
 				}
