@@ -204,26 +204,92 @@ fn qr_code(
 
 	let size = qr_code.size();
 	let mut vector = Vector::default();
-	let offset = DVec2::splat(size as f64 / -2.);
+	let offset = DVec2::splat(0.0);
 
-	for y in 0..size {
-		let mut x = 0;
-		while x < size {
-			if qr_code.get_module(x, y) {
-				let start_x = x;
-				x += 1;
-				if merge {
-					while x < size && qr_code.get_module(x, y) {
-						x += 1;
+	if merge {
+		use std::collections::{HashMap, HashSet, VecDeque};
+
+		let mut remaining: HashSet<(i32, i32)> = HashSet::new();
+		for y in 0..size {
+			for x in 0..size {
+				if qr_code.get_module(x, y) {
+					remaining.insert((x, y));
+				}
+			}
+		}
+
+		while let Some(&(start_x, start_y)) = remaining.iter().next() {
+			let mut island = HashSet::new();
+			let mut queue = VecDeque::new();
+			queue.push_back((start_x, start_y));
+			remaining.remove(&(start_x, start_y));
+
+			while let Some((x, y)) = queue.pop_front() {
+				island.insert((x, y));
+				for (dx, dy) in [(0, 1), (0, -1), (1, 0), (-1, 0)] {
+					let nx = x + dx;
+					let ny = y + dy;
+					if remaining.remove(&(nx, ny)) {
+						queue.push_back((nx, ny));
 					}
 				}
-				let end_x = x;
+			}
 
-				let corner1 = offset + DVec2::new(start_x as f64, y as f64);
-				let corner2 = offset + DVec2::new(end_x as f64, (y + 1) as f64);
-				vector.append_subpath(subpath::Subpath::new_rect(corner1, corner2), false);
-			} else {
-				x += 1;
+			let mut island_edges = HashSet::new();
+			for &(x, y) in &island {
+				for (p1, p2) in [((x, y), (x + 1, y)), ((x + 1, y), (x + 1, y + 1)), ((x + 1, y + 1), (x, y + 1)), ((x, y + 1), (x, y))] {
+					if !island_edges.remove(&(p2, p1)) {
+						island_edges.insert((p1, p2));
+					}
+				}
+			}
+
+			let mut adjacency: HashMap<(i32, i32), Vec<(i32, i32)>> = HashMap::new();
+			for (p1, p2) in island_edges {
+				adjacency.entry(p1).or_default().push(p2);
+			}
+
+			while let Some(&start_point) = adjacency.keys().next() {
+				let mut loop_points = Vec::new();
+				let mut current = start_point;
+
+				loop {
+					loop_points.push(DVec2::new(current.0 as f64, current.1 as f64));
+					let next = adjacency.get_mut(&current).and_then(|n| n.pop()).unwrap();
+					if adjacency.get(&current).map_or(false, |n| n.is_empty()) {
+						adjacency.remove(&current);
+					}
+					current = next;
+					if current == start_point {
+						break;
+					}
+				}
+
+				if loop_points.len() > 2 {
+					let mut simplified = Vec::new();
+					for i in 0..loop_points.len() {
+						let prev = loop_points[(i + loop_points.len() - 1) % loop_points.len()];
+						let curr = loop_points[i];
+						let next = loop_points[(i + 1) % loop_points.len()];
+
+						if (curr - prev).perp_dot(next - curr).abs() > 1e-6 {
+							simplified.push(curr + offset);
+						}
+					}
+					if !simplified.is_empty() {
+						vector.append_subpath(subpath::Subpath::from_anchors(simplified, true), false);
+					}
+				}
+			}
+		}
+	} else {
+		for y in 0..size {
+			for x in 0..size {
+				if qr_code.get_module(x, y) {
+					let corner1 = offset + DVec2::new(x as f64, y as f64);
+					let corner2 = corner1 + DVec2::splat(1.);
+					vector.append_subpath(subpath::Subpath::new_rect(corner1, corner2), false);
+				}
 			}
 		}
 	}
