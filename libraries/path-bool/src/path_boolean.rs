@@ -304,7 +304,7 @@ struct DualGraph {
 #[derive(Debug, Clone)]
 struct NestingTree {
 	component: DualGraphComponent,
-	outgoing_edges: HashMap<DualVertexKey, Vec<NestingTree>>,
+	outgoing_edges: HashMap<DualVertexKey, Vec<Self>>,
 }
 
 #[cfg(feature = "logging")]

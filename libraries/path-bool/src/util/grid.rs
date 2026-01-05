@@ -10,7 +10,7 @@ pub(crate) struct Grid {
 
 impl Grid {
 	pub(crate) fn new(cell_size: f64, edges: usize) -> Self {
-		Grid {
+		Self {
 			cell_factor: cell_size.recip(),
 			cells: FxHashMap::with_capacity_and_hasher(edges, Default::default()),
 		}
@@ -59,7 +59,7 @@ pub struct BitVec {
 impl BitVec {
 	pub fn new(capacity: usize) -> Self {
 		let num_words = capacity.div_ceil(64);
-		BitVec { data: vec![0; num_words] }
+		Self { data: vec![0; num_words] }
 	}
 
 	pub fn set(&mut self, index: usize) {

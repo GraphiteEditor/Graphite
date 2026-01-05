@@ -25,14 +25,14 @@ impl<'i, T: 'i, I> Node<'i, I> for ValueNode<T> {
 }
 
 impl<T> ValueNode<T> {
-	pub const fn new(value: T) -> ValueNode<T> {
-		ValueNode(value)
+	pub const fn new(value: T) -> Self {
+		Self(value)
 	}
 }
 
 impl<T> From<T> for ValueNode<T> {
 	fn from(value: T) -> Self {
-		ValueNode::new(value)
+		Self::new(value)
 	}
 }
 
@@ -48,8 +48,8 @@ impl<'i, T: 'i + AsRef<U>, U: 'i> Node<'i, ()> for AsRefNode<T, U> {
 }
 
 impl<T: AsRef<U>, U> AsRefNode<T, U> {
-	pub const fn new(value: T) -> AsRefNode<T, U> {
-		AsRefNode(value, PhantomData)
+	pub const fn new(value: T) -> Self {
+		Self(value, PhantomData)
 	}
 }
 
@@ -65,8 +65,8 @@ impl<'i, T: 'i> Node<'i, ()> for RefCellMutNode<T> {
 }
 
 impl<T> RefCellMutNode<T> {
-	pub const fn new(value: T) -> RefCellMutNode<T> {
-		RefCellMutNode(RefCell::new(value))
+	pub const fn new(value: T) -> Self {
+		Self(RefCell::new(value))
 	}
 }
 
@@ -82,8 +82,8 @@ impl<'i, T: Default + 'i, I> Node<'i, I> for OnceCellNode<T> {
 }
 
 impl<T> OnceCellNode<T> {
-	pub const fn new(value: T) -> OnceCellNode<T> {
-		OnceCellNode(Cell::new(value))
+	pub const fn new(value: T) -> Self {
+		Self(Cell::new(value))
 	}
 }
 
@@ -99,14 +99,14 @@ impl<'i, T: Clone + 'i, I> Node<'i, I> for ClonedNode<T> {
 }
 
 impl<T: Clone> ClonedNode<T> {
-	pub const fn new(value: T) -> ClonedNode<T> {
-		ClonedNode(value)
+	pub const fn new(value: T) -> Self {
+		Self(value)
 	}
 }
 
 impl<T: Clone> From<T> for ClonedNode<T> {
 	fn from(value: T) -> Self {
-		ClonedNode::new(value)
+		Self::new(value)
 	}
 }
 
@@ -127,8 +127,8 @@ impl<'i, T: Clone + 'i> Node<'i, ()> for DebugClonedNode<T> {
 }
 
 impl<T: Clone> DebugClonedNode<T> {
-	pub const fn new(value: T) -> DebugClonedNode<T> {
-		DebugClonedNode(value)
+	pub const fn new(value: T) -> Self {
+		Self(value)
 	}
 }
 
@@ -144,8 +144,8 @@ impl<'i, T: Copy + 'i, I> Node<'i, I> for CopiedNode<T> {
 }
 
 impl<T: Copy> CopiedNode<T> {
-	pub const fn new(value: T) -> CopiedNode<T> {
-		CopiedNode(value)
+	pub const fn new(value: T) -> Self {
+		Self(value)
 	}
 }
 
@@ -177,7 +177,7 @@ impl<'i, T: 'i> Node<'i, T> for ForgetNode {
 
 impl ForgetNode {
 	pub const fn new() -> Self {
-		ForgetNode
+		Self
 	}
 }
 

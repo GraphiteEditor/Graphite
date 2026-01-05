@@ -92,7 +92,7 @@ impl EditorHandle {
 	#[wasm_bindgen(constructor)]
 	pub fn new(frontend_message_handler_callback: js_sys::Function) -> Self {
 		let editor = Editor::new();
-		let editor_handle = EditorHandle { frontend_message_handler_callback };
+		let editor_handle = Self { frontend_message_handler_callback };
 		if EDITOR.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor))).is_none() {
 			log::error!("Attempted to initialize the editor more than once");
 		}

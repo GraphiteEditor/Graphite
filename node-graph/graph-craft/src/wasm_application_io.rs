@@ -166,7 +166,7 @@ impl WasmApplicationIo {
 }
 
 unsafe impl StaticType for WasmApplicationIo {
-	type Static = WasmApplicationIo;
+	type Static = Self;
 }
 
 impl<'a> From<&'a WasmEditorApi> for &'a WasmApplicationIo {
@@ -355,5 +355,5 @@ impl Default for EditorPreferences {
 }
 
 unsafe impl StaticType for EditorPreferences {
-	type Static = EditorPreferences;
+	type Static = Self;
 }

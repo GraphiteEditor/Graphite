@@ -181,9 +181,9 @@ impl PivotGizmoState {
 impl fmt::Display for PivotGizmoType {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
-			PivotGizmoType::Pivot => write!(f, "Custom Pivot"),
-			PivotGizmoType::Average => write!(f, "Origin (Average Point)"),
-			PivotGizmoType::Active => write!(f, "Origin (Active Object)"),
+			Self::Pivot => write!(f, "Custom Pivot"),
+			Self::Average => write!(f, "Origin (Average Point)"),
+			Self::Active => write!(f, "Origin (Active Object)"),
 			// TODO: Add "Origin (Individual)"
 		}
 	}

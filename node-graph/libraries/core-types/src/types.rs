@@ -139,17 +139,17 @@ impl From<String> for ProtoNodeIdentifier {
 
 impl From<&'static str> for ProtoNodeIdentifier {
 	fn from(s: &'static str) -> Self {
-		ProtoNodeIdentifier { name: Cow::Borrowed(s) }
+		Self { name: Cow::Borrowed(s) }
 	}
 }
 
 impl ProtoNodeIdentifier {
 	pub const fn new(name: &'static str) -> Self {
-		ProtoNodeIdentifier { name: Cow::Borrowed(name) }
+		Self { name: Cow::Borrowed(name) }
 	}
 
 	pub const fn with_owned_string(name: String) -> Self {
-		ProtoNodeIdentifier { name: Cow::Owned(name) }
+		Self { name: Cow::Owned(name) }
 	}
 }
 
@@ -244,9 +244,9 @@ pub enum Type {
 	/// A wrapper around the Rust type id for any concrete Rust type. Allows us to do equality comparisons, like checking if a String == a String.
 	Concrete(TypeDescriptor),
 	/// Runtime type information for a function. Given some input, gives some output.
-	Fn(Box<Type>, Box<Type>),
+	Fn(Box<Self>, Box<Self>),
 	/// Represents a future which promises to return the inner type.
-	Future(Box<Type>),
+	Future(Box<Self>),
 }
 
 impl Default for Type {
@@ -261,45 +261,45 @@ unsafe impl dyn_any::StaticType for Type {
 
 impl Type {
 	pub fn is_generic(&self) -> bool {
-		matches!(self, Type::Generic(_))
+		matches!(self, Self::Generic(_))
 	}
 
 	pub fn is_concrete(&self) -> bool {
-		matches!(self, Type::Concrete(_))
+		matches!(self, Self::Concrete(_))
 	}
 
 	pub fn is_fn(&self) -> bool {
-		matches!(self, Type::Fn(_, _))
+		matches!(self, Self::Fn(_, _))
 	}
 
 	pub fn is_value(&self) -> bool {
-		matches!(self, Type::Fn(_, _) | Type::Concrete(_))
+		matches!(self, Self::Fn(_, _) | Self::Concrete(_))
 	}
 
 	pub fn is_unit(&self) -> bool {
-		matches!(self, Type::Fn(_, _) | Type::Concrete(_))
+		matches!(self, Self::Fn(_, _) | Self::Concrete(_))
 	}
 
 	pub fn is_generic_or_fn(&self) -> bool {
-		matches!(self, Type::Fn(_, _) | Type::Generic(_))
+		matches!(self, Self::Fn(_, _) | Self::Generic(_))
 	}
 
-	pub fn fn_input(&self) -> Option<&Type> {
+	pub fn fn_input(&self) -> Option<&Self> {
 		match self {
-			Type::Fn(first, _) => Some(first),
+			Self::Fn(first, _) => Some(first),
 			_ => None,
 		}
 	}
 
-	pub fn fn_output(&self) -> Option<&Type> {
+	pub fn fn_output(&self) -> Option<&Self> {
 		match self {
-			Type::Fn(_, second) => Some(second),
+			Self::Fn(_, second) => Some(second),
 			_ => None,
 		}
 	}
 
-	pub fn function(input: &Type, output: &Type) -> Type {
-		Type::Fn(Box::new(input.clone()), Box::new(output.clone()))
+	pub fn function(input: &Self, output: &Self) -> Self {
+		Self::Fn(Box::new(input.clone()), Box::new(output.clone()))
 	}
 }
 
@@ -332,30 +332,27 @@ impl Type {
 		}
 	}
 
-	pub fn nested_type(&self) -> &Type {
+	pub fn nested_type(&self) -> &Self {
 		match self {
-			Self::Generic(_) => self,
-			Self::Concrete(_) => self,
-			Self::Fn(_, output) => output.nested_type(),
-			Self::Future(output) => output.nested_type(),
+			Self::Generic(_) | Self::Concrete(_) => self,
+			Self::Fn(_, output) | Self::Future(output) => output.nested_type(),
 		}
 	}
 
-	pub fn replace_nested(&mut self, f: impl Fn(&Type) -> Option<Type>) -> Option<Type> {
+	pub fn replace_nested(&mut self, f: impl Fn(&Self) -> Option<Self>) -> Option<Self> {
 		if let Some(replacement) = f(self) {
 			return Some(std::mem::replace(self, replacement));
 		}
 		match self {
 			Self::Generic(_) => None,
 			Self::Concrete(_) => None,
-			Self::Fn(_, output) => output.replace_nested(f),
-			Self::Future(output) => output.replace_nested(f),
+			Self::Fn(_, output) | Self::Future(output) => output.replace_nested(f),
 		}
 	}
 
 	pub fn to_cow_string(&self) -> Cow<'static, str> {
 		match self {
-			Type::Generic(name) => name.clone(),
+			Self::Generic(name) => name.clone(),
 			_ => Cow::Owned(self.to_string()),
 		}
 	}
@@ -391,10 +388,10 @@ impl std::fmt::Debug for Type {
 impl std::fmt::Display for Type {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		let text = match self {
-			Type::Generic(name) => name.to_string(),
-			Type::Concrete(ty) => format_type(&ty.name),
-			Type::Fn(call_arg, return_value) => format!("{return_value} called with {call_arg}"),
-			Type::Future(ty) => ty.to_string(),
+			Self::Generic(name) => name.to_string(),
+			Self::Concrete(ty) => format_type(&ty.name),
+			Self::Fn(call_arg, return_value) => format!("{return_value} called with {call_arg}"),
+			Self::Future(ty) => ty.to_string(),
 		};
 		let text = make_type_user_readable(&text);
 		write!(f, "{text}")

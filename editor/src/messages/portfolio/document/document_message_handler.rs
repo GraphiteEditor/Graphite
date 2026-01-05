@@ -343,7 +343,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					.deepest_common_ancestor(&selected_nodes, &self.selection_network_path, true)
 					.unwrap_or(LayerNodeIdentifier::ROOT_PARENT);
 
-				let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), &self.network_interface.selected_nodes(), parent);
+				let insert_index = Self::get_calculated_insert_index(self.metadata(), &self.network_interface.selected_nodes(), parent);
 				responses.add(DocumentMessage::AddTransaction);
 				responses.add(GraphOperationMessage::NewCustomLayer {
 					id,
@@ -430,7 +430,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				layers.sort_by_key(|layer| {
 					let Some(parent) = layer.parent(self.metadata()) else { return usize::MAX };
-					DocumentMessageHandler::get_calculated_insert_index(self.metadata(), &SelectedNodes(vec![layer.to_node()]), parent)
+					Self::get_calculated_insert_index(self.metadata(), &SelectedNodes(vec![layer.to_node()]), parent)
 				});
 
 				for layer in layers.into_iter().rev() {
@@ -450,7 +450,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 					let nodes = self.network_interface.copy_nodes(&copy_ids, &[]).collect::<Vec<(NodeId, NodeTemplate)>>();
 
-					let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), &SelectedNodes(vec![layer.to_node()]), parent);
+					let insert_index = Self::get_calculated_insert_index(self.metadata(), &SelectedNodes(vec![layer.to_node()]), parent);
 
 					let new_ids: HashMap<_, _> = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
 
@@ -637,9 +637,9 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					let Some(selected_nodes) = &self.network_interface.selected_nodes_in_nested_network(&self.selection_network_path) else {
 						return;
 					};
-					let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), selected_nodes, parent);
+					let insert_index = Self::get_calculated_insert_index(self.metadata(), selected_nodes, parent);
 
-					DocumentMessageHandler::group_layers(responses, insert_index, parent, group_folder_type, &mut self.network_interface);
+					Self::group_layers(responses, insert_index, parent, group_folder_type, &mut self.network_interface);
 				}
 				// Artboard workflow
 				else {
@@ -657,11 +657,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						let Some(parent) = self.network_interface.deepest_common_ancestor(&child_selected_nodes, &self.selection_network_path, false) else {
 							continue;
 						};
-						let insert_index = DocumentMessageHandler::get_calculated_insert_index(self.metadata(), &child_selected_nodes, parent);
+						let insert_index = Self::get_calculated_insert_index(self.metadata(), &child_selected_nodes, parent);
 
 						responses.add(NodeGraphMessage::SelectedNodesSet { nodes: child_selected_nodes.0 });
 
-						new_folders.push(DocumentMessageHandler::group_layers(responses, insert_index, parent, group_folder_type, &mut self.network_interface));
+						new_folders.push(Self::group_layers(responses, insert_index, parent, group_folder_type, &mut self.network_interface));
 					}
 
 					responses.add(NodeGraphMessage::SelectedNodesSet { nodes: new_folders });
@@ -1830,7 +1830,7 @@ impl DocumentMessageHandler {
 	}
 
 	pub fn deserialize_document(serialized_content: &str) -> Result<Self, EditorError> {
-		let document_message_handler = serde_json::from_str::<DocumentMessageHandler>(serialized_content)
+		let document_message_handler = serde_json::from_str::<Self>(serialized_content)
 			.or_else(|e| {
 				log::warn!("Failed to directly load document with the following error: {e}. Trying old DocumentMessageHandler.");
 				// TODO: Eventually remove this document upgrade code
@@ -1869,7 +1869,7 @@ impl DocumentMessageHandler {
 					pub snapping_state: SnappingState,
 				}
 
-				serde_json::from_str::<OldDocumentMessageHandler>(serialized_content).map(|old_message_handler| DocumentMessageHandler {
+				serde_json::from_str::<OldDocumentMessageHandler>(serialized_content).map(|old_message_handler| Self {
 					network_interface: NodeNetworkInterface::from_old_network(old_message_handler.network),
 					collapsed: old_message_handler.collapsed,
 					commit_hash: old_message_handler.commit_hash,

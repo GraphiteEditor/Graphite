@@ -26,7 +26,7 @@ impl Aabb {
 	}
 
 	pub(crate) const fn new(left: f64, top: f64, right: f64, bottom: f64) -> Self {
-		Aabb {
+		Self {
 			min: DVec2::new(left, top),
 			max: DVec2::new(right, bottom),
 		}

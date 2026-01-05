@@ -54,7 +54,7 @@ impl AlphaBlending {
 	pub fn lerp(&self, other: &Self, t: f32) -> Self {
 		let lerp = |a: f32, b: f32, t: f32| a + (b - a) * t;
 
-		AlphaBlending {
+		Self {
 			opacity: lerp(self.opacity, other.opacity, t),
 			fill: lerp(self.fill, other.fill, t),
 			blend_mode: if t < 0.5 { self.blend_mode } else { other.blend_mode },
@@ -118,7 +118,7 @@ pub enum BlendMode {
 
 impl BlendMode {
 	/// All standard blend modes ordered by group.
-	pub fn list() -> [&'static [BlendMode]; 6] {
+	pub fn list() -> [&'static [Self]; 6] {
 		use BlendMode::*;
 		[
 			// Normal group
@@ -137,7 +137,7 @@ impl BlendMode {
 	}
 
 	/// The subset of [`BlendMode::list()`] that is supported by SVG.
-	pub fn list_svg_subset() -> [&'static [BlendMode]; 6] {
+	pub fn list_svg_subset() -> [&'static [Self]; 6] {
 		use BlendMode::*;
 		[
 			// Normal group
@@ -168,27 +168,27 @@ impl BlendMode {
 	pub fn to_svg_style_name(&self) -> Option<&'static str> {
 		match self {
 			// Normal group
-			BlendMode::Normal => Some("normal"),
+			Self::Normal => Some("normal"),
 			// Darken group
-			BlendMode::Darken => Some("darken"),
-			BlendMode::Multiply => Some("multiply"),
-			BlendMode::ColorBurn => Some("color-burn"),
+			Self::Darken => Some("darken"),
+			Self::Multiply => Some("multiply"),
+			Self::ColorBurn => Some("color-burn"),
 			// Lighten group
-			BlendMode::Lighten => Some("lighten"),
-			BlendMode::Screen => Some("screen"),
-			BlendMode::ColorDodge => Some("color-dodge"),
+			Self::Lighten => Some("lighten"),
+			Self::Screen => Some("screen"),
+			Self::ColorDodge => Some("color-dodge"),
 			// Contrast group
-			BlendMode::Overlay => Some("overlay"),
-			BlendMode::SoftLight => Some("soft-light"),
-			BlendMode::HardLight => Some("hard-light"),
+			Self::Overlay => Some("overlay"),
+			Self::SoftLight => Some("soft-light"),
+			Self::HardLight => Some("hard-light"),
 			// Inversion group
-			BlendMode::Difference => Some("difference"),
-			BlendMode::Exclusion => Some("exclusion"),
+			Self::Difference => Some("difference"),
+			Self::Exclusion => Some("exclusion"),
 			// Component group
-			BlendMode::Hue => Some("hue"),
-			BlendMode::Saturation => Some("saturation"),
-			BlendMode::Color => Some("color"),
-			BlendMode::Luminosity => Some("luminosity"),
+			Self::Hue => Some("hue"),
+			Self::Saturation => Some("saturation"),
+			Self::Color => Some("color"),
+			Self::Luminosity => Some("luminosity"),
 			_ => None,
 		}
 	}
@@ -210,41 +210,41 @@ impl Display for BlendMode {
 	fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
 		match self {
 			// Normal group
-			BlendMode::Normal => write!(f, "Normal"),
+			Self::Normal => write!(f, "Normal"),
 			// Darken group
-			BlendMode::Darken => write!(f, "Darken"),
-			BlendMode::Multiply => write!(f, "Multiply"),
-			BlendMode::ColorBurn => write!(f, "Color Burn"),
-			BlendMode::LinearBurn => write!(f, "Linear Burn"),
-			BlendMode::DarkerColor => write!(f, "Darker Color"),
+			Self::Darken => write!(f, "Darken"),
+			Self::Multiply => write!(f, "Multiply"),
+			Self::ColorBurn => write!(f, "Color Burn"),
+			Self::LinearBurn => write!(f, "Linear Burn"),
+			Self::DarkerColor => write!(f, "Darker Color"),
 			// Lighten group
-			BlendMode::Lighten => write!(f, "Lighten"),
-			BlendMode::Screen => write!(f, "Screen"),
-			BlendMode::ColorDodge => write!(f, "Color Dodge"),
-			BlendMode::LinearDodge => write!(f, "Linear Dodge"),
-			BlendMode::LighterColor => write!(f, "Lighter Color"),
+			Self::Lighten => write!(f, "Lighten"),
+			Self::Screen => write!(f, "Screen"),
+			Self::ColorDodge => write!(f, "Color Dodge"),
+			Self::LinearDodge => write!(f, "Linear Dodge"),
+			Self::LighterColor => write!(f, "Lighter Color"),
 			// Contrast group
-			BlendMode::Overlay => write!(f, "Overlay"),
-			BlendMode::SoftLight => write!(f, "Soft Light"),
-			BlendMode::HardLight => write!(f, "Hard Light"),
-			BlendMode::VividLight => write!(f, "Vivid Light"),
-			BlendMode::LinearLight => write!(f, "Linear Light"),
-			BlendMode::PinLight => write!(f, "Pin Light"),
-			BlendMode::HardMix => write!(f, "Hard Mix"),
+			Self::Overlay => write!(f, "Overlay"),
+			Self::SoftLight => write!(f, "Soft Light"),
+			Self::HardLight => write!(f, "Hard Light"),
+			Self::VividLight => write!(f, "Vivid Light"),
+			Self::LinearLight => write!(f, "Linear Light"),
+			Self::PinLight => write!(f, "Pin Light"),
+			Self::HardMix => write!(f, "Hard Mix"),
 			// Inversion group
-			BlendMode::Difference => write!(f, "Difference"),
-			BlendMode::Exclusion => write!(f, "Exclusion"),
-			BlendMode::Subtract => write!(f, "Subtract"),
-			BlendMode::Divide => write!(f, "Divide"),
+			Self::Difference => write!(f, "Difference"),
+			Self::Exclusion => write!(f, "Exclusion"),
+			Self::Subtract => write!(f, "Subtract"),
+			Self::Divide => write!(f, "Divide"),
 			// Component group
-			BlendMode::Hue => write!(f, "Hue"),
-			BlendMode::Saturation => write!(f, "Saturation"),
-			BlendMode::Color => write!(f, "Color"),
-			BlendMode::Luminosity => write!(f, "Luminosity"),
+			Self::Hue => write!(f, "Hue"),
+			Self::Saturation => write!(f, "Saturation"),
+			Self::Color => write!(f, "Color"),
+			Self::Luminosity => write!(f, "Luminosity"),
 			// Other utility blend modes (hidden from the normal list)
-			BlendMode::Erase => write!(f, "Erase"),
-			BlendMode::Restore => write!(f, "Restore"),
-			BlendMode::MultiplyAlpha => write!(f, "Multiply Alpha"),
+			Self::Erase => write!(f, "Erase"),
+			Self::Restore => write!(f, "Restore"),
+			Self::MultiplyAlpha => write!(f, "Multiply Alpha"),
 		}
 	}
 }

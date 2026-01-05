@@ -97,9 +97,9 @@ impl Fill {
 	/// Find if fill can be represented with only opaque colors
 	pub fn is_opaque(&self) -> bool {
 		match self {
-			Fill::Solid(color) => color.is_opaque(),
-			Fill::Gradient(gradient) => gradient.stops.iter().all(|(_, color)| color.is_opaque()),
-			Fill::None => true,
+			Self::Solid(color) => color.is_opaque(),
+			Self::Gradient(gradient) => gradient.stops.iter().all(|(_, color)| color.is_opaque()),
+			Self::None => true,
 		}
 	}
 
@@ -110,26 +110,26 @@ impl Fill {
 }
 
 impl From<Color> for Fill {
-	fn from(color: Color) -> Fill {
-		Fill::Solid(color)
+	fn from(color: Color) -> Self {
+		Self::Solid(color)
 	}
 }
 
 impl From<Option<Color>> for Fill {
-	fn from(color: Option<Color>) -> Fill {
-		Fill::solid_or_none(color)
+	fn from(color: Option<Color>) -> Self {
+		Self::solid_or_none(color)
 	}
 }
 
 impl From<Table<Color>> for Fill {
-	fn from(color: Table<Color>) -> Fill {
-		Fill::solid_or_none(color.into())
+	fn from(color: Table<Color>) -> Self {
+		Self::solid_or_none(color.into())
 	}
 }
 
 impl From<Table<GradientStops>> for Fill {
-	fn from(gradient: Table<GradientStops>) -> Fill {
-		Fill::Gradient(Gradient {
+	fn from(gradient: Table<GradientStops>) -> Self {
+		Self::Gradient(Gradient {
 			stops: gradient.iter().nth(0).map(|row| row.element.clone()).unwrap_or_default(),
 			..Default::default()
 		})
@@ -137,8 +137,8 @@ impl From<Table<GradientStops>> for Fill {
 }
 
 impl From<Gradient> for Fill {
-	fn from(gradient: Gradient) -> Fill {
-		Fill::Gradient(gradient)
+	fn from(gradient: Gradient) -> Self {
+		Self::Gradient(gradient)
 	}
 }
 
@@ -187,9 +187,9 @@ impl FillChoice {
 impl From<Fill> for FillChoice {
 	fn from(fill: Fill) -> Self {
 		match fill {
-			Fill::None => FillChoice::None,
-			Fill::Solid(color) => FillChoice::Solid(color),
-			Fill::Gradient(gradient) => FillChoice::Gradient(gradient.stops),
+			Fill::None => Self::None,
+			Fill::Solid(color) => Self::Solid(color),
+			Fill::Gradient(gradient) => Self::Gradient(gradient.stops),
 		}
 	}
 }
@@ -217,9 +217,9 @@ pub enum StrokeCap {
 impl StrokeCap {
 	pub fn svg_name(&self) -> &'static str {
 		match self {
-			StrokeCap::Butt => "butt",
-			StrokeCap::Round => "round",
-			StrokeCap::Square => "square",
+			Self::Butt => "butt",
+			Self::Round => "round",
+			Self::Square => "square",
 		}
 	}
 }
@@ -237,9 +237,9 @@ pub enum StrokeJoin {
 impl StrokeJoin {
 	pub fn svg_name(&self) -> &'static str {
 		match self {
-			StrokeJoin::Bevel => "bevel",
-			StrokeJoin::Miter => "miter",
-			StrokeJoin::Round => "round",
+			Self::Bevel => "bevel",
+			Self::Miter => "miter",
+			Self::Round => "round",
 		}
 	}
 }

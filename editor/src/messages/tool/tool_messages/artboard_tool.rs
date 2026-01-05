@@ -241,7 +241,7 @@ impl Fsm for ArtboardToolFsmState {
 		match (self, event) {
 			(state, ArtboardToolMessage::Overlays { context: mut overlay_context }) => {
 				let display_transform_cage = overlay_context.visibility_settings.transform_cage();
-				if display_transform_cage && state != ArtboardToolFsmState::Drawing {
+				if display_transform_cage && state != Self::Drawing {
 					if let Some(bounds) = tool_data.selected_artboard.and_then(|layer| document.metadata().bounding_box_document(layer)) {
 						let bounding_box_manager = tool_data.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
 						bounding_box_manager.bounds = bounds;
@@ -260,7 +260,7 @@ impl Fsm for ArtboardToolFsmState {
 				// TODO: Don't use `Key::Alt` directly, instead take it as a variable from the input mappings list like in all other places
 				let alt_pressed = input.keyboard.get(Key::Alt as usize);
 				let quick_measurement_enabled = overlay_context.visibility_settings.quick_measurement();
-				let not_resizing = !matches!(state, ArtboardToolFsmState::ResizingBounds);
+				let not_resizing = !matches!(state, Self::ResizingBounds);
 
 				if quick_measurement_enabled && not_resizing && alt_pressed {
 					// Get the selected artboard bounds
@@ -293,7 +293,7 @@ impl Fsm for ArtboardToolFsmState {
 
 				self
 			}
-			(ArtboardToolFsmState::Ready { .. }, ArtboardToolMessage::PointerDown) => {
+			(Self::Ready { .. }, ArtboardToolMessage::PointerDown) => {
 				let to_viewport = document.metadata().document_to_viewport;
 				let to_document = to_viewport.inverse();
 				tool_data.drag_start = to_document.transform_point2(input.mouse.position);
@@ -302,19 +302,19 @@ impl Fsm for ArtboardToolFsmState {
 				let state = if let Some(selected_edges) = tool_data.check_dragging_bounds(input.mouse.position) {
 					tool_data.start_resizing(selected_edges, document, input);
 					tool_data.get_snap_candidates(document, input);
-					ArtboardToolFsmState::ResizingBounds
+					Self::ResizingBounds
 				} else if tool_data.select_artboard(document, input, viewport, responses) {
 					tool_data.get_snap_candidates(document, input);
-					ArtboardToolFsmState::Dragging
+					Self::Dragging
 				} else {
 					tool_data.draw.start(document, input, viewport);
 
-					ArtboardToolFsmState::Drawing
+					Self::Drawing
 				};
 				responses.add(DocumentMessage::StartTransaction);
 				state
 			}
-			(ArtboardToolFsmState::ResizingBounds, ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }) => {
+			(Self::ResizingBounds, ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }) => {
 				let from_center = input.keyboard.get(center as usize);
 				let constrain_square = input.keyboard.get(constrain_axis_or_aspect as usize);
 				tool_data.resize_artboard(responses, document, input, viewport, from_center, constrain_square);
@@ -326,9 +326,9 @@ impl Fsm for ArtboardToolFsmState {
 				];
 				tool_data.auto_panning.setup_by_mouse_position(input, viewport, &messages, responses);
 
-				ArtboardToolFsmState::ResizingBounds
+				Self::ResizingBounds
 			}
-			(ArtboardToolFsmState::Dragging, ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }) => {
+			(Self::Dragging, ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }) => {
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
 					let axis_align = input.keyboard.get(constrain_axis_or_aspect as usize);
 
@@ -343,7 +343,7 @@ impl Fsm for ArtboardToolFsmState {
 
 					if tool_data.selected_artboard.unwrap() == LayerNodeIdentifier::ROOT_PARENT {
 						log::error!("Selected artboard cannot be ROOT_PARENT");
-						return ArtboardToolFsmState::Ready { hovered };
+						return Self::Ready { hovered };
 					}
 					responses.add(GraphOperationMessage::ResizeArtboard {
 						layer: tool_data.selected_artboard.unwrap(),
@@ -365,9 +365,9 @@ impl Fsm for ArtboardToolFsmState {
 					];
 					tool_data.auto_panning.setup_by_mouse_position(input, viewport, &messages, responses);
 				}
-				ArtboardToolFsmState::Dragging
+				Self::Dragging
 			}
-			(ArtboardToolFsmState::Drawing, ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }) => {
+			(Self::Drawing, ArtboardToolMessage::PointerMove { constrain_axis_or_aspect, center }) => {
 				// The draw.calculate_points_ignore_layer uses this value to avoid snapping to itself.
 				tool_data.draw.layer = tool_data.selected_artboard;
 				let [start, end] = tool_data.draw.calculate_points_ignore_layer(document, input, viewport, center, constrain_axis_or_aspect, true);
@@ -406,10 +406,10 @@ impl Fsm for ArtboardToolFsmState {
 				];
 				tool_data.auto_panning.setup_by_mouse_position(input, viewport, &messages, responses);
 
-				ArtboardToolFsmState::Drawing
+				Self::Drawing
 			}
 
-			(ArtboardToolFsmState::Ready { .. }, ArtboardToolMessage::PointerMove { .. }) => {
+			(Self::Ready { .. }, ArtboardToolMessage::PointerMove { .. }) => {
 				let mut cursor = tool_data
 					.bounding_box_manager
 					.as_ref()
@@ -428,25 +428,25 @@ impl Fsm for ArtboardToolFsmState {
 					responses.add(FrontendMessage::UpdateMouseCursor { cursor });
 				}
 
-				ArtboardToolFsmState::Ready { hovered }
+				Self::Ready { hovered }
 			}
-			(ArtboardToolFsmState::ResizingBounds, ArtboardToolMessage::PointerOutsideViewport { .. }) => {
+			(Self::ResizingBounds, ArtboardToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning
 				let _ = tool_data.auto_panning.shift_viewport(input, viewport, responses);
 
-				ArtboardToolFsmState::ResizingBounds
+				Self::ResizingBounds
 			}
-			(ArtboardToolFsmState::Dragging, ArtboardToolMessage::PointerOutsideViewport { .. }) => {
+			(Self::Dragging, ArtboardToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning
 				tool_data.auto_panning.shift_viewport(input, viewport, responses);
 
-				ArtboardToolFsmState::Dragging
+				Self::Dragging
 			}
-			(ArtboardToolFsmState::Drawing, ArtboardToolMessage::PointerOutsideViewport { .. }) => {
+			(Self::Drawing, ArtboardToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning
 				tool_data.auto_panning.shift_viewport(input, viewport, responses);
 
-				ArtboardToolFsmState::Drawing
+				Self::Drawing
 			}
 			(state, ArtboardToolMessage::PointerOutsideViewport { constrain_axis_or_aspect, center }) => {
 				// Auto-panning
@@ -458,7 +458,7 @@ impl Fsm for ArtboardToolFsmState {
 
 				state
 			}
-			(ArtboardToolFsmState::Drawing | ArtboardToolFsmState::ResizingBounds | ArtboardToolFsmState::Dragging, ArtboardToolMessage::PointerUp) => {
+			(Self::Drawing | Self::ResizingBounds | Self::Dragging, ArtboardToolMessage::PointerUp) => {
 				responses.add(DocumentMessage::EndTransaction);
 
 				tool_data.draw.cleanup(responses);
@@ -469,7 +469,7 @@ impl Fsm for ArtboardToolFsmState {
 
 				responses.add(OverlaysMessage::Draw);
 
-				ArtboardToolFsmState::Ready { hovered }
+				Self::Ready { hovered }
 			}
 			(_, ArtboardToolMessage::UpdateSelectedArtboard) => {
 				tool_data.selected_artboard = document
@@ -483,7 +483,7 @@ impl Fsm for ArtboardToolFsmState {
 				tool_data.selected_artboard.take();
 				responses.add(DocumentMessage::DeleteSelectedLayers);
 
-				ArtboardToolFsmState::Ready { hovered }
+				Self::Ready { hovered }
 			}
 			(
 				_,
@@ -495,14 +495,14 @@ impl Fsm for ArtboardToolFsmState {
 				},
 			) => {
 				let Some(bounds) = &mut tool_data.bounding_box_manager else {
-					return ArtboardToolFsmState::Ready { hovered };
+					return Self::Ready { hovered };
 				};
 				let Some(selected_artboard) = tool_data.selected_artboard else {
-					return ArtboardToolFsmState::Ready { hovered };
+					return Self::Ready { hovered };
 				};
 				if selected_artboard == LayerNodeIdentifier::ROOT_PARENT {
 					log::error!("Selected artboard cannot be ROOT_PARENT");
-					return ArtboardToolFsmState::Ready { hovered };
+					return Self::Ready { hovered };
 				}
 
 				let resize = input.keyboard.key(resize);
@@ -519,7 +519,7 @@ impl Fsm for ArtboardToolFsmState {
 						dimensions: (existing_bottom_right - existing_top_left).round().as_ivec2(),
 					});
 
-					return ArtboardToolFsmState::Ready { hovered };
+					return Self::Ready { hovered };
 				}
 
 				// Swap and negate coordinates as needed to match the resize direction that's closest to the current tilt angle
@@ -566,15 +566,15 @@ impl Fsm for ArtboardToolFsmState {
 					dimensions: new.transform_vector2(existing_bottom_right - existing_top_left).round().as_ivec2(),
 				});
 
-				ArtboardToolFsmState::Ready { hovered }
+				Self::Ready { hovered }
 			}
-			(ArtboardToolFsmState::Dragging | ArtboardToolFsmState::Drawing | ArtboardToolFsmState::ResizingBounds, ArtboardToolMessage::Abort) => {
+			(Self::Dragging | Self::Drawing | Self::ResizingBounds, ArtboardToolMessage::Abort) => {
 				responses.add(DocumentMessage::AbortTransaction);
 
 				tool_data.draw.cleanup(responses);
 				responses.add(OverlaysMessage::Draw);
 
-				ArtboardToolFsmState::Ready { hovered }
+				Self::Ready { hovered }
 			}
 			_ => self,
 		}
@@ -582,20 +582,20 @@ impl Fsm for ArtboardToolFsmState {
 
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
-			ArtboardToolFsmState::Ready { .. } => HintData(vec![
+			Self::Ready { .. } => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Draw Artboard")]),
 				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Move Artboard")]),
 				HintGroup(vec![HintInfo::keys([Key::Backspace], "Delete Artboard")]),
 			]),
-			ArtboardToolFsmState::Dragging => HintData(vec![
+			Self::Dragging => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 				HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain to Axis")]),
 			]),
-			ArtboardToolFsmState::Drawing => HintData(vec![
+			Self::Drawing => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 				HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Square"), HintInfo::keys([Key::Alt], "From Center")]),
 			]),
-			ArtboardToolFsmState::ResizingBounds => HintData(vec![
+			Self::ResizingBounds => HintData(vec![
 				HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 				HintGroup(vec![HintInfo::keys([Key::Shift], "Preserve Aspect Ratio"), HintInfo::keys([Key::Alt], "From Center")]),
 			]),

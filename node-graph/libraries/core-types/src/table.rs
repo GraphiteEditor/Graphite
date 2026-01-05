@@ -54,7 +54,7 @@ impl<T> Table<T> {
 		self.source_node_id.push(row.source_node_id);
 	}
 
-	pub fn extend(&mut self, table: Table<T>) {
+	pub fn extend(&mut self, table: Self) {
 		self.element.extend(table.element);
 		self.transform.extend(table.transform);
 		self.alpha_blending.extend(table.alpha_blending);

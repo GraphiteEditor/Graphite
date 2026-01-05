@@ -670,10 +670,7 @@ impl FoundSubpath {
 	}
 
 	pub fn is_closed(&self) -> bool {
-		match (self.edges.first(), self.edges.last()) {
-			(Some(first), Some(last)) => first.start == last.end,
-			_ => false,
-		}
+		self.edges.first() == self.edges.last()
 	}
 
 	pub fn from_segment(segment: HalfEdge) -> Self {

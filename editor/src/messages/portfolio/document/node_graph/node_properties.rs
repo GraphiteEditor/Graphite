@@ -2144,7 +2144,7 @@ pub struct ParameterWidgetsInfo<'a> {
 }
 
 impl<'a> ParameterWidgetsInfo<'a> {
-	pub fn new(node_id: NodeId, index: usize, blank_assist: bool, context: &'a mut NodePropertiesContext) -> ParameterWidgetsInfo<'a> {
+	pub fn new(node_id: NodeId, index: usize, blank_assist: bool, context: &'a mut NodePropertiesContext) -> Self {
 		let (name, description) = context.network_interface.displayed_input_name_and_description(&node_id, index, context.selection_network_path);
 		let input_type = context
 			.network_interface

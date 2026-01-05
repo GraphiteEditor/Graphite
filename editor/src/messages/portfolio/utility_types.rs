@@ -67,10 +67,10 @@ impl FontCatalogStyle {
 		format!("{named_weight}{maybe_italic} ({weight})")
 	}
 
-	pub fn from_named_style(named_style: &str, url: impl Into<String>) -> FontCatalogStyle {
+	pub fn from_named_style(named_style: &str, url: impl Into<String>) -> Self {
 		let weight = named_style.split_terminator(['(', ')']).next_back().and_then(|x| x.parse::<u32>().ok()).unwrap_or(400);
 		let italic = named_style.contains("Italic (");
-		FontCatalogStyle { weight, italic, url: url.into() }
+		Self { weight, italic, url: url.into() }
 	}
 
 	/// Get the URL for the stylesheet for loading a font preview for this style of the given family name, subsetted to only the letters in the family name.
@@ -94,9 +94,9 @@ pub enum Platform {
 impl Platform {
 	pub fn as_keyboard_platform_layout(&self) -> KeyboardPlatformLayout {
 		match self {
-			Platform::Mac => KeyboardPlatformLayout::Mac,
-			Platform::Windows | Platform::Linux => KeyboardPlatformLayout::Standard,
-			Platform::Unknown => {
+			Self::Mac => KeyboardPlatformLayout::Mac,
+			Self::Windows | Self::Linux => KeyboardPlatformLayout::Standard,
+			Self::Unknown => {
 				warn!("The platform has not been set, remember to send `GlobalsMessage::SetPlatform` during editor initialization.");
 				KeyboardPlatformLayout::Standard
 			}
@@ -126,11 +126,11 @@ pub enum PanelType {
 impl From<String> for PanelType {
 	fn from(value: String) -> Self {
 		match value.as_str() {
-			"Document" => PanelType::Document,
-			"Welcome" => PanelType::Welcome,
-			"Layers" => PanelType::Layers,
-			"Properties" => PanelType::Properties,
-			"Data" => PanelType::DataPanel,
+			"Document" => Self::Document,
+			"Welcome" => Self::Welcome,
+			"Layers" => Self::Layers,
+			"Properties" => Self::Properties,
+			"Data" => Self::DataPanel,
 			_ => panic!("Unknown panel type: {value}"),
 		}
 	}

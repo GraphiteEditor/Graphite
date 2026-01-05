@@ -19,21 +19,21 @@ pub trait Storage: __private::Sealed + Clone + Debug + 'static {
 #[derive(Clone, Debug, PartialEq, Hash, Default)]
 pub struct Raster<T>
 where
-	Raster<T>: Storage,
+	Self: Storage,
 {
 	storage: T,
 }
 
 unsafe impl<T> dyn_any::StaticType for Raster<T>
 where
-	Raster<T>: Storage,
+	Self: Storage,
 {
-	type Static = Raster<T>;
+	type Static = Self;
 }
 
 impl<T> Raster<T>
 where
-	Raster<T>: Storage,
+	Self: Storage,
 {
 	pub fn new(t: T) -> Self {
 		Self { storage: t }
@@ -42,7 +42,7 @@ where
 
 impl<T> Deref for Raster<T>
 where
-	Raster<T>: Storage,
+	Self: Storage,
 {
 	type Target = T;
 
@@ -53,7 +53,7 @@ where
 
 impl<T> DerefMut for Raster<T>
 where
-	Raster<T>: Storage,
+	Self: Storage,
 {
 	fn deref_mut(&mut self) -> &mut Self::Target {
 		&mut self.storage
@@ -114,7 +114,7 @@ mod cpu {
 		where
 			D: serde::Deserializer<'de>,
 		{
-			Ok(Raster::new_cpu(Image::deserialize(deserializer)?))
+			Ok(Self::new_cpu(Image::deserialize(deserializer)?))
 		}
 	}
 
@@ -200,7 +200,7 @@ mod gpu_common {
 
 impl<T> BoundingBox for Raster<T>
 where
-	Raster<T>: Storage,
+	Self: Storage,
 {
 	fn bounding_box(&self, transform: DAffine2, _include_stroke: bool) -> RenderBoundingBox {
 		if self.is_empty() || transform.matrix2.determinant() == 0. {

@@ -135,8 +135,8 @@ impl RasterGpuToRasterCpuConverter {
 }
 
 /// Passthrough conversion for GPU tables - no conversion needed
-impl<'i> Convert<Table<Raster<GPU>>, &'i WgpuExecutor> for Table<Raster<GPU>> {
-	async fn convert(self, _: Footprint, _converter: &'i WgpuExecutor) -> Table<Raster<GPU>> {
+impl<'i> Convert<Self, &'i WgpuExecutor> for Table<Raster<GPU>> {
+	async fn convert(self, _: Footprint, _converter: &'i WgpuExecutor) -> Self {
 		self
 	}
 }
@@ -179,8 +179,8 @@ impl<'i> Convert<Raster<GPU>, &'i WgpuExecutor> for Raster<CPU> {
 }
 
 /// Passthrough conversion for CPU tables - no conversion needed
-impl<'i> Convert<Table<Raster<CPU>>, &'i WgpuExecutor> for Table<Raster<CPU>> {
-	async fn convert(self, _: Footprint, _converter: &'i WgpuExecutor) -> Table<Raster<CPU>> {
+impl<'i> Convert<Self, &'i WgpuExecutor> for Table<Raster<CPU>> {
+	async fn convert(self, _: Footprint, _converter: &'i WgpuExecutor) -> Self {
 		self
 	}
 }

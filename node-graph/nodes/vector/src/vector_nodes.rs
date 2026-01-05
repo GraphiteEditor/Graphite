@@ -686,10 +686,10 @@ pub mod extrude_algorithms {
 		impl Found {
 			fn update(&mut self, value: f64) {
 				*self = match (*self, value > 0.) {
-					(Found::None, true) => Found::Positive,
-					(Found::None, false) => Found::Negative,
-					(Found::Positive, true) | (Found::Negative, false) => Found::Both,
-					_ => Found::Invalid,
+					(Self::None, true) => Self::Positive,
+					(Self::None, false) => Self::Negative,
+					(Self::Positive, true) | (Self::Negative, false) => Self::Both,
+					_ => Self::Invalid,
 				};
 			}
 		}

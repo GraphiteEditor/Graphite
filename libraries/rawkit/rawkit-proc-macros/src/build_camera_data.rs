@@ -15,17 +15,17 @@ enum CustomValue {
 impl ToTokens for CustomValue {
 	fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
 		match self {
-			CustomValue::String(x) => x.to_tokens(tokens),
-			CustomValue::Integer(x) => {
+			Self::String(x) => x.to_tokens(tokens),
+			Self::Integer(x) => {
 				let x: proc_macro2::TokenStream = format!("{:?}", x).parse().unwrap();
 				x.to_tokens(tokens)
 			}
-			CustomValue::Float(x) => {
+			Self::Float(x) => {
 				let x: proc_macro2::TokenStream = format!("{:?}", x).parse().unwrap();
 				x.to_tokens(tokens)
 			}
-			CustomValue::Boolean(x) => x.to_tokens(tokens),
-			CustomValue::Array(x) => quote! { [ #( #x ),* ] }.to_tokens(tokens),
+			Self::Boolean(x) => x.to_tokens(tokens),
+			Self::Array(x) => quote! { [ #( #x ),* ] }.to_tokens(tokens),
 		}
 	}
 }
@@ -33,11 +33,11 @@ impl ToTokens for CustomValue {
 impl From<Value> for CustomValue {
 	fn from(value: Value) -> Self {
 		match value {
-			Value::String(x) => CustomValue::String(x),
-			Value::Integer(x) => CustomValue::Integer(x),
-			Value::Float(x) => CustomValue::Float(x),
-			Value::Boolean(x) => CustomValue::Boolean(x),
-			Value::Array(x) => CustomValue::Array(x.into_iter().map(|x| x.into()).collect()),
+			Value::String(x) => Self::String(x),
+			Value::Integer(x) => Self::Integer(x),
+			Value::Float(x) => Self::Float(x),
+			Value::Boolean(x) => Self::Boolean(x),
+			Value::Array(x) => Self::Array(x.into_iter().map(|x| x.into()).collect()),
 			_ => panic!("Unsupported data type"),
 		}
 	}

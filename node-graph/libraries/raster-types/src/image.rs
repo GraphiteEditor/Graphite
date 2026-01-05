@@ -136,7 +136,7 @@ impl Image<Color> {
 	/// Generate Image from some frontend image data (the canvas pixels as u8s in a flat array)
 	pub fn from_image_data(image_data: &[u8], width: u32, height: u32) -> Self {
 		let data = image_data.chunks_exact(4).map(|v| Color::from_rgba8_srgb(v[0], v[1], v[2], v[3])).collect();
-		Image {
+		Self {
 			width,
 			height,
 			data,
@@ -162,7 +162,7 @@ where
 {
 	/// Flattens each channel cast to a u8
 	pub fn to_flat_u8(&self) -> (Vec<u8>, u32, u32) {
-		let Image { width, height, data, .. } = self;
+		let Self { width, height, data, .. } = self;
 		assert_eq!(data.len(), *width as usize * *height as usize);
 
 		// Cache the last sRGB value we computed, speeds up fills.
@@ -230,20 +230,20 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 	}
 	impl<'de> serde::Deserialize<'de> for RasterFrame {
 		fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-			Ok(RasterFrame::ImageFrame(Table::new_from_element(Image::deserialize(deserializer)?)))
+			Ok(Self::ImageFrame(Table::new_from_element(Image::deserialize(deserializer)?)))
 		}
 	}
 	impl serde::Serialize for RasterFrame {
 		fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
 			match self {
-				RasterFrame::ImageFrame(table) => table.serialize(serializer),
+				Self::ImageFrame(table) => table.serialize(serializer),
 			}
 		}
 	}
 
 	#[derive(Clone, Debug, Hash, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 	pub enum GraphicElement {
-		GraphicGroup(Table<GraphicElement>),
+		GraphicGroup(Table<Self>),
 		RasterFrame(RasterFrame),
 	}
 
@@ -253,7 +253,7 @@ pub fn migrate_image_frame<'de, D: serde::Deserializer<'de>>(deserializer: D) ->
 	}
 	impl From<ImageFrame<Color>> for GraphicElement {
 		fn from(image_frame: ImageFrame<Color>) -> Self {
-			GraphicElement::RasterFrame(RasterFrame::ImageFrame(Table::new_from_element(image_frame.image)))
+			Self::RasterFrame(RasterFrame::ImageFrame(Table::new_from_element(image_frame.image)))
 		}
 	}
 	impl From<GraphicElement> for ImageFrame<Color> {
@@ -383,13 +383,13 @@ pub fn migrate_image_frame_row<'de, D: serde::Deserializer<'de>>(deserializer: D
 	}
 	impl<'de> serde::Deserialize<'de> for RasterFrame {
 		fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
-			Ok(RasterFrame::ImageFrame(Table::new_from_element(Image::deserialize(deserializer)?)))
+			Ok(Self::ImageFrame(Table::new_from_element(Image::deserialize(deserializer)?)))
 		}
 	}
 	impl serde::Serialize for RasterFrame {
 		fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
 			match self {
-				RasterFrame::ImageFrame(table) => table.serialize(serializer),
+				Self::ImageFrame(table) => table.serialize(serializer),
 			}
 		}
 	}
@@ -397,7 +397,7 @@ pub fn migrate_image_frame_row<'de, D: serde::Deserializer<'de>>(deserializer: D
 	#[derive(Clone, Debug, Hash, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 	pub enum GraphicElement {
 		/// Equivalent to the SVG <g> tag: https://developer.mozilla.org/en-US/docs/Web/SVG/Element/g
-		GraphicGroup(Table<GraphicElement>),
+		GraphicGroup(Table<Self>),
 		RasterFrame(RasterFrame),
 	}
 
@@ -407,7 +407,7 @@ pub fn migrate_image_frame_row<'de, D: serde::Deserializer<'de>>(deserializer: D
 	}
 	impl From<ImageFrame<Color>> for GraphicElement {
 		fn from(image_frame: ImageFrame<Color>) -> Self {
-			GraphicElement::RasterFrame(RasterFrame::ImageFrame(Table::new_from_element(image_frame.image)))
+			Self::RasterFrame(RasterFrame::ImageFrame(Table::new_from_element(image_frame.image)))
 		}
 	}
 	impl From<GraphicElement> for ImageFrame<Color> {
@@ -494,8 +494,8 @@ impl<P: Copy + Pixel> Image<P> {
 	}
 }
 
-impl<P: Pixel> AsRef<Image<P>> for Image<P> {
-	fn as_ref(&self) -> &Image<P> {
+impl<P: Pixel> AsRef<Self> for Image<P> {
+	fn as_ref(&self) -> &Self {
 		self
 	}
 }

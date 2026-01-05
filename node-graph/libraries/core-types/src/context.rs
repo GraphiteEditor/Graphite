@@ -430,7 +430,7 @@ impl Hash for OwnedContextImpl {
 impl OwnedContextImpl {
 	#[track_caller]
 	pub fn from<T: ExtractAll + CloneVarArgs>(value: T) -> Self {
-		OwnedContextImpl::from_flags(value, ContextFeatures::all())
+		Self::from_flags(value, ContextFeatures::all())
 	}
 
 	#[track_caller]
@@ -448,7 +448,7 @@ impl OwnedContextImpl {
 			})
 			.flatten();
 
-		OwnedContextImpl {
+		Self {
 			footprint,
 			varargs: None,
 			parent,
@@ -460,7 +460,7 @@ impl OwnedContextImpl {
 	}
 
 	pub const fn empty() -> Self {
-		OwnedContextImpl {
+		Self {
 			footprint: None,
 			varargs: None,
 			parent: None,

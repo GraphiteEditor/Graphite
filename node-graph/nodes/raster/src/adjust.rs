@@ -3,8 +3,8 @@ use no_std_types::color::Color;
 pub trait Adjust<P> {
 	fn adjust(&mut self, map_fn: impl Fn(&P) -> P);
 }
-impl Adjust<Color> for Color {
-	fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {
+impl Adjust<Self> for Color {
+	fn adjust(&mut self, map_fn: impl Fn(&Self) -> Self) {
 		*self = map_fn(self);
 	}
 }

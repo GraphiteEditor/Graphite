@@ -311,25 +311,25 @@ impl<T: ControlPoints + ParamCurveDeriv> Tangent for T {
 impl Tangent for kurbo::PathSeg {
 	fn tangent_at(&self, t: f64) -> DVec2 {
 		match self {
-			PathSeg::Line(line) => line.tangent_at(t),
-			PathSeg::Quad(quad) => quad.tangent_at(t),
-			PathSeg::Cubic(cubic) => cubic.tangent_at(t),
+			Self::Line(line) => line.tangent_at(t),
+			Self::Quad(quad) => quad.tangent_at(t),
+			Self::Cubic(cubic) => cubic.tangent_at(t),
 		}
 	}
 
 	fn tangent_at_start(&self) -> DVec2 {
 		match self {
-			PathSeg::Line(line) => line.tangent_at_start(),
-			PathSeg::Quad(quad) => quad.tangent_at_start(),
-			PathSeg::Cubic(cubic) => cubic.tangent_at_start(),
+			Self::Line(line) => line.tangent_at_start(),
+			Self::Quad(quad) => quad.tangent_at_start(),
+			Self::Cubic(cubic) => cubic.tangent_at_start(),
 		}
 	}
 
 	fn tangent_at_end(&self) -> DVec2 {
 		match self {
-			PathSeg::Line(line) => line.tangent_at_end(),
-			PathSeg::Quad(quad) => quad.tangent_at_end(),
-			PathSeg::Cubic(cubic) => cubic.tangent_at_end(),
+			Self::Line(line) => line.tangent_at_end(),
+			Self::Quad(quad) => quad.tangent_at_end(),
+			Self::Cubic(cubic) => cubic.tangent_at_end(),
 		}
 	}
 }
@@ -351,15 +351,15 @@ impl ManipulatorPointId {
 	#[track_caller]
 	pub fn get_position<Upstream: 'static>(&self, vector: &Vector<Upstream>) -> Option<DVec2> {
 		match self {
-			ManipulatorPointId::Anchor(id) => vector.point_domain.position_from_id(*id),
-			ManipulatorPointId::PrimaryHandle(id) => vector.segment_from_id(*id).and_then(|bezier| bezier.handle_start()),
-			ManipulatorPointId::EndHandle(id) => vector.segment_from_id(*id).and_then(|bezier| bezier.handle_end()),
+			Self::Anchor(id) => vector.point_domain.position_from_id(*id),
+			Self::PrimaryHandle(id) => vector.segment_from_id(*id).and_then(|bezier| bezier.handle_start()),
+			Self::EndHandle(id) => vector.segment_from_id(*id).and_then(|bezier| bezier.handle_end()),
 		}
 	}
 
 	pub fn get_anchor_position<Upstream: 'static>(&self, vector: &Vector<Upstream>) -> Option<DVec2> {
 		match self {
-			ManipulatorPointId::EndHandle(_) | ManipulatorPointId::PrimaryHandle(_) => self.get_anchor(vector).and_then(|id| vector.point_domain.position_from_id(id)),
+			Self::EndHandle(_) | Self::PrimaryHandle(_) => self.get_anchor(vector).and_then(|id| vector.point_domain.position_from_id(id)),
 			_ => self.get_position(vector),
 		}
 	}
@@ -368,14 +368,14 @@ impl ManipulatorPointId {
 	#[must_use]
 	pub fn get_handle_pair<Upstream: 'static>(self, vector: &Vector<Upstream>) -> Option<[HandleId; 2]> {
 		match self {
-			ManipulatorPointId::Anchor(point) => vector.all_connected(point).take(2).collect::<Vec<_>>().try_into().ok(),
-			ManipulatorPointId::PrimaryHandle(segment) => {
+			Self::Anchor(point) => vector.all_connected(point).take(2).collect::<Vec<_>>().try_into().ok(),
+			Self::PrimaryHandle(segment) => {
 				let point = vector.segment_domain.segment_start_from_id(segment)?;
 				let current = HandleId::primary(segment);
 				let other = vector.segment_domain.all_connected(point).find(|&value| value != current);
 				other.map(|other| [current, other])
 			}
-			ManipulatorPointId::EndHandle(segment) => {
+			Self::EndHandle(segment) => {
 				let point = vector.segment_domain.segment_end_from_id(segment)?;
 				let current = HandleId::end(segment);
 				let other = vector.segment_domain.all_connected(point).find(|&value| value != current);
@@ -389,17 +389,17 @@ impl ManipulatorPointId {
 	/// For a handle it is all the handles connected to its corresponding anchor other than the current handle.
 	pub fn get_all_connected_handles<Upstream: 'static>(self, vector: &Vector<Upstream>) -> Option<Vec<HandleId>> {
 		match self {
-			ManipulatorPointId::Anchor(point) => {
+			Self::Anchor(point) => {
 				let connected = vector.all_connected(point).collect::<Vec<_>>();
 				Some(connected)
 			}
-			ManipulatorPointId::PrimaryHandle(segment) => {
+			Self::PrimaryHandle(segment) => {
 				let point = vector.segment_domain.segment_start_from_id(segment)?;
 				let current = HandleId::primary(segment);
 				let connected = vector.segment_domain.all_connected(point).filter(|&value| value != current).collect::<Vec<_>>();
 				Some(connected)
 			}
-			ManipulatorPointId::EndHandle(segment) => {
+			Self::EndHandle(segment) => {
 				let point = vector.segment_domain.segment_end_from_id(segment)?;
 				let current = HandleId::end(segment);
 				let connected = vector.segment_domain.all_connected(point).filter(|&value| value != current).collect::<Vec<_>>();
@@ -412,9 +412,9 @@ impl ManipulatorPointId {
 	#[must_use]
 	pub fn get_anchor<Upstream: 'static>(self, vector: &Vector<Upstream>) -> Option<PointId> {
 		match self {
-			ManipulatorPointId::Anchor(point) => Some(point),
-			ManipulatorPointId::PrimaryHandle(segment) => vector.segment_start_from_id(segment),
-			ManipulatorPointId::EndHandle(segment) => vector.segment_end_from_id(segment),
+			Self::Anchor(point) => Some(point),
+			Self::PrimaryHandle(segment) => vector.segment_start_from_id(segment),
+			Self::EndHandle(segment) => vector.segment_end_from_id(segment),
 		}
 	}
 
@@ -422,9 +422,9 @@ impl ManipulatorPointId {
 	#[must_use]
 	pub fn as_handle(self) -> Option<HandleId> {
 		match self {
-			ManipulatorPointId::PrimaryHandle(segment) => Some(HandleId::primary(segment)),
-			ManipulatorPointId::EndHandle(segment) => Some(HandleId::end(segment)),
-			ManipulatorPointId::Anchor(_) => None,
+			Self::PrimaryHandle(segment) => Some(HandleId::primary(segment)),
+			Self::EndHandle(segment) => Some(HandleId::end(segment)),
+			Self::Anchor(_) => None,
 		}
 	}
 
@@ -432,14 +432,14 @@ impl ManipulatorPointId {
 	#[must_use]
 	pub fn as_anchor(self) -> Option<PointId> {
 		match self {
-			ManipulatorPointId::Anchor(point) => Some(point),
+			Self::Anchor(point) => Some(point),
 			_ => None,
 		}
 	}
 
 	pub fn get_segment(self) -> Option<SegmentId> {
 		match self {
-			ManipulatorPointId::PrimaryHandle(segment) | ManipulatorPointId::EndHandle(segment) => Some(segment),
+			Self::PrimaryHandle(segment) | Self::EndHandle(segment) => Some(segment),
 			_ => None,
 		}
 	}

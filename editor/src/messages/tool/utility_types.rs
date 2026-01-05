@@ -400,7 +400,7 @@ impl ToolType {
 	}
 
 	pub fn get_tool(self) -> Self {
-		if self.get_shape().is_some() { ToolType::Shape } else { self }
+		if self.get_shape().is_some() { Self::Shape } else { self }
 	}
 }
 

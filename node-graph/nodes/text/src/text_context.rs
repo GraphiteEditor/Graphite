@@ -27,7 +27,7 @@ impl TextContext {
 	/// Access the thread-local TextContext instance for text processing operations
 	pub fn with_thread_local<F, R>(f: F) -> R
 	where
-		F: FnOnce(&mut TextContext) -> R,
+		F: FnOnce(&mut Self) -> R,
 	{
 		THREAD_TEXT.with_borrow_mut(f)
 	}

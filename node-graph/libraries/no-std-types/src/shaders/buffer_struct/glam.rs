@@ -92,7 +92,7 @@ unsafe impl BufferStruct for glam::Vec3A {
 
 	#[inline]
 	fn read(from: Self::Buffer) -> Self {
-		glam::Vec3A::from_vec4(glam::Vec4::from_array(from))
+		Self::from_vec4(glam::Vec4::from_array(from))
 	}
 }
 
@@ -109,6 +109,6 @@ unsafe impl BufferStruct for glam::Mat3A {
 	#[inline]
 	fn read(from: Self::Buffer) -> Self {
 		let a = from;
-		glam::Mat3A::from_cols_array(&[a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7], a[8]])
+		Self::from_cols_array(&[a[0], a[1], a[2], a[3], a[4], a[5], a[6], a[7], a[8]])
 	}
 }

@@ -40,7 +40,7 @@ impl<PointId: Identifier> Subpath<PointId> {
 	}
 
 	/// Returns `true` if this subpath is completely inside the `other` subpath.
-	pub fn is_inside_subpath(&self, other: &Subpath<PointId>, accuracy: Option<f64>, minimum_separation: Option<f64>) -> bool {
+	pub fn is_inside_subpath(&self, other: &Self, accuracy: Option<f64>, minimum_separation: Option<f64>) -> bool {
 		bezpath_is_inside_bezpath(&self.to_bezpath(), &other.to_bezpath(), accuracy, minimum_separation)
 	}
 

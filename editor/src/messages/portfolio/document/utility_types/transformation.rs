@@ -40,14 +40,14 @@ pub enum OriginalTransforms {
 }
 impl Default for OriginalTransforms {
 	fn default() -> Self {
-		OriginalTransforms::Path(HashMap::new())
+		Self::Path(HashMap::new())
 	}
 }
 impl OriginalTransforms {
 	pub fn clear(&mut self) {
 		match self {
-			OriginalTransforms::Layer(layer_map) => layer_map.clear(),
-			OriginalTransforms::Path(path_map) => path_map.clear(),
+			Self::Layer(layer_map) => layer_map.clear(),
+			Self::Path(path_map) => path_map.clear(),
 		}
 	}
 
@@ -61,7 +61,7 @@ impl OriginalTransforms {
 
 	pub fn update<'a>(&mut self, selected: &'a [LayerNodeIdentifier], network_interface: &NodeNetworkInterface, shape_editor: Option<&'a ShapeState>) {
 		match self {
-			OriginalTransforms::Layer(layer_map) => {
+			Self::Layer(layer_map) => {
 				layer_map.retain(|layer, _| selected.contains(layer));
 				for &layer in selected {
 					if layer == LayerNodeIdentifier::ROOT_PARENT {
@@ -71,7 +71,7 @@ impl OriginalTransforms {
 					layer_map.entry(layer).or_insert_with(|| Self::get_layer_transform(layer, network_interface).unwrap_or_default());
 				}
 			}
-			OriginalTransforms::Path(path_map) => {
+			Self::Path(path_map) => {
 				let Some(shape_editor) = shape_editor else {
 					warn!("No shape editor structure found, which only happens in select tool, which cannot reach this point as we check for ToolType");
 					return;
@@ -139,12 +139,12 @@ pub enum Axis {
 }
 
 impl Axis {
-	pub fn contrainted_to_axis(self, target: Axis, local: bool) -> (Self, bool) {
+	pub fn contrainted_to_axis(self, target: Self, local: bool) -> (Self, bool) {
 		if self != target {
 			return (target, false);
 		}
 
-		if local { (Axis::Both, false) } else { (self, true) }
+		if local { (Self::Both, false) } else { (self, true) }
 	}
 }
 
@@ -323,7 +323,7 @@ impl TransformType {
 	pub fn equivalent_to(&self, operation: TransformOperation) -> bool {
 		matches!(
 			(operation, self),
-			(TransformOperation::Scaling(_), TransformType::Scale) | (TransformOperation::Grabbing(_), TransformType::Grab) | (TransformOperation::Rotating(_), TransformType::Rotate)
+			(TransformOperation::Scaling(_), Self::Scale) | (TransformOperation::Grabbing(_), Self::Grab) | (TransformOperation::Rotating(_), Self::Rotate)
 		)
 	}
 }
@@ -331,12 +331,12 @@ impl TransformType {
 impl TransformOperation {
 	#[allow(clippy::too_many_arguments)]
 	pub fn apply_transform_operation(&self, selected: &mut Selected, state: &TransformationState, document: &DocumentMessageHandler) {
-		if self != &TransformOperation::None {
+		if self != &Self::None {
 			let mut transformation = match self {
-				TransformOperation::Grabbing(translation) => DAffine2::from_translation(translation.to_dvec(state, document)),
-				TransformOperation::Rotating(rotation) => DAffine2::from_angle(rotation.to_f64(state.is_rounded_to_intervals)),
-				TransformOperation::Scaling(scale) => DAffine2::from_scale(scale.to_dvec(state.is_rounded_to_intervals)),
-				TransformOperation::None => unreachable!(),
+				Self::Grabbing(translation) => DAffine2::from_translation(translation.to_dvec(state, document)),
+				Self::Rotating(rotation) => DAffine2::from_angle(rotation.to_f64(state.is_rounded_to_intervals)),
+				Self::Scaling(scale) => DAffine2::from_scale(scale.to_dvec(state.is_rounded_to_intervals)),
+				Self::None => unreachable!(),
 			};
 			let normalized_transform = state.local_to_viewport_transform();
 			transformation = normalized_transform * transformation * normalized_transform.inverse();
@@ -348,27 +348,27 @@ impl TransformOperation {
 
 	pub fn axis_constraint(&self) -> Axis {
 		match self {
-			TransformOperation::Grabbing(grabbing) => grabbing.constraint,
-			TransformOperation::Scaling(scaling) => scaling.constraint,
+			Self::Grabbing(grabbing) => grabbing.constraint,
+			Self::Scaling(scaling) => scaling.constraint,
 			_ => Axis::Both,
 		}
 	}
 
 	pub fn can_begin_typing(&self) -> bool {
-		self.is_constraint_to_axis() || !matches!(self, TransformOperation::Grabbing(_))
+		self.is_constraint_to_axis() || !matches!(self, Self::Grabbing(_))
 	}
 
 	#[allow(clippy::too_many_arguments)]
 	pub fn constrain_axis(&mut self, axis: Axis, selected: &mut Selected, state: &TransformationState, document: &DocumentMessageHandler) -> bool {
 		let resulting_local;
 		(*self, resulting_local) = match self {
-			TransformOperation::Grabbing(translation) => {
+			Self::Grabbing(translation) => {
 				let (translation, resulting_local) = translation.with_constraint(axis, state.is_transforming_in_local_space);
-				(TransformOperation::Grabbing(translation), resulting_local)
+				(Self::Grabbing(translation), resulting_local)
 			}
-			TransformOperation::Scaling(scale) => {
+			Self::Scaling(scale) => {
 				let (scale, resulting_local) = scale.with_constraint(axis, state.is_transforming_in_local_space);
-				(TransformOperation::Scaling(scale), resulting_local)
+				(Self::Scaling(scale), resulting_local)
 			}
 			_ => (*self, false),
 		};
@@ -381,10 +381,10 @@ impl TransformOperation {
 	#[allow(clippy::too_many_arguments)]
 	pub fn grs_typed(&mut self, typed: Option<f64>, selected: &mut Selected, state: &TransformationState, document: &DocumentMessageHandler) {
 		match self {
-			TransformOperation::None => (),
-			TransformOperation::Grabbing(translation) => translation.typed_distance = typed,
-			TransformOperation::Rotating(rotation) => rotation.typed_angle = typed,
-			TransformOperation::Scaling(scale) => scale.typed_factor = typed,
+			Self::None => (),
+			Self::Grabbing(translation) => translation.typed_distance = typed,
+			Self::Rotating(rotation) => rotation.typed_angle = typed,
+			Self::Scaling(scale) => scale.typed_factor = typed,
 		};
 
 		self.apply_transform_operation(selected, state, document);
@@ -420,10 +420,10 @@ impl TransformOperation {
 		}
 
 		let grs_hint_group = match self {
-			TransformOperation::None => unreachable!(),
-			TransformOperation::Scaling(_) => HintGroup(vec![HintInfo::multi_keys([[Key::KeyG], [Key::KeyR]], "Grab/Rotate Selected")]),
-			TransformOperation::Grabbing(_) => HintGroup(vec![HintInfo::multi_keys([[Key::KeyR], [Key::KeyS]], "Rotate/Scale Selected")]),
-			TransformOperation::Rotating(_) => HintGroup(vec![HintInfo::multi_keys([[Key::KeyG], [Key::KeyS]], "Grab/Scale Selected")]),
+			Self::None => unreachable!(),
+			Self::Scaling(_) => HintGroup(vec![HintInfo::multi_keys([[Key::KeyG], [Key::KeyR]], "Grab/Rotate Selected")]),
+			Self::Grabbing(_) => HintGroup(vec![HintInfo::multi_keys([[Key::KeyR], [Key::KeyS]], "Rotate/Scale Selected")]),
+			Self::Rotating(_) => HintGroup(vec![HintInfo::multi_keys([[Key::KeyG], [Key::KeyS]], "Grab/Scale Selected")]),
 		};
 
 		let confirm_and_cancel_group = HintGroup(vec![
@@ -436,11 +436,11 @@ impl TransformOperation {
 		if !self.is_typing() {
 			let modifiers = vec![
 				HintInfo::keys([Key::Shift], "Slow"),
-				HintInfo::keys([Key::Control], if matches!(self, TransformOperation::Rotating(_)) { "15° Increments" } else { "Increments" }),
+				HintInfo::keys([Key::Control], if matches!(self, Self::Rotating(_)) { "15° Increments" } else { "Increments" }),
 			];
 			hint_groups.push(HintGroup(modifiers));
 		}
-		if !matches!(self, TransformOperation::Rotating(_)) {
+		if !matches!(self, Self::Rotating(_)) {
 			hint_groups.push(HintGroup(input_hints));
 		}
 		let mut typing_hints = vec![HintInfo::keys([Key::Minus], "Negate Direction")];
@@ -461,20 +461,20 @@ impl TransformOperation {
 
 	pub fn is_typing(&self) -> bool {
 		match self {
-			TransformOperation::None => false,
-			TransformOperation::Grabbing(translation) => translation.typed_distance.is_some(),
-			TransformOperation::Rotating(rotation) => rotation.typed_angle.is_some(),
-			TransformOperation::Scaling(scale) => scale.typed_factor.is_some(),
+			Self::None => false,
+			Self::Grabbing(translation) => translation.typed_distance.is_some(),
+			Self::Rotating(rotation) => rotation.typed_angle.is_some(),
+			Self::Scaling(scale) => scale.typed_factor.is_some(),
 		}
 	}
 
 	#[allow(clippy::too_many_arguments)]
 	pub fn negate(&mut self, selected: &mut Selected, state: &TransformationState, document: &DocumentMessageHandler) {
-		if *self != TransformOperation::None {
+		if *self != Self::None {
 			*self = match self {
-				TransformOperation::Scaling(scale) => TransformOperation::Scaling(scale.negate()),
-				TransformOperation::Rotating(rotation) => TransformOperation::Rotating(rotation.negate()),
-				TransformOperation::Grabbing(translation) => TransformOperation::Grabbing(translation.negate()),
+				Self::Scaling(scale) => Self::Scaling(scale.negate()),
+				Self::Rotating(rotation) => Self::Rotating(rotation.negate()),
+				Self::Grabbing(translation) => Self::Grabbing(translation.negate()),
 				_ => *self,
 			};
 

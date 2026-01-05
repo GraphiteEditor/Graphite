@@ -6,8 +6,8 @@ pub struct MessageData {
 }
 
 impl MessageData {
-	pub fn new(name: String, fields: Vec<(String, usize)>, path: &'static str) -> MessageData {
-		MessageData { name, fields, path }
+	pub fn new(name: String, fields: Vec<(String, usize)>, path: &'static str) -> Self {
+		Self { name, fields, path }
 	}
 
 	pub fn name(&self) -> &str {
@@ -27,15 +27,15 @@ impl MessageData {
 pub struct DebugMessageTree {
 	name: String,
 	fields: Option<Vec<String>>,
-	variants: Option<Vec<DebugMessageTree>>,
+	variants: Option<Vec<Self>>,
 	message_handler: Option<MessageData>,
 	message_handler_data: Option<MessageData>,
 	path: &'static str,
 }
 
 impl DebugMessageTree {
-	pub fn new(name: &str) -> DebugMessageTree {
-		DebugMessageTree {
+	pub fn new(name: &str) -> Self {
+		Self {
 			name: name.to_string(),
 			fields: None,
 			variants: None,
@@ -53,7 +53,7 @@ impl DebugMessageTree {
 		self.path = path;
 	}
 
-	pub fn add_variant(&mut self, variant: DebugMessageTree) {
+	pub fn add_variant(&mut self, variant: Self) {
 		if let Some(variants) = &mut self.variants {
 			variants.push(variant);
 		} else {
@@ -81,7 +81,7 @@ impl DebugMessageTree {
 		self.path
 	}
 
-	pub fn variants(&self) -> Option<&Vec<DebugMessageTree>> {
+	pub fn variants(&self) -> Option<&Vec<Self>> {
 		self.variants.as_ref()
 	}
 

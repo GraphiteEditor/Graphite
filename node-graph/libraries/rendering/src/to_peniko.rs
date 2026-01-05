@@ -9,27 +9,27 @@ impl BlendModeExt for BlendMode {
 	fn to_peniko(&self) -> peniko::Mix {
 		match self {
 			// Normal group
-			BlendMode::Normal => peniko::Mix::Normal,
+			Self::Normal => peniko::Mix::Normal,
 			// Darken group
-			BlendMode::Darken => peniko::Mix::Darken,
-			BlendMode::Multiply => peniko::Mix::Multiply,
-			BlendMode::ColorBurn => peniko::Mix::ColorBurn,
+			Self::Darken => peniko::Mix::Darken,
+			Self::Multiply => peniko::Mix::Multiply,
+			Self::ColorBurn => peniko::Mix::ColorBurn,
 			// Lighten group
-			BlendMode::Lighten => peniko::Mix::Lighten,
-			BlendMode::Screen => peniko::Mix::Screen,
-			BlendMode::ColorDodge => peniko::Mix::ColorDodge,
+			Self::Lighten => peniko::Mix::Lighten,
+			Self::Screen => peniko::Mix::Screen,
+			Self::ColorDodge => peniko::Mix::ColorDodge,
 			// Contrast group
-			BlendMode::Overlay => peniko::Mix::Overlay,
-			BlendMode::SoftLight => peniko::Mix::SoftLight,
-			BlendMode::HardLight => peniko::Mix::HardLight,
+			Self::Overlay => peniko::Mix::Overlay,
+			Self::SoftLight => peniko::Mix::SoftLight,
+			Self::HardLight => peniko::Mix::HardLight,
 			// Inversion group
-			BlendMode::Difference => peniko::Mix::Difference,
-			BlendMode::Exclusion => peniko::Mix::Exclusion,
+			Self::Difference => peniko::Mix::Difference,
+			Self::Exclusion => peniko::Mix::Exclusion,
 			// Component group
-			BlendMode::Hue => peniko::Mix::Hue,
-			BlendMode::Saturation => peniko::Mix::Saturation,
-			BlendMode::Color => peniko::Mix::Color,
-			BlendMode::Luminosity => peniko::Mix::Luminosity,
+			Self::Hue => peniko::Mix::Hue,
+			Self::Saturation => peniko::Mix::Saturation,
+			Self::Color => peniko::Mix::Color,
+			Self::Luminosity => peniko::Mix::Luminosity,
 			_ => todo!(),
 		}
 	}

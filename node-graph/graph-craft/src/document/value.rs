@@ -265,14 +265,14 @@ tagged_value! {
 impl TaggedValue {
 	pub fn to_primitive_string(&self) -> String {
 		match self {
-			TaggedValue::None => "()".to_string(),
-			TaggedValue::String(x) => format!("\"{x}\""),
-			TaggedValue::U32(x) => x.to_string() + "_u32",
-			TaggedValue::U64(x) => x.to_string() + "_u64",
-			TaggedValue::F32(x) => x.to_string() + "_f32",
-			TaggedValue::F64(x) => x.to_string() + "_f64",
-			TaggedValue::Bool(x) => x.to_string(),
-			TaggedValue::BlendMode(x) => "BlendMode::".to_string() + &x.to_string(),
+			Self::None => "()".to_string(),
+			Self::String(x) => format!("\"{x}\""),
+			Self::U32(x) => x.to_string() + "_u32",
+			Self::U64(x) => x.to_string() + "_u64",
+			Self::F32(x) => x.to_string() + "_f32",
+			Self::F64(x) => x.to_string() + "_f64",
+			Self::Bool(x) => x.to_string(),
+			Self::BlendMode(x) => "BlendMode::".to_string() + &x.to_string(),
 			_ => panic!("Cannot convert to primitive string"),
 		}
 	}
@@ -358,31 +358,31 @@ impl TaggedValue {
 				// TODO: Add default implementations for types such as TaggedValue::Subpaths, and use the defaults here and in document_node_types
 				// Tries using the default for the tagged value type. If it not implemented, then uses the default used in document_node_types. If it is not used there, then TaggedValue::None is returned.
 				let ty = match internal_id {
-					x if x == TypeId::of::<()>() => TaggedValue::None,
-					x if x == TypeId::of::<String>() => TaggedValue::String(string.into()),
-					x if x == TypeId::of::<f64>() => FromStr::from_str(string).map(TaggedValue::F64).ok()?,
-					x if x == TypeId::of::<f32>() => FromStr::from_str(string).map(TaggedValue::F32).ok()?,
-					x if x == TypeId::of::<u64>() => FromStr::from_str(string).map(TaggedValue::U64).ok()?,
-					x if x == TypeId::of::<u32>() => FromStr::from_str(string).map(TaggedValue::U32).ok()?,
-					x if x == TypeId::of::<DVec2>() => to_dvec2(string).map(TaggedValue::DVec2)?,
-					x if x == TypeId::of::<bool>() => FromStr::from_str(string).map(TaggedValue::Bool).ok()?,
-					x if x == TypeId::of::<Table<Color>>() => to_color(string).map(|color| TaggedValue::Color(Table::new_from_element(color)))?,
-					x if x == TypeId::of::<Color>() => to_color(string).map(TaggedValue::ColorNotInTable)?,
-					x if x == TypeId::of::<Option<Color>>() => TaggedValue::ColorNotInTable(to_color(string)?),
-					x if x == TypeId::of::<Fill>() => to_color(string).map(|color| TaggedValue::Fill(Fill::solid(color)))?,
-					x if x == TypeId::of::<ReferencePoint>() => to_reference_point(string).map(TaggedValue::ReferencePoint)?,
+					x if x == TypeId::of::<()>() => Self::None,
+					x if x == TypeId::of::<String>() => Self::String(string.into()),
+					x if x == TypeId::of::<f64>() => FromStr::from_str(string).map(Self::F64).ok()?,
+					x if x == TypeId::of::<f32>() => FromStr::from_str(string).map(Self::F32).ok()?,
+					x if x == TypeId::of::<u64>() => FromStr::from_str(string).map(Self::U64).ok()?,
+					x if x == TypeId::of::<u32>() => FromStr::from_str(string).map(Self::U32).ok()?,
+					x if x == TypeId::of::<DVec2>() => to_dvec2(string).map(Self::DVec2)?,
+					x if x == TypeId::of::<bool>() => FromStr::from_str(string).map(Self::Bool).ok()?,
+					x if x == TypeId::of::<Table<Color>>() => to_color(string).map(|color| Self::Color(Table::new_from_element(color)))?,
+					x if x == TypeId::of::<Color>() => to_color(string).map(Self::ColorNotInTable)?,
+					x if x == TypeId::of::<Option<Color>>() => Self::ColorNotInTable(to_color(string)?),
+					x if x == TypeId::of::<Fill>() => to_color(string).map(|color| Self::Fill(Fill::solid(color)))?,
+					x if x == TypeId::of::<ReferencePoint>() => to_reference_point(string).map(Self::ReferencePoint)?,
 					_ => return None,
 				};
 				Some(ty)
 			}
-			Type::Fn(_, output) => TaggedValue::from_primitive_string(string, output),
-			Type::Future(fut) => TaggedValue::from_primitive_string(string, fut),
+			Type::Fn(_, output) => Self::from_primitive_string(string, output),
+			Type::Future(fut) => Self::from_primitive_string(string, fut),
 		}
 	}
 
 	pub fn to_u32(&self) -> u32 {
 		match self {
-			TaggedValue::U32(x) => *x,
+			Self::U32(x) => *x,
 			_ => panic!("Passed value is not of type u32"),
 		}
 	}
@@ -391,12 +391,12 @@ impl TaggedValue {
 impl Display for TaggedValue {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
-			TaggedValue::String(x) => f.write_str(x),
-			TaggedValue::U32(x) => f.write_fmt(format_args!("{x}")),
-			TaggedValue::U64(x) => f.write_fmt(format_args!("{x}")),
-			TaggedValue::F32(x) => f.write_fmt(format_args!("{x}")),
-			TaggedValue::F64(x) => f.write_fmt(format_args!("{x}")),
-			TaggedValue::Bool(x) => f.write_fmt(format_args!("{x}")),
+			Self::String(x) => f.write_str(x),
+			Self::U32(x) => f.write_fmt(format_args!("{x}")),
+			Self::U64(x) => f.write_fmt(format_args!("{x}")),
+			Self::F32(x) => f.write_fmt(format_args!("{x}")),
+			Self::F64(x) => f.write_fmt(format_args!("{x}")),
+			Self::Bool(x) => f.write_fmt(format_args!("{x}")),
 			_ => panic!("Cannot convert to string"),
 		}
 	}
@@ -430,8 +430,8 @@ impl<'i, T: 'i + AsRef<U> + Sync + Send, U: 'i + StaticType + Sync + Send> Node<
 }
 
 impl<T: AsRef<U> + Sync + Send, U: Sync + Send> UpcastAsRefNode<T, U> {
-	pub const fn new(value: T) -> UpcastAsRefNode<T, U> {
-		UpcastAsRefNode(value, PhantomData)
+	pub const fn new(value: T) -> Self {
+		Self(value, PhantomData)
 	}
 }
 

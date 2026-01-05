@@ -76,7 +76,7 @@ impl Alpha for RGBA16F {
 		self.alpha.to_f32() / 255.
 	}
 
-	const TRANSPARENT: Self = RGBA16F {
+	const TRANSPARENT: Self = Self {
 		red: f16::from_f32_const(0.),
 		green: f16::from_f32_const(0.),
 		blue: f16::from_f32_const(0.),
@@ -162,7 +162,7 @@ impl Alpha for SRGBA8 {
 		self.alpha as f32 / 255.
 	}
 
-	const TRANSPARENT: Self = SRGBA8 { red: 0, green: 0, blue: 0, alpha: 0 };
+	const TRANSPARENT: Self = Self { red: 0, green: 0, blue: 0, alpha: 0 };
 
 	fn multiplied_alpha(&self, alpha: Self::AlphaChannel) -> Self {
 		let alpha = alpha * 255.;
@@ -282,7 +282,7 @@ impl Pixel for Color {
 	}
 
 	fn from_bytes(bytes: &[u8]) -> Self {
-		Color::from_rgba8_srgb(bytes[0], bytes[1], bytes[2], bytes[3])
+		Self::from_rgba8_srgb(bytes[0], bytes[1], bytes[2], bytes[3])
 	}
 	fn byte_size() -> usize {
 		4
@@ -348,15 +348,15 @@ impl Rec709Primaries for Color {}
 impl SRGB for Color {}
 
 impl Color {
-	pub const BLACK: Color = Color::from_rgbf32_unchecked(0., 0., 0.);
-	pub const WHITE: Color = Color::from_rgbf32_unchecked(1., 1., 1.);
-	pub const RED: Color = Color::from_rgbf32_unchecked(1., 0., 0.);
-	pub const GREEN: Color = Color::from_rgbf32_unchecked(0., 1., 0.);
-	pub const BLUE: Color = Color::from_rgbf32_unchecked(0., 0., 1.);
-	pub const YELLOW: Color = Color::from_rgbf32_unchecked(1., 1., 0.);
-	pub const CYAN: Color = Color::from_rgbf32_unchecked(0., 1., 1.);
-	pub const MAGENTA: Color = Color::from_rgbf32_unchecked(1., 0., 1.);
-	pub const TRANSPARENT: Color = Self {
+	pub const BLACK: Self = Self::from_rgbf32_unchecked(0., 0., 0.);
+	pub const WHITE: Self = Self::from_rgbf32_unchecked(1., 1., 1.);
+	pub const RED: Self = Self::from_rgbf32_unchecked(1., 0., 0.);
+	pub const GREEN: Self = Self::from_rgbf32_unchecked(0., 1., 0.);
+	pub const BLUE: Self = Self::from_rgbf32_unchecked(0., 0., 1.);
+	pub const YELLOW: Self = Self::from_rgbf32_unchecked(1., 1., 0.);
+	pub const CYAN: Self = Self::from_rgbf32_unchecked(0., 1., 1.);
+	pub const MAGENTA: Self = Self::from_rgbf32_unchecked(1., 0., 1.);
+	pub const TRANSPARENT: Self = Self {
 		red: 0.,
 		green: 0.,
 		blue: 0.,
@@ -376,30 +376,30 @@ impl Color {
 	/// assert!(color == None);
 	/// ```
 	#[inline(always)]
-	pub fn from_rgbaf32(red: f32, green: f32, blue: f32, alpha: f32) -> Option<Color> {
+	pub fn from_rgbaf32(red: f32, green: f32, blue: f32, alpha: f32) -> Option<Self> {
 		if alpha > 1. || [red, green, blue, alpha].iter().any(|c| c.is_sign_negative() || !c.is_finite()) {
 			return None;
 		}
-		let color = Color { red, green, blue, alpha };
+		let color = Self { red, green, blue, alpha };
 		Some(color)
 	}
 
 	/// Return an opaque `Color` from given `f32` RGB channels.
 	#[inline(always)]
-	pub const fn from_rgbf32_unchecked(red: f32, green: f32, blue: f32) -> Color {
-		Color { red, green, blue, alpha: 1. }
+	pub const fn from_rgbf32_unchecked(red: f32, green: f32, blue: f32) -> Self {
+		Self { red, green, blue, alpha: 1. }
 	}
 
 	/// Return an opaque `Color` from given `f32` RGB channels.
 	#[inline(always)]
-	pub const fn from_rgbaf32_unchecked(red: f32, green: f32, blue: f32, alpha: f32) -> Color {
-		Color { red, green, blue, alpha }
+	pub const fn from_rgbaf32_unchecked(red: f32, green: f32, blue: f32, alpha: f32) -> Self {
+		Self { red, green, blue, alpha }
 	}
 
 	/// Return an opaque `Color` from given `f32` RGB channels.
 	#[inline(always)]
-	pub fn from_unassociated_alpha(red: f32, green: f32, blue: f32, alpha: f32) -> Color {
-		Color::from_rgbaf32_unchecked(red * alpha, green * alpha, blue * alpha, alpha)
+	pub fn from_unassociated_alpha(red: f32, green: f32, blue: f32, alpha: f32) -> Self {
+		Self::from_rgbaf32_unchecked(red * alpha, green * alpha, blue * alpha, alpha)
 	}
 
 	/// Return an opaque SDR `Color` given RGB channels from `0` to `255`, premultiplied by alpha.
@@ -412,8 +412,8 @@ impl Color {
 	/// assert_eq!(color, color2)
 	/// ```
 	#[inline(always)]
-	pub fn from_rgb8_srgb(red: u8, green: u8, blue: u8) -> Color {
-		Color::from_rgba8_srgb(red, green, blue, 255)
+	pub fn from_rgb8_srgb(red: u8, green: u8, blue: u8) -> Self {
+		Self::from_rgba8_srgb(red, green, blue, 255)
 	}
 
 	// TODO: Should this be premult?
@@ -425,14 +425,14 @@ impl Color {
 	/// let color = Color::from_rgba8_srgb(0x72, 0x67, 0x62, 0x61);
 	/// ```
 	#[inline(always)]
-	pub fn from_rgba8_srgb(red: u8, green: u8, blue: u8, alpha: u8) -> Color {
+	pub fn from_rgba8_srgb(red: u8, green: u8, blue: u8, alpha: u8) -> Self {
 		let map_range = |int_color| int_color as f32 / 255.;
 
 		let red = map_range(red);
 		let green = map_range(green);
 		let blue = map_range(blue);
 		let alpha = map_range(alpha);
-		Color { red, green, blue, alpha }.to_linear_srgb().map_rgb(|channel| channel * alpha)
+		Self { red, green, blue, alpha }.to_linear_srgb().map_rgb(|channel| channel * alpha)
 	}
 
 	/// Create a [Color] from a hue, saturation, lightness and alpha (all between 0 and 1)
@@ -442,7 +442,7 @@ impl Color {
 	/// use core_types::color::Color;
 	/// let color = Color::from_hsla(0.5, 0.2, 0.3, 1.);
 	/// ```
-	pub fn from_hsla(hue: f32, saturation: f32, lightness: f32, alpha: f32) -> Color {
+	pub fn from_hsla(hue: f32, saturation: f32, lightness: f32, alpha: f32) -> Self {
 		let temp1 = if lightness < 0.5 {
 			lightness * (saturation + 1.)
 		} else {
@@ -474,7 +474,7 @@ impl Color {
 		map_channel(&mut green, temp2, temp1);
 		map_channel(&mut blue, temp2, temp1);
 
-		Color { red, green, blue, alpha }
+		Self { red, green, blue, alpha }
 	}
 
 	/// Return the `red` component.
@@ -580,8 +580,8 @@ impl Color {
 	}
 
 	#[inline(always)]
-	pub fn from_luminance(luminance: f32) -> Color {
-		Color {
+	pub fn from_luminance(luminance: f32) -> Self {
+		Self {
 			red: luminance,
 			green: luminance,
 			blue: luminance,
@@ -590,7 +590,7 @@ impl Color {
 	}
 
 	#[inline(always)]
-	pub fn with_luminance(&self, luminance: f32) -> Color {
+	pub fn with_luminance(&self, luminance: f32) -> Self {
 		let delta = luminance - self.luminance_rec_601_rounded();
 		self.map_rgb(|c| (c + delta).clamp(0., 1.))
 	}
@@ -604,13 +604,13 @@ impl Color {
 	}
 
 	#[inline(always)]
-	pub fn with_saturation(&self, saturation: f32) -> Color {
+	pub fn with_saturation(&self, saturation: f32) -> Self {
 		let [hue, _, lightness, alpha] = self.to_hsla();
-		Color::from_hsla(hue, saturation, lightness, alpha)
+		Self::from_hsla(hue, saturation, lightness, alpha)
 	}
 
-	pub fn with_alpha(&self, alpha: f32) -> Color {
-		Color {
+	pub fn with_alpha(&self, alpha: f32) -> Self {
+		Self {
 			red: self.red,
 			green: self.green,
 			blue: self.blue,
@@ -618,8 +618,8 @@ impl Color {
 		}
 	}
 
-	pub fn with_red(&self, red: f32) -> Color {
-		Color {
+	pub fn with_red(&self, red: f32) -> Self {
+		Self {
 			red,
 			green: self.green,
 			blue: self.blue,
@@ -627,8 +627,8 @@ impl Color {
 		}
 	}
 
-	pub fn with_green(&self, green: f32) -> Color {
-		Color {
+	pub fn with_green(&self, green: f32) -> Self {
+		Self {
 			red: self.red,
 			green,
 			blue: self.blue,
@@ -636,8 +636,8 @@ impl Color {
 		}
 	}
 
-	pub fn with_blue(&self, blue: f32) -> Color {
-		Color {
+	pub fn with_blue(&self, blue: f32) -> Self {
+		Self {
 			red: self.red,
 			green: self.green,
 			blue,
@@ -677,7 +677,7 @@ impl Color {
 	}
 
 	#[inline(always)]
-	pub fn blend_darker_color(&self, other: Color) -> Color {
+	pub fn blend_darker_color(&self, other: Self) -> Self {
 		if self.average_rgb_channels() <= other.average_rgb_channels() { *self } else { other }
 	}
 
@@ -702,7 +702,7 @@ impl Color {
 	}
 
 	#[inline(always)]
-	pub fn blend_lighter_color(&self, other: Color) -> Color {
+	pub fn blend_lighter_color(&self, other: Self) -> Self {
 		if self.average_rgb_channels() >= other.average_rgb_channels() { *self } else { other }
 	}
 
@@ -717,38 +717,38 @@ impl Color {
 
 	pub fn blend_hardlight(c_b: f32, c_s: f32) -> f32 {
 		if c_s <= 0.5 {
-			Color::blend_multiply(2. * c_s, c_b)
+			Self::blend_multiply(2. * c_s, c_b)
 		} else {
-			Color::blend_screen(2. * c_s - 1., c_b)
+			Self::blend_screen(2. * c_s - 1., c_b)
 		}
 	}
 
 	pub fn blend_vivid_light(c_b: f32, c_s: f32) -> f32 {
 		if c_s <= 0.5 {
-			Color::blend_color_burn(2. * c_s, c_b)
+			Self::blend_color_burn(2. * c_s, c_b)
 		} else {
-			Color::blend_color_dodge(2. * c_s - 1., c_b)
+			Self::blend_color_dodge(2. * c_s - 1., c_b)
 		}
 	}
 
 	pub fn blend_linear_light(c_b: f32, c_s: f32) -> f32 {
 		if c_s <= 0.5 {
-			Color::blend_linear_burn(2. * c_s, c_b)
+			Self::blend_linear_burn(2. * c_s, c_b)
 		} else {
-			Color::blend_linear_dodge(2. * c_s - 1., c_b)
+			Self::blend_linear_dodge(2. * c_s - 1., c_b)
 		}
 	}
 
 	pub fn blend_pin_light(c_b: f32, c_s: f32) -> f32 {
 		if c_s <= 0.5 {
-			Color::blend_darken(2. * c_s, c_b)
+			Self::blend_darken(2. * c_s, c_b)
 		} else {
-			Color::blend_lighten(2. * c_s - 1., c_b)
+			Self::blend_lighten(2. * c_s - 1., c_b)
 		}
 	}
 
 	pub fn blend_hard_mix(c_b: f32, c_s: f32) -> f32 {
-		if Color::blend_linear_light(c_b, c_s) < 0.5 { 0. } else { 1. }
+		if Self::blend_linear_light(c_b, c_s) < 0.5 { 0. } else { 1. }
 	}
 
 	pub fn blend_difference(c_b: f32, c_s: f32) -> f32 {
@@ -767,26 +767,26 @@ impl Color {
 		if c_b == 0. { 1. } else { c_b / c_s }
 	}
 
-	pub fn blend_hue(&self, c_s: Color) -> Color {
+	pub fn blend_hue(&self, c_s: Self) -> Self {
 		let sat_b = self.saturation();
 		let lum_b = self.luminance_rec_601();
 		c_s.with_saturation(sat_b).with_luminance(lum_b)
 	}
 
-	pub fn blend_saturation(&self, c_s: Color) -> Color {
+	pub fn blend_saturation(&self, c_s: Self) -> Self {
 		let sat_s = c_s.saturation();
 		let lum_b = self.luminance_rec_601();
 
 		self.with_saturation(sat_s).with_luminance(lum_b)
 	}
 
-	pub fn blend_color(&self, c_s: Color) -> Color {
+	pub fn blend_color(&self, c_s: Self) -> Self {
 		let lum_b = self.luminance_rec_601();
 
 		c_s.with_luminance(lum_b)
 	}
 
-	pub fn blend_luminosity(&self, c_s: Color) -> Color {
+	pub fn blend_luminosity(&self, c_s: Self) -> Self {
 		let lum_s = c_s.luminance_rec_601();
 
 		self.with_luminance(lum_s)
@@ -919,7 +919,7 @@ impl Color {
 	/// use core_types::color::Color;
 	/// let color = Color::from_rgba_str("7C67FA61").unwrap();
 	/// ```
-	pub fn from_rgba_str(color_str: &str) -> Option<Color> {
+	pub fn from_rgba_str(color_str: &str) -> Option<Self> {
 		if color_str.len() != 8 {
 			return None;
 		}
@@ -928,7 +928,7 @@ impl Color {
 		let b = u8::from_str_radix(&color_str[4..6], 16).ok()?;
 		let a = u8::from_str_radix(&color_str[6..8], 16).ok()?;
 
-		Some(Color::from_rgba8_srgb(r, g, b, a))
+		Some(Self::from_rgba8_srgb(r, g, b, a))
 	}
 
 	/// Creates a color from a 6-character RGB hex string (without a # prefix).
@@ -937,7 +937,7 @@ impl Color {
 	/// use core_types::color::Color;
 	/// let color = Color::from_rgb_str("7C67FA").unwrap();
 	/// ```
-	pub fn from_rgb_str(color_str: &str) -> Option<Color> {
+	pub fn from_rgb_str(color_str: &str) -> Option<Self> {
 		if color_str.len() != 6 {
 			return None;
 		}
@@ -945,16 +945,16 @@ impl Color {
 		let g = u8::from_str_radix(&color_str[2..4], 16).ok()?;
 		let b = u8::from_str_radix(&color_str[4..6], 16).ok()?;
 
-		Some(Color::from_rgb8_srgb(r, g, b))
+		Some(Self::from_rgb8_srgb(r, g, b))
 	}
 
 	/// Linearly interpolates between two colors based on t.
 	///
 	/// T must be between 0 and 1.
 	#[inline(always)]
-	pub fn lerp(&self, other: &Color, t: f32) -> Self {
+	pub fn lerp(&self, other: &Self, t: f32) -> Self {
 		assert!((0. ..=1.).contains(&t));
-		Color::from_rgbaf32_unchecked(
+		Self::from_rgbaf32_unchecked(
 			self.red + ((other.red - self.red) * t),
 			self.green + ((other.green - self.green) * t),
 			self.blue + ((other.blue - self.blue) * t),
@@ -963,7 +963,7 @@ impl Color {
 	}
 
 	#[inline(always)]
-	pub fn gamma(&self, gamma: f32) -> Color {
+	pub fn gamma(&self, gamma: f32) -> Self {
 		let gamma = gamma.max(0.0001);
 
 		// From https://www.dfstudios.co.uk/articles/programming/image-programming-algorithms/image-processing-algorithms-part-6-gamma-correction/
@@ -1041,9 +1041,9 @@ impl Color {
 	}
 
 	#[inline(always)]
-	pub fn blend_rgb<F: Fn(f32, f32) -> f32>(&self, other: Color, f: F) -> Self {
+	pub fn blend_rgb<F: Fn(f32, f32) -> f32>(&self, other: Self, f: F) -> Self {
 		let background = self.to_unassociated_alpha();
-		Color {
+		Self {
 			red: f(background.red, other.red).clamp(0., 1.),
 			green: f(background.green, other.green).clamp(0., 1.),
 			blue: f(background.blue, other.blue).clamp(0., 1.),
@@ -1052,7 +1052,7 @@ impl Color {
 	}
 
 	#[inline(always)]
-	pub fn alpha_blend(&self, other: Color) -> Self {
+	pub fn alpha_blend(&self, other: Self) -> Self {
 		let inv_alpha = 1. - other.alpha;
 		Self {
 			red: self.red * inv_alpha + other.red,
@@ -1063,7 +1063,7 @@ impl Color {
 	}
 
 	#[inline(always)]
-	pub fn alpha_add(&self, other: Color) -> Self {
+	pub fn alpha_add(&self, other: Self) -> Self {
 		Self {
 			alpha: (self.alpha + other.alpha).clamp(0., 1.),
 			..*self
@@ -1071,7 +1071,7 @@ impl Color {
 	}
 
 	#[inline(always)]
-	pub fn alpha_subtract(&self, other: Color) -> Self {
+	pub fn alpha_subtract(&self, other: Self) -> Self {
 		Self {
 			alpha: (self.alpha - other.alpha).clamp(0., 1.),
 			..*self
@@ -1079,7 +1079,7 @@ impl Color {
 	}
 
 	#[inline(always)]
-	pub fn alpha_multiply(&self, other: Color) -> Self {
+	pub fn alpha_multiply(&self, other: Self) -> Self {
 		Self {
 			alpha: (self.alpha * other.alpha).clamp(0., 1.),
 			..*self

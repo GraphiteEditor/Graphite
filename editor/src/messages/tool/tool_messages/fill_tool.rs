@@ -120,7 +120,7 @@ impl Fsm for FillToolFsmState {
 				responses.add(OverlaysMessage::Draw);
 				self
 			}
-			(FillToolFsmState::Ready, color_event) => {
+			(Self::Ready, color_event) => {
 				let Some(layer_identifier) = document.click(input, viewport) else {
 					return self;
 				};
@@ -137,13 +137,13 @@ impl Fsm for FillToolFsmState {
 				responses.add(DocumentMessage::AddTransaction);
 				responses.add(GraphOperationMessage::FillSet { layer: layer_identifier, fill });
 
-				FillToolFsmState::Filling
+				Self::Filling
 			}
-			(FillToolFsmState::Filling, FillToolMessage::PointerUp) => FillToolFsmState::Ready,
-			(FillToolFsmState::Filling, FillToolMessage::Abort) => {
+			(Self::Filling, FillToolMessage::PointerUp) => Self::Ready,
+			(Self::Filling, FillToolMessage::Abort) => {
 				responses.add(DocumentMessage::AbortTransaction);
 
-				FillToolFsmState::Ready
+				Self::Ready
 			}
 			_ => self,
 		}
@@ -151,11 +151,11 @@ impl Fsm for FillToolFsmState {
 
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
-			FillToolFsmState::Ready => HintData(vec![HintGroup(vec![
+			Self::Ready => HintData(vec![HintGroup(vec![
 				HintInfo::mouse(MouseMotion::Lmb, "Fill with Primary"),
 				HintInfo::keys([Key::Shift], "Fill with Secondary").prepend_plus(),
 			])]),
-			FillToolFsmState::Filling => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
+			Self::Filling => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
 		};
 
 		hint_data.send_layout(responses);

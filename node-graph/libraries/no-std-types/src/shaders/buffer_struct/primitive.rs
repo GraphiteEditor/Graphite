@@ -67,21 +67,21 @@ where
 
 	#[inline]
 	fn read(from: Self::Buffer) -> Self {
-		Wrapping(T::read(from.0))
+		Self(T::read(from.0))
 	}
 }
 
 unsafe impl<T: BufferStruct + 'static> BufferStruct for PhantomData<T> {
-	type Buffer = PhantomData<T>;
+	type Buffer = Self;
 
 	#[inline]
 	fn write(_: Self) -> Self::Buffer {
-		PhantomData {}
+		Self {}
 	}
 
 	#[inline]
 	fn read(_: Self::Buffer) -> Self {
-		PhantomData {}
+		Self {}
 	}
 }
 

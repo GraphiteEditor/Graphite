@@ -23,30 +23,30 @@ impl AxisAlignedBbox {
 		point.x >= self.start.x && point.x <= self.end.x && point.y >= self.start.y && point.y <= self.end.y
 	}
 
-	pub fn intersects(&self, other: &AxisAlignedBbox) -> bool {
+	pub fn intersects(&self, other: &Self) -> bool {
 		other.start.x <= self.end.x && other.end.x >= self.start.x && other.start.y <= self.end.y && other.end.y >= self.start.y
 	}
 
-	pub fn union(&self, other: &AxisAlignedBbox) -> AxisAlignedBbox {
-		AxisAlignedBbox {
+	pub fn union(&self, other: &Self) -> Self {
+		Self {
 			start: DVec2::new(self.start.x.min(other.start.x), self.start.y.min(other.start.y)),
 			end: DVec2::new(self.end.x.max(other.end.x), self.end.y.max(other.end.y)),
 		}
 	}
-	pub fn union_non_empty(&self, other: &AxisAlignedBbox) -> Option<AxisAlignedBbox> {
+	pub fn union_non_empty(&self, other: &Self) -> Option<Self> {
 		match (self.size() == DVec2::ZERO, other.size() == DVec2::ZERO) {
 			(true, true) => None,
 			(true, _) => Some(other.clone()),
 			(_, true) => Some(self.clone()),
-			_ => Some(AxisAlignedBbox {
+			_ => Some(Self {
 				start: DVec2::new(self.start.x.min(other.start.x), self.start.y.min(other.start.y)),
 				end: DVec2::new(self.end.x.max(other.end.x), self.end.y.max(other.end.y)),
 			}),
 		}
 	}
 
-	pub fn intersect(&self, other: &AxisAlignedBbox) -> AxisAlignedBbox {
-		AxisAlignedBbox {
+	pub fn intersect(&self, other: &Self) -> Self {
+		Self {
 			start: DVec2::new(self.start.x.max(other.start.x), self.start.y.max(other.start.y)),
 			end: DVec2::new(self.end.x.min(other.end.x), self.end.y.min(other.end.y)),
 		}

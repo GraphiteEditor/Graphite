@@ -284,33 +284,33 @@ pub trait Render: BoundingBox + RenderComplexity {
 impl Render for Graphic {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		match self {
-			Graphic::Graphic(table) => table.render_svg(render, render_params),
-			Graphic::Vector(table) => table.render_svg(render, render_params),
-			Graphic::RasterCPU(table) => table.render_svg(render, render_params),
-			Graphic::RasterGPU(_) => (),
-			Graphic::Color(table) => table.render_svg(render, render_params),
-			Graphic::Gradient(table) => table.render_svg(render, render_params),
+			Self::Graphic(table) => table.render_svg(render, render_params),
+			Self::Vector(table) => table.render_svg(render, render_params),
+			Self::RasterCPU(table) => table.render_svg(render, render_params),
+			Self::RasterGPU(_) => (),
+			Self::Color(table) => table.render_svg(render, render_params),
+			Self::Gradient(table) => table.render_svg(render, render_params),
 		}
 	}
 
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
 		match self {
-			Graphic::Graphic(table) => table.render_to_vello(scene, transform, context, render_params),
-			Graphic::Vector(table) => table.render_to_vello(scene, transform, context, render_params),
-			Graphic::RasterCPU(table) => table.render_to_vello(scene, transform, context, render_params),
-			Graphic::RasterGPU(table) => table.render_to_vello(scene, transform, context, render_params),
-			Graphic::Color(table) => table.render_to_vello(scene, transform, context, render_params),
-			Graphic::Gradient(table) => table.render_to_vello(scene, transform, context, render_params),
+			Self::Graphic(table) => table.render_to_vello(scene, transform, context, render_params),
+			Self::Vector(table) => table.render_to_vello(scene, transform, context, render_params),
+			Self::RasterCPU(table) => table.render_to_vello(scene, transform, context, render_params),
+			Self::RasterGPU(table) => table.render_to_vello(scene, transform, context, render_params),
+			Self::Color(table) => table.render_to_vello(scene, transform, context, render_params),
+			Self::Gradient(table) => table.render_to_vello(scene, transform, context, render_params),
 		}
 	}
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 		if let Some(element_id) = element_id {
 			match self {
-				Graphic::Graphic(_) => {
+				Self::Graphic(_) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 				}
-				Graphic::Vector(table) => {
+				Self::Vector(table) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 					// TODO: Find a way to handle more than the first row
 					if let Some(row) = table.iter().next() {
@@ -318,7 +318,7 @@ impl Render for Graphic {
 						metadata.local_transforms.insert(element_id, *row.transform);
 					}
 				}
-				Graphic::RasterCPU(table) => {
+				Self::RasterCPU(table) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 
 					// TODO: Find a way to handle more than the first row
@@ -326,7 +326,7 @@ impl Render for Graphic {
 						metadata.local_transforms.insert(element_id, *row.transform);
 					}
 				}
-				Graphic::RasterGPU(table) => {
+				Self::RasterGPU(table) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 
 					// TODO: Find a way to handle more than the first row
@@ -334,7 +334,7 @@ impl Render for Graphic {
 						metadata.local_transforms.insert(element_id, *row.transform);
 					}
 				}
-				Graphic::Color(table) => {
+				Self::Color(table) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 
 					// TODO: Find a way to handle more than the first row
@@ -342,7 +342,7 @@ impl Render for Graphic {
 						metadata.local_transforms.insert(element_id, *row.transform);
 					}
 				}
-				Graphic::Gradient(table) => {
+				Self::Gradient(table) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
 
 					// TODO: Find a way to handle more than the first row
@@ -354,45 +354,45 @@ impl Render for Graphic {
 		}
 
 		match self {
-			Graphic::Graphic(table) => table.collect_metadata(metadata, footprint, element_id),
-			Graphic::Vector(table) => table.collect_metadata(metadata, footprint, element_id),
-			Graphic::RasterCPU(table) => table.collect_metadata(metadata, footprint, element_id),
-			Graphic::RasterGPU(table) => table.collect_metadata(metadata, footprint, element_id),
-			Graphic::Color(table) => table.collect_metadata(metadata, footprint, element_id),
-			Graphic::Gradient(table) => table.collect_metadata(metadata, footprint, element_id),
+			Self::Graphic(table) => table.collect_metadata(metadata, footprint, element_id),
+			Self::Vector(table) => table.collect_metadata(metadata, footprint, element_id),
+			Self::RasterCPU(table) => table.collect_metadata(metadata, footprint, element_id),
+			Self::RasterGPU(table) => table.collect_metadata(metadata, footprint, element_id),
+			Self::Color(table) => table.collect_metadata(metadata, footprint, element_id),
+			Self::Gradient(table) => table.collect_metadata(metadata, footprint, element_id),
 		}
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
 		match self {
-			Graphic::Graphic(table) => table.add_upstream_click_targets(click_targets),
-			Graphic::Vector(table) => table.add_upstream_click_targets(click_targets),
-			Graphic::RasterCPU(table) => table.add_upstream_click_targets(click_targets),
-			Graphic::RasterGPU(table) => table.add_upstream_click_targets(click_targets),
-			Graphic::Color(table) => table.add_upstream_click_targets(click_targets),
-			Graphic::Gradient(table) => table.add_upstream_click_targets(click_targets),
+			Self::Graphic(table) => table.add_upstream_click_targets(click_targets),
+			Self::Vector(table) => table.add_upstream_click_targets(click_targets),
+			Self::RasterCPU(table) => table.add_upstream_click_targets(click_targets),
+			Self::RasterGPU(table) => table.add_upstream_click_targets(click_targets),
+			Self::Color(table) => table.add_upstream_click_targets(click_targets),
+			Self::Gradient(table) => table.add_upstream_click_targets(click_targets),
 		}
 	}
 
 	fn contains_artboard(&self) -> bool {
 		match self {
-			Graphic::Graphic(table) => table.contains_artboard(),
-			Graphic::Vector(table) => table.contains_artboard(),
-			Graphic::RasterCPU(table) => table.contains_artboard(),
-			Graphic::RasterGPU(table) => table.contains_artboard(),
-			Graphic::Color(table) => table.contains_artboard(),
-			Graphic::Gradient(table) => table.contains_artboard(),
+			Self::Graphic(table) => table.contains_artboard(),
+			Self::Vector(table) => table.contains_artboard(),
+			Self::RasterCPU(table) => table.contains_artboard(),
+			Self::RasterGPU(table) => table.contains_artboard(),
+			Self::Color(table) => table.contains_artboard(),
+			Self::Gradient(table) => table.contains_artboard(),
 		}
 	}
 
 	fn new_ids_from_hash(&mut self, reference: Option<NodeId>) {
 		match self {
-			Graphic::Graphic(table) => table.new_ids_from_hash(reference),
-			Graphic::Vector(table) => table.new_ids_from_hash(reference),
-			Graphic::RasterCPU(_) => (),
-			Graphic::RasterGPU(_) => (),
-			Graphic::Color(_) => (),
-			Graphic::Gradient(_) => (),
+			Self::Graphic(table) => table.new_ids_from_hash(reference),
+			Self::Vector(table) => table.new_ids_from_hash(reference),
+			Self::RasterCPU(_) => (),
+			Self::RasterGPU(_) => (),
+			Self::Color(_) => (),
+			Self::Gradient(_) => (),
 		}
 	}
 }
@@ -761,7 +761,7 @@ impl Render for Table<Vector> {
 				element.style.clear_stroke();
 				element.style.set_fill(Fill::solid(Color::BLACK));
 
-				let vector_row = Table::new_from_row(TableRow {
+				let vector_row = Self::new_from_row(TableRow {
 					element,
 					alpha_blending: *row.alpha_blending,
 					transform: *row.transform,
@@ -1079,7 +1079,7 @@ impl Render for Table<Vector> {
 						element.style.clear_stroke();
 						element.style.set_fill(Fill::solid(Color::BLACK));
 
-						let vector_table = Table::new_from_row(TableRow {
+						let vector_table = Self::new_from_row(TableRow {
 							element,
 							alpha_blending: *row.alpha_blending,
 							transform: *row.transform,

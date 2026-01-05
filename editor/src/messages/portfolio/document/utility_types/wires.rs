@@ -33,8 +33,8 @@ pub enum GraphWireStyle {
 impl std::fmt::Display for GraphWireStyle {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
-			GraphWireStyle::GridAligned => write!(f, "Grid-Aligned"),
-			GraphWireStyle::Direct => write!(f, "Direct"),
+			Self::GridAligned => write!(f, "Grid-Aligned"),
+			Self::Direct => write!(f, "Direct"),
 		}
 	}
 }
@@ -42,13 +42,13 @@ impl std::fmt::Display for GraphWireStyle {
 impl GraphWireStyle {
 	pub fn tooltip_description(&self) -> &'static str {
 		match self {
-			GraphWireStyle::GridAligned => "Wires follow the grid, running in straight lines between nodes.",
-			GraphWireStyle::Direct => "Wires bend to run at an angle directly between nodes.",
+			Self::GridAligned => "Wires follow the grid, running in straight lines between nodes.",
+			Self::Direct => "Wires bend to run at an angle directly between nodes.",
 		}
 	}
 
 	pub fn is_direct(&self) -> bool {
-		*self == GraphWireStyle::Direct
+		*self == Self::Direct
 	}
 }
 

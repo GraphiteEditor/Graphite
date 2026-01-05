@@ -50,7 +50,7 @@ pub enum ParseError {
 }
 
 impl Node {
-	pub fn try_parse_from_str(s: &str) -> Result<(Node, Unit), ParseError> {
+	pub fn try_parse_from_str(s: &str) -> Result<(Self, Unit), ParseError> {
 		let pairs = ExprParser::parse(Rule::program, s).map_err(Box::new)?;
 		let (node, metadata) = parse_expr(pairs)?;
 		Ok((node, metadata.unit))

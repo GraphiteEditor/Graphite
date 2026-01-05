@@ -99,8 +99,8 @@ impl PathSegment {
 	/// ```
 	pub fn start_angle(&self) -> f64 {
 		let angle = match *self {
-			PathSegment::Line(start, end) => (end - start).angle_to(DVec2::X),
-			PathSegment::Cubic(start, control1, control2, _) => {
+			Self::Line(start, end) => (end - start).angle_to(DVec2::X),
+			Self::Cubic(start, control1, control2, _) => {
 				let diff = control1 - start;
 				if diff.abs_diff_eq(DVec2::ZERO, EPS.point) {
 					// if this diff were empty too, the segments would have been converted to a line
@@ -110,8 +110,8 @@ impl PathSegment {
 				}
 			}
 			// Apply same logic as for cubic bezier
-			PathSegment::Quadratic(start, control, _) => (control - start).to_angle(),
-			PathSegment::Arc(..) => self.arc_segment_to_cubics(0.001)[0].start_angle(),
+			Self::Quadratic(start, control, _) => (control - start).to_angle(),
+			Self::Arc(..) => self.arc_segment_to_cubics(0.001)[0].start_angle(),
 		};
 		use std::f64::consts::TAU;
 		(angle + TAU) % TAU
@@ -146,8 +146,8 @@ impl PathSegment {
 	/// ```
 	pub fn start_curvature(&self) -> f64 {
 		match *self {
-			PathSegment::Line(_, _) => 0.,
-			PathSegment::Cubic(start, control1, control2, _) => {
+			Self::Line(_, _) => 0.,
+			Self::Cubic(start, control1, control2, _) => {
 				let a = control1 - start;
 				let a = 3. * a;
 				let b = start - 2. * control1 + control2;
@@ -156,7 +156,7 @@ impl PathSegment {
 				let denominator = a.length_squared() * a.length();
 				if denominator == 0. { 0. } else { numerator / denominator }
 			}
-			PathSegment::Quadratic(start, control, end) => {
+			Self::Quadratic(start, control, end) => {
 				// First derivative
 				let a = 2. * (control - start);
 				// Second derivative
@@ -165,7 +165,7 @@ impl PathSegment {
 				let denominator = a.length_squared() * a.length();
 				if denominator == 0. { 0. } else { numerator / denominator }
 			}
-			PathSegment::Arc(..) => self.arc_segment_to_cubics(0.001)[0].start_curvature(),
+			Self::Arc(..) => self.arc_segment_to_cubics(0.001)[0].start_curvature(),
 		}
 	}
 	/// Converts the segment to a cubic Bézier curve representation.
@@ -198,9 +198,9 @@ impl PathSegment {
 	/// `to_cubic()` on an `Arc` segment will result in a panic.
 	pub fn to_cubic(&self) -> [DVec2; 4] {
 		match *self {
-			PathSegment::Line(start, end) => [start, start, end, end],
-			PathSegment::Cubic(s, c1, c2, e) => [s, c1, c2, e],
-			PathSegment::Quadratic(start, control, end) => {
+			Self::Line(start, end) => [start, start, end, end],
+			Self::Cubic(s, c1, c2, e) => [s, c1, c2, e],
+			Self::Quadratic(start, control, end) => {
 				// C0 = Q0
 				// C1 = Q0 + (2/3) (Q1 - Q0)
 				// C2 = Q2 + (2/3) (Q1 - Q2)
@@ -209,7 +209,7 @@ impl PathSegment {
 				let d2 = control - end;
 				[start, start + (2. / 3.) * d1, end + (2. / 3.) * d2, end]
 			}
-			PathSegment::Arc(..) => unimplemented!(),
+			Self::Arc(..) => unimplemented!(),
 		}
 	}
 
@@ -217,10 +217,7 @@ impl PathSegment {
 	/// Retrieves the start point of a path segment.
 	pub fn start(&self) -> DVec2 {
 		match self {
-			PathSegment::Line(start, _) => *start,
-			PathSegment::Cubic(start, _, _, _) => *start,
-			PathSegment::Quadratic(start, _, _) => *start,
-			PathSegment::Arc(start, _, _, _, _, _, _) => *start,
+			Self::Line(start, _) | Self::Cubic(start, _, _, _) | Self::Quadratic(start, _, _) | Self::Arc(start, _, _, _, _, _, _) => *start,
 		}
 	}
 
@@ -228,10 +225,7 @@ impl PathSegment {
 	/// Retrieves the end point of a path segment.
 	pub fn end(&self) -> DVec2 {
 		match self {
-			PathSegment::Line(_, end) => *end,
-			PathSegment::Cubic(_, _, _, end) => *end,
-			PathSegment::Quadratic(_, _, end) => *end,
-			PathSegment::Arc(_, _, _, _, _, _, end) => *end,
+			Self::Line(_, end) | Self::Cubic(_, _, _, end) | Self::Quadratic(_, _, end) | Self::Arc(_, _, _, _, _, _, end) => *end,
 		}
 	}
 
@@ -252,12 +246,12 @@ impl PathSegment {
 	/// assert_eq!(reversed.start(), DVec2::new(1., 1.));
 	/// assert_eq!(reversed.end(), DVec2::new(0., 0.));
 	/// ```
-	pub fn reverse(&self) -> PathSegment {
+	pub fn reverse(&self) -> Self {
 		match *self {
-			PathSegment::Line(start, end) => PathSegment::Line(end, start),
-			PathSegment::Cubic(p1, p2, p3, p4) => PathSegment::Cubic(p4, p3, p2, p1),
-			PathSegment::Quadratic(p1, p2, p3) => PathSegment::Quadratic(p3, p2, p1),
-			PathSegment::Arc(start, rx, ry, phi, fa, fs, end) => PathSegment::Arc(end, rx, ry, phi, fa, !fs, start),
+			Self::Line(start, end) => Self::Line(end, start),
+			Self::Cubic(p1, p2, p3, p4) => Self::Cubic(p4, p3, p2, p1),
+			Self::Quadratic(p1, p2, p3) => Self::Quadratic(p3, p2, p1),
+			Self::Arc(start, rx, ry, phi, fa, fs, end) => Self::Arc(end, rx, ry, phi, fa, !fs, start),
 		}
 	}
 
@@ -272,7 +266,7 @@ impl PathSegment {
 	/// An `Option` containing `PathArcSegmentCenterParametrization` if the segment
 	/// is an `Arc`, or `None` otherwise.
 	pub fn arc_segment_to_center(&self) -> Option<PathArcSegmentCenterParametrization> {
-		if let PathSegment::Arc(xy1, rx, ry, phi, fa, fs, xy2) = *self {
+		if let Self::Arc(xy1, rx, ry, phi, fa, fs, xy2) = *self {
 			if rx == 0. || ry == 0. {
 				return None;
 			}
@@ -345,8 +339,8 @@ impl PathSegment {
 	/// ```
 	pub fn sample_at(&self, t: f64) -> DVec2 {
 		match *self {
-			PathSegment::Line(start, end) => start.lerp(end, t),
-			PathSegment::Cubic(p1, p2, p3, p4) => {
+			Self::Line(start, end) => start.lerp(end, t),
+			Self::Cubic(p1, p2, p3, p4) => {
 				let p01 = p1.lerp(p2, t);
 				let p12 = p2.lerp(p3, t);
 				let p23 = p3.lerp(p4, t);
@@ -354,12 +348,12 @@ impl PathSegment {
 				let p123 = p12.lerp(p23, t);
 				p012.lerp(p123, t)
 			}
-			PathSegment::Quadratic(p1, p2, p3) => {
+			Self::Quadratic(p1, p2, p3) => {
 				let p01 = p1.lerp(p2, t);
 				let p12 = p2.lerp(p3, t);
 				p01.lerp(p12, t)
 			}
-			PathSegment::Arc(start, rx, ry, phi, _, _, end) => {
+			Self::Arc(start, rx, ry, phi, _, _, end) => {
 				if let Some(center_param) = self.arc_segment_to_center() {
 					let theta = center_param.theta1 + t * center_param.delta_theta;
 					let p = DVec2::new(rx * theta.cos(), ry * theta.sin());
@@ -387,8 +381,8 @@ impl PathSegment {
 	/// # Returns
 	///
 	/// A vector of `PathSegment::Cubic` approximating the original segment.
-	pub fn arc_segment_to_cubics(&self, max_delta_theta: f64) -> Vec<PathSegment> {
-		if let PathSegment::Arc(start, rx, ry, phi, _, _, end) = *self {
+	pub fn arc_segment_to_cubics(&self, max_delta_theta: f64) -> Vec<Self> {
+		if let Self::Arc(start, rx, ry, phi, _, _, end) = *self {
 			if let Some(center_param) = self.arc_segment_to_center() {
 				let count = ((center_param.delta_theta.abs() / max_delta_theta).ceil() as usize).max(1);
 
@@ -412,11 +406,11 @@ impl PathSegment {
 						let control2 = (matrix * control2.extend(1.)).truncate();
 						let end = (matrix * end.extend(1.)).truncate();
 
-						PathSegment::Cubic(start, control1, control2, end)
+						Self::Cubic(start, control1, control2, end)
 					})
 					.collect()
 			} else {
-				vec![PathSegment::Line(start, end)]
+				vec![Self::Line(start, end)]
 			}
 		} else {
 			vec![*self]
@@ -588,18 +582,18 @@ impl PathSegment {
 	/// An [`Aabb`] representing the axis-aligned bounding box of the segment.
 	pub(crate) fn bounding_box(&self) -> Aabb {
 		match *self {
-			PathSegment::Line(start, end) => Aabb::new(start.x.min(end.x), start.y.min(end.y), start.x.max(end.x), start.y.max(end.y)),
-			PathSegment::Cubic(p1, p2, p3, p4) => {
+			Self::Line(start, end) => Aabb::new(start.x.min(end.x), start.y.min(end.y), start.x.max(end.x), start.y.max(end.y)),
+			Self::Cubic(p1, p2, p3, p4) => {
 				let (left, right) = cubic_bounding_interval(p1.x, p2.x, p3.x, p4.x);
 				let (top, bottom) = cubic_bounding_interval(p1.y, p2.y, p3.y, p4.y);
 				Aabb::new(left, top, right, bottom)
 			}
-			PathSegment::Quadratic(p1, p2, p3) => {
+			Self::Quadratic(p1, p2, p3) => {
 				let (left, right) = quadratic_bounding_interval(p1.x, p2.x, p3.x);
 				let (top, bottom) = quadratic_bounding_interval(p1.y, p2.y, p3.y);
 				Aabb::new(left, top, right, bottom)
 			}
-			PathSegment::Arc(start, rx, ry, phi, _, _, end) => {
+			Self::Arc(start, rx, ry, phi, _, _, end) => {
 				if let Some(center_param) = self.arc_segment_to_center() {
 					let theta2 = center_param.theta1 + center_param.delta_theta;
 					let mut bounding_box = extend_bounding_box(Some(bounding_box_around_point(start, 0.)), end);
@@ -639,7 +633,7 @@ impl PathSegment {
 	/// This will usually be larger than the actual bounding box, but is faster to compute because it does not have to find where each curve reaches its maximum and minimum.
 	pub(crate) fn approx_bounding_box(&self) -> Aabb {
 		match *self {
-			PathSegment::Cubic(p1, p2, p3, p4) => {
+			Self::Cubic(p1, p2, p3, p4) => {
 				// Use the control points to create a bounding box
 				let left = p1.x.min(p2.x).min(p3.x).min(p4.x);
 				let right = p1.x.max(p2.x).max(p3.x).max(p4.x);
@@ -647,7 +641,7 @@ impl PathSegment {
 				let bottom = p1.y.max(p2.y).max(p3.y).max(p4.y);
 				Aabb::new(left, top, right, bottom)
 			}
-			PathSegment::Quadratic(p1, p2, p3) => {
+			Self::Quadratic(p1, p2, p3) => {
 				// Use the control points to create a bounding box
 				let left = p1.x.min(p2.x).min(p3.x);
 				let right = p1.x.max(p2.x).max(p3.x);
@@ -680,13 +674,13 @@ impl PathSegment {
 	/// assert_eq!(first_half.end(), DVec2::new(1., 1.));
 	/// assert_eq!(second_half.start(), DVec2::new(1., 1.));
 	/// ```
-	pub fn split_at(&self, t: f64) -> (PathSegment, PathSegment) {
+	pub fn split_at(&self, t: f64) -> (Self, Self) {
 		match *self {
-			PathSegment::Line(start, end) => {
+			Self::Line(start, end) => {
 				let p = start.lerp(end, t);
-				(PathSegment::Line(start, p), PathSegment::Line(p, end))
+				(Self::Line(start, p), Self::Line(p, end))
 			}
-			PathSegment::Cubic(p0, p1, p2, p3) => {
+			Self::Cubic(p0, p1, p2, p3) => {
 				let p01 = p0.lerp(p1, t);
 				let p12 = p1.lerp(p2, t);
 				let p23 = p2.lerp(p3, t);
@@ -694,16 +688,16 @@ impl PathSegment {
 				let p123 = p12.lerp(p23, t);
 				let p = p012.lerp(p123, t);
 
-				(PathSegment::Cubic(p0, p01, p012, p), PathSegment::Cubic(p, p123, p23, p3))
+				(Self::Cubic(p0, p01, p012, p), Self::Cubic(p, p123, p23, p3))
 			}
-			PathSegment::Quadratic(p0, p1, p2) => {
+			Self::Quadratic(p0, p1, p2) => {
 				let p01 = p0.lerp(p1, t);
 				let p12 = p1.lerp(p2, t);
 				let p = p01.lerp(p12, t);
 
-				(PathSegment::Quadratic(p0, p01, p), PathSegment::Quadratic(p, p12, p2))
+				(Self::Quadratic(p0, p01, p), Self::Quadratic(p, p12, p2))
 			}
-			PathSegment::Arc(start, _, _, _, _, _, end) => {
+			Self::Arc(start, _, _, _, _, _, end) => {
 				if let Some(center_param) = self.arc_segment_to_center() {
 					let mid_delta_theta = center_param.delta_theta * t;
 					let seg1 = PathArcSegmentCenterParametrization {
@@ -721,7 +715,7 @@ impl PathSegment {
 				} else {
 					// https://svgwg.org/svg2-draft/implnote.html#ArcCorrectionOutOfRangeRadii
 					let p = start.lerp(end, t);
-					(PathSegment::Line(start, p), PathSegment::Line(p, end))
+					(Self::Line(start, p), Self::Line(p, end))
 				}
 			}
 		}
