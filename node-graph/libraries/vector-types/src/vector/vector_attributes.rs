@@ -1112,11 +1112,11 @@ impl<Upstream> Vector<Upstream> {
 		for neighbors in &mut adjacency {
 			neighbors.sort_by(|a, b| {
 				let angle = [a, b].map(|side| {
-					let curve = PathSeg::from(self.path_segment_from_index(
+					let curve = self.path_segment_from_index(
 						self.segment_domain.start_point[side.segment_index],
 						self.segment_domain.end_point[side.segment_index],
 						self.segment_domain.handles[side.segment_index],
-					));
+					);
 					let curve = if side.reversed { curve.reverse() } else { curve };
 					let tangent = curve.tangent_at_start();
 					tangent.y.atan2(tangent.x)
@@ -1140,20 +1140,19 @@ impl<Upstream> Vector<Upstream> {
 			}
 		}
 
-		return FaceIterator::new(faces, self);
+		FaceIterator::new(faces, self)
 	}
 
-	fn construct_face(&self, adjacency: &Vec<Vec<FaceSide>>, first: FaceSide, faces: &mut Faces, seen: &mut FaceSideSet) -> Option<()> {
+	fn construct_face(&self, adjacency: &[Vec<FaceSide>], first: FaceSide, faces: &mut Faces, seen: &mut FaceSideSet) -> Option<()> {
 		faces.start_new_face();
 		let max_iterations = self.segment_domain.id.len() * 2;
 		let mut side = first;
 		for _iteration in 1..max_iterations {
 			if seen.contains(side) {
-				log::debug!("Encountered seen side {:?}, aborting face construction", side);
 				return None;
 			}
 			seen.insert(side);
-			faces.add_side(side.clone());
+			faces.add_side(side);
 			let next_vertex = if side.reversed {
 				self.segment_domain.start_point[side.segment_index]
 			} else {

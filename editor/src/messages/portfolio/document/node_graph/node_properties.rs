@@ -233,15 +233,7 @@ pub(crate) fn property_from_type(
 							widgets.extend_from_slice(&[
 								Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 								TextLabel::new("-")
-									.tooltip_label(format!(
-										"Data Type: {}",
-										concrete_type
-											.alias
-											.as_deref()
-											// TODO: Avoid needing to remove spaces here by fixing how `alias` is generated
-											.map(|s| s.to_string().replace(" ", ""))
-											.unwrap_or_else(|| graphene_std::format_type(concrete_type.name.as_ref())),
-									))
+									.tooltip_label(format!("Data Type: {concrete_type}"))
 									.tooltip_description("This data can only be supplied through the node graph because no widget exists for its type.")
 									.widget_instance(),
 							]);
@@ -251,7 +243,7 @@ pub(crate) fn property_from_type(
 				}
 			}
 		}
-		Type::Generic(_) => vec![TextLabel::new("Generic type (not supported)").widget_instance()].into(),
+		Type::Generic(_) => vec![TextLabel::new("Generic Type (Not Supported)").widget_instance()].into(),
 		Type::Fn(_, out) => return property_from_type(node_id, index, out, number_options, unit, display_decimal_places, step, context),
 		Type::Future(out) => return property_from_type(node_id, index, out, number_options, unit, display_decimal_places, step, context),
 	};
