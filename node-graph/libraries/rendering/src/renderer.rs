@@ -26,7 +26,7 @@ use kurbo::Shape;
 use num_traits::Zero;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
-use std::hash::{DefaultHasher, Hash, Hasher};
+use std::hash::{Hash, Hasher};
 use std::ops::Deref;
 use std::sync::{Arc, LazyLock};
 use vello::*;
@@ -59,7 +59,7 @@ pub struct SvgRender {
 	pub svg: Vec<SvgSegment>,
 	pub svg_defs: String,
 	pub transform: DAffine2,
-	pub image_data: Vec<(u64, Image<Color>)>,
+	pub image_data: HashMap<Image<Color>, u64>,
 	indent: usize,
 }
 
@@ -69,7 +69,7 @@ impl SvgRender {
 			svg: Vec::default(),
 			svg_defs: String::new(),
 			transform: DAffine2::IDENTITY,
-			image_data: Vec::new(),
+			image_data: HashMap::new(),
 			indent: 0,
 		}
 	}
@@ -1239,6 +1239,7 @@ impl Render for Table<Raster<CPU>> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for row in self.iter() {
 			let image = row.element;
+
 			let transform = *row.transform;
 
 			if image.data.is_empty() {
@@ -1246,16 +1247,10 @@ impl Render for Table<Raster<CPU>> {
 			}
 
 			if render_params.to_canvas() {
-				let id = row.source_node_id.map(|x| x.0).unwrap_or_else(|| {
-					let mut state = DefaultHasher::new();
-					image.data().hash(&mut state);
-					state.finish()
-				});
-				if !render.image_data.iter().any(|(old_id, _)| *old_id == id) {
-					let mut image = image.data().clone();
-					image.map_pixels(|p| p.to_unassociated_alpha());
-					render.image_data.push((id, image));
-				}
+				let mut image_copy = image.clone();
+				image_copy.data_mut().map_pixels(|p| p.to_unassociated_alpha());
+				let id = *render.image_data.entry(image_copy.into_data()).or_insert_with(generate_uuid);
+
 				render.parent_tag(
 					"foreignObject",
 					|attributes| {

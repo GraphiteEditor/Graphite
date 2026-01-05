@@ -1,6 +1,6 @@
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::prelude::*;
-use glam::{DAffine2, UVec2};
+use glam::{DAffine2, DVec2, UVec2};
 use graph_craft::document::value::{RenderOutput, TaggedValue};
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
@@ -81,6 +81,7 @@ impl NodeGraphExecutor {
 		};
 		(node_runtime, node_executor)
 	}
+
 	/// Execute the network by flattening it and creating a borrow stack.
 	fn queue_execution(&mut self, render_config: RenderConfig) -> u64 {
 		let execution_id = self.current_execution_id;
@@ -140,6 +141,7 @@ impl NodeGraphExecutor {
 		viewport_resolution: UVec2,
 		viewport_scale: f64,
 		time: TimingInformation,
+		pointer: DVec2,
 	) -> Result<Message, String> {
 		let viewport = Footprint {
 			transform: document.metadata().document_to_viewport,
@@ -150,6 +152,7 @@ impl NodeGraphExecutor {
 			viewport,
 			scale: viewport_scale,
 			time,
+			pointer,
 			export_format: graphene_std::application_io::ExportFormat::Raster,
 			render_mode: document.render_mode,
 			hide_artboards: false,
@@ -175,9 +178,10 @@ impl NodeGraphExecutor {
 		time: TimingInformation,
 		node_to_inspect: Option<NodeId>,
 		ignore_hash: bool,
+		pointer: DVec2,
 	) -> Result<Message, String> {
 		self.update_node_graph(document, node_to_inspect, ignore_hash)?;
-		self.submit_current_node_graph_evaluation(document, document_id, viewport_resolution, viewport_scale, time)
+		self.submit_current_node_graph_evaluation(document, document_id, viewport_resolution, viewport_scale, time, pointer)
 	}
 
 	/// Evaluates a node graph for export
@@ -208,6 +212,7 @@ impl NodeGraphExecutor {
 			},
 			scale: export_config.scale_factor,
 			time: Default::default(),
+			pointer: DVec2::ZERO,
 			export_format,
 			render_mode: document.render_mode,
 			hide_artboards: export_config.transparent_background,
