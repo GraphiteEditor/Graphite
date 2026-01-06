@@ -1,0 +1,28 @@
+name: Build Linux Bundle
+
+on:
+  workflow_dispatch: {}
+  push:
+    branches:
+      - main
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Free disk space
+        run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
+
+      - name: Build Linux Bundle
+        run: nix build .nix#graphite-bundle.tar.xz && cp ./result ./graphite-bundle.tar.xz
+
+      - name: Upload Linux Bundle
+        uses: actions/upload-artifact@v4
+        with:
+          path: graphite-bundle.tar.xz
