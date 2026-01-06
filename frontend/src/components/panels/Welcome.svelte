@@ -75,11 +75,7 @@
 	<LayoutCol class="bottom-message">
 		<TextLabel italic={true} disabled={true}>
 			{#if isDesktop()}
-				You are testing Release Candidate 1 of the 1.0.0 desktop release. Please regularly check Discord for the next testing build and report issues you encounter.
-			{:else if new Date().getFullYear() === 2025}
-				September 2025 release — <a href="https://youtube.com/watch?v=Vl5BA4g3QXM" target="_blank">What's new? (video)</a>
-				— Note: some older documents may render differently and require manual fixes.
-				<a href="https://ec6796b4.graphite-editor.pages.dev/" target="_blank">Need the old version?</a>
+				You are testing Release Candidate 2 of the 1.0 desktop release. Please regularly check Discord for the next testing build and report issues you encounter.
 			{/if}
 		</TextLabel>
 	</LayoutCol>

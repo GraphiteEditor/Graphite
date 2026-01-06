@@ -61,7 +61,7 @@ impl NativeWindowHandle {
 				0,
 				0,
 				0,
-				None,
+				main,
 				None,
 				HINSTANCE(std::ptr::null_mut()),
 				// Pass the main window's HWND to WM_NCCREATE so the helper can store it.
@@ -118,7 +118,7 @@ impl NativeWindowHandle {
 		}
 
 		// Force window update
-		let _ = unsafe { SetWindowPos(main, None, 0, 0, 0, 0, SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER) };
+		let _ = unsafe { SetWindowPos(main, None, 0, 0, 0, 0, SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE) };
 
 		native_handle
 	}
@@ -325,20 +325,20 @@ unsafe fn position_helper(main: HWND, helper: HWND) {
 	let w = (r.right - r.left) + RESIZE_BAND_THICKNESS * 2;
 	let h = (r.bottom - r.top) + RESIZE_BAND_THICKNESS * 2;
 
-	let _ = unsafe { SetWindowPos(helper, main, x, y, w, h, SWP_NOACTIVATE | SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOSENDCHANGING) };
+	let _ = unsafe { SetWindowPos(helper, main, x, y, w, h, SWP_NOACTIVATE | SWP_NOSENDCHANGING) };
 }
 
 unsafe fn calculate_hit(helper: HWND, lparam: LPARAM) -> u32 {
-	let x = (lparam.0 & 0xFFFF) as i16 as u32;
-	let y = ((lparam.0 >> 16) & 0xFFFF) as i16 as u32;
+	let x = (lparam.0 & 0xFFFF) as i16 as i32;
+	let y = ((lparam.0 >> 16) & 0xFFFF) as i16 as i32;
 
 	let mut r = RECT::default();
 	let _ = unsafe { GetWindowRect(helper, &mut r) };
 
-	let on_top = y < (r.top + RESIZE_BAND_THICKNESS) as u32;
-	let on_right = x >= (r.right - RESIZE_BAND_THICKNESS) as u32;
-	let on_bottom = y >= (r.bottom - RESIZE_BAND_THICKNESS) as u32;
-	let on_left = x < (r.left + RESIZE_BAND_THICKNESS) as u32;
+	let on_top = y < (r.top + RESIZE_BAND_THICKNESS) as i32;
+	let on_right = x >= (r.right - RESIZE_BAND_THICKNESS) as i32;
+	let on_bottom = y >= (r.bottom - RESIZE_BAND_THICKNESS) as i32;
+	let on_left = x < (r.left + RESIZE_BAND_THICKNESS) as i32;
 
 	match (on_top, on_right, on_bottom, on_left) {
 		(true, _, _, true) => HTTOPLEFT,
