@@ -2216,6 +2216,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "graph-storage"
+version = "0.0.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "graphene-application-io"
 version = "0.1.0"
 dependencies = [

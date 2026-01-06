@@ -7,6 +7,7 @@ members = [
 	"desktop/platform/linux",
 	"desktop/platform/mac",
 	"desktop/platform/win",
+	"document",
 	"editor",
 	"frontend/wasm",
 	"libraries/dyn-any",
