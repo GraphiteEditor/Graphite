@@ -829,10 +829,10 @@ impl Fsm for ShapeToolFsmState {
 				};
 
 				match tool_data.current_shape {
-					ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Spiral | ShapeType::Grid | ShapeType::Rectangle | ShapeType::Ellipse | ShapeType::Arrow => {
-						tool_data.data.start(document, input)
+					ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Spiral | ShapeType::Grid | ShapeType::Rectangle | ShapeType::Ellipse => {
+						tool_data.data.start(document, input, viewport)
 					}
-					ShapeType::Line => {
+					ShapeType::Arrow | ShapeType::Line => {
 						let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
 						let snapped = tool_data
 							.data
@@ -849,11 +849,11 @@ impl Fsm for ShapeToolFsmState {
 					ShapeType::Star => Star::create_node(tool_options.vertices),
 					ShapeType::Circle => Circle::create_node(),
 					ShapeType::Arc => Arc::create_node(tool_options.arc_type),
-					ShapeType::Arrow => Arrow::create_node(),
 					ShapeType::Spiral => Spiral::create_node(tool_options.spiral_type, tool_options.turns),
 					ShapeType::Grid => Grid::create_node(tool_options.grid_type),
 					ShapeType::Rectangle => Rectangle::create_node(),
 					ShapeType::Ellipse => Ellipse::create_node(),
+					ShapeType::Arrow => Arrow::create_node(document, tool_data.data.drag_start),
 					ShapeType::Line => Line::create_node(document, tool_data.data.drag_start),
 				};
 
@@ -863,7 +863,7 @@ impl Fsm for ShapeToolFsmState {
 				let defered_responses = &mut VecDeque::new();
 
 				match tool_data.current_shape {
-					ShapeType::Arrow | ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Spiral | ShapeType::Grid | ShapeType::Rectangle | ShapeType::Ellipse => {
+					ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Spiral | ShapeType::Grid | ShapeType::Rectangle | ShapeType::Ellipse => {
 						defered_responses.add(GraphOperationMessage::TransformSet {
 							layer,
 							transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., input.mouse.position),
@@ -873,7 +873,7 @@ impl Fsm for ShapeToolFsmState {
 
 						tool_options.fill.apply_fill(layer, defered_responses);
 					}
-					ShapeType::Line => {
+					ShapeType::Arrow | ShapeType::Line => {
 						tool_data.line_data.weight = tool_options.line_weight;
 						tool_data.line_data.editing_layer = Some(layer);
 					}
@@ -896,12 +896,12 @@ impl Fsm for ShapeToolFsmState {
 				};
 
 				match tool_data.current_shape {
-					ShapeType::Polygon => Polygon::update_shape(document, input, layer, tool_data, modifier, responses),
-					ShapeType::Star => Star::update_shape(document, input, layer, tool_data, modifier, responses),
-					ShapeType::Circle => Circle::update_shape(document, input, layer, tool_data, modifier, responses),
-					ShapeType::Arc => Arc::update_shape(document, input, layer, tool_data, modifier, responses),
-					ShapeType::Arrow => Arrow::update_shape(document, input, layer, tool_data, modifier, responses),
-					ShapeType::Spiral => Spiral::update_shape(document, input, layer, tool_data, responses),
+					ShapeType::Polygon => Polygon::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
+					ShapeType::Star => Star::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
+					ShapeType::Circle => Circle::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
+					ShapeType::Arc => Arc::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
+					ShapeType::Arrow => Arrow::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
+					ShapeType::Spiral => Spiral::update_shape(document, input, viewport, layer, tool_data, responses),
 					ShapeType::Grid => Grid::update_shape(document, input, layer, tool_options.grid_type, tool_data, modifier, responses),
 					ShapeType::Rectangle => Rectangle::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
 					ShapeType::Ellipse => Ellipse::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
@@ -1045,6 +1045,7 @@ impl Fsm for ShapeToolFsmState {
 				}
 
 				tool_data.line_data.dragging_endpoint = None;
+				tool_data.line_data.editing_layer = None;
 
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Crosshair });
 
@@ -1062,6 +1063,7 @@ impl Fsm for ShapeToolFsmState {
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.data.cleanup(responses);
 				tool_data.line_data.dragging_endpoint = None;
+				tool_data.line_data.editing_layer = None;
 
 				tool_data.gizmo_manager.handle_cleanup();
 
