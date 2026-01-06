@@ -38,7 +38,7 @@ impl Arrow {
 	) {
 		let [center, lock_ratio, _] = modifier;
 
-		let Some([start, end]) = tool_data.data.calculate_points(document, input, center, lock_ratio) else {
+		let Some([start, end]) = tool_data.data.calculate_points(document, input, &document.viewport_message_handler, lock_ratio, center) else {
 			return;
 		};
 
