@@ -13,16 +13,16 @@ impl DialogLayoutHolder for AboutGraphiteDialog {
 	const TITLE: &'static str = "About Graphite";
 
 	fn layout_buttons(&self) -> Layout {
-		let widgets = vec![TextButton::new("OK").emphasized(true).on_update(|_| FrontendMessage::DisplayDialogDismiss.into()).widget_holder()];
+		let widgets = vec![TextButton::new("OK").emphasized(true).on_update(|_| FrontendMessage::DisplayDialogDismiss.into()).widget_instance()];
 
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
+		Layout(vec![LayoutGroup::Row { widgets }])
 	}
 
 	fn layout_column_2(&self) -> Layout {
 		let links = [
-			("Heart", "Donate", "https://graphite.rs/donate/"),
-			("GraphiteLogo", "Website", "https://graphite.rs"),
-			("Volunteer", "Volunteer", "https://graphite.rs/volunteer/"),
+			("Heart", "Donate", "https://graphite.art/donate/"),
+			("GraphiteLogo", "Website", "https://graphite.art"),
+			("Volunteer", "Volunteer", "https://graphite.art/volunteer/"),
 			("Credits", "Credits", "https://github.com/GraphiteEditor/Graphite/graphs/contributors"),
 		];
 		let mut widgets = links
@@ -32,7 +32,7 @@ impl DialogLayoutHolder for AboutGraphiteDialog {
 					.icon(Some(icon.into()))
 					.flush(true)
 					.on_update(|_| FrontendMessage::TriggerVisitLink { url: url.into() }.into())
-					.widget_holder()
+					.widget_instance()
 			})
 			.collect::<Vec<_>>();
 
@@ -48,25 +48,25 @@ impl DialogLayoutHolder for AboutGraphiteDialog {
 					}
 					.into()
 				})
-				.widget_holder(),
+				.widget_instance(),
 		);
 
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Column { widgets }]))
+		Layout(vec![LayoutGroup::Column { widgets }])
 	}
 }
 
 impl LayoutHolder for AboutGraphiteDialog {
 	fn layout(&self) -> Layout {
-		Layout::WidgetLayout(WidgetLayout::new(vec![
+		Layout(vec![
 			LayoutGroup::Row {
-				widgets: vec![TextLabel::new("About this release").bold(true).widget_holder()],
+				widgets: vec![TextLabel::new("About this release").bold(true).widget_instance()],
 			},
 			LayoutGroup::Row {
-				widgets: vec![TextLabel::new(commit_info_localized(&self.localized_commit_date)).multiline(true).widget_holder()],
+				widgets: vec![TextLabel::new(commit_info_localized(&self.localized_commit_date)).multiline(true).widget_instance()],
 			},
 			LayoutGroup::Row {
-				widgets: vec![TextLabel::new(format!("Copyright © {} Graphite contributors", self.localized_commit_year)).widget_holder()],
+				widgets: vec![TextLabel::new(format!("Copyright © {} Graphite contributors", self.localized_commit_year)).widget_instance()],
 			},
-		]))
+		])
 	}
 }

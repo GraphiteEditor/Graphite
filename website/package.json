@@ -6,9 +6,9 @@
 		"type": "git",
 		"url": "git+https://github.com/GraphiteEditor/Graphite.git"
 	},
-	"author": "Graphite Authors <contact@graphite.rs>",
+	"author": "Graphite Authors <contact@graphite.art>",
 	"license": "Apache-2.0",
-	"homepage": "https://graphite.rs",
+	"homepage": "https://graphite.art",
 	"type": "module",
 	"scripts": {
 		"postinstall": "node .build-scripts/install-fonts.ts",

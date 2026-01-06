@@ -3,8 +3,8 @@ import { TriggerAboutGraphiteLocalizedCommitDate } from "@graphite/messages";
 
 export function createLocalizationManager(editor: Editor) {
 	// Subscribe to process backend event
-	editor.subscriptions.subscribeJsMessage(TriggerAboutGraphiteLocalizedCommitDate, (triggerAboutGraphiteLocalizedCommitDate) => {
-		const localized = localizeTimestamp(triggerAboutGraphiteLocalizedCommitDate.commitDate);
+	editor.subscriptions.subscribeJsMessage(TriggerAboutGraphiteLocalizedCommitDate, (data) => {
+		const localized = localizeTimestamp(data.commitDate);
 		editor.handle.requestAboutGraphiteDialogWithLocalizedCommitDate(localized.timestamp, localized.year);
 	});
 }

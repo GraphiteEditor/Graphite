@@ -1,25 +1,23 @@
 { pkgs, inputs, ... }:
 
 let
-  libcef = pkgs.libcef.overrideAttrs (
-    _: _: {
-      postInstall = ''
-        strip $out/lib/*
-      '';
-    }
-  );
+  cef = pkgs.cef-binary.overrideAttrs {
+    postInstall = ''
+      strip $out/Release/*.so*
+    '';
+  };
+
   cefPath = pkgs.runCommand "cef-path" { } ''
     mkdir -p $out
 
-    ln -s ${libcef}/include $out/include
-    find ${libcef}/lib -type f -name "*" -exec ln -s {} $out/ \;
-    find ${libcef}/libexec -type f -name "*" -exec ln -s {} $out/ \;
-    cp -r ${libcef}/share/cef/* $out/
+    ln -s ${cef}/include $out/include
+    find ${cef}/Release -name "*" -type f -exec ln -s {} $out/ \;
+    find ${cef}/Resources -name "*" -maxdepth 1 -exec ln -s {} $out/ \;
 
     echo '${
       builtins.toJSON {
         type = "minimal";
-        name = builtins.baseNameOf libcef.src.url;
+        name = builtins.baseNameOf cef.src.url;
         sha1 = "";
       }
     }' > $out/archive.json

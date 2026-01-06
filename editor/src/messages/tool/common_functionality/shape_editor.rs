@@ -421,7 +421,7 @@ impl ShapeState {
 		(point.as_handle().is_some() && self.ignore_handles) || (point.as_anchor().is_some() && self.ignore_anchors)
 	}
 
-	pub fn close_selected_path(&self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, vector_meshes: bool) {
+	pub fn close_selected_path(&self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		// First collect all selected anchor points across all layers
 		let all_selected_points: Vec<(LayerNodeIdentifier, PointId)> = self
 			.selected_shape_state
@@ -445,14 +445,6 @@ impl ShapeState {
 		if all_selected_points.len() == 2 {
 			let (layer1, start_point) = all_selected_points[0];
 			let (layer2, end_point) = all_selected_points[1];
-
-			let Some(vector1) = document.network_interface.compute_modified_vector(layer1) else { return };
-			let Some(vector2) = document.network_interface.compute_modified_vector(layer2) else { return };
-
-			// If vector meshes is not selected then only for endpoints, otherwise normally applicable
-			if !vector_meshes && (vector1.all_connected(start_point).count() != 1 || vector2.all_connected(end_point).count() != 1) {
-				return;
-			}
 
 			if layer1 == layer2 {
 				if start_point == end_point {

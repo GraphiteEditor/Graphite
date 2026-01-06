@@ -26,7 +26,7 @@ Layers and nodes are wired together using **links** which send data between the 
 
 When a layer or node is selected, these buttons will show up on the left side of the control bar:
 
-<p><img src="https://static.graphite.rs/content/learn/interface/document-panel/node-controls-buttons.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" onload="this.width = this.naturalWidth / 2" alt="The node/layer controls" /></p>
+<p><img src="https://static.graphite.art/content/learn/interface/document-panel/node-controls-buttons.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" onload="this.width = this.naturalWidth / 2" alt="The node/layer controls" /></p>
 
 | | |
 |-|-|

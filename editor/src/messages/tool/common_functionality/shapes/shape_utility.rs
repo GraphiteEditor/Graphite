@@ -52,11 +52,19 @@ impl ShapeType {
 		.into()
 	}
 
-	pub fn tooltip(&self) -> String {
+	pub fn tooltip_label(&self) -> String {
 		(match self {
 			Self::Line => "Line Tool",
 			Self::Rectangle => "Rectangle Tool",
 			Self::Ellipse => "Ellipse Tool",
+			_ => "",
+		})
+		.into()
+	}
+
+	pub fn tooltip_description(&self) -> String {
+		(match self {
+			// TODO: Add descriptions to all the shape tools
 			_ => "",
 		})
 		.into()

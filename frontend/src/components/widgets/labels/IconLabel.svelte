@@ -1,15 +1,22 @@
 <script lang="ts">
 	import { type IconName, ICONS, ICON_SVG_STRINGS } from "@graphite/icons";
+	import type { ActionShortcut } from "@graphite/messages";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 
 	let className = "";
 	export { className as class };
 	export let classes: Record<string, boolean> = {};
-	export let icon: IconName;
+
 	export let iconSizeOverride: number | undefined = undefined;
+
+	// Content
+	export let icon: IconName;
 	export let disabled = false;
-	export let tooltip: string | undefined = undefined;
+	// Tooltips
+	export let tooltipLabel: string | undefined = undefined;
+	export let tooltipDescription: string | undefined = undefined;
+	export let tooltipShortcut: ActionShortcut | undefined = undefined;
 
 	$: iconSizeClass = ((icon: IconName) => {
 		const iconData = ICONS[icon];
@@ -26,7 +33,7 @@
 		.join(" ");
 </script>
 
-<LayoutRow class={`icon-label ${iconSizeClass} ${className} ${extraClasses}`.trim()} classes={{ disabled }} {tooltip}>
+<LayoutRow class={`icon-label ${iconSizeClass} ${className} ${extraClasses}`.trim()} classes={{ disabled }} {tooltipLabel} {tooltipDescription} {tooltipShortcut}>
 	{@html ICON_SVG_STRINGS[icon] || "�"}
 </LayoutRow>
 

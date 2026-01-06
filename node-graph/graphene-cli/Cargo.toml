@@ -3,7 +3,7 @@ name = "graphene-cli"
 version = "0.1.0"
 edition = "2024"
 description = "CLI interface for the graphene language"
-authors = ["Graphite Authors <contact@graphite.rs>"]
+authors = ["Graphite Authors <contact@graphite.art>"]
 license = "MIT OR Apache-2.0"
 
 [features]
@@ -27,9 +27,7 @@ wgpu = { workspace = true }
 tokio = { workspace = true, features = ["rt-multi-thread"] }
 clap = { workspace = true, features = ["cargo", "derive"] }
 image = { workspace = true }
-
-# Optional local dependencies
-wgpu-executor = { path = "../wgpu-executor", optional = true }
+wgpu-executor = { workspace = true, optional = true }
 
 [package.metadata.cargo-shear]
 ignored = ["wgpu-executor"]

@@ -197,7 +197,7 @@ function formatThirdPartyLicenses(jsLicenses: Dependency[]): string {
 				!(packageInfo.repository && packageInfo.repository.toLowerCase().includes("github.com/GraphiteEditor/Graphite".toLowerCase())) &&
 				!(
 					packageInfo.author &&
-					packageInfo.author.toLowerCase().includes("contact@graphite.rs") &&
+					packageInfo.author.toLowerCase().includes("contact@graphite.art") &&
 					// Exclude a comma which indicates multiple authors, which we need to not filter out
 					!packageInfo.author.toLowerCase().includes(",")
 				),

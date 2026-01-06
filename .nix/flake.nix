@@ -33,7 +33,10 @@
         info = {
           pname = "graphite";
           version = "unstable";
-          src = ./..;
+          src = pkgs.lib.cleanSourceWith {
+            src = ./..;
+            filter = path: type: !(type == "directory" && builtins.baseNameOf path == ".nix");
+          };
         };
 
         pkgs = import inputs.nixpkgs {
@@ -98,6 +101,9 @@
             pkgs.gnuplot
             pkgs.samply
             pkgs.cargo-flamegraph
+
+            # Plotting tools
+            pkgs.graphviz
           ];
           all = desktop ++ frontend ++ dev;
         };
@@ -125,6 +131,13 @@
           graphite-without-resources-dev = graphiteWithArgs {
             embeddedResources = false;
             dev = true;
+          };
+          graphite-bundle = import ./pkgs/graphite-bundle.nix {
+            inherit pkgs graphite;
+          };
+          graphite-flatpak-manifest = import ./pkgs/graphite-flatpak-manifest.nix {
+            inherit pkgs;
+            archive = graphite-bundle.tar;
           };
           #TODO: graphene-cli = import ./pkgs/graphene-cli.nix { inherit info pkgs inputs deps libs tools; };
           raster-nodes-shaders = import ./pkgs/raster-nodes-shaders.nix {

@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
-	import type { Curve, CurveManipulatorGroup } from "@graphite/messages";
+	import type { Curve, CurveManipulatorGroup, ActionShortcut } from "@graphite/messages";
 	import { clamp } from "@graphite/utility-functions/math";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -10,15 +10,14 @@
 		value: Curve;
 	}>();
 
-	export let classes: Record<string, boolean> = {};
-	let styleName = "";
-	export { styleName as style };
-	export let styles: Record<string, string | number | undefined> = {};
-	export let value: Curve;
-	export let disabled = false;
-	export let tooltip: string | undefined = undefined;
-
 	const GRID_SIZE = 4;
+
+	// Content
+	export let value: Curve;
+	// Tooltips
+	export let tooltipLabel: string | undefined = undefined;
+	export let tooltipDescription: string | undefined = undefined;
+	export let tooltipShortcut: ActionShortcut | undefined = undefined;
 
 	let manipulatorsList: CurveManipulatorGroup[] = [
 		{
@@ -77,7 +76,7 @@
 	}
 
 	function handleManipulatorPointerDown(e: PointerEvent, i: number) {
-		// Delete an anchor with RMB or MMB
+		// Delete an anchor with right click or middle click
 		if (e.button > 0 && i > 0 && i < manipulatorsList.length - 1) {
 			draggedNodeIndex = undefined;
 			selectedNodeIndex = undefined;
@@ -188,7 +187,7 @@
 	}
 </script>
 
-<LayoutRow class="curve-input" classes={{ disabled, ...classes }} style={styleName} {styles} {tooltip}>
+<LayoutRow class="curve-input" {tooltipLabel} {tooltipDescription} {tooltipShortcut}>
 	<svg viewBox="0 0 1 1" on:pointermove={handlePointerMove} on:pointerup={handlePointerUp}>
 		{#each { length: GRID_SIZE - 1 } as _, i}
 			<path class="grid" d={`M 0 ${(i + 1) / GRID_SIZE} L 1 ${(i + 1) / GRID_SIZE}`} />

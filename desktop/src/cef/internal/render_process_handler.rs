@@ -4,7 +4,7 @@ use cef::{CefString, ImplFrame, ImplRenderProcessHandler, ImplV8Context, ImplV8V
 
 use crate::cef::ipc::{MessageType, UnpackMessage, UnpackedMessage};
 
-use super::render_process_v8_handler::BrowserProcessV8HandlerImpl;
+use super::render_process_v8_handler::RenderProcessV8HandlerImpl;
 
 pub(crate) struct RenderProcessHandlerImpl {
 	object: *mut RcImpl<cef_render_process_handler_t, Self>,
@@ -22,7 +22,7 @@ impl ImplRenderProcessHandler for RenderProcessHandlerImpl {
 		frame: Option<&mut cef::Frame>,
 		_source_process: cef::ProcessId,
 		message: Option<&mut cef::ProcessMessage>,
-	) -> ::std::os::raw::c_int {
+	) -> std::ffi::c_int {
 		let unpacked_message = unsafe { message.and_then(|m| m.unpack()) };
 		match unpacked_message {
 			Some(UnpackedMessage {
@@ -77,7 +77,7 @@ impl ImplRenderProcessHandler for RenderProcessHandlerImpl {
 
 	fn on_context_created(&self, _browser: Option<&mut cef::Browser>, _frame: Option<&mut cef::Frame>, context: Option<&mut cef::V8Context>) {
 		let register_js_function = |context: &mut cef::V8Context, name: &'static str| {
-			let mut v8_handler = V8Handler::new(BrowserProcessV8HandlerImpl::new());
+			let mut v8_handler = V8Handler::new(RenderProcessV8HandlerImpl::new());
 			let Some(mut function) = v8_value_create_function(Some(&CefString::from(name)), Some(&mut v8_handler)) else {
 				tracing::error!("Failed to create V8 function {name}");
 				return;

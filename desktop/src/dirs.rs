@@ -9,14 +9,14 @@ pub(crate) fn ensure_dir_exists(path: &PathBuf) {
 	}
 }
 
-pub(crate) fn graphite_data_dir() -> PathBuf {
+pub(crate) fn app_data_dir() -> PathBuf {
 	let path = dirs::data_dir().expect("Failed to get data directory").join(APP_DIRECTORY_NAME);
 	ensure_dir_exists(&path);
 	path
 }
 
-pub(crate) fn graphite_autosave_documents_dir() -> PathBuf {
-	let path = graphite_data_dir().join(APP_DOCUMENTS_DIRECTORY_NAME);
+pub(crate) fn app_autosave_documents_dir() -> PathBuf {
+	let path = app_data_dir().join(APP_DOCUMENTS_DIRECTORY_NAME);
 	ensure_dir_exists(&path);
 	path
 }

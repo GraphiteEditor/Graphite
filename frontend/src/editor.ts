@@ -1,5 +1,5 @@
 // import { panicProxy } from "@graphite/utility-functions/panic-proxy";
-import init, { setRandomSeed, wasmMemory, EditorHandle, receiveNativeMessage } from "@graphite/../wasm/pkg/graphite_wasm.js";
+import init, { setRandomSeed, wasmMemory, EditorHandle, receiveNativeMessage } from "@graphite/../wasm/pkg/graphite_wasm";
 import { type JsMessageType } from "@graphite/messages";
 import { createSubscriptionRouter, type SubscriptionRouter } from "@graphite/subscription-router";
 

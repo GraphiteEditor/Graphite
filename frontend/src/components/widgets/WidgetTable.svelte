@@ -1,19 +1,21 @@
 <script lang="ts">
-	import { type WidgetTable as WidgetTableFromJsMessages } from "@graphite/messages";
+	import { type LayoutTarget, type WidgetTable as WidgetTableFromJsMessages } from "@graphite/messages";
 
 	import WidgetSpan from "@graphite/components/widgets/WidgetSpan.svelte";
 
 	export let widgetData: WidgetTableFromJsMessages;
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	export let layoutTarget: any; // TODO: Give this a real type
+	export let layoutTarget: LayoutTarget;
+	export let unstyled = false;
+
+	$: columns = widgetData.tableWidgets.length > 0 ? widgetData.tableWidgets[0].length : 0;
 </script>
 
-<table>
+<table class:unstyled>
 	<tbody>
 		{#each widgetData.tableWidgets as row}
 			<tr>
 				{#each row as cell}
-					<td>
+					<td colspan={row.length < columns ? columns - row.length + 1 : undefined}>
 						<WidgetSpan widgetData={{ rowWidgets: [cell] }} {layoutTarget} narrow={true} />
 					</td>
 				{/each}
@@ -23,7 +25,7 @@
 </table>
 
 <style lang="scss">
-	table {
+	table:not(.unstyled) {
 		background: var(--color-3-darkgray);
 		border: none;
 		border-spacing: 4px;

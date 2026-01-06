@@ -13,7 +13,7 @@ Any (sub)graph can import/export data from/to the outside world. For example, a 
 
 In the Graphite editor UI, here is an example graph of artwork that imports no data but exports its content to the canvas:
 
-<img src="https://static.graphite.rs/content/features/mockup-node-graph.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Node graph UI mockup" />
+<img src="https://static.graphite.art/content/features/mockup-node-graph.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Node graph UI mockup" />
 
 The graph shown above represents the full artwork, meaning it's the root-level graph in its document. But there is nothing special about that graph compared to any subgraph. To avoid the confusion of calling it a graph or subgraph which comes with implications about user-facing concepts in the context of a document, we will use the less-ambiguous term **network** in the context of Graphene's internal concepts and codebase.
 
