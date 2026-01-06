@@ -965,9 +965,12 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				});
 			}
 			PortfolioMessage::RequestStatusBarInfoLayout => {
-				let row = LayoutGroup::Row {
-					widgets: vec![TextLabel::new("Graphite (beta) 1.0.0-RC1").disabled(true).widget_instance()],
-				};
+				#[cfg(not(target_family = "wasm"))]
+				let widgets = vec![TextLabel::new("Graphite (beta) 1.0.0-RC2").disabled(true).widget_instance()];
+				#[cfg(target_family = "wasm")]
+				let widgets = vec![];
+
+				let row = LayoutGroup::Row { widgets };
 
 				responses.add(LayoutMessage::SendLayout {
 					layout: Layout(vec![row]),
