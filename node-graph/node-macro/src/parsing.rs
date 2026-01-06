@@ -50,6 +50,8 @@ pub(crate) struct NodeFnAttributes {
 	pub(crate) cfg: Option<TokenStream2>,
 	/// if this node should get a gpu implementation, defaults to None
 	pub(crate) shader_node: Option<ShaderNodeType>,
+	/// Custom serialization function path (e.g., "my_module::custom_serialize")
+	pub(crate) serialize: Option<Path>,
 	// Add more attributes as needed
 }
 
@@ -112,6 +114,7 @@ pub struct ParsedField {
 	pub number_display_decimal_places: Option<LitInt>,
 	pub number_step: Option<LitFloat>,
 	pub unit: Option<LitStr>,
+	pub is_data_field: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -201,6 +204,7 @@ impl Parse for NodeFnAttributes {
 		let mut properties_string = None;
 		let mut cfg = None;
 		let mut shader_node = None;
+		let mut serialize = None;
 
 		let content = input;
 		// let content;
@@ -270,13 +274,23 @@ impl Parse for NodeFnAttributes {
 					let meta = meta.require_list()?;
 					shader_node = Some(syn::parse2(meta.tokens.to_token_stream())?);
 				}
+				"serialize" => {
+					let meta = meta.require_list()?;
+					if serialize.is_some() {
+						return Err(Error::new_spanned(meta, "Multiple 'serialize' attributes are not allowed"));
+					}
+					let parsed_path: Path = meta
+						.parse_args()
+						.map_err(|_| Error::new_spanned(meta, "Expected a valid path for 'serialize', e.g., serialize(my_module::custom_serialize)"))?;
+					serialize = Some(parsed_path);
+				}
 				_ => {
 					return Err(Error::new_spanned(
 						meta,
 						indoc!(
 							r#"
 							Unsupported attribute in `node`.
-							Supported attributes are 'category', 'path' 'name', 'skip_impl', 'cfg' and 'properties'.
+							Supported attributes are 'category', 'path', 'name', 'skip_impl', 'cfg', 'properties', 'serialize', and 'shader_node'.
 
 							Example usage:
 							#[node_macro::node(category("Value"), name("Test Node"))]
@@ -295,6 +309,7 @@ impl Parse for NodeFnAttributes {
 			properties_string,
 			cfg,
 			shader_node,
+			serialize,
 		})
 	}
 }
@@ -414,11 +429,13 @@ fn parse_context_feature_idents(ty: &Type) -> Vec<Ident> {
 						"ExtractFootprint"
 						| "ExtractRealTime"
 						| "ExtractAnimationTime"
+						| "ExtractPointer"
 						| "ExtractIndex"
 						| "ExtractVarArgs"
 						| "InjectFootprint"
 						| "InjectRealTime"
 						| "InjectAnimationTime"
+						| "InjectPointer"
 						| "InjectIndex"
 						| "InjectVarArgs" => {
 							features.push(segment.ident.clone());
@@ -465,6 +482,9 @@ fn parse_node_implementations<T: Parse>(attr: &Attribute, name: &Ident) -> syn::
 fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Result<ParsedField> {
 	let ident = &pat_ident.ident;
 
+	// Check if this is a data field (struct field, not a parameter)
+	let is_data_field = extract_attribute(attrs, "data").is_some();
+
 	let default_value = extract_attribute(attrs, "default")
 		.map(|attr| attr.parse_args().map_err(|e| Error::new_spanned(attr, format!("Invalid `default` value for argument '{ident}': {e}"))))
 		.transpose()?;
@@ -486,6 +506,25 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 		.unwrap_or_default();
 
 	let exposed = extract_attribute(attrs, "expose").is_some();
+
+	// Validate data field attributes
+	if is_data_field {
+		if default_value.is_some() {
+			return Err(Error::new_spanned(
+				&pat_ident,
+				"Data fields (#[data]) cannot have #[default] attribute. They are automatically initialized with Default::default()",
+			));
+		}
+		if scope.is_some() {
+			return Err(Error::new_spanned(&pat_ident, "Data fields (#[data]) cannot have #[scope] attribute"));
+		}
+		if exposed {
+			return Err(Error::new_spanned(
+				&pat_ident,
+				"Data fields (#[data]) cannot be exposed (#[expose]). They are internal state, not node parameters",
+			));
+		}
+	}
 
 	let value_source = match (default_value, scope) {
 		(Some(_), Some(_)) => return Err(Error::new_spanned(&pat_ident, "Cannot have both `default` and `scope` attributes")),
@@ -530,10 +569,10 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			})
 		})
 		.transpose()?;
-	if let Some(range) = &number_mode_range {
-		if range.elems.len() != 2 {
-			return Err(Error::new_spanned(range, "Expected a tuple of two values for `range` for the min and max, respectively"));
-		}
+	if let Some(range) = &number_mode_range
+		&& range.elems.len() != 2
+	{
+		return Err(Error::new_spanned(range, "Expected a tuple of two values for `range` for the min and max, respectively"));
 	}
 
 	let unit = extract_attribute(attrs, "unit")
@@ -584,6 +623,14 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 		.fold(String::new(), |acc, b| acc + &b + "\n");
 
 	if is_node {
+		// Data fields cannot be impl Node types
+		if is_data_field {
+			return Err(Error::new_spanned(
+				&ty,
+				"Data fields (#[data]) cannot be of type `impl Node`. Data fields must be concrete types that implement Default",
+			));
+		}
+
 		let (input_type, output_type) = node_input_type
 			.zip(node_output_type)
 			.ok_or_else(|| Error::new_spanned(&ty, "Invalid Node type. Expected `impl Node<Input, Output = OutputType>`"))?;
@@ -608,6 +655,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			number_display_decimal_places,
 			number_step,
 			unit,
+			is_data_field,
 		})
 	} else {
 		let implementations = extract_attribute(attrs, "implementations")
@@ -634,6 +682,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			number_display_decimal_places,
 			number_step,
 			unit,
+			is_data_field,
 		})
 	}
 }
@@ -641,20 +690,19 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 fn parse_node_type(ty: &Type) -> (bool, Option<Type>, Option<Type>) {
 	if let Type::ImplTrait(impl_trait) = ty {
 		for bound in &impl_trait.bounds {
-			if let syn::TypeParamBound::Trait(trait_bound) = bound {
-				if trait_bound.path.segments.last().is_some_and(|seg| seg.ident == "Node") {
-					if let syn::PathArguments::AngleBracketed(args) = &trait_bound.path.segments.last().unwrap().arguments {
-						let input_type = args.args.iter().find_map(|arg| if let syn::GenericArgument::Type(ty) = arg { Some(ty.clone()) } else { None });
-						let output_type = args.args.iter().find_map(|arg| {
-							if let syn::GenericArgument::AssocType(assoc_type) = arg {
-								if assoc_type.ident == "Output" { Some(assoc_type.ty.clone()) } else { None }
-							} else {
-								None
-							}
-						});
-						return (true, input_type, output_type);
+			if let syn::TypeParamBound::Trait(trait_bound) = bound
+				&& trait_bound.path.segments.last().is_some_and(|seg| seg.ident == "Node")
+				&& let syn::PathArguments::AngleBracketed(args) = &trait_bound.path.segments.last().unwrap().arguments
+			{
+				let input_type = args.args.iter().find_map(|arg| if let syn::GenericArgument::Type(ty) = arg { Some(ty.clone()) } else { None });
+				let output_type = args.args.iter().find_map(|arg| {
+					if let syn::GenericArgument::AssocType(assoc_type) = arg {
+						if assoc_type.ident == "Output" { Some(assoc_type.ty.clone()) } else { None }
+					} else {
+						None
 					}
-				}
+				});
+				return (true, input_type, output_type);
 			}
 		}
 	}
@@ -805,7 +853,7 @@ mod tests {
 
 	#[test]
 	fn test_basic_node() {
-		let attr = quote!(category("Math: Arithmetic"), path(graphene_core::TestNode), skip_impl);
+		let attr = quote!(category("Math: Arithmetic"), path(core_types::TestNode), skip_impl);
 		let input = quote!(
 			/// Multi
 			/// Line
@@ -820,11 +868,12 @@ mod tests {
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("Math: Arithmetic")),
 				display_name: None,
-				path: Some(parse_quote!(graphene_core::TestNode)),
+				path: Some(parse_quote!(core_types::TestNode)),
 				skip_impl: true,
 				properties_string: None,
 				cfg: None,
 				shader_node: None,
+				serialize: None,
 			},
 			fn_name: Ident::new("add", Span::call_site()),
 			struct_name: Ident::new("Add", Span::call_site()),
@@ -859,6 +908,7 @@ mod tests {
 				number_display_decimal_places: None,
 				number_step: None,
 				unit: None,
+				is_data_field: false,
 			}],
 			body: TokenStream2::new(),
 			description: String::from("Multi\nLine\n"),
@@ -891,6 +941,7 @@ mod tests {
 				properties_string: None,
 				cfg: None,
 				shader_node: None,
+				serialize: None,
 			},
 			fn_name: Ident::new("transform", Span::call_site()),
 			struct_name: Ident::new("Transform", Span::call_site()),
@@ -919,6 +970,7 @@ mod tests {
 					number_display_decimal_places: None,
 					number_step: None,
 					unit: None,
+					is_data_field: false,
 				},
 				ParsedField {
 					pat_ident: pat_ident("translate"),
@@ -940,6 +992,7 @@ mod tests {
 					number_display_decimal_places: None,
 					number_step: None,
 					unit: None,
+					is_data_field: false,
 				},
 			],
 			body: TokenStream2::new(),
@@ -970,6 +1023,7 @@ mod tests {
 				properties_string: None,
 				cfg: None,
 				shader_node: None,
+				serialize: None,
 			},
 			fn_name: Ident::new("circle", Span::call_site()),
 			struct_name: Ident::new("Circle", Span::call_site()),
@@ -1004,6 +1058,7 @@ mod tests {
 				number_display_decimal_places: None,
 				number_step: None,
 				unit: None,
+				is_data_field: false,
 			}],
 			body: TokenStream2::new(),
 			description: "Test\n".into(),
@@ -1032,6 +1087,7 @@ mod tests {
 				properties_string: None,
 				cfg: None,
 				shader_node: None,
+				serialize: None,
 			},
 			fn_name: Ident::new("levels", Span::call_site()),
 			struct_name: Ident::new("Levels", Span::call_site()),
@@ -1071,6 +1127,7 @@ mod tests {
 				number_display_decimal_places: None,
 				number_step: None,
 				unit: None,
+				is_data_field: false,
 			}],
 			body: TokenStream2::new(),
 			description: String::new(),
@@ -1081,7 +1138,7 @@ mod tests {
 
 	#[test]
 	fn test_number_min_max_range_mode() {
-		let attr = quote!(category("Math: Arithmetic"), path(graphene_core::TestNode));
+		let attr = quote!(category("Math: Arithmetic"), path(core_types::TestNode));
 		let input = quote!(
 			fn add(
 				a: f64,
@@ -1101,11 +1158,12 @@ mod tests {
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("Math: Arithmetic")),
 				display_name: None,
-				path: Some(parse_quote!(graphene_core::TestNode)),
+				path: Some(parse_quote!(core_types::TestNode)),
 				skip_impl: false,
 				properties_string: None,
 				cfg: None,
 				shader_node: None,
+				serialize: None,
 			},
 			fn_name: Ident::new("add", Span::call_site()),
 			struct_name: Ident::new("Add", Span::call_site()),
@@ -1140,6 +1198,7 @@ mod tests {
 				number_display_decimal_places: None,
 				number_step: None,
 				unit: None,
+				is_data_field: false,
 			}],
 			body: TokenStream2::new(),
 			description: String::new(),
@@ -1168,6 +1227,7 @@ mod tests {
 				properties_string: None,
 				cfg: None,
 				shader_node: None,
+				serialize: None,
 			},
 			fn_name: Ident::new("load_image", Span::call_site()),
 			struct_name: Ident::new("LoadImage", Span::call_site()),
@@ -1202,6 +1262,7 @@ mod tests {
 				number_display_decimal_places: None,
 				number_step: None,
 				unit: None,
+				is_data_field: false,
 			}],
 			body: TokenStream2::new(),
 			description: String::new(),
@@ -1230,6 +1291,7 @@ mod tests {
 				properties_string: None,
 				cfg: None,
 				shader_node: None,
+				serialize: None,
 			},
 			fn_name: Ident::new("custom_node", Span::call_site()),
 			struct_name: Ident::new("CustomNode", Span::call_site()),

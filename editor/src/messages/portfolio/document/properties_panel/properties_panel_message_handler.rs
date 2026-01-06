@@ -35,7 +35,7 @@ impl MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageContext<'_>> f
 		match message {
 			PropertiesPanelMessage::Clear => {
 				responses.add(LayoutMessage::SendLayout {
-					layout: Layout::WidgetLayout(WidgetLayout::new(vec![])),
+					layout: Layout::default(),
 					layout_target: LayoutTarget::PropertiesPanel,
 				});
 			}
@@ -53,10 +53,10 @@ impl MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageContext<'_>> f
 					document_name,
 					executor,
 				};
-				let properties_sections = NodeGraphMessageHandler::collate_properties(&mut node_properties_context);
+				let layout = Layout(NodeGraphMessageHandler::collate_properties(&mut node_properties_context));
 
 				node_properties_context.responses.add(LayoutMessage::SendLayout {
-					layout: Layout::WidgetLayout(WidgetLayout::new(properties_sections)),
+					layout,
 					layout_target: LayoutTarget::PropertiesPanel,
 				});
 			}

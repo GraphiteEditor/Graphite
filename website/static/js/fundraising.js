@@ -13,7 +13,7 @@ function initializeFundraisingBar() {
 	if (!(fundraising instanceof HTMLElement && bar instanceof HTMLElement && dynamicPercent instanceof HTMLElement && dynamicGoal instanceof HTMLElement)) return;
 
 	const setFundraisingGoal = async () => {
-		const request = await fetch("https://graphite.rs/fundraising-goal");
+		const request = await fetch("https://graphite.art/fundraising-goal");
 		/** @type {{ percentComplete: number, targetValue: number }} */
 		const data = await request.json();
 

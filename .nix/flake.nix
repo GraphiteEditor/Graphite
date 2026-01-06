@@ -19,141 +19,151 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     flake-utils.url = "github:numtide/flake-utils";
+    crane.url = "github:ipetkov/crane";
 
     # This is used to provide a identical development shell at `shell.nix` for users that do not use flakes
     flake-compat.url = "https://flakehub.com/f/edolstra/flake-compat/1.tar.gz";
   };
 
-  outputs = { nixpkgs, rust-overlay, flake-utils, ... }:
-    flake-utils.lib.eachDefaultSystem (system:
+  outputs =
+    inputs:
+    inputs.flake-utils.lib.eachDefaultSystem (
+      system:
       let
-        overlays = [ (import rust-overlay) ];
-        pkgs = import nixpkgs { inherit system overlays; };
-
-        rustExtensions = [ "rust-src" "rust-analyzer" "clippy" "cargo" ];
-        rust = pkgs.rust-bin.stable.latest.default.override {
-          targets = [ "wasm32-unknown-unknown" ];
-          extensions = rustExtensions;
+        info = {
+          pname = "graphite";
+          version = "unstable";
+          src = pkgs.lib.cleanSourceWith {
+            src = ./..;
+            filter = path: type: !(type == "directory" && builtins.baseNameOf path == ".nix");
+          };
         };
 
-        # Shared build inputs; libraries that need to be in LD_LIBRARY_PATH
-        buildInputs = [
-          pkgs.wayland
-          pkgs.openssl
-          pkgs.vulkan-loader
-          pkgs.libraw
-          pkgs.libGL
+        pkgs = import inputs.nixpkgs {
+          inherit system;
+          overlays = [ (import inputs.rust-overlay) ];
+        };
 
-          # X11 libraries, not needed on wayland! Remove when x11 is finally dead
-          pkgs.libxkbcommon
-          pkgs.xorg.libXcursor
-          pkgs.xorg.libxcb
-          pkgs.xorg.libX11
-        ];
+        deps = {
+          crane = import ./deps/crane.nix { inherit pkgs inputs; };
+          cef = import ./deps/cef.nix { inherit pkgs inputs; };
+          rustGPU = import ./deps/rust-gpu.nix { inherit pkgs inputs; };
+        };
 
-        # Packages needed to build the package
-        buildTools = [
-          rust
-          pkgs.nodejs
-          pkgs.nodePackages.npm
-          pkgs.binaryen
-          pkgs.wasm-bindgen-cli_0_2_100
-          pkgs.wasm-pack
-          pkgs.pkg-config
-          pkgs.cargo-about
-        ];
-
-        # Development tools; not needed to build the package
-        devTools = [
-          pkgs.git
-
-          pkgs.cargo-watch
-          pkgs.cargo-nextest
-          pkgs.cargo-expand
-
-          # Linker
-          pkgs.mold
-
-          # Profiling tools
-          pkgs.gnuplot
-          pkgs.samply
-          pkgs.cargo-flamegraph
-        ];
-
-        cefEnv = import ./cef.nix { inherit pkgs; };
-        rustGPUEnv = import ./rust-gpu.nix { inherit pkgs; };
-
-        libPath = "${pkgs.lib.makeLibraryPath buildInputs}:${cefEnv.CEF_PATH}";
-      in {
-        devShells.default = pkgs.mkShell ({
-          packages = buildInputs ++ buildTools ++ devTools;
-
-          LD_LIBRARY_PATH = libPath;
-          XDG_DATA_DIRS =
-            "${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}:$XDG_DATA_DIRS";
-
-          shellHook = ''
-            alias cargo='mold --run cargo'
-          '';
-        } // cefEnv // rustGPUEnv);
-
-        packages.default = pkgs.rustPlatform.buildRustPackage (finalAttrs: {
-          pname = "graphite-editor";
-          version = "unstable";
-          src = pkgs.lib.cleanSource ./..;
-
-          cargoLock = {
-            lockFile = ../Cargo.lock;
-            allowBuiltinFetchGit = true;
-          };
-
-          # TODO: Remove the need for this hash by using individual package resolutions and hashes from package-lock.json
-          npmDeps = pkgs.fetchNpmDeps {
-            inherit (finalAttrs) pname version;
-            src = "${finalAttrs.src}/frontend";
-            hash = "sha256-UWuJpKNYj2Xn34rpMDZ75pzMYUOLQjPeGuJ/QlPbX9A=";
-          };
-
-          npmRoot = "frontend";
-          npmConfigScript = "setup";
-          makeCacheWritable = true;
-
-          buildInputs = buildInputs;
-          nativeBuildInputs = buildTools ++ [
-            pkgs.rustPlatform.cargoSetupHook
-            pkgs.npmHooks.npmConfigHook
-            pkgs.makeWrapper
+        libs = rec {
+          desktop = [
+            pkgs.wayland
+            pkgs.openssl
+            pkgs.vulkan-loader
+            pkgs.libraw
+            pkgs.libGL
           ];
+          desktop-x11 = [
+            pkgs.libxkbcommon
+            pkgs.xorg.libXcursor
+            pkgs.xorg.libxcb
+            pkgs.xorg.libX11
+          ];
+          desktop-all = desktop ++ desktop-x11;
+          all = desktop-all;
+        };
 
-          env = cefEnv // rustGPUEnv;
+        tools = rec {
+          desktop = [
+            pkgs.pkg-config
+          ];
+          frontend = [
+            pkgs.lld
+            pkgs.nodejs
+            pkgs.nodePackages.npm
+            pkgs.binaryen
+            pkgs.wasm-bindgen-cli_0_2_100
+            pkgs.wasm-pack
+            pkgs.cargo-about
+          ];
+          dev = [
+            pkgs.rustc
+            pkgs.cargo
+            pkgs.rust-analyzer
+            pkgs.clippy
+            pkgs.rustfmt
 
-          buildPhase = ''
-            export HOME="$TMPDIR"
+            pkgs.git
 
-            pushd frontend
-            npm run build-native
-            popd
-            cargo build -r -p graphite-desktop
-          '';
+            pkgs.cargo-watch
+            pkgs.cargo-nextest
+            pkgs.cargo-expand
 
-          installPhase = ''
-            mkdir -p $out/bin
-            cp target/release/graphite-desktop $out/bin/graphite-editor
+            # Linker
+            pkgs.mold
 
-            mkdir -p $out/share/applications
-            cp $src/desktop/assets/*.desktop $out/share/applications/
+            # Profiling tools
+            pkgs.gnuplot
+            pkgs.samply
+            pkgs.cargo-flamegraph
 
-            mkdir -p $out/share/icons/hicolor/scalable/apps
-            cp $src/desktop/assets/graphite-icon-color.svg $out/share/icons/hicolor/scalable/apps/
-          '';
+            # Plotting tools
+            pkgs.graphviz
+          ];
+          all = desktop ++ frontend ++ dev;
+        };
+      in
+      {
+        packages = rec {
+          graphiteWithArgs =
+            args:
+            (import ./pkgs/graphite.nix {
+              pkgs = pkgs // {
+                inherit raster-nodes-shaders;
+              };
+              inherit
+                info
+                inputs
+                deps
+                libs
+                tools
+                ;
+            })
+              args;
+          graphite = graphiteWithArgs { };
+          graphite-dev = graphiteWithArgs { dev = true; };
+          graphite-without-resources = graphiteWithArgs { embeddedResources = false; };
+          graphite-without-resources-dev = graphiteWithArgs {
+            embeddedResources = false;
+            dev = true;
+          };
+          graphite-bundle = import ./pkgs/graphite-bundle.nix {
+            inherit pkgs graphite;
+          };
+          graphite-flatpak-manifest = import ./pkgs/graphite-flatpak-manifest.nix {
+            inherit pkgs;
+            archive = graphite-bundle.tar;
+          };
+          #TODO: graphene-cli = import ./pkgs/graphene-cli.nix { inherit info pkgs inputs deps libs tools; };
+          raster-nodes-shaders = import ./pkgs/raster-nodes-shaders.nix {
+            inherit
+              info
+              pkgs
+              inputs
+              deps
+              libs
+              tools
+              ;
+          };
 
-          doCheck = false;
+          default = graphite;
+        };
 
-          postFixup = ''
-            wrapProgram "$out/bin/graphite-editor" \
-              --prefix LD_LIBRARY_PATH : "${libPath}" \
-              --set CEF_PATH "${cefEnv.CEF_PATH}"
-          '';
-        });
-      });
+        devShells.default = import ./dev.nix {
+          inherit
+            pkgs
+            deps
+            libs
+            tools
+            ;
+        };
+
+        formatter = pkgs.nixfmt-tree;
+      }
+    );
 }

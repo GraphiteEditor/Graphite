@@ -4,8 +4,9 @@ pub mod util;
 
 #[cfg(test)]
 mod tests {
+	use core_types::*;
 	use futures::executor::block_on;
-	use graphene_core::*;
+	use graphene_core::ops::identity;
 
 	#[test]
 	fn double_number() {
@@ -21,7 +22,7 @@ mod tests {
 					DocumentNode {
 						inputs: vec![],
 						call_argument: concrete!(u32),
-						implementation: DocumentNodeImplementation::ProtoNode(ops::identity::IDENTIFIER),
+						implementation: DocumentNodeImplementation::ProtoNode(identity::IDENTIFIER),
 						..Default::default()
 					},
 				),
@@ -30,7 +31,7 @@ mod tests {
 					NodeId(1),
 					DocumentNode {
 						inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(0), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::AddNode")),
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::ops::AddNode")),
 						..Default::default()
 					},
 				),

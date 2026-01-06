@@ -12,16 +12,25 @@
 	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
+	import ShortcutLabel from "@graphite/components/widgets/labels/ShortcutLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
-	import UserInputLabel from "@graphite/components/widgets/labels/UserInputLabel.svelte";
 
 	let self: FloatingMenu | undefined;
 	let scroller: LayoutCol | undefined;
 	let searchTextInput: TextInput | undefined;
 
-	const dispatch = createEventDispatcher<{ open: boolean; activeEntry: MenuListEntry; hoverInEntry: MenuListEntry; hoverOutEntry: undefined; naturalWidth: number }>();
+	const dispatch = createEventDispatcher<{
+		open: boolean;
+		activeEntry: MenuListEntry;
+		selectedEntryValuePath: string[];
+		hoverInEntry: MenuListEntry;
+		hoverOutEntry: undefined;
+		naturalWidth: number;
+	}>();
 
+	export let parentsValuePath: string[] = [];
 	export let entries: MenuListEntry[][];
+	export let entriesHash: bigint;
 	export let activeEntry: MenuListEntry | undefined = undefined;
 	export let open: boolean;
 	export let direction: MenuDirection = "Bottom";
@@ -29,27 +38,29 @@
 	export let drawIcon = false;
 	export let interactive = false;
 	export let scrollableY = false;
-	export let virtualScrollingEntryHeight = 0;
-	export let tooltip: string | undefined = undefined;
+	export let virtualScrolling = false;
 
 	// Keep the child references outside of the entries array so as to avoid infinite recursion.
 	let childReferences: MenuList[][] = [];
 	let search = "";
-
+	let reactiveEntries = entries;
 	let highlighted = activeEntry as MenuListEntry | undefined;
 	let virtualScrollingEntriesStart = 0;
 
-	// Called only when `open` is changed from outside this component
+	// `watchOpen` is called only when `open` is changed from outside this component
 	$: watchOpen(open);
 	$: watchEntries(entries);
+	$: watchEntriesHash(entriesHash);
 	$: watchRemeasureWidth(filteredEntries, drawIcon);
 	$: watchHighlightedWithSearch(filteredEntries, open);
 
-	$: filteredEntries = entries.map((section) => section.filter((entry) => inSearch(search, entry)));
-	$: virtualScrollingTotalHeight = filteredEntries.length === 0 ? 0 : filteredEntries[0].length * virtualScrollingEntryHeight;
-	$: virtualScrollingStartIndex = Math.floor(virtualScrollingEntriesStart / virtualScrollingEntryHeight) || 0;
-	$: virtualScrollingEndIndex = filteredEntries.length === 0 ? 0 : Math.min(filteredEntries[0].length, virtualScrollingStartIndex + 1 + 400 / virtualScrollingEntryHeight);
+	$: virtualScrollingEntryHeight = virtualScrolling ? 20 : 0;
+	$: filteredEntries = reactiveEntries.map((section) => section.filter((entry) => inSearch(search, entry)));
 	$: startIndex = virtualScrollingEntryHeight ? virtualScrollingStartIndex : 0;
+	// Virtual scrolling calculations
+	$: virtualScrollingTotalHeight = filteredEntries.length === 0 ? 0 : filteredEntries[0].length * virtualScrollingEntryHeight;
+	$: virtualScrollingStartIndex = filteredEntries.length === 0 ? 0 : Math.floor(virtualScrollingEntriesStart / virtualScrollingEntryHeight) || 0;
+	$: virtualScrollingEndIndex = filteredEntries.length === 0 ? 0 : Math.min(filteredEntries[0].length, virtualScrollingStartIndex + 1 + 400 / virtualScrollingEntryHeight);
 
 	// TODO: Move keyboard input handling entirely to the unified system in `input.ts`.
 	// TODO: The current approach is hacky and blocks the allowances for shortcuts like the key to open the browser's dev tools.
@@ -132,6 +143,10 @@
 		});
 	}
 
+	function watchEntriesHash(_entriesHash: bigint) {
+		reactiveEntries = entries;
+	}
+
 	function watchRemeasureWidth(_: MenuListEntry[][], __: boolean) {
 		self?.measureAndEmitNaturalWidth();
 	}
@@ -142,25 +157,31 @@
 	}
 
 	function getChildReference(menuListEntry: MenuListEntry): MenuList | undefined {
-		const index = filteredEntries.flat().indexOf(menuListEntry);
-		return childReferences.flat().filter((x) => x)[index];
+		const index = filteredEntries.flat().findIndex((entry) => entry.value === menuListEntry.value);
+
+		if (index !== -1) {
+			return childReferences.flat().filter((x) => x)[index];
+		} else {
+			// eslint-disable-next-line no-console
+			console.error("MenuListEntry not found in filteredEntries:", menuListEntry);
+			return undefined;
+		}
 	}
 
 	function onEntryClick(menuListEntry: MenuListEntry) {
-		// Call the action if available
-		if (menuListEntry.action) menuListEntry.action();
-
-		// Notify the parent about the clicked entry as the new active entry
-		dispatch("activeEntry", menuListEntry);
-
 		// Close the containing menu
 		let childReference = getChildReference(menuListEntry);
 		if (childReference) {
 			childReference.open = false;
-			entries = entries;
+			reactiveEntries = reactiveEntries;
 		}
 		dispatch("open", false);
 		open = false;
+		reactiveEntries = reactiveEntries;
+
+		// Notify the parent about the clicked entry as the new active entry
+		dispatch("activeEntry", menuListEntry);
+		dispatch("selectedEntryValuePath", [...parentsValuePath, menuListEntry.value]);
 	}
 
 	function onEntryPointerEnter(menuListEntry: MenuListEntry) {
@@ -172,8 +193,10 @@
 		let childReference = getChildReference(menuListEntry);
 		if (childReference) {
 			childReference.open = true;
-			entries = entries;
-		} else dispatch("open", true);
+			reactiveEntries = reactiveEntries;
+		} else {
+			dispatch("open", true);
+		}
 	}
 
 	function onEntryPointerLeave(menuListEntry: MenuListEntry) {
@@ -185,8 +208,10 @@
 		let childReference = getChildReference(menuListEntry);
 		if (childReference) {
 			childReference.open = false;
-			entries = entries;
-		} else dispatch("open", false);
+			reactiveEntries = reactiveEntries;
+		} else {
+			dispatch("open", false);
+		}
 	}
 
 	function isEntryOpen(menuListEntry: MenuListEntry): boolean {
@@ -360,7 +385,7 @@
 		let container = scroller?.div?.();
 		if (!container || !highlighted) return;
 		let containerBoundingRect = container.getBoundingClientRect();
-		let highlightedIndex = filteredEntries.flat().findIndex((entry) => entry === highlighted);
+		let highlightedIndex = filteredEntries.flat().findIndex((entry) => entry.value === highlighted?.value);
 
 		let selectedBoundingRect = new DOMRect();
 		if (virtualScrollingEntryHeight) {
@@ -380,10 +405,6 @@
 		if (containerBoundingRect.y + containerBoundingRect.height < selectedBoundingRect.y + selectedBoundingRect.height) {
 			container.scrollBy(0, selectedBoundingRect.y - (containerBoundingRect.y + containerBoundingRect.height) + selectedBoundingRect.height);
 		}
-	}
-
-	export function scrollViewTo(distanceDown: number) {
-		scroller?.div?.()?.scrollTo(0, distanceDown);
 	}
 </script>
 
@@ -414,16 +435,18 @@
 		{#if virtualScrollingEntryHeight}
 			<LayoutRow class="scroll-spacer" styles={{ height: `${virtualScrollingStartIndex * virtualScrollingEntryHeight}px` }} />
 		{/if}
-		{#each entries as section, sectionIndex (sectionIndex)}
-			{#if includeSeparator(entries, section, sectionIndex, search)}
-				<Separator type="Section" direction="Vertical" />
+		{#each reactiveEntries as section, sectionIndex (sectionIndex)}
+			{#if includeSeparator(reactiveEntries, section, sectionIndex, search)}
+				<Separator style="Section" direction="Vertical" />
 			{/if}
 			{#each currentEntries(section, virtualScrollingEntryHeight, virtualScrollingStartIndex, virtualScrollingEndIndex, search) as entry, entryIndex (entryIndex + startIndex)}
 				<LayoutRow
 					class="row"
 					classes={{ open: isEntryOpen(entry), active: entry.label === highlighted?.label, disabled: Boolean(entry.disabled) }}
 					styles={{ height: virtualScrollingEntryHeight || "20px" }}
-					{tooltip}
+					tooltipLabel={entry.tooltipLabel}
+					tooltipDescription={entry.tooltipDescription}
+					tooltipShortcut={entry.tooltipShortcut}
 					on:click={() => !entry.disabled && onEntryClick(entry)}
 					on:pointerenter={() => !entry.disabled && onEntryPointerEnter(entry)}
 					on:pointerleave={() => !entry.disabled && onEntryPointerLeave(entry)}
@@ -435,13 +458,13 @@
 					{/if}
 
 					{#if entry.font}
-						<link rel="stylesheet" href={entry.font?.toString()} />
+						<link rel="stylesheet" href={entry.font} />
 					{/if}
 
-					<TextLabel class="entry-label" styles={{ "font-family": `${!entry.font ? "inherit" : entry.value}` }}>{entry.label}</TextLabel>
+					<TextLabel class="entry-label" styles={entry.font ? { "font-family": entry.value } : {}}>{entry.label}</TextLabel>
 
-					{#if entry.shortcut?.keys.length}
-						<UserInputLabel keysWithLabelsGroups={[entry.shortcut.keys]} requiresLock={entry.shortcutRequiresLock} textOnly={true} />
+					{#if entry.tooltipShortcut?.shortcut.length}
+						<ShortcutLabel shortcut={entry.tooltipShortcut} />
 					{/if}
 
 					{#if entry.children?.length}
@@ -458,9 +481,12 @@
 								// See explanation at <https://github.com/sveltejs/language-tools/issues/452#issuecomment-723148184>.
 								dispatch("naturalWidth", detail);
 							}}
+							on:selectedEntryValuePath={({ detail }) => dispatch("selectedEntryValuePath", detail)}
+							parentsValuePath={[...parentsValuePath, entry.value]}
 							open={getChildReference(entry)?.open || false}
 							direction="TopRight"
 							entries={entry.children}
+							entriesHash={entry.childrenHash || 0n}
 							{minWidth}
 							{drawIcon}
 							{scrollableY}
@@ -490,7 +516,7 @@
 				margin: 4px 0;
 
 				div {
-					background: var(--color-4-dimgray);
+					background: var(--color-3-darkgray);
 				}
 			}
 
@@ -526,7 +552,7 @@
 					margin: 0 4px;
 				}
 
-				.user-input-label {
+				.shortcut-label {
 					margin-left: 12px;
 				}
 

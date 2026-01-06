@@ -12,9 +12,10 @@ use graphene_std::transform::ReferencePoint;
 use graphene_std::vector::misc::ManipulatorPointId;
 use std::fmt;
 
-pub fn pin_pivot_widget(active: bool, enabled: bool, source: PivotToolSource) -> WidgetHolder {
+pub fn pin_pivot_widget(active: bool, enabled: bool, source: PivotToolSource) -> WidgetInstance {
 	IconButton::new(if active { "PinActive" } else { "PinInactive" }, 24)
-		.tooltip(String::from(if active { "Unpin Custom Pivot" } else { "Pin Custom Pivot" }) + "\n\nUnless pinned, the pivot will return to its prior reference point when a new selection is made.")
+		.tooltip_label(if active { "Unpin Custom Pivot" } else { "Pin Custom Pivot" })
+		.tooltip_description("Unless pinned, the pivot will return to its prior reference point when a new selection is made.")
 		.disabled(!enabled)
 		.on_update(move |_| match source {
 			PivotToolSource::Select => SelectToolMessage::SelectOptions {
@@ -26,21 +27,22 @@ pub fn pin_pivot_widget(active: bool, enabled: bool, source: PivotToolSource) ->
 			}
 			.into(),
 		})
-		.widget_holder()
+		.widget_instance()
 }
 
-pub fn pivot_reference_point_widget(disabled: bool, reference_point: ReferencePoint, source: PivotToolSource) -> WidgetHolder {
+pub fn pivot_reference_point_widget(disabled: bool, reference_point: ReferencePoint, source: PivotToolSource) -> WidgetInstance {
 	ReferencePointInput::new(reference_point)
-		.tooltip("Custom Pivot Reference Point\n\nPlaces the pivot at a corner, edge, or center of the selection bounds, unless it is dragged elsewhere.")
+		.tooltip_label("Custom Pivot Reference Point")
+		.tooltip_description("Places the pivot at a corner, edge, or center of the selection bounds, unless it is dragged elsewhere.")
 		.disabled(disabled)
 		.on_update(move |pivot_input: &ReferencePointInput| match source {
 			PivotToolSource::Select => SelectToolMessage::SetPivot { position: pivot_input.value }.into(),
 			PivotToolSource::Path => PathToolMessage::SetPivot { position: pivot_input.value }.into(),
 		})
-		.widget_holder()
+		.widget_instance()
 }
 
-pub fn pivot_gizmo_type_widget(state: PivotGizmoState, source: PivotToolSource) -> Vec<WidgetHolder> {
+pub fn pivot_gizmo_type_widget(state: PivotGizmoState, source: PivotToolSource) -> Vec<WidgetInstance> {
 	let gizmo_type_entries = [PivotGizmoType::Pivot, PivotGizmoType::Average, PivotGizmoType::Active]
 		.iter()
 		.map(|gizmo_type| {
@@ -62,11 +64,13 @@ pub fn pivot_gizmo_type_widget(state: PivotGizmoState, source: PivotToolSource) 
 
 	vec![
 		CheckboxInput::new(!state.disabled)
-			.tooltip(
-				"Pivot Gizmo\n\
-				\n\
+			.tooltip_label("Pivot Gizmo")
+			.tooltip_description(
+				"
 				Enabled: the chosen gizmo type is shown and used to control rotation and scaling.\n\
-				Disabled: rotation and scaling occurs about the center of the selection bounds.",
+				Disabled: rotation and scaling occurs about the center of the selection bounds.
+				"
+				.trim(),
 			)
 			.on_update(move |optional_input: &CheckboxInput| match source {
 				PivotToolSource::Select => SelectToolMessage::SelectOptions {
@@ -78,25 +82,27 @@ pub fn pivot_gizmo_type_widget(state: PivotGizmoState, source: PivotToolSource) 
 				}
 				.into(),
 			})
-			.widget_holder(),
-		Separator::new(SeparatorType::Related).widget_holder(),
+			.widget_instance(),
+		Separator::new(SeparatorStyle::Related).widget_instance(),
 		DropdownInput::new(vec![gizmo_type_entries])
 			.selected_index(Some(match state.gizmo_type {
 				PivotGizmoType::Pivot => 0,
 				PivotGizmoType::Average => 1,
 				PivotGizmoType::Active => 2,
 			}))
-			.tooltip(
-				"Pivot Gizmo Type\n\
-				\n\
+			.tooltip_label("Pivot Gizmo Type")
+			.tooltip_description(
+				"
 				Selects which gizmo type is shown and used as the center of rotation/scaling transformations.\n\
 				\n\
 				Custom Pivot: rotates and scales relative to the selection bounds, or elsewhere if dragged.\n\
 				Origin (Average Point): rotates and scales about the average point of all selected layer origins.\n\
-				Origin (Active Object): rotates and scales about the origin of the most recently selected layer.",
+				Origin (Active Object): rotates and scales about the origin of the most recently selected layer.
+				"
+				.trim(),
 			)
 			.disabled(state.disabled)
-			.widget_holder(),
+			.widget_instance(),
 	]
 }
 
@@ -163,6 +169,7 @@ pub struct PivotGizmoState {
 
 impl PivotGizmoState {
 	pub fn is_pivot_type(&self) -> bool {
+		// A disabled pivot is considered a pivot-type gizmo that is always centered
 		self.gizmo_type == PivotGizmoType::Pivot || self.disabled
 	}
 

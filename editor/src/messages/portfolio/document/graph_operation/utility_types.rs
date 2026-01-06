@@ -303,8 +303,8 @@ impl<'a> ModifyInputsContext<'a> {
 		// If inserting a 'Path' node, insert a 'Flatten Path' node if the type is `Graphic`.
 		// TODO: Allow the 'Path' node to operate on table data by utilizing the reference (index or ID?) for each row.
 		if node_definition.identifier == "Path" {
-			let layer_input_type = self.network_interface.input_type(&InputConnector::node(output_layer.to_node(), 1), &[]).0.nested_type().clone();
-			if layer_input_type == concrete!(Table<Graphic>) {
+			let layer_input_type = self.network_interface.input_type(&InputConnector::node(output_layer.to_node(), 1), &[]);
+			if layer_input_type.compiled_nested_type() == Some(&concrete!(Table<Graphic>)) {
 				let Some(flatten_path_definition) = resolve_document_node_type("Flatten Path") else {
 					log::error!("Flatten Path does not exist in ModifyInputsContext::existing_node_id");
 					return None;
@@ -388,7 +388,7 @@ impl<'a> ModifyInputsContext<'a> {
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(stroke.join_miter_limit), false), false);
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::PaintOrderInput::INDEX);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::PaintOrder(stroke.paint_order), false), false);
-		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::DashLengthsInput::INDEX);
+		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::DashLengthsInput::<Vec<f64>>::INDEX);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::VecF64(stroke.dash_lengths), false), true);
 		let input_connector = InputConnector::node(stroke_node_id, graphene_std::vector::stroke::DashOffsetInput::INDEX);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(stroke.dash_offset), false), true);

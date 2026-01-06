@@ -1,8 +1,8 @@
 use crate::document::value::TaggedValue;
 use crate::document::{InlineRust, value};
 use crate::document::{NodeId, OriginalLocation};
-pub use graphene_core::registry::*;
-use graphene_core::*;
+pub use core_types::registry::*;
+use core_types::*;
 use rustc_hash::FxHashMap;
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
@@ -139,7 +139,7 @@ pub struct ProtoNode {
 impl Default for ProtoNode {
 	fn default() -> Self {
 		Self {
-			identifier: ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode"),
+			identifier: graphene_core::ops::identity::IDENTIFIER,
 			construction_args: ConstructionArgs::Value(value::TaggedValue::U32(0).into()),
 			call_argument: concrete!(()),
 			original_location: OriginalLocation::default(),
@@ -175,7 +175,7 @@ impl ProtoNode {
 			_ => 2,
 		};
 		Self {
-			identifier: ProtoNodeIdentifier::new("graphene_core::value::ClonedNode"),
+			identifier: ProtoNodeIdentifier::new("core_types::value::ClonedNode"),
 			construction_args: value,
 			call_argument: concrete!(Context),
 			original_location: OriginalLocation {
@@ -215,7 +215,7 @@ impl ProtoNetwork {
 	fn check_ref(&self, ref_id: &NodeId, id: &NodeId) {
 		debug_assert!(
 			self.nodes.iter().any(|(check_id, _)| check_id == ref_id),
-			"Node id:{id} has a reference which uses node id:{ref_id} which doesn't exist in network {self:#?}"
+			"Node with ID {id} has a reference which uses the node with ID {ref_id} which doesn't exist in network {self:#?}"
 		);
 	}
 
@@ -340,7 +340,7 @@ impl ProtoNetwork {
 			ProtoNode {
 				construction_args: ConstructionArgs::Value(MemoHash::new(TaggedValue::ContextFeatures(context_deps))),
 				call_argument: concrete!(Context),
-				identifier: ProtoNodeIdentifier::new("graphene_core::value::ClonedNode"),
+				identifier: ProtoNodeIdentifier::new("core_types::value::ClonedNode"),
 				original_location: OriginalLocation {
 					path: path.clone(),
 					..Default::default()
@@ -539,19 +539,29 @@ impl ProtoNetwork {
 #[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum GraphErrorType {
 	NodeNotFound(NodeId),
-	InputNodeNotFound(NodeId),
-	UnexpectedGenerics { index: usize, inputs: Vec<Type> },
+	UnexpectedGenerics {
+		index: usize,
+		inputs: Vec<Type>,
+	},
 	NoImplementations,
 	NoConstructor,
-	InvalidImplementations { inputs: String, error_inputs: Vec<Vec<(usize, (Type, Type))>> },
-	MultipleImplementations { inputs: String, valid: Vec<NodeIOTypes> },
+	/// The `inputs` represents a formatted list of input indices corresponding to their types.
+	/// Each element in `error_inputs` represents a valid `NodeIOTypes` implementation.
+	/// The inner Vec stores the inputs which need to be changed and what type each needs to be changed to.
+	InvalidImplementations {
+		inputs: String,
+		error_inputs: Vec<Vec<(usize, (Type, Type))>>,
+	},
+	MultipleImplementations {
+		inputs: String,
+		valid: Vec<NodeIOTypes>,
+	},
 }
 impl Debug for GraphErrorType {
 	// TODO: format with the document graph context so the input index is the same as in the graph UI.
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			GraphErrorType::NodeNotFound(id) => write!(f, "Input node {id} is not present in the typing context"),
-			GraphErrorType::InputNodeNotFound(id) => write!(f, "Input node {id} is not present in the typing context"),
 			GraphErrorType::UnexpectedGenerics { index, inputs } => write!(f, "Generic inputs should not exist but found at {index}: {inputs:?}"),
 			GraphErrorType::NoImplementations => write!(f, "No implementations found"),
 			GraphErrorType::NoConstructor => write!(f, "No construct found for node"),
@@ -758,9 +768,11 @@ impl TypingContext {
 
 		match valid_impls.as_slice() {
 			[] => {
+				let convert_node_index_offset = node.original_location.auto_convert_index.unwrap_or(0);
 				let mut best_errors = usize::MAX;
 				let mut error_inputs = Vec::new();
 				for node_io in impls.keys() {
+					// For errors on Convert nodes, offset the input index so it correctly corresponds to the node it is connected to.
 					let current_errors = [call_argument]
 						.into_iter()
 						.chain(&inputs)
@@ -768,10 +780,7 @@ impl TypingContext {
 						.zip([&node_io.call_argument].into_iter().chain(&node_io.inputs).cloned())
 						.enumerate()
 						.filter(|(_, (p1, p2))| !valid_type(p1, p2))
-						.map(|(index, ty)| {
-							let i = node.original_location.inputs(index).min_by_key(|s| s.node.len()).map(|s| s.index).unwrap_or(index);
-							(i, ty)
-						})
+						.map(|(index, expected)| (index - 1 + convert_node_index_offset, expected))
 						.collect::<Vec<_>>();
 					if current_errors.len() < best_errors {
 						best_errors = current_errors.len();
@@ -785,7 +794,7 @@ impl TypingContext {
 					.into_iter()
 					.chain(&inputs)
 					.enumerate()
-					.filter_map(|(i, t)| if i == 0 { None } else { Some(format!("• Input {i}: {t}")) })
+					.filter_map(|(i, t)| if i == 0 { None } else { Some(format!("• Input {}: {t}", i + convert_node_index_offset)) })
 					.collect::<Vec<_>>()
 					.join("\n");
 				Err(vec![GraphError::new(node, GraphErrorType::InvalidImplementations { inputs, error_inputs })])

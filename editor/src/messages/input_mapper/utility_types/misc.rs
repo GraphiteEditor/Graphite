@@ -1,4 +1,4 @@
-use super::input_keyboard::{KeysGroup, LayoutKeysGroup, all_required_modifiers_pressed};
+use super::input_keyboard::{KeysGroup, LabeledShortcut, all_required_modifiers_pressed};
 use crate::messages::input_mapper::key_mapping::MappingVariant;
 use crate::messages::input_mapper::utility_types::input_keyboard::{KeyStates, NUMBER_OF_KEYS};
 use crate::messages::input_mapper::utility_types::input_mouse::NUMBER_OF_MOUSE_BUTTONS;
@@ -128,28 +128,19 @@ pub struct MappingEntry {
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
-pub enum ActionKeys {
+pub enum ActionShortcut {
 	Action(MessageDiscriminant),
-	#[serde(rename = "keys")]
-	Keys(LayoutKeysGroup),
+	#[serde(rename = "shortcut")]
+	Shortcut(LabeledShortcut),
 }
 
-impl ActionKeys {
-	pub fn to_keys(&mut self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>) -> String {
-		match self {
-			Self::Action(action) => {
-				if let Some(keys) = action_input_mapping(action) {
-					let description = keys.to_string();
-					*self = Self::Keys(keys.into());
-					description
-				} else {
-					*self = Self::Keys(KeysGroup::default().into());
-					String::new()
-				}
-			}
-			Self::Keys(keys) => {
-				warn!("Calling `.to_keys()` on a `ActionKeys::Keys` is a mistake/bug. Keys are: {keys:?}.");
-				String::new()
+impl ActionShortcut {
+	pub fn realize_shortcut(&mut self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>) {
+		if let Self::Action(action) = self {
+			if let Some(keys) = action_input_mapping(action) {
+				*self = Self::Shortcut(keys.into());
+			} else {
+				*self = Self::Shortcut(KeysGroup::default().into());
 			}
 		}
 	}

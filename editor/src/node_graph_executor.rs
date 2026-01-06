@@ -1,6 +1,6 @@
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::prelude::*;
-use glam::{DAffine2, UVec2};
+use glam::{DAffine2, DVec2, UVec2};
 use graph_craft::document::value::{RenderOutput, TaggedValue};
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
@@ -37,7 +37,7 @@ pub struct ExecutionResponse {
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct CompilationResponse {
-	result: Result<ResolvedDocumentNodeTypesDelta, String>,
+	result: Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, String)>,
 	node_graph_errors: GraphErrors,
 }
 
@@ -81,6 +81,7 @@ impl NodeGraphExecutor {
 		};
 		(node_runtime, node_executor)
 	}
+
 	/// Execute the network by flattening it and creating a borrow stack.
 	fn queue_execution(&mut self, render_config: RenderConfig) -> u64 {
 		let execution_id = self.current_execution_id;
@@ -140,6 +141,7 @@ impl NodeGraphExecutor {
 		viewport_resolution: UVec2,
 		viewport_scale: f64,
 		time: TimingInformation,
+		pointer: DVec2,
 	) -> Result<Message, String> {
 		let viewport = Footprint {
 			transform: document.metadata().document_to_viewport,
@@ -150,10 +152,8 @@ impl NodeGraphExecutor {
 			viewport,
 			scale: viewport_scale,
 			time,
-			#[cfg(any(feature = "resvg", feature = "vello"))]
+			pointer,
 			export_format: graphene_std::application_io::ExportFormat::Raster,
-			#[cfg(not(any(feature = "resvg", feature = "vello")))]
-			export_format: graphene_std::application_io::ExportFormat::Svg,
 			render_mode: document.render_mode,
 			hide_artboards: false,
 			for_export: false,
@@ -178,9 +178,10 @@ impl NodeGraphExecutor {
 		time: TimingInformation,
 		node_to_inspect: Option<NodeId>,
 		ignore_hash: bool,
+		pointer: DVec2,
 	) -> Result<Message, String> {
 		self.update_node_graph(document, node_to_inspect, ignore_hash)?;
-		self.submit_current_node_graph_evaluation(document, document_id, viewport_resolution, viewport_scale, time)
+		self.submit_current_node_graph_evaluation(document, document_id, viewport_resolution, viewport_scale, time, pointer)
 	}
 
 	/// Evaluates a node graph for export
@@ -211,6 +212,7 @@ impl NodeGraphExecutor {
 			},
 			scale: export_config.scale_factor,
 			time: Default::default(),
+			pointer: DVec2::ZERO,
 			export_format,
 			render_mode: document.render_mode,
 			hide_artboards: export_config.transparent_background,
@@ -272,7 +274,7 @@ impl NodeGraphExecutor {
 				use image::{ImageFormat, RgbImage, RgbaImage};
 
 				let Some(image) = RgbaImage::from_raw(width, height, data) else {
-					return Err(format!("Failed to create image buffer for export"));
+					return Err("Failed to create image buffer for export".to_string());
 				};
 
 				let mut encoded = Vec::new();
@@ -298,7 +300,7 @@ impl NodeGraphExecutor {
 						}
 					}
 					FileType::Svg => {
-						return Err(format!("SVG cannot be exported from an image buffer"));
+						return Err("SVG cannot be exported from an image buffer".to_string());
 					}
 				}
 
@@ -374,7 +376,7 @@ impl NodeGraphExecutor {
 				NodeGraphUpdate::CompilationResponse(execution_response) => {
 					let CompilationResponse { node_graph_errors, result } = execution_response;
 					let type_delta = match result {
-						Err(e) => {
+						Err((incomplete_delta, e)) => {
 							// Clear the click targets while the graph is in an un-renderable state
 
 							document.network_interface.update_click_targets(HashMap::new());
@@ -383,7 +385,7 @@ impl NodeGraphExecutor {
 							log::trace!("{e}");
 
 							responses.add(NodeGraphMessage::UpdateTypes {
-								resolved_types: Default::default(),
+								resolved_types: incomplete_delta,
 								node_graph_errors,
 							});
 							responses.add(NodeGraphMessage::SendGraph);
@@ -424,8 +426,8 @@ impl NodeGraphExecutor {
 				let matrix = format_transform_matrix(frame.transform);
 				let transform = if matrix.is_empty() { String::new() } else { format!(" transform=\"{matrix}\"") };
 				let svg = format!(
-					r#"<svg><foreignObject width="{}" height="{}"{transform}><div data-canvas-placeholder="{}"></div></foreignObject></svg>"#,
-					frame.resolution.x, frame.resolution.y, frame.surface_id.0
+					r#"<svg><foreignObject width="{}" height="{}"{transform}><div data-canvas-placeholder="{}" data-is-viewport="true"></div></foreignObject></svg>"#,
+					frame.resolution.x, frame.resolution.y, frame.surface_id.0,
 				);
 				self.last_svg_canvas = Some(frame);
 				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });

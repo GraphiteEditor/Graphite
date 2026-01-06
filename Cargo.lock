@@ -221,7 +221,7 @@ version = "0.38.0+1.3.281"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0bb44936d800fea8f016d7f2311c6a4f97aebd5dc86f09906139ec848cf3a46f"
 dependencies = [
- "libloading",
+ "libloading 0.8.8",
 ]
 
 [[package]]
@@ -507,6 +507,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6099cdc01846bc367c4e7dd630dc5966dccf36b652fae7a74e17b640411a91b2"
 
 [[package]]
+name = "blending-nodes"
+version = "0.1.0"
+dependencies = [
+ "core-types",
+ "glam",
+ "graphic-types",
+ "node-macro",
+ "serde",
+ "vector-types",
+]
+
+[[package]]
 name = "block"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -523,11 +535,20 @@ dependencies = [
 
 [[package]]
 name = "block2"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2c132eebf10f5cad5289222520a4a058514204aed6d791f1cf4fe8088b82d15f"
+dependencies = [
+ "objc2 0.5.2",
+]
+
+[[package]]
+name = "block2"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "340d2f0bdb2a43c1d3cd40513185b2bd7def0aa1052f956455114bc98f82dcf2"
 dependencies = [
- "objc2",
+ "objc2 0.6.3",
 ]
 
 [[package]]
@@ -550,6 +571,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ad8646f98db542e39fc66e68a20b2144f6a732636df7c2354e74645faaa433ce"
 dependencies = [
  "cfg_aliases",
+]
+
+[[package]]
+name = "brush-nodes"
+version = "0.1.0"
+dependencies = [
+ "core-types",
+ "dyn-any",
+ "glam",
+ "node-macro",
+ "raster-nodes",
+ "raster-types",
+ "serde",
+ "tokio",
 ]
 
 [[package]]
@@ -724,16 +759,17 @@ dependencies = [
 
 [[package]]
 name = "cef"
-version = "141.4.0+141.0.9"
+version = "142.5.0+142.0.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e05b0ae455c0cf0693da242b3336586cd0057702c0516731d8ba72962559a625"
+checksum = "32eab60854609591d365051497b1fb78b77b129d9e39ba69b1f71ee3f4ae9345"
 dependencies = [
  "ash",
  "cef-dll-sys",
  "libc",
- "libloading",
- "metal 0.32.0",
+ "libloading 0.9.0",
+ "metal",
  "objc",
+ "objc2 0.6.3",
  "objc2-io-surface",
  "thiserror 2.0.16",
  "tracing",
@@ -744,9 +780,9 @@ dependencies = [
 
 [[package]]
 name = "cef-dll-sys"
-version = "141.6.0+141.0.11"
+version = "142.5.0+142.0.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "4c95e419bbb8b2190df8b6eb3934ecc4137533803fcc5ae2b076e591ee789071"
+checksum = "5a8c418c8eb6abff55f52668dbb8cba3cd5fcf057cf3eed46c04013a08ad9004"
 dependencies = [
  "anyhow",
  "cmake",
@@ -862,6 +898,45 @@ name = "clap_lex"
 version = "0.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b94f61472cee1439c0b966b47e3aca9ae07e45d070759512cd390ea2bebc6675"
+
+[[package]]
+name = "clipboard-win"
+version = "5.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bde03770d3df201d4fb868f2c9c59e66a3e4e2bd06692a0fe701e7103c7e84d4"
+dependencies = [
+ "error-code",
+]
+
+[[package]]
+name = "clipboard_macos"
+version = "0.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9b7f4aaa047ba3c3630b080bb9860894732ff23e2aee290a418909aa6d5df38f"
+dependencies = [
+ "objc2 0.5.2",
+ "objc2-app-kit 0.2.2",
+ "objc2-foundation 0.2.2",
+]
+
+[[package]]
+name = "clipboard_wayland"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "003f886bc4e2987729d10c1db3424e7f80809f3fc22dbc16c685738887cb37b8"
+dependencies = [
+ "smithay-clipboard",
+]
+
+[[package]]
+name = "clipboard_x11"
+version = "0.4.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4274ea815e013e0f9f04a2633423e14194e408a0576c943ce3d14ca56c50031c"
+dependencies = [
+ "thiserror 1.0.69",
+ "x11rb",
+]
 
 [[package]]
 name = "cmake"
@@ -1018,17 +1093,6 @@ checksum = "773648b94d0e5d620f64f280777445740e61fe701025087ec8b57f45c791888b"
 
 [[package]]
 name = "core-graphics-types"
-version = "0.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "45390e6114f68f718cc7a830514a96f903cccd70d02a8f6d9f643ac4ba45afaf"
-dependencies = [
- "bitflags 1.3.2",
- "core-foundation 0.9.4",
- "libc",
-]
-
-[[package]]
-name = "core-graphics-types"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3d44a101f213f6c4cdc1853d4b78aef6db6bdfa3468798cc1d9912f4735013eb"
@@ -1036,6 +1100,37 @@ dependencies = [
  "bitflags 2.9.3",
  "core-foundation 0.10.1",
  "libc",
+]
+
+[[package]]
+name = "core-types"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "bitflags 2.9.3",
+ "bytemuck",
+ "ctor",
+ "dyn-any",
+ "glam",
+ "image",
+ "kurbo 0.12.0",
+ "log",
+ "lyon_geom",
+ "no-std-types",
+ "node-macro",
+ "num-traits",
+ "parley",
+ "petgraph 0.7.1",
+ "polycool",
+ "rand 0.9.2",
+ "rand_chacha 0.9.0",
+ "rustc-hash 2.1.1",
+ "serde",
+ "serde_json",
+ "skrifa 0.36.0",
+ "specta",
+ "tinyvec",
+ "tokio",
 ]
 
 [[package]]
@@ -1054,6 +1149,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "59ed5838eebb26a2bb2e58f6d5b5316989ae9d08bab10e0e6d103e656d1b0280"
 dependencies = [
  "libc",
+]
+
+[[package]]
+name = "crate-hierarchy-viz"
+version = "0.0.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "serde",
+ "toml 0.8.23",
 ]
 
 [[package]]
@@ -1186,6 +1291,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "ctrlc"
+version = "3.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "73736a89c4aff73035ba2ed2e565061954da00d4970fc9ac25dcc85a2a20d790"
+dependencies = [
+ "dispatch2",
+ "nix",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "cursor-icon"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1294,9 +1410,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "89a09f22a6c6069a18470eb92d2298acf25463f14256d24778e1230d789a2aec"
 dependencies = [
  "bitflags 2.9.3",
- "block2",
+ "block2 0.6.1",
  "libc",
- "objc2",
+ "objc2 0.6.3",
 ]
 
 [[package]]
@@ -1316,7 +1432,7 @@ version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "330c60081dcc4c72131f8eb70510f1ac07223e5d4163db481a04a0befcffa412"
 dependencies = [
- "libloading",
+ "libloading 0.8.8",
 ]
 
 [[package]]
@@ -1504,6 +1620,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "error-code"
+version = "3.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dea2df4cf52843e0452895c455a1a2cfbb842a1e7329671acf418fdc53ed4c59"
+
+[[package]]
 name = "euclid"
 version = "0.22.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1562,6 +1684,17 @@ name = "fastrand"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
+
+[[package]]
+name = "fd-lock"
+version = "4.0.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ce92ff622d6dadf7349484f42c93271a0d49b7cc4d466a936405bacbe10aa78"
+dependencies = [
+ "cfg-if",
+ "rustix",
+ "windows-sys 0.59.0",
+]
 
 [[package]]
 name = "fdeflate"
@@ -1653,16 +1786,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "fontconfig-cache-parser"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a7f8afb20c8069fd676d27b214559a337cc619a605d25a87baa90b49a06f3b18"
-dependencies = [
- "bytemuck",
- "thiserror 1.0.69",
-]
-
-[[package]]
 name = "fontconfig-parser"
 version = "0.5.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1701,25 +1824,25 @@ dependencies = [
 
 [[package]]
 name = "fontique"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "39f97079e1293b8c1e9fb03a2875d328bd2ee8f3b95ce62959c0acc04049c708"
+checksum = "ff3336bc0b87fe42305047263fa60d2eabd650d29cbe62fdeb2a66c7a0a595f9"
 dependencies = [
  "bytemuck",
- "fontconfig-cache-parser",
  "hashbrown 0.15.5",
- "icu_locid",
+ "icu_locale_core",
+ "linebender_resource_handle",
  "memmap2",
- "objc2",
+ "objc2 0.6.3",
  "objc2-core-foundation",
  "objc2-core-text",
- "objc2-foundation",
- "peniko 0.4.0",
- "read-fonts 0.29.3",
+ "objc2-foundation 0.3.2",
+ "read-fonts 0.35.0",
  "roxmltree",
  "smallvec",
  "windows",
  "windows-core 0.58.0",
+ "yeslogic-fontconfig-sys",
 ]
 
 [[package]]
@@ -2062,25 +2185,28 @@ dependencies = [
 name = "graph-craft"
 version = "0.1.0"
 dependencies = [
+ "brush-nodes",
+ "core-types",
  "criterion",
  "dyn-any",
  "glam",
  "graph-craft",
  "graphene-application-io",
- "graphene-brush",
  "graphene-core",
- "graphene-path-bool",
- "graphene-raster-nodes",
- "graphene-svg-renderer",
+ "graphic-types",
  "iai-callgrind",
  "js-sys",
  "log",
+ "path-bool-nodes",
  "pretty_assertions",
+ "raster-nodes",
+ "rendering",
  "reqwest",
  "rustc-hash 2.1.1",
  "serde",
  "serde_json",
  "specta",
+ "text-nodes",
  "tokio",
  "url",
  "wasm-bindgen",
@@ -2093,26 +2219,15 @@ dependencies = [
 name = "graphene-application-io"
 version = "0.1.0"
 dependencies = [
+ "core-types",
  "dyn-any",
  "glam",
- "graphene-core",
  "log",
  "serde",
+ "text-nodes",
+ "vector-types",
  "web-sys",
  "wgpu",
-]
-
-[[package]]
-name = "graphene-brush"
-version = "0.1.0"
-dependencies = [
- "dyn-any",
- "glam",
- "graphene-core",
- "graphene-raster-nodes",
- "node-macro",
- "serde",
- "tokio",
 ]
 
 [[package]]
@@ -2124,8 +2239,8 @@ dependencies = [
  "fern",
  "futures",
  "graph-craft",
- "graphene-core",
  "graphene-std",
+ "image",
  "interpreted-executor",
  "log",
  "preprocessor",
@@ -2138,120 +2253,16 @@ dependencies = [
 name = "graphene-core"
 version = "0.1.0"
 dependencies = [
- "base64",
- "bitflags 2.9.3",
- "bytemuck",
- "ctor",
+ "core-types",
  "dyn-any",
  "glam",
- "graphene-core-shaders",
- "image",
- "kurbo 0.12.0",
+ "graphic-types",
  "log",
- "lyon_geom",
  "node-macro",
- "num-traits",
- "parley",
- "petgraph 0.7.1",
- "polycool",
- "rand 0.9.2",
- "rand_chacha 0.9.0",
- "rustc-hash 2.1.1",
+ "raster-types",
  "serde",
  "serde_json",
- "skrifa 0.36.0",
  "specta",
- "tinyvec",
- "tokio",
- "wgpu",
-]
-
-[[package]]
-name = "graphene-core-shaders"
-version = "0.1.0"
-dependencies = [
- "bytemuck",
- "dyn-any",
- "glam",
- "graphene-core",
- "half",
- "log",
- "node-macro",
- "num-derive",
- "num-traits",
- "num_enum",
- "serde",
- "specta",
- "spirv-std",
-]
-
-[[package]]
-name = "graphene-math-nodes"
-version = "0.1.0"
-dependencies = [
- "glam",
- "graphene-core",
- "log",
- "math-parser",
- "node-macro",
- "rand 0.9.2",
-]
-
-[[package]]
-name = "graphene-path-bool"
-version = "0.1.0"
-dependencies = [
- "dyn-any",
- "glam",
- "graphene-core",
- "log",
- "node-macro",
- "path-bool",
- "serde",
- "specta",
-]
-
-[[package]]
-name = "graphene-raster-nodes"
-version = "0.1.0"
-dependencies = [
- "bytemuck",
- "dyn-any",
- "fastnoise-lite",
- "futures",
- "glam",
- "graphene-core",
- "graphene-core-shaders",
- "graphene-raster-nodes-shaders",
- "image",
- "kurbo 0.12.0",
- "ndarray",
- "node-macro",
- "num-traits",
- "num_enum",
- "rand 0.9.2",
- "rand_chacha 0.9.0",
- "serde",
- "specta",
- "spirv-std",
- "tokio",
- "wgpu-executor",
-]
-
-[[package]]
-name = "graphene-raster-nodes-shaders"
-version = "0.1.0"
-dependencies = [
- "cargo-gpu",
- "env_logger",
- "log",
-]
-
-[[package]]
-name = "graphene-raster-nodes-shaders-entrypoint"
-version = "0.1.0"
-dependencies = [
- "graphene-raster-nodes",
 ]
 
 [[package]]
@@ -2259,21 +2270,29 @@ name = "graphene-std"
 version = "0.1.0"
 dependencies = [
  "base64",
+ "blending-nodes",
+ "brush-nodes",
+ "core-types",
  "dyn-any",
  "glam",
  "graph-craft",
  "graphene-application-io",
- "graphene-brush",
  "graphene-core",
- "graphene-math-nodes",
- "graphene-path-bool",
- "graphene-raster-nodes",
- "graphene-svg-renderer",
+ "graphic-nodes",
+ "graphic-types",
  "image",
  "log",
+ "math-nodes",
  "node-macro",
+ "path-bool-nodes",
+ "raster-nodes",
+ "rendering",
  "reqwest",
+ "text-nodes",
  "tokio",
+ "transform-nodes",
+ "vector-nodes",
+ "vector-types",
  "vello",
  "vello_encoding",
  "wasm-bindgen",
@@ -2283,41 +2302,54 @@ dependencies = [
 ]
 
 [[package]]
-name = "graphene-svg-renderer"
+name = "graphic-nodes"
 version = "0.1.0"
 dependencies = [
- "base64",
+ "core-types",
  "dyn-any",
  "glam",
- "graphene-core",
- "kurbo 0.12.0",
- "log",
- "num-traits",
+ "graphic-types",
+ "node-macro",
+ "raster-types",
  "serde",
- "usvg 0.45.1",
- "vello",
+ "vector-types",
+]
+
+[[package]]
+name = "graphic-types"
+version = "0.1.0"
+dependencies = [
+ "core-types",
+ "dyn-any",
+ "glam",
+ "node-macro",
+ "raster-types",
+ "serde",
+ "serde_json",
+ "specta",
+ "vector-types",
 ]
 
 [[package]]
 name = "graphite-desktop"
 version = "0.1.0"
 dependencies = [
- "ash",
  "bytemuck",
  "cef",
  "cef-dll-sys",
  "clap",
- "core-foundation 0.10.1",
+ "ctrlc",
  "derivative",
  "dirs",
+ "fd-lock",
  "futures",
  "glam",
  "graphite-desktop-embedded-resources",
  "graphite-desktop-wrapper",
- "libc",
- "metal 0.31.0",
  "muda",
- "objc",
+ "objc2 0.6.3",
+ "objc2-app-kit 0.3.2",
+ "objc2-foundation 0.3.2",
  "open",
  "rand 0.9.2",
  "rfd",
@@ -2328,6 +2360,7 @@ dependencies = [
  "tracing-subscriber",
  "vello",
  "wgpu",
+ "window_clipboard",
  "windows",
  "winit",
 ]
@@ -2374,6 +2407,7 @@ dependencies = [
 name = "graphite-desktop-wrapper"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "dirs",
  "futures",
  "graph-craft",
@@ -2447,6 +2481,7 @@ dependencies = [
  "js-sys",
  "log",
  "math-parser",
+ "node-macro",
  "ron",
  "serde",
  "serde-wasm-bindgen",
@@ -2497,6 +2532,19 @@ dependencies = [
  "crunchy",
  "num-traits",
  "serde",
+]
+
+[[package]]
+name = "harfrust"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "92c020db12c71d8a12a3fe7607873cade3a01a6287e29d540c8723276221b9d8"
+dependencies = [
+ "bitflags 2.9.3",
+ "bytemuck",
+ "core_maths",
+ "read-fonts 0.35.0",
+ "smallvec",
 ]
 
 [[package]]
@@ -2744,22 +2792,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0cde2700ccaed3872079a65fb1a78f6c0a36c91570f28755dda67bc8f7d9f00a"
 dependencies = [
  "displaydoc",
- "litemap 0.8.0",
- "tinystr 0.8.1",
- "writeable 0.6.1",
+ "litemap",
+ "tinystr",
+ "writeable",
  "zerovec",
-]
-
-[[package]]
-name = "icu_locid"
-version = "1.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "13acbb8371917fc971be86fc8057c41a64b521c184808a698c02acc242dbf637"
-dependencies = [
- "displaydoc",
- "litemap 0.7.5",
- "tinystr 0.7.6",
- "writeable 0.5.5",
 ]
 
 [[package]]
@@ -2814,8 +2850,8 @@ dependencies = [
  "displaydoc",
  "icu_locale_core",
  "stable_deref_trait",
- "tinystr 0.8.1",
- "writeable 0.6.1",
+ "tinystr",
+ "writeable",
  "yoke",
  "zerofrom",
  "zerotrie",
@@ -2981,17 +3017,18 @@ dependencies = [
 name = "interpreted-executor"
 version = "0.1.0"
 dependencies = [
+ "core-types",
  "criterion",
  "dyn-any",
  "futures",
  "glam",
  "graph-craft",
  "graphene-core",
- "graphene-path-bool",
  "graphene-std",
  "iai-callgrind",
  "log",
  "once_cell",
+ "path-bool-nodes",
  "preprocessor",
  "serde",
  "wgpu-executor",
@@ -3162,7 +3199,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6aae1df220ece3c0ada96b8153459b67eebe9ae9212258bb0134ae60416fdf76"
 dependencies = [
  "libc",
- "libloading",
+ "libloading 0.8.8",
  "pkg-config",
 ]
 
@@ -3260,6 +3297,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "libloading"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "754ca22de805bb5744484a5b151a9e1a8e837d5dc232c2d7d8c2e3492edc8b60"
+dependencies = [
+ "cfg-if",
+ "windows-link 0.2.1",
+]
+
+[[package]]
 name = "libm"
 version = "0.2.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3287,12 +3334,6 @@ name = "linux-raw-sys"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cd945864f07fe9f5371a27ad7b52a172b4b499999f1d97574c9fa68373937e12"
-
-[[package]]
-name = "litemap"
-version = "0.7.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "23fb14cb19457329c82206317a5663005a4d404783dc74f4252769b0d5f42856"
 
 [[package]]
 name = "litemap"
@@ -3367,6 +3408,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "math-nodes"
+version = "0.1.0"
+dependencies = [
+ "core-types",
+ "glam",
+ "log",
+ "math-parser",
+ "node-macro",
+ "rand 0.9.2",
+ "vector-types",
+]
+
+[[package]]
 name = "math-parser"
 version = "0.0.0"
 dependencies = [
@@ -3424,28 +3478,13 @@ dependencies = [
 
 [[package]]
 name = "metal"
-version = "0.31.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f569fb946490b5743ad69813cb19629130ce9374034abe31614a36402d18f99e"
-dependencies = [
- "bitflags 2.9.3",
- "block",
- "core-graphics-types 0.1.3",
- "foreign-types 0.5.0",
- "log",
- "objc",
- "paste",
-]
-
-[[package]]
-name = "metal"
 version = "0.32.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "00c15a6f673ff72ddcc22394663290f870fb224c1bfce55734a75c414150e605"
 dependencies = [
  "bitflags 2.9.3",
  "block",
- "core-graphics-types 0.2.0",
+ "core-graphics-types",
  "foreign-types 0.5.0",
  "log",
  "objc",
@@ -3489,15 +3528,15 @@ dependencies = [
 [[package]]
 name = "muda"
 version = "0.17.1"
-source = "git+https://github.com/tauri-apps/muda.git?rev=3f460b8fbaed59cda6d95ceea6904f000f093f15#3f460b8fbaed59cda6d95ceea6904f000f093f15"
+source = "git+https://github.com/timon-schelling/muda.git?rev=e5bc28bbd6781b18afbfc237981f9ef47eddf863#e5bc28bbd6781b18afbfc237981f9ef47eddf863"
 dependencies = [
  "crossbeam-channel",
  "dpi",
  "keyboard-types",
- "objc2",
- "objc2-app-kit",
+ "objc2 0.6.3",
+ "objc2-app-kit 0.3.2",
  "objc2-core-foundation",
- "objc2-foundation",
+ "objc2-foundation 0.3.2",
  "once_cell",
  "png",
  "thiserror 2.0.16",
@@ -3638,13 +3677,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "no-std-types"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "core-types",
+ "dyn-any",
+ "glam",
+ "half",
+ "log",
+ "node-macro",
+ "num-derive",
+ "num-traits",
+ "num_enum",
+ "serde",
+ "specta",
+ "spirv-std",
+]
+
+[[package]]
 name = "node-macro"
 version = "0.0.0"
 dependencies = [
  "convert_case 0.8.0",
- "graphene-core",
- "graphene-core-shaders",
+ "core-types",
  "indoc",
+ "no-std-types",
  "proc-macro-crate",
  "proc-macro-error2",
  "proc-macro2",
@@ -3800,12 +3858,44 @@ dependencies = [
 ]
 
 [[package]]
-name = "objc2"
-version = "0.6.2"
+name = "objc-sys"
+version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "561f357ba7f3a2a61563a186a163d0a3a5247e1089524a3981d49adb775078bc"
+checksum = "cdb91bdd390c7ce1a8607f35f3ca7151b65afc0ff5ff3b34fa350f7d7c7e4310"
+
+[[package]]
+name = "objc2"
+version = "0.5.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "46a785d4eeff09c14c487497c162e92766fbb3e4059a71840cecc03d9a50b804"
+dependencies = [
+ "objc-sys",
+ "objc2-encode",
+]
+
+[[package]]
+name = "objc2"
+version = "0.6.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b7c2599ce0ec54857b29ce62166b0ed9b4f6f1a70ccc9a71165b6154caca8c05"
 dependencies = [
  "objc2-encode",
+]
+
+[[package]]
+name = "objc2-app-kit"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e4e89ad9e3d7d297152b17d39ed92cd50ca8063a89a9fa569046d41568891eff"
+dependencies = [
+ "bitflags 2.9.3",
+ "block2 0.5.1",
+ "libc",
+ "objc2 0.5.2",
+ "objc2-core-data",
+ "objc2-core-image",
+ "objc2-foundation 0.2.2",
+ "objc2-quartz-core",
 ]
 
 [[package]]
@@ -3815,10 +3905,22 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d49e936b501e5c5bf01fda3a9452ff86dc3ea98ad5f283e1455153142d97518c"
 dependencies = [
  "bitflags 2.9.3",
- "block2",
- "objc2",
+ "block2 0.6.1",
+ "objc2 0.6.3",
  "objc2-core-foundation",
- "objc2-foundation",
+ "objc2-foundation 0.3.2",
+]
+
+[[package]]
+name = "objc2-core-data"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "617fbf49e071c178c0b24c080767db52958f716d9eabdf0890523aeae54773ef"
+dependencies = [
+ "bitflags 2.9.3",
+ "block2 0.5.1",
+ "objc2 0.5.2",
+ "objc2-foundation 0.2.2",
 ]
 
 [[package]]
@@ -3828,9 +3930,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2a180dd8642fa45cdb7dd721cd4c11b1cadd4929ce112ebd8b9f5803cc79d536"
 dependencies = [
  "bitflags 2.9.3",
- "block2",
+ "block2 0.6.1",
  "dispatch2",
- "objc2",
+ "objc2 0.6.3",
 ]
 
 [[package]]
@@ -3845,10 +3947,22 @@ dependencies = [
 ]
 
 [[package]]
-name = "objc2-core-text"
-version = "0.3.1"
+name = "objc2-core-image"
+version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ba833d4a1cb1aac330f8c973fd92b6ff1858e4aef5cdd00a255eefb28022fb5"
+checksum = "55260963a527c99f1819c4f8e3b47fe04f9650694ef348ffd2227e8196d34c80"
+dependencies = [
+ "block2 0.5.1",
+ "objc2 0.5.2",
+ "objc2-foundation 0.2.2",
+ "objc2-metal",
+]
+
+[[package]]
+name = "objc2-core-text"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0cde0dfb48d25d2b4862161a4d5fcc0e3c24367869ad306b0c9ec0073bfed92d"
 dependencies = [
  "bitflags 2.9.3",
  "objc2-core-foundation",
@@ -3873,13 +3987,25 @@ checksum = "ef25abbcd74fb2609453eb695bd2f860d389e457f67dc17cafc8b8cbc89d0c33"
 
 [[package]]
 name = "objc2-foundation"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0ee638a5da3799329310ad4cfa62fbf045d5f56e3ef5ba4149e7452dcf89d5a8"
+dependencies = [
+ "bitflags 2.9.3",
+ "block2 0.5.1",
+ "libc",
+ "objc2 0.5.2",
+]
+
+[[package]]
+name = "objc2-foundation"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e3e0adef53c21f888deb4fa59fc59f7eb17404926ee8a6f59f5df0fd7f9f3272"
 dependencies = [
  "bitflags 2.9.3",
- "block2",
- "objc2",
+ "block2 0.6.1",
+ "objc2 0.6.3",
  "objc2-core-foundation",
 ]
 
@@ -3891,9 +4017,34 @@ checksum = "180788110936d59bab6bd83b6060ffdfffb3b922ba1396b312ae795e1de9d81d"
 dependencies = [
  "bitflags 2.9.3",
  "libc",
- "objc2",
+ "objc2 0.6.3",
  "objc2-core-foundation",
- "objc2-foundation",
+ "objc2-foundation 0.3.2",
+]
+
+[[package]]
+name = "objc2-metal"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dd0cba1276f6023976a406a14ffa85e1fdd19df6b0f737b063b95f6c8c7aadd6"
+dependencies = [
+ "bitflags 2.9.3",
+ "block2 0.5.1",
+ "objc2 0.5.2",
+ "objc2-foundation 0.2.2",
+]
+
+[[package]]
+name = "objc2-quartz-core"
+version = "0.2.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e42bee7bff906b14b167da2bac5efe6b6a07e6f7c0a21a7308d40c960242dc7a"
+dependencies = [
+ "bitflags 2.9.3",
+ "block2 0.5.1",
+ "objc2 0.5.2",
+ "objc2-foundation 0.2.2",
+ "objc2-metal",
 ]
 
 [[package]]
@@ -3903,9 +4054,9 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d87d638e33c06f577498cbcc50491496a3ed4246998a7fbba7ccb98b1e7eab22"
 dependencies = [
  "bitflags 2.9.3",
- "objc2",
+ "objc2 0.6.3",
  "objc2-core-foundation",
- "objc2-foundation",
+ "objc2-foundation 0.3.2",
 ]
 
 [[package]]
@@ -4073,14 +4224,15 @@ dependencies = [
 
 [[package]]
 name = "parley"
-version = "0.5.0"
+version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "13e57638545cf2ba4c3e72cc5715e53b1880b829cc3dbefda3d1700c58efe723"
+checksum = "26746861bb76dbc9bcd5ed1b0b55d2fedf291100961251702a031ab2abd2ce52"
 dependencies = [
  "fontique",
+ "harfrust",
  "hashbrown 0.15.5",
- "peniko 0.4.0",
- "skrifa 0.31.3",
+ "linebender_resource_handle",
+ "skrifa 0.37.0",
  "swash",
 ]
 
@@ -4109,21 +4261,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "path-bool-nodes"
+version = "0.1.0"
+dependencies = [
+ "core-types",
+ "dyn-any",
+ "glam",
+ "graphic-types",
+ "log",
+ "node-macro",
+ "path-bool",
+ "serde",
+ "specta",
+ "vector-types",
+]
+
+[[package]]
 name = "pathdiff"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "df94ce210e5bc13cb6651479fa48d14f601d9858cfe0467f43ae157023b938d3"
-
-[[package]]
-name = "peniko"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f9529efd019889b2a205193c14ffb6e2839b54ed9d2720674f10f4b04d87ac9"
-dependencies = [
- "color",
- "kurbo 0.11.3",
- "smallvec",
-]
 
 [[package]]
 name = "peniko"
@@ -4639,6 +4796,68 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3d6831663a5098ea164f89cff59c6284e95f4e3c76ce9848d4529f5ccca9bde"
 
 [[package]]
+name = "raster-nodes"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "core-types",
+ "dyn-any",
+ "fastnoise-lite",
+ "futures",
+ "glam",
+ "image",
+ "kurbo 0.12.0",
+ "ndarray",
+ "no-std-types",
+ "node-macro",
+ "num-traits",
+ "num_enum",
+ "rand 0.9.2",
+ "rand_chacha 0.9.0",
+ "raster-nodes-shaders",
+ "raster-types",
+ "serde",
+ "specta",
+ "spirv-std",
+ "tokio",
+ "vector-types",
+ "wgpu-executor",
+]
+
+[[package]]
+name = "raster-nodes-shaders"
+version = "0.1.0"
+dependencies = [
+ "cargo-gpu",
+ "env_logger",
+ "log",
+]
+
+[[package]]
+name = "raster-nodes-shaders-entrypoint"
+version = "0.1.0"
+dependencies = [
+ "raster-nodes",
+]
+
+[[package]]
+name = "raster-types"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "bytemuck",
+ "core-types",
+ "dyn-any",
+ "glam",
+ "image",
+ "node-macro",
+ "serde",
+ "serde_json",
+ "specta",
+ "wgpu",
+]
+
+[[package]]
 name = "rav1e"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4728,16 +4947,6 @@ dependencies = [
 
 [[package]]
 name = "read-fonts"
-version = "0.29.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "04ca636dac446b5664bd16c069c00a9621806895b8bb02c2dc68542b23b8f25d"
-dependencies = [
- "bytemuck",
- "font-types 0.9.0",
-]
-
-[[package]]
-name = "read-fonts"
 version = "0.34.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8941f8e9d5f8ad3aebea330d01ac68c0167600eb31a86ecd86e97be4d13b51f5"
@@ -4753,6 +4962,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6717cf23b488adf64b9d711329542ba34de147df262370221940dfabc2c91358"
 dependencies = [
  "bytemuck",
+ "core_maths",
  "font-types 0.10.0",
 ]
 
@@ -4819,6 +5029,24 @@ name = "renderdoc-sys"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "19b30a45b0cd0bcca8037f3d0dc3421eaf95327a17cad11964fb8179b4fc4832"
+
+[[package]]
+name = "rendering"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "core-types",
+ "dyn-any",
+ "glam",
+ "graphic-types",
+ "kurbo 0.12.0",
+ "log",
+ "num-traits",
+ "serde",
+ "usvg 0.45.1",
+ "vector-types",
+ "vello",
+]
 
 [[package]]
 name = "reqwest"
@@ -4890,14 +5118,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ef2bee61e6cffa4635c72d7d81a84294e28f0930db0ddcb0f66d10244674ebed"
 dependencies = [
  "ashpd",
- "block2",
+ "block2 0.6.1",
  "dispatch2",
  "js-sys",
  "log",
- "objc2",
- "objc2-app-kit",
+ "objc2 0.6.3",
+ "objc2-app-kit 0.3.2",
  "objc2-core-foundation",
- "objc2-foundation",
+ "objc2-foundation 0.3.2",
  "pollster",
  "raw-window-handle",
  "urlencoding",
@@ -5375,16 +5603,6 @@ checksum = "56199f7ddabf13fe5074ce809e7d3f42b42ae711800501b5b16ea82ad029c39d"
 
 [[package]]
 name = "skrifa"
-version = "0.31.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dbeb4ca4399663735553a09dd17ce7e49a0a0203f03b706b39628c4d913a8607"
-dependencies = [
- "bytemuck",
- "read-fonts 0.29.3",
-]
-
-[[package]]
-name = "skrifa"
 version = "0.36.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37004372610e83ee2a4c69c7d896b41f33da6a3dc1a4fe07dd9b2629a549b1dc"
@@ -5452,6 +5670,17 @@ dependencies = [
  "wayland-protocols-wlr",
  "wayland-scanner",
  "xkeysym",
+]
+
+[[package]]
+name = "smithay-clipboard"
+version = "0.7.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "71704c03f739f7745053bde45fa203a46c58d25bc5c4efba1d9a60e9dba81226"
+dependencies = [
+ "libc",
+ "smithay-client-toolkit",
+ "wayland-backend",
 ]
 
 [[package]]
@@ -5654,11 +5883,11 @@ dependencies = [
 
 [[package]]
 name = "swash"
-version = "0.2.5"
+version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f745de914febc7c9ab4388dfaf94bbc87e69f57bb41133a9b0c84d4be49856f3"
+checksum = "47846491253e976bdd07d0f9cc24b7daf24720d11309302ccbbc6e6b6e53550a"
 dependencies = [
- "skrifa 0.31.3",
+ "skrifa 0.37.0",
  "yazi",
  "zeno",
 ]
@@ -5779,6 +6008,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "text-nodes"
+version = "0.1.0"
+dependencies = [
+ "core-types",
+ "dyn-any",
+ "glam",
+ "log",
+ "node-macro",
+ "parley",
+ "serde",
+ "skrifa 0.36.0",
+ "vector-types",
+]
+
+[[package]]
 name = "thiserror"
 version = "1.0.69"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5893,15 +6137,6 @@ dependencies = [
  "arrayref",
  "bytemuck",
  "strict-num",
-]
-
-[[package]]
-name = "tinystr"
-version = "0.7.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9117f5d4db391c1cf6927e7bea3db74b9a1c1add8f7eda9ffd5364f40f57b82f"
-dependencies = [
- "displaydoc",
 ]
 
 [[package]]
@@ -6156,6 +6391,18 @@ dependencies = [
  "tracing",
  "tracing-core",
  "tracing-log",
+]
+
+[[package]]
+name = "transform-nodes"
+version = "0.1.0"
+dependencies = [
+ "core-types",
+ "glam",
+ "graphic-types",
+ "node-macro",
+ "serde",
+ "vector-types",
 ]
 
 [[package]]
@@ -6443,6 +6690,49 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "accd4ea62f7bb7a82fe23066fb0957d48ef677f6eeb8215f372f52e48bb32426"
 
 [[package]]
+name = "vector-nodes"
+version = "0.1.0"
+dependencies = [
+ "core-types",
+ "dyn-any",
+ "futures",
+ "glam",
+ "graphene-core",
+ "graphic-types",
+ "kurbo 0.12.0",
+ "log",
+ "node-macro",
+ "rand 0.9.2",
+ "rustc-hash 2.1.1",
+ "serde",
+ "tokio",
+ "vector-types",
+]
+
+[[package]]
+name = "vector-types"
+version = "0.1.0"
+dependencies = [
+ "bitflags 2.9.3",
+ "bytemuck",
+ "core-types",
+ "dyn-any",
+ "fixedbitset",
+ "glam",
+ "kurbo 0.12.0",
+ "log",
+ "lyon_geom",
+ "node-macro",
+ "num-traits",
+ "petgraph 0.7.1",
+ "polycool",
+ "rustc-hash 2.1.1",
+ "serde",
+ "specta",
+ "tinyvec",
+]
+
+[[package]]
 name = "vello"
 version = "0.6.0"
 source = "git+https://github.com/linebender/vello#8f2f2564127812362d2c57ded20cad369e3a00fe"
@@ -6450,7 +6740,7 @@ dependencies = [
  "bytemuck",
  "futures-intrusive",
  "log",
- "peniko 0.5.0",
+ "peniko",
  "png",
  "skrifa 0.37.0",
  "static_assertions",
@@ -6467,7 +6757,7 @@ source = "git+https://github.com/linebender/vello#8f2f2564127812362d2c57ded20cad
 dependencies = [
  "bytemuck",
  "guillotiere",
- "peniko 0.5.0",
+ "peniko",
  "skrifa 0.37.0",
  "smallvec",
 ]
@@ -6865,13 +7155,14 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bytemuck",
+ "core-types",
  "dyn-any",
  "futures",
  "glam",
  "graphene-application-io",
- "graphene-core",
- "graphene-svg-renderer",
  "node-macro",
+ "raster-types",
+ "rendering",
  "vello",
  "web-sys",
  "wgpu",
@@ -6893,7 +7184,7 @@ dependencies = [
  "bytemuck",
  "cfg-if",
  "cfg_aliases",
- "core-graphics-types 0.2.0",
+ "core-graphics-types",
  "glow",
  "glutin_wgl_sys",
  "gpu-alloc",
@@ -6903,9 +7194,9 @@ dependencies = [
  "js-sys",
  "khronos-egl",
  "libc",
- "libloading",
+ "libloading 0.8.8",
  "log",
- "metal 0.32.0",
+ "metal",
  "naga 27.0.3",
  "ndk-sys",
  "objc",
@@ -6973,6 +7264,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
 
 [[package]]
+name = "window_clipboard"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5793d0b08c9e6a1240fe9ab2bd8db277487bf92436fd1a6321861a90a1b0cb7e"
+dependencies = [
+ "clipboard-win",
+ "clipboard_macos",
+ "clipboard_wayland",
+ "clipboard_x11",
+ "raw-window-handle",
+ "thiserror 1.0.69",
+]
+
+[[package]]
 name = "windows"
 version = "0.58.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7001,8 +7306,8 @@ version = "0.61.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c0fdd3ddb90610c7638aa2b3a3ab2904fb9e5cdbecc643ddb3647212781c4ae3"
 dependencies = [
- "windows-implement 0.60.0",
- "windows-interface 0.59.1",
+ "windows-implement 0.60.2",
+ "windows-interface 0.59.3",
  "windows-link 0.1.3",
  "windows-result 0.3.4",
  "windows-strings 0.4.2",
@@ -7021,9 +7326,9 @@ dependencies = [
 
 [[package]]
 name = "windows-implement"
-version = "0.60.0"
+version = "0.60.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a47fddd13af08290e67f4acabf4b459f647552718f683a7b415d290ac744a836"
+checksum = "053e2e040ab57b9dc951b72c264860db7eb3b0200ba345b4e4c3b14f67855ddf"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -7043,9 +7348,9 @@ dependencies = [
 
 [[package]]
 name = "windows-interface"
-version = "0.59.1"
+version = "0.59.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bd9211b69f8dcdfa817bfd14bf1c97c9188afa36f4750130fcdf3f400eca9fa8"
+checksum = "3f316c4a2570ba26bbec722032c4099d8c8bc095efccdc15688708623367e358"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -7391,15 +7696,15 @@ version = "0.30.12"
 source = "git+https://github.com/rust-windowing/winit.git#bd6fef1d80ba063cbe91e150b3fb343927cdc72b"
 dependencies = [
  "bitflags 2.9.3",
- "block2",
+ "block2 0.6.1",
  "dispatch2",
  "dpi",
- "objc2",
- "objc2-app-kit",
+ "objc2 0.6.3",
+ "objc2-app-kit 0.3.2",
  "objc2-core-foundation",
  "objc2-core-graphics",
  "objc2-core-video",
- "objc2-foundation",
+ "objc2-foundation 0.3.2",
  "raw-window-handle",
  "smol_str",
  "tracing",
@@ -7413,7 +7718,7 @@ version = "0.30.12"
 source = "git+https://github.com/rust-windowing/winit.git#bd6fef1d80ba063cbe91e150b3fb343927cdc72b"
 dependencies = [
  "memmap2",
- "objc2",
+ "objc2 0.6.3",
  "objc2-core-foundation",
  "smol_str",
  "tracing",
@@ -7458,12 +7763,12 @@ version = "0.30.12"
 source = "git+https://github.com/rust-windowing/winit.git#bd6fef1d80ba063cbe91e150b3fb343927cdc72b"
 dependencies = [
  "bitflags 2.9.3",
- "block2",
+ "block2 0.6.1",
  "dispatch2",
  "dpi",
- "objc2",
+ "objc2 0.6.3",
  "objc2-core-foundation",
- "objc2-foundation",
+ "objc2-foundation 0.3.2",
  "objc2-ui-kit",
  "raw-window-handle",
  "serde",
@@ -7586,12 +7891,6 @@ checksum = "052283831dbae3d879dc7f51f3d92703a316ca49f91540417d38591826127814"
 
 [[package]]
 name = "writeable"
-version = "0.5.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1e9df38ee2d2c3c5948ea468a8406ff0db0b29ae1ffde1bcf20ef305bcc95c51"
-
-[[package]]
-name = "writeable"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ea2f10b9bb0928dfb1b42b65e1f9e36f7f54dbdf08457afefb38afcdec4fa2bb"
@@ -7616,7 +7915,7 @@ dependencies = [
  "as-raw-xcb-connection",
  "gethostname",
  "libc",
- "libloading",
+ "libloading 0.8.8",
  "once_cell",
  "rustix",
  "x11rb-protocol",
@@ -7687,6 +7986,17 @@ name = "yazi"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e01738255b5a16e78bbb83e7fbba0a1e7dd506905cfc53f4622d89015a03fbb5"
+
+[[package]]
+name = "yeslogic-fontconfig-sys"
+version = "6.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "503a066b4c037c440169d995b869046827dbc71263f6e8f3be6d77d4f3229dbd"
+dependencies = [
+ "dlib",
+ "once_cell",
+ "pkg-config",
+]
 
 [[package]]
 name = "yoke"

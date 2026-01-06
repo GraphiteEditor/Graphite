@@ -2,7 +2,9 @@ use crate::messages::debug::utility_types::MessageLoggingVerbosity;
 use crate::messages::defer::DeferMessageContext;
 use crate::messages::dialog::DialogMessageContext;
 use crate::messages::layout::layout_message_handler::LayoutMessageContext;
+use crate::messages::preferences::preferences_message_handler::PreferencesMessageContext;
 use crate::messages::prelude::*;
+use crate::messages::tool::common_functionality::utility_functions::make_path_editable_is_allowed;
 
 #[derive(Debug, Default)]
 pub struct Dispatcher {
@@ -17,6 +19,7 @@ pub struct DispatcherMessageHandlers {
 	animation_message_handler: AnimationMessageHandler,
 	app_window_message_handler: AppWindowMessageHandler,
 	broadcast_message_handler: BroadcastMessageHandler,
+	clipboard_message_handler: ClipboardMessageHandler,
 	debug_message_handler: DebugMessageHandler,
 	defer_message_handler: DeferMessageHandler,
 	dialog_message_handler: DialogMessageHandler,
@@ -24,6 +27,7 @@ pub struct DispatcherMessageHandlers {
 	input_preprocessor_message_handler: InputPreprocessorMessageHandler,
 	key_mapping_message_handler: KeyMappingMessageHandler,
 	layout_message_handler: LayoutMessageHandler,
+	menu_bar_message_handler: MenuBarMessageHandler,
 	pub portfolio_message_handler: PortfolioMessageHandler,
 	preferences_message_handler: PreferencesMessageHandler,
 	tool_message_handler: ToolMessageHandler,
@@ -48,7 +52,8 @@ const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 		NodeGraphMessageDiscriminant::RunDocumentGraph,
 	))),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::SubmitActiveGraphRender),
-	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::TriggerFontLoad),
+	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::TriggerFontDataLoad),
+	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateUIScale),
 ];
 /// Since we don't need to update the frontend multiple times per frame,
 /// we have a set of messages which we will buffer until the next frame is requested.
@@ -65,6 +70,7 @@ const FRONTEND_UPDATE_MESSAGES: &[MessageDiscriminant] = &[
 const DEBUG_MESSAGE_BLOCK_LIST: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Broadcast(BroadcastMessageDiscriminant::TriggerEvent(EventMessageDiscriminant::AnimationFrame)),
 	MessageDiscriminant::Animation(AnimationMessageDiscriminant::IncrementFrameCounter),
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::AutoSaveAllDocuments),
 ];
 // TODO: Find a way to combine these with the list above. We use strings for now since these are the standard variant names used by multiple messages. But having these also type-checked would be best.
 const DEBUG_MESSAGE_ENDING_BLOCK_LIST: &[&str] = &["PointerMove", "PointerOutsideViewport", "Overlays", "Draw", "CurrentTime", "Time"];
@@ -156,6 +162,7 @@ impl Dispatcher {
 					self.message_handlers.app_window_message_handler.process_message(message, &mut queue, ());
 				}
 				Message::Broadcast(message) => self.message_handlers.broadcast_message_handler.process_message(message, &mut queue, ()),
+				Message::Clipboard(message) => self.message_handlers.clipboard_message_handler.process_message(message, &mut queue, ()),
 				Message::Debug(message) => {
 					self.message_handlers.debug_message_handler.process_message(message, &mut queue, ());
 				}
@@ -174,7 +181,7 @@ impl Dispatcher {
 				}
 				Message::Frontend(message) => {
 					// Handle these messages immediately by returning early
-					if let FrontendMessage::TriggerFontLoad { .. } = message {
+					if let FrontendMessage::TriggerFontDataLoad { .. } | FrontendMessage::TriggerFontCatalogLoad = message {
 						self.responses.push(message);
 						self.cleanup_queues(false);
 
@@ -215,32 +222,67 @@ impl Dispatcher {
 					self.message_handlers.layout_message_handler.process_message(message, &mut queue, context);
 				}
 				Message::Portfolio(message) => {
-					let ipp = &self.message_handlers.input_preprocessor_message_handler;
-					let preferences = &self.message_handlers.preferences_message_handler;
-					let current_tool = &self.message_handlers.tool_message_handler.tool_state.tool_data.active_tool_type;
-					let message_logging_verbosity = self.message_handlers.debug_message_handler.message_logging_verbosity;
-					let reset_node_definitions_on_open = self.message_handlers.portfolio_message_handler.reset_node_definitions_on_open;
-					let timing_information = self.message_handlers.animation_message_handler.timing_information();
-					let animation = &self.message_handlers.animation_message_handler;
-					let viewport = &self.message_handlers.viewport_message_handler;
-
 					self.message_handlers.portfolio_message_handler.process_message(
 						message,
 						&mut queue,
 						PortfolioMessageContext {
-							ipp,
-							preferences,
-							current_tool,
-							message_logging_verbosity,
-							reset_node_definitions_on_open,
-							timing_information,
-							animation,
-							viewport,
+							ipp: &self.message_handlers.input_preprocessor_message_handler,
+							preferences: &self.message_handlers.preferences_message_handler,
+							current_tool: &self.message_handlers.tool_message_handler.tool_state.tool_data.active_tool_type,
+							reset_node_definitions_on_open: self.message_handlers.portfolio_message_handler.reset_node_definitions_on_open,
+							timing_information: self.message_handlers.animation_message_handler.timing_information(),
+							animation: &self.message_handlers.animation_message_handler,
+							viewport: &self.message_handlers.viewport_message_handler,
 						},
 					);
 				}
+				Message::MenuBar(message) => {
+					let menu_bar_message_handler = &mut self.message_handlers.menu_bar_message_handler;
+
+					menu_bar_message_handler.data_panel_open = self.message_handlers.portfolio_message_handler.data_panel_open;
+					menu_bar_message_handler.layers_panel_open = self.message_handlers.portfolio_message_handler.layers_panel_open;
+					menu_bar_message_handler.properties_panel_open = self.message_handlers.portfolio_message_handler.properties_panel_open;
+					menu_bar_message_handler.message_logging_verbosity = self.message_handlers.debug_message_handler.message_logging_verbosity;
+					menu_bar_message_handler.reset_node_definitions_on_open = self.message_handlers.portfolio_message_handler.reset_node_definitions_on_open;
+
+					if let Some(document) = self
+						.message_handlers
+						.portfolio_message_handler
+						.active_document_id
+						.and_then(|document_id| self.message_handlers.portfolio_message_handler.documents.get_mut(&document_id))
+					{
+						let selected_nodes = document.network_interface.selected_nodes();
+						let metadata = &document.network_interface.document_network_metadata().persistent_metadata;
+
+						menu_bar_message_handler.has_active_document = true;
+						menu_bar_message_handler.canvas_tilted = document.document_ptz.tilt() != 0.;
+						menu_bar_message_handler.canvas_flipped = document.document_ptz.flip;
+						menu_bar_message_handler.rulers_visible = document.rulers_visible;
+						menu_bar_message_handler.node_graph_open = document.is_graph_overlay_open();
+						menu_bar_message_handler.has_selected_nodes = selected_nodes.selected_nodes().next().is_some();
+						menu_bar_message_handler.has_selected_layers = selected_nodes.selected_visible_layers(&document.network_interface).next().is_some();
+						menu_bar_message_handler.has_selection_history = (!metadata.selection_undo_history.is_empty(), !metadata.selection_redo_history.is_empty());
+						menu_bar_message_handler.make_path_editable_is_allowed = make_path_editable_is_allowed(&mut document.network_interface).is_some();
+					} else {
+						menu_bar_message_handler.has_active_document = false;
+						menu_bar_message_handler.canvas_tilted = false;
+						menu_bar_message_handler.canvas_flipped = false;
+						menu_bar_message_handler.rulers_visible = false;
+						menu_bar_message_handler.node_graph_open = false;
+						menu_bar_message_handler.has_selected_nodes = false;
+						menu_bar_message_handler.has_selected_layers = false;
+						menu_bar_message_handler.has_selection_history = (false, false);
+						menu_bar_message_handler.make_path_editable_is_allowed = false;
+					}
+
+					menu_bar_message_handler.process_message(message, &mut queue, ());
+				}
 				Message::Preferences(message) => {
-					self.message_handlers.preferences_message_handler.process_message(message, &mut queue, ());
+					let context = PreferencesMessageContext {
+						tool_message_handler: &self.message_handlers.tool_message_handler,
+					};
+
+					self.message_handlers.preferences_message_handler.process_message(message, &mut queue, context);
 				}
 				Message::Tool(message) => {
 					let Some(document_id) = self.message_handlers.portfolio_message_handler.active_document_id() else {
@@ -285,15 +327,17 @@ impl Dispatcher {
 	pub fn collect_actions(&self) -> ActionList {
 		// TODO: Reduce the number of heap allocations
 		let mut list = Vec::new();
+		list.extend(self.message_handlers.app_window_message_handler.actions());
+		list.extend(self.message_handlers.clipboard_message_handler.actions());
 		list.extend(self.message_handlers.dialog_message_handler.actions());
 		list.extend(self.message_handlers.animation_message_handler.actions());
 		list.extend(self.message_handlers.input_preprocessor_message_handler.actions());
 		list.extend(self.message_handlers.key_mapping_message_handler.actions());
 		list.extend(self.message_handlers.debug_message_handler.actions());
-		if let Some(document) = self.message_handlers.portfolio_message_handler.active_document() {
-			if !document.graph_view_overlay_open {
-				list.extend(self.message_handlers.tool_message_handler.actions());
-			}
+		if let Some(document) = self.message_handlers.portfolio_message_handler.active_document()
+			&& !document.graph_view_overlay_open
+		{
+			list.extend(self.message_handlers.tool_message_handler.actions_with_preferences(&self.message_handlers.preferences_message_handler));
 		}
 		list.extend(self.message_handlers.portfolio_message_handler.actions());
 		list
@@ -321,8 +365,9 @@ impl Dispatcher {
 	fn log_message(&self, message: &Message, queues: &[VecDeque<Message>], message_logging_verbosity: MessageLoggingVerbosity) {
 		let discriminant = MessageDiscriminant::from(message);
 		let is_blocked = DEBUG_MESSAGE_BLOCK_LIST.contains(&discriminant) || DEBUG_MESSAGE_ENDING_BLOCK_LIST.iter().any(|blocked_name| discriminant.local_name().ends_with(blocked_name));
+		let is_empty_batched = if let Message::Batched { messages } = message { messages.is_empty() } else { false };
 
-		if !is_blocked {
+		if !is_blocked && !is_empty_batched {
 			match message_logging_verbosity {
 				MessageLoggingVerbosity::Off => {}
 				MessageLoggingVerbosity::Names => {
@@ -546,10 +591,10 @@ mod test {
 
 			for response in responses {
 				// Check for the existence of the file format incompatibility warning dialog after opening the test file
-				if let FrontendMessage::UpdateDialogColumn1 { layout_target: _, diff } = response {
-					if let DiffUpdate::SubLayout(sub_layout) = &diff[0].new_value {
-						if let LayoutGroup::Row { widgets } = &sub_layout[0] {
-							if let Widget::TextLabel(TextLabel { value, .. }) = &widgets[0].widget {
+				if let FrontendMessage::UpdateDialogColumn1 { diff } = response {
+					if let DiffUpdate::Layout(sub_layout) = &diff[0].new_value {
+						if let LayoutGroup::Row { widgets } = &sub_layout.0[0] {
+							if let Widget::TextLabel(TextLabel { value, .. }) = &*widgets[0].widget {
 								print_problem_to_terminal_on_failure(value);
 							}
 						}

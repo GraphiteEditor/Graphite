@@ -12,7 +12,7 @@ on:
   workflow_dispatch: {}
 env:
   CARGO_TERM_COLOR: always
-  INDEX_HTML_HEAD_INCLUSION: <script defer data-domain="graphite.rs" data-api="/visit/event" src="/visit/script.hash.js"></script>
+  INDEX_HTML_HEAD_INCLUSION: <script defer data-domain="graphite.art" data-api="/visit/event" src="/visit/script.hash.js"></script>
 
 jobs:
   build:

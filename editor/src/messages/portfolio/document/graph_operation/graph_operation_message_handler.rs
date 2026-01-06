@@ -7,10 +7,12 @@ use crate::messages::portfolio::document::utility_types::nodes::CollapsedLayers;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::get_clip_mode;
 use glam::{DAffine2, DVec2, IVec2};
+use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::Color;
 use graphene_std::renderer::Quad;
 use graphene_std::renderer::convert_usvg_path::convert_usvg_path;
+use graphene_std::table::Table;
 use graphene_std::text::{Font, TypesettingConfig};
 use graphene_std::vector::style::{Fill, Gradient, GradientStops, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 
@@ -140,10 +142,18 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 								skip_rerender: true,
 							});
 						}
+
+						// Set the bottom input of the artboard back to artboard
+						let bottom_input = NodeInput::value(TaggedValue::Artboard(Table::new()), true);
+						network_interface.set_input(&InputConnector::node(artboard_layer.to_node(), 0), bottom_input, &[]);
 					} else {
 						// We have some non layers (e.g. just a rectangle node). We disconnect the bottom input and connect it to the left input.
 						network_interface.disconnect_input(&InputConnector::node(artboard_layer.to_node(), 0), &[]);
 						network_interface.set_input(&InputConnector::node(artboard_layer.to_node(), 1), primary_input, &[]);
+
+						// Set the bottom input of the artboard back to artboard
+						let bottom_input = NodeInput::value(TaggedValue::Artboard(Table::new()), true);
+						network_interface.set_input(&InputConnector::node(artboard_layer.to_node(), 0), bottom_input, &[]);
 					}
 				}
 				responses.add_front(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] });
