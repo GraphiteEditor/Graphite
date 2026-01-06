@@ -2481,6 +2481,7 @@ dependencies = [
  "js-sys",
  "log",
  "math-parser",
+ "node-macro",
  "ron",
  "serde",
  "serde-wasm-bindgen",

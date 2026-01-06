@@ -201,7 +201,7 @@ impl NodeGraphExecutor {
 			ExportBounds::Artboard(id) => document.metadata().bounding_box_document(id),
 		}
 		.ok_or_else(|| "No bounding box".to_string())?;
-		let resolution = (bounds[1] - bounds[0]).as_uvec2();
+		let resolution = (bounds[1] - bounds[0]).round().as_uvec2();
 		let transform = DAffine2::from_translation(bounds[0]).inverse();
 
 		let render_config = RenderConfig {

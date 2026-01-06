@@ -678,18 +678,25 @@ fn generate_register_node_impl(parsed: &ParsedNodeFn, field_names: &[&Ident], st
 	}
 	let registry_name = format_ident!("__node_registry_{}_{}", NODE_ID.fetch_add(1, std::sync::atomic::Ordering::SeqCst), struct_name);
 
-	Ok(quote! {
+	let native = quote! {
+	#[cfg_attr(not(target_family = "wasm"), ctor)]
+	fn register_node() {
+		let mut registry = NODE_REGISTRY.lock().unwrap();
+		registry.insert(
+			#identifier(),
+			vec![
+				#(#constructors,)*
+			]
+		);
+	}
+	};
+	if cfg!(feature = "disable-registration") {
+		return Ok(native);
+	}
 
-		#[cfg_attr(not(target_family = "wasm"), ctor)]
-		fn register_node() {
-			let mut registry = NODE_REGISTRY.lock().unwrap();
-			registry.insert(
-				#identifier(),
-				vec![
-					#(#constructors,)*
-				]
-			);
-		}
+	Ok(quote! {
+		#native
+
 		#[cfg(target_family = "wasm")]
 		#[unsafe(no_mangle)]
 		extern "C" fn #registry_name() {
