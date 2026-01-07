@@ -182,6 +182,9 @@ pub struct RenderParams {
 	pub alignment_parent_transform: Option<DAffine2>,
 	pub aligned_strokes: bool,
 	pub override_paint_order: bool,
+	/// Mapping from NodeId to layer display names, used during SVG export to set element IDs.
+	/// This field is excluded from the Hash implementation since it doesn't affect render output.
+	pub node_names: HashMap<NodeId, String>,
 }
 
 impl Hash for RenderParams {
@@ -203,12 +206,20 @@ impl Hash for RenderParams {
 
 impl RenderParams {
 	pub fn for_clipper(&self) -> Self {
-		Self { for_mask: true, ..*self }
+		Self {
+			for_mask: true,
+			node_names: self.node_names.clone(),
+			..*self
+		}
 	}
 
 	pub fn for_alignment(&self, transform: DAffine2) -> Self {
 		let alignment_parent_transform = Some(transform);
-		Self { alignment_parent_transform, ..*self }
+		Self {
+			alignment_parent_transform,
+			node_names: self.node_names.clone(),
+			..*self
+		}
 	}
 
 	pub fn to_canvas(&self) -> bool {
@@ -227,6 +238,64 @@ pub fn format_transform_matrix(transform: DAffine2) -> String {
 		let comma = if i == 5 { "" } else { "," };
 		val + &(num + comma)
 	}) + ")"
+}
+
+/// Sanitizes a layer name to be a valid SVG ID.
+///
+/// SVG ID values must be valid XML Name tokens. This function:
+/// - Replaces spaces with underscores
+/// - Removes characters that are invalid in XML Names
+/// - Ensures the ID starts with a letter or underscore
+/// - Returns None if the result would be empty
+fn sanitize_svg_id(name: &str) -> Option<String> {
+	if name.is_empty() {
+		return None;
+	}
+
+	let mut result = String::with_capacity(name.len());
+
+	for c in name.chars() {
+		let is_start = result.is_empty();
+
+		match c {
+			// Spaces become underscores (valid anywhere after we have a valid start)
+			' ' if !is_start => result.push('_'),
+			// Colons replaced with underscores for CSS compatibility
+			':' if !is_start => result.push('_'),
+			// Valid start characters: letters and underscore
+			'A'..='Z' | 'a'..='z' | '_' => result.push(c),
+			// Valid continuation characters only: digits, hyphen, period
+			'0'..='9' | '-' | '.' if !is_start => result.push(c),
+			// Skip all other characters (including spaces/colons before valid start)
+			_ => {}
+		}
+	}
+
+	if result.is_empty() {
+		None
+	} else {
+		Some(result)
+	}
+}
+
+/// Generates a unique SVG ID by appending a numeric suffix if the ID already exists.
+///
+/// For example, if "Layer" already exists, this returns "Layer_2", then "Layer_3", etc.
+fn make_unique_svg_id(base_id: &str, used_ids: &mut HashSet<String>) -> String {
+	if !used_ids.contains(base_id) {
+		used_ids.insert(base_id.to_string());
+		return base_id.to_string();
+	}
+
+	let mut counter = 2;
+	loop {
+		let candidate = format!("{}_{}", base_id, counter);
+		if !used_ids.contains(&candidate) {
+			used_ids.insert(candidate.clone());
+			return candidate;
+		}
+		counter += 1;
+	}
 }
 
 fn max_scale(transform: DAffine2) -> f64 {
@@ -526,11 +595,28 @@ impl Render for Table<Graphic> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		let mut iter = self.iter().peekable();
 		let mut mask_state = None;
+		// Track used IDs to ensure uniqueness when exporting with layer names
+		let mut used_ids = HashSet::new();
 
 		while let Some(row) = iter.next() {
+			// Look up layer name for export ID if available
+			let layer_id = if render_params.for_export {
+				row.source_node_id
+					.and_then(|node_id| render_params.node_names.get(&node_id))
+					.and_then(|name| sanitize_svg_id(name))
+					.map(|base_id| make_unique_svg_id(&base_id, &mut used_ids))
+			} else {
+				None
+			};
+
 			render.parent_tag(
 				"g",
 				|attributes| {
+					// Add layer name as ID attribute for export
+					if let Some(ref id) = layer_id {
+						attributes.push("id", id.clone());
+					}
+
 					let matrix = format_transform_matrix(*row.transform);
 					if !matrix.is_empty() {
 						attributes.push("transform", matrix);
@@ -1644,5 +1730,92 @@ impl SvgRenderAttrs<'_> {
 	}
 	pub fn push_val(&mut self, value: impl Into<SvgSegment>) {
 		self.0.svg.push(value.into());
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn test_sanitize_svg_id_basic() {
+		assert_eq!(sanitize_svg_id("Hello"), Some("Hello".to_string()));
+		assert_eq!(sanitize_svg_id("Layer1"), Some("Layer1".to_string()));
+		assert_eq!(sanitize_svg_id("my_layer"), Some("my_layer".to_string()));
+	}
+
+	#[test]
+	fn test_sanitize_svg_id_spaces() {
+		assert_eq!(sanitize_svg_id("My Layer"), Some("My_Layer".to_string()));
+		// Leading spaces are skipped until we find a valid start character
+		assert_eq!(sanitize_svg_id("  spaces  "), Some("spaces__".to_string()));
+	}
+
+	#[test]
+	fn test_sanitize_svg_id_colons() {
+		// Colons are replaced with underscores for CSS compatibility
+		assert_eq!(sanitize_svg_id("my:layer"), Some("my_layer".to_string()));
+		assert_eq!(sanitize_svg_id("a:b:c"), Some("a_b_c".to_string()));
+	}
+
+	#[test]
+	fn test_sanitize_svg_id_invalid_start() {
+		// IDs can't start with digits
+		assert_eq!(sanitize_svg_id("123layer"), Some("layer".to_string()));
+		// IDs can start with underscore
+		assert_eq!(sanitize_svg_id("_layer"), Some("_layer".to_string()));
+	}
+
+	#[test]
+	fn test_sanitize_svg_id_special_chars() {
+		// Most special characters are stripped
+		assert_eq!(sanitize_svg_id("hello@world!"), Some("helloworld".to_string()));
+		assert_eq!(sanitize_svg_id("test#123"), Some("test123".to_string()));
+	}
+
+	#[test]
+	fn test_sanitize_svg_id_empty() {
+		assert_eq!(sanitize_svg_id(""), None);
+		assert_eq!(sanitize_svg_id("@#$%"), None);
+		assert_eq!(sanitize_svg_id("123"), None); // All digits, no valid start
+	}
+
+	#[test]
+	fn test_sanitize_svg_id_hyphens_dots() {
+		// Hyphens and dots are valid after the first character
+		assert_eq!(sanitize_svg_id("layer-1"), Some("layer-1".to_string()));
+		assert_eq!(sanitize_svg_id("layer.name"), Some("layer.name".to_string()));
+		// But not at the start
+		assert_eq!(sanitize_svg_id("-layer"), Some("layer".to_string()));
+		assert_eq!(sanitize_svg_id(".layer"), Some("layer".to_string()));
+	}
+
+	#[test]
+	fn test_make_unique_svg_id_no_conflict() {
+		let mut used_ids = HashSet::new();
+		assert_eq!(make_unique_svg_id("layer", &mut used_ids), "layer");
+		assert!(used_ids.contains("layer"));
+	}
+
+	#[test]
+	fn test_make_unique_svg_id_with_conflicts() {
+		let mut used_ids = HashSet::new();
+		used_ids.insert("layer".to_string());
+		
+		assert_eq!(make_unique_svg_id("layer", &mut used_ids), "layer_2");
+		assert!(used_ids.contains("layer_2"));
+		
+		assert_eq!(make_unique_svg_id("layer", &mut used_ids), "layer_3");
+		assert!(used_ids.contains("layer_3"));
+	}
+
+	#[test]
+	fn test_make_unique_svg_id_multiple_names() {
+		let mut used_ids = HashSet::new();
+		
+		assert_eq!(make_unique_svg_id("circle", &mut used_ids), "circle");
+		assert_eq!(make_unique_svg_id("square", &mut used_ids), "square");
+		assert_eq!(make_unique_svg_id("circle", &mut used_ids), "circle_2");
+		assert_eq!(make_unique_svg_id("square", &mut used_ids), "square_2");
 	}
 }
