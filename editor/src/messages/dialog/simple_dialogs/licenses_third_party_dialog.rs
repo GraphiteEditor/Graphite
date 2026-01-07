@@ -10,9 +10,9 @@ impl DialogLayoutHolder for LicensesThirdPartyDialog {
 	const TITLE: &'static str = "Third-Party Software License Notices";
 
 	fn layout_buttons(&self) -> Layout {
-		let widgets = vec![TextButton::new("OK").emphasized(true).on_update(|_| FrontendMessage::DisplayDialogDismiss.into()).widget_holder()];
+		let widgets = vec![TextButton::new("OK").emphasized(true).on_update(|_| FrontendMessage::DisplayDialogDismiss.into()).widget_instance()];
 
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
+		Layout(vec![LayoutGroup::Row { widgets }])
 	}
 }
 
@@ -29,16 +29,16 @@ impl LayoutHolder for LicensesThirdPartyDialog {
 		};
 
 		// Two characters (one before, one after) the sequence of underscore characters, plus one additional column to provide a space between the text and the scrollbar
-		let non_wrapping_column_width = license_text.split('\n').map(|line| line.chars().filter(|&c| c == '_').count()).max().unwrap_or(0) + 2 + 1;
+		let non_wrapping_column_width = license_text.split('\n').map(|line| line.chars().filter(|&c| c == '_').count() as u32).max().unwrap_or(0) + 2 + 1;
 
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row {
+		Layout(vec![LayoutGroup::Row {
 			widgets: vec![
 				TextLabel::new(license_text)
 					.monospace(true)
 					.multiline(true)
-					.min_width(format!("{non_wrapping_column_width}ch"))
-					.widget_holder(),
+					.min_width_characters(non_wrapping_column_width)
+					.widget_instance(),
 			],
-		}]))
+		}])
 	}
 }

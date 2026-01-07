@@ -6,7 +6,7 @@ A library to extract images from camera raw files.
 
 It currently only works with the `.arw` files from Sony's cameras. In the future, the library will add support for all other major camera manufacturers.
 
-Rawkit is built for the needs of [Graphite](https://graphite.rs), an open source 2D graphics editor. We hope it may be useful to others, but presently Graphite is its primary user. Pull requests are welcomed for new cameras, features, code cleanup, ergonomic enhancements, performance improvements, and documentation clarifications.
+Rawkit is built for the needs of [Graphite](https://graphite.art), an open source 2D graphics editor. We hope it may be useful to others, but presently Graphite is its primary user. Pull requests are welcomed for new cameras, features, code cleanup, ergonomic enhancements, performance improvements, and documentation clarifications.
 
 ### Using Rawkit
 

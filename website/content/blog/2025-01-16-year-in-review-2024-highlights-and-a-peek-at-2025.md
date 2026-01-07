@@ -3,8 +3,8 @@ title = "Year in review: 2024 highlights and a peek at 2025"
 date = 2025-01-16
 
 [extra]
-banner = "https://static.graphite.rs/content/blog/2025-01-16-year-in-review-2024-highlights-and-a-peek-at-2025.avif"
-banner_png = "https://static.graphite.rs/content/blog/2025-01-16-year-in-review-2024-highlights-and-a-peek-at-2025.png"
+banner = "https://static.graphite.art/content/blog/2025-01-16-year-in-review-2024-highlights-and-a-peek-at-2025.avif"
+banner_png = "https://static.graphite.art/content/blog/2025-01-16-year-in-review-2024-highlights-and-a-peek-at-2025.png"
 author = "Keavon Chambers"
 summary = "Graphite has come a long way in 2024. Read about the progress made and the plans for the upcoming year."
 reddit = "https://www.reddit.com/r/graphite/comments/1i3umnl/blog_post_year_in_review_2024_highlights_and_a/"
@@ -21,7 +21,7 @@ Another year has come and gone which has propelled Graphite—further than any y
 
 In a world where the notion of software ownership seems headed towards extinction, the need has never been greater for an independent, community-built alternative to the vector graphics, animation, image manipulation, photo processing, and publishing tools used daily by millions of creators worldwide.
 
-Graphite is and will always remain yours to keep, whether that's by running the lightweight, client-side [web app](https://editor.graphite.rs) (no signup, no cloud), <a href="https://support.google.com/chrome/answer/9658361" target="_blank">installing the PWA</a> on your desktop, self-hosting the <a href="https://github.com/GraphiteEditor/Graphite/releases/tag/latest-stable" target="_blank">builds</a>, or downloading the soon-to-be-ready native app for your OS of choice (more news on that later in the post).
+Graphite is and will always remain yours to keep, whether that's by running the lightweight, client-side [web app](https://editor.graphite.art) (no signup, no cloud), <a href="https://support.google.com/chrome/answer/9658361" target="_blank">installing the PWA</a> on your desktop, self-hosting the <a href="https://github.com/GraphiteEditor/Graphite/releases/tag/latest-stable" target="_blank">builds</a>, or downloading the soon-to-be-ready native app for your OS of choice (more news on that later in the post).
 
 <style class="float-image">
 .float-image + p {
@@ -35,17 +35,17 @@ Graphite is and will always remain yours to keep, whether that's by running the 
 </style>
 
 <p>
-<a href="https://github.com/GraphiteEditor/Graphite"><img src="https://static.graphite.rs/content/blog/2025-01-16-year-in-review-2024-highlights-and-a-peek-at-2025/10k-stars.avif" style="max-width: unset; margin-top: 0.5em" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Screenshot of 10,000 stars" /></a>
+<a href="https://github.com/GraphiteEditor/Graphite"><img src="https://static.graphite.art/content/blog/2025-01-16-year-in-review-2024-highlights-and-a-peek-at-2025/10k-stars.avif" style="max-width: unset; margin-top: 0.5em" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Screenshot of 10,000 stars" /></a>
 <span>Join me, founder and designer of Graphite, to see where the past year has brought us on this quest. And let me take this moment to thank our growing community for sharing my vision and showing support, both <a href="/donate">financially</a> and by boosting the GitHub project page over the 10,000 star milestone just in time to celebrate the end of a productive 2024.</span>
 </p>
 
 ## 2024 development progress report
 
-<p><img src="https://static.graphite.rs/content/blog/2025-01-16-year-in-review-2024-highlights-and-a-peek-at-2025/weekly-commit-rate.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" /></p>
+<p><img src="https://static.graphite.art/content/blog/2025-01-16-year-in-review-2024-highlights-and-a-peek-at-2025/weekly-commit-rate.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" /></p>
 
 <center><em>Weekly code commit rate in 2024</em></center>
 
-In 2024, Graphite grew from a promising tech demo into a by-and-large useful application for vector artistry and graphic design, equipped with its totally unique secret ingredient: nondestructive, procedural editing via a node graph. This was a year focused on iterating until a prototype became a polished product— at least by the standards of alpha-stage software. If you haven't [tried Graphite](https://editor.graphite.rs) recently, please take another look!
+In 2024, Graphite grew from a promising tech demo into a by-and-large useful application for vector artistry and graphic design, equipped with its totally unique secret ingredient: nondestructive, procedural editing via a node graph. This was a year focused on iterating until a prototype became a polished product— at least by the standards of alpha-stage software. If you haven't [tried Graphite](https://editor.graphite.art) recently, please take another look!
 
 Improvements made throughout Alpha 3 (2024's release series) brought the formerly abysmal performance up to now-adequate levels and solved the vast bulk of instability with the once-numerous crashes and bugs. Advancements to [Graphene](/volunteer/guide/graphene), our bespoke node graph engine technology, has let us begin to support new rendering possibilities, introduce more helpful nodes, and remove restrictive limitations with common node combinations that previously were points of frustration. We also made big strides improving the tools used by artists for vector drawing with features like boolean path operations, snapping, layer selection history, quick measurement, gradient picking, and extensive usability-focused tweaks—both big and small—all throughout the editor.
 
@@ -62,7 +62,7 @@ Alpha 3 began back in February 2024 and we plan to declare the start of the Alph
 
 ## Google Summer of Code results
 
-<p><img src="https://static.graphite.rs/content/blog/2025-01-16-year-in-review-2024-highlights-and-a-peek-at-2025/gsoc-logo.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Google Summer of Code program logo" /></p>
+<p><img src="https://static.graphite.art/content/blog/2025-01-16-year-in-review-2024-highlights-and-a-peek-at-2025/gsoc-logo.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Google Summer of Code program logo" /></p>
 
 <center><em>Read our short <a href="../graphite-internships-announcing-participation-in-gsoc-2024">blog post</a> about participating in Google Summer of Code</em></center>
 
@@ -78,11 +78,11 @@ I would like to express my gratitude to Google for funding the program and its s
 
 Another part of the GSoC program was the Mentor Summit in October where I got to meet and share knowledge with open source maintainers from the other participating organizations. Hosted at Google's Mountain View offices, it was a weekend of talking tech and learning the lessons of open source project management from the seasoned veterans.
 
-<p><img src="https://static.graphite.rs/content/blog/2025-01-16-year-in-review-2024-highlights-and-a-peek-at-2025/gsoc-mentor-summit-photo.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="" /></p>
+<p><img src="https://static.graphite.art/content/blog/2025-01-16-year-in-review-2024-highlights-and-a-peek-at-2025/gsoc-mentor-summit-photo.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="" /></p>
 
 <center><em>Group photo of the GSoC Mentor Summit attendees</em></center>
 
-<p><img src="https://static.graphite.rs/content/blog/2025-01-16-year-in-review-2024-highlights-and-a-peek-at-2025/gsoc-mentor-summit-session-board.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="" /></p>
+<p><img src="https://static.graphite.art/content/blog/2025-01-16-year-in-review-2024-highlights-and-a-peek-at-2025/gsoc-mentor-summit-session-board.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="" /></p>
 
 <center><em>Schedule board highlighting my session on day 2</em></center>
 
@@ -98,7 +98,7 @@ In March, accompanied by Oliver Davies, a personal friend/tech artist/contributo
 
 We introduced Graphite to open source organizations like <a href="https://godotengine.org/" target="_blank">Godot</a> and <a href="https://o3de.org/" target="_blank">O3DE</a>, caught up with Francesco and Dalai from the Blender Foundation, joined a roundtable panel on open source adoption in the games industry, and came together with the <a href="https://gamedev.rs/" target="_blank">Rust Gamedev</a> community for a physical meetup of game and graphics centric Rust developers. It was a treat seeing several people in-person for the first time whom, before, I'd known only online.
 
-<p class="wide"><img src="https://static.graphite.rs/content/blog/2025-01-16-year-in-review-2024-highlights-and-a-peek-at-2025/gdc-collage.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="" /></p>
+<p class="wide"><img src="https://static.graphite.art/content/blog/2025-01-16-year-in-review-2024-highlights-and-a-peek-at-2025/gdc-collage.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="" /></p>
 
 <center><em>
 Upper-left: Forest Anderson, host of the Rust Gamedev Meetup <a href="https://www.youtube.com/watch?v=Ea4Wt_FgEEw&list=PLYiOdhpKxxXI9l8V15FciLcsPzkz3Gt4I&index=2" target="_blank">live streams</a> where Graphite demoed many monthly development milestones, with me at the Rust devs hangout;
@@ -111,7 +111,7 @@ With March now just around the corner, I am definitely looking forward to the ne
 
 ### Blender Conference LA
 
-<p class="wide"><img src="https://static.graphite.rs/content/blog/2025-01-16-year-in-review-2024-highlights-and-a-peek-at-2025/bcon-la-collage.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="" /></p>
+<p class="wide"><img src="https://static.graphite.art/content/blog/2025-01-16-year-in-review-2024-highlights-and-a-peek-at-2025/bcon-la-collage.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="" /></p>
 
 <center><em>Left-to-right, top-then-bottom: Ton Roosendaal (founder of Blender) and me (founder of Graphite); the venue on Hollywood Boulevard; talks on the main stage; Colin Levy (director of <a href="https://www.youtube.com/watch?v=Mv30ExfoKcc" target="_blank">Skywatch</a> and the Blender Studio's <a href="https://www.youtube.com/watch?v=eRsGyueVLvQ" target="_blank">Sintel</a>) and Andrew Price (<a href="https://www.youtube.com/@blenderguru" target="_blank">Blender Guru</a> and creator of <a href="https://www.poliigon.com/" target="_blank">Poliigon</a>); my talk on the main stage; Alan Melikdjanian (<a href="https://www.youtube.com/user/CaptainDisillusion" target="_blank">Captain Disillusion</a>) and <a href="https://www.youtube.com/@IanHubert2" target="_blank">Ian Hubert</a> (YouTube filmmaker and director of the Blender Studio's <a href="https://www.youtube.com/watch?v=41hv2tW5Lc4" target="_blank">Tears of Steel</a>); attendees chatting</em></center>
 
@@ -120,20 +120,20 @@ The next month in April, Oliver and I went to our second conference of the year:
 I also took to the main stage to present a lightning talk introducing Graphite to the community:
 
 <div class="youtube-embed aspect-16x9">
-	<img src="https://static.graphite.rs/content/blog/2025-01-16-year-in-review-2024-highlights-and-a-peek-at-2025/bcon-la-talk-video-cover.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" data-youtube-embed="x3P5eYv11EU" data-youtube-timestamp="1603" alt="BCON LA 2024 - Lightning Talks" />
+	<img src="https://static.graphite.art/content/blog/2025-01-16-year-in-review-2024-highlights-and-a-peek-at-2025/bcon-la-talk-video-cover.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" data-youtube-embed="x3P5eYv11EU" data-youtube-timestamp="1603" alt="BCON LA 2024 - Lightning Talks" />
 </div>
 
 ### Graphite booth at Open Sauce
 
 The month of June was particularly special because of <a href="https://opensauce.com/" target="_blank">Open Sauce</a>, a convention and expo in San Francisco for makers and creators, and of course, open source projects!
 
-<p><img src="https://static.graphite.rs/content/blog/2025-01-16-year-in-review-2024-highlights-and-a-peek-at-2025/open-sauce-booth.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="" /></p>
+<p><img src="https://static.graphite.art/content/blog/2025-01-16-year-in-review-2024-highlights-and-a-peek-at-2025/open-sauce-booth.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="" /></p>
 
 <center><em>Adam and Oliver driving a Graphite live demo at our booth</em></center>
 
 This presented the perfect opportunity to host our own exhibitor booth and talk to hundreds of excited attendees with creative tech backgrounds over the two day show. The event was excellent for networking with fellow makers and a chance to meet an array of the guest YouTube creators including several from the digital content creation realm.
 
-<p class="wide"><img src="https://static.graphite.rs/content/blog/2025-01-16-year-in-review-2024-highlights-and-a-peek-at-2025/open-sauce-collage.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="" /></p>
+<p class="wide"><img src="https://static.graphite.art/content/blog/2025-01-16-year-in-review-2024-highlights-and-a-peek-at-2025/open-sauce-collage.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="" /></p>
 
 <center><em>Sides: doodles by attendees on our public art wall; Inner-left: <a href="https://www.youtube.com/@IanHubert2" target="_blank">Ian Hubert</a>, Blender filmmaker, visiting again after we met at BCON LA; Inner-right: Daniel Shiffman (<a href="https://www.youtube.com/@TheCodingTrain" target="_blank">The Coding Train</a>), creator of tutorials and explorations into creative coding/generative procedural art</em></center>
 
@@ -145,7 +145,7 @@ Joining me again was Oliver to assist with the booth, as well as our new GSoC co
 
 And then when October rolled around, we did it again! Now located at a post-industrial waterfront venue across the Bay from San Francisco, the <a href="https://makerfaire.com/bay-area/" target="_blank">Maker Faire</a> started with a Friday field trip day for local schools followed by a full weekend of general attendance.
 
-<p><img src="https://static.graphite.rs/content/blog/2025-01-16-year-in-review-2024-highlights-and-a-peek-at-2025/maker-faire-booth.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="" /></p>
+<p><img src="https://static.graphite.art/content/blog/2025-01-16-year-in-review-2024-highlights-and-a-peek-at-2025/maker-faire-booth.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="" /></p>
 
 <center><em>Visitors making art and learning about Graphite at our booth</em></center>
 
@@ -153,13 +153,13 @@ The Maker Faire is ground zero for the Maker Movement. I grew up going each year
 
 Attracting a more family-oriented audience than Open Sauce, it presented the chance to learn how approachable Graphite is even for kids. Doodling on the LED-backlit whiteboards flanking our booth was especially popular with that age range and brought in many passers-by. Of those who tried Graphite, I was blown away to see how some of our youngest visitors—down to the age of 6—were also the most capable and engaged using the product, diving in deep with barely any instruction. As the UI and product designer, this assured me that I have been on the right track so far. I believe now more than ever that my ambitious goal is achievable: creating the most intuitive and user-friendly professional graphics editor on the market.
 
-<p><img src="https://static.graphite.rs/content/blog/2025-01-16-year-in-review-2024-highlights-and-a-peek-at-2025/maker-faire-demo-stations.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="" /></p>
+<p><img src="https://static.graphite.art/content/blog/2025-01-16-year-in-review-2024-highlights-and-a-peek-at-2025/maker-faire-demo-stations.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="" /></p>
 
 <center><em>All four demo computers occupied with Graphite's newest users</em></center>
 
 Another exciting part of the Maker Faire experience was bringing together nearly the full Graphite core team in-person. Oliver and Adam came to help again while we were also joined by Dennis visiting all the way from Germany, conveniently coinciding with a vacation he had planned. We put our commute time towards deeply technical code architecture discussions and knowledge transfer.
 
-<p class="wide"><img src="https://static.graphite.rs/content/blog/2025-01-16-year-in-review-2024-highlights-and-a-peek-at-2025/maker-faire-team-collage.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="" /></p>
+<p class="wide"><img src="https://static.graphite.art/content/blog/2025-01-16-year-in-review-2024-highlights-and-a-peek-at-2025/maker-faire-team-collage.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="" /></p>
 
 <center><em>Left: me (1), Adam (2), and Oliver (3) at the venue; Right: Adam (1), Dennis (2), and me (3) (Oliver and Dennis couldn't make it on the same day)</em></center>
 
@@ -179,7 +179,7 @@ Now to get technical, the lazy option exists: chucking the whole web app in an u
 
 Next, the feature I am personally most itching to dive into developing is animation. I've been recently iterating on the UI design mockup for the Timeline panel which will support keyframing any desired node parameters. This new panel will seamlessly integrate into the existing graph-based, data-driven workflow and make it easy to create motion graphics paired with procedural generation.
 
-<p class="wide"><img src="https://static.graphite.rs/content/blog/2025-01-16-year-in-review-2024-highlights-and-a-peek-at-2025/timeline-panel-ui-mockup.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" /></p>
+<p class="wide"><img src="https://static.graphite.art/content/blog/2025-01-16-year-in-review-2024-highlights-and-a-peek-at-2025/timeline-panel-ui-mockup.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" /></p>
 
 <center><em>User interface mockup for the latest animation panel plans prior to being implemented</em></center>
 
@@ -196,7 +196,7 @@ It is now becoming time to delve into the next phase of making the node graph mo
 
 Graphite has included a primitive kind of raster support for a while, mostly used for including reference images when creating vector content. Some raster nodes can adjust the colors of images, but there are no tools yet for selecting and drawing over parts of an image to make localized edits. Furthermore, CPU-centric bottlenecks slow down the editor when big images are in use. The GPU is not used by any nodes operating on pixel-based data.
 
-Consequently, raster editing just isn't viable yet until tool and GPU node support arrives. The innumerable complexities would not fit in this section, but if you have a background in compilers or graphics programming, please hop on <a href="https://discord.graphite.rs" target="_blank">our Discord</a> and ask about it if you're curious or potentially interested in helping. After the infrastructure parts are in place, we can begin building nodes that make localized edits (such as a masking node) and start developing tools including a fully rewritten brush engine and a mode for drawing marquee selections. I can't yet predict how far we will get by year's end with these interactive localized editing tools because it will all depend on how quickly the prerequisite technical infrastructure components come together. Part of that will depend on how soon the browser vendors ship universal <a href="https://developer.mozilla.org/en-US/docs/Web/API/WebGPU_API#browser_compatibility" target="_blank">WebGPU API support</a> so it can be deployed beyond an experimental state in Graphite.
+Consequently, raster editing just isn't viable yet until tool and GPU node support arrives. The innumerable complexities would not fit in this section, but if you have a background in compilers or graphics programming, please hop on <a href="https://discord.graphite.art" target="_blank">our Discord</a> and ask about it if you're curious or potentially interested in helping. After the infrastructure parts are in place, we can begin building nodes that make localized edits (such as a masking node) and start developing tools including a fully rewritten brush engine and a mode for drawing marquee selections. I can't yet predict how far we will get by year's end with these interactive localized editing tools because it will all depend on how quickly the prerequisite technical infrastructure components come together. Part of that will depend on how soon the browser vendors ship universal <a href="https://developer.mozilla.org/en-US/docs/Web/API/WebGPU_API#browser_compatibility" target="_blank">WebGPU API support</a> so it can be deployed beyond an experimental state in Graphite.
 
 ### Graphite in education
 
@@ -204,7 +204,7 @@ A valuable discovery came out of exhibiting Graphite at the Maker Faire. I had c
 
 I was told that other web-based graphics editors are commonly blocked by the IT admins of school networks due to policies against visiting sites with ads. (Crazy!) Since Graphite is entirely ad-free and runs on Chromebooks, this presents an opportunity to focus on better supporting the education market. In fact, I have recently been watching Chromebooks account for a small but rapidly growing portion of our site's visitors which means some educators are teaching Graphite in their classrooms:
 
-<p><img src="https://static.graphite.rs/content/blog/2025-01-16-year-in-review-2024-highlights-and-a-peek-at-2025/school-usage-trends.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" /></p>
+<p><img src="https://static.graphite.art/content/blog/2025-01-16-year-in-review-2024-highlights-and-a-peek-at-2025/school-usage-trends.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="" /></p>
 
 <center><em>Graphite visitors on Chromebooks have trended up this school year but dropped down to background levels during summer and winter breaks, hinting at usage in classrooms</em></center>
 
@@ -232,7 +232,7 @@ If you choose to [become a member](/donate), you are directly helping fund our e
 
 If you choose to [volunteer](/volunteer), you lift our greatest bottleneck—time—and bring your unique skills to the table. There are opportunities from coding to technical writing to art, design, and marketing. It's a team effort, but only if there's a team to delegate the efforts to.
 
-And there are other ways to help out. Sign up as a QA tester in our <a href="https://discord.graphite.rs" target="_blank">Discord</a>. Make it your mission to share Graphite by word-of-mouth on the forums and online communities you frequent. Put it on the radar of the creators you follow. Create and post your own tutorials on the web. Use it regularly and share your creations in our Discord community and by tagging #Made<wbr />With<wbr />Graphite on social media.
+And there are other ways to help out. Sign up as a QA tester in our <a href="https://discord.graphite.art" target="_blank">Discord</a>. Make it your mission to share Graphite by word-of-mouth on the forums and online communities you frequent. Put it on the radar of the creators you follow. Create and post your own tutorials on the web. Use it regularly and share your creations in our Discord community and by tagging #Made<wbr />With<wbr />Graphite on social media.
 
 ## Upcoming: FOSDEM '25
 

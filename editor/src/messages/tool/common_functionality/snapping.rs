@@ -206,29 +206,31 @@ pub struct SnapCache {
 pub struct SnapData<'a> {
 	pub document: &'a DocumentMessageHandler,
 	pub input: &'a InputPreprocessorMessageHandler,
+	pub viewport: &'a ViewportMessageHandler,
 	pub ignore: &'a [LayerNodeIdentifier],
 	pub node_snap_cache: Option<&'a SnapCache>,
 	pub candidates: Option<&'a Vec<LayerNodeIdentifier>>,
 	pub alignment_candidates: Option<&'a Vec<LayerNodeIdentifier>>,
 }
 impl<'a> SnapData<'a> {
-	pub fn new(document: &'a DocumentMessageHandler, input: &'a InputPreprocessorMessageHandler) -> Self {
-		Self::ignore(document, input, &[])
+	pub fn new(document: &'a DocumentMessageHandler, input: &'a InputPreprocessorMessageHandler, viewport: &'a ViewportMessageHandler) -> Self {
+		Self::ignore(document, input, viewport, &[])
 	}
-	pub fn ignore(document: &'a DocumentMessageHandler, input: &'a InputPreprocessorMessageHandler, ignore: &'a [LayerNodeIdentifier]) -> Self {
+	pub fn ignore(document: &'a DocumentMessageHandler, input: &'a InputPreprocessorMessageHandler, viewport: &'a ViewportMessageHandler, ignore: &'a [LayerNodeIdentifier]) -> Self {
 		Self {
 			document,
 			input,
+			viewport,
 			ignore,
 			candidates: None,
 			alignment_candidates: None,
 			node_snap_cache: None,
 		}
 	}
-	pub fn new_snap_cache(document: &'a DocumentMessageHandler, input: &'a InputPreprocessorMessageHandler, snap_cache: &'a SnapCache) -> Self {
+	pub fn new_snap_cache(document: &'a DocumentMessageHandler, input: &'a InputPreprocessorMessageHandler, viewport: &'a ViewportMessageHandler, snap_cache: &'a SnapCache) -> Self {
 		Self {
 			node_snap_cache: Some(snap_cache),
-			..Self::new(document, input)
+			..Self::new(document, input, viewport)
 		}
 	}
 	fn get_candidates(&self) -> &[LayerNodeIdentifier] {
@@ -274,22 +276,22 @@ impl SnapManager {
 			snapped_points.push(closest_curve.clone());
 		}
 
-		if document.snapping_state.target_enabled(SnapTarget::Grid(GridSnapTarget::Line)) {
-			if let Some(closest_line) = get_closest_line(&snap_results.grid_lines) {
-				snapped_points.push(closest_line.clone());
-			}
+		if document.snapping_state.target_enabled(SnapTarget::Grid(GridSnapTarget::Line))
+			&& let Some(closest_line) = get_closest_line(&snap_results.grid_lines)
+		{
+			snapped_points.push(closest_line.clone());
 		}
 
 		if !constrained {
-			if document.snapping_state.target_enabled(SnapTarget::Path(PathSnapTarget::IntersectionPoint)) {
-				if let Some(closest_curves_intersection) = get_closest_intersection(point.document_point, &snap_results.curves) {
-					snapped_points.push(closest_curves_intersection);
-				}
+			if document.snapping_state.target_enabled(SnapTarget::Path(PathSnapTarget::IntersectionPoint))
+				&& let Some(closest_curves_intersection) = get_closest_intersection(point.document_point, &snap_results.curves)
+			{
+				snapped_points.push(closest_curves_intersection);
 			}
-			if document.snapping_state.target_enabled(SnapTarget::Grid(GridSnapTarget::Intersection)) {
-				if let Some(closest_grid_intersection) = get_grid_intersection(point.document_point, &snap_results.grid_lines) {
-					snapped_points.push(closest_grid_intersection);
-				}
+			if document.snapping_state.target_enabled(SnapTarget::Grid(GridSnapTarget::Intersection))
+				&& let Some(closest_grid_intersection) = get_grid_intersection(point.document_point, &snap_results.grid_lines)
+			{
+				snapped_points.push(closest_grid_intersection);
 			}
 		}
 
@@ -301,7 +303,7 @@ impl SnapManager {
 
 		for point in snapped_points {
 			let viewport_point = document.metadata().document_to_viewport.transform_point2(point.snapped_point_document);
-			let on_screen = viewport_point.cmpgt(DVec2::ZERO).all() && viewport_point.cmplt(snap_data.input.viewport_bounds.size()).all();
+			let on_screen = viewport_point.cmpgt(DVec2::ZERO).all() && viewport_point.cmplt(snap_data.viewport.size().into()).all();
 			if !on_screen && !off_screen {
 				continue;
 			}
@@ -333,11 +335,11 @@ impl SnapManager {
 			return;
 		}
 		// We use a loose bounding box here since these are potential candidates which will be filtered later anyway
-		let Some(bounds) = document.metadata().bounding_box_with_transform(layer, DAffine2::IDENTITY) else {
+		let Some(bounds) = document.metadata().loose_bounding_box_with_transform(layer, DAffine2::IDENTITY) else {
 			return;
 		};
 		let layer_bounds = document.metadata().transform_to_document(layer) * Quad::from_box(bounds);
-		let screen_bounds = document.metadata().document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, snap_data.input.viewport_bounds.size()]);
+		let screen_bounds = document.metadata().document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, snap_data.viewport.size().into()]);
 		if screen_bounds.intersects(layer_bounds) {
 			if self.alignment_candidates.as_ref().is_none_or(|candidates| candidates.len() <= 100) {
 				self.alignment_candidates.get_or_insert_with(Vec::new).push(layer);

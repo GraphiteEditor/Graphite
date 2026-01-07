@@ -12,9 +12,10 @@ gpu = ["graphene-std/gpu", "graphene-std/wgpu"]
 # Local dependencies
 graphene-std = { workspace = true }
 graph-craft = { workspace = true }
-wgpu-executor = { workspace = true }
 graphene-core = { workspace = true }
-graphene-path-bool = { workspace = true }
+wgpu-executor = { workspace = true }
+core-types = { workspace = true }
+path-bool-nodes = { workspace = true }
 dyn-any = { workspace = true }
 
 # Workspace dependencies
@@ -29,6 +30,7 @@ serde = { workspace = true }
 graph-craft = { workspace = true, features = ["loading"] }
 criterion = { workspace = true }
 iai-callgrind = { workspace = true }
+preprocessor = { workspace = true }
 
 # Benchmarks
 [[bench]]

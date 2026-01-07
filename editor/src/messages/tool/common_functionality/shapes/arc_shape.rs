@@ -146,13 +146,14 @@ impl Arc {
 	pub fn update_shape(
 		document: &DocumentMessageHandler,
 		ipp: &InputPreprocessorMessageHandler,
+		viewport: &ViewportMessageHandler,
 		layer: LayerNodeIdentifier,
 		shape_tool_data: &mut ShapeToolData,
 		modifier: ShapeToolModifierKey,
 		responses: &mut VecDeque<Message>,
 	) {
 		let (center, lock_ratio) = (modifier[0], modifier[1]);
-		if let Some([start, end]) = shape_tool_data.data.calculate_points(document, ipp, center, lock_ratio) {
+		if let Some([start, end]) = shape_tool_data.data.calculate_points(document, ipp, viewport, center, lock_ratio) {
 			let Some(node_id) = graph_modification_utils::get_arc_id(layer, &document.network_interface) else {
 				return;
 			};

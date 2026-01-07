@@ -27,7 +27,7 @@ pub fn node(attr: TokenStream, item: TokenStream) -> TokenStream {
 ///
 /// `#[icon("tag"))]` sets the icon to use when a variant is shown in a menu or radio button.
 ///
-/// Doc comments on a variant become tooltip text.
+/// Doc comments on a variant become tooltip description text.
 #[proc_macro_derive(ChoiceType, attributes(widget, menu_separator, label, icon))]
 pub fn derive_choice_type(input_item: TokenStream) -> TokenStream {
 	derive_choice_type::derive_choice_type_impl(input_item.into()).unwrap_or_else(|err| err.to_compile_error()).into()
@@ -37,5 +37,5 @@ pub fn derive_choice_type(input_item: TokenStream) -> TokenStream {
 #[proc_macro_derive(BufferStruct)]
 pub fn derive_buffer_struct(input_item: TokenStream) -> TokenStream {
 	let crate_ident = CrateIdent::default();
-	TokenStream::from(buffer_struct::derive_buffer_struct(&crate_ident, input_item.into()).unwrap_or_else(|err| err.to_compile_error()))
+	TokenStream::from(buffer_struct::derive_buffer_struct(&crate_ident, input_item).unwrap_or_else(|err| err.to_compile_error()))
 }

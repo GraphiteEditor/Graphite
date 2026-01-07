@@ -1,18 +1,26 @@
-use crate::consts::VIEWPORT_ZOOM_WHEEL_RATE;
+use crate::consts::{UI_SCALE_DEFAULT, VIEWPORT_ZOOM_WHEEL_RATE};
 use crate::messages::input_mapper::key_mapping::MappingVariant;
 use crate::messages::portfolio::document::utility_types::wires::GraphWireStyle;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
+use crate::messages::tool::utility_types::ToolType;
 use graph_craft::wasm_application_io::EditorPreferences;
 
+#[derive(ExtractField)]
+pub struct PreferencesMessageContext<'a> {
+	pub tool_message_handler: &'a ToolMessageHandler,
+}
+
 #[derive(Debug, PartialEq, Clone, serde::Serialize, serde::Deserialize, specta::Type, ExtractField)]
+#[serde(default)]
 pub struct PreferencesMessageHandler {
 	pub selection_mode: SelectionMode,
 	pub zoom_with_scroll: bool,
 	pub use_vello: bool,
-	pub vector_meshes: bool,
+	pub brush_tool: bool,
 	pub graph_wire_style: GraphWireStyle,
 	pub viewport_zoom_wheel_rate: f64,
+	pub ui_scale: f64,
 }
 
 impl PreferencesMessageHandler {
@@ -37,26 +45,32 @@ impl Default for PreferencesMessageHandler {
 			selection_mode: SelectionMode::Touched,
 			zoom_with_scroll: matches!(MappingVariant::default(), MappingVariant::ZoomWithScroll),
 			use_vello: EditorPreferences::default().use_vello,
-			vector_meshes: false,
+			brush_tool: false,
 			graph_wire_style: GraphWireStyle::default(),
 			viewport_zoom_wheel_rate: VIEWPORT_ZOOM_WHEEL_RATE,
+			ui_scale: UI_SCALE_DEFAULT,
 		}
 	}
 }
 
 #[message_handler_data]
-impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
-	fn process_message(&mut self, message: PreferencesMessage, responses: &mut VecDeque<Message>, _: ()) {
+impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for PreferencesMessageHandler {
+	fn process_message(&mut self, message: PreferencesMessage, responses: &mut VecDeque<Message>, context: PreferencesMessageContext) {
+		let PreferencesMessageContext { tool_message_handler } = context;
+
 		match message {
 			// Management messages
 			PreferencesMessage::Load { preferences } => {
-				*self = preferences;
+				if let Some(preferences) = preferences {
+					*self = preferences;
+				}
 
 				responses.add(PortfolioMessage::EditorPreferences);
 				responses.add(PortfolioMessage::UpdateVelloPreference);
 				responses.add(PreferencesMessage::ModifyLayout {
 					zoom_with_scroll: self.zoom_with_scroll,
 				});
+				responses.add(FrontendMessage::UpdateUIScale { scale: self.ui_scale });
 			}
 			PreferencesMessage::ResetToDefaults => {
 				refresh_dialog(responses);
@@ -71,8 +85,14 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 				responses.add(PortfolioMessage::UpdateVelloPreference);
 				responses.add(PortfolioMessage::EditorPreferences);
 			}
-			PreferencesMessage::VectorMeshes { enabled } => {
-				self.vector_meshes = enabled;
+			PreferencesMessage::BrushTool { enabled } => {
+				self.brush_tool = enabled;
+
+				if !enabled && tool_message_handler.tool_state.tool_data.active_tool_type == ToolType::Brush {
+					responses.add(ToolMessage::ActivateToolSelect);
+				}
+
+				responses.add(ToolMessage::RefreshToolShelf);
 			}
 			PreferencesMessage::ModifyLayout { zoom_with_scroll } => {
 				self.zoom_with_scroll = zoom_with_scroll;
@@ -90,6 +110,10 @@ impl MessageHandler<PreferencesMessage, ()> for PreferencesMessageHandler {
 			}
 			PreferencesMessage::ViewportZoomWheelRate { rate } => {
 				self.viewport_zoom_wheel_rate = rate;
+			}
+			PreferencesMessage::UIScale { scale } => {
+				self.ui_scale = scale;
+				responses.add(FrontendMessage::UpdateUIScale { scale: self.ui_scale });
 			}
 		}
 
