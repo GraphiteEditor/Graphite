@@ -462,7 +462,13 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, t
 			})
 		}
 		usvg::Paint::RadialGradient(radial) => {
-			let local = [DVec2::new(radial.cx() as f64, radial.cy() as f64), DVec2::new(radial.fx() as f64, radial.fy() as f64)];
+			let center = DVec2::new(radial.cx() as f64, radial.cy() as f64);
+			let focal = DVec2::new(radial.fx() as f64, radial.fy() as f64);
+			let radius = radial.r().get() as f64;
+
+			let direction = if center != focal { (center - focal).normalize() } else { DVec2::X };
+
+			let edge = focal + direction * radius;
 
 			// TODO: fix this
 			// let to_doc_transform = if radial.base.units == usvg::Units::UserSpaceOnUse {
@@ -473,7 +479,7 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, t
 			let to_doc_transform = transform;
 			let to_doc = to_doc_transform * usvg_transform(radial.transform());
 
-			let document = [to_doc.transform_point2(local[0]), to_doc.transform_point2(local[1])];
+			let document = [to_doc.transform_point2(focal), to_doc.transform_point2(edge)];
 			let layer = [transform.inverse().transform_point2(document[0]), transform.inverse().transform_point2(document[1])];
 
 			let [start, end] = [bounds_transform.inverse().transform_point2(layer[0]), bounds_transform.inverse().transform_point2(layer[1])];
