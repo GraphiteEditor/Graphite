@@ -81,10 +81,10 @@ struct Delta {
 enum RegistryDelta {
 	AddNode { node_id: NodeId, node: Node },
 	RemoveNode { node_id: NodeId },
-	ChangeNodeInput { node_id: NodeId, input_idx: usize, new_node: NodeInput },
+	ChangeNodeInput { node_id: NodeId, input_idx: usize, new_input: NodeInput },
 	ChangeNodeAttribute { node_id: NodeId, delta: AttributeDelta },
 	ChangeNodeInputAttribute { node_id: NodeId, input_idx: usize, delta: AttributeDelta },
-	SetNetworkExport { network: NetworkId, network_output_nodes: Vec<NodeId> },
+	SetNetwork { network: NetworkId, network_output_nodes: Vec<NodeId> },
 	RemoveNetwork { network: NetworkId },
 }
 
@@ -96,12 +96,24 @@ enum AttributeDelta {
 
 impl Document {
 	pub fn restore_node_from_history(&mut self, node_id: NodeId) -> Result<(), CrdtError> {
-		for delta in self.history_iter().reverse() {
-			if let RegistryDelta::AddNode { .. } = delta.delta_type {
-				return self.apply_delta(delta.clone());
+		for delta in self.history_iter() {
+			if let RegistryDelta::AddNode { .. } = delta.reverse {
+				return self.revert_delta(delta.clone());
 			}
 		}
 		Err(CrdtError::NodeNotFoundInHistory)
+	}
+	pub fn restore_network_from_history(&mut self, network_id: NetworkId) -> Result<(), CrdtError> {
+		for delta in self.history_iter() {
+			if let RegistryDelta::SetNetwork { .. } = delta.reverse {
+				return self.revert_delta(delta.clone());
+			}
+		}
+		Err(CrdtError::NodeNotFoundInHistory)
+	}
+	pub fn revert_delta(&mut self, mut delta: Delta) -> Result<(), CrdtError> {
+		std::mem::swap(&mut delta.delta_type, &mut delta.reverse);
+		self.apply_delta(delta)
 	}
 
 	pub fn apply_delta(&mut self, delta: Delta) -> Result<(), CrdtError> {
@@ -111,36 +123,51 @@ impl Document {
 
 		match delta.delta_type {
 			RegistryDelta::AddNode { node_id, node } => {
+				if self.registry.node_instances.contains_key(&node_id) {
+					return Err(CrdtError::NodeAlreadyExists);
+				}
 				self.registry.node_instances.insert(node_id, node);
 			}
 			RegistryDelta::RemoveNode { node_id } => {
 				self.registry.node_instances.remove(&node_id);
 			}
-			RegistryDelta::ChangeNodeInput { node_id, input_idx, new_node } => {
-				if let NodeInput::Node { node_id, output_index } = new_node
-					&& !self.registry.node_instances.contains_key(&node_id)
-				{
-					self.restore_node_from_history(node_id)?;
+			RegistryDelta::ChangeNodeInput { node_id, input_idx, new_input } => {
+				if let NodeInput::Node { node_id, output_index } = new_input {
+					self.ensure_node_exists(node_id)?;
 				}
+				// These operations have to be modeled via node add / remove operation to avoid potential conflicts
+				assert!(!matches!(new_input, NodeInput::Node { .. }));
+				assert!(!matches!(new_input, NodeInput::Scope { .. }));
+
 				let node = self.registry.node_instances.get_mut(&node_id).ok_or(CrdtError::TargetNodeDoesNotExist)?;
 				let input = node.inputs.get_mut(input_idx).ok_or(CrdtError::InputIndexOutOfBounds)?;
-				*input = new_node;
+				*input = new_input;
 			}
 			RegistryDelta::ChangeNodeAttribute { node_id, delta } => {
+				self.ensure_node_exists(node_id)?;
+
 				let node = self.registry.node_instances.get_mut(&node_id).ok_or(CrdtError::TargetNodeDoesNotExist)?;
 				apply_attribute_delta(delta, &mut node.attributes);
 			}
 			RegistryDelta::ChangeNodeInputAttribute { node_id, input_idx, delta } => {
+				self.ensure_node_exists(node_id)?;
 				let node = self.registry.node_instances.get_mut(&node_id).ok_or(CrdtError::TargetNodeDoesNotExist)?;
 				let input_attributes = node.inputs_attributes.get_mut(input_idx).ok_or(CrdtError::InputIndexOutOfBounds)?;
 				apply_attribute_delta(delta, input_attributes);
 			}
-			RegistryDelta::SetNetworkExport { network, network_output_nodes } => {
+			RegistryDelta::SetNetwork { network, network_output_nodes } => {
 				self.registry.networks.entry(network).and_modify(|net| net.exports = network_output_nodes);
 			}
 			RegistryDelta::RemoveNetwork { network } => {
 				self.registry.networks.remove(&network);
 			}
+		}
+		Ok(())
+	}
+
+	fn ensure_node_exists(&mut self, node_id: u64) -> Result<(), CrdtError> {
+		if !self.registry.node_instances.contains_key(&node_id) {
+			self.restore_node_from_history(node_id)?;
 		}
 		Ok(())
 	}
@@ -159,7 +186,7 @@ impl Document {
 				RegistryDelta::ChangeNodeInput {
 					node_id,
 					input_idx,
-					new_node: input.clone(),
+					new_input: input.clone(),
 				}
 			}
 			&RegistryDelta::ChangeNodeAttribute { node_id, ref delta } => {
@@ -179,8 +206,8 @@ impl Document {
 					input_idx,
 				}
 			}
-			&RegistryDelta::SetNetworkExport { network, .. } | &RegistryDelta::RemoveNetwork { network } => match self.registry.networks.get(&network) {
-				Some(old_network) => RegistryDelta::SetNetworkExport {
+			&RegistryDelta::SetNetwork { network, .. } | &RegistryDelta::RemoveNetwork { network } => match self.registry.networks.get(&network) {
+				Some(old_network) => RegistryDelta::SetNetwork {
 					network,
 					network_output_nodes: old_network.exports.clone(),
 				},
@@ -246,14 +273,9 @@ impl<'a> Iterator for HistoryIter<'a> {
 	}
 }
 
-impl<'a> HistoryIter<'a> {
-	fn reverse(self) -> HistoryIter<'a> {
-		todo!()
-	}
-}
-
 enum CrdtError {
 	TargetNodeDoesNotExist,
 	InputIndexOutOfBounds,
 	NodeNotFoundInHistory,
+	NodeAlreadyExists,
 }
