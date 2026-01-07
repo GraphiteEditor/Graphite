@@ -383,6 +383,16 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				for document_id in self.document_ids.iter() {
 					let node_to_inspect = self.node_to_inspect();
 
+					let Some(document) = self.documents.get_mut(document_id) else {
+						log::error!("Tried to render non-existent document");
+						continue;
+					};
+
+					let document_to_viewport = document
+						.navigation_handler
+						.calculate_offset_transform(viewport.center_in_viewport_space().into(), &document.document_ptz);
+					let pointer_position = document_to_viewport.inverse().transform_point2(ipp.mouse.position);
+
 					let scale = viewport.scale();
 					// Use exact physical dimensions from browser (via ResizeObserver's devicePixelContentBoxSize)
 					let physical_resolution = viewport.size().to_physical().into_dvec2().round().as_uvec2();
@@ -395,6 +405,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						timing_information,
 						node_to_inspect,
 						true,
+						pointer_position,
 					) {
 						responses.add_front(message);
 					}
@@ -954,9 +965,12 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				});
 			}
 			PortfolioMessage::RequestStatusBarInfoLayout => {
-				let row = LayoutGroup::Row {
-					widgets: vec![TextLabel::new("Graphite (beta) 1.0.0-RC1").disabled(true).widget_instance()],
-				};
+				#[cfg(not(target_family = "wasm"))]
+				let widgets = vec![TextLabel::new("Graphite (beta) 1.0.0-RC2").disabled(true).widget_instance()];
+				#[cfg(target_family = "wasm")]
+				let widgets = vec![];
+
+				let row = LayoutGroup::Row { widgets };
 
 				responses.add(LayoutMessage::SendLayout {
 					layout: Layout(vec![row]),
@@ -1054,13 +1068,18 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					return;
 				};
 
+				let document_to_viewport = document
+					.navigation_handler
+					.calculate_offset_transform(viewport.center_in_viewport_space().into(), &document.document_ptz);
+				let pointer_position = document_to_viewport.inverse().transform_point2(ipp.mouse.position);
+
 				let scale = viewport.scale();
 				// Use exact physical dimensions from browser (via ResizeObserver's devicePixelContentBoxSize)
 				let physical_resolution = viewport.size().to_physical().into_dvec2().round().as_uvec2();
 
 				let result = self
 					.executor
-					.submit_node_graph_evaluation(document, document_id, physical_resolution, scale, timing_information, node_to_inspect, ignore_hash);
+					.submit_node_graph_evaluation(document, document_id, physical_resolution, scale, timing_information, node_to_inspect, ignore_hash, pointer_position);
 
 				match result {
 					Err(description) => {

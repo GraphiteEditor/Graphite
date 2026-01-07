@@ -203,7 +203,7 @@ impl<const N: usize> Mul for &Polynomial<N> {
 pub fn pathseg_to_parametric_polynomial(segment: PathSeg) -> (Polynomial<4>, Polynomial<4>) {
 	match segment {
 		PathSeg::Line(line) => {
-			let term1 = line.p0 - line.p1;
+			let term1 = line.p1 - line.p0;
 			(Polynomial::new([line.p0.x, term1.x, 0., 0.]), Polynomial::new([line.p0.y, term1.y, 0., 0.]))
 		}
 		PathSeg::Quad(quad_bez) => {
