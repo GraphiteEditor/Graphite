@@ -387,6 +387,7 @@ struct TextToolData {
 	snap_candidates: Vec<SnapCandidatePoint>,
 	// TODO: Handle multiple layers in the future
 	layer_dragging: Option<ResizingLayer>,
+	last_mouse_viewport_for_space: Option<DVec2>,
 }
 
 impl TextToolData {
@@ -768,6 +769,26 @@ impl Fsm for TextToolFsmState {
 					&& let Some(movement) = &mut bounds.selected_edges
 				{
 					let (centered, constrain) = (input.keyboard.key(center), input.keyboard.key(lock_ratio));
+
+					let space_down = input.keyboard.get(Key::Space as usize);
+					let current_mouse = input.mouse.position;
+					if space_down {
+						if tool_data.last_mouse_viewport_for_space.is_none() {
+							tool_data.last_mouse_viewport_for_space = Some(current_mouse);
+						}
+						let previous = tool_data.last_mouse_viewport_for_space.unwrap();
+						let delta = current_mouse - previous;
+						if delta.length_squared() > 0. {
+							bounds.center_of_transformation += delta;
+							bounds.original_bound_transform.translation += delta;
+							tool_data.drag_start += delta;
+							tool_data.drag_current += delta;
+							tool_data.last_mouse_viewport_for_space = Some(current_mouse);
+						}
+					} else {
+						tool_data.last_mouse_viewport_for_space = None;
+					}
+
 					let center_position = centered.then_some(bounds.center_of_transformation);
 
 					let Some(dragging_layer) = tool_data.layer_dragging else { return TextToolFsmState::Ready };
