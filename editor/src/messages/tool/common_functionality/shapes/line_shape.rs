@@ -90,9 +90,19 @@ impl Line {
 			.filter_map(|layer| {
 				let node_inputs = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Line")?;
 
-				let (Some(&TaggedValue::DVec2(start)), Some(&TaggedValue::DVec2(end))) = (node_inputs[1].as_value(), node_inputs[2].as_value()) else {
-					return None;
-				};
+				let (start, end) = document
+					.network_interface
+					.compute_modified_vector(layer)
+					.and_then(|vector| {
+						let endpoints: Vec<DVec2> = vector.anchor_endpoints().filter_map(|point_id| vector.point_domain.position_from_id(point_id)).collect();
+						(endpoints.len() == 2).then(|| (endpoints[0], endpoints[1]))
+					})
+					.or_else(|| {
+						let (Some(&TaggedValue::DVec2(start)), Some(&TaggedValue::DVec2(end))) = (node_inputs[1].as_value(), node_inputs[2].as_value()) else {
+							return None;
+						};
+						Some((start, end))
+					})?;
 
 				let [viewport_start, viewport_end] = [start, end].map(|point| document.metadata().transform_to_viewport(layer).transform_point2(point));
 				if !start.abs_diff_eq(end, f64::EPSILON * 1000.) {
