@@ -789,74 +789,59 @@ async fn box_warp(_: impl Ctx, content: Table<Vector>, #[expose] rectangle: Tabl
 	let Some((target, target_transform)) = rectangle.get(0).map(|rect| (rect.element, rect.transform)) else {
 		return content;
 	};
+	//calculate the minumum and max corner of all the shapes
+	let mut min_corner = DVec2::new(f64::MAX, f64::MAX);
+	let mut max_corner = DVec2::new(f64::MIN, f64::MIN);
+
+	for row in content.iter() {
+		if let Some(bbox) = row.element.bounding_box_with_transform(*row.transform) {
+			min_corner = min_corner.min(bbox[0]);
+			max_corner = max_corner.max(bbox[1]);
+		}
+	}
+	let source_bbox = [min_corner, max_corner];
+	let source_size = source_bbox[1] - source_bbox[0];
+
+	let target_points: Vec<DVec2> = target.point_domain.positions().iter().map(|&p| target_transform.transform_point2(p)).take(4).collect();
+
+	let dst_corners = if target_points.len() >= 4 {
+		[target_points[0], target_points[1], target_points[2], target_points[3]]
+	} else {
+		warn!("Target shape has fewer than 4 points. Using source bounding box instead.");
+		[
+			source_bbox[0],
+			DVec2::new(source_bbox[1].x, source_bbox[0].y),
+			source_bbox[1],
+			DVec2::new(source_bbox[0].x, source_bbox[1].y),
+		]
+	};
 
 	content
-		.into_iter()
-		.map(|mut row| {
-			let transform = row.transform;
-			let vector = row.element;
-
-			// Get the bounding box of the source vector geometry
-			let source_bbox = vector.bounding_box_with_transform(transform).unwrap_or([DVec2::ZERO, DVec2::ONE]);
-
-			// Extract first 4 points from target shape to form the quadrilateral
-			// Apply the target's transform to get points in world space
-			let target_points: Vec<DVec2> = target.point_domain.positions().iter().map(|&p| target_transform.transform_point2(p)).take(4).collect();
-
-			// If we have fewer than 4 points, use the corners of the source bounding box
-			// This handles the degenerative case
-			let dst_corners = if target_points.len() >= 4 {
-				[target_points[0], target_points[1], target_points[2], target_points[3]]
-			} else {
-				warn!("Target shape has fewer than 4 points. Using source bounding box instead.");
-				[
-					source_bbox[0],
-					DVec2::new(source_bbox[1].x, source_bbox[0].y),
-					source_bbox[1],
-					DVec2::new(source_bbox[0].x, source_bbox[1].y),
-				]
-			};
-
-			// Apply the warp
-			let mut result = vector.clone();
-
-			// Precompute source bounding box size for normalization
-			let source_size = source_bbox[1] - source_bbox[0];
-
-			// Transform points
-			for (_, position) in result.point_domain.positions_mut() {
-				// Get the point in world space
-				let world_pos = transform.transform_point2(*position);
-
-				// Normalize coordinates within the source bounding box
-				let t = ((world_pos - source_bbox[0]) / source_size).clamp(DVec2::ZERO, DVec2::ONE);
-
-				// Apply bilinear interpolation
-				*position = bilinear_interpolate(t, &dst_corners);
-			}
-
-			// Transform handles in bezier curves
-			for (_, handles, _, _) in result.handles_mut() {
-				*handles = handles.apply_transformation(|pos| {
-					// Get the handle in world space
-					let world_pos = transform.transform_point2(pos);
-
-					// Normalize coordinates within the source bounding box
-					let t = ((world_pos - source_bbox[0]) / source_size).clamp(DVec2::ZERO, DVec2::ONE);
-
-					// Apply bilinear interpolation
-					bilinear_interpolate(t, &dst_corners)
-				});
-			}
-
-			result.style.set_stroke_transform(DAffine2::IDENTITY);
-
-			// Add this to the table and reset the transform since we've applied it directly to the points
-			row.element = result;
-			row.transform = DAffine2::IDENTITY;
-			row
-		})
-		.collect()
+    .into_iter()
+    .map(|mut row| {
+        let transform = row.transform;          
+        let vector = &row.element;             
+        let mut result = vector.clone();        
+       
+        for (_, position) in result.point_domain.positions_mut() {
+            let world_pos = transform.transform_point2(*position);
+            let t = ((world_pos - source_bbox[0]) / source_size).clamp(DVec2::ZERO, DVec2::ONE);
+            *position = bilinear_interpolate(t, &dst_corners);
+        }
+      
+        for (_, handles, _, _) in result.handles_mut() {
+            *handles = handles.apply_transformation(|pos| {
+                let world_pos = transform.transform_point2(pos);
+                let t = ((world_pos - source_bbox[0]) / source_size).clamp(DVec2::ZERO, DVec2::ONE);
+                bilinear_interpolate(t, &dst_corners)
+            });
+        }
+        result.style.set_stroke_transform(DAffine2::IDENTITY);
+        row.element = result;                   
+        row.transform = DAffine2::IDENTITY;     
+        row                                    
+    })
+    .collect()
 }
 
 // Interpolate within a quadrilateral using normalized coordinates (0-1)
