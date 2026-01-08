@@ -1046,11 +1046,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					self.path = None;
 				}
 
-				self.set_save_state(true);
-				responses.add(PortfolioMessage::AutoSaveActiveDocument);
-				// Update the save status of the just saved document
-				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
-
 				responses.add(FrontendMessage::TriggerSaveDocument {
 					document_id,
 					name: format!("{}.{}", self.name.clone(), FILE_EXTENSION),
@@ -1061,7 +1056,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::SavedDocument { path } => {
 				self.path = path;
 
+				// Mark the document as saved now that the file has actually been written
+				self.set_save_state(true);
+				self.set_auto_save_state(true);
 				responses.add(PortfolioMessage::AutoSaveActiveDocument);
+				// Update the save status of the just saved document
+				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 
 				// Update the name to match the file stem
 				let document_name_from_path = self.path.as_ref().and_then(|path| {
