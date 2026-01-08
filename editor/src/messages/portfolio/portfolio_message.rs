@@ -125,6 +125,7 @@ pub enum PortfolioMessage {
 		bounds: ExportBounds,
 		transparent_background: bool,
 		artboard_name: Option<String>,
+		artboard_count: usize,
 	},
 	SubmitActiveGraphRender,
 	SubmitGraphRender {

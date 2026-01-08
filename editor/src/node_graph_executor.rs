@@ -243,6 +243,7 @@ impl NodeGraphExecutor {
 			#[cfg(feature = "gpu")]
 			transparent_background,
 			artboard_name,
+			artboard_count,
 			..
 		} = export_config;
 
@@ -251,8 +252,11 @@ impl NodeGraphExecutor {
 			FileType::Png => "png",
 			FileType::Jpg => "jpg",
 		};
-		// Use artboard name if exporting a specific artboard, otherwise use document name
-		let base_name = artboard_name.unwrap_or(name);
+		let base_name = if let Some(artboard_name) = artboard_name {
+			if artboard_count > 1 { format!("{name} - {artboard_name}") } else { name }
+		} else {
+			name
+		};
 		let name = format!("{base_name}.{file_extension}");
 
 		match node_graph_output {

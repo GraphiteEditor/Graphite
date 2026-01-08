@@ -55,6 +55,7 @@ impl MessageHandler<ExportDialogMessage, ExportDialogMessageContext<'_>> for Exp
 					bounds: self.bounds,
 					transparent_background: self.file_type != FileType::Jpg && self.transparent_background,
 					artboard_name,
+					artboard_count: self.artboards.len(),
 				})
 			}
 		}
