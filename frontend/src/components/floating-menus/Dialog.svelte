@@ -22,6 +22,14 @@
 		// Focus the button which is marked as emphasized, or otherwise the first button, in the popup
 		const emphasizedOrFirstButton = (self?.div?.()?.querySelector("[data-emphasized]") || self?.div?.()?.querySelector("[data-text-button]") || undefined) as HTMLButtonElement | undefined;
 		emphasizedOrFirstButton?.focus();
+
+		// Add an event to handle enter press on all focusable fields(inputs) inside the popup
+		const pop = (self?.div?.()?.querySelector(".layout-col.floating-menu-content") || self?.div?.()?.querySelector("[data-text-button]") || undefined) as HTMLButtonElement | undefined;
+		pop?.addEventListener("keydown", function (event) {
+			if (event.key == "Enter") {
+				emphasizedOrFirstButton?.click();
+			}
+		})
 	});
 </script>
 
