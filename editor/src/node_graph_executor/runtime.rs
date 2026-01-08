@@ -85,6 +85,7 @@ pub struct ExportConfig {
 	pub bounds: ExportBounds,
 	pub transparent_background: bool,
 	pub size: DVec2,
+	pub artboard_name: Option<String>,
 }
 
 #[derive(Clone)]
