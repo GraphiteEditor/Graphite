@@ -32,9 +32,13 @@ async fn apply_transform(_ctx: impl Ctx, mut vector: Table<Vector>) -> Table<Vec
 	for row in vector.iter_mut() {
 		let vector = row.element;
 		let transform = *row.transform;
-
+		//iterating over points to apply the transformation(geometry to vector space)
 		for (_, point) in vector.point_domain.positions_mut() {
 			*point = transform.transform_point2(*point);
+		}
+		//iterating over segment handles to transform them as well(geometry to vector space)
+		for (handles, _start_index, _end_index) in vector.segment_domain.handles_and_points_mut() {
+			*handles = handles.apply_transformation(|p| transform.transform_point2(p));
 		}
 
 		*row.transform = DAffine2::IDENTITY;
