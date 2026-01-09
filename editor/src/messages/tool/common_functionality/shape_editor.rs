@@ -2155,7 +2155,7 @@ impl ShapeState {
 				if polygon.len() < 2 {
 					return (points_inside, segments_inside);
 				}
-				let polygon: Subpath<PointId> = Subpath::from_anchors_linear(polygon.to_vec(), true);
+				let polygon: Subpath<PointId> = Subpath::from_anchors(polygon.to_vec(), true);
 				Some(polygon)
 			} else {
 				None
