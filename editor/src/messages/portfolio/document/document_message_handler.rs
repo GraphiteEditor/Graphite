@@ -1401,17 +1401,11 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.network_interface.update_first_element_source_id(first_element_source_id);
 			}
 			DocumentMessage::UpdateClickTargets { click_targets } => {
-				// TODO: Allow non layer nodes to have click targets
 				let layer_click_targets = click_targets
 					.into_iter()
-					.filter(|(node_id, _)|
-						// Ensure that the layer is in the document network to prevent logging an error
-						self.network_interface.document_network().nodes.contains_key(node_id))
-					.filter_map(|(node_id, click_targets)| {
-						self.network_interface.is_layer(&node_id, &[]).then(|| {
-							let layer = LayerNodeIdentifier::new(node_id, &self.network_interface);
-							(layer, click_targets)
-						})
+					.map(|(node_id, click_targets)| {
+						let layer = LayerNodeIdentifier::new_unchecked(node_id);
+						(layer, click_targets)
 					})
 					.collect();
 				self.network_interface.update_click_targets(layer_click_targets);

@@ -1168,7 +1168,8 @@ impl NodeNetworkInterface {
 
 	/// Calculates the document bounds in document space
 	pub fn document_bounds_document_space(&self, include_artboards: bool) -> Option<[DVec2; 2]> {
-		self.document_metadata
+		let all_layers_bounds = self
+			.document_metadata
 			.all_layers()
 			.filter(|layer| include_artboards || !self.is_artboard(&layer.to_node(), &[]))
 			.filter_map(|layer| {
@@ -1190,7 +1191,34 @@ impl NodeNetworkInterface {
 				}
 				self.document_metadata.bounding_box_document(layer)
 			})
-			.reduce(Quad::combine_bounds)
+			.reduce(Quad::combine_bounds);
+
+		let root_artwork_bounds = self.document_metadata().bounding_box_document(LayerNodeIdentifier::ROOT_PARENT);
+
+		let non_layer_export_bounds = self
+			.document_network()
+			.exports
+			.iter()
+			.filter_map(|export| {
+				if let NodeInput::Node { node_id, .. } = export {
+					if !self.is_layer(node_id, &[]) {
+						return self.document_metadata().bounding_box_document(LayerNodeIdentifier::new_unchecked(*node_id));
+					}
+				}
+				None
+			})
+			.reduce(Quad::combine_bounds);
+
+		match (all_layers_bounds, root_artwork_bounds, non_layer_export_bounds) {
+			(Some(a), Some(b), Some(c)) => Some(Quad::combine_bounds(Quad::combine_bounds(a, b), c)),
+			(Some(a), Some(b), None) => Some(Quad::combine_bounds(a, b)),
+			(Some(a), None, Some(c)) => Some(Quad::combine_bounds(a, c)),
+			(None, Some(b), Some(c)) => Some(Quad::combine_bounds(b, c)),
+			(Some(a), None, None) => Some(a),
+			(None, Some(b), None) => Some(b),
+			(None, None, Some(c)) => Some(c),
+			(None, None, None) => None,
+		}
 	}
 
 	/// Calculates the selected layer bounds in document space
