@@ -12,7 +12,7 @@ pub use no_std_types::registry::types;
 #[derive(Clone, Debug)]
 pub struct NodeMetadata {
 	pub display_name: &'static str,
-	pub category: Option<&'static str>,
+	pub category: &'static str,
 	pub fields: Vec<FieldMetadata>,
 	pub description: &'static str,
 	pub properties: Option<&'static str>,

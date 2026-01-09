@@ -2665,7 +2665,7 @@ pub fn collect_node_types() -> Vec<FrontendNodeType> {
 			};
 
 			// Extract category from metadata (already creates an owned String)
-			let category = metadata.category.unwrap_or_default();
+			let category = metadata.category;
 
 			// Extract input types (already creates owned Strings)
 			let input_types = implementations

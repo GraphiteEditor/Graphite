@@ -43,12 +43,12 @@
 			justify-content: space-between;
 			width: 100%;
 			gap: 20px;
-			
+
 			a {
 				display: flex;
 				align-items: center;
 				gap: 20px;
-				
+
 				svg {
 					fill: var(--color-navy);
 					flex: 0 0 auto;
@@ -77,7 +77,7 @@
 	// Overlaid fold-out menu for chapter selection
 	@media screen and (max-width: 1000px) {
 		gap: 0;
-		
+
 		.chapters {
 			position: sticky;
 			width: 0;
@@ -95,7 +95,7 @@
 					left: 0;
 				}
 			}
-			
+
 			.wrapper-outer {
 				position: absolute;
 				background: white;
@@ -198,39 +198,23 @@
 			ul {
 				margin-top: 0;
 				margin-left: 1em;
-
-				ul {
-					margin-left: 2em;
-
-					ul {
-						margin-left: 3em;
-
-						ul {
-							margin-left: 4em;
-	
-							ul {
-								margin-left: 5em;
-							}
-						}
-					}
-				}
 			}
 
 			li {
 				margin-top: 0.5em;
-				
+
 				a {
 					color: var(--color-walnut);
-	
+
 					&:hover {
 						color: var(--color-crimson);
 					}
 				}
-		
+
 				&:not(.title) a {
 					text-decoration: none;
 				}
-	
+
 				&.title,
 				&.chapter {
 					font-weight: 700;
@@ -245,7 +229,7 @@
 			}
 
 			ul a {
-				display: block;
+				display: inline-block;
 				padding-left: 1em;
 				text-indent: -1em;
 			}

@@ -28,7 +28,10 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	} = parsed;
 	let core_types = crate_ident.gcore()?;
 
-	let category = &attributes.category.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
+	let category = attributes
+		.category
+		.as_ref()
+		.expect("The 'category' attribute is required and should be checked during parsing, but was not found during codegen");
 	let mod_name = format_ident!("_{}_mod", mod_name);
 
 	let display_name = match &attributes.display_name.as_ref() {

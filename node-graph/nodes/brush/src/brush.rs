@@ -57,7 +57,7 @@ impl<P: Pixel + Alpha> Sample for BrushStampGenerator<P> {
 	}
 }
 
-#[node_macro::node(skip_impl)]
+#[node_macro::node(category(""), skip_impl)]
 fn brush_stamp_generator(#[unit(" px")] diameter: f64, color: Color, hardness: f64, flow: f64) -> BrushStampGenerator<Color> {
 	// Diameter
 	let radius = diameter / 2.;
@@ -76,7 +76,7 @@ fn brush_stamp_generator(#[unit(" px")] diameter: f64, color: Color, hardness: f
 	BrushStampGenerator { color, feather_exponent, transform }
 }
 
-#[node_macro::node(skip_impl)]
+#[node_macro::node(category(""), skip_impl)]
 fn blit<BlendFn>(mut target: Table<Raster<CPU>>, texture: Raster<CPU>, positions: Vec<DVec2>, blend_mode: BlendFn) -> Table<Raster<CPU>>
 where
 	BlendFn: for<'any_input> Node<'any_input, (Color, Color), Output = Color>,

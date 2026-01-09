@@ -113,7 +113,7 @@ pub(super) fn post_process_nodes(mut custom: Vec<DocumentNodeDefinition>) -> Vec
 					..Default::default()
 				},
 			},
-			category: category.unwrap_or("UNCATEGORIZED"),
+			category,
 			description: Cow::Borrowed(description),
 			properties: *properties,
 		};

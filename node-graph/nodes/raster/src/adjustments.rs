@@ -914,9 +914,7 @@ fn selective_color<T: Adjust<Color>>(
 			(SelectiveColorChoice::Blacks, (k_c, k_m, k_y, k_k)),
 		];
 		let mut sum = Vec3::ZERO;
-		for i in 0..array.len() {
-			let (color_parameter_group, (c, m, y, k)) = array[i];
-
+		for (color_parameter_group, (c, m, y, k)) in array {
 			// Skip this color parameter group...
 			// ...if it's unchanged from the default of zero offset on all CMYK parameters, or...
 			// ...if this pixel's color isn't in the range affected by this color parameter group
