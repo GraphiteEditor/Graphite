@@ -1,6 +1,7 @@
 mod export;
 
 use clap::{Args, Parser, Subcommand};
+use convert_case::{Case, Casing};
 use fern::colors::{Color, ColoredLevelConfig};
 use futures::executor::block_on;
 use graph_craft::document::*;
@@ -11,9 +12,11 @@ use graph_craft::wasm_application_io::EditorPreferences;
 use graphene_std::application_io::{ApplicationIo, NodeGraphUpdateMessage, NodeGraphUpdateSender};
 use graphene_std::text::FontCache;
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
+use indoc::formatdoc;
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 use interpreted_executor::util::wrap_network_in_scope;
 use std::error::Error;
+use std::io::Write;
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -76,6 +79,7 @@ enum Command {
 		transparent: bool,
 	},
 	ListNodeIdentifiers,
+	BuildNodeDocs,
 }
 
 #[derive(Debug, Args)]
@@ -97,10 +101,205 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		Command::Compile { ref document, .. } => document,
 		Command::Export { ref document, .. } => document,
 		Command::ListNodeIdentifiers => {
-			let mut ids: Vec<_> = graphene_std::registry::NODE_METADATA.lock().unwrap().keys().cloned().collect();
-			ids.sort_by_key(|x| x.as_str().to_string());
-			for id in ids {
+			let mut nodes: Vec<_> = graphene_std::registry::NODE_METADATA.lock().unwrap().keys().cloned().collect();
+			nodes.sort_by_key(|x| x.as_str().to_string());
+			for id in nodes {
 				println!("{}", id.as_str());
+			}
+			return Ok(());
+		}
+		Command::BuildNodeDocs => {
+			// TODO: Also obtain document nodes, not only proto nodes
+			let nodes: Vec<_> = graphene_std::registry::NODE_METADATA.lock().unwrap().values().cloned().collect();
+
+			// Group nodes by category
+			use std::collections::HashMap;
+			let mut map: HashMap<String, Vec<_>> = HashMap::new();
+			for node in nodes {
+				map.entry(node.category.to_string()).or_default().push(node);
+			}
+
+			// Sort the categories
+			let mut categories: Vec<_> = map.keys().cloned().collect();
+			categories.sort();
+
+			let allowed_chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~[]@!$&'()*+,;=";
+			let omit_disallowed_chars = |s: &str| s.chars().filter(|c| allowed_chars.contains(*c)).collect::<String>();
+
+			let node_catalog_path = "../../website/content/learn/node-catalog";
+
+			let page_path = format!("{node_catalog_path}/_index.md");
+			let mut index_file = std::fs::File::create(&page_path).expect("Failed to create index file");
+			let content = formatdoc!(
+				"
+				+++
+				title = \"Node catalog\"
+				template = \"book.html\"
+				page_template = \"book.html\"
+
+				[extra]
+				order = 3
+				+++
+
+				<style>
+				table tr td:first-child a {{
+					white-space: nowrap;
+				}}
+				</style>
+
+				The node catalog documents all of the nodes available in Graphite's node graph system, organized by category.
+
+				## Node categories
+
+				| Category | Details |
+				|:-|:-|
+				"
+			);
+			index_file.write_all(content.as_bytes()).expect("Failed to write to index file");
+
+			let content = categories
+				.iter()
+				.filter(|c| !c.is_empty())
+				.map(|category| {
+					let category_path_part = omit_disallowed_chars(&category.to_case(Case::Kebab));
+					let details = format!("This is the {category} category of nodes.");
+					format!("| [{category}](./{category_path_part}) | {details} |")
+				})
+				.collect::<Vec<_>>()
+				.join("\n");
+			index_file.write_all(content.as_bytes()).expect("Failed to write to index file");
+
+			// For each category, sort nodes by display_name and print
+			for (index, category) in categories.iter().filter(|c| !c.is_empty()).enumerate() {
+				let mut items = map.remove(category).unwrap();
+				items.sort_by_key(|x| x.display_name.to_string());
+
+				let category_path_part = omit_disallowed_chars(&category.to_case(Case::Kebab));
+				let category_path = format!("{node_catalog_path}/{category_path_part}");
+
+				// Create directory for category path
+				std::fs::create_dir_all(&category_path).expect("Failed to create category directory");
+
+				// Create _index.md file for category
+				let page_path = format!("{category_path}/_index.md");
+				let mut index_file = std::fs::File::create(&page_path).expect("Failed to create index file");
+
+				// Write the frontmatter and initial content
+				let order = index + 1;
+				let content = formatdoc!(
+					"
+					+++
+					title = \"{category}\"
+					template = \"book.html\"
+					page_template = \"book.html\"
+					
+					[extra]
+					order = {order}
+					+++
+
+					<style>
+					table tr td:last-child code {{
+						white-space: nowrap;
+					}}
+					</style>
+
+					This is the {category} category of nodes.
+
+					## Nodes
+
+					| Node | Details | Possible Types |
+					|:-|:-|:-|
+					"
+				);
+				index_file.write_all(content.as_bytes()).expect("Failed to write to index file");
+
+				let content = items
+					.iter()
+					.map(|id| {
+						let name_url_part = omit_disallowed_chars(&id.display_name.to_case(Case::Kebab));
+						let details = id.description.trim().split('\n').map(|line| format!("<p>{}</p>", line.trim())).collect::<Vec<_>>().join("");
+						let mut possible_types = id
+							.fields
+							.iter()
+							.map(|field| format!("`{} → Unknown`", if let Some(t) = &field.default_type { format!("{t:?}") } else { "()".to_string() }))
+							.collect::<Vec<_>>();
+						if possible_types.is_empty() {
+							possible_types.push("`Unknown → Unknown`".to_string());
+						}
+						possible_types.sort();
+						possible_types.dedup();
+						let possible_types = possible_types.join("<br />");
+						format!("| [{name}]({name_url_part}) | {details} | {possible_types} |", name = id.display_name)
+					})
+					.collect::<Vec<_>>()
+					.join("\n");
+				index_file.write_all(content.as_bytes()).expect("Failed to write to index file");
+
+				for (index, id) in items.iter().enumerate() {
+					let name = id.display_name;
+					let description = id.description.trim();
+					let name_url_part = omit_disallowed_chars(&id.display_name.to_case(Case::Kebab));
+					let page_path = format!("{category_path}/{name_url_part}.md");
+
+					let order = index + 1;
+					let content = formatdoc!(
+						"
+						+++
+						title = \"{name}\"
+
+						[extra]
+						order = {order}
+						+++
+
+						<style>
+						table tr td:last-child code {{
+							white-space: nowrap;
+						}}
+						</style>
+
+						{description}
+
+						### Inputs
+
+						| Parameter | Details | Possible Types |
+						|:-|:-|:-|
+						"
+					);
+					let mut page_file = std::fs::File::create(&page_path).expect("Failed to create node page file");
+					page_file.write_all(content.as_bytes()).expect("Failed to write to node page file");
+
+					let content = id
+						.fields
+						.iter()
+						.map(|field| {
+							let parameter = field.name;
+							let details = field.description.trim().split('\n').map(|line| format!("<p>{}</p>", line.trim())).collect::<Vec<_>>().join("");
+							let mut possible_types = vec![if let Some(t) = &field.default_type { format!("`{t:?}`") } else { "`Unknown`".to_string() }];
+							possible_types.sort();
+							possible_types.dedup();
+							let possible_types = possible_types.join("<br />");
+							format!("| {parameter} | {details} | {possible_types} |")
+						})
+						.collect::<Vec<_>>()
+						.join("\n");
+					page_file.write_all(content.as_bytes()).expect("Failed to write to node page file");
+					page_file.write_all("\n\n".as_bytes()).expect("Failed to write to node page file");
+
+					let content = formatdoc!(
+						"
+						### Outputs
+
+						| Product | Details | Possible Types |
+						|:-|:-|:-|
+						| Result | <p>The value produced by the node operation.</p><p><em>Primary Output</em></p> | `Unknown` |
+
+						### Context
+
+						Not context-aware.
+						"
+					);
+					page_file.write_all(content.as_bytes()).expect("Failed to write to node page file");
+				}
 			}
 			return Ok(());
 		}
@@ -164,7 +363,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 			let executor = create_executor(proto_graph)?;
 
 			// Perform export
-			export::export_document(&executor, wgpu_executor_ref, output, file_type, scale, width, height, transparent).await?;
+			export::export_document(&executor, wgpu_executor_ref, output, file_type, scale, (width, height), transparent).await?;
 		}
 		_ => unreachable!("All other commands should be handled before this match statement is run"),
 	}

@@ -137,6 +137,7 @@ log = "0.4"
 bitflags = { version = "2.4", features = ["serde"] }
 ctor = "0.2"
 convert_case = "0.8"
+indoc = "2.0.5"
 derivative = "2.2"
 thiserror = "2"
 anyhow = "1.0"

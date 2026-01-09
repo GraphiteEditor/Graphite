@@ -28,6 +28,8 @@ tokio = { workspace = true, features = ["rt-multi-thread"] }
 clap = { workspace = true, features = ["cargo", "derive"] }
 image = { workspace = true }
 wgpu-executor = { workspace = true, optional = true }
+convert_case = { workspace = true }
+indoc = { workspace = true }
 
 [package.metadata.cargo-shear]
 ignored = ["wgpu-executor"]

@@ -1,0 +1,57 @@
+
+{# Recursively render a book's table of contents #}
+{%- macro render_book_outline(section, current_path, indents) -%}
+	{#- Setup -#}
+	{%- set items = [] -%}
+	{%- if section.pages -%}
+		{%- set_global items = items | concat(with = section.pages) -%}
+	{%- endif -%}
+	{%- if section.subsections -%}
+		{%- for subsection_path in section.subsections -%}
+			{%- set subsection = get_section(path = subsection_path) -%}
+			{%- set_global items = items | concat(with = subsection) -%}
+		{%- endfor -%}
+	{%- endif -%}
+	{%- set items = items | sort(attribute="extra.order") -%}
+	{#- End of setup -#}
+
+	{%- set tabs = "" -%}
+	{%- for i in range(end = indents) -%}
+		{%- set_global tabs = tabs ~ "	" -%}
+	{%- endfor -%}
+
+	{%- for item in items %}
+	{{ tabs }}<ul>
+	{{ tabs }}	<li {%- if current_path == item.path %} class="active"{%- endif -%}>
+	{{ tabs }}		<a href="{{ item.path | safe }}" title="{{ item.title | safe }}">{{ item.title }}</a>
+	{{ tabs }}	</li>
+	{%- if item.pages or item.subsections -%}
+	{{ self::render_book_outline(section = item, current_path = current_path, indents = indents + 1) }}
+	{%- endif %}
+	{{ tabs }}</ul>
+	{%- endfor -%}
+{%- endmacro render_book_outline -%}
+
+{# Recursively flatten the book outline to a string for sequential navigation #}
+{%- macro flatten_book_outline(section) -%}
+	{#- Setup -#}
+	{%- set items = [] -%}
+	{%- if section.pages -%}
+		{%- set_global items = items | concat(with = section.pages) -%}
+	{%- endif -%}
+	{%- if section.subsections -%}
+		{%- for subsection_path in section.subsections -%}
+			{%- set subsection = get_section(path = subsection_path) -%}
+			{%- set_global items = items | concat(with = subsection) -%}
+		{%- endfor -%}
+	{%- endif -%}
+	{%- set items = items | sort(attribute="extra.order") -%}
+	{#- End of setup -#}
+
+	{%- for item in items -%}
+		{{ item.path }},,,,,{{ item.title }};;;;;
+		{%- if item.pages or item.subsections -%}
+			{{ self::flatten_book_outline(section = item) }}
+		{%- endif -%}
+	{%- endfor -%}
+{%- endmacro flatten_book_outline -%}
