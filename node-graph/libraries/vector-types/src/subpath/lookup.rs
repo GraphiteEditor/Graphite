@@ -120,7 +120,7 @@ mod test_centroid {
 	use super::*;
 	#[test]
 	fn centroid_rect() {
-		let rect = Subpath::<PointId>::new_rect(DVec2::new(100., 100.), DVec2::new(300., 200.));
+		let rect = Subpath::<PointId>::new_rectangle(DVec2::new(100., 100.), DVec2::new(300., 200.));
 		let (centre, area) = rect.area_centroid_and_area(Some(1e-3), Some(1e-3)).unwrap();
 		assert_eq!(area, 200. * 100.);
 		assert_eq!(centre, DVec2::new(200., 150.))

@@ -330,7 +330,7 @@ mod tests {
 		let mut cache = BoundingBoxCache::default();
 
 		// Create a simple rectangle subpath for testing
-		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::new(100.0, 50.0));
+		let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::new(100.0, 50.0));
 
 		let rotation = PI / 4.0;
 		let scale = DVec2::new(2.0, 2.0);
@@ -353,7 +353,7 @@ mod tests {
 	#[test]
 	fn test_bounding_box_cache_ring_buffer_behavior() {
 		let mut cache = BoundingBoxCache::default();
-		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::new(10.0, 10.0));
+		let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::new(10.0, 10.0));
 		let scale = DVec2::ONE;
 		let translation = DVec2::ZERO;
 
@@ -378,7 +378,7 @@ mod tests {
 	#[test]
 	fn test_click_target_bounding_box_caching() {
 		// Create a click target with a simple rectangle
-		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::new(100.0, 50.0));
+		let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::new(100.0, 50.0));
 		let click_target = ClickTarget::new_with_subpath(subpath, 1.0);
 
 		let rotation = PI / 6.0;
@@ -415,7 +415,7 @@ mod tests {
 
 	#[test]
 	fn test_click_target_skew_bypass_cache() {
-		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::new(100.0, 50.0));
+		let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::new(100.0, 50.0));
 		let click_target = ClickTarget::new_with_subpath(subpath.clone(), 1.0);
 
 		// Create a transform with skew (non-uniform scaling in different directions)
@@ -431,7 +431,7 @@ mod tests {
 	#[test]
 	fn test_cache_fingerprint_collision_handling() {
 		let mut cache = BoundingBoxCache::default();
-		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::new(10.0, 10.0));
+		let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::new(10.0, 10.0));
 		let scale = DVec2::ONE;
 		let translation = DVec2::ZERO;
 
