@@ -1414,12 +1414,7 @@ impl ShapeState {
 	}
 
 	/// Calculate the delta for a point in document space
-	fn calculate_point_delta(
-		viewport_pos: DVec2,
-		aggregated: DVec2,
-		axis_vec: DVec2,
-		transform_to_viewport: DAffine2,
-	) -> DVec2 {
+	fn calculate_point_delta(viewport_pos: DVec2, aggregated: DVec2, axis_vec: DVec2, transform_to_viewport: DAffine2) -> DVec2 {
 		let translation_viewport = (aggregated - viewport_pos) * axis_vec;
 		let transform_to_document = transform_to_viewport.inverse();
 		transform_to_document.transform_vector2(translation_viewport)

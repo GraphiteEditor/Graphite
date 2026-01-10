@@ -376,36 +376,31 @@ impl LayoutHolder for PathTool {
 		let alignment_disabled = !multiple_points_selected;
 
 		Layout(vec![LayoutGroup::Row {
-			widgets: vec![
-				x_location,
-				related_seperator.clone(),
-				y_location,
-				unrelated_seperator.clone(),
-			]
-			.into_iter()
-			.chain(self.alignment_widgets(alignment_disabled))
-			.chain(vec![
-				unrelated_seperator.clone(),
-				colinear_handle_checkbox,
-				related_seperator.clone(),
-				colinear_handles_label,
-				unrelated_seperator.clone(),
-				point_editing_mode,
-				related_seperator.clone(),
-				segment_editing_mode,
-				unrelated_seperator.clone(),
-				path_overlay_mode_widget,
-				unrelated_seperator.clone(),
-				path_node_button,
-				// checkbox.clone(),
-				// related_seperator.clone(),
-				// dropdown.clone(),
-				// unrelated_seperator,
-				// pivot_reference,
-				// related_seperator.clone(),
-				// pin_pivot,
-			])
-			.collect(),
+			widgets: vec![x_location, related_seperator.clone(), y_location, unrelated_seperator.clone()]
+				.into_iter()
+				.chain(self.alignment_widgets(alignment_disabled))
+				.chain(vec![
+					unrelated_seperator.clone(),
+					colinear_handle_checkbox,
+					related_seperator.clone(),
+					colinear_handles_label,
+					unrelated_seperator.clone(),
+					point_editing_mode,
+					related_seperator.clone(),
+					segment_editing_mode,
+					unrelated_seperator.clone(),
+					path_overlay_mode_widget,
+					unrelated_seperator.clone(),
+					path_node_button,
+					// checkbox.clone(),
+					// related_seperator.clone(),
+					// dropdown.clone(),
+					// unrelated_seperator,
+					// pivot_reference,
+					// related_seperator.clone(),
+					// pin_pivot,
+				])
+				.collect(),
 		}])
 	}
 }
