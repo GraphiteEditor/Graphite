@@ -12,6 +12,7 @@ import Clipped from "@branding/assets/icon-12px-solid/clipped.svg";
 import CloseX from "@branding/assets/icon-12px-solid/close-x.svg";
 import Delay from "@branding/assets/icon-12px-solid/delay.svg";
 import Dot from "@branding/assets/icon-12px-solid/dot.svg";
+import DotLarge from "@branding/assets/icon-12px-solid/dot-large.svg";
 import DropdownArrow from "@branding/assets/icon-12px-solid/dropdown-arrow.svg";
 import Edit12px from "@branding/assets/icon-12px-solid/edit-12px.svg";
 import Empty12px from "@branding/assets/icon-12px-solid/empty-12px.svg";
