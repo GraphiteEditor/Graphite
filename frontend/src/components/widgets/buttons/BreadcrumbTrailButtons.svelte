@@ -26,43 +26,32 @@
 		.text-button {
 			position: relative;
 
-			&:not(:first-of-type) {
-				border-top-left-radius: 0;
-				border-bottom-left-radius: 0;
-
-				&::before {
-					content: "";
-					position: absolute;
-					top: 0;
-					left: -4px;
-					width: 0;
-					height: 0;
-					border-style: solid;
-					border-width: 12px 0 12px 4px;
-					border-color: var(--button-background-color) var(--button-background-color) var(--button-background-color) transparent;
-				}
+&:not(:first-child) {
+				margin-left: -4px;
 			}
 
-			&:not(:last-of-type) {
-				border-top-right-radius: 0;
-				border-bottom-right-radius: 0;
+			clip-path: polygon(0% 0%, calc(100% - 4px) 0%, 100% 50%, calc(100% - 4px) 100%, 0% 100%, 4px 50%);
+			padding-left: 12px;
+			padding-right: 12px;
 
-				&::after {
-					content: "";
-					position: absolute;
-					top: 0;
-					right: -4px;
-					width: 0;
-					height: 0;
-					border-style: solid;
-					border-width: 12px 0 12px 4px;
-					border-color: transparent transparent transparent var(--button-background-color);
-				}
+			&:first-of-type {
+				clip-path: polygon(0% 0%, calc(100% - 4px) 0%, 100% 50%, calc(100% - 4px) 100%, 0% 100%);
+				padding-left: 8px;
+				padding-right: 12px;
 			}
 
 			&:last-of-type {
-				// Make this non-functional button not change color on hover
+				clip-path: polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%, 4px 50%);
+				padding-left: 12px;
+				padding-right: 8px;
+
 				pointer-events: none;
+			}
+
+			&:first-of-type:last-of-type {
+				clip-path: none;
+				padding-left: 8px;
+				padding-right: 8px;
 			}
 		}
 	}
