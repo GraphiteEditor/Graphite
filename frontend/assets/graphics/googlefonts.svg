@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="32" height="32" version="1.1" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+ <rect width="32" height="32" ry="0" style="paint-order:stroke fill markers"/>
+ <g transform="matrix(.69565 0 0 .69565 7.542 4.0972)" stroke="#000" stroke-width=".71875">
+  <g transform="translate(-3.5748 -.38973)" stroke="none" stroke-width=".71875">
+   <path d="m1.5 29 14.5-23h9v3.2l-12.5 19.8z" fill="#fbbc04"/>
+   <path d="m25 29h-9v-23h9z" fill="#1a73e8"/>
+   <path d="m31.5 22.5c0 3.59-2.91 6.5-6.5 6.5v-13c3.59 0 6.5 2.91 6.5 6.5z" fill="#34a853"/>
+   <path d="m25 29c-3.59 0-6.5-2.91-6.5-6.5s2.91-6.5 6.5-6.5z" fill="#0d652d"/>
+   <path d="m30 11c0 2.761-2.238 5-5 5v-10c2.762 0 5 2.239 5 5z" fill="#1a73e8"/>
+   <path d="m25 16c-2.762 0-5-2.239-5-5 0-2.761 2.238-5 5-5z" fill="#174ea6"/>
+   <path d="m2 10.5c0-2.485 2.015-4.5 4.5-4.5s4.5 2.015 4.5 4.5c0 2.485-2.015 4.5-4.5 4.5s-4.5-2.015-4.5-4.5z" fill="#ea4335"/>
+  </g>
+ </g>
+</svg>
