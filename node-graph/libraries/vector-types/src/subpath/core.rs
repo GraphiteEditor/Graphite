@@ -156,24 +156,19 @@ impl<PointId: Identifier> Subpath<PointId> {
 			.all(|manipulator_group| manipulator_group.anchor.abs_diff_eq(point, MAX_ABSOLUTE_DIFFERENCE))
 	}
 
-	/// Construct a [Subpath] from an iter of anchor positions.
 	pub fn from_anchors(anchor_positions: impl IntoIterator<Item = DVec2>, closed: bool) -> Self {
 		Self::new(anchor_positions.into_iter().map(|anchor| ManipulatorGroup::new_anchor(anchor)).collect(), closed)
 	}
 
-	pub fn from_anchors_linear(anchor_positions: impl IntoIterator<Item = DVec2>, closed: bool) -> Self {
-		Self::new(anchor_positions.into_iter().map(|anchor| ManipulatorGroup::new_anchor_linear(anchor)).collect(), closed)
-	}
-
 	/// Constructs a rectangle with `corner1` and `corner2` as the two corners.
-	pub fn new_rect(corner1: DVec2, corner2: DVec2) -> Self {
-		Self::from_anchors_linear([corner1, DVec2::new(corner2.x, corner1.y), corner2, DVec2::new(corner1.x, corner2.y)], true)
+	pub fn new_rectangle(corner1: DVec2, corner2: DVec2) -> Self {
+		Self::from_anchors([corner1, DVec2::new(corner2.x, corner1.y), corner2, DVec2::new(corner1.x, corner2.y)], true)
 	}
 
 	/// Constructs a rounded rectangle with `corner1` and `corner2` as the two corners and `corner_radii` as the radii of the corners: `[top_left, top_right, bottom_right, bottom_left]`.
-	pub fn new_rounded_rect(corner1: DVec2, corner2: DVec2, corner_radii: [f64; 4]) -> Self {
+	pub fn new_rounded_rectangle(corner1: DVec2, corner2: DVec2, corner_radii: [f64; 4]) -> Self {
 		if corner_radii.iter().all(|radii| radii.abs() < f64::EPSILON * 100.) {
-			return Self::new_rect(corner1, corner2);
+			return Self::new_rectangle(corner1, corner2);
 		}
 
 		use std::f64::consts::{FRAC_1_SQRT_2, PI};
@@ -185,7 +180,7 @@ impl<PointId: Identifier> Subpath<PointId> {
 				return vec![ManipulatorGroup::new_anchor(point1), ManipulatorGroup::new_anchor(point2)];
 			}
 
-			// Based on https://pomax.github.io/bezierinfo/#circles_cubic
+			// Constant from https://pomax.github.io/bezierinfo/#circles_cubic
 			const HANDLE_OFFSET_FACTOR: f64 = 0.551784777779014;
 			let handle_offset = radius * HANDLE_OFFSET_FACTOR;
 			vec![

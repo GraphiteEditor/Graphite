@@ -77,7 +77,7 @@ fn string_split(
 	#[default("\\n")]
 	delimeter: String,
 	/// Whether to convert escape sequences found in the delimeter into their corresponding characters:
-	/// "\n" (newline), "\r" (carriage return), "\t" (tab), "\0" (null), and "\\" (backslash)
+	/// "\n" (newline), "\r" (carriage return), "\t" (tab), "\0" (null), and "\\" (backslash).
 	#[default(true)]
 	delimeter_escaping: bool,
 ) -> Vec<String> {

@@ -14,7 +14,7 @@ trait CornerRadius {
 impl CornerRadius for f64 {
 	fn generate(self, size: DVec2, clamped: bool) -> Table<Vector> {
 		let clamped_radius = if clamped { self.clamp(0., size.x.min(size.y).max(0.) / 2.) } else { self };
-		Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_rounded_rect(size / -2., size / 2., [clamped_radius; 4])))
+		Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_rounded_rectangle(size / -2., size / 2., [clamped_radius; 4])))
 	}
 }
 impl CornerRadius for [f64; 4] {
@@ -34,7 +34,7 @@ impl CornerRadius for [f64; 4] {
 		} else {
 			self
 		};
-		Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_rounded_rect(size / -2., size / 2., clamped_radius)))
+		Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_rounded_rectangle(size / -2., size / 2., clamped_radius)))
 	}
 }
 

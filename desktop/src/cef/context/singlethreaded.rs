@@ -28,6 +28,11 @@ impl CefContext for SingleThreadedCefContext {
 		let host = self.browser.host().unwrap();
 		host.set_zoom_level(view_info.zoom());
 		host.was_resized();
+
+		// Fix for CEF not updating the view after resize on windows and mac
+		// TODO: remove once https://github.com/chromiumembedded/cef/issues/3822 is fixed
+		#[cfg(any(target_os = "windows", target_os = "macos"))]
+		host.invalidate(cef::PaintElementType::default());
 	}
 
 	fn send_web_message(&self, message: Vec<u8>) {
@@ -38,7 +43,19 @@ impl CefContext for SingleThreadedCefContext {
 impl Drop for SingleThreadedCefContext {
 	fn drop(&mut self) {
 		cef::shutdown();
-		std::fs::remove_dir_all(&self.instance_dir).expect("Failed to remove CEF cache directory");
+
+		// Sometimes some CEF processes still linger at this point and hold file handles to the cache directory.
+		// To mitigate this, we try to remove the directory multiple times with some delay.
+		// TODO: find a better solution if possible.
+		for _ in 0..30 {
+			match std::fs::remove_dir_all(&self.instance_dir) {
+				Ok(_) => break,
+				Err(e) => {
+					tracing::warn!("Failed to remove CEF cache directory, retrying...: {e}");
+					std::thread::sleep(std::time::Duration::from_millis(100));
+				}
+			}
+		}
 	}
 }
 

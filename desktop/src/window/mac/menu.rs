@@ -1,6 +1,6 @@
 use muda::Menu as MudaMenu;
 use muda::accelerator::Accelerator;
-use muda::{CheckMenuItem, IsMenuItem, MenuEvent, MenuId, MenuItem, MenuItemKind, PredefinedMenuItem, Result, Submenu};
+use muda::{CheckMenuItem, IsMenuItem, MenuEvent, MenuItem, MenuItemKind, PredefinedMenuItem, Result, Submenu};
 
 use crate::event::{AppEvent, AppEventScheduler};
 use crate::wrapper::messages::MenuItem as WrapperMenuItem;
@@ -30,9 +30,8 @@ impl Menu {
 				return;
 			}
 
-			if let Some(id) = menu_id_to_u64(event.id()) {
-				event_scheduler.schedule(AppEvent::MenuEvent { id });
-			}
+			let id = event.id().0.clone();
+			event_scheduler.schedule(AppEvent::MenuEvent { id });
 		}));
 
 		Menu { inner: menu }
@@ -43,11 +42,11 @@ impl Menu {
 		let existing_entries = self.inner.items();
 
 		let mut new_entries_iter = new_entries.iter();
-		let mut existing_entries_iter = existing_entries.iter().skip(1); // Skip first menu (app menu)
+		let mut existing_entries_iter = existing_entries.iter();
 
 		let incremental_update_ok = std::iter::from_fn(move || match (existing_entries_iter.next(), new_entries_iter.next()) {
 			(Some(MenuItemKind::Submenu(old)), Some(MenuItemKind::Submenu(new))) if old.text() == new.text() => {
-				replace_children(old, 0, new.items());
+				replace_children(old, new.items());
 				Some(true)
 			}
 			(None, None) => None,
@@ -57,7 +56,7 @@ impl Menu {
 
 		if !incremental_update_ok {
 			// Fallback to full replace
-			replace_children(&self.inner, 1, new_entries); // Skip first menu (app menu)
+			replace_children(&self.inner, new_entries);
 		}
 	}
 }
@@ -67,13 +66,11 @@ fn menu_items_from_wrapper(entries: Vec<WrapperMenuItem>) -> Vec<MenuItemKind> {
 	for entry in entries {
 		match entry {
 			WrapperMenuItem::Action { id, text, enabled, shortcut } => {
-				let id = u64_to_menu_id(id);
 				let accelerator = shortcut.map(|s| Accelerator::new(Some(s.modifiers), s.key));
 				let item = MenuItem::with_id(id, text, enabled, accelerator);
 				menu_items.push(MenuItemKind::MenuItem(item));
 			}
 			WrapperMenuItem::Checkbox { id, text, enabled, shortcut, checked } => {
-				let id = u64_to_menu_id(id);
 				let accelerator = shortcut.map(|s| Accelerator::new(Some(s.modifiers), s.key));
 				let check = CheckMenuItem::with_id(id, text, enabled, checked, accelerator);
 				menu_items.push(MenuItemKind::Check(check));
@@ -103,18 +100,10 @@ fn menu_item_kind_to_dyn(item: &MenuItemKind) -> &dyn IsMenuItem {
 	}
 }
 
-fn u64_to_menu_id(id: u64) -> String {
-	format!("{id:08x}")
-}
-
-fn menu_id_to_u64(id: &MenuId) -> Option<u64> {
-	u64::from_str_radix(&id.0, 16).ok()
-}
-
-fn replace_children<'a, T: Into<MenuContainer<'a>>>(menu: T, skip: usize, new_items: Vec<MenuItemKind>) {
+fn replace_children<'a, T: Into<MenuContainer<'a>>>(menu: T, new_items: Vec<MenuItemKind>) {
 	let menu: MenuContainer = menu.into();
 	let items = menu.items();
-	for item in items.iter().skip(skip) {
+	for item in items.iter() {
 		menu.remove(menu_item_kind_to_dyn(item)).unwrap();
 	}
 	let items = new_items.iter().map(|item| menu_item_kind_to_dyn(item)).collect::<Vec<&dyn IsMenuItem>>();

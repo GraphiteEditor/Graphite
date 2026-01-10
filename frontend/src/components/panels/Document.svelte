@@ -6,6 +6,7 @@
 		type MouseCursorIcon,
 		type XY,
 		DisplayEditableTextbox,
+		DisplayEditableTextboxUpdateFontData,
 		DisplayEditableTextboxTransform,
 		DisplayRemoveEditableTextbox,
 		TriggerTextCommit,
@@ -126,7 +127,7 @@
 			totalToolRowsFor2Columns,
 			totalToolRowsFor3Columns,
 		};
-	})($document.toolShelfLayout.layout[0]);
+	})($document.toolShelfLayout[0]);
 
 	function dropFile(e: DragEvent) {
 		const { dataTransfer } = e;
@@ -304,14 +305,8 @@
 		if (cursor === "custom-rotate") {
 			const svg = `
 				<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" width="20" height="20">
-					<path transform="translate(2 2)" fill="black" stroke="black" stroke-width="2px" d="
-					M8,15.2C4,15.2,0.8,12,0.8,8C0.8,4,4,0.8,8,0.8c2,0,3.9,0.8,5.3,2.3l-1,1C11.2,2.9,9.6,2.2,8,2.2C4.8,2.2,2.2,4.8,2.2,8s2.6,5.8,5.8,5.8s5.8-2.6,5.8-5.8h1.4C15.2,12,12,15.2,8,15.2z
-					" />
-					<polygon transform="translate(2 2)" fill="black" stroke="black" stroke-width="2px" points="12.6,0 15.5,5 9.7,5" />
-					<path transform="translate(2 2)" fill="white" d="
-					M8,15.2C4,15.2,0.8,12,0.8,8C0.8,4,4,0.8,8,0.8c2,0,3.9,0.8,5.3,2.3l-1,1C11.2,2.9,9.6,2.2,8,2.2C4.8,2.2,2.2,4.8,2.2,8s2.6,5.8,5.8,5.8s5.8-2.6,5.8-5.8h1.4C15.2,12,12,15.2,8,15.2z
-					" />
-					<polygon transform="translate(2 2)" fill="white" points="12.6,0 15.5,5 9.7,5" />
+					<path fill="none" stroke="black" stroke-width="2" d="M10,15.8c-3.2,0-5.8-2.6-5.8-5.8S6.8,4.2,10,4.2c0.999,0,1.999,0.273,2.877,0.771L11.7,7h5.8l-2.9-5l-1.013,1.746C12.5,3.125,11.271,2.8,10,2.8C6,2.8,2.8,6,2.8,10S6,17.2,10,17.2s7.2-3.2,7.2-7.2h-1.4C15.8,13.2,13.2,15.8,10,15.8z" />
+					<path fill="white" d="M10,15.8c-3.2,0-5.8-2.6-5.8-5.8S6.8,4.2,10,4.2c0.999,0,1.999,0.273,2.877,0.771L11.7,7h5.8l-2.9-5l-1.013,1.746C12.5,3.125,11.271,2.8,10,2.8C6,2.8,2.8,6,2.8,10S6,17.2,10,17.2s7.2-3.2,7.2-7.2h-1.4C15.8,13.2,13.2,15.8,10,15.8z" />
 				</svg>
 				`
 				.split("\n")
@@ -337,7 +332,7 @@
 		editor.handle.onChangeText(textCleaned, false);
 	}
 
-	export async function displayEditableTextbox(displayEditableTextbox: DisplayEditableTextbox) {
+	export async function displayEditableTextbox(data: DisplayEditableTextbox) {
 		showTextInput = true;
 
 		await tick();
@@ -345,31 +340,35 @@
 		if (!textInput) return;
 
 		// eslint-disable-next-line svelte/no-dom-manipulating
-		if (displayEditableTextbox.text === "") textInput.textContent = "";
+		if (data.text === "") textInput.textContent = "";
 		// eslint-disable-next-line svelte/no-dom-manipulating
-		else textInput.textContent = `${displayEditableTextbox.text}\n`;
+		else textInput.textContent = `${data.text}\n`;
 
 		// Make it so `maxHeight` is a multiple of `lineHeight`
-		const lineHeight = displayEditableTextbox.lineHeightRatio * displayEditableTextbox.fontSize;
-		let height = displayEditableTextbox.maxHeight === undefined ? "auto" : `${Math.floor(displayEditableTextbox.maxHeight / lineHeight) * lineHeight}px`;
+		const lineHeight = data.lineHeightRatio * data.fontSize;
+		let height = data.maxHeight === undefined ? "auto" : `${Math.floor(data.maxHeight / lineHeight) * lineHeight}px`;
 
 		textInput.contentEditable = "true";
 		textInput.style.transformOrigin = "0 0";
-		textInput.style.width = displayEditableTextbox.maxWidth ? `${displayEditableTextbox.maxWidth}px` : "max-content";
+		textInput.style.width = data.maxWidth ? `${data.maxWidth}px` : "max-content";
 		textInput.style.height = height;
-		textInput.style.lineHeight = `${displayEditableTextbox.lineHeightRatio}`;
-		textInput.style.fontSize = `${displayEditableTextbox.fontSize}px`;
-		textInput.style.color = displayEditableTextbox.color.toHexOptionalAlpha() || "transparent";
-		textInput.style.textAlign = displayEditableTextbox.align;
+		textInput.style.lineHeight = `${data.lineHeightRatio}`;
+		textInput.style.fontSize = `${data.fontSize}px`;
+		textInput.style.color = data.color.toHexOptionalAlpha() || "transparent";
+		textInput.style.textAlign = data.align;
 
 		textInput.oninput = () => {
 			if (!textInput) return;
 			editor.handle.updateBounds(textInputCleanup(textInput.innerText));
 		};
-		textInputMatrix = displayEditableTextbox.transform;
-		const newFont = new FontFace("text-font", `url(${displayEditableTextbox.url})`);
-		window.document.fonts.add(newFont);
-		textInput.style.fontFamily = "text-font";
+
+		textInputMatrix = data.transform;
+
+		const bytes = new Uint8Array(data.fontData);
+		if (bytes.length > 0) {
+			window.document.fonts.add(new FontFace("text-font", bytes));
+			textInput.style.fontFamily = "text-font";
+		}
 
 		// Necessary to select contenteditable: https://stackoverflow.com/questions/6139107/programmatically-select-text-in-a-contenteditable-html-element/6150060#6150060
 
@@ -477,6 +476,15 @@
 
 			displayEditableTextbox(data);
 		});
+		editor.subscriptions.subscribeJsMessage(DisplayEditableTextboxUpdateFontData, async (data) => {
+			await tick();
+
+			const fontData = new Uint8Array(data.fontData);
+			if (fontData.length > 0 && textInput) {
+				window.document.fonts.add(new FontFace("text-font", fontData));
+				textInput.style.fontFamily = "text-font";
+			}
+		});
 		editor.subscriptions.subscribeJsMessage(DisplayEditableTextboxTransform, async (data) => {
 			textInputMatrix = data.transform;
 		});
@@ -506,12 +514,11 @@
 <LayoutCol class="document" on:dragover={(e) => e.preventDefault()} on:drop={dropFile}>
 	<LayoutRow class="control-bar" classes={{ "for-graph": $document.graphViewOverlayOpen }} scrollableX={true}>
 		{#if !$document.graphViewOverlayOpen}
-			<WidgetLayout layout={$document.documentModeLayout} />
-			<WidgetLayout layout={$document.toolOptionsLayout} />
+			<WidgetLayout layout={$document.toolOptionsLayout} layoutTarget="ToolOptions" />
 			<LayoutRow class="spacer" />
-			<WidgetLayout layout={$document.documentBarLayout} />
+			<WidgetLayout layout={$document.documentBarLayout} layoutTarget="DocumentBar" />
 		{:else}
-			<WidgetLayout layout={$document.nodeGraphControlBarLayout} />
+			<WidgetLayout layout={$document.nodeGraphControlBarLayout} layoutTarget="NodeGraphControlBar" />
 		{/if}
 	</LayoutRow>
 	<LayoutRow
@@ -526,13 +533,13 @@
 		<LayoutCol class="tool-shelf">
 			{#if !$document.graphViewOverlayOpen}
 				<LayoutCol class="tools" scrollableY={true}>
-					<WidgetLayout layout={$document.toolShelfLayout} />
+					<WidgetLayout layout={$document.toolShelfLayout} layoutTarget="ToolShelf" />
 				</LayoutCol>
 			{:else}
 				<LayoutRow class="spacer" />
 			{/if}
 			<LayoutCol class="tool-shelf-bottom-widgets">
-				<WidgetLayout class="working-colors-input-area" layout={$document.workingColorsLayout} />
+				<WidgetLayout class="working-colors-input-area" layout={$document.workingColorsLayout} layoutTarget="WorkingColors" />
 			</LayoutCol>
 		</LayoutCol>
 		<LayoutCol class="viewport-container">
@@ -698,16 +705,16 @@
 						.icon-button {
 							margin: 0;
 
-							&[title^="Coming Soon"] {
-								opacity: 0.25;
-								transition: opacity 0.1s;
+							// &[data-tooltip-description^="Coming soon."] {
+							// 	opacity: 0.25;
+							// 	transition: opacity 0.1s;
 
-								&:hover {
-									opacity: 1;
-								}
-							}
+							// 	&:hover {
+							// 		opacity: 1;
+							// 	}
+							// }
 
-							&:not(.active) {
+							&:not(.emphasized) {
 								.color-general {
 									fill: var(--color-data-general);
 								}
@@ -776,7 +783,7 @@
 					margin-right: 16px;
 				}
 
-				.right-scrollbar .scrollbar-input {
+				&:has(.top-ruler) .right-scrollbar .scrollbar-input {
 					margin-top: -16px;
 				}
 

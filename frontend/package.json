@@ -2,7 +2,7 @@
 	"name": "graphite-web-frontend",
 	"private": true,
 	"description": "Graphite's web app frontend.",
-	"author": "Graphite Authors <contact@graphite.rs>",
+	"author": "Graphite Authors <contact@graphite.art>",
 	"browserslist": "> 1.5%, last 2 versions, not dead, not ie 11, not op_mini all, not ios_saf < 13",
 	"type": "module",
 	"scripts": {
@@ -65,7 +65,7 @@
 		"vite": "^5.4.19",
 		"vite-multiple-assets": "2.2.5"
 	},
-	"homepage": "https://graphite.rs",
+	"homepage": "https://graphite.art",
 	"license": "Apache-2.0",
 	"repository": {
 		"type": "git",

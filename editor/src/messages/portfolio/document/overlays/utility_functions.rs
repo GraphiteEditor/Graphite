@@ -3,12 +3,14 @@ use crate::consts::HIDE_HANDLE_DISTANCE;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::tool::common_functionality::shape_editor::{SelectedLayerState, ShapeState};
-use crate::messages::tool::tool_messages::tool_prelude::{DocumentMessageHandler, PreferencesMessageHandler};
+use crate::messages::tool::tool_messages::tool_prelude::DocumentMessageHandler;
 use glam::{DAffine2, DVec2};
 use graphene_std::subpath::{Bezier, BezierHandles};
+use graphene_std::text::{Font, FontCache, TextAlign, TextContext, TypesettingConfig};
 use graphene_std::vector::misc::ManipulatorPointId;
 use graphene_std::vector::{PointId, SegmentId, Vector};
 use std::collections::HashMap;
+use std::sync::{LazyLock, Mutex};
 use wasm_bindgen::JsCast;
 
 pub fn overlay_canvas_element() -> Option<web_sys::HtmlCanvasElement> {
@@ -133,10 +135,7 @@ pub fn path_overlays(document: &DocumentMessageHandler, draw_handles: DrawHandle
 			overlay_context.outline_vector(&vector, transform);
 		}
 
-		let Some(selected_shape_state) = shape_editor.selected_shape_state.get_mut(&layer) else {
-			continue;
-		};
-
+		let selected_shape_state = shape_editor.selected_shape_state.entry(layer).or_default();
 		// Get the selected segments and then add a bold line overlay on them
 		for (segment_id, bezier, _, _) in vector.segment_iter() {
 			if selected_shape_state.is_segment_selected(segment_id) {
@@ -198,7 +197,7 @@ pub fn path_overlays(document: &DocumentMessageHandler, draw_handles: DrawHandle
 	}
 }
 
-pub fn path_endpoint_overlays(document: &DocumentMessageHandler, shape_editor: &mut ShapeState, overlay_context: &mut OverlayContext, preferences: &PreferencesMessageHandler) {
+pub fn path_endpoint_overlays(document: &DocumentMessageHandler, shape_editor: &mut ShapeState, overlay_context: &mut OverlayContext) {
 	if !overlay_context.visibility_settings.anchors() {
 		return;
 	}
@@ -211,10 +210,42 @@ pub fn path_endpoint_overlays(document: &DocumentMessageHandler, shape_editor: &
 		let selected = shape_editor.selected_shape_state.get(&layer);
 		let is_selected = |selected: Option<&SelectedLayerState>, point: ManipulatorPointId| selected.is_some_and(|selected| selected.is_point_selected(point));
 
-		for point in vector.extendable_points(preferences.vector_meshes) {
+		for point in vector.anchor_endpoints() {
 			let Some(position) = vector.point_domain.position_from_id(point) else { continue };
 			let position = transform.transform_point2(position);
 			overlay_context.manipulator_anchor(position, is_selected(selected, ManipulatorPointId::Anchor(point)), None);
 		}
 	}
+}
+
+// Global lazy initialized font cache and text context
+pub static GLOBAL_FONT_CACHE: LazyLock<FontCache> = LazyLock::new(|| {
+	let mut font_cache = FontCache::default();
+	// Initialize with the hardcoded font used by overlay text
+	const FONT_DATA: &[u8] = include_bytes!("source-sans-pro-regular.ttf");
+	let font = Font::new("Source Sans Pro".to_string(), "Regular".to_string());
+	font_cache.insert(font, FONT_DATA.to_vec());
+	font_cache
+});
+
+pub static GLOBAL_TEXT_CONTEXT: LazyLock<Mutex<TextContext>> = LazyLock::new(|| Mutex::new(TextContext::default()));
+
+pub fn text_width(text: &str, font_size: f64) -> f64 {
+	let typesetting = TypesettingConfig {
+		font_size,
+		line_height_ratio: 1.2,
+		character_spacing: 0.0,
+		max_width: None,
+		max_height: None,
+		tilt: 0.0,
+		align: TextAlign::Left,
+	};
+
+	// Load Source Sans Pro font data
+	// TODO: Grab this from the node_modules folder (either with `include_bytes!` or ideally at runtime) instead of checking the font file into the repo.
+	// TODO: And maybe use the WOFF2 version (if it's supported) for its smaller, compressed file size.
+	let font = Font::new("Source Sans Pro".to_string(), "Regular".to_string());
+	let mut text_context = GLOBAL_TEXT_CONTEXT.lock().expect("Failed to lock global text context");
+	let bounds = text_context.bounding_box(text, &font, &GLOBAL_FONT_CACHE, typesetting, false);
+	bounds.x
 }

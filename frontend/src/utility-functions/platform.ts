@@ -1,3 +1,5 @@
+import { isPlatformNative } from "@graphite/../wasm/pkg/graphite_wasm";
+
 export function browserVersion(): string {
 	const agent = window.navigator.userAgent;
 	let match = agent.match(/(opera|chrome|safari|firefox|msie|trident(?=\/))\/?\s*(\d+)/i) || [];
@@ -35,6 +37,10 @@ export function operatingSystem(): OperatingSystem {
 
 	const userAgentOS = Object.keys(osTable).find((key) => window.navigator.userAgent.includes(key));
 	return osTable[userAgentOS || "Unknown"];
+}
+
+export function isDesktop(): boolean {
+	return isPlatformNative();
 }
 
 export function isEventSupported(eventName: string) {

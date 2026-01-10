@@ -5,8 +5,16 @@ pub(crate) const RESOURCE_DOMAIN: &str = "resources";
 
 pub(crate) const SCROLL_LINE_HEIGHT: usize = 40;
 pub(crate) const SCROLL_LINE_WIDTH: usize = 40;
+
+#[cfg(target_os = "linux")]
 pub(crate) const SCROLL_SPEED_X: f32 = 3.0;
+#[cfg(target_os = "linux")]
 pub(crate) const SCROLL_SPEED_Y: f32 = 3.0;
+
+#[cfg(not(target_os = "linux"))]
+pub(crate) const SCROLL_SPEED_X: f32 = 1.0;
+#[cfg(not(target_os = "linux"))]
+pub(crate) const SCROLL_SPEED_Y: f32 = 1.0;
 
 pub(crate) const PINCH_ZOOM_SPEED: f64 = 300.0;
 

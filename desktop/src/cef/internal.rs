@@ -1,17 +1,17 @@
 mod browser_process_app;
 mod browser_process_client;
 mod browser_process_handler;
-mod browser_process_life_span_handler;
-mod browser_process_load_handler;
 
 mod render_process_app;
 mod render_process_handler;
 mod render_process_v8_handler;
 
+mod context_menu_handler;
+mod display_handler;
+mod life_span_handler;
+mod load_handler;
 mod resource_handler;
 mod scheme_handler_factory;
-
-mod display_handler;
 
 pub(super) mod render_handler;
 

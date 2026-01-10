@@ -8,6 +8,7 @@ use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::navigation::utility_types::NavigationOperation;
 use crate::messages::portfolio::document::utility_types::misc::PTZ;
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
+use crate::messages::portfolio::utility_types::KeyboardPlatformLayout;
 use crate::messages::prelude::*;
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 use glam::{DAffine2, DVec2};
@@ -76,9 +77,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 			NavigationMessage::BeginCanvasPan => {
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Grabbing });
 
-				responses.add(FrontendMessage::UpdateInputHints {
-					hint_data: HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
-				});
+				HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]).send_layout(responses);
 
 				self.mouse_position = ipp.mouse.position;
 				let Some(ptz) = get_ptz(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
@@ -95,12 +94,11 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 					responses.add(NavigationMessage::BeginCanvasPan);
 				} else {
 					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
-					responses.add(FrontendMessage::UpdateInputHints {
-						hint_data: HintData(vec![
-							HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
-							HintGroup(vec![HintInfo::keys([Key::Shift], "15° Increments")]),
-						]),
-					});
+					HintData(vec![
+						HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+						HintGroup(vec![HintInfo::keys([Key::Shift], "15° Increments")]),
+					])
+					.send_layout(responses);
 
 					self.navigation_operation = NavigationOperation::Tilt {
 						tilt_original_for_abort: ptz.tilt(),
@@ -118,12 +116,11 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				};
 
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::ZoomIn });
-				responses.add(FrontendMessage::UpdateInputHints {
-					hint_data: HintData(vec![
-						HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
-						HintGroup(vec![HintInfo::keys([Key::Shift], "Increments")]),
-					]),
-				});
+				HintData(vec![
+					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+					HintGroup(vec![HintInfo::keys([Key::Shift], "Increments")]),
+				])
+				.send_layout(responses);
 
 				self.navigation_operation = NavigationOperation::Zoom {
 					zoom_raw_not_snapped: ptz.zoom(),
@@ -178,7 +175,14 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				responses.add(DocumentMessage::PTZUpdate);
 			}
 			NavigationMessage::CanvasPanMouseWheel { use_y_as_x } => {
-				let delta = if use_y_as_x { (-ipp.mouse.scroll_delta.y, 0.).into() } else { -ipp.mouse.scroll_delta.as_dvec2() } * VIEWPORT_SCROLL_RATE;
+				// On Mac, the OS already converts Shift+scroll into horizontal scrolling
+				let keyboard_platform = GLOBAL_PLATFORM.get().copied().unwrap_or_default().as_keyboard_platform_layout();
+
+				let delta = if use_y_as_x && keyboard_platform == KeyboardPlatformLayout::Standard {
+					(ipp.mouse.scroll_delta.y, 0.).into()
+				} else {
+					ipp.mouse.scroll_delta.as_dvec2()
+				} * -VIEWPORT_SCROLL_RATE;
 				responses.add(NavigationMessage::CanvasPan { delta });
 			}
 			NavigationMessage::CanvasTiltResetAndZoomTo100Percent => {

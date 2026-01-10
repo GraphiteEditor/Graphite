@@ -3,15 +3,15 @@ name = "graphite-editor"
 publish = false
 version = "0.0.0"
 rust-version = "1.88"
-authors = ["Graphite Authors <contact@graphite.rs>"]
+authors = ["Graphite Authors <contact@graphite.art>"]
 edition = "2024"
 readme = "../README.md"
-homepage = "https://graphite.rs"
+homepage = "https://graphite.art"
 repository = "https://github.com/GraphiteEditor/Graphite"
 license = "Apache-2.0"
 
 [features]
-default = ["wasm", "gpu" ]
+default = ["wasm", "gpu"]
 wasm = ["wasm-bindgen", "graphene-std/wasm"]
 gpu = ["interpreted-executor/gpu", "wgpu-executor"]
 
@@ -56,4 +56,3 @@ wasm-bindgen = { workspace = true, optional = true }
 env_logger = { workspace = true }
 futures = { workspace = true }
 tokio = { workspace = true }
-

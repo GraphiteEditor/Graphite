@@ -2,21 +2,25 @@
 	import { createEventDispatcher } from "svelte";
 
 	import type { IconName } from "@graphite/icons";
+	import type { ActionShortcut } from "@graphite/messages";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 
 	const dispatch = createEventDispatcher<{ checked: boolean }>();
+	const backupId = String(Math.random()).substring(2);
 
+	// Content
 	export let checked = false;
-	export let disabled = false;
 	export let icon: IconName = "Checkmark";
-	export let tooltip: string | undefined = undefined;
 	export let forLabel: bigint | undefined = undefined;
+	export let disabled = false;
+	// Tooltips
+	export let tooltipLabel: string | undefined = undefined;
+	export let tooltipDescription: string | undefined = undefined;
+	export let tooltipShortcut: ActionShortcut | undefined = undefined;
 
 	let inputElement: HTMLInputElement | undefined;
-
-	const backupId = String(Math.random()).substring(2);
 
 	$: id = forLabel !== undefined ? String(forLabel) : backupId;
 	$: displayIcon = (!checked && icon === "Checkmark" ? "Empty12px" : icon) as IconName;
@@ -46,7 +50,15 @@
 		tabindex={disabled ? -1 : 0}
 		bind:this={inputElement}
 	/>
-	<label class:disabled class:checked for={`checkbox-input-${id}`} on:keydown={(e) => e.key === "Enter" && toggleCheckboxFromLabel(e)} title={tooltip}>
+	<label
+		class:disabled
+		class:checked
+		for={`checkbox-input-${id}`}
+		on:keydown={(e) => e.key === "Enter" && toggleCheckboxFromLabel(e)}
+		data-tooltip-label={tooltipLabel}
+		data-tooltip-description={tooltipDescription}
+		data-tooltip-shortcut={tooltipShortcut?.shortcut ? JSON.stringify(tooltipShortcut.shortcut) : undefined}
+	>
 		<LayoutRow class="checkbox-box">
 			<IconLabel icon={displayIcon} />
 		</LayoutRow>

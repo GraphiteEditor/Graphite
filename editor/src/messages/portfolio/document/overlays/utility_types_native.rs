@@ -3,6 +3,7 @@ use crate::consts::{
 	COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, DOWEL_PIN_RADIUS, MANIPULATOR_GROUP_MARKER_SIZE,
 	PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER, RESIZE_HANDLE_SIZE, SKEW_TRIANGLE_OFFSET, SKEW_TRIANGLE_SIZE,
 };
+use crate::messages::portfolio::document::overlays::utility_functions::{GLOBAL_FONT_CACHE, GLOBAL_TEXT_CONTEXT};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::Message;
 use crate::messages::prelude::ViewportMessageHandler;
@@ -13,29 +14,16 @@ use graphene_std::Color;
 use graphene_std::math::quad::Quad;
 use graphene_std::subpath::{self, Subpath};
 use graphene_std::table::Table;
-use graphene_std::text::TextContext;
-use graphene_std::text::{Font, FontCache, TextAlign, TypesettingConfig};
+use graphene_std::text::{Font, TextAlign, TypesettingConfig};
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::point_to_dvec2;
 use graphene_std::vector::{PointId, SegmentId, Vector};
 use kurbo::{self, BezPath, ParamCurve};
 use kurbo::{Affine, PathSeg};
 use std::collections::HashMap;
-use std::sync::{Arc, LazyLock, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard};
 use vello::Scene;
 use vello::peniko;
-
-// Global lazy initialized font cache and text context
-static GLOBAL_FONT_CACHE: LazyLock<FontCache> = LazyLock::new(|| {
-	let mut font_cache = FontCache::default();
-	// Initialize with the hardcoded font used by overlay text
-	const FONT_DATA: &[u8] = include_bytes!("source-sans-pro-regular.ttf");
-	let font = Font::new("Source Sans Pro".to_string(), "Regular".to_string());
-	font_cache.insert(font, String::new(), FONT_DATA.to_vec());
-	font_cache
-});
-
-static GLOBAL_TEXT_CONTEXT: LazyLock<Mutex<TextContext>> = LazyLock::new(|| Mutex::new(TextContext::default()));
 
 pub type OverlayProvider = fn(OverlayContext) -> Message;
 
@@ -393,10 +381,6 @@ impl OverlayContext {
 		self.internal().fill_path_pattern(subpaths, transform, color);
 	}
 
-	pub fn get_width(&self, text: &str) -> f64 {
-		self.internal().get_width(text)
-	}
-
 	pub fn text(&self, text: &str, font_color: &str, background_color: Option<&str>, transform: DAffine2, padding: f64, pivot: [Pivot; 2]) {
 		let mut internal = self.internal();
 		internal.text(text, font_color, background_color, transform, padding, pivot);
@@ -593,7 +577,7 @@ impl OverlayContextInternal {
 		let mid = edge_end.midpoint(edge_start);
 
 		for edge in [edge_dir, -edge_dir] {
-			self.draw_triangle(mid + edge * 3. + SKEW_TRIANGLE_OFFSET, edge, SKEW_TRIANGLE_SIZE, None, None);
+			self.draw_triangle(mid + edge * (3. + SKEW_TRIANGLE_OFFSET), edge, SKEW_TRIANGLE_SIZE, None, None);
 		}
 	}
 
@@ -820,34 +804,32 @@ impl OverlayContextInternal {
 
 		let transform = self.get_transform();
 
-		// Draw the background circle with a white fill and colored outline
 		let circle = kurbo::Circle::new((x, y), DOWEL_PIN_RADIUS);
 		self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(COLOR_OVERLAY_WHITE), None, &circle);
 		self.scene.stroke(&kurbo::Stroke::new(1.), transform, Self::parse_color(color), None, &circle);
 
-		// Draw the two filled sectors using paths
 		let mut path = BezPath::new();
 
-		// Top-left sector
+		let start1 = FRAC_PI_2 + angle;
+		let start1_x = x + DOWEL_PIN_RADIUS * start1.cos();
+		let start1_y = y + DOWEL_PIN_RADIUS * start1.sin();
 		path.move_to(kurbo::Point::new(x, y));
-		let end_x = x + DOWEL_PIN_RADIUS * (FRAC_PI_2 + angle.cos());
-		let end_y = y + DOWEL_PIN_RADIUS * (FRAC_PI_2 + angle.sin());
-		path.line_to(kurbo::Point::new(end_x, end_y));
-		// Draw arc manually
-		let arc = kurbo::Arc::new((x, y), (DOWEL_PIN_RADIUS, DOWEL_PIN_RADIUS), FRAC_PI_2 + angle, FRAC_PI_2, 0.0);
-		arc.to_cubic_beziers(0.1, |p1, p2, p| {
+		path.line_to(kurbo::Point::new(start1_x, start1_y));
+
+		let arc1 = kurbo::Arc::new((x, y), (DOWEL_PIN_RADIUS, DOWEL_PIN_RADIUS), start1, FRAC_PI_2, 0.0);
+		arc1.to_cubic_beziers(0.1, |p1, p2, p| {
 			path.curve_to(p1, p2, p);
 		});
 		path.close_path();
 
-		// Bottom-right sector
+		let start2 = PI + FRAC_PI_2 + angle;
+		let start2_x = x + DOWEL_PIN_RADIUS * start2.cos();
+		let start2_y = y + DOWEL_PIN_RADIUS * start2.sin();
 		path.move_to(kurbo::Point::new(x, y));
-		let end_x = x + DOWEL_PIN_RADIUS * (PI + FRAC_PI_2 + angle.cos());
-		let end_y = y + DOWEL_PIN_RADIUS * (PI + FRAC_PI_2 + angle.sin());
-		path.line_to(kurbo::Point::new(end_x, end_y));
-		// Draw arc manually
-		let arc = kurbo::Arc::new((x, y), (DOWEL_PIN_RADIUS, DOWEL_PIN_RADIUS), PI + FRAC_PI_2 + angle, FRAC_PI_2, 0.0);
-		arc.to_cubic_beziers(0.1, |p1, p2, p| {
+		path.line_to(kurbo::Point::new(start2_x, start2_y));
+
+		let arc2 = kurbo::Arc::new((x, y), (DOWEL_PIN_RADIUS, DOWEL_PIN_RADIUS), start2, FRAC_PI_2, 0.0);
+		arc2.to_cubic_beziers(0.1, |p1, p2, p| {
 			path.curve_to(p1, p2, p);
 		});
 		path.close_path();
@@ -1032,29 +1014,6 @@ impl OverlayContextInternal {
 		let brush = peniko::Brush::Image(image);
 
 		self.scene.fill(peniko::Fill::NonZero, self.get_transform(), &brush, None, &path);
-	}
-
-	fn get_width(&mut self, text: &str) -> f64 {
-		// Use the actual text-to-path system to get precise text width
-		const FONT_SIZE: f64 = 12.0;
-
-		let typesetting = TypesettingConfig {
-			font_size: FONT_SIZE,
-			line_height_ratio: 1.2,
-			character_spacing: 0.0,
-			max_width: None,
-			max_height: None,
-			tilt: 0.0,
-			align: TextAlign::Left,
-		};
-
-		// Load Source Sans Pro font data
-		// TODO: Grab this from the node_modules folder (either with `include_bytes!` or ideally at runtime) instead of checking the font file into the repo.
-		// TODO: And maybe use the WOFF2 version (if it's supported) for its smaller, compressed file size.
-		let font = Font::new("Source Sans Pro".to_string(), "Regular".to_string());
-		let mut text_context = GLOBAL_TEXT_CONTEXT.lock().expect("Failed to lock global text context");
-		let bounds = text_context.bounding_box(text, &font, &GLOBAL_FONT_CACHE, typesetting, false);
-		bounds.x
 	}
 
 	fn text(&mut self, text: &str, font_color: &str, background_color: Option<&str>, transform: DAffine2, padding: f64, pivot: [Pivot; 2]) {

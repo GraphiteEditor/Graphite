@@ -194,7 +194,6 @@ impl From<Fill> for FillChoice {
 	}
 }
 
-/// Enum describing the type of [Fill].
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, serde::Serialize, serde::Deserialize, DynAny, Hash, specta::Type, node_macro::ChoiceType)]
 #[widget(Radio)]
