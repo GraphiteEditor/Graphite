@@ -1,6 +1,6 @@
 use super::*;
 use crate::messages::portfolio::document::utility_types::misc::{GridSnapTarget, GridSnapping, GridType, SnapTarget};
-use glam::DVec2;
+use glam::{DVec2,UVec2};
 use graphene_std::renderer::Quad;
 
 struct Line {
@@ -18,7 +18,7 @@ impl GridSnapper {
 		let document = snap_data.document;
 		let mut lines = Vec::new();
 
-		let Some(spacing) = GridSnapping::compute_rectangle_spacing(spacing, &document.document_ptz) else {
+		let Some(spacing) = GridSnapping::compute_rectangle_spacing(spacing, &UVec2::ONE, &document.document_ptz) else {
 			return lines;
 		};
 		let origin = document.snapping_state.grid.origin;

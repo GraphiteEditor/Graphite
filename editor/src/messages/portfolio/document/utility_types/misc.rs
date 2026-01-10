@@ -1,5 +1,5 @@
 use crate::consts::COLOR_OVERLAY_GRAY_DARK;
-use glam::DVec2;
+use glam::{DVec2,UVec2, UVec3};
 use graphene_std::raster::Color;
 use std::fmt;
 
@@ -213,17 +213,12 @@ pub struct GridSnapping {
 	pub origin: DVec2,
 	pub grid_type: GridType,
 	pub rectangular_spacing: DVec2,
-	pub rectangular_major_interval_along_x: u32,
-	pub rectangular_major_interval_along_y: u32,
+	pub rectangular_major_interval: UVec2,
 	pub isometric_y_spacing: f64,
 	pub isometric_angle_a: f64,
 	pub isometric_angle_b: f64,
-	/// Interval between major y-axis lines
-	pub isometric_major_interval_along_x: u32,
-	/// Interval between major angle a lines
-	pub isometric_major_interval_along_b: u32,
-	/// Interval between major angle b lines
-	pub isometric_major_interval_along_a: u32,
+	/// X is the major interval along the X axis, Y is the major interval along the B axis, Z is the major interval along the A axis.
+	pub isometric_major_interval: UVec3,
 	pub grid_color: Color,
 	pub grid_color_minor: Color,
 	pub major_is_thick: bool,
@@ -236,14 +231,11 @@ impl Default for GridSnapping {
 			origin: DVec2::ZERO,
 			grid_type: Default::default(),
 			rectangular_spacing: DVec2::ONE,
-			rectangular_major_interval_along_x: 1,
-			rectangular_major_interval_along_y: 1,
+			rectangular_major_interval: UVec2::ONE,
 			isometric_y_spacing: 1.,
 			isometric_angle_a: 30.,
 			isometric_angle_b: 30.,
-			isometric_major_interval_along_x: 1,
-			isometric_major_interval_along_b: 1,
-			isometric_major_interval_along_a: 1,
+			isometric_major_interval: UVec3::ONE,
 			grid_color: Color::from_rgb_str(COLOR_OVERLAY_GRAY_DARK.strip_prefix('#').unwrap()).unwrap().with_alpha(0.4),
 			grid_color_minor: Color::from_rgb_str(COLOR_OVERLAY_GRAY_DARK.strip_prefix('#').unwrap()).unwrap().with_alpha(0.2),
 			major_is_thick: false,
@@ -254,18 +246,23 @@ impl Default for GridSnapping {
 
 impl GridSnapping {
 	// Double grid size until it takes up at least 10px.
-	pub fn compute_rectangle_spacing(mut size: DVec2, navigation: &PTZ) -> Option<DVec2> {
-		let mut iterations = 0;
-		size = size.abs();
-		while (size * navigation.zoom()).cmplt(DVec2::splat(10.)).any() {
-			if iterations > 100 {
-				return None;
+	pub fn compute_rectangle_spacing(mut size: DVec2, major_interval: &UVec2, navigation: &PTZ) -> Option<DVec2> {
+			let mut iterations = 0;
+			size = size.abs();
+			while (size.x * navigation.zoom() < 10.) || (size.y * navigation.zoom() < 10.) {
+				if iterations > 100 {
+					return None;
+				}
+				if size.x * navigation.zoom() < 10. {
+					size.x *= if major_interval.x != 1 {major_interval.x as f64} else {2.};
+				}
+				if size.y * navigation.zoom() < 10. {
+					size.y *= if major_interval.y != 1 {major_interval.y as f64} else {2.};
+				}
+				iterations += 1;
 			}
-			size *= 2.;
-			iterations += 1;
+			Some(size)
 		}
-		Some(size)
-	}
 
 	// Double grid size until it takes up at least 10px.
 	pub fn compute_isometric_multiplier(length: f64, divisor: f64, navigation: &PTZ) -> Option<f64> {
@@ -283,11 +280,11 @@ impl GridSnapping {
 	}
 
 	pub fn has_minor_lines(&self) -> bool {
-		match self.grid_type {
-			GridType::Rectangular { .. } => self.rectangular_major_interval_along_x > 1 || self.rectangular_major_interval_along_y > 1,
-			GridType::Isometric { .. } => self.isometric_major_interval_along_x > 1 || self.isometric_major_interval_along_a > 1 || self.isometric_major_interval_along_b > 1,
+			match self.grid_type {
+				GridType::Rectangular { .. } => self.rectangular_major_interval.x > 1 || self.rectangular_major_interval.y > 1,
+				GridType::Isometric { .. } => self.isometric_major_interval.x > 1 || self.isometric_major_interval.z > 1 || self.isometric_major_interval.y > 1,
+			}
 		}
-	}
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
