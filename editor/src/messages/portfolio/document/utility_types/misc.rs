@@ -1,4 +1,4 @@
-use crate::consts::COLOR_OVERLAY_GRAY;
+use crate::consts::COLOR_OVERLAY_GRAY_DARK;
 use glam::DVec2;
 use graphene_std::raster::Color;
 use std::fmt;
@@ -213,10 +213,20 @@ pub struct GridSnapping {
 	pub origin: DVec2,
 	pub grid_type: GridType,
 	pub rectangular_spacing: DVec2,
+	pub rectangular_major_interval_along_x: u32,
+	pub rectangular_major_interval_along_y: u32,
 	pub isometric_y_spacing: f64,
 	pub isometric_angle_a: f64,
 	pub isometric_angle_b: f64,
+	/// Interval between major y-axis lines
+	pub isometric_major_interval_along_x: u32,
+	/// Interval between major angle a lines
+	pub isometric_major_interval_along_b: u32,
+	/// Interval between major angle b lines
+	pub isometric_major_interval_along_a: u32,
 	pub grid_color: Color,
+	pub grid_color_minor: Color,
+	pub major_is_thick: bool,
 	pub dot_display: bool,
 }
 
@@ -226,10 +236,17 @@ impl Default for GridSnapping {
 			origin: DVec2::ZERO,
 			grid_type: Default::default(),
 			rectangular_spacing: DVec2::ONE,
+			rectangular_major_interval_along_x: 1,
+			rectangular_major_interval_along_y: 1,
 			isometric_y_spacing: 1.,
 			isometric_angle_a: 30.,
 			isometric_angle_b: 30.,
-			grid_color: Color::from_rgb_str(COLOR_OVERLAY_GRAY.strip_prefix('#').unwrap()).unwrap(),
+			isometric_major_interval_along_x: 1,
+			isometric_major_interval_along_b: 1,
+			isometric_major_interval_along_a: 1,
+			grid_color: Color::from_rgb_str(COLOR_OVERLAY_GRAY_DARK.strip_prefix('#').unwrap()).unwrap().with_alpha(0.4),
+			grid_color_minor: Color::from_rgb_str(COLOR_OVERLAY_GRAY_DARK.strip_prefix('#').unwrap()).unwrap().with_alpha(0.2),
+			major_is_thick: true,
 			dot_display: false,
 		}
 	}
@@ -263,6 +280,17 @@ impl GridSnapping {
 			iterations += 1;
 		}
 		Some(multiplier)
+	}
+	
+	pub fn has_minor_lines(&self) -> bool {
+		match self.grid_type {
+			GridType::Rectangular { .. } => self.rectangular_major_interval_along_x > 1 || self.rectangular_major_interval_along_y > 1,
+			GridType::Isometric { .. } => {
+				self.isometric_major_interval_along_x > 1
+					|| self.isometric_major_interval_along_a > 1
+					|| self.isometric_major_interval_along_b > 1
+			}
+		}
 	}
 }
 
