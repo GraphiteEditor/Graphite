@@ -302,6 +302,70 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
+	pub fn pixel_snapped_dashed_line(&mut self, start: DVec2, end: DVec2, color: Option<&str>, thickness: Option<f64>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
+		// Check if the line is horizontal or vertical
+		let is_horizontal = (start.y - end.y).abs() < f64::EPSILON;
+		let is_vertical = (start.x - end.x).abs() < f64::EPSILON;
+
+		if !is_horizontal && !is_vertical {
+			// Fall back to regular dashed line for diagonal lines
+			self.dashed_line(start, end, color, thickness, dash_width, dash_gap_width, dash_offset);
+			return;
+		}
+
+		self.start_dpi_aware_transform();
+
+		// Set the dash pattern
+		if let Some(dash_width) = dash_width {
+			let dash_gap_width = dash_gap_width.unwrap_or(1.);
+			let array = js_sys::Array::new();
+			array.push(&JsValue::from(dash_width));
+			array.push(&JsValue::from(dash_gap_width));
+
+			if let Some(dash_offset) = dash_offset {
+				if dash_offset != 0. {
+					self.render_context.set_line_dash_offset(dash_offset);
+				}
+			}
+
+			self.render_context
+				.set_line_dash(&JsValue::from(array))
+				.map_err(|error| log::warn!("Error drawing dashed line: {:?}", error))
+				.ok();
+		}
+
+		let (draw_start, draw_end) = if is_horizontal {
+			// For horizontal lines, snap to the pixel grid and offset by 0.5 for crisp lines
+			let y = start.y.round() - 0.5;
+			(DVec2::new(start.x, y), DVec2::new(end.x, y))
+		} else {
+			// For vertical lines, snap to the pixel grid and offset by 0.5 for crisp lines
+			let x = start.x.round() - 0.5;
+			(DVec2::new(x, start.y), DVec2::new(x, end.y))
+		};
+
+		self.render_context.begin_path();
+		self.render_context.move_to(draw_start.x, draw_start.y);
+		self.render_context.line_to(draw_end.x, draw_end.y);
+		self.render_context.set_line_width(thickness.unwrap_or(1.));
+		self.render_context.set_stroke_style_str(color.unwrap_or(COLOR_OVERLAY_BLUE));
+		self.render_context.stroke();
+		self.render_context.set_line_width(1.);
+
+		// Reset the dash pattern back to solid
+		if dash_width.is_some() {
+			self.render_context
+				.set_line_dash(&JsValue::from(js_sys::Array::new()))
+				.map_err(|error| log::warn!("Error drawing dashed line: {:?}", error))
+				.ok();
+		}
+		if dash_offset.is_some() && dash_offset != Some(0.) {
+			self.render_context.set_line_dash_offset(0.);
+		}
+
+		self.end_dpi_aware_transform();
+	}
+
 	#[allow(clippy::too_many_arguments)]
 	pub fn dashed_ellipse(
 		&mut self,

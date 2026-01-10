@@ -152,6 +152,7 @@ pub const COLOR_OVERLAY_GRAY_DARK: &str = "#555555";
 pub const COLOR_OVERLAY_GRAY_25: &str = "#cccccc40";
 pub const COLOR_OVERLAY_WHITE: &str = "#ffffff";
 pub const COLOR_OVERLAY_BLACK_75: &str = "#000000bf";
+pub const COLOR_OVERLAY_TRANSPARENT: &str = "#00000000";
 
 // DOCUMENT
 pub const FILE_EXTENSION: &str = "graphite";

@@ -257,6 +257,12 @@ impl OverlayContext {
 		self.internal().dashed_line(start, end, color, thickness, dash_width, dash_gap_width, dash_offset);
 	}
 
+	/// Creates a dashed line with pixel-perfect snapping for crisp rendering
+	#[allow(clippy::too_many_arguments)]
+	pub fn pixel_snapped_dashed_line(&mut self, start: DVec2, end: DVec2, color: Option<&str>, thickness: Option<f64>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
+		self.internal().pixel_snapped_dashed_line(start, end, color, thickness, dash_width, dash_gap_width, dash_offset);
+	}
+
 	pub fn hover_manipulator_handle(&mut self, position: DVec2, selected: bool) {
 		self.internal().hover_manipulator_handle(position, selected);
 	}
@@ -536,6 +542,79 @@ impl OverlayContextInternal {
 			stroke = stroke.with_dashes(dash_offset.unwrap_or(0.), [dash_width, dash_gap]);
 		}
 
+		self.scene.stroke(&stroke, transform, Self::parse_color(color.unwrap_or(COLOR_OVERLAY_BLUE)), None, &path);
+	}
+
+	/// Creates a dashed line with pixel-perfect snapping for crisp rendering
+	/// Each dash segment is individually pixel-aligned while maintaining accuracy to input FP values
+	#[allow(clippy::too_many_arguments)]
+	fn pixel_snapped_dashed_line(&mut self, start: DVec2, end: DVec2, color: Option<&str>, thickness: Option<f64>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
+		let transform = self.get_transform();
+		let thickness = thickness.unwrap_or(1.0).round().max(1.0);
+
+		// If no dashing is specified, fall back to regular pixel-snapped line
+		let dash_width = match dash_width {
+			Some(width) => width,
+			None => {
+				let start = start.round() - DVec2::splat(0.5);
+				let end = end.round() - DVec2::splat(0.5);
+
+				let mut path = BezPath::new();
+				path.move_to(kurbo::Point::new(start.x, start.y));
+				path.line_to(kurbo::Point::new(end.x, end.y));
+
+				let stroke = kurbo::Stroke::new(thickness);
+				self.scene.stroke(&stroke, transform, Self::parse_color(color.unwrap_or(COLOR_OVERLAY_BLUE)), None, &path);
+				return;
+			}
+		};
+
+		let dash_gap = dash_gap_width.unwrap_or(1.0);
+		let dash_offset = dash_offset.unwrap_or(0.0);
+
+		// Calculate the line vector and length
+		let line_vec = end - start;
+		let line_length = line_vec.length();
+
+		if line_length < 0.001 {
+			return; // Line too short to render
+		}
+
+		let line_unit = line_vec / line_length;
+
+		// Calculate dash pattern cycle length
+		let dash_cycle = dash_width + dash_gap;
+		if dash_cycle <= 0.0 {
+			return;
+		}
+
+		let mut path = BezPath::new();
+		let mut current_distance = -dash_offset.rem_euclid(dash_cycle);
+
+		while current_distance < line_length {
+			let dash_start_distance = current_distance.max(0.0);
+			let dash_end_distance = (current_distance + dash_width).min(line_length);
+
+			if dash_start_distance < dash_end_distance {
+				// Calculate actual positions along the line
+				let dash_start_pos = start + line_unit * dash_start_distance;
+				let dash_end_pos = start + line_unit * dash_end_distance;
+
+				// Snap each dash segment to pixel boundaries
+				let snapped_start = dash_start_pos.round() - DVec2::splat(0.5);
+				let snapped_end = dash_end_pos.round() - DVec2::splat(0.5);
+
+				// Only add the dash if it has meaningful length after snapping
+				if (snapped_end - snapped_start).length() >= 0.5 {
+					path.move_to(kurbo::Point::new(snapped_start.x, snapped_start.y));
+					path.line_to(kurbo::Point::new(snapped_end.x, snapped_end.y));
+				}
+			}
+
+			current_distance += dash_cycle;
+		}
+
+		let stroke = kurbo::Stroke::new(thickness);
 		self.scene.stroke(&stroke, transform, Self::parse_color(color.unwrap_or(COLOR_OVERLAY_BLUE)), None, &path);
 	}
 
