@@ -1,4 +1,4 @@
-﻿use super::shape_utility::ShapeToolModifierKey;
+use super::shape_utility::ShapeToolModifierKey;
 use super::*;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;

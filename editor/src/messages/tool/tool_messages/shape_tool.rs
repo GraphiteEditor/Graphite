@@ -873,7 +873,12 @@ impl Fsm for ShapeToolFsmState {
 
 						tool_options.fill.apply_fill(layer, defered_responses);
 					}
-					ShapeType::Arrow | ShapeType::Line => {
+					ShapeType::Arrow => {
+						tool_data.line_data.weight = tool_options.line_weight;
+						tool_data.line_data.editing_layer = Some(layer);
+						tool_options.fill.apply_fill(layer, defered_responses);
+					}
+					ShapeType::Line => {
 						tool_data.line_data.weight = tool_options.line_weight;
 						tool_data.line_data.editing_layer = Some(layer);
 					}
