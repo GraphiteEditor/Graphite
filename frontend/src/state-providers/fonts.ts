@@ -63,7 +63,7 @@ export function createFontsState(editor: Editor) {
 			fetch(fontListAPI)
 				.then((response) => response.json())
 				.then((fontListResponse) => {
-					const fontListData = fontListResponse.items as { family: string; variants: string[]; files: Record<string, string> }[];
+					con`frontend/src/state-providers/fonts.ts`st fontListData = fontListResponse.items as { family: string; variants: string[]; files: Record<string, string> }[];
 					const result = fontListData.map((font) => {
 						const { family } = font;
 						const variants = font.variants.map(formatFontStyleName);
@@ -115,7 +115,7 @@ export type FontProvider = {
 	desktop: ("windows" | "macos" | "linux")[] | boolean;
 
 	/**
-	 * Index all available typefaces.
+	 * Index all available typefaces. This will trigger network requests or permissions dialogs if needed.
 	 */
 	index(): Promise<void>;
 
@@ -130,9 +130,11 @@ export type FontProvider = {
 	loadFont(typeface: string, styleName: string): Promise<Uint8Array>;
 
 	/**
-	 * Get weight ranges for each font, for a given typeface.
+	 * Search typefaces by a tag.
+	 * TODO: Define standard tags to use across providers.
+	 * TODO2: (long-term) Implement vector search.
 	 */
-	getWeights(typeface: string, styleName?: string): Promise<Record<string, [number, number]> | undefined>;
+	searchByTag(tag: string): Promise<Typeface[]>;
 };
 
 export type Typeface = {
@@ -143,7 +145,12 @@ export type Typeface = {
 	isColorful: boolean;
 	hasMultipleWeights: boolean;
 	hasItalicVariants: boolean;
-	category: "serif" | "sans-serif" | "display" | "handwriting" | "monospace" | "other";
+	subsets: string[];
+	/**
+	 * Tags should include the following, and also any others, such as "feeling" tags or more specific categories.
+	 * "serif" | "sans-serif" | "monospace" | "handwriting" | "dingbat"
+	 */
+	tags: string[];
 };
 
 export type FontStyle = {
