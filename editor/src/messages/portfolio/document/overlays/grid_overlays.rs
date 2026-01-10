@@ -1,3 +1,4 @@
+use crate::consts::COLOR_OVERLAY_TRANSPARENT;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::misc::{GridSnapping, GridType};
@@ -68,37 +69,88 @@ fn grid_overlay_rectangular_dot(document: &DocumentMessageHandler, overlay_conte
 	let origin = document.snapping_state.grid.origin;
 	let grid_color = "#".to_string() + &document.snapping_state.grid.grid_color.to_rgba_hex_srgb();
 	let grid_color_minor = "#".to_string() + &document.snapping_state.grid.grid_color_minor.to_rgba_hex_srgb();
-	let Some(spacing) = GridSnapping::compute_rectangle_spacing(spacing, &document.snapping_state.grid.rectangular_major_interval, &document.document_ptz) else {
+	let Some(scaled_spacing) = GridSnapping::compute_rectangle_spacing(spacing, &document.snapping_state.grid.rectangular_major_interval, &document.document_ptz) else {
 		return;
 	};
 	let document_to_viewport = document
 		.navigation_handler
 		.calculate_offset_transform(overlay_context.viewport.center_in_viewport_space().into(), &document.document_ptz);
+	let scale_is_adjusted = scaled_spacing != spacing;
 
 	let bounds = document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, overlay_context.viewport.size().into()]);
 
-	let min = bounds.0.iter().map(|corner| corner.y).min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or_default();
-	let max = bounds.0.iter().map(|corner| corner.y).max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or_default();
+	// Draw horizontal dotted lines
+	let min_y = bounds.0.iter().map(|corner| corner.y).min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or_default();
+	let max_y = bounds.0.iter().map(|corner| corner.y).max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or_default();
 
-	let mut primary_start = bounds.0.iter().map(|corner| corner.x).min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or_default();
-	let mut primary_end = bounds.0.iter().map(|corner| corner.x).max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or_default();
+	let primary_start_x = bounds.0.iter().map(|corner| corner.x).min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or_default();
+	let primary_end_x = bounds.0.iter().map(|corner| corner.x).max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or_default();
 
-	primary_start = (primary_start / spacing.x).floor() * spacing.x + origin.x % spacing.x;
-	primary_end = (primary_end / spacing.x).floor() * spacing.x + origin.x % spacing.x;
+	let first_index_y = ((min_y - origin.y) / scaled_spacing.y).ceil() as i32;
 
-	// Round to avoid floating point errors
-	let total_dots = ((primary_end - primary_start) / spacing.x).round();
+	for line_index in 0..=((max_y - min_y) / scaled_spacing.y).ceil() as i32 {
+		let y_is_major = is_major_line(line_index + first_index_y, document.snapping_state.grid.rectangular_major_interval.y);
+		let is_major = y_is_major || scale_is_adjusted;
+		let is_thick = is_major && document.snapping_state.grid.major_is_thick;
 
-	for line_index in 0..=((max - min) / spacing.y).ceil() as i32 {
-		let secondary_pos = (((min - origin.y) / spacing.y).ceil() + line_index as f64) * spacing.y + origin.y;
-		let start = DVec2::new(primary_start, secondary_pos);
-		let end = DVec2::new(primary_end, secondary_pos);
+		let secondary_pos = (((min_y - origin.y) / scaled_spacing.y).ceil() + line_index as f64) * scaled_spacing.y + origin.y;
 
-		let x_per_dot = (end.x - start.x) / total_dots;
-		for dot_index in 0..=total_dots as usize {
-			let exact_x = x_per_dot * dot_index as f64;
-			overlay_context.pixel(document_to_viewport.transform_point2(DVec2::new(start.x + exact_x, start.y)).round(), Some(&grid_color))
-		}
+		// Align horizontal line endpoints to the grid in the x direction
+		let aligned_start_x = ((primary_start_x - origin.x) / scaled_spacing.x).floor() * scaled_spacing.x + origin.x;
+		let aligned_end_x = ((primary_end_x - origin.x) / scaled_spacing.x).ceil() * scaled_spacing.x + origin.x;
+
+		let start = DVec2::new(aligned_start_x, secondary_pos);
+		let end = DVec2::new(aligned_end_x, secondary_pos);
+
+		let dot_size = 3.;
+		let gap_size = scaled_spacing.x * document_to_viewport.matrix2.x_axis.length() - dot_size;
+
+		overlay_context.pixel_snapped_dashed_line(
+			document_to_viewport.transform_point2(start),
+			document_to_viewport.transform_point2(end),
+			Some(if is_major { &grid_color } else { &grid_color_minor }),
+			Some(if is_thick { 3.0 } else { 1.0 }),
+			Some(dot_size),
+			Some(gap_size),
+			Some(2.0),
+		);
+	}
+
+	// Draw vertical dotted lines
+	let min_x = bounds.0.iter().map(|corner| corner.x).min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or_default();
+	let max_x = bounds.0.iter().map(|corner| corner.x).max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or_default();
+
+	let primary_start_y = bounds.0.iter().map(|corner| corner.y).min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or_default();
+	let primary_end_y = bounds.0.iter().map(|corner| corner.y).max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap_or_default();
+
+	let first_index_x = ((min_x - origin.x) / scaled_spacing.x).ceil() as i32;
+
+	for line_index in 0..=((max_x - min_x) / scaled_spacing.x).ceil() as i32 {
+		let x_is_major = is_major_line(line_index + first_index_x, document.snapping_state.grid.rectangular_major_interval.x);
+		let is_major = x_is_major || scale_is_adjusted;
+		let is_thick = is_major && document.snapping_state.grid.major_is_thick;
+
+		let secondary_pos = (((min_x - origin.x) / scaled_spacing.x).ceil() + line_index as f64) * scaled_spacing.x + origin.x;
+
+		// Align vertical line endpoints to the grid in the y direction
+		let aligned_start_y = ((primary_start_y - origin.y) / scaled_spacing.y).floor() * scaled_spacing.y + origin.y;
+		let aligned_end_y = ((primary_end_y - origin.y) / scaled_spacing.y).ceil() * scaled_spacing.y + origin.y;
+
+		let start = DVec2::new(secondary_pos, aligned_start_y);
+		let end = DVec2::new(secondary_pos, aligned_end_y);
+
+		let dot_size = 3.;
+		let gap_size = scaled_spacing.y * document_to_viewport.matrix2.y_axis.length() - dot_size;
+
+		overlay_context.pixel_snapped_dashed_line(
+			document_to_viewport.transform_point2(start),
+			document_to_viewport.transform_point2(end),
+			Some(if is_major { &grid_color } else { &grid_color_minor }),
+			Some(if is_thick { 3.0 } else { 1.0 }),
+			Some(dot_size),
+			Some(gap_size),
+			Some(2.0),
+		);
 	}
 }
 
