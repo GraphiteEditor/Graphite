@@ -155,7 +155,7 @@ pub enum PathToolMessage {
 	Duplicate,
 	TogglePointEditing,
 	ToggleSegmentEditing,
-	AlignSelectedAnchors {
+	AlignSelectedManipulatorPoints {
 		axis: AlignAxis,
 		aggregate: AlignAggregate,
 	},
@@ -212,7 +212,7 @@ impl PathTool {
 				};
 				IconButton::new(icon, 24)
 					.tooltip_label(label)
-					.on_update(move |_| PathToolMessage::AlignSelectedAnchors { axis, aggregate }.into())
+					.on_update(move |_| PathToolMessage::AlignSelectedManipulatorPoints { axis, aggregate }.into())
 					.disabled(disabled)
 					.widget_instance()
 			})
@@ -3053,7 +3053,7 @@ impl Fsm for PathToolFsmState {
 
 				PathToolFsmState::Ready
 			}
-			(_, PathToolMessage::AlignSelectedAnchors { axis, aggregate }) => {
+			(_, PathToolMessage::AlignSelectedManipulatorPoints { axis, aggregate }) => {
 				responses.add(DocumentMessage::AddTransaction);
 				shape_editor.align_selected_points(document, responses, axis, aggregate);
 				responses.add(DocumentMessage::EndTransaction);
