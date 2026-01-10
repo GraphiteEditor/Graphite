@@ -252,10 +252,9 @@ impl NodeGraphExecutor {
 			FileType::Png => "png",
 			FileType::Jpg => "jpg",
 		};
-		let base_name = if let Some(artboard_name) = artboard_name {
-			if artboard_count > 1 { format!("{name} - {artboard_name}") } else { name }
-		} else {
-			name
+		let base_name = match (artboard_name, artboard_count) {
+			(Some(artboard_name), count) if count > 1 => format!("{name} - {artboard_name}"),
+			_ => name,
 		};
 		let name = format!("{base_name}.{file_extension}");
 
