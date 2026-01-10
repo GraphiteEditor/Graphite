@@ -331,30 +331,31 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 	widgets.push(LayoutGroup::Row {
 		widgets: vec![TextLabel::new("Grid").bold(true).widget_instance()],
 	});
-	let mut color_widgets = vec![TextLabel::new("Color").table_align(true).widget_holder(), Separator::new(SeparatorType::Unrelated).widget_holder()];
+	let mut color_widgets = vec![TextLabel::new("Color").table_align(true).widget_instance(), Separator::new(SeparatorStyle::Unrelated).widget_instance() ];
 	color_widgets.push(
 		ColorInput::new(FillChoice::Solid(grid.grid_color.to_gamma_srgb()))
-			.tooltip("Grid display color")
+			.tooltip_label("Grid display color")
 			.allow_none(false)
 			.on_update(update_color(grid, |grid| Some(&mut grid.grid_color)))
-			.widget_holder(),
+			.widget_instance()
+			,
 	);
 	if grid.has_minor_lines() {
-		color_widgets.push(Separator::new(SeparatorType::Related).widget_holder());
+		color_widgets.push(Separator::new(SeparatorStyle::Related).widget_instance());
 		color_widgets.push(
 			ColorInput::new(FillChoice::Solid(grid.grid_color_minor.to_gamma_srgb()))
-				.tooltip("Minor grid line display color")
+				.tooltip_label("Minor grid line display color")
 				.allow_none(false)
 				.on_update(update_color(grid, |grid| Some(&mut grid.grid_color_minor)))
-				.widget_holder(),
+				.widget_instance(),
 		);
 	}
 	widgets.push(LayoutGroup::Row { widgets: color_widgets });
 
 	widgets.push(LayoutGroup::Row {
 		widgets: vec![
-			TextLabel::new("Display").table_align(true).widget_holder(),
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			TextLabel::new("Display").table_align(true).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			RadioInput::new(vec![
 				RadioEntryData::new("small").icon("Dot").on_update(update_val(grid, |grid, _| {
 					grid.major_is_thick = false;
@@ -364,8 +365,8 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 				})),
 			])
 			.selected_index(Some(if grid.major_is_thick { 1 } else { 0 }))
-			.widget_holder(),
-			Separator::new(SeparatorType::Related).widget_holder(),
+			.widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
 			RadioInput::new(vec![
 				RadioEntryData::new("lines").label("Lines").icon("Grid").on_update(update_val(grid, |grid, _| {
 					grid.dot_display = false;
@@ -376,13 +377,13 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 			])
 			// .min_width(200)
 			.selected_index(Some(if grid.dot_display { 1 } else { 0 }))
-			.widget_holder(),
+			.widget_instance(),
 		],
 	});
 	widgets.push(LayoutGroup::Row {
 		widgets: vec![
-			TextLabel::new("Type").table_align(true).widget_holder(),
-			Separator::new(SeparatorType::Unrelated).widget_holder(),
+			TextLabel::new("Type").table_align(true).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			RadioInput::new(vec![
 				RadioEntryData::new("rectangular").label("Rectangular").on_update(update_val(grid, |grid, _| {
 					if let GridType::Isometric { y_axis_spacing, angle_a, angle_b } = grid.grid_type {
@@ -436,29 +437,29 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 		GridType::Rectangular { spacing, .. } => {
 			widgets.push(LayoutGroup::Row {
 				widgets: vec![
-					TextLabel::new("Spacing").table_align(true).widget_holder(),
-					Separator::new(SeparatorType::Unrelated).widget_holder(),
+					TextLabel::new("Spacing").table_align(true).widget_instance(),
+					Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 					NumberInput::new(Some(spacing.x))
 						.label("X")
 						.unit(" px")
 						.min(0.)
 						.min_width(98)
 						.on_update(update_origin(grid, |grid| grid.grid_type.rectangular_spacing().map(|spacing| &mut spacing.x)))
-						.widget_holder(),
-					Separator::new(SeparatorType::Related).widget_holder(),
+						.widget_instance(),
+					Separator::new(SeparatorStyle::Related).widget_instance(),
 					NumberInput::new(Some(spacing.y))
 						.label("Y")
 						.unit(" px")
 						.min(0.)
 						.min_width(98)
 						.on_update(update_origin(grid, |grid| grid.grid_type.rectangular_spacing().map(|spacing| &mut spacing.y)))
-						.widget_holder(),
+						.widget_instance(),
 				],
 			});
 			widgets.push(LayoutGroup::Row {
 				widgets: vec![
-					TextLabel::new("Mark Every").table_align(true).widget_holder(),
-					Separator::new(SeparatorType::Unrelated).widget_holder(),
+					TextLabel::new("Mark Every").table_align(true).widget_instance(),
+					Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 					NumberInput::new(Some(grid.rectangular_major_interval.x as f64))
 						.unit(" col")
 						.int()
@@ -469,8 +470,8 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 								grid.rectangular_major_interval.x = val as u32;
 							}
 						}))
-						.widget_holder(),
-					Separator::new(SeparatorType::Related).widget_holder(),
+						.widget_instance(),
+					Separator::new(SeparatorStyle::Related).widget_instance(),
 					NumberInput::new(Some(grid.rectangular_major_interval.y as f64))
 						.unit(" row")
 						.int()
@@ -481,7 +482,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 								grid.rectangular_major_interval.y = val as u32;
 							}
 						}))
-						.widget_holder(),
+						.widget_instance(),
 				],
 			});
 		}
@@ -519,8 +520,8 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 			});
 			widgets.push(LayoutGroup::Row {
 				widgets: vec![
-					TextLabel::new("Mark Every").table_align(true).widget_holder(),
-					Separator::new(SeparatorType::Unrelated).widget_holder(),
+					TextLabel::new("Mark Every").table_align(true).widget_instance(),
+					Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 					NumberInput::new(Some(grid.isometric_major_interval.x as f64))
 						.label("X")
 						.int()
@@ -531,8 +532,8 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 								grid.isometric_major_interval.x = val as u32;
 							}
 						}))
-						.widget_holder(),
-					Separator::new(SeparatorType::Related).widget_holder(),
+						.widget_instance(),
+					Separator::new(SeparatorStyle::Related).widget_instance(),
 					NumberInput::new(Some(grid.isometric_major_interval.y as f64))
 						.label("B")
 						.int()
@@ -543,8 +544,8 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 								grid.isometric_major_interval.y = val as u32;
 							}
 						}))
-						.widget_holder(),
-					Separator::new(SeparatorType::Related).widget_holder(),
+						.widget_instance(),
+					Separator::new(SeparatorStyle::Related).widget_instance(),
 					NumberInput::new(Some(grid.isometric_major_interval.z as f64))
 						.label("A")
 						.int()
@@ -555,7 +556,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 								grid.isometric_major_interval.z = val as u32;
 							}
 						}))
-						.widget_holder(),
+						.widget_instance(),
 				],
 			});
 		}
