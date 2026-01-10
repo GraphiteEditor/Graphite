@@ -25,7 +25,7 @@ impl ToolMetadata for EyedropperTool {
 	fn icon_name(&self) -> String {
 		"GeneralEyedropperTool".into()
 	}
-	fn tooltip(&self) -> String {
+	fn tooltip_label(&self) -> String {
 		"Eyedropper Tool".into()
 	}
 	fn tool_type(&self) -> crate::messages::tool::utility_types::ToolType {
@@ -35,7 +35,7 @@ impl ToolMetadata for EyedropperTool {
 
 impl LayoutHolder for EyedropperTool {
 	fn layout(&self) -> Layout {
-		Layout::WidgetLayout(WidgetLayout::default())
+		Layout::default()
 	}
 }
 
@@ -100,7 +100,7 @@ impl Fsm for EyedropperToolFsmState {
 			// Sampling -> Sampling
 			(EyedropperToolFsmState::SamplingPrimary | EyedropperToolFsmState::SamplingSecondary, EyedropperToolMessage::PointerMove) => {
 				let mouse_position = viewport.logical(input.mouse.position);
-				if viewport.is_in_bounds(mouse_position) {
+				if viewport.is_in_bounds(mouse_position + viewport.offset()) {
 					update_cursor_preview(responses, input, global_tool_data, None);
 				} else {
 					disable_cursor_preview(responses);
@@ -138,7 +138,7 @@ impl Fsm for EyedropperToolFsmState {
 			}
 		};
 
-		responses.add(FrontendMessage::UpdateInputHints { hint_data });
+		hint_data.send_layout(responses);
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {

@@ -1081,7 +1081,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			log::error!("The old Spline node's input at index 1 is not a TaggedValue::VecDVec2");
 			return None;
 		};
-		let vector = Vector::from_subpath(Subpath::from_anchors_linear(points.to_vec(), false));
+		let vector = Vector::from_subpath(Subpath::from_anchors(points.to_vec(), false));
 
 		// Retrieve the output connectors linked to the "Spline" node's output connector
 		let Some(spline_outputs) = document.network_interface.outward_wires(network_path)?.get(&OutputConnector::node(*node_id, 0)).cloned() else {

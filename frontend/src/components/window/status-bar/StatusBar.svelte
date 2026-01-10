@@ -2,45 +2,34 @@
 	import { getContext, onMount } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import { type HintData, type HintInfo, type LayoutKeysGroup, UpdateInputHints } from "@graphite/messages";
-	import { operatingSystem } from "@graphite/utility-functions/platform";
+	import type { Layout } from "@graphite/messages";
+	import { patchLayout, UpdateStatusBarHintsLayout, UpdateStatusBarInfoLayout } from "@graphite/messages";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
-	import UserInputLabel from "@graphite/components/widgets/labels/UserInputLabel.svelte";
+	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
 
 	const editor = getContext<Editor>("editor");
 
-	let hintData: HintData = [];
-
-	function inputKeysForPlatform(hint: HintInfo): LayoutKeysGroup[] {
-		return operatingSystem() === "Mac" && hint.keyGroupsMac ? hint.keyGroupsMac : hint.keyGroups;
-	}
+	let statusBarHintsLayout: Layout = [];
+	let statusBarInfoLayout: Layout = [];
 
 	onMount(() => {
-		editor.subscriptions.subscribeJsMessage(UpdateInputHints, (data) => {
-			hintData = data.hintData;
+		editor.subscriptions.subscribeJsMessage(UpdateStatusBarHintsLayout, (data) => {
+			patchLayout(statusBarHintsLayout, data);
+			statusBarHintsLayout = statusBarHintsLayout;
+		});
+		editor.subscriptions.subscribeJsMessage(UpdateStatusBarInfoLayout, (data) => {
+			patchLayout(statusBarInfoLayout, data);
+			statusBarInfoLayout = statusBarInfoLayout;
 		});
 	});
 </script>
 
 <LayoutRow class="status-bar">
-	<LayoutRow class="hint-groups">
-		{#each hintData as hintGroup, index (hintGroup)}
-			{#if index !== 0}
-				<Separator type="Section" />
-			{/if}
-			{#each hintGroup as hint (hint)}
-				{#if hint.plus}
-					<LayoutRow class="plus">+</LayoutRow>
-				{/if}
-				{#if hint.slash}
-					<LayoutRow class="slash">/</LayoutRow>
-				{/if}
-				<UserInputLabel mouseMotion={hint.mouse} keysWithLabelsGroups={inputKeysForPlatform(hint)}>{hint.label}</UserInputLabel>
-			{/each}
-		{/each}
-	</LayoutRow>
+	<WidgetLayout class="hints" layout={statusBarHintsLayout} layoutTarget="StatusBarHints" />
+	<Separator />
+	<WidgetLayout class="info" layout={statusBarInfoLayout} layoutTarget="StatusBarInfo" />
 </LayoutRow>
 
 <style lang="scss" global>
@@ -48,30 +37,64 @@
 		height: 24px;
 		width: 100%;
 		flex: 0 0 auto;
+		justify-content: space-between;
 
-		.hint-groups {
-			flex: 0 0 auto;
-			max-width: 100%;
-			margin: 0 -4px;
+		.hints {
 			overflow: hidden;
+			--row-height: 24px;
+			margin: 0 4px;
+			max-width: calc(100% - 2 * 4px);
+			flex: 1 1 auto;
 
-			.separator.section {
-				// Width of section separator (12px) minus the margin of the surrounding user input labels (8px)
-				margin: 0 calc(12px - 8px);
-			}
-
-			.plus,
-			.slash {
+			> * {
 				flex: 0 0 auto;
-				align-items: center;
-				font-weight: 700;
 			}
 
-			.user-input-label {
-				margin: 0 8px;
+			.text-label,
+			.shortcut-label {
+				align-items: center;
+				flex-shrink: 0;
 
-				& + .user-input-label {
-					margin-left: 0;
+				+ .text-label,
+				+ .shortcut-label {
+					margin-left: 4px;
+				}
+			}
+
+			.text-label:not(.bold) + .shortcut-label {
+				margin-left: 12px;
+			}
+
+			.text-label.bold {
+				padding: 0 4px;
+			}
+		}
+
+		.hints + .separator {
+			position: relative;
+
+			&::before {
+				content: "";
+				position: absolute;
+				top: 0;
+				bottom: 0;
+				left: -40px;
+				width: 40px;
+				background: linear-gradient(to right, rgba(var(--color-2-mildblack-rgb), 0) 0%, rgba(var(--color-2-mildblack-rgb), 1) 100%);
+			}
+		}
+
+		.info {
+			margin: 0 4px;
+			--row-height: 24px;
+			justify-content: flex-end;
+
+			.text-label {
+				align-items: center;
+				flex-shrink: 0;
+
+				+ .text-label {
+					margin-left: 4px;
 				}
 			}
 		}

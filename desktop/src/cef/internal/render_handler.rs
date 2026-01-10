@@ -31,16 +31,7 @@ impl<H: CefEventHandler> ImplRenderHandler for RenderHandlerImpl<H> {
 		}
 	}
 
-	fn on_paint(
-		&self,
-		_browser: Option<&mut Browser>,
-		_type_: PaintElementType,
-		_dirty_rect_count: usize,
-		_dirty_rects: Option<&Rect>,
-		buffer: *const u8,
-		width: std::ffi::c_int,
-		height: std::ffi::c_int,
-	) {
+	fn on_paint(&self, _browser: Option<&mut Browser>, _type_: PaintElementType, _dirty_rects: Option<&[Rect]>, buffer: *const u8, width: std::ffi::c_int, height: std::ffi::c_int) {
 		let buffer_size = (width * height * 4) as usize;
 		let buffer_slice = unsafe { std::slice::from_raw_parts(buffer, buffer_size) };
 		let frame_buffer = FrameBufferRef::new(buffer_slice, width as usize, height as usize).expect("Failed to create frame buffer");
@@ -49,7 +40,7 @@ impl<H: CefEventHandler> ImplRenderHandler for RenderHandlerImpl<H> {
 	}
 
 	#[cfg(feature = "accelerated_paint")]
-	fn on_accelerated_paint(&self, _browser: Option<&mut Browser>, type_: PaintElementType, _dirty_rect_count: usize, _dirty_rects: Option<&Rect>, info: Option<&cef::AcceleratedPaintInfo>) {
+	fn on_accelerated_paint(&self, _browser: Option<&mut Browser>, type_: PaintElementType, _dirty_rects: Option<&[Rect]>, info: Option<&cef::AcceleratedPaintInfo>) {
 		use cef::osr_texture_import::SharedTextureHandle;
 
 		if type_ != PaintElementType::default() {

@@ -12,6 +12,8 @@ pub enum Message {
 	#[child]
 	Broadcast(BroadcastMessage),
 	#[child]
+	Clipboard(ClipboardMessage),
+	#[child]
 	Debug(DebugMessage),
 	#[child]
 	Defer(DeferMessage),
@@ -27,6 +29,8 @@ pub enum Message {
 	KeyMapping(KeyMappingMessage),
 	#[child]
 	Layout(LayoutMessage),
+	#[child]
+	MenuBar(MenuBarMessage),
 	#[child]
 	Portfolio(PortfolioMessage),
 	#[child]

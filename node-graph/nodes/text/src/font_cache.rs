@@ -7,16 +7,55 @@ use std::sync::Arc;
 use core_types::specta;
 
 /// A font type (storing font family and font style and an optional preview URL)
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Hash, PartialEq, Eq, DynAny, core_types::specta::Type)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Eq, DynAny, core_types::specta::Type)]
 pub struct Font {
 	#[serde(rename = "fontFamily")]
 	pub font_family: String,
 	#[serde(rename = "fontStyle", deserialize_with = "migrate_font_style")]
 	pub font_style: String,
+	#[serde(skip)]
+	pub font_style_to_restore: Option<String>,
 }
+
+impl std::hash::Hash for Font {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		self.font_family.hash(state);
+		self.font_style.hash(state);
+		// Don't consider `font_style_to_restore` in the HashMaps
+	}
+}
+
+impl PartialEq for Font {
+	fn eq(&self, other: &Self) -> bool {
+		// Don't consider `font_style_to_restore` in the HashMaps
+		self.font_family == other.font_family && self.font_style == other.font_style
+	}
+}
+
 impl Font {
 	pub fn new(font_family: String, font_style: String) -> Self {
-		Self { font_family, font_style }
+		Self {
+			font_family,
+			font_style,
+			font_style_to_restore: None,
+		}
+	}
+
+	pub fn named_weight(weight: u32) -> &'static str {
+		// From https://developer.mozilla.org/en-US/docs/Web/CSS/font-weight#common_weight_name_mapping
+		match weight {
+			100 => "Thin",
+			200 => "Extra Light",
+			300 => "Light",
+			400 => "Regular",
+			500 => "Medium",
+			600 => "Semi Bold",
+			700 => "Bold",
+			800 => "Extra Bold",
+			900 => "Black",
+			950 => "Extra Black",
+			_ => "Regular",
+		}
 	}
 }
 impl Default for Font {
@@ -24,21 +63,33 @@ impl Default for Font {
 		Self::new(core_types::consts::DEFAULT_FONT_FAMILY.into(), core_types::consts::DEFAULT_FONT_STYLE.into())
 	}
 }
+
 /// A cache of all loaded font data and preview urls along with the default font (send from `init_app` in `editor_api.rs`)
-#[derive(Clone, serde::Serialize, serde::Deserialize, Default, PartialEq, DynAny)]
+#[derive(Clone, serde::Serialize, serde::Deserialize, Default, DynAny)]
 pub struct FontCache {
 	/// Actual font file data used for rendering a font
 	font_file_data: HashMap<Font, Vec<u8>>,
-	/// Web font preview URLs used for showing fonts when live editing
-	preview_urls: HashMap<Font, String>,
 }
 
 impl std::fmt::Debug for FontCache {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.debug_struct("FontCache")
-			.field("font_file_data", &self.font_file_data.keys().collect::<Vec<_>>())
-			.field("preview_urls", &self.preview_urls)
-			.finish()
+		f.debug_struct("FontCache").field("font_file_data", &self.font_file_data.keys().collect::<Vec<_>>()).finish()
+	}
+}
+
+impl std::hash::Hash for FontCache {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		self.font_file_data.len().hash(state);
+		self.font_file_data.keys().for_each(|font| font.hash(state));
+	}
+}
+
+impl PartialEq for FontCache {
+	fn eq(&self, other: &Self) -> bool {
+		if self.font_file_data.len() != other.font_file_data.len() {
+			return false;
+		}
+		self.font_file_data.keys().all(|font| other.font_file_data.contains_key(font))
 	}
 }
 
@@ -70,26 +121,8 @@ impl FontCache {
 	}
 
 	/// Insert a new font into the cache
-	pub fn insert(&mut self, font: Font, perview_url: String, data: Vec<u8>) {
+	pub fn insert(&mut self, font: Font, data: Vec<u8>) {
 		self.font_file_data.insert(font.clone(), data);
-		self.preview_urls.insert(font, perview_url);
-	}
-
-	/// Gets the preview URL for showing in text field when live editing
-	pub fn get_preview_url(&self, font: &Font) -> Option<&String> {
-		self.preview_urls.get(font)
-	}
-}
-
-impl std::hash::Hash for FontCache {
-	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		self.preview_urls.len().hash(state);
-		self.preview_urls.iter().for_each(|(font, url)| {
-			font.hash(state);
-			url.hash(state)
-		});
-		self.font_file_data.len().hash(state);
-		self.font_file_data.keys().for_each(|font| font.hash(state));
 	}
 }
 

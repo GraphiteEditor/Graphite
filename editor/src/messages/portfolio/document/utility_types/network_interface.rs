@@ -9,6 +9,7 @@ use crate::consts::{EXPORTS_TO_RIGHT_EDGE_PIXEL_GAP, EXPORTS_TO_TOP_EDGE_PIXEL_G
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DocumentNodeDefinition, resolve_document_node_type};
 use crate::messages::portfolio::document::node_graph::utility_types::{Direction, FrontendClickTargets, FrontendGraphDataType, FrontendGraphInput, FrontendGraphOutput};
+use crate::messages::portfolio::document::overlays::utility_functions::text_width;
 use crate::messages::portfolio::document::utility_types::network_interface::resolved_types::ResolvedDocumentNodeTypes;
 use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle, WirePath, WirePathUpdate, build_vector_wire};
 use crate::messages::tool::common_functionality::graph_modification_utils;
@@ -631,15 +632,12 @@ impl NodeNetworkInterface {
 			.upstream_output_connector(input_connector, network_path)
 			.map(|output_connector| match output_connector {
 				OutputConnector::Node { node_id, output_index } => {
-					let mut name = self.display_name(&node_id, network_path);
-					if cfg!(debug_assertions) {
-						name.push_str(&format!(" (id: {node_id})"));
-					}
-					format!("{name} output {output_index}")
+					let name = self.display_name(&node_id, network_path);
+					format!("Connected to output #{output_index} of \"{name}\", ID: {node_id}.")
 				}
-				OutputConnector::Import(import_index) => format!("Import index {import_index}"),
+				OutputConnector::Import(import_index) => format!("Connected to import #{import_index}."),
 			})
-			.unwrap_or("nothing".to_string());
+			.unwrap_or("Connected to nothing.".to_string());
 
 		let (name, description) = match input_connector {
 			InputConnector::Node { node_id, input_index } => self.displayed_input_name_and_description(node_id, *input_index, network_path),
@@ -659,7 +657,7 @@ impl NodeNetworkInterface {
 				} else if let Some(export_type_name) = input_type.compiled_nested_type().map(|nested| nested.to_string()) {
 					export_type_name
 				} else {
-					format!("Export index {}", export_index)
+					format!("Export #{}", export_index)
 				};
 
 				(export_name, String::new())
@@ -709,7 +707,7 @@ impl NodeNetworkInterface {
 				} else if let Some(import_type_name) = output_type.compiled_nested_type().map(|nested| nested.to_string()) {
 					import_type_name
 				} else {
-					format!("Import index {}", import_index)
+					format!("Import #{}", import_index)
 				};
 
 				(import_name, description)
@@ -724,19 +722,16 @@ impl NodeNetworkInterface {
 			.unwrap_or_default()
 			.iter()
 			.map(|input| match input {
-				InputConnector::Node { node_id, input_index } => {
-					let mut name = self.display_name(node_id, network_path);
-					if cfg!(debug_assertions) {
-						name.push_str(&format!(" (id: {node_id})"));
-					}
-					format!("{name} input {input_index}")
+				&InputConnector::Node { node_id, input_index } => {
+					let name = self.display_name(&node_id, network_path);
+					format!("Connected to input #{input_index} of \"{name}\", ID: {node_id}.")
 				}
-				InputConnector::Export(export_index) => format!("Export index {export_index}"),
+				InputConnector::Export(export_index) => format!("Connected to export #{export_index}."),
 			})
 			.collect::<Vec<_>>();
 
 		if connected_to.is_empty() {
-			connected_to.push("nothing".to_string());
+			connected_to.push("Connected to nothing.".to_string());
 		}
 
 		Some(FrontendGraphOutput {
@@ -1014,7 +1009,6 @@ impl NodeNetworkInterface {
 	pub fn description(&self, node_id: &NodeId, network_path: &[NodeId]) -> String {
 		self.get_node_definition(node_id, network_path)
 			.map(|node_definition| node_definition.description.to_string())
-			.filter(|description| description != "TODO")
 			.unwrap_or_default()
 	}
 
@@ -1059,7 +1053,11 @@ impl NodeNetworkInterface {
 			log::error!("Could not get downstream_connectors in primary_output_connected_to_layer");
 			return false;
 		};
-		let downstream_nodes = downstream_connectors.iter().filter_map(|connector| connector.node_id()).collect::<Vec<_>>();
+
+		let downstream_nodes = downstream_connectors
+			.iter()
+			.filter_map(|connector| connector.node_id().filter(|_| connector.input_index() == 0))
+			.collect::<Vec<_>>();
 		downstream_nodes.iter().any(|node_id| self.is_layer(node_id, network_path))
 	}
 
@@ -1319,57 +1317,6 @@ impl NodeNetworkInterface {
 	pub fn is_node_upstream_of_another_by_horizontal_flow(&self, node: NodeId, network_path: &[NodeId], potentially_upstream_node: NodeId) -> bool {
 		self.upstream_flow_back_from_nodes(vec![node], network_path, FlowType::HorizontalFlow)
 			.any(|id| id == potentially_upstream_node)
-	}
-
-	#[cfg(not(target_family = "wasm"))]
-	fn text_width(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<f64> {
-		warn!("Failed to find width of {node_id:#?} in network_path {network_path:?} due to non-wasm arch");
-		Some(0.)
-	}
-
-	#[cfg(target_family = "wasm")]
-	fn text_width(&self, node_id: &NodeId, network_path: &[NodeId]) -> Option<f64> {
-		let document = web_sys::window().unwrap().document().unwrap();
-		let div = match document.create_element("div") {
-			Ok(div) => div,
-			Err(err) => {
-				log::error!("Error creating div: {:?}", err);
-				return None;
-			}
-		};
-
-		// Set the div's style to make it offscreen and single line
-		match div.set_attribute("style", "position: absolute; top: -9999px; left: -9999px; white-space: nowrap;") {
-			Err(err) => {
-				log::error!("Error setting attribute: {:?}", err);
-				return None;
-			}
-			_ => {}
-		};
-
-		let name = self.display_name(node_id, network_path);
-
-		div.set_text_content(Some(&name));
-
-		// Append the div to the document body
-		match document.body().unwrap().append_child(&div) {
-			Err(err) => {
-				log::error!("Error setting adding child to document {:?}", err);
-				return None;
-			}
-			_ => {}
-		};
-
-		// Measure the width
-		let text_width = div.get_bounding_client_rect().width();
-
-		// Remove the div from the document
-		match document.body().unwrap().remove_child(&div) {
-			Err(_) => log::error!("Could not remove child when rendering text"),
-			_ => {}
-		};
-
-		Some(text_width)
 	}
 
 	pub fn from_old_network(old_network: OldNodeNetwork) -> Self {
@@ -1897,12 +1844,12 @@ impl NodeNetworkInterface {
 
 				if *import_index == 0 {
 					let remove_import_center = reorder_import_center + DVec2::new(-4., 0.);
-					let remove_import = ClickTarget::new_with_subpath(Subpath::new_rect(remove_import_center - DVec2::new(8., 8.), remove_import_center + DVec2::new(8., 8.)), 0.);
+					let remove_import = ClickTarget::new_with_subpath(Subpath::new_rectangle(remove_import_center - DVec2::new(8., 8.), remove_import_center + DVec2::new(8., 8.)), 0.);
 					remove_imports_exports.insert_custom_output_port(*import_index, remove_import);
 				} else {
 					let remove_import_center = reorder_import_center + DVec2::new(-12., 0.);
-					let reorder_import = ClickTarget::new_with_subpath(Subpath::new_rect(reorder_import_center - DVec2::new(3., 4.), reorder_import_center + DVec2::new(3., 4.)), 0.);
-					let remove_import = ClickTarget::new_with_subpath(Subpath::new_rect(remove_import_center - DVec2::new(8., 8.), remove_import_center + DVec2::new(8., 8.)), 0.);
+					let reorder_import = ClickTarget::new_with_subpath(Subpath::new_rectangle(reorder_import_center - DVec2::new(3., 4.), reorder_import_center + DVec2::new(3., 4.)), 0.);
+					let remove_import = ClickTarget::new_with_subpath(Subpath::new_rectangle(remove_import_center - DVec2::new(8., 8.), remove_import_center + DVec2::new(8., 8.)), 0.);
 					reorder_imports_exports.insert_custom_output_port(*import_index, reorder_import);
 					remove_imports_exports.insert_custom_output_port(*import_index, remove_import);
 				}
@@ -1917,12 +1864,12 @@ impl NodeNetworkInterface {
 
 				if *export_index == 0 {
 					let remove_export_center = reorder_export_center + DVec2::new(4., 0.);
-					let remove_export = ClickTarget::new_with_subpath(Subpath::new_rect(remove_export_center - DVec2::new(8., 8.), remove_export_center + DVec2::new(8., 8.)), 0.);
+					let remove_export = ClickTarget::new_with_subpath(Subpath::new_rectangle(remove_export_center - DVec2::new(8., 8.), remove_export_center + DVec2::new(8., 8.)), 0.);
 					remove_imports_exports.insert_custom_input_port(*export_index, remove_export);
 				} else {
 					let remove_export_center = reorder_export_center + DVec2::new(12., 0.);
-					let reorder_export = ClickTarget::new_with_subpath(Subpath::new_rect(reorder_export_center - DVec2::new(3., 4.), reorder_export_center + DVec2::new(3., 4.)), 0.);
-					let remove_export = ClickTarget::new_with_subpath(Subpath::new_rect(remove_export_center - DVec2::new(8., 8.), remove_export_center + DVec2::new(8., 8.)), 0.);
+					let reorder_export = ClickTarget::new_with_subpath(Subpath::new_rectangle(reorder_export_center - DVec2::new(3., 4.), reorder_export_center + DVec2::new(3., 4.)), 0.);
+					let remove_export = ClickTarget::new_with_subpath(Subpath::new_rectangle(remove_export_center - DVec2::new(8., 8.), remove_export_center + DVec2::new(8., 8.)), 0.);
 					reorder_imports_exports.insert_custom_input_port(*export_index, reorder_export);
 					remove_imports_exports.insert_custom_input_port(*export_index, remove_export);
 				}
@@ -2128,19 +2075,19 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn load_layer_width(&mut self, node_id: &NodeId, network_path: &[NodeId]) {
+		const GAP_WIDTH: f64 = 8.;
+		const FONT_SIZE: f64 = 14.;
 		let left_thumbnail_padding = GRID_SIZE as f64 / 2.;
 		let thumbnail_width = 3. * GRID_SIZE as f64;
-		let gap_width = 8.;
-		let text_width = self.text_width(node_id, network_path).unwrap_or_else(|| {
-			log::error!("Could not get text width for node {node_id}");
-			0.
-		});
+		let layer_text = self.display_name(node_id, network_path);
+
+		let text_width = text_width(&layer_text, FONT_SIZE);
 
 		let grip_padding = 4.;
 		let grip_width = 8.;
 		let icon_overhang_width = GRID_SIZE as f64 / 2.;
 
-		let layer_width_pixels = left_thumbnail_padding + thumbnail_width + gap_width + text_width + grip_padding + grip_width + icon_overhang_width;
+		let layer_width_pixels = left_thumbnail_padding + thumbnail_width + GAP_WIDTH + text_width + grip_padding + grip_width + icon_overhang_width;
 		let layer_width = ((layer_width_pixels / 24.).ceil() as u32).max(8);
 
 		let Some(node_metadata) = self.node_metadata_mut(node_id, network_path) else {
@@ -2535,7 +2482,7 @@ impl NodeNetworkInterface {
 			let node_click_target_bottom_right = node_click_target_top_left + DVec2::new(width as f64, height as f64);
 
 			let radius = 3.;
-			let subpath = Subpath::new_rounded_rect(node_click_target_top_left, node_click_target_bottom_right, [radius; 4]);
+			let subpath = Subpath::new_rounded_rectangle(node_click_target_top_left, node_click_target_bottom_right, [radius; 4]);
 			let node_click_target = ClickTarget::new_with_subpath(subpath, 0.);
 
 			DocumentNodeClickTargets {
@@ -2560,12 +2507,12 @@ impl NodeNetworkInterface {
 
 			// Update visibility button click target
 			let visibility_offset = node_top_left + DVec2::new(width as f64, 24.);
-			let subpath = Subpath::new_rounded_rect(DVec2::new(-12., -12.) + visibility_offset, DVec2::new(12., 12.) + visibility_offset, [3.; 4]);
+			let subpath = Subpath::new_rounded_rectangle(DVec2::new(-12., -12.) + visibility_offset, DVec2::new(12., 12.) + visibility_offset, [3.; 4]);
 			let visibility_click_target = ClickTarget::new_with_subpath(subpath, 0.);
 
 			// Update grip button click target, which is positioned to the left of the left most icon
 			let grip_offset_right_edge = node_top_left + DVec2::new(width as f64 - (GRID_SIZE as f64) / 2., 24.);
-			let subpath = Subpath::new_rounded_rect(DVec2::new(-8., -12.) + grip_offset_right_edge, DVec2::new(0., 12.) + grip_offset_right_edge, [0.; 4]);
+			let subpath = Subpath::new_rounded_rectangle(DVec2::new(-8., -12.) + grip_offset_right_edge, DVec2::new(0., 12.) + grip_offset_right_edge, [0.; 4]);
 			let grip_click_target = ClickTarget::new_with_subpath(subpath, 0.);
 
 			// Create layer click target, which is contains the layer and the chain background
@@ -2574,7 +2521,7 @@ impl NodeNetworkInterface {
 			let node_bottom_right = node_top_left + DVec2::new(width as f64, height as f64);
 			let chain_top_left = node_top_left - DVec2::new((chain_width_grid_spaces * crate::consts::GRID_SIZE) as f64, 0.);
 			let radius = 10.;
-			let subpath = Subpath::new_rounded_rect(chain_top_left, node_bottom_right, [radius; 4]);
+			let subpath = Subpath::new_rounded_rectangle(chain_top_left, node_bottom_right, [radius; 4]);
 			let node_click_target = ClickTarget::new_with_subpath(subpath, 0.);
 
 			DocumentNodeClickTargets {
@@ -2757,15 +2704,23 @@ impl NodeNetworkInterface {
 			log::error!("Could not get nested network_metadata in collect_frontend_click_targets");
 			return FrontendClickTargets::default();
 		};
-		network_metadata.persistent_metadata.node_metadata.keys().copied().collect::<Vec<_>>().into_iter().for_each(|node_id| {
-			if let (Some(import_export_click_targets), Some(node_click_targets)) = (self.import_export_ports(network_path).cloned(), self.node_click_targets(&node_id, network_path)) {
+		let nodes = network_metadata.persistent_metadata.node_metadata.keys().copied().collect::<Vec<_>>();
+		if let Some(import_export_click_targets) = self.import_export_ports(network_path).cloned() {
+			for port in import_export_click_targets.click_targets() {
+				if let ClickTargetType::Subpath(subpath) = port.target_type() {
+					connector_click_targets.push(subpath.to_bezpath().to_svg());
+				}
+			}
+		}
+		nodes.into_iter().for_each(|node_id| {
+			if let Some(node_click_targets) = self.node_click_targets(&node_id, network_path) {
 				let mut node_path = String::new();
 
 				if let ClickTargetType::Subpath(subpath) = node_click_targets.node_click_target.target_type() {
 					node_path.push_str(subpath.to_bezpath().to_svg().as_str())
 				}
 				all_node_click_targets.push((node_id, node_path));
-				for port in node_click_targets.port_click_targets.click_targets().chain(import_export_click_targets.click_targets()) {
+				for port in node_click_targets.port_click_targets.click_targets() {
 					if let ClickTargetType::Subpath(subpath) = port.target_type() {
 						connector_click_targets.push(subpath.to_bezpath().to_svg());
 					}
@@ -2792,7 +2747,7 @@ impl NodeNetworkInterface {
 		});
 
 		let bounds = self.all_nodes_bounding_box(network_path).cloned().unwrap_or([DVec2::ZERO, DVec2::ZERO]);
-		let rect = Subpath::<PointId>::new_rect(bounds[0], bounds[1]);
+		let rect = Subpath::<PointId>::new_rectangle(bounds[0], bounds[1]);
 		let all_nodes_bounding_box = rect.to_bezpath().to_svg();
 
 		let mut modify_import_export = Vec::new();
@@ -2932,19 +2887,18 @@ impl NodeNetworkInterface {
 			.collect::<Vec<_>>()
 			.iter()
 			.filter_map(|node_id| {
-				self.node_click_targets(node_id, network_path)
-					.and_then(|transient_node_metadata| {
-						transient_node_metadata
-							.port_click_targets
-							.clicked_input_port_from_point(point)
-							.map(|port| InputConnector::node(*node_id, port))
-					})
-					.or_else(|| {
-						self.import_export_ports(network_path)
-							.and_then(|import_export_ports| import_export_ports.clicked_input_port_from_point(point).map(InputConnector::Export))
-					})
+				self.node_click_targets(node_id, network_path).and_then(|transient_node_metadata| {
+					transient_node_metadata
+						.port_click_targets
+						.clicked_input_port_from_point(point)
+						.map(|port| InputConnector::node(*node_id, port))
+				})
 			})
 			.next()
+			.or_else(|| {
+				self.import_export_ports(network_path)
+					.and_then(|import_export_ports| import_export_ports.clicked_input_port_from_point(point).map(InputConnector::Export))
+			})
 	}
 
 	pub fn output_connector_from_click(&mut self, click: DVec2, network_path: &[NodeId]) -> Option<OutputConnector> {
@@ -2962,19 +2916,18 @@ impl NodeNetworkInterface {
 		nodes
 			.iter()
 			.filter_map(|node_id| {
-				self.node_click_targets(node_id, network_path)
-					.and_then(|transient_node_metadata| {
-						transient_node_metadata
-							.port_click_targets
-							.clicked_output_port_from_point(point)
-							.map(|output_index| OutputConnector::node(*node_id, output_index))
-					})
-					.or_else(|| {
-						self.import_export_ports(network_path)
-							.and_then(|import_export_ports| import_export_ports.clicked_output_port_from_point(point).map(OutputConnector::Import))
-					})
+				self.node_click_targets(node_id, network_path).and_then(|transient_node_metadata| {
+					transient_node_metadata
+						.port_click_targets
+						.clicked_output_port_from_point(point)
+						.map(|output_index| OutputConnector::node(*node_id, output_index))
+				})
 			})
 			.next()
+			.or_else(|| {
+				self.import_export_ports(network_path)
+					.and_then(|import_export_ports| import_export_ports.clicked_output_port_from_point(point).map(OutputConnector::Import))
+			})
 	}
 
 	pub fn input_position(&mut self, input_connector: &InputConnector, network_path: &[NodeId]) -> Option<DVec2> {
@@ -3055,7 +3008,7 @@ impl NodeNetworkInterface {
 			return None;
 		};
 
-		let bounding_box_subpath = Subpath::<PointId>::new_rect(bounds[0], bounds[1]);
+		let bounding_box_subpath = Subpath::<PointId>::new_rectangle(bounds[0], bounds[1]);
 		bounding_box_subpath.bounding_box_with_transform(network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport)
 	}
 
@@ -4213,42 +4166,59 @@ impl NodeNetworkInterface {
 				continue;
 			};
 
-			for upstream_id in self.upstream_flow_back_from_nodes(vec![*node_id], network_path, FlowType::LayerChildrenUpstreamFlow) {
-				// This does a downstream traversal starting from the current node, and ending at either a node in the `delete_nodes` set or the output.
-				// If the traversal find as child node of a node in the `delete_nodes` set, then it is a sole dependent. If the output node is eventually reached, then it is not a sole dependent.
-				let mut stack = vec![OutputConnector::node(upstream_id, 0)];
-				let mut can_delete = true;
-				while let Some(current_node) = stack.pop() {
-					let current_node_id = current_node.node_id().expect("The current node in the delete stack cannot be the export");
-					let Some(downstream_nodes) = outward_wires.get(&current_node) else { continue };
-					for downstream_node in downstream_nodes {
-						if let InputConnector::Node { node_id: downstream_id, .. } = downstream_node {
-							if !delete_nodes.contains(downstream_id) {
-								can_delete = false;
-								break;
-							}
-							// Continue traversing over the downstream sibling, if the current node is a sibling to a node that will be deleted and it is a layer
-							else {
-								for deleted_node_id in &nodes_to_delete {
-									let Some(downstream_node) = self.document_node(deleted_node_id, network_path) else { continue };
-									let Some(input) = downstream_node.inputs.first() else { continue };
-
-									if let NodeInput::Node { node_id, .. } = input
-										&& *node_id == current_node_id
-									{
-										stack.push(OutputConnector::node(*deleted_node_id, 0));
-									}
-								}
-							}
-						}
-						// If the traversal reaches the export, then the current node is not a sole dependent
-						else {
-							can_delete = false;
-						}
+			// Perform an upstream traversal to try delete children for secondary inputs
+			let mut upstream_nodes = (1..self.number_of_inputs(node_id, network_path))
+				.filter_map(|input_index| self.upstream_output_connector(&InputConnector::node(*node_id, input_index), network_path).and_then(|oc| oc.node_id()))
+				.collect::<Vec<_>>();
+			while let Some(upstream_node) = upstream_nodes.pop() {
+				// Add the upstream nodes to the traversal
+				for input_connector in (0..self.number_of_inputs(&upstream_node, network_path)).map(|input_index| InputConnector::node(upstream_node, input_index)) {
+					if let Some(upstream_node) = self.upstream_output_connector(&input_connector, network_path).and_then(|oc| oc.node_id()) {
+						upstream_nodes.push(upstream_node);
 					}
 				}
+				// For each potential child perform a complete downstream traversal, ending at either a node in the `delete_nodes` set (excluding layer bottom inputs), the output, or a dead end.
+				// If the output node is eventually reached, then it is not a sole dependent and will not be deleted
+				let mut stack = vec![upstream_node];
+				let mut can_delete = true;
+				while let Some(current_node) = stack.pop() {
+					let mut is_dead_end = true;
+					for output_connector in (0..self.number_of_outputs(&current_node, network_path)).map(|output_index| OutputConnector::node(current_node, output_index)) {
+						let Some(downstream_nodes) = outward_wires.get(&output_connector) else { continue };
+						if !downstream_nodes.is_empty() {
+							is_dead_end = false
+						}
+						for downstream_node in downstream_nodes {
+							if let InputConnector::Node { node_id: downstream_id, input_index } = downstream_node {
+								// If the downstream node is not in the delete nodes set, then continue iterating
+								// If the downstream node is the bottom input of a layer then continue iterating
+								if !delete_nodes.contains(downstream_id) || (*input_index == 0 && self.is_layer(downstream_id, network_path)) {
+									stack.push(*downstream_id);
+								}
+								// If the traversal reaches the primary input of the node to delete then do not delete it
+								if node_id == downstream_id && *input_index == 0 {
+									can_delete = false;
+									stack = Vec::new();
+									break;
+								}
+							}
+							// If the traversal reaches the export, then the current node is not a sole dependent and cannot be deleted
+							else {
+								can_delete = false;
+								stack = Vec::new();
+								break;
+							}
+						}
+					}
+					// If there are no outward wires, then we have reached a dead end, and the node cannot be deleted
+					if is_dead_end {
+						can_delete = false;
+						stack = Vec::new();
+					}
+				}
+
 				if can_delete {
-					delete_nodes.insert(upstream_id);
+					delete_nodes.insert(upstream_node);
 				}
 			}
 		}
@@ -6170,7 +6140,7 @@ pub struct InputPersistentMetadata {
 	pub widget_override: Option<String>,
 	/// An empty input name means to use the type as the name.
 	pub input_name: String,
-	/// Displayed as the tooltip.
+	/// Displayed as the tooltip description.
 	pub input_description: String,
 }
 
@@ -6233,8 +6203,8 @@ impl InputPersistentMetadata {
 		self
 	}
 
-	pub fn with_description(mut self, tooltip: &str) -> Self {
-		self.input_description = tooltip.to_string();
+	pub fn with_description(mut self, description: &str) -> Self {
+		self.input_description = description.to_string();
 		self
 	}
 }
@@ -6314,9 +6284,9 @@ impl From<(&str, &str)> for InputMetadata {
 }
 
 impl InputMetadata {
-	pub fn with_name_description_override(input_name: &str, tooltip: &str, widget_override: WidgetOverride) -> Self {
+	pub fn with_name_description_override(input_name: &str, description: &str, widget_override: WidgetOverride) -> Self {
 		InputMetadata {
-			persistent_metadata: InputPersistentMetadata::default().with_name(input_name).with_description(tooltip).with_override(widget_override),
+			persistent_metadata: InputPersistentMetadata::default().with_name(input_name).with_description(description).with_override(widget_override),
 			..Default::default()
 		}
 	}
@@ -6499,7 +6469,7 @@ mod network_interface_tests {
 		let serialized_nodes = frontend_messages
 			.into_iter()
 			.find_map(|msg| match msg {
-				FrontendMessage::TriggerTextCopy { copy_text } => Some(copy_text),
+				FrontendMessage::TriggerClipboardWrite { content } => Some(content),
 				_ => None,
 			})
 			.expect("copy message should be dispatched")

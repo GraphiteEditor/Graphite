@@ -34,6 +34,7 @@ impl<H: CefEventHandler> ImplApp for BrowserProcessAppImpl<H> {
 	fn on_before_command_line_processing(&self, _process_type: Option<&cef::CefString>, command_line: Option<&mut cef::CommandLine>) {
 		if let Some(cmd) = command_line {
 			cmd.append_switch_with_value(Some(&CefString::from("renderer-process-limit")), Some(&CefString::from("1")));
+			cmd.append_switch_with_value(Some(&CefString::from("password-store")), Some(&CefString::from("basic")));
 			cmd.append_switch_with_value(Some(&CefString::from("disk-cache-size")), Some(&CefString::from("0")));
 			cmd.append_switch(Some(&CefString::from("incognito")));
 			cmd.append_switch(Some(&CefString::from("no-first-run")));

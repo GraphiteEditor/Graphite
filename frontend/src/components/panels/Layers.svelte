@@ -3,16 +3,16 @@
 
 	import type { Editor } from "@graphite/editor";
 	import {
-		defaultWidgetLayout,
-		patchWidgetLayout,
+		patchLayout,
 		UpdateDocumentLayerDetails,
 		UpdateDocumentLayerStructureJs,
 		UpdateLayersPanelControlBarLeftLayout,
 		UpdateLayersPanelControlBarRightLayout,
 		UpdateLayersPanelBottomBarLayout,
 	} from "@graphite/messages";
-	import type { DataBuffer, LayerPanelEntry } from "@graphite/messages";
+	import type { DataBuffer, LayerPanelEntry, Layout } from "@graphite/messages";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
+	import type { TooltipState } from "@graphite/state-providers/tooltip";
 	import { operatingSystem } from "@graphite/utility-functions/platform";
 	import { extractPixelData } from "@graphite/utility-functions/rasterization";
 
@@ -49,6 +49,7 @@
 
 	const editor = getContext<Editor>("editor");
 	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
+	const tooltip = getContext<TooltipState>("tooltip");
 
 	let list: LayoutCol | undefined;
 
@@ -69,33 +70,33 @@
 	let layerToClipAltKeyPressed = false;
 
 	// Layouts
-	let layersPanelControlBarLeftLayout = defaultWidgetLayout();
-	let layersPanelControlBarRightLayout = defaultWidgetLayout();
-	let layersPanelBottomBarLayout = defaultWidgetLayout();
+	let layersPanelControlBarLeftLayout: Layout = [];
+	let layersPanelControlBarRightLayout: Layout = [];
+	let layersPanelBottomBarLayout: Layout = [];
 
 	onMount(() => {
-		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarLeftLayout, (updateLayersPanelControlBarLeftLayout) => {
-			patchWidgetLayout(layersPanelControlBarLeftLayout, updateLayersPanelControlBarLeftLayout);
+		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarLeftLayout, (data) => {
+			patchLayout(layersPanelControlBarLeftLayout, data);
 			layersPanelControlBarLeftLayout = layersPanelControlBarLeftLayout;
 		});
 
-		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarRightLayout, (updateLayersPanelControlBarRightLayout) => {
-			patchWidgetLayout(layersPanelControlBarRightLayout, updateLayersPanelControlBarRightLayout);
+		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarRightLayout, (data) => {
+			patchLayout(layersPanelControlBarRightLayout, data);
 			layersPanelControlBarRightLayout = layersPanelControlBarRightLayout;
 		});
 
-		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelBottomBarLayout, (updateLayersPanelBottomBarLayout) => {
-			patchWidgetLayout(layersPanelBottomBarLayout, updateLayersPanelBottomBarLayout);
+		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelBottomBarLayout, (data) => {
+			patchLayout(layersPanelBottomBarLayout, data);
 			layersPanelBottomBarLayout = layersPanelBottomBarLayout;
 		});
 
-		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerStructureJs, (updateDocumentLayerStructure) => {
-			const structure = newUpdateDocumentLayerStructure(updateDocumentLayerStructure.dataBuffer);
+		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerStructureJs, (data) => {
+			const structure = newUpdateDocumentLayerStructure(data.dataBuffer);
 			rebuildLayerHierarchy(structure);
 		});
 
-		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerDetails, (updateDocumentLayerDetails) => {
-			const targetLayer = updateDocumentLayerDetails.data;
+		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerDetails, (data) => {
+			const targetLayer = data.data;
 			const targetId = targetLayer.id;
 
 			updateLayerInTree(targetId, targetLayer);
@@ -579,11 +580,11 @@
 
 <LayoutCol class="layers" on:dragleave={() => (dragInPanel = false)}>
 	<LayoutRow class="control-bar" scrollableX={true}>
-		<WidgetLayout layout={layersPanelControlBarLeftLayout} />
-		{#if layersPanelControlBarLeftLayout?.layout?.length > 0 && layersPanelControlBarRightLayout?.layout?.length > 0}
+		<WidgetLayout layout={layersPanelControlBarLeftLayout} layoutTarget="LayersPanelControlLeftBar" />
+		{#if layersPanelControlBarLeftLayout?.length > 0 && layersPanelControlBarRightLayout?.length > 0}
 			<Separator />
 		{/if}
-		<WidgetLayout layout={layersPanelControlBarRightLayout} />
+		<WidgetLayout layout={layersPanelControlBarRightLayout} layoutTarget="LayersPanelControlRightBar" />
 	</LayoutRow>
 	<LayoutRow class="list-area" classes={{ "drag-ongoing": Boolean(internalDragState?.active && draggingData) }} scrollableY={true}>
 		<LayoutCol
@@ -609,7 +610,6 @@
 					styles={{ "--layer-indent-levels": `${listing.entry.depth - 1}` }}
 					data-layer
 					data-index={index}
-					tooltip={listing.entry.tooltip}
 					on:pointerdown={(e) => layerPointerDown(e, listing)}
 					on:click={(e) => selectLayerWithModifiers(e, listing)}
 				>
@@ -618,9 +618,12 @@
 							class="expand-arrow"
 							class:expanded={listing.entry.expanded}
 							disabled={!listing.entry.childrenPresent}
-							title={listing.entry.expanded
-								? "Collapse (Click) / Collapse All (Alt Click)"
-								: `Expand (Click) / Expand All (Alt Click)${listing.entry.ancestorOfSelected ? "\n(A selected layer is contained within)" : ""}`}
+							data-tooltip-label={listing.entry.expanded ? "Collapse (All)" : "Expand (All)"}
+							data-tooltip-description={(listing.entry.expanded
+								? "Hide the layers nested within. (To affect all open descendants, perform the shortcut shown.)"
+								: "Show the layers nested within. (To affect all closed descendants, perform the shortcut shown.)") +
+								(listing.entry.ancestorOfSelected && !listing.entry.expanded ? "\n\nA selected layer is currently contained within.\n" : "")}
+							data-tooltip-shortcut={$tooltip.altClickShortcut?.shortcut ? JSON.stringify($tooltip.altClickShortcut.shortcut) : undefined}
 							on:click={(e) => handleExpandArrowClickWithModifiers(e, listing.entry.id)}
 							tabindex="0"
 						></button>
@@ -628,22 +631,28 @@
 						<div class="expand-arrow-none"></div>
 					{/if}
 					{#if listing.entry.clipped}
-						<IconLabel icon="Clipped" class="clipped-arrow" tooltip="Clipping mask is active (Alt-click border to release)" />
+						<IconLabel
+							icon="Clipped"
+							class="clipped-arrow"
+							tooltipLabel="Layer Clipped"
+							tooltipDescription="Clipping mask is active. To release it, target the bottom border of the layer and perform the shortcut shown."
+							tooltipShortcut={$tooltip.altClickShortcut}
+						/>
 					{/if}
 					<div class="thumbnail">
 						{#if $nodeGraph.thumbnails.has(listing.entry.id)}
 							{@html $nodeGraph.thumbnails.get(listing.entry.id)}
 						{/if}
 					</div>
-					{#if listing.entry.name === "Artboard"}
-						<IconLabel icon="Artboard" class="layer-type-icon" />
+					{#if listing.entry.reference === "Artboard"}
+						<IconLabel icon="Artboard" class="layer-type-icon" tooltipLabel="Artboard" />
 					{/if}
 					<LayoutRow class="layer-name" on:dblclick={() => onEditLayerName(listing)}>
 						<input
 							data-text-input
 							type="text"
 							value={listing.entry.alias}
-							placeholder={listing.entry.name}
+							placeholder={listing.entry.reference}
 							disabled={!listing.editingName}
 							on:blur={() => onEditLayerNameDeselect(listing)}
 							on:keydown={(e) => e.key === "Escape" && onEditLayerNameDeselect(listing)}
@@ -659,7 +668,8 @@
 							size={24}
 							icon={listing.entry.unlocked ? "PadlockUnlocked" : "PadlockLocked"}
 							hoverIcon={listing.entry.unlocked ? "PadlockLocked" : "PadlockUnlocked"}
-							tooltip={(listing.entry.unlocked ? "Lock" : "Unlock") + (!listing.entry.parentsUnlocked ? "\n(A parent of this layer is locked and that status is being inherited)" : "")}
+							tooltipLabel={listing.entry.unlocked ? "Lock" : "Unlock"}
+							tooltipDescription={!listing.entry.parentsUnlocked ? "A parent of this layer is locked and that status is being inherited." : ""}
 						/>
 					{/if}
 					<IconButton
@@ -669,7 +679,8 @@
 						size={24}
 						icon={listing.entry.visible ? "EyeVisible" : "EyeHidden"}
 						hoverIcon={listing.entry.visible ? "EyeHide" : "EyeShow"}
-						tooltip={(listing.entry.visible ? "Hide" : "Show") + (!listing.entry.parentsVisible ? "\n(A parent of this layer is hidden and that status is being inherited)" : "")}
+						tooltipLabel={listing.entry.visible ? "Hide" : "Show"}
+						tooltipDescription={!listing.entry.parentsVisible ? "A parent of this layer is hidden and that status is being inherited." : ""}
 					/>
 				</LayoutRow>
 			{/each}
@@ -679,7 +690,7 @@
 		{/if}
 	</LayoutRow>
 	<LayoutRow class="bottom-bar" scrollableX={true}>
-		<WidgetLayout layout={layersPanelBottomBarLayout} />
+		<WidgetLayout layout={layersPanelBottomBarLayout} layoutTarget="LayersPanelBottomBar" />
 	</LayoutRow>
 </LayoutCol>
 
@@ -831,7 +842,6 @@
 				}
 
 				.layer-type-icon {
-					flex: 0 0 auto;
 					margin-left: 8px;
 					margin-right: -4px;
 				}

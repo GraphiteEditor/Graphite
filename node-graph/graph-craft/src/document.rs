@@ -84,6 +84,8 @@ pub struct OriginalLocation {
 	pub dependants: Vec<Vec<NodeId>>,
 	/// A list of flags indicating whether the input is exposed in the UI
 	pub inputs_exposed: Vec<bool>,
+	/// For automatically inserted Convert and Into nodes, if there is an error, display it on the node it is connect to.
+	pub auto_convert_index: Option<usize>,
 }
 
 impl Default for DocumentNode {
@@ -664,12 +666,9 @@ impl NodeNetwork {
 			if node.original_location.path.is_some() {
 				log::warn!("Attempting to overwrite node path");
 			} else {
-				node.original_location = OriginalLocation {
-					path: Some(new_path),
-					inputs_exposed: node.inputs.iter().map(|input| input.is_exposed()).collect(),
-					dependants: (0..node.implementation.output_count()).map(|_| Vec::new()).collect(),
-					..Default::default()
-				};
+				node.original_location.path = Some(new_path);
+				node.original_location.inputs_exposed = node.inputs.iter().map(|input| input.is_exposed()).collect();
+				node.original_location.dependants = (0..node.implementation.output_count()).map(|_| Vec::new()).collect();
 			}
 		}
 	}

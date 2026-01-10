@@ -8,7 +8,7 @@
 	<title>Graphite | {{ title | safe }}</title>
 	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, minimum-scale=1" />
 	{% if current_path -%}
-	<meta property="og:url" content="https://graphite.rs{{ current_path | safe }}" />
+	<meta property="og:url" content="https://graphite.art{{ current_path | safe }}" />
 	{%- endif %}
 	{%- set meta_description = page.extra.meta_description | default(value = meta_description | default(value = false)) -%}
 	{% if meta_description %}
@@ -16,8 +16,8 @@
 	<meta property="og:description" content="{{ meta_description | safe }}" />
 	<meta name="twitter:description" content="{{ meta_description | safe }}" />
 	{%- endif %}
-	<meta property="og:image" content="{{ meta_image | default(value = 'https://static.graphite.rs/logos/splash.png' | safe) | safe }}" />
-	<meta name="twitter:image" content="{{ meta_image | default(value = 'https://static.graphite.rs/logos/splash.png' | safe) | safe }}" />
+	<meta property="og:image" content="{{ meta_image | default(value = 'https://static.graphite.art/logos/splash.png' | safe) | safe }}" />
+	<meta name="twitter:image" content="{{ meta_image | default(value = 'https://static.graphite.art/logos/splash.png' | safe) | safe }}" />
 	<meta property="og:title" content="{{ meta_title | default(value = title | safe) | safe }}" />
 	<meta name="twitter:title" content="{{ meta_title | default(value = title | safe) | safe }}" />
 	<meta property="og:type" content="{% if meta_article_type %}article{% else %}website{% endif %}" />
@@ -103,7 +103,7 @@
 				<div class="row">
 					<div class="left">
 						<a href="/">
-							<img src="https://static.graphite.rs/logos/graphite-logo-solid.svg" alt="Graphite Logo" />
+							<img src="https://static.graphite.art/logos/graphite-logo-solid.svg" alt="Graphite Logo" />
 						</a>
 					</div>
 					<div class="right">
@@ -113,7 +113,7 @@
 						<a href="/blog">Blog</a>
 						<a href="/volunteer">Volunteer</a>
 						<a href="/donate" class="heart">Donate</a>
-						<a href="https://editor.graphite.rs" class="button arrow">Launch</a>
+						<a href="https://editor.graphite.art" class="button arrow">Launch</a>
 					</div>
 				</div>
 			</nav>

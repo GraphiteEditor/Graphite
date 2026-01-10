@@ -1,4 +1,4 @@
-use cef::sys::{cef_event_flags_t, cef_key_event_type_t, cef_mouse_button_type_t};
+use cef::sys::{cef_key_event_type_t, cef_mouse_button_type_t};
 use cef::{Browser, ImplBrowser, ImplBrowserHost, KeyEvent, MouseEvent};
 use winit::event::{ButtonSource, ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 
@@ -6,7 +6,7 @@ mod keymap;
 use keymap::{ToCharRepresentation, ToNativeKeycode, ToVKBits};
 
 mod state;
-pub(crate) use state::InputState;
+pub(crate) use state::{CefModifiers, InputState};
 
 use super::consts::{PINCH_ZOOM_SPEED, SCROLL_LINE_HEIGHT, SCROLL_LINE_WIDTH, SCROLL_SPEED_X, SCROLL_SPEED_Y};
 
@@ -45,7 +45,7 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 				MouseButton::Left => cef::MouseButtonType::from(cef_mouse_button_type_t::MBT_LEFT),
 				MouseButton::Right => cef::MouseButtonType::from(cef_mouse_button_type_t::MBT_RIGHT),
 				MouseButton::Middle => cef::MouseButtonType::from(cef_mouse_button_type_t::MBT_MIDDLE),
-				_ => return, //TODO: Handle Forward and Back button
+				_ => return,
 			};
 
 			let Some(host) = browser.host() else { return };
@@ -69,6 +69,8 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 		WindowEvent::KeyboardInput { device_id: _, event, is_synthetic: _ } => {
 			let Some(host) = browser.host() else { return };
 
+			input_state.modifiers_apply_key_event(&event.logical_key, &event.state);
+
 			let mut key_event = KeyEvent {
 				type_: match (event.state, &event.logical_key) {
 					(ElementState::Pressed, winit::keyboard::Key::Character(_)) => cef_key_event_type_t::KEYEVENT_CHAR,
@@ -79,7 +81,7 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 				..Default::default()
 			};
 
-			key_event.modifiers = input_state.cef_modifiers(&event.location, event.repeat).raw();
+			key_event.modifiers = input_state.cef_modifiers(&event.location, event.repeat).into();
 
 			key_event.windows_key_code = match &event.logical_key {
 				winit::keyboard::Key::Named(named) => named.to_vk_bits(),
@@ -90,6 +92,10 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 			key_event.native_key_code = event.physical_key.to_native_keycode();
 
 			key_event.character = event.logical_key.to_char_representation() as u16;
+
+			if event.state == ElementState::Pressed && key_event.character != 0 {
+				key_event.type_ = cef_key_event_type_t::KEYEVENT_CHAR.into();
+			}
 
 			// Mitigation for CEF on Mac bug to prevent NSMenu being triggered by this key event.
 			//
@@ -129,9 +135,10 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 			}
 			let Some(host) = browser.host() else { return };
 
-			let mut mouse_event: MouseEvent = input_state.into();
-			mouse_event.modifiers |= cef_event_flags_t::EVENTFLAG_CONTROL_DOWN as u32;
-			mouse_event.modifiers |= cef_event_flags_t::EVENTFLAG_PRECISION_SCROLLING_DELTA as u32;
+			let mouse_event = MouseEvent {
+				modifiers: CefModifiers::PINCH_MODIFIERS.into(),
+				..input_state.into()
+			};
 
 			let delta = (delta * PINCH_ZOOM_SPEED).round() as i32;
 

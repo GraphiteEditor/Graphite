@@ -3,6 +3,10 @@ use std::path::PathBuf;
 
 pub(crate) use graphite_editor::messages::prelude::Message as EditorMessage;
 
+pub use graphite_editor::messages::input_mapper::utility_types::input_keyboard::{Key, ModifierKeys};
+pub use graphite_editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState as MouseState, EditorPosition as Position, MouseKeys};
+pub use graphite_editor::messages::prelude::InputPreprocessorMessage as InputMessage;
+
 pub use graphite_editor::messages::prelude::DocumentId;
 pub use graphite_editor::messages::prelude::PreferencesMessageHandler as Preferences;
 pub enum DesktopFrontendMessage {
@@ -31,6 +35,9 @@ pub enum DesktopFrontendMessage {
 		width: f64,
 		height: f64,
 	},
+	UpdateUIScale {
+		scale: f64,
+	},
 	UpdateOverlays(vello::Scene),
 	PersistenceWriteDocument {
 		id: DocumentId,
@@ -54,6 +61,10 @@ pub enum DesktopFrontendMessage {
 	UpdateMenu {
 		entries: Vec<MenuItem>,
 	},
+	ClipboardRead,
+	ClipboardWrite {
+		content: String,
+	},
 	WindowClose,
 	WindowMinimize,
 	WindowMaximize,
@@ -65,6 +76,7 @@ pub enum DesktopFrontendMessage {
 
 pub enum DesktopWrapperMessage {
 	FromWeb(Box<EditorMessage>),
+	Input(InputMessage),
 	OpenFileDialogResult {
 		path: PathBuf,
 		content: Vec<u8>,
@@ -99,6 +111,9 @@ pub enum DesktopWrapperMessage {
 	UpdateMaximized {
 		maximized: bool,
 	},
+	UpdateFullscreen {
+		fullscreen: bool,
+	},
 	LoadDocument {
 		id: DocumentId,
 		document: Document,
@@ -112,7 +127,10 @@ pub enum DesktopWrapperMessage {
 		preferences: Option<Preferences>,
 	},
 	MenuEvent {
-		id: u64,
+		id: String,
+	},
+	ClipboardReadResult {
+		content: Option<String>,
 	},
 }
 
@@ -147,20 +165,20 @@ pub enum Platform {
 
 pub enum MenuItem {
 	Action {
-		id: u64,
+		id: String,
 		text: String,
 		enabled: bool,
 		shortcut: Option<Shortcut>,
 	},
 	Checkbox {
-		id: u64,
+		id: String,
 		text: String,
 		enabled: bool,
 		shortcut: Option<Shortcut>,
 		checked: bool,
 	},
 	SubMenu {
-		id: u64,
+		id: String,
 		text: String,
 		enabled: bool,
 		items: Vec<MenuItem>,

@@ -102,16 +102,16 @@ pub fn derive_widget_builder_impl(input_item: TokenStream2) -> syn::Result<Token
 	// Create functions based on each field
 	let builder_functions = fields.iter().map(construct_builder).collect::<Result<Vec<_>, _>>()?;
 
-	// Check if this should not have the `widget_holder()` function due to a `#[widget_builder(not_widget_holder)]` attribute
-	let widget_holder_fn = if !has_attribute(&input.attrs, "not_widget_holder") {
-		// A doc comment for the widget_holder function
-		let widget_holder_doc_comment = Literal::string(&format!("Wrap {struct_name_ident} as a WidgetHolder."));
+	// Check if this should not have the `widget_instance()` function due to a `#[widget_builder(not_widget_instance)]` attribute
+	let widget_instance_fn = if !has_attribute(&input.attrs, "not_widget_instance") {
+		// A doc comment for the widget_instance function
+		let widget_instance_doc_comment = Literal::string(&format!("Wrap {struct_name_ident} as a WidgetInstance."));
 
-		// Construct the `widget_holder` function
+		// Construct the `widget_instance` function
 		quote::quote! {
-			#[doc = #widget_holder_doc_comment]
-			pub fn widget_holder(self) -> crate::messages::layout::utility_types::layout_widget::WidgetHolder {
-				crate::messages::layout::utility_types::layout_widget::WidgetHolder::new( crate::messages::layout::utility_types::layout_widget::Widget::#struct_name_ident(self))
+			#[doc = #widget_instance_doc_comment]
+			pub fn widget_instance(self) -> crate::messages::layout::utility_types::layout_widget::WidgetInstance {
+				crate::messages::layout::utility_types::layout_widget::WidgetInstance::new( crate::messages::layout::utility_types::layout_widget::Widget::#struct_name_ident(self))
 			}
 		}
 	} else {
@@ -156,7 +156,7 @@ pub fn derive_widget_builder_impl(input_item: TokenStream2) -> syn::Result<Token
 
 			#(#builder_functions)*
 
-			#widget_holder_fn
+			#widget_instance_fn
 		}
 	})
 }

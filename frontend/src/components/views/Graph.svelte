@@ -9,13 +9,11 @@
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 
 	import NodeCatalog from "@graphite/components/floating-menus/NodeCatalog.svelte";
+	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
-	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
-	import RadioInput from "@graphite/components/widgets/inputs/RadioInput.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
-	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 
 	const GRID_COLLAPSE_SPACING = 10;
@@ -164,7 +162,7 @@
 		return `M-2,-2 L${nodeWidth + 2},-2 L${nodeWidth + 2},${nodeHeight + 2} L-2,${nodeHeight + 2}z ${rectangles.join(" ")}`;
 	}
 
-	function dataTypeTooltip(value: FrontendGraphInput | FrontendGraphOutput): string {
+	function dataTypeTooltipLabel(value: FrontendGraphInput | FrontendGraphOutput): string {
 		return `Data Type: ${value.resolvedType}`;
 	}
 
@@ -174,13 +172,11 @@
 	}
 
 	function outputConnectedToText(output: FrontendGraphOutput): string {
-		if (output.connectedTo.length === 0) return "Connected to nothing";
-
-		return `Connected to:\n${output.connectedTo.join("\n")}`;
+		return editor.handle.inDevelopmentMode() ? output.connectedTo.join("\n") : "";
 	}
 
 	function inputConnectedToText(input: FrontendGraphInput): string {
-		return `Connected to:\n${input.connectedTo}`;
+		return editor.handle.inDevelopmentMode() ? input.connectedTo : "";
 	}
 
 	function zipWithUndefined(arr1: FrontendGraphInput[], arr2: FrontendGraphOutput[]) {
@@ -204,46 +200,44 @@
 >
 	<!-- Right click menu for adding nodes -->
 	{#if $nodeGraph.contextMenuInformation}
-		<LayoutCol
+		<FloatingMenu
 			class="context-menu"
 			data-context-menu
 			styles={{
 				left: `${$nodeGraph.contextMenuInformation.contextMenuCoordinates.x * $nodeGraph.transform.scale + $nodeGraph.transform.x}px`,
 				top: `${$nodeGraph.contextMenuInformation.contextMenuCoordinates.y * $nodeGraph.transform.scale + $nodeGraph.transform.y}px`,
 			}}
+			open={true}
+			type="Popover"
+			direction="BottomLeft"
 		>
 			{#if $nodeGraph.contextMenuInformation.contextMenuData.type === "CreateNode"}
 				<NodeCatalog initialSearchTerm={$nodeGraph.contextMenuInformation.contextMenuData.data.compatibleType || ""} on:selectNodeType={(e) => createNode(e.detail)} />
 			{:else if $nodeGraph.contextMenuInformation.contextMenuData.type === "ModifyNode"}
-				<LayoutRow class="toggle-layer-or-node">
-					<TextLabel>Display as</TextLabel>
-					<RadioInput
-						selectedIndex={$nodeGraph.contextMenuInformation.contextMenuData.data.currentlyIsNode ? 0 : 1}
-						entries={[
-							{
-								value: "node",
-								label: "Node",
-								action: () =>
-									$nodeGraph.contextMenuInformation?.contextMenuData.type === "ModifyNode" &&
-									editor.handle.setToNodeOrLayer($nodeGraph.contextMenuInformation.contextMenuData.data.nodeId, false),
-							},
-							{
-								value: "layer",
-								label: "Layer",
-								action: () =>
-									$nodeGraph.contextMenuInformation?.contextMenuData.type === "ModifyNode" &&
-									editor.handle.setToNodeOrLayer($nodeGraph.contextMenuInformation.contextMenuData.data.nodeId, true),
-							},
-						]}
-						disabled={!$nodeGraph.contextMenuInformation.contextMenuData.data.canBeLayer}
+				<LayoutCol class="modify-node-menu">
+					<TextButton
+						label="Merge Selected Nodes"
+						action={() => {
+							editor.handle.mergeSelectedNodes();
+							nodeGraph.closeContextMenu();
+						}}
+						flush={true}
 					/>
-				</LayoutRow>
-				<Separator type="Section" direction="Vertical" />
-				<LayoutRow class="merge-selected-nodes">
-					<TextButton label="Merge Selected Nodes" action={() => editor.handle.mergeSelectedNodes()} />
-				</LayoutRow>
+					{@const currentlyIsNode = $nodeGraph.contextMenuInformation.contextMenuData.data.currentlyIsNode}
+					<TextButton
+						label={currentlyIsNode ? "Display as Layer" : "Display as Node"}
+						action={() => {
+							if ($nodeGraph.contextMenuInformation?.contextMenuData.type === "ModifyNode") {
+								editor.handle.setToNodeOrLayer($nodeGraph.contextMenuInformation.contextMenuData.data.nodeId, currentlyIsNode);
+							}
+							nodeGraph.closeContextMenu();
+						}}
+						disabled={!$nodeGraph.contextMenuInformation.contextMenuData.data.canBeLayer}
+						flush={true}
+					/>
+				</LayoutCol>
 			{/if}
-		</LayoutCol>
+		</FloatingMenu>
 	{/if}
 
 	{#if $nodeGraph.error}
@@ -310,13 +304,14 @@
 						viewBox="0 0 8 8"
 						class="connector"
 						data-connector="output"
+						data-tooltip-label={dataTypeTooltipLabel(frontendOutput)}
+						data-tooltip-description={outputConnectedToText(frontendOutput)}
 						data-datatype={frontendOutput.dataType}
 						style:--data-color={`var(--color-data-${frontendOutput.dataType.toLowerCase()})`}
 						style:--data-color-dim={`var(--color-data-${frontendOutput.dataType.toLowerCase()}-dim)`}
 						style:--offset-left={($nodeGraph.updateImportsExports.importPosition.x - 8) / 24}
 						style:--offset-top={($nodeGraph.updateImportsExports.importPosition.y - 8) / 24 + index}
 					>
-						<title>{`${dataTypeTooltip(frontendOutput)}\n\n${outputConnectedToText(frontendOutput)}`}</title>
 						{#if frontendOutput.connectedTo.length > 0}
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 						{:else}
@@ -360,7 +355,7 @@
 								}}
 							/>
 							{#if index > 0}
-								<div class="reorder-drag-grip" title="Reorder this export" />
+								<div class="reorder-drag-grip" data-tooltip-description="Reorder this export" />
 							{/if}
 						{/if}
 					</div>
@@ -382,14 +377,15 @@
 						viewBox="0 0 8 8"
 						class="connector"
 						data-connector="input"
+						data-tooltip-label={dataTypeTooltipLabel(frontendInput)}
+						data-tooltip-description={inputConnectedToText(frontendInput)}
 						data-datatype={frontendInput.dataType}
 						style:--data-color={`var(--color-data-${frontendInput.dataType.toLowerCase()})`}
 						style:--data-color-dim={`var(--color-data-${frontendInput.dataType.toLowerCase()}-dim)`}
 						style:--offset-left={($nodeGraph.updateImportsExports.exportPosition.x - 8) / 24}
 						style:--offset-top={($nodeGraph.updateImportsExports.exportPosition.y - 8) / 24 + index}
 					>
-						<title>{`${dataTypeTooltip(frontendInput)}\n\n${inputConnectedToText(frontendInput)}`}</title>
-						{#if frontendInput.connectedTo !== "nothing"}
+						{#if frontendInput.connectedTo !== "Connected to nothing."}
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 						{:else}
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color-dim)" />
@@ -406,7 +402,7 @@
 					>
 						{#if (hoveringExportIndex === index || editingNameExportIndex === index) && $nodeGraph.updateImportsExports.addImportExport}
 							{#if index > 0}
-								<div class="reorder-drag-grip" title="Reorder this export" />
+								<div class="reorder-drag-grip" data-tooltip-description="Reorder this export" />
 							{/if}
 							<IconButton
 								size={16}
@@ -505,7 +501,10 @@
 				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
 				style:--layer-area-width={layerAreaWidth}
 				style:--node-chain-area-left-extension={layerChainWidth !== 0 ? layerChainWidth + 0.5 : 0}
-				title={`${node.displayName}\n\n${description || ""}`.trim() + (editor.handle.inDevelopmentMode() ? `\n\nNode ID: ${node.id}, Position: (${node.position.x}, ${node.position.y})` : "")}
+				data-tooltip-label={node.displayName === node.reference || !node.reference ? node.displayName : `${node.displayName} (${node.reference})`}
+				data-tooltip-description={`
+					${(description || "").trim()}${editor.handle.inDevelopmentMode() ? `\n\nID: ${node.id}. Position: (${node.position.x}, ${node.position.y}).` : ""}
+					`.trim()}
 				data-node={node.id}
 			>
 				<div class="thumbnail">
@@ -519,11 +518,12 @@
 							viewBox="0 0 8 12"
 							class="connector top"
 							data-connector="output"
+							data-tooltip-label={dataTypeTooltipLabel(node.primaryOutput)}
+							data-tooltip-description={outputConnectedToText(node.primaryOutput)}
 							data-datatype={node.primaryOutput.dataType}
 							style:--data-color={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()})`}
 							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()}-dim)`}
 						>
-							<title>{`${dataTypeTooltip(node.primaryOutput)}\n\n${outputConnectedToText(node.primaryOutput)}`}</title>
 							{#if node.primaryOutput.connectedTo.length > 0}
 								<path d="M0,6.953l2.521,-1.694a2.649,2.649,0,0,1,2.959,0l2.52,1.694v5.047h-8z" fill="var(--data-color)" />
 								{#if node.primaryOutputConnectedToLayer}
@@ -540,14 +540,13 @@
 						viewBox="0 0 8 12"
 						class="connector bottom"
 						data-connector="input"
+						data-tooltip-label={node.primaryInput ? dataTypeTooltipLabel(node.primaryInput) : ""}
+						data-tooltip-description={node.primaryInput ? `${validTypesText(node.primaryInput).trim()}\n\n${inputConnectedToText(node.primaryInput)}` : ""}
 						data-datatype={node.primaryInput?.dataType}
 						style:--data-color={`var(--color-data-${(node.primaryInput?.dataType || "General").toLowerCase()})`}
 						style:--data-color-dim={`var(--color-data-${(node.primaryInput?.dataType || "General").toLowerCase()}-dim)`}
 					>
-						{#if node.primaryInput}
-							<title>{`${dataTypeTooltip(node.primaryInput)}\n\n${validTypesText(node.primaryInput)}\n\n${inputConnectedToText(node.primaryInput)}`}</title>
-						{/if}
-						{#if node.primaryInput?.connectedTo !== "nothing"}
+						{#if node.primaryInput?.connectedTo !== "Connected to nothing."}
 							<path d="M0,0H8V8L5.479,6.319a2.666,2.666,0,0,0-2.959,0L0,8Z" fill="var(--data-color)" />
 							{#if node.primaryInputConnectedToLayer}
 								<path d="M0,10.95l2.52,-1.69c0.89,-0.6,2.06,-0.6,2.96,0l2.52,1.69v5.05h-8v-5.05z" fill="var(--data-color-dim)" />
@@ -564,12 +563,13 @@
 							xmlns="http://www.w3.org/2000/svg"
 							viewBox="0 0 8 8"
 							class="connector"
+							data-tooltip-label={dataTypeTooltipLabel(stackDataInput)}
+							data-tooltip-description={`${validTypesText(stackDataInput).trim()}\n\n${inputConnectedToText(stackDataInput)}`}
 							data-connector="input"
 							data-datatype={stackDataInput.dataType}
 							style:--data-color={`var(--color-data-${stackDataInput.dataType.toLowerCase()})`}
 							style:--data-color-dim={`var(--color-data-${stackDataInput.dataType.toLowerCase()}-dim)`}
 						>
-							<title>{`${dataTypeTooltip(stackDataInput)}\n\n${validTypesText(stackDataInput)}\n\n${inputConnectedToText(stackDataInput)}`}</title>
 							{#if stackDataInput.connectedTo !== undefined}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 							{:else}
@@ -582,16 +582,17 @@
 					<!-- TODO: Allow the user to edit the name, just like in the Layers panel -->
 					<TextLabel>{node.displayName}</TextLabel>
 				</div>
-				<div class="solo-drag-grip" title="Drag only this layer without pushing others outside the stack"></div>
+				<div class="solo-drag-grip" data-tooltip-description="Drag only this layer without pushing others outside the stack"></div>
 				<IconButton
 					class="visibility"
 					data-visibility-button
 					size={24}
 					icon={node.visible ? "EyeVisible" : "EyeHidden"}
+					hoverIcon={node.visible ? "EyeHide" : "EyeShow"}
 					action={() => {
 						/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
 					}}
-					tooltip={node.visible ? "Visible" : "Hidden"}
+					tooltipLabel={node.visible ? "Hide" : "Show"}
 				/>
 
 				<svg class="border-mask" width="0" height="0">
@@ -650,7 +651,10 @@
 				style:--clip-path-id={`url(#${clipPathId})`}
 				style:--data-color={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()})`}
 				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
-				title={`${node.displayName}\n\n${description || ""}`.trim() + (editor.handle.inDevelopmentMode() ? `\n\nNode ID: ${node.id}, Position: (${node.position.x}, ${node.position.y})` : "")}
+				data-tooltip-label={node.displayName === node.reference || !node.reference ? node.displayName : `${node.displayName} (${node.reference})`}
+				data-tooltip-description={`
+					${(description || "").trim()}${editor.handle.inDevelopmentMode() ? `\n\nID: ${node.id}. Position: (${node.position.x}, ${node.position.y}).` : ""}
+					`.trim()}
 				data-node={node.id}
 			>
 				<!-- Primary row -->
@@ -664,7 +668,7 @@
 					<div class="secondary" class:in-selected-network={$nodeGraph.inSelectedNetwork}>
 						{#each exposedInputsOutputs as [input, output]}
 							<div class={`secondary-row expanded ${input !== undefined ? "input" : "output"}`}>
-								<TextLabel tooltip={(input !== undefined ? `${input.name}\n\n${input.description}` : `${output.name}\n\n${output.description}`).trim()}>
+								<TextLabel tooltipLabel={input !== undefined ? input.name : output.name} tooltipDescription={input !== undefined ? input.description : output.description}>
 									{input !== undefined ? input.name : output.name}
 								</TextLabel>
 							</div>
@@ -679,11 +683,12 @@
 							viewBox="0 0 8 8"
 							class="connector primary-connector"
 							data-connector="input"
+							data-tooltip-label={dataTypeTooltipLabel(node.primaryInput)}
+							data-tooltip-description={`${validTypesText(node.primaryInput).trim()}\n\n${inputConnectedToText(node.primaryInput)}`}
 							data-datatype={node.primaryInput?.dataType}
 							style:--data-color={`var(--color-data-${node.primaryInput.dataType.toLowerCase()})`}
 							style:--data-color-dim={`var(--color-data-${node.primaryInput.dataType.toLowerCase()}-dim)`}
 						>
-							<title>{`${dataTypeTooltip(node.primaryInput)}\n\n${validTypesText(node.primaryInput)}\n\n${inputConnectedToText(node.primaryInput)}`}</title>
 							{#if node.primaryInput.connectedTo !== undefined}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 							{:else}
@@ -698,11 +703,12 @@
 								viewBox="0 0 8 8"
 								class="connector"
 								data-connector="input"
+								data-tooltip-label={dataTypeTooltipLabel(secondary)}
+								data-tooltip-description={`${validTypesText(secondary).trim()}\n\n${inputConnectedToText(secondary)}`}
 								data-datatype={secondary.dataType}
 								style:--data-color={`var(--color-data-${secondary.dataType.toLowerCase()})`}
 								style:--data-color-dim={`var(--color-data-${secondary.dataType.toLowerCase()}-dim)`}
 							>
-								<title>{`${dataTypeTooltip(secondary)}\n\n${validTypesText(secondary)}\n\n${inputConnectedToText(secondary)}`}</title>
 								{#if secondary.connectedTo !== undefined}
 									<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 								{:else}
@@ -720,11 +726,12 @@
 							viewBox="0 0 8 8"
 							class="connector primary-connector"
 							data-connector="output"
+							data-tooltip-label={dataTypeTooltipLabel(node.primaryOutput)}
+							data-tooltip-description={`${outputConnectedToText(node.primaryOutput)}`}
 							data-datatype={node.primaryOutput.dataType}
 							style:--data-color={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()})`}
 							style:--data-color-dim={`var(--color-data-${node.primaryOutput.dataType.toLowerCase()}-dim)`}
 						>
-							<title>{`${dataTypeTooltip(node.primaryOutput)}\n\n${outputConnectedToText(node.primaryOutput)}`}</title>
 							{#if node.primaryOutput.connectedTo !== undefined}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 							{:else}
@@ -738,11 +745,12 @@
 							viewBox="0 0 8 8"
 							class="connector"
 							data-connector="output"
+							data-tooltip-label={dataTypeTooltipLabel(secondary)}
+							data-tooltip-description={`${outputConnectedToText(secondary)}`}
 							data-datatype={secondary.dataType}
 							style:--data-color={`var(--color-data-${secondary.dataType.toLowerCase()})`}
 							style:--data-color-dim={`var(--color-data-${secondary.dataType.toLowerCase()}-dim)`}
 						>
-							<title>{`${dataTypeTooltip(secondary)}\n\n${outputConnectedToText(secondary)}`}</title>
 							{#if secondary.connectedTo !== undefined}
 								<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
 							{:else}
@@ -811,20 +819,17 @@
 
 		.context-menu {
 			width: max-content;
-			position: absolute;
-			box-sizing: border-box;
-			padding: 5px;
-			z-index: 3;
-			background-color: var(--color-3-darkgray);
-			border-radius: 4px;
 
-			.toggle-layer-or-node .text-label {
-				line-height: 24px;
-				margin-right: 8px;
+			.modify-node-menu {
+				margin: -4px;
+
+				.text-button {
+					justify-content: left;
+				}
 			}
 
-			.merge-selected-nodes {
-				justify-content: center;
+			.tail {
+				display: none;
 			}
 		}
 
@@ -958,8 +963,14 @@
 			width: 100%;
 			height: 100%;
 			position: absolute;
+			pointer-events: none;
 			// Keeps the connectors above the wires
 			z-index: 1;
+
+			// Zero specificity with `:where()` to allow other rules to override `pointer-events`
+			:where(.graph-view.open & > *) {
+				pointer-events: auto;
+			}
 
 			.connector {
 				position: absolute;
@@ -1054,8 +1065,14 @@
 
 		.layers-and-nodes {
 			position: absolute;
+			pointer-events: none;
 			width: 100%;
 			height: 100%;
+
+			// Zero specificity with `:where()` to allow other rules to override `pointer-events`
+			:where(.graph-view.open & > *) {
+				pointer-events: auto;
+			}
 		}
 
 		.layer,

@@ -39,7 +39,7 @@ mod base64_serde {
 	}
 }
 
-#[derive(Clone, PartialEq, Default, specta::Type, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Eq, Default, specta::Type, serde::Serialize, serde::Deserialize)]
 pub struct Image<P: Pixel> {
 	pub width: u32,
 	pub height: u32,
@@ -51,6 +51,12 @@ pub struct Image<P: Pixel> {
 	pub base64_string: Option<String>,
 	// TODO: Add an `origin` field to store where in the local space the image is anchored.
 	// TODO: Currently it is always anchored at the top left corner at (0, 0). The bottom right corner of the new origin field would correspond to (1, 1).
+}
+
+impl<P: Pixel + PartialEq> PartialEq for Image<P> {
+	fn eq(&self, other: &Self) -> bool {
+		self.width == other.width && self.height == other.height && self.data == other.data
+	}
 }
 
 #[derive(Debug, Clone, dyn_any::DynAny, Default, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]

@@ -189,19 +189,19 @@ tagged_value! {
 	// TABLE TYPES
 	// ===========
 	GraphicUnused(Graphic), // TODO: This is unused but removing it causes `cargo test` to infinitely recurse its type solving; figure out why and then remove this
-	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphic_types::migrations::migrate_vector"))] // TODO: Eventually remove this migration document upgrade code
+	#[serde(deserialize_with = "graphic_types::migrations::migrate_vector")] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "VectorData")]
 	Vector(Table<Vector>),
-	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphic_types::raster_types::image::migrate_image_frame"))] // TODO: Eventually remove this migration document upgrade code
+	#[serde(deserialize_with = "graphic_types::raster_types::image::migrate_image_frame")] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "ImageFrame", alias = "RasterData", alias = "Image")]
 	Raster(Table<Raster<CPU>>),
-	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphic_types::graphic::migrate_graphic"))] // TODO: Eventually remove this migration document upgrade code
+	#[serde(deserialize_with = "graphic_types::graphic::migrate_graphic")] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "GraphicGroup", alias = "Group")]
 	Graphic(Table<Graphic>),
-	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphic_types::artboard::migrate_artboard"))] // TODO: Eventually remove this migration document upgrade code
+	#[serde(deserialize_with = "graphic_types::artboard::migrate_artboard")] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "ArtboardGroup")]
 	Artboard(Table<Artboard>),
-	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "core_types::misc::migrate_color"))] // TODO: Eventually remove this migration document upgrade code
+	#[serde(deserialize_with = "core_types::misc::migrate_color")] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "ColorTable", alias = "OptionalColor")]
 	Color(Table<Color>),
 	GradientTable(Table<GradientStops>),

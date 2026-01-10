@@ -2,7 +2,7 @@
 name = "graphite-desktop-bundle"
 version = "0.0.0"
 description = "Graphite Desktop Bundle"
-authors = ["Graphite Authors <contact@graphite.rs>"]
+authors = ["Graphite Authors <contact@graphite.art>"]
 license = "Apache-2.0"
 repository = ""
 edition = "2024"
