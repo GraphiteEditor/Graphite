@@ -2,8 +2,8 @@
 title = "Internships for a Rust graphics engine: GSoC 2025"
 date = 2025-04-02
 [extra]
-banner = "https://static.graphite.rs/content/blog/2025-04-02-internships-for-a-rust-graphics-engine-gsoc-2025.avif"
-banner_png = "https://static.graphite.rs/content/blog/2025-04-02-internships-for-a-rust-graphics-engine-gsoc-2025.png"
+banner = "https://static.graphite.art/content/blog/2025-04-02-internships-for-a-rust-graphics-engine-gsoc-2025.avif"
+banner_png = "https://static.graphite.art/content/blog/2025-04-02-internships-for-a-rust-graphics-engine-gsoc-2025.png"
 author = "Keavon Chambers"
 summary = "Join Graphite in Google Summer of Code 2025 for a unique opportunity to contribute to open-source software development in Rust and computer graphics. Get paid while learning, working on self-contained projects under experienced mentors, and help Graphite grow."
 reddit = "https://www.reddit.com/r/graphite/comments/1jplm6t/internships_for_a_rust_graphics_engine_gsoc_2025/"
@@ -25,12 +25,12 @@ Do you love Rust and focus on computer graphics, compiler development, or algori
 Hear from our mentoring team about Graphite's tech stack and engineering vision by listening to last month's episode of the Developer Voices podcast:
 
 <div class="youtube-embed aspect-16x9">
-	<img data-youtube-embed="ZUbcwUC5lxA" src="https://static.graphite.rs/content/blog/2025-04-02-internships-for-a-rust-graphics-engine-gsoc-2025/developer-voices-podcast-youtube.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite: Image Editing as a Syntax Tree (with Keavon Chambers & Dennis Kobert)" />
+	<img data-youtube-embed="ZUbcwUC5lxA" src="https://static.graphite.art/content/blog/2025-04-02-internships-for-a-rust-graphics-engine-gsoc-2025/developer-voices-podcast-youtube.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite: Image Editing as a Syntax Tree (with Keavon Chambers & Dennis Kobert)" />
 </div>
 
 For GSoC 2025, our priority focus is mentoring projects revolving around advanced graphics techniques and compiler development, meeting our goal of extending Graphite into the domain of raster image manipulation. Demonstrated experience in these areas is highly advantageous.
 
-Outstanding applicants tend to be competent, self-directed, productive, and confidence-inspiring. If you're driven to learn and explore cutting-edge engineering challenges, please [get in touch](https://discord.graphite.rs) and we will help you get up to speed and assist in submitting a timely application.
+Outstanding applicants tend to be competent, self-directed, productive, and confidence-inspiring. If you're driven to learn and explore cutting-edge engineering challenges, please [get in touch](https://discord.graphite.art) and we will help you get up to speed and assist in submitting a timely application.
 
 Out of the [full list of project opportunities](/volunteer/guide/student-projects/#project-idea-list), some interesting high-priority projects include:
 
@@ -43,6 +43,6 @@ Out of the [full list of project opportunities](/volunteer/guide/student-project
 - Researching an assortment of algorithms for image processing operations
 - Engineering solutions for combining our web-based editor GUI and native WGPU renderer in the same window across Windows, Mac, and Linux desktop applications
 
-These recently added projects are pending an extended description, but we'll be happy to discuss the details if you pop into our [Discord server](https://discord.graphite.rs) and introduce yourself with links to related experience and projects.
+These recently added projects are pending an extended description, but we'll be happy to discuss the details if you pop into our [Discord server](https://discord.graphite.art) and introduce yourself with links to related experience and projects.
 
 Outside GSoC, additional year-round opportunities are available for student capstone or independent research projects. These are run similarly, but are also available to multi-person groups. They provide academic credit instead of a stipend. Reach out anytime if interested.

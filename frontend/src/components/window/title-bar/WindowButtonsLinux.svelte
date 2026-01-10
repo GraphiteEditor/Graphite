@@ -11,13 +11,13 @@
 	const editor = getContext<Editor>("editor");
 </script>
 
-<LayoutRow class="window-button linux" tooltip="Minimize" on:click={() => editor.handle.appWindowMinimize()}>
+<LayoutRow class="window-button linux" tooltipLabel="Minimize" on:click={() => editor.handle.appWindowMinimize()}>
 	<IconLabel icon="WindowButtonWinMinimize" />
 </LayoutRow>
-<LayoutRow class="window-button linux" tooltip={$appWindow.maximized ? "Unmaximize" : "Maximize"} on:click={() => editor.handle.appWindowMaximize()}>
+<LayoutRow class="window-button linux" tooltipLabel={$appWindow.maximized ? "Unmaximize" : "Maximize"} on:click={() => editor.handle.appWindowMaximize()}>
 	<IconLabel icon={$appWindow.maximized ? "WindowButtonWinRestoreDown" : "WindowButtonWinMaximize"} />
 </LayoutRow>
-<LayoutRow class="window-button linux" tooltip="Close" on:click={() => editor.handle.appWindowClose()}>
+<LayoutRow class="window-button linux" tooltipLabel="Close" on:click={() => editor.handle.appWindowClose()}>
 	<IconLabel icon="WindowButtonWinClose" />
 </LayoutRow>
 

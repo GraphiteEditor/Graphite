@@ -12,7 +12,7 @@ css = ["/component/youtube-embed.css"]
 The best introduction for getting up-to-speed with Graphite contribution comes from watching this webcast recording. Before asking questions in Discord, please watch the full video because it gives a comprehensive overview of most things you will need to know.
 
 <div class="youtube-embed aspect-16x9">
-	<img data-youtube-embed="vUzIeg8frh4" src="https://static.graphite.rs/content/volunteer/guide/workshop-intro-to-coding-for-graphite-youtube.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Workshop: Intro to Coding for Graphite" />
+	<img data-youtube-embed="vUzIeg8frh4" src="https://static.graphite.art/content/volunteer/guide/workshop-intro-to-coding-for-graphite-youtube.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Workshop: Intro to Coding for Graphite" />
 </div>
 
 ## Codebase structure

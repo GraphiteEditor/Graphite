@@ -158,7 +158,7 @@ mod test {
 		);
 
 		let positions = [DVec2::new(40., 20.), DVec2::ONE, DVec2::new(-42., 9.), DVec2::new(10., 345.)];
-		let points = Table::new_from_element(Vector::from_subpath(Subpath::from_anchors_linear(positions, false)));
+		let points = Table::new_from_element(Vector::from_subpath(Subpath::from_anchors(positions, false)));
 		let generated = super::instance_on_points(owned, points, &rect, false).await;
 		assert_eq!(generated.len(), positions.len());
 		for (position, generated_row) in positions.into_iter().zip(generated.iter()) {

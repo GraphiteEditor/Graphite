@@ -203,6 +203,7 @@
 		window.removeEventListener("pointermove", onPointerMove);
 		window.removeEventListener("mousedown", onMouseDown);
 		window.removeEventListener("keydown", onKeyDown);
+		clearTimeout(repeatTimeout);
 	}
 </script>
 
@@ -283,7 +284,7 @@
 			.scroll-thumb {
 				position: absolute;
 				border-radius: 4px;
-				background: var(--color-5-dullgray);
+				background: var(--color-4-dimgray);
 
 				&:hover,
 				&.dragging {

@@ -102,6 +102,11 @@ fn validate_implementations_for_generics(parsed: &ParsedNodeFn) {
 
 	if !has_skip_impl && !parsed.fn_generics.is_empty() {
 		for field in &parsed.fields {
+			// Skip validation for data fields - they're internal state and can be generic
+			if field.is_data_field {
+				continue;
+			}
+
 			let pat_ident = &field.pat_ident;
 			match &field.ty {
 				ParsedFieldType::Regular(RegularParsedField { ty, implementations, .. }) => {

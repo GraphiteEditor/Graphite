@@ -84,6 +84,8 @@ pub struct OriginalLocation {
 	pub dependants: Vec<Vec<NodeId>>,
 	/// A list of flags indicating whether the input is exposed in the UI
 	pub inputs_exposed: Vec<bool>,
+	/// For automatically inserted Convert and Into nodes, if there is an error, display it on the node it is connect to.
+	pub auto_convert_index: Option<usize>,
 }
 
 impl Default for DocumentNode {
@@ -664,12 +666,9 @@ impl NodeNetwork {
 			if node.original_location.path.is_some() {
 				log::warn!("Attempting to overwrite node path");
 			} else {
-				node.original_location = OriginalLocation {
-					path: Some(new_path),
-					inputs_exposed: node.inputs.iter().map(|input| input.is_exposed()).collect(),
-					dependants: (0..node.implementation.output_count()).map(|_| Vec::new()).collect(),
-					..Default::default()
-				};
+				node.original_location.path = Some(new_path);
+				node.original_location.inputs_exposed = node.inputs.iter().map(|input| input.is_exposed()).collect();
+				node.original_location.dependants = (0..node.implementation.output_count()).map(|_| Vec::new()).collect();
 			}
 		}
 	}
@@ -848,7 +847,7 @@ impl NodeNetwork {
 						// If the input to self is a node, connect the corresponding output of the inner network to it
 						NodeInput::Node { node_id, output_index } => {
 							nested_node.populate_first_network_input(node_id, output_index, nested_input_index, node.original_location.inputs(*import_index), 1);
-							let input_node = self.nodes.get_mut(&node_id).unwrap_or_else(|| panic!("unable find input node {node_id:?}"));
+							let input_node = self.nodes.get_mut(&node_id).unwrap_or_else(|| panic!("Unable to find input node {node_id:?}"));
 							input_node.original_location.dependants[output_index].push(nested_node_id);
 						}
 						NodeInput::Import { import_index, .. } => {

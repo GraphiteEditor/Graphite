@@ -45,7 +45,7 @@ impl ToolMetadata for GradientTool {
 	fn icon_name(&self) -> String {
 		"GeneralGradientTool".into()
 	}
-	fn tooltip(&self) -> String {
+	fn tooltip_label(&self) -> String {
 		"Gradient Tool".into()
 	}
 	fn tool_type(&self) -> crate::messages::tool::utility_types::ToolType {
@@ -91,13 +91,13 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 impl LayoutHolder for GradientTool {
 	fn layout(&self) -> Layout {
 		let gradient_type = RadioInput::new(vec![
-			RadioEntryData::new("Linear").label("Linear").tooltip("Linear gradient").on_update(move |_| {
+			RadioEntryData::new("Linear").label("Linear").tooltip_label("Linear Gradient").on_update(move |_| {
 				GradientToolMessage::UpdateOptions {
 					options: GradientOptionsUpdate::Type(GradientType::Linear),
 				}
 				.into()
 			}),
-			RadioEntryData::new("Radial").label("Radial").tooltip("Radial gradient").on_update(move |_| {
+			RadioEntryData::new("Radial").label("Radial").tooltip_label("Radial Gradient").on_update(move |_| {
 				GradientToolMessage::UpdateOptions {
 					options: GradientOptionsUpdate::Type(GradientType::Radial),
 				}
@@ -105,9 +105,9 @@ impl LayoutHolder for GradientTool {
 			}),
 		])
 		.selected_index(Some((self.selected_gradient().unwrap_or(self.options.gradient_type) == GradientType::Radial) as u32))
-		.widget_holder();
+		.widget_instance();
 
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets: vec![gradient_type] }]))
+		Layout(vec![LayoutGroup::Row { widgets: vec![gradient_type] }])
 	}
 }
 
@@ -530,7 +530,7 @@ impl Fsm for GradientToolFsmState {
 			]),
 		};
 
-		responses.add(FrontendMessage::UpdateInputHints { hint_data });
+		hint_data.send_layout(responses);
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {

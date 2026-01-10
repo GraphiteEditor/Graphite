@@ -159,7 +159,7 @@ if (unusedFiles.length > 0) {
 console.log("\nFont installation complete!");
 
 // Fetch and save text-balancer.js, which we don't commit to the repo so we're not version controlling dependency code
-const textBalancerUrl = "https://static.graphite.rs/text-balancer/text-balancer.js";
+const textBalancerUrl = "https://static.graphite.art/text-balancer/text-balancer.js";
 const textBalancerDest = path.join(basePath, "../static", "text-balancer.js");
 console.log("\nDownloading text-balancer.js...");
 https

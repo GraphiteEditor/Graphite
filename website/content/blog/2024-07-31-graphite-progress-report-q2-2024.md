@@ -2,8 +2,8 @@
 title = "Graphite progress report (Q2 2024)"
 date = 2024-07-31
 [extra]
-banner = "https://static.graphite.rs/content/blog/2024-07-31-graphite-progress-report-q2-2024.avif"
-banner_png = "https://static.graphite.rs/content/blog/2024-07-31-graphite-progress-report-q2-2024.png"
+banner = "https://static.graphite.art/content/blog/2024-07-31-graphite-progress-report-q2-2024.avif"
+banner_png = "https://static.graphite.art/content/blog/2024-07-31-graphite-progress-report-q2-2024.png"
 author = "Keavon Chambers & Hypercube"
 summary = "Graphite's Q2 2024 update introduces boolean path operations, a new gradient picker, layer locking, and more improvements."
 reddit = "https://www.reddit.com/r/graphite/comments/1ei9ps2/blog_post_graphite_progress_report_q2_2024/"
@@ -17,13 +17,13 @@ Overall, editor functionality has been shaping up and becoming an all around use
 
 <!-- more -->
 
-This is the second of our quarterly progress report blog posts. If you missed the [first one](../graphite-progress-report-q1-2024), be sure to check it out as well. If you'd like to help speed up future progress, please consider [getting involved](/volunteer) with code, QA/bug testing, or art/marketing projects. [Donations](/donate) are also valued, as are [stars on GitHub](https://github.com/GraphiteEditor/Graphite). Follow along and partake in our [Discord community](https://discord.graphite.rs), too.
+This is the second of our quarterly progress report blog posts. If you missed the [first one](../graphite-progress-report-q1-2024), be sure to check it out as well. If you'd like to help speed up future progress, please consider [getting involved](/volunteer) with code, QA/bug testing, or art/marketing projects. [Donations](/donate) are also valued, as are [stars on GitHub](https://github.com/GraphiteEditor/Graphite). Follow along and partake in our [Discord community](https://discord.graphite.art), too.
 
 All Q2 2024 commits may be [viewed in this list](https://github.com/GraphiteEditor/Graphite/commits/master/?since=2024-04-01&until=2024-06-30) and all noteworthy changes are detailed below. To showcase the much anticipated introduction of boolean path operations, the new *Painted Dreams* artwork shown here extensively utilizes nondestructive booleans.
 
 <div class="demo-artwork">
-	<a href="https://editor.graphite.rs/#demo/painted-dreams">
-		<img src="https://static.graphite.rs/content/blog/2024-07-31-graphite-progress-report-q2-2024.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Vector art of Painted Dreams" />
+	<a href="https://editor.graphite.art/#demo/painted-dreams">
+		<img src="https://static.graphite.art/content/blog/2024-07-31-graphite-progress-report-q2-2024.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Vector art of Painted Dreams" />
 	</a>
 	<p>
 		<span>
@@ -31,7 +31,7 @@ All Q2 2024 commits may be [viewed in this list](https://github.com/GraphiteEdit
 		</span>
 		<br />
 		<span>
-			<a href="https://editor.graphite.rs/#demo/painted-dreams">Open this artwork</a> to<br />explore it yourself.
+			<a href="https://editor.graphite.art/#demo/painted-dreams">Open this artwork</a> to<br />explore it yourself.
 		</span>
 	</p>
 </div>
@@ -45,52 +45,52 @@ EDITOR'S NOTE: The grammatical structure of each bullet point should follow the 
 - Feature for locking layers from being selected in the viewport <small>([#1702](https://github.com/GraphiteEditor/Graphite/pull/1702))</small>
   <div class="video-background">
   	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://static.graphite.rs/content/blog/2024-07-31-graphite-progress-report-q2-2024/layer-locking.webm" type="video/webm" />
-  		<source src="https://static.graphite.rs/content/blog/2024-07-31-graphite-progress-report-q2-2024/layer-locking.mp4" type="video/mp4" />
+  		<source src="https://static.graphite.art/content/blog/2024-07-31-graphite-progress-report-q2-2024/layer-locking.webm" type="video/webm" />
+  		<source src="https://static.graphite.art/content/blog/2024-07-31-graphite-progress-report-q2-2024/layer-locking.mp4" type="video/mp4" />
   	</video>
   </div>
 
 - Fine-grained choices in the Snapping options popover <small>([#1730](https://github.com/GraphiteEditor/Graphite/pull/1730))</small>
   
-  <img src="https://static.graphite.rs/content/blog/2024-07-31-graphite-progress-report-q2-2024/snapping-options.png" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Snapping choices popover menu" />
+  <img src="https://static.graphite.art/content/blog/2024-07-31-graphite-progress-report-q2-2024/snapping-options.png" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Snapping choices popover menu" />
 
 - Corner rounding added to the *Rectangle* node <small>([#1648](https://github.com/GraphiteEditor/Graphite/pull/1648))</small>
   <div class="video-background">
   	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://static.graphite.rs/content/blog/2024-07-31-graphite-progress-report-q2-2024/rectangle-corner-rounding.webm" type="video/webm" />
-  		<source src="https://static.graphite.rs/content/blog/2024-07-31-graphite-progress-report-q2-2024/rectangle-corner-rounding.mp4" type="video/mp4" />
+  		<source src="https://static.graphite.art/content/blog/2024-07-31-graphite-progress-report-q2-2024/rectangle-corner-rounding.webm" type="video/webm" />
+  		<source src="https://static.graphite.art/content/blog/2024-07-31-graphite-progress-report-q2-2024/rectangle-corner-rounding.mp4" type="video/mp4" />
   	</video>
   </div>
 
 - Rotation added to the *Repeat* node <small>([commit 72ba4dd](https://github.com/GraphiteEditor/Graphite/commit/72ba4ddfe421c0e17930ad1c2be85be2c69e04ea))</small>
   <div class="video-background">
   	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://static.graphite.rs/content/blog/2024-07-31-graphite-progress-report-q2-2024/repeat-node-rotation.webm" type="video/webm" />
-  		<source src="https://static.graphite.rs/content/blog/2024-07-31-graphite-progress-report-q2-2024/repeat-node-rotation.mp4" type="video/mp4" />
+  		<source src="https://static.graphite.art/content/blog/2024-07-31-graphite-progress-report-q2-2024/repeat-node-rotation.webm" type="video/webm" />
+  		<source src="https://static.graphite.art/content/blog/2024-07-31-graphite-progress-report-q2-2024/repeat-node-rotation.mp4" type="video/mp4" />
   	</video>
   </div>
 
 - Visibility and deletion buttons added to node sections in the Properties panel <small>([commit 07fd2c2](https://github.com/GraphiteEditor/Graphite/commit/07fd2c27827e4a91ad238d790d41396a33ef2389))</small>
   <div class="video-background">
   	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://static.graphite.rs/content/blog/2024-07-31-graphite-progress-report-q2-2024/hide-delete-properties-sections.webm" type="video/webm" />
-  		<source src="https://static.graphite.rs/content/blog/2024-07-31-graphite-progress-report-q2-2024/hide-delete-properties-sections.mp4" type="video/mp4" />
+  		<source src="https://static.graphite.art/content/blog/2024-07-31-graphite-progress-report-q2-2024/hide-delete-properties-sections.webm" type="video/webm" />
+  		<source src="https://static.graphite.art/content/blog/2024-07-31-graphite-progress-report-q2-2024/hide-delete-properties-sections.mp4" type="video/mp4" />
   	</video>
   </div>
 
 - Grid color customization and dotted appearance choices <small>([#1743](https://github.com/GraphiteEditor/Graphite/pull/1743))</small>
   <div class="video-background">
   	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://static.graphite.rs/content/blog/2024-07-31-graphite-progress-report-q2-2024/grid-coloration.webm" type="video/webm" />
-  		<source src="https://static.graphite.rs/content/blog/2024-07-31-graphite-progress-report-q2-2024/grid-coloration.mp4" type="video/mp4" />
+  		<source src="https://static.graphite.art/content/blog/2024-07-31-graphite-progress-report-q2-2024/grid-coloration.webm" type="video/webm" />
+  		<source src="https://static.graphite.art/content/blog/2024-07-31-graphite-progress-report-q2-2024/grid-coloration.mp4" type="video/mp4" />
   	</video>
   </div>
 
 - Demo artwork, *Isometric Fountain*, featured in the [last blog post](../graphite-progress-report-q1-2024) <small>([commit 6b0822d](https://github.com/GraphiteEditor/Graphite/commit/6b0822d31890b6699c4533c3e828da0e9e8c9490))</small>
   
   <div class="demo-artwork" style="justify-content: left">
-  	<a href="https://editor.graphite.rs/#demo/isometric-fountain">
-  		<img src="https://static.graphite.rs/content/blog/2024-05-09-graphite-progress-report-q1-2024__2.png" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Vector art of Isometric Fountain" />
+  	<a href="https://editor.graphite.art/#demo/isometric-fountain">
+  		<img src="https://static.graphite.art/content/blog/2024-05-09-graphite-progress-report-q1-2024__2.png" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Vector art of Isometric Fountain" />
   	</a>
   	<p>
   		<span>
@@ -98,7 +98,7 @@ EDITOR'S NOTE: The grammatical structure of each bullet point should follow the 
   		</span>
   		<br />
   		<span>
-  			<a href="https://editor.graphite.rs/#demo/isometric-fountain">Open this artwork</a> to<br />explore it yourself.
+  			<a href="https://editor.graphite.art/#demo/isometric-fountain">Open this artwork</a> to<br />explore it yourself.
   		</span>
   	</p>
   </div>
@@ -106,38 +106,38 @@ EDITOR'S NOTE: The grammatical structure of each bullet point should follow the 
 - *Area* and *Centroid* nodes which calculate a shape's interior size and center of mass, respectively <small>([#1729](https://github.com/GraphiteEditor/Graphite/pull/1729), [#1749](https://github.com/GraphiteEditor/Graphite/pull/1749))</small> 
   <div class="video-background">
   	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://static.graphite.rs/content/blog/2024-07-31-graphite-progress-report-q2-2024/area-centroid-nodes.webm" type="video/webm" />
-  		<source src="https://static.graphite.rs/content/blog/2024-07-31-graphite-progress-report-q2-2024/area-centroid-nodes.mp4" type="video/mp4" />
+  		<source src="https://static.graphite.art/content/blog/2024-07-31-graphite-progress-report-q2-2024/area-centroid-nodes.webm" type="video/webm" />
+  		<source src="https://static.graphite.art/content/blog/2024-07-31-graphite-progress-report-q2-2024/area-centroid-nodes.mp4" type="video/mp4" />
   	</video>
   </div>
 
 - *Boolean Operation* node for combining two shape paths with a *Union*, *Subtract Front*, *Subtract Back*, *Intersect*, or *Difference* mode of cutting and combining <small>([#1759](https://github.com/GraphiteEditor/Graphite/pull/1759))</small>
   <div class="video-background">
   	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://static.graphite.rs/content/blog/2024-07-31-graphite-progress-report-q2-2024/boolean-ops-1.webm" type="video/webm" />
-  		<source src="https://static.graphite.rs/content/blog/2024-07-31-graphite-progress-report-q2-2024/boolean-ops-1.mp4" type="video/mp4" />
+  		<source src="https://static.graphite.art/content/blog/2024-07-31-graphite-progress-report-q2-2024/boolean-ops-1.webm" type="video/webm" />
+  		<source src="https://static.graphite.art/content/blog/2024-07-31-graphite-progress-report-q2-2024/boolean-ops-1.mp4" type="video/mp4" />
   	</video>
   </div>
   <div class="video-background">
   	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://static.graphite.rs/content/blog/2024-07-31-graphite-progress-report-q2-2024/boolean-ops-2.webm" type="video/webm" />
-  		<source src="https://static.graphite.rs/content/blog/2024-07-31-graphite-progress-report-q2-2024/boolean-ops-2.mp4" type="video/mp4" />
+  		<source src="https://static.graphite.art/content/blog/2024-07-31-graphite-progress-report-q2-2024/boolean-ops-2.webm" type="video/webm" />
+  		<source src="https://static.graphite.art/content/blog/2024-07-31-graphite-progress-report-q2-2024/boolean-ops-2.mp4" type="video/mp4" />
   	</video>
   </div>
 
 - Gradient picker <small>([#1778](https://github.com/GraphiteEditor/Graphite/pull/1778))</small>
   <div class="video-background">
   	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://static.graphite.rs/content/blog/2024-07-31-graphite-progress-report-q2-2024/gradient-picker.webm" type="video/webm" />
-  		<source src="https://static.graphite.rs/content/blog/2024-07-31-graphite-progress-report-q2-2024/gradient-picker.mp4" type="video/mp4" />
+  		<source src="https://static.graphite.art/content/blog/2024-07-31-graphite-progress-report-q2-2024/gradient-picker.webm" type="video/webm" />
+  		<source src="https://static.graphite.art/content/blog/2024-07-31-graphite-progress-report-q2-2024/gradient-picker.mp4" type="video/mp4" />
   	</video>
   </div>
 
 - Labels for artboard names displayed in the viewport <small>([#1795](https://github.com/GraphiteEditor/Graphite/pull/1795))</small>
   <div class="video-background">
   	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://static.graphite.rs/content/blog/2024-07-31-graphite-progress-report-q2-2024/artboard-names.webm" type="video/webm" />
-  		<source src="https://static.graphite.rs/content/blog/2024-07-31-graphite-progress-report-q2-2024/artboard-names.mp4" type="video/mp4" />
+  		<source src="https://static.graphite.art/content/blog/2024-07-31-graphite-progress-report-q2-2024/artboard-names.webm" type="video/webm" />
+  		<source src="https://static.graphite.art/content/blog/2024-07-31-graphite-progress-report-q2-2024/artboard-names.mp4" type="video/mp4" />
   	</video>
   </div>
 
@@ -146,8 +146,8 @@ EDITOR'S NOTE: The grammatical structure of each bullet point should follow the 
   - *Rasterize* node for converting graphical content (like vector art) into an image within a chosen area and resolution scale <small>([#1755](https://github.com/GraphiteEditor/Graphite/pull/1755))</small>
     <div class="video-background">
     	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-    		<source src="https://static.graphite.rs/content/blog/2024-07-31-graphite-progress-report-q2-2024/rasterize-node.webm" type="video/webm" />
-    		<source src="https://static.graphite.rs/content/blog/2024-07-31-graphite-progress-report-q2-2024/rasterize-node.mp4" type="video/mp4" />
+    		<source src="https://static.graphite.art/content/blog/2024-07-31-graphite-progress-report-q2-2024/rasterize-node.webm" type="video/webm" />
+    		<source src="https://static.graphite.art/content/blog/2024-07-31-graphite-progress-report-q2-2024/rasterize-node.mp4" type="video/mp4" />
     	</video>
     </div>
 
@@ -166,24 +166,24 @@ EDITOR'S NOTE: The grammatical structure of each bullet point should follow the 
   - Generalization of layers to support the concept of vertically stackable adjustment layers <small>([#1712](https://github.com/GraphiteEditor/Graphite/pull/1712), [#1738](https://github.com/GraphiteEditor/Graphite/pull/1738), [commit 244c8ad](https://github.com/GraphiteEditor/Graphite/commit/244c8ad10ad79c9ca4fcdb21260c5d5dc60b3a21), [#1763](https://github.com/GraphiteEditor/Graphite/pull/1763), [#1739](https://github.com/GraphiteEditor/Graphite/pull/1739), [#1748](https://github.com/GraphiteEditor/Graphite/pull/1748))</small>
     <div class="video-background">
     	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-    		<source src="https://static.graphite.rs/content/blog/2024-07-31-graphite-progress-report-q2-2024/stackable-layers.webm" type="video/webm" />
-    		<source src="https://static.graphite.rs/content/blog/2024-07-31-graphite-progress-report-q2-2024/stackable-layers.mp4" type="video/mp4" />
+    		<source src="https://static.graphite.art/content/blog/2024-07-31-graphite-progress-report-q2-2024/stackable-layers.webm" type="video/webm" />
+    		<source src="https://static.graphite.art/content/blog/2024-07-31-graphite-progress-report-q2-2024/stackable-layers.mp4" type="video/mp4" />
     	</video>
     </div>
 
   - Support for viewing and editing subgraphs by double-clicking nodes with internal node networks <small>([#1750](https://github.com/GraphiteEditor/Graphite/pull/1750))</small>
     <div class="video-background">
     	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-    		<source src="https://static.graphite.rs/content/blog/2024-07-31-graphite-progress-report-q2-2024/subgraph-editing.webm" type="video/webm" />
-    		<source src="https://static.graphite.rs/content/blog/2024-07-31-graphite-progress-report-q2-2024/subgraph-editing.mp4" type="video/mp4" />
+    		<source src="https://static.graphite.art/content/blog/2024-07-31-graphite-progress-report-q2-2024/subgraph-editing.webm" type="video/webm" />
+    		<source src="https://static.graphite.art/content/blog/2024-07-31-graphite-progress-report-q2-2024/subgraph-editing.mp4" type="video/mp4" />
     	</video>
     </div>
 
   - Extended support for navigating the graph just like the viewport (with autopanning on dragging near edges, working scrollbars, and zooming shortcuts) by migrating interaction code to the backend <small>([#1768](https://github.com/GraphiteEditor/Graphite/pull/1768), [#1790](https://github.com/GraphiteEditor/Graphite/pull/1790))</small>
     <div class="video-background">
     	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-    		<source src="https://static.graphite.rs/content/blog/2024-07-31-graphite-progress-report-q2-2024/graph-navigation.webm" type="video/webm" />
-    		<source src="https://static.graphite.rs/content/blog/2024-07-31-graphite-progress-report-q2-2024/graph-navigation.mp4" type="video/mp4" />
+    		<source src="https://static.graphite.art/content/blog/2024-07-31-graphite-progress-report-q2-2024/graph-navigation.webm" type="video/webm" />
+    		<source src="https://static.graphite.art/content/blog/2024-07-31-graphite-progress-report-q2-2024/graph-navigation.mp4" type="video/mp4" />
     	</video>
     </div>
 

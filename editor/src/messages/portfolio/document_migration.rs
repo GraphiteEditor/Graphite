@@ -1081,7 +1081,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			log::error!("The old Spline node's input at index 1 is not a TaggedValue::VecDVec2");
 			return None;
 		};
-		let vector = Vector::from_subpath(Subpath::from_anchors_linear(points.to_vec(), false));
+		let vector = Vector::from_subpath(Subpath::from_anchors(points.to_vec(), false));
 
 		// Retrieve the output connectors linked to the "Spline" node's output connector
 		let Some(spline_outputs) = document.network_interface.outward_wires(network_path)?.get(&OutputConnector::node(*node_id, 0)).cloned() else {
@@ -1580,6 +1580,53 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			let new_input = NodeInput::value(TaggedValue::DVec2(new_value), *exposed);
 			document.network_interface.set_input(&InputConnector::node(*node_id, 4), new_input, network_path);
 		}
+	}
+
+	// Migrate from the old source/target "Morph" node to the new vector table based "Morph" node.
+	// This doesn't produce exactly equivalent results in cases involving input vector tables with multiple rows.
+	// The old version would zip the source and target table rows, interpoleating each pair together.
+	// The migrated version will instead deeply flatten both merged tables and morph sequentially between all source vectors and all target vector elements.
+	// This migration assumes most usages didn't involve multiple parallel vector elements, and instead morphed from a single source to a single target vector element.
+	if reference == "Morph" && inputs_count == 3 {
+		// Old signature:
+		// async fn morph(_: impl Ctx, source: Table<Vector>, #[expose] target: Table<Vector>, #[default(0.5)] time: Fraction) -> Table<Vector> { ... }
+		//
+		// New signature:
+		// async fn morph<I: IntoGraphicTable>(_: impl Ctx, content: #[implementations(Table<Graphic>, Table<Vector>)] content: I, progression: Progression) -> Table<Vector> { ... }
+
+		let mut node_template = resolve_document_node_type(reference)?.default_node_template();
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		// Create a new Merge node
+		let Some(merge_node_type) = resolve_document_node_type("Merge") else {
+			log::error!("Could not get merge node from definition when upgrading morph");
+			return None;
+		};
+		let merge_template = merge_node_type.default_node_template();
+		let merge_node_id = NodeId::new();
+
+		// Decide on the placement position of the new Merge node
+		let Some(morph_position) = document.network_interface.position_from_downstream_node(node_id, network_path) else {
+			log::error!("Could not get position for morph node {node_id}");
+			return None;
+		};
+		let merge_position = morph_position + IVec2::new(-7, 0);
+
+		// Insert the new Merge node into the network
+		document.network_interface.insert_node(merge_node_id, merge_template, network_path);
+		document.network_interface.set_to_node_or_layer(&merge_node_id, network_path, false);
+		document.network_interface.shift_absolute_node_position(&merge_node_id, merge_position, network_path);
+
+		// Connect the old 'source' and 'target' inputs to the new Merge node
+		document.network_interface.set_input(&InputConnector::node(merge_node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node(merge_node_id, 1), old_inputs[1].clone(), network_path);
+
+		// Connect the new Merge node to the 'content' input of the Morph node
+		document
+			.network_interface
+			.set_input(&InputConnector::node(*node_id, 0), NodeInput::node(merge_node_id, 0), network_path);
+		// Connect the old 'progression' input to the new 'progression' input of the Morph node
+		document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[2].clone(), network_path);
 	}
 
 	// Add context features to nodes that don't have them (fine-grained context caching migration)

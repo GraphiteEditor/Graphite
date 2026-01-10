@@ -46,11 +46,11 @@ This sliding scale of latency/performance concerns maps directly to programming 
 
 We designed Graphene to operate in all three regimes:
 
-| Regime      | Usage                                                                 |
-|:------------|:----------------------------------------------------------------------|
+| Regime | Usage |
+|-|-|
 | Interpreted | While editing. Simple and currently the only mode that's implemented. |
-| JIT         | While editing. Dynamically bridges the gap between both other regimes by selectively substituting branches of the graph with interpreted and compiled nodes to keep latency low and work towards higher execution performance. |
-| Compiled    | When exported. The entire graph is compiled as a standalone program.  |
+| JIT | While editing. Dynamically bridges the gap between both other regimes by selectively substituting branches of the graph with interpreted and compiled nodes to keep latency low and work towards higher execution performance. |
+| Compiled | When exported. The entire graph is compiled as a standalone program. |
 
 ### Building upon the Rust compiler
 
