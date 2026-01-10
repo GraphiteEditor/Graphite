@@ -201,7 +201,8 @@ impl NodeGraphExecutor {
 			ExportBounds::Artboard(id) => document.metadata().bounding_box_document(id),
 		}
 		.ok_or_else(|| "No bounding box".to_string())?;
-		let resolution = (bounds[1] - bounds[0]).round().as_uvec2();
+		let dimensions = bounds[1] - bounds[0];
+		let resolution = (dimensions * export_config.scale_factor).round().as_uvec2();
 		let transform = DAffine2::from_translation(bounds[0]).inverse();
 
 		let render_config = RenderConfig {
@@ -261,7 +262,7 @@ impl NodeGraphExecutor {
 					responses.add(FrontendMessage::TriggerSaveFile { name, content: svg.into_bytes() });
 				} else {
 					let mime = file_type.to_mime().to_string();
-					let size = (size * scale_factor).into();
+					let size = size.into();
 					responses.add(FrontendMessage::TriggerExportImage { svg, name, mime, size });
 				}
 			}
