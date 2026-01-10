@@ -26,8 +26,8 @@
 		.text-button {
 			position: relative;
 
-&:not(:first-child) {
-				margin-left: -4px;
+			&:not(:first-child) {
+				margin-left: 0px;
 			}
 
 			clip-path: polygon(0% 0%, calc(100% - 4px) 0%, 100% 50%, calc(100% - 4px) 100%, 0% 100%, 4px 50%);
