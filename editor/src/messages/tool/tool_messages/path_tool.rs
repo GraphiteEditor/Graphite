@@ -13,6 +13,7 @@ use crate::messages::portfolio::document::overlays::utility_functions::{path_ove
 use crate::messages::portfolio::document::overlays::utility_types::{DrawHandles, OverlayContext};
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
+use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis};
 use crate::messages::portfolio::document::utility_types::network_interface::NodeNetworkInterface;
 use crate::messages::portfolio::document::utility_types::transformation::Axis;
 use crate::messages::preferences::SelectionMode;
@@ -154,6 +155,10 @@ pub enum PathToolMessage {
 	Duplicate,
 	TogglePointEditing,
 	ToggleSegmentEditing,
+	AlignSelectedAnchors {
+		axis: AlignAxis,
+		aggregate: AlignAggregate,
+	},
 }
 
 #[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
@@ -189,6 +194,29 @@ pub enum PathOptionsUpdate {
 	PivotGizmoType(PivotGizmoType),
 	SetPivotGizmoEnabled(bool),
 	TogglePivotPinned,
+}
+
+impl PathTool {
+	fn alignment_widgets(&self, disabled: bool) -> impl Iterator<Item = WidgetInstance> + use<> {
+		[AlignAxis::X, AlignAxis::Y]
+			.into_iter()
+			.flat_map(|axis| [(axis, AlignAggregate::Min), (axis, AlignAggregate::Center), (axis, AlignAggregate::Max)])
+			.map(move |(axis, aggregate)| {
+				let (icon, label) = match (axis, aggregate) {
+					(AlignAxis::X, AlignAggregate::Min) => ("AlignLeft", "Align Left"),
+					(AlignAxis::X, AlignAggregate::Center) => ("AlignHorizontalCenter", "Align Horizontal Center"),
+					(AlignAxis::X, AlignAggregate::Max) => ("AlignRight", "Align Right"),
+					(AlignAxis::Y, AlignAggregate::Min) => ("AlignTop", "Align Top"),
+					(AlignAxis::Y, AlignAggregate::Center) => ("AlignVerticalCenter", "Align Vertical Center"),
+					(AlignAxis::Y, AlignAggregate::Max) => ("AlignBottom", "Align Bottom"),
+				};
+				IconButton::new(icon, 24)
+					.tooltip_label(label)
+					.on_update(move |_| PathToolMessage::AlignSelectedAnchors { axis, aggregate }.into())
+					.disabled(disabled)
+					.widget_instance()
+			})
+	}
 }
 
 impl ToolMetadata for PathTool {
@@ -352,30 +380,37 @@ impl LayoutHolder for PathTool {
 
 		let _pin_pivot = pin_pivot_widget(self.tool_data.pivot_gizmo.pin_active(), false, PivotToolSource::Path);
 
-		Layout(vec![LayoutGroup::row(vec![
-			x_location,
-			related_seperator.clone(),
-			y_location,
-			unrelated_seperator.clone(),
-			colinear_handle_checkbox,
-			related_seperator.clone(),
-			colinear_handles_label,
-			unrelated_seperator.clone(),
-			point_editing_mode,
-			related_seperator.clone(),
-			segment_editing_mode,
-			unrelated_seperator.clone(),
-			path_overlay_mode_widget,
-			unrelated_seperator.clone(),
-			path_node_button,
-			// checkbox.clone(),
-			// related_seperator.clone(),
-			// dropdown.clone(),
-			// unrelated_seperator,
-			// pivot_reference,
-			// related_seperator.clone(),
-			// pin_pivot,
-		])])
+		// Determine if alignment buttons should be disabled (need 2+ points selected)
+		let multiple_points_selected = matches!(self.tool_data.selection_status, SelectionStatus::Multiple(_));
+		let alignment_disabled = !multiple_points_selected;
+
+		Layout(vec![LayoutGroup::Row {
+			widgets: vec![x_location, related_seperator.clone(), y_location, unrelated_seperator.clone()]
+				.into_iter()
+				.chain(self.alignment_widgets(alignment_disabled))
+				.chain(vec![
+					unrelated_seperator.clone(),
+					colinear_handle_checkbox,
+					related_seperator.clone(),
+					colinear_handles_label,
+					unrelated_seperator.clone(),
+					point_editing_mode,
+					related_seperator.clone(),
+					segment_editing_mode,
+					unrelated_seperator.clone(),
+					path_overlay_mode_widget,
+					unrelated_seperator.clone(),
+					path_node_button,
+					// checkbox.clone(),
+					// related_seperator.clone(),
+					// dropdown.clone(),
+					// unrelated_seperator,
+					// pivot_reference,
+					// related_seperator.clone(),
+					// pin_pivot,
+				])
+				.collect(),
+		}])
 	}
 }
 
@@ -3015,6 +3050,14 @@ impl Fsm for PathToolFsmState {
 						segments_map.values().for_each(|segment| state.select_segment(*segment));
 					}
 				}
+
+				PathToolFsmState::Ready
+			}
+			(_, PathToolMessage::AlignSelectedAnchors { axis, aggregate }) => {
+				responses.add(DocumentMessage::AddTransaction);
+				shape_editor.align_selected_points(document, responses, axis, aggregate);
+				responses.add(DocumentMessage::EndTransaction);
+				responses.add(OverlaysMessage::Draw);
 
 				PathToolFsmState::Ready
 			}
