@@ -75,7 +75,12 @@ fn grid_overlay_rectangular_dot(document: &DocumentMessageHandler, overlay_conte
 	let document_to_viewport = document
 		.navigation_handler
 		.calculate_offset_transform(overlay_context.viewport.center_in_viewport_space().into(), &document.document_ptz);
+	let grid_color_minor = "#".to_string() + &document.snapping_state.grid.grid_color_minor.to_rgba_hex_srgb();
+	let Some(scaled_spacing) = GridSnapping::compute_rectangle_spacing(spacing, &document.snapping_state.grid.rectangular_major_interval, &document.document_ptz) else {
+		return;
+	};
 	let scale_is_adjusted = scaled_spacing != spacing;
+	let document_to_viewport = document.navigation_handler.calculate_offset_transform(overlay_context.size / 2., &document.document_ptz);
 
 	let bounds = document_to_viewport.inverse() * Quad::from_box([DVec2::ZERO, overlay_context.viewport.size().into()]);
 
