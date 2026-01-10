@@ -1382,6 +1382,115 @@ impl ShapeState {
 		Some([(handles[0], start), (handles[1], end)])
 	}
 
+	/// Collect all affected points including those from selected segments
+	fn collect_affected_points(state: &SelectedLayerState, vector: &Vector) -> HashSet<ManipulatorPointId> {
+		let mut affected_points = state.selected_points.clone();
+		for (segment_id, _, start, end) in vector.segment_bezier_iter() {
+			if state.is_segment_selected(segment_id) {
+				affected_points.insert(ManipulatorPointId::Anchor(start));
+				affected_points.insert(ManipulatorPointId::Anchor(end));
+			}
+		}
+		affected_points
+	}
+
+	/// Calculate the bounding box of all point positions
+	fn calculate_bounding_box(point_positions: &[(LayerNodeIdentifier, ManipulatorPointId, DVec2)]) -> [DVec2; 2] {
+		let min_x = point_positions.iter().map(|(_, _, pos)| pos.x).fold(f64::INFINITY, f64::min);
+		let max_x = point_positions.iter().map(|(_, _, pos)| pos.x).fold(f64::NEG_INFINITY, f64::max);
+		let min_y = point_positions.iter().map(|(_, _, pos)| pos.y).fold(f64::INFINITY, f64::min);
+		let max_y = point_positions.iter().map(|(_, _, pos)| pos.y).fold(f64::NEG_INFINITY, f64::max);
+
+		[DVec2::new(min_x, min_y), DVec2::new(max_x, max_y)]
+	}
+
+	/// Calculate the alignment target based on bounding box and aggregate type
+	fn calculate_alignment_target(combined_box: [DVec2; 2], aggregate: AlignAggregate) -> DVec2 {
+		match aggregate {
+			AlignAggregate::Min => combined_box[0],
+			AlignAggregate::Max => combined_box[1],
+			AlignAggregate::Center => (combined_box[0] + combined_box[1]) / 2.,
+		}
+	}
+
+	/// Calculate the delta for a point in document space
+	fn calculate_point_delta(
+		viewport_pos: DVec2,
+		aggregated: DVec2,
+		axis_vec: DVec2,
+		transform_to_viewport: DAffine2,
+	) -> DVec2 {
+		let translation_viewport = (aggregated - viewport_pos) * axis_vec;
+		let transform_to_document = transform_to_viewport.inverse();
+		transform_to_document.transform_vector2(translation_viewport)
+	}
+
+	/// Process handle alignment and generate the modification message
+	fn process_handle_alignment(
+		layer: LayerNodeIdentifier,
+		point: ManipulatorPointId,
+		original_viewport_pos: DVec2,
+		aggregated: DVec2,
+		axis_vec: DVec2,
+		anchor_deltas: &std::collections::HashMap<(LayerNodeIdentifier, PointId), DVec2>,
+		vector: &Vector,
+		transform_to_viewport: DAffine2,
+		responses: &mut VecDeque<Message>,
+	) {
+		// Get the handle's segment and anchor info
+		let (segment_id, is_primary) = match point {
+			ManipulatorPointId::PrimaryHandle(seg_id) => (seg_id, true),
+			ManipulatorPointId::EndHandle(seg_id) => (seg_id, false),
+			_ => return,
+		};
+
+		// Find the anchor this handle is attached to
+		let Some((_, _, start_point, end_point)) = vector.segment_bezier_iter().find(|(id, _, _, _)| *id == segment_id) else {
+			return;
+		};
+		let anchor_id = if is_primary { start_point } else { end_point };
+
+		// Get the anchor's ORIGINAL position (before movements)
+		let Some(anchor_position_original) = ManipulatorPointId::Anchor(anchor_id).get_position(vector) else {
+			return;
+		};
+
+		// Calculate the anchor's NEW position by applying the delta we calculated earlier
+		let anchor_delta = anchor_deltas.get(&(layer, anchor_id)).copied().unwrap_or(DVec2::ZERO);
+		let anchor_position_new = anchor_position_original + anchor_delta;
+
+		// Calculate the target position for the handle
+		let transform_to_document = transform_to_viewport.inverse();
+
+		// The handle should move to the aggregated target, just like anchors do
+		// Calculate target position in viewport space (only moving along the axis)
+		let target_viewport = DVec2::new(
+			if axis_vec.x > 0.5 { aggregated.x } else { original_viewport_pos.x },
+			if axis_vec.y > 0.5 { aggregated.y } else { original_viewport_pos.y },
+		);
+
+		// Convert target to document space
+		let target_document = transform_to_document.transform_point2(target_viewport);
+
+		// Calculate handle position RELATIVE to its anchor's NEW position
+		let relative_position = target_document - anchor_position_new;
+
+		// Set the handle to the calculated position
+		let modification_type = if is_primary {
+			VectorModificationType::SetPrimaryHandle {
+				segment: segment_id,
+				relative_position,
+			}
+		} else {
+			VectorModificationType::SetEndHandle {
+				segment: segment_id,
+				relative_position,
+			}
+		};
+
+		responses.add(GraphOperationMessage::Vector { layer, modification_type });
+	}
+
 	/// Align the selected points based on axis and aggregate.
 	pub fn align_selected_points(&self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, axis: AlignAxis, aggregate: AlignAggregate) {
 		// Convert axis to direction vector
@@ -1398,13 +1507,7 @@ impl ShapeState {
 			let transform_to_viewport = document.network_interface.document_metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
 
 			// Include points from selected segments
-			let mut affected_points = state.selected_points.clone();
-			for (segment_id, _, start, end) in vector.segment_bezier_iter() {
-				if state.is_segment_selected(segment_id) {
-					affected_points.insert(ManipulatorPointId::Anchor(start));
-					affected_points.insert(ManipulatorPointId::Anchor(end));
-				}
-			}
+			let affected_points = Self::collect_affected_points(state, &vector);
 
 			// Collect positions
 			for &point in affected_points.iter() {
@@ -1419,20 +1522,9 @@ impl ShapeState {
 			return;
 		}
 
-		// Calculate bounding box of all selected points
-		let min_x = point_positions.iter().map(|(_, _, pos)| pos.x).fold(f64::INFINITY, f64::min);
-		let max_x = point_positions.iter().map(|(_, _, pos)| pos.x).fold(f64::NEG_INFINITY, f64::max);
-		let min_y = point_positions.iter().map(|(_, _, pos)| pos.y).fold(f64::INFINITY, f64::min);
-		let max_y = point_positions.iter().map(|(_, _, pos)| pos.y).fold(f64::NEG_INFINITY, f64::max);
-
-		let combined_box = [DVec2::new(min_x, min_y), DVec2::new(max_x, max_y)];
-
-		// Calculate the alignment target
-		let aggregated = match aggregate {
-			AlignAggregate::Min => combined_box[0],
-			AlignAggregate::Max => combined_box[1],
-			AlignAggregate::Center => (combined_box[0] + combined_box[1]) / 2.,
-		};
+		// Calculate bounding box and alignment target
+		let combined_box = Self::calculate_bounding_box(&point_positions);
+		let aggregated = Self::calculate_alignment_target(combined_box, aggregate);
 
 		// Separate anchor and handle movements
 		// We apply anchor movements first, then handle movements matches the behavior of Scale (S shortcut) when scaling to 0
@@ -1441,15 +1533,8 @@ impl ShapeState {
 		let mut handle_movements = Vec::new();
 
 		for (layer, point, viewport_pos) in point_positions {
-			// Calculate translation in viewport space, only along the specified axis
-			let translation_viewport = (aggregated - viewport_pos) * axis_vec;
-
-			// Convert translation to document space
 			let transform_to_viewport = document.network_interface.document_metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
-			let transform_to_document = transform_to_viewport.inverse();
-
-			// Transform the delta
-			let delta = transform_to_document.transform_vector2(translation_viewport);
+			let delta = Self::calculate_point_delta(viewport_pos, aggregated, axis_vec, transform_to_viewport);
 
 			match point {
 				ManipulatorPointId::Anchor(point_id) => {
@@ -1479,60 +1564,9 @@ impl ShapeState {
 		// This matches the behavior of Scale (S) when scaling to 0
 		for (layer, point, original_viewport_pos) in handle_movements {
 			let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
-
-			// Get the handle's segment and anchor info
-			let (segment_id, is_primary) = match point {
-				ManipulatorPointId::PrimaryHandle(seg_id) => (seg_id, true),
-				ManipulatorPointId::EndHandle(seg_id) => (seg_id, false),
-				_ => continue,
-			};
-
-			// Find the anchor this handle is attached to
-			let Some((_, _, start_point, end_point)) = vector.segment_bezier_iter().find(|(id, _, _, _)| *id == segment_id) else {
-				continue;
-			};
-			let anchor_id = if is_primary { start_point } else { end_point };
-
-			// Get the anchor's ORIGINAL position (before movements)
-			let Some(anchor_position_original) = ManipulatorPointId::Anchor(anchor_id).get_position(&vector) else {
-				continue;
-			};
-
-			// Calculate the anchor's NEW position by applying the delta we calculated earlier
-			let anchor_delta = anchor_deltas.get(&(layer, anchor_id)).copied().unwrap_or(DVec2::ZERO);
-			let anchor_position_new = anchor_position_original + anchor_delta;
-
-			// Calculate the target position for the handle
 			let transform_to_viewport = document.network_interface.document_metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
-			let transform_to_document = transform_to_viewport.inverse();
 
-			// The handle should move to the aggregated target, just like anchors do
-			// Calculate target position in viewport space (only moving along the axis)
-			let target_viewport = DVec2::new(
-				if axis_vec.x > 0.5 { aggregated.x } else { original_viewport_pos.x },
-				if axis_vec.y > 0.5 { aggregated.y } else { original_viewport_pos.y },
-			);
-
-			// Convert target to document space
-			let target_document = transform_to_document.transform_point2(target_viewport);
-
-			// Calculate handle position RELATIVE to its anchor's NEW position
-			let relative_position = target_document - anchor_position_new;
-
-			// Set the handle to the calculated position
-			let modification_type = if is_primary {
-				VectorModificationType::SetPrimaryHandle {
-					segment: segment_id,
-					relative_position,
-				}
-			} else {
-				VectorModificationType::SetEndHandle {
-					segment: segment_id,
-					relative_position,
-				}
-			};
-
-			responses.add(GraphOperationMessage::Vector { layer, modification_type });
+			Self::process_handle_alignment(layer, point, original_viewport_pos, aggregated, axis_vec, &anchor_deltas, &vector, transform_to_viewport, responses);
 		}
 	}
 
