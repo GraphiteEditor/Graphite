@@ -506,7 +506,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 								let default_value = match default_value {
 									"Color::BLACK" => render_color("black"),
 									"BLACK_TO_WHITE" => render_color("linear-gradient(to right, black, white)"),
-									_ => format!("`{default_value}`"),
+									_ => format!("`{default_value}{}`", field.unit.unwrap_or_default()),
 								};
 								details.push(format!("<p>*Default:&nbsp;{default_value}*</p>"));
 							}
