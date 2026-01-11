@@ -92,7 +92,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		if (key === "KeyV" && accelKey) return false;
 
 		// Don't redirect a fullscreen request on web
-		if (key === "F11" && e.type === "keydown" && !e.repeat && isDesktop()) {
+		if (key === "F11" && e.type === "keydown" && !e.repeat && !isDesktop()) {
 			e.preventDefault();
 			fullscreen.toggleFullscreen();
 			return false;
