@@ -1,3 +1,4 @@
+use crate::transform::Footprint;
 use std::any::TypeId;
 pub use std::borrow::Cow;
 use std::fmt::{Display, Formatter};
@@ -75,6 +76,7 @@ macro_rules! fn_type_fut {
 	};
 }
 
+// TODO: Rename to NodeSignatureMonomorphization
 #[derive(Clone, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize)]
 pub struct NodeIOTypes {
 	pub call_argument: Type,
@@ -372,6 +374,19 @@ impl std::fmt::Debug for Type {
 
 impl std::fmt::Display for Type {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		if self == &concrete!(glam::DVec2) {
+			return write!(f, "vec2");
+		}
+		if self == &concrete!(glam::DAffine2) {
+			return write!(f, "transform");
+		}
+		if self == &concrete!(Footprint) {
+			return write!(f, "footprint");
+		}
+		if self == &concrete!(&str) || self == &concrete!(String) {
+			return write!(f, "string");
+		}
+
 		let text = match self {
 			Type::Generic(name) => name.to_string(),
 			Type::Concrete(ty) => format_type(&ty.name),

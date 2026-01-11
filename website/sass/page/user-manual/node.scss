@@ -1,0 +1,14 @@
+:is(#context, #inputs, #outputs) + table tr {
+	th:is(:first-child, :nth-child(3)) {
+		width: 0;
+		white-space: nowrap;
+	}
+
+	td:is(:first-child, :nth-child(3)) {
+		width: 0;
+
+		code {
+			white-space: nowrap;
+		}
+	}
+}
