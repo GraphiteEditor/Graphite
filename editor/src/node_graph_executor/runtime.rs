@@ -8,7 +8,7 @@ use graph_craft::proto::GraphErrors;
 use graph_craft::wasm_application_io::EditorPreferences;
 use graph_craft::{ProtoNodeIdentifier, concrete};
 use graphene_std::application_io::{ApplicationIo, ExportFormat, ImageTexture, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
-use graphene_std::bounds::{self, RenderBoundingBox};
+use graphene_std::bounds::RenderBoundingBox;
 use graphene_std::memo::IORecord;
 use graphene_std::ops::Convert;
 use graphene_std::raster_types::Raster;
