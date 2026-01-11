@@ -2,7 +2,8 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use winit::cursor::{CursorIcon, CustomCursor, CustomCursorSource};
 use winit::event_loop::ActiveEventLoop;
-use winit::window::{Fullscreen, Window as WinitWindow, WindowAttributes};
+use winit::monitor::Fullscreen;
+use winit::window::{Window as WinitWindow, WindowAttributes};
 
 use crate::consts::APP_NAME;
 use crate::event::AppEventScheduler;
