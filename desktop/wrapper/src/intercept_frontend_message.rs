@@ -145,6 +145,9 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		FrontendMessage::WindowMaximize => {
 			dispatcher.respond(DesktopFrontendMessage::WindowMaximize);
 		}
+		FrontendMessage::WindowFullscreen => {
+			dispatcher.respond(DesktopFrontendMessage::WindowFullscreen);
+		}
 		FrontendMessage::WindowDrag => {
 			dispatcher.respond(DesktopFrontendMessage::WindowDrag);
 		}

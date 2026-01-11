@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use winit::cursor::{CursorIcon, CustomCursor, CustomCursorSource};
 use winit::event_loop::ActiveEventLoop;
-use winit::window::{Window as WinitWindow, WindowAttributes};
+use winit::window::{Fullscreen, Window as WinitWindow, WindowAttributes};
 
 use crate::consts::APP_NAME;
 use crate::event::AppEventScheduler;
@@ -116,6 +116,14 @@ impl Window {
 
 	pub(crate) fn is_maximized(&self) -> bool {
 		self.winit_window.is_maximized()
+	}
+
+	pub(crate) fn toggle_fullscreen(&self) {
+		if self.is_fullscreen() {
+			self.winit_window.set_fullscreen(None);
+		} else {
+			self.winit_window.set_fullscreen(Some(Fullscreen::Borderless(None)));
+		}
 	}
 
 	pub(crate) fn is_fullscreen(&self) -> bool {

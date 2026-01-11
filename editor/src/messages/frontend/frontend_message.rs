@@ -366,6 +366,7 @@ pub enum FrontendMessage {
 	WindowClose,
 	WindowMinimize,
 	WindowMaximize,
+	WindowFullscreen,
 	WindowDrag,
 	WindowHide,
 	WindowHideOthers,

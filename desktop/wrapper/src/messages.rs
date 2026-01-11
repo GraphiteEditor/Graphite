@@ -68,6 +68,7 @@ pub enum DesktopFrontendMessage {
 	WindowClose,
 	WindowMinimize,
 	WindowMaximize,
+	WindowFullscreen,
 	WindowDrag,
 	WindowHide,
 	WindowHideOthers,
