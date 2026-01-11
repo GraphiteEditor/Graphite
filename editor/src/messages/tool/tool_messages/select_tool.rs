@@ -453,7 +453,7 @@ impl SelectToolData {
 		if self.lasso_polygon.len() < 2 {
 			return Vec::new();
 		}
-		let polygon = Subpath::from_anchors_linear(self.lasso_polygon.clone(), true);
+		let polygon = Subpath::from_anchors(self.lasso_polygon.clone(), true);
 		document.intersect_polygon_no_artboards(polygon, viewport).collect()
 	}
 
@@ -461,7 +461,7 @@ impl SelectToolData {
 		if self.lasso_polygon.len() < 2 {
 			return false;
 		}
-		let polygon = Subpath::from_anchors_linear(self.lasso_polygon.clone(), true);
+		let polygon = Subpath::from_anchors(self.lasso_polygon.clone(), true);
 		document.is_layer_fully_inside_polygon(layer, viewport, polygon)
 	}
 

@@ -963,9 +963,12 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				});
 			}
 			PortfolioMessage::RequestStatusBarInfoLayout => {
-				let row = LayoutGroup::Row {
-					widgets: vec![TextLabel::new("Graphite (beta) 1.0.0-RC1").disabled(true).widget_instance()],
-				};
+				#[cfg(not(target_family = "wasm"))]
+				let widgets = vec![TextLabel::new("Graphite (beta) 1.0.0-RC2").disabled(true).widget_instance()];
+				#[cfg(target_family = "wasm")]
+				let widgets = vec![];
+
+				let row = LayoutGroup::Row { widgets };
 
 				responses.add(LayoutMessage::SendLayout {
 					layout: Layout(vec![row]),
@@ -1031,6 +1034,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				scale_factor,
 				bounds,
 				transparent_background,
+				artboard_name,
+				artboard_count,
 			} => {
 				let document = self.active_document_id.and_then(|id| self.documents.get_mut(&id)).expect("Tried to render non-existent document");
 				let export_config = ExportConfig {
@@ -1039,6 +1044,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					scale_factor,
 					bounds,
 					transparent_background,
+					artboard_name,
+					artboard_count,
 					..Default::default()
 				};
 				let result = self.executor.submit_document_export(document, self.active_document_id.unwrap(), export_config);

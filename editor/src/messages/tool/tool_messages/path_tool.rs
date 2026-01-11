@@ -73,6 +73,11 @@ pub enum PathToolMessage {
 	},
 	Escape,
 	ClosePath,
+	ConnectPointsByPosition {
+		layer: LayerNodeIdentifier,
+		start_position: DVec2,
+		end_position: DVec2,
+	},
 	DoubleClick {
 		extend_selection: Key,
 		shrink_selection: Key,
@@ -2666,6 +2671,60 @@ impl Fsm for PathToolFsmState {
 				responses.add(DocumentMessage::EndTransaction);
 
 				responses.add(OverlaysMessage::Draw);
+
+				self
+			}
+			(_, PathToolMessage::ConnectPointsByPosition { layer, start_position, end_position }) => {
+				// Get the merged vector
+				let Some(vector) = document.network_interface.compute_modified_vector(layer) else {
+					return self;
+				};
+
+				// Find points by their positions (with small tolerance for floating point comparison)
+				const POSITION_TOLERANCE: f64 = 1e-6;
+
+				let positions = vector.point_domain.positions();
+				let point_ids = vector.point_domain.ids();
+
+				let mut start_point_id = None;
+				let mut end_point_id = None;
+
+				// Get the merged layer's transform to convert local positions to document space
+				let layer_transform = document.metadata().transform_to_document(layer);
+
+				for (i, &local_pos) in positions.iter().enumerate() {
+					// Transform the local position to document space for comparison
+					let doc_pos = layer_transform.transform_point2(local_pos);
+
+					let start_distance = (doc_pos - start_position).length();
+					let end_distance = (doc_pos - end_position).length();
+
+					if start_point_id.is_none() && start_distance < POSITION_TOLERANCE {
+						start_point_id = Some(point_ids[i]);
+					}
+					if end_point_id.is_none() && end_distance < POSITION_TOLERANCE {
+						end_point_id = Some(point_ids[i]);
+					}
+					if start_point_id.is_some() && end_point_id.is_some() {
+						break;
+					}
+				}
+
+				if let (Some(start_id), Some(end_id)) = (start_point_id, end_point_id) {
+					// Create segment directly
+					responses.add(DocumentMessage::StartTransaction);
+
+					let segment_id = SegmentId::generate();
+					let modification_type = VectorModificationType::InsertSegment {
+						id: segment_id,
+						points: [end_id, start_id],
+						handles: [None, None],
+					};
+
+					responses.add(GraphOperationMessage::Vector { layer, modification_type });
+					responses.add(DocumentMessage::EndTransaction);
+					responses.add(OverlaysMessage::Draw);
+				}
 
 				self
 			}

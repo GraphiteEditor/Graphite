@@ -249,7 +249,7 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 				Graphic::RasterCPU(image) => {
 					let make_row = |transform| {
 						// Convert the image frame into a rectangular subpath with the image's transform
-						let mut subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
+						let mut subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
 						subpath.apply_transform(transform);
 
 						// Create a vector table row from the rectangular subpath, with a default black fill
@@ -265,7 +265,7 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 				Graphic::RasterGPU(image) => {
 					let make_row = |transform| {
 						// Convert the image frame into a rectangular subpath with the image's transform
-						let mut subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
+						let mut subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
 						subpath.apply_transform(transform);
 
 						// Create a vector table row from the rectangular subpath, with a default black fill
