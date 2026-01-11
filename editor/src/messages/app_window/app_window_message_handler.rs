@@ -51,6 +51,7 @@ impl MessageHandler<AppWindowMessage, ()> for AppWindowMessageHandler {
 		Close,
 		Minimize,
 		Maximize,
+		Fullscreen,
 		Drag,
 		Hide,
 		HideOthers,
