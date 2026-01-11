@@ -1036,6 +1036,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				scale_factor,
 				bounds,
 				transparent_background,
+				artboard_name,
+				artboard_count,
 			} => {
 				let document = self.active_document_id.and_then(|id| self.documents.get_mut(&id)).expect("Tried to render non-existent document");
 				let export_config = ExportConfig {
@@ -1044,6 +1046,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					scale_factor,
 					bounds,
 					transparent_background,
+					artboard_name,
+					artboard_count,
 					..Default::default()
 				};
 				let result = self.executor.submit_document_export(document, self.active_document_id.unwrap(), export_config);
