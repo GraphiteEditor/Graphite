@@ -37,7 +37,7 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 
 		let NodeMetadata { fields, .. } = metadata;
 		let Some(implementations) = &node_registry.get(&id) else { continue };
-		let valid_inputs: HashSet<_> = implementations.iter().map(|(_, node_io)| node_io.call_argument.clone()).collect();
+		let valid_call_args: HashSet<_> = implementations.iter().map(|(_, node_io)| node_io.call_argument.clone()).collect();
 		let first_node_io = implementations.first().map(|(_, node_io)| node_io).unwrap_or(const { &NodeIOTypes::empty() });
 		let mut node_io_types = vec![HashSet::new(); fields.len()];
 		for (_, node_io) in implementations.iter() {
@@ -46,7 +46,7 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 			}
 		}
 		let mut input_type = &first_node_io.call_argument;
-		if valid_inputs.len() > 1 {
+		if valid_call_args.len() > 1 {
 			input_type = &const { generic!(D) };
 		}
 

@@ -28,7 +28,7 @@ use wasm_bindgen::JsCast;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
 #[cfg(feature = "wgpu")]
-#[node_macro::node(category("Debug: GPU"))]
+#[node_macro::node(category(""))]
 async fn create_surface<'a: 'n>(_: impl Ctx, editor: &'a WasmEditorApi) -> Arc<WasmSurfaceHandle> {
 	Arc::new(editor.application_io.as_ref().unwrap().create_window())
 }

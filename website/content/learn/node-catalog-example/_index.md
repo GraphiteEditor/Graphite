@@ -5,13 +5,8 @@ page_template = "book.html"
 
 [extra]
 order = 4
+css = ["/page/user-manual/node-catalog.css"]
 +++
-
-<style>
-table tr td:first-child a {
-	white-space: nowrap;
-}
-</style>
 
 The node catalog documents all of the nodes available in Graphite's node graph system, organized by category.
 

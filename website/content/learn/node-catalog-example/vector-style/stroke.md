@@ -2,23 +2,20 @@
 title = "Stroke"
 
 [extra]
-order = 2
+order = 3
+css = ["/page/user-manual/node.css"]
 +++
 
-<style>
-table tr td:last-child code {
-	white-space: nowrap;
-}
-</style>
-
 Applies a stroke style to the vector content, giving an appearance to the area within the outline of the geometry.
+
+## Interface
 
 ### Inputs
 
 | Parameter | Details | Possible Types |
 |:-|:-|:-|
-| Content | <p>The content with vector paths to apply the stroke style to.</p><p><em>Primary Input</em></p> | `Table<Vector>`<br />`Table<Graphic>` |
-| Color | <p>The stroke color.</p><p><em>Default: <span style="padding-right: 100px; background: black; border: 2px solid var(--color-fog)">&nbsp;</span></em></p> | `Table<Color>` |
+| Content | <p>The content with vector paths to apply the stroke style to.</p><p><em>Primary Input</em></p> | `Table<Graphic>`<br />`Table<Vector>` |
+| Color | <p>The stroke color.</p><p><em>Default:&nbsp;<span style="padding-right: 100px; background: black; border: 2px solid var(--color-fog)"></span></em></p> | `Table<Color>` |
 | Weight | <p>The stroke thickness.</p><p><em>Default: `2 px`</em></p> | `f64` |
 | Align | <p>The alignment of stroke to the path's centerline or (for closed shapes) the inside or outside of the shape.</p><p><em>Default: `Center`</em></p> | `StrokeAlign` |
 | Cap | <p>The shape of the stroke at open endpoints.</p><p><em>Default: `Butt`</em></p> | `StrokeCap` |
@@ -33,7 +30,3 @@ Applies a stroke style to the vector content, giving an appearance to the area w
 | Product | Details | Possible Types |
 |:-|:-|:-|
 | Result | <p>The vector content with the stroke style applied.</p><p><em>Primary Output</em></p> | `Table<Vector>`<br />`Table<Graphic>` |
-
-### Context
-
-Not context-aware.

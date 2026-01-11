@@ -15,9 +15,7 @@ fn text<'i: 'n>(
 	#[unit("x")]
 	#[default(1.2)]
 	line_height_ratio: f64,
-	#[unit(" px")]
-	#[default(0.)]
-	character_spacing: f64,
+	#[unit(" px")] character_spacing: f64,
 	#[unit(" px")] max_width: Option<f64>,
 	#[unit(" px")] max_height: Option<f64>,
 	/// Faux italic.
