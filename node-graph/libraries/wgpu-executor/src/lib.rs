@@ -49,9 +49,9 @@ pub struct Surface {
 }
 
 pub struct TargetTexture {
-	texture: wgpu::Texture,
-	view: wgpu::TextureView,
-	size: UVec2,
+	pub texture: wgpu::Texture,
+	pub view: wgpu::TextureView,
+	pub size: UVec2,
 }
 
 #[cfg(target_family = "wasm")]
@@ -72,7 +72,7 @@ impl WgpuExecutor {
 		Ok(output.unwrap().texture)
 	}
 
-	async fn render_vello_scene_to_target_texture(&self, scene: &Scene, size: UVec2, context: &RenderContext, background: Color, output: &mut Option<TargetTexture>) -> Result<()> {
+	pub async fn render_vello_scene_to_target_texture(&self, scene: &Scene, size: UVec2, context: &RenderContext, background: Color, output: &mut Option<TargetTexture>) -> Result<()> {
 		let size = size.max(UVec2::ONE);
 		let target_texture = if let Some(target_texture) = output
 			&& target_texture.size == size
