@@ -76,7 +76,7 @@ pub struct EditorMouseState {
 
 impl EditorMouseState {
 	pub fn from_keys_and_editor_position(keys: u8, editor_position: EditorPosition) -> Self {
-        // TODO: Some graphic tablets send key codes not mentioned in the spec. In the future we would like to support these as well.
+		// TODO: Some graphic tablets send key codes not mentioned in the spec. In the future we would like to support these as well.
 		let mouse_keys = MouseKeys::from_bits_truncate(keys);
 
 		Self {
