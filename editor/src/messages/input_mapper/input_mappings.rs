@@ -54,6 +54,9 @@ pub fn input_mappings() -> Mapping {
 		// Hack to prevent Left Click + Accel + Z combo (this effectively blocks you from making a double undo with AbortTransaction)
 		entry!(KeyDown(KeyZ); modifiers=[Accel, MouseLeft], action_dispatch=DocumentMessage::Noop),
 		//
+		// AppWindowMessage
+		entry!(KeyDown(F11); action_dispatch=AppWindowMessage::Fullscreen),
+		//
 		// ClipboardMessage
 		entry!(KeyDown(KeyX); modifiers=[Accel], action_dispatch=ClipboardMessage::Cut),
 		entry!(KeyDown(KeyC); modifiers=[Accel], action_dispatch=ClipboardMessage::Copy),
