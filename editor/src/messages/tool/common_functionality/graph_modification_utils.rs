@@ -25,7 +25,7 @@ pub fn find_spline(document: &DocumentMessageHandler, layer: LayerNodeIdentifier
 		.network_interface
 		.upstream_flow_back_from_nodes([layer.to_node()].to_vec(), &[], FlowType::HorizontalFlow)
 		.map(|node_id| (document.network_interface.reference(&node_id, &[]), node_id))
-		.take_while(|(reference, _)| reference.as_ref().is_some_and(|node_ref| node_ref != &DefinitionIdentifier::Network("Path".to_string())))
+		.take_while(|(reference, _)| reference.as_ref().is_some_and(|node_ref| node_ref != &DefinitionIdentifier::Network("Path".into())))
 		.find(|(reference, _)| {
 			reference
 				.as_ref()
@@ -77,7 +77,7 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 
 	// Merge the inputs of the two layers
 	let merge_node_id = NodeId::new();
-	let merge_node = document_node_definitions::resolve_document_node_type(&DefinitionIdentifier::Network("Merge".to_string()))
+	let merge_node = document_node_definitions::resolve_document_node_type(&DefinitionIdentifier::Network("Merge".into()))
 		.expect("Failed to create merge node")
 		.default_node_template();
 	responses.add(NodeGraphMessage::InsertNode {
@@ -117,7 +117,7 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 
 	// Add a path node after the flatten node
 	let path_node_id = NodeId::new();
-	let path_node = document_node_definitions::resolve_document_node_type(&DefinitionIdentifier::Network("Path".to_string()))
+	let path_node = document_node_definitions::resolve_document_node_type(&DefinitionIdentifier::Network("Path".into()))
 		.expect("Failed to create path node")
 		.default_node_template();
 	responses.add(NodeGraphMessage::InsertNode {
@@ -147,7 +147,7 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 
 	// Add a transform node to ensure correct tooling modifications
 	let transform_node_id = NodeId::new();
-	let transform_node = document_node_definitions::resolve_document_node_type(&DefinitionIdentifier::Network("Transform".to_string()))
+	let transform_node = document_node_definitions::resolve_document_node_type(&DefinitionIdentifier::Network("Transform".into()))
 		.expect("Failed to create transform node")
 		.default_node_template();
 	responses.add(NodeGraphMessage::InsertNode {
@@ -255,7 +255,7 @@ pub fn new_custom(id: NodeId, nodes: Vec<(NodeId, NodeTemplate)>, parent: LayerN
 pub fn get_origin(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<DVec2> {
 	use graphene_std::transform_nodes::transform::*;
 
-	if let TaggedValue::DVec2(origin) = NodeGraphLayer::new(layer, network_interface).find_input(&DefinitionIdentifier::Network("Transform".to_string()), TranslationInput::INDEX)? {
+	if let TaggedValue::DVec2(origin) = NodeGraphLayer::new(layer, network_interface).find_input(&DefinitionIdentifier::Network("Transform".into()), TranslationInput::INDEX)? {
 		Some(*origin)
 	} else {
 		None
@@ -288,7 +288,7 @@ pub fn get_gradient(layer: LayerNodeIdentifier, network_interface: &NodeNetworkI
 pub fn get_fill_color(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<Color> {
 	let fill_index = 1;
 
-	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::star::IDENTIFIER))?;
+	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::fill::IDENTIFIER))?;
 	let TaggedValue::Fill(Fill::Solid(color)) = inputs.get(fill_index)?.as_value()? else {
 		return None;
 	};
@@ -369,7 +369,7 @@ pub fn get_arc_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInt
 }
 
 pub fn get_arrow_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
-	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name("Arrow")
+	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector_nodes::arrow::IDENTIFIER))
 }
 
 pub fn get_spiral_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
@@ -377,16 +377,16 @@ pub fn get_spiral_id(layer: LayerNodeIdentifier, network_interface: &NodeNetwork
 }
 
 pub fn get_text_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
-	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::Network("Text".to_string()))
+	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER))
 }
 
 pub fn get_grid_id(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<NodeId> {
-	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector_nodes::fill::IDENTIFIER))
+	NodeGraphLayer::new(layer, network_interface).upstream_node_id_from_name(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::grid::IDENTIFIER))
 }
 
 /// Gets properties from the Text node
 pub fn get_text(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<(&String, &Font, TypesettingConfig, bool)> {
-	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::Network("Text".to_string()))?;
+	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER))?;
 
 	let Some(TaggedValue::String(text)) = &inputs[1].as_value() else { return None };
 	let Some(TaggedValue::Font(font)) = &inputs[2].as_value() else { return None };

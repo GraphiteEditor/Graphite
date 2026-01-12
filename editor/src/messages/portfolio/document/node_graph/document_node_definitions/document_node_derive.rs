@@ -1,17 +1,16 @@
-use std::collections::HashMap;
-
 use super::DocumentNodeDefinition;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{DocumentNodePersistentMetadata, InputMetadata, NodeTemplate, WidgetOverride};
 use graph_craft::document::*;
 use graphene_std::registry::*;
 use graphene_std::*;
+use std::collections::HashMap;
 
 pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap<DefinitionIdentifier, DocumentNodeDefinition> {
-	// Create hashmap for the protonodes added by the macro
+	// Create hashmap for the protonodes added by the macro.
 	let mut definitions_map = HashMap::new();
-	// First remove the custom protonodes and add them to the definitions map since they contain different metadata from the macro and must be inserted first
-	// So that network nodes which reference them use the correct metadata
+	// First remove the custom protonodes and add them to the definitions map since they contain different metadata
+	// from the macro and must be inserted first so that network nodes which reference them use the correct metadata.
 	let network_nodes = custom
 		.into_iter()
 		.filter_map(|definition| {
@@ -22,6 +21,7 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 			Some(definition)
 		})
 		.collect::<Vec<_>>();
+
 	// Add the rest of the protonodes from the macro
 	let node_registry = NODE_REGISTRY.lock().unwrap();
 	for (id, metadata) in NODE_METADATA.lock().unwrap().iter() {
@@ -40,10 +40,7 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 
 		let Some(implementations) = &node_registry.get(id) else { continue };
 
-		let valid_inputs: Vec<_> = implementations.iter().map(|(_, node_io)| node_io.call_argument.clone()).collect();
 		let first_node_io = implementations.first().map(|(_, node_io)| node_io).unwrap_or(const { &NodeIOTypes::empty() });
-
-		let input_type = if valid_inputs.len() > 1 { &const { generic!(D) } } else { &first_node_io.call_argument };
 
 		let inputs = preprocessor::node_inputs(fields, first_node_io);
 		definitions_map.insert(
@@ -53,7 +50,7 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 				node_template: NodeTemplate {
 					document_node: DocumentNode {
 						inputs,
-						call_argument: input_type.clone(),
+						call_argument: first_node_io.call_argument.clone(),
 						implementation: DocumentNodeImplementation::ProtoNode(id.clone()),
 						visible: true,
 						skip_deduplication: false,
@@ -85,10 +82,10 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 	// If any protonode does not have metadata then set its display name to its identifier string
 	for definition in definitions_map.values_mut() {
 		let metadata = NODE_METADATA.lock().unwrap();
-		if let DocumentNodeImplementation::ProtoNode(id) = &definition.node_template.document_node.implementation {
-			if !metadata.contains_key(id) {
-				definition.node_template.persistent_node_metadata.display_name = definition.identifier.to_string();
-			}
+		if let DocumentNodeImplementation::ProtoNode(id) = &definition.node_template.document_node.implementation
+			&& !metadata.contains_key(id)
+		{
+			definition.node_template.persistent_node_metadata.display_name = definition.identifier.to_string();
 		}
 	}
 

@@ -285,7 +285,7 @@ impl Fsm for FreehandToolFsmState {
 
 				let parent = document.new_layer_bounding_artboard(input, viewport);
 
-				let node_type = resolve_document_node_type(&DefinitionIdentifier::Network("Path".to_string())).expect("Path node does not exist");
+				let node_type = resolve_document_node_type(&DefinitionIdentifier::Network("Path".into())).expect("Path node does not exist");
 				let node = node_type.default_node_template();
 				let nodes = vec![(NodeId(0), node)];
 
@@ -402,7 +402,7 @@ mod test_freehand {
 			.filter_map(|layer| {
 				let graph_layer = NodeGraphLayer::new(layer, &document.network_interface);
 				// Only get layers with path nodes
-				let _ = graph_layer.upstream_visible_node_id_from_name_in_layer(&DefinitionIdentifier::Network("Path".to_string()))?;
+				let _ = graph_layer.upstream_visible_node_id_from_name_in_layer(&DefinitionIdentifier::Network("Path".into()))?;
 
 				let vector = document.network_interface.compute_modified_vector(layer)?;
 				let transform = document.metadata().transform_to_viewport(layer);

@@ -513,7 +513,7 @@ impl TextToolData {
 		document
 			.metadata()
 			.all_layers()
-			.filter(|&layer| is_layer_fed_by_node_of_name(layer, &document.network_interface, &DefinitionIdentifier::Network("Text".to_string())))
+			.filter(|&layer| is_layer_fed_by_node_of_name(layer, &document.network_interface, &DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER)))
 			.find(|&layer| {
 				let transformed_quad = document.metadata().transform_to_viewport(layer) * text_bounding_box(layer, document, font_cache);
 				let mouse = DVec2::new(input.mouse.position.x, input.mouse.position.y);
@@ -542,7 +542,7 @@ fn can_edit_selected(document: &DocumentMessageHandler) -> Option<LayerNodeIdent
 		return None;
 	}
 
-	if !is_layer_fed_by_node_of_name(layer, &document.network_interface, &DefinitionIdentifier::Network("Text".to_string())) {
+	if !is_layer_fed_by_node_of_name(layer, &document.network_interface, &DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER)) {
 		return None;
 	}
 
@@ -611,7 +611,7 @@ impl Fsm for TextToolFsmState {
 				// TODO: implement bounding box for multiple layers
 				let selected = document.network_interface.selected_nodes();
 				let mut all_layers = selected.selected_visible_and_unlocked_layers(&document.network_interface);
-				let layer = all_layers.find(|layer| is_layer_fed_by_node_of_name(*layer, &document.network_interface, &DefinitionIdentifier::Network("Text".to_string())));
+				let layer = all_layers.find(|layer| is_layer_fed_by_node_of_name(*layer, &document.network_interface, &DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER)));
 				let bounds = layer.map(|layer| text_bounding_box(layer, document, font_cache));
 				let layer_transform = layer.map(|layer| document.metadata().transform_to_viewport(layer)).unwrap_or(DAffine2::IDENTITY);
 
@@ -672,7 +672,7 @@ impl Fsm for TextToolFsmState {
 
 				let selected = document.network_interface.selected_nodes();
 				let mut all_selected = selected.selected_visible_and_unlocked_layers(&document.network_interface);
-				let selected = all_selected.find(|layer| is_layer_fed_by_node_of_name(*layer, &document.network_interface, &DefinitionIdentifier::Network("Text".to_string())));
+				let selected = all_selected.find(|layer| is_layer_fed_by_node_of_name(*layer, &document.network_interface, &DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER)));
 
 				if dragging_bounds.is_some() {
 					responses.add(DocumentMessage::StartTransaction);
@@ -711,7 +711,7 @@ impl Fsm for TextToolFsmState {
 				// This ensures the cursor only changes if a layer is selected
 				let selected = document.network_interface.selected_nodes();
 				let mut all_selected = selected.selected_visible_and_unlocked_layers(&document.network_interface);
-				let layer = all_selected.find(|&layer| is_layer_fed_by_node_of_name(layer, &document.network_interface, &DefinitionIdentifier::Network("Text".to_string())));
+				let layer = all_selected.find(|&layer| is_layer_fed_by_node_of_name(layer, &document.network_interface, &DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER)));
 
 				let mut cursor = tool_data
 					.bounding_box_manager

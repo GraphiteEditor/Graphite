@@ -1,9 +1,8 @@
+use super::document_node_definitions::DefinitionIdentifier;
 use glam::{DVec2, IVec2};
 use graph_craft::document::NodeId;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::Type;
-
-use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum FrontendGraphDataType {

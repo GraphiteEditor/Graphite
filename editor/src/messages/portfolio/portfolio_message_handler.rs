@@ -662,7 +662,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					let mut layers = Vec::new();
 
 					for (_, new_vector, transform) in data {
-						let Some(node_type) = resolve_document_node_type(&DefinitionIdentifier::Network("Path".to_string())) else {
+						let Some(node_type) = resolve_document_node_type(&DefinitionIdentifier::Network("Path".into())) else {
 							error!("Path node does not exist");
 							continue;
 						};

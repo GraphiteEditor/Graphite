@@ -1,7 +1,6 @@
 use super::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use super::network_interface::NodeNetworkInterface;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
-
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use glam::DVec2;
 use graph_craft::document::{NodeId, NodeNetwork};

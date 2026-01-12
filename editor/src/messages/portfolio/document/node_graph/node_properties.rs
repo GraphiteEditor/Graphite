@@ -1785,6 +1785,7 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 
 	let visible = context.network_interface.is_visible(&node_id, context.selection_network_path);
 	let pinned = context.network_interface.is_pinned(&node_id, context.selection_network_path);
+
 	LayoutGroup::Section {
 		name,
 		description,

@@ -138,7 +138,6 @@ struct DocumentNodePersistentMetadataStringReference {
 
 impl From<DocumentNodePersistentMetadataStringReference> for DocumentNodePersistentMetadata {
 	fn from(mut old: DocumentNodePersistentMetadataStringReference) -> Self {
-		log::debug!("Converting from DocumentNodePersistentMetadataStringReference with reference: {:?}", old.reference);
 		if let Some(metadata) = old.network_metadata.as_mut() {
 			metadata.persistent_metadata.reference = old.reference;
 		}
@@ -159,13 +158,9 @@ impl From<DocumentNodePersistentMetadataStringReference> for DocumentNodePersist
 enum DocumentNodePersistentMetadataVersioned {
 	// Newest first
 	Current(DocumentNodePersistentMetadata),
-
 	StringReference(DocumentNodePersistentMetadataStringReference),
-
 	HasPrimaryOutput(DocumentNodePersistentMetadataHasPrimaryOutput),
-
 	PropertiesRow(DocumentNodePersistentMetadataPropertiesRow),
-
 	InputNames(DocumentNodePersistentMetadataInputNames),
 }
 
@@ -181,23 +176,19 @@ where
 
 	let current: DocumentNodePersistentMetadata = match versioned_document {
 		DocumentNodePersistentMetadataVersioned::Current(v) => v,
-
 		DocumentNodePersistentMetadataVersioned::StringReference(v) => {
 			let v: DocumentNodePersistentMetadataStringReference = v;
 			v.into()
 		}
-
 		DocumentNodePersistentMetadataVersioned::HasPrimaryOutput(v) => {
 			let v: DocumentNodePersistentMetadataStringReference = v.into();
 			v.into()
 		}
-
 		DocumentNodePersistentMetadataVersioned::PropertiesRow(v) => {
 			let v: DocumentNodePersistentMetadataHasPrimaryOutput = v.into();
 			let v: DocumentNodePersistentMetadataStringReference = v.into();
 			v.into()
 		}
-
 		DocumentNodePersistentMetadataVersioned::InputNames(v) => {
 			let v: DocumentNodePersistentMetadataPropertiesRow = v.into();
 			let v: DocumentNodePersistentMetadataHasPrimaryOutput = v.into();

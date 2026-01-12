@@ -100,10 +100,8 @@ export class UpdateNodeGraphTransform extends JsMessage {
 	readonly transform!: NodeGraphTransform;
 }
 
-const NodeDescriptions = Transform(({ obj }) => new Map(obj.nodeDescriptions));
-
 export class SendUIMetadata extends JsMessage {
-	@NodeDescriptions
+	@Transform(({ obj }) => new Map(obj.nodeDescriptions))
 	readonly nodeDescriptions!: Map<DefinitionIdentifier, string>;
 
 	readonly nodeTypes!: FrontendNodeType[];
@@ -262,7 +260,7 @@ export class FrontendNodeType {
 	readonly inputTypes!: string[];
 }
 
-export type DefinitionIdentifier = { type: "Network"; data: string } | { type: "ProtoNode"; data: string };
+export type DefinitionIdentifier = { type: "Network" | "ProtoNode"; data: string };
 
 export class NodeGraphTransform {
 	readonly scale!: number;

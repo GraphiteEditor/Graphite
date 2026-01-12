@@ -55,47 +55,63 @@ impl NodePropertiesContext<'_> {
 	}
 }
 
-/// The key used to access definitions for a Network node or Protonode
-// For protonodes this is their ProtonodeIdentifier.
-// For network nodes it is their display name by default, but could be something else
+/// The key used to access definitions for a network node or proto node.
+/// For proto nodes, this is their [`ProtoNodeIdentifier`].
+/// For network nodes, it doesn't necessarily have to be the same as the network's display name, but it often is.
 #[derive(Debug, Clone, Hash, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 #[serde(tag = "type", content = "data")]
 pub enum DefinitionIdentifier {
-	Network(String),
 	ProtoNode(ProtoNodeIdentifier),
+	Network(String),
+}
+
+impl DefinitionIdentifier {
+	pub fn implementation_name_from_identifier(&self) -> String {
+		match self {
+			DefinitionIdentifier::Network(name) => name.clone(),
+			DefinitionIdentifier::ProtoNode(proto_node_identifier) => registry::NODE_METADATA
+				.lock()
+				.unwrap()
+				.get(proto_node_identifier)
+				.map(|metadata| metadata.display_name.to_string())
+				.unwrap_or_else(|| {
+					let mut last_segment = proto_node_identifier.as_str().split("::").last().unwrap_or_default().to_string();
+					last_segment = last_segment.strip_suffix("Node").unwrap_or(&last_segment).to_string();
+					last_segment
+				}),
+		}
+	}
 }
 
 impl From<Value> for DefinitionIdentifier {
 	fn from(value: Value) -> Self {
 		match value {
 			Value::Object(mut map) => {
-				let typ = map.remove("type").unwrap().as_str().unwrap().to_owned();
+				let ty = map.remove("type").unwrap().as_str().unwrap().to_owned();
 
-				match typ.as_ref() {
+				match ty.as_ref() {
 					"Network" => {
 						let data = map.remove("data").unwrap().as_str().unwrap().to_owned();
 						DefinitionIdentifier::Network(data)
 					}
 					"ProtoNode" => {
-						let data_val = map.remove("data").unwrap();
-						let proto: ProtoNodeIdentifier = serde_json::from_value(data_val).unwrap();
+						let value = map.remove("data").unwrap();
+						let proto: ProtoNodeIdentifier = serde_json::from_value(value).unwrap();
 						DefinitionIdentifier::ProtoNode(proto)
 					}
-
-					_ => panic!("Unknown DefinitionIdentifier type: {:?}", typ),
+					_ => panic!("Unknown `DefinitionIdentifier` type: {:?}", ty),
 				}
 			}
 
-			_ => panic!("Expected a JSON object to convert to DefinitionIdentifier"),
+			_ => panic!("Expected a JSON object to convert to `DefinitionIdentifier`"),
 		}
 	}
 }
 
 /// Acts as a description for a [DocumentNode] before it gets instantiated as one.
-/// TODO: Use this to prevent storing a copy of the implementation, if the document node is unchanged from the definition.
 #[derive(Debug, Clone)]
 pub struct DocumentNodeDefinition {
-	/// Used to create the DefinitionIdentifier::Network identifier
+	/// Used to create the [`DefinitionIdentifier::Network`] identifier.
 	pub identifier: &'static str,
 
 	/// All data required to construct a [`DocumentNode`] and [`DocumentNodeMetadata`]
@@ -113,14 +129,14 @@ pub struct DocumentNodeDefinition {
 	pub properties: Option<&'static str>,
 }
 
-// We use the once cell to use the document node definitions throughout the editor without passing a reference
+// We use the once_cell to use the document node definitions throughout the editor without passing a reference
 // TODO: If dynamic node library is required, use a Mutex as well
-static DOCUMENT_NODE_TYPES: once_cell::sync::Lazy<HashMap<DefinitionIdentifier, DocumentNodeDefinition>> = once_cell::sync::Lazy::new(node_definitions);
+static DOCUMENT_NODE_TYPES: once_cell::sync::Lazy<HashMap<DefinitionIdentifier, DocumentNodeDefinition>> = once_cell::sync::Lazy::new(document_node_definitions);
 
 /// Defines the "signature" or "header file"-like metadata for the document nodes, but not the implementation (which is defined in the node registry).
 /// The [`DocumentNode`] is the instance while these [`DocumentNodeDefinition`]s are the "classes" or "blueprints" from which the instances are built.
 /// Only the position can be set for protonodes within a definition. The rest of the metadata comes from the node macro in NODE_METADATA
-fn node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefinition> {
+fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefinition> {
 	let custom = vec![
 		// TODO: Auto-generate this from its proto node macro
 		DocumentNodeDefinition {
@@ -138,7 +154,7 @@ fn node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefinition> {
 					..Default::default()
 				},
 			},
-			description: Cow::Borrowed("Returns the input value without changing it. This is useful for rerouting wires for organization purposes."),
+			description: Cow::Borrowed("Passes-through the input value without changing it. This is useful for rerouting wires for organization purposes."),
 			properties: None,
 		},
 		// TODO: Auto-generate this from its proto node macro
@@ -178,6 +194,7 @@ fn node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefinition> {
 			description: Cow::Borrowed("An empty node network you can use to create your own custom nodes."),
 			properties: None,
 		},
+		// TODO: Auto-generate this from its proto node macro
 		DocumentNodeDefinition {
 			identifier: "Cache",
 			category: "General",
@@ -1132,6 +1149,7 @@ fn node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefinition> {
 			description: Cow::Borrowed("TODO"),
 			properties: None,
 		},
+		// TODO: Auto-generate this from its proto node macro
 		DocumentNodeDefinition {
 			identifier: "Noise Pattern",
 			category: "Raster: Pattern",
@@ -1419,6 +1437,7 @@ fn node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefinition> {
 			description: Cow::Borrowed("TODO"),
 			properties: None,
 		},
+		// TODO: Auto-generate this from its proto node macro
 		DocumentNodeDefinition {
 			identifier: "Memoize",
 			category: "Debug",
@@ -1444,22 +1463,17 @@ fn node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefinition> {
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(2), 0)],
+						exports: vec![NodeInput::node(NodeId(1), 0)],
 						nodes: [
 							DocumentNode {
-								inputs: vec![NodeInput::scope("editor-api")],
-								implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IntoNode<&WgpuExecutor>")),
-								..Default::default()
-							},
-							DocumentNode {
-								inputs: vec![NodeInput::import(concrete!(Table<Raster<CPU>>), 0), NodeInput::node(NodeId(0), 0)],
+								inputs: vec![NodeInput::import(concrete!(Table<Raster<CPU>>), 0), NodeInput::scope("editor-api")],
 								call_argument: generic!(T),
 								implementation: DocumentNodeImplementation::ProtoNode(wgpu_executor::texture_conversion::upload_texture::IDENTIFIER),
 								..Default::default()
 							},
 							DocumentNode {
 								call_argument: generic!(T),
-								inputs: vec![NodeInput::node(NodeId(1), 0)],
+								inputs: vec![NodeInput::node(NodeId(0), 0)],
 								implementation: DocumentNodeImplementation::ProtoNode(memo::memo::IDENTIFIER),
 								..Default::default()
 							},
@@ -1488,13 +1502,6 @@ fn node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefinition> {
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 0)),
-										..Default::default()
-									},
-									..Default::default()
-								},
-								DocumentNodeMetadata {
-									persistent_metadata: DocumentNodePersistentMetadata {
-										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(14, 0)),
 										..Default::default()
 									},
 									..Default::default()
@@ -1633,6 +1640,7 @@ fn node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefinition> {
 			description: Cow::Borrowed("TODO"),
 			properties: None,
 		},
+		// TODO: Auto-generate this from its proto node macro
 		DocumentNodeDefinition {
 			identifier: "Text",
 			category: "Text",
@@ -2637,22 +2645,6 @@ pub fn resolve_document_node_type(identifier: &DefinitionIdentifier) -> Option<&
 	DOCUMENT_NODE_TYPES.get(identifier)
 }
 
-pub fn implementation_name_from_identifier(identifier: &DefinitionIdentifier) -> String {
-	match identifier {
-		DefinitionIdentifier::Network(name) => name.clone(),
-		DefinitionIdentifier::ProtoNode(proto_node_identifier) => registry::NODE_METADATA
-			.lock()
-			.unwrap()
-			.get(proto_node_identifier)
-			.map(|metadata| metadata.display_name.to_string())
-			.unwrap_or_else(|| {
-				let mut last_segment = proto_node_identifier.name.split("::").last().unwrap_or_default().to_string();
-				last_segment = last_segment.strip_suffix("Node").unwrap_or(&last_segment).to_string();
-				last_segment
-			}),
-	}
-}
-
 pub fn collect_node_types() -> Vec<FrontendNodeType> {
 	DOCUMENT_NODE_TYPES
 		.iter()
@@ -2667,7 +2659,7 @@ pub fn collect_node_types() -> Vec<FrontendNodeType> {
 				.collect::<Vec<String>>();
 			let mut name = definition.node_template.persistent_node_metadata.display_name.clone();
 			if name.is_empty() {
-				name = implementation_name_from_identifier(identifier)
+				name = identifier.implementation_name_from_identifier()
 			}
 			FrontendNodeType {
 				identifier: identifier.clone(),
@@ -2695,7 +2687,7 @@ impl DocumentNodeDefinition {
 		input_override.into_iter().enumerate().for_each(|(index, input_override)| {
 			if let Some(input_override) = input_override {
 				// Only value inputs can be overridden, since node inputs change graph structure and must be handled by the network interface
-				// assert!(matches!(input_override, NodeInput::Value { .. }), "Only value inputs are supported for input overrides");
+				debug_assert!(input_override.as_node().is_none(), "Node inputs are not supported in input overrides");
 				template.document_node.inputs[index] = input_override;
 			}
 		});

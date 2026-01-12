@@ -157,11 +157,7 @@
 	}
 
 	function nodeNameTooltipLabel(node: FrontendNode): string {
-		let name = node.displayName;
-		if (node.displayName !== node.implementationName) {
-			name += ` (${node.implementationName})`;
-		}
-		return name;
+		return node.displayName === node.implementationName ? node.displayName : `${node.displayName} (${node.implementationName})`;
 	}
 
 	function validTypesText(value: FrontendGraphInput): string {

@@ -800,7 +800,7 @@ impl NodeNetwork {
 		let path = node.original_location.path.clone().unwrap_or_default();
 
 		// Replace value inputs with dedicated value nodes
-		if node.implementation != DocumentNodeImplementation::ProtoNode("core_types::value::ClonedNode".into()) {
+		if node.implementation != DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::value::ClonedNode")) {
 			Self::replace_value_inputs_with_nodes(&mut node.inputs, &mut self.nodes, &path, gen_id, map_ids, id);
 		}
 
@@ -936,7 +936,7 @@ impl NodeNetwork {
 				merged_node_id,
 				DocumentNode {
 					inputs: vec![NodeInput::Value { tagged_value, exposed }],
-					implementation: DocumentNodeImplementation::ProtoNode("core_types::value::ClonedNode".into()),
+					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::value::ClonedNode")),
 					original_location,
 					..Default::default()
 				},
@@ -1035,7 +1035,7 @@ impl NodeNetwork {
 			assert_eq!(output_index, 0);
 			// TODO: check if we can read lambda checking?
 			let mut input_node = self.nodes.remove(&node_id).unwrap();
-			node.implementation = DocumentNodeImplementation::ProtoNode("core_types::value::ClonedNode".into());
+			node.implementation = DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::value::ClonedNode"));
 			if let Some(input) = input_node.inputs.get_mut(0) {
 				*input = match &input {
 					NodeInput::Node { .. } => NodeInput::import(generic!(T), 0),
@@ -1152,7 +1152,7 @@ mod test {
 					NodeId(0),
 					DocumentNode {
 						inputs: vec![NodeInput::import(concrete!(u32), 0), NodeInput::import(concrete!(u32), 1)],
-						implementation: DocumentNodeImplementation::ProtoNode("core_types::structural::ConsNode".into()),
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::structural::ConsNode")),
 						..Default::default()
 					},
 				),
@@ -1160,7 +1160,7 @@ mod test {
 					NodeId(1),
 					DocumentNode {
 						inputs: vec![NodeInput::node(NodeId(0), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode("core_types::ops::AddPairNode".into()),
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::ops::AddPairNode")),
 						..Default::default()
 					},
 				),
@@ -1182,7 +1182,7 @@ mod test {
 					NodeId(1),
 					DocumentNode {
 						inputs: vec![NodeInput::import(concrete!(u32), 0), NodeInput::import(concrete!(u32), 1)],
-						implementation: DocumentNodeImplementation::ProtoNode("core_types::structural::ConsNode".into()),
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::structural::ConsNode")),
 						..Default::default()
 					},
 				),
@@ -1190,7 +1190,7 @@ mod test {
 					NodeId(2),
 					DocumentNode {
 						inputs: vec![NodeInput::node(NodeId(1), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode("core_types::ops::AddPairNode".into()),
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::ops::AddPairNode")),
 						..Default::default()
 					},
 				),
@@ -1263,7 +1263,7 @@ mod test {
 		let document_node = DocumentNode {
 			inputs: vec![NodeInput::node(NodeId(0), 0)],
 			call_argument: concrete!(u32),
-			implementation: DocumentNodeImplementation::ProtoNode("core_types::structural::ConsNode".into()),
+			implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::structural::ConsNode")),
 			..Default::default()
 		};
 
@@ -1351,7 +1351,7 @@ mod test {
 					DocumentNode {
 						inputs: vec![NodeInput::node(NodeId(14), 0)],
 						call_argument: concrete!(u32),
-						implementation: DocumentNodeImplementation::ProtoNode("core_types::structural::ConsNode".into()),
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::structural::ConsNode")),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(0)]),
 							inputs_source: [(Source { node: vec![NodeId(1)], index: 1 }, 1)].into(),
@@ -1365,7 +1365,7 @@ mod test {
 					NodeId(14),
 					DocumentNode {
 						inputs: vec![NodeInput::value(TaggedValue::U32(2), false)],
-						implementation: DocumentNodeImplementation::ProtoNode("core_types::value::ClonedNode".into()),
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::value::ClonedNode")),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(4)]),
 							inputs_source: HashMap::new(),
@@ -1379,7 +1379,7 @@ mod test {
 					NodeId(11),
 					DocumentNode {
 						inputs: vec![NodeInput::node(NodeId(10), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode("core_types::ops::AddPairNode".into()),
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::ops::AddPairNode")),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(1)]),
 							inputs_source: HashMap::new(),

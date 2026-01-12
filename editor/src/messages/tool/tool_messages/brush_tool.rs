@@ -316,7 +316,7 @@ impl BrushToolData {
 				continue;
 			};
 
-			if reference == DefinitionIdentifier::Network("Brush".to_string()) && node_id != layer.to_node() {
+			if reference == DefinitionIdentifier::Network("Brush".into()) && node_id != layer.to_node() {
 				let points_input = node.inputs.get(1)?;
 				let Some(TaggedValue::BrushStrokes(strokes)) = points_input.as_value() else { continue };
 				self.strokes.clone_from(strokes);
@@ -324,7 +324,7 @@ impl BrushToolData {
 				return Some(layer);
 			}
 
-			if reference == DefinitionIdentifier::Network("Transform".to_string()) {
+			if reference == DefinitionIdentifier::Network("Transform".into()) {
 				self.transform = get_current_transform(&node.inputs) * self.transform;
 			}
 		}
@@ -475,7 +475,7 @@ impl Fsm for BrushToolFsmState {
 fn new_brush_layer(document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
 	responses.add(DocumentMessage::DeselectAllLayers);
 
-	let brush_node = resolve_document_node_type(&DefinitionIdentifier::Network("Brush".to_string()))
+	let brush_node = resolve_document_node_type(&DefinitionIdentifier::Network("Brush".into()))
 		.expect("Brush node does not exist")
 		.default_node_template();
 

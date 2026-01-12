@@ -1549,7 +1549,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				// Create an artboard and set its dimensions to the bounding box size and location
 				let node_id = NodeId::new();
 				let node_layer_id = LayerNodeIdentifier::new_unchecked(node_id);
-				let new_artboard_node = document_node_definitions::resolve_document_node_type(&DefinitionIdentifier::Network("Artboard".to_string()))
+				let new_artboard_node = document_node_definitions::resolve_document_node_type(&DefinitionIdentifier::Network("Artboard".into()))
 					.expect("Failed to create artboard node")
 					.default_node_template();
 				responses.add(NodeGraphMessage::InsertNode {
@@ -2134,7 +2134,7 @@ impl DocumentMessageHandler {
 					network_interface.upstream_flow_back_from_nodes(vec![selected_id.to_node()], &[], FlowType::HorizontalFlow).find(|id| {
 						network_interface
 							.reference(id, &[])
-							.is_some_and(|reference| reference == DefinitionIdentifier::Network("Boolean Operation".to_string()))
+							.is_some_and(|reference| reference == DefinitionIdentifier::Network("Boolean Operation".into()))
 					})
 				});
 

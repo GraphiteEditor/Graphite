@@ -132,7 +132,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			NodeGraphMessage::AddPathNode => {
 				if let Some(layer) = make_path_editable_is_allowed(network_interface) {
 					responses.add(NodeGraphMessage::CreateNodeInLayerWithTransaction {
-						node_type: DefinitionIdentifier::Network("Path".to_string()),
+						node_type: DefinitionIdentifier::Network("Path".into()),
 						layer,
 					});
 					responses.add(EventMessage::SelectionChanged);
@@ -646,7 +646,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 				// Use the network interface to add a default node, then set the imports, exports, paste the nodes inside, and connect them to the imports/exports
 				let encapsulating_node_id = NodeId::new();
-				let mut default_node_template = resolve_document_node_type(&DefinitionIdentifier::Network("Default Network".to_string()))
+				let mut default_node_template = resolve_document_node_type(&DefinitionIdentifier::Network("Default Network".into()))
 					.expect("Default Network node should exist")
 					.default_node_template();
 				let Some(center_of_selected_nodes) = network_interface.selected_nodes_bounding_box(breadcrumb_network_path).map(|[a, b]| (a + b) / 2.) else {
@@ -2160,10 +2160,9 @@ impl NodeGraphMessageHandler {
 
 					let node_chooser = node_chooser
 						.on_update(move |node_type| {
-							let node_type = node_type.clone();
 							if let (true, Some(layer)) = (single_layer_selected, selected_layer) {
 								NodeGraphMessage::CreateNodeInLayerWithTransaction {
-									node_type,
+									node_type: node_type.clone(),
 									layer: LayerNodeIdentifier::new_unchecked(layer.to_node()),
 								}
 								.into()
@@ -2173,7 +2172,7 @@ impl NodeGraphMessageHandler {
 									messages: Box::new([
 										NodeGraphMessage::CreateNodeFromContextMenu {
 											node_id: Some(node_id),
-											node_type,
+											node_type: node_type.clone(),
 											xy: None,
 											add_transaction: true,
 										}
@@ -2720,10 +2719,16 @@ impl NodeGraphMessageHandler {
 					}
 				});
 
+				let Some(reference) = network_interface.reference(&node_id, &[]) else {
+					log::error!("Could not get reference for layer {node_id} in update_layer_panel");
+					continue;
+				};
+
 				let clippable = layer.can_be_clipped(network_interface.document_metadata());
+
 				let data = LayerPanelEntry {
 					id: node_id,
-					reference: network_interface.reference(&node_id, &[]).unwrap_or(DefinitionIdentifier::Network("".to_string())),
+					reference,
 					alias: network_interface.display_name(&node_id, &[]),
 					in_selected_network: selection_network_path.is_empty(),
 					children_allowed,

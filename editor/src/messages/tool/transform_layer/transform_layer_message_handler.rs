@@ -767,7 +767,7 @@ mod test_transform_layer {
 		let document = editor.active_document();
 		let network_interface = &document.network_interface;
 		let _responses: VecDeque<Message> = VecDeque::new();
-		let transform_node_id = ModifyInputsContext::locate_node_in_layer_chain(&DefinitionIdentifier::Network("Transform".to_string()), layer, network_interface)?;
+		let transform_node_id = ModifyInputsContext::locate_node_in_layer_chain(&DefinitionIdentifier::Network("Transform".into()), layer, network_interface)?;
 		let document_node = network_interface.document_network().nodes.get(&transform_node_id)?;
 		Some(transform_utils::get_current_transform(&document_node.inputs))
 	}

@@ -388,7 +388,7 @@ impl Fsm for SplineToolFsmState {
 
 				let parent = document.new_layer_bounding_artboard(input, viewport);
 
-				let path_node_type = resolve_document_node_type(&DefinitionIdentifier::Network("Path".to_string())).expect("Path node does not exist");
+				let path_node_type = resolve_document_node_type(&DefinitionIdentifier::Network("Path".into())).expect("Path node does not exist");
 				let path_node = path_node_type.default_node_template();
 				let spline_node_type = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::vector::spline::IDENTIFIER)).expect("Spline node does not exist");
 				let spline_node = spline_node_type.node_template_input_override([Some(NodeInput::node(NodeId(1), 0))]);

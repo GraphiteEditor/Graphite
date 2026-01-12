@@ -7,7 +7,7 @@ use super::misc::PTZ;
 use super::nodes::SelectedNodes;
 use crate::consts::{EXPORTS_TO_RIGHT_EDGE_PIXEL_GAP, EXPORTS_TO_TOP_EDGE_PIXEL_GAP, GRID_SIZE, IMPORTS_TO_LEFT_EDGE_PIXEL_GAP, IMPORTS_TO_TOP_EDGE_PIXEL_GAP};
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, implementation_name_from_identifier, resolve_document_node_type};
+use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type};
 use crate::messages::portfolio::document::node_graph::utility_types::{Direction, FrontendClickTargets, FrontendGraphDataType, FrontendGraphInput, FrontendGraphOutput};
 use crate::messages::portfolio::document::overlays::utility_functions::text_width;
 use crate::messages::portfolio::document::utility_types::network_interface::resolved_types::ResolvedDocumentNodeTypes;
@@ -79,7 +79,7 @@ impl NodeNetworkInterface {
 					fix_network(network);
 				}
 				if let DocumentNodeImplementation::ProtoNode(protonode) = &node.implementation
-					&& protonode.name.contains("PathModifyNode")
+					&& protonode.as_str().contains("PathModifyNode")
 					&& node.inputs.len() < 3
 				{
 					node.inputs.push(NodeInput::Reflection(graph_craft::document::DocumentNodeMetadata::DocumentNodePath));
@@ -1005,19 +1005,18 @@ impl NodeNetworkInterface {
 			if is_layer {
 				"Untitled Layer".to_string()
 			} else {
-				// TODO: Replace with DisplayName::Italics(name)
+				// TODO: Have this displayed in italics in the UI
 				self.implementation_name(node_id, network_path)
 			}
 		} else {
-			// TODO: Replace with DisplayName::Normal(name)
 			display_name
 		}
 	}
 
-	/// The uneditable name in the properties panel which represents the function name of the node implementation
+	/// The uneditable name in the Properties panel which represents the function name of the node implementation.
 	pub fn implementation_name(&self, node_id: &NodeId, network_path: &[NodeId]) -> String {
-		self.reference(&node_id, network_path)
-			.map(|identifier| implementation_name_from_identifier(&identifier))
+		self.reference(node_id, network_path)
+			.map(|identifier| identifier.implementation_name_from_identifier())
 			.unwrap_or("Custom Node".to_string())
 	}
 
@@ -1134,7 +1133,7 @@ impl NodeNetworkInterface {
 
 	pub fn is_artboard(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
 		self.reference(node_id, network_path)
-			.is_some_and(|reference| reference == DefinitionIdentifier::Network("Artboard".to_string()) && self.connected_to_output(node_id, &[]))
+			.is_some_and(|reference| reference == DefinitionIdentifier::Network("Artboard".into()) && self.connected_to_output(node_id, &[]))
 	}
 
 	pub fn all_artboards(&self) -> HashSet<LayerNodeIdentifier> {
@@ -3056,7 +3055,7 @@ impl NodeNetworkInterface {
 	pub fn compute_modified_vector(&self, layer: LayerNodeIdentifier) -> Option<Vector> {
 		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, self);
 
-		if let Some(path_node) = graph_layer.upstream_visible_node_id_from_name_in_layer(&DefinitionIdentifier::Network("Path".to_string()))
+		if let Some(path_node) = graph_layer.upstream_visible_node_id_from_name_in_layer(&DefinitionIdentifier::Network("Path".into()))
 			&& let Some(vector) = self.document_metadata.vector_modify.get(&path_node)
 		{
 			let mut modified = vector.clone();
@@ -3408,7 +3407,9 @@ impl NodeNetworkInterface {
 			return;
 		};
 		encapsulating_node_metadata.persistent_metadata.output_names.remove(export_index);
-		encapsulating_node_metadata.persistent_metadata.network_metadata.as_mut().unwrap().persistent_metadata.reference = None;
+		if let Some(network_metadata) = encapsulating_node_metadata.persistent_metadata.network_metadata.as_mut() {
+			network_metadata.persistent_metadata.reference = None;
+		}
 
 		// Update the metadata for the encapsulating node
 		self.unload_outward_wires(&encapsulating_network_path);
@@ -3482,7 +3483,9 @@ impl NodeNetworkInterface {
 			return;
 		};
 		encapsulating_node_metadata.persistent_metadata.input_metadata.remove(import_index);
-		encapsulating_node_metadata.persistent_metadata.network_metadata.as_mut().unwrap().persistent_metadata.reference = None;
+		if let Some(network_metadata) = encapsulating_node_metadata.persistent_metadata.network_metadata.as_mut() {
+			network_metadata.persistent_metadata.reference = None;
+		}
 
 		// Update the metadata for the encapsulating node
 		self.unload_outward_wires(encapsulating_network_path);
@@ -3528,7 +3531,9 @@ impl NodeNetworkInterface {
 
 		let name = encapsulating_node_metadata.persistent_metadata.output_names.remove(start_index);
 		encapsulating_node_metadata.persistent_metadata.output_names.insert(end_index, name);
-		encapsulating_node_metadata.persistent_metadata.network_metadata.as_mut().unwrap().persistent_metadata.reference = None;
+		if let Some(network_metadata) = encapsulating_node_metadata.persistent_metadata.network_metadata.as_mut() {
+			network_metadata.persistent_metadata.reference = None;
+		}
 
 		// Update the metadata for the encapsulating network
 		self.unload_outward_wires(&encapsulating_network_path);
@@ -3620,7 +3625,9 @@ impl NodeNetworkInterface {
 
 		let properties_row = encapsulating_node_metadata.persistent_metadata.input_metadata.remove(start_index);
 		encapsulating_node_metadata.persistent_metadata.input_metadata.insert(end_index, properties_row);
-		encapsulating_node_metadata.persistent_metadata.network_metadata.as_mut().unwrap().persistent_metadata.reference = None;
+		if let Some(network_metadata) = encapsulating_node_metadata.persistent_metadata.network_metadata.as_mut() {
+			network_metadata.persistent_metadata.reference = None;
+		}
 
 		// Update the metadata for the outer network
 		self.unload_outward_wires(&encapsulating_network_path);
@@ -3750,16 +3757,16 @@ impl NodeNetworkInterface {
 	}
 
 	/// Keep metadata in sync with the new implementation if this is used by anything other than the upgrade scripts.
-	/// Only works with network nodes. Protonodes use their ID as the reference
+	/// Only works with network nodes. Proto nodes use their ID as the reference.
 	pub fn set_reference(&mut self, node_id: &NodeId, network_path: &[NodeId], reference_name: Option<String>) {
-		let Some(node_metadata) = self
+		let Some(node_network_metadata) = self
 			.node_metadata_mut(node_id, network_path)
 			.and_then(|node_metadata| node_metadata.persistent_metadata.network_metadata.as_mut())
 		else {
 			log::error!("Could not get network metadata in replace_reference_name");
 			return;
 		};
-		node_metadata.persistent_metadata.reference = reference_name;
+		node_network_metadata.persistent_metadata.reference = reference_name;
 	}
 
 	/// Keep metadata in sync with the new implementation if this is used by anything other than the upgrade scripts
@@ -4396,8 +4403,8 @@ impl NodeNetworkInterface {
 
 		// Keep the alias in sync with the `ToArtboard` name input
 		if self
-			.reference(&node_id, network_path)
-			.is_some_and(|reference| reference == DefinitionIdentifier::Network("Artboard".to_string()))
+			.reference(node_id, network_path)
+			.is_some_and(|reference| reference == DefinitionIdentifier::Network("Artboard".into()))
 		{
 			let Some(nested_network) = self.network_mut(network_path) else {
 				return;
@@ -5385,7 +5392,7 @@ impl NodeNetworkInterface {
 			&& parent == LayerNodeIdentifier::ROOT_PARENT
 			&& self
 				.reference(&layer.to_node(), network_path)
-				.is_none_or(|reference| reference != DefinitionIdentifier::Network("Artboard".to_string()))
+				.is_none_or(|reference| reference != DefinitionIdentifier::Network("Artboard".into()))
 			&& self.is_artboard(&first_layer.to_node(), network_path)
 		{
 			parent = first_layer;
@@ -6230,7 +6237,6 @@ struct InputTransientMetadata {
 #[serde(deny_unknown_fields)]
 pub struct DocumentNodePersistentMetadata {
 	/// A name chosen by the user for this instance of the node. Empty indicates no given name, in which case the implementation name is displayed to the user in italics.
-	/// This is empty for all newly created nodes, except protonodes with #[skip_impl]
 	#[serde(default)]
 	pub display_name: String,
 	/// Stores metadata to override the properties in the properties panel for each input. These can either be generated automatically based on the type, or with a custom function.

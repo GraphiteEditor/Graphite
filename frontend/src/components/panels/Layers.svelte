@@ -652,7 +652,7 @@
 							data-text-input
 							type="text"
 							value={listing.entry.alias}
-							placeholder={listing.entry.reference}
+							placeholder={listing.entry.reference.data}
 							disabled={!listing.editingName}
 							on:blur={() => onEditLayerNameDeselect(listing)}
 							on:keydown={(e) => e.key === "Escape" && onEditLayerNameDeselect(listing)}

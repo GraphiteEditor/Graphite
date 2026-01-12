@@ -789,6 +789,21 @@ impl DiffUpdate {
 			}
 		};
 
+		// Recursively fill menu list entries with their realized shortcut keys specific to the current bindings and platform
+		fn apply_action_shortcut_to_menu_lists(entry_sections: &mut MenuListEntrySections, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>) {
+			for entries in entry_sections {
+				for entry in entries {
+					// Convert `ActionShortcut::Action` to `ActionShortcut::Shortcut`
+					if let Some(tooltip_shortcut) = &mut entry.tooltip_shortcut {
+						tooltip_shortcut.realize_shortcut(action_input_mapping);
+					}
+
+					// Recursively call this function on the menu's children
+					apply_action_shortcut_to_menu_lists(&mut entry.children, action_input_mapping);
+				}
+			}
+		}
+
 		// Hash the menu list entry sections for caching purposes
 		let hash_menu_list_entry_sections = |entry_sections: &MenuListEntrySections| {
 			struct RecursiveHasher<'a> {
@@ -837,19 +852,6 @@ impl DiffUpdate {
 				convert_tooltip(widget_instance);
 				convert_menu_lists(widget_instance);
 			}
-		}
-	}
-}
-
-// Recursively fill menu list entries with their realized shortcut keys specific to the current bindings and platform
-fn apply_action_shortcut_to_menu_lists(entry_sections: &mut MenuListEntrySections, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>) {
-	for entries in entry_sections {
-		for entry in entries {
-			if let Some(tooltip_shortcut) = &mut entry.tooltip_shortcut {
-				tooltip_shortcut.realize_shortcut(action_input_mapping);
-			}
-
-			apply_action_shortcut_to_menu_lists(&mut entry.children, action_input_mapping);
 		}
 	}
 }

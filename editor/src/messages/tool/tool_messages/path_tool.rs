@@ -2826,7 +2826,7 @@ impl Fsm for PathToolFsmState {
 						let layer = if shape_editor.selected_shape_state.contains_key(&layer) {
 							layer
 						} else {
-							let Some(node_type) = resolve_document_node_type(&DefinitionIdentifier::Network("Path".to_string())) else {
+							let Some(node_type) = resolve_document_node_type(&DefinitionIdentifier::Network("Path".into())) else {
 								error!("Could not resolve node type for Path");
 								continue;
 							};

@@ -1282,7 +1282,7 @@ impl PenToolData {
 		}
 
 		// New path layer
-		let node_type = resolve_document_node_type(&DefinitionIdentifier::Network("Path".to_string())).expect("Path node does not exist");
+		let node_type = resolve_document_node_type(&DefinitionIdentifier::Network("Path".into())).expect("Path node does not exist");
 		let nodes = vec![(NodeId(0), node_type.default_node_template())];
 
 		let parent = document.new_layer_bounding_artboard(input, viewport);

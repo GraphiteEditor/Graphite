@@ -92,7 +92,7 @@ impl DocumentMetadata {
 
 		let mut use_local = true;
 		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, network_interface);
-		let identifier = DefinitionIdentifier::Network("Path".to_string());
+		let identifier = DefinitionIdentifier::Network("Path".into());
 		if let Some(path_node) = graph_layer.upstream_visible_node_id_from_name_in_layer(&identifier)
 			&& let Some(&source) = self.first_element_source_ids.get(&layer.to_node())
 			&& !network_interface
@@ -116,7 +116,7 @@ impl DocumentMetadata {
 		let local_transform = self.local_transforms.get(&layer.to_node()).copied();
 
 		let transform = local_transform.unwrap_or_else(|| {
-			let transform_node_id = ModifyInputsContext::locate_node_in_layer_chain(&DefinitionIdentifier::Network("Transform".to_string()), layer, network_interface);
+			let transform_node_id = ModifyInputsContext::locate_node_in_layer_chain(&DefinitionIdentifier::Network("Transform".into()), layer, network_interface);
 			let transform_node = transform_node_id.and_then(|id| network_interface.document_node(&id, &[]));
 			transform_node.map(|node| transform_utils::get_current_transform(node.inputs.as_slice())).unwrap_or_default()
 		});

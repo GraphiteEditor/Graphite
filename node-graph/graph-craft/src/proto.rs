@@ -30,7 +30,7 @@ impl core::fmt::Display for ProtoNetwork {
 				return f.write_str("{{Unknown Node}}");
 			};
 			f.write_str("Node: ")?;
-			f.write_str(&node.identifier.name)?;
+			f.write_str(node.identifier.as_str())?;
 
 			f.write_str("\n")?;
 			f.write_str(&"\t".repeat(indent))?;
@@ -156,7 +156,7 @@ impl ProtoNode {
 		use std::hash::Hasher;
 		let mut hasher = rustc_hash::FxHasher::default();
 
-		self.identifier.name.hash(&mut hasher);
+		self.identifier.as_str().hash(&mut hasher);
 		self.construction_args.hash(&mut hasher);
 		if self.skip_deduplication {
 			self.original_location.path.hash(&mut hasher);
@@ -612,7 +612,7 @@ impl GraphError {
 	pub fn new(node: &ProtoNode, text: impl Into<GraphErrorType>) -> Self {
 		Self {
 			node_path: node.original_location.path.clone().unwrap_or_default(),
-			identifier: node.identifier.name.clone(),
+			identifier: Cow::Owned(node.identifier.as_str().to_string()),
 			error: text.into(),
 		}
 	}
@@ -916,7 +916,7 @@ mod test {
 		let ids: Vec<_> = construction_network.nodes.iter().map(|(id, _)| *id).collect();
 		println!("{ids:#?}");
 		println!("nodes: {:#?}", construction_network.nodes);
-		assert_eq!(construction_network.nodes[0].1.identifier.name.as_ref(), "value");
+		assert_eq!(construction_network.nodes[0].1.identifier.as_str(), "value");
 		assert_eq!(ids, vec![NodeId(0), NodeId(1), NodeId(2), NodeId(3)]);
 	}
 
@@ -929,7 +929,7 @@ mod test {
 		assert_eq!(sorted, vec![NodeId(0), NodeId(1), NodeId(2), NodeId(3)]);
 		let ids: Vec<_> = construction_network.nodes.iter().map(|(id, _)| *id).collect();
 		println!("{ids:#?}");
-		assert_eq!(construction_network.nodes[0].1.identifier.name.as_ref(), "value");
+		assert_eq!(construction_network.nodes[0].1.identifier.as_str(), "value");
 		assert_eq!(ids, vec![NodeId(0), NodeId(1), NodeId(2), NodeId(3)]);
 	}
 
@@ -940,7 +940,7 @@ mod test {
 			.insert_context_nullification_nodes()
 			.expect("Error when calling 'insert_context_nullification_nodes' on 'construction_network.");
 		construction_network.generate_stable_node_ids();
-		assert_eq!(construction_network.nodes[0].1.identifier.name.as_ref(), "value");
+		assert_eq!(construction_network.nodes[0].1.identifier.as_str(), "value");
 		let ids: Vec<_> = construction_network.nodes.iter().map(|(id, _)| *id).collect();
 
 		// If this assert fails: These NodeIds seem to be changing when you modify TaggedValue, just update them.
