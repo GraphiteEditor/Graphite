@@ -29,7 +29,7 @@
 			if (event.key == "Enter") {
 				emphasizedOrFirstButton?.click();
 			}
-		})
+		});
 	});
 </script>
 
