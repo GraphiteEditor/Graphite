@@ -2275,6 +2275,9 @@ async fn index_points(
 ) -> DVec2 {
 	let points_count = content.iter().map(|row| row.element.point_domain.positions().len()).sum::<usize>();
 
+	if points_count == 0 {
+		return DVec2::ZERO;
+	}
 	// Clamp and allow negative indexing from the end
 	let index = index as isize;
 	let index = if index < 0 {
