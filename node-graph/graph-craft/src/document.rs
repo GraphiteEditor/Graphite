@@ -1272,7 +1272,7 @@ mod test {
 
 		let proto_node = document_node.resolve_proto_node();
 		let reference = ProtoNode {
-			identifier: "core_types::structural::ConsNode".into(),
+			identifier: ProtoNodeIdentifier::new("core_types::structural::ConsNode"),
 			call_argument: concrete!(u32),
 			construction_args: ConstructionArgs::Nodes(vec![NodeId(0)]),
 			..Default::default()
@@ -1289,7 +1289,7 @@ mod test {
 				(
 					NodeId(10),
 					ProtoNode {
-						identifier: "core_types::structural::ConsNode".into(),
+						identifier: ProtoNodeIdentifier::new("core_types::structural::ConsNode"),
 						call_argument: concrete!(u32),
 						construction_args: ConstructionArgs::Nodes(vec![NodeId(14)]),
 						original_location: OriginalLocation {
@@ -1305,7 +1305,7 @@ mod test {
 				(
 					NodeId(11),
 					ProtoNode {
-						identifier: "core_types::ops::AddPairNode".into(),
+						identifier: ProtoNodeIdentifier::new("core_types::ops::AddPairNode"),
 						call_argument: concrete!(Context),
 						construction_args: ConstructionArgs::Nodes(vec![NodeId(10)]),
 						original_location: OriginalLocation {
@@ -1320,7 +1320,7 @@ mod test {
 				(
 					NodeId(14),
 					ProtoNode {
-						identifier: "core_types::value::ClonedNode".into(),
+						identifier: ProtoNodeIdentifier::new("core_types::value::ClonedNode"),
 						call_argument: concrete!(core_types::Context),
 						construction_args: ConstructionArgs::Value(TaggedValue::U32(2).into()),
 						original_location: OriginalLocation {

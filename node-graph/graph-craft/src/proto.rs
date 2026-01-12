@@ -958,7 +958,7 @@ mod test {
 				(
 					NodeId(7),
 					ProtoNode {
-						identifier: "id".into(),
+						identifier: ProtoNodeIdentifier::new("id"),
 						call_argument: concrete!(()),
 						construction_args: ConstructionArgs::Nodes(vec![NodeId(11)]),
 						..Default::default()
@@ -967,7 +967,7 @@ mod test {
 				(
 					NodeId(1),
 					ProtoNode {
-						identifier: "id".into(),
+						identifier: ProtoNodeIdentifier::new("id"),
 						call_argument: concrete!(()),
 						construction_args: ConstructionArgs::Nodes(vec![NodeId(11)]),
 						..Default::default()
@@ -976,7 +976,7 @@ mod test {
 				(
 					NodeId(10),
 					ProtoNode {
-						identifier: "cons".into(),
+						identifier: ProtoNodeIdentifier::new("cons"),
 						call_argument: concrete!(u32),
 						construction_args: ConstructionArgs::Nodes(vec![NodeId(14)]),
 						..Default::default()
@@ -985,7 +985,7 @@ mod test {
 				(
 					NodeId(11),
 					ProtoNode {
-						identifier: "add".into(),
+						identifier: ProtoNodeIdentifier::new("add"),
 						call_argument: concrete!(()),
 						construction_args: ConstructionArgs::Nodes(vec![NodeId(10)]),
 						..Default::default()
@@ -994,7 +994,7 @@ mod test {
 				(
 					NodeId(14),
 					ProtoNode {
-						identifier: "value".into(),
+						identifier: ProtoNodeIdentifier::new("value"),
 						call_argument: concrete!(()),
 						construction_args: ConstructionArgs::Value(value::TaggedValue::U32(2).into()),
 						..Default::default()
@@ -1014,7 +1014,7 @@ mod test {
 				(
 					NodeId(1),
 					ProtoNode {
-						identifier: "id".into(),
+						identifier: ProtoNodeIdentifier::new("id"),
 						call_argument: concrete!(()),
 						construction_args: ConstructionArgs::Nodes(vec![NodeId(2)]),
 						..Default::default()
@@ -1023,7 +1023,7 @@ mod test {
 				(
 					NodeId(2),
 					ProtoNode {
-						identifier: "id".into(),
+						identifier: ProtoNodeIdentifier::new("id"),
 						call_argument: concrete!(()),
 						construction_args: ConstructionArgs::Nodes(vec![NodeId(1)]),
 						..Default::default()
