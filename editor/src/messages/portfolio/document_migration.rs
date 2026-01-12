@@ -919,7 +919,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	},
 	NodeReplacement {
 		node: graphene_std::vector::sample_polyline::IDENTIFIER,
-		aliases: &["graphene_core::vector::SamplePolylineNode"],
+		aliases: &["graphene_core::vector::SamplePolylineNode", "graphene_core::vector::SamplePointsNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::vector::separate_subpaths::IDENTIFIER,
