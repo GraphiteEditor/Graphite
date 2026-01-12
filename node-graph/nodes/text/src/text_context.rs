@@ -107,15 +107,23 @@ impl TextContext {
 
 	/// Calculate the bounding box of text using the specified font and typesetting configuration
 	pub fn bounding_box(&mut self, text: &str, font: &Font, font_cache: &FontCache, typesetting: TypesettingConfig, for_clipping_test: bool) -> DVec2 {
-		if !for_clipping_test && let (Some(max_height), Some(max_width)) = (typesetting.max_height, typesetting.max_width) {
-			return DVec2::new(max_width, max_height);
-		}
-
 		let Some(layout) = self.layout_text(text, font, font_cache, typesetting) else {
 			return DVec2::ZERO;
 		};
 
-		DVec2::new(layout.full_width() as f64, layout.height() as f64)
+		let layout_width = layout.full_width() as f64;
+		let layout_height = layout.height() as f64;
+
+		// For clipping tests use of the actual layout dimensions to see if text overflows
+		if for_clipping_test {
+			return DVec2::new(layout_width, layout_height);
+		}
+
+		// max_width/max_height used if set ,otherwise fall back to calculated layout dimensions
+		let width = typesetting.max_width.unwrap_or(layout_width);
+		let height = typesetting.max_height.unwrap_or(layout_height);
+
+		DVec2::new(width, height)
 	}
 
 	/// Check if text lines are being clipped due to height constraints
