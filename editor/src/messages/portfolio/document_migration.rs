@@ -1401,8 +1401,8 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		);
 	}
 
-	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::merge_by_distance::IDENTIFIER) {
-		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+	if reference == DefinitionIdentifier::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::SpatialMergeByDistanceNode")) {
+		let mut node_template = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::vector::merge_by_distance::IDENTIFIER))?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
