@@ -24,7 +24,7 @@
 		emphasizedOrFirstButton?.focus();
 
 		// Add an event to handle enter press on all focusable fields(inputs) inside the popup
-		const pop = (self?.div?.()?.querySelector("[data-floating-menu-content]") || self?.div?.()?.querySelector("[data-floating-menu-content]") || undefined) as HTMLButtonElement | undefined;
+		const floatingMenu = (self?.div?.()?.querySelector("[data-floating-menu-content]") || self?.div?.()?.querySelector("[data-floating-menu-content]") || undefined) as HTMLButtonElement | undefined;
 		pop?.addEventListener("keydown", function (event) {
 			if (event.key == "Enter") {
 				emphasizedOrFirstButton?.click();
