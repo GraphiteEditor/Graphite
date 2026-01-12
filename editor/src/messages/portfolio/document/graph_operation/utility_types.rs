@@ -300,11 +300,16 @@ impl<'a> ModifyInputsContext<'a> {
 			return None;
 		};
 
+		let primary_input = InputConnector::node(output_layer.to_node(), 1);
+		let has_upstream_input = self.network_interface.upstream_output_connector(&primary_input, &[]).is_some();
+		let existing_path = Self::locate_node_in_layer_chain("Path", output_layer, self.network_interface).is_some();
+
 		// If inserting a 'Path' node, insert a 'Flatten Path' node if the type is `Graphic`.
 		// TODO: Allow the 'Path' node to operate on table data by utilizing the reference (index or ID?) for each row.
 		if node_definition.identifier == "Path" {
 			let layer_input_type = self.network_interface.input_type(&InputConnector::node(output_layer.to_node(), 1), &[]);
-			if layer_input_type.compiled_nested_type() == Some(&concrete!(Table<Graphic>)) {
+			let requires_flatten = layer_input_type.compiled_nested_type() == Some(&concrete!(Table<Graphic>)) && (has_upstream_input || existing_path);
+			if requires_flatten {
 				let Some(flatten_path_definition) = resolve_document_node_type("Flatten Path") else {
 					log::error!("Flatten Path does not exist in ModifyInputsContext::existing_node_id");
 					return None;
@@ -317,6 +322,10 @@ impl<'a> ModifyInputsContext<'a> {
 		let node_id = NodeId::new();
 		self.network_interface.insert_node(node_id, node_definition.default_node_template(), &[]);
 		self.network_interface.move_node_to_chain_start(&node_id, output_layer, &[]);
+
+		if node_definition.identifier == "Path" && !existing_path {
+			self.existing_node_id("Stroke", true);
+		}
 		Some(node_id)
 	}
 
