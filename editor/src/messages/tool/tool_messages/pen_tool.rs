@@ -1907,7 +1907,7 @@ impl Fsm for PenToolFsmState {
 			(PenToolFsmState::DraggingHandle(_), PenToolMessage::DragStop) => {
 				tool_data.cleanup_target_selections(shape_editor, layer, document, responses);
 				let next_state = tool_data
-					.finish_placing_handle(SnapData::new(document, input), transform, preferences, responses)
+					.finish_placing_handle(SnapData::new(document, input, viewport), transform, responses)
 					.unwrap_or(PenToolFsmState::PlacingAnchor);
 				if tool_data.pending_double_click_confirm && matches!(next_state, PenToolFsmState::PlacingAnchor) {
 					tool_data.pending_double_click_confirm = false;
