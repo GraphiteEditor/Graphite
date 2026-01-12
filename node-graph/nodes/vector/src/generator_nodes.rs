@@ -188,16 +188,26 @@ fn star<T: AsU64>(
 
 /// Generates a line with endpoints at the two chosen coordinates.
 #[node_macro::node(category("Vector: Shape"))]
-fn line(
+fn arrow(
 	_: impl Ctx,
 	_primary: (),
-	/// Coordinate of the line's initial endpoint.
-	#[default(0., 0.)]
-	start: PixelSize,
-	/// Coordinate of the line's terminal endpoint.
-	#[default(100., 100.)]
-	end: PixelSize,
+	#[default(0., 0.)] start: PixelSize,
+	#[default(100., 0.)] end: PixelSize,
+	#[unit(" px")]
+	#[default(10)]
+	shaft_width: f64,
+	#[unit(" px")]
+	#[default(30)]
+	head_width: f64,
+	#[unit(" px")]
+	#[default(20)]
+	head_length: f64,
 ) -> Table<Vector> {
+	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_arrow(start, end, shaft_width, head_width, head_length)))
+}
+
+#[node_macro::node(category("Vector: Shape"))]
+fn line(_: impl Ctx, _primary: (), #[default(0., 0.)] start: PixelSize, #[default(100., 100.)] end: PixelSize) -> Table<Vector> {
 	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_line(start, end)))
 }
 
