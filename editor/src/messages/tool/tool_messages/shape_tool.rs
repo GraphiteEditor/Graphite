@@ -9,6 +9,7 @@ use crate::messages::tool::common_functionality::gizmos::gizmo_manager::GizmoMan
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::shapes::arc_shape::Arc;
+use crate::messages::tool::common_functionality::shapes::arrow_shape::Arrow;
 use crate::messages::tool::common_functionality::shapes::circle_shape::Circle;
 use crate::messages::tool::common_functionality::shapes::grid_shape::Grid;
 use crate::messages::tool::common_functionality::shapes::line_shape::{LineToolData, clicked_on_line_endpoints};
@@ -165,6 +166,30 @@ fn create_shape_option_widget(shape_type: ShapeType) -> WidgetInstance {
 		MenuListEntry::new("Grid").label("Grid").on_commit(move |_| {
 			ShapeToolMessage::UpdateOptions {
 				options: ShapeOptionsUpdate::ShapeType(ShapeType::Grid),
+			}
+			.into()
+		}),
+		MenuListEntry::new("Rectangle").label("Rectangle").on_commit(move |_| {
+			ShapeToolMessage::UpdateOptions {
+				options: ShapeOptionsUpdate::ShapeType(ShapeType::Rectangle),
+			}
+			.into()
+		}),
+		MenuListEntry::new("Ellipse").label("Ellipse").on_commit(move |_| {
+			ShapeToolMessage::UpdateOptions {
+				options: ShapeOptionsUpdate::ShapeType(ShapeType::Ellipse),
+			}
+			.into()
+		}),
+		MenuListEntry::new("Arrow").label("Arrow").on_commit(move |_| {
+			ShapeToolMessage::UpdateOptions {
+				options: ShapeOptionsUpdate::ShapeType(ShapeType::Arrow),
+			}
+			.into()
+		}),
+		MenuListEntry::new("Line").label("Line").on_commit(move |_| {
+			ShapeToolMessage::UpdateOptions {
+				options: ShapeOptionsUpdate::ShapeType(ShapeType::Line),
 			}
 			.into()
 		}),
@@ -807,7 +832,7 @@ impl Fsm for ShapeToolFsmState {
 					ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Spiral | ShapeType::Grid | ShapeType::Rectangle | ShapeType::Ellipse => {
 						tool_data.data.start(document, input, viewport);
 					}
-					ShapeType::Line => {
+					ShapeType::Arrow | ShapeType::Line => {
 						let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
 						let snapped = tool_data
 							.data
@@ -828,6 +853,7 @@ impl Fsm for ShapeToolFsmState {
 					ShapeType::Grid => Grid::create_node(tool_options.grid_type),
 					ShapeType::Rectangle => Rectangle::create_node(),
 					ShapeType::Ellipse => Ellipse::create_node(),
+					ShapeType::Arrow => Arrow::create_node(document, tool_data.data.drag_start),
 					ShapeType::Line => Line::create_node(document, tool_data.data.drag_start),
 				};
 
@@ -845,6 +871,11 @@ impl Fsm for ShapeToolFsmState {
 							skip_rerender: false,
 						});
 
+						tool_options.fill.apply_fill(layer, defered_responses);
+					}
+					ShapeType::Arrow => {
+						tool_data.line_data.weight = tool_options.line_weight;
+						tool_data.line_data.editing_layer = Some(layer);
 						tool_options.fill.apply_fill(layer, defered_responses);
 					}
 					ShapeType::Line => {
@@ -874,6 +905,7 @@ impl Fsm for ShapeToolFsmState {
 					ShapeType::Star => Star::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
 					ShapeType::Circle => Circle::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
 					ShapeType::Arc => Arc::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
+					ShapeType::Arrow => Arrow::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
 					ShapeType::Spiral => Spiral::update_shape(document, input, viewport, layer, tool_data, responses),
 					ShapeType::Grid => Grid::update_shape(document, input, layer, tool_options.grid_type, tool_data, modifier, responses),
 					ShapeType::Rectangle => Rectangle::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
@@ -1018,6 +1050,7 @@ impl Fsm for ShapeToolFsmState {
 				}
 
 				tool_data.line_data.dragging_endpoint = None;
+				tool_data.line_data.editing_layer = None;
 
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Crosshair });
 
@@ -1035,6 +1068,7 @@ impl Fsm for ShapeToolFsmState {
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.data.cleanup(responses);
 				tool_data.line_data.dragging_endpoint = None;
+				tool_data.line_data.editing_layer = None;
 
 				tool_data.gizmo_manager.handle_cleanup();
 
@@ -1130,6 +1164,7 @@ fn update_dynamic_hints(state: &ShapeToolFsmState, responses: &mut VecDeque<Mess
 					HintInfo::keys([Key::Shift], "Constrain Regular").prepend_plus(),
 					HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
 				])],
+				ShapeType::Arrow => vec![HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Draw Arrow")])],
 			};
 			HintData(hint_groups)
 		}
@@ -1145,6 +1180,7 @@ fn update_dynamic_hints(state: &ShapeToolFsmState, responses: &mut VecDeque<Mess
 					HintInfo::keys([Key::Alt], "From Center"),
 					HintInfo::keys([Key::Control], "Lock Angle"),
 				]),
+				ShapeType::Arrow => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Angle")]),
 				ShapeType::Circle => HintGroup(vec![HintInfo::keys([Key::Alt], "From Center")]),
 				ShapeType::Spiral => HintGroup(vec![]),
 			};
