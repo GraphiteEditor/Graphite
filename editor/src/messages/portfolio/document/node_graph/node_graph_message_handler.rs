@@ -6,7 +6,9 @@ use crate::messages::input_mapper::utility_types::macros::{action_shortcut, acti
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::document_message_handler::navigation_controls;
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, NodePropertiesContext, resolve_document_node_type};
+use crate::messages::portfolio::document::node_graph::document_node_definitions::{
+	DefinitionIdentifier, NodePropertiesContext, resolve_document_node_type, resolve_network_node_type, resolve_proto_node_type,
+};
 use crate::messages::portfolio::document::node_graph::utility_types::{ContextMenuData, Direction, FrontendGraphDataType, NodeGraphErrorDiagnostic};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
@@ -211,11 +213,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					let mid_point = (network_interface.get_output_center(&output_connector, breadcrumb_network_path).unwrap()
 						+ network_interface.get_input_center(&input_connector, breadcrumb_network_path).unwrap())
 						/ 2.;
-					let node_template = Box::new(
-						resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_core::ops::identity::IDENTIFIER))
-							.unwrap()
-							.default_node_template(),
-					);
+					let node_template = Box::new(resolve_proto_node_type(graphene_core::ops::identity::IDENTIFIER).unwrap().default_node_template());
 
 					let node_id = NodeId::new();
 					responses.add(NodeGraphMessage::InsertNode { node_id, node_template });
@@ -646,9 +644,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 				// Use the network interface to add a default node, then set the imports, exports, paste the nodes inside, and connect them to the imports/exports
 				let encapsulating_node_id = NodeId::new();
-				let mut default_node_template = resolve_document_node_type(&DefinitionIdentifier::Network("Default Network".into()))
-					.expect("Default Network node should exist")
-					.default_node_template();
+				let mut default_node_template = resolve_network_node_type("Default Network").expect("Default Network node should exist").default_node_template();
 				let Some(center_of_selected_nodes) = network_interface.selected_nodes_bounding_box(breadcrumb_network_path).map(|[a, b]| (a + b) / 2.) else {
 					log::error!("Could not get center of selected_nodes");
 					return;

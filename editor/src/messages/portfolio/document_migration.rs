@@ -1,7 +1,7 @@
 // TODO: Eventually remove this document upgrade code
 // This file contains lots of hacky code for upgrading old documents to the new format
 
-use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type};
+use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type, resolve_network_node_type, resolve_proto_node_type};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate, OutputConnector};
 use crate::messages::prelude::DocumentMessageHandler;
@@ -1093,7 +1093,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		};
 
 		// Get the "Path" node definition and fill it in with the Vector path and default vector modification
-		let Some(path_node_type) = resolve_document_node_type(&DefinitionIdentifier::Network("Path".into())) else {
+		let Some(path_node_type) = resolve_network_node_type("Path") else {
 			log::error!("Path node does not exist.");
 			return None;
 		};
@@ -1103,7 +1103,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		]);
 
 		// Get the "Spline" node definition and wire it up with the "Path" node as input
-		let Some(spline_node_type) = resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::vector::spline::IDENTIFIER)) else {
+		let Some(spline_node_type) = resolve_proto_node_type(graphene_std::vector::spline::IDENTIFIER) else {
 			log::error!("Spline node does not exist.");
 			return None;
 		};
@@ -1209,10 +1209,10 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	}
 
 	// Upgrade Sine, Cosine, and Tangent nodes to include a boolean input for whether the output should be in radians, which was previously the only option but is now not the default
-	if (reference == DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::sine::IDENTIFIER)
-		|| reference == DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::cosine::IDENTIFIER)
-		|| reference == DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::tangent::IDENTIFIER))
-		&& inputs_count == 1
+	if inputs_count == 1
+		&& (reference == DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::sine::IDENTIFIER)
+			|| reference == DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::cosine::IDENTIFIER)
+			|| reference == DefinitionIdentifier::ProtoNode(graphene_std::math_nodes::tangent::IDENTIFIER))
 	{
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
@@ -1404,7 +1404,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	}
 
 	if reference == DefinitionIdentifier::Network("Sample Points".into()) && inputs_count == 5 {
-		let mut node_template = resolve_document_node_type(&DefinitionIdentifier::Network("Sample Polyline".into()))?.default_node_template();
+		let mut node_template = resolve_network_node_type("Sample Polyline")?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
@@ -1480,7 +1480,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 	// Migrate the Transform node to use degrees instead of radians
 	if reference == DefinitionIdentifier::Network("Transform".into()) && node.inputs.get(6).is_none() {
-		let mut node_template = resolve_document_node_type(&DefinitionIdentifier::Network("Transform".into()))?.default_node_template();
+		let mut node_template = resolve_network_node_type("Transform")?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
@@ -1570,7 +1570,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
 
 		// Create a new Merge node
-		let Some(merge_node_type) = resolve_document_node_type(&DefinitionIdentifier::Network("Merge".into())) else {
+		let Some(merge_node_type) = resolve_network_node_type("Merge") else {
 			log::error!("Could not get merge node from definition when upgrading morph");
 			return None;
 		};

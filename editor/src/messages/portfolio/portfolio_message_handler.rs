@@ -12,7 +12,7 @@ use crate::messages::input_mapper::utility_types::macros::{action_shortcut, acti
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::DocumentMessageContext;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::{self, DefinitionIdentifier, resolve_document_node_type};
+use crate::messages::portfolio::document::node_graph::document_node_definitions::{self, resolve_network_node_type};
 use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
 use crate::messages::portfolio::document::utility_types::network_interface::OutputConnector;
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
@@ -662,7 +662,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					let mut layers = Vec::new();
 
 					for (_, new_vector, transform) in data {
-						let Some(node_type) = resolve_document_node_type(&DefinitionIdentifier::Network("Path".into())) else {
+						let Some(node_type) = resolve_network_node_type("Path") else {
 							error!("Path node does not exist");
 							continue;
 						};

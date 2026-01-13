@@ -77,7 +77,7 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 
 	// Merge the inputs of the two layers
 	let merge_node_id = NodeId::new();
-	let merge_node = document_node_definitions::resolve_document_node_type(&DefinitionIdentifier::Network("Merge".into()))
+	let merge_node = document_node_definitions::resolve_network_node_type("Merge")
 		.expect("Failed to create merge node")
 		.default_node_template();
 	responses.add(NodeGraphMessage::InsertNode {
@@ -103,7 +103,7 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 
 	// Add a Flatten Path node after the merge
 	let flatten_node_id = NodeId::new();
-	let flatten_node = document_node_definitions::resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::vector::flatten_path::IDENTIFIER))
+	let flatten_node = document_node_definitions::resolve_proto_node_type(graphene_std::vector::flatten_path::IDENTIFIER)
 		.expect("Failed to create flatten node")
 		.default_node_template();
 	responses.add(NodeGraphMessage::InsertNode {
@@ -117,7 +117,7 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 
 	// Add a path node after the flatten node
 	let path_node_id = NodeId::new();
-	let path_node = document_node_definitions::resolve_document_node_type(&DefinitionIdentifier::Network("Path".into()))
+	let path_node = document_node_definitions::resolve_network_node_type("Path")
 		.expect("Failed to create path node")
 		.default_node_template();
 	responses.add(NodeGraphMessage::InsertNode {
@@ -132,7 +132,7 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 	// Add a Spline node after the Path node if both the layers we are merging is spline.
 	if current_and_other_layer_is_spline {
 		let spline_node_id = NodeId::new();
-		let spline_node = document_node_definitions::resolve_document_node_type(&DefinitionIdentifier::ProtoNode(graphene_std::vector::spline::IDENTIFIER))
+		let spline_node = document_node_definitions::resolve_proto_node_type(graphene_std::vector::spline::IDENTIFIER)
 			.expect("Failed to create Spline node")
 			.default_node_template();
 		responses.add(NodeGraphMessage::InsertNode {
@@ -147,7 +147,7 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 
 	// Add a transform node to ensure correct tooling modifications
 	let transform_node_id = NodeId::new();
-	let transform_node = document_node_definitions::resolve_document_node_type(&DefinitionIdentifier::Network("Transform".into()))
+	let transform_node = document_node_definitions::resolve_network_node_type("Transform")
 		.expect("Failed to create transform node")
 		.default_node_template();
 	responses.add(NodeGraphMessage::InsertNode {

@@ -1,6 +1,6 @@
 use super::tool_prelude::*;
 use crate::consts::DEFAULT_STROKE_WIDTH;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type};
+use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_network_node_type;
 use crate::messages::portfolio::document::overlays::utility_functions::path_endpoint_overlays;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -285,7 +285,7 @@ impl Fsm for FreehandToolFsmState {
 
 				let parent = document.new_layer_bounding_artboard(input, viewport);
 
-				let node_type = resolve_document_node_type(&DefinitionIdentifier::Network("Path".into())).expect("Path node does not exist");
+				let node_type = resolve_network_node_type("Path").expect("Path node does not exist");
 				let node = node_type.default_node_template();
 				let nodes = vec![(NodeId(0), node)];
 
