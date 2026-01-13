@@ -1,12 +1,11 @@
 use crate::{ContextFeature, Node, NodeIO, NodeIOTypes, ProtoNodeIdentifier, Type, WasmNotSend};
 use dyn_any::{DynAny, StaticType};
+pub use no_std_types::registry::types;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::pin::Pin;
 use std::sync::{LazyLock, Mutex};
-
-pub use no_std_types::registry::types;
 
 // Translation struct between macro and definition
 #[derive(Clone, Debug)]

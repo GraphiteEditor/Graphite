@@ -1,5 +1,6 @@
 use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use derivative::*;
 use graphene_std::Color;
 use graphene_std::raster::curve::Curve;
@@ -273,7 +274,7 @@ pub struct NodeCatalog {
 	// Callbacks
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
-	pub on_update: WidgetCallback<String>,
+	pub on_update: WidgetCallback<DefinitionIdentifier>,
 	#[serde(skip)]
 	#[derivative(Debug = "ignore", PartialEq = "ignore")]
 	pub on_commit: WidgetCallback<()>,
