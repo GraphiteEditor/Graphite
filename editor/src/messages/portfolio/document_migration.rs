@@ -734,12 +734,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	},
 	NodeReplacement {
 		node: graphene_std::vector::auto_tangents::IDENTIFIER,
-		aliases: &[
-			"graphene_core::vector::vector_nodes::AutoTangentsNode",
-			"graphene_core::vector::AutoTangentsNode",
-			"graphene_core::vector::GenerateHandlesNode",
-			"graphene_core::vector::RemoveHandlesNode",
-		],
+		aliases: &["graphene_core::vector::vector_nodes::AutoTangentsNode", "graphene_core::vector::AutoTangentsNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::vector::bevel::IDENTIFIER,
@@ -919,7 +914,11 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	},
 	NodeReplacement {
 		node: graphene_std::vector::sample_polyline::IDENTIFIER,
-		aliases: &["graphene_core::vector::SamplePolylineNode", "graphene_core::vector::SamplePointsNode"],
+		aliases: &[
+			"graphene_core::vector::SamplePolylineNode",
+			"graphene_core::vector::SamplePointsNode",
+			"graphene_core::vector::vector_nodes::SamplePointsNode",
+		],
 	},
 	NodeReplacement {
 		node: graphene_std::vector::separate_subpaths::IDENTIFIER,
@@ -1404,8 +1403,8 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		);
 	}
 
-	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::sample_polyline::IDENTIFIER) && inputs_count == 5 {
-		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+	if reference == DefinitionIdentifier::Network("Sample Points".into()) && inputs_count == 5 {
+		let mut node_template = resolve_document_node_type(&DefinitionIdentifier::Network("Sample Polyline".into()))?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
@@ -1419,8 +1418,6 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.set_input(&InputConnector::node(*node_id, 4), old_inputs[2].clone(), network_path);
 		document.network_interface.set_input(&InputConnector::node(*node_id, 5), old_inputs[3].clone(), network_path);
 		document.network_interface.set_input(&InputConnector::node(*node_id, 6), old_inputs[4].clone(), network_path);
-
-		document.network_interface.set_reference(node_id, network_path, Some("Sample Polyline".to_string()));
 	}
 
 	// Make the "Quantity" parameter a u32 instead of f64
