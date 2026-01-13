@@ -471,14 +471,14 @@ impl NodeRuntime {
 			}
 			return;
 		}
-		// Get the bounds (as an Option)
-		let bounds_option = match graphic.bounding_box(DAffine2::IDENTITY, true) {
+
+		let bounds = match graphic.bounding_box(DAffine2::IDENTITY, true) {
 			RenderBoundingBox::None => None,
 			RenderBoundingBox::Infinite => Some([DVec2::ZERO, DVec2::new(300., 200.)]),
 			RenderBoundingBox::Rectangle(bounds) => Some(bounds),
 		};
 		// Generate the SVG based on whether bounds exist
-		let new_thumbnail_svg = if let Some(bounds) = bounds_option {
+		let new_thumbnail_svg = if let Some(bounds) = bounds {
 			let footprint = Footprint {
 				transform: DAffine2::from_translation(DVec2::new(bounds[0].x, bounds[0].y)),
 				resolution: UVec2::new((bounds[1].x - bounds[0].x).abs() as u32, (bounds[1].y - bounds[0].y).abs() as u32),
