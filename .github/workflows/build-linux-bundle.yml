@@ -27,14 +27,15 @@ jobs:
         with:
           name: graphite-linux-bundle
           path: graphite-linux-bundle.tar.xz
+          compression: 0
 
       - name: Setup Flatpak Tooling
         run: |
           sudo apt-get update
           sudo apt-get install -y flatpak flatpak-builder
-          sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+          flatpak --user remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
 
-      - name: Build Flatpak Manifest
+      - name: Build Flatpak
         run: |
           nix build .nix#graphite-flatpak-manifest
 
@@ -46,7 +47,7 @@ jobs:
           cd .flatpak
           mkdir -p repo
 
-          flatpak-builder --force-clean --install-deps-from=flathub --repo=repo build ./manifest.json
+          flatpak-builder --user --force-clean --install-deps-from=flathub --repo=repo build ./manifest.json
 
           flatpak build-bundle .flatpak/repo graphite.flatpak art.graphite.Graphite --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo
 
@@ -55,3 +56,4 @@ jobs:
         with:
           name: graphite.flatpak
           path: .flatpak/graphite.flatpak
+          compression: 0
