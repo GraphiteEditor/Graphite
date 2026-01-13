@@ -3,8 +3,8 @@ name: Build Linux Bundle
 on:
   workflow_dispatch: {}
   push:
-    # branches:
-    #   - master
+    branches:
+      - master
 
 jobs:
   build:
@@ -51,9 +51,9 @@ jobs:
 
           flatpak build-bundle repo graphite.flatpak art.graphite.Graphite --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo
 
-      - name: Upload Linux Bundle
+      - name: Upload Flatpak
         uses: actions/upload-artifact@v4
         with:
-          name: graphite.flatpak
+          name: graphite-flatpak
           path: .flatpak/graphite.flatpak
           compression-level: 0
