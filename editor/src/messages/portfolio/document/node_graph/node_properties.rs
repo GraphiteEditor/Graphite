@@ -3,6 +3,7 @@
 use super::document_node_definitions::{NODE_OVERRIDES, NodePropertiesContext};
 use super::utility_types::FrontendGraphDataType;
 use crate::messages::layout::utility_types::widget_prelude::*;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::portfolio::utility_types::{FontCatalogStyle, PersistentData};
 use crate::messages::prelude::*;
@@ -1705,10 +1706,8 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 	if let Some(properties_override) = context
 		.network_interface
 		.reference(&node_id, context.selection_network_path)
-		.cloned()
-		.unwrap_or_default()
 		.as_ref()
-		.and_then(|reference| super::document_node_definitions::resolve_document_node_type(reference))
+		.and_then(|identifier| resolve_document_node_type(identifier))
 		.and_then(|definition| definition.properties)
 		.and_then(|properties| NODE_OVERRIDES.get(properties))
 	{
@@ -1773,25 +1772,20 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 	if layout.is_empty() {
 		layout = node_no_properties(node_id, context);
 	}
-	let name = context
+	let name = context.network_interface.implementation_name(&node_id, context.selection_network_path);
+
+	let description = context
 		.network_interface
 		.reference(&node_id, context.selection_network_path)
-		.cloned()
-		.unwrap_or_default() // If there is an error getting the reference, default to empty string
-		.or_else(|| {
-			// If there is no reference, try to get the proto node name
-			context.network_interface.implementation(&node_id, context.selection_network_path).and_then(|implementation|{
-				if let DocumentNodeImplementation::ProtoNode(protonode) = implementation {
-					Some(protonode.name.clone().into_owned())
-				} else {
-					None
-				}
-			})
-		})
-		.unwrap_or("Custom Node".to_string());
-	let description = context.network_interface.description(&node_id, context.selection_network_path);
+		.as_ref()
+		.and_then(|identifier| resolve_document_node_type(identifier))
+		.map(|definition| definition.description.to_string())
+		.filter(|string| string != "TODO")
+		.unwrap_or_default();
+
 	let visible = context.network_interface.is_visible(&node_id, context.selection_network_path);
 	let pinned = context.network_interface.is_pinned(&node_id, context.selection_network_path);
+
 	LayoutGroup::Section {
 		name,
 		description,
