@@ -242,6 +242,8 @@ impl NodeGraphExecutor {
 			scale_factor,
 			#[cfg(feature = "gpu")]
 			transparent_background,
+			artboard_name,
+			artboard_count,
 			..
 		} = export_config;
 
@@ -250,7 +252,11 @@ impl NodeGraphExecutor {
 			FileType::Png => "png",
 			FileType::Jpg => "jpg",
 		};
-		let name = format!("{name}.{file_extension}");
+		let base_name = match (artboard_name, artboard_count) {
+			(Some(artboard_name), count) if count > 1 => format!("{name} - {artboard_name}"),
+			_ => name,
+		};
+		let name = format!("{base_name}.{file_extension}");
 
 		match node_graph_output {
 			TaggedValue::RenderOutput(RenderOutput {
