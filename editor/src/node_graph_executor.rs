@@ -564,7 +564,7 @@ mod test {
 				.get(&Input::identifier())
 				.map_or([].as_slice(), |x| x.as_slice())
 				.iter()
-				.filter_map(|inputs| inputs.get(Input::INDEX))
+				.filter_map(|inputs| Input::INDEX.get_vec_node_id(inputs))
 				.filter_map(|input_monitor_node| runtime.executor.introspect(input_monitor_node).ok())
 				.filter_map(Instrumented::downcast::<Input>) // Some might not resolve (e.g. generics that don't work properly)
 		}
@@ -573,7 +573,7 @@ mod test {
 		where
 			Input::Result: Send + Sync + Clone + 'static,
 		{
-			let input_monitor_node = self.protonodes_by_path.get(path)?.get(Input::INDEX)?;
+			let input_monitor_node = Input::INDEX.get_vec_node_id(self.protonodes_by_path.get(path)?)?;
 
 			let dynamic = runtime.executor.introspect(input_monitor_node).ok()?;
 

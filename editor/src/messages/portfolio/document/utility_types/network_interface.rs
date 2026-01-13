@@ -19,12 +19,12 @@ use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::Type;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
-use graphene_std::ContextDependencies;
 use graphene_std::math::quad::Quad;
 use graphene_std::subpath::Subpath;
 use graphene_std::transform::Footprint;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::{PointId, Vector, VectorModificationType};
+use graphene_std::{ContextDependencies, NodeParameter};
 use kurbo::BezPath;
 use memo_network::MemoNetwork;
 use serde_json::{Value, json};
@@ -5721,7 +5721,7 @@ pub enum InputConnector {
 		#[serde(rename = "nodeId")]
 		node_id: NodeId,
 		#[serde(rename = "inputIndex")]
-		input_index: usize,
+		input_index: NodeParameter,
 	},
 	#[serde(rename = "export")]
 	Export(usize),
@@ -5734,7 +5734,7 @@ impl Default for InputConnector {
 }
 
 impl InputConnector {
-	pub fn node(node_id: NodeId, input_index: usize) -> Self {
+	pub fn node(node_id: NodeId, input_index: NodeParameter) -> Self {
 		InputConnector::Node { node_id, input_index }
 	}
 

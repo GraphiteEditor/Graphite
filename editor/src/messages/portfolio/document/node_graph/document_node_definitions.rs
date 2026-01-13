@@ -2547,7 +2547,7 @@ fn static_input_properties() -> InputProperties {
 			let mut widgets = node_properties::start_widgets(ParameterWidgetsInfo::new(node_id, index, true, context));
 
 			let document_node = node_properties::get_document_node(node_id, context)?;
-			let Some(input) = document_node.inputs.get(index) else {
+			let Some(input) = index.get_node_input(document_node.inputs) else {
 				return Err("Input not found in transform rotation input override".to_string());
 			};
 			if let Some(&TaggedValue::F64(val)) = input.as_non_exposed_value() {
@@ -2578,7 +2578,7 @@ fn static_input_properties() -> InputProperties {
 			let mut widgets = node_properties::start_widgets(ParameterWidgetsInfo::new(node_id, index, true, context));
 
 			let document_node = node_properties::get_document_node(node_id, context)?;
-			let Some(input) = document_node.inputs.get(index) else {
+			let Some(input) = index.get_node_input(document_node.inputs) else {
 				return Err("Input not found in transform skew input override".to_string());
 			};
 			if let Some(&TaggedValue::DVec2(val)) = input.as_non_exposed_value() {

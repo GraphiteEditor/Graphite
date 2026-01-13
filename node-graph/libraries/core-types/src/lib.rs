@@ -16,6 +16,7 @@ pub mod uuid;
 pub mod value;
 
 pub use crate as core_types;
+use crate::uuid::NodeId;
 pub use blending::*;
 pub use color::Color;
 pub use context::*;
@@ -150,7 +151,19 @@ where
 }
 
 pub trait NodeInputDecleration {
-	const INDEX: usize;
+	const INDEX: NodeParameter;
 	fn identifier() -> ProtoNodeIdentifier;
 	type Result;
+}
+
+pub struct NodeParameter(usize);
+
+impl NodeParameter {
+	pub fn get_vec_node_id<'a>(&self, items: &'a [Vec<NodeId>]) -> Option<&'a Vec<NodeId>> {
+		items.get(self.0)
+	}
+
+	pub fn get_node_input<'a>(&self, items: &[NodeInput]) -> Option<&'a NodeInput> {
+		items.get(self.0)
+	}
 }

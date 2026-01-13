@@ -8,6 +8,7 @@ use glam::IVec2;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
+use graphene_std::NodeParameter;
 use interpreted_executor::dynamic_executor::ResolvedDocumentNodeTypesDelta;
 
 #[impl_message(Message, DocumentMessage, NodeGraph)]
@@ -148,7 +149,7 @@ pub enum NodeGraphMessage {
 	SendGraph,
 	SetInputValue {
 		node_id: NodeId,
-		input_index: usize,
+		input_index: NodeParameter,
 		value: TaggedValue,
 	},
 	SetInput {

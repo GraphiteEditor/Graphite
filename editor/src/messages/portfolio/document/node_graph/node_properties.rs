@@ -13,7 +13,6 @@ use glam::{DAffine2, DVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::{Type, concrete};
-use graphene_std::NodeInputDecleration;
 use graphene_std::animation::RealTimeMode;
 use graphene_std::extract_xy::XY;
 use graphene_std::path_bool::BooleanOperation;
@@ -27,20 +26,21 @@ use graphene_std::text::{Font, TextAlign};
 use graphene_std::transform::{Footprint, ReferencePoint, Transform};
 use graphene_std::vector::misc::{ArcType, CentroidType, ExtrudeJoiningAlgorithm, GridType, MergeByDistanceAlgorithm, PointSpacingType, SpiralType};
 use graphene_std::vector::style::{Fill, FillChoice, FillType, GradientStops, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
+use graphene_std::{NodeInputDecleration, NodeParameter};
 
 pub(crate) fn string_properties(text: &str) -> Vec<LayoutGroup> {
 	let widget = TextLabel::new(text).widget_instance();
 	vec![LayoutGroup::Row { widgets: vec![widget] }]
 }
 
-fn optionally_update_value<T>(value: impl Fn(&T) -> Option<TaggedValue> + 'static + Send + Sync, node_id: NodeId, input_index: usize) -> impl Fn(&T) -> Message + 'static + Send + Sync {
+fn optionally_update_value<T>(value: impl Fn(&T) -> Option<TaggedValue> + 'static + Send + Sync, node_id: NodeId, input_index: NodeParameter) -> impl Fn(&T) -> Message + 'static + Send + Sync {
 	move |input_value: &T| match value(input_value) {
 		Some(value) => NodeGraphMessage::SetInputValue { node_id, input_index, value }.into(),
 		None => Message::NoOp,
 	}
 }
 
-pub fn update_value<T>(value: impl Fn(&T) -> TaggedValue + 'static + Send + Sync, node_id: NodeId, input_index: usize) -> impl Fn(&T) -> Message + 'static + Send + Sync {
+pub fn update_value<T>(value: impl Fn(&T) -> TaggedValue + 'static + Send + Sync, node_id: NodeId, input_index: NodeParameter) -> impl Fn(&T) -> Message + 'static + Send + Sync {
 	optionally_update_value(move |v| Some(value(v)), node_id, input_index)
 }
 
@@ -96,7 +96,7 @@ pub fn start_widgets(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<Widget
 		return vec![];
 	};
 
-	let Some(input) = document_node.inputs.get(index) else {
+	let Some(input) = index.get_node_input(document_node.inputs) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return vec![];
 	};
@@ -260,7 +260,7 @@ pub fn text_widget(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<WidgetIn
 	let mut widgets = start_widgets(parameter_widgets_info);
 
 	let Some(document_node) = document_node else { return Vec::new() };
-	let Some(input) = document_node.inputs.get(index) else {
+	let Some(input) = index.get_node_input(document_node.inputs) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return vec![];
 	};
@@ -282,7 +282,7 @@ pub fn text_area_widget(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<Wid
 	let mut widgets = start_widgets(parameter_widgets_info);
 
 	let Some(document_node) = document_node else { return Vec::new() };
-	let Some(input) = document_node.inputs.get(index) else {
+	let Some(input) = index.get_node_input(document_node.inputs) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return vec![];
 	};
@@ -304,7 +304,7 @@ pub fn bool_widget(parameter_widgets_info: ParameterWidgetsInfo, checkbox_input:
 	let mut widgets = start_widgets(parameter_widgets_info);
 
 	let Some(document_node) = document_node else { return Vec::new() };
-	let Some(input) = document_node.inputs.get(index) else {
+	let Some(input) = index.get_node_input(document_node.inputs) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return vec![];
 	};
@@ -327,7 +327,7 @@ pub fn reference_point_widget(parameter_widgets_info: ParameterWidgetsInfo, disa
 	let mut widgets = start_widgets(parameter_widgets_info);
 
 	let Some(document_node) = document_node else { return Vec::new() };
-	let Some(input) = document_node.inputs.get(index) else {
+	let Some(input) = index.get_node_input(document_node.inputs) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return vec![];
 	};
@@ -367,7 +367,7 @@ pub fn footprint_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 	resolution_widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 
 	let Some(document_node) = document_node else { return LayoutGroup::default() };
-	let Some(input) = document_node.inputs.get(index) else {
+	let Some(input) = index.get_node_input(document_node.inputs) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return Vec::new().into();
 	};
@@ -519,7 +519,7 @@ pub fn transform_widget(parameter_widgets_info: ParameterWidgetsInfo, extra_widg
 	scale_widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 
 	let Some(document_node) = document_node else { return LayoutGroup::default() };
-	let Some(input) = document_node.inputs.get(index) else {
+	let Some(input) = index.get_node_input(document_node.inputs) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return Vec::new().into();
 	};
@@ -630,7 +630,7 @@ pub fn vec2_widget(parameter_widgets_info: ParameterWidgetsInfo, x: &str, y: &st
 	let mut widgets = start_widgets(parameter_widgets_info);
 
 	let Some(document_node) = document_node else { return LayoutGroup::default() };
-	let Some(input) = document_node.inputs.get(index) else {
+	let Some(input) = index.get_node_input(document_node.inputs) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return LayoutGroup::Row { widgets: vec![] };
 	};
@@ -705,7 +705,7 @@ pub fn array_of_number_widget(parameter_widgets_info: ParameterWidgetsInfo, text
 	};
 
 	let Some(document_node) = document_node else { return Vec::new() };
-	let Some(input) = document_node.inputs.get(index) else {
+	let Some(input) = index.get_node_input(document_node.inputs) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return vec![];
 	};
@@ -737,7 +737,7 @@ pub fn array_of_vec2_widget(parameter_widgets_info: ParameterWidgetsInfo, text_p
 	};
 
 	let Some(document_node) = document_node else { return Vec::new() };
-	let Some(input) = document_node.inputs.get(index) else {
+	let Some(input) = index.get_node_input(document_node.inputs) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return vec![];
 	};
@@ -766,7 +766,7 @@ pub fn font_inputs(parameter_widgets_info: ParameterWidgetsInfo) -> (Vec<WidgetI
 	let mut second_widgets = None;
 
 	let Some(document_node) = document_node else { return (Vec::new(), None) };
-	let Some(input) = document_node.inputs.get(index) else {
+	let Some(input) = index.get_node_input(document_node.inputs) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return (vec![], None);
 	};
@@ -902,7 +902,7 @@ pub fn progression_widget(parameter_widgets_info: ParameterWidgetsInfo, number_p
 	let mut widgets = start_widgets(parameter_widgets_info);
 
 	let Some(document_node) = document_node else { return Vec::new() };
-	let Some(input) = document_node.inputs.get(index) else {
+	let Some(input) = index.get_node_input(document_node.inputs) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return vec![];
 	};
@@ -945,7 +945,7 @@ pub fn number_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props:
 	let mut widgets = start_widgets(parameter_widgets_info);
 
 	let Some(document_node) = document_node else { return Vec::new() };
-	let Some(input) = document_node.inputs.get(index) else {
+	let Some(input) = index.get_node_input(document_node.inputs) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return vec![];
 	};
@@ -1033,7 +1033,7 @@ pub fn blend_mode_widget(parameter_widgets_info: ParameterWidgetsInfo) -> Layout
 
 	let mut widgets = start_widgets(parameter_widgets_info);
 	let Some(document_node) = document_node else { return LayoutGroup::default() };
-	let Some(input) = document_node.inputs.get(index) else {
+	let Some(input) = index.get_node_input(document_node.inputs) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return LayoutGroup::Row { widgets: vec![] };
 	};
@@ -1151,7 +1151,7 @@ pub fn curve_widget(parameter_widgets_info: ParameterWidgetsInfo) -> LayoutGroup
 	let mut widgets = start_widgets(parameter_widgets_info);
 
 	let Some(document_node) = document_node else { return LayoutGroup::default() };
-	let Some(input) = document_node.inputs.get(index) else {
+	let Some(input) = index.get_node_input(document_node.inputs) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return LayoutGroup::Row { widgets: vec![] };
 	};
@@ -1219,7 +1219,7 @@ pub fn query_assign_colors_randomize(node_id: NodeId, context: &NodePropertiesCo
 
 	let document_node = get_document_node(node_id, context)?;
 	// This is safe since the node is a proto node and the implementation cannot be changed.
-	Ok(match document_node.inputs.get(RandomizeInput::INDEX).and_then(|input| input.as_value()) {
+	Ok(match RandomizeInput::INDEX.get_node_inputs(&document_node.inputs).and_then(|input| input.as_value()) {
 		Some(TaggedValue::Bool(randomize_enabled)) => *randomize_enabled,
 		_ => false,
 	})
@@ -1238,7 +1238,7 @@ pub(crate) fn brightness_contrast_properties(node_id: NodeId, context: &mut Node
 			return Vec::new();
 		}
 	};
-	let use_classic_value = document_node.inputs.get(UseClassicInput::INDEX);
+	let use_classic_value = UseClassicInput::INDEX.get_node_inputs(&document_node.inputs);
 	let includes_use_classic = use_classic_value.is_some();
 	let use_classic_value = match use_classic_value.and_then(|input| input.as_value()) {
 		Some(TaggedValue::Bool(use_classic_choice)) => *use_classic_choice,
@@ -1292,12 +1292,12 @@ pub(crate) fn channel_mixer_properties(node_id: NodeId, context: &mut NodeProper
 		}
 	};
 	// Monochrome
-	let is_monochrome_value = match document_node.inputs[MonochromeInput::INDEX].as_value() {
+	let is_monochrome_value = match MonochromeInput::INDEX.get_node_input(&document_node.inputs).is_some_and(|x| x.as_value()) {
 		Some(TaggedValue::Bool(monochrome_choice)) => *monochrome_choice,
 		_ => false,
 	};
 	// Output channel choice
-	let output_channel_value = match &document_node.inputs[OutputChannelInput::INDEX].as_value() {
+	let output_channel_value = match OutputChannelInput::INDEX.get_node_input(&document_node.inputs).is_some_and(|x| x.as_value()) {
 		Some(TaggedValue::RedGreenBlue(choice)) => choice,
 		_ => {
 			warn!("Channel Mixer node properties panel could not be displayed.");
@@ -1349,7 +1349,7 @@ pub(crate) fn selective_color_properties(node_id: NodeId, context: &mut NodeProp
 		}
 	};
 	// Colors choice
-	let colors_choice = match &document_node.inputs[ColorsInput::INDEX].as_value() {
+	let colors_choice = match ColorsInput::INDEX.get_node_input(&document_node.inputs).and_then(|x| x.as_value()) {
 		Some(TaggedValue::SelectiveColorChoice(choice)) => choice,
 		_ => {
 			warn!("Selective Color node properties panel could not be displayed.");
@@ -1408,7 +1408,7 @@ pub(crate) fn grid_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			return Vec::new();
 		}
 	};
-	let Some(grid_type_input) = document_node.inputs.get(GridTypeInput::INDEX) else {
+	let Some(grid_type_input) = GridTypeInput::INDEX.get_node_inputs(&document_node.inputs) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return vec![];
 	};
@@ -1458,7 +1458,7 @@ pub(crate) fn spiral_properties(node_id: NodeId, context: &mut NodePropertiesCon
 		}
 	};
 
-	let Some(spiral_type_input) = document_node.inputs.get(SpiralTypeInput::INDEX) else {
+	let Some(spiral_type_input) = SpiralTypeInput::INDEX.get_node_inputs(&document_node.inputs) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return vec![];
 	};
@@ -1517,7 +1517,7 @@ pub(crate) fn sample_polyline_properties(node_id: NodeId, context: &mut NodeProp
 		}
 	};
 
-	let current_spacing = document_node.inputs.get(SpacingInput::INDEX).and_then(|input| input.as_value()).cloned();
+	let current_spacing = SpacingInput::INDEX.get_node_inputs(&document_node.inputs).and_then(|input| input.as_value()).cloned();
 	let is_quantity = matches!(current_spacing, Some(TaggedValue::PointSpacingType(PointSpacingType::Quantity)));
 
 	let spacing = enum_choice::<PointSpacingType>()
@@ -1580,13 +1580,13 @@ pub(crate) fn rectangle_properties(node_id: NodeId, context: &mut NodeProperties
 			return Vec::new();
 		}
 	};
-	let Some(input) = document_node.inputs.get(IndividualCornerRadiiInput::INDEX) else {
+	let Some(input) = IndividualCornerRadiiInput::INDEX.get_node_inputs(&document_node.inputs) else {
 		log::warn!("A widget failed to be built because its node's input index is invalid.");
 		return vec![];
 	};
 	if let Some(&TaggedValue::Bool(is_individual)) = input.as_non_exposed_value() {
 		// Values
-		let Some(input) = document_node.inputs.get(CornerRadiusInput::<f64>::INDEX) else {
+		let Some(input) = CornerRadiusInput::<f64>::INDEX.get_node_inputs(&document_node.inputs) else {
 			log::warn!("A widget failed to be built because its node's input index is invalid.");
 			return vec![];
 		};
@@ -1811,9 +1811,9 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 	};
 
 	let (fill, backup_color, backup_gradient) = if let (Some(TaggedValue::Fill(fill)), Some(TaggedValue::Color(backup_color)), Some(TaggedValue::Gradient(backup_gradient))) = (
-		&document_node.inputs[FillInput::<Color>::INDEX].as_value(),
-		&document_node.inputs[BackupColorInput::INDEX].as_value(),
-		&document_node.inputs[BackupGradientInput::INDEX].as_value(),
+		FillInput::<Color>::INDEX.get_node_input(&document_node.inputs).and_then(|x| x.as_value()),
+		BackupColorInput::INDEX.get_node_input(&document_node.inputs).and_then(|x| x.as_value()),
+		BackupGradientInput::INDEX.get_node_input(&document_node.inputs).and_then(|x| x.as_value()),
 	) {
 		(fill, backup_color, backup_gradient)
 	} else {
@@ -1988,12 +1988,12 @@ pub fn stroke_properties(node_id: NodeId, context: &mut NodePropertiesContext) -
 			return Vec::new();
 		}
 	};
-	let join_value = match &document_node.inputs[JoinInput::INDEX].as_value() {
+	let join_value = match JoinInput::INDEX.get_node_input(&document_node.inputs).and_then(|x| x.as_value()) {
 		Some(TaggedValue::StrokeJoin(x)) => x,
 		_ => &StrokeJoin::Miter,
 	};
 
-	let dash_lengths_val = match &document_node.inputs[DashLengthsInput::<Vec<f64>>::INDEX].as_value() {
+	let dash_lengths_val = match DashLengthsInput::<Vec<f64>>::INDEX.get_node_input(&document_node.inputs).and_then(|x| x.as_value()) {
 		Some(TaggedValue::VecF64(x)) => x,
 		_ => &vec![],
 	};
@@ -2059,7 +2059,7 @@ pub fn offset_path_properties(node_id: NodeId, context: &mut NodePropertiesConte
 		}
 	};
 	let number_input = NumberInput::default().min(0.).disabled({
-		let join_val = match &document_node.inputs[JoinInput::INDEX].as_value() {
+		let join_val = match JoinInput::INDEX.get_node_input(&document_node.inputs).and_then(|x| x.as_value()) {
 			Some(TaggedValue::StrokeJoin(x)) => x,
 			_ => &StrokeJoin::Miter,
 		};
@@ -2083,7 +2083,7 @@ pub fn math_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> 
 				return Vec::new();
 			}
 		};
-		let Some(input) = document_node.inputs.get(ExpressionInput::INDEX) else {
+		let Some(input) = ExpressionInput::INDEX.get_node_input(document_node.inputs) else {
 			log::warn!("A widget failed to be built because its node's input index is invalid.");
 			return vec![];
 		};
@@ -2129,7 +2129,7 @@ pub struct ParameterWidgetsInfo<'a> {
 	persistent_data: &'a PersistentData,
 	document_node: Option<&'a DocumentNode>,
 	node_id: NodeId,
-	index: usize,
+	index: NodeParameter,
 	name: String,
 	description: String,
 	input_type: FrontendGraphDataType,
@@ -2138,7 +2138,7 @@ pub struct ParameterWidgetsInfo<'a> {
 }
 
 impl<'a> ParameterWidgetsInfo<'a> {
-	pub fn new(node_id: NodeId, index: usize, blank_assist: bool, context: &'a mut NodePropertiesContext) -> ParameterWidgetsInfo<'a> {
+	pub fn new(node_id: NodeId, index: NodeParameter, blank_assist: bool, context: &'a mut NodePropertiesContext) -> ParameterWidgetsInfo<'a> {
 		let (name, description) = context.network_interface.displayed_input_name_and_description(&node_id, index, context.selection_network_path);
 		let input_type = context
 			.network_interface
@@ -2306,7 +2306,7 @@ pub mod choice {
 
 			let mut widgets = super::start_widgets(self.parameter_info);
 
-			let Some(input) = document_node.inputs.get(index) else {
+			let Some(input) = index.get_node_input(document_node.inputs) else {
 				log::warn!("A widget failed to be built because its node's input index is invalid.");
 				return LayoutGroup::Row { widgets: vec![] };
 			};
