@@ -55,7 +55,9 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(KeyZ); modifiers=[Accel, MouseLeft], action_dispatch=DocumentMessage::Noop),
 		//
 		// AppWindowMessage
-		entry!(KeyDown(F11); action_dispatch=AppWindowMessage::Fullscreen),
+		entry!(KeyDown(F11); active=cfg!(not(target_os = "macos")), action_dispatch=AppWindowMessage::Fullscreen),
+		entry!(KeyDown(KeyF); modifiers=[Accel, Meta], active=cfg!(target_os = "macos"), action_dispatch=AppWindowMessage::Fullscreen),
+		entry!(KeyDown(KeyQ); modifiers=[Accel], active=cfg!(target_os = "macos"), action_dispatch=AppWindowMessage::Close),
 		//
 		// ClipboardMessage
 		entry!(KeyDown(KeyX); modifiers=[Accel], action_dispatch=ClipboardMessage::Cut),
@@ -474,7 +476,7 @@ pub fn input_mappings() -> Mapping {
 	// Sort `pointer_shake`
 	sort(&mut pointer_shake);
 
-	let mut mapping = Mapping {
+	Mapping {
 		key_up,
 		key_down,
 		key_up_no_repeat,
@@ -483,16 +485,7 @@ pub fn input_mappings() -> Mapping {
 		wheel_scroll,
 		pointer_move,
 		pointer_shake,
-	};
-
-	if cfg!(target_os = "macos") {
-		let remove: [&[&[MappingEntry; 0]; 0]; 0] = [];
-		let add = [entry!(KeyDown(KeyQ); modifiers=[Accel], action_dispatch=AppWindowMessage::Close)];
-
-		apply_mapping_patch(&mut mapping, remove, add);
 	}
-
-	mapping
 }
 
 /// Default mappings except that scrolling without modifier keys held down is bound to zooming instead of vertical panning

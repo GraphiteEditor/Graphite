@@ -125,6 +125,8 @@ pub struct MappingEntry {
 	pub modifiers: KeyStates,
 	/// True indicates that this takes priority as the labeled hotkey shown in UI menus and tooltips instead of an alternate binding for the same action
 	pub canonical: bool,
+	/// Whether this mapping is active
+	pub active: bool,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]

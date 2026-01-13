@@ -25,17 +25,45 @@ macro_rules! modifiers {
 /// When an action is currently available, and the user enters that input, the action's message is dispatched on the message bus.
 macro_rules! entry {
 	// Pattern with canonical parameter
-	($input:expr_2021; $(modifiers=[$($modifier:ident),*],)? $(refresh_keys=[$($refresh:ident),* $(,)?],)? canonical, action_dispatch=$action_dispatch:expr_2021$(,)?) => {
-		entry!($input; $($($modifier),*)?; $($($refresh),*)?; $action_dispatch; true)
+	(
+		$input:expr_2021;
+		$(modifiers=[$($modifier:ident),*],)?
+		$(refresh_keys=[$($refresh:ident),* $(,)?],)?
+		canonical,
+		$(active=$active:expr,)?
+		action_dispatch=$action_dispatch:expr_2021$(,)?
+	) => {
+		entry!(
+			$input;
+			$($($modifier),*)?;
+			$($($refresh),*)?;
+			$action_dispatch;
+			true;
+			true $( && $active )?
+		)
 	};
 
 	// Pattern without canonical parameter
-	($input:expr_2021; $(modifiers=[$($modifier:ident),*],)? $(refresh_keys=[$($refresh:ident),* $(,)?],)? action_dispatch=$action_dispatch:expr_2021$(,)?) => {
-		entry!($input; $($($modifier),*)?; $($($refresh),*)?; $action_dispatch; false)
+	(
+		$input:expr_2021;
+		$(modifiers=[$($modifier:ident),*],)?
+		$(refresh_keys=[$($refresh:ident),* $(,)?],)?
+		$(active=$active:expr,)?
+		action_dispatch=$action_dispatch:expr_2021$(,)?
+	) => {
+		entry!(
+			$input;
+			$($($modifier),*)?;
+			$($($refresh),*)?;
+			$action_dispatch;
+			false;
+			true $( && $active )?
+		)
 	};
 
 	// Implementation macro to avoid code duplication
-	($input:expr; $($modifier:ident),*; $($refresh:ident),*; $action_dispatch:expr; $canonical:expr) => {
+	($input:expr; $($modifier:ident),*; $($refresh:ident),*; $action_dispatch:expr; $canonical:expr; $active:expr) => {
+
 		&[&[
 			// Cause the `action_dispatch` message to be sent when the specified input occurs.
 			MappingEntry {
@@ -43,33 +71,37 @@ macro_rules! entry {
 				input: $input,
 				modifiers: modifiers!($($modifier),*),
 				canonical: $canonical,
+				active: $active,
 			},
 
-			// Also cause the `action_dispatch` message to be sent when any of the specified refresh keys change.
 			$(
 			MappingEntry {
 				action: $action_dispatch.into(),
 				input: InputMapperMessage::KeyDown(Key::$refresh),
 				modifiers: modifiers!(),
 				canonical: $canonical,
+				active: $active,
 			},
 			MappingEntry {
 				action: $action_dispatch.into(),
 				input: InputMapperMessage::KeyUp(Key::$refresh),
 				modifiers: modifiers!(),
 				canonical: $canonical,
+				active: $active,
 			},
 			MappingEntry {
 				action: $action_dispatch.into(),
 				input: InputMapperMessage::KeyDownNoRepeat(Key::$refresh),
 				modifiers: modifiers!(),
 				canonical: $canonical,
+				active: $active,
 			},
 			MappingEntry {
 				action: $action_dispatch.into(),
 				input: InputMapperMessage::KeyUpNoRepeat(Key::$refresh),
 				modifiers: modifiers!(),
 				canonical: $canonical,
+				active: $active,
 			},
 			)*
 		]]
@@ -97,6 +129,9 @@ macro_rules! mapping {
 		for entry_slice in $entry {
 			// Each entry in the slice (usually just one, except when `refresh_keys` adds additional key entries)
 			for entry in entry_slice.into_iter() {
+				if !entry.active {
+					continue;
+				}
 				let corresponding_list = match entry.input {
 					InputMapperMessage::KeyDown(key) => &mut key_down[key as usize],
 					InputMapperMessage::KeyUp(key) => &mut key_up[key as usize],
