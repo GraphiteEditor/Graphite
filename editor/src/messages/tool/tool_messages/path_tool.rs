@@ -2112,7 +2112,7 @@ impl Fsm for PathToolFsmState {
 				}
 
 				if tool_data.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD {
-					tool_data.molding_segment = true;
+					tool_data.molding_segment = false;
 				}
 
 				let break_molding = input.keyboard.get(break_colinear_molding as usize);
