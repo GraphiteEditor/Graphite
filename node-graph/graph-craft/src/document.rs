@@ -793,7 +793,10 @@ impl NodeNetwork {
 			// Connect layer node to the group below
 			if node.inputs.len() > 1 {
 				node.inputs.drain(1..);
+			} else if node.inputs.is_empty() {
+				node.inputs.push(NodeInput::value(TaggedValue::None, false));
 			}
+
 			node.call_argument = concrete!(());
 			self.nodes.insert(id, node);
 			return;
