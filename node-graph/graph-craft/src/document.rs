@@ -791,7 +791,9 @@ impl NodeNetwork {
 			node.implementation = identity_node;
 
 			// Connect layer node to the group below
-			node.inputs.drain(1..);
+			if node.inputs.len() > 1 {
+				node.inputs.drain(1..);
+			}
 			node.call_argument = concrete!(());
 			self.nodes.insert(id, node);
 			return;
