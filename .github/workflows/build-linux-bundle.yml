@@ -27,7 +27,7 @@ jobs:
         with:
           name: graphite-linux-bundle
           path: graphite-linux-bundle.tar.xz
-          compression: 0
+          compression-level: 0
 
       - name: Setup Flatpak Tooling
         run: |
@@ -56,4 +56,4 @@ jobs:
         with:
           name: graphite.flatpak
           path: .flatpak/graphite.flatpak
-          compression: 0
+          compression-level: 0
