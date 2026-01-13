@@ -2686,8 +2686,9 @@ impl DocumentNodeDefinition {
 		// TODO: Replace the .enumerate() with changing the iterator to take a tuple of (index, input) so the user is forced to provide the correct index
 		input_override.into_iter().enumerate().for_each(|(index, input_override)| {
 			if let Some(input_override) = input_override {
-				// Only value inputs can be overridden, since node inputs change graph structure and must be handled by the network interface
-				debug_assert!(input_override.as_node().is_none(), "Node inputs are not supported in input overrides");
+				// Only value inputs should be overridden, since node inputs change graph structure and must be handled by the network interface.
+				// However, this would require changing some tooling which creates multiple nodes at once, before they are inserted into the network.
+				// debug_assert!(input_override.as_node().is_none(), "Node inputs are not supported in input overrides");
 				template.document_node.inputs[index] = input_override;
 			}
 		});

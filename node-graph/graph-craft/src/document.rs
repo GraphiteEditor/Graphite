@@ -840,7 +840,6 @@ impl NodeNetwork {
 
 		// Match the document node input and the inputs of the inner network
 		for (nested_node_id, mut nested_node) in inner_network.nodes.into_iter() {
-			log::debug!("{nested_node:?}");
 			for (nested_input_index, nested_input) in nested_node.clone().inputs.iter().enumerate() {
 				if let NodeInput::Import { import_index, .. } = nested_input {
 					let parent_input = node
