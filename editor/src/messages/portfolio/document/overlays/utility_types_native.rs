@@ -44,7 +44,7 @@ pub enum OverlaysType {
 	TransformCage,
 	HoverOutline,
 	SelectionOutline,
-	BlueLayerOriginCross,
+	LayerOriginCross,
 	Pivot,
 	Origin,
 	Path,
@@ -64,7 +64,7 @@ pub struct OverlaysVisibilitySettings {
 	pub transform_cage: bool,
 	pub hover_outline: bool,
 	pub selection_outline: bool,
-	pub blue_layer_origin_cross: bool,
+	pub layer_origin_cross: bool,
 	pub pivot: bool,
 	pub origin: bool,
 	pub path: bool,
@@ -84,7 +84,7 @@ impl Default for OverlaysVisibilitySettings {
 			transform_cage: true,
 			hover_outline: true,
 			selection_outline: true,
-			blue_layer_origin_cross: true,
+			layer_origin_cross: true,
 			pivot: true,
 			origin: true,
 			path: true,
@@ -128,8 +128,8 @@ impl OverlaysVisibilitySettings {
 		self.all && self.selection_outline
 	}
 
-	pub fn blue_layer_origin_cross(&self) -> bool {
-		self.all && self.blue_layer_origin_cross
+	pub fn layer_origin_cross(&self) -> bool {
+		self.all && self.layer_origin_cross
 	}
 
 	pub fn pivot(&self) -> bool {
