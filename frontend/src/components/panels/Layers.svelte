@@ -644,7 +644,7 @@
 							{@html $nodeGraph.thumbnails.get(listing.entry.id)}
 						{/if}
 					</div>
-					{#if listing.entry.reference === "Artboard"}
+					{#if listing.entry.reference.type === "Network" && listing.entry.reference.data === "Artboard"}
 						<IconLabel icon="Artboard" class="layer-type-icon" tooltipLabel="Artboard" />
 					{/if}
 					<LayoutRow class="layer-name" on:dblclick={() => onEditLayerName(listing)}>
@@ -652,7 +652,7 @@
 							data-text-input
 							type="text"
 							value={listing.entry.alias}
-							placeholder={listing.entry.reference}
+							placeholder={listing.entry.reference.data}
 							disabled={!listing.editingName}
 							on:blur={() => onEditLayerNameDeselect(listing)}
 							on:keydown={(e) => e.key === "Escape" && onEditLayerNameDeselect(listing)}

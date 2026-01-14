@@ -1,8 +1,6 @@
 use std::any::TypeId;
-
 pub use std::borrow::Cow;
 use std::fmt::{Display, Formatter};
-use std::ops::Deref;
 
 #[macro_export]
 macro_rules! concrete {
@@ -128,19 +126,7 @@ impl std::fmt::Debug for NodeIOTypes {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, specta::Type, serde::Serialize, serde::Deserialize)]
 pub struct ProtoNodeIdentifier {
-	pub name: Cow<'static, str>,
-}
-
-impl From<String> for ProtoNodeIdentifier {
-	fn from(value: String) -> Self {
-		Self { name: Cow::Owned(value) }
-	}
-}
-
-impl From<&'static str> for ProtoNodeIdentifier {
-	fn from(s: &'static str) -> Self {
-		ProtoNodeIdentifier { name: Cow::Borrowed(s) }
-	}
+	name: Cow<'static, str>,
 }
 
 impl ProtoNodeIdentifier {
@@ -151,12 +137,8 @@ impl ProtoNodeIdentifier {
 	pub const fn with_owned_string(name: String) -> Self {
 		ProtoNodeIdentifier { name: Cow::Owned(name) }
 	}
-}
 
-impl Deref for ProtoNodeIdentifier {
-	type Target = str;
-
-	fn deref(&self) -> &Self::Target {
+	pub fn as_str(&self) -> &str {
 		self.name.as_ref()
 	}
 }
@@ -213,6 +195,13 @@ pub struct TypeDescriptor {
 impl std::hash::Hash for TypeDescriptor {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		self.name.hash(state);
+	}
+}
+
+impl std::fmt::Display for TypeDescriptor {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		let text = make_type_user_readable(&format_type(&self.name));
+		write!(f, "{text}")
 	}
 }
 
@@ -361,9 +350,13 @@ pub fn format_type(ty: &str) -> String {
 		.join("<")
 }
 
+pub fn make_type_user_readable(ty: &str) -> String {
+	ty.replace("Option<Arc<OwnedContextImpl>>", "Context").replace("Vector<Option<Table<Graphic>>>", "Vector")
+}
+
 impl std::fmt::Debug for Type {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		let result = match self {
+		let text = match self {
 			Self::Generic(name) => name.to_string(),
 			#[cfg(feature = "type_id_logging")]
 			Self::Concrete(ty) => format!("Concrete<{}, {:?}>", ty.name, ty.id),
@@ -372,20 +365,20 @@ impl std::fmt::Debug for Type {
 			Self::Fn(call_arg, return_value) => format!("{return_value:?} called with {call_arg:?}"),
 			Self::Future(ty) => format!("{ty:?}"),
 		};
-		let result = result.replace("Option<Arc<OwnedContextImpl>>", "Context");
-		write!(f, "{result}")
+		let text = make_type_user_readable(&text);
+		write!(f, "{text}")
 	}
 }
 
 impl std::fmt::Display for Type {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		let result = match self {
+		let text = match self {
 			Type::Generic(name) => name.to_string(),
 			Type::Concrete(ty) => format_type(&ty.name),
 			Type::Fn(call_arg, return_value) => format!("{return_value} called with {call_arg}"),
 			Type::Future(ty) => ty.to_string(),
 		};
-		let result = result.replace("Option<Arc<OwnedContextImpl>>", "Context");
-		write!(f, "{result}")
+		let text = make_type_user_readable(&text);
+		write!(f, "{text}")
 	}
 }

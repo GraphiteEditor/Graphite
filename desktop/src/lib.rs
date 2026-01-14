@@ -1,4 +1,5 @@
 use clap::Parser;
+use std::io::Write;
 use std::process::exit;
 use tracing_subscriber::EnvFilter;
 use winit::event_loop::EventLoop;
@@ -38,30 +39,39 @@ pub fn start() {
 		return;
 	}
 
-	let mut lock = pidlock::Pidlock::new_validated(dirs::app_data_dir().join(APP_LOCK_FILE_NAME)).unwrap();
-	match lock.acquire() {
-		Ok(lock) => {
-			tracing::info!("Acquired application lock");
-			lock
-		}
-		Err(pidlock::PidlockError::LockExists) => {
-			tracing::error!("Another instance is already running, Exiting.");
-			exit(0);
-		}
-		Err(err) => {
-			tracing::error!("Failed to acquire application lock: {err}");
-			exit(1);
-		}
-	};
-
-	App::init();
-
 	let cli = Cli::parse();
 
 	if cli.list_gpu_adapters {
 		futures::executor::block_on(gpu_context::list_adapters());
 		return;
 	}
+
+	let Ok(lock_file) = std::fs::OpenOptions::new()
+		.read(true)
+		.write(true)
+		.create(true)
+		.truncate(true)
+		.open(dirs::app_data_dir().join(APP_LOCK_FILE_NAME))
+	else {
+		tracing::error!("Failed to open lock file, Exiting.");
+		exit(1);
+	};
+	let mut lock = fd_lock::RwLock::new(lock_file);
+	let lock = match lock.try_write() {
+		Ok(mut guard) => {
+			tracing::info!("Acquired application lock");
+			let _ = guard.set_len(0);
+			let _ = write!(guard, "{}", std::process::id());
+			let _ = guard.sync_all();
+			guard
+		}
+		Err(_) => {
+			tracing::error!("Another instance is already running, Exiting.");
+			exit(1);
+		}
+	};
+
+	App::init();
 
 	let wgpu_context = futures::executor::block_on(gpu_context::create_wgpu_context());
 	let event_loop = EventLoop::new().unwrap();
@@ -97,6 +107,17 @@ pub fn start() {
 	let mut app = App::new(Box::new(cef_context), cef_view_info_sender, wgpu_context, app_event_receiver, app_event_scheduler, cli.files);
 
 	event_loop.run_app(&mut app).unwrap();
+
+	// Explicitly drop the instance lock
+	drop(lock);
+
+	// Workaround for a Windows-specific exception that occurs when `app` is dropped.
+	// The issue causes the window to hang for a few seconds before closing.
+	// Appears to be related to CEF object destruction order.
+	// Calling `exit` bypasses rust teardown and lets Windows perform process cleanup.
+	// TODO: Identify and fix the underlying CEF shutdown issue so this workaround can be removed.
+	#[cfg(target_os = "windows")]
+	exit(0);
 }
 
 pub fn start_helper() {

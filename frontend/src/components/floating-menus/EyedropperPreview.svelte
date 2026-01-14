@@ -66,6 +66,11 @@
 	.eyedropper-preview {
 		pointer-events: none;
 
+		.floating-menu-content.floating-menu-content {
+			border: none;
+			margin-left: 0;
+		}
+
 		.ring {
 			transform: translate(0, -50%) rotate(45deg);
 			position: relative;

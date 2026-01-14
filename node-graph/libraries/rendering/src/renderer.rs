@@ -26,7 +26,7 @@ use kurbo::Shape;
 use num_traits::Zero;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
-use std::hash::{DefaultHasher, Hash, Hasher};
+use std::hash::{Hash, Hasher};
 use std::ops::Deref;
 use std::sync::{Arc, LazyLock};
 use vello::*;
@@ -59,7 +59,7 @@ pub struct SvgRender {
 	pub svg: Vec<SvgSegment>,
 	pub svg_defs: String,
 	pub transform: DAffine2,
-	pub image_data: Vec<(u64, Image<Color>)>,
+	pub image_data: HashMap<Image<Color>, u64>,
 	indent: usize,
 }
 
@@ -69,7 +69,7 @@ impl SvgRender {
 			svg: Vec::default(),
 			svg_defs: String::new(),
 			transform: DAffine2::IDENTITY,
-			image_data: Vec::new(),
+			image_data: HashMap::new(),
 			indent: 0,
 		}
 	}
@@ -470,7 +470,7 @@ impl Render for Artboard {
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, mut footprint: Footprint, element_id: Option<NodeId>) {
 		if let Some(element_id) = element_id {
-			let subpath = Subpath::new_rect(DVec2::ZERO, self.dimensions.as_dvec2());
+			let subpath = Subpath::new_rectangle(DVec2::ZERO, self.dimensions.as_dvec2());
 			metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.)]);
 			metadata.upstream_footprints.insert(element_id, footprint);
 			metadata.local_transforms.insert(element_id, DAffine2::from_translation(self.location.as_dvec2()));
@@ -483,7 +483,7 @@ impl Render for Artboard {
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		let subpath_rectangle = Subpath::new_rect(DVec2::ZERO, self.dimensions.as_dvec2());
+		let subpath_rectangle = Subpath::new_rectangle(DVec2::ZERO, self.dimensions.as_dvec2());
 		click_targets.push(ClickTarget::new_with_subpath(subpath_rectangle, 0.));
 	}
 
@@ -1239,6 +1239,7 @@ impl Render for Table<Raster<CPU>> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for row in self.iter() {
 			let image = row.element;
+
 			let transform = *row.transform;
 
 			if image.data.is_empty() {
@@ -1246,16 +1247,10 @@ impl Render for Table<Raster<CPU>> {
 			}
 
 			if render_params.to_canvas() {
-				let id = row.source_node_id.map(|x| x.0).unwrap_or_else(|| {
-					let mut state = DefaultHasher::new();
-					image.data().hash(&mut state);
-					state.finish()
-				});
-				if !render.image_data.iter().any(|(old_id, _)| *old_id == id) {
-					let mut image = image.data().clone();
-					image.map_pixels(|p| p.to_unassociated_alpha());
-					render.image_data.push((id, image));
-				}
+				let mut image_copy = image.clone();
+				image_copy.data_mut().map_pixels(|p| p.to_unassociated_alpha());
+				let id = *render.image_data.entry(image_copy.into_data()).or_insert_with(generate_uuid);
+
 				render.parent_tag(
 					"foreignObject",
 					|attributes| {
@@ -1368,7 +1363,7 @@ impl Render for Table<Raster<CPU>> {
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 		let Some(element_id) = element_id else { return };
-		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
+		let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
 
 		metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.)]);
 		metadata.upstream_footprints.insert(element_id, footprint);
@@ -1379,7 +1374,7 @@ impl Render for Table<Raster<CPU>> {
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
+		let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
 		click_targets.push(ClickTarget::new_with_subpath(subpath, 0.));
 	}
 }
@@ -1428,7 +1423,7 @@ impl Render for Table<Raster<GPU>> {
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 		let Some(element_id) = element_id else { return };
-		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
+		let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
 
 		metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.)]);
 		metadata.upstream_footprints.insert(element_id, footprint);
@@ -1439,7 +1434,7 @@ impl Render for Table<Raster<GPU>> {
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
+		let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
 		click_targets.push(ClickTarget::new_with_subpath(subpath, 0.));
 	}
 }
