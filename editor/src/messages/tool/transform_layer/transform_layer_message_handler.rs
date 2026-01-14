@@ -686,7 +686,7 @@ fn calculate_pivot(
 	});
 	gizmo.pivot.recalculate_pivot_for_layer(document, bounds);
 	let position = || {
-		(if !gizmo.state.disabled {
+		(if gizmo.state.enabled {
 			match gizmo.state.gizmo_type {
 				PivotGizmoType::Average => None,
 				PivotGizmoType::Active => gizmo.point.and_then(|p| get_location(&p)),
