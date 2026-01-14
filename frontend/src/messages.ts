@@ -315,8 +315,6 @@ export class UpdateFullscreen extends JsMessage {
 	readonly fullscreen!: boolean;
 }
 
-export class CloseWindow extends JsMessage {}
-
 export class UpdateViewportHolePunch extends JsMessage {
 	readonly active!: boolean;
 }
@@ -330,6 +328,11 @@ export class UpdateViewportPhysicalBounds extends JsMessage {
 
 export class UpdateUIScale extends JsMessage {
 	readonly scale!: number;
+}
+
+export class WindowPointerLockMove extends JsMessage {
+	readonly x!: number;
+	readonly y!: number;
 }
 
 // Rust enum `Key`
@@ -1728,6 +1731,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdatePlatform,
 	UpdateMaximized,
 	UpdateFullscreen,
+	WindowPointerLockMove,
 	UpdatePropertiesPanelLayout,
 	UpdatePropertiesPanelState,
 	UpdateStatusBarHintsLayout,

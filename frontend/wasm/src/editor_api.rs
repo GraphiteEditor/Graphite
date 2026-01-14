@@ -274,6 +274,13 @@ impl EditorHandle {
 		self.dispatch(NodeGraphMessage::AddSecondaryExport);
 	}
 
+	/// Start Pointer Lock
+	#[wasm_bindgen(js_name = appWindowPointerLock)]
+	pub fn app_window_pointer_lock(&self) {
+		let message = AppWindowMessage::PointerLock;
+		self.dispatch(message);
+	}
+
 	/// Minimizes the application window to the taskbar or dock
 	#[wasm_bindgen(js_name = appWindowMinimize)]
 	pub fn app_window_minimize(&self) {

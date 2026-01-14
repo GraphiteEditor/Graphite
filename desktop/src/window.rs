@@ -159,6 +159,16 @@ impl Window {
 		self.winit_window.set_cursor(cursor);
 	}
 
+	pub(crate) fn start_pointer_lock(&self) {
+		let _ = self.winit_window.set_cursor_grab(winit::window::CursorGrabMode::Locked);
+		self.winit_window.set_cursor_visible(false);
+	}
+
+	pub(crate) fn end_pointer_lock(&self) {
+		let _ = self.winit_window.set_cursor_grab(winit::window::CursorGrabMode::None);
+		self.winit_window.set_cursor_visible(true);
+	}
+
 	pub(crate) fn update_menu(&self, entries: Vec<MenuItem>) {
 		self.native_handle.update_menu(entries);
 	}

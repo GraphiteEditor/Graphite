@@ -5,7 +5,7 @@ use std::sync::mpsc::{Receiver, Sender, SyncSender};
 use std::thread;
 use std::time::{Duration, Instant};
 use winit::application::ApplicationHandler;
-use winit::dpi::PhysicalSize;
+use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::{ButtonSource, ElementState, MouseButton, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow};
 use winit::window::WindowId;
@@ -27,6 +27,8 @@ pub(crate) struct App {
 	window_size: PhysicalSize<u32>,
 	window_maximized: bool,
 	window_fullscreen: bool,
+	pointer_position: PhysicalPosition<f64>,
+	pointer_lock_position: Option<PhysicalPosition<f64>>,
 	ui_scale: f64,
 	app_event_receiver: Receiver<AppEvent>,
 	app_event_scheduler: AppEventScheduler,
@@ -84,6 +86,8 @@ impl App {
 			window_size: PhysicalSize { width: 0, height: 0 },
 			window_maximized: false,
 			window_fullscreen: false,
+			pointer_position: Default::default(),
+			pointer_lock_position: Default::default(),
 			ui_scale: 1.,
 			app_event_receiver,
 			app_event_scheduler,
@@ -329,6 +333,12 @@ impl App {
 					window.clipboard_write(content);
 				}
 			}
+			DesktopFrontendMessage::PointerLock => {
+				self.pointer_lock_position = Some(self.pointer_position);
+				if let Some(window) = &self.window {
+					window.start_pointer_lock();
+				}
+			}
 			DesktopFrontendMessage::WindowClose => {
 				self.app_event_scheduler.schedule(AppEvent::CloseWindow);
 			}
@@ -480,6 +490,26 @@ impl ApplicationHandler for App {
 	}
 
 	fn window_event(&mut self, event_loop: &dyn ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
+		// Handle pointer lock release
+		if let Some(pointer_lock_position) = self.pointer_lock_position
+			&& let WindowEvent::PointerButton {
+				state: ElementState::Released,
+				button: ButtonSource::Mouse(MouseButton::Left),
+				..
+			} = event
+		{
+			self.pointer_lock_position = None;
+			if let Some(window) = &self.window {
+				window.end_pointer_lock();
+			}
+			self.cef_context.handle_window_event(&WindowEvent::PointerMoved {
+				device_id: None,
+				position: pointer_lock_position,
+				primary: true,
+				source: winit::event::PointerSource::Mouse,
+			});
+		}
+
 		self.cef_context.handle_window_event(&event);
 
 		match event {
@@ -556,11 +586,27 @@ impl ApplicationHandler for App {
 					self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
 				}
 			}
+
+			WindowEvent::PointerMoved { position, .. } | WindowEvent::PointerLeft { position: Some(position), .. } | WindowEvent::PointerEntered { position, .. }
+				if self.pointer_lock_position.is_none() =>
+			{
+				self.pointer_position = position;
+			}
+
 			_ => {}
 		}
 
 		// Notify cef of possible input events
 		self.cef_context.work();
+	}
+
+	fn device_event(&mut self, _event_loop: &dyn ActiveEventLoop, _device_id: Option<winit::event::DeviceId>, event: winit::event::DeviceEvent) {
+		if self.pointer_lock_position.is_some()
+			&& let winit::event::DeviceEvent::PointerMotion { delta: (x, y) } = event
+		{
+			let message = DesktopWrapperMessage::PointerLockMove { x, y };
+			self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
+		}
 	}
 
 	fn about_to_wait(&mut self, event_loop: &dyn ActiveEventLoop) {

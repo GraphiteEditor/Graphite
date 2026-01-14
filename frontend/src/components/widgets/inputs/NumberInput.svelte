@@ -1,7 +1,8 @@
 <script lang="ts">
-	import { createEventDispatcher, onMount, onDestroy } from "svelte";
+	import { createEventDispatcher, onMount, onDestroy, getContext } from "svelte";
 
 	import { evaluateMathExpression } from "@graphite/../wasm/pkg/graphite_wasm";
+	import type { Editor } from "@graphite/editor";
 	import { PRESS_REPEAT_DELAY_MS, PRESS_REPEAT_INTERVAL_MS } from "@graphite/io-managers/input";
 	import type { NumberInputMode, NumberInputIncrementBehavior, ActionShortcut } from "@graphite/messages";
 	import { browserVersion, isDesktop } from "@graphite/utility-functions/platform";
@@ -15,6 +16,8 @@
 	const BUTTON_RIGHT = 2;
 
 	const dispatch = createEventDispatcher<{ value: number | undefined; startHistoryTransaction: undefined }>();
+
+	const editor = getContext<Editor>("editor");
 
 	// Content
 	/// When `value` is not provided (i.e. it's `undefined`), a dash is displayed.
@@ -369,6 +372,9 @@
 
 		// Enter dragging state
 		if (usePointerLock) target.requestPointerLock();
+		if (isDesktop()) {
+			editor.handle.appWindowPointerLock();
+		}
 		initialValueBeforeDragging = value;
 		cumulativeDragDelta = 0;
 
@@ -412,19 +418,14 @@
 
 			// Calculate and then update the dragged value offset, slowed down by 10x when Shift is held.
 			if (ignoredFirstMovement && initialValueBeforeDragging !== undefined) {
-				const CHANGE_PER_DRAG_PX = 0.1;
-				const CHANGE_PER_DRAG_PX_SLOW = CHANGE_PER_DRAG_PX / 10;
-
-				const dragDelta = e.movementX * (e.shiftKey ? CHANGE_PER_DRAG_PX_SLOW : CHANGE_PER_DRAG_PX);
-				cumulativeDragDelta += dragDelta;
-
-				const combined = initialValueBeforeDragging + cumulativeDragDelta;
-				const combineSnapped = e.ctrlKey ? Math.round(combined) : combined;
-
-				const newValue = updateValue(combineSnapped);
-
-				// If the value was altered within the `updateValue()` call, we need to rectify the cumulative drag delta to account for the change.
-				if (newValue !== undefined) cumulativeDragDelta -= combineSnapped - newValue;
+				pointerLockMoveUpdate(e.movementX, e.shiftKey, ctrlKeyDown, initialValueBeforeDragging);
+			}
+			ignoredFirstMovement = true;
+		};
+		const pointerLockMove = (e: Event) => {
+			if (ignoredFirstMovement && initialValueBeforeDragging !== undefined && e instanceof CustomEvent) {
+				const delta = (e.detail as { x: number }).x;
+				pointerLockMoveUpdate(delta, false, false, initialValueBeforeDragging);
 			}
 			ignoredFirstMovement = true;
 		};
@@ -443,12 +444,30 @@
 			// Clean up the event listeners.
 			removeEventListener("pointerup", pointerUp);
 			removeEventListener("pointermove", pointerMove);
+			removeEventListener("pointerlockmove", pointerLockMove);
 			if (usePointerLock) document.removeEventListener("pointerlockchange", pointerLockChange);
 		};
 
 		addEventListener("pointerup", pointerUp);
 		addEventListener("pointermove", pointerMove);
+		window.addEventListener("pointerlockmove", pointerLockMove);
 		if (usePointerLock) document.addEventListener("pointerlockchange", pointerLockChange);
+	}
+
+	function pointerLockMoveUpdate(delta: number, slow: boolean, snapping: boolean, initialValue: number) {
+		const CHANGE_PER_DRAG_PX = 0.1;
+		const CHANGE_PER_DRAG_PX_SLOW = CHANGE_PER_DRAG_PX / 10;
+
+		const dragDelta = delta * (slow ? CHANGE_PER_DRAG_PX_SLOW : CHANGE_PER_DRAG_PX);
+		cumulativeDragDelta += dragDelta;
+
+		const combined = initialValue + cumulativeDragDelta;
+		const combineSnapped = snapping ? Math.round(combined) : combined;
+
+		const newValue = updateValue(combineSnapped);
+
+		// If the value was altered within the `updateValue()` call, we need to rectify the cumulative drag delta to account for the change.
+		if (newValue !== undefined) cumulativeDragDelta -= combineSnapped - newValue;
 	}
 
 	// ===============================
