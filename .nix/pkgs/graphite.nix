@@ -111,13 +111,17 @@ deps.crane.lib.buildPackage (
           { }
       ) // {
         GRAPHITE_GIT_COMMIT_HASH = inputs.self.rev or "unknown";
-        GRAPHITE_GIT_COMMIT_DATE = builtins.formatTime "%Y-%m-%dT%H:%M:%SZ" inputs.self.lastModified or "unknown";
+        GRAPHITE_GIT_COMMIT_DATE = inputs.self.lastModified or "unknown";
       };
 
     postUnpack = ''
       mkdir ./branding
       cp -r ${branding}/* ./branding
     '';
+
+    preBuild = if inputs.self ? rev then ''
+      export GRAPHITE_GIT_COMMIT_DATE="$(date -u -d "@$GRAPHITE_GIT_COMMIT_DATE" +"%Y-%m-%dT%H:%M:%SZ")"
+    '' else "";
 
     installPhase = ''
       mkdir -p $out/bin
