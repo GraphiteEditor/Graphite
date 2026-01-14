@@ -109,7 +109,10 @@ deps.crane.lib.buildPackage (
           }
         else
           { }
-      );
+      ) // {
+        GRAPHITE_GIT_COMMIT_HASH = inputs.self.rev or "unknown";
+        GRAPHITE_GIT_COMMIT_DATE = inputs.self.lastModifiedDate or "unknown";
+      };
 
     postUnpack = ''
       mkdir ./branding
