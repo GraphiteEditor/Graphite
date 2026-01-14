@@ -111,7 +111,7 @@ deps.crane.lib.buildPackage (
           { }
       ) // {
         GRAPHITE_GIT_COMMIT_HASH = inputs.self.rev or "unknown";
-        GRAPHITE_GIT_COMMIT_DATE = inputs.self.lastModifiedDate or "unknown";
+        GRAPHITE_GIT_COMMIT_DATE = builtins.formatTime "%Y-%m-%dT%H:%M:%SZ" inputs.self.lastModified or "unknown";
       };
 
     postUnpack = ''

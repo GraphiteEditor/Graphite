@@ -46,12 +46,12 @@ pub const GRAPHITE_GIT_COMMIT_BRANCH: &str = env!("GRAPHITE_GIT_COMMIT_BRANCH");
 pub fn commit_info_localized(localized_commit_date: &str) -> String {
 	format!(
 		"Release Series: {}\n\
-		Branch: {}\n\
 		Commit: {}\n\
+		Branch: {}\n\
 		{}",
 		GRAPHITE_RELEASE_SERIES,
-		GRAPHITE_GIT_COMMIT_BRANCH,
 		GRAPHITE_GIT_COMMIT_HASH.get(..8).unwrap_or(GRAPHITE_GIT_COMMIT_HASH),
+		GRAPHITE_GIT_COMMIT_BRANCH,
 		localized_commit_date
 	)
 }
