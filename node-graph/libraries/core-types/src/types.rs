@@ -1,8 +1,6 @@
 use std::any::TypeId;
-
 pub use std::borrow::Cow;
 use std::fmt::{Display, Formatter};
-use std::ops::Deref;
 
 #[macro_export]
 macro_rules! concrete {
@@ -128,19 +126,7 @@ impl std::fmt::Debug for NodeIOTypes {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, specta::Type, serde::Serialize, serde::Deserialize)]
 pub struct ProtoNodeIdentifier {
-	pub name: Cow<'static, str>,
-}
-
-impl From<String> for ProtoNodeIdentifier {
-	fn from(value: String) -> Self {
-		Self { name: Cow::Owned(value) }
-	}
-}
-
-impl From<&'static str> for ProtoNodeIdentifier {
-	fn from(s: &'static str) -> Self {
-		ProtoNodeIdentifier { name: Cow::Borrowed(s) }
-	}
+	name: Cow<'static, str>,
 }
 
 impl ProtoNodeIdentifier {
@@ -151,12 +137,8 @@ impl ProtoNodeIdentifier {
 	pub const fn with_owned_string(name: String) -> Self {
 		ProtoNodeIdentifier { name: Cow::Owned(name) }
 	}
-}
 
-impl Deref for ProtoNodeIdentifier {
-	type Target = str;
-
-	fn deref(&self) -> &Self::Target {
+	pub fn as_str(&self) -> &str {
 		self.name.as_ref()
 	}
 }

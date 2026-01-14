@@ -1,7 +1,7 @@
 use super::shape_utility::{ShapeToolModifierKey, update_radius_sign};
 use super::*;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type};
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate};
@@ -109,7 +109,8 @@ pub struct Polygon;
 
 impl Polygon {
 	pub fn create_node(vertices: u32) -> NodeTemplate {
-		let node_type = resolve_document_node_type("Regular Polygon").expect("Regular Polygon can't be found");
+		let identifier = DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::regular_polygon::IDENTIFIER);
+		let node_type = resolve_document_node_type(&identifier).expect("Regular Polygon can't be found");
 		node_type.node_template_input_override([None, Some(NodeInput::value(TaggedValue::U32(vertices), false)), Some(NodeInput::value(TaggedValue::F64(0.5), false))])
 	}
 
@@ -167,8 +168,8 @@ impl Polygon {
 		};
 
 		let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface)
-			.find_node_inputs("Regular Polygon")
-			.or(NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Star"))
+			.find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::regular_polygon::IDENTIFIER))
+			.or(NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::star::IDENTIFIER)))
 		else {
 			return;
 		};
