@@ -46,7 +46,7 @@ pub struct SelectOptions {
 pub enum SelectOptionsUpdate {
 	NestedSelectionBehavior(NestedSelectionBehavior),
 	PivotGizmoType(PivotGizmoType),
-	TogglePivotGizmoType(bool),
+	SetPivotGizmoEnabled(bool),
 	TogglePivotPinned,
 }
 
@@ -240,7 +240,7 @@ impl LayoutHolder for SelectTool {
 			widgets.push(Separator::new(SeparatorStyle::Related).widget_instance());
 
 			let pin_active = self.tool_data.pivot_gizmo.pin_active();
-			let pin_enabled = self.tool_data.pivot_gizmo.pivot.old_pivot_position == ReferencePoint::None && !self.tool_data.pivot_gizmo.state.disabled;
+			let pin_enabled = self.tool_data.pivot_gizmo.pivot.old_pivot_position == ReferencePoint::None && self.tool_data.pivot_gizmo.state.enabled;
 
 			if pin_active || pin_enabled {
 				widgets.push(pin_pivot_widget(pin_active, pin_enabled, PivotToolSource::Select));
@@ -275,14 +275,14 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Sele
 		let mut redraw_reference_pivot = false;
 
 		if let ToolMessage::Select(SelectToolMessage::SelectOptions { options: ref option_update }) = message {
-			match option_update {
+			match *option_update {
 				SelectOptionsUpdate::NestedSelectionBehavior(nested_selection_behavior) => {
-					self.tool_data.nested_selection_behavior = *nested_selection_behavior;
+					self.tool_data.nested_selection_behavior = nested_selection_behavior;
 					responses.add(ToolMessage::UpdateHints);
 				}
 				SelectOptionsUpdate::PivotGizmoType(gizmo_type) => {
-					if !self.tool_data.pivot_gizmo.state.disabled {
-						self.tool_data.pivot_gizmo.state.gizmo_type = *gizmo_type;
+					if !self.tool_data.pivot_gizmo.state.enabled {
+						self.tool_data.pivot_gizmo.state.gizmo_type = gizmo_type;
 						responses.add(ToolMessage::UpdateHints);
 						let pivot_gizmo = self.tool_data.pivot_gizmo();
 						responses.add(TransformLayerMessage::SetPivotGizmo { pivot_gizmo });
@@ -290,8 +290,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Sele
 						redraw_reference_pivot = true;
 					}
 				}
-				SelectOptionsUpdate::TogglePivotGizmoType(state) => {
-					self.tool_data.pivot_gizmo.state.disabled = !state;
+				SelectOptionsUpdate::SetPivotGizmoEnabled(enabled) => {
+					self.tool_data.pivot_gizmo.state.enabled = enabled;
 					responses.add(ToolMessage::UpdateHints);
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 					redraw_reference_pivot = true;
@@ -610,6 +610,8 @@ impl Fsm for SelectToolFsmState {
 			(_, SelectToolMessage::Overlays { context: mut overlay_context }) => {
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input, viewport), &mut overlay_context);
 
+				crate::messages::tool::common_functionality::layer_origin_cross::draw_for_selected_layers(&mut overlay_context, document);
+
 				let selected_layers_count = document.network_interface.selected_nodes().selected_unlocked_layers(&document.network_interface).count();
 				tool_data.selected_layers_changed = selected_layers_count != tool_data.selected_layers_count;
 				tool_data.selected_layers_count = selected_layers_count;
@@ -731,6 +733,7 @@ impl Fsm for SelectToolFsmState {
 				if let Some(bounds) = bounds {
 					let bounding_box_manager = tool_data.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
 
+					// TODO: Don't perform bounding box calculations here because the user can disable overlays which breaks bbox-based resizing
 					bounding_box_manager.bounds = bounds;
 					bounding_box_manager.transform = transform;
 					bounding_box_manager.transform_tampered = transform_tampered;

@@ -25,12 +25,15 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use vello::Scene;
 use vello::peniko;
 
+// TODO Remove duplicated definition of this in `utility_types_web.rs`
 pub type OverlayProvider = fn(OverlayContext) -> Message;
 
+// TODO Remove duplicated definition of this in `utility_types_web.rs`
 pub fn empty_provider() -> OverlayProvider {
 	|_| Message::NoOp
 }
 
+// TODO Remove duplicated definition of this in `utility_types_web.rs`
 /// Types of overlays used by DocumentMessage to enable/disable the selected set of viewport overlays.
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum OverlaysType {
@@ -41,6 +44,7 @@ pub enum OverlaysType {
 	TransformCage,
 	HoverOutline,
 	SelectionOutline,
+	LayerOriginCross,
 	Pivot,
 	Origin,
 	Path,
@@ -48,6 +52,7 @@ pub enum OverlaysType {
 	Handles,
 }
 
+// TODO Remove duplicated definition of this in `utility_types_web.rs`
 #[derive(PartialEq, Copy, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 #[serde(default)]
 pub struct OverlaysVisibilitySettings {
@@ -59,6 +64,7 @@ pub struct OverlaysVisibilitySettings {
 	pub transform_cage: bool,
 	pub hover_outline: bool,
 	pub selection_outline: bool,
+	pub layer_origin_cross: bool,
 	pub pivot: bool,
 	pub origin: bool,
 	pub path: bool,
@@ -66,6 +72,7 @@ pub struct OverlaysVisibilitySettings {
 	pub handles: bool,
 }
 
+// TODO Remove duplicated definition of this in `utility_types_web.rs`
 impl Default for OverlaysVisibilitySettings {
 	fn default() -> Self {
 		Self {
@@ -77,6 +84,7 @@ impl Default for OverlaysVisibilitySettings {
 			transform_cage: true,
 			hover_outline: true,
 			selection_outline: true,
+			layer_origin_cross: true,
 			pivot: true,
 			origin: true,
 			path: true,
@@ -86,6 +94,7 @@ impl Default for OverlaysVisibilitySettings {
 	}
 }
 
+// TODO Remove duplicated definition of this in `utility_types_web.rs`
 impl OverlaysVisibilitySettings {
 	pub fn all(&self) -> bool {
 		self.all
@@ -117,6 +126,10 @@ impl OverlaysVisibilitySettings {
 
 	pub fn selection_outline(&self) -> bool {
 		self.all && self.selection_outline
+	}
+
+	pub fn layer_origin_cross(&self) -> bool {
+		self.all && self.layer_origin_cross
 	}
 
 	pub fn pivot(&self) -> bool {
@@ -391,12 +404,14 @@ impl OverlayContext {
 	}
 }
 
+// TODO Remove duplicated definition of this in `utility_types_web.rs`
 pub enum Pivot {
 	Start,
 	Middle,
 	End,
 }
 
+// TODO Remove duplicated definition of this in `utility_types_web.rs`
 pub enum DrawHandles {
 	All,
 	SelectedAnchors(HashMap<LayerNodeIdentifier, Vec<SegmentId>>),
