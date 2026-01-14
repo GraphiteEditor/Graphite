@@ -117,7 +117,7 @@ fn validate_implementations_for_generics(parsed: &ParsedNodeFn) {
 							quote!(#ty),
 							pat_ident.ident;
 							help = "Add #[implementations(ConcreteType1, ConcreteType2)] to field '{}'", pat_ident.ident;
-							help = "Or use #[skip_impl] if you want to manually implement the node"
+							help = "Or use #[node_macro::node(skip_impl)] if you want to manually implement the node"
 						);
 					}
 				}
@@ -133,7 +133,7 @@ fn validate_implementations_for_generics(parsed: &ParsedNodeFn) {
 							"Generic types in Node field `{}` require an #[implementations(...)] attribute",
 							pat_ident.ident;
 							help = "Add #[implementations(InputType1 -> OutputType1, InputType2 -> OutputType2)] to field '{}'", pat_ident.ident;
-							help = "Or use #[skip_impl] if you want to manually implement the node"
+							help = "Or use #[node_macro::node(skip_impl)] if you want to manually implement the node"
 						);
 					}
 					// Additional check for Node implementations

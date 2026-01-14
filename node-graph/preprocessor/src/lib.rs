@@ -69,17 +69,13 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 							let input_ty = input.nested_type();
 							let mut inputs = vec![NodeInput::import(input.clone(), i)];
 
-							let into_node_identifier = ProtoNodeIdentifier {
-								name: format!("graphene_core::ops::IntoNode<{}>", input_ty.clone()).into(),
-							};
-							let convert_node_identifier = ProtoNodeIdentifier {
-								name: format!("graphene_core::ops::ConvertNode<{}>", input_ty.clone()).into(),
-							};
+							let into_node_identifier = ProtoNodeIdentifier::with_owned_string(format!("graphene_core::ops::IntoNode<{}>", input_ty.clone()));
+							let convert_node_identifier = ProtoNodeIdentifier::with_owned_string(format!("graphene_core::ops::ConvertNode<{}>", input_ty.clone()));
 
-							let proto_node = if into_node_registry.keys().any(|ident: &ProtoNodeIdentifier| ident.name.as_ref() == into_node_identifier.name.as_ref()) {
+							let proto_node = if into_node_registry.keys().any(|ident: &ProtoNodeIdentifier| ident.as_str() == into_node_identifier.as_str()) {
 								generated_nodes += 1;
 								into_node_identifier
-							} else if into_node_registry.keys().any(|ident| ident.name.as_ref() == convert_node_identifier.name.as_ref()) {
+							} else if into_node_registry.keys().any(|ident| ident.as_str() == convert_node_identifier.as_str()) {
 								generated_nodes += 1;
 								inputs.push(NodeInput::value(TaggedValue::None, false));
 								convert_node_identifier
@@ -162,7 +158,7 @@ pub fn node_inputs(fields: &[registry::FieldMetadata], first_node_io: &NodeIOTyp
 						return NodeInput::value(custom_default, exposed);
 					} else {
 						// It is incredibly useful to get a warning when the default type cannot be parsed rather than defaulting to `()`.
-						warn!("Failed to parse default value for type {ty:?} with data {data}");
+						warn!("Failed to parse default value for type `{ty:?}` with data `{data}`");
 					}
 				}
 				RegistryValueSource::Scope(data) => return NodeInput::scope(Cow::Borrowed(data)),

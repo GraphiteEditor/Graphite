@@ -98,9 +98,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		Command::Export { ref document, .. } => document,
 		Command::ListNodeIdentifiers => {
 			let mut ids: Vec<_> = graphene_std::registry::NODE_METADATA.lock().unwrap().keys().cloned().collect();
-			ids.sort_by_key(|x| x.name.clone());
+			ids.sort_by_key(|x| x.as_str().to_string());
 			for id in ids {
-				println!("{}", id.name)
+				println!("{}", id.as_str());
 			}
 			return Ok(());
 		}
@@ -212,7 +212,7 @@ fn fix_nodes(network: &mut NodeNetwork) {
 			// https://github.com/GraphiteEditor/Graphite/blob/d68f91ccca69e90e6d2df78d544d36cd1aaf348e/editor/src/messages/portfolio/portfolio_message_handler.rs#L535
 			// Since the CLI doesn't have the document node definitions, a less robust method of just patching the inputs is used.
 			DocumentNodeImplementation::ProtoNode(proto_node_identifier)
-				if (proto_node_identifier.name.starts_with("graphene_core::ConstructLayerNode") || proto_node_identifier.name.starts_with("graphene_core::AddArtboardNode"))
+				if (proto_node_identifier.as_str().starts_with("graphene_core::ConstructLayerNode") || proto_node_identifier.as_str().starts_with("graphene_core::AddArtboardNode"))
 					&& node.inputs.len() < 3 =>
 			{
 				node.inputs.push(NodeInput::Reflection(DocumentNodeMetadata::DocumentNodePath));

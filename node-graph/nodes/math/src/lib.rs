@@ -810,7 +810,7 @@ fn dot_product(
 	/// An operand of the dot product operation.
 	vector_a: DVec2,
 	/// The other operand of the dot product operation.
-	#[default((1., 0.))]
+	#[default(1., 0.)]
 	vector_b: DVec2,
 	/// Whether to normalize both input vectors so the calculation ranges in `[-1, 1]` by considering only their degree of directional alignment.
 	normalize: bool,

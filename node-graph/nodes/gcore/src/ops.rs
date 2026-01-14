@@ -4,7 +4,7 @@ use std::marker::PhantomData;
 // Re-export TypeNode from core-types for convenience
 pub use core_types::ops::TypeNode;
 
-// TODO: Rename to "Passthrough"
+// TODO: Rename to "Passthrough" and make this the node that users use, not the one defined in document_node_definitions.rs
 /// Passes-through the input value without changing it.
 /// This is useful for rerouting wires for organization purposes.
 #[node_macro::node(skip_impl)]

@@ -12,8 +12,7 @@ use crate::messages::input_mapper::utility_types::macros::{action_shortcut, acti
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::DocumentMessageContext;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
-use crate::messages::portfolio::document::node_graph::document_node_definitions;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::{self, resolve_network_node_type};
 use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
 use crate::messages::portfolio::document::utility_types::network_interface::OutputConnector;
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
@@ -522,7 +521,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				// Ensure each node has the metadata for its inputs
 				for (node_id, node, path) in document.network_interface.document_network().clone().recursive_nodes() {
 					document.network_interface.validate_input_metadata(node_id, node, &path);
-					document.network_interface.validate_display_name_metadata(node_id, &path);
 					document.network_interface.validate_output_names(node_id, node, &path);
 				}
 
@@ -664,7 +662,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					let mut layers = Vec::new();
 
 					for (_, new_vector, transform) in data {
-						let Some(node_type) = resolve_document_node_type("Path") else {
+						let Some(node_type) = resolve_network_node_type("Path") else {
 							error!("Path node does not exist");
 							continue;
 						};
@@ -1036,6 +1034,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				scale_factor,
 				bounds,
 				transparent_background,
+				artboard_name,
+				artboard_count,
 			} => {
 				let document = self.active_document_id.and_then(|id| self.documents.get_mut(&id)).expect("Tried to render non-existent document");
 				let export_config = ExportConfig {
@@ -1044,6 +1044,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					scale_factor,
 					bounds,
 					transparent_background,
+					artboard_name,
+					artboard_count,
 					..Default::default()
 				};
 				let result = self.executor.submit_document_export(document, self.active_document_id.unwrap(), export_config);
