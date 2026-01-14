@@ -27,10 +27,10 @@
 			position: relative;
 
 			&:not(:first-child) {
-				margin-left: 0px;
+				margin-left: -2px;
 			}
 
-			clip-path: polygon(0% 0%, calc(100% - 4px) 0%, 100% 50%, calc(100% - 4px) 100%, 0% 100%, 4px 50%);
+			clip-path: polygon(2px 0%, calc(100% - 4px) 0%, 100% 50%, calc(100% - 4px) 100%, 2px 100%, 6px 50%);
 			padding-left: 12px;
 			padding-right: 12px;
 
@@ -41,7 +41,7 @@
 			}
 
 			&:last-of-type {
-				clip-path: polygon(0% 0%, 100% 0%, 100% 100%, 0% 100%, 4px 50%);
+				clip-path: polygon(2px 0%, 100% 0%, 100% 100%, 2px 100%, 6px 50%);
 				padding-left: 12px;
 				padding-right: 8px;
 
