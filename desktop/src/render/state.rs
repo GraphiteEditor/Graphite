@@ -1,6 +1,7 @@
 use crate::window::Window;
 
 use crate::wrapper::{Color, WgpuContext, WgpuExecutor};
+use wgpu_executor::TargetTexture;
 
 #[derive(derivative::Derivative)]
 #[derivative(Debug)]
@@ -18,6 +19,7 @@ pub(crate) struct RenderState {
 	viewport_offset: [f32; 2],
 	viewport_texture: Option<wgpu::Texture>,
 	overlays_texture: Option<wgpu::Texture>,
+	overlays_target_texture: Option<TargetTexture>,
 	ui_texture: Option<wgpu::Texture>,
 	bind_group: Option<wgpu::BindGroup>,
 	#[derivative(Debug = "ignore")]
@@ -182,6 +184,7 @@ impl RenderState {
 			viewport_offset: [0.0, 0.0],
 			viewport_texture: None,
 			overlays_texture: None,
+			overlays_target_texture: None,
 			ui_texture: None,
 			bind_group: None,
 			overlays_scene: None,
@@ -236,12 +239,18 @@ impl RenderState {
 			return;
 		};
 		let size = glam::UVec2::new(viewport_texture.width(), viewport_texture.height());
-		let texture = futures::executor::block_on(self.executor.render_vello_scene_to_texture(&scene, size, &Default::default(), Color::TRANSPARENT));
-		let Ok(texture) = texture else {
-			tracing::error!("Error rendering overlays");
+		let result = futures::executor::block_on(
+			self.executor
+				.render_vello_scene_to_target_texture(&scene, size, &Default::default(), Color::TRANSPARENT, &mut self.overlays_target_texture),
+		);
+		if let Err(e) = result {
+			tracing::error!("Error rendering overlays: {:?}", e);
 			return;
-		};
-		self.bind_overlays_texture(texture);
+		}
+		if let Some(target_texture) = &self.overlays_target_texture {
+			self.overlays_texture = Some(target_texture.texture().clone());
+			self.update_bindgroup();
+		}
 	}
 
 	pub(crate) fn render(&mut self, window: &Window) -> Result<(), RenderError> {

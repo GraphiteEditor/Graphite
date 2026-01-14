@@ -54,6 +54,47 @@ pub struct TargetTexture {
 	size: UVec2,
 }
 
+impl TargetTexture {
+	/// Ensures the texture has the specified size, creating a new one if needed.
+	/// This allows reusing the same texture across frames when the size hasn't changed.
+	pub fn ensure_size(&mut self, device: &wgpu::Device, size: UVec2) {
+		let size = size.max(UVec2::ONE);
+		if self.size == size {
+			return;
+		}
+
+		let texture = device.create_texture(&wgpu::TextureDescriptor {
+			label: None,
+			size: wgpu::Extent3d {
+				width: size.x,
+				height: size.y,
+				depth_or_array_layers: 1,
+			},
+			mip_level_count: 1,
+			sample_count: 1,
+			dimension: wgpu::TextureDimension::D2,
+			usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC,
+			format: VELLO_SURFACE_FORMAT,
+			view_formats: &[],
+		});
+		let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+		self.texture = texture;
+		self.view = view;
+		self.size = size;
+	}
+
+	/// Returns a reference to the texture view for rendering.
+	pub fn view(&self) -> &wgpu::TextureView {
+		&self.view
+	}
+
+	/// Returns a reference to the underlying texture.
+	pub fn texture(&self) -> &wgpu::Texture {
+		&self.texture
+	}
+}
+
 #[cfg(target_family = "wasm")]
 pub type Window = web_sys::HtmlCanvasElement;
 #[cfg(not(target_family = "wasm"))]
@@ -71,19 +112,14 @@ impl WgpuExecutor {
 		self.render_vello_scene_to_target_texture(scene, size, context, background, &mut output).await?;
 		Ok(output.unwrap().texture)
 	}
-
-	async fn render_vello_scene_to_target_texture(&self, scene: &Scene, size: UVec2, context: &RenderContext, background: Color, output: &mut Option<TargetTexture>) -> Result<()> {
-		let size = size.max(UVec2::ONE);
-		let target_texture = if let Some(target_texture) = output
-			&& target_texture.size == size
-		{
-			target_texture
-		} else {
+	pub async fn render_vello_scene_to_target_texture(&self, scene: &Scene, size: UVec2, context: &RenderContext, background: Color, output: &mut Option<TargetTexture>) -> Result<()> {
+		// Initialize with a minimal texture if this is the first call
+		if output.is_none() {
 			let texture = self.context.device.create_texture(&wgpu::TextureDescriptor {
 				label: None,
 				size: wgpu::Extent3d {
-					width: size.x,
-					height: size.y,
+					width: 1,
+					height: 1,
 					depth_or_array_layers: 1,
 				},
 				mip_level_count: 1,
@@ -94,9 +130,11 @@ impl WgpuExecutor {
 				view_formats: &[],
 			});
 			let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-			*output = Some(TargetTexture { texture, view, size });
-			output.as_mut().unwrap()
-		};
+			*output = Some(TargetTexture { texture, view, size: UVec2::ONE });
+		}
+
+		let target_texture = output.as_mut().unwrap();
+		target_texture.ensure_size(&self.context.device, size);
 
 		let [r, g, b, a] = background.to_rgba8_srgb();
 		let render_params = RenderParams {
@@ -117,7 +155,7 @@ impl WgpuExecutor {
 				};
 				renderer.override_image(&image_brush.image, Some(texture_view));
 			}
-			renderer.render_to_texture(&self.context.device, &self.context.queue, scene, &target_texture.view, &render_params)?;
+			renderer.render_to_texture(&self.context.device, &self.context.queue, scene, target_texture.view(), &render_params)?;
 			for (image_brush, _) in context.resource_overrides.iter() {
 				renderer.override_image(&image_brush.image, None);
 			}
