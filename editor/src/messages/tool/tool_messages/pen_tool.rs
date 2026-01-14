@@ -1906,15 +1906,33 @@ impl Fsm for PenToolFsmState {
 			}
 			(PenToolFsmState::DraggingHandle(_), PenToolMessage::DragStop) => {
 				tool_data.cleanup_target_selections(shape_editor, layer, document, responses);
+
+				// Handle double-click to close path by connecting to first point
+				let is_double_click = tool_data.pending_double_click_confirm;
+				if is_double_click {
+					tool_data.pending_double_click_confirm = false;
+
+					// Set next_point to first point's position of the CURRENT shape to close the path
+					if let Some(first_point) = tool_data.latest_points.first() {
+						tool_data.next_point = first_point.pos;
+						tool_data.next_handle_start = first_point.pos;
+
+						// Also set handle_end to ensure proper closing
+						if tool_data.handle_end.is_none() {
+							tool_data.handle_end = Some(first_point.pos);
+						}
+					}
+				}
+
 				let next_state = tool_data
 					.finish_placing_handle(SnapData::new(document, input, viewport), transform, responses)
 					.unwrap_or(PenToolFsmState::PlacingAnchor);
-				if tool_data.pending_double_click_confirm && matches!(next_state, PenToolFsmState::PlacingAnchor) {
-					tool_data.pending_double_click_confirm = false;
-					responses.add(PenToolMessage::Confirm);
-				} else {
-					tool_data.pending_double_click_confirm = false;
+
+				// If double-click occurred and path closed, ensure we clean up properly
+				if is_double_click && next_state == PenToolFsmState::Ready {
+					tool_data.cleanup(responses);
 				}
+
 				next_state
 			}
 			(
