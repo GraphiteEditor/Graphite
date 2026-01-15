@@ -39,7 +39,7 @@ macro_rules! entry {
 			$($($refresh),*)?;
 			$action_dispatch;
 			true;
-			true $( && $disabled )?
+			false $( || $disabled )?
 		)
 	};
 
@@ -57,7 +57,7 @@ macro_rules! entry {
 			$($($refresh),*)?;
 			$action_dispatch;
 			false;
-			true $( && $disabled )?
+			false $( || $disabled )?
 		)
 	};
 

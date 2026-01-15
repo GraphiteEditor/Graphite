@@ -58,7 +58,7 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		//
 		// AppWindowMessage
 		entry!(KeyDown(F11); disabled=cfg!(target_os = "macos"), action_dispatch=AppWindowMessage::Fullscreen),
-		entry!(KeyDown(KeyF); modifiers=[Accel, Meta], disabled=cfg!(not(target_os = "macos")), action_dispatch=AppWindowMessage::Fullscreen),
+		entry!(KeyDown(KeyF); modifiers=[Accel, Control], disabled=cfg!(not(target_os = "macos")), action_dispatch=AppWindowMessage::Fullscreen),
 		entry!(KeyDown(KeyQ); modifiers=[Accel], disabled=cfg!(not(target_os = "macos")), action_dispatch=AppWindowMessage::Close),
 		//
 		// ClipboardMessage
