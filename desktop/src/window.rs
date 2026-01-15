@@ -127,8 +127,8 @@ impl Window {
 			self.winit_window.set_fullscreen(None);
 		} else {
 			self.was_maximized_before_fullscreen = self.winit_window.is_maximized();
-			self.winit_window.set_maximized(false);
 			self.winit_window.set_fullscreen(Some(Fullscreen::Borderless(None)));
+			self.winit_window.set_maximized(false);
 		}
 	}
 
