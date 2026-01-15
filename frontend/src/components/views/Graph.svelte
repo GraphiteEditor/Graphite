@@ -481,7 +481,7 @@
 			{@const layerAreaWidth = $nodeGraph.layerWidths.get(node.id) || 8}
 			{@const layerChainWidth = $nodeGraph.chainWidths.get(node.id) || 0}
 			{@const hasLeftInputWire = $nodeGraph.hasLeftInputWire.get(node.id) || false}
-			{@const description = (node.reference && $nodeGraph.nodeDescriptions.get(node.reference)) || undefined}
+			{@const description = [...$nodeGraph.nodeDescriptions.entries()].find(([key]) => key.type === node.reference?.type && key.data === node.reference?.data)?.at(1) || undefined}
 			<div
 				class="layer"
 				class:selected={$nodeGraph.selected.includes(node.id)}
@@ -634,7 +634,7 @@
 			.map(([_, node], nodeIndex) => ({ node, nodeIndex })) as { node, nodeIndex } (nodeIndex)}
 			{@const exposedInputsOutputs = zipWithUndefined(node.exposedInputs, node.exposedOutputs)}
 			{@const clipPathId = String(Math.random()).substring(2)}
-			{@const description = (node.reference && $nodeGraph.nodeDescriptions.get(node.reference)) || undefined}
+			{@const description = [...$nodeGraph.nodeDescriptions.entries()].find(([key]) => key.type === node.reference?.type && key.data === node.reference?.data)?.at(1) || undefined}
 			<div
 				class="node"
 				class:selected={$nodeGraph.selected.includes(node.id)}

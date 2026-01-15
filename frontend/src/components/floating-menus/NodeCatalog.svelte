@@ -125,7 +125,10 @@
 						{disabled}
 						label={nodeType.name}
 						tooltipLabel={nodeType.name}
-						tooltipDescription={$nodeGraph.nodeDescriptions.get(nodeType.identifier)}
+						tooltipDescription={[...$nodeGraph.nodeDescriptions.entries()]
+							.find(([key]) => key.type === nodeType.identifier?.type && key.data === nodeType.identifier?.data)
+							?.at(1)
+							?.toString()}
 						action={() => dispatch("selectNodeType", nodeType.identifier)}
 					/>
 				{/each}
