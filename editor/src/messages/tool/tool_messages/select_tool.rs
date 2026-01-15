@@ -6,6 +6,7 @@ use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
+use crate::messages::portfolio::document::utility_types::guide::{GuideDirection, GuideId};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GroupFolderType};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface, NodeTemplate};
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
@@ -477,6 +478,10 @@ enum SelectToolFsmState {
 	},
 	RotatingBounds,
 	DraggingPivot,
+	DraggingGuide {
+		guide_id: GuideId,
+		direction: GuideDirection,
+	},
 }
 
 impl Default for SelectToolFsmState {
@@ -721,6 +726,34 @@ pub fn create_bounding_box_transform(document: &DocumentMessageHandler) -> DAffi
 		.find(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
 		.map(|layer| document.metadata().transform_to_viewport_with_first_transform_node_if_group(layer, &document.network_interface))
 		.unwrap_or_default()
+}
+
+fn hit_test_guide(document: &DocumentMessageHandler, viewport_position: DVec2) -> Option<(GuideId, GuideDirection)> {
+	const HIT_TOLERANCE: f64 = 5.0;
+
+	if !document.guides_visible {
+		return None;
+	}
+
+	let transform = document.metadata().document_to_viewport;
+
+	// Checks horizontal guides (positioned by Y in document space)
+	for guide in &document.horizontal_guides {
+		let guide_viewport_y = transform.matrix2.y_axis.y * guide.position + transform.translation.y;
+		if (viewport_position.y - guide_viewport_y).abs() <= HIT_TOLERANCE {
+			return Some((guide.id, GuideDirection::Horizontal));
+		}
+	}
+
+	// Checks vertical guides (positioned by X in document space)
+	for guide in &document.vertical_guides {
+		let guide_viewport_x = transform.matrix2.x_axis.x * guide.position + transform.translation.x;
+		if (viewport_position.x - guide_viewport_x).abs() <= HIT_TOLERANCE {
+			return Some((guide.id, GuideDirection::Vertical));
+		}
+	}
+
+	None
 }
 
 impl Fsm for SelectToolFsmState {
@@ -1176,6 +1209,12 @@ impl Fsm for SelectToolFsmState {
 
 					state
 				}
+				// Check if clicking on a guide line - handle before transform cage interactions
+				else if let Some((guide_id, direction)) = hit_test_guide(document, input.mouse.position) {
+					tool_data.dragging_guide_id = Some(guide_id);
+					tool_data.dragging_guide_direction = Some(direction);
+					SelectToolFsmState::DraggingGuide { guide_id, direction }
+				}
 				// Dragging one (or two, forming a corner) of the transform cage bounding box edges
 				else if resize {
 					tool_data.get_snap_candidates(document, input, viewport);
@@ -1263,6 +1302,55 @@ impl Fsm for SelectToolFsmState {
 			(SelectToolFsmState::DraggingPivot, SelectToolMessage::Abort) => {
 				responses.add(DocumentMessage::AbortTransaction);
 
+				let selection = tool_data.nested_selection_behavior;
+				SelectToolFsmState::Ready { selection }
+			}
+			// Guide dragging - abort
+			(SelectToolFsmState::DraggingGuide { .. }, SelectToolMessage::Abort) => {
+				tool_data.dragging_guide_id = None;
+				tool_data.dragging_guide_direction = None;
+				let selection = tool_data.nested_selection_behavior;
+				SelectToolFsmState::Ready { selection }
+			}
+			// Guide dragging - pointer move
+			(SelectToolFsmState::DraggingGuide { guide_id, direction }, SelectToolMessage::PointerMove { .. }) => {
+				tool_data.drag_current = input.mouse.position;
+
+				let transform = document.metadata().document_to_viewport;
+				// Converts viewport to document
+				let new_position = match direction {
+					GuideDirection::Horizontal => (input.mouse.position.y - transform.translation.y) / transform.matrix2.y_axis.y,
+					GuideDirection::Vertical => (input.mouse.position.x - transform.translation.x) / transform.matrix2.x_axis.x,
+				};
+
+				responses.add(DocumentMessage::MoveGuide { id: guide_id, position: new_position });
+
+				SelectToolFsmState::DraggingGuide { guide_id, direction }
+			}
+			(SelectToolFsmState::DraggingGuide { guide_id, direction }, SelectToolMessage::DragStop { .. }) => {
+				tool_data.drag_current = input.mouse.position;
+
+				let transform = document.metadata().document_to_viewport;
+				let final_position = match direction {
+					GuideDirection::Horizontal => (input.mouse.position.y - transform.translation.y) / transform.matrix2.y_axis.y,
+					GuideDirection::Vertical => (input.mouse.position.x - transform.translation.x) / transform.matrix2.x_axis.x,
+				};
+
+				// Checks if dragged outside viewport - deletes the guide
+				let viewport_size = viewport.size().into_dvec2();
+				let outside_viewport = input.mouse.position.x < 0.0 || input.mouse.position.y < 0.0 || input.mouse.position.x > viewport_size.x || input.mouse.position.y > viewport_size.y;
+
+				if outside_viewport {
+					responses.add(DocumentMessage::DeleteGuide { id: guide_id });
+				} else {
+					responses.add(DocumentMessage::MoveGuide {
+						id: guide_id,
+						position: final_position,
+					});
+				}
+
+				tool_data.dragging_guide_id = None;
+				tool_data.dragging_guide_direction = None;
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
 			}
@@ -1901,6 +1989,13 @@ impl Fsm for SelectToolFsmState {
 			}
 			SelectToolFsmState::DraggingPivot => {
 				let hint_data = HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]);
+				hint_data.send_layout(responses);
+			}
+			SelectToolFsmState::DraggingGuide { .. } => {
+				let hint_data = HintData(vec![
+					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
+					HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Move Guide")]),
+				]);
 				hint_data.send_layout(responses);
 			}
 		}
