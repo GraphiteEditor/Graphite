@@ -30,7 +30,7 @@ macro_rules! entry {
 		$(modifiers=[$($modifier:ident),*],)?
 		$(refresh_keys=[$($refresh:ident),* $(,)?],)?
 		canonical,
-		$(active=$active:expr,)?
+		$(disabled=$disabled:expr,)?
 		action_dispatch=$action_dispatch:expr_2021$(,)?
 	) => {
 		entry!(
@@ -39,7 +39,7 @@ macro_rules! entry {
 			$($($refresh),*)?;
 			$action_dispatch;
 			true;
-			true $( && $active )?
+			true $( && $disabled )?
 		)
 	};
 
@@ -48,7 +48,7 @@ macro_rules! entry {
 		$input:expr_2021;
 		$(modifiers=[$($modifier:ident),*],)?
 		$(refresh_keys=[$($refresh:ident),* $(,)?],)?
-		$(active=$active:expr,)?
+		$(disabled=$disabled:expr,)?
 		action_dispatch=$action_dispatch:expr_2021$(,)?
 	) => {
 		entry!(
@@ -57,12 +57,12 @@ macro_rules! entry {
 			$($($refresh),*)?;
 			$action_dispatch;
 			false;
-			true $( && $active )?
+			true $( && $disabled )?
 		)
 	};
 
 	// Implementation macro to avoid code duplication
-	($input:expr; $($modifier:ident),*; $($refresh:ident),*; $action_dispatch:expr; $canonical:expr; $active:expr) => {
+	($input:expr; $($modifier:ident),*; $($refresh:ident),*; $action_dispatch:expr; $canonical:expr; $disabled:expr) => {
 
 		&[&[
 			// Cause the `action_dispatch` message to be sent when the specified input occurs.
@@ -71,7 +71,7 @@ macro_rules! entry {
 				input: $input,
 				modifiers: modifiers!($($modifier),*),
 				canonical: $canonical,
-				active: $active,
+				disabled: $disabled,
 			},
 
 			$(
@@ -80,28 +80,28 @@ macro_rules! entry {
 				input: InputMapperMessage::KeyDown(Key::$refresh),
 				modifiers: modifiers!(),
 				canonical: $canonical,
-				active: $active,
+				disabled: $disabled,
 			},
 			MappingEntry {
 				action: $action_dispatch.into(),
 				input: InputMapperMessage::KeyUp(Key::$refresh),
 				modifiers: modifiers!(),
 				canonical: $canonical,
-				active: $active,
+				disabled: $disabled,
 			},
 			MappingEntry {
 				action: $action_dispatch.into(),
 				input: InputMapperMessage::KeyDownNoRepeat(Key::$refresh),
 				modifiers: modifiers!(),
 				canonical: $canonical,
-				active: $active,
+				disabled: $disabled,
 			},
 			MappingEntry {
 				action: $action_dispatch.into(),
 				input: InputMapperMessage::KeyUpNoRepeat(Key::$refresh),
 				modifiers: modifiers!(),
 				canonical: $canonical,
-				active: $active,
+				disabled: $disabled,
 			},
 			)*
 		]]
@@ -129,7 +129,7 @@ macro_rules! mapping {
 		for entry_slice in $entry {
 			// Each entry in the slice (usually just one, except when `refresh_keys` adds additional key entries)
 			for entry in entry_slice.into_iter() {
-				if !entry.active {
+				if entry.disabled {
 					continue;
 				}
 				let corresponding_list = match entry.input {

@@ -122,7 +122,9 @@ impl Window {
 	pub(crate) fn toggle_fullscreen(&self) {
 		if self.is_fullscreen() {
 			self.winit_window.set_fullscreen(None);
+			self.winit_window.set_maximized(true);
 		} else {
+			self.winit_window.set_maximized(false);
 			self.winit_window.set_fullscreen(Some(Fullscreen::Borderless(None)));
 		}
 	}
