@@ -65,6 +65,7 @@ pub enum DesktopFrontendMessage {
 	ClipboardWrite {
 		content: String,
 	},
+	PointerLock,
 	WindowClose,
 	WindowMinimize,
 	WindowMaximize,
@@ -131,6 +132,10 @@ pub enum DesktopWrapperMessage {
 	},
 	ClipboardReadResult {
 		content: Option<String>,
+	},
+	PointerLockMove {
+		x: f64,
+		y: f64,
 	},
 }
 

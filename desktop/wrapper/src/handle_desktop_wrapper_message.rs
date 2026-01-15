@@ -172,5 +172,9 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 				dispatcher.queue_editor_message(message);
 			}
 		}
+		DesktopWrapperMessage::PointerLockMove { x, y } => {
+			let message = AppWindowMessage::PointerLockMove { x, y };
+			dispatcher.queue_editor_message(message);
+		}
 	}
 }

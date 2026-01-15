@@ -1,7 +1,7 @@
 import { get } from "svelte/store";
 
 import { type Editor } from "@graphite/editor";
-import { TriggerClipboardRead } from "@graphite/messages";
+import { TriggerClipboardRead, WindowPointerLockMove } from "@graphite/messages";
 import { type DialogState } from "@graphite/state-providers/dialog";
 import { type DocumentState } from "@graphite/state-providers/document";
 import { type FullscreenState } from "@graphite/state-providers/fullscreen";
@@ -498,6 +498,12 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 			editor.handle.errorDialog("Cannot access clipboard", message);
 		}
+	});
+
+	// Pointer lock movement events on desktop
+	editor.subscriptions.subscribeJsMessage(WindowPointerLockMove, (data) => {
+		const event = new CustomEvent("pointerlockmove", { detail: data });
+		window.dispatchEvent(event);
 	});
 
 	// Helper functions

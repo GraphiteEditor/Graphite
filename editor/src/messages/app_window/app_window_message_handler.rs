@@ -15,6 +15,12 @@ impl MessageHandler<AppWindowMessage, ()> for AppWindowMessageHandler {
 				self.platform = platform;
 				responses.add(FrontendMessage::UpdatePlatform { platform: self.platform });
 			}
+			AppWindowMessage::PointerLock => {
+				responses.add(FrontendMessage::WindowPointerLock);
+			}
+			AppWindowMessage::PointerLockMove { x, y } => {
+				responses.add(FrontendMessage::WindowPointerLockMove { x, y });
+			}
 			AppWindowMessage::Close => {
 				responses.add(FrontendMessage::WindowClose);
 			}
