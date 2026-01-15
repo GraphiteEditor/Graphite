@@ -9,7 +9,6 @@ import {
 	type FrontendNode,
 	type FrontendNodeType,
 	type WirePath,
-	type DefinitionIdentifier,
 	ClearAllNodeGraphWires,
 	SendUIMetadata,
 	UpdateBox,
@@ -45,7 +44,7 @@ export function createNodeGraphState(editor: Editor) {
 		/// The index is the exposed input index. The exports have a first key value of u32::MAX.
 		wires: new Map<bigint, Map<number, WirePath>>(),
 		wirePathInProgress: undefined as WirePath | undefined,
-		nodeDescriptions: new Map<DefinitionIdentifier, string>(),
+		nodeDescriptions: new Map<string, string>(),
 		nodeTypes: [] as FrontendNodeType[],
 		thumbnails: new Map<bigint, string>(),
 		selected: [] as bigint[],
