@@ -2,6 +2,7 @@ use super::DocumentHistory;
 use super::document_diff::diff_networks;
 use super::node_graph::document_node_definitions;
 use super::utility_types::error::EditorError;
+use super::utility_types::guide::Guide;
 use super::utility_types::misc::{GroupFolderType, SNAP_FUNCTIONS_FOR_BOUNDING_BOXES, SNAP_FUNCTIONS_FOR_PATHS, SnappingOptions, SnappingState};
 use super::utility_types::network_interface::{self, NodeNetworkInterface, TransactionStatus};
 use super::utility_types::nodes::{CollapsedLayers, LayerStructureEntry, SelectedNodes};
@@ -156,6 +157,15 @@ pub struct DocumentMessageHandler {
 	/// If the user clicks or Ctrl-clicks one layer, it becomes the start of the range selection and then Shift-clicking another layer selects all layers between the start and end.
 	#[serde(skip)]
 	layer_range_selection_reference: Option<LayerNodeIdentifier>,
+	/// List of horizontal guide lines in document space.
+	#[serde(default)]
+	pub horizontal_guides: Vec<Guide>,
+	/// List of vertical guide lines in document space.
+	#[serde(default)]
+	pub vertical_guides: Vec<Guide>,
+	/// Whether guide lines are visible in the viewport.
+	#[serde(default = "default_guides_visible")]
+	pub guides_visible: bool,
 	/// Whether or not the editor has executed the network to render the document yet. If this is opened as an inactive tab, it won't be loaded initially because the active tab is prioritized.
 	#[serde(skip)]
 	pub is_loaded: bool,
@@ -200,6 +210,9 @@ impl Default for DocumentMessageHandler {
 			saved_hash: None,
 			auto_saved_hash: None,
 			layer_range_selection_reference: None,
+			horizontal_guides: Vec::new(),
+			vertical_guides: Vec::new(),
+			guides_visible: true,
 			is_loaded: false,
 		}
 	}
@@ -3791,6 +3804,10 @@ fn default_document_network_interface() -> NodeNetworkInterface {
 	let mut network_interface = NodeNetworkInterface::default();
 	network_interface.add_export(TaggedValue::TypeDefault(list!(graphene_std::Artboard)), -1, "", &[]);
 	network_interface
+}
+
+fn default_guides_visible() -> bool {
+	true
 }
 
 /// Targets for the [`ClickXRayIter`]. In order to reduce computation, we prefer just a point/path test where possible.
