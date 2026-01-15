@@ -43,7 +43,6 @@ pub(crate) struct Window {
 	native_handle: native::NativeWindowImpl,
 	custom_cursors: HashMap<CustomCursorSource, CustomCursor>,
 	clipboard: Option<window_clipboard::Clipboard>,
-	was_maximized_before_fullscreen: bool,
 }
 impl Drop for Window {
 	fn drop(&mut self) {
@@ -76,7 +75,6 @@ impl Window {
 			native_handle,
 			custom_cursors: HashMap::new(),
 			clipboard,
-			was_maximized_before_fullscreen: false,
 		}
 	}
 
@@ -123,12 +121,9 @@ impl Window {
 
 	pub(crate) fn toggle_fullscreen(&mut self) {
 		if self.is_fullscreen() {
-			self.winit_window.set_maximized(self.was_maximized_before_fullscreen);
 			self.winit_window.set_fullscreen(None);
 		} else {
-			self.was_maximized_before_fullscreen = self.winit_window.is_maximized();
 			self.winit_window.set_fullscreen(Some(Fullscreen::Borderless(None)));
-			self.winit_window.set_maximized(false);
 		}
 	}
 
