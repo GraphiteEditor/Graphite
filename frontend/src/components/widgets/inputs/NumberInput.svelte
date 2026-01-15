@@ -83,6 +83,8 @@
 	let initialValueBeforeDragging: number | undefined = undefined;
 	// Stores the total value change during the process of dragging the slider. Set to 0 when not dragging.
 	let cumulativeDragDelta = 0;
+	// Track whether the Shift key is currently held down.
+	let shiftKeyDown = false;
 	// Track whether the Ctrl key is currently held down.
 	let ctrlKeyDown = false;
 
@@ -94,17 +96,20 @@
 		...(mode === "Range" ? { "--progress-factor": Math.min(Math.max((rangeSliderValueAsRendered - rangeMin) / (rangeMax - rangeMin), 0), 1) } : {}),
 	};
 
-	// Keep track of the Ctrl key being held down.
-	const trackCtrl = (e: KeyboardEvent | MouseEvent) => (ctrlKeyDown = e.ctrlKey);
+	// Keep track of the Shift and Ctrl key being held down.
+	const trackShiftAndCtrl = (e: KeyboardEvent | MouseEvent) => {
+		shiftKeyDown = e.shiftKey;
+		ctrlKeyDown = e.ctrlKey;
+	};
 	onMount(() => {
-		addEventListener("keydown", trackCtrl);
-		addEventListener("keyup", trackCtrl);
-		addEventListener("mousemove", trackCtrl);
+		addEventListener("keydown", trackShiftAndCtrl);
+		addEventListener("keyup", trackShiftAndCtrl);
+		addEventListener("mousemove", trackShiftAndCtrl);
 	});
 	onDestroy(() => {
-		removeEventListener("keydown", trackCtrl);
-		removeEventListener("keyup", trackCtrl);
-		removeEventListener("mousemove", trackCtrl);
+		removeEventListener("keydown", trackShiftAndCtrl);
+		removeEventListener("keyup", trackShiftAndCtrl);
+		removeEventListener("mousemove", trackShiftAndCtrl);
 		clearTimeout(repeatTimeout);
 	});
 
@@ -418,14 +423,14 @@
 
 			// Calculate and then update the dragged value offset, slowed down by 10x when Shift is held.
 			if (ignoredFirstMovement && initialValueBeforeDragging !== undefined) {
-				pointerLockMoveUpdate(e.movementX, e.shiftKey, ctrlKeyDown, initialValueBeforeDragging);
+				pointerLockMoveUpdate(e.movementX, e.shiftKey, e.ctrlKey, initialValueBeforeDragging);
 			}
 			ignoredFirstMovement = true;
 		};
 		const pointerLockMove = (e: Event) => {
 			if (ignoredFirstMovement && initialValueBeforeDragging !== undefined && e instanceof CustomEvent) {
 				const delta = (e.detail as { x: number }).x;
-				pointerLockMoveUpdate(delta, false, false, initialValueBeforeDragging);
+				pointerLockMoveUpdate(delta, shiftKeyDown, ctrlKeyDown, initialValueBeforeDragging);
 			}
 			ignoredFirstMovement = true;
 		};
@@ -450,7 +455,7 @@
 
 		addEventListener("pointerup", pointerUp);
 		addEventListener("pointermove", pointerMove);
-		window.addEventListener("pointerlockmove", pointerLockMove);
+		addEventListener("pointerlockmove", pointerLockMove);
 		if (usePointerLock) document.addEventListener("pointerlockchange", pointerLockChange);
 	}
 
