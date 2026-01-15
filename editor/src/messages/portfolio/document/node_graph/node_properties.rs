@@ -939,6 +939,50 @@ pub fn progression_widget(parameter_widgets_info: ParameterWidgetsInfo, number_p
 	widgets
 }
 
+/// ParameterWidgetsInfo is for the number
+/// Bool index is the input index of the bool parameter displayed in the checkbox
+pub fn optional_f64_widget(parameter_widgets_info: ParameterWidgetsInfo, bool_input_index: usize, number_props: NumberInput) -> Vec<WidgetInstance> {
+	let ParameterWidgetsInfo {
+		document_node,
+		node_id,
+		index: number_input_index,
+		..
+	} = parameter_widgets_info;
+
+	let mut widgets = start_widgets(parameter_widgets_info);
+
+	let Some(document_node) = document_node else { return Vec::new() };
+	let Some(number_input) = document_node.inputs.get(number_input_index) else {
+		log::warn!("A widget failed to be built because its node's input index is invalid.");
+		return vec![];
+	};
+	let Some(bool_input) = document_node.inputs.get(bool_input_index) else {
+		log::warn!("A widget failed to be built because its node's input index is invalid.");
+		return vec![];
+	};
+	if let (Some(&TaggedValue::Bool(enabled)), Some(&TaggedValue::F64(number))) = (bool_input.as_non_exposed_value(), number_input.as_non_exposed_value()) {
+		widgets.extend_from_slice(&[
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
+			// The checkbox toggles if the value is Some or None
+			CheckboxInput::new(enabled)
+				.on_update(update_value(|x: &CheckboxInput| TaggedValue::Bool(x.checked), node_id, bool_input_index))
+				.on_commit(commit_value)
+				.widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			number_props
+				.value(Some(number))
+				.on_update(update_value(move |x: &NumberInput| TaggedValue::F64(x.value.unwrap_or_default()), node_id, number_input_index))
+				.disabled(!enabled)
+				.on_commit(commit_value)
+				.widget_instance(),
+		]);
+	}
+
+	widgets
+}
+
 pub fn number_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props: NumberInput) -> Vec<WidgetInstance> {
 	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
 

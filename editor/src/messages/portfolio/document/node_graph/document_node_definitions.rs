@@ -2200,27 +2200,12 @@ fn static_input_properties() -> InputProperties {
 		}),
 	);
 	map.insert(
-		"optional_number".to_string(),
+		"optional_f64".to_string(),
 		Box::new(|node_id, index, context| {
-			// TODO: Don't wipe out the previously set value (setting it back to the default of 100) when reenabling this checkbox back to Some from None
-			let toggle_enabled = move |checkbox_input: &CheckboxInput| TaggedValue::OptionalF64(if checkbox_input.checked { Some(100.) } else { None });
-			Ok(vec![
-				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-				Separator::new(SeparatorStyle::Related).widget_instance(),
-				// The checkbox toggles if the value is Some or None
-				CheckboxInput::new(x.is_some())
-					.on_update(update_value(toggle_enabled, node_id, index))
-					.on_commit(commit_value)
-					.widget_instance(),
-				Separator::new(SeparatorStyle::Related).widget_instance(),
-				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-				number_props
-					.value(x)
-					.on_update(update_value(move |x: &NumberInput| TaggedValue::OptionalF64(x.value), node_id, index))
-					.disabled(x.is_none())
-					.on_commit(commit_value)
-					.widget_instance(),
-			])
+			Ok(vec![LayoutGroup::Row {
+				// The bool input must be directly above the number
+				widgets: node_properties::optional_f64_widget(ParameterWidgetsInfo::new(node_id, index, false, context), index - 1, NumberInput::default()),
+			}])
 		}),
 	);
 	map.insert(
