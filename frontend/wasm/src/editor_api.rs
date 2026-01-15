@@ -11,6 +11,7 @@ use editor::messages::clipboard::utility_types::ClipboardContentRaw;
 use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
 use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta};
 use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use editor::messages::portfolio::document::utility_types::guide::{GuideDirection, GuideId};
 use editor::messages::portfolio::document::utility_types::network_interface::ImportOrExport;
 use editor::messages::portfolio::utility_types::{FontCatalog, FontCatalogFamily, Platform};
 use editor::messages::prelude::*;
@@ -868,6 +869,87 @@ impl EditorHandle {
 			index: ImportOrExport::Export(index),
 		};
 		self.dispatch(message);
+	}
+
+	/// Create a new guide line from a ruler drag with direction: "Horizontal" or "Vertical"
+	#[wasm_bindgen(js_name = createGuide)]
+	pub fn create_guide(&self, id: u64, direction: String, position: f64) {
+		let id = GuideId::from_raw(id);
+		let direction = match direction.as_str() {
+			"Horizontal" => GuideDirection::Horizontal,
+			"Vertical" => GuideDirection::Vertical,
+			_ => {
+				log::error!("Invalid guide direction: {}", direction);
+				return;
+			}
+		};
+		let message = DocumentMessage::CreateGuide { id, direction, position };
+		self.dispatch(message);
+	}
+
+	/// Move an existing guide to a new position
+	#[wasm_bindgen(js_name = moveGuide)]
+	pub fn move_guide(&self, id: u64, position: f64) {
+		let id = GuideId::from_raw(id);
+		let message = DocumentMessage::MoveGuide { id, position };
+		self.dispatch(message);
+	}
+
+	/// Delete a guide by its ID
+	#[wasm_bindgen(js_name = deleteGuide)]
+	pub fn delete_guide(&self, id: u64) {
+		let id = GuideId::from_raw(id);
+		let message = DocumentMessage::DeleteGuide { id };
+		self.dispatch(message);
+	}
+
+	/// Find a guide at the given viewport position
+	#[wasm_bindgen(js_name = findGuideAtPosition)]
+	pub fn find_guide_at_position(&self, viewport_x: f64, viewport_y: f64) -> JsValue {
+		EDITOR.with(|editor| {
+			let guard = editor.try_lock();
+			let Ok(Some(editor)) = guard.as_deref() else {
+				return JsValue::NULL;
+			};
+
+			let Some(document) = editor.dispatcher.message_handlers.portfolio_message_handler.active_document() else {
+				return JsValue::NULL;
+			};
+
+			const HIT_TOLERANCE: f64 = 5.0;
+
+			let transform = document.metadata().document_to_viewport;
+
+			// Check horizontal guides (positioned by Y in document space)
+			for guide in &document.horizontal_guides {
+				// Transform a point at the guide's Y position to viewport space
+				let guide_viewport_y = transform.matrix2.y_axis.y * guide.position + transform.translation.y;
+
+				// Check if the click is within tolerance of this guide
+				if (viewport_y - guide_viewport_y).abs() <= HIT_TOLERANCE {
+					let result = js_sys::Object::new();
+					js_sys::Reflect::set(&result, &"id".into(), &JsValue::from(guide.id.as_raw())).ok();
+					js_sys::Reflect::set(&result, &"direction".into(), &JsValue::from_str("Horizontal")).ok();
+					return result.into();
+				}
+			}
+
+			// Check vertical guides (positioned by X in document space)
+			for guide in &document.vertical_guides {
+				// Transform a point at the guide's X position to viewport space
+				let guide_viewport_x = transform.matrix2.x_axis.x * guide.position + transform.translation.x;
+
+				// Check if the click is within tolerance of this guide
+				if (viewport_x - guide_viewport_x).abs() <= HIT_TOLERANCE {
+					let result = js_sys::Object::new();
+					js_sys::Reflect::set(&result, &"id".into(), &JsValue::from(guide.id.as_raw())).ok();
+					js_sys::Reflect::set(&result, &"direction".into(), &JsValue::from_str("Vertical")).ok();
+					return result.into();
+				}
+			}
+
+			JsValue::NULL
+		})
 	}
 }
 
