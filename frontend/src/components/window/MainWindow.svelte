@@ -1,8 +1,6 @@
 <script lang="ts">
-	import { getContext, onMount } from "svelte";
+	import { getContext } from "svelte";
 
-	import type { Editor } from "@graphite/editor";
-	import { WindowPointerLockMove } from "@graphite/messages";
 	import type { AppWindowState } from "@graphite/state-providers/app-window";
 	import type { DialogState } from "@graphite/state-providers/dialog";
 	import type { TooltipState } from "@graphite/state-providers/tooltip";
@@ -19,14 +17,6 @@
 	const dialog = getContext<DialogState>("dialog");
 	const tooltip = getContext<TooltipState>("tooltip");
 	const appWindow = getContext<AppWindowState>("appWindow");
-	const editor = getContext<Editor>("editor");
-
-	onMount(() => {
-		editor.subscriptions.subscribeJsMessage(WindowPointerLockMove, (data) => {
-			const event = new CustomEvent("pointerlockmove", { detail: data });
-			window.dispatchEvent(event);
-		});
-	});
 </script>
 
 <LayoutCol class="main-window" classes={{ "viewport-hole-punch": $appWindow.viewportHolePunch }}>

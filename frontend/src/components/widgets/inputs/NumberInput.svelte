@@ -427,6 +427,8 @@
 			}
 			ignoredFirstMovement = true;
 		};
+		// On desktop we don't get `pointermove` events while in pointer lock (cef doesn't support pointer lock).
+		// We have to listen for our custom `pointerlockmove` events instead.
 		const pointerLockMove = (e: Event) => {
 			if (ignoredFirstMovement && initialValueBeforeDragging !== undefined && e instanceof CustomEvent) {
 				const delta = (e.detail as { x: number }).x;
