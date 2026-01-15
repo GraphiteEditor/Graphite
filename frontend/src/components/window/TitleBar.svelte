@@ -69,7 +69,7 @@
 				<LayoutRow tooltipLabel={$appWindow.maximized ? ($appWindow.platform === "Windows" ? "Restore Down" : "Unmaximize") : "Maximize"} on:click={() => editor.handle.appWindowMaximize()}>
 					<IconLabel icon={$appWindow.maximized ? "WindowButtonWinRestoreDown" : "WindowButtonWinMaximize"} />
 				</LayoutRow>
-				<LayoutRow tooltipLabel="Close" on:click={() => editor.handle.appWindowClose()}>
+				<LayoutRow tooltipLabel="Close" class=".close" on:click={() => editor.handle.appWindowClose()}>
 					<IconLabel icon="WindowButtonWinClose" />
 				</LayoutRow>
 			{/if}
@@ -130,7 +130,7 @@
 					background: #2d2d2d;
 				}
 
-				&:last-of-type:hover {
+				&.close:hover {
 					background: #c42b1c;
 				}
 			}

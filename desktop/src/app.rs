@@ -353,7 +353,7 @@ impl App {
 				}
 			}
 			DesktopFrontendMessage::WindowFullscreen => {
-				if let Some(window) = &self.window {
+				if let Some(window) = &mut self.window {
 					window.toggle_fullscreen();
 				}
 			}
