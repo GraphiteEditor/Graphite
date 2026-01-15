@@ -123,8 +123,8 @@ impl Window {
 
 	pub(crate) fn toggle_fullscreen(&mut self) {
 		if self.is_fullscreen() {
-			self.winit_window.set_fullscreen(None);
 			self.winit_window.set_maximized(self.was_maximized_before_fullscreen);
+			self.winit_window.set_fullscreen(None);
 		} else {
 			self.was_maximized_before_fullscreen = self.winit_window.is_maximized();
 			self.winit_window.set_maximized(false);
