@@ -39,19 +39,17 @@ impl Default for Editor {
 }
 
 pub const GRAPHITE_RELEASE_SERIES: &str = env!("GRAPHITE_RELEASE_SERIES");
-pub const GRAPHITE_GIT_COMMIT_DATE: &str = env!("GRAPHITE_GIT_COMMIT_DATE");
+pub const GRAPHITE_GIT_COMMIT_BRANCH: Option<&str> = option_env!("GRAPHITE_GIT_COMMIT_BRANCH");
 pub const GRAPHITE_GIT_COMMIT_HASH: &str = env!("GRAPHITE_GIT_COMMIT_HASH");
-pub const GRAPHITE_GIT_COMMIT_BRANCH: &str = env!("GRAPHITE_GIT_COMMIT_BRANCH");
+pub const GRAPHITE_GIT_COMMIT_DATE: &str = env!("GRAPHITE_GIT_COMMIT_DATE");
 
 pub fn commit_info_localized(localized_commit_date: &str) -> String {
-	format!(
-		"Release Series: {}\n\
-		Branch: {}\n\
-		Commit: {}\n\
-		{}",
-		GRAPHITE_RELEASE_SERIES,
-		GRAPHITE_GIT_COMMIT_BRANCH,
-		GRAPHITE_GIT_COMMIT_HASH.get(..8).unwrap_or(GRAPHITE_GIT_COMMIT_HASH),
-		localized_commit_date
-	)
+	let mut info = String::new();
+	info.push_str(&format!("Release Series: {GRAPHITE_RELEASE_SERIES}\n"));
+	if let Some(branch) = GRAPHITE_GIT_COMMIT_BRANCH {
+		info.push_str(&format!("Branch: {branch}\n"));
+	}
+	info.push_str(&format!("Commit: {}\n", GRAPHITE_GIT_COMMIT_HASH.get(..8).unwrap_or(GRAPHITE_GIT_COMMIT_HASH)));
+	info.push_str(localized_commit_date);
+	info
 }

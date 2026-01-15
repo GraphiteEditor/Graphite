@@ -109,12 +109,19 @@ deps.crane.lib.buildPackage (
           }
         else
           { }
-      );
+      ) // {
+        GRAPHITE_GIT_COMMIT_HASH = inputs.self.rev or "unknown";
+        GRAPHITE_GIT_COMMIT_DATE = inputs.self.lastModified or "unknown";
+      };
 
     postUnpack = ''
       mkdir ./branding
       cp -r ${branding}/* ./branding
     '';
+
+    preBuild = if inputs.self ? rev then ''
+      export GRAPHITE_GIT_COMMIT_DATE="$(date -u -d "@$GRAPHITE_GIT_COMMIT_DATE" +"%Y-%m-%dT%H:%M:%SZ")"
+    '' else "";
 
     installPhase = ''
       mkdir -p $out/bin
@@ -125,6 +132,12 @@ deps.crane.lib.buildPackage (
 
       mkdir -p $out/share/icons/hicolor/scalable/apps
       cp ${branding}/app-icons/graphite.svg $out/share/icons/hicolor/scalable/apps/art.graphite.Graphite.svg
+      mkdir -p $out/share/icons/hicolor/512x512/apps
+      cp ${branding}/app-icons/graphite-512.png $out/share/icons/hicolor/512x512/apps/art.graphite.Graphite.png
+      mkdir -p $out/share/icons/hicolor/256x256/apps
+      cp ${branding}/app-icons/graphite-256.png $out/share/icons/hicolor/256x256/apps/art.graphite.Graphite.png
+      mkdir -p $out/share/icons/hicolor/128x128/apps
+      cp ${branding}/app-icons/graphite-128.png $out/share/icons/hicolor/128x128/apps/art.graphite.Graphite.png
     '';
 
     postFixup = ''
