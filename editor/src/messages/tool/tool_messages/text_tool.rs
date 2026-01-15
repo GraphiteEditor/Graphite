@@ -800,13 +800,22 @@ impl Fsm for TextToolFsmState {
 					// Find the translation necessary from the original position in viewport space
 					let translation_viewport = bounds.original_bound_transform.transform_vector2(translation_bounds_space);
 
+					// TODO: Don't set both max_width and max_height to true at the same time, only do one based on which edge is being dragged (or both if a corner is being dragged)
 					responses.add(NodeGraphMessage::SetInput {
 						input_connector: InputConnector::node(node_id, 6),
-						input: NodeInput::value(TaggedValue::OptionalF64(Some(size_layer.x)), false),
+						input: NodeInput::value(TaggedValue::Bool(true), false),
 					});
 					responses.add(NodeGraphMessage::SetInput {
 						input_connector: InputConnector::node(node_id, 7),
-						input: NodeInput::value(TaggedValue::OptionalF64(Some(size_layer.y)), false),
+						input: NodeInput::value(TaggedValue::F64(size_layer.x), false),
+					});
+					responses.add(NodeGraphMessage::SetInput {
+						input_connector: InputConnector::node(node_id, 8),
+						input: NodeInput::value(TaggedValue::Bool(true), false),
+					});
+					responses.add(NodeGraphMessage::SetInput {
+						input_connector: InputConnector::node(node_id, 9),
+						input: NodeInput::value(TaggedValue::F64(size_layer.y), false),
 					});
 					responses.add(GraphOperationMessage::TransformSet {
 						layer: dragging_layer.id,

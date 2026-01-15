@@ -982,27 +982,6 @@ pub fn number_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props:
 				.on_commit(commit_value)
 				.widget_instance(),
 		]),
-		Some(&TaggedValue::OptionalF64(x)) => {
-			// TODO: Don't wipe out the previously set value (setting it back to the default of 100) when reenabling this checkbox back to Some from None
-			let toggle_enabled = move |checkbox_input: &CheckboxInput| TaggedValue::OptionalF64(if checkbox_input.checked { Some(100.) } else { None });
-			widgets.extend_from_slice(&[
-				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-				Separator::new(SeparatorStyle::Related).widget_instance(),
-				// The checkbox toggles if the value is Some or None
-				CheckboxInput::new(x.is_some())
-					.on_update(update_value(toggle_enabled, node_id, index))
-					.on_commit(commit_value)
-					.widget_instance(),
-				Separator::new(SeparatorStyle::Related).widget_instance(),
-				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-				number_props
-					.value(x)
-					.on_update(update_value(move |x: &NumberInput| TaggedValue::OptionalF64(x.value), node_id, index))
-					.disabled(x.is_none())
-					.on_commit(commit_value)
-					.widget_instance(),
-			]);
-		}
 		Some(&TaggedValue::DVec2(dvec2)) => widgets.extend_from_slice(&[
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			number_props
@@ -1084,14 +1063,6 @@ pub fn color_widget(parameter_widgets_info: ParameterWidgetsInfo, color_button: 
 				.value(FillChoice::Solid(*color))
 				.allow_none(false)
 				.on_update(update_value(|input: &ColorInput| TaggedValue::ColorNotInTable(input.value.as_solid().unwrap()), node_id, index))
-				.on_commit(commit_value)
-				.widget_instance(),
-		),
-		TaggedValue::OptionalColorNotInTable(color) => widgets.push(
-			color_button
-				.value(color.map_or(FillChoice::None, FillChoice::Solid))
-				.allow_none(true)
-				.on_update(update_value(|input: &ColorInput| TaggedValue::OptionalColorNotInTable(input.value.as_solid()), node_id, index))
 				.on_commit(commit_value)
 				.widget_instance(),
 		),

@@ -21,7 +21,6 @@ use graphene_std::extract_xy::XY;
 use graphene_std::raster::{CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, NoiseType, RedGreenBlueAlpha};
 use graphene_std::raster_types::{CPU, Raster};
 use graphene_std::table::Table;
-use graphene_std::text::{Font, TypesettingConfig};
 #[allow(unused_imports)]
 use graphene_std::transform::Footprint;
 use graphene_std::vector::Vector;
@@ -1654,103 +1653,6 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		},
 		// TODO: Auto-generate this from its proto node macro
 		DocumentNodeDefinition {
-			identifier: "Text",
-			category: "Text",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::ProtoNode(text::text::IDENTIFIER),
-					inputs: vec![
-						NodeInput::scope("editor-api"),
-						NodeInput::value(TaggedValue::String("Lorem ipsum".to_string()), false),
-						NodeInput::value(
-							TaggedValue::Font(Font::new(graphene_std::consts::DEFAULT_FONT_FAMILY.into(), graphene_std::consts::DEFAULT_FONT_STYLE.into())),
-							false,
-						),
-						NodeInput::value(TaggedValue::F64(TypesettingConfig::default().font_size), false),
-						NodeInput::value(TaggedValue::F64(TypesettingConfig::default().line_height_ratio), false),
-						NodeInput::value(TaggedValue::F64(TypesettingConfig::default().character_spacing), false),
-						NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_width), false),
-						NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_height), false),
-						NodeInput::value(TaggedValue::F64(TypesettingConfig::default().tilt), false),
-						NodeInput::value(TaggedValue::TextAlign(text::TextAlign::default()), false),
-						NodeInput::value(TaggedValue::Bool(false), false),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_metadata: vec![
-						("Editor API", "TODO").into(),
-						InputMetadata::with_name_description_override("Text", "TODO", WidgetOverride::Custom("text_area".to_string())),
-						InputMetadata::with_name_description_override("Font", "TODO", WidgetOverride::Custom("text_font".to_string())),
-						InputMetadata::with_name_description_override(
-							"Size",
-							"TODO",
-							WidgetOverride::Number(NumberInputSettings {
-								unit: Some(" px".to_string()),
-								min: Some(1.),
-								..Default::default()
-							}),
-						),
-						InputMetadata::with_name_description_override(
-							"Line Height",
-							"TODO",
-							WidgetOverride::Number(NumberInputSettings {
-								unit: Some("x".to_string()),
-								min: Some(0.),
-								step: Some(0.1),
-								..Default::default()
-							}),
-						),
-						InputMetadata::with_name_description_override(
-							"Character Spacing",
-							"TODO",
-							WidgetOverride::Number(NumberInputSettings {
-								unit: Some(" px".to_string()),
-								step: Some(0.1),
-								..Default::default()
-							}),
-						),
-						InputMetadata::with_name_description_override(
-							"Max Width",
-							"TODO",
-							WidgetOverride::Number(NumberInputSettings {
-								unit: Some(" px".to_string()),
-								min: Some(1.),
-								blank_assist: false,
-								..Default::default()
-							}),
-						),
-						InputMetadata::with_name_description_override(
-							"Max Height",
-							"TODO",
-							WidgetOverride::Number(NumberInputSettings {
-								unit: Some(" px".to_string()),
-								min: Some(1.),
-								blank_assist: false,
-								..Default::default()
-							}),
-						),
-						InputMetadata::with_name_description_override(
-							"Tilt",
-							"Faux italic.",
-							WidgetOverride::Number(NumberInputSettings {
-								min: Some(-85.),
-								max: Some(85.),
-								unit: Some("°".to_string()),
-								..Default::default()
-							}),
-						),
-						InputMetadata::with_name_description_override("Align", "TODO", WidgetOverride::Custom("text_align".to_string())),
-						("Per-Glyph Instances", "Splits each text glyph into its own row in the table of vector geometry.").into(),
-					],
-					output_names: vec!["Vector".to_string()],
-					..Default::default()
-				},
-			},
-			description: Cow::Borrowed("TODO"),
-			properties: None,
-		},
-		DocumentNodeDefinition {
 			identifier: "Transform",
 			category: "Math: Transform",
 			node_template: NodeTemplate {
@@ -2295,6 +2197,30 @@ fn static_input_properties() -> InputProperties {
 			Ok(vec![LayoutGroup::Row {
 				widgets: node_properties::number_widget(ParameterWidgetsInfo::new(node_id, index, blank_assist, context), number_input),
 			}])
+		}),
+	);
+	map.insert(
+		"optional_number".to_string(),
+		Box::new(|node_id, index, context| {
+			// TODO: Don't wipe out the previously set value (setting it back to the default of 100) when reenabling this checkbox back to Some from None
+			let toggle_enabled = move |checkbox_input: &CheckboxInput| TaggedValue::OptionalF64(if checkbox_input.checked { Some(100.) } else { None });
+			Ok(vec![
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Related).widget_instance(),
+				// The checkbox toggles if the value is Some or None
+				CheckboxInput::new(x.is_some())
+					.on_update(update_value(toggle_enabled, node_id, index))
+					.on_commit(commit_value)
+					.widget_instance(),
+				Separator::new(SeparatorStyle::Related).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				number_props
+					.value(x)
+					.on_update(update_value(move |x: &NumberInput| TaggedValue::OptionalF64(x.value), node_id, index))
+					.disabled(x.is_none())
+					.on_commit(commit_value)
+					.widget_instance(),
+			])
 		}),
 	);
 	map.insert(

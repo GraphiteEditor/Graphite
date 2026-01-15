@@ -393,18 +393,20 @@ pub fn get_text(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInter
 	let Some(&TaggedValue::F64(font_size)) = inputs[3].as_value() else { return None };
 	let Some(&TaggedValue::F64(line_height_ratio)) = inputs[4].as_value() else { return None };
 	let Some(&TaggedValue::F64(character_spacing)) = inputs[5].as_value() else { return None };
-	let Some(&TaggedValue::OptionalF64(max_width)) = inputs[6].as_value() else { return None };
-	let Some(&TaggedValue::OptionalF64(max_height)) = inputs[7].as_value() else { return None };
-	let Some(&TaggedValue::F64(tilt)) = inputs[8].as_value() else { return None };
-	let Some(&TaggedValue::TextAlign(align)) = inputs[9].as_value() else { return None };
-	let Some(&TaggedValue::Bool(per_glyph_instances)) = inputs[10].as_value() else { return None };
+	let Some(&TaggedValue::Bool(has_max_width)) = inputs[6].as_value() else { return None };
+	let Some(&TaggedValue::F64(max_width)) = inputs[7].as_value() else { return None };
+	let Some(&TaggedValue::Bool(has_max_height)) = inputs[8].as_value() else { return None };
+	let Some(&TaggedValue::F64(max_height)) = inputs[9].as_value() else { return None };
+	let Some(&TaggedValue::F64(tilt)) = inputs[10].as_value() else { return None };
+	let Some(&TaggedValue::TextAlign(align)) = inputs[11].as_value() else { return None };
+	let Some(&TaggedValue::Bool(per_glyph_instances)) = inputs[12].as_value() else { return None };
 
 	let typesetting = TypesettingConfig {
 		font_size,
 		line_height_ratio,
-		max_width,
+		max_width: has_max_width.then_some(max_width),
+		max_height: has_max_height.then_some(max_height),
 		character_spacing,
-		max_height,
 		tilt,
 		align,
 	};
