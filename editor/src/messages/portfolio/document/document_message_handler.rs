@@ -1,6 +1,7 @@
 use super::node_graph::document_node_definitions;
 use super::node_graph::utility_types::Transform;
 use super::utility_types::error::EditorError;
+use super::utility_types::guide::Guide;
 use super::utility_types::misc::{GroupFolderType, SNAP_FUNCTIONS_FOR_BOUNDING_BOXES, SNAP_FUNCTIONS_FOR_PATHS, SnappingOptions, SnappingState};
 use super::utility_types::network_interface::{self, NodeNetworkInterface, TransactionStatus};
 use super::utility_types::nodes::{CollapsedLayers, SelectedNodes};
@@ -138,6 +139,15 @@ pub struct DocumentMessageHandler {
 	/// If the user clicks or Ctrl-clicks one layer, it becomes the start of the range selection and then Shift-clicking another layer selects all layers between the start and end.
 	#[serde(skip)]
 	layer_range_selection_reference: Option<LayerNodeIdentifier>,
+	/// List of horizontal guide lines in document space.
+	#[serde(default)]
+	pub horizontal_guides: Vec<Guide>,
+	/// List of vertical guide lines in document space.
+	#[serde(default)]
+	pub vertical_guides: Vec<Guide>,
+	/// Whether guide lines are visible in the viewport.
+	#[serde(default = "default_guides_visible")]
+	pub guides_visible: bool,
 	/// Whether or not the editor has executed the network to render the document yet. If this is opened as an inactive tab, it won't be loaded initially because the active tab is prioritized.
 	#[serde(skip)]
 	pub is_loaded: bool,
@@ -179,6 +189,9 @@ impl Default for DocumentMessageHandler {
 			saved_hash: None,
 			auto_saved_hash: None,
 			layer_range_selection_reference: None,
+			horizontal_guides: Vec::new(),
+			vertical_guides: Vec::new(),
+			guides_visible: true,
 			is_loaded: false,
 		}
 	}
@@ -618,6 +631,85 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::GridVisibility { visible } => {
 				self.snapping_state.grid_snapping = visible;
 				responses.add(OverlaysMessage::Draw);
+			}
+			// Guide messages
+			DocumentMessage::CreateGuide { id, direction, position } => {
+				// Convert viewport position to document space
+				let viewport_point = match direction {
+					// For horizontal guides: position is Y viewport coordinate
+					super::utility_types::guide::GuideDirection::Horizontal => DVec2::new(0.0, position),
+					// For vertical guides: position is X viewport coordinate
+					super::utility_types::guide::GuideDirection::Vertical => DVec2::new(position, 0.0),
+				};
+				let document_point = self.metadata().document_to_viewport.inverse().transform_point2(viewport_point);
+				let document_position = match direction {
+					super::utility_types::guide::GuideDirection::Horizontal => document_point.y,
+					super::utility_types::guide::GuideDirection::Vertical => document_point.x,
+				};
+
+				let guide = Guide::with_id(id, direction, document_position);
+				match direction {
+					super::utility_types::guide::GuideDirection::Horizontal => self.horizontal_guides.push(guide),
+					super::utility_types::guide::GuideDirection::Vertical => self.vertical_guides.push(guide),
+				}
+				responses.add(OverlaysMessage::Draw);
+				responses.add(PortfolioMessage::UpdateDocumentWidgets);
+				responses.add(DocumentMessage::SendGuidesData);
+			}
+			DocumentMessage::MoveGuide { id, position } => {
+				// Get the transform before mutable borrowing the guides
+				let viewport_to_document = self.metadata().document_to_viewport.inverse();
+
+				// Search in both guide lists and update the position
+				if let Some(guide) = self.horizontal_guides.iter_mut().find(|guide| guide.id == id) {
+					let viewport_point = DVec2::new(0.0, position);
+					let document_point = viewport_to_document.transform_point2(viewport_point);
+					guide.position = document_point.y;
+				} else if let Some(guide) = self.vertical_guides.iter_mut().find(|guide| guide.id == id) {
+					let viewport_point = DVec2::new(position, 0.0);
+					let document_point = viewport_to_document.transform_point2(viewport_point);
+					guide.position = document_point.x;
+				}
+				responses.add(OverlaysMessage::Draw);
+				responses.add(DocumentMessage::SendGuidesData);
+			}
+			DocumentMessage::DeleteGuide { id } => {
+				// Remove from horizontal guides
+				self.horizontal_guides.retain(|g| g.id != id);
+				// Remove from vertical guides
+				self.vertical_guides.retain(|g| g.id != id);
+				responses.add(OverlaysMessage::Draw);
+				responses.add(PortfolioMessage::UpdateDocumentWidgets);
+				responses.add(DocumentMessage::SendGuidesData);
+			}
+			DocumentMessage::GuideOverlays { context: mut overlay_context } => {
+				if self.guides_visible {
+					super::overlays::guide_overlays::guide_overlay(self, &mut overlay_context);
+				}
+			}
+			DocumentMessage::ToggleGuidesVisibility => {
+				self.guides_visible = !self.guides_visible;
+				responses.add(OverlaysMessage::Draw);
+				responses.add(PortfolioMessage::UpdateDocumentWidgets);
+				responses.add(MenuBarMessage::SendLayout);
+			}
+			DocumentMessage::SendGuidesData => {
+				let transform = self.metadata().document_to_viewport;
+				let horizontal_guides: Vec<(u64, f64)> = self.horizontal_guides.iter().map(|g| (g.id.as_raw(), g.position)).collect();
+				let vertical_guides: Vec<(u64, f64)> = self.vertical_guides.iter().map(|g| (g.id.as_raw(), g.position)).collect();
+				let document_to_viewport = [
+					transform.matrix2.x_axis.x,
+					transform.matrix2.x_axis.y,
+					transform.matrix2.y_axis.x,
+					transform.matrix2.y_axis.y,
+					transform.translation.x,
+					transform.translation.y,
+				];
+				responses.add(FrontendMessage::UpdateGuidesData {
+					horizontal_guides,
+					vertical_guides,
+					document_to_viewport,
+				});
 			}
 			DocumentMessage::GroupSelectedLayers { group_folder_type } => {
 				responses.add(DocumentMessage::AddTransaction);
@@ -2989,6 +3081,10 @@ fn default_document_network_interface() -> NodeNetworkInterface {
 	let mut network_interface = NodeNetworkInterface::default();
 	network_interface.add_export(TaggedValue::Artboard(Default::default()), -1, "", &[]);
 	network_interface
+}
+
+fn default_guides_visible() -> bool {
+	true
 }
 
 /// Targets for the [`ClickXRayIter`]. In order to reduce computation, we prefer just a point/path test where possible.

@@ -24,6 +24,25 @@ thread_local! {
 	pub static EDITOR: Mutex<Option<editor::application::Editor>> = const { Mutex::new(None) };
 	pub static MESSAGE_BUFFER: std::cell::RefCell<Vec<Message>> = const { std::cell::RefCell::new(Vec::new()) };
 	pub static EDITOR_HANDLE: Mutex<Option<editor_api::EditorHandle>> = const { Mutex::new(None) };
+	pub static CACHED_GUIDES: std::cell::RefCell<CachedGuideData> = const { std::cell::RefCell::new(CachedGuideData::new()) };
+}
+
+/// Cached guide data for native mode hit-testing
+#[derive(Default)]
+pub struct CachedGuideData {
+	pub horizontal_guides: Vec<(u64, f64)>,
+	pub vertical_guides: Vec<(u64, f64)>,
+	pub document_to_viewport: [f64; 6],
+}
+
+impl CachedGuideData {
+	pub const fn new() -> Self {
+		Self {
+			horizontal_guides: Vec::new(),
+			vertical_guides: Vec::new(),
+			document_to_viewport: [1.0, 0.0, 0.0, 1.0, 0.0, 0.0], // Identity transform
+		}
+	}
 }
 
 /// Initialize the backend

@@ -57,6 +57,13 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 							viewport: *viewport,
 						},
 					});
+					responses.add(DocumentMessage::GuideOverlays {
+						context: OverlayContext {
+							render_context: canvas_context.clone(),
+							visibility_settings: visibility_settings.clone(),
+							viewport: *viewport,
+						},
+					});
 					for provider in &self.overlay_providers {
 						responses.add(provider(OverlayContext {
 							render_context: canvas_context.clone(),
@@ -74,6 +81,7 @@ impl MessageHandler<OverlaysMessage, OverlaysMessageContext<'_>> for OverlaysMes
 
 				if visibility_settings.all() {
 					responses.add(DocumentMessage::GridOverlays { context: overlay_context.clone() });
+					responses.add(DocumentMessage::GuideOverlays { context: overlay_context.clone() });
 
 					for provider in &self.overlay_providers {
 						responses.add(provider(overlay_context.clone()));

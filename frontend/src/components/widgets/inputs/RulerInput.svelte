@@ -3,7 +3,7 @@
 </script>
 
 <script lang="ts">
-	import { onMount } from "svelte";
+	import { createEventDispatcher, onMount } from "svelte";
 
 	const RULER_THICKNESS = 16;
 	const MAJOR_MARK_THICKNESS = 16;
@@ -17,9 +17,14 @@
 	export let minorDivisions = 5;
 	export let microDivisions = 2;
 
+	const dispatch = createEventDispatcher<{
+		guideDragStart: { direction: RulerDirection; position: number };
+	}>();
+
 	let rulerInput: HTMLDivElement | undefined;
 	let rulerLength = 0;
 	let svgBounds = { width: "0px", height: "0px" };
+	let isDragging = false;
 
 	$: svgPath = computeSvgPath(direction, origin, majorMarkSpacing, minorDivisions, microDivisions, rulerLength);
 	$: svgTexts = computeSvgTexts(direction, origin, majorMarkSpacing, numberInterval, rulerLength);
@@ -101,10 +106,47 @@
 		return Math.floor(remainder >= 0 ? remainder : remainder + m);
 	}
 
+	function handlePointerDown(e: PointerEvent) {
+		if (e.button !== 0) return; // Only handle left-click
+
+		isDragging = true;
+		const element = e.currentTarget as HTMLElement;
+		element.setPointerCapture(e.pointerId);
+
+		// Get the viewport element to calculate position relative to it
+		const viewportEl = window.document.querySelector("[data-viewport]") as HTMLElement;
+		if (!viewportEl) {
+			isDragging = false;
+			return;
+		}
+
+		const viewportRect = viewportEl.getBoundingClientRect();
+		const isVertical = direction === "Vertical";
+
+		// For horizontal ruler (creates horizontal guides): need Y position relative to viewport and same for vertical ruler
+		const position = isVertical ? e.clientX - viewportRect.left : e.clientY - viewportRect.top;
+
+		dispatch("guideDragStart", { direction, position });
+	}
+
+	function handlePointerUp(e: PointerEvent) {
+		if (!isDragging) return;
+		isDragging = false;
+
+		const element = e.currentTarget as HTMLElement;
+		element.releasePointerCapture(e.pointerId);
+	}
+
 	onMount(resize);
 </script>
 
-<div class={`ruler-input ${direction.toLowerCase()}`} bind:this={rulerInput}>
+<div
+	class={`ruler-input ${direction.toLowerCase()}`}
+	bind:this={rulerInput}
+	on:pointerdown={handlePointerDown}
+	on:pointerup={handlePointerUp}
+	style:cursor={direction === "Horizontal" ? "row-resize" : "col-resize"}
+>
 	<svg style:width={svgBounds.width} style:height={svgBounds.height}>
 		<path d={svgPath} />
 		{#each svgTexts as svgText}

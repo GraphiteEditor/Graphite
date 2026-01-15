@@ -11,6 +11,7 @@ pub struct MenuBarMessageHandler {
 	pub canvas_tilted: bool,
 	pub canvas_flipped: bool,
 	pub rulers_visible: bool,
+	pub guides_visible: bool,
 	pub node_graph_open: bool,
 	pub has_selected_nodes: bool,
 	pub has_selected_layers: bool,
@@ -613,6 +614,11 @@ impl LayoutHolder for MenuBarMessageHandler {
 							.icon(if self.rulers_visible { "CheckboxChecked" } else { "CheckboxUnchecked" })
 							.tooltip_shortcut(action_shortcut!(PortfolioMessageDiscriminant::ToggleRulers))
 							.on_commit(|_| PortfolioMessage::ToggleRulers.into())
+							.disabled(no_active_document),
+						MenuListEntry::new("Guides")
+							.label("Guides")
+							.icon(if self.guides_visible { "CheckboxChecked" } else { "CheckboxUnchecked" })
+							.on_commit(|_| DocumentMessage::ToggleGuidesVisibility.into())
 							.disabled(no_active_document),
 					],
 				])

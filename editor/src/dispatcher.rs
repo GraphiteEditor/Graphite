@@ -258,6 +258,7 @@ impl Dispatcher {
 						menu_bar_message_handler.canvas_tilted = document.document_ptz.tilt() != 0.;
 						menu_bar_message_handler.canvas_flipped = document.document_ptz.flip;
 						menu_bar_message_handler.rulers_visible = document.rulers_visible;
+						menu_bar_message_handler.guides_visible = document.guides_visible;
 						menu_bar_message_handler.node_graph_open = document.is_graph_overlay_open();
 						menu_bar_message_handler.has_selected_nodes = selected_nodes.selected_nodes().next().is_some();
 						menu_bar_message_handler.has_selected_layers = selected_nodes.selected_visible_layers(&document.network_interface).next().is_some();
@@ -268,6 +269,7 @@ impl Dispatcher {
 						menu_bar_message_handler.canvas_tilted = false;
 						menu_bar_message_handler.canvas_flipped = false;
 						menu_bar_message_handler.rulers_visible = false;
+						menu_bar_message_handler.guides_visible = false;
 						menu_bar_message_handler.node_graph_open = false;
 						menu_bar_message_handler.has_selected_nodes = false;
 						menu_bar_message_handler.has_selected_layers = false;

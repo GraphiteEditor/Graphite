@@ -354,6 +354,14 @@ pub enum FrontendMessage {
 	UpdateUIScale {
 		scale: f64,
 	},
+	UpdateGuidesData {
+		#[serde(rename = "horizontalGuides")]
+		horizontal_guides: Vec<(u64, f64)>,
+		#[serde(rename = "verticalGuides")]
+		vertical_guides: Vec<(u64, f64)>,
+		#[serde(rename = "documentToViewport")]
+		document_to_viewport: [f64; 6],
+	},
 
 	#[cfg(not(target_family = "wasm"))]
 	RenderOverlays {

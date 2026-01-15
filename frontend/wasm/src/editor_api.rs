@@ -11,6 +11,7 @@ use editor::messages::clipboard::utility_types::ClipboardContentRaw;
 use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
 use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta};
 use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
+use editor::messages::portfolio::document::utility_types::guide::{GuideDirection, GuideId};
 use editor::messages::portfolio::document::utility_types::network_interface::ImportOrExport;
 use editor::messages::portfolio::utility_types::{FontCatalog, FontCatalogFamily, Platform};
 use editor::messages::prelude::*;
@@ -160,6 +161,21 @@ impl EditorHandle {
 				IMAGE_DATA_HASH.store(new_hash, Ordering::Relaxed);
 			}
 			return;
+		}
+
+		// Cache guide data for native mode hit-testing
+		if let FrontendMessage::UpdateGuidesData {
+			ref horizontal_guides,
+			ref vertical_guides,
+			ref document_to_viewport,
+		} = message
+		{
+			crate::CACHED_GUIDES.with(|cache| {
+				let mut cache = cache.borrow_mut();
+				cache.horizontal_guides = horizontal_guides.clone();
+				cache.vertical_guides = vertical_guides.clone();
+				cache.document_to_viewport = *document_to_viewport;
+			});
 		}
 
 		if let FrontendMessage::UpdateDocumentLayerStructure { data_buffer } = message {
@@ -867,6 +883,38 @@ impl EditorHandle {
 			name,
 			index: ImportOrExport::Export(index),
 		};
+		self.dispatch(message);
+	}
+
+	/// Create a new guide line from a ruler drag with direction: "Horizontal" or "Vertical"
+	#[wasm_bindgen(js_name = createGuide)]
+	pub fn create_guide(&self, id: u64, direction: String, position: f64) {
+		let id = GuideId::from_raw(id);
+		let direction = match direction.as_str() {
+			"Horizontal" => GuideDirection::Horizontal,
+			"Vertical" => GuideDirection::Vertical,
+			_ => {
+				log::error!("Invalid guide direction: {}", direction);
+				return;
+			}
+		};
+		let message = DocumentMessage::CreateGuide { id, direction, position };
+		self.dispatch(message);
+	}
+
+	/// Move an existing guide to a new position
+	#[wasm_bindgen(js_name = moveGuide)]
+	pub fn move_guide(&self, id: u64, position: f64) {
+		let id = GuideId::from_raw(id);
+		let message = DocumentMessage::MoveGuide { id, position };
+		self.dispatch(message);
+	}
+
+	/// Delete a guide by its ID
+	#[wasm_bindgen(js_name = deleteGuide)]
+	pub fn delete_guide(&self, id: u64) {
+		let id = GuideId::from_raw(id);
+		let message = DocumentMessage::DeleteGuide { id };
 		self.dispatch(message);
 	}
 }
