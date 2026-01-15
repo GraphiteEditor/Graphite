@@ -106,6 +106,7 @@
 		addEventListener("pointermove", draggingPointerMove);
 		addEventListener("mousedown", draggingMouseDown);
 		addEventListener("keydown", draggingKeyDown);
+		addEventListener("keydown", handleLayerPanelKeyDown);
 
 		addEventListener("pointermove", clippingHover);
 		addEventListener("keydown", clippingKeyPress);
@@ -123,6 +124,7 @@
 		removeEventListener("pointermove", draggingPointerMove);
 		removeEventListener("mousedown", draggingMouseDown);
 		removeEventListener("keydown", draggingKeyDown);
+		removeEventListener("keydown", handleLayerPanelKeyDown);
 
 		removeEventListener("pointermove", clippingHover);
 		removeEventListener("keydown", clippingKeyPress);
@@ -431,6 +433,58 @@
 		}
 	}
 
+	function handleLayerPanelKeyDown(e: KeyboardEvent) {
+		// Only handle F2 if not currently editing a layer name
+		if (e.key === "F2" && !isAnyLayerBeingEdited()) {
+			// Find the first selected layer
+			const selectedLayer = layers.find((layer) => layer.entry.selected);
+			if (selectedLayer) {
+				e.preventDefault();
+				onEditLayerName(selectedLayer);
+			}
+		}
+	}
+
+	function isAnyLayerBeingEdited(): boolean {
+		return layers.some((layer) => layer.editingName);
+	}
+
+	async function navigateToLayer(currentListing: LayerListingInfo, direction: "next" | "previous" | "up" | "down") {
+		// Save the current layer name
+		const inputElement = document.activeElement;
+		if (inputElement instanceof HTMLInputElement) {
+			const name = inputElement.value || "";
+			editor.handle.setLayerName(currentListing.entry.id, name);
+			currentListing.entry.alias = name;
+		}
+
+		// Find current layer index
+		const currentIndex = layers.findIndex((layer) => layer.entry.id === currentListing.entry.id);
+		if (currentIndex === -1) return;
+
+		// Calculate target index based on direction
+		let targetIndex: number;
+		if (direction === "next" || direction === "down") {
+			targetIndex = currentIndex + 1;
+			if (targetIndex >= layers.length) return; // Don't wrap around at the end
+		} else {
+			// previous or up
+			targetIndex = currentIndex - 1;
+			if (targetIndex < 0) return; // Don't wrap around at the beginning
+		}
+
+		const targetListing = layers[targetIndex];
+		if (!targetListing) return;
+
+		// Exit edit mode on current layer
+		currentListing.editingName = false;
+		draggable = true;
+		layers = layers;
+
+		// Start edit mode on target layer
+		await onEditLayerName(targetListing);
+	}
+
 	function fileDragOver(e: DragEvent) {
 		if (!draggable || !e.dataTransfer || !e.dataTransfer.types.includes("Files")) return;
 
@@ -572,8 +626,22 @@
 							placeholder={listing.entry.implementationName}
 							disabled={!listing.editingName}
 							on:blur={() => onEditLayerNameDeselect(listing)}
-							on:keydown={(e) => e.key === "Escape" && onEditLayerNameDeselect(listing)}
-							on:keydown={(e) => e.key === "Enter" && onEditLayerNameChange(listing, e)}
+							on:keydown={(e) => {
+								if (e.key === "Escape") {
+									onEditLayerNameDeselect(listing);
+								} else if (e.key === "Enter") {
+									onEditLayerNameChange(listing, e);
+								} else if (e.key === "Tab") {
+									e.preventDefault();
+									navigateToLayer(listing, e.shiftKey ? "previous" : "next");
+								} else if (e.key === "ArrowUp") {
+									e.preventDefault();
+									navigateToLayer(listing, "up");
+								} else if (e.key === "ArrowDown") {
+									e.preventDefault();
+									navigateToLayer(listing, "down");
+								}
+							}}
 							on:change={(e) => onEditLayerNameChange(listing, e)}
 						/>
 					</LayoutRow>
