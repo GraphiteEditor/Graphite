@@ -172,6 +172,7 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		entry!(KeyUp(MouseLeft); action_dispatch=TextToolMessage::DragStop),
 		entry!(KeyDown(MouseRight); action_dispatch=TextToolMessage::Abort),
 		entry!(KeyDown(Escape); action_dispatch=TextToolMessage::Abort),
+		entry!(KeyDown(Enter); action_dispatch=TextToolMessage::BeginEditing),
 		entry!(KeyDown(Enter); modifiers=[Accel], action_dispatch=TextToolMessage::Abort),
 		//
 		// GradientToolMessage
