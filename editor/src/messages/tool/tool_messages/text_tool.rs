@@ -66,6 +66,7 @@ pub enum TextToolMessage {
 	DragStart,
 	DragStop,
 	EditSelected,
+	BeginEditing,
 	Interact,
 	PointerMove { center: Key, lock_ratio: Key },
 	PointerOutsideViewport { center: Key, lock_ratio: Key },
@@ -307,6 +308,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Text
 		match self.fsm_state {
 			TextToolFsmState::Ready => actions!(TextToolMessageDiscriminant;
 				DragStart,
+				BeginEditing,
 				PointerOutsideViewport,
 				PointerMove,
 			),
@@ -651,6 +653,14 @@ impl Fsm for TextToolFsmState {
 				}
 
 				state
+			}
+			(TextToolFsmState::Ready, TextToolMessage::BeginEditing) => {
+				if let Some(layer) = can_edit_selected(document) {
+					tool_data.start_editing_layer(layer, TextToolFsmState::Ready, document, font_cache, responses);
+					return TextToolFsmState::Editing;
+				}
+
+				TextToolFsmState::Ready
 			}
 			(TextToolFsmState::Ready, TextToolMessage::DragStart) => {
 				tool_data.resize.start(document, input, viewport);

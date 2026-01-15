@@ -371,6 +371,7 @@
 
 		const range = window.document.createRange();
 		range.selectNodeContents(textInput);
+		range.collapse(false);
 
 		const selection = window.getSelection();
 		if (selection) {
