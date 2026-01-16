@@ -53,11 +53,8 @@
 						: undefined}
 					tooltipShortcut={$tooltip.f11Shortcut}
 					on:click={() => {
-						if (isDesktop()) {
-							editor.handle.appWindowFullscreen();
-						} else {
-							($fullscreen.windowFullscreen ? fullscreen.exitFullscreen : fullscreen.enterFullscreen)();
-						}
+						if (isDesktop()) editor.handle.appWindowFullscreen();
+						else ($fullscreen.windowFullscreen ? fullscreen.exitFullscreen : fullscreen.enterFullscreen)();
 					}}
 				>
 					<IconLabel icon={isFullscreen ? "FullscreenExit" : "FullscreenEnter"} />
@@ -69,7 +66,7 @@
 				<LayoutRow tooltipLabel={$appWindow.maximized ? ($appWindow.platform === "Windows" ? "Restore Down" : "Unmaximize") : "Maximize"} on:click={() => editor.handle.appWindowMaximize()}>
 					<IconLabel icon={$appWindow.maximized ? "WindowButtonWinRestoreDown" : "WindowButtonWinMaximize"} />
 				</LayoutRow>
-				<LayoutRow tooltipLabel="Close" class="close" on:click={() => editor.handle.appWindowClose()}>
+				<LayoutRow tooltipLabel="Close" on:click={() => editor.handle.appWindowClose()}>
 					<IconLabel icon="WindowButtonWinClose" />
 				</LayoutRow>
 			{/if}
@@ -123,19 +120,19 @@
 				padding: 0 8px;
 			}
 
-			&.windows > .layout-row {
+			&.windows:not(.fullscreen) > .layout-row {
 				padding: 0 17px;
 
 				&:hover {
 					background: #2d2d2d;
 				}
 
-				&.close:hover {
+				&:last-of-type:hover {
 					background: #c42b1c;
 				}
 			}
 
-			&.linux > .layout-row {
+			&.linux:not(.fullscreen) > .layout-row {
 				padding: 0 12px;
 
 				&:hover {
