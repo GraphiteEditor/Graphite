@@ -66,6 +66,11 @@
 	let justFinishedDrag = false; // Used to prevent click events after a drag
 	let dragInPanel = false;
 
+	let eyeDragActive = false;
+
+	let eyeDragInitialVisibility: boolean | undefined = undefined;
+	let eyeDragToggledLayers = new Set<bigint>();
+
 	// Interactive clipping
 	let layerToClipUponClick: LayerListingInfo | undefined = undefined;
 	let layerToClipAltKeyPressed = false;
@@ -404,7 +409,55 @@
 		};
 	}
 
+	function eyeIconPointerDown(e: PointerEvent, listing: LayerListingInfo) {
+		if (e.button !== 0) return;
+		eyeDragActive = true;
+
+		eyeDragInitialVisibility = listing.entry.visible;
+		eyeDragToggledLayers.clear();
+		eyeDragToggledLayers.add(listing.entry.id);
+		toggleNodeVisibilityLayerPanel(listing.entry.id);
+
+		e.stopPropagation();
+	}
+
+	function eyeIconGlobalPointerMove(e: PointerEvent) {
+		if (!eyeDragActive) return;
+
+		const target = document.elementFromPoint(e.clientX, e.clientY);
+		if (!target) return;
+
+		const layerRow = target.closest("[data-layer]");
+		if (!layerRow) return;
+
+		const indexAttr = layerRow.getAttribute("data-index");
+		if (!indexAttr) return;
+
+		const index = parseInt(indexAttr, 10);
+		const listing = layers[index];
+		if (!listing) return;
+
+		// Toggle if not already toggled and matches initial visibility
+		if (!eyeDragToggledLayers.has(listing.entry.id)) {
+			if (listing.entry.visible === eyeDragInitialVisibility) {
+				eyeDragToggledLayers.add(listing.entry.id);
+				toggleNodeVisibilityLayerPanel(listing.entry.id);
+			}
+		}
+	}
+
+	function eyeIconPointerUp() {
+		if (!eyeDragActive) return;
+
+		eyeDragActive = false;
+
+		eyeDragInitialVisibility = undefined;
+		eyeDragToggledLayers.clear();
+	}
+
 	function layerPointerDown(e: PointerEvent, listing: LayerListingInfo) {
+		if (eyeDragActive) return;
+
 		// Only left click drags
 		if (e.button !== 0 || !draggable) return;
 
@@ -418,6 +471,10 @@
 	}
 
 	function draggingPointerMove(e: PointerEvent) {
+		eyeIconGlobalPointerMove(e);
+
+		if (eyeDragActive) return;
+
 		if (!internalDragState || !list) return;
 
 		// Calculate distance moved
@@ -449,6 +506,8 @@
 	}
 
 	function draggingPointerUp() {
+		eyeIconPointerUp();
+
 		if (internalDragState?.active && draggingData) {
 			const { select, insertParentId, insertIndex } = draggingData;
 
@@ -673,16 +732,18 @@
 							tooltipDescription={!listing.entry.parentsUnlocked ? "A parent of this layer is locked and that status is being inherited." : ""}
 						/>
 					{/if}
-					<IconButton
-						class="status-toggle"
-						classes={{ inherited: !listing.entry.parentsVisible }}
-						action={(e) => (toggleNodeVisibilityLayerPanel(listing.entry.id), e?.stopPropagation())}
-						size={24}
-						icon={listing.entry.visible ? "EyeVisible" : "EyeHidden"}
-						hoverIcon={listing.entry.visible ? "EyeHide" : "EyeShow"}
-						tooltipLabel={listing.entry.visible ? "Hide" : "Show"}
-						tooltipDescription={!listing.entry.parentsVisible ? "A parent of this layer is hidden and that status is being inherited." : ""}
-					/>
+					<div on:pointerdown={(e) => eyeIconPointerDown(e, listing)}>
+						<IconButton
+							class="status-toggle"
+							classes={{ inherited: !listing.entry.parentsVisible }}
+							action={(e) => (toggleNodeVisibilityLayerPanel(listing.entry.id), e?.stopPropagation())}
+							size={24}
+							icon={listing.entry.visible ? "EyeVisible" : "EyeHidden"}
+							hoverIcon={listing.entry.visible ? "EyeHide" : "EyeShow"}
+							tooltipLabel={listing.entry.visible ? "Hide" : "Show"}
+							tooltipDescription={!listing.entry.parentsVisible ? "A parent of this layer is hidden and that status is being inherited." : ""}
+						/>
+					</div>
 				</LayoutRow>
 			{/each}
 		</LayoutCol>
