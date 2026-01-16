@@ -27,6 +27,7 @@ const TEXT_REPLACEMENTS: &[(&str, &str)] = &[
 		"core::option::Option<alloc::sync::Arc<core_types::context::OwnedContextImpl>>",
 	),
 	("graphene_core::transform::Footprint", "graphene_core::transform::Footprint"),
+	("\"OptionalF64\":", "\"F64\":"),
 ];
 
 pub struct NodeReplacement<'a> {
@@ -961,9 +962,46 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 const REPLACEMENTS: &[(&str, &str)] = &[];
 
 pub fn document_migration_string_preprocessing(document_serialized_content: String) -> String {
+	let document_serialized_content = replace_optional_f64_null(&document_serialized_content);
+
 	TEXT_REPLACEMENTS
 		.iter()
 		.fold(document_serialized_content, |document_serialized_content, (old, new)| document_serialized_content.replace(old, new))
+}
+
+fn replace_optional_f64_null(input: &str) -> String {
+	let mut result = String::new();
+	let mut last_end = 0;
+	let key = "\"OptionalF64\":";
+
+	for (start, _) in input.match_indices(key) {
+		let search_start = start + key.len();
+		if search_start >= input.len() {
+			continue;
+		}
+
+		let mut after_key_start = search_start;
+		for (i, c) in input[search_start..].char_indices() {
+			if !c.is_whitespace() {
+				after_key_start = search_start + i;
+				break;
+			}
+			// If we reach the end and it's all whitespace, update after_key_start
+			if search_start + i + c.len_utf8() == input.len() {
+				after_key_start = input.len();
+			}
+		}
+
+		if input[after_key_start..].starts_with("null") {
+			result.push_str(&input[last_end..start]);
+			result.push_str(key);
+			result.push_str("0.0");
+			last_end = after_key_start + "null".len();
+		}
+	}
+
+	result.push_str(&input[last_end..]);
+	result
 }
 
 pub fn document_migration_reset_node_definition(document_serialized_content: &str) -> bool {
@@ -1135,7 +1173,6 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 	// Upgrade Text node to include line height and character spacing, which were previously hardcoded to 1, from https://github.com/GraphiteEditor/Graphite/pull/2016
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER) && inputs_count == 8 {
-		log::debug!("first upgrade");
 		let mut template: NodeTemplate = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut template);
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut template)?;
@@ -1212,7 +1249,6 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 
 	// https://github.com/GraphiteEditor/Graphite/pull/3643
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER) && inputs_count == 11 {
-		log::debug!("second upgrade");
 		let mut template: NodeTemplate = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut template);
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut template)?;
@@ -1223,27 +1259,28 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.set_input(&InputConnector::node(*node_id, 3), old_inputs[3].clone(), network_path);
 		document.network_interface.set_input(&InputConnector::node(*node_id, 4), old_inputs[4].clone(), network_path);
 		document.network_interface.set_input(&InputConnector::node(*node_id, 5), old_inputs[5].clone(), network_path);
-		let Some(TaggedValue::OptionalF64(old_max_width)) = old_inputs[6].as_value() else {
+		let Some(&TaggedValue::F64(old_max_width)) = old_inputs[6].as_value() else {
 			return None;
 		};
 		document
 			.network_interface
-			.set_input(&InputConnector::node(*node_id, 6), NodeInput::value(TaggedValue::Bool(old_max_width.is_some()), false), network_path);
+			.set_input(&InputConnector::node(*node_id, 6), NodeInput::value(TaggedValue::Bool(old_max_width != 0.), false), network_path);
 		document.network_interface.set_input(
 			&InputConnector::node(*node_id, 7),
-			NodeInput::value(TaggedValue::F64(old_max_width.unwrap_or_default()), false),
+			NodeInput::value(TaggedValue::F64(if old_max_width == 0. { 100. } else { old_max_width }), false),
 			network_path,
 		);
 
-		let Some(TaggedValue::OptionalF64(old_max_height)) = old_inputs[7].as_value() else {
+		let Some(&TaggedValue::F64(old_max_height)) = old_inputs[7].as_value() else {
 			return None;
 		};
+
 		document
 			.network_interface
-			.set_input(&InputConnector::node(*node_id, 8), NodeInput::value(TaggedValue::Bool(old_max_height.is_some()), false), network_path);
+			.set_input(&InputConnector::node(*node_id, 8), NodeInput::value(TaggedValue::Bool(old_max_height != 0.), false), network_path);
 		document.network_interface.set_input(
 			&InputConnector::node(*node_id, 9),
-			NodeInput::value(TaggedValue::F64(old_max_height.unwrap_or_default()), false),
+			NodeInput::value(TaggedValue::F64(if old_max_height == 0. { 100. } else { old_max_height }), false),
 			network_path,
 		);
 		document.network_interface.set_input(&InputConnector::node(*node_id, 10), old_inputs[8].clone(), network_path);
