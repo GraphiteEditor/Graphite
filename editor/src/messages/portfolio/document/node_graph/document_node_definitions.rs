@@ -1452,7 +1452,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
 			identifier: "Upload Texture",
-			category: "Debug: GPU",
+			category: "Debug",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {

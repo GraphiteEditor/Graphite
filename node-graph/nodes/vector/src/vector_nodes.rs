@@ -176,7 +176,7 @@ async fn stroke<V, L: IntoF64Vec>(
 	/// The stroke color.
 	#[default(Color::BLACK)]
 	color: Table<Color>,
-	/// The stroke weight.
+	/// The stroke thickness.
 	#[unit(" px")]
 	#[default(2.)]
 	weight: f64,
