@@ -1204,7 +1204,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			if inputs_count >= 7 {
 				old_inputs[6].clone()
 			} else {
-				NodeInput::value(TaggedValue::Bool(TypesettingConfig::default().max_width.is_some()), false)
+				NodeInput::value(TaggedValue::F64(TypesettingConfig::default().max_width.unwrap_or_default()), false)
 			},
 			network_path,
 		);
@@ -1213,7 +1213,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			if inputs_count >= 8 {
 				old_inputs[7].clone()
 			} else {
-				NodeInput::value(TaggedValue::F64(TypesettingConfig::default().max_width.unwrap_or(100.)), false)
+				NodeInput::value(TaggedValue::F64(TypesettingConfig::default().max_width.unwrap_or_default()), false)
 			},
 			network_path,
 		);
@@ -1222,7 +1222,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			if inputs_count >= 9 {
 				old_inputs[8].clone()
 			} else {
-				NodeInput::value(TaggedValue::F64(0.), false)
+				NodeInput::value(TaggedValue::F64(TypesettingConfig::default().tilt), false)
 			},
 			network_path,
 		);
@@ -1231,7 +1231,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			if inputs_count >= 10 {
 				old_inputs[9].clone()
 			} else {
-				NodeInput::value(TaggedValue::TextAlign(TextAlign::Left), false)
+				NodeInput::value(TaggedValue::TextAlign(TextAlign::default()), false)
 			},
 			network_path,
 		);
@@ -1247,21 +1247,21 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		inputs_count = 11
 	}
 
+	// Insert bool parameters for `has_max_width` and `has_max_height`:
 	// https://github.com/GraphiteEditor/Graphite/pull/3643
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER) && inputs_count == 11 {
 		let mut template: NodeTemplate = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut template);
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut template)?;
 
-		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[2].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 3), old_inputs[3].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 4), old_inputs[4].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 5), old_inputs[5].clone(), network_path);
-		let Some(&TaggedValue::F64(old_max_width)) = old_inputs[6].as_value() else {
-			return None;
-		};
+		// Copy over old inputs
+		#[allow(clippy::needless_range_loop)]
+		for i in 0..=5 {
+			document.network_interface.set_input(&InputConnector::node(*node_id, i), old_inputs[i].clone(), network_path);
+		}
+
+		// Max Width
+		let Some(&TaggedValue::F64(old_max_width)) = old_inputs[6].as_value() else { return None };
 		document
 			.network_interface
 			.set_input(&InputConnector::node(*node_id, 6), NodeInput::value(TaggedValue::Bool(old_max_width != 0.), false), network_path);
@@ -1271,10 +1271,8 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			network_path,
 		);
 
-		let Some(&TaggedValue::F64(old_max_height)) = old_inputs[7].as_value() else {
-			return None;
-		};
-
+		// Max Height
+		let Some(&TaggedValue::F64(old_max_height)) = old_inputs[7].as_value() else { return None };
 		document
 			.network_interface
 			.set_input(&InputConnector::node(*node_id, 8), NodeInput::value(TaggedValue::Bool(old_max_height != 0.), false), network_path);
@@ -1283,9 +1281,12 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			NodeInput::value(TaggedValue::F64(if old_max_height == 0. { 100. } else { old_max_height }), false),
 			network_path,
 		);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 10), old_inputs[8].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 11), old_inputs[9].clone(), network_path);
-		document.network_interface.set_input(&InputConnector::node(*node_id, 12), old_inputs[10].clone(), network_path);
+
+		// Copy over old inputs
+		#[allow(clippy::needless_range_loop)]
+		for i in 10..=12 {
+			document.network_interface.set_input(&InputConnector::node(*node_id, i), old_inputs[i - 2].clone(), network_path);
+		}
 	}
 
 	// Upgrade Sine, Cosine, and Tangent nodes to include a boolean input for whether the output should be in radians, which was previously the only option but is now not the default

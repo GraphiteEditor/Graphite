@@ -939,8 +939,7 @@ pub fn progression_widget(parameter_widgets_info: ParameterWidgetsInfo, number_p
 	widgets
 }
 
-/// ParameterWidgetsInfo is for the number
-/// Bool index is the input index of the bool parameter displayed in the checkbox
+/// `parameter_widgets_info` is for the f64 parameter. `bool_input_index` is the input index of the bool parameter for the checkbox.
 pub fn optional_f64_widget(parameter_widgets_info: ParameterWidgetsInfo, bool_input_index: usize, number_props: NumberInput) -> Vec<WidgetInstance> {
 	let ParameterWidgetsInfo {
 		document_node,

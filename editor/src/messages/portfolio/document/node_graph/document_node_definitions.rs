@@ -2231,7 +2231,7 @@ fn static_input_properties() -> InputProperties {
 				}
 			};
 			Ok(vec![LayoutGroup::Row {
-				// The bool input must be directly above the number
+				// NOTE: The bool input MUST be at the input index directly before the f64 input!
 				widgets: node_properties::optional_f64_widget(ParameterWidgetsInfo::new(node_id, index, false, context), index - 1, number_input),
 			}])
 		}),
