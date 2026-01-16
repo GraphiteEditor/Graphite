@@ -608,18 +608,17 @@ fn hit_test_guide(document: &DocumentMessageHandler, viewport_position: DVec2) -
 
 	let transform = document.metadata().document_to_viewport;
 
-	// Checks horizontal guides (positioned by Y in document space)
+	// Check horizontal guides (lines that run left-right, positioned by Y in document space)
 	for guide in &document.horizontal_guides {
-		let guide_viewport_y = transform.matrix2.y_axis.y * guide.position + transform.translation.y;
-		if (viewport_position.y - guide_viewport_y).abs() <= HIT_TOLERANCE {
+		let guide_viewport = transform.transform_point2(DVec2::new(0.0, guide.position));
+		if (viewport_position.y - guide_viewport.y).abs() <= HIT_TOLERANCE {
 			return Some((guide.id, GuideDirection::Horizontal));
 		}
 	}
 
-	// Checks vertical guides (positioned by X in document space)
 	for guide in &document.vertical_guides {
-		let guide_viewport_x = transform.matrix2.x_axis.x * guide.position + transform.translation.x;
-		if (viewport_position.x - guide_viewport_x).abs() <= HIT_TOLERANCE {
+		let guide_viewport = transform.transform_point2(DVec2::new(guide.position, 0.0));
+		if (viewport_position.x - guide_viewport.x).abs() <= HIT_TOLERANCE {
 			return Some((guide.id, GuideDirection::Vertical));
 		}
 	}

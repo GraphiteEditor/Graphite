@@ -263,32 +263,8 @@
 		startGuideDrag({ deleteOnCancel: true });
 	}
 
-	function tryStartExistingGuideDrag(e: PointerEvent): boolean {
-		if (e.button !== 0) return false;
-
-		const viewportEl = getViewportElement();
-		if (!viewportEl) return false;
-
-		const rect = viewportEl.getBoundingClientRect();
-		const x = e.clientX - rect.left;
-		const y = e.clientY - rect.top;
-
-		const guideHit = editor.handle.findGuideAtPosition(x, y);
-		if (!guideHit) return false;
-
-		const { id, direction } = guideHit as { id: bigint; direction: string };
-		draggingGuideId = id;
-		draggingGuideDirection = direction as GuideDirection;
-
-		startGuideDrag({ deleteOnCancel: false });
-		e.stopPropagation();
-		return true;
-	}
-
 	function canvasPointerDown(e: PointerEvent) {
 		const onEditbox = e.target instanceof HTMLDivElement && e.target.contentEditable;
-
-		if (tryStartExistingGuideDrag(e)) return;
 
 		if (!onEditbox) viewport?.setPointerCapture(e.pointerId);
 		if (window.document.activeElement instanceof HTMLElement) {

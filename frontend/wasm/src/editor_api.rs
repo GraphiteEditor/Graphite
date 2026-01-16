@@ -163,21 +163,6 @@ impl EditorHandle {
 			return;
 		}
 
-		// Cache guide data for native mode hit-testing
-		if let FrontendMessage::UpdateGuidesData {
-			ref horizontal_guides,
-			ref vertical_guides,
-			ref document_to_viewport,
-		} = message
-		{
-			crate::CACHED_GUIDES.with(|cache| {
-				let mut cache = cache.borrow_mut();
-				cache.horizontal_guides = horizontal_guides.clone();
-				cache.vertical_guides = vertical_guides.clone();
-				cache.document_to_viewport = *document_to_viewport;
-			});
-		}
-
 		if let FrontendMessage::UpdateDocumentLayerStructure { data_buffer } = message {
 			message = FrontendMessage::UpdateDocumentLayerStructureJs { data_buffer: data_buffer.into() };
 		}

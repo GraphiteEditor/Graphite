@@ -654,7 +654,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 				responses.add(OverlaysMessage::Draw);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
-				responses.add(DocumentMessage::SendGuidesData);
 			}
 			DocumentMessage::MoveGuide { id, position } => {
 				// Get the transform before mutable borrowing the guides
@@ -671,7 +670,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					guide.position = document_point.x;
 				}
 				responses.add(OverlaysMessage::Draw);
-				responses.add(DocumentMessage::SendGuidesData);
 			}
 			DocumentMessage::DeleteGuide { id } => {
 				// Remove from horizontal guides
@@ -680,7 +678,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.vertical_guides.retain(|g| g.id != id);
 				responses.add(OverlaysMessage::Draw);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
-				responses.add(DocumentMessage::SendGuidesData);
 			}
 			DocumentMessage::GuideOverlays { context: mut overlay_context } => {
 				if self.guides_visible {
@@ -692,24 +689,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(OverlaysMessage::Draw);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 				responses.add(MenuBarMessage::SendLayout);
-			}
-			DocumentMessage::SendGuidesData => {
-				let transform = self.metadata().document_to_viewport;
-				let horizontal_guides: Vec<(u64, f64)> = self.horizontal_guides.iter().map(|g| (g.id.as_raw(), g.position)).collect();
-				let vertical_guides: Vec<(u64, f64)> = self.vertical_guides.iter().map(|g| (g.id.as_raw(), g.position)).collect();
-				let document_to_viewport = [
-					transform.matrix2.x_axis.x,
-					transform.matrix2.x_axis.y,
-					transform.matrix2.y_axis.x,
-					transform.matrix2.y_axis.y,
-					transform.translation.x,
-					transform.translation.y,
-				];
-				responses.add(FrontendMessage::UpdateGuidesData {
-					horizontal_guides,
-					vertical_guides,
-					document_to_viewport,
-				});
 			}
 			DocumentMessage::GroupSelectedLayers { group_folder_type } => {
 				responses.add(DocumentMessage::AddTransaction);
