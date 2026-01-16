@@ -41,7 +41,7 @@
 		{/if}
 	</LayoutRow>
 	<!-- Window frame -->
-	<LayoutRow class="window-frame" on:mousedown={() => editor.handle.appWindowDrag()} on:dblclick={() => editor.handle.appWindowMaximize()} />
+	<LayoutRow class="window-frame" on:mousedown={() => {if (!isFullscreen) editor.handle.appWindowDrag()}} on:dblclick={() => {if (!isFullscreen)editor.handle.appWindowMaximize()}} />
 	<!-- Window buttons -->
 	<LayoutRow class="window-buttons" classes={{ fullscreen: showFullscreenButton, windows: $appWindow.platform === "Windows", linux: $appWindow.platform === "Linux" }}>
 		{#if $appWindow.platform !== "Mac"}

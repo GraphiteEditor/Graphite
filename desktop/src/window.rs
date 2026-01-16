@@ -112,6 +112,9 @@ impl Window {
 	}
 
 	pub(crate) fn toggle_maximize(&self) {
+		if self.is_fullscreen() {
+			return;
+		}
 		self.winit_window.set_maximized(!self.winit_window.is_maximized());
 	}
 
@@ -132,6 +135,9 @@ impl Window {
 	}
 
 	pub(crate) fn start_drag(&self) {
+		if self.is_fullscreen() {
+			return;
+		}
 		let _ = self.winit_window.drag_window();
 	}
 
