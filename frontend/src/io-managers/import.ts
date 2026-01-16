@@ -1,18 +1,20 @@
-import { TriggerImport, TriggerImportWithDestination } from "@graphite/messages";
-import { extractPixelData } from "@graphite/utility-functions/rasterization";
 import type { Editor } from "@graphite/editor";
+import { TriggerImport, TriggerFileImport } from "@graphite/messages";
+import { extractPixelData } from "@graphite/utility-functions/rasterization";
 
-let pendingFiles: File[] | undefined;
+let pendingFiles: File[] = [];
 
-export function setPendingImportFiles(files: File[]) {
-	pendingFiles = files;
+export function handleImportFile(editor: Editor, file: File) {
+	pendingFiles = [file];
+	const api = editor.handle as unknown as { requestImportDialog?: () => void };
+	api.requestImportDialog?.();
 }
 
 export function createImportManager(editor: Editor) {
 	// Subscribe to TriggerImport to open a file picker in the browser
 	editor.subscriptions.subscribeJsMessage(TriggerImport, () => {
 		// If we already have pending files (e.g., from a desktop drop), just request the dialog now
-		if (pendingFiles && pendingFiles.length > 0) {
+		if (pendingFiles.length > 0) {
 			const api = editor.handle as unknown as { requestImportDialog?: () => void };
 			api.requestImportDialog?.();
 			return;
@@ -33,11 +35,10 @@ export function createImportManager(editor: Editor) {
 		input.click();
 	});
 
-	// Subscribe to TriggerImportWithDestination to actually read files and import
-	editor.subscriptions.subscribeJsMessage(TriggerImportWithDestination, async ({ destination }) => {
-		const isNewDocument = destination === "NewDocument";
-		let files = pendingFiles ? pendingFiles : [];
-		pendingFiles = undefined;
+	editor.subscriptions.subscribeJsMessage(TriggerFileImport, async (message) => {
+		const { newDocument } = message;
+		let files = pendingFiles;
+		pendingFiles = [];
 
 		// If no files pending, prompt to choose files now, then proceed with import
 		if (files.length === 0) {
@@ -64,17 +65,23 @@ export function createImportManager(editor: Editor) {
 
 				if (file.type.includes("svg") || file.name.toLowerCase().endsWith(".svg")) {
 					const svg = await file.text();
-					const api = editor.handle as unknown as { importSvgWithDestination?: (name: string | undefined, svg: string, isNewDocument: boolean) => void };
-					api.importSvgWithDestination?.(file.name, svg, isNewDocument);
+					if (newDocument) {
+						const api = editor.handle as unknown as { importSvgAsNewDocument: (name: string, content: string) => void };
+						if (api.importSvgAsNewDocument) {
+							api.importSvgAsNewDocument(file.name, svg);
+						} else {
+							// Fallback
+							editor.handle.pasteSvg(file.name, svg);
+						}
+					} else {
+						editor.handle.pasteSvg(file.name, svg);
+					}
 					continue;
 				}
 
 				if (file.type.startsWith("image") || /\.(png|jpg|jpeg|webp|bmp|gif|avif)$/i.test(file.name)) {
 					const imageData = await extractPixelData(file);
-					const api = editor.handle as unknown as {
-						importImageWithDestination?: (name: string | undefined, data: Uint8Array, width: number, height: number, isNewDocument: boolean) => void;
-					};
-					api.importImageWithDestination?.(file.name, new Uint8Array(imageData.data), imageData.width, imageData.height, isNewDocument);
+					editor.handle.pasteImage(file.name, new Uint8Array(imageData.data), imageData.width, imageData.height);
 					continue;
 				}
 			} catch (e) {

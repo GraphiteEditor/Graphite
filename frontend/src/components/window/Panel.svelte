@@ -18,7 +18,8 @@
 <script lang="ts">
 	import { getContext, tick } from "svelte";
 
-	import type { Editor } from "@graphite/editor";
+	import { type Editor } from "@graphite/editor";
+	import { handleImportFile } from "@graphite/io-managers/import";
 	import { isEventSupported } from "@graphite/utility-functions/platform";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -78,13 +79,7 @@
 			const file = item.getAsFile();
 			if (!file) return;
 
-			if (file.type.includes("svg")) {
-				const svgData = await file.text();
-				// Call the API `importSvgAsNewDocument`
-				const handleWithImport = editor.handle as unknown as { importSvgAsNewDocument?: (name: string | undefined, svg: string) => void };
-				handleWithImport.importSvgAsNewDocument?.(file.name, svgData);
-				return;
-			}
+			handleImportFile(editor, file);
 		});
 	}
 

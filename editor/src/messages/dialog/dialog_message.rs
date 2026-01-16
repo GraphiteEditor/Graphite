@@ -33,6 +33,7 @@ pub enum DialogMessage {
 	RequestLicensesThirdPartyDialogWithLicenseText {
 		license_text: String,
 	},
+	RequestImportDialog,
 	RequestNewDocumentDialog,
 	RequestPreferencesDialog,
 }

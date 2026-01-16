@@ -250,6 +250,11 @@ impl EditorHandle {
 		}
 	}
 
+	#[wasm_bindgen(js_name = requestImportDialog)]
+	pub fn request_import_dialog(&self) {
+		self.dispatch(DialogMessage::RequestImportDialog);
+	}
+
 	#[wasm_bindgen(js_name = addPrimaryImport)]
 	pub fn add_primary_import(&self) {
 		self.dispatch(DocumentMessage::AddTransaction);
@@ -410,6 +415,12 @@ impl EditorHandle {
 	#[wasm_bindgen(js_name = newDocumentDialog)]
 	pub fn new_document_dialog(&self) {
 		let message = DialogMessage::RequestNewDocumentDialog;
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = requestImportDialog)]
+	pub fn request_import_dialog(&self) {
+		let message = DialogMessage::RequestImportDialog;
 		self.dispatch(message);
 	}
 
