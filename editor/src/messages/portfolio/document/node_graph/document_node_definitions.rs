@@ -2200,11 +2200,39 @@ fn static_input_properties() -> InputProperties {
 		}),
 	);
 	map.insert(
+		// The custom number input settings are only available on proto nodes
 		"optional_f64".to_string(),
 		Box::new(|node_id, index, context| {
+			let node_metadata = registry::NODE_METADATA.lock().unwrap();
+			let mut number_input = NumberInput::default();
+			if let Some(field) = context
+				.network_interface
+				.implementation(&node_id, context.selection_network_path)
+				.and_then(|implementation| if let DocumentNodeImplementation::ProtoNode(id) = implementation { Some(id) } else { None })
+				.and_then(|proto_node_identifier| node_metadata.get(proto_node_identifier))
+				.and_then(|metadata| metadata.fields.get(index))
+			{
+				if let Some(unit) = field.unit {
+					number_input = number_input.unit(unit);
+				}
+				if let Some(number_min) = field.number_min {
+					number_input = number_input.min(number_min);
+				}
+				if let Some(number_max) = field.number_max {
+					number_input = number_input.max(number_max);
+				}
+				if let Some((range_min, range_max)) = field.number_mode_range {
+					number_input = number_input.range_min(Some(range_min));
+					number_input = number_input.range_max(Some(range_max));
+				}
+				number_input = number_input.is_integer(false);
+				if let Some(number_step) = field.number_step {
+					number_input = number_input.step(number_step);
+				}
+			};
 			Ok(vec![LayoutGroup::Row {
 				// The bool input must be directly above the number
-				widgets: node_properties::optional_f64_widget(ParameterWidgetsInfo::new(node_id, index, false, context), index - 1, NumberInput::default()),
+				widgets: node_properties::optional_f64_widget(ParameterWidgetsInfo::new(node_id, index, false, context), index - 1, number_input),
 			}])
 		}),
 	);

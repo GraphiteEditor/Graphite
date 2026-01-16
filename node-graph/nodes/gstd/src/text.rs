@@ -39,6 +39,7 @@ fn text<'i: 'n>(
 	has_max_width: bool,
 	/// The maximum width that the text block can occupy before wrapping to a new line. Otherwise, lines do not wrap.
 	#[unit(" px")]
+	#[hard_min(1.)]
 	#[widget(ParsedWidgetOverride::Custom = "optional_f64")]
 	max_width: f64,
 	/// Whether the *Max Height* property is enabled so that lines beyond it are not drawn.
@@ -46,6 +47,7 @@ fn text<'i: 'n>(
 	has_max_height: bool,
 	/// The maximum height that the text block can occupy. Excess lines are not drawn.
 	#[unit(" px")]
+	#[hard_min(1.)]
 	#[widget(ParsedWidgetOverride::Custom = "optional_f64")]
 	max_height: f64,
 	/// The angle of faux italic slant applied to each glyph.
