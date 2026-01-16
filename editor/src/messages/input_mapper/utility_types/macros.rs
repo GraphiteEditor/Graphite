@@ -63,7 +63,6 @@ macro_rules! entry {
 
 	// Implementation macro to avoid code duplication
 	($input:expr; $($modifier:ident),*; $($refresh:ident),*; $action_dispatch:expr; $canonical:expr; $disabled:expr) => {
-
 		&[&[
 			// Cause the `action_dispatch` message to be sent when the specified input occurs.
 			MappingEntry {
@@ -132,6 +131,7 @@ macro_rules! mapping {
 				if entry.disabled {
 					continue;
 				}
+
 				let corresponding_list = match entry.input {
 					InputMapperMessage::KeyDown(key) => &mut key_down[key as usize],
 					InputMapperMessage::KeyUp(key) => &mut key_up[key as usize],

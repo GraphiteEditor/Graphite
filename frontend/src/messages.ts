@@ -107,9 +107,11 @@ export class SendUIMetadata extends JsMessage {
 	readonly nodeTypes!: FrontendNodeType[];
 }
 
-export class SendShortcutF11 extends JsMessage {
+export class SendShortcutFullscreen extends JsMessage {
 	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
 	readonly shortcut!: ActionShortcut | undefined;
+	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
+	readonly shortcutMac!: ActionShortcut | undefined;
 }
 
 export class SendShortcutAltClick extends JsMessage {
@@ -1666,7 +1668,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	DisplayEditableTextboxTransform,
 	DisplayRemoveEditableTextbox,
 	SendUIMetadata,
-	SendShortcutF11,
+	SendShortcutFullscreen,
 	SendShortcutAltClick,
 	SendShortcutShiftClick,
 	TriggerAboutGraphiteLocalizedCommitDate,

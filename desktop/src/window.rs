@@ -1,13 +1,12 @@
+use crate::consts::APP_NAME;
+use crate::event::AppEventScheduler;
+use crate::wrapper::messages::MenuItem;
 use std::collections::HashMap;
 use std::sync::Arc;
 use winit::cursor::{CursorIcon, CustomCursor, CustomCursorSource};
 use winit::event_loop::ActiveEventLoop;
 use winit::monitor::Fullscreen;
 use winit::window::{Window as WinitWindow, WindowAttributes};
-
-use crate::consts::APP_NAME;
-use crate::event::AppEventScheduler;
-use crate::wrapper::messages::MenuItem;
 
 pub(crate) trait NativeWindow {
 	fn init() {}

@@ -51,7 +51,7 @@
 					tooltipDescription={$appWindow.platform === "Web" && $fullscreen.keyboardLockApiSupported
 						? "While fullscreen, keyboard shortcuts normally reserved by the browser become available."
 						: undefined}
-					tooltipShortcut={$tooltip.f11Shortcut}
+					tooltipShortcut={$tooltip.fullscreenShortcut}
 					on:click={() => {
 						if (isDesktop()) editor.handle.appWindowFullscreen();
 						else ($fullscreen.windowFullscreen ? fullscreen.exitFullscreen : fullscreen.enterFullscreen)();

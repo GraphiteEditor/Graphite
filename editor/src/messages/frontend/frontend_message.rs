@@ -64,8 +64,10 @@ pub enum FrontendMessage {
 		#[serde(rename = "nodeTypes")]
 		node_types: Vec<FrontendNodeType>,
 	},
-	SendShortcutF11 {
+	SendShortcutFullscreen {
 		shortcut: Option<ActionShortcut>,
+		#[serde(rename = "shortcutMc")]
+		shortcut_mac: Option<ActionShortcut>,
 	},
 	SendShortcutAltClick {
 		shortcut: Option<ActionShortcut>,

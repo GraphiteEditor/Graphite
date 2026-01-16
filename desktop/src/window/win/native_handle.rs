@@ -370,7 +370,6 @@ unsafe fn calculate_resize_direction(helper: HWND, lparam: LPARAM) -> Option<u32
 // Check if the rect is effectively fullscreen, meaning it would cover the entire monitor.
 // We need to use this heuristic because Windows doesn't provide a way to check for fullscreen state.
 fn is_effectively_fullscreen(rect: RECT) -> bool {
-
 	let hmon = unsafe { MonitorFromRect(&rect, MONITOR_DEFAULTTONEAREST) };
 	if hmon.is_invalid() {
 		return false;

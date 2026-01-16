@@ -84,27 +84,11 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 		// Cut, copy, and paste is handled in the backend on desktop
 		if (isDesktop() && accelKey && ["KeyX", "KeyC", "KeyV"].includes(key)) return true;
+		// But on web, we want to not redirect paste
+		if (!isDesktop() && key === "KeyV" && accelKey) return false;
 
 		// Don't redirect user input from text entry into HTML elements
 		if (targetIsTextField(e.target || undefined) && key !== "Escape" && !(accelKey && ["Enter", "NumpadEnter"].includes(key))) return false;
-
-		// Don't redirect paste in web
-		if (key === "KeyV" && accelKey) return false;
-
-		// Don't redirect a fullscreen request on web
-		if (key === "F11" && e.type === "keydown" && !e.repeat && !isDesktop()) {
-			e.preventDefault();
-			fullscreen.toggleFullscreen();
-			return false;
-		}
-
-		// Don't redirect a reload request
-		if (key === "F5") return false;
-		if (key === "KeyR" && accelKey) return false;
-
-		// Don't redirect debugging tools
-		if (["F12", "F8"].includes(key)) return false;
-		if (["KeyC", "KeyI", "KeyJ"].includes(key) && accelKey && e.shiftKey) return false;
 
 		// Don't redirect tab or enter if not in canvas (to allow navigating elements)
 		potentiallyRestoreCanvasFocus(e);
@@ -112,6 +96,24 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 		// Don't redirect if a MenuList is open
 		if (window.document.querySelector("[data-floating-menu-content]")) return false;
+
+		// Web-only keyboard shortcuts
+		if (!isDesktop()) {
+			// Don't redirect a fullscreen request
+			if (key === "F11" && e.type === "keydown" && !e.repeat) {
+				e.preventDefault();
+				fullscreen.toggleFullscreen();
+				return false;
+			}
+
+			// Don't redirect a reload request
+			if (key === "F5") return false;
+			if (key === "KeyR" && accelKey) return false;
+
+			// Don't redirect debugging tools
+			if (["F12", "F8"].includes(key)) return false;
+			if (["KeyC", "KeyI", "KeyJ"].includes(key) && accelKey && e.shiftKey) return false;
+		}
 
 		// Redirect to the backend
 		return true;

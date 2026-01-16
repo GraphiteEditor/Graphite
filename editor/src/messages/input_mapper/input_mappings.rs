@@ -58,8 +58,8 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		//
 		// AppWindowMessage
 		entry!(KeyDown(F11); disabled=cfg!(target_os = "macos"), action_dispatch=AppWindowMessage::Fullscreen),
-		entry!(KeyDown(KeyF); modifiers=[Accel, Control], disabled=cfg!(not(target_os = "macos")), action_dispatch=AppWindowMessage::Fullscreen),
-		entry!(KeyDown(KeyQ); modifiers=[Accel], disabled=cfg!(not(target_os = "macos")), action_dispatch=AppWindowMessage::Close),
+		entry!(KeyDown(KeyF); modifiers=[Command, Control], disabled=cfg!(not(target_os = "macos")), action_dispatch=AppWindowMessage::Fullscreen),
+		entry!(KeyDown(KeyQ); modifiers=[Command], disabled=cfg!(not(target_os = "macos")), action_dispatch=AppWindowMessage::Close),
 		//
 		// ClipboardMessage
 		entry!(KeyDown(KeyX); modifiers=[Accel], action_dispatch=ClipboardMessage::Cut),
@@ -426,7 +426,7 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		entry!(WheelScroll; modifiers=[Control], disabled=zoom_with_scroll, action_dispatch=NavigationMessage::CanvasZoomMouseWheel),
 		entry!(WheelScroll; modifiers=[Command], disabled=zoom_with_scroll, action_dispatch=NavigationMessage::CanvasZoomMouseWheel),
 		entry!(WheelScroll; modifiers=[Shift], disabled=zoom_with_scroll, action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: true }),
-		entry!(WheelScroll;  disabled=zoom_with_scroll, action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: false }),
+		entry!(WheelScroll; disabled=zoom_with_scroll, action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: false }),
 		// On Mac, the OS already converts Shift+scroll into horizontal scrolling so we have to reverse the behavior from normal to produce the same outcome
 		entry!(WheelScroll; modifiers=[Control], disabled=!zoom_with_scroll, action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: keyboard_platform == KeyboardPlatformLayout::Mac }),
 		entry!(WheelScroll; modifiers=[Shift], disabled=!zoom_with_scroll, action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: keyboard_platform != KeyboardPlatformLayout::Mac }),
