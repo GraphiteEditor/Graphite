@@ -90,18 +90,6 @@ impl From<Table<Color>> for Graphic {
 	}
 }
 // Note: Table conversions handled by blanket impl in gcore
-
-// Option<Color>
-impl From<Option<Color>> for Graphic {
-	fn from(color: Option<Color>) -> Self {
-		if let Some(color) = color {
-			Graphic::Color(Table::new_from_element(color))
-		} else {
-			Graphic::default()
-		}
-	}
-}
-// Note: Table conversions handled by blanket impl in gcore
 // Note: Table<Color> -> Option<Color> is in gcore (Color is defined there)
 
 // GradientStops

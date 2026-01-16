@@ -405,7 +405,6 @@ fn random(
 	/// Seed to determine the unique variation of which number is generated.
 	seed: u64,
 	/// The smaller end of the range within which the random number is generated.
-	#[default(0.)]
 	min: f64,
 	/// The larger end of the range within which the random number is generated.
 	#[default(1.)]

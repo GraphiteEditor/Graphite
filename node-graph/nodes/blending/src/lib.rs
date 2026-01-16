@@ -244,7 +244,6 @@ fn blending<T: SetBlendMode + MultiplyAlpha + MultiplyFill + SetClip>(
 	#[default(100.)]
 	fill: Percentage,
 	/// Whether the content inherits the alpha of the content beneath it.
-	#[default(false)]
 	clip: bool,
 ) -> T {
 	// TODO: Find a way to make this apply once to the table's parent (i.e. its row in its parent table or TableRow<T>) rather than applying to each row in its own table, which produces the undesired result
