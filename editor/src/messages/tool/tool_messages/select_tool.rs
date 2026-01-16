@@ -407,6 +407,7 @@ struct SelectToolData {
 	auto_panning: AutoPanning,
 	dragging_guide_id: Option<GuideId>,
 	dragging_guide_direction: Option<GuideDirection>,
+	guide_drag_start_position: Option<f64>,
 	drag_start_center: ViewportPosition,
 }
 
@@ -1093,11 +1094,15 @@ impl Fsm for SelectToolFsmState {
 					// tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
 					state
-				}
-				// Check if clicking on a guide line - handle before transform cage interactions
-				else if let Some((guide_id, direction)) = hit_test_guide(document, input.mouse.position) {
+				} else if let Some((guide_id, direction)) = hit_test_guide(document, input.mouse.position) {
 					tool_data.dragging_guide_id = Some(guide_id);
 					tool_data.dragging_guide_direction = Some(direction);
+
+					let original_position = match direction {
+						GuideDirection::Horizontal => document.horizontal_guides.iter().find(|g| g.id == guide_id).map(|g| g.position),
+						GuideDirection::Vertical => document.vertical_guides.iter().find(|g| g.id == guide_id).map(|g| g.position),
+					};
+					tool_data.guide_drag_start_position = original_position;
 					SelectToolFsmState::DraggingGuide { guide_id, direction }
 				}
 				// Dragging one (or two, forming a corner) of the transform cage bounding box edges
@@ -1194,6 +1199,7 @@ impl Fsm for SelectToolFsmState {
 			(SelectToolFsmState::DraggingGuide { .. }, SelectToolMessage::Abort) => {
 				tool_data.dragging_guide_id = None;
 				tool_data.dragging_guide_direction = None;
+				tool_data.guide_drag_start_position = None;
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
 			}
@@ -1201,25 +1207,21 @@ impl Fsm for SelectToolFsmState {
 			(SelectToolFsmState::DraggingGuide { guide_id, direction }, SelectToolMessage::PointerMove { .. }) => {
 				tool_data.drag_current = input.mouse.position;
 
-				let transform = document.metadata().document_to_viewport;
-				// Converts viewport to document
-				let new_position = match direction {
-					GuideDirection::Horizontal => (input.mouse.position.y - transform.translation.y) / transform.matrix2.y_axis.y,
-					GuideDirection::Vertical => (input.mouse.position.x - transform.translation.x) / transform.matrix2.x_axis.x,
+				// MoveGuide expects viewport coordinates and does the conversion internally
+				let viewport_position = match direction {
+					GuideDirection::Horizontal => input.mouse.position.y,
+					GuideDirection::Vertical => input.mouse.position.x,
 				};
 
-				responses.add(DocumentMessage::MoveGuide { id: guide_id, position: new_position });
+				responses.add(DocumentMessage::MoveGuide {
+					id: guide_id,
+					position: viewport_position,
+				});
 
 				SelectToolFsmState::DraggingGuide { guide_id, direction }
 			}
 			(SelectToolFsmState::DraggingGuide { guide_id, direction }, SelectToolMessage::DragStop { .. }) => {
 				tool_data.drag_current = input.mouse.position;
-
-				let transform = document.metadata().document_to_viewport;
-				let final_position = match direction {
-					GuideDirection::Horizontal => (input.mouse.position.y - transform.translation.y) / transform.matrix2.y_axis.y,
-					GuideDirection::Vertical => (input.mouse.position.x - transform.translation.x) / transform.matrix2.x_axis.x,
-				};
 
 				// Checks if dragged outside viewport - deletes the guide
 				let viewport_size = viewport.size().into_dvec2();
@@ -1228,14 +1230,20 @@ impl Fsm for SelectToolFsmState {
 				if outside_viewport {
 					responses.add(DocumentMessage::DeleteGuide { id: guide_id });
 				} else {
+					// MoveGuide expects viewport coordinates and does the conversion internally
+					let viewport_position = match direction {
+						GuideDirection::Horizontal => input.mouse.position.y,
+						GuideDirection::Vertical => input.mouse.position.x,
+					};
 					responses.add(DocumentMessage::MoveGuide {
 						id: guide_id,
-						position: final_position,
+						position: viewport_position,
 					});
 				}
 
 				tool_data.dragging_guide_id = None;
 				tool_data.dragging_guide_direction = None;
+				tool_data.guide_drag_start_position = None;
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
 			}
