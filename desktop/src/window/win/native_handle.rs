@@ -210,10 +210,10 @@ unsafe fn ensure_helper_class() {
 // Main window message handler, called on the UI thread for every message the main window receives.
 unsafe extern "system" fn main_window_handle_message(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
 	if msg == WM_NCCALCSIZE && wparam.0 != 0 {
-		// When maximized, shrink to visible frame so content doesn't extend beyond it.
-		if unsafe { IsZoomed(hwnd).as_bool() } && !is_effectively_fullscreen(hwnd) {
-			let params = unsafe { &mut *(lparam.0 as *mut NCCALCSIZE_PARAMS) };
+		let params = unsafe { &mut *(lparam.0 as *mut NCCALCSIZE_PARAMS) };
 
+		// When maximized, shrink to visible frame so content doesn't extend beyond it.
+		if unsafe { IsZoomed(hwnd).as_bool() } && !is_effectively_fullscreen(params.rgrc[0]) {
 			let dpi = unsafe { GetDpiForWindow(hwnd) };
 			let size = unsafe { GetSystemMetricsForDpi(SM_CXSIZEFRAME, dpi) };
 			let pad = unsafe { GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi) };
@@ -367,19 +367,11 @@ unsafe fn calculate_resize_direction(helper: HWND, lparam: LPARAM) -> Option<u32
 	}
 }
 
-// Check if the window is effectively fullscreen, meaning it covers the entire monitor.
+// Check if the rect is effectively fullscreen, meaning it would cover the entire monitor.
 // We need to use this heuristic because Windows doesn't provide a way to check for fullscreen state.
-fn is_effectively_fullscreen(hwnd: HWND) -> bool {
-	if hwnd.is_invalid() {
-		return false;
-	}
+fn is_effectively_fullscreen(rect: RECT) -> bool {
 
-	let mut view_rect = RECT::default();
-	if unsafe { GetWindowRect(hwnd, &mut view_rect) }.is_err() {
-		return false;
-	}
-
-	let hmon = unsafe { MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) };
+	let hmon = unsafe { MonitorFromRect(&rect, MONITOR_DEFAULTTONEAREST) };
 	if hmon.is_invalid() {
 		return false;
 	}
@@ -394,8 +386,8 @@ fn is_effectively_fullscreen(hwnd: HWND) -> bool {
 
 	// Allow a tiny tolerance for DPI / rounding issues
 	const EPS: i32 = 1;
-	(view_rect.left - monitor_info.rcMonitor.left).abs() <= EPS
-		&& (view_rect.top - monitor_info.rcMonitor.top).abs() <= EPS
-		&& (view_rect.right - monitor_info.rcMonitor.right).abs() <= EPS
-		&& (view_rect.bottom - monitor_info.rcMonitor.bottom).abs() <= EPS
+	(rect.left - monitor_info.rcMonitor.left).abs() <= EPS
+		&& (rect.top - monitor_info.rcMonitor.top).abs() <= EPS
+		&& (rect.right - monitor_info.rcMonitor.right).abs() <= EPS
+		&& (rect.bottom - monitor_info.rcMonitor.bottom).abs() <= EPS
 }
