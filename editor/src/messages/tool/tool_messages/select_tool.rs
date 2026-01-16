@@ -1218,6 +1218,15 @@ impl Fsm for SelectToolFsmState {
 					position: viewport_position,
 				});
 
+				let cursor = match direction {
+					GuideDirection::Horizontal => MouseCursorIcon::NSResize,
+					GuideDirection::Vertical => MouseCursorIcon::EWResize,
+				};
+				if tool_data.cursor != cursor {
+					tool_data.cursor = cursor;
+					responses.add(FrontendMessage::UpdateMouseCursor { cursor });
+				}
+
 				SelectToolFsmState::DraggingGuide { guide_id, direction }
 			}
 			(SelectToolFsmState::DraggingGuide { guide_id, direction }, SelectToolMessage::DragStop { .. }) => {
@@ -1419,6 +1428,13 @@ impl Fsm for SelectToolFsmState {
 				// Dragging the pivot overrules the other operations
 				if tool_data.state_from_pivot_gizmo(input.mouse.position).is_some() {
 					cursor = MouseCursorIcon::Move;
+				}
+
+				if let Some((_, direction)) = hit_test_guide(document, input.mouse.position) {
+					cursor = match direction {
+						GuideDirection::Horizontal => MouseCursorIcon::NSResize,
+						GuideDirection::Vertical => MouseCursorIcon::EWResize,
+					};
 				}
 
 				// Generate the hover outline
