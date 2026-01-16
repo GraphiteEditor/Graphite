@@ -102,7 +102,7 @@ export class UpdateNodeGraphTransform extends JsMessage {
 
 export class SendUIMetadata extends JsMessage {
 	@Transform(({ obj }) => new Map(obj.nodeDescriptions))
-	readonly nodeDescriptions!: Map<DefinitionIdentifier, string>;
+	readonly nodeDescriptions!: Map<string, string>;
 
 	readonly nodeTypes!: FrontendNodeType[];
 }
@@ -220,7 +220,7 @@ export class FrontendNode {
 
 	readonly canBeLayer!: boolean;
 
-	readonly reference!: DefinitionIdentifier | undefined;
+	readonly reference!: string | undefined;
 
 	readonly displayName!: string;
 
@@ -251,7 +251,7 @@ export class FrontendNode {
 }
 
 export class FrontendNodeType {
-	readonly identifier!: DefinitionIdentifier;
+	readonly identifier!: string;
 
 	readonly name!: string;
 
@@ -834,7 +834,9 @@ export class UpdateDocumentLayerDetails extends JsMessage {
 export class LayerPanelEntry {
 	id!: bigint;
 
-	reference!: DefinitionIdentifier;
+	implementationName!: string;
+
+	iconName!: IconName | undefined;
 
 	alias!: string;
 

@@ -80,29 +80,23 @@ impl DefinitionIdentifier {
 				}),
 		}
 	}
+
+	pub fn serialized(&self) -> String {
+		match self {
+			DefinitionIdentifier::ProtoNode(id) => format!("PROTONODE:{}", id.as_str()),
+			DefinitionIdentifier::Network(data) => format!("NETWORK:{}", data),
+		}
+	}
 }
 
 impl From<Value> for DefinitionIdentifier {
 	fn from(value: Value) -> Self {
-		match value {
-			Value::Object(mut map) => {
-				let ty = map.remove("type").unwrap().as_str().unwrap().to_owned();
+		let s = value.as_str().expect("DefinitionIdentifier value must be a string");
 
-				match ty.as_ref() {
-					"Network" => {
-						let data = map.remove("data").unwrap().as_str().unwrap().to_owned();
-						DefinitionIdentifier::Network(data)
-					}
-					"ProtoNode" => {
-						let value = map.remove("data").unwrap();
-						let proto: ProtoNodeIdentifier = serde_json::from_value(value).unwrap();
-						DefinitionIdentifier::ProtoNode(proto)
-					}
-					_ => panic!("Unknown `DefinitionIdentifier` type: {:?}", ty),
-				}
-			}
-
-			_ => panic!("Expected a JSON object to convert to `DefinitionIdentifier`"),
+		match s.split_once(':') {
+			Some(("PROTONODE", data)) => DefinitionIdentifier::ProtoNode(ProtoNodeIdentifier::with_owned_string(data.to_string())),
+			Some(("NETWORK", data)) => DefinitionIdentifier::Network(data.to_string()),
+			other => panic!("Unknown `DefinitionIdentifier` type. Found `{other:?}`."),
 		}
 	}
 }
@@ -2621,7 +2615,7 @@ pub fn collect_node_types() -> Vec<FrontendNodeType> {
 				name = identifier.implementation_name_from_identifier()
 			}
 			FrontendNodeType {
-				identifier: identifier.clone(),
+				identifier: identifier.serialized(),
 				name,
 				category: definition.category.to_string(),
 				input_types,
@@ -2630,10 +2624,15 @@ pub fn collect_node_types() -> Vec<FrontendNodeType> {
 		.collect()
 }
 
-pub fn collect_node_descriptions() -> Vec<(DefinitionIdentifier, String)> {
+pub fn collect_node_descriptions() -> Vec<(String, String)> {
 	DOCUMENT_NODE_TYPES
 		.iter()
-		.map(|(identifier, definition)| (identifier.clone(), if definition.description != "TODO" { definition.description.to_string() } else { String::new() }))
+		.map(|(identifier, definition)| {
+			(
+				identifier.serialized(),
+				if definition.description != "TODO" { definition.description.to_string() } else { String::new() },
+			)
+		})
 		.collect()
 }
 
