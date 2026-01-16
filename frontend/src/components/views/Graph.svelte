@@ -14,7 +14,9 @@
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 
-	// These components will continue to be rendered in svelte after the first stage of native node graph rendering.
+	// Note on upcoming changes for poting this component to Rust for native rendering:
+	//
+	// These components will continue to be rendered in Svelte after the first stage of native node graph rendering.
 	// - Import and export ports
 	// - Wires to import and export
 	// - Wire in progress
@@ -23,8 +25,8 @@
 	// - Error dialog
 	// - Node/Input/Output Tooltips
 	// - Solo drag grip tooltip
-
-	// These elements will be not be rendered in svelte when rendering the native node graph. They are rendered below all other components
+	//
+	// These elements will be not be rendered in Svelte when rendering with the native node graph. They are rendered below all other components.
 	// - Dot grid background
 	// - Nodes/Layers
 	// - Wires between nodes/layers
@@ -288,8 +290,8 @@
 	<div class="wires" style:transform-origin="0 0" style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
 		<svg>
 			{#each $nodeGraph.wires.values() as map}
-				{#each map.values() as { pathString, dataType, thick, dashed }}
-					{#if thick}
+				{#each map.values() as { pathString, dataType, forLayerStack, dashed }}
+					{#if forLayerStack}
 						<path
 							d={pathString}
 							style:--data-line-width="8px"
@@ -619,8 +621,8 @@
 		<div class="wires">
 			<svg>
 				{#each $nodeGraph.wires.values() as map}
-					{#each map.values() as { pathString, dataType, thick, dashed }}
-						{#if !thick}
+					{#each map.values() as { pathString, dataType, forLayerStack, dashed }}
+						{#if !forLayerStack}
 							<path
 								d={pathString}
 								style:--data-line-width="2px"
@@ -634,7 +636,7 @@
 				{#if $nodeGraph.wirePathInProgress}
 					<path
 						d={$nodeGraph.wirePathInProgress?.wire}
-						style:--data-line-width={`${$nodeGraph.wirePathInProgress.thick ? 8 : 2}px`}
+						style:--data-line-width={`${$nodeGraph.wirePathInProgress.forLayerStack ? 8 : 2}px`}
 						style:--data-color={`var(--color-data-${$nodeGraph.wirePathInProgress.dataType.toLowerCase()})`}
 						style:--data-color-dim={`var(--color-data-${$nodeGraph.wirePathInProgress.dataType.toLowerCase()}-dim)`}
 					/>

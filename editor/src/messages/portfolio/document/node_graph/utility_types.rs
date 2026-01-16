@@ -142,7 +142,8 @@ pub struct WirePathInProgress {
 	pub wire: String,
 	#[serde(rename = "dataType")]
 	pub data_type: FrontendGraphDataType,
-	pub thick: bool,
+	#[serde(rename = "forLayerStack")]
+	pub for_layer_stack: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]

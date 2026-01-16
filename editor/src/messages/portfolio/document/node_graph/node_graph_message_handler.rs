@@ -79,8 +79,8 @@ pub struct NodeGraphMessageHandler {
 	pub wire_in_progress_from_connector: Option<DVec2>,
 	/// The end point of the dragged line (cannot be moved), stored in node graph coordinates.
 	pub wire_in_progress_to_connector: Option<DVec2>,
-	/// If the end point should be displayed as a vertical or horizontal connection
-	pub to_connector_is_layer: bool,
+	/// If the endpoint should be displayed as a vertical or horizontal connection.
+	pub wire_in_connector_is_layer: bool,
 	/// The data type determining the color of the wire being dragged.
 	pub wire_in_progress_type: FrontendGraphDataType,
 	/// State for the context menu popups.
@@ -1039,7 +1039,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 							return;
 						};
 						self.wire_in_progress_to_connector = Some(input_position);
-						self.to_connector_is_layer = if let InputConnector::Node { node_id, input_index } = to_connector {
+						// Checks if we're dragging the wire to a bottom input connector of a layer node or a regular left input connector, so we can update the wire style accordingly
+						self.wire_in_connector_is_layer = if let InputConnector::Node { node_id, input_index } = to_connector {
 							*input_index == 0 && network_interface.is_layer(node_id, selection_network_path)
 						} else {
 							false
@@ -1092,13 +1093,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 							wire_in_progress_from_connector,
 							wire_in_progress_to_connector,
 							from_connector_is_layer,
-							self.to_connector_is_layer,
+							self.wire_in_connector_is_layer,
 							GraphWireStyle::Direct,
 						);
 						let wire_path = WirePathInProgress {
 							wire: vector_wire.to_svg(),
 							data_type: self.wire_in_progress_type,
-							thick: self.to_connector_is_layer && from_connector_is_layer,
+							for_layer_stack: self.wire_in_connector_is_layer && from_connector_is_layer,
 						};
 						responses.add(FrontendMessage::UpdateWirePathInProgress {
 							wire_path_in_progress: Some(wire_path),
@@ -2799,7 +2800,7 @@ impl Default for NodeGraphMessageHandler {
 			select_if_not_dragged: None,
 			wire_in_progress_from_connector: None,
 			wire_in_progress_to_connector: None,
-			to_connector_is_layer: false,
+			wire_in_connector_is_layer: false,
 			wire_in_progress_type: FrontendGraphDataType::General,
 			context_menu: None,
 			deselect_on_pointer_up: None,

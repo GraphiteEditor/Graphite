@@ -150,7 +150,7 @@ export class UpdateOpenDocumentsList extends JsMessage {
 
 export class WirePathInProgress {
 	readonly wire!: string;
-	readonly thick!: boolean;
+	readonly forLayerStack!: boolean;
 	readonly dataType!: FrontendGraphDataType;
 }
 
@@ -277,7 +277,7 @@ export class NodeGraphTransform {
 export class WirePath {
 	readonly pathString!: string;
 	readonly dataType!: FrontendGraphDataType;
-	readonly thick!: boolean;
+	readonly forLayerStack!: boolean;
 	readonly dashed!: boolean;
 }
 

@@ -2367,7 +2367,7 @@ impl NodeNetworkInterface {
 		};
 		let vertical_end = input.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path) && input.input_index() == 0);
 		let vertical_start: bool = upstream_output.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path));
-		let thick = vertical_end && vertical_start;
+		let for_layer_stack = vertical_end && vertical_start;
 		let vector_wire = build_vector_wire(output_position, input_position, vertical_start, vertical_end, graph_wire_style);
 
 		let path_string = vector_wire.to_svg();
@@ -2375,8 +2375,8 @@ impl NodeNetworkInterface {
 		let wire_path_update = Some(WirePath {
 			path_string,
 			data_type,
-			thick,
-			dashed: false,
+			for_layer_stack,
+			for_previewing: false,
 		});
 
 		Some(WirePathUpdate {
@@ -2386,7 +2386,7 @@ impl NodeNetworkInterface {
 		})
 	}
 
-	/// Returns the vector subpath and a boolean of whether the wire should be thick.
+	/// Returns the vector subpath and a boolean of whether the wire should be thick (indicating it is for a layer stack).
 	pub fn vector_wire_from_input(&mut self, input: &InputConnector, wire_style: GraphWireStyle, network_path: &[NodeId]) -> Option<(BezPath, bool)> {
 		let Some(input_position) = self.get_input_center(input, network_path) else {
 			log::error!("Could not get dom rect for wire end: {input:?}");
@@ -2402,12 +2402,12 @@ impl NodeNetworkInterface {
 		};
 		let vertical_end = input.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path) && input.input_index() == 0);
 		let vertical_start = upstream_output.node_id().is_some_and(|node_id| self.is_layer(&node_id, network_path));
-		let thick = vertical_end && vertical_start;
-		Some((build_vector_wire(output_position, input_position, vertical_start, vertical_end, wire_style), thick))
+		let for_layer_stack = vertical_end && vertical_start;
+		Some((build_vector_wire(output_position, input_position, vertical_start, vertical_end, wire_style), for_layer_stack))
 	}
 
-	pub fn wire_path_from_input(&mut self, input: &InputConnector, graph_wire_style: GraphWireStyle, dashed: bool, network_path: &[NodeId]) -> Option<WirePath> {
-		let (vector_wire, thick) = self.vector_wire_from_input(input, graph_wire_style, network_path)?;
+	pub fn wire_path_from_input(&mut self, input: &InputConnector, graph_wire_style: GraphWireStyle, for_previewing: bool, network_path: &[NodeId]) -> Option<WirePath> {
+		let (vector_wire, for_layer_stack) = self.vector_wire_from_input(input, graph_wire_style, network_path)?;
 		let path_string = vector_wire.to_svg();
 		let data_type = self
 			.upstream_output_connector(input, network_path)
@@ -2416,8 +2416,8 @@ impl NodeNetworkInterface {
 		Some(WirePath {
 			path_string,
 			data_type,
-			thick,
-			dashed,
+			for_layer_stack,
+			for_previewing,
 		})
 	}
 

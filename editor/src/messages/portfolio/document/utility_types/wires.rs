@@ -9,8 +9,8 @@ pub struct WirePath {
 	pub path_string: String,
 	#[serde(rename = "dataType")]
 	pub data_type: FrontendGraphDataType,
-	pub thick: bool,
-	pub dashed: bool,
+	pub for_layer_stack: bool,
+	pub for_previewing: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
