@@ -1035,7 +1035,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	// Only nodes that have not been modified and still refer to a definition can be updated
 	let reference = document.network_interface.reference(node_id, network_path)?;
 
-	let inputs_count = node.inputs.len();
+	let mut inputs_count = node.inputs.len();
 
 	// Upgrade Stroke node to reorder parameters and add "Align" and "Paint Order" (#2644)
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::stroke::IDENTIFIER) && inputs_count == 8 {
@@ -1134,7 +1134,8 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	}
 
 	// Upgrade Text node to include line height and character spacing, which were previously hardcoded to 1, from https://github.com/GraphiteEditor/Graphite/pull/2016
-	if reference == DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER) && inputs_count != 11 {
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER) && inputs_count == 8 {
+		log::debug!("first upgrade");
 		let mut template: NodeTemplate = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut template);
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut template)?;
@@ -1184,7 +1185,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			if inputs_count >= 9 {
 				old_inputs[8].clone()
 			} else {
-				NodeInput::value(TaggedValue::Bool(TypesettingConfig::default().max_height.is_some()), false)
+				NodeInput::value(TaggedValue::F64(0.), false)
 			},
 			network_path,
 		);
@@ -1193,7 +1194,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			if inputs_count >= 10 {
 				old_inputs[9].clone()
 			} else {
-				NodeInput::value(TaggedValue::F64(TypesettingConfig::default().max_height.unwrap_or(100.)), false)
+				NodeInput::value(TaggedValue::TextAlign(TextAlign::Left), false)
 			},
 			network_path,
 		);
@@ -1202,28 +1203,52 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			if inputs_count >= 11 {
 				old_inputs[10].clone()
 			} else {
-				NodeInput::value(TaggedValue::F64(TypesettingConfig::default().tilt), false)
-			},
-			network_path,
-		);
-		document.network_interface.set_input(
-			&InputConnector::node(*node_id, 11),
-			if inputs_count >= 12 {
-				old_inputs[11].clone()
-			} else {
-				NodeInput::value(TaggedValue::TextAlign(TextAlign::default()), false)
-			},
-			network_path,
-		);
-		document.network_interface.set_input(
-			&InputConnector::node(*node_id, 12),
-			if inputs_count >= 13 {
-				old_inputs[12].clone()
-			} else {
 				NodeInput::value(TaggedValue::Bool(false), false)
 			},
 			network_path,
 		);
+		inputs_count = 11
+	}
+
+	// https://github.com/GraphiteEditor/Graphite/pull/3643
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER) && inputs_count == 11 {
+		log::debug!("second upgrade");
+		let mut template: NodeTemplate = resolve_document_node_type(&reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut template);
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut template)?;
+
+		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[2].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node(*node_id, 3), old_inputs[3].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node(*node_id, 4), old_inputs[4].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node(*node_id, 5), old_inputs[5].clone(), network_path);
+		let Some(TaggedValue::OptionalF64(old_max_width)) = old_inputs[6].as_value() else {
+			return None;
+		};
+		document
+			.network_interface
+			.set_input(&InputConnector::node(*node_id, 6), NodeInput::value(TaggedValue::Bool(old_max_width.is_some()), false), network_path);
+		document.network_interface.set_input(
+			&InputConnector::node(*node_id, 7),
+			NodeInput::value(TaggedValue::F64(old_max_width.unwrap_or_default()), false),
+			network_path,
+		);
+
+		let Some(TaggedValue::OptionalF64(old_max_height)) = old_inputs[7].as_value() else {
+			return None;
+		};
+		document
+			.network_interface
+			.set_input(&InputConnector::node(*node_id, 8), NodeInput::value(TaggedValue::Bool(old_max_height.is_some()), false), network_path);
+		document.network_interface.set_input(
+			&InputConnector::node(*node_id, 9),
+			NodeInput::value(TaggedValue::F64(old_max_height.unwrap_or_default()), false),
+			network_path,
+		);
+		document.network_interface.set_input(&InputConnector::node(*node_id, 10), old_inputs[8].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node(*node_id, 11), old_inputs[9].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node(*node_id, 12), old_inputs[10].clone(), network_path);
 	}
 
 	// Upgrade Sine, Cosine, and Tangent nodes to include a boolean input for whether the output should be in radians, which was previously the only option but is now not the default

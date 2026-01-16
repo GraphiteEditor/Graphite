@@ -173,6 +173,7 @@ tagged_value! {
 	U64(u64),
 	Bool(bool),
 	String(String),
+	OptionalF64(Option<f64>),
 	ColorNotInTable(Color),
 	// ========================
 	// LISTS OF PRIMITIVE TYPES
