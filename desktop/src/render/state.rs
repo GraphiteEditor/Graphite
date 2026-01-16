@@ -18,7 +18,6 @@ pub(crate) struct RenderState {
 	viewport_scale: [f32; 2],
 	viewport_offset: [f32; 2],
 	viewport_texture: Option<wgpu::Texture>,
-	overlays_texture: Option<wgpu::Texture>,
 	overlays_target_texture: Option<TargetTexture>,
 	ui_texture: Option<wgpu::Texture>,
 	bind_group: Option<wgpu::BindGroup>,
@@ -183,7 +182,6 @@ impl RenderState {
 			viewport_scale: [1.0, 1.0],
 			viewport_offset: [0.0, 0.0],
 			viewport_texture: None,
-			overlays_texture: None,
 			overlays_target_texture: None,
 			ui_texture: None,
 			bind_group: None,
@@ -208,11 +206,6 @@ impl RenderState {
 
 	pub(crate) fn bind_viewport_texture(&mut self, viewport_texture: wgpu::Texture) {
 		self.viewport_texture = Some(viewport_texture);
-		self.update_bindgroup();
-	}
-
-	pub(crate) fn bind_overlays_texture(&mut self, overlays_texture: wgpu::Texture) {
-		self.overlays_texture = Some(overlays_texture);
 		self.update_bindgroup();
 	}
 
@@ -247,10 +240,7 @@ impl RenderState {
 			tracing::error!("Error rendering overlays: {:?}", e);
 			return;
 		}
-		if let Some(target_texture) = &self.overlays_target_texture {
-			self.overlays_texture = Some(target_texture.texture().clone());
-			self.update_bindgroup();
-		}
+		self.update_bindgroup();
 	}
 
 	pub(crate) fn render(&mut self, window: &Window) -> Result<(), RenderError> {
@@ -321,7 +311,11 @@ impl RenderState {
 
 	fn update_bindgroup(&mut self) {
 		let viewport_texture_view = self.viewport_texture.as_ref().unwrap_or(&self.transparent_texture).create_view(&wgpu::TextureViewDescriptor::default());
-		let overlays_texture_view = self.overlays_texture.as_ref().unwrap_or(&self.transparent_texture).create_view(&wgpu::TextureViewDescriptor::default());
+		let overlays_texture_view = self
+			.overlays_target_texture
+			.as_ref()
+			.map(|target| target.view())
+			.unwrap_or_else(|| &self.transparent_texture.create_view(&wgpu::TextureViewDescriptor::default()));
 		let ui_texture_view = self.ui_texture.as_ref().unwrap_or(&self.transparent_texture).create_view(&wgpu::TextureViewDescriptor::default());
 
 		let bind_group = self.context.device.create_bind_group(&wgpu::BindGroupDescriptor {
