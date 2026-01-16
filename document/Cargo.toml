@@ -9,3 +9,8 @@ authors.workspace = true
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
+graph-craft = { workspace = true }
+core-types = { workspace = true }
+postcard = "1.0"
+rustc-hash = "2.0"
+thiserror = "2.0"

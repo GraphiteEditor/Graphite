@@ -2,7 +2,10 @@
 use std::{
 	borrow::Cow,
 	collections::{BTreeMap, HashMap},
+	sync::Arc,
 };
+
+mod runtime_translation;
 
 #[derive(Clone, Debug)]
 struct Registry {
@@ -14,8 +17,8 @@ struct Registry {
 #[derive(Clone, Debug)]
 struct Document {
 	registry: Registry,
-	history: HashMap<DeltaId, Delta>,
-	head: DeltaId,
+	history: HashMap<Rev, Delta>,
+	head: Rev,
 }
 
 type DeclarationId = u64; // content based hash
@@ -23,6 +26,7 @@ type NodeId = u64;
 type NetworkId = u64;
 type ProtoNodeId = String;
 type TimeStamp = u64;
+type Rev = u64; // Use merkle tree hash?
 type Value = (serde_json::Value, TimeStamp);
 
 type Attributes = HashMap<String, Value>;
@@ -43,7 +47,7 @@ struct NodeAttributes {
 #[derive(Clone, Debug)]
 enum NodeInput {
 	Node { node_id: NodeId, output_index: usize },
-	Value { raw_value: &'static [u8], exposed: bool },
+	Value { raw_value: Arc<[u8]>, exposed: bool },
 	Scope(Cow<'static, str>),
 	Import { import_idx: usize },
 }
@@ -66,13 +70,11 @@ struct ProtoNode {
 	wasm: Option<Vec<u8>>,
 }
 
-type DeltaId = u64;
-
 #[derive(Clone, Debug)]
 struct Delta {
 	timestamp: TimeStamp,
-	predecessor: Option<DeltaId>,
-	id: DeltaId,
+	predecessor: Option<Rev>,
+	id: Rev,
 	delta_type: RegistryDelta,
 	reverse: RegistryDelta,
 }
@@ -95,21 +97,25 @@ enum AttributeDelta {
 }
 
 impl Document {
-	pub fn restore_node_from_history(&mut self, node_id: NodeId) -> Result<(), CrdtError> {
+	pub fn restore_node_from_history(&mut self, old_node_id: NodeId) -> Result<(), CrdtError> {
 		for delta in self.history_iter() {
-			if let RegistryDelta::AddNode { .. } = delta.reverse {
+			if let RegistryDelta::AddNode { node_id, .. } = delta.reverse
+				&& old_node_id == node_id
+			{
 				return self.revert_delta(delta.clone());
 			}
 		}
-		Err(CrdtError::NodeNotFoundInHistory)
+		Err(CrdtError::NotFoundInHistory)
 	}
 	pub fn restore_network_from_history(&mut self, network_id: NetworkId) -> Result<(), CrdtError> {
 		for delta in self.history_iter() {
-			if let RegistryDelta::SetNetwork { .. } = delta.reverse {
+			if let RegistryDelta::SetNetwork { network, .. } = delta.reverse
+				&& network == network_id
+			{
 				return self.revert_delta(delta.clone());
 			}
 		}
-		Err(CrdtError::NodeNotFoundInHistory)
+		Err(CrdtError::NotFoundInHistory)
 	}
 	pub fn revert_delta(&mut self, mut delta: Delta) -> Result<(), CrdtError> {
 		std::mem::swap(&mut delta.delta_type, &mut delta.reverse);
@@ -223,6 +229,15 @@ impl Document {
 			parent_rev: self.head,
 		}
 	}
+
+	fn find_delta(&mut self, check_fn: impl Fn(&Delta) -> bool) -> Result<&Delta, CrdtError> {
+		for delta in self.history_iter() {
+			if check_fn(delta) {
+				return Ok(delta);
+			}
+		}
+		Err(CrdtError::NotFoundInHistory)
+	}
 }
 
 fn reverse_attribute_delta(delta: &AttributeDelta, attributes: &Attributes) -> AttributeDelta {
@@ -260,7 +275,7 @@ fn apply_attribute_delta(delta: AttributeDelta, attributes: &mut Attributes) {
 
 struct HistoryIter<'a> {
 	document: &'a Document,
-	parent_rev: DeltaId,
+	parent_rev: Rev,
 }
 
 impl<'a> Iterator for HistoryIter<'a> {
@@ -276,6 +291,6 @@ impl<'a> Iterator for HistoryIter<'a> {
 enum CrdtError {
 	TargetNodeDoesNotExist,
 	InputIndexOutOfBounds,
-	NodeNotFoundInHistory,
+	NotFoundInHistory,
 	NodeAlreadyExists,
 }
