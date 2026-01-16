@@ -834,7 +834,9 @@ export class UpdateDocumentLayerDetails extends JsMessage {
 export class LayerPanelEntry {
 	id!: bigint;
 
-	reference!: DefinitionIdentifier;
+	implementationName!: string;
+
+	iconName!: IconName | undefined;
 
 	alias!: string;
 

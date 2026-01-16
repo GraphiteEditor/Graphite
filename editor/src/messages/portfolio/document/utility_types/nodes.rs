@@ -1,6 +1,5 @@
 use super::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use super::network_interface::NodeNetworkInterface;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use glam::DVec2;
 use graph_craft::document::{NodeId, NodeNetwork};
@@ -35,7 +34,10 @@ impl serde::Serialize for JsRawBuffer {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq, specta::Type)]
 pub struct LayerPanelEntry {
 	pub id: NodeId,
-	pub reference: DefinitionIdentifier,
+	#[serde(rename = "implementationName")]
+	pub implementation_name: String,
+	#[serde(rename = "iconName")]
+	pub icon_name: Option<String>,
 	pub alias: String,
 	#[serde(rename = "inSelectedNetwork")]
 	pub in_selected_network: bool,

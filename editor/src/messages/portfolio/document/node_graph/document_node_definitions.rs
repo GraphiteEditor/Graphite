@@ -83,12 +83,8 @@ impl DefinitionIdentifier {
 
 	pub fn serialized(&self) -> String {
 		match self {
-			DefinitionIdentifier::ProtoNode(id) => {
-				format!("Proto Node:{}", id.as_str())
-			}
-			DefinitionIdentifier::Network(data) => {
-				format!("Network:{}", data)
-			}
+			DefinitionIdentifier::ProtoNode(id) => format!("PROTONODE:{}", id.as_str()),
+			DefinitionIdentifier::Network(data) => format!("NETWORK:{}", data),
 		}
 	}
 }
@@ -97,12 +93,10 @@ impl From<Value> for DefinitionIdentifier {
 	fn from(value: Value) -> Self {
 		let s = value.as_str().expect("DefinitionIdentifier value must be a string");
 
-		let (ty, data) = s.split_once(':').expect("Invalid DefinitionIdentifier key format");
-
-		match ty {
-			"Proto Node" => DefinitionIdentifier::ProtoNode(ProtoNodeIdentifier::with_owned_string(data.to_string())),
-			"Network" => DefinitionIdentifier::Network(data.to_string()),
-			other => panic!("Unknown DefinitionIdentifier type: {other}"),
+		match s.split_once(':') {
+			Some(("PROTONODE", data)) => DefinitionIdentifier::ProtoNode(ProtoNodeIdentifier::with_owned_string(data.to_string())),
+			Some(("NETWORK", data)) => DefinitionIdentifier::Network(data.to_string()),
+			other => panic!("Unknown `DefinitionIdentifier` type. Found `{other:?}`."),
 		}
 	}
 }
