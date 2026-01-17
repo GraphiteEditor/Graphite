@@ -608,15 +608,17 @@ fn hit_test_guide(document: &DocumentMessageHandler, viewport_position: DVec2) -
 
 	let transform = document.metadata().document_to_viewport;
 
+	// Iterate in reverse order so most recently placed guide has priority (like Inkscape)
 	// Check horizontal guides (lines that run left-right, positioned by Y in document space)
-	for guide in &document.horizontal_guides {
+	for guide in document.horizontal_guides.iter().rev() {
 		let guide_viewport = transform.transform_point2(DVec2::new(0.0, guide.position));
 		if (viewport_position.y - guide_viewport.y).abs() <= HIT_TOLERANCE {
 			return Some((guide.id, GuideDirection::Horizontal));
 		}
 	}
 
-	for guide in &document.vertical_guides {
+	// Check vertical guides (lines that run up-down, positioned by X in document space)
+	for guide in document.vertical_guides.iter().rev() {
 		let guide_viewport = transform.transform_point2(DVec2::new(guide.position, 0.0));
 		if (viewport_position.x - guide_viewport.x).abs() <= HIT_TOLERANCE {
 			return Some((guide.id, GuideDirection::Vertical));
@@ -1429,11 +1431,16 @@ impl Fsm for SelectToolFsmState {
 					cursor = MouseCursorIcon::Move;
 				}
 
-				if let Some((_, direction)) = hit_test_guide(document, input.mouse.position) {
+				// Check if hovering over a guide and update hover state
+				let hovered_guide = hit_test_guide(document, input.mouse.position);
+				if let Some((guide_id, direction)) = hovered_guide {
 					cursor = match direction {
 						GuideDirection::Horizontal => MouseCursorIcon::NSResize,
 						GuideDirection::Vertical => MouseCursorIcon::EWResize,
 					};
+					responses.add(DocumentMessage::SetHoveredGuide { id: Some(guide_id) });
+				} else {
+					responses.add(DocumentMessage::SetHoveredGuide { id: None });
 				}
 
 				// Generate the hover outline

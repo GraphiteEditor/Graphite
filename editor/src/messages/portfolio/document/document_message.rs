@@ -100,6 +100,9 @@ pub enum DocumentMessage {
 		context: OverlayContext,
 	},
 	ToggleGuidesVisibility,
+	SetHoveredGuide {
+		id: Option<GuideId>,
+	},
 	GroupSelectedLayers {
 		group_folder_type: GroupFolderType,
 	},
