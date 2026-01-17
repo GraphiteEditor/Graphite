@@ -32,6 +32,7 @@
 		"editor.formatOnSave": false
 	},
 	// Rust Analyzer config
+	"rust-analyzer.check.command": "clippy",
 	"rust-analyzer.cargo.allTargets": false,
 	"rust-analyzer.procMacro.ignored": {
 		"serde_derive": ["Serialize", "Deserialize"],
@@ -49,11 +50,28 @@
 		"a11y-no-noninteractive-element-interactions": "ignore", // NOTICE: Keep this list in sync with the list in `frontend/vite.config.ts`
 		"a11y-click-events-have-key-events": "ignore" // NOTICE: Keep this list in sync with the list in `frontend/vite.config.ts`
 	},
+	// Git Graph config
+	"git-graph.repository.fetchAndPrune": true,
+	"git-graph.repository.showRemoteHeads": false,
+	"git-graph.repository.commits.fetchAvatars": true,
+	// VS Code Git config
+	"git.autofetch": true,
+	"git.enableStatusBarSync": false,
+	"git.showActionButton": {
+		"sync": false
+	},
+	// CSpell config
+	"cSpell.language": "en-US",
+	"cSpell.logLevel": "Information",
+	"cSpell.allowCompoundWords": true,
 	// VS Code config
 	"html.format.wrapLineLength": 200,
 	"files.eol": "\n",
 	"files.insertFinalNewline": true,
 	"files.associations": {
 		"*.graphite": "json"
-	}
+	},
+	"editor.renderWhitespace": "boundary",
+	"editor.minimap.markSectionHeaderRegex": "// ===+\\n\\s*//\\s*(?<label>[^\\n]{1,18})[^\\n]*(\\n\\s*//[^\\n]*)*\\n\\s*// ===+",
+	"evenBetterToml.formatter.alignComments": false
 }
