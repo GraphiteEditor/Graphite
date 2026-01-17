@@ -27,6 +27,7 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 	use InputMapperMessage::*;
 	use Key::*;
 
+	// TODO: Fix this failing to load the correct data (and throwing a console warning) because it's occurring before the value has been supplied during initialization from the JS `initAfterFrontendReady`
 	let keyboard_platform = GLOBAL_PLATFORM.get().copied().unwrap_or_default().as_keyboard_platform_layout();
 
 	// NOTICE:
@@ -57,8 +58,8 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		entry!(KeyDown(KeyZ); modifiers=[Accel, MouseLeft], action_dispatch=DocumentMessage::Noop),
 		//
 		// AppWindowMessage
-		entry!(KeyDown(F11); disabled=cfg!(target_os = "macos"), action_dispatch=AppWindowMessage::Fullscreen),
-		entry!(KeyDown(KeyF); modifiers=[Command, Control], disabled=cfg!(not(target_os = "macos")), action_dispatch=AppWindowMessage::Fullscreen),
+		entry!(KeyDown(F11); disabled=(keyboard_platform == KeyboardPlatformLayout::Mac), action_dispatch=AppWindowMessage::Fullscreen),
+		entry!(KeyDown(KeyF); modifiers=[Command, Control], disabled=(keyboard_platform != KeyboardPlatformLayout::Mac), action_dispatch=AppWindowMessage::Fullscreen),
 		entry!(KeyDown(KeyQ); modifiers=[Command], disabled=cfg!(not(target_os = "macos")), action_dispatch=AppWindowMessage::Close),
 		//
 		// ClipboardMessage

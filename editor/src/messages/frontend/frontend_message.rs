@@ -66,7 +66,7 @@ pub enum FrontendMessage {
 	},
 	SendShortcutFullscreen {
 		shortcut: Option<ActionShortcut>,
-		#[serde(rename = "shortcutMc")]
+		#[serde(rename = "shortcutMac")]
 		shortcut_mac: Option<ActionShortcut>,
 	},
 	SendShortcutAltClick {

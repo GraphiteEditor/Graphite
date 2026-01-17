@@ -99,8 +99,8 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 		// Web-only keyboard shortcuts
 		if (!isDesktop()) {
-			// Don't redirect a fullscreen request
-			if (key === "F11" && e.type === "keydown" && !e.repeat) {
+			// Don't redirect a fullscreen request, but process it immediately instead
+			if (((operatingSystem() !== "Mac" && key === "F11") || (operatingSystem() === "Mac" && e.ctrlKey && e.metaKey && key === "KeyF")) && e.type === "keydown" && !e.repeat) {
 				e.preventDefault();
 				fullscreen.toggleFullscreen();
 				return false;
@@ -241,7 +241,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 	}
 
 	function onMouseDown(e: MouseEvent) {
-		// Block middle mouse button auto-scroll mode (the circlar gizmo that appears and allows quick scrolling by moving the cursor above or below it)
+		// Block middle mouse button auto-scroll mode (the circular gizmo that appears and allows quick scrolling by moving the cursor above or below it)
 		if (e.button === BUTTON_MIDDLE) e.preventDefault();
 	}
 
