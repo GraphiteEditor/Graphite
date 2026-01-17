@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { getContext, onMount, onDestroy, tick } from "svelte";
+	import { SvelteMap } from "svelte/reactivity";
 
 	import type { Editor } from "@graphite/editor";
 	import {
@@ -54,7 +55,7 @@
 	let list: LayoutCol | undefined;
 
 	// Layer data
-	let layerCache = new Map<string, LayerPanelEntry>(); // TODO: replace with BigUint64Array as index
+	let layerCache = new SvelteMap<string, LayerPanelEntry>(); // TODO: replace with BigUint64Array as index
 	let layers: LayerListingInfo[] = [];
 
 	// Interactive dragging
@@ -686,7 +687,7 @@
 			{/each}
 		</LayoutCol>
 		{#if draggingData && !draggingData.highlightFolder && dragInPanel}
-			<div class="insert-mark" style:left={`${4 + draggingData.insertDepth * 16}px`} style:top={`${draggingData.markerHeight}px`} />
+			<div class="insert-mark" style:left={`${4 + draggingData.insertDepth * 16}px`} style:top={`${draggingData.markerHeight}px`}></div>
 		{/if}
 	</LayoutRow>
 	<LayoutRow class="bottom-bar" scrollableX={true}>

@@ -48,7 +48,7 @@ let
       npmDeps = pkgs.fetchNpmDeps {
         inherit (info) pname version;
         src = "${info.src}/frontend";
-        hash = "sha256-D8VCNK+Ca3gxO+5wriBn8FszG8/x8n/zM6/MPo9E2j4=";
+        hash = "sha256-WlwzWGoFi3hjRuM5ucrgavko/gg4iFAwMc6uMLjT/FI=";
       };
 
       npmRoot = "frontend";
