@@ -44,18 +44,15 @@ let
     // {
       cargoArtifacts = deps.crane.lib.buildDepsOnly resourcesCommon;
 
-      # TODO: Remove the need for this hash by using individual package resolutions and hashes from package-lock.json
-      npmDeps = pkgs.fetchNpmDeps {
-        inherit (info) pname version;
-        src = "${info.src}/frontend";
-        hash = "sha256-WlwzWGoFi3hjRuM5ucrgavko/gg4iFAwMc6uMLjT/FI=";
+      npmDeps = pkgs.importNpmLock {
+        npmRoot = "${info.src}/frontend";
       };
 
       npmRoot = "frontend";
       npmConfigScript = "setup";
       makeCacheWritable = true;
 
-      nativeBuildInputs = tools.frontend ++ [ pkgs.npmHooks.npmConfigHook ];
+      nativeBuildInputs = tools.frontend ++ [ pkgs.importNpmLock.npmConfigHook ];
 
       prePatch = ''
         mkdir branding

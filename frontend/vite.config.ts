@@ -264,8 +264,8 @@ function generateAdditionalLicenses(): LicenseInfo[] {
 	const ADDITIONAL_LICENSES = [
 		{
 			licenseName: "SIL Open Font License 1.1",
-			licenseTextPath: "node_modules/source-sans/LICENSE.txt",
-			manifestPath: "node_modules/source-sans/package.json",
+			licenseTextPath: "node_modules/source-sans-pro/LICENSE.txt",
+			manifestPath: "node_modules/source-sans-pro/package.json",
 		},
 		{
 			licenseName: "SIL Open Font License 1.1",
