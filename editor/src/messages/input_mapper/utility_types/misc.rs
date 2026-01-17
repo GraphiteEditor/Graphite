@@ -29,16 +29,6 @@ impl Mapping {
 		list.match_mapping(keyboard_state, actions)
 	}
 
-	pub fn remove(&mut self, target_entry: &MappingEntry) {
-		let list = self.associated_entries_mut(&target_entry.input);
-		list.remove(target_entry);
-	}
-
-	pub fn add(&mut self, new_entry: MappingEntry) {
-		let list = self.associated_entries_mut(&new_entry.input);
-		list.push(new_entry);
-	}
-
 	fn associated_entries(&self, message: &InputMapperMessage) -> &KeyMappingEntries {
 		match message {
 			InputMapperMessage::KeyDown(key) => &self.key_down[*key as usize],
