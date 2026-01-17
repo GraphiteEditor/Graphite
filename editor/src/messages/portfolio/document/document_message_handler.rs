@@ -2,7 +2,7 @@ use super::DocumentHistory;
 use super::document_diff::diff_networks;
 use super::node_graph::document_node_definitions;
 use super::utility_types::error::EditorError;
-use super::utility_types::guide::Guide;
+use super::utility_types::guide::{Guide, GuideId};
 use super::utility_types::misc::{GroupFolderType, SNAP_FUNCTIONS_FOR_BOUNDING_BOXES, SNAP_FUNCTIONS_FOR_PATHS, SnappingOptions, SnappingState};
 use super::utility_types::network_interface::{self, NodeNetworkInterface, TransactionStatus};
 use super::utility_types::nodes::{CollapsedLayers, LayerStructureEntry, SelectedNodes};
@@ -166,6 +166,9 @@ pub struct DocumentMessageHandler {
 	/// Whether guide lines are visible in the viewport.
 	#[serde(default = "default_guides_visible")]
 	pub guides_visible: bool,
+	/// ID of the currently hovered guide for visual feedback.
+	#[serde(skip)]
+	pub hovered_guide_id: Option<GuideId>,
 	/// Whether or not the editor has executed the network to render the document yet. If this is opened as an inactive tab, it won't be loaded initially because the active tab is prioritized.
 	#[serde(skip)]
 	pub is_loaded: bool,
@@ -213,6 +216,7 @@ impl Default for DocumentMessageHandler {
 			horizontal_guides: Vec::new(),
 			vertical_guides: Vec::new(),
 			guides_visible: true,
+			hovered_guide_id: None,
 			is_loaded: false,
 		}
 	}
@@ -739,6 +743,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::ExpandFillStrokeOnSelectedLayersNoTransaction => {
 				// Mutates the network directly, so it must be queued to run after `AddTransaction` has snapshotted the document
 				self.handle_expand_fill_stroke_on_selected_layers(responses);
+			}
+			DocumentMessage::SetHoveredGuide { id } => {
+				if self.hovered_guide_id != id {
+					self.hovered_guide_id = id;
+					responses.add(OverlaysMessage::Draw);
+				}
 			}
 			DocumentMessage::GroupSelectedLayers { group_folder_type } => {
 				self.group_selected_layers(group_folder_type, responses);
