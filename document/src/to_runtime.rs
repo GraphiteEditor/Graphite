@@ -1,5 +1,5 @@
 use std::borrow::Cow;
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use core_types::memo::MemoHash;
 use core_types::uuid::NodeId as RuntimeNodeId;
@@ -8,7 +8,7 @@ use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput 
 use graph_craft::{ProtoNodeIdentifier, Type, concrete};
 use rustc_hash::FxHashMap;
 
-use crate::{DeclarationId, Implementation, NetworkId, NodeId, NodeInput, Registry};
+use crate::{DeclarationId, Implementation, NetworkId, NodeId, NodeInput, Registry, ATTR_CALL_ARGUMENT, ATTR_CONTEXT_FEATURES, ATTR_IMPORT_TYPE, ATTR_VISIBLE, ATTR_SKIP_DEDUPLICATION, ATTR_REFLECTION_METADATA, ATTR_ORIGINAL_NODE_ID};
 
 /// Errors that can occur during conversion from Registry to NodeNetwork
 #[derive(Debug, thiserror::Error)]
@@ -81,11 +81,32 @@ fn find_root_network_id(registry: &Registry) -> Result<NetworkId, ConversionErro
 /// 1. Identified by checking if they're in `network.exports`
 /// 2. Excluded from the converted network's `nodes` map
 /// 3. Resolved to their first input, which becomes the actual export
+///
+/// ## ID Remapping
+///
+/// The Registry uses globally unique hashed IDs, but each NodeNetwork needs local IDs (0, 1, 2...).
+/// We extract the original local IDs from ATTR_ORIGINAL_NODE_ID and build a mapping
+/// to convert node references back to their local IDs within this network.
 fn convert_network(registry: &Registry, network_id: NetworkId) -> Result<NodeNetwork, ConversionError> {
 	let network = registry.networks.get(&network_id).ok_or(ConversionError::NetworkNotFound(network_id))?;
 
 	// Identify identity nodes used for exports so we can exclude them
 	let export_identity_node_ids: HashSet<NodeId> = network.exports.iter().copied().collect();
+
+	// Build a mapping from global hashed IDs to local IDs for this network
+	let mut global_to_local: HashMap<NodeId, NodeId> = HashMap::new();
+	for (&global_id, node) in registry.node_instances.iter() {
+		if node.network == network_id && !export_identity_node_ids.contains(&global_id) {
+			// Extract the original local ID from attributes
+			let local_id = node
+				.attributes
+				.get(ATTR_ORIGINAL_NODE_ID)
+				.and_then(|(value, _)| value.as_u64())
+				.unwrap_or(global_id); // Fallback to global ID if not found (for backward compatibility)
+
+			global_to_local.insert(global_id, local_id);
+		}
+	}
 
 	// Filter nodes belonging to this specific network level only.
 	// Nested network nodes are not included here - they'll be recursively
@@ -95,8 +116,9 @@ fn convert_network(registry: &Registry, network_id: NetworkId) -> Result<NodeNet
 		.iter()
 		.filter(|(_, node)| node.network == network_id)
 		.filter(|(node_id, _)| !export_identity_node_ids.contains(&node_id)) // Exclude identity nodes
-		.map(|(&node_id, node)| {
-			convert_node(registry, node).map(|doc_node| (RuntimeNodeId(node_id), doc_node))
+		.map(|(&global_id, node)| {
+			let local_id = global_to_local[&global_id];
+			convert_node(registry, node, &global_to_local).map(|doc_node| (RuntimeNodeId(local_id), doc_node))
 		})
 		.collect::<Result<FxHashMap<_, _>, _>>()?;
 
@@ -110,8 +132,10 @@ fn convert_network(registry: &Registry, network_id: NetworkId) -> Result<NodeNet
 
 			// Identity node should have exactly one input
 			let input = identity_node.inputs.first().ok_or(ConversionError::InvalidIdentityNode(identity_node_id))?;
+			let empty_attrs = HashMap::new();
+			let input_attrs = identity_node.inputs_attributes.first().unwrap_or(&empty_attrs);
 
-			convert_input(input)
+			convert_input(input, input_attrs, &global_to_local)
 		})
 		.collect::<Result<Vec<_>, _>>()?;
 
@@ -126,38 +150,71 @@ fn convert_network(registry: &Registry, network_id: NetworkId) -> Result<NodeNet
 	})
 }
 
-/// Converts a Registry Node to a DocumentNode
-fn convert_node(registry: &Registry, node: &crate::Node) -> Result<DocumentNode, ConversionError> {
+/// Converts a Registry Node to a DocumentNode, remapping global IDs to local IDs
+fn convert_node(registry: &Registry, node: &crate::Node, global_to_local: &HashMap<NodeId, NodeId>) -> Result<DocumentNode, ConversionError> {
+	// Convert inputs with their associated attributes, remapping node references
+	let inputs = node
+		.inputs
+		.iter()
+		.zip(node.inputs_attributes.iter())
+		.map(|(input, input_attrs)| convert_input(input, input_attrs, global_to_local))
+		.collect::<Result<Vec<_>, _>>()?;
+
+	// Extract call_argument from attributes
+	let call_argument = node
+		.attributes
+		.get(ATTR_CALL_ARGUMENT)
+		.and_then(|(value, _timestamp)| serde_json::from_value(value.clone()).ok())
+		.unwrap_or_else(|| concrete!(())); // Default to unit type if not found
+
+	// Extract context_features from attributes
+	let context_features = node
+		.attributes
+		.get(ATTR_CONTEXT_FEATURES)
+		.and_then(|(value, _timestamp)| serde_json::from_value(value.clone()).ok())
+		.unwrap_or_default(); // Default to empty context features if not found
+
+	// Extract visible from attributes
+	let visible = node
+		.attributes
+		.get(ATTR_VISIBLE)
+		.and_then(|(value, _timestamp)| serde_json::from_value(value.clone()).ok())
+		.unwrap_or(true); // Default to true if not found
+
+	// Extract skip_deduplication from attributes
+	let skip_deduplication = node
+		.attributes
+		.get(ATTR_SKIP_DEDUPLICATION)
+		.and_then(|(value, _timestamp)| serde_json::from_value(value.clone()).ok())
+		.unwrap_or(false); // Default to false if not found
+
 	Ok(DocumentNode {
-		inputs: node.inputs.iter().map(convert_input).collect::<Result<Vec<_>, _>>()?,
-		// TODO: Extract call_argument from node.attributes when available
-		// For lossless conversion, store Type serialized in attributes["call_argument"]. We could also consider storing this in the definition instead which might make more sense
-		call_argument: concrete!(()), // Default for now
+		inputs,
+		call_argument,
 		implementation: convert_implementation(registry, &node.implementation)?,
-		// TODO: Extract visible from node.attributes when available
-		// For lossless conversion, store bool in attributes["visible"]
-		visible: true,
-		// TODO: Extract skip_deduplication from node.attributes when available
-		// For lossless conversion, store bool in attributes["skip_deduplication"]
-		skip_deduplication: false,
-		// TODO: Extract context_features from node.attributes when available
-		// For lossless conversion, store ContextDependencies in attributes["context_features"] This might also something we could store in the protonode definition
-		context_features: Default::default(),
+		visible,
+		skip_deduplication,
+		context_features,
 		// OriginalLocation is generated during compilation, not stored
 		original_location: Default::default(),
 	})
 }
 
-/// Converts a Registry NodeInput to a graph-craft NodeInput
-fn convert_input(input: &NodeInput) -> Result<GraphCraftNodeInput, ConversionError> {
+/// Converts a Registry NodeInput to a graph-craft NodeInput, remapping global IDs to local IDs
+fn convert_input(input: &NodeInput, input_attributes: &crate::Attributes, global_to_local: &HashMap<NodeId, NodeId>) -> Result<GraphCraftNodeInput, ConversionError> {
 	Ok(match input {
-		NodeInput::Node { node_id, output_index } => GraphCraftNodeInput::Node {
-			node_id: RuntimeNodeId(*node_id),
-			output_index: *output_index,
+		NodeInput::Node { node_id, output_index } => {
+			// Remap from global hashed ID to local ID
+			let local_id = global_to_local.get(node_id).copied().unwrap_or(*node_id);
+			GraphCraftNodeInput::Node {
+				node_id: RuntimeNodeId(local_id),
+				output_index: *output_index,
+			}
 		},
 		NodeInput::Value { raw_value, exposed } => {
-			// Deserialize using postcard - works with Cow<'a, [u8]> directly
-			let tagged_value: TaggedValue = postcard::from_bytes(raw_value).map_err(|e| ConversionError::DeserializationError(format!("{:?}", e)))?;
+			// Deserialize using postcard - Arc<[u8]> derefs to &[u8]
+			let tagged_value: TaggedValue = postcard::from_bytes(raw_value)
+				.map_err(|e| ConversionError::DeserializationError(format!("TaggedValue: {:?}", e)))?;
 			GraphCraftNodeInput::Value {
 				tagged_value: MemoHash::new(tagged_value),
 				exposed: *exposed,
@@ -165,13 +222,25 @@ fn convert_input(input: &NodeInput) -> Result<GraphCraftNodeInput, ConversionErr
 		}
 		NodeInput::Scope(s) => GraphCraftNodeInput::Scope(s.clone()),
 		NodeInput::Import { import_idx } => {
-			// TODO: Type information is lost during Registry storage.
-			// For lossless conversion, store Type in inputs_attributes[import_idx]["import_type"]
-			// Using generic placeholder until we store type metadata in Registry.
+			// Extract import_type from input_attributes if available
+			let import_type = input_attributes
+				.get(ATTR_IMPORT_TYPE)
+				.and_then(|(value, _timestamp)| serde_json::from_value(value.clone()).ok())
+				.unwrap_or_else(|| Type::Generic(Cow::Borrowed("T"))); // Default to generic if not found
+
 			GraphCraftNodeInput::Import {
-				import_type: Type::Generic(Cow::Borrowed("T")),
+				import_type,
 				import_index: *import_idx,
 			}
+		}
+		NodeInput::Reflection => {
+			// Extract reflection_metadata from input_attributes
+			let metadata = input_attributes
+				.get(ATTR_REFLECTION_METADATA)
+				.and_then(|(value, _timestamp)| serde_json::from_value(value.clone()).ok())
+				.ok_or_else(|| ConversionError::DeserializationError("Missing reflection_metadata in input_attributes".to_string()))?;
+
+			GraphCraftNodeInput::Reflection(metadata)
 		}
 	})
 }

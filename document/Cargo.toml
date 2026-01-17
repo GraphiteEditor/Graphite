@@ -11,6 +11,6 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 graph-craft = { workspace = true }
 core-types = { workspace = true }
-postcard = "1.0"
+postcard = { version = "1.0", features = ["use-std"] }
 rustc-hash = "2.0"
 thiserror = "2.0"
