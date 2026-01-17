@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { createEventDispatcher, getContext, onMount } from "svelte";
+	import { SvelteMap } from "svelte/reactivity";
 
 	import type { FrontendNodeType } from "@graphite/messages";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
@@ -28,7 +29,7 @@
 	};
 
 	function buildNodeCategories(nodeTypes: FrontendNodeType[], searchTerm: string): [string, NodeCategoryDetails][] {
-		const categories = new Map<string, NodeCategoryDetails>();
+		const categories = new SvelteMap<string, NodeCategoryDetails>();
 		const isTypeSearch = searchTerm.toLowerCase().startsWith("type:");
 		let typeSearchTerm = "";
 		let remainingSearchTerms = [searchTerm.toLowerCase()];

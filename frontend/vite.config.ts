@@ -25,6 +25,9 @@ export default defineConfig(({ mode }) => {
 						"a11y-no-static-element-interactions", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
 						"a11y-no-noninteractive-element-interactions", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
 						"a11y-click-events-have-key-events", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
+						"a11y_consider_explicit_label", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
+						"a11y_click_events_have_key_events", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
+						"a11y_no_noninteractive_element_interactions", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
 					];
 					if (suppressed.includes(warning.code)) return;
 

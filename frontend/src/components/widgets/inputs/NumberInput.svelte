@@ -754,9 +754,9 @@
 				bind:this={inputRangeElement}
 			/>
 			{#if rangeSliderClickDragState === "Deciding"}
-				<div class="fake-slider-thumb" />
+				<div class="fake-slider-thumb"></div>
 			{/if}
-			<div class="slider-progress" />
+			<div class="slider-progress"></div>
 		{/if}
 	{/if}
 </FieldInput>

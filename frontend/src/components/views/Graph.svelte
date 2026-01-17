@@ -349,7 +349,7 @@
 								}}
 							/>
 							{#if index > 0}
-								<div class="reorder-drag-grip" data-tooltip-description="Reorder this export" />
+								<div class="reorder-drag-grip" data-tooltip-description="Reorder this export"></div>
 							{/if}
 						{/if}
 					</div>
@@ -396,7 +396,7 @@
 					>
 						{#if (hoveringExportIndex === index || editingNameExportIndex === index) && $nodeGraph.updateImportsExports.addImportExport}
 							{#if index > 0}
-								<div class="reorder-drag-grip" data-tooltip-description="Reorder this export" />
+								<div class="reorder-drag-grip" data-tooltip-description="Reorder this export"></div>
 							{/if}
 							<IconButton
 								size={16}
@@ -457,7 +457,7 @@
 					x: Number($nodeGraph.updateImportsExports.importPosition.x),
 					y: Number($nodeGraph.updateImportsExports.importPosition.y) + Number($nodeGraph.reorderImportIndex) * 24,
 				}}
-				<div class="reorder-bar" style:--offset-left={(position.x - 48) / 24} style:--offset-top={(position.y - 12) / 24} />
+				<div class="reorder-bar" style:--offset-left={(position.x - 48) / 24} style:--offset-top={(position.y - 12) / 24}></div>
 			{/if}
 
 			{#if $nodeGraph.reorderExportIndex !== undefined}
@@ -465,7 +465,7 @@
 					x: Number($nodeGraph.updateImportsExports.exportPosition.x),
 					y: Number($nodeGraph.updateImportsExports.exportPosition.y) + Number($nodeGraph.reorderExportIndex) * 24,
 				}}
-				<div class="reorder-bar" style:--offset-left={position.x / 24} style:--offset-top={(position.y - 12) / 24} />
+				<div class="reorder-bar" style:--offset-left={position.x / 24} style:--offset-top={(position.y - 12) / 24}></div>
 			{/if}
 		{/if}
 	</div>

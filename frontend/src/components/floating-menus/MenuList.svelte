@@ -449,7 +449,7 @@
 					{#if entry.icon && drawIcon}
 						<IconLabel icon={entry.icon} iconSizeOverride={16} class="entry-icon" />
 					{:else if drawIcon}
-						<div class="no-icon" />
+						<div class="no-icon"></div>
 					{/if}
 
 					{#if entry.font}
@@ -465,7 +465,7 @@
 					{#if entry.children?.length}
 						<IconLabel class="submenu-arrow" icon="DropdownArrow" />
 					{:else}
-						<div class="no-submenu-arrow" />
+						<div class="no-submenu-arrow"></div>
 					{/if}
 
 					{#if entry.children}
