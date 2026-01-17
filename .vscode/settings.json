@@ -67,6 +67,9 @@
 	"cSpell.language": "en-US",
 	"cSpell.logLevel": "Information",
 	"cSpell.allowCompoundWords": true,
+	// Other extensions config
+	"evenBetterToml.formatter.alignComments": false,
+	"package-json-upgrade.ignorePatterns": ["source-sans-pro"],
 	// VS Code config
 	"html.format.wrapLineLength": 200,
 	"files.eol": "\n",
@@ -75,6 +78,5 @@
 		"*.graphite": "json"
 	},
 	"editor.renderWhitespace": "boundary",
-	"editor.minimap.markSectionHeaderRegex": "// ===+\\n\\s*//\\s*(?<label>[^\\n]{1,18})[^\\n]*(\\n\\s*//[^\\n]*)*\\n\\s*// ===+",
-	"evenBetterToml.formatter.alignComments": false
+	"editor.minimap.markSectionHeaderRegex": "// ===+\\n\\s*//\\s*(?<label>[^\\n]{1,18})[^\\n]*(\\n\\s*//[^\\n]*)*\\n\\s*// ===+"
 }
