@@ -5,13 +5,27 @@ use std::{
 	sync::Arc,
 };
 
-mod runtime_translation;
+// Public modules for conversions
+pub mod from_runtime;
+pub mod to_runtime;
+
+#[cfg(test)]
+mod round_trip_tests;
+
+// Attribute keys for storing DocumentNode metadata in the Registry format
+const ATTR_CALL_ARGUMENT: &str = "call_argument";
+const ATTR_CONTEXT_FEATURES: &str = "context_features";
+const ATTR_IMPORT_TYPE: &str = "import_type";
+const ATTR_VISIBLE: &str = "visible";
+const ATTR_SKIP_DEDUPLICATION: &str = "skip_deduplication";
+const ATTR_REFLECTION_METADATA: &str = "reflection_metadata";
+const ATTR_ORIGINAL_NODE_ID: &str = "original_node_id";
 
 #[derive(Clone, Debug)]
-struct Registry {
+pub struct Registry {
 	node_declarations: BTreeMap<DeclarationId, ProtoNode>,
-	node_instances: BTreeMap<NodeId, Node>,
-	networks: BTreeMap<NetworkId, Network>,
+	pub node_instances: BTreeMap<NodeId, Node>,
+	pub networks: BTreeMap<NetworkId, Network>,
 	exported_nodes: Vec<NodeId>,
 }
 #[derive(Clone, Debug)]
@@ -32,7 +46,7 @@ type Value = (serde_json::Value, TimeStamp);
 type Attributes = HashMap<String, Value>;
 
 #[derive(Clone, Debug)]
-struct Node {
+pub struct Node {
 	implementation: Implementation,
 	inputs: Vec<NodeInput>,
 	inputs_attributes: Vec<Attributes>,
@@ -50,6 +64,8 @@ enum NodeInput {
 	Value { raw_value: Arc<[u8]>, exposed: bool },
 	Scope(Cow<'static, str>),
 	Import { import_idx: usize },
+	/// Marker for Reflection input. The actual DocumentNodeMetadata is stored in input_attributes.
+	Reflection,
 }
 
 #[derive(Clone, Debug)]
@@ -59,7 +75,7 @@ enum Implementation {
 }
 
 #[derive(Clone, Debug)]
-struct Network {
+pub struct Network {
 	exports: Vec<NodeId>,
 }
 
@@ -68,6 +84,7 @@ struct ProtoNode {
 	identifier: ProtoNodeId,
 	code: Option<String>,
 	wasm: Option<Vec<u8>>,
+	attributes: Attributes,
 }
 
 #[derive(Clone, Debug)]

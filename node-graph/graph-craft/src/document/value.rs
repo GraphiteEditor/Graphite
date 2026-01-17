@@ -186,7 +186,6 @@ tagged_value! {
 	// ========================
 	// LISTS OF PRIMITIVE TYPES
 	// ========================
-	#[serde(alias = "VecF32")] // TODO: Eventually remove this alias document upgrade code
 	VecF64(Vec<f64>),
 	VecDVec2(Vec<DVec2>),
 	F64Array4([f64; 4]),
@@ -196,20 +195,10 @@ tagged_value! {
 	// TABLE TYPES
 	// ===========
 	GraphicUnused(Graphic), // TODO: This is unused but removing it causes `cargo test` to infinitely recurse its type solving; figure out why and then remove this
-	#[serde(deserialize_with = "graphic_types::migrations::migrate_vector")] // TODO: Eventually remove this migration document upgrade code
-	#[serde(alias = "VectorData")]
 	Vector(Table<Vector>),
-	#[serde(deserialize_with = "graphic_types::raster_types::image::migrate_image_frame")] // TODO: Eventually remove this migration document upgrade code
-	#[serde(alias = "ImageFrame", alias = "RasterData", alias = "Image")]
 	Raster(Table<Raster<CPU>>),
-	#[serde(deserialize_with = "graphic_types::graphic::migrate_graphic")] // TODO: Eventually remove this migration document upgrade code
-	#[serde(alias = "GraphicGroup", alias = "Group")]
 	Graphic(Table<Graphic>),
-	#[serde(deserialize_with = "graphic_types::artboard::migrate_artboard")] // TODO: Eventually remove this migration document upgrade code
-	#[serde(alias = "ArtboardGroup")]
 	Artboard(Table<Artboard>),
-	#[serde(deserialize_with = "core_types::misc::migrate_color")] // TODO: Eventually remove this migration document upgrade code
-	#[serde(alias = "ColorTable", alias = "OptionalColor", alias = "ColorNotInTable")]
 	Color(Table<Color>),
 	#[serde(deserialize_with = "graphic_types::vector_types::gradient::migrate_gradient_stops")] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "GradientPositions", alias = "GradientStops")]
@@ -219,7 +208,6 @@ tagged_value! {
 	// ============
 	FVec2(Vec2),
 	FAffine2(Affine2),
-	#[serde(alias = "IVec2", alias = "UVec2")]
 	DVec2(DVec2),
 	DAffine2(DAffine2),
 	Stroke(graphic_types::vector_types::vector::style::Stroke),
@@ -257,9 +245,7 @@ tagged_value! {
 	ExtrudeJoiningAlgorithm(vector::misc::ExtrudeJoiningAlgorithm),
 	PointSpacingType(vector::misc::PointSpacingType),
 	SpiralType(vector::misc::SpiralType),
-	#[serde(alias = "LineCap")]
 	StrokeCap(vector::style::StrokeCap),
-	#[serde(alias = "LineJoin")]
 	StrokeJoin(vector::style::StrokeJoin),
 	StrokeAlign(vector::style::StrokeAlign),
 	PaintOrder(vector::style::PaintOrder),
