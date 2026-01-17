@@ -17,20 +17,19 @@
 		"lint-fix": "eslint . --fix && tsc --noEmit"
 	},
 	"devDependencies": {
-		"@eslint/compat": "^1.4.1",
-		"@eslint/eslintrc": "^3.3.1",
-		"@eslint/js": "^9.39.1",
-		"@types/node": "^24.10.0",
-		"@typescript-eslint/eslint-plugin": "^8.46.3",
-		"@typescript-eslint/parser": "^8.46.3",
+		"@eslint/eslintrc": "^3.3.3",
+		"@eslint/js": "^9.39.2",
+		"@types/node": "^25.0.9",
+		"@typescript-eslint/eslint-plugin": "^8.53.0",
+		"@typescript-eslint/parser": "^8.53.0",
 		"eslint-config-prettier": "^10.1.8",
 		"eslint-import-resolver-typescript": "^4.4.4",
 		"eslint-plugin-import": "^2.32.0",
-		"eslint-plugin-prettier": "^5.5.4",
-		"eslint": "^9.39.1",
-		"prettier": "^3.6.2",
-		"sass": "1.93.3",
-		"typescript-eslint": "^8.46.3"
+		"eslint-plugin-prettier": "^5.5.5",
+		"eslint": "^9.39.2",
+		"prettier": "^3.8.0",
+		"sass": "1.97.2",
+		"typescript-eslint": "^8.53.0"
 	},
 	"dependencies": {
 		"@fontsource-variable/inter": "^5.2.8",
