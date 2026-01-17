@@ -93,8 +93,8 @@
 	</button>
 	{#if menuListChildrenExists}
 		<MenuList
-			on:open={({ detail }) => self && (self.open = detail)}
 			on:selectedEntryValuePath={({ detail }) => dispatch("selectedEntryValuePath", detail)}
+			on:open={({ detail }) => self && (self.open = detail)}
 			open={self?.open || false}
 			entries={menuListChildren || []}
 			entriesHash={menuListChildrenHash || 0n}
