@@ -599,17 +599,18 @@ pub fn create_bounding_box_transform(document: &DocumentMessageHandler) -> DAffi
 		.unwrap_or_default()
 }
 
-fn hit_test_guide(document: &DocumentMessageHandler, viewport_position: DVec2) -> Option<(GuideId, GuideDirection)> {
+fn hit_test_guide(document: &DocumentMessageHandler, viewport_position: DVec2, viewport: &ViewportMessageHandler) -> Option<(GuideId, GuideDirection)> {
 	const HIT_TOLERANCE: f64 = 5.0;
 
 	if !document.guides_visible {
 		return None;
 	}
 
-	let transform = document.metadata().document_to_viewport;
+	let transform = document
+		.navigation_handler
+		.calculate_offset_transform(viewport.center_in_viewport_space().into(), &document.document_ptz);
 
-	// Iterate in reverse order so most recently placed guide has priority (like Inkscape)
-	// Check horizontal guides (lines that run left-right, positioned by Y in document space)
+	// Iterates in reverse order so most recently placed guide has priority (like Inkscape)
 	for guide in document.horizontal_guides.iter().rev() {
 		let guide_viewport = transform.transform_point2(DVec2::new(0.0, guide.position));
 		if (viewport_position.y - guide_viewport.y).abs() <= HIT_TOLERANCE {
@@ -617,7 +618,6 @@ fn hit_test_guide(document: &DocumentMessageHandler, viewport_position: DVec2) -
 		}
 	}
 
-	// Check vertical guides (lines that run up-down, positioned by X in document space)
 	for guide in document.vertical_guides.iter().rev() {
 		let guide_viewport = transform.transform_point2(DVec2::new(guide.position, 0.0));
 		if (viewport_position.x - guide_viewport.x).abs() <= HIT_TOLERANCE {
@@ -1095,7 +1095,7 @@ impl Fsm for SelectToolFsmState {
 					// tool_data.snap_manager.add_all_document_handles(document, input, &[], &[], &[]);
 
 					state
-				} else if let Some((guide_id, direction)) = hit_test_guide(document, input.mouse.position) {
+				} else if let Some((guide_id, direction)) = hit_test_guide(document, input.mouse.position, viewport) {
 					tool_data.dragging_guide_id = Some(guide_id);
 					tool_data.dragging_guide_direction = Some(direction);
 
@@ -1432,7 +1432,7 @@ impl Fsm for SelectToolFsmState {
 				}
 
 				// Check if hovering over a guide and update hover state
-				let hovered_guide = hit_test_guide(document, input.mouse.position);
+				let hovered_guide = hit_test_guide(document, input.mouse.position, viewport);
 				if let Some((guide_id, direction)) = hovered_guide {
 					cursor = match direction {
 						GuideDirection::Horizontal => MouseCursorIcon::NSResize,

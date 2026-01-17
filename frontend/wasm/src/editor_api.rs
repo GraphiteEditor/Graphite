@@ -51,6 +51,12 @@ pub fn set_random_seed(seed: u64) {
 	editor::application::set_uuid_seed(seed);
 }
 
+/// Generates a unique guide ID
+#[wasm_bindgen(js_name = generateGuideId)]
+pub fn generate_guide_id() -> u64 {
+	editor::application::generate_uuid()
+}
+
 /// Provides a handle to access the raw WASM memory.
 #[wasm_bindgen(js_name = wasmMemory)]
 pub fn wasm_memory() -> JsValue {

@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { getContext, onMount, onDestroy, tick } from "svelte";
 
+	import { generateGuideId } from "@graphite/../wasm/pkg/graphite_wasm";
+
 	import type { Editor } from "@graphite/editor";
 	import {
 		type MouseCursorIcon,
@@ -56,7 +58,6 @@
 	let rulersVisible = true;
 
 	// Guide drag state
-	let guideIdCounter = BigInt(0);
 	let draggingGuideId: bigint | undefined = undefined;
 	let draggingGuideDirection: "Horizontal" | "Vertical" | undefined = undefined;
 
@@ -255,11 +256,11 @@
 	function handleGuideDragStart(e: CustomEvent<{ direction: GuideDirection; position: number }>) {
 		const { direction, position } = e.detail;
 
-		guideIdCounter++;
-		draggingGuideId = guideIdCounter;
+		const guideId = generateGuideId();
+		draggingGuideId = guideId;
 		draggingGuideDirection = direction;
 
-		editor.handle.createGuide(guideIdCounter, direction, position);
+		editor.handle.createGuide(guideId, direction, position);
 		startGuideDrag({ deleteOnCancel: true });
 	}
 
