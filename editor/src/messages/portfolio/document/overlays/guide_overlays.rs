@@ -4,6 +4,7 @@ use glam::DVec2;
 use graphene_std::renderer::Quad;
 
 const GUIDE_COLOR: &str = "#00BFFF";
+const GUIDE_HOVER_COLOR: &str = "#FF6600";
 
 pub fn guide_overlay(document: &DocumentMessageHandler, overlay_context: &mut OverlayContext) {
 	let document_to_viewport = document
@@ -19,12 +20,14 @@ pub fn guide_overlay(document: &DocumentMessageHandler, overlay_context: &mut Ov
 	for guide in &document.horizontal_guides {
 		let start = DVec2::new(min_x, guide.position);
 		let end = DVec2::new(max_x, guide.position);
-		overlay_context.line(document_to_viewport.transform_point2(start), document_to_viewport.transform_point2(end), Some(GUIDE_COLOR), None);
+		let color = if document.hovered_guide_id == Some(guide.id) { GUIDE_HOVER_COLOR } else { GUIDE_COLOR };
+		overlay_context.line(document_to_viewport.transform_point2(start), document_to_viewport.transform_point2(end), Some(color), None);
 	}
 
 	for guide in &document.vertical_guides {
 		let start = DVec2::new(guide.position, min_y);
 		let end = DVec2::new(guide.position, max_y);
-		overlay_context.line(document_to_viewport.transform_point2(start), document_to_viewport.transform_point2(end), Some(GUIDE_COLOR), None);
+		let color = if document.hovered_guide_id == Some(guide.id) { GUIDE_HOVER_COLOR } else { GUIDE_COLOR };
+		overlay_context.line(document_to_viewport.transform_point2(start), document_to_viewport.transform_point2(end), Some(color), None);
 	}
 }
