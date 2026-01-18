@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { getContext, onMount, onDestroy, tick } from "svelte";
-	import { SvelteMap } from "svelte/reactivity";
+	import { SvelteMap, SvelteSet } from "svelte/reactivity";
 
 	import type { Editor } from "@graphite/editor";
 	import {
@@ -69,7 +69,7 @@
 	let eyeDragActive = false;
 
 	let eyeDragInitialVisibility: boolean | undefined = undefined;
-	let eyeDragToggledLayers = new Set<bigint>();
+	let eyeDragToggledLayers = new SvelteSet<bigint>();
 
 	// Interactive clipping
 	let layerToClipUponClick: LayerListingInfo | undefined = undefined;
