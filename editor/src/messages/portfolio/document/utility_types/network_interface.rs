@@ -2690,15 +2690,20 @@ impl NodeNetworkInterface {
 			return Vec::new();
 		};
 		let mut all_selected_nodes = selected_nodes.selected_nodes().cloned().collect::<Vec<_>>();
+		let mut seen = all_selected_nodes.iter().cloned().collect::<HashSet<_>>();
+
 		for selected_node_id in selected_nodes.selected_nodes() {
 			if self.is_layer(selected_node_id, network_path) {
-				let unique_upstream_chain = self
+				let upstream_chain = self
 					.upstream_flow_back_from_nodes(vec![*selected_node_id], network_path, FlowType::HorizontalFlow)
 					.skip(1)
-					.take_while(|node_id| self.is_chain(node_id, network_path))
-					.filter(|upstream_node| all_selected_nodes.iter().all(|new_selected_node| new_selected_node != upstream_node))
-					.collect::<Vec<_>>();
-				all_selected_nodes.extend(unique_upstream_chain);
+					.take_while(|node_id| self.is_chain(node_id, network_path));
+
+				for upstream_node in upstream_chain {
+					if seen.insert(upstream_node) {
+						all_selected_nodes.push(upstream_node);
+					}
+				}
 			}
 		}
 		all_selected_nodes
