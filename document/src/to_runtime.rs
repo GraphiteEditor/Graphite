@@ -85,28 +85,14 @@ fn find_root_network_id(registry: &Registry) -> Result<NetworkId, ConversionErro
 /// ## ID Remapping
 ///
 /// The Registry uses globally unique hashed IDs, but each NodeNetwork needs local IDs (0, 1, 2...).
-/// We extract the original local IDs from ATTR_ORIGINAL_NODE_ID and build a mapping
-/// to convert node references back to their local IDs within this network.
+/// We extract the original local IDs from ATTR_ORIGINAL_NODE_ID on-demand when converting nodes
+/// and their references. Since references only point to nodes in the same network, we can
+/// deterministically look up the original ID without building an upfront mapping.
 fn convert_network(registry: &Registry, network_id: NetworkId) -> Result<NodeNetwork, ConversionError> {
 	let network = registry.networks.get(&network_id).ok_or(ConversionError::NetworkNotFound(network_id))?;
 
 	// Identify identity nodes used for exports so we can exclude them
 	let export_identity_node_ids: HashSet<NodeId> = network.exports.iter().copied().collect();
-
-	// Build a mapping from global hashed IDs to local IDs for this network
-	let mut global_to_local: HashMap<NodeId, NodeId> = HashMap::new();
-	for (&global_id, node) in registry.node_instances.iter() {
-		if node.network == network_id && !export_identity_node_ids.contains(&global_id) {
-			// Extract the original local ID from attributes
-			let local_id = node
-				.attributes
-				.get(ATTR_ORIGINAL_NODE_ID)
-				.and_then(|(value, _)| value.as_u64())
-				.unwrap_or(global_id); // Fallback to global ID if not found (for backward compatibility)
-
-			global_to_local.insert(global_id, local_id);
-		}
-	}
 
 	// Filter nodes belonging to this specific network level only.
 	// Nested network nodes are not included here - they'll be recursively
@@ -117,8 +103,14 @@ fn convert_network(registry: &Registry, network_id: NetworkId) -> Result<NodeNet
 		.filter(|(_, node)| node.network == network_id)
 		.filter(|(node_id, _)| !export_identity_node_ids.contains(&node_id)) // Exclude identity nodes
 		.map(|(&global_id, node)| {
-			let local_id = global_to_local[&global_id];
-			convert_node(registry, node, &global_to_local).map(|doc_node| (RuntimeNodeId(local_id), doc_node))
+			// Extract the original local ID from attributes
+			let local_id = node
+				.attributes
+				.get(ATTR_ORIGINAL_NODE_ID)
+				.and_then(|(value, _)| value.as_u64())
+				.unwrap_or(global_id); // Fallback to global ID if not found (for backward compatibility)
+
+			convert_node(registry, node).map(|doc_node| (RuntimeNodeId(local_id), doc_node))
 		})
 		.collect::<Result<FxHashMap<_, _>, _>>()?;
 
@@ -135,7 +127,7 @@ fn convert_network(registry: &Registry, network_id: NetworkId) -> Result<NodeNet
 			let empty_attrs = HashMap::new();
 			let input_attrs = identity_node.inputs_attributes.first().unwrap_or(&empty_attrs);
 
-			convert_input(input, input_attrs, &global_to_local)
+			convert_input(registry, input, input_attrs)
 		})
 		.collect::<Result<Vec<_>, _>>()?;
 
@@ -151,13 +143,13 @@ fn convert_network(registry: &Registry, network_id: NetworkId) -> Result<NodeNet
 }
 
 /// Converts a Registry Node to a DocumentNode, remapping global IDs to local IDs
-fn convert_node(registry: &Registry, node: &crate::Node, global_to_local: &HashMap<NodeId, NodeId>) -> Result<DocumentNode, ConversionError> {
+fn convert_node(registry: &Registry, node: &crate::Node) -> Result<DocumentNode, ConversionError> {
 	// Convert inputs with their associated attributes, remapping node references
 	let inputs = node
 		.inputs
 		.iter()
 		.zip(node.inputs_attributes.iter())
-		.map(|(input, input_attrs)| convert_input(input, input_attrs, global_to_local))
+		.map(|(input, input_attrs)| convert_input(registry, input, input_attrs))
 		.collect::<Result<Vec<_>, _>>()?;
 
 	// Extract call_argument from attributes
@@ -201,11 +193,17 @@ fn convert_node(registry: &Registry, node: &crate::Node, global_to_local: &HashM
 }
 
 /// Converts a Registry NodeInput to a graph-craft NodeInput, remapping global IDs to local IDs
-fn convert_input(input: &NodeInput, input_attributes: &crate::Attributes, global_to_local: &HashMap<NodeId, NodeId>) -> Result<GraphCraftNodeInput, ConversionError> {
+fn convert_input(registry: &Registry, input: &NodeInput, input_attributes: &crate::Attributes) -> Result<GraphCraftNodeInput, ConversionError> {
 	Ok(match input {
 		NodeInput::Node { node_id, output_index } => {
-			// Remap from global hashed ID to local ID
-			let local_id = global_to_local.get(node_id).copied().unwrap_or(*node_id);
+			// Look up the referenced node and extract its original local ID
+			let referenced_node = registry.node_instances.get(node_id).ok_or(ConversionError::NodeNotFound(*node_id))?;
+			let local_id = referenced_node
+				.attributes
+				.get(ATTR_ORIGINAL_NODE_ID)
+				.and_then(|(value, _)| value.as_u64())
+				.unwrap_or(*node_id); // Fallback to global ID if not found
+
 			GraphCraftNodeInput::Node {
 				node_id: RuntimeNodeId(local_id),
 				output_index: *output_index,
