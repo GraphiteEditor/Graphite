@@ -14,3 +14,6 @@ core-types = { workspace = true }
 postcard = { version = "1.0", features = ["use-std"] }
 rustc-hash = "2.0"
 thiserror = "2.0"
+
+[dev-dependencies]
+graph-craft = { workspace = true, features = ["loading"] }

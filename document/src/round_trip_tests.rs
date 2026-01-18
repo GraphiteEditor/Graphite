@@ -3,9 +3,26 @@ use std::borrow::Cow;
 use core_types::context::{ContextDependencies, ContextFeature};
 use core_types::uuid::NodeId;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeInput, NodeNetwork};
+use graph_craft::graphene_compiler::Compiler;
 use graph_craft::{Type, concrete, ProtoNodeIdentifier};
 
 use crate::Registry;
+
+/// Helper function to verify a NodeNetwork can be compiled successfully.
+/// Note: This only works for complete networks with all inputs resolved.
+/// Test networks with Import inputs will fail compilation (which is expected).
+fn verify_network_compiles(network: &NodeNetwork) -> Result<(), String> {
+	let compiler = Compiler {};
+	compiler.compile_single(network.clone())
+		.map_err(|e| format!("Compilation failed: {:?}", e))?;
+	Ok(())
+}
+
+/// Helper to try compiling a network, returning true if successful, false if it fails
+/// (without panicking). Used for networks that may have unresolved imports.
+fn try_compile_network(network: &NodeNetwork) -> bool {
+	verify_network_compiles(network).is_ok()
+}
 
 /// Creates a simple test network with two nodes:
 /// - Node 0: ConsNode that takes two u32 imports
@@ -286,47 +303,75 @@ fn test_metadata_preservation() {
 
 #[test]
 fn test_demo_artwork_round_trip() {
-	// Load a demo artwork file
-	let artwork_path = "../demo-artwork/valley-of-spires.graphite";
-	let json_content = std::fs::read_to_string(artwork_path).expect("Failed to read demo artwork file");
+	use graph_craft::util::{load_network, DEMO_ART};
 
-	// Parse the JSON to extract the network
-	let doc: serde_json::Value = serde_json::from_str(&json_content).expect("Failed to parse JSON");
-	let network_json = &doc["network_interface"]["network"];
+	// Test each demo artwork
+	for artwork_name in DEMO_ART {
+		println!("Testing artwork: {}", artwork_name);
 
-	// Deserialize into NodeNetwork
-	let original_network: NodeNetwork = serde_json::from_value(network_json.clone()).expect("Failed to deserialize NodeNetwork");
+		// Load the original network
+		let path = format!("../demo-artwork/{}.graphite", artwork_name);
+		let document_string = std::fs::read_to_string(&path)
+			.unwrap_or_else(|e| panic!("Failed to read {}: {}", path, e));
+		let original_network = load_network(&document_string);
 
-	// Convert to Registry
-	let registry = Registry::try_from(&original_network).expect("Failed to convert to Registry");
+		// Convert to Registry
+		let registry = Registry::try_from(&original_network)
+			.unwrap_or_else(|e| panic!("Failed to convert {} to Registry: {:?}", artwork_name, e));
 
-	// Convert back to NodeNetwork
-	let converted_network = NodeNetwork::try_from(&registry).expect("Failed to convert back to NodeNetwork");
+		// Convert back to NodeNetwork
+		let converted_network = NodeNetwork::try_from(&registry)
+			.unwrap_or_else(|e| panic!("Failed to convert {} back to NodeNetwork: {:?}", artwork_name, e));
 
-	// Basic structural checks
-	assert_eq!(
-		original_network.nodes.len(),
-		converted_network.nodes.len(),
-		"Node count should be preserved"
-	);
+		// Basic structural checks
+		assert_eq!(
+			original_network.nodes.len(),
+			converted_network.nodes.len(),
+			"{}: Node count should be preserved",
+			artwork_name
+		);
 
-	assert_eq!(
-		original_network.exports.len(),
-		converted_network.exports.len(),
-		"Export count should be preserved"
-	);
+		assert_eq!(
+			original_network.exports.len(),
+			converted_network.exports.len(),
+			"{}: Export count should be preserved",
+			artwork_name
+		);
 
-	// Verify each node's metadata is preserved
-	for (node_id, orig_node) in &original_network.nodes {
-		let conv_node = converted_network.nodes.get(node_id).expect("Node should exist after round-trip");
+		// Verify each node's metadata is preserved
+		for (node_id, orig_node) in &original_network.nodes {
+			let conv_node = converted_network.nodes.get(node_id)
+				.unwrap_or_else(|| panic!("{}: Node {:?} should exist after round-trip", artwork_name, node_id));
 
-		// Check metadata fields
-		assert_eq!(orig_node.call_argument, conv_node.call_argument, "call_argument should be preserved for node {:?}", node_id);
-		assert_eq!(orig_node.context_features, conv_node.context_features, "context_features should be preserved for node {:?}", node_id);
-		assert_eq!(orig_node.visible, conv_node.visible, "visible should be preserved for node {:?}", node_id);
-		assert_eq!(orig_node.skip_deduplication, conv_node.skip_deduplication, "skip_deduplication should be preserved for node {:?}", node_id);
+			// Check metadata fields
+			assert_eq!(
+				orig_node.call_argument, conv_node.call_argument,
+				"{}: call_argument should be preserved for node {:?}", artwork_name, node_id
+			);
+			assert_eq!(
+				orig_node.context_features, conv_node.context_features,
+				"{}: context_features should be preserved for node {:?}", artwork_name, node_id
+			);
+			assert_eq!(
+				orig_node.visible, conv_node.visible,
+				"{}: visible should be preserved for node {:?}", artwork_name, node_id
+			);
+			assert_eq!(
+				orig_node.skip_deduplication, conv_node.skip_deduplication,
+				"{}: skip_deduplication should be preserved for node {:?}", artwork_name, node_id
+			);
 
-		// Check input count
-		assert_eq!(orig_node.inputs.len(), conv_node.inputs.len(), "Input count should be preserved for node {:?}", node_id);
+			// Check input count
+			assert_eq!(
+				orig_node.inputs.len(), conv_node.inputs.len(),
+				"{}: Input count should be preserved for node {:?}", artwork_name, node_id
+			);
+		}
+
+		// Verify the converted demo artwork can be compiled (demo artworks are complete networks)
+		verify_network_compiles(&converted_network)
+			.unwrap_or_else(|e| panic!("{}: Converted artwork should compile successfully: {}", artwork_name, e));
+
+		println!("✓ {} passed", artwork_name);
 	}
 }

@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::HashMap;
 use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
@@ -85,9 +85,9 @@ impl TryFrom<&NodeNetwork> for Registry {
 /// Converts a NodeNetwork to a Registry by flattening the nested structure
 fn convert_node_network(node_network: &NodeNetwork) -> Result<Registry, ConversionError> {
 	let mut registry = Registry {
-		node_declarations: BTreeMap::new(),
-		node_instances: BTreeMap::new(),
-		networks: BTreeMap::new(),
+		node_declarations: HashMap::new(),
+		node_instances: HashMap::new(),
+		networks: HashMap::new(),
 		exported_nodes: vec![],
 	};
 

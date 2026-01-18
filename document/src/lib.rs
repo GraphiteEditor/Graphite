@@ -1,7 +1,7 @@
 #![allow(unused)]
 use std::{
 	borrow::Cow,
-	collections::{BTreeMap, HashMap},
+	collections::HashMap,
 	sync::Arc,
 };
 
@@ -23,9 +23,9 @@ const ATTR_ORIGINAL_NODE_ID: &str = "original_node_id";
 
 #[derive(Clone, Debug)]
 pub struct Registry {
-	node_declarations: BTreeMap<DeclarationId, ProtoNode>,
-	pub node_instances: BTreeMap<NodeId, Node>,
-	pub networks: BTreeMap<NetworkId, Network>,
+	node_declarations: HashMap<DeclarationId, ProtoNode>,
+	pub node_instances: HashMap<NodeId, Node>,
+	pub networks: HashMap<NetworkId, Network>,
 	exported_nodes: Vec<NodeId>,
 }
 #[derive(Clone, Debug)]
