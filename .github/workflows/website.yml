@@ -37,7 +37,7 @@ jobs:
       - name: 🕸 Install Zola
         uses: taiki-e/install-action@v2
         with:
-          tool: zola@0.20.0
+          tool: zola@0.22.0
 
       - name: 🔍 Check if `website/other` directory changed
         uses: dorny/paths-filter@v3

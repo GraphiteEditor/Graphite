@@ -4,7 +4,6 @@
 {%- set title = page.title -%}
 {%- set meta_article_type = true -%}
 {%- set meta_description = page.extra.summary | default(value = page.content | striptags | safe | linebreaksbr | replace(from = "<br>", to = " ") | replace(from = "  ", to = " ") | trim | truncate(length = 200)) -%}
-{%- set linked_css = ["/syntax-highlighting.css"] -%}
 {%- set css = ["/template/book.css", "/layout/reading-material.css", "/component/code-snippet.css"] -%}
 {%- set js = ["/js/book.js"] -%}
 {%- endblock head -%}
