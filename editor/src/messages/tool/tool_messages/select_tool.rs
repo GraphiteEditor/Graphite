@@ -610,18 +610,39 @@ fn hit_test_guide(document: &DocumentMessageHandler, viewport_position: DVec2, v
 		.navigation_handler
 		.calculate_offset_transform(viewport.center_in_viewport_space().into(), &document.document_ptz);
 
-	// Iterates in reverse order so most recently placed guide has priority (like Inkscape)
 	for guide in document.horizontal_guides.iter().rev() {
-		let guide_viewport = transform.transform_point2(DVec2::new(0.0, guide.position));
-		if (viewport_position.y - guide_viewport.y).abs() <= HIT_TOLERANCE {
-			return Some((guide.id, GuideDirection::Horizontal));
+		let doc_point = DVec2::new(0.0, guide.position);
+		let doc_direction = DVec2::X;
+
+		let viewport_point = transform.transform_point2(doc_point);
+		let viewport_direction = transform.transform_vector2(doc_direction);
+
+		if viewport_direction.length_squared() > f64::EPSILON {
+			let dir_normalized = viewport_direction.normalize();
+			let to_mouse = viewport_position - viewport_point;
+			let perpendicular_dist = (to_mouse.x * dir_normalized.y - to_mouse.y * dir_normalized.x).abs();
+
+			if perpendicular_dist <= HIT_TOLERANCE {
+				return Some((guide.id, GuideDirection::Horizontal));
+			}
 		}
 	}
 
 	for guide in document.vertical_guides.iter().rev() {
-		let guide_viewport = transform.transform_point2(DVec2::new(guide.position, 0.0));
-		if (viewport_position.x - guide_viewport.x).abs() <= HIT_TOLERANCE {
-			return Some((guide.id, GuideDirection::Vertical));
+		let doc_point = DVec2::new(guide.position, 0.0);
+		let doc_direction = DVec2::Y;
+
+		let viewport_point = transform.transform_point2(doc_point);
+		let viewport_direction = transform.transform_vector2(doc_direction);
+
+		if viewport_direction.length_squared() > f64::EPSILON {
+			let dir_normalized = viewport_direction.normalize();
+			let to_mouse = viewport_position - viewport_point;
+			let perpendicular_dist = (to_mouse.x * dir_normalized.y - to_mouse.y * dir_normalized.x).abs();
+
+			if perpendicular_dist <= HIT_TOLERANCE {
+				return Some((guide.id, GuideDirection::Vertical));
+			}
 		}
 	}
 
@@ -1209,14 +1230,10 @@ impl Fsm for SelectToolFsmState {
 				tool_data.drag_current = input.mouse.position;
 
 				// MoveGuide expects viewport coordinates and does the conversion internally
-				let viewport_position = match direction {
-					GuideDirection::Horizontal => input.mouse.position.y,
-					GuideDirection::Vertical => input.mouse.position.x,
-				};
-
 				responses.add(DocumentMessage::MoveGuide {
 					id: guide_id,
-					position: viewport_position,
+					mouse_x: input.mouse.position.x,
+					mouse_y: input.mouse.position.y,
 				});
 
 				let cursor = match direction {
@@ -1241,13 +1258,10 @@ impl Fsm for SelectToolFsmState {
 					responses.add(DocumentMessage::DeleteGuide { id: guide_id });
 				} else {
 					// MoveGuide expects viewport coordinates and does the conversion internally
-					let viewport_position = match direction {
-						GuideDirection::Horizontal => input.mouse.position.y,
-						GuideDirection::Vertical => input.mouse.position.x,
-					};
 					responses.add(DocumentMessage::MoveGuide {
 						id: guide_id,
-						position: viewport_position,
+						mouse_x: input.mouse.position.x,
+						mouse_y: input.mouse.position.y,
 					});
 				}
 

@@ -18,7 +18,7 @@
 	export let microDivisions = 2;
 
 	const dispatch = createEventDispatcher<{
-		guideDragStart: { direction: RulerDirection; position: number };
+		guideDragStart: { direction: RulerDirection; mouseX: number; mouseY: number };
 	}>();
 
 	let rulerInput: HTMLDivElement | undefined;
@@ -121,12 +121,11 @@
 		}
 
 		const viewportRect = viewportEl.getBoundingClientRect();
-		const isVertical = direction === "Vertical";
 
-		// For horizontal ruler (creates horizontal guides): need Y position relative to viewport and same for vertical ruler
-		const position = isVertical ? e.clientX - viewportRect.left : e.clientY - viewportRect.top;
+		const mouseX = e.clientX - viewportRect.left;
+		const mouseY = e.clientY - viewportRect.top;
 
-		dispatch("guideDragStart", { direction, position });
+		dispatch("guideDragStart", { direction, mouseX, mouseY });
 	}
 
 	function handlePointerUp(e: PointerEvent) {

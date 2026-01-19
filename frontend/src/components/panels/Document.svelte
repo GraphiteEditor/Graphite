@@ -188,8 +188,11 @@
 		return viewport ?? (window.document.querySelector("[data-viewport]") as HTMLElement) ?? undefined;
 	}
 
-	function getGuidePosition(event: PointerEvent, viewportRect: DOMRect, direction: GuideDirection): number {
-		return direction === "Horizontal" ? event.clientY - viewportRect.top : event.clientX - viewportRect.left;
+	function getGuideMousePosition(event: PointerEvent, viewportRect: DOMRect): { mouseX: number; mouseY: number } {
+		return {
+			mouseX: event.clientX - viewportRect.left,
+			mouseY: event.clientY - viewportRect.top,
+		};
 	}
 
 	function isInRulerArea(event: PointerEvent, viewportRect: DOMRect, direction: GuideDirection): boolean {
@@ -203,8 +206,8 @@
 		const onMove = (event: PointerEvent) => {
 			if (draggingGuideId === undefined || !draggingGuideDirection) return;
 			const rect = viewportEl.getBoundingClientRect();
-			const position = getGuidePosition(event, rect, draggingGuideDirection);
-			editor.handle.moveGuide(draggingGuideId, position);
+			const { mouseX, mouseY } = getGuideMousePosition(event, rect);
+			editor.handle.moveGuide(draggingGuideId, mouseX, mouseY);
 		};
 
 		const onRelease = (event: PointerEvent) => {
@@ -253,14 +256,14 @@
 
 	// Guide Event Handlers
 
-	function handleGuideDragStart(e: CustomEvent<{ direction: GuideDirection; position: number }>) {
-		const { direction, position } = e.detail;
+	function handleGuideDragStart(e: CustomEvent<{ direction: GuideDirection; mouseX: number; mouseY: number }>) {
+		const { direction, mouseX, mouseY } = e.detail;
 
 		const guideId = generateGuideId();
 		draggingGuideId = guideId;
 		draggingGuideDirection = direction;
 
-		editor.handle.createGuide(guideId, direction, position);
+		editor.handle.createGuide(guideId, direction, mouseX, mouseY);
 		startGuideDrag({ deleteOnCancel: true });
 	}
 

@@ -637,28 +637,17 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(OverlaysMessage::Draw);
 			}
 			// Guide messages
-			DocumentMessage::CreateGuide { id, direction, position } => {
-				// Calculates document-to-viewport transform with offset
+			DocumentMessage::CreateGuide { id, direction, mouse_x, mouse_y } => {
+				// Calculates the document-to-viewport transform with offset
 				let document_to_viewport = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
+				let viewport_to_document = document_to_viewport.inverse();
+
+				let viewport_point = DVec2::new(mouse_x, mouse_y);
+				let document_point = viewport_to_document.transform_point2(viewport_point);
 
 				let document_position = match direction {
-					super::utility_types::guide::GuideDirection::Horizontal => {
-						// Solve: matrix.y_axis.y * doc_y + translation.y = viewport_y
-						let scale_y = document_to_viewport.matrix2.y_axis.y;
-						if scale_y.abs() > f64::EPSILON {
-							(position - document_to_viewport.translation.y) / scale_y
-						} else {
-							0.0
-						}
-					}
-					super::utility_types::guide::GuideDirection::Vertical => {
-						let scale_x = document_to_viewport.matrix2.x_axis.x;
-						if scale_x.abs() > f64::EPSILON {
-							(position - document_to_viewport.translation.x) / scale_x
-						} else {
-							0.0
-						}
-					}
+					super::utility_types::guide::GuideDirection::Horizontal => document_point.y,
+					super::utility_types::guide::GuideDirection::Vertical => document_point.x,
 				};
 
 				let guide = Guide::with_id(id, direction, document_position);
@@ -669,24 +658,20 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(OverlaysMessage::Draw);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
-			DocumentMessage::MoveGuide { id, position } => {
-				// Calculate the correct document-to-viewport transform with offset
+			DocumentMessage::MoveGuide { id, mouse_x, mouse_y } => {
+				// Calculate the document-to-viewport transform with offset
 				let document_to_viewport = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
+				let viewport_to_document = document_to_viewport.inverse();
+
+				// Transform the full mouse viewport position to document space
+				let viewport_point = DVec2::new(mouse_x, mouse_y);
+				let document_point = viewport_to_document.transform_point2(viewport_point);
 
 				// Search in both guide lists and update the position
-				// Use the same formula as CreateGuide to solve for document position
 				if let Some(guide) = self.horizontal_guides.iter_mut().find(|guide| guide.id == id) {
-					// Solve: matrix.y_axis.y * doc_y + translation.y = viewport_y
-					let scale_y = document_to_viewport.matrix2.y_axis.y;
-					if scale_y.abs() > f64::EPSILON {
-						guide.position = (position - document_to_viewport.translation.y) / scale_y;
-					}
+					guide.position = document_point.y;
 				} else if let Some(guide) = self.vertical_guides.iter_mut().find(|guide| guide.id == id) {
-					// Solve: matrix.x_axis.x * doc_x + translation.x = viewport_x
-					let scale_x = document_to_viewport.matrix2.x_axis.x;
-					if scale_x.abs() > f64::EPSILON {
-						guide.position = (position - document_to_viewport.translation.x) / scale_x;
-					}
+					guide.position = document_point.x;
 				}
 				responses.add(OverlaysMessage::Draw);
 			}

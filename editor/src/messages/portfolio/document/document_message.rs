@@ -87,11 +87,13 @@ pub enum DocumentMessage {
 	CreateGuide {
 		id: GuideId,
 		direction: GuideDirection,
-		position: f64,
+		mouse_x: f64,
+		mouse_y: f64,
 	},
 	MoveGuide {
 		id: GuideId,
-		position: f64,
+		mouse_x: f64,
+		mouse_y: f64,
 	},
 	DeleteGuide {
 		id: GuideId,

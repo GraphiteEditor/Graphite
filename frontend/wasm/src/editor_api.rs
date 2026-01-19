@@ -879,7 +879,7 @@ impl EditorHandle {
 
 	/// Create a new guide line from a ruler drag with direction: "Horizontal" or "Vertical"
 	#[wasm_bindgen(js_name = createGuide)]
-	pub fn create_guide(&self, id: u64, direction: String, position: f64) {
+	pub fn create_guide(&self, id: u64, direction: String, mouse_x: f64, mouse_y: f64) {
 		let id = GuideId::from_raw(id);
 		let direction = match direction.as_str() {
 			"Horizontal" => GuideDirection::Horizontal,
@@ -889,15 +889,15 @@ impl EditorHandle {
 				return;
 			}
 		};
-		let message = DocumentMessage::CreateGuide { id, direction, position };
+		let message = DocumentMessage::CreateGuide { id, direction, mouse_x, mouse_y };
 		self.dispatch(message);
 	}
 
 	/// Move an existing guide to a new position
 	#[wasm_bindgen(js_name = moveGuide)]
-	pub fn move_guide(&self, id: u64, position: f64) {
+	pub fn move_guide(&self, id: u64, mouse_x: f64, mouse_y: f64) {
 		let id = GuideId::from_raw(id);
-		let message = DocumentMessage::MoveGuide { id, position };
+		let message = DocumentMessage::MoveGuide { id, mouse_x, mouse_y };
 		self.dispatch(message);
 	}
 
