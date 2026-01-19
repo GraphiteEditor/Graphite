@@ -208,6 +208,9 @@ name = "arrayvec"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "as-raw-xcb-connection"
@@ -1135,7 +1138,7 @@ dependencies = [
  "dyn-any",
  "glam",
  "image",
- "kurbo",
+ "kurbo 0.13.0",
  "log",
  "lyon_geom",
  "no-std-types",
@@ -2525,7 +2528,7 @@ dependencies = [
  "image",
  "interpreted-executor",
  "js-sys",
- "kurbo",
+ "kurbo 0.13.0",
  "log",
  "num_enum",
  "once_cell",
@@ -3300,6 +3303,18 @@ dependencies = [
 
 [[package]]
 name = "kurbo"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ce9729cc38c18d86123ab736fd2e7151763ba226ac2490ec092d1dd148825e32"
+dependencies = [
+ "arrayvec",
+ "euclid",
+ "serde",
+ "smallvec",
+]
+
+[[package]]
+name = "kurbo"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7564e90fe3c0d5771e1f0bc95322b21baaeaa0d9213fa6a0b61c99f8b17b3bfb"
@@ -3386,6 +3401,16 @@ name = "linebender_resource_handle"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d4a5ff6bcca6c4867b1c4fd4ef63e4db7436ef363e0ad7531d1558856bae64f4"
+
+[[package]]
+name = "linesweeper"
+version = "0.1.2"
+source = "git+https://github.com/jneem/linesweeper?rev=db9809e698c0b7c46666987df33b43f8ec3c2fde#db9809e698c0b7c46666987df33b43f8ec3c2fde"
+dependencies = [
+ "arrayvec",
+ "kurbo 0.12.0",
+ "polycool",
+]
 
 [[package]]
 name = "linux-raw-sys"
@@ -4284,10 +4309,12 @@ dependencies = [
  "dyn-any",
  "glam",
  "graphic-types",
+ "linesweeper",
  "log",
  "node-macro",
  "path-bool",
  "serde",
+ "smallvec",
  "specta",
  "vector-types",
 ]
@@ -4305,7 +4332,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9a2b6aadb221872732e87d465213e9be5af2849b0e8cc5300a8ba98fffa2e00a"
 dependencies = [
  "color",
- "kurbo",
+ "kurbo 0.13.0",
  "linebender_resource_handle",
  "smallvec",
 ]
@@ -4901,7 +4928,7 @@ dependencies = [
  "futures",
  "glam",
  "image",
- "kurbo",
+ "kurbo 0.13.0",
  "ndarray",
  "no-std-types",
  "node-macro",
@@ -5134,7 +5161,7 @@ dependencies = [
  "dyn-any",
  "glam",
  "graphic-types",
- "kurbo",
+ "kurbo 0.13.0",
  "log",
  "num-traits",
  "serde",
@@ -5152,7 +5179,7 @@ dependencies = [
  "glam",
  "graphene-core",
  "graphic-types",
- "kurbo",
+ "kurbo 0.13.0",
  "log",
  "node-macro",
  "raster-types",
@@ -6085,7 +6112,7 @@ version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "695b5790b3131dafa99b3bbfd25a216edb3d216dad9ca208d4657bfb8f2abc3d"
 dependencies = [
- "kurbo",
+ "kurbo 0.13.0",
  "siphasher",
 ]
 
@@ -6830,7 +6857,7 @@ dependencies = [
  "flate2",
  "fontdb",
  "imagesize",
- "kurbo",
+ "kurbo 0.13.0",
  "log",
  "pico-args",
  "roxmltree 0.21.1",
@@ -6892,7 +6919,7 @@ dependencies = [
  "glam",
  "graphene-core",
  "graphic-types",
- "kurbo",
+ "kurbo 0.13.0",
  "log",
  "node-macro",
  "qrcodegen",
@@ -6914,7 +6941,7 @@ dependencies = [
  "dyn-any",
  "fixedbitset",
  "glam",
- "kurbo",
+ "kurbo 0.13.0",
  "log",
  "lyon_geom",
  "node-macro",

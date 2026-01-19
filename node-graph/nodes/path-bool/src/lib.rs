@@ -2,14 +2,16 @@ use core_types::table::{Table, TableRow, TableRowRef};
 use core_types::{Color, Ctx};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
-use graphic_types::vector_types::subpath::{ManipulatorGroup, PathSegPoints, Subpath, pathseg_points};
+use graphic_types::vector_types::subpath::{ManipulatorGroup, Subpath};
 use graphic_types::vector_types::vector::PointId;
 use graphic_types::vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
 use graphic_types::vector_types::vector::style::Fill;
 use graphic_types::{Graphic, Vector};
+use linesweeper::topology::Topology;
 pub use path_bool as path_bool_lib;
 use path_bool::{FillRule, PathBooleanOperation};
-use std::ops::Mul;
+use smallvec::SmallVec;
+use vector_types::kurbo::{Affine, BezPath, CubicBez, ParamCurve, Point};
 
 // Import specta so derive macros can find it
 use core_types::specta;
@@ -70,164 +72,98 @@ async fn boolean_operation<I: graphic_types::IntoGraphicTable + 'n + Send + Clon
 	result_vector_table
 }
 
-fn boolean_operation_on_vector_table<'a>(vector: impl DoubleEndedIterator<Item = TableRowRef<'a, Vector>> + Clone, boolean_operation: BooleanOperation) -> Table<Vector> {
-	match boolean_operation {
-		BooleanOperation::Union => union(vector),
-		BooleanOperation::SubtractFront => subtract(vector),
-		BooleanOperation::SubtractBack => subtract(vector.rev()),
-		BooleanOperation::Intersect => intersect(vector),
-		BooleanOperation::Difference => difference(vector),
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct WindingNumber {
+	elems: SmallVec<[i16; 8]>,
+}
+
+impl linesweeper::topology::WindingNumber for WindingNumber {
+	type Tag = usize;
+
+	fn single(tag: usize, positive: bool) -> Self {
+		let mut elems = SmallVec::with_capacity(tag);
+		let sign = if positive { 1 } else { -1 };
+		for _ in 0..tag {
+			elems.push(0);
+		}
+		elems.push(sign);
+		Self { elems }
 	}
 }
 
-fn union<'a>(vector: impl DoubleEndedIterator<Item = TableRowRef<'a, Vector>>) -> Table<Vector> {
-	// Reverse the vector table rows so that the result style is the style of the first vector row
-	let mut vector_reversed = vector.rev();
+impl std::ops::AddAssign for WindingNumber {
+	fn add_assign(&mut self, rhs: Self) {
+		if self.elems.len() < rhs.elems.len() {
+			self.elems.resize(rhs.elems.len(), 0);
+		}
 
-	let mut result_vector_table = Table::new_from_row(vector_reversed.next().map(|x| x.into_cloned()).unwrap_or_default());
-	let mut first_row = result_vector_table.iter_mut().next().expect("Expected the one row we just pushed");
+		for (me, them) in self.elems.iter_mut().zip(&rhs.elems) {
+			*me += *them;
+		}
 
-	// Loop over all vector table rows and union it with the result
-	let default = TableRow::default();
-	let mut second_vector = Some(vector_reversed.next().unwrap_or(default.as_ref()));
-	while let Some(lower_vector) = second_vector {
-		let transform_of_lower_into_space_of_upper = first_row.transform.inverse() * *lower_vector.transform;
-
-		let result = &mut first_row.element;
-
-		let upper_path_string = to_path(result, DAffine2::IDENTITY);
-		let lower_path_string = to_path(lower_vector.element, transform_of_lower_into_space_of_upper);
-
-		#[allow(unused_unsafe)]
-		let boolean_operation_string = unsafe { boolean_union(upper_path_string, lower_path_string) };
-		let boolean_operation_result = from_path(&boolean_operation_string);
-
-		result.colinear_manipulators = boolean_operation_result.colinear_manipulators;
-		result.point_domain = boolean_operation_result.point_domain;
-		result.segment_domain = boolean_operation_result.segment_domain;
-		result.region_domain = boolean_operation_result.region_domain;
-
-		second_vector = vector_reversed.next();
+		// Removing trailing zeros normalizes the representation so that the derived
+		// PartialEq works. (Alternatively, we could write our own PartialEq.)
+		let trailing_zeros = self.elems.iter().rev().take_while(|w| **w == 0).count();
+		self.elems.truncate(self.elems.len() - trailing_zeros);
 	}
-
-	result_vector_table
 }
 
-fn subtract<'a>(vector: impl Iterator<Item = TableRowRef<'a, Vector>>) -> Table<Vector> {
-	let mut vector = vector.into_iter();
+impl std::ops::Add for WindingNumber {
+	type Output = WindingNumber;
 
-	let mut result_vector_table = Table::new_from_row(vector.next().map(|x| x.into_cloned()).unwrap_or_default());
-	let mut first_row = result_vector_table.iter_mut().next().expect("Expected the one row we just pushed");
-	let first_row_transform = if first_row.transform.matrix2.determinant() != 0. {
-		first_row.transform.inverse()
-	} else {
-		DAffine2::IDENTITY
-	};
-
-	let mut next_vector = vector.next();
-
-	while let Some(lower_vector) = next_vector {
-		let transform_of_lower_into_space_of_upper = first_row_transform * *lower_vector.transform;
-
-		let result = &mut first_row.element;
-
-		let upper_path_string = to_path(result, DAffine2::IDENTITY);
-		let lower_path_string = to_path(lower_vector.element, transform_of_lower_into_space_of_upper);
-
-		#[allow(unused_unsafe)]
-		let boolean_operation_string = unsafe { boolean_subtract(upper_path_string, lower_path_string) };
-		let boolean_operation_result = from_path(&boolean_operation_string);
-
-		result.colinear_manipulators = boolean_operation_result.colinear_manipulators;
-		result.point_domain = boolean_operation_result.point_domain;
-		result.segment_domain = boolean_operation_result.segment_domain;
-		result.region_domain = boolean_operation_result.region_domain;
-
-		next_vector = vector.next();
+	fn add(mut self, rhs: Self) -> Self::Output {
+		self += rhs;
+		self
 	}
-
-	result_vector_table
 }
 
-fn intersect<'a>(vector: impl DoubleEndedIterator<Item = TableRowRef<'a, Vector>>) -> Table<Vector> {
-	let mut vector = vector.rev();
-
-	let mut result_vector_table = Table::new_from_row(vector.next().map(|x| x.into_cloned()).unwrap_or_default());
-	let mut first_row = result_vector_table.iter_mut().next().expect("Expected the one row we just pushed");
-
-	let default = TableRow::default();
-	let mut second_vector = Some(vector.next().unwrap_or(default.as_ref()));
-
-	// For each vector table row, set the result to the intersection of that path and the current result
-	while let Some(lower_vector) = second_vector {
-		let transform_of_lower_into_space_of_upper = first_row.transform.inverse() * *lower_vector.transform;
-
-		let result = &mut first_row.element;
-
-		let upper_path_string = to_path(result, DAffine2::IDENTITY);
-		let lower_path_string = to_path(lower_vector.element, transform_of_lower_into_space_of_upper);
-
-		#[allow(unused_unsafe)]
-		let boolean_operation_string = unsafe { boolean_intersect(upper_path_string, lower_path_string) };
-		let boolean_operation_result = from_path(&boolean_operation_string);
-
-		result.colinear_manipulators = boolean_operation_result.colinear_manipulators;
-		result.point_domain = boolean_operation_result.point_domain;
-		result.segment_domain = boolean_operation_result.segment_domain;
-		result.region_domain = boolean_operation_result.region_domain;
-		second_vector = vector.next();
+impl WindingNumber {
+	fn is_inside(&self, op: BooleanOperation) -> bool {
+		match op {
+			BooleanOperation::Union => self.elems.iter().any(|w| *w != 0),
+			BooleanOperation::SubtractFront => self.elems.first().is_some_and(|w| *w != 0) && self.elems.iter().skip(1).all(|w| *w == 0),
+			BooleanOperation::SubtractBack => self.elems.last().is_some_and(|w| *w != 0) && self.elems.iter().rev().skip(1).all(|w| *w == 0),
+			BooleanOperation::Intersect => self.elems.iter().all(|w| *w != 0),
+			BooleanOperation::Difference => self.elems.iter().any(|w| *w != 0) && !self.elems.iter().all(|w| *w != 0),
+		}
 	}
-
-	result_vector_table
 }
 
-fn difference<'a>(vector: impl DoubleEndedIterator<Item = TableRowRef<'a, Vector>> + Clone) -> Table<Vector> {
-	let mut vector_iter = vector.clone().rev();
-	let mut any_intersection = TableRow::default();
-	let default = TableRow::default();
-	let mut second_vector = Some(vector_iter.next().unwrap_or(default.as_ref()));
+fn boolean_operation_on_vector_table<'a>(vector: impl DoubleEndedIterator<Item = TableRowRef<'a, Vector>>, boolean_operation: BooleanOperation) -> Table<Vector> {
+	const EPSILON: f64 = 1e-5;
+	let mut table = Table::new();
+	let mut alpha_blending = None;
+	let mut source_node_id = None;
+	let mut paths = Vec::new();
+	for v in vector {
+		if alpha_blending.is_none() {
+			alpha_blending = Some(*v.alpha_blending);
+			source_node_id = Some(*v.source_node_id);
+		}
 
-	// Find where all vector table row paths intersect at least once
-	while let Some(lower_vector) = second_vector {
-		let filtered_vector = vector.clone().filter(|v| *v != lower_vector).collect::<Vec<_>>().into_iter();
-		let unioned = boolean_operation_on_vector_table(filtered_vector, BooleanOperation::Union);
-		let first_row = unioned.iter().next().expect("Expected at least one row after the boolean union");
-
-		let transform_of_lower_into_space_of_upper = first_row.transform.inverse() * *lower_vector.transform;
-
-		let upper_path_string = to_path(first_row.element, DAffine2::IDENTITY);
-		let lower_path_string = to_path(lower_vector.element, transform_of_lower_into_space_of_upper);
-
-		#[allow(unused_unsafe)]
-		let boolean_intersection_string = unsafe { boolean_intersect(upper_path_string, lower_path_string) };
-		let mut element = from_path(&boolean_intersection_string);
-		element.style = first_row.element.style.clone();
-		let boolean_intersection_result = TableRow {
-			element,
-			transform: *first_row.transform,
-			alpha_blending: *first_row.alpha_blending,
-			source_node_id: *first_row.source_node_id,
-		};
-
-		let transform_of_lower_into_space_of_upper = boolean_intersection_result.transform.inverse() * any_intersection.transform;
-
-		let upper_path_string = to_path(&boolean_intersection_result.element, DAffine2::IDENTITY);
-		let lower_path_string = to_path(&any_intersection.element, transform_of_lower_into_space_of_upper);
-
-		#[allow(unused_unsafe)]
-		let union_result = from_path(&unsafe { boolean_union(upper_path_string, lower_path_string) });
-		any_intersection.element = union_result;
-
-		any_intersection.transform = boolean_intersection_result.transform;
-		any_intersection.element.style = boolean_intersection_result.element.style.clone();
-		any_intersection.alpha_blending = boolean_intersection_result.alpha_blending;
-
-		second_vector = vector_iter.next();
+		paths.push(to_bez_path(v.element, *v.transform));
 	}
 
-	// Subtract the area where they intersect at least once from the union of all vector paths
-	let union = boolean_operation_on_vector_table(vector, BooleanOperation::Union);
-	boolean_operation_on_vector_table(union.iter().chain(std::iter::once(any_intersection.as_ref())), BooleanOperation::SubtractFront)
+	log::warn!("boolean op {boolean_operation:?} on paths:");
+	for p in &paths {
+		log::warn!("{}", p.to_svg());
+	}
+
+	// unwrap: Topology::from_paths only errors on a non-closed path, and our paths are closed by construction.
+	let top = Topology::<WindingNumber>::from_paths(paths.iter().enumerate().map(|(idx, path)| (path, idx)), EPSILON).unwrap();
+	let contours = top.contours(|w| w.is_inside(boolean_operation));
+
+	log::warn!("boolean op output paths:");
+	for c in contours.contours() {
+		log::warn!("{}", c.path.to_svg());
+	}
+	table.push(TableRow {
+		element: from_bez_paths(contours.contours().map(|c| &c.path)),
+		transform: DAffine2::IDENTITY,
+		alpha_blending: alpha_blending.unwrap_or_default(),
+		source_node_id: source_node_id.unwrap_or_default(),
+	});
+	table
 }
 
 fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
@@ -327,66 +263,40 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 		.collect()
 }
 
-fn to_path(vector: &Vector, transform: DAffine2) -> Vec<path_bool::PathSegment> {
-	let mut path = Vec::new();
+fn to_bez_path(vector: &Vector, transform: DAffine2) -> BezPath {
+	let mut path = BezPath::new();
 	for subpath in vector.stroke_bezier_paths() {
-		to_path_segments(&mut path, &subpath, transform);
+		push_subpath(&mut path, &subpath, transform);
 	}
 	path
 }
 
-fn to_path_segments(path: &mut Vec<path_bool::PathSegment>, subpath: &Subpath<PointId>, transform: DAffine2) {
-	use path_bool::PathSegment;
-	let mut global_start = None;
-	let mut global_end = DVec2::ZERO;
+fn push_subpath(path: &mut BezPath, subpath: &Subpath<PointId>, transform: DAffine2) {
+	let transform = Affine::new(transform.to_cols_array());
+	let mut first = true;
 
-	for bezier in subpath.iter() {
-		const EPS: f64 = 1e-8;
-		let transform_point = |pos: DVec2| transform.transform_point2(pos).mul(EPS.recip()).round().mul(EPS);
-
-		let PathSegPoints { p0, p1, p2, p3 } = pathseg_points(bezier);
-
-		let p0 = transform_point(p0);
-		let p1 = p1.map(transform_point);
-		let p2 = p2.map(transform_point);
-		let p3 = transform_point(p3);
-
-		if global_start.is_none() {
-			global_start = Some(p0);
+	for seg in subpath.iter() {
+		if first {
+			first = false;
+			path.move_to(transform * seg.start());
 		}
-		global_end = p3;
-
-		let segment = match (p1, p2) {
-			(None, None) => PathSegment::Line(p0, p3),
-			(None, Some(p2)) | (Some(p2), None) => PathSegment::Quadratic(p0, p2, p3),
-			(Some(p1), Some(p2)) => PathSegment::Cubic(p0, p1, p2, p3),
-		};
-
-		path.push(segment);
-	}
-	if let Some(start) = global_start {
-		path.push(PathSegment::Line(global_end, start));
+		path.push(transform * seg.as_path_el());
 	}
 }
 
-fn from_path(path_data: &[Path]) -> Vector {
-	const EPSILON: f64 = 1e-5;
-
-	fn is_close(a: DVec2, b: DVec2) -> bool {
-		(a - b).length_squared() < EPSILON * EPSILON
-	}
-
+fn from_bez_paths<'a>(paths: impl Iterator<Item = &'a BezPath>) -> Vector {
 	let mut all_subpaths = Vec::new();
 
-	for path in path_data.iter().filter(|path| !path.is_empty()) {
-		let cubics: Vec<[DVec2; 4]> = path.iter().map(|segment| segment.to_cubic()).collect();
+	for path in paths {
+		let cubics: Vec<CubicBez> = path.segments().map(|segment| segment.to_cubic()).collect();
 		let mut manipulators_list = Vec::new();
 		let mut current_start = None;
 
 		for (index, cubic) in cubics.iter().enumerate() {
-			let [start, handle1, handle2, end] = *cubic;
+			let d = |p: Point| DVec2::new(p.x, p.y);
+			let [start, handle1, handle2, end] = [d(cubic.p0), d(cubic.p1), d(cubic.p2), d(cubic.p3)];
 
-			if current_start.is_none() || !is_close(start, current_start.unwrap()) {
+			if current_start.is_none() {
 				// Start a new subpath
 				if !manipulators_list.is_empty() {
 					all_subpaths.push(Subpath::new(std::mem::take(&mut manipulators_list), true));
@@ -418,10 +328,6 @@ fn from_path(path_data: &[Path]) -> Vector {
 
 type Path = Vec<path_bool::PathSegment>;
 
-fn boolean_union(a: Path, b: Path) -> Vec<Path> {
-	path_bool(a, b, PathBooleanOperation::Union)
-}
-
 fn path_bool(a: Path, b: Path, op: PathBooleanOperation) -> Vec<Path> {
 	match path_bool::path_boolean(&a, FillRule::NonZero, &b, FillRule::NonZero, op) {
 		Ok(results) => results,
@@ -432,10 +338,6 @@ fn path_bool(a: Path, b: Path, op: PathBooleanOperation) -> Vec<Path> {
 			Vec::new()
 		}
 	}
-}
-
-fn boolean_subtract(a: Path, b: Path) -> Vec<Path> {
-	path_bool(a, b, PathBooleanOperation::Difference)
 }
 
 pub fn boolean_intersect(a: Path, b: Path) -> Vec<Path> {
