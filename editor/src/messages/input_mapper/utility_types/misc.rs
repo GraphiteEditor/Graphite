@@ -41,19 +41,6 @@ impl Mapping {
 			InputMapperMessage::PointerShake => &self.pointer_shake,
 		}
 	}
-
-	fn associated_entries_mut(&mut self, message: &InputMapperMessage) -> &mut KeyMappingEntries {
-		match message {
-			InputMapperMessage::KeyDown(key) => &mut self.key_down[*key as usize],
-			InputMapperMessage::KeyUp(key) => &mut self.key_up[*key as usize],
-			InputMapperMessage::KeyDownNoRepeat(key) => &mut self.key_down_no_repeat[*key as usize],
-			InputMapperMessage::KeyUpNoRepeat(key) => &mut self.key_up_no_repeat[*key as usize],
-			InputMapperMessage::DoubleClick(key) => &mut self.double_click[*key as usize],
-			InputMapperMessage::WheelScroll => &mut self.wheel_scroll,
-			InputMapperMessage::PointerMove => &mut self.pointer_move,
-			InputMapperMessage::PointerShake => &mut self.pointer_shake,
-		}
-	}
 }
 
 #[derive(Debug, Clone)]
