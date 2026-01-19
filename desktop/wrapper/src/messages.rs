@@ -109,7 +109,6 @@ pub enum DesktopWrapperMessage {
 		content: Vec<u8>,
 	},
 	PollNodeGraphEvaluation,
-	UpdatePlatform(Platform),
 	UpdateMaximized {
 		maximized: bool,
 	},
@@ -161,12 +160,6 @@ pub enum OpenFileDialogContext {
 pub enum SaveFileDialogContext {
 	Document { document_id: DocumentId, content: Vec<u8> },
 	File { content: Vec<u8> },
-}
-
-pub enum Platform {
-	Windows,
-	Mac,
-	Linux,
 }
 
 pub enum MenuItem {

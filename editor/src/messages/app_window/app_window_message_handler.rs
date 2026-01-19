@@ -1,20 +1,15 @@
-use crate::messages::app_window::AppWindowMessage;
+use crate::application::{Environment, Platform};
 use crate::messages::prelude::*;
+use crate::{application::Host, messages::app_window::AppWindowMessage};
 use graphite_proc_macros::{ExtractField, message_handler_data};
 
 #[derive(Debug, Clone, Default, ExtractField)]
-pub struct AppWindowMessageHandler {
-	platform: AppWindowPlatform,
-}
+pub struct AppWindowMessageHandler {}
 
 #[message_handler_data]
 impl MessageHandler<AppWindowMessage, ()> for AppWindowMessageHandler {
 	fn process_message(&mut self, message: AppWindowMessage, responses: &mut std::collections::VecDeque<Message>, _: ()) {
 		match message {
-			AppWindowMessage::UpdatePlatform { platform } => {
-				self.platform = platform;
-				responses.add(FrontendMessage::UpdatePlatform { platform: self.platform });
-			}
 			AppWindowMessage::PointerLock => {
 				responses.add(FrontendMessage::WindowPointerLock);
 			}
@@ -65,4 +60,15 @@ pub enum AppWindowPlatform {
 	Windows,
 	Mac,
 	Linux,
+}
+
+impl From<&Environment> for AppWindowPlatform {
+	fn from(environment: &Environment) -> Self {
+		match (environment.platform, environment.host) {
+			(Platform::Web, _) => AppWindowPlatform::Web,
+			(Platform::Desktop, Host::Linux) => AppWindowPlatform::Linux,
+			(Platform::Desktop, Host::Mac) => AppWindowPlatform::Mac,
+			(Platform::Desktop, Host::Windows) => AppWindowPlatform::Windows,
+		}
+	}
 }

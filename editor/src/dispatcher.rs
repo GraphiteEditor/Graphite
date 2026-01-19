@@ -23,12 +23,11 @@ pub struct DispatcherMessageHandlers {
 	debug_message_handler: DebugMessageHandler,
 	defer_message_handler: DeferMessageHandler,
 	dialog_message_handler: DialogMessageHandler,
-	globals_message_handler: GlobalsMessageHandler,
 	input_preprocessor_message_handler: InputPreprocessorMessageHandler,
 	key_mapping_message_handler: KeyMappingMessageHandler,
 	layout_message_handler: LayoutMessageHandler,
 	menu_bar_message_handler: MenuBarMessageHandler,
-	pub portfolio_message_handler: PortfolioMessageHandler,
+	pub(crate) portfolio_message_handler: PortfolioMessageHandler,
 	preferences_message_handler: PreferencesMessageHandler,
 	tool_message_handler: ToolMessageHandler,
 	viewport_message_handler: ViewportMessageHandler,
@@ -192,17 +191,11 @@ impl Dispatcher {
 						self.responses.push(message);
 					}
 				}
-				Message::Globals(message) => {
-					self.message_handlers.globals_message_handler.process_message(message, &mut queue, ());
-				}
 				Message::InputPreprocessor(message) => {
-					let keyboard_platform = GLOBAL_PLATFORM.get().copied().unwrap_or_default().as_keyboard_platform_layout();
-
 					self.message_handlers.input_preprocessor_message_handler.process_message(
 						message,
 						&mut queue,
 						InputPreprocessorMessageContext {
-							keyboard_platform,
 							viewport: &self.message_handlers.viewport_message_handler,
 						},
 					);

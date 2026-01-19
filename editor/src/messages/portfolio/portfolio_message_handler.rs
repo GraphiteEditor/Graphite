@@ -1,7 +1,7 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
 use super::document::utility_types::network_interface;
 use super::utility_types::{PanelType, PersistentData};
-use crate::application::generate_uuid;
+use crate::application::{Editor, generate_uuid};
 use crate::consts::{DEFAULT_DOCUMENT_NAME, DEFAULT_STROKE_WIDTH, FILE_EXTENSION};
 use crate::messages::animation::TimingInformation;
 use crate::messages::clipboard::utility_types::ClipboardContent;
@@ -101,8 +101,16 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 			// Messages
 			PortfolioMessage::Init => {
+				// Initialize the frontend with environment information
+				responses.add(FrontendMessage::UpdatePlatform {
+					platform: Editor::environment().into(),
+				});
+
 				// Tell frontend to load persistent preferences
 				responses.add(FrontendMessage::TriggerLoadPreferences);
+
+				// Before loading any documents, initially prepare the welcome screen buttons layout
+				responses.add(PortfolioMessage::RequestWelcomeScreenButtonsLayout);
 
 				// Tell frontend to load the current document
 				responses.add(FrontendMessage::TriggerLoadFirstAutoSaveDocument);
@@ -128,15 +136,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					shortcut: action_shortcut_manual!(Key::Shift, Key::MouseLeft),
 				});
 
-				// Before loading any documents, initially prepare the welcome screen buttons layout
-				responses.add(PortfolioMessage::RequestWelcomeScreenButtonsLayout);
-
 				// Request status bar info layout
 				responses.add(PortfolioMessage::RequestStatusBarInfoLayout);
 
 				// Tell frontend to finish loading persistent documents
 				responses.add(FrontendMessage::TriggerLoadRestAutoSaveDocuments);
 
+				// Tell frontend to load documented passed in as launch arguments
 				responses.add(FrontendMessage::TriggerOpenLaunchDocuments);
 			}
 			PortfolioMessage::DocumentPassMessage { document_id, message } => {

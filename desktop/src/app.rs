@@ -1,3 +1,4 @@
+use rand::Rng;
 use rfd::AsyncFileDialog;
 use std::fs;
 use std::path::PathBuf;
@@ -16,7 +17,7 @@ use crate::event::{AppEvent, AppEventScheduler};
 use crate::persist::PersistentData;
 use crate::render::{RenderError, RenderState};
 use crate::window::Window;
-use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, InputMessage, MouseKeys, MouseState, Platform};
+use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, InputMessage, MouseKeys, MouseState};
 use crate::wrapper::{DesktopWrapper, NodeGraphExecutionResult, WgpuContext, serialize_frontend_messages};
 
 pub(crate) struct App {
@@ -78,6 +79,8 @@ impl App {
 		let mut persistent_data = PersistentData::default();
 		persistent_data.load_from_disk();
 
+		let desktop_wrapper = DesktopWrapper::new(rand::rng().random());
+
 		Self {
 			render_state: None,
 			wgpu_context,
@@ -91,7 +94,7 @@ impl App {
 			ui_scale: 1.,
 			app_event_receiver,
 			app_event_scheduler,
-			desktop_wrapper: DesktopWrapper::new(),
+			desktop_wrapper,
 			last_ui_update: Instant::now(),
 			cef_context,
 			cef_schedule: Some(Instant::now()),
@@ -478,14 +481,6 @@ impl ApplicationHandler for App {
 		self.resize();
 
 		self.desktop_wrapper.init(self.wgpu_context.clone());
-
-		#[cfg(target_os = "windows")]
-		let platform = Platform::Windows;
-		#[cfg(target_os = "macos")]
-		let platform = Platform::Mac;
-		#[cfg(target_os = "linux")]
-		let platform = Platform::Linux;
-		self.dispatch_desktop_wrapper_message(DesktopWrapperMessage::UpdatePlatform(platform));
 	}
 
 	fn proxy_wake_up(&mut self, event_loop: &dyn ActiveEventLoop) {

@@ -1,8 +1,8 @@
 use super::utility_types::input_keyboard::KeysGroup;
 use super::utility_types::misc::Mapping;
+use crate::application::Editor;
 use crate::messages::input_mapper::utility_types::input_keyboard::{self, Key};
 use crate::messages::input_mapper::utility_types::misc::MappingEntry;
-use crate::messages::portfolio::utility_types::KeyboardPlatformLayout;
 use crate::messages::prelude::*;
 
 #[derive(ExtractField)]
@@ -48,11 +48,7 @@ impl InputMapperMessageHandler {
 		let found_actions = all_mapping_entries.filter(|entry| entry.action.to_discriminant() == *action_to_find);
 
 		// Get the `Key` for this platform's accelerator key
-		let keyboard_layout = || GLOBAL_PLATFORM.get().copied().unwrap_or_default().as_keyboard_platform_layout();
-		let platform_accel_key = match keyboard_layout() {
-			KeyboardPlatformLayout::Standard => Key::Control,
-			KeyboardPlatformLayout::Mac => Key::Command,
-		};
+		let platform_accel_key = if Editor::environment().is_mac() { Key::Command } else { Key::Control };
 
 		let entry_to_key = |entry: &MappingEntry| {
 			// Get the modifier keys for the entry (and convert them to Key)

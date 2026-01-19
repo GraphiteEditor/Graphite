@@ -16,7 +16,6 @@
 	import { createNodeGraphState } from "@graphite/state-providers/node-graph";
 	import { createPortfolioState } from "@graphite/state-providers/portfolio";
 	import { createTooltipState } from "@graphite/state-providers/tooltip";
-	import { operatingSystem } from "@graphite/utility-functions/platform";
 
 	import MainWindow from "@graphite/components/window/MainWindow.svelte";
 
@@ -51,7 +50,7 @@
 
 	onMount(() => {
 		// Initialize certain setup tasks required by the editor backend to be ready for the user now that the frontend is ready
-		editor.handle.initAfterFrontendReady(operatingSystem());
+		editor.handle.initAfterFrontendReady();
 	});
 
 	onDestroy(() => {
