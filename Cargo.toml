@@ -39,7 +39,8 @@ members = [
 	"node-graph/node-macro",
 	"node-graph/preprocessor",
 	"proc-macros",
-	"tools/crate-hierarchy-viz"
+	"tools/crate-hierarchy-viz",
+	"tools/node-docs"
 ]
 default-members = [
 	"editor",

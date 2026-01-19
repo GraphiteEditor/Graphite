@@ -2236,13 +2236,11 @@ version = "0.1.0"
 dependencies = [
  "chrono",
  "clap",
- "convert_case 0.8.0",
  "fern",
  "futures",
  "graph-craft",
  "graphene-std",
  "image",
- "indoc",
  "interpreted-executor",
  "log",
  "preprocessor",
@@ -3698,6 +3696,18 @@ dependencies = [
  "serde",
  "specta",
  "spirv-std",
+]
+
+[[package]]
+name = "node-docs"
+version = "0.0.0"
+dependencies = [
+ "convert_case 0.8.0",
+ "graph-craft",
+ "graphene-std",
+ "indoc",
+ "interpreted-executor",
+ "preprocessor",
 ]
 
 [[package]]

@@ -496,6 +496,10 @@ table {
 		margin: 0;
 		padding: 20px;
 
+		p {
+			text-align: left;
+		}
+
 		&:first-child {
 			padding-left: 10px;
 		}
