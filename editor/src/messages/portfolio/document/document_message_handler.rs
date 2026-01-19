@@ -720,7 +720,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				self.snapping_state.grid_snapping = visible;
 				responses.add(OverlaysMessage::Draw);
 			}
-<<<<<<< HEAD
 			DocumentMessage::BlendSelectedLayers => {
 				self.group_selected_layers(GroupFolderType::Blend, responses);
 			}
@@ -744,12 +743,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::ExpandFillStrokeOnSelectedLayersNoTransaction => {
 				// Mutates the network directly, so it must be queued to run after `AddTransaction` has snapshotted the document
 				self.handle_expand_fill_stroke_on_selected_layers(responses);
-			}
-			DocumentMessage::SetHoveredGuide { id } => {
-				if self.hovered_guide_id != id {
-					self.hovered_guide_id = id;
-					responses.add(OverlaysMessage::Draw);
-				}
 			}
 			DocumentMessage::GroupSelectedLayers { group_folder_type } => {
 				self.group_selected_layers(group_folder_type, responses);
