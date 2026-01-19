@@ -1773,7 +1773,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		},
 		DocumentNodeDefinition {
 			identifier: "Boolean Operation",
-			category: "Vector",
+			category: "Vector: Modifier",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {

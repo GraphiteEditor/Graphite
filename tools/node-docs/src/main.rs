@@ -3,7 +3,7 @@ use graph_craft::concrete;
 use graph_craft::document::value;
 use graph_craft::proto::{NodeMetadata, RegistryValueSource};
 use graphene_std::{ContextDependencies, core_types};
-use indoc::formatdoc;
+use indoc::{formatdoc, indoc};
 use std::collections::{HashMap, HashSet};
 use std::io::Write;
 
@@ -96,7 +96,7 @@ fn write_node_page(index: usize, id: &core_types::ProtoNodeIdentifier, metadata:
 }
 
 fn write_node_frontmatter(page: &mut std::fs::File, metadata: &NodeMetadata, order: usize) {
-	let (name, _) = name_and_description(metadata);
+	let name = metadata.display_name;
 
 	let content = formatdoc!(
 		"
@@ -113,7 +113,7 @@ fn write_node_frontmatter(page: &mut std::fs::File, metadata: &NodeMetadata, ord
 }
 
 fn write_node_description(page: &mut std::fs::File, metadata: &NodeMetadata) {
-	let (_, description) = name_and_description(metadata);
+	let description = node_description(metadata);
 
 	let content = formatdoc!(
 		"
@@ -165,6 +165,7 @@ fn node_write_inputs(page: &mut std::fs::File, valid_input_types: Vec<Vec<core_t
 		.fields
 		.iter()
 		.enumerate()
+		.filter(|&(index, field)| !field.hidden || index == 0)
 		.map(|(index, field)| {
 			// Parameter
 			let parameter = field.name;
@@ -216,7 +217,9 @@ fn node_write_inputs(page: &mut std::fs::File, valid_input_types: Vec<Vec<core_t
 				let render_color = |color| format!(r#"<span style="padding-right: 100px; border: 2px solid var(--color-fog); background: {color}"></span>"#);
 				let default_value = match default_value {
 					"Color::BLACK" => render_color("black"),
-					"BLACK_TO_WHITE" => render_color("linear-gradient(to right, black, white)"),
+					"GradientStops([(0.0, Color { red: 0.0, green: 0.0, blue: 0.0, alpha: 1.0 }), (1.0, Color { red: 1.0, green: 1.0, blue: 1.0, alpha: 1.0 })])" => {
+						render_color("linear-gradient(to right, black, white)")
+					}
 					_ => format!("`{default_value}{}`", field.unit.unwrap_or_default()),
 				};
 
@@ -248,6 +251,12 @@ fn node_write_inputs(page: &mut std::fs::File, valid_input_types: Vec<Vec<core_t
 }
 
 fn node_write_outputs(mut page: std::fs::File, valid_primary_outputs: String) {
+	let product = "Result";
+	let details = "The value produced by the node operation.";
+
+	let mut details = format!("<p>{details}</p>");
+	details.push_str("<p>*Primary Output*</p>");
+
 	let content = formatdoc!(
 		"
 
@@ -255,7 +264,7 @@ fn node_write_outputs(mut page: std::fs::File, valid_primary_outputs: String) {
 
 		| Product | Details | Possible Types |
 		|:-|:-|:-|
-		| Result | <p>The value produced by the node operation.</p><p>*Primary Output*</p> | {valid_primary_outputs} |
+		| {product} | {details} | {valid_primary_outputs} |
 		"
 	);
 	page.write_all(content.as_bytes()).expect("Failed to write to node page file");
@@ -284,10 +293,11 @@ fn write_category_index_page(index: usize, category: &str, nodes: &[(&core_types
 	page.write_all(content.as_bytes()).expect("Failed to write to index file");
 
 	// Write description
+	let category_description = category_description(category);
 	let content = formatdoc!(
 		"
 
-		This is the {category} category of nodes.
+		{category_description}
 		"
 	);
 	page.write_all(content.as_bytes()).expect("Failed to write to index file");
@@ -312,7 +322,8 @@ fn write_category_index_page(index: usize, category: &str, nodes: &[(&core_types
 			let name_url_part = sanitize_path(&metadata.display_name.to_case(Case::Kebab));
 
 			// Name and description
-			let (name, description) = name_and_description(metadata);
+			let name = metadata.display_name;
+			let description = node_description(metadata);
 			let details = description.split('\n').map(|line| format!("<p>{}</p>", line.trim())).collect::<Vec<_>>().join("");
 
 			// Possible types
@@ -373,13 +384,53 @@ fn sanitize_path(s: &str) -> String {
 	filtered.trim_matches('-').to_string()
 }
 
-fn name_and_description(metadata: &NodeMetadata) -> (&str, &str) {
-	let name = metadata.display_name;
+fn node_description(metadata: &NodeMetadata) -> &str {
 	let mut description = metadata.description.trim();
 	if description.is_empty() {
 		description = "*Node description coming soon.*";
 	}
-	(name, description)
+	description
+}
+
+fn category_description(category: &str) -> &str {
+	match category {
+		"Animation" => indoc!(
+			"
+			Nodes in this category enable the creation of animated, real-time, and interactive motion graphics involving paramters that change over time.
+
+			These nodes require that playback is activated by pressing the play button above the viewport.
+			"
+		),
+		"Blending" => "Nodes in this category control how overlapping graphical content is composited together, considering blend modes, opacity, and clipping.",
+		"Color" => "Nodes in this category deal with selecting and manipulating colors, gradients, and palettes.",
+		"Debug" => indoc!(
+			"
+			Nodes in this category are temporarily included for debugging purposes by Graphite's developers. They may have rare potential uses for advanced users, but are not intended for general use and will be removed in future releases.
+			"
+		),
+		"General" => "Nodes in this category deal with general data handling, such as merging and flattening graphical elements.",
+		"Instancing" => "Nodes in this category enable the duplication, arrangement, and looped generation of graphical elements.",
+		"Math: Arithmetic" => "Nodes in this category perform common arithmetic operations on numerical values (and where applicable, `vec2` values).",
+		"Math: Logic" => "Nodes in this category perform boolean logic operations such as comparisons, conditionals, logic gates, and switching.",
+		"Math: Numeric" => "Nodes in this category perform discontinuous numeric operations such as rounding, clamping, mapping, and randomization.",
+		"Math: Transform" => "Nodes in this category perform transformations on graphical elements and calculations involving transformation matrices.",
+		"Math: Trig" => "Nodes in this category perform trigonometric operations such as sine, cosine, tangent, and their inverses.",
+		"Math: Vector" => "Nodes in this category perform operations involving `vec2` values (points or arrows in 2D space) such as the dot product, normalization, and distance calculations.",
+		"Raster: Adjustment" => "Nodes in this category perform per-pixel color adjustments on raster graphics, such as brightness and contrast modifications.",
+		"Raster: Channels" => "Nodes in this category enable channel-specific manipulation of the RGB and alpha channels of raster graphics.",
+		"Raster: Filter" => "Nodes in this category apply filtering effects to raster graphics such as blurs and sharpening.",
+		"Raster: Pattern" => "Nodes in this category generate procedural raster patterns, fractals, textures, and noise.",
+		"Raster" => "Nodes in this category deal with fundamental raster image operations.",
+		"Text" => "Nodes in this category support the manipulation, formatting, and rendering of text strings.",
+		"Value" => "Nodes in this category supply data values of common types such as numbers, colors, booleans, and strings.",
+		"Vector: Measure" => "Nodes in this category perform measurements and analysis on vector graphics, such as length/area calculations, path traversal, and hit testing.",
+		"Vector: Modifier" => "Nodes in this category modify the geometry of vector graphics, such as boolean operations, smoothing, and morphing.",
+		"Vector: Shape" => "Nodes in this category generate parametrically-described primitive vector shapes such as rectangles, grids, stars, and spirals.",
+		"Vector: Style" => "Nodes in this category apply fill and stroke styles to alter the appearance of vector graphics.",
+		"Vector" => "Nodes in this category deal with fundamental vector graphics data handling and operations.",
+		"Web Request" => "Nodes in this category facilitate fetching and handling resources from HTTP endpoints and sending webhook requests to external services.",
+		_ => panic!("Category '{category}' is missing a description"),
+	}.trim()
 }
 
 fn write_catalog_index_page(categories: &[String]) {
@@ -435,8 +486,8 @@ fn write_catalog_index_page(categories: &[String]) {
 		.filter_map(|c| if c.is_empty() { if OMIT_HIDDEN { None } else { Some("Hidden") } } else { Some(c) })
 		.map(|category| {
 			let category_path_part = sanitize_path(&category.to_case(Case::Kebab));
-			let details = format!("This is the {category} category of nodes.");
-			format!("| [{category}](./{category_path_part}) | {details} |")
+			let details = category_description(category).replace("\n\n", "</p><p>").replace('\n', "<br />");
+			format!("| [{category}](./{category_path_part}) | <p>{details}</p> |")
 		})
 		.collect::<Vec<_>>()
 		.join("\n");

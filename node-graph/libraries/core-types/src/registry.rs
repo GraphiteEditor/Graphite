@@ -23,6 +23,7 @@ pub struct NodeMetadata {
 pub struct FieldMetadata {
 	pub name: &'static str,
 	pub description: &'static str,
+	pub hidden: bool,
 	pub exposed: bool,
 	pub widget_override: RegistryWidgetOverride,
 	pub value_source: RegistryValueSource,

@@ -101,6 +101,8 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 		})
 		.collect();
 
+	let input_hidden = regular_field_names.iter().map(|name| name.to_string().starts_with('_')).collect::<Vec<_>>();
+
 	let input_descriptions: Vec<_> = regular_fields.iter().map(|f| &f.description).collect();
 
 	// Generate struct fields: data fields (concrete types) + regular fields (generic types)
@@ -478,6 +480,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 								name: #input_names,
 								widget_override: #widget_override,
 								description: #input_descriptions,
+								hidden: #input_hidden,
 								exposed: #exposed,
 								value_source: #value_sources,
 								default_type: #default_types,
