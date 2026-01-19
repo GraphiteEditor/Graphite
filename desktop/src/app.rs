@@ -352,6 +352,11 @@ impl App {
 					window.toggle_maximize();
 				}
 			}
+			DesktopFrontendMessage::WindowFullscreen => {
+				if let Some(window) = &mut self.window {
+					window.toggle_fullscreen();
+				}
+			}
 			DesktopFrontendMessage::WindowDrag => {
 				if let Some(window) = &self.window {
 					window.start_drag();

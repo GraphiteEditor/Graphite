@@ -295,6 +295,12 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
+	#[wasm_bindgen(js_name = appWindowFullscreen)]
+	pub fn app_window_fullscreen(&self) {
+		let message = AppWindowMessage::Fullscreen;
+		self.dispatch(message);
+	}
+
 	/// Closes the application window
 	#[wasm_bindgen(js_name = appWindowClose)]
 	pub fn app_window_close(&self) {

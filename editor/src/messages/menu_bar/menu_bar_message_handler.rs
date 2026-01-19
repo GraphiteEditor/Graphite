@@ -622,6 +622,13 @@ impl LayoutHolder for MenuBarMessageHandler {
 				.flush(true)
 				.menu_list_children(vec![
 					vec![
+						MenuListEntry::new("Fullscreen")
+							.label("Fullscreen")
+							.icon("FullscreenEnter")
+							.tooltip_shortcut(action_shortcut!(AppWindowMessageDiscriminant::Fullscreen))
+							.on_commit(|_| AppWindowMessage::Fullscreen.into()),
+					],
+					vec![
 						MenuListEntry::new("Properties")
 							.label("Properties")
 							.icon(if self.properties_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" })
@@ -632,8 +639,6 @@ impl LayoutHolder for MenuBarMessageHandler {
 							.icon(if self.layers_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" })
 							.tooltip_shortcut(action_shortcut!(PortfolioMessageDiscriminant::ToggleLayersPanelOpen))
 							.on_commit(|_| PortfolioMessage::ToggleLayersPanelOpen.into()),
-					],
-					vec![
 						MenuListEntry::new("Data")
 							.label("Data")
 							.icon(if self.data_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" })

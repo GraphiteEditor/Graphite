@@ -117,8 +117,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				});
 
 				// Send shortcuts for widgets created in the frontend which need shortcut tooltips
-				responses.add(FrontendMessage::SendShortcutF11 {
+				responses.add(FrontendMessage::SendShortcutFullscreen {
 					shortcut: action_shortcut_manual!(Key::F11),
+					shortcut_mac: action_shortcut_manual!(Key::Control, Key::Command, Key::KeyF),
 				});
 				responses.add(FrontendMessage::SendShortcutAltClick {
 					shortcut: action_shortcut_manual!(Key::Alt, Key::MouseLeft),

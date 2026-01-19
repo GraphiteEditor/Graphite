@@ -30,6 +30,9 @@ impl MessageHandler<AppWindowMessage, ()> for AppWindowMessageHandler {
 			AppWindowMessage::Maximize => {
 				responses.add(FrontendMessage::WindowMaximize);
 			}
+			AppWindowMessage::Fullscreen => {
+				responses.add(FrontendMessage::WindowFullscreen);
+			}
 			AppWindowMessage::Drag => {
 				responses.add(FrontendMessage::WindowDrag);
 			}
@@ -48,6 +51,7 @@ impl MessageHandler<AppWindowMessage, ()> for AppWindowMessageHandler {
 		Close,
 		Minimize,
 		Maximize,
+		Fullscreen,
 		Drag,
 		Hide,
 		HideOthers,
