@@ -12,7 +12,7 @@ use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
 use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta};
 use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use editor::messages::portfolio::document::utility_types::network_interface::ImportOrExport;
-use editor::messages::portfolio::utility_types::{FontCatalog, FontCatalogFamily, Platform};
+use editor::messages::portfolio::utility_types::{FontCatalog, FontCatalogFamily};
 use editor::messages::prelude::*;
 use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
 use graph_craft::document::NodeId;
@@ -31,7 +31,7 @@ use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, ImageData, window};
 #[cfg(not(feature = "native"))]
 use crate::EDITOR;
 #[cfg(not(feature = "native"))]
-use editor::application::Editor;
+use editor::application::{Editor, Environment, Host, Platform};
 
 static IMAGE_DATA_HASH: AtomicU64 = AtomicU64::new(0);
 
@@ -41,13 +41,6 @@ fn calculate_hash<T: std::hash::Hash>(t: &T) -> u64 {
 	let mut hasher = DefaultHasher::new();
 	t.hash(&mut hasher);
 	hasher.finish()
-}
-
-/// Set the random seed used by the editor by calling this from JS upon initialization.
-/// This is necessary because WASM doesn't have a random number generator.
-#[wasm_bindgen(js_name = setRandomSeed)]
-pub fn set_random_seed(seed: u64) {
-	editor::application::set_uuid_seed(seed);
 }
 
 /// Provides a handle to access the raw WASM memory.
@@ -85,6 +78,22 @@ impl EditorHandle {
 		self.send_frontend_message_to_js(message);
 	}
 }
+
+#[cfg(not(feature = "native"))]
+#[wasm_bindgen(js_name = editorInit)]
+pub fn editor_init(platform: String, uuid_random_seed: u64) {
+	let host = match platform.as_str() {
+		"Linux" => Host::Linux,
+		"Mac" => Host::Mac,
+		"Windows" => Host::Windows,
+		_ => Host::Unknown,
+	};
+	Editor::init(Environment { platform: Platform::Web, host }, uuid_random_seed);
+}
+
+#[cfg(feature = "native")]
+#[wasm_bindgen(js_name = editorInit)]
+pub fn editor_init(_platform: String, _uuid_random_seed: u64) {}
 
 #[wasm_bindgen]
 impl EditorHandle {
@@ -184,19 +193,11 @@ impl EditorHandle {
 	// ========================================================================
 
 	#[wasm_bindgen(js_name = initAfterFrontendReady)]
-	pub fn init_after_frontend_ready(&self, platform: String) {
+	pub fn init_after_frontend_ready(&self) {
 		#[cfg(feature = "native")]
 		crate::native_communcation::initialize_native_communication();
 
-		// Send initialization messages
-		let platform = match platform.as_str() {
-			"Windows" => Platform::Windows,
-			"Mac" => Platform::Mac,
-			"Linux" => Platform::Linux,
-			_ => Platform::Unknown,
-		};
-		self.dispatch(GlobalsMessage::SetPlatform { platform });
-		self.dispatch(PortfolioMessage::Init);
+		self.dispatch(Message::Init);
 
 		// Poll node graph evaluation on `requestAnimationFrame`
 		{

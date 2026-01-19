@@ -1,5 +1,5 @@
 use graph_craft::wasm_application_io::WasmApplicationIo;
-use graphite_editor::application::Editor;
+use graphite_editor::application::{Editor, Environment, Host, Platform};
 use graphite_editor::messages::prelude::{FrontendMessage, Message};
 
 // TODO: Remove usage of this reexport in desktop create and remove this line
@@ -27,13 +27,22 @@ pub struct DesktopWrapper {
 }
 
 impl DesktopWrapper {
-	pub fn new() -> Self {
-		Self { editor: Editor::new() }
+	pub fn init(wgpu_context: &WgpuContext, uuid_random_seed: u64) {
+		#[cfg(target_os = "windows")]
+		let host = Host::Windows;
+		#[cfg(target_os = "macos")]
+		let host = Host::Mac;
+		#[cfg(target_os = "linux")]
+		let host = Host::Linux;
+		let env = Environment { platform: Platform::Desktop, host };
+		Editor::init(env, uuid_random_seed);
+
+		let application_io = WasmApplicationIo::new_with_context(wgpu_context.clone());
+		futures::executor::block_on(graphite_editor::node_graph_executor::replace_application_io(application_io));
 	}
 
-	pub fn init(&self, wgpu_context: WgpuContext) {
-		let application_io = WasmApplicationIo::new_with_context(wgpu_context);
-		futures::executor::block_on(graphite_editor::node_graph_executor::replace_application_io(application_io));
+	pub fn new() -> Self {
+		Self { editor: Editor::new() }
 	}
 
 	pub fn dispatch(&mut self, message: DesktopWrapperMessage) -> Vec<DesktopFrontendMessage> {

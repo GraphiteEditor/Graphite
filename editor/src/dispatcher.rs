@@ -1,3 +1,4 @@
+use crate::application::Editor;
 use crate::messages::debug::utility_types::MessageLoggingVerbosity;
 use crate::messages::defer::DeferMessageContext;
 use crate::messages::dialog::DialogMessageContext;
@@ -23,7 +24,6 @@ pub struct DispatcherMessageHandlers {
 	debug_message_handler: DebugMessageHandler,
 	defer_message_handler: DeferMessageHandler,
 	dialog_message_handler: DialogMessageHandler,
-	globals_message_handler: GlobalsMessageHandler,
 	input_preprocessor_message_handler: InputPreprocessorMessageHandler,
 	key_mapping_message_handler: KeyMappingMessageHandler,
 	layout_message_handler: LayoutMessageHandler,
@@ -192,17 +192,12 @@ impl Dispatcher {
 						self.responses.push(message);
 					}
 				}
-				Message::Globals(message) => {
-					self.message_handlers.globals_message_handler.process_message(message, &mut queue, ());
-				}
 				Message::InputPreprocessor(message) => {
-					let keyboard_platform = GLOBAL_PLATFORM.get().copied().unwrap_or_default().as_keyboard_platform_layout();
-
 					self.message_handlers.input_preprocessor_message_handler.process_message(
 						message,
 						&mut queue,
 						InputPreprocessorMessageContext {
-							keyboard_platform,
+							keyboard_platform: Editor::environment().host.into(),
 							viewport: &self.message_handlers.viewport_message_handler,
 						},
 					);
@@ -308,6 +303,10 @@ impl Dispatcher {
 				}
 				Message::Viewport(message) => {
 					self.message_handlers.viewport_message_handler.process_message(message, &mut queue, ());
+				}
+				Message::Init => {
+					self.handle_message(AppWindowMessage::Init, false);
+					self.handle_message(PortfolioMessage::Init, false);
 				}
 				Message::NoOp => {}
 				Message::Batched { messages } => {

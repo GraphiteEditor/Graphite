@@ -1,3 +1,5 @@
+use std::sync::OnceLock;
+
 use crate::dispatcher::Dispatcher;
 use crate::messages::prelude::*;
 pub use graphene_std::uuid::*;
@@ -8,8 +10,12 @@ pub struct Editor {
 }
 
 impl Editor {
-	/// Construct the editor.
-	/// Remember to provide a random seed with `editor::set_uuid_seed(seed)` before any editors can be used.
+	pub fn init(enviroment: Environment, uuid_random_seed: u64) {
+		ENVIROMENT.set(enviroment).expect("Editor shoud only be initialized once");
+		graphene_std::uuid::init_rng(uuid_random_seed);
+	}
+
+	/// `Editor::init` must be called before this function
 	pub fn new() -> Self {
 		Self { dispatcher: Dispatcher::new() }
 	}
@@ -31,10 +37,54 @@ impl Editor {
 		self.dispatcher.poll_node_graph_evaluation(responses)
 	}
 }
-
 impl Default for Editor {
 	fn default() -> Self {
 		Self::new()
+	}
+}
+
+static ENVIROMENT: OnceLock<Environment> = OnceLock::new();
+impl Editor {
+	pub fn environment() -> &'static Environment {
+		ENVIROMENT.get().expect("Editor environment accessed before initialization")
+	}
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct Environment {
+	pub platform: Platform,
+	pub host: Host,
+}
+#[derive(Clone, Copy, Debug)]
+pub enum Platform {
+	Desktop,
+	Web,
+}
+#[derive(Clone, Copy, Debug)]
+pub enum Host {
+	Linux,
+	Mac,
+	Windows,
+	Unknown,
+}
+impl Environment {
+	pub fn is_desktop(&self) -> bool {
+		matches!(self.platform, Platform::Desktop)
+	}
+	pub fn is_web(&self) -> bool {
+		matches!(self.platform, Platform::Web)
+	}
+	pub fn is_linux(&self) -> bool {
+		matches!(self.host, Host::Linux)
+	}
+	pub fn is_mac(&self) -> bool {
+		matches!(self.host, Host::Mac)
+	}
+	pub fn is_windows(&self) -> bool {
+		matches!(self.host, Host::Windows)
+	}
+	pub fn is_unknown_host(&self) -> bool {
+		matches!(self.host, Host::Unknown)
 	}
 }
 

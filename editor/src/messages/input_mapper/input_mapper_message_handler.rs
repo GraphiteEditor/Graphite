@@ -1,5 +1,6 @@
 use super::utility_types::input_keyboard::KeysGroup;
 use super::utility_types::misc::Mapping;
+use crate::application::Editor;
 use crate::messages::input_mapper::utility_types::input_keyboard::{self, Key};
 use crate::messages::input_mapper::utility_types::misc::MappingEntry;
 use crate::messages::portfolio::utility_types::KeyboardPlatformLayout;
@@ -48,8 +49,7 @@ impl InputMapperMessageHandler {
 		let found_actions = all_mapping_entries.filter(|entry| entry.action.to_discriminant() == *action_to_find);
 
 		// Get the `Key` for this platform's accelerator key
-		let keyboard_layout = || GLOBAL_PLATFORM.get().copied().unwrap_or_default().as_keyboard_platform_layout();
-		let platform_accel_key = match keyboard_layout() {
+		let platform_accel_key = match Editor::environment().host.into() {
 			KeyboardPlatformLayout::Standard => Key::Control,
 			KeyboardPlatformLayout::Mac => Key::Command,
 		};

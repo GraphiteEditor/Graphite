@@ -22,8 +22,6 @@ pub enum Message {
 	#[child]
 	Frontend(FrontendMessage),
 	#[child]
-	Globals(GlobalsMessage),
-	#[child]
 	InputPreprocessor(InputPreprocessorMessage),
 	#[child]
 	KeyMapping(KeyMappingMessage),
@@ -41,6 +39,7 @@ pub enum Message {
 	Viewport(ViewportMessage),
 
 	// Messages
+	Init,
 	Batched {
 		messages: Box<[Message]>,
 	},

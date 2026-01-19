@@ -1,3 +1,4 @@
+use rand::Rng;
 use rfd::AsyncFileDialog;
 use std::fs;
 use std::path::PathBuf;
@@ -16,7 +17,7 @@ use crate::event::{AppEvent, AppEventScheduler};
 use crate::persist::PersistentData;
 use crate::render::{RenderError, RenderState};
 use crate::window::Window;
-use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, InputMessage, MouseKeys, MouseState, Platform};
+use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, InputMessage, MouseKeys, MouseState};
 use crate::wrapper::{DesktopWrapper, NodeGraphExecutionResult, WgpuContext, serialize_frontend_messages};
 
 pub(crate) struct App {
@@ -46,7 +47,8 @@ pub(crate) struct App {
 }
 
 impl App {
-	pub(crate) fn init() {
+	pub(crate) fn init(wgpu_context: &WgpuContext) {
+		DesktopWrapper::init(wgpu_context, rand::rng().random());
 		Window::init();
 	}
 
@@ -476,16 +478,6 @@ impl ApplicationHandler for App {
 		}
 
 		self.resize();
-
-		self.desktop_wrapper.init(self.wgpu_context.clone());
-
-		#[cfg(target_os = "windows")]
-		let platform = Platform::Windows;
-		#[cfg(target_os = "macos")]
-		let platform = Platform::Mac;
-		#[cfg(target_os = "linux")]
-		let platform = Platform::Linux;
-		self.dispatch_desktop_wrapper_message(DesktopWrapperMessage::UpdatePlatform(platform));
 	}
 
 	fn proxy_wake_up(&mut self, event_loop: &dyn ActiveEventLoop) {
