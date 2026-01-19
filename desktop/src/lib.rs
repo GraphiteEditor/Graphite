@@ -101,7 +101,7 @@ pub fn start() {
 		}
 	};
 
-	let mut app = App::create(Box::new(cef_context), cef_view_info_sender, wgpu_context, app_event_receiver, app_event_scheduler, cli.files);
+	let mut app = App::new(Box::new(cef_context), cef_view_info_sender, wgpu_context, app_event_receiver, app_event_scheduler, cli.files);
 
 	event_loop.run_app(&mut app).unwrap();
 

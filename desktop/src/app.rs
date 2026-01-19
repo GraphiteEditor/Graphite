@@ -51,7 +51,7 @@ impl App {
 		Window::init();
 	}
 
-	pub(crate) fn create(
+	pub(crate) fn new(
 		cef_context: Box<dyn cef::CefContext>,
 		cef_view_info_sender: Sender<cef::ViewInfoUpdate>,
 		wgpu_context: WgpuContext,
@@ -79,7 +79,7 @@ impl App {
 		let mut persistent_data = PersistentData::default();
 		persistent_data.load_from_disk();
 
-		let desktop_wrapper = DesktopWrapper::create(rand::rng().random());
+		let desktop_wrapper = DesktopWrapper::new(rand::rng().random());
 
 		Self {
 			render_state: None,

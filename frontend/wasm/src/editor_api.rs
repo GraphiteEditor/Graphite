@@ -83,7 +83,7 @@ impl EditorHandle {
 impl EditorHandle {
 	#[cfg(not(feature = "native"))]
 	pub fn create(platform: String, uuid_random_seed: u64, frontend_message_handler_callback: js_sys::Function) -> EditorHandle {
-		let editor = Editor::create(
+		let editor = Editor::new(
 			Environment {
 				platform: Platform::Web,
 				host: match platform.as_str() {
