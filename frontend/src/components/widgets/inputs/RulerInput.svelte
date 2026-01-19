@@ -21,7 +21,6 @@
 	export let microDivisions = 2;
 	export let cursorPosition: { x: number; y: number } | undefined = undefined;
 	export let selectionQuad: [number, number][] | undefined = undefined;
-
 	const dispatch = createEventDispatcher<{
 		guideLineDragStart: { direction: RulerDirection; mouseX: number; mouseY: number };
 	}>();
