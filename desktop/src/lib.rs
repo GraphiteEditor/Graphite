@@ -69,13 +69,14 @@ pub fn start() {
 	// Must be called before event loop initialization or native window integrations will break
 	App::init();
 
+	let wgpu_context = futures::executor::block_on(gpu_context::create_wgpu_context());
+
 	let event_loop = EventLoop::new().unwrap();
 	let (app_event_sender, app_event_receiver) = std::sync::mpsc::channel();
 	let app_event_scheduler = event_loop.create_app_event_scheduler(app_event_sender);
 
 	let (cef_view_info_sender, cef_view_info_receiver) = std::sync::mpsc::channel();
 
-	let wgpu_context = futures::executor::block_on(gpu_context::create_wgpu_context());
 	let cef_handler = cef::CefHandler::new(wgpu_context.clone(), app_event_scheduler.clone(), cef_view_info_receiver);
 	let cef_context = match cef_context_builder.initialize(cef_handler, cli.disable_ui_acceleration) {
 		Ok(context) => {

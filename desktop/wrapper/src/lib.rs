@@ -27,10 +27,7 @@ pub struct DesktopWrapper {
 }
 
 impl DesktopWrapper {
-	pub fn create(wgpu_context: &WgpuContext, uuid_random_seed: u64) -> Self {
-		let application_io = WasmApplicationIo::new_with_context(wgpu_context.clone());
-		futures::executor::block_on(graphite_editor::node_graph_executor::replace_application_io(application_io));
-
+	pub fn create(uuid_random_seed: u64) -> Self {
 		#[cfg(target_os = "windows")]
 		let host = Host::Windows;
 		#[cfg(target_os = "macos")]
@@ -42,6 +39,11 @@ impl DesktopWrapper {
 		Self {
 			editor: Editor::create(env, uuid_random_seed),
 		}
+	}
+
+	pub fn init(&self, wgpu_context: WgpuContext) {
+		let application_io = WasmApplicationIo::new_with_context(wgpu_context);
+		futures::executor::block_on(graphite_editor::node_graph_executor::replace_application_io(application_io));
 	}
 
 	pub fn dispatch(&mut self, message: DesktopWrapperMessage) -> Vec<DesktopFrontendMessage> {

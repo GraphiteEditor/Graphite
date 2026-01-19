@@ -79,7 +79,7 @@ impl App {
 		let mut persistent_data = PersistentData::default();
 		persistent_data.load_from_disk();
 
-		let desktop_wrapper = DesktopWrapper::create(&wgpu_context.clone(), rand::rng().random());
+		let desktop_wrapper = DesktopWrapper::create(rand::rng().random());
 
 		Self {
 			render_state: None,
@@ -479,6 +479,8 @@ impl ApplicationHandler for App {
 		}
 
 		self.resize();
+
+		self.desktop_wrapper.init(self.wgpu_context.clone());
 	}
 
 	fn proxy_wake_up(&mut self, event_loop: &dyn ActiveEventLoop) {
