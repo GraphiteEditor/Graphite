@@ -1,7 +1,5 @@
 use graphene_std::text::{Font, FontCache};
 
-use crate::application::Host;
-
 #[derive(Debug, Default)]
 pub struct PersistentData {
 	pub font_cache: FontCache,
@@ -81,23 +79,6 @@ impl FontCatalogStyle {
 		let italic = if self.italic { "ital," } else { "" };
 		let weight = self.weight;
 		format!("https://fonts.googleapis.com/css2?display=swap&family={name}:{italic}wght@{weight}&text={name}")
-	}
-}
-
-#[derive(PartialEq, Eq, Clone, Copy, Default, Debug, serde::Serialize, serde::Deserialize)]
-pub enum KeyboardPlatformLayout {
-	/// Standard keyboard mapping used by Windows and Linux
-	#[default]
-	Standard,
-	/// Keyboard mapping used by Macs where Command is sometimes used in favor of Control
-	Mac,
-}
-impl From<Host> for KeyboardPlatformLayout {
-	fn from(host: Host) -> Self {
-		match host {
-			Host::Mac => KeyboardPlatformLayout::Mac,
-			Host::Windows | Host::Linux | Host::Unknown => KeyboardPlatformLayout::Standard,
-		}
 	}
 }
 

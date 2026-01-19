@@ -1,4 +1,3 @@
-use crate::application::Editor;
 use crate::messages::debug::utility_types::MessageLoggingVerbosity;
 use crate::messages::defer::DeferMessageContext;
 use crate::messages::dialog::DialogMessageContext;
@@ -28,7 +27,7 @@ pub struct DispatcherMessageHandlers {
 	key_mapping_message_handler: KeyMappingMessageHandler,
 	layout_message_handler: LayoutMessageHandler,
 	menu_bar_message_handler: MenuBarMessageHandler,
-	pub portfolio_message_handler: PortfolioMessageHandler,
+	pub(crate) portfolio_message_handler: PortfolioMessageHandler,
 	preferences_message_handler: PreferencesMessageHandler,
 	tool_message_handler: ToolMessageHandler,
 	viewport_message_handler: ViewportMessageHandler,
@@ -197,7 +196,6 @@ impl Dispatcher {
 						message,
 						&mut queue,
 						InputPreprocessorMessageContext {
-							keyboard_platform: Editor::environment().host.into(),
 							viewport: &self.message_handlers.viewport_message_handler,
 						},
 					);
@@ -303,10 +301,6 @@ impl Dispatcher {
 				}
 				Message::Viewport(message) => {
 					self.message_handlers.viewport_message_handler.process_message(message, &mut queue, ());
-				}
-				Message::Init => {
-					self.handle_message(AppWindowMessage::Init, false);
-					self.handle_message(PortfolioMessage::Init, false);
 				}
 				Message::NoOp => {}
 				Message::Batched { messages } => {

@@ -39,7 +39,6 @@ pub enum Message {
 	Viewport(ViewportMessage),
 
 	// Messages
-	Init,
 	Batched {
 		messages: Box<[Message]>,
 	},

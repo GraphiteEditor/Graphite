@@ -43,7 +43,7 @@ fn calculate_hash<T: std::hash::Hash>(t: &T) -> u64 {
 	hasher.finish()
 }
 
-/// Provides a handle to access the raw WASM memory.
+/// Provides a handle to access the raw Wasm memory.
 #[wasm_bindgen(js_name = wasmMemory)]
 pub fn wasm_memory() -> JsValue {
 	wasm_bindgen::memory()
@@ -80,47 +80,44 @@ impl EditorHandle {
 }
 
 #[cfg(not(feature = "native"))]
-#[wasm_bindgen(js_name = editorInit)]
-pub fn editor_init(platform: String, uuid_random_seed: u64) {
-	let host = match platform.as_str() {
-		"Linux" => Host::Linux,
-		"Mac" => Host::Mac,
-		"Windows" => Host::Windows,
-		_ => Host::Unknown,
-	};
-	Editor::init(Environment { platform: Platform::Web, host }, uuid_random_seed);
+#[wasm_bindgen(js_name = constructEditor)]
+pub fn construct_editor(platform: String, uuid_random_seed: u64, frontend_message_handler_callback: js_sys::Function) -> EditorHandle {
+	Editor::init(
+		Environment {
+			platform: Platform::Web,
+			host: match platform.as_str() {
+				"Linux" => Host::Linux,
+				"Mac" => Host::Mac,
+				"Windows" => Host::Windows,
+				_ => unreachable!(),
+			},
+		},
+		uuid_random_seed,
+	);
+
+	let editor = Editor::new();
+	let editor_handle = EditorHandle { frontend_message_handler_callback };
+	if EDITOR.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor))).is_none() {
+		log::error!("Attempted to initialize the editor more than once");
+	}
+	if EDITOR_HANDLE.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor_handle.clone()))).is_none() {
+		log::error!("Attempted to initialize the editor handle more than once");
+	}
+	editor_handle
 }
 
 #[cfg(feature = "native")]
-#[wasm_bindgen(js_name = editorInit)]
-pub fn editor_init(_platform: String, _uuid_random_seed: u64) {}
+#[wasm_bindgen(js_name = constructEditor)]
+pub fn construct_editor(_platform: String, _uuid_random_seed: u64, frontend_message_handler_callback: js_sys::Function) -> EditorHandle {
+	let editor_handle = EditorHandle { frontend_message_handler_callback };
+	if EDITOR_HANDLE.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor_handle.clone()))).is_none() {
+		log::error!("Attempted to initialize the editor handle more than once");
+	}
+	editor_handle
+}
 
 #[wasm_bindgen]
 impl EditorHandle {
-	#[cfg(not(feature = "native"))]
-	#[wasm_bindgen(constructor)]
-	pub fn new(frontend_message_handler_callback: js_sys::Function) -> Self {
-		let editor = Editor::new();
-		let editor_handle = EditorHandle { frontend_message_handler_callback };
-		if EDITOR.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor))).is_none() {
-			log::error!("Attempted to initialize the editor more than once");
-		}
-		if EDITOR_HANDLE.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor_handle.clone()))).is_none() {
-			log::error!("Attempted to initialize the editor handle more than once");
-		}
-		editor_handle
-	}
-
-	#[cfg(feature = "native")]
-	#[wasm_bindgen(constructor)]
-	pub fn new(frontend_message_handler_callback: js_sys::Function) -> Self {
-		let editor_handle = EditorHandle { frontend_message_handler_callback };
-		if EDITOR_HANDLE.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor_handle.clone()))).is_none() {
-			log::error!("Attempted to initialize the editor handle more than once");
-		}
-		editor_handle
-	}
-
 	// Sends a message to the dispatcher in the Editor Backend
 	#[cfg(not(feature = "native"))]
 	fn dispatch<T: Into<Message>>(&self, message: T) {
@@ -197,7 +194,7 @@ impl EditorHandle {
 		#[cfg(feature = "native")]
 		crate::native_communcation::initialize_native_communication();
 
-		self.dispatch(Message::Init);
+		self.dispatch(PortfolioMessage::Init);
 
 		// Poll node graph evaluation on `requestAnimationFrame`
 		{
