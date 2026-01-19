@@ -187,7 +187,6 @@ impl InputPreprocessorMessageHandler {
 mod test {
 	use crate::messages::input_mapper::utility_types::input_keyboard::{Key, ModifierKeys};
 	use crate::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, MouseKeys, ScrollDelta};
-	use crate::messages::portfolio::utility_types::KeyboardPlatformLayout;
 	use crate::messages::prelude::*;
 
 	#[test]

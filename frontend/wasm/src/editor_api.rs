@@ -79,45 +79,42 @@ impl EditorHandle {
 	}
 }
 
-#[cfg(not(feature = "native"))]
-#[wasm_bindgen(js_name = constructEditor)]
-pub fn construct_editor(platform: String, uuid_random_seed: u64, frontend_message_handler_callback: js_sys::Function) -> EditorHandle {
-	Editor::init(
-		Environment {
-			platform: Platform::Web,
-			host: match platform.as_str() {
-				"Linux" => Host::Linux,
-				"Mac" => Host::Mac,
-				"Windows" => Host::Windows,
-				_ => unreachable!(),
-			},
-		},
-		uuid_random_seed,
-	);
-
-	let editor = Editor::new();
-	let editor_handle = EditorHandle { frontend_message_handler_callback };
-	if EDITOR.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor))).is_none() {
-		log::error!("Attempted to initialize the editor more than once");
-	}
-	if EDITOR_HANDLE.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor_handle.clone()))).is_none() {
-		log::error!("Attempted to initialize the editor handle more than once");
-	}
-	editor_handle
-}
-
-#[cfg(feature = "native")]
-#[wasm_bindgen(js_name = constructEditor)]
-pub fn construct_editor(_platform: String, _uuid_random_seed: u64, frontend_message_handler_callback: js_sys::Function) -> EditorHandle {
-	let editor_handle = EditorHandle { frontend_message_handler_callback };
-	if EDITOR_HANDLE.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor_handle.clone()))).is_none() {
-		log::error!("Attempted to initialize the editor handle more than once");
-	}
-	editor_handle
-}
-
 #[wasm_bindgen]
 impl EditorHandle {
+	#[cfg(not(feature = "native"))]
+	pub fn create(platform: String, uuid_random_seed: u64, frontend_message_handler_callback: js_sys::Function) -> EditorHandle {
+		let editor = Editor::create(
+			Environment {
+				platform: Platform::Web,
+				host: match platform.as_str() {
+					"Linux" => Host::Linux,
+					"Mac" => Host::Mac,
+					"Windows" => Host::Windows,
+					_ => unreachable!(),
+				},
+			},
+			uuid_random_seed,
+		);
+
+		let editor_handle = EditorHandle { frontend_message_handler_callback };
+		if EDITOR.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor))).is_none() {
+			log::error!("Attempted to initialize the editor more than once");
+		}
+		if EDITOR_HANDLE.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor_handle.clone()))).is_none() {
+			log::error!("Attempted to initialize the editor handle more than once");
+		}
+		editor_handle
+	}
+
+	#[cfg(feature = "native")]
+	pub fn create(_platform: String, _uuid_random_seed: u64, frontend_message_handler_callback: js_sys::Function) -> EditorHandle {
+		let editor_handle = EditorHandle { frontend_message_handler_callback };
+		if EDITOR_HANDLE.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor_handle.clone()))).is_none() {
+			log::error!("Attempted to initialize the editor handle more than once");
+		}
+		editor_handle
+	}
+
 	// Sends a message to the dispatcher in the Editor Backend
 	#[cfg(not(feature = "native"))]
 	fn dispatch<T: Into<Message>>(&self, message: T) {

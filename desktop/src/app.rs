@@ -47,12 +47,11 @@ pub(crate) struct App {
 }
 
 impl App {
-	pub(crate) fn init(wgpu_context: &WgpuContext) {
-		DesktopWrapper::init(wgpu_context, rand::rng().random());
+	pub(crate) fn init() {
 		Window::init();
 	}
 
-	pub(crate) fn new(
+	pub(crate) fn create(
 		cef_context: Box<dyn cef::CefContext>,
 		cef_view_info_sender: Sender<cef::ViewInfoUpdate>,
 		wgpu_context: WgpuContext,
@@ -80,6 +79,8 @@ impl App {
 		let mut persistent_data = PersistentData::default();
 		persistent_data.load_from_disk();
 
+		let desktop_wrapper = DesktopWrapper::create(&wgpu_context.clone(), rand::rng().random());
+
 		Self {
 			render_state: None,
 			wgpu_context,
@@ -93,7 +94,7 @@ impl App {
 			ui_scale: 1.,
 			app_event_receiver,
 			app_event_scheduler,
-			desktop_wrapper: DesktopWrapper::new(),
+			desktop_wrapper,
 			last_ui_update: Instant::now(),
 			cef_context,
 			cef_schedule: Some(Instant::now()),

@@ -27,7 +27,10 @@ pub struct DesktopWrapper {
 }
 
 impl DesktopWrapper {
-	pub fn init(wgpu_context: &WgpuContext, uuid_random_seed: u64) {
+	pub fn create(wgpu_context: &WgpuContext, uuid_random_seed: u64) -> Self {
+		let application_io = WasmApplicationIo::new_with_context(wgpu_context.clone());
+		futures::executor::block_on(graphite_editor::node_graph_executor::replace_application_io(application_io));
+
 		#[cfg(target_os = "windows")]
 		let host = Host::Windows;
 		#[cfg(target_os = "macos")]
@@ -35,14 +38,10 @@ impl DesktopWrapper {
 		#[cfg(target_os = "linux")]
 		let host = Host::Linux;
 		let env = Environment { platform: Platform::Desktop, host };
-		Editor::init(env, uuid_random_seed);
 
-		let application_io = WasmApplicationIo::new_with_context(wgpu_context.clone());
-		futures::executor::block_on(graphite_editor::node_graph_executor::replace_application_io(application_io));
-	}
-
-	pub fn new() -> Self {
-		Self { editor: Editor::new() }
+		Self {
+			editor: Editor::create(env, uuid_random_seed),
+		}
 	}
 
 	pub fn dispatch(&mut self, message: DesktopWrapperMessage) -> Vec<DesktopFrontendMessage> {
@@ -57,12 +56,6 @@ impl DesktopWrapper {
 			(true, texture) => NodeGraphExecutionResult::HasRun(texture.map(|t| t.texture)),
 			(false, _) => NodeGraphExecutionResult::NotRun,
 		}
-	}
-}
-
-impl Default for DesktopWrapper {
-	fn default() -> Self {
-		Self::new()
 	}
 }
 

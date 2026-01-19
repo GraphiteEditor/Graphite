@@ -8,21 +8,24 @@ pub struct Editor {
 }
 
 impl Editor {
-	pub fn init(environment: Environment, uuid_random_seed: u64) {
+	pub fn create(environment: Environment, uuid_random_seed: u64) -> Self {
 		ENVIRONMENT.set(environment).expect("Editor shoud only be initialized once");
-		graphene_std::uuid::init_rng(uuid_random_seed);
-	}
+		graphene_std::uuid::set_uuid_seed(uuid_random_seed);
 
-	/// `Editor::init` must be called before this function
-	pub fn new() -> Self {
 		Self { dispatcher: Dispatcher::new() }
 	}
 
 	#[cfg(test)]
 	pub(crate) fn new_local_executor() -> (Self, crate::node_graph_executor::NodeRuntime) {
+		let _ = ENVIRONMENT.set(*Editor::environment());
+		graphene_std::uuid::set_uuid_seed(0);
+
 		let (runtime, executor) = crate::node_graph_executor::NodeGraphExecutor::new_with_local_runtime();
-		let dispatcher = Dispatcher::with_executor(executor);
-		(Self { dispatcher }, runtime)
+		let editor = Self {
+			dispatcher: Dispatcher::with_executor(executor),
+		};
+
+		(editor, runtime)
 	}
 
 	pub fn handle_message<T: Into<Message>>(&mut self, message: T) -> Vec<FrontendMessage> {
@@ -35,16 +38,20 @@ impl Editor {
 		self.dispatcher.poll_node_graph_evaluation(responses)
 	}
 }
-impl Default for Editor {
-	fn default() -> Self {
-		Self::new()
-	}
-}
 
 static ENVIRONMENT: OnceLock<Environment> = OnceLock::new();
 impl Editor {
+	#[cfg(not(test))]
 	pub fn environment() -> &'static Environment {
 		ENVIRONMENT.get().expect("Editor environment accessed before initialization")
+	}
+
+	#[cfg(test)]
+	pub fn environment() -> &'static Environment {
+		&Environment {
+			platform: Platform::Desktop,
+			host: Host::Linux,
+		}
 	}
 }
 

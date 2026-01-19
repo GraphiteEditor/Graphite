@@ -45,19 +45,27 @@ mod u64_string {
 mod uuid_generation {
 	use rand_chacha::ChaCha20Rng;
 	use rand_chacha::rand_core::{RngCore, SeedableRng};
+	use std::cell::Cell;
 	use std::sync::Mutex;
 
 	static RNG: Mutex<Option<ChaCha20Rng>> = Mutex::new(None);
+	thread_local! {
+		pub static UUID_SEED: Cell<Option<u64>> = const { Cell::new(None) };
+	}
 
-	pub fn init_rng(random_seed: u64) {
-		let mut lock = RNG.lock().expect("UUID mutex poisoned");
-		*lock = Some(ChaCha20Rng::seed_from_u64(random_seed));
+	pub fn set_uuid_seed(random_seed: u64) {
+		UUID_SEED.with(|seed| seed.set(Some(random_seed)))
 	}
 
 	pub fn generate_uuid() -> u64 {
 		let Ok(mut lock) = RNG.lock() else { panic!("UUID mutex poisoned") };
-		let rng = lock.as_mut().expect("UUID generator not initialized. Forgot to call `init_rng`?");
-		rng.next_u64()
+		if lock.is_none() {
+			UUID_SEED.with(|seed| {
+				let random_seed = seed.get().unwrap_or(42);
+				*lock = Some(ChaCha20Rng::seed_from_u64(random_seed));
+			})
+		}
+		lock.as_mut().map(ChaCha20Rng::next_u64).expect("UUID mutex poisoned")
 	}
 }
 
