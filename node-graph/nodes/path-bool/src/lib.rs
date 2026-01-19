@@ -78,33 +78,28 @@ struct WindingNumber {
 }
 
 impl linesweeper::topology::WindingNumber for WindingNumber {
-	type Tag = usize;
+	type Tag = (usize, usize);
 
-	fn single(tag: usize, positive: bool) -> Self {
-		let mut elems = SmallVec::with_capacity(tag);
-		let sign = if positive { 1 } else { -1 };
-		for _ in 0..tag {
-			elems.push(0);
-		}
-		elems.push(sign);
+	fn single((tag, out_of): (usize, usize), positive: bool) -> Self {
+		let mut elems = SmallVec::with_capacity(out_of);
+		elems.resize(out_of, 0);
+		elems[tag] = if positive { 1 } else { -1 };
 		Self { elems }
 	}
 }
 
 impl std::ops::AddAssign for WindingNumber {
 	fn add_assign(&mut self, rhs: Self) {
-		if self.elems.len() < rhs.elems.len() {
-			self.elems.resize(rhs.elems.len(), 0);
+		if rhs.elems.is_empty() {
+			return;
 		}
-
-		for (me, them) in self.elems.iter_mut().zip(&rhs.elems) {
-			*me += *them;
+		if self.elems.is_empty() {
+			self.elems = rhs.elems;
+		} else {
+			for (me, them) in self.elems.iter_mut().zip(&rhs.elems) {
+				*me += *them;
+			}
 		}
-
-		// Removing trailing zeros normalizes the representation so that the derived
-		// PartialEq works. (Alternatively, we could write our own PartialEq.)
-		let trailing_zeros = self.elems.iter().rev().take_while(|w| **w == 0).count();
-		self.elems.truncate(self.elems.len() - trailing_zeros);
 	}
 }
 
@@ -119,50 +114,63 @@ impl std::ops::Add for WindingNumber {
 
 impl WindingNumber {
 	fn is_inside(&self, op: BooleanOperation) -> bool {
+		let is_in = |w: &i16| *w != 0;
+		let is_out = |w: &i16| *w == 0;
 		match op {
-			BooleanOperation::Union => self.elems.iter().any(|w| *w != 0),
-			BooleanOperation::SubtractFront => self.elems.first().is_some_and(|w| *w != 0) && self.elems.iter().skip(1).all(|w| *w == 0),
-			BooleanOperation::SubtractBack => self.elems.last().is_some_and(|w| *w != 0) && self.elems.iter().rev().skip(1).all(|w| *w == 0),
-			BooleanOperation::Intersect => self.elems.iter().all(|w| *w != 0),
-			BooleanOperation::Difference => self.elems.iter().any(|w| *w != 0) && !self.elems.iter().all(|w| *w != 0),
+			BooleanOperation::Union => self.elems.iter().any(is_in),
+			BooleanOperation::SubtractFront => self.elems.first().is_some_and(is_in) && self.elems.iter().skip(1).all(is_out),
+			BooleanOperation::SubtractBack => self.elems.last().is_some_and(is_in) && self.elems.iter().rev().skip(1).all(is_out),
+			BooleanOperation::Intersect => !self.elems.is_empty() && self.elems.iter().all(is_in),
+			BooleanOperation::Difference => self.elems.iter().any(is_in) && !self.elems.iter().all(is_in),
 		}
 	}
 }
 
-fn boolean_operation_on_vector_table<'a>(vector: impl DoubleEndedIterator<Item = TableRowRef<'a, Vector>>, boolean_operation: BooleanOperation) -> Table<Vector> {
+fn boolean_operation_on_vector_table<'a>(vector: impl DoubleEndedIterator<Item = TableRowRef<'a, Vector>> + Clone, boolean_operation: BooleanOperation) -> Table<Vector> {
 	const EPSILON: f64 = 1e-5;
 	let mut table = Table::new();
-	let mut alpha_blending = None;
-	let mut source_node_id = None;
 	let mut paths = Vec::new();
-	for v in vector {
-		if alpha_blending.is_none() {
-			alpha_blending = Some(*v.alpha_blending);
-			source_node_id = Some(*v.source_node_id);
-		}
+	let mut row = TableRow::<Vector>::default();
 
+	// How should we style the result? The previous implementation copied it
+	// from either the first or the last row, depending on the boolean op.
+	// We copy that behaviour, although I'm not sure what motivated it.
+	let copy_from = if matches!(boolean_operation, BooleanOperation::SubtractFront) {
+		vector.clone().next()
+	} else {
+		vector.clone().next_back()
+	};
+	if let Some(copy_from) = copy_from {
+		row.alpha_blending = *copy_from.alpha_blending;
+		row.source_node_id = *copy_from.source_node_id;
+		row.element.style = copy_from.element.style.clone();
+		row.element.upstream_data = copy_from.element.upstream_data.clone();
+	}
+
+	for v in vector {
 		paths.push(to_bez_path(v.element, *v.transform));
 	}
 
-	log::warn!("boolean op {boolean_operation:?} on paths:");
+	log::debug!("boolean op {boolean_operation:?} on paths:");
 	for p in &paths {
-		log::warn!("{}", p.to_svg());
+		log::debug!("{}", p.to_svg());
 	}
 
-	// unwrap: Topology::from_paths only errors on a non-closed path, and our paths are closed by construction.
-	let top = Topology::<WindingNumber>::from_paths(paths.iter().enumerate().map(|(idx, path)| (path, idx)), EPSILON).unwrap();
+	// unwrap: Topology::from_paths only errors on a non-closed path, and our paths are closed because `push_subpath`
+	// always makes closed subpaths.
+	let top = Topology::<WindingNumber>::from_paths(paths.iter().enumerate().map(|(idx, path)| (path, (idx, paths.len()))), EPSILON).unwrap();
 	let contours = top.contours(|w| w.is_inside(boolean_operation));
 
-	log::warn!("boolean op output paths:");
+	log::debug!("boolean op output paths:");
 	for c in contours.contours() {
-		log::warn!("{}", c.path.to_svg());
+		log::debug!("{}", c.path.to_svg());
 	}
-	table.push(TableRow {
-		element: from_bez_paths(contours.contours().map(|c| &c.path)),
-		transform: DAffine2::IDENTITY,
-		alpha_blending: alpha_blending.unwrap_or_default(),
-		source_node_id: source_node_id.unwrap_or_default(),
-	});
+
+	for subpath in from_bez_paths(contours.contours().map(|c| &c.path)) {
+		row.element.append_subpath(subpath, false);
+	}
+
+	table.push(row);
 	table
 }
 
@@ -275,7 +283,7 @@ fn push_subpath(path: &mut BezPath, subpath: &Subpath<PointId>, transform: DAffi
 	let transform = Affine::new(transform.to_cols_array());
 	let mut first = true;
 
-	for seg in subpath.iter() {
+	for seg in subpath.iter_closed() {
 		if first {
 			first = false;
 			path.move_to(transform * seg.start());
@@ -284,7 +292,7 @@ fn push_subpath(path: &mut BezPath, subpath: &Subpath<PointId>, transform: DAffi
 	}
 }
 
-fn from_bez_paths<'a>(paths: impl Iterator<Item = &'a BezPath>) -> Vector {
+fn from_bez_paths<'a>(paths: impl Iterator<Item = &'a BezPath>) -> Vec<Subpath<PointId>> {
 	let mut all_subpaths = Vec::new();
 
 	for path in paths {
@@ -323,7 +331,7 @@ fn from_bez_paths<'a>(paths: impl Iterator<Item = &'a BezPath>) -> Vector {
 		}
 	}
 
-	Vector::from_subpaths(all_subpaths, false)
+	all_subpaths
 }
 
 type Path = Vec<path_bool::PathSegment>;
