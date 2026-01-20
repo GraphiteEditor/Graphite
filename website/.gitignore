@@ -1,4 +1,4 @@
 node_modules/
 public/
-static/fonts/
-static/text-balancer.js
+static/
+!static/js/

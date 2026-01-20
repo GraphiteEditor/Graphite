@@ -11,17 +11,16 @@
 	"homepage": "https://graphite.art",
 	"type": "module",
 	"scripts": {
-		"postinstall": "node .build-scripts/install-fonts.ts",
+		"postinstall": "node .build-scripts/install.ts",
 		"generate-editor-structure": "node .build-scripts/generate-editor-structure.ts ../hierarchical_message_system_tree.txt ../hierarchical_message_system_tree.html",
 		"lint": "eslint . && tsc --noEmit",
 		"lint-fix": "eslint . --fix && tsc --noEmit"
 	},
 	"devDependencies": {
+		"@eslint/compat": "^2.0.1",
 		"@eslint/eslintrc": "^3.3.3",
 		"@eslint/js": "^9.39.2",
 		"@types/node": "^25.0.9",
-		"@typescript-eslint/eslint-plugin": "^8.53.0",
-		"@typescript-eslint/parser": "^8.53.0",
 		"eslint-config-prettier": "^10.1.8",
 		"eslint-import-resolver-typescript": "^4.4.4",
 		"eslint-plugin-import": "^2.32.0",
@@ -29,7 +28,8 @@
 		"eslint": "^9.39.2",
 		"prettier": "^3.8.0",
 		"sass": "1.97.2",
-		"typescript-eslint": "^8.53.0"
+		"tar": "^7.5.4",
+		"typescript-eslint": "^8.53.1"
 	},
 	"dependencies": {
 		"@fontsource-variable/inter": "^5.2.8",
