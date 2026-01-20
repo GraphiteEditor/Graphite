@@ -173,9 +173,7 @@ tagged_value! {
 	U64(u64),
 	Bool(bool),
 	String(String),
-	OptionalF64(Option<f64>),
 	ColorNotInTable(Color),
-	OptionalColorNotInTable(Option<Color>),
 	// ========================
 	// LISTS OF PRIMITIVE TYPES
 	// ========================
@@ -189,19 +187,19 @@ tagged_value! {
 	// TABLE TYPES
 	// ===========
 	GraphicUnused(Graphic), // TODO: This is unused but removing it causes `cargo test` to infinitely recurse its type solving; figure out why and then remove this
-	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphic_types::migrations::migrate_vector"))] // TODO: Eventually remove this migration document upgrade code
+	#[serde(deserialize_with = "graphic_types::migrations::migrate_vector")] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "VectorData")]
 	Vector(Table<Vector>),
-	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphic_types::raster_types::image::migrate_image_frame"))] // TODO: Eventually remove this migration document upgrade code
+	#[serde(deserialize_with = "graphic_types::raster_types::image::migrate_image_frame")] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "ImageFrame", alias = "RasterData", alias = "Image")]
 	Raster(Table<Raster<CPU>>),
-	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphic_types::graphic::migrate_graphic"))] // TODO: Eventually remove this migration document upgrade code
+	#[serde(deserialize_with = "graphic_types::graphic::migrate_graphic")] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "GraphicGroup", alias = "Group")]
 	Graphic(Table<Graphic>),
-	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphic_types::artboard::migrate_artboard"))] // TODO: Eventually remove this migration document upgrade code
+	#[serde(deserialize_with = "graphic_types::artboard::migrate_artboard")] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "ArtboardGroup")]
 	Artboard(Table<Artboard>),
-	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "core_types::misc::migrate_color"))] // TODO: Eventually remove this migration document upgrade code
+	#[serde(deserialize_with = "core_types::misc::migrate_color")] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "ColorTable", alias = "OptionalColor")]
 	Color(Table<Color>),
 	GradientTable(Table<GradientStops>),
@@ -366,9 +364,9 @@ impl TaggedValue {
 					x if x == TypeId::of::<u32>() => FromStr::from_str(string).map(TaggedValue::U32).ok()?,
 					x if x == TypeId::of::<DVec2>() => to_dvec2(string).map(TaggedValue::DVec2)?,
 					x if x == TypeId::of::<bool>() => FromStr::from_str(string).map(TaggedValue::Bool).ok()?,
-					x if x == TypeId::of::<Table<Color>>() => to_color(string).map(|color| TaggedValue::Color(Table::new_from_element(color)))?,
 					x if x == TypeId::of::<Color>() => to_color(string).map(TaggedValue::ColorNotInTable)?,
 					x if x == TypeId::of::<Option<Color>>() => TaggedValue::ColorNotInTable(to_color(string)?),
+					x if x == TypeId::of::<Table<Color>>() => to_color(string).map(|color| TaggedValue::Color(Table::new_from_element(color)))?,
 					x if x == TypeId::of::<Fill>() => to_color(string).map(|color| TaggedValue::Fill(Fill::solid(color)))?,
 					x if x == TypeId::of::<ReferencePoint>() => to_reference_point(string).map(TaggedValue::ReferencePoint)?,
 					_ => return None,

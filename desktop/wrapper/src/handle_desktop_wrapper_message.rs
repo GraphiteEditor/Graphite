@@ -1,11 +1,10 @@
 use graphene_std::Color;
 use graphene_std::raster::Image;
-use graphite_editor::messages::app_window::app_window_message_handler::AppWindowPlatform;
 use graphite_editor::messages::clipboard::utility_types::ClipboardContentRaw;
 use graphite_editor::messages::prelude::*;
 
 use super::DesktopWrapperMessageDispatcher;
-use super::messages::{DesktopFrontendMessage, DesktopWrapperMessage, EditorMessage, OpenFileDialogContext, Platform, SaveFileDialogContext};
+use super::messages::{DesktopFrontendMessage, DesktopWrapperMessage, EditorMessage, OpenFileDialogContext, SaveFileDialogContext};
 
 pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMessageDispatcher, message: DesktopWrapperMessage) {
 	match message {
@@ -111,15 +110,6 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 			dispatcher.queue_editor_message(message);
 		}
 		DesktopWrapperMessage::PollNodeGraphEvaluation => dispatcher.poll_node_graph_evaluation(),
-		DesktopWrapperMessage::UpdatePlatform(platform) => {
-			let platform = match platform {
-				Platform::Windows => AppWindowPlatform::Windows,
-				Platform::Mac => AppWindowPlatform::Mac,
-				Platform::Linux => AppWindowPlatform::Linux,
-			};
-			let message = AppWindowMessage::UpdatePlatform { platform };
-			dispatcher.queue_editor_message(message);
-		}
 		DesktopWrapperMessage::UpdateMaximized { maximized } => {
 			let message = FrontendMessage::UpdateMaximized { maximized };
 			dispatcher.queue_editor_message(message);
@@ -171,6 +161,10 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 				};
 				dispatcher.queue_editor_message(message);
 			}
+		}
+		DesktopWrapperMessage::PointerLockMove { x, y } => {
+			let message = AppWindowMessage::PointerLockMove { x, y };
+			dispatcher.queue_editor_message(message);
 		}
 	}
 }

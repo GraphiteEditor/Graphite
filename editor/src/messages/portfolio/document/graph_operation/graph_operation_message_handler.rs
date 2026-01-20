@@ -382,7 +382,7 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 
 			modify_inputs.insert_vector(subpaths, layer, true, path.fill().is_some(), path.stroke().is_some());
 
-			if let Some(transform_node_id) = modify_inputs.existing_node_id("Transform", true) {
+			if let Some(transform_node_id) = modify_inputs.existing_network_node_id("Transform", true) {
 				transform_utils::update_transform(modify_inputs.network_interface, &transform_node_id, transform * usvg_transform(node.abs_transform()));
 			}
 

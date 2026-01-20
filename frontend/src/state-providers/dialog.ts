@@ -45,33 +45,33 @@ export function createDialogState(editor: Editor) {
 	}
 
 	// Subscribe to process backend events
-	editor.subscriptions.subscribeJsMessage(DisplayDialog, (displayDialog) => {
+	editor.subscriptions.subscribeJsMessage(DisplayDialog, (data) => {
 		update((state) => {
 			state.visible = true;
 
-			state.title = displayDialog.title;
-			state.icon = displayDialog.icon;
+			state.title = data.title;
+			state.icon = data.icon;
 
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateDialogButtons, (updateDialogButtons) => {
+	editor.subscriptions.subscribeJsMessage(UpdateDialogButtons, (data) => {
 		update((state) => {
-			patchLayout(state.buttons, updateDialogButtons);
+			patchLayout(state.buttons, data);
 
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateDialogColumn1, (updateDialogColumn1) => {
+	editor.subscriptions.subscribeJsMessage(UpdateDialogColumn1, (data) => {
 		update((state) => {
-			patchLayout(state.column1, updateDialogColumn1);
+			patchLayout(state.column1, data);
 
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateDialogColumn2, (updateDialogColumn2) => {
+	editor.subscriptions.subscribeJsMessage(UpdateDialogColumn2, (data) => {
 		update((state) => {
-			patchLayout(state.column2, updateDialogColumn2);
+			patchLayout(state.column2, data);
 
 			return state;
 		});

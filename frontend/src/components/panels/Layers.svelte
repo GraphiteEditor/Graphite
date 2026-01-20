@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { getContext, onMount, onDestroy, tick } from "svelte";
+	import { SvelteMap } from "svelte/reactivity";
 
 	import type { Editor } from "@graphite/editor";
 	import {
@@ -54,7 +55,7 @@
 	let list: LayoutCol | undefined;
 
 	// Layer data
-	let layerCache = new Map<string, LayerPanelEntry>(); // TODO: replace with BigUint64Array as index
+	let layerCache = new SvelteMap<string, LayerPanelEntry>(); // TODO: replace with BigUint64Array as index
 	let layers: LayerListingInfo[] = [];
 
 	// Interactive dragging
@@ -75,28 +76,28 @@
 	let layersPanelBottomBarLayout: Layout = [];
 
 	onMount(() => {
-		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarLeftLayout, (updateLayersPanelControlBarLeftLayout) => {
-			patchLayout(layersPanelControlBarLeftLayout, updateLayersPanelControlBarLeftLayout);
+		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarLeftLayout, (data) => {
+			patchLayout(layersPanelControlBarLeftLayout, data);
 			layersPanelControlBarLeftLayout = layersPanelControlBarLeftLayout;
 		});
 
-		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarRightLayout, (updateLayersPanelControlBarRightLayout) => {
-			patchLayout(layersPanelControlBarRightLayout, updateLayersPanelControlBarRightLayout);
+		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarRightLayout, (data) => {
+			patchLayout(layersPanelControlBarRightLayout, data);
 			layersPanelControlBarRightLayout = layersPanelControlBarRightLayout;
 		});
 
-		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelBottomBarLayout, (updateLayersPanelBottomBarLayout) => {
-			patchLayout(layersPanelBottomBarLayout, updateLayersPanelBottomBarLayout);
+		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelBottomBarLayout, (data) => {
+			patchLayout(layersPanelBottomBarLayout, data);
 			layersPanelBottomBarLayout = layersPanelBottomBarLayout;
 		});
 
-		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerStructureJs, (updateDocumentLayerStructure) => {
-			const structure = newUpdateDocumentLayerStructure(updateDocumentLayerStructure.dataBuffer);
+		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerStructureJs, (data) => {
+			const structure = newUpdateDocumentLayerStructure(data.dataBuffer);
 			rebuildLayerHierarchy(structure);
 		});
 
-		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerDetails, (updateDocumentLayerDetails) => {
-			const targetLayer = updateDocumentLayerDetails.data;
+		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerDetails, (data) => {
+			const targetLayer = data.data;
 			const targetId = targetLayer.id;
 
 			updateLayerInTree(targetId, targetLayer);
@@ -644,15 +645,15 @@
 							{@html $nodeGraph.thumbnails.get(listing.entry.id)}
 						{/if}
 					</div>
-					{#if listing.entry.name === "Artboard"}
-						<IconLabel icon="Artboard" class="layer-type-icon" />
+					{#if listing.entry.iconName}
+						<IconLabel icon={listing.entry.iconName} class="layer-type-icon" tooltipLabel="Artboard" />
 					{/if}
 					<LayoutRow class="layer-name" on:dblclick={() => onEditLayerName(listing)}>
 						<input
 							data-text-input
 							type="text"
 							value={listing.entry.alias}
-							placeholder={listing.entry.name}
+							placeholder={listing.entry.implementationName}
 							disabled={!listing.editingName}
 							on:blur={() => onEditLayerNameDeselect(listing)}
 							on:keydown={(e) => e.key === "Escape" && onEditLayerNameDeselect(listing)}
@@ -686,7 +687,7 @@
 			{/each}
 		</LayoutCol>
 		{#if draggingData && !draggingData.highlightFolder && dragInPanel}
-			<div class="insert-mark" style:left={`${4 + draggingData.insertDepth * 16}px`} style:top={`${draggingData.markerHeight}px`} />
+			<div class="insert-mark" style:left={`${4 + draggingData.insertDepth * 16}px`} style:top={`${draggingData.markerHeight}px`}></div>
 		{/if}
 	</LayoutRow>
 	<LayoutRow class="bottom-bar" scrollableX={true}>
@@ -842,7 +843,6 @@
 				}
 
 				.layer-type-icon {
-					flex: 0 0 auto;
 					margin-left: 8px;
 					margin-right: -4px;
 				}

@@ -7,7 +7,7 @@ css = ["/page/developer-guide-editor-structure.css"]
 js = ["/js/developer-guide-editor-structure.js"]
 +++
 
-The Graphite editor is the application users interact with to create documents. Its code is one Rust crate sandwiched between the frontend and Graphene, the node-based graphics engine. The main business logic of all visual editing is handled by the editor backend. When running in the browser, it is compiled to WebAssembly and passes messages to the frontend.
+The Graphite editor is the application users interact with to create documents. Its code is a single Rust crate that lives below the frontend (web code) and above [Graphene](../../graphene) (the node-based graphics engine). The main business logic of all visual editing is handled by the editor backend. When running in the browser, it is compiled to WebAssembly and passes messages to the frontend.
 
 ## Message system
 
@@ -43,11 +43,11 @@ Click to explore the outline of the editor subsystem hierarchy which forms the s
 
 ## How messages work
 
-Messages are enum variants that are dispatched to perform some intended activity within their respective message handlers. Here are two <span class="subsystem">DocumentMessage</span> definitions:
+Messages are enum variants that are dispatched to perform some intended activity within their respective message handlers. Here are two message definitions from <span class="subsystem">DocumentMessage</span>:
 ```rs
 pub enum DocumentMessage {
 	...
-	// A message that carries one named data field
+	// A message that carries one data field
 	DeleteLayer {
 		id: NodeId,
 	}
@@ -57,7 +57,7 @@ pub enum DocumentMessage {
 }
 ```
 
-As shown above, additional data fields can be included with each message. But as a special case denoted by the <span class="submessage">#[child]</span> attribute, that data can also be a sub-message enum, which enables hierarchical nesting of message handler subsystems.
+As shown above, additional data fields can be included with each message. But as a special case denoted by a <span class="submessage">#[child]</span> attribute, that data can also be a sub-message enum, which enables hierarchical nesting of message handler subsystems.
 
 By convention, regular data must be written as struct-style named fields (shown above), while a sub-message enum must be written as a tuple/newtype-style field (shown below). The <span class="subsystem">DocumentMessage</span> enum of the previous example is defined as a child of <span class="subsystem">PortfolioMessage</span> which wraps it like this:
 

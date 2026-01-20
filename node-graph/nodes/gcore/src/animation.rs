@@ -1,4 +1,5 @@
-use core_types::{Ctx, ExtractAnimationTime, ExtractRealTime};
+use core_types::{Ctx, ExtractAnimationTime, ExtractPointer, ExtractRealTime};
+use glam::DVec2;
 
 const DAY: f64 = 1000. * 3600. * 24.;
 
@@ -45,6 +46,12 @@ fn real_time(
 #[node_macro::node(category("Animation"))]
 fn animation_time(ctx: impl Ctx + ExtractAnimationTime) -> f64 {
 	ctx.try_animation_time().unwrap_or_default()
+}
+
+/// Produces the current position of the user's pointer within the document canvas.
+#[node_macro::node(category("Animation"))]
+fn pointer_position(ctx: impl Ctx + ExtractPointer) -> DVec2 {
+	ctx.try_pointer().unwrap_or_default()
 }
 
 // TODO: These nodes require more sophisticated algorithms for giving the correct result

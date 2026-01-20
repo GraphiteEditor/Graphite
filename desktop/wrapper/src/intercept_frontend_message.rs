@@ -136,6 +136,9 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		FrontendMessage::TriggerClipboardWrite { content } => {
 			dispatcher.respond(DesktopFrontendMessage::ClipboardWrite { content });
 		}
+		FrontendMessage::WindowPointerLock => {
+			dispatcher.respond(DesktopFrontendMessage::PointerLock);
+		}
 		FrontendMessage::WindowClose => {
 			dispatcher.respond(DesktopFrontendMessage::WindowClose);
 		}
@@ -144,6 +147,9 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		}
 		FrontendMessage::WindowMaximize => {
 			dispatcher.respond(DesktopFrontendMessage::WindowMaximize);
+		}
+		FrontendMessage::WindowFullscreen => {
+			dispatcher.respond(DesktopFrontendMessage::WindowFullscreen);
 		}
 		FrontendMessage::WindowDrag => {
 			dispatcher.respond(DesktopFrontendMessage::WindowDrag);

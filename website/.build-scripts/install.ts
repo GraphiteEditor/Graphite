@@ -1,8 +1,11 @@
 /* eslint-disable no-console */
 
 import fs from "fs";
+import type { IncomingMessage } from "http";
 import https from "https";
 import path from "path";
+
+import * as tar from "tar";
 
 // Define basePath as the directory of the current script
 const basePath = import.meta.dirname;
@@ -185,11 +188,65 @@ https
 				}
 				fs.writeFileSync(textBalancerDest, data, "utf8");
 				console.log(`Downloaded and saved: ${textBalancerDest}`);
+				res.destroy(); // Close the connection
 			} catch (error) {
 				console.error("Error saving text-balancer.js:", error);
+				res.destroy(); // Close the connection
 			}
 		});
 	})
 	.on("error", (err) => {
 		console.error("Error downloading text-balancer.js:", err);
 	});
+
+// Fetch all favicon files from the /favicons directory of the Graphite Branded Assets repo and save them within ../static/
+// The URL of the repo is the first line of ../../.branding which is a .tar.gz file that we extract with the "tar" npm package
+const brandingFilePath = path.join(basePath, "..", "..", ".branding");
+if (!fs.existsSync(brandingFilePath)) console.error("\nThe `.branding` file was not found");
+const brandingRepoUrl = fs.readFileSync(brandingFilePath, "utf8").split("\n")[0].trim();
+console.log("\nFetching favicons from branding repo:", brandingRepoUrl);
+downloadWithRedirects(
+	brandingRepoUrl,
+	(res) => {
+		if (res.statusCode !== 200) {
+			console.error(`Failed to download branding repo. Status code: ${res.statusCode}`);
+			res.resume();
+			return;
+		}
+
+		// Pipe the response stream into tar to extract only the /favicons directory
+		const extract = tar.extract({
+			cwd: path.join(basePath, "../static/"),
+			filter: (path) => path.includes("/favicons/"),
+			strip: 2, // Remove leading directory components
+		});
+
+		res.pipe(extract);
+
+		extract.on("finish", () => {
+			console.log("Favicons extracted to ../static/ successfully!");
+			res.destroy(); // Close the connection
+		});
+
+		extract.on("error", (err) => {
+			console.error("Error extracting favicons:", err);
+			res.destroy(); // Close the connection
+		});
+	},
+	(err) => console.error("Error downloading branding repo:", err),
+);
+function downloadWithRedirects(url: string, callback: (res: IncomingMessage) => void, errorCallback: (err: Error) => void) {
+	https
+		.get(url, (res) => {
+			if (res.statusCode === 302 || res.statusCode === 301) {
+				console.log("Redirected to:", res.headers.location);
+				res.destroy(); // Close the connection
+
+				// Follow the redirect
+				return downloadWithRedirects(res.headers.location || "", callback, errorCallback);
+			}
+			console.log("Final URL reached:", url);
+			callback(res);
+		})
+		.on("error", errorCallback);
+}

@@ -8,18 +8,19 @@
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 
 	const dispatch = createEventDispatcher<{ checked: boolean }>();
+	const backupId = String(Math.random()).substring(2);
 
+	// Content
 	export let checked = false;
-	export let disabled = false;
 	export let icon: IconName = "Checkmark";
+	export let forLabel: bigint | undefined = undefined;
+	export let disabled = false;
+	// Tooltips
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
 	export let tooltipShortcut: ActionShortcut | undefined = undefined;
-	export let forLabel: bigint | undefined = undefined;
 
 	let inputElement: HTMLInputElement | undefined;
-
-	const backupId = String(Math.random()).substring(2);
 
 	$: id = forLabel !== undefined ? String(forLabel) : backupId;
 	$: displayIcon = (!checked && icon === "Checkmark" ? "Empty12px" : icon) as IconName;

@@ -476,7 +476,7 @@
 	{...$$restProps}
 >
 	{#if displayTail}
-		<div class="tail" bind:this={tail} />
+		<div class="tail" bind:this={tail}></div>
 	{/if}
 	{#if displayContainer}
 		<div class="floating-menu-container" bind:this={floatingMenuContainer}>

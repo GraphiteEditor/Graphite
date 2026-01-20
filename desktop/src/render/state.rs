@@ -37,10 +37,13 @@ impl RenderState {
 			format: surface_format,
 			width: size.width,
 			height: size.height,
+			#[cfg(not(target_os = "macos"))]
 			present_mode: surface_caps.present_modes[0],
+			#[cfg(target_os = "macos")]
+			present_mode: wgpu::PresentMode::Immediate,
 			alpha_mode: surface_caps.alpha_modes[0],
 			view_formats: vec![],
-			desired_maximum_frame_latency: 2,
+			desired_maximum_frame_latency: 1,
 		};
 
 		surface.configure(&context.device, &config);

@@ -30,55 +30,55 @@ export function createDocumentState(editor: Editor) {
 	const { subscribe, update } = state;
 
 	// Update layouts
-	editor.subscriptions.subscribeJsMessage(UpdateGraphFadeArtwork, (updateGraphFadeArtwork) => {
+	editor.subscriptions.subscribeJsMessage(UpdateGraphFadeArtwork, (data) => {
 		update((state) => {
-			state.fadeArtwork = updateGraphFadeArtwork.percentage;
+			state.fadeArtwork = data.percentage;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateToolOptionsLayout, async (updateToolOptionsLayout) => {
+	editor.subscriptions.subscribeJsMessage(UpdateToolOptionsLayout, async (data) => {
 		await tick();
 
 		update((state) => {
-			patchLayout(state.toolOptionsLayout, updateToolOptionsLayout);
+			patchLayout(state.toolOptionsLayout, data);
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateDocumentBarLayout, async (updateDocumentBarLayout) => {
+	editor.subscriptions.subscribeJsMessage(UpdateDocumentBarLayout, async (data) => {
 		await tick();
 
 		update((state) => {
-			patchLayout(state.documentBarLayout, updateDocumentBarLayout);
+			patchLayout(state.documentBarLayout, data);
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateToolShelfLayout, async (updateToolShelfLayout) => {
+	editor.subscriptions.subscribeJsMessage(UpdateToolShelfLayout, async (data) => {
 		await tick();
 
 		update((state) => {
-			patchLayout(state.toolShelfLayout, updateToolShelfLayout);
+			patchLayout(state.toolShelfLayout, data);
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateWorkingColorsLayout, async (updateWorkingColorsLayout) => {
+	editor.subscriptions.subscribeJsMessage(UpdateWorkingColorsLayout, async (data) => {
 		await tick();
 
 		update((state) => {
-			patchLayout(state.workingColorsLayout, updateWorkingColorsLayout);
+			patchLayout(state.workingColorsLayout, data);
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphControlBarLayout, (updateNodeGraphControlBarLayout) => {
+	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphControlBarLayout, (data) => {
 		update((state) => {
-			patchLayout(state.nodeGraphControlBarLayout, updateNodeGraphControlBarLayout);
+			patchLayout(state.nodeGraphControlBarLayout, data);
 			return state;
 		});
 	});
 
 	// Show or hide the graph view overlay
-	editor.subscriptions.subscribeJsMessage(UpdateGraphViewOverlay, (updateGraphViewOverlay) => {
+	editor.subscriptions.subscribeJsMessage(UpdateGraphViewOverlay, (data) => {
 		update((state) => {
-			state.graphViewOverlayOpen = updateGraphViewOverlay.open;
+			state.graphViewOverlayOpen = data.open;
 			return state;
 		});
 	});

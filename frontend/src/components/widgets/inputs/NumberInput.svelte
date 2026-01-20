@@ -1,7 +1,8 @@
 <script lang="ts">
-	import { createEventDispatcher, onMount, onDestroy } from "svelte";
+	import { createEventDispatcher, onMount, onDestroy, getContext } from "svelte";
 
 	import { evaluateMathExpression } from "@graphite/../wasm/pkg/graphite_wasm";
+	import type { Editor } from "@graphite/editor";
 	import { PRESS_REPEAT_DELAY_MS, PRESS_REPEAT_INTERVAL_MS } from "@graphite/io-managers/input";
 	import type { NumberInputMode, NumberInputIncrementBehavior, ActionShortcut } from "@graphite/messages";
 	import { browserVersion, isDesktop } from "@graphite/utility-functions/platform";
@@ -16,51 +17,46 @@
 
 	const dispatch = createEventDispatcher<{ value: number | undefined; startHistoryTransaction: undefined }>();
 
-	// Label
+	const editor = getContext<Editor>("editor");
+
+	// Content
+	/// When `value` is not provided (i.e. it's `undefined`), a dash is displayed.
+	export let value: number | undefined = undefined;
 	export let label: string | undefined = undefined;
-	export let tooltipLabel: string | undefined = undefined;
-	export let tooltipDescription: string | undefined = undefined;
-	export let tooltipShortcut: ActionShortcut | undefined = undefined;
-
-	// Disabled
 	export let disabled = false;
-
-	// Narrow
+	// Styling
 	export let narrow = false;
-
-	// Value
-	// When `value` is not provided (i.e. it's `undefined`), a dash is displayed.
-	export let value: number | undefined = undefined; // NOTE: Do not update this directly, do so by calling `updateValue()` instead.
+	// Behavior
+	/// Mode behavior
+	/// "Increment" shows arrows and allows dragging left/right to change the value.
+	/// "Range" shows a range slider between some minimum and maximum value.
+	export let mode: NumberInputMode = "Increment";
 	export let min: number | undefined = undefined;
 	export let max: number | undefined = undefined;
+	/// `rangeMin` and `rangeMax` are only applicable with a `mode` of "Range".
+	/// They set the lower and upper values of the slider to drag between.
+	export let rangeMin = 0;
+	export let rangeMax = 1;
+	/// When `mode` is "Increment", `step` is the multiplier or addend used with `incrementBehavior`.
+	/// When `mode` is "Range", `step` is the range slider's snapping increment if `isInteger` is `true`.
+	export let step = 1;
 	export let isInteger = false;
-
-	// Number presentation
+	/// `incrementBehavior` is only applicable with a `mode` of "Increment".
+	/// "Add"/"Multiply": The value is added or multiplied by `step`.
+	/// "None": the increment arrows are not shown.
+	/// "Callback": the functions `incrementCallbackIncrease` and `incrementCallbackDecrease` call custom behavior.
+	export let incrementBehavior: NumberInputIncrementBehavior = "Add";
 	export let displayDecimalPlaces = 2;
 	export let unit = "";
 	export let unitIsHiddenWhenEditing = true;
 
-	// Mode behavior
-	// "Increment" shows arrows and allows dragging left/right to change the value.
-	// "Range" shows a range slider between some minimum and maximum value.
-	export let mode: NumberInputMode = "Increment";
-	// When `mode` is "Increment", `step` is the multiplier or addend used with `incrementBehavior`.
-	// When `mode` is "Range", `step` is the range slider's snapping increment if `isInteger` is `true`.
-	export let step = 1;
-	// `incrementBehavior` is only applicable with a `mode` of "Increment".
-	// "Add"/"Multiply": The value is added or multiplied by `step`.
-	// "None": the increment arrows are not shown.
-	// "Callback": the functions `incrementCallbackIncrease` and `incrementCallbackDecrease` call custom behavior.
-	export let incrementBehavior: NumberInputIncrementBehavior = "Add";
-	// `rangeMin` and `rangeMax` are only applicable with a `mode` of "Range".
-	// They set the lower and upper values of the slider to drag between.
-	export let rangeMin = 0;
-	export let rangeMax = 1;
-
-	// Styling
+	// Sizing
 	export let minWidth = 0;
 	export let maxWidth = 0;
-
+	// Tooltips
+	export let tooltipLabel: string | undefined = undefined;
+	export let tooltipDescription: string | undefined = undefined;
+	export let tooltipShortcut: ActionShortcut | undefined = undefined;
 	// Callbacks
 	export let incrementCallbackIncrease: (() => void) | undefined = undefined;
 	export let incrementCallbackDecrease: (() => void) | undefined = undefined;
@@ -87,11 +83,12 @@
 	let initialValueBeforeDragging: number | undefined = undefined;
 	// Stores the total value change during the process of dragging the slider. Set to 0 when not dragging.
 	let cumulativeDragDelta = 0;
+	// Track whether the Shift key is currently held down.
+	let shiftKeyDown = false;
 	// Track whether the Ctrl key is currently held down.
 	let ctrlKeyDown = false;
 
 	$: watchValue(value, unit);
-
 	$: sliderStepValue = isInteger ? (step === undefined ? 1 : step) : "any";
 	$: styles = {
 		...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}),
@@ -99,17 +96,20 @@
 		...(mode === "Range" ? { "--progress-factor": Math.min(Math.max((rangeSliderValueAsRendered - rangeMin) / (rangeMax - rangeMin), 0), 1) } : {}),
 	};
 
-	// Keep track of the Ctrl key being held down.
-	const trackCtrl = (e: KeyboardEvent | MouseEvent) => (ctrlKeyDown = e.ctrlKey);
+	// Keep track of the Shift and Ctrl key being held down.
+	const trackShiftAndCtrl = (e: KeyboardEvent | MouseEvent) => {
+		shiftKeyDown = e.shiftKey;
+		ctrlKeyDown = e.ctrlKey;
+	};
 	onMount(() => {
-		addEventListener("keydown", trackCtrl);
-		addEventListener("keyup", trackCtrl);
-		addEventListener("mousemove", trackCtrl);
+		addEventListener("keydown", trackShiftAndCtrl);
+		addEventListener("keyup", trackShiftAndCtrl);
+		addEventListener("mousemove", trackShiftAndCtrl);
 	});
 	onDestroy(() => {
-		removeEventListener("keydown", trackCtrl);
-		removeEventListener("keyup", trackCtrl);
-		removeEventListener("mousemove", trackCtrl);
+		removeEventListener("keydown", trackShiftAndCtrl);
+		removeEventListener("keyup", trackShiftAndCtrl);
+		removeEventListener("mousemove", trackShiftAndCtrl);
 		clearTimeout(repeatTimeout);
 	});
 
@@ -377,6 +377,9 @@
 
 		// Enter dragging state
 		if (usePointerLock) target.requestPointerLock();
+		if (isDesktop()) {
+			editor.handle.appWindowPointerLock();
+		}
 		initialValueBeforeDragging = value;
 		cumulativeDragDelta = 0;
 
@@ -420,19 +423,16 @@
 
 			// Calculate and then update the dragged value offset, slowed down by 10x when Shift is held.
 			if (ignoredFirstMovement && initialValueBeforeDragging !== undefined) {
-				const CHANGE_PER_DRAG_PX = 0.1;
-				const CHANGE_PER_DRAG_PX_SLOW = CHANGE_PER_DRAG_PX / 10;
-
-				const dragDelta = e.movementX * (e.shiftKey ? CHANGE_PER_DRAG_PX_SLOW : CHANGE_PER_DRAG_PX);
-				cumulativeDragDelta += dragDelta;
-
-				const combined = initialValueBeforeDragging + cumulativeDragDelta;
-				const combineSnapped = e.ctrlKey ? Math.round(combined) : combined;
-
-				const newValue = updateValue(combineSnapped);
-
-				// If the value was altered within the `updateValue()` call, we need to rectify the cumulative drag delta to account for the change.
-				if (newValue !== undefined) cumulativeDragDelta -= combineSnapped - newValue;
+				pointerLockMoveUpdate(e.movementX, e.shiftKey, e.ctrlKey, initialValueBeforeDragging);
+			}
+			ignoredFirstMovement = true;
+		};
+		// On desktop we don't get `pointermove` events while in pointer lock (cef doesn't support pointer lock).
+		// We have to listen for our custom `pointerlockmove` events instead.
+		const pointerLockMove = (e: Event) => {
+			if (ignoredFirstMovement && initialValueBeforeDragging !== undefined && e instanceof CustomEvent) {
+				const delta = (e.detail as { x: number }).x;
+				pointerLockMoveUpdate(delta, shiftKeyDown, ctrlKeyDown, initialValueBeforeDragging);
 			}
 			ignoredFirstMovement = true;
 		};
@@ -451,12 +451,30 @@
 			// Clean up the event listeners.
 			removeEventListener("pointerup", pointerUp);
 			removeEventListener("pointermove", pointerMove);
+			removeEventListener("pointerlockmove", pointerLockMove);
 			if (usePointerLock) document.removeEventListener("pointerlockchange", pointerLockChange);
 		};
 
 		addEventListener("pointerup", pointerUp);
 		addEventListener("pointermove", pointerMove);
+		addEventListener("pointerlockmove", pointerLockMove);
 		if (usePointerLock) document.addEventListener("pointerlockchange", pointerLockChange);
+	}
+
+	function pointerLockMoveUpdate(delta: number, slow: boolean, snapping: boolean, initialValue: number) {
+		const CHANGE_PER_DRAG_PX = 0.1;
+		const CHANGE_PER_DRAG_PX_SLOW = CHANGE_PER_DRAG_PX / 10;
+
+		const dragDelta = delta * (slow ? CHANGE_PER_DRAG_PX_SLOW : CHANGE_PER_DRAG_PX);
+		cumulativeDragDelta += dragDelta;
+
+		const combined = initialValue + cumulativeDragDelta;
+		const combineSnapped = snapping ? Math.round(combined) : combined;
+
+		const newValue = updateValue(combineSnapped);
+
+		// If the value was altered within the `updateValue()` call, we need to rectify the cumulative drag delta to account for the change.
+		if (newValue !== undefined) cumulativeDragDelta -= combineSnapped - newValue;
 	}
 
 	// ===============================
@@ -736,19 +754,15 @@
 				bind:this={inputRangeElement}
 			/>
 			{#if rangeSliderClickDragState === "Deciding"}
-				<div class="fake-slider-thumb" />
+				<div class="fake-slider-thumb"></div>
 			{/if}
-			<div class="slider-progress" />
+			<div class="slider-progress"></div>
 		{/if}
 	{/if}
 </FieldInput>
 
 <style lang="scss" global>
 	.number-input {
-		input {
-			text-align: center;
-		}
-
 		&.narrow {
 			--widget-height: 20px;
 		}
@@ -972,6 +986,10 @@
 					border-radius: 1px 0 0 1px;
 				}
 			}
+		}
+
+		input {
+			text-align: center;
 		}
 	}
 </style>

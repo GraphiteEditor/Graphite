@@ -65,9 +65,11 @@ pub enum DesktopFrontendMessage {
 	ClipboardWrite {
 		content: String,
 	},
+	PointerLock,
 	WindowClose,
 	WindowMinimize,
 	WindowMaximize,
+	WindowFullscreen,
 	WindowDrag,
 	WindowHide,
 	WindowHideOthers,
@@ -107,7 +109,6 @@ pub enum DesktopWrapperMessage {
 		content: Vec<u8>,
 	},
 	PollNodeGraphEvaluation,
-	UpdatePlatform(Platform),
 	UpdateMaximized {
 		maximized: bool,
 	},
@@ -132,6 +133,10 @@ pub enum DesktopWrapperMessage {
 	ClipboardReadResult {
 		content: Option<String>,
 	},
+	PointerLockMove {
+		x: f64,
+		y: f64,
+	},
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize, Debug)]
@@ -155,12 +160,6 @@ pub enum OpenFileDialogContext {
 pub enum SaveFileDialogContext {
 	Document { document_id: DocumentId, content: Vec<u8> },
 	File { content: Vec<u8> },
-}
-
-pub enum Platform {
-	Windows,
-	Mac,
-	Linux,
 }
 
 pub enum MenuItem {

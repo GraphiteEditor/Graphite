@@ -84,7 +84,7 @@ async function main() {
 	const url = lines[0];
 	const expectedHash = lines[1];
 
-	console.log(`Downloading branding assets from ${url}...`);
+	console.log(`Downloading branding assets from <${url}>...`);
 
 	try {
 		await downloadFile(url, TEMP_FILE);

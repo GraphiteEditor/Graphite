@@ -7,7 +7,7 @@
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
-	import Panel from "@graphite/components/window/workspace/Panel.svelte";
+	import Panel from "@graphite/components/window/Panel.svelte";
 
 	const MIN_PANEL_SIZE = 100;
 	const PANEL_SIZES = {

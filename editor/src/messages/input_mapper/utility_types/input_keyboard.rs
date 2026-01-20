@@ -1,4 +1,4 @@
-use crate::messages::portfolio::utility_types::KeyboardPlatformLayout;
+use crate::application::Editor;
 use crate::messages::prelude::*;
 use bitflags::bitflags;
 use std::fmt::{self, Display, Formatter};
@@ -258,7 +258,7 @@ impl fmt::Display for Key {
 			return write!(f, "{}", key_name.chars().skip(KEY_PREFIX.len()).collect::<String>());
 		}
 
-		let keyboard_layout = || GLOBAL_PLATFORM.get().copied().unwrap_or_default().as_keyboard_platform_layout();
+		let is_mac = Editor::environment().is_mac();
 
 		let name = match self {
 			// Writing system keys
@@ -275,21 +275,21 @@ impl fmt::Display for Key {
 			Self::Slash => "/",
 
 			// Functional keys
-			Self::Alt => match keyboard_layout() {
-				KeyboardPlatformLayout::Standard => "Alt",
-				KeyboardPlatformLayout::Mac => "⌥",
+			Self::Alt => match is_mac {
+				true => "⌥",
+				false => "Alt",
 			},
-			Self::Meta => match keyboard_layout() {
-				KeyboardPlatformLayout::Standard => "⊞",
-				KeyboardPlatformLayout::Mac => "⌘",
+			Self::Meta => match is_mac {
+				true => "⌘",
+				false => "⊞",
 			},
-			Self::Shift => match keyboard_layout() {
-				KeyboardPlatformLayout::Standard => "Shift",
-				KeyboardPlatformLayout::Mac => "⇧",
+			Self::Shift => match is_mac {
+				true => "⇧",
+				false => "Shift",
 			},
-			Self::Control => match keyboard_layout() {
-				KeyboardPlatformLayout::Standard => "Ctrl",
-				KeyboardPlatformLayout::Mac => "⌃",
+			Self::Control => match is_mac {
+				true => "⌃",
+				false => "Ctrl",
 			},
 			Self::Backspace => "⌫",
 
@@ -317,9 +317,9 @@ impl fmt::Display for Key {
 
 			// Other keys that aren't part of the W3C spec
 			Self::Command => "⌘",
-			Self::Accel => match keyboard_layout() {
-				KeyboardPlatformLayout::Standard => "Ctrl",
-				KeyboardPlatformLayout::Mac => "⌘",
+			Self::Accel => match is_mac {
+				true => "⌘",
+				false => "Ctrl",
 			},
 			Self::MouseLeft => "Click",
 			Self::MouseRight => "R.Click",
@@ -356,10 +356,9 @@ impl fmt::Display for KeysGroup {
 			.0
 			.iter()
 			.map(|key| {
-				let keyboard_layout = GLOBAL_PLATFORM.get().copied().unwrap_or_default().as_keyboard_platform_layout();
 				let key_is_modifier = matches!(*key, Key::Control | Key::Command | Key::Alt | Key::Shift | Key::Meta | Key::Accel);
 
-				if keyboard_layout == KeyboardPlatformLayout::Mac && key_is_modifier {
+				if Editor::environment().is_mac() && key_is_modifier {
 					key.to_string()
 				} else {
 					key.to_string() + JOINER_MARK

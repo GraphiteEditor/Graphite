@@ -1,6 +1,7 @@
 use super::snapping::{SnapCandidatePoint, SnapData, SnapManager};
 use super::transformation_cage::{BoundingBoxManager, SizeSnapData};
 use crate::consts::ROTATE_INCREMENT;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{NodeNetworkInterface, OutputConnector};
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
@@ -22,14 +23,8 @@ use graphene_std::vector::{HandleExt, PointId, SegmentId, Vector, VectorModifica
 use kurbo::{CubicBez, DEFAULT_ACCURACY, Line, ParamCurve, PathSeg, Point, QuadBez, Shape};
 
 /// Determines if a path should be extended. Goal in viewport space. Returns the path and if it is extending from the start, if applicable.
-pub fn should_extend(
-	document: &DocumentMessageHandler,
-	goal: DVec2,
-	tolerance: f64,
-	layers: impl Iterator<Item = LayerNodeIdentifier>,
-	preferences: &PreferencesMessageHandler,
-) -> Option<(LayerNodeIdentifier, PointId, DVec2)> {
-	closest_point(document, goal, tolerance, layers, |_| false, preferences)
+pub fn should_extend(document: &DocumentMessageHandler, goal: DVec2, tolerance: f64, layers: impl Iterator<Item = LayerNodeIdentifier>) -> Option<(LayerNodeIdentifier, PointId, DVec2)> {
+	closest_point(document, goal, tolerance, layers, |_| false)
 }
 
 /// Determine the closest point to the goal point under max_distance.
@@ -40,7 +35,6 @@ pub fn closest_point<T>(
 	max_distance: f64,
 	layers: impl Iterator<Item = LayerNodeIdentifier>,
 	exclude: T,
-	preferences: &PreferencesMessageHandler,
 ) -> Option<(LayerNodeIdentifier, PointId, DVec2)>
 where
 	T: Fn(PointId) -> bool,
@@ -50,7 +44,7 @@ where
 	for layer in layers {
 		let viewspace = document.metadata().transform_to_viewport(layer);
 		let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
-		for id in vector.extendable_points(preferences.vector_meshes) {
+		for id in vector.anchor_points() {
 			if exclude(id) {
 				continue;
 			}
@@ -588,7 +582,7 @@ pub fn make_path_editable_is_allowed(network_interface: &mut NodeNetworkInterfac
 
 	// Must not already have an existing Path node, in the right-most part of the layer chain, which has an empty set of modifications
 	// (otherwise users could repeatedly keep running this command and stacking up empty Path nodes)
-	if let Some(TaggedValue::VectorModification(modifications)) = NodeGraphLayer::new(first_layer, network_interface).find_input("Path", 1)
+	if let Some(TaggedValue::VectorModification(modifications)) = NodeGraphLayer::new(first_layer, network_interface).find_input(&DefinitionIdentifier::Network("Path".into()), 1)
 		&& modifications.as_ref() == &VectorModification::default()
 	{
 		return None;

@@ -102,6 +102,11 @@ fn validate_implementations_for_generics(parsed: &ParsedNodeFn) {
 
 	if !has_skip_impl && !parsed.fn_generics.is_empty() {
 		for field in &parsed.fields {
+			// Skip validation for data fields - they're internal state and can be generic
+			if field.is_data_field {
+				continue;
+			}
+
 			let pat_ident = &field.pat_ident;
 			match &field.ty {
 				ParsedFieldType::Regular(RegularParsedField { ty, implementations, .. }) => {
@@ -112,7 +117,7 @@ fn validate_implementations_for_generics(parsed: &ParsedNodeFn) {
 							quote!(#ty),
 							pat_ident.ident;
 							help = "Add #[implementations(ConcreteType1, ConcreteType2)] to field '{}'", pat_ident.ident;
-							help = "Or use #[skip_impl] if you want to manually implement the node"
+							help = "Or use #[node_macro::node(skip_impl)] if you want to manually implement the node"
 						);
 					}
 				}
@@ -128,7 +133,7 @@ fn validate_implementations_for_generics(parsed: &ParsedNodeFn) {
 							"Generic types in Node field `{}` require an #[implementations(...)] attribute",
 							pat_ident.ident;
 							help = "Add #[implementations(InputType1 -> OutputType1, InputType2 -> OutputType2)] to field '{}'", pat_ident.ident;
-							help = "Or use #[skip_impl] if you want to manually implement the node"
+							help = "Or use #[node_macro::node(skip_impl)] if you want to manually implement the node"
 						);
 					}
 					// Additional check for Node implementations
