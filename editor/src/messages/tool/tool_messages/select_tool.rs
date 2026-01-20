@@ -1247,7 +1247,7 @@ impl Fsm for SelectToolFsmState {
 
 				SelectToolFsmState::DraggingGuide { guide_id, direction }
 			}
-			(SelectToolFsmState::DraggingGuide { guide_id, direction }, SelectToolMessage::DragStop { .. }) => {
+			(SelectToolFsmState::DraggingGuide { guide_id, direction: _ }, SelectToolMessage::DragStop { .. }) => {
 				tool_data.drag_current = input.mouse.position;
 
 				// Checks if dragged outside viewport - deletes the guide

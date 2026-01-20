@@ -1,9 +1,7 @@
+use crate::consts::{COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_50};
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::prelude::DocumentMessageHandler;
 use glam::DVec2;
-
-const GUIDE_COLOR: &str = "#00BFFF";
-const GUIDE_HOVER_COLOR: &str = "#FF6600";
 
 fn extend_line_to_viewport(point: DVec2, direction: DVec2, viewport_size: DVec2) -> Option<(DVec2, DVec2)> {
 	if direction.length_squared() < f64::EPSILON {
@@ -77,7 +75,7 @@ pub fn guide_overlay(document: &DocumentMessageHandler, overlay_context: &mut Ov
 		let viewport_point = document_to_viewport.transform_point2(doc_point);
 		let viewport_direction = document_to_viewport.transform_vector2(doc_direction);
 
-		let color = if document.hovered_guide_id == Some(guide.id) { GUIDE_HOVER_COLOR } else { GUIDE_COLOR };
+		let color = if document.hovered_guide_id == Some(guide.id) { COLOR_OVERLAY_BLUE_50 } else { COLOR_OVERLAY_BLUE };
 
 		if let Some((start, end)) = extend_line_to_viewport(viewport_point, viewport_direction, viewport_size) {
 			overlay_context.line(start, end, Some(color), None);
@@ -91,7 +89,7 @@ pub fn guide_overlay(document: &DocumentMessageHandler, overlay_context: &mut Ov
 		let viewport_point = document_to_viewport.transform_point2(doc_point);
 		let viewport_direction = document_to_viewport.transform_vector2(doc_direction);
 
-		let color = if document.hovered_guide_id == Some(guide.id) { GUIDE_HOVER_COLOR } else { GUIDE_COLOR };
+		let color = if document.hovered_guide_id == Some(guide.id) { COLOR_OVERLAY_BLUE_50 } else { COLOR_OVERLAY_BLUE };
 
 		if let Some((start, end)) = extend_line_to_viewport(viewport_point, viewport_direction, viewport_size) {
 			overlay_context.line(start, end, Some(color), None);
