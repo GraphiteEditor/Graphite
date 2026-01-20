@@ -259,7 +259,15 @@ impl ClickTarget {
 
 	/// Does the click target intersect the point (accounting for stroke size)
 	pub fn intersect_point(&self, point: DVec2, layer_transform: DAffine2) -> bool {
-		let target_bounds = [point - DVec2::splat(self.stroke_width / 2.), point + DVec2::splat(self.stroke_width / 2.)];
+		// Maintain minimum 5px viewport stroke while calculating intersection point
+		let minimum_stroke: f64 = 5.;
+
+		// Scaling factor for converting to viewpoint space
+		let scale: f64 = layer_transform.x_axis.length().max(layer_transform.y_axis.length());
+		let viewport_stroke: f64 = scale * self.stroke_width;
+		let inflated_stroke: f64 = if viewport_stroke < minimum_stroke { minimum_stroke / scale } else { self.stroke_width };
+
+		let target_bounds = [point - DVec2::splat(inflated_stroke / 2.), point + DVec2::splat(inflated_stroke / 2.)];
 		let intersects = |a: [DVec2; 2], b: [DVec2; 2]| a[0].x <= b[1].x && a[1].x >= b[0].x && a[0].y <= b[1].y && a[1].y >= b[0].y;
 		// This bounding box is not very accurate as it is the axis aligned version of the transformed bounding box. However it is fast.
 		if !self
