@@ -496,6 +496,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			PortfolioMessage::ImportFile { path, content } => {
 				let name = path.file_stem().map(|n| n.to_string_lossy().to_string());
 				match Self::read_file(&path, content) {
+					FileContent::Svg(svg) => {
+						responses.add(PortfolioMessage::PasteSvg {
+							name,
+							svg,
+							mouse: None,
+							parent_and_insert_index: None,
+						});
+					}
 					FileContent::Image(image) => {
 						responses.add(PortfolioMessage::PasteImage {
 							name,
@@ -504,12 +512,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 							parent_and_insert_index: None,
 						});
 					}
-					FileContent::Svg(svg) => {
-						responses.add(PortfolioMessage::PasteSvg {
-							name,
-							svg,
-							mouse: None,
-							parent_and_insert_index: None,
+					FileContent::Document(content) => {
+						// TODO: Consider importing a document as a Node into the current document
+						// For now treat importing a document as opening it
+						responses.add(PortfolioMessage::OpenDocumentFile {
+							document_name: name,
+							document_path: Some(path),
+							document_serialized_content: content,
 						});
 					}
 					_ => {

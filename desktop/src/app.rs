@@ -550,7 +550,7 @@ impl ApplicationHandler for App {
 				for path in paths {
 					match fs::read(&path) {
 						Ok(content) => {
-							let message = DesktopWrapperMessage::OpenFile { path, content };
+							let message = DesktopWrapperMessage::ImportFile { path, content };
 							self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
 						}
 						Err(e) => {
