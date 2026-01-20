@@ -59,13 +59,11 @@ export function createPortfolioState(editor: Editor) {
 		}
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerOpen, async () => {
-		console.error("Opening file");
 		const suffix = "." + editor.handle.fileExtension();
 		const data = await upload(suffix + "image/*", "data");
 		editor.handle.openFile(data.filename, data.content);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerImport, async () => {
-		console.error("Importing file");
 		const data = await upload("image/*", "data");
 		editor.handle.importFile(data.filename, data.content);
 	});
