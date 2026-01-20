@@ -80,10 +80,10 @@ export function createDocumentState(editor: Editor, nodeGraph?: NodeGraphState) 
 	editor.subscriptions.subscribeJsMessage(UpdateGraphViewOverlay, (data) => {
 		update((state) => {
 			state.graphViewOverlayOpen = data.open;
+
 			// Close the context menu when the graph view overlay is closed
-			if (!data.open && nodeGraph) {
-				nodeGraph.closeContextMenu();
-			}
+			if (!data.open && nodeGraph) nodeGraph.closeContextMenu();
+
 			return state;
 		});
 	});
