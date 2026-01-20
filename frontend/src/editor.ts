@@ -65,7 +65,7 @@ export function createEditor(): Editor {
 			if (!data.ok) throw new Error();
 
 			const filename = url.pathname.split("/").pop() || "Untitled";
-			const content = await data.text();
+			const content = await data.bytes();
 			handle.openFile(filename, content);
 
 			// Remove the hash fragment from the URL
