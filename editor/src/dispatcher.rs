@@ -572,9 +572,8 @@ mod test {
 			);
 
 			let responses = editor.editor.handle_message(PortfolioMessage::OpenFile {
-				document_name: Some(document_name.to_string()),
-				document_path: None,
-				document_serialized_content,
+				path: document_name.into(),
+				content: document_serialized_content.bytes().collect(),
 			});
 
 			// Check if the graph renders
