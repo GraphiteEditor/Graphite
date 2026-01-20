@@ -1,5 +1,21 @@
+{# Recursively render a page's headings table of contents #}
+{%- macro render_book_page_toc(children, indents) -%}
+	{%- set tabs = "" -%}
+	{%- for i in range(end = indents) -%}
+		{%- set_global tabs = tabs ~ "	" -%}
+	{%- endfor -%}
 
-{# Recursively render a book's table of contents #}
+	{%- if children | length > 0 %}
+	{{ tabs }}<ul>
+	{%- for child in children %}
+	{{ tabs }}	<li><a href="#{{ child.id }}" title="{{ child.title | safe }}">{{ child.title }}</a></li>
+	{{- self::render_book_page_toc(children = child.children, indents = indents + 1) -}}
+	{%- endfor %}
+	{{ tabs }}</ul>
+	{%- endif -%}
+{%- endmacro render_book_page_toc -%}
+
+{# Recursively render a book's chapters table of contents #}
 {%- macro render_book_outline(section, current_path, indents) -%}
 	{#- Setup -#}
 	{%- set items = [] -%}
@@ -12,7 +28,7 @@
 			{%- set_global items = items | concat(with = subsection) -%}
 		{%- endfor -%}
 	{%- endif -%}
-	{%- set items = items | sort(attribute="extra.order") -%}
+	{%- set items = items | sort(attribute = "extra.order") -%}
 	{#- End of setup -#}
 
 	{%- set tabs = "" -%}
@@ -20,16 +36,16 @@
 		{%- set_global tabs = tabs ~ "	" -%}
 	{%- endfor -%}
 
-	{%- for item in items %}
+	{%- if items | length > 0 %}
 	{{ tabs }}<ul>
-	{{ tabs }}	<li {%- if current_path == item.path %} class="active"{%- endif -%}>
-	{{ tabs }}		<a href="{{ item.path | safe }}" title="{{ item.title | safe }}">{{ item.title }}</a>
-	{{ tabs }}	</li>
-	{%- if item.pages or item.subsections -%}
-	{{ self::render_book_outline(section = item, current_path = current_path, indents = indents + 1) }}
-	{%- endif %}
+		{%- for item in items %}
+		{{ tabs }}<li {%- if current_path == item.path %} class="active"{%- endif -%}><a href="{{ item.path | safe }}" title="{{ item.title | safe }}">{{ item.title }}</a></li>
+		{%- if item.pages or item.subsections -%}
+		{{ self::render_book_outline(section = item, current_path = current_path, indents = indents + 1) }}
+		{%- endif %}
+		{%- endfor %}
 	{{ tabs }}</ul>
-	{%- endfor -%}
+	{%- endif -%}
 {%- endmacro render_book_outline -%}
 
 {# Recursively flatten the book outline to a string for sequential navigation #}
@@ -45,7 +61,7 @@
 			{%- set_global items = items | concat(with = subsection) -%}
 		{%- endfor -%}
 	{%- endif -%}
-	{%- set items = items | sort(attribute="extra.order") -%}
+	{%- set items = items | sort(attribute = "extra.order") -%}
 	{#- End of setup -#}
 
 	{%- for item in items -%}

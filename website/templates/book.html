@@ -134,36 +134,7 @@
 				</a>
 			</li>
 		</ul>
-		<ul>
-			{% for depth_1 in page.toc -%}
-			<li><a href="#{{ depth_1.id }}" title="{{ depth_1.title | safe }}">{{ depth_1.title }}</a></li>
-			{% for depth_2 in depth_1.children -%}
-			<ul>
-				<li><a href="#{{ depth_2.id }}" title="{{ depth_2.title | safe }}">{{ depth_2.title }}</a></li>
-				{% for depth_3 in depth_2.children -%}
-				<ul>
-					<li><a href="#{{ depth_3.id }}" title="{{ depth_3.title | safe }}">{{ depth_3.title }}</a></li>
-					{% for depth_4 in depth_3.children -%}
-					<ul>
-						<li><a href="#{{ depth_4.id }}" title="{{ depth_4.title | safe }}">{{ depth_4.title }}</a></li>
-						{% for depth_5 in depth_4.children -%}
-						<ul>
-							<li><a href="#{{ depth_5.id }}" title="{{ depth_5.title | safe }}">{{ depth_5.title }}</a></li>
-							{% for depth_6 in depth_5.children -%}
-							<ul>
-								<li><a href="#{{ depth_6.id }}" title="{{ depth_6.title | safe }}">{{ depth_6.title }}</a></li>
-							</ul>
-							{%- endfor %}
-						</ul>
-						{%- endfor %}
-					</ul>
-					{%- endfor %}
-				</ul>
-				{%- endfor %}
-			</ul>
-			{% endfor %}
-			{%- endfor %}
-		</ul>
+		{{- book_outline::render_book_page_toc(children = page.toc, indents = 1) }}
 	</aside>
 </section>
 {%- endblock content -%}
