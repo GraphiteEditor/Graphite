@@ -353,7 +353,10 @@ pub fn format_type(ty: &str) -> String {
 }
 
 pub fn make_type_user_readable(ty: &str) -> String {
-	ty.replace("Option<Arc<OwnedContextImpl>>", "Context").replace("Vector<Option<Table<Graphic>>>", "Vector")
+	ty.replace("Option<Arc<OwnedContextImpl>>", "Context")
+		.replace("Vector<Option<Table<Graphic>>>", "Vector")
+		.replace("Raster<CPU>", "Raster")
+		.replace("Raster<GPU>", "Raster")
 }
 
 impl std::fmt::Debug for Type {

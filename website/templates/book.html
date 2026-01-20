@@ -58,7 +58,7 @@
 					</svg>
 				</button>
 				<ul>
-					<li class="title{%- if current_path == book.path -%} active{%- endif -%}"><a href="{{ book.path | safe }}" title="{{ book.title | safe }}">{{ book.title }}</a></li>
+					<li class="title {%- if current_path == book.path %} active{%- endif -%}"><a href="{{ book.path | safe }}" title="{{ book.title | safe }}">{{ book.title }}</a></li>
 				</ul>
 				{%- for chapter in chapters %}
 				<ul>
