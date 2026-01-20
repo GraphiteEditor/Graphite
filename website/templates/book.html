@@ -57,17 +57,7 @@
 						<polygon points="20.7,4.7 19.3,3.3 12,10.6 4.7,3.3 3.3,4.7 10.6,12 3.3,19.3 4.7,20.7 12,13.4 19.3,20.7 20.7,19.3 13.4,12" />
 					</svg>
 				</button>
-				<ul>
-					<li class="title {%- if current_path == book.path %} active{%- endif -%}"><a href="{{ book.path | safe }}" title="{{ book.title | safe }}">{{ book.title }}</a></li>
-				</ul>
-				{%- for chapter in chapters %}
-				<ul>
-					<li class="chapter {%- if current_path == chapter.path %} active{%- endif -%}">
-						<a href="{{ chapter.path | safe }}" title="{{ chapter.title | safe }}">{{ chapter.title }}</a>
-					</li>
-					{{- book_outline::render_book_outline(section = chapter, current_path = current_path, indents = 4) }}
-				</ul>
-				{%- endfor %}
+				{{- book_outline::render_book_outline(parent = book, current_path = current_path, index = 0, indents = 3) }}
 			</div>
 		</div>
 	</aside>
@@ -133,8 +123,8 @@
 					{% if page.toc | length > 0 %}Contents<span> (top ↑)</span>{% else %}Back to top ↑{% endif %}
 				</a>
 			</li>
+			{{- book_outline::render_book_page_toc(children = page.toc, indents = 1) }}
 		</ul>
-		{{- book_outline::render_book_page_toc(children = page.toc, indents = 1) }}
 	</aside>
 </section>
 {%- endblock content -%}
