@@ -22,6 +22,7 @@ use js_sys::{Object, Reflect};
 use serde::Serialize;
 use serde_wasm_bindgen::{self, from_value};
 use std::cell::RefCell;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use wasm_bindgen::JsCast;
@@ -414,13 +415,15 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
-	#[wasm_bindgen(js_name = openDocumentFile)]
-	pub fn open_document_file(&self, document_name: String, document_serialized_content: String) {
-		let message = PortfolioMessage::OpenDocumentFile {
-			document_name: Some(document_name),
-			document_path: None,
-			document_serialized_content,
-		};
+	#[wasm_bindgen(js_name = openFile)]
+	pub fn open_file(&self, path: String, content: Vec<u8>) {
+		let message = PortfolioMessage::OpenFile { path: PathBuf::from(path), content };
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = importFile)]
+	pub fn import_file(&self, path: String, content: Vec<u8>) {
+		let message = PortfolioMessage::ImportFile { path: PathBuf::from(path), content };
 		self.dispatch(message);
 	}
 

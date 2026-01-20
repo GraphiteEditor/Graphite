@@ -66,7 +66,7 @@ export function createEditor(): Editor {
 
 			const filename = url.pathname.split("/").pop() || "Untitled";
 			const content = await data.text();
-			handle.openDocumentFile(filename, content);
+			handle.openFile(filename, content);
 
 			// Remove the hash fragment from the URL
 			history.replaceState("", "", `${window.location.pathname}${window.location.search}`);

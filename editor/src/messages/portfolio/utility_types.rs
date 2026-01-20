@@ -1,4 +1,8 @@
-use graphene_std::text::{Font, FontCache};
+use graphene_std::{
+	Color,
+	raster::Image,
+	text::{Font, FontCache},
+};
 
 #[derive(Debug, Default)]
 pub struct PersistentData {
@@ -103,4 +107,11 @@ impl From<String> for PanelType {
 			_ => panic!("Unknown panel type: {value}"),
 		}
 	}
+}
+
+pub enum FileContent {
+	Document(String),
+	Image(Image<Color>),
+	Svg(String),
+	Unsupported,
 }

@@ -180,7 +180,7 @@ impl App {
 					if let Some(path) = futures::executor::block_on(show_dialog)
 						&& let Ok(content) = fs::read(&path)
 					{
-						let message = DesktopWrapperMessage::OpenFileDialogResult { path, content, context };
+						let message = DesktopWrapperMessage::FileDialogResult { path, content, context };
 						app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
 					}
 				});

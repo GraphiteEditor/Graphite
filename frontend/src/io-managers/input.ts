@@ -336,7 +336,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 			if (file.name.endsWith(graphiteFileSuffix)) {
 				const content = await file.text();
 				const documentName = file.name.slice(0, -graphiteFileSuffix.length);
-				editor.handle.openDocumentFile(documentName, content);
+				editor.handle.openFile(documentName, content);
 			}
 		});
 	}

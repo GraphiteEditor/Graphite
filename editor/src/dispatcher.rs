@@ -571,7 +571,7 @@ mod test {
 				"Demo artwork '{document_name}' has more than 1 line (remember to open and re-save it in Graphite)",
 			);
 
-			let responses = editor.editor.handle_message(PortfolioMessage::OpenDocumentFile {
+			let responses = editor.editor.handle_message(PortfolioMessage::OpenFile {
 				document_name: Some(document_name.to_string()),
 				document_path: None,
 				document_serialized_content,

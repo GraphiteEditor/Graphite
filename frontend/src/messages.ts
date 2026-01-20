@@ -745,7 +745,7 @@ export class TriggerFetchAndOpenDocument extends JsMessage {
 	readonly filename!: string;
 }
 
-export class TriggerOpenDocument extends JsMessage {}
+export class TriggerOpen extends JsMessage {}
 
 export class TriggerImport extends JsMessage {}
 
@@ -1679,11 +1679,11 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerFetchAndOpenDocument,
 	TriggerFontCatalogLoad,
 	TriggerFontDataLoad,
-	TriggerImport,
 	TriggerLoadFirstAutoSaveDocument,
 	TriggerLoadPreferences,
 	TriggerLoadRestAutoSaveDocuments,
-	TriggerOpenDocument,
+	TriggerOpen,
+	TriggerImport,
 	TriggerOpenLaunchDocuments,
 	TriggerPersistenceRemoveDocument,
 	TriggerPersistenceWriteDocument,

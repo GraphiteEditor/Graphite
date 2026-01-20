@@ -8,7 +8,7 @@ import {
 	TriggerExportImage,
 	TriggerSaveFile,
 	TriggerImport,
-	TriggerOpenDocument,
+	TriggerOpen,
 	UpdateActiveDocument,
 	UpdateOpenDocumentsList,
 	UpdateDataPanelState,
@@ -16,7 +16,7 @@ import {
 	UpdateLayersPanelState,
 } from "@graphite/messages";
 import { downloadFile, downloadFileBlob, upload } from "@graphite/utility-functions/files";
-import { extractPixelData, rasterizeSVG } from "@graphite/utility-functions/rasterization";
+import { rasterizeSVG } from "@graphite/utility-functions/rasterization";
 
 export function createPortfolioState(editor: Editor) {
 	const { subscribe, update } = writable({
@@ -48,9 +48,9 @@ export function createPortfolioState(editor: Editor) {
 			const { name, filename } = data;
 			const url = new URL(`demo-artwork/${filename}`, document.location.href);
 			const response = await fetch(url);
-			const content = await response.text();
+			const content = await response.bytes();
 
-			editor.handle.openDocumentFile(name, content);
+			editor.handle.openFile(name, content);
 		} catch {
 			// Needs to be delayed until the end of the current call stack so the existing demo artwork dialog can be closed first, otherwise this dialog won't show
 			setTimeout(() => {
@@ -58,37 +58,16 @@ export function createPortfolioState(editor: Editor) {
 			}, 0);
 		}
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerOpenDocument, async () => {
+	editor.subscriptions.subscribeJsMessage(TriggerOpen, async () => {
+		console.error("Opening file");
 		const suffix = "." + editor.handle.fileExtension();
-		const data = await upload(suffix, "text");
-
-		// Use filename as document name, removing the extension if it exists
-		let documentName = data.filename;
-		if (documentName.endsWith(suffix)) {
-			documentName = documentName.slice(0, -suffix.length);
-		}
-
-		editor.handle.openDocumentFile(documentName, data.content);
+		const data = await upload(suffix + "image/*", "data");
+		editor.handle.openFile(data.filename, data.content);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerImport, async () => {
-		const data = await upload("image/*", "both");
-
-		if (data.type.includes("svg")) {
-			const svg = new TextDecoder().decode(data.content.data);
-			editor.handle.pasteSvg(data.filename, svg);
-			return;
-		}
-
-		// In case the user accidentally uploads a Graphite file, open it instead of failing to import it
-		const graphiteFileSuffix = "." + editor.handle.fileExtension();
-		if (data.filename.endsWith(graphiteFileSuffix)) {
-			const documentName = data.filename.slice(0, -graphiteFileSuffix.length);
-			editor.handle.openDocumentFile(documentName, data.content.text);
-			return;
-		}
-
-		const imageData = await extractPixelData(new Blob([new Uint8Array(data.content.data)], { type: data.type }));
-		editor.handle.pasteImage(data.filename, new Uint8Array(imageData.data), imageData.width, imageData.height);
+		console.error("Importing file");
+		const data = await upload("image/*", "data");
+		editor.handle.importFile(data.filename, data.content);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerSaveDocument, (data) => {
 		downloadFile(data.name, data.content);
