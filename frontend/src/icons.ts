@@ -11,6 +11,7 @@ import Checkmark from "@branding/assets/icon-12px-solid/checkmark.svg";
 import Clipped from "@branding/assets/icon-12px-solid/clipped.svg";
 import CloseX from "@branding/assets/icon-12px-solid/close-x.svg";
 import Delay from "@branding/assets/icon-12px-solid/delay.svg";
+import DotThick from "@branding/assets/icon-12px-solid/dot-thick.svg";
 import Dot from "@branding/assets/icon-12px-solid/dot.svg";
 import DropdownArrow from "@branding/assets/icon-12px-solid/dropdown-arrow.svg";
 import Edit12px from "@branding/assets/icon-12px-solid/edit-12px.svg";
@@ -59,6 +60,7 @@ const SOLID_12PX = {
 	CloseX: { svg: CloseX, size: 12 },
 	Delay: { svg: Delay, size: 12 },
 	Dot: { svg: Dot, size: 12 },
+	DotThick: { svg: DotThick, size: 12 },
 	DropdownArrow: { svg: DropdownArrow, size: 12 },
 	Edit12px: { svg: Edit12px, size: 12 },
 	Empty12px: { svg: Empty12px, size: 12 },
@@ -159,7 +161,6 @@ import NodeBlur from "@branding/assets/icon-16px-solid/node-blur.svg";
 import NodeBrushwork from "@branding/assets/icon-16px-solid/node-brushwork.svg";
 import NodeColorCorrection from "@branding/assets/icon-16px-solid/node-color-correction.svg";
 import NodeGradient from "@branding/assets/icon-16px-solid/node-gradient.svg";
-import NodeImaginate from "@branding/assets/icon-16px-solid/node-imaginate.svg";
 import NodeMagicWand from "@branding/assets/icon-16px-solid/node-magic-wand.svg";
 import NodeMask from "@branding/assets/icon-16px-solid/node-mask.svg";
 import NodeMotionBlur from "@branding/assets/icon-16px-solid/node-motion-blur.svg";
@@ -278,7 +279,6 @@ const SOLID_16PX = {
 	NodeBrushwork: { svg: NodeBrushwork, size: 16 },
 	NodeColorCorrection: { svg: NodeColorCorrection, size: 16 },
 	NodeGradient: { svg: NodeGradient, size: 16 },
-	NodeImaginate: { svg: NodeImaginate, size: 16 },
 	NodeMagicWand: { svg: NodeMagicWand, size: 16 },
 	NodeMask: { svg: NodeMask, size: 16 },
 	NodeMotionBlur: { svg: NodeMotionBlur, size: 16 },
@@ -377,7 +377,6 @@ import RasterBrushTool from "@branding/assets/icon-24px-two-tone/raster-brush-to
 import RasterCloneTool from "@branding/assets/icon-24px-two-tone/raster-clone-tool.svg";
 import RasterDetailTool from "@branding/assets/icon-24px-two-tone/raster-detail-tool.svg";
 import RasterHealTool from "@branding/assets/icon-24px-two-tone/raster-heal-tool.svg";
-import RasterImaginateTool from "@branding/assets/icon-24px-two-tone/raster-imaginate-tool.svg";
 import RasterPatchTool from "@branding/assets/icon-24px-two-tone/raster-patch-tool.svg";
 import RasterRelightTool from "@branding/assets/icon-24px-two-tone/raster-relight-tool.svg";
 import VectorEllipseTool from "@branding/assets/icon-24px-two-tone/vector-ellipse-tool.svg";
@@ -401,7 +400,6 @@ const TWO_TONE_24PX = {
 	RasterCloneTool: { svg: RasterCloneTool, size: 24 },
 	RasterDetailTool: { svg: RasterDetailTool, size: 24 },
 	RasterHealTool: { svg: RasterHealTool, size: 24 },
-	RasterImaginateTool: { svg: RasterImaginateTool, size: 24 },
 	RasterPatchTool: { svg: RasterPatchTool, size: 24 },
 	RasterRelightTool: { svg: RasterRelightTool, size: 24 },
 	VectorEllipseTool: { svg: VectorEllipseTool, size: 24 },

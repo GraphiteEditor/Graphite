@@ -1,6 +1,7 @@
 use super::network_interface::NodeNetworkInterface;
 use crate::messages::portfolio::document::graph_operation::transform_utils;
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::FlowType;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use glam::{DAffine2, DVec2};
@@ -91,7 +92,8 @@ impl DocumentMetadata {
 
 		let mut use_local = true;
 		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, network_interface);
-		if let Some(path_node) = graph_layer.upstream_visible_node_id_from_name_in_layer("Path")
+		let identifier = DefinitionIdentifier::Network("Path".into());
+		if let Some(path_node) = graph_layer.upstream_visible_node_id_from_name_in_layer(&identifier)
 			&& let Some(&source) = self.first_element_source_ids.get(&layer.to_node())
 			&& !network_interface
 				.upstream_flow_back_from_nodes(vec![path_node], &[], FlowType::HorizontalFlow)
@@ -114,7 +116,7 @@ impl DocumentMetadata {
 		let local_transform = self.local_transforms.get(&layer.to_node()).copied();
 
 		let transform = local_transform.unwrap_or_else(|| {
-			let transform_node_id = ModifyInputsContext::locate_node_in_layer_chain("Transform", layer, network_interface);
+			let transform_node_id = ModifyInputsContext::locate_node_in_layer_chain(&DefinitionIdentifier::Network("Transform".into()), layer, network_interface);
 			let transform_node = transform_node_id.and_then(|id| network_interface.document_node(&id, &[]));
 			transform_node.map(|node| transform_utils::get_current_transform(node.inputs.as_slice())).unwrap_or_default()
 		});

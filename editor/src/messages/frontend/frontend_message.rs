@@ -64,8 +64,10 @@ pub enum FrontendMessage {
 		#[serde(rename = "nodeTypes")]
 		node_types: Vec<FrontendNodeType>,
 	},
-	SendShortcutF11 {
+	SendShortcutFullscreen {
 		shortcut: Option<ActionShortcut>,
+		#[serde(rename = "shortcutMac")]
+		shortcut_mac: Option<ActionShortcut>,
 	},
 	SendShortcutAltClick {
 		shortcut: Option<ActionShortcut>,
@@ -327,6 +329,9 @@ pub enum FrontendMessage {
 	UpdateStatusBarHintsLayout {
 		diff: Vec<WidgetDiff>,
 	},
+	UpdateStatusBarInfoLayout {
+		diff: Vec<WidgetDiff>,
+	},
 	UpdateWorkingColorsLayout {
 		diff: Vec<WidgetDiff>,
 	},
@@ -360,9 +365,15 @@ pub enum FrontendMessage {
 	},
 
 	// Window prefix: cause the application window to do something
+	WindowPointerLock,
+	WindowPointerLockMove {
+		x: f64,
+		y: f64,
+	},
 	WindowClose,
 	WindowMinimize,
 	WindowMaximize,
+	WindowFullscreen,
 	WindowDrag,
 	WindowHide,
 	WindowHideOthers,

@@ -176,7 +176,7 @@ async fn stroke<V, L: IntoF64Vec>(
 	/// The stroke color.
 	#[default(Color::BLACK)]
 	color: Table<Color>,
-	/// The stroke weight.
+	/// The stroke thickness.
 	#[unit(" px")]
 	#[default(2.)]
 	weight: f64,
@@ -712,7 +712,8 @@ pub mod extrude_algorithms {
 
 		let mut next_segment = vector.segment_domain.next_id();
 		for (index, &point) in points.iter().enumerate().take(first_half_points) {
-			if point != Found::Both {
+			// Extrema are single connected points or points with both positive and negative values
+			if !matches!(point, Found::Both | Found::Positive | Found::Negative) {
 				continue;
 			}
 
@@ -1250,6 +1251,7 @@ where
 
 						output.element.concat(other, transform, collision_hash_seed);
 
+						// TODO: Make this instead use the first encountered style
 						// Use the last encountered style as the output style
 						output.element.style = row.element.style.clone();
 					}
@@ -2274,6 +2276,9 @@ async fn index_points(
 ) -> DVec2 {
 	let points_count = content.iter().map(|row| row.element.point_domain.positions().len()).sum::<usize>();
 
+	if points_count == 0 {
+		return DVec2::ZERO;
+	}
 	// Clamp and allow negative indexing from the end
 	let index = index as isize;
 	let index = if index < 0 {

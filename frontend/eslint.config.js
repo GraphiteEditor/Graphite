@@ -32,9 +32,6 @@ export default defineConfig([
 			"import/resolver": { typescript: true, node: true },
 		},
 		languageOptions: {
-			parserOptions: {
-				project: "./tsconfig.json",
-			},
 			globals: {
 				...globals.browser,
 				...globals.node,

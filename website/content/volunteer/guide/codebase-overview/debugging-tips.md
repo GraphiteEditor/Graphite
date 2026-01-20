@@ -9,7 +9,7 @@ The Wasm-based editor has some unique limitations about how you are able to debu
 
 ## Comparing with deployed builds
 
-When tracking down a bug, first check if the issue you are noticing also exists in `master` or just your branch. Open up [dev.graphite.art](https://dev.graphite.art) which always deploys the lastest commit, compared to [editor.graphite.art](https://editor.graphite.art) which is manually deployed from time to time for the sake of stability.
+When tracking down a bug, first check if the issue you are noticing also exists in `master` or just in your branch. Open up [dev.graphite.art](https://dev.graphite.art) which always deploys the lastest commit, as opposed to [editor.graphite.art](https://editor.graphite.art) which deploys the latest stable release. Build links for any commit may be found by clicking the "comment" icon on the right side of any commit in the [GitHub repo commits list](https://github.com/GraphiteEditor/Graphite/commits/master/).
 
 Use *Help* > *About Graphite* in the editor to view any build's Git commit hash.
 
@@ -19,13 +19,11 @@ Beware of one potential pitfall: all deploys and build links are built with rele
 
 Use the browser console (<kbd>F12</kbd>) to check for warnings and errors. Use the Rust macro `debug!("The number is {}", some_number);` to print to the browser console. These statements should be for temporary debugging. Remove them before your code is reviewed. Print-based debugging is necessary because breakpoints are not supported in WebAssembly.
 
-Additional print statements are available that *should* be committed.
+Additional print statements are available that *should* be committed:
 
 - `error!()` is for descriptive user-facing error messages arising from a bug
 - `warn!()` is for non-critical problems that likely indicate a bug somewhere
-- `trace!()` is for verbose logs of ordinary internal activity, hidden by default
-
-To show `trace!()` logs, activate *Help* > *Debug: Print Trace Logs*.
+- `trace!()` is for verbose logs of ordinary internal activity, hidden by default but viewable by activating *Help* > *Debug: Print Trace Logs*
 
 ## Message system logs
 

@@ -71,7 +71,7 @@ impl LayoutMessageHandler {
 							return Some((widget, widget_path));
 						}
 
-						if let Widget::PopoverButton(popover) = &widget.widget {
+						if let Widget::PopoverButton(popover) = &*widget.widget {
 							stack.extend(
 								popover
 									.popover_layout
@@ -97,7 +97,7 @@ impl LayoutMessageHandler {
 								return Some((cell, widget_path));
 							}
 
-							if let Widget::PopoverButton(popover) = &cell.widget {
+							if let Widget::PopoverButton(popover) = &*cell.widget {
 								stack.extend(
 									popover
 										.popover_layout
@@ -126,7 +126,7 @@ impl LayoutMessageHandler {
 			return;
 		};
 
-		match &mut widget_instance.widget {
+		match &mut *widget_instance.widget {
 			Widget::BreadcrumbTrailButtons(breadcrumb_trail_buttons) => {
 				let callback_message = match action {
 					WidgetValueAction::Commit => (breadcrumb_trail_buttons.on_commit.callback)(&()),
@@ -287,11 +287,7 @@ impl LayoutMessageHandler {
 					responses.add(callback_message);
 				}
 				WidgetValueAction::Update => {
-					let Some(value) = value.as_str().map(|s| s.to_string()) else {
-						error!("NodeCatalog update was not of type String");
-						return;
-					};
-					let callback_message = (node_type_input.on_update.callback)(&value);
+					let callback_message = (node_type_input.on_update.callback)(&value.into());
 					responses.add(callback_message);
 				}
 			},
@@ -481,6 +477,7 @@ impl LayoutMessageHandler {
 			LayoutTarget::NodeGraphControlBar => FrontendMessage::UpdateNodeGraphControlBarLayout { diff },
 			LayoutTarget::PropertiesPanel => FrontendMessage::UpdatePropertiesPanelLayout { diff },
 			LayoutTarget::StatusBarHints => FrontendMessage::UpdateStatusBarHintsLayout { diff },
+			LayoutTarget::StatusBarInfo => FrontendMessage::UpdateStatusBarInfoLayout { diff },
 			LayoutTarget::ToolOptions => FrontendMessage::UpdateToolOptionsLayout { diff },
 			LayoutTarget::ToolShelf => FrontendMessage::UpdateToolShelfLayout { diff },
 			LayoutTarget::WelcomeScreenButtons => FrontendMessage::UpdateWelcomeScreenButtonsLayout { diff },

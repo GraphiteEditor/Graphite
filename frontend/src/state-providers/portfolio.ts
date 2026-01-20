@@ -29,26 +29,26 @@ export function createPortfolioState(editor: Editor) {
 	});
 
 	// Set up message subscriptions on creation
-	editor.subscriptions.subscribeJsMessage(UpdateOpenDocumentsList, (updateOpenDocumentList) => {
+	editor.subscriptions.subscribeJsMessage(UpdateOpenDocumentsList, (data) => {
 		update((state) => {
-			state.documents = updateOpenDocumentList.openDocuments;
+			state.documents = data.openDocuments;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateActiveDocument, (updateActiveDocument) => {
+	editor.subscriptions.subscribeJsMessage(UpdateActiveDocument, (data) => {
 		update((state) => {
 			// Assume we receive a correct document id
-			const activeId = state.documents.findIndex((doc) => doc.id === updateActiveDocument.documentId);
+			const activeId = state.documents.findIndex((doc) => doc.id === data.documentId);
 			state.activeDocumentIndex = activeId;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerFetchAndOpenDocument, async (triggerFetchAndOpenDocument) => {
+	editor.subscriptions.subscribeJsMessage(TriggerFetchAndOpenDocument, async (data) => {
 		try {
-			const { name, filename } = triggerFetchAndOpenDocument;
+			const { name, filename } = data;
 			const url = new URL(`demo-artwork/${filename}`, document.location.href);
-			const data = await fetch(url);
-			const content = await data.text();
+			const response = await fetch(url);
+			const content = await response.text();
 
 			editor.handle.openDocumentFile(name, content);
 		} catch {
@@ -90,14 +90,14 @@ export function createPortfolioState(editor: Editor) {
 		const imageData = await extractPixelData(new Blob([new Uint8Array(data.content.data)], { type: data.type }));
 		editor.handle.pasteImage(data.filename, new Uint8Array(imageData.data), imageData.width, imageData.height);
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerSaveDocument, (triggerSaveDocument) => {
-		downloadFile(triggerSaveDocument.name, triggerSaveDocument.content);
+	editor.subscriptions.subscribeJsMessage(TriggerSaveDocument, (data) => {
+		downloadFile(data.name, data.content);
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerSaveFile, (triggerFileDownload) => {
-		downloadFile(triggerFileDownload.name, triggerFileDownload.content);
+	editor.subscriptions.subscribeJsMessage(TriggerSaveFile, (data) => {
+		downloadFile(data.name, data.content);
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerExportImage, async (TriggerExportImage) => {
-		const { svg, name, mime, size } = TriggerExportImage;
+	editor.subscriptions.subscribeJsMessage(TriggerExportImage, async (data) => {
+		const { svg, name, mime, size } = data;
 
 		// Fill the canvas with white if it'll be a JPEG (which does not support transparency and defaults to black)
 		const backgroundColor = mime.endsWith("jpeg") ? "white" : undefined;
@@ -112,21 +112,21 @@ export function createPortfolioState(editor: Editor) {
 			// Fail silently if there's an error rasterizing the SVG, such as a zero-sized image
 		}
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateDataPanelState, async (updateDataPanelState) => {
+	editor.subscriptions.subscribeJsMessage(UpdateDataPanelState, async (data) => {
 		update((state) => {
-			state.dataPanelOpen = updateDataPanelState.open;
+			state.dataPanelOpen = data.open;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdatePropertiesPanelState, async (updatePropertiesPanelState) => {
+	editor.subscriptions.subscribeJsMessage(UpdatePropertiesPanelState, async (data) => {
 		update((state) => {
-			state.propertiesPanelOpen = updatePropertiesPanelState.open;
+			state.propertiesPanelOpen = data.open;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateLayersPanelState, async (updateLayersPanelState) => {
+	editor.subscriptions.subscribeJsMessage(UpdateLayersPanelState, async (data) => {
 		update((state) => {
-			state.layersPanelOpen = updateLayersPanelState.open;
+			state.layersPanelOpen = data.open;
 			return state;
 		});
 	});

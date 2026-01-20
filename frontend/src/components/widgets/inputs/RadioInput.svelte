@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
-	import { type RadioEntries, type RadioEntryData } from "@graphite/messages";
+	import { type RadioEntryData } from "@graphite/messages";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
@@ -9,11 +9,15 @@
 
 	const dispatch = createEventDispatcher<{ selectedIndex: number }>();
 
-	export let entries: RadioEntries;
+	// Content
 	export let selectedIndex: number | undefined = undefined;
 	export let disabled = false;
-	export let minWidth = 0;
+	// Children
+	export let entries: RadioEntryData[];
+	// Styling
 	export let narrow = false;
+	// Sizing
+	export let minWidth = 0;
 
 	$: mixed = selectedIndex === undefined && !disabled;
 

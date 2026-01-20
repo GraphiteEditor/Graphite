@@ -28,7 +28,6 @@
 	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
 	import ShortcutLabel from "@graphite/components/widgets/labels/ShortcutLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
-	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
 
 	const editor = getContext<Editor>("editor");
 
@@ -163,9 +162,7 @@
 		{/if}
 		{@const popoverButton = narrowWidgetProps(component.props, "PopoverButton")}
 		{#if popoverButton}
-			<PopoverButton {...exclude(popoverButton, ["popoverLayout"])}>
-				<WidgetLayout layout={popoverButton.popoverLayout} {layoutTarget} />
-			</PopoverButton>
+			<PopoverButton {...exclude(popoverButton)} {layoutTarget} />
 		{/if}
 		{@const radioInput = narrowWidgetProps(component.props, "RadioInput")}
 		{#if radioInput}

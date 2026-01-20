@@ -3,7 +3,7 @@ use cef::sys::cef_event_flags_t;
 use std::time::Instant;
 use winit::dpi::PhysicalPosition;
 use winit::event::{ElementState, MouseButton};
-use winit::keyboard::{KeyLocation, ModifiersState};
+use winit::keyboard::{Key, KeyLocation, ModifiersState, NamedKey};
 
 use crate::cef::consts::{MULTICLICK_ALLOWED_TRAVEL, MULTICLICK_TIMEOUT};
 
@@ -17,6 +17,18 @@ pub(crate) struct InputState {
 impl InputState {
 	pub(crate) fn modifiers_changed(&mut self, modifiers: &ModifiersState) {
 		self.modifiers = *modifiers;
+	}
+
+	pub(crate) fn modifiers_apply_key_event(&mut self, key: &Key, state: &ElementState) {
+		let bits = match key {
+			Key::Named(NamedKey::Shift) => ModifiersState::SHIFT,
+			Key::Named(NamedKey::Control) => ModifiersState::CONTROL,
+			Key::Named(NamedKey::Alt) => ModifiersState::ALT,
+			Key::Named(NamedKey::Meta) => ModifiersState::META,
+			_ => return,
+		};
+		let is_pressed = matches!(state, ElementState::Pressed);
+		self.modifiers.set(bits, is_pressed);
 	}
 
 	pub(crate) fn cursor_move(&mut self, position: &PhysicalPosition<f64>) -> bool {

@@ -14,7 +14,7 @@ trait CornerRadius {
 impl CornerRadius for f64 {
 	fn generate(self, size: DVec2, clamped: bool) -> Table<Vector> {
 		let clamped_radius = if clamped { self.clamp(0., size.x.min(size.y).max(0.) / 2.) } else { self };
-		Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_rounded_rect(size / -2., size / 2., [clamped_radius; 4])))
+		Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_rounded_rectangle(size / -2., size / 2., [clamped_radius; 4])))
 	}
 }
 impl CornerRadius for [f64; 4] {
@@ -34,7 +34,7 @@ impl CornerRadius for [f64; 4] {
 		} else {
 			self
 		};
-		Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_rounded_rect(size / -2., size / 2., clamped_radius)))
+		Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_rounded_rectangle(size / -2., size / 2., clamped_radius)))
 	}
 }
 
@@ -188,16 +188,26 @@ fn star<T: AsU64>(
 
 /// Generates a line with endpoints at the two chosen coordinates.
 #[node_macro::node(category("Vector: Shape"))]
-fn line(
+fn arrow(
 	_: impl Ctx,
 	_primary: (),
-	/// Coordinate of the line's initial endpoint.
-	#[default(0., 0.)]
-	start: PixelSize,
-	/// Coordinate of the line's terminal endpoint.
-	#[default(100., 100.)]
-	end: PixelSize,
+	#[default(0., 0.)] start: PixelSize,
+	#[default(100., 0.)] end: PixelSize,
+	#[unit(" px")]
+	#[default(10)]
+	shaft_width: f64,
+	#[unit(" px")]
+	#[default(30)]
+	head_width: f64,
+	#[unit(" px")]
+	#[default(20)]
+	head_length: f64,
 ) -> Table<Vector> {
+	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_arrow(start, end, shaft_width, head_width, head_length)))
+}
+
+#[node_macro::node(category("Vector: Shape"))]
+fn line(_: impl Ctx, _primary: (), #[default(0., 0.)] start: PixelSize, #[default(100., 100.)] end: PixelSize) -> Table<Vector> {
 	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_line(start, end)))
 }
 

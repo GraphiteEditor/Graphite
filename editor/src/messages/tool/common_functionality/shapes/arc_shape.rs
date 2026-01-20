@@ -1,7 +1,7 @@
 use super::shape_utility::ShapeToolModifierKey;
 use super::*;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_proto_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate};
 use crate::messages::tool::common_functionality::gizmos::shape_gizmos::circle_arc_radius_handle::{RadiusHandle, RadiusHandleState};
@@ -133,7 +133,7 @@ pub struct Arc;
 
 impl Arc {
 	pub fn create_node(arc_type: ArcType) -> NodeTemplate {
-		let node_type = resolve_document_node_type("Arc").expect("Ellipse node does not exist");
+		let node_type = resolve_proto_node_type(graphene_std::vector::generator_nodes::arc::IDENTIFIER).expect("Ellipse node does not exist");
 		node_type.node_template_input_override([
 			None,
 			Some(NodeInput::value(TaggedValue::F64(0.5), false)),

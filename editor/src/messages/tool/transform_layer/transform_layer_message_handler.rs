@@ -686,7 +686,7 @@ fn calculate_pivot(
 	});
 	gizmo.pivot.recalculate_pivot_for_layer(document, bounds);
 	let position = || {
-		(if !gizmo.state.disabled {
+		(if gizmo.state.enabled {
 			match gizmo.state.gizmo_type {
 				PivotGizmoType::Average => None,
 				PivotGizmoType::Active => gizmo.point.and_then(|p| get_location(&p)),
@@ -754,6 +754,7 @@ fn update_colinear_handles(selected_layers: &[LayerNodeIdentifier], document: &D
 mod test_transform_layer {
 	use crate::messages::portfolio::document::graph_operation::transform_utils;
 	use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
+	use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 	use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 	use crate::messages::prelude::Message;
 	use crate::messages::tool::transform_layer::transform_layer_message_handler::VectorModificationType;
@@ -766,7 +767,7 @@ mod test_transform_layer {
 		let document = editor.active_document();
 		let network_interface = &document.network_interface;
 		let _responses: VecDeque<Message> = VecDeque::new();
-		let transform_node_id = ModifyInputsContext::locate_node_in_layer_chain("Transform", layer, network_interface)?;
+		let transform_node_id = ModifyInputsContext::locate_node_in_layer_chain(&DefinitionIdentifier::Network("Transform".into()), layer, network_interface)?;
 		let document_node = network_interface.document_network().nodes.get(&transform_node_id)?;
 		Some(transform_utils::get_current_transform(&document_node.inputs))
 	}

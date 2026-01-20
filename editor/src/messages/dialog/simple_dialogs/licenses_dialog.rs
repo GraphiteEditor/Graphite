@@ -18,25 +18,19 @@ impl DialogLayoutHolder for LicensesDialog {
 	fn layout_column_2(&self) -> Layout {
 		#[allow(clippy::type_complexity)]
 		let button_definitions: &[(&str, &str, fn() -> Message)] = &[
-			("GraphiteLogo", "Graphite Logo", || {
+			("Code", "Source Code License", || {
 				FrontendMessage::TriggerVisitLink {
-					url: "https://graphite.art/logo/".into(),
+					url: "https://graphite.art/license#source-code".into(),
 				}
 				.into()
 			}),
-			("IconsGrid", "Graphite Icons", || {
+			("GraphiteLogo", "Branding License", || {
 				FrontendMessage::TriggerVisitLink {
-					url: "https://raw.githubusercontent.com/GraphiteEditor/Graphite/master/frontend/assets/LICENSE.md".into(),
+					url: "https://graphite.art/license#branding".into(),
 				}
 				.into()
 			}),
-			("License", "Graphite License", || {
-				FrontendMessage::TriggerVisitLink {
-					url: "https://graphite.art/license/".into(),
-				}
-				.into()
-			}),
-			("License", "Other Licenses", || FrontendMessage::TriggerDisplayThirdPartyLicensesDialog.into()),
+			("IconsGrid", "Dependency Licenses", || FrontendMessage::TriggerDisplayThirdPartyLicensesDialog.into()),
 		];
 		let widgets = button_definitions
 			.iter()
@@ -52,13 +46,11 @@ impl LayoutHolder for LicensesDialog {
 		let year = &self.localized_commit_year;
 		let description = format!(
 			"
-			The Graphite logo and brand identity are copyright © {year}\nGraphite Labs, LLC. See \"Graphite Logo\" for usage policy.\n\
+			Graphite source code is copyright © {year} Graphite contrib-\nutors and is available under the Apache License 2.0. See\n\"Source Code License\" for details.\n\
 			\n\
-			The Graphite editor's icons and design assets are copyright\n© {year} Graphite Labs, LLC. See \"Graphite Icons\" for details.\n\
+			The Graphite logo, icons, and visual identity are copyright ©\n{year} Graphite Labs, LLC. See \"Branding License\" for details.\n\
 			\n\
-			Graphite code is copyright © {year} Graphite contributors\nand is made available under the Apache 2.0 license. See\n\"Graphite License\" for details.\n\
-			\n\
-			Graphite is distributed with third-party open source code\ndependencies. See \"Other Licenses\" for details.
+			Graphite is distributed with third-party open source code\ndependencies. See \"Dependency Licenses\" for details.
 			"
 		);
 		let description = description.trim();

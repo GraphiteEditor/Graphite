@@ -2,6 +2,7 @@ use super::network_interface::NodeNetworkInterface;
 use crate::consts::{ROTATE_INCREMENT, SCALE_INCREMENT};
 use crate::messages::portfolio::document::graph_operation::transform_utils;
 use crate::messages::portfolio::document::graph_operation::utility_types::{ModifyInputsContext, TransformIn};
+use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
@@ -53,7 +54,7 @@ impl OriginalTransforms {
 
 	/// Gets the transform from the most downstream transform node
 	fn get_layer_transform(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<DAffine2> {
-		let transform_node_id = ModifyInputsContext::locate_node_in_layer_chain("Transform", layer, network_interface)?;
+		let transform_node_id = ModifyInputsContext::locate_node_in_layer_chain(&DefinitionIdentifier::Network("Transform".into()), layer, network_interface)?;
 
 		let document_node = network_interface.document_network().nodes.get(&transform_node_id)?;
 		Some(transform_utils::get_current_transform(&document_node.inputs))

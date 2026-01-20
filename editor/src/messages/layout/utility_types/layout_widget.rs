@@ -46,6 +46,8 @@ pub enum LayoutTarget {
 	PropertiesPanel,
 	/// The contextual input key/mouse combination shortcuts shown in the status bar at the bottom of the window.
 	StatusBarHints,
+	/// The version information shown in the status bar at the bottom right of the window.
+	StatusBarInfo,
 	/// The left side of the control bar directly above the canvas.
 	ToolOptions,
 	/// The vertical buttons for all of the tools on the left of the canvas.
@@ -229,13 +231,13 @@ impl<'a> Iterator for WidgetIter<'a> {
 			Some(first)
 		});
 
-		if let Some(item) = widget {
-			if let WidgetInstance { widget: Widget::PopoverButton(p), .. } = item {
-				self.stack.extend(p.popover_layout.0.iter());
+		if let Some(instance) = widget {
+			if let Widget::PopoverButton(popover_button) = &*instance.widget {
+				self.stack.extend(popover_button.popover_layout.0.iter());
 				return self.next();
 			}
 
-			return Some(item);
+			return Some(instance);
 		}
 
 		match self.stack.pop() {
@@ -279,13 +281,15 @@ impl<'a> Iterator for WidgetIterMut<'a> {
 			Some(first)
 		});
 
-		if let Some(widget) = widget {
-			if let WidgetInstance { widget: Widget::PopoverButton(p), .. } = widget {
-				self.stack.extend(p.popover_layout.0.iter_mut());
-				return self.next();
+		if let Some(instance) = widget {
+			// We have to check that we're not a popover and return first, then extract the popover with an unreachable else condition second, to satisfy the borrow checker.
+			// After Rust's Polonius is stable, we can reverse that order of steps to avoid the redundancy and unreachable statement.
+			if !matches!(*instance.widget, Widget::PopoverButton(_)) {
+				return Some(instance);
 			}
-
-			return Some(widget);
+			let Widget::PopoverButton(popover_button) = &mut *instance.widget else { unreachable!() };
+			self.stack.extend(popover_button.popover_layout.0.iter_mut());
+			return self.next();
 		}
 
 		match self.stack.pop() {
@@ -362,7 +366,7 @@ impl LayoutGroup {
 		};
 		let description = description.into();
 		for widget in &mut widgets {
-			let val = match &mut widget.widget {
+			let val = match &mut *widget.widget {
 				Widget::CheckboxInput(x) => &mut x.tooltip_description,
 				Widget::ColorInput(x) => &mut x.tooltip_description,
 				Widget::CurveInput(x) => &mut x.tooltip_description,
@@ -552,7 +556,7 @@ impl Diffable for LayoutGroup {
 pub struct WidgetInstance {
 	#[serde(rename = "widgetId")]
 	pub widget_id: WidgetId,
-	pub widget: Widget,
+	pub widget: Box<Widget>,
 }
 
 impl PartialEq for WidgetInstance {
@@ -566,7 +570,7 @@ impl WidgetInstance {
 	pub fn new(widget: Widget) -> Self {
 		Self {
 			widget_id: WidgetId(generate_uuid()),
-			widget,
+			widget: Box::new(widget),
 		}
 	}
 }
@@ -584,7 +588,7 @@ impl Diffable for WidgetInstance {
 		}
 
 		// Special handling for PopoverButton: recursively diff nested layout if only the layout changed
-		if let (Widget::PopoverButton(button1), Widget::PopoverButton(button2)) = (&mut self.widget, &new.widget) {
+		if let (Widget::PopoverButton(button1), Widget::PopoverButton(button2)) = (&mut *self.widget, &*new.widget) {
 			// Check if only the popover layout changed (all other fields are the same)
 			if self.widget_id == new.widget_id
 				&& button1.disabled == button2.disabled
@@ -614,7 +618,7 @@ impl Diffable for WidgetInstance {
 	}
 
 	fn collect_checkbox_ids(&self, layout_target: LayoutTarget, widget_path: &mut Vec<usize>, checkbox_map: &mut HashMap<CheckboxId, CheckboxId>) {
-		match &self.widget {
+		match &*self.widget {
 			Widget::CheckboxInput(checkbox) => {
 				// Compute stable ID based on position and insert mapping
 				let checkbox_id = checkbox.for_label;
@@ -644,7 +648,7 @@ impl Diffable for WidgetInstance {
 		self.widget_id = compute_widget_id(layout_target, widget_path, &self.widget);
 
 		// 2. Replace CheckboxIds if present
-		match &mut self.widget {
+		match &mut *self.widget {
 			Widget::CheckboxInput(checkbox) => {
 				let old_id = checkbox.for_label;
 				if let Some(&new_id) = checkbox_map.get(&old_id) {
@@ -744,7 +748,7 @@ impl DiffUpdate {
 		// Go through each widget to convert `ActionShortcut::Action` to `ActionShortcut::Shortcut` and append the key combination to the widget tooltip
 		let convert_tooltip = |widget_instance: &mut WidgetInstance| {
 			// Handle all the widgets that have tooltips
-			let tooltip_shortcut = match &mut widget_instance.widget {
+			let tooltip_shortcut = match &mut *widget_instance.widget {
 				Widget::BreadcrumbTrailButtons(widget) => widget.tooltip_shortcut.as_mut(),
 				Widget::CheckboxInput(widget) => widget.tooltip_shortcut.as_mut(),
 				Widget::ColorInput(widget) => widget.tooltip_shortcut.as_mut(),
@@ -775,7 +779,7 @@ impl DiffUpdate {
 			}
 
 			// Handle RadioInput separately because its tooltips are children of the widget
-			if let Widget::RadioInput(radio_input) = &mut widget_instance.widget {
+			if let Widget::RadioInput(radio_input) = &mut *widget_instance.widget {
 				for radio_entry_data in &mut radio_input.entries {
 					// Convert `ActionShortcut::Action` to `ActionShortcut::Shortcut`
 					if let Some(tooltip_shortcut) = radio_entry_data.tooltip_shortcut.as_mut() {
@@ -786,23 +790,19 @@ impl DiffUpdate {
 		};
 
 		// Recursively fill menu list entries with their realized shortcut keys specific to the current bindings and platform
-		let apply_action_shortcut_to_menu_lists = |entry_sections: &mut MenuListEntrySections| {
-			struct RecursiveWrapper<'a>(&'a dyn Fn(&mut MenuListEntrySections, &RecursiveWrapper));
-			let recursive_wrapper = RecursiveWrapper(&|entry_sections: &mut MenuListEntrySections, recursive_wrapper| {
-				for entries in entry_sections {
-					for entry in entries {
-						// Convert `ActionShortcut::Action` to `ActionShortcut::Shortcut`
-						if let Some(tooltip_shortcut) = &mut entry.tooltip_shortcut {
-							tooltip_shortcut.realize_shortcut(action_input_mapping);
-						}
-
-						// Recursively call this inner closure on the menu's children
-						(recursive_wrapper.0)(&mut entry.children, recursive_wrapper);
+		fn apply_action_shortcut_to_menu_lists(entry_sections: &mut MenuListEntrySections, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>) {
+			for entries in entry_sections {
+				for entry in entries {
+					// Convert `ActionShortcut::Action` to `ActionShortcut::Shortcut`
+					if let Some(tooltip_shortcut) = &mut entry.tooltip_shortcut {
+						tooltip_shortcut.realize_shortcut(action_input_mapping);
 					}
+
+					// Recursively call this function on the menu's children
+					apply_action_shortcut_to_menu_lists(&mut entry.children, action_input_mapping);
 				}
-			});
-			(recursive_wrapper.0)(entry_sections, &recursive_wrapper)
-		};
+			}
+		}
 
 		// Hash the menu list entry sections for caching purposes
 		let hash_menu_list_entry_sections = |entry_sections: &MenuListEntrySections| {
@@ -827,13 +827,13 @@ impl DiffUpdate {
 		};
 
 		// Apply shortcut conversions to all widgets that have menu lists
-		let convert_menu_lists = |widget_instance: &mut WidgetInstance| match &mut widget_instance.widget {
+		let convert_menu_lists = |widget_instance: &mut WidgetInstance| match &mut *widget_instance.widget {
 			Widget::DropdownInput(dropdown_input) => {
-				apply_action_shortcut_to_menu_lists(&mut dropdown_input.entries);
+				apply_action_shortcut_to_menu_lists(&mut dropdown_input.entries, action_input_mapping);
 				dropdown_input.entries_hash = hash_menu_list_entry_sections(&dropdown_input.entries);
 			}
 			Widget::TextButton(text_button) => {
-				apply_action_shortcut_to_menu_lists(&mut text_button.menu_list_children);
+				apply_action_shortcut_to_menu_lists(&mut text_button.menu_list_children, action_input_mapping);
 				text_button.menu_list_children_hash = hash_menu_list_entry_sections(&text_button.menu_list_children);
 			}
 			_ => {}

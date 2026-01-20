@@ -4,11 +4,14 @@
 
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
 
+	// Content
 	export let icon: IconName;
 	export let hoverIcon: IconName | undefined = undefined;
 	export let size: IconSize;
 	export let disabled = false;
-	export let active = false;
+	// Styling
+	export let emphasized = false;
+	// Tooltips
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
 	export let tooltipShortcut: ActionShortcut | undefined = undefined;
@@ -28,13 +31,13 @@
 	class={`icon-button size-${size} ${className} ${extraClasses}`.trim()}
 	class:hover-icon={hoverIcon && !disabled}
 	class:disabled
-	class:active
+	class:emphasized
 	on:click={action}
 	{disabled}
 	data-tooltip-label={tooltipLabel}
 	data-tooltip-description={tooltipDescription}
 	data-tooltip-shortcut={tooltipShortcut?.shortcut ? JSON.stringify(tooltipShortcut.shortcut) : undefined}
-	tabindex={active ? -1 : 0}
+	tabindex={emphasized ? -1 : 0}
 	{...$$restProps}
 >
 	<IconLabel {icon} />
@@ -86,7 +89,7 @@
 			}
 		}
 
-		&.active {
+		&.emphasized {
 			background: var(--color-e-nearwhite);
 
 			svg {

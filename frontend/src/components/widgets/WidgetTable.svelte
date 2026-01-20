@@ -24,7 +24,7 @@
 	</tbody>
 </table>
 
-<style lang="scss">
+<style lang="scss" global>
 	table:not(.unstyled) {
 		background: var(--color-3-darkgray);
 		border: none;
