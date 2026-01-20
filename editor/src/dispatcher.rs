@@ -572,7 +572,7 @@ mod test {
 			);
 
 			let responses = editor.editor.handle_message(PortfolioMessage::OpenFile {
-				path: document_name.into(),
+				path: file_name.into(),
 				content: document_serialized_content.bytes().collect(),
 			});
 
