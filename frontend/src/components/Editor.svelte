@@ -31,10 +31,10 @@
 	setContext("tooltip", tooltip);
 	let document = createDocumentState(editor);
 	setContext("document", document);
-	let nodeGraph = createNodeGraphState(editor);
-	setContext("nodeGraph", nodeGraph);
 	let fullscreen = createFullscreenState(editor);
 	setContext("fullscreen", fullscreen);
+	let nodeGraph = createNodeGraphState(editor);
+	setContext("nodeGraph", nodeGraph);
 	let portfolio = createPortfolioState(editor);
 	setContext("portfolio", portfolio);
 	let appWindow = createAppWindowState(editor);
