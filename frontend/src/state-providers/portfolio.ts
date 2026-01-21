@@ -45,12 +45,10 @@ export function createPortfolioState(editor: Editor) {
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerFetchAndOpenDocument, async (data) => {
 		try {
-			const { name, filename } = data;
+			const { filename } = data;
 			const url = new URL(`demo-artwork/${filename}`, document.location.href);
 			const response = await fetch(url);
-			const content = await response.bytes();
-
-			editor.handle.openFile(name, content);
+			editor.handle.openFile(filename, await response.bytes());
 		} catch {
 			// Needs to be delayed until the end of the current call stack so the existing demo artwork dialog can be closed first, otherwise this dialog won't show
 			setTimeout(() => {
