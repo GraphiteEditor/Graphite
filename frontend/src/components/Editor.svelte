@@ -4,6 +4,7 @@
 	import { type Editor } from "@graphite/editor";
 	import { createClipboardManager } from "@graphite/io-managers/clipboard";
 	import { createHyperlinkManager } from "@graphite/io-managers/hyperlink";
+	import { createImportManager } from "@graphite/io-managers/import";
 	import { createInputManager } from "@graphite/io-managers/input";
 	import { createLocalizationManager } from "@graphite/io-managers/localization";
 	import { createPanicManager } from "@graphite/io-managers/panic";
@@ -42,6 +43,7 @@
 	// Initialize managers, which are isolated systems that subscribe to backend messages to link them to browser API functionality (like JS events, IndexedDB, etc.)
 	createClipboardManager(editor);
 	createHyperlinkManager(editor);
+	createImportManager(editor);
 	createLocalizationManager(editor);
 	createPanicManager(editor, dialog);
 	createPersistenceManager(editor, portfolio);

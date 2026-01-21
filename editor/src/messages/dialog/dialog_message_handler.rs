@@ -89,6 +89,10 @@ impl MessageHandler<DialogMessage, DialogMessageContext<'_>> for DialogMessageHa
 					self.export_dialog.send_dialog_to_frontend(responses);
 				}
 			}
+			DialogMessage::RequestImportDialog => {
+				let dialog = simple_dialogs::ImportDialog;
+				dialog.send_dialog_to_frontend(responses);
+			}
 			DialogMessage::RequestLicensesDialogWithLocalizedCommitDate { localized_commit_year } => {
 				let dialog = LicensesDialog { localized_commit_year };
 
@@ -116,6 +120,7 @@ impl MessageHandler<DialogMessage, DialogMessageContext<'_>> for DialogMessageHa
 	advertise_actions!(DialogMessageDiscriminant;
 		CloseAllDocumentsWithConfirmation,
 		RequestExportDialog,
+		RequestImportDialog,
 		RequestNewDocumentDialog,
 		RequestPreferencesDialog,
 	);

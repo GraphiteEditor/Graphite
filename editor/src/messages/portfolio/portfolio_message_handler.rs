@@ -913,6 +913,21 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					});
 				}
 			}
+			PortfolioMessage::ImportSvgAsNewDocument { name, svg } => {
+				// Create a new document explicitly
+				responses.add(PortfolioMessage::NewDocumentWithName { name: name.clone().unwrap_or(DEFAULT_DOCUMENT_NAME.into()) });
+
+				responses.add(DocumentMessage::PasteSvg {
+					name,
+					svg,
+					mouse: None,
+					parent_and_insert_index: None,
+				});
+
+				// After graph runs, wrap contents in artboard and zoom to fit
+				responses.add(DeferMessage::AfterGraphRun { messages: vec![DocumentMessage::WrapContentInArtboard { place_artboard_at_origin: true }.into()] });
+				responses.add(DeferMessage::AfterNavigationReady { messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()] });
+			}
 			PortfolioMessage::PrevDocument => {
 				if let Some(active_document_id) = self.active_document_id {
 					let len = self.document_ids.len();

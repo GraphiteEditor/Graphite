@@ -20,22 +20,6 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 				context: OpenFileDialogContext::Document,
 			});
 		}
-		FrontendMessage::TriggerImport => {
-			dispatcher.respond(DesktopFrontendMessage::OpenFileDialog {
-				title: "Import File".to_string(),
-				filters: vec![
-					FileFilter {
-						name: "Svg".to_string(),
-						extensions: vec!["svg".to_string()],
-					},
-					FileFilter {
-						name: "Image".to_string(),
-						extensions: vec!["png".to_string(), "jpg".to_string(), "jpeg".to_string(), "bmp".to_string()],
-					},
-				],
-				context: OpenFileDialogContext::Import,
-			});
-		}
 		FrontendMessage::TriggerSaveDocument { document_id, name, path, content } => {
 			if let Some(path) = path {
 				dispatcher.respond(DesktopFrontendMessage::WriteFile { path, content });

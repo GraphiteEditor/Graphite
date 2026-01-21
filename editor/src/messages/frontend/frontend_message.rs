@@ -98,6 +98,10 @@ pub enum FrontendMessage {
 		mime: String,
 		size: (f64, f64),
 	},
+	TriggerFileImport {
+		#[serde(rename = "newDocument")]
+		new_document: bool,
+	},
 	TriggerFetchAndOpenDocument {
 		name: String,
 		filename: String,

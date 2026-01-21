@@ -245,6 +245,11 @@ impl EditorHandle {
 		}
 	}
 
+	#[wasm_bindgen(js_name = requestImportDialog)]
+	pub fn request_import_dialog(&self) {
+		self.dispatch(DialogMessage::RequestImportDialog);
+	}
+
 	#[wasm_bindgen(js_name = addPrimaryImport)]
 	pub fn add_primary_import(&self) {
 		self.dispatch(DocumentMessage::AddTransaction);
@@ -411,6 +416,12 @@ impl EditorHandle {
 	#[wasm_bindgen(js_name = newDocumentDialog)]
 	pub fn new_document_dialog(&self) {
 		let message = DialogMessage::RequestNewDocumentDialog;
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = requestImportDialog)]
+	pub fn request_import_dialog(&self) {
+		let message = DialogMessage::RequestImportDialog;
 		self.dispatch(message);
 	}
 
@@ -810,6 +821,12 @@ impl EditorHandle {
 			parent_and_insert_index,
 		};
 		self.dispatch(message);
+	}
+
+	/// Import an SVG as a new document directly (used for dropping on tab bar empty area or choosing the menu option)
+	#[wasm_bindgen(js_name = importSvgAsNewDocument)]
+	pub fn import_svg_as_new_document(&self, name: Option<String>, svg: String) {
+		self.dispatch(PortfolioMessage::ImportSvgAsNewDocument { name, svg });
 	}
 
 	/// Toggle visibility of a layer or node given its node ID

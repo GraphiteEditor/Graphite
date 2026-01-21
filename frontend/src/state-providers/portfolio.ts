@@ -7,7 +7,6 @@ import {
 	TriggerSaveDocument,
 	TriggerExportImage,
 	TriggerSaveFile,
-	TriggerImport,
 	TriggerOpenDocument,
 	UpdateActiveDocument,
 	UpdateOpenDocumentsList,
@@ -69,26 +68,6 @@ export function createPortfolioState(editor: Editor) {
 		}
 
 		editor.handle.openDocumentFile(documentName, data.content);
-	});
-	editor.subscriptions.subscribeJsMessage(TriggerImport, async () => {
-		const data = await upload("image/*", "both");
-
-		if (data.type.includes("svg")) {
-			const svg = new TextDecoder().decode(data.content.data);
-			editor.handle.pasteSvg(data.filename, svg);
-			return;
-		}
-
-		// In case the user accidentally uploads a Graphite file, open it instead of failing to import it
-		const graphiteFileSuffix = "." + editor.handle.fileExtension();
-		if (data.filename.endsWith(graphiteFileSuffix)) {
-			const documentName = data.filename.slice(0, -graphiteFileSuffix.length);
-			editor.handle.openDocumentFile(documentName, data.content.text);
-			return;
-		}
-
-		const imageData = await extractPixelData(new Blob([new Uint8Array(data.content.data)], { type: data.type }));
-		editor.handle.pasteImage(data.filename, new Uint8Array(imageData.data), imageData.width, imageData.height);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerSaveDocument, (data) => {
 		downloadFile(data.name, data.content);

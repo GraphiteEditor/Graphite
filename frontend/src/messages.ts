@@ -747,6 +747,10 @@ export class TriggerFetchAndOpenDocument extends JsMessage {
 
 export class TriggerOpenDocument extends JsMessage {}
 
+export class TriggerFileImport extends JsMessage {
+	readonly newDocument!: boolean;
+}
+
 export class TriggerImport extends JsMessage {}
 
 export class TriggerClipboardRead extends JsMessage {}
