@@ -823,11 +823,10 @@ fn dot_product(
 
 /// Calculates the angle swept between two vectors.
 ///
-/// The value is always positive and ranges from 0° (both vectors point the same direction) to 180° (both vectors point opposite directions).
+/// The value ranges from -180° to +180° (or -π to +π radians). Positive values indicate an anticlockwise rotation from A to B, while negative values indicate a clockwise rotation.
 #[node_macro::node(category("Math: Vector"))]
 fn angle_between(_: impl Ctx, vector_a: DVec2, vector_b: DVec2, radians: bool) -> f64 {
-	let dot_product = vector_a.normalize_or_zero().dot(vector_b.normalize_or_zero());
-	let angle = dot_product.acos();
+	let angle = vector_a.angle_to(vector_b);
 	if radians { angle } else { angle.to_degrees() }
 }
 
