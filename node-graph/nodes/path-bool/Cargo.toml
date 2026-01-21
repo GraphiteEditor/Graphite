@@ -18,7 +18,6 @@ node-macro = { workspace = true }
 glam = { workspace = true }
 linesweeper = { workspace = true }
 log = { workspace = true }
-path-bool = { workspace = true }
 serde = { workspace = true }
 smallvec = { workspace = true }
 vector-types = { workspace = true }
