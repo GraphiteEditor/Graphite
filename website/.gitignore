@@ -1,5 +1,6 @@
 node_modules/
 public/
+generated/
 static/*
 !static/js/
 content/learn/node-catalog
