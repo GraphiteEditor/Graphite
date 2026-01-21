@@ -489,13 +489,26 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						responses.add(PortfolioMessage::OpenImage { name, image });
 					}
 					FileContent::Unsupported => {
-						// TODO: Show some form of error message to the user
+						// TODO: Show a more thoughtfully designed error message to the user
+						responses.add(DialogMessage::DisplayDialogError {
+							title: "Unsupported format".into(),
+							description: "This file cannot be opened because it is not a supported image file type.".into(),
+						})
 					}
 				}
 			}
 			PortfolioMessage::ImportFile { path, content } => {
 				let name = path.file_stem().map(|n| n.to_string_lossy().to_string());
 				match Self::read_file(&path, content) {
+					FileContent::Document(content) => {
+						// TODO: Consider importing a document as a node into the current document
+						// For now treat importing a document as opening it
+						responses.add(PortfolioMessage::OpenDocumentFile {
+							document_name: name,
+							document_path: Some(path),
+							document_serialized_content: content,
+						});
+					}
 					FileContent::Svg(svg) => {
 						responses.add(PortfolioMessage::PasteSvg {
 							name,
@@ -510,15 +523,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 							image,
 							mouse: None,
 							parent_and_insert_index: None,
-						});
-					}
-					FileContent::Document(content) => {
-						// TODO: Consider importing a document as a Node into the current document
-						// For now treat importing a document as opening it
-						responses.add(PortfolioMessage::OpenDocumentFile {
-							document_name: name,
-							document_path: Some(path),
-							document_serialized_content: content,
 						});
 					}
 					_ => {
