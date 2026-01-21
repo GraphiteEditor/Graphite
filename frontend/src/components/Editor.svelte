@@ -29,10 +29,10 @@
 	setContext("dialog", dialog);
 	let tooltip = createTooltipState(editor);
 	setContext("tooltip", tooltip);
-	let nodeGraph = createNodeGraphState(editor);
-	setContext("nodeGraph", nodeGraph);
 	let document = createDocumentState(editor);
 	setContext("document", document);
+	let nodeGraph = createNodeGraphState(editor);
+	setContext("nodeGraph", nodeGraph);
 	let fullscreen = createFullscreenState(editor);
 	setContext("fullscreen", fullscreen);
 	let portfolio = createPortfolioState(editor);
