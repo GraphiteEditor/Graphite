@@ -527,9 +527,7 @@
 			// When we eventually have sub-documents, this should be changed to import the document instead of opening it in a separate tab
 			const graphiteFileSuffix = "." + editor.handle.fileExtension();
 			if (file.name.endsWith(graphiteFileSuffix)) {
-				const content = await file.text();
-				const documentName = file.name.slice(0, -graphiteFileSuffix.length);
-				editor.handle.openDocumentFile(documentName, content);
+				editor.handle.openFile(file.name, await file.bytes());
 				return;
 			}
 		});
