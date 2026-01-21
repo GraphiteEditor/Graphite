@@ -4,7 +4,7 @@ template = "section.html"
 
 [extra]
 css = ["/page/index.css", "/component/carousel.css", "/component/feature-icons.css", "/component/feature-box.css", "/component/youtube-embed.css"]
-js = ["/js/carousel.js", "/js/youtube-embed.js", "/js/video-autoplay.js"]
+js = ["/js/component/carousel.js", "/js/component/youtube-embed.js", "/js/component/video-autoplay.js"]
 linked_js = []
 meta_description = "Open source free software. A vector graphics creativity suite with a clean, intuitive interface. Opens instantly (no signup) and runs locally in a browser. Exports SVG, PNG, JPG."
 +++
