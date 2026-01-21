@@ -4306,7 +4306,6 @@ dependencies = [
  "linesweeper",
  "log",
  "node-macro",
- "path-bool",
  "serde",
  "smallvec",
  "specta",

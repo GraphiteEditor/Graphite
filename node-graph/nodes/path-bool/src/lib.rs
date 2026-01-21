@@ -8,8 +8,7 @@ use graphic_types::vector_types::vector::algorithms::merge_by_distance::MergeByD
 use graphic_types::vector_types::vector::style::Fill;
 use graphic_types::{Graphic, Vector};
 use linesweeper::topology::Topology;
-pub use path_bool as path_bool_lib;
-use path_bool::{FillRule, PathBooleanOperation};
+use linesweeper::{BinaryOp, FillRule, binary_op};
 use smallvec::SmallVec;
 use vector_types::kurbo::{Affine, BezPath, CubicBez, ParamCurve, Point};
 
@@ -334,20 +333,12 @@ fn from_bez_paths<'a>(paths: impl Iterator<Item = &'a BezPath>) -> Vec<Subpath<P
 	all_subpaths
 }
 
-type Path = Vec<path_bool::PathSegment>;
-
-fn path_bool(a: Path, b: Path, op: PathBooleanOperation) -> Vec<Path> {
-	match path_bool::path_boolean(&a, FillRule::NonZero, &b, FillRule::NonZero, op) {
-		Ok(results) => results,
+pub fn boolean_intersect(a: &BezPath, b: &BezPath) -> Vec<BezPath> {
+	match binary_op(a, b, FillRule::NonZero, BinaryOp::Intersection) {
+		Ok(contours) => contours.contours().map(|c| c.path.clone()).collect(),
 		Err(e) => {
-			let a_path = path_bool::path_to_path_data(&a, 0.001);
-			let b_path = path_bool::path_to_path_data(&b, 0.001);
-			log::error!("Boolean error {e:?} encountered while processing {a_path}\n {op:?}\n {b_path}");
+			log::error!("boolean op failed: {e}");
 			Vec::new()
 		}
 	}
-}
-
-pub fn boolean_intersect(a: Path, b: Path) -> Vec<Path> {
-	path_bool(a, b, PathBooleanOperation::Intersection)
 }
