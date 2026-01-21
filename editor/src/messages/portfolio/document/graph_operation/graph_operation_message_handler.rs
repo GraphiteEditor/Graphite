@@ -1,7 +1,7 @@
 use super::transform_utils;
 use super::utility_types::ModifyInputsContext;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_network_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface, OutputConnector};
 use crate::messages::portfolio::document::utility_types::nodes::CollapsedLayers;
@@ -259,7 +259,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 						},
 					);
 
-					let new_merge_node = resolve_document_node_type("Merge").expect("Merge node").default_node_template();
+					let new_merge_node = resolve_network_node_type("Merge").expect("Merge node").default_node_template();
 					network_interface.insert_node(node_id, new_merge_node, &[]);
 
 					responses.add(NodeGraphMessage::SetDisplayName {
