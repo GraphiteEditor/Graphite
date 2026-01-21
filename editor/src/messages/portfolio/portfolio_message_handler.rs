@@ -525,8 +525,12 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 							parent_and_insert_index: None,
 						});
 					}
-					_ => {
-						// TODO: Show some form of error message to the user
+					FileContent::Unsupported => {
+						// TODO: Show a more thoughtfully designed error message to the user
+						responses.add(DialogMessage::DisplayDialogError {
+							title: "Unsupported format".into(),
+							description: "This file cannot be imported because it is not a supported image file type.".into(),
+						})
 					}
 				}
 			}
