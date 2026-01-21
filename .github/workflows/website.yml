@@ -80,6 +80,11 @@ jobs:
           cd website
           npm run generate-editor-structure
 
+      - name: Generate node catalog documentation
+        run: |
+          cd tools/node-docs
+          cargo run
+
       - name: 🌐 Build Graphite website with Zola
         env:
           MODE: prod
