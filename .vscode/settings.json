@@ -26,6 +26,10 @@
 		// Configured in `.prettierrc`
 		"editor.defaultFormatter": "esbenp.prettier-vscode"
 	},
+	// Website: don't format Zola/Tera-templated HTML on save
+	"[html]": {
+		"editor.formatOnSave": false
+	},
 	// Handlebars: don't save on format
 	// (`about.hbs` is used by Cargo About to encode license information)
 	"[handlebars]": {
