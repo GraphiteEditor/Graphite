@@ -31,7 +31,7 @@
 	setContext("tooltip", tooltip);
 	let nodeGraph = createNodeGraphState(editor);
 	setContext("nodeGraph", nodeGraph);
-	let document = createDocumentState(editor, nodeGraph);
+	let document = createDocumentState(editor);
 	setContext("document", document);
 	let fullscreen = createFullscreenState(editor);
 	setContext("fullscreen", fullscreen);
