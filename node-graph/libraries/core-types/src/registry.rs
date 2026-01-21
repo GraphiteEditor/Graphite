@@ -11,7 +11,7 @@ use std::sync::{LazyLock, Mutex};
 #[derive(Clone, Debug)]
 pub struct NodeMetadata {
 	pub display_name: &'static str,
-	pub category: Option<&'static str>,
+	pub category: &'static str,
 	pub fields: Vec<FieldMetadata>,
 	pub description: &'static str,
 	pub properties: Option<&'static str>,
@@ -23,6 +23,7 @@ pub struct NodeMetadata {
 pub struct FieldMetadata {
 	pub name: &'static str,
 	pub description: &'static str,
+	pub hidden: bool,
 	pub exposed: bool,
 	pub widget_override: RegistryWidgetOverride,
 	pub value_source: RegistryValueSource,

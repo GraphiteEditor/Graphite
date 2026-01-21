@@ -113,6 +113,20 @@ bitflags! {
 	}
 }
 
+impl ContextFeatures {
+	pub fn name(&self) -> &'static str {
+		match *self {
+			ContextFeatures::FOOTPRINT => "Footprint",
+			ContextFeatures::REAL_TIME => "RealTime",
+			ContextFeatures::ANIMATION_TIME => "AnimationTime",
+			ContextFeatures::POINTER => "Pointer",
+			ContextFeatures::INDEX => "Index",
+			ContextFeatures::VARARGS => "VarArgs",
+			_ => "Multiple Features",
+		}
+	}
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, dyn_any::DynAny, serde::Serialize, serde::Deserialize, Default)]
 pub struct ContextDependencies {
 	pub extract: ContextFeatures,

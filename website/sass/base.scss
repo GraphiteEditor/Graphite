@@ -375,7 +375,7 @@ body > .page {
 // ELEMENT SPACING RULES
 // =====================
 
-:is(h1, h2, h3, h4, article > :first-child, details > summary) ~ :is(p, ul, ol, ol li p, img, a:has(> img:only-child)),
+:is(h1, h2, h3, h4, article > :first-child, details > summary) ~ :is(p, ul, ol, ol li p, img, details, a:has(> img:only-child)),
 :is(h1, h2, h3, h4, article > :first-child) ~ :is(ul, ol) li p + img,
 :is(h1, h2, h3, h4, p) ~ .feature-icons,
 p ~ :is(h1, h2, h3, h4, details summary, blockquote, .image-comparison, .video-background, .youtube-embed),
@@ -429,12 +429,12 @@ h6 {
 }
 
 h2 {
-	font-size: calc(1rem * 16 / 9);
+	font-size: 1.75rem;
 	font-weight: 700;
 }
 
 h3 {
-	font-size: calc(1rem * 4 / 3);
+	font-size: 1.25rem;
 }
 
 h4,
@@ -495,6 +495,10 @@ table {
 		vertical-align: top;
 		margin: 0;
 		padding: 20px;
+
+		p {
+			text-align: left;
+		}
 
 		&:first-child {
 			padding-left: 10px;

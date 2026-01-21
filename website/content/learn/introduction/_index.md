@@ -5,7 +5,7 @@ page_template = "book.html"
 
 [extra]
 order = 1
-js = ["/js/youtube-embed.js"]
+js = ["/js/component/youtube-embed.js"]
 css = ["/component/youtube-embed.css"]
 +++
 

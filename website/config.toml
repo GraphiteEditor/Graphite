@@ -6,12 +6,9 @@ feed_filenames = ["rss.xml"]
 compile_sass = true
 minify_html = false
 
-[markdown]
-highlight_code = true
-highlight_theme = "css"
-highlight_themes_css = [
-	{ theme = "kronuz", filename = "syntax-highlighting.css" },
-]
+[markdown.highlighting]
+error_on_missing_language = false
+theme = "gruvbox-dark-soft"
 
 [extra]
 # Put all your custom variables here

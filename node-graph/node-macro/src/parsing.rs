@@ -211,9 +211,13 @@ impl Parse for NodeFnAttributes {
 		// syn::parenthesized!(content in input);
 
 		let nested = content.call(Punctuated::<Meta, Comma>::parse_terminated)?;
-		for meta in nested {
+		for meta in nested.iter() {
 			let name = meta.path().get_ident().ok_or_else(|| Error::new_spanned(meta.path(), "Node macro expects a known Ident, not a path"))?;
 			match name.to_string().as_str() {
+				// User-facing category in the node catalog. The empty string `category("")` hides the node from the catalog.
+				//
+				// Example usage:
+				// #[node_macro::node(..., category("Math: Arithmetic"), ...)]
 				"category" => {
 					let meta = meta.require_list()?;
 					if category.is_some() {
@@ -224,6 +228,11 @@ impl Parse for NodeFnAttributes {
 						.map_err(|_| Error::new_spanned(meta, "Expected a string literal for 'category', e.g., category(\"Value\")"))?;
 					category = Some(lit);
 				}
+				// Override for the display name in the node catalog in place of the auto-generated name taken from the function name with inferred Title Case formatting.
+				// Use this if capitalization or formatting needs to be overridden.
+				//
+				// Example usage:
+				// #[node_macro::node(..., name("Request URL"), ...)]
 				"name" => {
 					let meta = meta.require_list()?;
 					if display_name.is_some() {
@@ -232,6 +241,12 @@ impl Parse for NodeFnAttributes {
 					let parsed_name: LitStr = meta.parse_args().map_err(|_| Error::new_spanned(meta, "Expected a string for 'name', e.g., name(\"Memoize\")"))?;
 					display_name = Some(parsed_name);
 				}
+				// Override for the fully qualified path used by Graphene to identify the node implementation.
+				// If not provided, the path will be inferred from the module path and function name.
+				// Use this if the node implementation has moved to a different module or crate but a migration to that new path is not desired.
+				//
+				// Example usage:
+				// #[node_macro::node(..., path(core_types::vector), ...)]
 				"path" => {
 					let meta = meta.require_list()?;
 					if path.is_some() {
@@ -242,6 +257,13 @@ impl Parse for NodeFnAttributes {
 						.map_err(|_| Error::new_spanned(meta, "Expected a valid path for 'path', e.g., path(crate::MemoizeNode)"))?;
 					path = Some(parsed_path);
 				}
+				// Indicator that the node should allow generic type arguments but skip the automatic generation of concrete type implementations.
+				// It allows the type arguments in this node to not include the normally required `#[implementations(...)]` attribute on each generic parameter.
+				// Instead, concrete implementations must be manually listed in the Node Registry, or where impossible, produced at runtime by the compile server.
+				// This is used by a few advanced nodes that need to support many types where listing them all would be cumbersome or impossible.
+				//
+				// Example usage:
+				// #[node_macro::node(..., skip_impl, ...)]
 				"skip_impl" => {
 					let path = meta.require_path_only()?;
 					if skip_impl {
@@ -249,31 +271,48 @@ impl Parse for NodeFnAttributes {
 					}
 					skip_impl = true;
 				}
+				// Override UI layout generator function name defined in `node_properties.rs` that returns a custom Properties panel layout for this node.
+				// This is used to create custom UI for the input parameters of the node in cases where the defaults generated from the type and attributes are insufficient.
+				//
+				// Example usage:
+				// #[node_macro::node(..., properties("channel_mixer_properties"), ...)]
 				"properties" => {
 					let meta = meta.require_list()?;
 					if properties_string.is_some() {
-						return Err(Error::new_spanned(path, "Multiple 'properties_string' attributes are not allowed"));
+						return Err(Error::new_spanned(path, "Multiple 'properties' attributes are not allowed"));
 					}
 					let parsed_properties_string: LitStr = meta
 						.parse_args()
-						.map_err(|_| Error::new_spanned(meta, "Expected a string for 'properties', e.g., name(\"channel_mixer_properties\")"))?;
+						.map_err(|_| Error::new_spanned(meta, "Expected a string for 'properties', e.g., properties(\"channel_mixer_properties\")"))?;
 
 					properties_string = Some(parsed_properties_string);
 				}
+				// Conditional compilation tokens to gate when this node is included in the build.
+				//
+				// Example usage:
+				// #[node_macro::node(..., cfg(feature = "std"), ...)]
 				"cfg" => {
 					if cfg.is_some() {
-						return Err(Error::new_spanned(path, "Multiple 'feature' attributes are not allowed"));
+						return Err(Error::new_spanned(path, "Multiple 'cfg' attributes are not allowed"));
 					}
 					let meta = meta.require_list()?;
 					cfg = Some(meta.tokens.clone());
 				}
+				// Reference to a specific shader definition struct that is used to run the logic of this node on the GPU.
+				//
+				// Example usage:
+				// #[node_macro::node(..., shader_node(PerPixelAdjust), ...)]
 				"shader_node" => {
 					if shader_node.is_some() {
-						return Err(Error::new_spanned(path, "Multiple 'feature' attributes are not allowed"));
+						return Err(Error::new_spanned(path, "Multiple 'shader_node' attributes are not allowed"));
 					}
 					let meta = meta.require_list()?;
 					shader_node = Some(syn::parse2(meta.tokens.to_token_stream())?);
 				}
+				// Function name for custom serialization of this node's data. This is only used by the Monitor node.
+				//
+				// Example usage:
+				// #[node_macro::node(..., serialize(my_module::custom_serialize), ...)]
 				"serialize" => {
 					let meta = meta.require_list()?;
 					if serialize.is_some() {
@@ -290,15 +329,27 @@ impl Parse for NodeFnAttributes {
 						indoc!(
 							r#"
 							Unsupported attribute in `node`.
-							Supported attributes are 'category', 'path', 'name', 'skip_impl', 'cfg', 'properties', 'serialize', and 'shader_node'.
-
+							Supported attributes are 'category', 'name', 'path', 'skip_impl', 'properties', 'cfg', 'shader_node', and 'serialize'.
 							Example usage:
-							#[node_macro::node(category("Value"), name("Test Node"))]
+							#[node_macro::node(..., name("Test Node"), ...)]
 							"#
 						),
 					));
 				}
 			}
+		}
+
+		if category.is_none() {
+			return Err(Error::new_spanned(
+				nested,
+				indoc!(
+					r#"
+					The attribute 'category' is required.
+					Example usage:
+					#[node_macro::node(..., category("Value"), ...)]
+					"#,
+				),
+			));
 		}
 
 		Ok(NodeFnAttributes {
@@ -315,7 +366,7 @@ impl Parse for NodeFnAttributes {
 }
 
 fn parse_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<ParsedNodeFn> {
-	let attributes = syn::parse2::<NodeFnAttributes>(attr.clone()).map_err(|e| Error::new(e.span(), format!("Failed to parse node_fn attributes: {e}")))?;
+	let attributes = syn::parse2::<NodeFnAttributes>(attr.clone()).map_err(|e| Error::new(e.span(), format!("Failed to parse node_fn attributes:\n{e}")))?;
 	let input_fn = syn::parse2::<ItemFn>(item.clone()).map_err(|e| Error::new(e.span(), format!("Failed to parse function: {e}. Make sure it's a valid Rust function.")))?;
 
 	let vis = input_fn.vis;
@@ -482,7 +533,16 @@ fn parse_node_implementations<T: Parse>(attr: &Attribute, name: &Ident) -> syn::
 fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Result<ParsedField> {
 	let ident = &pat_ident.ident;
 
-	// Check if this is a data field (struct field, not a parameter)
+	// Checks for the #[data] attribute, indicating that this is a data field rather than an input parameter to the node.
+	// Data fields act as internal state, using interior mutability to cache data between node evaluations.
+	//
+	// Normally, an input parameter is a construction argument to the node that is stored as a field on the node struct.
+	// Specifically, its struct field stores the connected upstream node (an evaluatable lambda that returns data of the connection wire's type).
+	// By comparison, a data field is also stored as a field on the node struct, allowing it to persist state between evaluations.
+	// But it acts as internal state only, not exposed as a parameter in the UI or able to be wired to another node.
+	//
+	// Nodes implemented using a data field must ensure the persistent state is used in a manner that respects the invariant of idempotence,
+	// meaning the node's output is always deterministic whether or not the internal state is present.
 	let is_data_field = extract_attribute(attrs, "data").is_some();
 
 	let default_value = extract_attribute(attrs, "default")
@@ -723,10 +783,10 @@ fn extract_attribute<'a>(attrs: &'a [Attribute], name: &str) -> Option<&'a Attri
 // Modify the new_node_fn function to use the code generation
 pub fn new_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<TokenStream2> {
 	let crate_ident = CrateIdent::default();
-	let mut parsed_node = parse_node_fn(attr, item.clone()).map_err(|e| Error::new(e.span(), format!("Failed to parse node function: {e}")))?;
+	let mut parsed_node = parse_node_fn(attr, item.clone()).map_err(|e| Error::new(e.span(), format!("Failed to parse node function:\n{e}")))?;
 	parsed_node.replace_impl_trait_in_input();
-	crate::validation::validate_node_fn(&parsed_node).map_err(|e| Error::new(e.span(), format!("Validation Error: {e}")))?;
-	generate_node_code(&crate_ident, &parsed_node).map_err(|e| Error::new(e.span(), format!("Failed to generate node code: {e}")))
+	crate::validation::validate_node_fn(&parsed_node).map_err(|e| Error::new(e.span(), format!("Validation error:\n{e}")))?;
+	generate_node_code(&crate_ident, &parsed_node).map_err(|e| Error::new(e.span(), format!("Failed to generate node code:\n{e}")))
 }
 
 impl ParsedNodeFn {

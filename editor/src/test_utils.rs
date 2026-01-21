@@ -1,9 +1,7 @@
 use crate::application::Editor;
-use crate::application::set_uuid_seed;
 use crate::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
 use crate::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, MouseKeys, ScrollDelta, ViewportPosition};
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
-use crate::messages::portfolio::utility_types::Platform;
 use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
@@ -25,15 +23,11 @@ pub struct EditorTestUtils {
 impl EditorTestUtils {
 	pub fn create() -> Self {
 		let _ = env_logger::builder().is_test(true).try_init();
-		set_uuid_seed(0);
 
 		let (mut editor, runtime) = Editor::new_local_executor();
 
-		// We have to set this directly instead of using `GlobalsMessage::SetPlatform` because race conditions with multiple tests can cause that message handler to set it more than once, which is a failure.
-		// It isn't sufficient to guard the message dispatch here with a check if the once_cell is empty, because that isn't atomic and the time between checking and handling the dispatch can let multiple through.
-		let _ = GLOBAL_PLATFORM.set(Platform::Windows).is_ok();
-
 		editor.handle_message(PortfolioMessage::Init);
+
 		Self { editor, runtime }
 	}
 

@@ -107,9 +107,11 @@ export class SendUIMetadata extends JsMessage {
 	readonly nodeTypes!: FrontendNodeType[];
 }
 
-export class SendShortcutF11 extends JsMessage {
+export class SendShortcutFullscreen extends JsMessage {
 	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
 	readonly shortcut!: ActionShortcut | undefined;
+	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
+	readonly shortcutMac!: ActionShortcut | undefined;
 }
 
 export class SendShortcutAltClick extends JsMessage {
@@ -334,6 +336,8 @@ export class WindowPointerLockMove extends JsMessage {
 	readonly x!: number;
 	readonly y!: number;
 }
+
+export class WindowFullscreen extends JsMessage {}
 
 // Rust enum `Key`
 export type KeyRaw = string;
@@ -1666,7 +1670,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	DisplayEditableTextboxTransform,
 	DisplayRemoveEditableTextbox,
 	SendUIMetadata,
-	SendShortcutF11,
+	SendShortcutFullscreen,
 	SendShortcutAltClick,
 	SendShortcutShiftClick,
 	TriggerAboutGraphiteLocalizedCommitDate,
@@ -1734,6 +1738,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateMaximized,
 	UpdateFullscreen,
 	WindowPointerLockMove,
+	WindowFullscreen,
 	UpdatePropertiesPanelLayout,
 	UpdatePropertiesPanelState,
 	UpdateStatusBarHintsLayout,
