@@ -79,7 +79,7 @@ pub enum DesktopFrontendMessage {
 pub enum DesktopWrapperMessage {
 	FromWeb(Box<EditorMessage>),
 	Input(InputMessage),
-	OpenFileDialogResult {
+	FileDialogResult {
 		path: PathBuf,
 		content: Vec<u8>,
 		context: OpenFileDialogContext,
@@ -88,23 +88,11 @@ pub enum DesktopWrapperMessage {
 		path: PathBuf,
 		context: SaveFileDialogContext,
 	},
-	OpenDocument {
-		path: PathBuf,
-		content: Vec<u8>,
-	},
 	OpenFile {
 		path: PathBuf,
 		content: Vec<u8>,
 	},
 	ImportFile {
-		path: PathBuf,
-		content: Vec<u8>,
-	},
-	ImportSvg {
-		path: PathBuf,
-		content: Vec<u8>,
-	},
-	ImportImage {
 		path: PathBuf,
 		content: Vec<u8>,
 	},
@@ -153,7 +141,7 @@ pub struct FileFilter {
 }
 
 pub enum OpenFileDialogContext {
-	Document,
+	Open,
 	Import,
 }
 

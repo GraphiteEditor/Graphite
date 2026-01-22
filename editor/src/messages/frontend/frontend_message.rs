@@ -107,7 +107,6 @@ pub enum FrontendMessage {
 		font: Font,
 		url: String,
 	},
-	TriggerImport,
 	TriggerPersistenceRemoveDocument {
 		#[serde(rename = "documentId")]
 		document_id: DocumentId,
@@ -122,7 +121,8 @@ pub enum FrontendMessage {
 	TriggerLoadRestAutoSaveDocuments,
 	TriggerOpenLaunchDocuments,
 	TriggerLoadPreferences,
-	TriggerOpenDocument,
+	TriggerOpen,
+	TriggerImport,
 	TriggerSavePreferences {
 		preferences: PreferencesMessageHandler,
 	},

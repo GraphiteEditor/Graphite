@@ -120,8 +120,8 @@ impl LayoutHolder for MenuBarMessageHandler {
 						MenuListEntry::new("Open…")
 							.label("Open…")
 							.icon("Folder")
-							.tooltip_shortcut(action_shortcut!(PortfolioMessageDiscriminant::OpenDocument))
-							.on_commit(|_| PortfolioMessage::OpenDocument.into()),
+							.tooltip_shortcut(action_shortcut!(PortfolioMessageDiscriminant::Open))
+							.on_commit(|_| PortfolioMessage::Open.into()),
 						MenuListEntry::new("Open Demo Artwork…")
 							.label("Open Demo Artwork…")
 							.icon("Image")
@@ -161,7 +161,8 @@ impl LayoutHolder for MenuBarMessageHandler {
 							.label("Import…")
 							.icon("FileImport")
 							.tooltip_shortcut(action_shortcut!(PortfolioMessageDiscriminant::Import))
-							.on_commit(|_| PortfolioMessage::Import.into()),
+							.on_commit(|_| PortfolioMessage::Import.into())
+							.disabled(no_active_document),
 						MenuListEntry::new("Export…")
 							.label("Export…")
 							.icon("FileExport")

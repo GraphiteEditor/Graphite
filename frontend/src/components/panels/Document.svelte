@@ -19,8 +19,9 @@
 	} from "@graphite/messages";
 	import type { AppWindowState } from "@graphite/state-providers/app-window";
 	import type { DocumentState } from "@graphite/state-providers/document";
+	import { pasteFile } from "@graphite/utility-functions/files";
 	import { textInputCleanup } from "@graphite/utility-functions/keyboard-entry";
-	import { extractPixelData, rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
+	import { rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
 	import { setupViewportResizeObserver, cleanupViewportResizeObserver } from "@graphite/utility-functions/viewports";
 
 	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "@graphite/components/floating-menus/EyedropperPreview.svelte";
@@ -130,36 +131,14 @@
 	})($document.toolShelfLayout[0]);
 
 	function dropFile(e: DragEvent) {
-		const { dataTransfer } = e;
-		const [x, y] = e.target instanceof Element && e.target.closest("[data-viewport]") ? [e.clientX, e.clientY] : [undefined, undefined];
-		if (!dataTransfer) return;
+		if (!e.dataTransfer) return;
+
+		let mouse: [number, number] | undefined = undefined;
+		if (e.target instanceof Element && e.target.closest("[data-viewport]")) mouse = [e.clientX, e.clientY];
 
 		e.preventDefault();
 
-		Array.from(dataTransfer.items).forEach(async (item) => {
-			const file = item.getAsFile();
-			if (!file) return;
-
-			if (file.type.includes("svg")) {
-				const svgData = await file.text();
-				editor.handle.pasteSvg(file.name, svgData, x, y);
-				return;
-			}
-
-			if (file.type.startsWith("image")) {
-				const imageData = await extractPixelData(file);
-				editor.handle.pasteImage(file.name, new Uint8Array(imageData.data), imageData.width, imageData.height, x, y);
-				return;
-			}
-
-			const graphiteFileSuffix = "." + editor.handle.fileExtension();
-			if (file.name.endsWith(graphiteFileSuffix)) {
-				const content = await file.text();
-				const documentName = file.name.slice(0, -graphiteFileSuffix.length);
-				editor.handle.openDocumentFile(documentName, content);
-				return;
-			}
-		});
+		Array.from(e.dataTransfer.items).forEach(async (item) => await pasteFile(item, editor, mouse));
 	}
 
 	function panCanvasX(newValue: number) {

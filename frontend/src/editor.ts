@@ -60,13 +60,13 @@ export function createEditor(): Editor {
 		if (!demoArtwork) return;
 
 		try {
-			const url = new URL(`/demo-artwork/${demoArtwork}.graphite`, document.location.href);
+			const url = new URL(`/demo-artwork/${demoArtwork}.${handle.fileExtension()}`, document.location.href);
 			const data = await fetch(url);
 			if (!data.ok) throw new Error();
 
 			const filename = url.pathname.split("/").pop() || "Untitled";
-			const content = await data.text();
-			handle.openDocumentFile(filename, content);
+			const content = await data.bytes();
+			handle.openFile(`${filename}.${handle.fileExtension()}`, content);
 
 			// Remove the hash fragment from the URL
 			history.replaceState("", "", `${window.location.pathname}${window.location.search}`);
