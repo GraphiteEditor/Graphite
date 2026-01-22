@@ -534,7 +534,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					}
 				}
 			}
-
 			PortfolioMessage::OpenDocumentFile {
 				document_name,
 				document_path,
@@ -1282,11 +1281,11 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			CloseActiveDocumentWithConfirmation,
 			CloseAllDocuments,
 			CloseAllDocumentsWithConfirmation,
-			Import,
 			NextDocument,
+			PrevDocument,
+			Import,
 			Open,
 			PasteIntoFolder,
-			PrevDocument,
 			ToggleRulers,
 			ToggleDataPanelOpen,
 		);

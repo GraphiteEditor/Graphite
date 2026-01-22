@@ -1,8 +1,6 @@
-use graphene_std::{
-	Color,
-	raster::Image,
-	text::{Font, FontCache},
-};
+use graphene_std::Color;
+use graphene_std::raster::Image;
+use graphene_std::text::{Font, FontCache};
 
 #[derive(Debug, Default)]
 pub struct PersistentData {
@@ -110,8 +108,12 @@ impl From<String> for PanelType {
 }
 
 pub enum FileContent {
+	/// A Graphite document.
 	Document(String),
+	/// A bitmap image.
 	Image(Image<Color>),
+	/// An SVG file string.
 	Svg(String),
+	/// Any other unsupported/unrecognized file type.
 	Unsupported,
 }

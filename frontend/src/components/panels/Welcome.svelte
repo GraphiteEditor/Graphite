@@ -37,22 +37,14 @@
 			const file = item.getAsFile();
 			if (!file) return;
 
-			if (file.type.includes("svg")) {
+			if (file.type.startsWith("image/svg")) {
 				const svgData = await file.text();
 				editor.handle.pasteSvg(file.name, svgData);
-				return;
-			}
-
-			if (file.type.startsWith("image")) {
+			} else if (file.type.startsWith("image/")) {
 				const imageData = await extractPixelData(file);
 				editor.handle.pasteImage(file.name, new Uint8Array(imageData.data), imageData.width, imageData.height);
-				return;
-			}
-
-			const graphiteFileSuffix = "." + editor.handle.fileExtension();
-			if (file.name.endsWith(graphiteFileSuffix)) {
+			} else if (file.name.endsWith("." + editor.handle.fileExtension())) {
 				editor.handle.openFile(file.name, await file.bytes());
-				return;
 			}
 		});
 	}

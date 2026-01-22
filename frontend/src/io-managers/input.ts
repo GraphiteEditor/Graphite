@@ -321,19 +321,13 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 			const file = item.getAsFile();
 			if (!file) return;
 
-			if (file.type.includes("svg")) {
+			if (file.type.startsWith("image/svg")) {
 				const text = await file.text();
 				editor.handle.pasteSvg(file.name, text);
-				return;
-			}
-
-			if (file.type.startsWith("image")) {
+			} else if (file.type.startsWith("image/")) {
 				const imageData = await extractPixelData(file);
 				editor.handle.pasteImage(file.name, new Uint8Array(imageData.data), imageData.width, imageData.height);
-			}
-
-			const graphiteFileSuffix = "." + editor.handle.fileExtension();
-			if (file.name.endsWith(graphiteFileSuffix)) {
+			} else if (file.name.endsWith("." + editor.handle.fileExtension())) {
 				editor.handle.openFile(file.name, await file.bytes());
 			}
 		});
