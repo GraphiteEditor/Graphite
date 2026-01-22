@@ -116,6 +116,7 @@ pub enum PortfolioMessage {
 		mouse: Option<(f64, f64)>,
 		parent_and_insert_index: Option<(LayerNodeIdentifier, usize)>,
 	},
+	// TODO: Unused except by tests, remove?
 	PasteIntoFolder {
 		clipboard: Clipboard,
 		parent: LayerNodeIdentifier,

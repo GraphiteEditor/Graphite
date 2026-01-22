@@ -56,11 +56,11 @@ export function createPortfolioState(editor: Editor) {
 		}
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerOpen, async () => {
-		const suffix = "." + editor.handle.fileExtension();
-		const data = await upload(suffix + "image/*", "data");
+		const data = await upload(`image/*,.${editor.handle.fileExtension()}`, "data");
 		editor.handle.openFile(data.filename, data.content);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerImport, async () => {
+		// TODO: Use the same `accept` string as in the `TriggerOpen` handler once importing Graphite documents as nodes is supported
 		const data = await upload("image/*", "data");
 		editor.handle.importFile(data.filename, data.content);
 	});

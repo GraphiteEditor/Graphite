@@ -4,8 +4,8 @@
 	import type { Editor } from "@graphite/editor";
 	import type { Layout } from "@graphite/messages";
 	import { patchLayout, UpdateWelcomeScreenButtonsLayout } from "@graphite/messages";
+	import { pasteFile } from "@graphite/utility-functions/files";
 	import { isDesktop } from "@graphite/utility-functions/platform";
-	import { extractPixelData } from "@graphite/utility-functions/rasterization";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -33,20 +33,7 @@
 
 		e.preventDefault();
 
-		Array.from(e.dataTransfer.items).forEach(async (item) => {
-			const file = item.getAsFile();
-			if (!file) return;
-
-			if (file.type.startsWith("image/svg")) {
-				const svgData = await file.text();
-				editor.handle.pasteSvg(file.name, svgData);
-			} else if (file.type.startsWith("image/")) {
-				const imageData = await extractPixelData(file);
-				editor.handle.pasteImage(file.name, new Uint8Array(imageData.data), imageData.width, imageData.height);
-			} else if (file.name.endsWith("." + editor.handle.fileExtension())) {
-				editor.handle.openFile(file.name, await file.bytes());
-			}
-		});
+		Array.from(e.dataTransfer.items).forEach(async (item) => await pasteFile(item, editor));
 	}
 </script>
 

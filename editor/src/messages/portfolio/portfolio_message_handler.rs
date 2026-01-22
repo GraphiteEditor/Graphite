@@ -701,6 +701,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
 				});
 			}
+			// TODO: Unused except by tests, remove?
 			PortfolioMessage::PasteIntoFolder { clipboard, parent, insert_index } => {
 				let mut all_new_ids = Vec::new();
 				let paste = |entry: &CopyBufferEntry, responses: &mut VecDeque<_>, all_new_ids: &mut Vec<NodeId>| {
@@ -1278,21 +1279,22 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 	fn actions(&self) -> ActionList {
 		let mut common = actions!(PortfolioMessageDiscriminant;
-			CloseActiveDocumentWithConfirmation,
-			CloseAllDocuments,
-			CloseAllDocumentsWithConfirmation,
-			NextDocument,
-			PrevDocument,
-			Import,
 			Open,
-			PasteIntoFolder,
-			ToggleRulers,
 			ToggleDataPanelOpen,
 		);
 
 		// Extend with actions that require an active document
 		if let Some(document) = self.active_document() {
 			common.extend(document.actions());
+			common.extend(actions!(PortfolioMessageDiscriminant;
+				CloseActiveDocumentWithConfirmation,
+				CloseAllDocuments,
+				CloseAllDocumentsWithConfirmation,
+				ToggleRulers,
+				NextDocument,
+				PrevDocument,
+				Import,
+			));
 
 			// Extend with actions that must have a selected layer
 			if document.network_interface.selected_nodes().selected_layers(document.metadata()).next().is_some() {
