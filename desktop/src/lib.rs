@@ -114,7 +114,7 @@ pub fn start() {
 
 	match exit_reason {
 		#[cfg(target_os = "linux")]
-		app::ExitReason::UiAccalerationFailure => {
+		app::ExitReason::UiAccelerationFailure => {
 			use std::os::unix::process::CommandExt;
 
 			tracing::error!("Restarting application without UI acceleration");

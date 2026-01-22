@@ -565,7 +565,7 @@ impl ApplicationHandler for App {
 					&& startup_time.elapsed() > Duration::from_secs(3)
 				{
 					tracing::error!("UI acceleration not working, exiting.");
-					self.exit(Some(ExitReason::UiAccalerationFailure));
+					self.exit(Some(ExitReason::UiAccelerationFailure));
 				}
 			}
 			WindowEvent::DragDropped { paths, .. } => {
@@ -654,5 +654,5 @@ impl ApplicationHandler for App {
 
 pub(crate) enum ExitReason {
 	Shutdown,
-	UiAccalerationFailure,
+	UiAccelerationFailure,
 }
