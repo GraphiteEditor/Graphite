@@ -6,6 +6,7 @@
 		type MouseCursorIcon,
 		type XY,
 		DisplayEditableTextbox,
+		DisplayEditableTextboxUpdateFontData,
 		DisplayEditableTextboxTransform,
 		DisplayRemoveEditableTextbox,
 		TriggerTextCommit,
@@ -18,8 +19,9 @@
 	} from "@graphite/messages";
 	import type { AppWindowState } from "@graphite/state-providers/app-window";
 	import type { DocumentState } from "@graphite/state-providers/document";
+	import { pasteFile } from "@graphite/utility-functions/files";
 	import { textInputCleanup } from "@graphite/utility-functions/keyboard-entry";
-	import { extractPixelData, rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
+	import { rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
 	import { setupViewportResizeObserver, cleanupViewportResizeObserver } from "@graphite/utility-functions/viewports";
 
 	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "@graphite/components/floating-menus/EyedropperPreview.svelte";
@@ -129,36 +131,14 @@
 	})($document.toolShelfLayout[0]);
 
 	function dropFile(e: DragEvent) {
-		const { dataTransfer } = e;
-		const [x, y] = e.target instanceof Element && e.target.closest("[data-viewport]") ? [e.clientX, e.clientY] : [undefined, undefined];
-		if (!dataTransfer) return;
+		if (!e.dataTransfer) return;
+
+		let mouse: [number, number] | undefined = undefined;
+		if (e.target instanceof Element && e.target.closest("[data-viewport]")) mouse = [e.clientX, e.clientY];
 
 		e.preventDefault();
 
-		Array.from(dataTransfer.items).forEach(async (item) => {
-			const file = item.getAsFile();
-			if (!file) return;
-
-			if (file.type.includes("svg")) {
-				const svgData = await file.text();
-				editor.handle.pasteSvg(file.name, svgData, x, y);
-				return;
-			}
-
-			if (file.type.startsWith("image")) {
-				const imageData = await extractPixelData(file);
-				editor.handle.pasteImage(file.name, new Uint8Array(imageData.data), imageData.width, imageData.height, x, y);
-				return;
-			}
-
-			const graphiteFileSuffix = "." + editor.handle.fileExtension();
-			if (file.name.endsWith(graphiteFileSuffix)) {
-				const content = await file.text();
-				const documentName = file.name.slice(0, -graphiteFileSuffix.length);
-				editor.handle.openDocumentFile(documentName, content);
-				return;
-			}
-		});
+		Array.from(e.dataTransfer.items).forEach(async (item) => await pasteFile(item, editor, mouse));
 	}
 
 	function panCanvasX(newValue: number) {
@@ -331,7 +311,7 @@
 		editor.handle.onChangeText(textCleaned, false);
 	}
 
-	export async function displayEditableTextbox(displayEditableTextbox: DisplayEditableTextbox) {
+	export async function displayEditableTextbox(data: DisplayEditableTextbox) {
 		showTextInput = true;
 
 		await tick();
@@ -339,31 +319,35 @@
 		if (!textInput) return;
 
 		// eslint-disable-next-line svelte/no-dom-manipulating
-		if (displayEditableTextbox.text === "") textInput.textContent = "";
+		if (data.text === "") textInput.textContent = "";
 		// eslint-disable-next-line svelte/no-dom-manipulating
-		else textInput.textContent = `${displayEditableTextbox.text}\n`;
+		else textInput.textContent = `${data.text}\n`;
 
 		// Make it so `maxHeight` is a multiple of `lineHeight`
-		const lineHeight = displayEditableTextbox.lineHeightRatio * displayEditableTextbox.fontSize;
-		let height = displayEditableTextbox.maxHeight === undefined ? "auto" : `${Math.floor(displayEditableTextbox.maxHeight / lineHeight) * lineHeight}px`;
+		const lineHeight = data.lineHeightRatio * data.fontSize;
+		let height = data.maxHeight === undefined ? "auto" : `${Math.floor(data.maxHeight / lineHeight) * lineHeight}px`;
 
 		textInput.contentEditable = "true";
 		textInput.style.transformOrigin = "0 0";
-		textInput.style.width = displayEditableTextbox.maxWidth ? `${displayEditableTextbox.maxWidth}px` : "max-content";
+		textInput.style.width = data.maxWidth ? `${data.maxWidth}px` : "max-content";
 		textInput.style.height = height;
-		textInput.style.lineHeight = `${displayEditableTextbox.lineHeightRatio}`;
-		textInput.style.fontSize = `${displayEditableTextbox.fontSize}px`;
-		textInput.style.color = displayEditableTextbox.color.toHexOptionalAlpha() || "transparent";
-		textInput.style.textAlign = displayEditableTextbox.align;
+		textInput.style.lineHeight = `${data.lineHeightRatio}`;
+		textInput.style.fontSize = `${data.fontSize}px`;
+		textInput.style.color = data.color.toHexOptionalAlpha() || "transparent";
+		textInput.style.textAlign = data.align;
 
 		textInput.oninput = () => {
 			if (!textInput) return;
 			editor.handle.updateBounds(textInputCleanup(textInput.innerText));
 		};
-		textInputMatrix = displayEditableTextbox.transform;
-		const newFont = new FontFace("text-font", `url(${displayEditableTextbox.url})`);
-		window.document.fonts.add(newFont);
-		textInput.style.fontFamily = "text-font";
+
+		textInputMatrix = data.transform;
+
+		const bytes = new Uint8Array(data.fontData);
+		if (bytes.length > 0) {
+			window.document.fonts.add(new FontFace("text-font", bytes));
+			textInput.style.fontFamily = "text-font";
+		}
 
 		// Necessary to select contenteditable: https://stackoverflow.com/questions/6139107/programmatically-select-text-in-a-contenteditable-html-element/6150060#6150060
 
@@ -471,6 +455,15 @@
 
 			displayEditableTextbox(data);
 		});
+		editor.subscriptions.subscribeJsMessage(DisplayEditableTextboxUpdateFontData, async (data) => {
+			await tick();
+
+			const fontData = new Uint8Array(data.fontData);
+			if (fontData.length > 0 && textInput) {
+				window.document.fonts.add(new FontFace("text-font", fontData));
+				textInput.style.fontFamily = "text-font";
+			}
+		});
 		editor.subscriptions.subscribeJsMessage(DisplayEditableTextboxTransform, async (data) => {
 			textInputMatrix = data.transform;
 		});
@@ -566,7 +559,7 @@
 						{/if}
 						<div class="text-input" style:width={canvasWidthCSS} style:height={canvasHeightCSS} style:pointer-events={showTextInput ? "auto" : ""}>
 							{#if showTextInput}
-								<div bind:this={textInput} style:transform="matrix({textInputMatrix})" on:scroll={preventTextEditingScroll} />
+								<div bind:this={textInput} style:transform="matrix({textInputMatrix})" on:scroll={preventTextEditingScroll}></div>
 							{/if}
 						</div>
 						{#if !$appWindow.viewportHolePunch}
@@ -700,7 +693,7 @@
 							// 	}
 							// }
 
-							&:not(.active) {
+							&:not(.emphasized) {
 								.color-general {
 									fill: var(--color-data-general);
 								}

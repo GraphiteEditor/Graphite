@@ -4,10 +4,10 @@ use crate::subpath::{BezierHandles, ManipulatorGroup};
 use crate::vector::{SegmentId, Vector};
 use dyn_any::DynAny;
 use glam::DVec2;
-use kurbo::{BezPath, CubicBez, Line, ParamCurve, PathSeg, Point, QuadBez};
+use kurbo::{BezPath, CubicBez, Line, ParamCurve, ParamCurveDeriv, PathSeg, Point, QuadBez};
 use std::ops::Sub;
 
-/// Represents different ways of calculating the centroid.
+/// Represents different geometric interpretations of calculating the centroid (center of mass).
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
 #[widget(Radio)]
 pub enum CentroidType {
@@ -245,6 +245,93 @@ pub fn pathseg_abs_diff_eq(seg1: PathSeg, seg2: PathSeg, max_abs_diff: f64) -> b
 	let cmp = |a: f64, b: f64| a.sub(b).abs() < max_abs_diff;
 
 	seg1_points.len() == seg2_points.len() && seg1_points.into_iter().zip(seg2_points).all(|(a, b)| cmp(a.x, b.x) && cmp(a.y, b.y))
+}
+pub trait Tangent {
+	fn tangent_at(&self, t: f64) -> DVec2;
+
+	fn tangent_at_start(&self) -> DVec2 {
+		self.tangent_at(0.0)
+	}
+
+	fn tangent_at_end(&self) -> DVec2 {
+		self.tangent_at(1.0)
+	}
+}
+
+trait ControlPoints {
+	type Points: AsRef<[Point]>;
+	fn control_points(&self) -> Self::Points;
+}
+
+impl ControlPoints for kurbo::Line {
+	type Points = [Point; 2];
+	fn control_points(&self) -> Self::Points {
+		[self.p0, self.p1]
+	}
+}
+
+impl ControlPoints for kurbo::QuadBez {
+	type Points = [Point; 3];
+	fn control_points(&self) -> Self::Points {
+		[self.p0, self.p1, self.p2]
+	}
+}
+
+impl ControlPoints for kurbo::CubicBez {
+	type Points = [Point; 4];
+	fn control_points(&self) -> Self::Points {
+		[self.p0, self.p1, self.p2, self.p3]
+	}
+}
+
+impl<T: ControlPoints + ParamCurveDeriv> Tangent for T {
+	fn tangent_at(&self, t: f64) -> DVec2 {
+		point_to_dvec2(self.deriv().eval(t))
+	}
+
+	fn tangent_at_start(&self) -> DVec2 {
+		let pts = self.control_points();
+		let pts = pts.as_ref();
+		let mut iter = pts.iter();
+		iter.next()
+			.and_then(|&start| iter.find(|&&p| p != start).map(|&p| DVec2 { x: p.x - start.x, y: p.y - start.y }))
+			.unwrap_or_default()
+	}
+
+	fn tangent_at_end(&self) -> DVec2 {
+		let pts = self.control_points();
+		let pts = pts.as_ref();
+		let mut iter = pts.iter().rev();
+		iter.next()
+			.and_then(|&end| iter.find(|&&p| p != end).map(|&p| DVec2 { x: end.x - p.x, y: end.y - p.y }))
+			.unwrap_or_default()
+	}
+}
+
+impl Tangent for kurbo::PathSeg {
+	fn tangent_at(&self, t: f64) -> DVec2 {
+		match self {
+			PathSeg::Line(line) => line.tangent_at(t),
+			PathSeg::Quad(quad) => quad.tangent_at(t),
+			PathSeg::Cubic(cubic) => cubic.tangent_at(t),
+		}
+	}
+
+	fn tangent_at_start(&self) -> DVec2 {
+		match self {
+			PathSeg::Line(line) => line.tangent_at_start(),
+			PathSeg::Quad(quad) => quad.tangent_at_start(),
+			PathSeg::Cubic(cubic) => cubic.tangent_at_start(),
+		}
+	}
+
+	fn tangent_at_end(&self) -> DVec2 {
+		match self {
+			PathSeg::Line(line) => line.tangent_at_end(),
+			PathSeg::Quad(quad) => quad.tangent_at_end(),
+			PathSeg::Cubic(cubic) => cubic.tangent_at_end(),
+		}
+	}
 }
 
 /// A selectable part of a curve, either an anchor (start or end of a bézier) or a handle (doesn't necessarily go through the bézier but influences curvature).

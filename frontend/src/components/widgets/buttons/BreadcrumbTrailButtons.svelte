@@ -4,8 +4,10 @@
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
 
+	// Content
 	export let labels: string[];
 	export let disabled = false;
+	// Tooltips
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
 	export let tooltipShortcut: ActionShortcut | undefined = undefined;

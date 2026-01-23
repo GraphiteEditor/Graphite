@@ -364,12 +364,14 @@ impl<Upstream> Vector<Upstream> {
 		number != 0
 	}
 
-	/// Points that can be extended from.
-	///
-	/// This is usually only points with exactly one connection unless vector meshes are enabled.
-	pub fn extendable_points(&self, vector_meshes: bool) -> impl Iterator<Item = PointId> + '_ {
-		let point_ids = self.point_domain.ids().iter().enumerate();
-		point_ids.filter(move |(index, _)| vector_meshes || self.segment_domain.connected_count(*index) == 1).map(|(_, &id)| id)
+	/// Iterator over all anchor points.
+	pub fn anchor_points(&self) -> impl Iterator<Item = PointId> + '_ {
+		self.point_domain.ids().iter().copied()
+	}
+
+	/// Anchor points at the ends of open subpaths. These are points with exactly one connection by a segment to another anchor.
+	pub fn anchor_endpoints(&self) -> impl Iterator<Item = PointId> + '_ {
+		self.anchor_points().enumerate().filter(|&(index, _)| self.segment_domain.connected_count(index) == 1).map(|(_, id)| id)
 	}
 
 	/// Computes if all the connected handles are colinear for an anchor, or if that handle is colinear for a handle.

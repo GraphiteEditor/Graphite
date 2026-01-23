@@ -39,13 +39,18 @@ pub enum FrontendMessage {
 		#[serde(rename = "fontSize")]
 		font_size: f64,
 		color: Color,
-		url: String,
+		#[serde(rename = "fontData")]
+		font_data: Vec<u8>,
 		transform: [f64; 6],
 		#[serde(rename = "maxWidth")]
 		max_width: Option<f64>,
 		#[serde(rename = "maxHeight")]
 		max_height: Option<f64>,
 		align: TextAlign,
+	},
+	DisplayEditableTextboxUpdateFontData {
+		#[serde(rename = "fontData")]
+		font_data: Vec<u8>,
 	},
 	DisplayEditableTextboxTransform {
 		transform: [f64; 6],
@@ -59,10 +64,15 @@ pub enum FrontendMessage {
 		#[serde(rename = "nodeTypes")]
 		node_types: Vec<FrontendNodeType>,
 	},
-	SendShortcutF11 {
+	SendShortcutFullscreen {
 		shortcut: Option<ActionShortcut>,
+		#[serde(rename = "shortcutMac")]
+		shortcut_mac: Option<ActionShortcut>,
 	},
 	SendShortcutAltClick {
+		shortcut: Option<ActionShortcut>,
+	},
+	SendShortcutShiftClick {
 		shortcut: Option<ActionShortcut>,
 	},
 
@@ -92,10 +102,11 @@ pub enum FrontendMessage {
 		name: String,
 		filename: String,
 	},
-	TriggerFontLoad {
+	TriggerFontCatalogLoad,
+	TriggerFontDataLoad {
 		font: Font,
+		url: String,
 	},
-	TriggerImport,
 	TriggerPersistenceRemoveDocument {
 		#[serde(rename = "documentId")]
 		document_id: DocumentId,
@@ -110,7 +121,8 @@ pub enum FrontendMessage {
 	TriggerLoadRestAutoSaveDocuments,
 	TriggerOpenLaunchDocuments,
 	TriggerLoadPreferences,
-	TriggerOpenDocument,
+	TriggerOpen,
+	TriggerImport,
 	TriggerSavePreferences {
 		preferences: PreferencesMessageHandler,
 	},
@@ -317,6 +329,9 @@ pub enum FrontendMessage {
 	UpdateStatusBarHintsLayout {
 		diff: Vec<WidgetDiff>,
 	},
+	UpdateStatusBarInfoLayout {
+		diff: Vec<WidgetDiff>,
+	},
 	UpdateWorkingColorsLayout {
 		diff: Vec<WidgetDiff>,
 	},
@@ -350,9 +365,15 @@ pub enum FrontendMessage {
 	},
 
 	// Window prefix: cause the application window to do something
+	WindowPointerLock,
+	WindowPointerLockMove {
+		x: f64,
+		y: f64,
+	},
 	WindowClose,
 	WindowMinimize,
 	WindowMaximize,
+	WindowFullscreen,
 	WindowDrag,
 	WindowHide,
 	WindowHideOthers,

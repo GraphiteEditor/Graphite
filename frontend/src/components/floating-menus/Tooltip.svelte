@@ -15,8 +15,8 @@
 
 	let self: FloatingMenu | undefined;
 
-	$: label = filterTodo($tooltip.element?.getAttribute("data-tooltip-label")?.trim());
-	$: description = filterTodo($tooltip.element?.getAttribute("data-tooltip-description")?.trim());
+	$: label = parseMarkdown(filterTodo($tooltip.element?.getAttribute("data-tooltip-label")?.trim()));
+	$: description = parseMarkdown(filterTodo($tooltip.element?.getAttribute("data-tooltip-description")?.trim()));
 	$: shortcutJSON = $tooltip.element?.getAttribute("data-tooltip-shortcut")?.trim();
 	$: shortcut = ((shortcutJSON) => {
 		if (!shortcutJSON) return undefined;
@@ -32,6 +32,28 @@
 		if (text?.trim().toUpperCase() === "TODO" && !editor.handle.inDevelopmentMode()) return "";
 		return text;
 	}
+
+	function parseMarkdown(markdown: string | undefined): string | undefined {
+		if (!markdown) return undefined;
+
+		let text = markdown.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+
+		return (
+			text
+				// .split("\n")
+				// .map((line) => line.trim())
+				// .join("\n")
+				// .split("\n\n")
+				// .map((paragraph) => paragraph.replaceAll("\n", " "))
+				// .join("\n\n")
+				// Bold
+				.replace(/\*\*((?:(?!\*\*).)+)\*\*/g, "<strong>$1</strong>")
+				// Italic
+				.replace(/\*([^*]+)\*/g, "<em>$1</em>")
+				// Backticks
+				.replace(/`([^`]+)`/g, "<code>$1</code>")
+		);
+	}
 </script>
 
 {#if label || description}
@@ -40,7 +62,7 @@
 			{#if label || shortcut}
 				<LayoutRow class="tooltip-header">
 					{#if label}
-						<TextLabel class="tooltip-label">{label}</TextLabel>
+						<TextLabel class="tooltip-label">{@html label}</TextLabel>
 					{/if}
 					{#if shortcut}
 						<ShortcutLabel shortcut={{ shortcut }} />
@@ -48,7 +70,7 @@
 				</LayoutRow>
 			{/if}
 			{#if description}
-				<TextLabel class="tooltip-description">{description}</TextLabel>
+				<TextLabel class="tooltip-description">{@html description}</TextLabel>
 			{/if}
 		</FloatingMenu>
 	</div>

@@ -464,6 +464,9 @@
 		let currentAncestor = (targetSpawner && ownSpawner?.parentElement) || undefined;
 		
 		while (currentAncestor) {
+			// If the current ancestor blocks hover transfer, stop searching
+			if (currentAncestor.hasAttribute("data-block-hover-transfer")) break;
+
 			const ownSpawnerDepthFromCurrentAncestor = ownSpawner && getDepthFromAncestor(ownSpawner, currentAncestor);
 			const currentAncestor2 = currentAncestor;
 
@@ -471,7 +474,8 @@
 			const filteredListOfDescendantSpawners = listOfDescendantSpawners.filter((item: Element): boolean => {
 				const notOurself = !ownDescendantMenuSpawners.includes(item);
 				const notUnequalDepths = notOurself && getDepthFromAncestor(item, currentAncestor2) === ownSpawnerDepthFromCurrentAncestor;
-				return notUnequalDepths && !(item as HTMLElement).getAttribute?.("data-floating-menu-spawner")?.includes("no-hover-transfer");
+				// And filter away descendants that explicitly disable hover transfer
+				return notUnequalDepths && !(item instanceof HTMLElement && item.hasAttribute("data-block-hover-transfer"));
 			});
 
 			if (filteredListOfDescendantSpawners.length === 0) {
@@ -545,7 +549,7 @@
 	{...$$restProps}
 >
 	{#if displayTail}
-		<div class="tail" bind:this={tail} />
+		<div class="tail" bind:this={tail}></div>
 	{/if}
 	{#if displayContainer}
 		<div class="floating-menu-container" bind:this={floatingMenuContainer}>

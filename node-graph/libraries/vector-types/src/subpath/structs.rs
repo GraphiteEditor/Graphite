@@ -55,10 +55,6 @@ impl<PointId: Identifier> ManipulatorGroup<PointId> {
 
 	/// Construct a new manipulator point with just an anchor position
 	pub fn new_anchor(anchor: DVec2) -> Self {
-		Self::new(anchor, Some(anchor), Some(anchor))
-	}
-
-	pub fn new_anchor_linear(anchor: DVec2) -> Self {
 		Self::new(anchor, None, None)
 	}
 

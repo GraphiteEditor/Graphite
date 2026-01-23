@@ -1,7 +1,7 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
 use super::document::utility_types::network_interface;
 use super::utility_types::{PanelType, PersistentData};
-use crate::application::generate_uuid;
+use crate::application::{Editor, generate_uuid};
 use crate::consts::{DEFAULT_DOCUMENT_NAME, DEFAULT_STROKE_WIDTH, FILE_EXTENSION};
 use crate::messages::animation::TimingInformation;
 use crate::messages::clipboard::utility_types::ClipboardContent;
@@ -12,12 +12,12 @@ use crate::messages::input_mapper::utility_types::macros::{action_shortcut, acti
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::DocumentMessageContext;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
-use crate::messages::portfolio::document::node_graph::document_node_definitions;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::{self, resolve_network_node_type};
 use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard, CopyBufferEntry, INTERNAL_CLIPBOARD_COUNT};
 use crate::messages::portfolio::document::utility_types::network_interface::OutputConnector;
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use crate::messages::portfolio::document_migration::*;
+use crate::messages::portfolio::utility_types::FileContent;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
@@ -28,11 +28,13 @@ use derivative::*;
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeId;
 use graphene_std::Color;
+use graphene_std::raster_types::Image;
 use graphene_std::renderer::Quad;
 use graphene_std::subpath::BezierHandles;
 use graphene_std::text::Font;
 use graphene_std::vector::misc::HandleId;
 use graphene_std::vector::{PointId, SegmentId, Vector, VectorModificationType};
+use std::path::PathBuf;
 use std::vec;
 
 #[derive(ExtractField)]
@@ -102,8 +104,16 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 			// Messages
 			PortfolioMessage::Init => {
+				// Initialize the frontend with environment information
+				responses.add(FrontendMessage::UpdatePlatform {
+					platform: Editor::environment().into(),
+				});
+
 				// Tell frontend to load persistent preferences
 				responses.add(FrontendMessage::TriggerLoadPreferences);
+
+				// Before loading any documents, initially prepare the welcome screen buttons layout
+				responses.add(PortfolioMessage::RequestWelcomeScreenButtonsLayout);
 
 				// Tell frontend to load the current document
 				responses.add(FrontendMessage::TriggerLoadFirstAutoSaveDocument);
@@ -118,19 +128,24 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				});
 
 				// Send shortcuts for widgets created in the frontend which need shortcut tooltips
-				responses.add(FrontendMessage::SendShortcutF11 {
+				responses.add(FrontendMessage::SendShortcutFullscreen {
 					shortcut: action_shortcut_manual!(Key::F11),
+					shortcut_mac: action_shortcut_manual!(Key::Control, Key::Command, Key::KeyF),
 				});
 				responses.add(FrontendMessage::SendShortcutAltClick {
 					shortcut: action_shortcut_manual!(Key::Alt, Key::MouseLeft),
 				});
+				responses.add(FrontendMessage::SendShortcutShiftClick {
+					shortcut: action_shortcut_manual!(Key::Shift, Key::MouseLeft),
+				});
 
-				// Before loading any documents, initially prepare the welcome screen buttons layout
-				responses.add(PortfolioMessage::RequestWelcomeScreenButtonsLayout);
+				// Request status bar info layout
+				responses.add(PortfolioMessage::RequestStatusBarInfoLayout);
 
 				// Tell frontend to finish loading persistent documents
 				responses.add(FrontendMessage::TriggerLoadRestAutoSaveDocuments);
 
+				// Tell frontend to load documented passed in as launch arguments
 				responses.add(FrontendMessage::TriggerOpenLaunchDocuments);
 			}
 			PortfolioMessage::DocumentPassMessage { document_id, message } => {
@@ -349,18 +364,43 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				self.active_document_id = None;
 				responses.add(MenuBarMessage::SendLayout);
 			}
-			PortfolioMessage::FontLoaded {
-				font_family,
-				font_style,
-				preview_url,
-				data,
-			} => {
-				let font = Font::new(font_family, font_style);
+			PortfolioMessage::FontCatalogLoaded { catalog } => {
+				self.persistent_data.font_catalog = catalog;
 
-				self.persistent_data.font_cache.insert(font, preview_url, data);
+				if let Some(document_id) = self.active_document_id {
+					responses.add(PortfolioMessage::LoadDocumentResources { document_id });
+				}
+
+				// Load the default font
+				let font = Font::new(graphene_std::consts::DEFAULT_FONT_FAMILY.into(), graphene_std::consts::DEFAULT_FONT_STYLE.into());
+				responses.add(PortfolioMessage::LoadFontData { font });
+			}
+			PortfolioMessage::LoadFontData { font } => {
+				if let Some(style) = self.persistent_data.font_catalog.find_font_style_in_catalog(&font) {
+					let font = Font::new(font.font_family, style.to_named_style());
+
+					if !self.persistent_data.font_cache.loaded_font(&font) {
+						responses.add(FrontendMessage::TriggerFontDataLoad { font, url: style.url });
+					}
+				}
+			}
+			PortfolioMessage::FontLoaded { font_family, font_style, data } => {
+				let font = Font::new(font_family, font_style);
+				self.persistent_data.font_cache.insert(font, data);
 				self.executor.update_font_cache(self.persistent_data.font_cache.clone());
+
 				for document_id in self.document_ids.iter() {
 					let node_to_inspect = self.node_to_inspect();
+
+					let Some(document) = self.documents.get_mut(document_id) else {
+						log::error!("Tried to render non-existent document");
+						continue;
+					};
+
+					let document_to_viewport = document
+						.navigation_handler
+						.calculate_offset_transform(viewport.center_in_viewport_space().into(), &document.document_ptz);
+					let pointer_position = document_to_viewport.inverse().transform_point2(ipp.mouse.position);
 
 					let scale = viewport.scale();
 					// Use exact physical dimensions from browser (via ResizeObserver's devicePixelContentBoxSize)
@@ -374,6 +414,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						timing_information,
 						node_to_inspect,
 						true,
+						pointer_position,
 					) {
 						responses.add_front(message);
 					}
@@ -382,20 +423,21 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				if self.active_document_mut().is_some() {
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
-			}
-			PortfolioMessage::EditorPreferences => self.executor.update_editor_preferences(preferences.editor_preferences()),
-			PortfolioMessage::Import => {
-				// This portfolio message wraps the frontend message so it can be listed as an action, which isn't possible for frontend messages
-				responses.add(FrontendMessage::TriggerImport);
-			}
-			PortfolioMessage::LoadDocumentResources { document_id } => {
-				if let Some(document) = self.document_mut(document_id) {
-					document.load_layer_resources(responses);
+
+				if current_tool == &ToolType::Text {
+					responses.add(TextToolMessage::RefreshEditingFontData);
 				}
 			}
-			PortfolioMessage::LoadFont { font } => {
-				if !self.persistent_data.font_cache.loaded_font(&font) {
-					responses.add_front(FrontendMessage::TriggerFontLoad { font });
+			PortfolioMessage::EditorPreferences => self.executor.update_editor_preferences(preferences.editor_preferences()),
+			PortfolioMessage::LoadDocumentResources { document_id } => {
+				let catalog = &self.persistent_data.font_catalog;
+
+				if catalog.0.is_empty() {
+					log::error!("Tried to load document resources before font catalog was loaded");
+				}
+
+				if let Some(document) = self.documents.get_mut(&document_id) {
+					document.load_layer_resources(responses, catalog);
 				}
 			}
 			PortfolioMessage::NewDocumentWithName { name } => {
@@ -422,9 +464,75 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					responses.add(PortfolioMessage::SelectDocument { document_id: next_id });
 				}
 			}
-			PortfolioMessage::OpenDocument => {
+			PortfolioMessage::Open => {
 				// This portfolio message wraps the frontend message so it can be listed as an action, which isn't possible for frontend messages
-				responses.add(FrontendMessage::TriggerOpenDocument);
+				responses.add(FrontendMessage::TriggerOpen);
+			}
+			PortfolioMessage::Import => {
+				// This portfolio message wraps the frontend message so it can be listed as an action, which isn't possible for frontend messages
+				responses.add(FrontendMessage::TriggerImport);
+			}
+			PortfolioMessage::OpenFile { path, content } => {
+				let name = path.file_stem().map(|n| n.to_string_lossy().to_string());
+				match Self::read_file(&path, content) {
+					FileContent::Document(content) => {
+						responses.add(PortfolioMessage::OpenDocumentFile {
+							document_name: name,
+							document_path: Some(path),
+							document_serialized_content: content,
+						});
+					}
+					FileContent::Svg(svg) => {
+						responses.add(PortfolioMessage::OpenSvg { name, svg });
+					}
+					FileContent::Image(image) => {
+						responses.add(PortfolioMessage::OpenImage { name, image });
+					}
+					FileContent::Unsupported => {
+						// TODO: Show a more thoughtfully designed error message to the user
+						responses.add(DialogMessage::DisplayDialogError {
+							title: "Unsupported format".into(),
+							description: "This file cannot be opened because it is not a supported image file type.".into(),
+						})
+					}
+				}
+			}
+			PortfolioMessage::ImportFile { path, content } => {
+				let name = path.file_stem().map(|n| n.to_string_lossy().to_string());
+				match Self::read_file(&path, content) {
+					FileContent::Document(content) => {
+						// TODO: Consider importing a document as a node into the current document
+						// For now treat importing a document as opening it
+						responses.add(PortfolioMessage::OpenDocumentFile {
+							document_name: name,
+							document_path: Some(path),
+							document_serialized_content: content,
+						});
+					}
+					FileContent::Svg(svg) => {
+						responses.add(PortfolioMessage::PasteSvg {
+							name,
+							svg,
+							mouse: None,
+							parent_and_insert_index: None,
+						});
+					}
+					FileContent::Image(image) => {
+						responses.add(PortfolioMessage::PasteImage {
+							name,
+							image,
+							mouse: None,
+							parent_and_insert_index: None,
+						});
+					}
+					FileContent::Unsupported => {
+						// TODO: Show a more thoughtfully designed error message to the user
+						responses.add(DialogMessage::DisplayDialogError {
+							title: "Unsupported format".into(),
+							description: "This file cannot be imported because it is not a supported image file type.".into(),
+						})
+					}
+				}
 			}
 			PortfolioMessage::OpenDocumentFile {
 				document_name,
@@ -485,7 +593,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				// Ensure each node has the metadata for its inputs
 				for (node_id, node, path) in document.network_interface.document_network().clone().recursive_nodes() {
 					document.network_interface.validate_input_metadata(node_id, node, &path);
-					document.network_interface.validate_display_name_metadata(node_id, &path);
 					document.network_interface.validate_output_names(node_id, node, &path);
 				}
 
@@ -554,6 +661,47 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					responses.add(PortfolioMessage::SelectDocument { document_id });
 				}
 			}
+			PortfolioMessage::OpenImage { name, image } => {
+				responses.add(PortfolioMessage::NewDocumentWithName {
+					name: name.clone().unwrap_or(DEFAULT_DOCUMENT_NAME.into()),
+				});
+
+				responses.add(DocumentMessage::PasteImage {
+					name,
+					image,
+					mouse: None,
+					parent_and_insert_index: None,
+				});
+
+				// Wait for the document to be rendered so the click targets can be calculated in order to determine the artboard size that will encompass the pasted image
+				responses.add(DeferMessage::AfterGraphRun {
+					messages: vec![DocumentMessage::WrapContentInArtboard { place_artboard_at_origin: true }.into()],
+				});
+				responses.add(DeferMessage::AfterNavigationReady {
+					messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
+				});
+			}
+			PortfolioMessage::OpenSvg { name, svg } => {
+				responses.add(PortfolioMessage::NewDocumentWithName {
+					name: name.clone().unwrap_or(DEFAULT_DOCUMENT_NAME.into()),
+				});
+
+				responses.add(DocumentMessage::PasteSvg {
+					name,
+					svg,
+					mouse: None,
+					parent_and_insert_index: None,
+				});
+
+				// Wait for the document to be rendered so the click targets can be calculated in order to determine the artboard size that will encompass the pasted SVG
+				responses.add(DeferMessage::AfterGraphRun {
+					messages: vec![DocumentMessage::WrapContentInArtboard { place_artboard_at_origin: true }.into()],
+				});
+				responses.add(DeferMessage::AfterNavigationReady {
+					messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
+				});
+			}
+			// TODO: Unused except by tests, remove?
 			PortfolioMessage::PasteIntoFolder { clipboard, parent, insert_index } => {
 				let mut all_new_ids = Vec::new();
 				let paste = |entry: &CopyBufferEntry, responses: &mut VecDeque<_>, all_new_ids: &mut Vec<NodeId>| {
@@ -592,7 +740,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 								added_nodes = true;
 							}
 
-							document.load_layer_resources(responses);
+							document.load_layer_resources(responses, &self.persistent_data.font_catalog);
 							let new_ids: HashMap<_, _> = entry.nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
 							let layer = LayerNodeIdentifier::new_unchecked(new_ids[&NodeId(0)]);
 							all_new_ids.extend(new_ids.values().cloned());
@@ -627,7 +775,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					let mut layers = Vec::new();
 
 					for (_, new_vector, transform) in data {
-						let Some(node_type) = resolve_document_node_type("Path") else {
+						let Some(node_type) = resolve_network_node_type("Path") else {
 							error!("Path node does not exist");
 							continue;
 						};
@@ -814,28 +962,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				mouse,
 				parent_and_insert_index,
 			} => {
-				let create_document = self.documents.is_empty();
-
-				if create_document {
-					responses.add(PortfolioMessage::NewDocumentWithName {
-						name: name.clone().unwrap_or(DEFAULT_DOCUMENT_NAME.into()),
-					});
-				}
-
-				responses.add(DocumentMessage::PasteImage {
-					name,
-					image,
-					mouse,
-					parent_and_insert_index,
-				});
-
-				if create_document {
-					// Wait for the document to be rendered so the click targets can be calculated in order to determine the artboard size that will encompass the pasted image
-					responses.add(DeferMessage::AfterGraphRun {
-						messages: vec![DocumentMessage::WrapContentInArtboard { place_artboard_at_origin: true }.into()],
-					});
-					responses.add(DeferMessage::AfterNavigationReady {
-						messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
+				if self.documents.is_empty() {
+					responses.add(PortfolioMessage::OpenImage { name, image });
+				} else {
+					responses.add(DocumentMessage::PasteImage {
+						name,
+						image,
+						mouse,
+						parent_and_insert_index,
 					});
 				}
 			}
@@ -845,29 +979,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				mouse,
 				parent_and_insert_index,
 			} => {
-				let create_document = self.documents.is_empty();
-
-				if create_document {
-					responses.add(PortfolioMessage::NewDocumentWithName {
-						name: name.clone().unwrap_or(DEFAULT_DOCUMENT_NAME.into()),
-					});
-				}
-
-				responses.add(DocumentMessage::PasteSvg {
-					name,
-					svg,
-					mouse,
-					parent_and_insert_index,
-				});
-
-				if create_document {
-					// Wait for the document to be rendered so the click targets can be calculated in order to determine the artboard size that will encompass the pasted image
-					responses.add(DeferMessage::AfterGraphRun {
-						messages: vec![DocumentMessage::WrapContentInArtboard { place_artboard_at_origin: true }.into()],
-					});
-
-					responses.add(DeferMessage::AfterNavigationReady {
-						messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
+				if self.documents.is_empty() {
+					responses.add(PortfolioMessage::OpenSvg { name, svg });
+				} else {
+					responses.add(DocumentMessage::PasteSvg {
+						name,
+						svg,
+						mouse,
+						parent_and_insert_index,
 					});
 				}
 			}
@@ -898,9 +1017,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 							TextButton::new("Open Document")
 								.icon(Some("Folder".into()))
 								.flush(true)
-								.on_commit(|_| PortfolioMessage::OpenDocument.into())
+								.on_commit(|_| PortfolioMessage::Open.into())
 								.widget_instance(),
-							ShortcutLabel::new(action_shortcut!(PortfolioMessageDiscriminant::OpenDocument)).widget_instance(),
+							ShortcutLabel::new(action_shortcut!(PortfolioMessageDiscriminant::Open)).widget_instance(),
 						],
 						vec![
 							TextButton::new("Open Demo Artwork")
@@ -925,6 +1044,19 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				responses.add(LayoutMessage::SendLayout {
 					layout: Layout(vec![table]),
 					layout_target: LayoutTarget::WelcomeScreenButtons,
+				});
+			}
+			PortfolioMessage::RequestStatusBarInfoLayout => {
+				#[cfg(not(target_family = "wasm"))]
+				let widgets = vec![TextLabel::new("Graphite 1.0.0-RC2").disabled(true).widget_instance()];
+				#[cfg(target_family = "wasm")]
+				let widgets = vec![];
+
+				let row = LayoutGroup::Row { widgets };
+
+				responses.add(LayoutMessage::SendLayout {
+					layout: Layout(vec![row]),
+					layout_target: LayoutTarget::StatusBarInfo,
 				});
 			}
 			PortfolioMessage::SetActivePanel { panel } => {
@@ -973,7 +1105,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				};
 				if !document.is_loaded {
 					document.is_loaded = true;
-					responses.add(PortfolioMessage::LoadDocumentResources { document_id });
+					if self.persistent_data.font_catalog.0.is_empty() {
+						responses.add_front(FrontendMessage::TriggerFontCatalogLoad);
+					}
 					responses.add(PortfolioMessage::UpdateDocumentWidgets);
 					responses.add(PropertiesPanelMessage::Clear);
 				}
@@ -984,6 +1118,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				scale_factor,
 				bounds,
 				transparent_background,
+				artboard_name,
+				artboard_count,
 			} => {
 				let document = self.active_document_id.and_then(|id| self.documents.get_mut(&id)).expect("Tried to render non-existent document");
 				let export_config = ExportConfig {
@@ -992,6 +1128,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					scale_factor,
 					bounds,
 					transparent_background,
+					artboard_name,
+					artboard_count,
 					..Default::default()
 				};
 				let result = self.executor.submit_document_export(document, self.active_document_id.unwrap(), export_config);
@@ -1016,13 +1154,18 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					return;
 				};
 
+				let document_to_viewport = document
+					.navigation_handler
+					.calculate_offset_transform(viewport.center_in_viewport_space().into(), &document.document_ptz);
+				let pointer_position = document_to_viewport.inverse().transform_point2(ipp.mouse.position);
+
 				let scale = viewport.scale();
 				// Use exact physical dimensions from browser (via ResizeObserver's devicePixelContentBoxSize)
 				let physical_resolution = viewport.size().to_physical().into_dvec2().round().as_uvec2();
 
 				let result = self
 					.executor
-					.submit_node_graph_evaluation(document, document_id, physical_resolution, scale, timing_information, node_to_inspect, ignore_hash);
+					.submit_node_graph_evaluation(document, document_id, physical_resolution, scale, timing_information, node_to_inspect, ignore_hash, pointer_position);
 
 				match result {
 					Err(description) => {
@@ -1136,21 +1279,22 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 	fn actions(&self) -> ActionList {
 		let mut common = actions!(PortfolioMessageDiscriminant;
-			CloseActiveDocumentWithConfirmation,
-			CloseAllDocuments,
-			CloseAllDocumentsWithConfirmation,
-			Import,
-			NextDocument,
-			OpenDocument,
-			PasteIntoFolder,
-			PrevDocument,
-			ToggleRulers,
+			Open,
 			ToggleDataPanelOpen,
 		);
 
 		// Extend with actions that require an active document
 		if let Some(document) = self.active_document() {
 			common.extend(document.actions());
+			common.extend(actions!(PortfolioMessageDiscriminant;
+				CloseActiveDocumentWithConfirmation,
+				CloseAllDocuments,
+				CloseAllDocumentsWithConfirmation,
+				ToggleRulers,
+				NextDocument,
+				PrevDocument,
+				Import,
+			));
 
 			// Extend with actions that must have a selected layer
 			if document.network_interface.selected_nodes().selected_layers(document.metadata()).next().is_some() {
@@ -1215,6 +1359,32 @@ impl PortfolioMessageHandler {
 		}
 	}
 
+	fn read_file(path: &PathBuf, content: Vec<u8>) -> FileContent {
+		let extension = path.extension().and_then(|ext| ext.to_str()).unwrap_or_default().to_lowercase();
+		match extension.as_str() {
+			FILE_EXTENSION => match String::from_utf8(content) {
+				Ok(content) => FileContent::Document(content),
+				Err(_) => FileContent::Unsupported,
+			},
+			"svg" => match String::from_utf8(content) {
+				Ok(content) => FileContent::Svg(content),
+				Err(_) => FileContent::Unsupported,
+			},
+			_ => {
+				let format = image::guess_format(&content).unwrap_or_else(|_| image::ImageFormat::from_path(path).unwrap_or(image::ImageFormat::Png));
+				match image::load_from_memory_with_format(&content, format) {
+					Ok(image) => {
+						// TODO: Handle Image formats with more than 8 bits per channel
+						let image_data = image.to_rgba8();
+						let image = Image::<Color>::from_image_data(image_data.as_raw(), image.width(), image.height());
+						FileContent::Image(image)
+					}
+					Err(_) => FileContent::Unsupported,
+				}
+			}
+		}
+	}
+
 	fn load_document(&mut self, mut new_document: DocumentMessageHandler, document_id: DocumentId, layers_panel_open: bool, responses: &mut VecDeque<Message>, to_front: bool) {
 		if to_front {
 			self.document_ids.push_front(document_id);
@@ -1229,10 +1399,6 @@ impl PortfolioMessageHandler {
 		if self.active_document().is_some() {
 			responses.add(EventMessage::ToolAbort);
 			responses.add(ToolMessage::DeactivateTools);
-		} else {
-			// Load the default font upon creating the first document
-			let font = Font::new(graphene_std::consts::DEFAULT_FONT_FAMILY.into(), graphene_std::consts::DEFAULT_FONT_STYLE.into());
-			responses.add(FrontendMessage::TriggerFontLoad { font });
 		}
 
 		// TODO: Remove this and find a way to fix the issue where creating a new document when the node graph is open causes the transform in the new document to be incorrect

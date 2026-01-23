@@ -4,7 +4,8 @@
 	import type { Editor } from "@graphite/editor";
 	import type { Layout } from "@graphite/messages";
 	import { patchLayout, UpdateWelcomeScreenButtonsLayout } from "@graphite/messages";
-	import { extractPixelData } from "@graphite/utility-functions/rasterization";
+	import { pasteFile } from "@graphite/utility-functions/files";
+	import { isDesktop } from "@graphite/utility-functions/platform";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -17,8 +18,8 @@
 	let welcomePanelButtonsLayout: Layout = [];
 
 	onMount(() => {
-		editor.subscriptions.subscribeJsMessage(UpdateWelcomeScreenButtonsLayout, (updateWelcomeScreenButtonsLayout) => {
-			patchLayout(welcomePanelButtonsLayout, updateWelcomeScreenButtonsLayout);
+		editor.subscriptions.subscribeJsMessage(UpdateWelcomeScreenButtonsLayout, (data) => {
+			patchLayout(welcomePanelButtonsLayout, data);
 			welcomePanelButtonsLayout = welcomePanelButtonsLayout;
 		});
 	});
@@ -32,30 +33,7 @@
 
 		e.preventDefault();
 
-		Array.from(e.dataTransfer.items).forEach(async (item) => {
-			const file = item.getAsFile();
-			if (!file) return;
-
-			if (file.type.includes("svg")) {
-				const svgData = await file.text();
-				editor.handle.pasteSvg(file.name, svgData);
-				return;
-			}
-
-			if (file.type.startsWith("image")) {
-				const imageData = await extractPixelData(file);
-				editor.handle.pasteImage(file.name, new Uint8Array(imageData.data), imageData.width, imageData.height);
-				return;
-			}
-
-			const graphiteFileSuffix = "." + editor.handle.fileExtension();
-			if (file.name.endsWith(graphiteFileSuffix)) {
-				const content = await file.text();
-				const documentName = file.name.slice(0, -graphiteFileSuffix.length);
-				editor.handle.openDocumentFile(documentName, content);
-				return;
-			}
-		});
+		Array.from(e.dataTransfer.items).forEach(async (item) => await pasteFile(item, editor));
 	}
 </script>
 
@@ -72,13 +50,11 @@
 		</LayoutCol>
 	</LayoutCol>
 	<LayoutCol class="bottom-message">
-		{#if new Date().getFullYear() === 2025}
-			<TextLabel italic={true} disabled={true}>
-				September 2025 release — <a href="https://youtube.com/watch?v=Vl5BA4g3QXM" target="_blank">What's new? (video)</a>
-				— Note: some older documents may render differently and require manual fixes.
-				<a href="https://ec6796b4.graphite-editor.pages.dev/" target="_blank">Need the old version?</a>
-			</TextLabel>
-		{/if}
+		<TextLabel italic={true} disabled={true}>
+			{#if isDesktop()}
+				You are testing Release Candidate 2 of the 1.0 desktop release. Please regularly check Discord for the next testing build and report issues you encounter.
+			{/if}
+		</TextLabel>
 	</LayoutCol>
 </LayoutCol>
 

@@ -1,9 +1,9 @@
 <script lang="ts">
-	import { onDestroy, createEventDispatcher } from "svelte";
+	import { getContext, onDestroy, createEventDispatcher } from "svelte";
 
-	import type { HSV, RGB, FillChoice } from "@graphite/messages";
-	import type { MenuDirection } from "@graphite/messages";
+	import type { HSV, RGB, FillChoice, MenuDirection } from "@graphite/messages";
 	import { Color, contrastingOutlineFactor, Gradient } from "@graphite/messages";
+	import type { TooltipState } from "@graphite/state-providers/tooltip";
 	import { clamp } from "@graphite/utility-functions/math";
 
 	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
@@ -40,6 +40,7 @@
 	];
 
 	const dispatch = createEventDispatcher<{ colorOrGradient: FillChoice; startHistoryTransaction: undefined }>();
+	const tooltip = getContext<TooltipState>("tooltip");
 
 	export let colorOrGradient: FillChoice;
 	export let allowNone = false;
@@ -424,17 +425,21 @@
 			"--opaque-color-contrasting": (newColor.opaque() || new Color(0, 0, 0, 1)).contrastingColor(),
 		}}
 	>
+		{@const hueDescription = "The shade along the spectrum of the rainbow."}
+		{@const saturationDescription = "The vividness from grayscale to full color."}
+		{@const valueDescription = "The brightness from black to full color."}
 		<LayoutCol class="pickers-and-gradient">
 			<LayoutRow class="pickers">
 				<LayoutCol
 					class="saturation-value-picker"
 					data-tooltip-label="Saturation and Value"
-					data-tooltip-description={disabled ? "Disabled (read-only)." : ""}
+					data-tooltip-description={`To move only along the saturation (X) or value (Y) axis, perform the shortcut shown.${disabled ? "\n\nDisabled (read-only)." : ""}`}
+					data-tooltip-shortcut={$tooltip.shiftClickShortcut?.shortcut ? JSON.stringify($tooltip.shiftClickShortcut.shortcut) : undefined}
 					on:pointerdown={onPointerDown}
 					data-saturation-value-picker
 				>
 					{#if !isNone}
-						<div class="selection-circle" style:top={`${(1 - value) * 100}%`} style:left={`${saturation * 100}%`} />
+						<div class="selection-circle" style:top={`${(1 - value) * 100}%`} style:left={`${saturation * 100}%`}></div>
 					{/if}
 					{#if alignedAxis}
 						<div
@@ -443,18 +448,18 @@
 							class:value={alignedAxis === "value"}
 							style:top={`${(1 - value) * 100}%`}
 							style:left={`${saturation * 100}%`}
-						/>
+						></div>
 					{/if}
 				</LayoutCol>
 				<LayoutCol
 					class="hue-picker"
 					data-tooltip-label="Hue"
-					data-tooltip-description={`The shade along the spectrum of the rainbow.${disabled ? "\n\nDisabled (read-only)." : ""}`}
+					data-tooltip-description={`${hueDescription}${disabled ? "\n\nDisabled (read-only)." : ""}`}
 					on:pointerdown={onPointerDown}
 					data-hue-picker
 				>
 					{#if !isNone}
-						<div class="selection-needle" style:top={`${(1 - hue) * 100}%`} />
+						<div class="selection-needle" style:top={`${(1 - hue) * 100}%`}></div>
 					{/if}
 				</LayoutCol>
 				<LayoutCol
@@ -465,7 +470,7 @@
 					data-alpha-picker
 				>
 					{#if !isNone}
-						<div class="selection-needle" style:top={`${(1 - alpha) * 100}%`} />
+						<div class="selection-needle" style:top={`${(1 - alpha) * 100}%`}></div>
 					{/if}
 				</LayoutCol>
 			</LayoutRow>
@@ -522,11 +527,9 @@
 			</LayoutRow>
 			<!-- <DropdownInput entries={[[{ label: "sRGB" }]]} selectedIndex={0} disabled={true} tooltipDescription="Color model, color space, and HDR (coming soon)." /> -->
 			<LayoutRow>
-				<TextLabel
-					tooltipLabel="Hex Color Code"
-					tooltipDescription="Color code in hexadecimal format. 6 digits if opaque, 8 with alpha.\nAccepts input of CSS color values including named colors.">Hex</TextLabel
-				>
-				<Separator type="Related" />
+				{@const hexDescription = "Color code in hexadecimal format. 6 digits if opaque, 8 with alpha. Accepts input of CSS color values including named colors."}
+				<TextLabel tooltipLabel="Hex Color Code" tooltipDescription={hexDescription}>Hex</TextLabel>
+				<Separator style="Related" />
 				<LayoutRow>
 					<TextInput
 						value={newColor.toHexOptionalAlpha() || "-"}
@@ -537,18 +540,18 @@
 						}}
 						centered={true}
 						tooltipLabel="Hex Color Code"
-						tooltipDescription="Color code in hexadecimal format. 6 digits if opaque, 8 with alpha.\nAccepts input of CSS color values including named colors."
+						tooltipDescription={hexDescription}
 						bind:this={hexCodeInputWidget}
 					/>
 				</LayoutRow>
 			</LayoutRow>
 			<LayoutRow>
 				<TextLabel tooltipLabel="Red/Green/Blue" tooltipDescription="Integers 0–255.">RGB</TextLabel>
-				<Separator type="Related" />
+				<Separator style="Related" />
 				<LayoutRow>
 					{#each rgbChannels as [channel, strength], index}
 						{#if index > 0}
-							<Separator type="Related" />
+							<Separator style="Related" />
 						{/if}
 						<NumberInput
 							value={strength}
@@ -563,6 +566,7 @@
 							min={0}
 							max={255}
 							minWidth={1}
+							displayDecimalPlaces={0}
 							tooltipLabel={{ r: "Red Channel", g: "Green Channel", b: "Blue Channel" }[channel]}
 							tooltipDescription="Integers 0–255."
 						/>
@@ -574,11 +578,11 @@
 					tooltipLabel="Hue/Saturation/Value"
 					tooltipDescription="Also known as Hue/Saturation/Brightness (HSB). Not to be confused with Hue/Saturation/Lightness (HSL), a different color model.">HSV</TextLabel
 				>
-				<Separator type="Related" />
+				<Separator style="Related" />
 				<LayoutRow>
 					{#each hsvChannels as [channel, strength], index}
 						{#if index > 0}
-							<Separator type="Related" />
+							<Separator style="Related" />
 						{/if}
 						<NumberInput
 							value={strength}
@@ -601,17 +605,18 @@
 								v: "Value Component",
 							}[channel]}
 							tooltipDescription={{
-								h: "The shade along the spectrum of the rainbow.",
-								s: "The vividness from grayscale to full color.",
-								v: "The brightness from black to full color.",
+								h: hueDescription,
+								s: saturationDescription,
+								v: valueDescription,
 							}[channel]}
 						/>
 					{/each}
 				</LayoutRow>
 			</LayoutRow>
 			<LayoutRow>
-				<TextLabel tooltipLabel="Alpha" tooltipDescription="The level of translucency, from transparent (0%) to opaque (100%).">Alpha</TextLabel>
-				<Separator type="Related" />
+				{@const alphaDescription = "The level of translucency, from transparent (0%) to opaque (100%)."}
+				<TextLabel tooltipLabel="Alpha" tooltipDescription={alphaDescription}>Alpha</TextLabel>
+				<Separator style="Related" />
 				<NumberInput
 					value={!isNone ? alpha * 100 : undefined}
 					{disabled}
@@ -630,7 +635,7 @@
 					mode="Range"
 					displayDecimalPlaces={1}
 					tooltipLabel="Alpha"
-					tooltipDescription="The level of translucency, from transparent (0%) to opaque (100%)."
+					tooltipDescription={alphaDescription}
 				/>
 			</LayoutRow>
 			<LayoutRow class="leftover-space" />
@@ -644,7 +649,7 @@
 						data-tooltip-description={disabled ? "Disabled (read-only)." : ""}
 						tabindex="0"
 					></button>
-					<Separator type="Related" />
+					<Separator style="Related" />
 				{/if}
 				<button
 					class="preset-color black"
@@ -654,7 +659,7 @@
 					data-tooltip-description={disabled ? "Disabled (read-only)." : ""}
 					tabindex="0"
 				></button>
-				<Separator type="Related" />
+				<Separator style="Related" />
 				<button
 					class="preset-color white"
 					{disabled}
@@ -663,20 +668,20 @@
 					data-tooltip-description={disabled ? "Disabled (read-only)." : ""}
 					tabindex="0"
 				></button>
-				<Separator type="Related" />
+				<Separator style="Related" />
 				<button class="preset-color pure" {disabled} on:click={setColorPresetSubtile} tabindex="-1">
 					{#each PURE_COLORS_GRAYABLE as [name, color, gray]}
 						<div
 							data-pure-tile={name.toLowerCase()}
 							style:--pure-color={color}
 							style:--pure-color-gray={gray}
-							data-tooltip-label="Set to Red"
+							data-tooltip-label={`Set to ${name}`}
 							data-tooltip-description={disabled ? "Disabled (read-only)." : ""}
-						/>
+						></div>
 					{/each}
 				</button>
 				{#if eyedropperSupported()}
-					<Separator type="Related" />
+					<Separator style="Related" />
 					<IconButton icon="Eyedropper" size={24} {disabled} action={activateEyedropperSample} tooltipLabel="Eyedropper" tooltipDescription="Sample a pixel color from the document." />
 				{/if}
 			</LayoutRow>

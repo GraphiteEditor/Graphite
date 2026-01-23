@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { getContext, onMount, onDestroy, tick } from "svelte";
+	import { SvelteMap } from "svelte/reactivity";
 
 	import type { Editor } from "@graphite/editor";
 	import {
@@ -9,12 +10,12 @@
 		UpdateLayersPanelControlBarLeftLayout,
 		UpdateLayersPanelControlBarRightLayout,
 		UpdateLayersPanelBottomBarLayout,
-		SendShortcutAltClick,
 	} from "@graphite/messages";
-	import type { ActionShortcut, DataBuffer, LayerPanelEntry, Layout } from "@graphite/messages";
+	import type { DataBuffer, LayerPanelEntry, Layout } from "@graphite/messages";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
+	import type { TooltipState } from "@graphite/state-providers/tooltip";
+	import { pasteFile } from "@graphite/utility-functions/files";
 	import { operatingSystem } from "@graphite/utility-functions/platform";
-	import { extractPixelData } from "@graphite/utility-functions/rasterization";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -49,11 +50,12 @@
 
 	const editor = getContext<Editor>("editor");
 	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
+	const tooltip = getContext<TooltipState>("tooltip");
 
 	let list: LayoutCol | undefined;
 
 	// Layer data
-	let layerCache = new Map<string, LayerPanelEntry>(); // TODO: replace with BigUint64Array as index
+	let layerCache = new SvelteMap<string, LayerPanelEntry>(); // TODO: replace with BigUint64Array as index
 	let layers: LayerListingInfo[] = [];
 
 	// Interactive dragging
@@ -73,35 +75,29 @@
 	let layersPanelControlBarRightLayout: Layout = [];
 	let layersPanelBottomBarLayout: Layout = [];
 
-	let altClickShortcut: ActionShortcut | undefined;
-
 	onMount(() => {
-		editor.subscriptions.subscribeJsMessage(SendShortcutAltClick, async (data) => {
-			altClickShortcut = data.shortcut;
-		});
-
-		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarLeftLayout, (updateLayersPanelControlBarLeftLayout) => {
-			patchLayout(layersPanelControlBarLeftLayout, updateLayersPanelControlBarLeftLayout);
+		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarLeftLayout, (data) => {
+			patchLayout(layersPanelControlBarLeftLayout, data);
 			layersPanelControlBarLeftLayout = layersPanelControlBarLeftLayout;
 		});
 
-		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarRightLayout, (updateLayersPanelControlBarRightLayout) => {
-			patchLayout(layersPanelControlBarRightLayout, updateLayersPanelControlBarRightLayout);
+		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarRightLayout, (data) => {
+			patchLayout(layersPanelControlBarRightLayout, data);
 			layersPanelControlBarRightLayout = layersPanelControlBarRightLayout;
 		});
 
-		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelBottomBarLayout, (updateLayersPanelBottomBarLayout) => {
-			patchLayout(layersPanelBottomBarLayout, updateLayersPanelBottomBarLayout);
+		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelBottomBarLayout, (data) => {
+			patchLayout(layersPanelBottomBarLayout, data);
 			layersPanelBottomBarLayout = layersPanelBottomBarLayout;
 		});
 
-		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerStructureJs, (updateDocumentLayerStructure) => {
-			const structure = newUpdateDocumentLayerStructure(updateDocumentLayerStructure.dataBuffer);
+		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerStructureJs, (data) => {
+			const structure = newUpdateDocumentLayerStructure(data.dataBuffer);
 			rebuildLayerHierarchy(structure);
 		});
 
-		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerDetails, (updateDocumentLayerDetails) => {
-			const targetLayer = updateDocumentLayerDetails.data;
+		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerDetails, (data) => {
+			const targetLayer = data.data;
 			const targetId = targetLayer.id;
 
 			updateLayerInTree(targetId, targetLayer);
@@ -512,31 +508,7 @@
 
 		e.preventDefault();
 
-		Array.from(e.dataTransfer.items).forEach(async (item) => {
-			const file = item.getAsFile();
-			if (!file) return;
-
-			if (file.type.includes("svg")) {
-				const svgData = await file.text();
-				editor.handle.pasteSvg(file.name, svgData, undefined, undefined, insertParentId, insertIndex);
-				return;
-			}
-
-			if (file.type.startsWith("image")) {
-				const imageData = await extractPixelData(file);
-				editor.handle.pasteImage(file.name, new Uint8Array(imageData.data), imageData.width, imageData.height, undefined, undefined, insertParentId, insertIndex);
-				return;
-			}
-
-			// When we eventually have sub-documents, this should be changed to import the document instead of opening it in a separate tab
-			const graphiteFileSuffix = "." + editor.handle.fileExtension();
-			if (file.name.endsWith(graphiteFileSuffix)) {
-				const content = await file.text();
-				const documentName = file.name.slice(0, -graphiteFileSuffix.length);
-				editor.handle.openDocumentFile(documentName, content);
-				return;
-			}
-		});
+		Array.from(e.dataTransfer.items).forEach(async (item) => await pasteFile(item, editor, undefined, insertParentId, insertIndex));
 
 		draggingData = undefined;
 		fakeHighlightOfNotYetSelectedLayerBeingDragged = undefined;
@@ -627,8 +599,8 @@
 							data-tooltip-description={(listing.entry.expanded
 								? "Hide the layers nested within. (To affect all open descendants, perform the shortcut shown.)"
 								: "Show the layers nested within. (To affect all closed descendants, perform the shortcut shown.)") +
-								(listing.entry.ancestorOfSelected && !listing.entry.expanded ? "\n\nNote: a selected layer is currently contained within.\n" : "")}
-							data-tooltip-shortcut={altClickShortcut?.shortcut ? JSON.stringify(altClickShortcut.shortcut) : undefined}
+								(listing.entry.ancestorOfSelected && !listing.entry.expanded ? "\n\nA selected layer is currently contained within.\n" : "")}
+							data-tooltip-shortcut={$tooltip.altClickShortcut?.shortcut ? JSON.stringify($tooltip.altClickShortcut.shortcut) : undefined}
 							on:click={(e) => handleExpandArrowClickWithModifiers(e, listing.entry.id)}
 							tabindex="0"
 						></button>
@@ -639,8 +611,9 @@
 						<IconLabel
 							icon="Clipped"
 							class="clipped-arrow"
-							tooltipDescription="Clipping mask is active. To release it, perform the shortcut on the layer border."
-							tooltipShortcut={altClickShortcut}
+							tooltipLabel="Layer Clipped"
+							tooltipDescription="Clipping mask is active. To release it, target the bottom border of the layer and perform the shortcut shown."
+							tooltipShortcut={$tooltip.altClickShortcut}
 						/>
 					{/if}
 					<div class="thumbnail">
@@ -648,15 +621,15 @@
 							{@html $nodeGraph.thumbnails.get(listing.entry.id)}
 						{/if}
 					</div>
-					{#if listing.entry.name === "Artboard"}
-						<IconLabel icon="Artboard" class="layer-type-icon" />
+					{#if listing.entry.iconName}
+						<IconLabel icon={listing.entry.iconName} class="layer-type-icon" tooltipLabel="Artboard" />
 					{/if}
 					<LayoutRow class="layer-name" on:dblclick={() => onEditLayerName(listing)}>
 						<input
 							data-text-input
 							type="text"
 							value={listing.entry.alias}
-							placeholder={listing.entry.name}
+							placeholder={listing.entry.implementationName}
 							disabled={!listing.editingName}
 							on:blur={() => onEditLayerNameDeselect(listing)}
 							on:keydown={(e) => e.key === "Escape" && onEditLayerNameDeselect(listing)}
@@ -690,7 +663,7 @@
 			{/each}
 		</LayoutCol>
 		{#if draggingData && !draggingData.highlightFolder && dragInPanel}
-			<div class="insert-mark" style:left={`${4 + draggingData.insertDepth * 16}px`} style:top={`${draggingData.markerHeight}px`} />
+			<div class="insert-mark" style:left={`${4 + draggingData.insertDepth * 16}px`} style:top={`${draggingData.markerHeight}px`}></div>
 		{/if}
 	</LayoutRow>
 	<LayoutRow class="bottom-bar" scrollableX={true}>
@@ -846,7 +819,6 @@
 				}
 
 				.layer-type-icon {
-					flex: 0 0 auto;
 					margin-left: 8px;
 					margin-right: -4px;
 				}

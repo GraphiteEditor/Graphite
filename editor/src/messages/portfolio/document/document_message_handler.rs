@@ -11,6 +11,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::data_panel::{DataPanelMessageContext, DataPanelMessageHandler};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::NodeGraphMessageContext;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
 use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay, overlay_options};
 use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType, OverlaysVisibilitySettings, Pivot};
@@ -19,8 +20,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::{Doc
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, PTZ};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate};
 use crate::messages::portfolio::document::utility_types::nodes::RawBuffer;
-use crate::messages::portfolio::utility_types::PanelType;
-use crate::messages::portfolio::utility_types::PersistentData;
+use crate::messages::portfolio::utility_types::{FontCatalog, PanelType, PersistentData};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_blend_mode, get_fill, get_opacity};
 use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
@@ -36,6 +36,7 @@ use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Raster;
 use graphene_std::subpath::Subpath;
 use graphene_std::table::Table;
+use graphene_std::text::Font;
 use graphene_std::vector::PointId;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::misc::{dvec2_to_point, point_to_dvec2};
@@ -1261,6 +1262,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					OverlaysType::TransformCage => visibility_settings.transform_cage = visible,
 					OverlaysType::HoverOutline => visibility_settings.hover_outline = visible,
 					OverlaysType::SelectionOutline => visibility_settings.selection_outline = visible,
+					OverlaysType::LayerOriginCross => visibility_settings.layer_origin_cross = visible,
 					OverlaysType::Pivot => visibility_settings.pivot = visible,
 					OverlaysType::Origin => visibility_settings.origin = visible,
 					OverlaysType::Path => visibility_settings.path = visible,
@@ -1548,7 +1550,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				// Create an artboard and set its dimensions to the bounding box size and location
 				let node_id = NodeId::new();
 				let node_layer_id = LayerNodeIdentifier::new_unchecked(node_id);
-				let new_artboard_node = document_node_definitions::resolve_document_node_type("Artboard")
+				let new_artboard_node = document_node_definitions::resolve_network_node_type("Artboard")
 					.expect("Failed to create artboard node")
 					.default_node_template();
 				responses.add(NodeGraphMessage::InsertNode {
@@ -2133,8 +2135,7 @@ impl DocumentMessageHandler {
 					network_interface.upstream_flow_back_from_nodes(vec![selected_id.to_node()], &[], FlowType::HorizontalFlow).find(|id| {
 						network_interface
 							.reference(id, &[])
-							.map(|name| name.as_deref().unwrap_or_default() == "Boolean Operation")
-							.unwrap_or_default()
+							.is_some_and(|reference| reference == DefinitionIdentifier::Network("Boolean Operation".into()))
 					})
 				});
 
@@ -2171,54 +2172,28 @@ impl DocumentMessageHandler {
 	}
 
 	/// Loads all of the fonts in the document.
-	pub fn load_layer_resources(&self, responses: &mut VecDeque<Message>) {
-		let mut fonts = HashSet::new();
-		for (_node_id, node, _) in self.document_network().recursive_nodes() {
+	pub fn load_layer_resources(&self, responses: &mut VecDeque<Message>, font_catalog: &FontCatalog) {
+		let mut fonts_to_load = HashSet::new();
+
+		for (_, node, _) in self.document_network().recursive_nodes() {
 			for input in &node.inputs {
 				if let Some(TaggedValue::Font(font)) = input.as_value() {
-					fonts.insert(font.clone());
+					fonts_to_load.insert(font.clone());
 				}
 			}
 		}
-		for font in fonts {
-			responses.add_front(FrontendMessage::TriggerFontLoad { font });
+
+		for font in fonts_to_load {
+			if let Some(style) = font_catalog.find_font_style_in_catalog(&font) {
+				responses.add_front(FrontendMessage::TriggerFontDataLoad {
+					font: Font::new(font.font_family, style.to_named_style()),
+					url: style.url,
+				});
+			}
 		}
 	}
 
 	pub fn update_document_widgets(&self, responses: &mut VecDeque<Message>, animation_is_playing: bool, time: Duration) {
-		// // Document mode (dropdown menu at the left of the bar above the viewport, before the tool options)
-		// let layout = Layout(vec![LayoutGroup::Row {
-		// 	widgets: vec![
-		// 		DropdownInput::new(
-		// 			vec![vec![
-		// 				MenuListEntry::new(format!("{:?}", DocumentMode::DesignMode))
-		// 					.label(DocumentMode::DesignMode.to_string())
-		// 					.icon(DocumentMode::DesignMode.icon_name()),
-		// 				// TODO: See issue #330
-		// 				MenuListEntry::new(format!("{:?}", DocumentMode::SelectMode))
-		// 					.label(DocumentMode::SelectMode.to_string())
-		// 					.icon(DocumentMode::SelectMode.icon_name())
-		// 					.on_commit(|_| todo!()),
-		// 				// TODO: See issue #331
-		// 				MenuListEntry::new(format!("{:?}", DocumentMode::GuideMode))
-		// 					.label(DocumentMode::GuideMode.to_string())
-		// 					.icon(DocumentMode::GuideMode.icon_name())
-		// 					.on_commit(|_| todo!()),
-		// 			]])
-		// 			.selected_index(Some(self.document_mode as u32))
-		// 			.draw_icon(true)
-		// 			.interactive(false)
-		// 			.widget_instance(),
-		// 		Separator::new(SeparatorType::Section).widget_instance(),
-		// 	],
-		// }]);
-		// responses.add(LayoutMessage::SendLayout {
-		// 	layout,
-		// 	layout_target: LayoutTarget::DocumentMode,
-		// });
-
-		// Document bar (right portion of the bar above the viewport)
-
 		let mut snapping_state = self.snapping_state.clone();
 		let mut snapping_state2 = self.snapping_state.clone();
 
@@ -2234,7 +2209,7 @@ impl DocumentMessageHandler {
 				.tooltip_shortcut(action_shortcut!(AnimationMessageDiscriminant::ToggleLivePreview))
 				.on_update(|_| AnimationMessage::ToggleLivePreview.into())
 				.widget_instance(),
-			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			CheckboxInput::new(self.overlays_visibility_settings.all)
 				.icon("Overlays")
 				.tooltip_label("Overlays")
@@ -2421,6 +2396,24 @@ impl DocumentMessageHandler {
 						},
 					},
 					LayoutGroup::Row {
+						widgets: {
+							let checkbox_id = CheckboxId::new();
+							vec![
+								CheckboxInput::new(self.overlays_visibility_settings.layer_origin_cross)
+									.on_update(|optional_input: &CheckboxInput| {
+										DocumentMessage::SetOverlaysVisibility {
+											visible: optional_input.checked,
+											overlays_type: Some(OverlaysType::LayerOriginCross),
+										}
+										.into()
+									})
+									.for_label(checkbox_id)
+									.widget_instance(),
+								TextLabel::new("Layer Origin".to_string()).for_checkbox(checkbox_id).widget_instance(),
+							]
+						},
+					},
+					LayoutGroup::Row {
 						widgets: vec![TextLabel::new("Pen & Path Tools").widget_instance()],
 					},
 					LayoutGroup::Row {
@@ -2483,7 +2476,7 @@ impl DocumentMessageHandler {
 					},
 				]))
 				.widget_instance(),
-			Separator::new(SeparatorType::Related).widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
 			CheckboxInput::new(snapping_state.snapping_enabled)
 				.icon("Snapping")
 				.tooltip_label("Snapping")
@@ -2553,7 +2546,7 @@ impl DocumentMessageHandler {
 					.collect(),
 				))
 				.widget_instance(),
-			Separator::new(SeparatorType::Related).widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
 			CheckboxInput::new(self.snapping_state.grid_snapping)
 				.icon("Grid")
 				.tooltip_label("Grid")
@@ -2564,7 +2557,7 @@ impl DocumentMessageHandler {
 				.popover_layout(Layout(overlay_options(&self.snapping_state.grid)))
 				.popover_min_width(Some(320))
 				.widget_instance(),
-			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			RadioInput::new(vec![
 				RadioEntryData::new("Normal")
 					.icon("RenderModeNormal")
@@ -2588,7 +2581,7 @@ impl DocumentMessageHandler {
 			.selected_index(Some(self.render_mode as u32))
 			.narrow(true)
 			.widget_instance(),
-			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 		];
 
 		widgets.extend(navigation_controls(&self.document_ptz, &self.navigation_handler, false));
@@ -2596,7 +2589,7 @@ impl DocumentMessageHandler {
 		let tilt_value = self.navigation_handler.snapped_tilt(self.document_ptz.tilt()) / (std::f64::consts::PI / 180.);
 		if tilt_value.abs() > 0.00001 {
 			widgets.extend([
-				Separator::new(SeparatorType::Related).widget_instance(),
+				Separator::new(SeparatorStyle::Related).widget_instance(),
 				NumberInput::new(Some(tilt_value))
 					.unit("°")
 					.increment_behavior(NumberInputIncrementBehavior::Callback)
@@ -2626,7 +2619,7 @@ impl DocumentMessageHandler {
 		}
 
 		widgets.extend([
-			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			TextButton::new("Node Graph")
 				.icon(Some((if self.graph_view_overlay_open { "GraphViewOpen" } else { "GraphViewClosed" }).into()))
 				.hover_icon(Some((if self.graph_view_overlay_open { "GraphViewClosed" } else { "GraphViewOpen" }).into()))
@@ -2730,7 +2723,7 @@ impl DocumentMessageHandler {
 				.max_width(100)
 				.tooltip_label("Blend Mode")
 				.widget_instance(),
-			Separator::new(SeparatorType::Related).widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
 			NumberInput::new(opacity)
 				.label("Opacity")
 				.unit("%")
@@ -2752,7 +2745,7 @@ impl DocumentMessageHandler {
 				.max_width(100)
 				.tooltip_label("Opacity")
 				.widget_instance(),
-			Separator::new(SeparatorType::Related).widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
 			NumberInput::new(fill)
 				.label("Fill")
 				.unit("%")
@@ -2850,7 +2843,7 @@ impl DocumentMessageHandler {
 					Layout(vec![LayoutGroup::Row { widgets: vec![node_chooser] }])
 				})
 				.widget_instance(),
-			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			IconButton::new("Folder", 24)
 				.tooltip_label("Group Selected")
 				.tooltip_shortcut(action_shortcut!(DocumentMessageDiscriminant::GroupSelectedLayers))
@@ -3175,7 +3168,7 @@ pub fn navigation_controls(ptz: &PTZ, navigation_handler: &NavigationMessageHand
 		);
 	}
 	list.extend([
-		Separator::new(SeparatorType::Related).widget_instance(),
+		Separator::new(SeparatorStyle::Related).widget_instance(),
 		NumberInput::new(Some(navigation_handler.snapped_zoom(ptz.zoom()) * 100.))
 			.unit("%")
 			.min(0.000001)

@@ -2,6 +2,7 @@ use crate::messages::debug::utility_types::MessageLoggingVerbosity;
 use crate::messages::defer::DeferMessageContext;
 use crate::messages::dialog::DialogMessageContext;
 use crate::messages::layout::layout_message_handler::LayoutMessageContext;
+use crate::messages::preferences::preferences_message_handler::PreferencesMessageContext;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::utility_functions::make_path_editable_is_allowed;
 
@@ -22,12 +23,11 @@ pub struct DispatcherMessageHandlers {
 	debug_message_handler: DebugMessageHandler,
 	defer_message_handler: DeferMessageHandler,
 	dialog_message_handler: DialogMessageHandler,
-	globals_message_handler: GlobalsMessageHandler,
 	input_preprocessor_message_handler: InputPreprocessorMessageHandler,
 	key_mapping_message_handler: KeyMappingMessageHandler,
 	layout_message_handler: LayoutMessageHandler,
 	menu_bar_message_handler: MenuBarMessageHandler,
-	pub portfolio_message_handler: PortfolioMessageHandler,
+	pub(crate) portfolio_message_handler: PortfolioMessageHandler,
 	preferences_message_handler: PreferencesMessageHandler,
 	tool_message_handler: ToolMessageHandler,
 	viewport_message_handler: ViewportMessageHandler,
@@ -51,7 +51,7 @@ const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 		NodeGraphMessageDiscriminant::RunDocumentGraph,
 	))),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::SubmitActiveGraphRender),
-	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::TriggerFontLoad),
+	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::TriggerFontDataLoad),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateUIScale),
 ];
 /// Since we don't need to update the frontend multiple times per frame,
@@ -69,6 +69,7 @@ const FRONTEND_UPDATE_MESSAGES: &[MessageDiscriminant] = &[
 const DEBUG_MESSAGE_BLOCK_LIST: &[MessageDiscriminant] = &[
 	MessageDiscriminant::Broadcast(BroadcastMessageDiscriminant::TriggerEvent(EventMessageDiscriminant::AnimationFrame)),
 	MessageDiscriminant::Animation(AnimationMessageDiscriminant::IncrementFrameCounter),
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::AutoSaveAllDocuments),
 ];
 // TODO: Find a way to combine these with the list above. We use strings for now since these are the standard variant names used by multiple messages. But having these also type-checked would be best.
 const DEBUG_MESSAGE_ENDING_BLOCK_LIST: &[&str] = &["PointerMove", "PointerOutsideViewport", "Overlays", "Draw", "CurrentTime", "Time"];
@@ -179,7 +180,7 @@ impl Dispatcher {
 				}
 				Message::Frontend(message) => {
 					// Handle these messages immediately by returning early
-					if let FrontendMessage::TriggerFontLoad { .. } = message {
+					if let FrontendMessage::TriggerFontDataLoad { .. } | FrontendMessage::TriggerFontCatalogLoad = message {
 						self.responses.push(message);
 						self.cleanup_queues(false);
 
@@ -190,17 +191,11 @@ impl Dispatcher {
 						self.responses.push(message);
 					}
 				}
-				Message::Globals(message) => {
-					self.message_handlers.globals_message_handler.process_message(message, &mut queue, ());
-				}
 				Message::InputPreprocessor(message) => {
-					let keyboard_platform = GLOBAL_PLATFORM.get().copied().unwrap_or_default().as_keyboard_platform_layout();
-
 					self.message_handlers.input_preprocessor_message_handler.process_message(
 						message,
 						&mut queue,
 						InputPreprocessorMessageContext {
-							keyboard_platform,
 							viewport: &self.message_handlers.viewport_message_handler,
 						},
 					);
@@ -276,7 +271,11 @@ impl Dispatcher {
 					menu_bar_message_handler.process_message(message, &mut queue, ());
 				}
 				Message::Preferences(message) => {
-					self.message_handlers.preferences_message_handler.process_message(message, &mut queue, ());
+					let context = PreferencesMessageContext {
+						tool_message_handler: &self.message_handlers.tool_message_handler,
+					};
+
+					self.message_handlers.preferences_message_handler.process_message(message, &mut queue, context);
 				}
 				Message::Tool(message) => {
 					let Some(document_id) = self.message_handlers.portfolio_message_handler.active_document_id() else {
@@ -331,7 +330,7 @@ impl Dispatcher {
 		if let Some(document) = self.message_handlers.portfolio_message_handler.active_document()
 			&& !document.graph_view_overlay_open
 		{
-			list.extend(self.message_handlers.tool_message_handler.actions());
+			list.extend(self.message_handlers.tool_message_handler.actions_with_preferences(&self.message_handlers.preferences_message_handler));
 		}
 		list.extend(self.message_handlers.portfolio_message_handler.actions());
 		list
@@ -359,8 +358,9 @@ impl Dispatcher {
 	fn log_message(&self, message: &Message, queues: &[VecDeque<Message>], message_logging_verbosity: MessageLoggingVerbosity) {
 		let discriminant = MessageDiscriminant::from(message);
 		let is_blocked = DEBUG_MESSAGE_BLOCK_LIST.contains(&discriminant) || DEBUG_MESSAGE_ENDING_BLOCK_LIST.iter().any(|blocked_name| discriminant.local_name().ends_with(blocked_name));
+		let is_empty_batched = if let Message::Batched { messages } = message { messages.is_empty() } else { false };
 
-		if !is_blocked {
+		if !is_blocked && !is_empty_batched {
 			match message_logging_verbosity {
 				MessageLoggingVerbosity::Off => {}
 				MessageLoggingVerbosity::Names => {
@@ -571,10 +571,9 @@ mod test {
 				"Demo artwork '{document_name}' has more than 1 line (remember to open and re-save it in Graphite)",
 			);
 
-			let responses = editor.editor.handle_message(PortfolioMessage::OpenDocumentFile {
-				document_name: Some(document_name.to_string()),
-				document_path: None,
-				document_serialized_content,
+			let responses = editor.editor.handle_message(PortfolioMessage::OpenFile {
+				path: file_name.into(),
+				content: document_serialized_content.bytes().collect(),
 			});
 
 			// Check if the graph renders
@@ -587,7 +586,7 @@ mod test {
 				if let FrontendMessage::UpdateDialogColumn1 { diff } = response {
 					if let DiffUpdate::Layout(sub_layout) = &diff[0].new_value {
 						if let LayoutGroup::Row { widgets } = &sub_layout.0[0] {
-							if let Widget::TextLabel(TextLabel { value, .. }) = &widgets[0].widget {
+							if let Widget::TextLabel(TextLabel { value, .. }) = &*widgets[0].widget {
 								print_problem_to_terminal_on_failure(value);
 							}
 						}

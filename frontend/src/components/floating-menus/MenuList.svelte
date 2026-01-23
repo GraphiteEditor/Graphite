@@ -30,6 +30,7 @@
 
 	export let parentsValuePath: string[] = [];
 	export let entries: MenuListEntry[][];
+	export let entriesHash: bigint;
 	export let activeEntry: MenuListEntry | undefined = undefined;
 	export let open: boolean;
 	export let direction: MenuDirection = "Bottom";
@@ -37,26 +38,30 @@
 	export let drawIcon = false;
 	export let interactive = false;
 	export let scrollableY = false;
-	export let virtualScrollingEntryHeight = 0;
+	export let virtualScrolling = false;
 
 	// Keep the child references outside of the entries array so as to avoid infinite recursion.
 	let childReferences: MenuList[][] = [];
+	let openChildValue: string | undefined = undefined;
 	let search = "";
-
+	let reactiveEntries = entries;
 	let highlighted = activeEntry as MenuListEntry | undefined;
 	let virtualScrollingEntriesStart = 0;
 
-	// Called only when `open` is changed from outside this component
+	// `watchOpen` is called only when `open` is changed from outside this component
 	$: watchOpen(open);
 	$: watchEntries(entries);
+	$: watchEntriesHash(entriesHash);
 	$: watchRemeasureWidth(filteredEntries, drawIcon);
 	$: watchHighlightedWithSearch(filteredEntries, open);
 
-	$: filteredEntries = entries.map((section) => section.filter((entry) => inSearch(search, entry)));
-	$: virtualScrollingTotalHeight = filteredEntries.length === 0 ? 0 : filteredEntries[0].length * virtualScrollingEntryHeight;
-	$: virtualScrollingStartIndex = Math.floor(virtualScrollingEntriesStart / virtualScrollingEntryHeight) || 0;
-	$: virtualScrollingEndIndex = filteredEntries.length === 0 ? 0 : Math.min(filteredEntries[0].length, virtualScrollingStartIndex + 1 + 400 / virtualScrollingEntryHeight);
+	$: virtualScrollingEntryHeight = virtualScrolling ? 20 : 0;
+	$: filteredEntries = reactiveEntries.map((section) => section.filter((entry) => inSearch(search, entry)));
 	$: startIndex = virtualScrollingEntryHeight ? virtualScrollingStartIndex : 0;
+	// Virtual scrolling calculations
+	$: virtualScrollingTotalHeight = filteredEntries.length === 0 ? 0 : filteredEntries[0].length * virtualScrollingEntryHeight;
+	$: virtualScrollingStartIndex = filteredEntries.length === 0 ? 0 : Math.floor(virtualScrollingEntriesStart / virtualScrollingEntryHeight) || 0;
+	$: virtualScrollingEndIndex = filteredEntries.length === 0 ? 0 : Math.min(filteredEntries[0].length, virtualScrollingStartIndex + 1 + 400 / virtualScrollingEntryHeight);
 
 	// TODO: Move keyboard input handling entirely to the unified system in `input.ts`.
 	// TODO: The current approach is hacky and blocks the allowances for shortcuts like the key to open the browser's dev tools.
@@ -139,6 +144,10 @@
 		});
 	}
 
+	function watchEntriesHash(_entriesHash: bigint) {
+		reactiveEntries = entries;
+	}
+
 	function watchRemeasureWidth(_: MenuListEntry[][], __: boolean) {
 		self?.measureAndEmitNaturalWidth();
 	}
@@ -149,23 +158,31 @@
 	}
 
 	function getChildReference(menuListEntry: MenuListEntry): MenuList | undefined {
-		const index = filteredEntries.flat().indexOf(menuListEntry);
-		return childReferences.flat().filter((x) => x)[index];
+		const index = filteredEntries.flat().findIndex((entry) => entry.value === menuListEntry.value);
+
+		if (index !== -1) {
+			return childReferences.flat().filter((x) => x)[index];
+		} else {
+			// eslint-disable-next-line no-console
+			console.error("MenuListEntry not found in filteredEntries:", menuListEntry);
+			return undefined;
+		}
 	}
 
 	function onEntryClick(menuListEntry: MenuListEntry) {
-		// Notify the parent about the clicked entry as the new active entry
-		dispatch("activeEntry", menuListEntry);
-		dispatch("selectedEntryValuePath", [...parentsValuePath, menuListEntry.value]);
-
 		// Close the containing menu
 		let childReference = getChildReference(menuListEntry);
 		if (childReference) {
-			childReference.open = false;
-			entries = entries;
+			openChildValue = undefined;
+			reactiveEntries = reactiveEntries;
 		}
 		dispatch("open", false);
 		open = false;
+		reactiveEntries = reactiveEntries;
+
+		// Notify the parent about the clicked entry as the new active entry
+		dispatch("activeEntry", menuListEntry);
+		dispatch("selectedEntryValuePath", [...parentsValuePath, menuListEntry.value]);
 	}
 
 	function onEntryPointerEnter(menuListEntry: MenuListEntry) {
@@ -176,9 +193,11 @@
 
 		let childReference = getChildReference(menuListEntry);
 		if (childReference) {
-			childReference.open = true;
-			entries = entries;
-		} else dispatch("open", true);
+			openChildValue = menuListEntry.value;
+			reactiveEntries = reactiveEntries;
+		} else {
+			dispatch("open", true);
+		}
 	}
 
 	function onEntryPointerLeave(menuListEntry: MenuListEntry) {
@@ -189,15 +208,11 @@
 
 		let childReference = getChildReference(menuListEntry);
 		if (childReference) {
-			childReference.open = false;
-			entries = entries;
-		} else dispatch("open", false);
-	}
-
-	function isEntryOpen(menuListEntry: MenuListEntry): boolean {
-		if (!menuListEntry.children?.length) return false;
-
-		return getChildReference(menuListEntry)?.open || false;
+			openChildValue = undefined;
+			reactiveEntries = reactiveEntries;
+		} else {
+			dispatch("open", false);
+		}
 	}
 
 	function includeSeparator(entries: MenuListEntry[][], section: MenuListEntry[], sectionIndex: number, search: string): boolean {
@@ -222,7 +237,7 @@
 		// No submenu to open
 		if (!childReference || !highlightedEntry.children?.length) return false;
 
-		childReference.open = true;
+		openChildValue = highlightedEntry.value;
 		// The reason we bother taking `highlightdEntry` as an argument is because, when this function is called, it can ensure `highlightedEntry` is not undefined.
 		// But here we still have to set `highlighted` to itself so Svelte knows to reactively update it after we set its `childReference.open` property.
 		highlighted = highlighted;
@@ -242,7 +257,7 @@
 
 		const menuOpen = open;
 		const flatEntries = filteredEntries.flat().filter((entry) => !entry.disabled);
-		const openChild = flatEntries.findIndex((entry) => (entry.children?.length ?? 0) > 0 && getChildReference(entry)?.open);
+		const openChild = (openChildValue !== undefined && flatEntries.findIndex((entry) => entry.value === openChildValue)) || -1;
 
 		// Allow opening menu with space or enter
 		if (!menuOpen && (e.key === " " || e.key === "Enter")) {
@@ -365,7 +380,7 @@
 		let container = scroller?.div?.();
 		if (!container || !highlighted) return;
 		let containerBoundingRect = container.getBoundingClientRect();
-		let highlightedIndex = filteredEntries.flat().findIndex((entry) => entry === highlighted);
+		let highlightedIndex = filteredEntries.flat().findIndex((entry) => entry.value === highlighted?.value);
 
 		let selectedBoundingRect = new DOMRect();
 		if (virtualScrollingEntryHeight) {
@@ -385,10 +400,6 @@
 		if (containerBoundingRect.y + containerBoundingRect.height < selectedBoundingRect.y + selectedBoundingRect.height) {
 			container.scrollBy(0, selectedBoundingRect.y - (containerBoundingRect.y + containerBoundingRect.height) + selectedBoundingRect.height);
 		}
-	}
-
-	export function scrollViewTo(distanceDown: number) {
-		scroller?.div?.()?.scrollTo(0, distanceDown);
 	}
 </script>
 
@@ -419,14 +430,14 @@
 		{#if virtualScrollingEntryHeight}
 			<LayoutRow class="scroll-spacer" styles={{ height: `${virtualScrollingStartIndex * virtualScrollingEntryHeight}px` }} />
 		{/if}
-		{#each entries as section, sectionIndex (sectionIndex)}
-			{#if includeSeparator(entries, section, sectionIndex, search)}
-				<Separator type="Section" direction="Vertical" />
+		{#each reactiveEntries as section, sectionIndex (sectionIndex)}
+			{#if includeSeparator(reactiveEntries, section, sectionIndex, search)}
+				<Separator style="Section" direction="Vertical" />
 			{/if}
 			{#each currentEntries(section, virtualScrollingEntryHeight, virtualScrollingStartIndex, virtualScrollingEndIndex, search) as entry, entryIndex (entryIndex + startIndex)}
 				<LayoutRow
 					class="row"
-					classes={{ open: isEntryOpen(entry), active: entry.label === highlighted?.label, disabled: Boolean(entry.disabled) }}
+					classes={{ open: openChildValue === entry.value, active: entry.label === highlighted?.label, disabled: Boolean(entry.disabled) }}
 					styles={{ height: virtualScrollingEntryHeight || "20px" }}
 					tooltipLabel={entry.tooltipLabel}
 					tooltipDescription={entry.tooltipDescription}
@@ -438,14 +449,14 @@
 					{#if entry.icon && drawIcon}
 						<IconLabel icon={entry.icon} iconSizeOverride={16} class="entry-icon" />
 					{:else if drawIcon}
-						<div class="no-icon" />
+						<div class="no-icon"></div>
 					{/if}
 
 					{#if entry.font}
-						<link rel="stylesheet" href={entry.font?.toString()} />
+						<link rel="stylesheet" href={entry.font} />
 					{/if}
 
-					<TextLabel class="entry-label" styles={{ "font-family": `${!entry.font ? "inherit" : entry.value}` }}>{entry.label}</TextLabel>
+					<TextLabel class="entry-label" styles={entry.font ? { "font-family": entry.value } : {}}>{entry.label}</TextLabel>
 
 					{#if entry.tooltipShortcut?.shortcut.length}
 						<ShortcutLabel shortcut={entry.tooltipShortcut} />
@@ -454,7 +465,7 @@
 					{#if entry.children?.length}
 						<IconLabel class="submenu-arrow" icon="DropdownArrow" />
 					{:else}
-						<div class="no-submenu-arrow" />
+						<div class="no-submenu-arrow"></div>
 					{/if}
 
 					{#if entry.children}
@@ -467,9 +478,10 @@
 							}}
 							on:selectedEntryValuePath={({ detail }) => dispatch("selectedEntryValuePath", detail)}
 							parentsValuePath={[...parentsValuePath, entry.value]}
-							open={getChildReference(entry)?.open || false}
+							open={openChildValue === entry.value}
 							direction="TopRight"
 							entries={entry.children}
+							entriesHash={entry.childrenHash || 0n}
 							{minWidth}
 							{drawIcon}
 							{scrollableY}

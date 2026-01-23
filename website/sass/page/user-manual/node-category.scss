@@ -1,0 +1,14 @@
+#nodes + table tr {
+	th:last-child {
+		width: 0;
+		white-space: nowrap;
+	}
+
+	td:last-child {
+		width: 0;
+
+		code {
+			white-space: nowrap;
+		}
+	}
+}

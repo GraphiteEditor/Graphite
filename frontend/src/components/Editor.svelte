@@ -11,12 +11,11 @@
 	import { createAppWindowState } from "@graphite/state-providers/app-window";
 	import { createDialogState } from "@graphite/state-providers/dialog";
 	import { createDocumentState } from "@graphite/state-providers/document";
-	import { createFontsState } from "@graphite/state-providers/fonts";
+	import { createFontsManager } from "/src/io-managers/fonts";
 	import { createFullscreenState } from "@graphite/state-providers/fullscreen";
 	import { createNodeGraphState } from "@graphite/state-providers/node-graph";
 	import { createPortfolioState } from "@graphite/state-providers/portfolio";
 	import { createTooltipState } from "@graphite/state-providers/tooltip";
-	import { operatingSystem } from "@graphite/utility-functions/platform";
 
 	import MainWindow from "@graphite/components/window/MainWindow.svelte";
 
@@ -27,12 +26,10 @@
 	// State provider systems
 	let dialog = createDialogState(editor);
 	setContext("dialog", dialog);
-	let tooltip = createTooltipState();
+	let tooltip = createTooltipState(editor);
 	setContext("tooltip", tooltip);
 	let document = createDocumentState(editor);
 	setContext("document", document);
-	let fonts = createFontsState(editor);
-	setContext("fonts", fonts);
 	let fullscreen = createFullscreenState(editor);
 	setContext("fullscreen", fullscreen);
 	let nodeGraph = createNodeGraphState(editor);
@@ -48,11 +45,12 @@
 	createLocalizationManager(editor);
 	createPanicManager(editor, dialog);
 	createPersistenceManager(editor, portfolio);
+	createFontsManager(editor);
 	let inputManagerDestructor = createInputManager(editor, dialog, portfolio, document, fullscreen);
 
 	onMount(() => {
 		// Initialize certain setup tasks required by the editor backend to be ready for the user now that the frontend is ready
-		editor.handle.initAfterFrontendReady(operatingSystem());
+		editor.handle.initAfterFrontendReady();
 	});
 
 	onDestroy(() => {
@@ -262,42 +260,8 @@
 		.scrollable-x,
 		.scrollable-y {
 			overflow: hidden;
-
 			scrollbar-width: thin;
-			// Not supported in Safari
-			scrollbar-color: var(--color-5-dullgray) transparent;
-
-			// Safari (more capable, removed from recent versions of Chromium, possibly still supported in Safari but not tested)
-			&::-webkit-scrollbar {
-				width: calc(2px + 6px + 2px);
-				height: calc(2px + 6px + 2px);
-			}
-
-			&::-webkit-scrollbar-track {
-				box-shadow: inset 0 0 0 1px var(--color-5-dullgray);
-				border: 2px solid transparent;
-				border-radius: 10px;
-			}
-
-			&:hover::-webkit-scrollbar-track {
-				box-shadow: inset 0 0 0 1px var(--color-6-lowergray);
-			}
-
-			&::-webkit-scrollbar-thumb {
-				background-clip: padding-box;
-				background-color: var(--color-5-dullgray);
-				border: 2px solid transparent;
-				border-radius: 10px;
-				margin: 2px;
-			}
-
-			&:hover::-webkit-scrollbar-thumb {
-				background-color: var(--color-6-lowergray);
-			}
-
-			&::-webkit-scrollbar-corner {
-				background: none;
-			}
+			scrollbar-color: var(--color-4-dimgray) transparent;
 		}
 
 		.scrollable-x.scrollable-y {
@@ -305,6 +269,7 @@
 		}
 
 		.scrollable-x:not(.scrollable-y) {
+			scrollbar-width: none;
 			overflow: auto hidden;
 		}
 
@@ -365,7 +330,7 @@
 		font-weight: 400;
 		font-style: normal;
 		font-stretch: normal;
-		src: url("@graphite/../node_modules/source-sans/WOFF2/TTF/SourceSansPro-Regular.ttf.woff2") format("woff2");
+		src: url("@graphite/../node_modules/source-sans-pro/WOFF2/TTF/SourceSansPro-Regular.ttf.woff2") format("woff2");
 	}
 
 	@font-face {
@@ -373,7 +338,7 @@
 		font-weight: 400;
 		font-style: italic;
 		font-stretch: normal;
-		src: url("@graphite/../node_modules/source-sans/WOFF2/TTF/SourceSansPro-It.ttf.woff2") format("woff2");
+		src: url("@graphite/../node_modules/source-sans-pro/WOFF2/TTF/SourceSansPro-It.ttf.woff2") format("woff2");
 	}
 
 	@font-face {
@@ -381,7 +346,7 @@
 		font-weight: 700;
 		font-style: normal;
 		font-stretch: normal;
-		src: url("@graphite/../node_modules/source-sans/WOFF2/TTF/SourceSansPro-Bold.ttf.woff2") format("woff2");
+		src: url("@graphite/../node_modules/source-sans-pro/WOFF2/TTF/SourceSansPro-Bold.ttf.woff2") format("woff2");
 	}
 
 	@font-face {
@@ -389,7 +354,7 @@
 		font-weight: 700;
 		font-style: italic;
 		font-stretch: normal;
-		src: url("@graphite/../node_modules/source-sans/WOFF2/TTF/SourceSansPro-BoldIt.ttf.woff2") format("woff2");
+		src: url("@graphite/../node_modules/source-sans-pro/WOFF2/TTF/SourceSansPro-BoldIt.ttf.woff2") format("woff2");
 	}
 
 	@font-face {
