@@ -14,6 +14,7 @@ pub enum PreferencesMessage {
 	SelectionMode { selection_mode: SelectionMode },
 	BrushTool { enabled: bool },
 	ModifyLayout { zoom_with_scroll: bool },
+	FlickPanning { enabled: bool },
 	GraphWireStyle { style: GraphWireStyle },
 	ViewportZoomWheelRate { rate: f64 },
 	UIScale { scale: f64 },

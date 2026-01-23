@@ -16,6 +16,7 @@ pub struct PreferencesMessageContext<'a> {
 pub struct PreferencesMessageHandler {
 	pub selection_mode: SelectionMode,
 	pub zoom_with_scroll: bool,
+	pub flick_panning: bool,
 	pub use_vello: bool,
 	pub brush_tool: bool,
 	pub graph_wire_style: GraphWireStyle,
@@ -44,6 +45,7 @@ impl Default for PreferencesMessageHandler {
 		Self {
 			selection_mode: SelectionMode::Touched,
 			zoom_with_scroll: matches!(MappingVariant::default(), MappingVariant::ZoomWithScroll),
+			flick_panning: false,
 			use_vello: EditorPreferences::default().use_vello,
 			brush_tool: false,
 			graph_wire_style: GraphWireStyle::default(),
@@ -99,6 +101,9 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 
 				let variant = if zoom_with_scroll { MappingVariant::ZoomWithScroll } else { MappingVariant::Default };
 				responses.add(KeyMappingMessage::ModifyMapping { mapping: variant });
+			}
+			PreferencesMessage::FlickPanning { enabled } => {
+				self.flick_panning = enabled;
 			}
 			PreferencesMessage::SelectionMode { selection_mode } => {
 				self.selection_mode = selection_mode;
