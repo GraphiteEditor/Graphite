@@ -316,8 +316,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			}
 			DocumentMessage::ClearLayersPanel => {
 				// Send an empty layer list
-				let data_buffer: RawBuffer = Self::default().serialize_root();
-				responses.add(FrontendMessage::UpdateDocumentLayerStructure { data_buffer });
+				if layers_panel_open {
+					let data_buffer: RawBuffer = Self::default().serialize_root();
+					responses.add(FrontendMessage::UpdateDocumentLayerStructure { data_buffer });
+				}
 
 				// Clear the control bar
 				responses.add(LayoutMessage::SendLayout {

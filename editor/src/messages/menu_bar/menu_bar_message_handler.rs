@@ -21,6 +21,7 @@ pub struct MenuBarMessageHandler {
 	pub data_panel_open: bool,
 	pub layers_panel_open: bool,
 	pub properties_panel_open: bool,
+	pub focus_document: bool,
 }
 
 #[message_handler_data]
@@ -628,23 +629,31 @@ impl LayoutHolder for MenuBarMessageHandler {
 							.icon("FullscreenEnter")
 							.tooltip_shortcut(action_shortcut!(AppWindowMessageDiscriminant::Fullscreen))
 							.on_commit(|_| AppWindowMessage::Fullscreen.into()),
+						MenuListEntry::new("Focus Document")
+							.label("Focus Document")
+							.icon(if self.focus_document { "CheckboxChecked" } else { "CheckboxUnchecked" })
+							.tooltip_shortcut(action_shortcut!(PortfolioMessageDiscriminant::ToggleFocusDocument))
+							.on_commit(|_| PortfolioMessage::ToggleFocusDocument.into()),
 					],
 					vec![
 						MenuListEntry::new("Properties")
 							.label("Properties")
 							.icon(if self.properties_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" })
 							.tooltip_shortcut(action_shortcut!(PortfolioMessageDiscriminant::TogglePropertiesPanelOpen))
-							.on_commit(|_| PortfolioMessage::TogglePropertiesPanelOpen.into()),
+							.on_commit(|_| PortfolioMessage::TogglePropertiesPanelOpen.into())
+							.disabled(self.focus_document),
 						MenuListEntry::new("Layers")
 							.label("Layers")
 							.icon(if self.layers_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" })
 							.tooltip_shortcut(action_shortcut!(PortfolioMessageDiscriminant::ToggleLayersPanelOpen))
-							.on_commit(|_| PortfolioMessage::ToggleLayersPanelOpen.into()),
+							.on_commit(|_| PortfolioMessage::ToggleLayersPanelOpen.into())
+							.disabled(self.focus_document),
 						MenuListEntry::new("Data")
 							.label("Data")
 							.icon(if self.data_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" })
 							.tooltip_shortcut(action_shortcut!(PortfolioMessageDiscriminant::ToggleDataPanelOpen))
-							.on_commit(|_| PortfolioMessage::ToggleDataPanelOpen.into()),
+							.on_commit(|_| PortfolioMessage::ToggleDataPanelOpen.into())
+							.disabled(self.focus_document),
 					],
 				])
 				.widget_instance(),
