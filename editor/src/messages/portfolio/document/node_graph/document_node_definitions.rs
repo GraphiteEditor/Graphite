@@ -523,9 +523,9 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::F64(1.), false)],
 								..Default::default()
 							},
-							// 2: Instance Index
+							// 2: Read Index
 							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(vector_nodes::instance_index::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(vector_nodes::read_index::IDENTIFIER),
 								inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::value(TaggedValue::U32(0), false)],
 								..Default::default()
 							},
@@ -546,9 +546,9 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								],
 								..Default::default()
 							},
-							// 5: Instance Vector
+							// 5: Read Vector
 							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(vector_nodes::instance_vector::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(vector_nodes::read_vector::IDENTIFIER),
 								inputs: vec![NodeInput::value(TaggedValue::None, false)],
 								..Default::default()
 							},
@@ -563,9 +563,9 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								],
 								..Default::default()
 							},
-							// 7: Instance Map
+							// 7: Map Vector
 							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(vector_nodes::instance_map::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(vector_nodes::map_vector::IDENTIFIER),
 								inputs: vec![NodeInput::node(NodeId(12), 0), NodeInput::node(NodeId(6), 0)],
 								..Default::default()
 							},
@@ -635,9 +635,9 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								inputs: vec![NodeInput::node(NodeId(11), 0), NodeInput::node(NodeId(9), 0), NodeInput::node(NodeId(16), 0)],
 								..Default::default()
 							},
-							// 18: Instance Repeat
+							// 18: Repeat
 							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(vector_nodes::instance_repeat::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(repeat_nodes::repeat::IDENTIFIER),
 								inputs: vec![NodeInput::node(NodeId(17), 0), NodeInput::node(NodeId(0), 0), NodeInput::import(generic!(T), 3)],
 								..Default::default()
 							},
@@ -851,7 +851,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						nodes: [
 							// 0: Instance Vector
 							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(vector_nodes::instance_vector::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(vector_nodes::read_vector::IDENTIFIER),
 								inputs: vec![NodeInput::value(TaggedValue::None, false)],
 								..Default::default()
 							},
@@ -881,7 +881,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							},
 							// 5: Instance Map
 							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(vector_nodes::instance_map::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(vector_nodes::map_vector::IDENTIFIER),
 								inputs: vec![NodeInput::node(NodeId(4), 0), NodeInput::node(NodeId(3), 0)],
 								..Default::default()
 							},

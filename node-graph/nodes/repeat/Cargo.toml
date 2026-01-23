@@ -1,8 +1,8 @@
 [package]
-name = "transform-nodes"
+name = "repeat-nodes"
 version = "0.1.0"
 edition = "2024"
-description = "Transform operation nodes for Graphene"
+description = "Repeat operation nodes for Graphene"
 authors = ["Graphite Authors <contact@graphite.art>"]
 license = "MIT OR Apache-2.0"
 
@@ -13,12 +13,14 @@ default = ["serde"]
 # Local dependencies
 core-types = { workspace = true }
 vector-types = { workspace = true }
-graphic-types = { workspace = true }
+raster-types = { workspace = true }
 node-macro = { workspace = true }
+graphic-types = { workspace = true }
 
 # Workspace dependencies
+dyn-any = { workspace = true }
 glam = { workspace = true }
-rand = { workspace = true }
+log = { workspace = true }
 
 # Optional workspace dependencies
 serde = { workspace = true, optional = true }

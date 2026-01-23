@@ -52,39 +52,7 @@ async fn instance_on_points<T: Into<Graphic> + Default + Send + Clone + 'static>
 }
 
 #[node_macro::node(category("Instancing"), path(core_types::vector))]
-async fn instance_repeat<T: Into<Graphic> + Default + Send + Clone + 'static>(
-	ctx: impl ExtractAll + CloneVarArgs + Ctx,
-	#[implementations(
-		Context -> Table<Graphic>,
-		Context -> Table<Vector>,
-		Context -> Table<Raster<CPU>>,
-		Context -> Table<Color>,
-		Context -> Table<GradientStops>,
-	)]
-	instance: impl Node<'n, Context<'static>, Output = Table<T>>,
-	#[default(1)] count: u64,
-	reverse: bool,
-) -> Table<T> {
-	let count = count.max(1) as usize;
-
-	let mut result_table = Table::new();
-
-	for index in 0..count {
-		let index = if reverse { count - index - 1 } else { index };
-
-		let new_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index);
-		let generated_instance = instance.eval(new_ctx.into_context()).await;
-
-		for generated_row in generated_instance.into_iter() {
-			result_table.push(generated_row);
-		}
-	}
-
-	result_table
-}
-
-#[node_macro::node(category("Instancing"), path(core_types::vector))]
-async fn instance_position(
+async fn read_position(
 	ctx: impl Ctx + ExtractPosition,
 	_primary: (),
 	/// The number of nested loops to traverse outwards (from the innermost loop) to get the position from. The most upstream loop is level 0, and downstream loops add levels.
@@ -100,6 +68,7 @@ async fn instance_position(
 		}
 		last = position;
 	}
+
 	last
 }
 
@@ -108,8 +77,8 @@ async fn instance_position(
 /// Produces the index of the current iteration of a loop by reading from the evaluation context, which is supplied by downstream nodes such as *Instance Repeat*.
 ///
 /// Nested loops can enable 2D or higher-dimensional iteration by using the *Loop Level* parameter to read the index from outer levels of loops.
-#[node_macro::node(category("Instancing"), path(core_types::vector))]
-async fn instance_index(
+#[node_macro::node(category("Context"), path(core_types::vector))]
+async fn read_index(
 	ctx: impl Ctx + ExtractIndex,
 	_primary: (),
 	/// The number of nested loops to traverse outwards (from the innermost loop) to get the index from. The most upstream loop is level 0, and downstream loops add levels.

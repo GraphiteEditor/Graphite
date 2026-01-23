@@ -1,7 +1,6 @@
-use core::f64::consts::PI;
+use core::f64::consts::{PI, TAU};
 use core::hash::{Hash, Hasher};
-use core_types::bounds::{BoundingBox, RenderBoundingBox};
-use core_types::registry::types::{Angle, IntegerCount, Length, Multiplier, Percentage, PixelLength, PixelSize, Progression, SeedValue};
+use core_types::registry::types::{Angle, Length, Percentage, PixelLength, Progression, SeedValue};
 use core_types::table::{Table, TableRow, TableRowMut};
 use core_types::transform::{Footprint, Transform};
 use core_types::{CloneVarArgs, Color, Context, Ctx, ExtractAll, ExtractVarArgs, OwnedContextImpl};
@@ -12,22 +11,18 @@ use graphic_types::{Graphic, IntoGraphicTable};
 use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, PathEl, PathSeg, Shape};
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
-use std::f64::consts::TAU;
 use vector_types::subpath::{BezierHandles, ManipulatorGroup};
 use vector_types::vector::PointDomain;
-use vector_types::vector::ReferencePoint;
-use vector_types::vector::algorithms::bezpath_algorithms::eval_pathseg_euclidean;
-use vector_types::vector::algorithms::bezpath_algorithms::{self, TValue, evaluate_bezpath, sample_polyline_on_bezpath, split_bezpath, tangent_on_bezpath};
+use vector_types::vector::algorithms::bezpath_algorithms::{self, TValue, eval_pathseg_euclidean, evaluate_bezpath, sample_polyline_on_bezpath, split_bezpath, tangent_on_bezpath};
 use vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
 use vector_types::vector::algorithms::offset_subpath::offset_bezpath;
 use vector_types::vector::algorithms::spline::{solve_spline_first_handle_closed, solve_spline_first_handle_open};
-use vector_types::vector::misc::{CentroidType, ExtrudeJoiningAlgorithm, bezpath_from_manipulator_groups, bezpath_to_manipulator_groups, point_to_dvec2};
-use vector_types::vector::misc::{MergeByDistanceAlgorithm, PointSpacingType, is_linear};
-use vector_types::vector::misc::{handles_to_segment, segment_to_handles};
-use vector_types::vector::style::{Fill, Gradient, GradientStops, Stroke};
-use vector_types::vector::style::{PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
-use vector_types::vector::{FillId, RegionId};
-use vector_types::vector::{PointId, SegmentDomain, SegmentId, StrokeId, VectorExt};
+use vector_types::vector::misc::{
+	CentroidType, ExtrudeJoiningAlgorithm, MergeByDistanceAlgorithm, PointSpacingType, bezpath_from_manipulator_groups, bezpath_to_manipulator_groups, handles_to_segment, is_linear, point_to_dvec2,
+	segment_to_handles,
+};
+use vector_types::vector::style::{Fill, Gradient, GradientStops, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use vector_types::vector::{FillId, PointId, RegionId, SegmentDomain, SegmentId, StrokeId, VectorExt};
 
 /// Implemented for types that can be converted to an iterator of vector rows.
 /// Used for the fill and stroke node so they can be used on `Table<Graphic>` or `Table<Vector>`.
@@ -223,210 +218,6 @@ where
 	}
 
 	content
-}
-
-#[node_macro::node(category("Instancing"), path(core_types::vector))]
-async fn repeat<I: 'n + Send + Clone>(
-	_: impl Ctx,
-	// TODO: Implement other graphical types.
-	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>)] instance: Table<I>,
-	#[default(100., 100.)]
-	// TODO: When using a custom Properties panel layout in document_node_definitions.rs and this default is set, the widget weirdly doesn't show up in the Properties panel. Investigation is needed.
-	direction: PixelSize,
-	angle: Angle,
-	#[default(5)] count: IntegerCount,
-) -> Table<I> {
-	let angle = angle.to_radians();
-	let count = count.max(1);
-	let total = (count - 1) as f64;
-
-	let mut result_table = Table::new();
-
-	for index in 0..count {
-		let angle = index as f64 * angle / total;
-		let translation = index as f64 * direction / total;
-		let transform = DAffine2::from_angle(angle) * DAffine2::from_translation(translation);
-
-		for row in instance.iter() {
-			let mut row = row.into_cloned();
-
-			let local_translation = DAffine2::from_translation(row.transform.translation);
-			let local_matrix = DAffine2::from_mat2(row.transform.matrix2);
-			row.transform = local_translation * transform * local_matrix;
-
-			result_table.push(row);
-		}
-	}
-
-	result_table
-}
-
-#[node_macro::node(category("Instancing"), path(core_types::vector))]
-async fn circular_repeat<I: 'n + Send + Clone>(
-	_: impl Ctx,
-	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>)] instance: Table<I>,
-	start_angle: Angle,
-	#[unit(" px")]
-	#[default(5)]
-	radius: f64,
-	#[default(5)] count: IntegerCount,
-) -> Table<I> {
-	let count = count.max(1);
-
-	let mut result_table = Table::new();
-
-	for index in 0..count {
-		let angle = DAffine2::from_angle((TAU / count as f64) * index as f64 + start_angle.to_radians());
-		let translation = DAffine2::from_translation(radius * DVec2::Y);
-		let transform = angle * translation;
-
-		for row in instance.iter() {
-			let mut row = row.into_cloned();
-
-			let local_translation = DAffine2::from_translation(row.transform.translation);
-			let local_matrix = DAffine2::from_mat2(row.transform.matrix2);
-			row.transform = local_translation * transform * local_matrix;
-
-			result_table.push(row);
-		}
-	}
-
-	result_table
-}
-
-#[node_macro::node(name("Copy to Points"), category("Instancing"), path(core_types::vector))]
-async fn copy_to_points<I: 'n + Send + Clone>(
-	_: impl Ctx,
-	points: Table<Vector>,
-	/// Artwork to be copied and placed at each point.
-	#[expose]
-	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>)]
-	instance: Table<I>,
-	/// Minimum range of randomized sizes given to each instance.
-	#[default(1)]
-	#[range((0., 2.))]
-	#[unit("x")]
-	random_scale_min: Multiplier,
-	/// Maximum range of randomized sizes given to each instance.
-	#[default(1)]
-	#[range((0., 2.))]
-	#[unit("x")]
-	random_scale_max: Multiplier,
-	/// Bias for the probability distribution of randomized sizes (0 is uniform, negatives favor more of small sizes, positives favor more of large sizes).
-	#[range((-50., 50.))]
-	random_scale_bias: f64,
-	/// Seed to determine unique variations on all the randomized instance sizes.
-	random_scale_seed: SeedValue,
-	/// Range of randomized angles given to each instance, in degrees ranging from furthest clockwise to counterclockwise.
-	#[range((0., 360.))]
-	random_rotation: Angle,
-	/// Seed to determine unique variations on all the randomized instance angles.
-	random_rotation_seed: SeedValue,
-) -> Table<I> {
-	let mut result_table = Table::new();
-
-	let random_scale_difference = random_scale_max - random_scale_min;
-
-	for row in points.into_iter() {
-		let mut scale_rng = rand::rngs::StdRng::seed_from_u64(random_scale_seed.into());
-		let mut rotation_rng = rand::rngs::StdRng::seed_from_u64(random_rotation_seed.into());
-
-		let do_scale = random_scale_difference.abs() > 1e-6;
-		let do_rotation = random_rotation.abs() > 1e-6;
-
-		let points_transform = row.transform;
-		for &point in row.element.point_domain.positions() {
-			let translation = points_transform.transform_point2(point);
-
-			let rotation = if do_rotation {
-				let degrees = (rotation_rng.random::<f64>() - 0.5) * random_rotation;
-				degrees / 360. * TAU
-			} else {
-				0.
-			};
-
-			let scale = if do_scale {
-				if random_scale_bias.abs() < 1e-6 {
-					// Linear
-					random_scale_min + scale_rng.random::<f64>() * random_scale_difference
-				} else {
-					// Weighted (see <https://www.desmos.com/calculator/gmavd3m9bd>)
-					let horizontal_scale_factor = 1. - 2_f64.powf(random_scale_bias);
-					let scale_factor = (1. - scale_rng.random::<f64>() * horizontal_scale_factor).log2() / random_scale_bias;
-					random_scale_min + scale_factor * random_scale_difference
-				}
-			} else {
-				random_scale_min
-			};
-
-			let transform = DAffine2::from_scale_angle_translation(DVec2::splat(scale), rotation, translation);
-
-			for mut row in instance.iter().map(|row| row.into_cloned()) {
-				row.transform = transform * row.transform;
-
-				result_table.push(row);
-			}
-		}
-	}
-
-	result_table
-}
-
-#[node_macro::node(category("Instancing"), path(core_types::vector))]
-async fn mirror<I: 'n + Send + Clone>(
-	_: impl Ctx,
-	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>)] content: Table<I>,
-	#[default(ReferencePoint::Center)] relative_to_bounds: ReferencePoint,
-	#[unit(" px")] offset: f64,
-	#[range((-90., 90.))] angle: Angle,
-	#[default(true)] keep_original: bool,
-) -> Table<I>
-where
-	Table<I>: BoundingBox,
-{
-	// Normalize the direction vector
-	let normal = DVec2::from_angle(angle.to_radians());
-
-	// The mirror reference may be based on the bounding box if an explicit reference point is chosen
-	let RenderBoundingBox::Rectangle(bounding_box) = content.bounding_box(DAffine2::IDENTITY, false) else {
-		return content;
-	};
-
-	let reference_point_location = relative_to_bounds.point_in_bounding_box((bounding_box[0], bounding_box[1]).into());
-	let mirror_reference_point = reference_point_location.map(|point| point + normal * offset);
-
-	// Create the reflection matrix
-	let reflection = DAffine2::from_mat2_translation(
-		glam::DMat2::from_cols(
-			DVec2::new(1. - 2. * normal.x * normal.x, -2. * normal.y * normal.x),
-			DVec2::new(-2. * normal.x * normal.y, 1. - 2. * normal.y * normal.y),
-		),
-		DVec2::ZERO,
-	);
-
-	// Apply reflection around the reference point
-	let reflected_transform = if let Some(mirror_reference_point) = mirror_reference_point {
-		DAffine2::from_translation(mirror_reference_point) * reflection * DAffine2::from_translation(-mirror_reference_point)
-	} else {
-		reflection * DAffine2::from_translation(DVec2::from_angle(angle.to_radians()) * DVec2::splat(-offset))
-	};
-
-	let mut result_table = Table::new();
-
-	// Add original instance depending on the keep_original flag
-	if keep_original {
-		for instance in content.clone().into_iter() {
-			result_table.push(instance);
-		}
-	}
-
-	// Create and add mirrored instance
-	for mut row in content.into_iter() {
-		row.transform = reflected_transform * row.transform;
-		result_table.push(row);
-	}
-
-	result_table
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
@@ -1200,16 +991,18 @@ async fn separate_subpaths(_: impl Ctx, content: Table<Vector>) -> Table<Vector>
 		.collect()
 }
 
-#[node_macro::node(category("Vector"), path(graphene_core::vector))]
-fn instance_vector(ctx: impl Ctx + ExtractVarArgs) -> Table<Vector> {
+// TODO: Call this "Read Context" once it's fully generic
+#[node_macro::node(category("Context"), path(graphene_core::vector))]
+fn read_vector(ctx: impl Ctx + ExtractVarArgs) -> Table<Vector> {
 	let Ok(var_arg) = ctx.vararg(0) else { return Default::default() };
 	let var_arg = var_arg as &dyn std::any::Any;
 
 	var_arg.downcast_ref().cloned().unwrap_or_default()
 }
 
+// TODO: Call this "Map" once it's fully generic
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn instance_map(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: Table<Vector>, mapped: impl Node<Context<'static>, Output = Table<Vector>>) -> Table<Vector> {
+async fn map_vector(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: Table<Vector>, mapped: impl Node<Context<'static>, Output = Table<Vector>>) -> Table<Vector> {
 	let mut rows = Vec::new();
 
 	for (i, row) in content.into_iter().enumerate() {
@@ -2458,8 +2251,8 @@ mod test {
 		}
 	}
 	#[tokio::test]
-	async fn circular_repeat() {
-		let repeated = super::circular_repeat(Footprint::default(), vector_node_from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY)), 45., 4., 8).await;
+	async fn radial_repeat() {
+		let repeated = super::radial_repeat(Footprint::default(), vector_node_from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY)), 45., 4., 8).await;
 		let vector_table = super::flatten_path(Footprint::default(), repeated).await;
 		let vector = vector_table.iter().next().unwrap().element;
 		assert_eq!(vector.region_manipulator_groups().count(), 8);
