@@ -4,7 +4,7 @@ use core::hash::{Hash, Hasher};
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::registry::types::{Angle, IntegerCount, Length, Multiplier, Percentage, PixelLength, PixelSize, Progression, SeedValue};
 use core_types::table::{Table, TableRow, TableRowMut};
-use core_types::transform::{Footprint, Transform};
+use core_types::transform::{ApplyTransform, Footprint, Transform};
 use core_types::{CloneVarArgs, Color, Context, Ctx, ExtractAll, ExtractVarArgs, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::Vector;
@@ -33,18 +33,18 @@ use vector_types::vector::{PointId, SegmentDomain, SegmentId, StrokeId, VectorEx
 /// Implemented for types that can be converted to an iterator of vector rows.
 /// Used for the fill and stroke node so they can be used on `Table<Graphic>` or `Table<Vector>`.
 trait VectorTableIterMut {
-	fn vector_iter_mut(&mut self) -> impl Iterator<Item = TableRowMut<'_, Vector>>;
+	fn vector_iter_mut(&mut self) -> impl DoubleEndedIterator<Item = TableRowMut<'_, Vector>>;
 }
 
 impl VectorTableIterMut for Table<Graphic> {
-	fn vector_iter_mut(&mut self) -> impl Iterator<Item = TableRowMut<'_, Vector>> {
+	fn vector_iter_mut(&mut self) -> impl DoubleEndedIterator<Item = TableRowMut<'_, Vector>> {
 		// Grab only the direct children
 		self.iter_mut().filter_map(|element| element.element.as_vector_mut()).flat_map(move |vector| vector.iter_mut())
 	}
 }
 
 impl VectorTableIterMut for Table<Vector> {
-	fn vector_iter_mut(&mut self) -> impl Iterator<Item = TableRowMut<'_, Vector>> {
+	fn vector_iter_mut(&mut self) -> impl DoubleEndedIterator<Item = TableRowMut<'_, Vector>> {
 		self.iter_mut()
 	}
 }
@@ -103,6 +103,239 @@ where
 		if stroke && let Some(stroke) = vector.element.style.stroke().and_then(|stroke| stroke.with_color(&Some(color))) {
 			vector.element.style.set_stroke(stroke);
 		}
+	}
+
+	content
+}
+
+#[node_macro::node(category("Instancing"), path(core_types::vector))]
+async fn assign_rotations<T: VectorTableIterMut + 'n + Send>(
+	_: impl Ctx,
+	#[implementations(Table<Graphic>, Table<Vector>)] mut content: T,
+	#[range((0., 360.))]
+	#[default(360.)]
+	angle: Angle,
+	/// Whether to reverse the order.
+	reverse: bool,
+	/// Whether to randomize the rotation selection for each element.
+	#[default(true)]
+	randomize: bool,
+	/// The seed used for randomization.
+	seed: SeedValue,
+	#[range((-50., 50.))] bias: f64,
+	/// The number of elements to span across before repeating. A 0 value will span the entire range once.
+	repeat_every: u32,
+) -> T {
+	let count = content.vector_iter_mut().count() as u32;
+
+	let mut rng = rand::rngs::StdRng::seed_from_u64(seed as u64);
+
+	let apply = |(index, vector): (usize, TableRowMut<'_, Vector>)| {
+		let factor = match randomize {
+			true => {
+				if bias.abs() < 1e-6 {
+					rng.random::<f64>()
+				} else {
+					(1. - rng.random::<f64>() * (1. - 2_f64.powf(bias))).log2() / bias
+				}
+			}
+			false => match repeat_every {
+				0 => index as f64 / (count - 1).max(1) as f64,
+				1 => 0.,
+				_ => index as f64 % repeat_every as f64 / (repeat_every - 1) as f64,
+			},
+		};
+		let rotation_transform = DAffine2::from_angle(factor * angle.to_radians());
+		vector.transform.left_apply_transform(&rotation_transform);
+	};
+
+	if reverse {
+		content.vector_iter_mut().rev().enumerate().for_each(apply);
+	} else {
+		content.vector_iter_mut().enumerate().for_each(apply);
+	}
+
+	content
+}
+
+#[node_macro::node(category("Instancing"), path(core_types::vector))]
+async fn assign_translations<T: VectorTableIterMut + 'n + Send>(
+	_: impl Ctx,
+	#[implementations(Table<Graphic>, Table<Vector>)] mut content: T,
+	x_min: f64,
+	x_max: f64,
+	y_min: f64,
+	y_max: f64,
+	/// Whether to reverse the order.
+	reverse: bool,
+	/// Whether to randomize the translation selection for each element.
+	#[default(true)]
+	randomize: bool,
+	/// The seed used for randomization.
+	seed: SeedValue,
+	#[range((-50., 50.))] x_bias: f64,
+	#[range((-50., 50.))] y_bias: f64,
+	/// The number of elements to span across before repeating. A 0 value will span the entire range once.
+	repeat_every: u32,
+) -> T {
+	let count = content.vector_iter_mut().count() as u32;
+
+	let mut rng = rand::rngs::StdRng::seed_from_u64(seed as u64);
+
+	let apply = |(index, vector): (usize, TableRowMut<'_, Vector>)| {
+		let (factor_x, factor_y) = match randomize {
+			true => {
+				let factor_x = if x_bias.abs() < 1e-6 {
+					rng.random::<f64>()
+				} else {
+					(1. - rng.random::<f64>() * (1. - 2_f64.powf(x_bias))).log2() / x_bias
+				};
+				let factor_y = if y_bias.abs() < 1e-6 {
+					rng.random::<f64>()
+				} else {
+					(1. - rng.random::<f64>() * (1. - 2_f64.powf(y_bias))).log2() / y_bias
+				};
+				(factor_x, factor_y)
+			}
+			false => match repeat_every {
+				0 => {
+					let factor = index as f64 / (count - 1).max(1) as f64;
+					(factor, factor)
+				}
+				1 => (0., 0.),
+				_ => {
+					let factor = index as f64 % repeat_every as f64 / (repeat_every - 1) as f64;
+					(factor, factor)
+				}
+			},
+		};
+		let translation = DVec2::new(x_min + (x_max - x_min) * factor_x, y_min + (y_max - y_min) * factor_y);
+		let translation_transform = DAffine2::from_translation(translation);
+		vector.transform.left_apply_transform(&translation_transform);
+	};
+
+	if reverse {
+		content.vector_iter_mut().rev().enumerate().for_each(apply);
+	} else {
+		content.vector_iter_mut().enumerate().for_each(apply);
+	}
+
+	content
+}
+
+// TODO: decide if we want to keep both circular and non-circular versions
+#[node_macro::node(category("Instancing"), path(core_types::vector))]
+async fn assign_translations_circular<T: VectorTableIterMut + 'n + Send>(
+	_: impl Ctx,
+	#[implementations(Table<Graphic>, Table<Vector>)] mut content: T,
+	radius_min: f64,
+	radius_max: f64,
+	#[default(-180.)] angle_min: Angle,
+	#[default(180.)] angle_max: Angle,
+	/// Whether to reverse the order.
+	reverse: bool,
+	/// Whether to randomize the translation selection for each element.
+	#[default(true)]
+	randomize: bool,
+	/// The seed used for randomization.
+	seed: SeedValue,
+	#[range((-50., 50.))] radius_bias: f64,
+	#[range((-50., 50.))] angle_bias: f64,
+	/// The number of elements to span across before repeating. A 0 value will span the entire range once.
+	repeat_every: u32,
+) -> T {
+	let count = content.vector_iter_mut().count() as u32;
+
+	let mut rng = rand::rngs::StdRng::seed_from_u64(seed as u64);
+
+	let apply = |(index, vector): (usize, TableRowMut<'_, Vector>)| {
+		let (factor_angle, factor_radius) = match randomize {
+			true => {
+				let factor_angle = if angle_bias.abs() < 1e-6 {
+					rng.random::<f64>()
+				} else {
+					(1. - rng.random::<f64>() * (1. - 2_f64.powf(angle_bias))).log2() / angle_bias
+				};
+				let factor_radius = if radius_bias.abs() < 1e-6 {
+					rng.random::<f64>()
+				} else {
+					(1. - rng.random::<f64>() * (1. - 2_f64.powf(radius_bias))).log2() / radius_bias
+				};
+				(factor_angle, factor_radius)
+			}
+			false => match repeat_every {
+				0 => {
+					let factor = index as f64 / (count - 1).max(1) as f64;
+					(factor, factor)
+				}
+				1 => (0., 0.),
+				_ => {
+					let factor = index as f64 % repeat_every as f64 / (repeat_every - 1) as f64;
+					(factor, factor)
+				}
+			},
+		};
+		let angle = factor_angle * (angle_max.to_radians() - angle_min.to_radians()) + angle_min.to_radians();
+		let radius = radius_min + (radius_max - radius_min) * factor_radius.sqrt();
+		let translation = DVec2::new(angle.cos() * radius, angle.sin() * radius);
+		let translation_transform = DAffine2::from_translation(translation);
+		vector.transform.left_apply_transform(&translation_transform);
+	};
+
+	if reverse {
+		content.vector_iter_mut().rev().enumerate().for_each(apply);
+	} else {
+		content.vector_iter_mut().enumerate().for_each(apply);
+	}
+
+	content
+}
+
+#[node_macro::node(category("Instancing"), path(core_types::vector))]
+async fn assign_scales<T: VectorTableIterMut + 'n + Send>(
+	_: impl Ctx,
+	#[implementations(Table<Graphic>, Table<Vector>)] mut content: T,
+	#[default(0.5)] min_scale: f64,
+	#[default(2.)] max_scale: f64,
+	/// Whether to reverse the order.
+	reverse: bool,
+	/// Whether to randomize the scale selection for each element.
+	#[default(true)]
+	randomize: bool,
+	/// The seed used for randomization.
+	seed: SeedValue,
+	#[range((-50., 50.))] bias: f64,
+	/// The number of elements to span across before repeating. A 0 value will span the entire range once.
+	repeat_every: u32,
+) -> T {
+	let count = content.vector_iter_mut().count() as u32;
+
+	let mut rng = rand::rngs::StdRng::seed_from_u64(seed as u64);
+
+	let apply = |(index, vector): (usize, TableRowMut<'_, Vector>)| {
+		let factor = match randomize {
+			true => {
+				if bias.abs() < 1e-6 {
+					rng.random::<f64>()
+				} else {
+					(1. - rng.random::<f64>() * (1. - 2_f64.powf(bias))).log2() / bias
+				}
+			}
+			false => match repeat_every {
+				0 => index as f64 / (count - 1).max(1) as f64,
+				1 => 0.,
+				_ => index as f64 % repeat_every as f64 / (repeat_every - 1) as f64,
+			},
+		};
+		let scale_value = min_scale + (max_scale - min_scale) * factor;
+		let scale_transform = DAffine2::from_scale(DVec2::splat(scale_value));
+		vector.transform.apply_transform(&scale_transform);
+	};
+
+	if reverse {
+		content.vector_iter_mut().rev().enumerate().for_each(apply);
+	} else {
+		content.vector_iter_mut().enumerate().for_each(apply);
 	}
 
 	content
