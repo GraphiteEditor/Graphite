@@ -60,11 +60,12 @@ pub struct PortfolioMessageHandler {
 	pub executor: NodeGraphExecutor,
 	pub selection_mode: SelectionMode,
 	pub reset_node_definitions_on_open: bool,
-	pub data_panel_open: bool,
-	#[derivative(Default(value = "true"))]
-	pub layers_panel_open: bool,
+	pub focus_document: bool,
 	#[derivative(Default(value = "true"))]
 	pub properties_panel_open: bool,
+	#[derivative(Default(value = "true"))]
+	pub layers_panel_open: bool,
+	pub data_panel_open: bool,
 }
 
 #[message_handler_data]
@@ -94,9 +95,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						current_tool,
 						preferences,
 						viewport,
-						data_panel_open: self.data_panel_open,
-						layers_panel_open: self.layers_panel_open,
-						properties_panel_open: self.properties_panel_open,
+						data_panel_open: self.data_panel_open && !self.focus_document,
+						layers_panel_open: self.layers_panel_open && !self.focus_document,
+						properties_panel_open: self.properties_panel_open && !self.focus_document,
 					};
 					document.process_message(message, responses, document_inputs)
 				}
@@ -158,9 +159,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						current_tool,
 						preferences,
 						viewport,
-						data_panel_open: self.data_panel_open,
-						layers_panel_open: self.layers_panel_open,
-						properties_panel_open: self.properties_panel_open,
+						data_panel_open: self.data_panel_open && !self.focus_document,
+						layers_panel_open: self.layers_panel_open && !self.focus_document,
+						properties_panel_open: self.properties_panel_open && !self.focus_document,
 					};
 					document.process_message(message, responses, document_inputs)
 				}
@@ -452,7 +453,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					responses.add(NavigationMessage::CanvasPan { delta: (0., 0.).into() });
 				}
 
-				self.load_document(new_document, document_id, self.layers_panel_open, responses, false);
+				self.load_document(new_document, document_id, responses, false);
 				responses.add(PortfolioMessage::SelectDocument { document_id });
 			}
 			PortfolioMessage::NextDocument => {
@@ -655,7 +656,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				}
 
 				// Load the document into the portfolio so it opens in the editor
-				self.load_document(document, document_id, self.layers_panel_open, responses, to_front);
+				self.load_document(document, document_id, responses, to_front);
 
 				if select_after_open {
 					responses.add(PortfolioMessage::SelectDocument { document_id });
@@ -1150,7 +1151,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				let node_to_inspect = self.node_to_inspect();
 
 				let Some(document) = self.documents.get_mut(&document_id) else {
-					log::error!("Tried to render non-existent document");
+					log::error!("Tried to render non-existent document {:?}", document_id);
 					return;
 				};
 
@@ -1177,7 +1178,101 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					Ok(message) => responses.add_front(message),
 				}
 			}
+			PortfolioMessage::ToggleFocusDocument => {
+				self.focus_document = !self.focus_document;
+				responses.add(MenuBarMessage::SendLayout);
+
+				if self.focus_document {
+					if self.properties_panel_open {
+						responses.add(PropertiesPanelMessage::Clear);
+						responses.add(FrontendMessage::UpdatePropertiesPanelState { open: false });
+					}
+
+					if self.layers_panel_open {
+						responses.add(DocumentMessage::ClearLayersPanel);
+						responses.add(FrontendMessage::UpdateLayersPanelState { open: false });
+					}
+
+					if self.data_panel_open {
+						responses.add(DataPanelMessage::ClearLayout);
+						responses.add(FrontendMessage::UpdateDataPanelState { open: false });
+					}
+				} else {
+					if self.properties_panel_open {
+						responses.add(FrontendMessage::UpdatePropertiesPanelState { open: true });
+					}
+					if self.layers_panel_open {
+						responses.add(FrontendMessage::UpdateLayersPanelState { open: true });
+					}
+					if self.data_panel_open {
+						responses.add(FrontendMessage::UpdateDataPanelState { open: true });
+					}
+
+					// Run the graph to grab the data
+					if self.properties_panel_open || self.layers_panel_open || self.data_panel_open {
+						responses.add(NodeGraphMessage::RunDocumentGraph);
+					}
+
+					if self.properties_panel_open {
+						responses.add(PropertiesPanelMessage::Refresh);
+					}
+					if self.layers_panel_open && self.active_document_id.is_some() {
+						responses.add(DeferMessage::AfterGraphRun {
+							messages: vec![NodeGraphMessage::UpdateLayerPanel.into(), DocumentMessage::DocumentStructureChanged.into()],
+						});
+					}
+				}
+			}
+			PortfolioMessage::TogglePropertiesPanelOpen => {
+				if self.focus_document {
+					return;
+				}
+
+				self.properties_panel_open = !self.properties_panel_open;
+				responses.add(MenuBarMessage::SendLayout);
+
+				// Run the graph to grab the data
+				if self.properties_panel_open {
+					responses.add(FrontendMessage::UpdatePropertiesPanelState { open: self.properties_panel_open });
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+					responses.add(PropertiesPanelMessage::Refresh);
+				} else {
+					responses.add(PropertiesPanelMessage::Clear);
+					responses.add(FrontendMessage::UpdatePropertiesPanelState { open: self.properties_panel_open });
+				}
+			}
+			PortfolioMessage::ToggleLayersPanelOpen => {
+				if self.focus_document {
+					return;
+				}
+
+				self.layers_panel_open = !self.layers_panel_open;
+				responses.add(MenuBarMessage::SendLayout);
+
+				// Run the graph to grab the data
+				if self.layers_panel_open {
+					// When opening, we make the frontend show the panel first so it can start receiving its message subscriptions for the data it will display
+					responses.add(FrontendMessage::UpdateLayersPanelState { open: self.layers_panel_open });
+
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+					if self.active_document_id.is_some() {
+						responses.add(DeferMessage::AfterGraphRun {
+							messages: vec![NodeGraphMessage::UpdateLayerPanel.into(), DocumentMessage::DocumentStructureChanged.into()],
+						});
+					}
+				} else {
+					// If we don't clear the panel, the layout diffing system will assume widgets still exist when it attempts to update the layers panel next time it is opened
+					responses.add(DocumentMessage::ClearLayersPanel);
+
+					// When closing, we make the frontend hide the panel last so it can finish receiving its message subscriptions before it is destroyed
+					responses.add(FrontendMessage::UpdateLayersPanelState { open: self.layers_panel_open });
+				}
+			}
 			PortfolioMessage::ToggleDataPanelOpen => {
+				if self.focus_document {
+					return;
+				}
+
 				self.data_panel_open = !self.data_panel_open;
 				responses.add(MenuBarMessage::SendLayout);
 
@@ -1193,40 +1288,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 					// When closing, we make the frontend hide the panel last so it can finish receiving its message subscriptions before it is destroyed
 					responses.add(FrontendMessage::UpdateDataPanelState { open: self.data_panel_open });
-				}
-			}
-			PortfolioMessage::TogglePropertiesPanelOpen => {
-				self.properties_panel_open = !self.properties_panel_open;
-				responses.add(MenuBarMessage::SendLayout);
-
-				responses.add(FrontendMessage::UpdatePropertiesPanelState { open: self.properties_panel_open });
-
-				// Run the graph to grab the data
-				if self.properties_panel_open {
-					responses.add(NodeGraphMessage::RunDocumentGraph);
-				}
-
-				responses.add(PropertiesPanelMessage::Refresh);
-			}
-			PortfolioMessage::ToggleLayersPanelOpen => {
-				self.layers_panel_open = !self.layers_panel_open;
-				responses.add(MenuBarMessage::SendLayout);
-
-				// Run the graph to grab the data
-				if self.layers_panel_open {
-					// When opening, we make the frontend show the panel first so it can start receiving its message subscriptions for the data it will display
-					responses.add(FrontendMessage::UpdateLayersPanelState { open: self.layers_panel_open });
-
-					responses.add(NodeGraphMessage::RunDocumentGraph);
-					responses.add(DeferMessage::AfterGraphRun {
-						messages: vec![NodeGraphMessage::UpdateLayerPanel.into(), DocumentMessage::DocumentStructureChanged.into()],
-					});
-				} else {
-					// If we don't clear the panel, the layout diffing system will assume widgets still exist when it attempts to update the layers panel next time it is opened
-					responses.add(DocumentMessage::ClearLayersPanel);
-
-					// When closing, we make the frontend hide the panel last so it can finish receiving its message subscriptions before it is destroyed
-					responses.add(FrontendMessage::UpdateLayersPanelState { open: self.layers_panel_open });
 				}
 			}
 			PortfolioMessage::ToggleRulers => {
@@ -1280,7 +1341,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 	fn actions(&self) -> ActionList {
 		let mut common = actions!(PortfolioMessageDiscriminant;
 			Open,
-			ToggleDataPanelOpen,
+			ToggleFocusDocument,
 		);
 
 		// Extend with actions that require an active document
@@ -1303,6 +1364,15 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					Cut,
 				));
 			}
+		}
+
+		// Extend with actions that are disabled when focusing the document
+		if !self.focus_document {
+			common.extend(actions!(PortfolioMessageDiscriminant;
+				TogglePropertiesPanelOpen,
+				ToggleLayersPanelOpen,
+				ToggleDataPanelOpen,
+			));
 		}
 
 		common
@@ -1385,14 +1455,14 @@ impl PortfolioMessageHandler {
 		}
 	}
 
-	fn load_document(&mut self, mut new_document: DocumentMessageHandler, document_id: DocumentId, layers_panel_open: bool, responses: &mut VecDeque<Message>, to_front: bool) {
+	fn load_document(&mut self, mut new_document: DocumentMessageHandler, document_id: DocumentId, responses: &mut VecDeque<Message>, to_front: bool) {
 		if to_front {
 			self.document_ids.push_front(document_id);
 		} else {
 			self.document_ids.push_back(document_id);
 		}
-		new_document.update_layers_panel_control_bar_widgets(layers_panel_open, responses);
-		new_document.update_layers_panel_bottom_bar_widgets(layers_panel_open, responses);
+		new_document.update_layers_panel_control_bar_widgets(self.layers_panel_open && !self.focus_document, responses);
+		new_document.update_layers_panel_bottom_bar_widgets(self.layers_panel_open && !self.focus_document, responses);
 
 		self.documents.insert(document_id, new_document);
 
@@ -1439,7 +1509,7 @@ impl PortfolioMessageHandler {
 	/// Get the ID of the selected node that should be used as the current source for the Data panel.
 	pub fn node_to_inspect(&self) -> Option<NodeId> {
 		// Skip if the Data panel is not open
-		if !self.data_panel_open {
+		if !self.data_panel_open || self.focus_document {
 			return None;
 		}
 

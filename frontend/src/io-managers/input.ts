@@ -93,7 +93,13 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 		// Don't redirect tab or enter if not in canvas (to allow navigating elements)
 		potentiallyRestoreCanvasFocus(e);
-		if (!canvasFocused && !targetIsTextField(e.target || undefined) && ["Tab", "Enter", "NumpadEnter", "Space", "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowUp"].includes(key)) return false;
+		if (
+			!canvasFocused &&
+			!targetIsTextField(e.target || undefined) &&
+			["Tab", "Enter", "NumpadEnter", "Space", "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowUp"].includes(key) &&
+			!(e.ctrlKey || e.metaKey || e.altKey)
+		)
+			return false;
 
 		// Don't redirect if a MenuList is open
 		if (window.document.querySelector("[data-floating-menu-content]")) return false;

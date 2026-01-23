@@ -334,7 +334,8 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		entry!(KeyDown(KeyX); modifiers=[Shift], action_dispatch=ToolMessage::SwapColors),
 		entry!(KeyDown(KeyC); modifiers=[Alt], action_dispatch=ToolMessage::SelectRandomWorkingColor { primary: true }),
 		entry!(KeyDown(KeyC); modifiers=[Alt, Shift], action_dispatch=ToolMessage::SelectRandomWorkingColor { primary: false }),
-		entry!(KeyDownNoRepeat(Tab); action_dispatch=ToolMessage::ToggleSelectVsPath),
+		// TODO: Change to KeyDownNoRepeat when https://github.com/GraphiteEditor/Graphite/issues/2266 is resolved
+		entry!(KeyDown(Tab); action_dispatch=ToolMessage::ToggleSelectVsPath),
 		//
 		// DocumentMessage
 		entry!(KeyDown(Space); modifiers=[Control], action_dispatch=DocumentMessage::GraphViewOverlayToggle),
@@ -448,6 +449,7 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		entry!(KeyDown(KeyC); modifiers=[Accel], action_dispatch=PortfolioMessage::Copy { clipboard: Clipboard::Device }),
 		entry!(KeyDown(KeyR); modifiers=[Alt], action_dispatch=PortfolioMessage::ToggleRulers),
 		entry!(KeyDown(KeyD); modifiers=[Alt], action_dispatch=PortfolioMessage::ToggleDataPanelOpen),
+		entry!(KeyDown(Enter); modifiers=[Alt], action_dispatch=PortfolioMessage::ToggleFocusDocument),
 		//
 		// DialogMessage
 		entry!(KeyDown(KeyE); modifiers=[Accel], action_dispatch=DialogMessage::RequestExportDialog),
