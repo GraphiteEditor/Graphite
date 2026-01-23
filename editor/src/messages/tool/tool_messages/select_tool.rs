@@ -7,7 +7,7 @@ use crate::messages::portfolio::document::graph_operation::utility_types::Transf
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
-use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GroupFolderType};
+use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, BoundingBoxSnapTarget, FlipAxis, GroupFolderType, PathSnapSource, SnapSource, SnapTarget};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, NodeNetworkInterface, NodeTemplate};
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use crate::messages::preferences::SelectionMode;
@@ -592,6 +592,68 @@ pub fn create_bounding_box_transform(document: &DocumentMessageHandler) -> DAffi
 		.unwrap_or_default()
 }
 
+fn snap_pivot_to_bounds(document: &DocumentMessageHandler, mouse_position: DVec2, selection_bounds: &Option<BoundingBoxManager>) -> Option<snapping::SnappedPoint> {
+	let tolerance = snapping::snap_tolerance(document);
+	let mut best_distance = f64::INFINITY;
+	let mut best_snap_point: Option<DVec2> = None;
+	let mut best_quad: Option<Quad> = None;
+	let mut best_point_type: u8 = 0; // 0=corner, 1=midpoint, 2=center
+
+	let mut check_snap = |snap_doc: DVec2, quad: Quad, point_type: u8| {
+		let snap_viewport = document.metadata().document_to_viewport.transform_point2(snap_doc);
+		let distance = mouse_position.distance(snap_viewport);
+		if distance < tolerance && distance < best_distance {
+			best_distance = distance;
+			best_snap_point = Some(snap_doc);
+			best_quad = Some(quad);
+			best_point_type = point_type;
+		}
+	};
+
+	// Snap to selection's combined bounding box
+	if let Some(bounds) = selection_bounds {
+		let quad = document.metadata().document_to_viewport.inverse() * bounds.transform * Quad::from_box(bounds.bounds);
+		for i in 0..4 {
+			check_snap(quad.0[i], quad, 0);
+			check_snap((quad.0[i] + quad.0[(i + 1) % 4]) / 2.0, quad, 1);
+		}
+		check_snap(quad.center(), quad, 2);
+	}
+
+	let selected: Vec<_> = document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface).collect();
+	for layer in document.metadata().all_layers() {
+		if selected.contains(&layer) || !document.network_interface.is_visible(&layer.to_node(), &[]) {
+			continue;
+		}
+		let Some(bounds) = document.metadata().bounding_box_with_transform(layer, document.metadata().transform_to_document(layer)) else {
+			continue;
+		};
+		let quad = Quad::from_box(bounds);
+		for i in 0..4 {
+			check_snap(quad.0[i], quad, 0);
+			check_snap((quad.0[i] + quad.0[(i + 1) % 4]) / 2.0, quad, 1);
+		}
+		check_snap(quad.center(), quad, 2);
+	}
+
+	best_snap_point.zip(best_quad).map(|(snap_point, quad)| {
+		let target = match best_point_type {
+			0 => SnapTarget::BoundingBox(BoundingBoxSnapTarget::CornerPoint),
+			1 => SnapTarget::BoundingBox(BoundingBoxSnapTarget::EdgeMidpoint),
+			_ => SnapTarget::BoundingBox(BoundingBoxSnapTarget::CenterPoint),
+		};
+		snapping::SnappedPoint {
+			snapped_point_document: snap_point,
+			source: SnapSource::Path(PathSnapSource::HandlePoint),
+			target,
+			distance: best_distance,
+			tolerance,
+			target_bounds: Some(quad),
+			..Default::default()
+		}
+	})
+}
+
 impl Fsm for SelectToolFsmState {
 	type ToolData = SelectToolData;
 	type ToolOptions = ();
@@ -1149,6 +1211,7 @@ impl Fsm for SelectToolFsmState {
 			}
 			(SelectToolFsmState::DraggingPivot, SelectToolMessage::Abort) => {
 				responses.add(DocumentMessage::AbortTransaction);
+				tool_data.snap_manager.cleanup(responses);
 
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
@@ -1274,10 +1337,24 @@ impl Fsm for SelectToolFsmState {
 			}
 			(SelectToolFsmState::DraggingPivot, SelectToolMessage::PointerMove { modifier_keys }) => {
 				let mouse_position = input.mouse.position;
-				let snapped_mouse_position = mouse_position;
+				let document_mouse = document.metadata().document_to_viewport.inverse().transform_point2(mouse_position);
 
+				let snap_data = SnapData::new(document, input, viewport);
+				let point = SnapCandidatePoint::handle(document_mouse);
+				let mut snapped = tool_data.snap_manager.free_snap(&snap_data, &point, snapping::SnapTypeConfiguration::default());
+
+				if let Some(pivot_snap) = snap_pivot_to_bounds(document, mouse_position, &tool_data.bounding_box_manager)
+					&& pivot_snap.distance < snapped.distance
+				{
+					snapped = pivot_snap;
+				}
+
+				tool_data.snap_manager.update_indicator(snapped.clone());
+
+				let snapped_mouse_position = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
 				tool_data.pivot_gizmo.pivot.set_viewport_position(snapped_mouse_position);
 
+				responses.add(OverlaysMessage::Draw);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 
 				// Auto-panning
