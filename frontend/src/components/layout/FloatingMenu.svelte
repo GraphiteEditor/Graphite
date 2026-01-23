@@ -51,11 +51,6 @@
 	let floatingMenuContainer: HTMLDivElement | undefined;
 	let floatingMenuContent: LayoutCol | undefined;
 
-	// The resize observer is attached to the floating menu container, which is the zero-height div of the width of the parent element's floating menu spawner.
-	// Since CSS doesn't let us make the floating menu (with `position: fixed`) have a 100% width of this container, we need to use JS to observe its size and
-	// tell the floating menu content to use it as a min-width so the floating menu is at least the width of the parent element's floating menu spawner.
-	// This is the opposite concern of the natural width measurement system, which gets the natural width of the floating menu content in order for the
-	// spawner widget to optionally set its min-size to the floating menu's natural width.
 	let containerResizeObserver = new ResizeObserver((entries: ResizeObserverEntry[]) => {
 		resizeObserverCallback(entries);
 	});
@@ -79,52 +74,33 @@
 		.flatMap((styleAndValue) => (styleAndValue[1] !== undefined ? [`${styleAndValue[0]}: ${styleAndValue[1]};`] : []))
 		.join(" ");
 
-	function getUsableWindowBounds(excludeDetailsPanel: boolean = true): DOMRect {
-		const windowBounds = document.documentElement.getBoundingClientRect();
-
-		// Only exclude the details panel if requested AND the menu is not inside it
-		if (excludeDetailsPanel) {
-			const detailsPanel = document.querySelector('[data-subdivision-name="details"]');
-
-			// Check if this floating menu's spawner is inside the details panel
-			const isInsideDetailsPanel = self?.closest('[data-subdivision-name="details"]');
-
-			if (detailsPanel && !isInsideDetailsPanel) {
-				const detailsBounds = detailsPanel.getBoundingClientRect();
-				// If details panel is visible and on the right side, reduce usable width
-				if (detailsBounds.width > 0 && detailsBounds.left > windowBounds.left) {
-					return new DOMRect(
-						windowBounds.left,
-						windowBounds.top,
-						detailsBounds.left - windowBounds.left, // Usable width ends where details panel begins
-						windowBounds.height,
-					);
-				}
-			}
+	// Generic function to get constraint bounds for positioning
+	// Returns the bounds of the scrollable parent if one exists, otherwise returns window bounds
+	function getConstraintBounds(element: HTMLElement | undefined): DOMRect {
+		const scrollableParent = element?.closest("[data-scrollable-x], [data-scrollable-y]");
+		
+		if (scrollableParent) {
+			return scrollableParent.getBoundingClientRect();
 		}
-
-		return windowBounds;
+		
+		return document.documentElement.getBoundingClientRect();
 	}
 
 	// Called only when `open` is changed from outside this component
 	async function watchOpenChange(isOpen: boolean) {
-		// Mitigate a Safari rendering bug which clips the floating menu extending beyond a scrollable container.
-		// The bug is possibly related to <https://bugs.webkit.org/show_bug.cgi?id=160953>, but in our case it happens when `overflow` of a parent is `auto` rather than `hidden`.
-		// IMPORTANT: Don't apply this workaround to menus in scrollable containers since we want them to scroll with their buttons
-		const inScrollableContainer = Boolean(self?.closest("[data-scrollable-x], [data-scrollable-y]"));
-		if (browserVersion().toLowerCase().includes("safari") && !inScrollableContainer) {
+		const scrollableParent = self?.closest("[data-scrollable-x], [data-scrollable-y]");
+		const isInScrollableContainer = Boolean(scrollableParent);
+		
+		// Mitigate a Safari rendering bug - only apply if NOT in scrollable container
+		if (browserVersion().toLowerCase().includes("safari") && !isInScrollableContainer) {
 			const scrollable = self?.closest("[data-scrollable-x], [data-scrollable-y]");
 			if (scrollable instanceof HTMLElement) {
-				// The issue exists when the container is set to `overflow: auto` but fine when `overflow: hidden`. So this workaround temporarily sets
-				// the scrollable container to `overflow: hidden`, thus removing the scrollbars and ability to scroll until the floating menu is closed.
 				scrollable.style.overflow = isOpen ? "hidden" : "";
 			}
 		}
 
 		// Switching from closed to open
 		if (isOpen && !wasOpen) {
-			// TODO: Close any other floating menus that may already be open, which can happen using tab navigation and Enter/Space Bar to open
-
 			// Close floating menu if pointer strays far enough away
 			window.addEventListener("pointermove", pointerMoveHandler);
 			// Close floating menu if esc is pressed
@@ -134,34 +110,33 @@
 			// Cancel the subsequent click event to prevent the floating menu from reopening if the floating menu's button is the click event target
 			window.addEventListener("pointerup", pointerUpHandler);
 
-			// Floating menu min-width resize observer
-
 			await tick();
 
-			// Add scroll listener for ALL menu types in scrollable containers
-			// Add scroll listener for ALL menu types in scrollable containers
-			const scrollableParent = self?.closest("[data-scrollable-x], [data-scrollable-y]");
-			if (scrollableParent) {
+			// Add scroll listener for menus in scrollable containers
+			if (isInScrollableContainer && scrollableParent) {
 				const scrollHandler = () => {
-					// Close menu if button is no longer visible in viewport
-					if (self) {
-						const buttonBounds = self.getBoundingClientRect();
-						const windowBounds = getUsableWindowBounds();
-
-						// Check if button is off-screen
-						const isOffScreen =
-							buttonBounds.right < windowBounds.left || buttonBounds.left > windowBounds.right || buttonBounds.bottom < windowBounds.top || buttonBounds.top > windowBounds.bottom;
-
+					// Get constraint bounds from scrollable parent
+					const constraintBounds = scrollableParent.getBoundingClientRect();
+					const buttonBounds = self?.getBoundingClientRect();
+					
+					// Close menu if button is scrolled out of view
+					if (buttonBounds) {
+						const isOffScreen = 
+							buttonBounds.right < constraintBounds.left ||
+							buttonBounds.left > constraintBounds.right ||
+							buttonBounds.bottom < constraintBounds.top ||
+							buttonBounds.top > constraintBounds.bottom;
+						
 						if (isOffScreen) {
 							dispatch("open", false);
 							return;
 						}
 					}
-
-					// Otherwise, update position
+					
+					// Update position
 					positionAndStyleFloatingMenu();
 				};
-
+				
 				scrollableParent.addEventListener("scroll", scrollHandler);
 			}
 
@@ -180,11 +155,9 @@
 			window.removeEventListener("pointermove", pointerMoveHandler);
 			window.removeEventListener("keydown", keyDownHandler);
 			window.removeEventListener("pointerdown", pointerDownHandler);
-			// The `pointerup` event is removed in `pointerMoveHandler()` and `pointerDownHandler()`
 
-			// Clean up scroll listener for ALL menu types
-			const scrollableParent = self?.closest("[data-scrollable-x], [data-scrollable-y]");
-			if (scrollableParent) {
+			// Clean up scroll listener
+			if (isInScrollableContainer && scrollableParent) {
 				scrollableParent.removeEventListener("scroll", positionAndStyleFloatingMenu);
 			}
 		}
@@ -195,7 +168,6 @@
 
 	onMount(() => {
 		// Measure the content and round up its width and height to the nearest even integer.
-		// This solves antialiasing issues when the content isn't cleanly divisible by 2 and gets translated by (-50%, -50%) causing all its content to be blurry.
 		const floatingMenuContentDiv = floatingMenuContent?.div?.();
 		if (type === "Dialog" && floatingMenuContentDiv) {
 			const resizeObserver = new ResizeObserver((entries) => {
@@ -212,7 +184,6 @@
 					let targetHeight = Math.ceil(height);
 					if (targetHeight % 2 === 1) targetHeight += 1;
 
-					// We have to set the style properties directly because attempting to do it through a Svelte bound property results in `afterUpdate()` being triggered
 					floatingMenuContentDiv.style.setProperty("--even-integer-subpixel-expansion-x", `${targetWidth - width}`);
 					floatingMenuContentDiv.style.setProperty("--even-integer-subpixel-expansion-y", `${targetHeight - height}`);
 				});
@@ -222,9 +193,6 @@
 	});
 
 	afterUpdate(() => {
-		// Gets the client bounds of the elements and apply relevant styles to them.
-		// TODO: Use DOM attribute bindings more whilst not causing recursive updates. Turning measuring on and off both causes the component to change,
-		// TODO: which causes the `afterUpdate()` Svelte event to fire extraneous times (hurting performance and sometimes causing an infinite loop).
 		if (!measuringOngoingGuard) positionAndStyleFloatingMenu();
 	});
 
@@ -238,18 +206,22 @@
 		const floatingMenuContentDiv = floatingMenuContent?.div?.();
 		if (!self || !floatingMenuContainer || !floatingMenuContent || !floatingMenuContentDiv) return;
 
-		const windowBounds = getUsableWindowBounds();
+		// Get constraint bounds generically
+		const constraintBounds = getConstraintBounds(self);
 		floatingMenuBounds = self.getBoundingClientRect();
 		const floatingMenuContainerBounds = floatingMenuContainer.getBoundingClientRect();
 
-		// TODO: Make this work for all types. This is currently limited to tooltips because they're inherently small and transient.
+		// Check if in scrollable container
+		const scrollableParent = self?.closest("[data-scrollable-x], [data-scrollable-y]");
+		const isInScrollableContainer = Boolean(scrollableParent);
+
+		// For tooltips, flip direction if overflowing
 		if (type === "Tooltip") {
-			// Flip direction if overflowing the edge of the window
 			const floatingMenuContentBounds = floatingMenuContentDiv.getBoundingClientRect();
-			const overflowingTop = floatingMenuContentBounds.top - windowEdgeMargin <= windowBounds.top;
-			const overflowingBottom = floatingMenuContentBounds.bottom + windowEdgeMargin >= windowBounds.bottom;
-			const overflowingLeft = floatingMenuContentBounds.left - windowEdgeMargin <= windowBounds.left;
-			const overflowingRight = floatingMenuContentBounds.right + windowEdgeMargin >= windowBounds.right;
+			const overflowingTop = floatingMenuContentBounds.top - windowEdgeMargin <= constraintBounds.top;
+			const overflowingBottom = floatingMenuContentBounds.bottom + windowEdgeMargin >= constraintBounds.bottom;
+			const overflowingLeft = floatingMenuContentBounds.left - windowEdgeMargin <= constraintBounds.left;
+			const overflowingRight = floatingMenuContentBounds.right + windowEdgeMargin >= constraintBounds.right;
 
 			if (direction === "Top" && overflowingTop) direction = "Bottom";
 			else if (direction === "Bottom" && overflowingBottom) direction = "Top";
@@ -259,27 +231,19 @@
 
 		const inParentFloatingMenu = Boolean(floatingMenuContainer.closest("[data-floating-menu-content]"));
 
-		// Check if spawner is inside a scrollable container
-		const scrollableParent = self?.closest("[data-scrollable-x], [data-scrollable-y]");
-		const isInScrollableContainer = Boolean(scrollableParent);
-
 		if (!inParentFloatingMenu) {
-			// Required to correctly position content when scrolled (it has a `position: fixed` to prevent clipping)
-			// We use `.style` on a div (instead of a style DOM attribute binding) because the binding causes the `afterUpdate()` hook to call the function we're in recursively forever
 			let tailOffset = 0;
 			if (type === "Popover") tailOffset = 10;
 			if (type === "Tooltip") tailOffset = direction === "Bottom" ? 20 : 10;
 
-			// For ALL menu types in scrollable containers, update positioning dynamically
+			// For menus in scrollable containers, position dynamically and center on button
 			if (isInScrollableContainer) {
-				// Keep using fixed positioning but update the coordinates dynamically
 				floatingMenuContentDiv.style.position = "fixed";
 
-				// Calculate center position of the button
 				const buttonCenterX = floatingMenuBounds.x + floatingMenuBounds.width / 2;
 				const buttonCenterY = floatingMenuBounds.y + floatingMenuBounds.height / 2;
 
-				// Set new position based on current button location
+				// Set position based on direction
 				if (direction === "Bottom") {
 					floatingMenuContentDiv.style.top = `${tailOffset + floatingMenuBounds.y}px`;
 					floatingMenuContentDiv.style.left = `${buttonCenterX}px`;
@@ -287,7 +251,7 @@
 					floatingMenuContentDiv.style.right = "";
 					floatingMenuContentDiv.style.transform = "translateX(-50%)";
 				} else if (direction === "Top") {
-					floatingMenuContentDiv.style.bottom = `${tailOffset + (windowBounds.height - floatingMenuBounds.y)}px`;
+					floatingMenuContentDiv.style.bottom = `${tailOffset + (constraintBounds.height - (floatingMenuBounds.y - constraintBounds.top))}px`;
 					floatingMenuContentDiv.style.left = `${buttonCenterX}px`;
 					floatingMenuContentDiv.style.top = "";
 					floatingMenuContentDiv.style.right = "";
@@ -299,63 +263,59 @@
 					floatingMenuContentDiv.style.right = "";
 					floatingMenuContentDiv.style.transform = "translateY(-50%)";
 				} else if (direction === "Left") {
-					floatingMenuContentDiv.style.right = `${tailOffset + (windowBounds.width - floatingMenuBounds.x)}px`;
+					floatingMenuContentDiv.style.right = `${tailOffset + (constraintBounds.width - (floatingMenuBounds.x - constraintBounds.left))}px`;
 					floatingMenuContentDiv.style.top = `${buttonCenterY}px`;
 					floatingMenuContentDiv.style.bottom = "";
 					floatingMenuContentDiv.style.left = "";
 					floatingMenuContentDiv.style.transform = "translateY(-50%)";
 				}
 
-				// NOW recalculate bounds after positioning to check for overflow
+				// Recalculate bounds after positioning
 				floatingMenuContentBounds = floatingMenuContentDiv.getBoundingClientRect();
 
-				const overflowingLeft = floatingMenuContentBounds.left - windowEdgeMargin <= windowBounds.left;
-				const overflowingRight = floatingMenuContentBounds.right + windowEdgeMargin >= windowBounds.right;
-				const overflowingTop = floatingMenuContentBounds.top - windowEdgeMargin <= windowBounds.top;
-				const overflowingBottom = floatingMenuContentBounds.bottom + windowEdgeMargin >= windowBounds.bottom;
+				const overflowingLeft = floatingMenuContentBounds.left - windowEdgeMargin <= constraintBounds.left;
+				const overflowingRight = floatingMenuContentBounds.right + windowEdgeMargin >= constraintBounds.right;
+				const overflowingTop = floatingMenuContentBounds.top - windowEdgeMargin <= constraintBounds.top;
+				const overflowingBottom = floatingMenuContentBounds.bottom + windowEdgeMargin >= constraintBounds.bottom;
 
-				// Handle overflow by adjusting position
+				// Adjust for overflow
 				if (direction === "Bottom" || direction === "Top") {
 					if (overflowingLeft) {
-						const overflow = windowEdgeMargin - floatingMenuContentBounds.left;
+						const overflow = windowEdgeMargin + constraintBounds.left - floatingMenuContentBounds.left;
 						floatingMenuContentDiv.style.left = `${buttonCenterX + overflow}px`;
 					} else if (overflowingRight) {
-						const overflow = floatingMenuContentBounds.right + windowEdgeMargin - windowBounds.right;
+						const overflow = floatingMenuContentBounds.right + windowEdgeMargin - constraintBounds.right;
 						floatingMenuContentDiv.style.left = `${buttonCenterX - overflow}px`;
 					}
 				} else if (direction === "Left" || direction === "Right") {
 					if (overflowingTop) {
-						const overflow = windowEdgeMargin - floatingMenuContentBounds.top;
+						const overflow = windowEdgeMargin + constraintBounds.top - floatingMenuContentBounds.top;
 						floatingMenuContentDiv.style.top = `${buttonCenterY + overflow}px`;
 					} else if (overflowingBottom) {
-						const overflow = floatingMenuContentBounds.bottom + windowEdgeMargin - windowBounds.bottom;
+						const overflow = floatingMenuContentBounds.bottom + windowEdgeMargin - constraintBounds.bottom;
 						floatingMenuContentDiv.style.top = `${buttonCenterY - overflow}px`;
 					}
 				}
 			} else {
-				// Use fixed positioning for non-scrollable contexts
+				// Standard positioning for non-scrollable contexts
 				floatingMenuContentDiv.style.position = "fixed";
 
 				if (direction === "Bottom") floatingMenuContentDiv.style.top = `${tailOffset + floatingMenuBounds.y}px`;
-				if (direction === "Top") floatingMenuContentDiv.style.bottom = `${tailOffset + (windowBounds.height - floatingMenuBounds.y)}px`;
+				if (direction === "Top") floatingMenuContentDiv.style.bottom = `${tailOffset + (constraintBounds.height - floatingMenuBounds.y)}px`;
 				if (direction === "Right") floatingMenuContentDiv.style.left = `${tailOffset + floatingMenuBounds.x}px`;
-				if (direction === "Left") floatingMenuContentDiv.style.right = `${tailOffset + (windowBounds.width - floatingMenuBounds.x)}px`;
+				if (direction === "Left") floatingMenuContentDiv.style.right = `${tailOffset + (constraintBounds.width - floatingMenuBounds.x)}px`;
 			}
 
-			// Update tail position (always update it, even in scrollable containers)
-			// Update tail position (always update it, even in scrollable containers)
+			// Update tail position
 			if (tail) {
-				// Calculate center position for the tail
 				const buttonCenterX = floatingMenuBounds.x + floatingMenuBounds.width / 2;
 				const buttonCenterY = floatingMenuBounds.y + floatingMenuBounds.height / 2;
 
-				// Get dialog bounds to constrain tail position
 				const dialogBounds = floatingMenuContentDiv.getBoundingClientRect();
-				const borderRadius = 4; // From CSS: border-radius: 4px
-				const tailWidth = 12; // Tail is 12px wide (6px on each side from CSS)
+				const borderRadius = 4;
+				const tailWidth = 12;
 
 				if (direction === "Bottom" || direction === "Top") {
-					// Constrain tail X position to stay within dialog bounds (minus border radius)
 					const minX = dialogBounds.left + borderRadius + tailWidth / 2;
 					const maxX = dialogBounds.right - borderRadius - tailWidth / 2;
 					const constrainedX = Math.max(minX, Math.min(maxX, buttonCenterX));
@@ -364,11 +324,10 @@
 						tail.style.top = `${floatingMenuBounds.y}px`;
 						tail.style.left = `${constrainedX}px`;
 					} else {
-						tail.style.bottom = `${windowBounds.height - floatingMenuBounds.y}px`;
+						tail.style.bottom = `${constraintBounds.height - floatingMenuBounds.y}px`;
 						tail.style.left = `${constrainedX}px`;
 					}
 				} else if (direction === "Left" || direction === "Right") {
-					// Constrain tail Y position to stay within dialog bounds (minus border radius)
 					const minY = dialogBounds.top + borderRadius + tailWidth / 2;
 					const maxY = dialogBounds.bottom - borderRadius - tailWidth / 2;
 					const constrainedY = Math.max(minY, Math.min(maxY, buttonCenterY));
@@ -377,7 +336,7 @@
 						tail.style.left = `${floatingMenuBounds.x}px`;
 						tail.style.top = `${constrainedY}px`;
 					} else {
-						tail.style.right = `${windowBounds.width - floatingMenuBounds.x}px`;
+						tail.style.right = `${constraintBounds.width - floatingMenuBounds.x}px`;
 						tail.style.top = `${constrainedY}px`;
 					}
 				}
@@ -388,10 +347,10 @@
 		if (!isInScrollableContainer) {
 			floatingMenuContentBounds = floatingMenuContentDiv.getBoundingClientRect();
 
-			const overflowingLeft = floatingMenuContentBounds.left - windowEdgeMargin <= windowBounds.left;
-			const overflowingRight = floatingMenuContentBounds.right + windowEdgeMargin >= windowBounds.right;
-			const overflowingTop = floatingMenuContentBounds.top - windowEdgeMargin <= windowBounds.top;
-			const overflowingBottom = floatingMenuContentBounds.bottom + windowEdgeMargin >= windowBounds.bottom;
+			const overflowingLeft = floatingMenuContentBounds.left - windowEdgeMargin <= constraintBounds.left;
+			const overflowingRight = floatingMenuContentBounds.right + windowEdgeMargin >= constraintBounds.right;
+			const overflowingTop = floatingMenuContentBounds.top - windowEdgeMargin <= constraintBounds.top;
+			const overflowingBottom = floatingMenuContentBounds.bottom + windowEdgeMargin >= constraintBounds.bottom;
 
 			type Edge = "Top" | "Bottom" | "Left" | "Right";
 			let zeroedBorderVertical: Edge | undefined;
@@ -402,11 +361,11 @@
 
 				if (overflowingLeft) {
 					floatingMenuContentDiv.style.left = `${windowEdgeMargin}px`;
-					if (windowBounds.left + floatingMenuContainerBounds.left === 12) zeroedBorderHorizontal = "Left";
+					if (constraintBounds.left + floatingMenuContainerBounds.left === 12) zeroedBorderHorizontal = "Left";
 				}
 				if (overflowingRight) {
 					floatingMenuContentDiv.style.right = `${windowEdgeMargin}px`;
-					if (windowBounds.right - floatingMenuContainerBounds.right === 12) zeroedBorderHorizontal = "Right";
+					if (constraintBounds.right - floatingMenuContainerBounds.right === 12) zeroedBorderHorizontal = "Right";
 				}
 			}
 			if (direction === "Left" || direction === "Right") {
@@ -414,15 +373,15 @@
 
 				if (overflowingTop) {
 					floatingMenuContentDiv.style.top = `${windowEdgeMargin}px`;
-					if (windowBounds.top + floatingMenuContainerBounds.top === 12) zeroedBorderVertical = "Top";
+					if (constraintBounds.top + floatingMenuContainerBounds.top === 12) zeroedBorderVertical = "Top";
 				}
 				if (overflowingBottom) {
 					floatingMenuContentDiv.style.bottom = `${windowEdgeMargin}px`;
-					if (windowBounds.bottom - floatingMenuContainerBounds.bottom === 12) zeroedBorderVertical = "Bottom";
+					if (constraintBounds.bottom - floatingMenuContainerBounds.bottom === 12) zeroedBorderVertical = "Bottom";
 				}
 			}
 
-			// Remove the rounded corner from the content where the tail perfectly meets the corner
+			// Remove rounded corner where tail meets content
 			if (displayTail && windowEdgeMargin === 6 && zeroedBorderVertical && zeroedBorderHorizontal) {
 				switch (`${zeroedBorderVertical}${zeroedBorderHorizontal}`) {
 					case "TopLeft":
@@ -448,60 +407,39 @@
 		return self;
 	}
 
-	// To be called by the parent component. Measures the actual width of the floating menu content element and returns it in a promise.
 	export async function measureAndEmitNaturalWidth() {
 		if (!measuringOngoingGuard) return;
 
-		// Wait for the changed content which fired the `afterUpdate()` Svelte event to be put into the DOM
 		await tick();
-
-		// Wait until all fonts have been loaded and rendered so measurements of content involving text are accurate
 		await document.fonts.ready;
 
-		// Make the component show itself with 0 min-width so it can be measured, and wait until the values have been updated to the DOM
 		measuringOngoing = true;
 		measuringOngoingGuard = true;
 		await tick();
 
-		// Measure the width of the floating menu content element, if it's currently visible
-		// The result will be `undefined` if the menu is invisible, perhaps because an ancestor component is hidden with a falsy Svelte template if condition
 		const naturalWidth: number | undefined = floatingMenuContent?.div?.()?.clientWidth;
 
-		// Turn off measuring mode for the component, which triggers another call to the `afterUpdate()` Svelte event, so we can turn off the protection after that has happened
 		measuringOngoing = false;
 		await tick();
 		measuringOngoingGuard = false;
 
-		// Notify the parent about the measured natural width
 		if (naturalWidth !== undefined && naturalWidth >= 0) {
 			dispatch("naturalWidth", naturalWidth);
 		}
 	}
 
 	function pointerMoveHandler(e: PointerEvent) {
-		// This element and the element being hovered over
 		const target = e.target as HTMLElement | undefined;
-
-		// Get the spawner element (that which is clicked to spawn this floating menu)
-		// Assumes the spawner is a sibling of this FloatingMenu component
 		const ownSpawner: HTMLElement | undefined = self?.parentElement?.querySelector(":scope > [data-floating-menu-spawner]") || undefined;
-		// Get the spawner element containing whatever element the user is hovering over now, if there is one
 		const targetSpawner: HTMLElement | undefined = target?.closest?.("[data-floating-menu-spawner]") || undefined;
 
-		// HOVER TRANSFER
-		// Transfer from this open floating menu to a sibling floating menu if the pointer hovers to a valid neighboring floating menu spawner
 		hoverTransfer(self, ownSpawner, targetSpawner);
 
-		// POINTER STRAY
-		// Close the floating menu if the pointer has strayed far enough from its bounds (and it's not hovering over its own spawner)
 		const notHoveringOverOwnSpawner = ownSpawner !== targetSpawner;
 		if (strayCloses && notHoveringOverOwnSpawner && isPointerEventOutsideFloatingMenu(e, POINTER_STRAY_DISTANCE)) {
-			// TODO: Extend this rectangle bounds check to all submenu bounds up the DOM tree since currently submenus disappear
-			// TODO: with zero stray distance if the cursor is further than the stray distance from only the top-level menu
 			dispatch("open", false);
 		}
 
-		// Clean up any messes from lost pointerup events
 		const BUTTONS_LEFT = 0b0000_0001;
 		const eventIncludesLmb = Boolean(e.buttons & BUTTONS_LEFT);
 		if (!open && !eventIncludesLmb) {
@@ -511,67 +449,39 @@
 	}
 
 	function hoverTransfer(self: HTMLDivElement | undefined, ownSpawner: HTMLElement | undefined, targetSpawner: HTMLElement | undefined) {
-		// Algorithm pseudo-code to detect and transfer to hover-transferrable floating menu spawners
-		// Accompanying diagram: <https://files.keavon.com/-/SpringgreenKnownXantus/capture.png>
-		//
-		// Check our own parent for descendant spawners
-		// Filter out ourself and our children
-		// Filter out all with a different distance than our own distance from the currently-being-checked parent
-		// How many left?
-		//     None -> go up a level and repeat
-		//     Some -> is one of them the target?
-		//         Yes -> click it and terminate
-		//         No -> do nothing and terminate
-
-		// Helper function that gets used below
 		const getDepthFromAncestor = (item: Element, ancestor: Element): number | undefined => {
 			let depth = 1;
-
 			let parent = item.parentElement || undefined;
 			while (parent) {
 				if (parent === ancestor) return depth;
-
 				parent = parent.parentElement || undefined;
 				depth += 1;
 			}
-
 			return undefined;
 		};
 
-		// A list of all the descendant spawners: the spawner for this floating menu plus any spawners belonging to widgets inside this floating menu
 		const ownDescendantMenuSpawners = Array.from(self?.parentElement?.querySelectorAll("[data-floating-menu-spawner]") || []);
-
-		// Start with the parent of the spawner for this floating menu and keep widening the search for any other valid spawners that are hover-transferrable
 		let currentAncestor = (targetSpawner && ownSpawner?.parentElement) || undefined;
+		
 		while (currentAncestor) {
 			const ownSpawnerDepthFromCurrentAncestor = ownSpawner && getDepthFromAncestor(ownSpawner, currentAncestor);
-			const currentAncestor2 = currentAncestor; // This duplicate variable avoids an ESLint warning
+			const currentAncestor2 = currentAncestor;
 
-			// Get the list of descendant spawners and filter out invalid possibilities for spawners that are hover-transferrable
 			const listOfDescendantSpawners = Array.from(currentAncestor?.querySelectorAll("[data-floating-menu-spawner]") || []);
 			const filteredListOfDescendantSpawners = listOfDescendantSpawners.filter((item: Element): boolean => {
-				// Filter away ourself and our descendants
 				const notOurself = !ownDescendantMenuSpawners.includes(item);
-				// And filter away unequal depths from the current ancestor
 				const notUnequalDepths = notOurself && getDepthFromAncestor(item, currentAncestor2) === ownSpawnerDepthFromCurrentAncestor;
-				// And filter away elements that explicitly disable hover transfer
 				return notUnequalDepths && !(item as HTMLElement).getAttribute?.("data-floating-menu-spawner")?.includes("no-hover-transfer");
 			});
 
-			// If none were found, widen the search by a level and keep trying (or stop looping if the root was reached)
 			if (filteredListOfDescendantSpawners.length === 0) {
 				currentAncestor = currentAncestor?.parentElement || undefined;
-			}
-			// Stop after the first non-empty set was found
-			else {
+			} else {
 				const foundTarget = filteredListOfDescendantSpawners.find((item: Element): boolean => item === targetSpawner);
-				// If the currently hovered spawner is one of the found valid hover-transferrable spawners, swap to it by clicking on it
 				if (foundTarget) {
 					dispatch("open", false);
 					(foundTarget as HTMLElement).click();
 				}
-
-				// In either case, we are done searching
 				break;
 			}
 		}
@@ -585,17 +495,13 @@
 				}
 			}, 0);
 
-			// Find the parent floating menu and prevent it from also closing with the escape key when this floating menu does
 			if (self) preventEscapeClosingParentFloatingMenu(self);
 		}
 	}
 
 	function pointerDownHandler(e: PointerEvent) {
-		// Close the floating menu if the pointer clicked outside the floating menu (but within stray distance)
 		if (isPointerEventOutsideFloatingMenu(e)) {
 			dispatch("open", false);
-
-			// Track if the left pointer button is now down so its later click event can be canceled
 			const eventIsForLmb = e.button === BUTTON_LEFT;
 			if (eventIsForLmb) pointerStillDown = true;
 		}
@@ -604,25 +510,19 @@
 	function pointerUpHandler(e: PointerEvent) {
 		const eventIsForLmb = e.button === BUTTON_LEFT;
 		if (pointerStillDown && eventIsForLmb) {
-			// Clean up self
 			pointerStillDown = false;
 			window.removeEventListener("pointerup", pointerUpHandler);
-			// Prevent the click event from firing, which would normally occur right after this pointerup event
 			window.addEventListener("click", clickHandlerCapture, true);
 		}
 	}
 
 	function clickHandlerCapture(e: MouseEvent) {
-		// Stop the click event from reopening this floating menu if the click event targets the floating menu's button
 		e.stopPropagation();
-		// Clean up self
 		window.removeEventListener("click", clickHandlerCapture, true);
 	}
 
 	function isPointerEventOutsideFloatingMenu(e: PointerEvent, extraDistanceAllowed = 0): boolean {
-		// Consider all child menus as well as the top-level one
 		const allContainedFloatingMenus = [...(self?.querySelectorAll("[data-floating-menu-content]") || [])];
-
 		return !allContainedFloatingMenus.find((element) => !isPointerEventOutsideMenuElement(e, element, extraDistanceAllowed));
 	}
 
