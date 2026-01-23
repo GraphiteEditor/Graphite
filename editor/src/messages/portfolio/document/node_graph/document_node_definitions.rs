@@ -502,10 +502,10 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			// [11:Equals]0 -> 0[17:Switch]
 			// [9:Transform]0 -> 1[17:Switch]
 			// [16:Morph]0 -> 2[17:Switch]
-			// [17:Switch]0 -> 0[18:Instance Repeat]
-			// [0:Floor]0 -> 1[18:Instance Repeat]
-			// [IMPORTS]3 -> 2[18:Instance Repeat]
-			// [18:Instance Repeat]0 -> 0[EXPORTS]
+			// [17:Switch]0 -> 0[18:Repeat]
+			// [0:Floor]0 -> 1[18:Repeat]
+			// [IMPORTS]3 -> 2[18:Repeat]
+			// [18:Repeat]0 -> 0[EXPORTS]
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
@@ -635,9 +635,9 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								inputs: vec![NodeInput::node(NodeId(11), 0), NodeInput::node(NodeId(9), 0), NodeInput::node(NodeId(16), 0)],
 								..Default::default()
 							},
-							// 18: Instance Repeat
+							// 18: Repeat
 							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(vector_nodes::instance_repeat::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(repeat_nodes::repeat::IDENTIFIER),
 								inputs: vec![NodeInput::node(NodeId(17), 0), NodeInput::node(NodeId(0), 0), NodeInput::import(generic!(T), 3)],
 								..Default::default()
 							},
@@ -807,7 +807,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 									},
 									..Default::default()
 								},
-								// 18: Instance Repeat
+								// 18: Repeat
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(49, -1)),

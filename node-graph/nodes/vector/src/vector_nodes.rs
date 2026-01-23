@@ -1,8 +1,8 @@
 use core::cmp::Ordering;
-use core::f64::consts::PI;
+use core::f64::consts::{PI, TAU};
 use core::hash::{Hash, Hasher};
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
-use core_types::registry::types::{Angle, IntegerCount, Length, Multiplier, Percentage, PixelLength, PixelSize, Progression, SeedValue};
+use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLength, Progression, SeedValue};
 use core_types::table::{Table, TableRow, TableRowMut};
 use core_types::transform::{Footprint, Transform};
 use core_types::{CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
@@ -13,22 +13,19 @@ use graphic_types::{Graphic, IntoGraphicTable};
 use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, PathEl, PathSeg, Shape};
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
-use std::f64::consts::TAU;
+use vector_types::ReferencePoint;
 use vector_types::subpath::{BezierHandles, ManipulatorGroup};
 use vector_types::vector::PointDomain;
-use vector_types::vector::ReferencePoint;
-use vector_types::vector::algorithms::bezpath_algorithms::eval_pathseg_euclidean;
-use vector_types::vector::algorithms::bezpath_algorithms::{self, TValue, evaluate_bezpath, sample_polyline_on_bezpath, split_bezpath, tangent_on_bezpath};
+use vector_types::vector::algorithms::bezpath_algorithms::{self, TValue, eval_pathseg_euclidean, evaluate_bezpath, sample_polyline_on_bezpath, split_bezpath, tangent_on_bezpath};
 use vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
 use vector_types::vector::algorithms::offset_subpath::offset_bezpath;
 use vector_types::vector::algorithms::spline::{solve_spline_first_handle_closed, solve_spline_first_handle_open};
-use vector_types::vector::misc::{CentroidType, ExtrudeJoiningAlgorithm, RowsOrColumns, bezpath_from_manipulator_groups, bezpath_to_manipulator_groups, point_to_dvec2};
-use vector_types::vector::misc::{MergeByDistanceAlgorithm, PointSpacingType, is_linear};
-use vector_types::vector::misc::{handles_to_segment, segment_to_handles};
-use vector_types::vector::style::{Fill, Gradient, GradientStops, Stroke};
-use vector_types::vector::style::{PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
-use vector_types::vector::{FillId, RegionId};
-use vector_types::vector::{PointId, SegmentDomain, SegmentId, StrokeId, VectorExt};
+use vector_types::vector::misc::{
+	CentroidType, ExtrudeJoiningAlgorithm, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, bezpath_from_manipulator_groups, bezpath_to_manipulator_groups, handles_to_segment, is_linear,
+	point_to_dvec2, segment_to_handles,
+};
+use vector_types::vector::style::{Fill, Gradient, GradientStops, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use vector_types::vector::{FillId, PointId, RegionId, SegmentDomain, SegmentId, StrokeId, VectorExt};
 
 /// Implemented for types that can be converted to an iterator of vector rows.
 /// Used for the fill and stroke node so they can be used on `Table<Graphic>` or `Table<Vector>`.
@@ -226,75 +223,6 @@ where
 	content
 }
 
-#[node_macro::node(category("Instancing"), path(core_types::vector))]
-async fn repeat<I: 'n + Send + Clone>(
-	_: impl Ctx,
-	// TODO: Implement other graphical types.
-	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>)] instance: Table<I>,
-	#[default(100., 100.)]
-	// TODO: When using a custom Properties panel layout in document_node_definitions.rs and this default is set, the widget weirdly doesn't show up in the Properties panel. Investigation is needed.
-	direction: PixelSize,
-	angle: Angle,
-	#[default(5)] count: IntegerCount,
-) -> Table<I> {
-	let angle = angle.to_radians();
-	let count = count.max(1);
-	let total = (count - 1) as f64;
-
-	let mut result_table = Table::new();
-
-	for index in 0..count {
-		let angle = index as f64 * angle / total;
-		let translation = index as f64 * direction / total;
-		let transform = DAffine2::from_angle(angle) * DAffine2::from_translation(translation);
-
-		for row in instance.iter() {
-			let mut row = row.into_cloned();
-
-			let local_translation = DAffine2::from_translation(row.transform.translation);
-			let local_matrix = DAffine2::from_mat2(row.transform.matrix2);
-			row.transform = local_translation * transform * local_matrix;
-
-			result_table.push(row);
-		}
-	}
-
-	result_table
-}
-
-#[node_macro::node(category("Instancing"), path(core_types::vector))]
-async fn circular_repeat<I: 'n + Send + Clone>(
-	_: impl Ctx,
-	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>)] instance: Table<I>,
-	start_angle: Angle,
-	#[unit(" px")]
-	#[default(5)]
-	radius: f64,
-	#[default(5)] count: IntegerCount,
-) -> Table<I> {
-	let count = count.max(1);
-
-	let mut result_table = Table::new();
-
-	for index in 0..count {
-		let angle = DAffine2::from_angle((TAU / count as f64) * index as f64 + start_angle.to_radians());
-		let translation = DAffine2::from_translation(radius * DVec2::Y);
-		let transform = angle * translation;
-
-		for row in instance.iter() {
-			let mut row = row.into_cloned();
-
-			let local_translation = DAffine2::from_translation(row.transform.translation);
-			let local_matrix = DAffine2::from_mat2(row.transform.matrix2);
-			row.transform = local_translation * transform * local_matrix;
-
-			result_table.push(row);
-		}
-	}
-
-	result_table
-}
-
 #[node_macro::node(name("Copy to Points"), category("Instancing"), path(core_types::vector))]
 async fn copy_to_points<I: 'n + Send + Clone>(
 	_: impl Ctx,
@@ -373,17 +301,24 @@ async fn copy_to_points<I: 'n + Send + Clone>(
 	result_table
 }
 
-#[node_macro::node(category("Instancing"), path(core_types::vector))]
-async fn mirror<I: 'n + Send + Clone>(
+#[node_macro::node(category("General"), path(core_types::vector))]
+async fn mirror<T: 'n + Send + Clone>(
 	_: impl Ctx,
-	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>)] content: Table<I>,
+	#[implementations(
+		Table<Graphic>,
+		Table<Vector>,
+		Table<Raster<CPU>>,
+		Table<Color>,
+		Table<GradientStops>,
+	)]
+	content: Table<T>,
 	#[default(ReferencePoint::Center)] relative_to_bounds: ReferencePoint,
 	#[unit(" px")] offset: f64,
 	#[range((-90., 90.))] angle: Angle,
 	#[default(true)] keep_original: bool,
-) -> Table<I>
+) -> Table<T>
 where
-	Table<I>: BoundingBox,
+	Table<T>: BoundingBox,
 {
 	// Normalize the direction vector
 	let normal = DVec2::from_angle(angle.to_radians());
@@ -2575,8 +2510,8 @@ mod test {
 		}
 	}
 	#[tokio::test]
-	async fn circular_repeat() {
-		let repeated = super::circular_repeat(Footprint::default(), vector_node_from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY)), 45., 4., 8).await;
+	async fn repeat_radial() {
+		let repeated = super::repeat_radial(Footprint::default(), vector_node_from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY)), 45., 4., 8).await;
 		let vector_table = super::flatten_path(Footprint::default(), repeated).await;
 		let vector = vector_table.iter().next().unwrap().element;
 		assert_eq!(vector.region_manipulator_groups().count(), 8);
