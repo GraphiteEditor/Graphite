@@ -1,4 +1,3 @@
-use super::document_node_definitions::DefinitionIdentifier;
 use glam::{DVec2, IVec2};
 use graph_craft::document::NodeId;
 use graph_craft::document::value::TaggedValue;
@@ -79,7 +78,7 @@ pub struct FrontendNode {
 	pub is_layer: bool,
 	#[serde(rename = "canBeLayer")]
 	pub can_be_layer: bool,
-	pub reference: Option<DefinitionIdentifier>,
+	pub reference: Option<String>,
 	#[serde(rename = "displayName")]
 	pub display_name: String,
 	#[serde(rename = "implementationName")]
@@ -104,7 +103,7 @@ pub struct FrontendNode {
 
 #[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct FrontendNodeType {
-	pub identifier: DefinitionIdentifier,
+	pub identifier: String,
 	pub name: String,
 	pub category: String,
 	#[serde(rename = "inputTypes")]

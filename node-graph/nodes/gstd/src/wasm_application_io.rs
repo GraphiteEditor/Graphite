@@ -29,7 +29,7 @@ use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement};
 
 /// Allocates GPU memory and a rendering context for vector-to-raster conversion.
 #[cfg(feature = "wgpu")]
-#[node_macro::node(category("Debug: GPU"))]
+#[node_macro::node(category(""))]
 async fn create_surface<'a: 'n>(_: impl Ctx, editor: &'a WasmEditorApi) -> Arc<WasmSurfaceHandle> {
 	Arc::new(editor.application_io.as_ref().unwrap().create_window())
 }
@@ -131,7 +131,7 @@ fn image_to_bytes(_: impl Ctx, image: Table<Raster<CPU>>) -> Vec<u8> {
 	image.element.data.iter().flat_map(|color| color.to_rgb8_srgb().into_iter()).collect::<Vec<u8>>()
 }
 
-/// Loads binary from URLs and local asset paths. Returns a transparent placeholder if the resource fails to load, allowing workflows to continue.
+/// Loads binary from URLs and local asset paths. Returns a transparent placeholder if the resource fails to load, allowing rendering to continue.
 #[node_macro::node(category("Web Request"))]
 async fn load_resource<'a: 'n>(_: impl Ctx, _primary: (), #[scope("editor-api")] editor_resources: &'a WasmEditorApi, #[name("URL")] url: String) -> Arc<[u8]> {
 	let Some(api) = editor_resources.application_io.as_ref() else {

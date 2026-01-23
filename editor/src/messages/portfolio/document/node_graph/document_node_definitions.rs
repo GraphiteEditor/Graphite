@@ -21,7 +21,6 @@ use graphene_std::extract_xy::XY;
 use graphene_std::raster::{CellularDistanceFunction, CellularReturnType, Color, DomainWarpType, FractalType, NoiseType, RedGreenBlueAlpha};
 use graphene_std::raster_types::{CPU, Raster};
 use graphene_std::table::Table;
-use graphene_std::text::{Font, TypesettingConfig};
 #[allow(unused_imports)]
 use graphene_std::transform::Footprint;
 use graphene_std::vector::Vector;
@@ -81,29 +80,23 @@ impl DefinitionIdentifier {
 				}),
 		}
 	}
+
+	pub fn serialized(&self) -> String {
+		match self {
+			DefinitionIdentifier::ProtoNode(id) => format!("PROTONODE:{}", id.as_str()),
+			DefinitionIdentifier::Network(data) => format!("NETWORK:{}", data),
+		}
+	}
 }
 
 impl From<Value> for DefinitionIdentifier {
 	fn from(value: Value) -> Self {
-		match value {
-			Value::Object(mut map) => {
-				let ty = map.remove("type").unwrap().as_str().unwrap().to_owned();
+		let s = value.as_str().expect("DefinitionIdentifier value must be a string");
 
-				match ty.as_ref() {
-					"Network" => {
-						let data = map.remove("data").unwrap().as_str().unwrap().to_owned();
-						DefinitionIdentifier::Network(data)
-					}
-					"ProtoNode" => {
-						let value = map.remove("data").unwrap();
-						let proto: ProtoNodeIdentifier = serde_json::from_value(value).unwrap();
-						DefinitionIdentifier::ProtoNode(proto)
-					}
-					_ => panic!("Unknown `DefinitionIdentifier` type: {:?}", ty),
-				}
-			}
-
-			_ => panic!("Expected a JSON object to convert to `DefinitionIdentifier`"),
+		match s.split_once(':') {
+			Some(("PROTONODE", data)) => DefinitionIdentifier::ProtoNode(ProtoNodeIdentifier::with_owned_string(data.to_string())),
+			Some(("NETWORK", data)) => DefinitionIdentifier::Network(data.to_string()),
+			other => panic!("Unknown `DefinitionIdentifier` type. Found `{other:?}`."),
 		}
 	}
 }
@@ -131,6 +124,7 @@ pub struct DocumentNodeDefinition {
 
 // We use the once_cell to use the document node definitions throughout the editor without passing a reference
 // TODO: If dynamic node library is required, use a Mutex as well
+// TODO: Replace with `core::cell::LazyCell` (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>) or similar
 static DOCUMENT_NODE_TYPES: once_cell::sync::Lazy<HashMap<DefinitionIdentifier, DocumentNodeDefinition>> = once_cell::sync::Lazy::new(document_node_definitions);
 
 /// Defines the "signature" or "header file"-like metadata for the document nodes, but not the implementation (which is defined in the node registry).
@@ -1459,7 +1453,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		#[cfg(feature = "gpu")]
 		DocumentNodeDefinition {
 			identifier: "Upload Texture",
-			category: "Debug: GPU",
+			category: "Debug",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
@@ -1654,103 +1648,6 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		},
 		// TODO: Auto-generate this from its proto node macro
 		DocumentNodeDefinition {
-			identifier: "Text",
-			category: "Text",
-			node_template: NodeTemplate {
-				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::ProtoNode(text::text::IDENTIFIER),
-					inputs: vec![
-						NodeInput::scope("editor-api"),
-						NodeInput::value(TaggedValue::String("Lorem ipsum".to_string()), false),
-						NodeInput::value(
-							TaggedValue::Font(Font::new(graphene_std::consts::DEFAULT_FONT_FAMILY.into(), graphene_std::consts::DEFAULT_FONT_STYLE.into())),
-							false,
-						),
-						NodeInput::value(TaggedValue::F64(TypesettingConfig::default().font_size), false),
-						NodeInput::value(TaggedValue::F64(TypesettingConfig::default().line_height_ratio), false),
-						NodeInput::value(TaggedValue::F64(TypesettingConfig::default().character_spacing), false),
-						NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_width), false),
-						NodeInput::value(TaggedValue::OptionalF64(TypesettingConfig::default().max_height), false),
-						NodeInput::value(TaggedValue::F64(TypesettingConfig::default().tilt), false),
-						NodeInput::value(TaggedValue::TextAlign(text::TextAlign::default()), false),
-						NodeInput::value(TaggedValue::Bool(false), false),
-					],
-					..Default::default()
-				},
-				persistent_node_metadata: DocumentNodePersistentMetadata {
-					input_metadata: vec![
-						("Editor API", "TODO").into(),
-						InputMetadata::with_name_description_override("Text", "TODO", WidgetOverride::Custom("text_area".to_string())),
-						InputMetadata::with_name_description_override("Font", "TODO", WidgetOverride::Custom("text_font".to_string())),
-						InputMetadata::with_name_description_override(
-							"Size",
-							"TODO",
-							WidgetOverride::Number(NumberInputSettings {
-								unit: Some(" px".to_string()),
-								min: Some(1.),
-								..Default::default()
-							}),
-						),
-						InputMetadata::with_name_description_override(
-							"Line Height",
-							"TODO",
-							WidgetOverride::Number(NumberInputSettings {
-								unit: Some("x".to_string()),
-								min: Some(0.),
-								step: Some(0.1),
-								..Default::default()
-							}),
-						),
-						InputMetadata::with_name_description_override(
-							"Character Spacing",
-							"TODO",
-							WidgetOverride::Number(NumberInputSettings {
-								unit: Some(" px".to_string()),
-								step: Some(0.1),
-								..Default::default()
-							}),
-						),
-						InputMetadata::with_name_description_override(
-							"Max Width",
-							"TODO",
-							WidgetOverride::Number(NumberInputSettings {
-								unit: Some(" px".to_string()),
-								min: Some(1.),
-								blank_assist: false,
-								..Default::default()
-							}),
-						),
-						InputMetadata::with_name_description_override(
-							"Max Height",
-							"TODO",
-							WidgetOverride::Number(NumberInputSettings {
-								unit: Some(" px".to_string()),
-								min: Some(1.),
-								blank_assist: false,
-								..Default::default()
-							}),
-						),
-						InputMetadata::with_name_description_override(
-							"Tilt",
-							"Faux italic.",
-							WidgetOverride::Number(NumberInputSettings {
-								min: Some(-85.),
-								max: Some(85.),
-								unit: Some("°".to_string()),
-								..Default::default()
-							}),
-						),
-						InputMetadata::with_name_description_override("Align", "TODO", WidgetOverride::Custom("text_align".to_string())),
-						("Per-Glyph Instances", "Splits each text glyph into its own row in the table of vector geometry.").into(),
-					],
-					output_names: vec!["Vector".to_string()],
-					..Default::default()
-				},
-			},
-			description: Cow::Borrowed("TODO"),
-			properties: None,
-		},
-		DocumentNodeDefinition {
 			identifier: "Transform",
 			category: "Math: Transform",
 			node_template: NodeTemplate {
@@ -1877,7 +1774,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		},
 		DocumentNodeDefinition {
 			identifier: "Boolean Operation",
-			category: "Vector",
+			category: "Vector: Modifier",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
@@ -2180,6 +2077,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 
 type NodeProperties = HashMap<String, Box<dyn Fn(NodeId, &mut NodePropertiesContext) -> Vec<LayoutGroup> + Send + Sync>>;
 
+// TODO: Replace with `core::cell::LazyCell` (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>) or similar
 pub static NODE_OVERRIDES: once_cell::sync::Lazy<NodeProperties> = once_cell::sync::Lazy::new(static_node_properties);
 
 /// Defines the logic for inputs to display a custom properties panel widget.
@@ -2206,6 +2104,7 @@ fn static_node_properties() -> NodeProperties {
 
 type InputProperties = HashMap<String, Box<dyn Fn(NodeId, usize, &mut NodePropertiesContext) -> Result<Vec<LayoutGroup>, String> + Send + Sync>>;
 
+// TODO: Replace with `core::cell::LazyCell` (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>) or similar
 static INPUT_OVERRIDES: once_cell::sync::Lazy<InputProperties> = once_cell::sync::Lazy::new(static_input_properties);
 
 /// Defines the logic for inputs to display a custom properties panel widget.
@@ -2294,6 +2193,43 @@ fn static_input_properties() -> InputProperties {
 
 			Ok(vec![LayoutGroup::Row {
 				widgets: node_properties::number_widget(ParameterWidgetsInfo::new(node_id, index, blank_assist, context), number_input),
+			}])
+		}),
+	);
+	map.insert(
+		// The custom number input settings are only available on proto nodes
+		"optional_f64".to_string(),
+		Box::new(|node_id, index, context| {
+			let node_metadata = registry::NODE_METADATA.lock().unwrap();
+			let mut number_input = NumberInput::default();
+			if let Some(field) = context
+				.network_interface
+				.implementation(&node_id, context.selection_network_path)
+				.and_then(|implementation| if let DocumentNodeImplementation::ProtoNode(id) = implementation { Some(id) } else { None })
+				.and_then(|proto_node_identifier| node_metadata.get(proto_node_identifier))
+				.and_then(|metadata| metadata.fields.get(index))
+			{
+				if let Some(unit) = field.unit {
+					number_input = number_input.unit(unit);
+				}
+				if let Some(number_min) = field.number_min {
+					number_input = number_input.min(number_min);
+				}
+				if let Some(number_max) = field.number_max {
+					number_input = number_input.max(number_max);
+				}
+				if let Some((range_min, range_max)) = field.number_mode_range {
+					number_input = number_input.range_min(Some(range_min));
+					number_input = number_input.range_max(Some(range_max));
+				}
+				number_input = number_input.is_integer(false);
+				if let Some(number_step) = field.number_step {
+					number_input = number_input.step(number_step);
+				}
+			};
+			Ok(vec![LayoutGroup::Row {
+				// NOTE: The bool input MUST be at the input index directly before the f64 input!
+				widgets: node_properties::optional_f64_widget(ParameterWidgetsInfo::new(node_id, index, false, context), index - 1, number_input),
 			}])
 		}),
 	);
@@ -2682,7 +2618,7 @@ pub fn collect_node_types() -> Vec<FrontendNodeType> {
 				name = identifier.implementation_name_from_identifier()
 			}
 			FrontendNodeType {
-				identifier: identifier.clone(),
+				identifier: identifier.serialized(),
 				name,
 				category: definition.category.to_string(),
 				input_types,
@@ -2691,10 +2627,15 @@ pub fn collect_node_types() -> Vec<FrontendNodeType> {
 		.collect()
 }
 
-pub fn collect_node_descriptions() -> Vec<(DefinitionIdentifier, String)> {
+pub fn collect_node_descriptions() -> Vec<(String, String)> {
 	DOCUMENT_NODE_TYPES
 		.iter()
-		.map(|(identifier, definition)| (identifier.clone(), if definition.description != "TODO" { definition.description.to_string() } else { String::new() }))
+		.map(|(identifier, definition)| {
+			(
+				identifier.serialized(),
+				if definition.description != "TODO" { definition.description.to_string() } else { String::new() },
+			)
+		})
 		.collect()
 }
 

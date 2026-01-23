@@ -439,7 +439,7 @@
 					data-saturation-value-picker
 				>
 					{#if !isNone}
-						<div class="selection-circle" style:top={`${(1 - value) * 100}%`} style:left={`${saturation * 100}%`} />
+						<div class="selection-circle" style:top={`${(1 - value) * 100}%`} style:left={`${saturation * 100}%`}></div>
 					{/if}
 					{#if alignedAxis}
 						<div
@@ -448,7 +448,7 @@
 							class:value={alignedAxis === "value"}
 							style:top={`${(1 - value) * 100}%`}
 							style:left={`${saturation * 100}%`}
-						/>
+						></div>
 					{/if}
 				</LayoutCol>
 				<LayoutCol
@@ -459,7 +459,7 @@
 					data-hue-picker
 				>
 					{#if !isNone}
-						<div class="selection-needle" style:top={`${(1 - hue) * 100}%`} />
+						<div class="selection-needle" style:top={`${(1 - hue) * 100}%`}></div>
 					{/if}
 				</LayoutCol>
 				<LayoutCol
@@ -470,7 +470,7 @@
 					data-alpha-picker
 				>
 					{#if !isNone}
-						<div class="selection-needle" style:top={`${(1 - alpha) * 100}%`} />
+						<div class="selection-needle" style:top={`${(1 - alpha) * 100}%`}></div>
 					{/if}
 				</LayoutCol>
 			</LayoutRow>
@@ -677,7 +677,7 @@
 							style:--pure-color-gray={gray}
 							data-tooltip-label={`Set to ${name}`}
 							data-tooltip-description={disabled ? "Disabled (read-only)." : ""}
-						/>
+						></div>
 					{/each}
 				</button>
 				{#if eyedropperSupported()}

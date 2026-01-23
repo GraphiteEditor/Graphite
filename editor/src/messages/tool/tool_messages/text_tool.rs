@@ -18,10 +18,10 @@ use crate::messages::tool::common_functionality::utility_functions::text_boundin
 use crate::messages::tool::utility_types::ToolRefreshOptions;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
-use graphene_std::Color;
 use graphene_std::renderer::Quad;
 use graphene_std::text::{Font, FontCache, TextAlign, TypesettingConfig, lines_clipping};
 use graphene_std::vector::style::Fill;
+use graphene_std::{Color, NodeInputDecleration};
 
 #[derive(Default, ExtractField)]
 pub struct TextTool {
@@ -800,13 +800,22 @@ impl Fsm for TextToolFsmState {
 					// Find the translation necessary from the original position in viewport space
 					let translation_viewport = bounds.original_bound_transform.transform_vector2(translation_bounds_space);
 
+					// TODO: Don't set both max_width and max_height to true at the same time, only do one based on which edge is being dragged (or both if a corner is being dragged)
 					responses.add(NodeGraphMessage::SetInput {
-						input_connector: InputConnector::node(node_id, 6),
-						input: NodeInput::value(TaggedValue::OptionalF64(Some(size_layer.x)), false),
+						input_connector: InputConnector::node(node_id, graphene_std::text::text::HasMaxWidthInput::INDEX),
+						input: NodeInput::value(TaggedValue::Bool(true), false),
 					});
 					responses.add(NodeGraphMessage::SetInput {
-						input_connector: InputConnector::node(node_id, 7),
-						input: NodeInput::value(TaggedValue::OptionalF64(Some(size_layer.y)), false),
+						input_connector: InputConnector::node(node_id, graphene_std::text::text::MaxWidthInput::INDEX),
+						input: NodeInput::value(TaggedValue::F64(size_layer.x), false),
+					});
+					responses.add(NodeGraphMessage::SetInput {
+						input_connector: InputConnector::node(node_id, graphene_std::text::text::HasMaxHeightInput::INDEX),
+						input: NodeInput::value(TaggedValue::Bool(true), false),
+					});
+					responses.add(NodeGraphMessage::SetInput {
+						input_connector: InputConnector::node(node_id, graphene_std::text::text::MaxHeightInput::INDEX),
+						input: NodeInput::value(TaggedValue::F64(size_layer.y), false),
 					});
 					responses.add(GraphOperationMessage::TransformSet {
 						layer: dragging_layer.id,

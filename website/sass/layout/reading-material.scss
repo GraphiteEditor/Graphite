@@ -1,20 +1,10 @@
 .reading-material.reading-material {
+	font-size: 16px;
+	line-height: 1.625;
 	max-width: var(--max-width-reading-material);
 
 	article {
 		width: 100%;
-
-		h2 {
-			margin-top: 80px;
-		}
-
-		h3 {
-			margin-top: 40px;
-		}
-
-		h4 {
-			margin-top: 20px;
-		}
 
 		h1,
 		h2,
@@ -23,6 +13,7 @@
 		h5,
 		h6 {
 			display: block;
+			margin-top: 80px;
 
 			&:first-child {
 				margin-top: 0;

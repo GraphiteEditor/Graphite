@@ -23,7 +23,6 @@ use graphene_std::wasm_application_io::WasmEditorApi;
 use graphene_std::wasm_application_io::WasmSurfaceHandle;
 use graphene_std::{Artboard, Context, Graphic, NodeIO, NodeIOTypes, ProtoNodeIdentifier, concrete, fn_type_fut, future};
 use node_registry_macros::{async_node, convert_node, into_node};
-use once_cell::sync::Lazy;
 use std::collections::HashMap;
 #[cfg(feature = "gpu")]
 use std::sync::Arc;
@@ -282,7 +281,8 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 	map
 }
 
-pub static NODE_REGISTRY: Lazy<HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>>> = Lazy::new(|| node_registry());
+// TODO: Replace with `core::cell::LazyCell` (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>) or similar
+pub static NODE_REGISTRY: once_cell::sync::Lazy<HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>>> = once_cell::sync::Lazy::new(|| node_registry());
 
 mod node_registry_macros {
 	macro_rules! async_node {

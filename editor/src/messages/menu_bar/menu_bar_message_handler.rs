@@ -120,8 +120,8 @@ impl LayoutHolder for MenuBarMessageHandler {
 						MenuListEntry::new("Open…")
 							.label("Open…")
 							.icon("Folder")
-							.tooltip_shortcut(action_shortcut!(PortfolioMessageDiscriminant::OpenDocument))
-							.on_commit(|_| PortfolioMessage::OpenDocument.into()),
+							.tooltip_shortcut(action_shortcut!(PortfolioMessageDiscriminant::Open))
+							.on_commit(|_| PortfolioMessage::Open.into()),
 						MenuListEntry::new("Open Demo Artwork…")
 							.label("Open Demo Artwork…")
 							.icon("Image")
@@ -161,7 +161,8 @@ impl LayoutHolder for MenuBarMessageHandler {
 							.label("Import…")
 							.icon("FileImport")
 							.tooltip_shortcut(action_shortcut!(PortfolioMessageDiscriminant::Import))
-							.on_commit(|_| PortfolioMessage::Import.into()),
+							.on_commit(|_| PortfolioMessage::Import.into())
+							.disabled(no_active_document),
 						MenuListEntry::new("Export…")
 							.label("Export…")
 							.icon("FileExport")
@@ -622,6 +623,13 @@ impl LayoutHolder for MenuBarMessageHandler {
 				.flush(true)
 				.menu_list_children(vec![
 					vec![
+						MenuListEntry::new("Fullscreen")
+							.label("Fullscreen")
+							.icon("FullscreenEnter")
+							.tooltip_shortcut(action_shortcut!(AppWindowMessageDiscriminant::Fullscreen))
+							.on_commit(|_| AppWindowMessage::Fullscreen.into()),
+					],
+					vec![
 						MenuListEntry::new("Properties")
 							.label("Properties")
 							.icon(if self.properties_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" })
@@ -632,8 +640,6 @@ impl LayoutHolder for MenuBarMessageHandler {
 							.icon(if self.layers_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" })
 							.tooltip_shortcut(action_shortcut!(PortfolioMessageDiscriminant::ToggleLayersPanelOpen))
 							.on_commit(|_| PortfolioMessage::ToggleLayersPanelOpen.into()),
-					],
-					vec![
 						MenuListEntry::new("Data")
 							.label("Data")
 							.icon(if self.data_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" })

@@ -4,7 +4,7 @@
 	import { fade } from "svelte/transition";
 
 	import type { Editor } from "@graphite/editor";
-	import type { DefinitionIdentifier, FrontendGraphInput, FrontendGraphOutput, FrontendNode } from "@graphite/messages";
+	import type { FrontendGraphInput, FrontendGraphOutput, FrontendNode } from "@graphite/messages";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 
 	import NodeCatalog from "@graphite/components/floating-menus/NodeCatalog.svelte";
@@ -100,7 +100,7 @@
 		return sparse;
 	}
 
-	function createNode(identifier: DefinitionIdentifier) {
+	function createNode(identifier: string) {
 		if ($nodeGraph.contextMenuInformation === undefined) return;
 
 		editor.handle.createNode(identifier, $nodeGraph.contextMenuInformation.contextMenuCoordinates.x, $nodeGraph.contextMenuInformation.contextMenuCoordinates.y);
@@ -349,7 +349,7 @@
 								}}
 							/>
 							{#if index > 0}
-								<div class="reorder-drag-grip" data-tooltip-description="Reorder this export" />
+								<div class="reorder-drag-grip" data-tooltip-description="Reorder this export"></div>
 							{/if}
 						{/if}
 					</div>
@@ -396,7 +396,7 @@
 					>
 						{#if (hoveringExportIndex === index || editingNameExportIndex === index) && $nodeGraph.updateImportsExports.addImportExport}
 							{#if index > 0}
-								<div class="reorder-drag-grip" data-tooltip-description="Reorder this export" />
+								<div class="reorder-drag-grip" data-tooltip-description="Reorder this export"></div>
 							{/if}
 							<IconButton
 								size={16}
@@ -457,7 +457,7 @@
 					x: Number($nodeGraph.updateImportsExports.importPosition.x),
 					y: Number($nodeGraph.updateImportsExports.importPosition.y) + Number($nodeGraph.reorderImportIndex) * 24,
 				}}
-				<div class="reorder-bar" style:--offset-left={(position.x - 48) / 24} style:--offset-top={(position.y - 12) / 24} />
+				<div class="reorder-bar" style:--offset-left={(position.x - 48) / 24} style:--offset-top={(position.y - 12) / 24}></div>
 			{/if}
 
 			{#if $nodeGraph.reorderExportIndex !== undefined}
@@ -465,7 +465,7 @@
 					x: Number($nodeGraph.updateImportsExports.exportPosition.x),
 					y: Number($nodeGraph.updateImportsExports.exportPosition.y) + Number($nodeGraph.reorderExportIndex) * 24,
 				}}
-				<div class="reorder-bar" style:--offset-left={position.x / 24} style:--offset-top={(position.y - 12) / 24} />
+				<div class="reorder-bar" style:--offset-left={position.x / 24} style:--offset-top={(position.y - 12) / 24}></div>
 			{/if}
 		{/if}
 	</div>
@@ -481,7 +481,7 @@
 			{@const layerAreaWidth = $nodeGraph.layerWidths.get(node.id) || 8}
 			{@const layerChainWidth = $nodeGraph.chainWidths.get(node.id) || 0}
 			{@const hasLeftInputWire = $nodeGraph.hasLeftInputWire.get(node.id) || false}
-			{@const description = (node.reference && $nodeGraph.nodeDescriptions.get(node.reference)) || undefined}
+			{@const description = node.reference ? $nodeGraph.nodeDescriptions.get(node.reference) : undefined}
 			<div
 				class="layer"
 				class:selected={$nodeGraph.selected.includes(node.id)}
@@ -634,7 +634,7 @@
 			.map(([_, node], nodeIndex) => ({ node, nodeIndex })) as { node, nodeIndex } (nodeIndex)}
 			{@const exposedInputsOutputs = zipWithUndefined(node.exposedInputs, node.exposedOutputs)}
 			{@const clipPathId = String(Math.random()).substring(2)}
-			{@const description = (node.reference && $nodeGraph.nodeDescriptions.get(node.reference)) || undefined}
+			{@const description = node.reference ? $nodeGraph.nodeDescriptions.get(node.reference) : undefined}
 			<div
 				class="node"
 				class:selected={$nodeGraph.selected.includes(node.id)}
