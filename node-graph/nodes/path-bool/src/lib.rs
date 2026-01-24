@@ -10,7 +10,7 @@ use graphic_types::{Graphic, Vector};
 use linesweeper::topology::Topology;
 use linesweeper::{BinaryOp, FillRule, binary_op};
 use smallvec::SmallVec;
-use vector_types::kurbo::{Affine, BezPath, CubicBez, ParamCurve, Point};
+use vector_types::kurbo::{Affine, BezPath, CubicBez, Line, ParamCurve, PathSeg, Point, QuadBez};
 
 // Import specta so derive macros can find it
 use core_types::specta;
@@ -270,6 +270,23 @@ fn flatten_vector(graphic_table: &Table<Graphic>) -> Table<Vector> {
 		.collect()
 }
 
+// I don't think this quantization should be necessary, but
+// - it imitates the previous behavior, and
+// - without it, the oak leaf in changing seasons is funky, since without
+//   quantization the top and bottom points don't quite line up vertically.
+fn quantize_segment(seg: PathSeg) -> PathSeg {
+	const QUANTIZE_EPS: f64 = 1e-8;
+	fn q(p: Point) -> Point {
+		Point::new((p.x / QUANTIZE_EPS).round() * QUANTIZE_EPS, (p.y / QUANTIZE_EPS).round() * QUANTIZE_EPS)
+	}
+
+	match seg {
+		PathSeg::Line(s) => PathSeg::Line(Line::new(q(s.p0), q(s.p1))),
+		PathSeg::Quad(s) => PathSeg::Quad(QuadBez::new(q(s.p0), q(s.p1), q(s.p2))),
+		PathSeg::Cubic(s) => PathSeg::Cubic(CubicBez::new(q(s.p0), q(s.p1), q(s.p2), q(s.p3))),
+	}
+}
+
 fn to_bez_path(vector: &Vector, transform: DAffine2) -> BezPath {
 	let mut path = BezPath::new();
 	for subpath in vector.stroke_bezier_paths() {
@@ -285,9 +302,9 @@ fn push_subpath(path: &mut BezPath, subpath: &Subpath<PointId>, transform: DAffi
 	for seg in subpath.iter_closed() {
 		if first {
 			first = false;
-			path.move_to(transform * seg.start());
+			path.move_to(quantize_segment(transform * seg).start());
 		}
-		path.push(transform * seg.as_path_el());
+		path.push(quantize_segment(transform * seg).as_path_el());
 	}
 }
 
