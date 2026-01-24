@@ -29,9 +29,7 @@
 	$: gridDotRadius = 1 + Math.floor($nodeGraph.transform.scale - 0.5 + 0.001) / 2;
 
 	// Close the context menu when the graph view overlay is closed
-	$: if (!$document.graphViewOverlayOpen) {
-		nodeGraph.closeContextMenu();
-	}
+	$: if (!$document.graphViewOverlayOpen) nodeGraph.closeContextMenu();
 
 	let inputElement: HTMLInputElement;
 	let hoveringImportIndex: number | undefined = undefined;
