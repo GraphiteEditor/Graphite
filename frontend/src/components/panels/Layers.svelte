@@ -435,7 +435,7 @@
 
 	function handleLayerPanelKeyDown(e: KeyboardEvent) {
 		// Only handle F2 if not currently editing a layer name
-		if (e.key === "F2" && !isAnyLayerBeingEdited()) {
+		if (e.key === "F2" && !layers.some((layer) => layer.editingName)) {
 			// Find the first selected layer
 			const selectedLayer = layers.find((layer) => layer.entry.selected);
 			if (selectedLayer) {
@@ -445,11 +445,7 @@
 		}
 	}
 
-	function isAnyLayerBeingEdited(): boolean {
-		return layers.some((layer) => layer.editingName);
-	}
-
-	async function navigateToLayer(currentListing: LayerListingInfo, direction: "next" | "previous" | "up" | "down") {
+	async function navigateToLayer(currentListing: LayerListingInfo, direction: "Up" | "Down") {
 		// Save the current layer name
 		const inputElement = document.activeElement;
 		if (inputElement instanceof HTMLInputElement) {
@@ -463,15 +459,8 @@
 		if (currentIndex === -1) return;
 
 		// Calculate target index based on direction
-		let targetIndex: number;
-		if (direction === "next" || direction === "down") {
-			targetIndex = currentIndex + 1;
-			if (targetIndex >= layers.length) return; // Don't wrap around at the end
-		} else {
-			// previous or up
-			targetIndex = currentIndex - 1;
-			if (targetIndex < 0) return; // Don't wrap around at the beginning
-		}
+		const targetIndex = direction === "Down" ? currentIndex + 1 : currentIndex - 1;
+		if (targetIndex >= layers.length || targetIndex < 0) return;
 
 		const targetListing = layers[targetIndex];
 		if (!targetListing) return;
@@ -633,13 +622,13 @@
 									onEditLayerNameChange(listing, e);
 								} else if (e.key === "Tab") {
 									e.preventDefault();
-									navigateToLayer(listing, e.shiftKey ? "previous" : "next");
+									navigateToLayer(listing, e.shiftKey ? "Up" : "Down");
 								} else if (e.key === "ArrowUp") {
 									e.preventDefault();
-									navigateToLayer(listing, "up");
+									navigateToLayer(listing, "Up");
 								} else if (e.key === "ArrowDown") {
 									e.preventDefault();
-									navigateToLayer(listing, "down");
+									navigateToLayer(listing, "Down");
 								}
 							}}
 							on:change={(e) => onEditLayerNameChange(listing, e)}
