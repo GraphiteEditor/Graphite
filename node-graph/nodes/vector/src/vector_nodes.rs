@@ -1210,6 +1210,23 @@ async fn map_vector(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: Table<Ve
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn map_points(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: Table<Vector>, mapped: impl Node<Context<'static>, Output = DVec2>) -> Table<Vector> {
+	let mut content = content;
+	let mut index = 0;
+
+	for row in content.iter_mut() {
+		for (_, position) in row.element.point_domain.positions_mut() {
+			let owned_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index).with_position(*position);
+			index += 1;
+
+			*position = mapped.eval(owned_ctx.into_context()).await;
+		}
+	}
+
+	content
+}
+
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
 async fn flatten_path<T: 'n + Send>(
 	_: impl Ctx,
 	#[implementations(
