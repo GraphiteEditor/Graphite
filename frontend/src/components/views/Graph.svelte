@@ -4,8 +4,8 @@
 	import { fade } from "svelte/transition";
 
 	import type { Editor } from "@graphite/editor";
-	import type { DocumentState } from "@graphite/state-providers/document";
 	import type { FrontendGraphInput, FrontendGraphOutput, FrontendNode } from "@graphite/messages";
+	import type { DocumentState } from "@graphite/state-providers/document";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 
 	import NodeCatalog from "@graphite/components/floating-menus/NodeCatalog.svelte";
