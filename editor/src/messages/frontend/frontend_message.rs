@@ -64,8 +64,10 @@ pub enum FrontendMessage {
 		#[serde(rename = "nodeTypes")]
 		node_types: Vec<FrontendNodeType>,
 	},
-	SendShortcutF11 {
+	SendShortcutFullscreen {
 		shortcut: Option<ActionShortcut>,
+		#[serde(rename = "shortcutMac")]
+		shortcut_mac: Option<ActionShortcut>,
 	},
 	SendShortcutAltClick {
 		shortcut: Option<ActionShortcut>,
@@ -105,7 +107,6 @@ pub enum FrontendMessage {
 		font: Font,
 		url: String,
 	},
-	TriggerImport,
 	TriggerPersistenceRemoveDocument {
 		#[serde(rename = "documentId")]
 		document_id: DocumentId,
@@ -120,7 +121,8 @@ pub enum FrontendMessage {
 	TriggerLoadRestAutoSaveDocuments,
 	TriggerOpenLaunchDocuments,
 	TriggerLoadPreferences,
-	TriggerOpenDocument,
+	TriggerOpen,
+	TriggerImport,
 	TriggerSavePreferences {
 		preferences: PreferencesMessageHandler,
 	},
@@ -363,9 +365,15 @@ pub enum FrontendMessage {
 	},
 
 	// Window prefix: cause the application window to do something
+	WindowPointerLock,
+	WindowPointerLockMove {
+		x: f64,
+		y: f64,
+	},
 	WindowClose,
 	WindowMinimize,
 	WindowMaximize,
+	WindowFullscreen,
 	WindowDrag,
 	WindowHide,
 	WindowHideOthers,

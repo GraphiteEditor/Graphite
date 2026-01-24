@@ -29,7 +29,7 @@ impl From<std::io::Error> for Error {
 	}
 }
 
-#[node_macro::node(category("Debug: Raster"))]
+#[node_macro::node(category("Debug"))]
 pub fn sample_image(ctx: impl ExtractFootprint + Clone + Send, image_frame: Table<Raster<CPU>>) -> Table<Raster<CPU>> {
 	image_frame
 		.into_iter()
@@ -279,7 +279,7 @@ pub fn extend_image_to_bounds(_: impl Ctx, image: Table<Raster<CPU>>, bounds: DA
 		.collect()
 }
 
-#[node_macro::node(category("Debug: Raster"))]
+#[node_macro::node(category("Debug"))]
 pub fn empty_image(_: impl Ctx, transform: DAffine2, color: Table<Color>) -> Table<Raster<CPU>> {
 	let width = transform.transform_vector2(DVec2::new(1., 0.)).length() as u32;
 	let height = transform.transform_vector2(DVec2::new(0., 1.)).length() as u32;

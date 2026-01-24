@@ -100,18 +100,18 @@ export class UpdateNodeGraphTransform extends JsMessage {
 	readonly transform!: NodeGraphTransform;
 }
 
-const NodeDescriptions = Transform(({ obj }) => new Map(obj.nodeDescriptions));
-
 export class SendUIMetadata extends JsMessage {
-	@NodeDescriptions
+	@Transform(({ obj }) => new Map(obj.nodeDescriptions))
 	readonly nodeDescriptions!: Map<string, string>;
-	@Type(() => FrontendNode)
+
 	readonly nodeTypes!: FrontendNodeType[];
 }
 
-export class SendShortcutF11 extends JsMessage {
+export class SendShortcutFullscreen extends JsMessage {
 	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
 	readonly shortcut!: ActionShortcut | undefined;
+	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
+	readonly shortcutMac!: ActionShortcut | undefined;
 }
 
 export class SendShortcutAltClick extends JsMessage {
@@ -226,6 +226,8 @@ export class FrontendNode {
 
 	readonly displayName!: string;
 
+	readonly implementationName!: string;
+
 	readonly primaryInput!: FrontendGraphInput | undefined;
 
 	readonly exposedInputs!: FrontendGraphInput[];
@@ -251,12 +253,16 @@ export class FrontendNode {
 }
 
 export class FrontendNodeType {
+	readonly identifier!: string;
+
 	readonly name!: string;
 
 	readonly category!: string;
 
 	readonly inputTypes!: string[];
 }
+
+export type DefinitionIdentifier = { type: "Network" | "ProtoNode"; data: string };
 
 export class NodeGraphTransform {
 	readonly scale!: number;
@@ -311,8 +317,6 @@ export class UpdateFullscreen extends JsMessage {
 	readonly fullscreen!: boolean;
 }
 
-export class CloseWindow extends JsMessage {}
-
 export class UpdateViewportHolePunch extends JsMessage {
 	readonly active!: boolean;
 }
@@ -327,6 +331,13 @@ export class UpdateViewportPhysicalBounds extends JsMessage {
 export class UpdateUIScale extends JsMessage {
 	readonly scale!: number;
 }
+
+export class WindowPointerLockMove extends JsMessage {
+	readonly x!: number;
+	readonly y!: number;
+}
+
+export class WindowFullscreen extends JsMessage {}
 
 // Rust enum `Key`
 export type KeyRaw = string;
@@ -734,7 +745,7 @@ export class TriggerFetchAndOpenDocument extends JsMessage {
 	readonly filename!: string;
 }
 
-export class TriggerOpenDocument extends JsMessage {}
+export class TriggerOpen extends JsMessage {}
 
 export class TriggerImport extends JsMessage {}
 
@@ -827,7 +838,9 @@ export class UpdateDocumentLayerDetails extends JsMessage {
 export class LayerPanelEntry {
 	id!: bigint;
 
-	reference!: string;
+	implementationName!: string;
+
+	iconName!: IconName | undefined;
 
 	alias!: string;
 
@@ -1653,14 +1666,16 @@ export const messageMakers: Record<string, MessageMaker> = {
 	DisplayDialogDismiss,
 	DisplayDialogPanic,
 	DisplayEditableTextbox,
-	DisplayEditableTextboxUpdateFontData,
 	DisplayEditableTextboxTransform,
+	DisplayEditableTextboxUpdateFontData,
 	DisplayRemoveEditableTextbox,
-	SendUIMetadata,
-	SendShortcutF11,
 	SendShortcutAltClick,
+	SendShortcutFullscreen,
 	SendShortcutShiftClick,
+	SendUIMetadata,
 	TriggerAboutGraphiteLocalizedCommitDate,
+	TriggerClipboardRead,
+	TriggerClipboardWrite,
 	TriggerDisplayThirdPartyLicensesDialog,
 	TriggerExportImage,
 	TriggerFetchAndOpenDocument,
@@ -1670,7 +1685,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerLoadFirstAutoSaveDocument,
 	TriggerLoadPreferences,
 	TriggerLoadRestAutoSaveDocuments,
-	TriggerOpenDocument,
+	TriggerOpen,
 	TriggerOpenLaunchDocuments,
 	TriggerPersistenceRemoveDocument,
 	TriggerPersistenceWriteDocument,
@@ -1678,11 +1693,9 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerSaveDocument,
 	TriggerSaveFile,
 	TriggerSavePreferences,
-	TriggerTextCommit,
-	TriggerClipboardRead,
-	TriggerClipboardWrite,
 	TriggerSelectionRead,
 	TriggerSelectionWrite,
+	TriggerTextCommit,
 	TriggerVisitLink,
 	UpdateActiveDocument,
 	UpdateBox,
@@ -1701,6 +1714,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateDocumentScrollbars,
 	UpdateExportReorderIndex,
 	UpdateEyedropperSamplingState,
+	UpdateFullscreen,
 	UpdateGraphFadeArtwork,
 	UpdateGraphViewOverlay,
 	UpdateImportReorderIndex,
@@ -1711,6 +1725,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateLayersPanelControlBarRightLayout,
 	UpdateLayersPanelState,
 	UpdateLayerWidths,
+	UpdateMaximized,
 	UpdateMenuBarLayout,
 	UpdateMouseCursor,
 	UpdateNodeGraphControlBarLayout,
@@ -1722,20 +1737,20 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateNodeThumbnail,
 	UpdateOpenDocumentsList,
 	UpdatePlatform,
-	UpdateMaximized,
-	UpdateFullscreen,
 	UpdatePropertiesPanelLayout,
 	UpdatePropertiesPanelState,
 	UpdateStatusBarHintsLayout,
 	UpdateStatusBarInfoLayout,
 	UpdateToolOptionsLayout,
 	UpdateToolShelfLayout,
+	UpdateUIScale,
 	UpdateViewportHolePunch,
 	UpdateViewportPhysicalBounds,
-	UpdateUIScale,
 	UpdateVisibleNodes,
 	UpdateWelcomeScreenButtonsLayout,
 	UpdateWirePathInProgress,
 	UpdateWorkingColorsLayout,
+	WindowFullscreen,
+	WindowPointerLockMove,
 } as const;
 export type JsMessageType = keyof typeof messageMakers;

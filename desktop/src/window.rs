@@ -1,12 +1,12 @@
+use crate::consts::APP_NAME;
+use crate::event::AppEventScheduler;
+use crate::wrapper::messages::MenuItem;
 use std::collections::HashMap;
 use std::sync::Arc;
 use winit::cursor::{CursorIcon, CustomCursor, CustomCursorSource};
 use winit::event_loop::ActiveEventLoop;
+use winit::monitor::Fullscreen;
 use winit::window::{Window as WinitWindow, WindowAttributes};
-
-use crate::consts::APP_NAME;
-use crate::event::AppEventScheduler;
-use crate::wrapper::messages::MenuItem;
 
 pub(crate) trait NativeWindow {
 	fn init() {}
@@ -111,6 +111,9 @@ impl Window {
 	}
 
 	pub(crate) fn toggle_maximize(&self) {
+		if self.is_fullscreen() {
+			return;
+		}
 		self.winit_window.set_maximized(!self.winit_window.is_maximized());
 	}
 
@@ -118,11 +121,22 @@ impl Window {
 		self.winit_window.is_maximized()
 	}
 
+	pub(crate) fn toggle_fullscreen(&mut self) {
+		if self.is_fullscreen() {
+			self.winit_window.set_fullscreen(None);
+		} else {
+			self.winit_window.set_fullscreen(Some(Fullscreen::Borderless(None)));
+		}
+	}
+
 	pub(crate) fn is_fullscreen(&self) -> bool {
 		self.winit_window.fullscreen().is_some()
 	}
 
 	pub(crate) fn start_drag(&self) {
+		if self.is_fullscreen() {
+			return;
+		}
 		let _ = self.winit_window.drag_window();
 	}
 
@@ -157,6 +171,16 @@ impl Window {
 			}
 		};
 		self.winit_window.set_cursor(cursor);
+	}
+
+	pub(crate) fn start_pointer_lock(&self) {
+		let _ = self.winit_window.set_cursor_grab(winit::window::CursorGrabMode::Locked);
+		self.winit_window.set_cursor_visible(false);
+	}
+
+	pub(crate) fn end_pointer_lock(&self) {
+		let _ = self.winit_window.set_cursor_grab(winit::window::CursorGrabMode::None);
+		self.winit_window.set_cursor_visible(true);
 	}
 
 	pub(crate) fn update_menu(&self, entries: Vec<MenuItem>) {

@@ -85,7 +85,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 
 	if cfg!(feature = "gpu") {
 		nodes.push(DocumentNode {
-			implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::from("graphene_core::ops::IntoNode<&WgpuExecutor>")),
+			implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IntoNode<&WgpuExecutor>")),
 			inputs: vec![NodeInput::node(NodeId(2), 0)],
 			..Default::default()
 		});

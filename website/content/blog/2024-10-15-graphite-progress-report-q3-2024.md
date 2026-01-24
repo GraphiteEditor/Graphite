@@ -335,8 +335,6 @@ EDITOR'S NOTE: The grammatical structure of each bullet point should follow the 
 
 - Fixes, documentation, and updates for npm dependencies and tooling, as well as fixes for Bezier-rs demos not building <small>([#1857](https://github.com/GraphiteEditor/Graphite/pull/1857))</small>
 
-- Partial restoration of the Imaginate node within the modern node graph architecture, but more work remains <small>([#1908](https://github.com/GraphiteEditor/Graphite/pull/1908))</small>
-
 - Profiling metrics development infrastructure for Graphene graph compilation <small>([#1924](https://github.com/GraphiteEditor/Graphite/pull/1924), [#1974](https://github.com/GraphiteEditor/Graphite/pull/1974))</small>
 
 - CI infrastructure to post Clippy warnings as PR comments <small>([#1926](https://github.com/GraphiteEditor/Graphite/pull/1926), [commit a93dcb2](https://github.com/GraphiteEditor/Graphite/commit/a93dcb2776027bfcb385ae9dfddff249bdfd896b))</small>

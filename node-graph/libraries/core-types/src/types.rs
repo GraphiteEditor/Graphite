@@ -1,8 +1,7 @@
+use crate::transform::Footprint;
 use std::any::TypeId;
-
 pub use std::borrow::Cow;
 use std::fmt::{Display, Formatter};
-use std::ops::Deref;
 
 #[macro_export]
 macro_rules! concrete {
@@ -77,6 +76,7 @@ macro_rules! fn_type_fut {
 	};
 }
 
+// TODO: Rename to NodeSignatureMonomorphization
 #[derive(Clone, PartialEq, Eq, Hash, Default, serde::Serialize, serde::Deserialize)]
 pub struct NodeIOTypes {
 	pub call_argument: Type,
@@ -128,19 +128,7 @@ impl std::fmt::Debug for NodeIOTypes {
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, specta::Type, serde::Serialize, serde::Deserialize)]
 pub struct ProtoNodeIdentifier {
-	pub name: Cow<'static, str>,
-}
-
-impl From<String> for ProtoNodeIdentifier {
-	fn from(value: String) -> Self {
-		Self { name: Cow::Owned(value) }
-	}
-}
-
-impl From<&'static str> for ProtoNodeIdentifier {
-	fn from(s: &'static str) -> Self {
-		ProtoNodeIdentifier { name: Cow::Borrowed(s) }
-	}
+	name: Cow<'static, str>,
 }
 
 impl ProtoNodeIdentifier {
@@ -151,12 +139,8 @@ impl ProtoNodeIdentifier {
 	pub const fn with_owned_string(name: String) -> Self {
 		ProtoNodeIdentifier { name: Cow::Owned(name) }
 	}
-}
 
-impl Deref for ProtoNodeIdentifier {
-	type Target = str;
-
-	fn deref(&self) -> &Self::Target {
+	pub fn as_str(&self) -> &str {
 		self.name.as_ref()
 	}
 }
@@ -369,7 +353,10 @@ pub fn format_type(ty: &str) -> String {
 }
 
 pub fn make_type_user_readable(ty: &str) -> String {
-	ty.replace("Option<Arc<OwnedContextImpl>>", "Context").replace("Vector<Option<Table<Graphic>>>", "Vector")
+	ty.replace("Option<Arc<OwnedContextImpl>>", "Context")
+		.replace("Vector<Option<Table<Graphic>>>", "Vector")
+		.replace("Raster<CPU>", "Raster")
+		.replace("Raster<GPU>", "Raster")
 }
 
 impl std::fmt::Debug for Type {
@@ -390,6 +377,19 @@ impl std::fmt::Debug for Type {
 
 impl std::fmt::Display for Type {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		if self == &concrete!(glam::DVec2) {
+			return write!(f, "vec2");
+		}
+		if self == &concrete!(glam::DAffine2) {
+			return write!(f, "transform");
+		}
+		if self == &concrete!(Footprint) {
+			return write!(f, "footprint");
+		}
+		if self == &concrete!(&str) || self == &concrete!(String) {
+			return write!(f, "string");
+		}
+
 		let text = match self {
 			Type::Generic(name) => name.to_string(),
 			Type::Concrete(ty) => format_type(&ty.name),
