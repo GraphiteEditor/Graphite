@@ -113,6 +113,20 @@ bitflags! {
 	}
 }
 
+impl ContextFeatures {
+	pub fn name(&self) -> &'static str {
+		match *self {
+			ContextFeatures::FOOTPRINT => "Footprint",
+			ContextFeatures::REAL_TIME => "RealTime",
+			ContextFeatures::ANIMATION_TIME => "AnimationTime",
+			ContextFeatures::POINTER => "Pointer",
+			ContextFeatures::INDEX => "Index",
+			ContextFeatures::VARARGS => "VarArgs",
+			_ => "Multiple Features",
+		}
+	}
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, dyn_any::DynAny, serde::Serialize, serde::Deserialize, Default)]
 pub struct ContextDependencies {
 	pub extract: ContextFeatures,
@@ -334,7 +348,7 @@ impl ExtractPointer for OwnedContextImpl {
 }
 impl ExtractIndex for OwnedContextImpl {
 	fn try_index(&self) -> Option<impl Iterator<Item = usize>> {
-		self.index.clone().map(|x| x.into_iter().rev())
+		self.index.clone().map(|x| x.into_iter())
 	}
 }
 impl ExtractVarArgs for OwnedContextImpl {
@@ -523,7 +537,7 @@ impl OwnedContextImpl {
 	}
 	pub fn with_index(mut self, index: usize) -> Self {
 		if let Some(current_index) = &mut self.index {
-			current_index.push(index);
+			current_index.insert(0, index);
 		} else {
 			self.index = Some(vec![index]);
 		}

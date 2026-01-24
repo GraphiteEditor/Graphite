@@ -114,7 +114,7 @@
 			on:keydown={(e) => e.key === "Escape" && cancel()}
 			on:pointerdown
 			on:contextmenu={(e) => hideContextMenu && e.preventDefault()}
-		/>
+		></textarea>
 	{/if}
 	{#if label}
 		<label for={`field-input-${id}`} on:pointerdown>{label}</label>

@@ -1,7 +1,7 @@
 <!--
 Graphite has ZERO-TOLERANCE for contributing undisclosed AI-generated content.
 If your PR involves AI, you must read our AI contribution policy (it's short):
-https://graphite.art/volunteer/guide/guide/starting-a-task/ai-contribution-policy
+https://graphite.art/volunteer/guide/starting-a-task/ai-contribution-policy
 
 REMEMBER:
 - You are responsible for thoroughly testing the successful implementation of your changes and ensuring no obvious regressions occur.
