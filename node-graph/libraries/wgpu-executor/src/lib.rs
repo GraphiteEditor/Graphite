@@ -48,6 +48,7 @@ pub struct Surface {
 	pub blitter: TextureBlitter,
 }
 
+#[derive(Clone, Debug)]
 pub struct TargetTexture {
 	texture: wgpu::Texture,
 	view: wgpu::TextureView,

@@ -1,7 +1,5 @@
 use crate::window::Window;
-
-use crate::wrapper::{Color, WgpuContext, WgpuExecutor};
-use wgpu_executor::TargetTexture;
+use crate::wrapper::{Color, TargetTexture, WgpuContext, WgpuExecutor};
 
 #[derive(derivative::Derivative)]
 #[derivative(Debug)]
@@ -18,7 +16,7 @@ pub(crate) struct RenderState {
 	viewport_scale: [f32; 2],
 	viewport_offset: [f32; 2],
 	viewport_texture: Option<wgpu::Texture>,
-	overlays_target_texture: Option<TargetTexture>,
+	overlays_texture: Option<TargetTexture>,
 	ui_texture: Option<wgpu::Texture>,
 	bind_group: Option<wgpu::BindGroup>,
 	#[derivative(Debug = "ignore")]
@@ -182,7 +180,7 @@ impl RenderState {
 			viewport_scale: [1.0, 1.0],
 			viewport_offset: [0.0, 0.0],
 			viewport_texture: None,
-			overlays_target_texture: None,
+			overlays_texture: None,
 			ui_texture: None,
 			bind_group: None,
 			overlays_scene: None,
@@ -234,7 +232,7 @@ impl RenderState {
 		let size = glam::UVec2::new(viewport_texture.width(), viewport_texture.height());
 		let result = futures::executor::block_on(
 			self.executor
-				.render_vello_scene_to_target_texture(&scene, size, &Default::default(), Color::TRANSPARENT, &mut self.overlays_target_texture),
+				.render_vello_scene_to_target_texture(&scene, size, &Default::default(), Color::TRANSPARENT, &mut self.overlays_texture),
 		);
 		if let Err(e) = result {
 			tracing::error!("Error rendering overlays: {:?}", e);
@@ -311,11 +309,11 @@ impl RenderState {
 
 	fn update_bindgroup(&mut self) {
 		let viewport_texture_view = self.viewport_texture.as_ref().unwrap_or(&self.transparent_texture).create_view(&wgpu::TextureViewDescriptor::default());
-		let overlays_texture_view = self
-			.overlays_target_texture
-			.as_ref()
-			.map(|target| target.view())
-			.unwrap_or_else(|| &self.transparent_texture.create_view(&wgpu::TextureViewDescriptor::default()));
+		let overlays_texture_view = if let Some(overlays_texture_view) = self.overlays_texture.as_ref().map(|target| target.view()) {
+			overlays_texture_view
+		} else {
+			&self.transparent_texture.create_view(&wgpu::TextureViewDescriptor::default())
+		};
 		let ui_texture_view = self.ui_texture.as_ref().unwrap_or(&self.transparent_texture).create_view(&wgpu::TextureViewDescriptor::default());
 
 		let bind_group = self.context.device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -327,7 +325,7 @@ impl RenderState {
 				},
 				wgpu::BindGroupEntry {
 					binding: 1,
-					resource: wgpu::BindingResource::TextureView(&overlays_texture_view),
+					resource: wgpu::BindingResource::TextureView(overlays_texture_view),
 				},
 				wgpu::BindGroupEntry {
 					binding: 2,
