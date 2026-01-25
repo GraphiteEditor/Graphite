@@ -1,9 +1,8 @@
 import { writable } from "svelte/store";
 
 import { type Editor } from "@graphite/editor";
-import type { NodeGraphError } from "@graphite/messages";
+import type { NodeGraphError, NodeGraphSelectionBox, WirePathInProgress } from "@graphite/messages";
 import {
-	type Box,
 	type FrontendClickTargets,
 	type ContextMenuInformation,
 	type FrontendNode,
@@ -11,7 +10,6 @@ import {
 	type WirePath,
 	ClearAllNodeGraphWires,
 	SendUIMetadata,
-	UpdateBox,
 	UpdateClickTargets,
 	UpdateContextMenuInformation,
 	UpdateInSelectedNetwork,
@@ -27,11 +25,12 @@ import {
 	UpdateNodeThumbnail,
 	UpdateWirePathInProgress,
 	UpdateNodeGraphErrorDiagnostic,
+	UpdateNodeGraphSelectionBox,
 } from "@graphite/messages";
 
 export function createNodeGraphState(editor: Editor) {
 	const { subscribe, update } = writable({
-		box: undefined as Box | undefined,
+		selectionBox: undefined as NodeGraphSelectionBox | undefined,
 		clickTargets: undefined as FrontendClickTargets | undefined,
 		contextMenuInformation: undefined as ContextMenuInformation | undefined,
 		error: undefined as NodeGraphError | undefined,
@@ -43,7 +42,7 @@ export function createNodeGraphState(editor: Editor) {
 		visibleNodes: new Set<bigint>(),
 		/// The index is the exposed input index. The exports have a first key value of u32::MAX.
 		wires: new Map<bigint, Map<number, WirePath>>(),
-		wirePathInProgress: undefined as WirePath | undefined,
+		wirePathInProgress: undefined as WirePathInProgress | undefined,
 		nodeDescriptions: new Map<string, string>(),
 		nodeTypes: [] as FrontendNodeType[],
 		thumbnails: new Map<bigint, string>(),
@@ -69,9 +68,9 @@ export function createNodeGraphState(editor: Editor) {
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateBox, (data) => {
+	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphSelectionBox, (data) => {
 		update((state) => {
-			state.box = data.box;
+			state.selectionBox = data.selectionBox;
 			return state;
 		});
 	});
@@ -184,7 +183,7 @@ export function createNodeGraphState(editor: Editor) {
 	});
 	editor.subscriptions.subscribeJsMessage(UpdateWirePathInProgress, (data) => {
 		update((state) => {
-			state.wirePathInProgress = data.wirePath;
+			state.wirePathInProgress = data.wirePathInProgress;
 			return state;
 		});
 	});

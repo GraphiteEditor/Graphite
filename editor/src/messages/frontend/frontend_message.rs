@@ -3,10 +3,11 @@ use crate::messages::app_window::app_window_message_handler::AppWindowPlatform;
 use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::{
-	BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeType, NodeGraphErrorDiagnostic, Transform,
+	ContextMenuInformation, FrontendClickTargets, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeType, NodeGraphErrorDiagnostic, NodeGraphSelectionBox, NodeGraphTransform,
+	WirePathInProgress,
 };
 use crate::messages::portfolio::document::utility_types::nodes::{JsRawBuffer, LayerPanelEntry, RawBuffer};
-use crate::messages::portfolio::document::utility_types::wires::{WirePath, WirePathUpdate};
+use crate::messages::portfolio::document::utility_types::wires::WirePathUpdate;
 use crate::messages::prelude::*;
 use glam::IVec2;
 use graph_craft::document::NodeId;
@@ -169,9 +170,9 @@ pub enum FrontendMessage {
 		#[serde(rename = "inSelectedNetwork")]
 		in_selected_network: bool,
 	},
-	UpdateBox {
-		#[serde(rename = "box")]
-		box_selection: Option<BoxSelection>,
+	UpdateNodeGraphSelectionBox {
+		#[serde(rename = "selectionBox")]
+		selection_box: Option<NodeGraphSelectionBox>,
 	},
 	UpdateContextMenuInformation {
 		#[serde(rename = "contextMenuInformation")]
@@ -300,7 +301,7 @@ pub enum FrontendMessage {
 		selected: Vec<NodeId>,
 	},
 	UpdateNodeGraphTransform {
-		transform: Transform,
+		transform: NodeGraphTransform,
 	},
 	UpdateNodeThumbnail {
 		id: NodeId,
@@ -320,8 +321,8 @@ pub enum FrontendMessage {
 		diff: Vec<WidgetDiff>,
 	},
 	UpdateWirePathInProgress {
-		#[serde(rename = "wirePath")]
-		wire_path: Option<WirePath>,
+		#[serde(rename = "wirePathInProgress")]
+		wire_path_in_progress: Option<WirePathInProgress>,
 	},
 	UpdateWelcomeScreenButtonsLayout {
 		diff: Vec<WidgetDiff>,

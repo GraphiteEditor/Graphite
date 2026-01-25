@@ -15,6 +15,23 @@
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 
+	// Note on upcoming changes for poting this component to Rust for native rendering:
+	//
+	// These components will continue to be rendered in Svelte after the first stage of native node graph rendering.
+	// - Import and export ports
+	// - Wires to import and export
+	// - Wire in progress
+	// - Add Node context menu
+	// - Toggle Layer context menu
+	// - Error dialog
+	// - Node/Input/Output Tooltips
+	// - Solo drag grip tooltip
+	//
+	// These elements will be not be rendered in Svelte when rendering with the native node graph. They are rendered below all other components.
+	// - Dot grid background
+	// - Nodes/Layers
+	// - Wires between nodes/layers
+
 	const GRID_COLLAPSE_SPACING = 10;
 	const GRID_SIZE = 24;
 	const FADE_TRANSITION = { duration: 200, easing: cubicInOut };
@@ -278,8 +295,8 @@
 	<div class="wires" style:transform-origin="0 0" style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
 		<svg>
 			{#each $nodeGraph.wires.values() as map}
-				{#each map.values() as { pathString, dataType, thick, dashed }}
-					{#if thick}
+				{#each map.values() as { pathString, dataType, forLayerStack, dashed }}
+					{#if forLayerStack}
 						<path
 							d={pathString}
 							style:--data-line-width="8px"
@@ -609,8 +626,8 @@
 		<div class="wires">
 			<svg>
 				{#each $nodeGraph.wires.values() as map}
-					{#each map.values() as { pathString, dataType, thick, dashed }}
-						{#if !thick}
+					{#each map.values() as { pathString, dataType, forLayerStack, dashed }}
+						{#if !forLayerStack}
 							<path
 								d={pathString}
 								style:--data-line-width="2px"
@@ -623,11 +640,10 @@
 				{/each}
 				{#if $nodeGraph.wirePathInProgress}
 					<path
-						d={$nodeGraph.wirePathInProgress?.pathString}
-						style:--data-line-width={`${$nodeGraph.wirePathInProgress.thick ? 8 : 2}px`}
+						d={$nodeGraph.wirePathInProgress?.wire}
+						style:--data-line-width={`${$nodeGraph.wirePathInProgress.forLayerStack ? 8 : 2}px`}
 						style:--data-color={`var(--color-data-${$nodeGraph.wirePathInProgress.dataType.toLowerCase()})`}
 						style:--data-color-dim={`var(--color-data-${$nodeGraph.wirePathInProgress.dataType.toLowerCase()}-dim)`}
-						style:--data-dasharray={`3,${$nodeGraph.wirePathInProgress.dashed ? 2 : 0}`}
 					/>
 				{/if}
 			</svg>
@@ -773,13 +789,13 @@
 </div>
 
 <!-- Box selection widget -->
-{#if $nodeGraph.box}
+{#if $nodeGraph.selectionBox}
 	<div
 		class="box-selection"
-		style:left={`${Math.min($nodeGraph.box.startX, $nodeGraph.box.endX)}px`}
-		style:top={`${Math.min($nodeGraph.box.startY, $nodeGraph.box.endY)}px`}
-		style:width={`${Math.abs($nodeGraph.box.startX - $nodeGraph.box.endX)}px`}
-		style:height={`${Math.abs($nodeGraph.box.startY - $nodeGraph.box.endY)}px`}
+		style:left={`${Math.min($nodeGraph.selectionBox.startX, $nodeGraph.selectionBox.endX)}px`}
+		style:top={`${Math.min($nodeGraph.selectionBox.startY, $nodeGraph.selectionBox.endY)}px`}
+		style:width={`${Math.abs($nodeGraph.selectionBox.startX - $nodeGraph.selectionBox.endX)}px`}
+		style:height={`${Math.abs($nodeGraph.selectionBox.startY - $nodeGraph.selectionBox.endY)}px`}
 	></div>
 {/if}
 

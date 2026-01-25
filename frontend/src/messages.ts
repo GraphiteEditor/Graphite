@@ -25,12 +25,22 @@ export type XY = { x: number; y: number };
 // for details about how to transform the JSON from wasm-bindgen into classes.
 // ============================================================================
 
-export class UpdateBox extends JsMessage {
-	readonly box!: Box | undefined;
-}
-
 export class UpdateClickTargets extends JsMessage {
 	readonly clickTargets!: FrontendClickTargets | undefined;
+}
+
+export class NodeGraphSelectionBox {
+	readonly startX!: number;
+
+	readonly startY!: number;
+
+	readonly endX!: number;
+
+	readonly endY!: number;
+}
+
+export class UpdateNodeGraphSelectionBox extends JsMessage {
+	readonly selectionBox!: NodeGraphSelectionBox | undefined;
 }
 
 export class UpdateImportsExports extends JsMessage {
@@ -140,8 +150,14 @@ export class UpdateOpenDocumentsList extends JsMessage {
 	readonly openDocuments!: OpenDocument[];
 }
 
+export class WirePathInProgress {
+	readonly wire!: string;
+	readonly forLayerStack!: boolean;
+	readonly dataType!: FrontendGraphDataType;
+}
+
 export class UpdateWirePathInProgress extends JsMessage {
-	readonly wirePath!: WirePath | undefined;
+	readonly wirePathInProgress!: WirePathInProgress | undefined;
 }
 
 export class OpenDocument {
@@ -157,16 +173,6 @@ export class DocumentDetails {
 	readonly isAutoSaved!: boolean;
 
 	readonly isSaved!: boolean;
-}
-
-export class Box {
-	readonly startX!: number;
-
-	readonly startY!: number;
-
-	readonly endX!: number;
-
-	readonly endY!: number;
 }
 
 export type FrontendClickTargets = {
@@ -273,7 +279,7 @@ export class NodeGraphTransform {
 export class WirePath {
 	readonly pathString!: string;
 	readonly dataType!: FrontendGraphDataType;
-	readonly thick!: boolean;
+	readonly forLayerStack!: boolean;
 	readonly dashed!: boolean;
 }
 
@@ -1698,7 +1704,6 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerTextCommit,
 	TriggerVisitLink,
 	UpdateActiveDocument,
-	UpdateBox,
 	UpdateClickTargets,
 	UpdateContextMenuInformation,
 	UpdateDataPanelLayout,
@@ -1732,6 +1737,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateNodeGraphErrorDiagnostic,
 	UpdateNodeGraphNodes,
 	UpdateNodeGraphSelection,
+	UpdateNodeGraphSelectionBox,
 	UpdateNodeGraphTransform,
 	UpdateNodeGraphWires,
 	UpdateNodeThumbnail,

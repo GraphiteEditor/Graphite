@@ -119,14 +119,14 @@ pub struct DragStart {
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
-pub struct Transform {
+pub struct NodeGraphTransform {
 	pub scale: f64,
 	pub x: f64,
 	pub y: f64,
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
-pub struct BoxSelection {
+pub struct NodeGraphSelectionBox {
 	#[serde(rename = "startX")]
 	pub start_x: u32,
 	#[serde(rename = "startY")]
@@ -135,6 +135,15 @@ pub struct BoxSelection {
 	pub end_x: u32,
 	#[serde(rename = "endY")]
 	pub end_y: u32,
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct WirePathInProgress {
+	pub wire: String,
+	#[serde(rename = "dataType")]
+	pub data_type: FrontendGraphDataType,
+	#[serde(rename = "forLayerStack")]
+	pub for_layer_stack: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
