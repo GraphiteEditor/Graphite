@@ -149,6 +149,7 @@ pub enum PortfolioMessage {
 		ignore_hash: bool,
 	},
 	ToggleResetNodesToDefinitionsOnOpen,
+	ToggleFocusDocument,
 	ToggleDataPanelOpen,
 	TogglePropertiesPanelOpen,
 	ToggleLayersPanelOpen,
