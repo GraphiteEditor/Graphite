@@ -324,7 +324,7 @@
 		editor.handle.deselectAllLayers();
 	}
 
-	function calculateDragIndex(tree: LayoutCol, clientY: number, select?: () => void): DraggingData {
+	function calculateDragIndex(tree: LayoutCol, clientY: number, dataIndex: number, select?: () => void): DraggingData | undefined {
 		const treeChildren = tree.div()?.children;
 		const treeOffset = tree.div()?.getBoundingClientRect().top;
 
@@ -340,17 +340,47 @@
 
 		let markerHeight = 0;
 		const layerPanel = document.querySelector("[data-layer-panel]"); // Selects the element with the data-layer-panel attribute
+		let isInvalidDrag = false;
+
 		if (layerPanel !== null && treeChildren !== undefined && treeOffset !== undefined) {
+			const lastLayerDepth = layers[layers.length - 1]?.entry?.depth;
+			const draggingLayerDepth = layers[dataIndex]?.entry?.depth;
+
+			if (clientY > treeChildren[layers.length - 1].getBoundingClientRect().bottom - 10) {
+				if (lastLayerDepth === 1 && draggingLayerDepth > 1) isInvalidDrag = true;
+			}
+
 			let layerPanelTop = layerPanel.getBoundingClientRect().top;
-			Array.from(treeChildren).forEach((treeChild) => {
-				const indexAttribute = treeChild.getAttribute("data-index");
-				if (!indexAttribute) return;
-				const { folderIndex, entry: layer } = layers[parseInt(indexAttribute, 10)];
+
+			for (const treeChild of Array.from(treeChildren)) {
+				if (isInvalidDrag) break;
+				const indexAttribute = parseInt(treeChild.getAttribute("data-index") ?? "0", 10);
+				if (!indexAttribute) continue;
+				const { folderIndex, entry: layer } = layers[indexAttribute];
 
 				const rect = treeChild.getBoundingClientRect();
 				if (rect.top > clientY || rect.bottom < clientY) {
-					return;
+					continue;
 				}
+				if (draggingLayerDepth > 1) {
+					const prevLayer = layers[indexAttribute];
+					const nextLayer = layers[indexAttribute + 1];
+					if (prevLayer?.entry?.depth === 1) {
+						const prevRectTop = treeChildren?.[indexAttribute].getBoundingClientRect().top;
+						if (prevLayer?.entry?.depth === 1 && prevRectTop + 10 > clientY) {
+							isInvalidDrag = true;
+							break;
+						}
+					}
+
+					const isDraggingBtnArtBoards = nextLayer?.entry?.depth === 1 && prevLayer?.entry?.depth === 1;
+
+					if (isDraggingBtnArtBoards) {
+						isInvalidDrag = true;
+						break;
+					}
+				}
+
 				const pointerPercentage = (clientY - rect.top) / rect.height;
 				if (layer.childrenAllowed) {
 					if (pointerPercentage < 0.25) {
@@ -382,7 +412,8 @@
 						markerHeight = rect.bottom - layerPanelTop;
 					}
 				}
-			});
+				break;
+			}
 			// Dragging to the empty space below all layers
 			let lastLayer = treeChildren[treeChildren.length - 1];
 			if (lastLayer.getBoundingClientRect().bottom < clientY) {
@@ -392,6 +423,7 @@
 				insertIndex = numberRootLayers;
 				markerHeight = lastLayer.getBoundingClientRect().bottom - layerPanelTop;
 			}
+			if (isInvalidDrag) return;
 		}
 
 		return {
@@ -427,6 +459,7 @@
 
 			if (distance > DRAG_THRESHOLD) {
 				internalDragState.active = true;
+				draggedLayerIndex = internalDragState.listing.folderIndex;
 				dragInPanel = true;
 
 				const layer = internalDragState.listing.entry;
@@ -437,14 +470,14 @@
 		}
 
 		// Perform drag calculations if a drag is occurring
-		if (internalDragState.active) {
+		if (internalDragState.active && draggedLayerIndex !== undefined) {
 			const select = () => {
 				if (internalDragState && !$nodeGraph.selected.includes(internalDragState.layerId)) {
 					selectLayer(internalDragState.listing, false, false);
 				}
 			};
 
-			draggingData = calculateDragIndex(list, e.clientY, select);
+			draggingData = calculateDragIndex(list, e.clientY,draggedLayerIndex, select);
 		}
 	}
 
@@ -491,6 +524,8 @@
 		}
 	}
 
+	let draggedLayerIndex: number | undefined;
+
 	function fileDragOver(e: DragEvent) {
 		if (!draggable || !e.dataTransfer || !e.dataTransfer.types.includes("Files")) return;
 
@@ -498,8 +533,12 @@
 		e.preventDefault();
 		dragInPanel = true;
 
-		if (list) draggingData = calculateDragIndex(list, e.clientY);
+		// Use the stored index from dragStart
+		if (list && draggedLayerIndex !== undefined) {
+			draggingData = calculateDragIndex(list, e.clientY, draggedLayerIndex, draggingData?.select);
+		}
 	}
+
 
 	function fileDrop(e: DragEvent) {
 		if (!draggingData || !e.dataTransfer || !e.dataTransfer.types.includes("Files")) return;
@@ -513,6 +552,7 @@
 		draggingData = undefined;
 		fakeHighlightOfNotYetSelectedLayerBeingDragged = undefined;
 		dragInPanel = false;
+		draggedLayerIndex = undefined;
 	}
 
 	function rebuildLayerHierarchy(updateDocumentLayerStructure: DocumentLayerStructure) {
