@@ -133,31 +133,32 @@ impl WgpuExecutor {
 			*output = Some(TargetTexture { texture, view, size: UVec2::ONE });
 		}
 
-		let target_texture = output.as_mut().unwrap();
-		target_texture.ensure_size(&self.context.device, size);
+		if let Some(target_texture) = output.as_mut() {
+			target_texture.ensure_size(&self.context.device, size);
 
-		let [r, g, b, a] = background.to_rgba8_srgb();
-		let render_params = RenderParams {
-			base_color: vello::peniko::Color::from_rgba8(r, g, b, a),
-			width: size.x,
-			height: size.y,
-			antialiasing_method: AaConfig::Msaa16,
-		};
+			let [r, g, b, a] = background.to_rgba8_srgb();
+			let render_params = RenderParams {
+				base_color: vello::peniko::Color::from_rgba8(r, g, b, a),
+				width: size.x,
+				height: size.y,
+				antialiasing_method: AaConfig::Msaa16,
+			};
 
-		{
-			let mut renderer = self.vello_renderer.lock().await;
-			for (image_brush, texture) in context.resource_overrides.iter() {
-				let texture_view = wgpu::TexelCopyTextureInfoBase {
-					texture: texture.clone(),
-					mip_level: 0,
-					origin: Origin3d::ZERO,
-					aspect: TextureAspect::All,
-				};
-				renderer.override_image(&image_brush.image, Some(texture_view));
-			}
-			renderer.render_to_texture(&self.context.device, &self.context.queue, scene, target_texture.view(), &render_params)?;
-			for (image_brush, _) in context.resource_overrides.iter() {
-				renderer.override_image(&image_brush.image, None);
+			{
+				let mut renderer = self.vello_renderer.lock().await;
+				for (image_brush, texture) in context.resource_overrides.iter() {
+					let texture_view = wgpu::TexelCopyTextureInfoBase {
+						texture: texture.clone(),
+						mip_level: 0,
+						origin: Origin3d::ZERO,
+						aspect: TextureAspect::All,
+					};
+					renderer.override_image(&image_brush.image, Some(texture_view));
+				}
+				renderer.render_to_texture(&self.context.device, &self.context.queue, scene, target_texture.view(), &render_params)?;
+				for (image_brush, _) in context.resource_overrides.iter() {
+					renderer.override_image(&image_brush.image, None);
+				}
 			}
 		}
 		Ok(())
