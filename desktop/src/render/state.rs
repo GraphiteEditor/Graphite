@@ -309,11 +309,11 @@ impl RenderState {
 
 	fn update_bindgroup(&mut self) {
 		let viewport_texture_view = self.viewport_texture.as_ref().unwrap_or(&self.transparent_texture).create_view(&wgpu::TextureViewDescriptor::default());
-		let overlays_texture_view = if let Some(overlays_texture_view) = self.overlays_texture.as_ref().map(|target| target.view()) {
-			overlays_texture_view
-		} else {
-			&self.transparent_texture.create_view(&wgpu::TextureViewDescriptor::default())
-		};
+		let overlays_texture_view = self
+			.overlays_texture
+			.as_ref()
+			.map(|target| target.view().clone())
+			.unwrap_or_else(|| self.transparent_texture.create_view(&wgpu::TextureViewDescriptor::default()));
 		let ui_texture_view = self.ui_texture.as_ref().unwrap_or(&self.transparent_texture).create_view(&wgpu::TextureViewDescriptor::default());
 
 		let bind_group = self.context.device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -325,7 +325,7 @@ impl RenderState {
 				},
 				wgpu::BindGroupEntry {
 					binding: 1,
-					resource: wgpu::BindingResource::TextureView(overlays_texture_view),
+					resource: wgpu::BindingResource::TextureView(&overlays_texture_view),
 				},
 				wgpu::BindGroupEntry {
 					binding: 2,
