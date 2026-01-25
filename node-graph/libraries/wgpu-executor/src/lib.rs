@@ -55,14 +55,9 @@ pub struct TargetTexture {
 }
 
 impl TargetTexture {
-	/// Ensures the texture has the specified size, creating a new one if needed.
-	/// This allows reusing the same texture across frames when the size hasn't changed.
-	pub fn ensure_size(&mut self, device: &wgpu::Device, size: UVec2) {
+	/// Creates a new TargetTexture with the specified size.
+	pub fn new(device: &wgpu::Device, size: UVec2) -> Self {
 		let size = size.max(UVec2::ONE);
-		if self.size == size {
-			return;
-		}
-
 		let texture = device.create_texture(&wgpu::TextureDescriptor {
 			label: None,
 			size: wgpu::Extent3d {
@@ -79,9 +74,18 @@ impl TargetTexture {
 		});
 		let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
 
-		self.texture = texture;
-		self.view = view;
-		self.size = size;
+		Self { texture, view, size }
+	}
+
+	/// Ensures the texture has the specified size, creating a new one if needed.
+	/// This allows reusing the same texture across frames when the size hasn't changed.
+	pub fn ensure_size(&mut self, device: &wgpu::Device, size: UVec2) {
+		let size = size.max(UVec2::ONE);
+		if self.size == size {
+			return;
+		}
+
+		*self = Self::new(device, size);
 	}
 
 	/// Returns a reference to the texture view for rendering.
@@ -113,24 +117,9 @@ impl WgpuExecutor {
 		Ok(output.unwrap().texture)
 	}
 	pub async fn render_vello_scene_to_target_texture(&self, scene: &Scene, size: UVec2, context: &RenderContext, background: Color, output: &mut Option<TargetTexture>) -> Result<()> {
-		// Initialize with a minimal texture if this is the first call
+		// Initialize (lazily) if this is the first call
 		if output.is_none() {
-			let texture = self.context.device.create_texture(&wgpu::TextureDescriptor {
-				label: None,
-				size: wgpu::Extent3d {
-					width: 1,
-					height: 1,
-					depth_or_array_layers: 1,
-				},
-				mip_level_count: 1,
-				sample_count: 1,
-				dimension: wgpu::TextureDimension::D2,
-				usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC,
-				format: VELLO_SURFACE_FORMAT,
-				view_formats: &[],
-			});
-			let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-			*output = Some(TargetTexture { texture, view, size: UVec2::ONE });
+			*output = Some(TargetTexture::new(&self.context.device, size));
 		}
 
 		if let Some(target_texture) = output.as_mut() {
