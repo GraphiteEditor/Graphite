@@ -157,6 +157,7 @@ impl NodeGraphExecutor {
 			render_mode: document.render_mode,
 			hide_artboards: false,
 			for_export: false,
+			node_names: std::collections::HashMap::new(),
 		};
 
 		// Execute the node graph
@@ -204,6 +205,27 @@ impl NodeGraphExecutor {
 		let resolution = (bounds[1] - bounds[0]).round().as_uvec2();
 		let transform = DAffine2::from_translation(bounds[0]).inverse();
 
+		// Build node_names mapping for SVG export (layer NodeId -> display name)
+		// This includes all nodes recursively (nested layers/groups)
+		let node_names = if export_format == graphene_std::application_io::ExportFormat::Svg {
+			document
+				.network_interface
+				.document_network()
+				.recursive_nodes()
+				.filter_map(|(node_id, _, network_path)| {
+					let name = document.network_interface.display_name(node_id, &network_path);
+					// Skip default "Untitled Layer" and "Untitled Node" names
+					if name.starts_with("Untitled") {
+						None
+					} else {
+						Some((*node_id, name))
+					}
+				})
+				.collect()
+		} else {
+			std::collections::HashMap::new()
+		};
+
 		let render_config = RenderConfig {
 			viewport: Footprint {
 				resolution,
@@ -217,6 +239,7 @@ impl NodeGraphExecutor {
 			render_mode: document.render_mode,
 			hide_artboards: export_config.transparent_background,
 			for_export: true,
+			node_names,
 		};
 		export_config.size = resolution.as_dvec2();
 

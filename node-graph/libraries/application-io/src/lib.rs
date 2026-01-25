@@ -233,7 +233,7 @@ pub struct TimingInformation {
 	pub animation_time: Duration,
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct RenderConfig {
 	pub viewport: Footprint,
 	pub scale: f64,
@@ -244,6 +244,10 @@ pub struct RenderConfig {
 	pub render_mode: RenderMode,
 	pub hide_artboards: bool,
 	pub for_export: bool,
+	/// Mapping from NodeId to layer display names for SVG export.
+	/// When `for_export` is true, these names are used to set `id` attributes on SVG elements.
+	#[serde(default)]
+	pub node_names: std::collections::HashMap<core_types::uuid::NodeId, String>,
 }
 
 struct Logger;
