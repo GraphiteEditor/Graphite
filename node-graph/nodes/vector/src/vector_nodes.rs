@@ -116,6 +116,7 @@ async fn assign_rotations<T: VectorTableIterMut + 'n + Send>(
 	randomize: bool,
 	/// The seed used for randomization.
 	seed: SeedValue,
+	#[range((-50., 50.))] bias: f64,
 	/// The number of elements to span across before repeating. A 0 value will span the entire range once.
 	repeat_every: u32,
 ) -> T {
@@ -125,7 +126,13 @@ async fn assign_rotations<T: VectorTableIterMut + 'n + Send>(
 
 	let apply = |(index, vector): (usize, TableRowMut<'_, Vector>)| {
 		let factor = match randomize {
-			true => rng.random::<f64>(),
+			true => {
+				if bias.abs() < 1e-6 {
+					rng.random::<f64>()
+				} else {
+					(1. - rng.random::<f64>() * (1. - 2_f64.powf(bias))).log2() / bias
+				}
+			}
 			false => match repeat_every {
 				0 => index as f64 / (count - 1).max(1) as f64,
 				1 => 0.,
@@ -160,6 +167,8 @@ async fn assign_translations<T: VectorTableIterMut + 'n + Send>(
 	randomize: bool,
 	/// The seed used for randomization.
 	seed: SeedValue,
+	#[range((-50., 50.))] x_bias: f64,
+	#[range((-50., 50.))] y_bias: f64,
 	/// The number of elements to span across before repeating. A 0 value will span the entire range once.
 	repeat_every: u32,
 ) -> T {
@@ -169,7 +178,19 @@ async fn assign_translations<T: VectorTableIterMut + 'n + Send>(
 
 	let apply = |(index, vector): (usize, TableRowMut<'_, Vector>)| {
 		let (factor_x, factor_y) = match randomize {
-			true => (rng.random::<f64>(), rng.random::<f64>()),
+			true => {
+				let factor_x = if x_bias.abs() < 1e-6 {
+					rng.random::<f64>()
+				} else {
+					(1. - rng.random::<f64>() * (1. - 2_f64.powf(x_bias))).log2() / x_bias
+				};
+				let factor_y = if y_bias.abs() < 1e-6 {
+					rng.random::<f64>()
+				} else {
+					(1. - rng.random::<f64>() * (1. - 2_f64.powf(y_bias))).log2() / y_bias
+				};
+				(factor_x, factor_y)
+			}
 			false => match repeat_every {
 				0 => {
 					let factor = index as f64 / (count - 1).max(1) as f64;
@@ -212,6 +233,8 @@ async fn assign_translations_circular<T: VectorTableIterMut + 'n + Send>(
 	randomize: bool,
 	/// The seed used for randomization.
 	seed: SeedValue,
+	#[range((-50., 50.))] radius_bias: f64,
+	#[range((-50., 50.))] angle_bias: f64,
 	/// The number of elements to span across before repeating. A 0 value will span the entire range once.
 	repeat_every: u32,
 ) -> T {
@@ -221,7 +244,19 @@ async fn assign_translations_circular<T: VectorTableIterMut + 'n + Send>(
 
 	let apply = |(index, vector): (usize, TableRowMut<'_, Vector>)| {
 		let (factor_angle, factor_radius) = match randomize {
-			true => (rng.random::<f64>(), rng.random::<f64>()),
+			true => {
+				let factor_angle = if angle_bias.abs() < 1e-6 {
+					rng.random::<f64>()
+				} else {
+					(1. - rng.random::<f64>() * (1. - 2_f64.powf(angle_bias))).log2() / angle_bias
+				};
+				let factor_radius = if radius_bias.abs() < 1e-6 {
+					rng.random::<f64>()
+				} else {
+					(1. - rng.random::<f64>() * (1. - 2_f64.powf(radius_bias))).log2() / radius_bias
+				};
+				(factor_angle, factor_radius)
+			}
 			false => match repeat_every {
 				0 => {
 					let factor = index as f64 / (count - 1).max(1) as f64;
@@ -263,6 +298,7 @@ async fn assign_scales<T: VectorTableIterMut + 'n + Send>(
 	randomize: bool,
 	/// The seed used for randomization.
 	seed: SeedValue,
+	#[range((-50., 50.))] bias: f64,
 	/// The number of elements to span across before repeating. A 0 value will span the entire range once.
 	repeat_every: u32,
 ) -> T {
@@ -272,7 +308,13 @@ async fn assign_scales<T: VectorTableIterMut + 'n + Send>(
 
 	let apply = |(index, vector): (usize, TableRowMut<'_, Vector>)| {
 		let factor = match randomize {
-			true => rng.random::<f64>(),
+			true => {
+				if bias.abs() < 1e-6 {
+					rng.random::<f64>()
+				} else {
+					(1. - rng.random::<f64>() * (1. - 2_f64.powf(bias))).log2() / bias
+				}
+			}
 			false => match repeat_every {
 				0 => index as f64 / (count - 1).max(1) as f64,
 				1 => 0.,
@@ -281,7 +323,7 @@ async fn assign_scales<T: VectorTableIterMut + 'n + Send>(
 		};
 		let scale_value = min_scale + (max_scale - min_scale) * factor;
 		let scale_transform = DAffine2::from_scale(DVec2::splat(scale_value));
-		vector.transform.left_apply_transform(&scale_transform);
+		vector.transform.apply_transform(&scale_transform);
 	};
 
 	if reverse {
