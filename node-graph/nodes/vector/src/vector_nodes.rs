@@ -791,18 +791,34 @@ async fn box_warp(_: impl Ctx, content: Table<Vector>, #[expose] rectangle: Tabl
 		return content;
 	};
 
+	// Compute combined bounding box across all vectors in the table
+	let mut group_bbox: Option<[DVec2; 2]> = None;
+	for row in content.iter() {
+		if let Some(bbox) = row.element.bounding_box_with_transform(*row.transform) {
+			group_bbox = Some(match group_bbox {
+				None => bbox,
+				Some(current) => [
+					DVec2::new(current[0].x.min(bbox[0].x), current[0].y.min(bbox[0].y)),
+					DVec2::new(current[1].x.max(bbox[1].x), current[1].y.max(bbox[1].y)),
+				],
+			});
+		}
+	}
+	let group_bbox = group_bbox.unwrap_or([DVec2::ZERO, DVec2::ONE]);
+	let group_size = group_bbox[1] - group_bbox[0];
+
 	content
 		.into_iter()
 		.map(|mut row| {
-			let transform = row.transform;
 			let vector = row.element;
 
 			// Get the bounding box of the source vector geometry
-			let source_bbox = vector.bounding_box_with_transform(transform).unwrap_or([DVec2::ZERO, DVec2::ONE]);
+			// (Replaced with group_bbox so all subpaths share the same frame)
+			let source_bbox = group_bbox;
 
 			// Extract first 4 points from target shape to form the quadrilateral
 			// Apply the target's transform to get points in world space
-			let target_points: Vec<DVec2> = target.point_domain.positions().iter().map(|&p| target_transform.transform_point2(p)).take(4).collect();
+			let target_points: Vec<DVec2> = target.point_domain.positions().iter().map(|&p| (*target_transform).transform_point2(p)).take(4).collect();
 
 			// If we have fewer than 4 points, use the corners of the source bounding box
 			// This handles the degenerative case
@@ -817,20 +833,22 @@ async fn box_warp(_: impl Ctx, content: Table<Vector>, #[expose] rectangle: Tabl
 					DVec2::new(source_bbox[0].x, source_bbox[1].y),
 				]
 			};
-
 			// Apply the warp
 			let mut result = vector.clone();
 
 			// Precompute source bounding box size for normalization
-			let source_size = source_bbox[1] - source_bbox[0];
+			let source_size = group_size;
+
+			// Safe normalization size (prevents division by zero)
+			let eps = 1e-9;
+			let safe_size = DVec2::new(if source_size.x.abs() < eps { 1.0 } else { source_size.x }, if source_size.y.abs() < eps { 1.0 } else { source_size.y });
 
 			// Transform points
 			for (_, position) in result.point_domain.positions_mut() {
 				// Get the point in world space
-				let world_pos = transform.transform_point2(*position);
+				let world_pos = row.transform.transform_point2(*position);
 
-				// Normalize coordinates within the source bounding box
-				let t = ((world_pos - source_bbox[0]) / source_size).clamp(DVec2::ZERO, DVec2::ONE);
+				let t = ((world_pos - source_bbox[0]) / safe_size).clamp(DVec2::ZERO, DVec2::ONE);
 
 				// Apply bilinear interpolation
 				*position = bilinear_interpolate(t, &dst_corners);
@@ -839,13 +857,10 @@ async fn box_warp(_: impl Ctx, content: Table<Vector>, #[expose] rectangle: Tabl
 			// Transform handles in bezier curves
 			for (_, handles, _, _) in result.handles_mut() {
 				*handles = handles.apply_transformation(|pos| {
-					// Get the handle in world space
-					let world_pos = transform.transform_point2(pos);
+					let world_pos = row.transform.transform_point2(pos);
 
-					// Normalize coordinates within the source bounding box
-					let t = ((world_pos - source_bbox[0]) / source_size).clamp(DVec2::ZERO, DVec2::ONE);
+					let t = ((world_pos - source_bbox[0]) / safe_size).clamp(DVec2::ZERO, DVec2::ONE);
 
-					// Apply bilinear interpolation
 					bilinear_interpolate(t, &dst_corners)
 				});
 			}
