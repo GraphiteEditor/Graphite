@@ -130,7 +130,7 @@ impl LayoutHolder for ExportDialogMessageHandler {
 		} else {
 			self.bounds
 		};
-		let index = choices.iter().flatten().position(|(bounds, _, _)| *bounds == current_bounds).unwrap();
+		let index = choices.iter().flatten().position(|(bounds, _, _)| *bounds == current_bounds).unwrap_or(0);
 
 		let mut entries = choices
 			.into_iter()
