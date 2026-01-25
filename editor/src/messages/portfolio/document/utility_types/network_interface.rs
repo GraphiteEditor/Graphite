@@ -648,7 +648,7 @@ impl NodeNetworkInterface {
 
 				let export_name = if !export_name.is_empty() {
 					export_name
-				} else if let Some(export_type_name) = input_type.compiled_nested_type().map(|nested| nested.to_string()) {
+				} else if let Some(export_type_name) = input_type.compiled_nested_type().map(ToString::to_string) {
 					export_type_name
 				} else {
 					format!("Export #{}", export_index)
@@ -658,12 +658,19 @@ impl NodeNetworkInterface {
 			}
 		};
 
+		let valid_types = self.potential_valid_input_types(input_connector, network_path).iter().map(ToString::to_string).collect::<Vec<_>>();
+		let valid_types = {
+			// Dedupe while preserving order
+			let mut found = HashSet::new();
+			valid_types.into_iter().filter(|s| found.insert(s.clone())).collect::<Vec<_>>()
+		};
+
 		Some(FrontendGraphInput {
 			data_type,
 			resolved_type,
 			name,
 			description,
-			valid_types: self.potential_valid_input_types(input_connector, network_path).iter().map(|ty| ty.to_string()).collect(),
+			valid_types,
 			connected_to,
 		})
 	}
@@ -698,7 +705,7 @@ impl NodeNetworkInterface {
 
 				let import_name = if !import_name.is_empty() {
 					import_name
-				} else if let Some(import_type_name) = output_type.compiled_nested_type().map(|nested| nested.to_string()) {
+				} else if let Some(import_type_name) = output_type.compiled_nested_type().map(ToString::to_string) {
 					import_type_name
 				} else {
 					format!("Import #{}", import_index)
