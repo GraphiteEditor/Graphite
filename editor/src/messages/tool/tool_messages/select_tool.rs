@@ -4,6 +4,7 @@ use super::tool_prelude::*;
 use crate::consts::*;
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+use crate::messages::portfolio::document::guide_message::GuideMessage;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::guide::{GuideDirection, GuideId};
@@ -733,9 +734,7 @@ pub fn create_bounding_box_transform(document: &DocumentMessageHandler) -> DAffi
 }
 
 fn hit_test_guide(document: &DocumentMessageHandler, viewport_position: DVec2, viewport: &ViewportMessageHandler) -> Option<(GuideId, GuideDirection)> {
-	const HIT_TOLERANCE: f64 = 5.0;
-
-	if !document.guides_visible {
+	if !document.guide_handler.guides_visible {
 		return None;
 	}
 
@@ -743,38 +742,21 @@ fn hit_test_guide(document: &DocumentMessageHandler, viewport_position: DVec2, v
 		.navigation_handler
 		.calculate_offset_transform(viewport.center_in_viewport_space().into(), &document.document_ptz);
 
-	for guide in document.horizontal_guides.iter().rev() {
-		let doc_point = DVec2::new(0.0, guide.position);
-		let doc_direction = DVec2::X;
+	for guide in document.guide_handler.guides.iter().rev() {
+		let (doc_point, doc_direction) = match guide.direction {
+			GuideDirection::Horizontal => (DVec2::new(0.0, guide.position), DVec2::X),
+			GuideDirection::Vertical => (DVec2::new(guide.position, 0.0), DVec2::Y),
+		};
 
 		let viewport_point = transform.transform_point2(doc_point);
 		let viewport_direction = transform.transform_vector2(doc_direction);
 
-		if viewport_direction.length_squared() > f64::EPSILON {
-			let dir_normalized = viewport_direction.normalize();
+		if let Some(dir_normalized) = viewport_direction.try_normalize() {
 			let to_mouse = viewport_position - viewport_point;
-			let perpendicular_dist = (to_mouse.x * dir_normalized.y - to_mouse.y * dir_normalized.x).abs();
+			let perpendicular_dist = to_mouse.perp_dot(dir_normalized).abs();
 
-			if perpendicular_dist <= HIT_TOLERANCE {
-				return Some((guide.id, GuideDirection::Horizontal));
-			}
-		}
-	}
-
-	for guide in document.vertical_guides.iter().rev() {
-		let doc_point = DVec2::new(guide.position, 0.0);
-		let doc_direction = DVec2::Y;
-
-		let viewport_point = transform.transform_point2(doc_point);
-		let viewport_direction = transform.transform_vector2(doc_direction);
-
-		if viewport_direction.length_squared() > f64::EPSILON {
-			let dir_normalized = viewport_direction.normalize();
-			let to_mouse = viewport_position - viewport_point;
-			let perpendicular_dist = (to_mouse.x * dir_normalized.y - to_mouse.y * dir_normalized.x).abs();
-
-			if perpendicular_dist <= HIT_TOLERANCE {
-				return Some((guide.id, GuideDirection::Vertical));
+			if perpendicular_dist <= GUIDE_HIT_TOLERANCE {
+				return Some((guide.id, guide.direction));
 			}
 		}
 	}
@@ -1238,10 +1220,7 @@ impl Fsm for SelectToolFsmState {
 					tool_data.dragging_guide_id = Some(guide_id);
 					tool_data.dragging_guide_direction = Some(direction);
 
-					let original_position = match direction {
-						GuideDirection::Horizontal => document.horizontal_guides.iter().find(|g| g.id == guide_id).map(|g| g.position),
-						GuideDirection::Vertical => document.vertical_guides.iter().find(|g| g.id == guide_id).map(|g| g.position),
-					};
+					let original_position = document.guide_handler.guides.iter().find(|g| g.id == guide_id).map(|g| g.position);
 					tool_data.guide_drag_start_position = original_position;
 					SelectToolFsmState::DraggingGuide { guide_id, direction }
 				}
@@ -1348,7 +1327,7 @@ impl Fsm for SelectToolFsmState {
 				tool_data.drag_current = input.mouse.position;
 
 				// MoveGuide expects viewport coordinates and does the conversion internally
-				responses.add(DocumentMessage::MoveGuide {
+				responses.add(GuideMessage::MoveGuide {
 					id: guide_id,
 					mouse_x: input.mouse.position.x,
 					mouse_y: input.mouse.position.y,
@@ -1373,10 +1352,9 @@ impl Fsm for SelectToolFsmState {
 				let outside_viewport = input.mouse.position.x < 0.0 || input.mouse.position.y < 0.0 || input.mouse.position.x > viewport_size.x || input.mouse.position.y > viewport_size.y;
 
 				if outside_viewport {
-					responses.add(DocumentMessage::DeleteGuide { id: guide_id });
+					responses.add(GuideMessage::DeleteGuide { id: guide_id });
 				} else {
-					// MoveGuide expects viewport coordinates and does the conversion internally
-					responses.add(DocumentMessage::MoveGuide {
+					responses.add(GuideMessage::MoveGuide {
 						id: guide_id,
 						mouse_x: input.mouse.position.x,
 						mouse_y: input.mouse.position.y,
@@ -1580,9 +1558,9 @@ impl Fsm for SelectToolFsmState {
 						GuideDirection::Horizontal => MouseCursorIcon::NSResize,
 						GuideDirection::Vertical => MouseCursorIcon::EWResize,
 					};
-					responses.add(DocumentMessage::SetHoveredGuide { id: Some(guide_id) });
+					responses.add(GuideMessage::SetHoveredGuide { id: Some(guide_id) });
 				} else {
-					responses.add(DocumentMessage::SetHoveredGuide { id: None });
+					responses.add(GuideMessage::SetHoveredGuide { id: None });
 				}
 
 				// Generate the hover outline
