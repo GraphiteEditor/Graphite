@@ -8,7 +8,7 @@ pub(crate) enum AppEvent {
 	WebCommunicationInitialized,
 	DesktopWrapperMessage(DesktopWrapperMessage),
 	NodeGraphExecutionResult(NodeGraphExecutionResult),
-	CloseWindow,
+	Exit,
 	#[cfg(target_os = "macos")]
 	MenuEvent {
 		id: String,

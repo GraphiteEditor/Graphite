@@ -1632,6 +1632,20 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		}
 	}
 
+	// Upgrade the "Animation" node to add the "Rate" input
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::animation::animation_time::IDENTIFIER) && inputs_count < 2 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
+		let _ = document.network_interface.replace_inputs(node_id, network_path, &mut node_template);
+
+		document
+			.network_interface
+			.set_input(&InputConnector::node(*node_id, 0), NodeInput::value(TaggedValue::None, false), network_path);
+		document
+			.network_interface
+			.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::F64(1.), false), network_path);
+	}
+
 	// Migrate from the old source/target "Morph" node to the new vector table based "Morph" node.
 	// This doesn't produce exactly equivalent results in cases involving input vector tables with multiple rows.
 	// The old version would zip the source and target table rows, interpoleating each pair together.

@@ -30,13 +30,13 @@ fn real_time(
 	component: RealTimeMode,
 ) -> f64 {
 	let real_time = ctx.try_real_time().unwrap_or_default();
+
 	// TODO: Implement proper conversion using and existing time implementation
 	match component {
 		RealTimeMode::Utc => real_time,
 		RealTimeMode::Year => (real_time / DAY / 365.25).floor() + 1970., // TODO: Factor in a chosen timezone
 		RealTimeMode::Hour => (real_time / 1000. / 3600.).floor() % 24.,  // TODO: Factor in a chosen timezone
 		RealTimeMode::Minute => (real_time / 1000. / 60.).floor() % 60.,  // TODO: Factor in a chosen timezone
-
 		RealTimeMode::Second => (real_time / 1000.).floor() % 60.,
 		RealTimeMode::Millisecond => real_time % 1000.,
 	}
@@ -44,8 +44,14 @@ fn real_time(
 
 /// Produces the time, in seconds on the timeline, since the beginning of animation playback.
 #[node_macro::node(category("Animation"))]
-fn animation_time(ctx: impl Ctx + ExtractAnimationTime) -> f64 {
-	ctx.try_animation_time().unwrap_or_default()
+fn animation_time(
+	ctx: impl Ctx + ExtractAnimationTime,
+	_primary: (),
+	#[default(1)]
+	#[unit("/sec")]
+	rate: f64,
+) -> f64 {
+	ctx.try_animation_time().unwrap_or_default() * rate
 }
 
 /// Produces the current position of the user's pointer within the document canvas.
