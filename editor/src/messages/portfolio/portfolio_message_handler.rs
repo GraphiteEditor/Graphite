@@ -1192,9 +1192,15 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					.calculate_offset_transform(viewport.center_in_viewport_space().into(), &document.document_ptz);
 				let pointer_position = document_to_viewport.inverse().transform_point2(ipp.mouse.position);
 
-				let resolution = glam::UVec2::splat(11);
+				const PREVIEW_RESOLUTION: u32 = 11;
+				let resolution = glam::UVec2::splat(PREVIEW_RESOLUTION);
+				let pointer_offset = -(glam::DVec2::splat(PREVIEW_RESOLUTION as f64 / 2.0) / document.document_ptz.zoom());
 
-				let result = self.executor.submit_eyedropper_preview(document_id, resolution, timing_information, pointer_position);
+				let pointer_position = pointer_position + pointer_offset;
+
+				let result = self
+					.executor
+					.submit_eyedropper_preview(document_id, resolution, document.document_ptz.zoom(), timing_information, pointer_position);
 
 				match result {
 					Err(description) => {
