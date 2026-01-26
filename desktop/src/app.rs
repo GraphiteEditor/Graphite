@@ -1,17 +1,17 @@
 use rand::Rng;
 use rfd::AsyncFileDialog;
 use std::fs;
-use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, Sender, SyncSender};
 use std::thread;
 use std::time::{Duration, Instant};
 use winit::application::ApplicationHandler;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::{ButtonSource, ElementState, MouseButton, WindowEvent};
-use winit::event_loop::{ActiveEventLoop, ControlFlow};
+use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::WindowId;
 
 use crate::cef;
+use crate::cli::Cli;
 use crate::consts::CEF_MESSAGE_LOOP_MAX_ITERATIONS;
 use crate::event::{AppEvent, AppEventScheduler};
 use crate::persist::PersistentData;
@@ -37,13 +37,14 @@ pub(crate) struct App {
 	cef_context: Box<dyn cef::CefContext>,
 	cef_schedule: Option<Instant>,
 	cef_view_info_sender: Sender<cef::ViewInfoUpdate>,
-	last_ui_update: Instant,
-	avg_frame_time: f32,
+	cef_init_successful: bool,
 	start_render_sender: SyncSender<()>,
 	web_communication_initialized: bool,
 	web_communication_startup_buffer: Vec<Vec<u8>>,
 	persistent_data: PersistentData,
-	launch_documents: Vec<PathBuf>,
+	cli: Cli,
+	startup_time: Option<Instant>,
+	exit_reason: ExitReason,
 }
 
 impl App {
@@ -57,12 +58,12 @@ impl App {
 		wgpu_context: WgpuContext,
 		app_event_receiver: Receiver<AppEvent>,
 		app_event_scheduler: AppEventScheduler,
-		launch_documents: Vec<PathBuf>,
+		cli: Cli,
 	) -> Self {
 		let ctrlc_app_event_scheduler = app_event_scheduler.clone();
 		ctrlc::set_handler(move || {
 			tracing::info!("Termination signal received, exiting...");
-			ctrlc_app_event_scheduler.schedule(AppEvent::CloseWindow);
+			ctrlc_app_event_scheduler.schedule(AppEvent::Exit);
 		})
 		.expect("Error setting Ctrl-C handler");
 
@@ -95,17 +96,30 @@ impl App {
 			app_event_receiver,
 			app_event_scheduler,
 			desktop_wrapper,
-			last_ui_update: Instant::now(),
 			cef_context,
 			cef_schedule: Some(Instant::now()),
 			cef_view_info_sender,
-			avg_frame_time: 0.,
+			cef_init_successful: false,
 			start_render_sender,
 			web_communication_initialized: false,
 			web_communication_startup_buffer: Vec::new(),
 			persistent_data,
-			launch_documents,
+			cli,
+			exit_reason: ExitReason::Shutdown,
+			startup_time: None,
 		}
+	}
+
+	pub(crate) fn run(mut self, event_loop: EventLoop) -> ExitReason {
+		event_loop.run_app(&mut self).unwrap();
+		self.exit_reason
+	}
+
+	fn exit(&mut self, reason: Option<ExitReason>) {
+		if let Some(reason) = reason {
+			self.exit_reason = reason;
+		}
+		self.app_event_scheduler.schedule(AppEvent::Exit);
 	}
 
 	fn resize(&mut self) {
@@ -302,11 +316,11 @@ impl App {
 				}
 			}
 			DesktopFrontendMessage::OpenLaunchDocuments => {
-				if self.launch_documents.is_empty() {
+				if self.cli.files.is_empty() {
 					return;
 				}
 				let app_event_scheduler = self.app_event_scheduler.clone();
-				let launch_documents = std::mem::take(&mut self.launch_documents);
+				let launch_documents = std::mem::take(&mut self.cli.files);
 				let _ = thread::spawn(move || {
 					for path in launch_documents {
 						tracing::info!("Opening file from command line: {}", path.display());
@@ -343,7 +357,7 @@ impl App {
 				}
 			}
 			DesktopFrontendMessage::WindowClose => {
-				self.app_event_scheduler.schedule(AppEvent::CloseWindow);
+				self.app_event_scheduler.schedule(AppEvent::Exit);
 			}
 			DesktopFrontendMessage::WindowMinimize => {
 				if let Some(window) = &self.window {
@@ -431,14 +445,12 @@ impl App {
 			AppEvent::UiUpdate(texture) => {
 				if let Some(render_state) = self.render_state.as_mut() {
 					render_state.bind_ui_texture(texture);
-					let elapsed = self.last_ui_update.elapsed().as_secs_f32();
-					self.last_ui_update = Instant::now();
-					if elapsed < 0.5 {
-						self.avg_frame_time = (self.avg_frame_time * 3. + elapsed) / 4.;
-					}
 				}
 				if let Some(window) = &self.window {
 					window.request_redraw();
+				}
+				if !self.cef_init_successful {
+					self.cef_init_successful = true;
 				}
 			}
 			AppEvent::ScheduleBrowserWork(instant) => {
@@ -453,9 +465,7 @@ impl App {
 					window.set_cursor(event_loop, cursor);
 				}
 			}
-			AppEvent::CloseWindow => {
-				// TODO: Implement graceful shutdown
-
+			AppEvent::Exit => {
 				tracing::info!("Exiting main event loop");
 				event_loop.exit();
 			}
@@ -481,6 +491,8 @@ impl ApplicationHandler for App {
 		self.resize();
 
 		self.desktop_wrapper.init(self.wgpu_context.clone());
+
+		self.startup_time = Some(Instant::now());
 	}
 
 	fn proxy_wake_up(&mut self, event_loop: &dyn ActiveEventLoop) {
@@ -489,7 +501,7 @@ impl ApplicationHandler for App {
 		}
 	}
 
-	fn window_event(&mut self, event_loop: &dyn ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
+	fn window_event(&mut self, _event_loop: &dyn ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
 		// Handle pointer lock release
 		if let Some(pointer_lock_position) = self.pointer_lock_position
 			&& let WindowEvent::PointerButton {
@@ -514,7 +526,7 @@ impl ApplicationHandler for App {
 
 		match event {
 			WindowEvent::CloseRequested => {
-				self.app_event_scheduler.schedule(AppEvent::CloseWindow);
+				self.app_event_scheduler.schedule(AppEvent::Exit);
 			}
 			WindowEvent::SurfaceResized(_) | WindowEvent::ScaleFactorChanged { .. } => {
 				self.resize();
@@ -539,11 +551,21 @@ impl ApplicationHandler for App {
 						}
 						Err(RenderError::SurfaceError(wgpu::SurfaceError::OutOfMemory)) => {
 							tracing::error!("GPU out of memory");
-							event_loop.exit();
+							self.exit(None);
 						}
 						Err(RenderError::SurfaceError(e)) => tracing::error!("Render error: {:?}", e),
 					}
 					let _ = self.start_render_sender.try_send(());
+				}
+
+				if !self.cef_init_successful
+					&& !self.cli.disable_ui_acceleration
+					&& self.web_communication_initialized
+					&& let Some(startup_time) = self.startup_time
+					&& startup_time.elapsed() > Duration::from_secs(3)
+				{
+					tracing::error!("UI acceleration not working, exiting.");
+					self.exit(Some(ExitReason::UiAccelerationFailure));
 				}
 			}
 			WindowEvent::DragDropped { paths, .. } => {
@@ -628,4 +650,9 @@ impl ApplicationHandler for App {
 
 		event_loop.set_control_flow(ControlFlow::WaitUntil(wait_until));
 	}
+}
+
+pub(crate) enum ExitReason {
+	Shutdown,
+	UiAccelerationFailure,
 }
