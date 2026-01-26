@@ -118,11 +118,10 @@ impl NodeIOTypes {
 
 impl std::fmt::Debug for NodeIOTypes {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.write_fmt(format_args!(
-			"node({}) → {}",
-			[&self.call_argument].into_iter().chain(&self.inputs).map(|input| input.to_string()).collect::<Vec<_>>().join(", "),
-			self.return_value
-		))
+		let inputs = self.inputs.iter().map(ToString::to_string).collect::<Vec<_>>().join(", ");
+		let return_value = &self.return_value;
+		let call_argument = &self.call_argument;
+		f.write_fmt(format_args!("({inputs}) → {return_value} called with {call_argument}"))
 	}
 }
 
@@ -202,7 +201,7 @@ impl std::hash::Hash for TypeDescriptor {
 
 impl std::fmt::Display for TypeDescriptor {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		let text = make_type_user_readable(&format_type(&self.name));
+		let text = make_type_user_readable(&simplify_identifier_name(&self.name));
 		write!(f, "{text}")
 	}
 }
@@ -337,15 +336,17 @@ impl Type {
 		}
 	}
 
-	pub fn to_cow_string(&self) -> Cow<'static, str> {
+	pub fn identifier_name(&self) -> String {
 		match self {
-			Type::Generic(name) => name.clone(),
-			_ => Cow::Owned(self.to_string()),
+			Type::Generic(name) => name.to_string(),
+			Type::Concrete(ty) => simplify_identifier_name(&ty.name),
+			Type::Fn(call_arg, return_value) => format!("{} called with {}", return_value.identifier_name(), call_arg.identifier_name()),
+			Type::Future(ty) => ty.identifier_name(),
 		}
 	}
 }
 
-pub fn format_type(ty: &str) -> String {
+pub fn simplify_identifier_name(ty: &str) -> String {
 	ty.split('<')
 		.map(|path| path.split(',').map(|path| path.split("::").last().unwrap_or(path)).collect::<Vec<_>>().join(","))
 		.collect::<Vec<_>>()
@@ -361,42 +362,26 @@ pub fn make_type_user_readable(ty: &str) -> String {
 
 impl std::fmt::Debug for Type {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		let text = match self {
-			Self::Generic(name) => name.to_string(),
-			#[cfg(feature = "type_id_logging")]
-			Self::Concrete(ty) => format!("Concrete<{}, {:?}>", ty.name, ty.id),
-			#[cfg(not(feature = "type_id_logging"))]
-			Self::Concrete(ty) => format_type(&ty.name),
-			Self::Fn(call_arg, return_value) => format!("{return_value:?} called with {call_arg:?}"),
-			Self::Future(ty) => format!("{ty:?}"),
-		};
-		let text = make_type_user_readable(&text);
-		write!(f, "{text}")
+		write!(f, "{self}")
 	}
 }
 
+// Display
 impl std::fmt::Display for Type {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		if self == &concrete!(glam::DVec2) {
-			return write!(f, "vec2");
-		}
-		if self == &concrete!(glam::DAffine2) {
-			return write!(f, "transform");
-		}
-		if self == &concrete!(Footprint) {
-			return write!(f, "footprint");
-		}
-		if self == &concrete!(&str) || self == &concrete!(String) {
-			return write!(f, "string");
-		}
+		use glam::*;
 
-		let text = match self {
-			Type::Generic(name) => name.to_string(),
-			Type::Concrete(ty) => format_type(&ty.name),
-			Type::Fn(call_arg, return_value) => format!("{return_value} called with {call_arg}"),
-			Type::Future(ty) => ty.to_string(),
-		};
-		let text = make_type_user_readable(&text);
-		write!(f, "{text}")
+		match self {
+			Type::Generic(name) => write!(f, "{}", make_type_user_readable(name)),
+			Type::Concrete(ty) => match () {
+				() if self == &concrete!(DVec2) || self == &concrete!(Vec2) || self == &concrete!(IVec2) || self == &concrete!(UVec2) => write!(f, "Vec2"),
+				() if self == &concrete!(glam::DAffine2) => write!(f, "Transform"),
+				() if self == &concrete!(Footprint) => write!(f, "Footprint"),
+				() if self == &concrete!(&str) || self == &concrete!(String) => write!(f, "String"),
+				_ => write!(f, "{}", make_type_user_readable(&simplify_identifier_name(&ty.name))),
+			},
+			Type::Fn(call_arg, return_value) => write!(f, "{return_value} called with {call_arg}"),
+			Type::Future(ty) => write!(f, "{ty}"),
+		}
 	}
 }
