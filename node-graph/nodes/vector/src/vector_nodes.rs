@@ -1226,9 +1226,16 @@ async fn instance_map(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: Table<
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn flatten_path<I: 'n + Send>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Vector>)] content: Table<I>) -> Table<Vector>
+async fn flatten_path<T: 'n + Send>(
+	_: impl Ctx,
+	#[implementations(
+		Table<Graphic>,
+		Table<Vector>,
+	)]
+	content: Table<T>,
+) -> Table<Vector>
 where
-	Graphic: From<Table<I>>,
+	Graphic: From<Table<T>>,
 {
 	// NOTE(AdamGerhant):
 	// A node-based solution to support passing through vector data could be a network node with a cache node
