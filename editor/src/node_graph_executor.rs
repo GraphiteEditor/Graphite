@@ -194,9 +194,7 @@ impl NodeGraphExecutor {
 	}
 
 	#[cfg(not(target_family = "wasm"))]
-	pub(crate) fn submit_eyedropper_preview(&mut self, document_id: DocumentId, resolution: UVec2, zoom: f64, time: TimingInformation, pointer: DVec2) -> Result<Message, String> {
-		let transform = DAffine2::from_translation(pointer).inverse();
-
+	pub(crate) fn submit_eyedropper_preview(&mut self, document_id: DocumentId, transform: DAffine2, resolution: UVec2, time: TimingInformation, pointer: DVec2) -> Result<Message, String> {
 		let viewport = Footprint {
 			transform,
 			resolution,
@@ -204,7 +202,7 @@ impl NodeGraphExecutor {
 		};
 		let render_config = RenderConfig {
 			viewport,
-			scale: zoom,
+			scale: 1.,
 			time,
 			pointer,
 			export_format: graphene_std::application_io::ExportFormat::Raster,

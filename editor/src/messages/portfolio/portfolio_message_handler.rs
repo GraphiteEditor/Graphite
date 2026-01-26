@@ -1187,20 +1187,21 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					return;
 				};
 
-				let document_to_viewport = document
-					.navigation_handler
-					.calculate_offset_transform(viewport.center_in_viewport_space().into(), &document.document_ptz);
-				let pointer_position = document_to_viewport.inverse().transform_point2(ipp.mouse.position);
-
 				const PREVIEW_RESOLUTION: u32 = 11;
 				let resolution = glam::UVec2::splat(PREVIEW_RESOLUTION);
-				let pointer_offset = -(glam::DVec2::splat(PREVIEW_RESOLUTION as f64 / 2.0) / document.document_ptz.zoom());
 
-				let pointer_position = pointer_position + pointer_offset;
+				let preview_offset_in_viewport = ipp.mouse.position - (glam::DVec2::splat(PREVIEW_RESOLUTION as f64 / 2.0));
+				let preview_offset_in_viewport = DAffine2::from_translation(preview_offset_in_viewport);
+
+				let document_to_viewport = document.metadata().document_to_viewport;
+
+				let preview_transform = preview_offset_in_viewport.inverse() * document_to_viewport;
+
+				let pointer_position = document_to_viewport.inverse().transform_point2(ipp.mouse.position);
 
 				let result = self
 					.executor
-					.submit_eyedropper_preview(document_id, resolution, document.document_ptz.zoom(), timing_information, pointer_position);
+					.submit_eyedropper_preview(document_id, preview_transform, resolution, timing_information, pointer_position);
 
 				match result {
 					Err(description) => {
