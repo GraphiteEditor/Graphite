@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use crate::window::Window;
 use crate::wrapper::{Color, TargetTexture, WgpuContext, WgpuExecutor};
 
@@ -312,8 +314,8 @@ impl RenderState {
 		let overlays_texture_view = self
 			.overlays_texture
 			.as_ref()
-			.map(|target| target.view().clone())
-			.unwrap_or_else(|| self.transparent_texture.create_view(&wgpu::TextureViewDescriptor::default()));
+			.map(|target| Cow::Borrowed(target.view()))
+			.unwrap_or_else(|| Cow::Owned(self.transparent_texture.create_view(&wgpu::TextureViewDescriptor::default())));
 		let ui_texture_view = self.ui_texture.as_ref().unwrap_or(&self.transparent_texture).create_view(&wgpu::TextureViewDescriptor::default());
 
 		let bind_group = self.context.device.create_bind_group(&wgpu::BindGroupDescriptor {
@@ -325,7 +327,7 @@ impl RenderState {
 				},
 				wgpu::BindGroupEntry {
 					binding: 1,
-					resource: wgpu::BindingResource::TextureView(&overlays_texture_view),
+					resource: wgpu::BindingResource::TextureView(&overlays_texture_view.as_ref()),
 				},
 				wgpu::BindGroupEntry {
 					binding: 2,
