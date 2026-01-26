@@ -8,6 +8,7 @@ use std::{
 // Public modules for conversions
 pub mod from_runtime;
 pub mod to_runtime;
+pub mod delta;
 
 #[cfg(test)]
 mod round_trip_tests;
@@ -35,15 +36,15 @@ struct Document {
 	head: Rev,
 }
 
-type DeclarationId = u64; // content based hash
-type NodeId = u64;
-type NetworkId = u64;
+pub type DeclarationId = u64; // content based hash
+pub type NodeId = u64;
+pub type NetworkId = u64;
 type ProtoNodeId = String;
 type TimeStamp = u64;
 type Rev = u64; // Use merkle tree hash?
-type Value = (serde_json::Value, TimeStamp);
+pub type Value = (serde_json::Value, TimeStamp);
 
-type Attributes = HashMap<String, Value>;
+pub type Attributes = HashMap<String, Value>;
 
 #[derive(Clone, Debug)]
 pub struct Node {
@@ -58,8 +59,8 @@ struct NodeAttributes {
 	name: Option<String>,
 }
 
-#[derive(Clone, Debug)]
-enum NodeInput {
+#[derive(Clone, Debug, PartialEq)]
+pub enum NodeInput {
 	Node { node_id: NodeId, output_index: usize },
 	Value { raw_value: Arc<[u8]>, exposed: bool },
 	Scope(Cow<'static, str>),
@@ -68,8 +69,8 @@ enum NodeInput {
 	Reflection,
 }
 
-#[derive(Clone, Debug)]
-enum Implementation {
+#[derive(Clone, Debug, PartialEq)]
+pub enum Implementation {
 	ProtoNode(DeclarationId),
 	Network(NetworkId),
 }
@@ -97,7 +98,7 @@ struct Delta {
 }
 
 #[derive(Clone, Debug)]
-enum RegistryDelta {
+pub enum RegistryDelta {
 	AddNode { node_id: NodeId, node: Node },
 	RemoveNode { node_id: NodeId },
 	ChangeNodeInput { node_id: NodeId, input_idx: usize, new_input: NodeInput },
@@ -108,7 +109,7 @@ enum RegistryDelta {
 }
 
 #[derive(Clone, Debug)]
-enum AttributeDelta {
+pub enum AttributeDelta {
 	Set { key: String, value: Value },
 	Remove { key: String },
 }
