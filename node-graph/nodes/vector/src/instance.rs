@@ -1,6 +1,6 @@
 use core_types::Color;
 use core_types::table::{Table, TableRowRef};
-use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractIndex, ExtractPosition, InjectPosition, OwnedContextImpl};
+use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractIndex, ExtractPosition, OwnedContextImpl};
 use glam::DVec2;
 use graphic_types::Graphic;
 use graphic_types::Vector;
@@ -9,7 +9,7 @@ use vector_types::GradientStops;
 
 #[node_macro::node(name("Instance on Points"), category("Instancing"), path(core_types::vector))]
 async fn instance_on_points<T: Into<Graphic> + Default + Send + Clone + 'static>(
-	ctx: impl ExtractAll + CloneVarArgs + Sync + Ctx + InjectPosition,
+	ctx: impl ExtractAll + CloneVarArgs + Sync + Ctx,
 	points: Table<Vector>,
 	#[implementations(
 		Context -> Table<Graphic>,
