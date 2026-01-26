@@ -4,11 +4,7 @@ use crate::messages::prelude::DocumentMessageHandler;
 use glam::DVec2;
 
 fn extend_line_to_viewport(point: DVec2, direction: DVec2, viewport_size: DVec2) -> Option<(DVec2, DVec2)> {
-	if direction.length_squared() < f64::EPSILON {
-		return None;
-	}
-
-	let dir = direction.normalize();
+	let dir = direction.try_normalize()?;
 
 	// Calculates t values for intersections with viewport edges
 	let mut t_values = Vec::new();
