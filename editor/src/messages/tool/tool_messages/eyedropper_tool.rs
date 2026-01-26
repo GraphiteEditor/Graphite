@@ -1,5 +1,5 @@
 use super::tool_prelude::*;
-use crate::messages::tool::utility_types::DocumentToolData;
+use crate::messages::{frontend::utility_types::EyedropperPreviewImage, tool::utility_types::DocumentToolData};
 
 #[derive(Default, ExtractField)]
 pub struct EyedropperTool {
@@ -19,6 +19,8 @@ pub enum EyedropperToolMessage {
 	PointerMove,
 	SampleSecondaryColorBegin,
 	SampleSecondaryColorEnd,
+
+	PreviewImage { data: Vec<u8>, width: u32, height: u32 },
 }
 
 impl ToolMetadata for EyedropperTool {
@@ -42,6 +44,17 @@ impl LayoutHolder for EyedropperTool {
 #[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for EyedropperTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
+		if let ToolMessage::Eyedropper(EyedropperToolMessage::PreviewImage { data, width, height }) = message {
+			responses.add(FrontendMessage::UpdateEyedropperSamplingState {
+				image: Some(EyedropperPreviewImage { data, width, height }),
+				mouse_position: Some(context.input.mouse.position.into()),
+				primary_color: "#".to_string() + context.global_tool_data.primary_color.to_rgb_hex_srgb().as_str(),
+				secondary_color: "#".to_string() + context.global_tool_data.secondary_color.to_rgb_hex_srgb().as_str(),
+				set_color_choice: Some("Primary".to_string()),
+			});
+			return;
+		}
+
 		self.fsm_state.process_event(message, &mut self.data, context, &(), responses, true);
 	}
 
@@ -153,6 +166,7 @@ impl Fsm for EyedropperToolFsmState {
 
 fn disable_cursor_preview(responses: &mut VecDeque<Message>) {
 	responses.add(FrontendMessage::UpdateEyedropperSamplingState {
+		image: None,
 		mouse_position: None,
 		primary_color: "".into(),
 		secondary_color: "".into(),
@@ -161,10 +175,16 @@ fn disable_cursor_preview(responses: &mut VecDeque<Message>) {
 }
 
 fn update_cursor_preview(responses: &mut VecDeque<Message>, input: &InputPreprocessorMessageHandler, global_tool_data: &DocumentToolData, set_color_choice: Option<String>) {
+	#[cfg(target_family = "wasm")]
 	responses.add(FrontendMessage::UpdateEyedropperSamplingState {
+		image: None,
 		mouse_position: Some(input.mouse.position.into()),
 		primary_color: "#".to_string() + global_tool_data.primary_color.to_rgb_hex_srgb().as_str(),
 		secondary_color: "#".to_string() + global_tool_data.secondary_color.to_rgb_hex_srgb().as_str(),
 		set_color_choice,
 	});
+	#[cfg(not(target_family = "wasm"))]
+	{
+		responses.add(PortfolioMessage::SubmitEyedropperPreviewRender);
+	}
 }

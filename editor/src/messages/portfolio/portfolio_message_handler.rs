@@ -25,7 +25,7 @@ use crate::messages::tool::utility_types::{HintData, ToolType};
 use crate::messages::viewport::ToPhysical;
 use crate::node_graph_executor::{ExportConfig, NodeGraphExecutor};
 use derivative::*;
-use glam::{DAffine2, DVec2};
+use glam::{DAffine2, DVec2, UVec2};
 use graph_craft::document::NodeId;
 use graphene_std::Color;
 use graphene_std::raster_types::Image;
@@ -1177,6 +1177,38 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					}
 					Ok(message) => responses.add_front(message),
 				}
+			}
+			#[cfg(not(target_family = "wasm"))]
+			PortfolioMessage::SubmitEyedropperPreviewRender => {
+				let Some(document_id) = self.active_document_id else {
+					return;
+				};
+				let Some(document) = self.documents.get_mut(&document_id) else {
+					return;
+				};
+
+				let document_to_viewport = document
+					.navigation_handler
+					.calculate_offset_transform(viewport.center_in_viewport_space().into(), &document.document_ptz);
+				let pointer_position = document_to_viewport.inverse().transform_point2(ipp.mouse.position);
+
+				let resolution = UVec2::splat(11);
+
+				let result = self.executor.submit_eyedropper_preview(document_id, resolution, timing_information, pointer_position);
+
+				match result {
+					Err(description) => {
+						responses.add(DialogMessage::DisplayDialogError {
+							title: "Unable to update node graph".to_string(),
+							description,
+						});
+					}
+					Ok(message) => responses.add_front(message),
+				}
+			}
+			#[cfg(target_family = "wasm")]
+			PortfolioMessage::SubmitEyedropperPreviewRender => {
+				// For wasm this is implemented through svg rendering
 			}
 			PortfolioMessage::ToggleFocusDocument => {
 				self.focus_document = !self.focus_document;
