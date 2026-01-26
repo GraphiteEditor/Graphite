@@ -9,38 +9,12 @@ fn extend_line_to_viewport(point: DVec2, direction: DVec2, viewport_size: DVec2)
 	// Calculates t values for intersections with viewport edges
 	let mut t_values = Vec::new();
 
-	if dir.x.abs() > f64::EPSILON {
-		let t = -point.x / dir.x;
-		let y = point.y + t * dir.y;
-		if y >= 0.0 && y <= viewport_size.y {
-			t_values.push(t);
-		}
-	}
-
-	// Right edge (x = viewport_size.x)
-	if dir.x.abs() > f64::EPSILON {
-		let t = (viewport_size.x - point.x) / dir.x;
-		let y = point.y + t * dir.y;
-		if y >= 0.0 && y <= viewport_size.y {
-			t_values.push(t);
-		}
-	}
-
-	// Top edge (y = 0)
-	if dir.y.abs() > f64::EPSILON {
-		let t = -point.y / dir.y;
-		let x = point.x + t * dir.x;
-		if x >= 0.0 && x <= viewport_size.x {
-			t_values.push(t);
-		}
-	}
-
-	// Bottom edge (y = viewport_size.y)
-	if dir.y.abs() > f64::EPSILON {
-		let t = (viewport_size.y - point.y) / dir.y;
-		let x = point.x + t * dir.x;
-		if x >= 0.0 && x <= viewport_size.x {
-			t_values.push(t);
+	let edges = graphene_std::renderer::Quad::from_box([DVec2::ZERO, viewport_size]).all_edges();
+	for [start, end] in edges {
+		let t_along_viewport = (point - start).perp_dot(dir) / (end - start).perp_dot(dir);
+		let t_along_direction = (point - start).perp_dot(end - start) / (end - start).perp_dot(dir);
+		if 0. <= t_along_viewport && t_along_viewport <= 1. && t_along_direction.is_finite() {
+			t_values.push(t_along_direction);
 		}
 	}
 
