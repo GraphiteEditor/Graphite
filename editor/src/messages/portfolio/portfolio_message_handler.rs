@@ -1,7 +1,7 @@
 use super::document::utility_types::document_metadata::LayerNodeIdentifier;
 use super::document::utility_types::network_interface;
 use super::utility_types::{PanelType, PersistentData};
-use crate::application::generate_uuid;
+use crate::application::{Editor, generate_uuid};
 use crate::consts::{DEFAULT_DOCUMENT_NAME, DEFAULT_STROKE_WIDTH, FILE_EXTENSION};
 use crate::messages::animation::TimingInformation;
 use crate::messages::clipboard::utility_types::ClipboardContent;
@@ -17,6 +17,7 @@ use crate::messages::portfolio::document::utility_types::clipboards::{Clipboard,
 use crate::messages::portfolio::document::utility_types::network_interface::OutputConnector;
 use crate::messages::portfolio::document::utility_types::nodes::SelectedNodes;
 use crate::messages::portfolio::document_migration::*;
+use crate::messages::portfolio::utility_types::FileContent;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils;
@@ -27,11 +28,13 @@ use derivative::*;
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeId;
 use graphene_std::Color;
+use graphene_std::raster_types::Image;
 use graphene_std::renderer::Quad;
 use graphene_std::subpath::BezierHandles;
 use graphene_std::text::Font;
 use graphene_std::vector::misc::HandleId;
 use graphene_std::vector::{PointId, SegmentId, Vector, VectorModificationType};
+use std::path::PathBuf;
 use std::vec;
 
 #[derive(ExtractField)]
@@ -57,11 +60,12 @@ pub struct PortfolioMessageHandler {
 	pub executor: NodeGraphExecutor,
 	pub selection_mode: SelectionMode,
 	pub reset_node_definitions_on_open: bool,
-	pub data_panel_open: bool,
-	#[derivative(Default(value = "true"))]
-	pub layers_panel_open: bool,
+	pub focus_document: bool,
 	#[derivative(Default(value = "true"))]
 	pub properties_panel_open: bool,
+	#[derivative(Default(value = "true"))]
+	pub layers_panel_open: bool,
+	pub data_panel_open: bool,
 }
 
 #[message_handler_data]
@@ -91,9 +95,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						current_tool,
 						preferences,
 						viewport,
-						data_panel_open: self.data_panel_open,
-						layers_panel_open: self.layers_panel_open,
-						properties_panel_open: self.properties_panel_open,
+						data_panel_open: self.data_panel_open && !self.focus_document,
+						layers_panel_open: self.layers_panel_open && !self.focus_document,
+						properties_panel_open: self.properties_panel_open && !self.focus_document,
 					};
 					document.process_message(message, responses, document_inputs)
 				}
@@ -101,8 +105,16 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 			// Messages
 			PortfolioMessage::Init => {
+				// Initialize the frontend with environment information
+				responses.add(FrontendMessage::UpdatePlatform {
+					platform: Editor::environment().into(),
+				});
+
 				// Tell frontend to load persistent preferences
 				responses.add(FrontendMessage::TriggerLoadPreferences);
+
+				// Before loading any documents, initially prepare the welcome screen buttons layout
+				responses.add(PortfolioMessage::RequestWelcomeScreenButtonsLayout);
 
 				// Tell frontend to load the current document
 				responses.add(FrontendMessage::TriggerLoadFirstAutoSaveDocument);
@@ -117,8 +129,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				});
 
 				// Send shortcuts for widgets created in the frontend which need shortcut tooltips
-				responses.add(FrontendMessage::SendShortcutF11 {
+				responses.add(FrontendMessage::SendShortcutFullscreen {
 					shortcut: action_shortcut_manual!(Key::F11),
+					shortcut_mac: action_shortcut_manual!(Key::Control, Key::Command, Key::KeyF),
 				});
 				responses.add(FrontendMessage::SendShortcutAltClick {
 					shortcut: action_shortcut_manual!(Key::Alt, Key::MouseLeft),
@@ -127,15 +140,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					shortcut: action_shortcut_manual!(Key::Shift, Key::MouseLeft),
 				});
 
-				// Before loading any documents, initially prepare the welcome screen buttons layout
-				responses.add(PortfolioMessage::RequestWelcomeScreenButtonsLayout);
-
 				// Request status bar info layout
 				responses.add(PortfolioMessage::RequestStatusBarInfoLayout);
 
 				// Tell frontend to finish loading persistent documents
 				responses.add(FrontendMessage::TriggerLoadRestAutoSaveDocuments);
 
+				// Tell frontend to load documented passed in as launch arguments
 				responses.add(FrontendMessage::TriggerOpenLaunchDocuments);
 			}
 			PortfolioMessage::DocumentPassMessage { document_id, message } => {
@@ -148,9 +159,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 						current_tool,
 						preferences,
 						viewport,
-						data_panel_open: self.data_panel_open,
-						layers_panel_open: self.layers_panel_open,
-						properties_panel_open: self.properties_panel_open,
+						data_panel_open: self.data_panel_open && !self.focus_document,
+						layers_panel_open: self.layers_panel_open && !self.focus_document,
+						properties_panel_open: self.properties_panel_open && !self.focus_document,
 					};
 					document.process_message(message, responses, document_inputs)
 				}
@@ -419,10 +430,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				}
 			}
 			PortfolioMessage::EditorPreferences => self.executor.update_editor_preferences(preferences.editor_preferences()),
-			PortfolioMessage::Import => {
-				// This portfolio message wraps the frontend message so it can be listed as an action, which isn't possible for frontend messages
-				responses.add(FrontendMessage::TriggerImport);
-			}
 			PortfolioMessage::LoadDocumentResources { document_id } => {
 				let catalog = &self.persistent_data.font_catalog;
 
@@ -446,7 +453,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					responses.add(NavigationMessage::CanvasPan { delta: (0., 0.).into() });
 				}
 
-				self.load_document(new_document, document_id, self.layers_panel_open, responses, false);
+				self.load_document(new_document, document_id, responses, false);
 				responses.add(PortfolioMessage::SelectDocument { document_id });
 			}
 			PortfolioMessage::NextDocument => {
@@ -458,9 +465,75 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					responses.add(PortfolioMessage::SelectDocument { document_id: next_id });
 				}
 			}
-			PortfolioMessage::OpenDocument => {
+			PortfolioMessage::Open => {
 				// This portfolio message wraps the frontend message so it can be listed as an action, which isn't possible for frontend messages
-				responses.add(FrontendMessage::TriggerOpenDocument);
+				responses.add(FrontendMessage::TriggerOpen);
+			}
+			PortfolioMessage::Import => {
+				// This portfolio message wraps the frontend message so it can be listed as an action, which isn't possible for frontend messages
+				responses.add(FrontendMessage::TriggerImport);
+			}
+			PortfolioMessage::OpenFile { path, content } => {
+				let name = path.file_stem().map(|n| n.to_string_lossy().to_string());
+				match Self::read_file(&path, content) {
+					FileContent::Document(content) => {
+						responses.add(PortfolioMessage::OpenDocumentFile {
+							document_name: name,
+							document_path: Some(path),
+							document_serialized_content: content,
+						});
+					}
+					FileContent::Svg(svg) => {
+						responses.add(PortfolioMessage::OpenSvg { name, svg });
+					}
+					FileContent::Image(image) => {
+						responses.add(PortfolioMessage::OpenImage { name, image });
+					}
+					FileContent::Unsupported => {
+						// TODO: Show a more thoughtfully designed error message to the user
+						responses.add(DialogMessage::DisplayDialogError {
+							title: "Unsupported format".into(),
+							description: "This file cannot be opened because it is not a supported image file type.".into(),
+						})
+					}
+				}
+			}
+			PortfolioMessage::ImportFile { path, content } => {
+				let name = path.file_stem().map(|n| n.to_string_lossy().to_string());
+				match Self::read_file(&path, content) {
+					FileContent::Document(content) => {
+						// TODO: Consider importing a document as a node into the current document
+						// For now treat importing a document as opening it
+						responses.add(PortfolioMessage::OpenDocumentFile {
+							document_name: name,
+							document_path: Some(path),
+							document_serialized_content: content,
+						});
+					}
+					FileContent::Svg(svg) => {
+						responses.add(PortfolioMessage::PasteSvg {
+							name,
+							svg,
+							mouse: None,
+							parent_and_insert_index: None,
+						});
+					}
+					FileContent::Image(image) => {
+						responses.add(PortfolioMessage::PasteImage {
+							name,
+							image,
+							mouse: None,
+							parent_and_insert_index: None,
+						});
+					}
+					FileContent::Unsupported => {
+						// TODO: Show a more thoughtfully designed error message to the user
+						responses.add(DialogMessage::DisplayDialogError {
+							title: "Unsupported format".into(),
+							description: "This file cannot be imported because it is not a supported image file type.".into(),
+						})
+					}
+				}
 			}
 			PortfolioMessage::OpenDocumentFile {
 				document_name,
@@ -583,12 +656,53 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				}
 
 				// Load the document into the portfolio so it opens in the editor
-				self.load_document(document, document_id, self.layers_panel_open, responses, to_front);
+				self.load_document(document, document_id, responses, to_front);
 
 				if select_after_open {
 					responses.add(PortfolioMessage::SelectDocument { document_id });
 				}
 			}
+			PortfolioMessage::OpenImage { name, image } => {
+				responses.add(PortfolioMessage::NewDocumentWithName {
+					name: name.clone().unwrap_or(DEFAULT_DOCUMENT_NAME.into()),
+				});
+
+				responses.add(DocumentMessage::PasteImage {
+					name,
+					image,
+					mouse: None,
+					parent_and_insert_index: None,
+				});
+
+				// Wait for the document to be rendered so the click targets can be calculated in order to determine the artboard size that will encompass the pasted image
+				responses.add(DeferMessage::AfterGraphRun {
+					messages: vec![DocumentMessage::WrapContentInArtboard { place_artboard_at_origin: true }.into()],
+				});
+				responses.add(DeferMessage::AfterNavigationReady {
+					messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
+				});
+			}
+			PortfolioMessage::OpenSvg { name, svg } => {
+				responses.add(PortfolioMessage::NewDocumentWithName {
+					name: name.clone().unwrap_or(DEFAULT_DOCUMENT_NAME.into()),
+				});
+
+				responses.add(DocumentMessage::PasteSvg {
+					name,
+					svg,
+					mouse: None,
+					parent_and_insert_index: None,
+				});
+
+				// Wait for the document to be rendered so the click targets can be calculated in order to determine the artboard size that will encompass the pasted SVG
+				responses.add(DeferMessage::AfterGraphRun {
+					messages: vec![DocumentMessage::WrapContentInArtboard { place_artboard_at_origin: true }.into()],
+				});
+				responses.add(DeferMessage::AfterNavigationReady {
+					messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
+				});
+			}
+			// TODO: Unused except by tests, remove?
 			PortfolioMessage::PasteIntoFolder { clipboard, parent, insert_index } => {
 				let mut all_new_ids = Vec::new();
 				let paste = |entry: &CopyBufferEntry, responses: &mut VecDeque<_>, all_new_ids: &mut Vec<NodeId>| {
@@ -849,28 +963,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				mouse,
 				parent_and_insert_index,
 			} => {
-				let create_document = self.documents.is_empty();
-
-				if create_document {
-					responses.add(PortfolioMessage::NewDocumentWithName {
-						name: name.clone().unwrap_or(DEFAULT_DOCUMENT_NAME.into()),
-					});
-				}
-
-				responses.add(DocumentMessage::PasteImage {
-					name,
-					image,
-					mouse,
-					parent_and_insert_index,
-				});
-
-				if create_document {
-					// Wait for the document to be rendered so the click targets can be calculated in order to determine the artboard size that will encompass the pasted image
-					responses.add(DeferMessage::AfterGraphRun {
-						messages: vec![DocumentMessage::WrapContentInArtboard { place_artboard_at_origin: true }.into()],
-					});
-					responses.add(DeferMessage::AfterNavigationReady {
-						messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
+				if self.documents.is_empty() {
+					responses.add(PortfolioMessage::OpenImage { name, image });
+				} else {
+					responses.add(DocumentMessage::PasteImage {
+						name,
+						image,
+						mouse,
+						parent_and_insert_index,
 					});
 				}
 			}
@@ -880,29 +980,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				mouse,
 				parent_and_insert_index,
 			} => {
-				let create_document = self.documents.is_empty();
-
-				if create_document {
-					responses.add(PortfolioMessage::NewDocumentWithName {
-						name: name.clone().unwrap_or(DEFAULT_DOCUMENT_NAME.into()),
-					});
-				}
-
-				responses.add(DocumentMessage::PasteSvg {
-					name,
-					svg,
-					mouse,
-					parent_and_insert_index,
-				});
-
-				if create_document {
-					// Wait for the document to be rendered so the click targets can be calculated in order to determine the artboard size that will encompass the pasted image
-					responses.add(DeferMessage::AfterGraphRun {
-						messages: vec![DocumentMessage::WrapContentInArtboard { place_artboard_at_origin: true }.into()],
-					});
-
-					responses.add(DeferMessage::AfterNavigationReady {
-						messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
+				if self.documents.is_empty() {
+					responses.add(PortfolioMessage::OpenSvg { name, svg });
+				} else {
+					responses.add(DocumentMessage::PasteSvg {
+						name,
+						svg,
+						mouse,
+						parent_and_insert_index,
 					});
 				}
 			}
@@ -933,9 +1018,9 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 							TextButton::new("Open Document")
 								.icon(Some("Folder".into()))
 								.flush(true)
-								.on_commit(|_| PortfolioMessage::OpenDocument.into())
+								.on_commit(|_| PortfolioMessage::Open.into())
 								.widget_instance(),
-							ShortcutLabel::new(action_shortcut!(PortfolioMessageDiscriminant::OpenDocument)).widget_instance(),
+							ShortcutLabel::new(action_shortcut!(PortfolioMessageDiscriminant::Open)).widget_instance(),
 						],
 						vec![
 							TextButton::new("Open Demo Artwork")
@@ -964,7 +1049,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			}
 			PortfolioMessage::RequestStatusBarInfoLayout => {
 				#[cfg(not(target_family = "wasm"))]
-				let widgets = vec![TextLabel::new("Graphite (beta) 1.0.0-RC2").disabled(true).widget_instance()];
+				let widgets = vec![TextLabel::new("Graphite 1.0.0-RC2").disabled(true).widget_instance()];
 				#[cfg(target_family = "wasm")]
 				let widgets = vec![];
 
@@ -1066,7 +1151,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				let node_to_inspect = self.node_to_inspect();
 
 				let Some(document) = self.documents.get_mut(&document_id) else {
-					log::error!("Tried to render non-existent document");
+					log::error!("Tried to render non-existent document {:?}", document_id);
 					return;
 				};
 
@@ -1093,7 +1178,101 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					Ok(message) => responses.add_front(message),
 				}
 			}
+			PortfolioMessage::ToggleFocusDocument => {
+				self.focus_document = !self.focus_document;
+				responses.add(MenuBarMessage::SendLayout);
+
+				if self.focus_document {
+					if self.properties_panel_open {
+						responses.add(PropertiesPanelMessage::Clear);
+						responses.add(FrontendMessage::UpdatePropertiesPanelState { open: false });
+					}
+
+					if self.layers_panel_open {
+						responses.add(DocumentMessage::ClearLayersPanel);
+						responses.add(FrontendMessage::UpdateLayersPanelState { open: false });
+					}
+
+					if self.data_panel_open {
+						responses.add(DataPanelMessage::ClearLayout);
+						responses.add(FrontendMessage::UpdateDataPanelState { open: false });
+					}
+				} else {
+					if self.properties_panel_open {
+						responses.add(FrontendMessage::UpdatePropertiesPanelState { open: true });
+					}
+					if self.layers_panel_open {
+						responses.add(FrontendMessage::UpdateLayersPanelState { open: true });
+					}
+					if self.data_panel_open {
+						responses.add(FrontendMessage::UpdateDataPanelState { open: true });
+					}
+
+					// Run the graph to grab the data
+					if self.properties_panel_open || self.layers_panel_open || self.data_panel_open {
+						responses.add(NodeGraphMessage::RunDocumentGraph);
+					}
+
+					if self.properties_panel_open {
+						responses.add(PropertiesPanelMessage::Refresh);
+					}
+					if self.layers_panel_open && self.active_document_id.is_some() {
+						responses.add(DeferMessage::AfterGraphRun {
+							messages: vec![NodeGraphMessage::UpdateLayerPanel.into(), DocumentMessage::DocumentStructureChanged.into()],
+						});
+					}
+				}
+			}
+			PortfolioMessage::TogglePropertiesPanelOpen => {
+				if self.focus_document {
+					return;
+				}
+
+				self.properties_panel_open = !self.properties_panel_open;
+				responses.add(MenuBarMessage::SendLayout);
+
+				// Run the graph to grab the data
+				if self.properties_panel_open {
+					responses.add(FrontendMessage::UpdatePropertiesPanelState { open: self.properties_panel_open });
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+					responses.add(PropertiesPanelMessage::Refresh);
+				} else {
+					responses.add(PropertiesPanelMessage::Clear);
+					responses.add(FrontendMessage::UpdatePropertiesPanelState { open: self.properties_panel_open });
+				}
+			}
+			PortfolioMessage::ToggleLayersPanelOpen => {
+				if self.focus_document {
+					return;
+				}
+
+				self.layers_panel_open = !self.layers_panel_open;
+				responses.add(MenuBarMessage::SendLayout);
+
+				// Run the graph to grab the data
+				if self.layers_panel_open {
+					// When opening, we make the frontend show the panel first so it can start receiving its message subscriptions for the data it will display
+					responses.add(FrontendMessage::UpdateLayersPanelState { open: self.layers_panel_open });
+
+					responses.add(NodeGraphMessage::RunDocumentGraph);
+					if self.active_document_id.is_some() {
+						responses.add(DeferMessage::AfterGraphRun {
+							messages: vec![NodeGraphMessage::UpdateLayerPanel.into(), DocumentMessage::DocumentStructureChanged.into()],
+						});
+					}
+				} else {
+					// If we don't clear the panel, the layout diffing system will assume widgets still exist when it attempts to update the layers panel next time it is opened
+					responses.add(DocumentMessage::ClearLayersPanel);
+
+					// When closing, we make the frontend hide the panel last so it can finish receiving its message subscriptions before it is destroyed
+					responses.add(FrontendMessage::UpdateLayersPanelState { open: self.layers_panel_open });
+				}
+			}
 			PortfolioMessage::ToggleDataPanelOpen => {
+				if self.focus_document {
+					return;
+				}
+
 				self.data_panel_open = !self.data_panel_open;
 				responses.add(MenuBarMessage::SendLayout);
 
@@ -1109,40 +1288,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 					// When closing, we make the frontend hide the panel last so it can finish receiving its message subscriptions before it is destroyed
 					responses.add(FrontendMessage::UpdateDataPanelState { open: self.data_panel_open });
-				}
-			}
-			PortfolioMessage::TogglePropertiesPanelOpen => {
-				self.properties_panel_open = !self.properties_panel_open;
-				responses.add(MenuBarMessage::SendLayout);
-
-				responses.add(FrontendMessage::UpdatePropertiesPanelState { open: self.properties_panel_open });
-
-				// Run the graph to grab the data
-				if self.properties_panel_open {
-					responses.add(NodeGraphMessage::RunDocumentGraph);
-				}
-
-				responses.add(PropertiesPanelMessage::Refresh);
-			}
-			PortfolioMessage::ToggleLayersPanelOpen => {
-				self.layers_panel_open = !self.layers_panel_open;
-				responses.add(MenuBarMessage::SendLayout);
-
-				// Run the graph to grab the data
-				if self.layers_panel_open {
-					// When opening, we make the frontend show the panel first so it can start receiving its message subscriptions for the data it will display
-					responses.add(FrontendMessage::UpdateLayersPanelState { open: self.layers_panel_open });
-
-					responses.add(NodeGraphMessage::RunDocumentGraph);
-					responses.add(DeferMessage::AfterGraphRun {
-						messages: vec![NodeGraphMessage::UpdateLayerPanel.into(), DocumentMessage::DocumentStructureChanged.into()],
-					});
-				} else {
-					// If we don't clear the panel, the layout diffing system will assume widgets still exist when it attempts to update the layers panel next time it is opened
-					responses.add(DocumentMessage::ClearLayersPanel);
-
-					// When closing, we make the frontend hide the panel last so it can finish receiving its message subscriptions before it is destroyed
-					responses.add(FrontendMessage::UpdateLayersPanelState { open: self.layers_panel_open });
 				}
 			}
 			PortfolioMessage::ToggleRulers => {
@@ -1195,21 +1340,22 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 	fn actions(&self) -> ActionList {
 		let mut common = actions!(PortfolioMessageDiscriminant;
-			CloseActiveDocumentWithConfirmation,
-			CloseAllDocuments,
-			CloseAllDocumentsWithConfirmation,
-			Import,
-			NextDocument,
-			OpenDocument,
-			PasteIntoFolder,
-			PrevDocument,
-			ToggleRulers,
-			ToggleDataPanelOpen,
+			Open,
+			ToggleFocusDocument,
 		);
 
 		// Extend with actions that require an active document
 		if let Some(document) = self.active_document() {
 			common.extend(document.actions());
+			common.extend(actions!(PortfolioMessageDiscriminant;
+				CloseActiveDocumentWithConfirmation,
+				CloseAllDocuments,
+				CloseAllDocumentsWithConfirmation,
+				ToggleRulers,
+				NextDocument,
+				PrevDocument,
+				Import,
+			));
 
 			// Extend with actions that must have a selected layer
 			if document.network_interface.selected_nodes().selected_layers(document.metadata()).next().is_some() {
@@ -1218,6 +1364,15 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					Cut,
 				));
 			}
+		}
+
+		// Extend with actions that are disabled when focusing the document
+		if !self.focus_document {
+			common.extend(actions!(PortfolioMessageDiscriminant;
+				TogglePropertiesPanelOpen,
+				ToggleLayersPanelOpen,
+				ToggleDataPanelOpen,
+			));
 		}
 
 		common
@@ -1274,14 +1429,40 @@ impl PortfolioMessageHandler {
 		}
 	}
 
-	fn load_document(&mut self, mut new_document: DocumentMessageHandler, document_id: DocumentId, layers_panel_open: bool, responses: &mut VecDeque<Message>, to_front: bool) {
+	fn read_file(path: &PathBuf, content: Vec<u8>) -> FileContent {
+		let extension = path.extension().and_then(|ext| ext.to_str()).unwrap_or_default().to_lowercase();
+		match extension.as_str() {
+			FILE_EXTENSION => match String::from_utf8(content) {
+				Ok(content) => FileContent::Document(content),
+				Err(_) => FileContent::Unsupported,
+			},
+			"svg" => match String::from_utf8(content) {
+				Ok(content) => FileContent::Svg(content),
+				Err(_) => FileContent::Unsupported,
+			},
+			_ => {
+				let format = image::guess_format(&content).unwrap_or_else(|_| image::ImageFormat::from_path(path).unwrap_or(image::ImageFormat::Png));
+				match image::load_from_memory_with_format(&content, format) {
+					Ok(image) => {
+						// TODO: Handle Image formats with more than 8 bits per channel
+						let image_data = image.to_rgba8();
+						let image = Image::<Color>::from_image_data(image_data.as_raw(), image.width(), image.height());
+						FileContent::Image(image)
+					}
+					Err(_) => FileContent::Unsupported,
+				}
+			}
+		}
+	}
+
+	fn load_document(&mut self, mut new_document: DocumentMessageHandler, document_id: DocumentId, responses: &mut VecDeque<Message>, to_front: bool) {
 		if to_front {
 			self.document_ids.push_front(document_id);
 		} else {
 			self.document_ids.push_back(document_id);
 		}
-		new_document.update_layers_panel_control_bar_widgets(layers_panel_open, responses);
-		new_document.update_layers_panel_bottom_bar_widgets(layers_panel_open, responses);
+		new_document.update_layers_panel_control_bar_widgets(self.layers_panel_open && !self.focus_document, responses);
+		new_document.update_layers_panel_bottom_bar_widgets(self.layers_panel_open && !self.focus_document, responses);
 
 		self.documents.insert(document_id, new_document);
 
@@ -1328,7 +1509,7 @@ impl PortfolioMessageHandler {
 	/// Get the ID of the selected node that should be used as the current source for the Data panel.
 	pub fn node_to_inspect(&self) -> Option<NodeId> {
 		// Skip if the Data panel is not open
-		if !self.data_panel_open {
+		if !self.data_panel_open || self.focus_document {
 			return None;
 		}
 

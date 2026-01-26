@@ -2599,7 +2599,7 @@ impl NodeGraphMessageHandler {
 					.node_metadata(&node_id, breadcrumb_network_path)
 					.is_some_and(|node_metadata| node_metadata.persistent_metadata.is_layer()),
 				can_be_layer: network_interface.is_eligible_to_be_layer(&node_id, breadcrumb_network_path),
-				reference: network_interface.reference(&node_id, breadcrumb_network_path),
+				reference: network_interface.reference(&node_id, breadcrumb_network_path).map(|reference| reference.serialized()),
 				display_name: network_interface.display_name(&node_id, breadcrumb_network_path),
 				implementation_name: network_interface.implementation_name(&node_id, breadcrumb_network_path),
 				primary_input,
@@ -2715,16 +2715,12 @@ impl NodeGraphMessageHandler {
 					}
 				});
 
-				let Some(reference) = network_interface.reference(&node_id, &[]) else {
-					log::error!("Could not get reference for layer {node_id} in update_layer_panel");
-					continue;
-				};
-
 				let clippable = layer.can_be_clipped(network_interface.document_metadata());
 
 				let data = LayerPanelEntry {
 					id: node_id,
-					reference,
+					implementation_name: network_interface.implementation_name(&node_id, &[]),
+					icon_name: network_interface.is_artboard(&node_id, &[]).then(|| "Artboard".to_string()),
 					alias: network_interface.display_name(&node_id, &[]),
 					in_selected_network: selection_network_path.is_empty(),
 					children_allowed,

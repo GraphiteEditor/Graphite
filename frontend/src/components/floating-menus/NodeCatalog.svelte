@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { createEventDispatcher, getContext, onMount } from "svelte";
+	import { SvelteMap } from "svelte/reactivity";
 
-	import type { DefinitionIdentifier, FrontendNodeType } from "@graphite/messages";
+	import type { FrontendNodeType } from "@graphite/messages";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -9,7 +10,7 @@
 	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 
-	const dispatch = createEventDispatcher<{ selectNodeType: DefinitionIdentifier }>();
+	const dispatch = createEventDispatcher<{ selectNodeType: string }>();
 	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
 
 	// Content
@@ -28,7 +29,7 @@
 	};
 
 	function buildNodeCategories(nodeTypes: FrontendNodeType[], searchTerm: string): [string, NodeCategoryDetails][] {
-		const categories = new Map<string, NodeCategoryDetails>();
+		const categories = new SvelteMap<string, NodeCategoryDetails>();
 		const isTypeSearch = searchTerm.toLowerCase().startsWith("type:");
 		let typeSearchTerm = "";
 		let remainingSearchTerms = [searchTerm.toLowerCase()];
@@ -125,7 +126,7 @@
 						{disabled}
 						label={nodeType.name}
 						tooltipLabel={nodeType.name}
-						tooltipDescription={$nodeGraph.nodeDescriptions.get(nodeType.identifier)}
+						tooltipDescription={nodeType.identifier ? $nodeGraph.nodeDescriptions.get(nodeType.identifier) : undefined}
 						action={() => dispatch("selectNodeType", nodeType.identifier)}
 					/>
 				{/each}

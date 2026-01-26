@@ -29,16 +29,6 @@ impl Mapping {
 		list.match_mapping(keyboard_state, actions)
 	}
 
-	pub fn remove(&mut self, target_entry: &MappingEntry) {
-		let list = self.associated_entries_mut(&target_entry.input);
-		list.remove(target_entry);
-	}
-
-	pub fn add(&mut self, new_entry: MappingEntry) {
-		let list = self.associated_entries_mut(&new_entry.input);
-		list.push(new_entry);
-	}
-
 	fn associated_entries(&self, message: &InputMapperMessage) -> &KeyMappingEntries {
 		match message {
 			InputMapperMessage::KeyDown(key) => &self.key_down[*key as usize],
@@ -49,19 +39,6 @@ impl Mapping {
 			InputMapperMessage::WheelScroll => &self.wheel_scroll,
 			InputMapperMessage::PointerMove => &self.pointer_move,
 			InputMapperMessage::PointerShake => &self.pointer_shake,
-		}
-	}
-
-	fn associated_entries_mut(&mut self, message: &InputMapperMessage) -> &mut KeyMappingEntries {
-		match message {
-			InputMapperMessage::KeyDown(key) => &mut self.key_down[*key as usize],
-			InputMapperMessage::KeyUp(key) => &mut self.key_up[*key as usize],
-			InputMapperMessage::KeyDownNoRepeat(key) => &mut self.key_down_no_repeat[*key as usize],
-			InputMapperMessage::KeyUpNoRepeat(key) => &mut self.key_up_no_repeat[*key as usize],
-			InputMapperMessage::DoubleClick(key) => &mut self.double_click[*key as usize],
-			InputMapperMessage::WheelScroll => &mut self.wheel_scroll,
-			InputMapperMessage::PointerMove => &mut self.pointer_move,
-			InputMapperMessage::PointerShake => &mut self.pointer_shake,
 		}
 	}
 }
@@ -125,6 +102,8 @@ pub struct MappingEntry {
 	pub modifiers: KeyStates,
 	/// True indicates that this takes priority as the labeled hotkey shown in UI menus and tooltips instead of an alternate binding for the same action
 	pub canonical: bool,
+	/// Whether this mapping is disabled
+	pub disabled: bool,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]

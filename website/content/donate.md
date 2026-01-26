@@ -220,13 +220,3 @@ Also available to individuals wanting to make a larger impact. [Reach out](/cont
 
 </div>
 </section>
-
-<!-- <div class="fundraising loading" data-fundraising>
-	<div class="fundraising-bar" data-fundraising-bar style="--fundraising-percent: 0%">
-		<div class="fundraising-bar-progress"></div>
-	</div>
-	<div class="goal-metrics">
-		<span data-fundraising-percent>Progress: <span data-dynamic>0</span>%</span>
-		<span data-fundraising-goal>Goal: $<span data-dynamic>0</span>/month</span>
-	</div>
-</div> -->

@@ -75,7 +75,7 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 						..Default::default()
 					},
 				},
-				category: category.unwrap_or("UNCATEGORIZED"),
+				category,
 				description: Cow::Borrowed(description),
 				properties: *properties,
 			},

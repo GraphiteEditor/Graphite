@@ -28,7 +28,10 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	} = parsed;
 	let core_types = crate_ident.gcore()?;
 
-	let category = &attributes.category.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
+	let category = attributes
+		.category
+		.as_ref()
+		.expect("The 'category' attribute is required and should be checked during parsing, but was not found during codegen");
 	let mod_name = format_ident!("_{}_mod", mod_name);
 
 	let display_name = match &attributes.display_name.as_ref() {
@@ -97,6 +100,8 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 			(_, name) => name.to_string().to_case(Case::Title),
 		})
 		.collect();
+
+	let input_hidden = regular_field_names.iter().map(|name| name.to_string().starts_with('_')).collect::<Vec<_>>();
 
 	let input_descriptions: Vec<_> = regular_fields.iter().map(|f| &f.description).collect();
 
@@ -475,6 +480,7 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 								name: #input_names,
 								widget_override: #widget_override,
 								description: #input_descriptions,
+								hidden: #input_hidden,
 								exposed: #exposed,
 								value_source: #value_sources,
 								default_type: #default_types,
