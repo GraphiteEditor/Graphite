@@ -1,4 +1,5 @@
 use super::*;
+use crate::messages::portfolio::document::utility_types::guide::GuideDirection;
 use crate::messages::portfolio::document::utility_types::misc::{GuideSnapTarget, SnapTarget};
 use glam::DVec2;
 use graphene_std::renderer::Quad;
@@ -11,16 +12,16 @@ impl GuideSnapper {
 		let document = snap_data.document;
 		let mut lines = Vec::new();
 
-		if !document.guides_visible || !document.snapping_state.guides {
+		if !document.guide_handler.guides_visible || !document.snapping_state.guides {
 			return lines;
 		}
 
-		for guide in &document.horizontal_guides {
-			lines.push((DVec2::new(0.0, guide.position), DVec2::X, GuideSnapTarget::Horizontal));
-		}
-
-		for guide in &document.vertical_guides {
-			lines.push((DVec2::new(guide.position, 0.0), DVec2::Y, GuideSnapTarget::Vertical));
+		for guide in &document.guide_handler.guides {
+			let (point, direction, snap_target) = match guide.direction {
+				GuideDirection::Horizontal => (DVec2::new(0.0, guide.position), DVec2::X, GuideSnapTarget::Horizontal),
+				GuideDirection::Vertical => (DVec2::new(guide.position, 0.0), DVec2::Y, GuideSnapTarget::Vertical),
+			};
+			lines.push((point, direction, snap_target));
 		}
 
 		lines
@@ -57,27 +58,19 @@ impl GuideSnapper {
 			let tolerance = snap_tolerance(document);
 			let mut guide_lines: Vec<SnappedLine> = Vec::new();
 
-			for guide in &document.horizontal_guides {
+			for guide in &document.guide_handler.guides {
+				let (snapped_point_document, direction) = match guide.direction {
+					GuideDirection::Horizontal => (DVec2::new(0.0, guide.position), DVec2::X),
+					GuideDirection::Vertical => (DVec2::new(guide.position, 0.0), DVec2::Y),
+				};
 				guide_lines.push(SnappedLine {
 					point: SnappedPoint {
-						snapped_point_document: DVec2::new(0.0, guide.position),
+						snapped_point_document,
 						source: point.source,
 						tolerance,
 						..Default::default()
 					},
-					direction: DVec2::X,
-				});
-			}
-
-			for guide in &document.vertical_guides {
-				guide_lines.push(SnappedLine {
-					point: SnappedPoint {
-						snapped_point_document: DVec2::new(guide.position, 0.0),
-						source: point.source,
-						tolerance,
-						..Default::default()
-					},
-					direction: DVec2::Y,
+					direction,
 				});
 			}
 

@@ -3,9 +3,9 @@ use std::path::PathBuf;
 use super::utility_types::misc::{GroupFolderType, SnappingState};
 use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 use crate::messages::portfolio::document::data_panel::DataPanelMessage;
+use crate::messages::portfolio::document::guide_message::GuideMessage;
 use crate::messages::portfolio::document::overlays::utility_types::{OverlayContext, OverlaysType};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::guide::{GuideDirection, GuideId};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GridSnapping};
 use crate::messages::portfolio::utility_types::PanelType;
 use crate::messages::prelude::*;
@@ -36,6 +36,8 @@ pub enum DocumentMessage {
 	PropertiesPanel(PropertiesPanelMessage),
 	#[child]
 	DataPanel(DataPanelMessage),
+	#[child]
+	Guide(GuideMessage),
 
 	// Messages
 	AlignSelectedLayers {
@@ -82,28 +84,6 @@ pub enum DocumentMessage {
 	},
 	GridVisibility {
 		visible: bool,
-	},
-	// Guide messages
-	CreateGuide {
-		id: GuideId,
-		direction: GuideDirection,
-		mouse_x: f64,
-		mouse_y: f64,
-	},
-	MoveGuide {
-		id: GuideId,
-		mouse_x: f64,
-		mouse_y: f64,
-	},
-	DeleteGuide {
-		id: GuideId,
-	},
-	GuideOverlays {
-		context: OverlayContext,
-	},
-	ToggleGuidesVisibility,
-	SetHoveredGuide {
-		id: Option<GuideId>,
 	},
 	GroupSelectedLayers {
 		group_folder_type: GroupFolderType,

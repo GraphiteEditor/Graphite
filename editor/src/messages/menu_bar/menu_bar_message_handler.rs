@@ -1,6 +1,7 @@
 use crate::messages::debug::utility_types::MessageLoggingVerbosity;
 use crate::messages::input_mapper::utility_types::macros::action_shortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
+use crate::messages::portfolio::document::guide_message::GuideMessage;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GroupFolderType};
 use crate::messages::prelude::*;
 use graphene_std::path_bool::BooleanOperation;
@@ -618,7 +619,7 @@ impl LayoutHolder for MenuBarMessageHandler {
 						MenuListEntry::new("Guides")
 							.label("Guides")
 							.icon(if self.guides_visible { "CheckboxChecked" } else { "CheckboxUnchecked" })
-							.on_commit(|_| DocumentMessage::ToggleGuidesVisibility.into())
+							.on_commit(|_| GuideMessage::ToggleGuidesVisibility.into())
 							.disabled(no_active_document),
 					],
 				])

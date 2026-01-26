@@ -1,7 +1,6 @@
 use super::node_graph::document_node_definitions;
 use super::node_graph::utility_types::Transform;
 use super::utility_types::error::EditorError;
-use super::utility_types::guide::{Guide, GuideId};
 use super::utility_types::misc::{GroupFolderType, SNAP_FUNCTIONS_FOR_BOUNDING_BOXES, SNAP_FUNCTIONS_FOR_PATHS, SnappingOptions, SnappingState};
 use super::utility_types::network_interface::{self, NodeNetworkInterface, TransactionStatus};
 use super::utility_types::nodes::{CollapsedLayers, SelectedNodes};
@@ -11,6 +10,7 @@ use crate::messages::input_mapper::utility_types::macros::action_shortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::data_panel::{DataPanelMessageContext, DataPanelMessageHandler};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+use crate::messages::portfolio::document::guide_message_handler::{GuideMessageContext, GuideMessageHandler};
 use crate::messages::portfolio::document::node_graph::NodeGraphMessageContext;
 use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
 use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay, overlay_options};
@@ -76,6 +76,8 @@ pub struct DocumentMessageHandler {
 	pub properties_panel_message_handler: PropertiesPanelMessageHandler,
 	#[serde(skip)]
 	pub data_panel_message_handler: DataPanelMessageHandler,
+	#[serde(flatten)]
+	pub guide_handler: GuideMessageHandler,
 
 	// ============================================
 	// Fields that are saved in the document format
@@ -139,18 +141,6 @@ pub struct DocumentMessageHandler {
 	/// If the user clicks or Ctrl-clicks one layer, it becomes the start of the range selection and then Shift-clicking another layer selects all layers between the start and end.
 	#[serde(skip)]
 	layer_range_selection_reference: Option<LayerNodeIdentifier>,
-	/// List of horizontal guide lines in document space.
-	#[serde(default)]
-	pub horizontal_guides: Vec<Guide>,
-	/// List of vertical guide lines in document space.
-	#[serde(default)]
-	pub vertical_guides: Vec<Guide>,
-	/// Whether guide lines are visible in the viewport.
-	#[serde(default = "default_guides_visible")]
-	pub guides_visible: bool,
-	/// ID of the currently hovered guide for visual feedback.
-	#[serde(skip)]
-	pub hovered_guide_id: Option<GuideId>,
 	/// Whether or not the editor has executed the network to render the document yet. If this is opened as an inactive tab, it won't be loaded initially because the active tab is prioritized.
 	#[serde(skip)]
 	pub is_loaded: bool,
@@ -167,6 +157,7 @@ impl Default for DocumentMessageHandler {
 			overlays_message_handler: OverlaysMessageHandler::default(),
 			properties_panel_message_handler: PropertiesPanelMessageHandler::default(),
 			data_panel_message_handler: DataPanelMessageHandler::default(),
+			guide_handler: GuideMessageHandler::default(),
 			// ============================================
 			// Fields that are saved in the document format
 			// ============================================
@@ -192,10 +183,7 @@ impl Default for DocumentMessageHandler {
 			saved_hash: None,
 			auto_saved_hash: None,
 			layer_range_selection_reference: None,
-			horizontal_guides: Vec::new(),
-			vertical_guides: Vec::new(),
-			guides_visible: true,
-			hovered_guide_id: None,
+
 			is_loaded: false,
 		}
 	}
@@ -231,6 +219,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				};
 
 				self.navigation_handler.process_message(message, responses, context);
+			}
+			DocumentMessage::Guide(message) => {
+				let context = GuideMessageContext {
+					navigation_handler: &self.navigation_handler,
+					document_ptz: &self.document_ptz,
+					viewport,
+				};
+				self.guide_handler.process_message(message, responses, context);
 			}
 			DocumentMessage::Overlays(message) => {
 				let visibility_settings = self.overlays_visibility_settings;
@@ -637,69 +633,6 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(OverlaysMessage::Draw);
 			}
 			// Guide messages
-			DocumentMessage::CreateGuide { id, direction, mouse_x, mouse_y } => {
-				// Calculates the document-to-viewport transform with offset
-				let document_to_viewport = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
-				let viewport_to_document = document_to_viewport.inverse();
-
-				let viewport_point = DVec2::new(mouse_x, mouse_y);
-				let document_point = viewport_to_document.transform_point2(viewport_point);
-
-				let document_position = match direction {
-					super::utility_types::guide::GuideDirection::Horizontal => document_point.y,
-					super::utility_types::guide::GuideDirection::Vertical => document_point.x,
-				};
-
-				let guide = Guide::with_id(id, direction, document_position);
-				match direction {
-					super::utility_types::guide::GuideDirection::Horizontal => self.horizontal_guides.push(guide),
-					super::utility_types::guide::GuideDirection::Vertical => self.vertical_guides.push(guide),
-				}
-				responses.add(OverlaysMessage::Draw);
-				responses.add(PortfolioMessage::UpdateDocumentWidgets);
-			}
-			DocumentMessage::MoveGuide { id, mouse_x, mouse_y } => {
-				// Calculate the document-to-viewport transform with offset
-				let document_to_viewport = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
-				let viewport_to_document = document_to_viewport.inverse();
-
-				// Transform the full mouse viewport position to document space
-				let viewport_point = DVec2::new(mouse_x, mouse_y);
-				let document_point = viewport_to_document.transform_point2(viewport_point);
-
-				// Search in both guide lists and update the position
-				if let Some(guide) = self.horizontal_guides.iter_mut().find(|guide| guide.id == id) {
-					guide.position = document_point.y;
-				} else if let Some(guide) = self.vertical_guides.iter_mut().find(|guide| guide.id == id) {
-					guide.position = document_point.x;
-				}
-				responses.add(OverlaysMessage::Draw);
-			}
-			DocumentMessage::DeleteGuide { id } => {
-				// Remove from horizontal guides
-				self.horizontal_guides.retain(|g| g.id != id);
-				// Remove from vertical guides
-				self.vertical_guides.retain(|g| g.id != id);
-				responses.add(OverlaysMessage::Draw);
-				responses.add(PortfolioMessage::UpdateDocumentWidgets);
-			}
-			DocumentMessage::GuideOverlays { context: mut overlay_context } => {
-				if self.guides_visible {
-					super::overlays::guide_overlays::guide_overlay(self, &mut overlay_context);
-				}
-			}
-			DocumentMessage::ToggleGuidesVisibility => {
-				self.guides_visible = !self.guides_visible;
-				responses.add(OverlaysMessage::Draw);
-				responses.add(PortfolioMessage::UpdateDocumentWidgets);
-				responses.add(MenuBarMessage::SendLayout);
-			}
-			DocumentMessage::SetHoveredGuide { id } => {
-				if self.hovered_guide_id != id {
-					self.hovered_guide_id = id;
-					responses.add(OverlaysMessage::Draw);
-				}
-			}
 			DocumentMessage::GroupSelectedLayers { group_folder_type } => {
 				responses.add(DocumentMessage::AddTransaction);
 
@@ -1705,6 +1638,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			ZoomCanvasTo200Percent,
 			ZoomCanvasToFitAll,
 		);
+		common.extend(self.guide_handler.actions());
 
 		// Additional actions available on desktop
 		#[cfg(not(target_family = "wasm"))]
@@ -3070,10 +3004,6 @@ fn default_document_network_interface() -> NodeNetworkInterface {
 	let mut network_interface = NodeNetworkInterface::default();
 	network_interface.add_export(TaggedValue::Artboard(Default::default()), -1, "", &[]);
 	network_interface
-}
-
-fn default_guides_visible() -> bool {
-	true
 }
 
 /// Targets for the [`ClickXRayIter`]. In order to reduce computation, we prefer just a point/path test where possible.

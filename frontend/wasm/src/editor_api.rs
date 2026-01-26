@@ -10,6 +10,7 @@ use editor::consts::FILE_EXTENSION;
 use editor::messages::clipboard::utility_types::ClipboardContentRaw;
 use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
 use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta};
+use editor::messages::portfolio::document::guide_message::GuideMessage;
 use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use editor::messages::portfolio::document::utility_types::guide::{GuideDirection, GuideId};
 use editor::messages::portfolio::document::utility_types::network_interface::ImportOrExport;
@@ -889,7 +890,7 @@ impl EditorHandle {
 				return;
 			}
 		};
-		let message = DocumentMessage::CreateGuide { id, direction, mouse_x, mouse_y };
+		let message = GuideMessage::CreateGuide { id, direction, mouse_x, mouse_y };
 		self.dispatch(message);
 	}
 
@@ -897,7 +898,7 @@ impl EditorHandle {
 	#[wasm_bindgen(js_name = moveGuide)]
 	pub fn move_guide(&self, id: u64, mouse_x: f64, mouse_y: f64) {
 		let id = GuideId::from_raw(id);
-		let message = DocumentMessage::MoveGuide { id, mouse_x, mouse_y };
+		let message = GuideMessage::MoveGuide { id, mouse_x, mouse_y };
 		self.dispatch(message);
 	}
 
@@ -905,7 +906,7 @@ impl EditorHandle {
 	#[wasm_bindgen(js_name = deleteGuide)]
 	pub fn delete_guide(&self, id: u64) {
 		let id = GuideId::from_raw(id);
-		let message = DocumentMessage::DeleteGuide { id };
+		let message = GuideMessage::DeleteGuide { id };
 		self.dispatch(message);
 	}
 }
