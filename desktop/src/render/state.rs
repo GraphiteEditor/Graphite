@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use crate::window::Window;
-use crate::wrapper::{Color, TargetTexture, WgpuContext, WgpuExecutor};
+use crate::wrapper::{TargetTexture, WgpuContext, WgpuExecutor};
 
 #[derive(derivative::Derivative)]
 #[derivative(Debug)]
@@ -232,10 +232,7 @@ impl RenderState {
 			return;
 		};
 		let size = glam::UVec2::new(viewport_texture.width(), viewport_texture.height());
-		let result = futures::executor::block_on(
-			self.executor
-				.render_vello_scene_to_target_texture(&scene, size, &Default::default(), Color::TRANSPARENT, &mut self.overlays_texture),
-		);
+		let result = futures::executor::block_on(self.executor.render_vello_scene_to_target_texture(&scene, size, &Default::default(), None, &mut self.overlays_texture));
 		if let Err(e) = result {
 			tracing::error!("Error rendering overlays: {:?}", e);
 			return;

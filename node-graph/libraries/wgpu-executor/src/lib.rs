@@ -112,12 +112,12 @@ unsafe impl StaticType for Surface {
 const VELLO_SURFACE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 
 impl WgpuExecutor {
-	pub async fn render_vello_scene_to_texture(&self, scene: &Scene, size: UVec2, context: &RenderContext, background: Color) -> Result<wgpu::Texture> {
+	pub async fn render_vello_scene_to_texture(&self, scene: &Scene, size: UVec2, context: &RenderContext, background: Option<Color>) -> Result<wgpu::Texture> {
 		let mut output = None;
 		self.render_vello_scene_to_target_texture(scene, size, context, background, &mut output).await?;
 		Ok(output.unwrap().texture)
 	}
-	pub async fn render_vello_scene_to_target_texture(&self, scene: &Scene, size: UVec2, context: &RenderContext, background: Color, output: &mut Option<TargetTexture>) -> Result<()> {
+	pub async fn render_vello_scene_to_target_texture(&self, scene: &Scene, size: UVec2, context: &RenderContext, background: Option<Color>, output: &mut Option<TargetTexture>) -> Result<()> {
 		// Initialize (lazily) if this is the first call
 		if output.is_none() {
 			*output = Some(TargetTexture::new(&self.context.device, size));
@@ -126,7 +126,7 @@ impl WgpuExecutor {
 		if let Some(target_texture) = output.as_mut() {
 			target_texture.ensure_size(&self.context.device, size);
 
-			let [r, g, b, a] = background.to_rgba8_srgb();
+			let [r, g, b, a] = background.unwrap_or(Color::TRANSPARENT).to_rgba8_srgb();
 			let render_params = RenderParams {
 				base_color: vello::peniko::Color::from_rgba8(r, g, b, a),
 				width: size.x,
