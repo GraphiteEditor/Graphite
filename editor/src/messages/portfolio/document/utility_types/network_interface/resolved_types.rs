@@ -91,8 +91,8 @@ impl TypeSource {
 	/// The type to display in the tooltip label.
 	pub fn resolved_type_tooltip_string(&self) -> String {
 		match self {
-			TypeSource::Compiled(compiled_type) => format!("Data Type: {:?}", compiled_type.nested_type().to_string()),
-			TypeSource::TaggedValue(value_type) => format!("Data Type: {:?}", value_type.nested_type().to_string()),
+			TypeSource::Compiled(compiled_type) => format!("Data Type: {}", compiled_type.nested_type()),
+			TypeSource::TaggedValue(value_type) => format!("Data Type: {}", value_type.nested_type()),
 			TypeSource::Unknown => "Unknown Data Type".to_string(),
 			TypeSource::Invalid => "Invalid Type Combination".to_string(),
 			TypeSource::Error(_) => "Error Getting Data Type".to_string(),
@@ -180,7 +180,7 @@ impl NodeNetworkInterface {
 		self.input_type_not_invalid(input_connector, network_path)
 	}
 
-	// Gets the default tagged value for an input. If its not compiled, then it tries to get a valid type. If there are no valid types, then it picks a random implementation
+	/// Gets the default tagged value for an input. If its not compiled, then it tries to get a valid type. If there are no valid types, then it picks a random implementation.
 	pub fn tagged_value_from_input(&mut self, input_connector: &InputConnector, network_path: &[NodeId]) -> TaggedValue {
 		let guaranteed_type = match self.input_type(input_connector, network_path) {
 			TypeSource::Compiled(compiled) => compiled,
@@ -190,12 +190,12 @@ impl NodeNetworkInterface {
 				// TODO: Add a NodeInput::Indeterminate which can be resolved at compile time to be any type that prevents an error. This may require bidirectional typing.
 				self.complete_valid_input_types(input_connector, network_path)
 					.into_iter()
-					.min_by_key(|ty| ty.nested_type().to_string())
+					.min_by_key(|ty| ty.nested_type().identifier_name())
 					// Pick a random type from the potential valid types
 					.or_else(|| {
 						self.potential_valid_input_types(input_connector, network_path)
 							.into_iter()
-							.min_by_key(|ty| ty.nested_type().to_string())
+							.min_by_key(|ty| ty.nested_type().identifier_name())
 					}).unwrap_or(concrete!(()))
 			}
 			TypeSource::Error(e) => {
