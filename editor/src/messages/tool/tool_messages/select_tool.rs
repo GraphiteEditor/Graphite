@@ -1314,7 +1314,6 @@ impl Fsm for SelectToolFsmState {
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
 			}
-			// Guide dragging - abort
 			(SelectToolFsmState::DraggingGuide { .. }, SelectToolMessage::Abort) => {
 				tool_data.dragging_guide_id = None;
 				tool_data.dragging_guide_direction = None;
@@ -1322,11 +1321,9 @@ impl Fsm for SelectToolFsmState {
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
 			}
-			// Guide dragging - pointer move
 			(SelectToolFsmState::DraggingGuide { guide_id, direction }, SelectToolMessage::PointerMove { .. }) => {
 				tool_data.drag_current = input.mouse.position;
 
-				// MoveGuide expects viewport coordinates and does the conversion internally
 				responses.add(GuideMessage::MoveGuide {
 					id: guide_id,
 					mouse_x: input.mouse.position.x,
