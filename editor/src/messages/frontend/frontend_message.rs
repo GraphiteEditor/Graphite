@@ -1,5 +1,6 @@
 use super::utility_types::{DocumentDetails, MouseCursorIcon, OpenDocument};
 use crate::messages::app_window::app_window_message_handler::AppWindowPlatform;
+use crate::messages::frontend::utility_types::EyedropperPreviewImage;
 use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::{
@@ -253,6 +254,7 @@ pub enum FrontendMessage {
 		multiplier: (f64, f64),
 	},
 	UpdateEyedropperSamplingState {
+		image: Option<EyedropperPreviewImage>,
 		#[serde(rename = "mousePosition")]
 		mouse_position: Option<(f64, f64)>,
 		#[serde(rename = "primaryColor")]

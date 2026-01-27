@@ -1049,7 +1049,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			}
 			PortfolioMessage::RequestStatusBarInfoLayout => {
 				#[cfg(not(target_family = "wasm"))]
-				let widgets = vec![TextLabel::new("Graphite 1.0.0-RC2").disabled(true).widget_instance()];
+				let widgets = vec![TextLabel::new("Graphite 1.0.0-RC3").disabled(true).widget_instance()]; // TODO: After the RCs, call this "Graphite (beta) x.y.z"
 				#[cfg(target_family = "wasm")]
 				let widgets = vec![];
 
@@ -1177,6 +1177,41 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					}
 					Ok(message) => responses.add_front(message),
 				}
+			}
+			#[cfg(not(target_family = "wasm"))]
+			PortfolioMessage::SubmitEyedropperPreviewRender => {
+				use crate::consts::EYEDROPPER_PREVIEW_AREA_RESOLUTION;
+
+				let Some(document_id) = self.active_document_id else { return };
+				let Some(document) = self.documents.get_mut(&document_id) else { return };
+
+				let resolution = glam::UVec2::splat(EYEDROPPER_PREVIEW_AREA_RESOLUTION);
+
+				let preview_offset_in_viewport = ipp.mouse.position - (glam::DVec2::splat(EYEDROPPER_PREVIEW_AREA_RESOLUTION as f64 / 2.));
+				let preview_offset_in_viewport = DAffine2::from_translation(preview_offset_in_viewport);
+
+				let document_to_viewport = document.metadata().document_to_viewport;
+
+				let preview_transform = preview_offset_in_viewport.inverse() * document_to_viewport;
+				let pointer_position = document_to_viewport.inverse().transform_point2(ipp.mouse.position);
+
+				let result = self
+					.executor
+					.submit_eyedropper_preview(document_id, preview_transform, pointer_position, resolution, timing_information);
+
+				match result {
+					Err(description) => {
+						responses.add(DialogMessage::DisplayDialogError {
+							title: "Unable to update node graph".to_string(),
+							description,
+						});
+					}
+					Ok(message) => responses.add_front(message),
+				}
+			}
+			#[cfg(target_family = "wasm")]
+			PortfolioMessage::SubmitEyedropperPreviewRender => {
+				// TODO: Currently for Wasm, this is implemented through SVG rendering but the Eyedropper tool doesn't work at all when Vello is enabled as the renderer
 			}
 			PortfolioMessage::ToggleFocusDocument => {
 				self.focus_document = !self.focus_document;

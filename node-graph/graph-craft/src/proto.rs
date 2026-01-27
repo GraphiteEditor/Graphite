@@ -794,7 +794,14 @@ impl TypingContext {
 					.into_iter()
 					.chain(&inputs)
 					.enumerate()
-					.filter_map(|(i, t)| if i == 0 { None } else { Some(format!("• Input {}: {t}", i + convert_node_index_offset)) })
+					.filter_map(|(i, t)| {
+						if i == 0 {
+							None
+						} else {
+							let number = i + convert_node_index_offset;
+							Some(format!("• Input {number}: {t}"))
+						}
+					})
 					.collect::<Vec<_>>()
 					.join("\n");
 				Err(vec![GraphError::new(node, GraphErrorType::InvalidImplementations { inputs, error_inputs })])
@@ -821,13 +828,13 @@ impl TypingContext {
 						return Ok(node_io.clone());
 					}
 				}
-				let inputs = [call_argument].into_iter().chain(&inputs).map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
+				let inputs = [call_argument].into_iter().chain(&inputs).map(ToString::to_string).collect::<Vec<_>>().join(", ");
 				let valid = valid_output_types.into_iter().cloned().collect();
 				Err(vec![GraphError::new(node, GraphErrorType::MultipleImplementations { inputs, valid })])
 			}
 
 			_ => {
-				let inputs = [call_argument].into_iter().chain(&inputs).map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
+				let inputs = [call_argument].into_iter().chain(&inputs).map(ToString::to_string).collect::<Vec<_>>().join(", ");
 				let valid = valid_output_types.into_iter().cloned().collect();
 				Err(vec![GraphError::new(node, GraphErrorType::MultipleImplementations { inputs, valid })])
 			}
@@ -871,9 +878,7 @@ fn check_generic(types: &NodeIOTypes, input: &Type, parameters: &[Type], generic
 /// Returns a list of all generic types used in the node
 fn replace_generics(types: &mut NodeIOTypes, lookup: &HashMap<String, Type>) {
 	let replace = |ty: &Type| {
-		let Type::Generic(ident) = ty else {
-			return None;
-		};
+		let Type::Generic(ident) = ty else { return None };
 		lookup.get(ident.as_ref()).cloned()
 	};
 	types.call_argument.replace_nested(replace);

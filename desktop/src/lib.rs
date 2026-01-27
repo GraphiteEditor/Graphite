@@ -77,6 +77,10 @@ pub fn start() {
 
 	let (cef_view_info_sender, cef_view_info_receiver) = std::sync::mpsc::channel();
 
+	if cli.disable_ui_acceleration {
+		println!("UI acceleration is disabled");
+	}
+
 	let cef_handler = cef::CefHandler::new(wgpu_context.clone(), app_event_scheduler.clone(), cef_view_info_receiver);
 	let cef_context = match cef_context_builder.initialize(cef_handler, cli.disable_ui_acceleration) {
 		Ok(context) => {
@@ -101,12 +105,24 @@ pub fn start() {
 		}
 	};
 
-	let mut app = App::new(Box::new(cef_context), cef_view_info_sender, wgpu_context, app_event_receiver, app_event_scheduler, cli.files);
+	let app = App::new(Box::new(cef_context), cef_view_info_sender, wgpu_context, app_event_receiver, app_event_scheduler, cli);
 
-	event_loop.run_app(&mut app).unwrap();
+	let exit_reason = app.run(event_loop);
 
 	// Explicitly drop the instance lock
 	drop(lock);
+
+	match exit_reason {
+		#[cfg(target_os = "linux")]
+		app::ExitReason::UiAccelerationFailure => {
+			use std::os::unix::process::CommandExt;
+
+			tracing::error!("Restarting application without UI acceleration");
+			let _ = std::process::Command::new(std::env::current_exe().unwrap()).arg("--disable-ui-acceleration").exec();
+			tracing::error!("Failed to restart application");
+		}
+		_ => {}
+	}
 
 	// Workaround for a Windows-specific exception that occurs when `app` is dropped.
 	// The issue causes the window to hang for a few seconds before closing.

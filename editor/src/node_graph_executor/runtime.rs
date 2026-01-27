@@ -246,7 +246,7 @@ impl NodeRuntime {
 						Ok(TaggedValue::RenderOutput(RenderOutput {
 							data: RenderOutputType::Texture(image_texture),
 							metadata,
-						})) if render_config.for_export => {
+						})) if render_config.for_export || render_config.for_eyedropper => {
 							let executor = self
 								.editor_api
 								.application_io

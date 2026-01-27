@@ -169,7 +169,12 @@ impl Window {
 				};
 				custom_cursor.into()
 			}
+			Cursor::None => {
+				self.winit_window.set_cursor_visible(false);
+				return;
+			}
 		};
+		self.winit_window.set_cursor_visible(true);
 		self.winit_window.set_cursor(cursor);
 	}
 
@@ -215,6 +220,7 @@ impl Window {
 pub(crate) enum Cursor {
 	Icon(CursorIcon),
 	Custom(CustomCursorSource),
+	None,
 }
 impl From<CursorIcon> for Cursor {
 	fn from(icon: CursorIcon) -> Self {
