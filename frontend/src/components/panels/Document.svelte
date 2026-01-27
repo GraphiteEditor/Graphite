@@ -159,8 +159,6 @@
 		editor.handle.panCanvas(0, -delta * scrollbarMultiplier.y);
 	}
 
-	// Guide Drag Utilities
-
 	type GuideDirection = "Horizontal" | "Vertical";
 
 	function getViewportElement(): HTMLElement | undefined {

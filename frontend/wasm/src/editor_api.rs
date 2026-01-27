@@ -46,8 +46,6 @@ fn calculate_hash<T: std::hash::Hash>(t: &T) -> u64 {
 	hasher.finish()
 }
 
-/// Set the random seed used by the editor by calling this from JS upon initialization.
-/// This is necessary because WASM doesn't have a random number generator.
 #[wasm_bindgen(js_name = setRandomSeed)]
 pub fn set_random_seed(seed: u64) {
 	editor::application::set_uuid_seed(seed);
@@ -898,7 +896,7 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
-	/// Create a new guide line from a ruler drag with direction: "Horizontal" or "Vertical"
+	/// Create a new guide line from a ruler drag
 	#[wasm_bindgen(js_name = createGuide)]
 	pub fn create_guide(&self, id: u64, direction: String, mouse_x: f64, mouse_y: f64) {
 		let id = GuideId::from_raw(id);

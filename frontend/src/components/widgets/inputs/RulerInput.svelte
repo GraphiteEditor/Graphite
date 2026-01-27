@@ -113,7 +113,7 @@
 		const element = e.currentTarget as HTMLElement;
 		element.setPointerCapture(e.pointerId);
 
-		// Get the viewport element to calculate position relative to it
+		// Get the viewport element to compute positions relative to it
 		const viewportEl = window.document.querySelector("[data-viewport]") as HTMLElement;
 		if (!viewportEl) {
 			isDragging = false;
