@@ -1049,7 +1049,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			}
 			PortfolioMessage::RequestStatusBarInfoLayout => {
 				#[cfg(not(target_family = "wasm"))]
-				let widgets = vec![TextLabel::new("Graphite 1.0.0-RC2").disabled(true).widget_instance()];
+				let widgets = vec![TextLabel::new("Graphite 1.0.0-RC3").disabled(true).widget_instance()]; // TODO: After the RCs, call this "Graphite (beta) x.y.z"
 				#[cfg(target_family = "wasm")]
 				let widgets = vec![];
 

@@ -52,7 +52,7 @@
 	<LayoutCol class="bottom-message">
 		<TextLabel italic={true} disabled={true}>
 			{#if isDesktop()}
-				You are testing Release Candidate 2 of the 1.0 desktop release. Please regularly check Discord for the next testing build and report issues you encounter.
+				You are testing Release Candidate 3 of the 1.0 desktop release. Please regularly check Discord for the next testing build and report issues you encounter.
 			{/if}
 		</TextLabel>
 	</LayoutCol>
