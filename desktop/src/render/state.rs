@@ -218,14 +218,17 @@ impl RenderState {
 	}
 
 	pub(crate) fn set_viewport_scale(&mut self, scale: [f32; 2]) {
+		self.surface_outdated = true;
 		self.viewport_scale = scale;
 	}
 
 	pub(crate) fn set_viewport_offset(&mut self, offset: [f32; 2]) {
+		self.surface_outdated = true;
 		self.viewport_offset = offset;
 	}
 
 	pub(crate) fn set_overlays_scene(&mut self, scene: vello::Scene) {
+		self.surface_outdated = true;
 		self.overlays_scene = Some(scene);
 	}
 
