@@ -259,6 +259,9 @@ impl App {
 				if let Some(render_state) = &mut self.render_state {
 					render_state.set_overlays_scene(scene);
 				}
+				if let Some(window) = &self.window {
+					window.request_redraw();
+				}
 			}
 			DesktopFrontendMessage::PersistenceWriteDocument { id, document } => {
 				self.persistent_data.write_document(id, document);
@@ -556,6 +559,7 @@ impl ApplicationHandler for App {
 						Err(RenderError::SurfaceError(e)) => tracing::error!("Render error: {:?}", e),
 					}
 					let _ = self.start_render_sender.try_send(());
+					// self.cef_context.schedule_frame();
 				}
 
 				if !self.cef_init_successful
@@ -634,7 +638,6 @@ impl ApplicationHandler for App {
 	fn about_to_wait(&mut self, event_loop: &dyn ActiveEventLoop) {
 		// Set a timeout in case we miss any cef schedule requests
 		let timeout = Instant::now() + Duration::from_millis(10);
-		let wait_until = timeout.min(self.cef_schedule.unwrap_or(timeout));
 		if let Some(schedule) = self.cef_schedule
 			&& schedule < Instant::now()
 		{
@@ -643,12 +646,10 @@ impl ApplicationHandler for App {
 			for _ in 0..CEF_MESSAGE_LOOP_MAX_ITERATIONS {
 				self.cef_context.work();
 			}
+		} else {
+			let wait_until = timeout.min(self.cef_schedule.unwrap_or(timeout));
+			event_loop.set_control_flow(ControlFlow::WaitUntil(wait_until));
 		}
-		if let Some(window) = &self.window.as_ref() {
-			window.request_redraw();
-		}
-
-		event_loop.set_control_flow(ControlFlow::WaitUntil(wait_until));
 	}
 }
 
