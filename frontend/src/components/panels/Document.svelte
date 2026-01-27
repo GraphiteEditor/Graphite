@@ -296,7 +296,6 @@
 
 	// Update mouse cursor icon
 	export function updateMouseCursor(cursor: MouseCursorIcon) {
-		console.log("Updating mouse cursor to:", cursor);
 		let cursorString: string = cursor;
 
 		// This isn't very clean but it's good enough for now until we need more icons, then we can build something more robust (consider blob URLs)
