@@ -678,7 +678,15 @@ export class UpdateDocumentRulers extends JsMessage {
 	readonly visible!: boolean;
 }
 
+export class EyedropperPreviewImage {
+	readonly data!: Uint8Array;
+	readonly width!: number;
+	readonly height!: number;
+}
+
 export class UpdateEyedropperSamplingState extends JsMessage {
+	readonly image!: EyedropperPreviewImage | undefined;
+
 	@TupleToVec2
 	readonly mousePosition!: XY | undefined;
 
