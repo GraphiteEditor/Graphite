@@ -260,6 +260,9 @@ impl App {
 				if let Some(render_state) = &mut self.render_state {
 					render_state.set_overlays_scene(scene);
 				}
+				if let Some(window) = &self.window {
+					window.request_redraw();
+				}
 			}
 			DesktopFrontendMessage::PersistenceWriteDocument { id, document } => {
 				self.persistent_data.write_document(id, document);
