@@ -1953,6 +1953,15 @@ impl Fsm for PenToolFsmState {
 					move_anchor_with_handles: input.keyboard.key(move_anchor_with_handles),
 				};
 
+				// If the user drags the mouse beyond the threshold, we should not close the path on release
+				if tool_data.pending_double_click_confirm {
+					if let Some(last_pos) = tool_data.last_click_pos {
+						if last_pos.distance(input.mouse.position) > DRAG_THRESHOLD {
+							tool_data.pending_double_click_confirm = false;
+						}
+					}
+				}
+
 				let snap_data = SnapData::new(document, input, viewport);
 				if tool_data.modifiers.colinear && !tool_data.toggle_colinear_debounce {
 					tool_data.handle_mode = match tool_data.handle_mode {
