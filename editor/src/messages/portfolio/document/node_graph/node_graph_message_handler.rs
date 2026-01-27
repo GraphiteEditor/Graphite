@@ -57,12 +57,11 @@ pub struct NodeGraphMessageHandler {
 	has_selection: bool,
 	widgets: [LayoutGroup; 2],
 	/// Used to add a transaction for the first node move when dragging.
-	begin_dragging: bool,
 	/// Used to prevent entering a nested network if the node is dragged after double clicking
 	node_has_moved_in_drag: bool,
-	/// If dragging the selected nodes, this stores the starting position both in viewport and node graph coordinates,
+	/// If dragging the selected nodes, this stores the current position of the node,
 	/// plus a flag indicating if it has been dragged since the mousedown began.
-	pub drag_start: Option<(DragStart, bool)>,
+	pub drag_start: Option<DragStart>,
 	// Store the selected chain nodes on drag start so they can be reconnected if shaken
 	pub drag_start_chain_nodes: Vec<NodeId>,
 	/// If dragging the background to create a box selection, this stores its starting point in node graph coordinates,
@@ -965,14 +964,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 					// If this node is selected (whether from before or just now), prepare it for dragging
 					if updated_selected.contains(&clicked_id) {
-						let drag_start = DragStart {
-							start_x: node_graph_point.x,
-							start_y: node_graph_point.y,
-							round_x: 0,
-							round_y: 0,
-						};
+						let drag_start_position = IVec2::new((node_graph_point.x / 24.).round() as i32, (node_graph_point.y / 24.).round() as i32);
 
-						self.drag_start = Some((drag_start, false));
+						self.drag_start = Some(DragStart::No(drag_start_position));
 						let selected_chain_nodes = updated_selected
 							.iter()
 							.filter(|node_id| network_interface.is_chain(node_id, selection_network_path))
@@ -987,7 +981,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 									.filter(|node_id| network_interface.is_chain(node_id, selection_network_path))
 							})
 							.collect::<Vec<_>>();
-						self.begin_dragging = true;
 						self.node_has_moved_in_drag = false;
 						self.update_node_graph_hints(responses);
 					}
@@ -1105,36 +1098,28 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						};
 						responses.add(FrontendMessage::UpdateWirePathInProgress { wire_path: Some(wire_path) });
 					}
-				} else if let Some((drag_start, dragged)) = &mut self.drag_start {
-					if drag_start.start_x != point.x || drag_start.start_y != point.y {
-						*dragged = true;
-					}
-
-					self.node_has_moved_in_drag = true;
-					if self.begin_dragging {
-						self.begin_dragging = false;
-						if ipp.keyboard.get(Key::Alt as usize) {
-							responses.add(NodeGraphMessage::DuplicateSelectedNodes);
-							// Duplicating sets a 2x2 offset, so shift the nodes back to the original position
-							responses.add(NodeGraphMessage::ShiftSelectedNodesByAmount {
-								graph_delta: IVec2::new(-2, -2),
-								rubber_band: false,
-							});
-							self.preview_on_mouse_up = None;
+				} else if let Some(drag_start) = &mut self.drag_start {
+					match drag_start {
+						DragStart::Yes => {
+							sync_selected_node_position_with_mouse(network_interface, breadcrumb_network_path, point, responses);
 						}
-					}
-
-					let mut graph_delta = IVec2::new(((point.x - drag_start.start_x) / 24.).round() as i32, ((point.y - drag_start.start_y) / 24.).round() as i32);
-					let previous_round_x = drag_start.round_x;
-					let previous_round_y = drag_start.round_y;
-
-					drag_start.round_x = graph_delta.x;
-					drag_start.round_y = graph_delta.y;
-
-					graph_delta.x -= previous_round_x;
-					graph_delta.y -= previous_round_y;
-
-					responses.add(NodeGraphMessage::ShiftSelectedNodesByAmount { graph_delta, rubber_band: true });
+						DragStart::No(start) => {
+							let mouse_position_grid_space = IVec2::new((point.x / 24.).round() as i32, (point.y / 24.).round() as i32);
+							if *start != mouse_position_grid_space {
+								*drag_start = DragStart::Yes;
+								if ipp.keyboard.get(Key::Alt as usize) {
+									responses.add(NodeGraphMessage::DuplicateSelectedNodes);
+									// Duplicating sets a 2x2 offset, so shift the nodes back to the original position
+									responses.add(NodeGraphMessage::ShiftSelectedNodesByAmount {
+										graph_delta: IVec2::new(-2, -2),
+										rubber_band: false,
+									});
+									self.preview_on_mouse_up = None;
+								}
+								sync_selected_node_position_with_mouse(network_interface, breadcrumb_network_path, point, responses);
+							}
+						}
+					};
 
 					self.update_node_graph_hints(responses);
 				} else if let Some((_, box_selection_dragged)) = &mut self.box_selection_start {
@@ -1204,7 +1189,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					self.preview_on_mouse_up = None;
 				}
 				if let Some(node_to_deselect) = self.deselect_on_pointer_up.take()
-					&& !self.drag_start.as_ref().is_some_and(|t| t.1)
+					&& self.drag_start.as_ref().is_some_and(|start| !start.dragged())
 				{
 					let mut new_selected_nodes = selected_nodes.selected_nodes_ref().clone();
 					new_selected_nodes.remove(node_to_deselect);
@@ -1268,7 +1253,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					}
 				}
 				// End of dragging a node
-				else if let Some((drag_start, _)) = &self.drag_start {
+				else if let Some(drag_start) = &self.drag_start {
 					self.shift_without_push = false;
 
 					// Reset all offsets to end the rubber banding while dragging
@@ -1280,8 +1265,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 					// Only select clicked node if multiple are selected and they were not dragged
 					if let Some(select_if_not_dragged) = self.select_if_not_dragged {
-						let not_dragged = drag_start.start_x == point.x && drag_start.start_y == point.y;
-						if not_dragged
+						if !drag_start.dragged()
 							&& (selected_nodes.selected_nodes_ref().len() != 1
 								|| selected_nodes
 									.selected_nodes_ref()
@@ -1310,7 +1294,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						return;
 					};
 					// Check if a single node was dragged onto a wire and that the node was dragged onto the wire
-					if selected_nodes.selected_nodes_ref().len() == 1 && !self.begin_dragging {
+					if selected_nodes.selected_nodes_ref().len() == 1 && self.drag_start.as_ref().is_some_and(|drag_start| drag_start.dragged()) {
 						let selected_node_id = selected_nodes.selected_nodes_ref()[0];
 						let has_primary_output_connection = network_interface
 							.outward_wires(selection_network_path)
@@ -1422,7 +1406,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				}
 
 				self.drag_start = None;
-				self.begin_dragging = false;
 				self.box_selection_start = None;
 
 				self.wire_in_progress_from_connector = None;
@@ -1449,11 +1432,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				}
 			}
 			NodeGraphMessage::ShakeNode => {
-				let Some(drag_start) = &self.drag_start else {
-					log::error!("Drag start should be initialized when shaking a node");
-					return;
-				};
-
 				let Some(network_metadata) = network_interface.network_metadata(selection_network_path) else {
 					return;
 				};
@@ -1465,9 +1443,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					.node_graph_to_viewport
 					.inverse()
 					.transform_point2(viewport_location);
-
-				// Collect the distance to move the shaken nodes after the undo
-				let graph_delta = IVec2::new(((point.x - drag_start.0.start_x) / 24.).round() as i32, ((point.y - drag_start.0.start_y) / 24.).round() as i32);
 
 				// Undo to the state of the graph before shaking
 				responses.add(DocumentMessage::AbortTransaction);
@@ -1559,7 +1534,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						}
 					}
 				}
-				responses.add(NodeGraphMessage::ShiftSelectedNodesByAmount { graph_delta, rubber_band: false });
+				sync_selected_node_position_with_mouse(network_interface, breadcrumb_network_path, point, responses);
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 				responses.add(NodeGraphMessage::SendGraph);
 			}
@@ -2761,8 +2736,8 @@ impl NodeGraphMessageHandler {
 		// A wire is in progress and its start and end connectors are set
 		let wiring = self.wire_in_progress_from_connector.is_some();
 
-		// Node gragging is in progress (having already moved at least one pixel from the mouse down position)
-		let dragging_nodes = self.drag_start.as_ref().is_some_and(|(_, dragged)| *dragged);
+		// Node dragging is in progress (having already moved at least one pixel from the mouse down position)
+		let dragging_nodes = self.drag_start.as_ref().is_some_and(|drag_start| drag_start.dragged());
 
 		// A box selection is in progress
 		let dragging_box_selection = self.box_selection_start.is_some_and(|(_, box_selection_dragged)| box_selection_dragged);
@@ -2809,7 +2784,6 @@ impl Default for NodeGraphMessageHandler {
 			has_selection: false,
 			widgets: [LayoutGroup::Row { widgets: Vec::new() }, LayoutGroup::Row { widgets: Vec::new() }],
 			drag_start: None,
-			begin_dragging: false,
 			node_has_moved_in_drag: false,
 			shift_without_push: false,
 			box_selection_start: None,
@@ -2840,7 +2814,6 @@ impl PartialEq for NodeGraphMessageHandler {
 			&& self.has_selection == other.has_selection
 			&& self.widgets == other.widgets
 			&& self.drag_start == other.drag_start
-			&& self.begin_dragging == other.begin_dragging
 			&& self.node_has_moved_in_drag == other.node_has_moved_in_drag
 			&& self.box_selection_start == other.box_selection_start
 			&& self.initial_disconnecting == other.initial_disconnecting
@@ -2848,5 +2821,22 @@ impl PartialEq for NodeGraphMessageHandler {
 			&& self.wire_in_progress_from_connector == other.wire_in_progress_from_connector
 			&& self.wire_in_progress_to_connector == other.wire_in_progress_to_connector
 			&& self.context_menu == other.context_menu
+	}
+}
+
+fn sync_selected_node_position_with_mouse(network_interface: &mut NodeNetworkInterface, breadcrumb_network_path: &[NodeId], mouse_position_node_graph_space: DVec2, responses: &mut VecDeque<Message>) {
+	let mouse_position_grid_space = IVec2::new((mouse_position_node_graph_space.x / 24.).round() as i32, (mouse_position_node_graph_space.y / 24.).round() as i32);
+
+	let Some(selected_nodes_bbox) = network_interface.selected_nodes_bounding_box(breadcrumb_network_path) else {
+		log::error!("Could not get selected_nodes_bounding_box when dragging");
+		return;
+	};
+	let mut selected_nodes_center = (selected_nodes_bbox[0] + selected_nodes_bbox[1]) / 2.;
+	// Add 1 to correct for floating point errors
+	selected_nodes_center += DVec2::ONE;
+	let selected_nodes_center_grid_space = IVec2::new((selected_nodes_center.x / 24.).round() as i32, (selected_nodes_center.y / 24.).round() as i32);
+	let graph_delta = mouse_position_grid_space - selected_nodes_center_grid_space;
+	if graph_delta != IVec2::ZERO {
+		responses.add(NodeGraphMessage::ShiftSelectedNodesByAmount { graph_delta, rubber_band: true });
 	}
 }

@@ -110,12 +110,18 @@ pub struct FrontendNodeType {
 	pub input_types: Vec<String>,
 }
 
+/// State to represent the grid space coordinate from which the pointer started the drag
+/// Once the nodes have been dragged, it is toggled to the Yes variant
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
-pub struct DragStart {
-	pub start_x: f64,
-	pub start_y: f64,
-	pub round_x: i32,
-	pub round_y: i32,
+pub enum DragStart {
+	Yes,
+	No(IVec2),
+}
+
+impl DragStart {
+	pub fn dragged(&self) -> bool {
+		matches!(self, DragStart::Yes)
+	}
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
