@@ -35,6 +35,9 @@ impl Arrow {
 		layer: LayerNodeIdentifier,
 		tool_data: &mut ShapeToolData,
 		_modifier: ShapeToolModifierKey,
+		shaft_width: f64,
+		head_width: f64,
+		head_length: f64,
 		responses: &mut VecDeque<Message>,
 	) {
 		// Track current mouse position in viewport space
@@ -56,11 +59,7 @@ impl Arrow {
 			return;
 		};
 
-		// Calculate proportional dimensions based on arrow length
-		let shaft_width = length_document * 0.1;
-		let head_width = length_document * 0.3;
-		let head_length = length_document * 0.2;
-
+		// Use fixed dimensions from tool options - only length changes during drag
 		// Update Arrow node parameters with document space coordinates (like Line tool)
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(node_id, 1),
