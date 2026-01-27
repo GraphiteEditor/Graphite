@@ -74,7 +74,6 @@ impl GuideSnapper {
 				});
 			}
 
-			// Reuse the generic intersection finder from snapping module
 			if let Some(intersection) = super::get_line_intersection(point.document_point, &guide_lines, SnapTarget::Guide(GuideSnapTarget::Intersection)) {
 				if intersection.distance <= tolerance {
 					snap_results.points.push(intersection);
