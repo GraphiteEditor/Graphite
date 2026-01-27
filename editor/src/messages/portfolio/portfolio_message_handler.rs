@@ -1180,28 +1180,24 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			}
 			#[cfg(not(target_family = "wasm"))]
 			PortfolioMessage::SubmitEyedropperPreviewRender => {
-				let Some(document_id) = self.active_document_id else {
-					return;
-				};
-				let Some(document) = self.documents.get_mut(&document_id) else {
-					return;
-				};
+				use crate::consts::EYEDROPPER_PREVIEW_AREA_RESOLUTION;
 
-				const PREVIEW_RESOLUTION: u32 = 11;
-				let resolution = glam::UVec2::splat(PREVIEW_RESOLUTION);
+				let Some(document_id) = self.active_document_id else { return };
+				let Some(document) = self.documents.get_mut(&document_id) else { return };
 
-				let preview_offset_in_viewport = ipp.mouse.position - (glam::DVec2::splat(PREVIEW_RESOLUTION as f64 / 2.0));
+				let resolution = glam::UVec2::splat(EYEDROPPER_PREVIEW_AREA_RESOLUTION);
+
+				let preview_offset_in_viewport = ipp.mouse.position - (glam::DVec2::splat(EYEDROPPER_PREVIEW_AREA_RESOLUTION as f64 / 2.));
 				let preview_offset_in_viewport = DAffine2::from_translation(preview_offset_in_viewport);
 
 				let document_to_viewport = document.metadata().document_to_viewport;
 
 				let preview_transform = preview_offset_in_viewport.inverse() * document_to_viewport;
-
 				let pointer_position = document_to_viewport.inverse().transform_point2(ipp.mouse.position);
 
 				let result = self
 					.executor
-					.submit_eyedropper_preview(document_id, preview_transform, resolution, timing_information, pointer_position);
+					.submit_eyedropper_preview(document_id, preview_transform, pointer_position, resolution, timing_information);
 
 				match result {
 					Err(description) => {
@@ -1215,7 +1211,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			}
 			#[cfg(target_family = "wasm")]
 			PortfolioMessage::SubmitEyedropperPreviewRender => {
-				// For wasm this is implemented through svg rendering
+				// TODO: Currently for Wasm, this is implemented through SVG rendering but the Eyedropper tool doesn't work at all when Vello is enabled as the renderer
 			}
 			PortfolioMessage::ToggleFocusDocument => {
 				self.focus_document = !self.focus_document;

@@ -213,13 +213,12 @@
 	}
 
 	export async function updateEyedropperSamplingState(
+		// `image` is currently only used for Vello renders
 		image: ImageData | undefined,
 		mousePosition: XY | undefined,
 		colorPrimary: string,
 		colorSecondary: string,
 	): Promise<[number, number, number] | undefined> {
-		var preview = image;
-
 		if (mousePosition === undefined) {
 			cursorEyedropper = false;
 			return undefined;
@@ -231,7 +230,8 @@
 		cursorLeft = mousePosition.x;
 		cursorTop = mousePosition.y;
 
-		if (image === undefined) {
+		let preview = image;
+		if (!preview) {
 			// This works nearly perfectly, but sometimes at odd DPI scale factors like 1.25, the anti-aliasing color can yield slightly incorrect colors (potential room for future improvement)
 			const dpiFactor = window.devicePixelRatio;
 			const [width, height] = [canvasWidth, canvasHeight];
@@ -255,10 +255,11 @@
 				ZOOM_WINDOW_DIMENSIONS,
 				ZOOM_WINDOW_DIMENSIONS,
 			);
+			if (!preview) return undefined;
 		}
 
-		const getCenterPixel = (imageData: ImageData) => {
-			const { width, height, data } = imageData;
+		const centerPixel = (() => {
+			const { width, height, data } = preview;
 			const x = Math.floor(width / 2);
 			const y = Math.floor(height / 2);
 			const index = (y * width + x) * 4;
@@ -267,17 +268,14 @@
 				g: data[index + 1],
 				b: data[index + 2],
 			};
-		};
-		if (!preview) return undefined;
-		const pixel = getCenterPixel(preview);
-		const rgbToHex = (r: number, g: number, b: number): string => `#${[r, g, b].map((x) => x.toString(16).padStart(2, "0")).join("")}`;
-		const hex = rgbToHex(pixel.r, pixel.g, pixel.b);
-		const rgb: [number, number, number] = [pixel.r / 255, pixel.g / 255, pixel.b / 255];
+		})();
+		const hex = [centerPixel.r, centerPixel.g, centerPixel.b].map((x) => x.toString(16).padStart(2, "0")).join("");
+		const rgb: [number, number, number] = [centerPixel.r / 255, centerPixel.g / 255, centerPixel.b / 255];
 
-		cursorEyedropperPreviewColorChoice = hex;
+		cursorEyedropperPreviewColorChoice = "#" + hex;
 		cursorEyedropperPreviewColorPrimary = colorPrimary;
 		cursorEyedropperPreviewColorSecondary = colorSecondary;
-		cursorEyedropperPreviewImageData = image;
+		cursorEyedropperPreviewImageData = preview;
 
 		return rgb;
 	}
@@ -298,6 +296,7 @@
 
 	// Update mouse cursor icon
 	export function updateMouseCursor(cursor: MouseCursorIcon) {
+		console.log("Updating mouse cursor to:", cursor);
 		let cursorString: string = cursor;
 
 		// This isn't very clean but it's good enough for now until we need more icons, then we can build something more robust (consider blob URLs)
@@ -398,7 +397,7 @@
 		canvasWidth = Math.ceil(parseFloat(getComputedStyle(viewport).width));
 		canvasHeight = Math.ceil(parseFloat(getComputedStyle(viewport).height));
 
-		devicePixelRatio = window.devicePixelRatio || 1.0;
+		devicePixelRatio = window.devicePixelRatio || 1;
 
 		// Resize the rulers
 		rulerHorizontal?.resize();

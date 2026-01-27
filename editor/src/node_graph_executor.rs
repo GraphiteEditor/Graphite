@@ -194,7 +194,7 @@ impl NodeGraphExecutor {
 	}
 
 	#[cfg(not(target_family = "wasm"))]
-	pub(crate) fn submit_eyedropper_preview(&mut self, document_id: DocumentId, transform: DAffine2, resolution: UVec2, time: TimingInformation, pointer: DVec2) -> Result<Message, String> {
+	pub(crate) fn submit_eyedropper_preview(&mut self, document_id: DocumentId, transform: DAffine2, pointer: DVec2, resolution: UVec2, time: TimingInformation) -> Result<Message, String> {
 		let viewport = Footprint {
 			transform,
 			resolution,
@@ -326,7 +326,7 @@ impl NodeGraphExecutor {
 						// Special handling for exporting the artwork
 						self.process_export(node_graph_output, export_config, responses)?;
 					} else if execution_context.render_config.for_eyedropper {
-						// Special handling for eyedropper preview
+						// Special handling for Eyedropper tool preview
 						self.process_eyedropper_preview(node_graph_output, responses)?;
 					} else {
 						self.process_node_graph_output(node_graph_output, responses)?;
@@ -439,7 +439,7 @@ impl NodeGraphExecutor {
 				responses.add(EyedropperToolMessage::PreviewImage { data, width, height });
 			}
 			_ => {
-				return Err(format!("Incorrect render type for eyedropper: {node_graph_output}"));
+				// TODO: Support Eyedropper preview in SVG mode on desktop
 			}
 		};
 

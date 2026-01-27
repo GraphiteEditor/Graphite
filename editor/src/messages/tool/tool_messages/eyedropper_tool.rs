@@ -1,5 +1,6 @@
 use super::tool_prelude::*;
-use crate::messages::{frontend::utility_types::EyedropperPreviewImage, tool::utility_types::DocumentToolData};
+use crate::messages::frontend::utility_types::EyedropperPreviewImage;
+use crate::messages::tool::utility_types::DocumentToolData;
 
 #[derive(Default, ExtractField)]
 pub struct EyedropperTool {
@@ -46,7 +47,9 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Eyed
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
 		if let ToolMessage::Eyedropper(EyedropperToolMessage::PreviewImage { data, width, height }) = message {
 			let image = EyedropperPreviewImage { data, width, height };
+
 			update_cursor_preview_common(responses, Some(image), context.input, context.global_tool_data, self.data.color_choice.clone());
+
 			if !self.data.preview {
 				disable_cursor_preview(responses, &mut self.data);
 			}
@@ -199,6 +202,7 @@ fn update_cursor_preview(
 ) {
 	tool_data.preview = true;
 	tool_data.color_choice = set_color_choice.clone();
+
 	update_cursor_preview_common(responses, None, input, global_tool_data, set_color_choice);
 }
 
