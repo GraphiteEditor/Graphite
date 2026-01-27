@@ -56,8 +56,8 @@
 >
 	<div class="ring">
 		<div class="canvas-container">
-			<canvas width={ZOOM_WINDOW_DIMENSIONS} height={ZOOM_WINDOW_DIMENSIONS} bind:this={zoomPreviewCanvas} />
-			<div class="pixel-outline" />
+			<canvas width={ZOOM_WINDOW_DIMENSIONS} height={ZOOM_WINDOW_DIMENSIONS} bind:this={zoomPreviewCanvas}></canvas>
+			<div class="pixel-outline"></div>
 		</div>
 	</div>
 </FloatingMenu>

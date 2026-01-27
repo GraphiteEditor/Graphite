@@ -59,6 +59,7 @@ pub struct NodeGraphExecutor {
 
 #[derive(Debug, Clone)]
 struct ExecutionContext {
+	render_config: RenderConfig,
 	export_config: Option<ExportConfig>,
 	document_id: DocumentId,
 }
@@ -157,12 +158,20 @@ impl NodeGraphExecutor {
 			render_mode: document.render_mode,
 			hide_artboards: false,
 			for_export: false,
+			for_eyedropper: false,
 		};
 
 		// Execute the node graph
 		let execution_id = self.queue_execution(render_config);
 
-		self.futures.push_back((execution_id, ExecutionContext { export_config: None, document_id }));
+		self.futures.push_back((
+			execution_id,
+			ExecutionContext {
+				render_config,
+				export_config: None,
+				document_id,
+			},
+		));
 
 		Ok(DeferMessage::SetGraphSubmissionIndex { execution_id }.into())
 	}
@@ -182,6 +191,40 @@ impl NodeGraphExecutor {
 	) -> Result<Message, String> {
 		self.update_node_graph(document, node_to_inspect, ignore_hash)?;
 		self.submit_current_node_graph_evaluation(document, document_id, viewport_resolution, viewport_scale, time, pointer)
+	}
+
+	#[cfg(not(target_family = "wasm"))]
+	pub(crate) fn submit_eyedropper_preview(&mut self, document_id: DocumentId, transform: DAffine2, pointer: DVec2, resolution: UVec2, time: TimingInformation) -> Result<Message, String> {
+		let viewport = Footprint {
+			transform,
+			resolution,
+			..Default::default()
+		};
+		let render_config = RenderConfig {
+			viewport,
+			scale: 1.,
+			time,
+			pointer,
+			export_format: graphene_std::application_io::ExportFormat::Raster,
+			render_mode: graphene_std::vector::style::RenderMode::Normal,
+			hide_artboards: false,
+			for_export: false,
+			for_eyedropper: true,
+		};
+
+		// Execute the node graph
+		let execution_id = self.queue_execution(render_config);
+
+		self.futures.push_back((
+			execution_id,
+			ExecutionContext {
+				render_config,
+				export_config: None,
+				document_id,
+			},
+		));
+
+		Ok(DeferMessage::SetGraphSubmissionIndex { execution_id }.into())
 	}
 
 	/// Evaluates a node graph for export
@@ -217,6 +260,7 @@ impl NodeGraphExecutor {
 			render_mode: document.render_mode,
 			hide_artboards: export_config.transparent_background,
 			for_export: true,
+			for_eyedropper: false,
 		};
 		export_config.size = resolution.as_dvec2();
 
@@ -225,97 +269,14 @@ impl NodeGraphExecutor {
 			.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, node_to_inspect: None }))
 			.map_err(|e| e.to_string())?;
 		let execution_id = self.queue_execution(render_config);
-		let execution_context = ExecutionContext {
-			export_config: Some(export_config),
-			document_id,
-		};
-		self.futures.push_back((execution_id, execution_context));
-
-		Ok(())
-	}
-
-	fn export(&self, node_graph_output: TaggedValue, export_config: ExportConfig, responses: &mut VecDeque<Message>) -> Result<(), String> {
-		let ExportConfig {
-			file_type,
-			name,
-			size,
-			scale_factor,
-			#[cfg(feature = "gpu")]
-			transparent_background,
-			artboard_name,
-			artboard_count,
-			..
-		} = export_config;
-
-		let file_extension = match file_type {
-			FileType::Svg => "svg",
-			FileType::Png => "png",
-			FileType::Jpg => "jpg",
-		};
-		let base_name = match (artboard_name, artboard_count) {
-			(Some(artboard_name), count) if count > 1 => format!("{name} - {artboard_name}"),
-			_ => name,
-		};
-		let name = format!("{base_name}.{file_extension}");
-
-		match node_graph_output {
-			TaggedValue::RenderOutput(RenderOutput {
-				data: RenderOutputType::Svg { svg, .. },
-				..
-			}) => {
-				if file_type == FileType::Svg {
-					responses.add(FrontendMessage::TriggerSaveFile { name, content: svg.into_bytes() });
-				} else {
-					let mime = file_type.to_mime().to_string();
-					let size = (size * scale_factor).into();
-					responses.add(FrontendMessage::TriggerExportImage { svg, name, mime, size });
-				}
-			}
-			#[cfg(feature = "gpu")]
-			TaggedValue::RenderOutput(RenderOutput {
-				data: RenderOutputType::Buffer { data, width, height },
-				..
-			}) if file_type != FileType::Svg => {
-				use image::buffer::ConvertBuffer;
-				use image::{ImageFormat, RgbImage, RgbaImage};
-
-				let Some(image) = RgbaImage::from_raw(width, height, data) else {
-					return Err("Failed to create image buffer for export".to_string());
-				};
-
-				let mut encoded = Vec::new();
-				let mut cursor = std::io::Cursor::new(&mut encoded);
-
-				match file_type {
-					FileType::Png => {
-						let result = if transparent_background {
-							image.write_to(&mut cursor, ImageFormat::Png)
-						} else {
-							let image: RgbImage = image.convert();
-							image.write_to(&mut cursor, ImageFormat::Png)
-						};
-						if let Err(err) = result {
-							return Err(format!("Failed to encode PNG: {err}"));
-						}
-					}
-					FileType::Jpg => {
-						let image: RgbImage = image.convert();
-						let result = image.write_to(&mut cursor, ImageFormat::Jpeg);
-						if let Err(err) = result {
-							return Err(format!("Failed to encode JPG: {err}"));
-						}
-					}
-					FileType::Svg => {
-						return Err("SVG cannot be exported from an image buffer".to_string());
-					}
-				}
-
-				responses.add(FrontendMessage::TriggerSaveFile { name, content: encoded });
-			}
-			_ => {
-				return Err(format!("Incorrect render type for exporting to an SVG ({file_type:?}, {node_graph_output})"));
-			}
-		};
+		self.futures.push_back((
+			execution_id,
+			ExecutionContext {
+				render_config,
+				export_config: Some(export_config),
+				document_id,
+			},
+		));
 
 		Ok(())
 	}
@@ -363,7 +324,10 @@ impl NodeGraphExecutor {
 
 					if let Some(export_config) = execution_context.export_config {
 						// Special handling for exporting the artwork
-						self.export(node_graph_output, export_config, responses)?;
+						self.process_export(node_graph_output, export_config, responses)?;
+					} else if execution_context.render_config.for_eyedropper {
+						// Special handling for Eyedropper tool preview
+						self.process_eyedropper_preview(node_graph_output, responses)?;
 					} else {
 						self.process_node_graph_output(node_graph_output, responses)?;
 					}
@@ -461,6 +425,109 @@ impl NodeGraphExecutor {
 		responses.add(DocumentMessage::RenderScrollbars);
 		responses.add(DocumentMessage::RenderRulers);
 		responses.add(OverlaysMessage::Draw);
+
+		Ok(())
+	}
+
+	fn process_eyedropper_preview(&self, node_graph_output: TaggedValue, responses: &mut VecDeque<Message>) -> Result<(), String> {
+		match node_graph_output {
+			#[cfg(feature = "gpu")]
+			TaggedValue::RenderOutput(RenderOutput {
+				data: RenderOutputType::Buffer { data, width, height },
+				..
+			}) => {
+				responses.add(EyedropperToolMessage::PreviewImage { data, width, height });
+			}
+			_ => {
+				// TODO: Support Eyedropper preview in SVG mode on desktop
+			}
+		};
+
+		Ok(())
+	}
+
+	fn process_export(&self, node_graph_output: TaggedValue, export_config: ExportConfig, responses: &mut VecDeque<Message>) -> Result<(), String> {
+		let ExportConfig {
+			file_type,
+			name,
+			size,
+			scale_factor,
+			#[cfg(feature = "gpu")]
+			transparent_background,
+			artboard_name,
+			artboard_count,
+			..
+		} = export_config;
+
+		let file_extension = match file_type {
+			FileType::Svg => "svg",
+			FileType::Png => "png",
+			FileType::Jpg => "jpg",
+		};
+		let base_name = match (artboard_name, artboard_count) {
+			(Some(artboard_name), count) if count > 1 => format!("{name} - {artboard_name}"),
+			_ => name,
+		};
+		let name = format!("{base_name}.{file_extension}");
+
+		match node_graph_output {
+			TaggedValue::RenderOutput(RenderOutput {
+				data: RenderOutputType::Svg { svg, .. },
+				..
+			}) => {
+				if file_type == FileType::Svg {
+					responses.add(FrontendMessage::TriggerSaveFile { name, content: svg.into_bytes() });
+				} else {
+					let mime = file_type.to_mime().to_string();
+					let size = (size * scale_factor).into();
+					responses.add(FrontendMessage::TriggerExportImage { svg, name, mime, size });
+				}
+			}
+			#[cfg(feature = "gpu")]
+			TaggedValue::RenderOutput(RenderOutput {
+				data: RenderOutputType::Buffer { data, width, height },
+				..
+			}) if file_type != FileType::Svg => {
+				use image::buffer::ConvertBuffer;
+				use image::{ImageFormat, RgbImage, RgbaImage};
+
+				let Some(image) = RgbaImage::from_raw(width, height, data) else {
+					return Err("Failed to create image buffer for export".to_string());
+				};
+
+				let mut encoded = Vec::new();
+				let mut cursor = std::io::Cursor::new(&mut encoded);
+
+				match file_type {
+					FileType::Png => {
+						let result = if transparent_background {
+							image.write_to(&mut cursor, ImageFormat::Png)
+						} else {
+							let image: RgbImage = image.convert();
+							image.write_to(&mut cursor, ImageFormat::Png)
+						};
+						if let Err(err) = result {
+							return Err(format!("Failed to encode PNG: {err}"));
+						}
+					}
+					FileType::Jpg => {
+						let image: RgbImage = image.convert();
+						let result = image.write_to(&mut cursor, ImageFormat::Jpeg);
+						if let Err(err) = result {
+							return Err(format!("Failed to encode JPG: {err}"));
+						}
+					}
+					FileType::Svg => {
+						return Err("SVG cannot be exported from an image buffer".to_string());
+					}
+				}
+
+				responses.add(FrontendMessage::TriggerSaveFile { name, content: encoded });
+			}
+			_ => {
+				return Err(format!("Incorrect render type for exporting to an SVG ({file_type:?}, {node_graph_output})"));
+			}
+		};
 
 		Ok(())
 	}

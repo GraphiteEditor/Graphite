@@ -190,7 +190,7 @@ impl DocumentStore {
 
 	fn document_path(id: &DocumentId) -> std::path::PathBuf {
 		let mut path = crate::dirs::app_autosave_documents_dir();
-		path.push(format!("{:x}.graphite", id.0));
+		path.push(format!("{:x}.{}", id.0, graphite_desktop_wrapper::FILE_EXTENSION));
 		path
 	}
 }

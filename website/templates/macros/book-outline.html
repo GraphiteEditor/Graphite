@@ -1,0 +1,87 @@
+{# Recursively render a page's headings table of contents #}
+{%- macro render_book_page_toc(children, indents) -%}
+	{%- set tabs = "" -%}
+	{%- for i in range(end = indents) -%}
+		{%- set_global tabs = tabs ~ "	" -%}
+	{%- endfor -%}
+
+	{%- if children | length > 0 %}
+	{{ tabs }}<ul>
+	{%- for child in children %}
+	{{ tabs }}	<li><a href="#{{ child.id }}" title="{{ child.title | safe }}">{{ child.title }}</a></li>
+	{{- self::render_book_page_toc(children = child.children, indents = indents + 1) -}}
+	{%- endfor %}
+	{{ tabs }}</ul>
+	{%- endif -%}
+{%- endmacro render_book_page_toc -%}
+
+{# Recursively render a book's chapters table of contents #}
+{%- macro render_book_outline(parent, current_path, index, indents) -%}
+	{#- Setup -#}
+	{%- set chapters = parent.pages | default(value = []) -%}
+	{%- if index == 0 -%}
+		{%- set_global chapters = [parent] -%}
+	{%- else -%}
+	{%- for subsection_path in parent.subsections -%}
+		{%- set_global chapters = chapters | concat(with = get_section(path = subsection_path)) -%}
+	{%- endfor -%}
+	{%- endif -%}
+	{%- if index > 0 -%}
+	{%- set_global chapters = chapters | sort(attribute = "extra.order") -%}
+	{%- endif -%}
+	{#- End of setup -#}
+
+	{%- set tabs = "" -%}
+	{%- for i in range(end = indents) -%}
+		{%- set_global tabs = tabs ~ "	" -%}
+	{%- endfor -%}
+
+	{%- if chapters | length > 0 %}
+	{{ tabs }}<ul>
+		{%- for chapter in chapters %}
+		{%- set children = chapter.pages or chapter.subsections | default(value = []) -%}
+		{%- set_global classes = [] -%}
+		{%- if index == 0 -%}
+			{%- set_global classes = classes | concat(with = "title") -%}
+		{%- endif -%}
+		{%- if index == 1 -%}
+			{%- set_global classes = classes | concat(with = "chapter") -%}
+		{%- endif -%}
+		{%- if current_path == chapter.path -%}
+			{%- set_global classes = classes | concat(with = "active") -%}
+		{%- endif %}
+		{{ tabs }}<li {%- if classes | length > 0 %} class="{{ classes | join(sep = " ") }}"{% endif %}>
+			{{ tabs }}<label>{% if children and not index == 0 %}<input type="checkbox" {%- if current_path is starting_with(chapter.path) %} checked{% endif %} />{% endif %}</label>
+			{{ tabs }}<a href="{{ chapter.path | safe }}" title="{{ chapter.title | safe }}">{{ chapter.title }}</a>
+		{{ tabs }}</li>
+		{%- if children -%}
+		{{ self::render_book_outline(parent = chapter, current_path = current_path, index = index + 1, indents = indents + 1) }}
+		{%- endif %}
+		{%- endfor %}
+	{{ tabs }}</ul>
+	{%- endif -%}
+{%- endmacro render_book_outline -%}
+
+{# Recursively flatten the book outline to a string for sequential navigation #}
+{%- macro flatten_book_outline(section) -%}
+	{#- Setup -#}
+	{%- set items = [] -%}
+	{%- if section.pages -%}
+		{%- set_global items = items | concat(with = section.pages) -%}
+	{%- endif -%}
+	{%- if section.subsections -%}
+		{%- for subsection_path in section.subsections -%}
+			{%- set subsection = get_section(path = subsection_path) -%}
+			{%- set_global items = items | concat(with = subsection) -%}
+		{%- endfor -%}
+	{%- endif -%}
+	{%- set items = items | sort(attribute = "extra.order") -%}
+	{#- End of setup -#}
+
+	{%- for item in items -%}
+		{{ item.path }},,,,,{{ item.title }};;;;;
+		{%- if item.pages or item.subsections -%}
+			{{ self::flatten_book_outline(section = item) }}
+		{%- endif -%}
+	{%- endfor -%}
+{%- endmacro flatten_book_outline -%}

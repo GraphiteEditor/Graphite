@@ -18,16 +18,18 @@ fn main() {
 		if !gh.trim().is_empty() {
 			gh.trim().to_string()
 		} else {
-			git_or_unknown(&["rev-parse", "--abbrev-ref", "HEAD"])
+			git(&["rev-parse", "--abbrev-ref", "HEAD"]).unwrap_or_default()
 		}
 	});
 
 	// Instruct Cargo to set environment variables for compile time.
 	// They are accessed with the `env!("GRAPHITE_*")` macro in the codebase.
-	println!("cargo:rustc-env=GRAPHITE_GIT_COMMIT_DATE={commit_date}");
-	println!("cargo:rustc-env=GRAPHITE_GIT_COMMIT_HASH={commit_hash}");
-	println!("cargo:rustc-env=GRAPHITE_GIT_COMMIT_BRANCH={commit_branch}");
 	println!("cargo:rustc-env=GRAPHITE_RELEASE_SERIES={GRAPHITE_RELEASE_SERIES}");
+	if !commit_branch.is_empty() {
+		println!("cargo:rustc-env=GRAPHITE_GIT_COMMIT_BRANCH={commit_branch}");
+	}
+	println!("cargo:rustc-env=GRAPHITE_GIT_COMMIT_HASH={commit_hash}");
+	println!("cargo:rustc-env=GRAPHITE_GIT_COMMIT_DATE={commit_date}");
 }
 
 /// Get an environment variable, or if it is not set or empty, use the provided fallback function. Returns a string with trimmed whitespace.

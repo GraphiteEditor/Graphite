@@ -7,7 +7,7 @@ use crate::consts::{
 use crate::messages::clipboard::utility_types::ClipboardContent;
 use crate::messages::input_mapper::utility_types::macros::action_shortcut_manual;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_network_node_type;
 use crate::messages::portfolio::document::overlays::utility_functions::{path_overlays, selected_segments};
 use crate::messages::portfolio::document::overlays::utility_types::{DrawHandles, OverlayContext};
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
@@ -183,7 +183,7 @@ pub enum PathOptionsUpdate {
 	PointEditingMode { enabled: bool },
 	SegmentEditingMode { enabled: bool },
 	PivotGizmoType(PivotGizmoType),
-	TogglePivotGizmoType(bool),
+	SetPivotGizmoEnabled(bool),
 	TogglePivotPinned,
 }
 
@@ -397,7 +397,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Path
 					responses.add(OverlaysMessage::Draw);
 				}
 				PathOptionsUpdate::PivotGizmoType(gizmo_type) => {
-					if !self.tool_data.pivot_gizmo.state.disabled {
+					if !self.tool_data.pivot_gizmo.state.enabled {
 						self.tool_data.pivot_gizmo.state.gizmo_type = gizmo_type;
 						responses.add(ToolMessage::UpdateHints);
 						let pivot_gizmo = self.tool_data.pivot_gizmo();
@@ -406,8 +406,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Path
 						self.send_layout(responses, LayoutTarget::ToolOptions);
 					}
 				}
-				PathOptionsUpdate::TogglePivotGizmoType(state) => {
-					self.tool_data.pivot_gizmo.state.disabled = !state;
+				PathOptionsUpdate::SetPivotGizmoEnabled(enabled) => {
+					self.tool_data.pivot_gizmo.state.enabled = enabled;
 					responses.add(ToolMessage::UpdateHints);
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 					self.send_layout(responses, LayoutTarget::ToolOptions);
@@ -1571,7 +1571,7 @@ impl Fsm for PathToolFsmState {
 		let ToolMessage::Path(event) = event else { return self };
 
 		// TODO(mTvare6): Remove once gizmos are implemented for path_tool
-		tool_data.pivot_gizmo.state.disabled = true;
+		tool_data.pivot_gizmo.state.enabled = false;
 
 		match (self, event) {
 			(_, PathToolMessage::SelectionChanged) => {
@@ -2826,7 +2826,7 @@ impl Fsm for PathToolFsmState {
 						let layer = if shape_editor.selected_shape_state.contains_key(&layer) {
 							layer
 						} else {
-							let Some(node_type) = resolve_document_node_type("Path") else {
+							let Some(node_type) = resolve_network_node_type("Path") else {
 								error!("Could not resolve node type for Path");
 								continue;
 							};
