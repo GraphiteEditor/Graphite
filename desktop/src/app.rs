@@ -45,6 +45,9 @@ pub(crate) struct App {
 	cli: Cli,
 	startup_time: Option<Instant>,
 	exit_reason: ExitReason,
+	hide_ui: bool,
+	restore_ui_message: Option<DesktopWrapperMessage>,
+	restore_ui_texture: Option<wgpu::Texture>,
 }
 
 impl App {
@@ -108,6 +111,9 @@ impl App {
 			cli,
 			exit_reason: ExitReason::Shutdown,
 			startup_time: None,
+			hide_ui: false,
+			restore_ui_message: None,
+			restore_ui_texture: None,
 		}
 	}
 
@@ -124,6 +130,10 @@ impl App {
 	}
 
 	fn resize(&mut self) {
+		if self.hide_ui {
+			self.handle_desktop_frontend_message(DesktopFrontendMessage::TmpToggleHideUI, &mut Vec::new());
+		}
+
 		let Some(window) = &self.window else {
 			tracing::error!("Resize failed due to missing window");
 			return;
@@ -250,9 +260,29 @@ impl App {
 					let viewport_scale_x = if width != 0.0 { window_size.width as f64 / width } else { 1.0 };
 					let viewport_scale_y = if height != 0.0 { window_size.height as f64 / height } else { 1.0 };
 					render_state.set_viewport_scale([viewport_scale_x as f32, viewport_scale_y as f32]);
+
+					if self.hide_ui && x != 0. && y != 0. && width != self.window_size.width as f64 / self.window_scale && height != self.window_size.height as f64 / self.window_scale {
+						self.restore_ui_message = Some(DesktopWrapperMessage::TmpUpdateViewport {
+							x: x / self.ui_scale,
+							y: y / self.ui_scale,
+							width: width / self.ui_scale,
+							height: height / self.ui_scale,
+						});
+
+						let message = DesktopWrapperMessage::TmpUpdateViewport {
+							x: 0.,
+							y: 0.,
+							width: self.window_size.width as f64 / self.window_scale,
+							height: self.window_size.height as f64 / self.window_scale,
+						};
+						self.dispatch_desktop_wrapper_message(message);
+					}
 				}
 			}
 			DesktopFrontendMessage::UpdateUIScale { scale } => {
+				if self.hide_ui {
+					return;
+				}
 				self.ui_scale = scale;
 				self.resize();
 			}
@@ -395,6 +425,37 @@ impl App {
 					window.show_all();
 				}
 			}
+
+			DesktopFrontendMessage::TmpToggleHideUI => {
+				if self.hide_ui {
+					self.hide_ui = false;
+
+					if let Some(texture) = self.restore_ui_texture.clone()
+						&& let Some(render_state) = self.render_state.as_mut()
+					{
+						render_state.bind_ui_texture(texture);
+					}
+
+					if let Some(DesktopWrapperMessage::TmpUpdateViewport { x, y, width, height }) = &self.restore_ui_message {
+						self.dispatch_desktop_wrapper_message(DesktopWrapperMessage::TmpUpdateViewport {
+							x: *x,
+							y: *y,
+							width: *width,
+							height: *height,
+						});
+					}
+				} else {
+					let message = DesktopWrapperMessage::TmpUpdateViewport {
+						x: 0.,
+						y: 0.,
+						width: self.window_size.width as f64 / self.window_scale,
+						height: self.window_size.height as f64 / self.window_scale,
+					};
+					self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
+					self.render_state.as_mut().unwrap().unbind_ui_texture();
+					self.hide_ui = true;
+				}
+			}
 		}
 	}
 
@@ -444,6 +505,11 @@ impl App {
 				NodeGraphExecutionResult::NotRun => {}
 			},
 			AppEvent::UiUpdate(texture) => {
+				if self.hide_ui {
+					self.restore_ui_texture = Some(texture);
+					return;
+				}
+
 				if let Some(render_state) = self.render_state.as_mut() {
 					render_state.bind_ui_texture(texture);
 				}

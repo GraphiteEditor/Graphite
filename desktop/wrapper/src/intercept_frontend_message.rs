@@ -151,6 +151,10 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		FrontendMessage::WindowShowAll => {
 			dispatcher.respond(DesktopFrontendMessage::WindowShowAll);
 		}
+
+		FrontendMessage::TmpToggleHideUI => {
+			dispatcher.respond(DesktopFrontendMessage::TmpToggleHideUI);
+		}
 		m => return Some(m),
 	}
 	None

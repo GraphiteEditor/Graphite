@@ -380,4 +380,6 @@ pub enum FrontendMessage {
 	WindowHide,
 	WindowHideOthers,
 	WindowShowAll,
+
+	TmpToggleHideUI,
 }

@@ -40,6 +40,9 @@ impl MessageHandler<AppWindowMessage, ()> for AppWindowMessageHandler {
 			AppWindowMessage::ShowAll => {
 				responses.add(FrontendMessage::WindowShowAll);
 			}
+			AppWindowMessage::TmpToggleHideUI => {
+				responses.add(FrontendMessage::TmpToggleHideUI);
+			}
 		}
 	}
 	advertise_actions!(AppWindowMessageDiscriminant;
@@ -50,6 +53,7 @@ impl MessageHandler<AppWindowMessage, ()> for AppWindowMessageHandler {
 		Drag,
 		Hide,
 		HideOthers,
+		TmpToggleHideUI,
 	);
 }
 

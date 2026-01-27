@@ -35,6 +35,14 @@ impl MessageHandler<ViewportMessage, ()> for ViewportMessageHandler {
 				};
 				responses.add(NodeGraphMessage::UpdateNodeGraphWidth);
 			}
+			ViewportMessage::TmpUpdateBounds { x, y, width, height } => {
+				self.bounds = Bounds {
+					offset: Point { x, y },
+					size: Point { x: width, y: height },
+				};
+				responses.add(NodeGraphMessage::UpdateNodeGraphWidth);
+			}
+
 			ViewportMessage::RepropagateUpdate => {}
 		}
 
