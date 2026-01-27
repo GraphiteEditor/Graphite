@@ -213,6 +213,7 @@
 		}
 
 		// Get the viewport element to compute positions relative to it
+
 		if (!viewportEl) {
 			isDragging = false;
 			return;
