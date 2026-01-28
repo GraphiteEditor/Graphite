@@ -381,23 +381,6 @@ impl LayoutHolder for PathTool {
 #[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for PathTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
-		let target_layers: Vec<LayerNodeIdentifier> = context.document.network_interface.selected_nodes().selected_layers(context.document.metadata()).collect();
-		let mut target_layers_after_filtering: Vec<LayerNodeIdentifier> = Vec::new();
-		for layer in target_layers {
-			if NodeGraphLayer::is_raster_layer(layer, &mut context.document.network_interface) {
-				continue;
-			}
-			target_layers_after_filtering.push(layer);
-		}
-		context.shape_editor.set_selected_layers(target_layers_after_filtering);
-
-		let selected_layer = context.document.click(context.input);
-		if let Some(layer) = selected_layer {
-			if NodeGraphLayer::is_raster_layer(layer, &mut context.document.network_interface) {
-				return;
-			}
-		}
-
 		let updating_point = message == ToolMessage::Path(PathToolMessage::SelectedPointUpdated);
 
 		match message {
@@ -444,6 +427,23 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Path
 					responses.add(PathToolMessage::SelectedPointUpdated);
 					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::None });
 					responses.add(OverlaysMessage::Draw);
+				}
+			}
+			ToolMessage::Path(PathToolMessage::SelectionChanged | PathToolMessage::SelectedPointUpdated | PathToolMessage::UpdateSelectedPointsStatus { overlay_context: _ }) => {
+				let selected_layers: Vec<LayerNodeIdentifier> = context.document.network_interface.selected_nodes().selected_layers(context.document.metadata()).collect();
+
+				let non_raster_layers: Vec<LayerNodeIdentifier> = selected_layers
+					.into_iter()
+					.filter(|&layer| !NodeGraphLayer::is_raster_layer(layer, &mut context.document.network_interface))
+					.collect();
+
+				context.shape_editor.set_selected_layers(non_raster_layers);
+
+				let selected_layer = context.document.click(context.input, context.viewport);
+				if let Some(layer) = selected_layer {
+					if NodeGraphLayer::is_raster_layer(layer, &mut context.document.network_interface) {
+						return;
+					}
 				}
 			}
 			_ => {
@@ -1822,6 +1822,11 @@ impl Fsm for PathToolFsmState {
 							);
 
 							let Some((layer, manipulator_point_id)) = nearest_visible_point_indices else { return };
+
+							if NodeGraphLayer::is_raster_layer(layer, &mut document.network_interface) {
+								return;
+							}
+
 							let Some(vector) = document.network_interface.compute_modified_vector(layer) else { return };
 							let Some(position) = manipulator_point_id.get_position(&vector) else {
 								error!("No position for hovered point");
