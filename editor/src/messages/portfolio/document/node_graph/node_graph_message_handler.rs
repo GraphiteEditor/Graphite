@@ -74,7 +74,7 @@ pub struct NodeGraphMessageHandler {
 	disconnecting: Option<InputConnector>,
 	initial_disconnecting: bool,
 	/// Node to select on pointer up if multiple nodes are selected and they were not dragged.
-	select_if_not_dragged: Option<NodeId>,
+	pub select_if_not_dragged: Option<NodeId>,
 	/// The start of the dragged line (cannot be moved), stored in node graph coordinates.
 	pub wire_in_progress_from_connector: Option<DVec2>,
 	/// The end point of the dragged line (cannot be moved), stored in node graph coordinates.
