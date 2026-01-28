@@ -179,7 +179,7 @@ web-sys = { version = "=0.3.77", features = [
 winit = { git = "https://github.com/rust-windowing/winit.git" }
 keyboard-types = "0.8"
 url = "2.5"
-tokio = { version = "1.29", features = ["fs", "macros", "io-std", "rt"] }
+tokio = { version = "1.29", features = ["fs", "macros", "io-std", "rt", "rt-multi-thread"] }
 # Linebender ecosystem (BEGIN)
 kurbo = { version = "0.12", features = ["serde"] }
 vello = { git = "https://github.com/linebender/vello" }

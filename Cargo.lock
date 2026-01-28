@@ -2363,6 +2363,7 @@ dependencies = [
  "ron",
  "serde",
  "thiserror 2.0.16",
+ "tokio",
  "tracing",
  "tracing-subscriber",
  "vello",
