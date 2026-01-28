@@ -244,25 +244,8 @@ impl NodeGraphExecutor {
 			ExportBounds::Artboard(id) => document.metadata().bounding_box_document(id),
 		}
 		.ok_or_else(|| "No bounding box".to_string())?;
-
-		// Calculate base resolution from bounds
-		let base_size = bounds[1] - bounds[0];
-
-		// For raster exports (PNG/JPG), apply scale factor to resolution for GPU rendering
-		// For SVG exports, keep original resolution (scaling happens during SVG-to-raster conversion on frontend)
-		let resolution = if export_format == graphene_std::application_io::ExportFormat::Raster {
-			(base_size * export_config.scale_factor).round().as_uvec2()
-		} else {
-			base_size.round().as_uvec2()
-		};
-
-		// Transform from document space to viewport space
-		// First translate to origin, then scale if doing raster export
-		let transform = if export_format == graphene_std::application_io::ExportFormat::Raster {
-			DAffine2::from_scale(DVec2::splat(export_config.scale_factor)) * DAffine2::from_translation(-bounds[0])
-		} else {
-			DAffine2::from_translation(bounds[0]).inverse()
-		};
+		let resolution = (bounds[1] - bounds[0]).round().as_uvec2();
+		let transform = DAffine2::from_translation(bounds[0]).inverse();
 
 		let render_config = RenderConfig {
 			viewport: Footprint {
