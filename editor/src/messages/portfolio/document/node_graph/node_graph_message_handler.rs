@@ -74,7 +74,7 @@ pub struct NodeGraphMessageHandler {
 	disconnecting: Option<InputConnector>,
 	initial_disconnecting: bool,
 	/// Node to select on pointer up if multiple nodes are selected and they were not dragged.
-	select_if_not_dragged: Option<NodeId>,
+	pub select_if_not_dragged: Option<NodeId>,
 	/// The start of the dragged line (cannot be moved), stored in node graph coordinates.
 	pub wire_in_progress_from_connector: Option<DVec2>,
 	/// The end point of the dragged line (cannot be moved), stored in node graph coordinates.
@@ -778,6 +778,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					// Abort dragging a node
 					if self.drag_start.is_some() {
 						self.drag_start = None;
+						self.select_if_not_dragged = None;
 						responses.add(DocumentMessage::AbortTransaction);
 						responses.add(NodeGraphMessage::SelectedNodesSet {
 							nodes: self.selection_before_pointer_down.clone(),
