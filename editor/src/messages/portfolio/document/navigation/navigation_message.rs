@@ -24,6 +24,7 @@ pub enum NavigationMessage {
 	EndCanvasPTZ { abort_transform: bool },
 	EndCanvasPTZWithClick { commit_key: Key },
 	FitViewportToBounds { bounds: [DVec2; 2], prevent_zoom_past_100: bool },
+	FlickPanUpdate,
 	FitViewportToSelection,
 	PointerMove { snap: Key },
 }
