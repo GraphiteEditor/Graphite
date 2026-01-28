@@ -44,7 +44,21 @@ async fn get_request(
 	url: String,
 	/// Makes the request run in the background without waiting on a response. This is useful for triggering webhooks without blocking the continued execution of the graph.
 	discard_result: bool,
+	#[widget(ParsedWidgetOverride::Custom = "text_area")] headers: String,
 ) -> String {
+	use reqwest::header::HeaderMap;
+	use reqwest::header::HeaderName;
+	use reqwest::header::HeaderValue;
+
+	let header_lines = headers.split('\n');
+	let headers = header_lines.filter_map(|line| line.split_once(':'));
+	let mut header_map = HeaderMap::new();
+	for (key, value) in headers {
+		let Ok(header_name) = HeaderName::from_bytes(key.as_bytes()) else { continue };
+		let Ok(header_value) = HeaderValue::from_str(value) else { continue };
+		header_map.insert(header_name, header_value);
+	}
+
 	#[cfg(target_family = "wasm")]
 	{
 		if discard_result {
@@ -69,7 +83,10 @@ async fn get_request(
 		}
 	}
 
-	let Ok(response) = reqwest::get(url).await else { return String::new() };
+	let client = reqwest::Client::new();
+	let Ok(response) = client.get(url).headers(header_map).send().await else {
+		return String::new();
+	};
 	response.text().await.ok().unwrap_or_default()
 }
 
