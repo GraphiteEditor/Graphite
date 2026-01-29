@@ -476,24 +476,25 @@ impl OverlayContext {
 		let (radius_offset, stroke_width) = if selected { (1.0, 3.0) } else { (0.0, 1.0) };
 		let radius = MANIPULATOR_GROUP_MARKER_SIZE / 1.5 + 1. + radius_offset;
 
-		self.render_context.begin_path();
-		self.render_context.arc(position.x, position.y, radius, 0., TAU).expect("Failed to draw the circle");
+		{
+			let stroke_circle = |radius: f64, width: f64, color: &str| {
+				self.render_context.begin_path();
+				self.render_context.arc(position.x, position.y, radius, 0., TAU).expect("Failed to draw the circle");
+				self.render_context.set_line_width(width);
+				self.render_context.set_stroke_style_str(color);
+				self.render_context.stroke();
+			};
 
-		let fill = color.unwrap_or(if selected { COLOR_OVERLAY_WHITE } else { COLOR_OVERLAY_BLUE });
-		self.render_context.set_fill_style_str(fill);
-		self.render_context.fill();
+			self.render_context.begin_path();
+			self.render_context.arc(position.x, position.y, radius, 0., TAU).expect("Failed to draw the circle");
+			let fill = color.unwrap_or(if selected { COLOR_OVERLAY_WHITE } else { COLOR_OVERLAY_BLUE });
+			self.render_context.set_fill_style_str(fill);
+			self.render_context.fill();
 
-		self.render_context.begin_path();
-		self.render_context.arc(position.x, position.y, radius + stroke_width / 2., 0., TAU).expect("Failed to draw the circle");
-		self.render_context.set_line_width(1.0);
-		self.render_context.set_stroke_style_str("#000000");
-		self.render_context.stroke();
+			stroke_circle(radius + stroke_width / 2., 1.0, "#000000");
 
-		self.render_context.begin_path();
-		self.render_context.arc(position.x, position.y, radius, 0., TAU).expect("Failed to draw the circle");
-		self.render_context.set_line_width(stroke_width);
-		self.render_context.set_stroke_style_str(COLOR_OVERLAY_WHITE);
-		self.render_context.stroke();
+			stroke_circle(radius, stroke_width, COLOR_OVERLAY_WHITE);
+		}
 
 		self.end_dpi_aware_transform();
 	}
