@@ -1394,16 +1394,6 @@ impl ShapeState {
 		affected_points
 	}
 
-	/// Calculate the bounding box of all point positions
-	fn calculate_bounding_box(point_positions: &[(LayerNodeIdentifier, ManipulatorPointId, DVec2)]) -> [DVec2; 2] {
-		let min_x = point_positions.iter().map(|(_, _, pos)| pos.x).fold(f64::INFINITY, f64::min);
-		let max_x = point_positions.iter().map(|(_, _, pos)| pos.x).fold(f64::NEG_INFINITY, f64::max);
-		let min_y = point_positions.iter().map(|(_, _, pos)| pos.y).fold(f64::INFINITY, f64::min);
-		let max_y = point_positions.iter().map(|(_, _, pos)| pos.y).fold(f64::NEG_INFINITY, f64::max);
-
-		[DVec2::new(min_x, min_y), DVec2::new(max_x, max_y)]
-	}
-
 	/// Calculate the alignment target based on bounding box and aggregate type
 	fn calculate_alignment_target(combined_box: [DVec2; 2], aggregate: AlignAggregate) -> DVec2 {
 		match aggregate {
@@ -1513,13 +1503,11 @@ impl ShapeState {
 			}
 		}
 
-		if point_positions.is_empty() {
-			return;
-		}
-
 		// Calculate bounding box and alignment target
-		let combined_box = Self::calculate_bounding_box(&point_positions);
-		let aggregated = Self::calculate_alignment_target(combined_box, aggregate);
+		let Some(combined_box) = graphene_std::renderer::Rect::point_iter(point_positions.iter().map(|(_, _, pos)| *pos)) else {
+			return;
+		};
+		let aggregated = Self::calculate_alignment_target(combined_box.0, aggregate);
 
 		// Separate anchor and handle movements
 		// We apply anchor movements first, then handle movements matches the behavior of Scale (S shortcut) when scaling to 0
