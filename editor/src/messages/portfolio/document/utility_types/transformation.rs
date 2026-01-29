@@ -161,15 +161,15 @@ impl Translation {
 		let document_to_viewport = document.metadata().document_to_viewport;
 		let displacement = if let Some(value) = self.typed_distance {
 			match self.constraint {
-				Axis::X => DVec2::X * value,
-				Axis::Y => DVec2::Y * value,
+				Axis::X => state.constraint_axis(self.constraint, document).unwrap_or(DVec2::X) * value,
+				Axis::Y => state.constraint_axis(self.constraint, document).unwrap_or(DVec2::Y) * value,
 				Axis::Both => self.dragged_distance,
 			}
 		} else {
 			match self.constraint {
 				Axis::Both => self.dragged_distance,
-				Axis::X => DVec2::X * self.dragged_distance.dot(state.constraint_axis(self.constraint).unwrap_or_default()),
-				Axis::Y => DVec2::Y * self.dragged_distance.dot(state.constraint_axis(self.constraint).unwrap_or_default()),
+				Axis::X =>  state.constraint_axis(self.constraint, document).unwrap_or(DVec2::X) * self.dragged_distance.dot(state.constraint_axis(self.constraint, document).unwrap_or_default()),
+				Axis::Y =>  state.constraint_axis(self.constraint, document).unwrap_or(DVec2::Y) * self.dragged_distance.dot(state.constraint_axis(self.constraint, document).unwrap_or_default()),
 			}
 		};
 		let displacement_viewport = displacement * document_to_viewport.matrix2.y_axis.length(); // Values are local to the viewport but scaled so values are relative to the current scale.
