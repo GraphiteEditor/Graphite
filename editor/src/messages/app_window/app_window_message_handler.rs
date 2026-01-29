@@ -63,6 +63,19 @@ impl MessageHandler<AppWindowMessage, ()> for AppWindowMessageHandler {
 				#[cfg(not(target_family = "wasm"))]
 				responses.add(FrontendMessage::WindowRestart);
 			}
+			AppWindowMessage::TmpToggleHideUI => {
+				responses.add(FrontendMessage::TmpToggleHideUI);
+				responses.add(WorkspaceMessage::ToggleFocusDocument);
+				responses.add(DeferMessage::AfterGraphRun {
+					messages: vec![
+						DocumentMessage::ZoomCanvasToFitAll.into(),
+						DeferMessage::AfterGraphRun {
+							messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
+						}
+						.into(),
+					],
+				});
+			}
 		}
 	}
 	advertise_actions!(AppWindowMessageDiscriminant;
@@ -73,6 +86,7 @@ impl MessageHandler<AppWindowMessage, ()> for AppWindowMessageHandler {
 		Drag,
 		Hide,
 		HideOthers,
+		TmpToggleHideUI,
 	);
 }
 

@@ -71,6 +71,8 @@ pub enum DesktopFrontendMessage {
 	WindowShowAll,
 	Restart,
 	LoadThirdPartyLicenses,
+
+	TmpToggleHideUI,
 }
 
 pub enum DesktopWrapperMessage {
@@ -87,6 +89,8 @@ pub enum DesktopWrapperMessage {
 	ClipboardReadResult { content: Option<String> },
 	PointerLockMove { x: f64, y: f64 },
 	LoadThirdPartyLicenses { text: String },
+
+	TmpUpdateViewport { x: f64, y: f64, width: f64, height: f64 },
 }
 
 pub enum SaveFileDialogContext {

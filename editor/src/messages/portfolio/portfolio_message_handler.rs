@@ -865,6 +865,16 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					responses.add(PortfolioMessage::UpdateDocumentWidgets);
 					responses.add(InspectorMessage::Clear);
 				}
+
+				responses.add(DeferMessage::AfterGraphRun {
+					messages: vec![
+						DocumentMessage::ZoomCanvasToFitAll.into(),
+						DeferMessage::AfterGraphRun {
+							messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
+						}
+						.into(),
+					],
+				});
 			}
 			PortfolioMessage::RenameDocument { new_name } => {
 				let resolved_name = self.resolve_document_name(new_name, self.active_document_id);

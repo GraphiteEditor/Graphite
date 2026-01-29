@@ -382,4 +382,6 @@ pub enum FrontendMessage {
 	WindowShowAll,
 	#[cfg(not(target_family = "wasm"))]
 	WindowRestart,
+
+	TmpToggleHideUI,
 }

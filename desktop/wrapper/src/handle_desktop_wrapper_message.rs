@@ -77,5 +77,10 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 			let message = DialogMessage::RequestLicensesThirdPartyDialogWithLicenseText { license_text: text };
 			dispatcher.queue_editor_message(message);
 		}
+
+		DesktopWrapperMessage::TmpUpdateViewport { x, y, width, height } => {
+			let message = ViewportMessage::TmpUpdateBounds { x, y, width, height };
+			dispatcher.queue_editor_message(message);
+		}
 	}
 }

@@ -16,4 +16,5 @@ pub enum AppWindowMessage {
 	Hide,
 	HideOthers,
 	ShowAll,
+	TmpToggleHideUI,
 }

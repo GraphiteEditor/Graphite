@@ -55,6 +55,7 @@ pub(crate) struct App {
 	startup_time: Option<Instant>,
 	exiting: Arc<AtomicBool>,
 	exit_reason: ExitReason,
+	hide_ui: bool,
 }
 
 impl App {
@@ -158,6 +159,7 @@ impl App {
 			startup_time: None,
 			exiting,
 			exit_reason: ExitReason::Shutdown,
+			hide_ui: false,
 		}
 	}
 
@@ -178,6 +180,10 @@ impl App {
 	}
 
 	fn resize(&mut self) {
+		if self.hide_ui {
+			self.handle_desktop_frontend_message(DesktopFrontendMessage::TmpToggleHideUI, &mut Vec::new());
+		}
+
 		let Some(window) = &self.window else {
 			tracing::error!("Resize failed due to missing window");
 			return;
@@ -303,6 +309,19 @@ impl App {
 			DesktopFrontendMessage::UpdateViewportPhysicalBounds { x, y, width, height } => {
 				self.input_state.set_viewport_info(x, y, width, height, self.window_scale);
 
+				if self.hide_ui {
+					if x != 0.0 && y != 0.0 {
+						let message = DesktopWrapperMessage::TmpUpdateViewport {
+							x: 0.,
+							y: 0.,
+							width: self.window_size.width as f64 / self.window_scale,
+							height: self.window_size.height as f64 / self.window_scale,
+						};
+						self.dispatch_desktop_wrapper_message(message);
+					}
+					return;
+				}
+
 				if let Some(render_state) = &mut self.render_state
 					&& let Some(window) = &self.window
 				{
@@ -321,6 +340,9 @@ impl App {
 				self.input_state.set_direct_input(enabled);
 			}
 			DesktopFrontendMessage::UpdateUIScale { scale } => {
+				if self.hide_ui {
+					return;
+				}
 				self.ui_scale = scale;
 				self.resize();
 			}
@@ -426,6 +448,22 @@ impl App {
 				let message = DesktopWrapperMessage::LoadThirdPartyLicenses { text };
 				responses.push(message);
 			}
+
+			DesktopFrontendMessage::TmpToggleHideUI => {
+				if self.hide_ui {
+					self.hide_ui = false;
+				} else {
+					let message = DesktopWrapperMessage::TmpUpdateViewport {
+						x: 0.,
+						y: 0.,
+						width: self.window_size.width as f64 / self.window_scale,
+						height: self.window_size.height as f64 / self.window_scale,
+					};
+					self.dispatch_desktop_wrapper_message(message);
+					self.render_state.as_mut().unwrap().unbind_ui_texture();
+					self.hide_ui = true;
+				}
+			}
 		}
 	}
 
@@ -471,6 +509,10 @@ impl App {
 				}
 			}
 			AppEvent::UiUpdate(texture) => {
+				if self.hide_ui {
+					return;
+				}
+
 				if let Some(render_state) = self.render_state.as_mut() {
 					render_state.bind_ui_texture(texture);
 				}
