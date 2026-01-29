@@ -1,5 +1,5 @@
 use super::tool_prelude::*;
-use crate::consts::{LINE_ROTATE_SNAP_ANGLE, MANIPULATOR_GROUP_MARKER_SIZE, SELECTION_THRESHOLD};
+use crate::consts::{COLOR_OVERLAY_BLUE, LINE_ROTATE_SNAP_ANGLE, MANIPULATOR_GROUP_MARKER_SIZE, SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD};
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
@@ -266,6 +266,7 @@ impl Fsm for GradientToolFsmState {
 		match (self, event) {
 			(_, GradientToolMessage::Overlays { context: mut overlay_context }) => {
 				let selected = tool_data.selected_gradient.as_ref();
+				let mouse = input.mouse.position;
 
 				for layer in document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface) {
 					let Some(gradient) = get_gradient(layer, &document.network_interface) else { continue };
@@ -274,19 +275,63 @@ impl Fsm for GradientToolFsmState {
 						.filter(|selected| selected.layer.is_some_and(|selected_layer| selected_layer == layer))
 						.map(|selected| selected.dragging);
 
+					let gradient = if let Some(selected_gradient) = selected.filter(|s| s.layer == Some(layer)) {
+						&selected_gradient.gradient
+					} else {
+						&gradient
+					};
+
 					let Gradient { start, end, stops, .. } = gradient;
-					let (start, end) = (transform.transform_point2(start), transform.transform_point2(end));
+					let (start, end) = (transform.transform_point2(*start), transform.transform_point2(*end));
+
+					fn color_to_hex(color: graphene_std::Color) -> String {
+						if color.a() > 0.999 {
+							format!("#{:02X}{:02X}{:02X}", (color.r() * 255.) as u8, (color.g() * 255.) as u8, (color.b() * 255.) as u8)
+						} else {
+							color.to_rgba_hex_srgb()
+						}
+					}
+
+					let start_hex = stops.first().map(|(_, c)| color_to_hex(*c));
+					let end_hex = stops.last().map(|(_, c)| color_to_hex(*c));
 
 					overlay_context.line(start, end, None, None);
-					overlay_context.manipulator_handle(start, dragging == Some(GradientDragTarget::Start), None);
-					overlay_context.manipulator_handle(end, dragging == Some(GradientDragTarget::End), None);
+					overlay_context.gradient_handle(start, dragging == Some(GradientDragTarget::Start), start_hex.as_deref());
+					overlay_context.gradient_handle(end, dragging == Some(GradientDragTarget::End), end_hex.as_deref());
 
-					for (index, (position, _)) in stops.into_iter().enumerate() {
+					for (index, (position, color)) in stops.clone().into_iter().enumerate() {
 						if position.abs() < f64::EPSILON * 1000. || (1. - position).abs() < f64::EPSILON * 1000. {
 							continue;
 						}
+						overlay_context.gradient_handle(start.lerp(end, position), dragging == Some(GradientDragTarget::Step(index)), Some(&color_to_hex(color)));
+					}
 
-						overlay_context.manipulator_handle(start.lerp(end, position), dragging == Some(GradientDragTarget::Step(index)), None);
+					// Use the selection threshold to check if the mouse is close enough to the gradient line to insert a new stop
+					let distance = (end - start).angle_to(mouse - start).sin() * (mouse - start).length();
+					let projection = ((end - start).angle_to(mouse - start)).cos() * start.distance(mouse) / start.distance(end);
+
+					if distance.abs() < SELECTION_THRESHOLD * 3. && (0. ..=1.).contains(&projection) {
+						let mut near_stop = false;
+						// Check if the mouse is close to an existing stop
+						for (position, _) in stops {
+							let stop_pos = start.lerp(end, *position);
+							if stop_pos.distance_squared(mouse) < (MANIPULATOR_GROUP_MARKER_SIZE * 2.).powi(2) {
+								near_stop = true;
+								break;
+							}
+						}
+						// Check if close to start or end
+						if start.distance_squared(mouse) < (MANIPULATOR_GROUP_MARKER_SIZE * 2.).powi(2) || end.distance_squared(mouse) < (MANIPULATOR_GROUP_MARKER_SIZE * 2.).powi(2) {
+							near_stop = true;
+						}
+
+						if !near_stop {
+							if let Some(dir) = (end - start).try_normalize() {
+								let perp = dir.perp();
+								let point = start.lerp(end, projection);
+								overlay_context.line(point - perp * SEGMENT_OVERLAY_SIZE, point + perp * SEGMENT_OVERLAY_SIZE, Some(COLOR_OVERLAY_BLUE), Some(1.));
+							}
+						}
 					}
 				}
 
@@ -419,6 +464,27 @@ impl Fsm for GradientToolFsmState {
 							})
 						}
 					}
+
+					// Insert stop if clicking on line
+					if !dragging {
+						let (start, end) = (transform.transform_point2(gradient.start), transform.transform_point2(gradient.end));
+						let distance = (end - start).angle_to(mouse - start).sin() * (mouse - start).length();
+						let projection = ((end - start).angle_to(mouse - start)).cos() * start.distance(mouse) / start.distance(end);
+
+						if distance.abs() < SELECTION_THRESHOLD && (0. ..=1.).contains(&projection) {
+							if let Some(index) = gradient.clone().insert_stop(mouse, transform) {
+								responses.add(DocumentMessage::AddTransaction);
+								let mut new_gradient = gradient.clone();
+								new_gradient.insert_stop(mouse, transform);
+
+								let mut selected_gradient = SelectedGradient::new(new_gradient, layer, document);
+								selected_gradient.dragging = GradientDragTarget::Step(index);
+								selected_gradient.render_gradient(responses);
+								tool_data.selected_gradient = Some(selected_gradient);
+								dragging = true;
+							}
+						}
+					}
 				}
 
 				let gradient_state = if dragging {
@@ -454,7 +520,9 @@ impl Fsm for GradientToolFsmState {
 						GradientToolFsmState::Ready
 					}
 				};
-				responses.add(DocumentMessage::StartTransaction);
+				if gradient_state == GradientToolFsmState::Drawing {
+					responses.add(DocumentMessage::StartTransaction);
+				}
 				gradient_state
 			}
 			(GradientToolFsmState::Drawing, GradientToolMessage::PointerMove { constrain_axis }) => {
@@ -503,6 +571,11 @@ impl Fsm for GradientToolFsmState {
 				{
 					tool_data.selected_gradient = Some(SelectedGradient::new(gradient, selected_layer, document));
 				}
+				GradientToolFsmState::Ready
+			}
+
+			(GradientToolFsmState::Ready, GradientToolMessage::PointerMove { .. }) => {
+				responses.add(OverlaysMessage::Draw);
 				GradientToolFsmState::Ready
 			}
 
@@ -693,7 +766,7 @@ mod test_gradient {
 	}
 
 	#[tokio::test]
-	async fn double_click_insert_stop() {
+	async fn single_click_insert_stop() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
 
@@ -707,7 +780,9 @@ mod test_gradient {
 		assert_eq!(initial_gradient.stops.len(), 2, "Expected 2 stops, found {}", initial_gradient.stops.len());
 
 		editor.select_tool(ToolType::Gradient).await;
-		editor.double_click(DVec2::new(50., 0.)).await;
+		editor.move_mouse(50., 0., ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(50., 0., ModifierKeys::empty()).await;
+		editor.left_mouseup(50., 0., ModifierKeys::empty()).await;
 
 		// Check that a new stop has been added
 		let (updated_gradient, _) = get_gradient(&mut editor).await;
@@ -800,7 +875,9 @@ mod test_gradient {
 		editor.select_tool(ToolType::Gradient).await;
 
 		// Add a middle stop at 50%
-		editor.double_click(DVec2::new(50., 0.)).await;
+		editor.move_mouse(50., 0., ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(50., 0., ModifierKeys::empty()).await;
+		editor.left_mouseup(50., 0., ModifierKeys::empty()).await;
 
 		let (initial_gradient, _) = get_gradient(&mut editor).await;
 		assert_eq!(initial_gradient.stops.len(), 3, "Expected 3 stops, found {}", initial_gradient.stops.len());
@@ -875,8 +952,13 @@ mod test_gradient {
 		editor.select_tool(ToolType::Gradient).await;
 
 		// Add two middle stops
-		editor.double_click(DVec2::new(25., 0.)).await;
-		editor.double_click(DVec2::new(75., 0.)).await;
+		editor.move_mouse(25., 0., ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(25., 0., ModifierKeys::empty()).await;
+		editor.left_mouseup(25., 0., ModifierKeys::empty()).await;
+
+		editor.move_mouse(75., 0., ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(75., 0., ModifierKeys::empty()).await;
+		editor.left_mouseup(75., 0., ModifierKeys::empty()).await;
 
 		let (updated_gradient, _) = get_gradient(&mut editor).await;
 		assert_eq!(updated_gradient.stops.len(), 4, "Expected 4 stops, found {}", updated_gradient.stops.len());
