@@ -45,6 +45,7 @@ pub(crate) struct App {
 	cli: Cli,
 	startup_time: Option<Instant>,
 	exit_reason: ExitReason,
+	hide_ui: bool,
 }
 
 impl App {
@@ -108,6 +109,7 @@ impl App {
 			cli,
 			exit_reason: ExitReason::Shutdown,
 			startup_time: None,
+			hide_ui: false,
 		}
 	}
 
@@ -124,6 +126,10 @@ impl App {
 	}
 
 	fn resize(&mut self) {
+		if self.hide_ui {
+			self.handle_desktop_frontend_message(DesktopFrontendMessage::TmpToggleHideUI, &mut Vec::new());
+		}
+
 		let Some(window) = &self.window else {
 			tracing::error!("Resize failed due to missing window");
 			return;
@@ -238,6 +244,19 @@ impl App {
 				});
 			}
 			DesktopFrontendMessage::UpdateViewportPhysicalBounds { x, y, width, height } => {
+				if self.hide_ui {
+					if x != 0.0 && y != 0.0 {
+						let message = DesktopWrapperMessage::TmpUpdateViewport {
+							x: 0.,
+							y: 0.,
+							width: self.window_size.width as f64 / self.window_scale,
+							height: self.window_size.height as f64 / self.window_scale,
+						};
+						self.dispatch_desktop_wrapper_message(message);
+					}
+					return;
+				}
+
 				if let Some(render_state) = &mut self.render_state
 					&& let Some(window) = &self.window
 				{
@@ -253,6 +272,9 @@ impl App {
 				}
 			}
 			DesktopFrontendMessage::UpdateUIScale { scale } => {
+				if self.hide_ui {
+					return;
+				}
 				self.ui_scale = scale;
 				self.resize();
 			}
@@ -395,6 +417,22 @@ impl App {
 					window.show_all();
 				}
 			}
+
+			DesktopFrontendMessage::TmpToggleHideUI => {
+				if self.hide_ui {
+					self.hide_ui = false;
+				} else {
+					let message = DesktopWrapperMessage::TmpUpdateViewport {
+						x: 0.,
+						y: 0.,
+						width: self.window_size.width as f64 / self.window_scale,
+						height: self.window_size.height as f64 / self.window_scale,
+					};
+					self.dispatch_desktop_wrapper_message(message);
+					self.render_state.as_mut().unwrap().unbind_ui_texture();
+					self.hide_ui = true;
+				}
+			}
 		}
 	}
 
@@ -444,6 +482,10 @@ impl App {
 				NodeGraphExecutionResult::NotRun => {}
 			},
 			AppEvent::UiUpdate(texture) => {
+				if self.hide_ui {
+					return;
+				}
+
 				if let Some(render_state) = self.render_state.as_mut() {
 					render_state.bind_ui_texture(texture);
 				}

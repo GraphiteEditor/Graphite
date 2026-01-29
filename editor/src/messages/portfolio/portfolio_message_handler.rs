@@ -1112,6 +1112,16 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					responses.add(PortfolioMessage::UpdateDocumentWidgets);
 					responses.add(PropertiesPanelMessage::Clear);
 				}
+
+				responses.add(DeferMessage::AfterGraphRun {
+					messages: vec![
+						DocumentMessage::ZoomCanvasToFitAll.into(),
+						DeferMessage::AfterGraphRun {
+							messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
+						}
+						.into(),
+					],
+				});
 			}
 			PortfolioMessage::SubmitDocumentExport {
 				name,

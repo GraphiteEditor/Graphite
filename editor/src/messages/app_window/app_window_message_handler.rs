@@ -40,6 +40,19 @@ impl MessageHandler<AppWindowMessage, ()> for AppWindowMessageHandler {
 			AppWindowMessage::ShowAll => {
 				responses.add(FrontendMessage::WindowShowAll);
 			}
+			AppWindowMessage::TmpToggleHideUI => {
+				responses.add(FrontendMessage::TmpToggleHideUI);
+				responses.add(PortfolioMessage::ToggleFocusDocument);
+				responses.add(DeferMessage::AfterGraphRun {
+					messages: vec![
+						DocumentMessage::ZoomCanvasToFitAll.into(),
+						DeferMessage::AfterGraphRun {
+							messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
+						}
+						.into(),
+					],
+				});
+			}
 		}
 	}
 	advertise_actions!(AppWindowMessageDiscriminant;
@@ -50,6 +63,7 @@ impl MessageHandler<AppWindowMessage, ()> for AppWindowMessageHandler {
 		Drag,
 		Hide,
 		HideOthers,
+		TmpToggleHideUI,
 	);
 }
 

@@ -1599,7 +1599,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 						responses.add(NavigationMessage::CanvasFlip);
 					}
 					responses.add(NavigationMessage::CanvasTiltSet { angle_radians: 0. });
-					responses.add(NavigationMessage::FitViewportToBounds { bounds, prevent_zoom_past_100: true });
+					responses.add(NavigationMessage::FitViewportToBounds { bounds, prevent_zoom_past_100: false });
 				} else {
 					warn!("Cannot zoom due to no bounds")
 				}

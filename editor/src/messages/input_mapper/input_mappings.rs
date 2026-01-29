@@ -60,6 +60,7 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		entry!(KeyDown(F11); disabled=is_mac, action_dispatch=AppWindowMessage::Fullscreen),
 		entry!(KeyDown(KeyF); modifiers=[Command, Control], disabled=!is_mac, action_dispatch=AppWindowMessage::Fullscreen),
 		entry!(KeyDown(KeyQ); modifiers=[Command], disabled=cfg!(not(target_os = "macos")), action_dispatch=AppWindowMessage::Close),
+		entry!(KeyDown(F11);  modifiers=[Alt], action_dispatch=AppWindowMessage::TmpToggleHideUI),
 		//
 		// ClipboardMessage
 		entry!(KeyDown(KeyX); modifiers=[Accel], action_dispatch=ClipboardMessage::Cut),
