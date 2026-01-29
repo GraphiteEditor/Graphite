@@ -306,13 +306,11 @@ impl Fsm for GradientToolFsmState {
 						overlay_context.gradient_handle(start.lerp(end, position), dragging == Some(GradientDragTarget::Step(index)), Some(&color_to_hex(color)));
 					}
 
-					// Use the selection threshold to check if the mouse is close enough to the gradient line to insert a new stop
 					let distance = (end - start).angle_to(mouse - start).sin() * (mouse - start).length();
 					let projection = ((end - start).angle_to(mouse - start)).cos() * start.distance(mouse) / start.distance(end);
 
 					if distance.abs() < SELECTION_THRESHOLD * 3. && (0. ..=1.).contains(&projection) {
 						let mut near_stop = false;
-						// Check if the mouse is close to an existing stop
 						for (position, _) in stops {
 							let stop_pos = start.lerp(end, *position);
 							if stop_pos.distance_squared(mouse) < (MANIPULATOR_GROUP_MARKER_SIZE * 2.).powi(2) {
@@ -320,7 +318,6 @@ impl Fsm for GradientToolFsmState {
 								break;
 							}
 						}
-						// Check if close to start or end
 						if start.distance_squared(mouse) < (MANIPULATOR_GROUP_MARKER_SIZE * 2.).powi(2) || end.distance_squared(mouse) < (MANIPULATOR_GROUP_MARKER_SIZE * 2.).powi(2) {
 							near_stop = true;
 						}
