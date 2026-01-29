@@ -377,4 +377,6 @@ pub enum FrontendMessage {
 	WindowHideOthers,
 	WindowShowAll,
 	WindowRestart,
+
+	TmpToggleHideUI,
 }

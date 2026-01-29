@@ -75,6 +75,8 @@ pub enum DesktopFrontendMessage {
 	WindowHideOthers,
 	WindowShowAll,
 	Restart,
+
+	TmpToggleHideUI,
 }
 
 pub enum DesktopWrapperMessage {
@@ -125,6 +127,13 @@ pub enum DesktopWrapperMessage {
 	PointerLockMove {
 		x: f64,
 		y: f64,
+	},
+
+	TmpUpdateViewport {
+		x: f64,
+		y: f64,
+		width: f64,
+		height: f64,
 	},
 }
 

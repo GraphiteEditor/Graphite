@@ -217,6 +217,11 @@ impl RenderState {
 		self.update_bindgroup();
 	}
 
+	pub(crate) fn unbind_ui_texture(&mut self) {
+		self.ui_texture = None;
+		self.update_bindgroup();
+	}
+
 	pub(crate) fn set_viewport_scale(&mut self, scale: [f32; 2]) {
 		self.surface_outdated = true;
 		self.viewport_scale = scale;

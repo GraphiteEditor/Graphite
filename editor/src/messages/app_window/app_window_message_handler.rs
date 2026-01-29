@@ -44,6 +44,19 @@ impl MessageHandler<AppWindowMessage, ()> for AppWindowMessageHandler {
 				responses.add(PortfolioMessage::AutoSaveAllDocuments);
 				responses.add(FrontendMessage::WindowRestart);
 			}
+			AppWindowMessage::TmpToggleHideUI => {
+				responses.add(FrontendMessage::TmpToggleHideUI);
+				responses.add(PortfolioMessage::ToggleFocusDocument);
+				responses.add(DeferMessage::AfterGraphRun {
+					messages: vec![
+						DocumentMessage::ZoomCanvasToFitAll.into(),
+						DeferMessage::AfterGraphRun {
+							messages: vec![DocumentMessage::ZoomCanvasToFitAll.into()],
+						}
+						.into(),
+					],
+				});
+			}
 		}
 	}
 	advertise_actions!(AppWindowMessageDiscriminant;
@@ -54,6 +67,7 @@ impl MessageHandler<AppWindowMessage, ()> for AppWindowMessageHandler {
 		Drag,
 		Hide,
 		HideOthers,
+		TmpToggleHideUI,
 	);
 }
 
