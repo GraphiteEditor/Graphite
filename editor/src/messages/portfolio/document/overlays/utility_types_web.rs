@@ -468,6 +468,36 @@ impl OverlayContext {
 		self.square(position, None, Some(color_fill), Some(color_stroke));
 	}
 
+	pub fn gradient_handle(&mut self, position: DVec2, selected: bool, color: Option<&str>) {
+		self.start_dpi_aware_transform();
+
+		let position = position.round() - DVec2::splat(0.5);
+
+		let (radius_offset, stroke_width) = if selected { (1.0, 3.0) } else { (0.0, 1.0) };
+		let radius = MANIPULATOR_GROUP_MARKER_SIZE / 1.5 + 1. + radius_offset;
+
+		self.render_context.begin_path();
+		self.render_context.arc(position.x, position.y, radius, 0., TAU).expect("Failed to draw the circle");
+
+		let fill = color.unwrap_or(if selected { COLOR_OVERLAY_WHITE } else { COLOR_OVERLAY_BLUE });
+		self.render_context.set_fill_style_str(fill);
+		self.render_context.fill();
+
+		self.render_context.begin_path();
+		self.render_context.arc(position.x, position.y, radius + stroke_width / 2., 0., TAU).expect("Failed to draw the circle");
+		self.render_context.set_line_width(1.0);
+		self.render_context.set_stroke_style_str("#000000");
+		self.render_context.stroke();
+
+		self.render_context.begin_path();
+		self.render_context.arc(position.x, position.y, radius, 0., TAU).expect("Failed to draw the circle");
+		self.render_context.set_line_width(stroke_width);
+		self.render_context.set_stroke_style_str(COLOR_OVERLAY_WHITE);
+		self.render_context.stroke();
+
+		self.end_dpi_aware_transform();
+	}
+
 	pub fn hover_manipulator_handle(&mut self, position: DVec2, selected: bool) {
 		self.start_dpi_aware_transform();
 

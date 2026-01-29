@@ -273,6 +273,10 @@ impl OverlayContext {
 		self.internal().manipulator_anchor(position, selected, color);
 	}
 
+	pub fn gradient_handle(&mut self, position: DVec2, selected: bool, color: Option<&str>) {
+		self.internal().gradient_handle(position, selected, color);
+	}
+
 	pub fn resize_handle(&mut self, position: DVec2, rotation: f64) {
 		self.internal().resize_handle(position, rotation);
 	}
@@ -580,6 +584,23 @@ impl OverlayContextInternal {
 		self.square(position, Some(MANIPULATOR_GROUP_MARKER_SIZE + 2.), Some(COLOR_OVERLAY_BLUE_50), Some(COLOR_OVERLAY_BLUE_50));
 		let color_fill = if selected { COLOR_OVERLAY_BLUE } else { COLOR_OVERLAY_WHITE };
 		self.square(position, None, Some(color_fill), Some(COLOR_OVERLAY_BLUE));
+	}
+
+	fn gradient_handle(&mut self, position: DVec2, selected: bool, color: Option<&str>) {
+		let transform = self.get_transform();
+		let position = position.round() - DVec2::splat(0.5);
+
+		let (radius_offset, stroke_width) = if selected { (1.0, 3.0) } else { (0.0, 1.0) };
+		let radius = MANIPULATOR_GROUP_MARKER_SIZE / 1.5 + radius_offset;
+
+		let fill = color.unwrap_or(if selected { COLOR_OVERLAY_WHITE } else { COLOR_OVERLAY_BLUE });
+
+		let circle = kurbo::Circle::new((position.x, position.y), radius);
+		self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(fill), None, &circle);
+
+		let black_circle = kurbo::Circle::new((position.x, position.y), radius + stroke_width / 2.0);
+		self.scene.stroke(&kurbo::Stroke::new(1.0), transform, Self::parse_color("#000000"), None, &black_circle);
+		self.scene.stroke(&kurbo::Stroke::new(stroke_width), transform, Self::parse_color(COLOR_OVERLAY_WHITE), None, &circle);
 	}
 
 	fn resize_handle(&mut self, position: DVec2, rotation: f64) {
