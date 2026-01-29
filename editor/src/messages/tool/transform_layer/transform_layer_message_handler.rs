@@ -46,25 +46,16 @@ impl TransformationState {
 		document.metadata().document_to_viewport.transform_point2(self.document_space_pivot)
 	}
 
-	pub fn constraint_axis(&self, axis_constraint: Axis, document: &DocumentMessageHandler) -> Option<DVec2> {
+	pub fn constraint_axis(&self, axis_constraint: Axis) -> Option<DVec2> {
 		match axis_constraint {
-			Axis::X => Some(if self.is_transforming_in_local_space {
-				self.local_transform_axes[0]
-			} else {
-				document.metadata().document_to_viewport.transform_vector2(DVec2::X).normalize()
-			}),
-			Axis::Y => Some(if self.is_transforming_in_local_space {
-				self.local_transform_axes[1]
-			} else {
-				document.metadata().document_to_viewport.transform_vector2(DVec2::Y).normalize()
-			}),
+			Axis::X => Some(if self.is_transforming_in_local_space { self.local_transform_axes[0] } else { DVec2::X }),
+			Axis::Y => Some(if self.is_transforming_in_local_space { self.local_transform_axes[1] } else { DVec2::Y }),
 			_ => None,
 		}
 	}
 
-	pub fn project_onto_constrained(&self, vector: DVec2, axis_constraint: Axis, document: &DocumentMessageHandler) -> DVec2 {
-		self.constraint_axis(axis_constraint, document)
-			.map_or(vector, |direction| vector.project_onto_normalized(direction))
+	pub fn project_onto_constrained(&self, vector: DVec2, axis_constraint: Axis) -> DVec2 {
+		self.constraint_axis(axis_constraint).map_or(vector, |direction| vector.project_onto_normalized(direction))
 	}
 
 	pub fn local_to_viewport_transform(&self) -> DAffine2 {
@@ -258,7 +249,7 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 						let text = format!("{}x", format_rounded(scale, 3));
 						let start_mouse = document_to_viewport.transform_point2(self.local_mouse_start);
 						let local_edge = start_mouse - self.state.pivot_viewport(document);
-						let local_edge = self.state.project_onto_constrained(local_edge, axis_constraint, document);
+						let local_edge = self.state.project_onto_constrained(local_edge, axis_constraint);
 						let boundary_point = self.state.pivot_viewport(document) + local_edge * scale.min(1.);
 						let end_point = self.state.pivot_viewport(document) + local_edge * scale.max(1.);
 
@@ -569,9 +560,9 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 							let to_mouse_final_old = input.mouse.position - self.state.pivot_viewport(document);
 							let to_mouse_start = self.start_mouse - self.state.pivot_viewport(document);
 
-							let to_mouse_final = self.state.project_onto_constrained(to_mouse_final, axis_constraint, document);
-							let to_mouse_final_old = self.state.project_onto_constrained(to_mouse_final_old, axis_constraint, document);
-							let to_mouse_start = self.state.project_onto_constrained(to_mouse_start, axis_constraint, document);
+							let to_mouse_final = self.state.project_onto_constrained(to_mouse_final, axis_constraint);
+							let to_mouse_final_old = self.state.project_onto_constrained(to_mouse_final_old, axis_constraint);
+							let to_mouse_start = self.state.project_onto_constrained(to_mouse_start, axis_constraint);
 
 							let change = {
 								let previous_frame_dist = to_mouse_final.dot(to_mouse_start);
