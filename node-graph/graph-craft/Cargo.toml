@@ -21,6 +21,7 @@ graphene-core = { workspace = true }
 graphene-application-io = { workspace = true }
 rendering = { workspace = true }
 raster-nodes = { workspace = true }
+vector-nodes = { workspace = true }
 graphic-types = { workspace = true }
 text-nodes = { workspace = true }
 
