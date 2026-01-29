@@ -1958,6 +1958,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 					let shift = ipp.keyboard.get(Key::Shift as usize);
 					let alt = ipp.keyboard.get(Key::Alt as usize);
+					let control = ipp.keyboard.get(Key::Control as usize);
 					let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) else {
 						log::error!("Could not get selected nodes in UpdateBoxSelection");
 						return;
@@ -1983,6 +1984,26 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 							}
 						}
 					}
+
+					if control {
+						let layer_nodes: Vec<_> = nodes.iter().filter(|node_id| network_interface.is_layer(node_id, selection_network_path)).cloned().collect();
+						let mut child_nodes = HashSet::new();
+						for layer_id in &layer_nodes {
+							for child_id in network_interface.upstream_flow_back_from_nodes(vec![*layer_id], selection_network_path, FlowType::LayerChildrenUpstreamFlow) {
+								if nodes.contains(&child_id) && child_id != *layer_id {
+									child_nodes.insert(child_id);
+								}
+							}
+						}
+						nodes = if alt {
+							previous_selection.difference(&child_nodes).cloned().collect()
+						} else if shift {
+							previous_selection.union(&child_nodes).cloned().collect()
+						} else {
+							child_nodes
+						};
+					}
+
 					if nodes != previous_selection {
 						responses.add(NodeGraphMessage::SelectedNodesSet {
 							nodes: nodes.into_iter().collect::<Vec<_>>(),
@@ -2770,6 +2791,7 @@ impl NodeGraphMessageHandler {
 				HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"),
 				HintInfo::keys([Key::Shift], "Extend").prepend_plus(),
 				HintInfo::keys([Key::Alt], "Subtract").prepend_plus(),
+				HintInfo::keys([Key::Control], "Children Only").prepend_plus(),
 			]),
 		]);
 		if self.has_selection {
