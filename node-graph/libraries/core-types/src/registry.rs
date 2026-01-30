@@ -1,18 +1,17 @@
 use crate::{ContextFeature, Node, NodeIO, NodeIOTypes, ProtoNodeIdentifier, Type, WasmNotSend};
 use dyn_any::{DynAny, StaticType};
+pub use no_std_types::registry::types;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::pin::Pin;
 use std::sync::{LazyLock, Mutex};
 
-pub use no_std_types::registry::types;
-
 // Translation struct between macro and definition
 #[derive(Clone, Debug)]
 pub struct NodeMetadata {
 	pub display_name: &'static str,
-	pub category: Option<&'static str>,
+	pub category: &'static str,
 	pub fields: Vec<FieldMetadata>,
 	pub description: &'static str,
 	pub properties: Option<&'static str>,
@@ -24,6 +23,7 @@ pub struct NodeMetadata {
 pub struct FieldMetadata {
 	pub name: &'static str,
 	pub description: &'static str,
+	pub hidden: bool,
 	pub exposed: bool,
 	pub widget_override: RegistryWidgetOverride,
 	pub value_source: RegistryValueSource,

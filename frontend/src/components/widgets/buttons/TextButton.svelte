@@ -12,6 +12,7 @@
 	const dispatch = createEventDispatcher<{ selectedEntryValuePath: string[] }>();
 
 	let self: MenuList;
+	let open = false;
 
 	// Note: IconButton should instead be used if only an icon, but no label, is desired.
 	// However, if multiple TextButton widgets are used in a group with only some having no label, this component is able to accommodate that.
@@ -93,9 +94,9 @@
 	</button>
 	{#if menuListChildrenExists}
 		<MenuList
-			on:open={({ detail }) => self && (self.open = detail)}
 			on:selectedEntryValuePath={({ detail }) => dispatch("selectedEntryValuePath", detail)}
-			open={self?.open || false}
+			on:open={({ detail }) => (open = detail)}
+			{open}
 			entries={menuListChildren || []}
 			entriesHash={menuListChildrenHash || 0n}
 			direction="Bottom"

@@ -4,7 +4,7 @@ template = "section.html"
 
 [extra]
 css = ["/page/index.css", "/component/carousel.css", "/component/feature-icons.css", "/component/feature-box.css", "/component/youtube-embed.css"]
-js = ["/js/carousel.js", "/js/youtube-embed.js", "/js/video-autoplay.js"]
+js = ["/js/component/carousel.js", "/js/component/youtube-embed.js", "/js/component/video-autoplay.js"]
 linked_js = []
 meta_description = "Open source free software. A vector graphics creativity suite with a clean, intuitive interface. Opens instantly (no signup) and runs locally in a browser. Exports SVG, PNG, JPG."
 +++
@@ -393,16 +393,16 @@ Blend across color schemes. Morph shapes before they're scattered around the can
 
 ## Geared for generative pipelines
 
-Graphite's representation of artwork as a node graph lets you customize, compose, reuse, share, and automate your content workflows:
+Graphite's representation of artwork as a node graph lets you customize, compose, automate, reuse, and share your content workflows.
 
 <div class="feature-icons four-wide">
 	<div class="feature-icon">
 		<img class="atlas" style="--atlas-index: 9" src="https://static.graphite.art/icons/icon-atlas-features__2.png" alt="" />
-		<span class="balance-text">Infinitely pan and zoom; export any resolution with no pixelation</span>
+		<span class="balance-text">Infinitely pan and zoom without pixelation, export any resolution</span>
 	</div>
 	<div class="feature-icon">
-		<img class="atlas" style="--atlas-index: 2" src="https://static.graphite.art/icons/icon-atlas-features__2.png" alt="" />
-		<span class="balance-text">Build workflows to mix AI and human-authored content <em>(future)</em></span>
+		<img class="atlas" style="--atlas-index: 1" src="https://static.graphite.art/icons/icon-atlas-features__2.png" alt="" />
+		<span class="balance-text">Compile standalone programs from node systems <em>(future)</em></span>
 	</div>
 	<div class="feature-icon">
 		<img class="atlas" style="--atlas-index: 11" src="https://static.graphite.art/icons/icon-atlas-features__2.png" alt="" />
@@ -527,102 +527,3 @@ Get started with Graphite by following along to a hands-on quickstart tutorial.
 </div>
 </section>
 <!-- ▙ RECENT NEWS ▟ -->
-<!--                  -->
-<!-- ▛ DEMO VIDEO ▜ -->
-<!--
-<section id="demo-video">
-<div class="block">
-Watch this timelapse showing the process of mixing traditional vector art (tracing a physical sketch and colorizing it, first two minutes) with using Imaginate to generate a background (last 45 seconds).
-<div class="youtube-embed aspect-16x9">
-	<img data-youtube-embed="JgJvAHQLnXA" src="https://static.graphite.art/content/index/commander-basstronaut-youtube.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphite - Vector Editing: &quot;Commander Basstronaut&quot; Artwork (25x Timelapse)" />
-</div>
-(Recorded in an older version of Graphite from early 2023.)
-</div>
-</section>
--->
-<!-- ▙ DEMO VIDEO ▟ -->
-<!--                 -->
-<!-- ▛ IMAGINATE ▜ -->
-
-<!-- TODO: Reenable when Imaginate is properly working again -->
-
-<!--
-
-<section id="imaginate">
-
-<div class="block">
-
-<h1><span class="alternating-text"><span>Co-create</span><span>Ideate</span><span>Illustrate</span><span>Generate</span><span>Iterate</span></span> with Imaginate</h1>
-
-**Imaginate** is a node powered by <a href="https://en.wikipedia.org/wiki/Stable_Diffusion" target="_blank">Stable Diffusion</a> that makes AI-assisted art creation an easy, nondestructive process.
-[Learn how](/learn/node-graph/imaginate) it works.
-
-</div>
-<div class="diptych">
-
-<div class="block">
-
-<h2 class="balance-text">Add a touch of style</h2>
-
-**Magically reimagine your vector drawings** in a fresh new style. Just place an Imaginate node between your layers and describe how it should end up looking.
-
-<div class="image-comparison" data-image-comparison style="--comparison-percent: 50%">
-	<div class="crop-container">
-		<img src="https://static.graphite.art/content/index/light-bulb-before.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Vector illustration of a light bulb" />
-	</div>
-	<div class="crop-container">
-		<img src="https://static.graphite.art/content/index/light-bulb-after.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Watercolor painting of a light bulb" />
-	</div>
-	<div class="slide-bar">
-		<div class="arrows">
-			<div></div>
-			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 13 22">
-				<path d="M12.71 1.71 11.29.29.59 11l10.7 10.71 1.42-1.42L3.41 11Z" />
-			</svg>
-			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 13 22">
-				<path d="M12.71 1.71 11.29.29.59 11l10.7 10.71 1.42-1.42L3.41 11Z" />
-			</svg>
-		</div>
-	</div>
-</div>
-
-<blockquote class="balance-text require-polyfill"><strong>Watercolor painting</strong> of a light bulb gleaming with an exclamation mark inside</blockquote>
-
-</div>
-<div class="block">
-
-## Work fast and sloppy
-
-**Doodle a rough draft** without stressing over the details. Let Imaginate add the finishing touches to your artistic vision. Iterate with more passes until you're happy.
-
-<div class="image-comparison" data-image-comparison style="--comparison-percent: 50%">
-	<div class="crop-container">
-		<img src="https://static.graphite.art/content/index/california-poppies-before.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Sloppy poppy: vector doodle of California poppy flowers wrapped around a circle" />
-	</div>
-	<div class="crop-container">
-		<img src="https://static.graphite.art/content/index/california-poppies-after.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Polished poppy: artistic, high-quality illustration of California poppy flowers wrapped around a circle" />
-	</div>
-	<div class="slide-bar">
-		<div class="arrows">
-			<div></div>
-			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 13 22">
-				<path d="M12.71 1.71 11.29.29.59 11l10.7 10.71 1.42-1.42L3.41 11Z" />
-			</svg>
-			<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 13 22">
-				<path d="M12.71 1.71 11.29.29.59 11l10.7 10.71 1.42-1.42L3.41 11Z" />
-			</svg>
-		</div>
-	</div>
-</div>
-
-<blockquote class="balance-text require-polyfill"><strong>Botanical illustration</strong> of California poppies wrapped around a circle</blockquote>
-
-</div>
-
-</div>
-
-</section>
-
--->
-
-<!-- ▙ IMAGINATE ▟ -->

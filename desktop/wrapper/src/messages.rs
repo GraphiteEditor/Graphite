@@ -65,9 +65,11 @@ pub enum DesktopFrontendMessage {
 	ClipboardWrite {
 		content: String,
 	},
+	PointerLock,
 	WindowClose,
 	WindowMinimize,
 	WindowMaximize,
+	WindowFullscreen,
 	WindowDrag,
 	WindowHide,
 	WindowHideOthers,
@@ -77,7 +79,7 @@ pub enum DesktopFrontendMessage {
 pub enum DesktopWrapperMessage {
 	FromWeb(Box<EditorMessage>),
 	Input(InputMessage),
-	OpenFileDialogResult {
+	FileDialogResult {
 		path: PathBuf,
 		content: Vec<u8>,
 		context: OpenFileDialogContext,
@@ -85,10 +87,6 @@ pub enum DesktopWrapperMessage {
 	SaveFileDialogResult {
 		path: PathBuf,
 		context: SaveFileDialogContext,
-	},
-	OpenDocument {
-		path: PathBuf,
-		content: Vec<u8>,
 	},
 	OpenFile {
 		path: PathBuf,
@@ -98,16 +96,7 @@ pub enum DesktopWrapperMessage {
 		path: PathBuf,
 		content: Vec<u8>,
 	},
-	ImportSvg {
-		path: PathBuf,
-		content: Vec<u8>,
-	},
-	ImportImage {
-		path: PathBuf,
-		content: Vec<u8>,
-	},
 	PollNodeGraphEvaluation,
-	UpdatePlatform(Platform),
 	UpdateMaximized {
 		maximized: bool,
 	},
@@ -132,6 +121,10 @@ pub enum DesktopWrapperMessage {
 	ClipboardReadResult {
 		content: Option<String>,
 	},
+	PointerLockMove {
+		x: f64,
+		y: f64,
+	},
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize, Debug)]
@@ -148,19 +141,13 @@ pub struct FileFilter {
 }
 
 pub enum OpenFileDialogContext {
-	Document,
+	Open,
 	Import,
 }
 
 pub enum SaveFileDialogContext {
 	Document { document_id: DocumentId, content: Vec<u8> },
 	File { content: Vec<u8> },
-}
-
-pub enum Platform {
-	Windows,
-	Mac,
-	Linux,
 }
 
 pub enum MenuItem {

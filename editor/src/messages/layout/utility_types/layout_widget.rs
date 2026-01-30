@@ -790,23 +790,19 @@ impl DiffUpdate {
 		};
 
 		// Recursively fill menu list entries with their realized shortcut keys specific to the current bindings and platform
-		let apply_action_shortcut_to_menu_lists = |entry_sections: &mut MenuListEntrySections| {
-			struct RecursiveWrapper<'a>(&'a dyn Fn(&mut MenuListEntrySections, &RecursiveWrapper));
-			let recursive_wrapper = RecursiveWrapper(&|entry_sections: &mut MenuListEntrySections, recursive_wrapper| {
-				for entries in entry_sections {
-					for entry in entries {
-						// Convert `ActionShortcut::Action` to `ActionShortcut::Shortcut`
-						if let Some(tooltip_shortcut) = &mut entry.tooltip_shortcut {
-							tooltip_shortcut.realize_shortcut(action_input_mapping);
-						}
-
-						// Recursively call this inner closure on the menu's children
-						(recursive_wrapper.0)(&mut entry.children, recursive_wrapper);
+		fn apply_action_shortcut_to_menu_lists(entry_sections: &mut MenuListEntrySections, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>) {
+			for entries in entry_sections {
+				for entry in entries {
+					// Convert `ActionShortcut::Action` to `ActionShortcut::Shortcut`
+					if let Some(tooltip_shortcut) = &mut entry.tooltip_shortcut {
+						tooltip_shortcut.realize_shortcut(action_input_mapping);
 					}
+
+					// Recursively call this function on the menu's children
+					apply_action_shortcut_to_menu_lists(&mut entry.children, action_input_mapping);
 				}
-			});
-			(recursive_wrapper.0)(entry_sections, &recursive_wrapper)
-		};
+			}
+		}
 
 		// Hash the menu list entry sections for caching purposes
 		let hash_menu_list_entry_sections = |entry_sections: &MenuListEntrySections| {
@@ -833,11 +829,11 @@ impl DiffUpdate {
 		// Apply shortcut conversions to all widgets that have menu lists
 		let convert_menu_lists = |widget_instance: &mut WidgetInstance| match &mut *widget_instance.widget {
 			Widget::DropdownInput(dropdown_input) => {
-				apply_action_shortcut_to_menu_lists(&mut dropdown_input.entries);
+				apply_action_shortcut_to_menu_lists(&mut dropdown_input.entries, action_input_mapping);
 				dropdown_input.entries_hash = hash_menu_list_entry_sections(&dropdown_input.entries);
 			}
 			Widget::TextButton(text_button) => {
-				apply_action_shortcut_to_menu_lists(&mut text_button.menu_list_children);
+				apply_action_shortcut_to_menu_lists(&mut text_button.menu_list_children, action_input_mapping);
 				text_button.menu_list_children_hash = hash_menu_list_entry_sections(&text_button.menu_list_children);
 			}
 			_ => {}

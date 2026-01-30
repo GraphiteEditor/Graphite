@@ -21,7 +21,7 @@ pub fn detect_file_type(path: &Path) -> Result<FileType, String> {
 		Some("svg") => Ok(FileType::Svg),
 		Some("png") => Ok(FileType::Png),
 		Some("jpg" | "jpeg") => Ok(FileType::Jpg),
-		_ => Err(format!("Unsupported file extension. Supported formats: .svg, .png, .jpg")),
+		_ => Err("Unsupported file extension. Supported formats: .svg, .png, .jpg".to_string()),
 	}
 }
 
@@ -31,8 +31,7 @@ pub async fn export_document(
 	output_path: PathBuf,
 	file_type: FileType,
 	scale: f64,
-	width: Option<u32>,
-	height: Option<u32>,
+	(width, height): (Option<u32>, Option<u32>),
 	transparent: bool,
 ) -> Result<(), Box<dyn Error>> {
 	// Determine export format based on file type
@@ -42,10 +41,12 @@ pub async fn export_document(
 	};
 
 	// Create render config with export settings
-	let mut render_config = RenderConfig::default();
-	render_config.export_format = export_format;
-	render_config.for_export = true;
-	render_config.scale = scale;
+	let mut render_config = RenderConfig {
+		scale,
+		export_format,
+		for_export: true,
+		..Default::default()
+	};
 
 	// Set viewport dimensions if specified
 	if let (Some(w), Some(h)) = (width, height) {

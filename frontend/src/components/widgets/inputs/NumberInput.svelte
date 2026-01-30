@@ -1,7 +1,8 @@
 <script lang="ts">
-	import { createEventDispatcher, onMount, onDestroy } from "svelte";
+	import { createEventDispatcher, onMount, onDestroy, getContext } from "svelte";
 
 	import { evaluateMathExpression } from "@graphite/../wasm/pkg/graphite_wasm";
+	import type { Editor } from "@graphite/editor";
 	import { PRESS_REPEAT_DELAY_MS, PRESS_REPEAT_INTERVAL_MS } from "@graphite/io-managers/input";
 	import type { NumberInputMode, NumberInputIncrementBehavior, ActionShortcut } from "@graphite/messages";
 	import { browserVersion, isDesktop } from "@graphite/utility-functions/platform";
@@ -15,6 +16,8 @@
 	const BUTTON_RIGHT = 2;
 
 	const dispatch = createEventDispatcher<{ value: number | undefined; startHistoryTransaction: undefined }>();
+
+	const editor = getContext<Editor>("editor");
 
 	// Content
 	/// When `value` is not provided (i.e. it's `undefined`), a dash is displayed.
@@ -80,6 +83,8 @@
 	let initialValueBeforeDragging: number | undefined = undefined;
 	// Stores the total value change during the process of dragging the slider. Set to 0 when not dragging.
 	let cumulativeDragDelta = 0;
+	// Track whether the Shift key is currently held down.
+	let shiftKeyDown = false;
 	// Track whether the Ctrl key is currently held down.
 	let ctrlKeyDown = false;
 
@@ -91,17 +96,20 @@
 		...(mode === "Range" ? { "--progress-factor": Math.min(Math.max((rangeSliderValueAsRendered - rangeMin) / (rangeMax - rangeMin), 0), 1) } : {}),
 	};
 
-	// Keep track of the Ctrl key being held down.
-	const trackCtrl = (e: KeyboardEvent | MouseEvent) => (ctrlKeyDown = e.ctrlKey);
+	// Keep track of the Shift and Ctrl key being held down.
+	const trackShiftAndCtrl = (e: KeyboardEvent | MouseEvent) => {
+		shiftKeyDown = e.shiftKey;
+		ctrlKeyDown = e.ctrlKey;
+	};
 	onMount(() => {
-		addEventListener("keydown", trackCtrl);
-		addEventListener("keyup", trackCtrl);
-		addEventListener("mousemove", trackCtrl);
+		addEventListener("keydown", trackShiftAndCtrl);
+		addEventListener("keyup", trackShiftAndCtrl);
+		addEventListener("mousemove", trackShiftAndCtrl);
 	});
 	onDestroy(() => {
-		removeEventListener("keydown", trackCtrl);
-		removeEventListener("keyup", trackCtrl);
-		removeEventListener("mousemove", trackCtrl);
+		removeEventListener("keydown", trackShiftAndCtrl);
+		removeEventListener("keyup", trackShiftAndCtrl);
+		removeEventListener("mousemove", trackShiftAndCtrl);
 		clearTimeout(repeatTimeout);
 	});
 
@@ -369,6 +377,9 @@
 
 		// Enter dragging state
 		if (usePointerLock) target.requestPointerLock();
+		if (isDesktop()) {
+			editor.handle.appWindowPointerLock();
+		}
 		initialValueBeforeDragging = value;
 		cumulativeDragDelta = 0;
 
@@ -412,19 +423,16 @@
 
 			// Calculate and then update the dragged value offset, slowed down by 10x when Shift is held.
 			if (ignoredFirstMovement && initialValueBeforeDragging !== undefined) {
-				const CHANGE_PER_DRAG_PX = 0.1;
-				const CHANGE_PER_DRAG_PX_SLOW = CHANGE_PER_DRAG_PX / 10;
-
-				const dragDelta = e.movementX * (e.shiftKey ? CHANGE_PER_DRAG_PX_SLOW : CHANGE_PER_DRAG_PX);
-				cumulativeDragDelta += dragDelta;
-
-				const combined = initialValueBeforeDragging + cumulativeDragDelta;
-				const combineSnapped = e.ctrlKey ? Math.round(combined) : combined;
-
-				const newValue = updateValue(combineSnapped);
-
-				// If the value was altered within the `updateValue()` call, we need to rectify the cumulative drag delta to account for the change.
-				if (newValue !== undefined) cumulativeDragDelta -= combineSnapped - newValue;
+				pointerLockMoveUpdate(e.movementX, e.shiftKey, e.ctrlKey, initialValueBeforeDragging);
+			}
+			ignoredFirstMovement = true;
+		};
+		// On desktop we don't get `pointermove` events while in pointer lock (cef doesn't support pointer lock).
+		// We have to listen for our custom `pointerlockmove` events instead.
+		const pointerLockMove = (e: Event) => {
+			if (ignoredFirstMovement && initialValueBeforeDragging !== undefined && e instanceof CustomEvent) {
+				const delta = (e.detail as { x: number }).x;
+				pointerLockMoveUpdate(delta, shiftKeyDown, ctrlKeyDown, initialValueBeforeDragging);
 			}
 			ignoredFirstMovement = true;
 		};
@@ -443,12 +451,30 @@
 			// Clean up the event listeners.
 			removeEventListener("pointerup", pointerUp);
 			removeEventListener("pointermove", pointerMove);
+			removeEventListener("pointerlockmove", pointerLockMove);
 			if (usePointerLock) document.removeEventListener("pointerlockchange", pointerLockChange);
 		};
 
 		addEventListener("pointerup", pointerUp);
 		addEventListener("pointermove", pointerMove);
+		addEventListener("pointerlockmove", pointerLockMove);
 		if (usePointerLock) document.addEventListener("pointerlockchange", pointerLockChange);
+	}
+
+	function pointerLockMoveUpdate(delta: number, slow: boolean, snapping: boolean, initialValue: number) {
+		const CHANGE_PER_DRAG_PX = 0.1;
+		const CHANGE_PER_DRAG_PX_SLOW = CHANGE_PER_DRAG_PX / 10;
+
+		const dragDelta = delta * (slow ? CHANGE_PER_DRAG_PX_SLOW : CHANGE_PER_DRAG_PX);
+		cumulativeDragDelta += dragDelta;
+
+		const combined = initialValue + cumulativeDragDelta;
+		const combineSnapped = snapping ? Math.round(combined) : combined;
+
+		const newValue = updateValue(combineSnapped);
+
+		// If the value was altered within the `updateValue()` call, we need to rectify the cumulative drag delta to account for the change.
+		if (newValue !== undefined) cumulativeDragDelta -= combineSnapped - newValue;
 	}
 
 	// ===============================
@@ -728,9 +754,9 @@
 				bind:this={inputRangeElement}
 			/>
 			{#if rangeSliderClickDragState === "Deciding"}
-				<div class="fake-slider-thumb" />
+				<div class="fake-slider-thumb"></div>
 			{/if}
-			<div class="slider-progress" />
+			<div class="slider-progress"></div>
 		{/if}
 	{/if}
 </FieldInput>

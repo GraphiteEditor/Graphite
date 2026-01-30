@@ -22,7 +22,6 @@ use graphene_std::wasm_application_io::{RenderOutputType, WasmApplicationIo, Was
 use graphene_std::{Artboard, Context, Graphic};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypesDelta};
 use interpreted_executor::util::wrap_network_in_scope;
-use once_cell::sync::Lazy;
 use spin::Mutex;
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender};
@@ -85,6 +84,8 @@ pub struct ExportConfig {
 	pub bounds: ExportBounds,
 	pub transparent_background: bool,
 	pub size: DVec2,
+	pub artboard_name: Option<String>,
+	pub artboard_count: usize,
 }
 
 #[derive(Clone)]
@@ -106,7 +107,8 @@ impl NodeGraphUpdateSender for InternalNodeGraphUpdateSender {
 	}
 }
 
-pub static NODE_RUNTIME: Lazy<Mutex<Option<NodeRuntime>>> = Lazy::new(|| Mutex::new(None));
+// TODO: Replace with `core::cell::LazyCell` (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>) or similar
+pub static NODE_RUNTIME: once_cell::sync::Lazy<Mutex<Option<NodeRuntime>>> = once_cell::sync::Lazy::new(|| Mutex::new(None));
 
 impl NodeRuntime {
 	pub fn new(receiver: Receiver<GraphRuntimeRequest>, sender: Sender<NodeGraphUpdate>) -> Self {
@@ -244,7 +246,7 @@ impl NodeRuntime {
 						Ok(TaggedValue::RenderOutput(RenderOutput {
 							data: RenderOutputType::Texture(image_texture),
 							metadata,
-						})) if render_config.for_export => {
+						})) if render_config.for_export || render_config.for_eyedropper => {
 							let executor = self
 								.editor_api
 								.application_io

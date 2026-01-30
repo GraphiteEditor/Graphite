@@ -1,4 +1,5 @@
 use super::simple_dialogs::{self, AboutGraphiteDialog, DemoArtworkDialog, LicensesDialog};
+use crate::application::GRAPHITE_GIT_COMMIT_DATE;
 use crate::messages::dialog::simple_dialogs::LicensesThirdPartyDialog;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
@@ -48,7 +49,7 @@ impl MessageHandler<DialogMessage, DialogMessageContext<'_>> for DialogMessageHa
 			}
 			DialogMessage::RequestAboutGraphiteDialog => {
 				responses.add(FrontendMessage::TriggerAboutGraphiteLocalizedCommitDate {
-					commit_date: env!("GRAPHITE_GIT_COMMIT_DATE").into(),
+					commit_date: GRAPHITE_GIT_COMMIT_DATE.into(),
 				});
 			}
 			DialogMessage::RequestAboutGraphiteDialogWithLocalizedCommitDate {

@@ -1,4 +1,5 @@
 use windows::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx};
+use windows::Win32::System::Console::{ATTACH_PARENT_PROCESS, AttachConsole};
 use windows::Win32::UI::Shell::SetCurrentProcessExplicitAppUserModelID;
 use windows::core::HSTRING;
 use winit::event_loop::ActiveEventLoop;
@@ -13,6 +14,12 @@ pub(super) struct NativeWindowImpl {
 
 impl super::NativeWindow for NativeWindowImpl {
 	fn init() {
+		// Attach to parent console if launched from a terminal (no-op otherwise)
+		unsafe {
+			let _ = AttachConsole(ATTACH_PARENT_PROCESS);
+		}
+
+		// Set stable app ID
 		let app_id = HSTRING::from(APP_ID);
 		unsafe {
 			let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED).ok();

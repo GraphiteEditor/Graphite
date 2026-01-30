@@ -1,3 +1,6 @@
+import { type Editor } from "@graphite/editor";
+import { extractPixelData } from "@graphite/utility-functions/rasterization";
+
 export function downloadFileURL(filename: string, url: string) {
 	const element = document.createElement("a");
 
@@ -60,3 +63,19 @@ export async function upload<T extends "text" | "data" | "both">(accept: string,
 }
 export type UploadResult<T> = { filename: string; type: string; content: UploadResultType<T> };
 type UploadResultType<T> = T extends "text" ? string : T extends "data" ? Uint8Array : T extends "both" ? { text: string; data: Uint8Array } : never;
+
+export async function pasteFile(item: DataTransferItem, editor: Editor, mouse?: [number, number], insertParentId?: bigint, insertIndex?: number) {
+	const file = item.getAsFile();
+	if (!file) return;
+
+	if (file.type.startsWith("image/svg")) {
+		const svg = await file.text();
+		editor.handle.pasteSvg(file.name, svg, mouse?.[0], mouse?.[1], insertParentId, insertIndex);
+	} else if (file.type.startsWith("image/")) {
+		const imageData = await extractPixelData(file);
+		editor.handle.pasteImage(file.name, new Uint8Array(imageData.data), imageData.width, imageData.height, mouse?.[0], mouse?.[1], insertParentId, insertIndex);
+	} else if (file.name.endsWith("." + editor.handle.fileExtension())) {
+		// TODO: When we eventually have sub-documents, this should be changed to import the document as a node instead of opening it in a separate tab
+		editor.handle.openFile(file.name, await file.bytes());
+	}
+}

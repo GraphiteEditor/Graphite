@@ -56,8 +56,8 @@
 >
 	<div class="ring">
 		<div class="canvas-container">
-			<canvas width={ZOOM_WINDOW_DIMENSIONS} height={ZOOM_WINDOW_DIMENSIONS} bind:this={zoomPreviewCanvas} />
-			<div class="pixel-outline" />
+			<canvas width={ZOOM_WINDOW_DIMENSIONS} height={ZOOM_WINDOW_DIMENSIONS} bind:this={zoomPreviewCanvas}></canvas>
+			<div class="pixel-outline"></div>
 		</div>
 	</div>
 </FloatingMenu>
@@ -65,6 +65,11 @@
 <style lang="scss" global>
 	.eyedropper-preview {
 		pointer-events: none;
+
+		.floating-menu-content.floating-menu-content {
+			border: none;
+			margin-left: 0;
+		}
 
 		.ring {
 			transform: translate(0, -50%) rotate(45deg);

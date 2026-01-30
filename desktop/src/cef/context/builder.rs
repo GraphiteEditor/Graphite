@@ -111,6 +111,8 @@ impl<H: CefEventHandler> CefContextBuilder<H> {
 
 		let settings = Settings {
 			multi_threaded_message_loop: 1,
+			#[cfg(target_os = "linux")]
+			no_sandbox: 1,
 			..Self::common_settings(&instance_dir)
 		};
 

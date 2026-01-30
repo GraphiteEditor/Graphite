@@ -63,7 +63,7 @@ pub fn pivot_gizmo_type_widget(state: PivotGizmoState, source: PivotToolSource) 
 		.collect();
 
 	vec![
-		CheckboxInput::new(!state.disabled)
+		CheckboxInput::new(state.enabled)
 			.tooltip_label("Pivot Gizmo")
 			.tooltip_description(
 				"
@@ -74,11 +74,11 @@ pub fn pivot_gizmo_type_widget(state: PivotGizmoState, source: PivotToolSource) 
 			)
 			.on_update(move |optional_input: &CheckboxInput| match source {
 				PivotToolSource::Select => SelectToolMessage::SelectOptions {
-					options: SelectOptionsUpdate::TogglePivotGizmoType(optional_input.checked),
+					options: SelectOptionsUpdate::SetPivotGizmoEnabled(optional_input.checked),
 				}
 				.into(),
 				PivotToolSource::Path => PathToolMessage::UpdateOptions {
-					options: PathOptionsUpdate::TogglePivotGizmoType(optional_input.checked),
+					options: PathOptionsUpdate::SetPivotGizmoEnabled(optional_input.checked),
 				}
 				.into(),
 			})
@@ -101,7 +101,7 @@ pub fn pivot_gizmo_type_widget(state: PivotGizmoState, source: PivotToolSource) 
 				"
 				.trim(),
 			)
-			.disabled(state.disabled)
+			.disabled(!state.enabled)
 			.widget_instance(),
 	]
 }
@@ -124,7 +124,7 @@ pub struct PivotGizmo {
 impl PivotGizmo {
 	pub fn position(&self, document: &DocumentMessageHandler) -> DVec2 {
 		let network = &document.network_interface;
-		(!self.state.disabled)
+		(self.state.enabled)
 			.then_some({
 				match self.state.gizmo_type {
 					PivotGizmoType::Average => Some(network.selected_nodes().selected_visible_and_unlocked_layers_mean_average_origin(network)),
@@ -163,18 +163,18 @@ pub enum PivotGizmoType {
 
 #[derive(PartialEq, Eq, Clone, Copy, Default, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct PivotGizmoState {
-	pub disabled: bool,
+	pub enabled: bool,
 	pub gizmo_type: PivotGizmoType,
 }
 
 impl PivotGizmoState {
 	pub fn is_pivot_type(&self) -> bool {
 		// A disabled pivot is considered a pivot-type gizmo that is always centered
-		self.gizmo_type == PivotGizmoType::Pivot || self.disabled
+		self.gizmo_type == PivotGizmoType::Pivot || !self.enabled
 	}
 
 	pub fn is_pivot(&self) -> bool {
-		self.gizmo_type == PivotGizmoType::Pivot && !self.disabled
+		self.gizmo_type == PivotGizmoType::Pivot && self.enabled
 	}
 }
 

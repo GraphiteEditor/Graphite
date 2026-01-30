@@ -13,7 +13,7 @@ use vector_types::GradientStops;
 /// This node associates the ID of the network's parent layer to every element of output data.
 /// This technical detail may be ignored by users, and will be phased out in the future.
 #[node_macro::node(category(""))]
-pub async fn source_node_id<I: 'n + Send + Clone>(
+pub async fn source_node_id<T: 'n + Send + Clone>(
 	_: impl Ctx,
 	#[implementations(
 		Table<Artboard>,
@@ -24,9 +24,9 @@ pub async fn source_node_id<I: 'n + Send + Clone>(
 		Table<Color>,
 		Table<GradientStops>,
 	)]
-	content: Table<I>,
+	content: Table<T>,
 	node_path: Vec<NodeId>,
-) -> Table<I> {
+) -> Table<T> {
 	// Get the penultimate element of the node path, or None if the path is too short
 	// This is used to get the ID of the user-facing parent layer node (whose network contains this internal node).
 	let source_node_id = node_path.get(node_path.len().wrapping_sub(2)).copied();
@@ -41,16 +41,16 @@ pub async fn source_node_id<I: 'n + Send + Clone>(
 
 /// Joins two tables of the same type, extending the base table with the rows of the new table.
 #[node_macro::node(category("General"))]
-pub async fn extend<I: 'n + Send + Clone>(
+pub async fn extend<T: 'n + Send + Clone>(
 	_: impl Ctx,
 	/// The table whose rows will appear at the start of the extended table.
 	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>, Table<GradientStops>)]
-	base: Table<I>,
+	base: Table<T>,
 	/// The table whose rows will appear at the end of the extended table.
 	#[expose]
 	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>, Table<GradientStops>)]
-	new: Table<I>,
-) -> Table<I> {
+	new: Table<T>,
+) -> Table<T> {
 	let mut base = base;
 	base.extend(new);
 
@@ -61,14 +61,14 @@ pub async fn extend<I: 'n + Send + Clone>(
 /// Performs an obsolete function as part of a migration from an older document format.
 /// Users are advised to delete this node and replace it with a new one.
 #[node_macro::node(category(""))]
-pub async fn legacy_layer_extend<I: 'n + Send + Clone>(
+pub async fn legacy_layer_extend<T: 'n + Send + Clone>(
 	_: impl Ctx,
-	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>, Table<GradientStops>)] base: Table<I>,
+	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>, Table<GradientStops>)] base: Table<T>,
 	#[expose]
 	#[implementations(Table<Artboard>, Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Raster<GPU>>, Table<Color>, Table<GradientStops>)]
-	new: Table<I>,
+	new: Table<T>,
 	nested_node_path: Vec<NodeId>,
-) -> Table<I> {
+) -> Table<T> {
 	// Get the penultimate element of the node path, or None if the path is too short
 	// This is used to get the ID of the user-facing parent layer-style node (which encapsulates this internal node).
 	let source_node_id = nested_node_path.get(nested_node_path.len().wrapping_sub(2)).copied();

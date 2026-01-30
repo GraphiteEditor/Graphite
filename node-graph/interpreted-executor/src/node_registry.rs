@@ -3,14 +3,10 @@ use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::document::DocumentNode;
 use graph_craft::document::value::RenderOutput;
 use graph_craft::proto::{NodeConstructor, TypeErasedBox};
-use graphene_std::Artboard;
-use graphene_std::Context;
-use graphene_std::Graphic;
 use graphene_std::any::DynAnyNode;
 use graphene_std::application_io::{ImageTexture, SurfaceFrame};
 use graphene_std::brush::brush_cache::BrushCache;
 use graphene_std::brush::brush_stroke::BrushStroke;
-use graphene_std::concrete;
 use graphene_std::gradient::GradientStops;
 #[cfg(feature = "gpu")]
 use graphene_std::raster::GPU;
@@ -25,11 +21,8 @@ use graphene_std::vector::Vector;
 use graphene_std::wasm_application_io::WasmEditorApi;
 #[cfg(feature = "gpu")]
 use graphene_std::wasm_application_io::WasmSurfaceHandle;
-use graphene_std::{Cow, ProtoNodeIdentifier};
-use graphene_std::{NodeIO, NodeIOTypes};
-use graphene_std::{fn_type_fut, future};
+use graphene_std::{Artboard, Context, Graphic, NodeIO, NodeIOTypes, ProtoNodeIdentifier, concrete, fn_type_fut, future};
 use node_registry_macros::{async_node, convert_node, into_node};
-use once_cell::sync::Lazy;
 use std::collections::HashMap;
 #[cfg(feature = "gpu")]
 use std::sync::Arc;
@@ -269,11 +262,11 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		}
 	}
 
-	for (id, c, types) in node_types.into_iter() {
+	for (id, node_constructor, types) in node_types.into_iter() {
 		// TODO: this is a hack to remove the newline from the node new_name
 		// This occurs for the ChannelMixerNode presumably because of the long name.
 		// This might be caused by the stringify! macro
-		let mut new_name = id.name.replace('\n', " ");
+		let mut new_name = id.as_str().replace('\n', " ");
 
 		// Remove struct generics for all nodes except for the IntoNode and ConvertNode
 		if !(new_name.contains("IntoNode") || new_name.contains("ConvertNode"))
@@ -282,14 +275,14 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 			new_name = path.to_string();
 		}
 
-		let nid = ProtoNodeIdentifier { name: Cow::Owned(new_name) };
-		map.entry(nid).or_default().insert(types.clone(), c);
+		map.entry(ProtoNodeIdentifier::with_owned_string(new_name)).or_default().insert(types.clone(), node_constructor);
 	}
 
 	map
 }
 
-pub static NODE_REGISTRY: Lazy<HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>>> = Lazy::new(|| node_registry());
+// TODO: Replace with `core::cell::LazyCell` (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>) or similar
+pub static NODE_REGISTRY: once_cell::sync::Lazy<HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeConstructor>>> = once_cell::sync::Lazy::new(|| node_registry());
 
 mod node_registry_macros {
 	macro_rules! async_node {

@@ -43,13 +43,21 @@ impl MessageHandler<ExportDialogMessage, ExportDialogMessageContext<'_>> for Exp
 			ExportDialogMessage::TransparentBackground { transparent } => self.transparent_background = transparent,
 			ExportDialogMessage::ExportBounds { bounds } => self.bounds = bounds,
 
-			ExportDialogMessage::Submit => responses.add_front(PortfolioMessage::SubmitDocumentExport {
-				name: portfolio.active_document().map(|document| document.name.clone()).unwrap_or_default(),
-				file_type: self.file_type,
-				scale_factor: self.scale_factor,
-				bounds: self.bounds,
-				transparent_background: self.file_type != FileType::Jpg && self.transparent_background,
-			}),
+			ExportDialogMessage::Submit => {
+				let artboard_name = match self.bounds {
+					ExportBounds::Artboard(layer) => self.artboards.get(&layer).cloned(),
+					_ => None,
+				};
+				responses.add_front(PortfolioMessage::SubmitDocumentExport {
+					name: portfolio.active_document().map(|document| document.name.clone()).unwrap_or_default(),
+					file_type: self.file_type,
+					scale_factor: self.scale_factor,
+					bounds: self.bounds,
+					transparent_background: self.file_type != FileType::Jpg && self.transparent_background,
+					artboard_name,
+					artboard_count: self.artboards.len(),
+				})
+			}
 		}
 
 		self.send_dialog_to_frontend(responses);

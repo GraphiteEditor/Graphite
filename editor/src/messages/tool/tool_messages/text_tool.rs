@@ -3,6 +3,7 @@
 use super::tool_prelude::*;
 use crate::consts::{COLOR_OVERLAY_BLUE, COLOR_OVERLAY_RED, DRAG_THRESHOLD};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
@@ -17,10 +18,10 @@ use crate::messages::tool::common_functionality::utility_functions::text_boundin
 use crate::messages::tool::utility_types::ToolRefreshOptions;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
-use graphene_std::Color;
 use graphene_std::renderer::Quad;
 use graphene_std::text::{Font, FontCache, TextAlign, TypesettingConfig, lines_clipping};
 use graphene_std::vector::style::Fill;
+use graphene_std::{Color, NodeInputDecleration};
 
 #[derive(Default, ExtractField)]
 pub struct TextTool {
@@ -512,7 +513,7 @@ impl TextToolData {
 		document
 			.metadata()
 			.all_layers()
-			.filter(|&layer| is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text"))
+			.filter(|&layer| is_layer_fed_by_node_of_name(layer, &document.network_interface, &DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER)))
 			.find(|&layer| {
 				let transformed_quad = document.metadata().transform_to_viewport(layer) * text_bounding_box(layer, document, font_cache);
 				let mouse = DVec2::new(input.mouse.position.x, input.mouse.position.y);
@@ -541,7 +542,7 @@ fn can_edit_selected(document: &DocumentMessageHandler) -> Option<LayerNodeIdent
 		return None;
 	}
 
-	if !is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text") {
+	if !is_layer_fed_by_node_of_name(layer, &document.network_interface, &DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER)) {
 		return None;
 	}
 
@@ -610,7 +611,7 @@ impl Fsm for TextToolFsmState {
 				// TODO: implement bounding box for multiple layers
 				let selected = document.network_interface.selected_nodes();
 				let mut all_layers = selected.selected_visible_and_unlocked_layers(&document.network_interface);
-				let layer = all_layers.find(|layer| is_layer_fed_by_node_of_name(*layer, &document.network_interface, "Text"));
+				let layer = all_layers.find(|layer| is_layer_fed_by_node_of_name(*layer, &document.network_interface, &DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER)));
 				let bounds = layer.map(|layer| text_bounding_box(layer, document, font_cache));
 				let layer_transform = layer.map(|layer| document.metadata().transform_to_viewport(layer)).unwrap_or(DAffine2::IDENTITY);
 
@@ -671,7 +672,7 @@ impl Fsm for TextToolFsmState {
 
 				let selected = document.network_interface.selected_nodes();
 				let mut all_selected = selected.selected_visible_and_unlocked_layers(&document.network_interface);
-				let selected = all_selected.find(|layer| is_layer_fed_by_node_of_name(*layer, &document.network_interface, "Text"));
+				let selected = all_selected.find(|layer| is_layer_fed_by_node_of_name(*layer, &document.network_interface, &DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER)));
 
 				if dragging_bounds.is_some() {
 					responses.add(DocumentMessage::StartTransaction);
@@ -710,7 +711,7 @@ impl Fsm for TextToolFsmState {
 				// This ensures the cursor only changes if a layer is selected
 				let selected = document.network_interface.selected_nodes();
 				let mut all_selected = selected.selected_visible_and_unlocked_layers(&document.network_interface);
-				let layer = all_selected.find(|&layer| is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text"));
+				let layer = all_selected.find(|&layer| is_layer_fed_by_node_of_name(layer, &document.network_interface, &DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER)));
 
 				let mut cursor = tool_data
 					.bounding_box_manager
@@ -799,13 +800,22 @@ impl Fsm for TextToolFsmState {
 					// Find the translation necessary from the original position in viewport space
 					let translation_viewport = bounds.original_bound_transform.transform_vector2(translation_bounds_space);
 
+					// TODO: Don't set both max_width and max_height to true at the same time, only do one based on which edge is being dragged (or both if a corner is being dragged)
 					responses.add(NodeGraphMessage::SetInput {
-						input_connector: InputConnector::node(node_id, 6),
-						input: NodeInput::value(TaggedValue::OptionalF64(Some(size_layer.x)), false),
+						input_connector: InputConnector::node(node_id, graphene_std::text::text::HasMaxWidthInput::INDEX),
+						input: NodeInput::value(TaggedValue::Bool(true), false),
 					});
 					responses.add(NodeGraphMessage::SetInput {
-						input_connector: InputConnector::node(node_id, 7),
-						input: NodeInput::value(TaggedValue::OptionalF64(Some(size_layer.y)), false),
+						input_connector: InputConnector::node(node_id, graphene_std::text::text::MaxWidthInput::INDEX),
+						input: NodeInput::value(TaggedValue::F64(size_layer.x), false),
+					});
+					responses.add(NodeGraphMessage::SetInput {
+						input_connector: InputConnector::node(node_id, graphene_std::text::text::HasMaxHeightInput::INDEX),
+						input: NodeInput::value(TaggedValue::Bool(true), false),
+					});
+					responses.add(NodeGraphMessage::SetInput {
+						input_connector: InputConnector::node(node_id, graphene_std::text::text::MaxHeightInput::INDEX),
+						input: NodeInput::value(TaggedValue::F64(size_layer.y), false),
 					});
 					responses.add(GraphOperationMessage::TransformSet {
 						layer: dragging_layer.id,

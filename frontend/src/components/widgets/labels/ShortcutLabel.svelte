@@ -120,6 +120,8 @@
 
 <style lang="scss" global>
 	.shortcut-label {
+		align-items: center;
+
 		.key-label {
 			display: flex;
 			align-items: center;

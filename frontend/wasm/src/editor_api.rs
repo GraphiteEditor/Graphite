@@ -12,7 +12,7 @@ use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
 use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta};
 use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use editor::messages::portfolio::document::utility_types::network_interface::ImportOrExport;
-use editor::messages::portfolio::utility_types::{FontCatalog, FontCatalogFamily, Platform};
+use editor::messages::portfolio::utility_types::{FontCatalog, FontCatalogFamily};
 use editor::messages::prelude::*;
 use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
 use graph_craft::document::NodeId;
@@ -22,6 +22,7 @@ use js_sys::{Object, Reflect};
 use serde::Serialize;
 use serde_wasm_bindgen::{self, from_value};
 use std::cell::RefCell;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use wasm_bindgen::JsCast;
@@ -31,7 +32,7 @@ use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, ImageData, window};
 #[cfg(not(feature = "native"))]
 use crate::EDITOR;
 #[cfg(not(feature = "native"))]
-use editor::application::Editor;
+use editor::application::{Editor, Environment, Host, Platform};
 
 static IMAGE_DATA_HASH: AtomicU64 = AtomicU64::new(0);
 
@@ -43,14 +44,7 @@ fn calculate_hash<T: std::hash::Hash>(t: &T) -> u64 {
 	hasher.finish()
 }
 
-/// Set the random seed used by the editor by calling this from JS upon initialization.
-/// This is necessary because WASM doesn't have a random number generator.
-#[wasm_bindgen(js_name = setRandomSeed)]
-pub fn set_random_seed(seed: u64) {
-	editor::application::set_uuid_seed(seed);
-}
-
-/// Provides a handle to access the raw WASM memory.
+/// Provides a handle to access the raw Wasm memory.
 #[wasm_bindgen(js_name = wasmMemory)]
 pub fn wasm_memory() -> JsValue {
 	wasm_bindgen::memory()
@@ -89,9 +83,20 @@ impl EditorHandle {
 #[wasm_bindgen]
 impl EditorHandle {
 	#[cfg(not(feature = "native"))]
-	#[wasm_bindgen(constructor)]
-	pub fn new(frontend_message_handler_callback: js_sys::Function) -> Self {
-		let editor = Editor::new();
+	pub fn create(platform: String, uuid_random_seed: u64, frontend_message_handler_callback: js_sys::Function) -> EditorHandle {
+		let editor = Editor::new(
+			Environment {
+				platform: Platform::Web,
+				host: match platform.as_str() {
+					"Linux" => Host::Linux,
+					"Mac" => Host::Mac,
+					"Windows" => Host::Windows,
+					_ => unreachable!(),
+				},
+			},
+			uuid_random_seed,
+		);
+
 		let editor_handle = EditorHandle { frontend_message_handler_callback };
 		if EDITOR.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor))).is_none() {
 			log::error!("Attempted to initialize the editor more than once");
@@ -103,8 +108,7 @@ impl EditorHandle {
 	}
 
 	#[cfg(feature = "native")]
-	#[wasm_bindgen(constructor)]
-	pub fn new(frontend_message_handler_callback: js_sys::Function) -> Self {
+	pub fn create(_platform: String, _uuid_random_seed: u64, frontend_message_handler_callback: js_sys::Function) -> EditorHandle {
 		let editor_handle = EditorHandle { frontend_message_handler_callback };
 		if EDITOR_HANDLE.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor_handle.clone()))).is_none() {
 			log::error!("Attempted to initialize the editor handle more than once");
@@ -184,18 +188,10 @@ impl EditorHandle {
 	// ========================================================================
 
 	#[wasm_bindgen(js_name = initAfterFrontendReady)]
-	pub fn init_after_frontend_ready(&self, platform: String) {
+	pub fn init_after_frontend_ready(&self) {
 		#[cfg(feature = "native")]
 		crate::native_communcation::initialize_native_communication();
 
-		// Send initialization messages
-		let platform = match platform.as_str() {
-			"Windows" => Platform::Windows,
-			"Mac" => Platform::Mac,
-			"Linux" => Platform::Linux,
-			_ => Platform::Unknown,
-		};
-		self.dispatch(GlobalsMessage::SetPlatform { platform });
 		self.dispatch(PortfolioMessage::Init);
 
 		// Poll node graph evaluation on `requestAnimationFrame`
@@ -274,6 +270,13 @@ impl EditorHandle {
 		self.dispatch(NodeGraphMessage::AddSecondaryExport);
 	}
 
+	/// Start Pointer Lock
+	#[wasm_bindgen(js_name = appWindowPointerLock)]
+	pub fn app_window_pointer_lock(&self) {
+		let message = AppWindowMessage::PointerLock;
+		self.dispatch(message);
+	}
+
 	/// Minimizes the application window to the taskbar or dock
 	#[wasm_bindgen(js_name = appWindowMinimize)]
 	pub fn app_window_minimize(&self) {
@@ -285,6 +288,12 @@ impl EditorHandle {
 	#[wasm_bindgen(js_name = appWindowMaximize)]
 	pub fn app_window_maximize(&self) {
 		let message = AppWindowMessage::Maximize;
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = appWindowFullscreen)]
+	pub fn app_window_fullscreen(&self) {
+		let message = AppWindowMessage::Fullscreen;
 		self.dispatch(message);
 	}
 
@@ -406,13 +415,15 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
-	#[wasm_bindgen(js_name = openDocumentFile)]
-	pub fn open_document_file(&self, document_name: String, document_serialized_content: String) {
-		let message = PortfolioMessage::OpenDocumentFile {
-			document_name: Some(document_name),
-			document_path: None,
-			document_serialized_content,
-		};
+	#[wasm_bindgen(js_name = openFile)]
+	pub fn open_file(&self, path: String, content: Vec<u8>) {
+		let message = PortfolioMessage::OpenFile { path: PathBuf::from(path), content };
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = importFile)]
+	pub fn import_file(&self, path: String, content: Vec<u8>) {
+		let message = PortfolioMessage::ImportFile { path: PathBuf::from(path), content };
 		self.dispatch(message);
 	}
 
@@ -721,11 +732,13 @@ impl EditorHandle {
 
 	/// Creates a new document node in the node graph
 	#[wasm_bindgen(js_name = createNode)]
-	pub fn create_node(&self, node_type: String, x: i32, y: i32) {
+	pub fn create_node(&self, node_type: JsValue, x: i32, y: i32) {
+		let value: serde_json::Value = serde_wasm_bindgen::from_value(node_type).unwrap();
+
 		let id = NodeId::new();
 		let message = NodeGraphMessage::CreateNodeFromContextMenu {
 			node_id: Some(id),
-			node_type,
+			node_type: value.into(),
 			xy: Some((x / 24, y / 24)),
 			add_transaction: true,
 		};

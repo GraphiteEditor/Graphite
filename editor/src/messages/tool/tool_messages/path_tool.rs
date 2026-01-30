@@ -7,7 +7,7 @@ use crate::consts::{
 use crate::messages::clipboard::utility_types::ClipboardContent;
 use crate::messages::input_mapper::utility_types::macros::action_shortcut_manual;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_network_node_type;
 use crate::messages::portfolio::document::overlays::utility_functions::{path_overlays, selected_segments};
 use crate::messages::portfolio::document::overlays::utility_types::{DrawHandles, OverlayContext};
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
@@ -73,6 +73,11 @@ pub enum PathToolMessage {
 	},
 	Escape,
 	ClosePath,
+	ConnectPointsByPosition {
+		layer: LayerNodeIdentifier,
+		start_position: DVec2,
+		end_position: DVec2,
+	},
 	DoubleClick {
 		extend_selection: Key,
 		shrink_selection: Key,
@@ -178,7 +183,7 @@ pub enum PathOptionsUpdate {
 	PointEditingMode { enabled: bool },
 	SegmentEditingMode { enabled: bool },
 	PivotGizmoType(PivotGizmoType),
-	TogglePivotGizmoType(bool),
+	SetPivotGizmoEnabled(bool),
 	TogglePivotPinned,
 }
 
@@ -392,7 +397,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Path
 					responses.add(OverlaysMessage::Draw);
 				}
 				PathOptionsUpdate::PivotGizmoType(gizmo_type) => {
-					if !self.tool_data.pivot_gizmo.state.disabled {
+					if !self.tool_data.pivot_gizmo.state.enabled {
 						self.tool_data.pivot_gizmo.state.gizmo_type = gizmo_type;
 						responses.add(ToolMessage::UpdateHints);
 						let pivot_gizmo = self.tool_data.pivot_gizmo();
@@ -401,8 +406,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Path
 						self.send_layout(responses, LayoutTarget::ToolOptions);
 					}
 				}
-				PathOptionsUpdate::TogglePivotGizmoType(state) => {
-					self.tool_data.pivot_gizmo.state.disabled = !state;
+				PathOptionsUpdate::SetPivotGizmoEnabled(enabled) => {
+					self.tool_data.pivot_gizmo.state.enabled = enabled;
 					responses.add(ToolMessage::UpdateHints);
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 					self.send_layout(responses, LayoutTarget::ToolOptions);
@@ -1566,7 +1571,7 @@ impl Fsm for PathToolFsmState {
 		let ToolMessage::Path(event) = event else { return self };
 
 		// TODO(mTvare6): Remove once gizmos are implemented for path_tool
-		tool_data.pivot_gizmo.state.disabled = true;
+		tool_data.pivot_gizmo.state.enabled = false;
 
 		match (self, event) {
 			(_, PathToolMessage::SelectionChanged) => {
@@ -2669,6 +2674,60 @@ impl Fsm for PathToolFsmState {
 
 				self
 			}
+			(_, PathToolMessage::ConnectPointsByPosition { layer, start_position, end_position }) => {
+				// Get the merged vector
+				let Some(vector) = document.network_interface.compute_modified_vector(layer) else {
+					return self;
+				};
+
+				// Find points by their positions (with small tolerance for floating point comparison)
+				const POSITION_TOLERANCE: f64 = 1e-6;
+
+				let positions = vector.point_domain.positions();
+				let point_ids = vector.point_domain.ids();
+
+				let mut start_point_id = None;
+				let mut end_point_id = None;
+
+				// Get the merged layer's transform to convert local positions to document space
+				let layer_transform = document.metadata().transform_to_document(layer);
+
+				for (i, &local_pos) in positions.iter().enumerate() {
+					// Transform the local position to document space for comparison
+					let doc_pos = layer_transform.transform_point2(local_pos);
+
+					let start_distance = (doc_pos - start_position).length();
+					let end_distance = (doc_pos - end_position).length();
+
+					if start_point_id.is_none() && start_distance < POSITION_TOLERANCE {
+						start_point_id = Some(point_ids[i]);
+					}
+					if end_point_id.is_none() && end_distance < POSITION_TOLERANCE {
+						end_point_id = Some(point_ids[i]);
+					}
+					if start_point_id.is_some() && end_point_id.is_some() {
+						break;
+					}
+				}
+
+				if let (Some(start_id), Some(end_id)) = (start_point_id, end_point_id) {
+					// Create segment directly
+					responses.add(DocumentMessage::StartTransaction);
+
+					let segment_id = SegmentId::generate();
+					let modification_type = VectorModificationType::InsertSegment {
+						id: segment_id,
+						points: [end_id, start_id],
+						handles: [None, None],
+					};
+
+					responses.add(GraphOperationMessage::Vector { layer, modification_type });
+					responses.add(DocumentMessage::EndTransaction);
+					responses.add(OverlaysMessage::Draw);
+				}
+
+				self
+			}
 			(_, PathToolMessage::StartSlidingPoint) => {
 				responses.add(DocumentMessage::StartTransaction);
 				if tool_data.start_sliding_point(shape_editor, document) {
@@ -2767,7 +2826,7 @@ impl Fsm for PathToolFsmState {
 						let layer = if shape_editor.selected_shape_state.contains_key(&layer) {
 							layer
 						} else {
-							let Some(node_type) = resolve_document_node_type("Path") else {
+							let Some(node_type) = resolve_network_node_type("Path") else {
 								error!("Could not resolve node type for Path");
 								continue;
 							};

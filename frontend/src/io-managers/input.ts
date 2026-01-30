@@ -1,11 +1,12 @@
 import { get } from "svelte/store";
 
 import { type Editor } from "@graphite/editor";
-import { TriggerClipboardRead } from "@graphite/messages";
+import { TriggerClipboardRead, WindowPointerLockMove } from "@graphite/messages";
 import { type DialogState } from "@graphite/state-providers/dialog";
 import { type DocumentState } from "@graphite/state-providers/document";
 import { type FullscreenState } from "@graphite/state-providers/fullscreen";
 import { type PortfolioState } from "@graphite/state-providers/portfolio";
+import { pasteFile } from "@graphite/utility-functions/files";
 import { makeKeyboardModifiersBitfield, textInputCleanup, getLocalizedScanCode } from "@graphite/utility-functions/keyboard-entry";
 import { isDesktop, operatingSystem } from "@graphite/utility-functions/platform";
 import { extractPixelData } from "@graphite/utility-functions/rasterization";
@@ -84,34 +85,42 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 		// Cut, copy, and paste is handled in the backend on desktop
 		if (isDesktop() && accelKey && ["KeyX", "KeyC", "KeyV"].includes(key)) return true;
+		// But on web, we want to not redirect paste
+		if (!isDesktop() && key === "KeyV" && accelKey) return false;
 
 		// Don't redirect user input from text entry into HTML elements
 		if (targetIsTextField(e.target || undefined) && key !== "Escape" && !(accelKey && ["Enter", "NumpadEnter"].includes(key))) return false;
 
-		// Don't redirect paste in web
-		if (key === "KeyV" && accelKey) return false;
-
-		// Don't redirect a fullscreen request
-		if (key === "F11" && e.type === "keydown" && !e.repeat) {
-			e.preventDefault();
-			fullscreen.toggleFullscreen();
-			return false;
-		}
-
-		// Don't redirect a reload request
-		if (key === "F5") return false;
-		if (key === "KeyR" && accelKey) return false;
-
-		// Don't redirect debugging tools
-		if (["F12", "F8"].includes(key)) return false;
-		if (["KeyC", "KeyI", "KeyJ"].includes(key) && accelKey && e.shiftKey) return false;
-
 		// Don't redirect tab or enter if not in canvas (to allow navigating elements)
 		potentiallyRestoreCanvasFocus(e);
-		if (!canvasFocused && !targetIsTextField(e.target || undefined) && ["Tab", "Enter", "NumpadEnter", "Space", "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowUp"].includes(key)) return false;
+		if (
+			!canvasFocused &&
+			!targetIsTextField(e.target || undefined) &&
+			["Tab", "Enter", "NumpadEnter", "Space", "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowUp"].includes(key) &&
+			!(e.ctrlKey || e.metaKey || e.altKey)
+		)
+			return false;
 
 		// Don't redirect if a MenuList is open
 		if (window.document.querySelector("[data-floating-menu-content]")) return false;
+
+		// Web-only keyboard shortcuts
+		if (!isDesktop()) {
+			// Don't redirect a fullscreen request, but process it immediately instead
+			if (((operatingSystem() !== "Mac" && key === "F11") || (operatingSystem() === "Mac" && e.ctrlKey && e.metaKey && key === "KeyF")) && e.type === "keydown" && !e.repeat) {
+				e.preventDefault();
+				fullscreen.toggleFullscreen();
+				return false;
+			}
+
+			// Don't redirect a reload request
+			if (key === "F5") return false;
+			if (key === "KeyR" && accelKey) return false;
+
+			// Don't redirect debugging tools
+			if (["F12", "F8"].includes(key)) return false;
+			if (["KeyC", "KeyI", "KeyJ"].includes(key) && accelKey && e.shiftKey) return false;
+		}
 
 		// Redirect to the backend
 		return true;
@@ -239,7 +248,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 	}
 
 	function onMouseDown(e: MouseEvent) {
-		// Block middle mouse button auto-scroll mode (the circlar gizmo that appears and allows quick scrolling by moving the cursor above or below it)
+		// Block middle mouse button auto-scroll mode (the circular gizmo that appears and allows quick scrolling by moving the cursor above or below it)
 		if (e.button === BUTTON_MIDDLE) e.preventDefault();
 	}
 
@@ -310,32 +319,8 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		e.preventDefault();
 
 		Array.from(dataTransfer.items).forEach(async (item) => {
-			if (item.type === "text/plain") {
-				item.getAsString((text) => {
-					editor.handle.pasteText(text);
-				});
-			}
-
-			const file = item.getAsFile();
-			if (!file) return;
-
-			if (file.type.includes("svg")) {
-				const text = await file.text();
-				editor.handle.pasteSvg(file.name, text);
-				return;
-			}
-
-			if (file.type.startsWith("image")) {
-				const imageData = await extractPixelData(file);
-				editor.handle.pasteImage(file.name, new Uint8Array(imageData.data), imageData.width, imageData.height);
-			}
-
-			const graphiteFileSuffix = "." + editor.handle.fileExtension();
-			if (file.name.endsWith(graphiteFileSuffix)) {
-				const content = await file.text();
-				const documentName = file.name.slice(0, -graphiteFileSuffix.length);
-				editor.handle.openDocumentFile(documentName, content);
-			}
+			if (item.type === "text/plain") item.getAsString((text) => editor.handle.pasteText(text));
+			await pasteFile(item, editor);
 		});
 	}
 
@@ -498,6 +483,12 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 			editor.handle.errorDialog("Cannot access clipboard", message);
 		}
+	});
+
+	// Pointer lock movement events on desktop
+	editor.subscriptions.subscribeJsMessage(WindowPointerLockMove, (data) => {
+		const event = new CustomEvent("pointerlockmove", { detail: data });
+		window.dispatchEvent(event);
 	});
 
 	// Helper functions

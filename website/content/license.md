@@ -207,7 +207,7 @@ Official builds of Graphite may be compiled and redistributed freely under the t
 
 Graphite Branding License
 
-Copyright © 2021-2025 Graphite Labs, LLC. All rights reserved.
+Copyright © 2021-2026 Graphite Labs, LLC. All rights reserved.
 
 The repository `https://github.com/Keavon/graphite-branded-assets/` includes proprietary assets (the "Assets"), including but not limited to logos, icons, and branding materials. The Assets are not software source code and are consequently not licensed under the same terms as the other works of Graphite software materials. The intention of this license is to maintain the full permissiveness of the software code while reserving protections for the brand and visual identity of the official Graphite product.
 

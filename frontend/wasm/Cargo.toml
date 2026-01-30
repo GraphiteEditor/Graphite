@@ -14,7 +14,7 @@ license = "Apache-2.0"
 default = ["gpu", "shader-nodes"]
 gpu = ["editor/gpu"]
 shader-nodes = ["graphene-std/shader-nodes", "gpu"]
-native = []
+native = ["node-macro/disable-registration"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]
@@ -39,6 +39,7 @@ wgpu = { workspace = true }
 web-sys = { workspace = true }
 ron = { workspace = true }
 serde_json = { workspace = true }
+node-macro = { workspace = true }
 
 [package.metadata.wasm-pack.profile.dev]
 wasm-opt = false
