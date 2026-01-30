@@ -1,5 +1,5 @@
 use super::tool_prelude::*;
-use crate::consts::{COLOR_OVERLAY_BLUE, LINE_ROTATE_SNAP_ANGLE, MANIPULATOR_GROUP_MARKER_SIZE, SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD};
+use crate::consts::{COLOR_OVERLAY_BLUE, LINE_ROTATE_SNAP_ANGLE, MANIPULATOR_GROUP_MARKER_SIZE, SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD};
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
@@ -25,6 +25,7 @@ pub enum GradientToolMessage {
 	// Standard messages
 	Abort,
 	Overlays { context: OverlayContext },
+	SelectionChanged,
 
 	// Tool-specific messages
 	DeleteStop,
@@ -228,6 +229,7 @@ impl ToolTransition for GradientTool {
 	fn event_to_message_map(&self) -> EventToMessageMap {
 		EventToMessageMap {
 			tool_abort: Some(GradientToolMessage::Abort.into()),
+			selection_changed: Some(GradientToolMessage::SelectionChanged.into()),
 			overlay_provider: Some(|context| GradientToolMessage::Overlays { context }.into()),
 			..Default::default()
 		}
@@ -309,7 +311,7 @@ impl Fsm for GradientToolFsmState {
 					let distance = (end - start).angle_to(mouse - start).sin() * (mouse - start).length();
 					let projection = ((end - start).angle_to(mouse - start)).cos() * start.distance(mouse) / start.distance(end);
 
-					if distance.abs() < SELECTION_THRESHOLD * 3. && (0. ..=1.).contains(&projection) {
+					if distance.abs() < SEGMENT_INSERTION_DISTANCE && (0. ..=1.).contains(&projection) {
 						let mut near_stop = false;
 						for (position, _) in stops {
 							let stop_pos = start.lerp(end, *position);
@@ -334,6 +336,10 @@ impl Fsm for GradientToolFsmState {
 
 				self
 			}
+			(GradientToolFsmState::Ready, GradientToolMessage::SelectionChanged) => {
+				tool_data.selected_gradient = None;
+				self
+			}
 			(GradientToolFsmState::Ready, GradientToolMessage::DeleteStop) => {
 				let Some(selected_gradient) = &mut tool_data.selected_gradient else {
 					return self;
@@ -344,7 +350,7 @@ impl Fsm for GradientToolFsmState {
 					return self;
 				}
 
-				responses.add(DocumentMessage::AddTransaction);
+				responses.add(DocumentMessage::StartTransaction);
 
 				// Remove the selected point
 				match selected_gradient.dragging {
@@ -367,6 +373,7 @@ impl Fsm for GradientToolFsmState {
 							fill: Fill::Solid(selected_gradient.gradient.stops[0].1),
 						});
 					}
+					responses.add(DocumentMessage::CommitTransaction);
 					return self;
 				}
 
@@ -388,6 +395,7 @@ impl Fsm for GradientToolFsmState {
 
 				// Render the new gradient
 				selected_gradient.render_gradient(responses);
+				responses.add(DocumentMessage::CommitTransaction);
 
 				self
 			}
@@ -406,7 +414,7 @@ impl Fsm for GradientToolFsmState {
 					if distance < (SELECTION_THRESHOLD * 2.) {
 						// Try and insert the new stop
 						if let Some(index) = gradient.insert_stop(mouse, transform) {
-							responses.add(DocumentMessage::AddTransaction);
+							responses.add(DocumentMessage::StartTransaction);
 
 							let mut selected_gradient = SelectedGradient::new(gradient, layer, document);
 
@@ -417,7 +425,7 @@ impl Fsm for GradientToolFsmState {
 							selected_gradient.render_gradient(responses);
 
 							tool_data.selected_gradient = Some(selected_gradient);
-
+							responses.add(DocumentMessage::CommitTransaction);
 							break;
 						}
 					}
@@ -431,6 +439,7 @@ impl Fsm for GradientToolFsmState {
 				let tolerance = (MANIPULATOR_GROUP_MARKER_SIZE * 2.).powi(2);
 
 				let mut dragging = false;
+				let mut transaction_started = false;
 				for layer in document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface) {
 					let Some(gradient) = get_gradient(layer, &document.network_interface) else { continue };
 					let transform = gradient_space_transform(layer, document);
@@ -468,9 +477,10 @@ impl Fsm for GradientToolFsmState {
 						let distance = (end - start).angle_to(mouse - start).sin() * (mouse - start).length();
 						let projection = ((end - start).angle_to(mouse - start)).cos() * start.distance(mouse) / start.distance(end);
 
-						if distance.abs() < SELECTION_THRESHOLD && (0. ..=1.).contains(&projection) {
+						if distance.abs() < SEGMENT_INSERTION_DISTANCE && (0. ..=1.).contains(&projection) {
 							if let Some(index) = gradient.clone().insert_stop(mouse, transform) {
-								responses.add(DocumentMessage::AddTransaction);
+								responses.add(DocumentMessage::StartTransaction);
+								transaction_started = true;
 								let mut new_gradient = gradient.clone();
 								new_gradient.insert_stop(mouse, transform);
 
@@ -517,9 +527,11 @@ impl Fsm for GradientToolFsmState {
 						GradientToolFsmState::Ready
 					}
 				};
-				if gradient_state == GradientToolFsmState::Drawing {
+
+				if gradient_state == GradientToolFsmState::Drawing && !transaction_started {
 					responses.add(DocumentMessage::StartTransaction);
 				}
+
 				gradient_state
 			}
 			(GradientToolFsmState::Drawing, GradientToolMessage::PointerMove { constrain_axis }) => {
