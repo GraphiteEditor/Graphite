@@ -48,10 +48,56 @@ pub struct Surface {
 	pub blitter: TextureBlitter,
 }
 
+#[derive(Clone, Debug)]
 pub struct TargetTexture {
 	texture: wgpu::Texture,
 	view: wgpu::TextureView,
 	size: UVec2,
+}
+
+impl TargetTexture {
+	/// Creates a new TargetTexture with the specified size.
+	pub fn new(device: &wgpu::Device, size: UVec2) -> Self {
+		let size = size.max(UVec2::ONE);
+		let texture = device.create_texture(&wgpu::TextureDescriptor {
+			label: None,
+			size: wgpu::Extent3d {
+				width: size.x,
+				height: size.y,
+				depth_or_array_layers: 1,
+			},
+			mip_level_count: 1,
+			sample_count: 1,
+			dimension: wgpu::TextureDimension::D2,
+			usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC,
+			format: VELLO_SURFACE_FORMAT,
+			view_formats: &[],
+		});
+		let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+
+		Self { texture, view, size }
+	}
+
+	/// Ensures the texture has the specified size, creating a new one if needed.
+	/// This allows reusing the same texture across frames when the size hasn't changed.
+	pub fn ensure_size(&mut self, device: &wgpu::Device, size: UVec2) {
+		let size = size.max(UVec2::ONE);
+		if self.size == size {
+			return;
+		}
+
+		*self = Self::new(device, size);
+	}
+
+	/// Returns a reference to the texture view for rendering.
+	pub fn view(&self) -> &wgpu::TextureView {
+		&self.view
+	}
+
+	/// Returns a reference to the underlying texture.
+	pub fn texture(&self) -> &wgpu::Texture {
+		&self.texture
+	}
 }
 
 #[cfg(target_family = "wasm")]
@@ -66,60 +112,43 @@ unsafe impl StaticType for Surface {
 const VELLO_SURFACE_FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 
 impl WgpuExecutor {
-	pub async fn render_vello_scene_to_texture(&self, scene: &Scene, size: UVec2, context: &RenderContext, background: Color) -> Result<wgpu::Texture> {
+	pub async fn render_vello_scene_to_texture(&self, scene: &Scene, size: UVec2, context: &RenderContext, background: Option<Color>) -> Result<wgpu::Texture> {
 		let mut output = None;
 		self.render_vello_scene_to_target_texture(scene, size, context, background, &mut output).await?;
 		Ok(output.unwrap().texture)
 	}
+	pub async fn render_vello_scene_to_target_texture(&self, scene: &Scene, size: UVec2, context: &RenderContext, background: Option<Color>, output: &mut Option<TargetTexture>) -> Result<()> {
+		// Initialize (lazily) if this is the first call
+		if output.is_none() {
+			*output = Some(TargetTexture::new(&self.context.device, size));
+		}
 
-	async fn render_vello_scene_to_target_texture(&self, scene: &Scene, size: UVec2, context: &RenderContext, background: Color, output: &mut Option<TargetTexture>) -> Result<()> {
-		let size = size.max(UVec2::ONE);
-		let target_texture = if let Some(target_texture) = output
-			&& target_texture.size == size
-		{
-			target_texture
-		} else {
-			let texture = self.context.device.create_texture(&wgpu::TextureDescriptor {
-				label: None,
-				size: wgpu::Extent3d {
-					width: size.x,
-					height: size.y,
-					depth_or_array_layers: 1,
-				},
-				mip_level_count: 1,
-				sample_count: 1,
-				dimension: wgpu::TextureDimension::D2,
-				usage: wgpu::TextureUsages::STORAGE_BINDING | wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_SRC,
-				format: VELLO_SURFACE_FORMAT,
-				view_formats: &[],
-			});
-			let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
-			*output = Some(TargetTexture { texture, view, size });
-			output.as_mut().unwrap()
-		};
+		if let Some(target_texture) = output.as_mut() {
+			target_texture.ensure_size(&self.context.device, size);
 
-		let [r, g, b, a] = background.to_rgba8_srgb();
-		let render_params = RenderParams {
-			base_color: vello::peniko::Color::from_rgba8(r, g, b, a),
-			width: size.x,
-			height: size.y,
-			antialiasing_method: AaConfig::Msaa16,
-		};
+			let [r, g, b, a] = background.unwrap_or(Color::TRANSPARENT).to_rgba8_srgb();
+			let render_params = RenderParams {
+				base_color: vello::peniko::Color::from_rgba8(r, g, b, a),
+				width: size.x,
+				height: size.y,
+				antialiasing_method: AaConfig::Msaa16,
+			};
 
-		{
-			let mut renderer = self.vello_renderer.lock().await;
-			for (image_brush, texture) in context.resource_overrides.iter() {
-				let texture_view = wgpu::TexelCopyTextureInfoBase {
-					texture: texture.clone(),
-					mip_level: 0,
-					origin: Origin3d::ZERO,
-					aspect: TextureAspect::All,
-				};
-				renderer.override_image(&image_brush.image, Some(texture_view));
-			}
-			renderer.render_to_texture(&self.context.device, &self.context.queue, scene, &target_texture.view, &render_params)?;
-			for (image_brush, _) in context.resource_overrides.iter() {
-				renderer.override_image(&image_brush.image, None);
+			{
+				let mut renderer = self.vello_renderer.lock().await;
+				for (image_brush, texture) in context.resource_overrides.iter() {
+					let texture_view = wgpu::TexelCopyTextureInfoBase {
+						texture: texture.clone(),
+						mip_level: 0,
+						origin: Origin3d::ZERO,
+						aspect: TextureAspect::All,
+					};
+					renderer.override_image(&image_brush.image, Some(texture_view));
+				}
+				renderer.render_to_texture(&self.context.device, &self.context.queue, scene, target_texture.view(), &render_params)?;
+				for (image_brush, _) in context.resource_overrides.iter() {
+					renderer.override_image(&image_brush.image, None);
+				}
 			}
 		}
 		Ok(())

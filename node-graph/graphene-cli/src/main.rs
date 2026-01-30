@@ -97,9 +97,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
 		Command::Compile { ref document, .. } => document,
 		Command::Export { ref document, .. } => document,
 		Command::ListNodeIdentifiers => {
-			let mut ids: Vec<_> = graphene_std::registry::NODE_METADATA.lock().unwrap().keys().cloned().collect();
-			ids.sort_by_key(|x| x.as_str().to_string());
-			for id in ids {
+			let mut nodes: Vec<_> = graphene_std::registry::NODE_METADATA.lock().unwrap().keys().cloned().collect();
+			nodes.sort_by_key(|x| x.as_str().to_string());
+			for id in nodes {
 				println!("{}", id.as_str());
 			}
 			return Ok(());
@@ -108,7 +108,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 	let document_string = std::fs::read_to_string(document_path).expect("Failed to read document");
 
-	log::info!("creating gpu context",);
+	log::info!("Creating GPU context");
 	let mut application_io = block_on(WasmApplicationIo::new_offscreen());
 
 	if let Command::Export { image: Some(ref image_path), .. } = app.command {
@@ -164,7 +164,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 			let executor = create_executor(proto_graph)?;
 
 			// Perform export
-			export::export_document(&executor, wgpu_executor_ref, output, file_type, scale, width, height, transparent).await?;
+			export::export_document(&executor, wgpu_executor_ref, output, file_type, scale, (width, height), transparent).await?;
 		}
 		_ => unreachable!("All other commands should be handled before this match statement is run"),
 	}

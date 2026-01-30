@@ -1,4 +1,6 @@
 node_modules/
 public/
-static/
+generated/
+static/*
 !static/js/
+content/learn/node-catalog

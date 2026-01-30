@@ -40,6 +40,9 @@ export function createTooltipState(editor: Editor) {
 		// Before we schedule a new future tooltip appearance, we clear the existing one
 		if (tooltipTimeout) clearTimeout(tooltipTimeout);
 
+		// Don't show tooltips while mouse buttons are pressed
+		if (e.buttons !== 0) return;
+
 		// Schedule the tooltip to appear at this cursor position after a delay
 		tooltipTimeout = setTimeout(() => {
 			update((state) => {

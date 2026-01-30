@@ -2,9 +2,9 @@ use graph_craft::wasm_application_io::WasmApplicationIo;
 use graphite_editor::application::{Editor, Environment, Host, Platform};
 use graphite_editor::messages::prelude::{FrontendMessage, Message};
 
-// TODO: Remove usage of this reexport in desktop create and remove this line
-pub use graphene_std::Color;
+pub use graphite_editor::consts::FILE_EXTENSION;
 
+pub use wgpu_executor::TargetTexture;
 pub use wgpu_executor::WgpuContext;
 pub use wgpu_executor::WgpuContextBuilder;
 pub use wgpu_executor::WgpuExecutor;

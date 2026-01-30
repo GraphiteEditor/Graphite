@@ -678,7 +678,15 @@ export class UpdateDocumentRulers extends JsMessage {
 	readonly visible!: boolean;
 }
 
+export class EyedropperPreviewImage {
+	readonly data!: Uint8Array;
+	readonly width!: number;
+	readonly height!: number;
+}
+
 export class UpdateEyedropperSamplingState extends JsMessage {
+	readonly image!: EyedropperPreviewImage | undefined;
+
 	@TupleToVec2
 	readonly mousePosition!: XY | undefined;
 
@@ -745,7 +753,7 @@ export class TriggerFetchAndOpenDocument extends JsMessage {
 	readonly filename!: string;
 }
 
-export class TriggerOpenDocument extends JsMessage {}
+export class TriggerOpen extends JsMessage {}
 
 export class TriggerImport extends JsMessage {}
 
@@ -1666,14 +1674,16 @@ export const messageMakers: Record<string, MessageMaker> = {
 	DisplayDialogDismiss,
 	DisplayDialogPanic,
 	DisplayEditableTextbox,
-	DisplayEditableTextboxUpdateFontData,
 	DisplayEditableTextboxTransform,
+	DisplayEditableTextboxUpdateFontData,
 	DisplayRemoveEditableTextbox,
-	SendUIMetadata,
-	SendShortcutFullscreen,
 	SendShortcutAltClick,
+	SendShortcutFullscreen,
 	SendShortcutShiftClick,
+	SendUIMetadata,
 	TriggerAboutGraphiteLocalizedCommitDate,
+	TriggerClipboardRead,
+	TriggerClipboardWrite,
 	TriggerDisplayThirdPartyLicensesDialog,
 	TriggerExportImage,
 	TriggerFetchAndOpenDocument,
@@ -1683,7 +1693,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerLoadFirstAutoSaveDocument,
 	TriggerLoadPreferences,
 	TriggerLoadRestAutoSaveDocuments,
-	TriggerOpenDocument,
+	TriggerOpen,
 	TriggerOpenLaunchDocuments,
 	TriggerPersistenceRemoveDocument,
 	TriggerPersistenceWriteDocument,
@@ -1691,11 +1701,9 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerSaveDocument,
 	TriggerSaveFile,
 	TriggerSavePreferences,
-	TriggerTextCommit,
-	TriggerClipboardRead,
-	TriggerClipboardWrite,
 	TriggerSelectionRead,
 	TriggerSelectionWrite,
+	TriggerTextCommit,
 	TriggerVisitLink,
 	UpdateActiveDocument,
 	UpdateBox,
@@ -1714,6 +1722,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateDocumentScrollbars,
 	UpdateExportReorderIndex,
 	UpdateEyedropperSamplingState,
+	UpdateFullscreen,
 	UpdateGraphFadeArtwork,
 	UpdateGraphViewOverlay,
 	UpdateImportReorderIndex,
@@ -1724,6 +1733,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateLayersPanelControlBarRightLayout,
 	UpdateLayersPanelState,
 	UpdateLayerWidths,
+	UpdateMaximized,
 	UpdateMenuBarLayout,
 	UpdateMouseCursor,
 	UpdateNodeGraphControlBarLayout,
@@ -1735,22 +1745,20 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateNodeThumbnail,
 	UpdateOpenDocumentsList,
 	UpdatePlatform,
-	UpdateMaximized,
-	UpdateFullscreen,
-	WindowPointerLockMove,
-	WindowFullscreen,
 	UpdatePropertiesPanelLayout,
 	UpdatePropertiesPanelState,
 	UpdateStatusBarHintsLayout,
 	UpdateStatusBarInfoLayout,
 	UpdateToolOptionsLayout,
 	UpdateToolShelfLayout,
+	UpdateUIScale,
 	UpdateViewportHolePunch,
 	UpdateViewportPhysicalBounds,
-	UpdateUIScale,
 	UpdateVisibleNodes,
 	UpdateWelcomeScreenButtonsLayout,
 	UpdateWirePathInProgress,
 	UpdateWorkingColorsLayout,
+	WindowFullscreen,
+	WindowPointerLockMove,
 } as const;
 export type JsMessageType = keyof typeof messageMakers;

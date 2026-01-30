@@ -6,6 +6,7 @@ import { type DialogState } from "@graphite/state-providers/dialog";
 import { type DocumentState } from "@graphite/state-providers/document";
 import { type FullscreenState } from "@graphite/state-providers/fullscreen";
 import { type PortfolioState } from "@graphite/state-providers/portfolio";
+import { pasteFile } from "@graphite/utility-functions/files";
 import { makeKeyboardModifiersBitfield, textInputCleanup, getLocalizedScanCode } from "@graphite/utility-functions/keyboard-entry";
 import { isDesktop, operatingSystem } from "@graphite/utility-functions/platform";
 import { extractPixelData } from "@graphite/utility-functions/rasterization";
@@ -92,7 +93,13 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 		// Don't redirect tab or enter if not in canvas (to allow navigating elements)
 		potentiallyRestoreCanvasFocus(e);
-		if (!canvasFocused && !targetIsTextField(e.target || undefined) && ["Tab", "Enter", "NumpadEnter", "Space", "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowUp"].includes(key)) return false;
+		if (
+			!canvasFocused &&
+			!targetIsTextField(e.target || undefined) &&
+			["Tab", "Enter", "NumpadEnter", "Space", "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowUp"].includes(key) &&
+			!(e.ctrlKey || e.metaKey || e.altKey)
+		)
+			return false;
 
 		// Don't redirect if a MenuList is open
 		if (window.document.querySelector("[data-floating-menu-content]")) return false;
@@ -312,32 +319,8 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		e.preventDefault();
 
 		Array.from(dataTransfer.items).forEach(async (item) => {
-			if (item.type === "text/plain") {
-				item.getAsString((text) => {
-					editor.handle.pasteText(text);
-				});
-			}
-
-			const file = item.getAsFile();
-			if (!file) return;
-
-			if (file.type.includes("svg")) {
-				const text = await file.text();
-				editor.handle.pasteSvg(file.name, text);
-				return;
-			}
-
-			if (file.type.startsWith("image")) {
-				const imageData = await extractPixelData(file);
-				editor.handle.pasteImage(file.name, new Uint8Array(imageData.data), imageData.width, imageData.height);
-			}
-
-			const graphiteFileSuffix = "." + editor.handle.fileExtension();
-			if (file.name.endsWith(graphiteFileSuffix)) {
-				const content = await file.text();
-				const documentName = file.name.slice(0, -graphiteFileSuffix.length);
-				editor.handle.openDocumentFile(documentName, content);
-			}
+			if (item.type === "text/plain") item.getAsString((text) => editor.handle.pasteText(text));
+			await pasteFile(item, editor);
 		});
 	}
 

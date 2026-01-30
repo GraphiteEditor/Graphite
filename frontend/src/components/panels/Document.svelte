@@ -19,8 +19,9 @@
 	} from "@graphite/messages";
 	import type { AppWindowState } from "@graphite/state-providers/app-window";
 	import type { DocumentState } from "@graphite/state-providers/document";
+	import { pasteFile } from "@graphite/utility-functions/files";
 	import { textInputCleanup } from "@graphite/utility-functions/keyboard-entry";
-	import { extractPixelData, rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
+	import { rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
 	import { setupViewportResizeObserver, cleanupViewportResizeObserver } from "@graphite/utility-functions/viewports";
 
 	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "@graphite/components/floating-menus/EyedropperPreview.svelte";
@@ -130,36 +131,14 @@
 	})($document.toolShelfLayout[0]);
 
 	function dropFile(e: DragEvent) {
-		const { dataTransfer } = e;
-		const [x, y] = e.target instanceof Element && e.target.closest("[data-viewport]") ? [e.clientX, e.clientY] : [undefined, undefined];
-		if (!dataTransfer) return;
+		if (!e.dataTransfer) return;
+
+		let mouse: [number, number] | undefined = undefined;
+		if (e.target instanceof Element && e.target.closest("[data-viewport]")) mouse = [e.clientX, e.clientY];
 
 		e.preventDefault();
 
-		Array.from(dataTransfer.items).forEach(async (item) => {
-			const file = item.getAsFile();
-			if (!file) return;
-
-			if (file.type.includes("svg")) {
-				const svgData = await file.text();
-				editor.handle.pasteSvg(file.name, svgData, x, y);
-				return;
-			}
-
-			if (file.type.startsWith("image")) {
-				const imageData = await extractPixelData(file);
-				editor.handle.pasteImage(file.name, new Uint8Array(imageData.data), imageData.width, imageData.height, x, y);
-				return;
-			}
-
-			const graphiteFileSuffix = "." + editor.handle.fileExtension();
-			if (file.name.endsWith(graphiteFileSuffix)) {
-				const content = await file.text();
-				const documentName = file.name.slice(0, -graphiteFileSuffix.length);
-				editor.handle.openDocumentFile(documentName, content);
-				return;
-			}
-		});
+		Array.from(e.dataTransfer.items).forEach(async (item) => await pasteFile(item, editor, mouse));
 	}
 
 	function panCanvasX(newValue: number) {
@@ -233,7 +212,13 @@
 		});
 	}
 
-	export async function updateEyedropperSamplingState(mousePosition: XY | undefined, colorPrimary: string, colorSecondary: string): Promise<[number, number, number] | undefined> {
+	export async function updateEyedropperSamplingState(
+		// `image` is currently only used for Vello renders
+		image: ImageData | undefined,
+		mousePosition: XY | undefined,
+		colorPrimary: string,
+		colorSecondary: string,
+	): Promise<[number, number, number] | undefined> {
 		if (mousePosition === undefined) {
 			cursorEyedropper = false;
 			return undefined;
@@ -245,40 +230,52 @@
 		cursorLeft = mousePosition.x;
 		cursorTop = mousePosition.y;
 
-		// This works nearly perfectly, but sometimes at odd DPI scale factors like 1.25, the anti-aliasing color can yield slightly incorrect colors (potential room for future improvement)
-		const dpiFactor = window.devicePixelRatio;
-		const [width, height] = [canvasWidth, canvasHeight];
+		let preview = image;
+		if (!preview) {
+			// This works nearly perfectly, but sometimes at odd DPI scale factors like 1.25, the anti-aliasing color can yield slightly incorrect colors (potential room for future improvement)
+			const dpiFactor = window.devicePixelRatio;
+			const [width, height] = [canvasWidth, canvasHeight];
 
-		const outsideArtboardsColor = getComputedStyle(window.document.documentElement).getPropertyValue("--color-2-mildblack");
-		const outsideArtboards = `<rect x="0" y="0" width="100%" height="100%" fill="${outsideArtboardsColor}" />`;
+			const outsideArtboardsColor = getComputedStyle(window.document.documentElement).getPropertyValue("--color-2-mildblack");
+			const outsideArtboards = `<rect x="0" y="0" width="100%" height="100%" fill="${outsideArtboardsColor}" />`;
 
-		const svg = `
-			<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">${outsideArtboards}${artworkSvg}</svg>
-			`.trim();
+			const svg = `
+				<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">${outsideArtboards}${artworkSvg}</svg>
+				`.trim();
 
-		if (!rasterizedCanvas) {
-			rasterizedCanvas = await rasterizeSVGCanvas(svg, width * dpiFactor, height * dpiFactor);
-			rasterizedContext = rasterizedCanvas.getContext("2d", { willReadFrequently: true }) || undefined;
+			if (!rasterizedCanvas) {
+				rasterizedCanvas = await rasterizeSVGCanvas(svg, width * dpiFactor, height * dpiFactor);
+				rasterizedContext = rasterizedCanvas.getContext("2d", { willReadFrequently: true }) || undefined;
+			}
+			if (!rasterizedContext) return undefined;
+
+			preview = rasterizedContext.getImageData(
+				mousePosition.x * dpiFactor - (ZOOM_WINDOW_DIMENSIONS - 1) / 2,
+				mousePosition.y * dpiFactor - (ZOOM_WINDOW_DIMENSIONS - 1) / 2,
+				ZOOM_WINDOW_DIMENSIONS,
+				ZOOM_WINDOW_DIMENSIONS,
+			);
+			if (!preview) return undefined;
 		}
-		if (!rasterizedContext) return undefined;
 
-		const rgbToHex = (r: number, g: number, b: number): string => `#${[r, g, b].map((x) => x.toString(16).padStart(2, "0")).join("")}`;
+		const centerPixel = (() => {
+			const { width, height, data } = preview;
+			const x = Math.floor(width / 2);
+			const y = Math.floor(height / 2);
+			const index = (y * width + x) * 4;
+			return {
+				r: data[index],
+				g: data[index + 1],
+				b: data[index + 2],
+			};
+		})();
+		const hex = [centerPixel.r, centerPixel.g, centerPixel.b].map((x) => x.toString(16).padStart(2, "0")).join("");
+		const rgb: [number, number, number] = [centerPixel.r / 255, centerPixel.g / 255, centerPixel.b / 255];
 
-		const pixel = rasterizedContext.getImageData(mousePosition.x * dpiFactor, mousePosition.y * dpiFactor, 1, 1).data;
-		const hex = rgbToHex(pixel[0], pixel[1], pixel[2]);
-		const rgb: [number, number, number] = [pixel[0] / 255, pixel[1] / 255, pixel[2] / 255];
-
-		cursorEyedropperPreviewColorChoice = hex;
+		cursorEyedropperPreviewColorChoice = "#" + hex;
 		cursorEyedropperPreviewColorPrimary = colorPrimary;
 		cursorEyedropperPreviewColorSecondary = colorSecondary;
-
-		const previewRegion = rasterizedContext.getImageData(
-			mousePosition.x * dpiFactor - (ZOOM_WINDOW_DIMENSIONS - 1) / 2,
-			mousePosition.y * dpiFactor - (ZOOM_WINDOW_DIMENSIONS - 1) / 2,
-			ZOOM_WINDOW_DIMENSIONS,
-			ZOOM_WINDOW_DIMENSIONS,
-		);
-		cursorEyedropperPreviewImageData = previewRegion;
+		cursorEyedropperPreviewImageData = preview;
 
 		return rgb;
 	}
@@ -399,7 +396,7 @@
 		canvasWidth = Math.ceil(parseFloat(getComputedStyle(viewport).width));
 		canvasHeight = Math.ceil(parseFloat(getComputedStyle(viewport).height));
 
-		devicePixelRatio = window.devicePixelRatio || 1.0;
+		devicePixelRatio = window.devicePixelRatio || 1;
 
 		// Resize the rulers
 		rulerHorizontal?.resize();
@@ -434,8 +431,9 @@
 		editor.subscriptions.subscribeJsMessage(UpdateEyedropperSamplingState, async (data) => {
 			await tick();
 
-			const { mousePosition, primaryColor, secondaryColor, setColorChoice } = data;
-			const rgb = await updateEyedropperSamplingState(mousePosition, primaryColor, secondaryColor);
+			const { image, mousePosition, primaryColor, secondaryColor, setColorChoice } = data;
+			const imageData = image !== undefined ? new ImageData(new Uint8ClampedArray(image.data), image.width, image.height) : undefined;
+			const rgb = await updateEyedropperSamplingState(imageData, mousePosition, primaryColor, secondaryColor);
 
 			if (setColorChoice && rgb) {
 				if (setColorChoice === "Primary") editor.handle.updatePrimaryColor(...rgb, 1);

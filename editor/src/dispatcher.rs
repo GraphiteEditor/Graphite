@@ -232,6 +232,7 @@ impl Dispatcher {
 				Message::MenuBar(message) => {
 					let menu_bar_message_handler = &mut self.message_handlers.menu_bar_message_handler;
 
+					menu_bar_message_handler.focus_document = self.message_handlers.portfolio_message_handler.focus_document;
 					menu_bar_message_handler.data_panel_open = self.message_handlers.portfolio_message_handler.data_panel_open;
 					menu_bar_message_handler.layers_panel_open = self.message_handlers.portfolio_message_handler.layers_panel_open;
 					menu_bar_message_handler.properties_panel_open = self.message_handlers.portfolio_message_handler.properties_panel_open;
@@ -571,10 +572,9 @@ mod test {
 				"Demo artwork '{document_name}' has more than 1 line (remember to open and re-save it in Graphite)",
 			);
 
-			let responses = editor.editor.handle_message(PortfolioMessage::OpenDocumentFile {
-				document_name: Some(document_name.to_string()),
-				document_path: None,
-				document_serialized_content,
+			let responses = editor.editor.handle_message(PortfolioMessage::OpenFile {
+				path: file_name.into(),
+				content: document_serialized_content.bytes().collect(),
 			});
 
 			// Check if the graph renders

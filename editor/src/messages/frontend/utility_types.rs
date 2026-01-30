@@ -62,3 +62,10 @@ pub enum ExportBounds {
 	Selection,
 	Artboard(LayerNodeIdentifier),
 }
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct EyedropperPreviewImage {
+	pub data: Vec<u8>,
+	pub width: u32,
+	pub height: u32,
+}

@@ -5,6 +5,7 @@
 
 	import type { Editor } from "@graphite/editor";
 	import type { FrontendGraphInput, FrontendGraphOutput, FrontendNode } from "@graphite/messages";
+	import type { DocumentState } from "@graphite/state-providers/document";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 
 	import NodeCatalog from "@graphite/components/floating-menus/NodeCatalog.svelte";
@@ -20,11 +21,15 @@
 
 	const editor = getContext<Editor>("editor");
 	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
+	const document = getContext<DocumentState>("document");
 
 	let graph: HTMLDivElement | undefined;
 
 	$: gridSpacing = calculateGridSpacing($nodeGraph.transform.scale);
 	$: gridDotRadius = 1 + Math.floor($nodeGraph.transform.scale - 0.5 + 0.001) / 2;
+
+	// Close the context menu when the graph view overlay is closed
+	$: if (!$document.graphViewOverlayOpen) nodeGraph.closeContextMenu();
 
 	let inputElement: HTMLInputElement;
 	let hoveringImportIndex: number | undefined = undefined;

@@ -1,5 +1,3 @@
-use graphene_std::Color;
-use graphene_std::raster::Image;
 use graphite_editor::messages::clipboard::utility_types::ClipboardContentRaw;
 use graphite_editor::messages::prelude::*;
 
@@ -14,9 +12,9 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 		DesktopWrapperMessage::Input(message) => {
 			dispatcher.queue_editor_message(EditorMessage::InputPreprocessor(message));
 		}
-		DesktopWrapperMessage::OpenFileDialogResult { path, content, context } => match context {
-			OpenFileDialogContext::Document => {
-				dispatcher.queue_desktop_wrapper_message(DesktopWrapperMessage::OpenDocument { path, content });
+		DesktopWrapperMessage::FileDialogResult { path, content, context } => match context {
+			OpenFileDialogContext::Open => {
+				dispatcher.queue_desktop_wrapper_message(DesktopWrapperMessage::OpenFile { path, content });
 			}
 			OpenFileDialogContext::Import => {
 				dispatcher.queue_desktop_wrapper_message(DesktopWrapperMessage::ImportFile { path, content });
@@ -35,78 +33,11 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 			}
 		},
 		DesktopWrapperMessage::OpenFile { path, content } => {
-			let extension = path.extension().and_then(|s| s.to_str()).unwrap_or_default().to_lowercase();
-			match extension.as_str() {
-				"graphite" => {
-					dispatcher.queue_desktop_wrapper_message(DesktopWrapperMessage::OpenDocument { path, content });
-				}
-				_ => {
-					dispatcher.queue_desktop_wrapper_message(DesktopWrapperMessage::ImportFile { path, content });
-				}
-			}
-		}
-		DesktopWrapperMessage::OpenDocument { path, content } => {
-			let Ok(content) = String::from_utf8(content) else {
-				tracing::warn!("Document file is invalid: {}", path.display());
-				return;
-			};
-
-			let message = PortfolioMessage::OpenDocumentFile {
-				document_name: None,
-				document_path: Some(path),
-				document_serialized_content: content,
-			};
+			let message = PortfolioMessage::OpenFile { path, content };
 			dispatcher.queue_editor_message(message);
 		}
 		DesktopWrapperMessage::ImportFile { path, content } => {
-			let extension = path.extension().and_then(|s| s.to_str()).unwrap_or_default().to_lowercase();
-			match extension.as_str() {
-				"svg" => {
-					dispatcher.queue_desktop_wrapper_message(DesktopWrapperMessage::ImportSvg { path, content });
-				}
-				_ => {
-					dispatcher.queue_desktop_wrapper_message(DesktopWrapperMessage::ImportImage { path, content });
-				}
-			}
-		}
-		DesktopWrapperMessage::ImportSvg { path, content } => {
-			let Ok(content) = String::from_utf8(content) else {
-				tracing::warn!("Svg file is invalid: {}", path.display());
-				return;
-			};
-
-			let message = PortfolioMessage::PasteSvg {
-				name: path.file_stem().map(|s| s.to_string_lossy().to_string()),
-				svg: content,
-				mouse: None,
-				parent_and_insert_index: None,
-			};
-			dispatcher.queue_editor_message(message);
-		}
-		DesktopWrapperMessage::ImportImage { path, content } => {
-			let name = path.file_stem().and_then(|s| s.to_str()).map(|s| s.to_string());
-			let extension = path.extension().and_then(|s| s.to_str()).unwrap_or_default().to_lowercase();
-			let Some(image_format) = image::ImageFormat::from_extension(&extension) else {
-				tracing::warn!("Unsupported file type: {}", path.display());
-				return;
-			};
-			let reader = image::ImageReader::with_format(std::io::Cursor::new(content), image_format);
-			let Ok(image) = reader.decode() else {
-				tracing::error!("Failed to decode image: {}", path.display());
-				return;
-			};
-			let width = image.width();
-			let height = image.height();
-
-			// TODO: Handle Image formats with more than 8 bits per channel
-			let image_data = image.to_rgba8();
-			let image = Image::<Color>::from_image_data(image_data.as_raw(), width, height);
-			let message = PortfolioMessage::PasteImage {
-				name,
-				image,
-				mouse: None,
-				parent_and_insert_index: None,
-			};
+			let message = PortfolioMessage::ImportFile { path, content };
 			dispatcher.queue_editor_message(message);
 		}
 		DesktopWrapperMessage::PollNodeGraphEvaluation => dispatcher.poll_node_graph_evaluation(),

@@ -856,7 +856,7 @@ fn angle_to<T: ToPosition, U: ToPosition>(
 	#[expose]
 	#[implementations(DVec2, DVec2, DAffine2, DAffine2)]
 	target: U,
-	/// Whether the resulting angle should be given in as radians instead of degrees.
+	/// Whether the resulting angle should be given in radians instead of degrees.
 	radians: bool,
 ) -> f64 {
 	let from = observer.to_position();

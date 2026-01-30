@@ -78,7 +78,6 @@ impl<H: CefEventHandler> ImplDisplayHandler for DisplayHandlerImpl<H> {
 			CT_PROGRESS => CursorIcon::Progress,
 			CT_NODROP => CursorIcon::NoDrop,
 			CT_COPY => CursorIcon::Copy,
-			CT_NONE => CursorIcon::Default,
 			CT_NOTALLOWED => CursorIcon::NotAllowed,
 			CT_ZOOMIN => CursorIcon::ZoomIn,
 			CT_ZOOMOUT => CursorIcon::ZoomOut,
@@ -91,6 +90,10 @@ impl<H: CefEventHandler> ImplDisplayHandler for DisplayHandlerImpl<H> {
 			CT_DND_COPY => CursorIcon::Copy,
 			CT_DND_LINK => CursorIcon::Alias,
 			CT_NUM_VALUES => CursorIcon::Default,
+			CT_NONE => {
+				self.event_handler.cursor_change(crate::window::Cursor::None);
+				return 1; // We handled the cursor change.
+			}
 			_ => CursorIcon::Default,
 		};
 

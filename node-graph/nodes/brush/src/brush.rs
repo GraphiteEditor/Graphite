@@ -184,7 +184,7 @@ pub fn blend_with_mode(background: TableRow<Raster<CPU>>, foreground: TableRow<R
 
 /// Generates the brush strokes painted with the Brush tool as a raster image.
 /// If an input image is supplied, strokes are drawn on top of it, expanding bounds as needed.
-#[node_macro::node(category("Raster"))]
+#[node_macro::node(category(""))]
 async fn brush(
 	_: impl Ctx,
 	/// Optional raster content that may be drawn onto.

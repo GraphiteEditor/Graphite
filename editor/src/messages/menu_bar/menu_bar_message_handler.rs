@@ -21,6 +21,7 @@ pub struct MenuBarMessageHandler {
 	pub data_panel_open: bool,
 	pub layers_panel_open: bool,
 	pub properties_panel_open: bool,
+	pub focus_document: bool,
 }
 
 #[message_handler_data]
@@ -120,8 +121,8 @@ impl LayoutHolder for MenuBarMessageHandler {
 						MenuListEntry::new("Open…")
 							.label("Open…")
 							.icon("Folder")
-							.tooltip_shortcut(action_shortcut!(PortfolioMessageDiscriminant::OpenDocument))
-							.on_commit(|_| PortfolioMessage::OpenDocument.into()),
+							.tooltip_shortcut(action_shortcut!(PortfolioMessageDiscriminant::Open))
+							.on_commit(|_| PortfolioMessage::Open.into()),
 						MenuListEntry::new("Open Demo Artwork…")
 							.label("Open Demo Artwork…")
 							.icon("Image")
@@ -161,7 +162,8 @@ impl LayoutHolder for MenuBarMessageHandler {
 							.label("Import…")
 							.icon("FileImport")
 							.tooltip_shortcut(action_shortcut!(PortfolioMessageDiscriminant::Import))
-							.on_commit(|_| PortfolioMessage::Import.into()),
+							.on_commit(|_| PortfolioMessage::Import.into())
+							.disabled(no_active_document),
 						MenuListEntry::new("Export…")
 							.label("Export…")
 							.icon("FileExport")
@@ -627,23 +629,31 @@ impl LayoutHolder for MenuBarMessageHandler {
 							.icon("FullscreenEnter")
 							.tooltip_shortcut(action_shortcut!(AppWindowMessageDiscriminant::Fullscreen))
 							.on_commit(|_| AppWindowMessage::Fullscreen.into()),
+						MenuListEntry::new("Focus Document")
+							.label("Focus Document")
+							.icon(if self.focus_document { "CheckboxChecked" } else { "CheckboxUnchecked" })
+							.tooltip_shortcut(action_shortcut!(PortfolioMessageDiscriminant::ToggleFocusDocument))
+							.on_commit(|_| PortfolioMessage::ToggleFocusDocument.into()),
 					],
 					vec![
 						MenuListEntry::new("Properties")
 							.label("Properties")
 							.icon(if self.properties_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" })
 							.tooltip_shortcut(action_shortcut!(PortfolioMessageDiscriminant::TogglePropertiesPanelOpen))
-							.on_commit(|_| PortfolioMessage::TogglePropertiesPanelOpen.into()),
+							.on_commit(|_| PortfolioMessage::TogglePropertiesPanelOpen.into())
+							.disabled(self.focus_document),
 						MenuListEntry::new("Layers")
 							.label("Layers")
 							.icon(if self.layers_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" })
 							.tooltip_shortcut(action_shortcut!(PortfolioMessageDiscriminant::ToggleLayersPanelOpen))
-							.on_commit(|_| PortfolioMessage::ToggleLayersPanelOpen.into()),
+							.on_commit(|_| PortfolioMessage::ToggleLayersPanelOpen.into())
+							.disabled(self.focus_document),
 						MenuListEntry::new("Data")
 							.label("Data")
 							.icon(if self.data_panel_open { "CheckboxChecked" } else { "CheckboxUnchecked" })
 							.tooltip_shortcut(action_shortcut!(PortfolioMessageDiscriminant::ToggleDataPanelOpen))
-							.on_commit(|_| PortfolioMessage::ToggleDataPanelOpen.into()),
+							.on_commit(|_| PortfolioMessage::ToggleDataPanelOpen.into())
+							.disabled(self.focus_document),
 					],
 				])
 				.widget_instance(),

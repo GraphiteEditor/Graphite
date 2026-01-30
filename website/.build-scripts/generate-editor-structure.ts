@@ -1,3 +1,5 @@
+// TODO: Port this script to Rust as part of `tools/editor-message-tree/src/main.rs`
+
 /* eslint-disable no-console */
 
 import fs from "fs";

@@ -10,7 +10,7 @@ summary = "Looking back on 2023, we reflect on our significant achievements and 
 reddit = "https://www.reddit.com/r/graphite/comments/18xmoti/blog_post_looking_back_on_2023_and_whats_next/"
 twitter = "https://twitter.com/GraphiteEditor/status/1742576805532577937"
 
-js = ["/js/youtube-embed.js"]
+js = ["/js/component/youtube-embed.js"]
 css = ["/component/youtube-embed.css"]
 +++
 

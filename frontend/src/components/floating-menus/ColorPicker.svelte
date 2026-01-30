@@ -286,9 +286,7 @@
 		const colorToEmit = color || new Color({ h: hue, s: saturation, v: value, a: alpha });
 
 		const stop = gradientSpectrumInputWidget && activeIndex !== undefined && gradient?.atIndex(activeIndex);
-		if (stop && gradientSpectrumInputWidget instanceof SpectrumInput) {
-			stop.color = colorToEmit;
-		}
+		if (stop) stop.color = colorToEmit;
 
 		dispatch("colorOrGradient", gradient || colorToEmit);
 	}
@@ -347,17 +345,17 @@
 
 	function setColorPreset(preset: PresetColors) {
 		dispatch("startHistoryTransaction");
+
 		if (preset === "none") {
 			setNewHSVA(0, 0, 0, 1, true);
 			setColor(new Color("none"));
-			return;
+		} else {
+			const presetColor = new Color(...PURE_COLORS[preset], 1);
+			const hsva = presetColor.toHSVA() || { h: 0, s: 0, v: 0, a: 0 };
+
+			setNewHSVA(hsva.h, hsva.s, hsva.v, hsva.a, false);
+			setColor(presetColor);
 		}
-
-		const presetColor = new Color(...PURE_COLORS[preset], 1);
-		const hsva = presetColor.toHSVA() || { h: 0, s: 0, v: 0, a: 0 };
-
-		setNewHSVA(hsva.h, hsva.s, hsva.v, hsva.a, false);
-		setColor(presetColor);
 	}
 
 	function setNewHSVA(h: number, s: number, v: number, a: number, none: boolean) {
@@ -479,9 +477,7 @@
 					<SpectrumInput
 						{gradient}
 						{disabled}
-						on:gradient={() => {
-							if (gradient) dispatch("colorOrGradient", gradient);
-						}}
+						on:gradient={() => dispatch("colorOrGradient", gradient)}
 						on:activeMarkerIndexChange={gradientActiveMarkerIndexChange}
 						activeMarkerIndex={activeIndex}
 						on:dragging={({ detail }) => (gradientSpectrumDragging = detail)}

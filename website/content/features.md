@@ -3,7 +3,7 @@ title = "Graphite features"
 
 [extra]
 css = ["/page/features.css", "/component/feature-box.css", "/component/feature-icons.css", "/component/youtube-embed.css"]
-js = ["/js/youtube-embed.js"]
+js = ["/js/component/youtube-embed.js"]
 +++
 
 <section>

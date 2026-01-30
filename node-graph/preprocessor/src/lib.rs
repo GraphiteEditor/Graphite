@@ -36,8 +36,8 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 		let id = id.clone();
 
 		let NodeMetadata { fields, .. } = metadata;
-		let Some(implementations) = &node_registry.get(&id) else { continue };
-		let valid_inputs: HashSet<_> = implementations.iter().map(|(_, node_io)| node_io.call_argument.clone()).collect();
+		let Some(implementations) = node_registry.get(&id) else { continue };
+		let valid_call_args: HashSet<_> = implementations.iter().map(|(_, node_io)| node_io.call_argument.clone()).collect();
 		let first_node_io = implementations.first().map(|(_, node_io)| node_io).unwrap_or(const { &NodeIOTypes::empty() });
 		let mut node_io_types = vec![HashSet::new(); fields.len()];
 		for (_, node_io) in implementations.iter() {
@@ -46,7 +46,7 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 			}
 		}
 		let mut input_type = &first_node_io.call_argument;
-		if valid_inputs.len() > 1 {
+		if valid_call_args.len() > 1 {
 			input_type = &const { generic!(D) };
 		}
 
@@ -69,8 +69,8 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 							let input_ty = input.nested_type();
 							let mut inputs = vec![NodeInput::import(input.clone(), i)];
 
-							let into_node_identifier = ProtoNodeIdentifier::with_owned_string(format!("graphene_core::ops::IntoNode<{}>", input_ty.clone()));
-							let convert_node_identifier = ProtoNodeIdentifier::with_owned_string(format!("graphene_core::ops::ConvertNode<{}>", input_ty.clone()));
+							let into_node_identifier = ProtoNodeIdentifier::with_owned_string(format!("graphene_core::ops::IntoNode<{}>", input_ty.identifier_name()));
+							let convert_node_identifier = ProtoNodeIdentifier::with_owned_string(format!("graphene_core::ops::ConvertNode<{}>", input_ty.identifier_name()));
 
 							let proto_node = if into_node_registry.keys().any(|ident: &ProtoNodeIdentifier| ident.as_str() == into_node_identifier.as_str()) {
 								generated_nodes += 1;

@@ -1200,7 +1200,7 @@ async fn separate_subpaths(_: impl Ctx, content: Table<Vector>) -> Table<Vector>
 		.collect()
 }
 
-#[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
 fn instance_vector(ctx: impl Ctx + ExtractVarArgs) -> Table<Vector> {
 	let Ok(var_arg) = ctx.vararg(0) else { return Default::default() };
 	let var_arg = var_arg as &dyn std::any::Any;
@@ -1208,7 +1208,7 @@ fn instance_vector(ctx: impl Ctx + ExtractVarArgs) -> Table<Vector> {
 	var_arg.downcast_ref().cloned().unwrap_or_default()
 }
 
-#[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
 async fn instance_map(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: Table<Vector>, mapped: impl Node<Context<'static>, Output = Table<Vector>>) -> Table<Vector> {
 	let mut rows = Vec::new();
 
@@ -1226,9 +1226,16 @@ async fn instance_map(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: Table<
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn flatten_path<I: 'n + Send>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Vector>)] content: Table<I>) -> Table<Vector>
+async fn flatten_path<T: 'n + Send>(
+	_: impl Ctx,
+	#[implementations(
+		Table<Graphic>,
+		Table<Vector>,
+	)]
+	content: Table<T>,
+) -> Table<Vector>
 where
-	Graphic: From<Table<I>>,
+	Graphic: From<Table<T>>,
 {
 	// NOTE(AdamGerhant):
 	// A node-based solution to support passing through vector data could be a network node with a cache node
@@ -2266,7 +2273,7 @@ async fn count_points(_: impl Ctx, content: Table<Vector>) -> f64 {
 
 /// Retrieves the vec2 position (in local space) of the anchor point at the specified index in table of vector elements.
 /// If no value exists at that index, the position (0, 0) is returned.
-#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+#[node_macro::node(category("Vector: Measure"), path(graphene_core::vector))]
 async fn index_points(
 	_: impl Ctx,
 	/// The vector element or elements containing the anchor points to be retrieved.

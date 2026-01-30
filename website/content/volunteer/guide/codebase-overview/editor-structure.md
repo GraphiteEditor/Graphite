@@ -3,8 +3,8 @@ title = "Editor structure"
 
 [extra]
 order = 1 # Page number after chapter intro
-css = ["/page/developer-guide-editor-structure.css"]
-js = ["/js/developer-guide-editor-structure.js"]
+css = ["/page/contributor-guide/editor-structure.css"]
+js = ["/js/page/contributor-guide/editor-structure.js"]
 +++
 
 The Graphite editor is the application users interact with to create documents. Its code is a single Rust crate that lives below the frontend (web code) and above [Graphene](../../graphene) (the node-based graphics engine). The main business logic of all visual editing is handled by the editor backend. When running in the browser, it is compiled to WebAssembly and passes messages to the frontend.
