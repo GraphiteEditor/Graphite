@@ -20,7 +20,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::{Doc
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, PTZ};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate};
 use crate::messages::portfolio::document::utility_types::nodes::RawBuffer;
-use crate::messages::portfolio::utility_types::{FontCatalog, PanelType, PersistentData};
+use crate::messages::portfolio::utility_types::{PanelType, PersistentData};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_blend_mode, get_fill, get_opacity};
 use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
@@ -36,7 +36,6 @@ use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Raster;
 use graphene_std::subpath::Subpath;
 use graphene_std::table::Table;
-use graphene_std::text::Font;
 use graphene_std::vector::PointId;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::misc::{dvec2_to_point, point_to_dvec2};
@@ -2175,7 +2174,7 @@ impl DocumentMessageHandler {
 	}
 
 	/// Loads all of the fonts in the document.
-	pub fn load_layer_resources(&self, responses: &mut VecDeque<Message>, font_catalog: &FontCatalog) {
+	pub fn load_layer_resources(&self, responses: &mut VecDeque<Message>) {
 		let mut fonts_to_load = HashSet::new();
 
 		for (_, node, _) in self.document_network().recursive_nodes() {
@@ -2187,12 +2186,7 @@ impl DocumentMessageHandler {
 		}
 
 		for font in fonts_to_load {
-			if let Some(style) = font_catalog.find_font_style_in_catalog(&font) {
-				responses.add_front(FrontendMessage::TriggerFontDataLoad {
-					font: Font::new(font.font_family, style.to_named_style()),
-					url: style.url,
-				});
-			}
+			responses.add(PortfolioMessage::LoadFontData { font });
 		}
 	}
 
