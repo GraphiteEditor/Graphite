@@ -205,7 +205,10 @@ fn qr_code(_: impl Ctx, _primary: (), #[default("https://graphite.art")] text: S
 				if qr_code.get_module(x as i32, y as i32) {
 					let corner1 = DVec2::new(x as f64, y as f64);
 					let corner2 = corner1 + DVec2::splat(1.);
-					vector.append_subpath(subpath::Subpath::new_rect(corner1, corner2), false);
+					vector.append_subpath(
+						subpath::Subpath::from_anchors([corner1, DVec2::new(corner2.x, corner1.y), corner2, DVec2::new(corner1.x, corner2.y)], true),
+						false,
+					);
 				}
 			}
 		}
