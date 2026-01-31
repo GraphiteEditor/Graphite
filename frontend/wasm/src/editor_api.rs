@@ -409,6 +409,14 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
+	/// Reorder a document tab to a new position index.
+	#[wasm_bindgen(js_name = reorderDocument)]
+	pub fn reorder_document(&self, document_id: u64, new_index: usize) {
+		let document_id = DocumentId(document_id);
+		let message = PortfolioMessage::ReorderDocument { document_id, new_index };
+		self.dispatch(message);
+	}
+
 	#[wasm_bindgen(js_name = newDocumentDialog)]
 	pub fn new_document_dialog(&self) {
 		let message = DialogMessage::RequestNewDocumentDialog;
