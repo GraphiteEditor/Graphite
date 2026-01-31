@@ -540,6 +540,8 @@ impl Fsm for GradientToolFsmState {
 					responses.add(DocumentMessage::StartTransaction);
 				}
 
+				responses.add(OverlaysMessage::Draw);
+
 				gradient_state
 			}
 			(GradientToolFsmState::Drawing, GradientToolMessage::PointerMove { constrain_axis }) => {
