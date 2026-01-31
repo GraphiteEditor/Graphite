@@ -144,6 +144,7 @@ struct SelectedGradient {
 	transform: DAffine2,
 	gradient: Gradient,
 	dragging: GradientDragTarget,
+	offset: DVec2,
 }
 
 impl SelectedGradient {
@@ -154,6 +155,7 @@ impl SelectedGradient {
 			transform,
 			gradient,
 			dragging: GradientDragTarget::End,
+			offset: DVec2::ZERO,
 		}
 	}
 
@@ -163,6 +165,7 @@ impl SelectedGradient {
 	}
 
 	pub fn update_gradient(&mut self, mut mouse: DVec2, responses: &mut VecDeque<Message>, snap_rotate: bool, gradient_type: GradientType) {
+		mouse += self.offset;
 		self.gradient.gradient_type = gradient_type;
 
 		if snap_rotate && matches!(self.dragging, GradientDragTarget::End | GradientDragTarget::Start) {
@@ -266,7 +269,7 @@ impl Fsm for GradientToolFsmState {
 
 		let ToolMessage::Gradient(event) = event else { return self };
 		match (self, event) {
-			(_, GradientToolMessage::Overlays { context: mut overlay_context }) => {
+			(_state, GradientToolMessage::Overlays { context: mut overlay_context }) => {
 				let selected = tool_data.selected_gradient.as_ref();
 				let mouse = input.mouse.position;
 
@@ -421,6 +424,8 @@ impl Fsm for GradientToolFsmState {
 							// Select the new point
 							selected_gradient.dragging = GradientDragTarget::Step(index);
 
+							selected_gradient.offset = DVec2::ZERO;
+
 							// Update the layer fill
 							selected_gradient.render_gradient(responses);
 
@@ -453,6 +458,7 @@ impl Fsm for GradientToolFsmState {
 								transform,
 								gradient: gradient.clone(),
 								dragging: GradientDragTarget::Step(index),
+								offset: pos - mouse,
 							})
 						}
 					}
@@ -467,6 +473,7 @@ impl Fsm for GradientToolFsmState {
 								transform,
 								gradient: gradient.clone(),
 								dragging: dragging_target,
+								offset: pos - mouse,
 							})
 						}
 					}
@@ -486,6 +493,8 @@ impl Fsm for GradientToolFsmState {
 
 								let mut selected_gradient = SelectedGradient::new(new_gradient, layer, document);
 								selected_gradient.dragging = GradientDragTarget::Step(index);
+								// No offset when inserting a new stop, it should be exactly under the mouse
+								selected_gradient.offset = DVec2::ZERO;
 								selected_gradient.render_gradient(responses);
 								tool_data.selected_gradient = Some(selected_gradient);
 								dragging = true;
@@ -547,6 +556,8 @@ impl Fsm for GradientToolFsmState {
 				];
 				tool_data.auto_panning.setup_by_mouse_position(input, viewport, &messages, responses);
 
+				responses.add(OverlaysMessage::Draw);
+
 				GradientToolFsmState::Drawing
 			}
 			(GradientToolFsmState::Drawing, GradientToolMessage::PointerOutsideViewport { .. }) => {
@@ -570,7 +581,7 @@ impl Fsm for GradientToolFsmState {
 				state
 			}
 			(GradientToolFsmState::Drawing, GradientToolMessage::PointerUp) => {
-				input.mouse.finish_transaction(tool_data.drag_start, responses);
+				responses.add(DocumentMessage::EndTransaction);
 				tool_data.snap_manager.cleanup(responses);
 				let was_dragging = tool_data.selected_gradient.is_some();
 
