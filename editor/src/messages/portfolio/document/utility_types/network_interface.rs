@@ -1195,29 +1195,11 @@ impl NodeNetworkInterface {
 
 		let root_artwork_bounds = self.document_metadata().bounding_box_document(LayerNodeIdentifier::ROOT_PARENT);
 
-		let non_layer_export_bounds = self
-			.document_network()
-			.exports
-			.iter()
-			.filter_map(|export| {
-				if let NodeInput::Node { node_id, .. } = export {
-					if !self.is_layer(node_id, &[]) {
-						return self.document_metadata().bounding_box_document(LayerNodeIdentifier::new_unchecked(*node_id));
-					}
-				}
-				None
-			})
-			.reduce(Quad::combine_bounds);
-
-		match (all_layers_bounds, root_artwork_bounds, non_layer_export_bounds) {
-			(Some(a), Some(b), Some(c)) => Some(Quad::combine_bounds(Quad::combine_bounds(a, b), c)),
-			(Some(a), Some(b), None) => Some(Quad::combine_bounds(a, b)),
-			(Some(a), None, Some(c)) => Some(Quad::combine_bounds(a, c)),
-			(None, Some(b), Some(c)) => Some(Quad::combine_bounds(b, c)),
-			(Some(a), None, None) => Some(a),
-			(None, Some(b), None) => Some(b),
-			(None, None, Some(c)) => Some(c),
-			(None, None, None) => None,
+		match (all_layers_bounds, root_artwork_bounds) {
+			(Some(a), Some(b)) => Some(Quad::combine_bounds(a, b)),
+			(Some(a), None) => Some(a),
+			(None, Some(b)) => Some(b),
+			(None, None) => None,
 		}
 	}
 
