@@ -84,7 +84,6 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 		PointerUp,
 		PointerMove,
 		Abort,
-		InsertStop,
 		DeleteStop,
 	);
 }
