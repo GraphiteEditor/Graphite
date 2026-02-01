@@ -300,14 +300,14 @@ impl Fsm for GradientToolFsmState {
 					let end_hex = stops.last().map(|(_, c)| color_to_hex(*c));
 
 					overlay_context.line(start, end, None, None);
-					overlay_context.gradient_handle(start, dragging == Some(GradientDragTarget::Start), start_hex.as_deref());
-					overlay_context.gradient_handle(end, dragging == Some(GradientDragTarget::End), end_hex.as_deref());
+					overlay_context.gradient_color_stop(start, dragging == Some(GradientDragTarget::Start), start_hex.as_deref());
+					overlay_context.gradient_color_stop(end, dragging == Some(GradientDragTarget::End), end_hex.as_deref());
 
 					for (index, (position, color)) in stops.clone().into_iter().enumerate() {
 						if position.abs() < f64::EPSILON * 1000. || (1. - position).abs() < f64::EPSILON * 1000. {
 							continue;
 						}
-						overlay_context.gradient_handle(start.lerp(end, position), dragging == Some(GradientDragTarget::Step(index)), Some(&color_to_hex(color)));
+						overlay_context.gradient_color_stop(start.lerp(end, position), dragging == Some(GradientDragTarget::Step(index)), Some(&color_to_hex(color)));
 					}
 
 					let distance = (end - start).angle_to(mouse - start).sin() * (mouse - start).length();

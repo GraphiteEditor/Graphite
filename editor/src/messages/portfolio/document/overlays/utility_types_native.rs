@@ -1,7 +1,7 @@
 use crate::consts::{
-	ARC_SWEEP_GIZMO_RADIUS, COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_50, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, COLOR_OVERLAY_YELLOW_DULL,
-	COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, DOWEL_PIN_RADIUS, MANIPULATOR_GROUP_MARKER_SIZE,
-	PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER, RESIZE_HANDLE_SIZE, SKEW_TRIANGLE_OFFSET, SKEW_TRIANGLE_SIZE,
+	ARC_SWEEP_GIZMO_RADIUS, COLOR_OVERLAY_BLACK, COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_50, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW,
+	COLOR_OVERLAY_YELLOW_DULL, COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, DOWEL_PIN_RADIUS,
+	MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER, RESIZE_HANDLE_SIZE, SKEW_TRIANGLE_OFFSET, SKEW_TRIANGLE_SIZE,
 };
 use crate::messages::portfolio::document::overlays::utility_functions::{GLOBAL_FONT_CACHE, GLOBAL_TEXT_CONTEXT};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -273,8 +273,8 @@ impl OverlayContext {
 		self.internal().manipulator_anchor(position, selected, color);
 	}
 
-	pub fn gradient_handle(&mut self, position: DVec2, selected: bool, color: Option<&str>) {
-		self.internal().gradient_handle(position, selected, color);
+	pub fn gradient_color_stop(&mut self, position: DVec2, selected: bool, color: Option<&str>) {
+		self.internal().gradient_color_stop(position, selected, color);
 	}
 
 	pub fn resize_handle(&mut self, position: DVec2, rotation: f64) {
@@ -586,11 +586,11 @@ impl OverlayContextInternal {
 		self.square(position, None, Some(color_fill), Some(COLOR_OVERLAY_BLUE));
 	}
 
-	fn gradient_handle(&mut self, position: DVec2, selected: bool, color: Option<&str>) {
+	fn gradient_color_stop(&mut self, position: DVec2, selected: bool, color: Option<&str>) {
 		let transform = self.get_transform();
 		let position = position.round() - DVec2::splat(0.5);
 
-		let (radius_offset, stroke_width) = if selected { (1.0, 3.0) } else { (0.0, 1.0) };
+		let (radius_offset, stroke_width) = if selected { (1., 3.) } else { (0., 1.) };
 		let radius = MANIPULATOR_GROUP_MARKER_SIZE / 1.5 + radius_offset;
 
 		let fill = color.unwrap_or(if selected { COLOR_OVERLAY_WHITE } else { COLOR_OVERLAY_BLUE });
@@ -598,8 +598,8 @@ impl OverlayContextInternal {
 		let circle = kurbo::Circle::new((position.x, position.y), radius);
 		self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(fill), None, &circle);
 
-		let black_circle = kurbo::Circle::new((position.x, position.y), radius + stroke_width / 2.0);
-		self.scene.stroke(&kurbo::Stroke::new(1.0), transform, Self::parse_color("#000000"), None, &black_circle);
+		let black_circle = kurbo::Circle::new((position.x, position.y), radius + stroke_width / 2.);
+		self.scene.stroke(&kurbo::Stroke::new(1.), transform, Self::parse_color(COLOR_OVERLAY_BLACK), None, &black_circle);
 		self.scene.stroke(&kurbo::Stroke::new(stroke_width), transform, Self::parse_color(COLOR_OVERLAY_WHITE), None, &circle);
 	}
 
@@ -852,7 +852,7 @@ impl OverlayContextInternal {
 		path.move_to(kurbo::Point::new(x, y));
 		path.line_to(kurbo::Point::new(start1_x, start1_y));
 
-		let arc1 = kurbo::Arc::new((x, y), (DOWEL_PIN_RADIUS, DOWEL_PIN_RADIUS), start1, FRAC_PI_2, 0.0);
+		let arc1 = kurbo::Arc::new((x, y), (DOWEL_PIN_RADIUS, DOWEL_PIN_RADIUS), start1, FRAC_PI_2, 0.);
 		arc1.to_cubic_beziers(0.1, |p1, p2, p| {
 			path.curve_to(p1, p2, p);
 		});
@@ -864,7 +864,7 @@ impl OverlayContextInternal {
 		path.move_to(kurbo::Point::new(x, y));
 		path.line_to(kurbo::Point::new(start2_x, start2_y));
 
-		let arc2 = kurbo::Arc::new((x, y), (DOWEL_PIN_RADIUS, DOWEL_PIN_RADIUS), start2, FRAC_PI_2, 0.0);
+		let arc2 = kurbo::Arc::new((x, y), (DOWEL_PIN_RADIUS, DOWEL_PIN_RADIUS), start2, FRAC_PI_2, 0.);
 		arc2.to_cubic_beziers(0.1, |p1, p2, p| {
 			path.curve_to(p1, p2, p);
 		});
@@ -911,7 +911,7 @@ impl OverlayContextInternal {
 		let mut path = BezPath::new();
 		self.bezier_to_path(bezier, transform, true, &mut path);
 
-		self.scene.stroke(&kurbo::Stroke::new(4.0), vello_transform, Self::parse_color(COLOR_OVERLAY_BLUE), None, &path);
+		self.scene.stroke(&kurbo::Stroke::new(4.), vello_transform, Self::parse_color(COLOR_OVERLAY_BLUE), None, &path);
 	}
 
 	fn outline_overlay_bezier(&mut self, bezier: PathSeg, transform: DAffine2) {
@@ -919,7 +919,7 @@ impl OverlayContextInternal {
 		let mut path = BezPath::new();
 		self.bezier_to_path(bezier, transform, true, &mut path);
 
-		self.scene.stroke(&kurbo::Stroke::new(4.0), vello_transform, Self::parse_color(COLOR_OVERLAY_BLUE_50), None, &path);
+		self.scene.stroke(&kurbo::Stroke::new(4.), vello_transform, Self::parse_color(COLOR_OVERLAY_BLUE_50), None, &path);
 	}
 
 	fn bezier_to_path(&self, bezier: PathSeg, transform: DAffine2, move_to: bool, path: &mut BezPath) {
@@ -1054,16 +1054,16 @@ impl OverlayContextInternal {
 
 	fn text(&mut self, text: &str, font_color: &str, background_color: Option<&str>, transform: DAffine2, padding: f64, pivot: [Pivot; 2]) {
 		// Use the proper text-to-path system for accurate text rendering
-		const FONT_SIZE: f64 = 12.0;
+		const FONT_SIZE: f64 = 12.;
 
 		// Create typesetting configuration
 		let typesetting = TypesettingConfig {
 			font_size: FONT_SIZE,
 			line_height_ratio: 1.2,
-			character_spacing: 0.0,
+			character_spacing: 0.,
 			max_width: None,
 			max_height: None,
-			tilt: 0.0,
+			tilt: 0.,
 			align: TextAlign::Left, // We'll handle alignment manually via pivot
 		};
 
@@ -1078,7 +1078,7 @@ impl OverlayContextInternal {
 		let text_width = text_size.x;
 		let text_height = text_size.y;
 		// Create a rect from the size (assuming text starts at origin)
-		let text_bounds = kurbo::Rect::new(0.0, 0.0, text_width, text_height);
+		let text_bounds = kurbo::Rect::new(0., 0., text_width, text_height);
 
 		// Convert text to vector paths for rendering
 		let text_table = text_context.to_path(text, &font, &GLOBAL_FONT_CACHE, typesetting, false);
@@ -1087,7 +1087,7 @@ impl OverlayContextInternal {
 		let mut position = DVec2::ZERO;
 		match pivot[0] {
 			Pivot::Start => position.x = padding,
-			Pivot::Middle => position.x = -text_width / 2.0,
+			Pivot::Middle => position.x = -text_width / 2.,
 			Pivot::End => position.x = -padding - text_width,
 		}
 		match pivot[1] {
