@@ -195,8 +195,10 @@ impl SelectedGradient {
 		self.gradient.gradient_type = gradient_type;
 
 		if snap_rotate && matches!(self.dragging, GradientDragTarget::End | GradientDragTarget::Start | GradientDragTarget::New) {
-			let point = if matches!(self.dragging, GradientDragTarget::Start | GradientDragTarget::New) {
+			let point = if self.dragging == GradientDragTarget::Start {
 				self.transform.transform_point2(self.gradient.end)
+			} else if self.dragging == GradientDragTarget::New {
+				drag_start
 			} else {
 				self.transform.transform_point2(self.gradient.start)
 			};
