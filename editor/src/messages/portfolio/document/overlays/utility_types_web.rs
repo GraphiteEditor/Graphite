@@ -468,7 +468,7 @@ impl OverlayContext {
 		self.square(position, None, Some(color_fill), Some(color_stroke));
 	}
 
-	pub fn gradient_color_stop(&mut self, position: DVec2, selected: bool, color: Option<&str>) {
+	pub fn gradient_color_stop(&mut self, position: DVec2, selected: bool, color: &str) {
 		self.start_dpi_aware_transform();
 
 		let position = position.round() - DVec2::splat(0.5);
@@ -476,23 +476,25 @@ impl OverlayContext {
 		let (radius_offset, stroke_width) = if selected { (1., 3.) } else { (0., 1.) };
 		let radius = MANIPULATOR_GROUP_MARKER_SIZE / 1.5 + 1. + radius_offset;
 
-		let stroke_circle = |radius: f64, width: f64, color: &str| {
+		let mut draw_circle = |radius: f64, width: Option<f64>, color: &str| {
 			self.render_context.begin_path();
 			self.render_context.arc(position.x, position.y, radius, 0., TAU).expect("Failed to draw the circle");
-			self.render_context.set_line_width(width);
-			self.render_context.set_stroke_style_str(color);
-			self.render_context.stroke();
+
+			if let Some(width) = width {
+				self.render_context.set_line_width(width);
+				self.render_context.set_stroke_style_str(color);
+				self.render_context.stroke();
+			} else {
+				self.render_context.set_fill_style_str(color);
+				self.render_context.fill();
+			}
 		};
-
-		self.render_context.begin_path();
-		self.render_context.arc(position.x, position.y, radius, 0., TAU).expect("Failed to draw the circle");
-		let fill = color.unwrap_or(if selected { COLOR_OVERLAY_WHITE } else { COLOR_OVERLAY_BLUE });
-		self.render_context.set_fill_style_str(fill);
-		self.render_context.fill();
-
-		stroke_circle(radius + stroke_width / 2., 1., COLOR_OVERLAY_BLACK);
-
-		stroke_circle(radius, stroke_width, COLOR_OVERLAY_WHITE);
+		// Fill
+		draw_circle(radius, None, color);
+		// Stroke (inner)
+		draw_circle(radius + stroke_width / 2., Some(1.), COLOR_OVERLAY_BLACK);
+		// Stroke (outer)
+		draw_circle(radius, Some(stroke_width), COLOR_OVERLAY_WHITE);
 
 		self.end_dpi_aware_transform();
 	}
