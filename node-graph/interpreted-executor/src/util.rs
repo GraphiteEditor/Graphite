@@ -57,7 +57,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_node::create_context::IDENTIFIER),
 					context_features: graphene_std::ContextDependencies {
 						extract: ContextFeatures::empty(),
-						inject: ContextFeatures::REAL_TIME | ContextFeatures::ANIMATION_TIME | ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS,
+						inject: ContextFeatures::REAL_TIME | ContextFeatures::ANIMATION_TIME | ContextFeatures::POINTER_POSITION | ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS,
 					},
 					..Default::default()
 				},
@@ -85,7 +85,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 
 	if cfg!(feature = "gpu") {
 		nodes.push(DocumentNode {
-			implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::from("graphene_core::ops::IntoNode<&WgpuExecutor>")),
+			implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IntoNode<&WgpuExecutor>")),
 			inputs: vec![NodeInput::node(NodeId(2), 0)],
 			..Default::default()
 		});

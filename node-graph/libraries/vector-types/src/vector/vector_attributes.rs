@@ -1,7 +1,8 @@
 use crate::subpath::{Bezier, BezierHandles, Identifier, ManipulatorGroup, Subpath};
-use crate::vector::misc::{HandleId, dvec2_to_point};
+use crate::vector::misc::{HandleId, Tangent, dvec2_to_point};
 use crate::vector::vector_types::Vector;
 use dyn_any::DynAny;
+use fixedbitset::FixedBitSet;
 use glam::{DAffine2, DVec2};
 use kurbo::{CubicBez, Line, PathSeg, QuadBez};
 use std::collections::HashMap;
@@ -684,6 +685,113 @@ impl FoundSubpath {
 	}
 }
 
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
+struct FaceSide {
+	segment_index: usize,
+	reversed: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct FaceSideSet {
+	set: FixedBitSet,
+}
+impl FaceSideSet {
+	fn new(size: usize) -> Self {
+		Self {
+			set: FixedBitSet::with_capacity(size * 2),
+		}
+	}
+
+	fn index(&self, side: FaceSide) -> usize {
+		(side.segment_index << 1) | (side.reversed as usize)
+	}
+
+	fn insert(&mut self, side: FaceSide) {
+		self.set.insert(self.index(side));
+	}
+
+	fn contains(&self, side: FaceSide) -> bool {
+		self.set.contains(self.index(side))
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+struct Faces {
+	sides: Vec<FaceSide>,
+	face_start: Vec<usize>,
+}
+
+#[derive(Debug, Clone, PartialEq, Hash)]
+pub struct FaceIterator<'a, Upstream> {
+	vector: &'a Vector<Upstream>,
+	faces: Faces,
+	current_face: usize,
+}
+
+impl<Upstream> FaceIterator<'_, Upstream> {
+	fn new<'a>(faces: Faces, vector: &'a Vector<Upstream>) -> FaceIterator<'a, Upstream> {
+		FaceIterator { vector, faces, current_face: 0 }
+	}
+
+	fn get_point(&self, point: usize) -> kurbo::Point {
+		dvec2_to_point(self.vector.point_domain.positions()[point])
+	}
+}
+
+impl<Upstream> Iterator for FaceIterator<'_, Upstream> {
+	type Item = kurbo::BezPath;
+	fn next(&mut self) -> Option<Self::Item> {
+		let start_side = self.faces.face_start.get(self.current_face).copied()?;
+		self.current_face += 1;
+		let end_side = self.faces.face_start.get(self.current_face).copied().unwrap_or(self.faces.sides.len());
+
+		let mut path = kurbo::BezPath::new();
+
+		let segment_domain = &self.vector.segment_domain;
+		let first_side = self.faces.sides.get(start_side)?;
+		let start_point_index = if first_side.reversed {
+			segment_domain.end_point[first_side.segment_index]
+		} else {
+			segment_domain.start_point[first_side.segment_index]
+		};
+		path.move_to(self.get_point(start_point_index));
+		for side in &self.faces.sides[start_side..end_side] {
+			let (handle, end_index) = match side.reversed {
+				false => (segment_domain.handles[side.segment_index], segment_domain.end_point[side.segment_index]),
+				true => (segment_domain.handles[side.segment_index].reversed(), segment_domain.start_point[side.segment_index]),
+			};
+			let path_element = match handle {
+				BezierHandles::Linear => kurbo::PathEl::LineTo(self.get_point(end_index)),
+				BezierHandles::Quadratic { handle } => kurbo::PathEl::QuadTo(dvec2_to_point(handle), self.get_point(end_index)),
+				BezierHandles::Cubic { handle_start, handle_end } => kurbo::PathEl::CurveTo(dvec2_to_point(handle_start), dvec2_to_point(handle_end), self.get_point(end_index)),
+			};
+			path.push(path_element);
+		}
+
+		Some(path)
+	}
+}
+
+impl Faces {
+	pub fn new() -> Self {
+		Self {
+			sides: Vec::new(),
+			face_start: Vec::new(),
+		}
+	}
+	pub fn add_side(&mut self, side: FaceSide) {
+		self.sides.push(side);
+	}
+	pub fn start_new_face(&mut self) {
+		self.face_start.push(self.sides.len());
+	}
+	pub fn backtrack(&mut self) {
+		if let Some(last_start) = self.face_start.pop() {
+			self.sides.truncate(last_start);
+		}
+	}
+}
+
 impl<Upstream> Vector<Upstream> {
 	/// Construct a [`kurbo::PathSeg`] by resolving the points from their ids.
 	fn path_segment_from_index(&self, start: usize, end: usize, handles: BezierHandles) -> PathSeg {
@@ -988,6 +1096,81 @@ impl<Upstream> Vector<Upstream> {
 		self.point_domain.map_ids(&id_map);
 		self.segment_domain.map_ids(&id_map);
 		self.region_domain.map_ids(&id_map);
+	}
+
+	pub fn is_branching(&self) -> bool {
+		(0..self.point_domain.len()).any(|point_index| self.segment_domain.connected_count(point_index) > 2)
+	}
+
+	pub fn construct_faces(&self) -> FaceIterator<'_, Upstream> {
+		let mut adjacency: Vec<Vec<FaceSide>> = vec![Vec::new(); self.point_domain.len()];
+		for (segment_index, (&start, &end)) in self.segment_domain.start_point.iter().zip(&self.segment_domain.end_point).enumerate() {
+			adjacency[start].push(FaceSide { segment_index, reversed: false });
+			adjacency[end].push(FaceSide { segment_index, reversed: true });
+		}
+
+		for neighbors in &mut adjacency {
+			neighbors.sort_by(|a, b| {
+				let angle = [a, b].map(|side| {
+					let curve = self.path_segment_from_index(
+						self.segment_domain.start_point[side.segment_index],
+						self.segment_domain.end_point[side.segment_index],
+						self.segment_domain.handles[side.segment_index],
+					);
+					let curve = if side.reversed { curve.reverse() } else { curve };
+					let tangent = curve.tangent_at_start();
+					tangent.y.atan2(tangent.x)
+				});
+				angle[0].partial_cmp(&angle[1]).unwrap_or(std::cmp::Ordering::Equal)
+			})
+		}
+
+		let mut faces: Faces = Faces::new();
+		let mut seen = FaceSideSet::new(self.segment_domain.id.len());
+
+		for segment_index in 0..self.segment_domain.id.len() {
+			for &reversed in &[false, true] {
+				let side = FaceSide { segment_index, reversed };
+				if seen.contains(side) {
+					continue;
+				}
+				if (self.construct_face(&adjacency, side, &mut faces, &mut seen)).is_none() {
+					faces.backtrack();
+				}
+			}
+		}
+
+		FaceIterator::new(faces, self)
+	}
+
+	fn construct_face(&self, adjacency: &[Vec<FaceSide>], first: FaceSide, faces: &mut Faces, seen: &mut FaceSideSet) -> Option<()> {
+		faces.start_new_face();
+		let max_iterations = self.segment_domain.id.len() * 2;
+		let mut side = first;
+		for _iteration in 1..max_iterations {
+			if seen.contains(side) {
+				return None;
+			}
+			seen.insert(side);
+			faces.add_side(side);
+			let next_vertex = if side.reversed {
+				self.segment_domain.start_point[side.segment_index]
+			} else {
+				self.segment_domain.end_point[side.segment_index]
+			};
+			let neighbors = &adjacency[next_vertex];
+			let side_index = neighbors.iter().position(|s| {
+				FaceSide {
+					segment_index: s.segment_index,
+					reversed: !s.reversed,
+				} == side
+			})?;
+			side = neighbors[(side_index + 1) % neighbors.len()];
+			if side == first {
+				return Some(());
+			}
+		}
+		None
 	}
 }
 

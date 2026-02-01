@@ -12,7 +12,6 @@ pub enum PreferencesMessage {
 	// Per-preference messages
 	UseVello { use_vello: bool },
 	SelectionMode { selection_mode: SelectionMode },
-	VectorMeshes { enabled: bool },
 	BrushTool { enabled: bool },
 	ModifyLayout { zoom_with_scroll: bool },
 	GraphWireStyle { style: GraphWireStyle },

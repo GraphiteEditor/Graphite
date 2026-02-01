@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { createEventDispatcher, getContext, onMount } from "svelte";
+	import { SvelteMap } from "svelte/reactivity";
 
 	import type { FrontendNodeType } from "@graphite/messages";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
@@ -12,21 +13,24 @@
 	const dispatch = createEventDispatcher<{ selectNodeType: string }>();
 	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
 
+	// Content
 	export let disabled = false;
+	// Behavior
 	export let initialSearchTerm = "";
 
 	let nodeSearchInput: TextInput | undefined = undefined;
 	let searchTerm = initialSearchTerm;
 
-	$: nodeCategories = buildNodeCategories($nodeGraph.nodeTypes, searchTerm);
+	$: nodeCategories = buildNodeCategories(searchTerm);
 
 	type NodeCategoryDetails = {
 		nodes: FrontendNodeType[];
 		open: boolean;
 	};
 
-	function buildNodeCategories(nodeTypes: FrontendNodeType[], searchTerm: string): [string, NodeCategoryDetails][] {
-		const categories = new Map<string, NodeCategoryDetails>();
+	function buildNodeCategories(searchTerm: string): [string, NodeCategoryDetails][] {
+		const nodeTypes = $nodeGraph.nodeTypes;
+		const categories = new SvelteMap<string, NodeCategoryDetails>();
 		const isTypeSearch = searchTerm.toLowerCase().startsWith("type:");
 		let typeSearchTerm = "";
 		let remainingSearchTerms = [searchTerm.toLowerCase()];
@@ -123,8 +127,8 @@
 						{disabled}
 						label={nodeType.name}
 						tooltipLabel={nodeType.name}
-						tooltipDescription={$nodeGraph.nodeDescriptions.get(nodeType.name)}
-						action={() => dispatch("selectNodeType", nodeType.name)}
+						tooltipDescription={nodeType.identifier ? $nodeGraph.nodeDescriptions.get(nodeType.identifier) : undefined}
+						action={() => dispatch("selectNodeType", nodeType.identifier)}
 					/>
 				{/each}
 			</details>

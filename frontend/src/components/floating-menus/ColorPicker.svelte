@@ -286,9 +286,7 @@
 		const colorToEmit = color || new Color({ h: hue, s: saturation, v: value, a: alpha });
 
 		const stop = gradientSpectrumInputWidget && activeIndex !== undefined && gradient?.atIndex(activeIndex);
-		if (stop && gradientSpectrumInputWidget instanceof SpectrumInput) {
-			stop.color = colorToEmit;
-		}
+		if (stop) stop.color = colorToEmit;
 
 		dispatch("colorOrGradient", gradient || colorToEmit);
 	}
@@ -347,17 +345,17 @@
 
 	function setColorPreset(preset: PresetColors) {
 		dispatch("startHistoryTransaction");
+
 		if (preset === "none") {
 			setNewHSVA(0, 0, 0, 1, true);
 			setColor(new Color("none"));
-			return;
+		} else {
+			const presetColor = new Color(...PURE_COLORS[preset], 1);
+			const hsva = presetColor.toHSVA() || { h: 0, s: 0, v: 0, a: 0 };
+
+			setNewHSVA(hsva.h, hsva.s, hsva.v, hsva.a, false);
+			setColor(presetColor);
 		}
-
-		const presetColor = new Color(...PURE_COLORS[preset], 1);
-		const hsva = presetColor.toHSVA() || { h: 0, s: 0, v: 0, a: 0 };
-
-		setNewHSVA(hsva.h, hsva.s, hsva.v, hsva.a, false);
-		setColor(presetColor);
 	}
 
 	function setNewHSVA(h: number, s: number, v: number, a: number, none: boolean) {
@@ -439,7 +437,7 @@
 					data-saturation-value-picker
 				>
 					{#if !isNone}
-						<div class="selection-circle" style:top={`${(1 - value) * 100}%`} style:left={`${saturation * 100}%`} />
+						<div class="selection-circle" style:top={`${(1 - value) * 100}%`} style:left={`${saturation * 100}%`}></div>
 					{/if}
 					{#if alignedAxis}
 						<div
@@ -448,7 +446,7 @@
 							class:value={alignedAxis === "value"}
 							style:top={`${(1 - value) * 100}%`}
 							style:left={`${saturation * 100}%`}
-						/>
+						></div>
 					{/if}
 				</LayoutCol>
 				<LayoutCol
@@ -459,7 +457,7 @@
 					data-hue-picker
 				>
 					{#if !isNone}
-						<div class="selection-needle" style:top={`${(1 - hue) * 100}%`} />
+						<div class="selection-needle" style:top={`${(1 - hue) * 100}%`}></div>
 					{/if}
 				</LayoutCol>
 				<LayoutCol
@@ -470,7 +468,7 @@
 					data-alpha-picker
 				>
 					{#if !isNone}
-						<div class="selection-needle" style:top={`${(1 - alpha) * 100}%`} />
+						<div class="selection-needle" style:top={`${(1 - alpha) * 100}%`}></div>
 					{/if}
 				</LayoutCol>
 			</LayoutRow>
@@ -479,9 +477,7 @@
 					<SpectrumInput
 						{gradient}
 						{disabled}
-						on:gradient={() => {
-							if (gradient) dispatch("colorOrGradient", gradient);
-						}}
+						on:gradient={() => dispatch("colorOrGradient", gradient)}
 						on:activeMarkerIndexChange={gradientActiveMarkerIndexChange}
 						activeMarkerIndex={activeIndex}
 						on:dragging={({ detail }) => (gradientSpectrumDragging = detail)}
@@ -529,7 +525,7 @@
 			<LayoutRow>
 				{@const hexDescription = "Color code in hexadecimal format. 6 digits if opaque, 8 with alpha. Accepts input of CSS color values including named colors."}
 				<TextLabel tooltipLabel="Hex Color Code" tooltipDescription={hexDescription}>Hex</TextLabel>
-				<Separator type="Related" />
+				<Separator style="Related" />
 				<LayoutRow>
 					<TextInput
 						value={newColor.toHexOptionalAlpha() || "-"}
@@ -547,11 +543,11 @@
 			</LayoutRow>
 			<LayoutRow>
 				<TextLabel tooltipLabel="Red/Green/Blue" tooltipDescription="Integers 0–255.">RGB</TextLabel>
-				<Separator type="Related" />
+				<Separator style="Related" />
 				<LayoutRow>
 					{#each rgbChannels as [channel, strength], index}
 						{#if index > 0}
-							<Separator type="Related" />
+							<Separator style="Related" />
 						{/if}
 						<NumberInput
 							value={strength}
@@ -566,6 +562,7 @@
 							min={0}
 							max={255}
 							minWidth={1}
+							displayDecimalPlaces={0}
 							tooltipLabel={{ r: "Red Channel", g: "Green Channel", b: "Blue Channel" }[channel]}
 							tooltipDescription="Integers 0–255."
 						/>
@@ -577,11 +574,11 @@
 					tooltipLabel="Hue/Saturation/Value"
 					tooltipDescription="Also known as Hue/Saturation/Brightness (HSB). Not to be confused with Hue/Saturation/Lightness (HSL), a different color model.">HSV</TextLabel
 				>
-				<Separator type="Related" />
+				<Separator style="Related" />
 				<LayoutRow>
 					{#each hsvChannels as [channel, strength], index}
 						{#if index > 0}
-							<Separator type="Related" />
+							<Separator style="Related" />
 						{/if}
 						<NumberInput
 							value={strength}
@@ -615,7 +612,7 @@
 			<LayoutRow>
 				{@const alphaDescription = "The level of translucency, from transparent (0%) to opaque (100%)."}
 				<TextLabel tooltipLabel="Alpha" tooltipDescription={alphaDescription}>Alpha</TextLabel>
-				<Separator type="Related" />
+				<Separator style="Related" />
 				<NumberInput
 					value={!isNone ? alpha * 100 : undefined}
 					{disabled}
@@ -648,7 +645,7 @@
 						data-tooltip-description={disabled ? "Disabled (read-only)." : ""}
 						tabindex="0"
 					></button>
-					<Separator type="Related" />
+					<Separator style="Related" />
 				{/if}
 				<button
 					class="preset-color black"
@@ -658,7 +655,7 @@
 					data-tooltip-description={disabled ? "Disabled (read-only)." : ""}
 					tabindex="0"
 				></button>
-				<Separator type="Related" />
+				<Separator style="Related" />
 				<button
 					class="preset-color white"
 					{disabled}
@@ -667,7 +664,7 @@
 					data-tooltip-description={disabled ? "Disabled (read-only)." : ""}
 					tabindex="0"
 				></button>
-				<Separator type="Related" />
+				<Separator style="Related" />
 				<button class="preset-color pure" {disabled} on:click={setColorPresetSubtile} tabindex="-1">
 					{#each PURE_COLORS_GRAYABLE as [name, color, gray]}
 						<div
@@ -676,11 +673,11 @@
 							style:--pure-color-gray={gray}
 							data-tooltip-label={`Set to ${name}`}
 							data-tooltip-description={disabled ? "Disabled (read-only)." : ""}
-						/>
+						></div>
 					{/each}
 				</button>
 				{#if eyedropperSupported()}
-					<Separator type="Related" />
+					<Separator style="Related" />
 					<IconButton icon="Eyedropper" size={24} {disabled} action={activateEyedropperSample} tooltipLabel="Eyedropper" tooltipDescription="Sample a pixel color from the document." />
 				{/if}
 			</LayoutRow>

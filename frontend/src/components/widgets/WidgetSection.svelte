@@ -24,7 +24,7 @@
 <!-- TODO: Implement collapsable sections with properties system -->
 <LayoutCol class={`widget-section ${className}`.trim()} {classes}>
 	<button class="header" class:expanded on:click|stopPropagation={() => (expanded = !expanded)} tabindex="0">
-		<div class="expand-arrow" />
+		<div class="expand-arrow"></div>
 		<TextLabel tooltipLabel={widgetData.name} tooltipDescription={widgetData.description} bold={true}>{widgetData.name}</TextLabel>
 		<IconButton
 			icon={widgetData.pinned ? "PinActive" : "PinInactive"}

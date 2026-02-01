@@ -3,8 +3,8 @@ members = ["rawkit-proc-macros"]
 resolver = "2"
 
 [workspace.dependencies]
-quote = "1.0.37"
-syn = "2.0.87"
+quote = "1.0"
+syn = "2.0"
 
 [package]
 name = "rawkit"
@@ -28,12 +28,12 @@ rawkit-tests = ["dep:image", "dep:libraw-rs", "dep:reqwest", "dep:rayon"]
 rawkit-proc-macros = { version = "0.1.0", path = "rawkit-proc-macros" }
 
 # Required dependencies
-bitstream-io = "2.5.3"
-num_enum = "0.7.3"
-thiserror = "1.0.66"
+bitstream-io = "4.9.0"
+num_enum = "0.7.5"
+thiserror = "2.0.17"
 
 # Optional dependencies (should be dev dependencies, but Cargo currently doesn't allow optional dev dependencies)
-image = { version = "0.25.4", optional = true }
-reqwest = { version = "0.12.9", optional = true, features = ["blocking"] }
+image = { version = "0.25.9", optional = true }
+reqwest = { version = "0.12.26", optional = true, features = ["blocking"] }
 libraw-rs = { version = "0.0.4", optional = true }
-rayon = { version = "1.10.0", optional = true }
+rayon = { version = "1.11.0", optional = true }

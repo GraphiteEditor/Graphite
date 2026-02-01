@@ -10,17 +10,14 @@
 		value: Curve;
 	}>();
 
-	export let classes: Record<string, boolean> = {};
-	let styleName = "";
-	export { styleName as style };
-	export let styles: Record<string, string | number | undefined> = {};
+	const GRID_SIZE = 4;
+
+	// Content
 	export let value: Curve;
-	export let disabled = false;
+	// Tooltips
 	export let tooltipLabel: string | undefined = undefined;
 	export let tooltipDescription: string | undefined = undefined;
 	export let tooltipShortcut: ActionShortcut | undefined = undefined;
-
-	const GRID_SIZE = 4;
 
 	let manipulatorsList: CurveManipulatorGroup[] = [
 		{
@@ -190,7 +187,7 @@
 	}
 </script>
 
-<LayoutRow class="curve-input" classes={{ disabled, ...classes }} style={styleName} {styles} {tooltipLabel} {tooltipDescription} {tooltipShortcut}>
+<LayoutRow class="curve-input" {tooltipLabel} {tooltipDescription} {tooltipShortcut}>
 	<svg viewBox="0 0 1 1" on:pointermove={handlePointerMove} on:pointerup={handlePointerUp}>
 		{#each { length: GRID_SIZE - 1 } as _, i}
 			<path class="grid" d={`M 0 ${(i + 1) / GRID_SIZE} L 1 ${(i + 1) / GRID_SIZE}`} />

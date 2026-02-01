@@ -73,8 +73,8 @@ impl DialogLayoutHolder for NewDocumentDialogMessageHandler {
 impl LayoutHolder for NewDocumentDialogMessageHandler {
 	fn layout(&self) -> Layout {
 		let name = vec![
-			TextLabel::new("Name").table_align(true).min_width("90px").widget_instance(),
-			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			TextLabel::new("Name").table_align(true).min_width(90).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			TextInput::new(&self.name)
 				.on_update(|text_input: &TextInput| NewDocumentDialogMessage::Name { name: text_input.value.clone() }.into())
 				.min_width(204) // Matches the 100px of both NumberInputs below + the 4px of the Unrelated-type separator
@@ -83,8 +83,8 @@ impl LayoutHolder for NewDocumentDialogMessageHandler {
 
 		let checkbox_id = CheckboxId::new();
 		let infinite = vec![
-			TextLabel::new("Infinite Canvas").table_align(true).min_width("90px").for_checkbox(checkbox_id).widget_instance(),
-			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			TextLabel::new("Infinite Canvas").table_align(true).min_width(90).for_checkbox(checkbox_id).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			CheckboxInput::new(self.infinite)
 				.on_update(|checkbox_input: &CheckboxInput| NewDocumentDialogMessage::Infinite { infinite: checkbox_input.checked }.into())
 				.for_label(checkbox_id)
@@ -92,8 +92,8 @@ impl LayoutHolder for NewDocumentDialogMessageHandler {
 		];
 
 		let scale = vec![
-			TextLabel::new("Dimensions").table_align(true).min_width("90px").widget_instance(),
-			Separator::new(SeparatorType::Unrelated).widget_instance(),
+			TextLabel::new("Dimensions").table_align(true).min_width(90).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			NumberInput::new(Some(self.dimensions.x as f64))
 				.label("W")
 				.unit(" px")
@@ -104,7 +104,7 @@ impl LayoutHolder for NewDocumentDialogMessageHandler {
 				.min_width(100)
 				.on_update(|number_input: &NumberInput| NewDocumentDialogMessage::DimensionsX { width: number_input.value.unwrap() }.into())
 				.widget_instance(),
-			Separator::new(SeparatorType::Related).widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
 			NumberInput::new(Some(self.dimensions.y as f64))
 				.label("H")
 				.unit(" px")

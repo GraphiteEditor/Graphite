@@ -134,12 +134,12 @@ impl DocumentToolData {
 			LayoutGroup::Row {
 				widgets: vec![
 					IconButton::new("SwapVertical", 16)
-						.tooltip_label("Swap")
+						.tooltip_label("Swap Working Colors")
 						.tooltip_shortcut(action_shortcut!(ToolMessageDiscriminant::SwapColors))
 						.on_update(|_| ToolMessage::SwapColors.into())
 						.widget_instance(),
 					IconButton::new("WorkingColors", 16)
-						.tooltip_label("Reset")
+						.tooltip_label("Reset Working Colors")
 						.tooltip_shortcut(action_shortcut!(ToolMessageDiscriminant::ResetColors))
 						.on_update(|_| ToolMessage::ResetColors.into())
 						.widget_instance(),
@@ -278,11 +278,11 @@ impl ToolData {
 			)
 			.filter(|group| !group.is_empty())
 			.flat_map(|group| {
-				let separator = std::iter::once(Separator::new(SeparatorType::Section).direction(SeparatorDirection::Vertical).widget_instance());
+				let separator = std::iter::once(Separator::new(SeparatorStyle::Section).direction(SeparatorDirection::Vertical).widget_instance());
 				let buttons = group.into_iter().map(|ToolEntry { tooltip_label, tooltip_description, tooltip_shortcut, tool_type, icon_name }| {
 					IconButton::new(icon_name, 32)
 						.disabled(false)
-						.active(match tool_type {
+						.emphasized(match tool_type {
 							ToolType::Line | ToolType::Ellipse | ToolType::Rectangle => { self.active_shape_type.is_some() && active_tool == tool_type }
 							_ => active_tool == tool_type,
 						})
@@ -533,7 +533,7 @@ impl HintData {
 
 		for (index, hint_group) in self.0.iter().enumerate() {
 			if index > 0 {
-				widgets.push(Separator::new(SeparatorType::Section).widget_instance());
+				widgets.push(Separator::new(SeparatorStyle::Section).widget_instance());
 			}
 			for hint in &hint_group.0 {
 				if hint.plus {

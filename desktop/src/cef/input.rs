@@ -69,6 +69,8 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 		WindowEvent::KeyboardInput { device_id: _, event, is_synthetic: _ } => {
 			let Some(host) = browser.host() else { return };
 
+			input_state.modifiers_apply_key_event(&event.logical_key, &event.state);
+
 			let mut key_event = KeyEvent {
 				type_: match (event.state, &event.logical_key) {
 					(ElementState::Pressed, winit::keyboard::Key::Character(_)) => cef_key_event_type_t::KEYEVENT_CHAR,

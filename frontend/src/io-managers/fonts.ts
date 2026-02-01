@@ -26,16 +26,16 @@ export function createFontsManager(editor: Editor) {
 		editor.handle.onFontCatalogLoad(catalog);
 	});
 
-	editor.subscriptions.subscribeJsMessage(TriggerFontDataLoad, async (triggerFontDataLoad) => {
-		const { fontFamily, fontStyle } = triggerFontDataLoad.font;
+	editor.subscriptions.subscribeJsMessage(TriggerFontDataLoad, async (data) => {
+		const { fontFamily, fontStyle } = data.font;
 
 		try {
-			if (!triggerFontDataLoad.url) throw new Error("No URL provided for font data load");
-			const response = await fetch(triggerFontDataLoad.url);
+			if (!data.url) throw new Error("No URL provided for font data load");
+			const response = await fetch(data.url);
 			const buffer = await response.arrayBuffer();
-			const data = new Uint8Array(buffer);
+			const bytes = new Uint8Array(buffer);
 
-			editor.handle.onFontLoad(fontFamily, fontStyle, data);
+			editor.handle.onFontLoad(fontFamily, fontStyle, bytes);
 		} catch (error) {
 			// eslint-disable-next-line no-console
 			console.error("Failed to load font:", error);
