@@ -273,7 +273,7 @@ impl OverlayContext {
 		self.internal().manipulator_anchor(position, selected, color);
 	}
 
-	pub fn gradient_color_stop(&mut self, position: DVec2, selected: bool, color: Option<&str>) {
+	pub fn gradient_color_stop(&mut self, position: DVec2, selected: bool, color: &str) {
 		self.internal().gradient_color_stop(position, selected, color);
 	}
 
@@ -586,21 +586,27 @@ impl OverlayContextInternal {
 		self.square(position, None, Some(color_fill), Some(COLOR_OVERLAY_BLUE));
 	}
 
-	fn gradient_color_stop(&mut self, position: DVec2, selected: bool, color: Option<&str>) {
+	fn gradient_color_stop(&mut self, position: DVec2, selected: bool, color: &str) {
 		let transform = self.get_transform();
 		let position = position.round() - DVec2::splat(0.5);
 
 		let (radius_offset, stroke_width) = if selected { (1., 3.) } else { (0., 1.) };
-		let radius = MANIPULATOR_GROUP_MARKER_SIZE / 1.5 + radius_offset;
+		let radius = MANIPULATOR_GROUP_MARKER_SIZE / 1.5 + 1. + radius_offset;
 
-		let fill = color.unwrap_or(if selected { COLOR_OVERLAY_WHITE } else { COLOR_OVERLAY_BLUE });
-
-		let circle = kurbo::Circle::new((position.x, position.y), radius);
-		self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(fill), None, &circle);
-
-		let black_circle = kurbo::Circle::new((position.x, position.y), radius + stroke_width / 2.);
-		self.scene.stroke(&kurbo::Stroke::new(1.), transform, Self::parse_color(COLOR_OVERLAY_BLACK), None, &black_circle);
-		self.scene.stroke(&kurbo::Stroke::new(stroke_width), transform, Self::parse_color(COLOR_OVERLAY_WHITE), None, &circle);
+		let mut draw_circle = |radius: f64, width: Option<f64>, color: &str| {
+			let circle = kurbo::Circle::new((position.x, position.y), radius);
+			if let Some(width) = width {
+				self.scene.stroke(&kurbo::Stroke::new(width), transform, Self::parse_color(color), None, &circle);
+			} else {
+				self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(color), None, &circle);
+			}
+		};
+		// Fill
+		draw_circle(radius, None, color);
+		// Stroke (inner)
+		draw_circle(radius + stroke_width / 2., Some(1.), COLOR_OVERLAY_BLACK);
+		// Stroke (outer)
+		draw_circle(radius, Some(stroke_width), COLOR_OVERLAY_WHITE);
 	}
 
 	fn resize_handle(&mut self, position: DVec2, rotation: f64) {
