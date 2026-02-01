@@ -593,7 +593,7 @@ impl OverlayContextInternal {
 		let (radius_offset, stroke_width) = if selected { (1., 3.) } else { (0., 1.) };
 		let radius = MANIPULATOR_GROUP_MARKER_SIZE / 1.5 + 1. + radius_offset;
 
-		let mut draw_circle = |radius: f64, width: Option<f64>, color: &str| {
+		let draw_circle = |radius: f64, width: Option<f64>, color: &str| {
 			let circle = kurbo::Circle::new((position.x, position.y), radius);
 			if let Some(width) = width {
 				self.scene.stroke(&kurbo::Stroke::new(width), transform, Self::parse_color(color), None, &circle);

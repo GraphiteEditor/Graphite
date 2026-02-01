@@ -476,7 +476,7 @@ impl OverlayContext {
 		let (radius_offset, stroke_width) = if selected { (1., 3.) } else { (0., 1.) };
 		let radius = MANIPULATOR_GROUP_MARKER_SIZE / 1.5 + 1. + radius_offset;
 
-		let mut draw_circle = |radius: f64, width: Option<f64>, color: &str| {
+		let draw_circle = |radius: f64, width: Option<f64>, color: &str| {
 			self.render_context.begin_path();
 			self.render_context.arc(position.x, position.y, radius, 0., TAU).expect("Failed to draw the circle");
 
