@@ -322,11 +322,7 @@ impl Fsm for GradientToolFsmState {
 					let (start, end) = (transform.transform_point2(*start), transform.transform_point2(*end));
 
 					fn color_to_hex(color: graphene_std::Color) -> String {
-						if color.a() > 0.999 {
-							format!("#{:02X}{:02X}{:02X}", (color.r() * 255.) as u8, (color.g() * 255.) as u8, (color.b() * 255.) as u8)
-						} else {
-							color.to_rgba_hex_srgb()
-						}
+						color.with_alpha(1.).to_rgba_hex_srgb()
 					}
 
 					let start_hex = stops.first().map(|(_, c)| color_to_hex(*c)).unwrap_or(String::from(COLOR_OVERLAY_BLUE));
