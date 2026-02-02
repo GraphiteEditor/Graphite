@@ -70,8 +70,9 @@ impl App {
 		let rendering_app_event_scheduler = app_event_scheduler.clone();
 		let (start_render_sender, start_render_receiver) = std::sync::mpsc::sync_channel(1);
 		std::thread::spawn(move || {
+			let runtime = tokio::runtime::Runtime::new().unwrap();
 			loop {
-				let result = futures::executor::block_on(DesktopWrapper::execute_node_graph());
+				let result = runtime.block_on(DesktopWrapper::execute_node_graph());
 				rendering_app_event_scheduler.schedule(AppEvent::NodeGraphExecutionResult(result));
 				let _ = start_render_receiver.recv();
 			}
