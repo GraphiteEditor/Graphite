@@ -26,6 +26,17 @@ pub enum AlignAggregate {
 	Center,
 }
 
+impl AlignAggregate {
+	/// Given a bounding box `[min, max]`, returns the alignment target position.
+	pub fn target_position(self, bbox: [DVec2; 2]) -> DVec2 {
+		match self {
+			AlignAggregate::Min => bbox[0],
+			AlignAggregate::Max => bbox[1],
+			AlignAggregate::Center => (bbox[0] + bbox[1]) / 2.,
+		}
+	}
+}
+
 // #[derive(Default, PartialEq, Eq, Clone, Copy, Debug, serde::Serialize, serde::Deserialize)]
 // pub enum DocumentMode {
 // 	#[default]

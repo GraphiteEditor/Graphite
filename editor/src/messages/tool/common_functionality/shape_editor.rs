@@ -136,6 +136,18 @@ impl SelectedLayerState {
 		}
 	}
 
+	/// Returns selected points plus the anchor endpoints of any selected segments.
+	pub fn affected_points(&self, vector: &Vector) -> HashSet<ManipulatorPointId> {
+		let mut affected_points = self.selected_points.clone();
+		for (segment_id, _, start, end) in vector.segment_bezier_iter() {
+			if self.selected_segments.contains(&segment_id) {
+				affected_points.insert(ManipulatorPointId::Anchor(start));
+				affected_points.insert(ManipulatorPointId::Anchor(end));
+			}
+		}
+		affected_points
+	}
+
 	pub fn ignore_anchors(&mut self, status: bool) {
 		if self.ignore_anchors != status {
 			return;
@@ -1382,27 +1394,6 @@ impl ShapeState {
 		Some([(handles[0], start), (handles[1], end)])
 	}
 
-	/// Collect all affected points including those from selected segments
-	fn collect_affected_points(state: &SelectedLayerState, vector: &Vector) -> HashSet<ManipulatorPointId> {
-		let mut affected_points = state.selected_points.clone();
-		for (segment_id, _, start, end) in vector.segment_bezier_iter() {
-			if state.is_segment_selected(segment_id) {
-				affected_points.insert(ManipulatorPointId::Anchor(start));
-				affected_points.insert(ManipulatorPointId::Anchor(end));
-			}
-		}
-		affected_points
-	}
-
-	/// Calculate the alignment target based on bounding box and aggregate type
-	fn calculate_alignment_target(combined_box: [DVec2; 2], aggregate: AlignAggregate) -> DVec2 {
-		match aggregate {
-			AlignAggregate::Min => combined_box[0],
-			AlignAggregate::Max => combined_box[1],
-			AlignAggregate::Center => (combined_box[0] + combined_box[1]) / 2.,
-		}
-	}
-
 	/// Calculate the delta for a point in document space
 	fn calculate_point_delta(viewport_pos: DVec2, aggregated: DVec2, axis_vec: DVec2, transform_to_viewport: DAffine2) -> DVec2 {
 		let translation_viewport = (aggregated - viewport_pos) * axis_vec;
@@ -1492,7 +1483,7 @@ impl ShapeState {
 			let transform_to_viewport = document.network_interface.document_metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
 
 			// Include points from selected segments
-			let affected_points = Self::collect_affected_points(state, &vector);
+			let affected_points = state.affected_points(&vector);
 
 			// Collect positions
 			for &point in affected_points.iter() {
@@ -1507,7 +1498,7 @@ impl ShapeState {
 		let Some(combined_box) = graphene_std::renderer::Rect::point_iter(point_positions.iter().map(|(_, _, pos)| *pos)) else {
 			return;
 		};
-		let aggregated = Self::calculate_alignment_target(combined_box.0, aggregate);
+		let aggregated = aggregate.target_position(combined_box.0);
 
 		// Separate anchor and handle movements
 		// We apply anchor movements first, then handle movements matches the behavior of Scale (S shortcut) when scaling to 0

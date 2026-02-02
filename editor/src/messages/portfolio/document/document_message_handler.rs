@@ -16,7 +16,7 @@ use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay
 use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType, OverlaysVisibilitySettings, Pivot};
 use crate::messages::portfolio::document::properties_panel::properties_panel_message_handler::PropertiesPanelMessageContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
-use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, PTZ};
+use crate::messages::portfolio::document::utility_types::misc::{AlignAxis, FlipAxis, PTZ};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate};
 use crate::messages::portfolio::document::utility_types::nodes::RawBuffer;
 use crate::messages::portfolio::utility_types::{FontCatalog, PanelType, PersistentData};
@@ -281,22 +281,14 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					return;
 				};
 
-				let aggregated = match aggregate {
-					AlignAggregate::Min => combined_box[0],
-					AlignAggregate::Max => combined_box[1],
-					AlignAggregate::Center => (combined_box[0] + combined_box[1]) / 2.,
-				};
+				let aggregated = aggregate.target_position(combined_box);
 
 				let mut added_transaction = false;
 				for layer in self.network_interface.selected_nodes().selected_unlocked_layers(&self.network_interface) {
 					let Some(bbox) = self.metadata().bounding_box_viewport(layer) else {
 						continue;
 					};
-					let center = match aggregate {
-						AlignAggregate::Min => bbox[0],
-						AlignAggregate::Max => bbox[1],
-						_ => (bbox[0] + bbox[1]) / 2.,
-					};
+					let center = aggregate.target_position(bbox);
 					let translation = (aggregated - center) * axis;
 					if !added_transaction {
 						responses.add(DocumentMessage::AddTransaction);
