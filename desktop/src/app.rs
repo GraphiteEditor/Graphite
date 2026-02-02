@@ -646,7 +646,7 @@ impl ApplicationHandler for App {
 
 	fn about_to_wait(&mut self, event_loop: &dyn ActiveEventLoop) {
 		// Set a timeout in case we miss any cef schedule requests
-		let timeout = Instant::now() + Duration::from_millis(10);
+		let mut wait_until = Instant::now() + Duration::from_millis(10);
 		if let Some(schedule) = self.cef_schedule
 			&& schedule < Instant::now()
 		{
@@ -655,10 +655,10 @@ impl ApplicationHandler for App {
 			for _ in 0..CEF_MESSAGE_LOOP_MAX_ITERATIONS {
 				self.cef_context.work();
 			}
-		} else {
-			let wait_until = timeout.min(self.cef_schedule.unwrap_or(timeout));
-			event_loop.set_control_flow(ControlFlow::WaitUntil(wait_until));
+		} else if let Some(cef_schedule) = self.cef_schedule {
+			wait_until = wait_until.min(cef_schedule);
 		}
+		event_loop.set_control_flow(ControlFlow::WaitUntil(wait_until));
 	}
 }
 
