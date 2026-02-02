@@ -312,8 +312,12 @@ impl Fsm for GradientToolFsmState {
 						.filter(|selected| selected.layer.is_some_and(|selected_layer| selected_layer == layer))
 						.map(|selected| selected.dragging);
 
-					let gradient = if let Some(selected_gradient) = selected.filter(|s| s.layer == Some(layer)) {
-						&selected_gradient.gradient
+					let gradient = if dragging.is_some() {
+						if let Some(selected_gradient) = selected.filter(|s| s.layer == Some(layer)) {
+							&selected_gradient.gradient
+						} else {
+							&gradient
+						}
 					} else {
 						&gradient
 					};
@@ -322,7 +326,7 @@ impl Fsm for GradientToolFsmState {
 					let (start, end) = (transform.transform_point2(*start), transform.transform_point2(*end));
 
 					fn color_to_hex(color: graphene_std::Color) -> String {
-						color.with_alpha(1.).to_rgba_hex_srgb()
+						format!("#{}", color.with_alpha(1.).to_rgba_hex_srgb())
 					}
 
 					let start_hex = stops.first().map(|(_, c)| color_to_hex(*c)).unwrap_or(String::from(COLOR_OVERLAY_BLUE));
@@ -389,6 +393,7 @@ impl Fsm for GradientToolFsmState {
 						});
 					}
 					responses.add(DocumentMessage::CommitTransaction);
+					responses.add(PropertiesPanelMessage::Refresh);
 					return self;
 				}
 
@@ -411,6 +416,8 @@ impl Fsm for GradientToolFsmState {
 				// Render the new gradient
 				selected_gradient.render_gradient(responses);
 				responses.add(DocumentMessage::CommitTransaction);
+				responses.add(PropertiesPanelMessage::Refresh);
+				tool_data.selected_gradient = None;
 
 				self
 			}
