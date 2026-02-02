@@ -148,17 +148,17 @@ impl ClickTracker {
 		match state {
 			ElementState::Pressed if record.down_count == ClickCount::Triple => {
 				*record = ClickRecord {
-					down_count: ClickCount::Single,
+					down_count: ClickCount::Double,
 					..*record
 				};
-				return ClickCount::Single;
+				return ClickCount::Double;
 			}
 			ElementState::Released if record.up_count == ClickCount::Triple => {
 				*record = ClickRecord {
-					up_count: ClickCount::Single,
+					up_count: ClickCount::Double,
 					..*record
 				};
-				return ClickCount::Single;
+				return ClickCount::Double;
 			}
 			_ => {}
 		}
