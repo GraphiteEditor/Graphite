@@ -77,6 +77,12 @@ export function createTooltipState(editor: Editor) {
 	document.addEventListener("mousedown", closeTooltip);
 	document.addEventListener("keydown", closeTooltip);
 
+	// Hide tooltip and cancel pending timeout when the mouse leaves the document
+	document.addEventListener("mouseleave", () => {
+		if (tooltipTimeout) clearTimeout(tooltipTimeout);
+		closeTooltip();
+	});
+
 	// Stop showing a tooltip if the user clicks or presses a key, and require the user to first move out of the element before it can re-appear
 	function closeTooltip() {
 		update((state) => {
