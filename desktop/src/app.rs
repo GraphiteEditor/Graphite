@@ -6,7 +6,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 use winit::application::ApplicationHandler;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
-use winit::event::{ButtonSource, ElementState, MouseButton, WindowEvent};
+use winit::event::{ButtonSource, ElementState, MouseButton, StartCause, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::WindowId;
 
@@ -633,6 +633,14 @@ impl ApplicationHandler for App {
 		{
 			let message = DesktopWrapperMessage::PointerLockMove { x, y };
 			self.app_event_scheduler.schedule(AppEvent::DesktopWrapperMessage(message));
+		}
+	}
+
+	fn new_events(&mut self, event_loop: &dyn ActiveEventLoop, cause: winit::event::StartCause) {
+		if let StartCause::ResumeTimeReached { .. } = cause
+			&& let Some(window) = &self.window
+		{
+			window.request_redraw();
 		}
 	}
 
