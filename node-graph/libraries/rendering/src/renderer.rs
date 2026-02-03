@@ -1036,13 +1036,14 @@ impl Render for Table<Vector> {
 						StrokeJoin::Bevel => Join::Bevel,
 						StrokeJoin::Round => Join::Round,
 					};
+					let dash_pattern = stroke.dash_lengths.iter().map(|l| l.max(0.)).collect();
 					let stroke = kurbo::Stroke {
 						width: stroke.weight * width_scale,
 						miter_limit: stroke.join_miter_limit,
 						join,
 						start_cap: cap,
 						end_cap: cap,
-						dash_pattern: stroke.dash_lengths.into(),
+						dash_pattern,
 						dash_offset: stroke.dash_offset,
 					};
 
