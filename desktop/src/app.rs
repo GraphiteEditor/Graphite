@@ -6,7 +6,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 use winit::application::ApplicationHandler;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
-use winit::event::{ButtonSource, ElementState, MouseButton, WindowEvent};
+use winit::event::{ButtonSource, ElementState, MouseButton, StartCause, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::WindowId;
 
@@ -259,6 +259,9 @@ impl App {
 			DesktopFrontendMessage::UpdateOverlays(scene) => {
 				if let Some(render_state) = &mut self.render_state {
 					render_state.set_overlays_scene(scene);
+				}
+				if let Some(window) = &self.window {
+					window.request_redraw();
 				}
 			}
 			DesktopFrontendMessage::PersistenceWriteDocument { id, document } => {
@@ -632,10 +635,17 @@ impl ApplicationHandler for App {
 		}
 	}
 
+	fn new_events(&mut self, event_loop: &dyn ActiveEventLoop, cause: winit::event::StartCause) {
+		if let StartCause::ResumeTimeReached { .. } = cause
+			&& let Some(window) = &self.window
+		{
+			window.request_redraw();
+		}
+	}
+
 	fn about_to_wait(&mut self, event_loop: &dyn ActiveEventLoop) {
 		// Set a timeout in case we miss any cef schedule requests
-		let timeout = Instant::now() + Duration::from_millis(10);
-		let wait_until = timeout.min(self.cef_schedule.unwrap_or(timeout));
+		let mut wait_until = Instant::now() + Duration::from_millis(10);
 		if let Some(schedule) = self.cef_schedule
 			&& schedule < Instant::now()
 		{
@@ -644,11 +654,9 @@ impl ApplicationHandler for App {
 			for _ in 0..CEF_MESSAGE_LOOP_MAX_ITERATIONS {
 				self.cef_context.work();
 			}
+		} else if let Some(cef_schedule) = self.cef_schedule {
+			wait_until = wait_until.min(cef_schedule);
 		}
-		if let Some(window) = &self.window.as_ref() {
-			window.request_redraw();
-		}
-
 		event_loop.set_control_flow(ControlFlow::WaitUntil(wait_until));
 	}
 }
