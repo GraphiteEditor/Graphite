@@ -1012,12 +1012,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 
 				let ruler_spacing = ruler_interval * ruler_scale;
-
 				responses.add(FrontendMessage::UpdateDocumentRulers {
 					origin: ruler_origin.into(),
 					spacing: ruler_spacing,
 					interval: ruler_interval,
 					visible: self.rulers_visible,
+					tilt: self.document_ptz.tilt()
 				});
 			}
 			DocumentMessage::RenderScrollbars => {
