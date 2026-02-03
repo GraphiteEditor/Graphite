@@ -97,6 +97,11 @@ impl TextContext {
 		for line in layout.lines() {
 			for item in line.items() {
 				if let PositionedLayoutItem::GlyphRun(glyph_run) = item {
+					if let Some(max_height) = typesetting.max_height {
+						if glyph_run.baseline() > max_height as f32 {
+							continue;
+						}
+					}
 					path_builder.render_glyph_run(&glyph_run, typesetting.tilt, per_glyph_instances);
 				}
 			}
