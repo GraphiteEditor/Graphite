@@ -137,7 +137,7 @@ impl SelectedLayerState {
 	}
 
 	/// Returns selected points plus the anchor endpoints of any selected segments.
-	pub fn affected_points(&self, vector: &Vector) -> HashSet<ManipulatorPointId> {
+	pub fn selected_and_segment_anchor_points(&self, vector: &Vector) -> HashSet<ManipulatorPointId> {
 		let mut affected_points = self.selected_points.clone();
 		for (segment_id, _, start, end) in vector.segment_bezier_iter() {
 			if self.selected_segments.contains(&segment_id) {
@@ -1395,7 +1395,7 @@ impl ShapeState {
 	}
 
 	/// Calculate the delta for a point in document space
-	fn calculate_point_delta(viewport_pos: DVec2, aggregated: DVec2, axis_vec: DVec2, transform_to_viewport: DAffine2) -> DVec2 {
+	fn calculate_alignment_delta_in_document_space(viewport_pos: DVec2, aggregated: DVec2, axis_vec: DVec2, transform_to_viewport: DAffine2) -> DVec2 {
 		let translation_viewport = (aggregated - viewport_pos) * axis_vec;
 		let transform_to_document = transform_to_viewport.inverse();
 		transform_to_document.transform_vector2(translation_viewport)
@@ -1483,7 +1483,7 @@ impl ShapeState {
 			let transform_to_viewport = document.network_interface.document_metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
 
 			// Include points from selected segments
-			let affected_points = state.affected_points(&vector);
+			let affected_points = state.selected_and_segment_anchor_points(&vector);
 
 			// Collect positions
 			for &point in affected_points.iter() {
@@ -1508,7 +1508,7 @@ impl ShapeState {
 
 		for (layer, point, viewport_pos) in point_positions {
 			let transform_to_viewport = document.network_interface.document_metadata().transform_to_viewport_if_feeds(layer, &document.network_interface);
-			let delta = Self::calculate_point_delta(viewport_pos, aggregated, axis_vec, transform_to_viewport);
+			let delta = Self::calculate_alignment_delta_in_document_space(viewport_pos, aggregated, axis_vec, transform_to_viewport);
 
 			match point {
 				ManipulatorPointId::Anchor(point_id) => {
