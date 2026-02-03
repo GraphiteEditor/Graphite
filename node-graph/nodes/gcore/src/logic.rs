@@ -107,20 +107,27 @@ fn json_get(
 	match value {
 		Value::Array(ref arr) => {
 			let Ok(index): Result<usize, _> = key.parse() else {
-				return "Json input is an array, but key is not a number".into();
+				log::error!("Json input is an array, but key is not a number");
+				return String::new();
 			};
-			let Some(value) = arr.get(index) else { return "Index out of bounds".into() };
+			let Some(value) = arr.get(index) else {
+				log::error!("Index {} out of bounds for len {}", index, arr.len());
+				return String::new();
+			};
 			value.to_string()
 		}
 		Value::Object(map) => {
-			let Some(value) = map.get(&key) else { return format!("key {key} not found in object") };
+			let Some(value) = map.get(&key) else {
+				log::error!("Key {key} not found in object");
+				return String::new();
+			};
 			match value {
 				Value::String(s) => s.clone(),
 				Value::Number(n) => n.to_string(),
 				complex => complex.to_string(),
 			}
 		}
-		_ => "".into(),
+		_ => String::new(),
 	}
 }
 
