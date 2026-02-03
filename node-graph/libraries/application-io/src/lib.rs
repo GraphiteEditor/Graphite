@@ -244,6 +244,7 @@ pub struct RenderConfig {
 	pub render_mode: RenderMode,
 	pub hide_artboards: bool,
 	pub for_export: bool,
+	pub for_eyedropper: bool,
 }
 
 struct Logger;

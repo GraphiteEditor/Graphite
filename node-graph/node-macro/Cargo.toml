@@ -23,8 +23,8 @@ proc-macro2 = { workspace = true }
 quote = { workspace = true }
 convert_case = { workspace = true }
 strum = { workspace = true }
+indoc = { workspace = true }
 
-indoc = "2.0.5"
 proc-macro-crate = "3.1.0"
 proc-macro-error2 = "2"
 

@@ -20,9 +20,40 @@ jobs:
         run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
 
       - name: Build Linux Bundle
-        run: nix build .nix#graphite-bundle.tar.xz && cp ./result ./graphite-bundle.tar.xz
+        run: nix build .nix#graphite-bundle.tar.xz && cp ./result ./graphite-linux-bundle.tar.xz
 
       - name: Upload Linux Bundle
         uses: actions/upload-artifact@v4
         with:
-          path: graphite-bundle.tar.xz
+          name: graphite-linux-bundle
+          path: graphite-linux-bundle.tar.xz
+          compression-level: 0
+
+      - name: Setup Flatpak Tooling
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder
+          flatpak --user remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+
+      - name: Build Flatpak
+        run: |
+          nix build .nix#graphite-flatpak-manifest
+
+          rm -rf .flatpak
+          mkdir -p .flatpak
+
+          cp ./result .flatpak/manifest.json
+
+          cd .flatpak
+          mkdir -p repo
+
+          flatpak-builder --user --force-clean --install-deps-from=flathub --repo=repo build ./manifest.json
+
+          flatpak build-bundle repo graphite.flatpak art.graphite.Graphite --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo
+
+      - name: Upload Flatpak
+        uses: actions/upload-artifact@v4
+        with:
+          name: graphite-flatpak
+          path: .flatpak/graphite.flatpak
+          compression-level: 0
