@@ -29,6 +29,7 @@ pub struct ToolActionMessageContext<'a> {
 	pub node_graph: &'a NodeGraphExecutor,
 	pub preferences: &'a PreferencesMessageHandler,
 	pub viewport: &'a ViewportMessageHandler,
+	pub is_transforming: bool,
 }
 
 pub trait ToolCommon: for<'a, 'b> MessageHandler<ToolMessage, &'b mut ToolActionMessageContext<'a>> + ToolRefreshOptions + ToolTransition + ToolMetadata {}
