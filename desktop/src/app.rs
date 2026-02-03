@@ -560,7 +560,6 @@ impl ApplicationHandler for App {
 						Err(RenderError::SurfaceError(e)) => tracing::error!("Render error: {:?}", e),
 					}
 					let _ = self.start_render_sender.try_send(());
-					// self.cef_context.schedule_frame();
 				}
 
 				if !self.cef_init_successful
