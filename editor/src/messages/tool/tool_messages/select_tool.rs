@@ -402,6 +402,7 @@ struct SelectToolData {
 	snap_candidates: Vec<SnapCandidatePoint>,
 	auto_panning: AutoPanning,
 	drag_start_center: ViewportPosition,
+	drag_start_document: Option<DVec2>,
 }
 
 impl SelectToolData {
@@ -418,13 +419,13 @@ impl SelectToolData {
 		}
 	}
 
-	pub fn selection_quad(&self) -> Quad {
-		let bbox = self.selection_box();
+	pub fn selection_quad(&self, metadata: &DocumentMetadata) -> Quad {
+		let bbox = self.selection_box(metadata);
 		Quad::from_box(bbox)
 	}
 
-	pub fn calculate_selection_mode_from_direction(&mut self) -> SelectionMode {
-		let bbox: [DVec2; 2] = self.selection_box();
+	pub fn calculate_selection_mode_from_direction(&mut self, metadata: &DocumentMetadata) -> SelectionMode {
+		let bbox: [DVec2; 2] = self.selection_box(metadata);
 		let above_threshold = bbox[1].distance_squared(bbox[0]) > DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD.powi(2);
 
 		if self.selection_mode.is_none() && above_threshold {
@@ -440,12 +441,19 @@ impl SelectToolData {
 		self.selection_mode.unwrap_or(SelectionMode::Touched)
 	}
 
-	pub fn selection_box(&self) -> [DVec2; 2] {
-		if self.drag_current == self.drag_start {
-			let tolerance = DVec2::splat(SELECTION_TOLERANCE);
-			[self.drag_start - tolerance, self.drag_start + tolerance]
+	pub fn selection_box(&self, metadata: &DocumentMetadata) -> [DVec2; 2] {
+		// If we have a document-anchored start point, transform it to viewport
+		let start_viewport = if let Some(start_doc) = self.drag_start_document {
+			metadata.document_to_viewport.transform_point2(start_doc)
 		} else {
-			[self.drag_start, self.drag_current]
+			self.drag_start
+		};
+
+		if self.drag_current == start_viewport {
+			let tolerance = DVec2::splat(SELECTION_TOLERANCE);
+			[start_viewport - tolerance, start_viewport + tolerance]
+		} else {
+			[start_viewport, self.drag_current]
 		}
 	}
 
@@ -938,10 +946,10 @@ impl Fsm for SelectToolFsmState {
 				// Check if the tool is in selection mode
 				if let Self::Drawing { selection_shape, .. } = self {
 					// Get the updated selection box bounds
-					let quad = Quad::from_box([tool_data.drag_start, tool_data.drag_current]);
+					let quad = tool_data.selection_quad(document.metadata());
 
 					let current_selection_mode = match tool_action_data.preferences.get_selection_mode() {
-						SelectionMode::Directional => tool_data.calculate_selection_mode_from_direction(),
+						SelectionMode::Directional => tool_data.calculate_selection_mode_from_direction(document.metadata()),
 						SelectionMode::Touched => SelectionMode::Touched,
 						SelectionMode::Enclosed => SelectionMode::Enclosed,
 					};
@@ -1140,6 +1148,8 @@ impl Fsm for SelectToolFsmState {
 						}
 					} else {
 						let selection_shape = if input.keyboard.key(lasso_select) { SelectionShapeType::Lasso } else { SelectionShapeType::Box };
+						// Anchor the drag start to document coordinates so panning/zooming doesn't move the start point
+						tool_data.drag_start_document = Some(document.metadata().document_to_viewport.inverse().transform_point2(tool_data.drag_start));
 						SelectToolFsmState::Drawing { selection_shape, has_drawn: false }
 					}
 				};
@@ -1380,10 +1390,8 @@ impl Fsm for SelectToolFsmState {
 				self
 			}
 			(SelectToolFsmState::Drawing { .. }, SelectToolMessage::PointerOutsideViewport { .. }) => {
-				// Auto-panning
-				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, viewport, responses) {
-					tool_data.drag_start += shift;
-				}
+				// Auto-panning - the start is anchored to document space, so no need to shift `drag_start` here
+				let _ = tool_data.auto_panning.shift_viewport(input, viewport, responses);
 
 				self
 			}
@@ -1404,8 +1412,8 @@ impl Fsm for SelectToolFsmState {
 
 				if !has_dragged && input.keyboard.key(remove_from_selection) && tool_data.layer_selected_on_start.is_none() {
 					// When you click on the layer with remove from selection key (shift) pressed, we deselect all nodes that are children.
-					let quad = tool_data.selection_quad();
-					let intersection = document.intersect_quad_no_artboards(quad, viewport);
+					let quad = tool_data.selection_quad(document.metadata());
+					let intersection: Vec<_> = document.intersect_quad_no_artboards(quad, viewport).collect();
 
 					if let Some(path) = intersection.last() {
 						let replacement_selected_layers: Vec<_> = document
@@ -1504,10 +1512,10 @@ impl Fsm for SelectToolFsmState {
 				SelectToolFsmState::Ready { selection }
 			}
 			(SelectToolFsmState::Drawing { selection_shape, .. }, SelectToolMessage::DragStop { remove_from_selection }) => {
-				let quad = tool_data.selection_quad();
+				let quad = tool_data.selection_quad(document.metadata());
 
 				let selection_mode = match tool_action_data.preferences.get_selection_mode() {
-					SelectionMode::Directional => tool_data.calculate_selection_mode_from_direction(),
+					SelectionMode::Directional => tool_data.calculate_selection_mode_from_direction(document.metadata()),
 					selection_mode => selection_mode,
 				};
 
@@ -1571,6 +1579,9 @@ impl Fsm for SelectToolFsmState {
 				}
 
 				tool_data.lasso_polygon.clear();
+
+				// Clear the document-anchored drag start when finishing drawing
+				tool_data.drag_start_document = None;
 
 				responses.add(OverlaysMessage::Draw);
 
