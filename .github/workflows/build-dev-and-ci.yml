@@ -5,7 +5,7 @@ on:
     branches:
       - master
   pull_request: {}
-  merge_group:
+  merge_group: {}
 env:
   CARGO_TERM_COLOR: always
   INDEX_HTML_HEAD_REPLACEMENT: <script defer data-domain="dev.graphite.art" data-api="https://graphite.art/visit/event" src="https://graphite.art/visit/script.hash.js"></script>
