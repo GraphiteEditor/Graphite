@@ -501,6 +501,33 @@
 			updateViewportInfo();
 		});
 		if (viewport) viewportResizeObserver.observe(viewport);
+
+		// Observe the control bar for tool options overflow handling
+		const controlBar = window.document.querySelector(".document .control-bar");
+		if (controlBar) {
+			const updateToolOptionsWidth = () => {
+				const controlBarRect = controlBar.getBoundingClientRect();
+				const docBar = controlBar.querySelector(".document-bar");
+				const docBarWidth = docBar ? docBar.getBoundingClientRect().width : 0;
+
+				const availableWidth = Math.max(0, controlBarRect.width - docBarWidth - 40);
+
+				(editor.handle as any).setToolOptionsWidth(availableWidth);
+			};
+
+			const toolOptionsResizeObserver = new ResizeObserver(() => {
+				updateToolOptionsWidth();
+			});
+
+			toolOptionsResizeObserver.observe(controlBar);
+
+			const docBar = controlBar.querySelector(".document-bar");
+			if (docBar) toolOptionsResizeObserver.observe(docBar);
+
+			updateToolOptionsWidth();
+		} else {
+			console.warn("ResizeObserver: Control bar not found");
+		}
 	});
 
 	onDestroy(() => {
@@ -512,9 +539,9 @@
 <LayoutCol class="document" on:dragover={(e) => e.preventDefault()} on:drop={dropFile}>
 	<LayoutRow class="control-bar" classes={{ "for-graph": $document.graphViewOverlayOpen }} scrollableX={true}>
 		{#if !$document.graphViewOverlayOpen}
-			<WidgetLayout layout={$document.toolOptionsLayout} layoutTarget="ToolOptions" />
+			<WidgetLayout class="tool-options" layout={$document.toolOptionsLayout} layoutTarget="ToolOptions" />
 			<LayoutRow class="spacer" />
-			<WidgetLayout layout={$document.documentBarLayout} layoutTarget="DocumentBar" />
+			<WidgetLayout class="document-bar" layout={$document.documentBarLayout} layoutTarget="DocumentBar" />
 		{:else}
 			<WidgetLayout layout={$document.nodeGraphControlBarLayout} layoutTarget="NodeGraphControlBar" />
 		{/if}
@@ -645,6 +672,19 @@
 
 			&.for-graph {
 				justify-content: space-between;
+			}
+
+			// Sticky Kebab Logic
+			// Target the last popover button within the tool options (which corresponds to the overflow menu).
+			:global(.tool-options) {
+				.popover-button:last-of-type {
+					position: sticky;
+					right: 0;
+					z-index: 10;
+					background: var(--color-3-darkgray);
+					// Addition of a shadow to obscure content scrolling underneath
+					box-shadow: -4px 0 4px var(--color-3-darkgray);
+				}
 			}
 		}
 

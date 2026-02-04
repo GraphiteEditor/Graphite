@@ -168,3 +168,21 @@ pub const DOUBLE_CLICK_MILLISECONDS: u64 = 500;
 pub const UI_SCALE_DEFAULT: f64 = 1.;
 pub const UI_SCALE_MIN: f64 = 0.5;
 pub const UI_SCALE_MAX: f64 = 3.;
+
+// WIDGETS
+pub const ICON_BUTTON_24_WIDTH: f64 = 28.;
+pub const ICON_BUTTON_32_WIDTH: f64 = 36.;
+
+pub const CHECKBOX_WIDTH: f64 = 24.;
+pub const NUMBER_INPUT_WIDTH: f64 = 64.;
+pub const SEPARATOR_RELATED_WIDTH: f64 = 8.;
+pub const SEPARATOR_UNRELATED_WIDTH: f64 = 12.;
+pub const POPOVER_BUTTON_WIDTH: f64 = 32.;
+pub const OTHER_WIDGET_WIDTH: f64 = 80.; // Increased generic fallback
+pub const WIDGET_GAP: f64 = 4.;
+pub const MIN_COLLAPSE_WIDTH: f64 = 200.;
+
+pub const CHAR_WIDTH_ESTIMATE: f64 = 7.0;
+pub const DROPDOWN_PADDING: f64 = 32.0; // Icon + Arrow
+pub const WIDGET_PADDING: f64 = 8.0;
+pub const TEXT_BUTTON_PADDING: f64 = 16.0;

@@ -1,6 +1,7 @@
 mod layout_message;
 pub mod layout_message_handler;
 
+pub mod tool_options_overflow;
 pub mod utility_types;
 
 #[doc(inline)]
