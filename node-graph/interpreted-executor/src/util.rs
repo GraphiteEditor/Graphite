@@ -28,7 +28,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 	let render_node = DocumentNode {
 		inputs: vec![NodeInput::node(NodeId(0), 0)],
 		implementation: DocumentNodeImplementation::Network(NodeNetwork {
-			exports: vec![NodeInput::node(NodeId(2), 0)],
+			exports: vec![NodeInput::node(NodeId(3), 0)],
 			nodes: [
 				DocumentNode {
 					call_argument: concrete!(Context),
@@ -52,8 +52,18 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 					..Default::default()
 				},
 				DocumentNode {
+					call_argument: concrete!(Context),
+					inputs: vec![NodeInput::scope("editor-api"), NodeInput::node(NodeId(1), 0)],
+					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_cache::render_output_cache::IDENTIFIER),
+					context_features: graphene_std::ContextDependencies {
+						extract: ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS,
+						inject: ContextFeatures::empty(),
+					},
+					..Default::default()
+				},
+				DocumentNode {
 					call_argument: concrete!(graphene_std::application_io::RenderConfig),
-					inputs: vec![NodeInput::node(NodeId(1), 0)],
+					inputs: vec![NodeInput::node(NodeId(2), 0)],
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_node::create_context::IDENTIFIER),
 					context_features: graphene_std::ContextDependencies {
 						extract: ContextFeatures::empty(),
