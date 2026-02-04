@@ -86,9 +86,8 @@ use graph_craft::document::value::RenderOutput;
 use graph_craft::wasm_application_io::WasmEditorApi;
 use graphene_application_io::{ApplicationIo, ImageTexture};
 use rendering::{RenderOutputType as RenderOutputTypeRequest, RenderParams};
-use std::collections::hash_map::DefaultHasher;
 use std::collections::{HashMap, HashSet};
-use std::hash::{Hash, Hasher};
+use std::hash::Hash;
 use std::sync::{Arc, Mutex};
 
 use crate::render_node::RenderOutputType;
@@ -865,7 +864,21 @@ pub async fn composite_regions<'a>(cached_regions: Vec<CachedRegion>, viewport_b
 
 // Node implementation
 
-/// Simplified render cache for debugging - no caching, single tile-aligned region
+/// Renders content to a tile-aligned region and copies the visible portion to the viewport.
+///
+/// This node renders to a larger tile-aligned texture, then copies the portion that
+/// corresponds to the actual viewport. This enables future tile-based caching where
+/// previously rendered tiles can be reused when panning.
+///
+/// ## Coordinate spaces
+/// - Document space: World units of the artwork
+/// - Logical pixels: Viewport pixels before device scale (footprint.resolution)
+/// - Physical pixels: Actual GPU texture pixels (logical * device_scale)
+///
+/// ## Key relationships
+/// - `logical_scale` = footprint.decompose_scale().x (document → logical pixels)
+/// - `device_scale` = render_params.scale (logical → physical pixels)
+/// - `physical_scale` = logical_scale * device_scale (document → physical pixels)
 #[node_macro::node(category(""))]
 pub async fn render_output_cache<'a: 'n>(
 	ctx: impl Ctx + ExtractAll + CloneVarArgs + Sync,
@@ -886,201 +899,55 @@ pub async fn render_output_cache<'a: 'n>(
 		return data.eval(context.into_context()).await;
 	}
 
-	// DEBUG modes to isolate the bug:
-	// Mode 0: Full bypass - render directly with original footprint (known working)
-	// Mode 1: Render with original footprint, do texture copy (tests copy logic) - WORKS
-	// Mode 2: Render with region footprint (transform + resolution), do copy - BROKEN
-	// Mode 3: Original transform + region resolution (tests resolution change) - WORKS
-	// Mode 4: Region transform + original resolution (tests transform change) - BROKEN
-	// Mode 5: Small offset transform (10 doc units) - tests if ANY translation change breaks
-	// Mode 6: Reconstructed original transform - tests if reconstruction method matters
-	const DEBUG_MODE: u8 = 2;
-
 	let physical_resolution = footprint.resolution;
 	let logical_scale = footprint.decompose_scale().x;
 	let device_scale = render_params.scale;
 	let physical_scale = logical_scale * device_scale;
-	// NOTE: The render pipeline applies device_scale to the transform.
-	// So the rendered texture has content at physical_scale density.
-	// We use logical_scale for tile calculations to match viewport_bounds coordinate space.
-	let tile_scale = logical_scale;
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
 
-	if DEBUG_MODE == 0 {
-		log::debug!("[mode0] Full bypass - rendering directly with original footprint");
-		let context = OwnedContextImpl::from(ctx.clone()).with_footprint(*footprint).with_vararg(Box::new(render_params.clone()));
-		return data.eval(context.into_context()).await;
-	}
-
-	// Calculate tile-aligned bounds using logical_scale (matches footprint.resolution)
-	let viewport_tiles = world_bounds_to_tiles(&viewport_bounds, tile_scale);
+	// Calculate tile-aligned bounds that cover the viewport
+	let viewport_tiles = world_bounds_to_tiles(&viewport_bounds, logical_scale);
 	let min_tile = viewport_tiles.iter().fold(IVec2::new(i32::MAX, i32::MAX), |acc, t| acc.min(IVec2::new(t.x, t.y)));
 	let max_tile = viewport_tiles.iter().fold(IVec2::new(i32::MIN, i32::MIN), |acc, t| acc.max(IVec2::new(t.x, t.y)));
 
-	let tile_world_size = TILE_SIZE as f64 / tile_scale;
+	// Calculate region origin in document space (tile-aligned)
+	let tile_world_size = TILE_SIZE as f64 / logical_scale;
 	let region_world_start = DVec2::new(min_tile.x as f64 * tile_world_size, min_tile.y as f64 * tile_world_size);
 
-	log::debug!(
-		"[mode{}] viewport: ({:.2}, {:.2}), tile_scale: {:.4}, device_scale: {:.4}, tiles: ({},{}) to ({},{})",
-		DEBUG_MODE,
-		viewport_bounds.start.x,
-		viewport_bounds.start.y,
-		tile_scale,
-		device_scale,
-		min_tile.x,
-		min_tile.y,
-		max_tile.x,
-		max_tile.y
-	);
-	log::debug!(
-		"[DIAG] region_world_start: ({:.2}, {:.2}), tile_world_size: {:.2}",
-		region_world_start.x,
-		region_world_start.y,
-		tile_world_size
-	);
-	log::debug!("[DIAG] footprint.transform: {:?}", footprint.transform);
-	log::debug!("[DIAG] Expected at output[0,0]: ({:.2}, {:.2})", viewport_bounds.start.x, viewport_bounds.start.y);
-
-	// Calculate region values needed for modes 2-4
+	// Calculate region texture size in physical pixels
 	let tiles_wide = (max_tile.x - min_tile.x + 1) as u32;
 	let tiles_high = (max_tile.y - min_tile.y + 1) as u32;
-	// Tiles are calculated at logical_scale, but render applies device_scale.
-	// So we need to scale up the texture size to cover the same document area.
 	let region_pixel_size = UVec2::new(
 		((tiles_wide * TILE_SIZE) as f64 * device_scale).ceil() as u32,
 		((tiles_high * TILE_SIZE) as f64 * device_scale).ceil() as u32,
 	);
+
+	// Build transform for the tile-aligned region
 	let region_transform = glam::DAffine2::from_scale(DVec2::splat(logical_scale)) * glam::DAffine2::from_translation(-region_world_start);
 
-	// Render the content based on mode
-	let mut result = match DEBUG_MODE {
-		1 => {
-			// Mode 1: Original footprint (transform + resolution)
-			log::debug!("[mode1] Original footprint");
-			let context = OwnedContextImpl::from(ctx.clone()).with_footprint(*footprint).with_vararg(Box::new(render_params.clone()));
-			data.eval(context.into_context()).await
-		}
-		2 => {
-			// Mode 2: Region footprint (region transform + region resolution)
-			log::debug!("[mode2] Region footprint (transform + resolution)");
-			let region_footprint = Footprint {
-				transform: region_transform,
-				resolution: region_pixel_size,
-				quality: RenderQuality::Full,
-			};
-			let mut region_params = render_params.clone();
-			region_params.footprint = region_footprint;
-			let region_ctx = OwnedContextImpl::from(ctx.clone()).with_footprint(region_footprint).with_vararg(Box::new(region_params)).into_context();
-			data.eval(region_ctx).await
-		}
-		3 => {
-			// Mode 3: Original transform + region resolution (tests resolution change only)
-			log::debug!("[mode3] Original transform + region resolution");
-			let test_footprint = Footprint {
-				transform: footprint.transform, // ORIGINAL transform
-				resolution: region_pixel_size,  // REGION resolution (larger)
-				quality: RenderQuality::Full,
-			};
-			let mut test_params = render_params.clone();
-			test_params.footprint = test_footprint;
-			let test_ctx = OwnedContextImpl::from(ctx.clone()).with_footprint(test_footprint).with_vararg(Box::new(test_params)).into_context();
-			data.eval(test_ctx).await
-		}
-		4 => {
-			// Mode 4: Region transform + original resolution (tests transform change only)
-			log::debug!("[mode4] Region transform + original resolution");
-			let test_footprint = Footprint {
-				transform: region_transform,     // REGION transform (different origin)
-				resolution: physical_resolution, // ORIGINAL resolution
-				quality: RenderQuality::Full,
-			};
-			let mut test_params = render_params.clone();
-			test_params.footprint = test_footprint;
-			let test_ctx = OwnedContextImpl::from(ctx.clone()).with_footprint(test_footprint).with_vararg(Box::new(test_params)).into_context();
-			data.eval(test_ctx).await
-		}
-		5 => {
-			// Mode 5: Small offset transform (10 doc units) - tests if ANY translation change breaks
-			let small_offset = DVec2::new(10.0, 10.0);
-			let small_offset_origin = viewport_bounds.start - small_offset;
-			let small_offset_transform = glam::DAffine2::from_scale(DVec2::splat(logical_scale)) * glam::DAffine2::from_translation(-small_offset_origin);
-			log::debug!("[mode5] Small offset transform (10 units), origin: ({:.2}, {:.2})", small_offset_origin.x, small_offset_origin.y);
-			let test_footprint = Footprint {
-				transform: small_offset_transform,
-				resolution: physical_resolution,
-				quality: RenderQuality::Full,
-			};
-			let mut test_params = render_params.clone();
-			test_params.footprint = test_footprint;
-			let test_ctx = OwnedContextImpl::from(ctx.clone()).with_footprint(test_footprint).with_vararg(Box::new(test_params)).into_context();
-			data.eval(test_ctx).await
-		}
-		6 => {
-			// Mode 6: Reconstructed original transform - tests if reconstruction method matters
-			// Extract the original viewport origin and rebuild the transform the same way we build region_transform
-			let original_origin = viewport_bounds.start;
-			let reconstructed_transform = glam::DAffine2::from_scale(DVec2::splat(logical_scale)) * glam::DAffine2::from_translation(-original_origin);
-			log::debug!("[mode6] Reconstructed original transform, origin: ({:.2}, {:.2})", original_origin.x, original_origin.y);
-			log::debug!("[mode6] Original transform: {:?}", footprint.transform);
-			log::debug!("[mode6] Reconstructed:      {:?}", reconstructed_transform);
-			let test_footprint = Footprint {
-				transform: reconstructed_transform,
-				resolution: physical_resolution,
-				quality: RenderQuality::Full,
-			};
-			let mut test_params = render_params.clone();
-			test_params.footprint = test_footprint;
-			let test_ctx = OwnedContextImpl::from(ctx.clone()).with_footprint(test_footprint).with_vararg(Box::new(test_params)).into_context();
-			data.eval(test_ctx).await
-		}
-		_ => panic!("Invalid DEBUG_MODE"),
+	// Render to tile-aligned region
+	let region_footprint = Footprint {
+		transform: region_transform,
+		resolution: region_pixel_size,
+		quality: RenderQuality::Full,
 	};
+	let mut region_params = render_params.clone();
+	region_params.footprint = region_footprint;
+	let region_ctx = OwnedContextImpl::from(ctx.clone())
+		.with_footprint(region_footprint)
+		.with_vararg(Box::new(region_params))
+		.into_context();
+	let mut result = data.eval(region_ctx).await;
+
 	let RenderOutputType::Texture(rendered_texture) = result.data else {
-		panic!("Expected texture output");
+		panic!("Expected texture output from render");
 	};
 
-	// Calculate offset and source texture size based on mode
-	let (offset_pixels, src_texture_size) = match DEBUG_MODE {
-		1 | 3 | 6 => {
-			// Modes 1, 3, 6: rendered with original TRANSFORM (or reconstructed same), so offset is 0
-			let src_size = if DEBUG_MODE == 3 { region_pixel_size } else { physical_resolution };
-			log::debug!("[mode{}] Using zero offset (rendered at viewport position), src_size: {:?}", DEBUG_MODE, src_size);
-			(IVec2::ZERO, src_size)
-		}
-		2 | 4 => {
-			// Modes 2 & 4: rendered with region TRANSFORM, need offset
-			let src_size = if DEBUG_MODE == 2 { region_pixel_size } else { physical_resolution };
-			let offset_world = region_world_start - viewport_bounds.start;
-			let offset_px = (offset_world * physical_scale).floor().as_ivec2();
-			log::debug!(
-				"[mode{}] offset_world: ({:.2}, {:.2}), offset_pixels: ({}, {}), src_size: {:?}",
-				DEBUG_MODE,
-				offset_world.x,
-				offset_world.y,
-				offset_px.x,
-				offset_px.y,
-				src_size
-			);
-			(offset_px, src_size)
-		}
-		5 => {
-			// Mode 5: small offset (10 doc units before viewport)
-			let small_offset = DVec2::new(10.0, 10.0);
-			let offset_world = -small_offset; // render origin is before viewport
-			let offset_px = (offset_world * physical_scale).floor().as_ivec2();
-			log::debug!(
-				"[mode5] Small offset: offset_world: ({:.2}, {:.2}), offset_pixels: ({}, {})",
-				offset_world.x,
-				offset_world.y,
-				offset_px.x,
-				offset_px.y
-			);
-			(offset_px, physical_resolution)
-		}
-		_ => panic!("Invalid DEBUG_MODE"),
-	};
+	// Calculate pixel offset from region origin to viewport origin
+	let offset_world = region_world_start - viewport_bounds.start;
+	let offset_pixels = (offset_world * physical_scale).floor().as_ivec2();
 
-	// Create output texture and copy from region
+	// Create output texture
 	let exec = editor_api.application_io.as_ref().unwrap().gpu_executor().unwrap();
 	let device = &exec.context.device;
 	let queue = &exec.context.queue;
@@ -1100,60 +967,31 @@ pub async fn render_output_cache<'a: 'n>(
 		view_formats: &[],
 	});
 
-	let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("simple_copy") });
-
-	// Copy from source to output with offset
-	// offset > 0: source starts AFTER viewport, so dst = offset, src = 0
-	// offset < 0: source starts BEFORE viewport, so dst = 0, src = -offset
+	// Copy visible portion from region texture to output
+	// offset < 0 means region starts before viewport, so we skip pixels in source
+	// offset > 0 means region starts after viewport, so we offset in destination
 	let (src_x, dst_x, width) = if offset_pixels.x >= 0 {
 		let dst = offset_pixels.x as u32;
-		let w = src_texture_size.x.min(physical_resolution.x.saturating_sub(dst));
+		let w = region_pixel_size.x.min(physical_resolution.x.saturating_sub(dst));
 		(0, dst, w)
 	} else {
 		let skip = (-offset_pixels.x) as u32;
-		let w = src_texture_size.x.saturating_sub(skip).min(physical_resolution.x);
+		let w = region_pixel_size.x.saturating_sub(skip).min(physical_resolution.x);
 		(skip, 0, w)
 	};
 
 	let (src_y, dst_y, height) = if offset_pixels.y >= 0 {
 		let dst = offset_pixels.y as u32;
-		let h = src_texture_size.y.min(physical_resolution.y.saturating_sub(dst));
+		let h = region_pixel_size.y.min(physical_resolution.y.saturating_sub(dst));
 		(0, dst, h)
 	} else {
 		let skip = (-offset_pixels.y) as u32;
-		let h = src_texture_size.y.saturating_sub(skip).min(physical_resolution.y);
+		let h = region_pixel_size.y.saturating_sub(skip).min(physical_resolution.y);
 		(skip, 0, h)
 	};
 
-	// Verify: output[dst] gets source[src], which shows document position
-	// For modes 1, 3, 6: source origin is viewport_bounds.start (original transform)
-	// For modes 2, 4: source origin is region_world_start (region transform)
-	// For mode 5: source origin is viewport_bounds.start - small_offset
-	let effective_origin = match DEBUG_MODE {
-		1 | 3 | 6 => viewport_bounds.start,
-		2 | 4 => region_world_start,
-		// 2 | 4 => viewport_bounds.start,
-		5 => viewport_bounds.start - DVec2::new(10.0, 10.0),
-		_ => panic!("Invalid DEBUG_MODE"),
-	};
-	let doc_at_output_origin = effective_origin + DVec2::new(src_x as f64, src_y as f64) / physical_scale;
-	log::debug!("[mode{}] copy: src=({},{}) dst=({},{}) size={}x{}", DEBUG_MODE, src_x, src_y, dst_x, dst_y, width, height);
-	log::debug!(
-		"[mode{}] VERIFY: output[{},{}] shows doc ({:.2}, {:.2}), should be ({:.2}, {:.2})",
-		DEBUG_MODE,
-		dst_x,
-		dst_y,
-		doc_at_output_origin.x,
-		doc_at_output_origin.y,
-		viewport_bounds.start.x,
-		viewport_bounds.start.y
-	);
-	// Show the error between what we show and what we should show
-	let error = doc_at_output_origin - viewport_bounds.start;
-	let error_in_tiles = error * tile_scale / TILE_SIZE as f64;
-	log::debug!("[DIAG] ERROR: ({:.4}, {:.4}) doc units = ({:.4}, {:.4}) tiles", error.x, error.y, error_in_tiles.x, error_in_tiles.y);
-
 	if width > 0 && height > 0 {
+		let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("tile_copy") });
 		encoder.copy_texture_to_texture(
 			wgpu::TexelCopyTextureInfo {
 				texture: &rendered_texture.texture,
@@ -1173,25 +1011,16 @@ pub async fn render_output_cache<'a: 'n>(
 				depth_or_array_layers: 1,
 			},
 		);
+		queue.submit([encoder.finish()]);
 	}
 
-	queue.submit([encoder.finish()]);
-
-	// Transform metadata from region pixel space to viewport pixel space.
-	// Metadata is in LOGICAL pixel space (matching footprint.resolution), not physical pixels.
-	// Region logical pixel (0,0) maps to document position region_world_start.
-	// Viewport logical pixel (0,0) maps to document position viewport_bounds.start.
-	// So: viewport_logical = region_logical + offset_logical
-	if DEBUG_MODE == 2 || DEBUG_MODE == 4 || DEBUG_MODE == 5 {
-		let offset_world = region_world_start - viewport_bounds.start;
-		let metadata_offset = offset_world * logical_scale; // Use logical scale, not physical
-		let metadata_transform = glam::DAffine2::from_translation(metadata_offset);
-		result.metadata.apply_transform(metadata_transform);
-	}
+	// Transform metadata from region space to viewport space
+	// Metadata is in logical pixels, so use logical_scale for the offset
+	let metadata_offset = offset_world * logical_scale;
+	result.metadata.apply_transform(glam::DAffine2::from_translation(metadata_offset));
 
 	RenderOutput {
 		data: RenderOutputType::Texture(ImageTexture { texture: output_texture }),
-		// data: RenderOutputType::Texture(ImageTexture { texture: rendered_texture.texture }),
 		metadata: result.metadata,
 	}
 }
