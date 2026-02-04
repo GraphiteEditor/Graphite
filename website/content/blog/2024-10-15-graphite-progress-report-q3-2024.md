@@ -1,11 +1,13 @@
 +++
 title = "Graphite progress report (Q3 2024)"
 date = 2024-10-15
+authors = ["Keavon Chambers", "Hypercube"]
+description = "Graphite's Q3 2024 update introduces improvements to performance, node graph organization, nondestructive path editing, a new render engine, and more helpful nodes."
+
+
 [extra]
 banner = "https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024.avif"
 banner_png = "https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024.png"
-author = "Keavon Chambers & Hypercube"
-summary = "Graphite's Q3 2024 update introduces improvements to performance, node graph organization, nondestructive path editing, a new render engine, and more helpful nodes."
 reddit = "https://www.reddit.com/r/graphite/comments/1g4h6ya/blog_post_graphite_progress_report_q3_2024/"
 twitter = "https://x.com/GraphiteEditor/status/1846283664562573344"
 css = ["/component/demo-artwork.css"]
@@ -22,18 +24,18 @@ This is the third in our series of quarterly progress reports. If you missed the
 The new *Changing Seasons* artwork shown here showcases some of the recently introduced nodes in this update. And it animates! Give it a try yourself by opening the artwork and dragging the percentage slider to morph from oak to maple leaves as the colors change.
 
 <div class="demo-artwork">
-	<a href="https://editor.graphite.art/#demo/changing-seasons">
-		<img src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Vector art of Changing Seasons" />
-	</a>
-	<p>
-		<span>
-			<em>Changing Seasons</em>
-		</span>
-		<br />
-		<span>
-			<a href="https://editor.graphite.art/#demo/changing-seasons">Open this artwork</a> to<br />explore it yourself.
-		</span>
-	</p>
+ <a href="https://editor.graphite.art/#demo/changing-seasons">
+  <img src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Vector art of Changing Seasons" />
+ </a>
+ <p>
+  <span>
+   <em>Changing Seasons</em>
+  </span>
+  <br />
+  <span>
+   <a href="https://editor.graphite.art/#demo/changing-seasons">Open this artwork</a> to<br />explore it yourself.
+  </span>
+ </p>
 </div>
 
 ## Additions
@@ -44,18 +46,18 @@ EDITOR'S NOTE: The grammatical structure of each bullet point should follow the 
 
 - Simplified *Boolean Operation* node that combines the best parts of the two previous boolean node versions, letting users now convert from a stack of shape layers (of any size!) into a single resulting vector shape that's more versatile to use in both the node graph and Layers panel <small>([#1813](https://github.com/GraphiteEditor/Graphite/pull/1813), [#1933](https://github.com/GraphiteEditor/Graphite/pull/1933))</small>
   <div class="video-background">
-  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/stack-based-booleans.webm" type="video/webm" />
-  		<source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/stack-based-booleans.mp4" type="video/mp4" />
-  	</video>
+   <video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+    <source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/stack-based-booleans.webm" type="video/webm" />
+    <source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/stack-based-booleans.mp4" type="video/mp4" />
+   </video>
   </div>
 
 - *Path* node which enables nondestructive vector editing at stages along the geometry calculation pipeline, even after a procedural shape (like a star) defines the parameters that can be tweaked anytime <small>([#1676](https://github.com/GraphiteEditor/Graphite/pull/1676))</small>
   <div class="video-background">
-  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/path-node.webm" type="video/webm" />
-  		<source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/path-node.mp4" type="video/mp4" />
-  	</video>
+   <video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+    <source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/path-node.webm" type="video/webm" />
+    <source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/path-node.mp4" type="video/mp4" />
+   </video>
   </div>
 
 - Additional snapping criteria for alignment and distribution between layers <small>([#1793](https://github.com/GraphiteEditor/Graphite/pull/1793))</small>
@@ -64,51 +66,51 @@ EDITOR'S NOTE: The grammatical structure of each bullet point should follow the 
 
 - Snapping now included with the Artboard tool for precise alignment with other artboards <small>([#1734](https://github.com/GraphiteEditor/Graphite/pull/1734))</small>
   <div class="video-background">
-  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/artboard-snapping.webm" type="video/webm" />
-  		<source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/artboard-snapping.mp4" type="video/mp4" />
-  	</video>
+   <video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+    <source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/artboard-snapping.webm" type="video/webm" />
+    <source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/artboard-snapping.mp4" type="video/mp4" />
+   </video>
   </div>
 
 - Persistence of the last-chosen settings each time the Export dialog is opened (so it's not always reset to defaults), plus artboard names are now correctly written in the Bounds dropdown <small>([commit 4d3e459](https://github.com/GraphiteEditor/Graphite/commit/4d3e459f1f52f04be81727fe5946010bcabeb1eb))</small>
   <div class="video-background">
-  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/export-settings-persistence.webm" type="video/webm" />
-  		<source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/export-settings-persistence.mp4" type="video/mp4" />
-  	</video>
+   <video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+    <source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/export-settings-persistence.webm" type="video/webm" />
+    <source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/export-settings-persistence.mp4" type="video/mp4" />
+   </video>
   </div>
 
 - Demo artwork, *Painted Dreams*, featured in the [last blog post](../graphite-progress-report-q2-2024) <small>([commit 80cf486](https://github.com/GraphiteEditor/Graphite/commit/80cf486790d9300510904622924162a9b4017b1e))</small>
 
   <div class="demo-artwork" style="justify-content: left">
-  	<a href="https://editor.graphite.art/#demo/painted-dreams">
-  		<img src="https://static.graphite.art/content/blog/2024-07-31-graphite-progress-report-q2-2024.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Vector art of Painted Dreams" />
-  	</a>
-  	<p>
-  		<span>
-  			<em>Painted Dreams</em>
-  		</span>
-  		<br />
-  		<span>
-  			<a href="https://editor.graphite.art/#demo/painted-dreams">Open this artwork</a> to<br />explore it yourself.
-  		</span>
-  	</p>
+   <a href="https://editor.graphite.art/#demo/painted-dreams">
+    <img src="https://static.graphite.art/content/blog/2024-07-31-graphite-progress-report-q2-2024.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Vector art of Painted Dreams" />
+   </a>
+   <p>
+    <span>
+     <em>Painted Dreams</em>
+    </span>
+    <br />
+    <span>
+     <a href="https://editor.graphite.art/#demo/painted-dreams">Open this artwork</a> to<br />explore it yourself.
+    </span>
+   </p>
   </div>
 
 - Quick measurement feature that is shown by holding <kbd>Alt</kbd> to momentarily see the distance between the selected and hovered shapes <small>([#1894](https://github.com/GraphiteEditor/Graphite/pull/1894))</small>
   <div class="video-background">
-  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/quick-measurement.webm" type="video/webm" />
-  		<source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/quick-measurement.mp4" type="video/mp4" />
-  	</video>
+   <video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+    <source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/quick-measurement.webm" type="video/webm" />
+    <source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/quick-measurement.mp4" type="video/mp4" />
+   </video>
   </div>
 
 - Support for drag-and-drop and copy-paste of files more widely throughout the editor <small>([#2012](https://github.com/GraphiteEditor/Graphite/pull/2012))</small>
   <div class="video-background">
-  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/drag-and-drop-import.webm" type="video/webm" />
-  		<source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/drag-and-drop-import.mp4" type="video/mp4" />
-  	</video>
+   <video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+    <source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/drag-and-drop-import.webm" type="video/webm" />
+    <source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/drag-and-drop-import.mp4" type="video/mp4" />
+   </video>
   </div>
 
 - Crash mitigation preventing node faults from taking down the whole editor, working to isolate crashes within the graph so the user can undo the change and save the file (however, reloading the editor is required to stabilize it after this occurs) <small>([#1846](https://github.com/GraphiteEditor/Graphite/pull/1846))</small>
@@ -121,56 +123,56 @@ EDITOR'S NOTE: The grammatical structure of each bullet point should follow the 
 
 - *Percentage Value* node for easy sliding between the numbers 0 and 100 <small>([commit d7546fb](https://github.com/GraphiteEditor/Graphite/commit/d7546fb18310490d5ce10d406e7a3faaf1ae98fe))</small>
   <div class="video-background">
-  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/percentage-value-node.webm" type="video/webm" />
-  		<source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/percentage-value-node.mp4" type="video/mp4" />
-  	</video>
+   <video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+    <source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/percentage-value-node.webm" type="video/webm" />
+    <source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/percentage-value-node.mp4" type="video/mp4" />
+   </video>
   </div>
 
 - *Gradient Map* node for recoloring grayscale color values to corresponding colors along a chosen gradient <small>([commit 501b562](https://github.com/GraphiteEditor/Graphite/commit/501b562d0f17b91a54a14c83a4a0f90a1e03e369))</small>
   <div class="video-background">
-  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/gradient-map-node.webm" type="video/webm" />
-  		<source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/gradient-map-node.mp4" type="video/mp4" />
-  	</video>
+   <video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+    <source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/gradient-map-node.webm" type="video/webm" />
+    <source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/gradient-map-node.mp4" type="video/mp4" />
+   </video>
   </div>
 
 - *Assign Colors* node for replacing the fill or stroke colors of individual paths in a group of vector elements using choices uniquely sampled along a gradient <small>([#1938](https://github.com/GraphiteEditor/Graphite/pull/1938))</small>
   <div class="video-background">
-  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/assign-colors-node.webm" type="video/webm" />
-  		<source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/assign-colors-node.mp4" type="video/mp4" />
-  	</video>
+   <video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+    <source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/assign-colors-node.webm" type="video/webm" />
+    <source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/assign-colors-node.mp4" type="video/mp4" />
+   </video>
   </div>
 
 - *Dehaze* node for reducing the appearance of the atmospheric haze or fog in photographs <small>([#1882](https://github.com/GraphiteEditor/Graphite/pull/1882))</small>
   <div class="video-background">
-  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/dehaze-node.webm" type="video/webm" />
-  		<source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/dehaze-node.mp4" type="video/mp4" />
-  	</video>
+   <video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+    <source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/dehaze-node.webm" type="video/webm" />
+    <source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/dehaze-node.mp4" type="video/mp4" />
+   </video>
   </div>
 
 - Node catalog reorganized with the naming and categorization of nodes given improved consistency <small>([commit e647ca9](https://github.com/GraphiteEditor/Graphite/commit/e647ca9f91a5e823137122126fe9e980f65d62ea))</small>
   <div class="video-background">
-  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/reorganized-node-catalog.webm" type="video/webm" />
-  		<source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/reorganized-node-catalog.mp4" type="video/mp4" />
-  	</video>
+   <video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+    <source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/reorganized-node-catalog.webm" type="video/webm" />
+    <source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/reorganized-node-catalog.mp4" type="video/mp4" />
+   </video>
   </div>
 
 - *Noise Pattern* node updated to generate resolution-aware coherent noise, meaning it extends forever in all directions and zoom depths <small>([#1909](https://github.com/GraphiteEditor/Graphite/pull/1909))</small>
   <div class="video-background">
-  	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-  		<source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/resolution-aware-noise.webm" type="video/webm" />
-  		<source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/resolution-aware-noise.mp4" type="video/mp4" />
-  	</video>
+   <video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+    <source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/resolution-aware-noise.webm" type="video/webm" />
+    <source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/resolution-aware-noise.mp4" type="video/mp4" />
+   </video>
   </div>
 
 - [Dennis Kobert](https://github.com/truedoctor)'s Google Summer of Code project has concluded, adding many improvements to performance and internal improvements listed in the following sections, but also:
 
   - Alternate render engine using [Vello](https://github.com/linebender/vello) that brings increased code simplicity and performance (especially with raster layers), but currently only works in browsers with [WebGPU support](https://developer.mozilla.org/en-US/docs/Web/API/WebGPU_API#browser_compatibility) and must be enabled via *File* > *Preferences* <small>([#1802](https://github.com/GraphiteEditor/Graphite/pull/1802), [#1865](https://github.com/GraphiteEditor/Graphite/pull/1865), [#1844](https://github.com/GraphiteEditor/Graphite/pull/1844), [#1871](https://github.com/GraphiteEditor/Graphite/pull/1871), [#1874](https://github.com/GraphiteEditor/Graphite/pull/1874), [#1875](https://github.com/GraphiteEditor/Graphite/pull/1875), [#1899](https://github.com/GraphiteEditor/Graphite/pull/1899), [#1905](https://github.com/GraphiteEditor/Graphite/pull/1905), [#1900](https://github.com/GraphiteEditor/Graphite/pull/1900), [#1907](https://github.com/GraphiteEditor/Graphite/pull/1907), [#1902](https://github.com/GraphiteEditor/Graphite/pull/1902), [#1897](https://github.com/GraphiteEditor/Graphite/pull/1897), [#1915](https://github.com/GraphiteEditor/Graphite/pull/1915), [#1996](https://github.com/GraphiteEditor/Graphite/pull/1996))</small>
-    
+
     <img src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/vello-preference.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Editor preferences menu with Vello setting" />
 
   - The [final report and weekly updates](https://github.com/GraphiteEditor/Graphite/discussions/1773) are available for more details
@@ -179,42 +181,42 @@ EDITOR'S NOTE: The grammatical structure of each bullet point should follow the 
 
   - Layer node chains that help keep a linear sequence of nodes organized by encapsulating them within their destination layer <small>([#1794](https://github.com/GraphiteEditor/Graphite/pull/1794), [#1812](https://github.com/GraphiteEditor/Graphite/pull/1812), [commit e28e841](https://github.com/GraphiteEditor/Graphite/commit/e28e841e3bef401c19f5ddcf01c68fedd6b5c9c3))</small>
     <div class="video-background">
-    	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-    		<source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/node-organization-chains.webm" type="video/webm" />
-    		<source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/node-organization-chains.mp4" type="video/mp4" />
-    	</video>
+     <video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+      <source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/node-organization-chains.webm" type="video/webm" />
+      <source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/node-organization-chains.mp4" type="video/mp4" />
+     </video>
     </div>
 
   - Subgraph data import/export connectors drawn along the top left/right sides of the graph, instead of the previous representation as node-looking boxes <small>([#1794](https://github.com/GraphiteEditor/Graphite/pull/1794), [commit 8e774ef](https://github.com/GraphiteEditor/Graphite/commit/8e774efe9dae51c0c1db2928e22c6de5b93d0584), [#1911](https://github.com/GraphiteEditor/Graphite/pull/1911))</small>
     <div class="video-background">
-    	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-    		<source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/node-organization-imports-exports.webm" type="video/webm" />
-    		<source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/node-organization-imports-exports.mp4" type="video/mp4" />
-    	</video>
+     <video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+      <source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/node-organization-imports-exports.webm" type="video/webm" />
+      <source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/node-organization-imports-exports.mp4" type="video/mp4" />
+     </video>
     </div>
 
   - Layer selection history feature, letting users go back and forth between prior states of which layers were selected using the back/forward navigation buttons on some mice (Chromium-based browsers only) or the <kbd>Alt</kbd><kbd>[</kbd> and <kbd>Alt</kbd><kbd>]</kbd> hotkeys <small>([#1945](https://github.com/GraphiteEditor/Graphite/pull/1945))</small>
       <div class="video-background">
-    	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-    		<source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/selection-history.webm" type="video/webm" />
-    		<source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/selection-history.mp4" type="video/mp4" />
-    	</video>
+     <video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+      <source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/selection-history.webm" type="video/webm" />
+      <source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/selection-history.mp4" type="video/mp4" />
+     </video>
     </div>
 
   - Improved layer positioning for upstream nodes when being reordered so they don't chaotically overlap or leave behind large gaps anymore <small>([#1928](https://github.com/GraphiteEditor/Graphite/pull/1928), [#1945](https://github.com/GraphiteEditor/Graphite/pull/1945))</small>
     <div class="video-background">
-    	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-    		<source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/node-organization-reordering.webm" type="video/webm" />
-    		<source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/node-organization-reordering.mp4" type="video/mp4" />
-    	</video>
+     <video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+      <source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/node-organization-reordering.webm" type="video/webm" />
+      <source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/node-organization-reordering.mp4" type="video/mp4" />
+     </video>
     </div>
 
   - Improved shifting of layers in stacks so they act as blocks that collide and bump other layers/nodes instead of getting stuck inside each other <small>([#1940](https://github.com/GraphiteEditor/Graphite/pull/1940))</small>
     <div class="video-background">
-    	<video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
-    		<source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/node-organization-block-collision.webm" type="video/webm" />
-    		<source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/node-organization-block-collision.mp4" type="video/mp4" />
-    	</video>
+     <video autoplay loop muted playsinline disablepictureinpicture disableremoteplayback>
+      <source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/node-organization-block-collision.webm" type="video/webm" />
+      <source src="https://static.graphite.art/content/blog/2024-10-15-graphite-progress-report-q3-2024/node-organization-block-collision.mp4" type="video/mp4" />
+     </video>
     </div>
 
 - [Elbert Ronnie](https://github.com/elbertronnie)'s Google Summer of Code project, building a library for decoding raw image formats, has continued and will wrap up in early November:
