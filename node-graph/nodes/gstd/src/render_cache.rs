@@ -2,7 +2,7 @@
 
 use core_types::math::bbox::AxisAlignedBbox;
 use core_types::transform::{Footprint, RenderQuality, Transform};
-use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractAnimationTime, ExtractRealTime, OwnedContextImpl};
+use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime, OwnedContextImpl};
 use glam::{DVec2, IVec2, UVec2};
 use graph_craft::document::value::RenderOutput;
 use graph_craft::wasm_application_io::WasmEditorApi;
@@ -47,10 +47,11 @@ pub struct CacheKey {
 	pub override_paint_order: bool,
 	pub animation_time_ms: i64,
 	pub real_time_ms: i64,
+	pub pointer: [u8; 16],
 }
 
 impl CacheKey {
-	pub fn from_times(
+	pub fn new(
 		render_mode_hash: u64,
 		hide_artboards: bool,
 		for_export: bool,
@@ -60,7 +61,16 @@ impl CacheKey {
 		override_paint_order: bool,
 		animation_time: f64,
 		real_time: f64,
+		pointer: Option<DVec2>,
 	) -> Self {
+		let pointer_bytes = pointer
+			.map(|p| {
+				let mut bytes = [0u8; 16];
+				bytes[..8].copy_from_slice(&p.x.to_le_bytes());
+				bytes[8..].copy_from_slice(&p.y.to_le_bytes());
+				bytes
+			})
+			.unwrap_or([0u8; 16]);
 		Self {
 			render_mode_hash,
 			hide_artboards,
@@ -71,6 +81,7 @@ impl CacheKey {
 			override_paint_order,
 			animation_time_ms: (animation_time * 1000.0).round() as i64,
 			real_time_ms: (real_time * 1000.0).round() as i64,
+			pointer: pointer_bytes,
 		}
 	}
 }
@@ -87,6 +98,7 @@ impl Default for CacheKey {
 			override_paint_order: false,
 			animation_time_ms: 0,
 			real_time_ms: 0,
+			pointer: [0u8; 16],
 		}
 	}
 }
@@ -316,7 +328,7 @@ fn flood_fill(start: &TileCoord, tile_set: &HashSet<TileCoord>, visited: &mut Ha
 
 #[node_macro::node(category(""))]
 pub async fn render_output_cache<'a: 'n>(
-	ctx: impl Ctx + ExtractAll + CloneVarArgs + ExtractRealTime + ExtractAnimationTime + Sync,
+	ctx: impl Ctx + ExtractAll + CloneVarArgs + ExtractRealTime + ExtractAnimationTime + ExtractPointerPosition + Sync,
 	editor_api: &'a WasmEditorApi,
 	data: impl Node<Context<'static>, Output = RenderOutput> + Send + Sync,
 	#[data] tile_cache: TileCache,
@@ -349,6 +361,7 @@ pub async fn render_output_cache<'a: 'n>(
 		false, // override_paint_order
 		ctx.try_animation_time().unwrap_or(0.0),
 		ctx.try_real_time().unwrap_or(0.0),
+		ctx.try_pointer_position(),
 	);
 
 	let cache_query = tile_cache.query(&viewport_bounds, logical_scale, &cache_key);
