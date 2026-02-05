@@ -239,9 +239,41 @@ fn max_scale(transform: DAffine2) -> f64 {
 
 pub fn contrasting_outline_color(background: Option<Color>) -> Color {
 	use core_types::consts::LAYER_OUTLINE_STROKE_COLOR;
+
 	if let Some(bg) = background {
-		let luminance = 0.2126 * bg.r() + 0.7152 * bg.g() + 0.0722 * bg.b();
-		if luminance > 0.5 { Color::BLACK } else { Color::WHITE }
+		let alpha = bg.a();
+
+		if alpha.abs() < f32::EPSILON {
+			return Color::BLACK;
+		}
+
+		// Convert Linear Float to sRGB Float
+		let linear_to_srgb = |x: f32| -> f32 { if x <= 0.0031308 { x * 12.92 } else { 1.055 * x.powf(1.0 / 2.4) - 0.055 } };
+
+		// Convert sRGB Float to Linear Float
+		let srgb_to_linear = |x: f32| -> f32 { if x <= 0.04045 { x / 12.92 } else { ((x + 0.055) / 1.055).powf(2.4) } };
+
+		let r_lin = bg.r() / alpha;
+		let g_lin = bg.g() / alpha;
+		let b_lin = bg.b() / alpha;
+
+		let r_srgb = linear_to_srgb(r_lin);
+		let g_srgb = linear_to_srgb(g_lin);
+		let b_srgb = linear_to_srgb(b_lin);
+
+		let r_comp_srgb = r_srgb * alpha + (1.0 - alpha);
+		let g_comp_srgb = g_srgb * alpha + (1.0 - alpha);
+		let b_comp_srgb = b_srgb * alpha + (1.0 - alpha);
+
+		let r_final = srgb_to_linear(r_comp_srgb);
+		let g_final = srgb_to_linear(g_comp_srgb);
+		let b_final = srgb_to_linear(b_comp_srgb);
+
+		let luminance = 0.2126 * r_final + 0.7152 * g_final + 0.0722 * b_final;
+9
+		let threshold = (1.05 * 0.05f32).sqrt() - 0.05;
+
+		if luminance > threshold { Color::BLACK } else { Color::WHITE }
 	} else {
 		LAYER_OUTLINE_STROKE_COLOR
 	}
