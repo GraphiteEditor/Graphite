@@ -46,7 +46,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 					inputs: vec![NodeInput::scope("editor-api"), NodeInput::node(NodeId(0), 0)],
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_node::render::IDENTIFIER),
 					context_features: graphene_std::ContextDependencies {
-						extract: ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS,
+						extract: ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS | ContextFeatures::INDEX,
 						inject: ContextFeatures::empty(),
 					},
 					..Default::default()
@@ -57,7 +57,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_cache::render_output_cache::IDENTIFIER),
 					context_features: graphene_std::ContextDependencies {
 						extract: ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS,
-						inject: ContextFeatures::empty(),
+						inject: ContextFeatures::VARARGS | ContextFeatures::INDEX,
 					},
 					..Default::default()
 				},

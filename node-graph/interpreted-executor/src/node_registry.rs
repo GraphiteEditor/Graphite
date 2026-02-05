@@ -140,6 +140,7 @@ fn node_registry() -> HashMap<ProtoNodeIdentifier, HashMap<NodeIOTypes, NodeCons
 		#[cfg(feature = "gpu")]
 		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => Arc<WasmSurfaceHandle>, Context => graphene_std::ContextFeatures]),
 		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => RenderIntermediate, Context => graphene_std::ContextFeatures]),
+		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => RenderOutput, Context => graphene_std::ContextFeatures]),
 		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => WgpuSurface, Context => graphene_std::ContextFeatures]),
 		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => Option<WgpuSurface>, Context => graphene_std::ContextFeatures]),
 		async_node!(graphene_core::context_modification::ContextModificationNode<_, _>, input: Context, fn_params: [Context => WindowHandle, Context => graphene_std::ContextFeatures]),

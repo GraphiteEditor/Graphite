@@ -257,6 +257,16 @@ impl RenderMetadata {
 			value.transform = transform * value.transform;
 		}
 	}
+
+	/// Merge another RenderMetadata into this one.
+	/// Values from `other` take precedence for duplicate keys.
+	pub fn merge(&mut self, other: &RenderMetadata) {
+		self.upstream_footprints.extend(other.upstream_footprints.iter().map(|(k, v)| (*k, *v)));
+		self.local_transforms.extend(other.local_transforms.iter().map(|(k, v)| (*k, *v)));
+		self.first_element_source_id.extend(other.first_element_source_id.iter().map(|(k, v)| (*k, *v)));
+		self.click_targets.extend(other.click_targets.iter().map(|(k, v)| (*k, v.clone())));
+		self.clip_targets.extend(other.clip_targets.iter().copied());
+	}
 }
 
 // TODO: Rename to "Graphical"
