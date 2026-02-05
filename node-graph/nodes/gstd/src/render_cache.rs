@@ -80,7 +80,7 @@
 
 use core_types::math::bbox::AxisAlignedBbox;
 use core_types::transform::{Footprint, RenderQuality, Transform};
-use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, OwnedContextImpl};
+use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractAnimationTime, ExtractRealTime, OwnedContextImpl};
 use glam::{DVec2, IVec2, UVec2};
 use graph_craft::document::value::RenderOutput;
 use graph_craft::wasm_application_io::WasmEditorApi;
@@ -864,11 +864,11 @@ pub async fn composite_regions<'a>(cached_regions: Vec<CachedRegion>, viewport_b
 
 // Node implementation
 
-/// Renders content to a tile-aligned region and copies the visible portion to the viewport.
+/// Renders content with tile-based caching for efficient viewport panning.
 ///
-/// This node renders to a larger tile-aligned texture, then copies the portion that
-/// corresponds to the actual viewport. This enables future tile-based caching where
-/// previously rendered tiles can be reused when panning.
+/// This node caches rendered tiles and reuses them when the viewport pans, only
+/// rendering newly visible tiles. This significantly improves performance during
+/// navigation by avoiding redundant rendering of previously visible content.
 ///
 /// ## Coordinate spaces
 /// - Document space: World units of the artwork
@@ -879,12 +879,17 @@ pub async fn composite_regions<'a>(cached_regions: Vec<CachedRegion>, viewport_b
 /// - `logical_scale` = footprint.decompose_scale().x (document → logical pixels)
 /// - `device_scale` = render_params.scale (logical → physical pixels)
 /// - `physical_scale` = logical_scale * device_scale (document → physical pixels)
+///
+/// ## Caching strategy
+/// - Tiles are computed at `logical_scale` (256 logical pixels per tile)
+/// - Textures are stored at `physical_scale` density
+/// - Cache is invalidated when scale or render parameters change
 #[node_macro::node(category(""))]
 pub async fn render_output_cache<'a: 'n>(
-	ctx: impl Ctx + ExtractAll + CloneVarArgs + Sync,
+	ctx: impl Ctx + ExtractAll + CloneVarArgs + ExtractRealTime + ExtractAnimationTime + Sync,
 	editor_api: &'a WasmEditorApi,
 	data: impl Node<Context<'static>, Output = RenderOutput> + Send + Sync,
-	#[data] _tile_cache: TileCache,
+	#[data] tile_cache: TileCache,
 ) -> RenderOutput {
 	let footprint = ctx.footprint();
 	let render_params = ctx
@@ -905,12 +910,67 @@ pub async fn render_output_cache<'a: 'n>(
 	let physical_scale = logical_scale * device_scale;
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
 
-	// Calculate tile-aligned bounds that cover the viewport
-	let viewport_tiles = world_bounds_to_tiles(&viewport_bounds, logical_scale);
-	let min_tile = viewport_tiles.iter().fold(IVec2::new(i32::MAX, i32::MAX), |acc, t| acc.min(IVec2::new(t.x, t.y)));
-	let max_tile = viewport_tiles.iter().fold(IVec2::new(i32::MIN, i32::MIN), |acc, t| acc.max(IVec2::new(t.x, t.y)));
+	// Create cache key from render parameters
+	let cache_key = CacheKey::from_times(
+		0, // TODO: hash render_mode properly
+		render_params.hide_artboards,
+		render_params.for_export,
+		false, // for_mask
+		render_params.thumbnail,
+		render_params.aligned_strokes,
+		false, // override_paint_order
+		ctx.try_animation_time().unwrap_or(0.0),
+		ctx.try_real_time().unwrap_or(0.0),
+	);
 
-	// Calculate region origin in document space (tile-aligned)
+	// Query cache for existing tiles and missing regions
+	let cache_query = tile_cache.query(&viewport_bounds, logical_scale, &cache_key);
+
+	// Render missing regions
+	let mut new_regions = Vec::new();
+	if cache_query.missing_regions.is_empty() {
+		println!("reusing cache");
+	} else {
+		println!("rerendering {} regions", cache_query.missing_regions.len());
+	}
+	for missing_region in &cache_query.missing_regions {
+		let region = render_missing_region(missing_region, |ctx| data.eval(ctx), ctx.clone(), render_params, logical_scale, device_scale).await;
+		new_regions.push(region);
+	}
+
+	// Store newly rendered regions in cache
+	tile_cache.store_regions(new_regions.clone());
+
+	// Collect all regions (cached + newly rendered)
+	let all_regions: Vec<_> = cache_query.cached_regions.into_iter().chain(new_regions.into_iter()).collect();
+
+	// Composite all regions into output
+	let exec = editor_api.application_io.as_ref().unwrap().gpu_executor().unwrap();
+	let (output_texture, combined_metadata) = composite_cached_regions(&all_regions, &viewport_bounds, physical_resolution, logical_scale, physical_scale, exec);
+
+	RenderOutput {
+		data: RenderOutputType::Texture(ImageTexture { texture: output_texture }),
+		metadata: combined_metadata,
+	}
+}
+
+/// Render a missing region and create a CachedRegion for storage.
+async fn render_missing_region<F, Fut>(
+	region: &RenderRegion,
+	render_fn: F,
+	ctx: impl Ctx + ExtractAll + CloneVarArgs,
+	render_params: &RenderParams,
+	logical_scale: f64,
+	device_scale: f64,
+) -> CachedRegion
+where
+	F: Fn(Context<'static>) -> Fut,
+	Fut: std::future::Future<Output = RenderOutput>,
+{
+	// Calculate region bounds from tiles
+	let min_tile = region.tiles.iter().fold(IVec2::new(i32::MAX, i32::MAX), |acc, t| acc.min(IVec2::new(t.x, t.y)));
+	let max_tile = region.tiles.iter().fold(IVec2::new(i32::MIN, i32::MIN), |acc, t| acc.max(IVec2::new(t.x, t.y)));
+
 	let tile_world_size = TILE_SIZE as f64 / logical_scale;
 	let region_world_start = DVec2::new(min_tile.x as f64 * tile_world_size, min_tile.y as f64 * tile_world_size);
 
@@ -933,30 +993,50 @@ pub async fn render_output_cache<'a: 'n>(
 	};
 	let mut region_params = render_params.clone();
 	region_params.footprint = region_footprint;
-	let region_ctx = OwnedContextImpl::from(ctx.clone())
-		.with_footprint(region_footprint)
-		.with_vararg(Box::new(region_params))
-		.into_context();
-	let mut result = data.eval(region_ctx).await;
+	let region_ctx = OwnedContextImpl::from(ctx).with_footprint(region_footprint).with_vararg(Box::new(region_params)).into_context();
+	let mut result = render_fn(region_ctx).await;
 
 	let RenderOutputType::Texture(rendered_texture) = result.data else {
 		panic!("Expected texture output from render");
 	};
 
-	// Calculate pixel offset from region origin to viewport origin
-	let offset_world = region_world_start - viewport_bounds.start;
-	let offset_pixels = (offset_world * physical_scale).floor().as_ivec2();
+	// Transform metadata from region pixel space to document space for storage
+	// Region pixel (0,0) = region_world_start in document space
+	// So: document = region_world_start + pixel / logical_scale
+	let pixel_to_document = glam::DAffine2::from_translation(region_world_start) * glam::DAffine2::from_scale(DVec2::splat(1.0 / logical_scale));
+	result.metadata.apply_transform(pixel_to_document);
 
-	// Create output texture
-	let exec = editor_api.application_io.as_ref().unwrap().gpu_executor().unwrap();
+	let memory_size = (region_pixel_size.x * region_pixel_size.y) as usize * BYTES_PER_PIXEL;
+
+	CachedRegion {
+		texture: rendered_texture.texture,
+		texture_size: region_pixel_size,
+		world_bounds: region.world_bounds.clone(),
+		tiles: region.tiles.clone(),
+		metadata: result.metadata,
+		last_access: 0, // Will be set by cache
+		memory_size,
+	}
+}
+
+/// Composite cached regions into the final viewport output texture.
+fn composite_cached_regions(
+	regions: &[CachedRegion],
+	viewport_bounds: &AxisAlignedBbox,
+	output_resolution: UVec2,
+	logical_scale: f64,
+	physical_scale: f64,
+	exec: &wgpu_executor::WgpuExecutor,
+) -> (wgpu::Texture, rendering::RenderMetadata) {
 	let device = &exec.context.device;
 	let queue = &exec.context.queue;
 
+	// Create output texture
 	let output_texture = device.create_texture(&wgpu::TextureDescriptor {
 		label: Some("viewport_output"),
 		size: wgpu::Extent3d {
-			width: physical_resolution.x,
-			height: physical_resolution.y,
+			width: output_resolution.x,
+			height: output_resolution.y,
 			depth_or_array_layers: 1,
 		},
 		mip_level_count: 1,
@@ -967,62 +1047,74 @@ pub async fn render_output_cache<'a: 'n>(
 		view_formats: &[],
 	});
 
-	// Copy visible portion from region texture to output
-	// offset < 0 means region starts before viewport, so we skip pixels in source
-	// offset > 0 means region starts after viewport, so we offset in destination
-	let (src_x, dst_x, width) = if offset_pixels.x >= 0 {
-		let dst = offset_pixels.x as u32;
-		let w = region_pixel_size.x.min(physical_resolution.x.saturating_sub(dst));
-		(0, dst, w)
-	} else {
-		let skip = (-offset_pixels.x) as u32;
-		let w = region_pixel_size.x.saturating_sub(skip).min(physical_resolution.x);
-		(skip, 0, w)
-	};
+	let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("composite") });
+	let mut combined_metadata = rendering::RenderMetadata::default();
 
-	let (src_y, dst_y, height) = if offset_pixels.y >= 0 {
-		let dst = offset_pixels.y as u32;
-		let h = region_pixel_size.y.min(physical_resolution.y.saturating_sub(dst));
-		(0, dst, h)
-	} else {
-		let skip = (-offset_pixels.y) as u32;
-		let h = region_pixel_size.y.saturating_sub(skip).min(physical_resolution.y);
-		(skip, 0, h)
-	};
+	// Copy each region to the output texture
+	for region in regions {
+		// Find region's min tile to calculate its origin
+		let min_tile = region.tiles.iter().fold(IVec2::new(i32::MAX, i32::MAX), |acc, t| acc.min(IVec2::new(t.x, t.y)));
+		let tile_world_size = TILE_SIZE as f64 / logical_scale;
+		let region_world_start = DVec2::new(min_tile.x as f64 * tile_world_size, min_tile.y as f64 * tile_world_size);
 
-	if width > 0 && height > 0 {
-		let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("tile_copy") });
-		encoder.copy_texture_to_texture(
-			wgpu::TexelCopyTextureInfo {
-				texture: &rendered_texture.texture,
-				mip_level: 0,
-				origin: wgpu::Origin3d { x: src_x, y: src_y, z: 0 },
-				aspect: wgpu::TextureAspect::All,
-			},
-			wgpu::TexelCopyTextureInfo {
-				texture: &output_texture,
-				mip_level: 0,
-				origin: wgpu::Origin3d { x: dst_x, y: dst_y, z: 0 },
-				aspect: wgpu::TextureAspect::All,
-			},
-			wgpu::Extent3d {
-				width,
-				height,
-				depth_or_array_layers: 1,
-			},
-		);
-		queue.submit([encoder.finish()]);
+		// Calculate pixel offset from region origin to viewport origin
+		let offset_world = region_world_start - viewport_bounds.start;
+		let offset_pixels = (offset_world * physical_scale).floor().as_ivec2();
+
+		// Calculate copy parameters
+		let (src_x, dst_x, width) = if offset_pixels.x >= 0 {
+			let dst = offset_pixels.x as u32;
+			let w = region.texture_size.x.min(output_resolution.x.saturating_sub(dst));
+			(0, dst, w)
+		} else {
+			let skip = (-offset_pixels.x) as u32;
+			let w = region.texture_size.x.saturating_sub(skip).min(output_resolution.x);
+			(skip, 0, w)
+		};
+
+		let (src_y, dst_y, height) = if offset_pixels.y >= 0 {
+			let dst = offset_pixels.y as u32;
+			let h = region.texture_size.y.min(output_resolution.y.saturating_sub(dst));
+			(0, dst, h)
+		} else {
+			let skip = (-offset_pixels.y) as u32;
+			let h = region.texture_size.y.saturating_sub(skip).min(output_resolution.y);
+			(skip, 0, h)
+		};
+
+		if width > 0 && height > 0 {
+			encoder.copy_texture_to_texture(
+				wgpu::TexelCopyTextureInfo {
+					texture: &region.texture,
+					mip_level: 0,
+					origin: wgpu::Origin3d { x: src_x, y: src_y, z: 0 },
+					aspect: wgpu::TextureAspect::All,
+				},
+				wgpu::TexelCopyTextureInfo {
+					texture: &output_texture,
+					mip_level: 0,
+					origin: wgpu::Origin3d { x: dst_x, y: dst_y, z: 0 },
+					aspect: wgpu::TextureAspect::All,
+				},
+				wgpu::Extent3d {
+					width,
+					height,
+					depth_or_array_layers: 1,
+				},
+			);
+		}
+
+		// Transform and merge metadata
+		// Metadata is stored in document space, convert to viewport logical pixels
+		let mut region_metadata = region.metadata.clone();
+		let document_to_viewport = glam::DAffine2::from_scale(DVec2::splat(logical_scale)) * glam::DAffine2::from_translation(-viewport_bounds.start);
+		region_metadata.apply_transform(document_to_viewport);
+		combined_metadata.merge(&region_metadata);
 	}
 
-	// Transform metadata from region space to viewport space
-	// Metadata is in logical pixels, so use logical_scale for the offset
-	let metadata_offset = offset_world * logical_scale;
-	result.metadata.apply_transform(glam::DAffine2::from_translation(metadata_offset));
+	queue.submit([encoder.finish()]);
 
-	RenderOutput {
-		data: RenderOutputType::Texture(ImageTexture { texture: output_texture }),
-		metadata: result.metadata,
-	}
+	(output_texture, combined_metadata)
 }
 
 #[cfg(test)]
