@@ -16,7 +16,7 @@ use crate::render_node::RenderOutputType;
 
 pub const TILE_SIZE: u32 = 256;
 pub const MAX_CACHE_MEMORY_BYTES: usize = 512 * 1024 * 1024;
-pub const MAX_REGION_DIMENSION: u32 = 4096;
+pub const MAX_REGION_DIMENSION: u32 = 1024;
 const BYTES_PER_PIXEL: usize = 4;
 
 #[derive(Debug, Clone, Copy, Hash, Eq, PartialEq)]
@@ -153,7 +153,10 @@ pub fn tile_world_start(tile: &TileCoord, scale: f64) -> DVec2 {
 pub fn tile_to_world_bounds(coord: &TileCoord, scale: f64) -> AxisAlignedBbox {
 	let tile_world_size = TILE_SIZE as f64 / scale;
 	let start = tile_world_start(coord, scale);
-	AxisAlignedBbox { start, end: start + DVec2::splat(tile_world_size) }
+	AxisAlignedBbox {
+		start,
+		end: start + DVec2::splat(tile_world_size),
+	}
 }
 
 pub fn tiles_to_world_bounds(tiles: &[TileCoord], scale: f64) -> AxisAlignedBbox {
@@ -251,7 +254,11 @@ fn group_into_regions(tiles: &[TileCoord], scale: f64) -> Vec<RenderRegion> {
 		}
 		let region_tiles = flood_fill(&tile, &tile_set, &mut visited);
 		let world_bounds = tiles_to_world_bounds(&region_tiles, scale);
-		let region = RenderRegion { world_bounds, tiles: region_tiles, scale };
+		let region = RenderRegion {
+			world_bounds,
+			tiles: region_tiles,
+			scale,
+		};
 		regions.extend(split_oversized_region(region, scale));
 	}
 	regions
@@ -315,7 +322,11 @@ pub async fn render_output_cache<'a: 'n>(
 	#[data] tile_cache: TileCache,
 ) -> RenderOutput {
 	let footprint = ctx.footprint();
-	let render_params = ctx.vararg(0).expect("Did not find var args").downcast_ref::<RenderParams>().expect("Downcasting render params yielded invalid type");
+	let render_params = ctx
+		.vararg(0)
+		.expect("Did not find var args")
+		.downcast_ref::<RenderParams>()
+		.expect("Downcasting render params yielded invalid type");
 
 	if !matches!(render_params.render_output_type, RenderOutputTypeRequest::Vello) {
 		let context = OwnedContextImpl::empty().with_footprint(*footprint).with_vararg(Box::new(render_params.clone()));
@@ -383,12 +394,11 @@ where
 	let tile_world_size = TILE_SIZE as f64 / logical_scale;
 	let region_world_start = DVec2::new(min_tile.x as f64 * tile_world_size, min_tile.y as f64 * tile_world_size);
 
-	let tiles_wide = (max_tile.x - min_tile.x + 1) as u32;
-	let tiles_high = (max_tile.y - min_tile.y + 1) as u32;
-	let region_pixel_size = UVec2::new(
-		((tiles_wide * TILE_SIZE) as f64 * device_scale).ceil() as u32,
-		((tiles_high * TILE_SIZE) as f64 * device_scale).ceil() as u32,
-	);
+	// Calculate pixel size from tile boundaries to avoid rounding gaps
+	// Use round() on boundaries to ensure adjacent tiles share the same edge
+	let pixel_start = (min_tile.as_dvec2() * TILE_SIZE as f64 * device_scale).round().as_ivec2();
+	let pixel_end = ((max_tile + IVec2::ONE).as_dvec2() * TILE_SIZE as f64 * device_scale).round().as_ivec2();
+	let region_pixel_size = (pixel_end - pixel_start).as_uvec2();
 
 	let region_transform = glam::DAffine2::from_scale(DVec2::splat(logical_scale)) * glam::DAffine2::from_translation(-region_world_start);
 	let region_footprint = Footprint {
@@ -436,7 +446,11 @@ fn composite_cached_regions(
 
 	let output_texture = device.create_texture(&wgpu::TextureDescriptor {
 		label: Some("viewport_output"),
-		size: wgpu::Extent3d { width: output_resolution.x, height: output_resolution.y, depth_or_array_layers: 1 },
+		size: wgpu::Extent3d {
+			width: output_resolution.x,
+			height: output_resolution.y,
+			depth_or_array_layers: 1,
+		},
 		mip_level_count: 1,
 		sample_count: 1,
 		dimension: wgpu::TextureDimension::D2,
@@ -448,13 +462,16 @@ fn composite_cached_regions(
 	let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("composite") });
 	let mut combined_metadata = rendering::RenderMetadata::default();
 
+	// Calculate viewport pixel offset using round() to match region boundary calculations
+	let device_scale = physical_scale / logical_scale;
+	let viewport_pixel_start = (viewport_bounds.start * physical_scale).round().as_ivec2();
+
 	for region in regions {
 		let min_tile = region.tiles.iter().fold(IVec2::new(i32::MAX, i32::MAX), |acc, t| acc.min(IVec2::new(t.x, t.y)));
-		let tile_world_size = TILE_SIZE as f64 / logical_scale;
-		let region_world_start = DVec2::new(min_tile.x as f64 * tile_world_size, min_tile.y as f64 * tile_world_size);
 
-		let offset_world = region_world_start - viewport_bounds.start;
-		let offset_pixels = (offset_world * physical_scale).floor().as_ivec2();
+		// Use round() on tile boundaries to match render_missing_region calculation
+		let region_pixel_start = (min_tile.as_dvec2() * TILE_SIZE as f64 * device_scale).round().as_ivec2();
+		let offset_pixels = region_pixel_start - viewport_pixel_start;
 
 		let (src_x, dst_x, width) = if offset_pixels.x >= 0 {
 			(0, offset_pixels.x as u32, region.texture_size.x.min(output_resolution.x.saturating_sub(offset_pixels.x as u32)))
@@ -472,9 +489,23 @@ fn composite_cached_regions(
 
 		if width > 0 && height > 0 {
 			encoder.copy_texture_to_texture(
-				wgpu::TexelCopyTextureInfo { texture: &region.texture, mip_level: 0, origin: wgpu::Origin3d { x: src_x, y: src_y, z: 0 }, aspect: wgpu::TextureAspect::All },
-				wgpu::TexelCopyTextureInfo { texture: &output_texture, mip_level: 0, origin: wgpu::Origin3d { x: dst_x, y: dst_y, z: 0 }, aspect: wgpu::TextureAspect::All },
-				wgpu::Extent3d { width, height, depth_or_array_layers: 1 },
+				wgpu::TexelCopyTextureInfo {
+					texture: &region.texture,
+					mip_level: 0,
+					origin: wgpu::Origin3d { x: src_x, y: src_y, z: 0 },
+					aspect: wgpu::TextureAspect::All,
+				},
+				wgpu::TexelCopyTextureInfo {
+					texture: &output_texture,
+					mip_level: 0,
+					origin: wgpu::Origin3d { x: dst_x, y: dst_y, z: 0 },
+					aspect: wgpu::TextureAspect::All,
+				},
+				wgpu::Extent3d {
+					width,
+					height,
+					depth_or_array_layers: 1,
+				},
 			);
 		}
 
