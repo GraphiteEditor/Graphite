@@ -912,13 +912,13 @@ pub async fn render_output_cache<'a: 'n>(
 
 	// Create cache key from render parameters
 	let cache_key = CacheKey::from_times(
-		0, // TODO: hash render_mode properly
+		render_params.render_mode as u64,
 		render_params.hide_artboards,
 		render_params.for_export,
-		false, // for_mask
+		render_params.for_mask,
 		render_params.thumbnail,
 		render_params.aligned_strokes,
-		false, // override_paint_order
+		render_params.override_paint_order,
 		ctx.try_animation_time().unwrap_or(0.0),
 		ctx.try_real_time().unwrap_or(0.0),
 	);
@@ -928,11 +928,6 @@ pub async fn render_output_cache<'a: 'n>(
 
 	// Render missing regions
 	let mut new_regions = Vec::new();
-	if cache_query.missing_regions.is_empty() {
-		println!("reusing cache");
-	} else {
-		println!("rerendering {} regions", cache_query.missing_regions.len());
-	}
 	for missing_region in &cache_query.missing_regions {
 		let region = render_missing_region(missing_region, |ctx| data.eval(ctx), ctx.clone(), render_params, logical_scale, device_scale).await;
 		new_regions.push(region);
