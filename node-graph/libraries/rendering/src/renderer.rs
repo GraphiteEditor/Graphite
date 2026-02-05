@@ -270,7 +270,7 @@ pub fn contrasting_outline_color(background: Option<Color>) -> Color {
 		let b_final = srgb_to_linear(b_comp_srgb);
 
 		let luminance = 0.2126 * r_final + 0.7152 * g_final + 0.0722 * b_final;
-9
+
 		let threshold = (1.05 * 0.05f32).sqrt() - 0.05;
 
 		if luminance > threshold { Color::BLACK } else { Color::WHITE }
