@@ -79,6 +79,23 @@ pub fn add_blank_assist(widgets: &mut Vec<WidgetInstance>) {
 	]);
 }
 
+pub fn jump_to_source_button(input: &NodeInput) -> WidgetInstance {
+	match input {
+		NodeInput::Node { node_id: source_id, .. } => {
+			let source_id = *source_id;
+			TextButton::new("Jump")
+				.tooltip_description("Jump to the source node connected to this input.")
+				.on_update(move |_| NodeGraphMessage::SelectedNodesSet { nodes: vec![source_id] }.into())
+				.widget_instance()
+		}
+		_ => TextButton::new("Jump")
+			.disabled(true)
+			.tooltip_description("No node connected.")
+			.on_update(|_| Message::NoOp)
+			.widget_instance(),
+	}
+}
+
 pub fn start_widgets(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<WidgetInstance> {
 	let ParameterWidgetsInfo {
 		document_node,
@@ -106,6 +123,17 @@ pub fn start_widgets(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<Widget
 		widgets.push(expose_widget(node_id, index, input_type, input.is_exposed()));
 	}
 	widgets.push(TextLabel::new(name).tooltip_description(description).widget_instance());
+
+	let mut blank_assist = blank_assist;
+	if input.is_exposed() {
+		if blank_assist {
+			add_blank_assist(&mut widgets);
+			blank_assist = false;
+		}
+		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
+		widgets.push(jump_to_source_button(input));
+	}
+
 	if blank_assist {
 		add_blank_assist(&mut widgets);
 	}
