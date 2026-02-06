@@ -214,7 +214,9 @@ pub enum DocumentMessage {
 	UngroupLayer {
 		layer: LayerNodeIdentifier,
 	},
-	PTZUpdate,
+	PTZUpdate {
+		document_ptz_override: bool,
+	},
 	SelectionStepBack,
 	SelectionStepForward,
 	WrapContentInArtboard {
