@@ -32,7 +32,7 @@ pub struct DocumentMetadata {
 	pub vector_modify: HashMap<NodeId, Vector>,
 	/// Vector data keyed by layer ID, used as fallback when no Path node exists.
 	/// This provides accurate SegmentIds for layers without explicit Path nodes.
-	pub layer_vector_data: HashMap<LayerNodeIdentifier, Vector>,
+	pub layer_vector_data: HashMap<LayerNodeIdentifier, Arc<Vector>>,
 	/// Transform from document space to viewport space.
 	pub document_to_viewport: DAffine2,
 }
