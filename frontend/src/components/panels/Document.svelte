@@ -1,6 +1,8 @@
 <script lang="ts">
 	import { getContext, onMount, onDestroy, tick } from "svelte";
 
+	import { generateGuideId } from "@graphite/../wasm/pkg/graphite_wasm";
+
 	import type { Editor } from "@graphite/editor";
 	import {
 		type MouseCursorIcon,
@@ -55,6 +57,10 @@
 	let rulerSpacing = 100;
 	let rulerInterval = 100;
 	let rulersVisible = true;
+
+	// Guide drag state
+	let draggingGuideId: bigint | undefined = undefined;
+	let draggingGuideDirection: "Horizontal" | "Vertical" | undefined = undefined;
 
 	// Rendered SVG viewport data
 	let artworkSvg = "";
@@ -151,6 +157,91 @@
 		const delta = newValue - scrollbarPos.y;
 		scrollbarPos.y = newValue;
 		editor.handle.panCanvas(0, -delta * scrollbarMultiplier.y);
+	}
+
+	type GuideDirection = "Horizontal" | "Vertical";
+
+	function getViewportElement(): HTMLElement | undefined {
+		return viewport ?? (window.document.querySelector("[data-viewport]") as HTMLElement) ?? undefined;
+	}
+
+	function getGuideMousePosition(event: PointerEvent, viewportRect: DOMRect): { mouseX: number; mouseY: number } {
+		return {
+			mouseX: event.clientX - viewportRect.left,
+			mouseY: event.clientY - viewportRect.top,
+		};
+	}
+
+	function isInRulerArea(event: PointerEvent, viewportRect: DOMRect, direction: GuideDirection): boolean {
+		return direction === "Horizontal" ? event.clientY < viewportRect.top : event.clientX < viewportRect.left;
+	}
+
+	function createGuideDragHandlers(options: { deleteOnCancel: boolean }) {
+		const viewportEl = getViewportElement();
+		if (!viewportEl) return null;
+
+		const onMove = (event: PointerEvent) => {
+			if (draggingGuideId === undefined || !draggingGuideDirection) return;
+			const rect = viewportEl.getBoundingClientRect();
+			const { mouseX, mouseY } = getGuideMousePosition(event, rect);
+			editor.handle.moveGuide(draggingGuideId, mouseX, mouseY);
+		};
+
+		const onRelease = (event: PointerEvent) => {
+			if (draggingGuideId === undefined || !draggingGuideDirection) return;
+			const rect = viewportEl.getBoundingClientRect();
+			if (isInRulerArea(event, rect, draggingGuideDirection)) {
+				editor.handle.deleteGuide(draggingGuideId);
+			}
+			cleanup();
+		};
+
+		const onEscape = (event: KeyboardEvent) => {
+			if (event.key !== "Escape" || draggingGuideId === undefined) return;
+			if (options.deleteOnCancel) editor.handle.deleteGuide(draggingGuideId);
+			cleanup();
+		};
+
+		const onRightClick = (event: MouseEvent) => {
+			if (draggingGuideId === undefined) return;
+			event.preventDefault();
+			if (options.deleteOnCancel) editor.handle.deleteGuide(draggingGuideId);
+			cleanup();
+		};
+
+		const cleanup = () => {
+			draggingGuideId = undefined;
+			draggingGuideDirection = undefined;
+			window.removeEventListener("pointermove", onMove);
+			window.removeEventListener("pointerup", onRelease);
+			window.removeEventListener("keydown", onEscape);
+			window.removeEventListener("contextmenu", onRightClick);
+		};
+
+		return { onMove, onRelease, onEscape, onRightClick };
+	}
+
+	function startGuideDrag(options: { deleteOnCancel: boolean }) {
+		const handlers = createGuideDragHandlers(options);
+		if (!handlers) return;
+
+		window.addEventListener("pointermove", handlers.onMove);
+		window.addEventListener("pointerup", handlers.onRelease);
+		window.addEventListener("keydown", handlers.onEscape);
+		window.addEventListener("contextmenu", handlers.onRightClick);
+	}
+
+	// Guide Event Handlers
+
+	function handleGuideDragStart(e: CustomEvent<{ direction: GuideDirection; mouseX: number; mouseY: number }>) {
+		const { direction, mouseX, mouseY } = e.detail;
+
+		const guideId = generateGuideId();
+		draggingGuideId = guideId;
+		draggingGuideDirection = direction;
+
+		editor.handle.createGuide(guideId, direction, mouseX, mouseY);
+		startGuideDrag({ deleteOnCancel: true });
 	}
 
 	function canvasPointerDown(e: PointerEvent) {
@@ -544,13 +635,27 @@
 			{#if rulersVisible}
 				<LayoutRow class="ruler-or-scrollbar top-ruler">
 					<LayoutCol class="ruler-corner"></LayoutCol>
-					<RulerInput origin={rulerOrigin.x} majorMarkSpacing={rulerSpacing} numberInterval={rulerInterval} direction="Horizontal" bind:this={rulerHorizontal} />
+					<RulerInput
+						origin={rulerOrigin.x}
+						majorMarkSpacing={rulerSpacing}
+						numberInterval={rulerInterval}
+						direction="Horizontal"
+						bind:this={rulerHorizontal}
+						on:guideDragStart={handleGuideDragStart}
+					/>
 				</LayoutRow>
 			{/if}
 			<LayoutRow class="viewport-container-inner-1">
 				{#if rulersVisible}
 					<LayoutCol class="ruler-or-scrollbar">
-						<RulerInput origin={rulerOrigin.y} majorMarkSpacing={rulerSpacing} numberInterval={rulerInterval} direction="Vertical" bind:this={rulerVertical} />
+						<RulerInput
+							origin={rulerOrigin.y}
+							majorMarkSpacing={rulerSpacing}
+							numberInterval={rulerInterval}
+							direction="Vertical"
+							bind:this={rulerVertical}
+							on:guideDragStart={handleGuideDragStart}
+						/>
 					</LayoutCol>
 				{/if}
 				<LayoutCol class="viewport-container-inner-2" styles={{ cursor: canvasCursor }} data-viewport-container>
