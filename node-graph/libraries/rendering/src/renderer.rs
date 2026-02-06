@@ -261,9 +261,10 @@ pub fn contrasting_outline_color(background: Option<Color>) -> Color {
 		let g_srgb = linear_to_srgb(g_lin);
 		let b_srgb = linear_to_srgb(b_lin);
 
-		let r_comp_srgb = r_srgb * alpha + (1.0 - alpha);
-		let g_comp_srgb = g_srgb * alpha + (1.0 - alpha);
-		let b_comp_srgb = b_srgb * alpha + (1.0 - alpha);
+		let canvas_srgb = 0x22 as f32 / 255.0;
+		let r_comp_srgb = r_srgb * alpha + canvas_srgb * (1.0 - alpha);
+		let g_comp_srgb = g_srgb * alpha + canvas_srgb * (1.0 - alpha);
+		let b_comp_srgb = b_srgb * alpha + canvas_srgb * (1.0 - alpha);
 
 		let r_final = srgb_to_linear(r_comp_srgb);
 		let g_final = srgb_to_linear(g_comp_srgb);
