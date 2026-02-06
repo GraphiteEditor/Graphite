@@ -36,24 +36,22 @@ impl Ellipse {
 				return;
 			};
 
-			// Convert viewport dimensions to document space
-			let document_to_viewport = document.metadata().document_to_viewport;
+			// Use viewport-space dimensions for the ellipse radii
 			let viewport_delta = end - start;
-			let document_delta = document_to_viewport.inverse().transform_vector2(viewport_delta);
-			let document_center = document_to_viewport.inverse().transform_point2(start.midpoint(end));
+			let viewport_center = start.midpoint(end);
 
 			responses.add(NodeGraphMessage::SetInput {
 				input_connector: InputConnector::node(node_id, 1),
-				input: NodeInput::value(TaggedValue::F64((document_delta.x / 2.).abs()), false),
+				input: NodeInput::value(TaggedValue::F64((viewport_delta.x / 2.).abs()), false),
 			});
 			responses.add(NodeGraphMessage::SetInput {
 				input_connector: InputConnector::node(node_id, 2),
-				input: NodeInput::value(TaggedValue::F64((document_delta.y / 2.).abs()), false),
+				input: NodeInput::value(TaggedValue::F64((viewport_delta.y / 2.).abs()), false),
 			});
 			responses.add(GraphOperationMessage::TransformSet {
 				layer,
-				transform: DAffine2::from_translation(document_center),
-				transform_in: TransformIn::Local,
+				transform: DAffine2::from_translation(viewport_center),
+				transform_in: TransformIn::Viewport,
 				skip_rerender: false,
 			});
 		}
