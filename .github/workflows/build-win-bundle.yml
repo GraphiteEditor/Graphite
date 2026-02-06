@@ -113,6 +113,7 @@ jobs:
           timestamp-rfc3161: http://timestamp.acs.microsoft.com
           timestamp-digest: SHA256
           correlation-id: ${{ github.sha }}
+
       - name: Verify Signatures
         shell: pwsh
         run: |
