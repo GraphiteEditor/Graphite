@@ -25,4 +25,7 @@ pub enum LayoutMessage {
 		widget_id: WidgetId,
 		value: serde_json::Value,
 	},
+	SetToolOptionsWidth {
+		width: f64,
+	},
 }

@@ -486,6 +486,13 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
+	/// Send new tool options container width to the backend for overflow handling
+	#[wasm_bindgen(js_name = setToolOptionsWidth)]
+	pub fn set_tool_options_width(&self, width: f64) {
+		let message = LayoutMessage::SetToolOptionsWidth { width };
+		self.dispatch(message);
+	}
+
 	/// Mouse movement within the screenspace bounds of the viewport
 	#[wasm_bindgen(js_name = onMouseMove)]
 	pub fn on_mouse_move(&self, x: f64, y: f64, mouse_keys: u8, modifiers: u8) {

@@ -11,9 +11,19 @@ pub struct LayoutMessageContext<'a> {
 	pub action_input_mapping: &'a dyn Fn(&MessageDiscriminant) -> Option<KeysGroup>,
 }
 
-#[derive(Debug, Clone, Default, ExtractField)]
+#[derive(Debug, Clone, ExtractField)]
 pub struct LayoutMessageHandler {
 	layouts: [Layout; LayoutTarget::_LayoutTargetLength as usize],
+	tool_options_width: f64,
+}
+
+impl Default for LayoutMessageHandler {
+	fn default() -> Self {
+		Self {
+			layouts: Default::default(),
+			tool_options_width: f64::MAX,
+		}
+	}
 }
 
 #[message_handler_data]
@@ -35,6 +45,11 @@ impl MessageHandler<LayoutMessage, LayoutMessageContext<'_>> for LayoutMessageHa
 				self.send_diff(vec![diff], layout_target, responses, action_input_mapping);
 			}
 			LayoutMessage::SendLayout { layout, layout_target } => {
+				let layout = if layout_target == LayoutTarget::ToolOptions {
+					self.apply_tool_options_overflow(layout)
+				} else {
+					layout
+				};
 				self.diff_and_send_layout_to_frontend(layout_target, layout, responses, action_input_mapping);
 			}
 			LayoutMessage::DestroyLayout { layout_target } => {
@@ -47,6 +62,15 @@ impl MessageHandler<LayoutMessage, LayoutMessageContext<'_>> for LayoutMessageHa
 			}
 			LayoutMessage::WidgetValueUpdate { layout_target, widget_id, value } => {
 				self.handle_widget_callback(layout_target, widget_id, value, WidgetValueAction::Update, responses);
+			}
+			LayoutMessage::SetToolOptionsWidth { width } => {
+				if (self.tool_options_width - width).abs() > 1. {
+					log::info!("LayoutMessageHandler: Width changed {} -> {}", self.tool_options_width, width);
+					self.tool_options_width = width;
+					responses.add(ToolMessage::RefreshToolOptions);
+				} else {
+					log::trace!("LayoutMessageHandler: Width unchanged {}", width);
+				}
 			}
 		}
 	}
@@ -488,6 +512,11 @@ impl LayoutMessageHandler {
 		};
 
 		responses.add(message);
+	}
+
+	/// Determine which groups fit
+	fn apply_tool_options_overflow(&self, layout: Layout) -> Layout {
+		super::tool_options_overflow::apply_overflow(layout, self.tool_options_width)
 	}
 }
 
