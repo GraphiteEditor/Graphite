@@ -31,6 +31,7 @@ use serde_json::{Value, json};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::hash::Hash;
 use std::ops::Deref;
+use std::sync::Arc;
 
 /// All network modifications should be done through this API, so the fields cannot be public. However, all fields within this struct can be public since it it not possible to have a public mutable reference.
 #[derive(Debug, Default, serde::Serialize, serde::Deserialize)]
@@ -3176,7 +3177,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Update the cached click targets of the layers
-	pub fn update_click_targets(&mut self, new_click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>) {
+	pub fn update_click_targets(&mut self, new_click_targets: HashMap<LayerNodeIdentifier, Vec<Arc<ClickTarget>>>) {
 		self.document_metadata.click_targets = new_click_targets;
 	}
 

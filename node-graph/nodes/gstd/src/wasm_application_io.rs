@@ -34,6 +34,20 @@ async fn create_surface<'a: 'n>(_: impl Ctx, editor: &'a WasmEditorApi) -> Arc<W
 	Arc::new(editor.application_io.as_ref().unwrap().create_window())
 }
 
+fn parse_headers(headers: &str) -> reqwest::header::HeaderMap {
+	use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
+
+	let mut header_map = HeaderMap::new();
+	for line in headers.lines() {
+		if let Some((key, value)) = line.split_once(':') {
+			let Ok(header_name) = HeaderName::from_bytes(key.trim().as_bytes()) else { continue };
+			let Ok(header_value) = HeaderValue::from_str(value.trim()) else { continue };
+			header_map.insert(header_name, header_value);
+		}
+	}
+	header_map
+}
+
 /// Sends an HTTP GET request to a specified URL and optionally waits for the response (unless discarded) which is output as a string.
 #[node_macro::node(category("Web Request"))]
 async fn get_request(
@@ -44,32 +58,26 @@ async fn get_request(
 	url: String,
 	/// Makes the request run in the background without waiting on a response. This is useful for triggering webhooks without blocking the continued execution of the graph.
 	discard_result: bool,
+	#[widget(ParsedWidgetOverride::Custom = "text_area")] headers: String,
 ) -> String {
-	#[cfg(target_family = "wasm")]
-	{
-		if discard_result {
-			wasm_bindgen_futures::spawn_local(async move {
-				let _ = reqwest::get(url).await;
-			});
-			return String::new();
-		}
-	}
-	#[cfg(not(target_family = "wasm"))]
-	{
-		#[cfg(feature = "tokio")]
-		if discard_result {
-			tokio::spawn(async move {
-				let _ = reqwest::get(url).await;
-			});
-			return String::new();
-		}
-		#[cfg(not(feature = "tokio"))]
-		if discard_result {
-			return String::new();
-		}
+	let header_map = parse_headers(&headers);
+	let request = reqwest::Client::new().get(url).headers(header_map);
+
+	if discard_result {
+		#[cfg(target_family = "wasm")]
+		wasm_bindgen_futures::spawn_local(async move {
+			let _ = request.send().await;
+		});
+		#[cfg(all(not(target_family = "wasm"), feature = "tokio"))]
+		tokio::spawn(async move {
+			let _ = request.send().await;
+		});
+		return String::new();
 	}
 
-	let Ok(response) = reqwest::get(url).await else { return String::new() };
+	let Ok(response) = request.send().await else {
+		return String::new();
+	};
 	response.text().await.ok().unwrap_or_default()
 }
 
@@ -85,34 +93,25 @@ async fn post_request(
 	body: Vec<u8>,
 	/// Makes the request run in the background without waiting on a response. This is useful for triggering webhooks without blocking the continued execution of the graph.
 	discard_result: bool,
+	#[widget(ParsedWidgetOverride::Custom = "text_area")] headers: String,
 ) -> String {
-	#[cfg(target_family = "wasm")]
-	{
-		if discard_result {
-			wasm_bindgen_futures::spawn_local(async move {
-				let _ = reqwest::Client::new().post(url).body(body).header("Content-Type", "application/octet-stream").send().await;
-			});
-			return String::new();
-		}
-	}
-	#[cfg(not(target_family = "wasm"))]
-	{
-		#[cfg(feature = "tokio")]
-		if discard_result {
-			let url = url.clone();
-			let body = body.clone();
-			tokio::spawn(async move {
-				let _ = reqwest::Client::new().post(url).body(body).header("Content-Type", "application/octet-stream").send().await;
-			});
-			return String::new();
-		}
-		#[cfg(not(feature = "tokio"))]
-		if discard_result {
-			return String::new();
-		}
+	let mut header_map = parse_headers(&headers);
+	header_map.insert("Content-Type", "application/octet-stream".parse().unwrap());
+	let request = reqwest::Client::new().post(url).body(body).headers(header_map);
+
+	if discard_result {
+		#[cfg(target_family = "wasm")]
+		wasm_bindgen_futures::spawn_local(async move {
+			let _ = request.send().await;
+		});
+		#[cfg(all(not(target_family = "wasm"), feature = "tokio"))]
+		tokio::spawn(async move {
+			let _ = request.send().await;
+		});
+		return String::new();
 	}
 
-	let Ok(response) = reqwest::Client::new().post(url).body(body).header("Content-Type", "application/octet-stream").send().await else {
+	let Ok(response) = request.send().await else {
 		return String::new();
 	};
 	response.text().await.ok().unwrap_or_default()
