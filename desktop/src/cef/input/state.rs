@@ -13,6 +13,7 @@ pub(crate) struct InputState {
 	mouse_position: MousePosition,
 	mouse_state: MouseState,
 	mouse_click_tracker: ClickTracker,
+	down_position: Option<MousePosition>,
 }
 impl InputState {
 	pub(crate) fn modifiers_changed(&mut self, modifiers: &ModifiersState) {
@@ -42,7 +43,13 @@ impl InputState {
 
 	pub(crate) fn mouse_input(&mut self, button: &MouseButton, state: &ElementState) -> ClickCount {
 		self.mouse_state.update(button, state);
-		self.mouse_click_tracker.input(button, state, self.mouse_position)
+
+		let prev_down_position = self.down_position;
+		if matches!(state, ElementState::Pressed) {
+			self.down_position = Some(self.mouse_position);
+		}
+
+		self.mouse_click_tracker.input(button, state, self.mouse_position, prev_down_position)
 	}
 
 	pub(crate) fn cef_modifiers(&self, location: &KeyLocation, is_repeat: bool) -> CefModifiers {
@@ -124,7 +131,7 @@ struct ClickTracker {
 	right: Option<ClickRecord>,
 }
 impl ClickTracker {
-	fn input(&mut self, button: &MouseButton, state: &ElementState, position: MousePosition) -> ClickCount {
+	fn input(&mut self, button: &MouseButton, state: &ElementState, position: MousePosition, down_position: Option<MousePosition>) -> ClickCount {
 		let record = match button {
 			MouseButton::Left => &mut self.left,
 			MouseButton::Right => &mut self.right,
@@ -163,14 +170,22 @@ impl ClickTracker {
 			_ => {}
 		}
 
+		let within_dist_down = if let Some(down_pos) = down_position {
+			let dx_down = position.x.abs_diff(down_pos.x);
+			let dy_down = position.y.abs_diff(down_pos.y);
+			dx_down <= MULTICLICK_ALLOWED_TRAVEL && dy_down <= MULTICLICK_ALLOWED_TRAVEL
+		} else {
+			false
+		};
+
 		let dx = position.x.abs_diff(prev_position.x);
 		let dy = position.y.abs_diff(prev_position.y);
 		let within_dist = dx <= MULTICLICK_ALLOWED_TRAVEL && dy <= MULTICLICK_ALLOWED_TRAVEL;
 		let within_time = now.saturating_duration_since(prev_time) <= MULTICLICK_TIMEOUT;
 
-		let count = match (prev_count, within_time, within_dist) {
-			(ClickCount::Double, true, true) => ClickCount::Triple,
-			(_, true, true) => ClickCount::Double,
+		let count = match (prev_count, within_time, within_dist, within_dist_down) {
+			(ClickCount::Double, true, true, true) => ClickCount::Triple,
+			(_, true, true, true) => ClickCount::Double,
 			_ => ClickCount::Single,
 		};
 
