@@ -412,6 +412,7 @@ impl NodeGraphExecutor {
 			first_element_source_id,
 			click_targets,
 			clip_targets,
+			vector_data,
 		} = render_output.metadata;
 
 		// Run these update state messages immediately
@@ -422,6 +423,7 @@ impl NodeGraphExecutor {
 		});
 		responses.add(DocumentMessage::UpdateClickTargets { click_targets });
 		responses.add(DocumentMessage::UpdateClipTargets { clip_targets });
+		responses.add(DocumentMessage::UpdateVectorData { vector_data });
 		responses.add(DocumentMessage::RenderScrollbars);
 		responses.add(DocumentMessage::RenderRulers);
 		responses.add(OverlaysMessage::Draw);
