@@ -15,9 +15,9 @@ use graphene_std::Color;
 use graphene_std::raster::BlendMode;
 use graphene_std::raster::Image;
 use graphene_std::transform::Footprint;
+use graphene_std::vector::Vector;
 use graphene_std::vector::click_target::ClickTarget;
 use graphene_std::vector::style::RenderMode;
-use graphene_std::vector::Vector;
 
 #[impl_message(Message, PortfolioMessage, Document)]
 #[derive(derivative::Derivative, Clone, serde::Serialize, serde::Deserialize)]
