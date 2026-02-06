@@ -3,7 +3,7 @@ name: Build Mac Bundle
 on:
   push:
     branches:
-      - desktop-builds-mac-and-windows-in-ci
+      - master
 
 jobs:
   build:

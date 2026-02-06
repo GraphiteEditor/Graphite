@@ -3,7 +3,7 @@ name: Build Windows Bundle
 on:
   push:
     branches:
-      - desktop-builds-mac-and-windows-in-ci
+      - master
 
 permissions:
   contents: read
@@ -141,7 +141,7 @@ jobs:
               }
 
               if ($env:GITHUB_STEP_SUMMARY) {
-                  "## ❌ Unsigned or invalid binaries detected" |
+                  "### ❌ Unsigned or invalid binaries detected" |
                       Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
                   "" | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
                   $UnsignedOrBad | ForEach-Object {
@@ -155,7 +155,7 @@ jobs:
           Write-Host "All binaries are signed and valid."
 
           if ($env:GITHUB_STEP_SUMMARY) {
-              "## ✅ All binaries are signed and valid" |
+              "### ✅ All binaries are signed and valid" |
                   Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
           }
 
