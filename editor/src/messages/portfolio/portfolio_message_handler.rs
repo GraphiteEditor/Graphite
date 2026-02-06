@@ -446,7 +446,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				let mut new_document = DocumentMessageHandler::default();
 				new_document.name = name;
 
-				responses.add(DocumentMessage::PTZUpdate);
+				responses.add(DocumentMessage::PTZUpdate { document_ptz_override: false });
 
 				let document_id = DocumentId(generate_uuid());
 				if self.active_document().is_some() {
