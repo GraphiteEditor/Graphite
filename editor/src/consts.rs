@@ -31,6 +31,12 @@ pub const VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR: f64 = 0.95;
 pub const DRAG_BEYOND_VIEWPORT_MAX_OVEREXTENSION_PIXELS: f64 = 50.;
 pub const DRAG_BEYOND_VIEWPORT_SPEED_FACTOR: f64 = 20.;
 
+// FLICK PANNING
+pub const FLICK_VELOCITY_SAMPLES: usize = 5;
+pub const FLICK_DECAY_RATE: f64 = 0.92;
+pub const FLICK_MIN_VELOCITY: f64 = 0.5;
+pub const FLICK_MAX_VELOCITY: f64 = 50.;
+
 // SNAPPING POINT
 pub const SNAP_POINT_TOLERANCE: f64 = 5.;
 /// These are layers whose bounding boxes are used for alignment.
