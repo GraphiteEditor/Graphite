@@ -3076,11 +3076,7 @@ impl NodeNetworkInterface {
 			return Some(modified);
 		}
 
-		self.document_metadata
-			.click_targets
-			.get(&layer)
-			.map(|click| click.iter().map(|x| x.target_type()))
-			.map(|target_types| Vector::from_target_types(target_types, true))
+		self.document_metadata.layer_vector_data.get(&layer).cloned()
 	}
 
 	/// Loads the structure of layer nodes from a node graph.
@@ -3193,6 +3189,11 @@ impl NodeNetworkInterface {
 	/// Update the vector modify of the layers
 	pub fn update_vector_modify(&mut self, new_vector_modify: HashMap<NodeId, Vector>) {
 		self.document_metadata.vector_modify = new_vector_modify;
+	}
+
+	/// Update the layer vector data (for layers without Path nodes)
+	pub fn update_vector_data(&mut self, new_layer_vector_data: HashMap<LayerNodeIdentifier, Vector>) {
+		self.document_metadata.layer_vector_data = new_layer_vector_data;
 	}
 }
 
