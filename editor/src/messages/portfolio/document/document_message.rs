@@ -211,7 +211,7 @@ pub enum DocumentMessage {
 		clip_targets: HashSet<NodeId>,
 	},
 	UpdateVectorData {
-		vector_data: HashMap<NodeId, Vector>,
+		vector_data: HashMap<NodeId, Arc<Vector>>,
 	},
 	Undo,
 	UngroupSelectedLayers,

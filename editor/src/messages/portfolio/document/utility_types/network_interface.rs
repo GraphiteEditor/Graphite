@@ -3076,7 +3076,7 @@ impl NodeNetworkInterface {
 			return Some(modified);
 		}
 
-		self.document_metadata.layer_vector_data.get(&layer).cloned()
+		self.document_metadata.layer_vector_data.get(&layer).map(|arc| arc.as_ref().clone())
 	}
 
 	/// Loads the structure of layer nodes from a node graph.
@@ -3192,7 +3192,7 @@ impl NodeNetworkInterface {
 	}
 
 	/// Update the layer vector data (for layers without Path nodes)
-	pub fn update_vector_data(&mut self, new_layer_vector_data: HashMap<LayerNodeIdentifier, Vector>) {
+	pub fn update_vector_data(&mut self, new_layer_vector_data: HashMap<LayerNodeIdentifier, Arc<Vector>>) {
 		self.document_metadata.layer_vector_data = new_layer_vector_data;
 	}
 }
