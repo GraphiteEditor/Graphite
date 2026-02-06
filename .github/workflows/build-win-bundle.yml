@@ -1,0 +1,166 @@
+name: Build Windows Bundle
+
+on:
+  push:
+    branches:
+      - desktop-builds-mac-and-windows-in-ci
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    env:
+      WASM_BINDGEN_CLI_VERSION: "0.2.100"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          override: true
+          rustflags: ""
+          target: wasm32-unknown-unknown
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.USERPROFILE }}\.cargo\registry
+            ${{ env.USERPROFILE }}\.cargo\git
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            frontend/package-lock.json
+
+      - name: Setup Cargo Binstall
+        uses: cargo-bins/cargo-binstall@main
+
+      - name: Install Native Dependencies
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          BINSTALL_DISABLE_TELEMETRY: "true"
+        run: |
+          winget install --id LLVM.LLVM -e --accept-package-agreements --accept-source-agreements
+          winget install --id Kitware.CMake -e --accept-package-agreements --accept-source-agreements
+          winget install --id OpenSSL.OpenSSL -e --accept-package-agreements --accept-source-agreements
+          winget install --id WebAssembly.Binaryen -e --accept-package-agreements --accept-source-agreements
+          winget install --id GnuWin32.PkgConfig -e --accept-package-agreements --accept-source-agreements
+
+          "OPENSSL_DIR=C:\Program Files\OpenSSL-Win64" | Out-File -FilePath $env:GITHUB_ENV -Append
+          "PKG_CONFIG_PATH=C:\Program Files\OpenSSL-Win64\lib\pkgconfig" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+          cargo binstall --no-confirm --force wasm-pack
+          cargo binstall --no-confirm --force cargo-about
+          cargo binstall --no-confirm --force "wasm-bindgen-cli@$env:WASM_BINDGEN_CLI_VERSION"
+
+      - name: Build Windows Bundle
+        env:
+          CARGO_TERM_COLOR: always
+        run: npm run build-desktop
+
+      - name: Stage Artifacts
+        shell: bash
+        run: |
+          rm -rf target/artifacts
+          mkdir -p target/artifacts
+          cp -R target/release/Graphite target/artifacts/Graphite
+
+      - name: Upload Windows Bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: graphite-windows-bundle
+          path: target/artifacts
+
+      - name: Azure login
+        uses: azure/login@v1
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          enable-AzPSSession: true
+
+      - name: Sign
+        uses: azure/artifact-signing-action@v1
+        with:
+          endpoint: https://eus.codesigning.azure.net/
+          signing-account-name: Graphite
+          certificate-profile-name: Graphite
+          files: |
+            ${{ github.workspace }}\target\artifacts\Graphite\Graphite.exe
+            ${{ github.workspace }}\target\artifacts\Graphite\libcef.dll
+            ${{ github.workspace }}\target\artifacts\Graphite\chrome_elf.dll
+            ${{ github.workspace }}\target\artifacts\Graphite\vulkan-1.dll
+            ${{ github.workspace }}\target\artifacts\Graphite\dxcompiler.dll
+            ${{ github.workspace }}\target\artifacts\Graphite\libEGL.dll
+            ${{ github.workspace }}\target\artifacts\Graphite\libGLESv2.dll
+            ${{ github.workspace }}\target\artifacts\Graphite\vk_swiftshader.dll
+          file-digest: SHA256
+          timestamp-rfc3161: http://timestamp.acs.microsoft.com
+          timestamp-digest: SHA256
+          correlation-id: ${{ github.sha }}
+      - name: Verify Signatures
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          $TargetDir = "target\artifacts\Graphite"
+
+          if (-not (Test-Path $TargetDir)) {
+              throw "TargetDir not found: $TargetDir"
+          }
+
+          $UnsignedOrBad = @()
+
+          Get-ChildItem -Path $TargetDir -Recurse -File -Include *.exe,*.dll | ForEach-Object {
+              $sig = Get-AuthenticodeSignature -FilePath $_.FullName
+
+              if ($sig.Status -ne 'Valid') {
+                  $UnsignedOrBad += "$($_.FullName) (Status=$($sig.Status))"
+              }
+          }
+
+          if ($UnsignedOrBad.Count -gt 0) {
+              Write-Host "Unsigned or invalid binaries detected:"
+              $UnsignedOrBad | ForEach-Object {
+                  Write-Host "::error::$_"
+              }
+
+              if ($env:GITHUB_STEP_SUMMARY) {
+                  "## ❌ Unsigned or invalid binaries detected" |
+                      Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+                  "" | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+                  $UnsignedOrBad | ForEach-Object {
+                      "* `$_" | Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+                  }
+              }
+
+              exit 1
+          }
+
+          Write-Host "All binaries are signed and valid."
+
+          if ($env:GITHUB_STEP_SUMMARY) {
+              "## ✅ All binaries are signed and valid" |
+                  Out-File $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
+
+      - name: Upload Windows Bundle Signed
+        uses: actions/upload-artifact@v4
+        with:
+          name: graphite-windows-bundle-signed
+          path: target/artifacts
