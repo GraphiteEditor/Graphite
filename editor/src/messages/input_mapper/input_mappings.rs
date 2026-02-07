@@ -184,6 +184,18 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		entry!(KeyDown(MouseRight); action_dispatch=GradientToolMessage::Abort),
 		entry!(KeyDown(Escape); action_dispatch=GradientToolMessage::Abort),
 		//
+		// OperationToolMessage
+		entry!(PointerMove; action_dispatch=OperationToolMessage::PointerMove),
+		entry!(KeyDown(MouseLeft); action_dispatch=OperationToolMessage::DragStart),
+		entry!(KeyUp(MouseLeft); action_dispatch=OperationToolMessage::DragStop),
+		entry!(KeyDown(MouseRight); action_dispatch=OperationToolMessage::Confirm),
+		entry!(KeyDown(Escape); action_dispatch=OperationToolMessage::Abort),
+		entry!(KeyDown(Enter); action_dispatch=OperationToolMessage::Confirm),
+		entry!(KeyDown(ArrowUp);action_dispatch=OperationToolMessage::IncreaseCount),
+		entry!(KeyDown(ArrowDown);action_dispatch=OperationToolMessage::DecreaseCount),
+		entry!(KeyDown(BracketRight);action_dispatch=OperationToolMessage::IncreaseCount),
+		entry!(KeyDown(BracketLeft);action_dispatch=OperationToolMessage::DecreaseCount),
+		//
 		// ShapeToolMessage
 		entry!(KeyDown(MouseLeft); action_dispatch=ShapeToolMessage::DragStart),
 		entry!(KeyUp(MouseLeft); action_dispatch=ShapeToolMessage::DragStop),

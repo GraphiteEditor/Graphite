@@ -14,7 +14,7 @@ use crate::messages::tool::common_functionality::shapes::circle_shape::Circle;
 use crate::messages::tool::common_functionality::shapes::grid_shape::Grid;
 use crate::messages::tool::common_functionality::shapes::line_shape::{LineToolData, clicked_on_line_endpoints};
 use crate::messages::tool::common_functionality::shapes::polygon_shape::Polygon;
-use crate::messages::tool::common_functionality::shapes::shape_utility::{ShapeToolModifierKey, ShapeType, anchor_overlays, transform_cage_overlays};
+use crate::messages::tool::common_functionality::shapes::shape_utility::{GizmoContext, ShapeToolModifierKey, ShapeType, anchor_overlays, transform_cage_overlays};
 use crate::messages::tool::common_functionality::shapes::spiral_shape::Spiral;
 use crate::messages::tool::common_functionality::shapes::star_shape::Star;
 use crate::messages::tool::common_functionality::shapes::{Ellipse, Line, Rectangle};
@@ -606,12 +606,24 @@ impl Fsm for ShapeToolFsmState {
 					.unwrap_or(input.mouse.position);
 
 				if matches!(self, Self::Ready(_)) && !input.keyboard.key(Key::Control) {
-					tool_data.gizmo_manager.handle_actions(mouse_position, document, responses);
-					tool_data.gizmo_manager.overlays(document, input, shape_editor, mouse_position, &mut overlay_context);
+					let mut ctx = GizmoContext {
+						document,
+						input,
+						responses,
+						shape_editor,
+					};
+					tool_data.gizmo_manager.handle_actions(mouse_position, &mut ctx);
+					tool_data.gizmo_manager.overlays(mouse_position, &mut ctx, &mut overlay_context);
 				}
 
 				if matches!(self, ShapeToolFsmState::ModifyingGizmo) && !input.keyboard.key(Key::Control) {
-					tool_data.gizmo_manager.dragging_overlays(document, input, shape_editor, mouse_position, &mut overlay_context);
+					let mut ctx = GizmoContext {
+						document,
+						input,
+						responses,
+						shape_editor,
+					};
+					tool_data.gizmo_manager.dragging_overlays(mouse_position, &mut ctx, &mut overlay_context);
 					let cursor = tool_data.gizmo_manager.mouse_cursor_icon().unwrap_or(MouseCursorIcon::Crosshair);
 					tool_data.cursor = cursor;
 					responses.add(FrontendMessage::UpdateMouseCursor { cursor });
@@ -671,9 +683,15 @@ impl Fsm for ShapeToolFsmState {
 				}
 
 				if matches!(self, ShapeToolFsmState::Drawing(_) | ShapeToolFsmState::DraggingLineEndpoints) {
+					let mut ctx = GizmoContext {
+						document,
+						input,
+						responses,
+						shape_editor,
+					};
 					Line::overlays(document, tool_data, &mut overlay_context);
 					if tool_options.shape_type == ShapeType::Circle {
-						tool_data.gizmo_manager.overlays(document, input, shape_editor, mouse_position, &mut overlay_context);
+						tool_data.gizmo_manager.overlays(mouse_position, &mut ctx, &mut overlay_context);
 					}
 				}
 
@@ -932,7 +950,13 @@ impl Fsm for ShapeToolFsmState {
 				self
 			}
 			(ShapeToolFsmState::ModifyingGizmo, ShapeToolMessage::PointerMove { .. }) => {
-				tool_data.gizmo_manager.handle_update(tool_data.data.viewport_drag_start(document), document, input, responses);
+				let mut ctx = GizmoContext {
+					document,
+					input,
+					responses,
+					shape_editor,
+				};
+				tool_data.gizmo_manager.handle_update(tool_data.data.viewport_drag_start(document), &mut ctx);
 
 				responses.add(OverlaysMessage::Draw);
 

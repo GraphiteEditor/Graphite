@@ -1,17 +1,15 @@
 use crate::consts::GIZMO_HIDE_THRESHOLD;
 use crate::messages::frontend::utility_types::MouseCursorIcon;
-use crate::messages::message::Message;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
-use crate::messages::prelude::{DocumentMessageHandler, InputPreprocessorMessageHandler, NodeGraphMessage};
+use crate::messages::prelude::{DocumentMessageHandler, NodeGraphMessage};
 use crate::messages::prelude::{FrontendMessage, Responses};
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_arc_id, get_stroke_width};
-use crate::messages::tool::common_functionality::shapes::shape_utility::{extract_arc_parameters, extract_circle_radius};
+use crate::messages::tool::common_functionality::shapes::shape_utility::{GizmoContext, extract_arc_parameters, extract_circle_radius};
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
-use std::collections::VecDeque;
 use std::f64::consts::FRAC_PI_2;
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -77,7 +75,9 @@ impl RadiusHandle {
 		stroke_width + extra_spacing
 	}
 
-	pub fn handle_actions(&mut self, layer: LayerNodeIdentifier, document: &DocumentMessageHandler, mouse_position: DVec2, responses: &mut VecDeque<Message>) {
+	pub fn handle_actions(&mut self, layer: LayerNodeIdentifier, mouse_position: DVec2, ctx: &mut GizmoContext) {
+		let GizmoContext { document, responses, .. } = ctx;
+
 		match &self.handle_state {
 			RadiusHandleState::Inactive => {
 				let Some(radius) = extract_circle_radius(layer, document).or(extract_arc_parameters(Some(layer), document).map(|(r, _, _, _)| r)) else {
@@ -107,7 +107,9 @@ impl RadiusHandle {
 		}
 	}
 
-	pub fn overlays(&self, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext) {
+	pub fn overlays(&self, ctx: &mut GizmoContext, overlay_context: &mut OverlayContext) {
+		let GizmoContext { document, .. } = ctx;
+
 		match &self.handle_state {
 			RadiusHandleState::Inactive => {}
 			RadiusHandleState::Dragging | RadiusHandleState::Hover => {
@@ -145,7 +147,9 @@ impl RadiusHandle {
 		}
 	}
 
-	pub fn update_inner_radius(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>, drag_start: DVec2) {
+	pub fn update_inner_radius(&mut self, drag_start: DVec2, ctx: &mut GizmoContext) {
+		let GizmoContext { document, responses, input, .. } = ctx;
+
 		let Some(layer) = self.layer else { return };
 		let Some(node_id) = graph_modification_utils::get_circle_id(layer, &document.network_interface).or(get_arc_id(layer, &document.network_interface)) else {
 			return;

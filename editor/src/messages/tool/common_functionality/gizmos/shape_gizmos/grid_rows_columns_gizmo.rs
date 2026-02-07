@@ -9,7 +9,7 @@ use crate::messages::prelude::{DocumentMessageHandler, InputPreprocessorMessageH
 use crate::messages::prelude::{GraphOperationMessage, Responses};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::shape_editor::ShapeState;
-use crate::messages::tool::common_functionality::shapes::shape_utility::extract_grid_parameters;
+use crate::messages::tool::common_functionality::shapes::shape_utility::{GizmoContext, extract_grid_parameters};
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
@@ -64,7 +64,9 @@ impl RowColumnGizmo {
 		}
 	}
 
-	pub fn handle_actions(&mut self, layer: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler) {
+	pub fn handle_actions(&mut self, layer: LayerNodeIdentifier, ctx: &mut GizmoContext, mouse_position: DVec2) {
+		let GizmoContext { document, .. } = ctx;
+
 		let Some((grid_type, spacing, columns, rows, angles)) = extract_grid_parameters(layer, document) else {
 			return;
 		};
@@ -81,7 +83,9 @@ impl RowColumnGizmo {
 		}
 	}
 
-	pub fn overlays(&self, document: &DocumentMessageHandler, layer: Option<LayerNodeIdentifier>, _shape_editor: &mut &mut ShapeState, _mouse_position: DVec2, overlay_context: &mut OverlayContext) {
+	pub fn overlays(&self, layer: Option<LayerNodeIdentifier>, ctx: &mut GizmoContext, _mouse_position: DVec2, overlay_context: &mut OverlayContext) {
+		let GizmoContext { document, .. } = ctx;
+
 		let Some(layer) = layer.or(self.layer) else { return };
 		let Some((grid_type, spacing, columns, rows, angles)) = extract_grid_parameters(layer, document) else {
 			return;
@@ -95,7 +99,9 @@ impl RowColumnGizmo {
 		}
 	}
 
-	pub fn update(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>, drag_start: DVec2) {
+	pub fn update(&mut self, ctx: &mut GizmoContext, drag_start: DVec2) {
+		let GizmoContext { document, input, responses, .. } = ctx;
+
 		let Some(layer) = self.layer else { return };
 		let viewport = document.metadata().transform_to_viewport(layer);
 

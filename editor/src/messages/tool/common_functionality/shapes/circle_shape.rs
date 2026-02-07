@@ -5,8 +5,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate};
 use crate::messages::tool::common_functionality::gizmos::shape_gizmos::circle_arc_radius_handle::{RadiusHandle, RadiusHandleState};
 use crate::messages::tool::common_functionality::graph_modification_utils;
-use crate::messages::tool::common_functionality::shape_editor::ShapeState;
-use crate::messages::tool::common_functionality::shapes::shape_utility::{ShapeGizmoHandler, ShapeToolModifierKey};
+use crate::messages::tool::common_functionality::shapes::shape_utility::{GizmoContext, ShapeGizmoHandler, ShapeToolModifierKey};
 use crate::messages::tool::tool_messages::shape_tool::ShapeToolData;
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::DAffine2;
@@ -23,8 +22,8 @@ impl ShapeGizmoHandler for CircleGizmoHandler {
 		self.circle_radius_handle.hovered()
 	}
 
-	fn handle_state(&mut self, selected_circle_layer: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		self.circle_radius_handle.handle_actions(selected_circle_layer, document, mouse_position, responses);
+	fn handle_state(&mut self, selected_circle_layer: LayerNodeIdentifier, mouse_position: DVec2, ctx: &mut GizmoContext) {
+		self.circle_radius_handle.handle_actions(selected_circle_layer, mouse_position, ctx);
 	}
 
 	fn handle_click(&mut self) {
@@ -33,34 +32,19 @@ impl ShapeGizmoHandler for CircleGizmoHandler {
 		}
 	}
 
-	fn handle_update(&mut self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+	fn handle_update(&mut self, drag_start: DVec2, ctx: &mut GizmoContext) {
 		if self.circle_radius_handle.is_dragging() {
-			self.circle_radius_handle.update_inner_radius(document, input, responses, drag_start);
+			self.circle_radius_handle.update_inner_radius(drag_start, ctx);
 		}
 	}
 
-	fn overlays(
-		&self,
-		document: &DocumentMessageHandler,
-		_selected_circle_layer: Option<LayerNodeIdentifier>,
-		_input: &InputPreprocessorMessageHandler,
-		_shape_editor: &mut &mut ShapeState,
-		_mouse_position: DVec2,
-		overlay_context: &mut OverlayContext,
-	) {
-		self.circle_radius_handle.overlays(document, overlay_context);
+	fn overlays(&self, _selected_circle_layer: Option<LayerNodeIdentifier>, _mouse_position: DVec2, ctx: &mut GizmoContext, overlay_context: &mut OverlayContext) {
+		self.circle_radius_handle.overlays(ctx, overlay_context);
 	}
 
-	fn dragging_overlays(
-		&self,
-		document: &DocumentMessageHandler,
-		_input: &InputPreprocessorMessageHandler,
-		_shape_editor: &mut &mut ShapeState,
-		_mouse_position: DVec2,
-		overlay_context: &mut OverlayContext,
-	) {
+	fn dragging_overlays(&self, _mouse_position: DVec2, ctx: &mut GizmoContext, overlay_context: &mut OverlayContext) {
 		if self.circle_radius_handle.is_dragging() {
-			self.circle_radius_handle.overlays(document, overlay_context);
+			self.circle_radius_handle.overlays(ctx, overlay_context);
 		}
 	}
 
