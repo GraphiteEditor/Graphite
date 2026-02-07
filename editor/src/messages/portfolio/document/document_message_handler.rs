@@ -20,7 +20,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::{Doc
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, PTZ};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate};
 use crate::messages::portfolio::document::utility_types::nodes::RawBuffer;
-use crate::messages::portfolio::utility_types::{FontCatalog, PanelType, PersistentData};
+use crate::messages::portfolio::utility_types::{PanelType, PersistentData};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_blend_mode, get_fill, get_opacity};
 use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
@@ -36,13 +36,13 @@ use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Raster;
 use graphene_std::subpath::Subpath;
 use graphene_std::table::Table;
-use graphene_std::text::Font;
 use graphene_std::vector::PointId;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::misc::{dvec2_to_point, point_to_dvec2};
 use graphene_std::vector::style::RenderMode;
 use kurbo::{Affine, CubicBez, Line, ParamCurve, PathSeg, QuadBez};
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 
 #[derive(ExtractField)]
@@ -2175,7 +2175,7 @@ impl DocumentMessageHandler {
 	}
 
 	/// Loads all of the fonts in the document.
-	pub fn load_layer_resources(&self, responses: &mut VecDeque<Message>, font_catalog: &FontCatalog) {
+	pub fn load_layer_resources(&self, responses: &mut VecDeque<Message>) {
 		let mut fonts_to_load = HashSet::new();
 
 		for (_, node, _) in self.document_network().recursive_nodes() {
@@ -2187,12 +2187,7 @@ impl DocumentMessageHandler {
 		}
 
 		for font in fonts_to_load {
-			if let Some(style) = font_catalog.find_font_style_in_catalog(&font) {
-				responses.add_front(FrontendMessage::TriggerFontDataLoad {
-					font: Font::new(font.font_family, style.to_named_style()),
-					url: style.url,
-				});
-			}
+			responses.add(PortfolioMessage::LoadFontData { font });
 		}
 	}
 
@@ -3077,7 +3072,14 @@ impl<'a> ClickXRayIter<'a> {
 	}
 
 	/// Handles the checking of the layer where the target is a rect or path
-	fn check_layer_area_target(&mut self, click_targets: Option<&Vec<ClickTarget>>, clip: bool, layer: LayerNodeIdentifier, path: Vec<path_bool_lib::PathSegment>, transform: DAffine2) -> XRayResult {
+	fn check_layer_area_target(
+		&mut self,
+		click_targets: Option<&[Arc<ClickTarget>]>,
+		clip: bool,
+		layer: LayerNodeIdentifier,
+		path: Vec<path_bool_lib::PathSegment>,
+		transform: DAffine2,
+	) -> XRayResult {
 		// Convert back to Kurbo types for intersections
 		let segment = |bezier: &path_bool_lib::PathSegment| match *bezier {
 			path_bool_lib::PathSegment::Line(start, end) => PathSeg::Line(Line::new(dvec2_to_point(start), dvec2_to_point(end))),
@@ -3094,7 +3096,7 @@ impl<'a> ClickXRayIter<'a> {
 		// In the case of a clip path where the area partially intersects, it is necessary to do a boolean operation.
 		// We do this on this using the target area to reduce computation (as the target area is usually very simple).
 		if clip && intersects {
-			let clip_path = click_targets_to_path_lib_segments(click_targets.iter().flat_map(|x| x.iter()), transform);
+			let clip_path = click_targets_to_path_lib_segments(click_targets.iter().flat_map(|x| x.iter()).map(|x| x.as_ref()), transform);
 			let subtracted = boolean_intersect(path, clip_path).into_iter().flatten().collect::<Vec<_>>();
 			if subtracted.is_empty() {
 				use_children = false;

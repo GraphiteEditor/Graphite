@@ -705,6 +705,7 @@ fn logical_or(
 	/// One of the two boolean values, either of which may be true for the node to output true.
 	value: bool,
 	/// The other of the two boolean values, either of which may be true for the node to output true.
+	#[expose]
 	other_value: bool,
 ) -> bool {
 	value || other_value
@@ -717,6 +718,7 @@ fn logical_and(
 	/// One of the two boolean values, both of which must be true for the node to output true.
 	value: bool,
 	/// The other of the two boolean values, both of which must be true for the node to output true.
+	#[expose]
 	other_value: bool,
 ) -> bool {
 	value && other_value
