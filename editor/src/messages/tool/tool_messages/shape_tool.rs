@@ -94,6 +94,8 @@ pub enum ShapeToolMessage {
 	PointerOutsideViewport { modifier: ShapeToolModifierKey },
 	UpdateOptions { options: ShapeOptionsUpdate },
 	SetShape { shape: ShapeType },
+	/// Restores current_shape from the dropdown selection (options.shape_type)
+	RestoreShapeFromOptions,
 
 	IncreaseSides,
 	DecreaseSides,
@@ -1090,15 +1092,14 @@ impl Fsm for ShapeToolFsmState {
 			(_, ShapeToolMessage::SetShape { shape }) => {
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.data.cleanup(responses);
+				// Only update current_shape for drawing, preserve options.shape_type (dropdown selection)
 				tool_data.current_shape = shape;
-				responses.add(ShapeToolMessage::UpdateOptions {
-					options: ShapeOptionsUpdate::ShapeType(shape),
-				});
-
-				responses.add(ShapeToolMessage::UpdateOptions {
-					options: ShapeOptionsUpdate::ShapeType(shape),
-				});
 				ShapeToolFsmState::Ready(shape)
+			}
+			(_, ShapeToolMessage::RestoreShapeFromOptions) => {
+				// Restore current_shape from the dropdown selection when returning from Line/Rectangle/Ellipse aliases
+				tool_data.current_shape = tool_options.shape_type;
+				ShapeToolFsmState::Ready(tool_options.shape_type)
 			}
 			(_, ShapeToolMessage::HideShapeTypeWidget { hide }) => {
 				tool_data.hide_shape_option_widget = hide;
