@@ -1957,25 +1957,25 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			.iter()
 			.map(|&grad_type| {
 				let gradient = gradient_for_closure.clone();
-				RadioEntryData::new(format!("{:?}", grad_type))
-					.label(format!("{:?}", grad_type))
-					.on_update(move |_| {
+				let set_input_value = update_value(
+					move |_: &()| {
 						let mut new_gradient = gradient.clone();
 						new_gradient.gradient_type = grad_type;
-						Message::Batched {
-							messages: Box::new([
-								NodeGraphMessage::SetInputValue {
-									node_id,
-									input_index: FillInput::<Color>::INDEX,
-									value: TaggedValue::Fill(Fill::Gradient(new_gradient)),
-								}
-								.into(),
-								GradientToolMessage::UpdateOptions {
-									options: GradientOptionsUpdate::Type(grad_type),
-								}
-								.into(),
-							]),
-						}
+						TaggedValue::Fill(Fill::Gradient(new_gradient))
+					},
+					node_id,
+					FillInput::<Color>::INDEX,
+				);
+				RadioEntryData::new(format!("{:?}", grad_type))
+					.label(format!("{:?}", grad_type))
+					.on_update(move |_| Message::Batched {
+						messages: Box::new([
+							set_input_value(&()),
+							GradientToolMessage::UpdateOptions {
+								options: GradientOptionsUpdate::Type(grad_type),
+							}
+							.into(),
+						]),
 					})
 					.on_commit(commit_value)
 			})
