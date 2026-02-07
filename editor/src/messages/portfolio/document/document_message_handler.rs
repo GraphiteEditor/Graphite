@@ -965,6 +965,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(DocumentMessage::DocumentHistoryForward);
 				responses.add(ToolMessage::Redo);
 				responses.add(OverlaysMessage::Draw);
+				responses.add(EventMessage::SelectionChanged);
 			}
 			DocumentMessage::RenameDocument { new_name } => {
 				self.name = new_name.clone();
@@ -1432,6 +1433,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(DocumentMessage::DocumentHistoryBackward);
 				responses.add(OverlaysMessage::Draw);
 				responses.add(ToolMessage::Undo);
+				responses.add(EventMessage::SelectionChanged);
 			}
 			DocumentMessage::UngroupSelectedLayers => {
 				if !self.selection_network_path.is_empty() {
