@@ -5,6 +5,7 @@ on:
     branches:
       - master
   pull_request: {}
+  merge_group: {}
 env:
   CARGO_TERM_COLOR: always
   INDEX_HTML_HEAD_REPLACEMENT: <script defer data-domain="dev.graphite.art" data-api="https://graphite.art/visit/event" src="https://graphite.art/visit/script.hash.js"></script>
@@ -113,9 +114,11 @@ jobs:
       - name: 📃 Generate code documentation info for website
         if: github.ref == 'refs/heads/master'
         run: |
-          cargo test --package graphite-editor --lib -- messages::message::test::generate_message_tree
+          cd tools/editor-message-tree
+          cargo run
+          cd ../..
           mkdir -p artifacts-generated
-          mv hierarchical_message_system_tree.txt artifacts-generated/hierarchical_message_system_tree.txt
+          mv website/generated/hierarchical_message_system_tree.txt artifacts-generated/hierarchical_message_system_tree.txt
 
       - name: 💿 Obtain cache of auto-generated code docs artifacts, to check if they've changed
         if: github.ref == 'refs/heads/master'

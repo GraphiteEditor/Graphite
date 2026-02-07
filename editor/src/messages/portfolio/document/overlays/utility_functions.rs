@@ -135,10 +135,7 @@ pub fn path_overlays(document: &DocumentMessageHandler, draw_handles: DrawHandle
 			overlay_context.outline_vector(&vector, transform);
 		}
 
-		let Some(selected_shape_state) = shape_editor.selected_shape_state.get_mut(&layer) else {
-			continue;
-		};
-
+		let selected_shape_state = shape_editor.selected_shape_state.entry(layer).or_default();
 		// Get the selected segments and then add a bold line overlay on them
 		for (segment_id, bezier, _, _) in vector.segment_iter() {
 			if selected_shape_state.is_segment_selected(segment_id) {
@@ -213,7 +210,7 @@ pub fn path_endpoint_overlays(document: &DocumentMessageHandler, shape_editor: &
 		let selected = shape_editor.selected_shape_state.get(&layer);
 		let is_selected = |selected: Option<&SelectedLayerState>, point: ManipulatorPointId| selected.is_some_and(|selected| selected.is_point_selected(point));
 
-		for point in vector.extendable_points() {
+		for point in vector.anchor_endpoints() {
 			let Some(position) = vector.point_domain.position_from_id(point) else { continue };
 			let position = transform.transform_point2(position);
 			overlay_context.manipulator_anchor(position, is_selected(selected, ManipulatorPointId::Anchor(point)), None);

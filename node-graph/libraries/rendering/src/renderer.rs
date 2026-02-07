@@ -26,7 +26,7 @@ use kurbo::Shape;
 use num_traits::Zero;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Write;
-use std::hash::{DefaultHasher, Hash, Hasher};
+use std::hash::{Hash, Hasher};
 use std::ops::Deref;
 use std::sync::{Arc, LazyLock};
 use vello::*;
@@ -59,7 +59,7 @@ pub struct SvgRender {
 	pub svg: Vec<SvgSegment>,
 	pub svg_defs: String,
 	pub transform: DAffine2,
-	pub image_data: Vec<(u64, Image<Color>)>,
+	pub image_data: HashMap<Image<Color>, u64>,
 	indent: usize,
 }
 
@@ -69,7 +69,7 @@ impl SvgRender {
 			svg: Vec::default(),
 			svg_defs: String::new(),
 			transform: DAffine2::IDENTITY,
-			image_data: Vec::new(),
+			image_data: HashMap::new(),
 			indent: 0,
 		}
 	}
@@ -247,7 +247,7 @@ pub struct RenderMetadata {
 	pub upstream_footprints: HashMap<NodeId, Footprint>,
 	pub local_transforms: HashMap<NodeId, DAffine2>,
 	pub first_element_source_id: HashMap<NodeId, Option<NodeId>>,
-	pub click_targets: HashMap<NodeId, Vec<ClickTarget>>,
+	pub click_targets: HashMap<NodeId, Vec<Arc<ClickTarget>>>,
 	pub clip_targets: HashSet<NodeId>,
 }
 
@@ -470,8 +470,8 @@ impl Render for Artboard {
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, mut footprint: Footprint, element_id: Option<NodeId>) {
 		if let Some(element_id) = element_id {
-			let subpath = Subpath::new_rect(DVec2::ZERO, self.dimensions.as_dvec2());
-			metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.)]);
+			let subpath = Subpath::new_rectangle(DVec2::ZERO, self.dimensions.as_dvec2());
+			metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.).into()]);
 			metadata.upstream_footprints.insert(element_id, footprint);
 			metadata.local_transforms.insert(element_id, DAffine2::from_translation(self.location.as_dvec2()));
 			if self.clip {
@@ -483,7 +483,7 @@ impl Render for Artboard {
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		let subpath_rectangle = Subpath::new_rect(DVec2::ZERO, self.dimensions.as_dvec2());
+		let subpath_rectangle = Subpath::new_rectangle(DVec2::ZERO, self.dimensions.as_dvec2());
 		click_targets.push(ClickTarget::new_with_subpath(subpath_rectangle, 0.));
 	}
 
@@ -666,7 +666,7 @@ impl Render for Table<Graphic> {
 				all_upstream_click_targets.extend(new_click_targets);
 			}
 
-			metadata.click_targets.insert(element_id, all_upstream_click_targets);
+			metadata.click_targets.insert(element_id, all_upstream_click_targets.into_iter().map(|x| x.into()).collect());
 		}
 	}
 
@@ -1036,13 +1036,14 @@ impl Render for Table<Vector> {
 						StrokeJoin::Bevel => Join::Bevel,
 						StrokeJoin::Round => Join::Round,
 					};
+					let dash_pattern = stroke.dash_lengths.iter().map(|l| l.max(0.)).collect();
 					let stroke = kurbo::Stroke {
 						width: stroke.weight * width_scale,
 						miter_limit: stroke.join_miter_limit,
 						join,
 						start_cap: cap,
 						end_cap: cap,
-						dash_pattern: stroke.dash_lengths.into(),
+						dash_pattern,
 						dash_offset: stroke.dash_offset,
 					};
 
@@ -1172,7 +1173,7 @@ impl Render for Table<Vector> {
 						let anchor = vector.point_domain.position_from_id(point_id).unwrap_or_default();
 						let point = FreePoint::new(point_id, anchor);
 
-						Some(ClickTarget::new_with_free_point(point))
+						Some(ClickTarget::new_with_free_point(point).into())
 					} else {
 						None
 					}
@@ -1181,9 +1182,9 @@ impl Render for Table<Vector> {
 				let click_targets = vector
 					.stroke_bezier_paths()
 					.map(fill)
-					.map(|subpath| ClickTarget::new_with_subpath(subpath, stroke_width))
+					.map(|subpath| ClickTarget::new_with_subpath(subpath, stroke_width).into())
 					.chain(single_anchors_targets.into_iter())
-					.collect::<Vec<ClickTarget>>();
+					.collect::<Vec<_>>();
 
 				metadata.click_targets.entry(element_id).or_insert(click_targets);
 			}
@@ -1239,6 +1240,7 @@ impl Render for Table<Raster<CPU>> {
 	fn render_svg(&self, render: &mut SvgRender, render_params: &RenderParams) {
 		for row in self.iter() {
 			let image = row.element;
+
 			let transform = *row.transform;
 
 			if image.data.is_empty() {
@@ -1246,16 +1248,10 @@ impl Render for Table<Raster<CPU>> {
 			}
 
 			if render_params.to_canvas() {
-				let id = row.source_node_id.map(|x| x.0).unwrap_or_else(|| {
-					let mut state = DefaultHasher::new();
-					image.data().hash(&mut state);
-					state.finish()
-				});
-				if !render.image_data.iter().any(|(old_id, _)| *old_id == id) {
-					let mut image = image.data().clone();
-					image.map_pixels(|p| p.to_unassociated_alpha());
-					render.image_data.push((id, image));
-				}
+				let mut image_copy = image.clone();
+				image_copy.data_mut().map_pixels(|p| p.to_unassociated_alpha());
+				let id = *render.image_data.entry(image_copy.into_data()).or_insert_with(generate_uuid);
+
 				render.parent_tag(
 					"foreignObject",
 					|attributes| {
@@ -1368,9 +1364,9 @@ impl Render for Table<Raster<CPU>> {
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 		let Some(element_id) = element_id else { return };
-		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
+		let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
 
-		metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.)]);
+		metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.).into()]);
 		metadata.upstream_footprints.insert(element_id, footprint);
 		// TODO: Find a way to handle more than one row of the raster table
 		if let Some(raster) = self.iter().next() {
@@ -1379,7 +1375,7 @@ impl Render for Table<Raster<CPU>> {
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
+		let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
 		click_targets.push(ClickTarget::new_with_subpath(subpath, 0.));
 	}
 }
@@ -1428,9 +1424,9 @@ impl Render for Table<Raster<GPU>> {
 
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 		let Some(element_id) = element_id else { return };
-		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
+		let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
 
-		metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.)]);
+		metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.).into()]);
 		metadata.upstream_footprints.insert(element_id, footprint);
 		// TODO: Find a way to handle more than one row of the raster table
 		if let Some(raster) = self.iter().next() {
@@ -1439,7 +1435,7 @@ impl Render for Table<Raster<GPU>> {
 	}
 
 	fn add_upstream_click_targets(&self, click_targets: &mut Vec<ClickTarget>) {
-		let subpath = Subpath::new_rect(DVec2::ZERO, DVec2::ONE);
+		let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
 		click_targets.push(ClickTarget::new_with_subpath(subpath, 0.));
 	}
 }

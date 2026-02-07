@@ -102,7 +102,7 @@ impl DataPanelMessageHandler {
 				} else {
 					IconLabel::new("Node").tooltip_description("Name of the selected node.").widget_instance()
 				},
-				Separator::new(SeparatorType::Related).widget_instance(),
+				Separator::new(SeparatorStyle::Related).widget_instance(),
 				TextInput::new(network_interface.display_name(&node_id, &[]))
 					.tooltip_description(if is_layer { "Name of the selected layer." } else { "Name of the selected node." })
 					.on_update(move |text_input| {
@@ -115,7 +115,7 @@ impl DataPanelMessageHandler {
 					})
 					.max_width(200)
 					.widget_instance(),
-				Separator::new(SeparatorType::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			]);
 		}
 

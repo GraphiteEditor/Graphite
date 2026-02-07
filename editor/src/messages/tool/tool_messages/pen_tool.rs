@@ -1,7 +1,7 @@
 use super::tool_prelude::*;
 use crate::consts::{COLOR_OVERLAY_BLUE, DEFAULT_STROKE_WIDTH, HIDE_HANDLE_DISTANCE, LINE_ROTATE_SNAP_ANGLE, SEGMENT_OVERLAY_SIZE};
 use crate::messages::input_mapper::utility_types::input_mouse::MouseKeys;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_network_node_type;
 use crate::messages::portfolio::document::overlays::utility_functions::path_overlays;
 use crate::messages::portfolio::document::overlays::utility_types::{DrawHandles, OverlayContext};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -178,7 +178,7 @@ impl LayoutHolder for PenTool {
 			},
 		);
 
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
+		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 
 		widgets.append(&mut self.options.stroke.create_widgets(
 			"Stroke",
@@ -205,11 +205,11 @@ impl LayoutHolder for PenTool {
 			},
 		));
 
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
+		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 
 		widgets.push(create_weight_widget(self.options.line_weight));
 
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_instance());
+		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 
 		widgets.push(
 			RadioInput::new(vec![
@@ -652,7 +652,7 @@ impl PenToolData {
 	}
 
 	fn close_path_on_point(&mut self, snap_data: SnapData, vector: &Vector, document: &DocumentMessageHandler, id: PointId, transform: &DAffine2) -> bool {
-		for id in vector.extendable_points().filter(|&point| point != id) {
+		for id in vector.anchor_points().filter(|&point| point != id) {
 			let Some(pos) = vector.point_domain.position_from_id(id) else { continue };
 			let transformed_distance_between_squared = transform.transform_point2(pos).distance_squared(transform.transform_point2(self.next_point));
 			let snap_point_tolerance_squared = crate::consts::SNAP_POINT_TOLERANCE.powi(2);
@@ -701,7 +701,7 @@ impl PenToolData {
 		let vector = document.network_interface.compute_modified_vector(layer)?;
 		let start = self.latest_point()?.id;
 		let transform = document.metadata().document_to_viewport * transform;
-		for id in vector.extendable_points().filter(|&point| point != start) {
+		for id in vector.anchor_points().filter(|&point| point != start) {
 			let Some(pos) = vector.point_domain.position_from_id(id) else { continue };
 			let transformed_distance_between_squared = transform.transform_point2(pos).distance_squared(transform.transform_point2(next_point));
 			let snap_point_tolerance_squared = crate::consts::SNAP_POINT_TOLERANCE.powi(2);
@@ -1126,7 +1126,7 @@ impl PenToolData {
 		let layer = selected_layers.next().filter(|_| selected_layers.next().is_none()).or(self.current_layer)?;
 		let vector = document.network_interface.compute_modified_vector(layer)?;
 		let transform = document.metadata().document_to_viewport * transform;
-		for point in vector.extendable_points() {
+		for point in vector.anchor_points() {
 			let Some(pos) = vector.point_domain.position_from_id(point) else { continue };
 			let transformed_distance_between_squared = transform.transform_point2(pos).distance_squared(transform.transform_point2(self.next_point));
 			let snap_point_tolerance_squared = crate::consts::SNAP_POINT_TOLERANCE.powi(2);
@@ -1282,7 +1282,7 @@ impl PenToolData {
 		}
 
 		// New path layer
-		let node_type = resolve_document_node_type("Path").expect("Path node does not exist");
+		let node_type = resolve_network_node_type("Path").expect("Path node does not exist");
 		let nodes = vec![(NodeId(0), node_type.default_node_template())];
 
 		let parent = document.new_layer_bounding_artboard(input, viewport);
@@ -1755,7 +1755,7 @@ impl Fsm for PenToolFsmState {
 					if let Some(layer) = layer
 						&& let Some(mut vector) = document.network_interface.compute_modified_vector(layer)
 					{
-						let closest_point = vector.extendable_points().filter(|&id| id != start).find(|&id| {
+						let closest_point = vector.anchor_points().filter(|&id| id != start).find(|&id| {
 							vector.point_domain.position_from_id(id).is_some_and(|pos| {
 								let dist_sq = transform.transform_point2(pos).distance_squared(transform.transform_point2(next_point));
 								dist_sq < crate::consts::SNAP_POINT_TOLERANCE.powi(2)

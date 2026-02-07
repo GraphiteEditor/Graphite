@@ -23,12 +23,11 @@ pub struct DispatcherMessageHandlers {
 	debug_message_handler: DebugMessageHandler,
 	defer_message_handler: DeferMessageHandler,
 	dialog_message_handler: DialogMessageHandler,
-	globals_message_handler: GlobalsMessageHandler,
 	input_preprocessor_message_handler: InputPreprocessorMessageHandler,
 	key_mapping_message_handler: KeyMappingMessageHandler,
 	layout_message_handler: LayoutMessageHandler,
 	menu_bar_message_handler: MenuBarMessageHandler,
-	pub portfolio_message_handler: PortfolioMessageHandler,
+	pub(crate) portfolio_message_handler: PortfolioMessageHandler,
 	preferences_message_handler: PreferencesMessageHandler,
 	tool_message_handler: ToolMessageHandler,
 	viewport_message_handler: ViewportMessageHandler,
@@ -192,17 +191,11 @@ impl Dispatcher {
 						self.responses.push(message);
 					}
 				}
-				Message::Globals(message) => {
-					self.message_handlers.globals_message_handler.process_message(message, &mut queue, ());
-				}
 				Message::InputPreprocessor(message) => {
-					let keyboard_platform = GLOBAL_PLATFORM.get().copied().unwrap_or_default().as_keyboard_platform_layout();
-
 					self.message_handlers.input_preprocessor_message_handler.process_message(
 						message,
 						&mut queue,
 						InputPreprocessorMessageContext {
-							keyboard_platform,
 							viewport: &self.message_handlers.viewport_message_handler,
 						},
 					);
@@ -239,6 +232,7 @@ impl Dispatcher {
 				Message::MenuBar(message) => {
 					let menu_bar_message_handler = &mut self.message_handlers.menu_bar_message_handler;
 
+					menu_bar_message_handler.focus_document = self.message_handlers.portfolio_message_handler.focus_document;
 					menu_bar_message_handler.data_panel_open = self.message_handlers.portfolio_message_handler.data_panel_open;
 					menu_bar_message_handler.layers_panel_open = self.message_handlers.portfolio_message_handler.layers_panel_open;
 					menu_bar_message_handler.properties_panel_open = self.message_handlers.portfolio_message_handler.properties_panel_open;
@@ -578,10 +572,9 @@ mod test {
 				"Demo artwork '{document_name}' has more than 1 line (remember to open and re-save it in Graphite)",
 			);
 
-			let responses = editor.editor.handle_message(PortfolioMessage::OpenDocumentFile {
-				document_name: Some(document_name.to_string()),
-				document_path: None,
-				document_serialized_content,
+			let responses = editor.editor.handle_message(PortfolioMessage::OpenFile {
+				path: file_name.into(),
+				content: document_serialized_content.bytes().collect(),
 			});
 
 			// Check if the graph renders
@@ -594,7 +587,7 @@ mod test {
 				if let FrontendMessage::UpdateDialogColumn1 { diff } = response {
 					if let DiffUpdate::Layout(sub_layout) = &diff[0].new_value {
 						if let LayoutGroup::Row { widgets } = &sub_layout.0[0] {
-							if let Widget::TextLabel(TextLabel { value, .. }) = &widgets[0].widget {
+							if let Widget::TextLabel(TextLabel { value, .. }) = &*widgets[0].widget {
 								print_problem_to_terminal_on_failure(value);
 							}
 						}

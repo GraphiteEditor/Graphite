@@ -9,7 +9,7 @@ The Graphite project prizes code quality and accessibility to new contributors. 
 
 ## Linting
 
-Please ensure Clippy is enabled. This should be set up automatically in VS Code. Try to avoid committing code with lint warnings. You may execute `cargo clippy` anytime to confirm.
+Please ensure Clippy is enabled. This should be set up automatically in VS Code. Avoid committing code with lint warnings so the code review process goes smoothly. You may execute `cargo clippy` anytime to confirm.
 
 ## Naming
 
@@ -29,7 +29,7 @@ Always use the style `42.` instead of `42.0` for whole-number floats to maintain
 
 For consistency, please try to write comments (`//`) in *Sentence case* (with a capital first letter) and don't end with a period unless multiple sentences are used in the same comment. For doc comments (`///`), always end your sentences with a period. There should always be one space after the `//` or `///` comment markers, and `/* */` style comments should be avoided.
 
-Avoid including commented-out code, unless you have a compelling reason to keep it around for future adaption, in your PRs that are open for code review.
+Avoid including commented-out code in PRs that are open for code review unless you have a compelling reason to keep it around for future reference.
 
 Comments should usually be placed on a separate line above the code they are referring to, not at the end of the same code line.
 
@@ -37,7 +37,7 @@ Comments should usually be placed on a separate line above the code they are ref
 
 Please make a habit of grouping together related lines of code in blocks separated by blank lines. These are like your paragraphs if you were writing a novel — they greatly aid readability and your copy editor would have significant concerns with your writing if they were absent.
 
-If you have dozens of lines comprising a single unbroken block of logic, you are likely not splitting it apart enough to aid readability. Find sensible places to partition the logic and insert blank lines between each. Roughly 10% of the code you write should ideally be blank lines, otherwise you are likely underutilizing them at the expense of readability.
+If you have dozens of lines comprising a single unbroken block of logic, you are likely not splitting it apart enough to aid readability. Find sensible places to partition the logic and insert blank lines between each. At least 10% of the code you write should ideally be blank lines, otherwise you are likely underutilizing them at the expense of readability.
 
 ## Imports
 

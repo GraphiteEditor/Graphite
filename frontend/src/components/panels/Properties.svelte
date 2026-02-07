@@ -12,8 +12,8 @@
 	let propertiesPanelLayout: Layout = [];
 
 	onMount(() => {
-		editor.subscriptions.subscribeJsMessage(UpdatePropertiesPanelLayout, (updatePropertiesPanelLayout) => {
-			patchLayout(propertiesPanelLayout, updatePropertiesPanelLayout);
+		editor.subscriptions.subscribeJsMessage(UpdatePropertiesPanelLayout, (data) => {
+			patchLayout(propertiesPanelLayout, data);
 			propertiesPanelLayout = propertiesPanelLayout;
 		});
 	});

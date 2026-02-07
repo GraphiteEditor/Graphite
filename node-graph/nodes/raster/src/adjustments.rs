@@ -73,7 +73,7 @@ fn luminance<T: Adjust<Color>>(
 	input
 }
 
-#[node_macro::node(category("Raster"), shader_node(PerPixelAdjust))]
+#[node_macro::node(category("Raster: Adjustment"), shader_node(PerPixelAdjust))]
 fn gamma_correction<T: Adjust<Color>>(
 	_: impl Ctx,
 	#[implementations(

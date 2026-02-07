@@ -654,7 +654,7 @@ mod tests {
 
 	#[test]
 	fn modify_new() {
-		let vector: Vector<()> = Vector::from_subpaths([Subpath::new_ellipse(DVec2::ZERO, DVec2::ONE), Subpath::new_rect(DVec2::NEG_ONE, DVec2::ZERO)], false);
+		let vector: Vector<()> = Vector::from_subpaths([Subpath::new_ellipse(DVec2::ZERO, DVec2::ONE), Subpath::new_rectangle(DVec2::NEG_ONE, DVec2::ZERO)], false);
 
 		let modify = VectorModification::create_from_vector(&vector);
 
@@ -667,7 +667,7 @@ mod tests {
 	fn modify_existing() {
 		let subpaths = [
 			Subpath::new_ellipse(DVec2::ZERO, DVec2::ONE),
-			Subpath::new_rect(DVec2::NEG_ONE, DVec2::ZERO),
+			Subpath::new_rectangle(DVec2::NEG_ONE, DVec2::ZERO),
 			Subpath::from_beziers(
 				&[
 					PathSeg::Quad(QuadBez::new(Point::new(0., 0.), Point::new(5., 10.), Point::new(10., 0.))),

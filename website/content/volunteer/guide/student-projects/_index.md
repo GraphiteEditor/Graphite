@@ -13,12 +13,15 @@ Student projects require adherence to a set schedule with regular check-ins, mil
 
 Use this [contributor guide](..) to start out with the code. Then when you're ready, reach out through [Discord](https://discord.graphite.art) and use the `#🎓student-projects` channel to discuss and work towards proposing a project with the Graphite core team.
 
+## AI contribution policy
+
+Be sure to familiarize yourself with our [AI contribution policy](../starting-a-task/ai-contribution-policy) before getting involved with the Graphite code base. Proposals also must not be written by AI or else they will be rejected.
+
 ## Google Summer of Code
 
 GSoC is a program offering students a [stipend](https://developers.google.com/open-source/gsoc/help/student-stipends) for successful completion of an internship-style experience with an open source organization. Read about [how it works](https://summerofcode.withgoogle.com/how-it-works/).
 
-<!-- Graphite [participated in GSoC 2024](https://summerofcode.withgoogle.com/programs/2024/organizations/graphite) and we anticipate doing so again in 2025 if our organization's application is accepted. Getting involved early is a great way to have a head start and stand out in your application. -->
-Graphite is [participating again in GSoC 2025](https://summerofcode.withgoogle.com/programs/2025/organizations/graphite). Applications closed [April 8](https://developers.google.com/open-source/gsoc/timeline). We accept year-round contributions; getting involved early is a great way to have a head start and stand out in your application in next year's program.
+Graphite participated in [GSoC 2024](https://summerofcode.withgoogle.com/programs/2024/organizations/graphite) and [2025](https://summerofcode.withgoogle.com/programs/2025/organizations/graphite) and we anticipate doing so again [in 2026](https://developers.google.com/open-source/gsoc/timeline) if our organization is accepted back. We accept year-round contributions; getting involved early is a great way to have a head start and stand out in your application in the upcoming program.
 
 ### Writing a proposal
 
@@ -33,7 +36,7 @@ When it comes to writing the proposal, which you will submit to the GSoC applica
 
 - **Proposal structure:** Please consult the [Blender GSoC application template](https://developer.blender.org/docs/programs/gsoc/application_template/) as reference for our desired format. For project ideas already listed below, omit the "Benefits" section. Remember: don't waste your—and our—time restating information that we already know, like background info about Graphite or our tech stack; we just want to hear your thoughts and plans about what you uniquely bring to the table and how you'll execute the project. Proposals should be utilitarian, not formal, while also demonstrating your professional communication skills. Using an LLM to write your proposal won't be to your advantage.
 - **Experience:** We're especially interested in your background and work experience, so attaching a résumé or CV is an optional but recommended way to help us understand your capabilities. If able, please also include links to past open source contributions or personal projects in the bio section. Our goal is to provide an environment for you to learn and grow as a productive software engineer and team collaborator, not to help you learn the basics of coding, so any included work examples will help us understand your potential as a self-motivated contributor to the open source community.
-- **Work timeline:** Your goal is to write a proposal that inspires confidence in your ability to successfully complete the project, which means understanding in detail what's involved at a technical level and how you plan to tackle it. A detailed work timeline is the most important written part of your proposal. It should be broken into weekly or bi-weekly milestones with a couple sentences of technical detail. The summary in the project idea list below doesn't give enough information to develop a timeline, so you'll need to discuss this with the core team on Discord.
+- **Work timeline:** Your goal is to write a proposal that inspires confidence in your ability to successfully complete the project, which means understanding in detail what's involved at a technical level and how you plan to tackle it. A detailed work timeline is the most important written part of your proposal. It should be broken into weekly milestones with a couple sentences of technical detail. The summary in the project idea list below doesn't give enough information to develop a timeline, so you'll need to discuss this with the core team on Discord.
 - **Prior PRs:** The largest factor in our selection decision will be the quality and extent of your prior contributions to Graphite made during the proposal formulation period (or before, if applicable). Include a link to `https://github.com/GraphiteEditor/Graphite/commits?author=YOUR_GITHUB_USERNAME` in your proposal and feel free to write up a summary of what you've contributed and learned from the process. You may also keep contributing during the month after applications close, before we've finalized our selections, for those additional PRs to be considered.
 
 </details>
@@ -55,7 +58,7 @@ These projects are more advanced but are highest priority for Graphite's develop
 
 *This is a newly added project pending a full written overview. Come ask on Discord for details.*
 
-- Build out infrastructure in the language/compiler/runtime/engine using [rust-gpu](https://github.com/Rust-GPU/rust-gpu) and/or [CubeCL](https://github.com/tracel-ai/cubecl).
+- Build out infrastructure in the language/compiler/runtime/engine using [Rust GPU](https://github.com/Rust-GPU/rust-gpu).
 - [See the GitHub issue.](https://github.com/GraphiteEditor/Graphite/issues/2168)
 - Best for someone with both an aptitude for low-level graphics programming (experience in one of WGPU, Vulkan, OpenGL, etc.) and an interest in compilers and programming languages.
 

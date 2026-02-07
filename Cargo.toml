@@ -39,7 +39,9 @@ members = [
 	"node-graph/node-macro",
 	"node-graph/preprocessor",
 	"proc-macros",
-	"tools/crate-hierarchy-viz"
+	"tools/crate-hierarchy-viz",
+	"tools/editor-message-tree",
+	"tools/node-docs",
 ]
 default-members = [
 	"editor",
@@ -137,6 +139,7 @@ log = "0.4"
 bitflags = { version = "2.4", features = ["serde"] }
 ctor = "0.2"
 convert_case = "0.8"
+indoc = "2.0.5"
 derivative = "2.2"
 thiserror = "2"
 anyhow = "1.0"
@@ -151,7 +154,7 @@ wgpu = { version = "27.0", features = [
 	"spirv",
 	"strict_asserts",
 ] }
-once_cell = "1.13" # Remove when `core::cell::LazyCell` (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>) is stabilized in Rust 1.80 and we bump our MSRV
+once_cell = "1.13" # Remove and replace with `core::cell::LazyCell` (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>)
 wasm-bindgen = "=0.2.100" # NOTICE: ensure this stays in sync with the `wasm-bindgen-cli` version in `website/content/volunteer/guide/project-setup/_index.md`. We pin this version because wasm-bindgen upgrades may break various things.
 wasm-bindgen-futures = "0.4"
 js-sys = "=0.3.77"
@@ -176,11 +179,17 @@ web-sys = { version = "=0.3.77", features = [
 winit = { git = "https://github.com/rust-windowing/winit.git" }
 keyboard-types = "0.8"
 url = "2.5"
-tokio = { version = "1.29", features = ["fs", "macros", "io-std", "rt"] }
+tokio = { version = "1.29", features = ["fs", "macros", "io-std", "rt", "rt-multi-thread"] }
+# Linebender ecosystem (BEGIN)
+kurbo = { version = "0.12", features = ["serde"] }
 vello = { git = "https://github.com/linebender/vello" }
 vello_encoding = { git = "https://github.com/linebender/vello" }
 resvg = "0.45"
 usvg = "0.45"
+parley = "0.6"
+skrifa = "0.36"
+polycool = "0.4"
+# Linebender ecosystem (END)
 rand = { version = "0.9", default-features = false, features = ["std_rng"] }
 rand_chacha = "0.9"
 glam = { version = "0.29", default-features = false, features = [
@@ -194,8 +203,6 @@ image = { version = "0.25", default-features = false, features = [
 	"jpeg",
 	"bmp",
 ] }
-parley = "0.6"
-skrifa = "0.36"
 pretty_assertions = "1.4"
 fern = { version = "0.7", features = ["colored"] }
 num_enum = { version = "0.7", default-features = false }
@@ -217,7 +224,6 @@ syn = { version = "2.0", default-features = false, features = [
 	"extra-traits",
 	"proc-macro",
 ] }
-kurbo = { version = "0.12", features = ["serde"] }
 lyon_geom = "1.0"
 petgraph = { version = "0.7", default-features = false, features = ["graphmap"] }
 half = { version = "2.4", default-features = false, features = ["bytemuck"] }
@@ -234,7 +240,6 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 tracing = "0.1"
 rfd = "0.15"
 open = "5.3"
-polycool = "0.4"
 spin = "0.10"
 clap = "4.5"
 spirv-std = { git = "https://github.com/Firestar99/rust-gpu-new", rev = "c12f216121820580731440ee79ebc7403d6ea04f", features = ["bytemuck"] }

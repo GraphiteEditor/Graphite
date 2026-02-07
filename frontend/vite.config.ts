@@ -2,6 +2,7 @@
 
 import { spawnSync } from "child_process";
 import fs from "fs";
+import os from "os";
 import path from "path";
 
 import { svelte } from "@sveltejs/vite-plugin-svelte";
@@ -25,6 +26,9 @@ export default defineConfig(({ mode }) => {
 						"a11y-no-static-element-interactions", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
 						"a11y-no-noninteractive-element-interactions", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
 						"a11y-click-events-have-key-events", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
+						"a11y_consider_explicit_label", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
+						"a11y_click_events_have_key_events", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
+						"a11y_no_noninteractive_element_interactions", // NOTICE: Keep this list in sync with the list in `.vscode/settings.json`
 					];
 					if (suppressed.includes(warning.code)) return;
 
@@ -261,8 +265,8 @@ function generateAdditionalLicenses(): LicenseInfo[] {
 	const ADDITIONAL_LICENSES = [
 		{
 			licenseName: "SIL Open Font License 1.1",
-			licenseTextPath: "node_modules/source-sans/LICENSE.txt",
-			manifestPath: "node_modules/source-sans/package.json",
+			licenseTextPath: "node_modules/source-sans-pro/LICENSE.txt",
+			manifestPath: "node_modules/source-sans-pro/package.json",
 		},
 		{
 			licenseName: "SIL Open Font License 1.1",
@@ -295,12 +299,32 @@ function generateRustLicenses(): LicenseInfo[] {
 	try {
 		// Call `cargo about` in the terminal to generate the license information for Rust crates.
 		// The `about.hbs` file is written so it generates a valid JavaScript array expression which we evaluate below.
-		const { stdout, stderr, status } = spawnSync("cargo", ["about", "generate", "about.hbs"], {
-			cwd: path.join(__dirname, ".."),
-			encoding: "utf8",
-			shell: true,
-			windowsHide: true, // Hide the terminal on Windows
-		});
+		const { licenses, status, stderr } = (() => {
+			// On Windows, we have to write the output to a temporary file because of powershell's handling of stdout.
+			if (os.platform() === "win32") {
+				const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "graphite-licenses-"));
+				const licensesFile = path.join(tmpDir, "licenses.js");
+
+				const { status, stderr } = spawnSync("cargo", ["about", "generate", "about.hbs", "-o", licensesFile], {
+					cwd: path.join(__dirname, ".."),
+					encoding: "utf8",
+					shell: true,
+					windowsHide: true, // Hide the terminal on Windows
+				});
+
+				const licenses = fs.existsSync(licensesFile) ? fs.readFileSync(licensesFile, "utf8") : "";
+
+				return { licenses, status, stderr };
+			} else {
+				const { stdout, status, stderr } = spawnSync("cargo", ["about", "generate", "about.hbs"], {
+					cwd: path.join(__dirname, ".."),
+					encoding: "utf8",
+					shell: true,
+				});
+
+				return { licenses: stdout, status, stderr };
+			}
+		})();
 
 		// If the command failed, print the error message and exit early.
 		if (status !== 0) {
@@ -313,8 +337,8 @@ function generateRustLicenses(): LicenseInfo[] {
 
 		// Make sure the output starts with this expected label, which lets us know the file generated with expected output.
 		// We don't want to eval an error message or something else, so we fail early if that happens.
-		if (!stdout.trim().startsWith("GENERATED_BY_CARGO_ABOUT:")) {
-			console.error("Unexpected output from cargo-about", stdout);
+		if (!licenses.trim().startsWith("GENERATED_BY_CARGO_ABOUT:")) {
+			console.error("Unexpected output from cargo-about", licenses);
 			return [];
 		}
 
@@ -322,7 +346,7 @@ function generateRustLicenses(): LicenseInfo[] {
 		// Security-wise, eval() isn't any worse than require(), but it's able to work without a temporary file.
 		// We call eval indirectly to avoid a warning as explained here: <https://esbuild.github.io/content-types/#direct-eval>.
 		const indirectEval = eval;
-		const licensesArray = indirectEval(stdout) as LicenseInfo[];
+		const licensesArray = indirectEval(licenses) as LicenseInfo[];
 
 		// Remove the HTML character encoding caused by Handlebars.
 		const rustLicenses = (licensesArray || []).map(
