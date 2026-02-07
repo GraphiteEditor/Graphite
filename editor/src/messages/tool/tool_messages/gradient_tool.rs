@@ -4,7 +4,7 @@ use crate::messages::portfolio::document::overlays::utility_types::OverlayContex
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::{NodeGraphLayer, get_gradient};
-use crate::messages::tool::common_functionality::snapping::SnapManager;
+use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapData, SnapManager, SnapTypeConfiguration};
 use graphene_std::vector::style::{Fill, Gradient, GradientType};
 
 #[derive(Default, ExtractField)]
@@ -378,6 +378,9 @@ impl Fsm for GradientToolFsmState {
 					}
 				}
 
+				let snap_data = SnapData::new(document, input, viewport);
+				tool_data.snap_manager.draw_overlays(snap_data, &mut overlay_context);
+
 				self
 			}
 			(GradientToolFsmState::Ready { .. }, GradientToolMessage::SelectionChanged) => {
@@ -591,7 +594,15 @@ impl Fsm for GradientToolFsmState {
 			}
 			(GradientToolFsmState::Drawing, GradientToolMessage::PointerMove { constrain_axis }) => {
 				if let Some(selected_gradient) = &mut tool_data.selected_gradient {
-					let mouse = input.mouse.position; // tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
+					let mut mouse = input.mouse.position;
+					let snap_data = SnapData::new(document, input, viewport);
+					let point = SnapCandidatePoint::gradient_handle(document.metadata().document_to_viewport.inverse().transform_point2(mouse));
+					let snapped = tool_data.snap_manager.free_snap(&snap_data, &point, SnapTypeConfiguration::default());
+					if snapped.is_snapped() {
+						mouse = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
+					}
+					tool_data.snap_manager.update_indicator(snapped);
+
 					selected_gradient.update_gradient(
 						mouse,
 						responses,
@@ -660,6 +671,9 @@ impl Fsm for GradientToolFsmState {
 						break;
 					}
 				}
+
+				let snap_data = SnapData::new(document, input, viewport);
+				tool_data.snap_manager.gradient_preview_draw(&snap_data, mouse);
 
 				responses.add(OverlaysMessage::Draw);
 				GradientToolFsmState::Ready { hover_insertion }
