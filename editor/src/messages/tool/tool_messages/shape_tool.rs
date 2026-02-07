@@ -82,25 +82,42 @@ pub enum ShapeOptionsUpdate {
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum ShapeToolMessage {
 	// Standard messages
-	Overlays { context: OverlayContext },
+	Overlays {
+		context: OverlayContext,
+	},
 	Abort,
 	WorkingColorChanged,
 
 	// Tool-specific messages
 	DragStart,
 	DragStop,
-	HideShapeTypeWidget { hide: bool },
-	PointerMove { modifier: ShapeToolModifierKey },
-	PointerOutsideViewport { modifier: ShapeToolModifierKey },
-	UpdateOptions { options: ShapeOptionsUpdate },
-	SetShape { shape: ShapeType },
+	HideShapeTypeWidget {
+		hide: bool,
+	},
+	PointerMove {
+		modifier: ShapeToolModifierKey,
+	},
+	PointerOutsideViewport {
+		modifier: ShapeToolModifierKey,
+	},
+	UpdateOptions {
+		options: ShapeOptionsUpdate,
+	},
+	SetShape {
+		shape: ShapeType,
+	},
 	/// Restores current_shape from the dropdown selection (options.shape_type)
 	RestoreShapeFromOptions,
 
 	IncreaseSides,
 	DecreaseSides,
 
-	NudgeSelectedLayers { delta_x: f64, delta_y: f64, resize: Key, resize_opposite_corner: Key },
+	NudgeSelectedLayers {
+		delta_x: f64,
+		delta_y: f64,
+		resize: Key,
+		resize_opposite_corner: Key,
+	},
 }
 
 fn create_sides_widget(vertices: u32) -> WidgetInstance {
