@@ -1951,35 +1951,35 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			}
 		}
 
-		let new_gradient1 = gradient.clone();
-		let new_gradient2 = gradient.clone();
+		let gradient_for_closure = gradient.clone();
 
-		let entries = vec![
-			RadioEntryData::new("Linear")
-				.label("Linear")
-				.on_update(update_value(
-					move |_| {
-						let mut new_gradient = new_gradient1.clone();
-						new_gradient.gradient_type = GradientType::Linear;
+		let entries = [GradientType::Linear, GradientType::Radial]
+			.iter()
+			.map(|&grad_type| {
+				let gradient = gradient_for_closure.clone();
+				let set_input_value = update_value(
+					move |_: &()| {
+						let mut new_gradient = gradient.clone();
+						new_gradient.gradient_type = grad_type;
 						TaggedValue::Fill(Fill::Gradient(new_gradient))
 					},
 					node_id,
 					FillInput::<Color>::INDEX,
-				))
-				.on_commit(commit_value),
-			RadioEntryData::new("Radial")
-				.label("Radial")
-				.on_update(update_value(
-					move |_| {
-						let mut new_gradient = new_gradient2.clone();
-						new_gradient.gradient_type = GradientType::Radial;
-						TaggedValue::Fill(Fill::Gradient(new_gradient))
-					},
-					node_id,
-					FillInput::<Color>::INDEX,
-				))
-				.on_commit(commit_value),
-		];
+				);
+				RadioEntryData::new(format!("{:?}", grad_type))
+					.label(format!("{:?}", grad_type))
+					.on_update(move |_| Message::Batched {
+						messages: Box::new([
+							set_input_value(&()),
+							GradientToolMessage::UpdateOptions {
+								options: GradientOptionsUpdate::Type(grad_type),
+							}
+							.into(),
+						]),
+					})
+					.on_commit(commit_value)
+			})
+			.collect();
 
 		row.extend_from_slice(&[
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
