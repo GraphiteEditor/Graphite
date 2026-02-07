@@ -6,6 +6,7 @@ use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::operations::circular_repeat::CircularRepeatGizmoHandler;
 use crate::messages::tool::common_functionality::shapes::arc_shape::ArcGizmoHandler;
 use crate::messages::tool::common_functionality::shapes::circle_shape::CircleGizmoHandler;
+use crate::messages::tool::common_functionality::shapes::grid_shape::GridGizmoHandler;
 use crate::messages::tool::common_functionality::shapes::polygon_shape::PolygonGizmoHandler;
 use crate::messages::tool::common_functionality::shapes::shape_utility::{GizmoContext, ShapeGizmoHandler};
 use crate::messages::tool::common_functionality::shapes::star_shape::StarGizmoHandler;
@@ -28,6 +29,7 @@ pub enum ShapeGizmoHandlers {
 	Arc(ArcGizmoHandler),
 	Circle(CircleGizmoHandler),
 	CircularRepeat(CircularRepeatGizmoHandler),
+	Grid(GridGizmoHandler),
 }
 
 impl ShapeGizmoHandlers {
@@ -40,6 +42,7 @@ impl ShapeGizmoHandlers {
 			Self::Arc(_) => "arc",
 			Self::Circle(_) => "circle",
 			Self::CircularRepeat(_) => "circular_repeat",
+			Self::Grid(_) => "grid",
 			Self::None => "none",
 		}
 	}
@@ -52,6 +55,7 @@ impl ShapeGizmoHandlers {
 			Self::Arc(h) => h.handle_state(layer, mouse_position, ctx),
 			Self::Circle(h) => h.handle_state(layer, mouse_position, ctx),
 			Self::CircularRepeat(h) => h.handle_state(layer, mouse_position, ctx),
+			Self::Grid(h) => h.handle_state(layer, mouse_position, ctx),
 			Self::None => {}
 		}
 	}
@@ -64,6 +68,7 @@ impl ShapeGizmoHandlers {
 			Self::Arc(h) => h.is_any_gizmo_hovered(),
 			Self::Circle(h) => h.is_any_gizmo_hovered(),
 			Self::CircularRepeat(h) => h.is_any_gizmo_hovered(),
+			Self::Grid(h) => h.is_any_gizmo_hovered(),
 			Self::None => false,
 		}
 	}
@@ -76,6 +81,7 @@ impl ShapeGizmoHandlers {
 			Self::Arc(h) => h.handle_click(),
 			Self::Circle(h) => h.handle_click(),
 			Self::CircularRepeat(h) => h.handle_click(),
+			Self::Grid(h) => h.handle_click(),
 			Self::None => {}
 		}
 	}
@@ -88,6 +94,7 @@ impl ShapeGizmoHandlers {
 			Self::Arc(h) => h.handle_update(drag_start, ctx),
 			Self::Circle(h) => h.handle_update(drag_start, ctx),
 			Self::CircularRepeat(h) => h.handle_update(drag_start, ctx),
+			Self::Grid(h) => h.handle_update(drag_start, ctx),
 			Self::None => {}
 		}
 	}
@@ -99,6 +106,7 @@ impl ShapeGizmoHandlers {
 			Self::Polygon(h) => h.cleanup(),
 			Self::Arc(h) => h.cleanup(),
 			Self::Circle(h) => h.cleanup(),
+			Self::Grid(h) => h.cleanup(),
 			Self::CircularRepeat(h) => h.cleanup(),
 			Self::None => {}
 		}
@@ -112,6 +120,7 @@ impl ShapeGizmoHandlers {
 			Self::Arc(h) => h.overlays(layer, mouse_position, ctx, overlay_context),
 			Self::Circle(h) => h.overlays(layer, mouse_position, ctx, overlay_context),
 			Self::CircularRepeat(h) => h.overlays(layer, mouse_position, ctx, overlay_context),
+			Self::Grid(h) => h.overlays(layer, mouse_position, ctx, overlay_context),
 			Self::None => {}
 		}
 	}
@@ -124,6 +133,7 @@ impl ShapeGizmoHandlers {
 			Self::Arc(h) => h.dragging_overlays(mouse_position, ctx, overlay_context),
 			Self::Circle(h) => h.dragging_overlays(mouse_position, ctx, overlay_context),
 			Self::CircularRepeat(h) => h.dragging_overlays(mouse_position, ctx, overlay_context),
+			Self::Grid(h) => h.dragging_overlays(mouse_position, ctx, overlay_context),
 			Self::None => {}
 		}
 	}
@@ -135,6 +145,7 @@ impl ShapeGizmoHandlers {
 			Self::Arc(h) => h.mouse_cursor_icon(),
 			Self::Circle(h) => h.mouse_cursor_icon(),
 			Self::CircularRepeat(h) => h.mouse_cursor_icon(),
+			Self::Grid(h) => h.mouse_cursor_icon(),
 			Self::None => None,
 		}
 	}
@@ -178,6 +189,10 @@ impl GizmoManager {
 		if graph_modification_utils::get_circle_id(layer, &document.network_interface).is_some() {
 			return Some(ShapeGizmoHandlers::Circle(CircleGizmoHandler::default()));
 		}
+		// Grid
+		if graph_modification_utils::get_grid_id(layer, &document.network_interface).is_some() {
+			return Some(ShapeGizmoHandlers::Grid(GridGizmoHandler::default()));
+		}
 
 		None
 	}
@@ -191,7 +206,6 @@ impl GizmoManager {
 
 		None
 	}
-
 	/// Returns `true` if a gizmo is currently active (hovered or being interacted with).
 	pub fn hovering_over_gizmo(&self) -> bool {
 		self.active_shape_handler.is_some()

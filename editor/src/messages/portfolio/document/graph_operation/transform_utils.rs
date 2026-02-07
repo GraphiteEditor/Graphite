@@ -32,10 +32,13 @@ pub fn compute_scale_angle_translation_shear(transform: DAffine2) -> (DVec2, f64
 
 /// Update the inputs of the transform node to match a new transform
 pub fn update_transform(network_interface: &mut NodeNetworkInterface, node_id: &NodeId, transform: DAffine2) {
-	let (scale, angle, translation, shear) = compute_scale_angle_translation_shear(transform);
+	let (scale, rotation, translation, shear) = compute_scale_angle_translation_shear(transform);
+
+	let rotation = rotation.to_degrees();
+	let shear = DVec2::new(shear.x.atan().to_degrees(), shear.y.atan().to_degrees());
 
 	network_interface.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::DVec2(translation), false), &[]);
-	network_interface.set_input(&InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::F64(angle), false), &[]);
+	network_interface.set_input(&InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::F64(rotation), false), &[]);
 	network_interface.set_input(&InputConnector::node(*node_id, 3), NodeInput::value(TaggedValue::DVec2(scale), false), &[]);
 	network_interface.set_input(&InputConnector::node(*node_id, 4), NodeInput::value(TaggedValue::DVec2(shear), false), &[]);
 }
@@ -76,14 +79,14 @@ pub fn get_current_transform(inputs: &[NodeInput]) -> DAffine2 {
 	} else {
 		DVec2::ZERO
 	};
-
-	let angle = if let Some(&TaggedValue::F64(angle)) = inputs[2].as_value() { angle } else { 0. };
-
+	let rotation = if let Some(&TaggedValue::F64(rotation)) = inputs[2].as_value() { rotation } else { 0. };
 	let scale = if let Some(&TaggedValue::DVec2(scale)) = inputs[3].as_value() { scale } else { DVec2::ONE };
-
 	let shear = if let Some(&TaggedValue::DVec2(shear)) = inputs[4].as_value() { shear } else { DVec2::ZERO };
 
-	DAffine2::from_scale_angle_translation(scale, angle, translation) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.])
+	let rotation = rotation.to_radians();
+	let shear = DVec2::new(shear.x.to_radians().tan(), shear.y.to_radians().tan());
+
+	DAffine2::from_scale_angle_translation(scale, rotation, translation) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.])
 }
 
 /// Extract the current normalized pivot from the layer

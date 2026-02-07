@@ -1,4 +1,4 @@
-use super::input_keyboard::{KeysGroup, LayoutKeysGroup, all_required_modifiers_pressed};
+use super::input_keyboard::{KeysGroup, LabeledShortcut, all_required_modifiers_pressed};
 use crate::messages::input_mapper::key_mapping::MappingVariant;
 use crate::messages::input_mapper::utility_types::input_keyboard::{KeyStates, NUMBER_OF_KEYS};
 use crate::messages::input_mapper::utility_types::input_mouse::NUMBER_OF_MOUSE_BUTTONS;
@@ -29,16 +29,6 @@ impl Mapping {
 		list.match_mapping(keyboard_state, actions)
 	}
 
-	pub fn remove(&mut self, target_entry: &MappingEntry) {
-		let list = self.associated_entries_mut(&target_entry.input);
-		list.remove(target_entry);
-	}
-
-	pub fn add(&mut self, new_entry: MappingEntry) {
-		let list = self.associated_entries_mut(&new_entry.input);
-		list.push(new_entry);
-	}
-
 	fn associated_entries(&self, message: &InputMapperMessage) -> &KeyMappingEntries {
 		match message {
 			InputMapperMessage::KeyDown(key) => &self.key_down[*key as usize],
@@ -49,19 +39,6 @@ impl Mapping {
 			InputMapperMessage::WheelScroll => &self.wheel_scroll,
 			InputMapperMessage::PointerMove => &self.pointer_move,
 			InputMapperMessage::PointerShake => &self.pointer_shake,
-		}
-	}
-
-	fn associated_entries_mut(&mut self, message: &InputMapperMessage) -> &mut KeyMappingEntries {
-		match message {
-			InputMapperMessage::KeyDown(key) => &mut self.key_down[*key as usize],
-			InputMapperMessage::KeyUp(key) => &mut self.key_up[*key as usize],
-			InputMapperMessage::KeyDownNoRepeat(key) => &mut self.key_down_no_repeat[*key as usize],
-			InputMapperMessage::KeyUpNoRepeat(key) => &mut self.key_up_no_repeat[*key as usize],
-			InputMapperMessage::DoubleClick(key) => &mut self.double_click[*key as usize],
-			InputMapperMessage::WheelScroll => &mut self.wheel_scroll,
-			InputMapperMessage::PointerMove => &mut self.pointer_move,
-			InputMapperMessage::PointerShake => &mut self.pointer_shake,
 		}
 	}
 }
@@ -125,31 +102,24 @@ pub struct MappingEntry {
 	pub modifiers: KeyStates,
 	/// True indicates that this takes priority as the labeled hotkey shown in UI menus and tooltips instead of an alternate binding for the same action
 	pub canonical: bool,
+	/// Whether this mapping is disabled
+	pub disabled: bool,
 }
 
 #[derive(Debug, Clone, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
-pub enum ActionKeys {
+pub enum ActionShortcut {
 	Action(MessageDiscriminant),
-	#[serde(rename = "keys")]
-	Keys(LayoutKeysGroup),
+	#[serde(rename = "shortcut")]
+	Shortcut(LabeledShortcut),
 }
 
-impl ActionKeys {
-	pub fn to_keys(&mut self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>) -> String {
-		match self {
-			Self::Action(action) => {
-				if let Some(keys) = action_input_mapping(action) {
-					let description = keys.to_string();
-					*self = Self::Keys(keys.into());
-					description
-				} else {
-					*self = Self::Keys(KeysGroup::default().into());
-					String::new()
-				}
-			}
-			Self::Keys(keys) => {
-				warn!("Calling `.to_keys()` on a `ActionKeys::Keys` is a mistake/bug. Keys are: {keys:?}.");
-				String::new()
+impl ActionShortcut {
+	pub fn realize_shortcut(&mut self, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>) {
+		if let Self::Action(action) = self {
+			if let Some(keys) = action_input_mapping(action) {
+				*self = Self::Shortcut(keys.into());
+			} else {
+				*self = Self::Shortcut(KeysGroup::default().into());
 			}
 		}
 	}

@@ -1,6 +1,6 @@
 use super::shape_utility::ShapeToolModifierKey;
 use crate::consts::{BOUNDS_SELECT_THRESHOLD, LINE_ROTATE_SNAP_ANGLE};
-use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type};
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate};
@@ -37,7 +37,8 @@ pub struct Line;
 
 impl Line {
 	pub fn create_node(document: &DocumentMessageHandler, drag_start: DVec2) -> NodeTemplate {
-		let node_type = resolve_document_node_type("Line").expect("Line node can't be found");
+		let identifier = DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::line::IDENTIFIER);
+		let node_type = resolve_document_node_type(&identifier).expect("Line node can't be found");
 		node_type.node_template_input_override([
 			None,
 			Some(NodeInput::value(TaggedValue::DVec2(document.metadata().document_to_viewport.transform_point2(drag_start)), false)),
@@ -48,6 +49,7 @@ impl Line {
 	pub fn update_shape(
 		document: &DocumentMessageHandler,
 		ipp: &InputPreprocessorMessageHandler,
+		viewport: &ViewportMessageHandler,
 		layer: LayerNodeIdentifier,
 		shape_tool_data: &mut ShapeToolData,
 		modifier: ShapeToolModifierKey,
@@ -59,7 +61,7 @@ impl Line {
 
 		let keyboard = &ipp.keyboard;
 		let ignore = [layer];
-		let snap_data = SnapData::ignore(document, ipp, &ignore);
+		let snap_data = SnapData::ignore(document, ipp, viewport, &ignore);
 		let mut document_points = generate_line(shape_tool_data, snap_data, keyboard.key(lock_angle), keyboard.key(snap_angle), keyboard.key(center));
 
 		if shape_tool_data.line_data.dragging_endpoint == Some(LineEnd::Start) {
@@ -87,7 +89,8 @@ impl Line {
 			.selected_nodes()
 			.selected_visible_and_unlocked_layers(&document.network_interface)
 			.filter_map(|layer| {
-				let node_inputs = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Line")?;
+				let node_inputs =
+					NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::line::IDENTIFIER))?;
 
 				let (Some(&TaggedValue::DVec2(start)), Some(&TaggedValue::DVec2(end))) = (node_inputs[1].as_value(), node_inputs[2].as_value()) else {
 					return None;
@@ -170,7 +173,7 @@ fn generate_line(tool_data: &mut ShapeToolData, snap_data: SnapData, lock_angle:
 }
 
 pub fn clicked_on_line_endpoints(layer: LayerNodeIdentifier, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, shape_tool_data: &mut ShapeToolData) -> bool {
-	let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Line") else {
+	let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::line::IDENTIFIER)) else {
 		return false;
 	};
 
@@ -215,7 +218,7 @@ mod test_line_tool {
 			.selected_nodes()
 			.selected_visible_and_unlocked_layers(network_interface)
 			.filter_map(|layer| {
-				let node_inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs("Line")?;
+				let node_inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::line::IDENTIFIER))?;
 				let (Some(&TaggedValue::DVec2(start)), Some(&TaggedValue::DVec2(end))) = (node_inputs[1].as_value(), node_inputs[2].as_value()) else {
 					return None;
 				};

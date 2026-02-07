@@ -1,7 +1,7 @@
 import { plainToInstance } from "class-transformer";
 
+import { type EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
 import { type JsMessageType, messageMakers, type JsMessage } from "@graphite/messages";
-import { type EditorHandle } from "@graphite-frontend/wasm/pkg/graphite_wasm.js";
 
 type JsMessageCallback<T extends JsMessage> = (messageData: T) => void;
 // Don't know a better way of typing this since it can be any subclass of JsMessage
@@ -9,7 +9,6 @@ type JsMessageCallback<T extends JsMessage> = (messageData: T) => void;
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type JsMessageCallbackMap = Record<string, JsMessageCallback<any> | undefined>;
 
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createSubscriptionRouter() {
 	const subscriptions: JsMessageCallbackMap = {};
 

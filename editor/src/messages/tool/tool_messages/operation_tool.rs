@@ -68,7 +68,7 @@ impl ToolMetadata for OperationTool {
 	fn icon_name(&self) -> String {
 		"GeneralOperationTool".into()
 	}
-	fn tooltip(&self) -> String {
+	fn tooltip_label(&self) -> String {
 		"Operation Tool".into()
 	}
 	fn tool_type(&self) -> crate::messages::tool::utility_types::ToolType {
@@ -76,7 +76,7 @@ impl ToolMetadata for OperationTool {
 	}
 }
 
-fn create_operation_type_option_widget(operation_type: OperationType) -> WidgetHolder {
+fn create_operation_type_option_widget(operation_type: OperationType) -> WidgetIter {
 	let entries = vec![vec![
 		MenuListEntry::new("Circular Repeat").label("Circular Repeat").on_commit(move |_| {
 			OperationToolMessage::UpdateOptions {

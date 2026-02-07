@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
-	import { type RadioEntries, type RadioEntryData } from "@graphite/messages";
+	import { type RadioEntryData } from "@graphite/messages";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
@@ -9,9 +9,14 @@
 
 	const dispatch = createEventDispatcher<{ selectedIndex: number }>();
 
-	export let entries: RadioEntries;
+	// Content
 	export let selectedIndex: number | undefined = undefined;
 	export let disabled = false;
+	// Children
+	export let entries: RadioEntryData[];
+	// Styling
+	export let narrow = false;
+	// Sizing
 	export let minWidth = 0;
 
 	$: mixed = selectedIndex === undefined && !disabled;
@@ -19,14 +24,20 @@
 	function handleEntryClick(radioEntryData: RadioEntryData) {
 		const index = entries.indexOf(radioEntryData);
 		dispatch("selectedIndex", index);
-
-		radioEntryData.action?.();
 	}
 </script>
 
-<LayoutRow class="radio-input" classes={{ disabled, mixed }} styles={{ ...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}) }}>
+<LayoutRow class="radio-input" classes={{ disabled, narrow, mixed }} styles={{ ...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}) }}>
 	{#each entries as entry, index}
-		<button class:active={!mixed ? index === selectedIndex : undefined} on:click={() => handleEntryClick(entry)} title={entry.tooltip} tabindex={index === selectedIndex ? -1 : 0} {disabled}>
+		<button
+			class:active={!mixed ? index === selectedIndex : undefined}
+			on:click={() => handleEntryClick(entry)}
+			data-tooltip-label={entry.tooltipLabel}
+			data-tooltip-description={entry.tooltipDescription}
+			data-tooltip-shortcut={entry.tooltipShortcut?.shortcut ? JSON.stringify(entry.tooltipShortcut.shortcut) : undefined}
+			tabindex={index === selectedIndex ? -1 : 0}
+			{disabled}
+		>
 			{#if entry.icon}
 				<IconLabel icon={entry.icon} />
 			{/if}
@@ -39,12 +50,13 @@
 
 <style lang="scss" global>
 	.radio-input {
-		background: var(--color-5-dullgray);
+		background: var(--color-4-dimgray);
 		border-radius: 2px;
-		height: 24px;
+		--widget-height: 24px;
+		height: var(--widget-height);
 
 		button {
-			background: var(--color-5-dullgray);
+			background: var(--color-4-dimgray);
 			fill: var(--color-e-nearwhite);
 			border-radius: 2px;
 			height: 20px;
@@ -100,33 +112,35 @@
 			}
 		}
 
-		&.mixed {
-			background: var(--color-4-dimgray);
+		&.narrow.narrow {
+			--widget-height: 20px;
+			height: var(--widget-height);
 
+			button {
+				height: 16px;
+			}
+		}
+
+		&.mixed {
 			button:not(:hover),
 			&.disabled button:hover {
 				background: var(--color-5-dullgray);
 			}
 		}
 
-		&.disabled {
-			background: var(--color-4-dimgray);
+		&.disabled button {
+			color: var(--color-8-uppergray);
 
-			button {
-				background: var(--color-4-dimgray);
-				color: var(--color-8-uppergray);
+			svg {
+				fill: var(--color-8-uppergray);
+			}
+
+			&.active {
+				background: var(--color-8-uppergray);
+				color: var(--color-2-mildblack);
 
 				svg {
-					fill: var(--color-8-uppergray);
-				}
-
-				&.active {
-					background: var(--color-8-uppergray);
-					color: var(--color-2-mildblack);
-
-					svg {
-						fill: var(--color-2-mildblack);
-					}
+					fill: var(--color-2-mildblack);
 				}
 			}
 		}

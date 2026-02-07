@@ -7,11 +7,12 @@ use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::token::{Comma, RArrow};
 use syn::{
-	AttrStyle, Attribute, Error, Expr, ExprTuple, FnArg, GenericParam, Ident, ItemFn, Lit, LitFloat, LitInt, LitStr, Meta, Pat, PatIdent, PatType, Path, ReturnType, Type, TypeParam, Visibility,
-	WhereClause, parse_quote,
+	AttrStyle, Attribute, Error, Expr, ExprTuple, FnArg, GenericParam, Ident, ItemFn, Lit, LitFloat, LitInt, LitStr, Meta, Pat, PatIdent, PatType, Path, ReturnType, TraitBound, Type, TypeImplTrait,
+	TypeParam, TypeParamBound, Visibility, WhereClause, parse_quote,
 };
 
 use crate::codegen::generate_node_code;
+use crate::crate_ident::CrateIdent;
 use crate::shader_nodes::ShaderNodeType;
 
 #[derive(Clone, Debug)]
@@ -35,11 +36,10 @@ pub(crate) struct ParsedNodeFn {
 	pub(crate) is_async: bool,
 	pub(crate) fields: Vec<ParsedField>,
 	pub(crate) body: TokenStream2,
-	pub(crate) crate_name: proc_macro_crate::FoundCrate,
 	pub(crate) description: String,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub(crate) struct NodeFnAttributes {
 	pub(crate) category: Option<LitStr>,
 	pub(crate) display_name: Option<LitStr>,
@@ -50,6 +50,8 @@ pub(crate) struct NodeFnAttributes {
 	pub(crate) cfg: Option<TokenStream2>,
 	/// if this node should get a gpu implementation, defaults to None
 	pub(crate) shader_node: Option<ShaderNodeType>,
+	/// Custom serialization function path (e.g., "my_module::custom_serialize")
+	pub(crate) serialize: Option<Path>,
 	// Add more attributes as needed
 }
 
@@ -112,6 +114,7 @@ pub struct ParsedField {
 	pub number_display_decimal_places: Option<LitInt>,
 	pub number_step: Option<LitFloat>,
 	pub unit: Option<LitStr>,
+	pub is_data_field: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -120,6 +123,8 @@ pub enum ParsedFieldType {
 	Node(NodeParsedField),
 }
 
+/// a param of any kind, either a concrete type or a generic type with a set of possible types specified via
+/// `#[implementation(type)]`
 #[derive(Clone, Debug)]
 pub struct RegularParsedField {
 	pub ty: Type,
@@ -131,8 +136,10 @@ pub struct RegularParsedField {
 	pub number_hard_max: Option<LitFloat>,
 	pub number_mode_range: Option<ExprTuple>,
 	pub implementations: Punctuated<Type, Comma>,
+	pub gpu_image: bool,
 }
 
+/// a param of `impl Node` with `#[implementation(in -> out)]`
 #[derive(Clone, Debug)]
 pub struct NodeParsedField {
 	pub input_type: Type,
@@ -140,11 +147,12 @@ pub struct NodeParsedField {
 	pub implementations: Punctuated<Implementation, Comma>,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub(crate) struct Input {
 	pub(crate) pat_ident: PatIdent,
 	pub(crate) ty: Type,
 	pub(crate) implementations: Punctuated<Type, Comma>,
+	pub(crate) context_features: Vec<Ident>,
 }
 
 impl Parse for Implementation {
@@ -196,15 +204,20 @@ impl Parse for NodeFnAttributes {
 		let mut properties_string = None;
 		let mut cfg = None;
 		let mut shader_node = None;
+		let mut serialize = None;
 
 		let content = input;
 		// let content;
 		// syn::parenthesized!(content in input);
 
 		let nested = content.call(Punctuated::<Meta, Comma>::parse_terminated)?;
-		for meta in nested {
+		for meta in nested.iter() {
 			let name = meta.path().get_ident().ok_or_else(|| Error::new_spanned(meta.path(), "Node macro expects a known Ident, not a path"))?;
 			match name.to_string().as_str() {
+				// User-facing category in the node catalog. The empty string `category("")` hides the node from the catalog.
+				//
+				// Example usage:
+				// #[node_macro::node(..., category("Math: Arithmetic"), ...)]
 				"category" => {
 					let meta = meta.require_list()?;
 					if category.is_some() {
@@ -215,6 +228,11 @@ impl Parse for NodeFnAttributes {
 						.map_err(|_| Error::new_spanned(meta, "Expected a string literal for 'category', e.g., category(\"Value\")"))?;
 					category = Some(lit);
 				}
+				// Override for the display name in the node catalog in place of the auto-generated name taken from the function name with inferred Title Case formatting.
+				// Use this if capitalization or formatting needs to be overridden.
+				//
+				// Example usage:
+				// #[node_macro::node(..., name("Request URL"), ...)]
 				"name" => {
 					let meta = meta.require_list()?;
 					if display_name.is_some() {
@@ -223,6 +241,12 @@ impl Parse for NodeFnAttributes {
 					let parsed_name: LitStr = meta.parse_args().map_err(|_| Error::new_spanned(meta, "Expected a string for 'name', e.g., name(\"Memoize\")"))?;
 					display_name = Some(parsed_name);
 				}
+				// Override for the fully qualified path used by Graphene to identify the node implementation.
+				// If not provided, the path will be inferred from the module path and function name.
+				// Use this if the node implementation has moved to a different module or crate but a migration to that new path is not desired.
+				//
+				// Example usage:
+				// #[node_macro::node(..., path(core_types::vector), ...)]
 				"path" => {
 					let meta = meta.require_list()?;
 					if path.is_some() {
@@ -233,6 +257,13 @@ impl Parse for NodeFnAttributes {
 						.map_err(|_| Error::new_spanned(meta, "Expected a valid path for 'path', e.g., path(crate::MemoizeNode)"))?;
 					path = Some(parsed_path);
 				}
+				// Indicator that the node should allow generic type arguments but skip the automatic generation of concrete type implementations.
+				// It allows the type arguments in this node to not include the normally required `#[implementations(...)]` attribute on each generic parameter.
+				// Instead, concrete implementations must be manually listed in the Node Registry, or where impossible, produced at runtime by the compile server.
+				// This is used by a few advanced nodes that need to support many types where listing them all would be cumbersome or impossible.
+				//
+				// Example usage:
+				// #[node_macro::node(..., skip_impl, ...)]
 				"skip_impl" => {
 					let path = meta.require_path_only()?;
 					if skip_impl {
@@ -240,30 +271,57 @@ impl Parse for NodeFnAttributes {
 					}
 					skip_impl = true;
 				}
+				// Override UI layout generator function name defined in `node_properties.rs` that returns a custom Properties panel layout for this node.
+				// This is used to create custom UI for the input parameters of the node in cases where the defaults generated from the type and attributes are insufficient.
+				//
+				// Example usage:
+				// #[node_macro::node(..., properties("channel_mixer_properties"), ...)]
 				"properties" => {
 					let meta = meta.require_list()?;
 					if properties_string.is_some() {
-						return Err(Error::new_spanned(path, "Multiple 'properties_string' attributes are not allowed"));
+						return Err(Error::new_spanned(path, "Multiple 'properties' attributes are not allowed"));
 					}
 					let parsed_properties_string: LitStr = meta
 						.parse_args()
-						.map_err(|_| Error::new_spanned(meta, "Expected a string for 'properties', e.g., name(\"channel_mixer_properties\")"))?;
+						.map_err(|_| Error::new_spanned(meta, "Expected a string for 'properties', e.g., properties(\"channel_mixer_properties\")"))?;
 
 					properties_string = Some(parsed_properties_string);
 				}
+				// Conditional compilation tokens to gate when this node is included in the build.
+				//
+				// Example usage:
+				// #[node_macro::node(..., cfg(feature = "std"), ...)]
 				"cfg" => {
 					if cfg.is_some() {
-						return Err(Error::new_spanned(path, "Multiple 'feature' attributes are not allowed"));
+						return Err(Error::new_spanned(path, "Multiple 'cfg' attributes are not allowed"));
 					}
 					let meta = meta.require_list()?;
 					cfg = Some(meta.tokens.clone());
 				}
+				// Reference to a specific shader definition struct that is used to run the logic of this node on the GPU.
+				//
+				// Example usage:
+				// #[node_macro::node(..., shader_node(PerPixelAdjust), ...)]
 				"shader_node" => {
 					if shader_node.is_some() {
-						return Err(Error::new_spanned(path, "Multiple 'feature' attributes are not allowed"));
+						return Err(Error::new_spanned(path, "Multiple 'shader_node' attributes are not allowed"));
 					}
 					let meta = meta.require_list()?;
 					shader_node = Some(syn::parse2(meta.tokens.to_token_stream())?);
+				}
+				// Function name for custom serialization of this node's data. This is only used by the Monitor node.
+				//
+				// Example usage:
+				// #[node_macro::node(..., serialize(my_module::custom_serialize), ...)]
+				"serialize" => {
+					let meta = meta.require_list()?;
+					if serialize.is_some() {
+						return Err(Error::new_spanned(meta, "Multiple 'serialize' attributes are not allowed"));
+					}
+					let parsed_path: Path = meta
+						.parse_args()
+						.map_err(|_| Error::new_spanned(meta, "Expected a valid path for 'serialize', e.g., serialize(my_module::custom_serialize)"))?;
+					serialize = Some(parsed_path);
 				}
 				_ => {
 					return Err(Error::new_spanned(
@@ -271,15 +329,27 @@ impl Parse for NodeFnAttributes {
 						indoc!(
 							r#"
 							Unsupported attribute in `node`.
-							Supported attributes are 'category', 'path' 'name', 'skip_impl', 'cfg' and 'properties'.
-
+							Supported attributes are 'category', 'name', 'path', 'skip_impl', 'properties', 'cfg', 'shader_node', and 'serialize'.
 							Example usage:
-							#[node_macro::node(category("Value"), name("Test Node"))]
+							#[node_macro::node(..., name("Test Node"), ...)]
 							"#
 						),
 					));
 				}
 			}
+		}
+
+		if category.is_none() {
+			return Err(Error::new_spanned(
+				nested,
+				indoc!(
+					r#"
+					The attribute 'category' is required.
+					Example usage:
+					#[node_macro::node(..., category("Value"), ...)]
+					"#,
+				),
+			));
 		}
 
 		Ok(NodeFnAttributes {
@@ -290,12 +360,13 @@ impl Parse for NodeFnAttributes {
 			properties_string,
 			cfg,
 			shader_node,
+			serialize,
 		})
 	}
 }
 
 fn parse_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<ParsedNodeFn> {
-	let attributes = syn::parse2::<NodeFnAttributes>(attr.clone()).map_err(|e| Error::new(e.span(), format!("Failed to parse node_fn attributes: {e}")))?;
+	let attributes = syn::parse2::<NodeFnAttributes>(attr.clone()).map_err(|e| Error::new(e.span(), format!("Failed to parse node_fn attributes:\n{e}")))?;
 	let input_fn = syn::parse2::<ItemFn>(item.clone()).map_err(|e| Error::new(e.span(), format!("Failed to parse function: {e}. Make sure it's a valid Rust function.")))?;
 
 	let vis = input_fn.vis;
@@ -309,12 +380,6 @@ fn parse_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<ParsedNo
 	let output_type = parse_output(&input_fn.sig.output)?;
 	let where_clause = input_fn.sig.generics.where_clause;
 	let body = input_fn.block.to_token_stream();
-	let crate_name = proc_macro_crate::crate_name("graphene-core").map_err(|e| {
-		Error::new(
-			proc_macro2::Span::call_site(),
-			format!("Failed to find location of graphene_core. Make sure it is imported as a dependency: {e}"),
-		)
-	})?;
 	let description = input_fn
 		.attrs
 		.iter()
@@ -345,7 +410,6 @@ fn parse_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<ParsedNo
 		fields,
 		where_clause,
 		body,
-		crate_name,
 		description,
 	})
 }
@@ -380,10 +444,12 @@ fn parse_inputs(inputs: &Punctuated<FnArg, Comma>) -> syn::Result<(Input, Vec<Pa
 					.map(|attr| parse_implementations(attr, &pat_ident.ident))
 					.transpose()?
 					.unwrap_or_default();
+				let context_features = parse_context_feature_idents(ty);
 				input = Some(Input {
 					pat_ident,
 					ty: (**ty).clone(),
 					implementations,
+					context_features,
 				});
 			} else if let Pat::Ident(pat_ident) = &**pat {
 				let field = parse_field(pat_ident.clone(), (**ty).clone(), attrs).map_err(|e| Error::new_spanned(pat_ident, format!("Failed to parse argument '{}': {}", pat_ident.ident, e)))?;
@@ -398,6 +464,43 @@ fn parse_inputs(inputs: &Punctuated<FnArg, Comma>) -> syn::Result<(Input, Vec<Pa
 
 	let input = input.ok_or_else(|| Error::new_spanned(inputs, "Expected at least one input argument. The first argument should be the node input type."))?;
 	Ok((input, fields))
+}
+
+/// Parse context feature identifiers from the trait bounds of a context parameter.
+fn parse_context_feature_idents(ty: &Type) -> Vec<Ident> {
+	let mut features = Vec::new();
+
+	// Check if this is an impl trait (impl Ctx + ...)
+	if let Type::ImplTrait(TypeImplTrait { bounds, .. }) = ty {
+		for bound in bounds {
+			if let TypeParamBound::Trait(TraitBound { path, .. }) = bound {
+				// Extract the last segment of the trait path
+				if let Some(segment) = path.segments.last() {
+					match segment.ident.to_string().as_str() {
+						"ExtractFootprint"
+						| "ExtractRealTime"
+						| "ExtractAnimationTime"
+						| "ExtractPointerPosition"
+						| "ExtractIndex"
+						| "ExtractVarArgs"
+						| "InjectFootprint"
+						| "InjectRealTime"
+						| "InjectAnimationTime"
+						| "InjectPointerPosition"
+						| "InjectIndex"
+						| "InjectVarArgs" => {
+							features.push(segment.ident.clone());
+						}
+						// Skip Modify* traits as they don't affect usage tracking
+						// Also ignore other traits like Ctx, ExtractAll, etc.
+						_ => {}
+					}
+				}
+			}
+		}
+	}
+
+	features
 }
 
 fn parse_implementations(attr: &Attribute, name: &Ident) -> syn::Result<Punctuated<Type, Comma>> {
@@ -430,6 +533,18 @@ fn parse_node_implementations<T: Parse>(attr: &Attribute, name: &Ident) -> syn::
 fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Result<ParsedField> {
 	let ident = &pat_ident.ident;
 
+	// Checks for the #[data] attribute, indicating that this is a data field rather than an input parameter to the node.
+	// Data fields act as internal state, using interior mutability to cache data between node evaluations.
+	//
+	// Normally, an input parameter is a construction argument to the node that is stored as a field on the node struct.
+	// Specifically, its struct field stores the connected upstream node (an evaluatable lambda that returns data of the connection wire's type).
+	// By comparison, a data field is also stored as a field on the node struct, allowing it to persist state between evaluations.
+	// But it acts as internal state only, not exposed as a parameter in the UI or able to be wired to another node.
+	//
+	// Nodes implemented using a data field must ensure the persistent state is used in a manner that respects the invariant of idempotence,
+	// meaning the node's output is always deterministic whether or not the internal state is present.
+	let is_data_field = extract_attribute(attrs, "data").is_some();
+
 	let default_value = extract_attribute(attrs, "default")
 		.map(|attr| attr.parse_args().map_err(|e| Error::new_spanned(attr, format!("Invalid `default` value for argument '{ident}': {e}"))))
 		.transpose()?;
@@ -451,6 +566,25 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 		.unwrap_or_default();
 
 	let exposed = extract_attribute(attrs, "expose").is_some();
+
+	// Validate data field attributes
+	if is_data_field {
+		if default_value.is_some() {
+			return Err(Error::new_spanned(
+				&pat_ident,
+				"Data fields (#[data]) cannot have #[default] attribute. They are automatically initialized with Default::default()",
+			));
+		}
+		if scope.is_some() {
+			return Err(Error::new_spanned(&pat_ident, "Data fields (#[data]) cannot have #[scope] attribute"));
+		}
+		if exposed {
+			return Err(Error::new_spanned(
+				&pat_ident,
+				"Data fields (#[data]) cannot be exposed (#[expose]). They are internal state, not node parameters",
+			));
+		}
+	}
 
 	let value_source = match (default_value, scope) {
 		(Some(_), Some(_)) => return Err(Error::new_spanned(&pat_ident, "Cannot have both `default` and `scope` attributes")),
@@ -495,10 +629,10 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			})
 		})
 		.transpose()?;
-	if let Some(range) = &number_mode_range {
-		if range.elems.len() != 2 {
-			return Err(Error::new_spanned(range, "Expected a tuple of two values for `range` for the min and max, respectively"));
-		}
+	if let Some(range) = &number_mode_range
+		&& range.elems.len() != 2
+	{
+		return Err(Error::new_spanned(range, "Expected a tuple of two values for `range` for the min and max, respectively"));
 	}
 
 	let unit = extract_attribute(attrs, "unit")
@@ -529,6 +663,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 				.map_err(|e| Error::new_spanned(attr, format!("Invalid `step` for argument '{ident}': {e}\nUSAGE EXAMPLE: #[step(2.)]")))
 		})
 		.transpose()?;
+	let gpu_image = extract_attribute(attrs, "gpu_image").is_some();
 
 	let (is_node, node_input_type, node_output_type) = parse_node_type(&ty);
 	let description = attrs
@@ -548,6 +683,14 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 		.fold(String::new(), |acc, b| acc + &b + "\n");
 
 	if is_node {
+		// Data fields cannot be impl Node types
+		if is_data_field {
+			return Err(Error::new_spanned(
+				&ty,
+				"Data fields (#[data]) cannot be of type `impl Node`. Data fields must be concrete types that implement Default",
+			));
+		}
+
 		let (input_type, output_type) = node_input_type
 			.zip(node_output_type)
 			.ok_or_else(|| Error::new_spanned(&ty, "Invalid Node type. Expected `impl Node<Input, Output = OutputType>`"))?;
@@ -572,6 +715,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			number_display_decimal_places,
 			number_step,
 			unit,
+			is_data_field,
 		})
 	} else {
 		let implementations = extract_attribute(attrs, "implementations")
@@ -590,6 +734,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 				ty,
 				value_source,
 				implementations,
+				gpu_image,
 			}),
 			name,
 			description,
@@ -597,6 +742,7 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 			number_display_decimal_places,
 			number_step,
 			unit,
+			is_data_field,
 		})
 	}
 }
@@ -604,20 +750,19 @@ fn parse_field(pat_ident: PatIdent, ty: Type, attrs: &[Attribute]) -> syn::Resul
 fn parse_node_type(ty: &Type) -> (bool, Option<Type>, Option<Type>) {
 	if let Type::ImplTrait(impl_trait) = ty {
 		for bound in &impl_trait.bounds {
-			if let syn::TypeParamBound::Trait(trait_bound) = bound {
-				if trait_bound.path.segments.last().is_some_and(|seg| seg.ident == "Node") {
-					if let syn::PathArguments::AngleBracketed(args) = &trait_bound.path.segments.last().unwrap().arguments {
-						let input_type = args.args.iter().find_map(|arg| if let syn::GenericArgument::Type(ty) = arg { Some(ty.clone()) } else { None });
-						let output_type = args.args.iter().find_map(|arg| {
-							if let syn::GenericArgument::AssocType(assoc_type) = arg {
-								if assoc_type.ident == "Output" { Some(assoc_type.ty.clone()) } else { None }
-							} else {
-								None
-							}
-						});
-						return (true, input_type, output_type);
+			if let syn::TypeParamBound::Trait(trait_bound) = bound
+				&& trait_bound.path.segments.last().is_some_and(|seg| seg.ident == "Node")
+				&& let syn::PathArguments::AngleBracketed(args) = &trait_bound.path.segments.last().unwrap().arguments
+			{
+				let input_type = args.args.iter().find_map(|arg| if let syn::GenericArgument::Type(ty) = arg { Some(ty.clone()) } else { None });
+				let output_type = args.args.iter().find_map(|arg| {
+					if let syn::GenericArgument::AssocType(assoc_type) = arg {
+						if assoc_type.ident == "Output" { Some(assoc_type.ty.clone()) } else { None }
+					} else {
+						None
 					}
-				}
+				});
+				return (true, input_type, output_type);
 			}
 		}
 	}
@@ -636,28 +781,16 @@ fn extract_attribute<'a>(attrs: &'a [Attribute], name: &str) -> Option<&'a Attri
 }
 
 // Modify the new_node_fn function to use the code generation
-pub fn new_node_fn(attr: TokenStream2, item: TokenStream2) -> TokenStream2 {
-	let parse_result = parse_node_fn(attr, item.clone());
-	let Ok(mut parsed_node) = parse_result else {
-		let e = parse_result.unwrap_err();
-		return Error::new(e.span(), format!("Failed to parse node function: {e}")).to_compile_error();
-	};
-
+pub fn new_node_fn(attr: TokenStream2, item: TokenStream2) -> syn::Result<TokenStream2> {
+	let crate_ident = CrateIdent::default();
+	let mut parsed_node = parse_node_fn(attr, item.clone()).map_err(|e| Error::new(e.span(), format!("Failed to parse node function:\n{e}")))?;
 	parsed_node.replace_impl_trait_in_input();
-	if let Err(e) = crate::validation::validate_node_fn(&parsed_node) {
-		return Error::new(e.span(), format!("Validation Error:\n{e}")).to_compile_error();
-	}
-	match generate_node_code(&parsed_node) {
-		Ok(parsed) => parsed,
-		Err(e) => {
-			// Return the error as a compile error
-			Error::new(e.span(), format!("Failed to parse node function: {e}")).to_compile_error()
-		}
-	}
+	crate::validation::validate_node_fn(&parsed_node).map_err(|e| Error::new(e.span(), format!("Validation error:\n{e}")))?;
+	generate_node_code(&crate_ident, &parsed_node).map_err(|e| Error::new(e.span(), format!("Failed to generate node code:\n{e}")))
 }
 
 impl ParsedNodeFn {
-	fn replace_impl_trait_in_input(&mut self) {
+	pub fn replace_impl_trait_in_input(&mut self) {
 		if let Type::ImplTrait(impl_trait) = self.input.ty.clone() {
 			let ident = Ident::new("_Input", impl_trait.span());
 			let mut bounds = impl_trait.bounds;
@@ -684,7 +817,6 @@ impl ParsedNodeFn {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use proc_macro_crate::FoundCrate;
 	use proc_macro2::Span;
 	use quote::{quote, quote_spanned};
 	use syn::parse_quote;
@@ -781,7 +913,7 @@ mod tests {
 
 	#[test]
 	fn test_basic_node() {
-		let attr = quote!(category("Math: Arithmetic"), path(graphene_core::TestNode), skip_impl);
+		let attr = quote!(category("Math: Arithmetic"), path(core_types::TestNode), skip_impl);
 		let input = quote!(
 			/// Multi
 			/// Line
@@ -796,11 +928,12 @@ mod tests {
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("Math: Arithmetic")),
 				display_name: None,
-				path: Some(parse_quote!(graphene_core::TestNode)),
+				path: Some(parse_quote!(core_types::TestNode)),
 				skip_impl: true,
 				properties_string: None,
 				cfg: None,
 				shader_node: None,
+				serialize: None,
 			},
 			fn_name: Ident::new("add", Span::call_site()),
 			struct_name: Ident::new("Add", Span::call_site()),
@@ -811,6 +944,7 @@ mod tests {
 				pat_ident: pat_ident("a"),
 				ty: parse_quote!(f64),
 				implementations: Punctuated::new(),
+				context_features: vec![],
 			},
 			output_type: parse_quote!(f64),
 			is_async: false,
@@ -829,13 +963,14 @@ mod tests {
 					number_hard_max: None,
 					number_mode_range: None,
 					implementations: Punctuated::new(),
+					gpu_image: false,
 				}),
 				number_display_decimal_places: None,
 				number_step: None,
 				unit: None,
+				is_data_field: false,
 			}],
 			body: TokenStream2::new(),
-			crate_name: FoundCrate::Itself,
 			description: String::from("Multi\nLine\n"),
 		};
 
@@ -866,6 +1001,7 @@ mod tests {
 				properties_string: None,
 				cfg: None,
 				shader_node: None,
+				serialize: None,
 			},
 			fn_name: Ident::new("transform", Span::call_site()),
 			struct_name: Ident::new("Transform", Span::call_site()),
@@ -876,6 +1012,7 @@ mod tests {
 				pat_ident: pat_ident("footprint"),
 				ty: parse_quote!(Footprint),
 				implementations: Punctuated::new(),
+				context_features: vec![],
 			},
 			output_type: parse_quote!(T),
 			is_async: false,
@@ -893,6 +1030,7 @@ mod tests {
 					number_display_decimal_places: None,
 					number_step: None,
 					unit: None,
+					is_data_field: false,
 				},
 				ParsedField {
 					pat_ident: pat_ident("translate"),
@@ -909,14 +1047,15 @@ mod tests {
 						number_hard_max: None,
 						number_mode_range: None,
 						implementations: Punctuated::new(),
+						gpu_image: false,
 					}),
 					number_display_decimal_places: None,
 					number_step: None,
 					unit: None,
+					is_data_field: false,
 				},
 			],
 			body: TokenStream2::new(),
-			crate_name: FoundCrate::Itself,
 			description: String::from("Hello\n\t\t\t\tWorld\n"),
 		};
 
@@ -928,7 +1067,7 @@ mod tests {
 		let attr = quote!(category("Vector: Shape"));
 		let input = quote!(
 			/// Test
-			fn circle(_: impl Ctx, #[default(50.)] radius: f64) -> Vector {
+			fn circle(_: impl Ctx + ExtractFootprint, #[default(50.)] radius: f64) -> Vector {
 				// Implementation details...
 			}
 		);
@@ -944,6 +1083,7 @@ mod tests {
 				properties_string: None,
 				cfg: None,
 				shader_node: None,
+				serialize: None,
 			},
 			fn_name: Ident::new("circle", Span::call_site()),
 			struct_name: Ident::new("Circle", Span::call_site()),
@@ -952,8 +1092,9 @@ mod tests {
 			where_clause: None,
 			input: Input {
 				pat_ident: pat_ident("_"),
-				ty: parse_quote!(impl Ctx),
+				ty: parse_quote!(impl Ctx + ExtractFootprint),
 				implementations: Punctuated::new(),
+				context_features: vec![format_ident!("ExtractFootprint")],
 			},
 			output_type: parse_quote!(Vector),
 			is_async: false,
@@ -972,13 +1113,14 @@ mod tests {
 					number_hard_max: None,
 					number_mode_range: None,
 					implementations: Punctuated::new(),
+					gpu_image: false,
 				}),
 				number_display_decimal_places: None,
 				number_step: None,
 				unit: None,
+				is_data_field: false,
 			}],
 			body: TokenStream2::new(),
-			crate_name: FoundCrate::Itself,
 			description: "Test\n".into(),
 		};
 
@@ -1005,6 +1147,7 @@ mod tests {
 				properties_string: None,
 				cfg: None,
 				shader_node: None,
+				serialize: None,
 			},
 			fn_name: Ident::new("levels", Span::call_site()),
 			struct_name: Ident::new("Levels", Span::call_site()),
@@ -1015,6 +1158,7 @@ mod tests {
 				pat_ident: pat_ident("image"),
 				ty: parse_quote!(Table<Raster<P>>),
 				implementations: Punctuated::new(),
+				context_features: vec![],
 			},
 			output_type: parse_quote!(Table<Raster<P>>),
 			is_async: false,
@@ -1038,13 +1182,14 @@ mod tests {
 						p.push(parse_quote!(f64));
 						p
 					},
+					gpu_image: false,
 				}),
 				number_display_decimal_places: None,
 				number_step: None,
 				unit: None,
+				is_data_field: false,
 			}],
 			body: TokenStream2::new(),
-			crate_name: FoundCrate::Itself,
 			description: String::new(),
 		};
 
@@ -1053,7 +1198,7 @@ mod tests {
 
 	#[test]
 	fn test_number_min_max_range_mode() {
-		let attr = quote!(category("Math: Arithmetic"), path(graphene_core::TestNode));
+		let attr = quote!(category("Math: Arithmetic"), path(core_types::TestNode));
 		let input = quote!(
 			fn add(
 				a: f64,
@@ -1073,11 +1218,12 @@ mod tests {
 			attributes: NodeFnAttributes {
 				category: Some(parse_quote!("Math: Arithmetic")),
 				display_name: None,
-				path: Some(parse_quote!(graphene_core::TestNode)),
+				path: Some(parse_quote!(core_types::TestNode)),
 				skip_impl: false,
 				properties_string: None,
 				cfg: None,
 				shader_node: None,
+				serialize: None,
 			},
 			fn_name: Ident::new("add", Span::call_site()),
 			struct_name: Ident::new("Add", Span::call_site()),
@@ -1088,6 +1234,7 @@ mod tests {
 				pat_ident: pat_ident("a"),
 				ty: parse_quote!(f64),
 				implementations: Punctuated::new(),
+				context_features: vec![],
 			},
 			output_type: parse_quote!(f64),
 			is_async: false,
@@ -1106,13 +1253,14 @@ mod tests {
 					number_hard_max: None,
 					number_mode_range: Some(parse_quote!((0., 100.))),
 					implementations: Punctuated::new(),
+					gpu_image: false,
 				}),
 				number_display_decimal_places: None,
 				number_step: None,
 				unit: None,
+				is_data_field: false,
 			}],
 			body: TokenStream2::new(),
-			crate_name: FoundCrate::Itself,
 			description: String::new(),
 		};
 
@@ -1139,6 +1287,7 @@ mod tests {
 				properties_string: None,
 				cfg: None,
 				shader_node: None,
+				serialize: None,
 			},
 			fn_name: Ident::new("load_image", Span::call_site()),
 			struct_name: Ident::new("LoadImage", Span::call_site()),
@@ -1149,6 +1298,7 @@ mod tests {
 				pat_ident: pat_ident("api"),
 				ty: parse_quote!(&WasmEditorApi),
 				implementations: Punctuated::new(),
+				context_features: vec![],
 			},
 			output_type: parse_quote!(Table<Raster<CPU>>),
 			is_async: true,
@@ -1167,13 +1317,14 @@ mod tests {
 					number_hard_max: None,
 					number_mode_range: None,
 					implementations: Punctuated::new(),
+					gpu_image: false,
 				}),
 				number_display_decimal_places: None,
 				number_step: None,
 				unit: None,
+				is_data_field: false,
 			}],
 			body: TokenStream2::new(),
-			crate_name: FoundCrate::Itself,
 			description: String::new(),
 		};
 
@@ -1200,6 +1351,7 @@ mod tests {
 				properties_string: None,
 				cfg: None,
 				shader_node: None,
+				serialize: None,
 			},
 			fn_name: Ident::new("custom_node", Span::call_site()),
 			struct_name: Ident::new("CustomNode", Span::call_site()),
@@ -1210,12 +1362,12 @@ mod tests {
 				pat_ident: pat_ident("input"),
 				ty: parse_quote!(i32),
 				implementations: Punctuated::new(),
+				context_features: vec![],
 			},
 			output_type: parse_quote!(i32),
 			is_async: false,
 			fields: vec![],
 			body: TokenStream2::new(),
-			crate_name: FoundCrate::Itself,
 			description: String::new(),
 		};
 

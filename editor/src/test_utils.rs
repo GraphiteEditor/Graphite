@@ -1,18 +1,18 @@
 use crate::application::Editor;
-use crate::application::set_uuid_seed;
 use crate::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
 use crate::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, MouseKeys, ScrollDelta, ViewportPosition};
-use crate::messages::portfolio::utility_types::Platform;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::prelude::*;
 use crate::messages::tool::tool_messages::tool_prelude::Key;
 use crate::messages::tool::utility_types::ToolType;
 use crate::node_graph_executor::Instrumented;
 use crate::node_graph_executor::NodeRuntime;
 use crate::test_utils::test_prelude::LayerNodeIdentifier;
-use glam::DVec2;
+use glam::{DVec2, UVec2};
 use graph_craft::document::DocumentNode;
 use graphene_std::InputAccessor;
 use graphene_std::raster::color::Color;
+use graphene_std::uuid::NodeId;
 
 /// A set of utility functions to make the writing of editor test more declarative
 pub struct EditorTestUtils {
@@ -23,13 +23,8 @@ pub struct EditorTestUtils {
 impl EditorTestUtils {
 	pub fn create() -> Self {
 		let _ = env_logger::builder().is_test(true).try_init();
-		set_uuid_seed(0);
 
 		let (mut editor, runtime) = Editor::new_local_executor();
-
-		// We have to set this directly instead of using `GlobalsMessage::SetPlatform` because race conditions with multiple tests can cause that message handler to set it more than once, which is a failure.
-		// It isn't sufficient to guard the message dispatch here with a check if the once_cell is empty, because that isn't atomic and the time between checking and handling the dispatch can let multiple through.
-		let _ = GLOBAL_PLATFORM.set(Platform::Windows).is_ok();
 
 		editor.handle_message(PortfolioMessage::Init);
 
@@ -48,8 +43,7 @@ impl EditorTestUtils {
 				Err(e) => return Err(format!("update_node_graph_instrumented failed\n\n{e}")),
 			};
 
-			let viewport_resolution = glam::UVec2::ONE;
-			if let Err(e) = exector.submit_current_node_graph_evaluation(document, DocumentId(0), viewport_resolution, Default::default()) {
+			if let Err(e) = exector.submit_current_node_graph_evaluation(document, DocumentId(0), UVec2::ONE, 1., Default::default(), DVec2::ZERO) {
 				return Err(format!("submit_current_node_graph_evaluation failed\n\n{e}"));
 			}
 			runtime.run().await;
@@ -70,13 +64,15 @@ impl EditorTestUtils {
 		run(&mut self.editor, &mut self.runtime)
 	}
 
-	pub async fn handle_message(&mut self, message: impl Into<Message>) {
-		self.editor.handle_message(message);
+	pub async fn handle_message(&mut self, message: impl Into<Message>) -> Vec<FrontendMessage> {
+		let frontend_messages_from_msg = self.editor.handle_message(message);
 
 		// Required to process any buffered messages
 		if let Err(e) = self.eval_graph().await {
 			panic!("Failed to evaluate graph: {e}");
 		}
+
+		frontend_messages_from_msg
 	}
 
 	pub async fn new_document(&mut self) {
@@ -224,7 +220,7 @@ impl EditorTestUtils {
 			ToolType::Rectangle => self.handle_message(Message::Tool(ToolMessage::ActivateToolShapeRectangle)).await,
 			ToolType::Ellipse => self.handle_message(Message::Tool(ToolMessage::ActivateToolShapeEllipse)).await,
 			_ => self.handle_message(Message::Tool(ToolMessage::ActivateTool { tool_type })).await,
-		}
+		};
 	}
 
 	pub async fn select_primary_color(&mut self, color: Color) {
@@ -293,6 +289,30 @@ impl EditorTestUtils {
 		)
 		.await;
 	}
+
+	/// Necessary for doing snapping since snaps outside of the viewport are discarded
+	pub async fn set_viewport_size(&mut self, top_left: DVec2, bottom_right: DVec2) {
+		self.handle_message(ViewportMessage::Update {
+			x: top_left.x,
+			y: top_left.y,
+			width: bottom_right.x - top_left.x,
+			height: bottom_right.y - top_left.y,
+			scale: 1.,
+		})
+		.await;
+	}
+
+	pub async fn create_node_by_name(&mut self, node_type: DefinitionIdentifier) -> NodeId {
+		let node_id = NodeId::new();
+		self.handle_message(NodeGraphMessage::CreateNodeFromContextMenu {
+			node_id: Some(node_id),
+			node_type,
+			xy: None,
+			add_transaction: true,
+		})
+		.await;
+		node_id
+	}
 }
 
 pub trait FrontendMessageTestUtils {
@@ -301,12 +321,9 @@ pub trait FrontendMessageTestUtils {
 
 impl FrontendMessageTestUtils for FrontendMessage {
 	fn check_node_graph_error(&self) {
-		let FrontendMessage::UpdateNodeGraphNodes { nodes, .. } = self else { return };
-
-		for node in nodes {
-			if let Some(error) = &node.errors {
-				panic!("error on {}: {}", node.display_name, error);
-			}
+		let FrontendMessage::UpdateNodeGraphErrorDiagnostic { error } = self else { return };
+		if let Some(error) = error {
+			panic!("error: {:?}", error);
 		}
 	}
 }
@@ -318,6 +335,7 @@ pub mod test_prelude {
 	pub use crate::float_eq;
 	pub use crate::messages::input_mapper::utility_types::input_keyboard::{Key, ModifierKeys};
 	pub use crate::messages::input_mapper::utility_types::input_mouse::MouseKeys;
+	pub use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 	pub use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
 	pub use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 	pub use crate::messages::prelude::*;

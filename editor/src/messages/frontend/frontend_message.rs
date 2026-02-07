@@ -1,13 +1,15 @@
-use super::utility_types::{FrontendDocumentDetails, MouseCursorIcon};
+use super::utility_types::{DocumentDetails, MouseCursorIcon, OpenDocument};
 use crate::messages::app_window::app_window_message_handler::AppWindowPlatform;
+use crate::messages::frontend::utility_types::EyedropperPreviewImage;
+use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::{
-	BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeType, Transform,
+	BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeType, NodeGraphErrorDiagnostic, Transform,
 };
 use crate::messages::portfolio::document::utility_types::nodes::{JsRawBuffer, LayerPanelEntry, RawBuffer};
 use crate::messages::portfolio::document::utility_types::wires::{WirePath, WirePathUpdate};
 use crate::messages::prelude::*;
-use crate::messages::tool::utility_types::HintData;
+use glam::IVec2;
 use graph_craft::document::NodeId;
 use graphene_std::raster::Image;
 use graphene_std::raster::color::Color;
@@ -38,13 +40,18 @@ pub enum FrontendMessage {
 		#[serde(rename = "fontSize")]
 		font_size: f64,
 		color: Color,
-		url: String,
+		#[serde(rename = "fontData")]
+		font_data: Vec<u8>,
 		transform: [f64; 6],
 		#[serde(rename = "maxWidth")]
 		max_width: Option<f64>,
 		#[serde(rename = "maxHeight")]
 		max_height: Option<f64>,
 		align: TextAlign,
+	},
+	DisplayEditableTextboxUpdateFontData {
+		#[serde(rename = "fontData")]
+		font_data: Vec<u8>,
 	},
 	DisplayEditableTextboxTransform {
 		transform: [f64; 6],
@@ -58,8 +65,19 @@ pub enum FrontendMessage {
 		#[serde(rename = "nodeTypes")]
 		node_types: Vec<FrontendNodeType>,
 	},
+	SendShortcutFullscreen {
+		shortcut: Option<ActionShortcut>,
+		#[serde(rename = "shortcutMac")]
+		shortcut_mac: Option<ActionShortcut>,
+	},
+	SendShortcutAltClick {
+		shortcut: Option<ActionShortcut>,
+	},
+	SendShortcutShiftClick {
+		shortcut: Option<ActionShortcut>,
+	},
 
-	// Trigger prefix: cause a browser API to do something
+	// Trigger prefix: cause a frontend specific API to do something
 	TriggerAboutGraphiteLocalizedCommitDate {
 		#[serde(rename = "commitDate")]
 		commit_date: String,
@@ -85,23 +103,27 @@ pub enum FrontendMessage {
 		name: String,
 		filename: String,
 	},
-	TriggerFontLoad {
+	TriggerFontCatalogLoad,
+	TriggerFontDataLoad {
 		font: Font,
+		url: String,
 	},
-	TriggerImport,
-	TriggerIndexedDbRemoveDocument {
+	TriggerPersistenceRemoveDocument {
 		#[serde(rename = "documentId")]
 		document_id: DocumentId,
 	},
-	TriggerIndexedDbWriteDocument {
+	TriggerPersistenceWriteDocument {
+		#[serde(rename = "documentId")]
+		document_id: DocumentId,
 		document: String,
-		details: FrontendDocumentDetails,
+		details: DocumentDetails,
 	},
 	TriggerLoadFirstAutoSaveDocument,
 	TriggerLoadRestAutoSaveDocuments,
+	TriggerOpenLaunchDocuments,
 	TriggerLoadPreferences,
-	TriggerOpenDocument,
-	TriggerPaste,
+	TriggerOpen,
+	TriggerImport,
 	TriggerSavePreferences {
 		preferences: PreferencesMessageHandler,
 	},
@@ -110,12 +132,18 @@ pub enum FrontendMessage {
 		document_id: DocumentId,
 	},
 	TriggerTextCommit,
-	TriggerTextCopy {
-		#[serde(rename = "copyText")]
-		copy_text: String,
-	},
 	TriggerVisitLink {
 		url: String,
+	},
+	TriggerClipboardRead,
+	TriggerClipboardWrite {
+		content: String,
+	},
+	TriggerSelectionRead {
+		cut: bool,
+	},
+	TriggerSelectionWrite {
+		content: String,
 	},
 
 	// Update prefix: give the frontend a new value or state for it to use
@@ -124,12 +152,19 @@ pub enum FrontendMessage {
 		document_id: DocumentId,
 	},
 	UpdateImportsExports {
-		imports: Vec<(FrontendGraphOutput, i32, i32)>,
-		exports: Vec<(FrontendGraphInput, i32, i32)>,
-		#[serde(rename = "addImport")]
-		add_import: Option<(i32, i32)>,
-		#[serde(rename = "addExport")]
-		add_export: Option<(i32, i32)>,
+		/// If the primary import is not visible, then it is None.
+		imports: Vec<Option<FrontendGraphOutput>>,
+		/// If the primary export is not visible, then it is None.
+		exports: Vec<Option<FrontendGraphInput>>,
+		/// The primary import location.
+		#[serde(rename = "importPosition")]
+		import_position: IVec2,
+		/// The primary export location.
+		#[serde(rename = "exportPosition")]
+		export_position: IVec2,
+		/// The document network does not have an add import or export button.
+		#[serde(rename = "addImportExport")]
+		add_import_export: bool,
 	},
 	UpdateInSelectedNetwork {
 		#[serde(rename = "inSelectedNetwork")]
@@ -160,8 +195,6 @@ pub enum FrontendMessage {
 		open: bool,
 	},
 	UpdateDataPanelLayout {
-		#[serde(rename = "layoutTarget")]
-		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
 	},
 	UpdateImportReorderIndex {
@@ -181,18 +214,12 @@ pub enum FrontendMessage {
 		has_left_input_wire: HashMap<NodeId, bool>,
 	},
 	UpdateDialogButtons {
-		#[serde(rename = "layoutTarget")]
-		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
 	},
 	UpdateDialogColumn1 {
-		#[serde(rename = "layoutTarget")]
-		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
 	},
 	UpdateDialogColumn2 {
-		#[serde(rename = "layoutTarget")]
-		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
 	},
 	UpdateDocumentArtwork {
@@ -202,8 +229,6 @@ pub enum FrontendMessage {
 		image_data: Vec<(u64, Image<Color>)>,
 	},
 	UpdateDocumentBarLayout {
-		#[serde(rename = "layoutTarget")]
-		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
 	},
 	UpdateDocumentLayerDetails {
@@ -217,11 +242,6 @@ pub enum FrontendMessage {
 		#[serde(rename = "dataBuffer")]
 		data_buffer: JsRawBuffer,
 	},
-	UpdateDocumentModeLayout {
-		#[serde(rename = "layoutTarget")]
-		layout_target: LayoutTarget,
-		diff: Vec<WidgetDiff>,
-	},
 	UpdateDocumentRulers {
 		origin: (f64, f64),
 		spacing: f64,
@@ -234,6 +254,7 @@ pub enum FrontendMessage {
 		multiplier: (f64, f64),
 	},
 	UpdateEyedropperSamplingState {
+		image: Option<EyedropperPreviewImage>,
 		#[serde(rename = "mousePosition")]
 		mouse_position: Option<(f64, f64)>,
 		#[serde(rename = "primaryColor")]
@@ -246,35 +267,26 @@ pub enum FrontendMessage {
 	UpdateGraphFadeArtwork {
 		percentage: f64,
 	},
-	UpdateInputHints {
-		#[serde(rename = "hintData")]
-		hint_data: HintData,
-	},
 	UpdateLayersPanelControlBarLeftLayout {
-		#[serde(rename = "layoutTarget")]
-		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
 	},
 	UpdateLayersPanelControlBarRightLayout {
-		#[serde(rename = "layoutTarget")]
-		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
 	},
 	UpdateLayersPanelBottomBarLayout {
-		#[serde(rename = "layoutTarget")]
-		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
 	},
 	UpdateMenuBarLayout {
-		#[serde(rename = "layoutTarget")]
-		layout_target: LayoutTarget,
-		layout: Vec<MenuBarEntry>,
+		diff: Vec<WidgetDiff>,
 	},
 	UpdateMouseCursor {
 		cursor: MouseCursorIcon,
 	},
 	UpdateNodeGraphNodes {
 		nodes: Vec<FrontendNode>,
+	},
+	UpdateNodeGraphErrorDiagnostic {
+		error: Option<NodeGraphErrorDiagnostic>,
 	},
 	UpdateVisibleNodes {
 		nodes: Vec<NodeId>,
@@ -284,8 +296,6 @@ pub enum FrontendMessage {
 	},
 	ClearAllNodeGraphWires,
 	UpdateNodeGraphControlBarLayout {
-		#[serde(rename = "layoutTarget")]
-		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
 	},
 	UpdateNodeGraphSelection {
@@ -300,47 +310,74 @@ pub enum FrontendMessage {
 	},
 	UpdateOpenDocumentsList {
 		#[serde(rename = "openDocuments")]
-		open_documents: Vec<FrontendDocumentDetails>,
+		open_documents: Vec<OpenDocument>,
 	},
 	UpdatePropertiesPanelLayout {
-		#[serde(rename = "layoutTarget")]
-		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
 	},
 	UpdateToolOptionsLayout {
-		#[serde(rename = "layoutTarget")]
-		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
 	},
 	UpdateToolShelfLayout {
-		#[serde(rename = "layoutTarget")]
-		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
 	},
 	UpdateWirePathInProgress {
 		#[serde(rename = "wirePath")]
 		wire_path: Option<WirePath>,
 	},
+	UpdateWelcomeScreenButtonsLayout {
+		diff: Vec<WidgetDiff>,
+	},
+	UpdateStatusBarHintsLayout {
+		diff: Vec<WidgetDiff>,
+	},
+	UpdateStatusBarInfoLayout {
+		diff: Vec<WidgetDiff>,
+	},
 	UpdateWorkingColorsLayout {
-		#[serde(rename = "layoutTarget")]
-		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
 	},
 	UpdatePlatform {
 		platform: AppWindowPlatform,
 	},
-	UpdateWindowState {
+	UpdateMaximized {
 		maximized: bool,
-		minimized: bool,
 	},
-	CloseWindow,
+	UpdateFullscreen {
+		fullscreen: bool,
+	},
 	UpdateViewportHolePunch {
 		active: bool,
 	},
+	UpdateViewportPhysicalBounds {
+		x: f64,
+		y: f64,
+		width: f64,
+		height: f64,
+	},
+	UpdateUIScale {
+		scale: f64,
+	},
+
 	#[cfg(not(target_family = "wasm"))]
 	RenderOverlays {
 		#[serde(skip, default = "OverlayContext::default")]
 		#[derivative(Debug = "ignore", PartialEq = "ignore")]
 		context: OverlayContext,
 	},
+
+	// Window prefix: cause the application window to do something
+	WindowPointerLock,
+	WindowPointerLockMove {
+		x: f64,
+		y: f64,
+	},
+	WindowClose,
+	WindowMinimize,
+	WindowMaximize,
+	WindowFullscreen,
+	WindowDrag,
+	WindowHide,
+	WindowHideOthers,
+	WindowShowAll,
 }

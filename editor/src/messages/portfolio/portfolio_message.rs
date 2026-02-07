@@ -2,6 +2,7 @@ use super::document::utility_types::document_metadata::LayerNodeIdentifier;
 use super::utility_types::PanelType;
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::portfolio::document::utility_types::clipboards::Clipboard;
+use crate::messages::portfolio::utility_types::FontCatalog;
 use crate::messages::prelude::*;
 use graphene_std::Color;
 use graphene_std::raster::Image;
@@ -12,8 +13,6 @@ use std::path::PathBuf;
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum PortfolioMessage {
 	// Sub-messages
-	#[child]
-	MenuBar(MenuBarMessage),
 	#[child]
 	Document(DocumentMessage),
 
@@ -48,24 +47,34 @@ pub enum PortfolioMessage {
 	},
 	DestroyAllDocuments,
 	EditorPreferences,
+	FontCatalogLoaded {
+		catalog: FontCatalog,
+	},
+	LoadFontData {
+		font: Font,
+	},
 	FontLoaded {
 		font_family: String,
 		font_style: String,
-		preview_url: String,
 		data: Vec<u8>,
 	},
-	Import,
 	LoadDocumentResources {
 		document_id: DocumentId,
-	},
-	LoadFont {
-		font: Font,
 	},
 	NewDocumentWithName {
 		name: String,
 	},
 	NextDocument,
-	OpenDocument,
+	Open,
+	Import,
+	OpenFile {
+		path: PathBuf,
+		content: Vec<u8>,
+	},
+	ImportFile {
+		path: PathBuf,
+		content: Vec<u8>,
+	},
 	OpenDocumentFile {
 		document_name: Option<String>,
 		document_path: Option<PathBuf>,
@@ -79,21 +88,21 @@ pub enum PortfolioMessage {
 		document_is_saved: bool,
 		document_serialized_content: String,
 		to_front: bool,
+		select_after_open: bool,
 	},
-	ToggleResetNodesToDefinitionsOnOpen,
-	PasteIntoFolder {
-		clipboard: Clipboard,
-		parent: LayerNodeIdentifier,
-		insert_index: usize,
+	OpenImage {
+		name: Option<String>,
+		image: Image<Color>,
+	},
+	OpenSvg {
+		name: Option<String>,
+		svg: String,
 	},
 	PasteSerializedData {
 		data: String,
 	},
 	PasteSerializedVector {
 		data: String,
-	},
-	CenterPastedLayers {
-		layers: Vec<LayerNodeIdentifier>,
 	},
 	PasteImage {
 		name: Option<String>,
@@ -107,12 +116,20 @@ pub enum PortfolioMessage {
 		mouse: Option<(f64, f64)>,
 		parent_and_insert_index: Option<(LayerNodeIdentifier, usize)>,
 	},
+	// TODO: Unused except by tests, remove?
+	PasteIntoFolder {
+		clipboard: Clipboard,
+		parent: LayerNodeIdentifier,
+		insert_index: usize,
+	},
+	CenterPastedLayers {
+		layers: Vec<LayerNodeIdentifier>,
+	},
 	PrevDocument,
+	RequestWelcomeScreenButtonsLayout,
+	RequestStatusBarInfoLayout,
 	SetActivePanel {
 		panel: PanelType,
-	},
-	SetDevicePixelRatio {
-		ratio: f64,
 	},
 	SelectDocument {
 		document_id: DocumentId,
@@ -123,12 +140,17 @@ pub enum PortfolioMessage {
 		scale_factor: f64,
 		bounds: ExportBounds,
 		transparent_background: bool,
+		artboard_name: Option<String>,
+		artboard_count: usize,
 	},
 	SubmitActiveGraphRender,
 	SubmitGraphRender {
 		document_id: DocumentId,
 		ignore_hash: bool,
 	},
+	SubmitEyedropperPreviewRender,
+	ToggleResetNodesToDefinitionsOnOpen,
+	ToggleFocusDocument,
 	ToggleDataPanelOpen,
 	TogglePropertiesPanelOpen,
 	ToggleLayersPanelOpen,

@@ -1,14 +1,13 @@
+use crate::application::Editor;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeyStates, ModifierKeys};
-use crate::messages::input_mapper::utility_types::input_mouse::{MouseButton, MouseKeys, MouseState, ViewportBounds};
+use crate::messages::input_mapper::utility_types::input_mouse::{MouseButton, MouseKeys, MouseState};
 use crate::messages::input_mapper::utility_types::misc::FrameTimeInfo;
-use crate::messages::portfolio::utility_types::KeyboardPlatformLayout;
 use crate::messages::prelude::*;
-use glam::DVec2;
 use std::time::Duration;
 
 #[derive(ExtractField)]
-pub struct InputPreprocessorMessageContext {
-	pub keyboard_platform: KeyboardPlatformLayout,
+pub struct InputPreprocessorMessageContext<'a> {
+	pub viewport: &'a ViewportMessageHandler,
 }
 
 #[derive(Debug, Default, ExtractField)]
@@ -17,38 +16,18 @@ pub struct InputPreprocessorMessageHandler {
 	pub time: u64,
 	pub keyboard: KeyStates,
 	pub mouse: MouseState,
-	pub viewport_bounds: ViewportBounds,
 }
 
 #[message_handler_data]
-impl MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContext> for InputPreprocessorMessageHandler {
-	fn process_message(&mut self, message: InputPreprocessorMessage, responses: &mut VecDeque<Message>, context: InputPreprocessorMessageContext) {
-		let InputPreprocessorMessageContext { keyboard_platform } = context;
+impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContext<'a>> for InputPreprocessorMessageHandler {
+	fn process_message(&mut self, message: InputPreprocessorMessage, responses: &mut VecDeque<Message>, context: InputPreprocessorMessageContext<'a>) {
+		let InputPreprocessorMessageContext { viewport } = context;
 
 		match message {
-			InputPreprocessorMessage::BoundsOfViewports { bounds_of_viewports } => {
-				assert_eq!(bounds_of_viewports.len(), 1, "Only one viewport is currently supported");
-
-				for bounds in bounds_of_viewports {
-					// TODO: Extend this to multiple viewports instead of setting it to the value of this last loop iteration
-					self.viewport_bounds = bounds;
-
-					responses.add(NavigationMessage::CanvasPan { delta: DVec2::ZERO });
-					responses.add(NodeGraphMessage::SetGridAlignedEdges);
-				}
-				responses.add(DeferMessage::AfterGraphRun {
-					messages: vec![
-						DeferMessage::AfterGraphRun {
-							messages: vec![DeferMessage::TriggerNavigationReady.into()],
-						}
-						.into(),
-					],
-				});
-			}
 			InputPreprocessorMessage::DoubleClick { editor_mouse_state, modifier_keys } => {
-				self.update_states_of_modifier_keys(modifier_keys, keyboard_platform, responses);
+				self.update_states_of_modifier_keys(modifier_keys, responses);
 
-				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);
+				let mouse_state = editor_mouse_state.to_mouse_state(viewport);
 				self.mouse.position = mouse_state.position;
 
 				for key in mouse_state.mouse_keys {
@@ -63,7 +42,7 @@ impl MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContext> f
 				}
 			}
 			InputPreprocessorMessage::KeyDown { key, key_repeat, modifier_keys } => {
-				self.update_states_of_modifier_keys(modifier_keys, keyboard_platform, responses);
+				self.update_states_of_modifier_keys(modifier_keys, responses);
 				self.keyboard.set(key as usize);
 				if !key_repeat {
 					responses.add(InputMapperMessage::KeyDownNoRepeat(key));
@@ -71,7 +50,7 @@ impl MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContext> f
 				responses.add(InputMapperMessage::KeyDown(key));
 			}
 			InputPreprocessorMessage::KeyUp { key, key_repeat, modifier_keys } => {
-				self.update_states_of_modifier_keys(modifier_keys, keyboard_platform, responses);
+				self.update_states_of_modifier_keys(modifier_keys, responses);
 				self.keyboard.unset(key as usize);
 				if !key_repeat {
 					responses.add(InputMapperMessage::KeyUpNoRepeat(key));
@@ -79,17 +58,17 @@ impl MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContext> f
 				responses.add(InputMapperMessage::KeyUp(key));
 			}
 			InputPreprocessorMessage::PointerDown { editor_mouse_state, modifier_keys } => {
-				self.update_states_of_modifier_keys(modifier_keys, keyboard_platform, responses);
+				self.update_states_of_modifier_keys(modifier_keys, responses);
 
-				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);
+				let mouse_state = editor_mouse_state.to_mouse_state(viewport);
 				self.mouse.position = mouse_state.position;
 
 				self.translate_mouse_event(mouse_state, true, responses);
 			}
 			InputPreprocessorMessage::PointerMove { editor_mouse_state, modifier_keys } => {
-				self.update_states_of_modifier_keys(modifier_keys, keyboard_platform, responses);
+				self.update_states_of_modifier_keys(modifier_keys, responses);
 
-				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);
+				let mouse_state = editor_mouse_state.to_mouse_state(viewport);
 				self.mouse.position = mouse_state.position;
 
 				responses.add(InputMapperMessage::PointerMove);
@@ -98,17 +77,17 @@ impl MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContext> f
 				self.translate_mouse_event(mouse_state, false, responses);
 			}
 			InputPreprocessorMessage::PointerUp { editor_mouse_state, modifier_keys } => {
-				self.update_states_of_modifier_keys(modifier_keys, keyboard_platform, responses);
+				self.update_states_of_modifier_keys(modifier_keys, responses);
 
-				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);
+				let mouse_state = editor_mouse_state.to_mouse_state(viewport);
 				self.mouse.position = mouse_state.position;
 
 				self.translate_mouse_event(mouse_state, false, responses);
 			}
 			InputPreprocessorMessage::PointerShake { editor_mouse_state, modifier_keys } => {
-				self.update_states_of_modifier_keys(modifier_keys, keyboard_platform, responses);
+				self.update_states_of_modifier_keys(modifier_keys, responses);
 
-				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);
+				let mouse_state = editor_mouse_state.to_mouse_state(viewport);
 				self.mouse.position = mouse_state.position;
 
 				responses.add(InputMapperMessage::PointerShake);
@@ -119,9 +98,9 @@ impl MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContext> f
 				self.frame_time.advance_timestamp(Duration::from_millis(timestamp));
 			}
 			InputPreprocessorMessage::WheelScroll { editor_mouse_state, modifier_keys } => {
-				self.update_states_of_modifier_keys(modifier_keys, keyboard_platform, responses);
+				self.update_states_of_modifier_keys(modifier_keys, responses);
 
-				let mouse_state = editor_mouse_state.to_mouse_state(&self.viewport_bounds);
+				let mouse_state = editor_mouse_state.to_mouse_state(viewport);
 				self.mouse.position = mouse_state.position;
 				self.mouse.scroll_delta = mouse_state.scroll_delta;
 
@@ -168,7 +147,7 @@ impl InputPreprocessorMessageHandler {
 		self.mouse = new_state;
 	}
 
-	fn update_states_of_modifier_keys(&mut self, pressed_modifier_keys: ModifierKeys, keyboard_platform: KeyboardPlatformLayout, responses: &mut VecDeque<Message>) {
+	fn update_states_of_modifier_keys(&mut self, pressed_modifier_keys: ModifierKeys, responses: &mut VecDeque<Message>) {
 		let is_key_pressed = |key_to_check: ModifierKeys| pressed_modifier_keys.contains(key_to_check);
 
 		// Update the state of the concrete modifier keys based on the source state
@@ -177,16 +156,16 @@ impl InputPreprocessorMessageHandler {
 		self.update_modifier_key(Key::Control, is_key_pressed(ModifierKeys::CONTROL), responses);
 
 		// Update the state of either the concrete Meta or the Command keys based on which one is applicable for this platform
-		let meta_or_command = match keyboard_platform {
-			KeyboardPlatformLayout::Mac => Key::Command,
-			KeyboardPlatformLayout::Standard => Key::Meta,
+		let meta_or_command = match Editor::environment().is_mac() {
+			true => Key::Command,
+			false => Key::Meta,
 		};
 		self.update_modifier_key(meta_or_command, is_key_pressed(ModifierKeys::META_OR_COMMAND), responses);
 
 		// Update the state of the virtual Accel key (the primary accelerator key) based on the source state of the Control or Command key, whichever is relevant on this platform
-		let accel_virtual_key_state = match keyboard_platform {
-			KeyboardPlatformLayout::Mac => is_key_pressed(ModifierKeys::META_OR_COMMAND),
-			KeyboardPlatformLayout::Standard => is_key_pressed(ModifierKeys::CONTROL),
+		let accel_virtual_key_state = match Editor::environment().is_mac() {
+			true => is_key_pressed(ModifierKeys::META_OR_COMMAND),
+			false => is_key_pressed(ModifierKeys::CONTROL),
 		};
 		self.update_modifier_key(Key::Accel, accel_virtual_key_state, responses);
 	}
@@ -202,18 +181,12 @@ impl InputPreprocessorMessageHandler {
 			responses.add(InputMapperMessage::KeyDown(key));
 		}
 	}
-
-	pub fn document_bounds(&self) -> [DVec2; 2] {
-		// IPP bounds are relative to the entire application
-		[(0., 0.).into(), self.viewport_bounds.bottom_right - self.viewport_bounds.top_left]
-	}
 }
 
 #[cfg(test)]
 mod test {
 	use crate::messages::input_mapper::utility_types::input_keyboard::{Key, ModifierKeys};
 	use crate::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, MouseKeys, ScrollDelta};
-	use crate::messages::portfolio::utility_types::KeyboardPlatformLayout;
 	use crate::messages::prelude::*;
 
 	#[test]
@@ -231,7 +204,7 @@ mod test {
 		let mut responses = VecDeque::new();
 
 		let context = InputPreprocessorMessageContext {
-			keyboard_platform: KeyboardPlatformLayout::Standard,
+			viewport: &ViewportMessageHandler::default(),
 		};
 		input_preprocessor.process_message(message, &mut responses, context);
 
@@ -250,7 +223,7 @@ mod test {
 		let mut responses = VecDeque::new();
 
 		let context = InputPreprocessorMessageContext {
-			keyboard_platform: KeyboardPlatformLayout::Standard,
+			viewport: &ViewportMessageHandler::default(),
 		};
 		input_preprocessor.process_message(message, &mut responses, context);
 
@@ -269,7 +242,7 @@ mod test {
 		let mut responses = VecDeque::new();
 
 		let context = InputPreprocessorMessageContext {
-			keyboard_platform: KeyboardPlatformLayout::Standard,
+			viewport: &ViewportMessageHandler::default(),
 		};
 		input_preprocessor.process_message(message, &mut responses, context);
 
@@ -290,7 +263,7 @@ mod test {
 		let mut responses = VecDeque::new();
 
 		let context = InputPreprocessorMessageContext {
-			keyboard_platform: KeyboardPlatformLayout::Standard,
+			viewport: &ViewportMessageHandler::default(),
 		};
 		input_preprocessor.process_message(message, &mut responses, context);
 
@@ -310,7 +283,7 @@ mod test {
 		let mut responses = VecDeque::new();
 
 		let context = InputPreprocessorMessageContext {
-			keyboard_platform: KeyboardPlatformLayout::Standard,
+			viewport: &ViewportMessageHandler::default(),
 		};
 		input_preprocessor.process_message(message, &mut responses, context);
 

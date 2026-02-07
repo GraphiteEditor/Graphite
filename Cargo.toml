@@ -1,45 +1,94 @@
 [workspace]
 members = [
-	"editor",
 	"desktop",
 	"desktop/wrapper",
-	"proc-macros",
+	"desktop/embedded-resources",
+	"desktop/bundle",
+	"desktop/platform/linux",
+	"desktop/platform/mac",
+	"desktop/platform/win",
+	"editor",
 	"frontend/wasm",
-	"node-graph/gapplication-io",
-	"node-graph/gbrush",
-	"node-graph/gcore",
-	"node-graph/gcore-shaders",
-	"node-graph/gstd",
-	"node-graph/gmath-nodes",
-	"node-graph/gpath-bool",
-	"node-graph/graph-craft",
-	"node-graph/graphene-cli",
-	"node-graph/graster-nodes",
-	"node-graph/gsvg-renderer",
-	"node-graph/interpreted-executor",
-	"node-graph/node-macro",
-	"node-graph/preprocessor",
 	"libraries/dyn-any",
 	"libraries/path-bool",
 	"libraries/math-parser",
+	"node-graph/libraries/application-io",
+	"node-graph/libraries/core-types",
+	"node-graph/libraries/no-std-types",
+	"node-graph/libraries/raster-types",
+	"node-graph/libraries/vector-types",
+	"node-graph/libraries/graphic-types",
+	"node-graph/libraries/rendering",
+	"node-graph/libraries/wgpu-executor",
+	"node-graph/nodes/blending",
+	"node-graph/nodes/brush",
+	"node-graph/nodes/gcore",
+	"node-graph/nodes/graphic",
+	"node-graph/nodes/math",
+	"node-graph/nodes/path-bool",
+	"node-graph/nodes/raster",
+	"node-graph/nodes/raster/shaders",
+	"node-graph/nodes/raster/shaders/entrypoint",
+	"node-graph/nodes/text",
+	"node-graph/nodes/transform",
+	"node-graph/nodes/vector",
+	"node-graph/graph-craft",
+	"node-graph/graphene-cli",
+	"node-graph/nodes/gstd",
+	"node-graph/interpreted-executor",
+	"node-graph/node-macro",
+	"node-graph/preprocessor",
+	"proc-macros",
+	"tools/crate-hierarchy-viz",
+	"tools/editor-message-tree",
+	"tools/node-docs",
 ]
 default-members = [
 	"editor",
 	"frontend/wasm",
-	"node-graph/gbrush",
-	"node-graph/gcore",
-	"node-graph/gcore-shaders",
-	"node-graph/gstd",
-	"node-graph/gmath-nodes",
-	"node-graph/gpath-bool",
+	"libraries/dyn-any",
+	"libraries/path-bool",
+	"libraries/math-parser",
+	"node-graph/libraries/application-io",
+	"node-graph/libraries/core-types",
+	"node-graph/libraries/no-std-types",
+	"node-graph/libraries/raster-types",
+	"node-graph/libraries/vector-types",
+	"node-graph/libraries/graphic-types",
+	"node-graph/libraries/rendering",
+	"node-graph/libraries/wgpu-executor",
+	"node-graph/nodes/blending",
+	"node-graph/nodes/brush",
+	"node-graph/nodes/gcore",
+	"node-graph/nodes/graphic",
+	"node-graph/nodes/math",
+	"node-graph/nodes/path-bool",
+	"node-graph/nodes/raster",
+	"node-graph/nodes/raster/shaders",
+	"node-graph/nodes/text",
+	"node-graph/nodes/transform",
+	"node-graph/nodes/vector",
 	"node-graph/graph-craft",
 	"node-graph/graphene-cli",
-	"node-graph/graster-nodes",
-	"node-graph/gsvg-renderer",
+	"node-graph/nodes/gstd",
 	"node-graph/interpreted-executor",
 	"node-graph/node-macro",
+	"node-graph/preprocessor",
+	# blocked by https://github.com/rust-lang/cargo/issues/15890
+#	"proc-macros",
 ]
 resolver = "2"
+
+[workspace.package]
+rust-version = "1.88"
+edition = "2024"
+authors = ["Graphite Authors <contact@graphite.art>"]
+homepage = "https://graphite.art"
+repository = "https://github.com/GraphiteEditor/Graphite"
+license = "Apache-2.0"
+version = "0.0.0"
+readme = "README.md"
+publish = false
 
 [workspace.dependencies]
 # Local dependencies
@@ -53,24 +102,33 @@ dyn-any = { path = "libraries/dyn-any", features = [
 preprocessor = { path = "node-graph/preprocessor" }
 math-parser = { path = "libraries/math-parser" }
 path-bool = { path = "libraries/path-bool" }
-graphene-application-io = { path = "node-graph/gapplication-io" }
-graphene-brush = { path = "node-graph/gbrush" }
-graphene-core = { path = "node-graph/gcore" }
-graphene-core-shaders = { path = "node-graph/gcore-shaders" }
-graphene-math-nodes = { path = "node-graph/gmath-nodes" }
-graphene-path-bool = { path = "node-graph/gpath-bool" }
+graphene-application-io = { path = "node-graph/libraries/application-io" }
+core-types = { path = "node-graph/libraries/core-types" }
+no-std-types = { path = "node-graph/libraries/no-std-types" }
+raster-types = { path = "node-graph/libraries/raster-types" }
+vector-types = { path = "node-graph/libraries/vector-types" }
+graphic-types = { path = "node-graph/libraries/graphic-types" }
+rendering = { path = "node-graph/libraries/rendering" }
+brush-nodes = { path = "node-graph/nodes/brush" }
+blending-nodes = { path = "node-graph/nodes/blending" }
+graphene-core = { path = "node-graph/nodes/gcore" }
+graphic-nodes = { path = "node-graph/nodes/graphic" }
+text-nodes = { path = "node-graph/nodes/text" }
+transform-nodes = { path = "node-graph/nodes/transform" }
+vector-nodes = { path = "node-graph/nodes/vector" }
+math-nodes = { path = "node-graph/nodes/math" }
+path-bool-nodes = { path = "node-graph/nodes/path-bool" }
 graph-craft = { path = "node-graph/graph-craft" }
-graphene-raster-nodes = { path = "node-graph/graster-nodes" }
-graphene-std = { path = "node-graph/gstd" }
-graphene-svg-renderer = { path = "node-graph/gsvg-renderer" }
+raster-nodes = { path = "node-graph/nodes/raster" }
+graphene-std = { path = "node-graph/nodes/gstd" }
 interpreted-executor = { path = "node-graph/interpreted-executor" }
 node-macro = { path = "node-graph/node-macro" }
-wgpu-executor = { path = "node-graph/wgpu-executor" }
+wgpu-executor = { path = "node-graph/libraries/wgpu-executor" }
 graphite-proc-macros = { path = "proc-macros" }
 
 # Workspace dependencies
 rustc-hash = "2.0"
-bytemuck = { version = "1.13", features = ["derive"] }
+bytemuck = { version = "1.13", features = ["derive", "min_const_generics"] }
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
 serde-wasm-bindgen = "0.6"
@@ -80,22 +138,23 @@ env_logger = "0.11"
 log = "0.4"
 bitflags = { version = "2.4", features = ["serde"] }
 ctor = "0.2"
-convert_case = "0.7"
+convert_case = "0.8"
+indoc = "2.0.5"
 derivative = "2.2"
 thiserror = "2"
 anyhow = "1.0"
 proc-macro2 = { version = "1", features = ["span-locations"] }
 quote = "1.0"
 chrono = "0.4"
-ron = "0.8"
+ron = "0.11"
 fastnoise-lite = "1.1"
-wgpu = { version = "25.0.2", features = [
+wgpu = { version = "27.0", features = [
 	# We don't have wgpu on multiple threads (yet) https://github.com/gfx-rs/wgpu/blob/trunk/CHANGELOG.md#wgpu-types-now-send-sync-on-wasm
 	"fragile-send-sync-non-atomic-wasm",
 	"spirv",
 	"strict_asserts",
 ] }
-once_cell = "1.13" # Remove when `core::cell::LazyCell` (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>) is stabilized in Rust 1.80 and we bump our MSRV
+once_cell = "1.13" # Remove and replace with `core::cell::LazyCell` (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>)
 wasm-bindgen = "=0.2.100" # NOTICE: ensure this stays in sync with the `wasm-bindgen-cli` version in `website/content/volunteer/guide/project-setup/_index.md`. We pin this version because wasm-bindgen upgrades may break various things.
 wasm-bindgen-futures = "0.4"
 js-sys = "=0.3.77"
@@ -117,18 +176,26 @@ web-sys = { version = "=0.3.77", features = [
 	"HtmlImageElement",
 	"ImageBitmapRenderingContext",
 ] }
-winit = { version = "0.30", features = ["wayland", "rwh_06"] }
+winit = { git = "https://github.com/rust-windowing/winit.git" }
+keyboard-types = "0.8"
 url = "2.5"
-tokio = { version = "1.29", features = ["fs", "macros", "io-std", "rt"] }
-vello = { git = "https://github.com/linebender/vello.git" } # TODO switch back to stable when a release is made
-resvg = "0.44"
-usvg = "0.44"
+tokio = { version = "1.29", features = ["fs", "macros", "io-std", "rt", "rt-multi-thread"] }
+# Linebender ecosystem (BEGIN)
+kurbo = { version = "0.12", features = ["serde"] }
+vello = { git = "https://github.com/linebender/vello" }
+vello_encoding = { git = "https://github.com/linebender/vello" }
+resvg = "0.45"
+usvg = "0.45"
+parley = "0.6"
+skrifa = "0.36"
+polycool = "0.4"
+# Linebender ecosystem (END)
 rand = { version = "0.9", default-features = false, features = ["std_rng"] }
 rand_chacha = "0.9"
 glam = { version = "0.29", default-features = false, features = [
-	"serde",
+	"nostd-libm",
 	"scalar-math",
-	"debug-glam-assert",
+	"bytemuck",
 ] }
 base64 = "0.22"
 image = { version = "0.25", default-features = false, features = [
@@ -136,13 +203,11 @@ image = { version = "0.25", default-features = false, features = [
 	"jpeg",
 	"bmp",
 ] }
-parley = "0.5.0"
-skrifa = "0.32.0"
-pretty_assertions = "1.4.1"
+pretty_assertions = "1.4"
 fern = { version = "0.7", features = ["colored"] }
-num_enum = "0.7"
+num_enum = { version = "0.7", default-features = false }
 num-derive = "0.4"
-num-traits = { version = "0.2", default-features = false, features = ["i128"] }
+num-traits = { version = "0.2", default-features = false, features = ["libm"] }
 specta = { version = "2.0.0-rc.22", features = [
 	"glam",
 	"derive",
@@ -159,34 +224,36 @@ syn = { version = "2.0", default-features = false, features = [
 	"extra-traits",
 	"proc-macro",
 ] }
-kurbo = { version = "0.11.0", features = ["serde"] }
 lyon_geom = "1.0"
-petgraph = { version = "0.7.1", default-features = false, features = [
-	"graphmap",
-] }
-half = { version = "2.4.1", default-features = false, features = ["bytemuck"] }
+petgraph = { version = "0.7", default-features = false, features = ["graphmap"] }
+half = { version = "2.4", default-features = false, features = ["bytemuck"] }
 tinyvec = { version = "1", features = ["std"] }
-criterion = { version = "0.5", features = ["html_reports"] }
-iai-callgrind = { version = "0.12.3" }
-ndarray = "0.16.1"
-strum = { version = "0.26.3", features = ["derive"] }
+criterion = { version = "0.7", features = ["html_reports"] }
+iai-callgrind = { version = "0.16" }
+ndarray = "0.16"
+strum = { version = "0.27", features = ["derive"] }
 dirs = "6.0"
-cef = "139.0.1"
-include_dir = "0.7.4"
-tracing-subscriber = { version = "0.3.19", features = ["env-filter"] }
-tracing = "0.1.41"
-rfd = "0.15.4"
-open = "5.3.2"
-poly-cool = "0.2.0"
+cef = "142"
+cef-dll-sys = "142"
+include_dir = "0.7"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing = "0.1"
+rfd = "0.15"
+open = "5.3"
+spin = "0.10"
+clap = "4.5"
+spirv-std = { git = "https://github.com/Firestar99/rust-gpu-new", rev = "c12f216121820580731440ee79ebc7403d6ea04f", features = ["bytemuck"] }
+cargo-gpu = { git = "https://github.com/Firestar99/cargo-gpu", rev = "3952a22d16edbd38689f3a876e417899f21e1fe7", default-features = false }
+
+[workspace.lints.rust]
+unexpected_cfgs = { level = "allow", check-cfg = ['cfg(target_arch, values("spirv"))'] }
 
 [profile.dev]
 opt-level = 1
 
 [profile.dev.package]
-graphite-editor = { opt-level = 1 }
-graphene-core-shaders = { opt-level = 1 }
-graphene-core = { opt-level = 1 }
-graphene-std = { opt-level = 1 }
+no-std-types = { opt-level = 1 }
+core-types= { opt-level = 1 }
 interpreted-executor = { opt-level = 1 } # This is a mitigation for https://github.com/rustwasm/wasm-pack/issues/981 which is needed because the node_registry function is too large
 graphite-proc-macros = { opt-level = 1 }
 image = { opt-level = 2 }
@@ -194,6 +261,7 @@ rustc-hash = { opt-level = 3 }
 serde_derive = { opt-level = 1 }
 specta-macros = { opt-level = 1 }
 syn = { opt-level = 1 }
+node-macro = { opt-level = 2 }
 
 [profile.release]
 lto = "thin"
@@ -202,3 +270,7 @@ debug = true
 [profile.profiling]
 inherits = "release"
 debug = true
+
+[patch.crates-io]
+# Force cargo to use only one version of the dpi crate (vendoring breaks without this)
+dpi = { git = "https://github.com/rust-windowing/winit.git" }

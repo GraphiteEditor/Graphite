@@ -82,6 +82,7 @@ pub enum ToolMessage {
 	PreUndo,
 	Redo,
 	RefreshToolOptions,
+	RefreshToolShelf,
 	ResetColors,
 	SelectWorkingColor {
 		color: Color,

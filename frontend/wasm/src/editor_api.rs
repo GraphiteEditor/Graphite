@@ -7,11 +7,12 @@
 use crate::helpers::translate_key;
 use crate::{EDITOR_HANDLE, EDITOR_HAS_CRASHED, Error, MESSAGE_BUFFER};
 use editor::consts::FILE_EXTENSION;
+use editor::messages::clipboard::utility_types::ClipboardContentRaw;
 use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
-use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
+use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta};
 use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use editor::messages::portfolio::document::utility_types::network_interface::ImportOrExport;
-use editor::messages::portfolio::utility_types::Platform;
+use editor::messages::portfolio::utility_types::{FontCatalog, FontCatalogFamily};
 use editor::messages::prelude::*;
 use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
 use graph_craft::document::NodeId;
@@ -21,6 +22,7 @@ use js_sys::{Object, Reflect};
 use serde::Serialize;
 use serde_wasm_bindgen::{self, from_value};
 use std::cell::RefCell;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use wasm_bindgen::JsCast;
@@ -30,7 +32,7 @@ use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, ImageData, window};
 #[cfg(not(feature = "native"))]
 use crate::EDITOR;
 #[cfg(not(feature = "native"))]
-use editor::application::Editor;
+use editor::application::{Editor, Environment, Host, Platform};
 
 static IMAGE_DATA_HASH: AtomicU64 = AtomicU64::new(0);
 
@@ -42,85 +44,21 @@ fn calculate_hash<T: std::hash::Hash>(t: &T) -> u64 {
 	hasher.finish()
 }
 
-/// Set the random seed used by the editor by calling this from JS upon initialization.
-/// This is necessary because WASM doesn't have a random number generator.
-#[wasm_bindgen(js_name = setRandomSeed)]
-pub fn set_random_seed(seed: u64) {
-	editor::application::set_uuid_seed(seed);
-}
-
-/// Provides a handle to access the raw WASM memory.
+/// Provides a handle to access the raw Wasm memory.
 #[wasm_bindgen(js_name = wasmMemory)]
 pub fn wasm_memory() -> JsValue {
 	wasm_bindgen::memory()
 }
 
-fn render_image_data_to_canvases(image_data: &[(u64, Image<Color>)]) {
-	let window = match window() {
-		Some(window) => window,
-		None => {
-			error!("Cannot render canvas: window object not found");
-			return;
-		}
-	};
-	let document = window.document().expect("window should have a document");
-	let window_obj = Object::from(window);
-	let image_canvases_key = JsValue::from_str("imageCanvases");
-
-	let canvases_obj = match Reflect::get(&window_obj, &image_canvases_key) {
-		Ok(obj) if !obj.is_undefined() && !obj.is_null() => obj,
-		_ => {
-			let new_obj = Object::new();
-			if Reflect::set(&window_obj, &image_canvases_key, &new_obj).is_err() {
-				error!("Failed to create and set imageCanvases object on window");
-				return;
-			}
-			new_obj.into()
-		}
-	};
-	let canvases_obj = Object::from(canvases_obj);
-
-	for (placeholder_id, image) in image_data.iter() {
-		let canvas_name = placeholder_id.to_string();
-		let js_key = JsValue::from_str(&canvas_name);
-
-		if Reflect::has(&canvases_obj, &js_key).unwrap_or(false) || image.width == 0 || image.height == 0 {
-			continue;
-		}
-
-		let canvas: HtmlCanvasElement = document
-			.create_element("canvas")
-			.expect("Failed to create canvas element")
-			.dyn_into::<HtmlCanvasElement>()
-			.expect("Failed to cast element to HtmlCanvasElement");
-
-		canvas.set_width(image.width);
-		canvas.set_height(image.height);
-
-		let context: CanvasRenderingContext2d = canvas
-			.get_context("2d")
-			.expect("Failed to get 2d context")
-			.expect("2d context was not found")
-			.dyn_into::<CanvasRenderingContext2d>()
-			.expect("Failed to cast context to CanvasRenderingContext2d");
-		let u8_data: Vec<u8> = image.data.iter().flat_map(|color| color.to_rgba8_srgb()).collect();
-		let clamped_u8_data = wasm_bindgen::Clamped(&u8_data[..]);
-		match ImageData::new_with_u8_clamped_array_and_sh(clamped_u8_data, image.width, image.height) {
-			Ok(image_data_obj) => {
-				if context.put_image_data(&image_data_obj, 0., 0.).is_err() {
-					error!("Failed to put image data on canvas for id: {placeholder_id}");
-				}
-			}
-			Err(e) => {
-				error!("Failed to create ImageData for id: {placeholder_id}: {e:?}");
-			}
-		}
-
-		let js_value = JsValue::from(canvas);
-
-		if Reflect::set(&canvases_obj, &js_key, &js_value).is_err() {
-			error!("Failed to set canvas '{canvas_name}' on imageCanvases object");
-		}
+#[wasm_bindgen(js_name = isPlatformNative)]
+pub fn is_platform_native() -> bool {
+	#[cfg(feature = "native")]
+	{
+		true
+	}
+	#[cfg(not(feature = "native"))]
+	{
+		false
 	}
 }
 
@@ -145,9 +83,20 @@ impl EditorHandle {
 #[wasm_bindgen]
 impl EditorHandle {
 	#[cfg(not(feature = "native"))]
-	#[wasm_bindgen(constructor)]
-	pub fn new(frontend_message_handler_callback: js_sys::Function) -> Self {
-		let editor = Editor::new();
+	pub fn create(platform: String, uuid_random_seed: u64, frontend_message_handler_callback: js_sys::Function) -> EditorHandle {
+		let editor = Editor::new(
+			Environment {
+				platform: Platform::Web,
+				host: match platform.as_str() {
+					"Linux" => Host::Linux,
+					"Mac" => Host::Mac,
+					"Windows" => Host::Windows,
+					_ => unreachable!(),
+				},
+			},
+			uuid_random_seed,
+		);
+
 		let editor_handle = EditorHandle { frontend_message_handler_callback };
 		if EDITOR.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor))).is_none() {
 			log::error!("Attempted to initialize the editor more than once");
@@ -159,8 +108,7 @@ impl EditorHandle {
 	}
 
 	#[cfg(feature = "native")]
-	#[wasm_bindgen(constructor)]
-	pub fn new(frontend_message_handler_callback: js_sys::Function) -> Self {
+	pub fn create(_platform: String, _uuid_random_seed: u64, frontend_message_handler_callback: js_sys::Function) -> EditorHandle {
 		let editor_handle = EditorHandle { frontend_message_handler_callback };
 		if EDITOR_HANDLE.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor_handle.clone()))).is_none() {
 			log::error!("Attempted to initialize the editor handle more than once");
@@ -172,7 +120,6 @@ impl EditorHandle {
 	#[cfg(not(feature = "native"))]
 	fn dispatch<T: Into<Message>>(&self, message: T) {
 		// Process no further messages after a crash to avoid spamming the console
-
 		use crate::MESSAGE_BUFFER;
 		if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
 			return;
@@ -241,18 +188,10 @@ impl EditorHandle {
 	// ========================================================================
 
 	#[wasm_bindgen(js_name = initAfterFrontendReady)]
-	pub fn init_after_frontend_ready(&self, platform: String) {
+	pub fn init_after_frontend_ready(&self) {
 		#[cfg(feature = "native")]
 		crate::native_communcation::initialize_native_communication();
 
-		// Send initialization messages
-		let platform = match platform.as_str() {
-			"Windows" => Platform::Windows,
-			"Mac" => Platform::Mac,
-			"Linux" => Platform::Linux,
-			_ => Platform::Unknown,
-		};
-		self.dispatch(GlobalsMessage::SetPlatform { platform });
 		self.dispatch(PortfolioMessage::Init);
 
 		// Poll node graph evaluation on `requestAnimationFrame`
@@ -307,24 +246,68 @@ impl EditorHandle {
 		}
 	}
 
+	#[wasm_bindgen(js_name = addPrimaryImport)]
+	pub fn add_primary_import(&self) {
+		self.dispatch(DocumentMessage::AddTransaction);
+		self.dispatch(NodeGraphMessage::AddPrimaryImport);
+	}
+
+	#[wasm_bindgen(js_name = addSecondaryImport)]
+	pub fn add_secondary_import(&self) {
+		self.dispatch(DocumentMessage::AddTransaction);
+		self.dispatch(NodeGraphMessage::AddSecondaryImport);
+	}
+
+	#[wasm_bindgen(js_name = addPrimaryExport)]
+	pub fn add_primary_export(&self) {
+		self.dispatch(DocumentMessage::AddTransaction);
+		self.dispatch(NodeGraphMessage::AddPrimaryExport);
+	}
+
+	#[wasm_bindgen(js_name = addSecondaryExport)]
+	pub fn add_secondary_export(&self) {
+		self.dispatch(DocumentMessage::AddTransaction);
+		self.dispatch(NodeGraphMessage::AddSecondaryExport);
+	}
+
+	/// Start Pointer Lock
+	#[wasm_bindgen(js_name = appWindowPointerLock)]
+	pub fn app_window_pointer_lock(&self) {
+		let message = AppWindowMessage::PointerLock;
+		self.dispatch(message);
+	}
+
 	/// Minimizes the application window to the taskbar or dock
 	#[wasm_bindgen(js_name = appWindowMinimize)]
 	pub fn app_window_minimize(&self) {
-		let message = AppWindowMessage::AppWindowMinimize;
+		let message = AppWindowMessage::Minimize;
 		self.dispatch(message);
 	}
 
 	/// Toggles minimizing or restoring down the application window
 	#[wasm_bindgen(js_name = appWindowMaximize)]
 	pub fn app_window_maximize(&self) {
-		let message = AppWindowMessage::AppWindowMaximize;
+		let message = AppWindowMessage::Maximize;
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = appWindowFullscreen)]
+	pub fn app_window_fullscreen(&self) {
+		let message = AppWindowMessage::Fullscreen;
 		self.dispatch(message);
 	}
 
 	/// Closes the application window
 	#[wasm_bindgen(js_name = appWindowClose)]
 	pub fn app_window_close(&self) {
-		let message = AppWindowMessage::AppWindowClose;
+		let message = AppWindowMessage::Close;
+		self.dispatch(message);
+	}
+
+	/// Drag the application window
+	#[wasm_bindgen(js_name = appWindowDrag)]
+	pub fn app_window_start_drag(&self) {
+		let message = AppWindowMessage::Drag;
 		self.dispatch(message);
 	}
 
@@ -355,21 +338,43 @@ impl EditorHandle {
 
 	/// Update the value of a given UI widget, but don't commit it to the history (unless `commit_layout()` is called, which handles that)
 	#[wasm_bindgen(js_name = widgetValueUpdate)]
-	pub fn widget_value_update(&self, layout_target: JsValue, widget_id: u64, value: JsValue) -> Result<(), JsValue> {
+	pub fn widget_value_update(&self, layout_target: JsValue, widget_id: u64, value: JsValue, resend_widget: bool) -> Result<(), JsValue> {
+		self.widget_value_update_helper(layout_target, widget_id, value, resend_widget)
+	}
+
+	/// Commit the value of a given UI widget to the history
+	#[wasm_bindgen(js_name = widgetValueCommit)]
+	pub fn widget_value_commit(&self, layout_target: JsValue, widget_id: u64, value: JsValue) -> Result<(), JsValue> {
+		self.widget_value_commit_helper(layout_target, widget_id, value)
+	}
+
+	/// Update the value of a given UI widget, and commit it to the history
+	#[wasm_bindgen(js_name = widgetValueCommitAndUpdate)]
+	pub fn widget_value_commit_and_update(&self, layout_target: JsValue, widget_id: u64, value: JsValue, resend_widget: bool) -> Result<(), JsValue> {
+		self.widget_value_commit_helper(layout_target.clone(), widget_id, value.clone())?;
+		self.widget_value_update_helper(layout_target, widget_id, value, resend_widget)?;
+		Ok(())
+	}
+
+	pub fn widget_value_update_helper(&self, layout_target: JsValue, widget_id: u64, value: JsValue, resend_widget: bool) -> Result<(), JsValue> {
 		let widget_id = WidgetId(widget_id);
 		match (from_value(layout_target), from_value(value)) {
 			(Ok(layout_target), Ok(value)) => {
 				let message = LayoutMessage::WidgetValueUpdate { layout_target, widget_id, value };
 				self.dispatch(message);
+
+				if resend_widget {
+					let resend_message = LayoutMessage::ResendActiveWidget { layout_target, widget_id };
+					self.dispatch(resend_message);
+				}
+
 				Ok(())
 			}
 			(target, val) => Err(Error::new(&format!("Could not update UI\nDetails:\nTarget: {target:?}\nValue: {val:?}")).into()),
 		}
 	}
 
-	/// Commit the value of a given UI widget to the history
-	#[wasm_bindgen(js_name = widgetValueCommit)]
-	pub fn widget_value_commit(&self, layout_target: JsValue, widget_id: u64, value: JsValue) -> Result<(), JsValue> {
+	pub fn widget_value_commit_helper(&self, layout_target: JsValue, widget_id: u64, value: JsValue) -> Result<(), JsValue> {
 		let widget_id = WidgetId(widget_id);
 		match (from_value(layout_target), from_value(value)) {
 			(Ok(layout_target), Ok(value)) => {
@@ -381,18 +386,19 @@ impl EditorHandle {
 		}
 	}
 
-	/// Update the value of a given UI widget, and commit it to the history
-	#[wasm_bindgen(js_name = widgetValueCommitAndUpdate)]
-	pub fn widget_value_commit_and_update(&self, layout_target: JsValue, widget_id: u64, value: JsValue) -> Result<(), JsValue> {
-		self.widget_value_commit(layout_target.clone(), widget_id, value.clone())?;
-		self.widget_value_update(layout_target, widget_id, value)?;
-		Ok(())
-	}
-
 	#[wasm_bindgen(js_name = loadPreferences)]
-	pub fn load_preferences(&self, preferences: String) {
-		let message = PreferencesMessage::Load { preferences };
+	pub fn load_preferences(&self, preferences: Option<String>) {
+		let preferences = if let Some(preferences) = preferences {
+			let Ok(preferences) = serde_json::from_str(&preferences) else {
+				log::error!("Failed to deserialize preferences");
+				return;
+			};
+			Some(preferences)
+		} else {
+			None
+		};
 
+		let message = PreferencesMessage::Load { preferences };
 		self.dispatch(message);
 	}
 
@@ -409,25 +415,15 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
-	#[wasm_bindgen(js_name = openDocument)]
-	pub fn open_document(&self) {
-		let message = PortfolioMessage::OpenDocument;
+	#[wasm_bindgen(js_name = openFile)]
+	pub fn open_file(&self, path: String, content: Vec<u8>) {
+		let message = PortfolioMessage::OpenFile { path: PathBuf::from(path), content };
 		self.dispatch(message);
 	}
 
-	#[wasm_bindgen(js_name = demoArtworkDialog)]
-	pub fn demo_artwork_dialog(&self) {
-		let message = DialogMessage::RequestDemoArtworkDialog;
-		self.dispatch(message);
-	}
-
-	#[wasm_bindgen(js_name = openDocumentFile)]
-	pub fn open_document_file(&self, document_name: String, document_serialized_content: String) {
-		let message = PortfolioMessage::OpenDocumentFile {
-			document_name: Some(document_name),
-			document_path: None,
-			document_serialized_content,
-		};
+	#[wasm_bindgen(js_name = importFile)]
+	pub fn import_file(&self, path: String, content: Vec<u8>) {
+		let message = PortfolioMessage::ImportFile { path: PathBuf::from(path), content };
 		self.dispatch(message);
 	}
 
@@ -442,6 +438,7 @@ impl EditorHandle {
 			document_is_saved,
 			document_serialized_content,
 			to_front,
+			select_after_open: false,
 		};
 		self.dispatch(message);
 	}
@@ -475,13 +472,10 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
-	/// Send new bounds when document panel viewports get resized or moved within the editor
-	/// [left, top, right, bottom]...
-	#[wasm_bindgen(js_name = boundsOfViewports)]
-	pub fn bounds_of_viewports(&self, bounds_of_viewports: &[f64]) {
-		let chunked: Vec<_> = bounds_of_viewports.chunks(4).map(ViewportBounds::from_slice).collect();
-
-		let message = InputPreprocessorMessage::BoundsOfViewports { bounds_of_viewports: chunked };
+	/// Send new viewport info to the backend
+	#[wasm_bindgen(js_name = updateViewport)]
+	pub fn update_viewport(&self, x: f64, y: f64, width: f64, height: f64, scale: f64) {
+		let message = ViewportMessage::Update { x, y, width, height, scale };
 		self.dispatch(message);
 	}
 
@@ -489,13 +483,6 @@ impl EditorHandle {
 	#[wasm_bindgen(js_name = zoomCanvasToFitAll)]
 	pub fn zoom_canvas_to_fit_all(&self) {
 		let message = DocumentMessage::ZoomCanvasToFitAll;
-		self.dispatch(message);
-	}
-
-	/// Inform the overlays system of the current device pixel ratio
-	#[wasm_bindgen(js_name = setDevicePixelRatio)]
-	pub fn set_device_pixel_ratio(&self, ratio: f64) {
-		let message = PortfolioMessage::SetDevicePixelRatio { ratio };
 		self.dispatch(message);
 	}
 
@@ -599,15 +586,21 @@ impl EditorHandle {
 		Ok(())
 	}
 
+	/// The font catalog has been loaded
+	#[wasm_bindgen(js_name = onFontCatalogLoad)]
+	pub fn on_font_catalog_load(&self, catalog: JsValue) -> Result<(), JsValue> {
+		// Deserializing from TS type: `{ name: string; styles: { weight: number, italic: boolean, url: string }[] }[]`
+		let families = serde_wasm_bindgen::from_value::<Vec<FontCatalogFamily>>(catalog)?;
+		let message = PortfolioMessage::FontCatalogLoaded { catalog: FontCatalog(families) };
+		self.dispatch(message);
+
+		Ok(())
+	}
+
 	/// A font has been downloaded
 	#[wasm_bindgen(js_name = onFontLoad)]
-	pub fn on_font_load(&self, font_family: String, font_style: String, preview_url: String, data: Vec<u8>) -> Result<(), JsValue> {
-		let message = PortfolioMessage::FontLoaded {
-			font_family,
-			font_style,
-			preview_url,
-			data,
-		};
+	pub fn on_font_load(&self, font_family: String, font_style: String, data: Vec<u8>) -> Result<(), JsValue> {
+		let message = PortfolioMessage::FontLoaded { font_family, font_style, data };
 		self.dispatch(message);
 
 		Ok(())
@@ -617,15 +610,6 @@ impl EditorHandle {
 	#[wasm_bindgen(js_name = updateBounds)]
 	pub fn update_bounds(&self, new_text: String) -> Result<(), JsValue> {
 		let message = TextToolMessage::UpdateBounds { new_text };
-		self.dispatch(message);
-
-		Ok(())
-	}
-
-	/// Begin sampling a pixel color from the document by entering eyedropper sampling mode
-	#[wasm_bindgen(js_name = eyedropperSampleForColorPicker)]
-	pub fn eyedropper_sample_for_color_picker(&self) -> Result<(), JsValue> {
-		let message = DialogMessage::RequestComingSoonDialog { issue: Some(832) };
 		self.dispatch(message);
 
 		Ok(())
@@ -661,27 +645,6 @@ impl EditorHandle {
 		self.dispatch(message);
 
 		Ok(())
-	}
-
-	/// Visit the given URL
-	#[wasm_bindgen(js_name = visitUrl)]
-	pub fn visit_url(&self, url: String) {
-		let message = FrontendMessage::TriggerVisitLink { url };
-		self.dispatch(message);
-	}
-
-	/// Paste layers from a serialized JSON representation
-	#[wasm_bindgen(js_name = pasteSerializedData)]
-	pub fn paste_serialized_data(&self, data: String) {
-		let message = PortfolioMessage::PasteSerializedData { data };
-		self.dispatch(message);
-	}
-
-	/// Paste vector into a new layer from a serialized JSON representation
-	#[wasm_bindgen(js_name = pasteSerializedVector)]
-	pub fn paste_serialized_vector(&self, data: String) {
-		let message = PortfolioMessage::PasteSerializedVector { data };
-		self.dispatch(message);
 	}
 
 	#[wasm_bindgen(js_name = clipLayer)]
@@ -760,13 +723,6 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
-	/// Snaps the import/export edges to a grid space when the scroll bar is released
-	#[wasm_bindgen(js_name = setGridAlignedEdges)]
-	pub fn set_grid_aligned_edges(&self) {
-		let message = NodeGraphMessage::SetGridAlignedEdges;
-		self.dispatch(message);
-	}
-
 	/// Merge the selected nodes into a subnetwork
 	#[wasm_bindgen(js_name = mergeSelectedNodes)]
 	pub fn merge_nodes(&self) {
@@ -776,21 +732,32 @@ impl EditorHandle {
 
 	/// Creates a new document node in the node graph
 	#[wasm_bindgen(js_name = createNode)]
-	pub fn create_node(&self, node_type: String, x: i32, y: i32) {
+	pub fn create_node(&self, node_type: JsValue, x: i32, y: i32) {
+		let value: serde_json::Value = serde_wasm_bindgen::from_value(node_type).unwrap();
+
 		let id = NodeId::new();
 		let message = NodeGraphMessage::CreateNodeFromContextMenu {
 			node_id: Some(id),
-			node_type,
+			node_type: value.into(),
 			xy: Some((x / 24, y / 24)),
 			add_transaction: true,
 		};
 		self.dispatch(message);
 	}
 
-	/// Pastes the nodes based on serialized data
-	#[wasm_bindgen(js_name = pasteSerializedNodes)]
-	pub fn paste_serialized_nodes(&self, serialized_nodes: String) {
-		let message = NodeGraphMessage::PasteNodes { serialized_nodes };
+	/// Respond to selection read
+	#[wasm_bindgen(js_name = readSelection)]
+	pub fn read_selection(&self, content: Option<String>, cut: bool) {
+		let message = ClipboardMessage::ReadSelection { content, cut };
+		self.dispatch(message);
+	}
+
+	/// Paste from a serialized JSON representation
+	#[wasm_bindgen(js_name = pasteText)]
+	pub fn paste_text(&self, data: String) {
+		let message = ClipboardMessage::ReadClipboard {
+			content: ClipboardContentRaw::Text(data),
+		};
 		self.dispatch(message);
 	}
 
@@ -1014,8 +981,12 @@ async fn poll_node_graph_evaluation() {
 			crate::NODE_GRAPH_ERROR_DISPLAYED.store(false, Ordering::SeqCst);
 		}
 
+		// Batch responses to pool frontend updates
+		let batched = Message::Batched {
+			messages: messages.into_iter().collect(),
+		};
 		// Send each `FrontendMessage` to the JavaScript frontend
-		for response in messages.into_iter().flat_map(|message| editor.handle_message(message)) {
+		for response in editor.handle_message(batched) {
 			handle.send_frontend_message_to_js(response);
 		}
 
@@ -1032,4 +1003,73 @@ fn auto_save_all_documents() {
 	handle(|handle| {
 		handle.dispatch(PortfolioMessage::AutoSaveAllDocuments);
 	});
+}
+
+fn render_image_data_to_canvases(image_data: &[(u64, Image<Color>)]) {
+	let window = match window() {
+		Some(window) => window,
+		None => {
+			error!("Cannot render canvas: window object not found");
+			return;
+		}
+	};
+	let document = window.document().expect("window should have a document");
+	let window_obj = Object::from(window);
+	let image_canvases_key = JsValue::from_str("imageCanvases");
+
+	let canvases_obj = match Reflect::get(&window_obj, &image_canvases_key) {
+		Ok(obj) if !obj.is_undefined() && !obj.is_null() => obj,
+		_ => {
+			let new_obj = Object::new();
+			if Reflect::set(&window_obj, &image_canvases_key, &new_obj).is_err() {
+				error!("Failed to create and set imageCanvases object on window");
+				return;
+			}
+			new_obj.into()
+		}
+	};
+	let canvases_obj = Object::from(canvases_obj);
+
+	for (placeholder_id, image) in image_data.iter() {
+		let canvas_name = placeholder_id.to_string();
+		let js_key = JsValue::from_str(&canvas_name);
+
+		if Reflect::has(&canvases_obj, &js_key).unwrap_or(false) || image.width == 0 || image.height == 0 {
+			continue;
+		}
+
+		let canvas: HtmlCanvasElement = document
+			.create_element("canvas")
+			.expect("Failed to create canvas element")
+			.dyn_into::<HtmlCanvasElement>()
+			.expect("Failed to cast element to HtmlCanvasElement");
+
+		canvas.set_width(image.width);
+		canvas.set_height(image.height);
+
+		let context: CanvasRenderingContext2d = canvas
+			.get_context("2d")
+			.expect("Failed to get 2d context")
+			.expect("2d context was not found")
+			.dyn_into::<CanvasRenderingContext2d>()
+			.expect("Failed to cast context to CanvasRenderingContext2d");
+		let u8_data: Vec<u8> = image.data.iter().flat_map(|color| color.to_rgba8_srgb()).collect();
+		let clamped_u8_data = wasm_bindgen::Clamped(&u8_data[..]);
+		match ImageData::new_with_u8_clamped_array_and_sh(clamped_u8_data, image.width, image.height) {
+			Ok(image_data_obj) => {
+				if context.put_image_data(&image_data_obj, 0., 0.).is_err() {
+					error!("Failed to put image data on canvas for id: {placeholder_id}");
+				}
+			}
+			Err(e) => {
+				error!("Failed to create ImageData for id: {placeholder_id}: {e:?}");
+			}
+		}
+
+		let js_value = JsValue::from(canvas);
+
+		if Reflect::set(&canvases_obj, &js_key, &js_value).is_err() {
+			error!("Failed to set canvas '{canvas_name}' on imageCanvases object");
+		}
+	}
 }

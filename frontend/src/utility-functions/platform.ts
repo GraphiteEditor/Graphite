@@ -1,3 +1,5 @@
+import { isPlatformNative } from "@graphite/../wasm/pkg/graphite_wasm";
+
 export function browserVersion(): string {
 	const agent = window.navigator.userAgent;
 	let match = agent.match(/(opera|chrome|safari|firefox|msie|trident(?=\/))\/?\s*(\d+)/i) || [];
@@ -23,34 +25,21 @@ export function browserVersion(): string {
 	return `${match[0]} ${match[1]}`;
 }
 
-export function operatingSystem(detailed = false): string {
-	const osTableDetailed: Record<string, string> = {
-		"Windows NT 10": "Windows 10 or 11",
-		"Windows NT 6.3": "Windows 8.1",
-		"Windows NT 6.2": "Windows 8",
-		"Windows NT 6.1": "Windows 7",
-		"Windows NT 6.0": "Windows Vista",
-		"Windows NT 5.1": "Windows XP",
-		"Windows NT 5.0": "Windows 2000",
-		Mac: "Mac",
-		X11: "Unix",
-		Linux: "Linux",
-		Unknown: "Unknown",
-	};
-	const osTableSimple: Record<string, string> = {
+export type OperatingSystem = "Windows" | "Mac" | "Linux";
+
+export function operatingSystem(): OperatingSystem {
+	const osTable: Record<string, OperatingSystem> = {
 		Windows: "Windows",
 		Mac: "Mac",
 		Linux: "Linux",
-		Unknown: "Unknown",
 	};
-	const osTable = detailed ? osTableDetailed : osTableSimple;
 
 	const userAgentOS = Object.keys(osTable).find((key) => window.navigator.userAgent.includes(key));
-	return osTable[userAgentOS || "Unknown"];
+	return osTable[userAgentOS || "Windows"];
 }
 
-export function platformIsMac(): boolean {
-	return operatingSystem() === "Mac";
+export function isDesktop(): boolean {
+	return isPlatformNative();
 }
 
 export function isEventSupported(eventName: string) {

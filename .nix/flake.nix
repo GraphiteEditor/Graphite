@@ -12,8 +12,6 @@
 # - Development shell: `nix develop .nix` from the project root
 # - Run in dev shell with direnv: add `use flake` to .envrc
 {
-  description = "Development environment and build configuration";
-
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
     rust-overlay = {
@@ -21,108 +19,151 @@
       inputs.nixpkgs.follows = "nixpkgs";
     };
     flake-utils.url = "github:numtide/flake-utils";
+    crane.url = "github:ipetkov/crane";
 
     # This is used to provide a identical development shell at `shell.nix` for users that do not use flakes
     flake-compat.url = "https://flakehub.com/f/edolstra/flake-compat/1.tar.gz";
   };
 
-  outputs = { nixpkgs, rust-overlay, flake-utils, ... }:
-    flake-utils.lib.eachDefaultSystem (system:
+  outputs =
+    inputs:
+    inputs.flake-utils.lib.eachDefaultSystem (
+      system:
       let
-        overlays = [ (import rust-overlay) ];
-        pkgs = import nixpkgs {
-          inherit system overlays;
+        info = {
+          pname = "graphite";
+          version = "unstable";
+          src = pkgs.lib.cleanSourceWith {
+            src = ./..;
+            filter = path: type: !(type == "directory" && builtins.baseNameOf path == ".nix");
+          };
         };
 
-        rustc-wasm = pkgs.rust-bin.stable.latest.default.override {
-          targets = [ "wasm32-unknown-unknown" ];
-          extensions = [ "rust-src" "rust-analyzer" "clippy" "cargo" ];
+        pkgs = import inputs.nixpkgs {
+          inherit system;
+          overlays = [ (import inputs.rust-overlay) ];
         };
 
-        libcef = pkgs.libcef.overrideAttrs (finalAttrs: previousAttrs: {
-          version = "139.0.17";
-          gitRevision = "6c347eb";
-          chromiumVersion = "139.0.7258.31";
-          srcHash = "sha256-kRMO8DP4El1qytDsAZBdHvR9AAHXce90nPdyfJailBg=";
+        deps = {
+          crane = import ./deps/crane.nix { inherit pkgs inputs; };
+          cef = import ./deps/cef.nix { inherit pkgs inputs; };
+          rustGPU = import ./deps/rust-gpu.nix { inherit pkgs inputs; };
+        };
 
-          __intentionallyOverridingVersion = true;
+        libs = rec {
+          desktop = [
+            pkgs.wayland
+            pkgs.openssl
+            pkgs.vulkan-loader
+            pkgs.libraw
+            pkgs.libGL
+          ];
+          desktop-x11 = [
+            pkgs.libxkbcommon
+            pkgs.xorg.libXcursor
+            pkgs.xorg.libxcb
+            pkgs.xorg.libX11
+          ];
+          desktop-all = desktop ++ desktop-x11;
+          all = desktop-all;
+        };
 
-          postInstall = ''
-            strip $out/lib/*
-          '';
-        });
+        tools = rec {
+          desktop = [
+            pkgs.pkg-config
+          ];
+          frontend = [
+            pkgs.lld
+            pkgs.nodejs
+            pkgs.nodePackages.npm
+            pkgs.binaryen
+            pkgs.wasm-bindgen-cli_0_2_100
+            pkgs.wasm-pack
+            pkgs.cargo-about
+          ];
+          dev = [
+            pkgs.rustc
+            pkgs.cargo
+            pkgs.rust-analyzer
+            pkgs.clippy
+            pkgs.rustfmt
 
-        libcefPath = pkgs.runCommand "libcef-path" {} ''
-          mkdir -p $out
+            pkgs.git
 
-          ln -s ${libcef}/include $out/include
-          find ${libcef}/lib -type f -name "*" -exec ln -s {} $out/ \;
-          find ${libcef}/libexec -type f -name "*" -exec ln -s {} $out/ \;
-          cp -r ${libcef}/share/cef/* $out/
+            pkgs.cargo-watch
+            pkgs.cargo-nextest
+            pkgs.cargo-expand
 
-          echo '${builtins.toJSON {
-            type = "minimal";
-            name = builtins.baseNameOf libcef.src.url;
-            sha1 = "";
-          }}' > $out/archive.json
-        '';
+            # Linker
+            pkgs.mold
 
-        # Shared build inputs - system libraries that need to be in LD_LIBRARY_PATH
-        buildInputs = with pkgs; [
-          # System libraries
-          wayland
-          openssl
-          vulkan-loader
-          libraw
-          libGL
+            # Profiling tools
+            pkgs.gnuplot
+            pkgs.samply
+            pkgs.cargo-flamegraph
 
-          # X11 libraries, not needed on wayland! Remove when x11 is finally dead
-          libxkbcommon
-          xorg.libXcursor
-          xorg.libxcb
-          xorg.libX11
-        ];
-
-        # Development tools that don't need to be in LD_LIBRARY_PATH
-        buildTools =  [
-          rustc-wasm
-          pkgs.nodejs
-          pkgs.nodePackages.npm
-          pkgs.binaryen
-          pkgs.wasm-bindgen-cli
-          pkgs.wasm-pack
-          pkgs.pkg-config
-          pkgs.git
-          pkgs.cargo-about
-
-          # Linker
-          pkgs.mold
-        ];
-        # Development tools that don't need to be in LD_LIBRARY_PATH
-        devTools = with pkgs; [
-          cargo-watch
-          cargo-nextest
-          cargo-expand
-
-          # Profiling tools
-          gnuplot
-          samply
-          cargo-flamegraph
-        ];
+            # Plotting tools
+            pkgs.graphviz
+          ];
+          all = desktop ++ frontend ++ dev;
+        };
       in
       {
-        # Development shell configuration
-        devShells.default = pkgs.mkShell {
-          packages = buildInputs ++ buildTools ++ devTools;
+        packages = rec {
+          graphiteWithArgs =
+            args:
+            (import ./pkgs/graphite.nix {
+              pkgs = pkgs // {
+                inherit raster-nodes-shaders;
+              };
+              inherit
+                info
+                inputs
+                deps
+                libs
+                tools
+                ;
+            })
+              args;
+          graphite = graphiteWithArgs { };
+          graphite-dev = graphiteWithArgs { dev = true; };
+          graphite-without-resources = graphiteWithArgs { embeddedResources = false; };
+          graphite-without-resources-dev = graphiteWithArgs {
+            embeddedResources = false;
+            dev = true;
+          };
+          graphite-bundle = import ./pkgs/graphite-bundle.nix {
+            inherit pkgs graphite;
+          };
+          graphite-flatpak-manifest = import ./pkgs/graphite-flatpak-manifest.nix {
+            inherit pkgs;
+            archive = graphite-bundle.tar;
+          };
+          #TODO: graphene-cli = import ./pkgs/graphene-cli.nix { inherit info pkgs inputs deps libs tools; };
+          raster-nodes-shaders = import ./pkgs/raster-nodes-shaders.nix {
+            inherit
+              info
+              pkgs
+              inputs
+              deps
+              libs
+              tools
+              ;
+          };
 
-          LD_LIBRARY_PATH = "${pkgs.lib.makeLibraryPath buildInputs}:${libcefPath}";
-          CEF_PATH = libcefPath;
-          XDG_DATA_DIRS="${pkgs.gsettings-desktop-schemas}/share/gsettings-schemas/${pkgs.gsettings-desktop-schemas.name}:${pkgs.gtk3}/share/gsettings-schemas/${pkgs.gtk3.name}:$XDG_DATA_DIRS";
-
-          shellHook = ''
-            alias cargo='mold --run cargo'
-          '';
+          default = graphite;
         };
+
+        devShells.default = import ./dev.nix {
+          inherit
+            pkgs
+            deps
+            libs
+            tools
+            ;
+        };
+
+        formatter = pkgs.nixfmt-tree;
       }
     );
 }

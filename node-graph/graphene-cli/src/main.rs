@@ -1,13 +1,15 @@
+mod export;
+
 use clap::{Args, Parser, Subcommand};
 use fern::colors::{Color, ColoredLevelConfig};
 use futures::executor::block_on;
 use graph_craft::document::*;
-use graph_craft::graphene_compiler::{Compiler, Executor};
+use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::ProtoNetwork;
 use graph_craft::util::load_network;
 use graph_craft::wasm_application_io::EditorPreferences;
-use graphene_core::text::FontCache;
-use graphene_std::application_io::{ApplicationIo, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
+use graphene_std::application_io::{ApplicationIo, NodeGraphUpdateMessage, NodeGraphUpdateSender};
+use graphene_std::text::FontCache;
 use graphene_std::wasm_application_io::{WasmApplicationIo, WasmEditorApi};
 use interpreted_executor::dynamic_executor::DynamicExecutor;
 use interpreted_executor::util::wrap_network_in_scope;
@@ -44,18 +46,36 @@ enum Command {
 		/// Path to the .graphite document
 		document: PathBuf,
 	},
-	/// Help message for run.
-	Run {
+	/// Export a .graphite document to a file (SVG, PNG, or JPG).
+	Export {
 		/// Path to the .graphite document
 		document: PathBuf,
 
-		/// Path to the .graphite document
+		/// Output file path (extension determines format: .svg, .png, .jpg)
+		#[clap(long, short = 'o')]
+		output: PathBuf,
+
+		/// Optional input image resource
+		#[clap(long)]
 		image: Option<PathBuf>,
 
-		/// Run the document in a loop. This is useful for spawning and maintaining a window
-		#[clap(long, short = 'l')]
-		run_loop: bool,
+		/// Scale factor for export (default: 1.0)
+		#[clap(long, default_value = "1.0")]
+		scale: f64,
+
+		/// Output width in pixels
+		#[clap(long)]
+		width: Option<u32>,
+
+		/// Output height in pixels
+		#[clap(long)]
+		height: Option<u32>,
+
+		/// Transparent background for PNG exports
+		#[clap(long)]
+		transparent: bool,
 	},
+	ListNodeIdentifiers,
 }
 
 #[derive(Debug, Args)]
@@ -75,23 +95,40 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 	let document_path = match app.command {
 		Command::Compile { ref document, .. } => document,
-		Command::Run { ref document, .. } => document,
+		Command::Export { ref document, .. } => document,
+		Command::ListNodeIdentifiers => {
+			let mut nodes: Vec<_> = graphene_std::registry::NODE_METADATA.lock().unwrap().keys().cloned().collect();
+			nodes.sort_by_key(|x| x.as_str().to_string());
+			for id in nodes {
+				println!("{}", id.as_str());
+			}
+			return Ok(());
+		}
 	};
 
 	let document_string = std::fs::read_to_string(document_path).expect("Failed to read document");
 
-	log::info!("creating gpu context",);
-	let mut application_io = block_on(WasmApplicationIo::new());
+	log::info!("Creating GPU context");
+	let mut application_io = block_on(WasmApplicationIo::new_offscreen());
 
-	if let Command::Run { image: Some(ref image_path), .. } = app.command {
+	if let Command::Export { image: Some(ref image_path), .. } = app.command {
 		application_io.resources.insert("null".to_string(), Arc::from(std::fs::read(image_path).expect("Failed to read image")));
 	}
-	let device = application_io.gpu_executor().unwrap().context.device.clone();
+
+	// Convert application_io to Arc first
+	let application_io_arc = Arc::new(application_io);
+
+	// Clone the application_io Arc before borrowing to extract executor
+	let application_io_for_api = application_io_arc.clone();
+
+	// Get reference to wgpu executor and clone device handle
+	let wgpu_executor_ref = application_io_arc.gpu_executor().unwrap();
+	let device = wgpu_executor_ref.context.device.clone();
 
 	let preferences = EditorPreferences { use_vello: true };
 	let editor_api = Arc::new(WasmEditorApi {
 		font_cache: FontCache::default(),
-		application_io: Some(application_io.into()),
+		application_io: Some(application_io_for_api),
 		node_graph_message_sender: Box::new(UpdateLogger {}),
 		editor_preferences: Box::new(preferences),
 	});
@@ -104,25 +141,32 @@ async fn main() -> Result<(), Box<dyn Error>> {
 				println!("{proto_graph}");
 			}
 		}
-		Command::Run { run_loop, .. } => {
+		Command::Export {
+			output,
+			scale,
+			width,
+			height,
+			transparent,
+			..
+		} => {
+			// Spawn thread to poll GPU device
 			std::thread::spawn(move || {
 				loop {
 					std::thread::sleep(std::time::Duration::from_nanos(10));
 					device.poll(wgpu::PollType::Poll).unwrap();
 				}
 			});
-			let executor = create_executor(proto_graph)?;
-			let render_config = RenderConfig::default();
 
-			loop {
-				let result = (&executor).execute(render_config).await?;
-				if !run_loop {
-					println!("{result:?}");
-					break;
-				}
-				tokio::time::sleep(std::time::Duration::from_millis(16)).await;
-			}
+			// Detect output file type
+			let file_type = export::detect_file_type(&output)?;
+
+			// Create executor
+			let executor = create_executor(proto_graph)?;
+
+			// Perform export
+			export::export_document(&executor, wgpu_executor_ref, output, file_type, scale, (width, height), transparent).await?;
 		}
+		_ => unreachable!("All other commands should be handled before this match statement is run"),
 	}
 
 	Ok(())
@@ -168,7 +212,7 @@ fn fix_nodes(network: &mut NodeNetwork) {
 			// https://github.com/GraphiteEditor/Graphite/blob/d68f91ccca69e90e6d2df78d544d36cd1aaf348e/editor/src/messages/portfolio/portfolio_message_handler.rs#L535
 			// Since the CLI doesn't have the document node definitions, a less robust method of just patching the inputs is used.
 			DocumentNodeImplementation::ProtoNode(proto_node_identifier)
-				if (proto_node_identifier.name.starts_with("graphene_core::ConstructLayerNode") || proto_node_identifier.name.starts_with("graphene_core::AddArtboardNode"))
+				if (proto_node_identifier.as_str().starts_with("graphene_core::ConstructLayerNode") || proto_node_identifier.as_str().starts_with("graphene_core::AddArtboardNode"))
 					&& node.inputs.len() < 3 =>
 			{
 				node.inputs.push(NodeInput::Reflection(DocumentNodeMetadata::DocumentNodePath));

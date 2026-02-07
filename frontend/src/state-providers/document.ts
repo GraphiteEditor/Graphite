@@ -4,10 +4,8 @@ import { writable } from "svelte/store";
 import { type Editor } from "@graphite/editor";
 
 import {
-	defaultWidgetLayout,
-	patchWidgetLayout,
+	patchLayout,
 	UpdateDocumentBarLayout,
-	UpdateDocumentModeLayout,
 	UpdateToolOptionsLayout,
 	UpdateToolShelfLayout,
 	UpdateWorkingColorsLayout,
@@ -15,17 +13,16 @@ import {
 	UpdateGraphViewOverlay,
 	UpdateGraphFadeArtwork,
 } from "@graphite/messages";
+import type { Layout } from "@graphite/messages";
 
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function createDocumentState(editor: Editor) {
 	const state = writable({
 		// Layouts
-		documentModeLayout: defaultWidgetLayout(),
-		toolOptionsLayout: defaultWidgetLayout(),
-		documentBarLayout: defaultWidgetLayout(),
-		toolShelfLayout: defaultWidgetLayout(),
-		workingColorsLayout: defaultWidgetLayout(),
-		nodeGraphControlBarLayout: defaultWidgetLayout(),
+		toolOptionsLayout: [] as Layout,
+		documentBarLayout: [] as Layout,
+		toolShelfLayout: [] as Layout,
+		workingColorsLayout: [] as Layout,
+		nodeGraphControlBarLayout: [] as Layout,
 		// Graph view overlay
 		graphViewOverlayOpen: false,
 		fadeArtwork: 100,
@@ -33,63 +30,55 @@ export function createDocumentState(editor: Editor) {
 	const { subscribe, update } = state;
 
 	// Update layouts
-	editor.subscriptions.subscribeJsMessage(UpdateGraphFadeArtwork, (updateGraphFadeArtwork) => {
+	editor.subscriptions.subscribeJsMessage(UpdateGraphFadeArtwork, (data) => {
 		update((state) => {
-			state.fadeArtwork = updateGraphFadeArtwork.percentage;
+			state.fadeArtwork = data.percentage;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateDocumentModeLayout, async (updateDocumentModeLayout) => {
+	editor.subscriptions.subscribeJsMessage(UpdateToolOptionsLayout, async (data) => {
 		await tick();
 
 		update((state) => {
-			patchWidgetLayout(state.documentModeLayout, updateDocumentModeLayout);
+			patchLayout(state.toolOptionsLayout, data);
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateToolOptionsLayout, async (updateToolOptionsLayout) => {
+	editor.subscriptions.subscribeJsMessage(UpdateDocumentBarLayout, async (data) => {
 		await tick();
 
 		update((state) => {
-			patchWidgetLayout(state.toolOptionsLayout, updateToolOptionsLayout);
+			patchLayout(state.documentBarLayout, data);
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateDocumentBarLayout, async (updateDocumentBarLayout) => {
+	editor.subscriptions.subscribeJsMessage(UpdateToolShelfLayout, async (data) => {
 		await tick();
 
 		update((state) => {
-			patchWidgetLayout(state.documentBarLayout, updateDocumentBarLayout);
+			patchLayout(state.toolShelfLayout, data);
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateToolShelfLayout, async (updateToolShelfLayout) => {
+	editor.subscriptions.subscribeJsMessage(UpdateWorkingColorsLayout, async (data) => {
 		await tick();
 
 		update((state) => {
-			patchWidgetLayout(state.toolShelfLayout, updateToolShelfLayout);
+			patchLayout(state.workingColorsLayout, data);
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateWorkingColorsLayout, async (updateWorkingColorsLayout) => {
-		await tick();
-
+	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphControlBarLayout, (data) => {
 		update((state) => {
-			patchWidgetLayout(state.workingColorsLayout, updateWorkingColorsLayout);
-			return state;
-		});
-	});
-	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphControlBarLayout, (updateNodeGraphControlBarLayout) => {
-		update((state) => {
-			patchWidgetLayout(state.nodeGraphControlBarLayout, updateNodeGraphControlBarLayout);
+			patchLayout(state.nodeGraphControlBarLayout, data);
 			return state;
 		});
 	});
 
 	// Show or hide the graph view overlay
-	editor.subscriptions.subscribeJsMessage(UpdateGraphViewOverlay, (updateGraphViewOverlay) => {
+	editor.subscriptions.subscribeJsMessage(UpdateGraphViewOverlay, (data) => {
 		update((state) => {
-			state.graphViewOverlayOpen = updateGraphViewOverlay.open;
+			state.graphViewOverlayOpen = data.open;
 			return state;
 		});
 	});

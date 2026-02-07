@@ -1,5 +1,6 @@
 use super::utility_types::Direction;
 use crate::messages::input_mapper::utility_types::input_keyboard::Key;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{ImportOrExport, InputConnector, NodeTemplate, OutputConnector};
 use crate::messages::prelude::*;
@@ -18,21 +19,25 @@ pub enum NodeGraphMessage {
 	},
 	AddPathNode,
 	AddImport,
+	AddPrimaryImport,
+	AddSecondaryImport,
 	AddExport,
+	AddPrimaryExport,
+	AddSecondaryExport,
 	Init,
 	SelectedNodesUpdated,
 	Copy,
 	CreateNodeInLayerNoTransaction {
-		node_type: String,
+		node_type: DefinitionIdentifier,
 		layer: LayerNodeIdentifier,
 	},
 	CreateNodeInLayerWithTransaction {
-		node_type: String,
+		node_type: DefinitionIdentifier,
 		layer: LayerNodeIdentifier,
 	},
 	CreateNodeFromContextMenu {
 		node_id: Option<NodeId>,
-		node_type: String,
+		node_type: DefinitionIdentifier,
 		xy: Option<(i32, i32)>,
 		add_transaction: bool,
 	},
@@ -63,9 +68,16 @@ pub enum NodeGraphMessage {
 		set_to_exposed: bool,
 		start_transaction: bool,
 	},
+	ExposeEncapsulatingPrimaryInput {
+		exposed: bool,
+	},
+	ExposePrimaryExport {
+		exposed: bool,
+	},
 	InsertNode {
 		node_id: NodeId,
-		node_template: NodeTemplate,
+		// Boxed to reduce size of enum (1120 bytes to 8 bytes)
+		node_template: Box<NodeTemplate>,
 	},
 	InsertNodeBetween {
 		node_id: NodeId,
@@ -102,6 +114,7 @@ pub enum NodeGraphMessage {
 		shift: Key,
 	},
 	ShakeNode,
+	UpdateNodeGraphWidth,
 	RemoveImport {
 		import_index: usize,
 	},
@@ -133,7 +146,6 @@ pub enum NodeGraphMessage {
 	SendWires,
 	UpdateVisibleNodes,
 	SendGraph,
-	SetGridAlignedEdges,
 	SetInputValue {
 		node_id: NodeId,
 		input_index: usize,

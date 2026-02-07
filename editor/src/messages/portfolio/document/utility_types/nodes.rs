@@ -34,8 +34,11 @@ impl serde::Serialize for JsRawBuffer {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq, specta::Type)]
 pub struct LayerPanelEntry {
 	pub id: NodeId,
+	#[serde(rename = "implementationName")]
+	pub implementation_name: String,
+	#[serde(rename = "iconName")]
+	pub icon_name: Option<String>,
 	pub alias: String,
-	pub tooltip: String,
 	#[serde(rename = "inSelectedNetwork")]
 	pub in_selected_network: bool,
 	#[serde(rename = "childrenAllowed")]
@@ -167,8 +170,8 @@ impl SelectedNodes {
 		std::mem::replace(&mut self.0, new)
 	}
 
-	pub fn filtered_selected_nodes(&self, node_ids: std::collections::HashSet<NodeId>) -> SelectedNodes {
-		SelectedNodes(self.0.iter().filter(|node_id| node_ids.contains(node_id)).cloned().collect())
+	pub fn filtered_selected_nodes(&self, filter: impl Fn(&NodeId) -> bool) -> SelectedNodes {
+		SelectedNodes(self.0.iter().copied().filter(filter).collect())
 	}
 }
 

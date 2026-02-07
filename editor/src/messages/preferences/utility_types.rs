@@ -19,9 +19,9 @@ impl std::fmt::Display for SelectionMode {
 impl SelectionMode {
 	pub fn tooltip_description(&self) -> &'static str {
 		match self {
-			SelectionMode::Touched => "Select all layers at least partially covered by the dragged selection area",
-			SelectionMode::Enclosed => "Select only layers fully enclosed by the dragged selection area",
-			SelectionMode::Directional => r#""Touched" for leftward drags, "Enclosed" for rightward drags"#,
+			SelectionMode::Touched => "Select all layers at least partially covered by the dragged selection area.",
+			SelectionMode::Enclosed => "Select only layers fully enclosed by the dragged selection area.",
+			SelectionMode::Directional => r#""Touched" for leftward drags, "Enclosed" for rightward drags."#,
 		}
 	}
 }
