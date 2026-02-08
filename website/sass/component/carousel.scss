@@ -8,7 +8,7 @@
 		touch-action: pan-y pinch-zoom;
 		cursor: grab;
 
-		img {
+		:is(img, video) {
 			position: relative;
 			display: inline-block;
 			user-select: none;
@@ -33,7 +33,7 @@
 		}
 	}
 
-	&:not(.dragging, .jostling) .carousel-slide img {
+	&:not(.dragging, .jostling) .carousel-slide :is(img, video) {
 		transition: transform 500ms;
 	}
 
@@ -54,8 +54,8 @@
 		&.left {
 			padding-left: 160px;
 			margin-left: -160px;
-			-webkit-mask-image: url("https://static.graphite.rs/textures/torn-edge-left__2.png");
-			mask-image: url("https://static.graphite.rs/textures/torn-edge-left__2.png");
+			-webkit-mask-image: url("https://static.graphite.art/textures/torn-edge-left__2.png");
+			mask-image: url("https://static.graphite.art/textures/torn-edge-left__2.png");
 			-webkit-mask-position: top left;
 			mask-position: top left;
 		}
@@ -63,8 +63,8 @@
 		&.right {
 			padding-right: 160px;
 			margin-right: -160px;
-			-webkit-mask-image: url("https://static.graphite.rs/textures/torn-edge-right__2.png");
-			mask-image: url("https://static.graphite.rs/textures/torn-edge-right__2.png");
+			-webkit-mask-image: url("https://static.graphite.art/textures/torn-edge-right__2.png");
+			mask-image: url("https://static.graphite.art/textures/torn-edge-right__2.png");
 			-webkit-mask-position: top right;
 			mask-position: top right;
 		}
@@ -141,11 +141,11 @@
 		}
 	}
 
-	&.window-size-1 .carousel-slide img {
+	&.window-size-1 .carousel-slide :is(img, video) {
 		width: 100%;
 	}
 
-	&.window-size-2 .carousel-slide img {
+	&.window-size-2 .carousel-slide :is(img, video) {
 		width: calc((100% / 2) - 10px);
 		padding: 0 10px;
 
@@ -158,7 +158,7 @@
 		}
 	}
 
-	&.window-size-3 .carousel-slide img {
+	&.window-size-3 .carousel-slide :is(img, video) {
 		width: calc((100% / 3) - 10px * (4 / 3));
 		padding: 0 10px;
 

@@ -17,7 +17,7 @@ Latest news and articles from the Graphite team.
 
 <p class="feed">
 	<a href="/blog/rss.xml">
-		<img class="icon" src="https://static.graphite.rs/icons/feed.svg" alt="RSS" />
+		<img class="icon" src="https://static.graphite.art/icons/feed.svg" alt="RSS" />
 		<span class="link arrow">RSS Feed</span>
 	</a>
 </p>

@@ -3,11 +3,11 @@ name = "dyn-any"
 version = "0.3.1"
 rust-version = "1.85"
 edition = "2024"
-authors = ["Graphite Authors <contact@graphite.rs>"]
+authors = ["Graphite Authors <contact@graphite.art>"]
 description = "An Any trait that works for arbitrary lifetimes"
 license = "MIT OR Apache-2.0"
 readme = "./README.md"
-homepage = "https://graphite.rs/libraries/dyn-any"
+homepage = "https://crates.io/crates/dyn-any"
 repository = "https://github.com/GraphiteEditor/Graphite/tree/master/libraries/dyn-any"
 documentation = "https://docs.rs/dyn-any"
 

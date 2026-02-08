@@ -4,7 +4,6 @@ export type DebouncerOptions = {
 	debounceTime: number;
 };
 
-// eslint-disable-next-line @typescript-eslint/explicit-function-return-type
 export function debouncer<T>(callFn: (value: T) => unknown, { debounceTime = 60 }: Partial<DebouncerOptions> = {}) {
 	let currentValue: T | undefined;
 	let recentlyUpdated: boolean = false;

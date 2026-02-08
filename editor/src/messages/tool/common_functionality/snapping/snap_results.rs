@@ -2,11 +2,11 @@ use super::DistributionMatch;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::{DistributionSnapTarget, SnapSource, SnapTarget};
 use crate::messages::tool::common_functionality::snapping::SnapCandidatePoint;
-use bezier_rs::Bezier;
 use glam::DVec2;
 use graphene_std::renderer::Quad;
 use graphene_std::renderer::Rect;
 use graphene_std::vector::PointId;
+use kurbo::PathSeg;
 use std::collections::VecDeque;
 
 #[derive(Clone, Debug, Default)]
@@ -120,5 +120,5 @@ pub struct SnappedCurve {
 	pub layer: LayerNodeIdentifier,
 	pub start: PointId,
 	pub point: SnappedPoint,
-	pub document_curve: Bezier,
+	pub document_curve: PathSeg,
 }

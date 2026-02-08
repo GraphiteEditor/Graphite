@@ -1,64 +1,92 @@
-use glam::DVec2;
+use glam::{BVec2, DVec2};
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct Aabb {
-	pub top: f64,
-	pub right: f64,
-	pub bottom: f64,
-	pub left: f64,
+	min: DVec2,
+	max: DVec2,
 }
 
-pub(crate) fn bounding_boxes_overlap(a: &Aabb, b: &Aabb) -> bool {
-	a.left <= b.right && b.left <= a.right && a.top <= b.bottom && b.top <= a.bottom
-}
-
-pub(crate) fn merge_bounding_boxes(a: Option<Aabb>, b: &Aabb) -> Aabb {
-	match a {
-		Some(a) => Aabb {
-			top: a.top.min(b.top),
-			right: a.right.max(b.right),
-			bottom: a.bottom.max(b.bottom),
-			left: a.left.min(b.left),
-		},
-		None => *b,
+impl Default for Aabb {
+	fn default() -> Self {
+		Self {
+			min: DVec2::INFINITY,
+			max: DVec2::NEG_INFINITY,
+		}
 	}
 }
 
+impl Aabb {
+	#[inline]
+	pub(crate) fn min(&self) -> DVec2 {
+		self.min
+	}
+	#[inline]
+	pub(crate) fn max(&self) -> DVec2 {
+		self.max
+	}
+
+	pub(crate) const fn new(left: f64, top: f64, right: f64, bottom: f64) -> Self {
+		Aabb {
+			min: DVec2::new(left, top),
+			max: DVec2::new(right, bottom),
+		}
+	}
+	#[inline]
+	pub(crate) fn top(&self) -> f64 {
+		self.min.y
+	}
+	#[inline]
+	pub(crate) fn left(&self) -> f64 {
+		self.min.x
+	}
+	#[inline]
+	pub(crate) fn right(&self) -> f64 {
+		self.max.x
+	}
+	#[inline]
+	pub(crate) fn bottom(&self) -> f64 {
+		self.max.y
+	}
+}
+
+#[inline]
+pub(crate) fn bounding_boxes_overlap(a: &Aabb, b: &Aabb) -> bool {
+	(a.min.cmple(b.max) & b.min.cmple(a.max)) == BVec2::TRUE
+}
+
+#[inline]
+pub(crate) fn merge_bounding_boxes(a: &Aabb, b: &Aabb) -> Aabb {
+	Aabb {
+		min: a.min.min(b.min),
+		max: a.max.max(b.max),
+	}
+}
+
+#[inline]
 pub(crate) fn extend_bounding_box(bounding_box: Option<Aabb>, point: DVec2) -> Aabb {
 	match bounding_box {
 		Some(bb) => Aabb {
-			top: bb.top.min(point.y),
-			right: bb.right.max(point.x),
-			bottom: bb.bottom.max(point.y),
-			left: bb.left.min(point.x),
+			min: bb.min.min(point),
+			max: bb.max.max(point),
 		},
-		None => Aabb {
-			top: point.y,
-			right: point.x,
-			bottom: point.y,
-			left: point.x,
-		},
+		None => Aabb { min: point, max: point },
 	}
 }
 
 pub(crate) fn bounding_box_max_extent(bounding_box: &Aabb) -> f64 {
-	(bounding_box.right - bounding_box.left).max(bounding_box.bottom - bounding_box.top)
+	(bounding_box.max - bounding_box.min).max_element()
 }
 
 pub(crate) fn bounding_box_around_point(point: DVec2, padding: f64) -> Aabb {
 	Aabb {
-		top: point.y - padding,
-		right: point.x + padding,
-		bottom: point.y + padding,
-		left: point.x - padding,
+		min: point - DVec2::splat(padding),
+		max: point + DVec2::splat(padding),
 	}
 }
 
 pub(crate) fn expand_bounding_box(bounding_box: &Aabb, padding: f64) -> Aabb {
 	Aabb {
-		top: bounding_box.top - padding,
-		right: bounding_box.right + padding,
-		bottom: bounding_box.bottom + padding,
-		left: bounding_box.left - padding,
+		min: bounding_box.min - DVec2::splat(padding),
+		max: bounding_box.max + DVec2::splat(padding),
 	}
 }

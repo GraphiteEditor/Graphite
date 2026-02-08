@@ -3,8 +3,8 @@ title = "Distributed computing in the Graphene runtime"
 date = 2022-05-12
 
 [extra]
-banner = "https://static.graphite.rs/content/blog/2022-05-12-distributed-computing-in-the-graphene-runtime__2.avif"
-banner_png = "https://static.graphite.rs/content/blog/2022-05-12-distributed-computing-in-the-graphene-runtime__2.png"
+banner = "https://static.graphite.art/content/blog/2022-05-12-distributed-computing-in-the-graphene-runtime__2.avif"
+banner_png = "https://static.graphite.art/content/blog/2022-05-12-distributed-computing-in-the-graphene-runtime__2.png"
 author = "Keavon Chambers"
 summary = "Graphite's 2D editor is built upon Graphene, a node-based editing system for nondestructive design across various data types designed to render artwork faster using multiple machines. The system optimizes execution paths, minimizes latency, and uses a distributed runtime for quick data processing."
 reddit = "https://www.reddit.com/r/graphite/comments/unw45k/blog_post_distributed_computing_in_the_graphene/"
@@ -45,7 +45,7 @@ For security and portability, user-authored nodes are compiled into WebAssembly 
 
 In the product architecture, Graphene is a distributed runtime environment for quickly processing data in the node graph by utilizing a pool of CPU and GPU compute resources available on local and networked machines. Jobs are run where latency, speed, and bandwidth availability will be most likely to provide a responsive user experience.
 
-<img src="https://static.graphite.rs/content/blog/2022-05-12-distributed-computing-in-the-graphene-runtime/local-and-cloud.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphene in a local and cloud environment" />
+<img src="https://static.graphite.art/content/blog/2022-05-12-distributed-computing-in-the-graphene-runtime/local-and-cloud.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Graphene in a local and cloud environment" />
 
 ### Scheduler
 
@@ -81,4 +81,4 @@ Graphene should recognize when a certain intermediate result already lives in RA
 
 Presently, we are experimenting with CPU and GPU node composition for the beginnings of the Graphene visual programming language. Most of what was described in this post will likely evolve as we get further into the implementation stage and when we learn more from experts in the fields of computer science that Graphene overlaps with.
 
-If you have a background or interest in programming language design, functional programming, ECS and data-oriented design, scheduling, distributed computing, general-purpose GPU compute (GPGPU), or high-performance computing (HPC), we'd love to have your ideas steer our work. Or better yet, join the team to make this dream a reality. We discuss most of our architecture and designs on our [Discord server](https://discord.graphite.rs) through text and sometimes voice. Please come say hi!
+If you have a background or interest in programming language design, functional programming, ECS and data-oriented design, scheduling, distributed computing, general-purpose GPU compute (GPGPU), or high-performance computing (HPC), we'd love to have your ideas steer our work. Or better yet, join the team to make this dream a reality. We discuss most of our architecture and designs on our [Discord server](https://discord.graphite.art) through text and sometimes voice. Please come say hi!

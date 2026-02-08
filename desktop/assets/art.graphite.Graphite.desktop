@@ -1,0 +1,11 @@
+[Desktop Entry]
+Name=Graphite
+GenericName=Vector & Raster Graphics Editor
+Comment=Open-source vector & raster graphics editor. Featuring node based procedural nondestructive editing workflow.
+Exec=graphite
+Terminal=false
+Type=Application
+Icon=art.graphite.Graphite
+Categories=Graphics;VectorGraphics;RasterGraphics;
+Keywords=graphite;editor;vector;raster;procedural;design;
+StartupWMClass=art.graphite.Graphite

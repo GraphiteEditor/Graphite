@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
-	import { platformIsMac } from "@graphite/utility-functions/platform";
+	import type { ActionShortcut } from "@graphite/messages";
+	import { operatingSystem } from "@graphite/utility-functions/platform";
 
 	import { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -23,18 +24,19 @@
 	export let label: string | undefined = undefined;
 	export let spellcheck = false;
 	export let disabled = false;
+	export let narrow = false;
 	export let textarea = false;
-	export let tooltip: string | undefined = undefined;
+	export let tooltipLabel: string | undefined = undefined;
+	export let tooltipDescription: string | undefined = undefined;
+	export let tooltipShortcut: ActionShortcut | undefined = undefined;
 	export let placeholder: string | undefined = undefined;
 	export let hideContextMenu = false;
 
 	let inputOrTextarea: HTMLInputElement | HTMLTextAreaElement | undefined;
 	let id = String(Math.random()).substring(2);
-	let macKeyboardLayout = platformIsMac();
+	let macKeyboardLayout = operatingSystem() === "Mac";
 
-	$: inputValue = value;
-
-	$: dispatch("value", inputValue);
+	$: dispatch("value", value);
 
 	// Select (highlight) all the text. For technical reasons, it is necessary to pass the current text.
 	export function selectAllText(currentText: string) {
@@ -75,7 +77,7 @@
 </script>
 
 <!-- This is a base component, extended by others like NumberInput and TextInput. It should not be used directly. -->
-<LayoutRow class={`field-input ${className}`} classes={{ disabled, ...classes }} style={styleName} {styles} {tooltip}>
+<LayoutRow class={`field-input ${className}`} classes={{ disabled, narrow, ...classes }} style={styleName} {styles} {tooltipLabel} {tooltipDescription} {tooltipShortcut}>
 	{#if !textarea}
 		<input
 			type="text"
@@ -85,7 +87,7 @@
 			{disabled}
 			{placeholder}
 			bind:this={inputOrTextarea}
-			bind:value={inputValue}
+			bind:value
 			on:focus={() => dispatch("textFocused")}
 			on:blur={() => dispatch("textChanged")}
 			on:change={() => dispatch("textChanged")}
@@ -104,7 +106,7 @@
 			{spellcheck}
 			{disabled}
 			bind:this={inputOrTextarea}
-			bind:value={inputValue}
+			bind:value
 			on:focus={() => dispatch("textFocused")}
 			on:blur={() => dispatch("textChanged")}
 			on:change={() => dispatch("textChanged")}
@@ -112,7 +114,7 @@
 			on:keydown={(e) => e.key === "Escape" && cancel()}
 			on:pointerdown
 			on:contextmenu={(e) => hideContextMenu && e.preventDefault()}
-		/>
+		></textarea>
 	{/if}
 	{#if label}
 		<label for={`field-input-${id}`} on:pointerdown>{label}</label>
@@ -129,9 +131,13 @@
 		background: var(--color-1-nearblack);
 		flex-direction: row-reverse;
 
+		&.narrow.narrow {
+			--widget-height: 20px;
+		}
+
 		label {
 			flex: 0 0 auto;
-			line-height: 18px;
+			line-height: calc(var(--widget-height) - 6px);
 			padding: 3px 0;
 			padding-right: 4px;
 			margin-left: 8px;
@@ -149,8 +155,8 @@
 			flex: 1 1 100%;
 			width: 0;
 			min-width: 30px;
-			height: 18px;
-			line-height: 18px;
+			height: calc(var(--widget-height) - 6px);
+			line-height: calc(var(--widget-height) - 6px);
 			margin: 0 8px;
 			padding: 3px 0;
 			outline: none; // Ok for input/textarea element
@@ -191,7 +197,7 @@
 		}
 
 		textarea {
-			min-height: calc(18px * 3);
+			min-height: calc((var(--widget-height) - 6px) * 3);
 			margin: 3px;
 			padding: 0 5px;
 			box-sizing: border-box;

@@ -46,11 +46,11 @@ This sliding scale of latency/performance concerns maps directly to programming 
 
 We designed Graphene to operate in all three regimes:
 
-| Regime      | Usage                                                                 |
-|:------------|:----------------------------------------------------------------------|
+| Regime | Usage |
+|-|-|
 | Interpreted | While editing. Simple and currently the only mode that's implemented. |
-| JIT         | While editing. Dynamically bridges the gap between both other regimes by selectively substituting branches of the graph with interpreted and compiled nodes to keep latency low and work towards higher execution performance. |
-| Compiled    | When exported. The entire graph is compiled as a standalone program.  |
+| JIT | While editing. Dynamically bridges the gap between both other regimes by selectively substituting branches of the graph with interpreted and compiled nodes to keep latency low and work towards higher execution performance. |
+| Compiled | When exported. The entire graph is compiled as a standalone program. |
 
 ### Building upon the Rust compiler
 
@@ -62,7 +62,7 @@ The fully compiled regime is used only when the user exports the procedural artw
 
 ### Compile server
 
-The three regimes have thus far been only a description of the eventual architecture direction. The interpreted regime is currently the only mode implemented in Graphene. The other two will require access to `rustc` which will necessitate the compile server that we will finish building and then publicly host for Graphite users in the future. Users of the desktop version of Graphite, utilizing [Tauri](https://tauri.app/), will be able to use an embedded `rustc` if the user has opted to download the Rust toolchain while installing Graphite.
+The three regimes have thus far been only a description of the eventual architecture direction. The interpreted regime is currently the only mode implemented in Graphene. The other two will require access to `rustc` which will necessitate the compile server that we will finish building and then publicly host for Graphite users in the future. Users of the desktop version of Graphite will be able to use an embedded `rustc` if the user has opted to download the Rust toolchain while installing Graphite.
 
 Without a compile server, all the nodes are precompiled when Graphite is built. The node registry (in the file `node_registry.rs`) currently exists to allow the interpreted executor to find the Rust functions that correspond to each node with its appropriate type signature. Nodes support generics, so it's currently necessary to list every forseeable concrete type signature in the registry until the compile server can generate bytecode for less common type combinations on-the-fly.
 
@@ -89,7 +89,6 @@ Since Graphene is fundamentally a programming language, throughout this document
 
 <!-- Our philosophy of building (bootstrapping) our own higher-level language features from the language itself -->
 <!-- Call arguments, construction arguments, `.eval()`, recompiling when construction argument values are updated but not when call argument data changes -->
-<!-- Compose nodes and automatic/manual composition -->
 <!-- Extract/inject nodes and metaprogramming -->
 <!-- Cache nodes and stable node IDs -->
 <!-- Graph rewriting step (currently used only to remove Identity nodes),

@@ -1,4 +1,6 @@
-use super::simple_dialogs::{self, AboutGraphiteDialog, ComingSoonDialog, DemoArtworkDialog, LicensesDialog};
+use super::simple_dialogs::{self, AboutGraphiteDialog, DemoArtworkDialog, LicensesDialog};
+use crate::application::GRAPHITE_GIT_COMMIT_DATE;
+use crate::messages::dialog::simple_dialogs::LicensesThirdPartyDialog;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 
@@ -47,7 +49,7 @@ impl MessageHandler<DialogMessage, DialogMessageContext<'_>> for DialogMessageHa
 			}
 			DialogMessage::RequestAboutGraphiteDialog => {
 				responses.add(FrontendMessage::TriggerAboutGraphiteLocalizedCommitDate {
-					commit_date: env!("GRAPHITE_GIT_COMMIT_DATE").into(),
+					commit_date: GRAPHITE_GIT_COMMIT_DATE.into(),
 				});
 			}
 			DialogMessage::RequestAboutGraphiteDialogWithLocalizedCommitDate {
@@ -59,10 +61,6 @@ impl MessageHandler<DialogMessage, DialogMessageContext<'_>> for DialogMessageHa
 					localized_commit_year,
 				};
 
-				dialog.send_dialog_to_frontend(responses);
-			}
-			DialogMessage::RequestComingSoonDialog { issue } => {
-				let dialog = ComingSoonDialog { issue };
 				dialog.send_dialog_to_frontend(responses);
 			}
 			DialogMessage::RequestDemoArtworkDialog => {
@@ -94,6 +92,10 @@ impl MessageHandler<DialogMessage, DialogMessageContext<'_>> for DialogMessageHa
 			DialogMessage::RequestLicensesDialogWithLocalizedCommitDate { localized_commit_year } => {
 				let dialog = LicensesDialog { localized_commit_year };
 
+				dialog.send_dialog_to_frontend(responses);
+			}
+			DialogMessage::RequestLicensesThirdPartyDialogWithLicenseText { license_text } => {
+				let dialog = LicensesThirdPartyDialog { license_text };
 				dialog.send_dialog_to_frontend(responses);
 			}
 			DialogMessage::RequestNewDocumentDialog => {

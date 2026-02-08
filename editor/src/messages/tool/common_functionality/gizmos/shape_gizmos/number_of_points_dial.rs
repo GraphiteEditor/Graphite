@@ -108,10 +108,10 @@ impl NumberOfPointsDial {
 					let viewport = document.metadata().transform_to_viewport(layer);
 					let center = viewport.transform_point2(DVec2::ZERO);
 
-					if let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, mouse_position, POINT_RADIUS_HANDLE_SEGMENT_THRESHOLD) {
-						if closest_segment.layer() == layer {
-							return;
-						}
+					if let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, mouse_position, POINT_RADIUS_HANDLE_SEGMENT_THRESHOLD)
+						&& closest_segment.layer() == layer
+					{
+						return;
 					}
 					let point_on_max_radius = star_vertex_position(viewport, 0, sides, radius1, radius2);
 
@@ -126,10 +126,10 @@ impl NumberOfPointsDial {
 					let viewport = document.metadata().transform_to_viewport(layer);
 					let center = viewport.transform_point2(DVec2::ZERO);
 
-					if let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, mouse_position, POINT_RADIUS_HANDLE_SEGMENT_THRESHOLD) {
-						if closest_segment.layer() == layer {
-							return;
-						}
+					if let Some(closest_segment) = shape_editor.upper_closest_segment(&document.network_interface, mouse_position, POINT_RADIUS_HANDLE_SEGMENT_THRESHOLD)
+						&& closest_segment.layer() == layer
+					{
+						return;
 					}
 					let point_on_max_radius = polygon_vertex_position(viewport, 0, sides, radius);
 
@@ -189,8 +189,8 @@ impl NumberOfPointsDial {
 	}
 
 	pub fn update_number_of_sides(&self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>, drag_start: DVec2) {
-		let delta = input.mouse.position - document.metadata().document_to_viewport.transform_point2(drag_start);
-		let sign = (input.mouse.position.x - document.metadata().document_to_viewport.transform_point2(drag_start).x).signum();
+		let delta = input.mouse.position - drag_start;
+		let sign = (input.mouse.position.x - drag_start.x).signum();
 		let net_delta = (delta.length() / 25.).round() * sign;
 
 		let Some(layer) = self.layer else { return };

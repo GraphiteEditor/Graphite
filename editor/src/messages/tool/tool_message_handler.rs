@@ -7,11 +7,11 @@ use crate::messages::portfolio::document::overlays::utility_types::OverlayProvid
 use crate::messages::portfolio::utility_types::PersistentData;
 use crate::messages::prelude::*;
 use crate::messages::tool::transform_layer::transform_layer_message_handler::TransformLayerMessageContext;
-use crate::messages::tool::utility_types::ToolType;
+use crate::messages::tool::utility_types::{HintData, ToolType};
 use crate::node_graph_executor::NodeGraphExecutor;
 use graphene_std::raster::color::Color;
 
-const ARTBOARD_OVERLAY_PROVIDER: OverlayProvider = |overlay_context| DocumentMessage::DrawArtboardOverlays(overlay_context).into();
+const ARTBOARD_OVERLAY_PROVIDER: OverlayProvider = |context| DocumentMessage::DrawArtboardOverlays { context }.into();
 
 #[derive(ExtractField)]
 pub struct ToolMessageContext<'a> {
@@ -21,6 +21,7 @@ pub struct ToolMessageContext<'a> {
 	pub persistent_data: &'a PersistentData,
 	pub node_graph: &'a NodeGraphExecutor,
 	pub preferences: &'a PreferencesMessageHandler,
+	pub viewport: &'a ViewportMessageHandler,
 }
 
 #[derive(Debug, Default, ExtractField)]
@@ -41,8 +42,8 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 			persistent_data,
 			node_graph,
 			preferences,
+			viewport,
 		} = context;
-		let font_cache = &persistent_data.font_cache;
 
 		match message {
 			// Messages
@@ -54,6 +55,7 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 					input,
 					tool_data: &self.tool_state.tool_data,
 					shape_editor: &mut self.shape_editor,
+					viewport,
 				},
 			),
 
@@ -75,8 +77,8 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 					self.tool_state.tool_data.active_tool_type = ToolType::Shape;
 				}
 				responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Shape });
-				responses.add(ShapeToolMessage::SetShape(ShapeType::Polygon));
-				responses.add(ShapeToolMessage::HideShapeTypeWidget(false))
+				responses.add(ShapeToolMessage::SetShape { shape: ShapeType::Polygon });
+				responses.add(ShapeToolMessage::HideShapeTypeWidget { hide: false })
 			}
 			ToolMessage::ActivateToolBrush => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Brush }),
 			ToolMessage::ActivateToolShapeLine | ToolMessage::ActivateToolShapeRectangle | ToolMessage::ActivateToolShapeEllipse => {
@@ -89,8 +91,8 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 
 				self.tool_state.tool_data.active_shape_type = Some(shape.tool_type());
 				responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Shape });
-				responses.add(ShapeToolMessage::HideShapeTypeWidget(true));
-				responses.add(ShapeToolMessage::SetShape(shape));
+				responses.add(ShapeToolMessage::HideShapeTypeWidget { hide: true });
+				responses.add(ShapeToolMessage::SetShape { shape });
 			}
 			ToolMessage::ActivateTool { tool_type } => {
 				let tool_data = &mut self.tool_state.tool_data;
@@ -98,7 +100,7 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 				let tool_type = tool_type.get_tool();
 
 				responses.add(ToolMessage::RefreshToolOptions);
-				tool_data.send_layout(responses, LayoutTarget::ToolShelf);
+				responses.add(ToolMessage::RefreshToolShelf);
 
 				// Do nothing if switching to the same tool
 				if self.tool_is_active && tool_type == old_tool {
@@ -119,10 +121,11 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 							document_id,
 							global_tool_data: &self.tool_state.document_tool_data,
 							input,
-							font_cache,
 							shape_editor: &mut self.shape_editor,
 							node_graph,
 							preferences,
+							viewport,
+							persistent_data,
 						};
 
 						if let Some(tool_abort_message) = tool.event_to_message_map().tool_abort {
@@ -139,7 +142,10 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 						}
 					}
 
-					if matches!(old_tool, ToolType::Path | ToolType::Select) {
+					// If a G/R/S transform is active while using Path, Select, Pen, or Shape,
+					// and the user switches to a different tool, cancel the current transform
+					// operation to avoid leaving it in an inconsistent state
+					if matches!(old_tool, ToolType::Path | ToolType::Select | ToolType::Pen | ToolType::Shape) {
 						responses.add(TransformLayerMessage::CancelTransformOperation);
 					}
 				};
@@ -156,30 +162,34 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 				// Subscribe new tool
 				tool_data.tools.get(&tool_type).unwrap().activate(responses);
 
+				// Re-add the artboard overlay provider when tools are reactivated
+				responses.add(OverlaysMessage::AddProvider { provider: ARTBOARD_OVERLAY_PROVIDER });
+
 				// Send the SelectionChanged message to the active tool, this will ensure the selection is updated
-				responses.add(BroadcastEvent::SelectionChanged);
+				responses.add(EventMessage::SelectionChanged);
 
 				// Update the working colors for the active tool
-				responses.add(BroadcastEvent::WorkingColorChanged);
+				responses.add(EventMessage::WorkingColorChanged);
 
 				// Send tool options to the frontend
 				responses.add(ToolMessage::RefreshToolOptions);
 
 				// Notify the frontend about the new active tool to be displayed
-				tool_data.send_layout(responses, LayoutTarget::ToolShelf);
+				responses.add(ToolMessage::RefreshToolShelf);
 			}
 			ToolMessage::DeactivateTools => {
 				let tool_data = &mut self.tool_state.tool_data;
 				tool_data.tools.get(&tool_data.active_tool_type).unwrap().deactivate(responses);
 
 				// Unsubscribe the transform layer to selection change events
-				let message = Box::new(TransformLayerMessage::SelectionChanged.into());
-				let on = BroadcastEvent::SelectionChanged;
-				responses.add(BroadcastMessage::UnsubscribeEvent { message, on });
+				responses.add(BroadcastMessage::UnsubscribeEvent {
+					on: EventMessage::SelectionChanged,
+					send: Box::new(TransformLayerMessage::SelectionChanged.into()),
+				});
 
-				responses.add(OverlaysMessage::RemoveProvider(ARTBOARD_OVERLAY_PROVIDER));
+				responses.add(OverlaysMessage::RemoveProvider { provider: ARTBOARD_OVERLAY_PROVIDER });
 
-				responses.add(FrontendMessage::UpdateInputHints { hint_data: Default::default() });
+				HintData::clear_layout(responses);
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: Default::default() });
 
 				self.tool_is_active = false;
@@ -187,12 +197,12 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 			ToolMessage::InitTools => {
 				// Subscribe the transform layer to selection change events
 				responses.add(BroadcastMessage::SubscribeEvent {
-					on: BroadcastEvent::SelectionChanged,
+					on: EventMessage::SelectionChanged,
 					send: Box::new(TransformLayerMessage::SelectionChanged.into()),
 				});
 
 				responses.add(BroadcastMessage::SubscribeEvent {
-					on: BroadcastEvent::SelectionChanged,
+					on: EventMessage::SelectionChanged,
 					send: Box::new(SelectToolMessage::SyncHistory.into()),
 				});
 
@@ -206,10 +216,10 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 				tool_data.tools.get(active_tool).unwrap().activate(responses);
 
 				// Register initial properties
-				tool_data.tools.get(active_tool).unwrap().send_layout(responses, LayoutTarget::ToolOptions);
+				tool_data.tools.get(active_tool).unwrap().refresh_options(responses, persistent_data);
 
 				// Notify the frontend about the initial active tool
-				tool_data.send_layout(responses, LayoutTarget::ToolShelf);
+				tool_data.send_layout(responses, LayoutTarget::ToolShelf, preferences.brush_tool);
 
 				// Notify the frontend about the initial working colors
 				document_data.update_working_colors(responses);
@@ -219,22 +229,23 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 					document_id,
 					global_tool_data: &self.tool_state.document_tool_data,
 					input,
-					font_cache,
 					shape_editor: &mut self.shape_editor,
 					node_graph,
 					preferences,
+					viewport,
+					persistent_data,
 				};
 
 				// Set initial hints and cursor
 				tool_data.active_tool_mut().process_message(ToolMessage::UpdateHints, responses, &mut data);
 				tool_data.active_tool_mut().process_message(ToolMessage::UpdateCursor, responses, &mut data);
 
-				responses.add(OverlaysMessage::AddProvider(ARTBOARD_OVERLAY_PROVIDER));
+				responses.add(OverlaysMessage::AddProvider { provider: ARTBOARD_OVERLAY_PROVIDER });
 			}
 			ToolMessage::PreUndo => {
 				let tool_data = &mut self.tool_state.tool_data;
 				if tool_data.active_tool_type != ToolType::Pen {
-					responses.add(BroadcastEvent::ToolAbort);
+					responses.add(EventMessage::ToolAbort);
 				}
 			}
 			ToolMessage::Redo => {
@@ -245,7 +256,12 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 			}
 			ToolMessage::RefreshToolOptions => {
 				let tool_data = &mut self.tool_state.tool_data;
-				tool_data.tools.get(&tool_data.active_tool_type).unwrap().send_layout(responses, LayoutTarget::ToolOptions);
+
+				tool_data.tools.get(&tool_data.active_tool_type).unwrap().refresh_options(responses, persistent_data);
+			}
+			ToolMessage::RefreshToolShelf => {
+				let tool_data = &mut self.tool_state.tool_data;
+				tool_data.send_layout(responses, LayoutTarget::ToolShelf, preferences.brush_tool);
 			}
 			ToolMessage::ResetColors => {
 				let document_data = &mut self.tool_state.document_tool_data;
@@ -325,10 +341,11 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 							document_id,
 							global_tool_data: &self.tool_state.document_tool_data,
 							input,
-							font_cache,
 							shape_editor: &mut self.shape_editor,
 							node_graph,
 							preferences,
+							viewport,
+							persistent_data,
 						};
 						if matches!(tool_message, ToolMessage::UpdateHints) {
 							if graph_view_overlay_open {
@@ -367,8 +384,6 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 			ActivateToolShape,
 			ActivateToolText,
 
-			ActivateToolBrush,
-
 			ToggleSelectVsPath,
 
 			SelectRandomWorkingColor,
@@ -379,6 +394,20 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 		);
 		list.extend(self.tool_state.tool_data.active_tool().actions());
 		list.extend(self.transform_layer_handler.actions());
+
+		list
+	}
+}
+
+impl ToolMessageHandler {
+	pub fn actions_with_preferences(&self, preferences: &PreferencesMessageHandler) -> ActionList {
+		let mut list = self.actions();
+
+		if preferences.brush_tool {
+			list.extend(actions!(ToolMessageDiscriminant;
+				ActivateToolBrush,
+			));
+		}
 
 		list
 	}

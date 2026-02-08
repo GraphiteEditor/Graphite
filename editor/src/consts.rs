@@ -56,6 +56,8 @@ pub const DEFAULT_STROKE_WIDTH: f64 = 2.;
 pub const SELECTION_TOLERANCE: f64 = 5.;
 pub const DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD: f64 = 15.;
 pub const SELECTION_DRAG_ANGLE: f64 = 90.;
+pub const LAYER_ORIGIN_CROSS_DIAMETER: f64 = 10.;
+pub const LAYER_ORIGIN_CROSS_THICKNESS: f64 = 1.;
 
 // PIVOT
 pub const PIVOT_CROSSHAIR_THICKNESS: f64 = 1.;
@@ -106,6 +108,7 @@ pub const HIDE_HANDLE_DISTANCE: f64 = 3.;
 pub const HANDLE_ROTATE_SNAP_ANGLE: f64 = 15.;
 pub const SEGMENT_INSERTION_DISTANCE: f64 = 5.;
 pub const SEGMENT_OVERLAY_SIZE: f64 = 10.;
+pub const SEGMENT_SELECTED_THICKNESS: f64 = 3.;
 pub const HANDLE_LENGTH_FACTOR: f64 = 0.5;
 
 // PEN TOOL
@@ -121,12 +124,19 @@ pub const LINE_ROTATE_SNAP_ANGLE: f64 = 15.;
 pub const BRUSH_SIZE_CHANGE_KEYBOARD: f64 = 5.;
 pub const DEFAULT_BRUSH_SIZE: f64 = 20.;
 
+// EYEDROPPER TOOL
+pub const EYEDROPPER_PREVIEW_AREA_RESOLUTION: u32 = 11;
+
 // GIZMOS
 pub const POINT_RADIUS_HANDLE_SNAP_THRESHOLD: f64 = 8.;
 pub const POINT_RADIUS_HANDLE_SEGMENT_THRESHOLD: f64 = 7.9;
 pub const NUMBER_OF_POINTS_DIAL_SPOKE_EXTENSION: f64 = 1.2;
 pub const NUMBER_OF_POINTS_DIAL_SPOKE_LENGTH: f64 = 10.;
+pub const ARC_SNAP_THRESHOLD: f64 = 5.;
+pub const ARC_SWEEP_GIZMO_RADIUS: f64 = 14.;
+pub const ARC_SWEEP_GIZMO_TEXT_HEIGHT: f64 = 12.;
 pub const GIZMO_HIDE_THRESHOLD: f64 = 20.;
+pub const GRID_ROW_COLUMN_GIZMO_OFFSET: f64 = 15.;
 
 // SCROLLBARS
 pub const SCROLLBAR_SPACING: f64 = 0.1;
@@ -146,10 +156,15 @@ pub const COLOR_OVERLAY_WHITE: &str = "#ffffff";
 pub const COLOR_OVERLAY_BLACK_75: &str = "#000000bf";
 
 // DOCUMENT
+pub const FILE_EXTENSION: &str = "graphite";
 pub const DEFAULT_DOCUMENT_NAME: &str = "Untitled Document";
-pub const FILE_SAVE_SUFFIX: &str = ".graphite";
 pub const MAX_UNDO_HISTORY_LEN: usize = 100; // TODO: Add this to user preferences
-pub const AUTO_SAVE_TIMEOUT_SECONDS: u64 = 15;
+pub const AUTO_SAVE_TIMEOUT_SECONDS: u64 = 1;
 
 // INPUT
 pub const DOUBLE_CLICK_MILLISECONDS: u64 = 500;
+
+// UI
+pub const UI_SCALE_DEFAULT: f64 = 1.;
+pub const UI_SCALE_MIN: f64 = 0.5;
+pub const UI_SCALE_MAX: f64 = 3.;

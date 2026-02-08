@@ -1,21 +1,27 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
+	import type { ActionShortcut } from "@graphite/messages";
+
 	import FieldInput from "@graphite/components/widgets/inputs/FieldInput.svelte";
 
 	const dispatch = createEventDispatcher<{ commitText: string }>();
 
-	// Label
-	export let label: string | undefined = undefined;
-	export let tooltip: string | undefined = undefined;
-	export let placeholder: string | undefined = undefined;
-	// Disabled
-	export let disabled = false;
-	// Value
+	// Content
 	export let value: string;
+	export let label: string | undefined = undefined;
+	export let placeholder: string | undefined = undefined;
+	export let disabled = false;
 	// Styling
+	export let narrow = false;
 	export let centered = false;
+	// Sizing
 	export let minWidth = 0;
+	export let maxWidth = 0;
+	// Tooltips
+	export let tooltipLabel: string | undefined = undefined;
+	export let tooltipDescription: string | undefined = undefined;
+	export let tooltipShortcut: ActionShortcut | undefined = undefined;
 
 	let className = "";
 	export { className as class };
@@ -63,7 +69,10 @@
 <FieldInput
 	class={`text-input ${className}`.trim()}
 	classes={{ centered, ...classes }}
-	styles={{ ...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}) }}
+	styles={{
+		...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}),
+		...(maxWidth > 0 ? { "max-width": `${maxWidth}px` } : {}),
+	}}
 	{value}
 	on:value
 	on:textFocused={onTextFocused}
@@ -72,7 +81,10 @@
 	spellcheck={true}
 	{label}
 	{disabled}
-	{tooltip}
+	{narrow}
+	{tooltipLabel}
+	{tooltipDescription}
+	{tooltipShortcut}
 	{placeholder}
 	bind:this={self}
 />

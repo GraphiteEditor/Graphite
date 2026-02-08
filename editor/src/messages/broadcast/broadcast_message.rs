@@ -5,15 +5,15 @@ use crate::messages::prelude::*;
 pub enum BroadcastMessage {
 	// Sub-messages
 	#[child]
-	TriggerEvent(BroadcastEvent),
+	TriggerEvent(EventMessage),
 
 	// Messages
 	SubscribeEvent {
-		on: BroadcastEvent,
+		on: EventMessage,
 		send: Box<Message>,
 	},
 	UnsubscribeEvent {
-		on: BroadcastEvent,
-		message: Box<Message>,
+		on: EventMessage,
+		send: Box<Message>,
 	},
 }

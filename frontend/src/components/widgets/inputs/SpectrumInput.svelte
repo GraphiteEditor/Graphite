@@ -13,15 +13,20 @@
 	const dispatch = createEventDispatcher<{ activeMarkerIndexChange: number | undefined; gradient: Gradient; dragging: boolean }>();
 
 	export let gradient: Gradient;
+	export let disabled = false;
 	export let activeMarkerIndex = 0 as number | undefined;
 	// export let disabled = false;
-	// export let tooltip: string | undefined = undefined;
+	// export let tooltipLabel: string | undefined = undefined;
+	// export let tooltipDescription: string | undefined = undefined;
+	// export let tooltipShortcut: ActionShortcut | undefined = undefined;
 
 	let markerTrack: LayoutRow | undefined = undefined;
 	let positionRestore: number | undefined = undefined;
 	let deletionRestore: boolean | undefined = undefined;
 
 	function markerPointerDown(e: PointerEvent, index: number) {
+		if (disabled) return;
+
 		// Left-click to select and begin potentially dragging
 		if (e.button === BUTTON_LEFT) {
 			activeMarkerIndex = index;
@@ -47,6 +52,8 @@
 	}
 
 	function insertStop(e: MouseEvent) {
+		if (disabled) return;
+
 		if (e.button !== BUTTON_LEFT) return;
 
 		let position = markerPosition(e);
@@ -79,6 +86,8 @@
 	}
 
 	function deleteStop(e: KeyboardEvent) {
+		if (disabled) return;
+
 		if (e.key !== "Delete" && e.key !== "Backspace") return;
 		if (activeMarkerIndex === undefined) return;
 
@@ -88,6 +97,8 @@
 	}
 
 	function deleteStopByIndex(index: number) {
+		if (disabled) return;
+
 		if (gradient.stops.length <= 2) return;
 
 		gradient.stops.splice(index, 1);
@@ -103,6 +114,8 @@
 	}
 
 	function moveMarker(e: PointerEvent, index: number) {
+		if (disabled) return;
+
 		// Just in case the mouseup event is lost
 		if (e.buttons === 0) stopDrag();
 
@@ -120,6 +133,8 @@
 	}
 
 	export function setPosition(index: number, position: number) {
+		if (disabled) return;
+
 		const active = gradient.stops[index];
 		active.position = position;
 		gradient.stops.sort((a, b) => a.position - b.position);
@@ -131,6 +146,8 @@
 	}
 
 	function abortDrag() {
+		if (disabled) return;
+
 		if (activeMarkerIndex === undefined) return;
 
 		if (deletionRestore) {
@@ -143,6 +160,8 @@
 	}
 
 	function stopDrag() {
+		if (disabled) return;
+
 		removeEvents();
 
 		positionRestore = undefined;
@@ -152,19 +171,27 @@
 	}
 
 	function onPointerMove(e: PointerEvent) {
+		if (disabled) return;
+
 		if (activeMarkerIndex !== undefined) moveMarker(e, activeMarkerIndex);
 	}
 
 	function onPointerUp() {
+		if (disabled) return;
+
 		stopDrag();
 	}
 
 	function onMouseDown(e: MouseEvent) {
+		if (disabled) return;
+
 		const BUTTONS_RIGHT = 0b0000_0010;
 		if (e.buttons & BUTTONS_RIGHT) abortDrag();
 	}
 
 	function onKeyDown(e: KeyboardEvent) {
+		if (disabled) return;
+
 		if (e.key === "Escape") {
 			const element = markerTrack?.div();
 			if (element) preventEscapeClosingParentFloatingMenu(element);
@@ -193,25 +220,28 @@
 		document.removeEventListener("keydown", deleteStop);
 	});
 
+	// Future design notes:
+	//
 	// # Backend -> Frontend
 	// Populate(gradient, { position, color }[], active) // The only way indexes get changed. Frontend drops marker if it's being dragged.
 	// UpdateGradient(gradient)
 	// UpdateMarkers({ index, position, color }[])
-
+	//
 	// # Frontend -> Backend
 	// SendNewActive(index)
 	// SendPositions({ index, position }[])
 	// AddMarker(position)
 	// RemoveMarkers(index[])
 	// ResetMarkerToDefault(index)
-
-	// // We need a way to encode constraints on some markers, like locking them in place or preventing reordering
-	// // We need a way to encode the allowability of adding new markers between certain markers, or preventing the deletion of certain markers
-	// // We need the ability to multi-select markers and move them all at once
+	//
+	// We need a way to encode constraints on some markers, like locking them in place or preventing reordering
+	// We need a way to encode the allowability of adding new markers between certain markers, or preventing the deletion of certain markers
+	// We need the ability to multi-select markers and move them all at once
 </script>
 
 <LayoutCol
 	class="spectrum-input"
+	classes={{ disabled }}
 	styles={{
 		"--gradient-start": gradient.firstColor()?.toHexOptionalAlpha() || "black",
 		"--gradient-end": gradient.lastColor()?.toHexOptionalAlpha() || "black",
@@ -232,6 +262,9 @@
 				viewBox="0 0 12 12"
 			>
 				<path class="inner-fill" d="M10,11.5H2c-0.8,0-1.5-0.7-1.5-1.5V6.8c0-0.4,0.2-0.8,0.4-1.1L6,0.7l5.1,5.1c0.3,0.3,0.4,0.7,0.4,1.1V10C11.5,10.8,10.8,11.5,10,11.5z" />
+				{#if disabled}
+					<path class="disabled-fill" d="M10,11.5H2c-0.8,0-1.5-0.7-1.5-1.5V6.8c0-0.4,0.2-0.8,0.4-1.1L6,0.7l5.1,5.1c0.3,0.3,0.4,0.7,0.4,1.1V10C11.5,10.8,10.8,11.5,10,11.5z" />
+				{/if}
 				<path
 					class="outer-border"
 					d="M6,1.4L1.3,6.1C1.1,6.3,1,6.6,1,6.8V10c0,0.6,0.4,1,1,1h8c0.6,0,1-0.4,1-1V6.8c0-0.3-0.1-0.5-0.3-0.7L6,1.4M6,0l5.4,5.4C11.8,5.8,12,6.3,12,6.8V10c0,1.1-0.9,2-2,2H2c-1.1,0-2-0.9-2-2V6.8c0-0.5,0.2-1,0.6-1.4L6,0z"
@@ -269,6 +302,14 @@
 			border-radius: 2px;
 		}
 
+		&.disabled .gradient-strip {
+			transition: opacity 0.1s;
+
+			&:hover {
+				opacity: 0.5;
+			}
+		}
+
 		.marker-track {
 			margin-top: calc(24px - 16px - 12px);
 			margin-left: var(--marker-half-width);
@@ -294,28 +335,40 @@
 				.outer-border {
 					fill: var(--color-5-dullgray);
 				}
+			}
+		}
 
-				&:not(.active) {
-					.inner-fill:hover + .outer-border,
-					.outer-border:hover {
-						fill: var(--color-6-lowergray);
-					}
+		&.disabled .marker-track .marker {
+			.disabled-fill {
+				opacity: 0.5;
+			}
+
+			.outer-border {
+				fill: var(--color-4-dimgray);
+			}
+		}
+
+		&:not(.disabled) .marker-track .marker {
+			&:not(.active) {
+				.inner-fill:hover + .outer-border,
+				.outer-border:hover {
+					fill: var(--color-6-lowergray);
+				}
+			}
+
+			&.active {
+				.inner-fill {
+					filter: drop-shadow(0 0 1px var(--color-2-mildblack)) drop-shadow(0 0 1px var(--color-2-mildblack));
 				}
 
-				&.active {
-					.inner-fill {
-						filter: drop-shadow(0 0 1px var(--color-2-mildblack)) drop-shadow(0 0 1px var(--color-2-mildblack));
-					}
+				// Outer border when active
+				.outer-border {
+					fill: var(--color-e-nearwhite);
+				}
 
-					// Outer border when active
-					.outer-border {
-						fill: var(--color-e-nearwhite);
-					}
-
-					.inner-fill:hover + .outer-border,
-					.outer-border:hover {
-						fill: var(--color-f-white);
-					}
+				.inner-fill:hover + .outer-border,
+				.outer-border:hover {
+					fill: var(--color-f-white);
 				}
 			}
 		}

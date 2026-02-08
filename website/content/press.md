@@ -18,7 +18,7 @@ Materials for journalists and creators looking to share Graphite with their audi
 
 Please get in touch if you'd like to conduct an interview or have questions answered.
 
-Send an email to [contact<wbr>@graphite<wbr>.rs](mailto:contact@graphite.rs) and you can usually expect a quick reply.
+Send an email to [contact<wbr>@graphite<wbr>.art](mailto:contact@graphite.art) and you can usually expect a quick reply.
 
 ## Logo
 

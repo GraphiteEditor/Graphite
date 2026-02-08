@@ -1,26 +1,24 @@
 <script lang="ts">
-	import { isWidgetSpanColumn, isWidgetSpanRow, isWidgetSection, type WidgetLayout, isWidgetTable } from "@graphite/messages";
+	import { isWidgetSpanColumn, isWidgetSpanRow, isWidgetSection, type Layout, isWidgetTable, type LayoutTarget } from "@graphite/messages";
 
-	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 	import WidgetSection from "@graphite/components/widgets/WidgetSection.svelte";
 	import WidgetSpan from "@graphite/components/widgets/WidgetSpan.svelte";
 	import WidgetTable from "@graphite/components/widgets/WidgetTable.svelte";
 
-	export let layout: WidgetLayout;
+	export let layout: Layout;
+	export let layoutTarget: LayoutTarget;
 	let className = "";
 	export { className as class };
 	export let classes: Record<string, boolean> = {};
 </script>
 
-{#each layout.layout as layoutGroup}
+{#each layout as layoutGroup}
 	{#if isWidgetSpanRow(layoutGroup) || isWidgetSpanColumn(layoutGroup)}
-		<WidgetSpan widgetData={layoutGroup} layoutTarget={layout.layoutTarget} class={className} {classes} />
+		<WidgetSpan widgetData={layoutGroup} {layoutTarget} class={className} {classes} />
 	{:else if isWidgetSection(layoutGroup)}
-		<WidgetSection widgetData={layoutGroup} layoutTarget={layout.layoutTarget} class={className} {classes} />
+		<WidgetSection widgetData={layoutGroup} {layoutTarget} class={className} {classes} />
 	{:else if isWidgetTable(layoutGroup)}
-		<WidgetTable widgetData={layoutGroup} layoutTarget={layout.layoutTarget} />
-	{:else}
-		<TextLabel styles={{ color: "#d6536e" }}>Error: The widget layout that belongs here has an invalid layout group type</TextLabel>
+		<WidgetTable widgetData={layoutGroup} {layoutTarget} unstyled={layoutGroup.unstyled} />
 	{/if}
 {/each}
 

@@ -1,16 +1,16 @@
 import { get } from "svelte/store";
 
 import { type Editor } from "@graphite/editor";
-import { TriggerPaste } from "@graphite/messages";
+import { TriggerClipboardRead, WindowPointerLockMove } from "@graphite/messages";
 import { type DialogState } from "@graphite/state-providers/dialog";
 import { type DocumentState } from "@graphite/state-providers/document";
 import { type FullscreenState } from "@graphite/state-providers/fullscreen";
 import { type PortfolioState } from "@graphite/state-providers/portfolio";
+import { pasteFile } from "@graphite/utility-functions/files";
 import { makeKeyboardModifiersBitfield, textInputCleanup, getLocalizedScanCode } from "@graphite/utility-functions/keyboard-entry";
-import { platformIsMac } from "@graphite/utility-functions/platform";
+import { isDesktop, operatingSystem } from "@graphite/utility-functions/platform";
 import { extractPixelData } from "@graphite/utility-functions/rasterization";
 import { stripIndents } from "@graphite/utility-functions/strip-indents";
-import { updateBoundsOfViewports } from "@graphite/utility-functions/viewports";
 
 const BUTTON_LEFT = 0;
 const BUTTON_MIDDLE = 1;
@@ -36,12 +36,13 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 	let textToolInteractiveInputElement = undefined as undefined | HTMLDivElement;
 	let canvasFocused = true;
 	let inPointerLock = false;
+	const shakeSamples: { x: number; y: number; time: number }[] = [];
+	let lastShakeTime = 0;
 
 	// Event listeners
 
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const listeners: { target: EventListenerTarget; eventName: EventName; action: (event: any) => void; options?: AddEventListenerOptions }[] = [
-		{ target: window, eventName: "resize", action: () => updateBoundsOfViewports(editor, window.document.body) },
 		{ target: window, eventName: "beforeunload", action: (e: BeforeUnloadEvent) => onBeforeUnload(e) },
 		{ target: window, eventName: "keyup", action: (e: KeyboardEvent) => onKeyUp(e) },
 		{ target: window, eventName: "keydown", action: (e: KeyboardEvent) => onKeyDown(e) },
@@ -80,35 +81,46 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		const key = await getLocalizedScanCode(e);
 
 		// TODO: Switch to a system where everything is sent to the backend, then the input preprocessor makes decisions and kicks some inputs back to the frontend
-		const accelKey = platformIsMac() ? e.metaKey : e.ctrlKey;
+		const accelKey = operatingSystem() === "Mac" ? e.metaKey : e.ctrlKey;
+
+		// Cut, copy, and paste is handled in the backend on desktop
+		if (isDesktop() && accelKey && ["KeyX", "KeyC", "KeyV"].includes(key)) return true;
+		// But on web, we want to not redirect paste
+		if (!isDesktop() && key === "KeyV" && accelKey) return false;
 
 		// Don't redirect user input from text entry into HTML elements
 		if (targetIsTextField(e.target || undefined) && key !== "Escape" && !(accelKey && ["Enter", "NumpadEnter"].includes(key))) return false;
 
-		// Don't redirect paste
-		if (key === "KeyV" && accelKey) return false;
-
-		// Don't redirect a fullscreen request
-		if (key === "F11" && e.type === "keydown" && !e.repeat) {
-			e.preventDefault();
-			fullscreen.toggleFullscreen();
-			return false;
-		}
-
-		// Don't redirect a reload request
-		if (key === "F5") return false;
-		if (key === "KeyR" && accelKey) return false;
-
-		// Don't redirect debugging tools
-		if (["F12", "F8"].includes(key)) return false;
-		if (["KeyC", "KeyI", "KeyJ"].includes(key) && accelKey && e.shiftKey) return false;
-
 		// Don't redirect tab or enter if not in canvas (to allow navigating elements)
 		potentiallyRestoreCanvasFocus(e);
-		if (!canvasFocused && !targetIsTextField(e.target || undefined) && ["Tab", "Enter", "NumpadEnter", "Space", "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowUp"].includes(key)) return false;
+		if (
+			!canvasFocused &&
+			!targetIsTextField(e.target || undefined) &&
+			["Tab", "Enter", "NumpadEnter", "Space", "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowUp"].includes(key) &&
+			!(e.ctrlKey || e.metaKey || e.altKey)
+		)
+			return false;
 
 		// Don't redirect if a MenuList is open
 		if (window.document.querySelector("[data-floating-menu-content]")) return false;
+
+		// Web-only keyboard shortcuts
+		if (!isDesktop()) {
+			// Don't redirect a fullscreen request, but process it immediately instead
+			if (((operatingSystem() !== "Mac" && key === "F11") || (operatingSystem() === "Mac" && e.ctrlKey && e.metaKey && key === "KeyF")) && e.type === "keydown" && !e.repeat) {
+				e.preventDefault();
+				fullscreen.toggleFullscreen();
+				return false;
+			}
+
+			// Don't redirect a reload request
+			if (key === "F5") return false;
+			if (key === "KeyR" && accelKey) return false;
+
+			// Don't redirect debugging tools
+			if (["F12", "F8"].includes(key)) return false;
+			if (["KeyC", "KeyI", "KeyJ"].includes(key) && accelKey && e.shiftKey) return false;
+		}
 
 		// Redirect to the backend
 		return true;
@@ -159,6 +171,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		if (!viewportPointerInteractionOngoing && (inFloatingMenu || inGraphOverlay)) return;
 
 		const modifiers = makeKeyboardModifiersBitfield(e);
+		if (detectShake(e)) editor.handle.onMouseShake(e.clientX, e.clientY, e.buttons, modifiers);
 		editor.handle.onMouseMove(e.clientX, e.clientY, e.buttons, modifiers);
 	}
 
@@ -166,7 +179,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		potentiallyRestoreCanvasFocus(e);
 
 		const { target } = e;
-		const isTargetingCanvas = target instanceof Element && target.closest("[data-viewport], [data-node-graph]");
+		const isTargetingCanvas = target instanceof Element && target.closest("[data-viewport], [data-viewport-container], [data-node-graph]");
 		const inDialog = target instanceof Element && target.closest("[data-dialog] [data-floating-menu-content]");
 		const inContextMenu = target instanceof Element && target.closest("[data-context-menu]");
 		const inTextInput = target === textToolInteractiveInputElement;
@@ -216,7 +229,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 		// Allow only events within the viewport or node graph boundaries
 		const { target } = e;
-		const isTargetingCanvas = target instanceof Element && target.closest("[data-viewport], [data-node-graph]");
+		const isTargetingCanvas = target instanceof Element && target.closest("[data-viewport], [data-viewport-container], [data-node-graph]");
 		if (!(isTargetingCanvas instanceof Element)) return;
 
 		// Allow only repeated increments of double-clicks (not 1, 3, 5, etc.)
@@ -235,7 +248,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 	}
 
 	function onMouseDown(e: MouseEvent) {
-		// Block middle mouse button auto-scroll mode (the circlar gizmo that appears and allows quick scrolling by moving the cursor above or below it)
+		// Block middle mouse button auto-scroll mode (the circular gizmo that appears and allows quick scrolling by moving the cursor above or below it)
 		if (e.button === BUTTON_MIDDLE) e.preventDefault();
 	}
 
@@ -253,7 +266,12 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 	function onWheelScroll(e: WheelEvent) {
 		const { target } = e;
-		const isTargetingCanvas = target instanceof Element && target.closest("[data-viewport], [data-node-graph]");
+		const isTargetingCanvas = target instanceof Element && target.closest("[data-viewport], [data-viewport-container], [data-node-graph]");
+
+		// Prevent zooming the entire page when using Ctrl + scroll wheel outside of the viewport
+		if (e.ctrlKey && !isTargetingCanvas) {
+			e.preventDefault();
+		}
 
 		// Redirect vertical scroll wheel movement into a horizontal scroll on a horizontally scrollable element
 		// There seems to be no possible way to properly employ the browser's smooth scrolling interpolation
@@ -280,7 +298,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 	async function onBeforeUnload(e: BeforeUnloadEvent) {
 		const activeDocument = get(portfolio).documents[get(portfolio).activeDocumentIndex];
-		if (activeDocument && !activeDocument.isAutoSaved) editor.handle.triggerAutoSave(activeDocument.id);
+		if (activeDocument && !activeDocument.details.isAutoSaved) editor.handle.triggerAutoSave(activeDocument.id);
 
 		// Skip the message if the editor crashed, since work is already lost
 		if (await editor.handle.hasCrashed()) return;
@@ -288,7 +306,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		// Skip the message during development, since it's annoying when testing
 		if (await editor.handle.inDevelopmentMode()) return;
 
-		const allDocumentsSaved = get(portfolio).documents.reduce((acc, doc) => acc && doc.isSaved, true);
+		const allDocumentsSaved = get(portfolio).documents.reduce((acc, doc) => acc && doc.details.isSaved, true);
 		if (!allDocumentsSaved) {
 			e.returnValue = "Unsaved work will be lost if the web browser tab is closed. Close anyway?";
 			e.preventDefault();
@@ -301,39 +319,79 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		e.preventDefault();
 
 		Array.from(dataTransfer.items).forEach(async (item) => {
-			if (item.type === "text/plain") {
-				item.getAsString((text) => {
-					if (text.startsWith("graphite/layer: ")) {
-						editor.handle.pasteSerializedData(text.substring(16, text.length));
-					} else if (text.startsWith("graphite/nodes: ")) {
-						editor.handle.pasteSerializedNodes(text.substring(16, text.length));
-					}
-				});
-			}
-
-			const file = item.getAsFile();
-			if (!file) return;
-
-			if (file.type.includes("svg")) {
-				const text = await file.text();
-				editor.handle.pasteSvg(file.name, text);
-				return;
-			}
-
-			if (file.type.startsWith("image")) {
-				const imageData = await extractPixelData(file);
-				editor.handle.pasteImage(file.name, new Uint8Array(imageData.data), imageData.width, imageData.height);
-			}
-
-			if (file.name.endsWith(".graphite")) {
-				editor.handle.openDocumentFile(file.name, await file.text());
-			}
+			if (item.type === "text/plain") item.getAsString((text) => editor.handle.pasteText(text));
+			await pasteFile(item, editor);
 		});
+	}
+
+	function detectShake(e: PointerEvent | MouseEvent): boolean {
+		const SENSITIVITY_DIRECTION_CHANGES = 3;
+		const SENSITIVITY_DISTANCE_TO_DISPLACEMENT_RATIO = 0.1;
+		const DETECTION_WINDOW_MS = 500;
+		const DEBOUNCE_MS = 1000;
+
+		// Add the current mouse position and time to our list of samples
+		const now = Date.now();
+		shakeSamples.push({ x: e.clientX, y: e.clientY, time: now });
+
+		// Remove samples that are older than our time window
+		while (shakeSamples.length > 0 && now - shakeSamples[0].time > DETECTION_WINDOW_MS) {
+			shakeSamples.shift();
+		}
+
+		// We can't be shaking if it's too early in terms of samples or debounce time
+		if (shakeSamples.length <= 3 || now - lastShakeTime <= DEBOUNCE_MS) return false;
+
+		// Calculate the total distance traveled
+		let totalDistanceSquared = 0;
+		for (let i = 1; i < shakeSamples.length; i += 1) {
+			const p1 = shakeSamples[i - 1];
+			const p2 = shakeSamples[i];
+			totalDistanceSquared += (p2.x - p1.x) ** 2 + (p2.y - p1.y) ** 2;
+		}
+
+		// Count the number of times the mouse changes direction significantly, and the average position of the mouse
+		let directionChanges = 0;
+		const averagePoint = { x: 0, y: 0 };
+		let averagePointCount = 0;
+		for (let i = 0; i < shakeSamples.length - 2; i += 1) {
+			const p1 = shakeSamples[i];
+			const p2 = shakeSamples[i + 1];
+			const p3 = shakeSamples[i + 2];
+
+			const vector1 = { x: p2.x - p1.x, y: p2.y - p1.y };
+			const vector2 = { x: p3.x - p2.x, y: p3.y - p2.y };
+
+			// Check if the dot product is negative, which indicates the angle between vectors is > 90 degrees
+			if (vector1.x * vector2.x + vector1.y * vector2.y < 0) directionChanges += 1;
+
+			averagePoint.x += p2.x;
+			averagePoint.y += p2.y;
+			averagePointCount += 1;
+		}
+		if (averagePointCount > 0) {
+			averagePoint.x /= averagePointCount;
+			averagePoint.y /= averagePointCount;
+		}
+
+		// Calculate the displacement (the distance between the first and last mouse positions)
+		const lastPoint = shakeSamples[shakeSamples.length - 1];
+		const displacementSquared = (lastPoint.x - averagePoint.x) ** 2 + (lastPoint.y - averagePoint.y) ** 2;
+
+		// A shake is detected if the mouse has traveled a lot but not moved far, and has changed direction enough times
+		if (SENSITIVITY_DISTANCE_TO_DISPLACEMENT_RATIO * totalDistanceSquared >= displacementSquared && directionChanges >= SENSITIVITY_DIRECTION_CHANGES) {
+			lastShakeTime = now;
+			shakeSamples.length = 0;
+
+			return true;
+		}
+
+		return false;
 	}
 
 	// Frontend message subscriptions
 
-	editor.subscriptions.subscribeJsMessage(TriggerPaste, async () => {
+	editor.subscriptions.subscribeJsMessage(TriggerClipboardRead, async () => {
 		// In the try block, attempt to read from the Clipboard API, which may not have permission and may not be supported in all browsers
 		// In the catch block, explain to the user why the paste failed and how to fix or work around the problem
 		try {
@@ -357,10 +415,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 						const reader = new FileReader();
 						reader.onload = () => {
 							const text = reader.result as string;
-
-							if (text.startsWith("graphite/layer: ")) {
-								editor.handle.pasteSerializedData(text.substring(16, text.length));
-							}
+							editor.handle.pasteText(text);
 						};
 						reader.readAsText(blob);
 						return true;
@@ -411,11 +466,11 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 				The browser's clipboard permission has been denied.
 
 				Open the browser's website settings (usually accessible
-				just left of the URL) to allow this permission.
+				just left of the URL bar) to allow this permission.
 				`;
 			const nothing = stripIndents`
 				No valid clipboard data was found. You may have better
-				luck pasting with the standard keyboard shortcut instead.
+				success pasting with the standard keyboard shortcut instead.
 				`;
 
 			const matchMessage = {
@@ -430,11 +485,19 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		}
 	});
 
+	// Pointer lock movement events on desktop
+	editor.subscriptions.subscribeJsMessage(WindowPointerLockMove, (data) => {
+		const event = new CustomEvent("pointerlockmove", { detail: data });
+		window.dispatchEvent(event);
+	});
+
 	// Helper functions
 
 	function potentiallyRestoreCanvasFocus(e: Event) {
 		const { target } = e;
-		const newInCanvasArea = (target instanceof Element && target.closest("[data-viewport], [data-graph]")) instanceof Element && !targetIsTextField(window.document.activeElement || undefined);
+		const newInCanvasArea =
+			(target instanceof Element && target.closest("[data-viewport], [data-viewport-container], [data-graph]")) instanceof Element &&
+			!targetIsTextField(window.document.activeElement || undefined);
 		if (!canvasFocused && newInCanvasArea) {
 			canvasFocused = true;
 			app?.focus();
@@ -445,8 +508,6 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 	// Bind the event listeners
 	bindListeners();
-	// Resize on creation
-	updateBoundsOfViewports(editor, window.document.body);
 
 	// Return the destructor
 	return unbindListeners;

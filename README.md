@@ -1,6 +1,6 @@
 
 
-<a href="https://graphite.rs/">
+<a href="https://graphite.art/">
 <picture>
 <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/9366c148-4405-484f-909a-9a3526eb9209">
 <source media="(prefers-color-scheme: light)" srcset="https://github.com/user-attachments/assets/791508ab-bcd5-4e31-a3b9-1187cfd7a2f6">
@@ -10,14 +10,14 @@
 
 # Your procedural toolbox for 2D content creation
 
-**Graphite is a free, open source vector and raster graphics engine, [available now](https://editor.graphite.rs) in alpha. Get creative with a fully nondestructive editing workflow that combines layer-based compositing with node-based generative design.**
+**Graphite is a free, open source vector and raster graphics engine, [available now](https://editor.graphite.art) in alpha. Get creative with a fully nondestructive editing workflow that combines layer-based compositing with node-based generative design.**
 
-Having begun life as a vector editor, Graphite continues evolving into a generalized, all-in-one graphics toolbox that's built more like a game engine than a conventional creative app. The editor's tools wrap its node graph core, providing user-friendly workflows for vector, raster, and beyond. Photo editing, motion graphics, digital painting, desktop publishing, and VFX compositing are additional competencies on the planned [roadmap](https://graphite.rs/features/#roadmap) making Graphite into a highly versatile content creation tool.
+Having begun life as a vector editor, Graphite continues evolving into a generalized, all-in-one graphics toolbox that's built more like a game engine than a conventional creative app. The editor's tools wrap its node graph core, providing user-friendly workflows for vector, raster, and beyond. Photo editing, motion graphics, digital painting, desktop publishing, and VFX compositing are additional competencies on the planned [roadmap](https://graphite.art/features/#roadmap) making Graphite into a highly versatile content creation tool.
 
-Learn more from the [website](https://graphite.rs/), subscribe to the [newsletter](https://graphite.rs/#newsletter), consider [volunteering](https://graphite.rs/volunteer/) or [donating](https://graphite.rs/donate/), and remember to give this repository a ⭐!
+Learn more from the [website](https://graphite.art/), subscribe to the [newsletter](https://graphite.art/#newsletter), consider [volunteering](https://graphite.art/volunteer/) or [donating](https://graphite.art/donate/), and remember to give this repository a ⭐!
 
 <br />
-<a href="https://discord.graphite.rs/">
+<a href="https://discord.graphite.art/">
 <picture>
 <source media="(prefers-color-scheme: dark)" srcset="https://github.com/user-attachments/assets/ad185fac-3b48-446d-863c-2bcb0724abee">
 <source media="(prefers-color-scheme: light)" srcset="https://github.com/user-attachments/assets/aa23f503-f3bf-444a-9080-8eaa19fa2fa8">
@@ -62,7 +62,7 @@ https://github.com/user-attachments/assets/f4604aea-e8f1-45ce-9218-46ddc666f11d
 
 ## Support our mission ❤️
 
-Graphite is 100% community built and funded. Please become a part of keeping the project alive and thriving with a [donation](https://graphite.rs/donate/) if you share a belief in our **mission**:
+Graphite is 100% community built and funded. Please become a part of keeping the project alive and thriving with a [donation](https://graphite.art/donate/) if you share a belief in our **mission**:
 
 > Graphite strives to unshackle the creativity of every budding artist and seasoned professional by building the best comprehensive art and design tool that's accessible to all.
 > 
@@ -78,6 +78,6 @@ Graphite is 100% community built and funded. Please become a part of keeping the
 
 ## Contributing/building the code
 
-Are you a graphics programmer or Rust developer? Graphite aims to be one of the most approachable projects for putting your engineering skills to use in the world of open source. See [instructions here](https://graphite.rs/volunteer/guide/) for setting up the project and getting started.
+Are you a graphics programmer or Rust developer? Graphite aims to be one of the most approachable projects for putting your engineering skills to use in the world of open source. See [instructions here](https://graphite.art/volunteer/guide/) for setting up the project and getting started.
 
 *By submitting code for inclusion in the project, you are agreeing to license your changes under the Apache 2.0 license, and that you have the authority to do so. Some directories may have other licenses, like dual-licensed MIT/Apache 2.0, and code submissions to those directories mean you agree to the applicable license(s).*

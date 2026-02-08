@@ -3,8 +3,8 @@ title = "Announcing Graphite alpha"
 date = 2022-02-12
 
 [extra]
-banner = "https://static.graphite.rs/content/blog/2022-02-12-announcing-graphite-alpha.avif"
-banner_png = "https://static.graphite.rs/content/blog/2022-02-12-announcing-graphite-alpha.png"
+banner = "https://static.graphite.art/content/blog/2022-02-12-announcing-graphite-alpha.avif"
+banner_png = "https://static.graphite.art/content/blog/2022-02-12-announcing-graphite-alpha.png"
 author = "Keavon Chambers"
 summary = "The Graphite open source team announces the alpha release of their next-generation graphics editor, a web-based SVG editor with vector-based tools. Future plans include a node-based procedural workflow, a raster graphics compositing engine, and a native desktop client."
 reddit = "https://www.reddit.com/r/graphite/comments/unw3hi/blog_post_announcing_graphite_alpha/"
@@ -17,6 +17,6 @@ The Graphite open source team is proud to announce the release of the alpha vers
 
 We hope that Graphite can serve the initial use case of a lightweight web-based SVG editor. SVG export and source document saving is supported but editable SVG import will need further work. All the vector and general tools (blue and gray tool icons, respectively) are now available in some form, while raster tools (orange icons, grayed out) are forthcoming.
 
-While in alpha, file format stability cannot be guaranteed so you may need to finish your saved documents in an older version from near the date it was started. To access an older version, ask a team member [on Discord](https://discord.graphite.rs) to locate an editor build link matching your document's creation date.
+While in alpha, file format stability cannot be guaranteed so you may need to finish your saved documents in an older version from near the date it was started. To access an older version, ask a team member [on Discord](https://discord.graphite.art) to locate an editor build link matching your document's creation date.
 
-Your feedback and bug reports will be valuable in helping the team prioritize improvements to ensure Graphite can be as useful as possible for artists during the alpha phase. Please go [make some art](https://editor.graphite.rs) to help inform the development process. Thank you for joining us on this exciting journey.
+Your feedback and bug reports will be valuable in helping the team prioritize improvements to ensure Graphite can be as useful as possible for artists during the alpha phase. Please go [make some art](https://editor.graphite.art) to help inform the development process. Thank you for joining us on this exciting journey.

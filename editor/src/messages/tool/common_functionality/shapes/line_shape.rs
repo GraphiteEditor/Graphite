@@ -1,6 +1,6 @@
 use super::shape_utility::ShapeToolModifierKey;
 use crate::consts::{BOUNDS_SELECT_THRESHOLD, LINE_ROTATE_SNAP_ANGLE};
-use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type};
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate};
@@ -37,7 +37,8 @@ pub struct Line;
 
 impl Line {
 	pub fn create_node(document: &DocumentMessageHandler, drag_start: DVec2) -> NodeTemplate {
-		let node_type = resolve_document_node_type("Line").expect("Line node can't be found");
+		let identifier = DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::line::IDENTIFIER);
+		let node_type = resolve_document_node_type(&identifier).expect("Line node can't be found");
 		node_type.node_template_input_override([
 			None,
 			Some(NodeInput::value(TaggedValue::DVec2(document.metadata().document_to_viewport.transform_point2(drag_start)), false)),
@@ -48,18 +49,19 @@ impl Line {
 	pub fn update_shape(
 		document: &DocumentMessageHandler,
 		ipp: &InputPreprocessorMessageHandler,
+		viewport: &ViewportMessageHandler,
 		layer: LayerNodeIdentifier,
 		shape_tool_data: &mut ShapeToolData,
 		modifier: ShapeToolModifierKey,
 		responses: &mut VecDeque<Message>,
 	) {
-		let [center, _, lock_angle, snap_angle] = modifier;
+		let [center, snap_angle, lock_angle] = modifier;
 
 		shape_tool_data.line_data.drag_current = ipp.mouse.position;
 
 		let keyboard = &ipp.keyboard;
 		let ignore = [layer];
-		let snap_data = SnapData::ignore(document, ipp, &ignore);
+		let snap_data = SnapData::ignore(document, ipp, viewport, &ignore);
 		let mut document_points = generate_line(shape_tool_data, snap_data, keyboard.key(lock_angle), keyboard.key(snap_angle), keyboard.key(center));
 
 		if shape_tool_data.line_data.dragging_endpoint == Some(LineEnd::Start) {
@@ -87,7 +89,8 @@ impl Line {
 			.selected_nodes()
 			.selected_visible_and_unlocked_layers(&document.network_interface)
 			.filter_map(|layer| {
-				let node_inputs = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Line")?;
+				let node_inputs =
+					NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::line::IDENTIFIER))?;
 
 				let (Some(&TaggedValue::DVec2(start)), Some(&TaggedValue::DVec2(end))) = (node_inputs[1].as_value(), node_inputs[2].as_value()) else {
 					return None;
@@ -170,7 +173,7 @@ fn generate_line(tool_data: &mut ShapeToolData, snap_data: SnapData, lock_angle:
 }
 
 pub fn clicked_on_line_endpoints(layer: LayerNodeIdentifier, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, shape_tool_data: &mut ShapeToolData) -> bool {
-	let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Line") else {
+	let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::line::IDENTIFIER)) else {
 		return false;
 	};
 
@@ -210,18 +213,18 @@ mod test_line_tool {
 	async fn get_line_node_inputs(editor: &mut EditorTestUtils) -> Option<(DVec2, DVec2)> {
 		let document = editor.active_document();
 		let network_interface = &document.network_interface;
-		let node_id = network_interface
+
+		network_interface
 			.selected_nodes()
 			.selected_visible_and_unlocked_layers(network_interface)
 			.filter_map(|layer| {
-				let node_inputs = NodeGraphLayer::new(layer, &network_interface).find_node_inputs("Line")?;
+				let node_inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::line::IDENTIFIER))?;
 				let (Some(&TaggedValue::DVec2(start)), Some(&TaggedValue::DVec2(end))) = (node_inputs[1].as_value(), node_inputs[2].as_value()) else {
 					return None;
 				};
 				Some((start, end))
 			})
-			.next();
-		node_id
+			.next()
 	}
 
 	#[tokio::test]
@@ -245,11 +248,7 @@ mod test_line_tool {
 		editor.new_document().await;
 		editor.handle_message(NavigationMessage::CanvasZoomSet { zoom_factor: 2. }).await;
 		editor.handle_message(NavigationMessage::CanvasPan { delta: DVec2::new(100., 50.) }).await;
-		editor
-			.handle_message(NavigationMessage::CanvasTiltSet {
-				angle_radians: (30. as f64).to_radians(),
-			})
-			.await;
+		editor.handle_message(NavigationMessage::CanvasTiltSet { angle_radians: 30_f64.to_radians() }).await;
 		editor.drag_tool(ToolType::Line, 0., 0., 100., 100., ModifierKeys::empty()).await;
 		if let Some((start_input, end_input)) = get_line_node_inputs(&mut editor).await {
 			let document = editor.active_document();
@@ -261,15 +260,11 @@ mod test_line_tool {
 
 			assert!(
 				(start_input - expected_start).length() < 1.,
-				"Start point should match expected document coordinates. Got {:?}, expected {:?}",
-				start_input,
-				expected_start
+				"Start point should match expected document coordinates. Got {start_input:?}, expected {expected_start:?}"
 			);
 			assert!(
 				(end_input - expected_end).length() < 1.,
-				"End point should match expected document coordinates. Got {:?}, expected {:?}",
-				end_input,
-				expected_end
+				"End point should match expected document coordinates. Got {end_input:?}, expected {expected_end:?}"
 			);
 		} else {
 			panic!("Line was not created successfully with transformed viewport");
@@ -282,27 +277,19 @@ mod test_line_tool {
 		editor.new_document().await;
 		editor.drag_tool(ToolType::Line, 0., 0., 100., 100., ModifierKeys::CONTROL).await;
 		if let Some((start_input, end_input)) = get_line_node_inputs(&mut editor).await {
-			match (start_input, end_input) {
-				(start_input, end_input) => {
-					let line_vec = end_input - start_input;
-					let original_angle = line_vec.angle_to(DVec2::X);
-					editor.drag_tool(ToolType::Line, 0., 0., 200., 50., ModifierKeys::CONTROL).await;
-					if let Some((updated_start, updated_end)) = get_line_node_inputs(&mut editor).await {
-						match (updated_start, updated_end) {
-							(updated_start, updated_end) => {
-								let updated_line_vec = updated_end - updated_start;
-								let updated_angle = updated_line_vec.angle_to(DVec2::X);
-								print!("{:?}", original_angle);
-								print!("{:?}", updated_angle);
-								assert!(
-									line_vec.normalize().dot(updated_line_vec.normalize()).abs() - 1. < 1e-6,
-									"Line angle should be locked when Ctrl is kept pressed"
-								);
-								assert!((updated_start - updated_end).length() > 1., "Line should be able to change length when Ctrl is kept pressed");
-							}
-						}
-					}
-				}
+			let line_vec = end_input - start_input;
+			let original_angle = line_vec.angle_to(DVec2::X);
+			editor.drag_tool(ToolType::Line, 0., 0., 200., 50., ModifierKeys::CONTROL).await;
+			if let Some((updated_start, updated_end)) = get_line_node_inputs(&mut editor).await {
+				let updated_line_vec = updated_end - updated_start;
+				let updated_angle = updated_line_vec.angle_to(DVec2::X);
+				print!("{original_angle:?}");
+				print!("{updated_angle:?}");
+				assert!(
+					line_vec.normalize().dot(updated_line_vec.normalize()).abs() - 1. < 1e-6,
+					"Line angle should be locked when Ctrl is kept pressed"
+				);
+				assert!((updated_start - updated_end).length() > 1., "Line should be able to change length when Ctrl is kept pressed");
 			}
 		}
 	}
@@ -313,14 +300,10 @@ mod test_line_tool {
 		editor.new_document().await;
 		editor.drag_tool(ToolType::Line, 100., 100., 200., 100., ModifierKeys::ALT).await;
 		if let Some((start_input, end_input)) = get_line_node_inputs(&mut editor).await {
-			match (start_input, end_input) {
-				(start_input, end_input) => {
-					let expected_start = DVec2::new(0., 100.);
-					let expected_end = DVec2::new(200., 100.);
-					assert!((start_input - expected_start).length() < 1., "Start point should be near (0, 100)");
-					assert!((end_input - expected_end).length() < 1., "End point should be near (200, 100)");
-				}
-			}
+			let expected_start = DVec2::new(0., 100.);
+			let expected_end = DVec2::new(200., 100.);
+			assert!((start_input - expected_start).length() < 1., "Start point should be near (0, 100)");
+			assert!((end_input - expected_end).length() < 1., "End point should be near (200, 100)");
 		}
 	}
 

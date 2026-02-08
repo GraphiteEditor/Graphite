@@ -1,8 +1,8 @@
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface};
-use bezier_rs::Subpath;
 use glam::{DAffine2, DVec2};
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
+use graphene_std::subpath::Subpath;
 use graphene_std::vector::PointId;
 
 /// Convert an affine transform into the tuple `(scale, angle, translation, shear)` assuming `shear.y = 0`.
@@ -32,10 +32,13 @@ pub fn compute_scale_angle_translation_shear(transform: DAffine2) -> (DVec2, f64
 
 /// Update the inputs of the transform node to match a new transform
 pub fn update_transform(network_interface: &mut NodeNetworkInterface, node_id: &NodeId, transform: DAffine2) {
-	let (scale, angle, translation, shear) = compute_scale_angle_translation_shear(transform);
+	let (scale, rotation, translation, shear) = compute_scale_angle_translation_shear(transform);
+
+	let rotation = rotation.to_degrees();
+	let shear = DVec2::new(shear.x.atan().to_degrees(), shear.y.atan().to_degrees());
 
 	network_interface.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::DVec2(translation), false), &[]);
-	network_interface.set_input(&InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::F64(angle), false), &[]);
+	network_interface.set_input(&InputConnector::node(*node_id, 2), NodeInput::value(TaggedValue::F64(rotation), false), &[]);
 	network_interface.set_input(&InputConnector::node(*node_id, 3), NodeInput::value(TaggedValue::DVec2(scale), false), &[]);
 	network_interface.set_input(&InputConnector::node(*node_id, 4), NodeInput::value(TaggedValue::DVec2(shear), false), &[]);
 }
@@ -76,19 +79,45 @@ pub fn get_current_transform(inputs: &[NodeInput]) -> DAffine2 {
 	} else {
 		DVec2::ZERO
 	};
-
-	let angle = if let Some(&TaggedValue::F64(angle)) = inputs[2].as_value() { angle } else { 0. };
-
+	let rotation = if let Some(&TaggedValue::F64(rotation)) = inputs[2].as_value() { rotation } else { 0. };
 	let scale = if let Some(&TaggedValue::DVec2(scale)) = inputs[3].as_value() { scale } else { DVec2::ONE };
-
 	let shear = if let Some(&TaggedValue::DVec2(shear)) = inputs[4].as_value() { shear } else { DVec2::ZERO };
 
-	DAffine2::from_scale_angle_translation(scale, angle, translation) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.])
+	let rotation = rotation.to_radians();
+	let shear = DVec2::new(shear.x.to_radians().tan(), shear.y.to_radians().tan());
+
+	DAffine2::from_scale_angle_translation(scale, rotation, translation) * DAffine2::from_cols_array(&[1., shear.y, shear.x, 1., 0., 0.])
 }
 
 /// Extract the current normalized pivot from the layer
 pub fn get_current_normalized_pivot(inputs: &[NodeInput]) -> DVec2 {
 	if let Some(&TaggedValue::DVec2(pivot)) = inputs[5].as_value() { pivot } else { DVec2::splat(0.5) }
+}
+
+/// Expand a bounds to avoid div zero errors
+fn clamp_bounds(bounds_min: DVec2, mut bounds_max: DVec2) -> [DVec2; 2] {
+	let bounds_size = bounds_max - bounds_min;
+	if bounds_size.x < 1e-10 {
+		bounds_max.x = bounds_min.x + 1.;
+	}
+	if bounds_size.y < 1e-10 {
+		bounds_max.y = bounds_min.y + 1.;
+	}
+	[bounds_min, bounds_max]
+}
+/// Returns corners of all subpaths
+fn subpath_bounds(subpaths: &[Subpath<PointId>]) -> [DVec2; 2] {
+	subpaths
+		.iter()
+		.filter_map(|subpath| subpath.bounding_box())
+		.reduce(|b1, b2| [b1[0].min(b2[0]), b1[1].max(b2[1])])
+		.unwrap_or_default()
+}
+
+/// Returns corners of all subpaths (but expanded to avoid division-by-zero errors)
+pub fn nonzero_subpath_bounds(subpaths: &[Subpath<PointId>]) -> [DVec2; 2] {
+	let [bounds_min, bounds_max] = subpath_bounds(subpaths);
+	clamp_bounds(bounds_min, bounds_max)
 }
 
 #[cfg(test)]
@@ -137,30 +166,4 @@ mod tests {
 			}
 		}
 	}
-}
-
-/// Expand a bounds to avoid div zero errors
-fn clamp_bounds(bounds_min: DVec2, mut bounds_max: DVec2) -> [DVec2; 2] {
-	let bounds_size = bounds_max - bounds_min;
-	if bounds_size.x < 1e-10 {
-		bounds_max.x = bounds_min.x + 1.;
-	}
-	if bounds_size.y < 1e-10 {
-		bounds_max.y = bounds_min.y + 1.;
-	}
-	[bounds_min, bounds_max]
-}
-/// Returns corners of all subpaths
-fn subpath_bounds(subpaths: &[Subpath<PointId>]) -> [DVec2; 2] {
-	subpaths
-		.iter()
-		.filter_map(|subpath| subpath.bounding_box())
-		.reduce(|b1, b2| [b1[0].min(b2[0]), b1[1].max(b2[1])])
-		.unwrap_or_default()
-}
-
-/// Returns corners of all subpaths (but expanded to avoid division-by-zero errors)
-pub fn nonzero_subpath_bounds(subpaths: &[Subpath<PointId>]) -> [DVec2; 2] {
-	let [bounds_min, bounds_max] = subpath_bounds(subpaths);
-	clamp_bounds(bounds_min, bounds_max)
 }

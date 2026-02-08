@@ -6,14 +6,15 @@ use crate::messages::prelude::*;
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum PreferencesMessage {
 	// Management messages
-	Load { preferences: String },
+	Load { preferences: Option<PreferencesMessageHandler> },
 	ResetToDefaults,
 
 	// Per-preference messages
 	UseVello { use_vello: bool },
 	SelectionMode { selection_mode: SelectionMode },
-	VectorMeshes { enabled: bool },
+	BrushTool { enabled: bool },
 	ModifyLayout { zoom_with_scroll: bool },
 	GraphWireStyle { style: GraphWireStyle },
 	ViewportZoomWheelRate { rate: f64 },
+	UIScale { scale: f64 },
 }

@@ -1,6 +1,6 @@
 node_modules/
 public/
-static/fonts/
-static/syntax-highlighting.css
-static/text-balancer.js
-other/editor-structure/replacement.html
+generated/
+static/*
+!static/js/
+content/learn/node-catalog

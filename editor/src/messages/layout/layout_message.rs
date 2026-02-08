@@ -12,6 +12,9 @@ pub enum LayoutMessage {
 		layout: Layout,
 		layout_target: LayoutTarget,
 	},
+	DestroyLayout {
+		layout_target: LayoutTarget,
+	},
 	WidgetValueCommit {
 		layout_target: LayoutTarget,
 		widget_id: WidgetId,

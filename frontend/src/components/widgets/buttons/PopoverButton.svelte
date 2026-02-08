@@ -1,19 +1,28 @@
 <script lang="ts">
-	import type { MenuDirection } from "@graphite/messages";
-	import { type IconName, type PopoverButtonStyle } from "@graphite/utility-functions/icons";
+	import { type IconName, type PopoverButtonStyle } from "@graphite/icons";
+
+	import type { MenuDirection, ActionShortcut, Layout, LayoutTarget } from "@graphite/messages";
 
 	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";
+	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
 
+	export let layoutTarget: LayoutTarget;
+
+	// Content
 	export let style: PopoverButtonStyle = "DropdownArrow";
-	export let menuDirection: MenuDirection = "Bottom";
 	export let icon: IconName | undefined = undefined;
-	export let tooltip: string | undefined = undefined;
 	export let disabled = false;
+	// Children
+	export let popoverLayout: Layout;
 	export let popoverMinWidth = 1;
-
+	export let menuDirection: MenuDirection = "Bottom";
+	// Tooltips
+	export let tooltipLabel: string | undefined = undefined;
+	export let tooltipDescription: string | undefined = undefined;
+	export let tooltipShortcut: ActionShortcut | undefined = undefined;
 	// Callbacks
 	export let action: (() => void) | undefined = undefined;
 
@@ -26,13 +35,24 @@
 </script>
 
 <LayoutRow class="popover-button" classes={{ "has-icon": icon !== undefined, "direction-top": menuDirection === "Top" }}>
-	<IconButton class="dropdown-icon" classes={{ open }} {disabled} action={() => onClick()} icon={style || "DropdownArrow"} size={16} {tooltip} data-floating-menu-spawner />
+	<IconButton
+		class="dropdown-icon"
+		classes={{ open }}
+		{disabled}
+		action={() => onClick()}
+		icon={style || "DropdownArrow"}
+		size={16}
+		{tooltipLabel}
+		{tooltipDescription}
+		{tooltipShortcut}
+		data-floating-menu-spawner
+	/>
 	{#if icon !== undefined}
-		<IconLabel class="descriptive-icon" classes={{ open }} {disabled} {icon} {tooltip} />
+		<IconLabel class="descriptive-icon" classes={{ open }} {disabled} {icon} {tooltipLabel} {tooltipDescription} {tooltipShortcut} />
 	{/if}
 
 	<FloatingMenu {open} on:open={({ detail }) => (open = detail)} minWidth={popoverMinWidth} type="Popover" direction={menuDirection || "Bottom"}>
-		<slot />
+		<WidgetLayout layout={popoverLayout} {layoutTarget} />
 	</FloatingMenu>
 </LayoutRow>
 

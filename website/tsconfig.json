@@ -1,0 +1,45 @@
+{
+	"compilerOptions": {
+		"target": "ESNext",
+		"module": "ESNext",
+		"moduleResolution": "node",
+		"strict": true,
+		"allowJs": true,
+		"checkJs": true,
+		"noEmit": true,
+		"importHelpers": true,
+		"experimentalDecorators": true,
+		"skipLibCheck": true,
+		"esModuleInterop": true,
+		"allowSyntheticDefaultImports": true,
+		"verbatimModuleSyntax": true,
+		"sourceMap": true,
+		"types": ["node"],
+		"baseUrl": ".",
+		"paths": {
+			"/*": ["./*"]
+		},
+		"lib": ["ESNext", "DOM", "DOM.Iterable", "ScriptHost"]
+	},
+	"include": [
+		// TypeScript and JSDoc-typed JavaScript files
+		"**/*.ts",
+		"**/*.js",
+		// Also include build scripts, which aren't included above because of the dot-prefixed directory
+		".build-scripts/**/*.ts",
+		".build-scripts/**/*.js"
+	],
+	"exclude": [
+		// Ignore generated directories
+		"node_modules",
+		"public",
+		// Ignore vendored code
+		"static/*.js"
+	],
+	"ts-node": {
+		"compilerOptions": {
+			"useDefineForClassFields": false,
+			"noImplicitOverride": true
+		}
+	}
+}

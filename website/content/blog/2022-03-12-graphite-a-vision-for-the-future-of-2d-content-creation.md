@@ -3,8 +3,8 @@ title = "Graphite: a vision for the future of 2D content creation"
 date = 2022-03-12
 
 [extra]
-banner = "https://static.graphite.rs/content/blog/2022-03-12-graphite-a-vision-for-the-future-of-2d-content-creation.avif"
-banner_png = "https://static.graphite.rs/content/blog/2022-03-12-graphite-a-vision-for-the-future-of-2d-content-creation.png"
+banner = "https://static.graphite.art/content/blog/2022-03-12-graphite-a-vision-for-the-future-of-2d-content-creation.avif"
+banner_png = "https://static.graphite.art/content/blog/2022-03-12-graphite-a-vision-for-the-future-of-2d-content-creation.png"
 author = "Keavon Chambers"
 summary = "Graphite is an open-source application for 2D graphics editing and digital content creation, offering a nondestructive, node-based workflow. It combines intuitive UI with powerful procedural image generators to revolutionize 2D content creation."
 reddit = "https://www.reddit.com/r/graphite/comments/unw3va/blog_post_graphite_a_vision_for_the_future_of_2d/"

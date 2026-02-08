@@ -5,36 +5,61 @@
 // on the dispatcher messaging system and more complex Rust data types.
 //
 use crate::helpers::translate_key;
-use crate::{EDITOR, EDITOR_HANDLE, EDITOR_HAS_CRASHED, Error};
-use editor::application::Editor;
-use editor::consts::FILE_SAVE_SUFFIX;
+use crate::{EDITOR_HANDLE, EDITOR_HAS_CRASHED, Error, MESSAGE_BUFFER};
+use editor::consts::FILE_EXTENSION;
+use editor::messages::clipboard::utility_types::ClipboardContentRaw;
 use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
-use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta, ViewportBounds};
+use editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, ScrollDelta};
 use editor::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use editor::messages::portfolio::document::utility_types::network_interface::ImportOrExport;
-use editor::messages::portfolio::utility_types::Platform;
+use editor::messages::portfolio::utility_types::{FontCatalog, FontCatalogFamily};
 use editor::messages::prelude::*;
 use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
 use graph_craft::document::NodeId;
+use graphene_std::raster::Image;
 use graphene_std::raster::color::Color;
+use js_sys::{Object, Reflect};
 use serde::Serialize;
 use serde_wasm_bindgen::{self, from_value};
 use std::cell::RefCell;
-use std::sync::atomic::Ordering;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
+use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
+use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, ImageData, window};
 
-/// Set the random seed used by the editor by calling this from JS upon initialization.
-/// This is necessary because WASM doesn't have a random number generator.
-#[wasm_bindgen(js_name = setRandomSeed)]
-pub fn set_random_seed(seed: u64) {
-	editor::application::set_uuid_seed(seed);
+#[cfg(not(feature = "native"))]
+use crate::EDITOR;
+#[cfg(not(feature = "native"))]
+use editor::application::{Editor, Environment, Host, Platform};
+
+static IMAGE_DATA_HASH: AtomicU64 = AtomicU64::new(0);
+
+fn calculate_hash<T: std::hash::Hash>(t: &T) -> u64 {
+	use std::collections::hash_map::DefaultHasher;
+	use std::hash::Hasher;
+	let mut hasher = DefaultHasher::new();
+	t.hash(&mut hasher);
+	hasher.finish()
 }
 
-/// Provides a handle to access the raw WASM memory.
+/// Provides a handle to access the raw Wasm memory.
 #[wasm_bindgen(js_name = wasmMemory)]
 pub fn wasm_memory() -> JsValue {
 	wasm_bindgen::memory()
+}
+
+#[wasm_bindgen(js_name = isPlatformNative)]
+pub fn is_platform_native() -> bool {
+	#[cfg(feature = "native")]
+	{
+		true
+	}
+	#[cfg(not(feature = "native"))]
+	{
+		false
+	}
 }
 
 // ============================================================================
@@ -57,9 +82,21 @@ impl EditorHandle {
 
 #[wasm_bindgen]
 impl EditorHandle {
-	#[wasm_bindgen(constructor)]
-	pub fn new(frontend_message_handler_callback: js_sys::Function) -> Self {
-		let editor = Editor::new();
+	#[cfg(not(feature = "native"))]
+	pub fn create(platform: String, uuid_random_seed: u64, frontend_message_handler_callback: js_sys::Function) -> EditorHandle {
+		let editor = Editor::new(
+			Environment {
+				platform: Platform::Web,
+				host: match platform.as_str() {
+					"Linux" => Host::Linux,
+					"Mac" => Host::Mac,
+					"Windows" => Host::Windows,
+					_ => unreachable!(),
+				},
+			},
+			uuid_random_seed,
+		);
+
 		let editor_handle = EditorHandle { frontend_message_handler_callback };
 		if EDITOR.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor))).is_none() {
 			log::error!("Attempted to initialize the editor more than once");
@@ -70,15 +107,35 @@ impl EditorHandle {
 		editor_handle
 	}
 
+	#[cfg(feature = "native")]
+	pub fn create(_platform: String, _uuid_random_seed: u64, frontend_message_handler_callback: js_sys::Function) -> EditorHandle {
+		let editor_handle = EditorHandle { frontend_message_handler_callback };
+		if EDITOR_HANDLE.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor_handle.clone()))).is_none() {
+			log::error!("Attempted to initialize the editor handle more than once");
+		}
+		editor_handle
+	}
+
 	// Sends a message to the dispatcher in the Editor Backend
+	#[cfg(not(feature = "native"))]
 	fn dispatch<T: Into<Message>>(&self, message: T) {
 		// Process no further messages after a crash to avoid spamming the console
+		use crate::MESSAGE_BUFFER;
 		if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
 			return;
 		}
 
 		// Get the editor, dispatch the message, and store the `FrontendMessage` queue response
-		let frontend_messages = editor(|editor| editor.handle_message(message.into()));
+		let frontend_messages = EDITOR.with(|editor| {
+			let mut guard = editor.try_lock();
+			let Ok(Some(editor)) = guard.as_deref_mut() else {
+				// Enqueue messages which can't be procssed currently
+				MESSAGE_BUFFER.with_borrow_mut(|buffer| buffer.push(message.into()));
+				return vec![];
+			};
+
+			editor.handle_message(message)
+		});
 
 		// Send each `FrontendMessage` to the JavaScript frontend
 		for message in frontend_messages.into_iter() {
@@ -86,8 +143,29 @@ impl EditorHandle {
 		}
 	}
 
+	#[cfg(feature = "native")]
+	fn dispatch<T: Into<Message>>(&self, message: T) {
+		let message: Message = message.into();
+		let Ok(serialized_message) = ron::to_string(&message) else {
+			log::error!("Failed to serialize message");
+			return;
+		};
+		crate::native_communcation::send_message_to_cef(serialized_message)
+	}
+
 	// Sends a FrontendMessage to JavaScript
 	fn send_frontend_message_to_js(&self, mut message: FrontendMessage) {
+		if let FrontendMessage::UpdateImageData { ref image_data } = message {
+			let new_hash = calculate_hash(image_data);
+			let prev_hash = IMAGE_DATA_HASH.load(Ordering::Relaxed);
+
+			if new_hash != prev_hash {
+				render_image_data_to_canvases(image_data.as_slice());
+				IMAGE_DATA_HASH.store(new_hash, Ordering::Relaxed);
+			}
+			return;
+		}
+
 		if let FrontendMessage::UpdateDocumentLayerStructure { data_buffer } = message {
 			message = FrontendMessage::UpdateDocumentLayerStructureJs { data_buffer: data_buffer.into() };
 		}
@@ -100,11 +178,7 @@ impl EditorHandle {
 		let js_return_value = self.frontend_message_handler_callback.call2(&JsValue::null(), &JsValue::from(message_type), &message_data);
 
 		if let Err(error) = js_return_value {
-			error!(
-				"While handling FrontendMessage \"{:?}\", JavaScript threw an error: {:?}",
-				message.to_discriminant().local_name(),
-				error,
-			)
+			error!("While handling FrontendMessage {:?}, JavaScript threw an error:\n{:?}", message.to_discriminant().local_name(), error,)
 		}
 	}
 
@@ -114,15 +188,10 @@ impl EditorHandle {
 	// ========================================================================
 
 	#[wasm_bindgen(js_name = initAfterFrontendReady)]
-	pub fn init_after_frontend_ready(&self, platform: String) {
-		// Send initialization messages
-		let platform = match platform.as_str() {
-			"Windows" => Platform::Windows,
-			"Mac" => Platform::Mac,
-			"Linux" => Platform::Linux,
-			_ => Platform::Unknown,
-		};
-		self.dispatch(GlobalsMessage::SetPlatform { platform });
+	pub fn init_after_frontend_ready(&self) {
+		#[cfg(feature = "native")]
+		crate::native_communcation::initialize_native_communication();
+
 		self.dispatch(PortfolioMessage::Init);
 
 		// Poll node graph evaluation on `requestAnimationFrame`
@@ -131,25 +200,26 @@ impl EditorHandle {
 			let g = f.clone();
 
 			*g.borrow_mut() = Some(Closure::new(move |_timestamp| {
+				#[cfg(not(feature = "native"))]
 				wasm_bindgen_futures::spawn_local(poll_node_graph_evaluation());
 
 				if !EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
-					editor_and_handle(|editor, handle| {
-						for message in editor.handle_message(InputPreprocessorMessage::CurrentTime {
-							timestamp: js_sys::Date::now() as u64,
-						}) {
-							handle.send_frontend_message_to_js(message);
+					handle(|handle| {
+						// Process all messages that have been queued up
+						let messages = MESSAGE_BUFFER.take();
+
+						for message in messages {
+							handle.dispatch(message);
 						}
 
-						for message in editor.handle_message(AnimationMessage::IncrementFrameCounter) {
-							handle.send_frontend_message_to_js(message);
-						}
+						handle.dispatch(InputPreprocessorMessage::CurrentTime {
+							timestamp: js_sys::Date::now() as u64,
+						});
+						handle.dispatch(AnimationMessage::IncrementFrameCounter);
 
 						// Used by auto-panning, but this could possibly be refactored in the future, see:
 						// <https://github.com/GraphiteEditor/Graphite/pull/2562#discussion_r2041102786>
-						for message in editor.handle_message(BroadcastMessage::TriggerEvent(BroadcastEvent::AnimationFrame)) {
-							handle.send_frontend_message_to_js(message);
-						}
+						handle.dispatch(BroadcastMessage::TriggerEvent(EventMessage::AnimationFrame));
 					});
 				}
 
@@ -176,6 +246,71 @@ impl EditorHandle {
 		}
 	}
 
+	#[wasm_bindgen(js_name = addPrimaryImport)]
+	pub fn add_primary_import(&self) {
+		self.dispatch(DocumentMessage::AddTransaction);
+		self.dispatch(NodeGraphMessage::AddPrimaryImport);
+	}
+
+	#[wasm_bindgen(js_name = addSecondaryImport)]
+	pub fn add_secondary_import(&self) {
+		self.dispatch(DocumentMessage::AddTransaction);
+		self.dispatch(NodeGraphMessage::AddSecondaryImport);
+	}
+
+	#[wasm_bindgen(js_name = addPrimaryExport)]
+	pub fn add_primary_export(&self) {
+		self.dispatch(DocumentMessage::AddTransaction);
+		self.dispatch(NodeGraphMessage::AddPrimaryExport);
+	}
+
+	#[wasm_bindgen(js_name = addSecondaryExport)]
+	pub fn add_secondary_export(&self) {
+		self.dispatch(DocumentMessage::AddTransaction);
+		self.dispatch(NodeGraphMessage::AddSecondaryExport);
+	}
+
+	/// Start Pointer Lock
+	#[wasm_bindgen(js_name = appWindowPointerLock)]
+	pub fn app_window_pointer_lock(&self) {
+		let message = AppWindowMessage::PointerLock;
+		self.dispatch(message);
+	}
+
+	/// Minimizes the application window to the taskbar or dock
+	#[wasm_bindgen(js_name = appWindowMinimize)]
+	pub fn app_window_minimize(&self) {
+		let message = AppWindowMessage::Minimize;
+		self.dispatch(message);
+	}
+
+	/// Toggles minimizing or restoring down the application window
+	#[wasm_bindgen(js_name = appWindowMaximize)]
+	pub fn app_window_maximize(&self) {
+		let message = AppWindowMessage::Maximize;
+		self.dispatch(message);
+	}
+
+	#[wasm_bindgen(js_name = appWindowFullscreen)]
+	pub fn app_window_fullscreen(&self) {
+		let message = AppWindowMessage::Fullscreen;
+		self.dispatch(message);
+	}
+
+	/// Closes the application window
+	#[wasm_bindgen(js_name = appWindowClose)]
+	pub fn app_window_close(&self) {
+		let message = AppWindowMessage::Close;
+		self.dispatch(message);
+	}
+
+	/// Drag the application window
+	#[wasm_bindgen(js_name = appWindowDrag)]
+	pub fn app_window_start_drag(&self) {
+		let message = AppWindowMessage::Drag;
+		self.dispatch(message);
+	}
+
 	/// Displays a dialog with an error message
 	#[wasm_bindgen(js_name = errorDialog)]
 	pub fn error_dialog(&self, title: String, description: String) {
@@ -195,29 +330,51 @@ impl EditorHandle {
 		cfg!(debug_assertions)
 	}
 
-	/// Get the constant `FILE_SAVE_SUFFIX`
-	#[wasm_bindgen(js_name = fileSaveSuffix)]
-	pub fn file_save_suffix(&self) -> String {
-		FILE_SAVE_SUFFIX.into()
+	/// Get the constant `FILE_EXTENSION`
+	#[wasm_bindgen(js_name = fileExtension)]
+	pub fn file_extension(&self) -> String {
+		FILE_EXTENSION.into()
 	}
 
 	/// Update the value of a given UI widget, but don't commit it to the history (unless `commit_layout()` is called, which handles that)
 	#[wasm_bindgen(js_name = widgetValueUpdate)]
-	pub fn widget_value_update(&self, layout_target: JsValue, widget_id: u64, value: JsValue) -> Result<(), JsValue> {
+	pub fn widget_value_update(&self, layout_target: JsValue, widget_id: u64, value: JsValue, resend_widget: bool) -> Result<(), JsValue> {
+		self.widget_value_update_helper(layout_target, widget_id, value, resend_widget)
+	}
+
+	/// Commit the value of a given UI widget to the history
+	#[wasm_bindgen(js_name = widgetValueCommit)]
+	pub fn widget_value_commit(&self, layout_target: JsValue, widget_id: u64, value: JsValue) -> Result<(), JsValue> {
+		self.widget_value_commit_helper(layout_target, widget_id, value)
+	}
+
+	/// Update the value of a given UI widget, and commit it to the history
+	#[wasm_bindgen(js_name = widgetValueCommitAndUpdate)]
+	pub fn widget_value_commit_and_update(&self, layout_target: JsValue, widget_id: u64, value: JsValue, resend_widget: bool) -> Result<(), JsValue> {
+		self.widget_value_commit_helper(layout_target.clone(), widget_id, value.clone())?;
+		self.widget_value_update_helper(layout_target, widget_id, value, resend_widget)?;
+		Ok(())
+	}
+
+	pub fn widget_value_update_helper(&self, layout_target: JsValue, widget_id: u64, value: JsValue, resend_widget: bool) -> Result<(), JsValue> {
 		let widget_id = WidgetId(widget_id);
 		match (from_value(layout_target), from_value(value)) {
 			(Ok(layout_target), Ok(value)) => {
 				let message = LayoutMessage::WidgetValueUpdate { layout_target, widget_id, value };
 				self.dispatch(message);
+
+				if resend_widget {
+					let resend_message = LayoutMessage::ResendActiveWidget { layout_target, widget_id };
+					self.dispatch(resend_message);
+				}
+
 				Ok(())
 			}
 			(target, val) => Err(Error::new(&format!("Could not update UI\nDetails:\nTarget: {target:?}\nValue: {val:?}")).into()),
 		}
 	}
 
-	/// Commit the value of a given UI widget to the history
-	#[wasm_bindgen(js_name = widgetValueCommit)]
-	pub fn widget_value_commit(&self, layout_target: JsValue, widget_id: u64, value: JsValue) -> Result<(), JsValue> {
+	pub fn widget_value_commit_helper(&self, layout_target: JsValue, widget_id: u64, value: JsValue) -> Result<(), JsValue> {
 		let widget_id = WidgetId(widget_id);
 		match (from_value(layout_target), from_value(value)) {
 			(Ok(layout_target), Ok(value)) => {
@@ -229,18 +386,19 @@ impl EditorHandle {
 		}
 	}
 
-	/// Update the value of a given UI widget, and commit it to the history
-	#[wasm_bindgen(js_name = widgetValueCommitAndUpdate)]
-	pub fn widget_value_commit_and_update(&self, layout_target: JsValue, widget_id: u64, value: JsValue) -> Result<(), JsValue> {
-		self.widget_value_commit(layout_target.clone(), widget_id, value.clone())?;
-		self.widget_value_update(layout_target, widget_id, value)?;
-		Ok(())
-	}
-
 	#[wasm_bindgen(js_name = loadPreferences)]
-	pub fn load_preferences(&self, preferences: String) {
-		let message = PreferencesMessage::Load { preferences };
+	pub fn load_preferences(&self, preferences: Option<String>) {
+		let preferences = if let Some(preferences) = preferences {
+			let Ok(preferences) = serde_json::from_str(&preferences) else {
+				log::error!("Failed to deserialize preferences");
+				return;
+			};
+			Some(preferences)
+		} else {
+			None
+		};
 
+		let message = PreferencesMessage::Load { preferences };
 		self.dispatch(message);
 	}
 
@@ -257,24 +415,15 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
-	#[wasm_bindgen(js_name = openDocument)]
-	pub fn open_document(&self) {
-		let message = PortfolioMessage::OpenDocument;
+	#[wasm_bindgen(js_name = openFile)]
+	pub fn open_file(&self, path: String, content: Vec<u8>) {
+		let message = PortfolioMessage::OpenFile { path: PathBuf::from(path), content };
 		self.dispatch(message);
 	}
 
-	#[wasm_bindgen(js_name = demoArtworkDialog)]
-	pub fn demo_artwork_dialog(&self) {
-		let message = DialogMessage::RequestDemoArtworkDialog;
-		self.dispatch(message);
-	}
-
-	#[wasm_bindgen(js_name = openDocumentFile)]
-	pub fn open_document_file(&self, document_name: String, document_serialized_content: String) {
-		let message = PortfolioMessage::OpenDocumentFile {
-			document_name,
-			document_serialized_content,
-		};
+	#[wasm_bindgen(js_name = importFile)]
+	pub fn import_file(&self, path: String, content: Vec<u8>) {
+		let message = PortfolioMessage::ImportFile { path: PathBuf::from(path), content };
 		self.dispatch(message);
 	}
 
@@ -283,11 +432,13 @@ impl EditorHandle {
 		let document_id = DocumentId(document_id);
 		let message = PortfolioMessage::OpenDocumentFileWithId {
 			document_id,
-			document_name,
+			document_name: Some(document_name),
+			document_path: None,
 			document_is_auto_saved: true,
 			document_is_saved,
 			document_serialized_content,
 			to_front,
+			select_after_open: false,
 		};
 		self.dispatch(message);
 	}
@@ -315,13 +466,16 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
-	/// Send new bounds when document panel viewports get resized or moved within the editor
-	/// [left, top, right, bottom]...
-	#[wasm_bindgen(js_name = boundsOfViewports)]
-	pub fn bounds_of_viewports(&self, bounds_of_viewports: &[f64]) {
-		let chunked: Vec<_> = bounds_of_viewports.chunks(4).map(ViewportBounds::from_slice).collect();
+	#[wasm_bindgen(js_name = requestLicensesThirdPartyDialogWithLicenseText)]
+	pub fn request_licenses_third_party_dialog_with_license_text(&self, license_text: String) {
+		let message = DialogMessage::RequestLicensesThirdPartyDialogWithLicenseText { license_text };
+		self.dispatch(message);
+	}
 
-		let message = InputPreprocessorMessage::BoundsOfViewports { bounds_of_viewports: chunked };
+	/// Send new viewport info to the backend
+	#[wasm_bindgen(js_name = updateViewport)]
+	pub fn update_viewport(&self, x: f64, y: f64, width: f64, height: f64, scale: f64) {
+		let message = ViewportMessage::Update { x, y, width, height, scale };
 		self.dispatch(message);
 	}
 
@@ -329,13 +483,6 @@ impl EditorHandle {
 	#[wasm_bindgen(js_name = zoomCanvasToFitAll)]
 	pub fn zoom_canvas_to_fit_all(&self) {
 		let message = DocumentMessage::ZoomCanvasToFitAll;
-		self.dispatch(message);
-	}
-
-	/// Inform the overlays system of the current device pixel ratio
-	#[wasm_bindgen(js_name = setDevicePixelRatio)]
-	pub fn set_device_pixel_ratio(&self, ratio: f64) {
-		let message = PortfolioMessage::SetDevicePixelRatio { ratio };
 		self.dispatch(message);
 	}
 
@@ -384,6 +531,17 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
+	/// Mouse shaken
+	#[wasm_bindgen(js_name = onMouseShake)]
+	pub fn on_mouse_shake(&self, x: f64, y: f64, mouse_keys: u8, modifiers: u8) {
+		let editor_mouse_state = EditorMouseState::from_keys_and_editor_position(mouse_keys, (x, y).into());
+
+		let modifier_keys = ModifierKeys::from_bits(modifiers).expect("Invalid modifier keys");
+
+		let message = InputPreprocessorMessage::PointerShake { editor_mouse_state, modifier_keys };
+		self.dispatch(message);
+	}
+
 	/// Mouse double clicked
 	#[wasm_bindgen(js_name = onDoubleClick)]
 	pub fn on_double_click(&self, x: f64, y: f64, mouse_keys: u8, modifiers: u8) {
@@ -428,15 +586,21 @@ impl EditorHandle {
 		Ok(())
 	}
 
+	/// The font catalog has been loaded
+	#[wasm_bindgen(js_name = onFontCatalogLoad)]
+	pub fn on_font_catalog_load(&self, catalog: JsValue) -> Result<(), JsValue> {
+		// Deserializing from TS type: `{ name: string; styles: { weight: number, italic: boolean, url: string }[] }[]`
+		let families = serde_wasm_bindgen::from_value::<Vec<FontCatalogFamily>>(catalog)?;
+		let message = PortfolioMessage::FontCatalogLoaded { catalog: FontCatalog(families) };
+		self.dispatch(message);
+
+		Ok(())
+	}
+
 	/// A font has been downloaded
 	#[wasm_bindgen(js_name = onFontLoad)]
-	pub fn on_font_load(&self, font_family: String, font_style: String, preview_url: String, data: Vec<u8>) -> Result<(), JsValue> {
-		let message = PortfolioMessage::FontLoaded {
-			font_family,
-			font_style,
-			preview_url,
-			data,
-		};
+	pub fn on_font_load(&self, font_family: String, font_style: String, data: Vec<u8>) -> Result<(), JsValue> {
+		let message = PortfolioMessage::FontLoaded { font_family, font_style, data };
 		self.dispatch(message);
 
 		Ok(())
@@ -446,15 +610,6 @@ impl EditorHandle {
 	#[wasm_bindgen(js_name = updateBounds)]
 	pub fn update_bounds(&self, new_text: String) -> Result<(), JsValue> {
 		let message = TextToolMessage::UpdateBounds { new_text };
-		self.dispatch(message);
-
-		Ok(())
-	}
-
-	/// Begin sampling a pixel color from the document by entering eyedropper sampling mode
-	#[wasm_bindgen(js_name = eyedropperSampleForColorPicker)]
-	pub fn eyedropper_sample_for_color_picker(&self) -> Result<(), JsValue> {
-		let message = DialogMessage::RequestComingSoonDialog { issue: Some(832) };
 		self.dispatch(message);
 
 		Ok(())
@@ -490,20 +645,6 @@ impl EditorHandle {
 		self.dispatch(message);
 
 		Ok(())
-	}
-
-	/// Visit the given URL
-	#[wasm_bindgen(js_name = visitUrl)]
-	pub fn visit_url(&self, url: String) {
-		let message = FrontendMessage::TriggerVisitLink { url };
-		self.dispatch(message);
-	}
-
-	/// Paste layers from a serialized json representation
-	#[wasm_bindgen(js_name = pasteSerializedData)]
-	pub fn paste_serialized_data(&self, data: String) {
-		let message = PortfolioMessage::PasteSerializedData { data };
-		self.dispatch(message);
 	}
 
 	#[wasm_bindgen(js_name = clipLayer)]
@@ -582,14 +723,7 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
-	/// Snaps the import/export edges to a grid space when the scroll bar is released
-	#[wasm_bindgen(js_name = setGridAlignedEdges)]
-	pub fn set_grid_aligned_edges(&self) {
-		let message = NodeGraphMessage::SetGridAlignedEdges;
-		self.dispatch(message);
-	}
-
-	/// Merge a group of nodes into a subnetwork
+	/// Merge the selected nodes into a subnetwork
 	#[wasm_bindgen(js_name = mergeSelectedNodes)]
 	pub fn merge_nodes(&self) {
 		let message = NodeGraphMessage::MergeSelectedNodes;
@@ -598,21 +732,32 @@ impl EditorHandle {
 
 	/// Creates a new document node in the node graph
 	#[wasm_bindgen(js_name = createNode)]
-	pub fn create_node(&self, node_type: String, x: i32, y: i32) {
+	pub fn create_node(&self, node_type: JsValue, x: i32, y: i32) {
+		let value: serde_json::Value = serde_wasm_bindgen::from_value(node_type).unwrap();
+
 		let id = NodeId::new();
 		let message = NodeGraphMessage::CreateNodeFromContextMenu {
 			node_id: Some(id),
-			node_type,
+			node_type: value.into(),
 			xy: Some((x / 24, y / 24)),
 			add_transaction: true,
 		};
 		self.dispatch(message);
 	}
 
-	/// Pastes the nodes based on serialized data
-	#[wasm_bindgen(js_name = pasteSerializedNodes)]
-	pub fn paste_serialized_nodes(&self, serialized_nodes: String) {
-		let message = NodeGraphMessage::PasteNodes { serialized_nodes };
+	/// Respond to selection read
+	#[wasm_bindgen(js_name = readSelection)]
+	pub fn read_selection(&self, content: Option<String>, cut: bool) {
+		let message = ClipboardMessage::ReadSelection { content, cut };
+		self.dispatch(message);
+	}
+
+	/// Paste from a serialized JSON representation
+	#[wasm_bindgen(js_name = pasteText)]
+	pub fn paste_text(&self, data: String) {
+		let message = ClipboardMessage::ReadClipboard {
+			content: ClipboardContentRaw::Text(data),
+		};
 		self.dispatch(message);
 	}
 
@@ -774,38 +919,51 @@ fn set_timeout(f: &Closure<dyn FnMut()>, delay: Duration) {
 }
 
 /// Provides access to the `Editor` by calling the given closure with it as an argument.
+#[cfg(not(feature = "native"))]
 fn editor<T: Default>(callback: impl FnOnce(&mut editor::application::Editor) -> T) -> T {
 	EDITOR.with(|editor| {
 		let mut guard = editor.try_lock();
-		let Ok(Some(editor)) = guard.as_deref_mut() else { return T::default() };
+		let Ok(Some(editor)) = guard.as_deref_mut() else {
+			log::error!("Failed to borrow editor");
+			return T::default();
+		};
 
 		callback(editor)
 	})
 }
 
 /// Provides access to the `Editor` and its `EditorHandle` by calling the given closure with them as arguments.
-pub(crate) fn editor_and_handle(mut callback: impl FnMut(&mut Editor, &mut EditorHandle)) {
-	EDITOR_HANDLE.with(|editor_handle| {
+#[cfg(not(feature = "native"))]
+pub(crate) fn editor_and_handle(callback: impl FnOnce(&mut Editor, &mut EditorHandle)) {
+	handle(|editor_handle| {
 		editor(|editor| {
-			let mut guard = editor_handle.try_lock();
-			let Ok(Some(editor_handle)) = guard.as_deref_mut() else {
-				log::error!("Failed to borrow editor handle");
-				return;
-			};
-
 			// Call the closure with the editor and its handle
 			callback(editor, editor_handle);
 		})
 	});
 }
+/// Provides access to the `EditorHandle` by calling the given closure with them as arguments.
+pub(crate) fn handle(callback: impl FnOnce(&mut EditorHandle)) {
+	EDITOR_HANDLE.with(|editor_handle| {
+		let mut guard = editor_handle.try_lock();
+		let Ok(Some(editor_handle)) = guard.as_deref_mut() else {
+			log::error!("Failed to borrow editor handle");
+			return;
+		};
 
+		// Call the closure with the editor and its handle
+		callback(editor_handle);
+	});
+}
+
+#[cfg(not(feature = "native"))]
 async fn poll_node_graph_evaluation() {
 	// Process no further messages after a crash to avoid spamming the console
 	if EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
 		return;
 	}
 
-	if !editor::node_graph_executor::run_node_graph().await {
+	if !editor::node_graph_executor::run_node_graph().await.0 {
 		return;
 	};
 
@@ -823,8 +981,12 @@ async fn poll_node_graph_evaluation() {
 			crate::NODE_GRAPH_ERROR_DISPLAYED.store(false, Ordering::SeqCst);
 		}
 
+		// Batch responses to pool frontend updates
+		let batched = Message::Batched {
+			messages: messages.into_iter().collect(),
+		};
 		// Send each `FrontendMessage` to the JavaScript frontend
-		for response in messages.into_iter().flat_map(|message| editor.handle_message(message)) {
+		for response in editor.handle_message(batched) {
 			handle.send_frontend_message_to_js(response);
 		}
 
@@ -838,9 +1000,76 @@ fn auto_save_all_documents() {
 		return;
 	}
 
-	editor_and_handle(|editor, handle| {
-		for message in editor.handle_message(PortfolioMessage::AutoSaveAllDocuments) {
-			handle.send_frontend_message_to_js(message);
-		}
+	handle(|handle| {
+		handle.dispatch(PortfolioMessage::AutoSaveAllDocuments);
 	});
+}
+
+fn render_image_data_to_canvases(image_data: &[(u64, Image<Color>)]) {
+	let window = match window() {
+		Some(window) => window,
+		None => {
+			error!("Cannot render canvas: window object not found");
+			return;
+		}
+	};
+	let document = window.document().expect("window should have a document");
+	let window_obj = Object::from(window);
+	let image_canvases_key = JsValue::from_str("imageCanvases");
+
+	let canvases_obj = match Reflect::get(&window_obj, &image_canvases_key) {
+		Ok(obj) if !obj.is_undefined() && !obj.is_null() => obj,
+		_ => {
+			let new_obj = Object::new();
+			if Reflect::set(&window_obj, &image_canvases_key, &new_obj).is_err() {
+				error!("Failed to create and set imageCanvases object on window");
+				return;
+			}
+			new_obj.into()
+		}
+	};
+	let canvases_obj = Object::from(canvases_obj);
+
+	for (placeholder_id, image) in image_data.iter() {
+		let canvas_name = placeholder_id.to_string();
+		let js_key = JsValue::from_str(&canvas_name);
+
+		if Reflect::has(&canvases_obj, &js_key).unwrap_or(false) || image.width == 0 || image.height == 0 {
+			continue;
+		}
+
+		let canvas: HtmlCanvasElement = document
+			.create_element("canvas")
+			.expect("Failed to create canvas element")
+			.dyn_into::<HtmlCanvasElement>()
+			.expect("Failed to cast element to HtmlCanvasElement");
+
+		canvas.set_width(image.width);
+		canvas.set_height(image.height);
+
+		let context: CanvasRenderingContext2d = canvas
+			.get_context("2d")
+			.expect("Failed to get 2d context")
+			.expect("2d context was not found")
+			.dyn_into::<CanvasRenderingContext2d>()
+			.expect("Failed to cast context to CanvasRenderingContext2d");
+		let u8_data: Vec<u8> = image.data.iter().flat_map(|color| color.to_rgba8_srgb()).collect();
+		let clamped_u8_data = wasm_bindgen::Clamped(&u8_data[..]);
+		match ImageData::new_with_u8_clamped_array_and_sh(clamped_u8_data, image.width, image.height) {
+			Ok(image_data_obj) => {
+				if context.put_image_data(&image_data_obj, 0., 0.).is_err() {
+					error!("Failed to put image data on canvas for id: {placeholder_id}");
+				}
+			}
+			Err(e) => {
+				error!("Failed to create ImageData for id: {placeholder_id}: {e:?}");
+			}
+		}
+
+		let js_value = JsValue::from(canvas);
+
+		if Reflect::set(&canvases_obj, &js_key, &js_value).is_err() {
+			error!("Failed to set canvas '{canvas_name}' on imageCanvases object");
+		}
+	}
 }

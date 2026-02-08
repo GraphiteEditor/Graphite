@@ -7,6 +7,7 @@ license = "MIT OR Apache-2.0"
 [features]
 
 [dependencies]
+log = { workspace = true }
 
 # Workspace dependencies
 graphene-std = { workspace = true, features = ["gpu"] }

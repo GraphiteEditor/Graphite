@@ -24,7 +24,7 @@ impl ToolMetadata for NavigateTool {
 	fn icon_name(&self) -> String {
 		"GeneralNavigateTool".into()
 	}
-	fn tooltip(&self) -> String {
+	fn tooltip_label(&self) -> String {
 		"Navigate Tool".into()
 	}
 	fn tool_type(&self) -> crate::messages::tool::utility_types::ToolType {
@@ -34,7 +34,7 @@ impl ToolMetadata for NavigateTool {
 
 impl LayoutHolder for NavigateTool {
 	fn layout(&self) -> Layout {
-		Layout::WidgetLayout(WidgetLayout::default())
+		Layout::default()
 	}
 }
 
@@ -166,7 +166,7 @@ impl Fsm for NavigateToolFsmState {
 			]),
 		};
 
-		responses.add(FrontendMessage::UpdateInputHints { hint_data });
+		hint_data.send_layout(responses);
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {

@@ -1,4 +1,4 @@
-use super::types::{Array, ConstArray, TagType, TypeByte, TypeIfd, TypeLong, TypeNumber, TypeOrientation, TypeSRational, TypeSShort, TypeShort, TypeSonyToneCurve, TypeString};
+use super::types::{Array, ConstArray, TagType, TypeByte, TypeCompression, TypeIfd, TypeLong, TypeNumber, TypeOrientation, TypeSRational, TypeSShort, TypeShort, TypeSonyToneCurve, TypeString};
 use super::{Ifd, TagId, TiffError, TiffRead};
 use std::io::{Read, Seek};
 
@@ -22,8 +22,8 @@ pub struct SamplesPerPixel;
 pub struct RowsPerStrip;
 pub struct StripByteCounts;
 pub struct SubIfd;
-pub struct JpegOffset;
-pub struct JpegLength;
+pub struct ThumbnailOffset;
+pub struct ThumbnailLength;
 pub struct SonyDataOffset;
 pub struct SonyToneCurve;
 pub struct BlackLevel;
@@ -55,7 +55,7 @@ impl SimpleTag for BitsPerSample {
 }
 
 impl SimpleTag for Compression {
-	type Type = TypeShort;
+	type Type = TypeCompression;
 
 	const ID: TagId = TagId::Compression;
 	const NAME: &'static str = "Compression";
@@ -124,17 +124,17 @@ impl SimpleTag for SubIfd {
 	const NAME: &'static str = "SubIFD";
 }
 
-impl SimpleTag for JpegOffset {
+impl SimpleTag for ThumbnailOffset {
 	type Type = TypeLong;
 
-	const ID: TagId = TagId::JpegOffset;
+	const ID: TagId = TagId::ThumbnailOffset;
 	const NAME: &'static str = "Jpeg Offset";
 }
 
-impl SimpleTag for JpegLength {
+impl SimpleTag for ThumbnailLength {
 	type Type = TypeLong;
 
-	const ID: TagId = TagId::JpegLength;
+	const ID: TagId = TagId::ThumbnailLength;
 	const NAME: &'static str = "Jpeg Length";
 }
 

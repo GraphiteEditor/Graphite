@@ -19,5 +19,6 @@ pub enum InputMapperMessage {
 
 	// Messages
 	PointerMove,
+	PointerShake,
 	WheelScroll,
 }

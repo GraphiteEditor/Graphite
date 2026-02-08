@@ -10,15 +10,15 @@ const TOP: u8 = 1 << 3;
 fn out_code(x: f64, y: f64, bounding_box: &Aabb) -> u8 {
 	let mut code = INSIDE;
 
-	if x < bounding_box.left {
+	if x < bounding_box.left() {
 		code |= LEFT;
-	} else if x > bounding_box.right {
+	} else if x > bounding_box.right() {
 		code |= RIGHT;
 	}
 
-	if y < bounding_box.top {
+	if y < bounding_box.top() {
 		code |= BOTTOM;
-	} else if y > bounding_box.bottom {
+	} else if y > bounding_box.bottom() {
 		code |= TOP;
 	}
 
@@ -57,20 +57,20 @@ pub(crate) fn line_segment_aabb_intersect(seg: LineSegment, bounding_box: &Aabb)
 			// outcode bit being tested guarantees the denominator is non-zero
 			if (outcode_out & TOP) != 0 {
 				// point is above the clip window
-				x = p0.x + (p1.x - p0.x) * (bounding_box.bottom - p0.y) / (p1.y - p0.y);
-				y = bounding_box.bottom;
+				x = p0.x + (p1.x - p0.x) * (bounding_box.bottom() - p0.y) / (p1.y - p0.y);
+				y = bounding_box.bottom();
 			} else if (outcode_out & BOTTOM) != 0 {
 				// point is below the clip window
-				x = p0.x + (p1.x - p0.x) * (bounding_box.top - p0.y) / (p1.y - p0.y);
-				y = bounding_box.top;
+				x = p0.x + (p1.x - p0.x) * (bounding_box.top() - p0.y) / (p1.y - p0.y);
+				y = bounding_box.top();
 			} else if (outcode_out & RIGHT) != 0 {
 				// point is to the right of clip window
-				y = p0.y + (p1.y - p0.y) * (bounding_box.right - p0.x) / (p1.x - p0.x);
-				x = bounding_box.right;
+				y = p0.y + (p1.y - p0.y) * (bounding_box.right() - p0.x) / (p1.x - p0.x);
+				x = bounding_box.right();
 			} else if (outcode_out & LEFT) != 0 {
 				// point is to the left of clip window
-				y = p0.y + (p1.y - p0.y) * (bounding_box.left - p0.x) / (p1.x - p0.x);
-				x = bounding_box.left;
+				y = p0.y + (p1.y - p0.y) * (bounding_box.left() - p0.x) / (p1.x - p0.x);
+				x = bounding_box.left();
 			}
 
 			// Now we move outside point to intersection point to clip

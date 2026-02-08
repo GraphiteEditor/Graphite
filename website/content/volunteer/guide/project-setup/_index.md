@@ -26,15 +26,12 @@ cargo install -f wasm-bindgen-cli@0.2.100
 
 Regarding the last one: you'll likely get faster build times if you manually install that specific version of `wasm-bindgen-cli`. It is supposed to be installed automatically but a version mismatch causes it to reinstall every single recompilation. It may need to be manually updated periodically to match the version of the `wasm-bindgen` dependency in [`Cargo.toml`](https://github.com/GraphiteEditor/Graphite/blob/master/Cargo.toml).
 
-Lastly, if you intend to develop using the Tauri desktop app build target, obtain [Tauri's dependencies](https://v2.tauri.app/start/prerequisites/). This is not the usual setup for most contributors, so you will know if you need it.
-
 ## Repository
 
 Clone the project to a convenient location:
 
 ```sh
 git clone https://github.com/GraphiteEditor/Graphite.git
-cd Graphite
 ```
 
 ## Development builds
@@ -45,19 +42,26 @@ From either the `/` (root) or `/frontend` directories, you can run the project b
 npm start
 ```
 
-This spins up the dev server at <http://localhost:8080> with a file watcher that performs hot reloading of the web page. You should be able to start the server, edit and save web and Rust code, and shut it down by double pressing <kbd>Ctrl</kbd><kbd>C</kbd>. You sometimes may need to reload the browser's page if hot reloading didn't behave right— always refresh when Rust recompiles.
+This spins up the dev server at <http://localhost:8080> with a file watcher that performs hot reloading of the web page. You should be able to start the server, edit and save web and Rust code, and shut it down by double pressing <kbd>Ctrl</kbd><kbd>C</kbd>. TypeScript and HTML changes require a manual page reload to fix broken state.
 
 This method compiles Graphite code in debug mode which includes debug symbols for viewing function names in stack traces. But be aware, it runs slower and the Wasm binary is much larger. (Having your browser's developer tools open will also significantly impact performance in both debug and release builds, so it's best to close that when not in use.)
 
-To run the dev server in optimized mode, which is faster and produces a smaller Wasm binary:
+<details>
+<summary>Dev server optimized build instructions: click here</summary>
+
+On rare occasions (like while running advanced performance profiles or proxying the dev server connection over a slow network where the >100 MB unoptimized binary size would pose an issue), you may need to run the dev server with release optimizations. To do that while keeping debug symbols:
 
 ```sh
-# Includes debug symbols
 npm run profiling
+```
 
-# Excludes (most) debug symbols, used in release builds
+To run the dev server without debug symbols, using the same release optimizations as production builds:
+
+```sh
 npm run production
 ```
+
+</details>
 
 <details>
 <summary>Production build instructions: click here</summary>

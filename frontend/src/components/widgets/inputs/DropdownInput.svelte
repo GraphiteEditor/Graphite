@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
-	import type { MenuListEntry } from "@graphite/messages";
+	import type { MenuListEntry, ActionShortcut } from "@graphite/messages";
 
 	import MenuList from "@graphite/components/floating-menus/MenuList.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -12,17 +12,27 @@
 
 	const dispatch = createEventDispatcher<{ selectedIndex: number; hoverInEntry: number; hoverOutEntry: number }>();
 
-	let menuList: MenuList | undefined;
 	let self: LayoutRow | undefined;
 
-	export let entries: MenuListEntry[][];
+	// Content
 	export let selectedIndex: number | undefined = undefined; // When not provided, a dash is displayed
 	export let drawIcon = false;
-	export let interactive = true;
 	export let disabled = false;
-	export let tooltip: string | undefined = undefined;
+	// Children
+	export let entries: MenuListEntry[][];
+	export let entriesHash: bigint | undefined = undefined;
+	// Styling
+	export let narrow = false;
+	// Behavior
+	export let virtualScrolling = false;
+	export let interactive = true;
+	// Sizing
 	export let minWidth = 0;
 	export let maxWidth = 0;
+	// Tooltips
+	export let tooltipLabel: string | undefined = undefined;
+	export let tooltipDescription: string | undefined = undefined;
+	export let tooltipShortcut: ActionShortcut | undefined = undefined;
 
 	let activeEntry = makeActiveEntry();
 	let activeEntrySkipWatcher = false;
@@ -50,19 +60,32 @@
 		activeEntry = makeActiveEntry();
 	}
 
-	// Called when the `activeEntry` two-way binding on this component's MenuList component is changed, or by the `selectedIndex()` watcher above (but we want to skip that case)
+	// Called when the `activeEntry` two-way binding on this component's MenuList component is changed, or by the `watchSelectedIndex()` watcher above (but we want to skip that case)
 	function watchActiveEntry(activeEntry: MenuListEntry) {
 		if (activeEntrySkipWatcher) {
 			activeEntrySkipWatcher = false;
 		} else if (activeEntry !== DASH_ENTRY) {
 			// We need to set to the initial value first to track a right history step, as if we hover in initial selection.
 			if (initialSelectedIndex !== undefined) dispatch("hoverInEntry", initialSelectedIndex);
-			dispatch("selectedIndex", entries.flat().indexOf(activeEntry));
+			const index = entries.flat().findIndex((entry) => entry.value === activeEntry.value);
+			if (index !== -1) {
+				dispatch("selectedIndex", index);
+			} else {
+				// eslint-disable-next-line no-console
+				console.error("Selected index not found in entries:", activeEntry);
+			}
 		}
 	}
 
 	function dispatchHoverInEntry(hoveredEntry: MenuListEntry) {
-		dispatch("hoverInEntry", entries.flat().indexOf(hoveredEntry));
+		const index = entries.flat().findIndex((entry) => entry.value === hoveredEntry.value);
+
+		if (index !== -1) {
+			dispatch("hoverInEntry", index);
+		} else {
+			// eslint-disable-next-line no-console
+			console.error("Hovered entry not found in entries:", hoveredEntry);
+		}
 	}
 
 	function dispatchHoverOutEntry() {
@@ -86,14 +109,20 @@
 
 <LayoutRow
 	class="dropdown-input"
-	styles={{ ...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}), ...(maxWidth > 0 ? { "max-width": `${maxWidth}px` } : {}) }}
+	classes={{ narrow }}
+	styles={{
+		...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}),
+		...(maxWidth > 0 ? { "max-width": `${maxWidth}px` } : {}),
+	}}
 	bind:this={self}
 	data-dropdown-input
 >
 	<LayoutRow
 		class="dropdown-box"
 		classes={{ disabled, open }}
-		{tooltip}
+		{tooltipLabel}
+		{tooltipDescription}
+		{tooltipShortcut}
 		on:click={() => !disabled && (open = true)}
 		on:blur={unFocusDropdownBox}
 		tabindex={disabled ? -1 : 0}
@@ -107,31 +136,37 @@
 	</LayoutRow>
 	<MenuList
 		on:naturalWidth={({ detail }) => (minWidth = detail)}
-		{activeEntry}
 		on:activeEntry={({ detail }) => (activeEntry = detail)}
 		on:hoverInEntry={({ detail }) => dispatchHoverInEntry(detail)}
 		on:hoverOutEntry={() => dispatchHoverOutEntry()}
-		{open}
 		on:open={({ detail }) => (open = detail)}
+		{open}
+		{activeEntry}
 		{entries}
+		entriesHash={entriesHash || 0n}
 		{drawIcon}
 		{interactive}
+		{virtualScrolling}
 		direction="Bottom"
 		scrollableY={true}
-		bind:this={menuList}
 	/>
 </LayoutRow>
 
 <style lang="scss" global>
 	.dropdown-input {
 		position: relative;
+		--widget-height: 24px;
+
+		&.narrow.narrow {
+			--widget-height: 20px;
+		}
 
 		.dropdown-box {
 			align-items: center;
 			white-space: nowrap;
-			background: var(--color-1-nearblack);
-			height: 24px;
 			border-radius: 2px;
+			background: var(--color-1-nearblack);
+			height: var(--widget-height);
 
 			.dropdown-label {
 				margin: 0;

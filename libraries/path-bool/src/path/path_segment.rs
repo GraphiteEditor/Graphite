@@ -588,21 +588,16 @@ impl PathSegment {
 	/// An [`Aabb`] representing the axis-aligned bounding box of the segment.
 	pub(crate) fn bounding_box(&self) -> Aabb {
 		match *self {
-			PathSegment::Line(start, end) => Aabb {
-				top: start.y.min(end.y),
-				right: start.x.max(end.x),
-				bottom: start.y.max(end.y),
-				left: start.x.min(end.x),
-			},
+			PathSegment::Line(start, end) => Aabb::new(start.x.min(end.x), start.y.min(end.y), start.x.max(end.x), start.y.max(end.y)),
 			PathSegment::Cubic(p1, p2, p3, p4) => {
 				let (left, right) = cubic_bounding_interval(p1.x, p2.x, p3.x, p4.x);
 				let (top, bottom) = cubic_bounding_interval(p1.y, p2.y, p3.y, p4.y);
-				Aabb { top, right, bottom, left }
+				Aabb::new(left, top, right, bottom)
 			}
 			PathSegment::Quadratic(p1, p2, p3) => {
 				let (left, right) = quadratic_bounding_interval(p1.x, p2.x, p3.x);
 				let (top, bottom) = quadratic_bounding_interval(p1.y, p2.y, p3.y);
-				Aabb { top, right, bottom, left }
+				Aabb::new(left, top, right, bottom)
 			}
 			PathSegment::Arc(start, rx, ry, phi, _, _, end) => {
 				if let Some(center_param) = self.arc_segment_to_center() {
@@ -627,16 +622,40 @@ impl PathSegment {
 					} else {
 						// TODO: Don't convert to cubics
 						let cubics = self.arc_segment_to_cubics(PI / 16.);
-						let mut bounding_box = None;
+						let mut bounding_box = bounding_box_around_point(start, 0.);
 						for cubic_seg in cubics {
-							bounding_box = Some(merge_bounding_boxes(bounding_box, &cubic_seg.bounding_box()));
+							bounding_box = merge_bounding_boxes(&bounding_box, &cubic_seg.bounding_box());
 						}
-						bounding_box.unwrap_or_else(|| bounding_box_around_point(start, 0.))
+						bounding_box
 					}
 				} else {
 					extend_bounding_box(Some(bounding_box_around_point(start, 0.)), end)
 				}
 			}
+		}
+	}
+
+	/// Computes a loose bounding box that surrounds all anchors, but also the handles of cubic and quadratic segments.
+	/// This will usually be larger than the actual bounding box, but is faster to compute because it does not have to find where each curve reaches its maximum and minimum.
+	pub(crate) fn approx_bounding_box(&self) -> Aabb {
+		match *self {
+			PathSegment::Cubic(p1, p2, p3, p4) => {
+				// Use the control points to create a bounding box
+				let left = p1.x.min(p2.x).min(p3.x).min(p4.x);
+				let right = p1.x.max(p2.x).max(p3.x).max(p4.x);
+				let top = p1.y.min(p2.y).min(p3.y).min(p4.y);
+				let bottom = p1.y.max(p2.y).max(p3.y).max(p4.y);
+				Aabb::new(left, top, right, bottom)
+			}
+			PathSegment::Quadratic(p1, p2, p3) => {
+				// Use the control points to create a bounding box
+				let left = p1.x.min(p2.x).min(p3.x);
+				let right = p1.x.max(p2.x).max(p3.x);
+				let top = p1.y.min(p2.y).min(p3.y);
+				let bottom = p1.y.max(p2.y).max(p3.y);
+				Aabb::new(left, top, right, bottom)
+			}
+			seg => seg.bounding_box(),
 		}
 	}
 

@@ -101,14 +101,11 @@ pub fn derive_discriminant_impl(input_item: TokenStream) -> syn::Result<TokenStr
 	let (pattern, value) = is_sub_discriminant
 		.into_iter()
 		.map(|b| {
-			(
-				if b {
-					quote::quote! { (x) }
-				} else {
-					quote::quote! { { .. } }
-				},
-				b.then(|| quote::quote! { (x.to_discriminant()) }).unwrap_or_default(),
-			)
+			if b {
+				(quote::quote! {(x)}, quote::quote! {(x.to_discriminant())})
+			} else {
+				(quote::quote! {{..}}, Default::default())
+			}
 		})
 		.unzip::<_, _, Vec<_>, Vec<_>>();
 	#[cfg(feature = "serde-discriminant")]

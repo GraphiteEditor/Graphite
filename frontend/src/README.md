@@ -16,7 +16,7 @@ During development when HMR (hot-module replacement) occurs, these are also unmo
 
 TypeScript files which provide reactive state and importable functions to Svelte components. Each module defines a Svelte writable store `const { subscribe, update } = writable({ .. });` and exports the `subscribe` method from the module in the returned object. Other functions may also be defined in the module and exported after `subscribe`, which provide a way for Svelte components to call functions to manipulate the state.
 
-In `Editor.svelte`, an instance of each of these are given to Svelte's [`setContext()`](https://svelte.dev/docs#run-time-svelte-setcontext) function. This allows any component to access the state provider instance using `const exampleStateProvider = getContext<ExampleStateProvider>("exampleStateProvider");`.
+In `Editor.svelte`, an instance of each of these are given to Svelte's `setContext()` function. This allows any component to access the state provider instance using `const exampleStateProvider = getContext<ExampleStateProvider>("exampleStateProvider");`.
 
 ## _I/O managers vs. state providers_
 
