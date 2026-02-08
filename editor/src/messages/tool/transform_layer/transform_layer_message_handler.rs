@@ -234,7 +234,14 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 					TransformOperation::Grabbing(translation) => {
 						let translation_viewport = self.state.local_to_viewport_transform().matrix2 * translation.to_dvec(&self.state, document);
 						let pivot = document_to_viewport.transform_point2(self.grab_target);
-						let quad = Quad::from_box([pivot, pivot + translation_viewport]);
+						let quad = if self.state.local_transform_axes[0].dot(DVec2::X).abs() < 0.999 {
+							let [local_x_axis, local_y_axis] = self.state.local_transform_axes;
+							let local_components = DVec2::new(translation_viewport.dot(local_x_axis), translation_viewport.dot(local_y_axis));
+							let local_to_viewport = DAffine2::from_cols(local_x_axis, local_y_axis, DVec2::ZERO);
+							DAffine2::from_translation(pivot) * local_to_viewport * Quad::from_box([DVec2::ZERO, local_components])
+						} else {
+							Quad::from_box([pivot, pivot + translation_viewport])
+						};
 
 						responses.add(SelectToolMessage::PivotShift {
 							offset: Some(translation_viewport),
@@ -242,7 +249,10 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 						});
 
 						let typed_string = (!self.typing.digits.is_empty() && self.transform_operation.can_begin_typing()).then(|| self.typing.string.clone());
-						overlay_context.translation_box(translation_viewport / document_to_viewport.matrix2.y_axis.length(), quad, typed_string);
+						// A transformation to the local space of the transformation from the document
+						let viewport_to_local = glam::DMat2::from_cols(self.state.local_transform_axes[0], self.state.local_transform_axes[1]).inverse();
+						let transform_local = viewport_to_local * translation_viewport / document_to_viewport.matrix2.y_axis.length();
+						overlay_context.translation_box(transform_local, quad, typed_string);
 					}
 					TransformOperation::Scaling(scale) => {
 						let scale = scale.to_f64(self.state.is_rounded_to_intervals);
@@ -271,8 +281,8 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 						} else if using_path_tool {
 							start_mouse - self.state.pivot_viewport(document)
 						} else {
-							// TODO: This is always zero breaking the `.to_angle()` below?
-							self.layer_bounding_box.top_right() - self.layer_bounding_box.top_right()
+							// Use local_transform_axes to preserve rotation across chained operations
+							self.state.local_transform_axes[0]
 						};
 						let tilt_offset = document.document_ptz.unmodified_tilt();
 						let offset_angle = offset_angle.to_angle() + tilt_offset;
