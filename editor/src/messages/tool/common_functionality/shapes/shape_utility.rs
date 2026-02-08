@@ -263,35 +263,6 @@ pub fn extract_star_parameters(layer: Option<LayerNodeIdentifier>, document: &Do
 	Some((sides, radius_1, radius_2))
 }
 
-/// Extract the node input values of spiral.
-/// Returns an option of (spiral type, start angle, inner radius, outer radius, turns, angle resolution).
-pub fn extract_spiral_parameters(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> Option<(SpiralType, f64, f64, f64, f64, f64)> {
-	use graphene_std::vector::generator_nodes::spiral::*;
-
-	let node_inputs = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Spiral")?;
-
-	let (
-		Some(&TaggedValue::SpiralType(spiral_type)),
-		Some(&TaggedValue::F64(start_angle)),
-		Some(&TaggedValue::F64(inner_radius)),
-		Some(&TaggedValue::F64(outer_radius)),
-		Some(&TaggedValue::F64(turns)),
-		Some(&TaggedValue::F64(angle_resolution)),
-	) = (
-		node_inputs.get(SpiralTypeInput::INDEX)?.as_value(),
-		node_inputs.get(StartAngleInput::INDEX)?.as_value(),
-		node_inputs.get(InnerRadiusInput::INDEX)?.as_value(),
-		node_inputs.get(OuterRadiusInput::INDEX)?.as_value(),
-		node_inputs.get(TurnsInput::INDEX)?.as_value(),
-		node_inputs.get(AngularResolutionInput::INDEX)?.as_value(),
-	)
-	else {
-		return None;
-	};
-
-	Some((spiral_type, start_angle, inner_radius, outer_radius, turns, angle_resolution))
-}
-
 /// Extract the node input values of Polygon.
 /// Returns an option of (sides, radius).
 pub fn extract_polygon_parameters(layer: Option<LayerNodeIdentifier>, document: &DocumentMessageHandler) -> Option<(u32, f64)> {
@@ -320,6 +291,35 @@ pub fn extract_arc_parameters(layer: Option<LayerNodeIdentifier>, document: &Doc
 	};
 
 	Some((radius, start_angle, sweep_angle, arc_type))
+}
+
+/// Extract the node input values of spiral.
+/// Returns an option of (spiral type, start angle, inner radius, outer radius, turns, angle resolution).
+pub fn extract_spiral_parameters(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> Option<(SpiralType, f64, f64, f64, f64, f64)> {
+	use graphene_std::vector::generator_nodes::spiral::*;
+
+	let node_inputs = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::spiral::IDENTIFIER))?;
+
+	let (
+		Some(&TaggedValue::SpiralType(spiral_type)),
+		Some(&TaggedValue::F64(start_angle)),
+		Some(&TaggedValue::F64(inner_radius)),
+		Some(&TaggedValue::F64(outer_radius)),
+		Some(&TaggedValue::F64(turns)),
+		Some(&TaggedValue::F64(angle_resolution)),
+	) = (
+		node_inputs.get(SpiralTypeInput::INDEX)?.as_value(),
+		node_inputs.get(StartAngleInput::INDEX)?.as_value(),
+		node_inputs.get(InnerRadiusInput::INDEX)?.as_value(),
+		node_inputs.get(OuterRadiusInput::INDEX)?.as_value(),
+		node_inputs.get(TurnsInput::INDEX)?.as_value(),
+		node_inputs.get(AngularResolutionInput::INDEX)?.as_value(),
+	)
+	else {
+		return None;
+	};
+
+	Some((spiral_type, start_angle, inner_radius, outer_radius, turns, angle_resolution))
 }
 
 /// Calculate the viewport positions of arc endpoints

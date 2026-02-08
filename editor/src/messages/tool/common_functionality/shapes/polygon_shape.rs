@@ -25,7 +25,7 @@ pub struct PolygonGizmoHandler {
 
 impl ShapeGizmoHandler for PolygonGizmoHandler {
 	fn is_any_gizmo_hovered(&self) -> bool {
-		self.number_of_points_dial.hovered() || self.point_radius_handle.hovered()
+		self.number_of_points_dial.is_hovering() || self.point_radius_handle.hovered()
 	}
 
 	fn handle_state(&mut self, selected_star_layer: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
@@ -34,7 +34,7 @@ impl ShapeGizmoHandler for PolygonGizmoHandler {
 	}
 
 	fn handle_click(&mut self) {
-		if self.number_of_points_dial.hovered() {
+		if self.number_of_points_dial.is_hovering() {
 			self.number_of_points_dial.update_state(NumberOfPointsDialState::Dragging);
 			return;
 		}
@@ -87,7 +87,7 @@ impl ShapeGizmoHandler for PolygonGizmoHandler {
 	}
 
 	fn mouse_cursor_icon(&self) -> Option<MouseCursorIcon> {
-		if self.number_of_points_dial.is_dragging() || self.number_of_points_dial.hovered() {
+		if self.number_of_points_dial.is_dragging() || self.number_of_points_dial.is_hovering() {
 			return Some(MouseCursorIcon::EWResize);
 		}
 

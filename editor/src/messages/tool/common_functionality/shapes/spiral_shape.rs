@@ -1,4 +1,5 @@
 use super::*;
+use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type};
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -19,9 +20,6 @@ use graphene_std::subpath::{calculate_b, spiral_point};
 use graphene_std::vector::misc::SpiralType;
 use std::collections::VecDeque;
 
-#[derive(Default)]
-pub struct Spiral;
-
 #[derive(Clone, Debug, Default)]
 pub struct SpiralGizmoHandler {
 	turns_handle: SpiralTurns,
@@ -39,7 +37,6 @@ impl ShapeGizmoHandler for SpiralGizmoHandler {
 	fn handle_click(&mut self) {
 		if self.turns_handle.hovered() {
 			self.turns_handle.update_state(SpiralTurnsState::Dragging);
-			return;
 		}
 	}
 
@@ -58,11 +55,6 @@ impl ShapeGizmoHandler for SpiralGizmoHandler {
 		mouse_position: DVec2,
 		overlay_context: &mut OverlayContext,
 	) {
-		if self.turns_handle.hovered() {
-			self.turns_handle.overlays(document, selected_spiral_layer, shape_editor, mouse_position, overlay_context);
-			return;
-		}
-
 		self.turns_handle.overlays(document, selected_spiral_layer, shape_editor, mouse_position, overlay_context);
 	}
 
@@ -90,6 +82,19 @@ impl ShapeGizmoHandler for SpiralGizmoHandler {
 		self.turns_handle.cleanup();
 	}
 }
+
+/// Calculates the position of a spiral endpoint at a given angle offset (0 = start, TAU = end).
+pub fn calculate_spiral_endpoints(layer: LayerNodeIdentifier, document: &DocumentMessageHandler, viewport: DAffine2, theta: f64) -> Option<DVec2> {
+	let Some((spiral_type, start_angle, a, outer_radius, turns, _)) = extract_spiral_parameters(layer, document) else {
+		return None;
+	};
+	let theta = turns * theta + start_angle.to_radians();
+	let b = calculate_b(a, turns, outer_radius, spiral_type);
+	Some(viewport.transform_point2(spiral_point(theta, a, b, spiral_type)))
+}
+
+#[derive(Default)]
+pub struct Spiral;
 
 impl Spiral {
 	pub fn create_node(spiral_type: SpiralType, turns: f64) -> NodeTemplate {
@@ -197,15 +202,4 @@ impl Spiral {
 			input: NodeInput::value(TaggedValue::F64(turns), false),
 		});
 	}
-}
-
-pub fn calculate_spiral_endpoints(layer: LayerNodeIdentifier, document: &DocumentMessageHandler, viewport: DAffine2, theta: f64) -> Option<DVec2> {
-	let Some((spiral_type, start_angle, a, outer_radius, turns, _)) = extract_spiral_parameters(layer, document) else {
-		return None;
-	};
-
-	let theta = turns * theta + start_angle.to_radians();
-	let b = calculate_b(a, turns, outer_radius, spiral_type);
-
-	Some(viewport.transform_point2(spiral_point(theta, a, b, spiral_type)))
 }

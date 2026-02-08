@@ -41,7 +41,7 @@ impl NumberOfPointsDial {
 		self.handle_state = state;
 	}
 
-	pub fn hovered(&self) -> bool {
+	pub fn is_hovering(&self) -> bool {
 		self.handle_state == NumberOfPointsDialState::Hover
 	}
 

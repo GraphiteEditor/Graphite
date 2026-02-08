@@ -54,10 +54,10 @@ impl ShapeGizmoHandlers {
 		match self {
 			Self::Star(h) => h.handle_state(layer, mouse_position, document, responses),
 			Self::Polygon(h) => h.handle_state(layer, mouse_position, document, responses),
-			Self::Spiral(h) => h.handle_state(layer, mouse_position, document, responses),
 			Self::Arc(h) => h.handle_state(layer, mouse_position, document, responses),
 			Self::Circle(h) => h.handle_state(layer, mouse_position, document, responses),
 			Self::Grid(h) => h.handle_state(layer, mouse_position, document, responses),
+			Self::Spiral(h) => h.handle_state(layer, mouse_position, document, responses),
 			Self::None => {}
 		}
 	}
@@ -210,7 +210,6 @@ impl GizmoManager {
 		if graph_modification_utils::get_grid_id(layer, &document.network_interface).is_some() {
 			return Some(ShapeGizmoHandlers::Grid(GridGizmoHandler::default()));
 		}
-
 		// Spiral
 		if graph_modification_utils::get_spiral_id(layer, &document.network_interface).is_some() {
 			return Some(ShapeGizmoHandlers::Spiral(SpiralGizmoHandler::default()));

@@ -97,7 +97,6 @@ impl SpiralTurns {
 
 		match &self.handle_state {
 			SpiralTurnsState::Inactive => {
-				// Archimedean
 				if let Some((spiral_type, start_angle, inner_radius, outer_radius, turns, _)) = extract_spiral_parameters(layer, document) {
 					let b = calculate_b(inner_radius, turns, outer_radius, spiral_type);
 					let end_point = viewport.transform_point2(spiral_point(turns * TAU + start_angle.to_radians(), inner_radius, b, spiral_type));
@@ -121,6 +120,7 @@ impl SpiralTurns {
 	pub fn overlays(&self, document: &DocumentMessageHandler, layer: Option<LayerNodeIdentifier>, _shape_editor: &mut &mut ShapeState, _mouse_position: DVec2, overlay_context: &mut OverlayContext) {
 		let Some(layer) = layer.or(self.layer) else { return };
 		let viewport = document.metadata().transform_to_viewport(layer);
+
 		match &self.handle_state {
 			SpiralTurnsState::Inactive => {
 				if let Some((p1, p2)) = calculate_spiral_endpoints(layer, document, viewport, 0.).zip(calculate_spiral_endpoints(layer, document, viewport, TAU)) {
@@ -128,11 +128,9 @@ impl SpiralTurns {
 					overlay_context.manipulator_handle(p2, false, None);
 				}
 			}
-
 			SpiralTurnsState::Hover | SpiralTurnsState::Dragging => {
 				// Is true only when hovered over the gizmo
 				let selected = self.layer.is_some();
-
 				let angle = match self.gizmo_type {
 					GizmoType::End => TAU,
 					GizmoType::Start => 0.,
@@ -162,21 +160,15 @@ impl SpiralTurns {
 			.angle_to(viewport.inverse().transform_vector2(self.previous_mouse_position - center))
 			.to_degrees();
 
-		log::info!("{:?}", input.mouse.position);
-		log::info!("{:?}", self.previous_mouse_position);
-
-		log::info!(
-			"angle is {:?}",
-			viewport
-				.inverse()
-				.transform_point2(input.mouse.position)
-				.angle_to(viewport.inverse().transform_point2(self.previous_mouse_position))
-				.to_degrees()
-		);
+		// Skip update if angle calculation produced NaN or infinity (can happen when mouse is at center)
+		// Also skip very small angle changes to reduce jitter near center
+		if !angle_delta.is_finite() || angle_delta.abs() < 0.5 {
+			self.previous_mouse_position = input.mouse.position;
+			return;
+		}
 
 		// Increase the number of turns and outer radius in unison such that growth and tightness remain same
 		let total_delta = self.total_angle_delta + angle_delta;
-
 		// Convert the total angle (in degrees) to number of full turns
 		let turns_delta = total_delta / 360.;
 
@@ -186,6 +178,11 @@ impl SpiralTurns {
 			SpiralType::Logarithmic => self.initial_outer_radius * ((self.initial_b * TAU * turns_delta).exp() - 1.),
 		};
 
+		// Skip if outer_radius calculation produced invalid values
+		if !outer_radius_change.is_finite() {
+			return;
+		}
+
 		let Some(node_id) = graph_modification_utils::get_spiral_id(layer, &document.network_interface) else {
 			return;
 		};
@@ -193,31 +190,33 @@ impl SpiralTurns {
 		match self.gizmo_type {
 			GizmoType::Start => {
 				let sign = -1.;
+				let new_turns = (self.initial_turns + turns_delta * sign).max(0.5);
+				let new_outer_radius = (self.initial_outer_radius + outer_radius_change * sign).max(0.1);
 
 				responses.add(NodeGraphMessage::SetInput {
 					input_connector: InputConnector::node(node_id, StartAngleInput::INDEX),
 					input: NodeInput::value(TaggedValue::F64(self.initial_start_angle + total_delta), false),
 				});
-
 				responses.add(NodeGraphMessage::SetInput {
 					input_connector: InputConnector::node(node_id, TurnsInput::INDEX),
-					input: NodeInput::value(TaggedValue::F64(self.initial_turns + turns_delta * sign), false),
+					input: NodeInput::value(TaggedValue::F64(new_turns), false),
 				});
-
 				responses.add(NodeGraphMessage::SetInput {
 					input_connector: InputConnector::node(node_id, OuterRadiusInput::INDEX),
-					input: NodeInput::value(TaggedValue::F64(self.initial_outer_radius + outer_radius_change * sign), false),
+					input: NodeInput::value(TaggedValue::F64(new_outer_radius), false),
 				});
 			}
 			GizmoType::End => {
-				responses.add(NodeGraphMessage::SetInput {
-					input_connector: InputConnector::node(node_id, TurnsInput::INDEX),
-					input: NodeInput::value(TaggedValue::F64(self.initial_turns + turns_delta), false),
-				});
+				let new_turns = (self.initial_turns + turns_delta).max(0.5);
+				let new_outer_radius = (self.initial_outer_radius + outer_radius_change).max(0.1);
 
 				responses.add(NodeGraphMessage::SetInput {
+					input_connector: InputConnector::node(node_id, TurnsInput::INDEX),
+					input: NodeInput::value(TaggedValue::F64(new_turns), false),
+				});
+				responses.add(NodeGraphMessage::SetInput {
 					input_connector: InputConnector::node(node_id, OuterRadiusInput::INDEX),
-					input: NodeInput::value(TaggedValue::F64(self.initial_outer_radius + outer_radius_change), false),
+					input: NodeInput::value(TaggedValue::F64(new_outer_radius), false),
 				});
 			}
 			GizmoType::None => {
@@ -226,7 +225,6 @@ impl SpiralTurns {
 		}
 
 		responses.add(NodeGraphMessage::RunDocumentGraph);
-
 		self.total_angle_delta += angle_delta;
 		self.previous_mouse_position = input.mouse.position;
 	}
