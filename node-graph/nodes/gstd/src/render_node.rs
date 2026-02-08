@@ -18,6 +18,9 @@ use std::sync::Arc;
 use vector_types::GradientStops;
 use wgpu_executor::RenderContext;
 
+// Re-export render_output_cache from render_cache module
+pub use crate::render_cache::render_output_cache;
+
 /// List of (canvas id, image data) pairs for embedding images as canvases in the final SVG string.
 type ImageData = HashMap<Image<Color>, u64>;
 
@@ -28,9 +31,9 @@ pub enum RenderIntermediateType {
 }
 #[derive(Clone, dyn_any::DynAny)]
 pub struct RenderIntermediate {
-	ty: RenderIntermediateType,
-	metadata: RenderMetadata,
-	contains_artboard: bool,
+	pub(crate) ty: RenderIntermediateType,
+	pub(crate) metadata: RenderMetadata,
+	pub(crate) contains_artboard: bool,
 }
 
 #[node_macro::node(category(""))]
