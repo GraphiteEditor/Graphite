@@ -2,9 +2,9 @@ use rand::Rng;
 use rfd::AsyncFileDialog;
 use std::fs;
 use std::io::Read;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender, SyncSender};
+use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::{Duration, Instant};
 use winit::application::ApplicationHandler;
@@ -49,7 +49,7 @@ pub(crate) struct App {
 	cli: Cli,
 	startup_time: Option<Instant>,
 	exiting: Arc<AtomicBool>,
-	exit_reason: ExitReason,
+	exit_reason: Arc<Mutex<ExitReason>>,
 }
 
 impl App {
@@ -119,13 +119,14 @@ impl App {
 			cli,
 			startup_time: None,
 			exiting,
-			exit_reason: ExitReason::Shutdown,
+			exit_reason: Arc::new(Mutex::new(ExitReason::Shutdown)),
 		}
 	}
 
-	pub(crate) fn run(mut self, event_loop: EventLoop) -> ExitReason {
-		event_loop.run_app(&mut self).unwrap();
-		self.exit_reason
+	pub(crate) fn run(self, event_loop: EventLoop) -> ExitReason {
+		let exit_reason = self.exit_reason.clone();
+		event_loop.run_app(self).unwrap();
+		*exit_reason.lock().unwrap()
 	}
 
 	fn exit(&mut self, reason: Option<ExitReason>) {
@@ -134,7 +135,8 @@ impl App {
 		}
 		let _ = self.start_render_sender.send(());
 		if let Some(reason) = reason {
-			self.exit_reason = reason;
+			let mut exit_reason = self.exit_reason.lock().unwrap();
+			*exit_reason = reason;
 		}
 		self.app_event_scheduler.schedule(AppEvent::Exit);
 	}
@@ -692,6 +694,7 @@ impl ApplicationHandler for App {
 	}
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ExitReason {
 	Shutdown,
 	Restart,
