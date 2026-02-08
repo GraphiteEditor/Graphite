@@ -23,6 +23,7 @@ pub enum Token<'src> {
 	Comma,
 	Plus,
 	Minus,
+	Modulo,
 	Star,
 	Slash,
 	Caret,
@@ -31,6 +32,7 @@ pub enum Token<'src> {
 	Le,
 	Gt,
 	Ge,
+	Neq,
 	EqEq,
 
 	If,
@@ -48,6 +50,7 @@ impl<'src> fmt::Display for Token<'src> {
 			Token::Comma => f.write_str(","),
 			Token::Plus => f.write_str("+"),
 			Token::Minus => f.write_str("-"),
+			Token::Modulo => f.write_str("%"),
 			Token::Star => f.write_str("*"),
 			Token::Slash => f.write_str("/"),
 			Token::Caret => f.write_str("^"),
@@ -56,6 +59,7 @@ impl<'src> fmt::Display for Token<'src> {
 			Token::Le => f.write_str("<="),
 			Token::Gt => f.write_str(">"),
 			Token::Ge => f.write_str(">="),
+			Token::Neq => f.write_str("!="),
 			Token::EqEq => f.write_str("=="),
 
 			Token::If => f.write_str("if"),
@@ -220,9 +224,21 @@ impl<'a> Lexer<'a> {
 			'+' => Plus,
 			'-' => Minus,
 			'*' => Star,
+			'%' => Modulo,
 			'/' => Slash,
 			'^' => Caret,
+			'≠' => Neq,
 
+			'!' => {
+				if self.peek() == Some('=') {
+					self.bump();
+					Neq
+				} else {
+					return None;
+				}
+			}
+
+			'≤' => Le,
 			'<' => {
 				if self.peek() == Some('=') {
 					self.bump();
@@ -231,6 +247,8 @@ impl<'a> Lexer<'a> {
 					Lt
 				}
 			}
+
+			'≥' => Ge,
 			'>' => {
 				if self.peek() == Some('=') {
 					self.bump();

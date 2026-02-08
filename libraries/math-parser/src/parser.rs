@@ -72,7 +72,7 @@ where
 		let atom = choice((constant, if_expr, call, parens, var)).labelled("atom").boxed();
 
 		let add_op = choice((just(Token::Plus).to(BinaryOp::Add), just(Token::Minus).to(BinaryOp::Sub)));
-		let mul_op = choice((just(Token::Star).to(BinaryOp::Mul), just(Token::Slash).to(BinaryOp::Div)));
+		let mul_op = choice((just(Token::Star).to(BinaryOp::Mul), just(Token::Slash).to(BinaryOp::Div), just(Token::Modulo).to(BinaryOp::Modulo)));
 		let pow_op = just(Token::Caret).to(BinaryOp::Pow);
 		let unary_op = just(Token::Minus).to(UnaryOp::Neg);
 		let cmp_op = choice((
@@ -80,26 +80,24 @@ where
 			just(Token::Le).to(BinaryOp::Leq),
 			just(Token::Gt).to(BinaryOp::Gt),
 			just(Token::Ge).to(BinaryOp::Geq),
+			just(Token::Neq).to(BinaryOp::Neq),
 			just(Token::EqEq).to(BinaryOp::Eq),
 		));
 
-		let unary = unary_op.repeated().foldr(atom, |op, expr| Node::UnaryOp { op, expr: Box::new(expr) }).boxed();
+		let pow = atom.clone().foldl(
+			pow_op.then(unary_op.clone().repeated().foldr(atom, |op, expr| Node::UnaryOp { op, expr: Box::new(expr) }).boxed()).repeated(),
+			|lhs, (op, rhs)| Node::BinOp {
+				lhs: Box::new(lhs),
+				op,
+				rhs: Box::new(rhs),
+			},
+		);
 
-		let cmp = unary.clone().clone().foldl(cmp_op.then(unary).repeated(), |lhs: Node, (op, rhs)| Node::BinOp {
-			lhs: Box::new(lhs),
-			op,
-			rhs: Box::new(rhs),
-		});
+		let unary = unary_op.repeated().foldr(pow, |op, expr| Node::UnaryOp { op, expr: Box::new(expr) }).boxed();
 
-		let pow = cmp.clone().foldl(pow_op.then(cmp).repeated(), |lhs, (op, rhs)| Node::BinOp {
-			lhs: Box::new(lhs),
-			op,
-			rhs: Box::new(rhs),
-		});
-
-		let product = pow
+		let product = unary
 			.clone()
-			.foldl(mul_op.then(pow).repeated(), |lhs, (op, rhs)| Node::BinOp {
+			.foldl(mul_op.then(unary).repeated(), |lhs, (op, rhs)| Node::BinOp {
 				lhs: Box::new(lhs),
 				op,
 				rhs: Box::new(rhs),
@@ -112,7 +110,13 @@ where
 			rhs: Box::new(rhs),
 		});
 
-		add.clone().foldl(add.repeated(), |lhs, rhs| Node::BinOp {
+		let cmp = add.clone().foldl(cmp_op.then(add).repeated(), |lhs: Node, (op, rhs)| Node::BinOp {
+			lhs: Box::new(lhs),
+			op,
+			rhs: Box::new(rhs),
+		});
+
+		cmp.clone().foldl(cmp.repeated(), |lhs, rhs| Node::BinOp {
 			lhs: Box::new(lhs),
 			op: BinaryOp::Mul,
 			rhs: Box::new(rhs),

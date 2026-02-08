@@ -34,7 +34,6 @@ mod tests {
 	const EPSILON: f64 = 1e-10_f64;
 
 	fn run_end_to_end_test(input: &str, expected_value: Value) {
-		// parse + pretty‐print any parse errors
 		let expr = match ast::Node::try_parse_from_str(input) {
 			Ok(expr) => expr,
 			Err(err) => {
@@ -42,6 +41,7 @@ mod tests {
 				panic!("failed to parse `{input}`");
 			}
 		};
+		dbg!(&expr);
 		let context = EvalContext::default();
 
 		let actual_value = match expr.eval(&context) {
@@ -91,9 +91,7 @@ mod tests {
             $(
                 #[test]
                 fn $name() {
-                    // note the `.into()` here, so we still accept
-                    // any `T: Into<Value>` in our macro
-                    run_end_to_end_test($input, $expected.into());
+                    run_end_to_end_test($input, ($expected).into());
                 }
             )*
         };
@@ -101,9 +99,17 @@ mod tests {
 	test_end_to_end! {
 		// Basic arithmetic
 		infix_addition: "5 + 5" => 10.,
-		infix_subtraction_units: "5 - 3" => 2.,
-		infix_multiplication_units: "4 * 4" => 16.,
-		infix_division_units: "8/2" => 4.,
+		infix_subtraction: "5 - 3" => 2.,
+		infix_multiplication: "4 * 4" => 16.,
+		infix_division: "8/2" => 4.,
+		modulo_pos_pos: "3.2 % 2" => 1.2,
+		modulo_pos_neg: "3.2 % -2" => 1.2,
+		modulo_neg_neg: "(-3.2) % -2" => -1.2,
+		modulo_neg_pos: "(-3.2) % 2" => -1.2,
+		exp_pos_pos: "3.2 ^ 2" => 256. / 25.,
+		exp_pos_neg: "3.2 ^ -2" => 25. / 256.,
+		exp_neg_neg: "-3.2 ^ -2" => -25. / 256.,
+		exp_neg_pos: "-3.2 ^ 2" => -256. / 25.,
 
 		// Order of operations
 		order_of_operations_negative_prefix: "-10 + 5" => -5.,
@@ -168,7 +174,8 @@ mod tests {
 
 		// Nested arithmetic
 		if_complex_arithmetic: "if((5+3)*(2-1), 10, 20)" => 10.,
-		if_with_division: "if(8/4-2 == 0,15, 25)" => 15.,
+		if_with_division: "if(8/4-2 == 0, 15, 25)" => 15.,
+		if_with_division_ne: "if(8/4-2 ≠ 0, 15, 25)" => 25.,
 
 		// Constants in conditions
 		if_with_pi: "if(pi > 3, 1, 0)" => 1.,
@@ -185,6 +192,13 @@ mod tests {
 		// Mixed operations in conditions and blocks
 		if_complex_condition: "if(sqrt(16) + sin(pi) < 5, 2*pi, 3*e)" => 2. * std::f64::consts::PI,
 		if_complex_blocks: "if(1, 2*sqrt(16) + sin(pi/2), 3*cos(0) + 4)" => 9.,
+
+		// TODO: Combine into one test with &&
+		le: "if(1 <= 2, 1., 0.)" => 1.,
+		le_special: "if(1 ≤ 2, 1., 0.)" => 1.,
+
+		ge: "if(2 >= 1, 1, 0)" => 1.,
+		ge_special: "if(2 ≥ 1, 1, 0)" => 1.,
 
 		// Edge cases
 		if_zero: "if(0.0, 1, 2)" => 2.,

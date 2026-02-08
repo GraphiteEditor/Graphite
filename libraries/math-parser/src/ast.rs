@@ -55,11 +55,13 @@ pub enum BinaryOp {
 	Sub,
 	Mul,
 	Div,
+	Modulo,
 	Pow,
 	Leq,
 	Lt,
 	Geq,
 	Gt,
+	Neq,
 	Eq,
 }
 

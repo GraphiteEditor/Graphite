@@ -60,11 +60,13 @@ impl Number {
 					BinaryOp::Sub => lhs - rhs,
 					BinaryOp::Mul => lhs * rhs,
 					BinaryOp::Div => lhs / rhs,
+					BinaryOp::Modulo => lhs % rhs,
 					BinaryOp::Pow => lhs.powf(rhs),
 					BinaryOp::Leq => (lhs <= rhs) as u8 as f64,
 					BinaryOp::Lt => (lhs < rhs) as u8 as f64,
 					BinaryOp::Geq => (lhs >= rhs) as u8 as f64,
 					BinaryOp::Gt => (lhs > rhs) as u8 as f64,
+					BinaryOp::Neq => (lhs != rhs) as u8 as f64,
 					BinaryOp::Eq => (lhs == rhs) as u8 as f64,
 				};
 
@@ -77,9 +79,17 @@ impl Number {
 					BinaryOp::Sub => lhs - rhs,
 					BinaryOp::Mul => lhs * rhs,
 					BinaryOp::Div => lhs / rhs,
+					BinaryOp::Modulo => lhs % rhs,
 					BinaryOp::Pow => lhs.powc(rhs),
 					BinaryOp::Leq | BinaryOp::Lt | BinaryOp::Geq | BinaryOp::Gt => {
 						return None;
+					}
+					BinaryOp::Neq => {
+						if lhs != rhs {
+							return Some(Number::Real(1.0));
+						} else {
+							return Some(Number::Real(0.0));
+						}
 					}
 					BinaryOp::Eq => {
 						if lhs == rhs {
