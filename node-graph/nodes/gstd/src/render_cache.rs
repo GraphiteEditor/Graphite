@@ -334,18 +334,19 @@ pub async fn render_output_cache<'a: 'n>(
 	#[data] tile_cache: TileCache,
 ) -> RenderOutput {
 	let footprint = ctx.footprint();
-	let render_params = ctx
-		.vararg(0)
-		.expect("Did not find var args")
-		.downcast_ref::<RenderParams>()
-		.expect("Downcasting render params yielded invalid type");
+	let Some(render_params) = ctx.vararg(0).ok().and_then(|v| v.downcast_ref::<RenderParams>()) else {
+		log::warn!("render_output_cache: missing or invalid render params, falling back to direct render");
+		let context = OwnedContextImpl::empty().with_footprint(*footprint);
+		return data.eval(context.into_context()).await;
+	};
 
-	if !matches!(render_params.render_output_type, RenderOutputTypeRequest::Vello) {
+	// Fall back to direct render for non-Vello or zero-size viewports
+	let physical_resolution = footprint.resolution;
+	if !matches!(render_params.render_output_type, RenderOutputTypeRequest::Vello) || physical_resolution.x == 0 || physical_resolution.y == 0 {
 		let context = OwnedContextImpl::empty().with_footprint(*footprint).with_vararg(Box::new(render_params.clone()));
 		return data.eval(context.into_context()).await;
 	}
 
-	let physical_resolution = footprint.resolution;
 	let logical_scale = footprint.decompose_scale().x;
 	let device_scale = render_params.scale;
 	let physical_scale = logical_scale * device_scale;
@@ -373,6 +374,9 @@ pub async fn render_output_cache<'a: 'n>(
 		println!("rerendering {} regions", cache_query.missing_regions.len());
 	}
 	for missing_region in &cache_query.missing_regions {
+		if missing_region.tiles.is_empty() {
+			continue;
+		}
 		let region = render_missing_region(missing_region, |ctx| data.eval(ctx), ctx.clone(), render_params, logical_scale, device_scale).await;
 		new_regions.push(region);
 	}
@@ -380,6 +384,13 @@ pub async fn render_output_cache<'a: 'n>(
 	tile_cache.store_regions(new_regions.clone());
 
 	let all_regions: Vec<_> = cache_query.cached_regions.into_iter().chain(new_regions.into_iter()).collect();
+
+	// If no regions, fall back to direct render
+	if all_regions.is_empty() {
+		let context = OwnedContextImpl::empty().with_footprint(*footprint).with_vararg(Box::new(render_params.clone()));
+		return data.eval(context.into_context()).await;
+	}
+
 	let exec = editor_api.application_io.as_ref().unwrap().gpu_executor().unwrap();
 	let (output_texture, combined_metadata) = composite_cached_regions(&all_regions, &viewport_bounds, physical_resolution, logical_scale, physical_scale, exec);
 
@@ -411,7 +422,7 @@ where
 	// Use round() on boundaries to ensure adjacent tiles share the same edge
 	let pixel_start = (min_tile.as_dvec2() * TILE_SIZE as f64 * device_scale).round().as_ivec2();
 	let pixel_end = ((max_tile + IVec2::ONE).as_dvec2() * TILE_SIZE as f64 * device_scale).round().as_ivec2();
-	let region_pixel_size = (pixel_end - pixel_start).as_uvec2();
+	let region_pixel_size = (pixel_end - pixel_start).max(IVec2::ONE).as_uvec2();
 
 	let region_transform = glam::DAffine2::from_scale(DVec2::splat(logical_scale)) * glam::DAffine2::from_translation(-region_world_start);
 	let region_footprint = Footprint {
@@ -426,7 +437,7 @@ where
 	let mut result = render_fn(region_ctx).await;
 
 	let RenderOutputType::Texture(rendered_texture) = result.data else {
-		panic!("Expected texture output from render");
+		unreachable!("render_missing_region: expected texture output from Vello render");
 	};
 
 	// Transform metadata from region pixel space to document space
