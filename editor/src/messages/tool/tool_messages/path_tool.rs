@@ -25,7 +25,6 @@ use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandi
 use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, find_two_param_best_approximate, make_path_editable_is_allowed};
 use graph_craft::concrete;
 use graphene_std::Color;
-use graphene_std::Graphic;
 use graphene_std::renderer::Quad;
 use graphene_std::subpath::pathseg_points;
 use graphene_std::table::Table;
@@ -1584,7 +1583,6 @@ impl Fsm for PathToolFsmState {
 				let mut i = 0;
 				while i < target_layers.len() {
 					let layer = target_layers[i];
-``
 					let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, &document.network_interface);
 					let node_id = graph_layer.horizontal_layer_flow().nth(1);
 					let is_vector_layer = if let Some(node) = node_id {
