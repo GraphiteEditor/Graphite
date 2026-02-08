@@ -18,7 +18,7 @@ use graph_craft::document::value::TaggedValue;
 use graphene_std::NodeInputDecleration;
 use graphene_std::subpath::{self, Subpath};
 use graphene_std::vector::click_target::ClickTargetType;
-use graphene_std::vector::misc::{ArcType, GridType, dvec2_to_point};
+use graphene_std::vector::misc::{ArcType, GridType, SpiralType, dvec2_to_point};
 use kurbo::{BezPath, PathEl, Shape};
 use std::collections::VecDeque;
 use std::f64::consts::{PI, TAU};
@@ -291,6 +291,35 @@ pub fn extract_arc_parameters(layer: Option<LayerNodeIdentifier>, document: &Doc
 	};
 
 	Some((radius, start_angle, sweep_angle, arc_type))
+}
+
+/// Extract the node input values of spiral.
+/// Returns an option of (spiral type, start angle, inner radius, outer radius, turns, angle resolution).
+pub fn extract_spiral_parameters(layer: LayerNodeIdentifier, document: &DocumentMessageHandler) -> Option<(SpiralType, f64, f64, f64, f64, f64)> {
+	use graphene_std::vector::generator_nodes::spiral::*;
+
+	let node_inputs = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::spiral::IDENTIFIER))?;
+
+	let (
+		Some(&TaggedValue::SpiralType(spiral_type)),
+		Some(&TaggedValue::F64(start_angle)),
+		Some(&TaggedValue::F64(inner_radius)),
+		Some(&TaggedValue::F64(outer_radius)),
+		Some(&TaggedValue::F64(turns)),
+		Some(&TaggedValue::F64(angle_resolution)),
+	) = (
+		node_inputs.get(SpiralTypeInput::INDEX)?.as_value(),
+		node_inputs.get(StartAngleInput::INDEX)?.as_value(),
+		node_inputs.get(InnerRadiusInput::INDEX)?.as_value(),
+		node_inputs.get(OuterRadiusInput::INDEX)?.as_value(),
+		node_inputs.get(TurnsInput::INDEX)?.as_value(),
+		node_inputs.get(AngularResolutionInput::INDEX)?.as_value(),
+	)
+	else {
+		return None;
+	};
+
+	Some((spiral_type, start_angle, inner_radius, outer_radius, turns, angle_resolution))
 }
 
 /// Calculate the viewport positions of arc endpoints
