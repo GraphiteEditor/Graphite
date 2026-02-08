@@ -1,6 +1,7 @@
 name: Build Mac Bundle
 
 on:
+  workflow_dispatch: {}
   push:
     branches:
       - master
@@ -82,6 +83,7 @@ jobs:
           path: target/artifacts
 
       - name: Sign and Notarize Mac Bundle Preparation
+        if: github.ref == 'refs/heads/master'
         env:
           APPLE_CERT_BASE64: ${{ secrets.APPLE_CERT_BASE64 }}
           APPLE_CERT_PASSWORD: ${{ secrets.APPLE_CERT_PASSWORD }}
@@ -115,6 +117,7 @@ jobs:
           EOF
 
       - name: Sign and Notarize Mac Bundle
+        if: github.ref == 'refs/heads/master'
         env:
           APPLE_EMAIL: ${{ secrets.APPLE_EMAIL }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -147,6 +150,7 @@ jobs:
           spctl -a -vv "$APP_PATH"
 
       - name: Upload Mac Bundle Signed
+        if: github.ref == 'refs/heads/master'
         uses: actions/upload-artifact@v4
         with:
           name: graphite-mac-bundle-signed
