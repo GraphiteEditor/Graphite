@@ -10,6 +10,7 @@ use crate::messages::tool::common_functionality::shapes::circle_shape::CircleGiz
 use crate::messages::tool::common_functionality::shapes::grid_shape::GridGizmoHandler;
 use crate::messages::tool::common_functionality::shapes::polygon_shape::PolygonGizmoHandler;
 use crate::messages::tool::common_functionality::shapes::shape_utility::ShapeGizmoHandler;
+use crate::messages::tool::common_functionality::shapes::spiral_shape::SpiralGizmoHandler;
 use crate::messages::tool::common_functionality::shapes::star_shape::StarGizmoHandler;
 use glam::DVec2;
 use std::collections::VecDeque;
@@ -30,6 +31,7 @@ pub enum ShapeGizmoHandlers {
 	Arc(ArcGizmoHandler),
 	Circle(CircleGizmoHandler),
 	Grid(GridGizmoHandler),
+	Spiral(SpiralGizmoHandler),
 }
 
 impl ShapeGizmoHandlers {
@@ -42,6 +44,7 @@ impl ShapeGizmoHandlers {
 			Self::Arc(_) => "arc",
 			Self::Circle(_) => "circle",
 			Self::Grid(_) => "grid",
+			Self::Spiral(_) => "spiral",
 			Self::None => "none",
 		}
 	}
@@ -54,6 +57,7 @@ impl ShapeGizmoHandlers {
 			Self::Arc(h) => h.handle_state(layer, mouse_position, document, responses),
 			Self::Circle(h) => h.handle_state(layer, mouse_position, document, responses),
 			Self::Grid(h) => h.handle_state(layer, mouse_position, document, responses),
+			Self::Spiral(h) => h.handle_state(layer, mouse_position, document, responses),
 			Self::None => {}
 		}
 	}
@@ -66,6 +70,7 @@ impl ShapeGizmoHandlers {
 			Self::Arc(h) => h.is_any_gizmo_hovered(),
 			Self::Circle(h) => h.is_any_gizmo_hovered(),
 			Self::Grid(h) => h.is_any_gizmo_hovered(),
+			Self::Spiral(h) => h.is_any_gizmo_hovered(),
 			Self::None => false,
 		}
 	}
@@ -78,6 +83,7 @@ impl ShapeGizmoHandlers {
 			Self::Arc(h) => h.handle_click(),
 			Self::Circle(h) => h.handle_click(),
 			Self::Grid(h) => h.handle_click(),
+			Self::Spiral(h) => h.handle_click(),
 			Self::None => {}
 		}
 	}
@@ -90,6 +96,7 @@ impl ShapeGizmoHandlers {
 			Self::Arc(h) => h.handle_update(drag_start, document, input, responses),
 			Self::Circle(h) => h.handle_update(drag_start, document, input, responses),
 			Self::Grid(h) => h.handle_update(drag_start, document, input, responses),
+			Self::Spiral(h) => h.handle_update(drag_start, document, input, responses),
 			Self::None => {}
 		}
 	}
@@ -102,6 +109,7 @@ impl ShapeGizmoHandlers {
 			Self::Arc(h) => h.cleanup(),
 			Self::Circle(h) => h.cleanup(),
 			Self::Grid(h) => h.cleanup(),
+			Self::Spiral(h) => h.cleanup(),
 			Self::None => {}
 		}
 	}
@@ -122,6 +130,7 @@ impl ShapeGizmoHandlers {
 			Self::Arc(h) => h.overlays(document, layer, input, shape_editor, mouse_position, overlay_context),
 			Self::Circle(h) => h.overlays(document, layer, input, shape_editor, mouse_position, overlay_context),
 			Self::Grid(h) => h.overlays(document, layer, input, shape_editor, mouse_position, overlay_context),
+			Self::Spiral(h) => h.overlays(document, layer, input, shape_editor, mouse_position, overlay_context),
 			Self::None => {}
 		}
 	}
@@ -141,6 +150,7 @@ impl ShapeGizmoHandlers {
 			Self::Arc(h) => h.dragging_overlays(document, input, shape_editor, mouse_position, overlay_context),
 			Self::Circle(h) => h.dragging_overlays(document, input, shape_editor, mouse_position, overlay_context),
 			Self::Grid(h) => h.dragging_overlays(document, input, shape_editor, mouse_position, overlay_context),
+			Self::Spiral(h) => h.dragging_overlays(document, input, shape_editor, mouse_position, overlay_context),
 			Self::None => {}
 		}
 	}
@@ -152,6 +162,7 @@ impl ShapeGizmoHandlers {
 			Self::Arc(h) => h.mouse_cursor_icon(),
 			Self::Circle(h) => h.mouse_cursor_icon(),
 			Self::Grid(h) => h.mouse_cursor_icon(),
+			Self::Spiral(h) => h.mouse_cursor_icon(),
 			Self::None => None,
 		}
 	}
@@ -198,6 +209,10 @@ impl GizmoManager {
 		// Grid
 		if graph_modification_utils::get_grid_id(layer, &document.network_interface).is_some() {
 			return Some(ShapeGizmoHandlers::Grid(GridGizmoHandler::default()));
+		}
+		// Spiral
+		if graph_modification_utils::get_spiral_id(layer, &document.network_interface).is_some() {
+			return Some(ShapeGizmoHandlers::Spiral(SpiralGizmoHandler::default()));
 		}
 
 		None
