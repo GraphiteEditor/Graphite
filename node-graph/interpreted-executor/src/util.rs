@@ -36,7 +36,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_node::render_intermediate::IDENTIFIER),
 					context_features: graphene_std::ContextDependencies {
 						extract: ContextFeatures::VARARGS,
-						inject: ContextFeatures::empty(),
+						inject: ContextFeatures::INDEX,
 					},
 					..Default::default()
 				},
@@ -46,8 +46,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 					inputs: vec![NodeInput::scope("editor-api"), NodeInput::node(NodeId(0), 0)],
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_node::render::IDENTIFIER),
 					context_features: graphene_std::ContextDependencies {
-						// We add the extract index annotation here to force the compiler to add a context nullification node afetr the render cache
-						extract: ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS | ContextFeatures::INDEX,
+						extract: ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS,
 						inject: ContextFeatures::empty(),
 					},
 					..Default::default()
@@ -58,8 +57,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_cache::render_output_cache::IDENTIFIER),
 					context_features: graphene_std::ContextDependencies {
 						extract: ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS,
-						// We inject index annotation to make the compiler think we just satisfied a context dependency thus forcing it to add a context nullification node
-						inject: ContextFeatures::VARARGS | ContextFeatures::INDEX,
+						inject: ContextFeatures::VARARGS,
 					},
 					..Default::default()
 				},
@@ -68,7 +66,8 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 					inputs: vec![NodeInput::node(NodeId(2), 0)],
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_node::create_context::IDENTIFIER),
 					context_features: graphene_std::ContextDependencies {
-						extract: ContextFeatures::empty(),
+						// We add the extract index annotation here to force the compiler to add a context nullification node before this node so the render context is properly nullified so the render cache node can do its's work
+						extract: ContextFeatures::INDEX,
 						inject: ContextFeatures::REAL_TIME | ContextFeatures::ANIMATION_TIME | ContextFeatures::POINTER_POSITION | ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS,
 					},
 					..Default::default()
