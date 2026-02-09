@@ -352,14 +352,14 @@ pub async fn render_output_cache<'a: 'n>(
 	let physical_scale = logical_scale * device_scale;
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
 
-	let cache_key = CacheKey::from_times(
-		0, // TODO: hash render_mode properly
+	let cache_key = CacheKey::new(
+		render_params.render_mode as u64,
 		render_params.hide_artboards,
 		render_params.for_export,
-		false, // for_mask
+		render_params.for_mask,
 		render_params.thumbnail,
 		render_params.aligned_strokes,
-		false, // override_paint_order
+		render_params.override_paint_order,
 		ctx.try_animation_time().unwrap_or(0.0),
 		ctx.try_real_time().unwrap_or(0.0),
 		ctx.try_pointer_position(),
@@ -368,11 +368,6 @@ pub async fn render_output_cache<'a: 'n>(
 	let cache_query = tile_cache.query(&viewport_bounds, logical_scale, &cache_key);
 
 	let mut new_regions = Vec::new();
-	if cache_query.missing_regions.is_empty() {
-		println!("reusing cache");
-	} else {
-		println!("rerendering {} regions", cache_query.missing_regions.len());
-	}
 	for missing_region in &cache_query.missing_regions {
 		if missing_region.tiles.is_empty() {
 			continue;
@@ -431,8 +426,7 @@ where
 		quality: RenderQuality::Full,
 	};
 
-	let mut region_params = render_params.clone();
-	region_params.footprint = region_footprint;
+	let region_params = render_params.clone();
 	let region_ctx = OwnedContextImpl::from(ctx).with_footprint(region_footprint).with_vararg(Box::new(region_params)).into_context();
 	let mut result = render_fn(region_ctx).await;
 
