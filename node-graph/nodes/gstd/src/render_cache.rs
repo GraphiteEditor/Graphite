@@ -468,6 +468,7 @@ fn composite_cached_regions(
 	let device = &exec.context.device;
 	let queue = &exec.context.queue;
 
+	// TODO: Use texture pool to reuse existing unused textures instead of allocating fresh ones every time
 	let output_texture = device.create_texture(&wgpu::TextureDescriptor {
 		label: Some("viewport_output"),
 		size: wgpu::Extent3d {
