@@ -438,19 +438,13 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, t
 		usvg::Paint::LinearGradient(linear) => {
 			let local = [DVec2::new(linear.x1() as f64, linear.y1() as f64), DVec2::new(linear.x2() as f64, linear.y2() as f64)];
 
-			// TODO: fix this
-			// let to_doc_transform = if linear.base.units() == usvg::Units::UserSpaceOnUse {
-			// 	transform
-			// } else {
-			// 	transformed_bound_transform
-			// };
-			let to_doc_transform = transform;
-			let to_doc = to_doc_transform * usvg_transform(linear.transform());
+			let gradient_transform = usvg_transform(linear.transform());
+			let gradient_coords = [gradient_transform.transform_point2(local[0]), gradient_transform.transform_point2(local[1])];
+			let [start, end] = [
+				bounds_transform.inverse().transform_point2(gradient_coords[0]),
+				bounds_transform.inverse().transform_point2(gradient_coords[1]),
+			];
 
-			let document = [to_doc.transform_point2(local[0]), to_doc.transform_point2(local[1])];
-			let layer = [transform.inverse().transform_point2(document[0]), transform.inverse().transform_point2(document[1])];
-
-			let [start, end] = [bounds_transform.inverse().transform_point2(layer[0]), bounds_transform.inverse().transform_point2(layer[1])];
 			let stops = linear.stops().iter().map(|stop| (stop.offset().get() as f64, usvg_color(stop.color(), stop.opacity().get()))).collect();
 			let stops = GradientStops::new(stops);
 
@@ -462,21 +456,15 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, t
 			})
 		}
 		usvg::Paint::RadialGradient(radial) => {
-			let local = [DVec2::new(radial.cx() as f64, radial.cy() as f64), DVec2::new(radial.fx() as f64, radial.fy() as f64)];
+			let center = DVec2::new(radial.cx() as f64, radial.cy() as f64);
+			let radius = radial.r().get() as f64;
+			let edge = center + DVec2::new(radius, 0.);
 
-			// TODO: fix this
-			// let to_doc_transform = if radial.base.units == usvg::Units::UserSpaceOnUse {
-			// 	transform
-			// } else {
-			// 	transformed_bound_transform
-			// };
-			let to_doc_transform = transform;
-			let to_doc = to_doc_transform * usvg_transform(radial.transform());
+			let gradient_transform = usvg_transform(radial.transform());
+			let gradient_center = gradient_transform.transform_point2(center);
+			let gradient_edge = gradient_transform.transform_point2(edge);
+			let [start, end] = [bounds_transform.inverse().transform_point2(gradient_center), bounds_transform.inverse().transform_point2(gradient_edge)];
 
-			let document = [to_doc.transform_point2(local[0]), to_doc.transform_point2(local[1])];
-			let layer = [transform.inverse().transform_point2(document[0]), transform.inverse().transform_point2(document[1])];
-
-			let [start, end] = [bounds_transform.inverse().transform_point2(layer[0]), bounds_transform.inverse().transform_point2(layer[1])];
 			let stops = radial.stops().iter().map(|stop| (stop.offset().get() as f64, usvg_color(stop.color(), stop.opacity().get()))).collect();
 			let stops = GradientStops::new(stops);
 
