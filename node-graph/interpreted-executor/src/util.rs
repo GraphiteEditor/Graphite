@@ -46,6 +46,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 					inputs: vec![NodeInput::scope("editor-api"), NodeInput::node(NodeId(0), 0)],
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_node::render::IDENTIFIER),
 					context_features: graphene_std::ContextDependencies {
+						// We add the extract index annotation here to force the compiler to add a context nullification node afetr the render cache
 						extract: ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS | ContextFeatures::INDEX,
 						inject: ContextFeatures::empty(),
 					},
@@ -57,6 +58,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_cache::render_output_cache::IDENTIFIER),
 					context_features: graphene_std::ContextDependencies {
 						extract: ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS,
+						// We inject index annotation to make the compiler think we just satisfied a context dependency thus forcing it to add a context nullification node
 						inject: ContextFeatures::VARARGS | ContextFeatures::INDEX,
 					},
 					..Default::default()
