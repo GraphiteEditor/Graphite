@@ -42,6 +42,7 @@ use graphene_std::vector::misc::{dvec2_to_point, point_to_dvec2};
 use graphene_std::vector::style::RenderMode;
 use kurbo::{Affine, CubicBez, Line, ParamCurve, PathSeg, QuadBez};
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 
 #[derive(ExtractField)]
@@ -3071,7 +3072,14 @@ impl<'a> ClickXRayIter<'a> {
 	}
 
 	/// Handles the checking of the layer where the target is a rect or path
-	fn check_layer_area_target(&mut self, click_targets: Option<&Vec<ClickTarget>>, clip: bool, layer: LayerNodeIdentifier, path: Vec<path_bool_lib::PathSegment>, transform: DAffine2) -> XRayResult {
+	fn check_layer_area_target(
+		&mut self,
+		click_targets: Option<&[Arc<ClickTarget>]>,
+		clip: bool,
+		layer: LayerNodeIdentifier,
+		path: Vec<path_bool_lib::PathSegment>,
+		transform: DAffine2,
+	) -> XRayResult {
 		// Convert back to Kurbo types for intersections
 		let segment = |bezier: &path_bool_lib::PathSegment| match *bezier {
 			path_bool_lib::PathSegment::Line(start, end) => PathSeg::Line(Line::new(dvec2_to_point(start), dvec2_to_point(end))),
@@ -3088,7 +3096,7 @@ impl<'a> ClickXRayIter<'a> {
 		// In the case of a clip path where the area partially intersects, it is necessary to do a boolean operation.
 		// We do this on this using the target area to reduce computation (as the target area is usually very simple).
 		if clip && intersects {
-			let clip_path = click_targets_to_path_lib_segments(click_targets.iter().flat_map(|x| x.iter()), transform);
+			let clip_path = click_targets_to_path_lib_segments(click_targets.iter().flat_map(|x| x.iter()).map(|x| x.as_ref()), transform);
 			let subtracted = boolean_intersect(path, clip_path).into_iter().flatten().collect::<Vec<_>>();
 			if subtracted.is_empty() {
 				use_children = false;

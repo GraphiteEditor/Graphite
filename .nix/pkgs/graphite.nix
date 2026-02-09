@@ -30,14 +30,16 @@ let
     mkdir -p $out
     tar -xvf ${brandingTar} -C $out --strip-components 1
   '';
+  cargoVendorDir =  deps.crane.lib.vendorCargoDeps { inherit (info) src; };
   resourcesCommon = {
     pname = "${info.pname}-resources";
     inherit (info) version src;
+    inherit cargoVendorDir;
     strictDeps = true;
-    doCheck = false;
     nativeBuildInputs = tools.frontend;
     env.CARGO_PROFILE = if dev then "dev" else "release";
     cargoExtraArgs = "--target wasm32-unknown-unknown -p graphite-wasm --no-default-features --features native";
+    doCheck = false;
   };
   resources = deps.crane.lib.buildPackage (
     resourcesCommon
@@ -52,7 +54,7 @@ let
       npmConfigScript = "setup";
       makeCacheWritable = true;
 
-      nativeBuildInputs = tools.frontend ++ [ pkgs.importNpmLock.npmConfigHook ];
+      nativeBuildInputs = tools.frontend ++ [ pkgs.importNpmLock.npmConfigHook pkgs.removeReferencesTo ];
 
       prePatch = ''
         mkdir branding
@@ -72,13 +74,18 @@ let
         mkdir -p $out
         cp -r frontend/dist/* $out/
       '';
+
+      postFixup = ''
+        find "$out" -type f -exec remove-references-to -t "${cargoVendorDir}" '{}' +
+      '';
     }
   );
   common = {
     inherit (info) pname version src;
+    inherit cargoVendorDir;
     strictDeps = true;
     buildInputs = libs.desktop-all;
-    nativeBuildInputs = tools.desktop ++ [ pkgs.makeWrapper ];
+    nativeBuildInputs = tools.desktop ++ [ pkgs.makeWrapper pkgs.removeReferencesTo ];
     env = deps.cef.env // {
       CARGO_PROFILE = if dev then "dev" else "release";
     };
@@ -138,9 +145,12 @@ deps.crane.lib.buildPackage (
     '';
 
     postFixup = ''
-      wrapProgram "$out/bin/graphite" \
-        --prefix LD_LIBRARY_PATH : "${pkgs.lib.makeLibraryPath libs.desktop-all}:${deps.cef.env.CEF_PATH}" \
-        --set CEF_PATH "${deps.cef.env.CEF_PATH}"
+      remove-references-to -t "${cargoVendorDir}" $out/bin/graphite
+
+      patchelf \
+        --set-rpath "${pkgs.lib.makeLibraryPath libs.desktop-all}:${deps.cef.env.CEF_PATH}" \
+        --add-needed libGL.so \
+        $out/bin/graphite
     '';
   }
 )
