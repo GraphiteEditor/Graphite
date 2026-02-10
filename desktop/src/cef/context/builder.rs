@@ -1,9 +1,9 @@
 use std::path::{Path, PathBuf};
 
 use cef::args::Args;
-use cef::sys::{CEF_API_VERSION_LAST, cef_resultcode_t};
+use cef::sys::{CEF_API_VERSION_LAST, cef_log_severity_t, cef_resultcode_t};
 use cef::{
-	App, BrowserSettings, CefString, Client, DictionaryValue, ImplCommandLine, ImplRequestContext, RequestContextSettings, SchemeHandlerFactory, Settings, WindowInfo, api_hash,
+	App, BrowserSettings, CefString, Client, DictionaryValue, ImplCommandLine, ImplRequestContext, LogSeverity, RequestContextSettings, SchemeHandlerFactory, Settings, WindowInfo, api_hash,
 	browser_host_create_browser_sync, execute_process,
 };
 
@@ -79,6 +79,7 @@ impl<H: CefEventHandler> CefContextBuilder<H> {
 			root_cache_path: instance_dir.to_str().map(CefString::from).unwrap(),
 			cache_path: CefString::from(""),
 			disable_signal_handlers: 1,
+			log_severity: LogSeverity::from(cef_log_severity_t::LOGSEVERITY_FATAL),
 			..Default::default()
 		}
 	}

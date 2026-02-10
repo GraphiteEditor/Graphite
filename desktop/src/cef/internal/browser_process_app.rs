@@ -38,11 +38,33 @@ impl<H: CefEventHandler> ImplApp for BrowserProcessAppImpl<H> {
 			cmd.append_switch_with_value(Some(&CefString::from("disk-cache-size")), Some(&CefString::from("0")));
 			cmd.append_switch(Some(&CefString::from("incognito")));
 			cmd.append_switch(Some(&CefString::from("no-first-run")));
+			cmd.append_switch(Some(&CefString::from("no-default-browser-check")));
+			cmd.append_switch(Some(&CefString::from("disable-component-update")));
+			cmd.append_switch(Some(&CefString::from("disable-geolocation")));
+			cmd.append_switch(Some(&CefString::from("disable-notifications")));
+			cmd.append_switch(Some(&CefString::from("disable-media-stream")));
+			cmd.append_switch(Some(&CefString::from("disable-audio-input")));
+			cmd.append_switch(Some(&CefString::from("disable-audio-output")));
+			cmd.append_switch(Some(&CefString::from("disable-webrtc")));
+			cmd.append_switch(Some(&CefString::from("disable-sync")));
 			cmd.append_switch(Some(&CefString::from("disable-file-system")));
 			cmd.append_switch(Some(&CefString::from("disable-local-storage")));
 			cmd.append_switch(Some(&CefString::from("disable-background-networking")));
-			cmd.append_switch(Some(&CefString::from("disable-audio-input")));
-			cmd.append_switch(Some(&CefString::from("disable-audio-output")));
+			cmd.append_switch(Some(&CefString::from("disable-default-apps")));
+			cmd.append_switch(Some(&CefString::from("disable-extensions")));
+			cmd.append_switch(Some(&CefString::from("disable-breakpad")));
+			cmd.append_switch(Some(&CefString::from("disable-machine-learning-model-loader")));
+			cmd.append_switch_with_value(Some(&CefString::from("disable-blink-features")), Some(&CefString::from("WebBluetooth,WebUSB,Serial,IdleDetection")));
+
+			let extra_disabled_features = ["OptimizationHints", "GCM", "OnDeviceModelService", "Optimization", "TranslateUI"];
+			let disabled_features_switch = Some(&CefString::from("disable-features"));
+			let disabled_features: String = CefString::from(&cmd.switch_value(disabled_features_switch))
+				.to_string()
+				.split(',')
+				.chain(extra_disabled_features)
+				.collect::<Vec<_>>()
+				.join(",");
+			cmd.append_switch_with_value(disabled_features_switch, Some(&CefString::from(disabled_features.as_str())));
 
 			#[cfg(not(feature = "accelerated_paint"))]
 			{
