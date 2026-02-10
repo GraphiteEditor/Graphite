@@ -6,7 +6,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::{
 	BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeType, NodeGraphErrorDiagnostic, Transform,
 };
-use crate::messages::portfolio::document::utility_types::nodes::{JsRawBuffer, LayerPanelEntry, RawBuffer};
+use crate::messages::portfolio::document::utility_types::nodes::{LayerPanelEntry, LayerStructure};
 use crate::messages::portfolio::document::utility_types::wires::{WirePath, WirePathUpdate};
 use crate::messages::prelude::*;
 use glam::IVec2;
@@ -236,11 +236,7 @@ pub enum FrontendMessage {
 	},
 	UpdateDocumentLayerStructure {
 		#[serde(rename = "dataBuffer")]
-		data_buffer: RawBuffer,
-	},
-	UpdateDocumentLayerStructureJs {
-		#[serde(rename = "dataBuffer")]
-		data_buffer: JsRawBuffer,
+		data_buffer: Vec<LayerStructure>,
 	},
 	UpdateDocumentRulers {
 		origin: (f64, f64),

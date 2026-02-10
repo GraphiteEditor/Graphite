@@ -166,10 +166,6 @@ impl EditorHandle {
 			return;
 		}
 
-		if let FrontendMessage::UpdateDocumentLayerStructure { data_buffer } = message {
-			message = FrontendMessage::UpdateDocumentLayerStructureJs { data_buffer: data_buffer.into() };
-		}
-
 		let message_type = message.to_discriminant().local_name();
 
 		let serializer = serde_wasm_bindgen::Serializer::new().serialize_large_number_types_as_bigints(true);

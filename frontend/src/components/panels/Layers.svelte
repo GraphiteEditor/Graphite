@@ -6,12 +6,12 @@
 	import {
 		patchLayout,
 		UpdateDocumentLayerDetails,
-		UpdateDocumentLayerStructureJs,
+		UpdateDocumentLayerStructure,
 		UpdateLayersPanelControlBarLeftLayout,
 		UpdateLayersPanelControlBarRightLayout,
 		UpdateLayersPanelBottomBarLayout,
 	} from "@graphite/messages";
-	import type { DataBuffer, LayerPanelEntry, Layout } from "@graphite/messages";
+	import type { LayerPanelEntry, Layout, LayerStructure } from "@graphite/messages";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import type { TooltipState } from "@graphite/state-providers/tooltip";
 	import { pasteFile } from "@graphite/utility-functions/files";
@@ -91,9 +91,8 @@
 			layersPanelBottomBarLayout = layersPanelBottomBarLayout;
 		});
 
-		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerStructureJs, (data) => {
-			const structure = newUpdateDocumentLayerStructure(data.dataBuffer);
-			rebuildLayerHierarchy(structure);
+		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerStructure, (data) => {
+			rebuildLayerHierarchy(data.dataBuffer);
 		});
 
 		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerDetails, (data) => {
@@ -117,7 +116,7 @@
 		editor.subscriptions.unsubscribeJsMessage(UpdateLayersPanelControlBarLeftLayout);
 		editor.subscriptions.unsubscribeJsMessage(UpdateLayersPanelControlBarRightLayout);
 		editor.subscriptions.unsubscribeJsMessage(UpdateLayersPanelBottomBarLayout);
-		editor.subscriptions.unsubscribeJsMessage(UpdateDocumentLayerStructureJs);
+		editor.subscriptions.unsubscribeJsMessage(UpdateDocumentLayerStructure);
 		editor.subscriptions.unsubscribeJsMessage(UpdateDocumentLayerDetails);
 
 		removeEventListener("pointerup", draggingPointerUp);
@@ -129,65 +128,6 @@
 		removeEventListener("keydown", clippingKeyPress);
 		removeEventListener("keyup", clippingKeyPress);
 	});
-
-	type DocumentLayerStructure = {
-		layerId: bigint;
-		children: DocumentLayerStructure[];
-	};
-
-	function newUpdateDocumentLayerStructure(dataBuffer: DataBuffer): DocumentLayerStructure {
-		const pointerNum = Number(dataBuffer.pointer);
-		const lengthNum = Number(dataBuffer.length);
-
-		const wasmMemoryBuffer = editor.raw.buffer;
-
-		// Decode the folder structure encoding
-		const encoding = new DataView(wasmMemoryBuffer, pointerNum, lengthNum);
-
-		// The structure section indicates how to read through the upcoming layer list and assign depths to each layer
-		const structureSectionLength = Number(encoding.getBigUint64(0, true));
-		const structureSectionMsbSigned = new DataView(wasmMemoryBuffer, pointerNum + 8, structureSectionLength * 8);
-
-		// The layer IDs section lists each layer ID sequentially in the tree, as it will show up in the panel
-		const layerIdsSection = new DataView(wasmMemoryBuffer, pointerNum + 8 + structureSectionLength * 8);
-
-		let layersEncountered = 0;
-		let currentFolder: DocumentLayerStructure = { layerId: BigInt(-1), children: [] };
-		const currentFolderStack = [currentFolder];
-
-		for (let i = 0; i < structureSectionLength; i += 1) {
-			const msbSigned = structureSectionMsbSigned.getBigUint64(i * 8, true);
-			const msbMask = BigInt(1) << BigInt(64 - 1);
-
-			// Set the MSB to 0 to clear the sign and then read the number as usual
-			const numberOfLayersAtThisDepth = msbSigned & ~msbMask;
-
-			// Store child folders in the current folder (until we are interrupted by an indent)
-			for (let j = 0; j < numberOfLayersAtThisDepth; j += 1) {
-				const layerId = layerIdsSection.getBigUint64(layersEncountered * 8, true);
-				layersEncountered += 1;
-
-				const childLayer: DocumentLayerStructure = { layerId, children: [] };
-				currentFolder.children.push(childLayer);
-			}
-
-			// Check the sign of the MSB, where a 1 is a negative (outward) indent
-			const subsequentDirectionOfDepthChange = (msbSigned & msbMask) === BigInt(0);
-			// Inward
-			if (subsequentDirectionOfDepthChange) {
-				currentFolderStack.push(currentFolder);
-				currentFolder = currentFolder.children[currentFolder.children.length - 1];
-			}
-			// Outward
-			else {
-				const popped = currentFolderStack.pop();
-				if (!popped) throw Error("Too many negative indents in the folder structure");
-				if (popped) currentFolder = popped;
-			}
-		}
-
-		return currentFolder;
-	}
 
 	function toggleNodeVisibilityLayerPanel(id: bigint) {
 		editor.handle.toggleNodeVisibilityLayerPanel(id);
@@ -515,7 +455,7 @@
 		dragInPanel = false;
 	}
 
-	function rebuildLayerHierarchy(updateDocumentLayerStructure: DocumentLayerStructure) {
+	function rebuildLayerHierarchy(layerStructure: LayerStructure[]) {
 		const layerWithNameBeingEdited = layers.find((layer: LayerListingInfo) => layer.editingName);
 		const layerIdWithNameBeingEdited = layerWithNameBeingEdited?.entry.id;
 
@@ -523,24 +463,24 @@
 		layers = [];
 
 		// Build the new layer hierarchy
-		const recurse = (folder: DocumentLayerStructure) => {
-			folder.children.forEach((item, index) => {
+		const recurse = (list: LayerStructure[]) => {
+			list.forEach((item, index) => {
 				const mapping = layerCache.get(String(item.layerId));
 				if (mapping) {
 					mapping.id = item.layerId;
 					layers.push({
 						folderIndex: index,
-						bottomLayer: index === folder.children.length - 1,
+						bottomLayer: index === list.length - 1,
 						entry: mapping,
 						editingName: layerIdWithNameBeingEdited === item.layerId,
 					});
 				}
 
 				// Call self recursively if there are any children
-				if (item.children.length >= 1) recurse(item);
+				if (item.children.length >= 1) recurse(item.children);
 			});
 		};
-		recurse(updateDocumentLayerStructure);
+		recurse(layerStructure);
 		layers = layers;
 	}
 

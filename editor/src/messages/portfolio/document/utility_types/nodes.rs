@@ -6,29 +6,10 @@ use graph_craft::document::{NodeId, NodeNetwork};
 use serde::ser::SerializeStruct;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq, specta::Type)]
-pub struct RawBuffer(Vec<u8>);
-
-impl From<&[u64]> for RawBuffer {
-	fn from(iter: &[u64]) -> Self {
-		let v_from_raw: Vec<u8> = iter.iter().flat_map(|x| x.to_ne_bytes()).collect();
-		Self(v_from_raw)
-	}
-}
-#[derive(Debug, Clone, serde::Deserialize, PartialEq, Eq, specta::Type)]
-pub struct JsRawBuffer(Vec<u8>);
-
-impl From<RawBuffer> for JsRawBuffer {
-	fn from(buffer: RawBuffer) -> Self {
-		Self(buffer.0)
-	}
-}
-impl serde::Serialize for JsRawBuffer {
-	fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
-		let mut buffer = serializer.serialize_struct("Buffer", 2)?;
-		buffer.serialize_field("pointer", &(self.0.as_ptr() as usize))?;
-		buffer.serialize_field("length", &(self.0.len()))?;
-		buffer.end()
-	}
+pub struct LayerStructure {
+	#[serde(rename = "layerId")]
+	pub id: NodeId,
+	pub children: Vec<LayerStructure>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq, specta::Type)]

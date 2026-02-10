@@ -19,7 +19,7 @@ use crate::messages::portfolio::document::properties_panel::properties_panel_mes
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, PTZ};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate};
-use crate::messages::portfolio::document::utility_types::nodes::RawBuffer;
+use crate::messages::portfolio::document::utility_types::nodes::LayerStructure;
 use crate::messages::portfolio::utility_types::{PanelType, PersistentData};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_blend_mode, get_fill, get_opacity};
@@ -317,7 +317,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::ClearLayersPanel => {
 				// Send an empty layer list
 				if layers_panel_open {
-					let data_buffer: RawBuffer = Self::default().serialize_root();
+					let data_buffer: Vec<LayerStructure> = Self::default().serialize_root();
 					responses.add(FrontendMessage::UpdateDocumentLayerStructure { data_buffer });
 				}
 
@@ -380,7 +380,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::DocumentStructureChanged => {
 				if layers_panel_open {
 					self.network_interface.load_structure();
-					let data_buffer: RawBuffer = self.serialize_root();
+					let data_buffer: Vec<LayerStructure> = self.serialize_root();
 
 					self.update_layers_panel_control_bar_widgets(layers_panel_open, responses);
 					self.update_layers_panel_bottom_bar_widgets(layers_panel_open, responses);
@@ -1892,69 +1892,22 @@ impl DocumentMessageHandler {
 	}
 
 	/// Called recursively by the entry function [`serialize_root`].
-	fn serialize_structure(&self, folder: LayerNodeIdentifier, structure_section: &mut Vec<u64>, data_section: &mut Vec<u64>, path: &mut Vec<LayerNodeIdentifier>) {
-		let mut space = 0;
+	fn serialize_structure(&self, folder: LayerNodeIdentifier) -> Vec<LayerStructure> {
+		let mut children = Vec::new();
 		for layer_node in folder.children(self.metadata()) {
-			data_section.push(layer_node.to_node().0);
-			space += 1;
+			let id = layer_node.to_node();
+			let mut layer_structure = LayerStructure { id, children: Vec::new() };
 			if layer_node.has_children(self.metadata()) && !self.collapsed.0.contains(&layer_node) {
-				path.push(layer_node);
-
-				// TODO: Skip if folder is not expanded.
-				structure_section.push(space);
-				self.serialize_structure(layer_node, structure_section, data_section, path);
-				space = 0;
-
-				path.pop();
+				layer_structure.children = self.serialize_structure(layer_node);
 			}
+			children.push(layer_structure);
 		}
-		structure_section.push(space | (1 << 63));
+		children
 	}
 
-	/// Serializes the layer structure into a condensed 1D structure.
-	///
-	/// # Format
-	/// It is a string of numbers broken into three sections:
-	///
-	/// | Data                                                                                                                          | Description                                                   | Length           |
-	/// |------------------------------------------------------------------------------------------------------------------------------ |---------------------------------------------------------------|------------------|
-	/// | `4,` `2, 1, -2, -0,` `16533113728871998040,3427872634365736244,18115028555707261608,15878401910454357952,449479075714955186`  | Encoded example data                                          |                  |
-	/// | _____________________________________________________________________________________________________________________________ | _____________________________________________________________ | ________________ |
-	/// | **Length** section: `4`                                                                                                       | Length of the **Structure** section (`L` = `structure.len()`) | First value      |
-	/// | **Structure** section: `2, 1, -2, -0`                                                                                         | The **Structure** section                                     | Next `L` values  |
-	/// | **Data** section: `16533113728871998040, 3427872634365736244, 18115028555707261608, 15878401910454357952, 449479075714955186` | The **Data** section (layer IDs)                              | Remaining values |
-	///
-	/// The data section lists the layer IDs for all folders/layers in the tree as read from top to bottom.
-	/// The structure section lists signed numbers. The sign indicates a folder indentation change (`+` is down a level, `-` is up a level).
-	/// The numbers in the structure block encode the indentation. For example:
-	/// - `2` means read two elements from the data section, then place a `[`.
-	/// - `-x` means read `x` elements from the data section and then insert a `]`.
-	///
-	/// ```text
-	/// 2     V 1  V -2  A -0 A
-	/// 16533113728871998040,3427872634365736244,  18115028555707261608, 15878401910454357952,449479075714955186
-	/// 16533113728871998040,3427872634365736244,[ 18115028555707261608,[15878401910454357952,449479075714955186]    ]
-	/// ```
-	///
-	/// Resulting layer panel:
-	/// ```text
-	/// 16533113728871998040
-	/// 3427872634365736244
-	/// [3427872634365736244,18115028555707261608]
-	/// [3427872634365736244,18115028555707261608,15878401910454357952]
-	/// [3427872634365736244,18115028555707261608,449479075714955186]
-	/// ```
-	pub fn serialize_root(&self) -> RawBuffer {
-		let mut structure_section = vec![NodeId(0).0];
-		let mut data_section = Vec::new();
-		self.serialize_structure(LayerNodeIdentifier::ROOT_PARENT, &mut structure_section, &mut data_section, &mut vec![]);
-
-		// Remove the ROOT element. Prepend `L`, the length (excluding the ROOT) of the structure section (which happens to be where the ROOT element was).
-		structure_section[0] = structure_section.len() as u64 - 1;
-		// Append the data section to the end.
-		structure_section.extend(data_section);
-
-		structure_section.as_slice().into()
+	/// Serializes the layer structure into a condensed tree structure.
+	pub fn serialize_root(&self) -> Vec<LayerStructure> {
+		self.serialize_structure(LayerNodeIdentifier::ROOT_PARENT)
 	}
 
 	pub fn undo_with_history(&mut self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) {

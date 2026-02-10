@@ -796,13 +796,16 @@ export class TriggerSaveActiveDocument extends JsMessage {
 
 export class DocumentChanged extends JsMessage {}
 
-export type DataBuffer = {
-	pointer: bigint;
-	length: bigint;
-};
+export class LayerStructure {
+	readonly layerId!: bigint;
 
-export class UpdateDocumentLayerStructureJs extends JsMessage {
-	readonly dataBuffer!: DataBuffer;
+	@Type(() => LayerStructure)
+	readonly children!: LayerStructure[];
+}
+
+export class UpdateDocumentLayerStructure extends JsMessage {
+	@Type(() => LayerStructure)
+	readonly dataBuffer!: LayerStructure[];
 }
 
 export type TextAlign = "Left" | "Center" | "Right" | "JustifyLeft";
@@ -1717,7 +1720,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateDocumentArtwork,
 	UpdateDocumentBarLayout,
 	UpdateDocumentLayerDetails,
-	UpdateDocumentLayerStructureJs,
+	UpdateDocumentLayerStructure,
 	UpdateDocumentRulers,
 	UpdateDocumentScrollbars,
 	UpdateExportReorderIndex,
