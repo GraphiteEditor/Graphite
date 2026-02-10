@@ -1095,7 +1095,6 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.set_input(&InputConnector::node(*node_id, 9), old_inputs[4].clone(), network_path);
 	}
 
-	// Upgrade Transform node to add "Origin Offset" input
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER) && inputs_count == 5 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
