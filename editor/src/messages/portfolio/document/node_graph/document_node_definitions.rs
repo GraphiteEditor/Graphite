@@ -1767,7 +1767,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 						InputMetadata::with_name_description_override("Skew", "TODO", WidgetOverride::Custom("transform_skew".to_string())),
 						InputMetadata::with_name_description_override(
 							"Origin Offset",
-							"The point around which the transform is applied",
+							"TODO",
 							WidgetOverride::Vec2(Vec2InputSettings {
 								x: "X".to_string(),
 								y: "Y".to_string(),
