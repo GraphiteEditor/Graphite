@@ -1765,7 +1765,16 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							}),
 						),
 						InputMetadata::with_name_description_override("Skew", "TODO", WidgetOverride::Custom("transform_skew".to_string())),
-						InputMetadata::with_name_description_override("Origin Offset", "TODO", WidgetOverride::Custom("hidden".to_string())),
+						InputMetadata::with_name_description_override(
+							"Origin Offset",
+							"The point around which the transform is applied",
+							WidgetOverride::Vec2(Vec2InputSettings {
+								x: "X".to_string(),
+								y: "Y".to_string(),
+								unit: " px".to_string(),
+								..Default::default()
+							}),
+						),
 						InputMetadata::with_name_description_override("Scale Appearance", "TODO", WidgetOverride::Custom("hidden".to_string())),
 					],
 					output_names: vec!["Data".to_string()],
