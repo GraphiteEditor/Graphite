@@ -584,6 +584,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 									NodeInput::value(TaggedValue::F64(0.), false),
 									NodeInput::value(TaggedValue::DVec2(DVec2::ONE), false),
 									NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
+									NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false),
 								],
 								..Default::default()
 							},
@@ -1698,6 +1699,8 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 									NodeInput::import(concrete!(DVec2), 3),
 									// From the Skew import
 									NodeInput::import(concrete!(DVec2), 4),
+									// From the Origin Offset import
+									NodeInput::import(concrete!(DVec2), 5),
 								],
 								implementation: DocumentNodeImplementation::ProtoNode(transform_nodes::transform::IDENTIFIER),
 								..Default::default()
