@@ -19,7 +19,7 @@ use crate::messages::portfolio::document::properties_panel::properties_panel_mes
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, PTZ};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate};
-use crate::messages::portfolio::document::utility_types::nodes::LayerStructure;
+use crate::messages::portfolio::document::utility_types::nodes::LayerStructureEntry;
 use crate::messages::portfolio::utility_types::{PanelType, PersistentData};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_blend_mode, get_fill, get_opacity};
@@ -317,7 +317,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::ClearLayersPanel => {
 				// Send an empty layer list
 				if layers_panel_open {
-					let data_buffer: Vec<LayerStructure> = Self::default().serialize_root();
+					let data_buffer: Vec<LayerStructureEntry> = Self::default().serialize_root();
 					responses.add(FrontendMessage::UpdateDocumentLayerStructure { data_buffer });
 				}
 
@@ -380,7 +380,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::DocumentStructureChanged => {
 				if layers_panel_open {
 					self.network_interface.load_structure();
-					let data_buffer: Vec<LayerStructure> = self.serialize_root();
+					let data_buffer: Vec<LayerStructureEntry> = self.serialize_root();
 
 					self.update_layers_panel_control_bar_widgets(layers_panel_open, responses);
 					self.update_layers_panel_bottom_bar_widgets(layers_panel_open, responses);
@@ -1892,22 +1892,26 @@ impl DocumentMessageHandler {
 	}
 
 	/// Called recursively by the entry function [`serialize_root`].
-	fn serialize_structure(&self, folder: LayerNodeIdentifier) -> Vec<LayerStructure> {
-		let mut children = Vec::new();
-		for layer_node in folder.children(self.metadata()) {
-			let id = layer_node.to_node();
-			let mut layer_structure = LayerStructure { id, children: Vec::new() };
+	fn serialize_structure_flat(&self, folder: LayerNodeIdentifier, depth: u32, entries: &mut Vec<LayerStructureEntry>) {
+		let mut children = folder.children(self.metadata()).peekable();
+		while let Some(layer_node) = children.next() {
+			let is_last_in_parent = children.peek().is_none();
+			entries.push(LayerStructureEntry {
+				id: layer_node.to_node(),
+				depth,
+				is_last_in_parent,
+			});
 			if layer_node.has_children(self.metadata()) && !self.collapsed.0.contains(&layer_node) {
-				layer_structure.children = self.serialize_structure(layer_node);
+				self.serialize_structure_flat(layer_node, depth + 1, entries);
 			}
-			children.push(layer_structure);
 		}
-		children
 	}
 
-	/// Serializes the layer structure into a condensed tree structure.
-	pub fn serialize_root(&self) -> Vec<LayerStructure> {
-		self.serialize_structure(LayerNodeIdentifier::ROOT_PARENT)
+	/// Serializes the layer structure into a flat list with depth information.
+	pub fn serialize_root(&self) -> Vec<LayerStructureEntry> {
+		let mut entries = Vec::new();
+		self.serialize_structure_flat(LayerNodeIdentifier::ROOT_PARENT, 0, &mut entries);
+		entries
 	}
 
 	pub fn undo_with_history(&mut self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) {
@@ -3182,6 +3186,83 @@ impl Iterator for ClickXRayIter<'_> {
 mod document_message_handler_tests {
 	use super::*;
 	use crate::test_utils::test_prelude::*;
+	use std::collections::HashSet;
+
+	#[tokio::test]
+	async fn test_serialize_root_empty_document() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		let entries = editor.active_document().serialize_root();
+		assert!(entries.is_empty());
+	}
+
+	#[tokio::test]
+	async fn test_serialize_root_flat_structure() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
+		let folder = editor.active_document().metadata().all_layers().next().unwrap();
+
+		let mut excluded = HashSet::from([folder.to_node()]);
+
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let rect1 = editor.active_document().metadata().all_layers().find(|layer| !excluded.contains(&layer.to_node())).unwrap();
+		excluded.insert(rect1.to_node());
+
+		editor.drag_tool(ToolType::Rectangle, 100., 100., 200., 200., ModifierKeys::empty()).await;
+		let rect2 = editor.active_document().metadata().all_layers().find(|layer| !excluded.contains(&layer.to_node())).unwrap();
+
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![rect1.to_node()] }).await;
+		editor.handle_message(DocumentMessage::MoveSelectedLayersTo { parent: folder, insert_index: 0 }).await;
+
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![rect2.to_node()] }).await;
+		editor.handle_message(DocumentMessage::MoveSelectedLayersTo { parent: folder, insert_index: 1 }).await;
+
+		let entries = editor.active_document().serialize_root();
+		assert_eq!(entries.len(), 3);
+
+		assert_eq!(entries[0].id, folder.to_node());
+		assert_eq!(entries[0].depth, 0);
+		assert!(entries[0].is_last_in_parent);
+
+		assert_eq!(entries[1].id, rect1.to_node());
+		assert_eq!(entries[1].depth, 1);
+		assert!(!entries[1].is_last_in_parent);
+
+		assert_eq!(entries[2].id, rect2.to_node());
+		assert_eq!(entries[2].depth, 1);
+		assert!(entries[2].is_last_in_parent);
+	}
+
+	#[tokio::test]
+	async fn test_serialize_root_excludes_collapsed_children() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		editor.handle_message(DocumentMessage::CreateEmptyFolder).await;
+		let folder = editor.active_document().metadata().all_layers().next().unwrap();
+
+		editor.drag_tool(ToolType::Rectangle, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		let rect = editor.active_document().metadata().all_layers().find(|layer| layer.to_node() != folder.to_node()).unwrap();
+
+		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![rect.to_node()] }).await;
+		editor.handle_message(DocumentMessage::MoveSelectedLayersTo { parent: folder, insert_index: 0 }).await;
+
+		editor
+			.handle_message(DocumentMessage::ToggleLayerExpansion {
+				id: folder.to_node(),
+				recursive: false,
+			})
+			.await;
+
+		let entries = editor.active_document().serialize_root();
+		assert_eq!(entries.len(), 1);
+		assert_eq!(entries[0].id, folder.to_node());
+		assert_eq!(entries[0].depth, 0);
+		assert!(entries[0].is_last_in_parent);
+	}
 
 	#[tokio::test]
 	async fn test_layer_selection_with_shift_and_ctrl() {

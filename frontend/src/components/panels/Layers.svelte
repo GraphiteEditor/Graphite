@@ -11,7 +11,7 @@
 		UpdateLayersPanelControlBarRightLayout,
 		UpdateLayersPanelBottomBarLayout,
 	} from "@graphite/messages";
-	import type { LayerPanelEntry, Layout, LayerStructure } from "@graphite/messages";
+	import type { LayerPanelEntry, Layout, LayerStructureEntry } from "@graphite/messages";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import type { TooltipState } from "@graphite/state-providers/tooltip";
 	import { pasteFile } from "@graphite/utility-functions/files";
@@ -455,32 +455,40 @@
 		dragInPanel = false;
 	}
 
-	function rebuildLayerHierarchy(layerStructure: LayerStructure[]) {
+	function rebuildLayerHierarchy(layerStructure: LayerStructureEntry[]) {
 		const layerWithNameBeingEdited = layers.find((layer: LayerListingInfo) => layer.editingName);
 		const layerIdWithNameBeingEdited = layerWithNameBeingEdited?.entry.id;
 
 		// Clear the layer hierarchy before rebuilding it
 		layers = [];
 
-		// Build the new layer hierarchy
-		const recurse = (list: LayerStructure[]) => {
-			list.forEach((item, index) => {
-				const mapping = layerCache.get(String(item.layerId));
-				if (mapping) {
-					mapping.id = item.layerId;
-					layers.push({
-						folderIndex: index,
-						bottomLayer: index === list.length - 1,
-						entry: mapping,
-						editingName: layerIdWithNameBeingEdited === item.layerId,
-					});
-				}
+		const indexByDepth: number[] = [];
 
-				// Call self recursively if there are any children
-				if (item.children.length >= 1) recurse(item.children);
-			});
-		};
-		recurse(layerStructure);
+		layerStructure.forEach((item) => {
+			const depth = item.depth;
+
+			if (indexByDepth.length <= depth) {
+				for (let i = indexByDepth.length; i <= depth; i += 1) {
+					indexByDepth[i] = 0;
+				}
+			} else if (indexByDepth.length > depth + 1) {
+				indexByDepth.length = depth + 1;
+			}
+
+			const folderIndex = indexByDepth[depth] ?? 0;
+			indexByDepth[depth] = folderIndex + 1;
+
+			const mapping = layerCache.get(String(item.layerId));
+			if (mapping) {
+				mapping.id = item.layerId;
+				layers.push({
+					folderIndex,
+					bottomLayer: item.isLastInParent,
+					entry: mapping,
+					editingName: layerIdWithNameBeingEdited === item.layerId,
+				});
+			}
+		});
 		layers = layers;
 	}
 

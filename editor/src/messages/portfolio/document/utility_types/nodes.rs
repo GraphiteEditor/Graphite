@@ -5,10 +5,12 @@ use glam::DVec2;
 use graph_craft::document::{NodeId, NodeNetwork};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq, specta::Type)]
-pub struct LayerStructure {
+pub struct LayerStructureEntry {
 	#[serde(rename = "layerId")]
 	pub id: NodeId,
-	pub children: Vec<LayerStructure>,
+	pub depth: u32,
+	#[serde(rename = "isLastInParent")]
+	pub is_last_in_parent: bool,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq, specta::Type)]
