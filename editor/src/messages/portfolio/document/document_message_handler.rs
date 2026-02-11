@@ -11,6 +11,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::data_panel::{DataPanelMessageContext, DataPanelMessageHandler};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::NodeGraphMessageContext;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
 use crate::messages::portfolio::document::overlays::grid_overlays::{grid_overlay, overlay_options};
 use crate::messages::portfolio::document::overlays::utility_types::{OverlaysType, OverlaysVisibilitySettings, Pivot};
@@ -19,7 +20,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::{Doc
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, PTZ};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate};
 use crate::messages::portfolio::document::utility_types::nodes::RawBuffer;
-use crate::messages::portfolio::utility_types::{FontCatalog, PanelType, PersistentData};
+use crate::messages::portfolio::utility_types::{PanelType, PersistentData};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_blend_mode, get_fill, get_opacity};
 use crate::messages::tool::tool_messages::select_tool::SelectToolPointerKeys;
@@ -35,13 +36,13 @@ use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Raster;
 use graphene_std::subpath::Subpath;
 use graphene_std::table::Table;
-use graphene_std::text::Font;
 use graphene_std::vector::PointId;
 use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::misc::{dvec2_to_point, point_to_dvec2};
 use graphene_std::vector::style::RenderMode;
 use kurbo::{Affine, CubicBez, Line, ParamCurve, PathSeg, QuadBez};
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 
 #[derive(ExtractField)]
@@ -315,8 +316,10 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			}
 			DocumentMessage::ClearLayersPanel => {
 				// Send an empty layer list
-				let data_buffer: RawBuffer = Self::default().serialize_root();
-				responses.add(FrontendMessage::UpdateDocumentLayerStructure { data_buffer });
+				if layers_panel_open {
+					let data_buffer: RawBuffer = Self::default().serialize_root();
+					responses.add(FrontendMessage::UpdateDocumentLayerStructure { data_buffer });
+				}
 
 				// Clear the control bar
 				responses.add(LayoutMessage::SendLayout {
@@ -477,6 +480,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				if self.node_graph_handler.drag_start.is_some() {
 					responses.add(DocumentMessage::AbortTransaction);
 					self.node_graph_handler.drag_start = None;
+					self.node_graph_handler.select_if_not_dragged = None;
 				}
 				// Abort box selection
 				else if self.node_graph_handler.box_selection_start.is_some() {
@@ -1261,6 +1265,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					OverlaysType::TransformCage => visibility_settings.transform_cage = visible,
 					OverlaysType::HoverOutline => visibility_settings.hover_outline = visible,
 					OverlaysType::SelectionOutline => visibility_settings.selection_outline = visible,
+					OverlaysType::LayerOriginCross => visibility_settings.layer_origin_cross = visible,
 					OverlaysType::Pivot => visibility_settings.pivot = visible,
 					OverlaysType::Origin => visibility_settings.origin = visible,
 					OverlaysType::Path => visibility_settings.path = visible,
@@ -1548,7 +1553,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				// Create an artboard and set its dimensions to the bounding box size and location
 				let node_id = NodeId::new();
 				let node_layer_id = LayerNodeIdentifier::new_unchecked(node_id);
-				let new_artboard_node = document_node_definitions::resolve_document_node_type("Artboard")
+				let new_artboard_node = document_node_definitions::resolve_network_node_type("Artboard")
 					.expect("Failed to create artboard node")
 					.default_node_template();
 				responses.add(NodeGraphMessage::InsertNode {
@@ -2133,8 +2138,7 @@ impl DocumentMessageHandler {
 					network_interface.upstream_flow_back_from_nodes(vec![selected_id.to_node()], &[], FlowType::HorizontalFlow).find(|id| {
 						network_interface
 							.reference(id, &[])
-							.map(|name| name.as_deref().unwrap_or_default() == "Boolean Operation")
-							.unwrap_or_default()
+							.is_some_and(|reference| reference == DefinitionIdentifier::Network("Boolean Operation".into()))
 					})
 				});
 
@@ -2171,7 +2175,7 @@ impl DocumentMessageHandler {
 	}
 
 	/// Loads all of the fonts in the document.
-	pub fn load_layer_resources(&self, responses: &mut VecDeque<Message>, font_catalog: &FontCatalog) {
+	pub fn load_layer_resources(&self, responses: &mut VecDeque<Message>) {
 		let mut fonts_to_load = HashSet::new();
 
 		for (_, node, _) in self.document_network().recursive_nodes() {
@@ -2183,12 +2187,7 @@ impl DocumentMessageHandler {
 		}
 
 		for font in fonts_to_load {
-			if let Some(style) = font_catalog.find_font_style_in_catalog(&font) {
-				responses.add_front(FrontendMessage::TriggerFontDataLoad {
-					font: Font::new(font.font_family, style.to_named_style()),
-					url: style.url,
-				});
-			}
+			responses.add(PortfolioMessage::LoadFontData { font });
 		}
 	}
 
@@ -2391,6 +2390,24 @@ impl DocumentMessageHandler {
 									.for_label(checkbox_id)
 									.widget_instance(),
 								TextLabel::new("Selection Outline".to_string()).for_checkbox(checkbox_id).widget_instance(),
+							]
+						},
+					},
+					LayoutGroup::Row {
+						widgets: {
+							let checkbox_id = CheckboxId::new();
+							vec![
+								CheckboxInput::new(self.overlays_visibility_settings.layer_origin_cross)
+									.on_update(|optional_input: &CheckboxInput| {
+										DocumentMessage::SetOverlaysVisibility {
+											visible: optional_input.checked,
+											overlays_type: Some(OverlaysType::LayerOriginCross),
+										}
+										.into()
+									})
+									.for_label(checkbox_id)
+									.widget_instance(),
+								TextLabel::new("Layer Origin".to_string()).for_checkbox(checkbox_id).widget_instance(),
 							]
 						},
 					},
@@ -3055,7 +3072,14 @@ impl<'a> ClickXRayIter<'a> {
 	}
 
 	/// Handles the checking of the layer where the target is a rect or path
-	fn check_layer_area_target(&mut self, click_targets: Option<&Vec<ClickTarget>>, clip: bool, layer: LayerNodeIdentifier, path: Vec<path_bool_lib::PathSegment>, transform: DAffine2) -> XRayResult {
+	fn check_layer_area_target(
+		&mut self,
+		click_targets: Option<&[Arc<ClickTarget>]>,
+		clip: bool,
+		layer: LayerNodeIdentifier,
+		path: Vec<path_bool_lib::PathSegment>,
+		transform: DAffine2,
+	) -> XRayResult {
 		// Convert back to Kurbo types for intersections
 		let segment = |bezier: &path_bool_lib::PathSegment| match *bezier {
 			path_bool_lib::PathSegment::Line(start, end) => PathSeg::Line(Line::new(dvec2_to_point(start), dvec2_to_point(end))),
@@ -3072,7 +3096,7 @@ impl<'a> ClickXRayIter<'a> {
 		// In the case of a clip path where the area partially intersects, it is necessary to do a boolean operation.
 		// We do this on this using the target area to reduce computation (as the target area is usually very simple).
 		if clip && intersects {
-			let clip_path = click_targets_to_path_lib_segments(click_targets.iter().flat_map(|x| x.iter()), transform);
+			let clip_path = click_targets_to_path_lib_segments(click_targets.iter().flat_map(|x| x.iter()).map(|x| x.as_ref()), transform);
 			let subtracted = boolean_intersect(path, clip_path).into_iter().flatten().collect::<Vec<_>>();
 			if subtracted.is_empty() {
 				use_children = false;

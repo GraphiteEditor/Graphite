@@ -34,7 +34,10 @@ impl serde::Serialize for JsRawBuffer {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq, specta::Type)]
 pub struct LayerPanelEntry {
 	pub id: NodeId,
-	pub reference: String,
+	#[serde(rename = "implementationName")]
+	pub implementation_name: String,
+	#[serde(rename = "iconName")]
+	pub icon_name: Option<String>,
 	pub alias: String,
 	#[serde(rename = "inSelectedNetwork")]
 	pub in_selected_network: bool,

@@ -5,7 +5,7 @@ page_template = "book.html"
 
 [extra]
 order = 2 # Chapter number
-js = ["/js/youtube-embed.js"]
+js = ["/js/component/youtube-embed.js"]
 css = ["/component/youtube-embed.css"]
 +++
 

@@ -10,7 +10,7 @@ summary = "Looking back on 2023, we reflect on our significant achievements and 
 reddit = "https://www.reddit.com/r/graphite/comments/18xmoti/blog_post_looking_back_on_2023_and_whats_next/"
 twitter = "https://twitter.com/GraphiteEditor/status/1742576805532577937"
 
-js = ["/js/youtube-embed.js"]
+js = ["/js/component/youtube-embed.js"]
 css = ["/component/youtube-embed.css"]
 +++
 
@@ -122,7 +122,7 @@ But 2023 wasn't only put towards refactoring code. New features were added all t
 
 With so much to change in the goal of rewriting nearly every system with its Graphene counterpart, we had to take an incremental path so other feature development could continue without a broken editor. As succinctly as possible, this is the story of how we pulled it off— although this section gets rather technical so feel free to skip past if that's not your cup of tea.
 
-The previous, intentionally-temporary layer system supported folders, vector shapes, text, bitmap images, and dynamic AI art (part of the Imaginate image generation feature).
+The previous, intentionally-temporary layer system supported folders, vector shapes, text, bitmap images, and dynamic image generation.
 
 <p><img src="https://static.graphite.art/content/blog/2024-01-01-looking-back-on-2023-and-what's-next/migration-block-diagram-1.avif" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.png')" alt="Block diagram of a Graphite document before the node graph" /></p>
 
@@ -160,13 +160,12 @@ First, I have some high-level goals for 2024:
 - Reach 20,000 [stars on GitHub](https://github.com/GraphiteEditor/Graphite/stargazers) (we just passed 5000 this December)
 - Move towards a greater focus on polish, stability, performance, and learning resources for the product
 - Attain sustainable income from donors and sponsors, and maybe even apply for grants in order to hire a full-time developer
-- Build infrastructure for user accounts and prove the viability of getting revenue from hosted AI cloud computation
+- Build infrastructure for user accounts and prove the viability of getting revenue from hosted cloud rendering
 
 And then from a development perspective, I am looking forward to accomplishing these overarching objectives in 2024:
 
-- Restoring several previous features that were removed during refactors in the past year to a fully working state including Imaginate, snapping, folder bounding boxes, transform pivots, and vector shape boolean operations
+- Restoring several previous features that were removed during refactors in the past year to a fully working state including snapping, folder bounding boxes, transform pivots, and vector shape boolean operations
 - Deploying GPU-based rendering by default and moving from an experimental to a production-ready hardware-accelerated compositing system using [Vello](https://github.com/linebender/vello) to unify the currently separate raster and vector pipelines
-- Shipping desktop apps for Windows, Mac, and Linux and bundling built-in AI models to run Imaginate and other upcoming features directly on user hardware
 - Designing a new vector graphics data format suitable for advanced procedural editing and rendering, plus the associated procedural workflow features
 - Remaking the Brush tool with the GPU-accelerated pipeline and the adaptive resolution system so digital painting in Graphite becomes practical
 - Implementing the Mask Mode feature for Magic Wand tool marquee selections, which will dramatically improve Graphite's utility as a raster graphics editor

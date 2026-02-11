@@ -1,0 +1,31 @@
+name: Provide Shaders
+
+on:
+  push:
+    branches:
+      - master
+  workflow_dispatch: {}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@main
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+
+      - name: Build graphene raster nodes shaders
+        run: nix build .nix#raster-nodes-shaders && cp result raster_nodes_shaders_entrypoint.wgsl
+
+      - name: Upload graphene raster nodes shaders to artifacts repository
+        run: |
+          bash .github/workflows/scripts/artifact-upload.bash \
+            ${{ vars.ARTIFACTS_REPO_OWNER }} \
+            ${{ vars.ARTIFACTS_REPO_NAME }} \
+            ${{ vars.ARTIFACTS_REPO_BRANCH }} \
+            rev/${{ github.sha }}/raster_nodes_shaders_entrypoint.wgsl \
+            raster_nodes_shaders_entrypoint.wgsl \
+            "${{ github.sha }} raster_nodes_shaders_entrypoint.wgsl" \
+            ${{ secrets.ARTIFACTS_REPO_TOKEN }}

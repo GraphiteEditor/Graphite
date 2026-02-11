@@ -10,7 +10,7 @@ reddit = "https://www.reddit.com/r/graphite/comments/1jplm6t/internships_for_a_r
 twitter = "https://x.com/GraphiteEditor/status/1907384498389651663"
 bluesky = "https://bsky.app/profile/graphiteeditor.bsky.social/post/3llt7lbmm4s24"
 
-js = ["/js/youtube-embed.js"]
+js = ["/js/component/youtube-embed.js"]
 css = ["/component/youtube-embed.css"]
 +++
 
