@@ -328,7 +328,7 @@ impl NodeRuntime {
 
 							executor.context.queue.submit([encoder.finish()]);
 							surface_texture.present();
-							image_texture.texture.destroy();
+							// image_texture.texture.destroy();
 
 							let frame = graphene_std::application_io::SurfaceFrame {
 								surface_id: surface.window_id,
