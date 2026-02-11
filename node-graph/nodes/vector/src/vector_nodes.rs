@@ -792,16 +792,11 @@ async fn box_warp(_: impl Ctx, content: Table<Vector>, #[expose] rectangle: Tabl
 	
     // Compute combined bounding box if needed
     let combined_bbox = if combined {
-        content.iter().fold(None, |acc: Option<[DVec2; 2]>, row| {
-            let bbox = row.element.bounding_box_with_transform(row.transform);
-            match (acc, bbox) {
-                (None, Some(bbox)) => Some(bbox),
-                (Some([min, max]), Some([bbox_min, bbox_max])) => {
-                    Some([min.min(bbox_min), max.max(bbox_max)])
-                }
-                (acc, None) => acc,
-            }
-        })
+content.iter()
+          .filter_map(|row| row.element.bounding_box_with_transform(row.transform))
+          .reduce(|[min, max], [bbox_min, bbox_max]| {
+              [min.min(bbox_min), max.max(bbox_max)]
+          })
     } else {
         None
     };
