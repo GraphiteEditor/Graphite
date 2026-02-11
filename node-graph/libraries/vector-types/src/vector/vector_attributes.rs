@@ -51,6 +51,99 @@ macro_rules! create_ids {
 
 create_ids! { PointId, SegmentId, RegionId, StrokeId, FillId }
 
+/// Describes the curvature type of a segment by referencing handle point indices in [`PointDomain`].
+///
+/// This enum replaces inline coordinate storage with index references, enabling:
+/// - Shared handle points across segments
+/// - Attribute-driven transformations
+/// - Future extensibility for Arc, NURBS, and other curve types
+///
+/// See: <https://github.com/GraphiteEditor/Graphite/issues/1833>
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, DynAny, serde::Serialize, serde::Deserialize)]
+pub enum Curvature {
+	/// Linear segment with no curvature (straight line between endpoints).
+	Linear,
+	/// Quadratic Bézier curve with a single control point.
+	Quadratic {
+		/// Index into [`PointDomain`] for the control handle.
+		handle: usize,
+	},
+	/// Cubic Bézier curve with two control points.
+	Cubic {
+		/// Index into [`PointDomain`] for the handle near the start point.
+		handle_start: usize,
+		/// Index into [`PointDomain`] for the handle near the end point.
+		handle_end: usize,
+	},
+}
+
+impl Default for Curvature {
+	fn default() -> Self {
+		Self::Linear
+	}
+}
+
+impl Curvature {
+	/// Returns `true` if this is a cubic curve.
+	pub fn is_cubic(&self) -> bool {
+		matches!(self, Self::Cubic { .. })
+	}
+
+	/// Returns `true` if this is a linear segment.
+	pub fn is_linear(&self) -> bool {
+		matches!(self, Self::Linear)
+	}
+
+	/// Returns the start handle index, if present.
+	///
+	/// For quadratic curves, this returns the single handle.
+	/// For cubic curves, this returns the handle near the start point.
+	pub fn start_handle(&self) -> Option<usize> {
+		match *self {
+			Self::Quadratic { handle } => Some(handle),
+			Self::Cubic { handle_start, .. } => Some(handle_start),
+			Self::Linear => None,
+		}
+	}
+
+	/// Returns the end handle index, if present.
+	///
+	/// Only cubic curves have an end handle.
+	pub fn end_handle(&self) -> Option<usize> {
+		match *self {
+			Self::Cubic { handle_end, .. } => Some(handle_end),
+			_ => None,
+		}
+	}
+
+	/// Returns a new curvature with handle indices adjusted by an offset.
+	///
+	/// Used when concatenating domains.
+	#[must_use]
+	pub fn offset_indices(self, offset: usize) -> Self {
+		match self {
+			Self::Linear => Self::Linear,
+			Self::Quadratic { handle } => Self::Quadratic { handle: handle + offset },
+			Self::Cubic { handle_start, handle_end } => Self::Cubic {
+				handle_start: handle_start + offset,
+				handle_end: handle_end + offset,
+			},
+		}
+	}
+
+	/// Returns a new curvature with swapped handle indices (for reversing a segment).
+	#[must_use]
+	pub fn reversed(self) -> Self {
+		match self {
+			Self::Cubic { handle_start, handle_end } => Self::Cubic {
+				handle_start: handle_end,
+				handle_end: handle_start,
+			},
+			other => other,
+		}
+	}
+}
+
 /// A no-op hasher that allows writing u64s (the id type).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct NoHash(Option<u64>);
@@ -1306,4 +1399,74 @@ pub struct IdMap {
 	pub point_map: HashMap<PointId, PointId>,
 	pub segment_map: HashMap<SegmentId, SegmentId>,
 	pub region_map: HashMap<RegionId, RegionId>,
+}
+
+#[cfg(test)]
+mod tests {
+	use super::*;
+
+	#[test]
+	fn curvature_default_is_linear() {
+		assert_eq!(Curvature::default(), Curvature::Linear);
+	}
+
+	#[test]
+	fn curvature_is_cubic() {
+		assert!(!Curvature::Linear.is_cubic());
+		assert!(!Curvature::Quadratic { handle: 0 }.is_cubic());
+		assert!(Curvature::Cubic { handle_start: 0, handle_end: 1 }.is_cubic());
+	}
+
+	#[test]
+	fn curvature_is_linear() {
+		assert!(Curvature::Linear.is_linear());
+		assert!(!Curvature::Quadratic { handle: 0 }.is_linear());
+		assert!(!Curvature::Cubic { handle_start: 0, handle_end: 1 }.is_linear());
+	}
+
+	#[test]
+	fn curvature_start_handle() {
+		assert_eq!(Curvature::Linear.start_handle(), None);
+		assert_eq!(Curvature::Quadratic { handle: 5 }.start_handle(), Some(5));
+		assert_eq!(Curvature::Cubic { handle_start: 3, handle_end: 7 }.start_handle(), Some(3));
+	}
+
+	#[test]
+	fn curvature_end_handle() {
+		assert_eq!(Curvature::Linear.end_handle(), None);
+		assert_eq!(Curvature::Quadratic { handle: 5 }.end_handle(), None);
+		assert_eq!(Curvature::Cubic { handle_start: 3, handle_end: 7 }.end_handle(), Some(7));
+	}
+
+	#[test]
+	fn curvature_offset_indices() {
+		let offset = 10;
+
+		assert_eq!(Curvature::Linear.offset_indices(offset), Curvature::Linear);
+
+		assert_eq!(
+			Curvature::Quadratic { handle: 5 }.offset_indices(offset),
+			Curvature::Quadratic { handle: 15 }
+		);
+
+		assert_eq!(
+			Curvature::Cubic { handle_start: 3, handle_end: 7 }.offset_indices(offset),
+			Curvature::Cubic { handle_start: 13, handle_end: 17 }
+		);
+	}
+
+	#[test]
+	fn curvature_reversed() {
+		assert_eq!(Curvature::Linear.reversed(), Curvature::Linear);
+
+		assert_eq!(
+			Curvature::Quadratic { handle: 5 }.reversed(),
+			Curvature::Quadratic { handle: 5 }
+		);
+
+		assert_eq!(
+			Curvature::Cubic { handle_start: 3, handle_end: 7 }.reversed(),
+			Curvature::Cubic { handle_start: 7, handle_end: 3 }
+		);
+	}
 }
