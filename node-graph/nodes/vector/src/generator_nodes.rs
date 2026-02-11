@@ -188,9 +188,22 @@ fn star<T: AsU64>(
 
 /// Generates a QR code from the input text.
 #[node_macro::node(category("Vector: Shape"), name("QR Code"))]
-fn qr_code(_: impl Ctx, _primary: (), #[default("https://graphite.art")] text: String, #[default(false)] individual_squares: bool
+fn qr_code(
+	_: impl Ctx,
+	_primary: (),
+	#[default("https://graphite.art")] text: String,
+	/// Error correction level, from low (0) to high (3).
+	#[default(1)]
+	error_correction: u32,
+	#[default(false)] individual_squares: bool,
 ) -> Table<Vector> {
-	let ecc = qrcodegen::QrCodeEcc::Medium;
+	let ecc = match error_correction.min(3) {
+		0 => qrcodegen::QrCodeEcc::Low,
+		1 => qrcodegen::QrCodeEcc::Medium,
+		2 => qrcodegen::QrCodeEcc::Quartile,
+		3 => qrcodegen::QrCodeEcc::High,
+		_ => unreachable!(),
+	};
 
 	let Ok(qr_code) = qrcodegen::QrCode::encode_text(&text, ecc) else {
 		return Table::default();
@@ -394,7 +407,7 @@ mod tests {
 
 	#[test]
 	fn qr_code_test() {
-		let qr = qr_code((), (), "https://graphite.art".to_string(), true);
+		let qr = qr_code((), (), "https://graphite.art".to_string(), 1, true);
 		assert!(qr.iter().next().unwrap().element.point_domain.ids().len() > 0);
 		assert!(qr.iter().next().unwrap().element.segment_domain.ids().len() > 0);
 	}
