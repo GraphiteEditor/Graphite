@@ -63,17 +63,48 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 		match options {
 			GradientOptionsUpdate::Type(gradient_type) => {
 				self.options.gradient_type = gradient_type;
-				// Update the selected gradient if it exists
-				if let Some(selected_gradient) = &mut self.data.selected_gradient {
-					// Check if the current layer is a raster layer
-					if let Some(layer) = selected_gradient.layer {
-						if NodeGraphLayer::is_raster_layer(layer, &mut context.document.network_interface) {
-							return; // Don't proceed if it's a raster layer
+				let selected_layers: Vec<_> = context
+					.document
+					.network_interface
+					.selected_nodes()
+					.selected_visible_layers(&context.document.network_interface)
+					.collect();
+
+				let mut transaction_started = false;
+				for layer in selected_layers {
+					if NodeGraphLayer::is_raster_layer(layer, &mut context.document.network_interface) {
+						continue;
+					}
+
+					if let Some(mut gradient) = get_gradient(layer, &context.document.network_interface) {
+						if gradient.gradient_type != gradient_type {
+							if !transaction_started {
+								responses.add(DocumentMessage::StartTransaction);
+								transaction_started = true;
+							}
+							gradient.gradient_type = gradient_type;
+							responses.add(GraphOperationMessage::FillSet {
+								layer,
+								fill: Fill::Gradient(gradient),
+							});
 						}
-						selected_gradient.gradient.gradient_type = gradient_type;
-						selected_gradient.render_gradient(responses);
 					}
 				}
+
+				if transaction_started {
+					responses.add(DocumentMessage::AddTransaction);
+				}
+				if let Some(selected_gradient) = &mut self.data.selected_gradient {
+					if let Some(layer) = selected_gradient.layer {
+						if !NodeGraphLayer::is_raster_layer(layer, &mut context.document.network_interface) {
+							selected_gradient.gradient.gradient_type = gradient_type;
+						}
+					}
+				}
+				responses.add(ToolMessage::UpdateHints);
+				responses.add(PropertiesPanelMessage::Refresh);
+				responses.add(ToolMessage::UpdateCursor);
+				responses.add(ToolMessage::RefreshToolOptions);
 			}
 		}
 	}
@@ -104,7 +135,7 @@ impl LayoutHolder for GradientTool {
 				.into()
 			}),
 		])
-		.selected_index(Some((self.selected_gradient().unwrap_or(self.options.gradient_type) == GradientType::Radial) as u32))
+		.selected_index(Some((self.options.gradient_type == GradientType::Radial) as u32))
 		.widget_instance();
 
 		Layout(vec![LayoutGroup::Row { widgets: vec![gradient_type] }])
