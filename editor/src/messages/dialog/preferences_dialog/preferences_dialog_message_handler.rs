@@ -20,6 +20,7 @@ impl MessageHandler<PreferencesDialogMessage, PreferencesDialogMessageContext<'_
 
 		match message {
 			PreferencesDialogMessage::Confirm => {}
+			PreferencesDialogMessage::Update => {}
 		}
 
 		self.send_dialog_to_frontend(responses, preferences);
@@ -231,29 +232,35 @@ impl PreferencesDialogMessageHandler {
 				graph_wire_style,
 			];
 
-			let checkbox_id = CheckboxId::new();
-			let vello_description = "Use the experimental Vello renderer instead of SVG-based rendering.".to_string();
-			#[cfg(target_family = "wasm")]
-			let mut vello_description = vello_description;
-			#[cfg(target_family = "wasm")]
-			vello_description.push_str("\n\n(Your browser must support WebGPU.)");
-
-			let use_vello = vec![
+			let vello_description = "Auto uses Vello renderer when GPU is available.";
+			let vello_renderer_label = vec![
 				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-				CheckboxInput::new(preferences.use_vello && preferences.supports_wgpu())
-					.tooltip_label("Vello Renderer")
-					.tooltip_description(vello_description.clone())
-					.disabled(!preferences.supports_wgpu())
-					.on_update(|checkbox_input: &CheckboxInput| PreferencesMessage::UseVello { use_vello: checkbox_input.checked }.into())
-					.for_label(checkbox_id)
-					.widget_instance(),
 				TextLabel::new("Vello Renderer")
 					.tooltip_label("Vello Renderer")
 					.tooltip_description(vello_description)
-					.disabled(!preferences.supports_wgpu())
-					.for_checkbox(checkbox_id)
 					.widget_instance(),
+			];
+			let vello_preference = RadioInput::new(vec![
+				RadioEntryData::new("Auto").label("Auto").on_update(move |_| {
+					PreferencesMessage::VelloPreference {
+						preference: graph_craft::wasm_application_io::VelloPreference::Auto,
+					}
+					.into()
+				}),
+				RadioEntryData::new("Disabled").label("Disabled").on_update(move |_| {
+					PreferencesMessage::VelloPreference {
+						preference: graph_craft::wasm_application_io::VelloPreference::Disabled,
+					}
+					.into()
+				}),
+			])
+			.selected_index(Some(preferences.vello_preference as u32))
+			.widget_instance();
+			let vello_preference = vec![
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				vello_preference,
 			];
 
 			let checkbox_id = CheckboxId::new();
@@ -281,7 +288,47 @@ impl PreferencesDialogMessageHandler {
 					.widget_instance(),
 			];
 
-			rows.extend_from_slice(&[header, node_graph_wires_label, graph_wire_style, use_vello, brush_tool]);
+			let max_region_size_description =
+				"Maximum render region size in total pixels (width × height). Larger values require fewer render passes. If you see rendering artifacts or nothing at all, configure a smaller value.";
+			let max_region_size_label = vec![
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				TextLabel::new("Max Render Region Size")
+					.tooltip_label("Max Render Region Size")
+					.tooltip_description(max_region_size_description)
+					.disabled(!preferences.use_vello())
+					.widget_instance(),
+			];
+			let max_region_size = vec![
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				NumberInput::new(Some(preferences.max_render_region_size as f64))
+					.tooltip_label("Max Render Region Size")
+					.tooltip_description(max_region_size_description)
+					.mode_range()
+					.int()
+					.min(65536.)
+					.max(16777216.)
+					.increment_step(262144.)
+					.unit(" pixels")
+					.disabled(!preferences.use_vello())
+					.on_update(|number_input: &NumberInput| {
+						let size = number_input.value.unwrap_or(2073600.) as u32;
+						PreferencesMessage::MaxRenderRegionSize { size }.into()
+					})
+					.widget_instance(),
+			];
+
+			rows.extend_from_slice(&[
+				header,
+				node_graph_wires_label,
+				graph_wire_style,
+				vello_renderer_label,
+				vello_preference,
+				brush_tool,
+				max_region_size_label,
+				max_region_size,
+			]);
 		}
 
 		Layout(rows.into_iter().map(|r| LayoutGroup::Row { widgets: r }).collect())

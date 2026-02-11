@@ -4,4 +4,5 @@ use crate::messages::prelude::*;
 #[derive(Eq, PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum PreferencesDialogMessage {
 	Confirm,
+	Update,
 }
