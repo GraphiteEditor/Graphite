@@ -38,7 +38,7 @@ Mission success will come when Graphite is an industry standard. A cohesive prod
 
 ## Organization
 
-Graphite is fully funded by its community and beholden to no investors, ensuring it remains free and open source forever. The organization, *Graphite Labs, LLC*, is owned and controlled solely by the project's founder. Future nonprofit foundation status is being explored, but that administrative complexity is not yet justified. All revenue is being reinvested into the project, with aims to employ full-time developers once funding reaches sustainable levels.
+Graphite is fully funded by its community and beholden to no investors, ensuring it remains free and open source forever. The organization, *Graphite Labs, LLC*, is owned and controlled solely by the project's founder. Future nonprofit foundation status is being explored, but that administrative complexity is not yet justified. All income is being reinvested into the project, with aims to employ full-time developers once funding reaches sustainable levels.
 
 </div>
 
