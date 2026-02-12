@@ -13,7 +13,7 @@ use glam::DVec2;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::NodeInputDecleration;
-use graphene_std::subpath::{calculate_b, spiral_point};
+use graphene_std::subpath::{calculate_growth_factor, spiral_point};
 use graphene_std::vector::misc::SpiralType;
 use std::collections::VecDeque;
 use std::f64::consts::TAU;
@@ -41,7 +41,7 @@ pub struct SpiralTurns {
 	initial_turns: f64,
 	initial_outer_radius: f64,
 	initial_inner_radius: f64,
-	initial_b: f64,
+	initial_growth_factor: f64,
 	initial_start_angle: f64,
 	previous_mouse_position: DVec2,
 	total_angle_delta: f64,
@@ -72,18 +72,18 @@ impl SpiralTurns {
 	pub fn store_initial_parameters(
 		&mut self,
 		layer: LayerNodeIdentifier,
-		a: f64,
-		turns: f64,
+		inner_radius: f64,
 		outer_radius: f64,
-		mouse_position: DVec2,
+		turns: f64,
 		start_angle: f64,
+		mouse_position: DVec2,
 		gizmo_type: GizmoType,
 		spiral_type: SpiralType,
 	) {
 		self.layer = Some(layer);
 		self.initial_turns = turns;
-		self.initial_b = calculate_b(a, turns, outer_radius, spiral_type);
-		self.initial_inner_radius = a;
+		self.initial_growth_factor = calculate_growth_factor(inner_radius, turns, outer_radius, spiral_type);
+		self.initial_inner_radius = inner_radius;
 		self.initial_outer_radius = outer_radius;
 		self.initial_start_angle = start_angle;
 		self.previous_mouse_position = mouse_position;
@@ -98,18 +98,14 @@ impl SpiralTurns {
 		match &self.handle_state {
 			SpiralTurnsState::Inactive => {
 				if let Some((spiral_type, start_angle, inner_radius, outer_radius, turns, _)) = extract_spiral_parameters(layer, document) {
-					let b = calculate_b(inner_radius, turns, outer_radius, spiral_type);
-					let end_point = viewport.transform_point2(spiral_point(turns * TAU + start_angle.to_radians(), inner_radius, b, spiral_type));
-					let start_point = viewport.transform_point2(spiral_point(0. + start_angle.to_radians(), inner_radius, b, spiral_type));
+					let growth_factor = calculate_growth_factor(inner_radius, turns, outer_radius, spiral_type);
+					let end_point = viewport.transform_point2(spiral_point(turns * TAU + start_angle.to_radians(), inner_radius, growth_factor, spiral_type));
+					let start_point = viewport.transform_point2(spiral_point(0. + start_angle.to_radians(), inner_radius, growth_factor, spiral_type));
 
 					if mouse_position.distance(end_point) < POINT_RADIUS_HANDLE_SNAP_THRESHOLD {
-						self.store_initial_parameters(layer, inner_radius, turns, outer_radius, mouse_position, start_angle, GizmoType::End, spiral_type);
-						return;
-					}
-
-					if mouse_position.distance(start_point) < POINT_RADIUS_HANDLE_SNAP_THRESHOLD {
-						self.store_initial_parameters(layer, inner_radius, turns, outer_radius, mouse_position, start_angle, GizmoType::Start, spiral_type);
-						return;
+						self.store_initial_parameters(layer, inner_radius, outer_radius, turns, start_angle, mouse_position, GizmoType::End, spiral_type);
+					} else if mouse_position.distance(start_point) < POINT_RADIUS_HANDLE_SNAP_THRESHOLD {
+						self.store_initial_parameters(layer, inner_radius, outer_radius, turns, start_angle, mouse_position, GizmoType::Start, spiral_type);
 					}
 				}
 			}
@@ -174,8 +170,8 @@ impl SpiralTurns {
 
 		// Calculate the new outer radius based on spiral type and turn change
 		let outer_radius_change = match self.spiral_type {
-			SpiralType::Archimedean => turns_delta * (self.initial_b) * TAU,
-			SpiralType::Logarithmic => self.initial_outer_radius * ((self.initial_b * TAU * turns_delta).exp() - 1.),
+			SpiralType::Archimedean => turns_delta * (self.initial_growth_factor) * TAU,
+			SpiralType::Logarithmic => self.initial_outer_radius * ((self.initial_growth_factor * TAU * turns_delta).exp() - 1.),
 		};
 
 		// Skip if outer_radius calculation produced invalid values

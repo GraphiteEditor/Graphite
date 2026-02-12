@@ -16,7 +16,7 @@ use glam::DAffine2;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::NodeInputDecleration;
-use graphene_std::subpath::{calculate_b, spiral_point};
+use graphene_std::subpath::{calculate_growth_factor, spiral_point};
 use graphene_std::vector::misc::SpiralType;
 use std::collections::VecDeque;
 
@@ -85,11 +85,10 @@ impl ShapeGizmoHandler for SpiralGizmoHandler {
 
 /// Calculates the position of a spiral endpoint at a given angle offset (0 = start, TAU = end).
 pub fn calculate_spiral_endpoints(layer: LayerNodeIdentifier, document: &DocumentMessageHandler, viewport: DAffine2, theta: f64) -> Option<DVec2> {
-	let Some((spiral_type, start_angle, a, outer_radius, turns, _)) = extract_spiral_parameters(layer, document) else {
-		return None;
-	};
+	let (spiral_type, start_angle, a, outer_radius, turns, _) = extract_spiral_parameters(layer, document)?;
+	let b = calculate_growth_factor(a, turns, outer_radius, spiral_type);
 	let theta = turns * theta + start_angle.to_radians();
-	let b = calculate_b(a, turns, outer_radius, spiral_type);
+
 	Some(viewport.transform_point2(spiral_point(theta, a, b, spiral_type)))
 }
 
