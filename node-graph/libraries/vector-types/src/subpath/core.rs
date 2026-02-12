@@ -381,6 +381,54 @@ impl<PointId: Identifier> Subpath<PointId> {
 
 		Self::new(manipulator_groups, false)
 	}
+
+	pub fn new_heart(
+		center: DVec2,
+		radius: f64,
+		cleft_angle: f64,
+		tip_angle: f64,
+		left_bulb_height: f64,
+		right_bulb_height: f64,
+		left_bulb_expand: f64,
+		right_bulb_expand: f64,
+		cleft_depth: f64,
+		tip_depth: f64,
+	) -> Self {
+		// Anchors
+		let top_anchor = center - DVec2::new(0., radius * cleft_depth);
+		let bottom_anchor = center + DVec2::new(0., radius * tip_depth);
+
+		let side_x = radius;
+		// Offset is for less squat shape (-0.25).
+		let right_anchor = DVec2::new(
+			center.x + side_x * (1. + right_bulb_expand),
+			(center.y + radius * (right_bulb_height - 0.25)) * (1. + right_bulb_expand) - center.y * right_bulb_expand,
+		);
+		let left_anchor = DVec2::new(
+			center.x - side_x * (1. + left_bulb_expand),
+			(center.y + radius * (left_bulb_height - 0.25)) * (1. + left_bulb_expand) - center.y * left_bulb_expand,
+		);
+
+		// Handle Directions
+		let (top_sin, top_cos) = cleft_angle.sin_cos();
+		let top_dir = DVec2::new(top_sin, -top_cos) * radius * 0.5;
+
+		let (bot_sin, bot_cos) = tip_angle.sin_cos();
+		let bot_dir = DVec2::new(bot_sin, -bot_cos) * radius * 0.45;
+
+		// Side Tangents
+		let side_up = DVec2::new(0., -radius * 0.4);
+		let side_down = DVec2::new(0., radius * 0.5);
+
+		let manipulator_groups = vec![
+			ManipulatorGroup::new(top_anchor, Some(top_anchor + DVec2::new(-top_dir.x, top_dir.y)), Some(top_anchor + top_dir)),
+			ManipulatorGroup::new(right_anchor, Some(right_anchor + side_up), Some(right_anchor + side_down)),
+			ManipulatorGroup::new(bottom_anchor, Some(bottom_anchor + bot_dir), Some(bottom_anchor + DVec2::new(-bot_dir.x, bot_dir.y))),
+			ManipulatorGroup::new(left_anchor, Some(left_anchor + side_down), Some(left_anchor + side_up)),
+		];
+
+		Self::new(manipulator_groups, true)
+	}
 }
 
 pub fn calculate_growth_factor(a: f64, turns: f64, outer_radius: f64, spiral_type: SpiralType) -> f64 {
