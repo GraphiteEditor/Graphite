@@ -1,12 +1,20 @@
-use crate::messages::portfolio::utility_types::KeyboardPlatformLayout;
+use crate::application::Editor;
 use crate::messages::prelude::*;
 use bitflags::bitflags;
 use std::fmt::{self, Display, Formatter};
 use std::ops::{BitAnd, BitAndAssign, BitOr, BitOrAssign, BitXor, BitXorAssign};
 
+// ===========
+// StorageType
+// ===========
+
 // TODO: Increase size of type
 /// Edit this to specify the storage type used.
 pub type StorageType = u128;
+
+// =========
+// KeyStates
+// =========
 
 // Base-2 logarithm of the storage type used to represents how many bits you need to fully address every bit in that storage type
 const STORAGE_SIZE: u32 = (std::mem::size_of::<StorageType>() * 8).trailing_zeros();
@@ -23,10 +31,18 @@ pub fn all_required_modifiers_pressed(keyboard_state: &KeyStates, modifiers: &Ke
 	all_modifiers_without_pressed_modifiers.is_empty()
 }
 
+// ===========
+// KeyPosition
+// ===========
+
 pub enum KeyPosition {
 	Pressed,
 	Released,
 }
+
+// ============
+// ModifierKeys
+// ============
 
 bitflags! {
 	#[derive(Clone, Copy, Debug, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
@@ -39,6 +55,10 @@ bitflags! {
 		const META_OR_COMMAND = 0b_0000_1000;
 	}
 }
+
+// ===
+// Key
+// ===
 
 // Currently this is mostly based on the JS `KeyboardEvent.code` list: <https://www.w3.org/TR/uievents-code/>
 // But in the future, especially once users can customize keyboard mappings, we should deviate more from this so we have actual symbols
@@ -61,7 +81,7 @@ pub enum Key {
 	Digit7,
 	Digit8,
 	Digit9,
-	//
+
 	KeyA,
 	KeyB,
 	KeyC,
@@ -88,7 +108,7 @@ pub enum Key {
 	KeyX,
 	KeyY,
 	KeyZ,
-	//
+
 	Backquote,
 	Backslash,
 	BracketLeft,
@@ -197,17 +217,30 @@ pub enum Key {
 	Unidentified,
 
 	// Other keys that aren't part of the W3C spec
+	//
+	/// "Cmd" on Mac (not present on other platforms).
 	Command,
-	/// "Ctrl" on Windows/Linux, "Cmd" on Mac
+	/// "Ctrl" on Windows/Linux, "Cmd" on Mac.
 	Accel,
+	/// Left mouse button click (LMB).
 	MouseLeft,
+	/// Right mouse button click (RMB).
 	MouseRight,
+	/// Middle mouse button click (MMB).
 	MouseMiddle,
+	/// Mouse backward navigation button (typically on the side of the mouse).
 	MouseBack,
+	/// Mouse forward navigation button (typically on the side of the mouse).
 	MouseForward,
 
-	// This has to be the last element in the enum
-	NumKeys,
+	// Fake keys for displaying special labels in the UI
+	//
+	/// Not a physical key that can be pressed. May be used so that an actual shortcut bound to `Equal` can separately map this fake "key" as an additional binding to display the "+" shortcut label in the UI.
+	FakeKeyPlus,
+	/// Not a physical key that can be pressed. May be used so that an actual shortcut bound to all ten number keys (0, ..., 9) can separately map this fake "key" as an additional binding to display the "0–9" shortcut label in the UI.
+	FakeKeyNumbers,
+
+	_KeysVariantCount, // This has to be the last element in the enum
 }
 
 impl fmt::Display for Key {
@@ -217,15 +250,15 @@ impl fmt::Display for Key {
 
 		// Writing system keys
 		const DIGIT_PREFIX: &str = "Digit";
-		if key_name.len() == DIGIT_PREFIX.len() + 1 && &key_name[0..DIGIT_PREFIX.len()] == "Digit" {
+		if key_name.len() == DIGIT_PREFIX.len() + 1 && &key_name[0..DIGIT_PREFIX.len()] == DIGIT_PREFIX {
 			return write!(f, "{}", key_name.chars().skip(DIGIT_PREFIX.len()).collect::<String>());
 		}
 		const KEY_PREFIX: &str = "Key";
-		if key_name.len() == KEY_PREFIX.len() + 1 && &key_name[0..KEY_PREFIX.len()] == "Key" {
+		if key_name.len() == KEY_PREFIX.len() + 1 && &key_name[0..KEY_PREFIX.len()] == KEY_PREFIX {
 			return write!(f, "{}", key_name.chars().skip(KEY_PREFIX.len()).collect::<String>());
 		}
 
-		let keyboard_layout = || GLOBAL_PLATFORM.get().copied().unwrap_or_default().as_keyboard_platform_layout();
+		let is_mac = Editor::environment().is_mac();
 
 		let name = match self {
 			// Writing system keys
@@ -242,21 +275,21 @@ impl fmt::Display for Key {
 			Self::Slash => "/",
 
 			// Functional keys
-			Self::Alt => match keyboard_layout() {
-				KeyboardPlatformLayout::Standard => "Alt",
-				KeyboardPlatformLayout::Mac => "⌥",
+			Self::Alt => match is_mac {
+				true => "⌥",
+				false => "Alt",
 			},
-			Self::Meta => match keyboard_layout() {
-				KeyboardPlatformLayout::Standard => "⊞",
-				KeyboardPlatformLayout::Mac => "⌘",
+			Self::Meta => match is_mac {
+				true => "⌘",
+				false => "⊞",
 			},
-			Self::Shift => match keyboard_layout() {
-				KeyboardPlatformLayout::Standard => "Shift",
-				KeyboardPlatformLayout::Mac => "⇧",
+			Self::Shift => match is_mac {
+				true => "⇧",
+				false => "Shift",
 			},
-			Self::Control => match keyboard_layout() {
-				KeyboardPlatformLayout::Standard => "Ctrl",
-				KeyboardPlatformLayout::Mac => "⌃",
+			Self::Control => match is_mac {
+				true => "⌃",
+				false => "Ctrl",
 			},
 			Self::Backspace => "⌫",
 
@@ -284,16 +317,19 @@ impl fmt::Display for Key {
 
 			// Other keys that aren't part of the W3C spec
 			Self::Command => "⌘",
-			Self::Accel => match keyboard_layout() {
-				KeyboardPlatformLayout::Standard => "Ctrl",
-				KeyboardPlatformLayout::Mac => "⌘",
+			Self::Accel => match is_mac {
+				true => "⌘",
+				false => "Ctrl",
 			},
-			Self::MouseLeft => "LMB",
-			Self::MouseRight => "RMB",
-			Self::MouseMiddle => "MMB",
+			Self::MouseLeft => "Click",
+			Self::MouseRight => "R.Click",
+			Self::MouseMiddle => "M.Click",
 			Self::MouseBack => "Mouse Back",
 			Self::MouseForward => "Mouse Fwd",
-			Self::NumKeys => "0–9",
+
+			// Fake keys for displaying special labels in the UI
+			Self::FakeKeyPlus => "+",
+			Self::FakeKeyNumbers => "0–9",
 
 			_ => key_name.as_str(),
 		};
@@ -302,22 +338,11 @@ impl fmt::Display for Key {
 	}
 }
 
-impl From<Key> for LayoutKey {
-	fn from(key: Key) -> Self {
-		Self {
-			key: format!("{key:?}"),
-			label: key.to_string(),
-		}
-	}
-}
+pub const NUMBER_OF_KEYS: usize = Key::_KeysVariantCount as usize - 1;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
-struct LayoutKey {
-	key: String,
-	label: String,
-}
-
-pub const NUMBER_OF_KEYS: usize = Key::NumKeys as usize;
+// =========
+// KeysGroup
+// =========
 
 /// Only `Key`s that exist on a physical keyboard should be used.
 #[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -331,10 +356,9 @@ impl fmt::Display for KeysGroup {
 			.0
 			.iter()
 			.map(|key| {
-				let keyboard_layout = GLOBAL_PLATFORM.get().copied().unwrap_or_default().as_keyboard_platform_layout();
 				let key_is_modifier = matches!(*key, Key::Control | Key::Command | Key::Alt | Key::Shift | Key::Meta | Key::Accel);
 
-				if keyboard_layout == KeyboardPlatformLayout::Mac && key_is_modifier {
+				if Editor::environment().is_mac() && key_is_modifier {
 					key.to_string()
 				} else {
 					key.to_string() + JOINER_MARK
@@ -351,21 +375,25 @@ impl fmt::Display for KeysGroup {
 	}
 }
 
-impl From<KeysGroup> for String {
-	fn from(keys: KeysGroup) -> Self {
-		let layout_keys: LayoutKeysGroup = keys.into();
-		serde_json::to_string(&layout_keys).expect("Failed to serialize KeysGroup")
+// ==========
+// LabeledKey
+// ==========
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct LabeledKey {
+	key: Key,
+	label: String,
+}
+
+impl LabeledKey {
+	pub fn key(&self) -> Key {
+		self.key
 	}
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
-pub struct LayoutKeysGroup(Vec<LayoutKey>);
-
-impl From<KeysGroup> for LayoutKeysGroup {
-	fn from(keys_group: KeysGroup) -> Self {
-		Self(keys_group.0.into_iter().map(|key| key.into()).collect())
-	}
-}
+// ===========
+// MouseMotion
+// ===========
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum MouseMotion {
@@ -382,6 +410,45 @@ pub enum MouseMotion {
 	RmbDouble,
 	MmbDrag,
 }
+
+// =======================
+// LabeledKeyOrMouseMotion
+// =======================
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
+#[serde(untagged)]
+pub enum LabeledKeyOrMouseMotion {
+	Key(LabeledKey),
+	MouseMotion(MouseMotion),
+}
+
+impl From<Key> for LabeledKeyOrMouseMotion {
+	fn from(key: Key) -> Self {
+		match key {
+			Key::MouseLeft => Self::MouseMotion(MouseMotion::Lmb),
+			Key::MouseRight => Self::MouseMotion(MouseMotion::Rmb),
+			Key::MouseMiddle => Self::MouseMotion(MouseMotion::Mmb),
+			_ => Self::Key(LabeledKey { key, label: key.to_string() }),
+		}
+	}
+}
+
+// ===============
+// LabeledShortcut
+// ===============
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct LabeledShortcut(pub Vec<LabeledKeyOrMouseMotion>);
+
+impl From<KeysGroup> for LabeledShortcut {
+	fn from(keys_group: KeysGroup) -> Self {
+		Self(keys_group.0.into_iter().map(|key| key.into()).collect())
+	}
+}
+
+// =========
+// BitVector
+// =========
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct BitVector<const LENGTH: usize>([StorageType; LENGTH]);

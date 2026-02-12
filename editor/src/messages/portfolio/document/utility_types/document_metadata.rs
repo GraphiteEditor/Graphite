@@ -1,6 +1,7 @@
 use super::network_interface::NodeNetworkInterface;
 use crate::messages::portfolio::document::graph_operation::transform_utils;
 use crate::messages::portfolio::document::graph_operation::utility_types::ModifyInputsContext;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::FlowType;
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use glam::{DAffine2, DVec2};
@@ -12,6 +13,7 @@ use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::{PointId, Vector};
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroU64;
+use std::sync::Arc;
 
 // ================
 // DocumentMetadata
@@ -25,7 +27,7 @@ pub struct DocumentMetadata {
 	pub local_transforms: HashMap<NodeId, DAffine2>,
 	pub first_element_source_ids: HashMap<NodeId, Option<NodeId>>,
 	pub structure: HashMap<LayerNodeIdentifier, NodeRelations>,
-	pub click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>,
+	pub click_targets: HashMap<LayerNodeIdentifier, Vec<Arc<ClickTarget>>>,
 	pub clip_targets: HashSet<NodeId>,
 	pub vector_modify: HashMap<NodeId, Vector>,
 	/// Transform from document space to viewport space.
@@ -45,8 +47,8 @@ impl DocumentMetadata {
 		self.structure.contains_key(&layer)
 	}
 
-	pub fn click_targets(&self, layer: LayerNodeIdentifier) -> Option<&Vec<ClickTarget>> {
-		self.click_targets.get(&layer)
+	pub fn click_targets(&self, layer: LayerNodeIdentifier) -> Option<&[Arc<ClickTarget>]> {
+		self.click_targets.get(&layer).map(|x| x.as_slice())
 	}
 
 	/// Access the [`NodeRelations`] of a layer.
@@ -91,16 +93,15 @@ impl DocumentMetadata {
 
 		let mut use_local = true;
 		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, network_interface);
-		if let Some(path_node) = graph_layer.upstream_visible_node_id_from_name_in_layer("Path") {
-			if let Some(&source) = self.first_element_source_ids.get(&layer.to_node()) {
-				if !network_interface
-					.upstream_flow_back_from_nodes(vec![path_node], &[], FlowType::HorizontalFlow)
-					.any(|upstream| Some(upstream) == source)
-				{
-					use_local = false;
-					info!("Local transform is invalid — using the identity for the local transform instead")
-				}
-			}
+		let identifier = DefinitionIdentifier::Network("Path".into());
+		if let Some(path_node) = graph_layer.upstream_visible_node_id_from_name_in_layer(&identifier)
+			&& let Some(&source) = self.first_element_source_ids.get(&layer.to_node())
+			&& !network_interface
+				.upstream_flow_back_from_nodes(vec![path_node], &[], FlowType::HorizontalFlow)
+				.any(|upstream| Some(upstream) == source)
+		{
+			use_local = false;
+			info!("Local transform is invalid — using the identity for the local transform instead")
 		}
 		let local_transform = use_local.then(|| self.local_transforms.get(&layer.to_node()).copied()).flatten().unwrap_or_default();
 
@@ -116,7 +117,7 @@ impl DocumentMetadata {
 		let local_transform = self.local_transforms.get(&layer.to_node()).copied();
 
 		let transform = local_transform.unwrap_or_else(|| {
-			let transform_node_id = ModifyInputsContext::locate_node_in_layer_chain("Transform", layer, network_interface);
+			let transform_node_id = ModifyInputsContext::locate_node_in_layer_chain(&DefinitionIdentifier::Network("Transform".into()), layer, network_interface);
 			let transform_node = transform_node_id.and_then(|id| network_interface.document_node(&id, &[]));
 			transform_node.map(|node| transform_utils::get_current_transform(node.inputs.as_slice())).unwrap_or_default()
 		});
@@ -154,10 +155,7 @@ impl DocumentMetadata {
 	pub fn bounding_box_with_transform(&self, layer: LayerNodeIdentifier, transform: DAffine2) -> Option<[DVec2; 2]> {
 		self.click_targets(layer)?
 			.iter()
-			.filter_map(|click_target| match click_target.target_type() {
-				ClickTargetType::Subpath(subpath) => subpath.bounding_box_with_transform(transform),
-				ClickTargetType::FreePoint(_) => click_target.bounding_box_with_transform(transform),
-			})
+			.filter_map(|click_target| click_target.bounding_box_with_transform(transform))
 			.reduce(Quad::combine_bounds)
 	}
 
@@ -209,7 +207,7 @@ impl DocumentMetadata {
 	}
 
 	pub fn layer_outline(&self, layer: LayerNodeIdentifier) -> impl Iterator<Item = &subpath::Subpath<PointId>> {
-		static EMPTY: Vec<ClickTarget> = Vec::new();
+		static EMPTY: Vec<Arc<ClickTarget>> = Vec::new();
 		let click_targets = self.click_targets.get(&layer).unwrap_or(&EMPTY);
 		click_targets.iter().filter_map(|target| match target.target_type() {
 			ClickTargetType::Subpath(subpath) => Some(subpath),
@@ -218,7 +216,7 @@ impl DocumentMetadata {
 	}
 
 	pub fn layer_with_free_points_outline(&self, layer: LayerNodeIdentifier) -> impl Iterator<Item = &ClickTargetType> {
-		static EMPTY: Vec<ClickTarget> = Vec::new();
+		static EMPTY: Vec<Arc<ClickTarget>> = Vec::new();
 		let click_targets = self.click_targets.get(&layer).unwrap_or(&EMPTY);
 		click_targets.iter().map(|target| target.target_type())
 	}

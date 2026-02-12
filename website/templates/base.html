@@ -8,7 +8,7 @@
 	<title>Graphite | {{ title | safe }}</title>
 	<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, minimum-scale=1" />
 	{% if current_path -%}
-	<meta property="og:url" content="https://graphite.rs{{ current_path | safe }}" />
+	<meta property="og:url" content="https://graphite.art{{ current_path | safe }}" />
 	{%- endif %}
 	{%- set meta_description = page.extra.meta_description | default(value = meta_description | default(value = false)) -%}
 	{% if meta_description %}
@@ -16,8 +16,8 @@
 	<meta property="og:description" content="{{ meta_description | safe }}" />
 	<meta name="twitter:description" content="{{ meta_description | safe }}" />
 	{%- endif %}
-	<meta property="og:image" content="{{ meta_image | default(value = 'https://static.graphite.rs/logos/splash.png' | safe) | safe }}" />
-	<meta name="twitter:image" content="{{ meta_image | default(value = 'https://static.graphite.rs/logos/splash.png' | safe) | safe }}" />
+	<meta property="og:image" content="{{ meta_image | default(value = 'https://static.graphite.art/logos/splash.png' | safe) | safe }}" />
+	<meta name="twitter:image" content="{{ meta_image | default(value = 'https://static.graphite.art/logos/splash.png' | safe) | safe }}" />
 	<meta property="og:title" content="{{ meta_title | default(value = title | safe) | safe }}" />
 	<meta name="twitter:title" content="{{ meta_title | default(value = title | safe) | safe }}" />
 	<meta property="og:type" content="{% if meta_article_type %}article{% else %}website{% endif %}" />
@@ -29,7 +29,6 @@
 	{%- endblock %}
 
 	{#- ======================================================================== -#}
-	
 	{#- ON EVERY PAGE OF THE SITE: CSS AND JS TO LOAD EITHER AS A LINK OR INLINE -#}
 	{#- ======================================================================== -#}
 	{%- set global_linked_js = [] -%}
@@ -38,9 +37,10 @@
 	{%- set global_css = ["/base.css", "/fonts/common.css"] -%}
 	{%- set fonts_loaded = load_data(path = "static/fonts/common.css", format = "plain", required = false) -%}
 	{%- if not fonts_loaded -%}
-	{{ throw(message = "------------------------------------------------------------> FONTS ARE NOT INSTALLED! Before running Zola, execute `npm run install-fonts` from the `/website` directory.") }}
+	{{ throw(message = "------------------------------------------------------------> FONTS ARE NOT INSTALLED! Before running Zola, execute `npm install` from the `/website` directory.") }}
 	{%- endif -%}
 
+	{#- ================================================================================ -#}
 	{#- RETRIEVE FROM TEMPLATES AND PAGES: CSS AND JS TO LOAD EITHER AS A LINK OR INLINE -#}
 	{#- ================================================================================ -#}
 	{%- set linked_css = page.extra.linked_css | default(value = []) | concat(with = linked_css | default(value = [])) -%}
@@ -48,6 +48,7 @@
 	{%- set css = page.extra.css | default(value = []) | concat(with = css | default(value = [])) -%}
 	{%- set js = page.extra.js | default(value = []) | concat(with = js | default(value = [])) -%}
 
+	{#- =================================================== -#}
 	{#- COMBINE THE GLOBAL AND TEMPLATE/PAGE RESOURCE LISTS -#}
 	{#- =================================================== -#}
 	{%- set linked_css_list = linked_css | concat(with = global_linked_css) -%}
@@ -55,6 +56,7 @@
 	{%- set css_list = css | concat(with = global_css) -%}
 	{%- set js_list = js | concat(with = global_js) -%}
 
+	{#- ================================================================================== -#}
 	{#- CONDITIONALLY MAKE ONLY PROD BUILDS ACTUALLY INLINE THE CSS AND JS FOR CLEANLINESS -#}
 	{#- ================================================================================== -#}
 	{%- if get_env(name = "MODE", default = "dev") != "prod" -%}
@@ -64,18 +66,21 @@
 	{%- set js_list = [] -%}
 	{%- endif -%}
 	
+	{#- ================ -#}
 	{#- INSERT CSS LINKS -#}
 	{#- ================ -#}
 	{%- for path in linked_css_list %}
 	<link rel="stylesheet" href="{{ path | safe }}" />
 	{%- endfor %}
 
+	{#- =============== -#}
 	{#- INSERT JS LINKS -#}
 	{#- =============== -#}
 	{%- for path in linked_js_list %}
 	<script src="{{ path | safe }}"></script>
 	{%- endfor %}
 
+	{#- ====================== -#}
 	{#- INSERT INLINE CSS CODE -#}
 	{#- ====================== -#}
 	{%- if css_list | length > 0 %}
@@ -86,6 +91,7 @@
 	{{ "</" ~ "style>" | safe }}
 	{%- endif %}
 
+	{#- ===================== -#}
 	{#- INSERT INLINE JS CODE -#}
 	{#- ===================== -#}
 	{%- for path in js_list %}
@@ -97,51 +103,53 @@
 	{{- get_env(name = "INDEX_HTML_HEAD_INCLUSION", default = "") | safe }}
 </head>
 <body>
-	<div class="page">
-		<header>
-			<nav>
-				<div class="row">
-					<div class="left">
-						<a href="/">
-							<img src="https://static.graphite.rs/logos/graphite-logo-solid.svg" alt="Graphite Logo" />
-						</a>
-					</div>
-					<div class="right">
-						<a href="/learn">Learn</a>
-						<a href="/features">Features</a>
-						<a href="/about">About</a>
-						<a href="/blog">Blog</a>
-						<a href="/volunteer">Volunteer</a>
-						<a href="/donate" class="heart">Donate</a>
-						<a href="https://editor.graphite.rs" class="button arrow">Launch</a>
-					</div>
-				</div>
-			</nav>
-			<svg class="ripple" xmlns="http://www.w3.org/2000/svg">
-				<path d="M 0,15 l 10000,0" />
-			</svg>
-			<hr />
-		</header>
-		<main>
-			{%- filter replace(from = "<!-- replacements::blog_posts(count = 2) -->", to = replacements::blog_posts(count = 2)) -%}
-			{%- filter replace(from = "<!-- replacements::text_balancer() -->", to = replacements::text_balancer()) -%}
-			{%- filter replace(from = "<!-- replacements::hierarchical_message_system_tree() -->", to = replacements::hierarchical_message_system_tree()) -%}
-			{%- block content -%}{%- endblock -%}
-			{%- endfilter -%}
-			{%- endfilter -%}
-			{%- endfilter -%}
-		</main>
-		<footer>
-			<hr />
-			<nav>
-				<a href="https://github.com/GraphiteEditor/Graphite" class="link not-uppercase">GitHub</a>
-				<a href="/license" class="link not-uppercase">License</a>
-				<a href="/logo" class="link not-uppercase">Logo</a>
-				<a href="/press" class="link not-uppercase">Press</a>
-				<a href="/contact" class="link not-uppercase">Contact</a>
-			</nav>
-			<span>Copyright &copy; {{ now() | date(format = "%Y") }} Graphite Labs, LLC (an open source organization)</span>
-		</footer>
-	</div>
+<div class="page">
+<header>
+	<nav>
+		<div class="row">
+			<div class="left">
+				<a href="/">
+					<img src="https://static.graphite.art/logos/graphite-logo-solid.svg" alt="Graphite Logo" />
+				</a>
+			</div>
+			<div class="right">
+				<a href="/learn">Learn</a>
+				<a href="/features">Features</a>
+				<a href="/about">About</a>
+				<a href="/blog">Blog</a>
+				<a href="/volunteer">Volunteer</a>
+				<a href="/donate" class="heart">Donate</a>
+				<a href="https://editor.graphite.art" class="button arrow">Launch</a>
+			</div>
+		</div>
+	</nav>
+	<svg class="ripple" xmlns="http://www.w3.org/2000/svg">
+		<path d="M 0,15 l 10000,0" />
+	</svg>
+	<hr />
+</header>
+<main>
+{# This is a comment. It exists to prevent the {%- -%} on the lines below from removing the line break between `<main>` and the `content` block #}
+{%- filter replace(from = "<!-- replacements::blog_posts(count = 2) -->", to = replacements::blog_posts(count = 2)) -%}
+{%- filter replace(from = "<!-- replacements::text_balancer() -->", to = replacements::text_balancer()) -%}
+{%- filter replace(from = "<!-- replacements::hierarchical_message_system_tree() -->", to = replacements::hierarchical_message_system_tree()) -%}
+{%- block content -%}{%- endblock -%}
+{%- endfilter -%}
+{%- endfilter -%}
+{%- endfilter -%}
+{# This is a comment. It exists to prevent the {%- -%} on the lines above from removing the line break between the `content` block and `</main>` #}
+</main>
+<footer>
+	<hr />
+	<nav>
+		<a href="https://github.com/GraphiteEditor/Graphite" class="link not-uppercase">GitHub</a>
+		<a href="/license" class="link not-uppercase">License</a>
+		<a href="/logo" class="link not-uppercase">Logo</a>
+		<a href="/press" class="link not-uppercase">Press</a>
+		<a href="/contact" class="link not-uppercase">Contact</a>
+	</nav>
+	<span>Copyright &copy; {{ now() | date(format = "%Y") }} Graphite Labs, LLC (an open source community organization)</span>
+</footer>
+</div>
 </body>
 </html>

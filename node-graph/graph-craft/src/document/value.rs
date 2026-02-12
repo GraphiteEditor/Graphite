@@ -1,23 +1,26 @@
 use super::DocumentNode;
 use crate::proto::{Any as DAny, FutureAny};
 use crate::wasm_application_io::WasmEditorApi;
+use brush_nodes::brush_cache::BrushCache;
+use brush_nodes::brush_stroke::BrushStroke;
+use core_types::table::Table;
+use core_types::uuid::NodeId;
+use core_types::{Color, ContextFeatures, MemoHash, Node, Type};
 use dyn_any::DynAny;
 pub use dyn_any::StaticType;
 use glam::{Affine2, Vec2};
 pub use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graphene_application_io::{ImageTexture, SurfaceFrame};
-use graphene_brush::brush_cache::BrushCache;
-use graphene_brush::brush_stroke::BrushStroke;
-use graphene_core::raster::Image;
-use graphene_core::raster_types::{CPU, Raster};
-use graphene_core::table::Table;
-use graphene_core::transform::ReferencePoint;
-use graphene_core::uuid::NodeId;
-use graphene_core::vector::Vector;
-use graphene_core::vector::style::Fill;
-use graphene_core::vector::style::GradientStops;
-use graphene_core::{Artboard, Color, ContextFeatures, Graphic, MemoHash, Node, Type};
-use graphene_svg_renderer::RenderMetadata;
+use graphic_types::Artboard;
+use graphic_types::Graphic;
+use graphic_types::Vector;
+use graphic_types::raster_types::Image;
+use graphic_types::raster_types::{CPU, Raster};
+use graphic_types::vector_types::vector;
+use graphic_types::vector_types::vector::ReferencePoint;
+use graphic_types::vector_types::vector::style::Fill;
+use graphic_types::vector_types::vector::style::GradientStops;
+use rendering::RenderMetadata;
 use std::fmt::Display;
 use std::hash::Hash;
 use std::marker::PhantomData;
@@ -76,7 +79,7 @@ macro_rules! tagged_value {
 					Self::EditorApi(x) => Arc::new(x),
 				}
 			}
-			/// Creates a graphene_core::Type::Concrete(TypeDescriptor { .. }) with the type of the value inside the tagged value
+			/// Creates a core_types::Type::Concrete(TypeDescriptor { .. }) with the type of the value inside the tagged value
 			pub fn ty(&self) -> Type {
 				match self {
 					Self::None => concrete!(()),
@@ -113,15 +116,15 @@ macro_rules! tagged_value {
 					_ => Err(format!("Cannot convert {:?} to TaggedValue",std::any::type_name_of_val(input))),
 				}
 			}
+			/// Returns a TaggedValue from the type, where that value is its type's `Default::default()`
 			pub fn from_type(input: &Type) -> Option<Self> {
 				match input {
 					Type::Generic(_) => None,
 					Type::Concrete(concrete_type) => {
-						let internal_id = concrete_type.id?;
 						use std::any::TypeId;
 						// TODO: Add default implementations for types such as TaggedValue::Subpaths, and use the defaults here and in document_node_types
 						// Tries using the default for the tagged value type. If it not implemented, then uses the default used in document_node_types. If it is not used there, then TaggedValue::None is returned.
-						Some(match internal_id {
+						Some(match concrete_type.id? {
 							x if x == TypeId::of::<()>() => TaggedValue::None,
 							$( x if x == TypeId::of::<$ty>() => TaggedValue::$identifier(Default::default()), )*
 							_ => return None,
@@ -135,6 +138,15 @@ macro_rules! tagged_value {
 			}
 			pub fn from_type_or_none(input: &Type) -> Self {
 				Self::from_type(input).unwrap_or(TaggedValue::None)
+			}
+			pub fn to_debug_string(&self) -> String {
+				match self {
+					Self::None => "()".to_string(),
+					$( Self::$identifier(x) => format!("{:?}", x), )*
+					Self::RenderOutput(_) => "RenderOutput".to_string(),
+					Self::SurfaceFrame(_) => "SurfaceFrame".to_string(),
+					Self::EditorApi(_) => "WasmEditorApi".to_string(),
+				}
 			}
 		}
 
@@ -170,9 +182,7 @@ tagged_value! {
 	U64(u64),
 	Bool(bool),
 	String(String),
-	OptionalF64(Option<f64>),
 	ColorNotInTable(Color),
-	OptionalColorNotInTable(Option<Color>),
 	// ========================
 	// LISTS OF PRIMITIVE TYPES
 	// ========================
@@ -180,24 +190,25 @@ tagged_value! {
 	VecF64(Vec<f64>),
 	VecDVec2(Vec<DVec2>),
 	F64Array4([f64; 4]),
+	VecString(Vec<String>),
 	NodePath(Vec<NodeId>),
 	// ===========
 	// TABLE TYPES
 	// ===========
 	GraphicUnused(Graphic), // TODO: This is unused but removing it causes `cargo test` to infinitely recurse its type solving; figure out why and then remove this
-	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphene_core::vector::migrate_vector"))] // TODO: Eventually remove this migration document upgrade code
+	#[serde(deserialize_with = "graphic_types::migrations::migrate_vector")] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "VectorData")]
 	Vector(Table<Vector>),
-	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphene_core::raster::image::migrate_image_frame"))] // TODO: Eventually remove this migration document upgrade code
+	#[serde(deserialize_with = "graphic_types::raster_types::image::migrate_image_frame")] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "ImageFrame", alias = "RasterData", alias = "Image")]
 	Raster(Table<Raster<CPU>>),
-	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphene_core::graphic::migrate_graphic"))] // TODO: Eventually remove this migration document upgrade code
+	#[serde(deserialize_with = "graphic_types::graphic::migrate_graphic")] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "GraphicGroup", alias = "Group")]
 	Graphic(Table<Graphic>),
-	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphene_core::artboard::migrate_artboard"))] // TODO: Eventually remove this migration document upgrade code
+	#[serde(deserialize_with = "graphic_types::artboard::migrate_artboard")] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "ArtboardGroup")]
 	Artboard(Table<Artboard>),
-	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphene_core::misc::migrate_color"))] // TODO: Eventually remove this migration document upgrade code
+	#[serde(deserialize_with = "core_types::misc::migrate_color")] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "ColorTable", alias = "OptionalColor")]
 	Color(Table<Color>),
 	GradientTable(Table<GradientStops>),
@@ -209,52 +220,53 @@ tagged_value! {
 	#[serde(alias = "IVec2", alias = "UVec2")]
 	DVec2(DVec2),
 	DAffine2(DAffine2),
-	Stroke(graphene_core::vector::style::Stroke),
-	Gradient(graphene_core::vector::style::Gradient),
+	Stroke(graphic_types::vector_types::vector::style::Stroke),
+	Gradient(graphic_types::vector_types::vector::style::Gradient),
 	#[serde(alias = "GradientPositions")] // TODO: Eventually remove this alias document upgrade code
 	GradientStops(GradientStops),
-	Font(graphene_core::text::Font),
+	Font(text_nodes::Font),
 	BrushStrokes(Vec<BrushStroke>),
 	BrushCache(BrushCache),
 	DocumentNode(DocumentNode),
 	ContextFeatures(ContextFeatures),
-	Curve(graphene_raster_nodes::curve::Curve),
-	Footprint(graphene_core::transform::Footprint),
-	VectorModification(Box<graphene_core::vector::VectorModification>),
+	Curve(raster_nodes::curve::Curve),
+	Footprint(core_types::transform::Footprint),
+	VectorModification(Box<vector::VectorModification>),
 	// ==========
 	// ENUM TYPES
 	// ==========
-	Fill(graphene_core::vector::style::Fill),
-	BlendMode(graphene_core::blending::BlendMode),
-	LuminanceCalculation(graphene_raster_nodes::adjustments::LuminanceCalculation),
+	Fill(vector::style::Fill),
+	BlendMode(core_types::blending::BlendMode),
+	LuminanceCalculation(raster_nodes::adjustments::LuminanceCalculation),
 	XY(graphene_core::extract_xy::XY),
-	RedGreenBlue(graphene_raster_nodes::adjustments::RedGreenBlue),
-	RedGreenBlueAlpha(graphene_raster_nodes::adjustments::RedGreenBlueAlpha),
+	RedGreenBlue(raster_nodes::adjustments::RedGreenBlue),
+	RedGreenBlueAlpha(raster_nodes::adjustments::RedGreenBlueAlpha),
 	RealTimeMode(graphene_core::animation::RealTimeMode),
-	NoiseType(graphene_raster_nodes::adjustments::NoiseType),
-	FractalType(graphene_raster_nodes::adjustments::FractalType),
-	CellularDistanceFunction(graphene_raster_nodes::adjustments::CellularDistanceFunction),
-	CellularReturnType(graphene_raster_nodes::adjustments::CellularReturnType),
-	DomainWarpType(graphene_raster_nodes::adjustments::DomainWarpType),
-	RelativeAbsolute(graphene_raster_nodes::adjustments::RelativeAbsolute),
-	SelectiveColorChoice(graphene_raster_nodes::adjustments::SelectiveColorChoice),
-	GridType(graphene_core::vector::misc::GridType),
-	ArcType(graphene_core::vector::misc::ArcType),
-	MergeByDistanceAlgorithm(graphene_core::vector::misc::MergeByDistanceAlgorithm),
-	PointSpacingType(graphene_core::vector::misc::PointSpacingType),
-	SpiralType(graphene_core::vector::misc::SpiralType),
+	NoiseType(raster_nodes::adjustments::NoiseType),
+	FractalType(raster_nodes::adjustments::FractalType),
+	CellularDistanceFunction(raster_nodes::adjustments::CellularDistanceFunction),
+	CellularReturnType(raster_nodes::adjustments::CellularReturnType),
+	DomainWarpType(raster_nodes::adjustments::DomainWarpType),
+	RelativeAbsolute(raster_nodes::adjustments::RelativeAbsolute),
+	SelectiveColorChoice(raster_nodes::adjustments::SelectiveColorChoice),
+	GridType(vector::misc::GridType),
+	ArcType(vector::misc::ArcType),
+	MergeByDistanceAlgorithm(vector::misc::MergeByDistanceAlgorithm),
+	ExtrudeJoiningAlgorithm(vector::misc::ExtrudeJoiningAlgorithm),
+	PointSpacingType(vector::misc::PointSpacingType),
+	SpiralType(vector::misc::SpiralType),
 	#[serde(alias = "LineCap")]
-	StrokeCap(graphene_core::vector::style::StrokeCap),
+	StrokeCap(vector::style::StrokeCap),
 	#[serde(alias = "LineJoin")]
-	StrokeJoin(graphene_core::vector::style::StrokeJoin),
-	StrokeAlign(graphene_core::vector::style::StrokeAlign),
-	PaintOrder(graphene_core::vector::style::PaintOrder),
-	FillType(graphene_core::vector::style::FillType),
-	GradientType(graphene_core::vector::style::GradientType),
-	ReferencePoint(graphene_core::transform::ReferencePoint),
-	CentroidType(graphene_core::vector::misc::CentroidType),
-	BooleanOperation(graphene_path_bool::BooleanOperation),
-	TextAlign(graphene_core::text::TextAlign),
+	StrokeJoin(vector::style::StrokeJoin),
+	StrokeAlign(vector::style::StrokeAlign),
+	PaintOrder(vector::style::PaintOrder),
+	FillType(vector::style::FillType),
+	GradientType(vector::style::GradientType),
+	ReferencePoint(vector::ReferencePoint),
+	CentroidType(vector::misc::CentroidType),
+	BooleanOperation(path_bool_nodes::BooleanOperation),
+	TextAlign(text_nodes::TextAlign),
 }
 
 impl TaggedValue {
@@ -348,24 +360,24 @@ impl TaggedValue {
 		match ty {
 			Type::Generic(_) => None,
 			Type::Concrete(concrete_type) => {
-				let internal_id = concrete_type.id?;
+				let ty = concrete_type.id?;
 				use std::any::TypeId;
 				// TODO: Add default implementations for types such as TaggedValue::Subpaths, and use the defaults here and in document_node_types
 				// Tries using the default for the tagged value type. If it not implemented, then uses the default used in document_node_types. If it is not used there, then TaggedValue::None is returned.
-				let ty = match internal_id {
-					x if x == TypeId::of::<()>() => TaggedValue::None,
-					x if x == TypeId::of::<String>() => TaggedValue::String(string.into()),
-					x if x == TypeId::of::<f64>() => FromStr::from_str(string).map(TaggedValue::F64).ok()?,
-					x if x == TypeId::of::<f32>() => FromStr::from_str(string).map(TaggedValue::F32).ok()?,
-					x if x == TypeId::of::<u64>() => FromStr::from_str(string).map(TaggedValue::U64).ok()?,
-					x if x == TypeId::of::<u32>() => FromStr::from_str(string).map(TaggedValue::U32).ok()?,
-					x if x == TypeId::of::<DVec2>() => to_dvec2(string).map(TaggedValue::DVec2)?,
-					x if x == TypeId::of::<bool>() => FromStr::from_str(string).map(TaggedValue::Bool).ok()?,
-					x if x == TypeId::of::<Table<Color>>() => to_color(string).map(|color| TaggedValue::Color(Table::new_from_element(color)))?,
-					x if x == TypeId::of::<Color>() => to_color(string).map(TaggedValue::ColorNotInTable)?,
-					x if x == TypeId::of::<Option<Color>>() => TaggedValue::ColorNotInTable(to_color(string)?),
-					x if x == TypeId::of::<Fill>() => to_color(string).map(|color| TaggedValue::Fill(Fill::solid(color)))?,
-					x if x == TypeId::of::<ReferencePoint>() => to_reference_point(string).map(TaggedValue::ReferencePoint)?,
+				let ty = match () {
+					() if ty == TypeId::of::<()>() => TaggedValue::None,
+					() if ty == TypeId::of::<String>() => TaggedValue::String(string.into()),
+					() if ty == TypeId::of::<f64>() => FromStr::from_str(string).map(TaggedValue::F64).ok()?,
+					() if ty == TypeId::of::<f32>() => FromStr::from_str(string).map(TaggedValue::F32).ok()?,
+					() if ty == TypeId::of::<u64>() => FromStr::from_str(string).map(TaggedValue::U64).ok()?,
+					() if ty == TypeId::of::<u32>() => FromStr::from_str(string).map(TaggedValue::U32).ok()?,
+					() if ty == TypeId::of::<DVec2>() => to_dvec2(string).map(TaggedValue::DVec2)?,
+					() if ty == TypeId::of::<bool>() => FromStr::from_str(string).map(TaggedValue::Bool).ok()?,
+					() if ty == TypeId::of::<Color>() => to_color(string).map(TaggedValue::ColorNotInTable)?,
+					() if ty == TypeId::of::<Option<Color>>() => TaggedValue::ColorNotInTable(to_color(string)?),
+					() if ty == TypeId::of::<Table<Color>>() => to_color(string).map(|color| TaggedValue::Color(Table::new_from_element(color)))?,
+					() if ty == TypeId::of::<Fill>() => to_color(string).map(|color| TaggedValue::Fill(Fill::solid(color)))?,
+					() if ty == TypeId::of::<ReferencePoint>() => to_reference_point(string).map(TaggedValue::ReferencePoint)?,
 					_ => return None,
 				};
 				Some(ty)
@@ -441,11 +453,16 @@ pub enum RenderOutputType {
 	CanvasFrame(SurfaceFrame),
 	#[serde(skip)]
 	Texture(ImageTexture),
+	#[serde(skip)]
+	Buffer {
+		data: Vec<u8>,
+		width: u32,
+		height: u32,
+	},
 	Svg {
 		svg: String,
 		image_data: Vec<(u64, Image<Color>)>,
 	},
-	Image(Vec<u8>),
 }
 
 impl Hash for RenderOutput {

@@ -1,24 +1,27 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
+	import type { ActionShortcut } from "@graphite/messages";
+
 	import FieldInput from "@graphite/components/widgets/inputs/FieldInput.svelte";
 
 	const dispatch = createEventDispatcher<{ commitText: string }>();
 
-	// Label
-	export let label: string | undefined = undefined;
-	export let tooltip: string | undefined = undefined;
-	export let placeholder: string | undefined = undefined;
-	// Disabled
-	export let disabled = false;
-	// Narrow
-	export let narrow = false;
-	// Value
+	// Content
 	export let value: string;
+	export let label: string | undefined = undefined;
+	export let placeholder: string | undefined = undefined;
+	export let disabled = false;
 	// Styling
+	export let narrow = false;
 	export let centered = false;
+	// Sizing
 	export let minWidth = 0;
 	export let maxWidth = 0;
+	// Tooltips
+	export let tooltipLabel: string | undefined = undefined;
+	export let tooltipDescription: string | undefined = undefined;
+	export let tooltipShortcut: ActionShortcut | undefined = undefined;
 
 	let className = "";
 	export { className as class };
@@ -79,7 +82,9 @@
 	{label}
 	{disabled}
 	{narrow}
-	{tooltip}
+	{tooltipLabel}
+	{tooltipDescription}
+	{tooltipShortcut}
 	{placeholder}
 	bind:this={self}
 />

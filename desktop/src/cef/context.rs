@@ -1,3 +1,4 @@
+#[cfg(not(target_os = "macos"))]
 mod multithreaded;
 mod singlethreaded;
 
@@ -9,7 +10,7 @@ pub(crate) trait CefContext {
 
 	fn handle_window_event(&mut self, event: &winit::event::WindowEvent);
 
-	fn notify_of_resize(&self);
+	fn notify_view_info_changed(&self);
 
 	fn send_web_message(&self, message: Vec<u8>);
 }

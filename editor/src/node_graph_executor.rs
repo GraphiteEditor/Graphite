@@ -5,8 +5,8 @@ use graph_craft::document::value::{RenderOutput, TaggedValue};
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
 use graph_craft::wasm_application_io::EditorPreferences;
-use graphene_std::application_io::TimingInformation;
 use graphene_std::application_io::{NodeGraphUpdateMessage, RenderConfig};
+use graphene_std::application_io::{SurfaceFrame, TimingInformation};
 use graphene_std::renderer::{RenderMetadata, format_transform_matrix};
 use graphene_std::text::FontCache;
 use graphene_std::transform::Footprint;
@@ -37,7 +37,7 @@ pub struct ExecutionResponse {
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct CompilationResponse {
-	result: Result<ResolvedDocumentNodeTypesDelta, String>,
+	result: Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, String)>,
 	node_graph_errors: GraphErrors,
 }
 
@@ -51,13 +51,15 @@ pub enum NodeGraphUpdate {
 pub struct NodeGraphExecutor {
 	runtime_io: NodeRuntimeIO,
 	current_execution_id: u64,
-	futures: HashMap<u64, ExecutionContext>,
+	futures: VecDeque<(u64, ExecutionContext)>,
 	node_graph_hash: u64,
 	previous_node_to_inspect: Option<NodeId>,
+	last_svg_canvas: Option<SurfaceFrame>,
 }
 
 #[derive(Debug, Clone)]
 struct ExecutionContext {
+	render_config: RenderConfig,
 	export_config: Option<ExportConfig>,
 	document_id: DocumentId,
 }
@@ -76,9 +78,11 @@ impl NodeGraphExecutor {
 			node_graph_hash: 0,
 			current_execution_id: 0,
 			previous_node_to_inspect: None,
+			last_svg_canvas: None,
 		};
 		(node_runtime, node_executor)
 	}
+
 	/// Execute the network by flattening it and creating a borrow stack.
 	fn queue_execution(&mut self, render_config: RenderConfig) -> u64 {
 		let execution_id = self.current_execution_id;
@@ -115,7 +119,7 @@ impl NodeGraphExecutor {
 
 	/// Update the cached network if necessary.
 	fn update_node_graph(&mut self, document: &mut DocumentMessageHandler, node_to_inspect: Option<NodeId>, ignore_hash: bool) -> Result<(), String> {
-		let network_hash = document.network_interface.document_network().current_hash();
+		let network_hash = document.network_interface.network_hash();
 		// Refresh the graph when it changes or the inspect node changes
 		if network_hash != self.node_graph_hash || self.previous_node_to_inspect != node_to_inspect || ignore_hash {
 			let network = document.network_interface.document_network().clone();
@@ -136,49 +140,102 @@ impl NodeGraphExecutor {
 		document: &mut DocumentMessageHandler,
 		document_id: DocumentId,
 		viewport_resolution: UVec2,
+		viewport_scale: f64,
 		time: TimingInformation,
+		pointer: DVec2,
 	) -> Result<Message, String> {
+		let viewport = Footprint {
+			transform: document.metadata().document_to_viewport,
+			resolution: viewport_resolution,
+			..Default::default()
+		};
 		let render_config = RenderConfig {
-			viewport: Footprint {
-				transform: document.metadata().document_to_viewport,
-				resolution: viewport_resolution,
-				..Default::default()
-			},
+			viewport,
+			scale: viewport_scale,
 			time,
-			#[cfg(any(feature = "resvg", feature = "vello"))]
-			export_format: graphene_std::application_io::ExportFormat::Canvas,
-			#[cfg(not(any(feature = "resvg", feature = "vello")))]
-			export_format: graphene_std::application_io::ExportFormat::Svg,
+			pointer,
+			export_format: graphene_std::application_io::ExportFormat::Raster,
 			render_mode: document.render_mode,
 			hide_artboards: false,
 			for_export: false,
+			for_eyedropper: false,
 		};
 
 		// Execute the node graph
 		let execution_id = self.queue_execution(render_config);
 
-		self.futures.insert(execution_id, ExecutionContext { export_config: None, document_id });
+		self.futures.push_back((
+			execution_id,
+			ExecutionContext {
+				render_config,
+				export_config: None,
+				document_id,
+			},
+		));
 
 		Ok(DeferMessage::SetGraphSubmissionIndex { execution_id }.into())
 	}
 
 	/// Evaluates a node graph, computing the entire graph
+	#[allow(clippy::too_many_arguments)]
 	pub fn submit_node_graph_evaluation(
 		&mut self,
 		document: &mut DocumentMessageHandler,
 		document_id: DocumentId,
 		viewport_resolution: UVec2,
+		viewport_scale: f64,
 		time: TimingInformation,
 		node_to_inspect: Option<NodeId>,
 		ignore_hash: bool,
+		pointer: DVec2,
 	) -> Result<Message, String> {
 		self.update_node_graph(document, node_to_inspect, ignore_hash)?;
-		self.submit_current_node_graph_evaluation(document, document_id, viewport_resolution, time)
+		self.submit_current_node_graph_evaluation(document, document_id, viewport_resolution, viewport_scale, time, pointer)
+	}
+
+	#[cfg(not(target_family = "wasm"))]
+	pub(crate) fn submit_eyedropper_preview(&mut self, document_id: DocumentId, transform: DAffine2, pointer: DVec2, resolution: UVec2, time: TimingInformation) -> Result<Message, String> {
+		let viewport = Footprint {
+			transform,
+			resolution,
+			..Default::default()
+		};
+		let render_config = RenderConfig {
+			viewport,
+			scale: 1.,
+			time,
+			pointer,
+			export_format: graphene_std::application_io::ExportFormat::Raster,
+			render_mode: graphene_std::vector::style::RenderMode::Normal,
+			hide_artboards: false,
+			for_export: false,
+			for_eyedropper: true,
+		};
+
+		// Execute the node graph
+		let execution_id = self.queue_execution(render_config);
+
+		self.futures.push_back((
+			execution_id,
+			ExecutionContext {
+				render_config,
+				export_config: None,
+				document_id,
+			},
+		));
+
+		Ok(DeferMessage::SetGraphSubmissionIndex { execution_id }.into())
 	}
 
 	/// Evaluates a node graph for export
 	pub fn submit_document_export(&mut self, document: &mut DocumentMessageHandler, document_id: DocumentId, mut export_config: ExportConfig) -> Result<(), String> {
 		let network = document.network_interface.document_network().clone();
+
+		let export_format = if export_config.file_type == FileType::Svg {
+			graphene_std::application_io::ExportFormat::Svg
+		} else {
+			graphene_std::application_io::ExportFormat::Raster
+		};
 
 		// Calculate the bounding box of the region to be exported
 		let bounds = match export_config.bounds {
@@ -187,60 +244,39 @@ impl NodeGraphExecutor {
 			ExportBounds::Artboard(id) => document.metadata().bounding_box_document(id),
 		}
 		.ok_or_else(|| "No bounding box".to_string())?;
-		let size = bounds[1] - bounds[0];
+		let resolution = (bounds[1] - bounds[0]).round().as_uvec2();
 		let transform = DAffine2::from_translation(bounds[0]).inverse();
 
 		let render_config = RenderConfig {
 			viewport: Footprint {
-				transform: DAffine2::from_scale(DVec2::splat(export_config.scale_factor)) * transform,
-				resolution: (size * export_config.scale_factor).as_uvec2(),
+				resolution,
+				transform,
 				..Default::default()
 			},
+			scale: export_config.scale_factor,
 			time: Default::default(),
-			export_format: graphene_std::application_io::ExportFormat::Svg,
+			pointer: DVec2::ZERO,
+			export_format,
 			render_mode: document.render_mode,
 			hide_artboards: export_config.transparent_background,
 			for_export: true,
+			for_eyedropper: false,
 		};
-		export_config.size = size;
+		export_config.size = resolution.as_dvec2();
 
 		// Execute the node graph
 		self.runtime_io
 			.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, node_to_inspect: None }))
 			.map_err(|e| e.to_string())?;
 		let execution_id = self.queue_execution(render_config);
-		let execution_context = ExecutionContext {
-			export_config: Some(export_config),
-			document_id,
-		};
-		self.futures.insert(execution_id, execution_context);
-
-		Ok(())
-	}
-
-	fn export(&self, node_graph_output: TaggedValue, export_config: ExportConfig, responses: &mut VecDeque<Message>) -> Result<(), String> {
-		let TaggedValue::RenderOutput(RenderOutput {
-			data: RenderOutputType::Svg { svg, .. },
-			..
-		}) = node_graph_output
-		else {
-			return Err("Incorrect render type for exporting (expected RenderOutput::Svg)".to_string());
-		};
-
-		let ExportConfig {
-			file_type, name, size, scale_factor, ..
-		} = export_config;
-
-		let file_suffix = &format!(".{file_type:?}").to_lowercase();
-		let name = name + file_suffix;
-
-		if file_type == FileType::Svg {
-			responses.add(FrontendMessage::TriggerSaveFile { name, content: svg.into_bytes() });
-		} else {
-			let mime = file_type.to_mime().to_string();
-			let size = (size * scale_factor).into();
-			responses.add(FrontendMessage::TriggerExportImage { svg, name, mime, size });
-		}
+		self.futures.push_back((
+			execution_id,
+			ExecutionContext {
+				render_config,
+				export_config: Some(export_config),
+				document_id,
+			},
+		));
 
 		Ok(())
 	}
@@ -273,10 +309,25 @@ impl NodeGraphExecutor {
 					responses.extend(existing_responses.into_iter().map(Into::into));
 					document.network_interface.update_vector_modify(vector_modify);
 
-					let execution_context = self.futures.remove(&execution_id).ok_or_else(|| "Invalid generation ID".to_string())?;
+					while let Some(&(fid, _)) = self.futures.front() {
+						if fid < execution_id {
+							self.futures.pop_front();
+						} else {
+							break;
+						}
+					}
+
+					let Some((fid, execution_context)) = self.futures.pop_front() else {
+						panic!("InvalidGenerationId")
+					};
+					assert_eq!(fid, execution_id, "Missmatch in execution id");
+
 					if let Some(export_config) = execution_context.export_config {
 						// Special handling for exporting the artwork
-						self.export(node_graph_output, export_config, responses)?;
+						self.process_export(node_graph_output, export_config, responses)?;
+					} else if execution_context.render_config.for_eyedropper {
+						// Special handling for Eyedropper tool preview
+						self.process_eyedropper_preview(node_graph_output, responses)?;
 					} else {
 						self.process_node_graph_output(node_graph_output, responses)?;
 					}
@@ -295,7 +346,7 @@ impl NodeGraphExecutor {
 				NodeGraphUpdate::CompilationResponse(execution_response) => {
 					let CompilationResponse { node_graph_errors, result } = execution_response;
 					let type_delta = match result {
-						Err(e) => {
+						Err((incomplete_delta, e)) => {
 							// Clear the click targets while the graph is in an un-renderable state
 
 							document.network_interface.update_click_targets(HashMap::new());
@@ -304,7 +355,7 @@ impl NodeGraphExecutor {
 							log::trace!("{e}");
 
 							responses.add(NodeGraphMessage::UpdateTypes {
-								resolved_types: Default::default(),
+								resolved_types: incomplete_delta,
 								node_graph_errors,
 							});
 							responses.add(NodeGraphMessage::SendGraph);
@@ -336,14 +387,19 @@ impl NodeGraphExecutor {
 				// Send to frontend
 				responses.add(FrontendMessage::UpdateImageData { image_data });
 				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
+				self.last_svg_canvas = None;
 			}
-			RenderOutputType::CanvasFrame(frame) => {
+			RenderOutputType::CanvasFrame(frame) => 'block: {
+				if self.last_svg_canvas == Some(frame) {
+					break 'block;
+				}
 				let matrix = format_transform_matrix(frame.transform);
 				let transform = if matrix.is_empty() { String::new() } else { format!(" transform=\"{matrix}\"") };
 				let svg = format!(
-					r#"<svg><foreignObject width="{}" height="{}"{transform}><div data-canvas-placeholder="{}"></div></foreignObject></svg>"#,
-					frame.resolution.x, frame.resolution.y, frame.surface_id.0
+					r#"<svg><foreignObject width="{}" height="{}"{transform}><div data-canvas-placeholder="{}" data-is-viewport="true"></div></foreignObject></svg>"#,
+					frame.resolution.x, frame.resolution.y, frame.surface_id.0,
 				);
+				self.last_svg_canvas = Some(frame);
 				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
 			}
 			RenderOutputType::Texture { .. } => {}
@@ -369,6 +425,109 @@ impl NodeGraphExecutor {
 		responses.add(DocumentMessage::RenderScrollbars);
 		responses.add(DocumentMessage::RenderRulers);
 		responses.add(OverlaysMessage::Draw);
+
+		Ok(())
+	}
+
+	fn process_eyedropper_preview(&self, node_graph_output: TaggedValue, responses: &mut VecDeque<Message>) -> Result<(), String> {
+		match node_graph_output {
+			#[cfg(feature = "gpu")]
+			TaggedValue::RenderOutput(RenderOutput {
+				data: RenderOutputType::Buffer { data, width, height },
+				..
+			}) => {
+				responses.add(EyedropperToolMessage::PreviewImage { data, width, height });
+			}
+			_ => {
+				// TODO: Support Eyedropper preview in SVG mode on desktop
+			}
+		};
+
+		Ok(())
+	}
+
+	fn process_export(&self, node_graph_output: TaggedValue, export_config: ExportConfig, responses: &mut VecDeque<Message>) -> Result<(), String> {
+		let ExportConfig {
+			file_type,
+			name,
+			size,
+			scale_factor,
+			#[cfg(feature = "gpu")]
+			transparent_background,
+			artboard_name,
+			artboard_count,
+			..
+		} = export_config;
+
+		let file_extension = match file_type {
+			FileType::Svg => "svg",
+			FileType::Png => "png",
+			FileType::Jpg => "jpg",
+		};
+		let base_name = match (artboard_name, artboard_count) {
+			(Some(artboard_name), count) if count > 1 => format!("{name} - {artboard_name}"),
+			_ => name,
+		};
+		let name = format!("{base_name}.{file_extension}");
+
+		match node_graph_output {
+			TaggedValue::RenderOutput(RenderOutput {
+				data: RenderOutputType::Svg { svg, .. },
+				..
+			}) => {
+				if file_type == FileType::Svg {
+					responses.add(FrontendMessage::TriggerSaveFile { name, content: svg.into_bytes() });
+				} else {
+					let mime = file_type.to_mime().to_string();
+					let size = (size * scale_factor).into();
+					responses.add(FrontendMessage::TriggerExportImage { svg, name, mime, size });
+				}
+			}
+			#[cfg(feature = "gpu")]
+			TaggedValue::RenderOutput(RenderOutput {
+				data: RenderOutputType::Buffer { data, width, height },
+				..
+			}) if file_type != FileType::Svg => {
+				use image::buffer::ConvertBuffer;
+				use image::{ImageFormat, RgbImage, RgbaImage};
+
+				let Some(image) = RgbaImage::from_raw(width, height, data) else {
+					return Err("Failed to create image buffer for export".to_string());
+				};
+
+				let mut encoded = Vec::new();
+				let mut cursor = std::io::Cursor::new(&mut encoded);
+
+				match file_type {
+					FileType::Png => {
+						let result = if transparent_background {
+							image.write_to(&mut cursor, ImageFormat::Png)
+						} else {
+							let image: RgbImage = image.convert();
+							image.write_to(&mut cursor, ImageFormat::Png)
+						};
+						if let Err(err) = result {
+							return Err(format!("Failed to encode PNG: {err}"));
+						}
+					}
+					FileType::Jpg => {
+						let image: RgbImage = image.convert();
+						let result = image.write_to(&mut cursor, ImageFormat::Jpeg);
+						if let Err(err) = result {
+							return Err(format!("Failed to encode JPG: {err}"));
+						}
+					}
+					FileType::Svg => {
+						return Err("SVG cannot be exported from an image buffer".to_string());
+					}
+				}
+
+				responses.add(FrontendMessage::TriggerSaveFile { name, content: encoded });
+			}
+			_ => {
+				return Err(format!("Incorrect render type for exporting to an SVG ({file_type:?}, {node_graph_output})"));
+			}
+		};
 
 		Ok(())
 	}
@@ -458,7 +617,8 @@ mod test {
 			} else if let Some(x) = dynamic.downcast_ref::<IORecord<Context, Input::Result>>() {
 				Some(x.output.clone())
 			} else {
-				panic!("cannot downcast type for introspection");
+				warn!("cannot downcast type for introspection");
+				None
 			}
 		}
 
@@ -473,7 +633,7 @@ mod test {
 				.iter()
 				.filter_map(|inputs| inputs.get(Input::INDEX))
 				.filter_map(|input_monitor_node| runtime.executor.introspect(input_monitor_node).ok())
-				.filter_map(Instrumented::downcast::<Input>)
+				.filter_map(Instrumented::downcast::<Input>) // Some might not resolve (e.g. generics that don't work properly)
 		}
 
 		pub fn grab_protonode_input<Input: NodeInputDecleration>(&self, path: &Vec<NodeId>, runtime: &NodeRuntime) -> Option<Input::Result>

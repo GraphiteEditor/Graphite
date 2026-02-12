@@ -1,16 +1,16 @@
 import { get } from "svelte/store";
 
 import { type Editor } from "@graphite/editor";
-import { TriggerPaste } from "@graphite/messages";
+import { TriggerClipboardRead, WindowPointerLockMove } from "@graphite/messages";
 import { type DialogState } from "@graphite/state-providers/dialog";
 import { type DocumentState } from "@graphite/state-providers/document";
 import { type FullscreenState } from "@graphite/state-providers/fullscreen";
 import { type PortfolioState } from "@graphite/state-providers/portfolio";
+import { pasteFile } from "@graphite/utility-functions/files";
 import { makeKeyboardModifiersBitfield, textInputCleanup, getLocalizedScanCode } from "@graphite/utility-functions/keyboard-entry";
-import { platformIsMac } from "@graphite/utility-functions/platform";
+import { isDesktop, operatingSystem } from "@graphite/utility-functions/platform";
 import { extractPixelData } from "@graphite/utility-functions/rasterization";
 import { stripIndents } from "@graphite/utility-functions/strip-indents";
-import { updateBoundsOfViewports } from "@graphite/utility-functions/viewports";
 
 const BUTTON_LEFT = 0;
 const BUTTON_MIDDLE = 1;
@@ -43,7 +43,6 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
 	const listeners: { target: EventListenerTarget; eventName: EventName; action: (event: any) => void; options?: AddEventListenerOptions }[] = [
-		{ target: window, eventName: "resize", action: () => updateBoundsOfViewports(editor) },
 		{ target: window, eventName: "beforeunload", action: (e: BeforeUnloadEvent) => onBeforeUnload(e) },
 		{ target: window, eventName: "keyup", action: (e: KeyboardEvent) => onKeyUp(e) },
 		{ target: window, eventName: "keydown", action: (e: KeyboardEvent) => onKeyDown(e) },
@@ -82,35 +81,46 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		const key = await getLocalizedScanCode(e);
 
 		// TODO: Switch to a system where everything is sent to the backend, then the input preprocessor makes decisions and kicks some inputs back to the frontend
-		const accelKey = platformIsMac() ? e.metaKey : e.ctrlKey;
+		const accelKey = operatingSystem() === "Mac" ? e.metaKey : e.ctrlKey;
+
+		// Cut, copy, and paste is handled in the backend on desktop
+		if (isDesktop() && accelKey && ["KeyX", "KeyC", "KeyV"].includes(key)) return true;
+		// But on web, we want to not redirect paste
+		if (!isDesktop() && key === "KeyV" && accelKey) return false;
 
 		// Don't redirect user input from text entry into HTML elements
 		if (targetIsTextField(e.target || undefined) && key !== "Escape" && !(accelKey && ["Enter", "NumpadEnter"].includes(key))) return false;
 
-		// Don't redirect paste
-		if (key === "KeyV" && accelKey) return false;
-
-		// Don't redirect a fullscreen request
-		if (key === "F11" && e.type === "keydown" && !e.repeat) {
-			e.preventDefault();
-			fullscreen.toggleFullscreen();
-			return false;
-		}
-
-		// Don't redirect a reload request
-		if (key === "F5") return false;
-		if (key === "KeyR" && accelKey) return false;
-
-		// Don't redirect debugging tools
-		if (["F12", "F8"].includes(key)) return false;
-		if (["KeyC", "KeyI", "KeyJ"].includes(key) && accelKey && e.shiftKey) return false;
-
 		// Don't redirect tab or enter if not in canvas (to allow navigating elements)
 		potentiallyRestoreCanvasFocus(e);
-		if (!canvasFocused && !targetIsTextField(e.target || undefined) && ["Tab", "Enter", "NumpadEnter", "Space", "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowUp"].includes(key)) return false;
+		if (
+			!canvasFocused &&
+			!targetIsTextField(e.target || undefined) &&
+			["Tab", "Enter", "NumpadEnter", "Space", "ArrowDown", "ArrowLeft", "ArrowRight", "ArrowUp"].includes(key) &&
+			!(e.ctrlKey || e.metaKey || e.altKey)
+		)
+			return false;
 
 		// Don't redirect if a MenuList is open
 		if (window.document.querySelector("[data-floating-menu-content]")) return false;
+
+		// Web-only keyboard shortcuts
+		if (!isDesktop()) {
+			// Don't redirect a fullscreen request, but process it immediately instead
+			if (((operatingSystem() !== "Mac" && key === "F11") || (operatingSystem() === "Mac" && e.ctrlKey && e.metaKey && key === "KeyF")) && e.type === "keydown" && !e.repeat) {
+				e.preventDefault();
+				fullscreen.toggleFullscreen();
+				return false;
+			}
+
+			// Don't redirect a reload request
+			if (key === "F5") return false;
+			if (key === "KeyR" && accelKey) return false;
+
+			// Don't redirect debugging tools
+			if (["F12", "F8"].includes(key)) return false;
+			if (["KeyC", "KeyI", "KeyJ"].includes(key) && accelKey && e.shiftKey) return false;
+		}
 
 		// Redirect to the backend
 		return true;
@@ -238,7 +248,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 	}
 
 	function onMouseDown(e: MouseEvent) {
-		// Block middle mouse button auto-scroll mode (the circlar gizmo that appears and allows quick scrolling by moving the cursor above or below it)
+		// Block middle mouse button auto-scroll mode (the circular gizmo that appears and allows quick scrolling by moving the cursor above or below it)
 		if (e.button === BUTTON_MIDDLE) e.preventDefault();
 	}
 
@@ -257,6 +267,11 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 	function onWheelScroll(e: WheelEvent) {
 		const { target } = e;
 		const isTargetingCanvas = target instanceof Element && target.closest("[data-viewport], [data-viewport-container], [data-node-graph]");
+
+		// Prevent zooming the entire page when using Ctrl + scroll wheel outside of the viewport
+		if (e.ctrlKey && !isTargetingCanvas) {
+			e.preventDefault();
+		}
 
 		// Redirect vertical scroll wheel movement into a horizontal scroll on a horizontally scrollable element
 		// There seems to be no possible way to properly employ the browser's smooth scrolling interpolation
@@ -303,43 +318,9 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		if (!dataTransfer || targetIsTextField(e.target || undefined)) return;
 		e.preventDefault();
 
-		const LAYER_DATA = "graphite/layer: ";
-		const NODES_DATA = "graphite/nodes: ";
-		const VECTOR_DATA = "graphite/vector: ";
-
 		Array.from(dataTransfer.items).forEach(async (item) => {
-			if (item.type === "text/plain") {
-				item.getAsString((text) => {
-					if (text.startsWith(LAYER_DATA)) {
-						editor.handle.pasteSerializedData(text.substring(LAYER_DATA.length, text.length));
-					} else if (text.startsWith(NODES_DATA)) {
-						editor.handle.pasteSerializedNodes(text.substring(NODES_DATA.length, text.length));
-					} else if (text.startsWith(VECTOR_DATA)) {
-						editor.handle.pasteSerializedVector(text.substring(VECTOR_DATA.length, text.length));
-					}
-				});
-			}
-
-			const file = item.getAsFile();
-			if (!file) return;
-
-			if (file.type.includes("svg")) {
-				const text = await file.text();
-				editor.handle.pasteSvg(file.name, text);
-				return;
-			}
-
-			if (file.type.startsWith("image")) {
-				const imageData = await extractPixelData(file);
-				editor.handle.pasteImage(file.name, new Uint8Array(imageData.data), imageData.width, imageData.height);
-			}
-
-			const graphiteFileSuffix = "." + editor.handle.fileExtension();
-			if (file.name.endsWith(graphiteFileSuffix)) {
-				const content = await file.text();
-				const documentName = file.name.slice(0, -graphiteFileSuffix.length);
-				editor.handle.openDocumentFile(documentName, content);
-			}
+			if (item.type === "text/plain") item.getAsString((text) => editor.handle.pasteText(text));
+			await pasteFile(item, editor);
 		});
 	}
 
@@ -410,7 +391,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 	// Frontend message subscriptions
 
-	editor.subscriptions.subscribeJsMessage(TriggerPaste, async () => {
+	editor.subscriptions.subscribeJsMessage(TriggerClipboardRead, async () => {
 		// In the try block, attempt to read from the Clipboard API, which may not have permission and may not be supported in all browsers
 		// In the catch block, explain to the user why the paste failed and how to fix or work around the problem
 		try {
@@ -434,10 +415,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 						const reader = new FileReader();
 						reader.onload = () => {
 							const text = reader.result as string;
-
-							if (text.startsWith("graphite/layer: ")) {
-								editor.handle.pasteSerializedData(text.substring(16, text.length));
-							}
+							editor.handle.pasteText(text);
 						};
 						reader.readAsText(blob);
 						return true;
@@ -488,11 +466,11 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 				The browser's clipboard permission has been denied.
 
 				Open the browser's website settings (usually accessible
-				just left of the URL) to allow this permission.
+				just left of the URL bar) to allow this permission.
 				`;
 			const nothing = stripIndents`
 				No valid clipboard data was found. You may have better
-				luck pasting with the standard keyboard shortcut instead.
+				success pasting with the standard keyboard shortcut instead.
 				`;
 
 			const matchMessage = {
@@ -505,6 +483,12 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 			editor.handle.errorDialog("Cannot access clipboard", message);
 		}
+	});
+
+	// Pointer lock movement events on desktop
+	editor.subscriptions.subscribeJsMessage(WindowPointerLockMove, (data) => {
+		const event = new CustomEvent("pointerlockmove", { detail: data });
+		window.dispatchEvent(event);
 	});
 
 	// Helper functions
@@ -524,8 +508,6 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 	// Bind the event listeners
 	bindListeners();
-	// Resize on creation
-	updateBoundsOfViewports(editor);
 
 	// Return the destructor
 	return unbindListeners;

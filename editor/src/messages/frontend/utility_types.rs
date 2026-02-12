@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::*;
 
@@ -10,6 +12,7 @@ pub struct OpenDocument {
 #[derive(PartialEq, Eq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct DocumentDetails {
 	pub name: String,
+	pub path: Option<PathBuf>,
 	#[serde(rename = "isSaved")]
 	pub is_saved: bool,
 	#[serde(rename = "isAutoSaved")]
@@ -58,4 +61,11 @@ pub enum ExportBounds {
 	AllArtwork,
 	Selection,
 	Artboard(LayerNodeIdentifier),
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+pub struct EyedropperPreviewImage {
+	pub data: Vec<u8>,
+	pub width: u32,
+	pub height: u32,
 }

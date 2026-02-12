@@ -1,8 +1,8 @@
 use crate::document::value::TaggedValue;
 use crate::document::{InlineRust, value};
 use crate::document::{NodeId, OriginalLocation};
-pub use graphene_core::registry::*;
-use graphene_core::*;
+pub use core_types::registry::*;
+use core_types::*;
 use rustc_hash::FxHashMap;
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
@@ -30,7 +30,7 @@ impl core::fmt::Display for ProtoNetwork {
 				return f.write_str("{{Unknown Node}}");
 			};
 			f.write_str("Node: ")?;
-			f.write_str(&node.identifier.name)?;
+			f.write_str(node.identifier.as_str())?;
 
 			f.write_str("\n")?;
 			f.write_str(&"\t".repeat(indent))?;
@@ -139,7 +139,7 @@ pub struct ProtoNode {
 impl Default for ProtoNode {
 	fn default() -> Self {
 		Self {
-			identifier: ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode"),
+			identifier: graphene_core::ops::identity::IDENTIFIER,
 			construction_args: ConstructionArgs::Value(value::TaggedValue::U32(0).into()),
 			call_argument: concrete!(()),
 			original_location: OriginalLocation::default(),
@@ -156,7 +156,7 @@ impl ProtoNode {
 		use std::hash::Hasher;
 		let mut hasher = rustc_hash::FxHasher::default();
 
-		self.identifier.name.hash(&mut hasher);
+		self.identifier.as_str().hash(&mut hasher);
 		self.construction_args.hash(&mut hasher);
 		if self.skip_deduplication {
 			self.original_location.path.hash(&mut hasher);
@@ -175,7 +175,7 @@ impl ProtoNode {
 			_ => 2,
 		};
 		Self {
-			identifier: ProtoNodeIdentifier::new("graphene_core::value::ClonedNode"),
+			identifier: ProtoNodeIdentifier::new("core_types::value::ClonedNode"),
 			construction_args: value,
 			call_argument: concrete!(Context),
 			original_location: OriginalLocation {
@@ -215,7 +215,7 @@ impl ProtoNetwork {
 	fn check_ref(&self, ref_id: &NodeId, id: &NodeId) {
 		debug_assert!(
 			self.nodes.iter().any(|(check_id, _)| check_id == ref_id),
-			"Node id:{id} has a reference which uses node id:{ref_id} which doesn't exist in network {self:#?}"
+			"Node with ID {id} has a reference which uses the node with ID {ref_id} which doesn't exist in network {self:#?}"
 		);
 	}
 
@@ -340,7 +340,7 @@ impl ProtoNetwork {
 			ProtoNode {
 				construction_args: ConstructionArgs::Value(MemoHash::new(TaggedValue::ContextFeatures(context_deps))),
 				call_argument: concrete!(Context),
-				identifier: ProtoNodeIdentifier::new("graphene_core::value::ClonedNode"),
+				identifier: ProtoNodeIdentifier::new("core_types::value::ClonedNode"),
 				original_location: OriginalLocation {
 					path: path.clone(),
 					..Default::default()
@@ -539,19 +539,29 @@ impl ProtoNetwork {
 #[derive(Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum GraphErrorType {
 	NodeNotFound(NodeId),
-	InputNodeNotFound(NodeId),
-	UnexpectedGenerics { index: usize, inputs: Vec<Type> },
+	UnexpectedGenerics {
+		index: usize,
+		inputs: Vec<Type>,
+	},
 	NoImplementations,
 	NoConstructor,
-	InvalidImplementations { inputs: String, error_inputs: Vec<Vec<(usize, (Type, Type))>> },
-	MultipleImplementations { inputs: String, valid: Vec<NodeIOTypes> },
+	/// The `inputs` represents a formatted list of input indices corresponding to their types.
+	/// Each element in `error_inputs` represents a valid `NodeIOTypes` implementation.
+	/// The inner Vec stores the inputs which need to be changed and what type each needs to be changed to.
+	InvalidImplementations {
+		inputs: String,
+		error_inputs: Vec<Vec<(usize, (Type, Type))>>,
+	},
+	MultipleImplementations {
+		inputs: String,
+		valid: Vec<NodeIOTypes>,
+	},
 }
 impl Debug for GraphErrorType {
 	// TODO: format with the document graph context so the input index is the same as in the graph UI.
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			GraphErrorType::NodeNotFound(id) => write!(f, "Input node {id} is not present in the typing context"),
-			GraphErrorType::InputNodeNotFound(id) => write!(f, "Input node {id} is not present in the typing context"),
 			GraphErrorType::UnexpectedGenerics { index, inputs } => write!(f, "Generic inputs should not exist but found at {index}: {inputs:?}"),
 			GraphErrorType::NoImplementations => write!(f, "No implementations found"),
 			GraphErrorType::NoConstructor => write!(f, "No construct found for node"),
@@ -602,7 +612,7 @@ impl GraphError {
 	pub fn new(node: &ProtoNode, text: impl Into<GraphErrorType>) -> Self {
 		Self {
 			node_path: node.original_location.path.clone().unwrap_or_default(),
-			identifier: node.identifier.name.clone(),
+			identifier: Cow::Owned(node.identifier.as_str().to_string()),
 			error: text.into(),
 		}
 	}
@@ -758,9 +768,11 @@ impl TypingContext {
 
 		match valid_impls.as_slice() {
 			[] => {
+				let convert_node_index_offset = node.original_location.auto_convert_index.unwrap_or(0);
 				let mut best_errors = usize::MAX;
 				let mut error_inputs = Vec::new();
 				for node_io in impls.keys() {
+					// For errors on Convert nodes, offset the input index so it correctly corresponds to the node it is connected to.
 					let current_errors = [call_argument]
 						.into_iter()
 						.chain(&inputs)
@@ -768,10 +780,7 @@ impl TypingContext {
 						.zip([&node_io.call_argument].into_iter().chain(&node_io.inputs).cloned())
 						.enumerate()
 						.filter(|(_, (p1, p2))| !valid_type(p1, p2))
-						.map(|(index, ty)| {
-							let i = node.original_location.inputs(index).min_by_key(|s| s.node.len()).map(|s| s.index).unwrap_or(index);
-							(i, ty)
-						})
+						.map(|(index, expected)| (index - 1 + convert_node_index_offset, expected))
 						.collect::<Vec<_>>();
 					if current_errors.len() < best_errors {
 						best_errors = current_errors.len();
@@ -785,7 +794,14 @@ impl TypingContext {
 					.into_iter()
 					.chain(&inputs)
 					.enumerate()
-					.filter_map(|(i, t)| if i == 0 { None } else { Some(format!("• Input {i}: {t}")) })
+					.filter_map(|(i, t)| {
+						if i == 0 {
+							None
+						} else {
+							let number = i + convert_node_index_offset;
+							Some(format!("• Input {number}: {t}"))
+						}
+					})
 					.collect::<Vec<_>>()
 					.join("\n");
 				Err(vec![GraphError::new(node, GraphErrorType::InvalidImplementations { inputs, error_inputs })])
@@ -812,13 +828,13 @@ impl TypingContext {
 						return Ok(node_io.clone());
 					}
 				}
-				let inputs = [call_argument].into_iter().chain(&inputs).map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
+				let inputs = [call_argument].into_iter().chain(&inputs).map(ToString::to_string).collect::<Vec<_>>().join(", ");
 				let valid = valid_output_types.into_iter().cloned().collect();
 				Err(vec![GraphError::new(node, GraphErrorType::MultipleImplementations { inputs, valid })])
 			}
 
 			_ => {
-				let inputs = [call_argument].into_iter().chain(&inputs).map(|t| t.to_string()).collect::<Vec<_>>().join(", ");
+				let inputs = [call_argument].into_iter().chain(&inputs).map(ToString::to_string).collect::<Vec<_>>().join(", ");
 				let valid = valid_output_types.into_iter().cloned().collect();
 				Err(vec![GraphError::new(node, GraphErrorType::MultipleImplementations { inputs, valid })])
 			}
@@ -862,9 +878,7 @@ fn check_generic(types: &NodeIOTypes, input: &Type, parameters: &[Type], generic
 /// Returns a list of all generic types used in the node
 fn replace_generics(types: &mut NodeIOTypes, lookup: &HashMap<String, Type>) {
 	let replace = |ty: &Type| {
-		let Type::Generic(ident) = ty else {
-			return None;
-		};
+		let Type::Generic(ident) = ty else { return None };
 		lookup.get(ident.as_ref()).cloned()
 	};
 	types.call_argument.replace_nested(replace);
@@ -907,7 +921,7 @@ mod test {
 		let ids: Vec<_> = construction_network.nodes.iter().map(|(id, _)| *id).collect();
 		println!("{ids:#?}");
 		println!("nodes: {:#?}", construction_network.nodes);
-		assert_eq!(construction_network.nodes[0].1.identifier.name.as_ref(), "value");
+		assert_eq!(construction_network.nodes[0].1.identifier.as_str(), "value");
 		assert_eq!(ids, vec![NodeId(0), NodeId(1), NodeId(2), NodeId(3)]);
 	}
 
@@ -920,7 +934,7 @@ mod test {
 		assert_eq!(sorted, vec![NodeId(0), NodeId(1), NodeId(2), NodeId(3)]);
 		let ids: Vec<_> = construction_network.nodes.iter().map(|(id, _)| *id).collect();
 		println!("{ids:#?}");
-		assert_eq!(construction_network.nodes[0].1.identifier.name.as_ref(), "value");
+		assert_eq!(construction_network.nodes[0].1.identifier.as_str(), "value");
 		assert_eq!(ids, vec![NodeId(0), NodeId(1), NodeId(2), NodeId(3)]);
 	}
 
@@ -931,7 +945,7 @@ mod test {
 			.insert_context_nullification_nodes()
 			.expect("Error when calling 'insert_context_nullification_nodes' on 'construction_network.");
 		construction_network.generate_stable_node_ids();
-		assert_eq!(construction_network.nodes[0].1.identifier.name.as_ref(), "value");
+		assert_eq!(construction_network.nodes[0].1.identifier.as_str(), "value");
 		let ids: Vec<_> = construction_network.nodes.iter().map(|(id, _)| *id).collect();
 
 		// If this assert fails: These NodeIds seem to be changing when you modify TaggedValue, just update them.
@@ -949,7 +963,7 @@ mod test {
 				(
 					NodeId(7),
 					ProtoNode {
-						identifier: "id".into(),
+						identifier: ProtoNodeIdentifier::new("id"),
 						call_argument: concrete!(()),
 						construction_args: ConstructionArgs::Nodes(vec![NodeId(11)]),
 						..Default::default()
@@ -958,7 +972,7 @@ mod test {
 				(
 					NodeId(1),
 					ProtoNode {
-						identifier: "id".into(),
+						identifier: ProtoNodeIdentifier::new("id"),
 						call_argument: concrete!(()),
 						construction_args: ConstructionArgs::Nodes(vec![NodeId(11)]),
 						..Default::default()
@@ -967,7 +981,7 @@ mod test {
 				(
 					NodeId(10),
 					ProtoNode {
-						identifier: "cons".into(),
+						identifier: ProtoNodeIdentifier::new("cons"),
 						call_argument: concrete!(u32),
 						construction_args: ConstructionArgs::Nodes(vec![NodeId(14)]),
 						..Default::default()
@@ -976,7 +990,7 @@ mod test {
 				(
 					NodeId(11),
 					ProtoNode {
-						identifier: "add".into(),
+						identifier: ProtoNodeIdentifier::new("add"),
 						call_argument: concrete!(()),
 						construction_args: ConstructionArgs::Nodes(vec![NodeId(10)]),
 						..Default::default()
@@ -985,7 +999,7 @@ mod test {
 				(
 					NodeId(14),
 					ProtoNode {
-						identifier: "value".into(),
+						identifier: ProtoNodeIdentifier::new("value"),
 						call_argument: concrete!(()),
 						construction_args: ConstructionArgs::Value(value::TaggedValue::U32(2).into()),
 						..Default::default()
@@ -1005,7 +1019,7 @@ mod test {
 				(
 					NodeId(1),
 					ProtoNode {
-						identifier: "id".into(),
+						identifier: ProtoNodeIdentifier::new("id"),
 						call_argument: concrete!(()),
 						construction_args: ConstructionArgs::Nodes(vec![NodeId(2)]),
 						..Default::default()
@@ -1014,7 +1028,7 @@ mod test {
 				(
 					NodeId(2),
 					ProtoNode {
-						identifier: "id".into(),
+						identifier: ProtoNodeIdentifier::new("id"),
 						call_argument: concrete!(()),
 						construction_args: ConstructionArgs::Nodes(vec![NodeId(1)]),
 						..Default::default()

@@ -7,9 +7,11 @@ use graph_craft::graphene_compiler::Compiler;
 use graph_craft::proto::GraphErrors;
 use graph_craft::wasm_application_io::EditorPreferences;
 use graph_craft::{ProtoNodeIdentifier, concrete};
-use graphene_std::application_io::{ImageTexture, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
+use graphene_std::application_io::{ApplicationIo, ExportFormat, ImageTexture, NodeGraphUpdateMessage, NodeGraphUpdateSender, RenderConfig};
 use graphene_std::bounds::RenderBoundingBox;
 use graphene_std::memo::IORecord;
+use graphene_std::ops::Convert;
+use graphene_std::raster_types::Raster;
 use graphene_std::renderer::{Render, RenderParams, SvgRender};
 use graphene_std::renderer::{RenderSvgSegmentList, SvgSegment};
 use graphene_std::table::{Table, TableRow};
@@ -20,7 +22,6 @@ use graphene_std::wasm_application_io::{RenderOutputType, WasmApplicationIo, Was
 use graphene_std::{Artboard, Context, Graphic};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypesDelta};
 use interpreted_executor::util::wrap_network_in_scope;
-use once_cell::sync::Lazy;
 use spin::Mutex;
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender};
@@ -53,6 +54,10 @@ pub struct NodeRuntime {
 	/// The current renders of the thumbnails for layer nodes.
 	thumbnail_renders: HashMap<NodeId, Vec<SvgSegment>>,
 	vector_modify: HashMap<NodeId, Vector>,
+
+	/// Cached surface for WASM viewport rendering (reused across frames)
+	#[cfg(all(target_family = "wasm", feature = "gpu"))]
+	wasm_viewport_surface: Option<wgpu_executor::WgpuSurface>,
 }
 
 /// Messages passed from the editor thread to the node runtime thread.
@@ -79,6 +84,8 @@ pub struct ExportConfig {
 	pub bounds: ExportBounds,
 	pub transparent_background: bool,
 	pub size: DVec2,
+	pub artboard_name: Option<String>,
+	pub artboard_count: usize,
 }
 
 #[derive(Clone)]
@@ -100,7 +107,8 @@ impl NodeGraphUpdateSender for InternalNodeGraphUpdateSender {
 	}
 }
 
-pub static NODE_RUNTIME: Lazy<Mutex<Option<NodeRuntime>>> = Lazy::new(|| Mutex::new(None));
+// TODO: Replace with `core::cell::LazyCell` (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>) or similar
+pub static NODE_RUNTIME: once_cell::sync::Lazy<Mutex<Option<NodeRuntime>>> = once_cell::sync::Lazy::new(|| Mutex::new(None));
 
 impl NodeRuntime {
 	pub fn new(receiver: Receiver<GraphRuntimeRequest>, sender: Sender<NodeGraphUpdate>) -> Self {
@@ -129,6 +137,8 @@ impl NodeRuntime {
 			thumbnail_renders: Default::default(),
 			vector_modify: Default::default(),
 			inspect_state: None,
+			#[cfg(all(target_family = "wasm", feature = "gpu"))]
+			wasm_viewport_surface: None,
 		}
 	}
 
@@ -210,7 +220,19 @@ impl NodeRuntime {
 
 					self.sender.send_generation_response(CompilationResponse { result, node_graph_errors });
 				}
-				GraphRuntimeRequest::ExecutionRequest(ExecutionRequest { execution_id, render_config, .. }) => {
+				GraphRuntimeRequest::ExecutionRequest(ExecutionRequest { execution_id, mut render_config, .. }) => {
+					// There are cases where we want to export via the svg pipeline eventhough raster was requested.
+					if matches!(render_config.export_format, ExportFormat::Raster) {
+						let vello_available = self.editor_api.application_io.as_ref().unwrap().gpu_executor().is_some();
+						let use_vello = vello_available && self.editor_api.editor_preferences.use_vello();
+
+						// On web when the user has disabled vello rendering in the preferences or we are exporting.
+						// And on all platforms when vello is not supposed to be used.
+						if !use_vello || cfg!(target_family = "wasm") && render_config.for_export {
+							render_config.export_format = ExportFormat::Svg;
+						}
+					}
+
 					let result = self.execute_network(render_config).await;
 					let mut responses = VecDeque::new();
 					// TODO: Only process monitor nodes if the graph has changed, not when only the Footprint changes
@@ -220,16 +242,120 @@ impl NodeRuntime {
 					// Resolve the result from the inspection by accessing the monitor node
 					let inspect_result = self.inspect_state.and_then(|state| state.access(&self.executor));
 
-					let texture = if let Ok(TaggedValue::RenderOutput(RenderOutput {
-						data: RenderOutputType::Texture(texture),
-						..
-					})) = &result
-					{
-						// We can early return becaus we know that there is at most one execution request and it will always be handled last
-						Some(texture.clone())
-					} else {
-						None
+					let (result, texture) = match result {
+						Ok(TaggedValue::RenderOutput(RenderOutput {
+							data: RenderOutputType::Texture(image_texture),
+							metadata,
+						})) if render_config.for_export || render_config.for_eyedropper => {
+							let executor = self
+								.editor_api
+								.application_io
+								.as_ref()
+								.unwrap()
+								.gpu_executor()
+								.expect("GPU executor should be available when we receive a texture");
+
+							let raster_cpu = Raster::new_gpu(image_texture.texture).convert(Footprint::BOUNDLESS, executor).await;
+
+							let (data, width, height) = raster_cpu.to_flat_u8();
+
+							(
+								Ok(TaggedValue::RenderOutput(RenderOutput {
+									data: RenderOutputType::Buffer { data, width, height },
+									metadata,
+								})),
+								None,
+							)
+						}
+						#[cfg(all(target_family = "wasm", feature = "gpu"))]
+						Ok(TaggedValue::RenderOutput(RenderOutput {
+							data: RenderOutputType::Texture(image_texture),
+							metadata,
+						})) if !render_config.for_export => {
+							// On WASM, for viewport rendering, blit the texture to a surface and return a CanvasFrame
+							let app_io = self.editor_api.application_io.as_ref().unwrap();
+							let executor = app_io.gpu_executor().expect("GPU executor should be available when we receive a texture");
+
+							// Get or create the cached surface
+							if self.wasm_viewport_surface.is_none() {
+								let surface_handle = app_io.create_window();
+								let wasm_surface = executor
+									.create_surface(graphene_std::wasm_application_io::WasmSurfaceHandle {
+										surface: surface_handle.surface.clone(),
+										window_id: surface_handle.window_id,
+									})
+									.expect("Failed to create surface");
+								self.wasm_viewport_surface = Some(Arc::new(wasm_surface));
+							}
+
+							let surface = self.wasm_viewport_surface.as_ref().unwrap();
+
+							// Use logical resolution for CSS sizing, physical resolution for the actual surface/texture
+							let physical_resolution = render_config.viewport.resolution;
+							let logical_resolution = physical_resolution.as_dvec2() / render_config.scale;
+
+							// Blit the texture to the surface
+							let mut encoder = executor.context.device.create_command_encoder(&vello::wgpu::CommandEncoderDescriptor {
+								label: Some("Texture to Surface Blit"),
+							});
+
+							// Configure the surface at physical resolution (for HiDPI displays)
+							let surface_inner = &surface.surface.inner;
+							let surface_caps = surface_inner.get_capabilities(&executor.context.adapter);
+							surface_inner.configure(
+								&executor.context.device,
+								&vello::wgpu::SurfaceConfiguration {
+									usage: vello::wgpu::TextureUsages::RENDER_ATTACHMENT | vello::wgpu::TextureUsages::COPY_DST,
+									format: vello::wgpu::TextureFormat::Rgba8Unorm,
+									width: physical_resolution.x,
+									height: physical_resolution.y,
+									present_mode: surface_caps.present_modes[0],
+									alpha_mode: vello::wgpu::CompositeAlphaMode::Opaque,
+									view_formats: vec![],
+									desired_maximum_frame_latency: 2,
+								},
+							);
+
+							let surface_texture = surface_inner.get_current_texture().expect("Failed to get surface texture");
+
+							// Blit the rendered texture to the surface
+							surface.surface.blitter.copy(
+								&executor.context.device,
+								&mut encoder,
+								&image_texture.texture.create_view(&vello::wgpu::TextureViewDescriptor::default()),
+								&surface_texture.texture.create_view(&vello::wgpu::TextureViewDescriptor::default()),
+							);
+
+							executor.context.queue.submit([encoder.finish()]);
+							surface_texture.present();
+
+							let frame = graphene_std::application_io::SurfaceFrame {
+								surface_id: surface.window_id,
+								resolution: logical_resolution,
+								transform: glam::DAffine2::IDENTITY,
+							};
+
+							(
+								Ok(TaggedValue::RenderOutput(RenderOutput {
+									data: RenderOutputType::CanvasFrame(frame),
+									metadata,
+								})),
+								None,
+							)
+						}
+						Ok(TaggedValue::RenderOutput(RenderOutput {
+							data: RenderOutputType::Texture(texture),
+							metadata,
+						})) => (
+							Ok(TaggedValue::RenderOutput(RenderOutput {
+								data: RenderOutputType::Texture(texture.clone()),
+								metadata,
+							})),
+							Some(texture),
+						),
+						r => (r, None),
 					};
+
 					self.sender.send_execution_response(ExecutionResponse {
 						execution_id,
 						result,
@@ -244,7 +370,7 @@ impl NodeRuntime {
 		None
 	}
 
-	async fn update_network(&mut self, mut graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, String> {
+	async fn update_network(&mut self, mut graph: NodeNetwork) -> Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, String)> {
 		preprocessor::expand_network(&mut graph, &self.substitutions);
 
 		let scoped_network = wrap_network_in_scope(graph, self.editor_api.clone());
@@ -255,37 +381,31 @@ impl NodeRuntime {
 		let c = Compiler {};
 		let proto_network = match c.compile_single(scoped_network) {
 			Ok(network) => network,
-			Err(e) => return Err(e),
+			Err(e) => return Err((ResolvedDocumentNodeTypesDelta::default(), e)),
 		};
 		self.monitor_nodes = proto_network
 			.nodes
 			.iter()
-			.filter(|(_, node)| node.identifier == "graphene_core::memo::MonitorNode".into())
+			.filter(|(_, node)| node.identifier == graphene_std::memo::monitor::IDENTIFIER)
 			.map(|(_, node)| node.original_location.path.clone().unwrap_or_default())
 			.collect::<Vec<_>>();
 
 		assert_ne!(proto_network.nodes.len(), 0, "No proto nodes exist?");
-		self.executor.update(proto_network).await.map_err(|e| {
+		self.executor.update(proto_network).await.map_err(|(types, e)| {
 			self.node_graph_errors.clone_from(&e);
-			format!("{e:?}")
+			(types, format!("{e:?}"))
 		})
 	}
 
 	async fn execute_network(&mut self, render_config: RenderConfig) -> Result<TaggedValue, String> {
 		use graph_craft::graphene_compiler::Executor;
 
-		let result = match self.executor.input_type() {
+		match self.executor.input_type() {
 			Some(t) if t == concrete!(RenderConfig) => (&self.executor).execute(render_config).await.map_err(|e| e.to_string()),
 			Some(t) if t == concrete!(()) => (&self.executor).execute(()).await.map_err(|e| e.to_string()),
 			Some(t) => Err(format!("Invalid input type {t:?}")),
 			_ => Err(format!("No input type:\n{:?}", self.node_graph_errors)),
-		};
-		let result = match result {
-			Ok(value) => value,
-			Err(e) => return Err(e),
-		};
-
-		Ok(result)
+		}
 	}
 
 	/// Updates state data
@@ -347,7 +467,8 @@ impl NodeRuntime {
 			if old.is_none_or(|v| !v.is_empty()) {
 				responses.push_back(FrontendMessage::UpdateNodeThumbnail {
 					id: parent_network_node_id,
-					value: "<svg viewBox=\"0 0 10 10\"><title>Dense thumbnail omitted for performance</title><line x1=\"0\" y1=\"10\" x2=\"10\" y2=\"0\" stroke=\"red\" /></svg>".to_string(),
+					value: "<svg viewBox=\"0 0 10 10\" data-tooltip-description=\"Dense thumbnail omitted for performance.\"><line x1=\"0\" y1=\"10\" x2=\"10\" y2=\"0\" stroke=\"red\" /></svg>"
+						.to_string(),
 				});
 			}
 			return;

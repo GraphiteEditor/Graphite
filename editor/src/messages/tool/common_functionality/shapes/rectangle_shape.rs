@@ -1,7 +1,7 @@
 use super::shape_utility::ShapeToolModifierKey;
 use super::*;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_proto_node_type;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate};
 use crate::messages::tool::common_functionality::graph_modification_utils;
@@ -16,13 +16,14 @@ pub struct Rectangle;
 
 impl Rectangle {
 	pub fn create_node() -> NodeTemplate {
-		let node_type = resolve_document_node_type("Rectangle").expect("Rectangle node can't be found");
+		let node_type = resolve_proto_node_type(graphene_std::vector::generator_nodes::rectangle::IDENTIFIER).expect("Rectangle node can't be found");
 		node_type.node_template_input_override([None, Some(NodeInput::value(TaggedValue::F64(1.), false)), Some(NodeInput::value(TaggedValue::F64(1.), false))])
 	}
 
 	pub fn update_shape(
 		document: &DocumentMessageHandler,
 		ipp: &InputPreprocessorMessageHandler,
+		viewport: &ViewportMessageHandler,
 		layer: LayerNodeIdentifier,
 		shape_tool_data: &mut ShapeToolData,
 		modifier: ShapeToolModifierKey,
@@ -30,7 +31,7 @@ impl Rectangle {
 	) {
 		let [center, lock_ratio, _] = modifier;
 
-		if let Some([start, end]) = shape_tool_data.data.calculate_points(document, ipp, center, lock_ratio) {
+		if let Some([start, end]) = shape_tool_data.data.calculate_points(document, ipp, viewport, center, lock_ratio) {
 			let Some(node_id) = graph_modification_utils::get_rectangle_id(layer, &document.network_interface) else {
 				return;
 			};

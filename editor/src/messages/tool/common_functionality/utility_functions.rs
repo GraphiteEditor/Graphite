@@ -1,6 +1,7 @@
 use super::snapping::{SnapCandidatePoint, SnapData, SnapManager};
 use super::transformation_cage::{BoundingBoxManager, SizeSnapData};
 use crate::consts::ROTATE_INCREMENT;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{NodeNetworkInterface, OutputConnector};
 use crate::messages::portfolio::document::utility_types::transformation::Selected;
@@ -15,21 +16,15 @@ use graph_craft::document::value::TaggedValue;
 use graphene_std::renderer::Quad;
 use graphene_std::subpath::{Bezier, BezierHandles};
 use graphene_std::table::Table;
-use graphene_std::text::{FontCache, load_font};
+use graphene_std::text::FontCache;
 use graphene_std::vector::algorithms::bezpath_algorithms::pathseg_compute_lookup_table;
 use graphene_std::vector::misc::{HandleId, ManipulatorPointId, dvec2_to_point};
 use graphene_std::vector::{HandleExt, PointId, SegmentId, Vector, VectorModification, VectorModificationType};
 use kurbo::{CubicBez, DEFAULT_ACCURACY, Line, ParamCurve, PathSeg, Point, QuadBez, Shape};
 
 /// Determines if a path should be extended. Goal in viewport space. Returns the path and if it is extending from the start, if applicable.
-pub fn should_extend(
-	document: &DocumentMessageHandler,
-	goal: DVec2,
-	tolerance: f64,
-	layers: impl Iterator<Item = LayerNodeIdentifier>,
-	preferences: &PreferencesMessageHandler,
-) -> Option<(LayerNodeIdentifier, PointId, DVec2)> {
-	closest_point(document, goal, tolerance, layers, |_| false, preferences)
+pub fn should_extend(document: &DocumentMessageHandler, goal: DVec2, tolerance: f64, layers: impl Iterator<Item = LayerNodeIdentifier>) -> Option<(LayerNodeIdentifier, PointId, DVec2)> {
+	closest_point(document, goal, tolerance, layers, |_| false)
 }
 
 /// Determine the closest point to the goal point under max_distance.
@@ -40,7 +35,6 @@ pub fn closest_point<T>(
 	max_distance: f64,
 	layers: impl Iterator<Item = LayerNodeIdentifier>,
 	exclude: T,
-	preferences: &PreferencesMessageHandler,
 ) -> Option<(LayerNodeIdentifier, PointId, DVec2)>
 where
 	T: Fn(PointId) -> bool,
@@ -50,7 +44,7 @@ where
 	for layer in layers {
 		let viewspace = document.metadata().transform_to_viewport(layer);
 		let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
-		for id in vector.extendable_points(preferences.vector_meshes) {
+		for id in vector.anchor_points() {
 			if exclude(id) {
 				continue;
 			}
@@ -74,8 +68,7 @@ pub fn text_bounding_box(layer: LayerNodeIdentifier, document: &DocumentMessageH
 		return Quad::from_box([DVec2::ZERO, DVec2::ZERO]);
 	};
 
-	let font_data = font_cache.get(font).map(|data| load_font(data));
-	let far = graphene_std::text::bounding_box(text, font_data, typesetting, false);
+	let far = graphene_std::text::bounding_box(text, font, font_cache, typesetting, false);
 
 	// TODO: Once the instance tables refactor is complete and per_glyph_instances can be removed (since it'll be the default),
 	// TODO: remove this because the top of the dashed bounding overlay should no longer be based on the first line's baseline.
@@ -263,6 +256,7 @@ pub fn resize_bounds(
 	snap_manager: &mut SnapManager,
 	snap_candidates: &mut Vec<SnapCandidatePoint>,
 	input: &InputPreprocessorMessageHandler,
+	viewport: &ViewportMessageHandler,
 	center: bool,
 	constrain: bool,
 	tool: ToolType,
@@ -272,7 +266,7 @@ pub fn resize_bounds(
 		let snap = Some(SizeSnapData {
 			manager: snap_manager,
 			points: snap_candidates,
-			snap_data: SnapData::ignore(document, input, dragging_layers),
+			snap_data: SnapData::ignore(document, input, viewport, dragging_layers),
 		});
 		let (position, size) = movement.new_size(input.mouse.position, bounds.original_bound_transform, center, constrain, snap);
 		let (delta, mut pivot) = movement.bounds_to_scale_transform(position, size);
@@ -581,17 +575,17 @@ pub fn make_path_editable_is_allowed(network_interface: &mut NodeNetworkInterfac
 	// Must be a layer of type Table<Vector>
 	let node_id = NodeGraphLayer::new(first_layer, network_interface).horizontal_layer_flow().nth(1)?;
 
-	let (output_type, _) = network_interface.output_type(&OutputConnector::node(node_id, 0), &[]);
-	if output_type.nested_type() != concrete!(Table<Vector>).nested_type() {
+	let output_type = network_interface.output_type(&OutputConnector::node(node_id, 0), &[]);
+	if output_type.compiled_nested_type() != Some(&concrete!(Table<Vector>)) {
 		return None;
 	}
 
 	// Must not already have an existing Path node, in the right-most part of the layer chain, which has an empty set of modifications
 	// (otherwise users could repeatedly keep running this command and stacking up empty Path nodes)
-	if let Some(TaggedValue::VectorModification(modifications)) = NodeGraphLayer::new(first_layer, network_interface).find_input("Path", 1) {
-		if modifications.as_ref() == &VectorModification::default() {
-			return None;
-		}
+	if let Some(TaggedValue::VectorModification(modifications)) = NodeGraphLayer::new(first_layer, network_interface).find_input(&DefinitionIdentifier::Network("Path".into()), 1)
+		&& modifications.as_ref() == &VectorModification::default()
+	{
+		return None;
 	}
 
 	Some(first_layer)

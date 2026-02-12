@@ -1,7 +1,7 @@
 use super::shape_utility::{ShapeToolModifierKey, update_radius_sign};
 use super::*;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type};
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate};
@@ -58,13 +58,13 @@ impl ShapeGizmoHandler for PolygonGizmoHandler {
 		&self,
 		document: &DocumentMessageHandler,
 		selected_polygon_layer: Option<LayerNodeIdentifier>,
-		input: &InputPreprocessorMessageHandler,
+		_input: &InputPreprocessorMessageHandler,
 		shape_editor: &mut &mut ShapeState,
 		mouse_position: DVec2,
 		overlay_context: &mut OverlayContext,
 	) {
 		self.number_of_points_dial.overlays(document, selected_polygon_layer, shape_editor, mouse_position, overlay_context);
-		self.point_radius_handle.overlays(selected_polygon_layer, document, input, overlay_context);
+		self.point_radius_handle.overlays(selected_polygon_layer, document, overlay_context);
 
 		polygon_outline(selected_polygon_layer, document, overlay_context);
 	}
@@ -72,7 +72,7 @@ impl ShapeGizmoHandler for PolygonGizmoHandler {
 	fn dragging_overlays(
 		&self,
 		document: &DocumentMessageHandler,
-		input: &InputPreprocessorMessageHandler,
+		_input: &InputPreprocessorMessageHandler,
 		shape_editor: &mut &mut ShapeState,
 		mouse_position: DVec2,
 		overlay_context: &mut OverlayContext,
@@ -82,7 +82,7 @@ impl ShapeGizmoHandler for PolygonGizmoHandler {
 		}
 
 		if self.point_radius_handle.is_dragging_or_snapped() {
-			self.point_radius_handle.overlays(None, document, input, overlay_context);
+			self.point_radius_handle.overlays(None, document, overlay_context);
 		}
 	}
 
@@ -109,13 +109,15 @@ pub struct Polygon;
 
 impl Polygon {
 	pub fn create_node(vertices: u32) -> NodeTemplate {
-		let node_type = resolve_document_node_type("Regular Polygon").expect("Regular Polygon can't be found");
+		let identifier = DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::regular_polygon::IDENTIFIER);
+		let node_type = resolve_document_node_type(&identifier).expect("Regular Polygon can't be found");
 		node_type.node_template_input_override([None, Some(NodeInput::value(TaggedValue::U32(vertices), false)), Some(NodeInput::value(TaggedValue::F64(0.5), false))])
 	}
 
 	pub fn update_shape(
 		document: &DocumentMessageHandler,
 		ipp: &InputPreprocessorMessageHandler,
+		viewport: &ViewportMessageHandler,
 		layer: LayerNodeIdentifier,
 		shape_tool_data: &mut ShapeToolData,
 		modifier: ShapeToolModifierKey,
@@ -123,7 +125,7 @@ impl Polygon {
 	) {
 		let [center, lock_ratio, _] = modifier;
 
-		if let Some([start, end]) = shape_tool_data.data.calculate_points(document, ipp, center, lock_ratio) {
+		if let Some([start, end]) = shape_tool_data.data.calculate_points(document, ipp, viewport, center, lock_ratio) {
 			// TODO: We need to determine how to allow the polygon node to make irregular shapes
 			update_radius_sign(end, start, layer, document, responses);
 
@@ -166,8 +168,8 @@ impl Polygon {
 		};
 
 		let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface)
-			.find_node_inputs("Regular Polygon")
-			.or(NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Star"))
+			.find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::regular_polygon::IDENTIFIER))
+			.or(NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::star::IDENTIFIER)))
 		else {
 			return;
 		};

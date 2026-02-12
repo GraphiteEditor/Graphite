@@ -1,4 +1,4 @@
-use graphite_desktop_wrapper::messages::{Document, DocumentId, Preferences};
+use crate::wrapper::messages::{Document, DocumentId, Preferences};
 
 #[derive(Default, serde::Serialize, serde::Deserialize)]
 pub(crate) struct PersistentData {
@@ -6,14 +6,13 @@ pub(crate) struct PersistentData {
 	current_document: Option<DocumentId>,
 	#[serde(skip)]
 	document_order: Option<Vec<DocumentId>>,
-	preferences: Option<Preferences>,
 }
 
 impl PersistentData {
 	pub(crate) fn write_document(&mut self, id: DocumentId, document: Document) {
 		self.documents.write(id, document);
 		if let Some(order) = &self.document_order {
-			self.documents.force_order(order.clone());
+			self.documents.force_order(order);
 		}
 		self.flush();
 	}
@@ -126,13 +125,13 @@ impl PersistentData {
 	}
 
 	fn state_file_path() -> std::path::PathBuf {
-		let mut path = crate::dirs::graphite_data_dir();
+		let mut path = crate::dirs::app_data_dir();
 		path.push(crate::consts::APP_STATE_FILE_NAME);
 		path
 	}
 
 	fn preferences_file_path() -> std::path::PathBuf {
-		let mut path = crate::dirs::graphite_data_dir();
+		let mut path = crate::dirs::app_data_dir();
 		path.push(crate::consts::APP_PREFERENCES_FILE_NAME);
 		path
 	}
@@ -171,10 +170,10 @@ impl DocumentStore {
 		})
 	}
 
-	fn force_order(&mut self, desired_order: Vec<DocumentId>) {
+	fn force_order(&mut self, desired_order: &Vec<DocumentId>) {
 		let mut ordered_prefix_len = 0;
 		for id in desired_order {
-			if let Some(offset) = self.0[ordered_prefix_len..].iter().position(|meta| meta.id == id) {
+			if let Some(offset) = self.0[ordered_prefix_len..].iter().position(|meta| meta.id == *id) {
 				let found_index = ordered_prefix_len + offset;
 				if found_index != ordered_prefix_len {
 					self.0[ordered_prefix_len..=found_index].rotate_right(1);
@@ -190,8 +189,8 @@ impl DocumentStore {
 	}
 
 	fn document_path(id: &DocumentId) -> std::path::PathBuf {
-		let mut path = crate::dirs::graphite_autosave_documents_dir();
-		path.push(format!("{:x}.graphite", id.0));
+		let mut path = crate::dirs::app_autosave_documents_dir();
+		path.push(format!("{:x}.{}", id.0, graphite_desktop_wrapper::FILE_EXTENSION));
 		path
 	}
 }

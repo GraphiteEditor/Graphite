@@ -1,9 +1,9 @@
 #[macro_use]
 extern crate log;
 #[macro_use]
-extern crate graphene_core;
+extern crate core_types;
 
-pub use graphene_core::{ProtoNodeIdentifier, Type, TypeDescriptor, concrete, generic};
+pub use core_types::{ProtoNodeIdentifier, Type, TypeDescriptor, concrete, generic};
 
 pub mod document;
 pub mod graphene_compiler;

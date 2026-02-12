@@ -1,6 +1,6 @@
 use super::*;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type};
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate};
@@ -98,7 +98,8 @@ impl Spiral {
 			SpiralType::Logarithmic => 0.1,
 		};
 
-		let node_type = resolve_document_node_type("Spiral").expect("Spiral node can't be found");
+		let identifier = DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::spiral::IDENTIFIER);
+		let node_type = resolve_document_node_type(&identifier).expect("Spiral node can't be found");
 		node_type.node_template_input_override([
 			None,
 			Some(NodeInput::value(TaggedValue::SpiralType(spiral_type), false)),
@@ -110,13 +111,20 @@ impl Spiral {
 		])
 	}
 
-	pub fn update_shape(document: &DocumentMessageHandler, ipp: &InputPreprocessorMessageHandler, layer: LayerNodeIdentifier, shape_tool_data: &mut ShapeToolData, responses: &mut VecDeque<Message>) {
+	pub fn update_shape(
+		document: &DocumentMessageHandler,
+		ipp: &InputPreprocessorMessageHandler,
+		viewport: &ViewportMessageHandler,
+		layer: LayerNodeIdentifier,
+		shape_tool_data: &mut ShapeToolData,
+		responses: &mut VecDeque<Message>,
+	) {
 		use graphene_std::vector::generator_nodes::spiral::*;
 
 		let viewport_drag_start = shape_tool_data.data.viewport_drag_start(document);
 
 		let ignore = vec![layer];
-		let snap_data = SnapData::ignore(document, ipp, &ignore);
+		let snap_data = SnapData::ignore(document, ipp, viewport, &ignore);
 		let config = SnapTypeConfiguration::default();
 		let document_mouse = document.metadata().document_to_viewport.inverse().transform_point2(ipp.mouse.position);
 		let snapped = shape_tool_data.data.snap_manager.free_snap(&snap_data, &SnapCandidatePoint::handle(document_mouse), config);
@@ -129,7 +137,8 @@ impl Spiral {
 			return;
 		};
 
-		let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Spiral") else {
+		let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::spiral::IDENTIFIER))
+		else {
 			return;
 		};
 
@@ -160,7 +169,8 @@ impl Spiral {
 	pub fn update_turns(decrease: bool, layer: LayerNodeIdentifier, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		use graphene_std::vector::generator_nodes::spiral::*;
 
-		let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Spiral") else {
+		let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::spiral::IDENTIFIER))
+		else {
 			return;
 		};
 

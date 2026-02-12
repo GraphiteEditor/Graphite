@@ -1,3 +1,4 @@
+use crate::application::Editor;
 use crate::consts::{BIG_NUDGE_AMOUNT, BRUSH_SIZE_CHANGE_KEYBOARD, NUDGE_AMOUNT};
 use crate::messages::input_mapper::key_mapping::MappingVariant;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeyStates};
@@ -16,15 +17,17 @@ use glam::DVec2;
 impl From<MappingVariant> for Mapping {
 	fn from(value: MappingVariant) -> Self {
 		match value {
-			MappingVariant::Default => input_mappings(),
-			MappingVariant::ZoomWithScroll => zoom_with_scroll(),
+			MappingVariant::Default => input_mappings(false),
+			MappingVariant::ZoomWithScroll => input_mappings(true),
 		}
 	}
 }
 
-pub fn input_mappings() -> Mapping {
+pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 	use InputMapperMessage::*;
 	use Key::*;
+
+	let is_mac = Editor::environment().is_mac();
 
 	// NOTICE:
 	// If a new mapping you added here isn't working (and perhaps another lower-precedence one is instead), make sure to advertise
@@ -52,6 +55,16 @@ pub fn input_mappings() -> Mapping {
 		//
 		// Hack to prevent Left Click + Accel + Z combo (this effectively blocks you from making a double undo with AbortTransaction)
 		entry!(KeyDown(KeyZ); modifiers=[Accel, MouseLeft], action_dispatch=DocumentMessage::Noop),
+		//
+		// AppWindowMessage
+		entry!(KeyDown(F11); disabled=is_mac, action_dispatch=AppWindowMessage::Fullscreen),
+		entry!(KeyDown(KeyF); modifiers=[Command, Control], disabled=!is_mac, action_dispatch=AppWindowMessage::Fullscreen),
+		entry!(KeyDown(KeyQ); modifiers=[Command], disabled=cfg!(not(target_os = "macos")), action_dispatch=AppWindowMessage::Close),
+		//
+		// ClipboardMessage
+		entry!(KeyDown(KeyX); modifiers=[Accel], action_dispatch=ClipboardMessage::Cut),
+		entry!(KeyDown(KeyC); modifiers=[Accel], action_dispatch=ClipboardMessage::Copy),
+		entry!(KeyDown(KeyV); modifiers=[Accel], action_dispatch=ClipboardMessage::Paste),
 		//
 		// NodeGraphMessage
 		entry!(KeyDown(MouseLeft); action_dispatch=NodeGraphMessage::PointerDown { shift_click: false, control_click: false, alt_click: false, right_click: false }),
@@ -321,11 +334,12 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(KeyX); modifiers=[Shift], action_dispatch=ToolMessage::SwapColors),
 		entry!(KeyDown(KeyC); modifiers=[Alt], action_dispatch=ToolMessage::SelectRandomWorkingColor { primary: true }),
 		entry!(KeyDown(KeyC); modifiers=[Alt, Shift], action_dispatch=ToolMessage::SelectRandomWorkingColor { primary: false }),
-		entry!(KeyDownNoRepeat(Tab); action_dispatch=ToolMessage::ToggleSelectVsPath),
+		// TODO: Change to KeyDownNoRepeat when https://github.com/GraphiteEditor/Graphite/issues/2266 is resolved
+		entry!(KeyDown(Tab); action_dispatch=ToolMessage::ToggleSelectVsPath),
 		//
 		// DocumentMessage
 		entry!(KeyDown(Space); modifiers=[Control], action_dispatch=DocumentMessage::GraphViewOverlayToggle),
-		entry!(KeyUp(Escape); action_dispatch=DocumentMessage::Escape),
+		entry!(KeyDownNoRepeat(Escape); action_dispatch=DocumentMessage::Escape),
 		entry!(KeyDown(Delete); action_dispatch=DocumentMessage::DeleteSelectedLayers),
 		entry!(KeyDown(Backspace); action_dispatch=DocumentMessage::DeleteSelectedLayers),
 		entry!(KeyDown(KeyO); modifiers=[Alt], action_dispatch=DocumentMessage::ToggleOverlaysVisibility),
@@ -406,12 +420,18 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(MouseMiddle); action_dispatch=NavigationMessage::BeginCanvasPan),
 		entry!(KeyDown(MouseLeft); modifiers=[Space], action_dispatch=NavigationMessage::BeginCanvasPan),
 		entry!(KeyDown(NumpadAdd); modifiers=[Accel], action_dispatch=NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }),
+		// `FakeKeyPlus` is a nonfunctional key mapping that must be accompanied by its real `Equal` key counterpart. This is used only to set the canonical key label so it shows "+" instead of "=" in the UI.
+		entry!(KeyDown(FakeKeyPlus); modifiers=[Accel], canonical, action_dispatch=NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }),
 		entry!(KeyDown(Equal); modifiers=[Accel], action_dispatch=NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }),
 		entry!(KeyDown(Minus); modifiers=[Accel], action_dispatch=NavigationMessage::CanvasZoomDecrease { center_on_mouse: false }),
-		entry!(KeyDown(KeyF); modifiers=[Alt], action_dispatch=NavigationMessage::CanvasFlip),
-		entry!(WheelScroll; modifiers=[Control], action_dispatch=NavigationMessage::CanvasZoomMouseWheel),
-		entry!(WheelScroll; modifiers=[Shift], action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: true }),
-		entry!(WheelScroll; action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: false }),
+		entry!(WheelScroll; modifiers=[Control], disabled=zoom_with_scroll, action_dispatch=NavigationMessage::CanvasZoomMouseWheel),
+		entry!(WheelScroll; modifiers=[Command], disabled=zoom_with_scroll, action_dispatch=NavigationMessage::CanvasZoomMouseWheel),
+		entry!(WheelScroll; modifiers=[Shift], disabled=zoom_with_scroll, action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: true }),
+		entry!(WheelScroll; disabled=zoom_with_scroll, action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: false }),
+		// On Mac, the OS already converts Shift+scroll into horizontal scrolling so we have to reverse the behavior from normal to produce the same outcome
+		entry!(WheelScroll; modifiers=[Control], disabled=!zoom_with_scroll, action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: is_mac }),
+		entry!(WheelScroll; modifiers=[Shift], disabled=!zoom_with_scroll, action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: !is_mac }),
+		entry!(WheelScroll; disabled=!zoom_with_scroll, action_dispatch=NavigationMessage::CanvasZoomMouseWheel),
 		entry!(KeyDown(PageUp); modifiers=[Shift], action_dispatch=NavigationMessage::CanvasPanByViewportFraction { delta: DVec2::new(1., 0.) }),
 		entry!(KeyDown(PageDown); modifiers=[Shift], action_dispatch=NavigationMessage::CanvasPanByViewportFraction { delta: DVec2::new(-1., 0.) }),
 		entry!(KeyDown(PageUp); action_dispatch=NavigationMessage::CanvasPanByViewportFraction { delta: DVec2::new(0., 1.) }),
@@ -423,15 +443,13 @@ pub fn input_mappings() -> Mapping {
 		entry!(KeyDown(Tab); modifiers=[Control, Shift], action_dispatch=PortfolioMessage::PrevDocument),
 		entry!(KeyDown(KeyW); modifiers=[Accel], action_dispatch=PortfolioMessage::CloseActiveDocumentWithConfirmation),
 		entry!(KeyDown(KeyW); modifiers=[Accel, Alt], action_dispatch=PortfolioMessage::CloseAllDocumentsWithConfirmation),
-		entry!(KeyDown(KeyO); modifiers=[Accel], action_dispatch=PortfolioMessage::OpenDocument),
+		entry!(KeyDown(KeyO); modifiers=[Accel], action_dispatch=PortfolioMessage::Open),
 		entry!(KeyDown(KeyI); modifiers=[Accel], action_dispatch=PortfolioMessage::Import),
 		entry!(KeyDown(KeyX); modifiers=[Accel], action_dispatch=PortfolioMessage::Cut { clipboard: Clipboard::Device }),
 		entry!(KeyDown(KeyC); modifiers=[Accel], action_dispatch=PortfolioMessage::Copy { clipboard: Clipboard::Device }),
 		entry!(KeyDown(KeyR); modifiers=[Alt], action_dispatch=PortfolioMessage::ToggleRulers),
 		entry!(KeyDown(KeyD); modifiers=[Alt], action_dispatch=PortfolioMessage::ToggleDataPanelOpen),
-		//
-		// FrontendMessage
-		entry!(KeyDown(KeyV); modifiers=[Accel], action_dispatch=FrontendMessage::TriggerPaste),
+		entry!(KeyDown(Enter); modifiers=[Alt], action_dispatch=PortfolioMessage::ToggleFocusDocument),
 		//
 		// DialogMessage
 		entry!(KeyDown(KeyE); modifiers=[Accel], action_dispatch=DialogMessage::RequestExportDialog),
@@ -475,41 +493,5 @@ pub fn input_mappings() -> Mapping {
 		wheel_scroll,
 		pointer_move,
 		pointer_shake,
-	}
-}
-
-/// Default mappings except that scrolling without modifier keys held down is bound to zooming instead of vertical panning
-pub fn zoom_with_scroll() -> Mapping {
-	use InputMapperMessage::*;
-
-	let mut mapping = input_mappings();
-
-	let remove = [
-		entry!(WheelScroll; modifiers=[Control], action_dispatch=NavigationMessage::CanvasZoomMouseWheel),
-		entry!(WheelScroll; modifiers=[Shift], action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: true }),
-		entry!(WheelScroll; action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: false }),
-	];
-	let add = [
-		entry!(WheelScroll; modifiers=[Control], action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: true }),
-		entry!(WheelScroll; modifiers=[Shift], action_dispatch=NavigationMessage::CanvasPanMouseWheel { use_y_as_x: false }),
-		entry!(WheelScroll; action_dispatch=NavigationMessage::CanvasZoomMouseWheel),
-	];
-
-	apply_mapping_patch(&mut mapping, remove, add);
-
-	mapping
-}
-
-fn apply_mapping_patch<'a, const N: usize, const M: usize, const X: usize, const Y: usize>(
-	mapping: &mut Mapping,
-	remove: impl IntoIterator<Item = &'a [&'a [MappingEntry; N]; M]>,
-	add: impl IntoIterator<Item = &'a [&'a [MappingEntry; X]; Y]>,
-) {
-	for entry in remove.into_iter().flat_map(|inner| inner.iter()).flat_map(|inner| inner.iter()) {
-		mapping.remove(entry);
-	}
-
-	for entry in add.into_iter().flat_map(|inner| inner.iter()).flat_map(|inner| inner.iter()) {
-		mapping.add(entry.clone());
 	}
 }

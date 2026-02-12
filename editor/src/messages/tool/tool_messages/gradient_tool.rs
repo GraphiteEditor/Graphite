@@ -45,7 +45,7 @@ impl ToolMetadata for GradientTool {
 	fn icon_name(&self) -> String {
 		"GeneralGradientTool".into()
 	}
-	fn tooltip(&self) -> String {
+	fn tooltip_label(&self) -> String {
 		"Gradient Tool".into()
 	}
 	fn tool_type(&self) -> crate::messages::tool::utility_types::ToolType {
@@ -63,17 +63,48 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 		match options {
 			GradientOptionsUpdate::Type(gradient_type) => {
 				self.options.gradient_type = gradient_type;
-				// Update the selected gradient if it exists
-				if let Some(selected_gradient) = &mut self.data.selected_gradient {
-					// Check if the current layer is a raster layer
-					if let Some(layer) = selected_gradient.layer {
-						if NodeGraphLayer::is_raster_layer(layer, &mut context.document.network_interface) {
-							return; // Don't proceed if it's a raster layer
+				let selected_layers: Vec<_> = context
+					.document
+					.network_interface
+					.selected_nodes()
+					.selected_visible_layers(&context.document.network_interface)
+					.collect();
+
+				let mut transaction_started = false;
+				for layer in selected_layers {
+					if NodeGraphLayer::is_raster_layer(layer, &mut context.document.network_interface) {
+						continue;
+					}
+
+					if let Some(mut gradient) = get_gradient(layer, &context.document.network_interface) {
+						if gradient.gradient_type != gradient_type {
+							if !transaction_started {
+								responses.add(DocumentMessage::StartTransaction);
+								transaction_started = true;
+							}
+							gradient.gradient_type = gradient_type;
+							responses.add(GraphOperationMessage::FillSet {
+								layer,
+								fill: Fill::Gradient(gradient),
+							});
 						}
-						selected_gradient.gradient.gradient_type = gradient_type;
-						selected_gradient.render_gradient(responses);
 					}
 				}
+
+				if transaction_started {
+					responses.add(DocumentMessage::AddTransaction);
+				}
+				if let Some(selected_gradient) = &mut self.data.selected_gradient {
+					if let Some(layer) = selected_gradient.layer {
+						if !NodeGraphLayer::is_raster_layer(layer, &mut context.document.network_interface) {
+							selected_gradient.gradient.gradient_type = gradient_type;
+						}
+					}
+				}
+				responses.add(ToolMessage::UpdateHints);
+				responses.add(PropertiesPanelMessage::Refresh);
+				responses.add(ToolMessage::UpdateCursor);
+				responses.add(ToolMessage::RefreshToolOptions);
 			}
 		}
 	}
@@ -91,23 +122,23 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 impl LayoutHolder for GradientTool {
 	fn layout(&self) -> Layout {
 		let gradient_type = RadioInput::new(vec![
-			RadioEntryData::new("Linear").label("Linear").tooltip("Linear gradient").on_update(move |_| {
+			RadioEntryData::new("Linear").label("Linear").tooltip_label("Linear Gradient").on_update(move |_| {
 				GradientToolMessage::UpdateOptions {
 					options: GradientOptionsUpdate::Type(GradientType::Linear),
 				}
 				.into()
 			}),
-			RadioEntryData::new("Radial").label("Radial").tooltip("Radial gradient").on_update(move |_| {
+			RadioEntryData::new("Radial").label("Radial").tooltip_label("Radial Gradient").on_update(move |_| {
 				GradientToolMessage::UpdateOptions {
 					options: GradientOptionsUpdate::Type(GradientType::Radial),
 				}
 				.into()
 			}),
 		])
-		.selected_index(Some((self.selected_gradient().unwrap_or(self.options.gradient_type) == GradientType::Radial) as u32))
-		.widget_holder();
+		.selected_index(Some((self.options.gradient_type == GradientType::Radial) as u32))
+		.widget_instance();
 
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets: vec![gradient_type] }]))
+		Layout(vec![LayoutGroup::Row { widgets: vec![gradient_type] }])
 	}
 }
 
@@ -255,7 +286,11 @@ impl Fsm for GradientToolFsmState {
 		responses: &mut VecDeque<Message>,
 	) -> Self {
 		let ToolActionMessageContext {
-			document, global_tool_data, input, ..
+			document,
+			global_tool_data,
+			input,
+			viewport,
+			..
 		} = tool_action_data;
 
 		let ToolMessage::Gradient(event) = event else { return self };
@@ -420,7 +455,7 @@ impl Fsm for GradientToolFsmState {
 				let gradient_state = if dragging {
 					GradientToolFsmState::Drawing
 				} else {
-					let selected_layer = document.click(input);
+					let selected_layer = document.click(input, viewport);
 
 					// Apply the gradient to the selected layer
 					if let Some(layer) = selected_layer {
@@ -464,16 +499,16 @@ impl Fsm for GradientToolFsmState {
 					GradientToolMessage::PointerOutsideViewport { constrain_axis }.into(),
 					GradientToolMessage::PointerMove { constrain_axis }.into(),
 				];
-				tool_data.auto_panning.setup_by_mouse_position(input, &messages, responses);
+				tool_data.auto_panning.setup_by_mouse_position(input, viewport, &messages, responses);
 
 				GradientToolFsmState::Drawing
 			}
 			(GradientToolFsmState::Drawing, GradientToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning
-				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, responses) {
-					if let Some(selected_gradient) = &mut tool_data.selected_gradient {
-						selected_gradient.transform.translation += shift;
-					}
+				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, viewport, responses)
+					&& let Some(selected_gradient) = &mut tool_data.selected_gradient
+				{
+					selected_gradient.transform.translation += shift;
 				}
 
 				GradientToolFsmState::Drawing
@@ -493,12 +528,11 @@ impl Fsm for GradientToolFsmState {
 				tool_data.snap_manager.cleanup(responses);
 				let was_dragging = tool_data.selected_gradient.is_some();
 
-				if !was_dragging {
-					if let Some(selected_layer) = document.click(input) {
-						if let Some(gradient) = get_gradient(selected_layer, &document.network_interface) {
-							tool_data.selected_gradient = Some(SelectedGradient::new(gradient, selected_layer, document));
-						}
-					}
+				if !was_dragging
+					&& let Some(selected_layer) = document.click(input, viewport)
+					&& let Some(gradient) = get_gradient(selected_layer, &document.network_interface)
+				{
+					tool_data.selected_gradient = Some(SelectedGradient::new(gradient, selected_layer, document));
 				}
 				GradientToolFsmState::Ready
 			}
@@ -527,7 +561,7 @@ impl Fsm for GradientToolFsmState {
 			]),
 		};
 
-		responses.add(FrontendMessage::UpdateInputHints { hint_data });
+		hint_data.send_layout(responses);
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {

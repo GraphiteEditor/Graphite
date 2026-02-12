@@ -2,7 +2,7 @@
 name = "rawkit-proc-macros"
 version = "0.1.0"
 edition = "2024"
-authors = ["Graphite Authors <contact@graphite.rs>"]
+authors = ["Graphite Authors <contact@graphite.art>"]
 description = "Procedural macros for Rawkit"
 license = "MIT OR Apache-2.0"
 readme = "README.md"
@@ -19,5 +19,5 @@ quote = { workspace = true }
 syn = { workspace = true }
 
 # Required dependencies
-toml = "0.8.19"
-proc-macro2 = "1.0.89"
+toml = "0.9.10+spec-1.1.0"
+proc-macro2 = "1.0.103"

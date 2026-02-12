@@ -421,7 +421,69 @@ impl ShapeState {
 		(point.as_handle().is_some() && self.ignore_handles) || (point.as_anchor().is_some() && self.ignore_anchors)
 	}
 
-	pub fn close_selected_path(&self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, vector_meshes: bool) {
+	/// Applies a dummy vector modification to the layer. In the case where a group containing some vector data is selected, this triggers the creation of a «Flatten Path» node.
+	fn add_dummy_modification_to_trigger_graph_reorganization(layer: LayerNodeIdentifier, start_point: PointId, _end_point: PointId, responses: &mut VecDeque<Message>) {
+		// Apply a zero-delta to one of the points to trigger reorganization
+		let dummy_modification = VectorModificationType::ApplyPointDelta {
+			point: start_point,
+			delta: DVec2::ZERO,
+		};
+		responses.add(GraphOperationMessage::Vector {
+			layer,
+			modification_type: dummy_modification,
+		});
+		responses.add(NodeGraphMessage::RunDocumentGraph);
+	}
+
+	fn defer_connect_points_by_position(
+		document: &DocumentMessageHandler,
+		layer1: LayerNodeIdentifier,
+		start_point: PointId,
+		layer2: LayerNodeIdentifier,
+		end_point: PointId,
+		target_layer: LayerNodeIdentifier,
+		responses: &mut VecDeque<Message>,
+	) {
+		// Get the local positions of the selected points
+		let start_local_pos = document.network_interface.compute_modified_vector(layer1).and_then(|v| v.point_domain.position_from_id(start_point));
+		let end_local_pos = document.network_interface.compute_modified_vector(layer2).and_then(|v| v.point_domain.position_from_id(end_point));
+
+		// Transform to document/world space
+		let start_transform = document.metadata().transform_to_document(layer1);
+		let end_transform = document.metadata().transform_to_document(layer2);
+
+		let (Some(start_local), Some(end_local)) = (start_local_pos, end_local_pos) else {
+			warn!("Unable to resolve point ids for joining");
+			return;
+		};
+		// Transform positions to document/world space
+		// These positions are stable (won't change during reorganization)
+		let start_pos = start_transform.transform_point2(start_local);
+		let end_pos = end_transform.transform_point2(end_local);
+
+		// Defer position-based connection to run after reorganization completes
+		// By then, PointIds will be stable with their new remapped values
+		responses.add(DeferMessage::AfterGraphRun {
+			messages: vec![
+				ToolMessage::Path(PathToolMessage::ConnectPointsByPosition {
+					layer: target_layer,
+					start_position: start_pos,
+					end_position: end_pos,
+				})
+				.into(),
+			],
+		});
+	}
+
+	fn handle_grouped_transform_close_path(document: &DocumentMessageHandler, layer: LayerNodeIdentifier, start_point: PointId, end_point: PointId, responses: &mut VecDeque<Message>) {
+		// This zero-delta modification triggers point domain reorganization
+		Self::add_dummy_modification_to_trigger_graph_reorganization(layer, start_point, end_point, responses);
+
+		// Use the helper to defer the connection until after reorganization
+		Self::defer_connect_points_by_position(document, layer, start_point, layer, end_point, layer, responses);
+	}
+
+	pub fn close_selected_path(&self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
 		// First collect all selected anchor points across all layers
 		let all_selected_points: Vec<(LayerNodeIdentifier, PointId)> = self
 			.selected_shape_state
@@ -446,37 +508,35 @@ impl ShapeState {
 			let (layer1, start_point) = all_selected_points[0];
 			let (layer2, end_point) = all_selected_points[1];
 
-			let Some(vector1) = document.network_interface.compute_modified_vector(layer1) else { return };
-			let Some(vector2) = document.network_interface.compute_modified_vector(layer2) else { return };
-
-			// If vector meshes is not selected then only for endpoints, otherwise normally applicable
-			if !vector_meshes && (vector1.all_connected(start_point).count() != 1 || vector2.all_connected(end_point).count() != 1) {
-				return;
-			}
-
 			if layer1 == layer2 {
+				// Same layer case
 				if start_point == end_point {
 					return;
 				}
 
-				let segment_id = SegmentId::generate();
-				let modification_type = VectorModificationType::InsertSegment {
-					id: segment_id,
-					points: [end_point, start_point],
-					handles: [None, None],
-				};
-				responses.add(GraphOperationMessage::Vector { layer: layer1, modification_type });
+				// Check if this layer has multiple children (is a merged/grouped layer created with Cmd+G)
+				let num_children = layer1.children(document.metadata()).count();
+				let is_grouped = num_children > 1;
+
+				if is_grouped {
+					// Grouped/merged layer: use helper function to handle reorganization
+					Self::handle_grouped_transform_close_path(document, layer1, start_point, end_point, responses);
+				} else {
+					// Single segment: PointIDs are stable, use immediate insertion
+					let segment_id = SegmentId::generate();
+					let modification_type = VectorModificationType::InsertSegment {
+						id: segment_id,
+						points: [end_point, start_point],
+						handles: [None, None],
+					};
+					responses.add(GraphOperationMessage::Vector { layer: layer1, modification_type });
+				}
 			} else {
-				// Merge the layers
+				// Different layers: merge first, then create segment
 				merge_layers(document, layer1, layer2, responses);
-				// Create segment between the two points
-				let segment_id = SegmentId::generate();
-				let modification_type = VectorModificationType::InsertSegment {
-					id: segment_id,
-					points: [end_point, start_point],
-					handles: [None, None],
-				};
-				responses.add(GraphOperationMessage::Vector { layer: layer1, modification_type });
+
+				// Use the helper to defer the connection until after reorganization
+				Self::defer_connect_points_by_position(document, layer1, start_point, layer2, end_point, layer1, responses);
 			}
 			return;
 		}
@@ -503,8 +563,16 @@ impl ShapeState {
 	}
 
 	// Snap, returning a viewport delta
-	pub fn snap(&self, snap_manager: &mut SnapManager, snap_cache: &SnapCache, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, previous_mouse: DVec2) -> DVec2 {
-		let snap_data = SnapData::new_snap_cache(document, input, snap_cache);
+	pub fn snap(
+		&self,
+		snap_manager: &mut SnapManager,
+		snap_cache: &SnapCache,
+		document: &DocumentMessageHandler,
+		input: &InputPreprocessorMessageHandler,
+		viewport: &ViewportMessageHandler,
+		previous_mouse: DVec2,
+	) -> DVec2 {
+		let snap_data = SnapData::new_snap_cache(document, input, viewport, snap_cache);
 
 		let mouse_delta = document
 			.network_interface
@@ -683,10 +751,10 @@ impl ShapeState {
 		let mut selected_stack = Vec::new();
 		// Find all subpaths that have been clicked
 		for stroke in vector.stroke_bezier_paths() {
-			if stroke.contains_point(layer_mouse) {
-				if let Some(first) = stroke.manipulator_groups().first() {
-					selected_stack.push(first.id);
-				}
+			if stroke.contains_point(layer_mouse)
+				&& let Some(first) = stroke.manipulator_groups().first()
+			{
+				selected_stack.push(first.id);
 			}
 		}
 		state.clear_points();
@@ -921,20 +989,20 @@ impl ShapeState {
 			ManipulatorPointId::Anchor(point) => self.move_anchor(point, &vector, delta, layer, None, responses),
 			ManipulatorPointId::PrimaryHandle(segment) => {
 				self.move_primary(segment, delta, layer, responses);
-				if let Some(handle) = point.as_handle() {
-					if let Some(handles) = vector.colinear_manipulators.iter().find(|handles| handles[0] == handle || handles[1] == handle) {
-						let modification_type = VectorModificationType::SetG1Continuous { handles: *handles, enabled: false };
-						responses.add(GraphOperationMessage::Vector { layer, modification_type });
-					}
+				if let Some(handle) = point.as_handle()
+					&& let Some(handles) = vector.colinear_manipulators.iter().find(|handles| handles[0] == handle || handles[1] == handle)
+				{
+					let modification_type = VectorModificationType::SetG1Continuous { handles: *handles, enabled: false };
+					responses.add(GraphOperationMessage::Vector { layer, modification_type });
 				}
 			}
 			ManipulatorPointId::EndHandle(segment) => {
 				self.move_end(segment, delta, layer, responses);
-				if let Some(handle) = point.as_handle() {
-					if let Some(handles) = vector.colinear_manipulators.iter().find(|handles| handles[0] == handle || handles[1] == handle) {
-						let modification_type = VectorModificationType::SetG1Continuous { handles: *handles, enabled: false };
-						responses.add(GraphOperationMessage::Vector { layer, modification_type });
-					}
+				if let Some(handle) = point.as_handle()
+					&& let Some(handles) = vector.colinear_manipulators.iter().find(|handles| handles[0] == handle || handles[1] == handle)
+				{
+					let modification_type = VectorModificationType::SetG1Continuous { handles: *handles, enabled: false };
+					responses.add(GraphOperationMessage::Vector { layer, modification_type });
 				}
 			}
 		}
@@ -1070,10 +1138,10 @@ impl ShapeState {
 
 			for &point in layer_state.selected_points.iter() {
 				// Skip a point which has more than 2 segments connected (vector meshes)
-				if let ManipulatorPointId::Anchor(anchor) = point {
-					if vector.all_connected(anchor).count() > 2 {
-						continue;
-					}
+				if let ManipulatorPointId::Anchor(anchor) = point
+					&& vector.all_connected(anchor).count() > 2
+				{
+					continue;
 				}
 
 				// Here we take handles as the current handle and the most opposite non-colinear-handle
@@ -1383,7 +1451,9 @@ impl ShapeState {
 	}
 
 	/// Dissolve the selected points.
-	pub fn delete_selected_points(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	pub fn delete_selected_points(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, start_transaction: bool) {
+		let mut transaction_started = false;
+
 		for (&layer, state) in &mut self.selected_shape_state {
 			let mut missing_anchors = HashMap::new();
 			let mut deleted_anchors = HashSet::new();
@@ -1392,12 +1462,18 @@ impl ShapeState {
 			let selected_segments = &state.selected_segments;
 
 			for point in std::mem::take(&mut state.selected_points) {
+				if !transaction_started && start_transaction {
+					responses.add(DocumentMessage::AddTransaction);
+					transaction_started = true;
+				}
+
 				match point {
 					ManipulatorPointId::Anchor(anchor) => {
-						if let Some(handles) = Self::dissolve_anchor(anchor, responses, layer, &vector) {
-							if !vector.all_connected(anchor).any(|a| selected_segments.contains(&a.segment)) && vector.all_connected(anchor).count() <= 2 {
-								missing_anchors.insert(anchor, handles);
-							}
+						if let Some(handles) = Self::dissolve_anchor(anchor, responses, layer, &vector)
+							&& !vector.all_connected(anchor).any(|a| selected_segments.contains(&a.segment))
+							&& vector.all_connected(anchor).count() <= 2
+						{
+							missing_anchors.insert(anchor, handles);
 						}
 						deleted_anchors.insert(anchor);
 					}
@@ -1488,34 +1564,51 @@ impl ShapeState {
 		}
 	}
 
-	pub fn delete_selected_segments(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	pub fn delete_selected_segments(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, start_transaction: bool) -> bool {
+		let mut transaction_started = false;
+
 		for (&layer, state) in &self.selected_shape_state {
 			let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
 
 			for (segment, _, start, end) in vector.segment_bezier_iter() {
 				if state.selected_segments.contains(&segment) {
+					if start_transaction && !transaction_started {
+						responses.add(DocumentMessage::AddTransaction);
+						transaction_started = true;
+					}
 					self.dissolve_segment(responses, layer, &vector, segment, [start, end]);
 				}
 			}
 		}
+
+		transaction_started
 	}
 
-	pub fn delete_hanging_selected_anchors(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	pub fn delete_hanging_selected_anchors(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>, start_transaction: bool) {
+		let mut transaction_started = false;
+
 		for (&layer, state) in &self.selected_shape_state {
 			let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
 
 			for point in &state.selected_points {
-				if let ManipulatorPointId::Anchor(anchor) = point {
-					if vector.all_connected(*anchor).all(|segment| state.is_segment_selected(segment.segment)) {
-						let modification_type = VectorModificationType::RemovePoint { id: *anchor };
-						responses.add(GraphOperationMessage::Vector { layer, modification_type });
+				if let ManipulatorPointId::Anchor(anchor) = point
+					&& vector.all_connected(*anchor).all(|segment| state.is_segment_selected(segment.segment))
+				{
+					if !transaction_started && start_transaction {
+						responses.add(DocumentMessage::AddTransaction);
+						transaction_started = true
 					}
+					let modification_type = VectorModificationType::RemovePoint { id: *anchor };
+					responses.add(GraphOperationMessage::Vector { layer, modification_type });
 				}
 			}
 		}
 	}
 
+	/// Note: this also adds a history transaction if there is some change in state.
 	pub fn break_path_at_selected_point(&self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+		let mut transaction_started = false;
+
 		for (&layer, state) in &self.selected_shape_state {
 			let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
 
@@ -1527,6 +1620,11 @@ impl ShapeState {
 				for handle in vector.all_connected(point) {
 					// Disable the g1 continuous
 					for &handles in &vector.colinear_manipulators {
+						if !transaction_started {
+							responses.add(DocumentMessage::AddTransaction);
+							transaction_started = true;
+						}
+
 						if handles.contains(&handle) {
 							let modification_type = VectorModificationType::SetG1Continuous { handles, enabled: false };
 							responses.add(GraphOperationMessage::Vector { layer, modification_type });
@@ -1537,6 +1635,11 @@ impl ShapeState {
 					if !used_initial_point {
 						used_initial_point = true;
 						continue;
+					}
+
+					if !transaction_started {
+						responses.add(DocumentMessage::AddTransaction);
+						transaction_started = true;
 					}
 
 					// Create new point
@@ -1559,13 +1662,20 @@ impl ShapeState {
 	}
 
 	/// Delete point(s) and adjacent segments.
-	pub fn delete_point_and_break_path(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	/// Note: this also adds a history transaction if there is some change in state, and true is returned if so.
+	pub fn delete_point_and_break_path(&mut self, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) -> bool {
+		let mut transaction_started = false;
+
 		for (&layer, state) in &mut self.selected_shape_state {
 			let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
 
 			for delete in std::mem::take(&mut state.selected_points) {
 				let Some(point) = delete.get_anchor(&vector) else { continue };
 
+				if !transaction_started {
+					responses.add(DocumentMessage::AddTransaction);
+					transaction_started = true;
+				}
 				// Delete point
 				let modification_type = VectorModificationType::RemovePoint { id: point };
 				responses.add(GraphOperationMessage::Vector { layer, modification_type });
@@ -1577,6 +1687,8 @@ impl ShapeState {
 				}
 			}
 		}
+
+		transaction_started
 	}
 
 	/// Disable colinear handles colinear.
@@ -1592,11 +1704,11 @@ impl ShapeState {
 							responses.add(GraphOperationMessage::Vector { layer, modification_type });
 						}
 					}
-				} else if let Some(handle) = point.as_handle() {
-					if let Some(handles) = vector.colinear_manipulators.iter().find(|handles| handles[0] == handle || handles[1] == handle) {
-						let modification_type = VectorModificationType::SetG1Continuous { handles: *handles, enabled: false };
-						responses.add(GraphOperationMessage::Vector { layer, modification_type });
-					}
+				} else if let Some(handle) = point.as_handle()
+					&& let Some(handles) = vector.colinear_manipulators.iter().find(|handles| handles[0] == handle || handles[1] == handle)
+				{
+					let modification_type = VectorModificationType::SetG1Continuous { handles: *handles, enabled: false };
+					responses.add(GraphOperationMessage::Vector { layer, modification_type });
 				}
 			}
 		}
@@ -1677,17 +1789,20 @@ impl ShapeState {
 			let bezier = bezier.apply_transformation(|point| viewspace.transform_point2(point));
 			let valid = |handle: DVec2, control: DVec2| handle.distance_squared(control) > crate::consts::HIDE_HANDLE_DISTANCE.powi(2);
 
-			if let Some(primary_handle) = bezier.handle_start() {
-				if valid(primary_handle, bezier.start) && (bezier.handle_end().is_some() || valid(primary_handle, bezier.end)) && primary_handle.distance_squared(pos) <= closest_distance_squared {
-					closest_distance_squared = primary_handle.distance_squared(pos);
-					manipulator_point = Some(ManipulatorPointId::PrimaryHandle(segment_id));
-				}
+			if let Some(primary_handle) = bezier.handle_start()
+				&& valid(primary_handle, bezier.start)
+				&& (bezier.handle_end().is_some() || valid(primary_handle, bezier.end))
+				&& primary_handle.distance_squared(pos) <= closest_distance_squared
+			{
+				closest_distance_squared = primary_handle.distance_squared(pos);
+				manipulator_point = Some(ManipulatorPointId::PrimaryHandle(segment_id));
 			}
-			if let Some(end_handle) = bezier.handle_end() {
-				if valid(end_handle, bezier.end) && end_handle.distance_squared(pos) <= closest_distance_squared {
-					closest_distance_squared = end_handle.distance_squared(pos);
-					manipulator_point = Some(ManipulatorPointId::EndHandle(segment_id));
-				}
+			if let Some(end_handle) = bezier.handle_end()
+				&& valid(end_handle, bezier.end)
+				&& end_handle.distance_squared(pos) <= closest_distance_squared
+			{
+				closest_distance_squared = end_handle.distance_squared(pos);
+				manipulator_point = Some(ManipulatorPointId::EndHandle(segment_id));
 			}
 		}
 
@@ -2108,7 +2223,7 @@ impl ShapeState {
 				if polygon.len() < 2 {
 					return (points_inside, segments_inside);
 				}
-				let polygon: Subpath<PointId> = Subpath::from_anchors_linear(polygon.to_vec(), true);
+				let polygon: Subpath<PointId> = Subpath::from_anchors(polygon.to_vec(), true);
 				Some(polygon)
 			} else {
 				None

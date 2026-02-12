@@ -1,14 +1,12 @@
-use super::new_document_dialog::NewDocumentDialogMessageContext;
-use super::simple_dialogs::{self, AboutGraphiteDialog, ComingSoonDialog, DemoArtworkDialog, LicensesDialog};
+use super::simple_dialogs::{self, AboutGraphiteDialog, DemoArtworkDialog, LicensesDialog};
+use crate::application::GRAPHITE_GIT_COMMIT_DATE;
 use crate::messages::dialog::simple_dialogs::LicensesThirdPartyDialog;
-use crate::messages::input_mapper::utility_types::input_mouse::ViewportBounds;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 
 #[derive(ExtractField)]
 pub struct DialogMessageContext<'a> {
 	pub portfolio: &'a PortfolioMessageHandler,
-	pub viewport_bounds: &'a ViewportBounds,
 	pub preferences: &'a PreferencesMessageHandler,
 }
 
@@ -23,15 +21,11 @@ pub struct DialogMessageHandler {
 #[message_handler_data]
 impl MessageHandler<DialogMessage, DialogMessageContext<'_>> for DialogMessageHandler {
 	fn process_message(&mut self, message: DialogMessage, responses: &mut VecDeque<Message>, context: DialogMessageContext) {
-		let DialogMessageContext {
-			portfolio,
-			preferences,
-			viewport_bounds,
-		} = context;
+		let DialogMessageContext { portfolio, preferences } = context;
 
 		match message {
 			DialogMessage::ExportDialog(message) => self.export_dialog.process_message(message, responses, ExportDialogMessageContext { portfolio }),
-			DialogMessage::NewDocumentDialog(message) => self.new_document_dialog.process_message(message, responses, NewDocumentDialogMessageContext { viewport_bounds }),
+			DialogMessage::NewDocumentDialog(message) => self.new_document_dialog.process_message(message, responses, ()),
 			DialogMessage::PreferencesDialog(message) => self.preferences_dialog.process_message(message, responses, PreferencesDialogMessageContext { preferences }),
 
 			DialogMessage::CloseAllDocumentsWithConfirmation => {
@@ -55,7 +49,7 @@ impl MessageHandler<DialogMessage, DialogMessageContext<'_>> for DialogMessageHa
 			}
 			DialogMessage::RequestAboutGraphiteDialog => {
 				responses.add(FrontendMessage::TriggerAboutGraphiteLocalizedCommitDate {
-					commit_date: env!("GRAPHITE_GIT_COMMIT_DATE").into(),
+					commit_date: GRAPHITE_GIT_COMMIT_DATE.into(),
 				});
 			}
 			DialogMessage::RequestAboutGraphiteDialogWithLocalizedCommitDate {
@@ -67,10 +61,6 @@ impl MessageHandler<DialogMessage, DialogMessageContext<'_>> for DialogMessageHa
 					localized_commit_year,
 				};
 
-				dialog.send_dialog_to_frontend(responses);
-			}
-			DialogMessage::RequestComingSoonDialog { issue } => {
-				let dialog = ComingSoonDialog { issue };
 				dialog.send_dialog_to_frontend(responses);
 			}
 			DialogMessage::RequestDemoArtworkDialog => {

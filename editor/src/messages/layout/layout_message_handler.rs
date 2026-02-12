@@ -2,9 +2,9 @@ use crate::messages::input_mapper::utility_types::input_keyboard::KeysGroup;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
 use graphene_std::raster::color::Color;
-use graphene_std::text::Font;
 use graphene_std::vector::style::{FillChoice, GradientStops};
 use serde_json::Value;
+use std::collections::HashMap;
 
 #[derive(ExtractField)]
 pub struct LayoutMessageContext<'a> {
@@ -13,7 +13,7 @@ pub struct LayoutMessageContext<'a> {
 
 #[derive(Debug, Clone, Default, ExtractField)]
 pub struct LayoutMessageHandler {
-	layouts: [Layout; LayoutTarget::LayoutTargetLength as usize],
+	layouts: [Layout; LayoutTarget::_LayoutTargetLength as usize],
 }
 
 #[message_handler_data]
@@ -24,13 +24,10 @@ impl MessageHandler<LayoutMessage, LayoutMessageContext<'_>> for LayoutMessageHa
 		match message {
 			LayoutMessage::ResendActiveWidget { layout_target, widget_id } => {
 				// Find the updated diff based on the specified layout target
-				let Some(diff) = (match &self.layouts[layout_target as usize] {
-					Layout::MenuLayout(_) => return,
-					Layout::WidgetLayout(layout) => Self::get_widget_path(layout, widget_id).map(|(widget, widget_path)| {
-						// Create a widget update diff for the relevant id
-						let new_value = DiffUpdate::Widget(widget.clone());
-						WidgetDiff { widget_path, new_value }
-					}),
+				let Some(diff) = Self::get_widget_path(&self.layouts[layout_target as usize], widget_id).map(|(widget, widget_path)| {
+					// Create a widget update diff for the relevant id
+					let new_value = DiffUpdate::Widget(widget.clone());
+					WidgetDiff { widget_path, new_value }
 				}) else {
 					return;
 				};
@@ -40,12 +37,16 @@ impl MessageHandler<LayoutMessage, LayoutMessageContext<'_>> for LayoutMessageHa
 			LayoutMessage::SendLayout { layout, layout_target } => {
 				self.diff_and_send_layout_to_frontend(layout_target, layout, responses, action_input_mapping);
 			}
+			LayoutMessage::DestroyLayout { layout_target } => {
+				if let Some(layout) = self.layouts.get_mut(layout_target as usize) {
+					*layout = Layout::default();
+				}
+			}
 			LayoutMessage::WidgetValueCommit { layout_target, widget_id, value } => {
 				self.handle_widget_callback(layout_target, widget_id, value, WidgetValueAction::Commit, responses);
 			}
 			LayoutMessage::WidgetValueUpdate { layout_target, widget_id, value } => {
 				self.handle_widget_callback(layout_target, widget_id, value, WidgetValueAction::Update, responses);
-				responses.add(LayoutMessage::ResendActiveWidget { layout_target, widget_id });
 			}
 		}
 	}
@@ -57,8 +58,8 @@ impl MessageHandler<LayoutMessage, LayoutMessageContext<'_>> for LayoutMessageHa
 
 impl LayoutMessageHandler {
 	/// Get the widget path for the widget with the specified id
-	fn get_widget_path(widget_layout: &WidgetLayout, widget_id: WidgetId) -> Option<(&WidgetHolder, Vec<usize>)> {
-		let mut stack = widget_layout.layout.iter().enumerate().map(|(index, val)| (vec![index], val)).collect::<Vec<_>>();
+	fn get_widget_path(widget_layout: &Layout, widget_id: WidgetId) -> Option<(&WidgetInstance, Vec<usize>)> {
+		let mut stack = widget_layout.0.iter().enumerate().map(|(index, val)| (vec![index], val)).collect::<Vec<_>>();
 		while let Some((mut widget_path, layout_group)) = stack.pop() {
 			match layout_group {
 				// Check if any of the widgets in the current column or row have the correct id
@@ -70,16 +71,23 @@ impl LayoutMessageHandler {
 							return Some((widget, widget_path));
 						}
 
-						if let Widget::PopoverButton(popover) = &widget.widget {
-							stack.extend(popover.popover_layout.iter().enumerate().map(|(child, val)| ([widget_path.as_slice(), &[index, child]].concat(), val)));
+						if let Widget::PopoverButton(popover) = &*widget.widget {
+							stack.extend(
+								popover
+									.popover_layout
+									.0
+									.iter()
+									.enumerate()
+									.map(|(child, val)| ([widget_path.as_slice(), &[index, child]].concat(), val)),
+							);
 						}
 					}
 				}
 				// A section contains more LayoutGroups which we add to the stack.
 				LayoutGroup::Section { layout, .. } => {
-					stack.extend(layout.iter().enumerate().map(|(index, val)| ([widget_path.as_slice(), &[index]].concat(), val)));
+					stack.extend(layout.0.iter().enumerate().map(|(index, val)| ([widget_path.as_slice(), &[index]].concat(), val)));
 				}
-				LayoutGroup::Table { rows } => {
+				LayoutGroup::Table { rows, .. } => {
 					for (row_index, row) in rows.iter().enumerate() {
 						for (cell_index, cell) in row.iter().enumerate() {
 							// Return if this is the correct ID
@@ -89,10 +97,11 @@ impl LayoutMessageHandler {
 								return Some((cell, widget_path));
 							}
 
-							if let Widget::PopoverButton(popover) = &cell.widget {
+							if let Widget::PopoverButton(popover) = &*cell.widget {
 								stack.extend(
 									popover
 										.popover_layout
+										.0
 										.iter()
 										.enumerate()
 										.map(|(child, val)| ([widget_path.as_slice(), &[row_index, cell_index, child]].concat(), val)),
@@ -112,12 +121,12 @@ impl LayoutMessageHandler {
 			return;
 		};
 
-		let Some(widget_holder) = layout.iter_mut().find(|widget| widget.widget_id == widget_id) else {
+		let Some(widget_instance) = layout.iter_mut().find(|widget| widget.widget_id == widget_id) else {
 			warn!("handle_widget_callback was called referencing an invalid widget ID, although the layout target was valid. `widget_id: {widget_id}`, `layout_target: {layout_target:?}`",);
 			return;
 		};
 
-		match &mut widget_holder.widget {
+		match &mut *widget_instance.widget {
 			Widget::BreadcrumbTrailButtons(breadcrumb_trail_buttons) => {
 				let callback_message = match action {
 					WidgetValueAction::Commit => (breadcrumb_trail_buttons.on_commit.callback)(&()),
@@ -156,10 +165,10 @@ impl LayoutMessageHandler {
 							let blue = color.get("blue").and_then(|x| x.as_f64()).map(|x| x as f32);
 							let alpha = color.get("alpha").and_then(|x| x.as_f64()).map(|x| x as f32);
 
-							if let (Some(red), Some(green), Some(blue), Some(alpha)) = (red, green, blue, alpha) {
-								if let Some(color) = Color::from_rgbaf32(red, green, blue, alpha) {
-									return Some(color);
-								}
+							if let (Some(red), Some(green), Some(blue), Some(alpha)) = (red, green, blue, alpha)
+								&& let Some(color) = Color::from_rgbaf32(red, green, blue, alpha)
+							{
+								return Some(color);
 							}
 							None
 						};
@@ -253,44 +262,6 @@ impl LayoutMessageHandler {
 
 				responses.add(callback_message);
 			}
-			Widget::FontInput(font_input) => {
-				let callback_message = match action {
-					WidgetValueAction::Commit => (font_input.on_commit.callback)(&()),
-					WidgetValueAction::Update => {
-						let Some(update_value) = value.as_object() else {
-							error!("FontInput update was not of type: object");
-							return;
-						};
-						let Some(font_family_value) = update_value.get("fontFamily") else {
-							error!("FontInput update does not have a fontFamily");
-							return;
-						};
-						let Some(font_style_value) = update_value.get("fontStyle") else {
-							error!("FontInput update does not have a fontStyle");
-							return;
-						};
-
-						let Some(font_family) = font_family_value.as_str() else {
-							error!("FontInput update fontFamily was not of type: string");
-							return;
-						};
-						let Some(font_style) = font_style_value.as_str() else {
-							error!("FontInput update fontStyle was not of type: string");
-							return;
-						};
-
-						font_input.font_family = font_family.into();
-						font_input.font_style = font_style.into();
-
-						responses.add(PortfolioMessage::LoadFont {
-							font: Font::new(font_family.into(), font_style.into()),
-						});
-						(font_input.on_update.callback)(font_input)
-					}
-				};
-
-				responses.add(callback_message);
-			}
 			Widget::IconButton(icon_button) => {
 				let callback_message = match action {
 					WidgetValueAction::Commit => (icon_button.on_commit.callback)(&()),
@@ -308,26 +279,15 @@ impl LayoutMessageHandler {
 				responses.add(callback_message);
 			}
 			Widget::ImageLabel(_) => {}
+			Widget::ShortcutLabel(_) => {}
 			Widget::IconLabel(_) => {}
-			Widget::InvisibleStandinInput(invisible) => {
-				let callback_message = match action {
-					WidgetValueAction::Commit => (invisible.on_commit.callback)(&()),
-					WidgetValueAction::Update => (invisible.on_update.callback)(&()),
-				};
-
-				responses.add(callback_message);
-			}
 			Widget::NodeCatalog(node_type_input) => match action {
 				WidgetValueAction::Commit => {
 					let callback_message = (node_type_input.on_commit.callback)(&());
 					responses.add(callback_message);
 				}
 				WidgetValueAction::Update => {
-					let Some(value) = value.as_str().map(|s| s.to_string()) else {
-						error!("NodeCatalog update was not of type String");
-						return;
-					};
-					let callback_message = (node_type_input.on_update.callback)(&value);
+					let callback_message = (node_type_input.on_update.callback)(&value.into());
 					responses.add(callback_message);
 				}
 			},
@@ -411,7 +371,34 @@ impl LayoutMessageHandler {
 			Widget::TextButton(text_button) => {
 				let callback_message = match action {
 					WidgetValueAction::Commit => (text_button.on_commit.callback)(&()),
-					WidgetValueAction::Update => (text_button.on_update.callback)(text_button),
+					WidgetValueAction::Update => {
+						let Some(value_path) = value.as_array() else {
+							error!("TextButton update was not of type: array");
+							return;
+						};
+
+						// Process the text button click, since no menu is involved if we're given an empty array.
+						if value_path.is_empty() {
+							(text_button.on_update.callback)(text_button)
+						}
+						// Process the text button's menu list entry click, since we have a path to the value of the contained menu entry.
+						else {
+							let mut current_submenu = &text_button.menu_list_children;
+							let mut final_entry: Option<&MenuListEntry> = None;
+
+							// Loop through all menu entry value strings in the path until we reach the final entry (which we store).
+							// Otherwise we exit early if we can't traverse the full path.
+							for value in value_path.iter().filter_map(|v| v.as_str().map(|s| s.to_string())) {
+								let Some(next_entry) = current_submenu.iter().flatten().find(|e| e.value == value) else { return };
+
+								current_submenu = &next_entry.children;
+								final_entry = Some(next_entry);
+							}
+
+							// If we've reached here without returning early, we have a final entry in the path and we should now execute its callback.
+							(final_entry.unwrap().on_commit.callback)(&())
+						}
+					}
 				};
 
 				responses.add(callback_message);
@@ -440,40 +427,37 @@ impl LayoutMessageHandler {
 	fn diff_and_send_layout_to_frontend(
 		&mut self,
 		layout_target: LayoutTarget,
-		new_layout: Layout,
+		mut new_layout: Layout,
 		responses: &mut VecDeque<Message>,
 		action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>,
 	) {
-		match new_layout {
-			Layout::WidgetLayout(_) => {
-				let mut widget_diffs = Vec::new();
-				self.layouts[layout_target as usize].diff(new_layout, &mut Vec::new(), &mut widget_diffs);
+		// Step 1: Collect CheckboxId mappings from new layout
+		let mut checkbox_map = HashMap::new();
+		new_layout.collect_checkbox_ids(layout_target, &mut Vec::new(), &mut checkbox_map);
 
-				// Skip sending if no diff.
-				if widget_diffs.is_empty() {
-					return;
-				}
+		// Step 2: Replace all IDs in new layout with deterministic ones
+		new_layout.replace_widget_ids(layout_target, &mut Vec::new(), &checkbox_map);
 
-				self.send_diff(widget_diffs, layout_target, responses, action_input_mapping);
-			}
-			// We don't diff the menu bar layout yet.
-			Layout::MenuLayout(_) => {
-				// Skip update if the same
-				if self.layouts[layout_target as usize] == new_layout {
-					return;
-				}
+		// Step 3: Diff with deterministic IDs
+		let mut widget_diffs = Vec::new();
 
-				// Update the backend storage
-				self.layouts[layout_target as usize] = new_layout;
+		self.layouts[layout_target as usize].diff(new_layout, &mut Vec::new(), &mut widget_diffs);
 
-				// Update the UI
-				let Some(layout) = self.layouts[layout_target as usize].clone().as_menu_layout(action_input_mapping).map(|x| x.layout) else {
-					error!("Called unwrap_menu_layout on a widget layout");
-					return;
-				};
-				responses.add(FrontendMessage::UpdateMenuBarLayout { layout_target, layout });
-			}
+		// Skip sending if no diff
+		if widget_diffs.is_empty() {
+			return;
 		}
+
+		// On Mac we need the full MenuBar layout to construct the native menu
+		#[cfg(target_os = "macos")]
+		if layout_target == LayoutTarget::MenuBar {
+			widget_diffs = vec![WidgetDiff {
+				widget_path: Vec::new(),
+				new_value: DiffUpdate::Layout(self.layouts[LayoutTarget::MenuBar as usize].clone()),
+			}];
+		}
+
+		self.send_diff(widget_diffs, layout_target, responses, action_input_mapping);
 	}
 
 	/// Send a diff to the frontend based on the layout target.
@@ -481,24 +465,28 @@ impl LayoutMessageHandler {
 		diff.iter_mut().for_each(|diff| diff.new_value.apply_keyboard_shortcut(action_input_mapping));
 
 		let message = match layout_target {
-			LayoutTarget::MenuBar => unreachable!("Menu bar is not diffed"),
-			LayoutTarget::DialogButtons => FrontendMessage::UpdateDialogButtons { layout_target, diff },
-			LayoutTarget::DialogColumn1 => FrontendMessage::UpdateDialogColumn1 { layout_target, diff },
-			LayoutTarget::DialogColumn2 => FrontendMessage::UpdateDialogColumn2 { layout_target, diff },
-			LayoutTarget::DocumentBar => FrontendMessage::UpdateDocumentBarLayout { layout_target, diff },
-			LayoutTarget::DocumentMode => FrontendMessage::UpdateDocumentModeLayout { layout_target, diff },
-			LayoutTarget::DataPanel => FrontendMessage::UpdateDataPanelLayout { layout_target, diff },
-			LayoutTarget::LayersPanelControlLeftBar => FrontendMessage::UpdateLayersPanelControlBarLeftLayout { layout_target, diff },
-			LayoutTarget::LayersPanelControlRightBar => FrontendMessage::UpdateLayersPanelControlBarRightLayout { layout_target, diff },
-			LayoutTarget::LayersPanelBottomBar => FrontendMessage::UpdateLayersPanelBottomBarLayout { layout_target, diff },
-			LayoutTarget::PropertiesPanel => FrontendMessage::UpdatePropertiesPanelLayout { layout_target, diff },
-			LayoutTarget::NodeGraphControlBar => FrontendMessage::UpdateNodeGraphControlBarLayout { layout_target, diff },
-			LayoutTarget::ToolOptions => FrontendMessage::UpdateToolOptionsLayout { layout_target, diff },
-			LayoutTarget::ToolShelf => FrontendMessage::UpdateToolShelfLayout { layout_target, diff },
-			LayoutTarget::WorkingColors => FrontendMessage::UpdateWorkingColorsLayout { layout_target, diff },
+			LayoutTarget::DataPanel => FrontendMessage::UpdateDataPanelLayout { diff },
+			LayoutTarget::DialogButtons => FrontendMessage::UpdateDialogButtons { diff },
+			LayoutTarget::DialogColumn1 => FrontendMessage::UpdateDialogColumn1 { diff },
+			LayoutTarget::DialogColumn2 => FrontendMessage::UpdateDialogColumn2 { diff },
+			LayoutTarget::DocumentBar => FrontendMessage::UpdateDocumentBarLayout { diff },
+			LayoutTarget::LayersPanelBottomBar => FrontendMessage::UpdateLayersPanelBottomBarLayout { diff },
+			LayoutTarget::LayersPanelControlLeftBar => FrontendMessage::UpdateLayersPanelControlBarLeftLayout { diff },
+			LayoutTarget::LayersPanelControlRightBar => FrontendMessage::UpdateLayersPanelControlBarRightLayout { diff },
+			LayoutTarget::MenuBar => FrontendMessage::UpdateMenuBarLayout { diff },
+			LayoutTarget::NodeGraphControlBar => FrontendMessage::UpdateNodeGraphControlBarLayout { diff },
+			LayoutTarget::PropertiesPanel => FrontendMessage::UpdatePropertiesPanelLayout { diff },
+			LayoutTarget::StatusBarHints => FrontendMessage::UpdateStatusBarHintsLayout { diff },
+			LayoutTarget::StatusBarInfo => FrontendMessage::UpdateStatusBarInfoLayout { diff },
+			LayoutTarget::ToolOptions => FrontendMessage::UpdateToolOptionsLayout { diff },
+			LayoutTarget::ToolShelf => FrontendMessage::UpdateToolShelfLayout { diff },
+			LayoutTarget::WelcomeScreenButtons => FrontendMessage::UpdateWelcomeScreenButtonsLayout { diff },
+			LayoutTarget::WorkingColors => FrontendMessage::UpdateWorkingColorsLayout { diff },
 
-			LayoutTarget::LayoutTargetLength => panic!("`LayoutTargetLength` is not a valid Layout Target and is used for array indexing"),
+			// KEEP THIS ENUM LAST
+			LayoutTarget::_LayoutTargetLength => panic!("`_LayoutTargetLength` is not a valid `LayoutTarget` and is used for array indexing"),
 		};
+
 		responses.add(message);
 	}
 }

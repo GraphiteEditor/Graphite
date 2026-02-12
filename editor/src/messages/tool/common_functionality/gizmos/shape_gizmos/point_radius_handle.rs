@@ -2,6 +2,7 @@ use crate::consts::GIZMO_HIDE_THRESHOLD;
 use crate::consts::{COLOR_OVERLAY_RED, POINT_RADIUS_HANDLE_SNAP_THRESHOLD};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::message::Message;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::{overlays::utility_types::OverlayContext, utility_types::network_interface::InputConnector};
 use crate::messages::prelude::FrontendMessage;
@@ -142,7 +143,7 @@ impl PointRadiusHandle {
 		}
 	}
 
-	pub fn overlays(&self, selected_star_layer: Option<LayerNodeIdentifier>, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, overlay_context: &mut OverlayContext) {
+	pub fn overlays(&self, selected_star_layer: Option<LayerNodeIdentifier>, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext) {
 		match &self.handle_state {
 			PointRadiusHandleState::Inactive => {
 				let Some(layer) = selected_star_layer else { return };
@@ -187,7 +188,7 @@ impl PointRadiusHandle {
 
 				let viewport = document.metadata().transform_to_viewport(layer);
 				let center = viewport.transform_point2(DVec2::ZERO);
-				let viewport_diagonal = input.viewport_bounds.size().length();
+				let viewport_diagonal = overlay_context.viewport.size().into_dvec2().length();
 
 				// Star
 				if let Some((sides, radius1, radius2)) = extract_star_parameters(Some(layer), document) {
@@ -331,7 +332,8 @@ impl PointRadiusHandle {
 	fn calculate_snap_radii(document: &DocumentMessageHandler, layer: LayerNodeIdentifier, radius_index: usize) -> Vec<f64> {
 		let mut snap_radii = Vec::new();
 
-		let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Star") else {
+		let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::star::IDENTIFIER))
+		else {
 			return snap_radii;
 		};
 
@@ -449,7 +451,8 @@ impl PointRadiusHandle {
 	}
 
 	fn check_if_radius_flipped(&mut self, original_radius: f64, new_radius: f64, document: &DocumentMessageHandler, layer: LayerNodeIdentifier, radius_index: usize) {
-		let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Star") else {
+		let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::star::IDENTIFIER))
+		else {
 			return;
 		};
 

@@ -62,7 +62,7 @@ pub fn derive_buffer_struct_enum(crate_ident: &CrateIdent, item: &ItemEnum) -> R
 ///
 /// This is also largely copied from my (@firestar99) project and adjusted
 ///
-/// [`BufferStruct`]: `graphene_core_shaders::shaders::buffer_struct::BufferStruct`
+/// [`BufferStruct`]: `no_std_types::shaders::buffer_struct::BufferStruct`
 pub fn derive_buffer_struct_struct(crate_ident: &CrateIdent, item: &ItemStruct) -> Result<TokenStream> {
 	let gcore_shaders = crate_ident.gcore_shaders()?;
 	let mod_buffer_struct = quote!(#gcore_shaders::shaders::buffer_struct);
@@ -205,7 +205,7 @@ impl VisitMut for GenericsVisitor<'_> {
 	}
 
 	fn visit_path_segment_mut(&mut self, i: &mut PathSegment) {
-		if i.ident.to_string() == "Self" {
+		if i.ident == "Self" {
 			i.ident = self.self_ident.clone();
 		}
 		visit_mut::visit_path_segment_mut(self, i);

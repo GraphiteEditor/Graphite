@@ -1,10 +1,10 @@
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use super::utility_types::misc::{GroupFolderType, SnappingState};
 use crate::messages::input_mapper::utility_types::input_keyboard::Key;
 use crate::messages::portfolio::document::data_panel::DataPanelMessage;
-use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
-use crate::messages::portfolio::document::overlays::utility_types::OverlaysType;
+use crate::messages::portfolio::document::overlays::utility_types::{OverlayContext, OverlaysType};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GridSnapping};
 use crate::messages::portfolio::utility_types::PanelType;
@@ -122,6 +122,7 @@ pub enum DocumentMessage {
 	SavedDocument {
 		path: Option<PathBuf>,
 	},
+	MarkAsSaved,
 	SelectParentLayer,
 	SelectAllLayers,
 	SelectedLayersLower,
@@ -203,7 +204,7 @@ pub enum DocumentMessage {
 		first_element_source_id: HashMap<NodeId, Option<NodeId>>,
 	},
 	UpdateClickTargets {
-		click_targets: HashMap<NodeId, Vec<ClickTarget>>,
+		click_targets: HashMap<NodeId, Vec<Arc<ClickTarget>>>,
 	},
 	UpdateClipTargets {
 		clip_targets: HashSet<NodeId>,
