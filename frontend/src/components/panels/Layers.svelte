@@ -11,7 +11,7 @@
 		UpdateLayersPanelControlBarRightLayout,
 		UpdateLayersPanelBottomBarLayout,
 	} from "@graphite/messages";
-	import type { LayerPanelEntry, LayerStructureNode, Layout } from "@graphite/messages";
+	import type { LayerPanelEntry, LayerStructureEntry, Layout } from "@graphite/messages";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import type { TooltipState } from "@graphite/state-providers/tooltip";
 	import { pasteFile } from "@graphite/utility-functions/files";
@@ -455,7 +455,7 @@
 		dragInPanel = false;
 	}
 
-	function rebuildLayerHierarchy(layerStructure: LayerStructureNode[]) {
+	function rebuildLayerHierarchy(layerStructure: LayerStructureEntry[]) {
 		const layerWithNameBeingEdited = layers.find((layer: LayerListingInfo) => layer.editingName);
 		const layerIdWithNameBeingEdited = layerWithNameBeingEdited?.entry.id;
 
@@ -463,7 +463,7 @@
 		layers = [];
 
 		// Build the new layer hierarchy
-		const recurse = (children: LayerStructureNode[]) => {
+		const recurse = (children: LayerStructureEntry[]) => {
 			children.forEach((item, index) => {
 				const mapping = layerCache.get(String(item.layerId));
 				if (mapping) {

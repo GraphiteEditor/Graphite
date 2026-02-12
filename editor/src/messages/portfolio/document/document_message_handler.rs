@@ -3,7 +3,7 @@ use super::node_graph::utility_types::Transform;
 use super::utility_types::error::EditorError;
 use super::utility_types::misc::{GroupFolderType, SNAP_FUNCTIONS_FOR_BOUNDING_BOXES, SNAP_FUNCTIONS_FOR_PATHS, SnappingOptions, SnappingState};
 use super::utility_types::network_interface::{self, NodeNetworkInterface, TransactionStatus};
-use super::utility_types::nodes::{CollapsedLayers, LayerStructureNode, SelectedNodes};
+use super::utility_types::nodes::{CollapsedLayers, LayerStructureEntry, SelectedNodes};
 use crate::application::{GRAPHITE_GIT_COMMIT_HASH, generate_uuid};
 use crate::consts::{ASYMPTOTIC_EFFECT, COLOR_OVERLAY_GRAY, DEFAULT_DOCUMENT_NAME, FILE_EXTENSION, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ROTATE_SNAP_INTERVAL};
 use crate::messages::input_mapper::utility_types::macros::action_shortcut;
@@ -316,7 +316,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::ClearLayersPanel => {
 				// Send an empty layer list
 				if layers_panel_open {
-					let layer_structure = Self::default().layer_structure();
+					let layer_structure = Self::default().build_layer_structure(LayerNodeIdentifier::ROOT_PARENT);
 					responses.add(FrontendMessage::UpdateDocumentLayerStructure { layer_structure });
 				}
 
@@ -379,7 +379,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::DocumentStructureChanged => {
 				if layers_panel_open {
 					self.network_interface.load_structure();
-					let layer_structure = self.layer_structure();
+					let layer_structure = self.build_layer_structure(LayerNodeIdentifier::ROOT_PARENT);
 
 					self.update_layers_panel_control_bar_widgets(layers_panel_open, responses);
 					self.update_layers_panel_bottom_bar_widgets(layers_panel_open, responses);
@@ -1891,7 +1891,7 @@ impl DocumentMessageHandler {
 	}
 
 	/// Recursively builds the layer structure tree for a folder.
-	fn build_layer_structure(&self, folder: LayerNodeIdentifier) -> Vec<LayerStructureNode> {
+	fn build_layer_structure(&self, folder: LayerNodeIdentifier) -> Vec<LayerStructureEntry> {
 		folder
 			.children(self.metadata())
 			.map(|layer_node| {
@@ -1900,17 +1900,12 @@ impl DocumentMessageHandler {
 				} else {
 					Vec::new()
 				};
-				LayerStructureNode {
+				LayerStructureEntry {
 					layer_id: layer_node.to_node(),
 					children,
 				}
 			})
 			.collect()
-	}
-
-	/// Returns the layer structure as a list of tree nodes, starting from the root.
-	pub fn layer_structure(&self) -> Vec<LayerStructureNode> {
-		self.build_layer_structure(LayerNodeIdentifier::ROOT_PARENT)
 	}
 
 	pub fn undo_with_history(&mut self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) {

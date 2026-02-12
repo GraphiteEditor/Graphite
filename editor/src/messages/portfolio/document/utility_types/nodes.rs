@@ -4,13 +4,13 @@ use crate::messages::tool::common_functionality::graph_modification_utils;
 use glam::DVec2;
 use graph_craft::document::{NodeId, NodeNetwork};
 
-/// Represents a node in the layer tree hierarchy, sent to the frontend.
-/// Each node contains its layer ID and a list of its visible children.
+/// Represents an entry in the layer tree hierarchy, sent to the frontend.
+/// Each entry contains its layer ID and a list of its visible children.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq, specta::Type)]
-pub struct LayerStructureNode {
+pub struct LayerStructureEntry {
 	#[serde(rename = "layerId")]
 	pub layer_id: NodeId,
-	pub children: Vec<LayerStructureNode>,
+	pub children: Vec<LayerStructureEntry>,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq, specta::Type)]

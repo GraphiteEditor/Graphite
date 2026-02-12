@@ -796,13 +796,13 @@ export class TriggerSaveActiveDocument extends JsMessage {
 
 export class DocumentChanged extends JsMessage {}
 
-export type LayerStructureNode = {
+export type LayerStructureEntry = {
 	layerId: bigint;
-	children: LayerStructureNode[];
+	children: LayerStructureEntry[];
 };
 
 export class UpdateDocumentLayerStructure extends JsMessage {
-	readonly layerStructure!: LayerStructureNode[];
+	readonly layerStructure!: LayerStructureEntry[];
 }
 
 export type TextAlign = "Left" | "Center" | "Right" | "JustifyLeft";
