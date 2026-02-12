@@ -1,6 +1,7 @@
 use core::f64::consts::PI;
 use core::hash::{Hash, Hasher};
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
+use core_types::math::rect::Rect;
 use core_types::registry::types::{Angle, IntegerCount, Length, Multiplier, Percentage, PixelLength, PixelSize, Progression, SeedValue};
 use core_types::table::{Table, TableRow, TableRowMut};
 use core_types::transform::{Footprint, Transform};
@@ -28,6 +29,7 @@ use vector_types::vector::style::{Fill, Gradient, GradientStops, Stroke};
 use vector_types::vector::style::{PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{FillId, RegionId};
 use vector_types::vector::{PointId, SegmentDomain, SegmentId, StrokeId, VectorExt};
+const NORMALIZATION_EPSILON: f64 = 1e-9;
 
 /// Implemented for types that can be converted to an iterator of vector rows.
 /// Used for the fill and stroke node so they can be used on `Table<Graphic>` or `Table<Vector>`.
@@ -797,10 +799,7 @@ async fn box_warp(_: impl Ctx, content: Table<Vector>, #[expose] rectangle: Tabl
 		if let Some(bbox) = row.element.bounding_box_with_transform(*row.transform) {
 			group_bbox = Some(match group_bbox {
 				None => bbox,
-				Some(current) => [
-					DVec2::new(current[0].x.min(bbox[0].x), current[0].y.min(bbox[0].y)),
-					DVec2::new(current[1].x.max(bbox[1].x), current[1].y.max(bbox[1].y)),
-				],
+				Some(current) => Rect::combine_bounds(Rect(current), Rect(bbox)).0,
 			});
 		}
 	}
@@ -833,6 +832,7 @@ async fn box_warp(_: impl Ctx, content: Table<Vector>, #[expose] rectangle: Tabl
 					DVec2::new(source_bbox[0].x, source_bbox[1].y),
 				]
 			};
+
 			// Apply the warp
 			let mut result = vector.clone();
 
@@ -840,14 +840,17 @@ async fn box_warp(_: impl Ctx, content: Table<Vector>, #[expose] rectangle: Tabl
 			let source_size = group_size;
 
 			// Safe normalization size (prevents division by zero)
-			let eps = 1e-9;
-			let safe_size = DVec2::new(if source_size.x.abs() < eps { 1.0 } else { source_size.x }, if source_size.y.abs() < eps { 1.0 } else { source_size.y });
+			let safe_size = DVec2::new(
+				if source_size.x.abs() < NORMALIZATION_EPSILON { 1.0 } else { source_size.x },
+				if source_size.y.abs() < NORMALIZATION_EPSILON { 1.0 } else { source_size.y },
+			);
 
 			// Transform points
 			for (_, position) in result.point_domain.positions_mut() {
 				// Get the point in world space
 				let world_pos = row.transform.transform_point2(*position);
 
+				// Normalize coordinates within the source bounding box
 				let t = ((world_pos - source_bbox[0]) / safe_size).clamp(DVec2::ZERO, DVec2::ONE);
 
 				// Apply bilinear interpolation
@@ -857,10 +860,13 @@ async fn box_warp(_: impl Ctx, content: Table<Vector>, #[expose] rectangle: Tabl
 			// Transform handles in bezier curves
 			for (_, handles, _, _) in result.handles_mut() {
 				*handles = handles.apply_transformation(|pos| {
+					// Get the point in world space
 					let world_pos = row.transform.transform_point2(pos);
 
+					// Normalize coordinates within the source bounding box
 					let t = ((world_pos - source_bbox[0]) / safe_size).clamp(DVec2::ZERO, DVec2::ONE);
 
+					// Apply bilinear interpolation
 					bilinear_interpolate(t, &dst_corners)
 				});
 			}
