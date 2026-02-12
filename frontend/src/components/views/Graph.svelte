@@ -40,7 +40,7 @@
 	let editingNameText = "";
 
 	function exportsToEdgeTextInputWidth() {
-		let exportTextDivs = document.querySelectorAll(`[data-export-text-edge]`);
+		let exportTextDivs = window.document.querySelectorAll(`[data-export-text-edge]`);
 		let exportTextDiv = Array.from(exportTextDivs).find((div) => {
 			return div.getAttribute("data-index") === String(editingNameExportIndex);
 		});
@@ -50,7 +50,7 @@
 	}
 
 	function importsToEdgeTextInputWidth() {
-		let importTextDivs = document.querySelectorAll(`[data-import-text-edge]`);
+		let importTextDivs = window.document.querySelectorAll(`[data-import-text-edge]`);
 		let importTextDiv = Array.from(importTextDivs).find((div) => {
 			return div.getAttribute("data-index") === String(editingNameImportIndex);
 		});
