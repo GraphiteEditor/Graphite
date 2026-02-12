@@ -789,6 +789,7 @@ impl Fsm for ShapeToolFsmState {
 				) && clicked_on_line_endpoints(layer, document, input, tool_data)
 					&& !input.keyboard.key(Key::Control)
 				{
+					responses.add(DocumentMessage::StartTransaction);
 					return ShapeToolFsmState::DraggingLineEndpoints;
 				}
 
