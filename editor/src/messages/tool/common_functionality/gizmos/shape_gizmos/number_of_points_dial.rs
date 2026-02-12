@@ -1,19 +1,18 @@
 use crate::consts::{GIZMO_HIDE_THRESHOLD, NUMBER_OF_POINTS_DIAL_SPOKE_EXTENSION, NUMBER_OF_POINTS_DIAL_SPOKE_LENGTH, POINT_RADIUS_HANDLE_SEGMENT_THRESHOLD};
 use crate::messages::frontend::utility_types::MouseCursorIcon;
-use crate::messages::message::Message;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::prelude::Responses;
-use crate::messages::prelude::{DocumentMessageHandler, FrontendMessage, InputPreprocessorMessageHandler, NodeGraphMessage};
+use crate::messages::prelude::{FrontendMessage, NodeGraphMessage};
 use crate::messages::tool::common_functionality::graph_modification_utils;
-use crate::messages::tool::common_functionality::shape_editor::ShapeState;
-use crate::messages::tool::common_functionality::shapes::shape_utility::{extract_polygon_parameters, inside_polygon, inside_star, polygon_outline, polygon_vertex_position, star_outline};
+use crate::messages::tool::common_functionality::shapes::shape_utility::{
+	GizmoContext, extract_polygon_parameters, inside_polygon, inside_star, polygon_outline, polygon_vertex_position, star_outline,
+};
 use crate::messages::tool::common_functionality::shapes::shape_utility::{extract_star_parameters, star_vertex_position};
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
-use std::collections::VecDeque;
 use std::f64::consts::TAU;
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -49,7 +48,8 @@ impl NumberOfPointsDial {
 		self.handle_state == NumberOfPointsDialState::Dragging
 	}
 
-	pub fn handle_actions(&mut self, layer: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
+	pub fn handle_actions(&mut self, layer: LayerNodeIdentifier, mouse_position: DVec2, ctx: &mut GizmoContext) {
+		let GizmoContext { document, responses, .. } = ctx;
 		match &self.handle_state {
 			NumberOfPointsDialState::Inactive => {
 				// Star
@@ -97,7 +97,9 @@ impl NumberOfPointsDial {
 		}
 	}
 
-	pub fn overlays(&self, document: &DocumentMessageHandler, layer: Option<LayerNodeIdentifier>, shape_editor: &mut &mut ShapeState, mouse_position: DVec2, overlay_context: &mut OverlayContext) {
+	pub fn overlays(&self, layer: Option<LayerNodeIdentifier>, mouse_position: DVec2, ctx: &mut GizmoContext, overlay_context: &mut OverlayContext) {
+		let GizmoContext { document, shape_editor, .. } = ctx;
+
 		match &self.handle_state {
 			NumberOfPointsDialState::Inactive => {
 				let Some(layer) = layer else { return };
@@ -188,7 +190,9 @@ impl NumberOfPointsDial {
 		}
 	}
 
-	pub fn update_number_of_sides(&self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>, drag_start: DVec2) {
+	pub fn update_number_of_sides(&self, drag_start: DVec2, ctx: &mut GizmoContext) {
+		let GizmoContext { document, input, responses, .. } = ctx;
+
 		let delta = input.mouse.position - drag_start;
 		let sign = (input.mouse.position.x - drag_start.x).signum();
 		let net_delta = (delta.length() / 25.).round() * sign;

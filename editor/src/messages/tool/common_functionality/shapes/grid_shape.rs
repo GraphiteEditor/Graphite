@@ -7,8 +7,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate};
 use crate::messages::tool::common_functionality::gizmos::shape_gizmos::grid_rows_columns_gizmo::{RowColumnGizmo, RowColumnGizmoState};
 use crate::messages::tool::common_functionality::graph_modification_utils;
-use crate::messages::tool::common_functionality::shape_editor::ShapeState;
-use crate::messages::tool::common_functionality::shapes::shape_utility::ShapeGizmoHandler;
+use crate::messages::tool::common_functionality::shapes::shape_utility::{GizmoContext, ShapeGizmoHandler};
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::DAffine2;
 use graph_craft::document::NodeInput;
@@ -27,8 +26,8 @@ impl ShapeGizmoHandler for GridGizmoHandler {
 		self.row_column_gizmo.is_hovered()
 	}
 
-	fn handle_state(&mut self, selected_grid_layer: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler, _responses: &mut VecDeque<Message>) {
-		self.row_column_gizmo.handle_actions(selected_grid_layer, mouse_position, document);
+	fn handle_state(&mut self, selected_grid_layer: LayerNodeIdentifier, mouse_position: DVec2, ctx: &mut GizmoContext) {
+		self.row_column_gizmo.handle_actions(selected_grid_layer, ctx, mouse_position);
 	}
 
 	fn handle_click(&mut self) {
@@ -37,34 +36,19 @@ impl ShapeGizmoHandler for GridGizmoHandler {
 		}
 	}
 
-	fn handle_update(&mut self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+	fn handle_update(&mut self, drag_start: DVec2, ctx: &mut GizmoContext) {
 		if self.row_column_gizmo.is_dragging() {
-			self.row_column_gizmo.update(document, input, responses, drag_start);
+			self.row_column_gizmo.update(ctx, drag_start);
 		}
 	}
 
-	fn overlays(
-		&self,
-		document: &DocumentMessageHandler,
-		selected_grid_layer: Option<LayerNodeIdentifier>,
-		_input: &InputPreprocessorMessageHandler,
-		shape_editor: &mut &mut ShapeState,
-		mouse_position: DVec2,
-		overlay_context: &mut OverlayContext,
-	) {
-		self.row_column_gizmo.overlays(document, selected_grid_layer, shape_editor, mouse_position, overlay_context);
+	fn overlays(&self, selected_grid_layer: Option<LayerNodeIdentifier>, mouse_position: DVec2, ctx: &mut GizmoContext, overlay_context: &mut OverlayContext) {
+		self.row_column_gizmo.overlays(selected_grid_layer, ctx, mouse_position, overlay_context);
 	}
 
-	fn dragging_overlays(
-		&self,
-		document: &DocumentMessageHandler,
-		_input: &InputPreprocessorMessageHandler,
-		shape_editor: &mut &mut ShapeState,
-		mouse_position: DVec2,
-		overlay_context: &mut OverlayContext,
-	) {
+	fn dragging_overlays(&self, mouse_position: DVec2, ctx: &mut GizmoContext, overlay_context: &mut OverlayContext) {
 		if self.row_column_gizmo.is_dragging() {
-			self.row_column_gizmo.overlays(document, None, shape_editor, mouse_position, overlay_context);
+			self.row_column_gizmo.overlays(None, ctx, mouse_position, overlay_context);
 		}
 	}
 

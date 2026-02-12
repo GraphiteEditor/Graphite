@@ -4,9 +4,8 @@ use crate::messages::portfolio::document::overlays::utility_functions::text_widt
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
-use crate::messages::prelude::DocumentMessageHandler;
 use crate::messages::tool::common_functionality::graph_modification_utils;
-use crate::messages::tool::common_functionality::shapes::shape_utility::{arc_end_points, calculate_arc_text_transform, extract_arc_parameters, format_rounded};
+use crate::messages::tool::common_functionality::shapes::shape_utility::{GizmoContext, arc_end_points, calculate_arc_text_transform, extract_arc_parameters, format_rounded};
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::DVec2;
 use graph_craft::document::value::TaggedValue;
@@ -57,7 +56,9 @@ impl SweepAngleGizmo {
 		self.handle_state == SweepAngleGizmoState::Dragging || self.handle_state == SweepAngleGizmoState::Snapped
 	}
 
-	pub fn handle_actions(&mut self, layer: LayerNodeIdentifier, document: &DocumentMessageHandler, mouse_position: DVec2) {
+	pub fn handle_actions(&mut self, layer: LayerNodeIdentifier, mouse_position: DVec2, ctx: &mut GizmoContext) {
+		let GizmoContext { document, .. } = ctx;
+
 		if self.handle_state == SweepAngleGizmoState::Inactive {
 			let Some((start, end)) = arc_end_points(Some(layer), document) else { return };
 			let Some((_, start_angle, sweep_angle, _)) = extract_arc_parameters(Some(layer), document) else {
@@ -93,14 +94,9 @@ impl SweepAngleGizmo {
 		}
 	}
 
-	pub fn overlays(
-		&self,
-		selected_arc_layer: Option<LayerNodeIdentifier>,
-		document: &DocumentMessageHandler,
-		_input: &InputPreprocessorMessageHandler,
-		_mouse_position: DVec2,
-		overlay_context: &mut OverlayContext,
-	) {
+	pub fn overlays(&self, selected_arc_layer: Option<LayerNodeIdentifier>, _mouse_position: DVec2, ctx: &mut GizmoContext, overlay_context: &mut OverlayContext) {
+		let GizmoContext { document, .. } = ctx;
+
 		let tilt_offset = document.document_ptz.unmodified_tilt();
 
 		match self.handle_state {
@@ -188,7 +184,9 @@ impl SweepAngleGizmo {
 		overlay_context.arc_sweep_angle(offset_angle, angle, final_point, bold_radius, center, &text, transform);
 	}
 
-	pub fn update_arc(&mut self, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+	pub fn update_arc(&mut self, ctx: &mut GizmoContext) {
+		let GizmoContext { document, input, responses, .. } = ctx;
+
 		let Some(layer) = self.layer else { return };
 		let Some((_, current_start_angle, current_sweep_angle, _)) = extract_arc_parameters(Some(layer), document) else {
 			return;

@@ -2,12 +2,13 @@ use super::shape_utility::ShapeToolModifierKey;
 use super::*;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_proto_node_type;
+use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate};
 use crate::messages::tool::common_functionality::gizmos::shape_gizmos::circle_arc_radius_handle::{RadiusHandle, RadiusHandleState};
 use crate::messages::tool::common_functionality::gizmos::shape_gizmos::sweep_angle_gizmo::{SweepAngleGizmo, SweepAngleGizmoState};
 use crate::messages::tool::common_functionality::graph_modification_utils;
-use crate::messages::tool::common_functionality::shapes::shape_utility::{ShapeGizmoHandler, arc_outline};
+use crate::messages::tool::common_functionality::shapes::shape_utility::{GizmoContext, ShapeGizmoHandler, arc_outline};
 use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::DAffine2;
 use graph_craft::document::NodeInput;
@@ -28,9 +29,9 @@ impl ArcGizmoHandler {
 }
 
 impl ShapeGizmoHandler for ArcGizmoHandler {
-	fn handle_state(&mut self, selected_shape_layer: LayerNodeIdentifier, mouse_position: DVec2, document: &DocumentMessageHandler, responses: &mut VecDeque<Message>) {
-		self.sweep_angle_gizmo.handle_actions(selected_shape_layer, document, mouse_position);
-		self.arc_radius_handle.handle_actions(selected_shape_layer, document, mouse_position, responses);
+	fn handle_state(&mut self, selected_shape_layer: LayerNodeIdentifier, mouse_position: DVec2, ctx: &mut GizmoContext) {
+		self.sweep_angle_gizmo.handle_actions(selected_shape_layer, mouse_position, ctx);
+		self.arc_radius_handle.handle_actions(selected_shape_layer, mouse_position, ctx);
 	}
 
 	fn is_any_gizmo_hovered(&self) -> bool {
@@ -54,61 +55,46 @@ impl ShapeGizmoHandler for ArcGizmoHandler {
 		}
 	}
 
-	fn handle_update(&mut self, drag_start: DVec2, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
+	fn handle_update(&mut self, drag_start: DVec2, ctx: &mut GizmoContext) {
 		if self.sweep_angle_gizmo.is_dragging_or_snapped() {
-			self.sweep_angle_gizmo.update_arc(document, input, responses);
+			self.sweep_angle_gizmo.update_arc(ctx);
 		}
 
 		if self.arc_radius_handle.is_dragging() {
-			self.arc_radius_handle.update_inner_radius(document, input, responses, drag_start);
+			self.arc_radius_handle.update_inner_radius(drag_start, ctx);
 		}
 	}
 
-	fn dragging_overlays(
-		&self,
-		document: &DocumentMessageHandler,
-		input: &InputPreprocessorMessageHandler,
-		_shape_editor: &mut &mut crate::messages::tool::common_functionality::shape_editor::ShapeState,
-		mouse_position: DVec2,
-		overlay_context: &mut crate::messages::portfolio::document::overlays::utility_types::OverlayContext,
-	) {
+	fn dragging_overlays(&self, mouse_position: DVec2, ctx: &mut GizmoContext, overlay_context: &mut OverlayContext) {
 		if self.sweep_angle_gizmo.is_dragging_or_snapped() {
-			self.sweep_angle_gizmo.overlays(None, document, input, mouse_position, overlay_context);
-			arc_outline(self.sweep_angle_gizmo.layer, document, overlay_context);
+			self.sweep_angle_gizmo.overlays(None, mouse_position, ctx, overlay_context);
+			arc_outline(self.sweep_angle_gizmo.layer, ctx.document, overlay_context);
 		}
 
 		if self.arc_radius_handle.is_dragging() {
-			self.sweep_angle_gizmo.overlays(self.arc_radius_handle.layer, document, input, mouse_position, overlay_context);
-			self.arc_radius_handle.overlays(document, overlay_context);
+			self.sweep_angle_gizmo.overlays(self.arc_radius_handle.layer, mouse_position, ctx, overlay_context);
+			self.arc_radius_handle.overlays(ctx, overlay_context);
 		}
 	}
 
-	fn overlays(
-		&self,
-		document: &DocumentMessageHandler,
-		selected_shape_layer: Option<LayerNodeIdentifier>,
-		input: &InputPreprocessorMessageHandler,
-		_shape_editor: &mut &mut crate::messages::tool::common_functionality::shape_editor::ShapeState,
-		mouse_position: DVec2,
-		overlay_context: &mut crate::messages::portfolio::document::overlays::utility_types::OverlayContext,
-	) {
+	fn overlays(&self, selected_shape_layer: Option<LayerNodeIdentifier>, mouse_position: DVec2, ctx: &mut GizmoContext, overlay_context: &mut OverlayContext) {
 		// If hovering over both the gizmos give priority to sweep angle gizmo
 		if self.sweep_angle_gizmo.hovered() && self.arc_radius_handle.hovered() {
-			self.sweep_angle_gizmo.overlays(selected_shape_layer, document, input, mouse_position, overlay_context);
+			self.sweep_angle_gizmo.overlays(selected_shape_layer, mouse_position, ctx, overlay_context);
 			return;
 		}
 
 		if self.arc_radius_handle.hovered() {
 			let layer = self.arc_radius_handle.layer;
 
-			self.arc_radius_handle.overlays(document, overlay_context);
-			self.sweep_angle_gizmo.overlays(layer, document, input, mouse_position, overlay_context);
+			self.arc_radius_handle.overlays(ctx, overlay_context);
+			self.sweep_angle_gizmo.overlays(layer, mouse_position, ctx, overlay_context);
 		}
 
-		self.sweep_angle_gizmo.overlays(selected_shape_layer, document, input, mouse_position, overlay_context);
-		self.arc_radius_handle.overlays(document, overlay_context);
+		self.sweep_angle_gizmo.overlays(selected_shape_layer, mouse_position, ctx, overlay_context);
+		self.arc_radius_handle.overlays(ctx, overlay_context);
 
-		arc_outline(selected_shape_layer.or(self.sweep_angle_gizmo.layer), document, overlay_context);
+		arc_outline(selected_shape_layer.or(self.sweep_angle_gizmo.layer), ctx.document, overlay_context);
 	}
 
 	fn mouse_cursor_icon(&self) -> Option<MouseCursorIcon> {

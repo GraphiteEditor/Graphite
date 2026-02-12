@@ -5,6 +5,7 @@ pub mod gizmos;
 pub mod graph_modification_utils;
 pub mod layer_origin_cross;
 pub mod measure;
+pub mod operations;
 pub mod pivot;
 pub mod resize;
 pub mod shape_editor;
