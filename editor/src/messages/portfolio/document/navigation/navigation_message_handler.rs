@@ -85,6 +85,13 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				};
 				self.navigation_operation = NavigationOperation::Pan { pan_original_for_abort: ptz.pan };
 			}
+			NavigationMessage::ListenCanvasPan => {
+				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Grab });
+			}
+			NavigationMessage::StopListenCanvasPan => {
+				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
+				responses.add(NavigationMessage::EndCanvasPTZ { abort_transform: (false), panning: false });
+			}
 			NavigationMessage::BeginCanvasTilt { was_dispatched_from_menu } => {
 				let Some(ptz) = get_ptz(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
 					return;
@@ -291,7 +298,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				responses.add(MenuBarMessage::SendLayout);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
-			NavigationMessage::EndCanvasPTZ { abort_transform } => {
+			NavigationMessage::EndCanvasPTZ { abort_transform, panning } => {
 				let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
 					log::error!("Could not get mutable PTZ in EndCanvasPTZ");
 					return;
@@ -326,7 +333,11 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 
 				// Send the final messages to close out the operation
 				responses.add(EventMessage::CanvasTransformed);
-				responses.add(ToolMessage::UpdateCursor);
+				if panning {
+					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Grab });
+				} else {
+					responses.add(ToolMessage::UpdateCursor);
+				}
 				responses.add(ToolMessage::UpdateHints);
 				responses.add(NavigateToolMessage::End);
 			}
@@ -334,7 +345,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				self.finish_operation_with_click = false;
 
 				let abort_transform = commit_key == Key::MouseRight;
-				responses.add(NavigationMessage::EndCanvasPTZ { abort_transform });
+				responses.add(NavigationMessage::EndCanvasPTZ { abort_transform, panning: false });
 			}
 			NavigationMessage::FitViewportToBounds {
 				bounds: [pos1, pos2],
@@ -498,6 +509,8 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 			CanvasZoomMouseWheel,
 			CanvasFlip,
 			FitViewportToSelection,
+			ListenCanvasPan,
+			StopListenCanvasPan,
 		);
 
 		if self.navigation_operation != NavigationOperation::None {
