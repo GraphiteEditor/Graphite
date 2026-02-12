@@ -383,7 +383,7 @@ pub async fn render_output_cache<'a: 'n>(
 
 	// Fall back to direct render for non-Vello or zero-size viewports
 	let physical_resolution = footprint.resolution;
-	if !matches!(render_params.render_output_type, RenderOutputTypeRequest::Vello) || physical_resolution.x == 0 || physical_resolution.y == 0 {
+	if !matches!(render_params.render_output_type, RenderOutputTypeRequest::Raster) || physical_resolution.x == 0 || physical_resolution.y == 0 {
 		let context = OwnedContextImpl::empty().with_footprint(*footprint).with_vararg(Box::new(render_params.clone()));
 		return data.eval(context.into_context()).await;
 	}

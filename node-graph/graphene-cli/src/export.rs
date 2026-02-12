@@ -1,6 +1,6 @@
 use graph_craft::document::value::{RenderOutputType, TaggedValue, UVec2};
 use graph_craft::graphene_compiler::Executor;
-use graphene_std::application_io::{ExportFormat, RenderConfig};
+use graphene_std::application_io::{OutputType, RenderConfig};
 use graphene_std::core_types::ops::Convert;
 use graphene_std::core_types::transform::Footprint;
 use graphene_std::raster_types::{CPU, GPU, Raster};
@@ -36,14 +36,14 @@ pub async fn export_document(
 ) -> Result<(), Box<dyn Error>> {
 	// Determine export format based on file type
 	let export_format = match file_type {
-		FileType::Svg => ExportFormat::Svg,
-		_ => ExportFormat::Raster,
+		FileType::Svg => OutputType::Svg,
+		_ => OutputType::Raster,
 	};
 
 	// Create render config with export settings
 	let mut render_config = RenderConfig {
 		scale,
-		export_format,
+		output_type: export_format,
 		for_export: true,
 		..Default::default()
 	};

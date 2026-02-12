@@ -154,7 +154,7 @@ impl NodeGraphExecutor {
 			scale: viewport_scale,
 			time,
 			pointer,
-			export_format: graphene_std::application_io::ExportFormat::Raster,
+			output_type: graphene_std::application_io::OutputType::Raster,
 			render_mode: document.render_mode,
 			hide_artboards: false,
 			for_export: false,
@@ -205,7 +205,7 @@ impl NodeGraphExecutor {
 			scale: 1.,
 			time,
 			pointer,
-			export_format: graphene_std::application_io::ExportFormat::Raster,
+			output_type: graphene_std::application_io::OutputType::Raster,
 			render_mode: graphene_std::vector::style::RenderMode::Normal,
 			hide_artboards: false,
 			for_export: false,
@@ -232,9 +232,9 @@ impl NodeGraphExecutor {
 		let network = document.network_interface.document_network().clone();
 
 		let export_format = if export_config.file_type == FileType::Svg {
-			graphene_std::application_io::ExportFormat::Svg
+			graphene_std::application_io::OutputType::Svg
 		} else {
-			graphene_std::application_io::ExportFormat::Raster
+			graphene_std::application_io::OutputType::Raster
 		};
 
 		// Calculate the bounding box of the region to be exported
@@ -256,8 +256,8 @@ impl NodeGraphExecutor {
 			scale: export_config.scale_factor,
 			time: Default::default(),
 			pointer: DVec2::ZERO,
-			export_format,
-			render_mode: document.render_mode,
+			output_type: export_format,
+			render_mode: graphene_std::vector::style::RenderMode::Normal,
 			hide_artboards: export_config.transparent_background,
 			for_export: true,
 			for_eyedropper: false,

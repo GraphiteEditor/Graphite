@@ -232,37 +232,6 @@ impl PreferencesDialogMessageHandler {
 				graph_wire_style,
 			];
 
-			let vello_description = "Auto uses Vello renderer when GPU is available.";
-			let vello_renderer_label = vec![
-				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-				TextLabel::new("Vello Renderer")
-					.tooltip_label("Vello Renderer")
-					.tooltip_description(vello_description)
-					.widget_instance(),
-			];
-			let vello_preference = RadioInput::new(vec![
-				RadioEntryData::new("Auto").label("Auto").on_update(move |_| {
-					PreferencesMessage::VelloPreference {
-						preference: graph_craft::wasm_application_io::VelloPreference::Auto,
-					}
-					.into()
-				}),
-				RadioEntryData::new("Disabled").label("Disabled").on_update(move |_| {
-					PreferencesMessage::VelloPreference {
-						preference: graph_craft::wasm_application_io::VelloPreference::Disabled,
-					}
-					.into()
-				}),
-			])
-			.selected_index(Some(preferences.vello_preference as u32))
-			.widget_instance();
-			let vello_preference = vec![
-				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-				vello_preference,
-			];
-
 			let checkbox_id = CheckboxId::new();
 			let brush_tool_description = "
 			Enable the Brush tool to support basic raster-based layer painting.\n\
@@ -296,7 +265,6 @@ impl PreferencesDialogMessageHandler {
 				TextLabel::new("Max Render Region Size")
 					.tooltip_label("Max Render Region Size")
 					.tooltip_description(max_region_size_description)
-					.disabled(!preferences.use_vello())
 					.widget_instance(),
 			];
 			let max_region_size = vec![
@@ -311,7 +279,6 @@ impl PreferencesDialogMessageHandler {
 					.max(16777216.)
 					.increment_step(262144.)
 					.unit(" pixels")
-					.disabled(!preferences.use_vello())
 					.on_update(|number_input: &NumberInput| {
 						let size = number_input.value.unwrap_or(2073600.) as u32;
 						PreferencesMessage::MaxRenderRegionSize { size }.into()
@@ -319,16 +286,7 @@ impl PreferencesDialogMessageHandler {
 					.widget_instance(),
 			];
 
-			rows.extend_from_slice(&[
-				header,
-				node_graph_wires_label,
-				graph_wire_style,
-				vello_renderer_label,
-				vello_preference,
-				brush_tool,
-				max_region_size_label,
-				max_region_size,
-			]);
+			rows.extend_from_slice(&[header, node_graph_wires_label, graph_wire_style, brush_tool, max_region_size_label, max_region_size]);
 		}
 
 		Layout(rows.into_iter().map(|r| LayoutGroup::Row { widgets: r }).collect())

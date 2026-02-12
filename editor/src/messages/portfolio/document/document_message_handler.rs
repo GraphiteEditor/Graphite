@@ -2570,11 +2570,10 @@ impl DocumentMessageHandler {
 				// 	.icon("RenderModePixels")
 				// 	.tooltip_label("Render Mode: Pixel Preview")
 				// 	.on_update(|_| todo!()),
-				// TODO: See issue #1845
-				// RadioEntryData::new("SvgPreview")
-				// 	.icon("RenderModeSvg")
-				// 	.tooltip_label("Render Mode: SVG Preview")
-				// 	.on_update(|_| todo!()),
+				RadioEntryData::new("SvgPreview")
+					.icon("RenderModeSvg")
+					.tooltip_label("Render Mode: SVG Preview")
+					.on_update(|_| DocumentMessage::SetRenderMode { render_mode: RenderMode::SvgPreview }.into()),
 			])
 			.selected_index(Some(self.render_mode as u32))
 			.narrow(true)

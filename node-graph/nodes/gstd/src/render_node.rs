@@ -5,7 +5,7 @@ use core_types::{Color, Context, Ctx, ExtractFootprint, OwnedContextImpl, WasmNo
 use graph_craft::document::value::RenderOutput;
 pub use graph_craft::document::value::RenderOutputType;
 pub use graph_craft::wasm_application_io::*;
-use graphene_application_io::{ApplicationIo, ExportFormat, ImageTexture, RenderConfig};
+use graphene_application_io::{ApplicationIo, ImageTexture, OutputType, RenderConfig};
 use graphic_types::Artboard;
 use graphic_types::Graphic;
 use graphic_types::Vector;
@@ -64,7 +64,7 @@ async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + 
 	let contains_artboard = data.contains_artboard();
 
 	match &render_params.render_output_type {
-		RenderOutputTypeRequest::Vello => {
+		RenderOutputTypeRequest::Raster => {
 			let mut scene = vello::Scene::new();
 
 			let mut context = wgpu_executor::RenderContext::default();
@@ -98,9 +98,9 @@ async fn create_context<'a: 'n>(
 ) -> RenderOutput {
 	let footprint = render_config.viewport;
 
-	let render_output_type = match render_config.export_format {
-		ExportFormat::Svg => RenderOutputTypeRequest::Svg,
-		ExportFormat::Raster => RenderOutputTypeRequest::Vello,
+	let render_output_type = match render_config.output_type {
+		OutputType::Svg => RenderOutputTypeRequest::Svg,
+		OutputType::Raster => RenderOutputTypeRequest::Raster,
 	};
 
 	let render_params = RenderParams {
@@ -169,7 +169,7 @@ async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, edito
 				image_data: rendering.image_data.into_iter().map(|(image, id)| (id, image)).collect(),
 			}
 		}
-		(RenderOutputTypeRequest::Vello, RenderIntermediateType::Vello(vello_data)) => {
+		(RenderOutputTypeRequest::Raster, RenderIntermediateType::Vello(vello_data)) => {
 			let Some(exec) = editor_api.application_io.as_ref().unwrap().gpu_executor() else {
 				unreachable!("Attempted to render with Vello when no GPU executor is available");
 			};

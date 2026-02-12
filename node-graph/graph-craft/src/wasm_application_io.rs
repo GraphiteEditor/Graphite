@@ -332,27 +332,13 @@ pub type WasmSurfaceHandle = SurfaceHandle<wgpu_executor::Window>;
 #[cfg(feature = "wgpu")]
 pub type WasmSurfaceHandleFrame = graphene_application_io::SurfaceHandleFrame<wgpu_executor::Window>;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, specta::Type, serde::Serialize, serde::Deserialize)]
-pub enum VelloPreference {
-	Auto,
-	Disabled,
-}
-
 #[derive(Clone, Debug, PartialEq, Hash, specta::Type, serde::Serialize, serde::Deserialize)]
 pub struct EditorPreferences {
-	pub vello_preference: VelloPreference,
 	/// Maximum render region size in pixels (area = width * height). Default: 2,073,600 (1080p area)
 	pub max_render_region_size: u32,
 }
 
 impl graphene_application_io::GetEditorPreferences for EditorPreferences {
-	fn use_vello(&self) -> bool {
-		match self.vello_preference {
-			VelloPreference::Auto => wgpu_available().unwrap_or(false),
-			VelloPreference::Disabled => false,
-		}
-	}
-
 	fn max_render_region_size(&self) -> u32 {
 		self.max_render_region_size
 	}
@@ -360,10 +346,7 @@ impl graphene_application_io::GetEditorPreferences for EditorPreferences {
 
 impl Default for EditorPreferences {
 	fn default() -> Self {
-		Self {
-			vello_preference: VelloPreference::Auto,
-			max_render_region_size: 1920 * 1080,
-		}
+		Self { max_render_region_size: 1920 * 1080 }
 	}
 }
 

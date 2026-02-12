@@ -217,12 +217,11 @@ impl<T: NodeGraphUpdateSender> NodeGraphUpdateSender for std::sync::Mutex<T> {
 }
 
 pub trait GetEditorPreferences {
-	fn use_vello(&self) -> bool;
 	fn max_render_region_size(&self) -> u32;
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
-pub enum ExportFormat {
+pub enum OutputType {
 	#[default]
 	Svg,
 	Raster,
@@ -238,7 +237,7 @@ pub struct TimingInformation {
 pub struct RenderConfig {
 	pub viewport: Footprint,
 	pub scale: f64,
-	pub export_format: ExportFormat,
+	pub output_type: OutputType,
 	pub time: TimingInformation,
 	pub pointer: DVec2,
 	#[serde(alias = "view_mode")]
@@ -259,10 +258,6 @@ impl NodeGraphUpdateSender for Logger {
 struct DummyPreferences;
 
 impl GetEditorPreferences for DummyPreferences {
-	fn use_vello(&self) -> bool {
-		false
-	}
-
 	fn max_render_region_size(&self) -> u32 {
 		1920 * 1080 // 2,073,600 pixels (1080p area)
 	}
