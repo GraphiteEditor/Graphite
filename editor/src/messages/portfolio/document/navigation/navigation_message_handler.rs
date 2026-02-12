@@ -88,10 +88,6 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 			NavigationMessage::ListenCanvasPan => {
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Grab });
 			}
-			NavigationMessage::StopListenCanvasPan => {
-				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
-				responses.add(NavigationMessage::EndCanvasPTZ { abort_transform: (false), panning: false });
-			}
 			NavigationMessage::BeginCanvasTilt { was_dispatched_from_menu } => {
 				let Some(ptz) = get_ptz(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
 					return;
@@ -510,7 +506,6 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 			CanvasFlip,
 			FitViewportToSelection,
 			ListenCanvasPan,
-			StopListenCanvasPan,
 		);
 
 		if self.navigation_operation != NavigationOperation::None {

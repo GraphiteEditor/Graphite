@@ -8,7 +8,6 @@ pub enum NavigationMessage {
 	// Messages
 	BeginCanvasPan,
 	ListenCanvasPan,
-	StopListenCanvasPan,
 	BeginCanvasTilt { was_dispatched_from_menu: bool },
 	BeginCanvasZoom,
 	CanvasPan { delta: DVec2 },
