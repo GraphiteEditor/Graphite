@@ -348,7 +348,7 @@ impl<PointId: Identifier> Subpath<PointId> {
 		let mut prev_in_handle = None;
 		let theta_end = turns * std::f64::consts::TAU + start_angle;
 
-		let b = calculate_b(a, turns, outer_radius, spiral_type);
+		let b = calculate_growth_factor(a, turns, outer_radius, spiral_type);
 
 		let mut theta = start_angle;
 		while theta < theta_end {
@@ -381,7 +381,7 @@ impl<PointId: Identifier> Subpath<PointId> {
 	}
 }
 
-pub fn calculate_b(a: f64, turns: f64, outer_radius: f64, spiral_type: SpiralType) -> f64 {
+pub fn calculate_growth_factor(a: f64, turns: f64, outer_radius: f64, spiral_type: SpiralType) -> f64 {
 	match spiral_type {
 		SpiralType::Archimedean => {
 			let total_theta = turns * TAU;

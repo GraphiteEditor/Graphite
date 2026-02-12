@@ -13,6 +13,7 @@ use graphene_std::vector::click_target::{ClickTarget, ClickTargetType};
 use graphene_std::vector::{PointId, Vector};
 use std::collections::{HashMap, HashSet};
 use std::num::NonZeroU64;
+use std::sync::Arc;
 
 // ================
 // DocumentMetadata
@@ -26,7 +27,7 @@ pub struct DocumentMetadata {
 	pub local_transforms: HashMap<NodeId, DAffine2>,
 	pub first_element_source_ids: HashMap<NodeId, Option<NodeId>>,
 	pub structure: HashMap<LayerNodeIdentifier, NodeRelations>,
-	pub click_targets: HashMap<LayerNodeIdentifier, Vec<ClickTarget>>,
+	pub click_targets: HashMap<LayerNodeIdentifier, Vec<Arc<ClickTarget>>>,
 	pub clip_targets: HashSet<NodeId>,
 	pub vector_modify: HashMap<NodeId, Vector>,
 	/// Transform from document space to viewport space.
@@ -46,8 +47,8 @@ impl DocumentMetadata {
 		self.structure.contains_key(&layer)
 	}
 
-	pub fn click_targets(&self, layer: LayerNodeIdentifier) -> Option<&Vec<ClickTarget>> {
-		self.click_targets.get(&layer)
+	pub fn click_targets(&self, layer: LayerNodeIdentifier) -> Option<&[Arc<ClickTarget>]> {
+		self.click_targets.get(&layer).map(|x| x.as_slice())
 	}
 
 	/// Access the [`NodeRelations`] of a layer.
@@ -206,7 +207,7 @@ impl DocumentMetadata {
 	}
 
 	pub fn layer_outline(&self, layer: LayerNodeIdentifier) -> impl Iterator<Item = &subpath::Subpath<PointId>> {
-		static EMPTY: Vec<ClickTarget> = Vec::new();
+		static EMPTY: Vec<Arc<ClickTarget>> = Vec::new();
 		let click_targets = self.click_targets.get(&layer).unwrap_or(&EMPTY);
 		click_targets.iter().filter_map(|target| match target.target_type() {
 			ClickTargetType::Subpath(subpath) => Some(subpath),
@@ -215,7 +216,7 @@ impl DocumentMetadata {
 	}
 
 	pub fn layer_with_free_points_outline(&self, layer: LayerNodeIdentifier) -> impl Iterator<Item = &ClickTargetType> {
-		static EMPTY: Vec<ClickTarget> = Vec::new();
+		static EMPTY: Vec<Arc<ClickTarget>> = Vec::new();
 		let click_targets = self.click_targets.get(&layer).unwrap_or(&EMPTY);
 		click_targets.iter().map(|target| target.target_type())
 	}

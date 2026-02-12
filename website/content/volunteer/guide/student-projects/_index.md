@@ -21,7 +21,7 @@ Be sure to familiarize yourself with our [AI contribution policy](../starting-a-
 
 GSoC is a program offering students a [stipend](https://developers.google.com/open-source/gsoc/help/student-stipends) for successful completion of an internship-style experience with an open source organization. Read about [how it works](https://summerofcode.withgoogle.com/how-it-works/).
 
-Graphite participated in [GSoC 2024](https://summerofcode.withgoogle.com/programs/2024/organizations/graphite) and [2025](https://summerofcode.withgoogle.com/programs/2025/organizations/graphite) and we anticipate doing so again [in 2026](https://developers.google.com/open-source/gsoc/timeline) if our organization is accepted back. We accept year-round contributions; getting involved early is a great way to have a head start and stand out in your application in the upcoming program.
+Graphite participated in GSoC [2024](https://summerofcode.withgoogle.com/programs/2024/organizations/graphite) and [2025](https://summerofcode.withgoogle.com/programs/2025/organizations/graphite) and we anticipate doing so again in [2026](https://developers.google.com/open-source/gsoc/timeline) if our organization is accepted back. We accept year-round contributions; getting involved early is a great way to have a head start and stand out in your application in the upcoming program.
 
 ### Writing a proposal
 
@@ -43,54 +43,75 @@ When it comes to writing the proposal, which you will submit to the GSoC applica
 
 ## Project idea list
 
-### Compilers, graphics, and theory
+Projects listed below vary considerably in their required skills and technical background. Some are very research-heavy and are only suited for students with years of self-motivated learning and project development in adjacent topics. Others have a more general focus and are approachable to a wider range of students. Please pay close attention to the "Needed Skills" and "Difficulty" indicators so you don't waste your opportunity applying to a project we don't think you're a good fit for.
 
-These projects are more advanced but are highest priority for Graphite's development. We will be aiming to find standout candidates for at least one of these projects this year. If your background suits the projects listed in this section, you are likely to have better odds applying to these compared to the more general projects further below.
+<!--
+- System for nodes displaying gizmos to update their parameters
+- Category of tools for repeating, mirroring, patterning, and manipulating objects ("recipes")
+- Text improvements (formatting spans, flows between text areas, text-on-path)
+- Feature-complete SVG import and rendering support
+-->
 
-#### Graphene language/compiler development
+### Graphene language bidirectional type inference
 
-*This is a newly added project pending a full written overview. Come ask on Discord for details.*
+*Graphene needs to implement a more powerful type system so a generic type may be inferred based on surrounding context of the type's usage constraints.*
 
-- [See the GitHub issue.](https://github.com/GraphiteEditor/Graphite/issues/2350)
-- Best for someone with an aptitude or focus on programming languages, compilers, and type system theory.
-
-#### GPU-accelerated rendering pipeline within the compiler/runtime/engine
-
-*This is a newly added project pending a full written overview. Come ask on Discord for details.*
-
-- Build out infrastructure in the language/compiler/runtime/engine using [Rust GPU](https://github.com/Rust-GPU/rust-gpu).
-- [See the GitHub issue.](https://github.com/GraphiteEditor/Graphite/issues/2168)
-- Best for someone with both an aptitude for low-level graphics programming (experience in one of WGPU, Vulkan, OpenGL, etc.) and an interest in compilers and programming languages.
-
-#### Node equivalence rewriting
-
-*This is a newly added project pending a full written overview. Come ask on Discord for details.*
-
-- [See the GitHub issue.](https://github.com/GraphiteEditor/Graphite/issues/2021)
-- Best for someone with an interest towards graph theory and compiler optimization topics like [E-graphs](https://en.wikipedia.org/wiki/E-graph).
-
-#### Machine learning architecture
-
-*Generative AI and vision ML models will need to run in Graphite's node graph with a Rust-centric, modular, portable, deployable, scalable environment.*
-
-- **Possible Mentors:** [Oliver](https://github.com/otdavies)
-- **Needed Skills:** Machine learning (and potentially: Rust, Python, ONNX, Candle, Burn)
+- **Possible Mentors:** [Dennis](https://github.com/truedoctor)
+- **Needed Skills:** Rust, type theory, programming languages theory, past experience implementing such a system
 - **Project Size:** Large *(GSoC: 350 hours)*
 - **Difficulty:** Hard
-- **Expected Outcomes:** Specifics will vary by proposal. In general, a useful end-to-end integration of at least one GenAI or vision model into Graphite's node graph which can run both locally and deployed to a hosting provider server.
+- **Expected Outcomes:** A complete implementation to upgrade the current limited type inference system. The new system should work like Rust's, where variables of unknown types can be given a type satisfying the later usages of the variable.
 
-AI/ML is filling a rapidly growing role as a tool in the creative process. Graphite's procedural node-based workflow is uniquely suited to leveraging the power and flexibility of AI nodes.
-
-[Segment Anything 2](https://ai.meta.com/sam2/) (object segmentation), [Depth Anything](https://depth-anything.github.io/) (depth estimation), and [Stable Diffusion](https://github.com/CompVis/stable-diffusion) (image generation, generative fill, style transfer, etc.) are currently the three models we are most [interested in integrating](https://github.com/GraphiteEditor/Graphite/issues/1694). The challenge is settling on an architecture and tech stack which is well suited for Graphite's requirements.
+Consider a node with a generic input parameter which is connected to a node supplying a concrete type. As long as the type is one that satisfies the constraints of the generic parameter, this is valid. The current system checks for this single-directional constraint. But many cases arise where this is insufficient. For example, if the generic parameter is used in multiple places with different constraints, the system needs to be able to infer a type that satisfies all of those constraints.
 
 <details>
 <summary>For additional technical details: click here</summary>
 
-The approach should be extensible to future models. It needs to run fast and natively on the assorted hardware of local user machines with hardware acceleration. It should be a one-click installation process for users to download and run models without requiring dependencies or environment setup. Ideally, it should allow the more lightweight models to run locally in browsers with WebGPU. It needs to also be deployable to servers in a scalable, cost-viable manner that reuses most of the same code that runs locally. Runtime overhead, cold start times, and memory usage should be minimized for quick, frequent switching between models in a node graph pipeline. The tech stack also needs to be permissively licensed and, as much as possible, Rust-centric so it doesn't add complexity to our Wasm and desktop build processes. For Stable Diffusion, we need the flexability to track the latest research and extensions to the ecosystem like new base models, checkpoint training, DreamBooth, LoRA, ControlNet, IP-Adapter, etc. and expose these functionalities through modular nodes.
+Read more about [HM type inference](https://en.wikipedia.org/wiki/Hindley%E2%80%93Milner_type_system), a powerful (but potentially more complex than necessary) model. See also the [GitHub issue](https://github.com/GraphiteEditor/Graphite/issues/2350) describing this, where you can ask questions if needed. This is an advanced topic and only suitable for individuals who have already implemented a similar system in a programming language or compiler project before.
 
-To meet most of these criteria, our current thinking is to distribute and run our models using the [ONNX](https://onnx.ai/) format. This would integrate ONNX runtimes for WebGPU, native (DirectML, CUDA), and GPU cloud providers. The issue with this approach is that these models (particularly Stable Diffusion) aren't available in an ONNX format.
+</details>
 
-A potential direction for students proposing this project is to reimplement parts of these ML models for ONNX (potentially in [Candle](https://github.com/huggingface/candle) or [Burn](https://burn.dev/) to leverage the Rust ecosystem, if possible).
+### Node equivalence rewriting
+
+*A sequence of nodes may perform operations on data that can be expressed using fewer equivalent nodes, and users may often wish to perform such simplifications.*
+
+- **Possible Mentors:** [Dennis](https://github.com/truedoctor)
+- **Needed Skills:** Rust, graph theory, algorithm design
+- **Project Size:** Large *(GSoC: 350 hours)*
+- **Difficulty:** Hard
+- **Expected Outcomes:** A system for classifying and tracking data transformations symbolically within the DAG of the node graph. A system for applying rewrite rules to selected portions of the graph to produce an equivalent graph with fewer nodes. Integration with the editor to allow users to apply simplifications to selected nodes, especially to transforms and geometry.
+
+Oftentimes, node graphs contain redundant steps that collectively perform a simpler operation. For example, two Transform nodes may produce the same result as a single Transform node with the combined transformation. Or a node that generates a star shape, then a Path node that applies a differential modification to its geometry, may be equivalent to a single Path node that produces the same geometry in one step. This project is about architecting and integrating a system for tracking classes of data transformations, like transforms or geometric modifications or appearance changes, and allowing the user to select the redundant nodes to collapse or "bake" them into a simpler graph with identical output. This is sort of like selecting the terms of a math expression and applying algebraic simplification rules to reduce it to its simplified form.
+
+<details>
+<summary>For additional technical details: click here</summary>
+
+This is best for someone with an interest towards graph theory and compiler optimization topics like [E-graphs](https://en.wikipedia.org/wiki/E-graph). Additional detail is provided in the [GitHub issue](https://github.com/GraphiteEditor/Graphite/issues/2021) including some introductory explanation about E-graphs from a Rust crate that implements them, [egg](https://egraphs-good.github.io/).
+
+</details>
+
+### Machine learning architecture
+
+*AI/ML image/vision models for content editing will need to run in Graphite's node graph with a Rust-centric, modular, portable, deployable, scalable environment.*
+
+- **Possible Mentors:** [Oliver](https://github.com/otdavies)
+- **Needed Skills:** Machine learning (and potentially: Rust, Python, ONNX, Burn)
+- **Project Size:** Large *(GSoC: 350 hours)*
+- **Difficulty:** Hard
+- **Expected Outcomes:** Specifics will vary by proposal. In general, a useful end-to-end integration of at least one image model into Graphite's node graph which can run both locally and deployed to a hosting provider server.
+
+AI/ML is filling a rapidly growing role in the industry as a tool in some creative processes. Graphite's procedural node-based workflow is uniquely suited to leveraging the power and flexibility of AI nodes.
+
+[Segment Anything 2](https://ai.meta.com/research/sam2/) (object segmentation) and [Depth Anything 3](https://github.com/ByteDance-Seed/Depth-Anything-3) (depth estimation) are currently the models we are most [interested in integrating](https://github.com/GraphiteEditor/Graphite/issues/1694). The challenge is settling on an architecture and tech stack which is well suited for Graphite's requirements.
+
+<details>
+<summary>For additional technical details: click here</summary>
+
+The approach should be extensible to future models. It needs to run fast and natively on the assorted hardware of local user machines with hardware acceleration. It should be a one-click installation process for users to download and run models without requiring dependencies or environment setup. Ideally, it should allow the more lightweight models to run locally in browsers with WebGPU. It needs to also be deployable to servers in a scalable, cost-viable manner that reuses most of the same code that runs locally. Runtime overhead, cold start times, and memory usage should be minimized for quick, frequent switching between models in a node graph pipeline. The tech stack also needs to be permissively licensed and, as much as possible, Rust-centric so it doesn't add complexity to our Wasm and desktop build processes.
+
+To meet most of these criteria, our current thinking is to distribute and run our models using the [ONNX](https://onnx.ai/) format. This would integrate ONNX runtimes for WebGPU, native, and GPU cloud providers. One challenge is that many of the best-performing models are not packaged in ONNX format, but this approach also allows for direct implementation of model architectures in Rust.
+
+[Burn](https://burn.dev/) is Rust's most promising and advanced machine learning framework, and in addition to Rust model implementations, it also [supports](https://github.com/tracel-ai/burn-onnx) ONNX model loading for conversion into its native format.
 
 Another potential direction is to find a portable, modular, lightweight approach for bundling existing Python-based models. It would need to work across simple and complex models with different architectures. License compliance, if GPL code is involved, would be a consideration.
 
@@ -98,67 +119,45 @@ Based on the experience and insight brought to the table by the student, the nat
 
 </details>
 
-### Rendering and graphics
+### Generalized graphical data rendering representation
 
-Several of these require a good understanding of computer graphics rendering techniques and algorithms. Experience in game development and writing your own rendering engines is a plus.
+*Rendering graphical content like colors, gradients, patterns, and whole other layers needs to be possible in a more flexible way that can target the fills and strokes of vector shapes.*
 
-#### Mesh vector rendering
+- **Possible Mentors:** [Keavon](https://github.com/keavon)
+- **Needed Skills:** Rust, SVG
+- **Project Size:** Medium or Large *(GSoC: 175 or 350 hours)*
+- **Difficulty:** Medium
+- **Expected Outcomes:** Improved SVG and Vello renderer implementations that can handle a wider variety of paint types and effects. Support for every combination of paint type with its application to fills, strokes, and full-canvas drawing. Inclusion of the specified paint source types in the graphical data model and appropriate nodes for generating and handling such data.
 
-*This is a newly added project pending a full written overview. Come ask on Discord for details.*
+Presently, Graphite has a limited methodology for defining what gets painted when rendering vector shape fills and strokes. Solid colors and spatially positioned gradients are supported for fills, but only solid colors for strokes. Also, gradients cannot be painted across the entire canvas, and patterns do not exist at all yet. This project involves refactoring the renderer and data model to support a more generalized representation of paint sources that can be applied to fills, strokes, and entire layers. It deprecates the current solid/gradient/none selection for fills and solid/none selection for strokes in favor supporting anything that could be painted as a layer.
 
-- See the GitHub issues: [fills](https://github.com/GraphiteEditor/Graphite/issues/2309) and [strokes](https://github.com/GraphiteEditor/Graphite/issues/2310).
+<details>
+<summary>For additional technical details: click here</summary>
 
-#### Support paints for strokes and fills
+An extended description and a list of child issues is available in the [GitHub issue](https://github.com/GraphiteEditor/Graphite/issues/2779). A large-sized project would likely include support for the polyfilled gradient types described in the sub-issues of [this task](https://github.com/GraphiteEditor/Graphite/issues/2304).
 
-*This is a newly added project pending a full written overview. Come ask on Discord for details.*
+</details>
 
-- Refactor and upgrade our renderer to cleanly handle paints for fills and strokes.
-- This includes [gradient rendering](https://github.com/GraphiteEditor/Graphite/issues/2304) polyfills
-- May include other rendering features like [stroke alignment](https://github.com/GraphiteEditor/Graphite/issues/2268) polyfills
-
-#### Advanced text layout and typography
+<!-- ### Advanced text layout and typography
 
 *This is a newly added project pending a full written overview. Come ask on Discord for details.*
 
 - [See the GitHub issue.](https://github.com/GraphiteEditor/Graphite/issues/1105)
 
-#### PDF and/or DXF import/export
-
-*This is a newly added project pending a full written overview. Come ask on Discord for details.*
-
-- Scope and viability depends on the state of available libraries.
-
-#### Traditional brush engine
+### Brush engine
 
 *This is a newly added project pending a full written overview. Come ask on Discord for details.*
 
 - [See the GitHub issue.](https://github.com/GraphiteEditor/Graphite/issues/1297)
 
-#### Procedural brush engine
-
-*This is a newly added project pending a full written overview. Come ask on Discord for details.*
-
-- [Read this thesis for background](https://digitalcommons.calpoly.edu/theses/2653/), chapter 3 onwards.
-
-#### Advanced color management
+### Advanced color management
 
 *This is a newly added project pending a full written overview. Come ask on Discord for details.*
 
 - Add support for HDR/WCG and/or CMYK and alternate color spaces/models
 - Requires an experienced understanding of color science
 
-#### Image processing algorithms for photography
-
-*This is a newly added project pending a full written overview. Come ask on Discord for details.*
-
-#### New graphics nodes
-
-*This is a newly added project pending a full written overview. Come ask on Discord for details.*
-
-- Research and implement image processing (raster) or geometry (vector) nodes that you propose or we suggest in our discussions with you.
-- Example of one such node: [Text on path](https://github.com/GraphiteEditor/Graphite/issues/978).
-
-#### SVG with raster effects
+### SVG with raster effects
 
 *This is a newly added project pending a full written overview. Come ask on Discord for details.*
 
@@ -167,25 +166,17 @@ Several of these require a good understanding of computer graphics rendering tec
 - Allow roundtrip import and export of SVG files with these features.
 - Import, render (through SVG and Vello), and export of [filters like these](https://codepen.io/miXTim/pen/ZErggMQ).
 
-### Editor tooling
-
-#### Snapping system overhaul
+### Snapping system overhaul
 
 *This is a newly added project pending a full written overview. Come ask on Discord for details.*
 
 - [See the GitHub issue.](https://github.com/GraphiteEditor/Graphite/issues/2352)
 
-#### Advanced vector editing tool modes
+### Tooling polishing and gizmo additions
 
-*This is a newly added project pending a full written overview. Come ask on Discord for details.*
+*This is a newly added project pending a full written overview. Come ask on Discord for details.* -->
 
-- Add modes for segment editing, mesh vector, and more. Discuss with us on Discord to decide on the scope of the project.
-
-#### Tooling polishing and gizmo additions
-
-*This is a newly added project pending a full written overview. Come ask on Discord for details.*
-
-#### Marquee selection masking
+### Marquee selection masking
 
 *Graphite's raster editing features requires the implementation of Select mode, where users can draw a mask which becomes a marquee (marching ants) selection.*
 
@@ -199,30 +190,7 @@ A central part of the workflow in raster image editors is the selection of porti
 
 This is a key feature in Graphite's evolution to a fully-featured raster editor.
 
-### Refactors and infrastructure
-
-#### Complex widget layout system
-
-*Graphite's UI needs an upgraded layout system to support more complex and dynamic widget arrangements defined from the backend.*
-
-- **Possible Mentors:** [Keavon](/about#keavon)
-- **Needed Skills:** Rust, web (Svelte, CSS, TypeScript)
-- **Project Size:** Small *(GSoC: 90 hours)* or Medium *(GSoC: 175 hours)*
-- **Difficulty:** Medium
-- **Expected Outcomes:** An improved system for defining widget layouts with better control and flexibility over arrangement and dynamic data binding. Reduction in boilerplate and plumbing required to define each new layout. Better control of styling between rows.
-
-The current system for defining the arrangement of widget layouts from the backend, created during a [previous student project](#2022-backend-layout-system), has served us well thus far but has limitations. This project aims to extend the system to better model our evolved requirements.
-
-Students should have a good level of familiarity with Rust design patterns to envision, prototype, propose, and robustly implement a new system that can handle the complexity of Graphite's use cases. The size of this project can vary depending on the proposal's scope and extent of refactoring to these and adjacent systems.
-
-<details>
-<summary>For additional technical details: click here</summary>
-
-The present system is very row-centric, which makes it challenging to create multi-row layouts that distribute their widgets across the space in concert with other rows. It also requires manual updates to the backend data model for each widget, which makes dynamic layouts require extra plumbing and room for mistakes. Defining popover and dialog menus is also cumbersome because each requires several new files in the backend architecture.
-
-</details>
-
-#### Testing and performance instrumentation
+### Testing and performance instrumentation
 
 *Graphite has many areas that could benefit from better automated testing for bugs and performance regressions.*
 
@@ -234,30 +202,7 @@ The present system is very row-centric, which makes it challenging to create mul
 
 Graphite could benefit from better testing coverage in a number of areas, especially end-to-end testing in the tool, document, and node graph systems. This project is about identifying and addressing areas that are lacking and most vulnerable to suffering from regressions. The student will be responsible for identifying areas that could benefit from better testing.
 
-#### Architecture visualization
-
-*Infrastructure to generate visualizations of Graphite's system architecture would be a valuable addition to the project's documentation and debugging tools.*
-
-- **Possible Mentors:** [Keavon](/about#keavon), [Dennis](/about#dennis)
-- **Needed Skills:** Rust (especially proc macros)
-- **Project Size:** Small *(GSoC: 90 hours)* or larger if proposed
-- **Difficulty:** Medium
-- **Expected Outcomes:** A system built from proc macros which can generate useful visualizations of Graphite's system architecture. Depending on proposal scope, this can include static visualizations added to the documentation, dynamic message flow visualizations for debugging, and tools to help identify redundant message traffic.
-
-Graphite's editor architecture, based around a message-passing processing queue, is structured as a hierarchical system of message handlers. Each handler stores its own state, and references to the state data may be passed along to its child handlers that need it.
-
-It is challenging to document the hierarchy of this system as a tree in the documentation because the code is often changing. Generating a visualization would ensure it remains up to date. Additional visualizations could also be generated with greater detail, such as message flow diagrams for each message.
-
-<details>
-<summary>For additional technical details: click here</summary>
-
-If proposed as part of the project's scope, a runtime component could be added as an extension of the aforementioned documentation visualizations. These would help developers understand and trace the flow of message traffic, essentially becoming a visual debugger for the message system. Instrumentation included with this could help identify message traffic that causes particularly high load, or locate redundant message traffic, to keep Graphite's performance under control. Timing could also be measured for each message and visualized in a custom flame graph. Current debugger tools can't provide this information because the message-passing approach "flattens out" the traditional function call stack.
-
-</details>
-
-### Other
-
-#### Your own idea
+### Your own idea
 
 *If you have an idea for a project that you think would be a good fit, we'd love to hear it!*
 
@@ -271,87 +216,3 @@ If none of the projects above suit your interests or experience, we are very ope
 
 As is the case with all projects, please discuss this with us on Discord to flesh out your idea. Unsolicited proposals that have not been discussed with us will almost certainly be rejected.
 
-## Successful past projects
-
-### 2024: Interactive node graph auto-layout
-
-*Graphite's graph UI needs a system to automatically arrange layers and nodes given incremental changes to the graph contents.*
-
-Affiliation: GSoC 2024  
-Duration: 3 months  
-Student: Adam Gerhant
-
-- [Program project listing](https://summerofcode.withgoogle.com/programs/2024/projects/gvbBoCpT)
-- [Report and weekly updates](https://github.com/GraphiteEditor/Graphite/discussions/1769)
-
-**Outcomes:** A system that manages the placement of nodes based on a set of layout constraint rules and incremental updates to the graph topology. It should run efficiently, even with large graphs. It should be robust enough to handle a variety of graph topologies and user interactions, producing organized, useful, and stable layouts.
-
-**Background:** The Graphite concept is built around a node graph representation of layer stacks, while tools automatically generate and manipulate nodes. When a layer or node is inserted, deleted, moved, or referenced, the graph needs to be reorganized to maintain a clear and useful layout. Users can also interactively expand and collapse groups of nodes which occupies or frees up graph real estate.
-
-Unlike other node editors that are centered around manual graph editing, where users are fully in charge of node placements within one large node network, Graphite's node UI is more oriented towards automatic layout management and viewing just parts of the graph at one time. This means the shown graph topology is constantly changing and the layout system needs to cooperatively organize the graph in concert with user actions.
-
-While general graph layout algorithms are complex and struggle to produce good results in other node editors, Graphite's graph topology is more constrained and predictable, which makes it possible to design a layout system that can produce good results. Nodes tend to be organized into rows, and layers into columns. This turns the problem into more of a constraint-based, axis-aligned packing problem.
-
-### 2024: Rendering performance infrastructure improvements
-
-*Graphite performance is bottlenecked by limitations in the new node graph rendering architecture that needs improvements.*
-
-Affiliation: GSoC 2024  
-Duration: 4 months  
-Student: Dennis Kobert
-
-- [Program project listing](https://summerofcode.withgoogle.com/programs/2024/projects/v5z2Psnc)
-- [Report and weekly updates](https://github.com/GraphiteEditor/Graphite/discussions/1773)
-
-**Outcomes:** A holistic, metrics-driven focus on fixing the many unoptimized areas of Graphite's node graph compilation, execution, and rendering systems. Integration of Vello as an integrated rendering backend. A significant improvement in the performance of the editor, especially in the node graph, and a more stable and predictable performance profile. Benchmarking and profiling tools to measure and visualize performance improvements and regressions.
-
-**Background:** Graphite's node graph system is the backbone of the editor, but it has many performance problems that need to be addressed because the system is relatively immature and performance-impacting shortcuts were taken during its initial development. This project is all about making the node graph system more robust and optimized, which will have a direct impact on the user experience and the editor's overall performance. By the end of the project, the editor should finally feel usable in the majority of user workflows. Vello should be enabled as an alternate render engine that will fully replace the existing SVG-based one in the future, once browser support arrives across major platforms.
-
-### 2024: Raw photograph decoding in Rust
-
-*For Graphite to support editing photos from professional digital cameras, it needs a raw decoding/processing library.*
-
-Affiliation: GSoC 2024  
-Duration: 5 months  
-Student: Elbert Ronnie
-
-- [Program project listing](https://summerofcode.withgoogle.com/programs/2024/projects/2uiwOfz8)
-- [Report and weekly updates](https://github.com/GraphiteEditor/Graphite/discussions/1771)
-- [Rawkit library](https://crates.io/crates/rawkit)
-
-**Outcomes:** A Rust library that implements raw photo decoding functionality to native Rust. A clean, well-structured codebase and API. At a minimum, demonstrate the successful end-to-end decoding, debayering, and color space handling of Sony ARW format photos in Graphite. Publish the library to crates.io.
-
-**Background:** For Graphite to work as a photo editing app, it needs to import raw photos. These contain compressed sensor imagery and metadata in a variety of formats. Sony ARW is the first target and additional camera brands are stretch goals. Graphite needs a library written in pure Rust with a suitable (non-GPL) license, which does not currently exist in the ecosystem, so we need to create one ourselves.
-
-### 2023: Bezier-rs library
-
-*Graphite's vector editing features require the implementation of Bezier curve and path manipulation computational geometry algorithms.*
-
-Affiliation: University of Waterloo, Ontario, Canada  
-Duration: 9 months  
-Students: Hannah Li, Rob Nadal, Thomas Cheng, Linda Zheng, Jackie Chen
-
-- [Bezier-rs library](https://crates.io/crates/bezier-rs)
-- [Interactive web demo](https://keavon.github.io/Bezier-rs/)
-
-**Outcomes:** The student group designed an API for representing and manipulating Bezier curves and paths as a standalone Rust library which was published to crates.io. It now serves as the underlying vector data format used in Graphite, and acts as a testbed for new computational geometry algorithms. The team also built an interactive web demo catalog to showcase many of the algorithms, which are also handily embedded in the library's [documentation](https://docs.rs/bezier-rs/latest/bezier_rs/).
-
-### 2022: Backend layout system
-
-*Graphite's UI needs a system to define and manage layouts for widgets from the backend.*
-
-Affiliation: California Polytechnic State University, San Luis Obispo, USA  
-Duration: 3 months  
-Student: Max Fisher
-
-**Outcomes:** The student designed and implemented a new system across the editor's frontend and backend which made it possible to define and manage layouts for widgets from the backend and receive input data from those widgets. Previously, all layouts were statically defined in the frontend and extensive plumbing was required to pass data back and forth.
-
-### 2022: Path boolean operations
-
-*Graphite's vector editing features require the implementation of boolean operations on paths, such as union, intersection, and difference.*
-
-Affiliation: California Polytechnic State University, San Luis Obispo, USA  
-Duration: 3 months  
-Student: Caleb Dennis
-
-**Outcomes:** The student devised and prototyped algorithms for performing boolean operations on paths, such as union, intersection, and difference. These were used as a stopgap during 2022 and 2023 to provide users with a rudimentary boolean operation feature set.
