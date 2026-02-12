@@ -8,7 +8,7 @@ use graph_craft::document::value::RenderOutput;
 use graph_craft::wasm_application_io::WasmEditorApi;
 use graphene_application_io::{ApplicationIo, ImageTexture};
 use rendering::{RenderOutputType as RenderOutputTypeRequest, RenderParams};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::hash::Hash;
 use std::sync::{Arc, Mutex};
 
