@@ -182,6 +182,7 @@ pub struct RenderParams {
 	pub alignment_parent_transform: Option<DAffine2>,
 	pub aligned_strokes: bool,
 	pub override_paint_order: bool,
+	pub artboard_background: Option<Color>,
 }
 
 impl Hash for RenderParams {
@@ -198,6 +199,7 @@ impl Hash for RenderParams {
 		}
 		self.aligned_strokes.hash(state);
 		self.override_paint_order.hash(state);
+		self.artboard_background.hash(state);
 	}
 }
 
@@ -233,6 +235,49 @@ fn max_scale(transform: DAffine2) -> f64 {
 	let sx = transform.x_axis.length_squared();
 	let sy = transform.y_axis.length_squared();
 	(sx + sy).sqrt()
+}
+
+pub fn contrasting_outline_color(background: Option<Color>) -> Color {
+	use core_types::consts::LAYER_OUTLINE_STROKE_COLOR;
+
+	if let Some(bg) = background {
+		let alpha = bg.a();
+
+		if alpha.abs() < f32::EPSILON {
+			return Color::BLACK;
+		}
+
+		// Convert Linear Float to sRGB Float
+		let linear_to_srgb = |x: f32| -> f32 { if x <= 0.0031308 { x * 12.92 } else { 1.055 * x.powf(1.0 / 2.4) - 0.055 } };
+
+		// Convert sRGB Float to Linear Float
+		let srgb_to_linear = |x: f32| -> f32 { if x <= 0.04045 { x / 12.92 } else { ((x + 0.055) / 1.055).powf(2.4) } };
+
+		let r_lin = bg.r() / alpha;
+		let g_lin = bg.g() / alpha;
+		let b_lin = bg.b() / alpha;
+
+		let r_srgb = linear_to_srgb(r_lin);
+		let g_srgb = linear_to_srgb(g_lin);
+		let b_srgb = linear_to_srgb(b_lin);
+
+		let canvas_srgb = 0x22 as f32 / 255.0;
+		let r_comp_srgb = r_srgb * alpha + canvas_srgb * (1.0 - alpha);
+		let g_comp_srgb = g_srgb * alpha + canvas_srgb * (1.0 - alpha);
+		let b_comp_srgb = b_srgb * alpha + canvas_srgb * (1.0 - alpha);
+
+		let r_final = srgb_to_linear(r_comp_srgb);
+		let g_final = srgb_to_linear(g_comp_srgb);
+		let b_final = srgb_to_linear(b_comp_srgb);
+
+		let luminance = 0.2126 * r_final + 0.7152 * g_final + 0.0722 * b_final;
+
+		let threshold = (1.05 * 0.05f32).sqrt() - 0.05;
+
+		if luminance > threshold { Color::BLACK } else { Color::WHITE }
+	} else {
+		LAYER_OUTLINE_STROKE_COLOR
+	}
 }
 
 pub fn to_transform(transform: DAffine2) -> usvg::Transform {
@@ -440,7 +485,9 @@ impl Render for Artboard {
 			},
 			// Artwork content
 			|render| {
-				self.content.render_svg(render, render_params);
+				let mut render_params = render_params.clone();
+				render_params.artboard_background = Some(self.background);
+				self.content.render_svg(render, &render_params);
 			},
 		);
 	}
@@ -462,7 +509,9 @@ impl Render for Artboard {
 		}
 		// Since the content's transform is right multiplied in when rendering the content, we just need to right multiply by the artboard offset here.
 		let child_transform = transform * DAffine2::from_translation(self.location.as_dvec2());
-		self.content.render_to_vello(scene, child_transform, context, render_params);
+		let mut render_params = render_params.clone();
+		render_params.artboard_background = Some(self.background);
+		self.content.render_to_vello(scene, child_transform, context, &render_params);
 		if self.clip {
 			scene.pop_layer();
 		}
@@ -881,7 +930,7 @@ impl Render for Table<Vector> {
 	}
 
 	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
-		use core_types::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WEIGHT};
+		use core_types::consts::LAYER_OUTLINE_STROKE_WEIGHT;
 		use graphic_types::vector_types::vector::style::{GradientType, StrokeCap, StrokeJoin};
 		use vello::kurbo::{Cap, Join};
 		use vello::peniko;
@@ -1065,12 +1114,9 @@ impl Render for Table<Vector> {
 						dash_pattern: Default::default(),
 						dash_offset: 0.,
 					};
-					let outline_color = peniko::Color::new([
-						LAYER_OUTLINE_STROKE_COLOR.r(),
-						LAYER_OUTLINE_STROKE_COLOR.g(),
-						LAYER_OUTLINE_STROKE_COLOR.b(),
-						LAYER_OUTLINE_STROKE_COLOR.a(),
-					]);
+
+					let outline_color = contrasting_outline_color(render_params.artboard_background);
+					let outline_color = peniko::Color::new([outline_color.r(), outline_color.g(), outline_color.b(), outline_color.a()]);
 
 					scene.stroke(&outline_stroke, kurbo::Affine::new(element_transform.to_cols_array()), outline_color, None, &path);
 				}
