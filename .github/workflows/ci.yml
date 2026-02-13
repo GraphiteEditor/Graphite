@@ -54,7 +54,7 @@ jobs:
       id-token: write
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/nix-setup
+      # - uses: ./.github/actions/nix-setup
       - name: Build Rust code
         run: nix develop .nix --command cargo build --all-features
       - name: Run Rust tests
