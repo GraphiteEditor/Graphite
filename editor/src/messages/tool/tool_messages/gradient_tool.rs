@@ -77,30 +77,29 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 						continue;
 					}
 
-					if let Some(mut gradient) = get_gradient(layer, &context.document.network_interface) {
-						if gradient.gradient_type != gradient_type {
-							if !transaction_started {
-								responses.add(DocumentMessage::StartTransaction);
-								transaction_started = true;
-							}
-							gradient.gradient_type = gradient_type;
-							responses.add(GraphOperationMessage::FillSet {
-								layer,
-								fill: Fill::Gradient(gradient),
-							});
+					if let Some(mut gradient) = get_gradient(layer, &context.document.network_interface)
+						&& gradient.gradient_type != gradient_type
+					{
+						if !transaction_started {
+							responses.add(DocumentMessage::StartTransaction);
+							transaction_started = true;
 						}
+						gradient.gradient_type = gradient_type;
+						responses.add(GraphOperationMessage::FillSet {
+							layer,
+							fill: Fill::Gradient(gradient),
+						});
 					}
 				}
 
 				if transaction_started {
 					responses.add(DocumentMessage::AddTransaction);
 				}
-				if let Some(selected_gradient) = &mut self.data.selected_gradient {
-					if let Some(layer) = selected_gradient.layer {
-						if !NodeGraphLayer::is_raster_layer(layer, &mut context.document.network_interface) {
-							selected_gradient.gradient.gradient_type = gradient_type;
-						}
-					}
+				if let Some(selected_gradient) = &mut self.data.selected_gradient
+					&& let Some(layer) = selected_gradient.layer
+					&& !NodeGraphLayer::is_raster_layer(layer, &mut context.document.network_interface)
+				{
+					selected_gradient.gradient.gradient_type = gradient_type;
 				}
 				responses.add(ToolMessage::UpdateHints);
 				responses.add(PropertiesPanelMessage::Refresh);
@@ -332,7 +331,7 @@ impl Fsm for GradientToolFsmState {
 
 		let ToolMessage::Gradient(event) = event else { return self };
 		match (self, event) {
-			(_state, GradientToolMessage::Overlays { context: mut overlay_context }) => {
+			(_, GradientToolMessage::Overlays { context: mut overlay_context }) => {
 				let selected = tool_data.selected_gradient.as_ref();
 				let mouse = input.mouse.position;
 
@@ -343,12 +342,10 @@ impl Fsm for GradientToolFsmState {
 						.filter(|selected| selected.layer.is_some_and(|selected_layer| selected_layer == layer))
 						.map(|selected| selected.dragging);
 
-					let gradient = if dragging.is_some() {
-						if let Some(selected_gradient) = selected.filter(|s| s.layer == Some(layer)) {
-							&selected_gradient.gradient
-						} else {
-							&gradient
-						}
+					let gradient = if dragging.is_some()
+						&& let Some(selected_gradient) = selected.filter(|s| s.layer == Some(layer))
+					{
+						&selected_gradient.gradient
 					} else {
 						&gradient
 					};
@@ -374,12 +371,10 @@ impl Fsm for GradientToolFsmState {
 						overlay_context.gradient_color_stop(start.lerp(end, position), dragging == Some(GradientDragTarget::Step(index)), &color_to_hex(color));
 					}
 
-					if let Some(projection) = calculate_insertion(start, end, stops, mouse) {
-						if let Some(dir) = (end - start).try_normalize() {
-							let perp = dir.perp();
-							let point = start.lerp(end, projection);
-							overlay_context.line(point - perp * SEGMENT_OVERLAY_SIZE, point + perp * SEGMENT_OVERLAY_SIZE, Some(COLOR_OVERLAY_BLUE), Some(1.));
-						}
+					if let (Some(projection), Some(dir)) = (calculate_insertion(start, end, stops, mouse), (end - start).try_normalize()) {
+						let perp = dir.perp();
+						let point = start.lerp(end, projection);
+						overlay_context.line(point - perp * SEGMENT_OVERLAY_SIZE, point + perp * SEGMENT_OVERLAY_SIZE, Some(COLOR_OVERLAY_BLUE), Some(1.));
 					}
 				}
 
@@ -532,20 +527,21 @@ impl Fsm for GradientToolFsmState {
 						let distance = (end - start).angle_to(mouse - start).sin() * (mouse - start).length();
 						let projection = ((end - start).angle_to(mouse - start)).cos() * start.distance(mouse) / start.distance(end);
 
-						if distance.abs() < SEGMENT_INSERTION_DISTANCE && (0. ..=1.).contains(&projection) {
-							if let Some(index) = gradient.clone().insert_stop(mouse, transform) {
-								responses.add(DocumentMessage::StartTransaction);
-								transaction_started = true;
-								let mut new_gradient = gradient.clone();
-								new_gradient.insert_stop(mouse, transform);
+						if distance.abs() < SEGMENT_INSERTION_DISTANCE
+							&& (0. ..=1.).contains(&projection)
+							&& let Some(index) = gradient.clone().insert_stop(mouse, transform)
+						{
+							responses.add(DocumentMessage::StartTransaction);
+							transaction_started = true;
+							let mut new_gradient = gradient.clone();
+							new_gradient.insert_stop(mouse, transform);
 
-								let mut selected_gradient = SelectedGradient::new(new_gradient, layer, document);
-								selected_gradient.dragging = GradientDragTarget::Step(index);
-								// No offset when inserting a new stop, it should be exactly under the mouse
-								selected_gradient.render_gradient(responses);
-								tool_data.selected_gradient = Some(selected_gradient);
-								dragging = true;
-							}
+							let mut selected_gradient = SelectedGradient::new(new_gradient, layer, document);
+							selected_gradient.dragging = GradientDragTarget::Step(index);
+							// No offset when inserting a new stop, it should be exactly under the mouse
+							selected_gradient.render_gradient(responses);
+							tool_data.selected_gradient = Some(selected_gradient);
+							dragging = true;
 						}
 					}
 				}
@@ -649,7 +645,6 @@ impl Fsm for GradientToolFsmState {
 				}
 				GradientToolFsmState::Ready { hover_insertion: false }
 			}
-
 			(GradientToolFsmState::Ready { .. }, GradientToolMessage::PointerMove { .. }) => {
 				let mut hover_insertion = false;
 				let mouse = input.mouse.position;
@@ -686,10 +681,11 @@ impl Fsm for GradientToolFsmState {
 	fn update_hints(&self, responses: &mut VecDeque<Message>) {
 		let hint_data = match self {
 			GradientToolFsmState::Ready { hover_insertion } => {
-				let mut hints = vec![HintInfo::mouse(MouseMotion::LmbDrag, "Draw Gradient"), HintInfo::keys([Key::Shift], "15° Increments").prepend_plus()];
-				if *hover_insertion {
-					hints.insert(0, HintInfo::mouse(MouseMotion::Lmb, "Insert Color Stop"));
-				}
+				let hints = if *hover_insertion {
+					vec![HintInfo::mouse(MouseMotion::Lmb, "Insert Color Stop")]
+				} else {
+					vec![HintInfo::mouse(MouseMotion::LmbDrag, "Draw Gradient"), HintInfo::keys([Key::Shift], "15° Increments").prepend_plus()]
+				};
 				HintData(vec![HintGroup(hints)])
 			}
 			GradientToolFsmState::Drawing => HintData(vec![
