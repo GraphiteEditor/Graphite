@@ -6,8 +6,7 @@ use glam::DVec2;
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum NavigationMessage {
 	// Messages
-	BeginCanvasPan,
-	ListenCanvasPan,
+	BeginCanvasPan { panning: bool },
 	BeginCanvasTilt { was_dispatched_from_menu: bool },
 	BeginCanvasZoom,
 	CanvasPan { delta: DVec2 },
