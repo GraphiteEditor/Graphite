@@ -382,18 +382,7 @@ impl<PointId: Identifier> Subpath<PointId> {
 		Self::new(manipulator_groups, false)
 	}
 
-	pub fn new_heart(
-		center: DVec2,
-		radius: f64,
-		cleft_angle: f64,
-		tip_angle: f64,
-		left_bulb_height: f64,
-		right_bulb_height: f64,
-		left_bulb_expand: f64,
-		right_bulb_expand: f64,
-		cleft_depth: f64,
-		tip_depth: f64,
-	) -> Self {
+	pub fn new_heart(center: DVec2, radius: f64, cleft_angle: f64, tip_angle: f64, bulb_height: f64, bulb_expand: f64, cleft_depth: f64, tip_depth: f64) -> Self {
 		// Anchors
 		let top_anchor = center - DVec2::new(0., radius * cleft_depth);
 		let bottom_anchor = center + DVec2::new(0., radius * tip_depth);
@@ -401,12 +390,12 @@ impl<PointId: Identifier> Subpath<PointId> {
 		let side_x = radius;
 		// Offset is for less squat shape (-0.25).
 		let right_anchor = DVec2::new(
-			center.x + side_x * (1. + right_bulb_expand),
-			(center.y + radius * (right_bulb_height - 0.25)) * (1. + right_bulb_expand) - center.y * right_bulb_expand,
+			center.x + side_x * (1. + bulb_expand),
+			(center.y + radius * (bulb_height - 0.25)) * (1. + bulb_expand) - center.y * bulb_expand,
 		);
 		let left_anchor = DVec2::new(
-			center.x - side_x * (1. + left_bulb_expand),
-			(center.y + radius * (left_bulb_height - 0.25)) * (1. + left_bulb_expand) - center.y * left_bulb_expand,
+			center.x - side_x * (1. + bulb_expand),
+			(center.y + radius * (bulb_height - 0.25)) * (1. + bulb_expand) - center.y * bulb_expand,
 		);
 
 		// Handle Directions
