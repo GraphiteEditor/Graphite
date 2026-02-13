@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use super::utility_types::misc::{GroupFolderType, SnappingState};
 use crate::messages::input_mapper::utility_types::input_keyboard::Key;
@@ -203,7 +204,7 @@ pub enum DocumentMessage {
 		first_element_source_id: HashMap<NodeId, Option<NodeId>>,
 	},
 	UpdateClickTargets {
-		click_targets: HashMap<NodeId, Vec<ClickTarget>>,
+		click_targets: HashMap<NodeId, Vec<Arc<ClickTarget>>>,
 	},
 	UpdateClipTargets {
 		clip_targets: HashSet<NodeId>,

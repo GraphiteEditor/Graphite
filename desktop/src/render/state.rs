@@ -23,6 +23,7 @@ pub(crate) struct RenderState {
 	bind_group: Option<wgpu::BindGroup>,
 	#[derivative(Debug = "ignore")]
 	overlays_scene: Option<vello::Scene>,
+	surface_outdated: bool,
 }
 
 impl RenderState {
@@ -186,6 +187,7 @@ impl RenderState {
 			ui_texture: None,
 			bind_group: None,
 			overlays_scene: None,
+			surface_outdated: true,
 		}
 	}
 
@@ -196,6 +198,7 @@ impl RenderState {
 
 		self.desired_width = width;
 		self.desired_height = height;
+		self.surface_outdated = true;
 
 		if width > 0 && height > 0 && (self.config.width != width || self.config.height != height) {
 			self.config.width = width;
@@ -215,14 +218,17 @@ impl RenderState {
 	}
 
 	pub(crate) fn set_viewport_scale(&mut self, scale: [f32; 2]) {
+		self.surface_outdated = true;
 		self.viewport_scale = scale;
 	}
 
 	pub(crate) fn set_viewport_offset(&mut self, offset: [f32; 2]) {
+		self.surface_outdated = true;
 		self.viewport_offset = offset;
 	}
 
 	pub(crate) fn set_overlays_scene(&mut self, scene: vello::Scene) {
+		self.surface_outdated = true;
 		self.overlays_scene = Some(scene);
 	}
 
@@ -241,6 +247,9 @@ impl RenderState {
 	}
 
 	pub(crate) fn render(&mut self, window: &Window) -> Result<(), RenderError> {
+		if !self.surface_outdated {
+			return Ok(());
+		}
 		let ui_scale = if let Some(ui_texture) = &self.ui_texture
 			&& (self.desired_width != ui_texture.width() || self.desired_height != ui_texture.height())
 		{
@@ -302,11 +311,13 @@ impl RenderState {
 		if ui_scale.is_some() {
 			return Err(RenderError::OutdatedUITextureError);
 		}
+		self.surface_outdated = false;
 
 		Ok(())
 	}
 
 	fn update_bindgroup(&mut self) {
+		self.surface_outdated = true;
 		let viewport_texture_view = self.viewport_texture.as_ref().unwrap_or(&self.transparent_texture).create_view(&wgpu::TextureViewDescriptor::default());
 		let overlays_texture_view = self
 			.overlays_texture

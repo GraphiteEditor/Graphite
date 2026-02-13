@@ -13,8 +13,8 @@ impl Default for ViewportMessageHandler {
 	fn default() -> Self {
 		Self {
 			bounds: Bounds {
-				offset: Point { x: 0.0, y: 0.0 },
-				size: Point { x: 0.0, y: 0.0 },
+				offset: Point { x: 0., y: 0. },
+				size: Point { x: 0., y: 0. },
 			},
 			scale: 1.0,
 		}
@@ -26,7 +26,7 @@ impl MessageHandler<ViewportMessage, ()> for ViewportMessageHandler {
 	fn process_message(&mut self, message: ViewportMessage, responses: &mut VecDeque<Message>, _: ()) {
 		match message {
 			ViewportMessage::Update { x, y, width, height, scale } => {
-				assert_ne!(scale, 0.0, "Viewport scale cannot be zero");
+				assert_ne!(scale, 0., "Viewport scale cannot be zero");
 				self.scale = scale;
 
 				self.bounds = Bounds {
@@ -51,14 +51,16 @@ impl MessageHandler<ViewportMessage, ()> for ViewportMessageHandler {
 
 		responses.add(NavigationMessage::CanvasPan { delta: DVec2::ZERO });
 
-		responses.add(DeferMessage::AfterGraphRun {
-			messages: vec![
-				DeferMessage::AfterGraphRun {
-					messages: vec![DeferMessage::TriggerNavigationReady.into()],
-				}
-				.into(),
-			],
-		});
+		if self.is_valid() {
+			responses.add(DeferMessage::AfterGraphRun {
+				messages: vec![
+					DeferMessage::AfterGraphRun {
+						messages: vec![DeferMessage::TriggerNavigationReady.into()],
+					}
+					.into(),
+				],
+			});
+		}
 	}
 
 	advertise_actions!(ViewportMessageDiscriminant;);
@@ -94,7 +96,7 @@ impl ViewportMessageHandler {
 	pub fn center_in_viewport_space(&self) -> LogicalPoint {
 		let size = self.size();
 		LogicalPoint {
-			inner: Point { x: size.x() / 2.0, y: size.y() / 2.0 },
+			inner: Point { x: size.x() / 2., y: size.y() / 2. },
 			scale: size.scale,
 		}
 	}
@@ -104,11 +106,15 @@ impl ViewportMessageHandler {
 		let offset = self.offset();
 		LogicalPoint {
 			inner: Point {
-				x: (size.x() / 2.0) + offset.x(),
-				y: (size.y() / 2.0) + offset.y(),
+				x: (size.x() / 2.) + offset.x(),
+				y: (size.y() / 2.) + offset.y(),
 			},
 			scale: size.scale,
 		}
+	}
+
+	pub fn is_valid(&self) -> bool {
+		self.scale > 0. && self.bounds.size.x() > 0. && self.bounds.size.y() > 0. && self.bounds.offset.x() >= 0. && self.bounds.offset.y() >= 0.
 	}
 
 	pub(crate) fn is_in_bounds(&self, point: LogicalPoint) -> bool {

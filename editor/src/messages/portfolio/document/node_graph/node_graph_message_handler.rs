@@ -25,6 +25,7 @@ use crate::messages::tool::tool_messages::tool_prelude::{Key, MouseMotion};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 use crate::messages::viewport::Position;
 use glam::{DAffine2, DVec2, IVec2};
+use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
 use graphene_std::math::math_ext::QuadExt;
 use graphene_std::vector::algorithms::bezpath_algorithms::bezpath_is_inside_bezpath;
@@ -1699,12 +1700,16 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				}
 			}
 			NodeGraphMessage::SetInputValue { node_id, input_index, value } => {
+				let is_fill = matches!(value, TaggedValue::Fill(_));
 				let input = NodeInput::value(value, false);
 				responses.add(NodeGraphMessage::SetInput {
 					input_connector: InputConnector::node(node_id, input_index),
 					input,
 				});
 				responses.add(PropertiesPanelMessage::Refresh);
+				if is_fill {
+					responses.add(OverlaysMessage::Draw);
+				}
 				if network_interface.connected_to_output(&node_id, selection_network_path) {
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
@@ -1958,6 +1963,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 					let shift = ipp.keyboard.get(Key::Shift as usize);
 					let alt = ipp.keyboard.get(Key::Alt as usize);
+					let control = ipp.keyboard.get(Key::Control as usize);
 					let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) else {
 						log::error!("Could not get selected nodes in UpdateBoxSelection");
 						return;
@@ -1983,6 +1989,33 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 							}
 						}
 					}
+
+					if control {
+						let mut non_layer_nodes = HashSet::new();
+
+						let layer_nodes = nodes.iter().filter(|node_id| network_interface.is_layer(node_id, selection_network_path));
+						for &layer_id in layer_nodes {
+							for child_id in network_interface.upstream_flow_back_from_nodes(vec![layer_id], selection_network_path, FlowType::LayerChildrenUpstreamFlow) {
+								if nodes.contains(&child_id) && child_id != layer_id {
+									non_layer_nodes.insert(child_id);
+								}
+							}
+						}
+
+						// Remove non-layer nodes from selection
+						if alt {
+							nodes = previous_selection.difference(&non_layer_nodes).cloned().collect();
+						}
+						// Add non-layer nodes to selection
+						else if shift {
+							nodes = previous_selection.union(&non_layer_nodes).cloned().collect();
+						}
+						// Replace selection with non-layer nodes
+						else {
+							nodes = non_layer_nodes;
+						}
+					}
+
 					if nodes != previous_selection {
 						responses.add(NodeGraphMessage::SelectedNodesSet {
 							nodes: nodes.into_iter().collect::<Vec<_>>(),
@@ -2770,6 +2803,7 @@ impl NodeGraphMessageHandler {
 				HintInfo::mouse(MouseMotion::LmbDrag, "Select Area"),
 				HintInfo::keys([Key::Shift], "Extend").prepend_plus(),
 				HintInfo::keys([Key::Alt], "Subtract").prepend_plus(),
+				HintInfo::keys([Key::Control], "Exclude Layers").prepend_plus(),
 			]),
 		]);
 		if self.has_selection {
