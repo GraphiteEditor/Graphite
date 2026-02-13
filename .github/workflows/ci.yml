@@ -1,0 +1,91 @@
+name: "CI"
+
+on:
+  pull_request: {}
+  merge_group: {}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Check if CI can be skipped (for merge queue optimization)
+  skip-check:
+    runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.skip-check.outputs.skip-check }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check if CI can be skipped
+        id: skip-check
+        uses: cariad-tech/merge-queue-ci-skipper@main
+
+  web-lint:
+    needs: skip-check
+    if: needs.skip-check.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/nix-setup
+      - name: Lint Graphite web formatting
+        run: nix develop .nix --command bash -c "cd frontend && npm ci && npm run lint"
+
+  rust-fmt:
+    needs: skip-check
+    if: needs.skip-check.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/nix-setup
+      - name: Check Rust formatting
+        run: nix develop .nix --command cargo fmt --all -- --check
+
+  rust-build-test:
+    needs: skip-check
+    if: needs.skip-check.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/nix-setup
+      - name: Build Rust code
+        run: nix develop .nix --command cargo build --all-features
+      - name: Run Rust tests
+        run: nix develop .nix --command cargo test --all-features
+
+  web-build:
+    needs: skip-check
+    if: needs.skip-check.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      deployments: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/nix-setup
+      - name: Build Graphite web code
+        env:
+          NODE_ENV: production
+        run: nix develop .nix --command bash -c "cd frontend && npm ci && npm run build"
+      - name: Publish to Cloudflare Pages
+        uses: cloudflare/pages-action@1
+        continue-on-error: true
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+          projectName: graphite-dev
+          directory: frontend/dist
+
+  cargo-deny:
+    needs: skip-check
+    if: needs.skip-check.outputs.skip != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check crate license compatibility for root workspace
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check bans licenses sources
+      - name: Check crate license compatibility for /libraries/rawkit
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check bans licenses sources
+          manifest-path: libraries/rawkit/Cargo.toml

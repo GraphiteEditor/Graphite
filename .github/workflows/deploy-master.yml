@@ -1,0 +1,102 @@
+name: "Deploy Master"
+
+on:
+  push:
+    branches:
+      - master
+
+env:
+  CARGO_TERM_COLOR: always
+  INDEX_HTML_HEAD_REPLACEMENT: <script defer data-domain="dev.graphite.art" data-api="https://graphite.art/visit/event" src="https://graphite.art/visit/script.hash.js"></script>
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      deployments: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/nix-setup
+
+      - name: Replace template in <head> of index.html
+        run: |
+          sed -i "s|<!-- INDEX_HTML_HEAD_REPLACEMENT -->|$INDEX_HTML_HEAD_REPLACEMENT|" frontend/index.html
+
+      - name: Build Graphite web code
+        env:
+          NODE_ENV: production
+        run: nix develop .nix --command bash -c "cd frontend && npm ci && npm run build"
+
+      - name: Publish to Cloudflare Pages
+        id: cloudflare
+        uses: cloudflare/pages-action@1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+          projectName: graphite-dev
+          directory: frontend/dist
+
+      - name: Comment build link URL to commit hash page on GitHub
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh api \
+            -X POST \
+            -H "Accept: application/vnd.github+json" \
+            /repos/${{ github.repository }}/commits/$(git rev-parse HEAD)/comments \
+            -f body="| **Build Complete for** $(git rev-parse HEAD) |
+          |-|
+          | ${{ steps.cloudflare.outputs.url }} |"
+
+  generate-docs:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      actions: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/nix-setup
+
+      - name: Generate code documentation info for website
+        run: |
+          nix develop .nix --command bash -c "cd tools/editor-message-tree && cargo run"
+          mkdir -p artifacts-generated
+          mv website/generated/hierarchical_message_system_tree.txt artifacts-generated/hierarchical_message_system_tree.txt
+
+      - name: Obtain cache of auto-generated code docs artifacts
+        id: cache-website-code-docs
+        uses: actions/cache/restore@v3
+        with:
+          path: artifacts
+          key: website-code-docs
+
+      - name: Check if auto-generated code docs artifacts changed
+        id: website-code-docs-changed
+        run: |
+          if ! diff --brief --recursive artifacts-generated artifacts; then
+            echo "Auto-generated code docs artifacts have changed."
+            rm -rf artifacts
+            mv artifacts-generated artifacts
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "Auto-generated code docs artifacts have not changed."
+            rm -rf artifacts
+            rm -rf artifacts-generated
+          fi
+
+      - name: Save cache of auto-generated code docs artifacts
+        if: steps.website-code-docs-changed.outputs.changed == 'true'
+        uses: actions/cache/save@v3
+        with:
+          path: artifacts
+          key: ${{ steps.cache-website-code-docs.outputs.cache-primary-key }}
+
+      - name: Trigger website rebuild if the auto-generated code docs artifacts have changed
+        if: steps.website-code-docs-changed.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          rm -rf artifacts
+          gh workflow run website.yml --ref master
