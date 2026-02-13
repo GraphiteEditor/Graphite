@@ -603,6 +603,8 @@ struct PathToolData {
 	started_drawing_from_inside: bool,
 	first_selected_with_single_click: bool,
 	stored_selection: Option<HashMap<LayerNodeIdentifier, SelectedLayerState>>,
+	snap_offset: DVec2,
+
 	last_drill_through_click_position: Option<DVec2>,
 	drill_through_cycle_index: usize,
 	drill_through_cycle_count: usize,
@@ -735,6 +737,7 @@ impl PathToolData {
 		self.opposing_handle_lengths = None;
 
 		self.drag_start_pos = input.mouse.position;
+		self.snap_offset = DVec2::ZERO;
 
 		if input.time - self.last_click_time > DOUBLE_CLICK_MILLISECONDS {
 			self.saved_points_before_anchor_convert_smooth_sharp.clear();
@@ -1148,50 +1151,6 @@ impl PathToolData {
 		document.metadata().document_to_viewport.transform_vector2(snap_result.snapped_point_document - handle_position)
 	}
 
-	fn start_snap_along_axis(&mut self, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
-		// Find the negative delta to take the point to the drag start position
-		let current_mouse = input.mouse.position;
-		let drag_start = self.drag_start_pos;
-		let opposite_delta = drag_start - current_mouse;
-
-		shape_editor.move_selected_points_and_segments(None, document, opposite_delta, false, true, false, None, false, responses);
-
-		// Calculate the projected delta and shift the points along that delta
-		let delta = current_mouse - drag_start;
-		let axis = if delta.x.abs() >= delta.y.abs() { Axis::X } else { Axis::Y };
-		self.snapping_axis = Some(axis);
-		let projected_delta = match axis {
-			Axis::X => DVec2::new(delta.x, 0.),
-			Axis::Y => DVec2::new(0., delta.y),
-			_ => DVec2::new(delta.x, 0.),
-		};
-
-		shape_editor.move_selected_points_and_segments(None, document, projected_delta, false, true, false, None, false, responses);
-	}
-
-	fn stop_snap_along_axis(&mut self, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
-		// Calculate the negative delta of the selection and move it back to the drag start
-		let current_mouse = input.mouse.position;
-		let drag_start = self.drag_start_pos;
-
-		let opposite_delta = drag_start - current_mouse;
-		let Some(axis) = self.snapping_axis else { return };
-		let opposite_projected_delta = match axis {
-			Axis::X => DVec2::new(opposite_delta.x, 0.),
-			Axis::Y => DVec2::new(0., opposite_delta.y),
-			_ => DVec2::new(opposite_delta.x, 0.),
-		};
-
-		shape_editor.move_selected_points_and_segments(None, document, opposite_projected_delta, false, true, false, None, false, responses);
-
-		// Calculate what actually would have been the original delta for the point, and apply that
-		let delta = current_mouse - drag_start;
-
-		shape_editor.move_selected_points_and_segments(None, document, delta, false, true, false, None, false, responses);
-
-		self.snapping_axis = None;
-	}
-
 	fn get_normalized_tangent(&mut self, point: PointId, segment: SegmentId, vector: &Vector) -> Option<DVec2> {
 		let other_point = vector.other_point(segment, point)?;
 		let position = ManipulatorPointId::Anchor(point).get_position(vector)?;
@@ -1409,10 +1368,15 @@ impl PathToolData {
 				.any(|point| matches!(point, ManipulatorPointId::EndHandle(_) | ManipulatorPointId::PrimaryHandle(_)));
 
 		// This is where it starts snapping along axis
-		if snap_axis && self.snapping_axis.is_none() && !single_handle_selected {
-			self.start_snap_along_axis(shape_editor, document, input, responses);
-		} else if !snap_axis && self.snapping_axis.is_some() {
-			self.stop_snap_along_axis(shape_editor, document, input, responses);
+		if snap_axis && !single_handle_selected {
+			let total_delta = self.drag_start_pos - input.mouse.position;
+			if total_delta.x.abs() > total_delta.y.abs() {
+				self.snapping_axis = Some(Axis::X);
+			} else {
+				self.snapping_axis = Some(Axis::Y);
+			}
+		} else {
+			self.snapping_axis = None;
 		}
 
 		let document_to_viewport = document.metadata().document_to_viewport;
@@ -1452,87 +1416,74 @@ impl PathToolData {
 				viewport,
 			)
 		} else {
-			shape_editor.snap(&mut self.snap_manager, &self.snap_cache, document, input, viewport, previous_mouse)
+			let constraint = if let Some(axis) = self.snapping_axis {
+				match axis {
+					Axis::X => SnapConstraint::Direction(DVec2::X),
+					Axis::Y => SnapConstraint::Direction(DVec2::Y),
+					_ => SnapConstraint::None,
+				}
+			} else {
+				SnapConstraint::None
+			};
+			shape_editor.snap(&mut self.snap_manager, &self.snap_cache, document, input, viewport, previous_mouse, constraint, self.snap_offset)
 		};
 
 		let handle_lengths = if equidistant { None } else { self.opposing_handle_lengths.take() };
 		let opposite = if lock_angle { None } else { self.opposite_handle_position };
-		let unsnapped_delta = current_mouse - previous_mouse;
 		let mut was_alt_dragging = false;
 
-		if self.snapping_axis.is_none() {
-			if self.alt_clicked_on_anchor && !self.alt_dragging_from_anchor && self.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD {
-				// Checking which direction the dragging begins
-				self.alt_dragging_from_anchor = true;
-				let Some(layer) = document.network_interface.selected_nodes().selected_layers(document.metadata()).next() else {
-					return;
-				};
-				let Some(vector) = document.network_interface.compute_modified_vector(layer) else { return };
-				let Some(point_id) = shape_editor.selected_points().next().unwrap().get_anchor(&vector) else {
-					return;
-				};
-
-				if vector.connected_count(point_id) == 2 {
-					let connected_segments: Vec<HandleId> = vector.all_connected(point_id).collect();
-					let segment1 = connected_segments[0];
-					let Some(tangent1) = self.get_normalized_tangent(point_id, segment1.segment, &vector) else {
-						return;
-					};
-					let segment2 = connected_segments[1];
-					let Some(tangent2) = self.get_normalized_tangent(point_id, segment2.segment, &vector) else {
-						return;
-					};
-
-					let delta = input.mouse.position - self.drag_start_pos;
-					let handle = if delta.dot(tangent1) >= delta.dot(tangent2) {
-						segment1.to_manipulator_point()
-					} else {
-						segment2.to_manipulator_point()
-					};
-
-					// Now change the selection to this handle
-					shape_editor.deselect_all_points();
-					shape_editor.select_point_by_layer_and_id(handle, layer);
-
-					responses.add(PathToolMessage::SelectionChanged);
-				}
-			}
-
-			if self.alt_dragging_from_anchor && !equidistant && self.alt_clicked_on_anchor {
-				was_alt_dragging = true;
-				self.alt_dragging_from_anchor = false;
-				self.alt_clicked_on_anchor = false;
-			}
-
-			let mut skip_opposite = false;
-			if self.temporary_colinear_handles && !lock_angle {
-				shape_editor.disable_colinear_handles_state_on_selected(&document.network_interface, responses);
-				self.temporary_colinear_handles = false;
-				skip_opposite = true;
-			}
-			shape_editor.move_selected_points_and_segments(handle_lengths, document, snapped_delta, equidistant, true, was_alt_dragging, opposite, skip_opposite, responses);
-			self.previous_mouse_position += document_to_viewport.inverse().transform_vector2(snapped_delta);
-		} else {
-			let Some(axis) = self.snapping_axis else { return };
-			let projected_delta = match axis {
-				Axis::X => DVec2::new(unsnapped_delta.x, 0.),
-				Axis::Y => DVec2::new(0., unsnapped_delta.y),
-				_ => DVec2::new(unsnapped_delta.x, 0.),
+		if self.alt_clicked_on_anchor && !self.alt_dragging_from_anchor && self.drag_start_pos.distance(input.mouse.position) > DRAG_THRESHOLD {
+			// Checking which direction the dragging begins
+			self.alt_dragging_from_anchor = true;
+			let Some(layer) = document.network_interface.selected_nodes().selected_layers(document.metadata()).next() else {
+				return;
 			};
-			shape_editor.move_selected_points_and_segments(handle_lengths, document, projected_delta, equidistant, true, false, opposite, false, responses);
-			self.previous_mouse_position += document_to_viewport.inverse().transform_vector2(unsnapped_delta);
-		}
+			let Some(vector) = document.network_interface.compute_modified_vector(layer) else { return };
+			let Some(point_id) = shape_editor.selected_points().next().unwrap().get_anchor(&vector) else {
+				return;
+			};
 
-		// Constantly checking and changing the snapping axis based on current mouse position
-		if snap_axis && self.snapping_axis.is_some() {
-			let Some(current_axis) = self.snapping_axis else { return };
-			let total_delta = self.drag_start_pos - input.mouse.position;
+			if vector.connected_count(point_id) == 2 {
+				let connected_segments: Vec<HandleId> = vector.all_connected(point_id).collect();
+				let segment1 = connected_segments[0];
+				let Some(tangent1) = self.get_normalized_tangent(point_id, segment1.segment, &vector) else {
+					return;
+				};
+				let segment2 = connected_segments[1];
+				let Some(tangent2) = self.get_normalized_tangent(point_id, segment2.segment, &vector) else {
+					return;
+				};
 
-			if (total_delta.x.abs() > total_delta.y.abs() && current_axis == Axis::Y) || (total_delta.y.abs() > total_delta.x.abs() && current_axis == Axis::X) {
-				self.stop_snap_along_axis(shape_editor, document, input, responses);
-				self.start_snap_along_axis(shape_editor, document, input, responses);
+				let delta = input.mouse.position - self.drag_start_pos;
+				let handle = if delta.dot(tangent1) >= delta.dot(tangent2) {
+					segment1.to_manipulator_point()
+				} else {
+					segment2.to_manipulator_point()
+				};
+
+				// Now change the selection to this handle
+				shape_editor.deselect_all_points();
+				shape_editor.select_point_by_layer_and_id(handle, layer);
+
+				responses.add(PathToolMessage::SelectionChanged);
 			}
 		}
+
+		if self.alt_dragging_from_anchor && !equidistant && self.alt_clicked_on_anchor {
+			was_alt_dragging = true;
+			self.alt_dragging_from_anchor = false;
+			self.alt_clicked_on_anchor = false;
+		}
+
+		let mut skip_opposite = false;
+		if self.temporary_colinear_handles && !lock_angle {
+			shape_editor.disable_colinear_handles_state_on_selected(&document.network_interface, responses);
+			self.temporary_colinear_handles = false;
+			skip_opposite = true;
+		}
+		shape_editor.move_selected_points_and_segments(handle_lengths, document, snapped_delta, equidistant, true, was_alt_dragging, opposite, skip_opposite, responses);
+		self.previous_mouse_position += document_to_viewport.inverse().transform_vector2(snapped_delta);
+		self.snap_offset += document_to_viewport.inverse().transform_vector2(snapped_delta);
 	}
 
 	fn pivot_gizmo(&self) -> PivotGizmo {
