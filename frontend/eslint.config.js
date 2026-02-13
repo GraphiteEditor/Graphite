@@ -87,7 +87,7 @@ export default defineConfig([
 			"svelte/require-each-key": "off", // TODO: Remove this rule and fix the places where it's violated
 
 			// Import plugin config (for intelligently validating module import statements)
-			"import/no-unresolved": "error",
+			"import/no-unresolved": ["error", { ignore: ["@graphite/../wasm/pkg/graphite_wasm"] }],
 			// `no-duplicates` disabled due to <https://github.com/import-js/eslint-plugin-import/issues/1479#issuecomment-1789527447>. Reenable if that issue gets fixed.
 			"import/no-duplicates": "off",
 			"import/prefer-default-export": "off",
@@ -97,7 +97,10 @@ export default defineConfig([
 				"error",
 				{
 					alphabetize: { order: "asc", caseInsensitive: true },
-					pathGroups: [{ pattern: "**/*.svelte", group: "unknown", position: "after" }],
+					pathGroups: [
+						{ pattern: "@graphite/../wasm/pkg/graphite_wasm", group: "external", position: "before" },
+						{ pattern: "**/*.svelte", group: "unknown", position: "after" },
+					],
 					"newlines-between": "always-and-inside-groups",
 					warnOnUnassignedImports: true,
 				},

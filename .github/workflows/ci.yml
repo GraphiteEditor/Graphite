@@ -48,7 +48,7 @@ jobs:
   rust-build-test:
     needs: skip-check
     if: needs.skip-check.outputs.skip != 'true'
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     permissions:
       contents: read
       id-token: write
@@ -71,10 +71,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/nix-setup
+      - name: Clean npm cache
+        run: rm -rf frontend/node_modules
       - name: Build Graphite web code
         env:
           NODE_ENV: production
-        run: nix develop .nix --command bash -c "cd frontend && npm ci && npm run build"
+        run: nix develop .nix --command bash -c "cd frontend && npm run build"
       - name: Publish to Cloudflare Pages
         uses: cloudflare/pages-action@1
         continue-on-error: true
