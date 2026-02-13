@@ -1,21 +1,20 @@
 const UPDATE_CHECK_URL: &str = "https://localhost:8080/v1/update";
 
-async fn check_for_update(info: Info) -> Status {
+async fn check_for_update(info: Info) -> UpdateCheckRsponse {
 	let client = reqwest::Client::new();
 	let response = client.post(UPDATE_CHECK_URL).json(&info).send().await;
 
 	match response {
-		Ok(response) => {
-			if response.status().is_success() {
-				match response.json::<Status>().await {
-					Ok(result) => result,
-					Err(_) => Status::Unknown,
-				}
-			} else {
-				Status::Unknown
+		Ok(response) if response.status().is_success() => {
+			if let Ok(result) = response.json::<UpdateCheckRsponse>().await {
+				return result;
 			}
 		}
-		Err(_) => Status::Unknown,
+		_ => {}
+	}
+	UpdateCheckRsponse {
+		status: Status::Unknown,
+		messages: Vec::new(),
 	}
 }
 
@@ -69,17 +68,20 @@ pub enum Source {
 	Other(String),
 }
 
-struct UpdateCheckRsponse {
+#[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct UpdateCheckRsponse {
 	status: Status,
 	messages: Vec<Message>,
 }
 
-struct Message {
+#[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Message {
 	title: String,
 	body: String,
 	action: Action,
 }
 
+#[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum Action {
 	OpenUrl(String),
 	PerformAutoUpdate,
