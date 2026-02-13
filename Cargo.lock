@@ -2412,6 +2412,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "graphite-desktop-update"
+version = "0.0.0"
+
+[[package]]
 name = "graphite-desktop-wrapper"
 version = "0.1.0"
 dependencies = [

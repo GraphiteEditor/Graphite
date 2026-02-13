@@ -3,6 +3,7 @@ members = [
 	"desktop",
 	"desktop/wrapper",
 	"desktop/embedded-resources",
+	"desktop/update",
 	"desktop/bundle",
 	"desktop/platform/linux",
 	"desktop/platform/mac",
