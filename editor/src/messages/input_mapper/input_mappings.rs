@@ -41,6 +41,8 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		// NavigationMessage
 		entry!(KeyUp(Space); action_dispatch=NavigationMessage::EndCanvasPTZ { abort_transform: false, panning: false }),
 		entry!(PointerMove; refresh_keys=[Shift], action_dispatch=NavigationMessage::PointerMove { snap: Shift }),
+		entry!(KeyUp(MouseLeft); modifiers=[Alt, Space], action_dispatch=DocumentMessage::Noop),
+		entry!(KeyUp(MouseLeft); modifiers=[Control, Space], action_dispatch=DocumentMessage::Noop),
 		entry!(KeyUp(MouseLeft); modifiers=[Space], action_dispatch=NavigationMessage::EndCanvasPTZ { abort_transform: false, panning: true}),
 		entry!(KeyUp(MouseLeft); action_dispatch=NavigationMessage::EndCanvasPTZ { abort_transform: false, panning: false }),
 		entry!(KeyUp(MouseMiddle); action_dispatch=NavigationMessage::EndCanvasPTZ { abort_transform: false, panning: false }),
@@ -422,6 +424,10 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		entry!(KeyDown(MouseLeft); modifiers=[Space], action_dispatch=NavigationMessage::BeginCanvasPan {panning: true}),
 		// Both are implemented cause for some reason keydown space was being forwarded ever further though I think the keydown(mouseleft) with modifiers=[Space] should've consumed the match
 		// statement.
+		entry!(KeyDown(Space); modifiers=[Alt], action_dispatch=DocumentMessage::Noop),
+		entry!(KeyDown(Space); modifiers=[Control], action_dispatch=DocumentMessage::Noop),
+		entry!(KeyDown(Alt); modifiers=[Space], action_dispatch=DocumentMessage::Noop),
+		entry!(KeyDown(Control); modifiers=[Space], action_dispatch=DocumentMessage::Noop),
 		entry!(KeyDown(Space); modifiers=[MouseLeft], action_dispatch=NavigationMessage::BeginCanvasPan {panning: true}),
 		entry!(KeyDown(Space); action_dispatch=NavigationMessage::BeginCanvasPan {panning: false}),
 		entry!(KeyDown(NumpadAdd); modifiers=[Accel], action_dispatch=NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }),
