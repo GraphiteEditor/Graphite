@@ -436,47 +436,34 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, b
 	modify_inputs.fill_set(match &fill.paint() {
 		usvg::Paint::Color(color) => Fill::solid(usvg_color(*color, fill.opacity().get())),
 		usvg::Paint::LinearGradient(linear) => {
-			let local = [DVec2::new(linear.x1() as f64, linear.y1() as f64), DVec2::new(linear.x2() as f64, linear.y2() as f64)];
-
 			let gradient_transform = usvg_transform(linear.transform());
-			let gradient_coords = [gradient_transform.transform_point2(local[0]), gradient_transform.transform_point2(local[1])];
-			let [start, end] = [
-				bounds_transform.inverse().transform_point2(gradient_coords[0]),
-				bounds_transform.inverse().transform_point2(gradient_coords[1]),
-			];
+			let (start, end) = (DVec2::new(linear.x1() as f64, linear.y1() as f64), DVec2::new(linear.x2() as f64, linear.y2() as f64));
+			let (start, end) = (gradient_transform.transform_point2(start), gradient_transform.transform_point2(end));
+			let (start, end) = (bounds_transform.inverse().transform_point2(start), bounds_transform.inverse().transform_point2(end));
+
+			let gradient_type = GradientType::Linear;
 
 			let stops = linear.stops().iter().map(|stop| (stop.offset().get() as f64, usvg_color(stop.color(), stop.opacity().get()))).collect();
 			let stops = GradientStops::new(stops);
 
-			Fill::Gradient(Gradient {
-				start,
-				end,
-				gradient_type: GradientType::Linear,
-				stops,
-			})
+			Fill::Gradient(Gradient { start, end, gradient_type, stops })
 		}
 		usvg::Paint::RadialGradient(radial) => {
-			let center = DVec2::new(radial.cx() as f64, radial.cy() as f64);
-			let radius = radial.r().get() as f64;
-			let edge = center + DVec2::new(radius, 0.);
-
 			let gradient_transform = usvg_transform(radial.transform());
-			let gradient_center = gradient_transform.transform_point2(center);
-			let gradient_edge = gradient_transform.transform_point2(edge);
-			let [start, end] = [bounds_transform.inverse().transform_point2(gradient_center), bounds_transform.inverse().transform_point2(gradient_edge)];
+			let center = DVec2::new(radial.cx() as f64, radial.cy() as f64);
+			let edge = center + DVec2::X * radial.r().get() as f64;
+			let (start, end) = (gradient_transform.transform_point2(center), gradient_transform.transform_point2(edge));
+			let (start, end) = (bounds_transform.inverse().transform_point2(start), bounds_transform.inverse().transform_point2(end));
+
+			let gradient_type = GradientType::Radial;
 
 			let stops = radial.stops().iter().map(|stop| (stop.offset().get() as f64, usvg_color(stop.color(), stop.opacity().get()))).collect();
 			let stops = GradientStops::new(stops);
 
-			Fill::Gradient(Gradient {
-				start,
-				end,
-				gradient_type: GradientType::Radial,
-				stops,
-			})
+			Fill::Gradient(Gradient { start, end, gradient_type, stops })
 		}
 		usvg::Paint::Pattern(_) => {
-			warn!("Skip pattern");
+			warn!("SVG patterns are not currently supported");
 			return;
 		}
 	});
