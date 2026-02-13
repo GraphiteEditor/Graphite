@@ -1,0 +1,11 @@
+name: 'Nix Setup'
+description: 'Sets up Nix with the magic cache for CI'
+
+runs:
+  using: "composite"
+  steps:
+    - name: Install Nix
+      uses: DeterminateSystems/nix-installer-action@main
+
+    - name: Setup Nix cache
+      uses: DeterminateSystems/magic-nix-cache-action@main
