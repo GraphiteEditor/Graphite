@@ -203,7 +203,7 @@ impl NodeNetworkInterface {
 				concrete!(())
 			}
 		};
-		TaggedValue::from_type_or_none(&guaranteed_type)
+		TaggedValue::from_type(&guaranteed_type).expect("Failed to construct TaggedValue for identity type")
 	}
 
 	/// A list of all valid input types for this specific node.

@@ -2585,7 +2585,7 @@ impl NodeGraphMessageHandler {
 			return Vec::new();
 		};
 		let mut nodes = Vec::new();
-		for (node_id, visible) in network.nodes.iter().map(|(node_id, node)| (*node_id, node.visible)).collect::<Vec<_>>() {
+		for (node_id, visible) in network.nodes.iter().map(|(node_id, node)| (*node_id, node.visible.is_visible())).collect::<Vec<_>>() {
 			let primary_input_connector = InputConnector::node(node_id, 0);
 
 			let primary_input = if network_interface
@@ -2735,7 +2735,7 @@ impl NodeGraphMessageHandler {
 
 				let parents_visible = layer.ancestors(network_interface.document_metadata()).filter(|&ancestor| ancestor != layer).all(|layer| {
 					if layer != LayerNodeIdentifier::ROOT_PARENT {
-						network_interface.document_node(&layer.to_node(), &[]).map(|node| node.visible).unwrap_or_default()
+						network_interface.document_node(&layer.to_node(), &[]).map(|node| node.visible.is_visible()).unwrap_or_default()
 					} else {
 						true
 					}

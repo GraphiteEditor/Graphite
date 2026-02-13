@@ -11,12 +11,15 @@ use crate::messages::portfolio::document::node_graph::document_node_definitions:
 use crate::messages::portfolio::document::node_graph::utility_types::{Direction, FrontendClickTargets, FrontendGraphDataType, FrontendGraphInput, FrontendGraphOutput};
 use crate::messages::portfolio::document::overlays::utility_functions::text_width;
 use crate::messages::portfolio::document::utility_types::network_interface::resolved_types::ResolvedDocumentNodeTypes;
+use crate::messages::portfolio::document::utility_types::network_interface::resolved_types::TypeSource;
 use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle, WirePath, WirePathUpdate, build_vector_wire};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::tool_messages::tool_prelude::NumberInputMode;
 use deserialization::deserialize_node_persistent_metadata;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::Type;
+use graph_craft::concrete;
+use graph_craft::document::Visible;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
 use graphene_std::ContextDependencies;
@@ -1049,7 +1052,7 @@ impl NodeNetworkInterface {
 			log::error!("Could not get node in is_visible");
 			return false;
 		};
-		node.visible
+		node.visible.is_visible()
 	}
 
 	pub fn is_layer(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
@@ -1358,7 +1361,7 @@ impl NodeNetworkInterface {
 
 				node.inputs = old_node.inputs;
 				node.call_argument = old_node.manual_composition.unwrap();
-				node.visible = old_node.visible;
+				node.visible = if old_node.visible { Visible::Passthrough } else { Visible::Value(node.call_argument.clone()) };
 				node.skip_deduplication = old_node.skip_deduplication;
 				node.original_location = old_node.original_location;
 				node_metadata.persistent_metadata.display_name = old_node.alias;
@@ -4480,15 +4483,41 @@ impl NodeNetworkInterface {
 	}
 
 	pub fn set_visibility(&mut self, node_id: &NodeId, network_path: &[NodeId], is_visible: bool) {
-		let Some(network) = self.network_mut(network_path) else {
+		if is_visible {
+			if let Some(network) = self.network_mut(network_path) {
+				if let Some(node) = network.nodes.get_mut(node_id) {
+					node.visible = Visible::Passthrough;
+				}
+			}
+			self.transaction_modified();
 			return;
-		};
-		let Some(node) = network.nodes.get_mut(node_id) else {
-			log::error!("Could not get node {node_id} in set_visibility");
-			return;
+		}
+
+		// Compute output_type BEFORE borrowing network mutably
+		let output_type = {
+			let output_connector = OutputConnector::Node { node_id: *node_id, output_index: 0 };
+
+			match self.output_type(&output_connector, network_path) {
+				TypeSource::Compiled(ty) => ty,
+				TypeSource::TaggedValue(ty) => ty,
+				TypeSource::Unknown | TypeSource::Invalid => {
+					log::error!("Output type unknown when hiding node");
+					concrete!(()) // temporary fallback, but should rarely happen
+				}
+				TypeSource::Error(e) => {
+					log::error!("Error retrieving output type in set_visibility: {e}");
+					concrete!(())
+				}
+			}
 		};
 
-		node.visible = is_visible;
+		// Now borrow network mutably AFTER output_type is computed
+		if let Some(network) = self.network_mut(network_path) {
+			if let Some(node) = network.nodes.get_mut(node_id) {
+				node.visible = Visible::Value(output_type);
+			}
+		}
+
 		self.transaction_modified();
 	}
 
