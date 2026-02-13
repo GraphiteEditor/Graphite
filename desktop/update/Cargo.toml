@@ -9,3 +9,5 @@ edition = "2024"
 rust-version = "1.87"
 
 [dependencies]
+serde = { workspace = true }
+reqwest = { workspace = true }
