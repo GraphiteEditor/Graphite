@@ -23,6 +23,9 @@ jobs:
     needs: skip-check
     if: needs.skip-check.outputs.skip != 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/nix-setup
@@ -33,6 +36,9 @@ jobs:
     needs: skip-check
     if: needs.skip-check.outputs.skip != 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/nix-setup
@@ -43,6 +49,9 @@ jobs:
     needs: skip-check
     if: needs.skip-check.outputs.skip != 'true'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/nix-setup
@@ -56,6 +65,8 @@ jobs:
     if: needs.skip-check.outputs.skip != 'true'
     runs-on: ubuntu-latest
     permissions:
+      contents: read
+      id-token: write
       deployments: write
     steps:
       - uses: actions/checkout@v4
