@@ -6,6 +6,8 @@ runs:
   steps:
     - name: Install Nix
       uses: DeterminateSystems/nix-installer-action@main
+      with:
+        determinate: false
 
     - name: Setup Nix cache
       uses: DeterminateSystems/magic-nix-cache-action@main
