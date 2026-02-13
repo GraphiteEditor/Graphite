@@ -786,10 +786,21 @@ async fn extrude(_: impl Ctx, mut source: Table<Vector>, direction: DVec2, joini
 }
 
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
-async fn box_warp(_: impl Ctx, content: Table<Vector>, #[expose] rectangle: Table<Vector>) -> Table<Vector> {
+async fn box_warp(_: impl Ctx, content: Table<Vector>, #[expose] rectangle: Table<Vector>, #[expose] combined: bool) -> Table<Vector> {
 	let Some((target, target_transform)) = rectangle.get(0).map(|rect| (rect.element, rect.transform)) else {
 		return content;
 	};
+	
+    // Compute combined bounding box if needed
+    let combined_bbox = if combined {
+content.iter()
+          .filter_map(|row| row.element.bounding_box_with_transform(row.transform))
+          .reduce(|[min, max], [bbox_min, bbox_max]| {
+              [min.min(bbox_min), max.max(bbox_max)]
+          })
+    } else {
+        None
+    };
 
 	content
 		.into_iter()
@@ -798,7 +809,7 @@ async fn box_warp(_: impl Ctx, content: Table<Vector>, #[expose] rectangle: Tabl
 			let vector = row.element;
 
 			// Get the bounding box of the source vector geometry
-			let source_bbox = vector.bounding_box_with_transform(transform).unwrap_or([DVec2::ZERO, DVec2::ONE]);
+			let source_bbox = combined_bbox.unwrap_or_else(|| vector.bounding_box_with_transform(transform).unwrap_or([DVec2::ZERO, DVec2::ONE]));
 
 			// Extract first 4 points from target shape to form the quadrilateral
 			// Apply the target's transform to get points in world space
