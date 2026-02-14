@@ -3,6 +3,7 @@
 import { Transform, Type, plainToClass } from "class-transformer";
 
 import { type EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
+
 import { type PopoverButtonStyle, type IconName, type IconSize } from "@graphite/icons";
 
 export class JsMessage {
