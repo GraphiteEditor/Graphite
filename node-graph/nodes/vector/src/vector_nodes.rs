@@ -1158,7 +1158,9 @@ async fn solidify_stroke(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
 				path.apply_affine(Affine::new(stroke.transform.to_cols_array()));
 
 				let mut solidified = kurbo::stroke(path, &stroke_style, &stroke_options, STROKE_TOLERANCE);
-				solidified.apply_affine(Affine::new(stroke.transform.inverse().to_cols_array()));
+				if stroke.transform.matrix2.determinant() != 0. {
+					solidified.apply_affine(Affine::new(stroke.transform.inverse().to_cols_array()));
+				}
 
 				result.append_bezpath(solidified);
 			}
