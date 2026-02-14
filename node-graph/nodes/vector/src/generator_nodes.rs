@@ -1,6 +1,7 @@
-use core_types::Ctx;
 use core_types::registry::types::{Angle, PixelSize};
 use core_types::table::Table;
+use core_types::{Ctx, specta};
+use dyn_any::DynAny;
 use glam::DVec2;
 use graphic_types::Vector;
 use vector_types::subpath;
@@ -186,48 +187,72 @@ fn star<T: AsU64>(
 	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_star_polygon(DVec2::splat(-diameter), points, diameter, inner_diameter)))
 }
 
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[widget(Radio)]
+pub enum QRCodeErrorCorrectionLevel {
+	/// Allows recovery from up to 7% data loss.
+	#[default]
+	Low,
+	/// Allows recovery from up to 15% data loss.
+	Medium,
+	/// Allows recovery from up to 25% data loss.
+	Quartile,
+	/// Allows recovery from up to 30% data loss.
+	High,
+}
+
 /// Generates a QR code from the input text.
 #[node_macro::node(category("Vector: Shape"), name("QR Code"))]
 fn qr_code(
 	_: impl Ctx,
 	_primary: (),
-	#[default("https://graphite.art")] text: String,
-	/// Error correction level, from low (0) to high (3).
-	#[default(1)]
-	error_correction: u32,
+	#[widget(ParsedWidgetOverride::Custom = "text_area")]
+	#[default("https://graphite.art")]
+	text: String,
+	#[widget(ParsedWidgetOverride::Hidden)] has_size: bool,
+	#[unit(" px")]
+	#[hard_min(1.)]
+	#[widget(ParsedWidgetOverride::Custom = "optional_f64")]
+	size: f64,
+	error_correction: QRCodeErrorCorrectionLevel,
 	#[default(false)] individual_squares: bool,
 ) -> Table<Vector> {
-	let ecc = match error_correction.min(3) {
-		0 => qrcodegen::QrCodeEcc::Low,
-		1 => qrcodegen::QrCodeEcc::Medium,
-		2 => qrcodegen::QrCodeEcc::Quartile,
-		3 => qrcodegen::QrCodeEcc::High,
-		_ => unreachable!(),
+	let ecc = match error_correction {
+		QRCodeErrorCorrectionLevel::Low => qrcodegen::QrCodeEcc::Low,
+		QRCodeErrorCorrectionLevel::Medium => qrcodegen::QrCodeEcc::Medium,
+		QRCodeErrorCorrectionLevel::Quartile => qrcodegen::QrCodeEcc::Quartile,
+		QRCodeErrorCorrectionLevel::High => qrcodegen::QrCodeEcc::High,
 	};
 
-	let Ok(qr_code) = qrcodegen::QrCode::encode_text(&text, ecc) else {
-		return Table::default();
-	};
+	let Ok(qr_code) = qrcodegen::QrCode::encode_text(&text, ecc) else { return Table::default() };
 
-	let size = qr_code.size() as usize;
-	let mut vector = Vector::default();
+	let mut vector = match individual_squares {
+		true => {
+			let mut vector = Vector::default();
 
-	if individual_squares {
-		for y in 0..size {
-			for x in 0..size {
-				if qr_code.get_module(x as i32, y as i32) {
-					let corner1 = DVec2::new(x as f64, y as f64);
-					let corner2 = corner1 + DVec2::splat(1.);
-					vector.append_subpath(
-						subpath::Subpath::from_anchors([corner1, DVec2::new(corner2.x, corner1.y), corner2, DVec2::new(corner1.x, corner2.y)], true),
-						false,
-					);
+			let dimension = qr_code.size() as usize;
+			for y in 0..dimension {
+				for x in 0..dimension {
+					if qr_code.get_module(x as i32, y as i32) {
+						let corner1 = DVec2::new(x as f64, y as f64);
+						let corner2 = corner1 + DVec2::splat(1.);
+						vector.append_subpath(
+							subpath::Subpath::from_anchors([corner1, DVec2::new(corner2.x, corner1.y), corner2, DVec2::new(corner1.x, corner2.y)], true),
+							false,
+						);
+					}
 				}
 			}
+
+			vector
 		}
-	} else {
-		crate::merge_qr_squares::merge_qr_squares(&qr_code, &mut vector);
+		false => crate::merge_qr_squares::merge_qr_squares(&qr_code),
+	};
+
+	if has_size {
+		vector.transform(glam::DAffine2::from_scale(DVec2::splat(size.max(1.) / qr_code.size() as f64)));
 	}
+
 	Table::new_from_element(vector)
 }
 
@@ -407,7 +432,7 @@ mod tests {
 
 	#[test]
 	fn qr_code_test() {
-		let qr = qr_code((), (), "https://graphite.art".to_string(), 1, true);
+		let qr = qr_code((), (), "https://graphite.art".to_string(), false, 1., QRCodeErrorCorrectionLevel::Low, true);
 		assert!(qr.iter().next().unwrap().element.point_domain.ids().len() > 0);
 		assert!(qr.iter().next().unwrap().element.segment_domain.ids().len() > 0);
 	}
