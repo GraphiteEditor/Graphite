@@ -1,20 +1,20 @@
 const UPDATE_CHECK_URL: &str = "https://localhost:8080/v1/update";
 
-async fn check_for_update(info: Info) -> UpdateCheckRsponse {
+async fn check_for_update(info: Info) -> UpdateCheckResponse {
 	let client = reqwest::Client::new();
 	let response = client.post(UPDATE_CHECK_URL).json(&info).send().await;
 
 	match response {
 		Ok(response) if response.status().is_success() => {
-			if let Ok(result) = response.json::<UpdateCheckRsponse>().await {
+			if let Ok(result) = response.json::<UpdateCheckResponse>().await {
 				return result;
 			}
 		}
 		_ => {}
 	}
-	UpdateCheckRsponse {
+	UpdateCheckResponse {
 		status: Status::Unknown,
-		messages: Vec::new(),
+		prompts: Vec::new(),
 	}
 }
 
@@ -23,7 +23,7 @@ pub struct Info {
 	pub commit: Commit,
 	pub version: Version,
 	pub system: System,
-	pub source: Option<Source>,
+	pub distribution: Distribution,
 }
 
 #[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -33,10 +33,9 @@ pub struct Commit {
 }
 
 #[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct Version {
-	pub major: u64,
-	pub minor: u64,
-	pub patch: u64,
+pub enum Version {
+	Stable { major: u32, minor: u32, patch: u32 },
+	Dev,
 }
 
 #[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -56,49 +55,38 @@ pub enum Os {
 pub enum Arch {
 	X86_64,
 	Aarch64,
+	Wasm32,
 }
 
 #[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub enum Source {
+pub enum Distribution {
+	WebOfficial,
+	WebUnknown,
 	Flathub,
 	Nixpkgs,
 	Steam,
-	AppleAppStore,
+	MacAppStore,
 	WindowsStore,
-	Other(String),
+	Installer,
+	Portable,
 }
 
 #[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct UpdateCheckRsponse {
-	status: Status,
-	messages: Vec<Message>,
+pub struct UpdateCheckResponse {
+	status: Option<Prompt>,
+	prompts: Vec<Prompt>,
 }
 
 #[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub struct Message {
+pub struct Prompt {
 	title: String,
 	body: String,
-	action: Action,
+	resolution: Option<Resolution>,
 }
 
 #[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub enum Action {
-	OpenUrl(String),
-	PerformAutoUpdate,
-	None,
-}
-
-#[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub enum Status {
-	Available(Method),
-	Outdated,
-	Unknown,
-	Latest,
-}
-
-#[derive(Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
-pub enum Method {
-	Manual,
-	Auto { url: String },
+pub enum Resolution {
+	Visit { url: String },
+	AutoInstall { url: String, hash: String, version: Version, commit: Commit },
 	PackageManager,
 }
