@@ -31,11 +31,14 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
 
-      - name: 📦 Install wasm-pack
-        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+      - name: 📦 Setup cargo-binstall
+        uses: cargo-bins/cargo-binstall@main
 
-      - name: 📦 Install cargo-about
-        run: cargo install cargo-about
+      - name: 📦 Install wasm-pack and cargo-about
+        run: cargo binstall --no-confirm --force wasm-pack cargo-about
+
+      - name: 📦 Install wasm-opt (binaryen)
+        run: sudo apt-get update && sudo apt-get install -y binaryen
 
       - name: 🚧 Install build dependencies
         run: |
