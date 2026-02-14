@@ -61,9 +61,9 @@ impl Default for ShapeToolOptions {
 			spiral_type: SpiralType::Archimedean,
 			turns: 5.,
 			grid_type: GridType::Rectangular,
-			arrow_shaft_width: 14.0,
-			arrow_head_width: 32.0,
-			arrow_head_length: 28.0,
+			arrow_shaft_width: 14.,
+			arrow_head_width: 32.,
+			arrow_head_length: 28.,
 		}
 	}
 }
@@ -926,7 +926,7 @@ impl Fsm for ShapeToolFsmState {
 					ShapeType::Grid => Grid::create_node(tool_options.grid_type),
 					ShapeType::Rectangle => Rectangle::create_node(),
 					ShapeType::Ellipse => Ellipse::create_node(),
-					ShapeType::Arrow => Arrow::create_node(document, tool_data.data.drag_start),
+					ShapeType::Arrow => Arrow::create_node(document, tool_data.data.drag_start, tool_options.arrow_shaft_width, tool_options.arrow_head_width, tool_options.arrow_head_length),
 					ShapeType::Line => Line::create_node(document, tool_data.data.drag_start),
 				};
 
@@ -978,18 +978,7 @@ impl Fsm for ShapeToolFsmState {
 					ShapeType::Star => Star::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
 					ShapeType::Circle => Circle::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
 					ShapeType::Arc => Arc::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
-					ShapeType::Arrow => Arrow::update_shape(
-						document,
-						input,
-						viewport,
-						layer,
-						tool_data,
-						modifier,
-						tool_options.arrow_shaft_width,
-						tool_options.arrow_head_width,
-						tool_options.arrow_head_length,
-						responses,
-					),
+					ShapeType::Arrow => Arrow::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
 					ShapeType::Spiral => Spiral::update_shape(document, input, viewport, layer, tool_data, responses),
 					ShapeType::Grid => Grid::update_shape(document, input, layer, tool_options.grid_type, tool_data, modifier, responses),
 					ShapeType::Rectangle => Rectangle::update_shape(document, input, viewport, layer, tool_data, modifier, responses),

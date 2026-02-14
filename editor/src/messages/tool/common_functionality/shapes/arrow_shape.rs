@@ -15,16 +15,16 @@ use std::collections::VecDeque;
 pub struct Arrow;
 
 impl Arrow {
-	pub fn create_node(document: &DocumentMessageHandler, drag_start: DVec2) -> NodeTemplate {
+	pub fn create_node(document: &DocumentMessageHandler, drag_start: DVec2, shaft_width: f64, head_width: f64, head_length: f64) -> NodeTemplate {
 		let node_type = resolve_proto_node_type(graphene_std::vector_nodes::arrow::IDENTIFIER).expect("Arrow node does not exist");
 		let viewport_pos = document.metadata().document_to_viewport.transform_point2(drag_start);
 		node_type.node_template_input_override([
 			None,
 			Some(NodeInput::value(TaggedValue::DVec2(viewport_pos), false)), // start
 			Some(NodeInput::value(TaggedValue::DVec2(viewport_pos), false)), // end
-			Some(NodeInput::value(TaggedValue::F64(10.), false)),            // shaft_width
-			Some(NodeInput::value(TaggedValue::F64(30.), false)),            // head_width
-			Some(NodeInput::value(TaggedValue::F64(20.), false)),            // head_length
+			Some(NodeInput::value(TaggedValue::F64(shaft_width), false)),    // shaft_width
+			Some(NodeInput::value(TaggedValue::F64(head_width), false)),     // head_width
+			Some(NodeInput::value(TaggedValue::F64(head_length), false)),    // head_length
 		])
 	}
 
@@ -35,9 +35,6 @@ impl Arrow {
 		layer: LayerNodeIdentifier,
 		tool_data: &mut ShapeToolData,
 		_modifier: ShapeToolModifierKey,
-		shaft_width: f64,
-		head_width: f64,
-		head_length: f64,
 		responses: &mut VecDeque<Message>,
 	) {
 		// Track current mouse position in viewport space
@@ -59,8 +56,7 @@ impl Arrow {
 			return;
 		};
 
-		// Use fixed dimensions from tool options - only length changes during drag
-		// Update Arrow node parameters with document space coordinates (like Line tool)
+		// Update Arrow node start and end points with document space coordinates
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(node_id, 1),
 			input: NodeInput::value(TaggedValue::DVec2(start_document), false),
@@ -68,18 +64,6 @@ impl Arrow {
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(node_id, 2),
 			input: NodeInput::value(TaggedValue::DVec2(end_document), false),
-		});
-		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, 3),
-			input: NodeInput::value(TaggedValue::F64(shaft_width), false),
-		});
-		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, 4),
-			input: NodeInput::value(TaggedValue::F64(head_width), false),
-		});
-		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, 5),
-			input: NodeInput::value(TaggedValue::F64(head_length), false),
 		});
 
 		responses.add(NodeGraphMessage::RunDocumentGraph);
