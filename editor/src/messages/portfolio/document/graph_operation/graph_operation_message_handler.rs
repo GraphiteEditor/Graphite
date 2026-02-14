@@ -388,7 +388,7 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 
 			if let Some(fill) = path.fill() {
 				let bounds_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
-				apply_usvg_fill(fill, modify_inputs, transform * usvg_transform(node.abs_transform()), bounds_transform);
+				apply_usvg_fill(fill, modify_inputs, bounds_transform);
 			}
 			if let Some(stroke) = path.stroke() {
 				apply_usvg_stroke(stroke, modify_inputs, transform * usvg_transform(node.abs_transform()));
@@ -432,63 +432,38 @@ fn apply_usvg_stroke(stroke: &usvg::Stroke, modify_inputs: &mut ModifyInputsCont
 	}
 }
 
-fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, transform: DAffine2, bounds_transform: DAffine2) {
+fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, bounds_transform: DAffine2) {
 	modify_inputs.fill_set(match &fill.paint() {
 		usvg::Paint::Color(color) => Fill::solid(usvg_color(*color, fill.opacity().get())),
 		usvg::Paint::LinearGradient(linear) => {
-			let local = [DVec2::new(linear.x1() as f64, linear.y1() as f64), DVec2::new(linear.x2() as f64, linear.y2() as f64)];
+			let gradient_transform = usvg_transform(linear.transform());
+			let (start, end) = (DVec2::new(linear.x1() as f64, linear.y1() as f64), DVec2::new(linear.x2() as f64, linear.y2() as f64));
+			let (start, end) = (gradient_transform.transform_point2(start), gradient_transform.transform_point2(end));
+			let (start, end) = (bounds_transform.inverse().transform_point2(start), bounds_transform.inverse().transform_point2(end));
 
-			// TODO: fix this
-			// let to_doc_transform = if linear.base.units() == usvg::Units::UserSpaceOnUse {
-			// 	transform
-			// } else {
-			// 	transformed_bound_transform
-			// };
-			let to_doc_transform = transform;
-			let to_doc = to_doc_transform * usvg_transform(linear.transform());
+			let gradient_type = GradientType::Linear;
 
-			let document = [to_doc.transform_point2(local[0]), to_doc.transform_point2(local[1])];
-			let layer = [transform.inverse().transform_point2(document[0]), transform.inverse().transform_point2(document[1])];
-
-			let [start, end] = [bounds_transform.inverse().transform_point2(layer[0]), bounds_transform.inverse().transform_point2(layer[1])];
 			let stops = linear.stops().iter().map(|stop| (stop.offset().get() as f64, usvg_color(stop.color(), stop.opacity().get()))).collect();
 			let stops = GradientStops::new(stops);
 
-			Fill::Gradient(Gradient {
-				start,
-				end,
-				gradient_type: GradientType::Linear,
-				stops,
-			})
+			Fill::Gradient(Gradient { start, end, gradient_type, stops })
 		}
 		usvg::Paint::RadialGradient(radial) => {
-			let local = [DVec2::new(radial.cx() as f64, radial.cy() as f64), DVec2::new(radial.fx() as f64, radial.fy() as f64)];
+			let gradient_transform = usvg_transform(radial.transform());
+			let center = DVec2::new(radial.cx() as f64, radial.cy() as f64);
+			let edge = center + DVec2::X * radial.r().get() as f64;
+			let (start, end) = (gradient_transform.transform_point2(center), gradient_transform.transform_point2(edge));
+			let (start, end) = (bounds_transform.inverse().transform_point2(start), bounds_transform.inverse().transform_point2(end));
 
-			// TODO: fix this
-			// let to_doc_transform = if radial.base.units == usvg::Units::UserSpaceOnUse {
-			// 	transform
-			// } else {
-			// 	transformed_bound_transform
-			// };
-			let to_doc_transform = transform;
-			let to_doc = to_doc_transform * usvg_transform(radial.transform());
+			let gradient_type = GradientType::Radial;
 
-			let document = [to_doc.transform_point2(local[0]), to_doc.transform_point2(local[1])];
-			let layer = [transform.inverse().transform_point2(document[0]), transform.inverse().transform_point2(document[1])];
-
-			let [start, end] = [bounds_transform.inverse().transform_point2(layer[0]), bounds_transform.inverse().transform_point2(layer[1])];
 			let stops = radial.stops().iter().map(|stop| (stop.offset().get() as f64, usvg_color(stop.color(), stop.opacity().get()))).collect();
 			let stops = GradientStops::new(stops);
 
-			Fill::Gradient(Gradient {
-				start,
-				end,
-				gradient_type: GradientType::Radial,
-				stops,
-			})
+			Fill::Gradient(Gradient { start, end, gradient_type, stops })
 		}
 		usvg::Paint::Pattern(_) => {
-			warn!("Skip pattern");
+			warn!("SVG patterns are not currently supported");
 			return;
 		}
 	});
