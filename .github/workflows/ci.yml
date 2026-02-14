@@ -74,11 +74,7 @@ jobs:
         if: steps.skip-check.outputs.skip-check != 'true'
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: wasm32-unknown-unknown
-
-      - name: 🦀 Install Rust nightly (for shader compilation)
-        if: steps.skip-check.outputs.skip-check != 'true'
-        run: rustup install nightly
+          targets: wasm32-unknown-unknown, x86_64-unknown-linux-gnu
 
       - name: ⚡ Setup sccache
         if: steps.skip-check.outputs.skip-check != 'true'
@@ -110,14 +106,6 @@ jobs:
           cd frontend
           npm run build
 
-      - name: 👕 Lint Graphite web formatting
-        if: steps.skip-check.outputs.skip-check != 'true'
-        env:
-          NODE_ENV: production
-        run: |
-          cd frontend
-          npm run lint
-
       - name: 📤 Publish to Cloudflare Pages
         if: steps.skip-check.outputs.skip-check != 'true'
         uses: cloudflare/pages-action@1
@@ -128,6 +116,14 @@ jobs:
           gitHubToken: ${{ secrets.GITHUB_TOKEN }}
           projectName: graphite-dev
           directory: frontend/dist
+
+      - name: 👕 Lint Graphite web formatting
+        if: steps.skip-check.outputs.skip-check != 'true'
+        env:
+          NODE_ENV: production
+        run: |
+          cd frontend
+          npm run lint
 
   # Full Rust build and tests on self-hosted runner
   rust-build-and-test:
