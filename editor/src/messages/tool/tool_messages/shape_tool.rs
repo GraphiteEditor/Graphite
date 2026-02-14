@@ -926,7 +926,13 @@ impl Fsm for ShapeToolFsmState {
 					ShapeType::Grid => Grid::create_node(tool_options.grid_type),
 					ShapeType::Rectangle => Rectangle::create_node(),
 					ShapeType::Ellipse => Ellipse::create_node(),
-					ShapeType::Arrow => Arrow::create_node(document, tool_data.data.drag_start, tool_options.arrow_shaft_width, tool_options.arrow_head_width, tool_options.arrow_head_length),
+					ShapeType::Arrow => Arrow::create_node(
+						document,
+						tool_data.data.drag_start,
+						tool_options.arrow_shaft_width,
+						tool_options.arrow_head_width,
+						tool_options.arrow_head_length,
+					),
 					ShapeType::Line => Line::create_node(document, tool_data.data.drag_start),
 				};
 
