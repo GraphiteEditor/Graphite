@@ -4,6 +4,7 @@ use glam::DVec2;
 pub enum NavigationOperation {
 	#[default]
 	None,
+	Listening,
 	Pan {
 		pan_original_for_abort: DVec2,
 	},
