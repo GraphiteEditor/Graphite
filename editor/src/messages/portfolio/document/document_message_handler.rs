@@ -3,7 +3,7 @@ use super::node_graph::utility_types::Transform;
 use super::utility_types::error::EditorError;
 use super::utility_types::misc::{GroupFolderType, SNAP_FUNCTIONS_FOR_BOUNDING_BOXES, SNAP_FUNCTIONS_FOR_PATHS, SnappingOptions, SnappingState};
 use super::utility_types::network_interface::{self, NodeNetworkInterface, TransactionStatus};
-use super::utility_types::nodes::{CollapsedLayers, SelectedNodes};
+use super::utility_types::nodes::{CollapsedLayers, LayerStructureEntry, SelectedNodes};
 use crate::application::{GRAPHITE_GIT_COMMIT_HASH, generate_uuid};
 use crate::consts::{ASYMPTOTIC_EFFECT, COLOR_OVERLAY_GRAY, DEFAULT_DOCUMENT_NAME, FILE_EXTENSION, SCALE_EFFECT, SCROLLBAR_SPACING, VIEWPORT_ROTATE_SNAP_INTERVAL};
 use crate::messages::input_mapper::utility_types::macros::action_shortcut;
@@ -19,7 +19,6 @@ use crate::messages::portfolio::document::properties_panel::properties_panel_mes
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, PTZ};
 use crate::messages::portfolio::document::utility_types::network_interface::{FlowType, InputConnector, NodeTemplate};
-use crate::messages::portfolio::document::utility_types::nodes::RawBuffer;
 use crate::messages::portfolio::utility_types::{PanelType, PersistentData};
 use crate::messages::prelude::*;
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, get_blend_mode, get_fill, get_opacity};
@@ -42,6 +41,7 @@ use graphene_std::vector::misc::{dvec2_to_point, point_to_dvec2};
 use graphene_std::vector::style::RenderMode;
 use kurbo::{Affine, CubicBez, Line, ParamCurve, PathSeg, QuadBez};
 use std::path::PathBuf;
+use std::sync::Arc;
 use std::time::Duration;
 
 #[derive(ExtractField)]
@@ -316,8 +316,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::ClearLayersPanel => {
 				// Send an empty layer list
 				if layers_panel_open {
-					let data_buffer: RawBuffer = Self::default().serialize_root();
-					responses.add(FrontendMessage::UpdateDocumentLayerStructure { data_buffer });
+					let layer_structure = Self::default().build_layer_structure(LayerNodeIdentifier::ROOT_PARENT);
+					responses.add(FrontendMessage::UpdateDocumentLayerStructure { layer_structure });
 				}
 
 				// Clear the control bar
@@ -379,12 +379,12 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::DocumentStructureChanged => {
 				if layers_panel_open {
 					self.network_interface.load_structure();
-					let data_buffer: RawBuffer = self.serialize_root();
+					let layer_structure = self.build_layer_structure(LayerNodeIdentifier::ROOT_PARENT);
 
 					self.update_layers_panel_control_bar_widgets(layers_panel_open, responses);
 					self.update_layers_panel_bottom_bar_widgets(layers_panel_open, responses);
 
-					responses.add(FrontendMessage::UpdateDocumentLayerStructure { data_buffer });
+					responses.add(FrontendMessage::UpdateDocumentLayerStructure { layer_structure });
 				}
 			}
 			DocumentMessage::DrawArtboardOverlays { context: overlay_context } => {
@@ -964,6 +964,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(DocumentMessage::DocumentHistoryForward);
 				responses.add(ToolMessage::Redo);
 				responses.add(OverlaysMessage::Draw);
+				responses.add(EventMessage::SelectionChanged);
 			}
 			DocumentMessage::RenameDocument { new_name } => {
 				self.name = new_name.clone();
@@ -1423,6 +1424,20 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			DocumentMessage::UpdateClipTargets { clip_targets } => {
 				self.network_interface.update_clip_targets(clip_targets);
 			}
+			DocumentMessage::UpdateVectorData { vector_data } => {
+				// Convert NodeId keys to LayerNodeIdentifier keys, filtering to only layers
+				let layer_vector_data = vector_data
+					.into_iter()
+					.filter(|(node_id, _)| self.network_interface.document_network().nodes.contains_key(node_id))
+					.filter_map(|(node_id, vector)| {
+						self.network_interface.is_layer(&node_id, &[]).then(|| {
+							let layer = LayerNodeIdentifier::new(node_id, &self.network_interface);
+							(layer, vector)
+						})
+					})
+					.collect();
+				self.network_interface.update_vector_data(layer_vector_data);
+			}
 			DocumentMessage::Undo => {
 				if self.network_interface.transaction_status() != TransactionStatus::Finished {
 					return;
@@ -1431,6 +1446,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(DocumentMessage::DocumentHistoryBackward);
 				responses.add(OverlaysMessage::Draw);
 				responses.add(ToolMessage::Undo);
+				responses.add(EventMessage::SelectionChanged);
 			}
 			DocumentMessage::UngroupSelectedLayers => {
 				if !self.selection_network_path.is_empty() {
@@ -1890,70 +1906,22 @@ impl DocumentMessageHandler {
 		Ok(document_message_handler)
 	}
 
-	/// Called recursively by the entry function [`serialize_root`].
-	fn serialize_structure(&self, folder: LayerNodeIdentifier, structure_section: &mut Vec<u64>, data_section: &mut Vec<u64>, path: &mut Vec<LayerNodeIdentifier>) {
-		let mut space = 0;
-		for layer_node in folder.children(self.metadata()) {
-			data_section.push(layer_node.to_node().0);
-			space += 1;
-			if layer_node.has_children(self.metadata()) && !self.collapsed.0.contains(&layer_node) {
-				path.push(layer_node);
-
-				// TODO: Skip if folder is not expanded.
-				structure_section.push(space);
-				self.serialize_structure(layer_node, structure_section, data_section, path);
-				space = 0;
-
-				path.pop();
-			}
-		}
-		structure_section.push(space | (1 << 63));
-	}
-
-	/// Serializes the layer structure into a condensed 1D structure.
-	///
-	/// # Format
-	/// It is a string of numbers broken into three sections:
-	///
-	/// | Data                                                                                                                          | Description                                                   | Length           |
-	/// |------------------------------------------------------------------------------------------------------------------------------ |---------------------------------------------------------------|------------------|
-	/// | `4,` `2, 1, -2, -0,` `16533113728871998040,3427872634365736244,18115028555707261608,15878401910454357952,449479075714955186`  | Encoded example data                                          |                  |
-	/// | _____________________________________________________________________________________________________________________________ | _____________________________________________________________ | ________________ |
-	/// | **Length** section: `4`                                                                                                       | Length of the **Structure** section (`L` = `structure.len()`) | First value      |
-	/// | **Structure** section: `2, 1, -2, -0`                                                                                         | The **Structure** section                                     | Next `L` values  |
-	/// | **Data** section: `16533113728871998040, 3427872634365736244, 18115028555707261608, 15878401910454357952, 449479075714955186` | The **Data** section (layer IDs)                              | Remaining values |
-	///
-	/// The data section lists the layer IDs for all folders/layers in the tree as read from top to bottom.
-	/// The structure section lists signed numbers. The sign indicates a folder indentation change (`+` is down a level, `-` is up a level).
-	/// The numbers in the structure block encode the indentation. For example:
-	/// - `2` means read two elements from the data section, then place a `[`.
-	/// - `-x` means read `x` elements from the data section and then insert a `]`.
-	///
-	/// ```text
-	/// 2     V 1  V -2  A -0 A
-	/// 16533113728871998040,3427872634365736244,  18115028555707261608, 15878401910454357952,449479075714955186
-	/// 16533113728871998040,3427872634365736244,[ 18115028555707261608,[15878401910454357952,449479075714955186]    ]
-	/// ```
-	///
-	/// Resulting layer panel:
-	/// ```text
-	/// 16533113728871998040
-	/// 3427872634365736244
-	/// [3427872634365736244,18115028555707261608]
-	/// [3427872634365736244,18115028555707261608,15878401910454357952]
-	/// [3427872634365736244,18115028555707261608,449479075714955186]
-	/// ```
-	pub fn serialize_root(&self) -> RawBuffer {
-		let mut structure_section = vec![NodeId(0).0];
-		let mut data_section = Vec::new();
-		self.serialize_structure(LayerNodeIdentifier::ROOT_PARENT, &mut structure_section, &mut data_section, &mut vec![]);
-
-		// Remove the ROOT element. Prepend `L`, the length (excluding the ROOT) of the structure section (which happens to be where the ROOT element was).
-		structure_section[0] = structure_section.len() as u64 - 1;
-		// Append the data section to the end.
-		structure_section.extend(data_section);
-
-		structure_section.as_slice().into()
+	/// Recursively builds the layer structure tree for a folder.
+	fn build_layer_structure(&self, folder: LayerNodeIdentifier) -> Vec<LayerStructureEntry> {
+		folder
+			.children(self.metadata())
+			.map(|layer_node| {
+				let children = if layer_node.has_children(self.metadata()) && !self.collapsed.0.contains(&layer_node) {
+					self.build_layer_structure(layer_node)
+				} else {
+					Vec::new()
+				};
+				LayerStructureEntry {
+					layer_id: layer_node.to_node(),
+					children,
+				}
+			})
+			.collect()
 	}
 
 	pub fn undo_with_history(&mut self, viewport: &ViewportMessageHandler, responses: &mut VecDeque<Message>) {
@@ -3071,7 +3039,14 @@ impl<'a> ClickXRayIter<'a> {
 	}
 
 	/// Handles the checking of the layer where the target is a rect or path
-	fn check_layer_area_target(&mut self, click_targets: Option<&Vec<ClickTarget>>, clip: bool, layer: LayerNodeIdentifier, path: Vec<path_bool_lib::PathSegment>, transform: DAffine2) -> XRayResult {
+	fn check_layer_area_target(
+		&mut self,
+		click_targets: Option<&[Arc<ClickTarget>]>,
+		clip: bool,
+		layer: LayerNodeIdentifier,
+		path: Vec<path_bool_lib::PathSegment>,
+		transform: DAffine2,
+	) -> XRayResult {
 		// Convert back to Kurbo types for intersections
 		let segment = |bezier: &path_bool_lib::PathSegment| match *bezier {
 			path_bool_lib::PathSegment::Line(start, end) => PathSeg::Line(Line::new(dvec2_to_point(start), dvec2_to_point(end))),
@@ -3088,7 +3063,7 @@ impl<'a> ClickXRayIter<'a> {
 		// In the case of a clip path where the area partially intersects, it is necessary to do a boolean operation.
 		// We do this on this using the target area to reduce computation (as the target area is usually very simple).
 		if clip && intersects {
-			let clip_path = click_targets_to_path_lib_segments(click_targets.iter().flat_map(|x| x.iter()), transform);
+			let clip_path = click_targets_to_path_lib_segments(click_targets.iter().flat_map(|x| x.iter()).map(|x| x.as_ref()), transform);
 			let subtracted = boolean_intersect(path, clip_path).into_iter().flatten().collect::<Vec<_>>();
 			if subtracted.is_empty() {
 				use_children = false;

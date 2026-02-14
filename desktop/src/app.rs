@@ -635,7 +635,7 @@ impl ApplicationHandler for App {
 		}
 	}
 
-	fn new_events(&mut self, event_loop: &dyn ActiveEventLoop, cause: winit::event::StartCause) {
+	fn new_events(&mut self, _event_loop: &dyn ActiveEventLoop, cause: winit::event::StartCause) {
 		if let StartCause::ResumeTimeReached { .. } = cause
 			&& let Some(window) = &self.window
 		{
