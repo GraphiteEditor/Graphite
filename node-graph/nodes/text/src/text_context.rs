@@ -96,12 +96,9 @@ impl TextContext {
 
 		for line in layout.lines() {
 			for item in line.items() {
-				if let PositionedLayoutItem::GlyphRun(glyph_run) = item {
-					if let Some(max_height) = typesetting.max_height {
-						if glyph_run.baseline() > max_height as f32 {
-							continue;
-						}
-					}
+				if let PositionedLayoutItem::GlyphRun(glyph_run) = item
+					&& typesetting.max_height.filter(|&max_height| glyph_run.baseline() > max_height as f32).is_none()
+				{
 					path_builder.render_glyph_run(&glyph_run, typesetting.tilt, per_glyph_instances);
 				}
 			}
@@ -119,12 +116,10 @@ impl TextContext {
 		let layout_width = layout.full_width() as f64;
 		let layout_height = layout.height() as f64;
 
-		// For clipping tests use of the actual layout dimensions to see if text overflows
 		if for_clipping_test {
 			return DVec2::new(layout_width, layout_height);
 		}
 
-		// max_width/max_height used if set ,otherwise fall back to calculated layout dimensions
 		let width = typesetting.max_width.unwrap_or(layout_width);
 		let height = typesetting.max_height.unwrap_or(layout_height);
 
