@@ -3,15 +3,19 @@ use graphic_types::Vector;
 use std::collections::VecDeque;
 use vector_types::subpath;
 
-pub fn merge_qr_squares(qr_code: &qrcodegen::QrCode, vector: &mut Vector) {
+pub fn merge_qr_squares(qr_code: &qrcodegen::QrCode) -> Vector {
+	let mut vector = Vector::default();
+
 	let size = qr_code.size() as usize;
 
 	// 0 = empty
-	// 1 = black, unvisited
-	// 2 = black, current island
+	// 1 = filled, unvisited
+	// 2 = filled, current island
 	let mut remaining = vec![vec![0u8; size]; size];
 
+	#[allow(clippy::needless_range_loop)]
 	for y in 0..size {
+		#[allow(clippy::needless_range_loop)]
 		for x in 0..size {
 			if qr_code.get_module(x as i32, y as i32) {
 				remaining[y][x] = 1;
@@ -115,4 +119,6 @@ pub fn merge_qr_squares(qr_code: &qrcodegen::QrCode, vector: &mut Vector) {
 			}
 		}
 	}
+
+	vector
 }
