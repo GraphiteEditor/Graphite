@@ -2121,6 +2121,7 @@ impl Fsm for PathToolFsmState {
 				if let Some(segment) = &mut tool_data.segment
 					&& let Some(molding_segment_handles) = tool_data.molding_info
 				{
+					segment.update_closest_point(document.metadata(), &document.network_interface, input.mouse.position);
 					tool_data.temporary_adjacent_handles_while_molding = segment.mold_handle_positions(
 						document,
 						responses,
@@ -2129,6 +2130,32 @@ impl Fsm for PathToolFsmState {
 						break_molding,
 						tool_data.temporary_adjacent_handles_while_molding,
 					);
+
+					let messages = [
+						PathToolMessage::PointerOutsideViewport {
+							toggle_colinear,
+							equidistant,
+							move_anchor_with_handles,
+							snap_angle,
+							lock_angle,
+							delete_segment,
+							break_colinear_molding,
+							segment_editing_modifier,
+						}
+						.into(),
+						PathToolMessage::PointerMove {
+							toggle_colinear,
+							equidistant,
+							move_anchor_with_handles,
+							snap_angle,
+							lock_angle,
+							delete_segment,
+							break_colinear_molding,
+							segment_editing_modifier,
+						}
+						.into(),
+					];
+					tool_data.auto_panning.setup_by_mouse_position(input, viewport, &messages, responses);
 
 					return PathToolFsmState::Dragging(tool_data.dragging_state);
 				}
