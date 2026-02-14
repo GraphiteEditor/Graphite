@@ -2,6 +2,7 @@
 
 import { EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
 import init, { wasmMemory, receiveNativeMessage } from "@graphite/../wasm/pkg/graphite_wasm";
+
 import { type JsMessageType } from "@graphite/messages";
 import { createSubscriptionRouter, type SubscriptionRouter } from "@graphite/subscription-router";
 import { operatingSystem } from "@graphite/utility-functions/platform";

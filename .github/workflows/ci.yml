@@ -8,76 +8,126 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # Check if CI can be skipped (for merge queue optimization)
-  skip-check:
+  # Fast linting job on GitHub runner
+  web-lint:
     runs-on: ubuntu-latest
-    outputs:
-      skip: ${{ steps.skip-check.outputs.skip-check }}
     steps:
-      - uses: actions/checkout@v4
-      - name: Check if CI can be skipped
+      - name: 📥 Clone and checkout repository
+        uses: actions/checkout@v3
+
+      - name: 🚦 Check if CI can be skipped
         id: skip-check
         uses: cariad-tech/merge-queue-ci-skipper@main
 
-  web-lint:
-    needs: skip-check
-    if: needs.skip-check.outputs.skip != 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/nix-setup
-      - name: Lint Graphite web formatting
-        run: nix develop .nix --command bash -c "cd frontend && npm ci && npm run lint"
+      - name: 🟢 Install the latest Node.js
+        if: steps.skip-check.outputs.skip-check != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'latest'
 
-  rust-fmt:
-    needs: skip-check
-    if: needs.skip-check.outputs.skip != 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/nix-setup
-      - name: Check Rust formatting
-        run: nix develop .nix --command cargo fmt --all -- --check
+      - name: 🚧 Install dependencies
+        if: steps.skip-check.outputs.skip-check != 'true'
+        run: |
+          cd frontend
+          npm ci
 
-  rust-build-test:
-    needs: skip-check
-    if: needs.skip-check.outputs.skip != 'true'
-    runs-on: self-hosted
-    permissions:
-      contents: read
-      id-token: write
-    steps:
-      - uses: actions/checkout@v4
-      # - uses: ./.github/actions/nix-setup
-      - name: Build Rust code
-        run: nix develop .nix --command cargo build --all-features
-      - name: Run Rust tests
-        run: nix develop .nix --command cargo test --all-features
-
-  web-build:
-    needs: skip-check
-    if: needs.skip-check.outputs.skip != 'true'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      id-token: write
-      deployments: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/nix-setup
-      - name: Clean npm cache
-        run: rm -rf frontend/node_modules
-      - name: Build Graphite web code
+      - name: 👕 Lint Graphite web formatting
+        if: steps.skip-check.outputs.skip-check != 'true'
         env:
           NODE_ENV: production
-        run: nix develop .nix --command bash -c "cd frontend && npm run build"
-      - name: Publish to Cloudflare Pages
+        run: |
+          cd frontend
+          npm run lint
+
+  # Rust format check on GitHub runner
+  rust-fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Clone and checkout repository
+        uses: actions/checkout@v3
+
+      - name: 🚦 Check if CI can be skipped
+        id: skip-check
+        uses: cariad-tech/merge-queue-ci-skipper@main
+
+      - name: 🦀 Install the latest Rust
+        if: steps.skip-check.outputs.skip-check != 'true'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: 🔬 Check Rust formatting
+        if: steps.skip-check.outputs.skip-check != 'true'
+        run: cargo fmt --all -- --check
+
+  # License compatibility check on GitHub runner
+  cargo-deny:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Clone and checkout repository
+        uses: actions/checkout@v3
+
+      - name: 📜 Check crate license compatibility for root workspace
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check bans licenses sources
+
+      - name: 📜 Check crate license compatibility for /libraries/rawkit
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check bans licenses sources
+          manifest-path: libraries/rawkit/Cargo.toml
+
+  # Web build on GitHub runner (only compiles WASM crate)
+  web-build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+    steps:
+      - name: 📥 Clone and checkout repository
+        uses: actions/checkout@v3
+
+      - name: 🚦 Check if CI can be skipped
+        id: skip-check
+        uses: cariad-tech/merge-queue-ci-skipper@main
+
+      - name: 🟢 Install the latest Node.js
+        if: steps.skip-check.outputs.skip-check != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'latest'
+
+      - name: 🦀 Install the latest Rust
+        if: steps.skip-check.outputs.skip-check != 'true'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: 📦 Install wasm-pack
+        if: steps.skip-check.outputs.skip-check != 'true'
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: 📦 Install cargo-about
+        if: steps.skip-check.outputs.skip-check != 'true'
+        run: cargo install cargo-about
+
+      - name: 🚧 Install build dependencies
+        if: steps.skip-check.outputs.skip-check != 'true'
+        run: |
+          cd frontend
+          npm run setup
+
+      - name: 🌐 Build Graphite web code
+        if: steps.skip-check.outputs.skip-check != 'true'
+        env:
+          NODE_ENV: production
+        run: |
+          cd frontend
+          npm run build
+
+      - name: 📤 Publish to Cloudflare Pages
+        if: steps.skip-check.outputs.skip-check != 'true'
         uses: cloudflare/pages-action@1
         continue-on-error: true
         with:
@@ -87,18 +137,40 @@ jobs:
           projectName: graphite-dev
           directory: frontend/dist
 
-  cargo-deny:
-    needs: skip-check
-    if: needs.skip-check.outputs.skip != 'true'
-    runs-on: ubuntu-latest
+  # Full Rust build and tests on self-hosted runner
+  rust-build-and-test:
+    runs-on: self-hosted
+    env:
+      RUSTC_WRAPPER: /usr/bin/sccache
+      CARGO_INCREMENTAL: 0
+      SCCACHE_DIR: /var/lib/github-actions/.cache
+
     steps:
-      - uses: actions/checkout@v4
-      - name: Check crate license compatibility for root workspace
-        uses: EmbarkStudios/cargo-deny-action@v2
-        with:
-          command: check bans licenses sources
-      - name: Check crate license compatibility for /libraries/rawkit
-        uses: EmbarkStudios/cargo-deny-action@v2
-        with:
-          command: check bans licenses sources
-          manifest-path: libraries/rawkit/Cargo.toml
+      - name: 📥 Clone and checkout repository
+        uses: actions/checkout@v3
+
+      - name: 🚦 Check if CI can be skipped
+        id: skip-check
+        uses: cariad-tech/merge-queue-ci-skipper@main
+
+      - name: 🦀 Install the latest Rust
+        if: steps.skip-check.outputs.skip-check != 'true'
+        run: |
+          rustup update stable
+
+      - name: 🦀 Fetch Rust dependencies
+        if: steps.skip-check.outputs.skip-check != 'true'
+        run: |
+          cargo fetch --locked
+
+      - name: 🦀 Build Rust code
+        if: steps.skip-check.outputs.skip-check != 'true'
+        env:
+          RUSTFLAGS: -Dwarnings
+        run: |
+          mold -run cargo build --all-features
+
+      - name: 🧪 Run Rust tests
+        if: steps.skip-check.outputs.skip-check != 'true'
+        run: |
+          mold -run cargo test --all-features
