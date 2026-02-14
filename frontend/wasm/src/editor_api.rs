@@ -665,6 +665,13 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
+	/// Duplicate the currently selected layers
+	#[wasm_bindgen(js_name = duplicateSelectedLayers)]
+	pub fn duplicate_selected_layers(&self) {
+		let message = DocumentMessage::DuplicateSelectedLayers;
+		self.dispatch(message);
+	}
+
 	/// Move a layer to within a folder and placed down at the given index.
 	/// If the folder is `None`, it is inserted into the document root.
 	/// If the insert index is `None`, it is inserted at the start of the folder.
