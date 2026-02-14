@@ -189,6 +189,7 @@ impl NodeRuntime {
 			}
 		}
 
+		// Eydropper should use the same time and pointer to not invalidate the cache
 		if let Some(GraphRuntimeRequest::ExecutionRequest(eyedropper)) = &mut eyedropper
 			&& let Some(GraphRuntimeRequest::ExecutionRequest(execution)) = &execution
 		{
