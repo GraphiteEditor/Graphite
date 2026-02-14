@@ -247,8 +247,9 @@ pub struct RenderMetadata {
 	pub upstream_footprints: HashMap<NodeId, Footprint>,
 	pub local_transforms: HashMap<NodeId, DAffine2>,
 	pub first_element_source_id: HashMap<NodeId, Option<NodeId>>,
-	pub click_targets: HashMap<NodeId, Vec<ClickTarget>>,
+	pub click_targets: HashMap<NodeId, Vec<Arc<ClickTarget>>>,
 	pub clip_targets: HashSet<NodeId>,
+	pub vector_data: HashMap<NodeId, Arc<Vector>>,
 }
 
 impl RenderMetadata {
@@ -471,7 +472,7 @@ impl Render for Artboard {
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, mut footprint: Footprint, element_id: Option<NodeId>) {
 		if let Some(element_id) = element_id {
 			let subpath = Subpath::new_rectangle(DVec2::ZERO, self.dimensions.as_dvec2());
-			metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.)]);
+			metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.).into()]);
 			metadata.upstream_footprints.insert(element_id, footprint);
 			metadata.local_transforms.insert(element_id, DAffine2::from_translation(self.location.as_dvec2()));
 			if self.clip {
@@ -666,7 +667,7 @@ impl Render for Table<Graphic> {
 				all_upstream_click_targets.extend(new_click_targets);
 			}
 
-			metadata.click_targets.insert(element_id, all_upstream_click_targets);
+			metadata.click_targets.insert(element_id, all_upstream_click_targets.into_iter().map(|x| x.into()).collect());
 		}
 	}
 
@@ -1036,13 +1037,14 @@ impl Render for Table<Vector> {
 						StrokeJoin::Bevel => Join::Bevel,
 						StrokeJoin::Round => Join::Round,
 					};
+					let dash_pattern = stroke.dash_lengths.iter().map(|l| l.max(0.)).collect();
 					let stroke = kurbo::Stroke {
 						width: stroke.weight * width_scale,
 						miter_limit: stroke.join_miter_limit,
 						join,
 						start_cap: cap,
 						end_cap: cap,
-						dash_pattern: stroke.dash_lengths.into(),
+						dash_pattern,
 						dash_offset: stroke.dash_offset,
 					};
 
@@ -1172,7 +1174,7 @@ impl Render for Table<Vector> {
 						let anchor = vector.point_domain.position_from_id(point_id).unwrap_or_default();
 						let point = FreePoint::new(point_id, anchor);
 
-						Some(ClickTarget::new_with_free_point(point))
+						Some(ClickTarget::new_with_free_point(point).into())
 					} else {
 						None
 					}
@@ -1181,11 +1183,13 @@ impl Render for Table<Vector> {
 				let click_targets = vector
 					.stroke_bezier_paths()
 					.map(fill)
-					.map(|subpath| ClickTarget::new_with_subpath(subpath, stroke_width))
+					.map(|subpath| ClickTarget::new_with_subpath(subpath, stroke_width).into())
 					.chain(single_anchors_targets.into_iter())
-					.collect::<Vec<ClickTarget>>();
+					.collect::<Vec<_>>();
 
 				metadata.click_targets.entry(element_id).or_insert(click_targets);
+				// Store the full vector data including segment IDs for accurate segment modification
+				metadata.vector_data.entry(element_id).or_insert_with(|| Arc::new(vector.clone()));
 			}
 
 			if let Some(upstream_nested_layers) = &vector.upstream_data {
@@ -1365,7 +1369,7 @@ impl Render for Table<Raster<CPU>> {
 		let Some(element_id) = element_id else { return };
 		let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
 
-		metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.)]);
+		metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.).into()]);
 		metadata.upstream_footprints.insert(element_id, footprint);
 		// TODO: Find a way to handle more than one row of the raster table
 		if let Some(raster) = self.iter().next() {
@@ -1425,7 +1429,7 @@ impl Render for Table<Raster<GPU>> {
 		let Some(element_id) = element_id else { return };
 		let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
 
-		metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.)]);
+		metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.).into()]);
 		metadata.upstream_footprints.insert(element_id, footprint);
 		// TODO: Find a way to handle more than one row of the raster table
 		if let Some(raster) = self.iter().next() {

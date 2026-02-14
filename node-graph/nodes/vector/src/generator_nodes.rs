@@ -186,6 +186,51 @@ fn star<T: AsU64>(
 	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_star_polygon(DVec2::splat(-diameter), points, diameter, inner_diameter)))
 }
 
+/// Generates a QR code from the input text.
+#[node_macro::node(category("Vector: Shape"), name("QR Code"))]
+fn qr_code(
+	_: impl Ctx,
+	_primary: (),
+	#[default("https://graphite.art")] text: String,
+	/// Error correction level, from low (0) to high (3).
+	#[default(1)]
+	error_correction: u32,
+	#[default(false)] individual_squares: bool,
+) -> Table<Vector> {
+	let ecc = match error_correction.min(3) {
+		0 => qrcodegen::QrCodeEcc::Low,
+		1 => qrcodegen::QrCodeEcc::Medium,
+		2 => qrcodegen::QrCodeEcc::Quartile,
+		3 => qrcodegen::QrCodeEcc::High,
+		_ => unreachable!(),
+	};
+
+	let Ok(qr_code) = qrcodegen::QrCode::encode_text(&text, ecc) else {
+		return Table::default();
+	};
+
+	let size = qr_code.size() as usize;
+	let mut vector = Vector::default();
+
+	if individual_squares {
+		for y in 0..size {
+			for x in 0..size {
+				if qr_code.get_module(x as i32, y as i32) {
+					let corner1 = DVec2::new(x as f64, y as f64);
+					let corner2 = corner1 + DVec2::splat(1.);
+					vector.append_subpath(
+						subpath::Subpath::from_anchors([corner1, DVec2::new(corner2.x, corner1.y), corner2, DVec2::new(corner1.x, corner2.y)], true),
+						false,
+					);
+				}
+			}
+		}
+	} else {
+		crate::merge_qr_squares::merge_qr_squares(&qr_code, &mut vector);
+	}
+	Table::new_from_element(vector)
+}
+
 /// Generates a line with endpoints at the two chosen coordinates.
 #[node_macro::node(category("Vector: Shape"))]
 fn arrow(
@@ -358,5 +403,12 @@ mod tests {
 			let angle = (vector.angle_to(DVec2::X).to_degrees() + 180.) % 180.;
 			assert!([90., 150., 40.].into_iter().any(|target| (target - angle).abs() < 1e-10), "unexpected angle of {angle}")
 		}
+	}
+
+	#[test]
+	fn qr_code_test() {
+		let qr = qr_code((), (), "https://graphite.art".to_string(), 1, true);
+		assert!(qr.iter().next().unwrap().element.point_domain.ids().len() > 0);
+		assert!(qr.iter().next().unwrap().element.segment_domain.ids().len() > 0);
 	}
 }
