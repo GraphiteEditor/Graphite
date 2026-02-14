@@ -1185,6 +1185,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				let Some(document) = self.documents.get_mut(&document_id) else { return };
 
 				let resolution = glam::UVec2::splat(EYEDROPPER_PREVIEW_AREA_RESOLUTION);
+				let scale = viewport.scale();
 
 				let preview_offset_in_viewport = ipp.mouse.position - (glam::DVec2::splat(EYEDROPPER_PREVIEW_AREA_RESOLUTION as f64 / 2.));
 				let preview_offset_in_viewport = DAffine2::from_translation(preview_offset_in_viewport);
@@ -1196,7 +1197,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				let result = self
 					.executor
-					.submit_eyedropper_preview(document_id, preview_transform, pointer_position, resolution, timing_information);
+					.submit_eyedropper_preview(document_id, preview_transform, pointer_position, resolution, scale, timing_information);
 
 				match result {
 					Err(description) => {
