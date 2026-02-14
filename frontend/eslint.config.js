@@ -87,8 +87,7 @@ export default defineConfig([
 			"svelte/require-each-key": "off", // TODO: Remove this rule and fix the places where it's violated
 
 			// Import plugin config (for intelligently validating module import statements)
-			// Ignore paths that are generated/downloaded at build time
-			"import/no-unresolved": ["error", { ignore: ["@graphite/../wasm/pkg/graphite_wasm", "@branding/.*"] }],
+			"import/no-unresolved": "error",
 			// `no-duplicates` disabled due to <https://github.com/import-js/eslint-plugin-import/issues/1479#issuecomment-1789527447>. Reenable if that issue gets fixed.
 			"import/no-duplicates": "off",
 			"import/prefer-default-export": "off",
@@ -98,12 +97,7 @@ export default defineConfig([
 				"error",
 				{
 					alphabetize: { order: "asc", caseInsensitive: true },
-					pathGroups: [
-						// WASM package is generated at build time, treat as external
-						{ pattern: "@graphite/../wasm/pkg/*", group: "external", position: "before" },
-						{ pattern: "**/*.svelte", group: "unknown", position: "after" },
-					],
-					pathGroupsExcludedImportTypes: [],
+					pathGroups: [{ pattern: "**/*.svelte", group: "unknown", position: "after" }],
 					"newlines-between": "always-and-inside-groups",
 					warnOnUnassignedImports: true,
 				},

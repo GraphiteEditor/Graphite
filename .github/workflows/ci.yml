@@ -8,37 +8,6 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  # Fast linting job on GitHub runner
-  web-lint:
-    runs-on: ubuntu-latest
-    steps:
-      - name: 📥 Clone and checkout repository
-        uses: actions/checkout@v3
-
-      - name: 🚦 Check if CI can be skipped
-        id: skip-check
-        uses: cariad-tech/merge-queue-ci-skipper@main
-
-      - name: 🟢 Install the latest Node.js
-        if: steps.skip-check.outputs.skip-check != 'true'
-        uses: actions/setup-node@v4
-        with:
-          node-version: 'latest'
-
-      - name: 🚧 Install dependencies
-        if: steps.skip-check.outputs.skip-check != 'true'
-        run: |
-          cd frontend
-          npm ci
-
-      - name: 👕 Lint Graphite web formatting
-        if: steps.skip-check.outputs.skip-check != 'true'
-        env:
-          NODE_ENV: production
-        run: |
-          cd frontend
-          npm run lint
-
   # Rust format check on GitHub runner
   rust-fmt:
     runs-on: ubuntu-latest
@@ -137,6 +106,14 @@ jobs:
           cd frontend
           wasm-pack build ./wasm --release --target=web --no-default-features --features gpu
           npx vite build
+
+      - name: 👕 Lint Graphite web formatting
+        if: steps.skip-check.outputs.skip-check != 'true'
+        env:
+          NODE_ENV: production
+        run: |
+          cd frontend
+          npm run lint
 
       - name: 📤 Publish to Cloudflare Pages
         if: steps.skip-check.outputs.skip-check != 'true'
