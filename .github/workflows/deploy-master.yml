@@ -15,23 +15,48 @@ jobs:
     permissions:
       contents: write
       deployments: write
-      id-token: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/nix-setup
+      actions: write
 
-      - name: Replace template in <head> of index.html
+    steps:
+      - name: 📥 Clone and checkout repository
+        uses: actions/checkout@v3
+
+      - name: 🟢 Install the latest Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'latest'
+
+      - name: 🦀 Install the latest Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: 📦 Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: 📦 Install cargo-about
+        run: cargo install cargo-about
+
+      - name: 🚧 Install build dependencies
+        run: |
+          cd frontend
+          npm run setup
+
+      - name: ✂ Replace template in <head> of index.html
         run: |
           sed -i "s|<!-- INDEX_HTML_HEAD_REPLACEMENT -->|$INDEX_HTML_HEAD_REPLACEMENT|" frontend/index.html
 
-      - name: Build Graphite web code
+      - name: 🌐 Build Graphite web code
         env:
           NODE_ENV: production
-        run: nix develop .nix --command bash -c "cd frontend && npm ci && npm run build"
+        run: |
+          cd frontend
+          npm run build
 
-      - name: Publish to Cloudflare Pages
+      - name: 📤 Publish to Cloudflare Pages
         id: cloudflare
         uses: cloudflare/pages-action@1
+        continue-on-error: true
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -39,7 +64,7 @@ jobs:
           projectName: graphite-dev
           directory: frontend/dist
 
-      - name: Comment build link URL to commit hash page on GitHub
+      - name: 💬 Comment build link URL to commit hash page on GitHub
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -47,34 +72,26 @@ jobs:
             -X POST \
             -H "Accept: application/vnd.github+json" \
             /repos/${{ github.repository }}/commits/$(git rev-parse HEAD)/comments \
-            -f body="| **Build Complete for** $(git rev-parse HEAD) |
+            -f body="| 📦 **Build Complete for** $(git rev-parse HEAD) |
           |-|
           | ${{ steps.cloudflare.outputs.url }} |"
 
-  generate-docs:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      actions: write
-      id-token: write
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/nix-setup
-
-      - name: Generate code documentation info for website
+      - name: 📃 Generate code documentation info for website
         run: |
-          nix develop .nix --command bash -c "cd tools/editor-message-tree && cargo run"
+          cd tools/editor-message-tree
+          cargo run
+          cd ../..
           mkdir -p artifacts-generated
           mv website/generated/hierarchical_message_system_tree.txt artifacts-generated/hierarchical_message_system_tree.txt
 
-      - name: Obtain cache of auto-generated code docs artifacts
+      - name: 💿 Obtain cache of auto-generated code docs artifacts, to check if they've changed
         id: cache-website-code-docs
         uses: actions/cache/restore@v3
         with:
           path: artifacts
           key: website-code-docs
 
-      - name: Check if auto-generated code docs artifacts changed
+      - name: 🔍 Check if auto-generated code docs artifacts changed
         id: website-code-docs-changed
         run: |
           if ! diff --brief --recursive artifacts-generated artifacts; then
@@ -88,14 +105,14 @@ jobs:
             rm -rf artifacts-generated
           fi
 
-      - name: Save cache of auto-generated code docs artifacts
+      - name: 💾 Save cache of auto-generated code docs artifacts
         if: steps.website-code-docs-changed.outputs.changed == 'true'
         uses: actions/cache/save@v3
         with:
           path: artifacts
           key: ${{ steps.cache-website-code-docs.outputs.cache-primary-key }}
 
-      - name: Trigger website rebuild if the auto-generated code docs artifacts have changed
+      - name: ♻️ Trigger website rebuild if the auto-generated code docs artifacts have changed
         if: steps.website-code-docs-changed.outputs.changed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
