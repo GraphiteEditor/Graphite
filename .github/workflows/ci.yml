@@ -76,6 +76,10 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
 
+      - name: 🦀 Install Rust nightly (for shader compilation)
+        if: steps.skip-check.outputs.skip-check != 'true'
+        run: rustup install nightly
+
       - name: ⚡ Setup sccache
         if: steps.skip-check.outputs.skip-check != 'true'
         uses: mozilla-actions/sccache-action@v0.0.9
@@ -98,14 +102,13 @@ jobs:
           cd frontend
           npm run setup
 
-      - name: 🌐 Build Graphite web code (without shader-nodes)
+      - name: 🌐 Build Graphite web code
         if: steps.skip-check.outputs.skip-check != 'true'
         env:
           NODE_ENV: production
         run: |
           cd frontend
-          wasm-pack build ./wasm --release --target=web --no-default-features --features gpu
-          npx vite build
+          npm run build
 
       - name: 👕 Lint Graphite web formatting
         if: steps.skip-check.outputs.skip-check != 'true'
