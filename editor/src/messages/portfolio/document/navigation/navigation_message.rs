@@ -6,7 +6,7 @@ use glam::DVec2;
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum NavigationMessage {
 	// Messages
-	BeginCanvasPan,
+	BeginCanvasPan { panning: bool },
 	BeginCanvasTilt { was_dispatched_from_menu: bool },
 	BeginCanvasZoom,
 	CanvasPan { delta: DVec2 },
@@ -21,7 +21,7 @@ pub enum NavigationMessage {
 	CanvasZoomMouseWheel,
 	CanvasZoomSet { zoom_factor: f64 },
 	CanvasFlip,
-	EndCanvasPTZ { abort_transform: bool },
+	EndCanvasPTZ { abort_transform: bool, panning: bool },
 	EndCanvasPTZWithClick { commit_key: Key },
 	FitViewportToBounds { bounds: [DVec2; 2], prevent_zoom_past_100: bool },
 	FitViewportToSelection,
