@@ -1498,19 +1498,25 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					for input_index in 0..network_interface.number_of_inputs(selected_node, selection_network_path) {
 						let input_connector = InputConnector::node(*selected_node, input_index);
 						// Only disconnect inputs to non selected nodes
-						if network_interface
+						if !network_interface
 							.upstream_output_connector(&input_connector, selection_network_path)
 							.and_then(|connector| connector.node_id())
-							.is_some_and(|node_id| !all_selected_nodes.contains(&node_id))
+							.is_some_and(|node_id| all_selected_nodes.contains(&node_id))
 						{
 							responses.add(NodeGraphMessage::DisconnectInput { input_connector });
 						}
 					}
 
 					let number_of_outputs = network_interface.number_of_outputs(selected_node, selection_network_path);
-					let first_deselected_upstream_node = network_interface
-						.upstream_flow_back_from_nodes(vec![*selected_node], selection_network_path, FlowType::PrimaryFlow)
-						.find(|upstream_node| !all_selected_nodes.contains(upstream_node));
+					let mut first_deselected_upstream_output = network_interface.upstream_output_connector(&InputConnector::node(*selected_node, 0), selection_network_path);
+					while let Some(OutputConnector::Node { node_id, .. }) = &first_deselected_upstream_output {
+						if !all_selected_nodes.contains(node_id) {
+							break;
+						}
+
+						first_deselected_upstream_output = network_interface.upstream_output_connector(&InputConnector::node(*node_id, 0), selection_network_path);
+					}
+
 					let Some(outward_wires) = network_interface.outward_wires(selection_network_path) else {
 						log::error!("Could not get output wires in shake input");
 						continue;
@@ -1530,46 +1536,26 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 					// Handle reconnection
 					// Find first non selected upstream node by primary flow
-					if let Some(first_deselected_upstream_node) = first_deselected_upstream_node {
+					if let Some(first_deselected_upstream_output) = first_deselected_upstream_output {
 						let Some(downstream_connections_to_first_output) = outward_wires.get(&OutputConnector::node(*selected_node, 0)).cloned() else {
 							log::error!("Could not get downstream_connections_to_first_output in shake node");
 							return;
 						};
 						// Reconnect only if all downstream outputs are not selected
-						if !downstream_connections_to_first_output
-							.iter()
-							.any(|connector| connector.node_id().is_some_and(|node_id| all_selected_nodes.contains(&node_id)))
-						{
-							// Find what output on the deselected upstream node to reconnect to
-							for output_index in 0..network_interface.number_of_outputs(&first_deselected_upstream_node, selection_network_path) {
-								let output_connector = &OutputConnector::node(first_deselected_upstream_node, output_index);
-								let Some(outward_wires) = network_interface.outward_wires(selection_network_path) else {
-									log::error!("Could not get output wires in shake input");
-									continue;
-								};
-								if let Some(inputs) = outward_wires.get(output_connector) {
-									// This can only run once
-									if inputs.iter().any(|input_connector| {
-										input_connector
-											.node_id()
-											.is_some_and(|upstream_node| all_selected_nodes.contains(&upstream_node) && input_connector.input_index() == 0)
-									}) {
-										// Output index is the output of the deselected upstream node to reconnect to
-										for downstream_connections_to_first_output in &downstream_connections_to_first_output {
-											responses.add(NodeGraphMessage::CreateWire {
-												output_connector: OutputConnector::node(first_deselected_upstream_node, output_index),
-												input_connector: *downstream_connections_to_first_output,
-											});
-										}
-									}
-								}
-
-								// Set all chain nodes back to chain position
-								// TODO: Fix
-								// for chain_node_to_reset in std::mem::take(&mut self.drag_start_chain_nodes) {
-								// 	responses.add(NodeGraphMessage::SetChainPosition { node_id: chain_node_to_reset });
-								// }
+						for downstream_connection_to_first_output in &downstream_connections_to_first_output {
+							if !downstream_connection_to_first_output.node_id().is_some_and(|node_id| all_selected_nodes.contains(&node_id)) {
+								// Reconnect the upstream output to all downstream inputs
+								responses.add(NodeGraphMessage::CreateWire {
+									output_connector: first_deselected_upstream_output,
+									input_connector: *downstream_connection_to_first_output,
+								});
 							}
+
+							// Set all chain nodes back to chain position
+							// TODO: Fix
+							// for chain_node_to_reset in std::mem::take(&mut self.drag_start_chain_nodes) {
+							// 	responses.add(NodeGraphMessage::SetChainPosition { node_id: chain_node_to_reset });
+							// }
 						}
 					}
 				}
