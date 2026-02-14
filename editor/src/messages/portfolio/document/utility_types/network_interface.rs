@@ -19,9 +19,9 @@ use deserialization::deserialize_node_persistent_metadata;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::Type;
 use graph_craft::concrete;
-use graph_craft::document::Visible;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
+use graph_craft::document::{HiddenNodeInput, Visible};
 use graphene_std::ContextDependencies;
 use graphene_std::math::quad::Quad;
 use graphene_std::subpath::Subpath;
@@ -1361,7 +1361,7 @@ impl NodeNetworkInterface {
 
 				node.inputs = old_node.inputs;
 				node.call_argument = old_node.manual_composition.unwrap();
-				node.visible = if old_node.visible { Visible::Passthrough } else { Visible::Value(node.call_argument.clone()) };
+				node.visible = if old_node.visible { Visible::Passthrough } else { Visible::TaggedValues(Vec::new()) };
 				node.skip_deduplication = old_node.skip_deduplication;
 				node.original_location = old_node.original_location;
 				node_metadata.persistent_metadata.display_name = old_node.alias;
@@ -4493,28 +4493,36 @@ impl NodeNetworkInterface {
 			return;
 		}
 
-		// Compute output_type BEFORE borrowing network mutably
-		let output_type = {
+		let input_count = self.document_node(node_id, network_path).map_or(0, |node| node.inputs.len());
+		let tagged_inputs: Vec<HiddenNodeInput> = (0..input_count)
+			.map(|input_index| HiddenNodeInput {
+				input_index,
+				tagged_value: self.tagged_value_from_input(&InputConnector::node(*node_id, input_index), network_path),
+			})
+			.collect();
+		let has_non_unit_input = tagged_inputs.iter().any(|hidden_input: &HiddenNodeInput| hidden_input.tagged_value.ty() != concrete!(()));
+		let visibility = if has_non_unit_input {
+			Visible::TaggedValues(tagged_inputs)
+		} else {
 			let output_connector = OutputConnector::Node { node_id: *node_id, output_index: 0 };
-
-			match self.output_type(&output_connector, network_path) {
+			let output_type = match self.output_type(&output_connector, network_path) {
 				TypeSource::Compiled(ty) => ty,
 				TypeSource::TaggedValue(ty) => ty,
 				TypeSource::Unknown | TypeSource::Invalid => {
 					log::error!("Output type unknown when hiding node");
-					concrete!(()) // temporary fallback, but should rarely happen
+					concrete!(())
 				}
 				TypeSource::Error(e) => {
 					log::error!("Error retrieving output type in set_visibility: {e}");
 					concrete!(())
 				}
-			}
+			};
+			Visible::Value(output_type)
 		};
 
-		// Now borrow network mutably AFTER output_type is computed
 		if let Some(network) = self.network_mut(network_path) {
 			if let Some(node) = network.nodes.get_mut(node_id) {
-				node.visible = Visible::Value(output_type);
+				node.visible = visibility;
 			}
 		}
 

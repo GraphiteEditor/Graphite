@@ -30,9 +30,16 @@ fn return_true() -> bool {
 }
 
 #[derive(Clone, Debug, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
+pub struct HiddenNodeInput {
+	pub input_index: usize,
+	pub tagged_value: TaggedValue,
+}
+
+#[derive(Clone, Debug, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum Visible {
 	Passthrough,
-	Value(Type),
+	Value(Type), //kept for backward compatibility
+	TaggedValues(Vec<HiddenNodeInput>),
 }
 impl Visible {
 	pub fn is_visible(&self) -> bool {
@@ -40,7 +47,7 @@ impl Visible {
 	}
 
 	pub fn is_hidden(&self) -> bool {
-		matches!(self, Visible::Value(_))
+		!self.is_visible()
 	}
 }
 
@@ -825,6 +832,53 @@ impl NodeNetwork {
 					node.inputs.push(primary);
 				} else {
 					let tagged = TaggedValue::from_type(&output_type).unwrap_or_else(|| TaggedValue::None);
+
+					node.implementation = DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::value::ClonedNode"));
+					node.call_argument = concrete!(());
+					node.inputs.clear();
+					node.inputs.push(NodeInput::value(tagged, false));
+				}
+
+				self.nodes.insert(id, node);
+				return;
+			}
+
+			Visible::TaggedValues(tagged_values) => {
+				let passthrough_input = tagged_values
+					.iter()
+					.filter(|hidden_input| hidden_input.tagged_value.ty() != concrete!(()))
+					.find_map(|hidden_input| {
+						let input = node.inputs.get(hidden_input.input_index)?;
+						match input {
+							NodeInput::Node { .. } => Some(input.clone()),
+							NodeInput::Import { import_type, .. } if *import_type == hidden_input.tagged_value.ty() => Some(input.clone()),
+							NodeInput::Value { tagged_value, .. } if tagged_value.ty() == hidden_input.tagged_value.ty() => Some(input.clone()),
+							NodeInput::Import { .. } | NodeInput::Value { .. } | NodeInput::Scope(_) | NodeInput::Reflection(_) | NodeInput::Inline(_) => None,
+						}
+					})
+					.or_else(|| {
+						tagged_values.iter().find_map(|hidden_input| {
+							let input = node.inputs.get(hidden_input.input_index)?;
+							match input {
+								NodeInput::Node { .. } | NodeInput::Import { .. } | NodeInput::Value { .. } => Some(input.clone()),
+								NodeInput::Scope(_) | NodeInput::Reflection(_) | NodeInput::Inline(_) => None,
+							}
+						})
+					});
+
+				if let Some(primary) = passthrough_input {
+					node.implementation = DocumentNodeImplementation::ProtoNode(graphene_core::ops::identity::IDENTIFIER);
+					node.call_argument = concrete!(());
+					node.inputs.clear();
+					node.inputs.push(primary);
+				} else {
+					let tagged = tagged_values
+						.iter()
+						.find(|hidden_input| hidden_input.tagged_value.ty() != concrete!(()))
+						.or_else(|| tagged_values.first())
+						.map(|hidden_input| hidden_input.tagged_value.clone())
+						.or_else(|| TaggedValue::from_type(&node.call_argument))
+						.unwrap_or(TaggedValue::None);
 
 					node.implementation = DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::value::ClonedNode"));
 					node.call_argument = concrete!(());
