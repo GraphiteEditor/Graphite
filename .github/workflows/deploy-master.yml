@@ -1,7 +1,10 @@
 name: "Deploy Master"
 
 on:
-  push:
+  workflow_run:
+    workflows: ["Provide Shaders"]
+    types:
+      - completed
     branches:
       - master
 
@@ -11,15 +14,28 @@ env:
 
 jobs:
   deploy:
+    # Only run if the shader build succeeded
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
       deployments: write
       actions: write
+    env:
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: "sccache"
 
     steps:
       - name: 📥 Clone and checkout repository
         uses: actions/checkout@v3
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: 🎨 Download pre-built shaders
+        run: |
+          SHADER_URL="https://raw.githubusercontent.com/${{ vars.ARTIFACTS_REPO_OWNER }}/${{ vars.ARTIFACTS_REPO_NAME }}/${{ vars.ARTIFACTS_REPO_BRANCH }}/rev/${{ github.event.workflow_run.head_sha }}/raster_nodes_shaders_entrypoint.wgsl"
+          curl -fsSL "$SHADER_URL" -o raster_nodes_shaders_entrypoint.wgsl
+          echo "RASTER_NODES_SHADER_PATH=$(pwd)/raster_nodes_shaders_entrypoint.wgsl" >> $GITHUB_ENV
 
       - name: 🟢 Install the latest Node.js
         uses: actions/setup-node@v4
@@ -30,6 +46,9 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: wasm32-unknown-unknown
+
+      - name: ⚡ Setup sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
 
       - name: 📦 Setup cargo-binstall
         uses: cargo-bins/cargo-binstall@main
