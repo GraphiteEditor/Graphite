@@ -84,6 +84,9 @@ jobs:
     permissions:
       contents: read
       deployments: write
+    env:
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: "sccache"
     steps:
       - name: 📥 Clone and checkout repository
         uses: actions/checkout@v3
@@ -104,6 +107,10 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
 
+      - name: ⚡ Setup sccache
+        if: steps.skip-check.outputs.skip-check != 'true'
+        uses: mozilla-actions/sccache-action@v0.0.9
+
       - name: 📦 Setup cargo-binstall
         if: steps.skip-check.outputs.skip-check != 'true'
         uses: cargo-bins/cargo-binstall@main
@@ -122,13 +129,14 @@ jobs:
           cd frontend
           npm run setup
 
-      - name: 🌐 Build Graphite web code
+      - name: 🌐 Build Graphite web code (without shader-nodes)
         if: steps.skip-check.outputs.skip-check != 'true'
         env:
           NODE_ENV: production
         run: |
           cd frontend
-          npm run build
+          wasm-pack build ./wasm --release --target=web --no-default-features --features gpu
+          npx vite build
 
       - name: 📤 Publish to Cloudflare Pages
         if: steps.skip-check.outputs.skip-check != 'true'
