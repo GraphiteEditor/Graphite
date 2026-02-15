@@ -81,6 +81,15 @@ impl ContextBuilder {
 		};
 		instance.request_adapter(&request_adapter_options).await.ok()
 	}
+	fn is_supported_adapter(adapter: &Adapter, required_features: Features) -> bool {
+		let supported_features = adapter.features();
+
+		if !supported_features.contains(required_features) {
+			return false;
+		}
+		true
+	}
+
 	async fn request_device(&self, adapter: &Adapter) -> Option<(Device, Queue)> {
 		let device_descriptor = wgpu::DeviceDescriptor {
 			label: None,
@@ -110,6 +119,11 @@ impl ContextBuilder {
 		};
 
 		let adapter = if let Some(adapter) = selected_adapter { adapter } else { self.request_adapter(&instance).await? };
+
+		//Fail early if the selected adapter is not supported
+		if !Self::is_supported_adapter(&adapter, self.features) {
+			return None;
+		}
 
 		let (device, queue) = self.request_device(&adapter).await?;
 		Some(Context {
