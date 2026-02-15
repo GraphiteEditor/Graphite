@@ -1974,7 +1974,7 @@ impl Fsm for PathToolFsmState {
 						// Draw the snapping axis lines
 						if tool_data.snapping_axis.is_some() {
 							let Some(axis) = tool_data.snapping_axis else { return self };
-							let origin = tool_data.drag_start_pos;
+							let origin = tool_data.snap_manager.indicator_pos().unwrap_or(tool_data.drag_start_pos);
 							let viewport_diagonal = viewport.size().into_dvec2().length();
 
 							let faded = |color: &str| {
@@ -2116,16 +2116,32 @@ impl Fsm for PathToolFsmState {
 				}
 
 				let break_molding = input.keyboard.get(break_colinear_molding as usize);
+				let snap_axis_state = input.keyboard.get(snap_angle as usize);
 
 				// Logic for molding segment
 				if let Some(segment) = &mut tool_data.segment
 					&& let Some(molding_segment_handles) = tool_data.molding_info
 				{
+					// Constrain molding to a single axis when Shift is held
+					let mouse_position = if snap_axis_state {
+						let delta = input.mouse.position - tool_data.drag_start_pos;
+						let axis = if delta.x.abs() >= delta.y.abs() { Axis::X } else { Axis::Y };
+						tool_data.snapping_axis = Some(axis);
+						match axis {
+							Axis::X => DVec2::new(input.mouse.position.x, tool_data.drag_start_pos.y),
+							Axis::Y => DVec2::new(tool_data.drag_start_pos.x, input.mouse.position.y),
+							_ => input.mouse.position,
+						}
+					} else {
+						tool_data.snapping_axis = None;
+						input.mouse.position
+					};
+
 					tool_data.temporary_adjacent_handles_while_molding = segment.mold_handle_positions(
 						document,
 						responses,
 						molding_segment_handles,
-						input.mouse.position,
+						mouse_position,
 						break_molding,
 						tool_data.temporary_adjacent_handles_while_molding,
 					);
@@ -2380,6 +2396,7 @@ impl Fsm for PathToolFsmState {
 				tool_data.molding_segment = false;
 				tool_data.temporary_adjacent_handles_while_molding = None;
 				tool_data.angle_locked = false;
+				tool_data.snapping_axis = None;
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.snap_manager.cleanup(responses);
 				PathToolFsmState::Ready
