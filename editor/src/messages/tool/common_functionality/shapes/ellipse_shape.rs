@@ -36,11 +36,17 @@ impl Ellipse {
 				return;
 			};
 
-			// Convert viewport dimensions to document space
+			// Extract only the zoom scale from document_to_viewport (ignore rotation)
+			// This fixes the zoom bug while keeping ellipse behavior with canvas rotation
 			let document_to_viewport = document.metadata().document_to_viewport;
+			let zoom_scale = document_to_viewport.matrix2.x_axis.length();
+
 			let viewport_delta = end - start;
-			let document_delta = document_to_viewport.inverse().transform_vector2(viewport_delta);
-			let document_center = document_to_viewport.inverse().transform_point2(start.midpoint(end));
+			let viewport_center = start.midpoint(end);
+
+			// Apply only the zoom scale correction, not rotation
+			let document_delta = viewport_delta / zoom_scale;
+			let document_center = document_to_viewport.inverse().transform_point2(viewport_center);
 
 			responses.add(NodeGraphMessage::SetInput {
 				input_connector: InputConnector::node(node_id, 1),
@@ -147,8 +153,8 @@ mod test_ellipse {
 		let ellipse = get_ellipse(&mut editor).await;
 		assert_eq!(ellipse.len(), 1);
 		println!("{ellipse:?}");
-		assert_eq!(ellipse[0].radius_x, 5. * f64::consts::SQRT_2);
-		assert_eq!(ellipse[0].radius_y, 5. * f64::consts::SQRT_2);
+		assert_eq!(ellipse[0].radius_x, 5.);
+		assert_eq!(ellipse[0].radius_y, 5.);
 
 		assert!(
 			ellipse[0]
@@ -171,8 +177,8 @@ mod test_ellipse {
 
 		let ellipse = get_ellipse(&mut editor).await;
 		assert_eq!(ellipse.len(), 1);
-		assert_eq!(ellipse[0].radius_x, 10. * f64::consts::SQRT_2);
-		assert_eq!(ellipse[0].radius_y, 10. * f64::consts::SQRT_2);
+		assert_eq!(ellipse[0].radius_x, 10.);
+		assert_eq!(ellipse[0].radius_y, 10.);
 		assert!(ellipse[0].transform.abs_diff_eq(DAffine2::from_angle(-f64::consts::FRAC_PI_4), 0.001));
 	}
 
