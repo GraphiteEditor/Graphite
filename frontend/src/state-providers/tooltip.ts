@@ -63,6 +63,7 @@ export function createTooltipState(editor: Editor) {
 
 	document.addEventListener("mousedown", closeTooltip);
 	document.addEventListener("keydown", closeTooltip);
+	document.addEventListener("wheel", closeTooltip);
 
 	editor.subscriptions.subscribeJsMessage(SendShortcutShiftClick, async (data) => {
 		update((state) => {
