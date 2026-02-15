@@ -469,7 +469,7 @@
 		cumulativeDragDelta += dragDelta;
 
 		const combined = initialValue + cumulativeDragDelta;
-		const combineSnapped = snapping ? Math.round(combined) : combined;
+		const combineSnapped = snapping || isInteger ? Math.round(combined) : combined;
 
 		const newValue = updateValue(combineSnapped);
 

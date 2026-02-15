@@ -7,6 +7,7 @@ use graph_craft::proto::GraphErrors;
 use graph_craft::wasm_application_io::EditorPreferences;
 use graphene_std::application_io::{NodeGraphUpdateMessage, RenderConfig};
 use graphene_std::application_io::{SurfaceFrame, TimingInformation};
+use graphene_std::raster::{CPU, Raster};
 use graphene_std::renderer::{RenderMetadata, format_transform_matrix};
 use graphene_std::text::FontCache;
 use graphene_std::transform::Footprint;
@@ -44,6 +45,7 @@ pub struct CompilationResponse {
 pub enum NodeGraphUpdate {
 	ExecutionResponse(ExecutionResponse),
 	CompilationResponse(CompilationResponse),
+	EyedropperPreview(Raster<CPU>),
 	NodeGraphUpdateMessage(NodeGraphUpdateMessage),
 }
 
@@ -59,7 +61,6 @@ pub struct NodeGraphExecutor {
 
 #[derive(Debug, Clone)]
 struct ExecutionContext {
-	render_config: RenderConfig,
 	export_config: Option<ExportConfig>,
 	document_id: DocumentId,
 }
@@ -164,14 +165,7 @@ impl NodeGraphExecutor {
 		// Execute the node graph
 		let execution_id = self.queue_execution(render_config);
 
-		self.futures.push_back((
-			execution_id,
-			ExecutionContext {
-				render_config,
-				export_config: None,
-				document_id,
-			},
-		));
+		self.futures.push_back((execution_id, ExecutionContext { export_config: None, document_id }));
 
 		Ok(DeferMessage::SetGraphSubmissionIndex { execution_id }.into())
 	}
@@ -194,15 +188,23 @@ impl NodeGraphExecutor {
 	}
 
 	#[cfg(not(target_family = "wasm"))]
-	pub(crate) fn submit_eyedropper_preview(&mut self, document_id: DocumentId, transform: DAffine2, pointer: DVec2, resolution: UVec2, time: TimingInformation) -> Result<Message, String> {
+	pub(crate) fn submit_eyedropper_preview(
+		&mut self,
+		document_id: DocumentId,
+		transform: DAffine2,
+		pointer: DVec2,
+		viewport_resolution: UVec2,
+		viewport_scale: f64,
+		time: TimingInformation,
+	) -> Result<Message, String> {
 		let viewport = Footprint {
 			transform,
-			resolution,
+			resolution: viewport_resolution,
 			..Default::default()
 		};
 		let render_config = RenderConfig {
 			viewport,
-			scale: 1.,
+			scale: viewport_scale,
 			time,
 			pointer,
 			export_format: graphene_std::application_io::ExportFormat::Raster,
@@ -215,14 +217,7 @@ impl NodeGraphExecutor {
 		// Execute the node graph
 		let execution_id = self.queue_execution(render_config);
 
-		self.futures.push_back((
-			execution_id,
-			ExecutionContext {
-				render_config,
-				export_config: None,
-				document_id,
-			},
-		));
+		self.futures.push_back((execution_id, ExecutionContext { export_config: None, document_id }));
 
 		Ok(DeferMessage::SetGraphSubmissionIndex { execution_id }.into())
 	}
@@ -282,7 +277,6 @@ impl NodeGraphExecutor {
 		self.futures.push_back((
 			execution_id,
 			ExecutionContext {
-				render_config,
 				export_config: Some(export_config),
 				document_id,
 			},
@@ -335,9 +329,6 @@ impl NodeGraphExecutor {
 					if let Some(export_config) = execution_context.export_config {
 						// Special handling for exporting the artwork
 						self.process_export(node_graph_output, export_config, responses)?;
-					} else if execution_context.render_config.for_eyedropper {
-						// Special handling for Eyedropper tool preview
-						self.process_eyedropper_preview(node_graph_output, responses)?;
 					} else {
 						self.process_node_graph_output(node_graph_output, responses)?;
 					}
@@ -381,6 +372,10 @@ impl NodeGraphExecutor {
 					});
 					responses.add(NodeGraphMessage::SendGraph);
 				}
+				NodeGraphUpdate::EyedropperPreview(raster) => {
+					let (data, width, height) = raster.to_flat_u8();
+					responses.add(EyedropperToolMessage::PreviewImage { data, width, height });
+				}
 			}
 		}
 
@@ -422,6 +417,7 @@ impl NodeGraphExecutor {
 			first_element_source_id,
 			click_targets,
 			clip_targets,
+			vector_data,
 		} = render_output.metadata;
 
 		// Run these update state messages immediately
@@ -432,26 +428,10 @@ impl NodeGraphExecutor {
 		});
 		responses.add(DocumentMessage::UpdateClickTargets { click_targets });
 		responses.add(DocumentMessage::UpdateClipTargets { clip_targets });
+		responses.add(DocumentMessage::UpdateVectorData { vector_data });
 		responses.add(DocumentMessage::RenderScrollbars);
 		responses.add(DocumentMessage::RenderRulers);
 		responses.add(OverlaysMessage::Draw);
-
-		Ok(())
-	}
-
-	fn process_eyedropper_preview(&self, node_graph_output: TaggedValue, responses: &mut VecDeque<Message>) -> Result<(), String> {
-		match node_graph_output {
-			#[cfg(feature = "gpu")]
-			TaggedValue::RenderOutput(RenderOutput {
-				data: RenderOutputType::Buffer { data, width, height },
-				..
-			}) => {
-				responses.add(EyedropperToolMessage::PreviewImage { data, width, height });
-			}
-			_ => {
-				// TODO: Support Eyedropper preview in SVG mode on desktop
-			}
-		};
 
 		Ok(())
 	}

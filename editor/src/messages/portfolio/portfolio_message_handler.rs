@@ -434,11 +434,12 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				let catalog = &self.persistent_data.font_catalog;
 
 				if catalog.0.is_empty() {
-					log::error!("Tried to load document resources before font catalog was loaded");
+					responses.add_front(FrontendMessage::TriggerFontCatalogLoad);
+					return;
 				}
 
 				if let Some(document) = self.documents.get_mut(&document_id) {
-					document.load_layer_resources(responses, catalog);
+					document.load_layer_resources(responses);
 				}
 			}
 			PortfolioMessage::NewDocumentWithName { name } => {
@@ -741,7 +742,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 								added_nodes = true;
 							}
 
-							document.load_layer_resources(responses, &self.persistent_data.font_catalog);
+							document.load_layer_resources(responses);
 							let new_ids: HashMap<_, _> = entry.nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect();
 							let layer = LayerNodeIdentifier::new_unchecked(new_ids[&NodeId(0)]);
 							all_new_ids.extend(new_ids.values().cloned());
@@ -1106,9 +1107,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				};
 				if !document.is_loaded {
 					document.is_loaded = true;
-					if self.persistent_data.font_catalog.0.is_empty() {
-						responses.add_front(FrontendMessage::TriggerFontCatalogLoad);
-					}
+					responses.add(PortfolioMessage::LoadDocumentResources { document_id });
 					responses.add(PortfolioMessage::UpdateDocumentWidgets);
 					responses.add(PropertiesPanelMessage::Clear);
 				}
@@ -1186,6 +1185,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				let Some(document) = self.documents.get_mut(&document_id) else { return };
 
 				let resolution = glam::UVec2::splat(EYEDROPPER_PREVIEW_AREA_RESOLUTION);
+				let scale = viewport.scale();
 
 				let preview_offset_in_viewport = ipp.mouse.position - (glam::DVec2::splat(EYEDROPPER_PREVIEW_AREA_RESOLUTION as f64 / 2.));
 				let preview_offset_in_viewport = DAffine2::from_translation(preview_offset_in_viewport);
@@ -1197,7 +1197,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				let result = self
 					.executor
-					.submit_eyedropper_preview(document_id, preview_transform, pointer_position, resolution, timing_information);
+					.submit_eyedropper_preview(document_id, preview_transform, pointer_position, resolution, scale, timing_information);
 
 				match result {
 					Err(description) => {
