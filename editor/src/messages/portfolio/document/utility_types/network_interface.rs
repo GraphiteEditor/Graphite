@@ -10,18 +10,16 @@ use crate::messages::portfolio::document::graph_operation::utility_types::Modify
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type};
 use crate::messages::portfolio::document::node_graph::utility_types::{Direction, FrontendClickTargets, FrontendGraphDataType, FrontendGraphInput, FrontendGraphOutput};
 use crate::messages::portfolio::document::overlays::utility_functions::text_width;
-use crate::messages::portfolio::document::utility_types::network_interface::resolved_types::ResolvedDocumentNodeTypes;
-use crate::messages::portfolio::document::utility_types::network_interface::resolved_types::TypeSource;
+use crate::messages::portfolio::document::utility_types::network_interface::resolved_types::{ResolvedDocumentNodeTypes, TypeSource};
 use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle, WirePath, WirePathUpdate, build_vector_wire};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::tool_messages::tool_prelude::NumberInputMode;
 use deserialization::deserialize_node_persistent_metadata;
 use glam::{DAffine2, DVec2, IVec2};
 use graph_craft::Type;
-use graph_craft::concrete;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput, NodeNetwork, OldDocumentNodeImplementation, OldNodeNetwork};
-use graph_craft::document::{HiddenNodeInput, Visible};
+use graph_craft::document::{Hidden, HiddenNodeInput};
 use graphene_std::ContextDependencies;
 use graphene_std::math::quad::Quad;
 use graphene_std::subpath::Subpath;
@@ -1052,7 +1050,7 @@ impl NodeNetworkInterface {
 			log::error!("Could not get node in is_visible");
 			return false;
 		};
-		node.visible.is_visible()
+		node.visible.is_none()
 	}
 
 	pub fn is_layer(&self, node_id: &NodeId, network_path: &[NodeId]) -> bool {
@@ -1361,7 +1359,7 @@ impl NodeNetworkInterface {
 
 				node.inputs = old_node.inputs;
 				node.call_argument = old_node.manual_composition.unwrap();
-				node.visible = if old_node.visible { Visible::Passthrough } else { Visible::TaggedValues(Vec::new()) };
+				node.visible = if old_node.visible { None } else { Some(Hidden::Passthrough) };
 				node.skip_deduplication = old_node.skip_deduplication;
 				node.original_location = old_node.original_location;
 				node_metadata.persistent_metadata.display_name = old_node.alias;
@@ -4487,7 +4485,7 @@ impl NodeNetworkInterface {
 		if is_visible {
 			if let Some(network) = self.network_mut(network_path) {
 				if let Some(node) = network.nodes.get_mut(node_id) {
-					node.visible = Visible::Passthrough;
+					node.visible = None;
 				}
 			}
 			self.transaction_modified();
@@ -4495,30 +4493,58 @@ impl NodeNetworkInterface {
 		}
 
 		let input_count = self.document_node(node_id, network_path).map_or(0, |node| node.inputs.len());
-		let tagged_inputs: Vec<HiddenNodeInput> = (0..input_count)
-			.map(|input_index| HiddenNodeInput {
-				input_index,
-				tagged_value: self.tagged_value_from_input(&InputConnector::node(*node_id, input_index), network_path),
-			})
-			.collect();
-		let has_non_unit_input = tagged_inputs.iter().any(|hidden_input: &HiddenNodeInput| hidden_input.tagged_value.ty() != concrete!(()));
-		let visibility = if has_non_unit_input {
-			Visible::TaggedValues(tagged_inputs)
+
+		let visibility = if input_count > 0 {
+			// Nodes with inputs: use Passthrough (become identity node passing first input)
+			Some(Hidden::Passthrough)
 		} else {
+			// Nodes with NO inputs - these generate values dynamically
+			// We need to check if they're connected to anything
 			let output_connector = OutputConnector::Node { node_id: *node_id, output_index: 0 };
-			let output_type = match self.output_type(&output_connector, network_path) {
-				TypeSource::Compiled(ty) => ty,
-				TypeSource::TaggedValue(ty) => ty,
-				TypeSource::Unknown | TypeSource::Invalid => {
-					log::error!("Output type unknown when hiding node");
-					concrete!(())
+			
+			// Get all downstream connections
+			let downstream_connectors = self
+				.outward_wires(network_path)
+				.and_then(|outward_wires| outward_wires.get(&output_connector))
+				.cloned()
+				.unwrap_or_default();
+
+			if downstream_connectors.is_empty() {
+				// No downstream connections - safe to hide with a dummy value
+				// Use Passthrough which will make it output unit type
+				Some(Hidden::Passthrough)
+			} else {
+				// Has downstream connections - need to provide actual values
+				// For dynamic nodes, we try to infer from downstream what values they expect
+				let tagged_inputs: Vec<HiddenNodeInput> = downstream_connectors
+					.into_iter()
+					.filter_map(|connector| {
+						let InputConnector::Node { node_id: downstream_node_id, input_index } = connector else {
+							return None;
+						};
+						let input_connector = InputConnector::node(downstream_node_id, input_index);
+						let tagged_value = self.tagged_value_from_downstream_connector(&input_connector, network_path);
+						if matches!(tagged_value, TaggedValue::None) {
+							log::warn!("Could not infer hidden replacement value for node {downstream_node_id} input {input_index}");
+							return None;
+						}
+
+						Some(HiddenNodeInput {
+							node_id: downstream_node_id,
+							input_index,
+							tagged_value,
+						})
+					})
+					.collect();
+
+				if tagged_inputs.is_empty() {
+					// Couldn't infer any valid values - fall back to Passthrough
+					log::warn!("Cannot properly hide node {node_id} with no inputs - using Passthrough fallback");
+					Some(Hidden::Passthrough)
+				} else {
+					Some(Hidden::TaggedValues(tagged_inputs))
 				}
-				TypeSource::Error(e) => {
-					log::error!("Error retrieving output type in set_visibility: {e}");
-					concrete!(())
-				}
-			};
-			Visible::Value(output_type)
+			}
 		};
 
 		if let Some(network) = self.network_mut(network_path) {
@@ -4528,6 +4554,71 @@ impl NodeNetworkInterface {
 		}
 
 		self.transaction_modified();
+	}
+	
+	fn tagged_value_from_downstream_connector(&mut self, input_connector: &InputConnector, network_path: &[NodeId]) -> TaggedValue {
+		let tagged_value = self.tagged_value_from_input(input_connector, network_path);
+		if !matches!(tagged_value, TaggedValue::None) {
+			return tagged_value;
+		}
+
+		// If inference falls back to `None`, try extracting the concrete type directly from this connector.
+		if let TypeSource::Compiled(ty) | TypeSource::TaggedValue(ty) = self.input_type_not_invalid(input_connector, network_path) {
+			let typed = TaggedValue::from_type_or_none(&ty);
+			if !matches!(typed, TaggedValue::None) {
+				return typed;
+			}
+		}
+
+		let InputConnector::Node { node_id, input_index } = *input_connector else {
+			return tagged_value;
+		};
+		let Some(DocumentNodeImplementation::Network(_)) = self.implementation(&node_id, network_path) else {
+			// If this isn't a nested network input, try candidates directly on this connector.
+			let mut candidate_types = self.complete_valid_input_types(input_connector, network_path);
+			if candidate_types.is_empty() {
+				candidate_types = self.potential_valid_input_types(input_connector, network_path);
+			}
+			candidate_types.sort_by_key(|ty| ty.nested_type().identifier_name());
+
+			if let Some(candidate) = candidate_types.iter().find_map(|ty| {
+				let typed = TaggedValue::from_type_or_none(ty);
+				(!matches!(typed, TaggedValue::None)).then_some(typed)
+			}) {
+				return candidate;
+			}
+
+			return tagged_value;
+		};
+
+		let nested_path = [network_path, &[node_id]].concat();
+		let nested_downstream = self
+			.outward_wires(&nested_path)
+			.and_then(|outward_wires| outward_wires.get(&OutputConnector::Import(input_index)))
+			.cloned()
+			.unwrap_or_default();
+
+		for nested_input_connector in nested_downstream {
+			let nested_tagged_value = self.tagged_value_from_downstream_connector(&nested_input_connector, &nested_path);
+			if !matches!(nested_tagged_value, TaggedValue::None) {
+				return nested_tagged_value;
+			}
+		}
+
+		// Nested traversal could not infer; try candidates at this connector as a final fallback.
+		let mut candidate_types = self.complete_valid_input_types(input_connector, network_path);
+		if candidate_types.is_empty() {
+			candidate_types = self.potential_valid_input_types(input_connector, network_path);
+		}
+		candidate_types.sort_by_key(|ty| ty.nested_type().identifier_name());
+
+		candidate_types
+			.iter()
+			.find_map(|ty| {
+				let typed = TaggedValue::from_type_or_none(ty);
+				(!matches!(typed, TaggedValue::None)).then_some(typed)
+			})
+			.unwrap_or(tagged_value)
 	}
 
 	pub fn set_locked(&mut self, node_id: &NodeId, network_path: &[NodeId], locked: bool) {

@@ -14,7 +14,7 @@ pub struct DocumentNode {
 	pub call_argument: Type,
 	pub implementation: DocumentNodeImplementation,
 	pub skip_deduplication: bool,
-	pub visible: Visible,
+	pub visible: Option<Hidden>,
 	pub original_location: OriginalLocation,
 }
 ```

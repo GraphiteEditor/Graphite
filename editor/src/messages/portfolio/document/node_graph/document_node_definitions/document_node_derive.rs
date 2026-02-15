@@ -55,7 +55,7 @@ pub(super) fn post_process_nodes(custom: Vec<DocumentNodeDefinition>) -> HashMap
 						inputs,
 						call_argument: input_type.clone(),
 						implementation: DocumentNodeImplementation::ProtoNode(id.clone()),
-						visible: Visible::Passthrough,
+						visible: None,
 						skip_deduplication: false,
 						context_features: ContextDependencies::from(context_features.as_slice()),
 						..Default::default()
