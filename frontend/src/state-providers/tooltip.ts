@@ -55,6 +55,15 @@ export function createTooltipState(editor: Editor) {
 		}, SHOW_TOOLTIP_DELAY_MS);
 	});
 
+	// Hide tooltip and cancel any pending timeout when the mouse leaves the application window
+	document.addEventListener("mouseleave", () => {
+		if (tooltipTimeout) clearTimeout(tooltipTimeout);
+		closeTooltip();
+	});
+
+	document.addEventListener("mousedown", closeTooltip);
+	document.addEventListener("keydown", closeTooltip);
+
 	editor.subscriptions.subscribeJsMessage(SendShortcutShiftClick, async (data) => {
 		update((state) => {
 			state.shiftClickShortcut = data.shortcut;
@@ -72,15 +81,6 @@ export function createTooltipState(editor: Editor) {
 			state.fullscreenShortcut = operatingSystem() === "Mac" ? data.shortcutMac : data.shortcut;
 			return state;
 		});
-	});
-
-	document.addEventListener("mousedown", closeTooltip);
-	document.addEventListener("keydown", closeTooltip);
-
-	// Hide tooltip and cancel pending timeout when the mouse leaves the document
-	document.addEventListener("mouseleave", () => {
-		if (tooltipTimeout) clearTimeout(tooltipTimeout);
-		closeTooltip();
 	});
 
 	// Stop showing a tooltip if the user clicks or presses a key, and require the user to first move out of the element before it can re-appear
