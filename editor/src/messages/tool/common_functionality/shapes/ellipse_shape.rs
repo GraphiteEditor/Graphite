@@ -147,8 +147,8 @@ mod test_ellipse {
 		let ellipse = get_ellipse(&mut editor).await;
 		assert_eq!(ellipse.len(), 1);
 		println!("{ellipse:?}");
-		assert_eq!(ellipse[0].radius_x, 5.);
-		assert_eq!(ellipse[0].radius_y, 5.);
+		assert_eq!(ellipse[0].radius_x, 5. * f64::consts::SQRT_2);
+		assert_eq!(ellipse[0].radius_y, 5. * f64::consts::SQRT_2);
 
 		assert!(
 			ellipse[0]
@@ -171,8 +171,8 @@ mod test_ellipse {
 
 		let ellipse = get_ellipse(&mut editor).await;
 		assert_eq!(ellipse.len(), 1);
-		assert_eq!(ellipse[0].radius_x, 10.);
-		assert_eq!(ellipse[0].radius_y, 10.);
+		assert_eq!(ellipse[0].radius_x, 10. * f64::consts::SQRT_2);
+		assert_eq!(ellipse[0].radius_y, 10. * f64::consts::SQRT_2);
 		assert!(ellipse[0].transform.abs_diff_eq(DAffine2::from_angle(-f64::consts::FRAC_PI_4), 0.001));
 	}
 
