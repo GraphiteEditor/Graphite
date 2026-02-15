@@ -202,20 +202,20 @@ impl EditorHandle {
 				if !EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
 					handle(|handle| {
 						// Process all messages that have been queued up
-						let messages = MESSAGE_BUFFER.take();
-
-						for message in messages {
-							handle.dispatch(message);
-						}
-
-						handle.dispatch(InputPreprocessorMessage::CurrentTime {
-							timestamp: js_sys::Date::now() as u64,
-						});
-						handle.dispatch(AnimationMessage::IncrementFrameCounter);
+						let mut messages = MESSAGE_BUFFER.take();
+						messages.push(
+							InputPreprocessorMessage::CurrentTime {
+								timestamp: js_sys::Date::now() as u64,
+							}
+							.into(),
+						);
+						messages.push(AnimationMessage::IncrementFrameCounter.into());
 
 						// Used by auto-panning, but this could possibly be refactored in the future, see:
 						// <https://github.com/GraphiteEditor/Graphite/pull/2562#discussion_r2041102786>
-						handle.dispatch(BroadcastMessage::TriggerEvent(EventMessage::AnimationFrame));
+						messages.push(BroadcastMessage::TriggerEvent(EventMessage::AnimationFrame).into());
+
+						handle.dispatch(Message::Batched { messages: messages.into() });
 					});
 				}
 

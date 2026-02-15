@@ -125,7 +125,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 	let wgpu_executor_ref = application_io_arc.gpu_executor().unwrap();
 	let device = wgpu_executor_ref.context.device.clone();
 
-	let preferences = EditorPreferences { use_vello: true };
+	let preferences = EditorPreferences {
+		vello_preference: graph_craft::wasm_application_io::VelloPreference::Auto,
+		max_render_region_size: 1920 * 1080,
+	};
 	let editor_api = Arc::new(WasmEditorApi {
 		font_cache: FontCache::default(),
 		application_io: Some(application_io_for_api),

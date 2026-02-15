@@ -48,10 +48,10 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Eyed
 		if let ToolMessage::Eyedropper(EyedropperToolMessage::PreviewImage { data, width, height }) = message {
 			let image = EyedropperPreviewImage { data, width, height };
 
-			update_cursor_preview_common(responses, Some(image), context.input, context.global_tool_data, self.data.color_choice.clone());
-
 			if !self.data.preview {
 				disable_cursor_preview(responses, &mut self.data);
+			} else {
+				update_cursor_preview_common(responses, Some(image), context.input, context.global_tool_data, self.data.color_choice.clone());
 			}
 			return;
 		}
