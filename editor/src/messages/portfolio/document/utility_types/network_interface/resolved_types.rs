@@ -182,28 +182,39 @@ impl NodeNetworkInterface {
 
 	/// Gets the default tagged value for an input. If its not compiled, then it tries to get a valid type. If there are no valid types, then it picks a random implementation.
 	pub fn tagged_value_from_input(&mut self, input_connector: &InputConnector, network_path: &[NodeId]) -> TaggedValue {
-		let guaranteed_type = match self.input_type(input_connector, network_path) {
-			TypeSource::Compiled(compiled) => compiled,
-			TypeSource::TaggedValue(value) => value,
+		match self.input_type(input_connector, network_path) {
+			TypeSource::Compiled(compiled) | TypeSource::TaggedValue(compiled) => {
+				let tagged_value = TaggedValue::from_type_or_none(&compiled);
+				if matches!(tagged_value, TaggedValue::None) {
+					log::error!("Failed to construct TaggedValue for {compiled:?} in tagged_value_from_input");
+				}
+				tagged_value
+			}
 			TypeSource::Unknown | TypeSource::Invalid => {
-				// Pick a random type from the complete valid types
-				// TODO: Add a NodeInput::Indeterminate which can be resolved at compile time to be any type that prevents an error. This may require bidirectional typing.
-				self.complete_valid_input_types(input_connector, network_path)
-					.into_iter()
-					.min_by_key(|ty| ty.nested_type().identifier_name())
-					// Pick a random type from the potential valid types
-					.or_else(|| {
-						self.potential_valid_input_types(input_connector, network_path)
-							.into_iter()
-							.min_by_key(|ty| ty.nested_type().identifier_name())
-					}).unwrap_or(concrete!(()))
+				// Try complete valid types first, then potential valid types
+				let mut candidate_types = self.complete_valid_input_types(input_connector, network_path);
+				if candidate_types.is_empty() {
+					candidate_types = self.potential_valid_input_types(input_connector, network_path);
+				}
+				candidate_types.sort_by_key(|ty| ty.nested_type().identifier_name());
+
+				// Try each candidate type in order until we find one that works
+				if let Some(tagged_value) = candidate_types.iter().find_map(|ty| {
+					let tagged = TaggedValue::from_type_or_none(ty);
+					(!matches!(tagged, TaggedValue::None)).then_some(tagged)
+				}) {
+					return tagged_value;
+				}
+
+				let fallback_type = candidate_types.first().cloned().unwrap_or(concrete!(()));
+				log::error!("Failed to construct TaggedValue for any valid type on {input_connector:?}; fallback type: {fallback_type:?}");
+				TaggedValue::from_type_or_none(&fallback_type)
 			}
 			TypeSource::Error(e) => {
 				log::error!("Error getting tagged_value_from_input for {input_connector:?} {e}");
-				concrete!(())
+				TaggedValue::None
 			}
-		};
-		TaggedValue::from_type_or_none(&guaranteed_type)
+		}
 	}
 
 	/// A list of all valid input types for this specific node.
