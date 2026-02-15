@@ -596,6 +596,8 @@ struct PathToolData {
 	temporary_colinear_handles: bool,
 	molding_info: Option<(DVec2, DVec2)>,
 	molding_segment: bool,
+	molding_snapping_axis: Option<Axis>,
+	molding_snapping_origin: DVec2,
 	temporary_adjacent_handles_while_molding: Option<[Option<HandleId>; 2]>,
 	frontier_handles_info: Option<HashMap<LayerNodeIdentifier, HashMap<SegmentId, Vec<PointId>>>>,
 	adjacent_anchor_offset: Option<DVec2>,
@@ -1993,6 +1995,17 @@ impl Fsm for PathToolFsmState {
 								}
 							}
 						}
+
+						// Draw molding segment snapping guide
+						if let Some(axis) = tool_data.molding_snapping_axis {
+							let origin = tool_data.molding_snapping_origin;
+							let viewport_diagonal = viewport.size().into_dvec2().length();
+							match axis {
+								Axis::Y => overlay_context.line(origin - DVec2::Y * viewport_diagonal, origin + DVec2::Y * viewport_diagonal, Some(COLOR_OVERLAY_GREEN), None),
+								Axis::X => overlay_context.line(origin - DVec2::X * viewport_diagonal, origin + DVec2::X * viewport_diagonal, Some(COLOR_OVERLAY_RED), None),
+								_ => {}
+							}
+						}
 					}
 					Self::SlidingPoint => {}
 				}
@@ -2116,16 +2129,33 @@ impl Fsm for PathToolFsmState {
 				}
 
 				let break_molding = input.keyboard.get(break_colinear_molding as usize);
+				let snap_angle_state = input.keyboard.get(snap_angle as usize);
 
 				// Logic for molding segment
 				if let Some(segment) = &mut tool_data.segment
 					&& let Some(molding_segment_handles) = tool_data.molding_info
 				{
+					let mold_position = if snap_angle_state {
+						let center = segment.segment_center_viewport(document);
+						let delta = input.mouse.position - center;
+						let axis = if delta.x.abs() >= delta.y.abs() { Axis::X } else { Axis::Y };
+						tool_data.molding_snapping_axis = Some(axis);
+						tool_data.molding_snapping_origin = center;
+						match axis {
+							Axis::X => DVec2::new(input.mouse.position.x, center.y),
+							Axis::Y => DVec2::new(center.x, input.mouse.position.y),
+							_ => input.mouse.position,
+						}
+					} else {
+						tool_data.molding_snapping_axis = None;
+						input.mouse.position
+					};
+
 					tool_data.temporary_adjacent_handles_while_molding = segment.mold_handle_positions(
 						document,
 						responses,
 						molding_segment_handles,
-						input.mouse.position,
+						mold_position,
 						break_molding,
 						tool_data.temporary_adjacent_handles_while_molding,
 					);
@@ -2378,6 +2408,7 @@ impl Fsm for PathToolFsmState {
 				}
 				tool_data.molding_info = None;
 				tool_data.molding_segment = false;
+				tool_data.molding_snapping_axis = None;
 				tool_data.temporary_adjacent_handles_while_molding = None;
 				tool_data.angle_locked = false;
 				responses.add(DocumentMessage::AbortTransaction);
@@ -2501,6 +2532,7 @@ impl Fsm for PathToolFsmState {
 					tool_data.segment = None;
 					tool_data.molding_info = None;
 					tool_data.molding_segment = false;
+					tool_data.molding_snapping_axis = None;
 					tool_data.temporary_adjacent_handles_while_molding = None;
 
 					if segment_dissolved || point_inserted {
