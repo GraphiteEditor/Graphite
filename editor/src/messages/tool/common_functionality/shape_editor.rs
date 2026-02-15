@@ -323,6 +323,13 @@ impl ClosestSegment {
 		}
 	}
 
+	pub fn segment_center_viewport(&self, document: &DocumentMessageHandler) -> DVec2 {
+		let transform = document.metadata().transform_to_viewport_if_feeds(self.layer, &document.network_interface);
+		let start = transform.transform_point2(point_to_dvec2(self.bezier.start()));
+		let end = transform.transform_point2(point_to_dvec2(self.bezier.end()));
+		(start + end) / 2.
+	}
+
 	pub fn calculate_perp(&self, document: &DocumentMessageHandler) -> DVec2 {
 		let tangent = if let (Some(handle1), Some(handle2)) = self.handle_positions(document.metadata(), &document.network_interface) {
 			(handle1 - handle2).try_normalize()
