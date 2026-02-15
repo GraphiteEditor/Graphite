@@ -330,14 +330,16 @@ impl<PointId: Identifier> Subpath<PointId> {
 		let head_base_distance = (length - head_length).max(0.);
 		let head_base = start + direction * head_base_distance;
 
+		// Arrow path starts at the tail (origin), traces around the shape, and returns to tail
 		let anchors = [
-			start - perpendicular * half_shaft,     // Tail bottom
-			head_base - perpendicular * half_shaft, // Head base bottom (shaft)
-			head_base - perpendicular * half_head,  // Head base bottom (wide)
-			end,                                    // Tip
-			head_base + perpendicular * half_head,  // Head base top (wide)
-			head_base + perpendicular * half_shaft, // Head base top (shaft)
+			start,                                  // Tail center (origin)
 			start + perpendicular * half_shaft,     // Tail top
+			head_base + perpendicular * half_shaft, // Head base top (shaft)
+			head_base + perpendicular * half_head,  // Head base top (wide)
+			end,                                    // Tip
+			head_base - perpendicular * half_head,  // Head base bottom (wide)
+			head_base - perpendicular * half_shaft, // Head base bottom (shaft)
+			start - perpendicular * half_shaft,     // Tail bottom
 		];
 
 		Self::from_anchors(anchors, true)
