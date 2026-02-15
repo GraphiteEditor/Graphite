@@ -8,7 +8,7 @@
 
 <div class={`separator ${direction.toLowerCase()} ${style.toLowerCase()}`}>
 	{#if style === "Section"}
-		<div />
+		<div></div>
 	{/if}
 </div>
 

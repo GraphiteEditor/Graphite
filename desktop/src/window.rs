@@ -1,12 +1,12 @@
+use crate::consts::APP_NAME;
+use crate::event::AppEventScheduler;
+use crate::wrapper::messages::MenuItem;
 use std::collections::HashMap;
 use std::sync::Arc;
 use winit::cursor::{CursorIcon, CustomCursor, CustomCursorSource};
 use winit::event_loop::ActiveEventLoop;
+use winit::monitor::Fullscreen;
 use winit::window::{Window as WinitWindow, WindowAttributes};
-
-use crate::consts::APP_NAME;
-use crate::event::AppEventScheduler;
-use crate::wrapper::messages::MenuItem;
 
 pub(crate) trait NativeWindow {
 	fn init() {}
@@ -41,7 +41,13 @@ pub(crate) struct Window {
 	#[allow(dead_code)]
 	native_handle: native::NativeWindowImpl,
 	custom_cursors: HashMap<CustomCursorSource, CustomCursor>,
-	clipboard: window_clipboard::Clipboard,
+	clipboard: Option<window_clipboard::Clipboard>,
+}
+impl Drop for Window {
+	fn drop(&mut self) {
+		// Clipboard must be dropped before `winit_window`
+		drop(self.clipboard.take());
+	}
 }
 
 impl Window {
@@ -62,7 +68,7 @@ impl Window {
 
 		let winit_window = event_loop.create_window(attributes).unwrap();
 		let native_handle = native::NativeWindowImpl::new(winit_window.as_ref(), app_event_scheduler);
-		let clipboard = unsafe { window_clipboard::Clipboard::connect(&winit_window) }.expect("failed to create clipboard");
+		let clipboard = unsafe { window_clipboard::Clipboard::connect(&winit_window) }.ok();
 		Self {
 			winit_window: winit_window.into(),
 			native_handle,
@@ -105,6 +111,9 @@ impl Window {
 	}
 
 	pub(crate) fn toggle_maximize(&self) {
+		if self.is_fullscreen() {
+			return;
+		}
 		self.winit_window.set_maximized(!self.winit_window.is_maximized());
 	}
 
@@ -112,11 +121,22 @@ impl Window {
 		self.winit_window.is_maximized()
 	}
 
+	pub(crate) fn toggle_fullscreen(&mut self) {
+		if self.is_fullscreen() {
+			self.winit_window.set_fullscreen(None);
+		} else {
+			self.winit_window.set_fullscreen(Some(Fullscreen::Borderless(None)));
+		}
+	}
+
 	pub(crate) fn is_fullscreen(&self) -> bool {
 		self.winit_window.fullscreen().is_some()
 	}
 
 	pub(crate) fn start_drag(&self) {
+		if self.is_fullscreen() {
+			return;
+		}
 		let _ = self.winit_window.drag_window();
 	}
 
@@ -149,8 +169,23 @@ impl Window {
 				};
 				custom_cursor.into()
 			}
+			Cursor::None => {
+				self.winit_window.set_cursor_visible(false);
+				return;
+			}
 		};
+		self.winit_window.set_cursor_visible(true);
 		self.winit_window.set_cursor(cursor);
+	}
+
+	pub(crate) fn start_pointer_lock(&self) {
+		let _ = self.winit_window.set_cursor_grab(winit::window::CursorGrabMode::Locked);
+		self.winit_window.set_cursor_visible(false);
+	}
+
+	pub(crate) fn end_pointer_lock(&self) {
+		let _ = self.winit_window.set_cursor_grab(winit::window::CursorGrabMode::None);
+		self.winit_window.set_cursor_visible(true);
 	}
 
 	pub(crate) fn update_menu(&self, entries: Vec<MenuItem>) {
@@ -158,7 +193,11 @@ impl Window {
 	}
 
 	pub(crate) fn clipboard_read(&self) -> Option<String> {
-		match self.clipboard.read() {
+		let Some(clipboard) = &self.clipboard else {
+			tracing::error!("Clipboard not available");
+			return None;
+		};
+		match clipboard.read() {
 			Ok(data) => Some(data),
 			Err(e) => {
 				tracing::error!("Failed to read from clipboard: {e}");
@@ -168,7 +207,11 @@ impl Window {
 	}
 
 	pub(crate) fn clipboard_write(&mut self, data: String) {
-		if let Err(e) = self.clipboard.write(data) {
+		let Some(clipboard) = &mut self.clipboard else {
+			tracing::error!("Clipboard not available");
+			return;
+		};
+		if let Err(e) = clipboard.write(data) {
 			tracing::error!("Failed to write to clipboard: {e}")
 		}
 	}
@@ -177,6 +220,7 @@ impl Window {
 pub(crate) enum Cursor {
 	Icon(CursorIcon),
 	Custom(CustomCursorSource),
+	None,
 }
 impl From<CursorIcon> for Cursor {
 	fn from(icon: CursorIcon) -> Self {

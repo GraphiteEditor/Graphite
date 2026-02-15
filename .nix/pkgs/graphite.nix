@@ -30,32 +30,31 @@ let
     mkdir -p $out
     tar -xvf ${brandingTar} -C $out --strip-components 1
   '';
+  cargoVendorDir =  deps.crane.lib.vendorCargoDeps { inherit (info) src; };
   resourcesCommon = {
     pname = "${info.pname}-resources";
     inherit (info) version src;
+    inherit cargoVendorDir;
     strictDeps = true;
-    doCheck = false;
     nativeBuildInputs = tools.frontend;
     env.CARGO_PROFILE = if dev then "dev" else "release";
     cargoExtraArgs = "--target wasm32-unknown-unknown -p graphite-wasm --no-default-features --features native";
+    doCheck = false;
   };
   resources = deps.crane.lib.buildPackage (
     resourcesCommon
     // {
       cargoArtifacts = deps.crane.lib.buildDepsOnly resourcesCommon;
 
-      # TODO: Remove the need for this hash by using individual package resolutions and hashes from package-lock.json
-      npmDeps = pkgs.fetchNpmDeps {
-        inherit (info) pname version;
-        src = "${info.src}/frontend";
-        hash = "sha256-D8VCNK+Ca3gxO+5wriBn8FszG8/x8n/zM6/MPo9E2j4=";
+      npmDeps = pkgs.importNpmLock {
+        npmRoot = "${info.src}/frontend";
       };
 
       npmRoot = "frontend";
       npmConfigScript = "setup";
       makeCacheWritable = true;
 
-      nativeBuildInputs = tools.frontend ++ [ pkgs.npmHooks.npmConfigHook ];
+      nativeBuildInputs = tools.frontend ++ [ pkgs.importNpmLock.npmConfigHook pkgs.removeReferencesTo ];
 
       prePatch = ''
         mkdir branding
@@ -75,13 +74,18 @@ let
         mkdir -p $out
         cp -r frontend/dist/* $out/
       '';
+
+      postFixup = ''
+        find "$out" -type f -exec remove-references-to -t "${cargoVendorDir}" '{}' +
+      '';
     }
   );
   common = {
     inherit (info) pname version src;
+    inherit cargoVendorDir;
     strictDeps = true;
     buildInputs = libs.desktop-all;
-    nativeBuildInputs = tools.desktop ++ [ pkgs.makeWrapper ];
+    nativeBuildInputs = tools.desktop ++ [ pkgs.makeWrapper pkgs.removeReferencesTo ];
     env = deps.cef.env // {
       CARGO_PROFILE = if dev then "dev" else "release";
     };
@@ -109,12 +113,19 @@ deps.crane.lib.buildPackage (
           }
         else
           { }
-      );
+      ) // {
+        GRAPHITE_GIT_COMMIT_HASH = inputs.self.rev or "unknown";
+        GRAPHITE_GIT_COMMIT_DATE = inputs.self.lastModified or "unknown";
+      };
 
     postUnpack = ''
       mkdir ./branding
       cp -r ${branding}/* ./branding
     '';
+
+    preBuild = if inputs.self ? rev then ''
+      export GRAPHITE_GIT_COMMIT_DATE="$(date -u -d "@$GRAPHITE_GIT_COMMIT_DATE" +"%Y-%m-%dT%H:%M:%SZ")"
+    '' else "";
 
     installPhase = ''
       mkdir -p $out/bin
@@ -124,13 +135,22 @@ deps.crane.lib.buildPackage (
       cp $src/desktop/assets/*.desktop $out/share/applications/
 
       mkdir -p $out/share/icons/hicolor/scalable/apps
-      cp ${branding}/app-icons/graphite.svg $out/share/icons/hicolor/scalable/apps/
+      cp ${branding}/app-icons/graphite.svg $out/share/icons/hicolor/scalable/apps/art.graphite.Graphite.svg
+      mkdir -p $out/share/icons/hicolor/512x512/apps
+      cp ${branding}/app-icons/graphite-512.png $out/share/icons/hicolor/512x512/apps/art.graphite.Graphite.png
+      mkdir -p $out/share/icons/hicolor/256x256/apps
+      cp ${branding}/app-icons/graphite-256.png $out/share/icons/hicolor/256x256/apps/art.graphite.Graphite.png
+      mkdir -p $out/share/icons/hicolor/128x128/apps
+      cp ${branding}/app-icons/graphite-128.png $out/share/icons/hicolor/128x128/apps/art.graphite.Graphite.png
     '';
 
     postFixup = ''
-      wrapProgram "$out/bin/graphite" \
-        --prefix LD_LIBRARY_PATH : "${pkgs.lib.makeLibraryPath libs.desktop-all}:${deps.cef.env.CEF_PATH}" \
-        --set CEF_PATH "${deps.cef.env.CEF_PATH}"
+      remove-references-to -t "${cargoVendorDir}" $out/bin/graphite
+
+      patchelf \
+        --set-rpath "${pkgs.lib.makeLibraryPath libs.desktop-all}:${deps.cef.env.CEF_PATH}" \
+        --add-needed libGL.so \
+        $out/bin/graphite
     '';
   }
 )

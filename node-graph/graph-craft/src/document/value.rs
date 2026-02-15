@@ -116,15 +116,15 @@ macro_rules! tagged_value {
 					_ => Err(format!("Cannot convert {:?} to TaggedValue",std::any::type_name_of_val(input))),
 				}
 			}
+			/// Returns a TaggedValue from the type, where that value is its type's `Default::default()`
 			pub fn from_type(input: &Type) -> Option<Self> {
 				match input {
 					Type::Generic(_) => None,
 					Type::Concrete(concrete_type) => {
-						let internal_id = concrete_type.id?;
 						use std::any::TypeId;
 						// TODO: Add default implementations for types such as TaggedValue::Subpaths, and use the defaults here and in document_node_types
 						// Tries using the default for the tagged value type. If it not implemented, then uses the default used in document_node_types. If it is not used there, then TaggedValue::None is returned.
-						Some(match internal_id {
+						Some(match concrete_type.id? {
 							x if x == TypeId::of::<()>() => TaggedValue::None,
 							$( x if x == TypeId::of::<$ty>() => TaggedValue::$identifier(Default::default()), )*
 							_ => return None,
@@ -138,6 +138,15 @@ macro_rules! tagged_value {
 			}
 			pub fn from_type_or_none(input: &Type) -> Self {
 				Self::from_type(input).unwrap_or(TaggedValue::None)
+			}
+			pub fn to_debug_string(&self) -> String {
+				match self {
+					Self::None => "()".to_string(),
+					$( Self::$identifier(x) => format!("{:?}", x), )*
+					Self::RenderOutput(_) => "RenderOutput".to_string(),
+					Self::SurfaceFrame(_) => "SurfaceFrame".to_string(),
+					Self::EditorApi(_) => "WasmEditorApi".to_string(),
+				}
 			}
 		}
 
@@ -173,9 +182,7 @@ tagged_value! {
 	U64(u64),
 	Bool(bool),
 	String(String),
-	OptionalF64(Option<f64>),
 	ColorNotInTable(Color),
-	OptionalColorNotInTable(Option<Color>),
 	// ========================
 	// LISTS OF PRIMITIVE TYPES
 	// ========================
@@ -189,19 +196,19 @@ tagged_value! {
 	// TABLE TYPES
 	// ===========
 	GraphicUnused(Graphic), // TODO: This is unused but removing it causes `cargo test` to infinitely recurse its type solving; figure out why and then remove this
-	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphic_types::migrations::migrate_vector"))] // TODO: Eventually remove this migration document upgrade code
+	#[serde(deserialize_with = "graphic_types::migrations::migrate_vector")] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "VectorData")]
 	Vector(Table<Vector>),
-	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphic_types::raster_types::image::migrate_image_frame"))] // TODO: Eventually remove this migration document upgrade code
+	#[serde(deserialize_with = "graphic_types::raster_types::image::migrate_image_frame")] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "ImageFrame", alias = "RasterData", alias = "Image")]
 	Raster(Table<Raster<CPU>>),
-	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphic_types::graphic::migrate_graphic"))] // TODO: Eventually remove this migration document upgrade code
+	#[serde(deserialize_with = "graphic_types::graphic::migrate_graphic")] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "GraphicGroup", alias = "Group")]
 	Graphic(Table<Graphic>),
-	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "graphic_types::artboard::migrate_artboard"))] // TODO: Eventually remove this migration document upgrade code
+	#[serde(deserialize_with = "graphic_types::artboard::migrate_artboard")] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "ArtboardGroup")]
 	Artboard(Table<Artboard>),
-	#[cfg_attr(target_family = "wasm", serde(deserialize_with = "core_types::misc::migrate_color"))] // TODO: Eventually remove this migration document upgrade code
+	#[serde(deserialize_with = "core_types::misc::migrate_color")] // TODO: Eventually remove this migration document upgrade code
 	#[serde(alias = "ColorTable", alias = "OptionalColor")]
 	Color(Table<Color>),
 	GradientTable(Table<GradientStops>),
@@ -231,6 +238,7 @@ tagged_value! {
 	Fill(vector::style::Fill),
 	BlendMode(core_types::blending::BlendMode),
 	LuminanceCalculation(raster_nodes::adjustments::LuminanceCalculation),
+	QRCodeErrorCorrectionLevel(vector_nodes::generator_nodes::QRCodeErrorCorrectionLevel),
 	XY(graphene_core::extract_xy::XY),
 	RedGreenBlue(raster_nodes::adjustments::RedGreenBlue),
 	RedGreenBlueAlpha(raster_nodes::adjustments::RedGreenBlueAlpha),
@@ -353,24 +361,24 @@ impl TaggedValue {
 		match ty {
 			Type::Generic(_) => None,
 			Type::Concrete(concrete_type) => {
-				let internal_id = concrete_type.id?;
+				let ty = concrete_type.id?;
 				use std::any::TypeId;
 				// TODO: Add default implementations for types such as TaggedValue::Subpaths, and use the defaults here and in document_node_types
 				// Tries using the default for the tagged value type. If it not implemented, then uses the default used in document_node_types. If it is not used there, then TaggedValue::None is returned.
-				let ty = match internal_id {
-					x if x == TypeId::of::<()>() => TaggedValue::None,
-					x if x == TypeId::of::<String>() => TaggedValue::String(string.into()),
-					x if x == TypeId::of::<f64>() => FromStr::from_str(string).map(TaggedValue::F64).ok()?,
-					x if x == TypeId::of::<f32>() => FromStr::from_str(string).map(TaggedValue::F32).ok()?,
-					x if x == TypeId::of::<u64>() => FromStr::from_str(string).map(TaggedValue::U64).ok()?,
-					x if x == TypeId::of::<u32>() => FromStr::from_str(string).map(TaggedValue::U32).ok()?,
-					x if x == TypeId::of::<DVec2>() => to_dvec2(string).map(TaggedValue::DVec2)?,
-					x if x == TypeId::of::<bool>() => FromStr::from_str(string).map(TaggedValue::Bool).ok()?,
-					x if x == TypeId::of::<Table<Color>>() => to_color(string).map(|color| TaggedValue::Color(Table::new_from_element(color)))?,
-					x if x == TypeId::of::<Color>() => to_color(string).map(TaggedValue::ColorNotInTable)?,
-					x if x == TypeId::of::<Option<Color>>() => TaggedValue::ColorNotInTable(to_color(string)?),
-					x if x == TypeId::of::<Fill>() => to_color(string).map(|color| TaggedValue::Fill(Fill::solid(color)))?,
-					x if x == TypeId::of::<ReferencePoint>() => to_reference_point(string).map(TaggedValue::ReferencePoint)?,
+				let ty = match () {
+					() if ty == TypeId::of::<()>() => TaggedValue::None,
+					() if ty == TypeId::of::<String>() => TaggedValue::String(string.into()),
+					() if ty == TypeId::of::<f64>() => FromStr::from_str(string).map(TaggedValue::F64).ok()?,
+					() if ty == TypeId::of::<f32>() => FromStr::from_str(string).map(TaggedValue::F32).ok()?,
+					() if ty == TypeId::of::<u64>() => FromStr::from_str(string).map(TaggedValue::U64).ok()?,
+					() if ty == TypeId::of::<u32>() => FromStr::from_str(string).map(TaggedValue::U32).ok()?,
+					() if ty == TypeId::of::<DVec2>() => to_dvec2(string).map(TaggedValue::DVec2)?,
+					() if ty == TypeId::of::<bool>() => FromStr::from_str(string).map(TaggedValue::Bool).ok()?,
+					() if ty == TypeId::of::<Color>() => to_color(string).map(TaggedValue::ColorNotInTable)?,
+					() if ty == TypeId::of::<Option<Color>>() => TaggedValue::ColorNotInTable(to_color(string)?),
+					() if ty == TypeId::of::<Table<Color>>() => to_color(string).map(|color| TaggedValue::Color(Table::new_from_element(color)))?,
+					() if ty == TypeId::of::<Fill>() => to_color(string).map(|color| TaggedValue::Fill(Fill::solid(color)))?,
+					() if ty == TypeId::of::<ReferencePoint>() => to_reference_point(string).map(TaggedValue::ReferencePoint)?,
 					_ => return None,
 				};
 				Some(ty)

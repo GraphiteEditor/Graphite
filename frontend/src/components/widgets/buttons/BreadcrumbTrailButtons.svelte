@@ -30,16 +30,25 @@
 				border-top-left-radius: 0;
 				border-bottom-left-radius: 0;
 
-				&::before {
+				&::before,
+				&::after {
 					content: "";
 					position: absolute;
-					top: 0;
 					left: -4px;
 					width: 0;
 					height: 0;
 					border-style: solid;
-					border-width: 12px 0 12px 4px;
 					border-color: var(--button-background-color) var(--button-background-color) var(--button-background-color) transparent;
+				}
+
+				&::before {
+					top: 0;
+					border-width: 24px 0 0 8px;
+				}
+
+				&::after {
+					bottom: 0;
+					border-width: 0 0 24px 8px;
 				}
 			}
 

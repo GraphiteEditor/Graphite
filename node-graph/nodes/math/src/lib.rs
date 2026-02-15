@@ -405,7 +405,6 @@ fn random(
 	/// Seed to determine the unique variation of which number is generated.
 	seed: u64,
 	/// The smaller end of the range within which the random number is generated.
-	#[default(0.)]
 	min: f64,
 	/// The larger end of the range within which the random number is generated.
 	#[default(1.)]
@@ -471,12 +470,41 @@ fn ceiling<T: num_traits::float::Float>(
 	value.ceil()
 }
 
+trait AbsoluteValue {
+	fn abs(self) -> Self;
+}
+impl AbsoluteValue for DVec2 {
+	fn abs(self) -> Self {
+		DVec2::new(self.x.abs(), self.y.abs())
+	}
+}
+impl AbsoluteValue for f32 {
+	fn abs(self) -> Self {
+		self.abs()
+	}
+}
+impl AbsoluteValue for f64 {
+	fn abs(self) -> Self {
+		self.abs()
+	}
+}
+impl AbsoluteValue for i32 {
+	fn abs(self) -> Self {
+		self.abs()
+	}
+}
+impl AbsoluteValue for i64 {
+	fn abs(self) -> Self {
+		self.abs()
+	}
+}
+
 /// The absolute value function (`abs`) removes the negative sign from an input value, if present.
 #[node_macro::node(category("Math: Numeric"))]
-fn absolute_value<T: num_traits::sign::Signed>(
+fn absolute_value<T: AbsoluteValue>(
 	_: impl Ctx,
 	/// The number to be made positive.
-	#[implementations(f64, f32, i32, i64)]
+	#[implementations(f64, f32, i32, i64, DVec2)]
 	value: T,
 ) -> T {
 	value.abs()
@@ -677,6 +705,7 @@ fn logical_or(
 	/// One of the two boolean values, either of which may be true for the node to output true.
 	value: bool,
 	/// The other of the two boolean values, either of which may be true for the node to output true.
+	#[expose]
 	other_value: bool,
 ) -> bool {
 	value || other_value
@@ -689,6 +718,7 @@ fn logical_and(
 	/// One of the two boolean values, both of which must be true for the node to output true.
 	value: bool,
 	/// The other of the two boolean values, both of which must be true for the node to output true.
+	#[expose]
 	other_value: bool,
 ) -> bool {
 	value && other_value
@@ -730,7 +760,7 @@ fn vec2_value(_: impl Ctx, _primary: (), x: f64, y: f64) -> DVec2 {
 
 /// Constructs a color value which may be set to any color, or no color.
 #[node_macro::node(category("Value"))]
-fn color_value(_: impl Ctx, _primary: (), #[default(Color::RED)] color: Table<Color>) -> Table<Color> {
+fn color_value(_: impl Ctx, _primary: (), #[default(Color::BLACK)] color: Table<Color>) -> Table<Color> {
 	color
 }
 
@@ -781,7 +811,7 @@ fn dot_product(
 	/// An operand of the dot product operation.
 	vector_a: DVec2,
 	/// The other operand of the dot product operation.
-	#[default((1., 0.))]
+	#[default(1., 0.)]
 	vector_b: DVec2,
 	/// Whether to normalize both input vectors so the calculation ranges in `[-1, 1]` by considering only their degree of directional alignment.
 	normalize: bool,
@@ -828,7 +858,7 @@ fn angle_to<T: ToPosition, U: ToPosition>(
 	#[expose]
 	#[implementations(DVec2, DVec2, DAffine2, DAffine2)]
 	target: U,
-	/// Whether the resulting angle should be given in as radians instead of degrees.
+	/// Whether the resulting angle should be given in radians instead of degrees.
 	radians: bool,
 ) -> f64 {
 	let from = observer.to_position();
