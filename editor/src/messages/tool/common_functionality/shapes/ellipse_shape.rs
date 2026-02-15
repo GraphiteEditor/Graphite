@@ -36,18 +36,30 @@ impl Ellipse {
 				return;
 			};
 
+			// Extract only the zoom scale from document_to_viewport (ignore rotation)
+			// This fixes the zoom bug while keeping ellipse behavior with canvas rotation
+			let document_to_viewport = document.metadata().document_to_viewport;
+			let zoom_scale = document_to_viewport.matrix2.x_axis.length();
+
+			let viewport_delta = end - start;
+			let viewport_center = start.midpoint(end);
+
+			// Apply only the zoom scale correction, not rotation
+			let document_delta = viewport_delta / zoom_scale;
+			let document_center = document_to_viewport.inverse().transform_point2(viewport_center);
+
 			responses.add(NodeGraphMessage::SetInput {
 				input_connector: InputConnector::node(node_id, 1),
-				input: NodeInput::value(TaggedValue::F64(((start.x - end.x) / 2.).abs()), false),
+				input: NodeInput::value(TaggedValue::F64((document_delta.x / 2.).abs()), false),
 			});
 			responses.add(NodeGraphMessage::SetInput {
 				input_connector: InputConnector::node(node_id, 2),
-				input: NodeInput::value(TaggedValue::F64(((start.y - end.y) / 2.).abs()), false),
+				input: NodeInput::value(TaggedValue::F64((document_delta.y / 2.).abs()), false),
 			});
 			responses.add(GraphOperationMessage::TransformSet {
 				layer,
-				transform: DAffine2::from_translation(start.midpoint(end)),
-				transform_in: TransformIn::Viewport,
+				transform: DAffine2::from_translation(document_center),
+				transform_in: TransformIn::Local,
 				skip_rerender: false,
 			});
 		}
