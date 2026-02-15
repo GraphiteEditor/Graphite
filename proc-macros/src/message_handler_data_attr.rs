@@ -16,6 +16,8 @@ pub fn message_handler_data_attr_impl(attr: TokenStream, input_item: TokenStream
 
 	let input_type = path.segments.last().map(|s| &s.ident).unwrap();
 
+	let handler_line_number = input_type.span().start().line;
+
 	// Extract the message type from the trait path
 	let trait_path = match &impl_block.trait_ {
 		Some((_, path, _)) => path,
@@ -40,14 +42,16 @@ pub fn message_handler_data_attr_impl(attr: TokenStream, input_item: TokenStream
 								// Get just the base identifier (ToolMessageData) without generics
 								let type_name = &type_path.path.segments.first().unwrap().ident;
 
+								let handler_data_line_number = type_name.span().start().line;
+
 								quote! {
 									#input_item
 									impl #message_type {
 										pub fn message_handler_data_str() -> MessageData {
-											MessageData::new(format!("{}", stringify!(#type_name)), #type_name::field_types(), #type_name::path())
+											MessageData::new(format!("{}", stringify!(#type_name)), #type_name::field_types(), #type_name::path(), #type_name::line_number())
 										}
 										pub fn message_handler_str() -> MessageData {
-											MessageData::new(format!("{}", stringify!(#input_type)), #input_type::field_types(), #input_type::path())
+											MessageData::new(format!("{}", stringify!(#input_type)), #input_type::field_types(), #input_type::path(), #input_type::line_number())
 
 										}
 									}
@@ -57,7 +61,7 @@ pub fn message_handler_data_attr_impl(attr: TokenStream, input_item: TokenStream
 								#input_item
 								impl #message_type {
 										pub fn message_handler_str() -> MessageData {
-											MessageData::new(format!("{}", stringify!(#input_type)), #input_type::field_types(), #input_type::path())
+											MessageData::new(format!("{}", stringify!(#input_type)), #input_type::field_types(), #input_type::path(), #input_type::line_number())
 										}
 									}
 							},
@@ -67,16 +71,19 @@ pub fn message_handler_data_attr_impl(attr: TokenStream, input_item: TokenStream
 									syn::Type::Path(type_path) => &type_path.path.segments.first().unwrap().ident,
 									_ => return Err(syn::Error::new(type_reference.elem.span(), "Expected type path")),
 								};
+
+								let type_line_number = type_ident.span().start().line;
+
 								let tr = clean_rust_type_syntax(type_reference.to_token_stream().to_string());
 								quote! {
 									#input_item
 									impl #message_type {
 										pub fn message_handler_data_str() -> MessageData {
-											MessageData::new(format!("{}", #tr), #type_ident::field_types(), #type_ident::path())
+											MessageData::new(format!("{}", #tr), #type_ident::field_types(), #type_ident::path(), #type_ident::line_number())
 										}
 
 										pub fn message_handler_str() -> MessageData {
-											MessageData::new(format!("{}", stringify!(#input_type)), #input_type::field_types(), #input_type::path())
+											MessageData::new(format!("{}", stringify!(#input_type)), #input_type::field_types(), #input_type::path(), #input_type::line_number())
 
 										}
 									}
