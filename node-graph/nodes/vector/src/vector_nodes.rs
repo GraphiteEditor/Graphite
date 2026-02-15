@@ -1154,8 +1154,14 @@ async fn solidify_stroke(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
 			// 0.25 is balanced between performace and accuracy of the curve.
 			const STROKE_TOLERANCE: f64 = 0.25;
 
-			for path in bezpaths {
-				let solidified = kurbo::stroke(path, &stroke_style, &stroke_options, STROKE_TOLERANCE);
+			for mut path in bezpaths {
+				path.apply_affine(Affine::new(stroke.transform.to_cols_array()));
+
+				let mut solidified = kurbo::stroke(path, &stroke_style, &stroke_options, STROKE_TOLERANCE);
+				if stroke.transform.matrix2.determinant() != 0. {
+					solidified.apply_affine(Affine::new(stroke.transform.inverse().to_cols_array()));
+				}
+
 				result.append_bezpath(solidified);
 			}
 
