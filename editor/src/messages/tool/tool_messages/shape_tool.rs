@@ -94,6 +94,8 @@ pub enum ShapeToolMessage {
 	PointerOutsideViewport { modifier: ShapeToolModifierKey },
 	UpdateOptions { options: ShapeOptionsUpdate },
 	SetShape { shape: ShapeType },
+	// Restores current_shape from the dropdown selection (options.shape_type)
+	RestoreShapeFromOptions,
 
 	IncreaseSides,
 	DecreaseSides,
@@ -132,6 +134,7 @@ fn create_turns_widget(turns: f64) -> WidgetInstance {
 }
 
 fn create_shape_option_widget(shape_type: ShapeType) -> WidgetInstance {
+	// Line, Rectangle, and Ellipse have dedicated tools, so they're excluded from this dropdown
 	let entries = vec![vec![
 		MenuListEntry::new("Polygon").label("Polygon").on_commit(move |_| {
 			ShapeToolMessage::UpdateOptions {
@@ -169,32 +172,21 @@ fn create_shape_option_widget(shape_type: ShapeType) -> WidgetInstance {
 			}
 			.into()
 		}),
-		MenuListEntry::new("Rectangle").label("Rectangle").on_commit(move |_| {
-			ShapeToolMessage::UpdateOptions {
-				options: ShapeOptionsUpdate::ShapeType(ShapeType::Rectangle),
-			}
-			.into()
-		}),
-		MenuListEntry::new("Ellipse").label("Ellipse").on_commit(move |_| {
-			ShapeToolMessage::UpdateOptions {
-				options: ShapeOptionsUpdate::ShapeType(ShapeType::Ellipse),
-			}
-			.into()
-		}),
 		MenuListEntry::new("Arrow").label("Arrow").on_commit(move |_| {
 			ShapeToolMessage::UpdateOptions {
 				options: ShapeOptionsUpdate::ShapeType(ShapeType::Arrow),
 			}
 			.into()
 		}),
-		MenuListEntry::new("Line").label("Line").on_commit(move |_| {
-			ShapeToolMessage::UpdateOptions {
-				options: ShapeOptionsUpdate::ShapeType(ShapeType::Line),
-			}
-			.into()
-		}),
 	]];
-	DropdownInput::new(entries).selected_index(Some(shape_type as u32)).widget_instance()
+	// Line, Rectangle, Ellipse have dedicated tools (and larger enum index values), so shape_type as u32 works for the rest
+	let selected_index = if matches!(shape_type, ShapeType::Line | ShapeType::Rectangle | ShapeType::Ellipse) {
+		// Default to Polygon if somehow one of these become selected
+		Some(0)
+	} else {
+		Some(shape_type as u32)
+	};
+	DropdownInput::new(entries).selected_index(selected_index).widget_instance()
 }
 
 fn create_arc_type_widget(arc_type: ArcType) -> WidgetInstance {
@@ -1091,15 +1083,14 @@ impl Fsm for ShapeToolFsmState {
 			(_, ShapeToolMessage::SetShape { shape }) => {
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.data.cleanup(responses);
+				// Only update current_shape for drawing, preserve options.shape_type (dropdown selection)
 				tool_data.current_shape = shape;
-				responses.add(ShapeToolMessage::UpdateOptions {
-					options: ShapeOptionsUpdate::ShapeType(shape),
-				});
-
-				responses.add(ShapeToolMessage::UpdateOptions {
-					options: ShapeOptionsUpdate::ShapeType(shape),
-				});
 				ShapeToolFsmState::Ready(shape)
+			}
+			(_, ShapeToolMessage::RestoreShapeFromOptions) => {
+				// Restore current_shape from the dropdown selection when returning from Line/Rectangle/Ellipse aliases
+				tool_data.current_shape = tool_options.shape_type;
+				ShapeToolFsmState::Ready(tool_options.shape_type)
 			}
 			(_, ShapeToolMessage::HideShapeTypeWidget { hide }) => {
 				tool_data.hide_shape_option_widget = hide;

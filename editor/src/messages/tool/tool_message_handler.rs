@@ -1,5 +1,5 @@
 use super::common_functionality::shape_editor::ShapeState;
-use super::common_functionality::shapes::shape_utility::ShapeType::{self, Ellipse, Line, Rectangle};
+use super::common_functionality::shapes::shape_utility::ShapeType::{Ellipse, Line, Rectangle};
 use super::utility_types::{ToolActionMessageContext, ToolFsmState, tool_message_to_tool_type};
 use crate::application::generate_uuid;
 use crate::messages::layout::utility_types::widget_prelude::*;
@@ -75,9 +75,10 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 				if self.tool_state.tool_data.active_shape_type.is_some() {
 					self.tool_state.tool_data.active_shape_type = None;
 					self.tool_state.tool_data.active_tool_type = ToolType::Shape;
+					// Restore current_shape from the preserved dropdown selection (options.shape_type)
+					responses.add(ShapeToolMessage::RestoreShapeFromOptions);
 				}
 				responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Shape });
-				responses.add(ShapeToolMessage::SetShape { shape: ShapeType::Polygon });
 				responses.add(ShapeToolMessage::HideShapeTypeWidget { hide: false })
 			}
 			ToolMessage::ActivateToolBrush => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Brush }),

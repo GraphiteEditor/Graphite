@@ -32,10 +32,12 @@ pub enum ShapeType {
 	Arc,
 	Spiral,
 	Grid,
+	Arrow,
+
+	// These have dedicated tools and don't appear in the Shape tool's dropdown
+	Line,
 	Rectangle,
 	Ellipse,
-	Arrow,
-	Line,
 }
 
 impl ShapeType {
