@@ -238,6 +238,7 @@ tagged_value! {
 	Fill(vector::style::Fill),
 	BlendMode(core_types::blending::BlendMode),
 	LuminanceCalculation(raster_nodes::adjustments::LuminanceCalculation),
+	QRCodeErrorCorrectionLevel(vector_nodes::generator_nodes::QRCodeErrorCorrectionLevel),
 	XY(graphene_core::extract_xy::XY),
 	RedGreenBlue(raster_nodes::adjustments::RedGreenBlue),
 	RedGreenBlueAlpha(raster_nodes::adjustments::RedGreenBlueAlpha),
