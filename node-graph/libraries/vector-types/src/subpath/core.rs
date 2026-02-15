@@ -330,7 +330,7 @@ impl<PointId: Identifier> Subpath<PointId> {
 		let head_base_distance = (length - head_length).max(0.);
 		let head_base = start + direction * head_base_distance;
 
-		// Arrow path starts at the tail (origin), traces around the shape, and returns to tail
+		// Arrow path starts at the tail, traces around the shape, and returns to the tail
 		let anchors = [
 			start,                                  // Tail center (origin)
 			start + perpendicular * half_shaft,     // Tail top
