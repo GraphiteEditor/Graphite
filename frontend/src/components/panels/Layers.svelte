@@ -417,7 +417,7 @@
 				}
 			};
 
-			draggingData = calculateDragIndex(list, e.clientY,draggedLayerIndex, select);
+			draggingData = calculateDragIndex(list, e.clientY, draggedLayerIndex, select);
 		}
 	}
 
@@ -478,7 +478,6 @@
 			draggingData = calculateDragIndex(list, e.clientY, draggedLayerIndex, draggingData?.select);
 		}
 	}
-
 
 	function fileDrop(e: DragEvent) {
 		if (!draggingData || !e.dataTransfer || !e.dataTransfer.types.includes("Files")) return;
