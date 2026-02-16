@@ -238,19 +238,15 @@ fn max_scale(transform: DAffine2) -> f64 {
 }
 
 pub fn black_or_white_for_best_contrast(background: Option<Color>) -> Color {
-	use core_types::consts::LAYER_OUTLINE_STROKE_COLOR;
-
-	let Some(bg) = background else {
-		return LAYER_OUTLINE_STROKE_COLOR;
-	};
+	let Some(bg) = background else { return core_types::consts::LAYER_OUTLINE_STROKE_COLOR };
 
 	let alpha = bg.a();
 
 	// Un-premultiply, then convert to gamma sRGB
-	let srgb = if alpha.abs() > f32::EPSILON {
+	let srgb = if alpha > f32::EPSILON {
 		Color::from_rgbaf32_unchecked(bg.r() / alpha, bg.g() / alpha, bg.b() / alpha, alpha).to_gamma_srgb()
 	} else {
-		Color::from_rgbaf32_unchecked(0., 0., 0., 0.)
+		Color::TRANSPARENT
 	};
 
 	// Composite over black in sRGB space, then convert back to linear for luminance

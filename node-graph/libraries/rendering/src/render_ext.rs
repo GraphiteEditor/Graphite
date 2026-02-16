@@ -169,10 +169,10 @@ impl RenderExt for PathStyle {
 				let fill_attribute = Fill::None.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds, render_params);
 
 				let outline_color = black_or_white_for_best_contrast(render_params.artboard_background);
-
 				let mut outline_stroke = Stroke::new(Some(outline_color), LAYER_OUTLINE_STROKE_WEIGHT);
 				// Outline strokes should be non-scaling by default
 				outline_stroke.non_scaling = true;
+
 				let stroke_attribute = outline_stroke.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds, render_params);
 				format!("{fill_attribute}{stroke_attribute}")
 			}
