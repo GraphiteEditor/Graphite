@@ -260,11 +260,7 @@ pub(crate) fn property_from_type(
 						// OTHER
 						// =====
 						_ => {
-							let is_exposed = default_info
-								.document_node
-								.and_then(|node| node.inputs.get(default_info.index))
-								.map(|input| input.is_exposed())
-								.unwrap_or(false);
+							let is_exposed = default_info.is_exposed();
 
 							let mut widgets = start_widgets(default_info);
 
@@ -2214,6 +2210,10 @@ impl<'a> ParameterWidgetsInfo<'a> {
 			blank_assist,
 			exposable: true,
 		}
+	}
+
+	pub fn is_exposed(&self) -> bool {
+		self.document_node.and_then(|node| node.inputs.get(self.index)).map(|input| input.is_exposed()).unwrap_or(false)
 	}
 }
 
