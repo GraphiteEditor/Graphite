@@ -1,11 +1,12 @@
 use super::utility_types::{DocumentDetails, MouseCursorIcon, OpenDocument};
 use crate::messages::app_window::app_window_message_handler::AppWindowPlatform;
+use crate::messages::frontend::utility_types::EyedropperPreviewImage;
 use crate::messages::input_mapper::utility_types::misc::ActionShortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::utility_types::{
 	BoxSelection, ContextMenuInformation, FrontendClickTargets, FrontendGraphInput, FrontendGraphOutput, FrontendNode, FrontendNodeType, NodeGraphErrorDiagnostic, Transform,
 };
-use crate::messages::portfolio::document::utility_types::nodes::{JsRawBuffer, LayerPanelEntry, RawBuffer};
+use crate::messages::portfolio::document::utility_types::nodes::{LayerPanelEntry, LayerStructureEntry};
 use crate::messages::portfolio::document::utility_types::wires::{WirePath, WirePathUpdate};
 use crate::messages::prelude::*;
 use glam::IVec2;
@@ -234,12 +235,8 @@ pub enum FrontendMessage {
 		data: LayerPanelEntry,
 	},
 	UpdateDocumentLayerStructure {
-		#[serde(rename = "dataBuffer")]
-		data_buffer: RawBuffer,
-	},
-	UpdateDocumentLayerStructureJs {
-		#[serde(rename = "dataBuffer")]
-		data_buffer: JsRawBuffer,
+		#[serde(rename = "layerStructure")]
+		layer_structure: Vec<LayerStructureEntry>,
 	},
 	UpdateDocumentRulers {
 		origin: (f64, f64),
@@ -253,6 +250,7 @@ pub enum FrontendMessage {
 		multiplier: (f64, f64),
 	},
 	UpdateEyedropperSamplingState {
+		image: Option<EyedropperPreviewImage>,
 		#[serde(rename = "mousePosition")]
 		mouse_position: Option<(f64, f64)>,
 		#[serde(rename = "primaryColor")]

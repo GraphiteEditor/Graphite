@@ -210,6 +210,18 @@ impl EditorTestUtils {
 		.await;
 	}
 
+	pub async fn left_mouseup(&mut self, x: f64, y: f64, modifier_keys: ModifierKeys) {
+		self.mouseup(
+			EditorMouseState {
+				editor_position: (x, y).into(),
+				mouse_keys: MouseKeys::empty(),
+				scroll_delta: ScrollDelta::default(),
+			},
+			modifier_keys,
+		)
+		.await;
+	}
+
 	pub async fn input(&mut self, message: InputPreprocessorMessage) {
 		self.handle_message(Message::InputPreprocessor(message)).await;
 	}

@@ -154,7 +154,7 @@ impl EditorHandle {
 	}
 
 	// Sends a FrontendMessage to JavaScript
-	fn send_frontend_message_to_js(&self, mut message: FrontendMessage) {
+	fn send_frontend_message_to_js(&self, message: FrontendMessage) {
 		if let FrontendMessage::UpdateImageData { ref image_data } = message {
 			let new_hash = calculate_hash(image_data);
 			let prev_hash = IMAGE_DATA_HASH.load(Ordering::Relaxed);
@@ -164,10 +164,6 @@ impl EditorHandle {
 				IMAGE_DATA_HASH.store(new_hash, Ordering::Relaxed);
 			}
 			return;
-		}
-
-		if let FrontendMessage::UpdateDocumentLayerStructure { data_buffer } = message {
-			message = FrontendMessage::UpdateDocumentLayerStructureJs { data_buffer: data_buffer.into() };
 		}
 
 		let message_type = message.to_discriminant().local_name();

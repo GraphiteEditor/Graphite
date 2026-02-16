@@ -252,9 +252,6 @@
 	/// Handles keyboard navigation for the menu.
 	// Returns a boolean indicating whether the entire menu stack should be dismissed.
 	export function keydown(e: KeyboardEvent, submenu = false): boolean {
-		// Interactive menus should keep the active entry the same as the highlighted one
-		if (interactive) highlighted = activeEntry;
-
 		const menuOpen = open;
 		const flatEntries = filteredEntries.flat().filter((entry) => !entry.disabled);
 		const openChild = (openChildValue !== undefined && flatEntries.findIndex((entry) => entry.value === openChildValue)) || -1;
