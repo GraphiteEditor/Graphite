@@ -26,6 +26,7 @@ pub struct LineToolData {
 	pub drag_start: DVec2,
 	pub drag_current: DVec2,
 	pub angle: f64,
+	pub lock_angle_eligible: bool,
 	pub weight: f64,
 	pub selected_layers_with_position: HashMap<LayerNodeIdentifier, [DVec2; 2]>,
 	pub editing_layer: Option<LayerNodeIdentifier>,
@@ -62,7 +63,12 @@ impl Line {
 		let keyboard = &ipp.keyboard;
 		let ignore = [layer];
 		let snap_data = SnapData::ignore(document, ipp, viewport, &ignore);
-		let mut document_points = generate_line(shape_tool_data, snap_data, keyboard.key(lock_angle), keyboard.key(snap_angle), keyboard.key(center));
+		let lock_angle_pressed = keyboard.key(lock_angle);
+		if !lock_angle_pressed {
+			shape_tool_data.line_data.lock_angle_eligible = true;
+		}
+		let lock_angle_active = lock_angle_pressed && shape_tool_data.line_data.lock_angle_eligible;
+		let mut document_points = generate_line(shape_tool_data, snap_data, lock_angle_active, keyboard.key(snap_angle), keyboard.key(center));
 
 		if shape_tool_data.line_data.dragging_endpoint == Some(LineEnd::Start) {
 			document_points.swap(0, 1);
@@ -272,26 +278,40 @@ mod test_line_tool {
 	}
 
 	#[tokio::test]
-	async fn test_line_tool_ctrl_anglelock() {
+	async fn test_line_tool_ctrl_before_drag_start_does_not_lock_angle() {
 		let mut editor = EditorTestUtils::create();
 		editor.new_document().await;
-		editor.drag_tool(ToolType::Line, 0., 0., 100., 100., ModifierKeys::CONTROL).await;
-		if let Some((start_input, end_input)) = get_line_node_inputs(&mut editor).await {
-			let line_vec = end_input - start_input;
-			let original_angle = line_vec.angle_to(DVec2::X);
-			editor.drag_tool(ToolType::Line, 0., 0., 200., 50., ModifierKeys::CONTROL).await;
-			if let Some((updated_start, updated_end)) = get_line_node_inputs(&mut editor).await {
-				let updated_line_vec = updated_end - updated_start;
-				let updated_angle = updated_line_vec.angle_to(DVec2::X);
-				print!("{original_angle:?}");
-				print!("{updated_angle:?}");
-				assert!(
-					line_vec.normalize().dot(updated_line_vec.normalize()).abs() - 1. < 1e-6,
-					"Line angle should be locked when Ctrl is kept pressed"
-				);
-				assert!((updated_start - updated_end).length() > 1., "Line should be able to change length when Ctrl is kept pressed");
-			}
-		}
+		editor.drag_tool(ToolType::Line, 0., 0., 100., 100., ModifierKeys::empty()).await;
+		editor.drag_tool(ToolType::Line, 100., 100., 200., 50., ModifierKeys::CONTROL).await;
+		let (start_input, end_input) = get_line_node_inputs(&mut editor).await.expect("Line should be created");
+
+		assert!((start_input - DVec2::new(100., 100.)).length() < 1., "Start point should remain near (100, 100)");
+		assert!((end_input - DVec2::new(200., 50.)).length() < 1., "End point should follow the dragged position when Ctrl started held");
+	}
+
+	#[tokio::test]
+	async fn test_line_tool_ctrl_pressed_during_drag_locks_angle() {
+		let mut editor = EditorTestUtils::create();
+		editor.new_document().await;
+
+		editor.select_tool(ToolType::Line).await;
+		editor.move_mouse(0., 0., ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(0., 0., ModifierKeys::empty()).await;
+		editor.move_mouse(100., 100., ModifierKeys::empty(), MouseKeys::LEFT).await;
+
+		let (initial_start, initial_end) = get_line_node_inputs(&mut editor).await.expect("Line should be created while dragging");
+		let initial_line_vec = initial_end - initial_start;
+
+		editor.move_mouse(200., 50., ModifierKeys::CONTROL, MouseKeys::LEFT).await;
+		editor.left_mouseup(200., 50., ModifierKeys::CONTROL).await;
+
+		let (updated_start, updated_end) = get_line_node_inputs(&mut editor).await.expect("Line should still exist after drag");
+		let updated_line_vec = updated_end - updated_start;
+
+		assert!(
+			(initial_line_vec.normalize().dot(updated_line_vec.normalize()).abs() - 1.).abs() < 1e-6,
+			"Line angle should lock when Ctrl is pressed after dragging has started"
+		);
 	}
 
 	#[tokio::test]
