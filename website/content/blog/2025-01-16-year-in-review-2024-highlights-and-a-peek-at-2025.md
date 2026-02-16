@@ -11,7 +11,7 @@ reddit = "https://www.reddit.com/r/graphite/comments/1i3umnl/blog_post_year_in_r
 twitter = "https://x.com/GraphiteEditor/status/1880404337345851612"
 bluesky = "https://bsky.app/profile/graphiteeditor.bsky.social/post/3lfxysayh622g"
 
-js = ["/js/youtube-embed.js"]
+js = ["/js/component/youtube-embed.js"]
 css = ["/component/youtube-embed.css"]
 +++
 
