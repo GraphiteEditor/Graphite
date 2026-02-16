@@ -678,7 +678,15 @@ export class UpdateDocumentRulers extends JsMessage {
 	readonly visible!: boolean;
 }
 
+export class EyedropperPreviewImage {
+	readonly data!: Uint8Array;
+	readonly width!: number;
+	readonly height!: number;
+}
+
 export class UpdateEyedropperSamplingState extends JsMessage {
+	readonly image!: EyedropperPreviewImage | undefined;
+
 	@TupleToVec2
 	readonly mousePosition!: XY | undefined;
 
@@ -788,13 +796,13 @@ export class TriggerSaveActiveDocument extends JsMessage {
 
 export class DocumentChanged extends JsMessage {}
 
-export type DataBuffer = {
-	pointer: bigint;
-	length: bigint;
+export type LayerStructureEntry = {
+	layerId: bigint;
+	children: LayerStructureEntry[];
 };
 
-export class UpdateDocumentLayerStructureJs extends JsMessage {
-	readonly dataBuffer!: DataBuffer;
+export class UpdateDocumentLayerStructure extends JsMessage {
+	readonly layerStructure!: LayerStructureEntry[];
 }
 
 export type TextAlign = "Left" | "Center" | "Right" | "JustifyLeft";
@@ -1709,7 +1717,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateDocumentArtwork,
 	UpdateDocumentBarLayout,
 	UpdateDocumentLayerDetails,
-	UpdateDocumentLayerStructureJs,
+	UpdateDocumentLayerStructure,
 	UpdateDocumentRulers,
 	UpdateDocumentScrollbars,
 	UpdateExportReorderIndex,

@@ -148,6 +148,7 @@ pub enum PortfolioMessage {
 		document_id: DocumentId,
 		ignore_hash: bool,
 	},
+	SubmitEyedropperPreviewRender,
 	ToggleResetNodesToDefinitionsOnOpen,
 	ToggleFocusDocument,
 	ToggleDataPanelOpen,

@@ -36,6 +36,7 @@ async fn apply_transform(_ctx: impl Ctx, mut vector: Table<Vector>) -> Table<Vec
 		for (_, point) in vector.point_domain.positions_mut() {
 			*point = transform.transform_point2(*point);
 		}
+		vector.segment_domain.transform(transform);
 
 		*row.transform = DAffine2::IDENTITY;
 	}

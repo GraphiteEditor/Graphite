@@ -227,7 +227,7 @@ impl LayoutHolder for SelectTool {
 		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 		widgets.extend(pivot_gizmo_type_widget(self.tool_data.pivot_gizmo.state, PivotToolSource::Select));
 
-		if self.tool_data.pivot_gizmo.state.is_pivot_type() {
+		if self.tool_data.pivot_gizmo.state.is_pivot() {
 			// Nine-position reference point widget
 			widgets.push(Separator::new(SeparatorStyle::Related).widget_instance());
 			widgets.push(pivot_reference_point_widget(
@@ -281,7 +281,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Sele
 					responses.add(ToolMessage::UpdateHints);
 				}
 				SelectOptionsUpdate::PivotGizmoType(gizmo_type) => {
-					if !self.tool_data.pivot_gizmo.state.enabled {
+					if self.tool_data.pivot_gizmo.state.enabled {
 						self.tool_data.pivot_gizmo.state.gizmo_type = gizmo_type;
 						responses.add(ToolMessage::UpdateHints);
 						let pivot_gizmo = self.tool_data.pivot_gizmo();

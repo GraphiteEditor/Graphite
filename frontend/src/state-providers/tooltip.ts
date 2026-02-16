@@ -40,6 +40,9 @@ export function createTooltipState(editor: Editor) {
 		// Before we schedule a new future tooltip appearance, we clear the existing one
 		if (tooltipTimeout) clearTimeout(tooltipTimeout);
 
+		// Don't show tooltips while mouse buttons are pressed
+		if (e.buttons !== 0) return;
+
 		// Schedule the tooltip to appear at this cursor position after a delay
 		tooltipTimeout = setTimeout(() => {
 			update((state) => {
@@ -51,6 +54,16 @@ export function createTooltipState(editor: Editor) {
 			});
 		}, SHOW_TOOLTIP_DELAY_MS);
 	});
+
+	// Hide tooltip and cancel any pending timeout when the mouse leaves the application window
+	document.addEventListener("mouseleave", () => {
+		if (tooltipTimeout) clearTimeout(tooltipTimeout);
+		closeTooltip();
+	});
+
+	document.addEventListener("mousedown", closeTooltip);
+	document.addEventListener("keydown", closeTooltip);
+	document.addEventListener("wheel", closeTooltip);
 
 	editor.subscriptions.subscribeJsMessage(SendShortcutShiftClick, async (data) => {
 		update((state) => {
@@ -70,9 +83,6 @@ export function createTooltipState(editor: Editor) {
 			return state;
 		});
 	});
-
-	document.addEventListener("mousedown", closeTooltip);
-	document.addEventListener("keydown", closeTooltip);
 
 	// Stop showing a tooltip if the user clicks or presses a key, and require the user to first move out of the element before it can re-appear
 	function closeTooltip() {

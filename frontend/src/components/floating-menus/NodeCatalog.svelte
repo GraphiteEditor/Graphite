@@ -21,14 +21,15 @@
 	let nodeSearchInput: TextInput | undefined = undefined;
 	let searchTerm = initialSearchTerm;
 
-	$: nodeCategories = buildNodeCategories($nodeGraph.nodeTypes, searchTerm);
+	$: nodeCategories = buildNodeCategories(searchTerm);
 
 	type NodeCategoryDetails = {
 		nodes: FrontendNodeType[];
 		open: boolean;
 	};
 
-	function buildNodeCategories(nodeTypes: FrontendNodeType[], searchTerm: string): [string, NodeCategoryDetails][] {
+	function buildNodeCategories(searchTerm: string): [string, NodeCategoryDetails][] {
+		const nodeTypes = $nodeGraph.nodeTypes;
 		const categories = new SvelteMap<string, NodeCategoryDetails>();
 		const isTypeSearch = searchTerm.toLowerCase().startsWith("type:");
 		let typeSearchTerm = "";
