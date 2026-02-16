@@ -3182,10 +3182,9 @@ impl Fsm for PathToolFsmState {
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::SelectedPointUpdated) => {
-				let colinear = shape_editor.selected_manipulator_angles(&document.network_interface);
 				tool_data.dragging_state = DraggingState {
 					point_select_state: shape_editor.get_dragging_state(&document.network_interface),
-					colinear,
+					colinear: shape_editor.selected_manipulator_angles(&document.network_interface),
 				};
 
 				let old = tool_data.make_path_editable_is_allowed;
