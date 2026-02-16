@@ -1,3 +1,4 @@
+use core::cmp::Ordering;
 use core::f64::consts::PI;
 use core::hash::{Hash, Hasher};
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
@@ -21,7 +22,7 @@ use vector_types::vector::algorithms::bezpath_algorithms::{self, TValue, evaluat
 use vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
 use vector_types::vector::algorithms::offset_subpath::offset_bezpath;
 use vector_types::vector::algorithms::spline::{solve_spline_first_handle_closed, solve_spline_first_handle_open};
-use vector_types::vector::misc::{CentroidType, ExtrudeJoiningAlgorithm, bezpath_from_manipulator_groups, bezpath_to_manipulator_groups, point_to_dvec2};
+use vector_types::vector::misc::{CentroidType, ExtrudeJoiningAlgorithm, RowsOrColumns, bezpath_from_manipulator_groups, bezpath_to_manipulator_groups, point_to_dvec2};
 use vector_types::vector::misc::{MergeByDistanceAlgorithm, PointSpacingType, is_linear};
 use vector_types::vector::misc::{handles_to_segment, segment_to_handles};
 use vector_types::vector::style::{Fill, Gradient, GradientStops, Stroke};
@@ -871,14 +872,8 @@ fn bilinear_interpolate(t: DVec2, quad: &[DVec2; 4]) -> DVec2 {
 	tl * (1. - t.x) * (1. - t.y) + tr * t.x * (1. - t.y) + br * t.x * t.y + bl * (1. - t.x) * t.y
 }
 
-/// Packs shapes using bounds with Best Fit Decreasing Height (BFDH) algorithm
-/// Algorithm:
-/// - Sort shapes by height (tallest first)
-/// - For each shape, find the existing shelf with minimum remaining space that fits
-/// - Create new shelf only if no existing shelf can accommodate the shape
-/// Works as a reasonable approximation box packing problem
-#[node_macro::node(name("Pack by Bounds"), category("Vector"), path(graphene_core::vector))]
-async fn pack_by_bounds<I: 'n + Send + Clone>(
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn pack_strips<T: 'n + Send + Clone>(
 	_: impl Ctx,
 	#[implementations(
 		Table<Graphic>,
@@ -886,30 +881,32 @@ async fn pack_by_bounds<I: 'n + Send + Clone>(
 		Table<Raster<CPU>>,
 		Table<Raster<GPU>>,
 	)]
-	elements: Table<I>,
+	elements: Table<T>,
+	#[default(0.)]
 	#[unit(" px")]
-	#[default(10.)]
-	spacing: f64,
-	#[unit(" px")]
+	separation: f64,
 	#[default(1000.)]
-	max_width: f64,
-) -> Table<I>
+	#[unit(" px")]
+	strip_max_length: f64,
+	strip_direction: RowsOrColumns,
+) -> Table<T>
 where
-	Graphic: From<Table<I>>,
-	Table<I>: BoundingBox,
+	Graphic: From<Table<T>>,
+	Table<T>: BoundingBox,
 {
-	use core::cmp::Ordering;
+	// Packs shapes using bounds with Best-Fit Decreasing Height (BFDH) algorithm:
+	// - Sort shapes by cross-axis size (tallest first for rows, widest first for columns)
+	// - For each shape, find the existing strip with minimum remaining space that fits
+	// - Create new strip only if no existing strip can accommodate the shape
 
-	// Helper structure for shelves
-	#[derive(Clone)]
-	struct Shelf {
-		y: f64,
-		height: f64,
-		current_x: f64,
+	struct Strip {
+		along_position: f64,
+		cross_position: f64,
+		cross_extent: f64,
 	}
 
-	// Prep the rows to be sorted
-	let mut items: Vec<(f64, f64, DVec2, TableRow<I>)> = elements
+	// Prepare the items to be sorted
+	let mut items: Vec<(f64, f64, DVec2, TableRow<T>)> = elements
 		.into_iter()
 		.map(|row| {
 			// Single-element table to query its bounding box
@@ -921,58 +918,69 @@ where
 				}
 				_ => (0., 0., DVec2::ZERO),
 			};
-			(w, h, top_left, row)
+			let (along, cross) = match strip_direction {
+				RowsOrColumns::Rows => (w, h),
+				RowsOrColumns::Columns => (h, w),
+			};
+			(along, cross, top_left, row)
 		})
 		.collect();
 
-	// Sort by height, tallest first
+	// Sort by cross-axis size, largest first
 	items.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
 
 	let mut result = Table::new();
-	let mut shelves: Vec<Shelf> = Vec::new();
+	let mut strips: Vec<Strip> = Vec::new();
 
-	// This looks n^2 but it is just n*k where k is the number of shelves, which is generally much smaller than n
-	for (w, h, top_left, mut row) in items {
-		if w <= 0. {
+	// This looks n^2 but it is just n*k where k is the number of strips, which is generally much smaller than n
+	for (along, cross, top_left, mut row) in items {
+		if along <= 0. {
 			result.push(row);
 			continue;
 		}
 
-		// Find a good shelf, minimum remaining space that can fit this item ideally
-		let mut best_shelf_idx = None;
+		// Find a good strip, minimum remaining space that can fit this item ideally
+		let mut best_strip_index = None;
 		let mut min_remaining_space = f64::INFINITY;
 
-		for (idx, shelf) in shelves.iter().enumerate() {
-			let remaining_space = max_width - shelf.current_x;
-			if remaining_space >= w && remaining_space < min_remaining_space {
+		for (index, strip) in strips.iter().enumerate() {
+			let remaining_space = strip_max_length - strip.along_position;
+			if remaining_space >= along && remaining_space < min_remaining_space {
 				min_remaining_space = remaining_space;
-				best_shelf_idx = Some(idx);
+				best_strip_index = Some(index);
 			}
 		}
 
-		if let Some(shelf_idx) = best_shelf_idx {
-			// Place on existing shelf
-			let shelf = &mut shelves[shelf_idx];
+		if let Some(strip_index) = best_strip_index {
+			// Place on existing strip
+			let strip = &mut strips[strip_index];
 
-			// Update shelf height if needed
-			if h > shelf.height {
-				shelf.height = h;
+			// Update strip cross extent if needed
+			if cross > strip.cross_extent {
+				strip.cross_extent = cross;
 			}
 
-			let target_pos = DVec2::new(shelf.current_x, shelf.y);
-			row.transform = DAffine2::from_translation(target_pos - top_left) * row.transform;
+			let target_position = match strip_direction {
+				RowsOrColumns::Rows => DVec2::new(strip.along_position, strip.cross_position),
+				RowsOrColumns::Columns => DVec2::new(strip.cross_position, strip.along_position),
+			};
+			row.transform = DAffine2::from_translation(target_position - top_left) * row.transform;
 
-			shelf.current_x += w + spacing;
+			strip.along_position += along + separation;
 		} else {
-			// Create new shelf
-			let new_y = shelves.last().map_or(0., |last| last.y + last.height + spacing);
-			let target_pos = DVec2::new(0., new_y);
-			row.transform = DAffine2::from_translation(target_pos - top_left) * row.transform;
+			// Create new strip
+			let new_cross = strips.last().map_or(0., |last| last.cross_position + last.cross_extent + separation);
 
-			shelves.push(Shelf {
-				y: new_y,
-				height: h,
-				current_x: w + spacing,
+			let target_position = match strip_direction {
+				RowsOrColumns::Rows => DVec2::new(0., new_cross),
+				RowsOrColumns::Columns => DVec2::new(new_cross, 0.),
+			};
+			row.transform = DAffine2::from_translation(target_position - top_left) * row.transform;
+
+			strips.push(Strip {
+				along_position: along + separation,
+				cross_position: new_cross,
+				cross_extent: cross,
 			});
 		}
 
