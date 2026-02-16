@@ -596,22 +596,24 @@ fn snap_pivot_to_bounds(document: &DocumentMessageHandler, mouse_position: DVec2
 	let tolerance = snapping::snap_tolerance(document);
 	let mut best_snap: Option<(DVec2, Quad, BoundingBoxSnapTarget, f64)> = None;
 
-	let mut check_snap = |snap_doc: DVec2, quad: Quad, point_type: BoundingBoxSnapTarget| {
-		let snap_viewport = document.metadata().document_to_viewport.transform_point2(snap_doc);
-		let distance = mouse_position.distance(snap_viewport);
-		if distance < tolerance && best_snap.map_or(true, |(_, _, _, best_distance)| distance < best_distance) {
-			best_snap = Some((snap_doc, quad, point_type, distance));
+	let mut check_quad = |quad: Quad| {
+		let check = |snap_doc: DVec2, point_type: BoundingBoxSnapTarget, best: &mut Option<(DVec2, Quad, BoundingBoxSnapTarget, f64)>| {
+			let snap_viewport = document.metadata().document_to_viewport.transform_point2(snap_doc);
+			let distance = mouse_position.distance(snap_viewport);
+			if distance < tolerance && best.map_or(true, |(_, _, _, d)| distance < d) {
+				*best = Some((snap_doc, quad, point_type, distance));
+			}
+		};
+		for i in 0..4 {
+			check(quad.0[i], BoundingBoxSnapTarget::CornerPoint, &mut best_snap);
+			check((quad.0[i] + quad.0[(i + 1) % 4]) / 2.0, BoundingBoxSnapTarget::EdgeMidpoint, &mut best_snap);
 		}
+		check(quad.center(), BoundingBoxSnapTarget::CenterPoint, &mut best_snap);
 	};
 
 	// Snap to selection's combined bounding box
 	if let Some(bounds) = selection_bounds {
-		let quad = document.metadata().document_to_viewport.inverse() * bounds.transform * Quad::from_box(bounds.bounds);
-		for i in 0..4 {
-			check_snap(quad.0[i], quad, BoundingBoxSnapTarget::CornerPoint);
-			check_snap((quad.0[i] + quad.0[(i + 1) % 4]) / 2.0, quad, BoundingBoxSnapTarget::EdgeMidpoint);
-		}
-		check_snap(quad.center(), quad, BoundingBoxSnapTarget::CenterPoint);
+		check_quad(document.metadata().document_to_viewport.inverse() * bounds.transform * Quad::from_box(bounds.bounds));
 	}
 
 	let selected: Vec<_> = document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface).collect();
@@ -622,12 +624,7 @@ fn snap_pivot_to_bounds(document: &DocumentMessageHandler, mouse_position: DVec2
 		let Some(bounds) = document.metadata().bounding_box_with_transform(layer, document.metadata().transform_to_document(layer)) else {
 			continue;
 		};
-		let quad = Quad::from_box(bounds);
-		for i in 0..4 {
-			check_snap(quad.0[i], quad, BoundingBoxSnapTarget::CornerPoint);
-			check_snap((quad.0[i] + quad.0[(i + 1) % 4]) / 2.0, quad, BoundingBoxSnapTarget::EdgeMidpoint);
-		}
-		check_snap(quad.center(), quad, BoundingBoxSnapTarget::CenterPoint);
+		check_quad(Quad::from_box(bounds));
 	}
 
 	best_snap.map(|(snap_point, quad, point_type, distance)| snapping::SnappedPoint {
