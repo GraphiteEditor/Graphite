@@ -243,28 +243,24 @@ pub fn contrasting_outline_color(background: Option<Color>) -> Color {
 	if let Some(bg) = background {
 		let alpha = bg.a();
 
-		if alpha.abs() < f32::EPSILON {
-			return Color::BLACK;
-		}
-
 		// Convert Linear Float to sRGB Float
 		let linear_to_srgb = |x: f32| -> f32 { if x <= 0.0031308 { x * 12.92 } else { 1.055 * x.powf(1.0 / 2.4) - 0.055 } };
 
 		// Convert sRGB Float to Linear Float
 		let srgb_to_linear = |x: f32| -> f32 { if x <= 0.04045 { x / 12.92 } else { ((x + 0.055) / 1.055).powf(2.4) } };
 
-		let r_lin = bg.r() / alpha;
-		let g_lin = bg.g() / alpha;
-		let b_lin = bg.b() / alpha;
+		let (r_srgb, g_srgb, b_srgb) = if alpha.abs() > f32::EPSILON {
+			let r_lin = bg.r() / alpha;
+			let g_lin = bg.g() / alpha;
+			let b_lin = bg.b() / alpha;
+			(linear_to_srgb(r_lin), linear_to_srgb(g_lin), linear_to_srgb(b_lin))
+		} else {
+			(0., 0., 0.)
+		};
 
-		let r_srgb = linear_to_srgb(r_lin);
-		let g_srgb = linear_to_srgb(g_lin);
-		let b_srgb = linear_to_srgb(b_lin);
-
-		let canvas_srgb = 0x22 as f32 / 255.0;
-		let r_comp_srgb = r_srgb * alpha + canvas_srgb * (1.0 - alpha);
-		let g_comp_srgb = g_srgb * alpha + canvas_srgb * (1.0 - alpha);
-		let b_comp_srgb = b_srgb * alpha + canvas_srgb * (1.0 - alpha);
+		let r_comp_srgb = r_srgb * alpha;
+		let g_comp_srgb = g_srgb * alpha;
+		let b_comp_srgb = b_srgb * alpha;
 
 		let r_final = srgb_to_linear(r_comp_srgb);
 		let g_final = srgb_to_linear(g_comp_srgb);
