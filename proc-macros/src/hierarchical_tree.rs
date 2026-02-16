@@ -7,6 +7,8 @@ pub fn generate_hierarchical_tree(input: TokenStream) -> syn::Result<TokenStream
 	let input = parse2::<DeriveInput>(input)?;
 	let input_type = &input.ident;
 
+	let line_number = input_type.span().start().line;
+
 	let data = match &input.data {
 		Data::Enum(data) => data,
 		_ => return Err(syn::Error::new(Span::call_site(), "Tried to derive HierarchicalTree for non-enum")),
@@ -100,6 +102,8 @@ pub fn generate_hierarchical_tree(input: TokenStream) -> syn::Result<TokenStream
 				}
 
 				message_tree.set_path(file!());
+
+				message_tree.set_line_number(#line_number);
 
 				message_tree
 			}

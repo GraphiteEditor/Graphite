@@ -51,6 +51,7 @@ const SIDE_EFFECT_FREE_MESSAGES: &[MessageDiscriminant] = &[
 		NodeGraphMessageDiscriminant::RunDocumentGraph,
 	))),
 	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::SubmitActiveGraphRender),
+	MessageDiscriminant::Portfolio(PortfolioMessageDiscriminant::SubmitEyedropperPreviewRender),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::TriggerFontDataLoad),
 	MessageDiscriminant::Frontend(FrontendMessageDiscriminant::UpdateUIScale),
 ];

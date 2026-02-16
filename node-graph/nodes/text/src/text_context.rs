@@ -96,7 +96,9 @@ impl TextContext {
 
 		for line in layout.lines() {
 			for item in line.items() {
-				if let PositionedLayoutItem::GlyphRun(glyph_run) = item {
+				if let PositionedLayoutItem::GlyphRun(glyph_run) = item
+					&& typesetting.max_height.filter(|&max_height| glyph_run.baseline() > max_height as f32).is_none()
+				{
 					path_builder.render_glyph_run(&glyph_run, typesetting.tilt, per_glyph_instances);
 				}
 			}
@@ -107,15 +109,21 @@ impl TextContext {
 
 	/// Calculate the bounding box of text using the specified font and typesetting configuration
 	pub fn bounding_box(&mut self, text: &str, font: &Font, font_cache: &FontCache, typesetting: TypesettingConfig, for_clipping_test: bool) -> DVec2 {
-		if !for_clipping_test && let (Some(max_height), Some(max_width)) = (typesetting.max_height, typesetting.max_width) {
-			return DVec2::new(max_width, max_height);
-		}
-
 		let Some(layout) = self.layout_text(text, font, font_cache, typesetting) else {
 			return DVec2::ZERO;
 		};
 
-		DVec2::new(layout.full_width() as f64, layout.height() as f64)
+		let layout_width = layout.full_width() as f64;
+		let layout_height = layout.height() as f64;
+
+		if for_clipping_test {
+			return DVec2::new(layout_width, layout_height);
+		}
+
+		let width = typesetting.max_width.unwrap_or(layout_width);
+		let height = typesetting.max_height.unwrap_or(layout_height);
+
+		DVec2::new(width, height)
 	}
 
 	/// Check if text lines are being clipped due to height constraints

@@ -249,6 +249,7 @@ pub struct RenderMetadata {
 	pub first_element_source_id: HashMap<NodeId, Option<NodeId>>,
 	pub click_targets: HashMap<NodeId, Vec<Arc<ClickTarget>>>,
 	pub clip_targets: HashSet<NodeId>,
+	pub vector_data: HashMap<NodeId, Arc<Vector>>,
 }
 
 impl RenderMetadata {
@@ -1187,6 +1188,8 @@ impl Render for Table<Vector> {
 					.collect::<Vec<_>>();
 
 				metadata.click_targets.entry(element_id).or_insert(click_targets);
+				// Store the full vector data including segment IDs for accurate segment modification
+				metadata.vector_data.entry(element_id).or_insert_with(|| Arc::new(vector.clone()));
 			}
 
 			if let Some(upstream_nested_layers) = &vector.upstream_data {
