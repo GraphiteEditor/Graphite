@@ -15,7 +15,7 @@ impl DialogLayoutHolder for CloseAllDocumentsDialog {
 			TextButton::new("Discard All")
 				.emphasized(true)
 				.on_update(|_| {
-					DialogMessage::CloseDialogAndThen {
+					DialogMessage::CloseAndThen {
 						followups: vec![PortfolioMessage::CloseAllDocuments.into()],
 					}
 					.into()

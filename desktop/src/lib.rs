@@ -1,30 +1,28 @@
+use crate::app::App;
+use crate::cef::CefHandler;
+use crate::cli::Cli;
+use crate::consts::APP_LOCK_FILE_NAME;
+use crate::event::CreateAppEventSchedulerEventLoopExt;
 use clap::Parser;
 use std::io::Write;
 use std::process::exit;
 use tracing_subscriber::EnvFilter;
 use winit::event_loop::EventLoop;
 
-pub(crate) mod consts;
+pub(crate) use graphite_desktop_wrapper as wrapper;
 
 mod app;
 mod cef;
 mod cli;
 mod dirs;
 mod event;
+mod gpu_context;
 mod persist;
+mod preferences;
 mod render;
 mod window;
 
-mod gpu_context;
-
-pub(crate) use graphite_desktop_wrapper as wrapper;
-
-use app::App;
-use cef::CefHandler;
-use cli::Cli;
-use event::CreateAppEventSchedulerEventLoopExt;
-
-use crate::consts::APP_LOCK_FILE_NAME;
+pub(crate) mod consts;
 
 pub fn start() {
 	tracing_subscriber::fmt().with_env_filter(EnvFilter::from_default_env()).init();
@@ -77,12 +75,13 @@ pub fn start() {
 
 	let (cef_view_info_sender, cef_view_info_receiver) = std::sync::mpsc::channel();
 
-	if cli.disable_ui_acceleration {
+	let disable_ui_acceleration = preferences::read().disable_ui_acceleration || cli.disable_ui_acceleration;
+	if disable_ui_acceleration {
 		println!("UI acceleration is disabled");
 	}
 
 	let cef_handler = cef::CefHandler::new(wgpu_context.clone(), app_event_scheduler.clone(), cef_view_info_receiver);
-	let cef_context = match cef_context_builder.initialize(cef_handler, cli.disable_ui_acceleration) {
+	let cef_context = match cef_context_builder.initialize(cef_handler, disable_ui_acceleration) {
 		Ok(context) => {
 			tracing::info!("CEF initialized successfully");
 			context
@@ -109,16 +108,26 @@ pub fn start() {
 
 	let exit_reason = app.run(event_loop);
 
+	// If exiting due to a UI acceleration failure, update preferences to disable it for next launch
+	if matches!(exit_reason, app::ExitReason::UiAccelerationFailure) {
+		tracing::error!("Disabling UI acceleration");
+		preferences::modify(|prefs| {
+			prefs.disable_ui_acceleration = true;
+		});
+	}
+
 	// Explicitly drop the instance lock
 	drop(lock);
 
 	match exit_reason {
 		#[cfg(target_os = "linux")]
-		app::ExitReason::UiAccelerationFailure => {
-			use std::os::unix::process::CommandExt;
-
-			tracing::error!("Restarting application without UI acceleration");
-			let _ = std::process::Command::new(std::env::current_exe().unwrap()).arg("--disable-ui-acceleration").exec();
+		app::ExitReason::Restart | app::ExitReason::UiAccelerationFailure => {
+			tracing::error!("Restarting application");
+			let mut command = std::process::Command::new(std::env::current_exe().unwrap());
+			#[cfg(target_family = "unix")]
+			let _ = std::os::unix::process::CommandExt::exec(&mut command);
+			#[cfg(not(target_family = "unix"))]
+			let _ = command.spawn();
 			tracing::error!("Failed to restart application");
 		}
 		_ => {}

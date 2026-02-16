@@ -6,7 +6,7 @@ use crate::messages::prelude::*;
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum PreferencesMessage {
 	// Management messages
-	Load { preferences: Option<PreferencesMessageHandler> },
+	Load { preferences: PreferencesMessageHandler },
 	ResetToDefaults,
 
 	// Per-preference messages
@@ -17,4 +17,5 @@ pub enum PreferencesMessage {
 	GraphWireStyle { style: GraphWireStyle },
 	ViewportZoomWheelRate { rate: f64 },
 	UIScale { scale: f64 },
+	DisableUIAcceleration { disable_ui_acceleration: bool },
 }

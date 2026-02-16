@@ -12,10 +12,11 @@ pub enum DialogMessage {
 	PreferencesDialog(PreferencesDialogMessage),
 
 	// Messages
-	CloseAllDocumentsWithConfirmation,
-	CloseDialogAndThen {
+	Close,
+	CloseAndThen {
 		followups: Vec<Message>,
 	},
+	CloseAllDocumentsWithConfirmation,
 	DisplayDialogError {
 		title: String,
 		description: String,
@@ -35,4 +36,5 @@ pub enum DialogMessage {
 	},
 	RequestNewDocumentDialog,
 	RequestPreferencesDialog,
+	RequestConfirmRestartDialog,
 }

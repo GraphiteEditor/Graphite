@@ -18,7 +18,7 @@ impl DialogLayoutHolder for CloseDocumentDialog {
 			TextButton::new("Save")
 				.emphasized(true)
 				.on_update(|_| {
-					DialogMessage::CloseDialogAndThen {
+					DialogMessage::CloseAndThen {
 						followups: vec![DocumentMessage::SaveDocument.into()],
 					}
 					.into()
@@ -26,7 +26,7 @@ impl DialogLayoutHolder for CloseDocumentDialog {
 				.widget_instance(),
 			TextButton::new("Discard")
 				.on_update(move |_| {
-					DialogMessage::CloseDialogAndThen {
+					DialogMessage::CloseAndThen {
 						followups: vec![EventMessage::ToolAbort.into(), PortfolioMessage::CloseDocument { document_id }.into()],
 					}
 					.into()

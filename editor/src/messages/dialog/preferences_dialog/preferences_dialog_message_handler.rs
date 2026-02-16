@@ -4,28 +4,29 @@ use crate::messages::portfolio::document::utility_types::wires::GraphWireStyle;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 
-#[derive(ExtractField)]
-pub struct PreferencesDialogMessageContext<'a> {
-	pub preferences: &'a PreferencesMessageHandler,
-}
-
 /// A dialog to allow users to customize Graphite editor options
 #[derive(Debug, Clone, Default, ExtractField)]
-pub struct PreferencesDialogMessageHandler {}
+pub struct PreferencesDialogMessageHandler {
+	restart_requeird: bool,
+}
 
 #[message_handler_data]
-impl MessageHandler<PreferencesDialogMessage, PreferencesDialogMessageContext<'_>> for PreferencesDialogMessageHandler {
-	fn process_message(&mut self, message: PreferencesDialogMessage, responses: &mut VecDeque<Message>, context: PreferencesDialogMessageContext) {
-		let PreferencesDialogMessageContext { preferences } = context;
-
+impl MessageHandler<PreferencesDialogMessage, ()> for PreferencesDialogMessageHandler {
+	fn process_message(&mut self, message: PreferencesDialogMessage, responses: &mut VecDeque<Message>, _: ()) {
 		match message {
-			PreferencesDialogMessage::Confirm => {}
+			PreferencesDialogMessage::RestartRequired => self.restart_requeird = true,
+			PreferencesDialogMessage::Confirm => {
+				if self.restart_requeird {
+					responses.add(DialogMessage::RequestConfirmRestartDialog);
+				} else {
+					responses.add(DialogMessage::Close);
+				}
+			}
 		}
-
-		self.send_dialog_to_frontend(responses, preferences);
 	}
 
-	advertise_actions! {PreferencesDialogUpdate;}
+	advertise_actions!(PreferencesDialogUpdate;
+	);
 }
 
 // This doesn't actually implement the `DialogLayoutHolder` trait like the other dialog message handlers.
@@ -284,6 +285,42 @@ impl PreferencesDialogMessageHandler {
 			rows.extend_from_slice(&[header, node_graph_wires_label, graph_wire_style, use_vello, brush_tool]);
 		}
 
+		// =============
+		// COMPATEBILITY
+		// =============
+		#[cfg(not(target_family = "wasm"))]
+		{
+			let header = vec![TextLabel::new("Compatebilety").italic(true).widget_instance()];
+
+			let ui_acceleration_description =
+				"Disable hardware acceleration for the user interface (viewport is not effected). This can improve stability on some systems at the cost of decreased performance.";
+
+			let checkbox_id = CheckboxId::new();
+			let ui_acceleration = vec![
+				CheckboxInput::new(preferences.disable_ui_acceleration)
+					.tooltip_label("Disable UI Acceleration")
+					.tooltip_description(ui_acceleration_description)
+					.on_update(|number_input: &CheckboxInput| Message::Batched {
+						messages: Box::new([
+							PreferencesMessage::DisableUIAcceleration {
+								disable_ui_acceleration: number_input.checked,
+							}
+							.into(),
+							PreferencesDialogMessage::RestartRequired.into(),
+						]),
+					})
+					.for_label(checkbox_id)
+					.widget_instance(),
+				TextLabel::new("Disable UI Acceleration")
+					.tooltip_label("Disable UI Acceleration")
+					.tooltip_description(ui_acceleration_description)
+					.for_checkbox(checkbox_id)
+					.widget_instance(),
+			];
+
+			rows.extend_from_slice(&[header, ui_acceleration]);
+		}
+
 		Layout(rows.into_iter().map(|r| LayoutGroup::Row { widgets: r }).collect())
 	}
 
@@ -307,15 +344,7 @@ impl PreferencesDialogMessageHandler {
 
 	fn layout_buttons(&self) -> Layout {
 		let widgets = vec![
-			TextButton::new("OK")
-				.emphasized(true)
-				.on_update(|_| {
-					DialogMessage::CloseDialogAndThen {
-						followups: vec![PreferencesDialogMessage::Confirm.into()],
-					}
-					.into()
-				})
-				.widget_instance(),
+			TextButton::new("OK").emphasized(true).on_update(|_| PreferencesDialogMessage::Confirm.into()).widget_instance(),
 			TextButton::new("Reset to Defaults").on_update(|_| PreferencesMessage::ResetToDefaults.into()).widget_instance(),
 		];
 

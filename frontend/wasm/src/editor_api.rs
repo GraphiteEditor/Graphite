@@ -384,18 +384,14 @@ impl EditorHandle {
 
 	#[wasm_bindgen(js_name = loadPreferences)]
 	pub fn load_preferences(&self, preferences: Option<String>) {
-		let preferences = if let Some(preferences) = preferences {
+		if let Some(preferences) = preferences {
 			let Ok(preferences) = serde_json::from_str(&preferences) else {
 				log::error!("Failed to deserialize preferences");
 				return;
 			};
-			Some(preferences)
-		} else {
-			None
-		};
-
-		let message = PreferencesMessage::Load { preferences };
-		self.dispatch(message);
+			let message = PreferencesMessage::Load { preferences };
+			self.dispatch(message);
+		}
 	}
 
 	#[wasm_bindgen(js_name = selectDocument)]

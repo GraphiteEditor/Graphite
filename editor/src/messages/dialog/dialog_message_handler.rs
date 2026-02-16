@@ -1,6 +1,6 @@
 use super::simple_dialogs::{self, AboutGraphiteDialog, DemoArtworkDialog, LicensesDialog};
 use crate::application::GRAPHITE_GIT_COMMIT_DATE;
-use crate::messages::dialog::simple_dialogs::LicensesThirdPartyDialog;
+use crate::messages::dialog::simple_dialogs::{ConfirmRestartDialog, LicensesThirdPartyDialog};
 use crate::messages::frontend::utility_types::ExportBounds;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::prelude::*;
@@ -27,22 +27,23 @@ impl MessageHandler<DialogMessage, DialogMessageContext<'_>> for DialogMessageHa
 		match message {
 			DialogMessage::ExportDialog(message) => self.export_dialog.process_message(message, responses, ExportDialogMessageContext { portfolio }),
 			DialogMessage::NewDocumentDialog(message) => self.new_document_dialog.process_message(message, responses, ()),
-			DialogMessage::PreferencesDialog(message) => self.preferences_dialog.process_message(message, responses, PreferencesDialogMessageContext { preferences }),
+			DialogMessage::PreferencesDialog(message) => self.preferences_dialog.process_message(message, responses, ()),
 
-			DialogMessage::CloseAllDocumentsWithConfirmation => {
-				let dialog = simple_dialogs::CloseAllDocumentsDialog {
-					unsaved_document_names: portfolio.unsaved_document_names(),
-				};
-				dialog.send_dialog_to_frontend(responses);
-			}
-			DialogMessage::CloseDialogAndThen { followups } => {
+			DialogMessage::Close => responses.add(FrontendMessage::DisplayDialogDismiss),
+			DialogMessage::CloseAndThen { followups } => {
 				for message in followups.into_iter() {
 					responses.add(message);
 				}
 
 				// This come after followups, so that the followups (which can cause the dialog to open) happen first, then we close it afterwards.
 				// If it comes before, the dialog reopens (and appears to not close at all).
-				responses.add(FrontendMessage::DisplayDialogDismiss);
+				responses.add(DialogMessage::Close);
+			}
+			DialogMessage::CloseAllDocumentsWithConfirmation => {
+				let dialog = simple_dialogs::CloseAllDocumentsDialog {
+					unsaved_document_names: portfolio.unsaved_document_names(),
+				};
+				dialog.send_dialog_to_frontend(responses);
 			}
 			DialogMessage::DisplayDialogError { title, description } => {
 				let dialog = simple_dialogs::ErrorDialog { title, description };
@@ -99,7 +100,6 @@ impl MessageHandler<DialogMessage, DialogMessageContext<'_>> for DialogMessageHa
 			}
 			DialogMessage::RequestLicensesDialogWithLocalizedCommitDate { localized_commit_year } => {
 				let dialog = LicensesDialog { localized_commit_year };
-
 				dialog.send_dialog_to_frontend(responses);
 			}
 			DialogMessage::RequestLicensesThirdPartyDialogWithLicenseText { license_text } => {
@@ -115,8 +115,13 @@ impl MessageHandler<DialogMessage, DialogMessageContext<'_>> for DialogMessageHa
 				self.new_document_dialog.send_dialog_to_frontend(responses);
 			}
 			DialogMessage::RequestPreferencesDialog => {
-				self.preferences_dialog = PreferencesDialogMessageHandler {};
+				self.preferences_dialog = PreferencesDialogMessageHandler::default();
 				self.preferences_dialog.send_dialog_to_frontend(responses, preferences);
+			}
+			DialogMessage::RequestConfirmRestartDialog => {
+				let dialog = ConfirmRestartDialog {};
+				println!("Requesting confirm restart dialog");
+				dialog.send_dialog_to_frontend(responses);
 			}
 		}
 	}
