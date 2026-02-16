@@ -77,7 +77,8 @@ impl MessageHandler<ToolMessage, ToolMessageContext<'_>> for ToolMessageHandler 
 					self.tool_state.tool_data.active_tool_type = ToolType::Shape;
 				}
 				responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Shape });
-				responses.add(ShapeToolMessage::SetShape { shape: ShapeType::Polygon });
+				// Sync current_shape with the dropdown selection (options.shape_type)
+				responses.add(ShapeToolMessage::SyncShapeWithOptions);
 				responses.add(ShapeToolMessage::HideShapeTypeWidget { hide: false })
 			}
 			ToolMessage::ActivateToolBrush => responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Brush }),
