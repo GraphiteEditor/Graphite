@@ -246,28 +246,19 @@ pub fn black_or_white_for_best_contrast(background: Option<Color>) -> Color {
 
 	let alpha = bg.a();
 
-	let (r_srgb, g_srgb, b_srgb) = if alpha.abs() > f32::EPSILON {
-		let r_lin = bg.r() / alpha;
-		let g_lin = bg.g() / alpha;
-		let b_lin = bg.b() / alpha;
-		(Color::linear_to_srgb(r_lin), Color::linear_to_srgb(g_lin), Color::linear_to_srgb(b_lin))
+	// Un-premultiply, then convert to gamma sRGB
+	let srgb = if alpha.abs() > f32::EPSILON {
+		Color::from_rgbaf32_unchecked(bg.r() / alpha, bg.g() / alpha, bg.b() / alpha, alpha).to_gamma_srgb()
 	} else {
-		(0., 0., 0.)
+		Color::from_rgbaf32_unchecked(0., 0., 0., 0.)
 	};
 
-	let r_comp_srgb = r_srgb * alpha;
-	let g_comp_srgb = g_srgb * alpha;
-	let b_comp_srgb = b_srgb * alpha;
-
-	let r_final = Color::srgb_to_linear(r_comp_srgb);
-	let g_final = Color::srgb_to_linear(g_comp_srgb);
-	let b_final = Color::srgb_to_linear(b_comp_srgb);
-
-	let luminance = 0.2126 * r_final + 0.7152 * g_final + 0.0722 * b_final;
+	// Composite over black in sRGB space, then convert back to linear for luminance
+	let composited = Color::from_rgbaf32_unchecked(srgb.r() * alpha, srgb.g() * alpha, srgb.b() * alpha, 1.).to_linear_srgb();
 
 	let threshold = (1.05 * 0.05f32).sqrt() - 0.05;
 
-	if luminance > threshold { Color::BLACK } else { Color::WHITE }
+	if composited.luminance_srgb() > threshold { Color::BLACK } else { Color::WHITE }
 }
 
 pub fn to_transform(transform: DAffine2) -> usvg::Transform {
