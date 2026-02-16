@@ -1092,13 +1092,8 @@ impl Fsm for ShapeToolFsmState {
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.data.cleanup(responses);
 				tool_data.current_shape = shape;
-				responses.add(ShapeToolMessage::UpdateOptions {
-					options: ShapeOptionsUpdate::ShapeType(shape),
-				});
-
-				responses.add(ShapeToolMessage::UpdateOptions {
-					options: ShapeOptionsUpdate::ShapeType(shape),
-				});
+				// Update hints for the new shape (without updating options.shape_type)
+				update_dynamic_hints(&ShapeToolFsmState::Ready(shape), responses, tool_data);
 				ShapeToolFsmState::Ready(shape)
 			}
 			(_, ShapeToolMessage::HideShapeTypeWidget { hide }) => {
