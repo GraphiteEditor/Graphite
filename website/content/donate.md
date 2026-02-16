@@ -10,7 +10,7 @@ css = ["/page/donate.css", "/component/feature-box.css", "/component/feature-ico
 
 # Funding creativity, not corporations
 
-**Own your tools. Own your art.** Invest in the sustainable, independent future of high-quality creative software that's free, and always will be.
+**Own your tools. Own your art.** Invest in a sustainable, independent future for high-quality creative software that cannot ever be taken away.
 
 <div class="call-to-action">
 
