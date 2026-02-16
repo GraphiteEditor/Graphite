@@ -1,5 +1,5 @@
 use super::common_functionality::shape_editor::ShapeState;
-use super::common_functionality::shapes::shape_utility::ShapeType::{self, Ellipse, Line, Rectangle};
+use super::common_functionality::shapes::shape_utility::ShapeType::{Ellipse, Line, Rectangle};
 use super::utility_types::{ToolActionMessageContext, ToolFsmState, tool_message_to_tool_type};
 use crate::application::generate_uuid;
 use crate::messages::layout::utility_types::widget_prelude::*;
