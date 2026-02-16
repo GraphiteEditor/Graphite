@@ -1879,6 +1879,7 @@ impl ShapeState {
 			_ => self.sorted_selected_layers(network_interface.document_metadata()).find_map(closest_seg),
 		}
 	}
+
 	pub fn get_dragging_state(&self, network_interface: &NodeNetworkInterface) -> PointSelectState {
 		for &layer in self.selected_shape_state.keys() {
 			let Some(vector) = network_interface.compute_modified_vector(layer) else { continue };
