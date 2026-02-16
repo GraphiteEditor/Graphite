@@ -594,19 +594,13 @@ pub fn create_bounding_box_transform(document: &DocumentMessageHandler) -> DAffi
 
 fn snap_pivot_to_bounds(document: &DocumentMessageHandler, mouse_position: DVec2, selection_bounds: &Option<BoundingBoxManager>) -> Option<snapping::SnappedPoint> {
 	let tolerance = snapping::snap_tolerance(document);
-	let mut best_distance = f64::INFINITY;
-	let mut best_snap_point: Option<DVec2> = None;
-	let mut best_quad: Option<Quad> = None;
-	let mut best_point_type: u8 = 0; // 0=corner, 1=midpoint, 2=center
+	let mut best_snap: Option<(DVec2, Quad, BoundingBoxSnapTarget, f64)> = None;
 
-	let mut check_snap = |snap_doc: DVec2, quad: Quad, point_type: u8| {
+	let mut check_snap = |snap_doc: DVec2, quad: Quad, point_type: BoundingBoxSnapTarget| {
 		let snap_viewport = document.metadata().document_to_viewport.transform_point2(snap_doc);
 		let distance = mouse_position.distance(snap_viewport);
-		if distance < tolerance && distance < best_distance {
-			best_distance = distance;
-			best_snap_point = Some(snap_doc);
-			best_quad = Some(quad);
-			best_point_type = point_type;
+		if distance < tolerance && best_snap.map_or(true, |(_, _, _, best_distance)| distance < best_distance) {
+			best_snap = Some((snap_doc, quad, point_type, distance));
 		}
 	};
 
@@ -614,10 +608,10 @@ fn snap_pivot_to_bounds(document: &DocumentMessageHandler, mouse_position: DVec2
 	if let Some(bounds) = selection_bounds {
 		let quad = document.metadata().document_to_viewport.inverse() * bounds.transform * Quad::from_box(bounds.bounds);
 		for i in 0..4 {
-			check_snap(quad.0[i], quad, 0);
-			check_snap((quad.0[i] + quad.0[(i + 1) % 4]) / 2.0, quad, 1);
+			check_snap(quad.0[i], quad, BoundingBoxSnapTarget::CornerPoint);
+			check_snap((quad.0[i] + quad.0[(i + 1) % 4]) / 2.0, quad, BoundingBoxSnapTarget::EdgeMidpoint);
 		}
-		check_snap(quad.center(), quad, 2);
+		check_snap(quad.center(), quad, BoundingBoxSnapTarget::CenterPoint);
 	}
 
 	let selected: Vec<_> = document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface).collect();
@@ -630,27 +624,20 @@ fn snap_pivot_to_bounds(document: &DocumentMessageHandler, mouse_position: DVec2
 		};
 		let quad = Quad::from_box(bounds);
 		for i in 0..4 {
-			check_snap(quad.0[i], quad, 0);
-			check_snap((quad.0[i] + quad.0[(i + 1) % 4]) / 2.0, quad, 1);
+			check_snap(quad.0[i], quad, BoundingBoxSnapTarget::CornerPoint);
+			check_snap((quad.0[i] + quad.0[(i + 1) % 4]) / 2.0, quad, BoundingBoxSnapTarget::EdgeMidpoint);
 		}
-		check_snap(quad.center(), quad, 2);
+		check_snap(quad.center(), quad, BoundingBoxSnapTarget::CenterPoint);
 	}
 
-	best_snap_point.zip(best_quad).map(|(snap_point, quad)| {
-		let target = match best_point_type {
-			0 => SnapTarget::BoundingBox(BoundingBoxSnapTarget::CornerPoint),
-			1 => SnapTarget::BoundingBox(BoundingBoxSnapTarget::EdgeMidpoint),
-			_ => SnapTarget::BoundingBox(BoundingBoxSnapTarget::CenterPoint),
-		};
-		snapping::SnappedPoint {
-			snapped_point_document: snap_point,
-			source: SnapSource::Path(PathSnapSource::HandlePoint),
-			target,
-			distance: best_distance,
-			tolerance,
-			target_bounds: Some(quad),
-			..Default::default()
-		}
+	best_snap.map(|(snap_point, quad, point_type, distance)| snapping::SnappedPoint {
+		snapped_point_document: snap_point,
+		source: SnapSource::Path(PathSnapSource::HandlePoint),
+		target: SnapTarget::BoundingBox(point_type),
+		distance,
+		tolerance,
+		target_bounds: Some(quad),
+		..Default::default()
 	})
 }
 
