@@ -93,6 +93,7 @@ impl EditorHandle {
 					"Windows" => Host::Windows,
 					_ => unreachable!(),
 				},
+				compatibility_mode: false,
 			},
 			uuid_random_seed,
 		);

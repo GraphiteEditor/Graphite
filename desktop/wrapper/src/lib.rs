@@ -27,14 +27,18 @@ pub struct DesktopWrapper {
 }
 
 impl DesktopWrapper {
-	pub fn new(uuid_random_seed: u64) -> Self {
+	pub fn new(uuid_random_seed: u64, compatibility_mode: bool) -> Self {
 		#[cfg(target_os = "windows")]
 		let host = Host::Windows;
 		#[cfg(target_os = "macos")]
 		let host = Host::Mac;
 		#[cfg(target_os = "linux")]
 		let host = Host::Linux;
-		let env = Environment { platform: Platform::Desktop, host };
+		let env = Environment {
+			platform: Platform::Desktop,
+			host,
+			compatibility_mode,
+		};
 
 		Self {
 			editor: Editor::new(env, uuid_random_seed),

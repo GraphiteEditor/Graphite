@@ -1050,7 +1050,20 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			}
 			PortfolioMessage::RequestStatusBarInfoLayout => {
 				#[cfg(not(target_family = "wasm"))]
-				let widgets = vec![TextLabel::new("Graphite 1.0.0-RC3").disabled(true).widget_instance()]; // TODO: After the RCs, call this "Graphite (beta) x.y.z"
+				let widgets = {
+					let mut widgets = Vec::new();
+					if Editor::environment().is_compatibility_mode() {
+						widgets.push(
+							IconButton::new("Warning", 12)
+								.tooltip_label("Compatibility mode")
+								.tooltip_description("Running without hardware acceleration. Click to relaunch with acceleration enabled.")
+								.on_update(|_| AppWindowMessage::RelaunchWithUiAcceleration.into())
+								.widget_instance(),
+						);
+					}
+					widgets.push(TextLabel::new("Graphite 1.0.0-RC3").disabled(true).widget_instance()); // TODO: After the RCs, call this "Graphite (beta) x.y.z"
+					widgets
+				};
 				#[cfg(target_family = "wasm")]
 				let widgets = vec![];
 

@@ -51,6 +51,7 @@ impl Editor {
 		&Environment {
 			platform: Platform::Desktop,
 			host: Host::Linux,
+			compatibility_mode: false,
 		}
 	}
 }
@@ -59,6 +60,7 @@ impl Editor {
 pub struct Environment {
 	pub platform: Platform,
 	pub host: Host,
+	pub compatibility_mode: bool,
 }
 #[derive(Clone, Copy, Debug)]
 pub enum Platform {
@@ -86,6 +88,9 @@ impl Environment {
 	}
 	pub fn is_linux(&self) -> bool {
 		matches!(self.host, Host::Linux)
+	}
+	pub fn is_compatibility_mode(&self) -> bool {
+		self.compatibility_mode
 	}
 }
 

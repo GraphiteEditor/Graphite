@@ -40,6 +40,9 @@ impl MessageHandler<AppWindowMessage, ()> for AppWindowMessageHandler {
 			AppWindowMessage::ShowAll => {
 				responses.add(FrontendMessage::WindowShowAll);
 			}
+			AppWindowMessage::RelaunchWithUiAcceleration => {
+				responses.add(FrontendMessage::WindowRelaunchWithUiAcceleration);
+			}
 		}
 	}
 	advertise_actions!(AppWindowMessageDiscriminant;

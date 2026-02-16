@@ -74,6 +74,7 @@ pub enum DesktopFrontendMessage {
 	WindowHide,
 	WindowHideOthers,
 	WindowShowAll,
+	RelaunchWithUiAcceleration,
 }
 
 pub enum DesktopWrapperMessage {

@@ -1,6 +1,53 @@
 use crate::wrapper::messages::{Document, DocumentId, Preferences};
 
 #[derive(Default, serde::Serialize, serde::Deserialize)]
+pub(crate) struct StartupSettings {
+	#[serde(default)]
+	pub(crate) ui_compatibility_mode: bool,
+}
+
+impl StartupSettings {
+	pub(crate) fn load_from_disk() -> Self {
+		let path = Self::file_path();
+		let data = match std::fs::read_to_string(&path) {
+			Ok(d) => d,
+			Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Self::default(),
+			Err(e) => {
+				tracing::error!("Failed to read startup settings from disk: {e}");
+				return Self::default();
+			}
+		};
+
+		match ron::from_str(&data) {
+			Ok(settings) => settings,
+			Err(e) => {
+				tracing::error!("Failed to deserialize startup settings: {e}");
+				Self::default()
+			}
+		}
+	}
+
+	pub(crate) fn save_to_disk(&self) {
+		let data = match ron::ser::to_string_pretty(self, Default::default()) {
+			Ok(d) => d,
+			Err(e) => {
+				tracing::error!("Failed to serialize startup settings: {e}");
+				return;
+			}
+		};
+		if let Err(e) = std::fs::write(Self::file_path(), data) {
+			tracing::error!("Failed to write startup settings to disk: {e}");
+		}
+	}
+
+	fn file_path() -> std::path::PathBuf {
+		let mut path = crate::dirs::app_data_dir();
+		path.push(crate::consts::APP_STARTUP_SETTINGS_FILE_NAME);
+		path
+	}
+}
+
+#[derive(Default, serde::Serialize, serde::Deserialize)]
 pub(crate) struct PersistentData {
 	documents: DocumentStore,
 	current_document: Option<DocumentId>,

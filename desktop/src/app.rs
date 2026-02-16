@@ -43,7 +43,7 @@ pub(crate) struct App {
 	web_communication_startup_buffer: Vec<Vec<u8>>,
 	persistent_data: PersistentData,
 	cli: Cli,
-	startup_time: Option<Instant>,
+	compatibility_mode: bool,
 	exit_reason: ExitReason,
 }
 
@@ -59,6 +59,7 @@ impl App {
 		app_event_receiver: Receiver<AppEvent>,
 		app_event_scheduler: AppEventScheduler,
 		cli: Cli,
+		compatibility_mode: bool,
 	) -> Self {
 		let ctrlc_app_event_scheduler = app_event_scheduler.clone();
 		ctrlc::set_handler(move || {
@@ -81,7 +82,7 @@ impl App {
 		let mut persistent_data = PersistentData::default();
 		persistent_data.load_from_disk();
 
-		let desktop_wrapper = DesktopWrapper::new(rand::rng().random());
+		let desktop_wrapper = DesktopWrapper::new(rand::rng().random(), compatibility_mode);
 
 		Self {
 			render_state: None,
@@ -106,8 +107,8 @@ impl App {
 			web_communication_startup_buffer: Vec::new(),
 			persistent_data,
 			cli,
+			compatibility_mode,
 			exit_reason: ExitReason::Shutdown,
-			startup_time: None,
 		}
 	}
 
@@ -398,6 +399,9 @@ impl App {
 					window.show_all();
 				}
 			}
+			DesktopFrontendMessage::RelaunchWithUiAcceleration => {
+				self.exit(Some(ExitReason::RelaunchWithUiAcceleration));
+			}
 		}
 	}
 
@@ -457,6 +461,12 @@ impl App {
 					self.cef_init_successful = true;
 				}
 			}
+			AppEvent::StartupTextureWatchdogTimeout => {
+				if !self.cef_init_successful && !self.compatibility_mode {
+					tracing::error!("No CEF texture received within the first second, restarting in compatibility mode");
+					self.exit(Some(ExitReason::UiAccelerationFailure));
+				}
+			}
 			AppEvent::ScheduleBrowserWork(instant) => {
 				if instant <= Instant::now() {
 					self.cef_context.work();
@@ -496,7 +506,13 @@ impl ApplicationHandler for App {
 
 		self.desktop_wrapper.init(self.wgpu_context.clone());
 
-		self.startup_time = Some(Instant::now());
+		if !self.compatibility_mode {
+			let app_event_scheduler = self.app_event_scheduler.clone();
+			let _ = thread::spawn(move || {
+				thread::sleep(Duration::from_secs(1));
+				app_event_scheduler.schedule(AppEvent::StartupTextureWatchdogTimeout);
+			});
+		}
 	}
 
 	fn proxy_wake_up(&mut self, event_loop: &dyn ActiveEventLoop) {
@@ -560,16 +576,6 @@ impl ApplicationHandler for App {
 						Err(RenderError::SurfaceError(e)) => tracing::error!("Render error: {:?}", e),
 					}
 					let _ = self.start_render_sender.try_send(());
-				}
-
-				if !self.cef_init_successful
-					&& !self.cli.disable_ui_acceleration
-					&& self.web_communication_initialized
-					&& let Some(startup_time) = self.startup_time
-					&& startup_time.elapsed() > Duration::from_secs(3)
-				{
-					tracing::error!("UI acceleration not working, exiting.");
-					self.exit(Some(ExitReason::UiAccelerationFailure));
 				}
 			}
 			WindowEvent::DragDropped { paths, .. } => {
@@ -664,4 +670,5 @@ impl ApplicationHandler for App {
 pub(crate) enum ExitReason {
 	Shutdown,
 	UiAccelerationFailure,
+	RelaunchWithUiAcceleration,
 }

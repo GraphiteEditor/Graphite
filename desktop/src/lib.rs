@@ -1,4 +1,5 @@
 use clap::Parser;
+use std::ffi::OsStr;
 use std::io::Write;
 use std::process::exit;
 use tracing_subscriber::EnvFilter;
@@ -40,6 +41,8 @@ pub fn start() {
 	}
 
 	let cli = Cli::parse();
+	let mut startup_settings = persist::StartupSettings::load_from_disk();
+	let compatibility_mode = cli.disable_ui_acceleration || startup_settings.ui_compatibility_mode;
 
 	let Ok(lock_file) = std::fs::OpenOptions::new()
 		.read(true)
@@ -77,12 +80,12 @@ pub fn start() {
 
 	let (cef_view_info_sender, cef_view_info_receiver) = std::sync::mpsc::channel();
 
-	if cli.disable_ui_acceleration {
+	if compatibility_mode {
 		println!("UI acceleration is disabled");
 	}
 
 	let cef_handler = cef::CefHandler::new(wgpu_context.clone(), app_event_scheduler.clone(), cef_view_info_receiver);
-	let cef_context = match cef_context_builder.initialize(cef_handler, cli.disable_ui_acceleration) {
+	let cef_context = match cef_context_builder.initialize(cef_handler, compatibility_mode) {
 		Ok(context) => {
 			tracing::info!("CEF initialized successfully");
 			context
@@ -105,7 +108,15 @@ pub fn start() {
 		}
 	};
 
-	let app = App::new(Box::new(cef_context), cef_view_info_sender, wgpu_context, app_event_receiver, app_event_scheduler, cli);
+	let app = App::new(
+		Box::new(cef_context),
+		cef_view_info_sender,
+		wgpu_context,
+		app_event_receiver,
+		app_event_scheduler,
+		cli,
+		compatibility_mode,
+	);
 
 	let exit_reason = app.run(event_loop);
 
@@ -113,15 +124,23 @@ pub fn start() {
 	drop(lock);
 
 	match exit_reason {
-		#[cfg(target_os = "linux")]
 		app::ExitReason::UiAccelerationFailure => {
-			use std::os::unix::process::CommandExt;
-
 			tracing::error!("Restarting application without UI acceleration");
-			let _ = std::process::Command::new(std::env::current_exe().unwrap()).arg("--disable-ui-acceleration").exec();
-			tracing::error!("Failed to restart application");
+			startup_settings.ui_compatibility_mode = true;
+			startup_settings.save_to_disk();
+			if let Err(error) = restart_application(true) {
+				tracing::error!("Failed to restart application: {error}");
+			}
 		}
-		_ => {}
+		app::ExitReason::RelaunchWithUiAcceleration => {
+			tracing::info!("Restarting application with UI acceleration");
+			startup_settings.ui_compatibility_mode = false;
+			startup_settings.save_to_disk();
+			if let Err(error) = restart_application(false) {
+				tracing::error!("Failed to restart application: {error}");
+			}
+		}
+		app::ExitReason::Shutdown => {}
 	}
 
 	// Workaround for a Windows-specific exception that occurs when `app` is dropped.
@@ -131,6 +150,21 @@ pub fn start() {
 	// TODO: Identify and fix the underlying CEF shutdown issue so this workaround can be removed.
 	#[cfg(target_os = "windows")]
 	exit(0);
+}
+
+fn restart_application(disable_ui_acceleration: bool) -> std::io::Result<()> {
+	let current_exe = std::env::current_exe()?;
+	let args = restart_arguments(disable_ui_acceleration);
+	std::process::Command::new(current_exe).args(args).spawn().map(|_| ())
+}
+
+fn restart_arguments(disable_ui_acceleration: bool) -> Vec<std::ffi::OsString> {
+	let disable_flag = OsStr::new("--disable-ui-acceleration");
+	let mut args = std::env::args_os().skip(1).filter(|arg| arg != disable_flag).collect::<Vec<_>>();
+	if disable_ui_acceleration {
+		args.push(disable_flag.into());
+	}
+	args
 }
 
 pub fn start_helper() {
