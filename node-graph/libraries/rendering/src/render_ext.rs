@@ -1,4 +1,4 @@
-use crate::renderer::{RenderParams, contrasting_outline_color, format_transform_matrix};
+use crate::renderer::{RenderParams, black_or_white_for_best_contrast, format_transform_matrix};
 use core_types::consts::LAYER_OUTLINE_STROKE_WEIGHT;
 use core_types::uuid::generate_uuid;
 use glam::DAffine2;
@@ -168,7 +168,7 @@ impl RenderExt for PathStyle {
 			RenderMode::Outline => {
 				let fill_attribute = Fill::None.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds, render_params);
 
-				let outline_color = contrasting_outline_color(render_params.artboard_background);
+				let outline_color = black_or_white_for_best_contrast(render_params.artboard_background);
 
 				let mut outline_stroke = Stroke::new(Some(outline_color), LAYER_OUTLINE_STROKE_WEIGHT);
 				// Outline strokes should be non-scaling by default

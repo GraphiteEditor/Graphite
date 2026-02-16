@@ -237,43 +237,37 @@ fn max_scale(transform: DAffine2) -> f64 {
 	(sx + sy).sqrt()
 }
 
-pub fn contrasting_outline_color(background: Option<Color>) -> Color {
+pub fn black_or_white_for_best_contrast(background: Option<Color>) -> Color {
 	use core_types::consts::LAYER_OUTLINE_STROKE_COLOR;
 
-	if let Some(bg) = background {
-		let alpha = bg.a();
+	let Some(bg) = background else {
+		return LAYER_OUTLINE_STROKE_COLOR;
+	};
 
-		// Convert Linear Float to sRGB Float
-		let linear_to_srgb = |x: f32| -> f32 { if x <= 0.0031308 { x * 12.92 } else { 1.055 * x.powf(1.0 / 2.4) - 0.055 } };
+	let alpha = bg.a();
 
-		// Convert sRGB Float to Linear Float
-		let srgb_to_linear = |x: f32| -> f32 { if x <= 0.04045 { x / 12.92 } else { ((x + 0.055) / 1.055).powf(2.4) } };
-
-		let (r_srgb, g_srgb, b_srgb) = if alpha.abs() > f32::EPSILON {
-			let r_lin = bg.r() / alpha;
-			let g_lin = bg.g() / alpha;
-			let b_lin = bg.b() / alpha;
-			(linear_to_srgb(r_lin), linear_to_srgb(g_lin), linear_to_srgb(b_lin))
-		} else {
-			(0., 0., 0.)
-		};
-
-		let r_comp_srgb = r_srgb * alpha;
-		let g_comp_srgb = g_srgb * alpha;
-		let b_comp_srgb = b_srgb * alpha;
-
-		let r_final = srgb_to_linear(r_comp_srgb);
-		let g_final = srgb_to_linear(g_comp_srgb);
-		let b_final = srgb_to_linear(b_comp_srgb);
-
-		let luminance = 0.2126 * r_final + 0.7152 * g_final + 0.0722 * b_final;
-
-		let threshold = (1.05 * 0.05f32).sqrt() - 0.05;
-
-		if luminance > threshold { Color::BLACK } else { Color::WHITE }
+	let (r_srgb, g_srgb, b_srgb) = if alpha.abs() > f32::EPSILON {
+		let r_lin = bg.r() / alpha;
+		let g_lin = bg.g() / alpha;
+		let b_lin = bg.b() / alpha;
+		(Color::linear_to_srgb(r_lin), Color::linear_to_srgb(g_lin), Color::linear_to_srgb(b_lin))
 	} else {
-		LAYER_OUTLINE_STROKE_COLOR
-	}
+		(0., 0., 0.)
+	};
+
+	let r_comp_srgb = r_srgb * alpha;
+	let g_comp_srgb = g_srgb * alpha;
+	let b_comp_srgb = b_srgb * alpha;
+
+	let r_final = Color::srgb_to_linear(r_comp_srgb);
+	let g_final = Color::srgb_to_linear(g_comp_srgb);
+	let b_final = Color::srgb_to_linear(b_comp_srgb);
+
+	let luminance = 0.2126 * r_final + 0.7152 * g_final + 0.0722 * b_final;
+
+	let threshold = (1.05 * 0.05f32).sqrt() - 0.05;
+
+	if luminance > threshold { Color::BLACK } else { Color::WHITE }
 }
 
 pub fn to_transform(transform: DAffine2) -> usvg::Transform {
@@ -1112,7 +1106,7 @@ impl Render for Table<Vector> {
 						dash_offset: 0.,
 					};
 
-					let outline_color = contrasting_outline_color(render_params.artboard_background);
+					let outline_color = black_or_white_for_best_contrast(render_params.artboard_background);
 					let outline_color = peniko::Color::new([outline_color.r(), outline_color.g(), outline_color.b(), outline_color.a()]);
 
 					scene.stroke(&outline_stroke, kurbo::Affine::new(element_transform.to_cols_array()), outline_color, None, &path);
