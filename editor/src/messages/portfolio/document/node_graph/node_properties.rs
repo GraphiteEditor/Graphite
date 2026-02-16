@@ -4,7 +4,7 @@ use super::document_node_definitions::{NODE_OVERRIDES, NodePropertiesContext};
 use super::utility_types::FrontendGraphDataType;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
-use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
+use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface};
 use crate::messages::portfolio::utility_types::{FontCatalogStyle, PersistentData};
 use crate::messages::prelude::*;
 use choice::enum_choice;
@@ -79,20 +79,17 @@ pub fn add_blank_assist(widgets: &mut Vec<WidgetInstance>) {
 	]);
 }
 
-pub fn jump_to_source_button(input: &NodeInput) -> WidgetInstance {
+pub fn jump_to_source_widget(input: &NodeInput, network_interface: &NodeNetworkInterface, selection_network_path: &[NodeId]) -> WidgetInstance {
 	match input {
 		NodeInput::Node { node_id: source_id, .. } => {
 			let source_id = *source_id;
-			TextButton::new("Jump")
+			let node_name = network_interface.implementation_name(&source_id, selection_network_path);
+			TextButton::new(format!("Select Source: {}", node_name))
 				.tooltip_description("Jump to the source node connected to this input.")
 				.on_update(move |_| NodeGraphMessage::SelectedNodesSet { nodes: vec![source_id] }.into())
 				.widget_instance()
 		}
-		_ => TextButton::new("Jump")
-			.disabled(true)
-			.tooltip_description("No node connected.")
-			.on_update(|_| Message::NoOp)
-			.widget_instance(),
+		_ => TextLabel::new("Input Not Connected").tooltip_description("No node connected.").widget_instance(),
 	}
 }
 
@@ -106,6 +103,8 @@ pub fn start_widgets(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<Widget
 		input_type,
 		blank_assist,
 		exposable,
+		network_interface,
+		selection_network_path,
 		..
 	} = parameter_widgets_info;
 
@@ -131,7 +130,7 @@ pub fn start_widgets(parameter_widgets_info: ParameterWidgetsInfo) -> Vec<Widget
 			blank_assist = false;
 		}
 		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
-		widgets.push(jump_to_source_button(input));
+		widgets.push(jump_to_source_widget(input, network_interface, selection_network_path));
 	}
 
 	if blank_assist {
@@ -261,14 +260,23 @@ pub(crate) fn property_from_type(
 						// OTHER
 						// =====
 						_ => {
+							let is_exposed = default_info
+								.document_node
+								.and_then(|node| node.inputs.get(default_info.index))
+								.map(|input| input.is_exposed())
+								.unwrap_or(false);
+
 							let mut widgets = start_widgets(default_info);
-							widgets.extend_from_slice(&[
-								Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-								TextLabel::new("-")
-									.tooltip_label(format!("Data Type: {concrete_type}"))
-									.tooltip_description("This data can only be supplied through the node graph because no widget exists for its type.")
-									.widget_instance(),
-							]);
+
+							if !is_exposed {
+								widgets.extend_from_slice(&[
+									Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+									TextLabel::new("-")
+										.tooltip_label(format!("Data Type: {concrete_type}"))
+										.tooltip_description("This data can only be supplied through the node graph because no widget exists for its type.")
+										.widget_instance(),
+								]);
+							}
 							return Err(vec![widgets.into()]);
 						}
 					}
@@ -2172,6 +2180,8 @@ pub fn math_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> 
 
 pub struct ParameterWidgetsInfo<'a> {
 	persistent_data: &'a PersistentData,
+	network_interface: &'a NodeNetworkInterface,
+	selection_network_path: &'a [NodeId],
 	document_node: Option<&'a DocumentNode>,
 	node_id: NodeId,
 	index: usize,
@@ -2193,6 +2203,8 @@ impl<'a> ParameterWidgetsInfo<'a> {
 
 		ParameterWidgetsInfo {
 			persistent_data: context.persistent_data,
+			network_interface: context.network_interface,
+			selection_network_path: context.selection_network_path,
 			document_node,
 			node_id,
 			index,
