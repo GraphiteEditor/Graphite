@@ -9,6 +9,8 @@ pub fn derive_extract_field_impl(input: TokenStream) -> syn::Result<TokenStream>
 	let generics = &input.generics;
 	let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
+	let line_number = struct_name.span().start().line;
+
 	let fields = match &input.data {
 		Data::Struct(data) => match &data.fields {
 			Fields::Named(fields) => &fields.named,
@@ -50,6 +52,11 @@ pub fn derive_extract_field_impl(input: TokenStream) -> syn::Result<TokenStream>
 			fn path() -> &'static str {
 				file!()
 			}
+
+			fn line_number() -> usize {
+				#line_number
+			}
+
 		}
 	};
 

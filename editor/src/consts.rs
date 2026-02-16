@@ -153,6 +153,7 @@ pub const COLOR_OVERLAY_RED: &str = "#ef5454";
 pub const COLOR_OVERLAY_GRAY: &str = "#cccccc";
 pub const COLOR_OVERLAY_GRAY_25: &str = "#cccccc40";
 pub const COLOR_OVERLAY_WHITE: &str = "#ffffff";
+pub const COLOR_OVERLAY_BLACK: &str = "#000000";
 pub const COLOR_OVERLAY_BLACK_75: &str = "#000000bf";
 
 // DOCUMENT

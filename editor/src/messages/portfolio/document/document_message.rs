@@ -15,6 +15,7 @@ use graphene_std::Color;
 use graphene_std::raster::BlendMode;
 use graphene_std::raster::Image;
 use graphene_std::transform::Footprint;
+use graphene_std::vector::Vector;
 use graphene_std::vector::click_target::ClickTarget;
 use graphene_std::vector::style::RenderMode;
 
@@ -208,6 +209,9 @@ pub enum DocumentMessage {
 	},
 	UpdateClipTargets {
 		clip_targets: HashSet<NodeId>,
+	},
+	UpdateVectorData {
+		vector_data: HashMap<NodeId, Arc<Vector>>,
 	},
 	Undo,
 	UngroupSelectedLayers,
