@@ -73,7 +73,7 @@
 	let layersPanelControlBarLeftLayout: Layout = [];
 	let layersPanelControlBarRightLayout: Layout = [];
 	let layersPanelBottomBarLayout: Layout = [];
-
+	const EDGE_BUFFER_PX = 10;
 	onMount(() => {
 		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarLeftLayout, (data) => {
 			patchLayout(layersPanelControlBarLeftLayout, data);
@@ -345,7 +345,7 @@
 			const lastLayerDepth = layers[layers.length - 1]?.entry?.depth;
 			const draggingLayerDepth = layers[dataIndex]?.entry?.depth;
 
-			if (clientY > treeChildren[layers.length - 1].getBoundingClientRect().bottom - 10) {
+			if (clientY > treeChildren[layers.length - 1].getBoundingClientRect().bottom - EDGE_BUFFER_PX) {
 				if (lastLayerDepth === 1 && draggingLayerDepth > 1) isInvalidDrag = true;
 			}
 
@@ -366,15 +366,15 @@
 					const nextLayer = layers[indexAttribute + 1];
 					if (prevLayer?.entry?.depth === 1) {
 						const prevRectTop = treeChildren?.[indexAttribute].getBoundingClientRect().top;
-						if (prevLayer?.entry?.depth === 1 && prevRectTop + 10 > clientY) {
+						if (prevLayer?.entry?.depth === 1 && prevRectTop + EDGE_BUFFER_PX > clientY) {
 							isInvalidDrag = true;
 							break;
 						}
 					}
 
-					const isDraggingBtnArtBoards = nextLayer?.entry?.depth === 1 && prevLayer?.entry?.depth === 1;
+					const isDraggingBetweenArtboards = nextLayer?.entry?.depth === 1 && prevLayer?.entry?.depth === 1;
 
-					if (isDraggingBtnArtBoards) {
+					if (isDraggingBetweenArtboards) {
 						isInvalidDrag = true;
 						break;
 					}
