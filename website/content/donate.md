@@ -10,7 +10,7 @@ css = ["/page/donate.css", "/component/feature-box.css", "/component/feature-ico
 
 # Funding creativity, not corporations
 
-**Own your tools. Own your art.** Invest in the sustainable, independent future of high-quality creative software that's free, and always will be.
+**Own your tools. Own your art.** Invest in a sustainable, independent future for high-quality creative software that cannot ever be taken away.
 
 <div class="call-to-action">
 
@@ -28,15 +28,15 @@ css = ["/page/donate.css", "/component/feature-box.css", "/component/feature-ico
 
 <div class="feature-icons three-wide statistics" data-statistics>
 	<div class="feature-icon">
-		<img class="atlas" style="--atlas-index: 34" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
+		<img class="atlas" style="--atlas-index: 34" src="https://static.graphite.art/icons/icon-atlas-roadmap__3.png" alt="" />
 		<span data-statistics-dollars></span>
 	</div>
 	<div class="feature-icon">
-		<img class="atlas" style="--atlas-index: 3" src="https://static.graphite.rs/icons/icon-atlas-features__2.png" alt="" />
+		<img class="atlas" style="--atlas-index: 3" src="https://static.graphite.art/icons/icon-atlas-features__2.png" alt="" />
 		<span data-statistics-members></span>
 	</div>
 	<div class="feature-icon">
-		<img class="atlas" style="--atlas-index: 47" src="https://static.graphite.rs/icons/icon-atlas-roadmap__3.png" alt="" />
+		<img class="atlas" style="--atlas-index: 47" src="https://static.graphite.art/icons/icon-atlas-roadmap__3.png" alt="" />
 		<span data-statistics-donors></span>
 	</div>
 </div>
@@ -49,7 +49,7 @@ css = ["/page/donate.css", "/component/feature-box.css", "/component/feature-ico
 	const donorsElement = document.querySelector("[data-statistics-donors]");
 	if (!dollarsElement || !membersElement || !donorsElement) return;
 	try {
-		const response = await fetch("https://graphite.rs/sponsorship-stats");
+		const response = await fetch("https://graphite.art/sponsorship-stats");
 		const json = await response.json();
 		if (!json || !json.recurring || !json.one_time_prior_3_month_sum) throw new Error();
 		const recurringDollars = parseInt(json.recurring.cents) / 100;
@@ -220,13 +220,3 @@ Also available to individuals wanting to make a larger impact. [Reach out](/cont
 
 </div>
 </section>
-
-<!-- <div class="fundraising loading" data-fundraising>
-	<div class="fundraising-bar" data-fundraising-bar style="--fundraising-percent: 0%">
-		<div class="fundraising-bar-progress"></div>
-	</div>
-	<div class="goal-metrics">
-		<span data-fundraising-percent>Progress: <span data-dynamic>0</span>%</span>
-		<span data-fundraising-goal>Goal: $<span data-dynamic>0</span>/month</span>
-	</div>
-</div> -->

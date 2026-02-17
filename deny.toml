@@ -39,8 +39,6 @@ db-urls = ["https://github.com/rustsec/advisory-db"]
 # A list of advisory IDs to ignore. Note that ignored advisories will still
 # output a note when they are encountered.
 ignore = [
-	"RUSTSEC-2024-0370", # Unmaintained but still fully functional crate `proc-macro-error`
-	"RUSTSEC-2024-0388", # Unmaintained but still fully functional crate `derivative`
 	"RUSTSEC-2024-0436", # Unmaintained but still fully functional crate `paste`
 ]
 # Threshold for security vulnerabilities, any vulnerability with a CVSS score

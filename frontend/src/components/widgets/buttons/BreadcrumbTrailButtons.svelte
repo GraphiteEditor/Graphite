@@ -1,15 +1,21 @@
 <script lang="ts">
+	import type { ActionShortcut } from "@graphite/messages";
+
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import TextButton from "@graphite/components/widgets/buttons/TextButton.svelte";
 
+	// Content
 	export let labels: string[];
 	export let disabled = false;
-	export let tooltip: string | undefined = undefined;
+	// Tooltips
+	export let tooltipLabel: string | undefined = undefined;
+	export let tooltipDescription: string | undefined = undefined;
+	export let tooltipShortcut: ActionShortcut | undefined = undefined;
 	// Callbacks
 	export let action: (index: number) => void;
 </script>
 
-<LayoutRow class="breadcrumb-trail-buttons" {tooltip}>
+<LayoutRow class="breadcrumb-trail-buttons" {tooltipLabel} {tooltipDescription} {tooltipShortcut}>
 	{#each labels as label, index}
 		<TextButton {label} emphasized={index === labels.length - 1} {disabled} action={() => !disabled && index !== labels.length - 1 && action(index)} />
 	{/each}
@@ -24,16 +30,25 @@
 				border-top-left-radius: 0;
 				border-bottom-left-radius: 0;
 
-				&::before {
+				&::before,
+				&::after {
 					content: "";
 					position: absolute;
-					top: 0;
 					left: -4px;
 					width: 0;
 					height: 0;
 					border-style: solid;
-					border-width: 12px 0 12px 4px;
 					border-color: var(--button-background-color) var(--button-background-color) var(--button-background-color) transparent;
+				}
+
+				&::before {
+					top: 0;
+					border-width: 24px 0 0 8px;
+				}
+
+				&::after {
+					bottom: 0;
+					border-width: 0 0 24px 8px;
 				}
 			}
 

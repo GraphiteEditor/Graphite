@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { createEventDispatcher } from "svelte";
 
+	import type { ActionShortcut } from "@graphite/messages";
 	import { operatingSystem } from "@graphite/utility-functions/platform";
 
 	import { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";
@@ -25,7 +26,9 @@
 	export let disabled = false;
 	export let narrow = false;
 	export let textarea = false;
-	export let tooltip: string | undefined = undefined;
+	export let tooltipLabel: string | undefined = undefined;
+	export let tooltipDescription: string | undefined = undefined;
+	export let tooltipShortcut: ActionShortcut | undefined = undefined;
 	export let placeholder: string | undefined = undefined;
 	export let hideContextMenu = false;
 
@@ -74,7 +77,7 @@
 </script>
 
 <!-- This is a base component, extended by others like NumberInput and TextInput. It should not be used directly. -->
-<LayoutRow class={`field-input ${className}`} classes={{ disabled, narrow, ...classes }} style={styleName} {styles} {tooltip}>
+<LayoutRow class={`field-input ${className}`} classes={{ disabled, narrow, ...classes }} style={styleName} {styles} {tooltipLabel} {tooltipDescription} {tooltipShortcut}>
 	{#if !textarea}
 		<input
 			type="text"
@@ -111,7 +114,7 @@
 			on:keydown={(e) => e.key === "Escape" && cancel()}
 			on:pointerdown
 			on:contextmenu={(e) => hideContextMenu && e.preventDefault()}
-		/>
+		></textarea>
 	{/if}
 	{#if label}
 		<label for={`field-input-${id}`} on:pointerdown>{label}</label>

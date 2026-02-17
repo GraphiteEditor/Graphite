@@ -2,12 +2,12 @@ pub mod value;
 
 use crate::document::value::TaggedValue;
 use crate::proto::{ConstructionArgs, ProtoNetwork, ProtoNode};
+use core_types::memo::MemoHashGuard;
+pub use core_types::uuid::NodeId;
+pub use core_types::uuid::generate_uuid;
+use core_types::{Context, ContextDependencies, Cow, MemoHash, ProtoNodeIdentifier, Type};
 use dyn_any::DynAny;
 use glam::IVec2;
-use graphene_core::memo::MemoHashGuard;
-pub use graphene_core::uuid::NodeId;
-pub use graphene_core::uuid::generate_uuid;
-use graphene_core::{Context, ContextDependencies, Cow, MemoHash, ProtoNodeIdentifier, Type};
 use log::Metadata;
 use rustc_hash::{FxBuildHasher, FxHashMap};
 use std::collections::HashMap;
@@ -84,6 +84,8 @@ pub struct OriginalLocation {
 	pub dependants: Vec<Vec<NodeId>>,
 	/// A list of flags indicating whether the input is exposed in the UI
 	pub inputs_exposed: Vec<bool>,
+	/// For automatically inserted Convert and Into nodes, if there is an error, display it on the node it is connect to.
+	pub auto_convert_index: Option<usize>,
 }
 
 impl Default for DocumentNode {
@@ -211,6 +213,14 @@ pub enum DocumentNodeMetadata {
 	DocumentNodePath,
 }
 
+impl DocumentNodeMetadata {
+	pub fn ty(&self) -> Type {
+		match self {
+			DocumentNodeMetadata::DocumentNodePath => concrete!(Vec<NodeId>),
+		}
+	}
+}
+
 impl NodeInput {
 	pub const fn node(node_id: NodeId, output_index: usize) -> Self {
 		Self::Node { node_id, output_index }
@@ -318,7 +328,7 @@ pub enum DocumentNodeImplementation {
 
 impl Default for DocumentNodeImplementation {
 	fn default() -> Self {
-		Self::ProtoNode(ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode"))
+		Self::ProtoNode(graphene_core::ops::identity::IDENTIFIER)
 	}
 }
 
@@ -475,7 +485,7 @@ pub struct OldNodeNetwork {
 	#[serde(alias = "outputs", deserialize_with = "deserialize_exports")] // TODO: Eventually remove this alias document upgrade code
 	pub exports: Vec<NodeInput>,
 	/// The list of all nodes in this network.
-	//cfg_attr(feature = "serde", #[serde(serialize_with = "graphene_core::vector::serialize_hashmap", deserialize_with = "graphene_core::vector::deserialize_hashmap"))]
+	//cfg_attr(feature = "serde", #[serde(serialize_with = "core_types::vector::serialize_hashmap", deserialize_with = "core_types::vector::deserialize_hashmap"))]
 	pub nodes: HashMap<NodeId, OldDocumentNode>,
 	/// Indicates whether the network is currently rendered with a particular node that is previewed, and if so, which connection should be restored when the preview ends.
 	#[serde(default)]
@@ -488,7 +498,7 @@ pub struct OldNodeNetwork {
 
 	/// A network may expose nodes as constants which can by used by other nodes using a `NodeInput::Scope(key)`.
 	#[serde(default)]
-	//cfg_attr(feature = "serde", #[serde(serialize_with = "graphene_core::vector::serialize_hashmap", deserialize_with = "graphene_core::vector::deserialize_hashmap"))]
+	//cfg_attr(feature = "serde", #[serde(serialize_with = "core_types::vector::serialize_hashmap", deserialize_with = "core_types::vector::deserialize_hashmap"))]
 	pub scope_injections: HashMap<String, (NodeId, Type)>,
 }
 
@@ -520,11 +530,17 @@ pub struct NodeNetwork {
 	// TODO: Instead of storing import types in each NodeInput::Import connection, the types are stored here. This is similar to how types need to be defined for parameters when creating a function in Rust.
 	// pub import_types: Vec<Type>,
 	/// The list of all nodes in this network.
-	#[serde(serialize_with = "graphene_core::vector::serialize_hashmap", deserialize_with = "graphene_core::vector::deserialize_hashmap")]
+	#[serde(
+		serialize_with = "graphic_types::vector_types::vector::serialize_hashmap",
+		deserialize_with = "graphic_types::vector_types::vector::deserialize_hashmap"
+	)]
 	pub nodes: FxHashMap<NodeId, DocumentNode>,
 	/// A network may expose nodes as constants which can by used by other nodes using a `NodeInput::Scope(key)`.
 	#[serde(default)]
-	#[serde(serialize_with = "graphene_core::vector::serialize_hashmap", deserialize_with = "graphene_core::vector::deserialize_hashmap")]
+	#[serde(
+		serialize_with = "graphic_types::vector_types::vector::serialize_hashmap",
+		deserialize_with = "graphic_types::vector_types::vector::deserialize_hashmap"
+	)]
 	pub scope_injections: FxHashMap<String, (NodeId, Type)>,
 	#[serde(skip)]
 	pub generated: bool,
@@ -650,12 +666,9 @@ impl NodeNetwork {
 			if node.original_location.path.is_some() {
 				log::warn!("Attempting to overwrite node path");
 			} else {
-				node.original_location = OriginalLocation {
-					path: Some(new_path),
-					inputs_exposed: node.inputs.iter().map(|input| input.is_exposed()).collect(),
-					dependants: (0..node.implementation.output_count()).map(|_| Vec::new()).collect(),
-					..Default::default()
-				};
+				node.original_location.path = Some(new_path);
+				node.original_location.inputs_exposed = node.inputs.iter().map(|input| input.is_exposed()).collect();
+				node.original_location.dependants = (0..node.implementation.output_count()).map(|_| Vec::new()).collect();
 			}
 		}
 	}
@@ -773,7 +786,7 @@ impl NodeNetwork {
 		};
 
 		// If the node is hidden, replace it with an identity node
-		let identity_node = DocumentNodeImplementation::ProtoNode("graphene_core::ops::IdentityNode".into());
+		let identity_node = DocumentNodeImplementation::ProtoNode(graphene_core::ops::identity::IDENTIFIER);
 		if !node.visible && node.implementation != identity_node {
 			node.implementation = identity_node;
 
@@ -787,7 +800,7 @@ impl NodeNetwork {
 		let path = node.original_location.path.clone().unwrap_or_default();
 
 		// Replace value inputs with dedicated value nodes
-		if node.implementation != DocumentNodeImplementation::ProtoNode("graphene_core::value::ClonedNode".into()) {
+		if node.implementation != DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::value::ClonedNode")) {
 			Self::replace_value_inputs_with_nodes(&mut node.inputs, &mut self.nodes, &path, gen_id, map_ids, id);
 		}
 
@@ -829,12 +842,15 @@ impl NodeNetwork {
 		for (nested_node_id, mut nested_node) in inner_network.nodes.into_iter() {
 			for (nested_input_index, nested_input) in nested_node.clone().inputs.iter().enumerate() {
 				if let NodeInput::Import { import_index, .. } = nested_input {
-					let parent_input = node.inputs.get(*import_index).unwrap_or_else(|| panic!("Import index {import_index} should always exist"));
+					let parent_input = node
+						.inputs
+						.get(*import_index)
+						.unwrap_or_else(|| panic!("Import index {import_index} of network node implementation {:?} should always exist", nested_node.implementation));
 					match *parent_input {
 						// If the input to self is a node, connect the corresponding output of the inner network to it
 						NodeInput::Node { node_id, output_index } => {
 							nested_node.populate_first_network_input(node_id, output_index, nested_input_index, node.original_location.inputs(*import_index), 1);
-							let input_node = self.nodes.get_mut(&node_id).unwrap_or_else(|| panic!("unable find input node {node_id:?}"));
+							let input_node = self.nodes.get_mut(&node_id).unwrap_or_else(|| panic!("Unable to find input node {node_id:?}"));
 							input_node.original_location.dependants[output_index].push(nested_node_id);
 						}
 						NodeInput::Import { import_index, .. } => {
@@ -923,7 +939,7 @@ impl NodeNetwork {
 				merged_node_id,
 				DocumentNode {
 					inputs: vec![NodeInput::Value { tagged_value, exposed }],
-					implementation: DocumentNodeImplementation::ProtoNode("graphene_core::value::ClonedNode".into()),
+					implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::value::ClonedNode")),
 					original_location,
 					..Default::default()
 				},
@@ -989,7 +1005,7 @@ impl NodeNetwork {
 			.nodes
 			.iter()
 			.filter(|(_, node)| {
-				matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(ident) if ident == &ProtoNodeIdentifier::new("graphene_core::ops::IdentityNode"))
+				matches!(&node.implementation, DocumentNodeImplementation::ProtoNode(ident) if ident == &graphene_core::ops::identity::IDENTIFIER)
 					&& node.inputs.len() == 1
 					&& matches!(node.inputs[0], NodeInput::Node { .. })
 			})
@@ -1022,7 +1038,7 @@ impl NodeNetwork {
 			assert_eq!(output_index, 0);
 			// TODO: check if we can read lambda checking?
 			let mut input_node = self.nodes.remove(&node_id).unwrap();
-			node.implementation = DocumentNodeImplementation::ProtoNode("graphene_core::value::ClonedNode".into());
+			node.implementation = DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::value::ClonedNode"));
 			if let Some(input) = input_node.inputs.get_mut(0) {
 				*input = match &input {
 					NodeInput::Node { .. } => NodeInput::import(generic!(T), 0),
@@ -1139,7 +1155,7 @@ mod test {
 					NodeId(0),
 					DocumentNode {
 						inputs: vec![NodeInput::import(concrete!(u32), 0), NodeInput::import(concrete!(u32), 1)],
-						implementation: DocumentNodeImplementation::ProtoNode("graphene_core::structural::ConsNode".into()),
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::structural::ConsNode")),
 						..Default::default()
 					},
 				),
@@ -1147,7 +1163,7 @@ mod test {
 					NodeId(1),
 					DocumentNode {
 						inputs: vec![NodeInput::node(NodeId(0), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode("graphene_core::ops::AddPairNode".into()),
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::ops::AddPairNode")),
 						..Default::default()
 					},
 				),
@@ -1169,7 +1185,7 @@ mod test {
 					NodeId(1),
 					DocumentNode {
 						inputs: vec![NodeInput::import(concrete!(u32), 0), NodeInput::import(concrete!(u32), 1)],
-						implementation: DocumentNodeImplementation::ProtoNode("graphene_core::structural::ConsNode".into()),
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::structural::ConsNode")),
 						..Default::default()
 					},
 				),
@@ -1177,7 +1193,7 @@ mod test {
 					NodeId(2),
 					DocumentNode {
 						inputs: vec![NodeInput::node(NodeId(1), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode("graphene_core::ops::AddPairNode".into()),
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::ops::AddPairNode")),
 						..Default::default()
 					},
 				),
@@ -1193,7 +1209,7 @@ mod test {
 	fn extract_node() {
 		let id_node = DocumentNode {
 			inputs: vec![],
-			implementation: DocumentNodeImplementation::ProtoNode("graphene_core::ops::IdentityNode".into()),
+			implementation: DocumentNodeImplementation::ProtoNode(graphene_core::ops::identity::IDENTIFIER),
 			..Default::default()
 		};
 		// TODO: Extend test cases to test nested network
@@ -1250,13 +1266,13 @@ mod test {
 		let document_node = DocumentNode {
 			inputs: vec![NodeInput::node(NodeId(0), 0)],
 			call_argument: concrete!(u32),
-			implementation: DocumentNodeImplementation::ProtoNode("graphene_core::structural::ConsNode".into()),
+			implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::structural::ConsNode")),
 			..Default::default()
 		};
 
 		let proto_node = document_node.resolve_proto_node();
 		let reference = ProtoNode {
-			identifier: "graphene_core::structural::ConsNode".into(),
+			identifier: ProtoNodeIdentifier::new("core_types::structural::ConsNode"),
 			call_argument: concrete!(u32),
 			construction_args: ConstructionArgs::Nodes(vec![NodeId(0)]),
 			..Default::default()
@@ -1273,7 +1289,7 @@ mod test {
 				(
 					NodeId(10),
 					ProtoNode {
-						identifier: "graphene_core::structural::ConsNode".into(),
+						identifier: ProtoNodeIdentifier::new("core_types::structural::ConsNode"),
 						call_argument: concrete!(u32),
 						construction_args: ConstructionArgs::Nodes(vec![NodeId(14)]),
 						original_location: OriginalLocation {
@@ -1289,7 +1305,7 @@ mod test {
 				(
 					NodeId(11),
 					ProtoNode {
-						identifier: "graphene_core::ops::AddPairNode".into(),
+						identifier: ProtoNodeIdentifier::new("core_types::ops::AddPairNode"),
 						call_argument: concrete!(Context),
 						construction_args: ConstructionArgs::Nodes(vec![NodeId(10)]),
 						original_location: OriginalLocation {
@@ -1304,8 +1320,8 @@ mod test {
 				(
 					NodeId(14),
 					ProtoNode {
-						identifier: "graphene_core::value::ClonedNode".into(),
-						call_argument: concrete!(graphene_core::Context),
+						identifier: ProtoNodeIdentifier::new("core_types::value::ClonedNode"),
+						call_argument: concrete!(core_types::Context),
 						construction_args: ConstructionArgs::Value(TaggedValue::U32(2).into()),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(4)]),
@@ -1338,7 +1354,7 @@ mod test {
 					DocumentNode {
 						inputs: vec![NodeInput::node(NodeId(14), 0)],
 						call_argument: concrete!(u32),
-						implementation: DocumentNodeImplementation::ProtoNode("graphene_core::structural::ConsNode".into()),
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::structural::ConsNode")),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(0)]),
 							inputs_source: [(Source { node: vec![NodeId(1)], index: 1 }, 1)].into(),
@@ -1352,7 +1368,7 @@ mod test {
 					NodeId(14),
 					DocumentNode {
 						inputs: vec![NodeInput::value(TaggedValue::U32(2), false)],
-						implementation: DocumentNodeImplementation::ProtoNode("graphene_core::value::ClonedNode".into()),
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::value::ClonedNode")),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(4)]),
 							inputs_source: HashMap::new(),
@@ -1366,7 +1382,7 @@ mod test {
 					NodeId(11),
 					DocumentNode {
 						inputs: vec![NodeInput::node(NodeId(10), 0)],
-						implementation: DocumentNodeImplementation::ProtoNode("graphene_core::ops::AddPairNode".into()),
+						implementation: DocumentNodeImplementation::ProtoNode(ProtoNodeIdentifier::new("core_types::ops::AddPairNode")),
 						original_location: OriginalLocation {
 							path: Some(vec![NodeId(1), NodeId(1)]),
 							inputs_source: HashMap::new(),

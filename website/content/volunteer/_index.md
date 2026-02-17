@@ -22,7 +22,7 @@ css = ["/page/volunteer.css", "/component/feature-box.css"]
 <div class="feature-box-narrow">
 
 <a href="/volunteer/guide">
-	<img src="https://static.graphite.rs/content/volunteer/code-contributions.avif" class="feature-box-full-image" style="aspect-ratio: 3/1 auto; background: var(--color-seaside)" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="Flavor graphic depicting a library of knowledge in a digital realm" />
+	<img src="https://static.graphite.art/content/volunteer/code-contributions.avif" class="feature-box-full-image" style="aspect-ratio: 3/1 auto; background: var(--color-seaside)" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="Flavor graphic depicting a library of knowledge in a digital realm" />
 </a>
 
 Get started by reading the contributor guide:
@@ -58,12 +58,12 @@ The Graphite editor is built much like a game engine, split across user interfac
 
 <div class="feature-box-narrow">
 
-<img src="https://static.graphite.rs/content/volunteer/creative-contributions.avif" class="feature-box-full-image" style="aspect-ratio: 3/1 auto; background: var(--color-lemon)" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="Flavor graphic depicting a fountain pen, ink pots, and a book" />
+<img src="https://static.graphite.art/content/volunteer/creative-contributions.avif" class="feature-box-full-image" style="aspect-ratio: 3/1 auto; background: var(--color-lemon)" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="Flavor graphic depicting a fountain pen, ink pots, and a book" />
 </a>
 
 Assign yourself the *"🙌 Interested in helping with art or marketing"* role in the *#welcome* Discord channel. Then mention your experience and how you'd like to help in the *#introductions* channel.
 
-<a href="https://discord.graphite.rs" class="button arrow">Volunteer on Discord</a>
+<a href="https://discord.graphite.art" class="button arrow">Volunteer on Discord</a>
 
 </div>
 
@@ -94,11 +94,11 @@ Help write, edit, and design content for this website, social media, newsletters
 
 <div class="feature-box-narrow">
 
-<img src="https://static.graphite.rs/content/volunteer/user-contributions.avif" class="feature-box-full-image" style="aspect-ratio: 3/1 auto; background: var(--color-lilac)" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="Flavor graphic depicting a magnifying glass on the search for a software bug" />
+<img src="https://static.graphite.art/content/volunteer/user-contributions.avif" class="feature-box-full-image" style="aspect-ratio: 3/1 auto; background: var(--color-lilac)" onerror="this.onerror = null; this.src = this.src.replace('.avif', '.jpg')" alt="Flavor graphic depicting a magnifying glass on the search for a software bug" />
 
 Assign yourself the *"🐒 Volunteer to get pinged regularly for QA testing"* or *"🤖 Interested in contributing code"* roles in the *#welcome* Discord channel. In the latter case, drop by the *#development* channel to get advice writing your first node.
 
-<a href="https://discord.graphite.rs" class="button arrow">Volunteer on Discord</a>
+<a href="https://discord.graphite.art" class="button arrow">Volunteer on Discord</a>
 
 </div>
 

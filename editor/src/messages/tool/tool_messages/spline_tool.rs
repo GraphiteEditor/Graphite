@@ -1,7 +1,7 @@
 use super::tool_prelude::*;
 use crate::consts::{DEFAULT_STROKE_WIDTH, DRAG_THRESHOLD, PATH_JOIN_THRESHOLD, SNAP_POINT_TOLERANCE};
 use crate::messages::input_mapper::utility_types::input_mouse::MouseKeys;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::{resolve_network_node_type, resolve_proto_node_type};
 use crate::messages::portfolio::document::overlays::utility_functions::path_endpoint_overlays;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -79,7 +79,7 @@ impl ToolMetadata for SplineTool {
 	fn icon_name(&self) -> String {
 		"VectorSplineTool".into()
 	}
-	fn tooltip(&self) -> String {
+	fn tooltip_label(&self) -> String {
 		"Spline Tool".into()
 	}
 	fn tool_type(&self) -> crate::messages::tool::utility_types::ToolType {
@@ -87,7 +87,7 @@ impl ToolMetadata for SplineTool {
 	}
 }
 
-fn create_weight_widget(line_weight: f64) -> WidgetHolder {
+fn create_weight_widget(line_weight: f64) -> WidgetInstance {
 	NumberInput::new(Some(line_weight))
 		.unit(" px")
 		.label("Weight")
@@ -99,7 +99,7 @@ fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 			}
 			.into()
 		})
-		.widget_holder()
+		.widget_instance()
 }
 
 impl LayoutHolder for SplineTool {
@@ -129,7 +129,7 @@ impl LayoutHolder for SplineTool {
 			},
 		);
 
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 
 		widgets.append(&mut self.options.stroke.create_widgets(
 			"Stroke",
@@ -155,10 +155,10 @@ impl LayoutHolder for SplineTool {
 				.into()
 			},
 		));
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 		widgets.push(create_weight_widget(self.options.line_weight));
 
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
+		Layout(vec![LayoutGroup::Row { widgets }])
 	}
 }
 
@@ -294,7 +294,6 @@ impl Fsm for SplineToolFsmState {
 			global_tool_data,
 			input,
 			shape_editor,
-			preferences,
 			viewport,
 			..
 		} = tool_action_data;
@@ -303,7 +302,7 @@ impl Fsm for SplineToolFsmState {
 		match (self, event) {
 			(_, SplineToolMessage::CanvasTransformed) => self,
 			(_, SplineToolMessage::Overlays { context: mut overlay_context }) => {
-				path_endpoint_overlays(document, shape_editor, &mut overlay_context, preferences);
+				path_endpoint_overlays(document, shape_editor, &mut overlay_context);
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input, viewport), &mut overlay_context);
 				self
 			}
@@ -351,7 +350,7 @@ impl Fsm for SplineToolFsmState {
 					.filter(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]));
 
 				// Extend an endpoint of the selected path
-				if let Some((layer, point, position)) = should_extend(document, viewport_vec, SNAP_POINT_TOLERANCE, layers, preferences) {
+				if let Some((layer, point, position)) = should_extend(document, viewport_vec, SNAP_POINT_TOLERANCE, layers) {
 					if find_spline(document, layer).is_some() {
 						// If the point is the part of Spline then we extend it.
 						tool_data.current_layer = Some(layer);
@@ -389,9 +388,9 @@ impl Fsm for SplineToolFsmState {
 
 				let parent = document.new_layer_bounding_artboard(input, viewport);
 
-				let path_node_type = resolve_document_node_type("Path").expect("Path node does not exist");
+				let path_node_type = resolve_network_node_type("Path").expect("Path node does not exist");
 				let path_node = path_node_type.default_node_template();
-				let spline_node_type = resolve_document_node_type("Spline").expect("Spline node does not exist");
+				let spline_node_type = resolve_proto_node_type(graphene_std::vector::spline::IDENTIFIER).expect("Spline node does not exist");
 				let spline_node = spline_node_type.node_template_input_override([Some(NodeInput::node(NodeId(1), 0))]);
 				let nodes = vec![(NodeId(1), path_node), (NodeId(0), spline_node)];
 
@@ -417,7 +416,7 @@ impl Fsm for SplineToolFsmState {
 					extend_spline(tool_data, false, responses);
 					tool_data.preview_point = preview_point;
 
-					if try_merging_lastest_endpoint(document, tool_data, preferences).is_some() {
+					if try_merging_lastest_endpoint(document, tool_data).is_some() {
 						responses.add(SplineToolMessage::Confirm);
 					}
 				}
@@ -427,7 +426,7 @@ impl Fsm for SplineToolFsmState {
 			(SplineToolFsmState::Drawing, SplineToolMessage::PointerMove) => {
 				let Some(layer) = tool_data.current_layer else { return SplineToolFsmState::Ready };
 				let ignore = |cp: PointId| tool_data.preview_point.is_some_and(|pp| pp == cp) || tool_data.points.last().is_some_and(|(ep, _)| *ep == cp);
-				let join_point = closest_point(document, input.mouse.position, PATH_JOIN_THRESHOLD, vec![layer].into_iter(), ignore, preferences);
+				let join_point = closest_point(document, input.mouse.position, PATH_JOIN_THRESHOLD, vec![layer].into_iter(), ignore);
 
 				// Endpoints snapping
 				if let Some((_, _, point)) = join_point {
@@ -469,9 +468,13 @@ impl Fsm for SplineToolFsmState {
 				state
 			}
 			(SplineToolFsmState::Drawing, SplineToolMessage::Confirm) => {
-				if tool_data.points.len() >= 2 {
-					delete_preview(tool_data, responses);
+				if tool_data.points.len() <= 1 {
+					responses.add(DocumentMessage::AbortTransaction);
+					return SplineToolFsmState::Ready;
 				}
+
+				delete_preview(tool_data, responses);
+
 				responses.add(SplineToolMessage::MergeEndpoints);
 				SplineToolFsmState::MergingEndpoints
 			}
@@ -503,7 +506,7 @@ impl Fsm for SplineToolFsmState {
 			SplineToolFsmState::MergingEndpoints => HintData(vec![]),
 		};
 
-		responses.add(FrontendMessage::UpdateInputHints { hint_data });
+		hint_data.send_layout(responses);
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
@@ -511,7 +514,7 @@ impl Fsm for SplineToolFsmState {
 	}
 }
 
-fn try_merging_lastest_endpoint(document: &DocumentMessageHandler, tool_data: &mut SplineToolData, preferences: &PreferencesMessageHandler) -> Option<()> {
+fn try_merging_lastest_endpoint(document: &DocumentMessageHandler, tool_data: &mut SplineToolData) -> Option<()> {
 	if tool_data.points.len() < 2 {
 		return None;
 	};
@@ -526,7 +529,7 @@ fn try_merging_lastest_endpoint(document: &DocumentMessageHandler, tool_data: &m
 	let exclude = |p: PointId| preview_point.is_some_and(|pp| pp == p) || *last_endpoint == p;
 	let position = document.metadata().transform_to_viewport(current_layer).transform_point2(*last_endpoint_position);
 
-	let (layer, endpoint, _) = closest_point(document, position, PATH_JOIN_THRESHOLD, layers, exclude, preferences)?;
+	let (layer, endpoint, _) = closest_point(document, position, PATH_JOIN_THRESHOLD, layers, exclude)?;
 	tool_data.merge_layers.insert(layer);
 	tool_data.merge_endpoints.push((EndpointPosition::End, endpoint));
 
@@ -647,7 +650,7 @@ mod test_spline_tool {
 		let layer_to_viewport = document.metadata().transform_to_viewport(spline_layer);
 
 		let endpoints: Vec<(PointId, DVec2)> = first_vector
-			.extendable_points(false)
+			.anchor_endpoints()
 			.filter_map(|point_id| first_vector.point_domain.position_from_id(point_id).map(|pos| (point_id, layer_to_viewport.transform_point2(pos))))
 			.collect();
 

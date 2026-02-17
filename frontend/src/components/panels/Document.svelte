@@ -1,11 +1,12 @@
 <script lang="ts">
-	import { getContext, onMount, tick } from "svelte";
+	import { getContext, onMount, onDestroy, tick } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
 	import {
 		type MouseCursorIcon,
 		type XY,
 		DisplayEditableTextbox,
+		DisplayEditableTextboxUpdateFontData,
 		DisplayEditableTextboxTransform,
 		DisplayRemoveEditableTextbox,
 		TriggerTextCommit,
@@ -18,9 +19,10 @@
 	} from "@graphite/messages";
 	import type { AppWindowState } from "@graphite/state-providers/app-window";
 	import type { DocumentState } from "@graphite/state-providers/document";
+	import { pasteFile } from "@graphite/utility-functions/files";
 	import { textInputCleanup } from "@graphite/utility-functions/keyboard-entry";
-	import { extractPixelData, rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
-	import { updateBoundsOfViewports as updateViewport } from "@graphite/utility-functions/viewports";
+	import { rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
+	import { setupViewportResizeObserver, cleanupViewportResizeObserver } from "@graphite/utility-functions/viewports";
 
 	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "@graphite/components/floating-menus/EyedropperPreview.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -126,39 +128,17 @@
 			totalToolRowsFor2Columns,
 			totalToolRowsFor3Columns,
 		};
-	})($document.toolShelfLayout.layout[0]);
+	})($document.toolShelfLayout[0]);
 
 	function dropFile(e: DragEvent) {
-		const { dataTransfer } = e;
-		const [x, y] = e.target instanceof Element && e.target.closest("[data-viewport]") ? [e.clientX, e.clientY] : [undefined, undefined];
-		if (!dataTransfer) return;
+		if (!e.dataTransfer) return;
+
+		let mouse: [number, number] | undefined = undefined;
+		if (e.target instanceof Element && e.target.closest("[data-viewport]")) mouse = [e.clientX, e.clientY];
 
 		e.preventDefault();
 
-		Array.from(dataTransfer.items).forEach(async (item) => {
-			const file = item.getAsFile();
-			if (!file) return;
-
-			if (file.type.includes("svg")) {
-				const svgData = await file.text();
-				editor.handle.pasteSvg(file.name, svgData, x, y);
-				return;
-			}
-
-			if (file.type.startsWith("image")) {
-				const imageData = await extractPixelData(file);
-				editor.handle.pasteImage(file.name, new Uint8Array(imageData.data), imageData.width, imageData.height, x, y);
-				return;
-			}
-
-			const graphiteFileSuffix = "." + editor.handle.fileExtension();
-			if (file.name.endsWith(graphiteFileSuffix)) {
-				const content = await file.text();
-				const documentName = file.name.slice(0, -graphiteFileSuffix.length);
-				editor.handle.openDocumentFile(documentName, content);
-				return;
-			}
-		});
+		Array.from(e.dataTransfer.items).forEach(async (item) => await pasteFile(item, editor, mouse));
 	}
 
 	function panCanvasX(newValue: number) {
@@ -203,9 +183,18 @@
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
 			let canvas = (window as any).imageCanvases[canvasName];
 
-			if (canvasName !== "0" && canvas.parentElement) {
-				var newCanvas = window.document.createElement("canvas");
-				var context = newCanvas.getContext("2d");
+			// Get logical dimensions from foreignObject parent (set by backend)
+			const foreignObject = placeholder.parentElement;
+			if (!foreignObject) return;
+			const logicalWidth = parseFloat(foreignObject.getAttribute("width") || "0");
+			const logicalHeight = parseFloat(foreignObject.getAttribute("height") || "0");
+
+			// Clone canvas for repeated instances (layers that appear multiple times)
+			// Viewport canvas is marked with data-is-viewport and should never be cloned
+			const isViewport = placeholder.hasAttribute("data-is-viewport");
+			if (!isViewport && canvas.parentElement) {
+				const newCanvas = window.document.createElement("canvas");
+				const context = newCanvas.getContext("2d");
 
 				newCanvas.width = canvas.width;
 				newCanvas.height = canvas.height;
@@ -215,11 +204,21 @@
 				canvas = newCanvas;
 			}
 
+			// Set CSS size to logical resolution (for correct display size)
+			canvas.style.width = `${logicalWidth}px`;
+			canvas.style.height = `${logicalHeight}px`;
+
 			placeholder.replaceWith(canvas);
 		});
 	}
 
-	export async function updateEyedropperSamplingState(mousePosition: XY | undefined, colorPrimary: string, colorSecondary: string): Promise<[number, number, number] | undefined> {
+	export async function updateEyedropperSamplingState(
+		// `image` is currently only used for Vello renders
+		image: ImageData | undefined,
+		mousePosition: XY | undefined,
+		colorPrimary: string,
+		colorSecondary: string,
+	): Promise<[number, number, number] | undefined> {
 		if (mousePosition === undefined) {
 			cursorEyedropper = false;
 			return undefined;
@@ -231,40 +230,52 @@
 		cursorLeft = mousePosition.x;
 		cursorTop = mousePosition.y;
 
-		// This works nearly perfectly, but sometimes at odd DPI scale factors like 1.25, the anti-aliasing color can yield slightly incorrect colors (potential room for future improvement)
-		const dpiFactor = window.devicePixelRatio;
-		const [width, height] = [canvasWidth, canvasHeight];
+		let preview = image;
+		if (!preview) {
+			// This works nearly perfectly, but sometimes at odd DPI scale factors like 1.25, the anti-aliasing color can yield slightly incorrect colors (potential room for future improvement)
+			const dpiFactor = window.devicePixelRatio;
+			const [width, height] = [canvasWidth, canvasHeight];
 
-		const outsideArtboardsColor = getComputedStyle(window.document.documentElement).getPropertyValue("--color-2-mildblack");
-		const outsideArtboards = `<rect x="0" y="0" width="100%" height="100%" fill="${outsideArtboardsColor}" />`;
+			const outsideArtboardsColor = getComputedStyle(window.document.documentElement).getPropertyValue("--color-2-mildblack");
+			const outsideArtboards = `<rect x="0" y="0" width="100%" height="100%" fill="${outsideArtboardsColor}" />`;
 
-		const svg = `
-			<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">${outsideArtboards}${artworkSvg}</svg>
-			`.trim();
+			const svg = `
+				<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}">${outsideArtboards}${artworkSvg}</svg>
+				`.trim();
 
-		if (!rasterizedCanvas) {
-			rasterizedCanvas = await rasterizeSVGCanvas(svg, width * dpiFactor, height * dpiFactor);
-			rasterizedContext = rasterizedCanvas.getContext("2d", { willReadFrequently: true }) || undefined;
+			if (!rasterizedCanvas) {
+				rasterizedCanvas = await rasterizeSVGCanvas(svg, width * dpiFactor, height * dpiFactor);
+				rasterizedContext = rasterizedCanvas.getContext("2d", { willReadFrequently: true }) || undefined;
+			}
+			if (!rasterizedContext) return undefined;
+
+			preview = rasterizedContext.getImageData(
+				mousePosition.x * dpiFactor - (ZOOM_WINDOW_DIMENSIONS - 1) / 2,
+				mousePosition.y * dpiFactor - (ZOOM_WINDOW_DIMENSIONS - 1) / 2,
+				ZOOM_WINDOW_DIMENSIONS,
+				ZOOM_WINDOW_DIMENSIONS,
+			);
+			if (!preview) return undefined;
 		}
-		if (!rasterizedContext) return undefined;
 
-		const rgbToHex = (r: number, g: number, b: number): string => `#${[r, g, b].map((x) => x.toString(16).padStart(2, "0")).join("")}`;
+		const centerPixel = (() => {
+			const { width, height, data } = preview;
+			const x = Math.floor(width / 2);
+			const y = Math.floor(height / 2);
+			const index = (y * width + x) * 4;
+			return {
+				r: data[index],
+				g: data[index + 1],
+				b: data[index + 2],
+			};
+		})();
+		const hex = [centerPixel.r, centerPixel.g, centerPixel.b].map((x) => x.toString(16).padStart(2, "0")).join("");
+		const rgb: [number, number, number] = [centerPixel.r / 255, centerPixel.g / 255, centerPixel.b / 255];
 
-		const pixel = rasterizedContext.getImageData(mousePosition.x * dpiFactor, mousePosition.y * dpiFactor, 1, 1).data;
-		const hex = rgbToHex(pixel[0], pixel[1], pixel[2]);
-		const rgb: [number, number, number] = [pixel[0] / 255, pixel[1] / 255, pixel[2] / 255];
-
-		cursorEyedropperPreviewColorChoice = hex;
+		cursorEyedropperPreviewColorChoice = "#" + hex;
 		cursorEyedropperPreviewColorPrimary = colorPrimary;
 		cursorEyedropperPreviewColorSecondary = colorSecondary;
-
-		const previewRegion = rasterizedContext.getImageData(
-			mousePosition.x * dpiFactor - (ZOOM_WINDOW_DIMENSIONS - 1) / 2,
-			mousePosition.y * dpiFactor - (ZOOM_WINDOW_DIMENSIONS - 1) / 2,
-			ZOOM_WINDOW_DIMENSIONS,
-			ZOOM_WINDOW_DIMENSIONS,
-		);
-		cursorEyedropperPreviewImageData = previewRegion;
+		cursorEyedropperPreviewImageData = preview;
 
 		return rgb;
 	}
@@ -291,14 +302,8 @@
 		if (cursor === "custom-rotate") {
 			const svg = `
 				<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" width="20" height="20">
-					<path transform="translate(2 2)" fill="black" stroke="black" stroke-width="2px" d="
-					M8,15.2C4,15.2,0.8,12,0.8,8C0.8,4,4,0.8,8,0.8c2,0,3.9,0.8,5.3,2.3l-1,1C11.2,2.9,9.6,2.2,8,2.2C4.8,2.2,2.2,4.8,2.2,8s2.6,5.8,5.8,5.8s5.8-2.6,5.8-5.8h1.4C15.2,12,12,15.2,8,15.2z
-					" />
-					<polygon transform="translate(2 2)" fill="black" stroke="black" stroke-width="2px" points="12.6,0 15.5,5 9.7,5" />
-					<path transform="translate(2 2)" fill="white" d="
-					M8,15.2C4,15.2,0.8,12,0.8,8C0.8,4,4,0.8,8,0.8c2,0,3.9,0.8,5.3,2.3l-1,1C11.2,2.9,9.6,2.2,8,2.2C4.8,2.2,2.2,4.8,2.2,8s2.6,5.8,5.8,5.8s5.8-2.6,5.8-5.8h1.4C15.2,12,12,15.2,8,15.2z
-					" />
-					<polygon transform="translate(2 2)" fill="white" points="12.6,0 15.5,5 9.7,5" />
+					<path fill="none" stroke="black" stroke-width="2" d="M10,15.8c-3.2,0-5.8-2.6-5.8-5.8S6.8,4.2,10,4.2c0.999,0,1.999,0.273,2.877,0.771L11.7,7h5.8l-2.9-5l-1.013,1.746C12.5,3.125,11.271,2.8,10,2.8C6,2.8,2.8,6,2.8,10S6,17.2,10,17.2s7.2-3.2,7.2-7.2h-1.4C15.8,13.2,13.2,15.8,10,15.8z" />
+					<path fill="white" d="M10,15.8c-3.2,0-5.8-2.6-5.8-5.8S6.8,4.2,10,4.2c0.999,0,1.999,0.273,2.877,0.771L11.7,7h5.8l-2.9-5l-1.013,1.746C12.5,3.125,11.271,2.8,10,2.8C6,2.8,2.8,6,2.8,10S6,17.2,10,17.2s7.2-3.2,7.2-7.2h-1.4C15.8,13.2,13.2,15.8,10,15.8z" />
 				</svg>
 				`
 				.split("\n")
@@ -324,7 +329,7 @@
 		editor.handle.onChangeText(textCleaned, false);
 	}
 
-	export async function displayEditableTextbox(displayEditableTextbox: DisplayEditableTextbox) {
+	export async function displayEditableTextbox(data: DisplayEditableTextbox) {
 		showTextInput = true;
 
 		await tick();
@@ -332,31 +337,35 @@
 		if (!textInput) return;
 
 		// eslint-disable-next-line svelte/no-dom-manipulating
-		if (displayEditableTextbox.text === "") textInput.textContent = "";
+		if (data.text === "") textInput.textContent = "";
 		// eslint-disable-next-line svelte/no-dom-manipulating
-		else textInput.textContent = `${displayEditableTextbox.text}\n`;
+		else textInput.textContent = `${data.text}\n`;
 
 		// Make it so `maxHeight` is a multiple of `lineHeight`
-		const lineHeight = displayEditableTextbox.lineHeightRatio * displayEditableTextbox.fontSize;
-		let height = displayEditableTextbox.maxHeight === undefined ? "auto" : `${Math.floor(displayEditableTextbox.maxHeight / lineHeight) * lineHeight}px`;
+		const lineHeight = data.lineHeightRatio * data.fontSize;
+		let height = data.maxHeight === undefined ? "auto" : `${Math.floor(data.maxHeight / lineHeight) * lineHeight}px`;
 
 		textInput.contentEditable = "true";
 		textInput.style.transformOrigin = "0 0";
-		textInput.style.width = displayEditableTextbox.maxWidth ? `${displayEditableTextbox.maxWidth}px` : "max-content";
+		textInput.style.width = data.maxWidth ? `${data.maxWidth}px` : "max-content";
 		textInput.style.height = height;
-		textInput.style.lineHeight = `${displayEditableTextbox.lineHeightRatio}`;
-		textInput.style.fontSize = `${displayEditableTextbox.fontSize}px`;
-		textInput.style.color = displayEditableTextbox.color.toHexOptionalAlpha() || "transparent";
-		textInput.style.textAlign = displayEditableTextbox.align;
+		textInput.style.lineHeight = `${data.lineHeightRatio}`;
+		textInput.style.fontSize = `${data.fontSize}px`;
+		textInput.style.color = data.color.toHexOptionalAlpha() || "transparent";
+		textInput.style.textAlign = data.align;
 
 		textInput.oninput = () => {
 			if (!textInput) return;
 			editor.handle.updateBounds(textInputCleanup(textInput.innerText));
 		};
-		textInputMatrix = displayEditableTextbox.transform;
-		const newFont = new FontFace("text-font", `url(${displayEditableTextbox.url})`);
-		window.document.fonts.add(newFont);
-		textInput.style.fontFamily = "text-font";
+
+		textInputMatrix = data.transform;
+
+		const bytes = new Uint8Array(data.fontData);
+		if (bytes.length > 0) {
+			window.document.fonts.add(new FontFace("text-font", bytes));
+			textInput.style.fontFamily = "text-font";
+		}
 
 		// Necessary to select contenteditable: https://stackoverflow.com/questions/6139107/programmatically-select-text-in-a-contenteditable-html-element/6150060#6150060
 
@@ -387,14 +396,14 @@
 		canvasWidth = Math.ceil(parseFloat(getComputedStyle(viewport).width));
 		canvasHeight = Math.ceil(parseFloat(getComputedStyle(viewport).height));
 
-		devicePixelRatio = window.devicePixelRatio || 1.0;
+		devicePixelRatio = window.devicePixelRatio || 1;
 
 		// Resize the rulers
 		rulerHorizontal?.resize();
 		rulerVertical?.resize();
 
-		// Send the new bounds of the viewports to the backend
-		if (viewport.parentElement) updateViewport(editor);
+		// Note: Viewport bounds are now sent to the backend by the ResizeObserver in viewports.ts
+		// which provides pixel-perfect physical dimensions via devicePixelContentBoxSize
 	}
 
 	onMount(() => {
@@ -422,8 +431,9 @@
 		editor.subscriptions.subscribeJsMessage(UpdateEyedropperSamplingState, async (data) => {
 			await tick();
 
-			const { mousePosition, primaryColor, secondaryColor, setColorChoice } = data;
-			const rgb = await updateEyedropperSamplingState(mousePosition, primaryColor, secondaryColor);
+			const { image, mousePosition, primaryColor, secondaryColor, setColorChoice } = data;
+			const imageData = image !== undefined ? new ImageData(new Uint8ClampedArray(image.data), image.width, image.height) : undefined;
+			const rgb = await updateEyedropperSamplingState(imageData, mousePosition, primaryColor, secondaryColor);
 
 			if (setColorChoice && rgb) {
 				if (setColorChoice === "Primary") editor.handle.updatePrimaryColor(...rgb, 1);
@@ -464,6 +474,15 @@
 
 			displayEditableTextbox(data);
 		});
+		editor.subscriptions.subscribeJsMessage(DisplayEditableTextboxUpdateFontData, async (data) => {
+			await tick();
+
+			const fontData = new Uint8Array(data.fontData);
+			if (fontData.length > 0 && textInput) {
+				window.document.fonts.add(new FontFace("text-font", fontData));
+				textInput.style.fontFamily = "text-font";
+			}
+		});
 		editor.subscriptions.subscribeJsMessage(DisplayEditableTextboxTransform, async (data) => {
 			textInputMatrix = data.transform;
 		});
@@ -473,25 +492,31 @@
 			displayRemoveEditableTextbox();
 		});
 
-		// Once this component is mounted, we want to resend the document bounds to the backend via the resize event handler which does that
-		window.dispatchEvent(new Event("resize"));
+		// Setup ResizeObserver for pixel-perfect viewport tracking with physical dimensions
+		// This must happen in onMount to ensure the viewport container element exists
+		setupViewportResizeObserver(editor);
 
+		// Also observe the inner viewport for canvas sizing and ruler updates
 		const viewportResizeObserver = new ResizeObserver(() => {
 			updateViewportInfo();
 		});
 		if (viewport) viewportResizeObserver.observe(viewport);
+	});
+
+	onDestroy(() => {
+		// Cleanup the viewport resize observer
+		cleanupViewportResizeObserver();
 	});
 </script>
 
 <LayoutCol class="document" on:dragover={(e) => e.preventDefault()} on:drop={dropFile}>
 	<LayoutRow class="control-bar" classes={{ "for-graph": $document.graphViewOverlayOpen }} scrollableX={true}>
 		{#if !$document.graphViewOverlayOpen}
-			<WidgetLayout layout={$document.documentModeLayout} />
-			<WidgetLayout layout={$document.toolOptionsLayout} />
+			<WidgetLayout layout={$document.toolOptionsLayout} layoutTarget="ToolOptions" />
 			<LayoutRow class="spacer" />
-			<WidgetLayout layout={$document.documentBarLayout} />
+			<WidgetLayout layout={$document.documentBarLayout} layoutTarget="DocumentBar" />
 		{:else}
-			<WidgetLayout layout={$document.nodeGraphControlBarLayout} />
+			<WidgetLayout layout={$document.nodeGraphControlBarLayout} layoutTarget="NodeGraphControlBar" />
 		{/if}
 	</LayoutRow>
 	<LayoutRow
@@ -506,13 +531,13 @@
 		<LayoutCol class="tool-shelf">
 			{#if !$document.graphViewOverlayOpen}
 				<LayoutCol class="tools" scrollableY={true}>
-					<WidgetLayout layout={$document.toolShelfLayout} />
+					<WidgetLayout layout={$document.toolShelfLayout} layoutTarget="ToolShelf" />
 				</LayoutCol>
 			{:else}
 				<LayoutRow class="spacer" />
 			{/if}
 			<LayoutCol class="tool-shelf-bottom-widgets">
-				<WidgetLayout class="working-colors-input-area" layout={$document.workingColorsLayout} />
+				<WidgetLayout class="working-colors-input-area" layout={$document.workingColorsLayout} layoutTarget="WorkingColors" />
 			</LayoutCol>
 		</LayoutCol>
 		<LayoutCol class="viewport-container">
@@ -553,7 +578,7 @@
 						{/if}
 						<div class="text-input" style:width={canvasWidthCSS} style:height={canvasHeightCSS} style:pointer-events={showTextInput ? "auto" : ""}>
 							{#if showTextInput}
-								<div bind:this={textInput} style:transform="matrix({textInputMatrix})" on:scroll={preventTextEditingScroll} />
+								<div bind:this={textInput} style:transform="matrix({textInputMatrix})" on:scroll={preventTextEditingScroll}></div>
 							{/if}
 						</div>
 						{#if !$appWindow.viewportHolePunch}
@@ -678,16 +703,16 @@
 						.icon-button {
 							margin: 0;
 
-							&[title^="Coming Soon"] {
-								opacity: 0.25;
-								transition: opacity 0.1s;
+							// &[data-tooltip-description^="Coming soon."] {
+							// 	opacity: 0.25;
+							// 	transition: opacity 0.1s;
 
-								&:hover {
-									opacity: 1;
-								}
-							}
+							// 	&:hover {
+							// 		opacity: 1;
+							// 	}
+							// }
 
-							&:not(.active) {
+							&:not(.emphasized) {
 								.color-general {
 									fill: var(--color-data-general);
 								}
@@ -756,7 +781,7 @@
 					margin-right: 16px;
 				}
 
-				.right-scrollbar .scrollbar-input {
+				&:has(.top-ruler) .right-scrollbar .scrollbar-input {
 					margin-top: -16px;
 				}
 

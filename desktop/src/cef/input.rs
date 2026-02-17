@@ -1,4 +1,4 @@
-use cef::sys::{cef_event_flags_t, cef_key_event_type_t, cef_mouse_button_type_t};
+use cef::sys::{cef_key_event_type_t, cef_mouse_button_type_t};
 use cef::{Browser, ImplBrowser, ImplBrowserHost, KeyEvent, MouseEvent};
 use winit::event::{ButtonSource, ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 
@@ -6,21 +6,23 @@ mod keymap;
 use keymap::{ToCharRepresentation, ToNativeKeycode, ToVKBits};
 
 mod state;
-pub(crate) use state::InputState;
+pub(crate) use state::{CefModifiers, InputState};
 
 use super::consts::{PINCH_ZOOM_SPEED, SCROLL_LINE_HEIGHT, SCROLL_LINE_WIDTH, SCROLL_SPEED_X, SCROLL_SPEED_Y};
 
 pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputState, event: &WindowEvent) {
 	match event {
 		WindowEvent::PointerMoved { position, .. } | WindowEvent::PointerEntered { position, .. } => {
-			input_state.cursor_move(position);
+			if !input_state.cursor_move(position) {
+				return;
+			}
 
 			let Some(host) = browser.host() else { return };
 			host.send_mouse_move_event(Some(&input_state.into()), 0);
 		}
 		WindowEvent::PointerLeft { position, .. } => {
 			if let Some(position) = position {
-				input_state.cursor_move(position);
+				let _ = input_state.cursor_move(position);
 			}
 
 			let Some(host) = browser.host() else { return };
@@ -43,7 +45,7 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 				MouseButton::Left => cef::MouseButtonType::from(cef_mouse_button_type_t::MBT_LEFT),
 				MouseButton::Right => cef::MouseButtonType::from(cef_mouse_button_type_t::MBT_RIGHT),
 				MouseButton::Middle => cef::MouseButtonType::from(cef_mouse_button_type_t::MBT_MIDDLE),
-				_ => return, //TODO: Handle Forward and Back button
+				_ => return,
 			};
 
 			let Some(host) = browser.host() else { return };
@@ -67,6 +69,8 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 		WindowEvent::KeyboardInput { device_id: _, event, is_synthetic: _ } => {
 			let Some(host) = browser.host() else { return };
 
+			input_state.modifiers_apply_key_event(&event.logical_key, &event.state);
+
 			let mut key_event = KeyEvent {
 				type_: match (event.state, &event.logical_key) {
 					(ElementState::Pressed, winit::keyboard::Key::Character(_)) => cef_key_event_type_t::KEYEVENT_CHAR,
@@ -77,7 +81,7 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 				..Default::default()
 			};
 
-			key_event.modifiers = input_state.cef_modifiers(&event.location, event.repeat).raw();
+			key_event.modifiers = input_state.cef_modifiers(&event.location, event.repeat).into();
 
 			key_event.windows_key_code = match &event.logical_key {
 				winit::keyboard::Key::Named(named) => named.to_vk_bits(),
@@ -88,11 +92,31 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 			key_event.native_key_code = event.physical_key.to_native_keycode();
 
 			key_event.character = event.logical_key.to_char_representation() as u16;
-			key_event.unmodified_character = event.key_without_modifiers.to_char_representation() as u16;
+
+			if event.state == ElementState::Pressed && key_event.character != 0 {
+				key_event.type_ = cef_key_event_type_t::KEYEVENT_CHAR.into();
+			}
+
+			// Mitigation for CEF on Mac bug to prevent NSMenu being triggered by this key event.
+			//
+			// CEF converts the key event into an `NSEvent` internally and passes that to Chromium.
+			// In some cases the `NSEvent` gets to the native Cocoa application, is considered "unhandled" and can trigger menus.
+			//
+			// Why mitigation works:
+			// Leaving `key_event.unmodified_character = 0` still leads to CEF forwarding a "unhandled" event to the native application
+			// but that event is discarded because `key_event.unmodified_character = 0` is considered non-printable and not used for shortcut matching.
+			//
+			// See https://github.com/chromiumembedded/cef/issues/3857
+			//
+			// TODO: Remove mitigation once bug is fixed or a better solution is found.
+			#[cfg(not(target_os = "macos"))]
+			{
+				key_event.unmodified_character = event.key_without_modifiers.to_char_representation() as u16;
+			}
 
 			#[cfg(target_os = "macos")] // See https://www.magpcss.org/ceforum/viewtopic.php?start=10&t=11650
 			if key_event.character == 0 && key_event.unmodified_character == 0 && event.text_with_all_modifiers.is_some() {
-				key_event.unmodified_character = 1;
+				key_event.character = 1;
 			}
 
 			if key_event.type_ == cef_key_event_type_t::KEYEVENT_CHAR.into() {
@@ -111,9 +135,10 @@ pub(crate) fn handle_window_event(browser: &Browser, input_state: &mut InputStat
 			}
 			let Some(host) = browser.host() else { return };
 
-			let mut mouse_event: MouseEvent = input_state.into();
-			mouse_event.modifiers |= cef_event_flags_t::EVENTFLAG_CONTROL_DOWN as u32;
-			mouse_event.modifiers |= cef_event_flags_t::EVENTFLAG_PRECISION_SCROLLING_DELTA as u32;
+			let mouse_event = MouseEvent {
+				modifiers: CefModifiers::PINCH_MODIFIERS.into(),
+				..input_state.into()
+			};
 
 			let delta = (delta * PINCH_ZOOM_SPEED).round() as i32;
 

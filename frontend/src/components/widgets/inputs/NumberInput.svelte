@@ -1,9 +1,11 @@
 <script lang="ts">
-	import { createEventDispatcher, onMount, onDestroy } from "svelte";
+	import { createEventDispatcher, onMount, onDestroy, getContext } from "svelte";
 
+	import { evaluateMathExpression } from "@graphite/../wasm/pkg/graphite_wasm";
+	import type { Editor } from "@graphite/editor";
 	import { PRESS_REPEAT_DELAY_MS, PRESS_REPEAT_INTERVAL_MS } from "@graphite/io-managers/input";
-	import { type NumberInputMode, type NumberInputIncrementBehavior } from "@graphite/messages";
-	import { evaluateMathExpression } from "@graphite-frontend/wasm/pkg/graphite_wasm.js";
+	import type { NumberInputMode, NumberInputIncrementBehavior, ActionShortcut } from "@graphite/messages";
+	import { browserVersion, isDesktop } from "@graphite/utility-functions/platform";
 
 	import { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";
 	import FieldInput from "@graphite/components/widgets/inputs/FieldInput.svelte";
@@ -15,49 +17,46 @@
 
 	const dispatch = createEventDispatcher<{ value: number | undefined; startHistoryTransaction: undefined }>();
 
-	// Label
+	const editor = getContext<Editor>("editor");
+
+	// Content
+	/// When `value` is not provided (i.e. it's `undefined`), a dash is displayed.
+	export let value: number | undefined = undefined;
 	export let label: string | undefined = undefined;
-	export let tooltip: string | undefined = undefined;
-
-	// Disabled
 	export let disabled = false;
-
-	// Narrow
+	// Styling
 	export let narrow = false;
-
-	// Value
-	// When `value` is not provided (i.e. it's `undefined`), a dash is displayed.
-	export let value: number | undefined = undefined; // NOTE: Do not update this directly, do so by calling `updateValue()` instead.
+	// Behavior
+	/// Mode behavior
+	/// "Increment" shows arrows and allows dragging left/right to change the value.
+	/// "Range" shows a range slider between some minimum and maximum value.
+	export let mode: NumberInputMode = "Increment";
 	export let min: number | undefined = undefined;
 	export let max: number | undefined = undefined;
+	/// `rangeMin` and `rangeMax` are only applicable with a `mode` of "Range".
+	/// They set the lower and upper values of the slider to drag between.
+	export let rangeMin = 0;
+	export let rangeMax = 1;
+	/// When `mode` is "Increment", `step` is the multiplier or addend used with `incrementBehavior`.
+	/// When `mode` is "Range", `step` is the range slider's snapping increment if `isInteger` is `true`.
+	export let step = 1;
 	export let isInteger = false;
-
-	// Number presentation
+	/// `incrementBehavior` is only applicable with a `mode` of "Increment".
+	/// "Add"/"Multiply": The value is added or multiplied by `step`.
+	/// "None": the increment arrows are not shown.
+	/// "Callback": the functions `incrementCallbackIncrease` and `incrementCallbackDecrease` call custom behavior.
+	export let incrementBehavior: NumberInputIncrementBehavior = "Add";
 	export let displayDecimalPlaces = 2;
 	export let unit = "";
 	export let unitIsHiddenWhenEditing = true;
 
-	// Mode behavior
-	// "Increment" shows arrows and allows dragging left/right to change the value.
-	// "Range" shows a range slider between some minimum and maximum value.
-	export let mode: NumberInputMode = "Increment";
-	// When `mode` is "Increment", `step` is the multiplier or addend used with `incrementBehavior`.
-	// When `mode` is "Range", `step` is the range slider's snapping increment if `isInteger` is `true`.
-	export let step = 1;
-	// `incrementBehavior` is only applicable with a `mode` of "Increment".
-	// "Add"/"Multiply": The value is added or multiplied by `step`.
-	// "None": the increment arrows are not shown.
-	// "Callback": the functions `incrementCallbackIncrease` and `incrementCallbackDecrease` call custom behavior.
-	export let incrementBehavior: NumberInputIncrementBehavior = "Add";
-	// `rangeMin` and `rangeMax` are only applicable with a `mode` of "Range".
-	// They set the lower and upper values of the slider to drag between.
-	export let rangeMin = 0;
-	export let rangeMax = 1;
-
-	// Styling
+	// Sizing
 	export let minWidth = 0;
 	export let maxWidth = 0;
-
+	// Tooltips
+	export let tooltipLabel: string | undefined = undefined;
+	export let tooltipDescription: string | undefined = undefined;
+	export let tooltipShortcut: ActionShortcut | undefined = undefined;
 	// Callbacks
 	export let incrementCallbackIncrease: (() => void) | undefined = undefined;
 	export let incrementCallbackDecrease: (() => void) | undefined = undefined;
@@ -84,11 +83,12 @@
 	let initialValueBeforeDragging: number | undefined = undefined;
 	// Stores the total value change during the process of dragging the slider. Set to 0 when not dragging.
 	let cumulativeDragDelta = 0;
+	// Track whether the Shift key is currently held down.
+	let shiftKeyDown = false;
 	// Track whether the Ctrl key is currently held down.
 	let ctrlKeyDown = false;
 
 	$: watchValue(value, unit);
-
 	$: sliderStepValue = isInteger ? (step === undefined ? 1 : step) : "any";
 	$: styles = {
 		...(minWidth > 0 ? { "min-width": `${minWidth}px` } : {}),
@@ -96,17 +96,21 @@
 		...(mode === "Range" ? { "--progress-factor": Math.min(Math.max((rangeSliderValueAsRendered - rangeMin) / (rangeMax - rangeMin), 0), 1) } : {}),
 	};
 
-	// Keep track of the Ctrl key being held down.
-	const trackCtrl = (e: KeyboardEvent | MouseEvent) => (ctrlKeyDown = e.ctrlKey);
+	// Keep track of the Shift and Ctrl key being held down.
+	const trackShiftAndCtrl = (e: KeyboardEvent | MouseEvent) => {
+		shiftKeyDown = e.shiftKey;
+		ctrlKeyDown = e.ctrlKey;
+	};
 	onMount(() => {
-		addEventListener("keydown", trackCtrl);
-		addEventListener("keyup", trackCtrl);
-		addEventListener("mousemove", trackCtrl);
+		addEventListener("keydown", trackShiftAndCtrl);
+		addEventListener("keyup", trackShiftAndCtrl);
+		addEventListener("mousemove", trackShiftAndCtrl);
 	});
 	onDestroy(() => {
-		removeEventListener("keydown", trackCtrl);
-		removeEventListener("keyup", trackCtrl);
-		removeEventListener("mousemove", trackCtrl);
+		removeEventListener("keydown", trackShiftAndCtrl);
+		removeEventListener("keyup", trackShiftAndCtrl);
+		removeEventListener("mousemove", trackShiftAndCtrl);
+		clearTimeout(repeatTimeout);
 	});
 
 	// ===============================
@@ -315,10 +319,10 @@
 		// Remove the text entry cursor from any other selected text field
 		if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
 
-		// Don't drag the text value from is input element
+		// Don't drag the text value from its input element
 		e.preventDefault();
 
-		// Now we need to wait and see if the user follows this up with a mousemove or mouseup.
+		// Now we need to wait and see if the user follows this up with a mousemove or mouseup...
 
 		// For some reason, both events can get fired before their event listeners are removed, so we need to guard against both running.
 		let alreadyActedGuard = false;
@@ -327,16 +331,22 @@
 		const onMove = () => {
 			if (alreadyActedGuard) return;
 			alreadyActedGuard = true;
+
 			isDragging = true;
 			beginDrag(e);
+
 			removeEventListener("pointermove", onMove);
+			removeEventListener("pointerup", onUp);
 		};
 		// If it's a mouseup, we'll begin editing the text field.
 		const onUp = () => {
 			if (alreadyActedGuard) return;
 			alreadyActedGuard = true;
+
 			isDragging = false;
 			self?.focus();
+
+			removeEventListener("pointermove", onMove);
 			removeEventListener("pointerup", onUp);
 		};
 		addEventListener("pointermove", onMove);
@@ -348,8 +358,28 @@
 		const target = e.target || undefined;
 		if (!(target instanceof HTMLElement)) return;
 
+		// Default to using pointer lock except on unsupported platforms (Safari and the native desktop app).
+		// Even though Safari supposedly supports the PointerLock API, it implements an old (2016) version of the spec that requires an "engagement
+		// gesture" (<https://www.w3.org/TR/2016/REC-pointerlock-20161027/#glossary>) to initiate pointer lock, which the newer spec doesn't require.
+		// Because "mousemove" (and similarly, the "pointermove" event we use) is defined as not being a user-initiated "engagement gesture" event,
+		// Safari never lets us to enter pointer lock while the mouse button is held down and we are awaiting movement to begin dragging the slider.
+		const isSafari = browserVersion().toLowerCase().includes("safari");
+		const usePointerLock = !isSafari && !isDesktop();
+
+		// On Safari, we use a workaround involving an alternative strategy where we hide the cursor while it's within the web page
+		// (but we can't hide it when it ventures outside the page), taking advantage of a separate (helpful) Safari bug where it
+		// keeps reporting deltas to the pointer position even as it pushes up against edges of the screen. Like the PointerLock API,
+		// this allows infinite movement in each direction, but the downside is that the cursor remains visible outside the page and
+		// it ends up in that location when the drag ends. It isn't possible to take advantage of the PointerCapture API (yes, that's
+		// a different API than PointerLock) which is supposed to allow the CSS cursor style (such as `cursor: none`) to persist even
+		// while dragging it outside the browser window, because Safari has another bug where the cursor icon is unaffected by that API.
+		if (isSafari) document.body.classList.add("cursor-hidden");
+
 		// Enter dragging state
-		target.requestPointerLock();
+		if (usePointerLock) target.requestPointerLock();
+		if (isDesktop()) {
+			editor.handle.appWindowPointerLock();
+		}
 		initialValueBeforeDragging = value;
 		cumulativeDragDelta = 0;
 
@@ -359,6 +389,9 @@
 		// We ignore the first event invocation's `e.movementX` value because it's unreliable.
 		// In both Chrome and Firefox (tested on Windows 10), the first `e.movementX` value is occasionally a very large number
 		// (around positive 1000, even if movement was in the negative direction). This seems to happen more often if the movement is rapid.
+		// TODO: On rarer occasions, it isn't sufficient to ignore just the first event, so this solution is imperfect.
+		// TODO: Using a counter to ignore more frames helps progressively decrease—but not eliminate—the issue, but it makes drag initiation feel delayed so we don't do that.
+		// TODO: A better solution will need to discard outlier movement values across multiple frames by basically implementing a time-series data analysis filtering algorithm.
 		let ignoredFirstMovement = false;
 
 		const pointerUp = () => {
@@ -367,48 +400,48 @@
 			initialValueBeforeDragging = value;
 			cumulativeDragDelta = 0;
 
-			document.exitPointerLock();
-
-			// Fallback for Safari in case pointerlockchange never fires
-			setTimeout(() => {
-				if (!document.pointerLockElement) pointerLockChange();
-			}, 0);
+			if (usePointerLock) document.exitPointerLock();
+			else pointerLockChange();
 		};
 		const pointerMove = (e: PointerEvent) => {
+			// TODO: Display a fake cursor over the top of the page which wraps around the edges of the editor.
+
 			// Abort the drag if right click is down. This works here because a "pointermove" event is fired when right clicking even if the cursor didn't move.
 			if (e.buttons & BUTTONS_RIGHT) {
-				document.exitPointerLock();
+				if (usePointerLock) document.exitPointerLock();
+				else pointerLockChange();
 				return;
 			}
 
-			// If no buttons are down, we are stuck in the drag state after having released the mouse, so we should exit.
-			// For some reason on firefox in wayland the button is -1 and the buttons is 0.
+			// If no buttons are down, that means we are stuck in the drag state after having released the mouse, so we should exit.
+			// For some reason on Firefox in Wayland, `e.buttons` can be 0 while `e.button` is -1, but we don't want to exit in that state.
 			if (e.buttons === 0 && e.button !== -1) {
-				document.exitPointerLock();
+				if (usePointerLock) document.exitPointerLock();
+				else pointerLockChange();
 				return;
 			}
 
 			// Calculate and then update the dragged value offset, slowed down by 10x when Shift is held.
 			if (ignoredFirstMovement && initialValueBeforeDragging !== undefined) {
-				const CHANGE_PER_DRAG_PX = 0.1;
-				const CHANGE_PER_DRAG_PX_SLOW = CHANGE_PER_DRAG_PX / 10;
-
-				const dragDelta = e.movementX * (e.shiftKey ? CHANGE_PER_DRAG_PX_SLOW : CHANGE_PER_DRAG_PX);
-				cumulativeDragDelta += dragDelta;
-
-				const combined = initialValueBeforeDragging + cumulativeDragDelta;
-				const combineSnapped = e.ctrlKey ? Math.round(combined) : combined;
-
-				const newValue = updateValue(combineSnapped);
-
-				// If the value was altered within the `updateValue()` call, we need to rectify the cumulative drag delta to account for the change.
-				if (newValue !== undefined) cumulativeDragDelta -= combineSnapped - newValue;
+				pointerLockMoveUpdate(e.movementX, e.shiftKey, e.ctrlKey, initialValueBeforeDragging);
+			}
+			ignoredFirstMovement = true;
+		};
+		// On desktop we don't get `pointermove` events while in pointer lock (cef doesn't support pointer lock).
+		// We have to listen for our custom `pointerlockmove` events instead.
+		const pointerLockMove = (e: Event) => {
+			if (ignoredFirstMovement && initialValueBeforeDragging !== undefined && e instanceof CustomEvent) {
+				const delta = (e.detail as { x: number }).x;
+				pointerLockMoveUpdate(delta, shiftKeyDown, ctrlKeyDown, initialValueBeforeDragging);
 			}
 			ignoredFirstMovement = true;
 		};
 		const pointerLockChange = () => {
 			// Do nothing if we just entered, rather than exited, pointer lock.
-			if (document.pointerLockElement) return;
+			if (usePointerLock && document.pointerLockElement) return;
+
+			// Un-hide the cursor if we're using the Safari workaround.
+			if (isSafari) document.body.classList.remove("cursor-hidden");
 
 			// Reset the value to the initial value if the drag was aborted, or to the current value if it was just confirmed by changing the initial value to the current value.
 			updateValue(initialValueBeforeDragging);
@@ -418,12 +451,30 @@
 			// Clean up the event listeners.
 			removeEventListener("pointerup", pointerUp);
 			removeEventListener("pointermove", pointerMove);
-			document.removeEventListener("pointerlockchange", pointerLockChange);
+			removeEventListener("pointerlockmove", pointerLockMove);
+			if (usePointerLock) document.removeEventListener("pointerlockchange", pointerLockChange);
 		};
 
 		addEventListener("pointerup", pointerUp);
 		addEventListener("pointermove", pointerMove);
-		document.addEventListener("pointerlockchange", pointerLockChange);
+		addEventListener("pointerlockmove", pointerLockMove);
+		if (usePointerLock) document.addEventListener("pointerlockchange", pointerLockChange);
+	}
+
+	function pointerLockMoveUpdate(delta: number, slow: boolean, snapping: boolean, initialValue: number) {
+		const CHANGE_PER_DRAG_PX = 0.1;
+		const CHANGE_PER_DRAG_PX_SLOW = CHANGE_PER_DRAG_PX / 10;
+
+		const dragDelta = delta * (slow ? CHANGE_PER_DRAG_PX_SLOW : CHANGE_PER_DRAG_PX);
+		cumulativeDragDelta += dragDelta;
+
+		const combined = initialValue + cumulativeDragDelta;
+		const combineSnapped = snapping || isInteger ? Math.round(combined) : combined;
+
+		const newValue = updateValue(combineSnapped);
+
+		// If the value was altered within the `updateValue()` call, we need to rectify the cumulative drag delta to account for the change.
+		if (newValue !== undefined) cumulativeDragDelta -= combineSnapped - newValue;
 	}
 
 	// ===============================
@@ -658,7 +709,9 @@
 	{label}
 	{disabled}
 	{narrow}
-	{tooltip}
+	{tooltipLabel}
+	{tooltipDescription}
+	{tooltipShortcut}
 	{styles}
 	hideContextMenu={true}
 	spellcheck={false}
@@ -701,19 +754,15 @@
 				bind:this={inputRangeElement}
 			/>
 			{#if rangeSliderClickDragState === "Deciding"}
-				<div class="fake-slider-thumb" />
+				<div class="fake-slider-thumb"></div>
 			{/if}
-			<div class="slider-progress" />
+			<div class="slider-progress"></div>
 		{/if}
 	{/if}
 </FieldInput>
 
 <style lang="scss" global>
 	.number-input {
-		input {
-			text-align: center;
-		}
-
 		&.narrow {
 			--widget-height: 20px;
 		}
@@ -937,6 +986,10 @@
 					border-radius: 1px 0 0 1px;
 				}
 			}
+		}
+
+		input {
+			text-align: center;
 		}
 	}
 </style>

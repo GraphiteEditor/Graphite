@@ -1,29 +1,24 @@
 { pkgs, inputs, ... }:
 
 let
-  libcef = pkgs.libcef.overrideAttrs (
-    _: _: {
-      postInstall = ''
-        strip $out/lib/*
-      '';
-    }
-  );
-  cefPath = pkgs.runCommand "cef-path" { } ''
-    mkdir -p $out
+  cefPath = pkgs.cef-binary.overrideAttrs (finalAttrs: {
+    postInstall = ''
+      rm -r $out/* $out/.* || true
+      strip ./Release/*.so*
+      mv ./Release/* $out/
+      find "./Resources/locales" -maxdepth 1 -type f ! -name 'en-US.pak' -delete
+      mv ./Resources/* $out/
+      mv ./include $out/
 
-    ln -s ${libcef}/include $out/include
-    find ${libcef}/lib -type f -name "*" -exec ln -s {} $out/ \;
-    find ${libcef}/libexec -type f -name "*" -exec ln -s {} $out/ \;
-    cp -r ${libcef}/share/cef/* $out/
-
-    echo '${
-      builtins.toJSON {
-        type = "minimal";
-        name = builtins.baseNameOf libcef.src.url;
-        sha1 = "";
-      }
-    }' > $out/archive.json
-  '';
+      echo '${
+        builtins.toJSON {
+          type = "minimal";
+          name = builtins.baseNameOf finalAttrs.src.url;
+          sha1 = "";
+        }
+      }' > $out/archive.json
+    '';
+  });
 in
 {
   env.CEF_PATH = cefPath;

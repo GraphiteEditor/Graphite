@@ -1,6 +1,6 @@
 use super::tool_prelude::*;
 use crate::consts::DEFAULT_STROKE_WIDTH;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_network_node_type;
 use crate::messages::portfolio::document::overlays::utility_functions::path_endpoint_overlays;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -72,7 +72,7 @@ impl ToolMetadata for FreehandTool {
 	fn icon_name(&self) -> String {
 		"VectorFreehandTool".into()
 	}
-	fn tooltip(&self) -> String {
+	fn tooltip_label(&self) -> String {
 		"Freehand Tool".into()
 	}
 	fn tool_type(&self) -> crate::messages::tool::utility_types::ToolType {
@@ -80,7 +80,7 @@ impl ToolMetadata for FreehandTool {
 	}
 }
 
-fn create_weight_widget(line_weight: f64) -> WidgetHolder {
+fn create_weight_widget(line_weight: f64) -> WidgetInstance {
 	NumberInput::new(Some(line_weight))
 		.unit(" px")
 		.label("Weight")
@@ -92,7 +92,7 @@ fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 			}
 			.into()
 		})
-		.widget_holder()
+		.widget_instance()
 }
 
 impl LayoutHolder for FreehandTool {
@@ -122,7 +122,7 @@ impl LayoutHolder for FreehandTool {
 			},
 		);
 
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 
 		widgets.append(&mut self.options.stroke.create_widgets(
 			"Stroke",
@@ -148,10 +148,10 @@ impl LayoutHolder for FreehandTool {
 				.into()
 			},
 		));
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 		widgets.push(create_weight_widget(self.options.line_weight));
 
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
+		Layout(vec![LayoutGroup::Row { widgets }])
 	}
 }
 
@@ -236,7 +236,6 @@ impl Fsm for FreehandToolFsmState {
 			global_tool_data,
 			input,
 			shape_editor,
-			preferences,
 			viewport,
 			..
 		} = tool_action_data;
@@ -244,7 +243,7 @@ impl Fsm for FreehandToolFsmState {
 		let ToolMessage::Freehand(event) = event else { return self };
 		match (self, event) {
 			(_, FreehandToolMessage::Overlays { context: mut overlay_context }) => {
-				path_endpoint_overlays(document, shape_editor, &mut overlay_context, tool_action_data.preferences);
+				path_endpoint_overlays(document, shape_editor, &mut overlay_context);
 
 				self
 			}
@@ -258,7 +257,7 @@ impl Fsm for FreehandToolFsmState {
 				// Extend an endpoint of the selected path
 				let selected_nodes = document.network_interface.selected_nodes();
 				let tolerance = crate::consts::SNAP_POINT_TOLERANCE;
-				if let Some((layer, point, position)) = should_extend(document, input.mouse.position, tolerance, selected_nodes.selected_layers(document.metadata()), preferences) {
+				if let Some((layer, point, position)) = should_extend(document, input.mouse.position, tolerance, selected_nodes.selected_layers(document.metadata())) {
 					tool_data.layer = Some(layer);
 					tool_data.end_point = Some((position, point));
 
@@ -286,7 +285,7 @@ impl Fsm for FreehandToolFsmState {
 
 				let parent = document.new_layer_bounding_artboard(input, viewport);
 
-				let node_type = resolve_document_node_type("Path").expect("Path node does not exist");
+				let node_type = resolve_network_node_type("Path").expect("Path node does not exist");
 				let node = node_type.default_node_template();
 				let nodes = vec![(NodeId(0), node)];
 
@@ -346,7 +345,7 @@ impl Fsm for FreehandToolFsmState {
 			FreehandToolFsmState::Drawing => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
 		};
 
-		responses.add(FrontendMessage::UpdateInputHints { hint_data });
+		hint_data.send_layout(responses);
 	}
 
 	fn update_cursor(&self, responses: &mut VecDeque<Message>) {
@@ -403,7 +402,7 @@ mod test_freehand {
 			.filter_map(|layer| {
 				let graph_layer = NodeGraphLayer::new(layer, &document.network_interface);
 				// Only get layers with path nodes
-				let _ = graph_layer.upstream_visible_node_id_from_name_in_layer("Path")?;
+				let _ = graph_layer.upstream_visible_node_id_from_name_in_layer(&DefinitionIdentifier::Network("Path".into()))?;
 
 				let vector = document.network_interface.compute_modified_vector(layer)?;
 				let transform = document.metadata().transform_to_viewport(layer);
@@ -519,10 +518,10 @@ mod test_freehand {
 			initial_segment_count
 		);
 
-		let extendable_points = initial_vector.extendable_points(false).collect::<Vec<_>>();
-		assert!(!extendable_points.is_empty(), "No extendable points found in the path");
+		let endpoints = initial_vector.anchor_endpoints().collect::<Vec<_>>();
+		assert!(!endpoints.is_empty(), "No extendable points found in the path");
 
-		let endpoint_id = extendable_points[0];
+		let endpoint_id = endpoints[0];
 		let endpoint_pos_option = initial_vector.point_domain.position_from_id(endpoint_id);
 		assert!(endpoint_pos_option.is_some(), "Could not find position for endpoint");
 

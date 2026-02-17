@@ -9,6 +9,7 @@ use crate::messages::tool::common_functionality::gizmos::gizmo_manager::GizmoMan
 use crate::messages::tool::common_functionality::graph_modification_utils;
 use crate::messages::tool::common_functionality::resize::Resize;
 use crate::messages::tool::common_functionality::shapes::arc_shape::Arc;
+use crate::messages::tool::common_functionality::shapes::arrow_shape::Arrow;
 use crate::messages::tool::common_functionality::shapes::circle_shape::Circle;
 use crate::messages::tool::common_functionality::shapes::grid_shape::Grid;
 use crate::messages::tool::common_functionality::shapes::line_shape::{LineToolData, clicked_on_line_endpoints};
@@ -43,6 +44,9 @@ pub struct ShapeToolOptions {
 	grid_type: GridType,
 	spiral_type: SpiralType,
 	turns: f64,
+	arrow_shaft_width: f64,
+	arrow_head_width: f64,
+	arrow_head_length: f64,
 }
 
 impl Default for ShapeToolOptions {
@@ -57,6 +61,9 @@ impl Default for ShapeToolOptions {
 			spiral_type: SpiralType::Archimedean,
 			turns: 5.,
 			grid_type: GridType::Rectangular,
+			arrow_shaft_width: 14.,
+			arrow_head_width: 32.,
+			arrow_head_length: 28.,
 		}
 	}
 }
@@ -75,6 +82,9 @@ pub enum ShapeOptionsUpdate {
 	SpiralType(SpiralType),
 	Turns(f64),
 	GridType(GridType),
+	ArrowShaftWidth(f64),
+	ArrowHeadWidth(f64),
+	ArrowHeadLength(f64),
 }
 
 #[impl_message(Message, ToolMessage, Shape)]
@@ -100,7 +110,7 @@ pub enum ShapeToolMessage {
 	NudgeSelectedLayers { delta_x: f64, delta_y: f64, resize: Key, resize_opposite_corner: Key },
 }
 
-fn create_sides_widget(vertices: u32) -> WidgetHolder {
+fn create_sides_widget(vertices: u32) -> WidgetInstance {
 	NumberInput::new(Some(vertices as f64))
 		.label("Sides")
 		.int()
@@ -113,10 +123,10 @@ fn create_sides_widget(vertices: u32) -> WidgetHolder {
 			}
 			.into()
 		})
-		.widget_holder()
+		.widget_instance()
 }
 
-fn create_turns_widget(turns: f64) -> WidgetHolder {
+fn create_turns_widget(turns: f64) -> WidgetInstance {
 	NumberInput::new(Some(turns))
 		.label("Turns")
 		.min(0.5)
@@ -127,10 +137,10 @@ fn create_turns_widget(turns: f64) -> WidgetHolder {
 			}
 			.into()
 		})
-		.widget_holder()
+		.widget_instance()
 }
 
-fn create_shape_option_widget(shape_type: ShapeType) -> WidgetHolder {
+fn create_shape_option_widget(shape_type: ShapeType) -> WidgetInstance {
 	let entries = vec![vec![
 		MenuListEntry::new("Polygon").label("Polygon").on_commit(move |_| {
 			ShapeToolMessage::UpdateOptions {
@@ -168,11 +178,35 @@ fn create_shape_option_widget(shape_type: ShapeType) -> WidgetHolder {
 			}
 			.into()
 		}),
+		MenuListEntry::new("Rectangle").label("Rectangle").on_commit(move |_| {
+			ShapeToolMessage::UpdateOptions {
+				options: ShapeOptionsUpdate::ShapeType(ShapeType::Rectangle),
+			}
+			.into()
+		}),
+		MenuListEntry::new("Ellipse").label("Ellipse").on_commit(move |_| {
+			ShapeToolMessage::UpdateOptions {
+				options: ShapeOptionsUpdate::ShapeType(ShapeType::Ellipse),
+			}
+			.into()
+		}),
+		MenuListEntry::new("Arrow").label("Arrow").on_commit(move |_| {
+			ShapeToolMessage::UpdateOptions {
+				options: ShapeOptionsUpdate::ShapeType(ShapeType::Arrow),
+			}
+			.into()
+		}),
+		MenuListEntry::new("Line").label("Line").on_commit(move |_| {
+			ShapeToolMessage::UpdateOptions {
+				options: ShapeOptionsUpdate::ShapeType(ShapeType::Line),
+			}
+			.into()
+		}),
 	]];
-	DropdownInput::new(entries).selected_index(Some(shape_type as u32)).widget_holder()
+	DropdownInput::new(entries).selected_index(Some(shape_type as u32)).widget_instance()
 }
 
-fn create_arc_type_widget(arc_type: ArcType) -> WidgetHolder {
+fn create_arc_type_widget(arc_type: ArcType) -> WidgetInstance {
 	let entries = vec![
 		RadioEntryData::new("Open").label("Open").on_update(move |_| {
 			ShapeToolMessage::UpdateOptions {
@@ -193,10 +227,10 @@ fn create_arc_type_widget(arc_type: ArcType) -> WidgetHolder {
 			.into()
 		}),
 	];
-	RadioInput::new(entries).selected_index(Some(arc_type as u32)).widget_holder()
+	RadioInput::new(entries).selected_index(Some(arc_type as u32)).widget_instance()
 }
 
-fn create_weight_widget(line_weight: f64) -> WidgetHolder {
+fn create_weight_widget(line_weight: f64) -> WidgetInstance {
 	NumberInput::new(Some(line_weight))
 		.unit(" px")
 		.label("Weight")
@@ -208,10 +242,55 @@ fn create_weight_widget(line_weight: f64) -> WidgetHolder {
 			}
 			.into()
 		})
-		.widget_holder()
+		.widget_instance()
 }
 
-fn create_spiral_type_widget(spiral_type: SpiralType) -> WidgetHolder {
+fn create_arrow_shaft_width_widget(shaft_width: f64) -> WidgetInstance {
+	NumberInput::new(Some(shaft_width))
+		.unit(" px")
+		.label("Shaft")
+		.min(0.1)
+		.max(1000.)
+		.on_update(|number_input: &NumberInput| {
+			ShapeToolMessage::UpdateOptions {
+				options: ShapeOptionsUpdate::ArrowShaftWidth(number_input.value.unwrap()),
+			}
+			.into()
+		})
+		.widget_instance()
+}
+
+fn create_arrow_head_width_widget(head_width: f64) -> WidgetInstance {
+	NumberInput::new(Some(head_width))
+		.unit(" px")
+		.label("Head W")
+		.min(0.1)
+		.max(1000.)
+		.on_update(|number_input: &NumberInput| {
+			ShapeToolMessage::UpdateOptions {
+				options: ShapeOptionsUpdate::ArrowHeadWidth(number_input.value.unwrap()),
+			}
+			.into()
+		})
+		.widget_instance()
+}
+
+fn create_arrow_head_length_widget(head_length: f64) -> WidgetInstance {
+	NumberInput::new(Some(head_length))
+		.unit(" px")
+		.label("Head L")
+		.min(0.1)
+		.max(1000.)
+		.on_update(|number_input: &NumberInput| {
+			ShapeToolMessage::UpdateOptions {
+				options: ShapeOptionsUpdate::ArrowHeadLength(number_input.value.unwrap()),
+			}
+			.into()
+		})
+		.widget_instance()
+}
+
+fn create_spiral_type_widget(spiral_type: SpiralType) -> WidgetInstance {
 	let entries = vec![vec![
 		MenuListEntry::new("Archimedean").label("Archimedean").on_commit(move |_| {
 			ShapeToolMessage::UpdateOptions {
@@ -226,10 +305,10 @@ fn create_spiral_type_widget(spiral_type: SpiralType) -> WidgetHolder {
 			.into()
 		}),
 	]];
-	DropdownInput::new(entries).selected_index(Some(spiral_type as u32)).widget_holder()
+	DropdownInput::new(entries).selected_index(Some(spiral_type as u32)).widget_instance()
 }
 
-fn create_grid_type_widget(grid_type: GridType) -> WidgetHolder {
+fn create_grid_type_widget(grid_type: GridType) -> WidgetInstance {
 	let entries = vec![
 		RadioEntryData::new("Rectangular").label("Rectangular").on_update(move |_| {
 			ShapeToolMessage::UpdateOptions {
@@ -244,7 +323,7 @@ fn create_grid_type_widget(grid_type: GridType) -> WidgetHolder {
 			.into()
 		}),
 	];
-	RadioInput::new(entries).selected_index(Some(grid_type as u32)).widget_holder()
+	RadioInput::new(entries).selected_index(Some(grid_type as u32)).widget_instance()
 }
 
 impl LayoutHolder for ShapeTool {
@@ -253,30 +332,39 @@ impl LayoutHolder for ShapeTool {
 
 		if !self.tool_data.hide_shape_option_widget {
 			widgets.push(create_shape_option_widget(self.options.shape_type));
-			widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+			widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 
 			if self.options.shape_type == ShapeType::Polygon || self.options.shape_type == ShapeType::Star {
 				widgets.push(create_sides_widget(self.options.vertices));
-				widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+				widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 			}
 
 			if self.options.shape_type == ShapeType::Arc {
 				widgets.push(create_arc_type_widget(self.options.arc_type));
-				widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+				widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 			}
 		}
 
 		if self.options.shape_type == ShapeType::Spiral {
 			widgets.push(create_spiral_type_widget(self.options.spiral_type));
-			widgets.push(Separator::new(SeparatorType::Related).widget_holder());
+			widgets.push(Separator::new(SeparatorStyle::Related).widget_instance());
 
 			widgets.push(create_turns_widget(self.options.turns));
-			widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+			widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 		}
 
 		if self.options.shape_type == ShapeType::Grid {
 			widgets.push(create_grid_type_widget(self.options.grid_type));
-			widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+			widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
+		}
+
+		if self.options.shape_type == ShapeType::Arrow {
+			widgets.push(create_arrow_shaft_width_widget(self.options.arrow_shaft_width));
+			widgets.push(Separator::new(SeparatorStyle::Related).widget_instance());
+			widgets.push(create_arrow_head_width_widget(self.options.arrow_head_width));
+			widgets.push(Separator::new(SeparatorStyle::Related).widget_instance());
+			widgets.push(create_arrow_head_length_widget(self.options.arrow_head_length));
+			widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 		}
 
 		if self.options.shape_type != ShapeType::Line {
@@ -305,7 +393,7 @@ impl LayoutHolder for ShapeTool {
 				},
 			));
 
-			widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+			widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 		}
 
 		widgets.append(&mut self.options.stroke.create_widgets(
@@ -332,10 +420,10 @@ impl LayoutHolder for ShapeTool {
 				.into()
 			},
 		));
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 		widgets.push(create_weight_widget(self.options.line_weight));
 
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
+		Layout(vec![LayoutGroup::Row { widgets }])
 	}
 }
 
@@ -389,6 +477,15 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Shap
 			ShapeOptionsUpdate::GridType(grid_type) => {
 				self.options.grid_type = grid_type;
 			}
+			ShapeOptionsUpdate::ArrowShaftWidth(shaft_width) => {
+				self.options.arrow_shaft_width = shaft_width;
+			}
+			ShapeOptionsUpdate::ArrowHeadWidth(head_width) => {
+				self.options.arrow_head_width = head_width;
+			}
+			ShapeOptionsUpdate::ArrowHeadLength(head_length) => {
+				self.options.arrow_head_length = head_length;
+			}
 		}
 
 		update_dynamic_hints(&self.fsm_state, responses, &self.tool_data);
@@ -432,7 +529,7 @@ impl ToolMetadata for ShapeTool {
 	fn icon_name(&self) -> String {
 		"VectorPolygonTool".into()
 	}
-	fn tooltip(&self) -> String {
+	fn tooltip_label(&self) -> String {
 		"Shape Tool".into()
 	}
 	fn tool_type(&self) -> ToolType {
@@ -556,7 +653,6 @@ impl Fsm for ShapeToolFsmState {
 			document,
 			global_tool_data,
 			input,
-			preferences,
 			shape_editor,
 			viewport,
 			..
@@ -762,10 +858,10 @@ impl Fsm for ShapeToolFsmState {
 					SNAP_POINT_TOLERANCE,
 					document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface),
 					|_| false,
-					preferences,
 				) && clicked_on_line_endpoints(layer, document, input, tool_data)
 					&& !input.keyboard.key(Key::Control)
 				{
+					responses.add(DocumentMessage::StartTransaction);
 					return ShapeToolFsmState::DraggingLineEndpoints;
 				}
 
@@ -809,7 +905,7 @@ impl Fsm for ShapeToolFsmState {
 					ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Spiral | ShapeType::Grid | ShapeType::Rectangle | ShapeType::Ellipse => {
 						tool_data.data.start(document, input, viewport);
 					}
-					ShapeType::Line => {
+					ShapeType::Arrow | ShapeType::Line => {
 						let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
 						let snapped = tool_data
 							.data
@@ -830,6 +926,13 @@ impl Fsm for ShapeToolFsmState {
 					ShapeType::Grid => Grid::create_node(tool_options.grid_type),
 					ShapeType::Rectangle => Rectangle::create_node(),
 					ShapeType::Ellipse => Ellipse::create_node(),
+					ShapeType::Arrow => Arrow::create_node(
+						document,
+						tool_data.data.drag_start,
+						tool_options.arrow_shaft_width,
+						tool_options.arrow_head_width,
+						tool_options.arrow_head_length,
+					),
 					ShapeType::Line => Line::create_node(document, tool_data.data.drag_start),
 				};
 
@@ -847,6 +950,11 @@ impl Fsm for ShapeToolFsmState {
 							skip_rerender: false,
 						});
 
+						tool_options.fill.apply_fill(layer, defered_responses);
+					}
+					ShapeType::Arrow => {
+						tool_data.line_data.weight = tool_options.line_weight;
+						tool_data.line_data.editing_layer = Some(layer);
 						tool_options.fill.apply_fill(layer, defered_responses);
 					}
 					ShapeType::Line => {
@@ -876,6 +984,7 @@ impl Fsm for ShapeToolFsmState {
 					ShapeType::Star => Star::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
 					ShapeType::Circle => Circle::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
 					ShapeType::Arc => Arc::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
+					ShapeType::Arrow => Arrow::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
 					ShapeType::Spiral => Spiral::update_shape(document, input, viewport, layer, tool_data, responses),
 					ShapeType::Grid => Grid::update_shape(document, input, layer, tool_options.grid_type, tool_data, modifier, responses),
 					ShapeType::Rectangle => Rectangle::update_shape(document, input, viewport, layer, tool_data, modifier, responses),
@@ -1020,6 +1129,7 @@ impl Fsm for ShapeToolFsmState {
 				}
 
 				tool_data.line_data.dragging_endpoint = None;
+				tool_data.line_data.editing_layer = None;
 
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Crosshair });
 
@@ -1037,6 +1147,7 @@ impl Fsm for ShapeToolFsmState {
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.data.cleanup(responses);
 				tool_data.line_data.dragging_endpoint = None;
+				tool_data.line_data.editing_layer = None;
 
 				tool_data.gizmo_manager.handle_cleanup();
 
@@ -1132,6 +1243,7 @@ fn update_dynamic_hints(state: &ShapeToolFsmState, responses: &mut VecDeque<Mess
 					HintInfo::keys([Key::Shift], "Constrain Regular").prepend_plus(),
 					HintInfo::keys([Key::Alt], "From Center").prepend_plus(),
 				])],
+				ShapeType::Arrow => vec![HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Draw Arrow")])],
 			};
 			HintData(hint_groups)
 		}
@@ -1147,6 +1259,7 @@ fn update_dynamic_hints(state: &ShapeToolFsmState, responses: &mut VecDeque<Mess
 					HintInfo::keys([Key::Alt], "From Center"),
 					HintInfo::keys([Key::Control], "Lock Angle"),
 				]),
+				ShapeType::Arrow => HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain Angle")]),
 				ShapeType::Circle => HintGroup(vec![HintInfo::keys([Key::Alt], "From Center")]),
 				ShapeType::Spiral => HintGroup(vec![]),
 			};
@@ -1187,5 +1300,5 @@ fn update_dynamic_hints(state: &ShapeToolFsmState, responses: &mut VecDeque<Mess
 		]),
 		ShapeToolFsmState::ModifyingGizmo => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
 	};
-	responses.add(FrontendMessage::UpdateInputHints { hint_data });
+	hint_data.send_layout(responses);
 }

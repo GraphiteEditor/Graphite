@@ -3,6 +3,10 @@ use std::path::PathBuf;
 
 pub(crate) use graphite_editor::messages::prelude::Message as EditorMessage;
 
+pub use graphite_editor::messages::input_mapper::utility_types::input_keyboard::{Key, ModifierKeys};
+pub use graphite_editor::messages::input_mapper::utility_types::input_mouse::{EditorMouseState as MouseState, EditorPosition as Position, MouseKeys};
+pub use graphite_editor::messages::prelude::InputPreprocessorMessage as InputMessage;
+
 pub use graphite_editor::messages::prelude::DocumentId;
 pub use graphite_editor::messages::prelude::PreferencesMessageHandler as Preferences;
 pub enum DesktopFrontendMessage {
@@ -31,11 +35,10 @@ pub enum DesktopFrontendMessage {
 		width: f64,
 		height: f64,
 	},
+	UpdateUIScale {
+		scale: f64,
+	},
 	UpdateOverlays(vello::Scene),
-	MinimizeWindow,
-	MaximizeWindow,
-	DragWindow,
-	CloseWindow,
 	PersistenceWriteDocument {
 		id: DocumentId,
 		document: Document,
@@ -58,11 +61,25 @@ pub enum DesktopFrontendMessage {
 	UpdateMenu {
 		entries: Vec<MenuItem>,
 	},
+	ClipboardRead,
+	ClipboardWrite {
+		content: String,
+	},
+	PointerLock,
+	WindowClose,
+	WindowMinimize,
+	WindowMaximize,
+	WindowFullscreen,
+	WindowDrag,
+	WindowHide,
+	WindowHideOthers,
+	WindowShowAll,
 }
 
 pub enum DesktopWrapperMessage {
 	FromWeb(Box<EditorMessage>),
-	OpenFileDialogResult {
+	Input(InputMessage),
+	FileDialogResult {
 		path: PathBuf,
 		content: Vec<u8>,
 		context: OpenFileDialogContext,
@@ -70,10 +87,6 @@ pub enum DesktopWrapperMessage {
 	SaveFileDialogResult {
 		path: PathBuf,
 		context: SaveFileDialogContext,
-	},
-	OpenDocument {
-		path: PathBuf,
-		content: Vec<u8>,
 	},
 	OpenFile {
 		path: PathBuf,
@@ -83,18 +96,12 @@ pub enum DesktopWrapperMessage {
 		path: PathBuf,
 		content: Vec<u8>,
 	},
-	ImportSvg {
-		path: PathBuf,
-		content: Vec<u8>,
-	},
-	ImportImage {
-		path: PathBuf,
-		content: Vec<u8>,
-	},
 	PollNodeGraphEvaluation,
-	UpdatePlatform(Platform),
 	UpdateMaximized {
 		maximized: bool,
+	},
+	UpdateFullscreen {
+		fullscreen: bool,
 	},
 	LoadDocument {
 		id: DocumentId,
@@ -109,7 +116,14 @@ pub enum DesktopWrapperMessage {
 		preferences: Option<Preferences>,
 	},
 	MenuEvent {
-		id: u64,
+		id: String,
+	},
+	ClipboardReadResult {
+		content: Option<String>,
+	},
+	PointerLockMove {
+		x: f64,
+		y: f64,
 	},
 }
 
@@ -127,7 +141,7 @@ pub struct FileFilter {
 }
 
 pub enum OpenFileDialogContext {
-	Document,
+	Open,
 	Import,
 }
 
@@ -136,28 +150,22 @@ pub enum SaveFileDialogContext {
 	File { content: Vec<u8> },
 }
 
-pub enum Platform {
-	Windows,
-	Mac,
-	Linux,
-}
-
 pub enum MenuItem {
 	Action {
-		id: u64,
+		id: String,
 		text: String,
 		enabled: bool,
 		shortcut: Option<Shortcut>,
 	},
 	Checkbox {
-		id: u64,
+		id: String,
 		text: String,
 		enabled: bool,
 		shortcut: Option<Shortcut>,
 		checked: bool,
 	},
 	SubMenu {
-		id: u64,
+		id: String,
 		text: String,
 		enabled: bool,
 		items: Vec<MenuItem>,

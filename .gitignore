@@ -1,5 +1,7 @@
+branding/
 target/
 result/
+.flatpak-builder/
 *.spv
 *.exrc
 perf.data*
@@ -8,5 +10,4 @@ profile.json.gz
 flamegraph.svg
 .idea/
 .direnv
-hierarchical_message_system_tree.txt
-hierarchical_message_system_tree.html
+.DS_Store

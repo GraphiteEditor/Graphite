@@ -33,7 +33,10 @@
         info = {
           pname = "graphite";
           version = "unstable";
-          src = ./..;
+          src = pkgs.lib.cleanSourceWith {
+            src = ./..;
+            filter = path: type: !(type == "directory" && builtins.baseNameOf path == ".nix");
+          };
         };
 
         pkgs = import inputs.nixpkgs {
@@ -83,6 +86,7 @@
             pkgs.cargo
             pkgs.rust-analyzer
             pkgs.clippy
+            pkgs.rustfmt
 
             pkgs.git
 
@@ -97,6 +101,9 @@
             pkgs.gnuplot
             pkgs.samply
             pkgs.cargo-flamegraph
+
+            # Plotting tools
+            pkgs.graphviz
           ];
           all = desktop ++ frontend ++ dev;
         };
@@ -107,7 +114,7 @@
             args:
             (import ./pkgs/graphite.nix {
               pkgs = pkgs // {
-                inherit graphene-raster-nodes-shaders;
+                inherit raster-nodes-shaders;
               };
               inherit
                 info
@@ -125,8 +132,15 @@
             embeddedResources = false;
             dev = true;
           };
+          graphite-bundle = import ./pkgs/graphite-bundle.nix {
+            inherit pkgs graphite;
+          };
+          graphite-flatpak-manifest = import ./pkgs/graphite-flatpak-manifest.nix {
+            inherit pkgs;
+            archive = graphite-bundle.tar;
+          };
           #TODO: graphene-cli = import ./pkgs/graphene-cli.nix { inherit info pkgs inputs deps libs tools; };
-          graphene-raster-nodes-shaders = import ./pkgs/graphene-raster-nodes-shaders.nix {
+          raster-nodes-shaders = import ./pkgs/raster-nodes-shaders.nix {
             inherit
               info
               pkgs

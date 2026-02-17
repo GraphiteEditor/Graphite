@@ -4,6 +4,7 @@ use super::tool_prelude::*;
 use crate::consts::*;
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::{DocumentMetadata, LayerNodeIdentifier};
 use crate::messages::portfolio::document::utility_types::misc::{AlignAggregate, AlignAxis, FlipAxis, GroupFolderType};
@@ -45,7 +46,7 @@ pub struct SelectOptions {
 pub enum SelectOptionsUpdate {
 	NestedSelectionBehavior(NestedSelectionBehavior),
 	PivotGizmoType(PivotGizmoType),
-	TogglePivotGizmoType(bool),
+	SetPivotGizmoEnabled(bool),
 	TogglePivotPinned,
 }
 
@@ -122,7 +123,7 @@ impl ToolMetadata for SelectTool {
 	fn icon_name(&self) -> String {
 		"GeneralSelectTool".into()
 	}
-	fn tooltip(&self) -> String {
+	fn tooltip_label(&self) -> String {
 		"Select Tool".into()
 	}
 	fn tool_type(&self) -> crate::messages::tool::utility_types::ToolType {
@@ -131,7 +132,7 @@ impl ToolMetadata for SelectTool {
 }
 
 impl SelectTool {
-	fn deep_selection_widget(&self) -> WidgetHolder {
+	fn deep_selection_widget(&self) -> WidgetInstance {
 		let layer_selection_behavior_entries = [NestedSelectionBehavior::Shallowest, NestedSelectionBehavior::Deepest]
 			.iter()
 			.map(|mode| {
@@ -146,21 +147,20 @@ impl SelectTool {
 
 		DropdownInput::new(vec![layer_selection_behavior_entries])
 			.selected_index(Some((self.tool_data.nested_selection_behavior == NestedSelectionBehavior::Deepest) as u32))
-			.tooltip(
-				"Selection Mode\n\
-				\n\
-				Shallow Select: clicks initially select the least-nested layers and double clicks drill deeper into the folder hierarchy.\n\
+			.tooltip_label("Selection Mode")
+			.tooltip_description(
+				"Shallow Select: clicks initially select the least-nested layers and double clicks drill deeper into the folder hierarchy.\n\
 				Deep Select: clicks directly select the most-nested layers in the folder hierarchy.",
 			)
-			.widget_holder()
+			.widget_instance()
 	}
 
-	fn alignment_widgets(&self, disabled: bool) -> impl Iterator<Item = WidgetHolder> + use<> {
+	fn alignment_widgets(&self, disabled: bool) -> impl Iterator<Item = WidgetInstance> + use<> {
 		[AlignAxis::X, AlignAxis::Y]
 			.into_iter()
 			.flat_map(|axis| [(axis, AlignAggregate::Min), (axis, AlignAggregate::Center), (axis, AlignAggregate::Max)])
 			.map(move |(axis, aggregate)| {
-				let (icon, tooltip) = match (axis, aggregate) {
+				let (icon, label) = match (axis, aggregate) {
 					(AlignAxis::X, AlignAggregate::Min) => ("AlignLeft", "Align Left"),
 					(AlignAxis::X, AlignAggregate::Center) => ("AlignHorizontalCenter", "Align Horizontal Center"),
 					(AlignAxis::X, AlignAggregate::Max) => ("AlignRight", "Align Right"),
@@ -169,51 +169,49 @@ impl SelectTool {
 					(AlignAxis::Y, AlignAggregate::Max) => ("AlignBottom", "Align Bottom"),
 				};
 				IconButton::new(icon, 24)
-					.tooltip(tooltip)
+					.tooltip_label(label)
 					.on_update(move |_| DocumentMessage::AlignSelectedLayers { axis, aggregate }.into())
 					.disabled(disabled)
-					.widget_holder()
+					.widget_instance()
 			})
 	}
 
-	fn flip_widgets(&self, disabled: bool) -> impl Iterator<Item = WidgetHolder> + use<> {
-		[(FlipAxis::X, "Horizontal"), (FlipAxis::Y, "Vertical")].into_iter().map(move |(flip_axis, name)| {
-			IconButton::new("Flip".to_string() + name, 24)
-				.tooltip("Flip ".to_string() + name)
-				.on_update(move |_| DocumentMessage::FlipSelectedLayers { flip_axis }.into())
-				.disabled(disabled)
-				.widget_holder()
-		})
+	fn flip_widgets(&self, disabled: bool) -> impl Iterator<Item = WidgetInstance> + use<> {
+		[(FlipAxis::X, "FlipHorizontal", "Flip Horizontal"), (FlipAxis::Y, "FlipVertical", "Flip Vertical")]
+			.into_iter()
+			.map(move |(flip_axis, icon, label)| {
+				IconButton::new(icon, 24)
+					.tooltip_label(label)
+					.on_update(move |_| DocumentMessage::FlipSelectedLayers { flip_axis }.into())
+					.disabled(disabled)
+					.widget_instance()
+			})
 	}
 
-	fn turn_widgets(&self, disabled: bool) -> impl Iterator<Item = WidgetHolder> + use<> {
+	fn turn_widgets(&self, disabled: bool) -> impl Iterator<Item = WidgetInstance> + use<> {
 		[(-90., "TurnNegative90", "Turn -90°"), (90., "TurnPositive90", "Turn 90°")]
 			.into_iter()
-			.map(move |(degrees, icon, name)| {
+			.map(move |(degrees, icon, label)| {
 				IconButton::new(icon, 24)
-					.tooltip(name)
+					.tooltip_label(label)
 					.on_update(move |_| DocumentMessage::RotateSelectedLayers { degrees }.into())
 					.disabled(disabled)
-					.widget_holder()
+					.widget_instance()
 			})
 	}
 
-	fn boolean_widgets(&self, selected_count: usize) -> impl Iterator<Item = WidgetHolder> + use<> {
+	fn boolean_widgets(&self, selected_count: usize) -> impl Iterator<Item = WidgetInstance> + use<> {
 		let list = <BooleanOperation as graphene_std::choice_type::ChoiceTypeStatic>::list();
 		list.iter().flat_map(|i| i.iter()).map(move |(operation, info)| {
-			let mut tooltip = info.label.to_string();
-			if let Some(doc) = info.docstring {
-				tooltip.push_str("\n\n");
-				tooltip.push_str(doc);
-			}
 			IconButton::new(info.icon.unwrap(), 24)
-				.tooltip(tooltip)
+				.tooltip_label(info.label)
+				.tooltip_description(info.description.unwrap_or_default())
 				.disabled(selected_count == 0)
 				.on_update(move |_| {
 					let group_folder_type = GroupFolderType::BooleanOperation(*operation);
 					DocumentMessage::GroupSelectedLayers { group_folder_type }.into()
 				})
-				.widget_holder()
+				.widget_instance()
 		})
 	}
 }
@@ -226,12 +224,12 @@ impl LayoutHolder for SelectTool {
 		widgets.push(self.deep_selection_widget());
 
 		// Pivot gizmo type (checkbox + dropdown for pivot/origin)
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 		widgets.extend(pivot_gizmo_type_widget(self.tool_data.pivot_gizmo.state, PivotToolSource::Select));
 
-		if self.tool_data.pivot_gizmo.state.is_pivot_type() {
+		if self.tool_data.pivot_gizmo.state.is_pivot() {
 			// Nine-position reference point widget
-			widgets.push(Separator::new(SeparatorType::Related).widget_holder());
+			widgets.push(Separator::new(SeparatorStyle::Related).widget_instance());
 			widgets.push(pivot_reference_point_widget(
 				self.tool_data.selected_layers_count == 0 || !self.tool_data.pivot_gizmo.state.is_pivot(),
 				self.tool_data.pivot_gizmo.pivot.to_pivot_position(),
@@ -239,10 +237,10 @@ impl LayoutHolder for SelectTool {
 			));
 
 			// Pivot pin button
-			widgets.push(Separator::new(SeparatorType::Related).widget_holder());
+			widgets.push(Separator::new(SeparatorStyle::Related).widget_instance());
 
 			let pin_active = self.tool_data.pivot_gizmo.pin_active();
-			let pin_enabled = self.tool_data.pivot_gizmo.pivot.old_pivot_position == ReferencePoint::None && !self.tool_data.pivot_gizmo.state.disabled;
+			let pin_enabled = self.tool_data.pivot_gizmo.pivot.old_pivot_position == ReferencePoint::None && self.tool_data.pivot_gizmo.state.enabled;
 
 			if pin_active || pin_enabled {
 				widgets.push(pin_pivot_widget(pin_active, pin_enabled, PivotToolSource::Select));
@@ -251,36 +249,23 @@ impl LayoutHolder for SelectTool {
 
 		// Align
 		let disabled = self.tool_data.selected_layers_count < 2;
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 		widgets.extend(self.alignment_widgets(disabled));
-		// widgets.push(
-		// 	PopoverButton::new()
-		// 		.popover_layout(vec![
-		// 			LayoutGroup::Row {
-		// 				widgets: vec![TextLabel::new("Align").bold(true).widget_holder()],
-		// 			},
-		// 			LayoutGroup::Row {
-		// 				widgets: vec![TextLabel::new("Coming soon").widget_holder()],
-		// 			},
-		// 		])
-		// 		.disabled(disabled)
-		// 		.widget_holder(),
-		// );
 
 		// Flip
 		let disabled = self.tool_data.selected_layers_count == 0;
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 		widgets.extend(self.flip_widgets(disabled));
 
 		// Turn
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 		widgets.extend(self.turn_widgets(disabled));
 
 		// Boolean
-		widgets.push(Separator::new(SeparatorType::Unrelated).widget_holder());
+		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 		widgets.extend(self.boolean_widgets(self.tool_data.selected_layers_count));
 
-		Layout::WidgetLayout(WidgetLayout::new(vec![LayoutGroup::Row { widgets }]))
+		Layout(vec![LayoutGroup::Row { widgets }])
 	}
 }
 
@@ -290,14 +275,14 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Sele
 		let mut redraw_reference_pivot = false;
 
 		if let ToolMessage::Select(SelectToolMessage::SelectOptions { options: ref option_update }) = message {
-			match option_update {
+			match *option_update {
 				SelectOptionsUpdate::NestedSelectionBehavior(nested_selection_behavior) => {
-					self.tool_data.nested_selection_behavior = *nested_selection_behavior;
+					self.tool_data.nested_selection_behavior = nested_selection_behavior;
 					responses.add(ToolMessage::UpdateHints);
 				}
 				SelectOptionsUpdate::PivotGizmoType(gizmo_type) => {
-					if !self.tool_data.pivot_gizmo.state.disabled {
-						self.tool_data.pivot_gizmo.state.gizmo_type = *gizmo_type;
+					if self.tool_data.pivot_gizmo.state.enabled {
+						self.tool_data.pivot_gizmo.state.gizmo_type = gizmo_type;
 						responses.add(ToolMessage::UpdateHints);
 						let pivot_gizmo = self.tool_data.pivot_gizmo();
 						responses.add(TransformLayerMessage::SetPivotGizmo { pivot_gizmo });
@@ -305,8 +290,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Sele
 						redraw_reference_pivot = true;
 					}
 				}
-				SelectOptionsUpdate::TogglePivotGizmoType(state) => {
-					self.tool_data.pivot_gizmo.state.disabled = !state;
+				SelectOptionsUpdate::SetPivotGizmoEnabled(enabled) => {
+					self.tool_data.pivot_gizmo.state.enabled = enabled;
 					responses.add(ToolMessage::UpdateHints);
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 					redraw_reference_pivot = true;
@@ -416,6 +401,7 @@ struct SelectToolData {
 	selected_layers_changed: bool,
 	snap_candidates: Vec<SnapCandidatePoint>,
 	auto_panning: AutoPanning,
+	drag_start_center: ViewportPosition,
 }
 
 impl SelectToolData {
@@ -467,7 +453,7 @@ impl SelectToolData {
 		if self.lasso_polygon.len() < 2 {
 			return Vec::new();
 		}
-		let polygon = Subpath::from_anchors_linear(self.lasso_polygon.clone(), true);
+		let polygon = Subpath::from_anchors(self.lasso_polygon.clone(), true);
 		document.intersect_polygon_no_artboards(polygon, viewport).collect()
 	}
 
@@ -475,7 +461,7 @@ impl SelectToolData {
 		if self.lasso_polygon.len() < 2 {
 			return false;
 		}
-		let polygon = Subpath::from_anchors_linear(self.lasso_polygon.clone(), true);
+		let polygon = Subpath::from_anchors(self.lasso_polygon.clone(), true);
 		document.is_layer_fully_inside_polygon(layer, viewport, polygon)
 	}
 
@@ -593,6 +579,19 @@ impl SelectToolData {
 	}
 }
 
+/// Bounding boxes are unfortunately not axis aligned. The bounding boxes are found after a transformation is applied to all of the layers.
+/// This uses some rather confusing logic to determine what transform that should be.
+pub fn create_bounding_box_transform(document: &DocumentMessageHandler) -> DAffine2 {
+	// Update bounds
+	document
+		.network_interface
+		.selected_nodes()
+		.selected_visible_and_unlocked_layers(&document.network_interface)
+		.find(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
+		.map(|layer| document.metadata().transform_to_viewport_with_first_transform_node_if_group(layer, &document.network_interface))
+		.unwrap_or_default()
+}
+
 impl Fsm for SelectToolFsmState {
 	type ToolData = SelectToolData;
 	type ToolOptions = ();
@@ -602,7 +601,7 @@ impl Fsm for SelectToolFsmState {
 			document,
 			input,
 			viewport,
-			font_cache,
+			persistent_data,
 			..
 		} = tool_action_data;
 
@@ -610,6 +609,8 @@ impl Fsm for SelectToolFsmState {
 		match (self, event) {
 			(_, SelectToolMessage::Overlays { context: mut overlay_context }) => {
 				tool_data.snap_manager.draw_overlays(SnapData::new(document, input, viewport), &mut overlay_context);
+
+				crate::messages::tool::common_functionality::layer_origin_cross::draw_for_selected_layers(&mut overlay_context, document);
 
 				let selected_layers_count = document.network_interface.selected_nodes().selected_unlocked_layers(&document.network_interface).count();
 				tool_data.selected_layers_changed = selected_layers_count != tool_data.selected_layers_count;
@@ -626,21 +627,14 @@ impl Fsm for SelectToolFsmState {
 						let layer_to_viewport = document.metadata().transform_to_viewport(layer);
 						overlay_context.outline(document.metadata().layer_with_free_points_outline(layer), layer_to_viewport, None);
 
-						if is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text") {
-							let transformed_quad = layer_to_viewport * text_bounding_box(layer, document, font_cache);
+						if is_layer_fed_by_node_of_name(layer, &document.network_interface, &DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER)) {
+							let transformed_quad = layer_to_viewport * text_bounding_box(layer, document, &persistent_data.font_cache);
 							overlay_context.dashed_quad(transformed_quad, None, None, Some(7.), Some(5.), None);
 						}
 					}
 				}
 
-				// Update bounds
-				let mut transform = document
-					.network_interface
-					.selected_nodes()
-					.selected_visible_and_unlocked_layers(&document.network_interface)
-					.find(|layer| !document.network_interface.is_artboard(&layer.to_node(), &[]))
-					.map(|layer| document.metadata().transform_to_viewport_with_first_transform_node_if_group(layer, &document.network_interface))
-					.unwrap_or_default();
+				let mut transform = create_bounding_box_transform(document);
 
 				// Check if the matrix is not invertible
 				let mut transform_tampered = false;
@@ -739,6 +733,7 @@ impl Fsm for SelectToolFsmState {
 				if let Some(bounds) = bounds {
 					let bounding_box_manager = tool_data.bounding_box_manager.get_or_insert(BoundingBoxManager::default());
 
+					// TODO: Don't perform bounding box calculations here because the user can disable overlays which breaks bbox-based resizing
 					bounding_box_manager.bounds = bounds;
 					bounding_box_manager.transform = transform;
 					bounding_box_manager.transform_tampered = transform_tampered;
@@ -921,11 +916,10 @@ impl Fsm for SelectToolFsmState {
 						let angle = -mouse_position.angle_to(DVec2::X);
 						let snapped_angle = (angle / snap_resolution).round() * snap_resolution;
 
-						let extension = tool_data.drag_current - tool_data.drag_start;
-						let origin = compass_center - extension;
+						let origin = tool_data.drag_start_center;
 						let viewport_diagonal = viewport.size().into_dvec2().length();
 
-						let edge = DVec2::from_angle(snapped_angle).normalize_or(DVec2::X) * viewport_diagonal;
+						let edge = DVec2::from_angle(snapped_angle).normalize_or(DVec2::X);
 						let perp = edge.perp();
 
 						let (edge_color, perp_color) = if edge.x.abs() > edge.y.abs() {
@@ -1041,6 +1035,8 @@ impl Fsm for SelectToolFsmState {
 
 				let position = tool_data.pivot_gizmo().position(document);
 				let (resize, rotate, skew) = transforming_transform_cage(document, &mut tool_data.bounding_box_manager, input, responses, &mut tool_data.layers_dragging, Some(position));
+
+				tool_data.drag_start_center = position;
 
 				// If the user is dragging the bounding box bounds, go into ResizingBounds mode.
 				// If the user is dragging the rotate trigger, go into RotatingBounds mode.
@@ -1587,7 +1583,7 @@ impl Fsm for SelectToolFsmState {
 
 				if let Some(layer) = selected_layers.next() {
 					// Check that only one layer is selected
-					if selected_layers.next().is_none() && is_layer_fed_by_node_of_name(layer, &document.network_interface, "Text") {
+					if selected_layers.next().is_none() && is_layer_fed_by_node_of_name(layer, &document.network_interface, &DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER)) {
 						responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Text });
 						responses.add(TextToolMessage::EditSelected);
 					}
@@ -1725,7 +1721,7 @@ impl Fsm for SelectToolFsmState {
 						HintInfo::keys([Key::Control, Key::KeyD], "Duplicate").add_mac_keys([Key::Command, Key::KeyD]),
 					]),
 				]);
-				responses.add(FrontendMessage::UpdateInputHints { hint_data });
+				hint_data.send_layout(responses);
 			}
 			SelectToolFsmState::Dragging { axis, using_compass, has_dragged, .. } if *has_dragged => {
 				let mut hint_data = vec![
@@ -1740,7 +1736,7 @@ impl Fsm for SelectToolFsmState {
 					hint_data.push(HintGroup(vec![HintInfo::keys([Key::Shift], "Constrain to Axis")]));
 				};
 				let hint_data = HintData(hint_data);
-				responses.add(FrontendMessage::UpdateInputHints { hint_data });
+				hint_data.send_layout(responses);
 			}
 			SelectToolFsmState::Drawing { has_drawn, .. } if *has_drawn => {
 				let hint_data = HintData(vec![
@@ -1750,7 +1746,7 @@ impl Fsm for SelectToolFsmState {
 					// TODO: (See https://discord.com/channels/731730685944922173/1216976541947531264/1321360311298818048)
 					// HintGroup(vec![HintInfo::keys([Key::Shift], "Extend")])
 				]);
-				responses.add(FrontendMessage::UpdateInputHints { hint_data });
+				hint_data.send_layout(responses);
 			}
 			SelectToolFsmState::Drawing { .. } | SelectToolFsmState::Dragging { .. } => {}
 			SelectToolFsmState::ResizingBounds => {
@@ -1758,25 +1754,25 @@ impl Fsm for SelectToolFsmState {
 					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 					HintGroup(vec![HintInfo::keys([Key::Alt], "From Pivot"), HintInfo::keys([Key::Shift], "Preserve Aspect Ratio")]),
 				]);
-				responses.add(FrontendMessage::UpdateInputHints { hint_data });
+				hint_data.send_layout(responses);
 			}
 			SelectToolFsmState::RotatingBounds => {
 				let hint_data = HintData(vec![
 					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 					HintGroup(vec![HintInfo::keys([Key::Shift], "15° Increments")]),
 				]);
-				responses.add(FrontendMessage::UpdateInputHints { hint_data });
+				hint_data.send_layout(responses);
 			}
 			SelectToolFsmState::SkewingBounds { .. } => {
 				let hint_data = HintData(vec![
 					HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()]),
 					HintGroup(vec![HintInfo::keys([Key::Control], "Unlock Slide")]),
 				]);
-				responses.add(FrontendMessage::UpdateInputHints { hint_data });
+				hint_data.send_layout(responses);
 			}
 			SelectToolFsmState::DraggingPivot => {
 				let hint_data = HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]);
-				responses.add(FrontendMessage::UpdateInputHints { hint_data });
+				hint_data.send_layout(responses);
 			}
 		}
 	}
@@ -1941,7 +1937,7 @@ fn edit_layer_shallowest_manipulation(document: &DocumentMessageHandler, layer: 
 /// Called when a double click on a layer in deep select mode.
 /// If the layer is text, the text tool is selected.
 fn edit_layer_deepest_manipulation(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface, responses: &mut VecDeque<Message>) {
-	if is_layer_fed_by_node_of_name(layer, network_interface, "Text") {
+	if is_layer_fed_by_node_of_name(layer, network_interface, &DefinitionIdentifier::ProtoNode(graphene_std::text::text::IDENTIFIER)) {
 		responses.add_front(ToolMessage::ActivateTool { tool_type: ToolType::Text });
 		responses.add(TextToolMessage::EditSelected);
 	}

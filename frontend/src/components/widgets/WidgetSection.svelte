@@ -2,7 +2,7 @@
 	import { getContext } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import { isWidgetSpanRow, isWidgetSpanColumn, isWidgetSection, type WidgetSection as WidgetSectionFromJsMessages } from "@graphite/messages";
+	import { isWidgetSpanRow, isWidgetSection, type WidgetSection as WidgetSectionFromJsMessages, type LayoutTarget } from "@graphite/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
@@ -10,8 +10,7 @@
 	import WidgetSpan from "@graphite/components/widgets/WidgetSpan.svelte";
 
 	export let widgetData: WidgetSectionFromJsMessages;
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	export let layoutTarget: any; // TODO: Give type
+	export let layoutTarget: LayoutTarget;
 
 	let className = "";
 	export { className as class };
@@ -25,11 +24,11 @@
 <!-- TODO: Implement collapsable sections with properties system -->
 <LayoutCol class={`widget-section ${className}`.trim()} {classes}>
 	<button class="header" class:expanded on:click|stopPropagation={() => (expanded = !expanded)} tabindex="0">
-		<div class="expand-arrow" />
-		<TextLabel tooltip={widgetData.description} bold={true}>{widgetData.name}</TextLabel>
+		<div class="expand-arrow"></div>
+		<TextLabel tooltipLabel={widgetData.name} tooltipDescription={widgetData.description} bold={true}>{widgetData.name}</TextLabel>
 		<IconButton
 			icon={widgetData.pinned ? "PinActive" : "PinInactive"}
-			tooltip={widgetData.pinned ? "Unpin this node so it's no longer shown here when nothing is selected" : "Pin this node so it's shown here when nothing is selected"}
+			tooltipDescription={widgetData.pinned ? "Unpin this node so it's no longer shown here when nothing is selected." : "Pin this node so it's shown here when nothing is selected."}
 			size={24}
 			action={(e) => {
 				editor.handle.setNodePinned(widgetData.id, !widgetData.pinned);
@@ -39,7 +38,7 @@
 		/>
 		<IconButton
 			icon="Trash"
-			tooltip="Delete this node from the layer chain"
+			tooltipDescription="Delete this node from the layer chain."
 			size={24}
 			action={(e) => {
 				editor.handle.deleteNode(widgetData.id);
@@ -50,7 +49,7 @@
 		<IconButton
 			icon={widgetData.visible ? "EyeVisible" : "EyeHidden"}
 			hoverIcon={widgetData.visible ? "EyeHide" : "EyeShow"}
-			tooltip={widgetData.visible ? "Hide this node" : "Show this node"}
+			tooltipDescription={widgetData.visible ? "Hide this node." : "Show this node."}
 			size={24}
 			action={(e) => {
 				editor.handle.toggleNodeVisibilityLayerPanel(widgetData.id);
@@ -60,16 +59,12 @@
 		/>
 	</button>
 	{#if expanded}
-		<LayoutCol class="body">
+		<LayoutCol class="body" data-block-hover-transfer>
 			{#each widgetData.layout as layoutGroup}
 				{#if isWidgetSpanRow(layoutGroup)}
 					<WidgetSpan widgetData={layoutGroup} {layoutTarget} />
-				{:else if isWidgetSpanColumn(layoutGroup)}
-					<TextLabel styles={{ color: "#d6536e" }}>Error: The WidgetSpan used here should be a row not a column</TextLabel>
 				{:else if isWidgetSection(layoutGroup)}
 					<svelte:self widgetData={layoutGroup} {layoutTarget} />
-				{:else}
-					<TextLabel styles={{ color: "#d6536e" }}>Error: The widget that belongs here has an invalid layout group type</TextLabel>
 				{/if}
 			{/each}
 		</LayoutCol>

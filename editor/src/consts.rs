@@ -56,6 +56,8 @@ pub const DEFAULT_STROKE_WIDTH: f64 = 2.;
 pub const SELECTION_TOLERANCE: f64 = 5.;
 pub const DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD: f64 = 15.;
 pub const SELECTION_DRAG_ANGLE: f64 = 90.;
+pub const LAYER_ORIGIN_CROSS_DIAMETER: f64 = 10.;
+pub const LAYER_ORIGIN_CROSS_THICKNESS: f64 = 1.;
 
 // PIVOT
 pub const PIVOT_CROSSHAIR_THICKNESS: f64 = 1.;
@@ -122,6 +124,9 @@ pub const LINE_ROTATE_SNAP_ANGLE: f64 = 15.;
 pub const BRUSH_SIZE_CHANGE_KEYBOARD: f64 = 5.;
 pub const DEFAULT_BRUSH_SIZE: f64 = 20.;
 
+// EYEDROPPER TOOL
+pub const EYEDROPPER_PREVIEW_AREA_RESOLUTION: u32 = 11;
+
 // GIZMOS
 pub const POINT_RADIUS_HANDLE_SNAP_THRESHOLD: f64 = 8.;
 pub const POINT_RADIUS_HANDLE_SEGMENT_THRESHOLD: f64 = 7.9;
@@ -148,6 +153,7 @@ pub const COLOR_OVERLAY_RED: &str = "#ef5454";
 pub const COLOR_OVERLAY_GRAY: &str = "#cccccc";
 pub const COLOR_OVERLAY_GRAY_25: &str = "#cccccc40";
 pub const COLOR_OVERLAY_WHITE: &str = "#ffffff";
+pub const COLOR_OVERLAY_BLACK: &str = "#000000";
 pub const COLOR_OVERLAY_BLACK_75: &str = "#000000bf";
 
 // DOCUMENT
@@ -158,3 +164,8 @@ pub const AUTO_SAVE_TIMEOUT_SECONDS: u64 = 1;
 
 // INPUT
 pub const DOUBLE_CLICK_MILLISECONDS: u64 = 500;
+
+// UI
+pub const UI_SCALE_DEFAULT: f64 = 1.;
+pub const UI_SCALE_MIN: f64 = 0.5;
+pub const UI_SCALE_MAX: f64 = 3.;

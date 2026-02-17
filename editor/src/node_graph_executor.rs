@@ -1,12 +1,13 @@
 use crate::messages::frontend::utility_types::{ExportBounds, FileType};
 use crate::messages::prelude::*;
-use glam::{DAffine2, UVec2};
+use glam::{DAffine2, DVec2, UVec2};
 use graph_craft::document::value::{RenderOutput, TaggedValue};
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
 use graph_craft::wasm_application_io::EditorPreferences;
 use graphene_std::application_io::{NodeGraphUpdateMessage, RenderConfig};
 use graphene_std::application_io::{SurfaceFrame, TimingInformation};
+use graphene_std::raster::{CPU, Raster};
 use graphene_std::renderer::{RenderMetadata, format_transform_matrix};
 use graphene_std::text::FontCache;
 use graphene_std::transform::Footprint;
@@ -37,13 +38,14 @@ pub struct ExecutionResponse {
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct CompilationResponse {
-	result: Result<ResolvedDocumentNodeTypesDelta, String>,
+	result: Result<ResolvedDocumentNodeTypesDelta, (ResolvedDocumentNodeTypesDelta, String)>,
 	node_graph_errors: GraphErrors,
 }
 
 pub enum NodeGraphUpdate {
 	ExecutionResponse(ExecutionResponse),
 	CompilationResponse(CompilationResponse),
+	EyedropperPreview(Raster<CPU>),
 	NodeGraphUpdateMessage(NodeGraphUpdateMessage),
 }
 
@@ -81,6 +83,7 @@ impl NodeGraphExecutor {
 		};
 		(node_runtime, node_executor)
 	}
+
 	/// Execute the network by flattening it and creating a borrow stack.
 	fn queue_execution(&mut self, render_config: RenderConfig) -> u64 {
 		let execution_id = self.current_execution_id;
@@ -140,6 +143,7 @@ impl NodeGraphExecutor {
 		viewport_resolution: UVec2,
 		viewport_scale: f64,
 		time: TimingInformation,
+		pointer: DVec2,
 	) -> Result<Message, String> {
 		let viewport = Footprint {
 			transform: document.metadata().document_to_viewport,
@@ -150,13 +154,12 @@ impl NodeGraphExecutor {
 			viewport,
 			scale: viewport_scale,
 			time,
-			#[cfg(any(feature = "resvg", feature = "vello"))]
+			pointer,
 			export_format: graphene_std::application_io::ExportFormat::Raster,
-			#[cfg(not(any(feature = "resvg", feature = "vello")))]
-			export_format: graphene_std::application_io::ExportFormat::Svg,
 			render_mode: document.render_mode,
 			hide_artboards: false,
 			for_export: false,
+			for_eyedropper: false,
 		};
 
 		// Execute the node graph
@@ -178,9 +181,45 @@ impl NodeGraphExecutor {
 		time: TimingInformation,
 		node_to_inspect: Option<NodeId>,
 		ignore_hash: bool,
+		pointer: DVec2,
 	) -> Result<Message, String> {
 		self.update_node_graph(document, node_to_inspect, ignore_hash)?;
-		self.submit_current_node_graph_evaluation(document, document_id, viewport_resolution, viewport_scale, time)
+		self.submit_current_node_graph_evaluation(document, document_id, viewport_resolution, viewport_scale, time, pointer)
+	}
+
+	#[cfg(not(target_family = "wasm"))]
+	pub(crate) fn submit_eyedropper_preview(
+		&mut self,
+		document_id: DocumentId,
+		transform: DAffine2,
+		pointer: DVec2,
+		viewport_resolution: UVec2,
+		viewport_scale: f64,
+		time: TimingInformation,
+	) -> Result<Message, String> {
+		let viewport = Footprint {
+			transform,
+			resolution: viewport_resolution,
+			..Default::default()
+		};
+		let render_config = RenderConfig {
+			viewport,
+			scale: viewport_scale,
+			time,
+			pointer,
+			export_format: graphene_std::application_io::ExportFormat::Raster,
+			render_mode: graphene_std::vector::style::RenderMode::Normal,
+			hide_artboards: false,
+			for_export: false,
+			for_eyedropper: true,
+		};
+
+		// Execute the node graph
+		let execution_id = self.queue_execution(render_config);
+
+		self.futures.push_back((execution_id, ExecutionContext { export_config: None, document_id }));
+
+		Ok(DeferMessage::SetGraphSubmissionIndex { execution_id }.into())
 	}
 
 	/// Evaluates a node graph for export
@@ -200,7 +239,7 @@ impl NodeGraphExecutor {
 			ExportBounds::Artboard(id) => document.metadata().bounding_box_document(id),
 		}
 		.ok_or_else(|| "No bounding box".to_string())?;
-		let resolution = (bounds[1] - bounds[0]).as_uvec2();
+		let resolution = (bounds[1] - bounds[0]).round().as_uvec2();
 		let transform = DAffine2::from_translation(bounds[0]).inverse();
 
 		let render_config = RenderConfig {
@@ -211,10 +250,12 @@ impl NodeGraphExecutor {
 			},
 			scale: export_config.scale_factor,
 			time: Default::default(),
+			pointer: DVec2::ZERO,
 			export_format,
 			render_mode: document.render_mode,
 			hide_artboards: export_config.transparent_background,
 			for_export: true,
+			for_eyedropper: false,
 		};
 		export_config.size = resolution.as_dvec2();
 
@@ -223,16 +264,169 @@ impl NodeGraphExecutor {
 			.send(GraphRuntimeRequest::GraphUpdate(GraphUpdate { network, node_to_inspect: None }))
 			.map_err(|e| e.to_string())?;
 		let execution_id = self.queue_execution(render_config);
-		let execution_context = ExecutionContext {
-			export_config: Some(export_config),
-			document_id,
-		};
-		self.futures.push_back((execution_id, execution_context));
+		self.futures.push_back((
+			execution_id,
+			ExecutionContext {
+				export_config: Some(export_config),
+				document_id,
+			},
+		));
 
 		Ok(())
 	}
 
-	fn export(&self, node_graph_output: TaggedValue, export_config: ExportConfig, responses: &mut VecDeque<Message>) -> Result<(), String> {
+	pub fn poll_node_graph_evaluation(&mut self, document: &mut DocumentMessageHandler, responses: &mut VecDeque<Message>) -> Result<(), String> {
+		let results = self.runtime_io.receive().collect::<Vec<_>>();
+		for response in results {
+			match response {
+				NodeGraphUpdate::ExecutionResponse(execution_response) => {
+					let ExecutionResponse {
+						execution_id,
+						result,
+						responses: existing_responses,
+						vector_modify,
+						inspect_result,
+					} = execution_response;
+
+					responses.add(OverlaysMessage::Draw);
+
+					let node_graph_output = match result {
+						Ok(output) => output,
+						Err(e) => {
+							// Clear the click targets while the graph is in an un-renderable state
+							document.network_interface.update_click_targets(HashMap::new());
+							document.network_interface.update_vector_modify(HashMap::new());
+							return Err(format!("Node graph evaluation failed:\n{e}"));
+						}
+					};
+
+					responses.extend(existing_responses.into_iter().map(Into::into));
+					document.network_interface.update_vector_modify(vector_modify);
+
+					while let Some(&(fid, _)) = self.futures.front() {
+						if fid < execution_id {
+							self.futures.pop_front();
+						} else {
+							break;
+						}
+					}
+
+					let Some((fid, execution_context)) = self.futures.pop_front() else {
+						panic!("InvalidGenerationId")
+					};
+					assert_eq!(fid, execution_id, "Missmatch in execution id");
+
+					if let Some(export_config) = execution_context.export_config {
+						// Special handling for exporting the artwork
+						self.process_export(node_graph_output, export_config, responses)?;
+					} else {
+						self.process_node_graph_output(node_graph_output, responses)?;
+					}
+					responses.add(DeferMessage::TriggerGraphRun {
+						execution_id,
+						document_id: execution_context.document_id,
+					});
+
+					// Update the Data panel on the frontend using the value of the inspect result.
+					if let Some(inspect_result) = (self.previous_node_to_inspect.is_some()).then_some(inspect_result).flatten() {
+						responses.add(DataPanelMessage::UpdateLayout { inspect_result });
+					} else {
+						responses.add(DataPanelMessage::ClearLayout);
+					}
+				}
+				NodeGraphUpdate::CompilationResponse(execution_response) => {
+					let CompilationResponse { node_graph_errors, result } = execution_response;
+					let type_delta = match result {
+						Err((incomplete_delta, e)) => {
+							// Clear the click targets while the graph is in an un-renderable state
+
+							document.network_interface.update_click_targets(HashMap::new());
+							document.network_interface.update_vector_modify(HashMap::new());
+
+							log::trace!("{e}");
+
+							responses.add(NodeGraphMessage::UpdateTypes {
+								resolved_types: incomplete_delta,
+								node_graph_errors,
+							});
+							responses.add(NodeGraphMessage::SendGraph);
+
+							return Err(format!("Node graph evaluation failed:\n{e}"));
+						}
+						Ok(result) => result,
+					};
+
+					responses.add(NodeGraphMessage::UpdateTypes {
+						resolved_types: type_delta,
+						node_graph_errors,
+					});
+					responses.add(NodeGraphMessage::SendGraph);
+				}
+				NodeGraphUpdate::EyedropperPreview(raster) => {
+					let (data, width, height) = raster.to_flat_u8();
+					responses.add(EyedropperToolMessage::PreviewImage { data, width, height });
+				}
+			}
+		}
+
+		Ok(())
+	}
+
+	fn process_node_graph_output(&mut self, node_graph_output: TaggedValue, responses: &mut VecDeque<Message>) -> Result<(), String> {
+		let TaggedValue::RenderOutput(render_output) = node_graph_output else {
+			return Err(format!("Invalid node graph output type: {node_graph_output:#?}"));
+		};
+
+		match render_output.data {
+			RenderOutputType::Svg { svg, image_data } => {
+				// Send to frontend
+				responses.add(FrontendMessage::UpdateImageData { image_data });
+				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
+				self.last_svg_canvas = None;
+			}
+			RenderOutputType::CanvasFrame(frame) => 'block: {
+				if self.last_svg_canvas == Some(frame) {
+					break 'block;
+				}
+				let matrix = format_transform_matrix(frame.transform);
+				let transform = if matrix.is_empty() { String::new() } else { format!(" transform=\"{matrix}\"") };
+				let svg = format!(
+					r#"<svg><foreignObject width="{}" height="{}"{transform}><div data-canvas-placeholder="{}" data-is-viewport="true"></div></foreignObject></svg>"#,
+					frame.resolution.x, frame.resolution.y, frame.surface_id.0,
+				);
+				self.last_svg_canvas = Some(frame);
+				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
+			}
+			RenderOutputType::Texture { .. } => {}
+			_ => return Err(format!("Invalid node graph output type: {:#?}", render_output.data)),
+		}
+
+		let RenderMetadata {
+			upstream_footprints,
+			local_transforms,
+			first_element_source_id,
+			click_targets,
+			clip_targets,
+			vector_data,
+		} = render_output.metadata;
+
+		// Run these update state messages immediately
+		responses.add(DocumentMessage::UpdateUpstreamTransforms {
+			upstream_footprints,
+			local_transforms,
+			first_element_source_id,
+		});
+		responses.add(DocumentMessage::UpdateClickTargets { click_targets });
+		responses.add(DocumentMessage::UpdateClipTargets { clip_targets });
+		responses.add(DocumentMessage::UpdateVectorData { vector_data });
+		responses.add(DocumentMessage::RenderScrollbars);
+		responses.add(DocumentMessage::RenderRulers);
+		responses.add(OverlaysMessage::Draw);
+
+		Ok(())
+	}
+
+	fn process_export(&self, node_graph_output: TaggedValue, export_config: ExportConfig, responses: &mut VecDeque<Message>) -> Result<(), String> {
 		let ExportConfig {
 			file_type,
 			name,
@@ -240,6 +434,8 @@ impl NodeGraphExecutor {
 			scale_factor,
 			#[cfg(feature = "gpu")]
 			transparent_background,
+			artboard_name,
+			artboard_count,
 			..
 		} = export_config;
 
@@ -248,7 +444,11 @@ impl NodeGraphExecutor {
 			FileType::Png => "png",
 			FileType::Jpg => "jpg",
 		};
-		let name = format!("{name}.{file_extension}");
+		let base_name = match (artboard_name, artboard_count) {
+			(Some(artboard_name), count) if count > 1 => format!("{name} - {artboard_name}"),
+			_ => name,
+		};
+		let name = format!("{base_name}.{file_extension}");
 
 		match node_graph_output {
 			TaggedValue::RenderOutput(RenderOutput {
@@ -308,151 +508,6 @@ impl NodeGraphExecutor {
 				return Err(format!("Incorrect render type for exporting to an SVG ({file_type:?}, {node_graph_output})"));
 			}
 		};
-
-		Ok(())
-	}
-
-	pub fn poll_node_graph_evaluation(&mut self, document: &mut DocumentMessageHandler, responses: &mut VecDeque<Message>) -> Result<(), String> {
-		let results = self.runtime_io.receive().collect::<Vec<_>>();
-		for response in results {
-			match response {
-				NodeGraphUpdate::ExecutionResponse(execution_response) => {
-					let ExecutionResponse {
-						execution_id,
-						result,
-						responses: existing_responses,
-						vector_modify,
-						inspect_result,
-					} = execution_response;
-
-					responses.add(OverlaysMessage::Draw);
-
-					let node_graph_output = match result {
-						Ok(output) => output,
-						Err(e) => {
-							// Clear the click targets while the graph is in an un-renderable state
-							document.network_interface.update_click_targets(HashMap::new());
-							document.network_interface.update_vector_modify(HashMap::new());
-							return Err(format!("Node graph evaluation failed:\n{e}"));
-						}
-					};
-
-					responses.extend(existing_responses.into_iter().map(Into::into));
-					document.network_interface.update_vector_modify(vector_modify);
-
-					while let Some(&(fid, _)) = self.futures.front() {
-						if fid < execution_id {
-							self.futures.pop_front();
-						} else {
-							break;
-						}
-					}
-
-					let Some((fid, execution_context)) = self.futures.pop_front() else {
-						panic!("InvalidGenerationId")
-					};
-					assert_eq!(fid, execution_id, "Missmatch in execution id");
-
-					if let Some(export_config) = execution_context.export_config {
-						// Special handling for exporting the artwork
-						self.export(node_graph_output, export_config, responses)?;
-					} else {
-						self.process_node_graph_output(node_graph_output, responses)?;
-					}
-					responses.add(DeferMessage::TriggerGraphRun {
-						execution_id,
-						document_id: execution_context.document_id,
-					});
-
-					// Update the Data panel on the frontend using the value of the inspect result.
-					if let Some(inspect_result) = (self.previous_node_to_inspect.is_some()).then_some(inspect_result).flatten() {
-						responses.add(DataPanelMessage::UpdateLayout { inspect_result });
-					} else {
-						responses.add(DataPanelMessage::ClearLayout);
-					}
-				}
-				NodeGraphUpdate::CompilationResponse(execution_response) => {
-					let CompilationResponse { node_graph_errors, result } = execution_response;
-					let type_delta = match result {
-						Err(e) => {
-							// Clear the click targets while the graph is in an un-renderable state
-
-							document.network_interface.update_click_targets(HashMap::new());
-							document.network_interface.update_vector_modify(HashMap::new());
-
-							log::trace!("{e}");
-
-							responses.add(NodeGraphMessage::UpdateTypes {
-								resolved_types: Default::default(),
-								node_graph_errors,
-							});
-							responses.add(NodeGraphMessage::SendGraph);
-
-							return Err(format!("Node graph evaluation failed:\n{e}"));
-						}
-						Ok(result) => result,
-					};
-
-					responses.add(NodeGraphMessage::UpdateTypes {
-						resolved_types: type_delta,
-						node_graph_errors,
-					});
-					responses.add(NodeGraphMessage::SendGraph);
-				}
-			}
-		}
-
-		Ok(())
-	}
-
-	fn process_node_graph_output(&mut self, node_graph_output: TaggedValue, responses: &mut VecDeque<Message>) -> Result<(), String> {
-		let TaggedValue::RenderOutput(render_output) = node_graph_output else {
-			return Err(format!("Invalid node graph output type: {node_graph_output:#?}"));
-		};
-
-		match render_output.data {
-			RenderOutputType::Svg { svg, image_data } => {
-				// Send to frontend
-				responses.add(FrontendMessage::UpdateImageData { image_data });
-				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
-				self.last_svg_canvas = None;
-			}
-			RenderOutputType::CanvasFrame(frame) => 'block: {
-				if self.last_svg_canvas == Some(frame) {
-					break 'block;
-				}
-				let matrix = format_transform_matrix(frame.transform);
-				let transform = if matrix.is_empty() { String::new() } else { format!(" transform=\"{matrix}\"") };
-				let svg = format!(
-					r#"<svg><foreignObject width="{}" height="{}"{transform}><div data-canvas-placeholder="{}"></div></foreignObject></svg>"#,
-					frame.resolution.x, frame.resolution.y, frame.surface_id.0
-				);
-				self.last_svg_canvas = Some(frame);
-				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
-			}
-			RenderOutputType::Texture { .. } => {}
-			_ => return Err(format!("Invalid node graph output type: {:#?}", render_output.data)),
-		}
-
-		let RenderMetadata {
-			upstream_footprints,
-			local_transforms,
-			first_element_source_id,
-			click_targets,
-			clip_targets,
-		} = render_output.metadata;
-
-		// Run these update state messages immediately
-		responses.add(DocumentMessage::UpdateUpstreamTransforms {
-			upstream_footprints,
-			local_transforms,
-			first_element_source_id,
-		});
-		responses.add(DocumentMessage::UpdateClickTargets { click_targets });
-		responses.add(DocumentMessage::UpdateClipTargets { clip_targets });
-		responses.add(DocumentMessage::RenderScrollbars);
-		responses.add(DocumentMessage::RenderRulers);
-		responses.add(OverlaysMessage::Draw);
 
 		Ok(())
 	}

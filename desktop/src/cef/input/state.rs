@@ -1,24 +1,43 @@
 use cef::MouseEvent;
+use cef::sys::cef_event_flags_t;
 use std::time::Instant;
 use winit::dpi::PhysicalPosition;
 use winit::event::{ElementState, MouseButton};
+use winit::keyboard::{Key, KeyLocation, ModifiersState, NamedKey};
 
 use crate::cef::consts::{MULTICLICK_ALLOWED_TRAVEL, MULTICLICK_TIMEOUT};
 
 #[derive(Default)]
 pub(crate) struct InputState {
-	modifiers: winit::keyboard::ModifiersState,
+	modifiers: ModifiersState,
 	mouse_position: MousePosition,
 	mouse_state: MouseState,
 	mouse_click_tracker: ClickTracker,
 }
 impl InputState {
-	pub(crate) fn modifiers_changed(&mut self, modifiers: &winit::keyboard::ModifiersState) {
+	pub(crate) fn modifiers_changed(&mut self, modifiers: &ModifiersState) {
 		self.modifiers = *modifiers;
 	}
 
-	pub(crate) fn cursor_move(&mut self, position: &PhysicalPosition<f64>) {
-		self.mouse_position = position.into();
+	pub(crate) fn modifiers_apply_key_event(&mut self, key: &Key, state: &ElementState) {
+		let bits = match key {
+			Key::Named(NamedKey::Shift) => ModifiersState::SHIFT,
+			Key::Named(NamedKey::Control) => ModifiersState::CONTROL,
+			Key::Named(NamedKey::Alt) => ModifiersState::ALT,
+			Key::Named(NamedKey::Meta) => ModifiersState::META,
+			_ => return,
+		};
+		let is_pressed = matches!(state, ElementState::Pressed);
+		self.modifiers.set(bits, is_pressed);
+	}
+
+	pub(crate) fn cursor_move(&mut self, position: &PhysicalPosition<f64>) -> bool {
+		let new = position.into();
+		if self.mouse_position == new {
+			return false;
+		}
+		self.mouse_position = new;
+		true
 	}
 
 	pub(crate) fn mouse_input(&mut self, button: &MouseButton, state: &ElementState) -> ClickCount {
@@ -26,18 +45,18 @@ impl InputState {
 		self.mouse_click_tracker.input(button, state, self.mouse_position)
 	}
 
-	pub(crate) fn cef_modifiers(&self, location: &winit::keyboard::KeyLocation, is_repeat: bool) -> CefModifiers {
+	pub(crate) fn cef_modifiers(&self, location: &KeyLocation, is_repeat: bool) -> CefModifiers {
 		CefModifiers::new(self, location, is_repeat)
 	}
 
 	pub(crate) fn cef_mouse_modifiers(&self) -> CefModifiers {
-		self.cef_modifiers(&winit::keyboard::KeyLocation::Standard, false)
+		self.cef_modifiers(&KeyLocation::Standard, false)
 	}
 }
 
 impl From<InputState> for CefModifiers {
 	fn from(val: InputState) -> Self {
-		CefModifiers::new(&val, &winit::keyboard::KeyLocation::Standard, false)
+		CefModifiers::new(&val, &KeyLocation::Standard, false)
 	}
 }
 impl From<&InputState> for MouseEvent {
@@ -45,7 +64,7 @@ impl From<&InputState> for MouseEvent {
 		MouseEvent {
 			x: val.mouse_position.x as i32,
 			y: val.mouse_position.y as i32,
-			modifiers: val.cef_mouse_modifiers().raw(),
+			modifiers: val.cef_mouse_modifiers().into(),
 		}
 	}
 }
@@ -54,12 +73,12 @@ impl From<&mut InputState> for MouseEvent {
 		MouseEvent {
 			x: val.mouse_position.x as i32,
 			y: val.mouse_position.y as i32,
-			modifiers: val.cef_mouse_modifiers().raw(),
+			modifiers: val.cef_mouse_modifiers().into(),
 		}
 	}
 }
 
-#[derive(Default, Clone, Copy)]
+#[derive(Default, Clone, Copy, Eq, PartialEq)]
 pub(crate) struct MousePosition {
 	x: usize,
 	y: usize,
@@ -120,25 +139,26 @@ impl ClickTracker {
 
 		let prev_time = record.time;
 		let prev_position = record.position;
+		let prev_count: ClickCount = record.down_count;
 
 		let now = Instant::now();
 		record.time = now;
 		record.position = position;
 
 		match state {
-			ElementState::Pressed if record.down_count == ClickCount::Double => {
+			ElementState::Pressed if record.down_count == ClickCount::Triple => {
 				*record = ClickRecord {
-					down_count: ClickCount::Single,
+					down_count: ClickCount::Double,
 					..*record
 				};
-				return ClickCount::Single;
+				return ClickCount::Double;
 			}
-			ElementState::Released if record.up_count == ClickCount::Double => {
+			ElementState::Released if record.up_count == ClickCount::Triple => {
 				*record = ClickRecord {
-					up_count: ClickCount::Single,
+					up_count: ClickCount::Double,
 					..*record
 				};
-				return ClickCount::Single;
+				return ClickCount::Double;
 			}
 			_ => {}
 		}
@@ -148,7 +168,11 @@ impl ClickTracker {
 		let within_dist = dx <= MULTICLICK_ALLOWED_TRAVEL && dy <= MULTICLICK_ALLOWED_TRAVEL;
 		let within_time = now.saturating_duration_since(prev_time) <= MULTICLICK_TIMEOUT;
 
-		let count = if within_time && within_dist { ClickCount::Double } else { ClickCount::Single };
+		let count = match (prev_count, within_time, within_dist) {
+			(ClickCount::Double, true, true) => ClickCount::Triple,
+			(_, true, true) => ClickCount::Double,
+			_ => ClickCount::Single,
+		};
 
 		*record = match state {
 			ElementState::Pressed => ClickRecord { down_count: count, ..*record },
@@ -163,12 +187,14 @@ pub(crate) enum ClickCount {
 	#[default]
 	Single,
 	Double,
+	Triple,
 }
 impl From<ClickCount> for i32 {
 	fn from(count: ClickCount) -> i32 {
 		match count {
 			ClickCount::Single => 1,
 			ClickCount::Double => 2,
+			ClickCount::Triple => 3,
 		}
 	}
 }
@@ -192,51 +218,58 @@ impl Default for ClickRecord {
 	}
 }
 
-pub(crate) struct CefModifiers(u32);
+pub(crate) struct CefModifiers(cef_event_flags_t);
 impl CefModifiers {
-	fn new(input_state: &InputState, location: &winit::keyboard::KeyLocation, is_repeat: bool) -> Self {
-		use cef::sys::cef_event_flags_t;
-
-		let mut inner = 0;
+	fn new(input_state: &InputState, location: &KeyLocation, is_repeat: bool) -> Self {
+		let mut inner = cef_event_flags_t::EVENTFLAG_NONE;
 
 		if input_state.modifiers.shift_key() {
-			inner |= cef_event_flags_t::EVENTFLAG_SHIFT_DOWN as u32;
+			inner |= cef_event_flags_t::EVENTFLAG_SHIFT_DOWN;
 		}
 		if input_state.modifiers.control_key() {
-			inner |= cef_event_flags_t::EVENTFLAG_CONTROL_DOWN as u32;
+			inner |= cef_event_flags_t::EVENTFLAG_CONTROL_DOWN;
 		}
 		if input_state.modifiers.alt_key() {
-			inner |= cef_event_flags_t::EVENTFLAG_ALT_DOWN as u32;
+			inner |= cef_event_flags_t::EVENTFLAG_ALT_DOWN;
 		}
 		if input_state.modifiers.meta_key() {
-			inner |= cef_event_flags_t::EVENTFLAG_COMMAND_DOWN as u32;
+			inner |= cef_event_flags_t::EVENTFLAG_COMMAND_DOWN;
 		}
 
 		if input_state.mouse_state.left {
-			inner |= cef_event_flags_t::EVENTFLAG_LEFT_MOUSE_BUTTON as u32;
+			inner |= cef_event_flags_t::EVENTFLAG_LEFT_MOUSE_BUTTON;
 		}
 		if input_state.mouse_state.right {
-			inner |= cef_event_flags_t::EVENTFLAG_RIGHT_MOUSE_BUTTON as u32;
+			inner |= cef_event_flags_t::EVENTFLAG_RIGHT_MOUSE_BUTTON;
 		}
 		if input_state.mouse_state.middle {
-			inner |= cef_event_flags_t::EVENTFLAG_MIDDLE_MOUSE_BUTTON as u32;
+			inner |= cef_event_flags_t::EVENTFLAG_MIDDLE_MOUSE_BUTTON;
 		}
 
 		if is_repeat {
-			inner |= cef_event_flags_t::EVENTFLAG_IS_REPEAT as u32;
+			inner |= cef_event_flags_t::EVENTFLAG_IS_REPEAT;
 		}
 
 		inner |= match location {
-			winit::keyboard::KeyLocation::Left => cef_event_flags_t::EVENTFLAG_IS_LEFT as u32,
-			winit::keyboard::KeyLocation::Right => cef_event_flags_t::EVENTFLAG_IS_RIGHT as u32,
-			winit::keyboard::KeyLocation::Numpad => cef_event_flags_t::EVENTFLAG_IS_KEY_PAD as u32,
-			winit::keyboard::KeyLocation::Standard => 0,
+			KeyLocation::Left => cef_event_flags_t::EVENTFLAG_IS_LEFT,
+			KeyLocation::Right => cef_event_flags_t::EVENTFLAG_IS_RIGHT,
+			KeyLocation::Numpad => cef_event_flags_t::EVENTFLAG_IS_KEY_PAD,
+			KeyLocation::Standard => cef_event_flags_t::EVENTFLAG_NONE,
 		};
 
 		Self(inner)
 	}
 
-	pub(crate) fn raw(&self) -> u32 {
-		self.0
+	pub(super) const PINCH_MODIFIERS: Self = Self(cef_event_flags_t(
+		cef_event_flags_t::EVENTFLAG_CONTROL_DOWN.0 | cef_event_flags_t::EVENTFLAG_PRECISION_SCROLLING_DELTA.0,
+	));
+}
+
+impl From<CefModifiers> for u32 {
+	fn from(val: CefModifiers) -> Self {
+		#[cfg(not(target_os = "windows"))]
+		return val.0.0;
+		#[cfg(target_os = "windows")]
+		return val.0.0 as u32;
 	}
 }

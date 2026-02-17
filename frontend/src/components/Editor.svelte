@@ -3,8 +3,7 @@
 
 	import { type Editor } from "@graphite/editor";
 	import { createClipboardManager } from "@graphite/io-managers/clipboard";
-	import { createDragManager } from "@graphite/io-managers/drag";
-	import { createHyperlinkManager } from "@graphite/io-managers/hyperlinks";
+	import { createHyperlinkManager } from "@graphite/io-managers/hyperlink";
 	import { createInputManager } from "@graphite/io-managers/input";
 	import { createLocalizationManager } from "@graphite/io-managers/localization";
 	import { createPanicManager } from "@graphite/io-managers/panic";
@@ -12,11 +11,11 @@
 	import { createAppWindowState } from "@graphite/state-providers/app-window";
 	import { createDialogState } from "@graphite/state-providers/dialog";
 	import { createDocumentState } from "@graphite/state-providers/document";
-	import { createFontsState } from "@graphite/state-providers/fonts";
+	import { createFontsManager } from "/src/io-managers/fonts";
 	import { createFullscreenState } from "@graphite/state-providers/fullscreen";
 	import { createNodeGraphState } from "@graphite/state-providers/node-graph";
 	import { createPortfolioState } from "@graphite/state-providers/portfolio";
-	import { operatingSystem } from "@graphite/utility-functions/platform";
+	import { createTooltipState } from "@graphite/state-providers/tooltip";
 
 	import MainWindow from "@graphite/components/window/MainWindow.svelte";
 
@@ -27,10 +26,10 @@
 	// State provider systems
 	let dialog = createDialogState(editor);
 	setContext("dialog", dialog);
+	let tooltip = createTooltipState(editor);
+	setContext("tooltip", tooltip);
 	let document = createDocumentState(editor);
 	setContext("document", document);
-	let fonts = createFontsState(editor);
-	setContext("fonts", fonts);
 	let fullscreen = createFullscreenState(editor);
 	setContext("fullscreen", fullscreen);
 	let nodeGraph = createNodeGraphState(editor);
@@ -46,17 +45,16 @@
 	createLocalizationManager(editor);
 	createPanicManager(editor, dialog);
 	createPersistenceManager(editor, portfolio);
-	let dragManagerDestructor = createDragManager();
+	createFontsManager(editor);
 	let inputManagerDestructor = createInputManager(editor, dialog, portfolio, document, fullscreen);
 
 	onMount(() => {
 		// Initialize certain setup tasks required by the editor backend to be ready for the user now that the frontend is ready
-		editor.handle.initAfterFrontendReady(operatingSystem());
+		editor.handle.initAfterFrontendReady();
 	});
 
 	onDestroy(() => {
 		// Call the destructor for each manager
-		dragManagerDestructor();
 		inputManagerDestructor();
 	});
 </script>
@@ -129,6 +127,8 @@
 		--color-data-gradient-dim: #6c489b;
 		--color-data-typography: #eea7a7;
 		--color-data-typography-dim: #955252;
+		--color-data-invalid: #d6536e; // Same as --color-error-red
+		--color-data-invalid-dim: #a7324a;
 
 		--color-none: white;
 		--color-none-repeat: no-repeat;
@@ -221,6 +221,10 @@
 		user-select: none;
 	}
 
+	body.cursor-hidden * {
+		cursor: none !important;
+	}
+
 	// Needed for the viewport hole punch on desktop
 	html:has(body > .viewport-hole-punch),
 	body:has(> .viewport-hole-punch) {
@@ -256,42 +260,8 @@
 		.scrollable-x,
 		.scrollable-y {
 			overflow: hidden;
-
 			scrollbar-width: thin;
-			// Not supported in Safari
-			scrollbar-color: var(--color-5-dullgray) transparent;
-
-			// Safari (more capable, removed from recent versions of Chromium, possibly still supported in Safari but not tested)
-			&::-webkit-scrollbar {
-				width: calc(2px + 6px + 2px);
-				height: calc(2px + 6px + 2px);
-			}
-
-			&::-webkit-scrollbar-track {
-				box-shadow: inset 0 0 0 1px var(--color-5-dullgray);
-				border: 2px solid transparent;
-				border-radius: 10px;
-			}
-
-			&:hover::-webkit-scrollbar-track {
-				box-shadow: inset 0 0 0 1px var(--color-6-lowergray);
-			}
-
-			&::-webkit-scrollbar-thumb {
-				background-clip: padding-box;
-				background-color: var(--color-5-dullgray);
-				border: 2px solid transparent;
-				border-radius: 10px;
-				margin: 2px;
-			}
-
-			&:hover::-webkit-scrollbar-thumb {
-				background-color: var(--color-6-lowergray);
-			}
-
-			&::-webkit-scrollbar-corner {
-				background: none;
-			}
+			scrollbar-color: var(--color-4-dimgray) transparent;
 		}
 
 		.scrollable-x.scrollable-y {
@@ -299,6 +269,7 @@
 		}
 
 		.scrollable-x:not(.scrollable-y) {
+			scrollbar-width: none;
 			overflow: auto hidden;
 		}
 
@@ -359,7 +330,7 @@
 		font-weight: 400;
 		font-style: normal;
 		font-stretch: normal;
-		src: url("@graphite/../node_modules/source-sans/WOFF2/TTF/SourceSansPro-Regular.ttf.woff2") format("woff2");
+		src: url("@graphite/../node_modules/source-sans-pro/WOFF2/TTF/SourceSansPro-Regular.ttf.woff2") format("woff2");
 	}
 
 	@font-face {
@@ -367,7 +338,7 @@
 		font-weight: 400;
 		font-style: italic;
 		font-stretch: normal;
-		src: url("@graphite/../node_modules/source-sans/WOFF2/TTF/SourceSansPro-It.ttf.woff2") format("woff2");
+		src: url("@graphite/../node_modules/source-sans-pro/WOFF2/TTF/SourceSansPro-It.ttf.woff2") format("woff2");
 	}
 
 	@font-face {
@@ -375,7 +346,7 @@
 		font-weight: 700;
 		font-style: normal;
 		font-stretch: normal;
-		src: url("@graphite/../node_modules/source-sans/WOFF2/TTF/SourceSansPro-Bold.ttf.woff2") format("woff2");
+		src: url("@graphite/../node_modules/source-sans-pro/WOFF2/TTF/SourceSansPro-Bold.ttf.woff2") format("woff2");
 	}
 
 	@font-face {
@@ -383,7 +354,7 @@
 		font-weight: 700;
 		font-style: italic;
 		font-stretch: normal;
-		src: url("@graphite/../node_modules/source-sans/WOFF2/TTF/SourceSansPro-BoldIt.ttf.woff2") format("woff2");
+		src: url("@graphite/../node_modules/source-sans-pro/WOFF2/TTF/SourceSansPro-BoldIt.ttf.woff2") format("woff2");
 	}
 
 	@font-face {

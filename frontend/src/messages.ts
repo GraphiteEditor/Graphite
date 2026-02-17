@@ -2,8 +2,8 @@
 
 import { Transform, Type, plainToClass } from "class-transformer";
 
-import { type PopoverButtonStyle, type IconName, type IconSize } from "@graphite/utility-functions/icons";
-import { type EditorHandle } from "@graphite-frontend/wasm/pkg/graphite_wasm.js";
+import { type EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
+import { type PopoverButtonStyle, type IconName, type IconSize } from "@graphite/icons";
 
 export class JsMessage {
 	// The marker provides a way to check if an object is a sub-class constructor for a jsMessage.
@@ -31,23 +31,6 @@ export class UpdateBox extends JsMessage {
 
 export class UpdateClickTargets extends JsMessage {
 	readonly clickTargets!: FrontendClickTargets | undefined;
-}
-
-const ContextTupleToVec2 = Transform((data) => {
-	if (data.obj.contextMenuInformation === undefined) return undefined;
-	const contextMenuCoordinates = { x: data.obj.contextMenuInformation.contextMenuCoordinates[0], y: data.obj.contextMenuInformation.contextMenuCoordinates[1] };
-	let contextMenuData = data.obj.contextMenuInformation.contextMenuData;
-	if (contextMenuData.ToggleLayer !== undefined) {
-		contextMenuData = { nodeId: contextMenuData.ToggleLayer.nodeId, currentlyIsNode: contextMenuData.ToggleLayer.currentlyIsNode };
-	} else if (contextMenuData.CreateNode !== undefined) {
-		contextMenuData = { type: "CreateNode", compatibleType: contextMenuData.CreateNode.compatibleType };
-	}
-	return { contextMenuCoordinates, contextMenuData };
-});
-
-export class UpdateContextMenuInformation extends JsMessage {
-	@ContextTupleToVec2
-	readonly contextMenuInformation!: ContextMenuInformation | undefined;
 }
 
 export class UpdateImportsExports extends JsMessage {
@@ -94,6 +77,15 @@ export class UpdateNodeGraphNodes extends JsMessage {
 	readonly nodes!: FrontendNode[];
 }
 
+export class UpdateNodeGraphErrorDiagnostic extends JsMessage {
+	readonly error!: NodeGraphError | undefined;
+}
+
+export class NodeGraphError {
+	readonly position!: XY;
+	readonly error!: string;
+}
+
 export class UpdateVisibleNodes extends JsMessage {
 	readonly nodes!: bigint[];
 }
@@ -108,13 +100,28 @@ export class UpdateNodeGraphTransform extends JsMessage {
 	readonly transform!: NodeGraphTransform;
 }
 
-const NodeDescriptions = Transform(({ obj }) => new Map(obj.nodeDescriptions));
-
 export class SendUIMetadata extends JsMessage {
-	@NodeDescriptions
+	@Transform(({ obj }) => new Map(obj.nodeDescriptions))
 	readonly nodeDescriptions!: Map<string, string>;
-	@Type(() => FrontendNode)
+
 	readonly nodeTypes!: FrontendNodeType[];
+}
+
+export class SendShortcutFullscreen extends JsMessage {
+	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
+	readonly shortcut!: ActionShortcut | undefined;
+	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
+	readonly shortcutMac!: ActionShortcut | undefined;
+}
+
+export class SendShortcutAltClick extends JsMessage {
+	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
+	readonly shortcut!: ActionShortcut | undefined;
+}
+
+export class SendShortcutShiftClick extends JsMessage {
+	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
+	readonly shortcut!: ActionShortcut | undefined;
 }
 
 export class UpdateNodeThumbnail extends JsMessage {
@@ -173,10 +180,14 @@ export type FrontendClickTargets = {
 
 export type ContextMenuInformation = {
 	contextMenuCoordinates: XY;
-	contextMenuData: "CreateNode" | { type: "CreateNode"; compatibleType: string } | { nodeId: bigint; currentlyIsNode: boolean };
+	contextMenuData: { type: "CreateNode"; data: { compatibleType: string | undefined } } | { type: "ModifyNode"; data: { canBeLayer: boolean; currentlyIsNode: boolean; nodeId: bigint } };
 };
 
-export type FrontendGraphDataType = "General" | "Number" | "Artboard" | "Graphic" | "Raster" | "Vector" | "Color";
+export class UpdateContextMenuInformation extends JsMessage {
+	readonly contextMenuInformation!: ContextMenuInformation | undefined;
+}
+
+export type FrontendGraphDataType = "General" | "Number" | "Artboard" | "Graphic" | "Raster" | "Vector" | "Color" | "Invalid";
 
 export class FrontendGraphInput {
 	readonly dataType!: FrontendGraphDataType;
@@ -205,15 +216,17 @@ export class FrontendGraphOutput {
 }
 
 export class FrontendNode {
+	readonly id!: bigint;
+
 	readonly isLayer!: boolean;
 
 	readonly canBeLayer!: boolean;
 
-	readonly id!: bigint;
-
 	readonly reference!: string | undefined;
 
 	readonly displayName!: string;
+
+	readonly implementationName!: string;
 
 	readonly primaryInput!: FrontendGraphInput | undefined;
 
@@ -236,18 +249,20 @@ export class FrontendNode {
 
 	readonly visible!: boolean;
 
-	readonly unlocked!: boolean;
-
-	readonly errors!: string | undefined;
+	readonly locked!: boolean;
 }
 
 export class FrontendNodeType {
+	readonly identifier!: string;
+
 	readonly name!: string;
 
 	readonly category!: string;
 
 	readonly inputTypes!: string[];
 }
+
+export type DefinitionIdentifier = { type: "Network" | "ProtoNode"; data: string };
 
 export class NodeGraphTransform {
 	readonly scale!: number;
@@ -298,7 +313,9 @@ export class UpdateMaximized extends JsMessage {
 	readonly maximized!: boolean;
 }
 
-export class CloseWindow extends JsMessage {}
+export class UpdateFullscreen extends JsMessage {
+	readonly fullscreen!: boolean;
+}
 
 export class UpdateViewportHolePunch extends JsMessage {
 	readonly active!: boolean;
@@ -311,37 +328,25 @@ export class UpdateViewportPhysicalBounds extends JsMessage {
 	readonly height!: number;
 }
 
-export class UpdateInputHints extends JsMessage {
-	@Type(() => HintInfo)
-	readonly hintData!: HintData;
+export class UpdateUIScale extends JsMessage {
+	readonly scale!: number;
 }
 
-export type HintData = HintGroup[];
-
-export type HintGroup = HintInfo[];
-
-export class HintInfo {
-	readonly keyGroups!: LayoutKeysGroup[];
-
-	readonly keyGroupsMac!: LayoutKeysGroup[] | undefined;
-
-	readonly mouse!: MouseMotion | undefined;
-
-	readonly label!: string;
-
-	readonly plus!: boolean;
-
-	readonly slash!: boolean;
+export class WindowPointerLockMove extends JsMessage {
+	readonly x!: number;
+	readonly y!: number;
 }
+
+export class WindowFullscreen extends JsMessage {}
 
 // Rust enum `Key`
 export type KeyRaw = string;
 // Serde converts a Rust `Key` enum variant into this format with both the `Key` variant name (called `RawKey` in TS) and the localized `label` for the key
-export type Key = { key: KeyRaw; label: string };
-export type LayoutKeysGroup = Key[];
-export type ActionKeys = { keys: LayoutKeysGroup };
-
-export type MouseMotion = string;
+export type LabeledKey = { key: KeyRaw; label: string };
+export type MouseMotion = "None" | "Lmb" | "Rmb" | "Mmb" | "ScrollUp" | "ScrollDown" | "Drag" | "LmbDouble" | "LmbDrag" | "RmbDrag" | "RmbDouble" | "MmbDrag";
+export type LabeledKeyOrMouseMotion = LabeledKey | MouseMotion;
+export type LabeledShortcut = LabeledKeyOrMouseMotion[];
+export type ActionShortcut = { shortcut: LabeledShortcut };
 
 // Channels can have any range (0-1, 0-255, 0-100, 0-360) in the context they are being used in, these are just containers for the numbers
 export type HSVA = { h: number; s: number; v: number; a: number };
@@ -673,7 +678,15 @@ export class UpdateDocumentRulers extends JsMessage {
 	readonly visible!: boolean;
 }
 
+export class EyedropperPreviewImage {
+	readonly data!: Uint8Array;
+	readonly width!: number;
+	readonly height!: number;
+}
+
 export class UpdateEyedropperSamplingState extends JsMessage {
+	readonly image!: EyedropperPreviewImage | undefined;
+
 	@TupleToVec2
 	readonly mousePosition!: XY | undefined;
 
@@ -740,11 +753,11 @@ export class TriggerFetchAndOpenDocument extends JsMessage {
 	readonly filename!: string;
 }
 
-export class TriggerOpenDocument extends JsMessage {}
+export class TriggerOpen extends JsMessage {}
 
 export class TriggerImport extends JsMessage {}
 
-export class TriggerPaste extends JsMessage {}
+export class TriggerClipboardRead extends JsMessage {}
 
 export class TriggerSaveDocument extends JsMessage {
 	readonly documentId!: bigint;
@@ -783,13 +796,13 @@ export class TriggerSaveActiveDocument extends JsMessage {
 
 export class DocumentChanged extends JsMessage {}
 
-export type DataBuffer = {
-	pointer: bigint;
-	length: bigint;
+export type LayerStructureEntry = {
+	layerId: bigint;
+	children: LayerStructureEntry[];
 };
 
-export class UpdateDocumentLayerStructureJs extends JsMessage {
-	readonly dataBuffer!: DataBuffer;
+export class UpdateDocumentLayerStructure extends JsMessage {
+	readonly layerStructure!: LayerStructureEntry[];
 }
 
 export type TextAlign = "Left" | "Center" | "Right" | "JustifyLeft";
@@ -804,7 +817,7 @@ export class DisplayEditableTextbox extends JsMessage {
 	@Type(() => Color)
 	readonly color!: Color;
 
-	readonly url!: string;
+	readonly fontData!: ArrayBuffer;
 
 	readonly transform!: number[];
 
@@ -813,6 +826,10 @@ export class DisplayEditableTextbox extends JsMessage {
 	readonly maxHeight!: undefined | number;
 
 	readonly align!: TextAlign;
+}
+
+export class DisplayEditableTextboxUpdateFontData extends JsMessage {
+	readonly fontData!: ArrayBuffer;
 }
 
 export class DisplayEditableTextboxTransform extends JsMessage {
@@ -829,12 +846,11 @@ export class UpdateDocumentLayerDetails extends JsMessage {
 export class LayerPanelEntry {
 	id!: bigint;
 
-	name!: string;
+	implementationName!: string;
+
+	iconName!: IconName | undefined;
 
 	alias!: string;
-
-	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltip!: string | undefined;
 
 	inSelectedNetwork!: boolean;
 
@@ -876,9 +892,13 @@ export class Font {
 	fontStyle!: string;
 }
 
-export class TriggerFontLoad extends JsMessage {
+export class TriggerFontCatalogLoad extends JsMessage {}
+
+export class TriggerFontDataLoad extends JsMessage {
 	@Type(() => Font)
 	font!: Font;
+
+	url!: string;
 }
 
 export class TriggerVisitLink extends JsMessage {
@@ -887,8 +907,16 @@ export class TriggerVisitLink extends JsMessage {
 
 export class TriggerTextCommit extends JsMessage {}
 
-export class TriggerTextCopy extends JsMessage {
-	readonly copyText!: string;
+export class TriggerClipboardWrite extends JsMessage {
+	readonly content!: string;
+}
+
+export class TriggerSelectionRead extends JsMessage {
+	readonly cut!: boolean;
+}
+
+export class TriggerSelectionWrite extends JsMessage {
+	readonly content!: string;
 }
 
 export class TriggerAboutGraphiteLocalizedCommitDate extends JsMessage {
@@ -904,19 +932,23 @@ export abstract class WidgetProps {
 }
 
 export class CheckboxInput extends WidgetProps {
+	// Content
 	checked!: boolean;
-
+	icon!: IconName;
+	forLabel!: bigint | undefined;
 	disabled!: boolean;
 
-	icon!: IconName;
-
+	// Tooltips
 	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltip!: string | undefined;
-
-	forLabel!: bigint | undefined;
+	tooltipLabel!: string | undefined;
+	@Transform(({ value }: { value: string }) => value || undefined)
+	tooltipDescription!: string | undefined;
+	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
+	tooltipShortcut!: ActionShortcut | undefined;
 }
 
 export class ColorInput extends WidgetProps {
+	// Content
 	@Transform(({ value }) => {
 		if (value instanceof Gradient) return value;
 		const gradient = value["Gradient"];
@@ -937,19 +969,21 @@ export class ColorInput extends WidgetProps {
 		return new Color("none");
 	})
 	value!: FillChoice;
-
 	allowNone!: boolean;
-
+	// allowTransparency!: boolean; // TODO: Implement
+	menuDirection!: MenuDirection | undefined;
 	disabled!: boolean;
 
+	// Styling
 	narrow!: boolean;
 
-	menuDirection!: MenuDirection | undefined;
-
-	// allowTransparency!: boolean; // TODO: Implement
-
+	// Tooltips
 	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltip!: string | undefined;
+	tooltipLabel!: string | undefined;
+	@Transform(({ value }: { value: string }) => value || undefined)
+	tooltipDescription!: string | undefined;
+	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
+	tooltipShortcut!: ActionShortcut | undefined;
 }
 
 export type FillChoice = Color | Gradient;
@@ -985,29 +1019,25 @@ export function contrastingOutlineFactor(value: FillChoice, proximityColor: stri
 	return contrast(value);
 }
 
-type MenuEntryCommon = {
+// An entry in the all-encompassing MenuList component which defines all types of menus (which are spawned by widgets like `TextButton` and `DropdownInput`)
+export type MenuListEntry = {
+	// Content
+	value: string;
 	label: string;
 	icon?: IconName;
-	shortcut?: ActionKeys;
-};
-
-// The entry in the expanded menu or a sub-menu as received from the Rust backend
-export type MenuBarEntry = MenuEntryCommon & {
-	action: Widget;
-	children?: MenuBarEntry[][];
 	disabled?: boolean;
-};
 
-// An entry in the all-encompassing MenuList component which defines all types of menus (which are spawned by widgets like `TextButton` and `DropdownInput`)
-export type MenuListEntry = MenuEntryCommon & {
-	action?: () => void;
+	// Children
 	children?: MenuListEntry[][];
+	childrenHash?: bigint;
 
-	value: string;
-	shortcutRequiresLock?: boolean;
-	disabled?: boolean;
-	tooltip?: string;
-	font?: URL;
+	// Styling
+	font?: string;
+
+	// Tooltips
+	tooltipLabel?: string;
+	tooltipDescription?: string;
+	tooltipShortcut?: ActionShortcut;
 };
 
 export class CurveManipulatorGroup {
@@ -1022,345 +1052,370 @@ export class Curve {
 }
 
 export class CurveInput extends WidgetProps {
+	// Content
 	value!: Curve;
 
-	disabled!: boolean;
-
+	// Tooltips
 	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltip!: string | undefined;
+	tooltipLabel!: string | undefined;
+	@Transform(({ value }: { value: string }) => value || undefined)
+	tooltipDescription!: string | undefined;
+	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
+	tooltipShortcut!: ActionShortcut | undefined;
 }
 
 export class DropdownInput extends WidgetProps {
-	entries!: MenuListEntry[][];
-
+	// Content
 	selectedIndex!: number | undefined;
-
 	drawIcon!: boolean;
-
-	interactive!: boolean;
-
 	disabled!: boolean;
 
-	narrow!: boolean;
-
-	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltip!: string | undefined;
+	// Children
+	entries!: MenuListEntry[][];
+	entriesHash!: bigint;
 
 	// Styling
+	narrow!: boolean;
 
+	// Behavior
+	virtualScrolling!: boolean;
+	interactive!: boolean;
+
+	// Sizing
 	minWidth!: number;
-
 	maxWidth!: number;
-}
 
-export class FontInput extends WidgetProps {
-	fontFamily!: string;
-
-	fontStyle!: string;
-
-	isStyle!: boolean;
-
-	disabled!: boolean;
-
+	// Tooltips
 	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltip!: string | undefined;
+	tooltipLabel!: string | undefined;
+	@Transform(({ value }: { value: string }) => value || undefined)
+	tooltipDescription!: string | undefined;
+	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
+	tooltipShortcut!: ActionShortcut | undefined;
 }
 
 export class IconButton extends WidgetProps {
+	// Content
 	icon!: IconName;
-
 	hoverIcon!: IconName | undefined;
-
 	size!: IconSize;
-
 	disabled!: boolean;
 
-	active!: boolean;
+	// Styling
+	emphasized!: boolean;
 
+	// Tooltips
 	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltip!: string | undefined;
+	tooltipLabel!: string | undefined;
+	@Transform(({ value }: { value: string }) => value || undefined)
+	tooltipDescription!: string | undefined;
+	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
+	tooltipShortcut!: ActionShortcut | undefined;
 }
 
 export class IconLabel extends WidgetProps {
+	// Content
 	icon!: IconName;
-
 	disabled!: boolean;
 
+	// Tooltips
 	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltip!: string | undefined;
+	tooltipLabel!: string | undefined;
+	@Transform(({ value }: { value: string }) => value || undefined)
+	tooltipDescription!: string | undefined;
+	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
+	tooltipShortcut!: ActionShortcut | undefined;
 }
 
 export class ImageButton extends WidgetProps {
+	// Content
 	image!: IconName;
-
 	@Transform(({ value }: { value: string }) => value || undefined)
 	width!: string | undefined;
-
 	@Transform(({ value }: { value: string }) => value || undefined)
 	height!: string | undefined;
 
+	// Tooltips
 	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltip!: string | undefined;
+	tooltipLabel!: string | undefined;
+	@Transform(({ value }: { value: string }) => value || undefined)
+	tooltipDescription!: string | undefined;
+	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
+	tooltipShortcut!: ActionShortcut | undefined;
 }
 
 export class ImageLabel extends WidgetProps {
+	// Content
 	url!: string;
-
 	@Transform(({ value }: { value: string }) => value || undefined)
 	width!: string | undefined;
-
 	@Transform(({ value }: { value: string }) => value || undefined)
 	height!: string | undefined;
 
+	// Tooltips
 	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltip!: string | undefined;
+	tooltipLabel!: string | undefined;
+	@Transform(({ value }: { value: string }) => value || undefined)
+	tooltipDescription!: string | undefined;
+	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
+	tooltipShortcut!: ActionShortcut | undefined;
+}
+
+export class ShortcutLabel extends WidgetProps {
+	// Content
+	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
+	shortcut!: ActionShortcut | undefined;
 }
 
 export type NumberInputIncrementBehavior = "Add" | "Multiply" | "Callback" | "None";
 export type NumberInputMode = "Increment" | "Range";
 
 export class NumberInput extends WidgetProps {
-	// Label
-
+	// Content
+	value!: number | undefined;
 	label!: string | undefined;
-
-	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltip!: string | undefined;
-
-	// Disabled
-
 	disabled!: boolean;
 
-	// Narrow
+	// Styling
 	narrow!: boolean;
 
-	// Value
-
-	value!: number | undefined;
-
+	// Behavior
+	mode!: NumberInputMode;
 	min!: number | undefined;
-
 	max!: number | undefined;
-
+	rangeMin!: number | undefined;
+	rangeMax!: number | undefined;
+	step!: number;
 	isInteger!: boolean;
-
-	// Number presentation
-
+	incrementBehavior!: NumberInputIncrementBehavior;
 	displayDecimalPlaces!: number;
-
 	unit!: string;
-
 	unitIsHiddenWhenEditing!: boolean;
 
-	// Mode behavior
-
-	mode!: NumberInputMode;
-
-	incrementBehavior!: NumberInputIncrementBehavior;
-
-	step!: number;
-
-	rangeMin!: number | undefined;
-
-	rangeMax!: number | undefined;
-
-	// Styling
-
+	// Sizing
 	minWidth!: number;
-
 	maxWidth!: number;
+
+	// Tooltips
+	@Transform(({ value }: { value: string }) => value || undefined)
+	tooltipLabel!: string | undefined;
+	@Transform(({ value }: { value: string }) => value || undefined)
+	tooltipDescription!: string | undefined;
+	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
+	tooltipShortcut!: ActionShortcut | undefined;
 }
 
 export class NodeCatalog extends WidgetProps {
+	// Content
 	disabled!: boolean;
+
+	// Behavior
+	initialSearchTerm!: string;
 }
 
 export class PopoverButton extends WidgetProps {
+	// Content
 	style!: PopoverButtonStyle | undefined;
-
-	menuDirection!: MenuDirection | undefined;
-
 	icon!: IconName | undefined;
-
 	disabled!: boolean;
 
+	// Children
+	popoverLayout!: Layout;
+	popoverMinWidth!: number | undefined;
+	menuDirection!: MenuDirection | undefined;
+
+	// Tooltips
 	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltip!: string | undefined;
-
-	// Body
-	popoverLayout!: LayoutGroup[];
-
-	popoverMinWidth: number | undefined;
+	tooltipLabel!: string | undefined;
+	@Transform(({ value }: { value: string }) => value || undefined)
+	tooltipDescription!: string | undefined;
+	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
+	tooltipShortcut!: ActionShortcut | undefined;
 }
 
 export type MenuDirection = "Top" | "Bottom" | "Left" | "Right" | "TopLeft" | "TopRight" | "BottomLeft" | "BottomRight" | "Center";
 
 export type RadioEntryData = {
+	// Content
 	value?: string;
 	label?: string;
 	icon?: IconName;
-	tooltip?: string;
 
-	// Callbacks
-	action?: () => void;
+	// Tooltips
+	tooltipLabel?: string;
+	tooltipDescription?: string;
+	tooltipShortcut?: ActionShortcut;
 };
-export type RadioEntries = RadioEntryData[];
 
 export class RadioInput extends WidgetProps {
-	entries!: RadioEntries;
-
+	// Content
+	selectedIndex!: number | undefined;
 	disabled!: boolean;
 
+	// Children
+	entries!: RadioEntryData[];
+
+	// Styling
 	narrow!: boolean;
 
-	selectedIndex!: number | undefined;
-
+	// Sizing
 	minWidth!: number;
 }
 
 export type SeparatorDirection = "Horizontal" | "Vertical";
-export type SeparatorType = "Related" | "Unrelated" | "Section";
+export type SeparatorStyle = "Related" | "Unrelated" | "Section";
 
 export class Separator extends WidgetProps {
+	// Content
 	direction!: SeparatorDirection;
-
-	type!: SeparatorType;
+	style!: SeparatorStyle;
 }
 
 export class WorkingColorsInput extends WidgetProps {
+	// Content
 	@Type(() => Color)
 	primary!: Color;
-
 	@Type(() => Color)
 	secondary!: Color;
 }
 
 export class TextAreaInput extends WidgetProps {
+	// Content
 	value!: string;
-
 	label!: string | undefined;
-
 	disabled!: boolean;
 
+	// Tooltips
 	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltip!: string | undefined;
+	tooltipLabel!: string | undefined;
+	@Transform(({ value }: { value: string }) => value || undefined)
+	tooltipDescription!: string | undefined;
+	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
+	tooltipShortcut!: ActionShortcut | undefined;
 }
 
 export class ParameterExposeButton extends WidgetProps {
+	// Content
 	exposed!: boolean;
-
 	dataType!: FrontendGraphDataType;
 
+	// Tooltips
 	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltip!: string | undefined;
+	tooltipLabel!: string | undefined;
+	@Transform(({ value }: { value: string }) => value || undefined)
+	tooltipDescription!: string | undefined;
+	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
+	tooltipShortcut!: ActionShortcut | undefined;
 }
 
 export class TextButton extends WidgetProps {
+	// Content
 	label!: string;
-
 	icon!: IconName | undefined;
-
 	hoverIcon!: IconName | undefined;
-
-	emphasized!: boolean;
-
-	flush!: boolean;
-
-	minWidth!: number;
-
 	disabled!: boolean;
 
+	// Children
+	menuListChildren!: MenuListEntry[][];
+	menuListChildrenHash!: bigint;
+
+	// Styling
+	emphasized!: boolean;
+	flush!: boolean;
 	narrow!: boolean;
 
-	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltip!: string | undefined;
+	// Sizing
+	minWidth!: number;
 
-	menuListChildren!: MenuListEntry[][];
+	// Tooltips
+	@Transform(({ value }: { value: string }) => value || undefined)
+	tooltipLabel!: string | undefined;
+	@Transform(({ value }: { value: string }) => value || undefined)
+	tooltipDescription!: string | undefined;
+	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
+	tooltipShortcut!: ActionShortcut | undefined;
 }
 
-export type TextButtonWidget = {
-	tooltip?: string;
-	message?: string | object;
-	callback?: () => void;
-	props: {
-		kind: "TextButton";
-		label: string;
-		icon?: IconName;
-		emphasized?: boolean;
-		flush?: boolean;
-		minWidth?: number;
-		disabled?: boolean;
-		tooltip?: string;
-
-		// Callbacks
-		// `action` is used via `IconButtonWidget.callback`
-	};
-};
-
 export class BreadcrumbTrailButtons extends WidgetProps {
+	// Content
 	labels!: string[];
-
 	disabled!: boolean;
 
+	// Tooltips
 	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltip!: string | undefined;
+	tooltipLabel!: string | undefined;
+	@Transform(({ value }: { value: string }) => value || undefined)
+	tooltipDescription!: string | undefined;
+	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
+	tooltipShortcut!: ActionShortcut | undefined;
 }
 
 export class TextInput extends WidgetProps {
+	// Content
 	value!: string;
-
 	label!: string | undefined;
-
+	placeholder!: string | undefined;
 	disabled!: boolean;
 
+	// Styling
 	narrow!: boolean;
+	centered!: boolean;
 
+	// Sizing
 	minWidth!: number;
-
 	maxWidth!: number;
 
+	// Tooltips
 	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltip!: string | undefined;
+	tooltipLabel!: string | undefined;
+	@Transform(({ value }: { value: string }) => value || undefined)
+	tooltipDescription!: string | undefined;
+	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
+	tooltipShortcut!: ActionShortcut | undefined;
 }
 
 export class TextLabel extends WidgetProps {
-	// Body
+	// Content
 	value!: string;
-
-	// Props
 	disabled!: boolean;
+	forCheckbox!: bigint | undefined;
 
+	// Styling
 	narrow!: boolean;
-
 	bold!: boolean;
-
 	italic!: boolean;
-
 	monospace!: boolean;
-
 	multiline!: boolean;
-
 	centerAlign!: boolean;
-
 	tableAlign!: boolean;
 
-	minWidth!: string;
+	// Sizing
+	minWidth!: number;
+	minWidthCharacters!: number;
 
+	// Tooltips
 	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltip!: string | undefined;
-
-	forCheckbox!: bigint | undefined;
+	tooltipLabel!: string | undefined;
+	@Transform(({ value }: { value: string }) => value || undefined)
+	tooltipDescription!: string | undefined;
+	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
+	tooltipShortcut!: ActionShortcut | undefined;
 }
 
 export type ReferencePoint = "None" | "TopLeft" | "TopCenter" | "TopRight" | "CenterLeft" | "Center" | "CenterRight" | "BottomLeft" | "BottomCenter" | "BottomRight";
 
 export class ReferencePointInput extends WidgetProps {
+	// Content
 	value!: ReferencePoint;
-
 	disabled!: boolean;
 
+	// Tooltips
 	@Transform(({ value }: { value: string }) => value || undefined)
-	tooltip!: string | undefined;
+	tooltipLabel!: string | undefined;
+	@Transform(({ value }: { value: string }) => value || undefined)
+	tooltipDescription!: string | undefined;
+	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
+	tooltipShortcut!: ActionShortcut | undefined;
 }
 
 // WIDGET
@@ -1371,10 +1426,10 @@ const widgetSubTypes = [
 	{ value: ColorInput, name: "ColorInput" },
 	{ value: CurveInput, name: "CurveInput" },
 	{ value: DropdownInput, name: "DropdownInput" },
-	{ value: FontInput, name: "FontInput" },
 	{ value: IconButton, name: "IconButton" },
 	{ value: ImageButton, name: "ImageButton" },
 	{ value: ImageLabel, name: "ImageLabel" },
+	{ value: ShortcutLabel, name: "ShortcutLabel" },
 	{ value: IconLabel, name: "IconLabel" },
 	{ value: NodeCatalog, name: "NodeCatalog" },
 	{ value: NumberInput, name: "NumberInput" },
@@ -1400,65 +1455,77 @@ export function narrowWidgetProps<K extends WidgetPropsNames>(props: WidgetProps
 	else return undefined;
 }
 
-export class Widget {
-	constructor(props: WidgetPropsSet, widgetId: bigint) {
-		this.props = props;
-		this.widgetId = widgetId;
-	}
-
+export class WidgetInstance {
 	@Type(() => WidgetProps, { discriminator: { property: "kind", subTypes: [...widgetSubTypes] }, keepDiscriminatorProperty: true })
 	props!: WidgetPropsSet;
 
 	widgetId!: bigint;
 }
 
-function hoistWidgetHolder(widgetHolder: any): Widget {
-	const kind = Object.keys(widgetHolder.widget)[0];
-	const props = widgetHolder.widget[kind];
+function hoistWidgetInstance(widgetInstance: any): WidgetInstance {
+	const kind = Object.keys(widgetInstance.widget)[0];
+	const props = widgetInstance.widget[kind];
 	props.kind = kind;
 
 	if (kind === "PopoverButton") {
 		props.popoverLayout = props.popoverLayout.map(createLayoutGroup);
 	}
 
-	const { widgetId } = widgetHolder;
+	const { widgetId } = widgetInstance;
 
-	return plainToClass(Widget, { props, widgetId });
+	return plainToClass(WidgetInstance, { props, widgetId });
 }
 
-function hoistWidgetHolders(widgetHolders: any[]): Widget[] {
-	return widgetHolders.map(hoistWidgetHolder);
+function hoistWidgetInstances(widgetInstance: any[]): WidgetInstance[] {
+	return widgetInstance.map(hoistWidgetInstance);
 }
 
 // WIDGET LAYOUT
 
-export type WidgetLayout = {
-	layoutTarget: unknown;
-	layout: LayoutGroup[];
-};
+export type LayoutTarget =
+	| "DataPanel"
+	| "DialogButtons"
+	| "DialogColumn1"
+	| "DialogColumn2"
+	| "DocumentBar"
+	| "LayersPanelBottomBar"
+	| "LayersPanelControlLeftBar"
+	| "LayersPanelControlRightBar"
+	| "MenuBar"
+	| "NodeGraphControlBar"
+	| "PropertiesPanel"
+	| "StatusBarHints"
+	| "StatusBarInfo"
+	| "ToolOptions"
+	| "ToolShelf"
+	| "WelcomeScreenButtons"
+	| "WorkingColors";
 
 export class WidgetDiffUpdate extends JsMessage {
-	layoutTarget!: unknown;
-
 	// TODO: Replace `any` with correct typing
-	@Transform(({ value }: { value: any }) => createWidgetDiff(value))
+	@Transform(({ value }: { value: WidgetDiff[] }) => {
+		// Unpacking rust types to more usable type in the frontend
+		return value.map((diff) => {
+			const { widgetPath, newValue } = diff;
+
+			if ("layout" in newValue) return { widgetPath, newValue: newValue.layout.map(createLayoutGroup) };
+			if ("layoutGroup" in newValue) return { widgetPath, newValue: createLayoutGroup(newValue.layoutGroup) };
+			if ("widget" in newValue) return { widgetPath, newValue: hoistWidgetInstance(newValue.widget) };
+
+			// This code should be unreachable
+			throw new Error("DiffUpdate invalid");
+		});
+	})
 	diff!: WidgetDiff[];
 }
 
-type UIItem = LayoutGroup[] | LayoutGroup | Widget | Widget[] | MenuBarEntry[] | MenuBarEntry;
-type WidgetDiff = { widgetPath: number[]; newValue: UIItem };
+type DiffUpdate = { layout: Layout } | { layoutGroup: LayoutGroup } | { widget: WidgetInstance };
+type WidgetDiff = { widgetPath: number[]; newValue: DiffUpdate };
 
-export function defaultWidgetLayout(): WidgetLayout {
-	return {
-		layoutTarget: undefined,
-		layout: [],
-	};
-}
+type UIItem = Layout | LayoutGroup | WidgetInstance[] | WidgetInstance;
 
 // Updates a widget layout based on a list of updates, giving the new layout by mutating the `layout` argument
-export function patchWidgetLayout(layout: /* &mut */ WidgetLayout, updates: WidgetDiffUpdate) {
-	layout.layoutTarget = updates.layoutTarget;
-
+export function patchLayout(layout: /* &mut */ Layout, updates: WidgetDiffUpdate) {
 	updates.diff.forEach((update) => {
 		// Find the object where the diff applies to
 		const diffObject = update.widgetPath.reduce((targetLayout: UIItem | undefined, index: number): UIItem | undefined => {
@@ -1466,7 +1533,7 @@ export function patchWidgetLayout(layout: /* &mut */ WidgetLayout, updates: Widg
 			if (targetLayout && "rowWidgets" in targetLayout) return targetLayout.rowWidgets[index];
 			if (targetLayout && "tableWidgets" in targetLayout) return targetLayout.tableWidgets[index];
 			if (targetLayout && "layout" in targetLayout) return targetLayout.layout[index];
-			if (targetLayout instanceof Widget) {
+			if (targetLayout instanceof WidgetInstance) {
 				if (targetLayout.props.kind === "PopoverButton" && targetLayout.props instanceof PopoverButton && targetLayout.props.popoverLayout) {
 					return targetLayout.props.popoverLayout[index];
 				}
@@ -1474,11 +1541,9 @@ export function patchWidgetLayout(layout: /* &mut */ WidgetLayout, updates: Widg
 				console.error("Tried to index widget");
 				return targetLayout;
 			}
-			// This is a path traversal so we can assume from the backend that it exists
-			if (targetLayout && "action" in targetLayout) return targetLayout.children![index];
 
 			return targetLayout?.[index];
-		}, layout.layout as UIItem);
+		}, layout as UIItem);
 
 		// Exit if we failed to produce a valid patch for the existing layout.
 		// This means that the backend assumed an existing layout that doesn't exist in the frontend. This can happen, for
@@ -1486,7 +1551,7 @@ export function patchWidgetLayout(layout: /* &mut */ WidgetLayout, updates: Widg
 		// tries to update the layout, it attempts to insert only the changes against the old layout that no longer exists.
 		if (diffObject === undefined) {
 			// eslint-disable-next-line no-console
-			console.error("In `patchWidgetLayout`, the `diffObject` is undefined. The layout has not been updated. See the source code comment above this error for hints.");
+			console.error("In `patchLayout`, the `diffObject` is undefined. The layout has not been updated. See the source code comment above this error for hints.");
 			return;
 		}
 
@@ -1505,56 +1570,39 @@ export function patchWidgetLayout(layout: /* &mut */ WidgetLayout, updates: Widg
 }
 
 export type LayoutGroup = WidgetSpanRow | WidgetSpanColumn | WidgetTable | WidgetSection;
+export type Layout = LayoutGroup[];
 
-export type WidgetSpanColumn = { columnWidgets: Widget[] };
+export type WidgetSpanColumn = { columnWidgets: WidgetInstance[] };
 export function isWidgetSpanColumn(layoutColumn: LayoutGroup): layoutColumn is WidgetSpanColumn {
 	return Boolean((layoutColumn as WidgetSpanColumn)?.columnWidgets);
 }
 
-export type WidgetSpanRow = { rowWidgets: Widget[] };
+export type WidgetSpanRow = { rowWidgets: WidgetInstance[] };
 export function isWidgetSpanRow(layoutRow: LayoutGroup): layoutRow is WidgetSpanRow {
 	return Boolean((layoutRow as WidgetSpanRow)?.rowWidgets);
 }
 
-export type WidgetTable = { tableWidgets: Widget[][] };
+export type WidgetTable = { tableWidgets: WidgetInstance[][]; unstyled: boolean };
 export function isWidgetTable(layoutTable: LayoutGroup): layoutTable is WidgetTable {
 	return Boolean((layoutTable as WidgetTable)?.tableWidgets);
 }
 
-export type WidgetSection = { name: string; description: string; visible: boolean; pinned: boolean; id: bigint; layout: LayoutGroup[] };
+export type WidgetSection = { name: string; description: string; visible: boolean; pinned: boolean; id: bigint; layout: Layout };
 export function isWidgetSection(layoutRow: LayoutGroup): layoutRow is WidgetSection {
 	return Boolean((layoutRow as WidgetSection)?.layout);
-}
-
-// Unpacking rust types to more usable type in the frontend
-function createWidgetDiff(diffs: any[]): WidgetDiff[] {
-	return diffs.map((diff) => {
-		const { widgetPath, newValue } = diff;
-		if (newValue.subLayout) {
-			return { widgetPath, newValue: newValue.subLayout.map(createLayoutGroup) };
-		}
-		if (newValue.layoutGroup) {
-			return { widgetPath, newValue: createLayoutGroup(newValue.layoutGroup) };
-		}
-		if (newValue.widget) {
-			return { widgetPath, newValue: hoistWidgetHolder(newValue.widget) };
-		}
-		// This code should be unreachable
-		throw new Error("DiffUpdate invalid");
-	});
 }
 
 // Unpacking a layout group
 function createLayoutGroup(layoutGroup: any): LayoutGroup {
 	if (layoutGroup.column) {
-		const columnWidgets = hoistWidgetHolders(layoutGroup.column.columnWidgets);
+		const columnWidgets = hoistWidgetInstances(layoutGroup.column.columnWidgets);
 
 		const result: WidgetSpanColumn = { columnWidgets };
 		return result;
 	}
 
 	if (layoutGroup.row) {
-		const result: WidgetSpanRow = { rowWidgets: hoistWidgetHolders(layoutGroup.row.rowWidgets) };
+		const result: WidgetSpanRow = { rowWidgets: hoistWidgetInstances(layoutGroup.row.rowWidgets) };
 		return result;
 	}
 
@@ -1572,7 +1620,8 @@ function createLayoutGroup(layoutGroup: any): LayoutGroup {
 
 	if (layoutGroup.table) {
 		const result: WidgetTable = {
-			tableWidgets: layoutGroup.table.tableWidgets.map(hoistWidgetHolders),
+			tableWidgets: layoutGroup.table.tableWidgets.map(hoistWidgetInstances),
+			unstyled: layoutGroup.table.unstyled,
 		};
 		return result;
 	}
@@ -1589,51 +1638,31 @@ export class UpdateDialogColumn2 extends WidgetDiffUpdate {}
 
 export class UpdateDocumentBarLayout extends WidgetDiffUpdate {}
 
-export class UpdateDocumentModeLayout extends WidgetDiffUpdate {}
-
 export class UpdateLayersPanelControlBarLeftLayout extends WidgetDiffUpdate {}
 
 export class UpdateLayersPanelControlBarRightLayout extends WidgetDiffUpdate {}
 
 export class UpdateLayersPanelBottomBarLayout extends WidgetDiffUpdate {}
 
-// Extends JsMessage instead of WidgetDiffUpdate because the menu bar isn't diffed
-export class UpdateMenuBarLayout extends JsMessage {
-	layoutTarget!: unknown;
-
-	// TODO: Replace `any` with correct typing
-	@Transform(({ value }: { value: any }) => createMenuLayout(value))
-	layout!: MenuBarEntry[];
-}
+export class UpdateMenuBarLayout extends WidgetDiffUpdate {}
 
 export class UpdateNodeGraphControlBarLayout extends WidgetDiffUpdate {}
+
+export class UpdateWelcomeScreenButtonsLayout extends WidgetDiffUpdate {}
 
 export class UpdatePropertiesPanelLayout extends WidgetDiffUpdate {}
 
 export class UpdateDataPanelLayout extends WidgetDiffUpdate {}
+
+export class UpdateStatusBarHintsLayout extends WidgetDiffUpdate {}
+
+export class UpdateStatusBarInfoLayout extends WidgetDiffUpdate {}
 
 export class UpdateToolOptionsLayout extends WidgetDiffUpdate {}
 
 export class UpdateToolShelfLayout extends WidgetDiffUpdate {}
 
 export class UpdateWorkingColorsLayout extends WidgetDiffUpdate {}
-
-function createMenuLayout(menuBarEntry: any[]): MenuBarEntry[] {
-	return menuBarEntry.map((entry) => ({
-		...entry,
-		children: createMenuLayoutRecursive(entry.children),
-	}));
-}
-function createMenuLayoutRecursive(children: any[][]): MenuBarEntry[][] {
-	return children.map((groups) =>
-		groups.map((entry) => ({
-			...entry,
-			action: hoistWidgetHolders([entry.action])[0],
-			children: entry.children ? createMenuLayoutRecursive(entry.children) : undefined,
-			disabled: entry.disabled ?? false,
-		})),
-	);
-}
 
 // `any` is used since the type of the object should be known from the Rust side
 type JSMessageFactory = (data: any, wasm: WebAssembly.Memory, handle: EditorHandle) => JsMessage;
@@ -1646,59 +1675,69 @@ export const messageMakers: Record<string, MessageMaker> = {
 	DisplayDialogPanic,
 	DisplayEditableTextbox,
 	DisplayEditableTextboxTransform,
+	DisplayEditableTextboxUpdateFontData,
 	DisplayRemoveEditableTextbox,
+	SendShortcutAltClick,
+	SendShortcutFullscreen,
+	SendShortcutShiftClick,
 	SendUIMetadata,
 	TriggerAboutGraphiteLocalizedCommitDate,
+	TriggerClipboardRead,
+	TriggerClipboardWrite,
 	TriggerDisplayThirdPartyLicensesDialog,
-	TriggerSaveDocument,
-	TriggerSaveFile,
 	TriggerExportImage,
 	TriggerFetchAndOpenDocument,
-	TriggerFontLoad,
+	TriggerFontCatalogLoad,
+	TriggerFontDataLoad,
 	TriggerImport,
-	TriggerPersistenceRemoveDocument,
-	TriggerPersistenceWriteDocument,
 	TriggerLoadFirstAutoSaveDocument,
 	TriggerLoadPreferences,
 	TriggerLoadRestAutoSaveDocuments,
+	TriggerOpen,
 	TriggerOpenLaunchDocuments,
-	TriggerOpenDocument,
-	TriggerPaste,
+	TriggerPersistenceRemoveDocument,
+	TriggerPersistenceWriteDocument,
 	TriggerSaveActiveDocument,
+	TriggerSaveDocument,
+	TriggerSaveFile,
 	TriggerSavePreferences,
+	TriggerSelectionRead,
+	TriggerSelectionWrite,
 	TriggerTextCommit,
-	TriggerTextCopy,
 	TriggerVisitLink,
 	UpdateActiveDocument,
 	UpdateBox,
 	UpdateClickTargets,
 	UpdateContextMenuInformation,
+	UpdateDataPanelLayout,
+	UpdateDataPanelState,
 	UpdateDialogButtons,
 	UpdateDialogColumn1,
 	UpdateDialogColumn2,
 	UpdateDocumentArtwork,
 	UpdateDocumentBarLayout,
 	UpdateDocumentLayerDetails,
-	UpdateDocumentLayerStructureJs,
-	UpdateDocumentModeLayout,
+	UpdateDocumentLayerStructure,
 	UpdateDocumentRulers,
 	UpdateDocumentScrollbars,
 	UpdateExportReorderIndex,
 	UpdateEyedropperSamplingState,
+	UpdateFullscreen,
 	UpdateGraphFadeArtwork,
 	UpdateGraphViewOverlay,
 	UpdateImportReorderIndex,
 	UpdateImportsExports,
-	UpdateInputHints,
 	UpdateInSelectedNetwork,
 	UpdateLayersPanelBottomBarLayout,
 	UpdateLayersPanelControlBarLeftLayout,
 	UpdateLayersPanelControlBarRightLayout,
+	UpdateLayersPanelState,
 	UpdateLayerWidths,
 	UpdateMaximized,
 	UpdateMenuBarLayout,
 	UpdateMouseCursor,
 	UpdateNodeGraphControlBarLayout,
+	UpdateNodeGraphErrorDiagnostic,
 	UpdateNodeGraphNodes,
 	UpdateNodeGraphSelection,
 	UpdateNodeGraphTransform,
@@ -1707,16 +1746,19 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateOpenDocumentsList,
 	UpdatePlatform,
 	UpdatePropertiesPanelLayout,
-	UpdateDataPanelLayout,
-	UpdateDataPanelState,
 	UpdatePropertiesPanelState,
-	UpdateLayersPanelState,
+	UpdateStatusBarHintsLayout,
+	UpdateStatusBarInfoLayout,
 	UpdateToolOptionsLayout,
 	UpdateToolShelfLayout,
+	UpdateUIScale,
 	UpdateViewportHolePunch,
 	UpdateViewportPhysicalBounds,
 	UpdateVisibleNodes,
+	UpdateWelcomeScreenButtonsLayout,
 	UpdateWirePathInProgress,
 	UpdateWorkingColorsLayout,
+	WindowFullscreen,
+	WindowPointerLockMove,
 } as const;
 export type JsMessageType = keyof typeof messageMakers;
