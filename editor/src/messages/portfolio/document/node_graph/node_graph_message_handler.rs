@@ -2100,6 +2100,7 @@ impl NodeGraphMessageHandler {
 				Cut,
 				DeleteSelectedNodes,
 				DuplicateSelectedNodes,
+				DuplicateSelectedNodesForDrag,
 				MergeSelectedNodes,
 				ToggleSelectedAsLayersOrNodes,
 				ToggleSelectedLocked,
@@ -2115,6 +2116,26 @@ impl NodeGraphMessageHandler {
 		}
 
 		common
+	}
+
+	fn duplicate_selected_nodes_impl(&mut self, network_interface: &mut NodeNetworkInterface, selection_network_path: &[NodeId], responses: &mut VecDeque<Message>, add_transaction: bool) {
+		let all_selected_nodes = network_interface.upstream_chain_nodes(selection_network_path);
+
+		let copy_ids = all_selected_nodes.iter().enumerate().map(|(new, id)| (*id, NodeId(new as u64))).collect::<HashMap<NodeId, NodeId>>();
+
+		let nodes = network_interface.copy_nodes(&copy_ids, selection_network_path).collect::<Vec<_>>();
+
+		let new_ids = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect::<HashMap<_, _>>();
+		if add_transaction {
+			responses.add(DocumentMessage::AddTransaction);
+		} else {
+			responses.add(DocumentMessage::StartTransaction);
+		}
+		responses.add(NodeGraphMessage::AddNodes { nodes, new_ids: new_ids.clone() });
+		responses.add(NodeGraphMessage::SelectedNodesSet {
+			nodes: new_ids.values().cloned().collect(),
+		});
+		self.duplicated_in_drag = !add_transaction;
 	}
 
 	/// Send the cached layout to the frontend for the control bar at the top of the node panel
