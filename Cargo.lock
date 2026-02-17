@@ -2216,6 +2216,7 @@ dependencies = [
  "text-nodes",
  "tokio",
  "url",
+ "vector-nodes",
  "wasm-bindgen",
  "web-sys",
  "wgpu-executor",
