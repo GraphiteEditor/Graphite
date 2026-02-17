@@ -256,24 +256,14 @@ impl OverlayContext {
 
 	#[allow(clippy::too_many_arguments)]
 	pub fn dashed_line(&mut self, start: DVec2, end: DVec2, color: Option<&str>, thickness: Option<f64>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
-		let pattern = dash_width.map(|dash_width| [dash_width, dash_gap_width.unwrap_or(1.)]);
-		self.dashed_line_pattern(start, end, color, thickness, pattern, dash_offset);
-	}
-
-	fn dashed_line_pattern<P>(&mut self, start: DVec2, end: DVec2, color: Option<&str>, thickness: Option<f64>, dash_pattern: Option<P>, dash_offset: Option<f64>)
-	where
-		P: IntoIterator,
-		P::Item: Borrow<f64>,
-	{
 		self.start_dpi_aware_transform();
 
 		// Set the dash pattern
-		if let Some(dash_pattern) = dash_pattern {
+		if let Some(dash_width) = dash_width {
 			let dash_gap_width = dash_gap_width.unwrap_or(1.);
 			let array = js_sys::Array::new();
-			for dash in dash_pattern {
-				array.push(&JsValue::from(*dash.borrow()));
-			}
+			array.push(&JsValue::from(dash_width));
+			array.push(&JsValue::from(dash_gap_width));
 
 			if let Some(dash_offset) = dash_offset {
 				if dash_offset != 0. {
@@ -299,7 +289,7 @@ impl OverlayContext {
 		self.render_context.set_line_width(1.);
 
 		// Reset the dash pattern back to solid
-		if dash_pattern.is_some() {
+		if dash_width.is_some() {
 			self.render_context
 				.set_line_dash(&JsValue::from(js_sys::Array::new()))
 				.map_err(|error| log::warn!("Error drawing dashed line: {:?}", error))

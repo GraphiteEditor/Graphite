@@ -257,14 +257,6 @@ impl OverlayContext {
 		self.internal().dashed_line(start, end, color, thickness, dash_width, dash_gap_width, dash_offset);
 	}
 
-	fn dashed_line_pattern<P>(&mut self, start: DVec2, end: DVec2, color: Option<&str>, thickness: Option<f64>, dash_pattern: Option<P>, dash_offset: Option<f64>)
-	where
-		P: IntoIterator,
-		P::Item: Borrow<f64>,
-	{
-		self.internal().dashed_line_pattern(start, end, color, thickness, dash_pattern, dash_offset);
-	}
-
 	/// Creates a dashed line with pixel-perfect snapping for crisp rendering
 	#[allow(clippy::too_many_arguments)]
 	pub fn pixel_snapped_dashed_line(&mut self, start: DVec2, end: DVec2, color: Option<&str>, thickness: Option<f64>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
@@ -540,16 +532,6 @@ impl OverlayContextInternal {
 
 	#[allow(clippy::too_many_arguments)]
 	fn dashed_line(&mut self, start: DVec2, end: DVec2, color: Option<&str>, thickness: Option<f64>, dash_width: Option<f64>, dash_gap_width: Option<f64>, dash_offset: Option<f64>) {
-		let pattern = dash_width.map(|dash_width| [dash_width, dash_gap_width.unwrap_or(1.)]);
-		self.dashed_line_pattern(start, end, color, thickness, pattern, dash_offset);
-	}
-
-	#[allow(clippy::too_many_arguments)]
-	fn dashed_line_pattern<P>(&mut self, start: DVec2, end: DVec2, color: Option<&str>, thickness: Option<f64>, dash_pattern: Option<P>, dash_offset: Option<f64>)
-	where
-		P: IntoIterator,
-		P::Item: Borrow<f64>,
-	{
 		let transform = self.get_transform();
 
 		let start = self.snap_to_physical_pixel_center(start);
@@ -561,8 +543,9 @@ impl OverlayContextInternal {
 
 		let mut stroke = kurbo::Stroke::new(thickness.unwrap_or(1.));
 
-		if let Some(dash_pattern) = dash_pattern {
-			stroke = stroke.with_dashes(dash_offset.unwrap_or(0.), dash_pattern);
+		if let Some(dash_width) = dash_width {
+			let dash_gap = dash_gap_width.unwrap_or(1.);
+			stroke = stroke.with_dashes(dash_offset.unwrap_or(0.), [dash_width, dash_gap]);
 		}
 
 		self.scene.stroke(&stroke, transform, Self::parse_color(color.unwrap_or(COLOR_OVERLAY_BLUE)), None, &path);
