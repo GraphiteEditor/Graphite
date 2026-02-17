@@ -74,7 +74,7 @@ impl App {
 			loop {
 				let result = runtime.block_on(DesktopWrapper::execute_node_graph());
 				rendering_app_event_scheduler.schedule(AppEvent::NodeGraphExecutionResult(result));
-				let _ = start_render_receiver.recv();
+				let _ = start_render_receiver.recv_timeout(Duration::from_millis(10));
 			}
 		});
 
