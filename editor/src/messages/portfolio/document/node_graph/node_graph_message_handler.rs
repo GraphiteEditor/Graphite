@@ -58,6 +58,8 @@ pub struct NodeGraphMessageHandler {
 	widgets: [LayoutGroup; 2],
 	/// Used to add a transaction for the first node move when dragging.
 	begin_dragging: bool,
+	/// Tracks whether nodes were duplicated via Alt-drag, so aborting undoes both the move and duplication.
+	duplicated_in_drag: bool,
 	/// Used to prevent entering a nested network if the node is dragged after double clicking
 	node_has_moved_in_drag: bool,
 	/// If dragging the selected nodes, this stores the starting position both in viewport and node graph coordinates,
@@ -808,7 +810,13 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					if self.drag_start.is_some() {
 						self.drag_start = None;
 						self.select_if_not_dragged = None;
-						responses.add(DocumentMessage::AbortTransaction);
+						if self.duplicated_in_drag {
+							responses.add(DocumentMessage::AbortTransaction);
+							responses.add(DocumentMessage::Undo);
+							self.duplicated_in_drag = false;
+						} else {
+							responses.add(DocumentMessage::AbortTransaction);
+						}
 						responses.add(NodeGraphMessage::SelectedNodesSet {
 							nodes: self.selection_before_pointer_down.clone(),
 						});
@@ -1179,6 +1187,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 								rubber_band: false,
 							});
 							self.preview_on_mouse_up = None;
+							self.duplicated_in_drag = true;
 						}
 					}
 
@@ -1482,6 +1491,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 				self.drag_start = None;
 				self.begin_dragging = false;
+				self.duplicated_in_drag = false;
 				self.box_selection_start = None;
 
 				self.wire_in_progress_from_connector = None;
@@ -2886,6 +2896,7 @@ impl Default for NodeGraphMessageHandler {
 			widgets: [LayoutGroup::row(Vec::new()), LayoutGroup::row(Vec::new())],
 			drag_start: None,
 			begin_dragging: false,
+			duplicated_in_drag: false,
 			node_has_moved_in_drag: false,
 			shift_without_push: false,
 			box_selection_start: None,
@@ -2917,6 +2928,7 @@ impl PartialEq for NodeGraphMessageHandler {
 			&& self.widgets == other.widgets
 			&& self.drag_start == other.drag_start
 			&& self.begin_dragging == other.begin_dragging
+			&& self.duplicated_in_drag == other.duplicated_in_drag
 			&& self.node_has_moved_in_drag == other.node_has_moved_in_drag
 			&& self.box_selection_start == other.box_selection_start
 			&& self.initial_disconnecting == other.initial_disconnecting
