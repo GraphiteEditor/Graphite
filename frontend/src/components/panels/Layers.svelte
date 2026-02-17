@@ -74,7 +74,7 @@
 	let layersPanelControlBarLeftLayout: Layout = [];
 	let layersPanelControlBarRightLayout: Layout = [];
 	let layersPanelBottomBarLayout: Layout = [];
-	const EDGE_BUFFER_PX = 10;
+
 	onMount(() => {
 		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarLeftLayout, (data) => {
 			patchLayout(layersPanelControlBarLeftLayout, data);
@@ -285,10 +285,9 @@
 		if (layerPanel !== null && treeChildren !== undefined && treeOffset !== undefined) {
 			const lastLayerDepth = layers[layers.length - 1]?.entry?.depth;
 			const draggingLayerDepth = layers[dataIndex]?.entry?.depth;
+			
+			if (draggingLayerDepth === undefined) return undefined;
 
-			if (clientY > treeChildren[layers.length - 1].getBoundingClientRect().bottom - EDGE_BUFFER_PX) {
-				if (lastLayerDepth === 1 && draggingLayerDepth > 1) isInvalidDrag = true;
-			}
 
 			let layerPanelTop = layerPanel.getBoundingClientRect().top;
 
@@ -302,25 +301,6 @@
 				if (rect.top > clientY || rect.bottom < clientY) {
 					continue;
 				}
-				if (draggingLayerDepth > 1) {
-					const prevLayer = layers[indexAttribute];
-					const nextLayer = layers[indexAttribute + 1];
-					if (prevLayer?.entry?.depth === 1) {
-						const prevRectTop = treeChildren?.[indexAttribute].getBoundingClientRect().top;
-						if (prevLayer?.entry?.depth === 1 && prevRectTop + EDGE_BUFFER_PX > clientY) {
-							isInvalidDrag = true;
-							break;
-						}
-					}
-
-					const isDraggingBetweenArtboards = nextLayer?.entry?.depth === 1 && prevLayer?.entry?.depth === 1;
-
-					if (isDraggingBetweenArtboards) {
-						isInvalidDrag = true;
-						break;
-					}
-				}
-
 				const pointerPercentage = (clientY - rect.top) / rect.height;
 				if (layer.childrenAllowed) {
 					if (pointerPercentage < 0.25) {
@@ -352,6 +332,7 @@
 						markerHeight = rect.bottom - layerPanelTop;
 					}
 				}
+
 				break;
 			}
 			// Dragging to the empty space below all layers
@@ -363,6 +344,14 @@
 				insertIndex = numberRootLayers;
 				markerHeight = lastLayer.getBoundingClientRect().bottom - layerPanelTop;
 			}
+
+			const isDraggingRootToNested = draggingLayerDepth === 1 && insertDepth > 0;
+			const isDraggingNestedToRoot = draggingLayerDepth > 1 && insertDepth === 0;
+
+			if (isDraggingRootToNested || isDraggingNestedToRoot) {
+				isInvalidDrag = true;
+			}
+			
 			if (isInvalidDrag) return;
 		}
 
@@ -397,9 +386,9 @@
 			const distance = Math.hypot(e.clientX - internalDragState.startX, e.clientY - internalDragState.startY);
 			const DRAG_THRESHOLD = 5;
 
-			if (distance > DRAG_THRESHOLD) {
+			if (distance > DRAG_THRESHOLD && internalDragState) {
 				internalDragState.active = true;
-				draggedLayerIndex = internalDragState.listing.folderIndex;
+				draggedLayerIndex = layers.findIndex((layer) => layer.entry.id === internalDragState?.layerId);
 				dragInPanel = true;
 
 				const layer = internalDragState.listing.entry;
