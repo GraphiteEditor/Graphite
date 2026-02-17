@@ -36,17 +36,11 @@ impl Ellipse {
 				return;
 			};
 
-			// Extract only the zoom scale from document_to_viewport (ignore rotation)
-			// This fixes the zoom bug while keeping ellipse behavior with canvas rotation
+			// Convert viewport dimensions to document space for zoom fix (like Rectangle)
 			let document_to_viewport = document.metadata().document_to_viewport;
-			let zoom_scale = document_to_viewport.matrix2.x_axis.length();
-
 			let viewport_delta = end - start;
-			let viewport_center = start.midpoint(end);
-
-			// Apply only the zoom scale correction, not rotation
-			let document_delta = viewport_delta / zoom_scale;
-			let document_center = document_to_viewport.inverse().transform_point2(viewport_center);
+			let document_delta = document_to_viewport.inverse().transform_vector2(viewport_delta);
+			let document_center = document_to_viewport.inverse().transform_point2(start.midpoint(end));
 
 			responses.add(NodeGraphMessage::SetInput {
 				input_connector: InputConnector::node(node_id, 1),
@@ -156,11 +150,9 @@ mod test_ellipse {
 		assert_eq!(ellipse[0].radius_x, 5.);
 		assert_eq!(ellipse[0].radius_y, 5.);
 
-		assert!(
-			ellipse[0]
-				.transform
-				.abs_diff_eq(DAffine2::from_angle_translation(-f64::consts::FRAC_PI_4, DVec2::X * f64::consts::FRAC_1_SQRT_2 * 10.), 0.001)
-		);
+		// In document space, the layer transform is just translation (canvas rotation is applied at render time)
+		// Drag from (0,0) to (1,10) midpoint at 45° rotation = (5√2, 0) in document space
+		assert!(ellipse[0].transform.abs_diff_eq(DAffine2::from_translation(DVec2::new(5. * f64::consts::SQRT_2, 0.)), 0.01));
 	}
 
 	#[tokio::test]
@@ -179,7 +171,8 @@ mod test_ellipse {
 		assert_eq!(ellipse.len(), 1);
 		assert_eq!(ellipse[0].radius_x, 10.);
 		assert_eq!(ellipse[0].radius_y, 10.);
-		assert!(ellipse[0].transform.abs_diff_eq(DAffine2::from_angle(-f64::consts::FRAC_PI_4), 0.001));
+		// In document space, center-drawn ellipse at origin has identity transform
+		assert!(ellipse[0].transform.abs_diff_eq(DAffine2::IDENTITY, 0.001));
 	}
 
 	#[tokio::test]
