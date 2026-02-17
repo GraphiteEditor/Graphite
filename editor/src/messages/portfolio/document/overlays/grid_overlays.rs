@@ -360,7 +360,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 				RadioEntryData::new("small").icon("Dot").on_update(update_val(grid, |grid, _| {
 					grid.major_is_thick = false;
 				})),
-				RadioEntryData::new("large").icon("DotLarge").on_update(update_val(grid, |grid, _| {
+				RadioEntryData::new("large").icon("DotThick").on_update(update_val(grid, |grid, _| {
 					grid.major_is_thick = true;
 				})),
 			])
