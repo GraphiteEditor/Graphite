@@ -12,7 +12,7 @@ pub struct PreferencesDialogMessageContext<'a> {
 /// A dialog to allow users to customize Graphite editor options
 #[derive(Debug, Clone, Default, ExtractField)]
 pub struct PreferencesDialogMessageHandler {
-	unmodifyed_preferences: Option<PreferencesMessageHandler>,
+	unmodified_preferences: Option<PreferencesMessageHandler>,
 }
 
 #[message_handler_data]
@@ -21,13 +21,13 @@ impl MessageHandler<PreferencesDialogMessage, PreferencesDialogMessageContext<'_
 		let PreferencesDialogMessageContext { preferences } = context;
 		match message {
 			PreferencesDialogMessage::MightRequireRestart => {
-				if self.unmodifyed_preferences.is_none() {
-					self.unmodifyed_preferences = Some(preferences.clone());
+				if self.unmodified_preferences.is_none() {
+					self.unmodified_preferences = Some(preferences.clone());
 				}
 			}
 			PreferencesDialogMessage::Confirm => {
-				if let Some(unmodifyed_preferences) = &self.unmodifyed_preferences
-					&& unmodifyed_preferences.needs_restart(preferences)
+				if let Some(unmodified_preferences) = &self.unmodified_preferences
+					&& unmodified_preferences.needs_restart(preferences)
 				{
 					responses.add(DialogMessage::RequestConfirmRestartDialog);
 				} else {
