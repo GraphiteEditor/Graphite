@@ -331,14 +331,13 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 	widgets.push(LayoutGroup::Row {
 		widgets: vec![TextLabel::new("Grid").bold(true).widget_instance()],
 	});
-	let mut color_widgets = vec![TextLabel::new("Color").table_align(true).widget_instance(), Separator::new(SeparatorStyle::Unrelated).widget_instance() ];
+	let mut color_widgets = vec![TextLabel::new("Color").table_align(true).widget_instance(), Separator::new(SeparatorStyle::Unrelated).widget_instance()];
 	color_widgets.push(
 		ColorInput::new(FillChoice::Solid(grid.grid_color.to_gamma_srgb()))
 			.tooltip_label("Grid display color")
 			.allow_none(false)
 			.on_update(update_color(grid, |grid| Some(&mut grid.grid_color)))
-			.widget_instance()
-			,
+			.widget_instance(),
 	);
 	if grid.has_minor_lines() {
 		color_widgets.push(Separator::new(SeparatorStyle::Related).widget_instance());
