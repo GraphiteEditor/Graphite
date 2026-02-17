@@ -468,9 +468,13 @@ impl Fsm for SplineToolFsmState {
 				state
 			}
 			(SplineToolFsmState::Drawing, SplineToolMessage::Confirm) => {
-				if tool_data.points.len() >= 2 {
-					delete_preview(tool_data, responses);
+				if tool_data.points.len() <= 1 {
+					responses.add(DocumentMessage::AbortTransaction);
+					return SplineToolFsmState::Ready;
 				}
+
+				delete_preview(tool_data, responses);
+
 				responses.add(SplineToolMessage::MergeEndpoints);
 				SplineToolFsmState::MergingEndpoints
 			}
