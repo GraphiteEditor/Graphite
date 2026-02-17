@@ -59,7 +59,7 @@ pub struct NodeGraphMessageHandler {
 	/// Used to add a transaction for the first node move when dragging.
 	begin_dragging: bool,
 	/// Tracks whether nodes were duplicated via Alt-drag, so aborting undoes both the move and duplication.
-	duplicated_in_drag: bool,
+	pub duplicated_in_drag: bool,
 	/// Used to prevent entering a nested network if the node is dragged after double clicking
 	node_has_moved_in_drag: bool,
 	/// If dragging the selected nodes, this stores the starting position both in viewport and node graph coordinates,
