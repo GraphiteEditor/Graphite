@@ -1404,6 +1404,39 @@ impl PenToolData {
 		}
 	}
 
+	/// Walk the connected component of the current subpath and return its single open endpoint if unambiguous.
+	/// Excludes the path's starting point and the currently active anchor to avoid returning the same point we are on.
+	fn unambiguous_subpath_endpoint(&self, vector: &Vector) -> Option<PointId> {
+		let start_point = self.latest_points.first()?.id;
+		let current_point = self.latest_point()?.id;
+		let mut visited: HashSet<PointId, NoHashBuilder> = HashSet::with_hasher(NoHashBuilder);
+		let mut stack = vec![start_point];
+		let mut endpoint: Option<PointId> = None;
+
+		while let Some(point) = stack.pop() {
+			if !visited.insert(point) {
+				continue;
+			}
+
+			let is_endpoint = vector.connected_count(point) == 1 && point != start_point && point != current_point;
+			if is_endpoint {
+				// More than one open endpoint makes the target ambiguous.
+				if endpoint.is_some() {
+					return None;
+				}
+				endpoint = Some(point);
+			}
+
+			for neighbor in vector.connected_points(point) {
+				if !visited.contains(&neighbor) {
+					stack.push(neighbor);
+				}
+			}
+		}
+
+		endpoint
+	}
+
 	fn set_lock_angle(&mut self, vector: &Vector, anchor: PointId, segment: Option<SegmentId>) {
 		let anchor_position = vector.point_domain.position_from_id(anchor);
 
@@ -1907,20 +1940,27 @@ impl Fsm for PenToolFsmState {
 			(PenToolFsmState::DraggingHandle(_), PenToolMessage::DragStop) => {
 				tool_data.cleanup_target_selections(shape_editor, layer, document, responses);
 
-				// Handle double-click to close path by connecting to first point
+				// Handle double-click to close path by connecting to a clear endpoint when possible
 				let is_double_click = tool_data.pending_double_click_confirm;
 				if is_double_click {
 					tool_data.pending_double_click_confirm = false;
 
-					// Set next_point to first point's position of the CURRENT shape to close the path
-					if let Some(first_point) = tool_data.latest_points.first() {
-						tool_data.next_point = first_point.pos;
-						tool_data.next_handle_start = first_point.pos;
+					// Prefer a clear endpoint on the current subpath; fall back to the session start point.
+					let mut closing_position = None;
+					if let Some(layer) = layer
+						&& let Some(vector) = document.network_interface.compute_modified_vector(layer)
+					{
+						closing_position = tool_data.unambiguous_subpath_endpoint(&vector).and_then(|endpoint| vector.point_domain.position_from_id(endpoint));
+					}
 
-						// Also set handle_end to ensure proper closing
-						if tool_data.handle_end.is_none() {
-							tool_data.handle_end = Some(first_point.pos);
-						}
+					if closing_position.is_none() {
+						closing_position = tool_data.latest_points.first().map(|first| first.pos);
+					}
+
+					if let Some(position) = closing_position {
+						tool_data.next_point = position;
+						tool_data.next_handle_start = position;
+						tool_data.handle_end.get_or_insert(position);
 					}
 				}
 
