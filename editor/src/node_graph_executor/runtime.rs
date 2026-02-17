@@ -351,7 +351,7 @@ impl NodeRuntime {
 									width: physical_resolution.x,
 									height: physical_resolution.y,
 									present_mode: surface_caps.present_modes[0],
-									alpha_mode: vello::wgpu::CompositeAlphaMode::Opaque,
+									alpha_mode: vello::wgpu::CompositeAlphaMode::PreMultiplied,
 									view_formats: vec![],
 									desired_maximum_frame_latency: 2,
 								},
