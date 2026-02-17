@@ -25,6 +25,10 @@ pub struct PreferencesMessageHandler {
 }
 
 impl PreferencesMessageHandler {
+	pub fn needs_restart(&self, other: &Self) -> bool {
+		self.disable_ui_acceleration != other.disable_ui_acceleration
+	}
+
 	pub fn get_selection_mode(&self) -> SelectionMode {
 		self.selection_mode
 	}

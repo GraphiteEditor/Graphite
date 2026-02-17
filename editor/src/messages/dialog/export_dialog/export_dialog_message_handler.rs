@@ -82,7 +82,7 @@ impl DialogLayoutHolder for ExportDialogMessageHandler {
 					.into()
 				})
 				.widget_instance(),
-			TextButton::new("Cancel").on_update(|_| FrontendMessage::DisplayDialogDismiss.into()).widget_instance(),
+			TextButton::new("Cancel").on_update(|_| FrontendMessage::DialogClose.into()).widget_instance(),
 		];
 
 		Layout(vec![LayoutGroup::Row { widgets }])

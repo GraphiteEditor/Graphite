@@ -32,7 +32,7 @@ impl DialogLayoutHolder for CloseDocumentDialog {
 					.into()
 				})
 				.widget_instance(),
-			TextButton::new("Cancel").on_update(|_| FrontendMessage::DisplayDialogDismiss.into()).widget_instance(),
+			TextButton::new("Cancel").on_update(|_| FrontendMessage::DialogClose.into()).widget_instance(),
 		];
 
 		Layout(vec![LayoutGroup::Row { widgets }])

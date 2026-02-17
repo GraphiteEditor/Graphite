@@ -14,6 +14,7 @@ pub struct DialogMessageContext<'a> {
 /// Stores the dialogs which require state. These are the ones that have their own message handlers, and are not the ones defined in `simple_dialogs`.
 #[derive(Debug, Default, Clone, ExtractField)]
 pub struct DialogMessageHandler {
+	on_dismiss: Option<Message>,
 	export_dialog: ExportDialogMessageHandler,
 	new_document_dialog: NewDocumentDialogMessageHandler,
 	preferences_dialog: PreferencesDialogMessageHandler,
@@ -27,9 +28,17 @@ impl MessageHandler<DialogMessage, DialogMessageContext<'_>> for DialogMessageHa
 		match message {
 			DialogMessage::ExportDialog(message) => self.export_dialog.process_message(message, responses, ExportDialogMessageContext { portfolio }),
 			DialogMessage::NewDocumentDialog(message) => self.new_document_dialog.process_message(message, responses, ()),
-			DialogMessage::PreferencesDialog(message) => self.preferences_dialog.process_message(message, responses, ()),
+			DialogMessage::PreferencesDialog(message) => self.preferences_dialog.process_message(message, responses, PreferencesDialogMessageContext { preferences }),
 
-			DialogMessage::Close => responses.add(FrontendMessage::DisplayDialogDismiss),
+			DialogMessage::Dismiss => {
+				if let Some(message) = self.on_dismiss.take() {
+					responses.add(message);
+				}
+			}
+			DialogMessage::Close => {
+				self.on_dismiss = None;
+				responses.add(FrontendMessage::DialogClose)
+			}
 			DialogMessage::CloseAndThen { followups } => {
 				for message in followups.into_iter() {
 					responses.add(message);
@@ -40,16 +49,19 @@ impl MessageHandler<DialogMessage, DialogMessageContext<'_>> for DialogMessageHa
 				responses.add(DialogMessage::Close);
 			}
 			DialogMessage::CloseAllDocumentsWithConfirmation => {
+				self.on_dismiss = Some(DialogMessage::Close.into());
 				let dialog = simple_dialogs::CloseAllDocumentsDialog {
 					unsaved_document_names: portfolio.unsaved_document_names(),
 				};
 				dialog.send_dialog_to_frontend(responses);
 			}
 			DialogMessage::DisplayDialogError { title, description } => {
+				self.on_dismiss = None;
 				let dialog = simple_dialogs::ErrorDialog { title, description };
 				dialog.send_dialog_to_frontend(responses);
 			}
 			DialogMessage::RequestAboutGraphiteDialog => {
+				self.on_dismiss = Some(DialogMessage::Close.into());
 				responses.add(FrontendMessage::TriggerAboutGraphiteLocalizedCommitDate {
 					commit_date: GRAPHITE_GIT_COMMIT_DATE.into(),
 				});
@@ -58,6 +70,7 @@ impl MessageHandler<DialogMessage, DialogMessageContext<'_>> for DialogMessageHa
 				localized_commit_date,
 				localized_commit_year,
 			} => {
+				self.on_dismiss = Some(DialogMessage::Close.into());
 				let dialog = AboutGraphiteDialog {
 					localized_commit_date,
 					localized_commit_year,
@@ -66,10 +79,12 @@ impl MessageHandler<DialogMessage, DialogMessageContext<'_>> for DialogMessageHa
 				dialog.send_dialog_to_frontend(responses);
 			}
 			DialogMessage::RequestDemoArtworkDialog => {
+				self.on_dismiss = Some(DialogMessage::Close.into());
 				let dialog = DemoArtworkDialog;
 				dialog.send_dialog_to_frontend(responses);
 			}
 			DialogMessage::RequestExportDialog => {
+				self.on_dismiss = Some(DialogMessage::Close.into());
 				if let Some(document) = portfolio.active_document() {
 					let artboards = document
 						.metadata()
@@ -99,14 +114,17 @@ impl MessageHandler<DialogMessage, DialogMessageContext<'_>> for DialogMessageHa
 				}
 			}
 			DialogMessage::RequestLicensesDialogWithLocalizedCommitDate { localized_commit_year } => {
+				self.on_dismiss = Some(DialogMessage::Close.into());
 				let dialog = LicensesDialog { localized_commit_year };
 				dialog.send_dialog_to_frontend(responses);
 			}
 			DialogMessage::RequestLicensesThirdPartyDialogWithLicenseText { license_text } => {
+				self.on_dismiss = Some(DialogMessage::Close.into());
 				let dialog = LicensesThirdPartyDialog { license_text };
 				dialog.send_dialog_to_frontend(responses);
 			}
 			DialogMessage::RequestNewDocumentDialog => {
+				self.on_dismiss = Some(DialogMessage::Close.into());
 				self.new_document_dialog = NewDocumentDialogMessageHandler {
 					name: portfolio.generate_new_document_name(),
 					infinite: false,
@@ -115,12 +133,12 @@ impl MessageHandler<DialogMessage, DialogMessageContext<'_>> for DialogMessageHa
 				self.new_document_dialog.send_dialog_to_frontend(responses);
 			}
 			DialogMessage::RequestPreferencesDialog => {
-				self.preferences_dialog = PreferencesDialogMessageHandler::default();
+				self.on_dismiss = Some(PreferencesDialogMessage::Confirm.into());
 				self.preferences_dialog.send_dialog_to_frontend(responses, preferences);
 			}
 			DialogMessage::RequestConfirmRestartDialog => {
+				self.on_dismiss = None;
 				let dialog = ConfirmRestartDialog {};
-				println!("Requesting confirm restart dialog");
 				dialog.send_dialog_to_frontend(responses);
 			}
 		}

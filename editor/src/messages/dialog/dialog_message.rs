@@ -12,6 +12,7 @@ pub enum DialogMessage {
 	PreferencesDialog(PreferencesDialogMessage),
 
 	// Messages
+	Dismiss,
 	Close,
 	CloseAndThen {
 		followups: Vec<Message>,

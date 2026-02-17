@@ -4,19 +4,31 @@ use crate::messages::portfolio::document::utility_types::wires::GraphWireStyle;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
 
+#[derive(ExtractField)]
+pub struct PreferencesDialogMessageContext<'a> {
+	pub preferences: &'a PreferencesMessageHandler,
+}
+
 /// A dialog to allow users to customize Graphite editor options
 #[derive(Debug, Clone, Default, ExtractField)]
 pub struct PreferencesDialogMessageHandler {
-	restart_requeird: bool,
+	unmodifyed_preferences: Option<PreferencesMessageHandler>,
 }
 
 #[message_handler_data]
-impl MessageHandler<PreferencesDialogMessage, ()> for PreferencesDialogMessageHandler {
-	fn process_message(&mut self, message: PreferencesDialogMessage, responses: &mut VecDeque<Message>, _: ()) {
+impl MessageHandler<PreferencesDialogMessage, PreferencesDialogMessageContext<'_>> for PreferencesDialogMessageHandler {
+	fn process_message(&mut self, message: PreferencesDialogMessage, responses: &mut VecDeque<Message>, context: PreferencesDialogMessageContext) {
+		let PreferencesDialogMessageContext { preferences } = context;
 		match message {
-			PreferencesDialogMessage::RestartRequired => self.restart_requeird = true,
+			PreferencesDialogMessage::MightRequireRestart => {
+				if self.unmodifyed_preferences.is_none() {
+					self.unmodifyed_preferences = Some(preferences.clone());
+				}
+			}
 			PreferencesDialogMessage::Confirm => {
-				if self.restart_requeird {
+				if let Some(unmodifyed_preferences) = &self.unmodifyed_preferences
+					&& unmodifyed_preferences.needs_restart(preferences)
+				{
 					responses.add(DialogMessage::RequestConfirmRestartDialog);
 				} else {
 					responses.add(DialogMessage::Close);
@@ -290,23 +302,25 @@ impl PreferencesDialogMessageHandler {
 		// =============
 		#[cfg(not(target_family = "wasm"))]
 		{
-			let header = vec![TextLabel::new("Compatebilety").italic(true).widget_instance()];
+			let header = vec![TextLabel::new("Compatibility").italic(true).widget_instance()];
 
 			let ui_acceleration_description =
 				"Disable hardware acceleration for the user interface (viewport is not effected). This can improve stability on some systems at the cost of decreased performance.";
 
 			let checkbox_id = CheckboxId::new();
 			let ui_acceleration = vec![
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 				CheckboxInput::new(preferences.disable_ui_acceleration)
 					.tooltip_label("Disable UI Acceleration")
 					.tooltip_description(ui_acceleration_description)
 					.on_update(|number_input: &CheckboxInput| Message::Batched {
 						messages: Box::new([
+							PreferencesDialogMessage::MightRequireRestart.into(),
 							PreferencesMessage::DisableUIAcceleration {
 								disable_ui_acceleration: number_input.checked,
 							}
 							.into(),
-							PreferencesDialogMessage::RestartRequired.into(),
 						]),
 					})
 					.for_label(checkbox_id)

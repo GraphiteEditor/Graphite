@@ -598,6 +598,13 @@ impl EditorHandle {
 		Ok(())
 	}
 
+	/// Dialog got dismissed
+	#[wasm_bindgen(js_name = onDialogDismiss)]
+	pub fn on_dialog_dismiss(&self) {
+		let message = DialogMessage::Dismiss;
+		self.dispatch(message);
+	}
+
 	/// A text box was changed
 	#[wasm_bindgen(js_name = updateBounds)]
 	pub fn update_bounds(&self, new_text: String) -> Result<(), JsValue> {

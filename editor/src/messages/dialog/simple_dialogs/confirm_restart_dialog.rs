@@ -19,7 +19,7 @@ impl DialogLayoutHolder for ConfirmRestartDialog {
 					.into()
 				})
 				.widget_instance(),
-			TextButton::new("Cancel").on_update(|_| FrontendMessage::DisplayDialogDismiss.into()).widget_instance(),
+			TextButton::new("Later").on_update(|_| FrontendMessage::DialogClose.into()).widget_instance(),
 		];
 
 		Layout(vec![LayoutGroup::Row { widgets }])
@@ -29,7 +29,7 @@ impl DialogLayoutHolder for ConfirmRestartDialog {
 impl LayoutHolder for ConfirmRestartDialog {
 	fn layout(&self) -> Layout {
 		Layout(vec![LayoutGroup::Row {
-			widgets: vec![TextLabel::new("Some changes require restart to take effect").bold(true).multiline(true).widget_instance()],
+			widgets: vec![TextLabel::new("Some changes require restart to take effect").widget_instance()],
 		}])
 	}
 }

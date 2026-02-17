@@ -34,7 +34,11 @@ impl MessageHandler<NewDocumentDialogMessage, ()> for NewDocumentDialogMessageHa
 					responses.add(ViewportMessage::RepropagateUpdate);
 
 					responses.add(DeferMessage::AfterNavigationReady {
-						messages: vec![DocumentMessage::ZoomCanvasToFitAll.into(), DocumentMessage::DeselectAllLayers.into()],
+						messages: vec![
+							DocumentMessage::ZoomCanvasToFitAll.into(),
+							DocumentMessage::DeselectAllLayers.into(),
+							PortfolioMessage::AutoSaveActiveDocument.into(),
+						],
 					});
 				}
 
@@ -64,7 +68,7 @@ impl DialogLayoutHolder for NewDocumentDialogMessageHandler {
 					.into()
 				})
 				.widget_instance(),
-			TextButton::new("Cancel").on_update(|_| FrontendMessage::DisplayDialogDismiss.into()).widget_instance(),
+			TextButton::new("Cancel").on_update(|_| FrontendMessage::DialogClose.into()).widget_instance(),
 		];
 
 		Layout(vec![LayoutGroup::Row { widgets }])
