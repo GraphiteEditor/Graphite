@@ -62,9 +62,8 @@ pub enum NodeGraphMessage {
 	},
 	DisconnectRootNode,
 	EnterNestedNetwork,
-	DuplicateSelectedNodes {
-		add_transaction: bool,
-	},
+	DuplicateSelectedNodes,
+	DuplicateSelectedNodesForDrag,
 	ExposeInput {
 		input_connector: InputConnector,
 		set_to_exposed: bool,

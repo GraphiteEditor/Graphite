@@ -377,24 +377,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			NodeGraphMessage::DisconnectRootNode => {
 				network_interface.start_previewing_without_restore(selection_network_path);
 			}
-			NodeGraphMessage::DuplicateSelectedNodes { add_transaction } => {
-				let all_selected_nodes = network_interface.upstream_chain_nodes(selection_network_path);
-
-				let copy_ids = all_selected_nodes.iter().enumerate().map(|(new, id)| (*id, NodeId(new as u64))).collect::<HashMap<NodeId, NodeId>>();
-
-				// Copy the selected nodes
-				let nodes = network_interface.copy_nodes(&copy_ids, selection_network_path).collect::<Vec<_>>();
-
-				let new_ids = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect::<HashMap<_, _>>();
-				if add_transaction {
-					responses.add(DocumentMessage::AddTransaction);
-				} else {
-					responses.add(DocumentMessage::StartTransaction);
-				}
-				responses.add(NodeGraphMessage::AddNodes { nodes, new_ids: new_ids.clone() });
-				responses.add(NodeGraphMessage::SelectedNodesSet {
-					nodes: new_ids.values().cloned().collect(),
-				});
+			NodeGraphMessage::DuplicateSelectedNodes => {
+				self.duplicate_selected_nodes_impl(network_interface, selection_network_path, responses, true);
+			}
+			NodeGraphMessage::DuplicateSelectedNodesForDrag => {
+				self.duplicate_selected_nodes_impl(network_interface, selection_network_path, responses, false);
 			}
 			NodeGraphMessage::EnterNestedNetwork => {
 				// Do not enter the nested network if the node was dragged
@@ -1125,7 +1112,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					if self.begin_dragging {
 						self.begin_dragging = false;
 						if ipp.keyboard.get(Key::Alt as usize) {
-							responses.add(NodeGraphMessage::DuplicateSelectedNodes { add_transaction: false });
+							responses.add(NodeGraphMessage::DuplicateSelectedNodesForDrag);
 							// Duplicating sets a 2x2 offset, so shift the nodes back to the original position
 							responses.add(NodeGraphMessage::ShiftSelectedNodesByAmount {
 								graph_delta: IVec2::new(-2, -2),
