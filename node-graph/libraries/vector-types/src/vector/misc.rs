@@ -18,6 +18,15 @@ pub enum CentroidType {
 	Length,
 }
 
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, Hash, DynAny, specta::Type, node_macro::ChoiceType)]
+#[widget(Radio)]
+pub enum RowsOrColumns {
+	#[default]
+	Rows = 0,
+	Columns,
+}
+
 pub trait AsU64 {
 	fn as_u64(&self) -> u64;
 }

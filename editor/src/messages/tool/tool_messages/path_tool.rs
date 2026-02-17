@@ -3221,10 +3221,9 @@ impl Fsm for PathToolFsmState {
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::SelectedPointUpdated) => {
-				let colinear = shape_editor.selected_manipulator_angles(&document.network_interface);
 				tool_data.dragging_state = DraggingState {
 					point_select_state: shape_editor.get_dragging_state(&document.network_interface),
-					colinear,
+					colinear: shape_editor.selected_manipulator_angles(&document.network_interface),
 				};
 
 				let old = tool_data.make_path_editable_is_allowed;
@@ -3702,4 +3701,5 @@ fn update_dynamic_hints(
 		PathToolFsmState::SlidingPoint => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
 	};
 	hint_data.send_layout(responses);
+	responses.add(ToolMessage::UpdateHints);
 }
