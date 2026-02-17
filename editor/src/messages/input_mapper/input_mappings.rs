@@ -74,7 +74,7 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		entry!(KeyDown(MouseLeft); modifiers=[Alt], action_dispatch=NodeGraphMessage::PointerDown { shift_click: false, control_click: false, alt_click: true, right_click: false }),
 		entry!(KeyDown(MouseRight); action_dispatch=NodeGraphMessage::PointerDown { shift_click: false, control_click: false, alt_click: false, right_click: true }),
 		entry!(DoubleClick(MouseButton::Left); action_dispatch=NodeGraphMessage::EnterNestedNetwork),
-		entry!(PointerMove; refresh_keys=[Shift], action_dispatch=NodeGraphMessage::PointerMove { shift: Shift }),
+		entry!(PointerMove; refresh_keys=[Shift, Control, Alt], action_dispatch=NodeGraphMessage::PointerMove { shift: Shift }),
 		entry!(PointerShake; action_dispatch=NodeGraphMessage::ShakeNode),
 		entry!(KeyUp(MouseLeft); action_dispatch=NodeGraphMessage::PointerUp),
 		entry!(KeyDown(Delete); modifiers=[Accel], action_dispatch=NodeGraphMessage::DeleteSelectedNodes { delete_children: false }),
