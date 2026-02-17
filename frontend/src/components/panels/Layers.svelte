@@ -283,11 +283,9 @@
 		let isInvalidDrag = false;
 
 		if (layerPanel !== null && treeChildren !== undefined && treeOffset !== undefined) {
-			const lastLayerDepth = layers[layers.length - 1]?.entry?.depth;
 			const draggingLayerDepth = layers[dataIndex]?.entry?.depth;
 			
-			if (draggingLayerDepth === undefined) return undefined;
-
+			if (!draggingLayerDepth) return;
 
 			let layerPanelTop = layerPanel.getBoundingClientRect().top;
 
