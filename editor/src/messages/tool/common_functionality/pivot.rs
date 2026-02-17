@@ -241,6 +241,9 @@ impl Pivot {
 			.selected_nodes()
 			.selected_visible_and_unlocked_layers(&document.network_interface)
 			.filter_map(|layer| {
+				if transform.matrix2.determinant().abs() <= f64::EPSILON {
+					return None;
+				}
 				document
 					.metadata()
 					.bounding_box_with_transform(layer, transform.inverse() * document.metadata().transform_to_viewport(layer))

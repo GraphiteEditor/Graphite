@@ -1,7 +1,8 @@
 import { writable } from "svelte/store";
 
 import { type Editor } from "@graphite/editor";
-import { SendShortcutAltClick, SendShortcutF11, SendShortcutShiftClick, type ActionShortcut } from "@graphite/messages";
+import { SendShortcutAltClick, SendShortcutFullscreen, SendShortcutShiftClick, type ActionShortcut } from "@graphite/messages";
+import { operatingSystem } from "@graphite/utility-functions/platform";
 
 const SHOW_TOOLTIP_DELAY_MS = 500;
 
@@ -12,7 +13,7 @@ export function createTooltipState(editor: Editor) {
 		position: { x: 0, y: 0 },
 		shiftClickShortcut: undefined as ActionShortcut | undefined,
 		altClickShortcut: undefined as ActionShortcut | undefined,
-		f11Shortcut: undefined as ActionShortcut | undefined,
+		fullscreenShortcut: undefined as ActionShortcut | undefined,
 	});
 
 	let tooltipTimeout: ReturnType<typeof setTimeout> | undefined = undefined;
@@ -39,6 +40,9 @@ export function createTooltipState(editor: Editor) {
 		// Before we schedule a new future tooltip appearance, we clear the existing one
 		if (tooltipTimeout) clearTimeout(tooltipTimeout);
 
+		// Don't show tooltips while mouse buttons are pressed
+		if (e.buttons !== 0) return;
+
 		// Schedule the tooltip to appear at this cursor position after a delay
 		tooltipTimeout = setTimeout(() => {
 			update((state) => {
@@ -50,6 +54,16 @@ export function createTooltipState(editor: Editor) {
 			});
 		}, SHOW_TOOLTIP_DELAY_MS);
 	});
+
+	// Hide tooltip and cancel any pending timeout when the mouse leaves the application window
+	document.addEventListener("mouseleave", () => {
+		if (tooltipTimeout) clearTimeout(tooltipTimeout);
+		closeTooltip();
+	});
+
+	document.addEventListener("mousedown", closeTooltip);
+	document.addEventListener("keydown", closeTooltip);
+	document.addEventListener("wheel", closeTooltip);
 
 	editor.subscriptions.subscribeJsMessage(SendShortcutShiftClick, async (data) => {
 		update((state) => {
@@ -63,15 +77,12 @@ export function createTooltipState(editor: Editor) {
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(SendShortcutF11, async (data) => {
+	editor.subscriptions.subscribeJsMessage(SendShortcutFullscreen, async (data) => {
 		update((state) => {
-			state.f11Shortcut = data.shortcut;
+			state.fullscreenShortcut = operatingSystem() === "Mac" ? data.shortcutMac : data.shortcut;
 			return state;
 		});
 	});
-
-	document.addEventListener("mousedown", closeTooltip);
-	document.addEventListener("keydown", closeTooltip);
 
 	// Stop showing a tooltip if the user clicks or presses a key, and require the user to first move out of the element before it can re-appear
 	function closeTooltip() {

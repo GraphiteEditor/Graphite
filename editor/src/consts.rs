@@ -124,6 +124,9 @@ pub const LINE_ROTATE_SNAP_ANGLE: f64 = 15.;
 pub const BRUSH_SIZE_CHANGE_KEYBOARD: f64 = 5.;
 pub const DEFAULT_BRUSH_SIZE: f64 = 20.;
 
+// EYEDROPPER TOOL
+pub const EYEDROPPER_PREVIEW_AREA_RESOLUTION: u32 = 11;
+
 // GIZMOS
 pub const POINT_RADIUS_HANDLE_SNAP_THRESHOLD: f64 = 8.;
 pub const POINT_RADIUS_HANDLE_SEGMENT_THRESHOLD: f64 = 7.9;
@@ -151,6 +154,7 @@ pub const COLOR_OVERLAY_GRAY: &str = "#cccccc";
 pub const COLOR_OVERLAY_GRAY_DARK: &str = "#555555";
 pub const COLOR_OVERLAY_GRAY_25: &str = "#cccccc40";
 pub const COLOR_OVERLAY_WHITE: &str = "#ffffff";
+pub const COLOR_OVERLAY_BLACK: &str = "#000000";
 pub const COLOR_OVERLAY_BLACK_75: &str = "#000000bf";
 pub const COLOR_OVERLAY_TRANSPARENT: &str = "#00000000";
 

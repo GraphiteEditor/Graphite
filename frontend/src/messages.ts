@@ -102,14 +102,16 @@ export class UpdateNodeGraphTransform extends JsMessage {
 
 export class SendUIMetadata extends JsMessage {
 	@Transform(({ obj }) => new Map(obj.nodeDescriptions))
-	readonly nodeDescriptions!: Map<DefinitionIdentifier, string>;
+	readonly nodeDescriptions!: Map<string, string>;
 
 	readonly nodeTypes!: FrontendNodeType[];
 }
 
-export class SendShortcutF11 extends JsMessage {
+export class SendShortcutFullscreen extends JsMessage {
 	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
 	readonly shortcut!: ActionShortcut | undefined;
+	@Transform(({ value }: { value: ActionShortcut }) => value || undefined)
+	readonly shortcutMac!: ActionShortcut | undefined;
 }
 
 export class SendShortcutAltClick extends JsMessage {
@@ -220,7 +222,7 @@ export class FrontendNode {
 
 	readonly canBeLayer!: boolean;
 
-	readonly reference!: DefinitionIdentifier | undefined;
+	readonly reference!: string | undefined;
 
 	readonly displayName!: string;
 
@@ -251,7 +253,7 @@ export class FrontendNode {
 }
 
 export class FrontendNodeType {
-	readonly identifier!: DefinitionIdentifier;
+	readonly identifier!: string;
 
 	readonly name!: string;
 
@@ -315,8 +317,6 @@ export class UpdateFullscreen extends JsMessage {
 	readonly fullscreen!: boolean;
 }
 
-export class CloseWindow extends JsMessage {}
-
 export class UpdateViewportHolePunch extends JsMessage {
 	readonly active!: boolean;
 }
@@ -331,6 +331,13 @@ export class UpdateViewportPhysicalBounds extends JsMessage {
 export class UpdateUIScale extends JsMessage {
 	readonly scale!: number;
 }
+
+export class WindowPointerLockMove extends JsMessage {
+	readonly x!: number;
+	readonly y!: number;
+}
+
+export class WindowFullscreen extends JsMessage {}
 
 // Rust enum `Key`
 export type KeyRaw = string;
@@ -671,7 +678,15 @@ export class UpdateDocumentRulers extends JsMessage {
 	readonly visible!: boolean;
 }
 
+export class EyedropperPreviewImage {
+	readonly data!: Uint8Array;
+	readonly width!: number;
+	readonly height!: number;
+}
+
 export class UpdateEyedropperSamplingState extends JsMessage {
+	readonly image!: EyedropperPreviewImage | undefined;
+
 	@TupleToVec2
 	readonly mousePosition!: XY | undefined;
 
@@ -738,7 +753,7 @@ export class TriggerFetchAndOpenDocument extends JsMessage {
 	readonly filename!: string;
 }
 
-export class TriggerOpenDocument extends JsMessage {}
+export class TriggerOpen extends JsMessage {}
 
 export class TriggerImport extends JsMessage {}
 
@@ -781,13 +796,13 @@ export class TriggerSaveActiveDocument extends JsMessage {
 
 export class DocumentChanged extends JsMessage {}
 
-export type DataBuffer = {
-	pointer: bigint;
-	length: bigint;
+export type LayerStructureEntry = {
+	layerId: bigint;
+	children: LayerStructureEntry[];
 };
 
-export class UpdateDocumentLayerStructureJs extends JsMessage {
-	readonly dataBuffer!: DataBuffer;
+export class UpdateDocumentLayerStructure extends JsMessage {
+	readonly layerStructure!: LayerStructureEntry[];
 }
 
 export type TextAlign = "Left" | "Center" | "Right" | "JustifyLeft";
@@ -831,7 +846,9 @@ export class UpdateDocumentLayerDetails extends JsMessage {
 export class LayerPanelEntry {
 	id!: bigint;
 
-	reference!: DefinitionIdentifier;
+	implementationName!: string;
+
+	iconName!: IconName | undefined;
 
 	alias!: string;
 
@@ -1657,14 +1674,16 @@ export const messageMakers: Record<string, MessageMaker> = {
 	DisplayDialogDismiss,
 	DisplayDialogPanic,
 	DisplayEditableTextbox,
-	DisplayEditableTextboxUpdateFontData,
 	DisplayEditableTextboxTransform,
+	DisplayEditableTextboxUpdateFontData,
 	DisplayRemoveEditableTextbox,
-	SendUIMetadata,
-	SendShortcutF11,
 	SendShortcutAltClick,
+	SendShortcutFullscreen,
 	SendShortcutShiftClick,
+	SendUIMetadata,
 	TriggerAboutGraphiteLocalizedCommitDate,
+	TriggerClipboardRead,
+	TriggerClipboardWrite,
 	TriggerDisplayThirdPartyLicensesDialog,
 	TriggerExportImage,
 	TriggerFetchAndOpenDocument,
@@ -1674,7 +1693,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerLoadFirstAutoSaveDocument,
 	TriggerLoadPreferences,
 	TriggerLoadRestAutoSaveDocuments,
-	TriggerOpenDocument,
+	TriggerOpen,
 	TriggerOpenLaunchDocuments,
 	TriggerPersistenceRemoveDocument,
 	TriggerPersistenceWriteDocument,
@@ -1682,11 +1701,9 @@ export const messageMakers: Record<string, MessageMaker> = {
 	TriggerSaveDocument,
 	TriggerSaveFile,
 	TriggerSavePreferences,
-	TriggerTextCommit,
-	TriggerClipboardRead,
-	TriggerClipboardWrite,
 	TriggerSelectionRead,
 	TriggerSelectionWrite,
+	TriggerTextCommit,
 	TriggerVisitLink,
 	UpdateActiveDocument,
 	UpdateBox,
@@ -1700,11 +1717,12 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateDocumentArtwork,
 	UpdateDocumentBarLayout,
 	UpdateDocumentLayerDetails,
-	UpdateDocumentLayerStructureJs,
+	UpdateDocumentLayerStructure,
 	UpdateDocumentRulers,
 	UpdateDocumentScrollbars,
 	UpdateExportReorderIndex,
 	UpdateEyedropperSamplingState,
+	UpdateFullscreen,
 	UpdateGraphFadeArtwork,
 	UpdateGraphViewOverlay,
 	UpdateImportReorderIndex,
@@ -1715,6 +1733,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateLayersPanelControlBarRightLayout,
 	UpdateLayersPanelState,
 	UpdateLayerWidths,
+	UpdateMaximized,
 	UpdateMenuBarLayout,
 	UpdateMouseCursor,
 	UpdateNodeGraphControlBarLayout,
@@ -1726,20 +1745,20 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateNodeThumbnail,
 	UpdateOpenDocumentsList,
 	UpdatePlatform,
-	UpdateMaximized,
-	UpdateFullscreen,
 	UpdatePropertiesPanelLayout,
 	UpdatePropertiesPanelState,
 	UpdateStatusBarHintsLayout,
 	UpdateStatusBarInfoLayout,
 	UpdateToolOptionsLayout,
 	UpdateToolShelfLayout,
+	UpdateUIScale,
 	UpdateViewportHolePunch,
 	UpdateViewportPhysicalBounds,
-	UpdateUIScale,
 	UpdateVisibleNodes,
 	UpdateWelcomeScreenButtonsLayout,
 	UpdateWirePathInProgress,
 	UpdateWorkingColorsLayout,
+	WindowFullscreen,
+	WindowPointerLockMove,
 } as const;
 export type JsMessageType = keyof typeof messageMakers;

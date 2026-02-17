@@ -405,7 +405,6 @@ fn random(
 	/// Seed to determine the unique variation of which number is generated.
 	seed: u64,
 	/// The smaller end of the range within which the random number is generated.
-	#[default(0.)]
 	min: f64,
 	/// The larger end of the range within which the random number is generated.
 	#[default(1.)]
@@ -706,6 +705,7 @@ fn logical_or(
 	/// One of the two boolean values, either of which may be true for the node to output true.
 	value: bool,
 	/// The other of the two boolean values, either of which may be true for the node to output true.
+	#[expose]
 	other_value: bool,
 ) -> bool {
 	value || other_value
@@ -718,6 +718,7 @@ fn logical_and(
 	/// One of the two boolean values, both of which must be true for the node to output true.
 	value: bool,
 	/// The other of the two boolean values, both of which must be true for the node to output true.
+	#[expose]
 	other_value: bool,
 ) -> bool {
 	value && other_value
@@ -759,7 +760,7 @@ fn vec2_value(_: impl Ctx, _primary: (), x: f64, y: f64) -> DVec2 {
 
 /// Constructs a color value which may be set to any color, or no color.
 #[node_macro::node(category("Value"))]
-fn color_value(_: impl Ctx, _primary: (), #[default(Color::RED)] color: Table<Color>) -> Table<Color> {
+fn color_value(_: impl Ctx, _primary: (), #[default(Color::BLACK)] color: Table<Color>) -> Table<Color> {
 	color
 }
 
@@ -857,7 +858,7 @@ fn angle_to<T: ToPosition, U: ToPosition>(
 	#[expose]
 	#[implementations(DVec2, DVec2, DAffine2, DAffine2)]
 	target: U,
-	/// Whether the resulting angle should be given in as radians instead of degrees.
+	/// Whether the resulting angle should be given in radians instead of degrees.
 	radians: bool,
 ) -> f64 {
 	let from = observer.to_position();

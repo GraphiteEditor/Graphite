@@ -1,8 +1,8 @@
 use super::utility_functions::overlay_canvas_context;
 use crate::consts::{
-	ARC_SWEEP_GIZMO_RADIUS, COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_50, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, COLOR_OVERLAY_YELLOW_DULL,
-	COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, DOWEL_PIN_RADIUS, MANIPULATOR_GROUP_MARKER_SIZE,
-	PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER, RESIZE_HANDLE_SIZE, SEGMENT_SELECTED_THICKNESS, SKEW_TRIANGLE_OFFSET, SKEW_TRIANGLE_SIZE,
+	ARC_SWEEP_GIZMO_RADIUS, COLOR_OVERLAY_BLACK, COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_50, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW,
+	COLOR_OVERLAY_YELLOW_DULL, COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, DOWEL_PIN_RADIUS,
+	MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER, RESIZE_HANDLE_SIZE, SEGMENT_SELECTED_THICKNESS, SKEW_TRIANGLE_OFFSET, SKEW_TRIANGLE_SIZE,
 };
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::Message;
@@ -540,6 +540,37 @@ impl OverlayContext {
 		let color_stroke = color.unwrap_or(COLOR_OVERLAY_BLUE);
 		let color_fill = if selected { color_stroke } else { COLOR_OVERLAY_WHITE };
 		self.square(position, None, Some(color_fill), Some(color_stroke));
+	}
+
+	pub fn gradient_color_stop(&mut self, position: DVec2, selected: bool, color: &str) {
+		self.start_dpi_aware_transform();
+
+		let position = position.round() - DVec2::splat(0.5);
+
+		let (radius_offset, stroke_width) = if selected { (1., 3.) } else { (0., 1.) };
+		let radius = MANIPULATOR_GROUP_MARKER_SIZE / 1.5 + 1. + radius_offset;
+
+		let draw_circle = |radius: f64, width: Option<f64>, color: &str| {
+			self.render_context.begin_path();
+			self.render_context.arc(position.x, position.y, radius, 0., TAU).expect("Failed to draw the circle");
+
+			if let Some(width) = width {
+				self.render_context.set_line_width(width);
+				self.render_context.set_stroke_style_str(color);
+				self.render_context.stroke();
+			} else {
+				self.render_context.set_fill_style_str(color);
+				self.render_context.fill();
+			}
+		};
+		// Fill
+		draw_circle(radius, None, color);
+		// Stroke (inner)
+		draw_circle(radius + stroke_width / 2., Some(1.), COLOR_OVERLAY_BLACK);
+		// Stroke (outer)
+		draw_circle(radius, Some(stroke_width), COLOR_OVERLAY_WHITE);
+
+		self.end_dpi_aware_transform();
 	}
 
 	pub fn hover_manipulator_handle(&mut self, position: DVec2, selected: bool) {

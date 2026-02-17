@@ -58,7 +58,6 @@ pub enum PortfolioMessage {
 		font_style: String,
 		data: Vec<u8>,
 	},
-	Import,
 	LoadDocumentResources {
 		document_id: DocumentId,
 	},
@@ -66,7 +65,16 @@ pub enum PortfolioMessage {
 		name: String,
 	},
 	NextDocument,
-	OpenDocument,
+	Open,
+	Import,
+	OpenFile {
+		path: PathBuf,
+		content: Vec<u8>,
+	},
+	ImportFile {
+		path: PathBuf,
+		content: Vec<u8>,
+	},
 	OpenDocumentFile {
 		document_name: Option<String>,
 		document_path: Option<PathBuf>,
@@ -82,20 +90,19 @@ pub enum PortfolioMessage {
 		to_front: bool,
 		select_after_open: bool,
 	},
-	ToggleResetNodesToDefinitionsOnOpen,
-	PasteIntoFolder {
-		clipboard: Clipboard,
-		parent: LayerNodeIdentifier,
-		insert_index: usize,
+	OpenImage {
+		name: Option<String>,
+		image: Image<Color>,
+	},
+	OpenSvg {
+		name: Option<String>,
+		svg: String,
 	},
 	PasteSerializedData {
 		data: String,
 	},
 	PasteSerializedVector {
 		data: String,
-	},
-	CenterPastedLayers {
-		layers: Vec<LayerNodeIdentifier>,
 	},
 	PasteImage {
 		name: Option<String>,
@@ -108,6 +115,15 @@ pub enum PortfolioMessage {
 		svg: String,
 		mouse: Option<(f64, f64)>,
 		parent_and_insert_index: Option<(LayerNodeIdentifier, usize)>,
+	},
+	// TODO: Unused except by tests, remove?
+	PasteIntoFolder {
+		clipboard: Clipboard,
+		parent: LayerNodeIdentifier,
+		insert_index: usize,
+	},
+	CenterPastedLayers {
+		layers: Vec<LayerNodeIdentifier>,
 	},
 	PrevDocument,
 	RequestWelcomeScreenButtonsLayout,
@@ -132,6 +148,9 @@ pub enum PortfolioMessage {
 		document_id: DocumentId,
 		ignore_hash: bool,
 	},
+	SubmitEyedropperPreviewRender,
+	ToggleResetNodesToDefinitionsOnOpen,
+	ToggleFocusDocument,
 	ToggleDataPanelOpen,
 	TogglePropertiesPanelOpen,
 	ToggleLayersPanelOpen,

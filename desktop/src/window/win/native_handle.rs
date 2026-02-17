@@ -210,10 +210,10 @@ unsafe fn ensure_helper_class() {
 // Main window message handler, called on the UI thread for every message the main window receives.
 unsafe extern "system" fn main_window_handle_message(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
 	if msg == WM_NCCALCSIZE && wparam.0 != 0 {
-		// When maximized, shrink to visible frame so content doesn't extend beyond it.
-		if unsafe { IsZoomed(hwnd).as_bool() } {
-			let params = unsafe { &mut *(lparam.0 as *mut NCCALCSIZE_PARAMS) };
+		let params = unsafe { &mut *(lparam.0 as *mut NCCALCSIZE_PARAMS) };
 
+		// When maximized, shrink to visible frame so content doesn't extend beyond it.
+		if unsafe { IsZoomed(hwnd).as_bool() } && !is_effectively_fullscreen(params.rgrc[0]) {
 			let dpi = unsafe { GetDpiForWindow(hwnd) };
 			let size = unsafe { GetSystemMetricsForDpi(SM_CXSIZEFRAME, dpi) };
 			let pad = unsafe { GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi) };
@@ -365,4 +365,28 @@ unsafe fn calculate_resize_direction(helper: HWND, lparam: LPARAM) -> Option<u32
 		HTBOTTOMRIGHT => Some(WMSZ_BOTTOMRIGHT),
 		_ => None,
 	}
+}
+
+// Check if the rect is effectively fullscreen, meaning it would cover the entire monitor.
+// We need to use this heuristic because Windows doesn't provide a way to check for fullscreen state.
+fn is_effectively_fullscreen(rect: RECT) -> bool {
+	let hmon = unsafe { MonitorFromRect(&rect, MONITOR_DEFAULTTONEAREST) };
+	if hmon.is_invalid() {
+		return false;
+	}
+
+	let mut monitor_info = MONITORINFO {
+		cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+		..Default::default()
+	};
+	if !unsafe { GetMonitorInfoW(hmon, &mut monitor_info) }.as_bool() {
+		return false;
+	}
+
+	// Allow a tiny tolerance for DPI / rounding issues
+	const EPS: i32 = 1;
+	(rect.left - monitor_info.rcMonitor.left).abs() <= EPS
+		&& (rect.top - monitor_info.rcMonitor.top).abs() <= EPS
+		&& (rect.right - monitor_info.rcMonitor.right).abs() <= EPS
+		&& (rect.bottom - monitor_info.rcMonitor.bottom).abs() <= EPS
 }

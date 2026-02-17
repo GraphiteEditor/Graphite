@@ -7,6 +7,10 @@ use std::hash::{Hash, Hasher};
 use std::panic::Location;
 use std::sync::Arc;
 
+// ==============
+// EXTRACT TRAITS
+// ==============
+
 pub trait ExtractFootprint {
 	#[track_caller]
 	fn try_footprint(&self) -> Option<&Footprint>;
@@ -18,69 +22,112 @@ pub trait ExtractFootprint {
 		})
 	}
 }
-
 pub trait ExtractRealTime {
 	fn try_real_time(&self) -> Option<f64>;
 }
-
 pub trait ExtractAnimationTime {
 	fn try_animation_time(&self) -> Option<f64>;
 }
-
-pub trait ExtractPointer {
-	fn try_pointer(&self) -> Option<DVec2>;
+pub trait ExtractPointerPosition {
+	fn try_pointer_position(&self) -> Option<DVec2>;
 }
-
+pub trait ExtractPosition {
+	fn try_position(&self) -> Option<impl Iterator<Item = DVec2>>;
+}
 pub trait ExtractIndex {
 	fn try_index(&self) -> Option<impl Iterator<Item = usize>>;
 }
-
-// Consider returning a slice or something like that
 pub trait ExtractVarArgs {
+	// TODO: Consider returning a slice or something like that
+
 	fn vararg(&self, index: usize) -> Result<DynRef<'_>, VarArgsResult>;
 	fn varargs_len(&self) -> Result<usize, VarArgsResult>;
 	fn hash_varargs(&self, hasher: &mut dyn Hasher);
 }
 
-// Consider returning a slice or something like that
 pub trait CloneVarArgs: ExtractVarArgs {
+	// TODO: Consider returning a slice or something like that
+
 	// fn box_clone(&self) -> Vec<DynBox>;
 	fn arc_clone(&self) -> Option<Arc<dyn ExtractVarArgs + Send + Sync>>;
 }
+
+// =============
+// INJECT TRAITS
+// =============
 
 // Inject* traits for providing context features to downstream nodes
 pub trait InjectFootprint {}
 pub trait InjectRealTime {}
 pub trait InjectAnimationTime {}
-pub trait InjectPointer {}
+pub trait InjectPointerPosition {}
+pub trait InjectPosition {}
 pub trait InjectIndex {}
 pub trait InjectVarArgs {}
+
+// ================
+// EXTRACTALL TRAIT
+// ================
+
+pub trait ExtractAll:
+	// Extract traits
+	ExtractFootprint +
+	ExtractRealTime +
+	ExtractAnimationTime +
+	ExtractPointerPosition +
+	ExtractPosition +
+	ExtractIndex +
+	ExtractVarArgs {}
+impl<
+	T: ?Sized
+		// Extract traits
+		+ ExtractFootprint
+		+ ExtractRealTime
+		+ ExtractAnimationTime
+		+ ExtractPointerPosition
+		+ ExtractPosition
+		+ ExtractIndex
+		+ ExtractVarArgs,
+> ExtractAll for T
+{
+}
+
+// =============
+// INJECT TRAITS
+// =============
+
+impl<T: Ctx> InjectFootprint for T {}
+impl<T: Ctx> InjectRealTime for T {}
+impl<T: Ctx> InjectAnimationTime for T {}
+impl<T: Ctx> InjectPointerPosition for T {}
+impl<T: Ctx> InjectPosition for T {}
+impl<T: Ctx> InjectIndex for T {}
+impl<T: Ctx> InjectVarArgs for T {}
+
+// =============
+// MODIFY TRAITS
+// =============
 
 // Modify* marker traits for context-transparent nodes
 pub trait ModifyFootprint: ExtractFootprint + InjectFootprint {}
 pub trait ModifyRealTime: ExtractRealTime + InjectRealTime {}
 pub trait ModifyAnimationTime: ExtractAnimationTime + InjectAnimationTime {}
-pub trait ModifyPointer: ExtractPointer + InjectPointer {}
+pub trait ModifyPointerPosition: ExtractPointerPosition + InjectPointerPosition {}
+pub trait ModifyPosition: ExtractPosition + InjectPosition {}
 pub trait ModifyIndex: ExtractIndex + InjectIndex {}
 pub trait ModifyVarArgs: ExtractVarArgs + InjectVarArgs {}
 
-pub trait ExtractAll: ExtractFootprint + ExtractIndex + ExtractRealTime + ExtractAnimationTime + ExtractPointer + ExtractVarArgs {}
-
-impl<T: ?Sized + ExtractFootprint + ExtractIndex + ExtractRealTime + ExtractAnimationTime + ExtractPointer + ExtractVarArgs> ExtractAll for T {}
-
-impl<T: Ctx> InjectFootprint for T {}
-impl<T: Ctx> InjectRealTime for T {}
-impl<T: Ctx> InjectIndex for T {}
-impl<T: Ctx> InjectAnimationTime for T {}
-impl<T: Ctx> InjectPointer for T {}
-impl<T: Ctx> InjectVarArgs for T {}
-
 impl<T: Ctx + InjectFootprint + ExtractFootprint> ModifyFootprint for T {}
 impl<T: Ctx + InjectRealTime + ExtractRealTime> ModifyRealTime for T {}
-impl<T: Ctx + InjectIndex + ExtractIndex> ModifyIndex for T {}
 impl<T: Ctx + InjectAnimationTime + ExtractAnimationTime> ModifyAnimationTime for T {}
-impl<T: Ctx + InjectPointer + ExtractPointer> ModifyPointer for T {}
+impl<T: Ctx + InjectPointerPosition + ExtractPointerPosition> ModifyPointerPosition for T {}
+impl<T: Ctx + InjectPosition + ExtractPosition> ModifyPosition for T {}
+impl<T: Ctx + InjectIndex + ExtractIndex> ModifyIndex for T {}
 impl<T: Ctx + InjectVarArgs + ExtractVarArgs> ModifyVarArgs for T {}
+
+// ================
+// CONTEXT FEATURES
+// ================
 
 // Public enum for flexible node macro codegen
 #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -88,13 +135,15 @@ pub enum ContextFeature {
 	ExtractFootprint,
 	ExtractRealTime,
 	ExtractAnimationTime,
-	ExtractPointer,
+	ExtractPointerPosition,
+	ExtractPosition,
 	ExtractIndex,
 	ExtractVarArgs,
 	InjectFootprint,
 	InjectRealTime,
 	InjectAnimationTime,
-	InjectPointer,
+	InjectPointerPosition,
+	InjectPosition,
 	InjectIndex,
 	InjectVarArgs,
 }
@@ -107,11 +156,31 @@ bitflags! {
 		const FOOTPRINT = 1 << 0;
 		const REAL_TIME = 1 << 1;
 		const ANIMATION_TIME = 1 << 2;
-		const POINTER = 1 << 3;
-		const INDEX = 1 << 4;
-		const VARARGS = 1 << 5;
+		const POINTER_POSITION = 1 << 3;
+		const POSITION = 1 << 4;
+		const INDEX = 1 << 5;
+		const VARARGS = 1 << 6;
 	}
 }
+
+impl ContextFeatures {
+	pub fn name(&self) -> &'static str {
+		match *self {
+			ContextFeatures::FOOTPRINT => "Footprint",
+			ContextFeatures::REAL_TIME => "RealTime",
+			ContextFeatures::ANIMATION_TIME => "AnimationTime",
+			ContextFeatures::POINTER_POSITION => "PointerPosition",
+			ContextFeatures::POSITION => "Position",
+			ContextFeatures::INDEX => "Index",
+			ContextFeatures::VARARGS => "VarArgs",
+			_ => "Multiple Features",
+		}
+	}
+}
+
+// ====================
+// CONTEXT DEPENDENCIES
+// ====================
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, dyn_any::DynAny, serde::Serialize, serde::Deserialize, Default)]
 pub struct ContextDependencies {
@@ -128,7 +197,8 @@ impl From<&[ContextFeature]> for ContextDependencies {
 				ContextFeature::ExtractFootprint => ContextFeatures::FOOTPRINT,
 				ContextFeature::ExtractRealTime => ContextFeatures::REAL_TIME,
 				ContextFeature::ExtractAnimationTime => ContextFeatures::ANIMATION_TIME,
-				ContextFeature::ExtractPointer => ContextFeatures::POINTER,
+				ContextFeature::ExtractPointerPosition => ContextFeatures::POINTER_POSITION,
+				ContextFeature::ExtractPosition => ContextFeatures::POSITION,
 				ContextFeature::ExtractIndex => ContextFeatures::INDEX,
 				ContextFeature::ExtractVarArgs => ContextFeatures::VARARGS,
 				_ => ContextFeatures::empty(),
@@ -137,7 +207,8 @@ impl From<&[ContextFeature]> for ContextDependencies {
 				ContextFeature::InjectFootprint => ContextFeatures::FOOTPRINT,
 				ContextFeature::InjectRealTime => ContextFeatures::REAL_TIME,
 				ContextFeature::InjectAnimationTime => ContextFeatures::ANIMATION_TIME,
-				ContextFeature::InjectPointer => ContextFeatures::POINTER,
+				ContextFeature::InjectPointerPosition => ContextFeatures::POINTER_POSITION,
+				ContextFeature::InjectPosition => ContextFeatures::POSITION,
 				ContextFeature::InjectIndex => ContextFeatures::INDEX,
 				ContextFeature::InjectVarArgs => ContextFeatures::VARARGS,
 				_ => ContextFeatures::empty(),
@@ -147,24 +218,9 @@ impl From<&[ContextFeature]> for ContextDependencies {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum VarArgsResult {
-	IndexOutOfBounds,
-	NoVarArgs,
-}
-impl Ctx for Footprint {}
-impl ExtractFootprint for () {
-	fn try_footprint(&self) -> Option<&Footprint> {
-		log::error!("tried to extract footprint form (), {}", Location::caller());
-		None
-	}
-}
-
-impl<T: ExtractFootprint + Ctx + Sync + Send> ExtractFootprint for &T {
-	fn try_footprint(&self) -> Option<&Footprint> {
-		(*self).try_footprint()
-	}
-}
+// ===================================
+// EXTRACT TRAIT IMPLS FOR `Option<T>`
+// ===================================
 
 impl<T: ExtractFootprint + Sync> ExtractFootprint for Option<T> {
 	fn try_footprint(&self) -> Option<&Footprint> {
@@ -188,9 +244,14 @@ impl<T: ExtractAnimationTime + Sync> ExtractAnimationTime for Option<T> {
 		self.as_ref().and_then(|x| x.try_animation_time())
 	}
 }
-impl<T: ExtractPointer + Sync> ExtractPointer for Option<T> {
-	fn try_pointer(&self) -> Option<DVec2> {
-		self.as_ref().and_then(|x| x.try_pointer())
+impl<T: ExtractPointerPosition + Sync> ExtractPointerPosition for Option<T> {
+	fn try_pointer_position(&self) -> Option<DVec2> {
+		self.as_ref().and_then(|x| x.try_pointer_position())
+	}
+}
+impl<T: ExtractPosition + Sync> ExtractPosition for Option<T> {
+	fn try_position(&self) -> Option<impl Iterator<Item = DVec2>> {
+		self.as_ref().and_then(|x| x.try_position())
 	}
 }
 impl<T: ExtractIndex> ExtractIndex for Option<T> {
@@ -215,6 +276,17 @@ impl<T: ExtractVarArgs + Sync> ExtractVarArgs for Option<T> {
 		}
 	}
 }
+
+impl<T: CloneVarArgs + Sync> CloneVarArgs for Option<T> {
+	fn arc_clone(&self) -> Option<Arc<dyn ExtractVarArgs + Send + Sync>> {
+		self.as_ref().and_then(CloneVarArgs::arc_clone)
+	}
+}
+
+// ================================
+// EXTRACT TRAIT IMPLS FOR `Arc<T>`
+// ================================
+
 impl<T: ExtractFootprint + Sync> ExtractFootprint for Arc<T> {
 	fn try_footprint(&self) -> Option<&Footprint> {
 		(**self).try_footprint()
@@ -230,9 +302,14 @@ impl<T: ExtractAnimationTime + Sync> ExtractAnimationTime for Arc<T> {
 		(**self).try_animation_time()
 	}
 }
-impl<T: ExtractPointer + Sync> ExtractPointer for Arc<T> {
-	fn try_pointer(&self) -> Option<DVec2> {
-		(**self).try_pointer()
+impl<T: ExtractPointerPosition + Sync> ExtractPointerPosition for Arc<T> {
+	fn try_pointer_position(&self) -> Option<DVec2> {
+		(**self).try_pointer_position()
+	}
+}
+impl<T: ExtractPosition + Sync> ExtractPosition for Arc<T> {
+	fn try_position(&self) -> Option<impl Iterator<Item = DVec2>> {
+		(**self).try_position()
 	}
 }
 impl<T: ExtractIndex> ExtractIndex for Arc<T> {
@@ -253,9 +330,20 @@ impl<T: ExtractVarArgs + Sync> ExtractVarArgs for Arc<T> {
 		(**self).hash_varargs(hasher)
 	}
 }
-impl<T: CloneVarArgs + Sync> CloneVarArgs for Option<T> {
+
+impl<T: CloneVarArgs + Sync> CloneVarArgs for Arc<T> {
 	fn arc_clone(&self) -> Option<Arc<dyn ExtractVarArgs + Send + Sync>> {
-		self.as_ref().and_then(CloneVarArgs::arc_clone)
+		(**self).arc_clone()
+	}
+}
+
+// ============================
+// EXTRACT TRAIT IMPLS FOR `&T`
+// ============================
+
+impl<T: ExtractFootprint + Ctx + Sync + Send> ExtractFootprint for &T {
+	fn try_footprint(&self) -> Option<&Footprint> {
+		(*self).try_footprint()
 	}
 }
 
@@ -272,14 +360,25 @@ impl<T: ExtractVarArgs + Sync> ExtractVarArgs for &T {
 		(*self).hash_varargs(hasher)
 	}
 }
-impl<T: CloneVarArgs + Sync> CloneVarArgs for Arc<T> {
-	fn arc_clone(&self) -> Option<Arc<dyn ExtractVarArgs + Send + Sync>> {
-		(**self).arc_clone()
+
+// ============================
+// EXTRACT TRAIT IMPLS FOR `()`
+// ============================
+
+impl Ctx for Footprint {}
+
+impl ExtractFootprint for () {
+	fn try_footprint(&self) -> Option<&Footprint> {
+		log::error!("tried to extract footprint form (), {}", Location::caller());
+		None
 	}
 }
 
+// =====================================
+// EXTRACT TRAIT IMPLS FOR `ContextImpl`
+// =====================================
+
 impl Ctx for ContextImpl<'_> {}
-impl ArcCtx for OwnedContextImpl {}
 
 impl ExtractFootprint for ContextImpl<'_> {
 	fn try_footprint(&self) -> Option<&Footprint> {
@@ -289,6 +388,11 @@ impl ExtractFootprint for ContextImpl<'_> {
 impl ExtractRealTime for ContextImpl<'_> {
 	fn try_real_time(&self) -> Option<f64> {
 		self.real_time
+	}
+}
+impl ExtractPosition for ContextImpl<'_> {
+	fn try_position(&self) -> Option<impl Iterator<Item = DVec2>> {
+		self.position.clone().map(|x| x.into_iter())
 	}
 }
 impl ExtractIndex for ContextImpl<'_> {
@@ -312,6 +416,12 @@ impl ExtractVarArgs for ContextImpl<'_> {
 	}
 }
 
+// ==========================================
+// EXTRACT TRAIT IMPLS FOR `OwnedContextImpl`
+// ==========================================
+
+impl ArcCtx for OwnedContextImpl {}
+
 impl ExtractFootprint for OwnedContextImpl {
 	fn try_footprint(&self) -> Option<&Footprint> {
 		self.footprint.as_ref()
@@ -327,9 +437,14 @@ impl ExtractAnimationTime for OwnedContextImpl {
 		self.animation_time
 	}
 }
-impl ExtractPointer for OwnedContextImpl {
-	fn try_pointer(&self) -> Option<DVec2> {
-		self.pointer
+impl ExtractPointerPosition for OwnedContextImpl {
+	fn try_pointer_position(&self) -> Option<DVec2> {
+		self.pointer_position
+	}
+}
+impl ExtractPosition for OwnedContextImpl {
+	fn try_position(&self) -> Option<impl Iterator<Item = DVec2>> {
+		self.position.clone().map(|x| x.into_iter())
 	}
 }
 impl ExtractIndex for OwnedContextImpl {
@@ -379,32 +494,37 @@ impl CloneVarArgs for Arc<OwnedContextImpl> {
 	}
 }
 
+// ======================================
+// TYPES `Context` AND `OwnedContextImpl`
+// ======================================
+
 pub type Context<'a> = Option<Arc<OwnedContextImpl>>;
 type DynRef<'a> = &'a (dyn Any + Send + Sync);
 type DynBox = Box<dyn AnyHash + Send + Sync>;
 
 #[derive(dyn_any::DynAny)]
 pub struct OwnedContextImpl {
-	footprint: Option<Footprint>,
-	varargs: Option<Arc<[DynBox]>>,
 	parent: Option<Arc<dyn ExtractVarArgs + Sync + Send>>,
-	// This could be converted into a single enum to save extra bytes
-	index: Option<Vec<usize>>,
+	footprint: Option<Footprint>,
 	real_time: Option<f64>,
 	animation_time: Option<f64>,
-	pointer: Option<DVec2>,
+	pointer_position: Option<DVec2>,
+	position: Option<Vec<DVec2>>,
+	// This could be converted into a single enum to save extra bytes
+	index: Option<Vec<usize>>,
+	varargs: Option<Arc<[DynBox]>>,
 }
 
 impl std::fmt::Debug for OwnedContextImpl {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("OwnedContextImpl")
-			.field("footprint", &self.footprint)
-			.field("varargs_len", &self.varargs.as_ref().map(|x| x.len()))
 			.field("parent", &self.parent.as_ref().map(|_| "<Parent>"))
-			.field("index", &self.index)
+			.field("footprint", &self.footprint)
 			.field("real_time", &self.real_time)
 			.field("animation_time", &self.animation_time)
-			.field("pointer", &self.pointer)
+			.field("pointer_position", &self.pointer_position)
+			.field("index", &self.index)
+			.field("varargs_len", &self.varargs.as_ref().map(|x| x.len()))
 			.finish()
 	}
 }
@@ -419,11 +539,12 @@ impl Default for OwnedContextImpl {
 impl Hash for OwnedContextImpl {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		self.footprint.hash(state);
-		self.hash_varargs(state);
-		self.index.hash(state);
 		self.real_time.map(|x| x.to_bits()).hash(state);
 		self.animation_time.map(|x| x.to_bits()).hash(state);
-		self.pointer.map(|v| (v.x.to_bits(), v.y.to_bits())).hash(state);
+		self.pointer_position.map(|v| (v.x.to_bits(), v.y.to_bits())).hash(state);
+		self.position.iter().flat_map(|x| x.iter()).map(|v| (v.x.to_bits(), v.y.to_bits())).for_each(|v| v.hash(state));
+		self.index.hash(state);
+		self.hash_varargs(state);
 	}
 }
 
@@ -435,11 +556,6 @@ impl OwnedContextImpl {
 
 	#[track_caller]
 	pub fn from_flags<T: ExtractAll + CloneVarArgs>(value: T, bitflags: ContextFeatures) -> Self {
-		let footprint = bitflags.contains(ContextFeatures::FOOTPRINT).then(|| value.try_footprint().copied()).flatten();
-		let index = bitflags.contains(ContextFeatures::INDEX).then(|| value.try_index()).flatten();
-		let real_time = bitflags.contains(ContextFeatures::REAL_TIME).then(|| value.try_real_time()).flatten();
-		let animation_time = bitflags.contains(ContextFeatures::ANIMATION_TIME).then(|| value.try_animation_time()).flatten();
-		let pointer = bitflags.contains(ContextFeatures::POINTER).then(|| value.try_pointer()).flatten();
 		let parent = bitflags
 			.contains(ContextFeatures::VARARGS)
 			.then(|| match value.varargs_len() {
@@ -447,27 +563,35 @@ impl OwnedContextImpl {
 				_ => None,
 			})
 			.flatten();
+		let footprint = bitflags.contains(ContextFeatures::FOOTPRINT).then(|| value.try_footprint().copied()).flatten();
+		let real_time = bitflags.contains(ContextFeatures::REAL_TIME).then(|| value.try_real_time()).flatten();
+		let animation_time = bitflags.contains(ContextFeatures::ANIMATION_TIME).then(|| value.try_animation_time()).flatten();
+		let pointer_position = bitflags.contains(ContextFeatures::POINTER_POSITION).then(|| value.try_pointer_position()).flatten();
+		let position = bitflags.contains(ContextFeatures::POSITION).then(|| value.try_position()).flatten().map(|x| x.collect());
+		let index = bitflags.contains(ContextFeatures::INDEX).then(|| value.try_index()).flatten().map(|x| x.collect());
 
 		OwnedContextImpl {
-			footprint,
-			varargs: None,
 			parent,
-			index: index.map(|x| x.collect()),
+			footprint,
 			real_time,
 			animation_time,
-			pointer,
+			pointer_position,
+			position,
+			index,
+			varargs: None,
 		}
 	}
 
 	pub const fn empty() -> Self {
 		OwnedContextImpl {
-			footprint: None,
-			varargs: None,
 			parent: None,
-			index: None,
+			footprint: None,
 			real_time: None,
 			animation_time: None,
-			pointer: None,
+			pointer_position: None,
+			position: None,
+			index: None,
+			varargs: None,
 		}
 	}
 }
@@ -500,6 +624,7 @@ impl OwnedContextImpl {
 	pub fn set_footprint(&mut self, footprint: Footprint) {
 		self.footprint = Some(footprint);
 	}
+
 	pub fn with_footprint(mut self, footprint: Footprint) -> Self {
 		self.footprint = Some(footprint);
 		self
@@ -512,13 +637,16 @@ impl OwnedContextImpl {
 		self.animation_time = Some(animation_time);
 		self
 	}
-	pub fn with_pointer(mut self, pointer: DVec2) -> Self {
-		self.pointer = Some(pointer);
+	pub fn with_pointer_position(mut self, pointer_position: DVec2) -> Self {
+		self.pointer_position = Some(pointer_position);
 		self
 	}
-	pub fn with_vararg(mut self, value: Box<dyn AnyHash + Send + Sync>) -> Self {
-		assert!(self.varargs.is_none_or(|value| value.is_empty()));
-		self.varargs = Some(Arc::new([value]));
+	pub fn with_position(mut self, position: DVec2) -> Self {
+		if let Some(current_position) = &mut self.position {
+			current_position.insert(0, position);
+		} else {
+			self.position = Some(vec![position]);
+		}
 		self
 	}
 	pub fn with_index(mut self, index: usize) -> Self {
@@ -527,6 +655,11 @@ impl OwnedContextImpl {
 		} else {
 			self.index = Some(vec![index]);
 		}
+		self
+	}
+	pub fn with_vararg(mut self, value: Box<dyn AnyHash + Send + Sync>) -> Self {
+		assert!(self.varargs.is_none_or(|value| value.is_empty()));
+		self.varargs = Some(Arc::new([value]));
 		self
 	}
 	pub fn into_context(self) -> Option<Arc<Self>> {
@@ -541,9 +674,10 @@ impl OwnedContextImpl {
 #[derive(Default, Clone, dyn_any::DynAny)]
 pub struct ContextImpl<'a> {
 	pub(crate) footprint: Option<&'a Footprint>,
-	varargs: Option<&'a [DynRef<'a>]>,
-	index: Option<Vec<usize>>, // This could be converted into a single enum to save extra bytes
 	real_time: Option<f64>,
+	position: Option<Vec<DVec2>>, // This could be converted into a single enum to save extra bytes
+	index: Option<Vec<usize>>,    // This could be converted into a single enum to save extra bytes
+	varargs: Option<&'a [DynRef<'a>]>,
 }
 
 impl<'a> ContextImpl<'a> {
@@ -553,9 +687,16 @@ impl<'a> ContextImpl<'a> {
 	{
 		ContextImpl {
 			footprint: Some(new_footprint),
-			varargs: varargs.map(|x| x.borrow()),
+			position: self.position.clone(),
 			index: self.index.clone(),
+			varargs: varargs.map(|x| x.borrow()),
 			..*self
 		}
 	}
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum VarArgsResult {
+	IndexOutOfBounds,
+	NoVarArgs,
 }

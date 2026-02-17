@@ -1,7 +1,7 @@
 use crate::consts::{
-	ARC_SWEEP_GIZMO_RADIUS, COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_50, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW, COLOR_OVERLAY_YELLOW_DULL,
-	COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, DOWEL_PIN_RADIUS, MANIPULATOR_GROUP_MARKER_SIZE,
-	PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER, RESIZE_HANDLE_SIZE, SKEW_TRIANGLE_OFFSET, SKEW_TRIANGLE_SIZE,
+	ARC_SWEEP_GIZMO_RADIUS, COLOR_OVERLAY_BLACK, COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_50, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW,
+	COLOR_OVERLAY_YELLOW_DULL, COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, DOWEL_PIN_RADIUS,
+	MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER, RESIZE_HANDLE_SIZE, SKEW_TRIANGLE_OFFSET, SKEW_TRIANGLE_SIZE,
 };
 use crate::messages::portfolio::document::overlays::utility_functions::{GLOBAL_FONT_CACHE, GLOBAL_TEXT_CONTEXT};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -287,6 +287,10 @@ impl OverlayContext {
 		self.internal().manipulator_anchor(position, selected, color);
 	}
 
+	pub fn gradient_color_stop(&mut self, position: DVec2, selected: bool, color: &str) {
+		self.internal().gradient_color_stop(position, selected, color);
+	}
+
 	pub fn resize_handle(&mut self, position: DVec2, rotation: f64) {
 		self.internal().resize_handle(position, rotation);
 	}
@@ -505,11 +509,13 @@ impl OverlayContextInternal {
 
 		let mut path = BezPath::new();
 		if let Some(first) = polygon.last() {
-			path.move_to(kurbo::Point::new(first.x.round() - 0.5, first.y.round() - 0.5));
+			let p = self.snap_to_physical_pixel_center(*first);
+			path.move_to(kurbo::Point::new(p.x, p.y));
 		}
 
 		for point in polygon {
-			path.line_to(kurbo::Point::new(point.x.round() - 0.5, point.y.round() - 0.5));
+			let p = self.snap_to_physical_pixel_center(*point);
+			path.line_to(kurbo::Point::new(p.x, p.y));
 		}
 		path.close_path();
 
@@ -546,8 +552,8 @@ impl OverlayContextInternal {
 	{
 		let transform = self.get_transform();
 
-		let start = start.round() - DVec2::splat(0.5);
-		let end = end.round() - DVec2::splat(0.5);
+		let start = self.snap_to_physical_pixel_center(start);
+		let end = self.snap_to_physical_pixel_center(end);
 
 		let mut path = BezPath::new();
 		path.move_to(kurbo::Point::new(start.x, start.y));
@@ -637,7 +643,7 @@ impl OverlayContextInternal {
 
 	fn manipulator_handle(&mut self, position: DVec2, selected: bool, color: Option<&str>) {
 		let transform = self.get_transform();
-		let position = position.round() - DVec2::splat(0.5);
+		let position = self.snap_to_physical_pixel_center(position);
 
 		let circle = kurbo::Circle::new((position.x, position.y), MANIPULATOR_GROUP_MARKER_SIZE / 2.);
 
@@ -650,8 +656,7 @@ impl OverlayContextInternal {
 
 	fn hover_manipulator_handle(&mut self, position: DVec2, selected: bool) {
 		let transform = self.get_transform();
-
-		let position = position.round() - DVec2::splat(0.5);
+		let position = self.snap_to_physical_pixel_center(position);
 
 		let circle = kurbo::Circle::new((position.x, position.y), (MANIPULATOR_GROUP_MARKER_SIZE + 2.) / 2.);
 
@@ -678,6 +683,29 @@ impl OverlayContextInternal {
 		self.square(position, None, Some(color_fill), Some(COLOR_OVERLAY_BLUE));
 	}
 
+	fn gradient_color_stop(&mut self, position: DVec2, selected: bool, color: &str) {
+		let transform = self.get_transform();
+		let position = position.round() - DVec2::splat(0.5);
+
+		let (radius_offset, stroke_width) = if selected { (1., 3.) } else { (0., 1.) };
+		let radius = MANIPULATOR_GROUP_MARKER_SIZE / 1.5 + 1. + radius_offset;
+
+		let mut draw_circle = |radius: f64, width: Option<f64>, color: &str| {
+			let circle = kurbo::Circle::new((position.x, position.y), radius);
+			if let Some(width) = width {
+				self.scene.stroke(&kurbo::Stroke::new(width), transform, Self::parse_color(color), None, &circle);
+			} else {
+				self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(color), None, &circle);
+			}
+		};
+		// Fill
+		draw_circle(radius, None, color);
+		// Stroke (inner)
+		draw_circle(radius + stroke_width / 2., Some(1.), COLOR_OVERLAY_BLACK);
+		// Stroke (outer)
+		draw_circle(radius, Some(stroke_width), COLOR_OVERLAY_WHITE);
+	}
+
 	fn resize_handle(&mut self, position: DVec2, rotation: f64) {
 		let quad = DAffine2::from_angle_translation(rotation, position) * Quad::from_box([DVec2::splat(-RESIZE_HANDLE_SIZE / 2.), DVec2::splat(RESIZE_HANDLE_SIZE / 2.)]);
 		self.quad(quad, None, Some(COLOR_OVERLAY_WHITE));
@@ -701,7 +729,7 @@ impl OverlayContextInternal {
 		let color_fill = color_fill.unwrap_or(COLOR_OVERLAY_WHITE);
 		let color_stroke = color_stroke.unwrap_or(COLOR_OVERLAY_BLUE);
 
-		let position = position.round() - DVec2::splat(0.5);
+		let position = self.snap_to_physical_pixel_center(position);
 		let corner = position - DVec2::splat(size) / 2.;
 
 		let transform = self.get_transform();
@@ -716,7 +744,7 @@ impl OverlayContextInternal {
 		let size = 1.;
 		let color_fill = color.unwrap_or(COLOR_OVERLAY_WHITE);
 
-		let position = position.round() - DVec2::splat(0.5);
+		let position = self.snap_to_physical_pixel_center(position);
 		let corner = position - DVec2::splat(size) / 2.;
 
 		let transform = self.get_transform();
@@ -728,7 +756,7 @@ impl OverlayContextInternal {
 	fn circle(&mut self, position: DVec2, radius: f64, color_fill: Option<&str>, color_stroke: Option<&str>) {
 		let color_fill = color_fill.unwrap_or(COLOR_OVERLAY_WHITE);
 		let color_stroke = color_stroke.unwrap_or(COLOR_OVERLAY_BLUE);
-		let position = position.round();
+		let position = self.snap_to_physical_pixel(position);
 
 		let transform = self.get_transform();
 		let circle = kurbo::Circle::new((position.x, position.y), radius);
@@ -804,7 +832,7 @@ impl OverlayContextInternal {
 		self.draw_arc(pivot, arc_radius, offset_angle, (angle) % TAU + offset_angle);
 	}
 
-	fn draw_scale(&mut self, start: DVec2, scale: f64, radius: f64, text: &str) {
+	pub fn draw_scale(&mut self, start: DVec2, scale: f64, radius: f64, text: &str) {
 		let sign = scale.signum();
 		let mut fill_color = Color::from_rgb_str(COLOR_OVERLAY_WHITE.strip_prefix('#').unwrap()).unwrap().with_alpha(0.05).to_rgba_hex_srgb();
 		fill_color.insert(0, '#');
@@ -835,7 +863,7 @@ impl OverlayContextInternal {
 		let Some(show_hover_ring) = show_compass_with_hover_ring else { return };
 
 		let transform = self.get_transform();
-		let center = compass_center.round() - DVec2::splat(0.5);
+		let center = self.snap_to_physical_pixel_center(compass_center);
 
 		// Hover ring
 		if show_hover_ring {
@@ -880,7 +908,7 @@ impl OverlayContextInternal {
 
 	fn pivot(&mut self, position: DVec2, angle: f64) {
 		let uv = DVec2::from_angle(angle);
-		let (x, y) = (position.round() - DVec2::splat(0.5)).into();
+		let (x, y) = self.snap_to_physical_pixel_center(position).into();
 
 		let transform = self.get_transform();
 
@@ -910,7 +938,7 @@ impl OverlayContextInternal {
 	}
 
 	fn dowel_pin(&mut self, position: DVec2, angle: f64, color: Option<&str>) {
-		let (x, y) = (position.round() - DVec2::splat(0.5)).into();
+		let (x, y) = self.snap_to_physical_pixel_center(position).into();
 		let color = color.unwrap_or(COLOR_OVERLAY_YELLOW_DULL);
 
 		let transform = self.get_transform();
@@ -927,7 +955,7 @@ impl OverlayContextInternal {
 		path.move_to(kurbo::Point::new(x, y));
 		path.line_to(kurbo::Point::new(start1_x, start1_y));
 
-		let arc1 = kurbo::Arc::new((x, y), (DOWEL_PIN_RADIUS, DOWEL_PIN_RADIUS), start1, FRAC_PI_2, 0.0);
+		let arc1 = kurbo::Arc::new((x, y), (DOWEL_PIN_RADIUS, DOWEL_PIN_RADIUS), start1, FRAC_PI_2, 0.);
 		arc1.to_cubic_beziers(0.1, |p1, p2, p| {
 			path.curve_to(p1, p2, p);
 		});
@@ -939,7 +967,7 @@ impl OverlayContextInternal {
 		path.move_to(kurbo::Point::new(x, y));
 		path.line_to(kurbo::Point::new(start2_x, start2_y));
 
-		let arc2 = kurbo::Arc::new((x, y), (DOWEL_PIN_RADIUS, DOWEL_PIN_RADIUS), start2, FRAC_PI_2, 0.0);
+		let arc2 = kurbo::Arc::new((x, y), (DOWEL_PIN_RADIUS, DOWEL_PIN_RADIUS), start2, FRAC_PI_2, 0.);
 		arc2.to_cubic_beziers(0.1, |p1, p2, p| {
 			path.curve_to(p1, p2, p);
 		});
@@ -986,7 +1014,7 @@ impl OverlayContextInternal {
 		let mut path = BezPath::new();
 		self.bezier_to_path(bezier, transform, true, &mut path);
 
-		self.scene.stroke(&kurbo::Stroke::new(4.0), vello_transform, Self::parse_color(COLOR_OVERLAY_BLUE), None, &path);
+		self.scene.stroke(&kurbo::Stroke::new(4.), vello_transform, Self::parse_color(COLOR_OVERLAY_BLUE), None, &path);
 	}
 
 	fn outline_overlay_bezier(&mut self, bezier: PathSeg, transform: DAffine2) {
@@ -994,7 +1022,7 @@ impl OverlayContextInternal {
 		let mut path = BezPath::new();
 		self.bezier_to_path(bezier, transform, true, &mut path);
 
-		self.scene.stroke(&kurbo::Stroke::new(4.0), vello_transform, Self::parse_color(COLOR_OVERLAY_BLUE_50), None, &path);
+		self.scene.stroke(&kurbo::Stroke::new(4.), vello_transform, Self::parse_color(COLOR_OVERLAY_BLUE_50), None, &path);
 	}
 
 	fn bezier_to_path(&self, bezier: PathSeg, transform: DAffine2, move_to: bool, path: &mut BezPath) {
@@ -1017,29 +1045,30 @@ impl OverlayContextInternal {
 			};
 
 			let start_point = transform.transform_point2(point_to_dvec2(first.start()));
+			let start_point = self.snap_to_physical_pixel(start_point);
 			path.move_to(kurbo::Point::new(start_point.x, start_point.y));
 
 			for curve in curves {
 				match curve {
 					PathSeg::Line(line) => {
 						let a = transform.transform_point2(point_to_dvec2(line.p1));
-						let a = a.round() - DVec2::splat(0.5);
+						let a = self.snap_to_physical_pixel_center(a);
 						path.line_to(kurbo::Point::new(a.x, a.y));
 					}
 					PathSeg::Quad(quad_bez) => {
 						let a = transform.transform_point2(point_to_dvec2(quad_bez.p1));
 						let b = transform.transform_point2(point_to_dvec2(quad_bez.p2));
-						let a = a.round() - DVec2::splat(0.5);
-						let b = b.round() - DVec2::splat(0.5);
+						let a = self.snap_to_physical_pixel_center(a);
+						let b = self.snap_to_physical_pixel_center(b);
 						path.quad_to(kurbo::Point::new(a.x, a.y), kurbo::Point::new(b.x, b.y));
 					}
 					PathSeg::Cubic(cubic_bez) => {
 						let a = transform.transform_point2(point_to_dvec2(cubic_bez.p1));
 						let b = transform.transform_point2(point_to_dvec2(cubic_bez.p2));
 						let c = transform.transform_point2(point_to_dvec2(cubic_bez.p3));
-						let a = a.round() - DVec2::splat(0.5);
-						let b = b.round() - DVec2::splat(0.5);
-						let c = c.round() - DVec2::splat(0.5);
+						let a = self.snap_to_physical_pixel_center(a);
+						let b = self.snap_to_physical_pixel_center(b);
+						let c = self.snap_to_physical_pixel_center(c);
 						path.curve_to(kurbo::Point::new(a.x, a.y), kurbo::Point::new(b.x, b.y), kurbo::Point::new(c.x, c.y));
 					}
 				}
@@ -1129,16 +1158,16 @@ impl OverlayContextInternal {
 
 	fn text(&mut self, text: &str, font_color: &str, background_color: Option<&str>, transform: DAffine2, padding: f64, pivot: [Pivot; 2]) {
 		// Use the proper text-to-path system for accurate text rendering
-		const FONT_SIZE: f64 = 12.0;
+		const FONT_SIZE: f64 = 12.;
 
 		// Create typesetting configuration
 		let typesetting = TypesettingConfig {
 			font_size: FONT_SIZE,
 			line_height_ratio: 1.2,
-			character_spacing: 0.0,
+			character_spacing: 0.,
 			max_width: None,
 			max_height: None,
-			tilt: 0.0,
+			tilt: 0.,
 			align: TextAlign::Left, // We'll handle alignment manually via pivot
 		};
 
@@ -1153,7 +1182,7 @@ impl OverlayContextInternal {
 		let text_width = text_size.x;
 		let text_height = text_size.y;
 		// Create a rect from the size (assuming text starts at origin)
-		let text_bounds = kurbo::Rect::new(0.0, 0.0, text_width, text_height);
+		let text_bounds = kurbo::Rect::new(0., 0., text_width, text_height);
 
 		// Convert text to vector paths for rendering
 		let text_table = text_context.to_path(text, &font, &GLOBAL_FONT_CACHE, typesetting, false);
@@ -1162,7 +1191,7 @@ impl OverlayContextInternal {
 		let mut position = DVec2::ZERO;
 		match pivot[0] {
 			Pivot::Start => position.x = padding,
-			Pivot::Middle => position.x = -text_width / 2.0,
+			Pivot::Middle => position.x = -text_width / 2.,
 			Pivot::End => position.x = -padding - text_width,
 		}
 		match pivot[1] {
@@ -1240,5 +1269,21 @@ impl OverlayContextInternal {
 			self.line(quad.top_right(), quad.bottom_right(), None, None);
 			self.line(quad.bottom_left(), quad.bottom_right(), None, None);
 		}
+	}
+
+	fn snap_to_physical_pixel(&self, p: DVec2) -> DVec2 {
+		let s = self.viewport.scale();
+		if !s.is_finite() || s <= 0.0 {
+			return p.round();
+		}
+		(p * s).round() / s
+	}
+
+	fn snap_to_physical_pixel_center(&self, p: DVec2) -> DVec2 {
+		let s = self.viewport.scale();
+		if !s.is_finite() || s <= 0.0 {
+			return p.round() - DVec2::splat(0.5);
+		}
+		self.snap_to_physical_pixel(p) - DVec2::splat(0.5 / s)
 	}
 }

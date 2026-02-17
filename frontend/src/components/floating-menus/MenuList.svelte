@@ -42,6 +42,7 @@
 
 	// Keep the child references outside of the entries array so as to avoid infinite recursion.
 	let childReferences: MenuList[][] = [];
+	let openChildValue: string | undefined = undefined;
 	let search = "";
 	let reactiveEntries = entries;
 	let highlighted = activeEntry as MenuListEntry | undefined;
@@ -172,7 +173,7 @@
 		// Close the containing menu
 		let childReference = getChildReference(menuListEntry);
 		if (childReference) {
-			childReference.open = false;
+			openChildValue = undefined;
 			reactiveEntries = reactiveEntries;
 		}
 		dispatch("open", false);
@@ -192,7 +193,7 @@
 
 		let childReference = getChildReference(menuListEntry);
 		if (childReference) {
-			childReference.open = true;
+			openChildValue = menuListEntry.value;
 			reactiveEntries = reactiveEntries;
 		} else {
 			dispatch("open", true);
@@ -207,17 +208,11 @@
 
 		let childReference = getChildReference(menuListEntry);
 		if (childReference) {
-			childReference.open = false;
+			openChildValue = undefined;
 			reactiveEntries = reactiveEntries;
 		} else {
 			dispatch("open", false);
 		}
-	}
-
-	function isEntryOpen(menuListEntry: MenuListEntry): boolean {
-		if (!menuListEntry.children?.length) return false;
-
-		return getChildReference(menuListEntry)?.open || false;
 	}
 
 	function includeSeparator(entries: MenuListEntry[][], section: MenuListEntry[], sectionIndex: number, search: string): boolean {
@@ -242,7 +237,7 @@
 		// No submenu to open
 		if (!childReference || !highlightedEntry.children?.length) return false;
 
-		childReference.open = true;
+		openChildValue = highlightedEntry.value;
 		// The reason we bother taking `highlightdEntry` as an argument is because, when this function is called, it can ensure `highlightedEntry` is not undefined.
 		// But here we still have to set `highlighted` to itself so Svelte knows to reactively update it after we set its `childReference.open` property.
 		highlighted = highlighted;
@@ -257,12 +252,9 @@
 	/// Handles keyboard navigation for the menu.
 	// Returns a boolean indicating whether the entire menu stack should be dismissed.
 	export function keydown(e: KeyboardEvent, submenu = false): boolean {
-		// Interactive menus should keep the active entry the same as the highlighted one
-		if (interactive) highlighted = activeEntry;
-
 		const menuOpen = open;
 		const flatEntries = filteredEntries.flat().filter((entry) => !entry.disabled);
-		const openChild = flatEntries.findIndex((entry) => (entry.children?.length ?? 0) > 0 && getChildReference(entry)?.open);
+		const openChild = (openChildValue !== undefined && flatEntries.findIndex((entry) => entry.value === openChildValue)) || -1;
 
 		// Allow opening menu with space or enter
 		if (!menuOpen && (e.key === " " || e.key === "Enter")) {
@@ -442,7 +434,7 @@
 			{#each currentEntries(section, virtualScrollingEntryHeight, virtualScrollingStartIndex, virtualScrollingEndIndex, search) as entry, entryIndex (entryIndex + startIndex)}
 				<LayoutRow
 					class="row"
-					classes={{ open: isEntryOpen(entry), active: entry.label === highlighted?.label, disabled: Boolean(entry.disabled) }}
+					classes={{ open: openChildValue === entry.value, active: entry.label === highlighted?.label, disabled: Boolean(entry.disabled) }}
 					styles={{ height: virtualScrollingEntryHeight || "20px" }}
 					tooltipLabel={entry.tooltipLabel}
 					tooltipDescription={entry.tooltipDescription}
@@ -454,7 +446,7 @@
 					{#if entry.icon && drawIcon}
 						<IconLabel icon={entry.icon} iconSizeOverride={16} class="entry-icon" />
 					{:else if drawIcon}
-						<div class="no-icon" />
+						<div class="no-icon"></div>
 					{/if}
 
 					{#if entry.font}
@@ -470,7 +462,7 @@
 					{#if entry.children?.length}
 						<IconLabel class="submenu-arrow" icon="DropdownArrow" />
 					{:else}
-						<div class="no-submenu-arrow" />
+						<div class="no-submenu-arrow"></div>
 					{/if}
 
 					{#if entry.children}
@@ -483,7 +475,7 @@
 							}}
 							on:selectedEntryValuePath={({ detail }) => dispatch("selectedEntryValuePath", detail)}
 							parentsValuePath={[...parentsValuePath, entry.value]}
-							open={getChildReference(entry)?.open || false}
+							open={openChildValue === entry.value}
 							direction="TopRight"
 							entries={entry.children}
 							entriesHash={entry.childrenHash || 0n}
