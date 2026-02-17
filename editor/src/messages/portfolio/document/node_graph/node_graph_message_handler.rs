@@ -377,7 +377,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			NodeGraphMessage::DisconnectRootNode => {
 				network_interface.start_previewing_without_restore(selection_network_path);
 			}
-			NodeGraphMessage::DuplicateSelectedNodes => {
+			NodeGraphMessage::DuplicateSelectedNodes { add_transaction } => {
 				let all_selected_nodes = network_interface.upstream_chain_nodes(selection_network_path);
 
 				let copy_ids = all_selected_nodes.iter().enumerate().map(|(new, id)| (*id, NodeId(new as u64))).collect::<HashMap<NodeId, NodeId>>();
@@ -386,7 +386,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				let nodes = network_interface.copy_nodes(&copy_ids, selection_network_path).collect::<Vec<_>>();
 
 				let new_ids = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect::<HashMap<_, _>>();
-				responses.add(DocumentMessage::AddTransaction);
+				if add_transaction {
+					responses.add(DocumentMessage::AddTransaction);
+				} else {
+					responses.add(DocumentMessage::StartTransaction);
+				}
 				responses.add(NodeGraphMessage::AddNodes { nodes, new_ids: new_ids.clone() });
 				responses.add(NodeGraphMessage::SelectedNodesSet {
 					nodes: new_ids.values().cloned().collect(),
@@ -784,7 +788,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						self.select_if_not_dragged = None;
 						if self.duplicated_in_drag {
 							responses.add(DocumentMessage::AbortTransaction);
-							responses.add(DocumentMessage::Undo);
 							self.duplicated_in_drag = false;
 						} else {
 							responses.add(DocumentMessage::AbortTransaction);
@@ -1122,7 +1125,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					if self.begin_dragging {
 						self.begin_dragging = false;
 						if ipp.keyboard.get(Key::Alt as usize) {
-							responses.add(NodeGraphMessage::DuplicateSelectedNodes);
+							responses.add(NodeGraphMessage::DuplicateSelectedNodes { add_transaction: false });
 							// Duplicating sets a 2x2 offset, so shift the nodes back to the original position
 							responses.add(NodeGraphMessage::ShiftSelectedNodesByAmount {
 								graph_delta: IVec2::new(-2, -2),
@@ -1313,6 +1316,11 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						network_interface.try_set_upstream_to_chain(&InputConnector::node(layer, 1), selection_network_path);
 					}
 					responses.add(NodeGraphMessage::SendGraph);
+
+					if self.duplicated_in_drag {
+						responses.add(DocumentMessage::CommitTransaction);
+						self.duplicated_in_drag = false;
+					}
 
 					let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) else {
 						log::error!("Could not get selected nodes in PointerUp");
