@@ -26,7 +26,7 @@ use graphene_std::table::{Table, TableRow};
 use graphene_std::text::{Font, TextAlign};
 use graphene_std::transform::{Footprint, ReferencePoint, Transform};
 use graphene_std::vector::QRCodeErrorCorrectionLevel;
-use graphene_std::vector::misc::{ArcType, CentroidType, ExtrudeJoiningAlgorithm, GridType, MergeByDistanceAlgorithm, PointSpacingType, SpiralType};
+use graphene_std::vector::misc::{ArcType, CentroidType, ExtrudeJoiningAlgorithm, GridType, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType};
 use graphene_std::vector::style::{Fill, FillChoice, FillType, GradientStops, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 
 pub(crate) fn string_properties(text: &str) -> Vec<LayoutGroup> {
@@ -220,6 +220,7 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<StrokeAlign>() => enum_choice::<StrokeAlign>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<PaintOrder>() => enum_choice::<PaintOrder>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<ArcType>() => enum_choice::<ArcType>().for_socket(default_info).property_row(),
+						Some(x) if x == TypeId::of::<RowsOrColumns>() => enum_choice::<RowsOrColumns>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<TextAlign>() => enum_choice::<TextAlign>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<MergeByDistanceAlgorithm>() => enum_choice::<MergeByDistanceAlgorithm>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<ExtrudeJoiningAlgorithm>() => enum_choice::<ExtrudeJoiningAlgorithm>().for_socket(default_info).property_row(),
