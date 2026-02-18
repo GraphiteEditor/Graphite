@@ -773,12 +773,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					if self.drag_start.is_some() {
 						self.drag_start = None;
 						self.select_if_not_dragged = None;
-						if self.duplicated_in_drag {
-							responses.add(DocumentMessage::AbortTransaction);
-							self.duplicated_in_drag = false;
-						} else {
-							responses.add(DocumentMessage::AbortTransaction);
-						}
+						responses.add(DocumentMessage::AbortTransaction);
+						self.duplicated_in_drag = false;
 						responses.add(NodeGraphMessage::SelectedNodesSet {
 							nodes: self.selection_before_pointer_down.clone(),
 						});
@@ -1304,10 +1300,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					}
 					responses.add(NodeGraphMessage::SendGraph);
 
-					if self.duplicated_in_drag {
-						responses.add(DocumentMessage::CommitTransaction);
-						self.duplicated_in_drag = false;
-					}
+
 
 					let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) else {
 						log::error!("Could not get selected nodes in PointerUp");
@@ -2128,8 +2121,6 @@ impl NodeGraphMessageHandler {
 		let new_ids = nodes.iter().map(|(id, _)| (*id, NodeId::new())).collect::<HashMap<_, _>>();
 		if add_transaction {
 			responses.add(DocumentMessage::AddTransaction);
-		} else {
-			responses.add(DocumentMessage::StartTransaction);
 		}
 		responses.add(NodeGraphMessage::AddNodes { nodes, new_ids: new_ids.clone() });
 		responses.add(NodeGraphMessage::SelectedNodesSet {
