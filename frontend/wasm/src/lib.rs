@@ -12,6 +12,7 @@ use editor::messages::prelude::*;
 use std::panic;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
+use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
 // Set up the persistent editor backend state
@@ -24,6 +25,7 @@ thread_local! {
 	pub static EDITOR: Mutex<Option<editor::application::Editor>> = const { Mutex::new(None) };
 	pub static MESSAGE_BUFFER: std::cell::RefCell<Vec<Message>> = const { std::cell::RefCell::new(Vec::new()) };
 	pub static EDITOR_HANDLE: Mutex<Option<editor_api::EditorHandle>> = const { Mutex::new(None) };
+	pub static PANIC_DIALOG_MESSAGE_CALLBACK: std::cell::RefCell<Option<js_sys::Function>> = const { std::cell::RefCell::new(None) };
 }
 
 /// Initialize the backend
@@ -72,12 +74,69 @@ pub fn panic_hook(info: &panic::PanicHookInfo) {
 
 	log::error!("{info}");
 
+	// Prefer using the raw JS callback to avoid mutex lock contention inside the panic hook.
+	// Fall back to the editor handle path if needed.
+	if !(send_panic_dialog_via_callback(&info) || send_panic_dialog(&info)) {
+		send_panic_dialog_deferred(info);
+	}
+}
+
+fn send_panic_dialog_via_callback(panic_info: &str) -> bool {
+	let message = FrontendMessage::DisplayDialogPanic { panic_info: panic_info.to_string() };
+	let message_type = message.to_discriminant().local_name();
+	let Ok(message_data) = serde_wasm_bindgen::to_value(&message) else {
+		log::error!("Failed to serialize crash dialog panic message");
+		return false;
+	};
+
+	PANIC_DIALOG_MESSAGE_CALLBACK.with(|callback| {
+		let callback_ref = callback.borrow();
+		let Some(callback) = callback_ref.as_ref() else {
+			return false;
+		};
+
+		if let Err(error) = callback.call2(&JsValue::null(), &JsValue::from(message_type), &message_data) {
+			log::error!("Failed to send crash dialog panic message to JS: {:?}", error);
+			return false;
+		}
+
+		true
+	})
+}
+
+fn send_panic_dialog(panic_info: &str) -> bool {
 	EDITOR_HANDLE.with(|editor_handle| {
-		let mut guard = editor_handle.lock();
-		if let Ok(Some(handle)) = guard.as_deref_mut() {
-			handle.send_frontend_message_to_js_rust_proxy(FrontendMessage::DisplayDialogPanic { panic_info: info.to_string() });
+		let mut guard = editor_handle.try_lock();
+		let Ok(Some(handle)) = guard.as_deref_mut() else {
+			return false;
+		};
+
+		handle.send_frontend_message_to_js_rust_proxy(FrontendMessage::DisplayDialogPanic { panic_info: panic_info.to_string() });
+		true
+	})
+}
+
+#[cfg(not(feature = "native"))]
+fn send_panic_dialog_deferred(panic_info: String) {
+	let callback = Closure::once_into_js(move || {
+		if !send_panic_dialog(&panic_info) {
+			log::error!("Failed to send crash dialog after panic because the editor handle is unavailable");
 		}
 	});
+
+	let Some(window) = web_sys::window() else {
+		log::error!("Failed to schedule crash dialog after panic because no window exists");
+		return;
+	};
+
+	if window.set_timeout_with_callback_and_timeout_and_arguments_0(callback.unchecked_ref(), 0).is_err() {
+		log::error!("Failed to schedule crash dialog after panic with setTimeout");
+	}
+}
+
+#[cfg(feature = "native")]
+fn send_panic_dialog_deferred(_panic_info: String) {
+	// Native builds do not use `setTimeout`, so just log the failure in the caller's context.
 }
 
 #[wasm_bindgen]
