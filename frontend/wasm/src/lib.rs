@@ -12,7 +12,6 @@ use editor::messages::prelude::*;
 use std::panic;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
-use wasm_bindgen::JsCast;
 use wasm_bindgen::prelude::*;
 
 // Set up the persistent editor backend state
@@ -81,8 +80,8 @@ pub fn panic_hook(info: &panic::PanicHookInfo) {
 	}
 }
 
-fn send_panic_dialog_via_callback(panic_info: &str) -> bool {
-	let message = FrontendMessage::DisplayDialogPanic { panic_info: panic_info.to_string() };
+fn send_panic_dialog_via_callback(panic_info: &String) -> bool {
+	let message = FrontendMessage::DisplayDialogPanic { panic_info: panic_info.clone() };
 	let message_type = message.to_discriminant().local_name();
 	let Ok(message_data) = serde_wasm_bindgen::to_value(&message) else {
 		log::error!("Failed to serialize crash dialog panic message");
@@ -104,14 +103,14 @@ fn send_panic_dialog_via_callback(panic_info: &str) -> bool {
 	})
 }
 
-fn send_panic_dialog(panic_info: &str) -> bool {
+fn send_panic_dialog(panic_info: &String) -> bool {
 	EDITOR_HANDLE.with(|editor_handle| {
 		let mut guard = editor_handle.try_lock();
 		let Ok(Some(handle)) = guard.as_deref_mut() else {
 			return false;
 		};
 
-		handle.send_frontend_message_to_js_rust_proxy(FrontendMessage::DisplayDialogPanic { panic_info: panic_info.to_string() });
+		handle.send_frontend_message_to_js_rust_proxy(FrontendMessage::DisplayDialogPanic { panic_info: panic_info.clone() });
 		true
 	})
 }

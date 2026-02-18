@@ -78,6 +78,16 @@ impl EditorHandle {
 	pub fn send_frontend_message_to_js_rust_proxy(&self, message: FrontendMessage) {
 		self.send_frontend_message_to_js(message);
 	}
+
+	fn initialize_handle(frontend_message_handler_callback: js_sys::Function) -> EditorHandle {
+		let panic_callback = frontend_message_handler_callback.clone();
+		let editor_handle = EditorHandle { frontend_message_handler_callback };
+		if EDITOR_HANDLE.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor_handle.clone()))).is_none() {
+			log::error!("Attempted to initialize the editor handle more than once");
+		}
+		PANIC_DIALOG_MESSAGE_CALLBACK.with_borrow_mut(|callback| *callback = Some(panic_callback));
+		editor_handle
+	}
 }
 
 #[wasm_bindgen]
@@ -97,27 +107,16 @@ impl EditorHandle {
 			uuid_random_seed,
 		);
 
-		let panic_callback = frontend_message_handler_callback.clone();
-		let editor_handle = EditorHandle { frontend_message_handler_callback };
 		if EDITOR.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor))).is_none() {
 			log::error!("Attempted to initialize the editor more than once");
 		}
-		if EDITOR_HANDLE.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor_handle.clone()))).is_none() {
-			log::error!("Attempted to initialize the editor handle more than once");
-		}
-		PANIC_DIALOG_MESSAGE_CALLBACK.with_borrow_mut(|callback| *callback = Some(panic_callback));
-		editor_handle
+
+		Self::initialize_handle(frontend_message_handler_callback)
 	}
 
 	#[cfg(feature = "native")]
 	pub fn create(_platform: String, _uuid_random_seed: u64, frontend_message_handler_callback: js_sys::Function) -> EditorHandle {
-		let panic_callback = frontend_message_handler_callback.clone();
-		let editor_handle = EditorHandle { frontend_message_handler_callback };
-		if EDITOR_HANDLE.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor_handle.clone()))).is_none() {
-			log::error!("Attempted to initialize the editor handle more than once");
-		}
-		PANIC_DIALOG_MESSAGE_CALLBACK.with_borrow_mut(|callback| *callback = Some(panic_callback));
-		editor_handle
+		Self::initialize_handle(frontend_message_handler_callback)
 	}
 
 	// Sends a message to the dispatcher in the Editor Backend
