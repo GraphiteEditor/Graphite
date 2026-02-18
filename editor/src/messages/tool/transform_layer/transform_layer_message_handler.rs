@@ -390,6 +390,12 @@ impl MessageHandler<TransformLayerMessage, TransformLayerMessageContext<'_>> for
 				});
 			}
 			TransformLayerMessage::BeginGRS { operation: transform_type } => {
+				let only_artboards_selected = selected_layers.iter().all(|&layer| document.network_interface.is_artboard(&layer.to_node(), &[]));
+
+				if only_artboards_selected {
+					return;
+				}
+
 				let selected_points: Vec<&ManipulatorPointId> = shape_editor.selected_points().collect();
 				let selected_segments = shape_editor.selected_segments().collect::<Vec<_>>();
 
