@@ -53,7 +53,8 @@ impl CefContext for MultiThreadedCefContextProxy {
 
 impl Drop for MultiThreadedCefContextProxy {
 	fn drop(&mut self) {
-		cef::shutdown();
+		// Force dropping underlying context on the UI thread
+		run_on_ui_thread(move || drop(CONTEXT.take()));
 	}
 }
 
