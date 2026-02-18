@@ -1844,6 +1844,7 @@ impl Fsm for PenToolFsmState {
 				} else {
 					if tool_data.handle_end.is_some() {
 						responses.add(DocumentMessage::StartTransaction);
+						return PenToolFsmState::PlacingAnchor;
 					}
 					// Merge two layers if the point is connected to the end point of another path
 
