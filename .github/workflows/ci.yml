@@ -121,13 +121,6 @@ jobs:
           cd frontend
           npm run lint
 
-      - name: 🦀 Build Rust code
-        if: steps.skip-check.outputs.skip-check != 'true'
-        env:
-          RUSTFLAGS: -Dwarnings
-        run: |
-          mold -run cargo build --all-features
-
       - name: 🧪 Run Rust tests
         if: steps.skip-check.outputs.skip-check != 'true'
         env:
