@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use graphene_std::uuid::NodeId;
 
 use crate::messages::layout::utility_types::widget_prelude::*;
@@ -19,7 +21,9 @@ pub struct PropertiesPanelMessageContext<'a> {
 }
 
 #[derive(Debug, Clone, Default, ExtractField)]
-pub struct PropertiesPanelMessageHandler {}
+pub struct PropertiesPanelMessageHandler {
+	pub section_expanded: HashMap<u64, bool>,
+}
 
 #[message_handler_data]
 impl MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageContext<'_>> for PropertiesPanelMessageHandler {
@@ -64,6 +68,16 @@ impl MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageContext<'_>> f
 					layout,
 					layout_target: LayoutTarget::PropertiesPanel,
 				});
+			}
+			PropertiesPanelMessage::SetAllSectionsExpanded { expanded } => {
+				for value in self.section_expanded.values_mut() {
+					*value = expanded;
+				}
+				responses.add(PropertiesPanelMessage::Refresh);
+			}
+			PropertiesPanelMessage::SetSectionExpanded { node_id, expanded } => {
+				self.section_expanded.insert(node_id, expanded);
+				responses.add(PropertiesPanelMessage::Refresh);
 			}
 		}
 	}

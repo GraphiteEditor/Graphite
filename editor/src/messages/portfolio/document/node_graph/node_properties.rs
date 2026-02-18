@@ -2374,16 +2374,9 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 
 	let visible = context.network_interface.is_visible(&node_id, context.selection_network_path);
 	let pinned = context.network_interface.is_pinned(&node_id, context.selection_network_path);
-	let expanded = !context.properties_panel_collapsed_sections.contains(&node_id);
+	let expanded = !context.network_interface.is_collapsed(&node_id, context.selection_network_path);
 
 	LayoutGroup::section(name, description, visible, pinned, expanded, node_id.0, Layout(layout))
-}
-
-/// The layer that a chain node ultimately feeds, if any. Returns `None` in a nested network since the layer metadata structure
-/// is only loaded for the root document network, so a `LayerNodeIdentifier` can't be constructed there.
-fn root_layer_for_chain_node(node_id: NodeId, context: &mut NodePropertiesContext) -> Option<LayerNodeIdentifier> {
-	if !context.selection_network_path.is_empty() {
-		return None;
 	}
 	let layer_node = context.network_interface.downstream_layer_for_chain_node(&node_id, context.selection_network_path)?;
 	Some(LayerNodeIdentifier::new(layer_node, context.network_interface))
