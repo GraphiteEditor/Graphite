@@ -74,16 +74,21 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 		let old_zoom = ptz.zoom();
 
 		match message {
-			NavigationMessage::BeginCanvasPan => {
-				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Grabbing });
+			NavigationMessage::BeginCanvasPan { panning } => {
+				if panning {
+					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Grabbing });
 
-				HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]).send_layout(responses);
+					HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]).send_layout(responses);
 
-				self.mouse_position = ipp.mouse.position;
-				let Some(ptz) = get_ptz(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
-					return;
-				};
-				self.navigation_operation = NavigationOperation::Pan { pan_original_for_abort: ptz.pan };
+					self.mouse_position = ipp.mouse.position;
+					let Some(ptz) = get_ptz(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
+						return;
+					};
+					self.navigation_operation = NavigationOperation::Pan { pan_original_for_abort: ptz.pan };
+				} else {
+					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Grab });
+					self.navigation_operation = NavigationOperation::Listening;
+				}
 			}
 			NavigationMessage::BeginCanvasTilt { was_dispatched_from_menu } => {
 				let Some(ptz) = get_ptz(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
@@ -91,7 +96,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				};
 				// If the node graph is open, prevent tilt and instead start panning
 				if graph_view_overlay_open {
-					responses.add(NavigationMessage::BeginCanvasPan);
+					responses.add(NavigationMessage::BeginCanvasPan { panning: true });
 				} else {
 					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
 					HintData(vec![
@@ -291,7 +296,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				responses.add(MenuBarMessage::SendLayout);
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
-			NavigationMessage::EndCanvasPTZ { abort_transform } => {
+			NavigationMessage::EndCanvasPTZ { abort_transform, panning } => {
 				let Some(ptz) = get_ptz_mut(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
 					log::error!("Could not get mutable PTZ in EndCanvasPTZ");
 					return;
@@ -299,7 +304,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				// If an abort was requested, reset the active PTZ value to its original state
 				if abort_transform && self.navigation_operation != NavigationOperation::None {
 					match self.navigation_operation {
-						NavigationOperation::None => {}
+						NavigationOperation::None | NavigationOperation::Listening => {}
 						NavigationOperation::Tilt { tilt_original_for_abort, .. } => {
 							ptz.set_tilt(tilt_original_for_abort);
 						}
@@ -321,12 +326,15 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				} else {
 					responses.add(PortfolioMessage::UpdateDocumentWidgets);
 				}
-				// Reset the navigation operation now that it's done
-				self.navigation_operation = NavigationOperation::None;
-
 				// Send the final messages to close out the operation
 				responses.add(EventMessage::CanvasTransformed);
-				responses.add(ToolMessage::UpdateCursor);
+				if panning {
+					self.navigation_operation = NavigationOperation::Listening;
+					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Grab });
+				} else {
+					self.navigation_operation = NavigationOperation::None;
+					responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Default });
+				}
 				responses.add(ToolMessage::UpdateHints);
 				responses.add(NavigateToolMessage::End);
 			}
@@ -334,7 +342,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				self.finish_operation_with_click = false;
 
 				let abort_transform = commit_key == Key::MouseRight;
-				responses.add(NavigationMessage::EndCanvasPTZ { abort_transform });
+				responses.add(NavigationMessage::EndCanvasPTZ { abort_transform, panning: false });
 			}
 			NavigationMessage::FitViewportToBounds {
 				bounds: [pos1, pos2],
@@ -406,7 +414,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 			}
 			NavigationMessage::PointerMove { snap } => {
 				match self.navigation_operation {
-					NavigationOperation::None => {}
+					NavigationOperation::None | NavigationOperation::Listening => {}
 					NavigationOperation::Pan { .. } => {
 						let delta = ipp.mouse.position - self.mouse_position;
 						responses.add(NavigationMessage::CanvasPan { delta });

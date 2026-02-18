@@ -26,6 +26,7 @@ pub enum MouseCursorIcon {
 	None,
 	ZoomIn,
 	ZoomOut,
+	Grab,
 	Grabbing,
 	Crosshair,
 	Text,

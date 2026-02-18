@@ -39,12 +39,16 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		// ===============
 		//
 		// NavigationMessage
+		entry!(KeyUp(Space); action_dispatch=NavigationMessage::EndCanvasPTZ { abort_transform: false, panning: false }),
 		entry!(PointerMove; refresh_keys=[Shift], action_dispatch=NavigationMessage::PointerMove { snap: Shift }),
-		entry!(KeyUp(MouseLeft); action_dispatch=NavigationMessage::EndCanvasPTZ { abort_transform: false }),
-		entry!(KeyUp(MouseMiddle); action_dispatch=NavigationMessage::EndCanvasPTZ { abort_transform: false }),
-		entry!(KeyUp(MouseRight); action_dispatch=NavigationMessage::EndCanvasPTZ { abort_transform: false }),
-		entry!(KeyDown(MouseRight); action_dispatch=NavigationMessage::EndCanvasPTZ { abort_transform: true }),
-		entry!(KeyDown(Escape); action_dispatch=NavigationMessage::EndCanvasPTZ { abort_transform: true }),
+		entry!(KeyUp(MouseLeft); modifiers=[Alt, Space], action_dispatch=DocumentMessage::Noop),
+		entry!(KeyUp(MouseLeft); modifiers=[Control, Space], action_dispatch=DocumentMessage::Noop),
+		entry!(KeyUp(MouseLeft); modifiers=[Space], action_dispatch=NavigationMessage::EndCanvasPTZ { abort_transform: false, panning: true}),
+		entry!(KeyUp(MouseLeft); action_dispatch=NavigationMessage::EndCanvasPTZ { abort_transform: false, panning: false }),
+		entry!(KeyUp(MouseMiddle); action_dispatch=NavigationMessage::EndCanvasPTZ { abort_transform: false, panning: false }),
+		entry!(KeyUp(MouseRight); action_dispatch=NavigationMessage::EndCanvasPTZ { abort_transform: false, panning: false }),
+		entry!(KeyDown(MouseRight); action_dispatch=NavigationMessage::EndCanvasPTZ { abort_transform: true, panning: false }),
+		entry!(KeyDown(Escape); action_dispatch=NavigationMessage::EndCanvasPTZ { abort_transform: true, panning: false }),
 		entry!(KeyDown(MouseLeft); action_dispatch=NavigationMessage::EndCanvasPTZWithClick { commit_key: MouseLeft }),
 		entry!(KeyDown(MouseMiddle); action_dispatch=NavigationMessage::EndCanvasPTZWithClick { commit_key: MouseMiddle }),
 		entry!(KeyDown(MouseRight); action_dispatch=NavigationMessage::EndCanvasPTZWithClick { commit_key: MouseRight }),
@@ -416,8 +420,16 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		entry!(KeyDown(MouseLeft); modifiers=[Alt, Space], action_dispatch=NavigationMessage::BeginCanvasTilt { was_dispatched_from_menu: false }),
 		entry!(KeyDown(MouseMiddle); modifiers=[Control], action_dispatch=NavigationMessage::BeginCanvasZoom),
 		entry!(KeyDown(MouseLeft); modifiers=[Control, Space], action_dispatch=NavigationMessage::BeginCanvasZoom),
-		entry!(KeyDown(MouseMiddle); action_dispatch=NavigationMessage::BeginCanvasPan),
-		entry!(KeyDown(MouseLeft); modifiers=[Space], action_dispatch=NavigationMessage::BeginCanvasPan),
+		entry!(KeyDown(MouseMiddle); action_dispatch=NavigationMessage::BeginCanvasPan {panning: true}),
+		entry!(KeyDown(MouseLeft); modifiers=[Space], action_dispatch=NavigationMessage::BeginCanvasPan {panning: true}),
+		// Both are implemented cause for some reason keydown space was being forwarded ever further though I think the keydown(mouseleft) with modifiers=[Space] should've consumed the match
+		// statement.
+		entry!(KeyDown(Space); modifiers=[Alt], action_dispatch=DocumentMessage::Noop),
+		entry!(KeyDown(Space); modifiers=[Control], action_dispatch=DocumentMessage::Noop),
+		entry!(KeyDown(Alt); modifiers=[Space], action_dispatch=DocumentMessage::Noop),
+		entry!(KeyDown(Control); modifiers=[Space], action_dispatch=DocumentMessage::Noop),
+		entry!(KeyDown(Space); modifiers=[MouseLeft], action_dispatch=NavigationMessage::BeginCanvasPan {panning: true}),
+		entry!(KeyDown(Space); action_dispatch=NavigationMessage::BeginCanvasPan {panning: false}),
 		entry!(KeyDown(NumpadAdd); modifiers=[Accel], action_dispatch=NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }),
 		// `FakeKeyPlus` is a nonfunctional key mapping that must be accompanied by its real `Equal` key counterpart. This is used only to set the canonical key label so it shows "+" instead of "=" in the UI.
 		entry!(KeyDown(FakeKeyPlus); modifiers=[Accel], canonical, action_dispatch=NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }),
