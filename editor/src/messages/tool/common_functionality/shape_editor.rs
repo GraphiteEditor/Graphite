@@ -1266,6 +1266,8 @@ impl ShapeState {
 		opposite_handle_position: Option<DVec2>,
 		skip_opposite_handle: bool,
 		responses: &mut VecDeque<Message>,
+		bot_right: bool,
+		top_left: bool,
 	) {
 		for (&layer, state) in &self.selected_shape_state {
 			let Some(vector) = document.network_interface.compute_modified_vector(layer) else { continue };
@@ -1281,6 +1283,17 @@ impl ShapeState {
 			};
 			let delta = delta_transform.inverse().transform_vector2(delta);
 
+			let center = if bot_right || top_left {
+				let points: Vec<DVec2> = state.selected_points().filter_map(|point| point.get_position(&vector)).collect();
+				if points.is_empty() {
+					continue;
+				}
+				let sum = points.iter().fold(DVec2::ZERO, |acc, &p| acc + p);
+				Some(sum / points.len() as f64)
+			} else {
+				None
+			};
+
 			// Make a new collection of anchor points which needs to be moved
 			let mut affected_points = state.selected_points.clone();
 
@@ -1294,6 +1307,21 @@ impl ShapeState {
 			for &point in affected_points.iter() {
 				if self.is_point_ignored(&point) {
 					continue;
+				}
+
+				if let Some(center) = center {
+					let Some(point_position) = point.get_position(&vector) else { continue };
+					if bot_right {
+						// Only move points on/below-right of center for bottom-right scaling
+						if !(point_position.x >= center.x && point_position.y >= center.y) {
+							continue;
+						}
+					} else if top_left {
+						// only move points on/above-left of center for top-left scaling
+						if !(point_position.x <= center.x && point_position.y <= center.y) {
+							continue;
+						}
+					}
 				}
 
 				let handle = match point {
