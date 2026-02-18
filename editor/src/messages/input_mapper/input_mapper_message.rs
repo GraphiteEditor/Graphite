@@ -16,6 +16,8 @@ pub enum InputMapperMessage {
 	KeyUpNoRepeat(Key),
 	#[child]
 	DoubleClick(MouseButton),
+	#[child]
+	DoubleTap(Key),
 
 	// Messages
 	PointerMove,
