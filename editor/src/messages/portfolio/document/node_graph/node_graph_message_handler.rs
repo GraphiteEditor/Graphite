@@ -1358,8 +1358,6 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					}
 					responses.add(NodeGraphMessage::SendGraph);
 
-
-
 					let Some(selected_nodes) = network_interface.selected_nodes_in_nested_network(selection_network_path) else {
 						log::error!("Could not get selected nodes in PointerUp");
 						return;
@@ -2240,7 +2238,6 @@ impl NodeGraphMessageHandler {
 				Cut,
 				DeleteSelectedNodes,
 				DuplicateSelectedNodes,
-				DuplicateSelectedNodesForDrag,
 				MergeSelectedNodes,
 				ToggleSelectedAsLayersOrNodes,
 				ToggleSelectedLocked,
