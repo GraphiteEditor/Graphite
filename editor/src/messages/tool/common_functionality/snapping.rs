@@ -1,6 +1,7 @@
 mod alignment_snapper;
 mod distribution_snapper;
 mod grid_snapper;
+mod guide_snapper;
 mod layer_snapper;
 mod snap_results;
 
@@ -19,6 +20,7 @@ use graphene_std::vector::PointId;
 use graphene_std::vector::algorithms::intersection::filtered_segment_intersections;
 use graphene_std::vector::misc::point_to_dvec2;
 pub use grid_snapper::*;
+pub use guide_snapper::*;
 use kurbo::ParamCurve;
 pub use layer_snapper::*;
 pub use snap_results::*;
@@ -39,6 +41,7 @@ pub struct SnapManager {
 	indicator: Option<SnappedPoint>,
 	layer_snapper: LayerSnapper,
 	grid_snapper: GridSnapper,
+	guide_snapper: GuideSnapper,
 	alignment_snapper: AlignmentSnapper,
 	distribution_snapper: DistributionSnapper,
 	candidates: Option<Vec<LayerNodeIdentifier>>,
@@ -173,6 +176,10 @@ fn get_closest_intersection(snap_to: DVec2, curves: &[SnappedCurve]) -> Option<S
 }
 
 fn get_grid_intersection(snap_to: DVec2, lines: &[SnappedLine]) -> Option<SnappedPoint> {
+	get_line_intersection(snap_to, lines, SnapTarget::Grid(GridSnapTarget::Intersection))
+}
+
+pub fn get_line_intersection(snap_to: DVec2, lines: &[SnappedLine], target: SnapTarget) -> Option<SnappedPoint> {
 	let mut best = None;
 	for line_i in lines {
 		for line_j in lines {
@@ -182,7 +189,7 @@ fn get_grid_intersection(snap_to: DVec2, lines: &[SnappedLine]) -> Option<Snappe
 					best = Some(SnappedPoint {
 						snapped_point_document,
 						distance,
-						target: SnapTarget::Grid(GridSnapTarget::Intersection),
+						target,
 						tolerance: line_i.point.tolerance,
 						source: line_i.point.source,
 						at_intersection: true,
@@ -389,6 +396,7 @@ impl SnapManager {
 
 		self.layer_snapper.free_snap(&mut snap_data, point, &mut snap_results, config);
 		self.grid_snapper.free_snap(&mut snap_data, point, &mut snap_results);
+		self.guide_snapper.free_snap(&mut snap_data, point, &mut snap_results);
 		self.alignment_snapper.free_snap(&mut snap_data, point, &mut snap_results, config);
 		self.distribution_snapper.free_snap(&mut snap_data, point, &mut snap_results, config);
 
@@ -415,6 +423,7 @@ impl SnapManager {
 
 		self.layer_snapper.constrained_snap(&mut snap_data, point, &mut snap_results, constraint, config);
 		self.grid_snapper.constrained_snap(&mut snap_data, point, &mut snap_results, constraint);
+		self.guide_snapper.constrained_snap(&mut snap_data, point, &mut snap_results, constraint);
 		self.alignment_snapper.constrained_snap(&mut snap_data, point, &mut snap_results, constraint, config);
 		self.distribution_snapper.constrained_snap(&mut snap_data, point, &mut snap_results, constraint, config);
 

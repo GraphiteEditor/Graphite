@@ -60,6 +60,7 @@ pub enum AlignAggregate {
 pub struct SnappingState {
 	pub snapping_enabled: bool,
 	pub grid_snapping: bool,
+	pub guides: bool,
 	pub artboards: bool,
 	pub tolerance: f64,
 	pub bounding_box: BoundingBoxSnapping,
@@ -72,6 +73,7 @@ impl Default for SnappingState {
 		Self {
 			snapping_enabled: true,
 			grid_snapping: false,
+			guides: true,
 			artboards: true,
 			tolerance: 8.,
 			bounding_box: BoundingBoxSnapping::default(),
@@ -103,6 +105,7 @@ impl SnappingState {
 			},
 			SnapTarget::Artboard(_) => self.artboards,
 			SnapTarget::Grid(_) => self.grid_snapping,
+			SnapTarget::Guide(_) => self.guides,
 			SnapTarget::Alignment(AlignmentSnapTarget::AlignWithAnchorPoint) => self.path.align_with_anchor_point,
 			SnapTarget::Alignment(_) => self.bounding_box.align_with_edges,
 			SnapTarget::DistributeEvenly(_) => self.bounding_box.distribute_evenly,
@@ -532,6 +535,23 @@ impl fmt::Display for GridSnapTarget {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GuideSnapTarget {
+	Horizontal,
+	Vertical,
+	Intersection,
+}
+
+impl fmt::Display for GuideSnapTarget {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			GuideSnapTarget::Horizontal => write!(f, "Guide: Horizontal"),
+			GuideSnapTarget::Vertical => write!(f, "Guide: Vertical"),
+			GuideSnapTarget::Intersection => write!(f, "Guide: Intersection"),
+		}
+	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AlignmentSnapTarget {
 	BoundingBoxCornerPoint,
 	BoundingBoxCenterPoint,
@@ -598,6 +618,7 @@ pub enum SnapTarget {
 	Path(PathSnapTarget),
 	Artboard(ArtboardSnapTarget),
 	Grid(GridSnapTarget),
+	Guide(GuideSnapTarget),
 	Alignment(AlignmentSnapTarget),
 	DistributeEvenly(DistributionSnapTarget),
 }
@@ -619,6 +640,7 @@ impl fmt::Display for SnapTarget {
 			SnapTarget::Path(path_snap_target) => write!(f, "{path_snap_target}"),
 			SnapTarget::Artboard(artboard_snap_target) => write!(f, "{artboard_snap_target}"),
 			SnapTarget::Grid(grid_snap_target) => write!(f, "{grid_snap_target}"),
+			SnapTarget::Guide(guide_snap_target) => write!(f, "{guide_snap_target}"),
 			SnapTarget::Alignment(alignment_snap_target) => write!(f, "{alignment_snap_target}"),
 			SnapTarget::DistributeEvenly(distribution_snap_target) => write!(f, "{distribution_snap_target}"),
 		}
