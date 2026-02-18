@@ -243,7 +243,7 @@ impl OverlayContext {
 				.map_err(|error| log::warn!("Error drawing dashed line: {:?}", error))
 				.ok();
 		}
-		if dash_offset.is_some() && dash_offset != Some(0.) {
+		if dash_offset.unwrap_or(0.) != 0. {
 			self.render_context.set_line_dash_offset(0.);
 		}
 
