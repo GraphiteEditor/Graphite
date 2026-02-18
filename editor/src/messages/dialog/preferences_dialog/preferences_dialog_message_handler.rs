@@ -94,7 +94,25 @@ impl PreferencesDialogMessageHandler {
 					.widget_instance(),
 			];
 
-			rows.extend_from_slice(&[header, zoom_rate_label, zoom_rate, zoom_with_scroll]);
+			let checkbox_id = CheckboxId::new();
+			let flick_panning_description = "Continue gliding after releasing pan controls (similar to Photoshop).";
+			let flick_panning = vec![
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				CheckboxInput::new(preferences.flick_panning)
+					.tooltip_label("Flick Panning")
+					.tooltip_description(flick_panning_description)
+					.on_update(|checkbox_input: &CheckboxInput| PreferencesMessage::FlickPanning { enabled: checkbox_input.checked }.into())
+					.for_label(checkbox_id)
+					.widget_instance(),
+				TextLabel::new("Flick Panning")
+					.tooltip_label("Flick Panning")
+					.tooltip_description(flick_panning_description)
+					.for_checkbox(checkbox_id)
+					.widget_instance(),
+			];
+
+			rows.extend_from_slice(&[header, zoom_rate_label, zoom_rate, zoom_with_scroll, flick_panning]);
 		}
 
 		// =======

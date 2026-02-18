@@ -1,7 +1,7 @@
 use crate::application::Editor;
 use crate::consts::{
-	VIEWPORT_ROTATE_SNAP_INTERVAL, VIEWPORT_SCROLL_RATE, VIEWPORT_ZOOM_LEVELS, VIEWPORT_ZOOM_MIN_FRACTION_COVER, VIEWPORT_ZOOM_MOUSE_RATE, VIEWPORT_ZOOM_SCALE_MAX, VIEWPORT_ZOOM_SCALE_MIN,
-	VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR,
+	FLICK_DECAY_RATE, FLICK_MAX_VELOCITY, FLICK_MIN_VELOCITY, FLICK_VELOCITY_SAMPLES, VIEWPORT_ROTATE_SNAP_INTERVAL, VIEWPORT_SCROLL_RATE, VIEWPORT_ZOOM_LEVELS, VIEWPORT_ZOOM_MIN_FRACTION_COVER,
+	VIEWPORT_ZOOM_MOUSE_RATE, VIEWPORT_ZOOM_SCALE_MAX, VIEWPORT_ZOOM_SCALE_MIN, VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR,
 };
 use crate::messages::frontend::utility_types::MouseCursorIcon;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, MouseMotion};
@@ -31,6 +31,8 @@ pub struct NavigationMessageHandler {
 	mouse_position: ViewportPosition,
 	finish_operation_with_click: bool,
 	abortable_pan_start: Option<f64>,
+	flick_position_history: VecDeque<(ViewportPosition, f64)>,
+	flick_velocity: DVec2,
 }
 
 #[message_handler_data]
@@ -78,6 +80,15 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				responses.add(FrontendMessage::UpdateMouseCursor { cursor: MouseCursorIcon::Grabbing });
 
 				HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]).send_layout(responses);
+
+				self.flick_position_history.clear();
+				if self.flick_velocity != DVec2::ZERO {
+					self.flick_velocity = DVec2::ZERO;
+					responses.add(BroadcastMessage::UnsubscribeEvent {
+						on: EventMessage::AnimationFrame,
+						send: Box::new(NavigationMessage::FlickPanUpdate.into()),
+					});
+				}
 
 				self.mouse_position = ipp.mouse.position;
 				let Some(ptz) = get_ptz(document_ptz, network_interface, graph_view_overlay_open, breadcrumb_network_path) else {
@@ -321,8 +332,35 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				} else {
 					responses.add(PortfolioMessage::UpdateDocumentWidgets);
 				}
+
+				let was_panning = matches!(self.navigation_operation, NavigationOperation::Pan { .. });
+
 				// Reset the navigation operation now that it's done
 				self.navigation_operation = NavigationOperation::None;
+
+				if was_panning && !abort_transform && preferences.flick_panning && self.flick_position_history.len() >= 2 {
+					let (first_pos, first_time) = self.flick_position_history.front().unwrap();
+					let (last_pos, last_time) = self.flick_position_history.back().unwrap();
+
+					let delta_time = last_time - first_time;
+					if delta_time >= 0.001 {
+						let delta_pos = DVec2::new(last_pos.x - first_pos.x, last_pos.y - first_pos.y);
+						let velocity_per_second = delta_pos / delta_time;
+						self.flick_velocity = velocity_per_second / 60.0;
+
+						let speed = self.flick_velocity.length();
+						if speed > FLICK_MAX_VELOCITY {
+							self.flick_velocity = self.flick_velocity.normalize() * FLICK_MAX_VELOCITY;
+						}
+
+						if speed >= FLICK_MIN_VELOCITY {
+							responses.add(BroadcastMessage::SubscribeEvent {
+								on: EventMessage::AnimationFrame,
+								send: Box::new(NavigationMessage::FlickPanUpdate.into()),
+							});
+						}
+					}
+				}
 
 				// Send the final messages to close out the operation
 				responses.add(EventMessage::CanvasTransformed);
@@ -408,6 +446,12 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				match self.navigation_operation {
 					NavigationOperation::None => {}
 					NavigationOperation::Pan { .. } => {
+						let now = ipp.time as f64 / 1000.0;
+						self.flick_position_history.push_back((ipp.mouse.position, now));
+						while self.flick_position_history.len() > FLICK_VELOCITY_SAMPLES {
+							self.flick_position_history.pop_front();
+						}
+
 						let delta = ipp.mouse.position - self.mouse_position;
 						responses.add(NavigationMessage::CanvasPan { delta });
 					}
@@ -480,6 +524,28 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				}
 
 				self.mouse_position = ipp.mouse.position;
+			}
+			NavigationMessage::FlickPanUpdate => {
+				if self.flick_velocity == DVec2::ZERO {
+					return;
+				}
+
+				let delta_seconds = ipp.frame_time.frame_duration().map(|d| d.as_secs_f64()).unwrap_or(1.0 / 60.0);
+				let safe_delta = delta_seconds.min(0.1);
+				self.flick_velocity *= FLICK_DECAY_RATE.powf(safe_delta * 60.0);
+
+				if self.flick_velocity.length() < FLICK_MIN_VELOCITY {
+					self.flick_position_history.clear();
+					self.flick_velocity = DVec2::ZERO;
+					responses.add(BroadcastMessage::UnsubscribeEvent {
+						on: EventMessage::AnimationFrame,
+						send: Box::new(NavigationMessage::FlickPanUpdate.into()),
+					});
+					return;
+				}
+
+				let delta = self.flick_velocity * (safe_delta * 60.0);
+				responses.add(NavigationMessage::CanvasPan { delta });
 			}
 		}
 	}
