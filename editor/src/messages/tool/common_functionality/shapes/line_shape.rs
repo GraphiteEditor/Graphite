@@ -37,7 +37,7 @@ pub struct LineToolData {
 pub struct Line;
 
 impl Line {
-	pub fn create_node(_document: &DocumentMessageHandler, _drag_start: DVec2) -> NodeTemplate {
+	pub fn create_node() -> NodeTemplate {
 		let identifier = DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::line::IDENTIFIER);
 		let node_type = resolve_document_node_type(&identifier).expect("Line node can't be found");
 		node_type.node_template_input_override([
