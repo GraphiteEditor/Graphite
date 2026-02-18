@@ -2,6 +2,7 @@
 
 pub use crate::gradient::*;
 use core_types::Color;
+use core_types::color::Alpha;
 use core_types::table::Table;
 use dyn_any::DynAny;
 use glam::DAffine2;
@@ -123,7 +124,9 @@ impl From<Option<Color>> for Fill {
 
 impl From<Table<Color>> for Fill {
 	fn from(color: Table<Color>) -> Fill {
-		Fill::solid_or_none(color.into())
+		let alpha = color.get(0).map(|c| c.alpha_blending.opacity).unwrap_or(1.);
+		let color: Option<Color> = color.into();
+		Fill::solid_or_none(color.map(|c| c.with_alpha(c.alpha() * alpha)))
 	}
 }
 
