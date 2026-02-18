@@ -1,4 +1,5 @@
 use crate::application::Editor;
+use crate::consts::DOUBLE_CLICK_MILLISECONDS;
 use crate::messages::input_mapper::utility_types::input_keyboard::{Key, KeyStates, ModifierKeys};
 use crate::messages::input_mapper::utility_types::input_mouse::{MouseButton, MouseKeys, MouseState};
 use crate::messages::input_mapper::utility_types::misc::FrameTimeInfo;
@@ -16,6 +17,7 @@ pub struct InputPreprocessorMessageHandler {
 	pub time: u64,
 	pub keyboard: KeyStates,
 	pub mouse: MouseState,
+	pub last_key_down: Option<(Key, u64)>, // (Key, timestamp)
 }
 
 #[message_handler_data]
@@ -44,7 +46,18 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 			InputPreprocessorMessage::KeyDown { key, key_repeat, modifier_keys } => {
 				self.update_states_of_modifier_keys(modifier_keys, responses);
 				self.keyboard.set(key as usize);
+
 				if !key_repeat {
+					if let Some((last_key, last_time)) = self.last_key_down {
+						if last_key == key && self.time.saturating_sub(last_time) < DOUBLE_CLICK_MILLISECONDS {
+							responses.add(InputMapperMessage::DoubleTap(key));
+							self.last_key_down = None;
+						} else {
+							self.last_key_down = Some((key, self.time));
+						}
+					} else {
+						self.last_key_down = Some((key, self.time));
+					}
 					responses.add(InputMapperMessage::KeyDownNoRepeat(key));
 				}
 				responses.add(InputMapperMessage::KeyDown(key));
@@ -185,6 +198,7 @@ impl InputPreprocessorMessageHandler {
 
 #[cfg(test)]
 mod test {
+	use crate::consts::DOUBLE_CLICK_MILLISECONDS;
 	use crate::messages::input_mapper::utility_types::input_keyboard::{Key, ModifierKeys};
 	use crate::messages::input_mapper::utility_types::input_mouse::{EditorMouseState, MouseKeys, ScrollDelta};
 	use crate::messages::prelude::*;
@@ -291,5 +305,53 @@ mod test {
 		assert!(input_preprocessor.keyboard.get(Key::Shift as usize));
 		assert!(responses.contains(&InputMapperMessage::KeyDown(Key::Control).into()));
 		assert!(responses.contains(&InputMapperMessage::KeyDown(Key::Control).into()));
+	}
+
+	fn key_down(input_preprocessor: &mut InputPreprocessorMessageHandler, key: Key, responses: &mut VecDeque<Message>) {
+		input_preprocessor.process_message(
+			InputPreprocessorMessage::KeyDown {
+				key,
+				key_repeat: false,
+				modifier_keys: ModifierKeys::empty(),
+			},
+			responses,
+			InputPreprocessorMessageContext {
+				viewport: &ViewportMessageHandler::default(),
+			},
+		);
+	}
+
+	#[test]
+	fn process_double_tap_within_threshold() {
+		let mut input_preprocessor = InputPreprocessorMessageHandler::default();
+		let mut responses = VecDeque::new();
+
+		// First tap at time 0
+		key_down(&mut input_preprocessor, Key::Space, &mut responses);
+		responses.clear();
+
+		// Second tap within threshold
+		input_preprocessor.time = 50;
+		key_down(&mut input_preprocessor, Key::Space, &mut responses);
+
+		assert!(responses.contains(&InputMapperMessage::DoubleTap(Key::Space).into()));
+		assert!(input_preprocessor.last_key_down.is_none());
+	}
+
+	#[test]
+	fn process_double_tap_outside_threshold() {
+		let mut input_preprocessor = InputPreprocessorMessageHandler::default();
+		let mut responses = VecDeque::new();
+
+		// First tap at time 0
+		key_down(&mut input_preprocessor, Key::Space, &mut responses);
+		responses.clear();
+
+		// Second tap outside threshold
+		input_preprocessor.time = DOUBLE_CLICK_MILLISECONDS + 1;
+		key_down(&mut input_preprocessor, Key::Space, &mut responses);
+
+		assert!(!responses.contains(&InputMapperMessage::DoubleTap(Key::Space).into()));
+		assert_eq!(input_preprocessor.last_key_down, Some((Key::Space, DOUBLE_CLICK_MILLISECONDS + 1)));
 	}
 }
