@@ -524,7 +524,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				}
 				responses.add(NodeGraphMessage::UnloadWires);
 				responses.add(NodeGraphMessage::SendGraph);
-				responses.add(DocumentMessage::PTZUpdate);
+				responses.add(DocumentMessage::PTZUpdate { document_ptz_override: false });
 				responses.add(NodeGraphMessage::UpdateNodeGraphWidth);
 			}
 			DocumentMessage::FlipSelectedLayers { flip_axis } => {
@@ -1301,8 +1301,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				responses.add(NodeGraphMessage::SelectedNodesUpdated);
 				responses.add(NodeGraphMessage::SendGraph);
 			}
-			DocumentMessage::PTZUpdate => {
-				if !self.graph_view_overlay_open {
+			DocumentMessage::PTZUpdate { document_ptz_override } => {
+				if !self.graph_view_overlay_open || document_ptz_override {
 					let transform = self.navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), &self.document_ptz);
 					self.network_interface.set_document_to_viewport_transform(transform);
 					// Ensure selection box is kept in sync with the pointer when the PTZ changes

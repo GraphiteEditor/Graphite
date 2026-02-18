@@ -414,8 +414,9 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		// NavigationMessage
 		entry!(KeyDown(MouseMiddle); modifiers=[Alt], action_dispatch=NavigationMessage::BeginCanvasTilt { was_dispatched_from_menu: false }),
 		entry!(KeyDown(MouseLeft); modifiers=[Alt, Space], action_dispatch=NavigationMessage::BeginCanvasTilt { was_dispatched_from_menu: false }),
-		entry!(KeyDown(MouseMiddle); modifiers=[Control], action_dispatch=NavigationMessage::BeginCanvasZoom),
-		entry!(KeyDown(MouseLeft); modifiers=[Control, Space], action_dispatch=NavigationMessage::BeginCanvasZoom),
+		entry!(KeyDown(MouseMiddle); modifiers=[Control, Alt], action_dispatch=NavigationMessage::BeginCanvasZoom { document_ptz_override: true }),
+		entry!(KeyDown(MouseMiddle); modifiers=[Control], action_dispatch=NavigationMessage::BeginCanvasZoom { document_ptz_override: false }),
+		entry!(KeyDown(MouseLeft); modifiers=[Control, Space], action_dispatch=NavigationMessage::BeginCanvasZoom { document_ptz_override: false }),
 		entry!(KeyDown(MouseMiddle); action_dispatch=NavigationMessage::BeginCanvasPan),
 		entry!(KeyDown(MouseLeft); modifiers=[Space], action_dispatch=NavigationMessage::BeginCanvasPan),
 		entry!(KeyDown(NumpadAdd); modifiers=[Accel], action_dispatch=NavigationMessage::CanvasZoomIncrease { center_on_mouse: false }),
