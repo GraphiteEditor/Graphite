@@ -846,6 +846,20 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
+	/// Set section expanded state in the Properties panel
+	#[wasm_bindgen(js_name = setSectionExpanded)]
+	pub fn set_section_expanded(&self, node_id: u64, expanded: bool) {
+		let message = DocumentMessage::PropertiesPanel(PropertiesPanelMessage::SetSectionExpanded { node_id, expanded });
+		self.dispatch(message);
+	}
+
+	/// Set all sections expanded state in the Properties panel
+	#[wasm_bindgen(js_name = setAllSectionsExpanded)]
+	pub fn set_all_sections_expanded(&self, expanded: bool) {
+		let message = DocumentMessage::PropertiesPanel(PropertiesPanelMessage::SetAllSectionsExpanded { expanded });
+		self.dispatch(message);
+	}
+
 	/// Set the active panel to the most recently clicked panel
 	#[wasm_bindgen(js_name = setActivePanel)]
 	pub fn set_active_panel(&self, panel: String) {

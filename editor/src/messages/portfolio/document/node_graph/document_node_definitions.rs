@@ -35,6 +35,7 @@ pub struct NodePropertiesContext<'a> {
 	pub network_interface: &'a mut NodeNetworkInterface,
 	pub selection_network_path: &'a [NodeId],
 	pub document_name: &'a str,
+	pub section_expanded: &'a HashMap<u64, bool>,
 }
 
 impl NodePropertiesContext<'_> {

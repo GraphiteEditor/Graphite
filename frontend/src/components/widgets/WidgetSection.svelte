@@ -16,14 +16,23 @@
 	export { className as class };
 	export let classes: Record<string, boolean> = {};
 
-	let expanded = true;
+	$: expanded = widgetData.expanded;
 
 	const editor = getContext<Editor>("editor");
 </script>
 
-<!-- TODO: Implement collapsable sections with properties system -->
 <LayoutCol class={`widget-section ${className}`.trim()} {classes}>
-	<button class="header" class:expanded on:click|stopPropagation={() => (expanded = !expanded)} tabindex="0">
+	<button
+		class="header"
+		class:expanded
+		on:click|stopPropagation={(e) => {
+			if (e.altKey) {
+				editor.handle.setAllSectionsExpanded(!expanded);
+			} else {
+				editor.handle.setSectionExpanded(widgetData.id, !expanded);
+			}
+		}}
+	>
 		<div class="expand-arrow"></div>
 		<TextLabel tooltipLabel={widgetData.name} tooltipDescription={widgetData.description} bold={true}>{widgetData.name}</TextLabel>
 		<IconButton
