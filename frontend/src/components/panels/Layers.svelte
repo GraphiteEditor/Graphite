@@ -434,6 +434,8 @@
 	}
 
 	function handleLayerPanelKeyDown(e: KeyboardEvent) {
+		// TODO: Handle this F2 shortcut detection in the backend, not frontend, so it uses the standard key binding system
+
 		// Only handle F2 if not currently editing a layer name
 		if (e.key === "F2" && !layers.some((layer) => layer.editingName)) {
 			// Find the first selected layer
