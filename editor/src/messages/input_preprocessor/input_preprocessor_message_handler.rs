@@ -357,6 +357,8 @@ mod test {
 		key_down(&mut input_preprocessor, Key::Space, &mut responses);
 
 		assert!(!responses.contains(&InputMapperMessage::DoubleTap(Key::Space).into()));
+		assert!(responses.contains(&InputMapperMessage::KeyDown(Key::Space).into()));
+		assert!(responses.contains(&InputMapperMessage::KeyDownNoRepeat(Key::Space).into()));
 		assert_eq!(input_preprocessor.last_key_down, Some((Key::Space, DOUBLE_CLICK_MILLISECONDS + 1)));
 	}
 }
