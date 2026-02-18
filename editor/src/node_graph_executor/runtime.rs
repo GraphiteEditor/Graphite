@@ -516,31 +516,37 @@ impl NodeRuntime {
 		}
 
 		let bounds = match graphic.bounding_box(DAffine2::IDENTITY, true) {
-			RenderBoundingBox::None => return,
-			RenderBoundingBox::Infinite => [DVec2::ZERO, DVec2::new(300., 200.)],
-			RenderBoundingBox::Rectangle(bounds) => bounds,
+			RenderBoundingBox::None => None,
+			RenderBoundingBox::Infinite => Some([DVec2::ZERO, DVec2::new(300., 200.)]),
+			RenderBoundingBox::Rectangle(bounds) => Some(bounds),
 		};
-		let footprint = Footprint {
-			transform: DAffine2::from_translation(DVec2::new(bounds[0].x, bounds[0].y)),
-			resolution: UVec2::new((bounds[1].x - bounds[0].x).abs() as u32, (bounds[1].y - bounds[0].y).abs() as u32),
-			quality: RenderQuality::Full,
-		};
+		// Generate the SVG based on whether bounds exist
+		let new_thumbnail_svg = if let Some(bounds) = bounds {
+			let footprint = Footprint {
+				transform: DAffine2::from_translation(DVec2::new(bounds[0].x, bounds[0].y)),
+				resolution: UVec2::new((bounds[1].x - bounds[0].x).abs() as u32, (bounds[1].y - bounds[0].y).abs() as u32),
+				quality: RenderQuality::Full,
+			};
 
-		// Render the thumbnail from a `Graphic` into an SVG string
-		let render_params = RenderParams {
-			footprint,
-			thumbnail: true,
-			..Default::default()
-		};
-		let mut render = SvgRender::new();
-		graphic.render_svg(&mut render, &render_params);
+			// Render the thumbnail from a `Graphic` into an SVG string
+			let render_params = RenderParams {
+				footprint,
+				thumbnail: true,
+				..Default::default()
+			};
+			let mut render = SvgRender::new();
+			graphic.render_svg(&mut render, &render_params);
 
-		// And give the SVG a viewbox and outer <svg>...</svg> wrapper tag
-		render.format_svg(bounds[0], bounds[1]);
+			// And give the SVG a viewbox and outer <svg>...</svg> wrapper tag
+			render.format_svg(bounds[0], bounds[1]);
+
+			render.svg
+		} else {
+			// If there are no bounds (empty layer), return an empty SVG vector
+			Vec::new()
+		};
 
 		// UPDATE FRONTEND THUMBNAIL
-
-		let new_thumbnail_svg = render.svg;
 		let old_thumbnail_svg = thumbnail_renders.entry(parent_network_node_id).or_default();
 
 		if old_thumbnail_svg != &new_thumbnail_svg {
