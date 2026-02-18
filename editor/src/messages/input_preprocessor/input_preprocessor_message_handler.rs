@@ -48,19 +48,23 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 				self.keyboard.set(key as usize);
 
 				if !key_repeat {
-					if let Some((last_key, last_time)) = self.last_key_down {
-						if last_key == key && self.time.saturating_sub(last_time) < DOUBLE_CLICK_MILLISECONDS {
-							responses.add(InputMapperMessage::DoubleTap(key));
-							self.last_key_down = None;
-						} else {
-							self.last_key_down = Some((key, self.time));
-						}
+					let is_double_tap = if let Some((last_key, last_time)) = self.last_key_down {
+						last_key == key && self.time.saturating_sub(last_time) < DOUBLE_CLICK_MILLISECONDS
+					} else {
+						false
+					};
+
+					if is_double_tap {
+						responses.add(InputMapperMessage::DoubleTap(key));
+						self.last_key_down = None;
 					} else {
 						self.last_key_down = Some((key, self.time));
+						responses.add(InputMapperMessage::KeyDownNoRepeat(key));
+						responses.add(InputMapperMessage::KeyDown(key));
 					}
-					responses.add(InputMapperMessage::KeyDownNoRepeat(key));
+				} else {
+					responses.add(InputMapperMessage::KeyDown(key));
 				}
-				responses.add(InputMapperMessage::KeyDown(key));
 			}
 			InputPreprocessorMessage::KeyUp { key, key_repeat, modifier_keys } => {
 				self.update_states_of_modifier_keys(modifier_keys, responses);
@@ -335,6 +339,8 @@ mod test {
 		key_down(&mut input_preprocessor, Key::Space, &mut responses);
 
 		assert!(responses.contains(&InputMapperMessage::DoubleTap(Key::Space).into()));
+		assert!(!responses.contains(&InputMapperMessage::KeyDown(Key::Space).into()));
+		assert!(!responses.contains(&InputMapperMessage::KeyDownNoRepeat(Key::Space).into()));
 		assert!(input_preprocessor.last_key_down.is_none());
 	}
 
