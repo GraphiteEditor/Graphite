@@ -152,6 +152,7 @@ pub enum PathToolMessage {
 	Duplicate,
 	TogglePointEditing,
 	ToggleSegmentEditing,
+	MergeSelectedSegments,
 }
 
 #[derive(PartialEq, Eq, Hash, Copy, Clone, Debug, Default, serde::Serialize, serde::Deserialize, specta::Type)]
@@ -334,6 +335,12 @@ impl LayoutHolder for PathTool {
 			.disabled(!self.tool_data.make_path_editable_is_allowed)
 			.widget_instance();
 
+		let merge_segments_button = IconButton::new("Folder", 24)
+			.tooltip("Merge selected selgments")
+			.on_update(|_| PathToolMessage::MergeSelectedSegments.into())
+			.disabled(!self.tool_data.merging_segments_enabled)
+			.widget_holder();
+
 		let [_checkbox, _dropdown] = {
 			let pivot_gizmo_type_widget = pivot_gizmo_type_widget(self.tool_data.pivot_gizmo.state, PivotToolSource::Path);
 			[pivot_gizmo_type_widget[0].clone(), pivot_gizmo_type_widget[2].clone()]
@@ -365,6 +372,9 @@ impl LayoutHolder for PathTool {
 				path_overlay_mode_widget,
 				unrelated_seperator.clone(),
 				path_node_button,
+				unrelated_seperator.clone(),
+				merge_segments_button,
+				unrelated_seperator.clone(),
 				// checkbox.clone(),
 				// related_seperator.clone(),
 				// dropdown.clone(),
@@ -460,7 +470,8 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Path
 				Paste,
 				Duplicate,
 				TogglePointEditing,
-				ToggleSegmentEditing
+				ToggleSegmentEditing,
+				MergeSelectedSegments
 			),
 			PathToolFsmState::Dragging(_) => actions!(PathToolMessageDiscriminant;
 				Escape,
@@ -609,6 +620,7 @@ struct PathToolData {
 	hovered_layers: Vec<LayerNodeIdentifier>,
 	ghost_outline: Vec<(Vec<ClickTargetType>, LayerNodeIdentifier)>,
 	make_path_editable_is_allowed: bool,
+	merging_segments_enabled: bool,
 }
 
 impl PathToolData {
@@ -668,6 +680,50 @@ impl PathToolData {
 			SelectionStatus::Multiple(_) => true,
 		};
 		self.selection_status = selection_status;
+	}
+
+	fn update_merge_segments_toggle(&mut self, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, vector_meshes: bool) {
+		if !vector_meshes {
+			self.merging_segments_enabled = false;
+			return;
+		}
+
+		let mut non_empty_layers = shape_editor.selected_shape_state.iter().filter(|(_, state)| !state.is_empty());
+		let Some((layer, _)) = non_empty_layers.next() else {
+			self.merging_segments_enabled = false;
+			return;
+		};
+
+		if non_empty_layers.next().is_some() {
+			self.merging_segments_enabled = false;
+			return;
+		}
+
+		let segments = shape_editor.selected_segments().collect::<Vec<_>>();
+		if segments.len() != 2 {
+			self.merging_segments_enabled = false;
+			return;
+		}
+		let segment1 = segments[0];
+		let segment2 = segments[1];
+		// Both of the segments should be close to each other
+		let Some(vector) = document.network_interface.compute_modified_vector(*layer) else { return };
+		let Some((_, bezier1, _, _)) = vector.segment_bezier_iter().find(|(id, _, _, _)| id == segment1) else {
+			return;
+		};
+		let Some((_, bezier2, _, _)) = vector.segment_bezier_iter().find(|(id, _, _, _)| id == segment2) else {
+			return;
+		};
+		let segments_in_same_direction = bezier1.start.distance(bezier2.start) < SEGMENT_INSERTION_DISTANCE && bezier1.end.distance(bezier2.end) < SEGMENT_INSERTION_DISTANCE;
+		let segments_in_opposite_direction = bezier1.start.distance(bezier2.end) < SEGMENT_INSERTION_DISTANCE && bezier1.end.distance(bezier2.start) < SEGMENT_INSERTION_DISTANCE;
+		let near_segments = segments_in_same_direction || segments_in_opposite_direction;
+
+		if !near_segments {
+			self.merging_segments_enabled = false;
+			return;
+		}
+
+		self.merging_segments_enabled = true;
 	}
 
 	fn remove_saved_points(&mut self) {
@@ -3181,6 +3237,137 @@ impl Fsm for PathToolFsmState {
 				}
 				PathToolFsmState::Ready
 			}
+			(_, PathToolMessage::MergeSelectedSegments) => {
+				// Assuming that two segments selected are on the same layer
+				let mut non_empty_layers = shape_editor.selected_shape_state.iter().filter(|(_, state)| !state.is_empty());
+				let Some((layer, _)) = non_empty_layers.next() else {
+					return PathToolFsmState::Ready;
+				};
+				if non_empty_layers.next().is_some() {
+					return PathToolFsmState::Ready;
+				}
+
+				let segments = shape_editor.selected_segments().collect::<Vec<_>>();
+				if segments.len() != 2 {
+					return PathToolFsmState::Ready;
+				}
+
+				let segment1 = segments[0];
+				let segment2 = segments[1];
+
+				let Some(vector) = document.network_interface.compute_modified_vector(*layer) else {
+					return PathToolFsmState::Ready;
+				};
+
+				responses.add(DocumentMessage::StartTransaction);
+
+				let (_, bezier1, start1, end1) = vector.segment_bezier_iter().find(|(id, _, _, _)| id == segment1).expect(" Couldn't get segment data");
+				let (_, bezier2, start2, end2) = vector.segment_bezier_iter().find(|(id, _, _, _)| id == segment2).expect(" Couldn't get segment data");
+
+				// Two cases
+				let mut bezier2 = bezier2;
+				let mut start2 = start2;
+				let mut end2 = end2;
+				let dist1 = bezier1.start.distance(bezier2.start);
+				let dist2 = bezier1.start.distance(bezier2.end);
+
+				let new_id1 = PointId::generate();
+				let new_id2 = PointId::generate();
+
+				if dist1 > dist2 {
+					// Invert bezier2 and swap start2 and end2
+					bezier2 = bezier2.reverse();
+					let bin = start2;
+					start2 = end2;
+					end2 = bin;
+				}
+
+				// newpoint1: start1 -> start2, newpoint2: end1 -> end2
+				let pos1 = ManipulatorPointId::Anchor(start1).get_position(&vector).expect("No position for point");
+				let pos2 = ManipulatorPointId::Anchor(start2).get_position(&vector).expect("No position for point");
+
+				let new_pos1 = (pos1 + pos2) / 2.;
+
+				let pos1 = ManipulatorPointId::Anchor(end1).get_position(&vector).expect("No position for point");
+				let pos2 = ManipulatorPointId::Anchor(end2).get_position(&vector).expect("No position for point");
+
+				let new_pos2 = (pos1 + pos2) / 2.;
+
+				// Add the two new points
+				let modification_type = VectorModificationType::InsertPoint { id: new_id1, position: new_pos1 };
+				responses.add(GraphOperationMessage::Vector { layer: *layer, modification_type });
+				let modification_type = VectorModificationType::InsertPoint { id: new_id2, position: new_pos2 };
+				responses.add(GraphOperationMessage::Vector { layer: *layer, modification_type });
+
+				// Remove old points
+				let points_to_remove = [start1, start2, end1, end2];
+				for point in points_to_remove {
+					let modification_type = VectorModificationType::RemovePoint { id: point };
+					responses.add(GraphOperationMessage::Vector { layer: *layer, modification_type });
+				}
+
+				// Connect the segments to their respective anchors
+				let handles = |bezier: Bezier| -> [Option<DVec2>; 2] {
+					match bezier.handles {
+						BezierHandles::Linear => [None, None],
+						BezierHandles::Quadratic { handle } => [Some(handle - bezier.start), None],
+						BezierHandles::Cubic { handle_start, handle_end } => [Some(handle_start - bezier.start), Some(handle_end - bezier.end)],
+					}
+				};
+
+				for (_, bezier, start, end) in vector.segment_bezier_iter() {
+					let id = SegmentId::generate();
+
+					// Connecting the segments to the start point
+					if start == start1 || start == start2 {
+						let points = [new_id1, end];
+						let handles = handles(bezier);
+						let modification_type = VectorModificationType::InsertSegment { id, points, handles };
+						responses.add(GraphOperationMessage::Vector { layer: *layer, modification_type });
+					} else if end == start1 || end == start2 {
+						let points = [start, new_id1];
+						let handles = handles(bezier);
+						let modification_type = VectorModificationType::InsertSegment { id, points, handles };
+						responses.add(GraphOperationMessage::Vector { layer: *layer, modification_type });
+					}
+
+					// Connecting handles to the end point of new segement
+					if start == end1 || start == end2 {
+						let points = [new_id2, end];
+						let handles = handles(bezier);
+						let modification_type = VectorModificationType::InsertSegment { id, points, handles };
+						responses.add(GraphOperationMessage::Vector { layer: *layer, modification_type });
+					} else if end == end1 || end == end2 {
+						let points = [start, new_id2];
+						let handles = handles(bezier);
+						let modification_type = VectorModificationType::InsertSegment { id, points, handles };
+						responses.add(GraphOperationMessage::Vector { layer: *layer, modification_type });
+					}
+				}
+
+				// Adding the new segment
+				let handles1 = handles(bezier1);
+				let handles2 = handles(bezier2);
+
+				// Now we construct a conmbined handles for the new segment
+				let mut new_handles = [Some(DVec2::ZERO), Some(DVec2::ZERO)];
+				let mut index = 0;
+				for (handle1, handle2) in handles1.iter().zip(handles2) {
+					let pos1 = handle1.unwrap_or_default();
+					let pos2 = handle2.unwrap_or_default();
+					let new_pos = if pos1 == DVec2::default() && pos2 == DVec2::default() { None } else { Some((pos1 + pos2) / 2.) };
+					new_handles[index] = new_pos;
+					index += 1;
+				}
+
+				let id = SegmentId::generate();
+				let points = [new_id1, new_id2];
+				let modification_type = VectorModificationType::InsertSegment { id, points, handles: new_handles };
+				responses.add(GraphOperationMessage::Vector { layer: *layer, modification_type });
+
+				responses.add(DocumentMessage::EndTransaction);
+				PathToolFsmState::Ready
+			}
 			(_, PathToolMessage::SelectedPointUpdated) => {
 				tool_data.dragging_state = DraggingState {
 					point_select_state: shape_editor.get_dragging_state(&document.network_interface),
@@ -3190,6 +3377,7 @@ impl Fsm for PathToolFsmState {
 				let old = tool_data.make_path_editable_is_allowed;
 				tool_data.make_path_editable_is_allowed = make_path_editable_is_allowed(&mut document.network_interface).is_some();
 				tool_data.update_selection_status(shape_editor, document);
+				tool_data.update_merge_segments_toggle(shape_editor, document, tool_action_data.preferences.vector_meshes);
 
 				if old != tool_data.make_path_editable_is_allowed {
 					responses.add(MenuBarMessage::SendLayout);
