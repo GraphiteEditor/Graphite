@@ -807,6 +807,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					spacing: ruler_spacing,
 					interval: ruler_interval,
 					visible: self.rulers_visible,
+					tilt: self.document_ptz.tilt()
 				});
 			}
 			DocumentMessage::RenderScrollbars => {

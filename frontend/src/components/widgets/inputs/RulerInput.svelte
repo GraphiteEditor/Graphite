@@ -13,6 +13,7 @@
 	export let direction: RulerDirection = "Vertical";
 	export let origin: number;
 	export let numberInterval: number;
+	export let tilt: number;
 	export let majorMarkSpacing: number;
 	export let minorDivisions = 5;
 	export let microDivisions = 2;
@@ -21,22 +22,29 @@
 	let rulerLength = 0;
 	let svgBounds = { width: "0px", height: "0px" };
 
-	$: svgPath = computeSvgPath(direction, origin, majorMarkSpacing, minorDivisions, microDivisions, rulerLength);
-	$: svgTexts = computeSvgTexts(direction, origin, majorMarkSpacing, numberInterval, rulerLength);
+	$: effectiveTilt = computeEffectiveTilt(tilt);
+	$: svgPath = computeSvgPath(direction, origin, majorMarkSpacing, minorDivisions, microDivisions, rulerLength, effectiveTilt);
+	$: svgTexts = computeSvgTexts(direction, origin, majorMarkSpacing, numberInterval, rulerLength, effectiveTilt);
 
-	function computeSvgPath(direction: RulerDirection, origin: number, majorMarkSpacing: number, minorDivisions: number, microDivisions: number, rulerLength: number): string {
+	function computeEffectiveTilt(rawTilt: number) {
+		const normalizedTilt = ((rawTilt / Math.PI) * 180 + 360) % 360;
+		const quadrantTilt = normalizedTilt % 90;
+		const effectiveTilt = quadrantTilt <= 45 ? quadrantTilt : 90 - quadrantTilt;
+		return (effectiveTilt * Math.PI) / 180;
+	}
+
+	function computeSvgPath(direction: RulerDirection, origin: number, majorMarkSpacing: number, minorDivisions: number, microDivisions: number, rulerLength: number, effectiveTilt: number): string {
 		const isVertical = direction === "Vertical";
-		const lineDirection = isVertical ? "H" : "V";
-
 		const offsetStart = mod(origin, majorMarkSpacing);
 		const shiftedOffsetStart = offsetStart - majorMarkSpacing;
+		const adjustIntervalBasedOnTiltFactor = Math.cos(effectiveTilt) ?? 1;
 
 		const divisions = majorMarkSpacing / minorDivisions / microDivisions;
 		const majorMarksFrequency = minorDivisions * microDivisions;
 
 		let dPathAttribute = "";
 		let i = 0;
-		for (let location = shiftedOffsetStart; location < rulerLength; location += divisions) {
+		for (let location = shiftedOffsetStart / adjustIntervalBasedOnTiltFactor; location < rulerLength; location += divisions / adjustIntervalBasedOnTiltFactor) {
 			let length;
 			if (i % majorMarksFrequency === 0) length = MAJOR_MARK_THICKNESS;
 			else if (i % microDivisions === 0) length = MINOR_MARK_THICKNESS;
@@ -44,14 +52,37 @@
 			i += 1;
 
 			const destination = Math.round(location) + 0.5;
-			const startPoint = isVertical ? `${RULER_THICKNESS - length},${destination}` : `${destination},${RULER_THICKNESS - length}`;
-			dPathAttribute += `M${startPoint}${lineDirection}${RULER_THICKNESS} `;
+
+			const startPointX = isVertical ? RULER_THICKNESS - length : destination;
+			const startPointY = isVertical ? destination : RULER_THICKNESS - length;
+			const endPointX = isVertical ? RULER_THICKNESS : destination;
+			const endPointY = isVertical ? destination : RULER_THICKNESS;
+
+			const deltaX = Math.abs(startPointX - endPointX);
+			const deltaY = Math.abs(startPointY - endPointY);
+			let startPoint;
+			if (isVertical) {
+				const rotatedStartPointY = -1 * deltaX * Math.sin(effectiveTilt) + startPointY;
+				startPoint = `${startPointX},${rotatedStartPointY}`;
+			} else {
+				const rotatedStartPointX = deltaY * Math.sin(effectiveTilt) + startPointX;
+				startPoint = `${rotatedStartPointX},${startPointY}`;
+			}
+			const lineDirection = ` L${endPointX},${endPointY}`;
+			dPathAttribute += `M${startPoint}${lineDirection}`;
 		}
 
 		return dPathAttribute;
 	}
 
-	function computeSvgTexts(direction: RulerDirection, origin: number, majorMarkSpacing: number, numberInterval: number, rulerLength: number): { transform: string; text: string }[] {
+	function computeSvgTexts(
+		direction: RulerDirection,
+		origin: number,
+		majorMarkSpacing: number,
+		numberInterval: number,
+		rulerLength: number,
+		effectiveTilt: number,
+	): { transform: string; text: string }[] {
 		const isVertical = direction === "Vertical";
 
 		const offsetStart = mod(origin, majorMarkSpacing);
@@ -61,9 +92,11 @@
 
 		let labelNumber = (Math.ceil(-origin / majorMarkSpacing) - 1) * numberInterval;
 
-		for (let location = shiftedOffsetStart; location < rulerLength; location += majorMarkSpacing) {
+		const adjustIntervalBasedOnTiltFactor = Math.cos(effectiveTilt) ?? 1;
+
+		for (let location = shiftedOffsetStart / adjustIntervalBasedOnTiltFactor; location < rulerLength; location += majorMarkSpacing / adjustIntervalBasedOnTiltFactor) {
 			const destination = Math.round(location);
-			const x = isVertical ? 9 : destination + 2;
+			const x = isVertical ? 9 : destination + 2 + Math.sin(effectiveTilt) * 12;
 			const y = isVertical ? destination + 1 : 9;
 
 			let transform = `translate(${x} ${y})`;
