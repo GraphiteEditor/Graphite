@@ -75,50 +75,61 @@ pub fn panic_hook(info: &panic::PanicHookInfo) {
 
 	// Prefer using the raw JS callback to avoid mutex lock contention inside the panic hook.
 	// Fall back to the editor handle path if needed.
-	if !(send_panic_dialog_via_callback(&info) || send_panic_dialog(&info)) {
-		send_panic_dialog_deferred(info);
+	if let Err(info) = send_panic_dialog_via_callback(info) {
+		if let Err(info) = send_panic_dialog(info) {
+			send_panic_dialog_deferred(info);
+		}
 	}
 }
 
-fn send_panic_dialog_via_callback(panic_info: &String) -> bool {
-	let message = FrontendMessage::DisplayDialogPanic { panic_info: panic_info.clone() };
+fn send_panic_dialog_via_callback(panic_info: String) -> Result<(), String> {
+	let message = FrontendMessage::DisplayDialogPanic { panic_info };
 	let message_type = message.to_discriminant().local_name();
 	let Ok(message_data) = serde_wasm_bindgen::to_value(&message) else {
 		log::error!("Failed to serialize crash dialog panic message");
-		return false;
+		let FrontendMessage::DisplayDialogPanic { panic_info } = message else {
+			unreachable!("Message variant changed unexpectedly")
+		};
+		return Err(panic_info);
 	};
 
 	PANIC_DIALOG_MESSAGE_CALLBACK.with(|callback| {
 		let callback_ref = callback.borrow();
 		let Some(callback) = callback_ref.as_ref() else {
-			return false;
+			let FrontendMessage::DisplayDialogPanic { panic_info } = message else {
+				unreachable!("Message variant changed unexpectedly")
+			};
+			return Err(panic_info);
 		};
 
 		if let Err(error) = callback.call2(&JsValue::null(), &JsValue::from(message_type), &message_data) {
 			log::error!("Failed to send crash dialog panic message to JS: {:?}", error);
-			return false;
+			let FrontendMessage::DisplayDialogPanic { panic_info } = message else {
+				unreachable!("Message variant changed unexpectedly")
+			};
+			return Err(panic_info);
 		}
 
-		true
+		Ok(())
 	})
 }
 
-fn send_panic_dialog(panic_info: &String) -> bool {
+fn send_panic_dialog(panic_info: String) -> Result<(), String> {
 	EDITOR_HANDLE.with(|editor_handle| {
 		let mut guard = editor_handle.try_lock();
 		let Ok(Some(handle)) = guard.as_deref_mut() else {
-			return false;
+			return Err(panic_info);
 		};
 
-		handle.send_frontend_message_to_js_rust_proxy(FrontendMessage::DisplayDialogPanic { panic_info: panic_info.clone() });
-		true
+		handle.send_frontend_message_to_js_rust_proxy(FrontendMessage::DisplayDialogPanic { panic_info });
+		Ok(())
 	})
 }
 
 #[cfg(not(feature = "native"))]
 fn send_panic_dialog_deferred(panic_info: String) {
 	let callback = Closure::once_into_js(move || {
-		if !send_panic_dialog(&panic_info) {
+		if send_panic_dialog(panic_info).is_err() {
 			log::error!("Failed to send crash dialog after panic because the editor handle is unavailable");
 		}
 	});
