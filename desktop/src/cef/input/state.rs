@@ -91,6 +91,13 @@ impl From<&PhysicalPosition<f64>> for MousePosition {
 		}
 	}
 }
+impl MousePosition {
+	fn within_distance(self, other: Self) -> bool {
+		let dx = self.x.abs_diff(other.x);
+		let dy = self.y.abs_diff(other.y);
+		dx <= MULTICLICK_ALLOWED_TRAVEL && dy <= MULTICLICK_ALLOWED_TRAVEL
+	}
+}
 
 #[derive(Default, Clone)]
 pub(crate) struct MouseState {
@@ -133,21 +140,23 @@ impl ClickTracker {
 		};
 
 		let Some(record) = record else {
-			*record = Some(ClickRecord { position, ..Default::default() });
+			*record = Some(ClickRecord {
+				down_position: position,
+				up_position: position,
+				..Default::default()
+			});
 			return ClickCount::Single;
 		};
 
 		let prev_time = record.time;
-		let prev_position = record.position;
-		let prev_count: ClickCount = record.down_count;
 
 		let now = Instant::now();
 		record.time = now;
-		record.position = position;
 
 		match state {
 			ElementState::Pressed if record.down_count == ClickCount::Triple => {
 				*record = ClickRecord {
+					down_position: position,
 					down_count: ClickCount::Double,
 					..*record
 				};
@@ -155,6 +164,7 @@ impl ClickTracker {
 			}
 			ElementState::Released if record.up_count == ClickCount::Triple => {
 				*record = ClickRecord {
+					up_position: position,
 					up_count: ClickCount::Double,
 					..*record
 				};
@@ -163,10 +173,11 @@ impl ClickTracker {
 			_ => {}
 		}
 
-		let dx = position.x.abs_diff(prev_position.x);
-		let dy = position.y.abs_diff(prev_position.y);
-		let within_dist = dx <= MULTICLICK_ALLOWED_TRAVEL && dy <= MULTICLICK_ALLOWED_TRAVEL;
 		let within_time = now.saturating_duration_since(prev_time) <= MULTICLICK_TIMEOUT;
+		let (prev_count, within_dist) = match state {
+			ElementState::Pressed => (record.down_count, position.within_distance(record.down_position)),
+			ElementState::Released => (record.up_count, position.within_distance(record.up_position)),
+		};
 
 		let count = match (prev_count, within_time, within_dist) {
 			(ClickCount::Double, true, true) => ClickCount::Triple,
@@ -175,8 +186,16 @@ impl ClickTracker {
 		};
 
 		*record = match state {
-			ElementState::Pressed => ClickRecord { down_count: count, ..*record },
-			ElementState::Released => ClickRecord { up_count: count, ..*record },
+			ElementState::Pressed => ClickRecord {
+				down_position: position,
+				down_count: count,
+				..*record
+			},
+			ElementState::Released => ClickRecord {
+				up_position: position,
+				up_count: count,
+				..*record
+			},
 		};
 		count
 	}
@@ -202,7 +221,8 @@ impl From<ClickCount> for i32 {
 #[derive(Clone, Copy)]
 struct ClickRecord {
 	time: Instant,
-	position: MousePosition,
+	down_position: MousePosition,
+	up_position: MousePosition,
 	down_count: ClickCount,
 	up_count: ClickCount,
 }
@@ -211,7 +231,8 @@ impl Default for ClickRecord {
 	fn default() -> Self {
 		Self {
 			time: Instant::now(),
-			position: Default::default(),
+			down_position: Default::default(),
+			up_position: Default::default(),
 			down_count: Default::default(),
 			up_count: Default::default(),
 		}
