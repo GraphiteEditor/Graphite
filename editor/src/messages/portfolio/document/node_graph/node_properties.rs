@@ -84,12 +84,21 @@ pub fn jump_to_source_widget(input: &NodeInput, network_interface: &NodeNetworkI
 		NodeInput::Node { node_id: source_id, .. } => {
 			let source_id = *source_id;
 			let node_name = network_interface.implementation_name(&source_id, selection_network_path);
-			TextButton::new(format!("Select Source: {}", node_name))
-				.tooltip_description("Jump to the source node connected to this input.")
+			TextButton::new(format!("From Graph ({})", node_name))
+				.tooltip_description("Click to select the node producing this parameter's data.")
 				.on_update(move |_| NodeGraphMessage::SelectedNodesSet { nodes: vec![source_id] }.into())
 				.widget_instance()
 		}
-		_ => TextLabel::new("Input Not Connected").tooltip_description("No node connected.").widget_instance(),
+		_ => TextLabel::new("From Graph (Disconnected)")
+			.tooltip_description(
+				"
+				This parameter is exposed as an input in the node graph, but not currently receiving data from any node.\n\
+				\n\
+				In the graph, drag a wire out from a compatible output connector of another node, and feed it into the input connector of this exposed node parameter. Alternatively, un-expose this parameter by clicking the triangle directly to the left of here.
+				"
+				.trim(),
+			)
+			.widget_instance(),
 	}
 }
 
