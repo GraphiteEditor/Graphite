@@ -47,15 +47,19 @@ jobs:
           command: check bans licenses sources
           manifest-path: libraries/rawkit/Cargo.toml
 
-  # Web build on GitHub runner (only compiles WASM crate)
-  web-build:
-    runs-on: ubuntu-latest
+  # Full build and tests on self-hosted runner
+  build:
+    runs-on: self-hosted
     permissions:
-      contents: read
+      contents: write
       deployments: write
+      pull-requests: write
+      actions: write
     env:
-      SCCACHE_GHA_ENABLED: "true"
-      RUSTC_WRAPPER: "sccache"
+      RUSTC_WRAPPER: /usr/bin/sccache
+      CARGO_INCREMENTAL: 0
+      SCCACHE_DIR: /var/lib/github-actions/.cache
+
     steps:
       - name: 📥 Clone and checkout repository
         uses: actions/checkout@v3
@@ -64,33 +68,15 @@ jobs:
         id: skip-check
         uses: cariad-tech/merge-queue-ci-skipper@main
 
+      - name: 🗑 Clear wasm-bindgen cache
+        if: steps.skip-check.outputs.skip-check != 'true'
+        run: rm -r ~/.cache/.wasm-pack || true
+
       - name: 🟢 Install the latest Node.js
         if: steps.skip-check.outputs.skip-check != 'true'
         uses: actions/setup-node@v4
         with:
           node-version: 'latest'
-
-      - name: 🦀 Install the latest Rust
-        if: steps.skip-check.outputs.skip-check != 'true'
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown, x86_64-unknown-linux-gnu
-
-      - name: ⚡ Setup sccache
-        if: steps.skip-check.outputs.skip-check != 'true'
-        uses: mozilla-actions/sccache-action@v0.0.9
-
-      - name: 📦 Setup cargo-binstall
-        if: steps.skip-check.outputs.skip-check != 'true'
-        uses: cargo-bins/cargo-binstall@main
-
-      - name: 📦 Install wasm-pack and cargo-about
-        if: steps.skip-check.outputs.skip-check != 'true'
-        run: cargo binstall --no-confirm --force wasm-pack cargo-about
-
-      - name: 📦 Install wasm-opt (binaryen)
-        if: steps.skip-check.outputs.skip-check != 'true'
-        run: sudo apt-get update && sudo apt-get install -y binaryen
 
       - name: 🚧 Install build dependencies
         if: steps.skip-check.outputs.skip-check != 'true'
@@ -98,13 +84,23 @@ jobs:
           cd frontend
           npm run setup
 
+      - name: 🦀 Install the latest Rust
+        if: steps.skip-check.outputs.skip-check != 'true'
+        run: |
+          rustup update stable
+
+      - name: 🦀 Fetch Rust dependencies
+        if: steps.skip-check.outputs.skip-check != 'true'
+        run: |
+          cargo fetch --locked
+
       - name: 🌐 Build Graphite web code
         if: steps.skip-check.outputs.skip-check != 'true'
         env:
           NODE_ENV: production
         run: |
           cd frontend
-          npm run build
+          mold -run npm run build
 
       - name: 📤 Publish to Cloudflare Pages
         if: steps.skip-check.outputs.skip-check != 'true'
@@ -125,38 +121,12 @@ jobs:
           cd frontend
           npm run lint
 
-  # Full Rust build and tests on self-hosted runner
-  rust-build-and-test:
-    runs-on: self-hosted
-    env:
-      RUSTC_WRAPPER: /usr/bin/sccache
-      CARGO_INCREMENTAL: 0
-      SCCACHE_DIR: /var/lib/github-actions/.cache
-
-    steps:
-      - name: 📥 Clone and checkout repository
-        uses: actions/checkout@v3
-
-      - name: 🚦 Check if CI can be skipped
-        id: skip-check
-        uses: cariad-tech/merge-queue-ci-skipper@main
-
-      - name: 🦀 Install the latest Rust
+      - name: 🦀 Build Rust code
         if: steps.skip-check.outputs.skip-check != 'true'
+        env:
+          RUSTFLAGS: -Dwarnings
         run: |
-          rustup update stable
-
-      - name: 🦀 Fetch Rust dependencies
-        if: steps.skip-check.outputs.skip-check != 'true'
-        run: |
-          cargo fetch --locked
-
-      # - name: 🦀 Build Rust code
-      #   if: steps.skip-check.outputs.skip-check != 'true'
-      #   env:
-      #     RUSTFLAGS: -Dwarnings
-      #   run: |
-      #     mold -run cargo build --all-features
+          mold -run cargo build --all-features
 
       - name: 🧪 Run Rust tests
         if: steps.skip-check.outputs.skip-check != 'true'

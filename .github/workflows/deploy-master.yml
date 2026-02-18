@@ -1,10 +1,7 @@
 name: "Deploy Master"
 
 on:
-  workflow_run:
-    workflows: ["Provide Shaders"]
-    types:
-      - completed
+  push:
     branches:
       - master
 
@@ -14,55 +11,36 @@ env:
 
 jobs:
   deploy:
-    # Only run if the shader build succeeded
-    if: ${{ github.event.workflow_run.conclusion == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     permissions:
       contents: write
       deployments: write
       actions: write
     env:
-      SCCACHE_GHA_ENABLED: "true"
-      RUSTC_WRAPPER: "sccache"
+      RUSTC_WRAPPER: /usr/bin/sccache
+      CARGO_INCREMENTAL: 0
+      SCCACHE_DIR: /var/lib/github-actions/.cache
 
     steps:
       - name: 📥 Clone and checkout repository
         uses: actions/checkout@v3
-        with:
-          ref: ${{ github.event.workflow_run.head_sha }}
 
-      - name: 🎨 Download pre-built shaders
-        run: |
-          SHADER_URL="https://raw.githubusercontent.com/${{ vars.ARTIFACTS_REPO_OWNER }}/${{ vars.ARTIFACTS_REPO_NAME }}/${{ vars.ARTIFACTS_REPO_BRANCH }}/rev/${{ github.event.workflow_run.head_sha }}/raster_nodes_shaders_entrypoint.wgsl"
-          curl -fsSL "$SHADER_URL" -o raster_nodes_shaders_entrypoint.wgsl
-          echo "RASTER_NODES_SHADER_PATH=$(pwd)/raster_nodes_shaders_entrypoint.wgsl" >> $GITHUB_ENV
+      - name: 🗑 Clear wasm-bindgen cache
+        run: rm -r ~/.cache/.wasm-pack || true
 
       - name: 🟢 Install the latest Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 'latest'
 
-      - name: 🦀 Install the latest Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: wasm32-unknown-unknown
-
-      - name: ⚡ Setup sccache
-        uses: mozilla-actions/sccache-action@v0.0.9
-
-      - name: 📦 Setup cargo-binstall
-        uses: cargo-bins/cargo-binstall@main
-
-      - name: 📦 Install wasm-pack and cargo-about
-        run: cargo binstall --no-confirm --force wasm-pack cargo-about
-
-      - name: 📦 Install wasm-opt (binaryen)
-        run: sudo apt-get update && sudo apt-get install -y binaryen
-
       - name: 🚧 Install build dependencies
         run: |
           cd frontend
           npm run setup
+
+      - name: 🦀 Install the latest Rust
+        run: |
+          rustup update stable
 
       - name: ✂ Replace template in <head> of index.html
         run: |
@@ -73,7 +51,7 @@ jobs:
           NODE_ENV: production
         run: |
           cd frontend
-          npm run build
+          mold -run npm run build
 
       - name: 📤 Publish to Cloudflare Pages
         id: cloudflare
