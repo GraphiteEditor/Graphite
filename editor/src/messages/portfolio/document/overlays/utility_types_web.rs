@@ -15,6 +15,7 @@ use graphene_std::math::quad::Quad;
 use graphene_std::subpath::Subpath;
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::{dvec2_to_point, point_to_dvec2};
+use graphene_std::vector::style::Stroke;
 use graphene_std::vector::{PointId, SegmentId, Vector};
 use kurbo::{self, Affine, CubicBez, ParamCurve, PathSeg};
 use std::collections::HashMap;
@@ -30,38 +31,52 @@ pub fn empty_provider() -> OverlayProvider {
 /// Types of overlays used by DocumentMessage to enable/disable the selected set of viewport overlays.
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum OverlaysType {
+	// =======
+	// General
+	// =======
 	ArtboardName,
-	CompassRose,
-	QuickMeasurement,
 	TransformMeasurement,
+	// ===========
+	// Select Tool
+	// ===========
+	QuickMeasurement,
 	TransformCage,
+	CompassRose,
+	Pivot,
+	Origin,
 	HoverOutline,
 	SelectionOutline,
 	LayerOriginCross,
-	Pivot,
-	Origin,
+	// ================
+	// Pen & Path Tools
+	// ================
 	Path,
 	Anchors,
 	Handles,
+	// =========
+	// Fill Tool
+	// =========
+	FillableIndicator,
 }
 
 #[derive(PartialEq, Copy, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
-#[serde(default)]
+#[serde(default = "OverlaysVisibilitySettings::default")]
 pub struct OverlaysVisibilitySettings {
 	pub all: bool,
 	pub artboard_name: bool,
-	pub compass_rose: bool,
-	pub quick_measurement: bool,
 	pub transform_measurement: bool,
+	pub quick_measurement: bool,
 	pub transform_cage: bool,
+	pub compass_rose: bool,
+	pub pivot: bool,
+	pub origin: bool,
 	pub hover_outline: bool,
 	pub selection_outline: bool,
 	pub layer_origin_cross: bool,
-	pub pivot: bool,
-	pub origin: bool,
 	pub path: bool,
 	pub anchors: bool,
 	pub handles: bool,
+	pub fillable_indicator: bool,
 }
 
 impl Default for OverlaysVisibilitySettings {
@@ -69,18 +84,19 @@ impl Default for OverlaysVisibilitySettings {
 		Self {
 			all: true,
 			artboard_name: true,
-			compass_rose: true,
-			quick_measurement: true,
 			transform_measurement: true,
+			quick_measurement: true,
 			transform_cage: true,
+			compass_rose: true,
+			pivot: true,
+			origin: true,
 			hover_outline: true,
 			selection_outline: true,
 			layer_origin_cross: true,
-			pivot: true,
-			origin: true,
 			path: true,
 			anchors: true,
 			handles: true,
+			fillable_indicator: true,
 		}
 	}
 }
@@ -140,6 +156,10 @@ impl OverlaysVisibilitySettings {
 
 	pub fn handles(&self) -> bool {
 		self.all && self.anchors && self.handles
+	}
+
+	pub fn fillable_indicator(&self) -> bool {
+		self.all && self.fillable_indicator
 	}
 }
 
@@ -805,8 +825,7 @@ impl OverlayContext {
 		self.text(&text, COLOR_OVERLAY_BLUE, None, transform, 16., [Pivot::Middle, Pivot::Middle]);
 	}
 
-	/// Used by the Pen and Path tools to outline the path of the shape.
-	pub fn outline_vector(&mut self, vector: &Vector, transform: DAffine2) {
+	pub fn draw_path_from_vector_data(&mut self, vector: &Vector, transform: DAffine2) {
 		self.start_dpi_aware_transform();
 
 		self.render_context.begin_path();
@@ -818,6 +837,12 @@ impl OverlayContext {
 			self.bezier_command(bezier, transform, move_to);
 		}
 
+		self.end_dpi_aware_transform();
+	}
+
+	/// Used by the Pen and Path tools to outline the path of the shape.
+	pub fn outline_vector(&mut self, vector: &Vector, transform: DAffine2) {
+		self.draw_path_from_vector_data(vector, transform);
 		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
 		self.render_context.stroke();
 
@@ -882,7 +907,7 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
-	fn push_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2) {
+	pub fn draw_path_from_subpaths(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2) {
 		self.start_dpi_aware_transform();
 
 		self.render_context.begin_path();
@@ -943,7 +968,7 @@ impl OverlayContext {
 		});
 
 		if !subpaths.is_empty() {
-			self.push_path(subpaths.iter(), transform);
+			self.draw_path_from_subpaths(subpaths.iter(), transform);
 
 			let color = color.unwrap_or(COLOR_OVERLAY_BLUE);
 			self.render_context.set_stroke_style_str(color);
@@ -952,18 +977,8 @@ impl OverlayContext {
 		}
 	}
 
-	/// Fills the area inside the path. Assumes `color` is in gamma space.
-	/// Used by the Pen tool to show the path being closed.
-	pub fn fill_path(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
-		self.push_path(subpaths, transform);
-
-		self.render_context.set_fill_style_str(color);
-		self.render_context.fill();
-	}
-
-	/// Fills the area inside the path with a pattern. Assumes `color` is in gamma space.
-	/// Used by the fill tool to show the area to be filled.
-	pub fn fill_path_pattern(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color) {
+	/// Default canvas pattern used for filling stroke or fill of a path.
+	fn fill_canvas_pattern(&self, color: &Color) -> web_sys::CanvasPattern {
 		const PATTERN_WIDTH: usize = 4;
 		const PATTERN_HEIGHT: usize = 4;
 
@@ -992,12 +1007,61 @@ impl OverlayContext {
 
 		let image_data = web_sys::ImageData::new_with_u8_clamped_array_and_sh(wasm_bindgen::Clamped(&data), PATTERN_WIDTH as u32, PATTERN_HEIGHT as u32).unwrap();
 		pattern_context.put_image_data(&image_data, 0., 0.).unwrap();
-		let pattern = self.render_context.create_pattern_with_offscreen_canvas(&pattern_canvas, "repeat").unwrap().unwrap();
+		return self.render_context.create_pattern_with_offscreen_canvas(&pattern_canvas, "repeat").unwrap().unwrap();
+	}
 
-		self.push_path(subpaths, transform);
+	/// Fills the area inside the path (with an optional pattern). Assumes `color` is in gamma space.
+	/// Used by the Pen tool to show the path being closed and by the Fill tool to show the area to be filled with a pattern.
+	pub fn fill_path(
+		&mut self,
+		subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>,
+		transform: DAffine2,
+		color: &Color,
+		with_pattern: bool,
+		clear_stroke_part: bool,
+		stroke_width: Option<f64>,
+	) {
+		self.render_context.save();
+		self.render_context.set_line_width(stroke_width.unwrap_or(1.));
+		self.draw_path_from_subpaths(subpaths, transform);
 
-		self.render_context.set_fill_style_canvas_pattern(&pattern);
+		if with_pattern {
+			self.render_context.set_fill_style_canvas_pattern(&self.fill_canvas_pattern(color));
+		} else {
+			let color_str = format!("#{:?}", color.to_rgba_hex_srgb());
+			self.render_context.set_fill_style_str(&color_str.as_str());
+		}
 		self.render_context.fill();
+
+		// Make the stroke transparent and erase the fill area overlapping the stroke.
+		if clear_stroke_part {
+			self.render_context.set_global_composite_operation("destination-out").expect("Failed to set global composite operation");
+			self.render_context.set_stroke_style_str(&"#000000");
+			self.render_context.stroke();
+		}
+
+		self.render_context.restore();
+	}
+
+	pub fn fill_stroke(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, overlay_stroke: &Stroke) {
+		self.render_context.save();
+
+		// debug!("overlay_stroke.weight * ptz.zoom(): {:?}", overlay_stroke.weight);
+		self.render_context.set_line_width(overlay_stroke.weight);
+		self.draw_path_from_subpaths(subpaths, overlay_stroke.transform);
+
+		self.render_context
+			.set_stroke_style_canvas_pattern(&self.fill_canvas_pattern(&overlay_stroke.color.expect("Color should be set for fill_stroke()")));
+		self.render_context.set_line_cap(overlay_stroke.cap.html_canvas_name().as_str());
+		self.render_context.set_line_join(overlay_stroke.join.html_canvas_name().as_str());
+		self.render_context.set_miter_limit(overlay_stroke.join_miter_limit);
+		self.render_context.stroke();
+
+		self.render_context.restore();
+	}
+
+	pub fn get_width(&self, text: &str) -> f64 {
+		self.render_context.measure_text(text).expect("Failed to measure text dimensions").width()
 	}
 
 	pub fn text(&self, text: &str, font_color: &str, background_color: Option<&str>, transform: DAffine2, padding: f64, pivot: [Pivot; 2]) {

@@ -1641,6 +1641,50 @@ impl Fsm for PenToolFsmState {
 				// The most recently placed anchor's outgoing handle (which is currently influencing the currently-being-placed segment)
 				let handle_start = tool_data.latest_point().map(|point| transform.transform_point2(point.handle_start));
 
+				// Display a filled overlay of the shape if the new point closes the path
+				if let Some(latest_point) = tool_data.latest_point() {
+					let handle_start = latest_point.handle_start;
+					let handle_end = tool_data.handle_end.unwrap_or(tool_data.next_handle_start);
+					let next_point = tool_data.next_point;
+					let start = latest_point.id;
+
+					if let Some(layer) = layer
+						&& let Some(mut vector) = document.network_interface.compute_modified_vector(layer)
+					{
+						let closest_point = vector.anchor_points().filter(|&id| id != start).find(|&id| {
+							vector.point_domain.position_from_id(id).is_some_and(|pos| {
+								let dist_sq = transform.transform_point2(pos).distance_squared(transform.transform_point2(next_point));
+								dist_sq < crate::consts::SNAP_POINT_TOLERANCE.powi(2)
+							})
+						});
+
+						// We have the point. Join the 2 vertices and check if any path is closed.
+						if let Some(end) = closest_point {
+							let segment_id = SegmentId::generate();
+							vector.push(segment_id, start, end, (Some(handle_start), Some(handle_end)), StrokeId::ZERO);
+
+							let grouped_segments = vector.auto_join_paths();
+							let closed_paths = grouped_segments.iter().filter(|path| path.is_closed() && path.contains(segment_id));
+
+							let subpaths: Vec<_> = closed_paths
+								.filter_map(|path| {
+									let segments = path.edges.iter().filter_map(|edge| {
+										vector
+											.segment_domain
+											.iter()
+											.find(|(id, _, _, _)| id == &edge.id)
+											.map(|(_, start, end, bezier)| if start == edge.start { (bezier, start, end) } else { (bezier.reversed(), end, start) })
+									});
+									vector.subpath_from_segments(segments, true)
+								})
+								.collect();
+
+							let fill_color = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap()).unwrap().with_alpha(0.05);
+							overlay_context.fill_path(subpaths.iter(), transform, &fill_color, false, false, None);
+						}
+					}
+				}
+
 				if let (Some((start, handle_start)), Some(handle_end)) = (tool_data.latest_point().map(|point| (point.pos, point.handle_start)), tool_data.handle_end) {
 					let end = tool_data.next_point;
 					let bezier = PathSeg::Cubic(CubicBez::new(dvec2_to_point(start), dvec2_to_point(handle_start), dvec2_to_point(handle_end), dvec2_to_point(end)));
@@ -1742,54 +1786,6 @@ impl Fsm for PenToolFsmState {
 						let perp = closest_segment.calculate_perp(document);
 						overlay_context.manipulator_anchor(pos, true, None);
 						overlay_context.line(pos - perp * SEGMENT_OVERLAY_SIZE, pos + perp * SEGMENT_OVERLAY_SIZE, Some(COLOR_OVERLAY_BLUE), None);
-					}
-				}
-
-				// Display a filled overlay of the shape if the new point closes the path
-				if let Some(latest_point) = tool_data.latest_point() {
-					let handle_start = latest_point.handle_start;
-					let handle_end = tool_data.handle_end.unwrap_or(tool_data.next_handle_start);
-					let next_point = tool_data.next_point;
-					let start = latest_point.id;
-
-					if let Some(layer) = layer
-						&& let Some(mut vector) = document.network_interface.compute_modified_vector(layer)
-					{
-						let closest_point = vector.anchor_points().filter(|&id| id != start).find(|&id| {
-							vector.point_domain.position_from_id(id).is_some_and(|pos| {
-								let dist_sq = transform.transform_point2(pos).distance_squared(transform.transform_point2(next_point));
-								dist_sq < crate::consts::SNAP_POINT_TOLERANCE.powi(2)
-							})
-						});
-
-						// We have the point. Join the 2 vertices and check if any path is closed.
-						if let Some(end) = closest_point {
-							let segment_id = SegmentId::generate();
-							vector.push(segment_id, start, end, (Some(handle_start), Some(handle_end)), StrokeId::ZERO);
-
-							let grouped_segments = vector.auto_join_paths();
-							let closed_paths = grouped_segments.iter().filter(|path| path.is_closed() && path.contains(segment_id));
-
-							let subpaths: Vec<_> = closed_paths
-								.filter_map(|path| {
-									let segments = path.edges.iter().filter_map(|edge| {
-										vector
-											.segment_domain
-											.iter()
-											.find(|(id, _, _, _)| id == &edge.id)
-											.map(|(_, start, end, bezier)| if start == edge.start { (bezier, start, end) } else { (bezier.reversed(), end, start) })
-									});
-									vector.subpath_from_segments_ignore_discontinuities(segments)
-								})
-								.collect();
-
-							let mut fill_color = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
-								.unwrap()
-								.with_alpha(0.05)
-								.to_rgba_hex_srgb();
-							fill_color.insert(0, '#');
-							overlay_context.fill_path(subpaths.iter(), transform, fill_color.as_str());
-						}
 					}
 				}
 
