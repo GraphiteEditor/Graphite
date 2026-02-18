@@ -1284,7 +1284,6 @@ pub fn query_assign_colors_randomize(node_id: NodeId, context: &NodePropertiesCo
 }
 
 pub(crate) fn brightness_contrast_properties(node_id: NodeId, context: &mut NodePropertiesContext) -> Vec<LayoutGroup> {
-	panic!();
 	use graphene_std::raster::brightness_contrast::*;
 
 	// Use Classic
