@@ -2,7 +2,7 @@
 
 use super::tool_prelude::*;
 use crate::consts::*;
-use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
+use crate::messages::input_mapper::utility_types::input_mouse::{DocumentPosition, ViewportPosition};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -116,6 +116,10 @@ pub enum SelectToolMessage {
 	PivotShift {
 		offset: Option<DVec2>,
 		flush: bool,
+	},
+	/// Called when PTZ (Pan/Tilt/Zoom) changes occur to update viewport-space positions
+	DocumentPTZUpdate {
+		modifier_keys: SelectToolPointerKeys,
 	},
 }
 
@@ -379,6 +383,8 @@ impl Default for SelectToolFsmState {
 struct SelectToolData {
 	drag_start: ViewportPosition,
 	drag_current: ViewportPosition,
+	/// Document-space position of drag start, used to maintain correct positions during PTZ changes
+	drag_start_document: DocumentPosition,
 	lasso_polygon: Vec<ViewportPosition>,
 	selection_mode: Option<SelectionMode>,
 	layers_dragging: Vec<LayerNodeIdentifier>, // Unordered, often used as temporary buffer
@@ -1027,6 +1033,8 @@ impl Fsm for SelectToolFsmState {
 			) => {
 				tool_data.drag_start = input.mouse.position;
 				tool_data.drag_current = input.mouse.position;
+				// Store drag start in document space to handle PTZ changes during dragging
+				tool_data.drag_start_document = document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position);
 				tool_data.selection_mode = None;
 
 				let mut selected: Vec<_> = document.network_interface.selected_nodes().selected_visible_and_unlocked_layers(&document.network_interface).collect();
@@ -1395,6 +1403,39 @@ impl Fsm for SelectToolFsmState {
 				];
 				tool_data.auto_panning.stop(&messages, responses);
 
+				state
+			}
+			// Handle PTZ (Pan/Tilt/Zoom) updates during dragging operations
+			(
+				SelectToolFsmState::Dragging {
+					axis,
+					using_compass,
+					has_dragged,
+					deepest,
+					remove,
+				},
+				SelectToolMessage::DocumentPTZUpdate { modifier_keys },
+			) => {
+				// Recalculate drag_start in viewport space from the stored document-space position
+				let new_drag_start = document.metadata().document_to_viewport.transform_point2(tool_data.drag_start_document);
+				let shift = new_drag_start - tool_data.drag_start;
+				tool_data.drag_start = new_drag_start;
+				tool_data.drag_current += shift;
+
+				// Trigger a PointerMove to update the layer positions
+				responses.add(SelectToolMessage::PointerMove { modifier_keys });
+
+				SelectToolFsmState::Dragging {
+					axis,
+					using_compass,
+					has_dragged,
+					deepest,
+					remove,
+				}
+			}
+			// For non-dragging states, just trigger a PointerMove
+			(state, SelectToolMessage::DocumentPTZUpdate { modifier_keys }) => {
+				responses.add(SelectToolMessage::PointerMove { modifier_keys });
 				state
 			}
 			(SelectToolFsmState::Dragging { has_dragged, remove, deepest, .. }, SelectToolMessage::DragStop { remove_from_selection }) => {
