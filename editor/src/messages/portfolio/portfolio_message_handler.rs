@@ -1001,6 +1001,14 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					responses.add(PortfolioMessage::SelectDocument { document_id: prev_id });
 				}
 			}
+			PortfolioMessage::ReorderDocument { document_id, new_index } => {
+				if let Some(current_index) = self.document_ids.iter().position(|id| *id == document_id) {
+					self.document_ids.remove(current_index);
+					let clamped = new_index.min(self.document_ids.len());
+					self.document_ids.insert(clamped, document_id);
+					responses.add(PortfolioMessage::UpdateOpenDocumentsList);
+				}
+			}
 			PortfolioMessage::RequestWelcomeScreenButtonsLayout => {
 				let donate = "https://graphite.art/donate/";
 

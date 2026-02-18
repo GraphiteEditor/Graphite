@@ -126,6 +126,10 @@ pub enum PortfolioMessage {
 		layers: Vec<LayerNodeIdentifier>,
 	},
 	PrevDocument,
+	ReorderDocument {
+		document_id: DocumentId,
+		new_index: usize,
+	},
 	RequestWelcomeScreenButtonsLayout,
 	RequestStatusBarInfoLayout,
 	SetActivePanel {
