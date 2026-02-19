@@ -590,6 +590,10 @@ struct PathToolData {
 	last_clicked_point_was_selected: bool,
 	last_clicked_segment_was_selected: bool,
 	snapping_axis: Option<Axis>,
+	/// The origin point for horizontal/vertical constraints when Shift is pressed.
+	/// When `None`, defaults to `drag_start_pos`. When `Some`, uses the snapped position
+	/// if Shift was pressed while the point was snapped to another point.
+	constraint_origin: Option<DVec2>,
 	alt_clicked_on_anchor: bool,
 	alt_dragging_from_anchor: bool,
 	angle_locked: bool,
@@ -1149,15 +1153,26 @@ impl PathToolData {
 	}
 
 	fn start_snap_along_axis(&mut self, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
-		// Find the negative delta to take the point to the drag start position
-		let current_mouse = input.mouse.position;
-		let drag_start = self.drag_start_pos;
-		let opposite_delta = drag_start - current_mouse;
+		// Only set constraint origin if not already set (freeze on first Shift press).
+		// Use the point's current position (after snapping) so the constraint is relative to the snapped location.
+		if self.constraint_origin.is_none() {
+			// Use the point's current position (after snapping) as the constraint origin.
+			// previous_mouse_position tracks the point's position in document space,
+			// including snapping and multi-select offsets (see line 956).
+			let document_to_viewport = document.metadata().document_to_viewport;
+			let point_pos_viewport = document_to_viewport.transform_point2(self.previous_mouse_position);
+
+			self.constraint_origin = Some(point_pos_viewport);
+		}
+
+		// Find the negative delta to take the point to the constraint origin
+		let origin = self.constraint_origin.unwrap_or(self.drag_start_pos);
+		let opposite_delta = origin - input.mouse.position;
 
 		shape_editor.move_selected_points_and_segments(None, document, opposite_delta, false, true, false, None, false, responses);
 
 		// Calculate the projected delta and shift the points along that delta
-		let delta = current_mouse - drag_start;
+		let delta = input.mouse.position - origin;
 		let axis = if delta.x.abs() >= delta.y.abs() { Axis::X } else { Axis::Y };
 		self.snapping_axis = Some(axis);
 		let projected_delta = match axis {
@@ -1170,11 +1185,14 @@ impl PathToolData {
 	}
 
 	fn stop_snap_along_axis(&mut self, shape_editor: &mut ShapeState, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, responses: &mut VecDeque<Message>) {
-		// Calculate the negative delta of the selection and move it back to the drag start
 		let current_mouse = input.mouse.position;
-		let drag_start = self.drag_start_pos;
 
-		let opposite_delta = drag_start - current_mouse;
+		// Use the stored constraint origin, or fall back to drag_start_pos
+		let origin = self.constraint_origin.unwrap_or(self.drag_start_pos);
+
+		trace!("Shift released: constraint_origin={:?}, current_mouse={:?}", self.constraint_origin, current_mouse);
+
+		let opposite_delta = origin - current_mouse;
 		let Some(axis) = self.snapping_axis else { return };
 		let opposite_projected_delta = match axis {
 			Axis::X => DVec2::new(opposite_delta.x, 0.),
@@ -1185,11 +1203,12 @@ impl PathToolData {
 		shape_editor.move_selected_points_and_segments(None, document, opposite_projected_delta, false, true, false, None, false, responses);
 
 		// Calculate what actually would have been the original delta for the point, and apply that
-		let delta = current_mouse - drag_start;
+		let delta = current_mouse - origin;
 
 		shape_editor.move_selected_points_and_segments(None, document, delta, false, true, false, None, false, responses);
 
 		self.snapping_axis = None;
+		self.constraint_origin = None;
 	}
 
 	fn get_normalized_tangent(&mut self, point: PointId, segment: SegmentId, vector: &Vector) -> Option<DVec2> {
@@ -1410,8 +1429,13 @@ impl PathToolData {
 
 		// This is where it starts snapping along axis
 		if snap_axis && self.snapping_axis.is_none() && !single_handle_selected {
+			trace!(
+				"Axis snapping activated: snap_axis={}, snapping_axis={:?}, single_handle={}",
+				snap_axis, self.snapping_axis, single_handle_selected
+			);
 			self.start_snap_along_axis(shape_editor, document, input, responses);
 		} else if !snap_axis && self.snapping_axis.is_some() {
+			trace!("Axis snapping deactivated: snap_axis={}, snapping_axis={:?}", snap_axis, self.snapping_axis);
 			self.stop_snap_along_axis(shape_editor, document, input, responses);
 		}
 
@@ -1526,7 +1550,10 @@ impl PathToolData {
 		// Constantly checking and changing the snapping axis based on current mouse position
 		if snap_axis && self.snapping_axis.is_some() {
 			let Some(current_axis) = self.snapping_axis else { return };
-			let total_delta = self.drag_start_pos - input.mouse.position;
+
+			// Use the stored constraint origin
+			let origin = self.constraint_origin.unwrap_or(self.drag_start_pos);
+			let total_delta = origin - input.mouse.position;
 
 			if (total_delta.x.abs() > total_delta.y.abs() && current_axis == Axis::Y) || (total_delta.y.abs() > total_delta.x.abs() && current_axis == Axis::X) {
 				self.stop_snap_along_axis(shape_editor, document, input, responses);
@@ -1974,7 +2001,8 @@ impl Fsm for PathToolFsmState {
 						// Draw the snapping axis lines
 						if tool_data.snapping_axis.is_some() {
 							let Some(axis) = tool_data.snapping_axis else { return self };
-							let origin = tool_data.drag_start_pos;
+							// Use the stored constraint origin for overlay rendering
+							let origin = tool_data.constraint_origin.unwrap_or(tool_data.drag_start_pos);
 							let viewport_diagonal = viewport.size().into_dvec2().length();
 
 							let faded = |color: &str| {
