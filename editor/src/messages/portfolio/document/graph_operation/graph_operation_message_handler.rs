@@ -232,6 +232,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 			}
 			GraphOperationMessage::RemoveArtboards => {
 				if network_interface.all_artboards().is_empty() {
+					responses.add(DocumentMessage::AbortTransaction);
 					return;
 				}
 
