@@ -11,21 +11,34 @@ pub struct PreferencesDialogMessageContext<'a> {
 
 /// A dialog to allow users to customize Graphite editor options
 #[derive(Debug, Clone, Default, ExtractField)]
-pub struct PreferencesDialogMessageHandler {}
+pub struct PreferencesDialogMessageHandler {
+	unmodified_preferences: Option<PreferencesMessageHandler>,
+}
 
 #[message_handler_data]
 impl MessageHandler<PreferencesDialogMessage, PreferencesDialogMessageContext<'_>> for PreferencesDialogMessageHandler {
 	fn process_message(&mut self, message: PreferencesDialogMessage, responses: &mut VecDeque<Message>, context: PreferencesDialogMessageContext) {
 		let PreferencesDialogMessageContext { preferences } = context;
-
 		match message {
-			PreferencesDialogMessage::Confirm => {}
+			PreferencesDialogMessage::MayRequireRestart => {
+				if self.unmodified_preferences.is_none() {
+					self.unmodified_preferences = Some(preferences.clone());
+				}
+			}
+			PreferencesDialogMessage::Confirm => {
+				if let Some(unmodified_preferences) = &self.unmodified_preferences
+					&& unmodified_preferences.needs_restart(preferences)
+				{
+					responses.add(DialogMessage::RequestConfirmRestartDialog);
+				} else {
+					responses.add(DialogMessage::Close);
+				}
+			}
 		}
-
-		self.send_dialog_to_frontend(responses, preferences);
 	}
 
-	advertise_actions! {PreferencesDialogUpdate;}
+	advertise_actions!(PreferencesDialogUpdate;
+	);
 }
 
 // This doesn't actually implement the `DialogLayoutHolder` trait like the other dialog message handlers.
@@ -260,7 +273,7 @@ impl PreferencesDialogMessageHandler {
 			let brush_tool_description = "
 			Enable the Brush tool to support basic raster-based layer painting.\n\
 			\n\
-			This legacy experimental tool has performance and quality limitations and is slated for replacement in future versions of Graphite that will focus on raster graphics editing.\n\
+			This legacy experimental tool has performance and quality limitations and is slated for replacement in future versions of Graphite that will have a renewed focus on raster graphics editing.\n\
 			\n\
 			Content created with the Brush tool may not be compatible with future versions of Graphite.
 			"
@@ -282,6 +295,48 @@ impl PreferencesDialogMessageHandler {
 			];
 
 			rows.extend_from_slice(&[header, node_graph_wires_label, graph_wire_style, use_vello, brush_tool]);
+		}
+
+		// =============
+		// COMPATIBILITY
+		// =============
+		#[cfg(not(target_family = "wasm"))]
+		{
+			let header = vec![TextLabel::new("Compatibility").italic(true).widget_instance()];
+
+			let ui_acceleration_description = "
+			Use the CPU to draw the Graphite user interface (areas outside of the canvas) instead of the GPU. This does not affect the rendering of artwork in the canvas, which remains hardware accelerated.\n\
+			\n\
+			Disabling UI acceleration may slightly degrade performance, so this should be used as a workaround only if issues are observed with displaying the UI. This setting may become enabled automatically if Graphite launches, detects that it cannot draw the UI normally, and restarts in compatibility mode.
+			"
+			.trim();
+
+			let checkbox_id = CheckboxId::new();
+			let ui_acceleration = vec![
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+				CheckboxInput::new(preferences.disable_ui_acceleration)
+					.tooltip_label("Disable UI Acceleration")
+					.tooltip_description(ui_acceleration_description)
+					.on_update(|number_input: &CheckboxInput| Message::Batched {
+						messages: Box::new([
+							PreferencesDialogMessage::MayRequireRestart.into(),
+							PreferencesMessage::DisableUIAcceleration {
+								disable_ui_acceleration: number_input.checked,
+							}
+							.into(),
+						]),
+					})
+					.for_label(checkbox_id)
+					.widget_instance(),
+				TextLabel::new("Disable UI Acceleration")
+					.tooltip_label("Disable UI Acceleration")
+					.tooltip_description(ui_acceleration_description)
+					.for_checkbox(checkbox_id)
+					.widget_instance(),
+			];
+
+			rows.extend_from_slice(&[header, ui_acceleration]);
 		}
 
 		Layout(rows.into_iter().map(|r| LayoutGroup::Row { widgets: r }).collect())
@@ -307,15 +362,7 @@ impl PreferencesDialogMessageHandler {
 
 	fn layout_buttons(&self) -> Layout {
 		let widgets = vec![
-			TextButton::new("OK")
-				.emphasized(true)
-				.on_update(|_| {
-					DialogMessage::CloseDialogAndThen {
-						followups: vec![PreferencesDialogMessage::Confirm.into()],
-					}
-					.into()
-				})
-				.widget_instance(),
+			TextButton::new("OK").emphasized(true).on_update(|_| PreferencesDialogMessage::Confirm.into()).widget_instance(),
 			TextButton::new("Reset to Defaults").on_update(|_| PreferencesMessage::ResetToDefaults.into()).widget_instance(),
 		];
 
