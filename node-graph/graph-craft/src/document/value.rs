@@ -26,6 +26,7 @@ use std::hash::Hash;
 use std::marker::PhantomData;
 use std::str::FromStr;
 pub use std::sync::Arc;
+use vector_nodes::{AngularSpacingMethod, RepeatSpacingMethod};
 
 pub struct TaggedValueTypeError;
 
@@ -257,6 +258,8 @@ tagged_value! {
 	ExtrudeJoiningAlgorithm(vector::misc::ExtrudeJoiningAlgorithm),
 	PointSpacingType(vector::misc::PointSpacingType),
 	SpiralType(vector::misc::SpiralType),
+	RepeatSpacingMethod(RepeatSpacingMethod),
+	AngularSpacingMethod(AngularSpacingMethod),
 	#[serde(alias = "LineCap")]
 	StrokeCap(vector::style::StrokeCap),
 	#[serde(alias = "LineJoin")]
