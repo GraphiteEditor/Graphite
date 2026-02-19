@@ -36,11 +36,17 @@ impl Ellipse {
 				return;
 			};
 
-			// Convert viewport dimensions to document space for zoom fix (like Rectangle)
+			// Apply zoom correction but maintain viewport-space dimensions (ignore rotation)
+			// This fixes the zoom bug while keeping ellipse visually consistent during canvas rotation
 			let document_to_viewport = document.metadata().document_to_viewport;
+			let zoom_scale = document_to_viewport.matrix2.x_axis.length();
+
 			let viewport_delta = end - start;
-			let document_delta = document_to_viewport.inverse().transform_vector2(viewport_delta);
-			let document_center = document_to_viewport.inverse().transform_point2(start.midpoint(end));
+			let viewport_center = start.midpoint(end);
+
+			// Apply only zoom scale, not rotation
+			let document_delta = viewport_delta / zoom_scale;
+			let document_center = document_to_viewport.inverse().transform_point2(viewport_center);
 
 			responses.add(NodeGraphMessage::SetInput {
 				input_connector: InputConnector::node(node_id, 1),
