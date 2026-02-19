@@ -248,7 +248,8 @@ impl NodeGraphExecutor {
 				transform,
 				..Default::default()
 			},
-			scale: export_config.scale_factor,
+			// For exports, keep the internal render scale at 1.0 and apply the user scale factor only to the bitmap size later
+			scale: 1.,
 			time: Default::default(),
 			pointer: DVec2::ZERO,
 			export_format,
