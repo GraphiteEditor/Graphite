@@ -66,10 +66,25 @@ impl MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageContext<'_>> f
 				});
 			}
 			PropertiesPanelMessage::SetAllSectionsExpanded { expanded } => {
-				for value in self.section_expanded.values_mut() {
-					*value = expanded;
-				}
-				responses.add(PropertiesPanelMessage::Refresh);
+				let mut layout = {
+					let mut node_properties_context = NodePropertiesContext {
+						persistent_data,
+						responses,
+						network_interface,
+						selection_network_path,
+						document_name,
+						executor,
+						section_expanded: &self.section_expanded,
+					};
+					Layout(NodeGraphMessageHandler::collate_properties(&mut node_properties_context))
+				};
+
+				Self::update_all_section_expansion_recursive(&mut layout.0, expanded, &mut self.section_expanded, network_interface, selection_network_path);
+
+				responses.add(LayoutMessage::SendLayout {
+					layout,
+					layout_target: LayoutTarget::PropertiesPanel,
+				});
 			}
 			PropertiesPanelMessage::SetSectionExpanded { node_id, expanded } => {
 				self.section_expanded.insert(node_id, expanded);
@@ -80,5 +95,34 @@ impl MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageContext<'_>> f
 
 	fn actions(&self) -> ActionList {
 		actions!(PropertiesMessageDiscriminant;)
+	}
+}
+
+impl PropertiesPanelMessageHandler {
+	fn update_all_section_expansion_recursive(
+		layout: &mut [LayoutGroup],
+		expanded: bool,
+		section_expanded: &mut HashMap<u64, bool>,
+		network_interface: &NodeNetworkInterface,
+		selection_network_path: &[NodeId],
+	) {
+		for group in layout {
+			if let LayoutGroup::Section {
+				id, layout, expanded: group_expanded, ..
+			} = group
+			{
+				let is_merge_node = network_interface
+					.reference(&NodeId(*id), selection_network_path)
+					.as_ref()
+					.is_some_and(|id| id.implementation_name_from_identifier() == "Merge");
+
+				if !is_merge_node {
+					*group_expanded = expanded;
+					section_expanded.insert(*id, expanded);
+				}
+
+				Self::update_all_section_expansion_recursive(&mut layout.0, expanded, section_expanded, network_interface, selection_network_path);
+			}
+		}
 	}
 }

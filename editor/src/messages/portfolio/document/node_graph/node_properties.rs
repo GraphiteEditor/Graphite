@@ -1843,13 +1843,13 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 
 	let visible = context.network_interface.is_visible(&node_id, context.selection_network_path);
 	let pinned = context.network_interface.is_pinned(&node_id, context.selection_network_path);
-	let is_merge_node = context
-		.network_interface
-		.reference(&node_id, context.selection_network_path)
-		.as_ref()
-		.is_some_and(|id| id.implementation_name_from_identifier() == "Merge");
-	let default_expanded = !is_merge_node;
-	let expanded = context.section_expanded.get(&node_id.0).copied().unwrap_or(default_expanded);
+	let expanded = context.section_expanded.get(&node_id.0).copied().unwrap_or_else(|| {
+		!context
+			.network_interface
+			.reference(&node_id, context.selection_network_path)
+			.as_ref()
+			.is_some_and(|id| id.implementation_name_from_identifier() == "Merge")
+	});
 
 	LayoutGroup::Section {
 		name,
