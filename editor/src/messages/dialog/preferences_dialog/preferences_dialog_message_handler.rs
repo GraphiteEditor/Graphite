@@ -336,9 +336,9 @@ impl PreferencesDialogMessageHandler {
 				header,
 				node_graph_wires_label,
 				graph_wire_style,
+				brush_tool,
 				vello_renderer_label,
 				vello_preference,
-				brush_tool,
 				max_region_size_label,
 				max_region_size,
 			]);
