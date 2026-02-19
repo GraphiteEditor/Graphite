@@ -2293,6 +2293,11 @@ impl Fsm for PenToolFsmState {
 				if tool_data.point_index > 0 {
 					tool_data.point_index -= 1;
 					tool_data.cleanup_after_double_click = false;
+					if let Some(prev_point) = tool_data.latest_points.get(tool_data.point_index) {
+						tool_data.next_point = prev_point.pos;
+						tool_data.next_handle_start = prev_point.handle_start;
+						tool_data.handle_end = None;
+					}
 					tool_data
 						.place_anchor(SnapData::new(document, input, viewport), transform, input.mouse.position, responses)
 						.unwrap_or(PenToolFsmState::PlacingAnchor)
