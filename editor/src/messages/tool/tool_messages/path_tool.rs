@@ -2,7 +2,7 @@ use super::select_tool::extend_lasso;
 use super::tool_prelude::*;
 use crate::consts::{
 	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GRAY, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, DEFAULT_STROKE_WIDTH, DOUBLE_CLICK_MILLISECONDS, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD,
-	DRILL_THROUGH_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD, SELECTION_TOLERANCE,
+	DRILL_THROUGH_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, POINT_MERGE_THRESHOLD, SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD, SELECTION_TOLERANCE,
 };
 use crate::messages::clipboard::utility_types::ClipboardContent;
 use crate::messages::input_mapper::utility_types::macros::action_shortcut_manual;
@@ -25,7 +25,7 @@ use crate::messages::tool::common_functionality::snapping::{SnapCache, SnapCandi
 use crate::messages::tool::common_functionality::utility_functions::{calculate_segment_angle, find_two_param_best_approximate, make_path_editable_is_allowed};
 use graphene_std::Color;
 use graphene_std::renderer::Quad;
-use graphene_std::subpath::pathseg_points;
+use graphene_std::subpath::{Bezier, BezierHandles, pathseg_points};
 use graphene_std::transform::ReferencePoint;
 use graphene_std::uuid::NodeId;
 use graphene_std::vector::algorithms::util::pathseg_tangent;
@@ -138,6 +138,7 @@ pub enum PathToolMessage {
 	UpdateSelectedPointsStatus {
 		overlay_context: OverlayContext,
 	},
+	MergeSelectedPoints,
 	StartSlidingPoint,
 	Copy {
 		clipboard: Clipboard,
@@ -334,6 +335,12 @@ impl LayoutHolder for PathTool {
 			.disabled(!self.tool_data.make_path_editable_is_allowed)
 			.widget_instance();
 
+		let merge_button = IconButton::new("Folder", 24)
+			.tooltip_label("Merge selected points")
+			.on_update(|_| PathToolMessage::MergeSelectedPoints.into())
+			.disabled(!self.tool_data.merging_points_enabled)
+			.widget_instance();
+
 		let [_checkbox, _dropdown] = {
 			let pivot_gizmo_type_widget = pivot_gizmo_type_widget(self.tool_data.pivot_gizmo.state, PivotToolSource::Path);
 			[pivot_gizmo_type_widget[0].clone(), pivot_gizmo_type_widget[2].clone()]
@@ -365,6 +372,9 @@ impl LayoutHolder for PathTool {
 				path_overlay_mode_widget,
 				unrelated_seperator.clone(),
 				path_node_button,
+				unrelated_seperator.clone(),
+				merge_button,
+				unrelated_seperator.clone(),
 				// checkbox.clone(),
 				// related_seperator.clone(),
 				// dropdown.clone(),
@@ -453,6 +463,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Path
 				DeleteAndBreakPath,
 				ClosePath,
 				PointerMove,
+				MergeSelectedPoints,
 				StartSlidingPoint,
 				Copy,
 				Cut,
@@ -609,6 +620,7 @@ struct PathToolData {
 	hovered_layers: Vec<LayerNodeIdentifier>,
 	ghost_outline: Vec<(Vec<ClickTargetType>, LayerNodeIdentifier)>,
 	make_path_editable_is_allowed: bool,
+	merging_points_enabled: bool,
 }
 
 impl PathToolData {
@@ -668,6 +680,64 @@ impl PathToolData {
 			SelectionStatus::Multiple(_) => true,
 		};
 		self.selection_status = selection_status;
+	}
+
+	fn update_merge_point_toggle(&mut self, shape_editor: &ShapeState, document: &DocumentMessageHandler, vector_meshes: bool) {
+		let mut non_empty_layers = shape_editor.selected_shape_state.iter().filter(|(_, state)| !state.is_empty());
+		let Some((layer, _)) = non_empty_layers.next() else {
+			self.merging_points_enabled = false;
+			return;
+		};
+
+		if non_empty_layers.next().is_some() {
+			self.merging_points_enabled = false;
+			return;
+		}
+
+		if !vector_meshes {
+			// Check that only two points are selected such that they are endpoints
+			let all_anchors = shape_editor.selected_points().all(|point| matches!(point, ManipulatorPointId::Anchor(_)));
+			let points = shape_editor
+				.selected_points()
+				.filter_map(|point| if let ManipulatorPointId::Anchor(anchor) = point { Some(anchor) } else { None })
+				.collect::<Vec<_>>();
+
+			if points.len() == 2 && all_anchors {
+				let Some(layer) = shape_editor.selected_layers().next() else { return };
+				let Some(vector) = document.network_interface.compute_modified_vector(*layer) else { return };
+				if points.iter().all(|point| vector.all_connected(**point).count() == 1) {
+					self.merging_points_enabled = true;
+					return;
+				}
+			}
+			self.merging_points_enabled = false;
+			return;
+		}
+
+		let points = shape_editor.selected_points().collect::<Vec<_>>();
+		let all_anchors = points.iter().all(|point| matches!(point, ManipulatorPointId::Anchor(_)));
+
+		if points.len() < 2 || !all_anchors {
+			self.merging_points_enabled = false;
+			return;
+		}
+
+		let Some(vector) = document.network_interface.compute_modified_vector(*layer) else { return };
+		let positions = points.iter().filter_map(|point| point.get_position(&vector)).collect::<Vec<_>>();
+
+		let mut sum = DVec2::default();
+		for position in &positions {
+			sum += position;
+		}
+		let centroid = sum / (positions.len() as f64);
+
+		for position in positions {
+			if position.distance(centroid) > POINT_MERGE_THRESHOLD {
+				self.merging_points_enabled = false;
+				return;
+			}
+		}
+		self.merging_points_enabled = true;
 	}
 
 	fn remove_saved_points(&mut self) {
@@ -3190,6 +3260,9 @@ impl Fsm for PathToolFsmState {
 				let old = tool_data.make_path_editable_is_allowed;
 				tool_data.make_path_editable_is_allowed = make_path_editable_is_allowed(&mut document.network_interface).is_some();
 				tool_data.update_selection_status(shape_editor, document);
+				tool_data.update_merge_point_toggle(shape_editor, document, true);
+
+				// TODO: Here add a toggle for the disable of the merge points button
 
 				if old != tool_data.make_path_editable_is_allowed {
 					responses.add(MenuBarMessage::SendLayout);
@@ -3221,6 +3294,90 @@ impl Fsm for PathToolFsmState {
 				responses.add(NodeGraphMessage::RunDocumentGraph);
 
 				self
+			}
+			(_, PathToolMessage::MergeSelectedPoints) => {
+				// Assuming that all these points are on the same layer
+				let mut non_empty_layers = shape_editor.selected_shape_state.iter().filter(|(_, state)| !state.is_empty());
+
+				// If all layers are empty, or no layer selected
+				let Some((layer, _)) = non_empty_layers.next() else {
+					return PathToolFsmState::Ready;
+				};
+
+				// If selected points are of more than one layer
+				if non_empty_layers.next().is_some() {
+					return PathToolFsmState::Ready;
+				}
+
+				let points = shape_editor.selected_points().collect::<Vec<_>>();
+				let all_anchors = points.iter().all(|point| matches!(point, ManipulatorPointId::Anchor(_)));
+				if points.len() < 2 || !all_anchors {
+					return PathToolFsmState::Ready;
+				}
+
+				responses.add(DocumentMessage::StartTransaction);
+				let state = shape_editor.selected_shape_state.get(layer).expect("No state for selected layer");
+				let points = state
+					.selected_points()
+					.filter_map(|point| if let ManipulatorPointId::Anchor(anchor) = point { Some(anchor) } else { None });
+
+				// Calculate the centroid
+				if let Some(vector) = document.network_interface.compute_modified_vector(*layer) {
+					let positions = points.filter_map(|point| ManipulatorPointId::Anchor(point).get_position(&vector)).collect::<Vec<_>>();
+					let mut sum = DVec2::default();
+					for position in &positions {
+						sum += position;
+					}
+					let centroid = sum / (positions.len() as f64);
+
+					for position in &positions {
+						if position.distance(centroid) > POINT_MERGE_THRESHOLD {
+							return PathToolFsmState::Ready;
+						}
+					}
+
+					// Add a new point with the new coordinates
+					let new_id = PointId::generate();
+					let modification_type = VectorModificationType::InsertPoint { id: new_id, position: centroid };
+					responses.add(GraphOperationMessage::Vector { layer: *layer, modification_type });
+
+					// Remove old points
+					for point in state
+						.selected_points()
+						.filter_map(|point| if let ManipulatorPointId::Anchor(anchor) = point { Some(anchor) } else { None })
+					{
+						let modification_type = VectorModificationType::RemovePoint { id: point };
+						responses.add(GraphOperationMessage::Vector { layer: *layer, modification_type });
+					}
+
+					let handles = |bezier: Bezier| -> [Option<DVec2>; 2] {
+						match bezier.handles {
+							BezierHandles::Linear => [None, None],
+							BezierHandles::Quadratic { handle } => [Some(handle - bezier.start), None],
+							BezierHandles::Cubic { handle_start, handle_end } => [Some(handle_start - bezier.start), Some(handle_end - bezier.end)],
+						}
+					};
+
+					// Find those segments which were connected to just one of the selected points
+					for (_, bezier, start, end) in vector.segment_bezier_iter() {
+						let id = SegmentId::generate();
+
+						if state.is_point_selected(ManipulatorPointId::Anchor(start)) {
+							let points = [new_id, end];
+							let handles = handles(bezier);
+							let modification_type = VectorModificationType::InsertSegment { id, points, handles };
+							responses.add(GraphOperationMessage::Vector { layer: *layer, modification_type });
+						} else if state.is_point_selected(ManipulatorPointId::Anchor(end)) {
+							let points = [start, new_id];
+							let handles = handles(bezier);
+							let modification_type = VectorModificationType::InsertSegment { id, points, handles };
+							responses.add(GraphOperationMessage::Vector { layer: *layer, modification_type });
+						}
+					}
+					responses.add(DocumentMessage::EndTransaction);
+				}
+
+				PathToolFsmState::Ready
 			}
 			(_, _) => PathToolFsmState::Ready,
 		}
