@@ -39,6 +39,7 @@
 		"source-sans-pro": "2.45.0"
 	},
 	"devDependencies": {
+		"license-checker-rseidelsohn": "^4.4.2",
 		"@eslint/compat": "^2.0.1",
 		"@eslint/eslintrc": "^3.3.3",
 		"@eslint/js": "^9.39.2",
