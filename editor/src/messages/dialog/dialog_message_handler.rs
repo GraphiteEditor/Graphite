@@ -103,10 +103,10 @@ impl MessageHandler<DialogMessage, DialogMessageContext<'_>> for DialogMessageHa
 
 					self.export_dialog.artboards = artboards;
 
-					if let ExportBounds::Artboard(layer) = self.export_dialog.bounds {
-						if !self.export_dialog.artboards.contains_key(&layer) {
-							self.export_dialog.bounds = ExportBounds::AllArtwork;
-						}
+					if let ExportBounds::Artboard(layer) = self.export_dialog.bounds
+						&& !self.export_dialog.artboards.contains_key(&layer)
+					{
+						self.export_dialog.bounds = ExportBounds::AllArtwork;
 					}
 
 					self.export_dialog.has_selection = document.network_interface.selected_nodes().selected_layers(document.metadata()).next().is_some();
@@ -137,8 +137,10 @@ impl MessageHandler<DialogMessage, DialogMessageContext<'_>> for DialogMessageHa
 				self.preferences_dialog.send_dialog_to_frontend(responses, preferences);
 			}
 			DialogMessage::RequestConfirmRestartDialog => {
-				self.on_dismiss = None;
-				let dialog = ConfirmRestartDialog {};
+				self.on_dismiss = Some(DialogMessage::Close.into());
+				let dialog = ConfirmRestartDialog {
+					changed_settings: vec!["Disable UI Acceleration".into()],
+				};
 				dialog.send_dialog_to_frontend(responses);
 			}
 		}

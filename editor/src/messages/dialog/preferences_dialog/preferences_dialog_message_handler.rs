@@ -20,7 +20,7 @@ impl MessageHandler<PreferencesDialogMessage, PreferencesDialogMessageContext<'_
 	fn process_message(&mut self, message: PreferencesDialogMessage, responses: &mut VecDeque<Message>, context: PreferencesDialogMessageContext) {
 		let PreferencesDialogMessageContext { preferences } = context;
 		match message {
-			PreferencesDialogMessage::MightRequireRestart => {
+			PreferencesDialogMessage::MayRequireRestart => {
 				if self.unmodified_preferences.is_none() {
 					self.unmodified_preferences = Some(preferences.clone());
 				}
@@ -273,7 +273,7 @@ impl PreferencesDialogMessageHandler {
 			let brush_tool_description = "
 			Enable the Brush tool to support basic raster-based layer painting.\n\
 			\n\
-			This legacy experimental tool has performance and quality limitations and is slated for replacement in future versions of Graphite that will focus on raster graphics editing.\n\
+			This legacy experimental tool has performance and quality limitations and is slated for replacement in future versions of Graphite that will have a renewed focus on raster graphics editing.\n\
 			\n\
 			Content created with the Brush tool may not be compatible with future versions of Graphite.
 			"
@@ -298,14 +298,18 @@ impl PreferencesDialogMessageHandler {
 		}
 
 		// =============
-		// COMPATEBILITY
+		// COMPATIBILITY
 		// =============
 		#[cfg(not(target_family = "wasm"))]
 		{
 			let header = vec![TextLabel::new("Compatibility").italic(true).widget_instance()];
 
-			let ui_acceleration_description =
-				"Disable hardware acceleration for the user interface (viewport is not effected). This can improve stability on some systems at the cost of decreased performance.";
+			let ui_acceleration_description = "
+			Use the CPU to draw the Graphite user interface (areas outside of the canvas) instead of the GPU. This does not affect the rendering of artwork in the canvas, which remains hardware accelerated.\n\
+			\n\
+			Disabling UI acceleration may slightly degrade performance, so this should be used as a workaround only if issues are observed with displaying the UI. This setting may become enabled automatically if Graphite launches, detects that it cannot draw the UI normally, and restarts in compatibility mode.
+			"
+			.trim();
 
 			let checkbox_id = CheckboxId::new();
 			let ui_acceleration = vec![
@@ -316,7 +320,7 @@ impl PreferencesDialogMessageHandler {
 					.tooltip_description(ui_acceleration_description)
 					.on_update(|number_input: &CheckboxInput| Message::Batched {
 						messages: Box::new([
-							PreferencesDialogMessage::MightRequireRestart.into(),
+							PreferencesDialogMessage::MayRequireRestart.into(),
 							PreferencesMessage::DisableUIAcceleration {
 								disable_ui_acceleration: number_input.checked,
 							}
