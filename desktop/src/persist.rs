@@ -1,4 +1,4 @@
-use crate::wrapper::messages::{Document, DocumentId, Preferences};
+use crate::wrapper::messages::{Document, DocumentId};
 
 #[derive(Default, serde::Serialize, serde::Deserialize)]
 pub(crate) struct PersistentData {
@@ -72,22 +72,6 @@ impl PersistentData {
 		self.flush();
 	}
 
-	pub(crate) fn write_preferences(&mut self, preferences: Preferences) {
-		let Ok(preferences) = ron::ser::to_string_pretty(&preferences, Default::default()) else {
-			tracing::error!("Failed to serialize preferences");
-			return;
-		};
-		std::fs::write(Self::preferences_file_path(), &preferences).unwrap_or_else(|e| {
-			tracing::error!("Failed to write preferences to disk: {e}");
-		});
-	}
-
-	pub(crate) fn load_preferences(&self) -> Option<Preferences> {
-		let data = std::fs::read_to_string(Self::preferences_file_path()).ok()?;
-		let preferences = ron::from_str(&data).ok()?;
-		Some(preferences)
-	}
-
 	fn flush(&self) {
 		let data = match ron::ser::to_string_pretty(self, Default::default()) {
 			Ok(d) => d,
@@ -127,12 +111,6 @@ impl PersistentData {
 	fn state_file_path() -> std::path::PathBuf {
 		let mut path = crate::dirs::app_data_dir();
 		path.push(crate::consts::APP_STATE_FILE_NAME);
-		path
-	}
-
-	fn preferences_file_path() -> std::path::PathBuf {
-		let mut path = crate::dirs::app_data_dir();
-		path.push(crate::consts::APP_PREFERENCES_FILE_NAME);
 		path
 	}
 }

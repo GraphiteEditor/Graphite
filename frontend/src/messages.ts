@@ -884,7 +884,7 @@ export class LayerPanelEntry {
 	clippable!: boolean;
 }
 
-export class DisplayDialogDismiss extends JsMessage {}
+export class DialogClose extends JsMessage {}
 
 export class Font {
 	fontFamily!: string;
@@ -1672,7 +1672,7 @@ type MessageMaker = typeof JsMessage | JSMessageFactory;
 export const messageMakers: Record<string, MessageMaker> = {
 	ClearAllNodeGraphWires,
 	DisplayDialog,
-	DisplayDialogDismiss,
+	DialogClose,
 	DisplayDialogPanic,
 	DisplayEditableTextbox,
 	DisplayEditableTextboxTransform,

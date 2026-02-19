@@ -40,6 +40,10 @@ impl MessageHandler<AppWindowMessage, ()> for AppWindowMessageHandler {
 			AppWindowMessage::ShowAll => {
 				responses.add(FrontendMessage::WindowShowAll);
 			}
+			AppWindowMessage::Restart => {
+				responses.add(PortfolioMessage::AutoSaveAllDocuments);
+				responses.add(FrontendMessage::WindowRestart);
+			}
 		}
 	}
 	advertise_actions!(AppWindowMessageDiscriminant;
