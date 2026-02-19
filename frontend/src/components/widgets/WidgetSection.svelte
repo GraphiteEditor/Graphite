@@ -3,6 +3,7 @@
 
 	import type { Editor } from "@graphite/editor";
 	import { isWidgetSpanRow, isWidgetSection, type WidgetSection as WidgetSectionFromJsMessages, type LayoutTarget } from "@graphite/messages";
+	import { operatingSystem } from "@graphite/utility-functions/platform";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
@@ -26,7 +27,8 @@
 		class="header"
 		class:expanded
 		on:click|stopPropagation={(e) => {
-			if (e.altKey) {
+			const accel = operatingSystem() === "Mac" ? e.metaKey : e.ctrlKey;
+			if (e.altKey || accel) {
 				editor.handle.setAllSectionsExpanded(!expanded);
 			} else {
 				editor.handle.setSectionExpanded(widgetData.id, !expanded);

@@ -79,7 +79,7 @@ impl MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageContext<'_>> f
 					Layout(NodeGraphMessageHandler::collate_properties(&mut node_properties_context))
 				};
 
-				Self::update_all_section_expansion_recursive(&mut layout.0, expanded, &mut self.section_expanded, network_interface, selection_network_path);
+				Self::update_all_section_expansion_recursive(&mut layout.0, expanded, &mut self.section_expanded);
 
 				responses.add(LayoutMessage::SendLayout {
 					layout,
@@ -99,29 +99,16 @@ impl MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageContext<'_>> f
 }
 
 impl PropertiesPanelMessageHandler {
-	fn update_all_section_expansion_recursive(
-		layout: &mut [LayoutGroup],
-		expanded: bool,
-		section_expanded: &mut HashMap<u64, bool>,
-		network_interface: &NodeNetworkInterface,
-		selection_network_path: &[NodeId],
-	) {
+	fn update_all_section_expansion_recursive(layout: &mut [LayoutGroup], expanded: bool, section_expanded: &mut HashMap<u64, bool>) {
 		for group in layout {
 			if let LayoutGroup::Section {
 				id, layout, expanded: group_expanded, ..
 			} = group
 			{
-				let is_merge_node = network_interface
-					.reference(&NodeId(*id), selection_network_path)
-					.as_ref()
-					.is_some_and(|id| id.implementation_name_from_identifier() == "Merge");
+				*group_expanded = expanded;
+				section_expanded.insert(*id, expanded);
 
-				if !is_merge_node {
-					*group_expanded = expanded;
-					section_expanded.insert(*id, expanded);
-				}
-
-				Self::update_all_section_expansion_recursive(&mut layout.0, expanded, section_expanded, network_interface, selection_network_path);
+				Self::update_all_section_expansion_recursive(&mut layout.0, expanded, section_expanded);
 			}
 		}
 	}
