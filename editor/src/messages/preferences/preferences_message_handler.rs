@@ -21,9 +21,14 @@ pub struct PreferencesMessageHandler {
 	pub graph_wire_style: GraphWireStyle,
 	pub viewport_zoom_wheel_rate: f64,
 	pub ui_scale: f64,
+	pub disable_ui_acceleration: bool,
 }
 
 impl PreferencesMessageHandler {
+	pub fn needs_restart(&self, other: &Self) -> bool {
+		self.disable_ui_acceleration != other.disable_ui_acceleration
+	}
+
 	pub fn get_selection_mode(&self) -> SelectionMode {
 		self.selection_mode
 	}
@@ -49,6 +54,7 @@ impl Default for PreferencesMessageHandler {
 			graph_wire_style: GraphWireStyle::default(),
 			viewport_zoom_wheel_rate: VIEWPORT_ZOOM_WHEEL_RATE,
 			ui_scale: UI_SCALE_DEFAULT,
+			disable_ui_acceleration: false,
 		}
 	}
 }
@@ -61,9 +67,7 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 		match message {
 			// Management messages
 			PreferencesMessage::Load { preferences } => {
-				if let Some(preferences) = preferences {
-					*self = preferences;
-				}
+				*self = preferences;
 
 				responses.add(PortfolioMessage::EditorPreferences);
 				responses.add(PortfolioMessage::UpdateVelloPreference);
@@ -73,10 +77,8 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 				responses.add(FrontendMessage::UpdateUIScale { scale: self.ui_scale });
 			}
 			PreferencesMessage::ResetToDefaults => {
-				refresh_dialog(responses);
-				responses.add(KeyMappingMessage::ModifyMapping { mapping: MappingVariant::Default });
-
-				*self = Self::default()
+				responses.add(PreferencesMessage::Load { preferences: Self::default() });
+				responses.add(DialogMessage::RequestPreferencesDialog);
 			}
 
 			// Per-preference messages
@@ -115,6 +117,9 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 				self.ui_scale = scale;
 				responses.add(FrontendMessage::UpdateUIScale { scale: self.ui_scale });
 			}
+			PreferencesMessage::DisableUIAcceleration { disable_ui_acceleration } => {
+				self.disable_ui_acceleration = disable_ui_acceleration;
+			}
 		}
 
 		responses.add(FrontendMessage::TriggerSavePreferences { preferences: self.clone() });
@@ -122,10 +127,4 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 
 	advertise_actions!(PreferencesMessageDiscriminant;
 	);
-}
-
-fn refresh_dialog(responses: &mut VecDeque<Message>) {
-	responses.add(DialogMessage::CloseDialogAndThen {
-		followups: vec![DialogMessage::RequestPreferencesDialog.into()],
-	});
 }

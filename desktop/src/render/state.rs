@@ -335,7 +335,7 @@ impl RenderState {
 				},
 				wgpu::BindGroupEntry {
 					binding: 1,
-					resource: wgpu::BindingResource::TextureView(&overlays_texture_view.as_ref()),
+					resource: wgpu::BindingResource::TextureView(overlays_texture_view.as_ref()),
 				},
 				wgpu::BindGroupEntry {
 					binding: 2,

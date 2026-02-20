@@ -2836,14 +2836,15 @@ impl Fsm for PathToolFsmState {
 
 							let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
 
-							let fill_color = Color::WHITE;
+							// Defaults chosen because the pasted geometry has no inherent associated style
 							let stroke_color = Color::BLACK;
-
-							let fill = graphene_std::vector::style::Fill::solid(fill_color.to_gamma_srgb());
-							responses.add(GraphOperationMessage::FillSet { layer, fill });
+							let fill_color = Color::WHITE;
 
 							let stroke = graphene_std::vector::style::Stroke::new(Some(stroke_color.to_gamma_srgb()), DEFAULT_STROKE_WIDTH);
 							responses.add(GraphOperationMessage::StrokeSet { layer, stroke });
+
+							let fill = graphene_std::vector::style::Fill::solid(fill_color.to_gamma_srgb());
+							responses.add(GraphOperationMessage::FillSet { layer, fill });
 
 							new_layers.push(layer);
 
@@ -3182,10 +3183,9 @@ impl Fsm for PathToolFsmState {
 				PathToolFsmState::Ready
 			}
 			(_, PathToolMessage::SelectedPointUpdated) => {
-				let colinear = shape_editor.selected_manipulator_angles(&document.network_interface);
 				tool_data.dragging_state = DraggingState {
 					point_select_state: shape_editor.get_dragging_state(&document.network_interface),
-					colinear,
+					colinear: shape_editor.selected_manipulator_angles(&document.network_interface),
 				};
 
 				let old = tool_data.make_path_editable_is_allowed;
@@ -3663,4 +3663,5 @@ fn update_dynamic_hints(
 		PathToolFsmState::SlidingPoint => HintData(vec![HintGroup(vec![HintInfo::mouse(MouseMotion::Rmb, ""), HintInfo::keys([Key::Escape], "Cancel").prepend_slash()])]),
 	};
 	hint_data.send_layout(responses);
+	responses.add(ToolMessage::UpdateHints);
 }

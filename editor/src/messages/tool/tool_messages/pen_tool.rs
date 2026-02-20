@@ -1288,8 +1288,8 @@ impl PenToolData {
 		let parent = document.new_layer_bounding_artboard(input, viewport);
 		let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
 		self.current_layer = Some(layer);
-		tool_options.fill.apply_fill(layer, responses);
 		tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
+		tool_options.fill.apply_fill(layer, responses);
 		self.prior_segment = None;
 		self.prior_segments = None;
 		responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });

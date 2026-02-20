@@ -252,6 +252,7 @@ tagged_value! {
 	SelectiveColorChoice(raster_nodes::adjustments::SelectiveColorChoice),
 	GridType(vector::misc::GridType),
 	ArcType(vector::misc::ArcType),
+	RowsOrColumns(vector::misc::RowsOrColumns),
 	MergeByDistanceAlgorithm(vector::misc::MergeByDistanceAlgorithm),
 	ExtrudeJoiningAlgorithm(vector::misc::ExtrudeJoiningAlgorithm),
 	PointSpacingType(vector::misc::PointSpacingType),

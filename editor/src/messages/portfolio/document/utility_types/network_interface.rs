@@ -1220,6 +1220,13 @@ impl NodeNetworkInterface {
 		}
 	}
 
+	pub fn document_bounds_viewport_space(&self, include_artboards: bool) -> Option<[DVec2; 2]> {
+		let [min, max] = self.document_bounds_document_space(include_artboards)?;
+		let quad = Quad::from_box([min, max]);
+		let transformed = self.document_metadata.document_to_viewport * quad;
+		Some(transformed.bounding_box())
+	}
+
 	/// Calculates the selected layer bounds in document space
 	pub fn selected_bounds_document_space(&self, include_artboards: bool, network_path: &[NodeId]) -> Option<[DVec2; 2]> {
 		let Some(selected_nodes) = self.selected_nodes_in_nested_network(network_path) else {

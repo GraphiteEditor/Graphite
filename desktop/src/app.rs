@@ -15,6 +15,7 @@ use crate::cli::Cli;
 use crate::consts::CEF_MESSAGE_LOOP_MAX_ITERATIONS;
 use crate::event::{AppEvent, AppEventScheduler};
 use crate::persist::PersistentData;
+use crate::preferences;
 use crate::render::{RenderError, RenderState};
 use crate::window::Window;
 use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, InputMessage, MouseKeys, MouseState};
@@ -277,10 +278,10 @@ impl App {
 				self.persistent_data.set_document_order(ids);
 			}
 			DesktopFrontendMessage::PersistenceWritePreferences { preferences } => {
-				self.persistent_data.write_preferences(preferences);
+				preferences::write(preferences);
 			}
 			DesktopFrontendMessage::PersistenceLoadPreferences => {
-				let preferences = self.persistent_data.load_preferences();
+				let preferences = preferences::read();
 				let message = DesktopWrapperMessage::LoadPreferences { preferences };
 				responses.push(message);
 			}
@@ -397,6 +398,9 @@ impl App {
 				if let Some(window) = &self.window {
 					window.show_all();
 				}
+			}
+			DesktopFrontendMessage::Restart => {
+				self.exit(Some(ExitReason::Restart));
 			}
 		}
 	}
@@ -663,5 +667,6 @@ impl ApplicationHandler for App {
 
 pub(crate) enum ExitReason {
 	Shutdown,
+	Restart,
 	UiAccelerationFailure,
 }
