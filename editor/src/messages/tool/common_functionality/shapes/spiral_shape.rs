@@ -125,17 +125,19 @@ impl Spiral {
 	) {
 		use graphene_std::vector::generator_nodes::spiral::*;
 
-		let viewport_drag_start = shape_tool_data.data.viewport_drag_start(document);
+		let document_to_viewport = document.metadata().document_to_viewport;
+		let document_drag_start = shape_tool_data.data.drag_start;
 
 		let ignore = vec![layer];
 		let snap_data = SnapData::ignore(document, ipp, viewport, &ignore);
 		let config = SnapTypeConfiguration::default();
-		let document_mouse = document.metadata().document_to_viewport.inverse().transform_point2(ipp.mouse.position);
+		let document_mouse = document_to_viewport.inverse().transform_point2(ipp.mouse.position);
 		let snapped = shape_tool_data.data.snap_manager.free_snap(&snap_data, &SnapCandidatePoint::handle(document_mouse), config);
-		let snapped_viewport_point = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
+		let snapped_point_document = snapped.snapped_point_document;
 		shape_tool_data.data.snap_manager.update_indicator(snapped);
 
-		let dragged_distance = (viewport_drag_start - snapped_viewport_point).length();
+		// Calculate dragged distance in document space
+		let dragged_distance = (document_drag_start - snapped_point_document).length();
 
 		let Some(node_id) = graph_modification_utils::get_spiral_id(layer, &document.network_interface) else {
 			return;
@@ -157,8 +159,8 @@ impl Spiral {
 
 		responses.add(GraphOperationMessage::TransformSet {
 			layer,
-			transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., viewport_drag_start),
-			transform_in: TransformIn::Viewport,
+			transform: DAffine2::from_translation(document_drag_start),
+			transform_in: TransformIn::Local,
 			skip_rerender: false,
 		});
 

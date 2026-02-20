@@ -945,10 +945,11 @@ impl Fsm for ShapeToolFsmState {
 
 				match tool_data.current_shape {
 					ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Spiral | ShapeType::Grid | ShapeType::Rectangle | ShapeType::Ellipse => {
+						// Use document-space drag_start for initial position to avoid scale being affected by zoom
 						defered_responses.add(GraphOperationMessage::TransformSet {
 							layer,
-							transform: DAffine2::from_scale_angle_translation(DVec2::ONE, 0., input.mouse.position),
-							transform_in: TransformIn::Viewport,
+							transform: DAffine2::from_translation(tool_data.data.drag_start),
+							transform_in: TransformIn::Local,
 							skip_rerender: false,
 						});
 
