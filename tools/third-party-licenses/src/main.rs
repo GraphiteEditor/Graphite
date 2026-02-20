@@ -69,8 +69,7 @@ fn merge_dedup_and_sort(sources: Vec<Vec<LicenseEntry>>) -> Vec<LicenseEntry> {
 		all.extend(source);
 	}
 	let mut all = dedup_by_licence_text(all);
-	all.sort_by_cached_key(|e| e.packages.len());
-	all.reverse();
+	all.sort_by(|a, b| b.packages.len().cmp(&a.packages.len()).then(a.text.len().cmp(&b.text.len())));
 	all
 }
 
@@ -88,9 +87,9 @@ fn format_credits(licenses: &Vec<LicenseEntry>) -> String {
 			.packages
 			.iter()
 			.map(|pkg| match &pkg {
-				Package { name, authors, url: Some(url) } if !authors.is_empty() => format!("{} ({}) - {}", name, authors.join(", "), url),
+				Package { name, authors, url: Some(url) } if !authors.is_empty() => format!("{} [{}] - {}", name, authors.join(", "), url),
 				Package { name, authors: _, url: Some(url) } => format!("{} - {}", name, url),
-				Package { name, authors, url: None } if !authors.is_empty() => format!("{} ({})", name, authors.join(", ")),
+				Package { name, authors, url: None } if !authors.is_empty() => format!("{} [{}]", name, authors.join(", ")),
 				_ => pkg.name.clone(),
 			})
 			.collect();
@@ -98,14 +97,15 @@ fn format_credits(licenses: &Vec<LicenseEntry>) -> String {
 		let multi = package_lines.len() > 1;
 
 		let header = format!(
-			"The package{} listed here {} licensed under the terms of the {} printed beneath",
+			"The package{} listed here {} licensed under the terms of the {} printed beneath ({} lines)",
 			if multi { "s" } else { "" },
 			if multi { "are" } else { "is" },
 			if let Some(license) = license.name.as_ref() {
 				format!("\"{}\" license", license)
 			} else {
 				"license".to_string()
-			}
+			},
+			license.text.lines().count()
 		);
 
 		let max_len = std::iter::once(header.len()).chain(package_lines.iter().map(|l| l.chars().count())).max().unwrap_or(0);
@@ -124,7 +124,7 @@ fn format_credits(licenses: &Vec<LicenseEntry>) -> String {
 		out.push_str(&format!("│{}│\n", "_".repeat(max_len + 2)));
 		out.push_str(&padded_packages.join("\n"));
 		out.push('\n');
-		out.push_str(&format!(" {}\n", "\u{203e}".repeat(max_len + 2)));
+		out.push_str(&format!(" {}", "\u{203e}".repeat(max_len + 2)));
 		for line in license.text.lines() {
 			if line.is_empty() {
 				out.push('\n');
