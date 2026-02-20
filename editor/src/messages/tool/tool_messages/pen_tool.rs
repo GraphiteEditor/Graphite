@@ -2002,7 +2002,7 @@ impl Fsm for PenToolFsmState {
 				};
 				let state = tool_data
 					.place_anchor(SnapData::new(document, input, viewport), transform, input.mouse.position, responses)
-					.unwrap_or(PenToolFsmState::Ready);
+					.unwrap_or(self);
 
 				// Auto-panning
 				let messages = [
@@ -2185,9 +2185,26 @@ impl Fsm for PenToolFsmState {
 			(PenToolFsmState::DraggingHandle(..) | PenToolFsmState::PlacingAnchor, PenToolMessage::Undo) => {
 				if tool_data.point_index > 0 {
 					tool_data.point_index -= 1;
-					tool_data
-						.place_anchor(SnapData::new(document, input, viewport), transform, input.mouse.position, responses)
-						.unwrap_or(PenToolFsmState::PlacingAnchor)
+				}
+
+				// Sync preview state so the bezier curve preview originates from the current anchor.
+				// Setting handle_end to Some ensures the bezier preview renders and place_anchor
+				// keeps handle_end/next_handle_start in sync with the mouse on subsequent moves.
+				if let Some(current) = tool_data.latest_points.get(tool_data.point_index) {
+					tool_data.next_point = current.pos;
+					tool_data.next_handle_start = current.pos;
+					tool_data.handle_end = Some(current.pos);
+
+					// Trigger a PointerMove so the preview immediately follows the cursor
+					// instead of sitting at the anchor until the user moves the mouse.
+					responses.add(PenToolMessage::PointerMove {
+						snap_angle: Key::Shift,
+						break_handle: Key::Alt,
+						lock_angle: Key::Control,
+						colinear: Key::KeyC,
+						move_anchor_with_handles: Key::Space,
+					});
+					PenToolFsmState::PlacingAnchor
 				} else {
 					responses.add(PenToolMessage::Abort);
 					self
