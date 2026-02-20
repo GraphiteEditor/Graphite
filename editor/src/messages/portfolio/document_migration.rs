@@ -866,8 +866,8 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::vector::MergeByDistanceNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::vector::mirror::IDENTIFIER,
-		aliases: &["graphene_core::vector::MirrorNode"],
+		node: graphene_std::graphic::mirror::IDENTIFIER,
+		aliases: &["graphene_core::vector::MirrorNode", "core_types::vector::MirrorNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::vector::morph::IDENTIFIER,
@@ -1333,7 +1333,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	}
 
 	// Upgrade the Mirror node to add the `keep_original` boolean input
-	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::mirror::IDENTIFIER) && inputs_count == 3 {
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::graphic::mirror::IDENTIFIER) && inputs_count == 3 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
@@ -1348,7 +1348,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	}
 
 	// Upgrade the Mirror node to add the `reference_point` input and change `offset` from `DVec2` to `f64`
-	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::mirror::IDENTIFIER) && inputs_count == 4 {
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::graphic::mirror::IDENTIFIER) && inputs_count == 4 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 

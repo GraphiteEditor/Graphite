@@ -13,7 +13,6 @@ use graphic_types::{Graphic, IntoGraphicTable};
 use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, PathEl, PathSeg, Shape};
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
-use vector_types::ReferencePoint;
 use vector_types::subpath::{BezierHandles, ManipulatorGroup};
 use vector_types::vector::PointDomain;
 use vector_types::vector::algorithms::bezpath_algorithms::{self, TValue, eval_pathseg_euclidean, evaluate_bezpath, sample_polyline_on_bezpath, split_bezpath, tangent_on_bezpath};
@@ -296,70 +295,6 @@ async fn copy_to_points<I: 'n + Send + Clone>(
 				result_table.push(row);
 			}
 		}
-	}
-
-	result_table
-}
-
-#[node_macro::node(category("General"), path(core_types::vector))]
-async fn mirror<T: 'n + Send + Clone>(
-	_: impl Ctx,
-	#[implementations(
-		Table<Graphic>,
-		Table<Vector>,
-		Table<Raster<CPU>>,
-		Table<Color>,
-		Table<GradientStops>,
-	)]
-	content: Table<T>,
-	#[default(ReferencePoint::Center)] relative_to_bounds: ReferencePoint,
-	#[unit(" px")] offset: f64,
-	#[range((-90., 90.))] angle: Angle,
-	#[default(true)] keep_original: bool,
-) -> Table<T>
-where
-	Table<T>: BoundingBox,
-{
-	// Normalize the direction vector
-	let normal = DVec2::from_angle(angle.to_radians());
-
-	// The mirror reference may be based on the bounding box if an explicit reference point is chosen
-	let RenderBoundingBox::Rectangle(bounding_box) = content.bounding_box(DAffine2::IDENTITY, false) else {
-		return content;
-	};
-
-	let reference_point_location = relative_to_bounds.point_in_bounding_box((bounding_box[0], bounding_box[1]).into());
-	let mirror_reference_point = reference_point_location.map(|point| point + normal * offset);
-
-	// Create the reflection matrix
-	let reflection = DAffine2::from_mat2_translation(
-		glam::DMat2::from_cols(
-			DVec2::new(1. - 2. * normal.x * normal.x, -2. * normal.y * normal.x),
-			DVec2::new(-2. * normal.x * normal.y, 1. - 2. * normal.y * normal.y),
-		),
-		DVec2::ZERO,
-	);
-
-	// Apply reflection around the reference point
-	let reflected_transform = if let Some(mirror_reference_point) = mirror_reference_point {
-		DAffine2::from_translation(mirror_reference_point) * reflection * DAffine2::from_translation(-mirror_reference_point)
-	} else {
-		reflection * DAffine2::from_translation(DVec2::from_angle(angle.to_radians()) * DVec2::splat(-offset))
-	};
-
-	let mut result_table = Table::new();
-
-	// Add original instance depending on the keep_original flag
-	if keep_original {
-		for instance in content.clone().into_iter() {
-			result_table.push(instance);
-		}
-	}
-
-	// Create and add mirrored instance
-	for mut row in content.into_iter() {
-		row.transform = reflected_transform * row.transform;
-		result_table.push(row);
 	}
 
 	result_table
