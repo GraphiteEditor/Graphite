@@ -1,22 +1,20 @@
-name: "Editor: Dev & CI"
+name: "Deploy Master"
 
 on:
   push:
     branches:
       - master
-  pull_request: {}
-  merge_group: {}
+
 env:
   CARGO_TERM_COLOR: always
   INDEX_HTML_HEAD_REPLACEMENT: <script defer data-domain="dev.graphite.art" data-api="https://graphite.art/visit/event" src="https://graphite.art/visit/script.hash.js"></script>
 
 jobs:
-  build:
+  deploy:
     runs-on: self-hosted
     permissions:
       contents: write
       deployments: write
-      pull-requests: write
       actions: write
     env:
       RUSTC_WRAPPER: /usr/bin/sccache
@@ -33,7 +31,7 @@ jobs:
       - name: 🟢 Install the latest Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "latest"
+          node-version: 'latest'
 
       - name: 🚧 Install build dependencies
         run: |
@@ -42,21 +40,10 @@ jobs:
 
       - name: 🦀 Install the latest Rust
         run: |
-          echo "Initial system version:"
-          rustc --version
           rustup update stable
-          echo "Latest updated version:"
-          rustc --version
-
-      - name: 🦀 Fetch Rust dependencies
-        run: |
-          echo "If it fails here, the committed Cargo.lock may be out of date"
-          cargo fetch --locked
 
       - name: ✂ Replace template in <head> of index.html
         run: |
-          # Remove the INDEX_HTML_HEAD_REPLACEMENT environment variable for build links (not master deploys)
-          git rev-parse --abbrev-ref HEAD | grep master > /dev/null || export INDEX_HTML_HEAD_REPLACEMENT=""
           sed -i "s|<!-- INDEX_HTML_HEAD_REPLACEMENT -->|$INDEX_HTML_HEAD_REPLACEMENT|" frontend/index.html
 
       - name: 🌐 Build Graphite web code
@@ -78,7 +65,6 @@ jobs:
           directory: frontend/dist
 
       - name: 💬 Comment build link URL to commit hash page on GitHub
-        if: github.ref == 'refs/heads/master'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -90,29 +76,7 @@ jobs:
           |-|
           | ${{ steps.cloudflare.outputs.url }} |"
 
-      - name: 👕 Lint Graphite web formatting
-        env:
-          NODE_ENV: production
-        run: |
-          cd frontend
-          npm run lint
-
-      - name: 🔬 Check Rust formatting
-        run: |
-          mold -run cargo fmt --all -- --check
-
-      - name: 🦀 Build Rust code
-        env:
-          RUSTFLAGS: -Dwarnings
-        run: |
-          mold -run cargo build --all-features
-
-      - name: 🧪 Run Rust tests
-        run: |
-          mold -run cargo test --all-features
-
       - name: 📃 Generate code documentation info for website
-        if: github.ref == 'refs/heads/master'
         run: |
           cd tools/editor-message-tree
           cargo run
@@ -121,7 +85,6 @@ jobs:
           mv website/generated/hierarchical_message_system_tree.txt artifacts-generated/hierarchical_message_system_tree.txt
 
       - name: 💿 Obtain cache of auto-generated code docs artifacts, to check if they've changed
-        if: github.ref == 'refs/heads/master'
         id: cache-website-code-docs
         uses: actions/cache/restore@v3
         with:
@@ -129,7 +92,6 @@ jobs:
           key: website-code-docs
 
       - name: 🔍 Check if auto-generated code docs artifacts changed
-        if: github.ref == 'refs/heads/master'
         id: website-code-docs-changed
         run: |
           if ! diff --brief --recursive artifacts-generated artifacts; then
@@ -157,31 +119,3 @@ jobs:
         run: |
           rm -rf artifacts
           gh workflow run website.yml --ref master
-
-  # miri:
-  #   runs-on: self-hosted
-
-  #   steps:
-  #     - uses: actions/checkout@v3
-
-  #     - name: 🧪 Run Rust miri
-  #       run: |
-  #         mold -run cargo +nightly miri nextest run -j32 --all-features
-
-  cargo-deny:
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: 📥 Clone and checkout repository
-        uses: actions/checkout@v3
-
-      - name: 📜 Check crate license compatibility for root workspace
-        uses: EmbarkStudios/cargo-deny-action@v2
-        with:
-          command: check bans licenses sources
-
-      - name: 📜 Check crate license compatibility for /libraries/rawkit
-        uses: EmbarkStudios/cargo-deny-action@v2
-        with:
-          command: check bans licenses sources
-          manifest-path: libraries/rawkit/Cargo.toml

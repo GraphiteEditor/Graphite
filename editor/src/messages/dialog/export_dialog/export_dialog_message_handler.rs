@@ -63,7 +63,8 @@ impl MessageHandler<ExportDialogMessage, ExportDialogMessageContext<'_>> for Exp
 		self.send_dialog_to_frontend(responses);
 	}
 
-	advertise_actions! {ExportDialogUpdate;}
+	advertise_actions!(ExportDialogUpdate;
+	);
 }
 
 impl DialogLayoutHolder for ExportDialogMessageHandler {
@@ -75,13 +76,13 @@ impl DialogLayoutHolder for ExportDialogMessageHandler {
 			TextButton::new("Export")
 				.emphasized(true)
 				.on_update(|_| {
-					DialogMessage::CloseDialogAndThen {
+					DialogMessage::CloseAndThen {
 						followups: vec![ExportDialogMessage::Submit.into()],
 					}
 					.into()
 				})
 				.widget_instance(),
-			TextButton::new("Cancel").on_update(|_| FrontendMessage::DisplayDialogDismiss.into()).widget_instance(),
+			TextButton::new("Cancel").on_update(|_| FrontendMessage::DialogClose.into()).widget_instance(),
 		];
 
 		Layout(vec![LayoutGroup::Row { widgets }])
@@ -130,7 +131,7 @@ impl LayoutHolder for ExportDialogMessageHandler {
 		} else {
 			self.bounds
 		};
-		let index = choices.iter().flatten().position(|(bounds, _, _)| *bounds == current_bounds).unwrap();
+		let index = choices.iter().flatten().position(|(bounds, _, _)| *bounds == current_bounds).unwrap_or(0);
 
 		let mut entries = choices
 			.into_iter()

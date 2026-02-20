@@ -49,11 +49,11 @@ pub trait HierarchicalTree {
 	fn build_message_tree() -> DebugMessageTree;
 
 	fn message_handler_data_str() -> MessageData {
-		MessageData::new(String::new(), Vec::new(), "")
+		MessageData::new(String::new(), Vec::new(), "", 0)
 	}
 
 	fn message_handler_str() -> MessageData {
-		MessageData::new(String::new(), Vec::new(), "")
+		MessageData::new(String::new(), Vec::new(), "", 0)
 	}
 
 	fn path() -> &'static str {
@@ -64,5 +64,6 @@ pub trait HierarchicalTree {
 pub trait ExtractField {
 	fn field_types() -> Vec<(String, usize)>;
 	fn path() -> &'static str;
+	fn line_number() -> usize;
 	fn print_field_types();
 }

@@ -2,7 +2,7 @@ import { writable } from "svelte/store";
 
 import { type Editor } from "@graphite/editor";
 import { type IconName } from "@graphite/icons";
-import { DisplayDialog, DisplayDialogDismiss, UpdateDialogButtons, UpdateDialogColumn1, UpdateDialogColumn2, patchLayout, TriggerDisplayThirdPartyLicensesDialog } from "@graphite/messages";
+import { DisplayDialog, DialogClose, UpdateDialogButtons, UpdateDialogColumn1, UpdateDialogColumn2, patchLayout, TriggerDisplayThirdPartyLicensesDialog } from "@graphite/messages";
 import type { Layout } from "@graphite/messages";
 
 export function createDialogState(editor: Editor) {
@@ -76,7 +76,7 @@ export function createDialogState(editor: Editor) {
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(DisplayDialogDismiss, dismissDialog);
+	editor.subscriptions.subscribeJsMessage(DialogClose, dismissDialog);
 
 	editor.subscriptions.subscribeJsMessage(TriggerDisplayThirdPartyLicensesDialog, async () => {
 		const BACKUP_URL = "https://editor.graphite.art/third-party-licenses.txt";

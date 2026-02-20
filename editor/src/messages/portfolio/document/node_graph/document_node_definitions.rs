@@ -2043,7 +2043,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 					input_metadata: vec![
 						("Content", "TODO").into(),
 						InputMetadata::with_name_description_override(
-							"Separation Disk Diameter",
+							"Separation",
 							"TODO",
 							WidgetOverride::Number(NumberInputSettings {
 								min: Some(0.01),
