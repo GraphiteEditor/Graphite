@@ -52,6 +52,33 @@ fn circle(
 	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_ellipse(DVec2::splat(-radius), DVec2::splat(radius))))
 }
 
+/// Generates a teardrop shape with a chosen radius
+#[node_macro::node(category("Vector: Shape"))]
+fn teardrop(
+	_: impl Ctx,
+	_primary: (),
+	#[unit(" px")]
+	#[default(50)]
+	radius_x: f64,
+	#[unit(" px")]
+	#[default(25)]
+	radius_y: f64,
+) -> Table<Vector> {
+	let corner1 = DVec2::new(-radius_x, -radius_y * 2.);
+	let corner2 = DVec2::new(radius_x, radius_y * 0.75);
+
+	let mut teardrop = Vector::from_subpath(subpath::Subpath::new_teardrop(corner1, corner2));
+
+	let len = teardrop.segment_domain.ids().len();
+	for i in 0..len {
+		teardrop
+			.colinear_manipulators
+			.push([HandleId::end(teardrop.segment_domain.ids()[i]), HandleId::primary(teardrop.segment_domain.ids()[(i + 1) % len])]);
+	}
+
+	Table::new_from_element(teardrop)
+}
+
 /// Generates an arc shape forming a portion of a circle which may be open, closed, or a pie slice.
 #[node_macro::node(category("Vector: Shape"))]
 fn arc(
