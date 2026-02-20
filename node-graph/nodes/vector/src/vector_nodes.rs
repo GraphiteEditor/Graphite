@@ -1325,25 +1325,6 @@ async fn separate_subpaths(_: impl Ctx, content: Table<Vector>) -> Table<Vector>
 		.collect()
 }
 
-// TODO: Call this "Map" once it's fully generic
-#[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn map_vector(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: Table<Vector>, mapped: impl Node<Context<'static>, Output = Table<Vector>>) -> Table<Vector> {
-	let mut rows = Vec::new();
-
-	for (i, row) in content.into_iter().enumerate() {
-		let owned_ctx = OwnedContextImpl::from(ctx.clone());
-		let owned_ctx = owned_ctx.with_vararg(Box::new(Table::new_from_row(row))).with_index(i);
-		let table = mapped.eval(owned_ctx.into_context()).await;
-
-		for inner_row in table {
-			rows.push(inner_row);
-		}
-	}
-
-	rows.into_iter().collect()
-}
-
-// TODO: Call this "Map" once it's fully generic
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
 async fn map_points(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: Table<Vector>, mapped: impl Node<Context<'static>, Output = DVec2>) -> Table<Vector> {
 	let mut content = content;

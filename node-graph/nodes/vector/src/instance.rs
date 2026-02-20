@@ -1,6 +1,7 @@
-use core_types::Color;
 use core_types::table::{Table, TableRowRef};
+use core_types::{AnyHash, Color};
 use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, OwnedContextImpl};
+use dyn_any::DynAny;
 use graphic_types::Graphic;
 use graphic_types::Vector;
 use graphic_types::raster_types::{CPU, Raster};
@@ -80,6 +81,41 @@ async fn instance_repeat<T: Into<Graphic> + Default + Send + Clone + 'static>(
 	}
 
 	result_table
+}
+
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn map<Item: AnyHash + Send + Sync + std::hash::Hash>(
+	ctx: impl Ctx + CloneVarArgs + ExtractAll,
+	#[implementations(
+		Table<Graphic>,
+		Table<Vector>,
+		Table<Raster<CPU>>,
+		Table<Color>,
+		Table<GradientStops>,
+	)]
+	content: Table<Item>,
+	#[implementations(
+		Context -> Table<Graphic>,
+		Context -> Table<Vector>,
+		Context -> Table<Raster<CPU>>,
+		Context -> Table<Color>,
+		Context -> Table<GradientStops>,
+	)]
+	mapped: impl Node<Context<'static>, Output = Table<Item>>,
+) -> Table<Item> {
+	let mut rows = Vec::new();
+
+	for (i, row) in content.into_iter().enumerate() {
+		let owned_ctx = OwnedContextImpl::from(ctx.clone());
+		let owned_ctx = owned_ctx.with_vararg(Box::new(Table::new_from_row(row))).with_index(i);
+		let table = mapped.eval(owned_ctx.into_context()).await;
+
+		for inner_row in table {
+			rows.push(inner_row);
+		}
+	}
+
+	rows.into_iter().collect()
 }
 
 #[cfg(test)]
