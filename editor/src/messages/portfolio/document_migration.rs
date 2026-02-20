@@ -1546,11 +1546,11 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		}
 	}
 
-	// Add the "Depth" parameter to the "Instance Index" node
+	// Add the "Depth" parameter to the "Read Index" node
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::context::read_index::IDENTIFIER) && inputs_count == 0 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
-		document.network_interface.set_display_name(node_id, "Instance Index".to_string(), network_path);
+		document.network_interface.set_display_name(node_id, "Read Index".to_string(), network_path);
 
 		let mut node_path = network_path.to_vec();
 		node_path.push(*node_id);
@@ -1646,7 +1646,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::F64(1.), false), network_path);
 	}
 
-	// Upgrade the "Instance Position" node to add the "Loop Level" input
+	// Upgrade the "Read Position" node to add the "Loop Level" input
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::context::read_position::IDENTIFIER) && inputs_count < 2 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
