@@ -15,6 +15,7 @@ core-types = { workspace = true }
 vector-types = { workspace = true }
 graphic-types = { workspace = true }
 node-macro = { workspace = true }
+repeat-nodes = { workspace = true }
 
 # Workspace dependencies
 dyn-any = { workspace = true }

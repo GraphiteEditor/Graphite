@@ -24,3 +24,9 @@ log = { workspace = true }
 
 # Optional workspace dependencies
 serde = { workspace = true, optional = true }
+
+[dev-dependencies]
+graphene-core = { workspace = true }
+vector-nodes = { workspace = true }
+tokio = { workspace = true, features = ["macros", "rt"] }
+kurbo = { workspace = true }

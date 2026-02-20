@@ -1213,7 +1213,7 @@ async fn map_points(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: Table<Ve
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn flatten_path<T: 'n + Send>(
+pub async fn flatten_path<T: 'n + Send>(
 	_: impl Ctx,
 	#[implementations(
 		Table<Graphic>,
@@ -2407,60 +2407,6 @@ mod test {
 	}
 
 	#[tokio::test]
-	async fn repeat() {
-		let direction = DVec2::X * 1.5;
-		let count = 3;
-		let repeated = super::repeat(
-			Footprint::default(),
-			vector_node_from_bezpath(Rect::new(0., 0., 1., 1.).to_path(DEFAULT_ACCURACY)),
-			direction,
-			0.,
-			count,
-		)
-		.await;
-		let vector_table = super::flatten_path(Footprint::default(), repeated).await;
-		let vector = vector_table.iter().next().unwrap().element;
-		assert_eq!(vector.region_manipulator_groups().count(), 3);
-		for (index, (_, manipulator_groups)) in vector.region_manipulator_groups().enumerate() {
-			assert!((manipulator_groups[0].anchor - direction * index as f64 / (count - 1) as f64).length() < 1e-5);
-		}
-	}
-	#[tokio::test]
-	async fn repeat_transform_position() {
-		let direction = DVec2::new(12., 10.);
-		let count = 8;
-		let repeated = super::repeat(
-			Footprint::default(),
-			vector_node_from_bezpath(Rect::new(0., 0., 1., 1.).to_path(DEFAULT_ACCURACY)),
-			direction,
-			0.,
-			count,
-		)
-		.await;
-		let vector_table = super::flatten_path(Footprint::default(), repeated).await;
-		let vector = vector_table.iter().next().unwrap().element;
-		assert_eq!(vector.region_manipulator_groups().count(), 8);
-		for (index, (_, manipulator_groups)) in vector.region_manipulator_groups().enumerate() {
-			assert!((manipulator_groups[0].anchor - direction * index as f64 / (count - 1) as f64).length() < 1e-5);
-		}
-	}
-	#[tokio::test]
-	async fn repeat_radial() {
-		let repeated = super::repeat_radial(Footprint::default(), vector_node_from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY)), 45., 4., 8).await;
-		let vector_table = super::flatten_path(Footprint::default(), repeated).await;
-		let vector = vector_table.iter().next().unwrap().element;
-		assert_eq!(vector.region_manipulator_groups().count(), 8);
-
-		for (index, (_, manipulator_groups)) in vector.region_manipulator_groups().enumerate() {
-			let expected_angle = (index as f64 + 1.) * 45.;
-
-			let center = (manipulator_groups[0].anchor + manipulator_groups[2].anchor) / 2.;
-			let actual_angle = DVec2::Y.angle_to(center).to_degrees();
-
-			assert!((actual_angle - expected_angle).abs() % 360. < 1e-5, "Expected {expected_angle} found {actual_angle}");
-		}
-	}
-	#[tokio::test]
 	async fn bounding_box() {
 		let bounding_box = super::bounding_box((), vector_node_from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY))).await;
 		let bounding_box = bounding_box.iter().next().unwrap().element;
@@ -2586,8 +2532,11 @@ mod test {
 	}
 	#[tokio::test]
 	async fn morph() {
-		let rectangle = vector_node_from_bezpath(Rect::new(0., 0., 100., 100.).to_path(DEFAULT_ACCURACY));
-		let rectangles = super::repeat(Footprint::default(), rectangle, DVec2::new(-100., -100.), 0., 2).await;
+		let mut rectangles = vector_node_from_bezpath(Rect::new(0., 0., 100., 100.).to_path(DEFAULT_ACCURACY));
+		let mut second_rectangle = rectangles.get(0).unwrap().into_cloned();
+		second_rectangle.transform *= DAffine2::from_translation((-100., -100.).into());
+		rectangles.push(second_rectangle);
+
 		let morphed = super::morph(Footprint::default(), rectangles, 0.5).await;
 		let element = morphed.iter().next().unwrap().element;
 		assert_eq!(
