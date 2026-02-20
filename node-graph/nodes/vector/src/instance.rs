@@ -1,7 +1,6 @@
 use core_types::Color;
 use core_types::table::{Table, TableRowRef};
-use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractIndex, ExtractPosition, OwnedContextImpl};
-use glam::DVec2;
+use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, OwnedContextImpl};
 use graphic_types::Graphic;
 use graphic_types::Vector;
 use graphic_types::raster_types::{CPU, Raster};
@@ -83,51 +82,6 @@ async fn instance_repeat<T: Into<Graphic> + Default + Send + Clone + 'static>(
 	result_table
 }
 
-#[node_macro::node(category("Instancing"), path(core_types::vector))]
-async fn instance_position(
-	ctx: impl Ctx + ExtractPosition,
-	_primary: (),
-	/// The number of nested loops to traverse outwards (from the innermost loop) to get the position from. The most upstream loop is level 0, and downstream loops add levels.
-	///
-	/// In programming terms: inside the double loop `i { j { ... } }`, *Loop Level* 0 = `j` and 1 = `i`. After inserting a third loop `k { ... }`, inside it, levels would be 0 = `k`, 1 = `j`, and 2 = `i`.
-	loop_level: u32,
-) -> DVec2 {
-	let Some(position_iter) = ctx.try_position() else { return DVec2::ZERO };
-	let mut last = DVec2::ZERO;
-	for (i, position) in position_iter.enumerate() {
-		if i == loop_level as usize {
-			return position;
-		}
-		last = position;
-	}
-	last
-}
-
-// TODO: Return u32, u64, or usize instead of f64 after #1621 is resolved and has allowed us to implement automatic type conversion in the node graph for nodes with generic type inputs.
-// TODO: (Currently automatic type conversion only works for concrete types, via the Graphene preprocessor and not the full Graphene type system.)
-/// Produces the index of the current iteration of a loop by reading from the evaluation context, which is supplied by downstream nodes such as *Instance Repeat*.
-///
-/// Nested loops can enable 2D or higher-dimensional iteration by using the *Loop Level* parameter to read the index from outer levels of loops.
-#[node_macro::node(category("Instancing"), path(core_types::vector))]
-async fn instance_index(
-	ctx: impl Ctx + ExtractIndex,
-	_primary: (),
-	/// The number of nested loops to traverse outwards (from the innermost loop) to get the index from. The most upstream loop is level 0, and downstream loops add levels.
-	///
-	/// In programming terms: inside the double loop `i { j { ... } }`, *Loop Level* 0 = `j` and 1 = `i`. After inserting a third loop `k { ... }`, inside it, levels would be 0 = `k`, 1 = `j`, and 2 = `i`.
-	loop_level: u32,
-) -> f64 {
-	let Some(index_iter) = ctx.try_index() else { return 0. };
-	let mut last = 0;
-	for (i, index) in index_iter.enumerate() {
-		if i == loop_level as usize {
-			return index as f64;
-		}
-		last = index;
-	}
-	last as f64
-}
-
 #[cfg(test)]
 mod test {
 	use super::*;
@@ -135,6 +89,7 @@ mod test {
 	use core_types::Ctx;
 	use core_types::Node;
 	use glam::DVec2;
+	use graphene_core::ReadPositionNode;
 	use graphene_core::extract_xy::{ExtractXyNode, XY};
 	use graphic_types::Vector;
 	use std::future::Future;
@@ -157,13 +112,7 @@ mod test {
 		let owned = OwnedContextImpl::default().into_context();
 		let rect = RectangleNode::new(
 			FutureWrapperNode(()),
-			ExtractXyNode::new(
-				InstancePositionNode {
-					_primary: FutureWrapperNode(()),
-					loop_level: FutureWrapperNode(0),
-				},
-				FutureWrapperNode(XY::Y),
-			),
+			ExtractXyNode::new(ReadPositionNode::new(FutureWrapperNode(()), FutureWrapperNode(0)), FutureWrapperNode(XY::Y)),
 			FutureWrapperNode(2_f64),
 			FutureWrapperNode(false),
 			FutureWrapperNode(0_f64),
