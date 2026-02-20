@@ -1,7 +1,6 @@
 use core_types::table::{Table, TableRowRef};
 use core_types::{AnyHash, Color};
 use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, OwnedContextImpl};
-use dyn_any::DynAny;
 use graphic_types::Graphic;
 use graphic_types::Vector;
 use graphic_types::raster_types::{CPU, Raster};
@@ -103,19 +102,17 @@ async fn map<Item: AnyHash + Send + Sync + std::hash::Hash>(
 	)]
 	mapped: impl Node<Context<'static>, Output = Table<Item>>,
 ) -> Table<Item> {
-	let mut rows = Vec::new();
+	let mut rows = Table::new();
 
 	for (i, row) in content.into_iter().enumerate() {
 		let owned_ctx = OwnedContextImpl::from(ctx.clone());
 		let owned_ctx = owned_ctx.with_vararg(Box::new(Table::new_from_row(row))).with_index(i);
 		let table = mapped.eval(owned_ctx.into_context()).await;
 
-		for inner_row in table {
-			rows.push(inner_row);
-		}
+		rows.extend(table);
 	}
 
-	rows.into_iter().collect()
+	rows
 }
 
 #[cfg(test)]
