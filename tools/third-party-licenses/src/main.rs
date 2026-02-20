@@ -117,53 +117,49 @@ fn parse_cargo_about_credits() -> Vec<LicenseEntry> {
 		process::exit(1);
 	});
 
-	let mut license_groups: Vec<(String, Option<String>, Vec<Package>)> = Vec::new();
-	let mut license_index_map: BTreeMap<String, usize> = BTreeMap::new();
-
 	let licenses_array = parsed["licenses"].as_array().unwrap_or_else(|| {
 		eprintln!("Expected 'licenses' array in cargo about JSON output");
 		process::exit(1);
 	});
 
-	for license in licenses_array {
-		let license_name = license["name"].as_str().map(String::from);
-		let license_text = license["text"].as_str().unwrap_or_default().trim().to_string();
+	licenses_array
+		.iter()
+		.map(|license| {
+			let license_name = license["name"].as_str().map(String::from);
+			let license_text = license["text"].as_str().unwrap_or_default().trim().to_string();
 
-		let used_by = license["used_by"].as_array().cloned().unwrap_or_default();
+			let used_by = license["used_by"].as_array().cloned().unwrap_or_default();
 
-		let packages: Vec<Package> = used_by
-			.iter()
-			.map(|entry| {
-				let krate = &entry["crate"];
-				let name = krate["name"].as_str().unwrap_or_default();
-				let version = krate["version"].as_str().unwrap_or_default();
-				let display_name = if version.is_empty() { name.to_string() } else { format!("{name}@{version}") };
+			let packages: Vec<Package> = used_by
+				.iter()
+				.map(|entry| {
+					let crate_obj = &entry["crate"];
+					let name = crate_obj["name"].as_str().unwrap_or_default();
+					let version = crate_obj["version"].as_str().unwrap_or_default();
+					let display_name = if version.is_empty() { name.to_string() } else { format!("{name}@{version}") };
 
-				let authors = krate["authors"]
-					.as_array()
-					.map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
-					.unwrap_or_default();
+					let authors = crate_obj["authors"]
+						.as_array()
+						.map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+						.unwrap_or_default();
 
-				let repository = krate["repository"].as_str().and_then(|s| if s.is_empty() { None } else { Some(s.to_string()) });
+					let repository = crate_obj["repository"].as_str().and_then(|s| if s.is_empty() { None } else { Some(s.to_string()) });
 
-				Package {
-					name: display_name,
-					authors,
-					url: repository,
-				}
-			})
-			.collect();
+					Package {
+						name: display_name,
+						authors,
+						url: repository,
+					}
+				})
+				.collect();
 
-		if let Some(&idx) = license_index_map.get(&license_text) {
-			license_groups[idx].2.extend(packages);
-		} else {
-			let idx = license_groups.len();
-			license_index_map.insert(license_text.clone(), idx);
-			license_groups.push((license_text, license_name, packages));
-		}
-	}
-
-	license_groups.into_iter().map(|(text, name, packages)| LicenseEntry { name, text, packages }).collect()
+			LicenseEntry {
+				name: license_name,
+				text: license_text,
+				packages,
+			}
+		})
+		.collect()
 }
 
 fn parse_cef_credits(html: &str) -> Vec<LicenseEntry> {
@@ -174,36 +170,32 @@ fn parse_cef_credits(html: &str) -> Vec<LicenseEntry> {
 	let homepage_sel = Selector::parse("span.homepage a").unwrap();
 	let license_sel = Selector::parse("div.license pre").unwrap();
 
-	let mut license_groups: Vec<(String, Vec<Package>)> = Vec::new();
-	let mut license_index_map: BTreeMap<String, usize> = BTreeMap::new();
+	document
+		.select(&product_sel)
+		.filter_map(|product| {
+			let name: String = product.select(&title_sel).next().map(|el| el.text().collect()).unwrap_or_default();
 
-	for product in document.select(&product_sel) {
-		let name: String = product.select(&title_sel).next().map(|el| el.text().collect()).unwrap_or_default();
+			if name.is_empty() {
+				return None;
+			}
 
-		if name.is_empty() {
-			continue;
-		}
+			let homepage = product.select(&homepage_sel).next().and_then(|el| el.value().attr("href").map(String::from));
 
-		let homepage = product.select(&homepage_sel).next().and_then(|el| el.value().attr("href").map(String::from));
+			let license_text: String = product.select(&license_sel).next().map(|el| el.text().collect::<String>()).unwrap_or_default().trim().to_string();
 
-		let license_text: String = product.select(&license_sel).next().map(|el| el.text().collect::<String>()).unwrap_or_default().trim().to_string();
+			let pkg = Package {
+				name,
+				url: homepage,
+				authors: Vec::new(),
+			};
 
-		let pkg = Package {
-			name,
-			url: homepage,
-			authors: Vec::new(),
-		};
-
-		if let Some(&idx) = license_index_map.get(&license_text) {
-			license_groups[idx].1.push(pkg);
-		} else {
-			let idx = license_groups.len();
-			license_index_map.insert(license_text.clone(), idx);
-			license_groups.push((license_text, vec![pkg]));
-		}
-	}
-
-	license_groups.into_iter().map(|(text, packages)| LicenseEntry { name: None, text, packages }).collect()
+			Some(LicenseEntry {
+				name: None,
+				text: license_text,
+				packages: vec![pkg],
+			})
+		})
+		.collect()
 }
 
 #[derive(Deserialize)]
@@ -238,33 +230,29 @@ fn parse_npm_credits(dir: Option<&std::path::Path>) -> Vec<LicenseEntry> {
 		process::exit(1);
 	});
 
-	let mut license_groups: Vec<(String, Vec<Package>)> = Vec::new();
-	let mut license_index_map: BTreeMap<String, usize> = BTreeMap::new();
+	entries
+		.iter()
+		.map(|(name, entry)| {
+			let license_text = entry
+				.license_file
+				.as_ref()
+				.and_then(|p| fs::read_to_string(p).ok())
+				.map(|s| s.trim().to_string())
+				.unwrap_or_else(|| entry.licenses.clone().unwrap_or_default());
 
-	for (name, entry) in &entries {
-		let license_text = entry
-			.license_file
-			.as_ref()
-			.and_then(|p| fs::read_to_string(p).ok())
-			.map(|s| s.trim().to_string())
-			.unwrap_or_else(|| entry.licenses.clone().unwrap_or_default());
+			let pkg = Package {
+				name: name.to_string(),
+				url: entry.repository.clone(),
+				authors: entry.publisher.as_ref().map(|p| vec![p.clone()]).unwrap_or_default(),
+			};
 
-		let pkg = Package {
-			name: name.to_string(),
-			url: entry.repository.clone(),
-			authors: entry.publisher.as_ref().map(|p| vec![p.clone()]).unwrap_or_default(),
-		};
-
-		if let Some(&idx) = license_index_map.get(&license_text) {
-			license_groups[idx].1.push(pkg);
-		} else {
-			let idx = license_groups.len();
-			license_index_map.insert(license_text.clone(), idx);
-			license_groups.push((license_text, vec![pkg]));
-		}
-	}
-
-	license_groups.into_iter().map(|(text, packages)| LicenseEntry { name: None, text, packages }).collect()
+			LicenseEntry {
+				name: None,
+				text: license_text,
+				packages: vec![pkg],
+			}
+		})
+		.collect()
 }
 
 fn format_credits_as_text(licenses: &Vec<LicenseEntry>) -> String {
