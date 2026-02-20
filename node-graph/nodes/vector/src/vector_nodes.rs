@@ -2,6 +2,7 @@ use core::cmp::Ordering;
 use core::f64::consts::PI;
 use core::hash::{Hash, Hasher};
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
+use core_types::math::rect::Rect;
 use core_types::registry::types::{Angle, IntegerCount, Length, Multiplier, Percentage, PixelLength, PixelSize, Progression, SeedValue};
 use core_types::table::{Table, TableRow, TableRowMut};
 use core_types::transform::{Footprint, Transform};
@@ -29,6 +30,7 @@ use vector_types::vector::style::{Fill, Gradient, GradientStops, Stroke};
 use vector_types::vector::style::{PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{FillId, RegionId};
 use vector_types::vector::{PointId, SegmentDomain, SegmentId, StrokeId, VectorExt};
+const NORMALIZATION_EPSILON: f64 = 1e-9;
 
 /// Implemented for types that can be converted to an iterator of vector rows.
 /// Used for the fill and stroke node so they can be used on `Table<Graphic>` or `Table<Vector>`.
@@ -792,18 +794,31 @@ async fn box_warp(_: impl Ctx, content: Table<Vector>, #[expose] rectangle: Tabl
 		return content;
 	};
 
+	// Compute combined bounding box across all vectors in the table
+	let mut group_bbox: Option<[DVec2; 2]> = None;
+	for row in content.iter() {
+		if let Some(bbox) = row.element.bounding_box_with_transform(*row.transform) {
+			group_bbox = Some(match group_bbox {
+				None => bbox,
+				Some(current) => Rect::combine_bounds(Rect(current), Rect(bbox)).0,
+			});
+		}
+	}
+	let group_bbox = group_bbox.unwrap_or([DVec2::ZERO, DVec2::ONE]);
+	let group_size = group_bbox[1] - group_bbox[0];
+
 	content
 		.into_iter()
 		.map(|mut row| {
-			let transform = row.transform;
 			let vector = row.element;
 
 			// Get the bounding box of the source vector geometry
-			let source_bbox = vector.bounding_box_with_transform(transform).unwrap_or([DVec2::ZERO, DVec2::ONE]);
+			// (Replaced with group_bbox so all subpaths share the same frame)
+			let source_bbox = group_bbox;
 
 			// Extract first 4 points from target shape to form the quadrilateral
 			// Apply the target's transform to get points in world space
-			let target_points: Vec<DVec2> = target.point_domain.positions().iter().map(|&p| target_transform.transform_point2(p)).take(4).collect();
+			let target_points: Vec<DVec2> = target.point_domain.positions().iter().map(|&p| (*target_transform).transform_point2(p)).take(4).collect();
 
 			// If we have fewer than 4 points, use the corners of the source bounding box
 			// This handles the degenerative case
@@ -823,15 +838,21 @@ async fn box_warp(_: impl Ctx, content: Table<Vector>, #[expose] rectangle: Tabl
 			let mut result = vector.clone();
 
 			// Precompute source bounding box size for normalization
-			let source_size = source_bbox[1] - source_bbox[0];
+			let source_size = group_size;
+
+			// Safe normalization size (prevents division by zero)
+			let safe_size = DVec2::new(
+				if source_size.x.abs() < NORMALIZATION_EPSILON { 1.0 } else { source_size.x },
+				if source_size.y.abs() < NORMALIZATION_EPSILON { 1.0 } else { source_size.y },
+			);
 
 			// Transform points
 			for (_, position) in result.point_domain.positions_mut() {
 				// Get the point in world space
-				let world_pos = transform.transform_point2(*position);
+				let world_pos = row.transform.transform_point2(*position);
 
 				// Normalize coordinates within the source bounding box
-				let t = ((world_pos - source_bbox[0]) / source_size).clamp(DVec2::ZERO, DVec2::ONE);
+				let t = ((world_pos - source_bbox[0]) / safe_size).clamp(DVec2::ZERO, DVec2::ONE);
 
 				// Apply bilinear interpolation
 				*position = bilinear_interpolate(t, &dst_corners);
@@ -840,11 +861,11 @@ async fn box_warp(_: impl Ctx, content: Table<Vector>, #[expose] rectangle: Tabl
 			// Transform handles in bezier curves
 			for (_, handles, _, _) in result.handles_mut() {
 				*handles = handles.apply_transformation(|pos| {
-					// Get the handle in world space
-					let world_pos = transform.transform_point2(pos);
+					// Get the point in world space
+					let world_pos = row.transform.transform_point2(pos);
 
 					// Normalize coordinates within the source bounding box
-					let t = ((world_pos - source_bbox[0]) / source_size).clamp(DVec2::ZERO, DVec2::ONE);
+					let t = ((world_pos - source_bbox[0]) / safe_size).clamp(DVec2::ZERO, DVec2::ONE);
 
 					// Apply bilinear interpolation
 					bilinear_interpolate(t, &dst_corners)
