@@ -103,6 +103,7 @@ pub enum ShapeToolMessage {
 	PointerOutsideViewport { modifier: ShapeToolModifierKey },
 	UpdateOptions { options: ShapeOptionsUpdate },
 	SetShape { shape: ShapeType },
+	SyncShapeWithOptions,
 
 	IncreaseSides,
 	DecreaseSides,
@@ -178,27 +179,9 @@ fn create_shape_option_widget(shape_type: ShapeType) -> WidgetInstance {
 			}
 			.into()
 		}),
-		MenuListEntry::new("Rectangle").label("Rectangle").on_commit(move |_| {
-			ShapeToolMessage::UpdateOptions {
-				options: ShapeOptionsUpdate::ShapeType(ShapeType::Rectangle),
-			}
-			.into()
-		}),
-		MenuListEntry::new("Ellipse").label("Ellipse").on_commit(move |_| {
-			ShapeToolMessage::UpdateOptions {
-				options: ShapeOptionsUpdate::ShapeType(ShapeType::Ellipse),
-			}
-			.into()
-		}),
 		MenuListEntry::new("Arrow").label("Arrow").on_commit(move |_| {
 			ShapeToolMessage::UpdateOptions {
 				options: ShapeOptionsUpdate::ShapeType(ShapeType::Arrow),
-			}
-			.into()
-		}),
-		MenuListEntry::new("Line").label("Line").on_commit(move |_| {
-			ShapeToolMessage::UpdateOptions {
-				options: ShapeOptionsUpdate::ShapeType(ShapeType::Line),
 			}
 			.into()
 		}),
@@ -1170,14 +1153,15 @@ impl Fsm for ShapeToolFsmState {
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.data.cleanup(responses);
 				tool_data.current_shape = shape;
-				responses.add(ShapeToolMessage::UpdateOptions {
-					options: ShapeOptionsUpdate::ShapeType(shape),
-				});
-
-				responses.add(ShapeToolMessage::UpdateOptions {
-					options: ShapeOptionsUpdate::ShapeType(shape),
-				});
+				// Update hints for the new shape (without updating options.shape_type)
+				update_dynamic_hints(&ShapeToolFsmState::Ready(shape), responses, tool_data);
 				ShapeToolFsmState::Ready(shape)
+			}
+			(_, ShapeToolMessage::SyncShapeWithOptions) => {
+				// Sync current_shape with the dropdown selection when returning from alias tools
+				tool_data.current_shape = tool_options.shape_type;
+				update_dynamic_hints(&ShapeToolFsmState::Ready(tool_options.shape_type), responses, tool_data);
+				ShapeToolFsmState::Ready(tool_options.shape_type)
 			}
 			(_, ShapeToolMessage::HideShapeTypeWidget { hide }) => {
 				tool_data.hide_shape_option_widget = hide;
