@@ -40,7 +40,7 @@ members = [
 	"node-graph/preprocessor",
 	"proc-macros",
 	"tools/crate-hierarchy-viz",
-	"tools/cef-credits-parse",
+	"tools/third-party-licenses",
 	"tools/editor-message-tree",
 	"tools/node-docs",
 ]

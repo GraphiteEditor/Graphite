@@ -16,11 +16,6 @@ use std::process::Command;
 use std::{env, fs, process};
 
 #[derive(Serialize)]
-struct Credits {
-	licenses: Vec<LicenseEntry>,
-}
-
-#[derive(Serialize)]
 struct LicenseEntry {
 	name: Option<String>,
 	text: String,
@@ -45,7 +40,7 @@ fn main() {
 	let cef_path = match cef_path {
 		Some(p) => p,
 		None => {
-			eprintln!("Usage: cef-credits-parse [--text] <path-to-credits.html> [npm-dir]");
+			eprintln!("Usage: third-party-licenses [--text] <path-to-credits.html> [npm-dir]");
 			process::exit(1);
 		}
 	};
@@ -65,7 +60,7 @@ fn main() {
 	let npm_credits = parse_npm_credits(npm_dir.as_deref());
 
 	eprintln!("Merging and deduplicating credits...");
-	let credits = merge_credits(vec![cargo_credits, cef_credits, npm_credits]);
+	let credits = merge_dedup_and_sort(vec![cargo_credits, cef_credits, npm_credits]);
 
 	eprintln!("Outputting credits");
 	if text_mode {
@@ -76,35 +71,35 @@ fn main() {
 	}
 }
 
-fn merge_credits(sources: Vec<Credits>) -> Credits {
-	let mut license_groups: Vec<(String, Option<String>, Vec<Package>)> = Vec::new();
-	let mut license_index_map: BTreeMap<String, usize> = BTreeMap::new();
+fn dedup_by_licence_text(vec: Vec<LicenseEntry>) -> Vec<LicenseEntry> {
+	let mut map: BTreeMap<String, LicenseEntry> = BTreeMap::new();
 
-	for source in sources {
-		for entry in source.licenses {
-			let key = entry.name.clone().unwrap_or_else(|| entry.text.clone());
-
-			if let Some(&idx) = license_index_map.get(&key) {
-				license_groups[idx].2.extend(entry.packages);
-			} else {
-				let idx = license_groups.len();
-				license_index_map.insert(key, idx);
-				license_groups.push((entry.text, entry.name, entry.packages));
+	for entry in vec {
+		match map.entry(entry.text.clone()) {
+			std::collections::btree_map::Entry::Occupied(mut e) => {
+				e.get_mut().packages.extend(entry.packages);
+			}
+			std::collections::btree_map::Entry::Vacant(e) => {
+				e.insert(entry);
 			}
 		}
 	}
 
-	for (_, _, packages) in &mut license_groups {
-		packages.sort_by(|a, b| a.name.cmp(&b.name));
-		packages.dedup_by(|a, b| a.name == b.name);
-	}
-
-	let licenses = license_groups.into_iter().map(|(text, name, packages)| LicenseEntry { name, text, packages }).collect();
-
-	Credits { licenses }
+	map.into_values().collect()
 }
 
-fn parse_cargo_about_credits() -> Credits {
+fn merge_dedup_and_sort(sources: Vec<Vec<LicenseEntry>>) -> Vec<LicenseEntry> {
+	let mut all = Vec::new();
+	for source in sources {
+		all.extend(source);
+	}
+	let mut all = dedup_by_licence_text(all);
+	all.sort_by_cached_key(|e| e.packages.len());
+	all.reverse();
+	all
+}
+
+fn parse_cargo_about_credits() -> Vec<LicenseEntry> {
 	let output = Command::new("cargo").args(["about", "generate", "--format", "json", "--frozen"]).output().unwrap_or_else(|e| {
 		eprintln!("Failed to run cargo about generate: {e}");
 		process::exit(1);
@@ -168,12 +163,10 @@ fn parse_cargo_about_credits() -> Credits {
 		}
 	}
 
-	let licenses = license_groups.into_iter().map(|(text, name, packages)| LicenseEntry { name, text, packages }).collect();
-
-	Credits { licenses }
+	license_groups.into_iter().map(|(text, name, packages)| LicenseEntry { name, text, packages }).collect()
 }
 
-fn parse_cef_credits(html: &str) -> Credits {
+fn parse_cef_credits(html: &str) -> Vec<LicenseEntry> {
 	let document = Html::parse_document(html);
 
 	let product_sel = Selector::parse("div.product").unwrap();
@@ -210,9 +203,7 @@ fn parse_cef_credits(html: &str) -> Credits {
 		}
 	}
 
-	let licenses = license_groups.into_iter().map(|(text, packages)| LicenseEntry { name: None, text, packages }).collect();
-
-	Credits { licenses }
+	license_groups.into_iter().map(|(text, packages)| LicenseEntry { name: None, text, packages }).collect()
 }
 
 #[derive(Deserialize)]
@@ -224,7 +215,7 @@ struct NpmEntry {
 	publisher: Option<String>,
 }
 
-fn parse_npm_credits(dir: Option<&std::path::Path>) -> Credits {
+fn parse_npm_credits(dir: Option<&std::path::Path>) -> Vec<LicenseEntry> {
 	let mut cmd = Command::new("npx");
 	cmd.args(["license-checker-rseidelsohn", "--json"]);
 	if let Some(dir) = dir {
@@ -273,15 +264,13 @@ fn parse_npm_credits(dir: Option<&std::path::Path>) -> Credits {
 		}
 	}
 
-	let licenses = license_groups.into_iter().map(|(text, packages)| LicenseEntry { name: None, text, packages }).collect();
-
-	Credits { licenses }
+	license_groups.into_iter().map(|(text, packages)| LicenseEntry { name: None, text, packages }).collect()
 }
 
-fn format_credits_as_text(credits: &Credits) -> String {
+fn format_credits_as_text(licenses: &Vec<LicenseEntry>) -> String {
 	let mut out = String::new();
 
-	for license in &credits.licenses {
+	for license in licenses {
 		let package_lines: Vec<String> = license
 			.packages
 			.iter()
@@ -318,7 +307,7 @@ fn format_credits_as_text(credits: &Credits) -> String {
 		out.push('\n');
 		out.push_str(&format!(" {}\n", "\u{203e}".repeat(max_len + 2)));
 		for line in license.text.lines() {
-			out.push('\t');
+			out.push_str("    ");
 			out.push_str(line);
 			out.push('\n');
 		}

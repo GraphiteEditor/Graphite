@@ -1,5 +1,5 @@
 [package]
-name = "cef-credits-parse"
+name = "third-party-licenses"
 edition.workspace = true
 version.workspace = true
 license.workspace = true
