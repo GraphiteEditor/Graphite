@@ -565,7 +565,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							},
 							// 7: Map
 							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(vector_nodes::instance::map::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(graphic::map::IDENTIFIER),
 								inputs: vec![NodeInput::node(NodeId(12), 0), NodeInput::node(NodeId(6), 0)],
 								..Default::default()
 							},
@@ -881,7 +881,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 							},
 							// 5: Map
 							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(vector_nodes::instance::map::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(graphic::map::IDENTIFIER),
 								inputs: vec![NodeInput::node(NodeId(4), 0), NodeInput::node(NodeId(3), 0)],
 								..Default::default()
 							},

@@ -838,7 +838,7 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::vector::InstanceIndexNode", "core_types::vector::InstanceIndexNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::vector::instance::map::IDENTIFIER,
+		node: graphene_std::graphic::map::IDENTIFIER,
 		aliases: &["graphene_core::vector::InstanceMapNode"],
 	},
 	NodeReplacement {

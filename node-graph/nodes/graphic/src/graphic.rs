@@ -1,13 +1,45 @@
-use core_types::Color;
-use core_types::Ctx;
 use core_types::registry::types::SignedInteger;
 use core_types::table::{Table, TableRow};
 use core_types::uuid::NodeId;
+use core_types::{AnyHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{Graphic, IntoGraphicTable};
 use graphic_types::{Artboard, Vector};
 use raster_types::{CPU, GPU, Raster};
 use vector_types::GradientStops;
+
+#[node_macro::node(category("General"), path(graphene_core::vector))]
+async fn map<Item: AnyHash + Send + Sync + std::hash::Hash>(
+	ctx: impl Ctx + CloneVarArgs + ExtractAll,
+	#[implementations(
+		Table<Graphic>,
+		Table<Vector>,
+		Table<Raster<CPU>>,
+		Table<Color>,
+		Table<GradientStops>,
+	)]
+	content: Table<Item>,
+	#[implementations(
+		Context -> Table<Graphic>,
+		Context -> Table<Vector>,
+		Context -> Table<Raster<CPU>>,
+		Context -> Table<Color>,
+		Context -> Table<GradientStops>,
+	)]
+	mapped: impl Node<Context<'static>, Output = Table<Item>>,
+) -> Table<Item> {
+	let mut rows = Table::new();
+
+	for (i, row) in content.into_iter().enumerate() {
+		let owned_ctx = OwnedContextImpl::from(ctx.clone());
+		let owned_ctx = owned_ctx.with_vararg(Box::new(Table::new_from_row(row))).with_index(i);
+		let table = mapped.eval(owned_ctx.into_context()).await;
+
+		rows.extend(table);
+	}
+
+	rows
+}
 
 /// Performs internal editor record-keeping that enables tools to target this network's layer.
 /// This node associates the ID of the network's parent layer to every element of output data.
