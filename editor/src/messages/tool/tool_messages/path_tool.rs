@@ -609,6 +609,7 @@ struct PathToolData {
 	hovered_layers: Vec<LayerNodeIdentifier>,
 	ghost_outline: Vec<(Vec<ClickTargetType>, LayerNodeIdentifier)>,
 	make_path_editable_is_allowed: bool,
+	last_mouse_for_space: Option<DVec2>,
 }
 
 impl PathToolData {
@@ -2056,6 +2057,24 @@ impl Fsm for PathToolFsmState {
 				tool_data.started_drawing_from_inside = false;
 				tool_data.stored_selection = None;
 
+				let current_mouse = input.mouse.position;
+				let space_down = input.keyboard.get(move_anchor_with_handles as usize);
+
+				if space_down {
+					if let Some(previous_mouse) = tool_data.last_mouse_for_space {
+						let delta_viewport = current_mouse - previous_mouse;
+						tool_data.drag_start_pos += delta_viewport;
+						for point in &mut tool_data.lasso_polygon {
+							*point += delta_viewport;
+						}
+					}
+					tool_data.last_mouse_for_space = Some(current_mouse);
+				}
+
+				tool_data.previous_mouse_position = document.metadata().document_to_viewport.inverse().transform_point2(current_mouse);
+				tool_data.started_drawing_from_inside = false;
+				tool_data.stored_selection = None;
+
 				if selection_shape == SelectionShapeType::Lasso {
 					extend_lasso(&mut tool_data.lasso_polygon, input.mouse.position);
 				}
@@ -2104,6 +2123,57 @@ impl Fsm for PathToolFsmState {
 					segment_editing_modifier,
 				},
 			) => {
+				let current_mouse = input.mouse.position;
+				let space_down = input.keyboard.get(move_anchor_with_handles as usize);
+				if space_down {
+					if let Some(previous_mouse) = tool_data.last_mouse_for_space {
+						let delta_viewport = current_mouse - previous_mouse;
+						if delta_viewport.length_squared() > 0. {
+							let document_to_viewport = document.metadata().document_to_viewport;
+							let delta_document = document_to_viewport.inverse().transform_vector2(delta_viewport);
+
+							tool_data.drag_start_pos += delta_viewport;
+							tool_data.previous_mouse_position += delta_document;
+
+							shape_editor.move_selected_points_and_segments(None, document, delta_document, false, true, false, None, false, responses);
+						}
+					}
+					tool_data.last_mouse_for_space = Some(current_mouse);
+
+					// Auto-panning
+					let messages = [
+						PathToolMessage::PointerOutsideViewport {
+							toggle_colinear,
+							equidistant,
+							move_anchor_with_handles,
+							snap_angle,
+							lock_angle,
+							delete_segment,
+							break_colinear_molding,
+							segment_editing_modifier,
+						}
+						.into(),
+						PathToolMessage::PointerMove {
+							toggle_colinear,
+							equidistant,
+							move_anchor_with_handles,
+							snap_angle,
+							lock_angle,
+							delete_segment,
+							break_colinear_molding,
+							segment_editing_modifier,
+						}
+						.into(),
+					];
+					tool_data.auto_panning.setup_by_mouse_position(input, viewport, &messages, responses);
+
+					responses.add(OverlaysMessage::Draw);
+
+					return PathToolFsmState::Dragging(tool_data.dragging_state);
+				} else {
+					tool_data.last_mouse_for_space = None;
+				}
+
 				let selected_only_handles = !shape_editor.selected_points().any(|point| matches!(point, ManipulatorPointId::Anchor(_)));
 				tool_data.stored_selection = None;
 

@@ -217,6 +217,8 @@ struct FreehandToolData {
 	dragged: bool,
 	weight: f64,
 	layer: Option<LayerNodeIdentifier>,
+	last_mouse_for_space: Option<DVec2>,
+	points: Vec<(PointId, DVec2)>,
 }
 
 impl Fsm for FreehandToolFsmState {
@@ -253,6 +255,7 @@ impl Fsm for FreehandToolFsmState {
 				tool_data.dragged = false;
 				tool_data.end_point = None;
 				tool_data.weight = tool_options.line_weight;
+				tool_data.points.clear();
 
 				// Extend an endpoint of the selected path
 				let selected_nodes = document.network_interface.selected_nodes();
@@ -297,6 +300,31 @@ impl Fsm for FreehandToolFsmState {
 				FreehandToolFsmState::Drawing
 			}
 			(FreehandToolFsmState::Drawing, FreehandToolMessage::PointerMove) => {
+				let space_down = input.keyboard.get(Key::Space as usize);
+				if space_down {
+					if let Some(previous_mouse) = tool_data.last_mouse_for_space {
+						let delta_viewport = input.mouse.position - previous_mouse;
+						if delta_viewport.length_squared() > 0. {
+							let document_to_viewport = document.metadata().document_to_viewport;
+							let delta_document = document_to_viewport.inverse().transform_vector2(delta_viewport);
+
+							if let Some(layer) = tool_data.layer {
+								if let Some((pos, _)) = &mut tool_data.end_point {
+									*pos += delta_document;
+								}
+								for (id, point) in &mut tool_data.points {
+									*point += delta_document;
+									let modification_type = VectorModificationType::ApplyPointDelta { point: *id, delta: delta_document };
+									responses.add(GraphOperationMessage::Vector { layer, modification_type });
+								}
+							}
+						}
+					}
+					tool_data.last_mouse_for_space = Some(input.mouse.position);
+				} else {
+					tool_data.last_mouse_for_space = None;
+				}
+
 				if let Some(layer) = tool_data.layer {
 					let transform = document.metadata().transform_to_viewport(layer);
 					let position = transform.inverse().transform_point2(input.mouse.position);
@@ -382,6 +410,7 @@ fn extend_path_with_next_segment(tool_data: &mut FreehandToolData, position: DVe
 
 	tool_data.dragged = true;
 	tool_data.end_point = Some((position, id));
+	tool_data.points.push((id, position));
 }
 
 #[cfg(test)]

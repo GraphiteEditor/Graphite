@@ -253,6 +253,8 @@ struct SplineToolData {
 	merge_endpoints: Vec<(EndpointPosition, PointId)>,
 	snap_manager: SnapManager,
 	auto_panning: AutoPanning,
+	last_mouse_for_space: Option<DVec2>,
+	hovered_point: Option<PointId>,
 }
 
 impl SplineToolData {
@@ -264,6 +266,8 @@ impl SplineToolData {
 		self.preview_segment = None;
 		self.extend = false;
 		self.points = Vec::new();
+		self.last_mouse_for_space = None;
+		self.hovered_point = None;
 	}
 
 	/// Get the snapped point while ignoring current layer
@@ -425,6 +429,28 @@ impl Fsm for SplineToolFsmState {
 			}
 			(SplineToolFsmState::Drawing, SplineToolMessage::PointerMove) => {
 				let Some(layer) = tool_data.current_layer else { return SplineToolFsmState::Ready };
+
+				let space_down = input.keyboard.get(Key::Space as usize);
+				if space_down {
+					if let Some(previous_mouse) = tool_data.last_mouse_for_space {
+						let delta_viewport = input.mouse.position - previous_mouse;
+						if delta_viewport.length_squared() > 0. {
+							let document_to_viewport = document.metadata().document_to_viewport;
+							let delta_document = document_to_viewport.inverse().transform_vector2(delta_viewport);
+
+							tool_data.next_point += delta_document;
+							for (id, point) in &mut tool_data.points {
+								*point += delta_document;
+								let modification_type = VectorModificationType::ApplyPointDelta { point: *id, delta: delta_document };
+								responses.add(GraphOperationMessage::Vector { layer, modification_type });
+							}
+						}
+					}
+					tool_data.last_mouse_for_space = Some(input.mouse.position);
+				} else {
+					tool_data.last_mouse_for_space = None;
+				}
+
 				let ignore = |cp: PointId| tool_data.preview_point.is_some_and(|pp| pp == cp) || tool_data.points.last().is_some_and(|(ep, _)| *ep == cp);
 				let join_point = closest_point(document, input.mouse.position, PATH_JOIN_THRESHOLD, vec![layer].into_iter(), ignore);
 

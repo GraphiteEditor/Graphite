@@ -60,6 +60,35 @@ impl OriginalTransforms {
 		Some(transform_utils::get_current_transform(&document_node.inputs))
 	}
 
+	pub fn shift(&mut self, delta: DVec2, metadata: &DocumentMetadata) {
+		match self {
+			OriginalTransforms::Layer(layer_map) => {
+				for (&layer, transform) in layer_map {
+					let to = metadata.downstream_transform_to_viewport(layer);
+					let layer_delta = to.inverse() * DAffine2::from_translation(delta) * to;
+					*transform = layer_delta * *transform;
+				}
+			}
+			OriginalTransforms::Path(path_map) => {
+				for (&layer, points) in path_map {
+					let to = metadata.transform_to_viewport(layer);
+					let layer_delta = to.inverse() * DAffine2::from_translation(delta) * to;
+					for anchor in points.anchors.values_mut() {
+						anchor.initial = layer_delta.transform_point2(anchor.initial);
+						anchor.current = layer_delta.transform_point2(anchor.current);
+					}
+					for handle in points.handles.values_mut() {
+						handle.initial = layer_delta.transform_point2(handle.initial);
+						handle.relative = layer_delta.transform_point2(handle.relative);
+						if let Some((_, pos)) = &mut handle.mirror {
+							*pos = layer_delta.transform_point2(*pos);
+						}
+					}
+				}
+			}
+		}
+	}
+
 	pub fn update<'a>(&mut self, selected: &'a [LayerNodeIdentifier], network_interface: &NodeNetworkInterface, shape_editor: Option<&'a ShapeState>) {
 		match self {
 			OriginalTransforms::Layer(layer_map) => {
