@@ -834,11 +834,11 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::vector::generator_nodes::StarNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::vector::instance_index::IDENTIFIER,
-		aliases: &["graphene_core::vector::InstanceIndexNode"],
+		node: graphene_std::context::read_index::IDENTIFIER,
+		aliases: &["graphene_core::vector::InstanceIndexNode", "core_types::vector::InstanceIndexNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::vector::instance_map::IDENTIFIER,
+		node: graphene_std::vector::map_vector::IDENTIFIER,
 		aliases: &["graphene_core::vector::InstanceMapNode"],
 	},
 	NodeReplacement {
@@ -846,15 +846,15 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::vector::InstanceOnPointsNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::vector::instance_position::IDENTIFIER,
-		aliases: &["graphene_core::vector::InstancePositionNode"],
+		node: graphene_std::context::read_position::IDENTIFIER,
+		aliases: &["graphene_core::vector::InstancePositionNode", "core_types::vector::InstancePositionNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::vector::instance_repeat::IDENTIFIER,
 		aliases: &["graphene_core::vector::InstanceRepeatNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::vector::instance_vector::IDENTIFIER,
+		node: graphene_std::context::read_vector::IDENTIFIER,
 		aliases: &["graphene_core::vector::InstanceVectorNode"],
 	},
 	NodeReplacement {
@@ -1547,7 +1547,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	}
 
 	// Add the "Depth" parameter to the "Instance Index" node
-	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::instance_index::IDENTIFIER) && inputs_count == 0 {
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::context::read_index::IDENTIFIER) && inputs_count == 0 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 		document.network_interface.set_display_name(node_id, "Instance Index".to_string(), network_path);
@@ -1647,7 +1647,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	}
 
 	// Upgrade the "Instance Position" node to add the "Loop Level" input
-	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector_nodes::instance::instance_position::IDENTIFIER) && inputs_count < 2 {
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::context::read_position::IDENTIFIER) && inputs_count < 2 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 		let _ = document.network_interface.replace_inputs(node_id, network_path, &mut node_template);

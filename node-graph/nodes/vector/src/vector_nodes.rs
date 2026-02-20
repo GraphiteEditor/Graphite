@@ -5,7 +5,7 @@ use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::registry::types::{Angle, IntegerCount, Length, Multiplier, Percentage, PixelLength, PixelSize, Progression, SeedValue};
 use core_types::table::{Table, TableRow, TableRowMut};
 use core_types::transform::{Footprint, Transform};
-use core_types::{CloneVarArgs, Color, Context, Ctx, ExtractAll, ExtractVarArgs, OwnedContextImpl};
+use core_types::{CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::Vector;
 use graphic_types::raster_types::{CPU, GPU, Raster};
@@ -1325,16 +1325,9 @@ async fn separate_subpaths(_: impl Ctx, content: Table<Vector>) -> Table<Vector>
 		.collect()
 }
 
+// TODO: Call this "Map" once it's fully generic
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-fn instance_vector(ctx: impl Ctx + ExtractVarArgs) -> Table<Vector> {
-	let Ok(var_arg) = ctx.vararg(0) else { return Default::default() };
-	let var_arg = var_arg as &dyn std::any::Any;
-
-	var_arg.downcast_ref().cloned().unwrap_or_default()
-}
-
-#[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn instance_map(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: Table<Vector>, mapped: impl Node<Context<'static>, Output = Table<Vector>>) -> Table<Vector> {
+async fn map_vector(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: Table<Vector>, mapped: impl Node<Context<'static>, Output = Table<Vector>>) -> Table<Vector> {
 	let mut rows = Vec::new();
 
 	for (i, row) in content.into_iter().enumerate() {
@@ -1350,6 +1343,7 @@ async fn instance_map(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: Table<
 	rows.into_iter().collect()
 }
 
+// TODO: Call this "Map" once it's fully generic
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
 async fn map_points(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: Table<Vector>, mapped: impl Node<Context<'static>, Output = DVec2>) -> Table<Vector> {
 	let mut content = content;

@@ -466,22 +466,22 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			// [IMPORTS]2 -> 0[0:Floor]
 			// [0:Floor]0 -> 0[1:Subtract]
 			// "1: f64" -> 1[1:Subtract]
-			// "(): ()" -> 0[2:Instance Index]
-			// "0: u32" -> 1[2:Instance Index]
-			// [2:Instance Index]0 -> 0[3:Divide]
+			// "(): ()" -> 0[2:Read Index]
+			// "0: u32" -> 1[2:Read Index]
+			// [2:Read Index]0 -> 0[3:Divide]
 			// [1:Subtract]0 -> 1[3:Divide]
 			// [IMPORTS]1 -> 0[4:Position on Path]
 			// [3:Divide]0 -> 1[4:Position on Path]
 			// "false: bool" -> 2[4:Position on Path]
 			// "false: bool" -> 3[4:Position on Path]
-			// "(): ()" -> 0[5:Instance Vector]
-			// [5:Instance Vector]0 -> 0[6:Reset Transform]
+			// "(): ()" -> 0[5:Read Vector]
+			// [5:Read Vector]0 -> 0[6:Reset Transform]
 			// "true: bool" -> 1[6:Reset Transform]
 			// "false: bool" -> 2[6:Reset Transform]
 			// "false: bool" -> 3[6:Reset Transform]
-			// [12:Flatten Vector]0 -> 0[7:Instance Map]
-			// [6:Reset Transform]0 -> 1[7:Instance Map]
-			// [7:Instance Map]0 -> 0[8:Morph]
+			// [12:Flatten Vector]0 -> 0[7:Map Vector]
+			// [6:Reset Transform]0 -> 1[7:Map Vector]
+			// [7:Map Vector]0 -> 0[8:Morph]
 			// [15:Multiply]0 -> 1[8:Morph]
 			// [8:Morph]0 -> 0[9:Transform]
 			// [4:Position on Path]0 -> 1[9:Transform]
@@ -523,9 +523,9 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::value(TaggedValue::F64(1.), false)],
 								..Default::default()
 							},
-							// 2: Instance Index
+							// 2: Read Index
 							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(vector_nodes::instance_index::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(context::read_index::IDENTIFIER),
 								inputs: vec![NodeInput::value(TaggedValue::None, false), NodeInput::value(TaggedValue::U32(0), false)],
 								..Default::default()
 							},
@@ -546,9 +546,9 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								],
 								..Default::default()
 							},
-							// 5: Instance Vector
+							// 5: Read Vector
 							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(vector_nodes::instance_vector::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(context::read_vector::IDENTIFIER),
 								inputs: vec![NodeInput::value(TaggedValue::None, false)],
 								..Default::default()
 							},
@@ -563,9 +563,9 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								],
 								..Default::default()
 							},
-							// 7: Instance Map
+							// 7: Map Vector
 							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(vector_nodes::instance_map::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(vector_nodes::map_vector::IDENTIFIER),
 								inputs: vec![NodeInput::node(NodeId(12), 0), NodeInput::node(NodeId(6), 0)],
 								..Default::default()
 							},
@@ -679,7 +679,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 									},
 									..Default::default()
 								},
-								// 2: Instance Index
+								// 2: Read Index
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, -2)),
@@ -703,7 +703,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 									},
 									..Default::default()
 								},
-								// 5: Instance Vector
+								// 5: Read Vector
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(7, 2)),
@@ -719,7 +719,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 									},
 									..Default::default()
 								},
-								// 7: Instance Map
+								// 7: Map Vector
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(21, 1)),
@@ -833,14 +833,14 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 		DocumentNodeDefinition {
 			identifier: "Origins to Polyline",
 			category: "Vector",
-			// "(): ()" -> 0[0:Instance Vector]
-			// [0:Instance Vector]0 -> 0[1:Extract Transform]
+			// "(): ()" -> 0[0:Read Vector]
+			// [0:Read Vector]0 -> 0[1:Extract Transform]
 			// [1:Extract Transform]0 -> 0[2:Decompose Translation]
 			// [2:Decompose Translation]0 -> 0[3:Vec2 to Point]
 			// [IMPORTS]0 -> 0[4:Flatten Vector]
-			// [4:Flatten Vector]0 -> 0[5:Instance Map]
-			// [3:Vec2 to Point]0 -> 1[5:Instance Map]
-			// [5:Instance Map]0 -> 0[6: Flatten Path]
+			// [4:Flatten Vector]0 -> 0[5:Map Vector]
+			// [3:Vec2 to Point]0 -> 1[5:Map Vector]
+			// [5:Map Vector]0 -> 0[6: Flatten Path]
 			// [6:Flatten Path]0 -> 0[7:Points to Polyline]
 			// "false: bool" -> 1[7:Points to Polyline]
 			// [7:Points to Polyline]0 -> 0[EXPORTS]
@@ -849,9 +849,9 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 					implementation: DocumentNodeImplementation::Network(NodeNetwork {
 						exports: vec![NodeInput::node(NodeId(7), 0)],
 						nodes: [
-							// 0: Instance Vector
+							// 0: Read Vector
 							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(vector_nodes::instance_vector::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(context::read_vector::IDENTIFIER),
 								inputs: vec![NodeInput::value(TaggedValue::None, false)],
 								..Default::default()
 							},
@@ -879,9 +879,9 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								inputs: vec![NodeInput::import(generic!(T), 0)],
 								..Default::default()
 							},
-							// 5: Instance Map
+							// 5: Map Vector
 							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(vector_nodes::instance_map::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(vector_nodes::map_vector::IDENTIFIER),
 								inputs: vec![NodeInput::node(NodeId(4), 0), NodeInput::node(NodeId(3), 0)],
 								..Default::default()
 							},
@@ -914,7 +914,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 					network_metadata: Some(NodeNetworkMetadata {
 						persistent_metadata: NodeNetworkPersistentMetadata {
 							node_metadata: [
-								// 0: Instance Vector
+								// 0: Read Vector
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(0, 1)),
@@ -954,7 +954,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 									},
 									..Default::default()
 								},
-								// 5: Instance Map
+								// 5: Map Vector
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(28, 0)),
