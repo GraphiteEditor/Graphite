@@ -933,7 +933,7 @@ impl Fsm for ShapeToolFsmState {
 						tool_options.arrow_head_width,
 						tool_options.arrow_head_length,
 					),
-					ShapeType::Line => Line::create_node(document, tool_data.data.drag_start),
+					ShapeType::Line => Line::create_node(),
 				};
 
 				let nodes = vec![(NodeId(0), node)];
