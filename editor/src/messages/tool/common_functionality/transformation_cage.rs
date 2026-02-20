@@ -303,15 +303,19 @@ impl SelectedEdges {
 	}
 }
 
-/// Aligns the mouse position to the closest axis
-pub fn axis_align_drag(axis_align: bool, axis: Axis, position: DVec2, start: DVec2) -> DVec2 {
+/// Aligns the mouse position to the closest axis, accounting for canvas rotation.
+/// `canvas_rotation` is the angle in radians by which the canvas is tilted.
+pub fn axis_align_drag(axis_align: bool, axis: Axis, position: DVec2, start: DVec2, canvas_rotation: f64) -> DVec2 {
 	if axis_align {
 		let mouse_position = position - start;
 		let snap_resolution = SELECTION_DRAG_ANGLE.to_radians();
-		let angle = -mouse_position.angle_to(DVec2::X);
+		// Subtract canvas rotation to work in canvas-local space
+		let angle = -mouse_position.angle_to(DVec2::X) - canvas_rotation;
 		let snapped_angle = (angle / snap_resolution).round() * snap_resolution;
-		let axis_vector = DVec2::from_angle(snapped_angle);
-		if snapped_angle.is_finite() {
+		// Add canvas rotation back to get the final screen-space angle
+		let final_angle = snapped_angle + canvas_rotation;
+		let axis_vector = DVec2::from_angle(final_angle);
+		if final_angle.is_finite() {
 			start + axis_vector * mouse_position.dot(axis_vector).abs()
 		} else {
 			start
@@ -327,8 +331,10 @@ pub fn axis_align_drag(axis_align: bool, axis: Axis, position: DVec2, start: DVe
 
 /// Snaps a dragging event from the artboard or select tool
 pub fn snap_drag(start: DVec2, current: DVec2, snap_to_axis: bool, axis: Axis, snap_data: SnapData, snap_manager: &mut SnapManager, candidates: &[SnapCandidatePoint]) -> DVec2 {
-	let mouse_position = axis_align_drag(snap_to_axis, axis, snap_data.input.mouse.position, start);
 	let document = snap_data.document;
+	// Extract canvas rotation from the document_to_viewport transform
+	let canvas_rotation = document.metadata().document_to_viewport.matrix2.y_axis.to_angle() - std::f64::consts::FRAC_PI_2;
+	let mouse_position = axis_align_drag(snap_to_axis, axis, snap_data.input.mouse.position, start, canvas_rotation);
 	let total_mouse_delta_document = document.metadata().document_to_viewport.inverse().transform_vector2(mouse_position - start);
 	let mouse_delta_document = document.metadata().document_to_viewport.inverse().transform_vector2(mouse_position - current);
 	let mut offset = mouse_delta_document;
