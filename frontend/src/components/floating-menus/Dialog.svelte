@@ -20,8 +20,6 @@
 
 	function onDialogContentKeyDown(e: KeyboardEvent) {
 		if ($dialog.title !== "New Document" || e.isComposing || e.key !== "Enter") return;
-		if (!(e.target instanceof HTMLInputElement) || !e.target.hasAttribute("data-input-element")) return;
-		if (!self?.div?.()?.contains(e.target)) return;
 
 		const emphasizedOrFirstButton = (self?.div?.()?.querySelector("[data-emphasized]") || self?.div?.()?.querySelector("[data-text-button]") || undefined) as HTMLButtonElement | undefined;
 		if (!emphasizedOrFirstButton || emphasizedOrFirstButton.dataset.disabled !== undefined) return;
