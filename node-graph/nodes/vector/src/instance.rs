@@ -89,6 +89,7 @@ mod test {
 	use core_types::Ctx;
 	use core_types::Node;
 	use glam::DVec2;
+	use graphene_core::ReadPositionNode;
 	use graphene_core::extract_xy::{ExtractXyNode, XY};
 	use graphic_types::Vector;
 	use std::future::Future;
@@ -111,13 +112,7 @@ mod test {
 		let owned = OwnedContextImpl::default().into_context();
 		let rect = RectangleNode::new(
 			FutureWrapperNode(()),
-			ExtractXyNode::new(
-				InstancePositionNode {
-					_primary: FutureWrapperNode(()),
-					loop_level: FutureWrapperNode(0),
-				},
-				FutureWrapperNode(XY::Y),
-			),
+			ExtractXyNode::new(ReadPositionNode::new(FutureWrapperNode(()), FutureWrapperNode(0)), FutureWrapperNode(XY::Y)),
 			FutureWrapperNode(2_f64),
 			FutureWrapperNode(false),
 			FutureWrapperNode(0_f64),
