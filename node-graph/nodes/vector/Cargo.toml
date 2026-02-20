@@ -23,6 +23,7 @@ kurbo = { workspace = true }
 rand = { workspace = true }
 rustc-hash = { workspace = true }
 log = { workspace = true }
+qrcodegen = { workspace = true }
 
 # Optional workspace dependencies
 serde = { workspace = true, optional = true }

@@ -1,3 +1,4 @@
+use core::cmp::Ordering;
 use core::f64::consts::PI;
 use core::hash::{Hash, Hasher};
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
@@ -21,7 +22,7 @@ use vector_types::vector::algorithms::bezpath_algorithms::{self, TValue, evaluat
 use vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
 use vector_types::vector::algorithms::offset_subpath::offset_bezpath;
 use vector_types::vector::algorithms::spline::{solve_spline_first_handle_closed, solve_spline_first_handle_open};
-use vector_types::vector::misc::{CentroidType, ExtrudeJoiningAlgorithm, bezpath_from_manipulator_groups, bezpath_to_manipulator_groups, point_to_dvec2};
+use vector_types::vector::misc::{CentroidType, ExtrudeJoiningAlgorithm, RowsOrColumns, bezpath_from_manipulator_groups, bezpath_to_manipulator_groups, point_to_dvec2};
 use vector_types::vector::misc::{MergeByDistanceAlgorithm, PointSpacingType, is_linear};
 use vector_types::vector::misc::{handles_to_segment, segment_to_handles};
 use vector_types::vector::style::{Fill, Gradient, GradientStops, Stroke};
@@ -176,7 +177,7 @@ async fn stroke<V, L: IntoF64Vec>(
 	/// The stroke color.
 	#[default(Color::BLACK)]
 	color: Table<Color>,
-	/// The stroke weight.
+	/// The stroke thickness.
 	#[unit(" px")]
 	#[default(2.)]
 	weight: f64,
@@ -712,7 +713,8 @@ pub mod extrude_algorithms {
 
 		let mut next_segment = vector.segment_domain.next_id();
 		for (index, &point) in points.iter().enumerate().take(first_half_points) {
-			if point != Found::Both {
+			// Extrema are single connected points or points with both positive and negative values
+			if !matches!(point, Found::Both | Found::Positive | Found::Negative) {
 				continue;
 			}
 
@@ -868,6 +870,124 @@ fn bilinear_interpolate(t: DVec2, quad: &[DVec2; 4]) -> DVec2 {
 
 	// Bilinear interpolation
 	tl * (1. - t.x) * (1. - t.y) + tr * t.x * (1. - t.y) + br * t.x * t.y + bl * (1. - t.x) * t.y
+}
+
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+async fn pack_strips<T: 'n + Send + Clone>(
+	_: impl Ctx,
+	#[implementations(
+		Table<Graphic>,
+		Table<Vector>,
+		Table<Raster<CPU>>,
+		Table<Raster<GPU>>,
+	)]
+	elements: Table<T>,
+	#[default(0.)]
+	#[unit(" px")]
+	separation: f64,
+	#[default(1000.)]
+	#[unit(" px")]
+	strip_max_length: f64,
+	strip_direction: RowsOrColumns,
+) -> Table<T>
+where
+	Graphic: From<Table<T>>,
+	Table<T>: BoundingBox,
+{
+	// Packs shapes using bounds with Best-Fit Decreasing Height (BFDH) algorithm:
+	// - Sort shapes by cross-axis size (tallest first for rows, widest first for columns)
+	// - For each shape, find the existing strip with minimum remaining space that fits
+	// - Create new strip only if no existing strip can accommodate the shape
+
+	struct Strip {
+		along_position: f64,
+		cross_position: f64,
+		cross_extent: f64,
+	}
+
+	// Prepare the items to be sorted
+	let mut items: Vec<(f64, f64, DVec2, TableRow<T>)> = elements
+		.into_iter()
+		.map(|row| {
+			// Single-element table to query its bounding box
+			let single = Table::new_from_row(row.clone());
+			let (w, h, top_left) = match single.bounding_box(DAffine2::IDENTITY, false) {
+				RenderBoundingBox::Rectangle([min, max]) => {
+					let size = max - min;
+					(size.x.max(0.), size.y.max(0.), min)
+				}
+				_ => (0., 0., DVec2::ZERO),
+			};
+			let (along, cross) = match strip_direction {
+				RowsOrColumns::Rows => (w, h),
+				RowsOrColumns::Columns => (h, w),
+			};
+			(along, cross, top_left, row)
+		})
+		.collect();
+
+	// Sort by cross-axis size, largest first
+	items.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(Ordering::Equal));
+
+	let mut result = Table::new();
+	let mut strips: Vec<Strip> = Vec::new();
+
+	// This looks n^2 but it is just n*k where k is the number of strips, which is generally much smaller than n
+	for (along, cross, top_left, mut row) in items {
+		if along <= 0. {
+			result.push(row);
+			continue;
+		}
+
+		// Find a good strip, minimum remaining space that can fit this item ideally
+		let mut best_strip_index = None;
+		let mut min_remaining_space = f64::INFINITY;
+
+		for (index, strip) in strips.iter().enumerate() {
+			let remaining_space = strip_max_length - strip.along_position;
+			if remaining_space >= along && remaining_space < min_remaining_space {
+				min_remaining_space = remaining_space;
+				best_strip_index = Some(index);
+			}
+		}
+
+		if let Some(strip_index) = best_strip_index {
+			// Place on existing strip
+			let strip = &mut strips[strip_index];
+
+			// Update strip cross extent if needed
+			if cross > strip.cross_extent {
+				strip.cross_extent = cross;
+			}
+
+			let target_position = match strip_direction {
+				RowsOrColumns::Rows => DVec2::new(strip.along_position, strip.cross_position),
+				RowsOrColumns::Columns => DVec2::new(strip.cross_position, strip.along_position),
+			};
+			row.transform = DAffine2::from_translation(target_position - top_left) * row.transform;
+
+			strip.along_position += along + separation;
+		} else {
+			// Create new strip
+			let new_cross = strips.last().map_or(0., |last| last.cross_position + last.cross_extent + separation);
+
+			let target_position = match strip_direction {
+				RowsOrColumns::Rows => DVec2::new(0., new_cross),
+				RowsOrColumns::Columns => DVec2::new(new_cross, 0.),
+			};
+			row.transform = DAffine2::from_translation(target_position - top_left) * row.transform;
+
+			strips.push(Strip {
+				along_position: along + separation,
+				cross_position: new_cross,
+				cross_extent: cross,
+			});
+		}
+
+		result.push(row);
+	}
+
+	result
 }
 
 /// Automatically constructs tangents (Bézier handles) for anchor points in a vector path.
@@ -1153,8 +1273,14 @@ async fn solidify_stroke(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
 			// 0.25 is balanced between performace and accuracy of the curve.
 			const STROKE_TOLERANCE: f64 = 0.25;
 
-			for path in bezpaths {
-				let solidified = kurbo::stroke(path, &stroke_style, &stroke_options, STROKE_TOLERANCE);
+			for mut path in bezpaths {
+				path.apply_affine(Affine::new(stroke.transform.to_cols_array()));
+
+				let mut solidified = kurbo::stroke(path, &stroke_style, &stroke_options, STROKE_TOLERANCE);
+				if stroke.transform.matrix2.determinant() != 0. {
+					solidified.apply_affine(Affine::new(stroke.transform.inverse().to_cols_array()));
+				}
+
 				result.append_bezpath(solidified);
 			}
 
@@ -1199,7 +1325,7 @@ async fn separate_subpaths(_: impl Ctx, content: Table<Vector>) -> Table<Vector>
 		.collect()
 }
 
-#[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
 fn instance_vector(ctx: impl Ctx + ExtractVarArgs) -> Table<Vector> {
 	let Ok(var_arg) = ctx.vararg(0) else { return Default::default() };
 	let var_arg = var_arg as &dyn std::any::Any;
@@ -1207,7 +1333,7 @@ fn instance_vector(ctx: impl Ctx + ExtractVarArgs) -> Table<Vector> {
 	var_arg.downcast_ref().cloned().unwrap_or_default()
 }
 
-#[node_macro::node(category("Vector: Modifier"), path(graphene_core::vector))]
+#[node_macro::node(category("Vector"), path(graphene_core::vector))]
 async fn instance_map(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: Table<Vector>, mapped: impl Node<Context<'static>, Output = Table<Vector>>) -> Table<Vector> {
 	let mut rows = Vec::new();
 
@@ -1225,9 +1351,16 @@ async fn instance_map(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: Table<
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn flatten_path<I: 'n + Send>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Vector>)] content: Table<I>) -> Table<Vector>
+async fn flatten_path<T: 'n + Send>(
+	_: impl Ctx,
+	#[implementations(
+		Table<Graphic>,
+		Table<Vector>,
+	)]
+	content: Table<T>,
+) -> Table<Vector>
 where
-	Graphic: From<Table<I>>,
+	Graphic: From<Table<T>>,
 {
 	// NOTE(AdamGerhant):
 	// A node-based solution to support passing through vector data could be a network node with a cache node
@@ -2265,7 +2398,7 @@ async fn count_points(_: impl Ctx, content: Table<Vector>) -> f64 {
 
 /// Retrieves the vec2 position (in local space) of the anchor point at the specified index in table of vector elements.
 /// If no value exists at that index, the position (0, 0) is returned.
-#[node_macro::node(category("Vector"), path(graphene_core::vector))]
+#[node_macro::node(category("Vector: Measure"), path(graphene_core::vector))]
 async fn index_points(
 	_: impl Ctx,
 	/// The vector element or elements containing the anchor points to be retrieved.
@@ -2275,6 +2408,9 @@ async fn index_points(
 ) -> DVec2 {
 	let points_count = content.iter().map(|row| row.element.point_domain.positions().len()).sum::<usize>();
 
+	if points_count == 0 {
+		return DVec2::ZERO;
+	}
 	// Clamp and allow negative indexing from the end
 	let index = index as isize;
 	let index = if index < 0 {

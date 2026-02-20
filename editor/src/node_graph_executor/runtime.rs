@@ -22,7 +22,6 @@ use graphene_std::wasm_application_io::{RenderOutputType, WasmApplicationIo, Was
 use graphene_std::{Artboard, Context, Graphic};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypesDelta};
 use interpreted_executor::util::wrap_network_in_scope;
-use once_cell::sync::Lazy;
 use spin::Mutex;
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender};
@@ -85,6 +84,8 @@ pub struct ExportConfig {
 	pub bounds: ExportBounds,
 	pub transparent_background: bool,
 	pub size: DVec2,
+	pub artboard_name: Option<String>,
+	pub artboard_count: usize,
 }
 
 #[derive(Clone)]
@@ -98,6 +99,10 @@ impl InternalNodeGraphUpdateSender {
 	fn send_execution_response(&self, response: ExecutionResponse) {
 		self.0.send(NodeGraphUpdate::ExecutionResponse(response)).expect("Failed to send response")
 	}
+
+	fn send_eyedropper_preview(&self, raster: Raster<CPU>) {
+		self.0.send(NodeGraphUpdate::EyedropperPreview(raster)).expect("Failed to send response")
+	}
 }
 
 impl NodeGraphUpdateSender for InternalNodeGraphUpdateSender {
@@ -106,7 +111,8 @@ impl NodeGraphUpdateSender for InternalNodeGraphUpdateSender {
 	}
 }
 
-pub static NODE_RUNTIME: Lazy<Mutex<Option<NodeRuntime>>> = Lazy::new(|| Mutex::new(None));
+// TODO: Replace with `core::cell::LazyCell` (<https://doc.rust-lang.org/core/cell/struct.LazyCell.html>) or similar
+pub static NODE_RUNTIME: once_cell::sync::Lazy<Mutex<Option<NodeRuntime>>> = once_cell::sync::Lazy::new(|| Mutex::new(None));
 
 impl NodeRuntime {
 	pub fn new(receiver: Receiver<GraphRuntimeRequest>, sender: Sender<NodeGraphUpdate>) -> Self {
@@ -157,13 +163,22 @@ impl NodeRuntime {
 		let mut font = None;
 		let mut preferences = None;
 		let mut graph = None;
+		let mut eyedropper = None;
 		let mut execution = None;
 		for request in self.receiver.try_iter() {
 			match request {
 				GraphRuntimeRequest::GraphUpdate(_) => graph = Some(request),
 				GraphRuntimeRequest::ExecutionRequest(ref execution_request) => {
+					if execution_request.render_config.for_eyedropper {
+						eyedropper = Some(request);
+
+						continue;
+					}
+
 					let for_export = execution_request.render_config.for_export;
+
 					execution = Some(request);
+
 					// If we get an export request we always execute it immedeatly otherwise it could get deduplicated
 					if for_export {
 						break;
@@ -173,7 +188,16 @@ impl NodeRuntime {
 				GraphRuntimeRequest::EditorPreferencesUpdate(_) => preferences = Some(request),
 			}
 		}
-		let requests = [font, preferences, graph, execution].into_iter().flatten();
+
+		// Eydropper should use the same time and pointer to not invalidate the cache
+		if let Some(GraphRuntimeRequest::ExecutionRequest(eyedropper)) = &mut eyedropper
+			&& let Some(GraphRuntimeRequest::ExecutionRequest(execution)) = &execution
+		{
+			eyedropper.render_config.time = execution.render_config.time;
+			eyedropper.render_config.pointer = execution.render_config.pointer;
+		}
+
+		let requests = [font, preferences, graph, eyedropper, execution].into_iter().flatten();
 
 		for request in requests {
 			match request {
@@ -234,7 +258,9 @@ impl NodeRuntime {
 					let result = self.execute_network(render_config).await;
 					let mut responses = VecDeque::new();
 					// TODO: Only process monitor nodes if the graph has changed, not when only the Footprint changes
-					self.process_monitor_nodes(&mut responses, self.update_thumbnails);
+					if !render_config.for_eyedropper {
+						self.process_monitor_nodes(&mut responses, self.update_thumbnails);
+					}
 					self.update_thumbnails = false;
 
 					// Resolve the result from the inspection by accessing the monitor node
@@ -264,6 +290,23 @@ impl NodeRuntime {
 								})),
 								None,
 							)
+						}
+						Ok(TaggedValue::RenderOutput(RenderOutput {
+							data: RenderOutputType::Texture(image_texture),
+							metadata: _,
+						})) if render_config.for_eyedropper => {
+							let executor = self
+								.editor_api
+								.application_io
+								.as_ref()
+								.unwrap()
+								.gpu_executor()
+								.expect("GPU executor should be available when we receive a texture");
+
+							let raster_cpu = Raster::new_gpu(image_texture.texture).convert(Footprint::BOUNDLESS, executor).await;
+
+							self.sender.send_eyedropper_preview(raster_cpu);
+							continue;
 						}
 						#[cfg(all(target_family = "wasm", feature = "gpu"))]
 						Ok(TaggedValue::RenderOutput(RenderOutput {
@@ -308,7 +351,7 @@ impl NodeRuntime {
 									width: physical_resolution.x,
 									height: physical_resolution.y,
 									present_mode: surface_caps.present_modes[0],
-									alpha_mode: vello::wgpu::CompositeAlphaMode::Opaque,
+									alpha_mode: vello::wgpu::CompositeAlphaMode::PreMultiplied,
 									view_formats: vec![],
 									desired_maximum_frame_latency: 2,
 								},

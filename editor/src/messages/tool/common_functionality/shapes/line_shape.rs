@@ -1,7 +1,7 @@
 use super::shape_utility::ShapeToolModifierKey;
 use crate::consts::{BOUNDS_SELECT_THRESHOLD, LINE_ROTATE_SNAP_ANGLE};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
-use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type};
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate};
@@ -37,8 +37,9 @@ pub struct LineToolData {
 pub struct Line;
 
 impl Line {
-	pub fn create_node(_document: &DocumentMessageHandler, _drag_start: DVec2) -> NodeTemplate {
-		let node_type = resolve_document_node_type("Line").expect("Line node can't be found");
+	pub fn create_node() -> NodeTemplate {
+		let identifier = DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::line::IDENTIFIER);
+		let node_type = resolve_document_node_type(&identifier).expect("Line node can't be found");
 		node_type.node_template_input_override([
 			None,
 			Some(NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false)),
@@ -99,7 +100,8 @@ impl Line {
 			.selected_nodes()
 			.selected_visible_and_unlocked_layers(&document.network_interface)
 			.filter_map(|layer| {
-				let node_inputs = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Line")?;
+				let node_inputs =
+					NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::line::IDENTIFIER))?;
 
 				let (Some(&TaggedValue::DVec2(start)), Some(&TaggedValue::DVec2(end))) = (node_inputs[1].as_value(), node_inputs[2].as_value()) else {
 					return None;
@@ -182,7 +184,7 @@ fn generate_line(tool_data: &mut ShapeToolData, snap_data: SnapData, lock_angle:
 }
 
 pub fn clicked_on_line_endpoints(layer: LayerNodeIdentifier, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, shape_tool_data: &mut ShapeToolData) -> bool {
-	let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs("Line") else {
+	let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::line::IDENTIFIER)) else {
 		return false;
 	};
 
@@ -227,7 +229,7 @@ mod test_line_tool {
 			.selected_nodes()
 			.selected_visible_and_unlocked_layers(network_interface)
 			.filter_map(|layer| {
-				let node_inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs("Line")?;
+				let node_inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::line::IDENTIFIER))?;
 				let (Some(&TaggedValue::DVec2(start)), Some(&TaggedValue::DVec2(end))) = (node_inputs[1].as_value(), node_inputs[2].as_value()) else {
 					return None;
 				};

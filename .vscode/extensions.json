@@ -11,9 +11,10 @@
 		// Code quality
 		"wayou.vscode-todo-highlight",
 		"streetsidesoftware.code-spell-checker",
-		// Helpful
+		// Git
 		"mhutchie.git-graph",
 		"qezhu.gitlink",
+		// Helpful
 		"wmaurer.change-case"
 	]
 }

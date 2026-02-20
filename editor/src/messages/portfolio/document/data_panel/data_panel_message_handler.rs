@@ -717,7 +717,23 @@ impl TableRowLayout for Affine2 {
 }
 
 fn format_transform_matrix(transform: &DAffine2) -> String {
-	let (scale, angle, translation) = transform.to_scale_angle_translation();
+	let (scale, angle, translation) = if transform.matrix2.determinant().abs() <= f64::EPSILON {
+		let [col_0, col_1] = transform.matrix2.to_cols_array_2d().map(|[x, y]| DVec2::new(x, y));
+
+		let scale = DVec2::new(col_0.length(), col_1.length());
+
+		let rotation = if scale.x > f64::EPSILON {
+			col_0.y.atan2(col_0.x)
+		} else if scale.y > f64::EPSILON {
+			col_1.y.atan2(col_1.x) - std::f64::consts::FRAC_PI_2
+		} else {
+			0.
+		};
+
+		(scale, rotation, transform.translation)
+	} else {
+		transform.to_scale_angle_translation()
+	};
 	let rotation = if angle == -0. { 0. } else { angle.to_degrees() };
 	let round = |x: f64| (x * 1e3).round() / 1e3;
 

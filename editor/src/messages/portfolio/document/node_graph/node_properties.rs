@@ -3,6 +3,7 @@
 use super::document_node_definitions::{NODE_OVERRIDES, NodePropertiesContext};
 use super::utility_types::FrontendGraphDataType;
 use crate::messages::layout::utility_types::widget_prelude::*;
+use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_document_node_type;
 use crate::messages::portfolio::document::utility_types::network_interface::InputConnector;
 use crate::messages::portfolio::utility_types::{FontCatalogStyle, PersistentData};
 use crate::messages::prelude::*;
@@ -24,7 +25,8 @@ use graphene_std::raster::{
 use graphene_std::table::{Table, TableRow};
 use graphene_std::text::{Font, TextAlign};
 use graphene_std::transform::{Footprint, ReferencePoint, Transform};
-use graphene_std::vector::misc::{ArcType, CentroidType, ExtrudeJoiningAlgorithm, GridType, MergeByDistanceAlgorithm, PointSpacingType, SpiralType};
+use graphene_std::vector::QRCodeErrorCorrectionLevel;
+use graphene_std::vector::misc::{ArcType, CentroidType, ExtrudeJoiningAlgorithm, GridType, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, SpiralType};
 use graphene_std::vector::style::{Fill, FillChoice, FillType, GradientStops, GradientType, PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
 
 pub(crate) fn string_properties(text: &str) -> Vec<LayoutGroup> {
@@ -218,6 +220,7 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<StrokeAlign>() => enum_choice::<StrokeAlign>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<PaintOrder>() => enum_choice::<PaintOrder>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<ArcType>() => enum_choice::<ArcType>().for_socket(default_info).property_row(),
+						Some(x) if x == TypeId::of::<RowsOrColumns>() => enum_choice::<RowsOrColumns>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<TextAlign>() => enum_choice::<TextAlign>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<MergeByDistanceAlgorithm>() => enum_choice::<MergeByDistanceAlgorithm>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<ExtrudeJoiningAlgorithm>() => enum_choice::<ExtrudeJoiningAlgorithm>().for_socket(default_info).property_row(),
@@ -225,6 +228,7 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<BooleanOperation>() => enum_choice::<BooleanOperation>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<CentroidType>() => enum_choice::<CentroidType>().for_socket(default_info).property_row(),
 						Some(x) if x == TypeId::of::<LuminanceCalculation>() => enum_choice::<LuminanceCalculation>().for_socket(default_info).property_row(),
+						Some(x) if x == TypeId::of::<QRCodeErrorCorrectionLevel>() => enum_choice::<QRCodeErrorCorrectionLevel>().for_socket(default_info).property_row(),
 						// =====
 						// OTHER
 						// =====
@@ -233,15 +237,7 @@ pub(crate) fn property_from_type(
 							widgets.extend_from_slice(&[
 								Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 								TextLabel::new("-")
-									.tooltip_label(format!(
-										"Data Type: {}",
-										concrete_type
-											.alias
-											.as_deref()
-											// TODO: Avoid needing to remove spaces here by fixing how `alias` is generated
-											.map(|s| s.to_string().replace(" ", ""))
-											.unwrap_or_else(|| graphene_std::format_type(concrete_type.name.as_ref())),
-									))
+									.tooltip_label(format!("Data Type: {concrete_type}"))
 									.tooltip_description("This data can only be supplied through the node graph because no widget exists for its type.")
 									.widget_instance(),
 							]);
@@ -251,7 +247,7 @@ pub(crate) fn property_from_type(
 				}
 			}
 		}
-		Type::Generic(_) => vec![TextLabel::new("Generic type (not supported)").widget_instance()].into(),
+		Type::Generic(_) => vec![TextLabel::new("Generic Type (Not Supported)").widget_instance()].into(),
 		Type::Fn(_, out) => return property_from_type(node_id, index, out, number_options, unit, display_decimal_places, step, context),
 		Type::Future(out) => return property_from_type(node_id, index, out, number_options, unit, display_decimal_places, step, context),
 	};
@@ -946,6 +942,49 @@ pub fn progression_widget(parameter_widgets_info: ParameterWidgetsInfo, number_p
 	widgets
 }
 
+/// `parameter_widgets_info` is for the f64 parameter. `bool_input_index` is the input index of the bool parameter for the checkbox.
+pub fn optional_f64_widget(parameter_widgets_info: ParameterWidgetsInfo, bool_input_index: usize, number_props: NumberInput) -> Vec<WidgetInstance> {
+	let ParameterWidgetsInfo {
+		document_node,
+		node_id,
+		index: number_input_index,
+		..
+	} = parameter_widgets_info;
+
+	let mut widgets = start_widgets(parameter_widgets_info);
+
+	let Some(document_node) = document_node else { return Vec::new() };
+	let Some(number_input) = document_node.inputs.get(number_input_index) else {
+		log::warn!("A widget failed to be built because its node's input index is invalid.");
+		return vec![];
+	};
+	let Some(bool_input) = document_node.inputs.get(bool_input_index) else {
+		log::warn!("A widget failed to be built because its node's input index is invalid.");
+		return vec![];
+	};
+	if let (Some(&TaggedValue::Bool(enabled)), Some(&TaggedValue::F64(number))) = (bool_input.as_non_exposed_value(), number_input.as_non_exposed_value()) {
+		widgets.extend_from_slice(&[
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
+			// The checkbox toggles if the value is Some or None
+			CheckboxInput::new(enabled)
+				.on_update(update_value(|x: &CheckboxInput| TaggedValue::Bool(x.checked), node_id, bool_input_index))
+				.on_commit(commit_value)
+				.widget_instance(),
+			Separator::new(SeparatorStyle::Related).widget_instance(),
+			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+			number_props
+				.value(Some(number))
+				.on_update(update_value(move |x: &NumberInput| TaggedValue::F64(x.value.unwrap_or_default()), node_id, number_input_index))
+				.disabled(!enabled)
+				.on_commit(commit_value)
+				.widget_instance(),
+		]);
+	}
+
+	widgets
+}
+
 pub fn number_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props: NumberInput) -> Vec<WidgetInstance> {
 	let ParameterWidgetsInfo { document_node, node_id, index, .. } = parameter_widgets_info;
 
@@ -989,27 +1028,6 @@ pub fn number_widget(parameter_widgets_info: ParameterWidgetsInfo, number_props:
 				.on_commit(commit_value)
 				.widget_instance(),
 		]),
-		Some(&TaggedValue::OptionalF64(x)) => {
-			// TODO: Don't wipe out the previously set value (setting it back to the default of 100) when reenabling this checkbox back to Some from None
-			let toggle_enabled = move |checkbox_input: &CheckboxInput| TaggedValue::OptionalF64(if checkbox_input.checked { Some(100.) } else { None });
-			widgets.extend_from_slice(&[
-				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-				Separator::new(SeparatorStyle::Related).widget_instance(),
-				// The checkbox toggles if the value is Some or None
-				CheckboxInput::new(x.is_some())
-					.on_update(update_value(toggle_enabled, node_id, index))
-					.on_commit(commit_value)
-					.widget_instance(),
-				Separator::new(SeparatorStyle::Related).widget_instance(),
-				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-				number_props
-					.value(x)
-					.on_update(update_value(move |x: &NumberInput| TaggedValue::OptionalF64(x.value), node_id, index))
-					.disabled(x.is_none())
-					.on_commit(commit_value)
-					.widget_instance(),
-			]);
-		}
 		Some(&TaggedValue::DVec2(dvec2)) => widgets.extend_from_slice(&[
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			number_props
@@ -1091,14 +1109,6 @@ pub fn color_widget(parameter_widgets_info: ParameterWidgetsInfo, color_button: 
 				.value(FillChoice::Solid(*color))
 				.allow_none(false)
 				.on_update(update_value(|input: &ColorInput| TaggedValue::ColorNotInTable(input.value.as_solid().unwrap()), node_id, index))
-				.on_commit(commit_value)
-				.widget_instance(),
-		),
-		TaggedValue::OptionalColorNotInTable(color) => widgets.push(
-			color_button
-				.value(color.map_or(FillChoice::None, FillChoice::Solid))
-				.allow_none(true)
-				.on_update(update_value(|input: &ColorInput| TaggedValue::OptionalColorNotInTable(input.value.as_solid()), node_id, index))
 				.on_commit(commit_value)
 				.widget_instance(),
 		),
@@ -1713,10 +1723,8 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 	if let Some(properties_override) = context
 		.network_interface
 		.reference(&node_id, context.selection_network_path)
-		.cloned()
-		.unwrap_or_default()
 		.as_ref()
-		.and_then(|reference| super::document_node_definitions::resolve_document_node_type(reference))
+		.and_then(|identifier| resolve_document_node_type(identifier))
 		.and_then(|definition| definition.properties)
 		.and_then(|properties| NODE_OVERRIDES.get(properties))
 	{
@@ -1781,25 +1789,20 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 	if layout.is_empty() {
 		layout = node_no_properties(node_id, context);
 	}
-	let name = context
+	let name = context.network_interface.implementation_name(&node_id, context.selection_network_path);
+
+	let description = context
 		.network_interface
 		.reference(&node_id, context.selection_network_path)
-		.cloned()
-		.unwrap_or_default() // If there is an error getting the reference, default to empty string
-		.or_else(|| {
-			// If there is no reference, try to get the proto node name
-			context.network_interface.implementation(&node_id, context.selection_network_path).and_then(|implementation|{
-				if let DocumentNodeImplementation::ProtoNode(protonode) = implementation {
-					Some(protonode.name.clone().into_owned())
-				} else {
-					None
-				}
-			})
-		})
-		.unwrap_or("Custom Node".to_string());
-	let description = context.network_interface.description(&node_id, context.selection_network_path);
+		.as_ref()
+		.and_then(|identifier| resolve_document_node_type(identifier))
+		.map(|definition| definition.description.to_string())
+		.filter(|string| string != "TODO")
+		.unwrap_or_default();
+
 	let visible = context.network_interface.is_visible(&node_id, context.selection_network_path);
 	let pinned = context.network_interface.is_pinned(&node_id, context.selection_network_path);
+
 	LayoutGroup::Section {
 		name,
 		description,
@@ -1951,35 +1954,35 @@ pub(crate) fn fill_properties(node_id: NodeId, context: &mut NodePropertiesConte
 			}
 		}
 
-		let new_gradient1 = gradient.clone();
-		let new_gradient2 = gradient.clone();
+		let gradient_for_closure = gradient.clone();
 
-		let entries = vec![
-			RadioEntryData::new("Linear")
-				.label("Linear")
-				.on_update(update_value(
-					move |_| {
-						let mut new_gradient = new_gradient1.clone();
-						new_gradient.gradient_type = GradientType::Linear;
+		let entries = [GradientType::Linear, GradientType::Radial]
+			.iter()
+			.map(|&grad_type| {
+				let gradient = gradient_for_closure.clone();
+				let set_input_value = update_value(
+					move |_: &()| {
+						let mut new_gradient = gradient.clone();
+						new_gradient.gradient_type = grad_type;
 						TaggedValue::Fill(Fill::Gradient(new_gradient))
 					},
 					node_id,
 					FillInput::<Color>::INDEX,
-				))
-				.on_commit(commit_value),
-			RadioEntryData::new("Radial")
-				.label("Radial")
-				.on_update(update_value(
-					move |_| {
-						let mut new_gradient = new_gradient2.clone();
-						new_gradient.gradient_type = GradientType::Radial;
-						TaggedValue::Fill(Fill::Gradient(new_gradient))
-					},
-					node_id,
-					FillInput::<Color>::INDEX,
-				))
-				.on_commit(commit_value),
-		];
+				);
+				RadioEntryData::new(format!("{:?}", grad_type))
+					.label(format!("{:?}", grad_type))
+					.on_update(move |_| Message::Batched {
+						messages: Box::new([
+							set_input_value(&()),
+							GradientToolMessage::UpdateOptions {
+								options: GradientOptionsUpdate::Type(grad_type),
+							}
+							.into(),
+						]),
+					})
+					.on_commit(commit_value)
+			})
+			.collect();
 
 		row.extend_from_slice(&[
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),

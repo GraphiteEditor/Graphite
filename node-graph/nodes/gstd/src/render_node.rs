@@ -13,12 +13,13 @@ use graphic_types::raster_types::Image;
 use graphic_types::raster_types::{CPU, Raster};
 use rendering::{Render, RenderOutputType as RenderOutputTypeRequest, RenderParams, RenderSvgSegmentList, SvgRender, format_transform_matrix};
 use rendering::{RenderMetadata, SvgSegment};
+use std::collections::HashMap;
 use std::sync::Arc;
 use vector_types::GradientStops;
 use wgpu_executor::RenderContext;
 
 /// List of (canvas id, image data) pairs for embedding images as canvases in the final SVG string.
-type ImageData = Vec<(u64, Image<Color>)>;
+type ImageData = HashMap<Image<Color>, u64>;
 
 #[derive(Clone, dyn_any::DynAny)]
 pub enum RenderIntermediateType {
@@ -113,7 +114,7 @@ async fn create_context<'a: 'n>(
 		.with_footprint(footprint)
 		.with_real_time(render_config.time.time)
 		.with_animation_time(render_config.time.animation_time.as_secs_f64())
-		.with_pointer(render_config.pointer)
+		.with_pointer_position(render_config.pointer)
 		.with_vararg(Box::new(render_params))
 		.into_context();
 
@@ -162,7 +163,7 @@ async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, edito
 			rendering.wrap_with_transform(footprint.transform, Some(logical_resolution));
 			RenderOutputType::Svg {
 				svg: rendering.svg.to_svg_string(),
-				image_data: rendering.image_data,
+				image_data: rendering.image_data.into_iter().map(|(image, id)| (id, image)).collect(),
 			}
 		}
 		(RenderOutputTypeRequest::Vello, RenderIntermediateType::Vello(vello_data)) => {
@@ -188,10 +189,11 @@ async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, edito
 				}
 			}
 
-			let mut background = Color::from_rgb8_srgb(0x22, 0x22, 0x22);
-			if !contains_artboard && !render_params.hide_artboards {
-				background = Color::WHITE;
-			}
+			let background = if !render_params.for_export && !contains_artboard && !render_params.hide_artboards {
+				Some(Color::WHITE)
+			} else {
+				None
+			};
 
 			let texture = exec
 				.render_vello_scene_to_texture(&scene, physical_resolution, context, background)

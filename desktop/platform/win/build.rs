@@ -23,7 +23,8 @@ fn main() {
 		res.set("FileDescription", "Graphite");
 		res.set("ProductName", "Graphite");
 
-		res.set("LegalCopyright", "Copyright © 2025 Graphite Labs, LLC");
+		// TODO: Pull this year from the Git commit date
+		res.set("LegalCopyright", "Copyright © 2026 Graphite Labs, LLC");
 		res.set("CompanyName", "Graphite Labs, LLC");
 
 		res.compile().expect("Failed to compile Windows resources");
