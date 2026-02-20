@@ -290,8 +290,8 @@ impl Fsm for FreehandToolFsmState {
 				let nodes = vec![(NodeId(0), node)];
 
 				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
-				tool_options.fill.apply_fill(layer, responses);
 				tool_options.stroke.apply_stroke(tool_data.weight, layer, responses);
+				tool_options.fill.apply_fill(layer, responses);
 				tool_data.layer = Some(layer);
 
 				FreehandToolFsmState::Drawing

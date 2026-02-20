@@ -74,6 +74,7 @@ pub enum DesktopFrontendMessage {
 	WindowHide,
 	WindowHideOthers,
 	WindowShowAll,
+	Restart,
 }
 
 pub enum DesktopWrapperMessage {
@@ -113,7 +114,7 @@ pub enum DesktopWrapperMessage {
 		id: DocumentId,
 	},
 	LoadPreferences {
-		preferences: Option<Preferences>,
+		preferences: Preferences,
 	},
 	MenuEvent {
 		id: String,

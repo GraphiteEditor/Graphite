@@ -395,8 +395,8 @@ impl Fsm for SplineToolFsmState {
 				let nodes = vec![(NodeId(1), path_node), (NodeId(0), spline_node)];
 
 				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
-				tool_options.fill.apply_fill(layer, responses);
 				tool_options.stroke.apply_stroke(tool_data.weight, layer, responses);
+				tool_options.fill.apply_fill(layer, responses);
 				tool_data.current_layer = Some(layer);
 
 				SplineToolFsmState::Drawing

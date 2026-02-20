@@ -140,7 +140,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		}
 
 		if (get(dialog).visible && key === "Escape") {
-			dialog.dismissDialog();
+			editor.handle.onDialogDismiss();
 		}
 	}
 
@@ -185,7 +185,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		const inTextInput = target === textToolInteractiveInputElement;
 
 		if (get(dialog).visible && !inDialog) {
-			dialog.dismissDialog();
+			editor.handle.onDialogDismiss();
 			e.preventDefault();
 			e.stopPropagation();
 		}
