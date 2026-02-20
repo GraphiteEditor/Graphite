@@ -192,8 +192,14 @@ pub async fn flatten_graphic(_: impl Ctx, content: Table<Graphic>, fully_flatten
 
 /// Converts a graphic table into a vector table by deeply flattening any vector content it contains, and discarding any non-vector content.
 #[node_macro::node(category("Vector"))]
-pub async fn flatten_vector<I: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Vector>)] content: I) -> Table<Vector> {
+pub async fn flatten_vector<T: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Vector>)] content: T) -> Table<Vector> {
 	content.into_flattened_vector_table()
+}
+
+/// Converts a graphic table into a vector table by deeply flattening any vector content it contains, and discarding any non-vector content.
+#[node_macro::node(category("Vector"))]
+pub async fn flatten_raster<T: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Raster<CPU>>)] content: T) -> Table<Raster<CPU>> {
+	content.into_flattened_raster_table()
 }
 
 /// Returns the value at the specified index in the collection.
