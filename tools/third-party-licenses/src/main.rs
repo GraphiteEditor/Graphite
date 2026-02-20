@@ -9,11 +9,14 @@
 
 use scraper::{Html, Selector};
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::process::Command;
 use std::{env, fs, process};
+
+use crate::cargo_about::CargoAboutLicenseSource;
+use crate::cef::CefLicenseSource;
+use crate::npm::NpmLicenseSource;
 
 #[derive(Serialize)]
 struct LicenseEntry {
@@ -29,9 +32,12 @@ struct Package {
 	url: Option<String>,
 }
 
+trait LicenceSource {
+	fn licenses(&self) -> Vec<LicenseEntry>;
+}
+
 fn main() {
 	let args: Vec<String> = env::args().collect();
-	let text_mode = args.iter().any(|a| a == "--text");
 
 	let mut positional = args.iter().skip(1).filter(|a| !a.starts_with("--"));
 	let cef_path = positional.next().map(PathBuf::from);
@@ -40,35 +46,18 @@ fn main() {
 	let cef_path = match cef_path {
 		Some(p) => p,
 		None => {
-			eprintln!("Usage: third-party-licenses [--text] <path-to-credits.html> [npm-dir]");
+			eprintln!("Usage: cargo run -p third-party-licenses -- <path-to-credits.html> <npm-dir>");
 			process::exit(1);
 		}
 	};
 
-	eprintln!("Parsing credits from:");
-	eprintln!("  cargo about");
-	let cargo_credits = parse_cargo_about_credits();
+	let cargo_source = CargoAboutLicenseSource::new();
+	let cef_source = CefLicenseSource::new(cef_path);
+	let npm_source = NpmLicenseSource::new(npm_dir);
 
-	eprintln!("  cef");
-	let html = fs::read_to_string(&cef_path).unwrap_or_else(|e| {
-		eprintln!("Failed to read {}: {e}", cef_path.display());
-		process::exit(1);
-	});
-	let cef_credits = parse_cef_credits(&html);
+	let credits = merge_dedup_and_sort(vec![cargo_source.licenses(), cef_source.licenses(), npm_source.licenses()]);
 
-	eprintln!("  npm");
-	let npm_credits = parse_npm_credits(npm_dir.as_deref());
-
-	eprintln!("Merging and deduplicating credits...");
-	let credits = merge_dedup_and_sort(vec![cargo_credits, cef_credits, npm_credits]);
-
-	eprintln!("Outputting credits");
-	if text_mode {
-		print!("{}", format_credits_as_text(&credits));
-	} else {
-		let json = serde_json::to_string_pretty(&credits).expect("Failed to serialize credits");
-		println!("{json}");
-	}
+	print!("{}", format_credits(&credits));
 }
 
 fn dedup_by_licence_text(vec: Vec<LicenseEntry>) -> Vec<LicenseEntry> {
@@ -99,171 +88,256 @@ fn merge_dedup_and_sort(sources: Vec<Vec<LicenseEntry>>) -> Vec<LicenseEntry> {
 	all
 }
 
-fn parse_cargo_about_credits() -> Vec<LicenseEntry> {
-	let output = Command::new("cargo").args(["about", "generate", "--format", "json", "--frozen"]).output().unwrap_or_else(|e| {
-		eprintln!("Failed to run cargo about generate: {e}");
-		process::exit(1);
-	});
+mod cargo_about {
+	use super::*;
 
-	if !output.status.success() {
-		eprintln!("cargo about generate failed:\n{}", String::from_utf8_lossy(&output.stderr));
-		process::exit(1);
+	pub struct CargoAboutLicenseSource {}
+
+	impl CargoAboutLicenseSource {
+		pub fn new() -> Self {
+			Self {}
+		}
 	}
 
-	let json_str = String::from_utf8(output.stdout).expect("Invalid UTF-8 from cargo about");
+	impl LicenceSource for CargoAboutLicenseSource {
+		fn licenses(&self) -> Vec<LicenseEntry> {
+			parse(run())
+		}
+	}
 
-	let parsed: Value = serde_json::from_str(&json_str).unwrap_or_else(|e| {
-		eprintln!("Failed to parse cargo about JSON: {e}");
-		process::exit(1);
-	});
+	#[derive(Deserialize)]
+	struct Output {
+		licenses: Vec<License>,
+	}
 
-	let licenses_array = parsed["licenses"].as_array().unwrap_or_else(|| {
-		eprintln!("Expected 'licenses' array in cargo about JSON output");
-		process::exit(1);
-	});
+	#[derive(Deserialize)]
+	struct License {
+		name: Option<String>,
+		text: Option<String>,
+		used_by: Vec<UsedBy>,
+	}
 
-	licenses_array
-		.iter()
-		.map(|license| {
-			let license_name = license["name"].as_str().map(String::from);
-			let license_text = license["text"].as_str().unwrap_or_default().trim().to_string();
+	#[derive(Deserialize)]
+	struct UsedBy {
+		#[serde(rename = "crate")]
+		crate_info: Crate,
+	}
 
-			let used_by = license["used_by"].as_array().cloned().unwrap_or_default();
+	#[derive(Deserialize)]
+	struct Crate {
+		name: Option<String>,
+		version: Option<String>,
+		authors: Option<Vec<String>>,
+		repository: Option<String>,
+	}
 
-			let packages: Vec<Package> = used_by
-				.iter()
-				.map(|entry| {
-					let crate_obj = &entry["crate"];
-					let name = crate_obj["name"].as_str().unwrap_or_default();
-					let version = crate_obj["version"].as_str().unwrap_or_default();
-					let display_name = if version.is_empty() { name.to_string() } else { format!("{name}@{version}") };
+	fn parse(parsed: Output) -> Vec<LicenseEntry> {
+		parsed
+			.licenses
+			.into_iter()
+			.map(|license| {
+				let packages = license
+					.used_by
+					.into_iter()
+					.map(|used| {
+						let name = used.crate_info.name.as_deref().unwrap_or_default();
+						let version = used.crate_info.version.as_deref().unwrap_or_default();
+						let display_name = if version.is_empty() { name.to_string() } else { format!("{name}@{version}") };
 
-					let authors = crate_obj["authors"]
-						.as_array()
-						.map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
-						.unwrap_or_default();
+						let repository = used.crate_info.repository.filter(|s| !s.is_empty());
 
-					let repository = crate_obj["repository"].as_str().and_then(|s| if s.is_empty() { None } else { Some(s.to_string()) });
+						Package {
+							name: display_name,
+							authors: used.crate_info.authors.unwrap_or_default(),
+							url: repository,
+						}
+					})
+					.collect();
 
-					Package {
-						name: display_name,
-						authors,
-						url: repository,
-					}
-				})
-				.collect();
-
-			LicenseEntry {
-				name: license_name,
-				text: license_text,
-				packages,
-			}
-		})
-		.collect()
-}
-
-fn parse_cef_credits(html: &str) -> Vec<LicenseEntry> {
-	let document = Html::parse_document(html);
-
-	let product_sel = Selector::parse("div.product").unwrap();
-	let title_sel = Selector::parse("span.title").unwrap();
-	let homepage_sel = Selector::parse("span.homepage a").unwrap();
-	let license_sel = Selector::parse("div.license pre").unwrap();
-
-	document
-		.select(&product_sel)
-		.filter_map(|product| {
-			let name: String = product.select(&title_sel).next().map(|el| el.text().collect()).unwrap_or_default();
-
-			if name.is_empty() {
-				return None;
-			}
-
-			let homepage = product.select(&homepage_sel).next().and_then(|el| el.value().attr("href").map(String::from));
-
-			let license_text: String = product.select(&license_sel).next().map(|el| el.text().collect::<String>()).unwrap_or_default().trim().to_string();
-
-			let pkg = Package {
-				name,
-				url: homepage,
-				authors: Vec::new(),
-			};
-
-			Some(LicenseEntry {
-				name: None,
-				text: license_text,
-				packages: vec![pkg],
+				LicenseEntry {
+					name: license.name,
+					text: license.text.as_deref().unwrap_or_default().to_string(),
+					packages,
+				}
 			})
-		})
-		.collect()
-}
-
-#[derive(Deserialize)]
-struct NpmEntry {
-	licenses: Option<String>,
-	repository: Option<String>,
-	#[serde(rename = "licenseFile")]
-	license_file: Option<String>,
-	publisher: Option<String>,
-}
-
-fn parse_npm_credits(dir: Option<&std::path::Path>) -> Vec<LicenseEntry> {
-	let mut cmd = Command::new("npx");
-	cmd.args(["license-checker-rseidelsohn", "--json"]);
-	if let Some(dir) = dir {
-		cmd.current_dir(dir);
+			.collect()
 	}
 
-	let output = cmd.output().unwrap_or_else(|e| {
-		eprintln!("Failed to run npx license-checker-rseidelsohn: {e}");
-		process::exit(1);
-	});
+	fn run() -> Output {
+		let output = Command::new("cargo").args(["about", "generate", "--format", "json", "--frozen"]).output().unwrap_or_else(|e| {
+			eprintln!("Failed to run cargo about generate: {e}");
+			process::exit(1);
+		});
 
-	if !output.status.success() {
-		eprintln!("npx license-checker-rseidelsohn failed:\n{}", String::from_utf8_lossy(&output.stderr));
-		process::exit(1);
-	}
+		if !output.status.success() {
+			eprintln!("cargo about generate failed:\n{}", String::from_utf8_lossy(&output.stderr));
+			process::exit(1);
+		}
 
-	let json_str = String::from_utf8(output.stdout).expect("Invalid UTF-8 from license-checker");
-	let entries: BTreeMap<String, NpmEntry> = serde_json::from_str(&json_str).unwrap_or_else(|e| {
-		eprintln!("Failed to parse license-checker JSON: {e}");
-		process::exit(1);
-	});
-
-	entries
-		.iter()
-		.map(|(name, entry)| {
-			let license_text = entry
-				.license_file
-				.as_ref()
-				.and_then(|p| fs::read_to_string(p).ok())
-				.map(|s| s.trim().to_string())
-				.unwrap_or_else(|| entry.licenses.clone().unwrap_or_default());
-
-			let pkg = Package {
-				name: name.to_string(),
-				url: entry.repository.clone(),
-				authors: entry.publisher.as_ref().map(|p| vec![p.clone()]).unwrap_or_default(),
-			};
-
-			LicenseEntry {
-				name: None,
-				text: license_text,
-				packages: vec![pkg],
-			}
+		serde_json::from_str(&String::from_utf8(output.stdout).expect("cargo about generate should return valid UTF-8")).unwrap_or_else(|e| {
+			eprintln!("Failed to parse cargo about generate JSON: {e}");
+			process::exit(1);
 		})
-		.collect()
+	}
 }
 
-fn format_credits_as_text(licenses: &Vec<LicenseEntry>) -> String {
+mod cef {
+	use super::*;
+
+	pub struct CefLicenseSource {
+		cef_credits_html: PathBuf,
+	}
+
+	impl CefLicenseSource {
+		pub fn new(cef_credits_html: PathBuf) -> Self {
+			Self { cef_credits_html }
+		}
+	}
+
+	impl LicenceSource for CefLicenseSource {
+		fn licenses(&self) -> Vec<LicenseEntry> {
+			let html = fs::read_to_string(&self.cef_credits_html).unwrap_or_else(|e| {
+				eprintln!("Failed to read CEF CREDITS.html {}: {e}", self.cef_credits_html.display());
+				process::exit(1);
+			});
+			parse(&html)
+		}
+	}
+
+	fn parse(html: &str) -> Vec<LicenseEntry> {
+		let document = Html::parse_document(html);
+
+		let product_sel = Selector::parse("div.product").unwrap();
+		let title_sel = Selector::parse("span.title").unwrap();
+		let homepage_sel = Selector::parse("span.homepage a").unwrap();
+		let license_sel = Selector::parse("div.license pre").unwrap();
+
+		document
+			.select(&product_sel)
+			.filter_map(|product| {
+				let name: String = product.select(&title_sel).next().map(|el| el.text().collect()).unwrap_or_default();
+
+				if name.is_empty() {
+					return None;
+				}
+
+				let homepage = product.select(&homepage_sel).next().and_then(|el| el.value().attr("href").map(String::from));
+
+				let license_text: String = product.select(&license_sel).next().map(|el| el.text().collect::<String>()).unwrap_or_default().trim().to_string();
+
+				let pkg = Package {
+					name,
+					url: homepage,
+					authors: Vec::new(),
+				};
+
+				Some(LicenseEntry {
+					name: None,
+					text: license_text,
+					packages: vec![pkg],
+				})
+			})
+			.collect()
+	}
+}
+
+mod npm {
+	use super::*;
+
+	pub struct NpmLicenseSource {
+		dir: Option<PathBuf>,
+	}
+	impl NpmLicenseSource {
+		pub fn new(dir: Option<PathBuf>) -> Self {
+			Self { dir }
+		}
+	}
+
+	impl LicenceSource for NpmLicenseSource {
+		fn licenses(&self) -> Vec<LicenseEntry> {
+			let json_str = run(self.dir.as_deref());
+			parse(&json_str)
+		}
+	}
+
+	#[derive(Deserialize)]
+	struct NpmEntry {
+		licenses: Option<String>,
+		repository: Option<String>,
+		#[serde(rename = "licenseFile")]
+		license_file: Option<String>,
+		publisher: Option<String>,
+	}
+
+	pub fn run(dir: Option<&std::path::Path>) -> String {
+		let mut cmd = Command::new("npx");
+		cmd.args(["license-checker-rseidelsohn", "--json"]);
+		if let Some(dir) = dir {
+			cmd.current_dir(dir);
+		}
+
+		let output = cmd.output().unwrap_or_else(|e| {
+			eprintln!("Failed to run npx license-checker-rseidelsohn: {e}");
+			process::exit(1);
+		});
+
+		if !output.status.success() {
+			eprintln!("npx license-checker-rseidelsohn failed:\n{}", String::from_utf8_lossy(&output.stderr));
+			process::exit(1);
+		}
+
+		String::from_utf8(output.stdout).expect("Invalid UTF-8 from license-checker")
+	}
+
+	pub fn parse(json_str: &str) -> Vec<LicenseEntry> {
+		let entries: BTreeMap<String, NpmEntry> = serde_json::from_str(json_str).unwrap_or_else(|e| {
+			eprintln!("Failed to parse license-checker JSON: {e}");
+			process::exit(1);
+		});
+
+		entries
+			.iter()
+			.map(|(name, entry)| {
+				let license_text = entry
+					.license_file
+					.as_ref()
+					.and_then(|p| fs::read_to_string(p).ok())
+					.map(|s| s.trim().to_string())
+					.unwrap_or_else(|| entry.licenses.clone().unwrap_or_default());
+
+				let pkg = Package {
+					name: name.to_string(),
+					url: entry.repository.clone(),
+					authors: entry.publisher.as_ref().map(|p| vec![p.clone()]).unwrap_or_default(),
+				};
+
+				LicenseEntry {
+					name: None,
+					text: license_text,
+					packages: vec![pkg],
+				}
+			})
+			.collect()
+	}
+}
+
+fn format_credits(licenses: &Vec<LicenseEntry>) -> String {
 	let mut out = String::new();
+
+	out.push_str("▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐\n");
+	out.push_str("▐▐                                                   ▐▐\n");
+	out.push_str("▐▐   GRAPHITE THIRD-PARTY SOFTWARE LICENSE NOTICES   ▐▐\n");
+	out.push_str("▐▐                                                   ▐▐\n");
+	out.push_str("▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐▐\n");
 
 	for license in licenses {
 		let package_lines: Vec<String> = license
 			.packages
 			.iter()
-			.map(|pkg| match &pkg.url {
-				Some(url) if !url.is_empty() => format!("{} - {}", pkg.name, url),
+			.map(|pkg| match &pkg {
+				Package { name, authors, url: Some(url) } if !authors.is_empty() => format!("{} ({}) - {}", name, authors.join(", "), url),
+				Package { name, authors: _, url: Some(url) } => format!("{} - {}", name, url),
+				Package { name, authors, url: None } if !authors.is_empty() => format!("{} ({})", name, authors.join(", ")),
 				_ => pkg.name.clone(),
 			})
 			.collect();
@@ -271,9 +345,14 @@ fn format_credits_as_text(licenses: &Vec<LicenseEntry>) -> String {
 		let multi = package_lines.len() > 1;
 
 		let header = format!(
-			"The package{} listed here {} licensed under the terms of the license printed beneath",
+			"The package{} listed here {} licensed under the terms of the {} printed beneath",
 			if multi { "s" } else { "" },
 			if multi { "are" } else { "is" },
+			if let Some(license) = license.name.as_ref() {
+				format!("\"{}\" license", license)
+			} else {
+				"license".to_string()
+			}
 		);
 
 		let max_len = std::iter::once(header.len()).chain(package_lines.iter().map(|l| l.chars().count())).max().unwrap_or(0);
@@ -286,8 +365,7 @@ fn format_credits_as_text(licenses: &Vec<LicenseEntry>) -> String {
 			})
 			.collect();
 
-		out.push('\n');
-		out.push_str(&format!(" {}\n", "_".repeat(max_len + 2)));
+		out.push_str(&format!("\n {}\n", "_".repeat(max_len + 2)));
 		out.push_str(&format!("│ {} │\n", " ".repeat(max_len)));
 		out.push_str(&format!("│ {}{} │\n", header, " ".repeat(max_len - header.len())));
 		out.push_str(&format!("│{}│\n", "_".repeat(max_len + 2)));
@@ -295,9 +373,13 @@ fn format_credits_as_text(licenses: &Vec<LicenseEntry>) -> String {
 		out.push('\n');
 		out.push_str(&format!(" {}\n", "\u{203e}".repeat(max_len + 2)));
 		for line in license.text.lines() {
+			if line.is_empty() {
+				out.push('\n');
+				continue;
+			}
+			out.push('\n');
 			out.push_str("    ");
 			out.push_str(line);
-			out.push('\n');
 		}
 	}
 
