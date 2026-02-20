@@ -1,12 +1,36 @@
-use core_types::ExtractVarArgs;
 use core_types::table::Table;
+use core_types::{Color, ExtractVarArgs};
 use core_types::{Ctx, ExtractIndex, ExtractPosition};
 use glam::DVec2;
-use graphic_types::Vector;
+use graphic_types::{Graphic, Vector};
+use raster_types::{CPU, Raster};
 
-// TODO: Call this "Read Context" once it's fully generic
+#[node_macro::node(category("Context"), path(graphene_core::vector))]
+fn read_graphic(ctx: impl Ctx + ExtractVarArgs) -> Table<Graphic> {
+	let Ok(var_arg) = ctx.vararg(0) else { return Default::default() };
+	let var_arg = var_arg as &dyn std::any::Any;
+
+	var_arg.downcast_ref().cloned().unwrap_or_default()
+}
+
 #[node_macro::node(category("Context"), path(graphene_core::vector))]
 fn read_vector(ctx: impl Ctx + ExtractVarArgs) -> Table<Vector> {
+	let Ok(var_arg) = ctx.vararg(0) else { return Default::default() };
+	let var_arg = var_arg as &dyn std::any::Any;
+
+	var_arg.downcast_ref().cloned().unwrap_or_default()
+}
+
+#[node_macro::node(category("Context"), path(graphene_core::vector))]
+fn read_raster(ctx: impl Ctx + ExtractVarArgs) -> Table<Raster<CPU>> {
+	let Ok(var_arg) = ctx.vararg(0) else { return Default::default() };
+	let var_arg = var_arg as &dyn std::any::Any;
+
+	var_arg.downcast_ref().cloned().unwrap_or_default()
+}
+
+#[node_macro::node(category("Context"), path(graphene_core::vector))]
+fn read_color(ctx: impl Ctx + ExtractVarArgs) -> Table<Color> {
 	let Ok(var_arg) = ctx.vararg(0) else { return Default::default() };
 	let var_arg = var_arg as &dyn std::any::Any;
 

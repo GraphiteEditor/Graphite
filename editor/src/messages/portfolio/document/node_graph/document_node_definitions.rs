@@ -479,9 +479,9 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			// "true: bool" -> 1[6:Reset Transform]
 			// "false: bool" -> 2[6:Reset Transform]
 			// "false: bool" -> 3[6:Reset Transform]
-			// [12:Flatten Vector]0 -> 0[7:Map Vector]
-			// [6:Reset Transform]0 -> 1[7:Map Vector]
-			// [7:Map Vector]0 -> 0[8:Morph]
+			// [12:Flatten Vector]0 -> 0[7:Map]
+			// [6:Reset Transform]0 -> 1[7:Map]
+			// [7:Map]0 -> 0[8:Morph]
 			// [15:Multiply]0 -> 1[8:Morph]
 			// [8:Morph]0 -> 0[9:Transform]
 			// [4:Position on Path]0 -> 1[9:Transform]
@@ -563,9 +563,9 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								],
 								..Default::default()
 							},
-							// 7: Map Vector
+							// 7: Map
 							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(vector_nodes::map_vector::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(graphic::map::IDENTIFIER),
 								inputs: vec![NodeInput::node(NodeId(12), 0), NodeInput::node(NodeId(6), 0)],
 								..Default::default()
 							},
@@ -719,7 +719,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 									},
 									..Default::default()
 								},
-								// 7: Map Vector
+								// 7: Map
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(21, 1)),
@@ -838,9 +838,9 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			// [1:Extract Transform]0 -> 0[2:Decompose Translation]
 			// [2:Decompose Translation]0 -> 0[3:Vec2 to Point]
 			// [IMPORTS]0 -> 0[4:Flatten Vector]
-			// [4:Flatten Vector]0 -> 0[5:Map Vector]
-			// [3:Vec2 to Point]0 -> 1[5:Map Vector]
-			// [5:Map Vector]0 -> 0[6: Flatten Path]
+			// [4:Flatten Vector]0 -> 0[5:Map]
+			// [3:Vec2 to Point]0 -> 1[5:Map]
+			// [5:Map]0 -> 0[6: Flatten Path]
 			// [6:Flatten Path]0 -> 0[7:Points to Polyline]
 			// "false: bool" -> 1[7:Points to Polyline]
 			// [7:Points to Polyline]0 -> 0[EXPORTS]
@@ -879,9 +879,9 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 								inputs: vec![NodeInput::import(generic!(T), 0)],
 								..Default::default()
 							},
-							// 5: Map Vector
+							// 5: Map
 							DocumentNode {
-								implementation: DocumentNodeImplementation::ProtoNode(vector_nodes::map_vector::IDENTIFIER),
+								implementation: DocumentNodeImplementation::ProtoNode(graphic::map::IDENTIFIER),
 								inputs: vec![NodeInput::node(NodeId(4), 0), NodeInput::node(NodeId(3), 0)],
 								..Default::default()
 							},
@@ -954,7 +954,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 									},
 									..Default::default()
 								},
-								// 5: Map Vector
+								// 5: Map
 								DocumentNodeMetadata {
 									persistent_metadata: DocumentNodePersistentMetadata {
 										node_type_metadata: NodeTypePersistentMetadata::node(IVec2::new(28, 0)),
