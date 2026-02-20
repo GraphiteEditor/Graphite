@@ -22,16 +22,7 @@ async fn read_position(
 	/// In programming terms: inside the double loop `i { j { ... } }`, *Loop Level* 0 = `j` and 1 = `i`. After inserting a third loop `k { ... }`, inside it, levels would be 0 = `k`, 1 = `j`, and 2 = `i`.
 	loop_level: u32,
 ) -> DVec2 {
-	let Some(position_iter) = ctx.try_position() else { return DVec2::ZERO };
-	let mut last = DVec2::ZERO;
-	for (i, position) in position_iter.enumerate() {
-		if i == loop_level as usize {
-			return position;
-		}
-		last = position;
-	}
-
-	last
+	ctx.try_position().and_then(|mut iter| iter.nth(loop_level as usize).or_else(|| iter.last())).unwrap_or(DVec2::ZERO)
 }
 
 // TODO: Return u32, u64, or usize instead of f64 after #1621 is resolved and has allowed us to implement automatic type conversion in the node graph for nodes with generic type inputs.
@@ -48,13 +39,5 @@ async fn read_index(
 	/// In programming terms: inside the double loop `i { j { ... } }`, *Loop Level* 0 = `j` and 1 = `i`. After inserting a third loop `k { ... }`, inside it, levels would be 0 = `k`, 1 = `j`, and 2 = `i`.
 	loop_level: u32,
 ) -> f64 {
-	let Some(index_iter) = ctx.try_index() else { return 0. };
-	let mut last = 0;
-	for (i, index) in index_iter.enumerate() {
-		if i == loop_level as usize {
-			return index as f64;
-		}
-		last = index;
-	}
-	last as f64
+	ctx.try_index().and_then(|mut iter| iter.nth(loop_level as usize).or_else(|| iter.last())).unwrap_or(0) as f64
 }
