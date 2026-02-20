@@ -158,10 +158,20 @@ fn regular_polygon<T: AsU64>(
 	#[unit(" px")]
 	#[default(50)]
 	radius: f64,
+	#[default(false)] is_inner_radius: bool,
 ) -> Table<Vector> {
 	let points = sides.as_u64();
-	let radius: f64 = radius * 2.;
-	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_regular_polygon(DVec2::splat(-radius), points, radius)))
+	let effective_radius = calculate_effective_radius(radius, sides.as_u64() as u32, is_inner_radius) * 2.;
+	Table::new_from_element(Vector::from_subpath(subpath::Subpath::new_regular_polygon(DVec2::splat(-effective_radius), points, effective_radius)))
+}
+
+pub fn calculate_effective_radius(radius: f64, sides: u32, is_inner: bool) -> f64 {
+	if is_inner {
+		let cosine = (std::f64::consts::PI / sides as f64).cos();
+		if cosine.abs() > 1e-6 { radius / cosine } else { radius }
+	} else {
+		radius
+	}
 }
 
 /// Generates an n-pointed star shape with inner and outer points at chosen radii from the center.
