@@ -2135,19 +2135,25 @@ impl Fsm for PathToolFsmState {
 				if let Some(segment) = &mut tool_data.segment
 					&& let Some(molding_segment_handles) = tool_data.molding_info
 				{
-					let mut b_override = None;
 					let mold_position = if snap_angle_state {
-						let center = segment.segment_center_viewport(document);
-						b_override = Some(center);
-						let delta = input.mouse.position - center;
-						let axis = if delta.x.abs() >= delta.y.abs() { Axis::X } else { Axis::Y };
+						let transform = document.metadata().transform_to_viewport_if_feeds(segment.layer(), &document.network_interface);
+						let start = transform.transform_point2(point_to_dvec2(segment.pathseg().start()));
+						let end = transform.transform_point2(point_to_dvec2(segment.pathseg().end()));
+						let center = (start + end) / 2.;
+						let seg_dir = end - start;
+
+						// Choose the axis that is most perpendicular to the segment
+						let axis = if seg_dir.y.abs() >= seg_dir.x.abs() { Axis::X } else { Axis::Y };
+
 						tool_data.molding_snapping_axis = Some(axis);
 						tool_data.molding_snapping_origin = center;
-						match axis {
+						let snapped_mouse = match axis {
 							Axis::X => DVec2::new(input.mouse.position.x, center.y),
 							Axis::Y => DVec2::new(center.x, input.mouse.position.y),
 							_ => input.mouse.position,
-						}
+						};
+
+						snapped_mouse - center + segment.closest_point_to_viewport()
 					} else {
 						tool_data.molding_snapping_axis = None;
 						input.mouse.position
@@ -2158,7 +2164,6 @@ impl Fsm for PathToolFsmState {
 						responses,
 						molding_segment_handles,
 						mold_position,
-						b_override,
 						break_molding,
 						tool_data.temporary_adjacent_handles_while_molding,
 					);
