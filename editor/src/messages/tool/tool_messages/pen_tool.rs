@@ -1,5 +1,5 @@
 use super::tool_prelude::*;
-use crate::consts::{COLOR_OVERLAY_BLUE, DEFAULT_STROKE_WIDTH, HIDE_HANDLE_DISTANCE, LINE_ROTATE_SNAP_ANGLE, SEGMENT_OVERLAY_SIZE};
+use crate::consts::{COLOR_OVERLAY_BLUE, DEFAULT_STROKE_WIDTH, DOUBLE_CLICK_MILLISECONDS, DRAG_THRESHOLD, HIDE_HANDLE_DISTANCE, LINE_ROTATE_SNAP_ANGLE, SEGMENT_OVERLAY_SIZE};
 use crate::messages::input_mapper::utility_types::input_mouse::MouseKeys;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_network_node_type;
 use crate::messages::portfolio::document::overlays::utility_functions::path_overlays;
@@ -402,6 +402,8 @@ struct PenToolData {
 	colinear: bool,
 	alt_pressed: bool,
 	space_pressed: bool,
+	/// If a double-click closed the path, defer cleanup so Undo can restore the drawing state.
+	cleanup_after_double_click: bool,
 	/// Tracks whether to switch from `HandleMode::ColinearEquidistant` to `HandleMode::Free`
 	/// after releasing Ctrl, specifically when Ctrl was held before the handle was dragged from the anchor.
 	switch_to_free_on_ctrl_release: bool,
@@ -412,6 +414,9 @@ struct PenToolData {
 	/// and Ctrl is pressed near the anchor to make it colinear with its opposite handle.
 	angle_locked: bool,
 	path_closed: bool,
+	last_click_time: Option<u64>,
+	last_click_pos: Option<DVec2>,
+	pending_double_click_confirm: bool,
 
 	handle_mode: HandleMode,
 	prior_segment_layer: Option<LayerNodeIdentifier>,
@@ -448,6 +453,19 @@ impl PenToolData {
 		self.latest_points.clear();
 		self.point_index = 0;
 		self.snap_manager.cleanup(responses);
+		self.pending_double_click_confirm = false;
+		self.last_click_time = None;
+		self.last_click_pos = None;
+		self.cleanup_after_double_click = false;
+	}
+
+	fn update_click_timing(&mut self, time: u64, position: DVec2) -> bool {
+		let within_time = self.last_click_time.map(|last_time| time.saturating_sub(last_time) <= DOUBLE_CLICK_MILLISECONDS).unwrap_or(false);
+		let within_distance = self.last_click_pos.map(|last_pos| last_pos.distance(position) <= DRAG_THRESHOLD).unwrap_or(false);
+		let is_double_click = within_time && within_distance;
+		self.last_click_time = Some(time);
+		self.last_click_pos = Some(position);
+		is_double_click
 	}
 
 	/// Check whether target handle is primary, end, or `self.handle_end`
@@ -1389,6 +1407,39 @@ impl PenToolData {
 		}
 	}
 
+	/// Walk the connected component of the current subpath and return its single open endpoint if unambiguous.
+	/// Excludes the path's starting point and the currently active anchor to avoid returning the same point we are on.
+	fn unambiguous_subpath_endpoint(&self, vector: &Vector) -> Option<PointId> {
+		let start_point = self.latest_points.first()?.id;
+		let current_point = self.latest_point()?.id;
+		let mut visited: HashSet<PointId, NoHashBuilder> = HashSet::with_hasher(NoHashBuilder);
+		let mut stack = vec![start_point];
+		let mut endpoint: Option<PointId> = None;
+
+		while let Some(point) = stack.pop() {
+			if !visited.insert(point) {
+				continue;
+			}
+
+			let is_endpoint = vector.connected_count(point) == 1 && point != start_point && point != current_point;
+			if is_endpoint {
+				// More than one open endpoint makes the target ambiguous.
+				if endpoint.is_some() {
+					return None;
+				}
+				endpoint = Some(point);
+			}
+
+			for neighbor in vector.connected_points(point) {
+				if !visited.contains(&neighbor) {
+					stack.push(neighbor);
+				}
+			}
+		}
+
+		endpoint
+	}
+
 	fn set_lock_angle(&mut self, vector: &Vector, anchor: PointId, segment: Option<SegmentId>) {
 		let anchor_position = vector.point_domain.position_from_id(anchor);
 
@@ -1805,6 +1856,8 @@ impl Fsm for PenToolFsmState {
 				self
 			}
 			(PenToolFsmState::Ready, PenToolMessage::DragStart { append_to_selected }) => {
+				tool_data.pending_double_click_confirm = false;
+				let _ = tool_data.update_click_timing(input.time, input.mouse.position);
 				responses.add(DocumentMessage::StartTransaction);
 				tool_data.handle_mode = HandleMode::Free;
 
@@ -1812,7 +1865,12 @@ impl Fsm for PenToolFsmState {
 				let append = input.keyboard.key(append_to_selected);
 
 				tool_data.store_clicked_endpoint(document, &transform, input, viewport);
+				// If a previous double-click closed a path and we never resumed drawing, clear stale tool state now.
+				if tool_data.cleanup_after_double_click {
+					tool_data.cleanup(responses);
+				}
 				tool_data.create_initial_point(document, input, viewport, responses, tool_options, append, shape_editor);
+				tool_data.cleanup_after_double_click = false;
 
 				// Enter the dragging handle state while the mouse is held down, allowing the user to move the mouse and position the handle
 				PenToolFsmState::DraggingHandle(tool_data.handle_mode)
@@ -1827,6 +1885,14 @@ impl Fsm for PenToolFsmState {
 				state
 			}
 			(PenToolFsmState::PlacingAnchor, PenToolMessage::DragStart { append_to_selected }) => {
+				let double_click = if tool_data.buffering_merged_vector {
+					false
+				} else {
+					tool_data.update_click_timing(input.time, input.mouse.position)
+				};
+				if !tool_data.buffering_merged_vector {
+					tool_data.pending_double_click_confirm = double_click;
+				}
 				let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
 				let snapped = tool_data.snap_manager.free_snap(&SnapData::new(document, input, viewport), &point, SnapTypeConfiguration::default());
 				let viewport_vec = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
@@ -1881,9 +1947,41 @@ impl Fsm for PenToolFsmState {
 			}
 			(PenToolFsmState::DraggingHandle(_), PenToolMessage::DragStop) => {
 				tool_data.cleanup_target_selections(shape_editor, layer, document, responses);
-				tool_data
+
+				// Handle double-click to close path by connecting to a clear endpoint when possible
+				let is_double_click = tool_data.pending_double_click_confirm;
+				if is_double_click {
+					tool_data.pending_double_click_confirm = false;
+
+					// Prefer a clear endpoint on the current subpath; fall back to the session start point.
+					let mut closing_position = None;
+					if let Some(layer) = layer
+						&& let Some(vector) = document.network_interface.compute_modified_vector(layer)
+					{
+						closing_position = tool_data.unambiguous_subpath_endpoint(&vector).and_then(|endpoint| vector.point_domain.position_from_id(endpoint));
+					}
+
+					if closing_position.is_none() {
+						closing_position = tool_data.latest_points.first().map(|first| first.pos);
+					}
+
+					if let Some(position) = closing_position {
+						tool_data.next_point = position;
+						tool_data.next_handle_start = position;
+						tool_data.handle_end.get_or_insert(position);
+					}
+				}
+
+				let next_state = tool_data
 					.finish_placing_handle(SnapData::new(document, input, viewport), transform, responses)
-					.unwrap_or(PenToolFsmState::PlacingAnchor)
+					.unwrap_or(PenToolFsmState::PlacingAnchor);
+
+				// If double-click closed the path, defer cleanup so Undo can restore the drawing state. Cleanup will run when starting a fresh path.
+				if is_double_click && next_state == PenToolFsmState::Ready {
+					tool_data.cleanup_after_double_click = true;
+				}
+
+				next_state
 			}
 			(
 				PenToolFsmState::DraggingHandle(_),
@@ -1902,6 +2000,15 @@ impl Fsm for PenToolFsmState {
 					colinear: input.keyboard.key(colinear),
 					move_anchor_with_handles: input.keyboard.key(move_anchor_with_handles),
 				};
+
+				// If the user drags the mouse beyond the threshold, we should not close the path on release
+				if tool_data.pending_double_click_confirm {
+					if let Some(last_pos) = tool_data.last_click_pos {
+						if last_pos.distance(input.mouse.position) > DRAG_THRESHOLD {
+							tool_data.pending_double_click_confirm = false;
+						}
+					}
+				}
 
 				let snap_data = SnapData::new(document, input, viewport);
 				if tool_data.modifiers.colinear && !tool_data.toggle_colinear_debounce {
@@ -2185,11 +2292,28 @@ impl Fsm for PenToolFsmState {
 			(PenToolFsmState::DraggingHandle(..) | PenToolFsmState::PlacingAnchor, PenToolMessage::Undo) => {
 				if tool_data.point_index > 0 {
 					tool_data.point_index -= 1;
+					tool_data.cleanup_after_double_click = false;
+					if let Some(prev_point) = tool_data.latest_points.get(tool_data.point_index) {
+						tool_data.next_point = prev_point.pos;
+						tool_data.next_handle_start = prev_point.handle_start;
+						tool_data.handle_end = None;
+					}
 					tool_data
 						.place_anchor(SnapData::new(document, input, viewport), transform, input.mouse.position, responses)
 						.unwrap_or(PenToolFsmState::PlacingAnchor)
 				} else {
 					responses.add(PenToolMessage::Abort);
+					self
+				}
+			}
+			(PenToolFsmState::Ready, PenToolMessage::Undo) => {
+				if tool_data.cleanup_after_double_click && !tool_data.latest_points.is_empty() {
+					tool_data.cleanup_after_double_click = false;
+					tool_data.pending_double_click_confirm = false;
+					tool_data.point_index = tool_data.latest_points.len().saturating_sub(1);
+					tool_data.handle_end = None;
+					PenToolFsmState::PlacingAnchor
+				} else {
 					self
 				}
 			}
