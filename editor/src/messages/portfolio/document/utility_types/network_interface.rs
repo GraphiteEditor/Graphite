@@ -3011,10 +3011,13 @@ impl NodeNetworkInterface {
 			log::error!("Could not get selected nodes in selected_nodes_bounding_box_viewport");
 			return None;
 		};
-		selected_nodes
-			.selected_nodes()
-			.cloned()
-			.collect::<Vec<_>>()
+		let nodes = selected_nodes.selected_nodes().cloned().collect::<Vec<_>>();
+
+		self.nodes_bounding_box(&nodes, network_path)
+	}
+
+	pub fn nodes_bounding_box(&mut self, nodes: &Vec<NodeId>, network_path: &[NodeId]) -> Option<[DVec2; 2]> {
+		nodes
 			.iter()
 			.filter_map(|node_id| {
 				self.node_click_targets(node_id, network_path)
