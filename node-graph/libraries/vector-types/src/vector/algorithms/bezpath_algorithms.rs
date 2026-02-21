@@ -674,3 +674,168 @@ mod tests {
 		assert!(bezpath_is_inside_bezpath(&line_inside, &boundary_polygon, None, None));
 	}
 }
+
+pub mod inscribe_circles_algorithms {
+	use kurbo::{ParamCurve, ParamCurveDeriv, common::solve_itp};
+
+	#[derive(Clone, Copy, Debug, PartialEq)]
+	pub struct CircleInscription {
+		pub t_first: f64,
+		pub t_second: f64,
+		pub theta: f64,
+		pub radius_to_centre: f64,
+		pub circle_centre: glam::DVec2,
+	}
+
+	/// Find the normalised tangent at a particular time. Avoid using for t=0 or t=1 due to errors.
+	fn tangent(segment: kurbo::PathSeg, t: f64) -> glam::DVec2 {
+		let tangent = match segment {
+			kurbo::PathSeg::Line(line) => line.deriv().eval(t),
+			kurbo::PathSeg::Quad(quad_bez) => quad_bez.deriv().eval(t),
+			kurbo::PathSeg::Cubic(cubic_bez) => cubic_bez.deriv().eval(t),
+		}
+		.to_vec2()
+		.normalize();
+		let tangent = glam::DVec2::new(tangent.x, tangent.y);
+		debug_assert!(tangent.is_finite(), "cannot round corner with NaN tangent");
+		tangent
+	}
+
+	/// Compute the tangent at t=0 for the path segment
+	pub fn tangent_at_start(segment: kurbo::PathSeg) -> kurbo::Vec2 {
+		let tangent = match segment {
+			kurbo::PathSeg::Line(line) => (line.p1 - line.p0).normalize(),
+			kurbo::PathSeg::Quad(quad_bez) => {
+				let first = (quad_bez.p1 - quad_bez.p0).normalize();
+				if first.is_finite() { first } else { (quad_bez.p2 - quad_bez.p0).normalize() }
+			}
+			kurbo::PathSeg::Cubic(cubic_bez) => {
+				let first = (cubic_bez.p1 - cubic_bez.p0).normalize();
+				if first.is_finite() {
+					first
+				} else {
+					let second = (cubic_bez.p2 - cubic_bez.p0).normalize();
+					if second.is_finite() { second } else { (cubic_bez.p3 - cubic_bez.p0).normalize() }
+				}
+			}
+		};
+		debug_assert!(tangent.is_finite(), "cannot round corner with NaN tangent {segment:?}");
+		tangent
+	}
+
+	/// Convert [`crate::subpath::Bezier`] to [`kurbo::PathSeg`]
+	pub fn bezier_to_path_seg(bezier: crate::subpath::Bezier) -> kurbo::PathSeg {
+		let [start, end] = [(bezier.start().x, bezier.start().y), (bezier.end().x, bezier.end().y)];
+		match bezier.handles {
+			crate::subpath::BezierHandles::Linear => kurbo::Line::new(start, end).into(),
+			crate::subpath::BezierHandles::Quadratic { handle } => kurbo::QuadBez::new(start, (handle.x, handle.y), end).into(),
+			crate::subpath::BezierHandles::Cubic { handle_start, handle_end } => kurbo::CubicBez::new(start, (handle_start.x, handle_start.y), (handle_end.x, handle_end.y), end).into(),
+		}
+	}
+
+	/// Convert [`kurbo::PathSeg`] to [`crate::subpath::BezierHandles`]
+	pub fn path_seg_to_handles(segment: kurbo::PathSeg) -> crate::subpath::BezierHandles {
+		match segment {
+			kurbo::PathSeg::Line(_line) => crate::subpath::BezierHandles::Linear,
+			kurbo::PathSeg::Quad(quad_bez) => crate::subpath::BezierHandles::Quadratic {
+				handle: glam::DVec2::new(quad_bez.p1.x, quad_bez.p1.y),
+			},
+			kurbo::PathSeg::Cubic(cubic_bez) => crate::subpath::BezierHandles::Cubic {
+				handle_start: glam::DVec2::new(cubic_bez.p1.x, cubic_bez.p1.y),
+				handle_end: glam::DVec2::new(cubic_bez.p2.x, cubic_bez.p2.y),
+			},
+		}
+	}
+
+	/// Find the t value that is distance `radius` from the start
+	fn distance_from_start(seg: kurbo::PathSeg, radius: f64) -> Option<f64> {
+		let r_squared = radius * radius;
+		let final_distance = (seg.end() - seg.start()).length_squared();
+		if final_distance < radius {
+			return None;
+		}
+		let evaluate = |t| (seg.eval(t) - seg.start()).length_squared() - r_squared;
+		Some(solve_itp(evaluate, 0., 1., 1e-9, 1, 0.2, evaluate(0.), evaluate(1.)))
+	}
+
+	/// Attemt to inscribe circle into the start of the [`kurbo::PathSeg`]s
+	pub fn inscribe(first: kurbo::PathSeg, second: kurbo::PathSeg, radius: f64) -> Option<CircleInscription> {
+		let [t_first, t_second] = [distance_from_start(first, radius)?, distance_from_start(second, radius)?];
+
+		let tangents = [(first, t_first), (second, t_second)].map(|(segment, t)| tangent(segment, t));
+		let points = [(first, t_first), (second, t_second)].map(|(segment, t)| segment.eval(t)).map(|x| glam::DVec2::new(x.x, x.y));
+
+		let mut normals = tangents.map(glam::DVec2::perp);
+		// Make sure the normals are pointing in the right direction
+		normals[0] *= normals[0].dot(tangents[1]).signum();
+		normals[1] *= normals[1].dot(tangents[0]).signum();
+
+		let mid = (points[0] + points[1]) / 2.;
+
+		if normals[0].abs_diff_eq(glam::DVec2::ZERO, 1e-6) || normals[1].abs_diff_eq(glam::DVec2::ZERO, 1e-6) || mid.abs_diff_eq(points[0], 1e-6) {
+			return None;
+		}
+
+		let radius_to_centre = (mid - points[0]).length_squared() / (normals[0].dot(mid - points[0]));
+		let circle_centre = points[0] + normals[0] * radius_to_centre;
+
+		if radius_to_centre > radius * 10. {
+			return None; // Don't inscribe if it is a long way from the centre
+		}
+
+		info!("Points {points:?}\ntangents {tangents:?}\nnormals {normals:?}\ncentres {circle_centre}");
+		return Some(CircleInscription {
+			t_first,
+			t_second,
+			theta: normals[0].dot(normals[1]).clamp(-1., 1.).acos(),
+			radius_to_centre,
+			circle_centre,
+		});
+	}
+
+	#[cfg(test)]
+	mod inscribe_tests {
+		const ROUND_ACCURACY: f64 = 1e-6;
+		#[test]
+		fn test_perpendicular_lines() {
+			let l1 = kurbo::PathSeg::Line(kurbo::Line::new((0., 0.), (100., 0.)));
+			let l2 = kurbo::PathSeg::Line(kurbo::Line::new((0., 0.), (0., 100.)));
+
+			let result = super::inscribe(l1, l2, 5.);
+			assert!(result.unwrap().circle_centre.abs_diff_eq(glam::DVec2::new(5., 5.), ROUND_ACCURACY), "{result:?}");
+			assert_eq!(result.unwrap().theta, std::f64::consts::FRAC_PI_2, "unexpected {result:?}");
+		}
+
+		#[test]
+		fn test_skew_lines() {
+			let l1 = kurbo::PathSeg::Line(kurbo::Line::new((0., 0.), (100., 100.)));
+			let l2 = kurbo::PathSeg::Line(kurbo::Line::new((0., 0.), (0., 100.)));
+
+			let result = super::inscribe(l1, l2, 5.);
+			let expected_centre = glam::DVec2::new(10. / core::f64::consts::SQRT_2 - 5., 5.);
+			assert!(result.unwrap().circle_centre.abs_diff_eq(expected_centre, ROUND_ACCURACY), "unexpected {result:?}");
+			assert_eq!(result.unwrap().theta, std::f64::consts::FRAC_PI_4 * 3., "unexpected {result:?}");
+		}
+
+		#[test]
+		fn test_skew_lines2() {
+			let l1 = kurbo::PathSeg::Line(kurbo::Line::new((0., 0.), (30., 40.)));
+			let l2 = kurbo::PathSeg::Line(kurbo::Line::new((0., 0.), (40., 30.)));
+
+			let result = super::inscribe(l1, l2, 5.);
+			let expected_centre = glam::DVec2::new(25. / 7., 25. / 7.);
+			assert!(result.unwrap().circle_centre.abs_diff_eq(expected_centre, ROUND_ACCURACY), "{result:?}");
+			assert_eq!(result.unwrap().theta, (-24f64 / 25.).acos(), "{result:?}");
+		}
+
+		#[test]
+		fn test_perpendicular_cubic() {
+			let l1 = kurbo::PathSeg::Cubic(kurbo::CubicBez::new((0., 0.), (0., 0.), (100., 0.), (100., 0.)));
+			let l2 = kurbo::PathSeg::Cubic(kurbo::CubicBez::new((0., 0.), (0., 33.), (0., 67.), (0., 100.)));
+
+			let result = super::inscribe(l1, l2, 5.);
+			assert!(result.unwrap().circle_centre.abs_diff_eq(glam::DVec2::new(5., 5.), ROUND_ACCURACY), "{result:?}");
+			assert_eq!(result.unwrap().theta, std::f64::consts::FRAC_PI_2, "unexpected {result:?}");
+		}
+	}
+}

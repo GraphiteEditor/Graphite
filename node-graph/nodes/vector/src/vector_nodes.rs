@@ -554,6 +554,94 @@ async fn round_corners(
 		.collect()
 }
 
+/// Attempt to inscribe circles that start `radius`` away from the anchor points.
+#[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
+async fn inscribe_circles(
+	_: impl Ctx,
+	mut source: Table<Vector>,
+	#[hard_min(0.)]
+	#[default(10.)]
+	radius: PixelLength,
+) -> Table<Vector> {
+	for TableRowMut { transform, element: vector, .. } in source.iter_mut() {
+		let mut new_point_id = vector.point_domain.next_id();
+		let mut new_segment_id = vector.segment_domain.next_id();
+		let point_ids_count = vector.point_domain.ids().len();
+		for point_index in 0..point_ids_count {
+			let point_id = vector.point_domain.ids()[point_index];
+
+			// Get points with two connected segments
+			let [Some((first_index, first)), Some((second_index, second)), None] = ({
+				let mut connected_segments = vector.segment_bezier_iter().enumerate().filter(|&(_, (_, _, start, end))| (start == point_id) != (end == point_id));
+				[connected_segments.next(), connected_segments.next(), connected_segments.next()]
+			}) else {
+				continue;
+			};
+
+			// Convert data types
+			let flipped = [first.3, second.3].map(|end| end == point_id);
+			let [first, second] = [first.1, second.1]
+				.map(|t| t.apply_transformation(|x| transform.transform_point2(x)))
+				.map(bezpath_algorithms::inscribe_circles_algorithms::bezier_to_path_seg);
+			let first = if flipped[0] { first.reverse() } else { first };
+			let second = if flipped[1] { second.reverse() } else { second };
+
+			// Find positions to inscribe
+			let Some(pos) = bezpath_algorithms::inscribe_circles_algorithms::inscribe(first, second, radius) else {
+				continue;
+			};
+
+			// Split path based on inscription
+			let [first, second] = [first.subsegment(pos.t_first..1.0), second.subsegment(pos.t_second..1.0)];
+			let start_positions = [first, second].map(|segment| DVec2::new(segment.start().x, segment.start().y));
+
+			// Make round handles into circle shape
+			let start_tangents = [first, second].map(bezpath_algorithms::inscribe_circles_algorithms::tangent_at_start).map(|v| DVec2::new(v.x, v.y));
+			let k = (4. / 3.) * (pos.theta / 4.).tan();
+			if !k.is_finite() {
+				warn!("k is not finite corner {pos:?}, skipping");
+				continue;
+			}
+			let handle_positions = [
+				start_positions[0] - start_tangents[0] * k * pos.radius_to_centre,
+				start_positions[1] - start_tangents[1] * k * pos.radius_to_centre,
+			];
+			let rounded_handles = BezierHandles::Cubic {
+				handle_start: handle_positions[0],
+				handle_end: handle_positions[1],
+			};
+
+			// Convert data types back
+			let first = if flipped[0] { first.reverse() } else { first };
+			let second = if flipped[1] { second.reverse() } else { second };
+			let handles = [first, second].map(bezpath_algorithms::inscribe_circles_algorithms::path_seg_to_handles);
+
+			// Apply inverse transforms
+			let inverse = transform.inverse();
+			let handles = handles.map(|handle| handle.apply_transformation(|p| inverse.transform_point2(p)));
+			let start_positions = start_positions.map(|p| inverse.transform_point2(p));
+			let rounded_handles = rounded_handles.apply_transformation(|p| inverse.transform_point2(p));
+
+			vector.segment_domain.set_handles(first_index, handles[0]);
+			vector.segment_domain.set_handles(second_index, handles[1]);
+			let end_point_index = vector.point_domain.len();
+			if flipped[1] {
+				vector.segment_domain.set_end_point(second_index, end_point_index);
+			} else {
+				vector.segment_domain.set_start_point(second_index, end_point_index);
+			}
+
+			vector.point_domain.set_position(point_index, start_positions[0]);
+			vector.point_domain.push(new_point_id.next_id(), start_positions[1]);
+			vector
+				.segment_domain
+				.push(new_segment_id.next_id(), point_index, end_point_index, rounded_handles, StrokeId::generate());
+		}
+	}
+
+	source
+}
+
 #[node_macro::node(name("Merge by Distance"), category("Vector: Modifier"), path(core_types::vector))]
 pub fn merge_by_distance(
 	_: impl Ctx,
