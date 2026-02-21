@@ -154,6 +154,7 @@ impl<'a> ModifyInputsContext<'a> {
 	}
 
 	pub fn insert_vector(&mut self, subpaths: Vec<Subpath<PointId>>, layer: LayerNodeIdentifier, include_transform: bool, include_fill: bool, include_stroke: bool) {
+		let first_anchor = subpaths.first().and_then(|subpath| subpath.manipulator_groups().first().map(|group| group.anchor));
 		let vector = Table::new_from_element(Vector::from_subpaths(subpaths, true));
 
 		let shape = resolve_network_node_type("Path")
@@ -164,7 +165,13 @@ impl<'a> ModifyInputsContext<'a> {
 		self.network_interface.move_node_to_chain_start(&shape_id, layer, &[]);
 
 		if include_transform {
-			let transform = resolve_network_node_type("Transform").expect("Transform node does not exist").default_node_template();
+			let mut transform = resolve_network_node_type("Transform").expect("Transform node does not exist").default_node_template();
+			if let Some(anchor) = first_anchor {
+				const ORIGIN_OFFSET_INDEX: usize = 5;
+				if let Some(origin_offset) = transform.document_node.inputs.get_mut(ORIGIN_OFFSET_INDEX) {
+					*origin_offset = NodeInput::value(TaggedValue::DVec2(anchor), false);
+				}
+			}
 			let transform_id = NodeId::new();
 			self.network_interface.insert_node(transform_id, transform, &[]);
 			self.network_interface.move_node_to_chain_start(&transform_id, layer, &[]);
