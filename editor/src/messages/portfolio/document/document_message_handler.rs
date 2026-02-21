@@ -478,6 +478,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 				// Abort dragging nodes
 				if self.node_graph_handler.drag_start.is_some() {
 					responses.add(DocumentMessage::AbortTransaction);
+					self.node_graph_handler.duplicated_in_drag = false;
 					self.node_graph_handler.drag_start = None;
 					self.node_graph_handler.select_if_not_dragged = None;
 				}
