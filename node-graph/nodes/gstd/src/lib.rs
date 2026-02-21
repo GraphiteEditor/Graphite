@@ -14,6 +14,7 @@ pub use graphic_types::{Artboard, Graphic, Vector};
 pub use math_nodes;
 pub use path_bool_nodes as path_bool;
 pub use raster_nodes;
+pub use repeat_nodes;
 pub use text_nodes;
 pub use transform_nodes;
 pub use vector_nodes;
@@ -62,6 +63,10 @@ pub mod gradient {
 pub mod transform {
 	pub use core_types::transform::*;
 	pub use vector_types::ReferencePoint;
+}
+
+pub mod repeat {
+	pub use repeat_nodes::repeat_nodes::*;
 }
 
 pub mod math {
