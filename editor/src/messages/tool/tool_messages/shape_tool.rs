@@ -21,7 +21,8 @@ use crate::messages::tool::common_functionality::shapes::{Ellipse, Line, Rectang
 use crate::messages::tool::common_functionality::snapping::{self, SnapCandidatePoint, SnapData, SnapTypeConfiguration};
 use crate::messages::tool::common_functionality::transformation_cage::{BoundingBoxManager, EdgeBool};
 use crate::messages::tool::common_functionality::utility_functions::{closest_point, resize_bounds, rotate_bounds, skew_bounds, transforming_transform_cage};
-use graph_craft::document::NodeId;
+use graph_craft::document::value::TaggedValue;
+use graph_craft::document::{NodeId, NodeInput};
 use graphene_std::Color;
 use graphene_std::renderer::Quad;
 use graphene_std::vector::misc::{ArcType, GridType, SpiralType};
@@ -936,7 +937,17 @@ impl Fsm for ShapeToolFsmState {
 					ShapeType::Line => Line::create_node(document, tool_data.data.drag_start),
 				};
 
-				let nodes = vec![(NodeId(0), node)];
+				let mut transform_node = crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_network_node_type("Transform")
+					.expect("Transform node does not exist")
+					.default_node_template();
+				if let Some(input) = transform_node.document_node.inputs.get_mut(0) {
+					*input = NodeInput::node(NodeId(1), 0);
+				}
+				const ORIGIN_OFFSET_INDEX: usize = 5;
+				if let Some(origin_offset) = transform_node.document_node.inputs.get_mut(ORIGIN_OFFSET_INDEX) {
+					*origin_offset = NodeInput::value(TaggedValue::DVec2(tool_data.data.drag_start), false);
+				}
+				let nodes = vec![(NodeId(0), transform_node), (NodeId(1), node)];
 				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, document.new_layer_bounding_artboard(input, viewport), responses);
 
 				let defered_responses = &mut VecDeque::new();
