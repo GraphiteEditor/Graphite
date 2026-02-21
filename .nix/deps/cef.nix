@@ -10,6 +10,8 @@ let
       mv ./Resources/* $out/
       mv ./include $out/
 
+      cat ./CREDITS.html | ${pkgs.xz}/bin/xz -9 -e -c > $out/CREDITS.html.xz
+
       echo '${
         builtins.toJSON {
           type = "minimal";

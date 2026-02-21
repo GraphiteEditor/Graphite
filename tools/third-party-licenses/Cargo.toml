@@ -6,6 +6,7 @@ license.workspace = true
 authors.workspace = true
 
 [dependencies]
-scraper = "0.22"
 serde = { workspace = true }
 serde_json = { workspace = true }
+scraper = "0.22"
+lzma-rust2 = { version = "0.16", default-features = false, features = ["std", "encoder", "optimization", "xz"] }

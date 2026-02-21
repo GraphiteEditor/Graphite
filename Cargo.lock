@@ -3497,6 +3497,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "lzma-rust2"
+version = "0.16.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "47bb1e988e6fb779cf720ad431242d3f03167c1b3f2b1aae7f1a94b2495b36ae"
+dependencies = [
+ "sha2",
+]
+
+[[package]]
 name = "mac"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6319,6 +6328,7 @@ dependencies = [
 name = "third-party-licenses"
 version = "0.0.0"
 dependencies = [
+ "lzma-rust2",
  "scraper",
  "serde",
  "serde_json",

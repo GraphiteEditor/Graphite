@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
-use std::{env, process};
 
 mod cargo;
 mod cef;
@@ -29,16 +28,8 @@ pub struct Package {
 fn main() {
 	let npm_dir = PathBuf::from(env!("CARGO_WORKSPACE_DIR")).join("frontend");
 
-	let cef_path = match env::args().nth(1).map(PathBuf::from) {
-		Some(p) => p,
-		None => {
-			eprintln!("Usage: cargo run -p third-party-licenses -- <path-to-credits.html>");
-			process::exit(1);
-		}
-	};
-
 	let cargo_source = CargoAboutLicenseSource::new();
-	let cef_source = CefLicenseSource::new(cef_path);
+	let cef_source = CefLicenseSource::new();
 	let npm_source = NpmLicenseSource::new(npm_dir);
 
 	let credits = merge_dedup_and_sort(vec![cargo_source.licenses(), cef_source.licenses(), npm_source.licenses()]);
