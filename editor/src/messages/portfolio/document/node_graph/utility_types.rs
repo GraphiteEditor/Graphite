@@ -110,23 +110,6 @@ pub struct FrontendNodeType {
 	pub input_types: Vec<String>,
 }
 
-/// If dragging the selected nodes, this stores the coordinate of the click relative to the top left selected node.
-/// Once the nodes have been dragged, it is toggled to the Yes variant.
-#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
-pub struct DragStart {
-	pub drag_start_offset: DVec2,
-	pub dragged: bool,
-}
-
-impl DragStart {
-	pub fn new(drag_start: DVec2) -> Self {
-		DragStart {
-			drag_start_offset: drag_start,
-			dragged: false,
-		}
-	}
-}
-
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct Transform {
 	pub scale: f64,
