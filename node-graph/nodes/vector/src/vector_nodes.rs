@@ -1,11 +1,11 @@
 use core::cmp::Ordering;
-use core::f64::consts::PI;
+use core::f64::consts::{PI, TAU};
 use core::hash::{Hash, Hasher};
 use core_types::bounds::{BoundingBox, RenderBoundingBox};
-use core_types::registry::types::{Angle, IntegerCount, Length, Multiplier, Percentage, PixelLength, PixelSize, Progression, SeedValue};
+use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLength, Progression, SeedValue};
 use core_types::table::{Table, TableRow, TableRowMut};
 use core_types::transform::{Footprint, Transform};
-use core_types::{CloneVarArgs, Color, Context, Ctx, ExtractAll, ExtractVarArgs, OwnedContextImpl};
+use core_types::{CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::Vector;
 use graphic_types::raster_types::{CPU, GPU, Raster};
@@ -13,22 +13,18 @@ use graphic_types::{Graphic, IntoGraphicTable};
 use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, PathEl, PathSeg, Shape};
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
-use std::f64::consts::TAU;
 use vector_types::subpath::{BezierHandles, ManipulatorGroup};
 use vector_types::vector::PointDomain;
-use vector_types::vector::ReferencePoint;
-use vector_types::vector::algorithms::bezpath_algorithms::eval_pathseg_euclidean;
-use vector_types::vector::algorithms::bezpath_algorithms::{self, TValue, evaluate_bezpath, sample_polyline_on_bezpath, split_bezpath, tangent_on_bezpath};
+use vector_types::vector::algorithms::bezpath_algorithms::{self, TValue, eval_pathseg_euclidean, evaluate_bezpath, sample_polyline_on_bezpath, split_bezpath, tangent_on_bezpath};
 use vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
 use vector_types::vector::algorithms::offset_subpath::offset_bezpath;
 use vector_types::vector::algorithms::spline::{solve_spline_first_handle_closed, solve_spline_first_handle_open};
-use vector_types::vector::misc::{CentroidType, ExtrudeJoiningAlgorithm, RowsOrColumns, bezpath_from_manipulator_groups, bezpath_to_manipulator_groups, point_to_dvec2};
-use vector_types::vector::misc::{MergeByDistanceAlgorithm, PointSpacingType, is_linear};
-use vector_types::vector::misc::{handles_to_segment, segment_to_handles};
-use vector_types::vector::style::{Fill, Gradient, GradientStops, Stroke};
-use vector_types::vector::style::{PaintOrder, StrokeAlign, StrokeCap, StrokeJoin};
-use vector_types::vector::{FillId, RegionId};
-use vector_types::vector::{PointId, SegmentDomain, SegmentId, StrokeId, VectorExt};
+use vector_types::vector::misc::{
+	CentroidType, ExtrudeJoiningAlgorithm, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, bezpath_from_manipulator_groups, bezpath_to_manipulator_groups, handles_to_segment, is_linear,
+	point_to_dvec2, segment_to_handles,
+};
+use vector_types::vector::style::{Fill, Gradient, GradientStops, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use vector_types::vector::{FillId, PointId, RegionId, SegmentDomain, SegmentId, StrokeId, VectorExt};
 
 /// Implemented for types that can be converted to an iterator of vector rows.
 /// Used for the fill and stroke node so they can be used on `Table<Graphic>` or `Table<Vector>`.
@@ -226,75 +222,6 @@ where
 	content
 }
 
-#[node_macro::node(category("Instancing"), path(core_types::vector))]
-async fn repeat<I: 'n + Send + Clone>(
-	_: impl Ctx,
-	// TODO: Implement other graphical types.
-	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>)] instance: Table<I>,
-	#[default(100., 100.)]
-	// TODO: When using a custom Properties panel layout in document_node_definitions.rs and this default is set, the widget weirdly doesn't show up in the Properties panel. Investigation is needed.
-	direction: PixelSize,
-	angle: Angle,
-	#[default(5)] count: IntegerCount,
-) -> Table<I> {
-	let angle = angle.to_radians();
-	let count = count.max(1);
-	let total = (count - 1) as f64;
-
-	let mut result_table = Table::new();
-
-	for index in 0..count {
-		let angle = index as f64 * angle / total;
-		let translation = index as f64 * direction / total;
-		let transform = DAffine2::from_angle(angle) * DAffine2::from_translation(translation);
-
-		for row in instance.iter() {
-			let mut row = row.into_cloned();
-
-			let local_translation = DAffine2::from_translation(row.transform.translation);
-			let local_matrix = DAffine2::from_mat2(row.transform.matrix2);
-			row.transform = local_translation * transform * local_matrix;
-
-			result_table.push(row);
-		}
-	}
-
-	result_table
-}
-
-#[node_macro::node(category("Instancing"), path(core_types::vector))]
-async fn circular_repeat<I: 'n + Send + Clone>(
-	_: impl Ctx,
-	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>)] instance: Table<I>,
-	start_angle: Angle,
-	#[unit(" px")]
-	#[default(5)]
-	radius: f64,
-	#[default(5)] count: IntegerCount,
-) -> Table<I> {
-	let count = count.max(1);
-
-	let mut result_table = Table::new();
-
-	for index in 0..count {
-		let angle = DAffine2::from_angle((TAU / count as f64) * index as f64 + start_angle.to_radians());
-		let translation = DAffine2::from_translation(radius * DVec2::Y);
-		let transform = angle * translation;
-
-		for row in instance.iter() {
-			let mut row = row.into_cloned();
-
-			let local_translation = DAffine2::from_translation(row.transform.translation);
-			let local_matrix = DAffine2::from_mat2(row.transform.matrix2);
-			row.transform = local_translation * transform * local_matrix;
-
-			result_table.push(row);
-		}
-	}
-
-	result_table
-}
-
 #[node_macro::node(name("Copy to Points"), category("Instancing"), path(core_types::vector))]
 async fn copy_to_points<I: 'n + Send + Clone>(
 	_: impl Ctx,
@@ -368,63 +295,6 @@ async fn copy_to_points<I: 'n + Send + Clone>(
 				result_table.push(row);
 			}
 		}
-	}
-
-	result_table
-}
-
-#[node_macro::node(category("Instancing"), path(core_types::vector))]
-async fn mirror<I: 'n + Send + Clone>(
-	_: impl Ctx,
-	#[implementations(Table<Graphic>, Table<Vector>, Table<Raster<CPU>>, Table<Color>, Table<GradientStops>)] content: Table<I>,
-	#[default(ReferencePoint::Center)] relative_to_bounds: ReferencePoint,
-	#[unit(" px")] offset: f64,
-	#[range((-90., 90.))] angle: Angle,
-	#[default(true)] keep_original: bool,
-) -> Table<I>
-where
-	Table<I>: BoundingBox,
-{
-	// Normalize the direction vector
-	let normal = DVec2::from_angle(angle.to_radians());
-
-	// The mirror reference may be based on the bounding box if an explicit reference point is chosen
-	let RenderBoundingBox::Rectangle(bounding_box) = content.bounding_box(DAffine2::IDENTITY, false) else {
-		return content;
-	};
-
-	let reference_point_location = relative_to_bounds.point_in_bounding_box((bounding_box[0], bounding_box[1]).into());
-	let mirror_reference_point = reference_point_location.map(|point| point + normal * offset);
-
-	// Create the reflection matrix
-	let reflection = DAffine2::from_mat2_translation(
-		glam::DMat2::from_cols(
-			DVec2::new(1. - 2. * normal.x * normal.x, -2. * normal.y * normal.x),
-			DVec2::new(-2. * normal.x * normal.y, 1. - 2. * normal.y * normal.y),
-		),
-		DVec2::ZERO,
-	);
-
-	// Apply reflection around the reference point
-	let reflected_transform = if let Some(mirror_reference_point) = mirror_reference_point {
-		DAffine2::from_translation(mirror_reference_point) * reflection * DAffine2::from_translation(-mirror_reference_point)
-	} else {
-		reflection * DAffine2::from_translation(DVec2::from_angle(angle.to_radians()) * DVec2::splat(-offset))
-	};
-
-	let mut result_table = Table::new();
-
-	// Add original instance depending on the keep_original flag
-	if keep_original {
-		for instance in content.clone().into_iter() {
-			result_table.push(instance);
-		}
-	}
-
-	// Create and add mirrored instance
-	for mut row in content.into_iter() {
-		row.transform = reflected_transform * row.transform;
-		result_table.push(row);
 	}
 
 	result_table
@@ -1326,32 +1196,24 @@ async fn separate_subpaths(_: impl Ctx, content: Table<Vector>) -> Table<Vector>
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-fn instance_vector(ctx: impl Ctx + ExtractVarArgs) -> Table<Vector> {
-	let Ok(var_arg) = ctx.vararg(0) else { return Default::default() };
-	let var_arg = var_arg as &dyn std::any::Any;
+async fn map_points(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: Table<Vector>, mapped: impl Node<Context<'static>, Output = DVec2>) -> Table<Vector> {
+	let mut content = content;
+	let mut index = 0;
 
-	var_arg.downcast_ref().cloned().unwrap_or_default()
-}
+	for row in content.iter_mut() {
+		for (_, position) in row.element.point_domain.positions_mut() {
+			let owned_ctx = OwnedContextImpl::from(ctx.clone()).with_index(index).with_position(*position);
+			index += 1;
 
-#[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn instance_map(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: Table<Vector>, mapped: impl Node<Context<'static>, Output = Table<Vector>>) -> Table<Vector> {
-	let mut rows = Vec::new();
-
-	for (i, row) in content.into_iter().enumerate() {
-		let owned_ctx = OwnedContextImpl::from(ctx.clone());
-		let owned_ctx = owned_ctx.with_vararg(Box::new(Table::new_from_row(row))).with_index(i);
-		let table = mapped.eval(owned_ctx.into_context()).await;
-
-		for inner_row in table {
-			rows.push(inner_row);
+			*position = mapped.eval(owned_ctx.into_context()).await;
 		}
 	}
 
-	rows.into_iter().collect()
+	content
 }
 
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-async fn flatten_path<T: 'n + Send>(
+pub async fn flatten_path<T: 'n + Send>(
 	_: impl Ctx,
 	#[implementations(
 		Table<Graphic>,
@@ -2545,60 +2407,6 @@ mod test {
 	}
 
 	#[tokio::test]
-	async fn repeat() {
-		let direction = DVec2::X * 1.5;
-		let count = 3;
-		let repeated = super::repeat(
-			Footprint::default(),
-			vector_node_from_bezpath(Rect::new(0., 0., 1., 1.).to_path(DEFAULT_ACCURACY)),
-			direction,
-			0.,
-			count,
-		)
-		.await;
-		let vector_table = super::flatten_path(Footprint::default(), repeated).await;
-		let vector = vector_table.iter().next().unwrap().element;
-		assert_eq!(vector.region_manipulator_groups().count(), 3);
-		for (index, (_, manipulator_groups)) in vector.region_manipulator_groups().enumerate() {
-			assert!((manipulator_groups[0].anchor - direction * index as f64 / (count - 1) as f64).length() < 1e-5);
-		}
-	}
-	#[tokio::test]
-	async fn repeat_transform_position() {
-		let direction = DVec2::new(12., 10.);
-		let count = 8;
-		let repeated = super::repeat(
-			Footprint::default(),
-			vector_node_from_bezpath(Rect::new(0., 0., 1., 1.).to_path(DEFAULT_ACCURACY)),
-			direction,
-			0.,
-			count,
-		)
-		.await;
-		let vector_table = super::flatten_path(Footprint::default(), repeated).await;
-		let vector = vector_table.iter().next().unwrap().element;
-		assert_eq!(vector.region_manipulator_groups().count(), 8);
-		for (index, (_, manipulator_groups)) in vector.region_manipulator_groups().enumerate() {
-			assert!((manipulator_groups[0].anchor - direction * index as f64 / (count - 1) as f64).length() < 1e-5);
-		}
-	}
-	#[tokio::test]
-	async fn circular_repeat() {
-		let repeated = super::circular_repeat(Footprint::default(), vector_node_from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY)), 45., 4., 8).await;
-		let vector_table = super::flatten_path(Footprint::default(), repeated).await;
-		let vector = vector_table.iter().next().unwrap().element;
-		assert_eq!(vector.region_manipulator_groups().count(), 8);
-
-		for (index, (_, manipulator_groups)) in vector.region_manipulator_groups().enumerate() {
-			let expected_angle = (index as f64 + 1.) * 45.;
-
-			let center = (manipulator_groups[0].anchor + manipulator_groups[2].anchor) / 2.;
-			let actual_angle = DVec2::Y.angle_to(center).to_degrees();
-
-			assert!((actual_angle - expected_angle).abs() % 360. < 1e-5, "Expected {expected_angle} found {actual_angle}");
-		}
-	}
-	#[tokio::test]
 	async fn bounding_box() {
 		let bounding_box = super::bounding_box((), vector_node_from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY))).await;
 		let bounding_box = bounding_box.iter().next().unwrap().element;
@@ -2724,8 +2532,11 @@ mod test {
 	}
 	#[tokio::test]
 	async fn morph() {
-		let rectangle = vector_node_from_bezpath(Rect::new(0., 0., 100., 100.).to_path(DEFAULT_ACCURACY));
-		let rectangles = super::repeat(Footprint::default(), rectangle, DVec2::new(-100., -100.), 0., 2).await;
+		let mut rectangles = vector_node_from_bezpath(Rect::new(0., 0., 100., 100.).to_path(DEFAULT_ACCURACY));
+		let mut second_rectangle = rectangles.get(0).unwrap().into_cloned();
+		second_rectangle.transform *= DAffine2::from_translation((-100., -100.).into());
+		rectangles.push(second_rectangle);
+
 		let morphed = super::morph(Footprint::default(), rectangles, 0.5).await;
 		let element = morphed.iter().next().unwrap().element;
 		assert_eq!(

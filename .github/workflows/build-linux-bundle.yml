@@ -65,11 +65,11 @@ jobs:
 
           flatpak-builder --user --force-clean --install-deps-from=flathub --repo=repo build ./manifest.json
 
-          flatpak build-bundle repo graphite.flatpak art.graphite.Graphite --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo
+          flatpak build-bundle repo Graphite.flatpak art.graphite.Graphite --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo
 
       - name: Upload Flatpak
         uses: actions/upload-artifact@v4
         with:
           name: graphite-flatpak
-          path: .flatpak/graphite.flatpak
+          path: .flatpak/Graphite.flatpak
           compression-level: 0
