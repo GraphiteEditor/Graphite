@@ -1091,6 +1091,20 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		document.network_interface.set_input(&InputConnector::node(*node_id, 9), old_inputs[4].clone(), network_path);
 	}
 
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::transform_nodes::transform::IDENTIFIER) && inputs_count == 5 {
+		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
+		let old_inputs = document.network_interface.replace_inputs(node_id, network_path, &mut node_template)?;
+
+		let origin_offset_input = NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false);
+
+		document.network_interface.set_input(&InputConnector::node(*node_id, 0), old_inputs[0].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node(*node_id, 1), old_inputs[1].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node(*node_id, 2), old_inputs[2].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node(*node_id, 3), old_inputs[3].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node(*node_id, 4), old_inputs[4].clone(), network_path);
+		document.network_interface.set_input(&InputConnector::node(*node_id, 5), origin_offset_input, network_path);
+	}
+
 	// Upgrade the old "Spline" node to the new "Spline" node
 	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::spline::IDENTIFIER)
 		|| reference == DefinitionIdentifier::ProtoNode(ProtoNodeIdentifier::new("graphene_core::vector::generator_nodes::SplineNode"))

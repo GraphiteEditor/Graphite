@@ -28,10 +28,11 @@ async fn transform<T: ApplyTransform + 'n + 'static>(
 	rotation: f64,
 	scale: DVec2,
 	skew: DVec2,
+	origin_offset: DVec2,
 ) -> T {
 	let trs = DAffine2::from_scale_angle_translation(scale, rotation.to_radians(), translation);
 	let skew = DAffine2::from_cols_array(&[1., skew.y.to_radians().tan(), skew.x.to_radians().tan(), 1., 0., 0.]);
-	let matrix = trs * skew;
+	let matrix = DAffine2::from_translation(origin_offset) * trs * skew * DAffine2::from_translation(-origin_offset);
 
 	let footprint = ctx.try_footprint().copied();
 
