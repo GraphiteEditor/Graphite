@@ -1830,7 +1830,17 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 	if layout.is_empty() {
 		layout = node_no_properties(node_id, context);
 	}
-	let name = context.network_interface.implementation_name(&node_id, context.selection_network_path);
+	let mut name = context.network_interface.implementation_name(&node_id, context.selection_network_path);
+	if name == "Custom Node" {
+		if let Some(display_name) = context
+			.network_interface
+			.node_metadata(&node_id, context.selection_network_path)
+			.map(|metadata| metadata.persistent_metadata.display_name.clone())
+			.filter(|name| !name.is_empty())
+		{
+			name = display_name;
+		}
+	}
 
 	let description = context
 		.network_interface
@@ -1843,13 +1853,8 @@ pub(crate) fn generate_node_properties(node_id: NodeId, context: &mut NodeProper
 
 	let visible = context.network_interface.is_visible(&node_id, context.selection_network_path);
 	let pinned = context.network_interface.is_pinned(&node_id, context.selection_network_path);
-	let expanded = context.section_expanded.get(&node_id.0).copied().unwrap_or_else(|| {
-		!context
-			.network_interface
-			.reference(&node_id, context.selection_network_path)
-			.as_ref()
-			.is_some_and(|id| id.implementation_name_from_identifier() == "Merge")
-	});
+	let collapsed = context.network_interface.is_collapsed(&node_id, context.selection_network_path);
+	let expanded = !collapsed;
 
 	LayoutGroup::Section {
 		name,

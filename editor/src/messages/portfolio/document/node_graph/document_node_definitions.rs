@@ -28,6 +28,8 @@ use graphene_std::*;
 use serde_json::Value;
 use std::collections::{HashMap, VecDeque};
 
+pub const MERGE_NODE_IDENTIFIER: &str = "Merge";
+
 pub struct NodePropertiesContext<'a> {
 	pub persistent_data: &'a PersistentData,
 	pub responses: &'a mut VecDeque<Message>,
@@ -35,7 +37,6 @@ pub struct NodePropertiesContext<'a> {
 	pub network_interface: &'a mut NodeNetworkInterface,
 	pub selection_network_path: &'a [NodeId],
 	pub document_name: &'a str,
-	pub section_expanded: &'a HashMap<u64, bool>,
 }
 
 impl NodePropertiesContext<'_> {
@@ -214,7 +215,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			properties: None,
 		},
 		DocumentNodeDefinition {
-			identifier: "Merge",
+			identifier: MERGE_NODE_IDENTIFIER,
 			category: "General",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
@@ -2711,10 +2712,17 @@ impl DocumentNodeDefinition {
 		}
 		populate_input_properties(&mut template, Vec::new());
 
+		if let DocumentNodeImplementation::Network(_) = &template.document_node.implementation {
+			let network = template.persistent_node_metadata.network_metadata.get_or_insert_with(NodeNetworkMetadata::default);
+			network.persistent_metadata.reference = Some(self.identifier.to_string());
+		}
+		if self.identifier == MERGE_NODE_IDENTIFIER {
+			template.persistent_node_metadata.collapsed = true;
+		}
+
 		template
 	}
 
-	/// Converts the [DocumentNodeDefinition] type to a [NodeTemplate], completely default.
 	pub fn default_node_template(&self) -> NodeTemplate {
 		self.node_template_input_override(self.node_template.document_node.inputs.clone().into_iter().map(Some))
 	}

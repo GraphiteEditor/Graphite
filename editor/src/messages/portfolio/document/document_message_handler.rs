@@ -85,6 +85,7 @@ pub struct DocumentMessageHandler {
 	/// List of the [`LayerNodeIdentifier`]s that are currently collapsed by the user in the Layers panel.
 	/// Collapsed means that the expansion arrow isn't set to show the children of these layers.
 	pub collapsed: CollapsedLayers,
+
 	/// The full Git commit hash of the Graphite repository that was used to build the editor.
 	/// We save this to provide a hint about which version of the editor was used to create the document.
 	pub commit_hash: String,
@@ -159,6 +160,7 @@ impl Default for DocumentMessageHandler {
 			// ============================================
 			network_interface: default_document_network_interface(),
 			collapsed: CollapsedLayers::default(),
+
 			commit_hash: GRAPHITE_GIT_COMMIT_HASH.to_string(),
 			document_ptz: PTZ::default(),
 			render_mode: RenderMode::default(),
@@ -229,6 +231,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					document_name: self.name.as_str(),
 					executor,
 					persistent_data,
+
 					properties_panel_open,
 				};
 				self.properties_panel_message_handler.process_message(message, responses, context);

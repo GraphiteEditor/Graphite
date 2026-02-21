@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use graphene_std::uuid::NodeId;
 
 use crate::messages::layout::utility_types::widget_prelude::*;
@@ -20,9 +18,7 @@ pub struct PropertiesPanelMessageContext<'a> {
 }
 
 #[derive(Debug, Clone, Default, ExtractField)]
-pub struct PropertiesPanelMessageHandler {
-	pub section_expanded: HashMap<u64, bool>,
-}
+pub struct PropertiesPanelMessageHandler {}
 
 #[message_handler_data]
 impl MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageContext<'_>> for PropertiesPanelMessageHandler {
@@ -56,7 +52,6 @@ impl MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageContext<'_>> f
 					selection_network_path,
 					document_name,
 					executor,
-					section_expanded: &self.section_expanded,
 				};
 				let layout = Layout(NodeGraphMessageHandler::collate_properties(&mut node_properties_context));
 
@@ -74,12 +69,15 @@ impl MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageContext<'_>> f
 						selection_network_path,
 						document_name,
 						executor,
-						section_expanded: &self.section_expanded,
 					};
 					Layout(NodeGraphMessageHandler::collate_properties(&mut node_properties_context))
 				};
 
-				Self::update_all_section_expansion_recursive(&mut layout.0, expanded, &mut self.section_expanded);
+				responses.add(DocumentMessage::AddTransaction);
+				let node_ids = Self::update_all_section_expansion_recursive(&mut layout.0, expanded, responses);
+				if !node_ids.is_empty() {
+					responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects { node_ids });
+				}
 
 				responses.add(LayoutMessage::SendLayout {
 					layout,
@@ -87,8 +85,10 @@ impl MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageContext<'_>> f
 				});
 			}
 			PropertiesPanelMessage::SetSectionExpanded { node_id, expanded } => {
-				self.section_expanded.insert(node_id, expanded);
-				responses.add(PropertiesPanelMessage::Refresh);
+				let node_id = NodeId(node_id);
+				responses.add(DocumentMessage::AddTransaction);
+				responses.add(NodeGraphMessage::SetCollapsed { node_id, collapsed: !expanded });
+				responses.add(NodeGraphMessage::SetLockedOrVisibilitySideEffects { node_ids: vec![node_id] });
 			}
 		}
 	}
@@ -99,17 +99,20 @@ impl MessageHandler<PropertiesPanelMessage, PropertiesPanelMessageContext<'_>> f
 }
 
 impl PropertiesPanelMessageHandler {
-	fn update_all_section_expansion_recursive(layout: &mut [LayoutGroup], expanded: bool, section_expanded: &mut HashMap<u64, bool>) {
+	fn update_all_section_expansion_recursive(layout: &mut [LayoutGroup], expanded: bool, responses: &mut VecDeque<Message>) -> Vec<NodeId> {
+		let mut node_ids = Vec::new();
 		for group in layout {
 			if let LayoutGroup::Section {
 				id, layout, expanded: group_expanded, ..
 			} = group
 			{
 				*group_expanded = expanded;
-				section_expanded.insert(*id, expanded);
-
-				Self::update_all_section_expansion_recursive(&mut layout.0, expanded, section_expanded);
+				let node_id = NodeId(*id);
+				node_ids.push(node_id);
+				responses.add(NodeGraphMessage::SetCollapsed { node_id, collapsed: !expanded });
+				node_ids.extend(Self::update_all_section_expansion_recursive(&mut layout.0, expanded, responses));
 			}
 		}
+		node_ids
 	}
 }
