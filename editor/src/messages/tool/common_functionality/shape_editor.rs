@@ -360,6 +360,7 @@ impl ClosestSegment {
 		responses: &mut VecDeque<Message>,
 		(c1, c2): (DVec2, DVec2),
 		new_b: DVec2,
+		b_override: Option<DVec2>,
 		break_colinear_molding: bool,
 		temporary_adjacent_handles_while_molding: Option<[Option<HandleId>; 2]>,
 	) -> Option<[Option<HandleId>; 2]> {
@@ -369,7 +370,7 @@ impl ClosestSegment {
 		let end = point_to_dvec2(self.bezier.end());
 
 		// Apply the drag delta to the segment's handles
-		let b = self.bezier_point_to_viewport;
+		let b = b_override.unwrap_or(self.bezier_point_to_viewport);
 		let delta = transform.inverse().transform_vector2(new_b - b);
 		let (nc1, nc2) = (c1 + delta, c2 + delta);
 
