@@ -3,6 +3,7 @@
 
 	import type { Editor } from "@graphite/editor";
 	import { isWidgetSpanRow, isWidgetSection, type WidgetSection as WidgetSectionFromJsMessages, type LayoutTarget } from "@graphite/messages";
+	import { operatingSystem } from "@graphite/utility-functions/platform";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
@@ -16,14 +17,24 @@
 	export { className as class };
 	export let classes: Record<string, boolean> = {};
 
-	let expanded = true;
+	$: expanded = widgetData.expanded;
 
 	const editor = getContext<Editor>("editor");
 </script>
 
-<!-- TODO: Implement collapsable sections with properties system -->
 <LayoutCol class={`widget-section ${className}`.trim()} {classes}>
-	<button class="header" class:expanded on:click|stopPropagation={() => (expanded = !expanded)} tabindex="0">
+	<button
+		class="header"
+		class:expanded
+		on:click|stopPropagation={(e) => {
+			const accel = operatingSystem() === "Mac" ? e.metaKey : e.ctrlKey;
+			if (e.altKey || accel) {
+				editor.handle.setAllSectionsExpanded(!expanded);
+			} else {
+				editor.handle.setSectionExpanded(widgetData.id, !expanded);
+			}
+		}}
+	>
 		<div class="expand-arrow"></div>
 		<TextLabel tooltipLabel={widgetData.name} tooltipDescription={widgetData.description} bold={true}>{widgetData.name}</TextLabel>
 		<IconButton
