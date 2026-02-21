@@ -2135,8 +2135,10 @@ impl Fsm for PathToolFsmState {
 				if let Some(segment) = &mut tool_data.segment
 					&& let Some(molding_segment_handles) = tool_data.molding_info
 				{
+					let mut b_override = None;
 					let mold_position = if snap_angle_state {
 						let center = segment.segment_center_viewport(document);
+						b_override = Some(center);
 						let delta = input.mouse.position - center;
 						let axis = if delta.x.abs() >= delta.y.abs() { Axis::X } else { Axis::Y };
 						tool_data.molding_snapping_axis = Some(axis);
@@ -2156,6 +2158,7 @@ impl Fsm for PathToolFsmState {
 						responses,
 						molding_segment_handles,
 						mold_position,
+						b_override,
 						break_molding,
 						tool_data.temporary_adjacent_handles_while_molding,
 					);
