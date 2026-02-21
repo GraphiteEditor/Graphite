@@ -62,7 +62,7 @@ impl Default for PreferencesMessageHandler {
 			viewport_zoom_wheel_rate: VIEWPORT_ZOOM_WHEEL_RATE,
 			ui_scale: UI_SCALE_DEFAULT,
 			disable_ui_acceleration: false,
-			max_render_region_size: 1920 * 1080,
+			max_render_region_size: EditorPreferences::default().max_render_region_size,
 		}
 	}
 }

@@ -127,7 +127,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 	let preferences = EditorPreferences {
 		vello_preference: graph_craft::wasm_application_io::VelloPreference::Auto,
-		max_render_region_size: 1920 * 1080,
+		max_render_region_size: EditorPreferences::default().max_render_region_size,
 	};
 	let editor_api = Arc::new(WasmEditorApi {
 		font_cache: FontCache::default(),

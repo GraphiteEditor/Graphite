@@ -182,7 +182,7 @@ pub fn tiles_to_world_bounds(tiles: &[TileCoord], scale: f64) -> AxisAlignedBbox
 }
 
 impl TileCacheImpl {
-	fn query(&mut self, viewport_bounds: &AxisAlignedBbox, scale: f64, cache_key: &CacheKey, max_region_size: u32) -> CacheQuery {
+	fn query(&mut self, viewport_bounds: &AxisAlignedBbox, scale: f64, cache_key: &CacheKey, max_region_area: u32) -> CacheQuery {
 		if &self.cache_key != cache_key || (self.current_scale - scale).abs() > 0.001 {
 			self.invalidate_all();
 			self.cache_key = cache_key.clone();
@@ -205,7 +205,7 @@ impl TileCacheImpl {
 		}
 
 		let missing_tiles: Vec<_> = required_tiles.into_iter().filter(|t| !covered_tiles.contains(t)).collect();
-		let missing_regions = group_into_regions(&missing_tiles, scale, max_region_size);
+		let missing_regions = group_into_regions(&missing_tiles, scale, max_region_area);
 		CacheQuery { cached_regions, missing_regions }
 	}
 
@@ -241,8 +241,8 @@ impl TileCacheImpl {
 }
 
 impl TileCache {
-	pub fn query(&self, viewport_bounds: &AxisAlignedBbox, scale: f64, cache_key: &CacheKey, max_region_size: u32) -> CacheQuery {
-		self.0.lock().unwrap().query(viewport_bounds, scale, cache_key, max_region_size)
+	pub fn query(&self, viewport_bounds: &AxisAlignedBbox, scale: f64, cache_key: &CacheKey, max_region_area: u32) -> CacheQuery {
+		self.0.lock().unwrap().query(viewport_bounds, scale, cache_key, max_region_area)
 	}
 
 	pub fn store_regions(&self, regions: Vec<CachedRegion>) {
@@ -250,7 +250,7 @@ impl TileCache {
 	}
 }
 
-fn group_into_regions(tiles: &[TileCoord], scale: f64, max_region_size: u32) -> Vec<RenderRegion> {
+fn group_into_regions(tiles: &[TileCoord], scale: f64, max_region_area: u32) -> Vec<RenderRegion> {
 	if tiles.is_empty() {
 		return Vec::new();
 	}
@@ -270,19 +270,19 @@ fn group_into_regions(tiles: &[TileCoord], scale: f64, max_region_size: u32) -> 
 			tiles: region_tiles,
 			scale,
 		};
-		regions.extend(split_oversized_region(region, scale, max_region_size));
+		regions.extend(split_oversized_region(region, scale, max_region_area));
 	}
 	regions
 }
 
-/// Recursively subdivides a region until all sub-regions have area <= max_region_size.
+/// Recursively subdivides a region until all sub-regions have area <= max_region_area.
 /// Uses axis-aligned splits on the longest dimension.
-fn split_oversized_region(region: RenderRegion, scale: f64, max_region_size: u32) -> Vec<RenderRegion> {
+fn split_oversized_region(region: RenderRegion, scale: f64, max_region_area: u32) -> Vec<RenderRegion> {
 	let pixel_size = region.world_bounds.size() * scale;
 	let area = (pixel_size.x * pixel_size.y) as u32;
 
 	// Base case: region is small enough
-	if area <= max_region_size {
+	if area <= max_region_area {
 		return vec![region];
 	}
 
@@ -335,7 +335,7 @@ fn split_oversized_region(region: RenderRegion, scale: f64, max_region_size: u32
 				tiles,
 				scale,
 			};
-			result.extend(split_oversized_region(sub_region, scale, max_region_size));
+			result.extend(split_oversized_region(sub_region, scale, max_region_area));
 		}
 	}
 
@@ -406,8 +406,8 @@ pub async fn render_output_cache<'a: 'n>(
 		ctx.try_pointer_position(),
 	);
 
-	let max_region_size = editor_api.editor_preferences.max_render_region_size();
-	let cache_query = tile_cache.query(&viewport_bounds, logical_scale, &cache_key, max_region_size);
+	let max_region_area = editor_api.editor_preferences.max_render_region_area();
+	let cache_query = tile_cache.query(&viewport_bounds, logical_scale, &cache_key, max_region_area);
 
 	let mut new_regions = Vec::new();
 	for missing_region in &cache_query.missing_regions {

@@ -92,7 +92,6 @@ pub struct DocumentMessageHandler {
 	pub document_ptz: PTZ,
 	/// The current mode that the user has set for rendering the document within the viewport.
 	/// This is usually "Normal" but can be set to "Outline" or "Pixels" to see the canvas differently.
-	#[serde(alias = "view_mode")]
 	pub render_mode: RenderMode,
 	/// Sets whether or not all the viewport overlays should be drawn on top of the artwork.
 	/// This includes tool interaction visualizations (like the transform cage and path anchors/handles), the grid, and more.

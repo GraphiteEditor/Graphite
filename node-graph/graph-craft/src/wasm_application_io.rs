@@ -69,6 +69,10 @@ pub struct WasmApplicationIo {
 
 static WGPU_AVAILABLE: std::sync::atomic::AtomicI8 = std::sync::atomic::AtomicI8::new(-1);
 
+/// Returns:
+/// - `None` if the availability of WGPU has not been determined yet
+/// - `Some(true)` if WGPU is available
+/// - `Some(false)` if WGPU is not available
 pub fn wgpu_available() -> Option<bool> {
 	match WGPU_AVAILABLE.load(Ordering::SeqCst) {
 		-1 => None,
@@ -341,7 +345,7 @@ pub enum VelloPreference {
 #[derive(Clone, Debug, PartialEq, Hash, specta::Type, serde::Serialize, serde::Deserialize)]
 pub struct EditorPreferences {
 	pub vello_preference: VelloPreference,
-	/// Maximum render region size in pixels (area = width * height). Default: 2,073,600 (1080p area)
+	/// Maximum render region size in pixels along one dimension of the square area.
 	pub max_render_region_size: u32,
 }
 
@@ -353,8 +357,8 @@ impl graphene_application_io::GetEditorPreferences for EditorPreferences {
 		}
 	}
 
-	fn max_render_region_size(&self) -> u32 {
-		self.max_render_region_size
+	fn max_render_region_area(&self) -> u32 {
+		self.max_render_region_size.pow(2)
 	}
 }
 
@@ -362,7 +366,7 @@ impl Default for EditorPreferences {
 	fn default() -> Self {
 		Self {
 			vello_preference: VelloPreference::Auto,
-			max_render_region_size: 1920 * 1080,
+			max_render_region_size: 1024,
 		}
 	}
 }
