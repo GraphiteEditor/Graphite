@@ -23,6 +23,8 @@ use graphene_std::vector::Vector;
 use graphene_std::*;
 use std::collections::{HashMap, VecDeque};
 
+pub const MERGE_NODE_IDENTIFIER: &str = "Merge";
+
 pub struct NodePropertiesContext<'a> {
 	pub responses: &'a mut VecDeque<Message>,
 	pub executor: &'a mut NodeGraphExecutor,
@@ -31,8 +33,11 @@ pub struct NodePropertiesContext<'a> {
 	pub fonts: &'a FontsMessageHandler,
 	pub selection_network_path: &'a [NodeId],
 	pub document_name: &'a str,
+<<<<<<< HEAD
 	/// The node IDs whose Properties panel sections the user has collapsed.
 	pub properties_panel_collapsed_sections: &'a [NodeId],
+=======
+>>>>>>> 292bad2e7 (Fix)
 }
 
 impl NodePropertiesContext<'_> {
@@ -145,7 +150,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			properties: None,
 		},
 		DocumentNodeDefinition {
-			identifier: "Merge",
+			identifier: MERGE_NODE_IDENTIFIER,
 			category: "General",
 			node_template: NodeTemplate {
 				implementation: NodeTemplateImplementation::Network(NodeNetworkTemplate {
@@ -1540,10 +1545,17 @@ impl DocumentNodeDefinition {
 		// Ensure that the input properties are initialized for every input of every node
 		template.normalize_input_metadata();
 
+		if let DocumentNodeImplementation::Network(_) = &template.document_node.implementation {
+			let network = template.persistent_node_metadata.network_metadata.get_or_insert_with(NodeNetworkMetadata::default);
+			network.persistent_metadata.reference = Some(self.identifier.to_string());
+		}
+		if self.identifier == MERGE_NODE_IDENTIFIER {
+			template.persistent_node_metadata.collapsed = true;
+		}
+
 		template
 	}
 
-	/// Converts the [DocumentNodeDefinition] type to a [NodeTemplate], completely default.
 	pub fn default_node_template(&self) -> NodeTemplate {
 		self.node_template_input_override(self.node_template.inputs.clone().into_iter().map(Some))
 	}

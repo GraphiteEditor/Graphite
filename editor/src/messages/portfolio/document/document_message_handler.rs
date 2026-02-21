@@ -98,9 +98,6 @@ pub struct DocumentMessageHandler {
 	/// Tracks which layer occurrences are collapsed in the Layers panel, keyed by tree path.
 	#[serde(deserialize_with = "deserialize_collapsed_layers", default)]
 	pub collapsed: CollapsedLayers,
-	/// The node IDs whose section is collapsed in the Properties panel.
-	#[serde(default)]
-	pub properties_panel_collapsed_sections: Vec<NodeId>,
 	/// The full Git commit hash of the Graphite repository that was used to build the editor.
 	/// We save this to provide a hint about which version of the editor was used to create the document.
 	pub commit_hash: String,
@@ -178,7 +175,6 @@ impl Default for DocumentMessageHandler {
 			network_interface: default_document_network_interface(),
 			resources: ResourceMessageHandler::default(),
 			collapsed: CollapsedLayers::default(),
-			properties_panel_collapsed_sections: Vec::new(),
 			commit_hash: GRAPHITE_GIT_COMMIT_HASH.to_string(),
 			document_ptz: PTZ::default(),
 			render_mode: RenderMode::default(),
@@ -253,7 +249,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					document_name: self.name.as_str(),
 					fonts,
 					properties_panel_open,
-					properties_panel_collapsed_sections: &self.properties_panel_collapsed_sections,
+					properties_panel_collapsed_sections: &[],
 				};
 				self.properties_panel_message_handler.process_message(message, responses, context);
 			}

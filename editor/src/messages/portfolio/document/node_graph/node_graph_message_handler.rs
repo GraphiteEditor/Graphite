@@ -2029,6 +2029,9 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 			NodeGraphMessage::SetPinned { node_id, pinned } => {
 				network_interface.set_pinned(&node_id, selection_network_path, pinned);
 			}
+			NodeGraphMessage::SetCollapsed { node_id, collapsed } => {
+				network_interface.set_collapsed(&node_id, selection_network_path, collapsed);
+			}
 			NodeGraphMessage::SetVisibility { node_id, network_path, visible } => {
 				network_interface.set_visibility(&node_id, &network_path, visible);
 			}
@@ -2038,6 +2041,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				}
 				responses.add(NodeGraphMessage::UpdateActionButtons);
 				responses.add(NodeGraphMessage::SendGraph);
+				responses.add(NodeGraphMessage::UpdateLayerPanel);
+				responses.add(PortfolioMessage::AutoSaveActiveDocument);
 
 				responses.add(PropertiesPanelMessage::Refresh);
 				responses.add(DataPanelMessage::Refresh);
