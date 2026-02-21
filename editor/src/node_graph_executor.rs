@@ -233,12 +233,22 @@ impl NodeGraphExecutor {
 		};
 
 		// Calculate the bounding box of the region to be exported
-		let bounds = match export_config.bounds {
+		let mut bounds = match export_config.bounds {
 			ExportBounds::AllArtwork => document.network_interface.document_bounds_document_space(!export_config.transparent_background),
 			ExportBounds::Selection => document.network_interface.selected_bounds_document_space(!export_config.transparent_background, &[]),
 			ExportBounds::Artboard(id) => document.metadata().bounding_box_document(id),
 		}
 		.ok_or_else(|| "No bounding box".to_string())?;
+
+		// Add a small amount of padding to the bounding box if we are exporting everything or a selection.
+		// This provides a better framing and ensures we don't clip the outer half of strokes at the edge.
+		if matches!(export_config.bounds, ExportBounds::AllArtwork | ExportBounds::Selection) {
+			let size = (bounds[1] - bounds[0]).max(DVec2::splat(1.));
+			let padding = size * 0.05;
+			bounds[0] -= padding;
+			bounds[1] += padding;
+		}
+
 		let resolution = (bounds[1] - bounds[0]).round().as_uvec2();
 		let transform = DAffine2::from_translation(bounds[0]).inverse();
 

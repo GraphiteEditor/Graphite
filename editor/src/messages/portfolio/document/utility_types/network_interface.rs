@@ -1185,7 +1185,8 @@ impl NodeNetworkInterface {
 
 	/// Calculates the document bounds in document space
 	pub fn document_bounds_document_space(&self, include_artboards: bool) -> Option<[DVec2; 2]> {
-		self.document_metadata
+		let all_layers_bounds = self
+			.document_metadata
 			.all_layers()
 			.filter(|layer| include_artboards || !self.is_artboard(&layer.to_node(), &[]))
 			.filter_map(|layer| {
@@ -1207,7 +1208,16 @@ impl NodeNetworkInterface {
 				}
 				self.document_metadata.bounding_box_document(layer)
 			})
-			.reduce(Quad::combine_bounds)
+			.reduce(Quad::combine_bounds);
+
+		let root_artwork_bounds = self.document_metadata().bounding_box_document(LayerNodeIdentifier::ROOT_PARENT);
+
+		match (all_layers_bounds, root_artwork_bounds) {
+			(Some(a), Some(b)) => Some(Quad::combine_bounds(a, b)),
+			(Some(a), None) => Some(a),
+			(None, Some(b)) => Some(b),
+			(None, None) => None,
+		}
 	}
 
 	pub fn document_bounds_viewport_space(&self, include_artboards: bool) -> Option<[DVec2; 2]> {

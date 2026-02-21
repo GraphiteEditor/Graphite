@@ -57,7 +57,7 @@ async fn render_intermediate<'a: 'n, T: 'static + Render + WasmNotSend + Send + 
 
 	let footprint = Footprint::default();
 	let mut metadata = RenderMetadata::default();
-	data.collect_metadata(&mut metadata, footprint, None);
+	data.collect_metadata(&mut metadata, footprint, Some(graph_craft::document::NodeId(0)));
 	let contains_artboard = data.contains_artboard();
 
 	match &render_params.render_output_type {

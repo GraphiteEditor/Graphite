@@ -330,8 +330,12 @@ impl Render for Graphic {
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 		if let Some(element_id) = element_id {
 			match self {
-				Graphic::Graphic(_) => {
+				Graphic::Graphic(table) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
+					if let Some(row) = table.iter().next() {
+						metadata.first_element_source_id.insert(element_id, *row.source_node_id);
+						metadata.local_transforms.insert(element_id, *row.transform);
+					}
 				}
 				Graphic::Vector(table) => {
 					metadata.upstream_footprints.insert(element_id, footprint);
@@ -532,9 +536,9 @@ impl Render for Table<Artboard> {
 		}
 	}
 
-	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, _element_id: Option<NodeId>) {
+	fn collect_metadata(&self, metadata: &mut RenderMetadata, footprint: Footprint, element_id: Option<NodeId>) {
 		for row in self.iter() {
-			row.element.collect_metadata(metadata, footprint, *row.source_node_id);
+			row.element.collect_metadata(metadata, footprint, row.source_node_id.or(element_id));
 		}
 	}
 
