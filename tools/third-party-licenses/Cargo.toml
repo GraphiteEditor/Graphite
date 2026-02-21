@@ -8,5 +8,5 @@ authors.workspace = true
 [dependencies]
 serde = { workspace = true }
 serde_json = { workspace = true }
+lzma-rust2 = { workspace = true }
 scraper = "0.22"
-lzma-rust2 = { version = "0.16", default-features = false, features = ["std", "encoder", "optimization", "xz"] }

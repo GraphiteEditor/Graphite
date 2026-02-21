@@ -1,5 +1,8 @@
 use std::collections::BTreeMap;
+use std::io::Write;
 use std::path::PathBuf;
+
+use lzma_rust2::{XzOptions, XzWriter};
 
 mod cargo;
 mod cef;
@@ -26,15 +29,33 @@ pub struct Package {
 }
 
 fn main() {
-	let npm_dir = PathBuf::from(env!("CARGO_WORKSPACE_DIR")).join("frontend");
+	let workspace_dir = PathBuf::from(env!("CARGO_WORKSPACE_DIR"));
 
 	let cargo_source = CargoAboutLicenseSource::new();
 	let cef_source = CefLicenseSource::new();
-	let npm_source = NpmLicenseSource::new(npm_dir);
+	let npm_source = NpmLicenseSource::new(workspace_dir.join("frontend"));
 
 	let credits = merge_dedup_and_sort(vec![cargo_source.licenses(), cef_source.licenses(), npm_source.licenses()]);
 
-	print!("{}", format_credits(&credits));
+	let formatted = format_credits(&credits);
+
+	let output_path = workspace_dir.join("third-party-licenses.txt.xz");
+	let file = std::fs::File::create(&output_path).unwrap_or_else(|e| {
+		eprintln!("Failed to create {}: {e}", output_path.display());
+		std::process::exit(1);
+	});
+	let mut writer = XzWriter::new(file, XzOptions::default()).unwrap_or_else(|e| {
+		eprintln!("Failed to create XZ writer: {e}");
+		std::process::exit(1);
+	});
+	writer.write_all(formatted.as_bytes()).unwrap_or_else(|e| {
+		eprintln!("Failed to write compressed credits: {e}");
+		std::process::exit(1);
+	});
+	writer.finish().unwrap_or_else(|e| {
+		eprintln!("Failed to finish XZ compression: {e}");
+		std::process::exit(1);
+	});
 }
 
 fn dedup_by_licence_text(vec: Vec<LicenseEntry>) -> Vec<LicenseEntry> {

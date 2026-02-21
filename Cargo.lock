@@ -2437,6 +2437,7 @@ dependencies = [
  "glam",
  "graphite-desktop-embedded-resources",
  "graphite-desktop-wrapper",
+ "lzma-rust2",
  "muda",
  "objc2 0.6.3",
  "objc2-app-kit 0.3.2",

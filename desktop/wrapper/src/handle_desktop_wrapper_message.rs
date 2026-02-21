@@ -97,5 +97,9 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 			let message = AppWindowMessage::PointerLockMove { x, y };
 			dispatcher.queue_editor_message(message);
 		}
+		DesktopWrapperMessage::LoadThirdPartyLicenses(string) => {
+			let message = DialogMessage::RequestLicensesThirdPartyDialogWithLicenseText { license_text: string };
+			dispatcher.queue_editor_message(message);
+		}
 	}
 }
