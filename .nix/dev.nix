@@ -1,4 +1,4 @@
-{ pkgs, deps, ...}:
+{ pkgs, deps, ... }:
 
 let
   libs = [

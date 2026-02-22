@@ -1,4 +1,9 @@
-{ info, deps, pkgs, ...}:
+{
+  info,
+  deps,
+  pkgs,
+  ...
+}:
 
 let
   cargoVendorDir = deps.crane.lib.vendorCargoDeps { inherit (info) src; };
@@ -16,7 +21,8 @@ let
     doCheck = false;
   };
 in
-deps.crane.lib.buildPackage common // {
+deps.crane.lib.buildPackage common
+// {
   inherit cargoVendorDir;
   cargoArtifacts = deps.crane.lib.buildDepsOnly common;
   meta.mainProgram = "third-party-licenses";

@@ -1,10 +1,15 @@
-{ pkgs, self, system, ...}:
+{
+  pkgs,
+  self,
+  system,
+  ...
+}:
 let
   bundle =
     {
       archive ? false,
       compression ? null,
-      passthru ? {},
+      passthru ? { },
     }:
     (
       let

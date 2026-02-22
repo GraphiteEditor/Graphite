@@ -1,4 +1,4 @@
-{ info, pkgs, ...}:
+{ info, pkgs, ... }:
 
 let
   brandingTar = pkgs.fetchurl (

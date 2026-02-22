@@ -1,4 +1,9 @@
-{ pkgs, self, system, ...}:
+{
+  pkgs,
+  self,
+  system,
+  ...
+}:
 
 (pkgs.formats.json { }).generate "art.graphite.Graphite.json" {
   app-id = "art.graphite.Graphite";

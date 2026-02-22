@@ -1,4 +1,4 @@
-{ info, deps, ...}:
+{ info, deps, ... }:
 
 (deps.crane.lib.overrideToolchain (_: deps.rustGPU.toolchain)).buildPackage {
   pname = "raster-nodes-shaders";

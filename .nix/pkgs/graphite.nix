@@ -1,4 +1,12 @@
-{ info, pkgs, self, deps, system, lib, ...}:
+{
+  info,
+  pkgs,
+  self,
+  deps,
+  system,
+  lib,
+  ...
+}:
 
 {
   dev ? false,
@@ -40,7 +48,11 @@ let
       npmConfigScript = "setup";
       makeCacheWritable = true;
 
-      nativeBuildInputs = [ pkgs.importNpmLock.npmConfigHook pkgs.removeReferencesTo ] ++ resourcesCommon.nativeBuildInputs;
+      nativeBuildInputs = [
+        pkgs.importNpmLock.npmConfigHook
+        pkgs.removeReferencesTo
+      ]
+      ++ resourcesCommon.nativeBuildInputs;
 
       prePatch = ''
         mkdir branding
@@ -102,26 +114,34 @@ deps.crane.lib.buildPackage (
   // {
     cargoArtifacts = deps.crane.lib.buildDepsOnly common;
 
-    env =
-      common.env
-      // {
-        RASTER_NODES_SHADER_PATH = self.packages.${system}.graphite-raster-nodes-shaders;
-        EMBEDDED_RESOURCES = resources;
-        GRAPHITE_GIT_COMMIT_HASH = self.rev or "unknown";
-        GRAPHITE_GIT_COMMIT_DATE = self.lastModified or "unknown";
-      };
+    env = common.env // {
+      RASTER_NODES_SHADER_PATH = self.packages.${system}.graphite-raster-nodes-shaders;
+      EMBEDDED_RESOURCES = resources;
+      GRAPHITE_GIT_COMMIT_HASH = self.rev or "unknown";
+      GRAPHITE_GIT_COMMIT_DATE = self.lastModified or "unknown";
+    };
 
     npmDeps = pkgs.importNpmLock {
       npmRoot = "${info.src}/frontend";
     };
     npmRoot = "frontend";
-    nativeBuildInputs = [ pkgs.importNpmLock.npmConfigHook pkgs.nodePackages.npm ] ++ common.nativeBuildInputs;
+    nativeBuildInputs = [
+      pkgs.importNpmLock.npmConfigHook
+      pkgs.nodePackages.npm
+    ]
+    ++ common.nativeBuildInputs;
 
     preBuild = ''
       ${lib.getExe self.packages.${system}.tools.third-party-licenses}
-    '' + (if self ? rev then ''
-      export GRAPHITE_GIT_COMMIT_DATE="$(date -u -d "@$GRAPHITE_GIT_COMMIT_DATE" +"%Y-%m-%dT%H:%M:%SZ")"
-    '' else "");
+    ''
+    + (
+      if self ? rev then
+        ''
+          export GRAPHITE_GIT_COMMIT_DATE="$(date -u -d "@$GRAPHITE_GIT_COMMIT_DATE" +"%Y-%m-%dT%H:%M:%SZ")"
+        ''
+      else
+        ""
+    );
 
     installPhase = ''
       mkdir -p $out/bin
