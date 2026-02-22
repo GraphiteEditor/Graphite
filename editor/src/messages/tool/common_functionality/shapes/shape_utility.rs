@@ -17,6 +17,7 @@ use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::NodeInputDecleration;
 use graphene_std::subpath::{self, Subpath};
+use graphene_std::vector::calculate_effective_radius;
 use graphene_std::vector::click_target::ClickTargetType;
 use graphene_std::vector::misc::{ArcType, GridType, SpiralType, dvec2_to_point};
 use kurbo::{BezPath, PathEl, Shape};
@@ -265,15 +266,26 @@ pub fn extract_star_parameters(layer: Option<LayerNodeIdentifier>, document: &Do
 
 /// Extract the node input values of Polygon.
 /// Returns an option of (sides, radius).
-pub fn extract_polygon_parameters(layer: Option<LayerNodeIdentifier>, document: &DocumentMessageHandler) -> Option<(u32, f64)> {
+pub fn extract_polygon_parameters(layer: Option<LayerNodeIdentifier>, document: &DocumentMessageHandler) -> Option<(u32, f64, bool)> {
 	let node_inputs =
 		NodeGraphLayer::new(layer?, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::regular_polygon::IDENTIFIER))?;
 
-	let (Some(&TaggedValue::U32(n)), Some(&TaggedValue::F64(radius))) = (node_inputs.get(1)?.as_value(), node_inputs.get(2)?.as_value()) else {
+	let (Some(&TaggedValue::U32(n)), Some(&TaggedValue::F64(radius)), Some(&TaggedValue::Bool(is_inner_radius))) =
+		(node_inputs.get(1)?.as_value(), node_inputs.get(2)?.as_value(), node_inputs.get(3)?.as_value())
+	else {
 		return None;
 	};
 
-	Some((n, radius))
+	Some((n, radius, is_inner_radius))
+}
+
+pub fn polygon_edge_midpoint(viewport: DAffine2, edge_index: i32, n: u32, radius: f64) -> DVec2 {
+	let angle = ((edge_index as f64 + 0.5) * TAU) / (n as f64);
+
+	viewport.transform_point2(DVec2 {
+		x: radius * angle.sin(),
+		y: -radius * angle.cos(),
+	})
 }
 
 /// Extract the node input values of an arc.
@@ -399,14 +411,14 @@ pub fn star_outline(layer: Option<LayerNodeIdentifier>, document: &DocumentMessa
 /// Outlines the geometric shape made by polygon-node
 pub fn polygon_outline(layer: Option<LayerNodeIdentifier>, document: &DocumentMessageHandler, overlay_context: &mut OverlayContext) {
 	let Some(layer) = layer else { return };
-	let Some((sides, radius)) = extract_polygon_parameters(Some(layer), document) else {
+	let Some((sides, radius, is_inner_radius)) = extract_polygon_parameters(Some(layer), document) else {
 		return;
 	};
 
 	let viewport = document.metadata().transform_to_viewport(layer);
 
 	let points = sides as u64;
-	let radius: f64 = radius * 2.;
+	let radius: f64 = calculate_effective_radius(radius, sides, is_inner_radius) * 2.;
 
 	let subpath: Vec<ClickTargetType> = vec![ClickTargetType::Subpath(Subpath::new_regular_polygon(DVec2::splat(-radius), points, radius))];
 
