@@ -2550,29 +2550,46 @@ impl DocumentMessageHandler {
 				.popover_min_width(Some(320))
 				.widget_instance(),
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-			RadioInput::new(vec![
-				RadioEntryData::new("Normal")
-					.icon("RenderModeNormal")
-					.tooltip_label("Render Mode: Normal")
-					.on_update(|_| DocumentMessage::SetRenderMode { render_mode: RenderMode::Normal }.into()),
-				RadioEntryData::new("Outline")
-					.icon("RenderModeOutline")
-					.tooltip_label("Render Mode: Outline")
-					.on_update(|_| DocumentMessage::SetRenderMode { render_mode: RenderMode::Outline }.into()),
-				// TODO: See issue #320
-				// RadioEntryData::new("PixelPreview")
-				// 	.icon("RenderModePixels")
-				// 	.tooltip_label("Render Mode: Pixel Preview")
-				// 	.on_update(|_| todo!()),
-				RadioEntryData::new("SvgPreview")
-					.icon("RenderModeSvg")
-					.tooltip_label("Render Mode: SVG Preview")
-					.on_update(|_| DocumentMessage::SetRenderMode { render_mode: RenderMode::SvgPreview }.into()),
-			])
-			.selected_index(Some(self.render_mode as u32))
-			.disabled(cfg!(target_family = "wasm") && wgpu_available() == Some(false))
-			.narrow(true)
-			.widget_instance(),
+			{
+				let disabled = cfg!(target_family = "wasm") && wgpu_available() == Some(false);
+
+				let mut entries = vec![
+					RadioEntryData::new("Normal")
+						.icon("RenderModeNormal")
+						.tooltip_label("Render Mode: Normal")
+						.on_update(|_| DocumentMessage::SetRenderMode { render_mode: RenderMode::Normal }.into()),
+					RadioEntryData::new("Outline")
+						.icon("RenderModeOutline")
+						.tooltip_label("Render Mode: Outline")
+						.on_update(|_| DocumentMessage::SetRenderMode { render_mode: RenderMode::Outline }.into()),
+					// TODO: See issue #320
+					// RadioEntryData::new("PixelPreview")
+					// 	.icon("RenderModePixels")
+					// 	.tooltip_label("Render Mode: Pixel Preview")
+					// 	.on_update(|_| todo!()),
+					RadioEntryData::new("SvgPreview")
+						.icon("RenderModeSvg")
+						.tooltip_label("Render Mode: SVG Preview")
+						.on_update(|_| DocumentMessage::SetRenderMode { render_mode: RenderMode::SvgPreview }.into()),
+				];
+				let mut selected_index = self.render_mode as u32;
+
+				if disabled {
+					for entry in &mut entries {
+						entry.tooltip_description = "
+							*Normal* and *Outline* render modes are not available in this browser. For compatibility, *SVG Preview* mode is active as a fallback.\n\
+							\n\
+							This functionality requires WebGPU support. Check webgpu.org for browser implementation status.
+							"
+						.trim()
+						.into();
+					}
+
+					selected_index = entries.iter().position(|entry| entry.value == "SvgPreview").unwrap() as u32;
+				}
+
+				RadioInput::new(entries).selected_index(Some(selected_index)).disabled(disabled).narrow(true).widget_instance()
+			},
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 		];
 
