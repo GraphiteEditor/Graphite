@@ -4,7 +4,7 @@ use crate::messages::portfolio::document::overlays::utility_types::OverlayContex
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::{NodeGraphLayer, get_gradient};
-use crate::messages::tool::common_functionality::snapping::SnapManager;
+use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
 use graphene_std::vector::style::{Fill, Gradient, GradientType};
 
 #[derive(Default, ExtractField)]
@@ -215,7 +215,16 @@ impl SelectedGradient {
 		}
 	}
 
-	pub fn update_gradient(&mut self, mut mouse: DVec2, responses: &mut VecDeque<Message>, snap_rotate: bool, gradient_type: GradientType, drag_start: DVec2) {
+	pub fn update_gradient(
+		&mut self,
+		mut mouse: DVec2,
+		responses: &mut VecDeque<Message>,
+		snap_rotate: bool,
+		gradient_type: GradientType,
+		drag_start: DVec2,
+		snap_data: SnapData,
+		snap_manager: &mut SnapManager,
+	) {
 		if mouse.distance(drag_start) < DRAG_THRESHOLD {
 			self.gradient = self.initial_gradient.clone();
 			self.render_gradient(responses);
@@ -243,22 +252,59 @@ impl SelectedGradient {
 
 			let rotated = DVec2::new(length * angle.cos(), length * angle.sin());
 			mouse = point - rotated;
+		} else {
+			// Basic point snapping when not angle-constraining
+			let document_to_viewport = snap_data.document.metadata().document_to_viewport;
+			let document_mouse = document_to_viewport.inverse().transform_point2(mouse);
+			let point_candidate = SnapCandidatePoint::gradient_handle(document_mouse);
+			let snapped = snap_manager.free_snap(&snap_data, &point_candidate, SnapTypeConfiguration::default());
+			if snapped.is_snapped() {
+				mouse = document_to_viewport.transform_point2(snapped.snapped_point_document);
+			}
+			snap_manager.update_indicator(snapped);
 		}
 
 		let transformed_mouse = self.transform.inverse().transform_point2(mouse);
 
 		match self.dragging {
-			GradientDragTarget::Start => self.gradient.start = transformed_mouse,
-			GradientDragTarget::End => self.gradient.end = transformed_mouse,
+			GradientDragTarget::Start => {
+				self.gradient.start = transformed_mouse;
+			}
+			GradientDragTarget::End => {
+				self.gradient.end = transformed_mouse;
+			}
 			GradientDragTarget::New => {
 				self.gradient.start = self.transform.inverse().transform_point2(drag_start);
 				self.gradient.end = transformed_mouse;
 			}
 			GradientDragTarget::Step(s) => {
-				let (start, end) = (self.transform.transform_point2(self.gradient.start), self.transform.transform_point2(self.gradient.end));
+				let document_to_viewport = snap_data.document.metadata().document_to_viewport;
+				let (viewport_start, viewport_end) = (self.transform.transform_point2(self.gradient.start), self.transform.transform_point2(self.gradient.end));
+				let (document_start, document_end) = (
+					document_to_viewport.inverse().transform_point2(viewport_start),
+					document_to_viewport.inverse().transform_point2(viewport_end),
+				);
+
+				let constraint = SnapConstraint::Line {
+					origin: document_start,
+					direction: document_end - document_start,
+				};
+
+				let document_mouse = document_to_viewport.inverse().transform_point2(mouse);
+				let point_candidate = SnapCandidatePoint::gradient_handle(document_mouse);
+
+				let snapped = snap_manager.constrained_snap(&snap_data, &point_candidate, constraint, SnapTypeConfiguration::default());
+
+				let projected_mouse_document = if snapped.is_snapped() {
+					snapped.snapped_point_document
+				} else {
+					constraint.projection(document_mouse)
+				};
+				let projected_mouse = document_to_viewport.transform_point2(projected_mouse_document);
+				snap_manager.update_indicator(snapped);
 
 				// Calculate the new position by finding the closest point on the line
-				let new_pos = ((end - start).angle_to(mouse - start)).cos() * start.distance(mouse) / start.distance(end);
+				let new_pos = ((viewport_end - viewport_start).angle_to(projected_mouse - viewport_start)).cos() * viewport_start.distance(projected_mouse) / viewport_start.distance(viewport_end);
 
 				// Should not go off end but can swap
 				let clamped = new_pos.clamp(0., 1.);
@@ -378,6 +424,9 @@ impl Fsm for GradientToolFsmState {
 					}
 				}
 
+				let snap_data = SnapData::new(document, input, viewport);
+				tool_data.snap_manager.draw_overlays(snap_data, &mut overlay_context);
+
 				self
 			}
 			(GradientToolFsmState::Ready { .. }, GradientToolMessage::SelectionChanged) => {
@@ -482,7 +531,13 @@ impl Fsm for GradientToolFsmState {
 				self
 			}
 			(GradientToolFsmState::Ready { .. }, GradientToolMessage::PointerDown) => {
-				let mouse = input.mouse.position;
+				let mut mouse = input.mouse.position;
+				let snap_data = SnapData::new(document, input, viewport);
+				let point = SnapCandidatePoint::gradient_handle(document.metadata().document_to_viewport.inverse().transform_point2(mouse));
+				let snapped = tool_data.snap_manager.free_snap(&snap_data, &point, SnapTypeConfiguration::default());
+				if snapped.is_snapped() {
+					mouse = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
+				}
 				tool_data.drag_start = mouse;
 				let tolerance = (MANIPULATOR_GROUP_MARKER_SIZE * 2.).powi(2);
 
@@ -527,21 +582,19 @@ impl Fsm for GradientToolFsmState {
 						let distance = (end - start).angle_to(mouse - start).sin() * (mouse - start).length();
 						let projection = ((end - start).angle_to(mouse - start)).cos() * start.distance(mouse) / start.distance(end);
 
-						if distance.abs() < SEGMENT_INSERTION_DISTANCE
-							&& (0. ..=1.).contains(&projection)
-							&& let Some(index) = gradient.clone().insert_stop(mouse, transform)
-						{
-							responses.add(DocumentMessage::StartTransaction);
-							transaction_started = true;
+						if distance.abs() < SEGMENT_INSERTION_DISTANCE && (0. ..=1.).contains(&projection) {
 							let mut new_gradient = gradient.clone();
-							new_gradient.insert_stop(mouse, transform);
+							if let Some(index) = new_gradient.insert_stop(mouse, transform) {
+								responses.add(DocumentMessage::StartTransaction);
+								transaction_started = true;
 
-							let mut selected_gradient = SelectedGradient::new(new_gradient, layer, document);
-							selected_gradient.dragging = GradientDragTarget::Step(index);
-							// No offset when inserting a new stop, it should be exactly under the mouse
-							selected_gradient.render_gradient(responses);
-							tool_data.selected_gradient = Some(selected_gradient);
-							dragging = true;
+								let mut selected_gradient = SelectedGradient::new(new_gradient, layer, document);
+								selected_gradient.dragging = GradientDragTarget::Step(index);
+								// No offset when inserting a new stop, it should be exactly under the mouse
+								selected_gradient.render_gradient(responses);
+								tool_data.selected_gradient = Some(selected_gradient);
+								dragging = true;
+							}
 						}
 					}
 				}
@@ -591,13 +644,17 @@ impl Fsm for GradientToolFsmState {
 			}
 			(GradientToolFsmState::Drawing, GradientToolMessage::PointerMove { constrain_axis }) => {
 				if let Some(selected_gradient) = &mut tool_data.selected_gradient {
-					let mouse = input.mouse.position; // tool_data.snap_manager.snap_position(responses, document, input.mouse.position);
+					let mouse = input.mouse.position;
+					let snap_data = SnapData::new(document, input, viewport);
+
 					selected_gradient.update_gradient(
 						mouse,
 						responses,
 						input.keyboard.get(constrain_axis as usize),
 						selected_gradient.gradient.gradient_type,
 						tool_data.drag_start,
+						snap_data,
+						&mut tool_data.snap_manager,
 					);
 				}
 
@@ -660,6 +717,9 @@ impl Fsm for GradientToolFsmState {
 						break;
 					}
 				}
+
+				let snap_data = SnapData::new(document, input, viewport);
+				tool_data.snap_manager.gradient_preview_draw(&snap_data, mouse);
 
 				responses.add(OverlaysMessage::Draw);
 				GradientToolFsmState::Ready { hover_insertion }

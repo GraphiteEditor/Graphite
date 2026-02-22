@@ -259,6 +259,11 @@ impl SnapManager {
 		let snapped = self.free_snap(snap_data, &point, SnapTypeConfiguration::default());
 		self.update_indicator(snapped);
 	}
+	pub fn gradient_preview_draw(&mut self, snap_data: &SnapData, mouse: DVec2) {
+		let point = SnapCandidatePoint::gradient_handle(snap_data.document.metadata().document_to_viewport.inverse().transform_point2(mouse));
+		let snapped = self.free_snap(snap_data, &point, SnapTypeConfiguration::default());
+		self.update_indicator(snapped);
+	}
 
 	pub fn indicator_pos(&self) -> Option<DVec2> {
 		self.indicator.as_ref().map(|point| point.snapped_point_document)
