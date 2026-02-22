@@ -187,10 +187,12 @@ impl NodeGraphExecutor {
 		self.submit_current_node_graph_evaluation(document, document_id, viewport_resolution, viewport_scale, time, pointer)
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	#[cfg(not(target_family = "wasm"))]
 	pub(crate) fn submit_eyedropper_preview(
 		&mut self,
-		(document, document_id): (&DocumentMessageHandler, DocumentId),
+		document: &DocumentMessageHandler,
+		document_id: DocumentId,
 		transform: DAffine2,
 		pointer: DVec2,
 		viewport_resolution: UVec2,
