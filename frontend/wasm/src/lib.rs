@@ -74,11 +74,8 @@ pub fn panic_hook(info: &panic::PanicHookInfo) {
 	log::error!("{info}");
 
 	// Prefer using the raw JS callback to avoid mutex lock contention inside the panic hook.
-	// Fall back to the editor handle path if needed.
 	if let Err(info) = send_panic_dialog_via_callback(info) {
-		if let Err(info) = send_panic_dialog(info) {
-			send_panic_dialog_deferred(info);
-		}
+		send_panic_dialog_deferred(info);
 	}
 }
 
@@ -114,22 +111,10 @@ fn send_panic_dialog_via_callback(panic_info: String) -> Result<(), String> {
 	})
 }
 
-fn send_panic_dialog(panic_info: String) -> Result<(), String> {
-	EDITOR_HANDLE.with(|editor_handle| {
-		let mut guard = editor_handle.try_lock();
-		let Ok(Some(handle)) = guard.as_deref_mut() else {
-			return Err(panic_info);
-		};
-
-		handle.send_frontend_message_to_js_rust_proxy(FrontendMessage::DisplayDialogPanic { panic_info });
-		Ok(())
-	})
-}
-
 #[cfg(not(feature = "native"))]
 fn send_panic_dialog_deferred(panic_info: String) {
 	let callback = Closure::once_into_js(move || {
-		if send_panic_dialog(panic_info).is_err() {
+		if send_panic_dialog_via_callback(panic_info).is_err() {
 			log::error!("Failed to send crash dialog after panic because the editor handle is unavailable");
 		}
 	});
