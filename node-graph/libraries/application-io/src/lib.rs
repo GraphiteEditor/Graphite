@@ -50,10 +50,10 @@ impl Size for web_sys::HtmlCanvasElement {
 	}
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, DynAny)]
 pub struct ImageTexture {
 	#[cfg(feature = "wgpu")]
-	pub texture: wgpu::Texture,
+	pub texture: Arc<wgpu::Texture>,
 	#[cfg(not(feature = "wgpu"))]
 	pub texture: (),
 }
@@ -87,10 +87,6 @@ impl PartialEq for ImageTexture {
 			self.texture == other.texture
 		}
 	}
-}
-
-unsafe impl StaticType for ImageTexture {
-	type Static = ImageTexture;
 }
 
 #[cfg(feature = "wgpu")]
