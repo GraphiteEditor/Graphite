@@ -273,12 +273,7 @@ impl Parse for NodeFnAttributes {
 					}
 					skip_impl = true;
 				}
-				// Indicator that the node output should be deconstructed into its fields.
-				//
-				// Example usage:
-				// #[node_macro::node(..., deconstruct_output, ...)]
-				"deconstruct_output" => {
-					let path = meta.require_path_only()?;
+				Meta::Path(path) if path.is_ident("deconstruct_output") => {
 					if deconstruct_output {
 						return Err(Error::new_spanned(path, "Multiple 'deconstruct_output' attributes are not allowed"));
 					}

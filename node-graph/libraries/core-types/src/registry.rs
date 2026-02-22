@@ -45,14 +45,7 @@ pub struct StructField {
 }
 
 pub trait Destruct {
-	fn fields(&self) -> &'static [StructField];
-}
-
-impl<T> Destruct for &T
-where
-	T: Default,
-{
-	fn fields(&self) -> &'static [StructField] {
+	fn fields() -> &'static [StructField] {
 		&[]
 	}
 }

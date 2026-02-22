@@ -403,8 +403,8 @@ pub(crate) fn generate_node_code(crate_ident: &CrateIdent, parsed: &ParsedNodeFn
 	let properties = &attributes.properties_string.as_ref().map(|value| quote!(Some(#value))).unwrap_or(quote!(None));
 
 	let output_fields = match attributes.deconstruct_output {
-		false => quote!(&[]),
-		true => quote!(#output_type::fields),
+		false => quote!(&[] as &[#graphene_core::registry::StructField]),
+		true => quote!(<#output_type as #graphene_core::registry::Destruct>::fields()),
 	};
 
 	let cfg = crate::shader_nodes::modify_cfg(attributes);
@@ -538,28 +538,27 @@ fn generate_node_input_references(
 			let struct_name = format_ident!("{}Input", input_ident.ident.to_string().to_case(Case::Pascal));
 			let (fn_generic_params, phantom_data_declerations) = generate_phantom_data(used.iter());
 
-			// Only create structs with phantom data where necessary.
-			generated_input_accessor.push(if phantom_data_declerations.is_empty() {
-				quote! {
-					pub struct #struct_name;
+		// Only create structs with phantom data where necessary.
+		generated_input_accessor.push(if phantom_data_declerations.is_empty() {
+			quote! {
+				pub struct #struct_name;
+			}
+		} else {
+			quote! {
+				pub struct #struct_name <#(#used),*>{
+					#(#phantom_data_declerations,)*
 				}
-			} else {
-				quote! {
-					pub struct #struct_name <#(#used),*>{
-						#(#phantom_data_declerations,)*
-					}
+			}
+		});
+		generated_input_accessor.push(quote! {
+			impl <#(#used),*> #graphene_core::NodeInputDecleration for #struct_name <#(#fn_generic_params),*> {
+				const INDEX: usize = #input_index;
+				fn identifier() -> &'static str {
+					protonode_identifier()
 				}
-			});
-			generated_input_accessor.push(quote! {
-				impl <#(#used),*> #core_types::NodeInputDecleration for #struct_name <#(#fn_generic_params),*> {
-					const INDEX: usize = #input_index;
-					fn identifier() -> #core_types::ProtoNodeIdentifier {
-						#inputs_module_name::IDENTIFIER.clone()
-					}
-					type Result = #ty;
-				}
-			})
-		}
+				type Result = #ty;
+			}
+		})
 	}
 
 	quote! {
@@ -567,8 +566,13 @@ fn generate_node_input_references(
 		pub mod #inputs_module_name {
 			use super::*;
 
-			/// The `ProtoNodeIdentifier` of this node without any generics attached to it
-			pub const IDENTIFIER: #core_types::ProtoNodeIdentifier = #identifier();
+			pub fn protonode_identifier() -> &'static str {
+				static NODE_NAME: std::sync::OnceLock<&'static str> = std::sync::OnceLock::new();
+				NODE_NAME.get_or_init(|| {
+					let name = #identifier;
+					Box::leak(name.into_boxed_str())
+				})
+			}
 			#(#generated_input_accessor)*
 		}
 	}
