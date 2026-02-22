@@ -1,7 +1,4 @@
-{
-  pkgs,
-  archive,
-}:
+{ pkgs, self, system, ...}:
 
 (pkgs.formats.json { }).generate "art.graphite.Graphite.json" {
   app-id = "art.graphite.Graphite";
@@ -28,7 +25,7 @@
       sources = [
         {
           type = "archive";
-          path = archive;
+          path = self.packages.${system}.graphite-bundle.tar;
           strip-components = 0;
         }
       ];

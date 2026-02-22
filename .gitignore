@@ -1,6 +1,6 @@
 branding/
 target/
-third-party-licenses.*
+third-party-licenses.txt*
 result/
 .flatpak-builder/
 *.spv

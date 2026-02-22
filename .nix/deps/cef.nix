@@ -1,4 +1,4 @@
-{ pkgs, inputs, ... }:
+{ pkgs, ... }:
 
 let
   cefPath = pkgs.cef-binary.overrideAttrs (finalAttrs: {

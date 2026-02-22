@@ -1,18 +1,14 @@
-{
-  pkgs,
-  graphite,
-}:
+{ pkgs, self, system, ...}:
 let
   bundle =
     {
-      pkgs,
-      graphite,
       archive ? false,
       compression ? null,
       passthru ? {},
     }:
     (
       let
+        graphite = self.packages.${system}.graphite;
         tar = if compression == null then archive else true;
         nameArchiveSuffix = if tar then ".tar" else "";
         nameCompressionSuffix = if compression == null then "" else "." + compression;
@@ -75,18 +71,14 @@ let
     );
 in
 bundle {
-  inherit pkgs graphite;
   passthru = {
     tar = bundle {
-      inherit pkgs graphite;
       archive = true;
       passthru = {
         gz = bundle {
-          inherit pkgs graphite;
           compression = "gz";
         };
         xz = bundle {
-          inherit pkgs graphite;
           compression = "xz";
         };
       };
