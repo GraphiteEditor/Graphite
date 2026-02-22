@@ -407,6 +407,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					// Use exact physical dimensions from browser (via ResizeObserver's devicePixelContentBoxSize)
 					let physical_resolution = viewport.size().to_physical().into_dvec2().round().as_uvec2();
 
+					// TODO: Remove this when we do the SVG rendering with a separate library on desktop, thus avoiding a need for the hole punch.
+					// TODO: See #3796. There is a second instance of this todo comment and code block (be sure to remove both).
+					#[cfg(not(target_family = "wasm"))]
+					responses.add_front(FrontendMessage::UpdateViewportHolePunch {
+						active: document.render_mode != graphene_std::vector::style::RenderMode::SvgPreview,
+					});
+
 					if let Ok(message) = self.executor.submit_node_graph_evaluation(
 						self.documents.get_mut(document_id).expect("Tried to render non-existent document"),
 						*document_id,
@@ -1162,6 +1169,13 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				let scale = viewport.scale();
 				// Use exact physical dimensions from browser (via ResizeObserver's devicePixelContentBoxSize)
 				let physical_resolution = viewport.size().to_physical().into_dvec2().round().as_uvec2();
+
+				// TODO: Remove this when we do the SVG rendering with a separate library on desktop, thus avoiding a need for the hole punch.
+				// TODO: See #3796. There is a second instance of this todo comment and code block (be sure to remove both).
+				#[cfg(not(target_family = "wasm"))]
+				responses.add_front(FrontendMessage::UpdateViewportHolePunch {
+					active: document.render_mode != graphene_std::vector::style::RenderMode::SvgPreview,
+				});
 
 				let result = self
 					.executor

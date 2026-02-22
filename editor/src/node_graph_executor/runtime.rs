@@ -18,6 +18,7 @@ use graphene_std::table::{Table, TableRow};
 use graphene_std::text::FontCache;
 use graphene_std::transform::RenderQuality;
 use graphene_std::vector::Vector;
+use graphene_std::vector::style::RenderMode;
 use graphene_std::wasm_application_io::{RenderOutputType, WasmApplicationIo, WasmEditorApi};
 use graphene_std::{Artboard, Context, Graphic};
 use interpreted_executor::dynamic_executor::{DynamicExecutor, IntrospectError, ResolvedDocumentNodeTypesDelta};
@@ -243,16 +244,11 @@ impl NodeRuntime {
 					self.sender.send_generation_response(CompilationResponse { result, node_graph_errors });
 				}
 				GraphRuntimeRequest::ExecutionRequest(ExecutionRequest { execution_id, mut render_config, .. }) => {
-					// There are cases where we want to export via the svg pipeline eventhough raster was requested.
-					if matches!(render_config.export_format, ExportFormat::Raster) {
-						let vello_available = self.editor_api.application_io.as_ref().unwrap().gpu_executor().is_some();
-						let use_vello = vello_available && self.editor_api.editor_preferences.use_vello();
-
-						// On web when the user has disabled vello rendering in the preferences or we are exporting.
-						// And on all platforms when vello is not supposed to be used.
-						if !use_vello || cfg!(target_family = "wasm") && render_config.for_export {
-							render_config.export_format = ExportFormat::Svg;
-						}
+					// We may want to render via the SVG pipeline even though raster was requested, if SVG Preview render mode is active or WebGPU/Vello is unavailable
+					if render_config.export_format == ExportFormat::Raster
+						&& (render_config.render_mode == RenderMode::SvgPreview || self.editor_api.application_io.as_ref().unwrap().gpu_executor().is_none())
+					{
+						render_config.export_format = ExportFormat::Svg;
 					}
 
 					let result = self.execute_network(render_config).await;
