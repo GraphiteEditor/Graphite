@@ -967,7 +967,7 @@ async fn poll_node_graph_evaluation() {
 
 	if !editor::node_graph_executor::run_node_graph().await.0 {
 		return;
-	};
+	}
 
 	editor_and_handle(|editor, handle| {
 		let mut messages = VecDeque::new();
