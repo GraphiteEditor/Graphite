@@ -12,9 +12,9 @@ Github: @TrueDoctor
 email: dennis@kobert.dev
 
 Timon:
-Discord: @TrueDoctor
-Github: @TrueDoctor
-email: dennis@kobert.dev
+Discord: @timokrates
+Github: @timon-schelling
+email: me@timon.zip
 
 
 
@@ -33,7 +33,7 @@ Subsystem Maintainer
 
 
 Frontend Code - frontend/*
--------------------------
+--------------------------
 Keavon
 
 Frontend Wasm - frontend/wasm:
@@ -41,25 +41,28 @@ Timon
 TrueDoctor
 
 
-Graphite Website - website/*:
+Graphite Website - website/*
 -----------------------------
 Keavon
 
-Tooling - tools/*:
+
+Tooling - tools/*
+-----------------
 Crate hierarchy Visualization - tools/crate-hierarchy-viz:
 TrueDoctor
 
 Node Documentation Generation - tools/node-docs:
 Keavon
 
+
 Libraries - libraries/*
 -----------------------
 
-- Path Bool - libraries/path-bool:
+Path Bool - libraries/path-bool:
 TrueDoctor
 
-- Dyn Any - libraries/dyn-any:
- TrueDoctor
+Dyn Any - libraries/dyn-any:
+TrueDoctor
 
 
 Editor - editor/*
@@ -75,7 +78,7 @@ Desktop App - desktop/*
 Timon
 TrueDoctor
 
-Plattform specific Code: desktop/platform/*:
+Platform specific Code: desktop/platform/*:
 Timon
 
 
