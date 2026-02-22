@@ -33,6 +33,7 @@ use graphene_std::math::quad::Quad;
 use graphene_std::path_bool::{boolean_intersect, path_bool_lib};
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::Raster;
+use graphene_std::render_node::wgpu_available;
 use graphene_std::subpath::Subpath;
 use graphene_std::table::Table;
 use graphene_std::vector::PointId;
@@ -2563,13 +2564,13 @@ impl DocumentMessageHandler {
 				// 	.icon("RenderModePixels")
 				// 	.tooltip_label("Render Mode: Pixel Preview")
 				// 	.on_update(|_| todo!()),
-				// TODO: See issue #1845
-				// RadioEntryData::new("SvgPreview")
-				// 	.icon("RenderModeSvg")
-				// 	.tooltip_label("Render Mode: SVG Preview")
-				// 	.on_update(|_| todo!()),
+				RadioEntryData::new("SvgPreview")
+					.icon("RenderModeSvg")
+					.tooltip_label("Render Mode: SVG Preview")
+					.on_update(|_| DocumentMessage::SetRenderMode { render_mode: RenderMode::SvgPreview }.into()),
 			])
 			.selected_index(Some(self.render_mode as u32))
+			.disabled(cfg!(target_family = "wasm") && wgpu_available() == Some(false))
 			.narrow(true)
 			.widget_instance(),
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),

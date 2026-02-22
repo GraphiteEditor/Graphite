@@ -662,6 +662,6 @@ pub enum RenderMode {
 	Outline,
 	// /// Render with normal coloration at the document resolution, showing the pixels when the current viewport resolution is higher
 	// PixelPreview,
-	// /// Render a preview of how the object would be exported as an SVG.
-	// SvgPreview,
+	/// Render a preview of how the object would be exported as an SVG.
+	SvgPreview,
 }
