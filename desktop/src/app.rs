@@ -42,6 +42,7 @@ pub(crate) struct App {
 	start_render_sender: SyncSender<()>,
 	web_communication_initialized: bool,
 	web_communication_startup_buffer: Vec<Vec<u8>>,
+	global_eyedropper: crate::global_eyedropper::GlobalEyedropper,
 	persistent_data: PersistentData,
 	cli: Cli,
 	startup_time: Option<Instant>,
@@ -105,6 +106,7 @@ impl App {
 			start_render_sender,
 			web_communication_initialized: false,
 			web_communication_startup_buffer: Vec::new(),
+			global_eyedropper: crate::global_eyedropper::GlobalEyedropper::new(),
 			persistent_data,
 			cli,
 			exit_reason: ExitReason::Shutdown,
@@ -402,6 +404,13 @@ impl App {
 			DesktopFrontendMessage::Restart => {
 				self.exit(Some(ExitReason::Restart));
 			}
+			DesktopFrontendMessage::GlobalEyedropper { open, primary } => {
+				if open {
+					self.app_event_scheduler.schedule(AppEvent::StartGlobalEyedropper { primary });
+				} else {
+					self.global_eyedropper.stop();
+				}
+			}
 		}
 	}
 
@@ -477,6 +486,9 @@ impl App {
 				tracing::info!("Exiting main event loop");
 				event_loop.exit();
 			}
+			AppEvent::StartGlobalEyedropper { primary } => {
+				self.global_eyedropper.start(event_loop, primary);
+			}
 			#[cfg(target_os = "macos")]
 			AppEvent::MenuEvent { id } => {
 				self.dispatch_desktop_wrapper_message(DesktopWrapperMessage::MenuEvent { id });
@@ -509,7 +521,33 @@ impl ApplicationHandler for App {
 		}
 	}
 
-	fn window_event(&mut self, _event_loop: &dyn ActiveEventLoop, _window_id: WindowId, event: WindowEvent) {
+	fn window_event(&mut self, event_loop: &dyn ActiveEventLoop, window_id: WindowId, event: WindowEvent) {
+		if Some(window_id) == self.global_eyedropper.window_id() {
+			match event {
+				WindowEvent::PointerMoved { position, .. } => {
+					self.global_eyedropper.update(position);
+				}
+				WindowEvent::PointerButton {
+					state: ElementState::Pressed,
+					button: ButtonSource::Mouse(MouseButton::Left),
+					..
+				} => {
+					if let Some(color) = self.global_eyedropper.sample_color() {
+						let primary = self.global_eyedropper.is_primary();
+						let message = DesktopWrapperMessage::PickGlobalColor { color, primary };
+						self.dispatch_desktop_wrapper_message(message);
+					}
+					self.global_eyedropper.stop();
+				}
+				WindowEvent::KeyboardInput { .. } => {
+					// TODO: Support Esc to abort
+					self.global_eyedropper.stop();
+				}
+				_ => {}
+			}
+			return;
+		}
+
 		// Handle pointer lock release
 		if let Some(pointer_lock_position) = self.pointer_lock_position
 			&& let WindowEvent::PointerButton {
@@ -540,6 +578,11 @@ impl ApplicationHandler for App {
 				self.resize();
 			}
 			WindowEvent::RedrawRequested => {
+				if Some(window_id) == self.global_eyedropper.window_id() {
+					self.global_eyedropper.render();
+					return;
+				}
+
 				#[cfg(target_os = "macos")]
 				self.resize();
 

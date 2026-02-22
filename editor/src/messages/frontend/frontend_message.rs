@@ -354,6 +354,10 @@ pub enum FrontendMessage {
 	UpdateUIScale {
 		scale: f64,
 	},
+	GlobalEyedropper {
+		open: bool,
+		primary: bool,
+	},
 
 	#[cfg(not(target_family = "wasm"))]
 	RenderOverlays {
