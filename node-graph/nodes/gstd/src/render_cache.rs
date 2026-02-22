@@ -28,7 +28,7 @@ pub struct TileCoord {
 pub struct CachedRegion {
 	pub texture: wgpu::Texture,
 	pub texture_size: UVec2,
-	pub world_bounds: AxisAlignedBbox,
+	pub scene_bounds: AxisAlignedBbox,
 	pub tiles: Vec<TileCoord>,
 	pub metadata: rendering::RenderMetadata,
 	last_access: u64,
@@ -128,7 +128,7 @@ pub struct TileCache(Arc<Mutex<TileCacheImpl>>);
 
 #[derive(Debug, Clone)]
 pub struct RenderRegion {
-	pub world_bounds: AxisAlignedBbox,
+	pub scene_bounds: AxisAlignedBbox,
 	pub tiles: Vec<TileCoord>,
 	pub scale: f64,
 }
@@ -139,7 +139,7 @@ pub struct CacheQuery {
 	pub missing_regions: Vec<RenderRegion>,
 }
 
-pub fn world_bounds_to_tiles(bounds: &AxisAlignedBbox, scale: f64) -> Vec<TileCoord> {
+fn scene_bounds_to_tiles(bounds: &AxisAlignedBbox, scale: f64) -> Vec<TileCoord> {
 	let pixel_start = bounds.start * scale;
 	let pixel_end = bounds.end * scale;
 	let tile_start_x = (pixel_start.x / TILE_SIZE as f64).floor() as i32;
@@ -156,27 +156,26 @@ pub fn world_bounds_to_tiles(bounds: &AxisAlignedBbox, scale: f64) -> Vec<TileCo
 	tiles
 }
 
-#[inline]
-pub fn tile_world_start(tile: &TileCoord, scale: f64) -> DVec2 {
+fn tile_scene_start(tile: &TileCoord, scale: f64) -> DVec2 {
 	DVec2::new(tile.x as f64, tile.y as f64) * (TILE_SIZE as f64 / scale)
 }
 
-pub fn tile_to_world_bounds(coord: &TileCoord, scale: f64) -> AxisAlignedBbox {
-	let tile_world_size = TILE_SIZE as f64 / scale;
-	let start = tile_world_start(coord, scale);
+fn tile_to_scene_bounds(coord: &TileCoord, scale: f64) -> AxisAlignedBbox {
+	let tile_scene_size = TILE_SIZE as f64 / scale;
+	let start = tile_scene_start(coord, scale);
 	AxisAlignedBbox {
 		start,
-		end: start + DVec2::splat(tile_world_size),
+		end: start + DVec2::splat(tile_scene_size),
 	}
 }
 
-pub fn tiles_to_world_bounds(tiles: &[TileCoord], scale: f64) -> AxisAlignedBbox {
+fn tiles_to_scene_bounds(tiles: &[TileCoord], scale: f64) -> AxisAlignedBbox {
 	if tiles.is_empty() {
 		return AxisAlignedBbox::ZERO;
 	}
-	let mut result = tile_to_world_bounds(&tiles[0], scale);
+	let mut result = tile_to_scene_bounds(&tiles[0], scale);
 	for tile in &tiles[1..] {
-		result = result.union(&tile_to_world_bounds(tile, scale));
+		result = result.union(&tile_to_scene_bounds(tile, scale));
 	}
 	result
 }
@@ -189,7 +188,7 @@ impl TileCacheImpl {
 			self.current_scale = scale;
 		}
 
-		let required_tiles = world_bounds_to_tiles(viewport_bounds, scale);
+		let required_tiles = scene_bounds_to_tiles(viewport_bounds, scale);
 		let required_tile_set: HashSet<_> = required_tiles.iter().cloned().collect();
 		let mut cached_regions = Vec::new();
 		let mut covered_tiles = HashSet::new();
@@ -264,9 +263,9 @@ fn group_into_regions(tiles: &[TileCoord], scale: f64, max_region_area: u32) -> 
 			continue;
 		}
 		let region_tiles = flood_fill(&tile, &tile_set, &mut visited);
-		let world_bounds = tiles_to_world_bounds(&region_tiles, scale);
+		let scene_bounds = tiles_to_scene_bounds(&region_tiles, scale);
 		let region = RenderRegion {
-			world_bounds,
+			scene_bounds,
 			tiles: region_tiles,
 			scale,
 		};
@@ -278,7 +277,7 @@ fn group_into_regions(tiles: &[TileCoord], scale: f64, max_region_area: u32) -> 
 /// Recursively subdivides a region until all sub-regions have area <= max_region_area.
 /// Uses axis-aligned splits on the longest dimension.
 fn split_oversized_region(region: RenderRegion, scale: f64, max_region_area: u32) -> Vec<RenderRegion> {
-	let pixel_size = region.world_bounds.size() * scale;
+	let pixel_size = region.scene_bounds.size() * scale;
 	let area = (pixel_size.x * pixel_size.y) as u32;
 
 	// Base case: region is small enough
@@ -331,7 +330,7 @@ fn split_oversized_region(region: RenderRegion, scale: f64, max_region_area: u32
 	for tiles in [group1, group2] {
 		if !tiles.is_empty() {
 			let sub_region = RenderRegion {
-				world_bounds: tiles_to_world_bounds(&tiles, scale),
+				scene_bounds: tiles_to_scene_bounds(&tiles, scale),
 				tiles,
 				scale,
 			};
@@ -452,8 +451,8 @@ where
 	let min_tile = region.tiles.iter().fold(IVec2::new(i32::MAX, i32::MAX), |acc, t| acc.min(IVec2::new(t.x, t.y)));
 	let max_tile = region.tiles.iter().fold(IVec2::new(i32::MIN, i32::MIN), |acc, t| acc.max(IVec2::new(t.x, t.y)));
 
-	let tile_world_size = TILE_SIZE as f64 / logical_scale;
-	let region_world_start = DVec2::new(min_tile.x as f64 * tile_world_size, min_tile.y as f64 * tile_world_size);
+	let tile_scene_size = TILE_SIZE as f64 / logical_scale;
+	let region_scene_start = DVec2::new(min_tile.x as f64 * tile_scene_size, min_tile.y as f64 * tile_scene_size);
 
 	// Calculate pixel size from tile boundaries to avoid rounding gaps
 	// Use round() on boundaries to ensure adjacent tiles share the same edge
@@ -461,7 +460,7 @@ where
 	let pixel_end = ((max_tile + IVec2::ONE).as_dvec2() * TILE_SIZE as f64 * device_scale).round().as_ivec2();
 	let region_pixel_size = (pixel_end - pixel_start).max(IVec2::ONE).as_uvec2();
 
-	let region_transform = glam::DAffine2::from_scale(DVec2::splat(logical_scale)) * glam::DAffine2::from_translation(-region_world_start);
+	let region_transform = glam::DAffine2::from_scale(DVec2::splat(logical_scale)) * glam::DAffine2::from_translation(-region_scene_start);
 	let region_footprint = Footprint {
 		transform: region_transform,
 		resolution: region_pixel_size,
@@ -477,7 +476,7 @@ where
 	};
 
 	// Transform metadata from region pixel space to document space
-	let pixel_to_document = glam::DAffine2::from_translation(region_world_start) * glam::DAffine2::from_scale(DVec2::splat(1.0 / logical_scale));
+	let pixel_to_document = glam::DAffine2::from_translation(region_scene_start) * glam::DAffine2::from_scale(DVec2::splat(1.0 / logical_scale));
 	result.metadata.apply_transform(pixel_to_document);
 
 	let memory_size = (region_pixel_size.x * region_pixel_size.y) as usize * BYTES_PER_PIXEL;
@@ -485,7 +484,7 @@ where
 	CachedRegion {
 		texture: rendered_texture.texture,
 		texture_size: region_pixel_size,
-		world_bounds: region.world_bounds.clone(),
+		scene_bounds: region.scene_bounds.clone(),
 		tiles: region.tiles.clone(),
 		metadata: result.metadata,
 		last_access: 0,
