@@ -530,21 +530,19 @@ impl Fsm for GradientToolFsmState {
 						let distance = (end - start).angle_to(mouse - start).sin() * (mouse - start).length();
 						let projection = ((end - start).angle_to(mouse - start)).cos() * start.distance(mouse) / start.distance(end);
 
-						if distance.abs() < SEGMENT_INSERTION_DISTANCE
-							&& (0. ..=1.).contains(&projection)
-							&& let Some(index) = gradient.clone().insert_stop(mouse, transform)
-						{
-							responses.add(DocumentMessage::StartTransaction);
-							transaction_started = true;
+						if distance.abs() < SEGMENT_INSERTION_DISTANCE && (0. ..=1.).contains(&projection) {
 							let mut new_gradient = gradient.clone();
-							new_gradient.insert_stop(mouse, transform);
+							if let Some(index) = new_gradient.insert_stop(mouse, transform) {
+								responses.add(DocumentMessage::StartTransaction);
+								transaction_started = true;
 
-							let mut selected_gradient = SelectedGradient::new(new_gradient, layer, document);
-							selected_gradient.dragging = GradientDragTarget::Step(index);
-							// No offset when inserting a new stop, it should be exactly under the mouse
-							selected_gradient.render_gradient(responses);
-							tool_data.selected_gradient = Some(selected_gradient);
-							dragging = true;
+								let mut selected_gradient = SelectedGradient::new(new_gradient, layer, document);
+								selected_gradient.dragging = GradientDragTarget::Step(index);
+								// No offset when inserting a new stop, it should be exactly under the mouse
+								selected_gradient.render_gradient(responses);
+								tool_data.selected_gradient = Some(selected_gradient);
+								dragging = true;
+							}
 						}
 					}
 				}
