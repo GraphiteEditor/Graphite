@@ -1,0 +1,14 @@
+[package]
+name = "third-party-licenses"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+lzma-rust2 = { workspace = true }
+cef-dll-sys = { workspace = true }
+scraper = "0.22"
+sha256 = "1"

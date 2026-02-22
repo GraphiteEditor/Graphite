@@ -75,6 +75,7 @@ pub enum DesktopFrontendMessage {
 	WindowHideOthers,
 	WindowShowAll,
 	Restart,
+	LoadThirdPartyLicenses,
 }
 
 pub enum DesktopWrapperMessage {
@@ -126,6 +127,7 @@ pub enum DesktopWrapperMessage {
 		x: f64,
 		y: f64,
 	},
+	LoadThirdPartyLicenses(String),
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize, Debug)]
