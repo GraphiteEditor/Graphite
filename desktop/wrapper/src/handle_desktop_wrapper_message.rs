@@ -12,6 +12,15 @@ pub(super) fn handle_desktop_wrapper_message(dispatcher: &mut DesktopWrapperMess
 		DesktopWrapperMessage::Input(message) => {
 			dispatcher.queue_editor_message(EditorMessage::InputPreprocessor(message));
 		}
+		DesktopWrapperMessage::PickGlobalColor { color, primary } => {
+			dispatcher.queue_editor_message(ToolMessage::SelectWorkingColor { color, primary }.into());
+			let end_message = if primary {
+				EyedropperToolMessage::SamplePrimaryColorEnd
+			} else {
+				EyedropperToolMessage::SampleSecondaryColorEnd
+			};
+			dispatcher.queue_editor_message(end_message.into());
+		}
 		DesktopWrapperMessage::FileDialogResult { path, content, context } => match context {
 			OpenFileDialogContext::Open => {
 				dispatcher.queue_desktop_wrapper_message(DesktopWrapperMessage::OpenFile { path, content });

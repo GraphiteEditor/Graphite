@@ -75,11 +75,19 @@ pub enum DesktopFrontendMessage {
 	WindowHideOthers,
 	WindowShowAll,
 	Restart,
+	GlobalEyedropper {
+		open: bool,
+		primary: bool,
+	},
 }
 
 pub enum DesktopWrapperMessage {
 	FromWeb(Box<EditorMessage>),
 	Input(InputMessage),
+	PickGlobalColor {
+		color: graphene_std::raster::color::Color,
+		primary: bool,
+	},
 	FileDialogResult {
 		path: PathBuf,
 		content: Vec<u8>,

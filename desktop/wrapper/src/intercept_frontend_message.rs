@@ -154,6 +154,9 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		FrontendMessage::WindowRestart => {
 			dispatcher.respond(DesktopFrontendMessage::Restart);
 		}
+		FrontendMessage::GlobalEyedropper { open, primary } => {
+			dispatcher.respond(DesktopFrontendMessage::GlobalEyedropper { open, primary });
+		}
 		m => return Some(m),
 	}
 	None

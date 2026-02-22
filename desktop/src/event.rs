@@ -9,6 +9,9 @@ pub(crate) enum AppEvent {
 	DesktopWrapperMessage(DesktopWrapperMessage),
 	NodeGraphExecutionResult(NodeGraphExecutionResult),
 	Exit,
+	StartGlobalEyedropper {
+		primary: bool,
+	},
 	#[cfg(target_os = "macos")]
 	MenuEvent {
 		id: String,

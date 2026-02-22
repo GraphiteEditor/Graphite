@@ -16,6 +16,7 @@ mod cef;
 mod cli;
 mod dirs;
 mod event;
+mod global_eyedropper;
 mod gpu_context;
 mod persist;
 mod preferences;

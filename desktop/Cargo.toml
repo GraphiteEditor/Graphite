@@ -23,6 +23,7 @@ accelerated_paint = ["cef/accelerated_osr"]
 # Local dependencies
 graphite-desktop-wrapper = { path = "wrapper" }
 graphite-desktop-embedded-resources = { path = "embedded-resources", optional = true }
+graphene-std = { workspace = true }
 
 wgpu = { workspace = true }
 winit = { workspace = true, features = [

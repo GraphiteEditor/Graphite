@@ -117,9 +117,15 @@ impl Fsm for EyedropperToolFsmState {
 			// Sampling -> Sampling
 			(EyedropperToolFsmState::SamplingPrimary | EyedropperToolFsmState::SamplingSecondary, EyedropperToolMessage::PointerMove) => {
 				let mouse_position = viewport.logical(input.mouse.position);
+				let primary = self == EyedropperToolFsmState::SamplingPrimary;
 				if viewport.is_in_bounds(mouse_position + viewport.offset()) {
 					update_cursor_preview(responses, tool_data, input, global_tool_data, None);
+					#[cfg(not(target_family = "wasm"))]
+					responses.add(FrontendMessage::GlobalEyedropper { open: false, primary });
 				} else {
+					#[cfg(not(target_family = "wasm"))]
+					responses.add(FrontendMessage::GlobalEyedropper { open: true, primary });
+					#[cfg(target_family = "wasm")]
 					disable_cursor_preview(responses, tool_data);
 				}
 
@@ -127,15 +133,21 @@ impl Fsm for EyedropperToolFsmState {
 			}
 			// Sampling -> Ready
 			(EyedropperToolFsmState::SamplingPrimary, EyedropperToolMessage::SamplePrimaryColorEnd) | (EyedropperToolFsmState::SamplingSecondary, EyedropperToolMessage::SampleSecondaryColorEnd) => {
-				let set_color_choice = if self == EyedropperToolFsmState::SamplingPrimary { "Primary" } else { "Secondary" }.to_string();
+				let primary = self == EyedropperToolFsmState::SamplingPrimary;
+				let set_color_choice = if primary { "Primary" } else { "Secondary" }.to_string();
 				update_cursor_preview(responses, tool_data, input, global_tool_data, Some(set_color_choice));
 				disable_cursor_preview(responses, tool_data);
+				#[cfg(not(target_family = "wasm"))]
+				responses.add(FrontendMessage::GlobalEyedropper { open: false, primary });
 
 				EyedropperToolFsmState::Ready
 			}
 			// Any -> Ready
 			(_, EyedropperToolMessage::Abort) => {
+				let primary = self == EyedropperToolFsmState::SamplingPrimary;
 				disable_cursor_preview(responses, tool_data);
+				#[cfg(not(target_family = "wasm"))]
+				responses.add(FrontendMessage::GlobalEyedropper { open: false, primary });
 
 				EyedropperToolFsmState::Ready
 			}
