@@ -1,9 +1,8 @@
-use crate::renderer::{RenderParams, black_or_white_for_best_contrast, format_transform_matrix};
-use core_types::consts::LAYER_OUTLINE_STROKE_WEIGHT;
+use crate::renderer::{RenderParams, format_transform_matrix};
 use core_types::uuid::generate_uuid;
 use glam::DAffine2;
 use graphic_types::vector_types::gradient::{Gradient, GradientType};
-use graphic_types::vector_types::vector::style::{Fill, PaintOrder, PathStyle, RenderMode, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use graphic_types::vector_types::vector::style::{Fill, PaintOrder, PathStyle, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use std::fmt::Write;
 
 pub trait RenderExt {
@@ -14,7 +13,7 @@ pub trait RenderExt {
 impl RenderExt for Gradient {
 	type Output = u64;
 
-	// /// Adds the gradient def through mutating the first argument, returning the gradient ID.
+	/// Adds the gradient def through mutating the first argument, returning the gradient ID.
 	fn render(&self, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: DAffine2, transformed_bounds: DAffine2, _render_params: &RenderParams) -> Self::Output {
 		let mut stop = String::new();
 		for (position, color) in self.stops.0.iter() {
