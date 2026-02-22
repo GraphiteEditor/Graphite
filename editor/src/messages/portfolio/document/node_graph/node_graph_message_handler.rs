@@ -13,7 +13,7 @@ use crate::messages::portfolio::document::node_graph::utility_types::{ContextMen
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::portfolio::document::utility_types::misc::GroupFolderType;
 use crate::messages::portfolio::document::utility_types::network_interface::{
-	self, FlowType, InputConnector, NodeNetworkInterface, NodeTemplate, NodeTypePersistentMetadata, OutputConnector, Previewing,
+	self, FlowType, InputConnector, LayerPosition, NodeNetworkInterface, NodePosition, NodeTemplate, NodeTypePersistentMetadata, OutputConnector, Previewing,
 };
 use crate::messages::portfolio::document::utility_types::nodes::{CollapsedLayers, LayerPanelEntry};
 use crate::messages::portfolio::document::utility_types::wires::{GraphWireStyle, WirePath, WirePathUpdate, build_vector_wire};
@@ -723,7 +723,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				network_interface.set_chain_position(&node_id, selection_network_path);
 			}
 			NodeGraphMessage::PasteNodes { serialized_nodes } => {
-				let data = match serde_json::from_str::<Vec<(NodeId, NodeTemplate)>>(&serialized_nodes) {
+				let mut data = match serde_json::from_str::<Vec<(NodeId, NodeTemplate)>>(&serialized_nodes) {
 					Ok(d) => d,
 					Err(e) => {
 						warn!("Invalid node data {e:?}");
@@ -732,6 +732,54 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				};
 				if data.is_empty() {
 					return;
+				}
+
+				// If the graph view is open, reposition pasted nodes so their center is at the cursor position
+				if graph_view_overlay_open {
+					if let Some(network_metadata) = network_interface.network_metadata(breadcrumb_network_path) {
+						let cursor_graph = network_metadata.persistent_metadata.navigation_metadata.node_graph_to_viewport.inverse().transform_point2(ipp.mouse.position);
+						let cursor_grid = IVec2::new((cursor_graph.x / GRID_SIZE as f64).round() as i32, (cursor_graph.y / GRID_SIZE as f64).round() as i32);
+
+						// Compute bounding box of all absolute-positioned nodes
+						let mut min = IVec2::MAX;
+						let mut max = IVec2::MIN;
+						for (_, template) in &data {
+							let pos = match &template.persistent_node_metadata.node_type_metadata {
+								NodeTypePersistentMetadata::Layer(layer_meta) => match &layer_meta.position {
+									LayerPosition::Absolute(p) => Some(*p),
+									_ => None,
+								},
+								NodeTypePersistentMetadata::Node(node_meta) => match node_meta.position() {
+									NodePosition::Absolute(p) => Some(*p),
+									_ => None,
+								},
+							};
+							if let Some(p) = pos {
+								min = min.min(p);
+								max = max.max(p);
+							}
+						}
+
+						if min.x <= max.x && min.y <= max.y {
+							let center = (min + max) / 2;
+							let offset = cursor_grid - center;
+
+							for (_, template) in &mut data {
+								match &mut template.persistent_node_metadata.node_type_metadata {
+									NodeTypePersistentMetadata::Layer(layer_meta) => {
+										if let LayerPosition::Absolute(p) = &mut layer_meta.position {
+											*p += offset;
+										}
+									}
+									NodeTypePersistentMetadata::Node(node_meta) => {
+										if let NodePosition::Absolute(p) = node_meta.position_mut() {
+											*p += offset;
+										}
+									}
+								}
+							}
+						}
+					}
 				}
 
 				responses.add(DocumentMessage::AddTransaction);
