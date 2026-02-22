@@ -358,7 +358,8 @@ impl graphene_application_io::GetEditorPreferences for EditorPreferences {
 	}
 
 	fn max_render_region_area(&self) -> u32 {
-		self.max_render_region_size.pow(2)
+		let size = self.max_render_region_size.min(u32::MAX.isqrt());
+		size.pow(2)
 	}
 }
 
@@ -366,7 +367,7 @@ impl Default for EditorPreferences {
 	fn default() -> Self {
 		Self {
 			vello_preference: VelloPreference::Auto,
-			max_render_region_size: 1024,
+			max_render_region_size: 1280,
 		}
 	}
 }

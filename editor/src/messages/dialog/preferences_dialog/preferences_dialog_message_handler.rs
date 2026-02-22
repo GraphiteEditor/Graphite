@@ -349,7 +349,7 @@ impl PreferencesDialogMessageHandler {
 				let render_tile_resolution_description = "
 					Maximum X or Y resolution per render tile. Larger tiles may improve performance but can cause flickering or missing content in complex artwork if set too high.\n\
 					\n\
-					*Default: 1024 px.*
+					*Default: 1280 px.*
 					"
 				.trim();
 				let render_tile_resolution_label = vec![
