@@ -157,5 +157,4 @@ pub enum PortfolioMessage {
 	ToggleRulers,
 	UpdateDocumentWidgets,
 	UpdateOpenDocumentsList,
-	UpdateVelloPreference,
 }

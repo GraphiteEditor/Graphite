@@ -1364,13 +1364,6 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					responses.add(PortfolioMessage::RequestWelcomeScreenButtonsLayout);
 				}
 			}
-			PortfolioMessage::UpdateVelloPreference => {
-				// TODO: Resend this message once the GPU context is initialized to avoid having the hole punch be stuck in an invalid state
-				let active = if cfg!(target_family = "wasm") { false } else { preferences.use_vello() };
-				responses.add(FrontendMessage::UpdateViewportHolePunch { active });
-				responses.add(NodeGraphMessage::RunDocumentGraph);
-				self.persistent_data.use_vello = preferences.use_vello();
-			}
 		}
 	}
 

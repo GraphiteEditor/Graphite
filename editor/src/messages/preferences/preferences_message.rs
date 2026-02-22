@@ -10,7 +10,6 @@ pub enum PreferencesMessage {
 	ResetToDefaults,
 
 	// Per-preference messages
-	VelloPreference { preference: graph_craft::wasm_application_io::VelloPreference },
 	SelectionMode { selection_mode: SelectionMode },
 	BrushTool { enabled: bool },
 	ModifyLayout { zoom_with_scroll: bool },

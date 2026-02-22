@@ -6,7 +6,6 @@ use graphene_std::text::{Font, FontCache};
 pub struct PersistentData {
 	pub font_cache: FontCache,
 	pub font_catalog: FontCatalog,
-	pub use_vello: bool,
 }
 
 // TODO: Should this be a BTreeMap instead?
