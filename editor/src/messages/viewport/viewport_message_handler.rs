@@ -26,7 +26,7 @@ impl MessageHandler<ViewportMessage, ()> for ViewportMessageHandler {
 	fn process_message(&mut self, message: ViewportMessage, responses: &mut VecDeque<Message>, _: ()) {
 		match message {
 			ViewportMessage::Update { x, y, width, height, scale } => {
-				assert_ne!(scale, 0., "Viewport scale cannot be zero");
+				assert!(scale > 0., "Viewport scale must be greater than zero");
 				self.scale = scale;
 
 				self.bounds = Bounds {
