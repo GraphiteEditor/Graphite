@@ -292,9 +292,8 @@ impl Fsm for FreehandToolFsmState {
 				if let Some(input) = transform_node.document_node.inputs.get_mut(0) {
 					*input = NodeInput::node(NodeId(1), 0);
 				}
-				const ORIGIN_OFFSET_INDEX: usize = 5;
-				if let Some(origin_offset) = transform_node.document_node.inputs.get_mut(ORIGIN_OFFSET_INDEX) {
-					*origin_offset = NodeInput::value(graph_craft::document::value::TaggedValue::DVec2(document_space_position), false);
+				if let Some(translation) = transform_node.document_node.inputs.get_mut(1) {
+					*translation = NodeInput::value(graph_craft::document::value::TaggedValue::DVec2(document_space_position), false);
 				}
 				let nodes = vec![(NodeId(0), transform_node), (NodeId(1), node_type.default_node_template())];
 

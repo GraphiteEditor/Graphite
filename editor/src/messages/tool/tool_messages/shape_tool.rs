@@ -943,9 +943,9 @@ impl Fsm for ShapeToolFsmState {
 				if let Some(input) = transform_node.document_node.inputs.get_mut(0) {
 					*input = NodeInput::node(NodeId(1), 0);
 				}
-				const ORIGIN_OFFSET_INDEX: usize = 5;
-				if let Some(origin_offset) = transform_node.document_node.inputs.get_mut(ORIGIN_OFFSET_INDEX) {
-					*origin_offset = NodeInput::value(TaggedValue::DVec2(tool_data.data.drag_start), false);
+				const TRANSLATION_INDEX: usize = 1;
+				if let Some(translation) = transform_node.document_node.inputs.get_mut(TRANSLATION_INDEX) {
+					*translation = NodeInput::value(TaggedValue::DVec2(tool_data.data.drag_start), false);
 				}
 				let nodes = vec![(NodeId(0), transform_node), (NodeId(1), node)];
 				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, document.new_layer_bounding_artboard(input, viewport), responses);

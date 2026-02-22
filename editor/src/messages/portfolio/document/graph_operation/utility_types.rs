@@ -167,9 +167,9 @@ impl<'a> ModifyInputsContext<'a> {
 		if include_transform {
 			let mut transform = resolve_network_node_type("Transform").expect("Transform node does not exist").default_node_template();
 			if let Some(anchor) = first_anchor {
-				const ORIGIN_OFFSET_INDEX: usize = 5;
-				if let Some(origin_offset) = transform.document_node.inputs.get_mut(ORIGIN_OFFSET_INDEX) {
-					*origin_offset = NodeInput::value(TaggedValue::DVec2(anchor), false);
+				const TRANSLATION_INDEX: usize = 1;
+				if let Some(translation) = transform.document_node.inputs.get_mut(TRANSLATION_INDEX) {
+					*translation = NodeInput::value(TaggedValue::DVec2(anchor), false);
 				}
 			}
 			let transform_id = NodeId::new();

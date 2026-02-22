@@ -398,12 +398,11 @@ impl Fsm for SplineToolFsmState {
 				if let Some(input) = transform_node.document_node.inputs.get_mut(0) {
 					*input = NodeInput::node(NodeId(1), 0);
 				}
-				const ORIGIN_OFFSET_INDEX: usize = 5;
-				if let Some(origin_offset) = transform_node.document_node.inputs.get_mut(ORIGIN_OFFSET_INDEX) {
-					*origin_offset = NodeInput::value(TaggedValue::DVec2(snapped.snapped_point_document), false);
+				if let Some(translation) = transform_node.document_node.inputs.get_mut(1) {
+					*translation = NodeInput::value(TaggedValue::DVec2(snapped.snapped_point_document), false);
 				}
 
-				let nodes = vec![(NodeId(2), path_node), (NodeId(1), spline_node), (NodeId(0), transform_node)];
+				let nodes = vec![(NodeId(0), transform_node), (NodeId(1), spline_node), (NodeId(2), path_node)];
 
 				let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
 				tool_options.stroke.apply_stroke(tool_data.weight, layer, responses);
