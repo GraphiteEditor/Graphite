@@ -90,6 +90,7 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 				self.translate_mouse_event(mouse_state, true, responses);
 			}
 			InputPreprocessorMessage::PointerMove { editor_mouse_state, modifier_keys } => {
+				self.clear_double_tap_state();
 				self.update_states_of_modifier_keys(modifier_keys, responses);
 
 				let mouse_state = editor_mouse_state.to_mouse_state(viewport);
@@ -443,6 +444,37 @@ mod test {
 		// PointerDown happens!
 		input_preprocessor.process_message(
 			InputPreprocessorMessage::PointerDown {
+				editor_mouse_state: EditorMouseState::default(),
+				modifier_keys: ModifierKeys::empty(),
+			},
+			&mut responses,
+			InputPreprocessorMessageContext {
+				viewport: &ViewportMessageHandler::default(),
+			},
+		);
+		responses.clear();
+
+		key_up(&mut input_preprocessor, Key::Space, &mut responses);
+
+		assert!(!responses.contains(&InputMapperMessage::DoubleTap(Key::Space).into()));
+	}
+
+	#[test]
+	fn process_double_tap_interrupted_by_mouse_movement() {
+		let mut input_preprocessor = InputPreprocessorMessageHandler::default();
+		let mut responses = VecDeque::new();
+
+		key_down(&mut input_preprocessor, Key::Space, &mut responses);
+		key_up(&mut input_preprocessor, Key::Space, &mut responses);
+		responses.clear();
+
+		input_preprocessor.time = 50;
+		key_down(&mut input_preprocessor, Key::Space, &mut responses);
+		responses.clear();
+
+		// PointerMove happens!
+		input_preprocessor.process_message(
+			InputPreprocessorMessage::PointerMove {
 				editor_mouse_state: EditorMouseState::default(),
 				modifier_keys: ModifierKeys::empty(),
 			},
