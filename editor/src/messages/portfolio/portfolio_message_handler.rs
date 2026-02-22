@@ -1211,7 +1211,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 
 				let result = self
 					.executor
-					.submit_eyedropper_preview(document_id, preview_transform, pointer_position, resolution, scale, timing_information);
+					.submit_eyedropper_preview((document, document_id), preview_transform, pointer_position, resolution, scale, timing_information);
 
 				match result {
 					Err(description) => {
