@@ -370,6 +370,8 @@ impl NodeRuntime {
 							executor.context.queue.submit([encoder.finish()]);
 							surface_texture.present();
 
+							// TODO: Figure out if we can explicityl destroy the wgpu texture here to reduce the allocation pressure. We might also be able to use a texture allocation pool
+
 							let frame = graphene_std::application_io::SurfaceFrame {
 								surface_id: surface.window_id,
 								resolution: logical_resolution,

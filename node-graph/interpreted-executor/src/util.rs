@@ -28,7 +28,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 	let render_node = DocumentNode {
 		inputs: vec![NodeInput::node(NodeId(0), 0)],
 		implementation: DocumentNodeImplementation::Network(NodeNetwork {
-			exports: vec![NodeInput::node(NodeId(2), 0)],
+			exports: vec![NodeInput::node(NodeId(3), 0)],
 			nodes: [
 				DocumentNode {
 					call_argument: concrete!(Context),
@@ -36,7 +36,7 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_node::render_intermediate::IDENTIFIER),
 					context_features: graphene_std::ContextDependencies {
 						extract: ContextFeatures::VARARGS,
-						inject: ContextFeatures::empty(),
+						inject: ContextFeatures::INDEX,
 					},
 					..Default::default()
 				},
@@ -52,11 +52,22 @@ pub fn wrap_network_in_scope(mut network: NodeNetwork, editor_api: Arc<WasmEdito
 					..Default::default()
 				},
 				DocumentNode {
+					call_argument: concrete!(Context),
+					inputs: vec![NodeInput::scope("editor-api"), NodeInput::node(NodeId(1), 0)],
+					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_cache::render_output_cache::IDENTIFIER),
+					context_features: graphene_std::ContextDependencies {
+						extract: ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS,
+						inject: ContextFeatures::VARARGS,
+					},
+					..Default::default()
+				},
+				DocumentNode {
 					call_argument: concrete!(graphene_std::application_io::RenderConfig),
-					inputs: vec![NodeInput::node(NodeId(1), 0)],
+					inputs: vec![NodeInput::node(NodeId(2), 0)],
 					implementation: DocumentNodeImplementation::ProtoNode(graphene_std::render_node::create_context::IDENTIFIER),
 					context_features: graphene_std::ContextDependencies {
-						extract: ContextFeatures::empty(),
+						// We add the extract index annotation here to force the compiler to add a context nullification node before this node so the render context is properly nullified so the render cache node can do its's work
+						extract: ContextFeatures::INDEX,
 						inject: ContextFeatures::REAL_TIME | ContextFeatures::ANIMATION_TIME | ContextFeatures::POINTER_POSITION | ContextFeatures::FOOTPRINT | ContextFeatures::VARARGS,
 					},
 					..Default::default()

@@ -5,4 +5,5 @@ use crate::messages::prelude::*;
 pub enum PreferencesDialogMessage {
 	MayRequireRestart,
 	Confirm,
+	Update,
 }

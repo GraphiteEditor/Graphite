@@ -3,6 +3,7 @@ use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::utility_types::wires::GraphWireStyle;
 use crate::messages::preferences::SelectionMode;
 use crate::messages::prelude::*;
+use graphene_std::render_node::{EditorPreferences, wgpu_available};
 
 #[derive(ExtractField)]
 pub struct PreferencesDialogMessageContext<'a> {
@@ -34,6 +35,7 @@ impl MessageHandler<PreferencesDialogMessage, PreferencesDialogMessageContext<'_
 					responses.add(DialogMessage::Close);
 				}
 			}
+			PreferencesDialogMessage::Update => {}
 		}
 	}
 
@@ -57,7 +59,12 @@ impl PreferencesDialogMessageHandler {
 		{
 			let header = vec![TextLabel::new("Navigation").italic(true).widget_instance()];
 
-			let zoom_rate_description = "Adjust how fast zooming occurs when using the scroll wheel or pinch gesture (relative to a default of 50).";
+			let zoom_rate_description = "
+				Adjust how fast zooming occurs when using the scroll wheel or pinch gesture.\n\
+				\n\
+				*Default: 50.*
+				"
+			.trim();
 			let zoom_rate_label = vec![
 				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
@@ -85,7 +92,12 @@ impl PreferencesDialogMessageHandler {
 			];
 
 			let checkbox_id = CheckboxId::new();
-			let zoom_with_scroll_description = "Use the scroll wheel for zooming instead of vertically panning (not recommended for trackpads).";
+			let zoom_with_scroll_description = "
+				Use the scroll wheel for zooming instead of vertically panning (not recommended for trackpads).\n\
+				\n\
+				*Default: Off.*
+				"
+			.trim();
 			let zoom_with_scroll = vec![
 				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
@@ -116,12 +128,18 @@ impl PreferencesDialogMessageHandler {
 		{
 			let header = vec![TextLabel::new("Editing").italic(true).widget_instance()];
 
+			let selection_label_description = "
+				Choose how targets are selected within dragged rectangular and lasso areas.\n\
+				\n\
+				*Default: Touched.*
+				"
+			.trim();
 			let selection_label = vec![
 				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 				TextLabel::new("Selection")
 					.tooltip_label("Selection")
-					.tooltip_description("Choose how targets are selected within dragged rectangular and lasso areas.")
+					.tooltip_description(selection_label_description)
 					.widget_instance(),
 			];
 
@@ -175,7 +193,12 @@ impl PreferencesDialogMessageHandler {
 		{
 			let header = vec![TextLabel::new("Interface").italic(true).widget_instance()];
 
-			let scale_description = "Adjust the scale of the entire user interface (100% is default).";
+			let scale_description = "
+				Adjust the scale of the entire user interface.\n\
+				\n\
+				*Default: 100%.*
+				"
+			.trim();
 			let scale_label = vec![
 				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
@@ -215,7 +238,12 @@ impl PreferencesDialogMessageHandler {
 		{
 			let header = vec![TextLabel::new("Experimental").italic(true).widget_instance()];
 
-			let node_graph_section_description = "Configure the appearance of the wires running between node connections in the graph.";
+			let node_graph_section_description = "
+				Configure the appearance of the wires running between node connections in the graph.\n\
+				\n\
+				*Default: Direct.*
+				"
+			.trim();
 			let node_graph_wires_label = vec![
 				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
@@ -245,38 +273,15 @@ impl PreferencesDialogMessageHandler {
 			];
 
 			let checkbox_id = CheckboxId::new();
-			let vello_description = "Use the experimental Vello renderer instead of SVG-based rendering.".to_string();
-			#[cfg(target_family = "wasm")]
-			let mut vello_description = vello_description;
-			#[cfg(target_family = "wasm")]
-			vello_description.push_str("\n\n(Your browser must support WebGPU.)");
-
-			let use_vello = vec![
-				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-				CheckboxInput::new(preferences.use_vello && preferences.supports_wgpu())
-					.tooltip_label("Vello Renderer")
-					.tooltip_description(vello_description.clone())
-					.disabled(!preferences.supports_wgpu())
-					.on_update(|checkbox_input: &CheckboxInput| PreferencesMessage::UseVello { use_vello: checkbox_input.checked }.into())
-					.for_label(checkbox_id)
-					.widget_instance(),
-				TextLabel::new("Vello Renderer")
-					.tooltip_label("Vello Renderer")
-					.tooltip_description(vello_description)
-					.disabled(!preferences.supports_wgpu())
-					.for_checkbox(checkbox_id)
-					.widget_instance(),
-			];
-
-			let checkbox_id = CheckboxId::new();
 			let brush_tool_description = "
-			Enable the Brush tool to support basic raster-based layer painting.\n\
-			\n\
-			This legacy experimental tool has performance and quality limitations and is slated for replacement in future versions of Graphite that will have a renewed focus on raster graphics editing.\n\
-			\n\
-			Content created with the Brush tool may not be compatible with future versions of Graphite.
-			"
+				Enable the Brush tool to support basic raster-based layer painting.\n\
+				\n\
+				This legacy experimental tool has performance and quality limitations and is slated for replacement in future versions of Graphite that will have a renewed focus on raster graphics editing.\n\
+				\n\
+				Content created with the Brush tool may not be compatible with future versions of Graphite.\n\
+				\n\
+				*Default: Off.*
+				"
 			.trim();
 			let brush_tool = vec![
 				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
@@ -294,49 +299,126 @@ impl PreferencesDialogMessageHandler {
 					.widget_instance(),
 			];
 
-			rows.extend_from_slice(&[header, node_graph_wires_label, graph_wire_style, use_vello, brush_tool]);
+			rows.extend_from_slice(&[header, node_graph_wires_label, graph_wire_style, brush_tool]);
 		}
 
 		// =============
 		// COMPATIBILITY
 		// =============
-		#[cfg(not(target_family = "wasm"))]
 		{
-			let header = vec![TextLabel::new("Compatibility").italic(true).widget_instance()];
+			let wgpu_available = wgpu_available().unwrap_or(false);
+			let is_desktop = cfg!(not(target_family = "wasm"));
+			if wgpu_available || is_desktop {
+				let header = vec![TextLabel::new("Compatibility").italic(true).widget_instance()];
+				rows.push(header);
+			}
 
-			let ui_acceleration_description = "
-			Use the CPU to draw the Graphite user interface (areas outside of the canvas) instead of the GPU. This does not affect the rendering of artwork in the canvas, which remains hardware accelerated.\n\
-			\n\
-			Disabling UI acceleration may slightly degrade performance, so this should be used as a workaround only if issues are observed with displaying the UI. This setting may become enabled automatically if Graphite launches, detects that it cannot draw the UI normally, and restarts in compatibility mode.
-			"
-			.trim();
+			if wgpu_available {
+				let vello_description = "Auto uses Vello renderer when GPU is available.";
+				let vello_renderer_label = vec![
+					Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+					Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+					TextLabel::new("Vello Renderer")
+						.tooltip_label("Vello Renderer")
+						.tooltip_description(vello_description)
+						.widget_instance(),
+				];
+				let vello_preference = RadioInput::new(vec![
+					RadioEntryData::new("Auto").label("Auto").on_update(move |_| {
+						PreferencesMessage::VelloPreference {
+							preference: graph_craft::wasm_application_io::VelloPreference::Auto,
+						}
+						.into()
+					}),
+					RadioEntryData::new("Disabled").label("Disabled").on_update(move |_| {
+						PreferencesMessage::VelloPreference {
+							preference: graph_craft::wasm_application_io::VelloPreference::Disabled,
+						}
+						.into()
+					}),
+				])
+				.selected_index(Some(preferences.vello_preference as u32))
+				.widget_instance();
+				let vello_preference = vec![
+					Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+					Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+					vello_preference,
+				];
+				rows.extend_from_slice(&[vello_renderer_label, vello_preference]);
 
-			let checkbox_id = CheckboxId::new();
-			let ui_acceleration = vec![
-				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-				CheckboxInput::new(preferences.disable_ui_acceleration)
-					.tooltip_label("Disable UI Acceleration")
-					.tooltip_description(ui_acceleration_description)
-					.on_update(|number_input: &CheckboxInput| Message::Batched {
-						messages: Box::new([
-							PreferencesDialogMessage::MayRequireRestart.into(),
-							PreferencesMessage::DisableUIAcceleration {
-								disable_ui_acceleration: number_input.checked,
-							}
-							.into(),
-						]),
-					})
-					.for_label(checkbox_id)
-					.widget_instance(),
-				TextLabel::new("Disable UI Acceleration")
-					.tooltip_label("Disable UI Acceleration")
-					.tooltip_description(ui_acceleration_description)
-					.for_checkbox(checkbox_id)
-					.widget_instance(),
-			];
+				let render_tile_resolution_description = "
+					Maximum X or Y resolution per render tile. Larger tiles may improve performance but can cause flickering or missing content in complex artwork if set too high.\n\
+					\n\
+					*Default: 1280 px.*
+					"
+				.trim();
+				let render_tile_resolution_label = vec![
+					Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+					Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+					TextLabel::new("Render Tile Resolution")
+						.tooltip_label("Render Tile Resolution")
+						.tooltip_description(render_tile_resolution_description)
+						.widget_instance(),
+				];
+				let render_tile_resolution = vec![
+					Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+					Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+					NumberInput::new(Some(preferences.max_render_region_size as f64))
+						.tooltip_label("Render Tile Resolution")
+						.tooltip_description(render_tile_resolution_description)
+						.mode_range()
+						.int()
+						.min(256.)
+						.max(4096.)
+						.increment_step(256.)
+						.unit(" px")
+						.on_update(|number_input: &NumberInput| {
+							let size = number_input.value.unwrap_or(EditorPreferences::default().max_render_region_size as f64) as u32;
+							PreferencesMessage::MaxRenderRegionSize { size }.into()
+						})
+						.widget_instance(),
+				];
 
-			rows.extend_from_slice(&[header, ui_acceleration]);
+				rows.extend_from_slice(&[render_tile_resolution_label, render_tile_resolution]);
+			}
+
+			if is_desktop {
+				let ui_acceleration_description = "
+					Use the CPU to draw the Graphite user interface (areas outside of the canvas) instead of the GPU. This does not affect the rendering of artwork in the canvas, which remains hardware accelerated.\n\
+					\n\
+					Disabling UI acceleration may slightly degrade performance, so this should be used as a workaround only if issues are observed with displaying the UI. This setting may become enabled automatically if Graphite launches, detects that it cannot draw the UI normally, and restarts in compatibility mode.\n\
+					\n\
+					*Default: Off.*
+					"
+				.trim();
+
+				let checkbox_id = CheckboxId::new();
+				let ui_acceleration = vec![
+					Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+					Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+					CheckboxInput::new(preferences.disable_ui_acceleration)
+						.tooltip_label("Disable UI Acceleration")
+						.tooltip_description(ui_acceleration_description)
+						.on_update(|number_input: &CheckboxInput| Message::Batched {
+							messages: Box::new([
+								PreferencesDialogMessage::MayRequireRestart.into(),
+								PreferencesMessage::DisableUIAcceleration {
+									disable_ui_acceleration: number_input.checked,
+								}
+								.into(),
+							]),
+						})
+						.for_label(checkbox_id)
+						.widget_instance(),
+					TextLabel::new("Disable UI Acceleration")
+						.tooltip_label("Disable UI Acceleration")
+						.tooltip_description(ui_acceleration_description)
+						.for_checkbox(checkbox_id)
+						.widget_instance(),
+				];
+
+				rows.push(ui_acceleration);
+			}
 		}
 
 		Layout(rows.into_iter().map(|r| LayoutGroup::Row { widgets: r }).collect())

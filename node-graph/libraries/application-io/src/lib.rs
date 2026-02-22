@@ -218,6 +218,7 @@ impl<T: NodeGraphUpdateSender> NodeGraphUpdateSender for std::sync::Mutex<T> {
 
 pub trait GetEditorPreferences {
 	fn use_vello(&self) -> bool;
+	fn max_render_region_area(&self) -> u32;
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
@@ -260,6 +261,10 @@ struct DummyPreferences;
 impl GetEditorPreferences for DummyPreferences {
 	fn use_vello(&self) -> bool {
 		false
+	}
+
+	fn max_render_region_area(&self) -> u32 {
+		1024 * 1024
 	}
 }
 
