@@ -59,6 +59,7 @@ pub struct NodeRuntime {
 	/// Cached surface for WASM viewport rendering (reused across frames)
 	#[cfg(all(target_family = "wasm", feature = "gpu"))]
 	wasm_viewport_surface: Option<wgpu_executor::WgpuSurface>,
+	current_viewport_texture: Option<ImageTexture>,
 }
 
 /// Messages passed from the editor thread to the node runtime thread.
@@ -144,6 +145,7 @@ impl NodeRuntime {
 			inspect_state: None,
 			#[cfg(all(target_family = "wasm", feature = "gpu"))]
 			wasm_viewport_surface: None,
+			current_viewport_texture: None,
 		}
 	}
 
@@ -275,7 +277,7 @@ impl NodeRuntime {
 								.gpu_executor()
 								.expect("GPU executor should be available when we receive a texture");
 
-							let raster_cpu = Raster::new_gpu(image_texture.texture).convert(Footprint::BOUNDLESS, executor).await;
+							let raster_cpu = Raster::new_gpu(image_texture.texture.as_ref().clone()).convert(Footprint::BOUNDLESS, executor).await;
 
 							let (data, width, height) = raster_cpu.to_flat_u8();
 
@@ -299,7 +301,7 @@ impl NodeRuntime {
 								.gpu_executor()
 								.expect("GPU executor should be available when we receive a texture");
 
-							let raster_cpu = Raster::new_gpu(image_texture.texture).convert(Footprint::BOUNDLESS, executor).await;
+							let raster_cpu = Raster::new_gpu(image_texture.texture.as_ref().clone()).convert(Footprint::BOUNDLESS, executor).await;
 
 							self.sender.send_eyedropper_preview(raster_cpu);
 							continue;
@@ -354,6 +356,7 @@ impl NodeRuntime {
 							);
 
 							let surface_texture = surface_inner.get_current_texture().expect("Failed to get surface texture");
+							self.current_viewport_texture = Some(image_texture.clone());
 
 							// Blit the rendered texture to the surface
 							surface.surface.blitter.copy(

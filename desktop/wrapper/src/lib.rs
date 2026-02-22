@@ -58,7 +58,7 @@ impl DesktopWrapper {
 }
 
 pub enum NodeGraphExecutionResult {
-	HasRun(Option<wgpu::Texture>),
+	HasRun(Option<std::sync::Arc<wgpu::Texture>>),
 	NotRun,
 }
 
