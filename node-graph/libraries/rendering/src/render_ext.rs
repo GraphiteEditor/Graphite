@@ -1,9 +1,8 @@
-use crate::renderer::{RenderParams, black_or_white_for_best_contrast, format_transform_matrix};
-use core_types::consts::LAYER_OUTLINE_STROKE_WEIGHT;
+use crate::renderer::{RenderParams, format_transform_matrix};
 use core_types::uuid::generate_uuid;
 use glam::DAffine2;
 use graphic_types::vector_types::gradient::{Gradient, GradientType};
-use graphic_types::vector_types::vector::style::{Fill, PaintOrder, PathStyle, RenderMode, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use graphic_types::vector_types::vector::style::{Fill, PaintOrder, PathStyle, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use std::fmt::Write;
 
 pub trait RenderExt {
@@ -14,7 +13,7 @@ pub trait RenderExt {
 impl RenderExt for Gradient {
 	type Output = u64;
 
-	// /// Adds the gradient def through mutating the first argument, returning the gradient ID.
+	/// Adds the gradient def through mutating the first argument, returning the gradient ID.
 	fn render(&self, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: DAffine2, transformed_bounds: DAffine2, _render_params: &RenderParams) -> Self::Output {
 		let mut stop = String::new();
 		for (position, color) in self.stops.0.iter() {
@@ -163,28 +162,12 @@ impl RenderExt for PathStyle {
 	/// Renders the shape's fill and stroke attributes as a string with them concatenated together.
 	#[allow(clippy::too_many_arguments)]
 	fn render(&self, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: DAffine2, transformed_bounds: DAffine2, render_params: &RenderParams) -> String {
-		let render_mode = render_params.render_mode;
-		match render_mode {
-			RenderMode::Outline => {
-				let fill_attribute = Fill::None.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds, render_params);
-
-				let outline_color = black_or_white_for_best_contrast(render_params.artboard_background);
-				let mut outline_stroke = Stroke::new(Some(outline_color), LAYER_OUTLINE_STROKE_WEIGHT);
-				// Outline strokes should be non-scaling by default
-				outline_stroke.non_scaling = true;
-
-				let stroke_attribute = outline_stroke.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds, render_params);
-				format!("{fill_attribute}{stroke_attribute}")
-			}
-			_ => {
-				let fill_attribute = self.fill.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds, render_params);
-				let stroke_attribute = self
-					.stroke
-					.as_ref()
-					.map(|stroke| stroke.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds, render_params))
-					.unwrap_or_default();
-				format!("{fill_attribute}{stroke_attribute}")
-			}
-		}
+		let fill_attribute = self.fill.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds, render_params);
+		let stroke_attribute = self
+			.stroke
+			.as_ref()
+			.map(|stroke| stroke.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds, render_params))
+			.unwrap_or_default();
+		format!("{fill_attribute}{stroke_attribute}")
 	}
 }

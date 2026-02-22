@@ -190,7 +190,7 @@ impl NodeGraphExecutor {
 	#[cfg(not(target_family = "wasm"))]
 	pub(crate) fn submit_eyedropper_preview(
 		&mut self,
-		document_id: DocumentId,
+		(document, document_id): (&DocumentMessageHandler, DocumentId),
 		transform: DAffine2,
 		pointer: DVec2,
 		viewport_resolution: UVec2,
@@ -208,7 +208,7 @@ impl NodeGraphExecutor {
 			time,
 			pointer,
 			export_format: graphene_std::application_io::ExportFormat::Raster,
-			render_mode: graphene_std::vector::style::RenderMode::Normal,
+			render_mode: document.render_mode,
 			hide_artboards: false,
 			for_export: false,
 			for_eyedropper: true,

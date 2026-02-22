@@ -314,38 +314,6 @@ impl PreferencesDialogMessageHandler {
 			}
 
 			if wgpu_available {
-				let vello_description = "Auto uses Vello renderer when GPU is available.";
-				let vello_renderer_label = vec![
-					Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-					Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-					TextLabel::new("Vello Renderer")
-						.tooltip_label("Vello Renderer")
-						.tooltip_description(vello_description)
-						.widget_instance(),
-				];
-				let vello_preference = RadioInput::new(vec![
-					RadioEntryData::new("Auto").label("Auto").on_update(move |_| {
-						PreferencesMessage::VelloPreference {
-							preference: graph_craft::wasm_application_io::VelloPreference::Auto,
-						}
-						.into()
-					}),
-					RadioEntryData::new("Disabled").label("Disabled").on_update(move |_| {
-						PreferencesMessage::VelloPreference {
-							preference: graph_craft::wasm_application_io::VelloPreference::Disabled,
-						}
-						.into()
-					}),
-				])
-				.selected_index(Some(preferences.vello_preference as u32))
-				.widget_instance();
-				let vello_preference = vec![
-					Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-					Separator::new(SeparatorStyle::Unrelated).widget_instance(),
-					vello_preference,
-				];
-				rows.extend_from_slice(&[vello_renderer_label, vello_preference]);
-
 				let render_tile_resolution_description = "
 					Maximum X or Y resolution per render tile. Larger tiles may improve performance but can cause flickering or missing content in complex artwork if set too high.\n\
 					\n\
