@@ -117,6 +117,7 @@ impl MessageHandler<PreferencesMessage, PreferencesMessageContext<'_>> for Prefe
 			PreferencesMessage::MaxRenderRegionSize { size } => {
 				self.max_render_region_size = size;
 				responses.add(PortfolioMessage::EditorPreferences);
+				responses.add(NodeGraphMessage::RunDocumentGraph);
 			}
 		}
 
