@@ -2628,6 +2628,7 @@ impl Fsm for PathToolFsmState {
 				responses.add(PathToolMessage::SelectedPointUpdated);
 				tool_data.snap_manager.cleanup(responses);
 				tool_data.opposite_handle_position = None;
+				tool_data.molding_segment = false;
 
 				PathToolFsmState::Ready
 			}
