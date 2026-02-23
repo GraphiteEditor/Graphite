@@ -7,8 +7,7 @@
 	import { createEventDispatcher, onDestroy } from "svelte";
 
 	import { evaluateGradientAtPosition } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { Gradient } from "@graphite/messages";
-	import { Color } from "@graphite/messages";
+	import { Color, type Gradient } from "@graphite/messages";
 
 	import { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -28,12 +27,17 @@
 	// export let tooltipDescription: string | undefined = undefined;
 	// export let tooltipShortcut: ActionShortcut | undefined = undefined;
 
+	/// Reference to the marker track element so we can access its div.
 	let markerTrack: LayoutRow | undefined = undefined;
-	let positionRestore: number | undefined = undefined;
+	/// When dragging, stores the original value of the marker or midpoint being dragged, so we can restore it if the drag is cancelled.
+	let dragRestore: number | undefined = undefined;
+	/// When dragging, indicates whether this maker was inserted during the drag, so we know whether to remove it again if the drag is cancelled.
 	let deletionRestore: boolean | undefined = undefined;
-	let midpointRestore: number | undefined = undefined;
+	/// When dragging, stores the previous active marker (or its midpoint) index, so we can restore active selection to that one if the drag is cancelled on a different marker.
 	let activeMarkerIndexRestore: number | undefined = undefined;
+	/// When dragging, stores whether the previously active drag item was a midpoint (matching the index kept in `activeMarkerIndexRestore`), so we can restore its active selection if cancelled.
 	let activeMarkerIsMidpointRestore = false;
+	/// When dragging a midpoint, tracks whether the midpoint has actually moved by at least a pixel, to tell between a click-then-click-and-drag (just a drag) or a double-click (reset the midpoint).
 	let midpointDragged = false;
 
 	function markerPointerDown(e: PointerEvent, index: number) {
@@ -41,11 +45,15 @@
 
 		// Left-click to select and begin potentially dragging
 		if (e.button === BUTTON_LEFT) {
+			// Set restore values at this time, so later the user can cancel the drag and restore to these values
 			activeMarkerIndexRestore = activeMarkerIndex;
 			activeMarkerIsMidpointRestore = activeMarkerIsMidpoint;
+
+			// Update the parent component with the newly activated marker or midpoint drag item
 			activeMarkerIndex = index;
 			activeMarkerIsMidpoint = false;
 			dispatch("activeMarkerIndexChange", { activeMarkerIndex, activeMarkerIsMidpoint });
+
 			addEvents();
 			return;
 		}
@@ -70,19 +78,23 @@
 		if (disabled) return;
 		if (e.button !== BUTTON_LEFT) return;
 
-		activeMarkerIndexRestore = activeMarkerIndex;
-		activeMarkerIsMidpointRestore = activeMarkerIsMidpoint;
-		activeMarkerIndex = index;
-		activeMarkerIsMidpoint = true;
+		// Since we just pressed the mouse button down, the midpoint has not been dragged by any distance
 		midpointDragged = false;
 
+		// Set restore values at this time, so later the user can cancel the drag and restore to these values
+		activeMarkerIndexRestore = activeMarkerIndex;
+		activeMarkerIsMidpointRestore = activeMarkerIsMidpoint;
+
+		// Update the parent component with the newly activated marker or midpoint drag item
+		activeMarkerIndex = index;
+		activeMarkerIsMidpoint = true;
 		dispatch("activeMarkerIndexChange", { activeMarkerIndex, activeMarkerIsMidpoint });
 
 		addEvents();
 	}
 
-	function resetMidpoint(index: number, force = false) {
-		if (!force && (disabled || midpointDragged)) return;
+	function resetMidpoint(index: number) {
+		if (disabled || midpointDragged) return;
 
 		gradient.midpoint[index] = 0.5;
 		dispatch("gradient", gradient);
@@ -92,38 +104,37 @@
 		if (disabled) return;
 		if (e.button !== BUTTON_LEFT) return;
 
+		// Determine the position along the gradient (0-1) based on the click position in the marker track
 		let position = markerPosition(e);
 		if (position === undefined) return;
 
-		let before = gradient.position.findLastIndex((item) => item < position);
-		let after = gradient.position.findIndex((item) => item > position);
-
-		let color = Color.fromCSS("black") as Color;
-		if (before !== -1 && after !== -1) {
-			type ReturnedColor = { red: number; green: number; blue: number; alpha: number };
-			const evaluated = evaluateGradientAtPosition(position, new Float64Array(gradient.position), new Float64Array(gradient.midpoint), gradient.color) as ReturnedColor;
-			color = new Color(evaluated.red, evaluated.green, evaluated.blue, evaluated.alpha);
-		} else if (before !== -1) {
-			color = gradient.color[before];
-		} else if (after !== -1) {
-			color = gradient.color[after];
-		}
-
+		// Determine which index the new stop should be inserted at based on its position
 		let index = gradient.position.findIndex((item) => item > position);
 		if (index === -1) index = gradient.position.length;
 
-		gradient.position.splice(index, 0, position);
-		gradient.midpoint.splice(index, 0, gradient.midpoint[index - 1] ?? 0.5);
-		gradient.color.splice(index, 0, color);
+		// Determine the color of the new stop by evaluating the gradient at the position of the new stop
+		type ReturnedColor = { red: number; green: number; blue: number; alpha: number };
+		const evaluated = evaluateGradientAtPosition(position, new Float64Array(gradient.position), new Float64Array(gradient.midpoint), gradient.color) as ReturnedColor;
+		const color = new Color(evaluated.red, evaluated.green, evaluated.blue, evaluated.alpha);
 
+		// Insert the new stop into the gradient
+		gradient.position.splice(index, 0, position);
+		// Duplicate the midpoint ratio position of the interval we're inserting into, so both new intervals have the same midpoint position ratio
+		gradient.midpoint.splice(index, 0, gradient.midpoint[index - 1] || 0.5);
+		gradient.color.splice(index, 0, color);
+		dispatch("gradient", gradient);
+
+		// Set restore values at this time, so later the user can cancel the drag and restore to these values
 		activeMarkerIndexRestore = activeMarkerIndex;
 		activeMarkerIsMidpointRestore = activeMarkerIsMidpoint;
+
+		// Update the parent component with the newly activated marker or midpoint drag item
 		activeMarkerIndex = index;
 		activeMarkerIsMidpoint = false;
-		deletionRestore = true;
-
 		dispatch("activeMarkerIndexChange", { activeMarkerIndex, activeMarkerIsMidpoint });
-		dispatch("gradient", gradient);
+
+		// Since this stop insertion can happen as part of the beginning of a drag, we set this to indicate that it should be removed again if the drag is cancelled
+		deletionRestore = true;
 
 		addEvents();
 	}
@@ -133,10 +144,13 @@
 
 		if (e.key !== "Delete" && e.key !== "Backspace") return;
 		if (activeMarkerIndex === undefined) return;
+		if (gradient.position.length <= 2 && !activeMarkerIsMidpoint) return;
 
-		if (positionRestore !== undefined) stopDrag();
+		// Stop dragging the marker or midpoint
+		stopDrag();
 
-		if (activeMarkerIsMidpoint) resetMidpoint(activeMarkerIndex, true);
+		// Either reset the midpoint to 50% or delete the marker, based on which type is currently active
+		if (activeMarkerIsMidpoint) resetMidpoint(activeMarkerIndex);
 		else deleteStopByIndex(activeMarkerIndex);
 	}
 
@@ -148,6 +162,9 @@
 		gradient.position.splice(index, 1);
 		gradient.midpoint.splice(index, 1);
 		gradient.color.splice(index, 1);
+		dispatch("gradient", gradient);
+
+		deletionRestore = undefined;
 
 		if (gradient.position.length === 0) {
 			activeMarkerIndex = undefined;
@@ -155,10 +172,7 @@
 			activeMarkerIndex = Math.max(0, Math.min(gradient.position.length - 1, index));
 		}
 		activeMarkerIsMidpoint = false;
-		deletionRestore = undefined;
-
 		dispatch("activeMarkerIndexChange", { activeMarkerIndex, activeMarkerIsMidpoint });
-		dispatch("gradient", gradient);
 	}
 
 	function moveMarker(e: PointerEvent, index: number) {
@@ -170,7 +184,7 @@
 		let position = markerPosition(e);
 		if (position === undefined) return;
 
-		if (positionRestore === undefined) positionRestore = position;
+		if (dragRestore === undefined) dragRestore = position;
 		if (deletionRestore === undefined) {
 			deletionRestore = false;
 
@@ -183,7 +197,7 @@
 	function moveMidpoint(e: PointerEvent, index: number) {
 		if (disabled) return;
 
-		// Just in case the mouseup event is lost
+		// Guard in case the mouseup event is lost
 		if (e.buttons === 0) {
 			stopDrag();
 			return;
@@ -192,8 +206,8 @@
 		let position = markerPosition(e);
 		if (position === undefined) return;
 
-		if (midpointRestore === undefined) {
-			midpointRestore = gradient.midpoint[index];
+		if (dragRestore === undefined) {
+			dragRestore = gradient.midpoint[index];
 			midpointDragged = true;
 			dispatch("dragging", true);
 		}
@@ -250,12 +264,12 @@
 		if (disabled) return;
 
 		if (activeMarkerIndex !== undefined) {
-			if (activeMarkerIsMidpoint && midpointRestore !== undefined) {
-				gradient.midpoint[activeMarkerIndex] = midpointRestore;
+			if (activeMarkerIsMidpoint && dragRestore !== undefined) {
+				gradient.midpoint[activeMarkerIndex] = dragRestore;
 				dispatch("gradient", gradient);
 			} else {
 				if (deletionRestore) deleteStopByIndex(activeMarkerIndex);
-				else if (positionRestore !== undefined) setPosition(activeMarkerIndex, positionRestore, false);
+				else if (dragRestore !== undefined) setPosition(activeMarkerIndex, dragRestore, false);
 			}
 		}
 
@@ -271,11 +285,11 @@
 
 		removeEvents();
 
-		positionRestore = undefined;
+		dragRestore = undefined;
 		deletionRestore = undefined;
-		midpointRestore = undefined;
 		activeMarkerIndexRestore = undefined;
 		activeMarkerIsMidpointRestore = false;
+		midpointDragged = false;
 
 		dispatch("dragging", false);
 	}
@@ -465,6 +479,10 @@
 					}
 				}
 			}
+		}
+
+		&.disabled .midpoint-track .midpoint polygon {
+			stroke: var(--color-4-dimgray);
 		}
 
 		.marker-track {

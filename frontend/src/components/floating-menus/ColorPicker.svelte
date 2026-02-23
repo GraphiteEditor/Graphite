@@ -192,8 +192,8 @@
 			alignedAxis = undefined;
 		} else if (!shiftPressed && draggingPickerTrack) {
 			shiftPressed = true;
-			saturationStartOfAxisAlign = saturation;
-			valueStartOfAxisAlign = value;
+			saturationStartOfAxisAlign = saturationBeforeDrag;
+			valueStartOfAxisAlign = valueBeforeDrag;
 		}
 	}
 
@@ -444,17 +444,24 @@
 					on:pointerdown={onPointerDown}
 					data-saturation-value-picker
 				>
-					{#if !isNone}
-						<div class="selection-circle" style:top={`${(1 - value) * 100}%`} style:left={`${saturation * 100}%`}></div>
-					{/if}
 					{#if alignedAxis}
 						<div
-							class="selection-circle-alignment"
-							class:saturation={alignedAxis === "saturation"}
-							class:value={alignedAxis === "value"}
-							style:top={`${(1 - value) * 100}%`}
-							style:left={`${saturation * 100}%`}
+							class="selection-circle-axis-snap-line"
+							style:width={alignedAxis === "value" ? "100%" : undefined}
+							style:height={alignedAxis === "saturation" ? "100%" : undefined}
+							style:top={alignedAxis === "value" ? `${(1 - value) * 100}%` : undefined}
+							style:left={alignedAxis === "saturation" ? `${saturation * 100}%` : undefined}
 						></div>
+						<div
+							class="selection-circle-axis-snap-line"
+							style:width={alignedAxis === "saturation" ? "100%" : undefined}
+							style:height={alignedAxis === "value" ? "100%" : undefined}
+							style:top={alignedAxis === "saturation" ? `${(1 - valueBeforeDrag) * 100}%` : undefined}
+							style:left={alignedAxis === "value" ? `${saturationBeforeDrag * 100}%` : undefined}
+						></div>
+					{/if}
+					{#if !isNone}
+						<div class="selection-circle" style:top={`${(1 - value) * 100}%`} style:left={`${saturation * 100}%`}></div>
 					{/if}
 				</LayoutCol>
 				<LayoutCol
@@ -751,12 +758,12 @@
 				}
 
 				.selection-circle {
+					pointer-events: none;
 					position: absolute;
 					left: 0;
 					top: 0;
 					width: 0;
 					height: 0;
-					pointer-events: none;
 
 					&::after {
 						content: "";
@@ -768,56 +775,31 @@
 						height: calc(var(--picker-circle-radius) * 2 + 1px);
 						border-radius: 50%;
 						border: 2px solid var(--opaque-color-contrasting);
+						background: var(--opaque-color);
 						box-sizing: border-box;
 					}
 				}
 
-				.selection-circle-alignment {
-					position: absolute;
+				.selection-circle-axis-snap-line {
 					pointer-events: none;
+					position: absolute;
+					width: 1px;
+					height: 1px;
+					top: 0;
+					left: 0;
+					background: var(--opaque-color-contrasting);
 
-					&.saturation::before,
-					&.saturation::after,
-					&.value::before,
-					&.value::after {
-						content: "";
-						position: absolute;
-						background: var(--opaque-color-contrasting);
-						width: 1px;
-						height: 1px;
-					}
-
-					&.saturation {
-						&::before {
-							height: var(--picker-size);
-							margin-top: calc(-1 * var(--picker-size) - var(--picker-circle-radius));
-						}
-
-						&::after {
-							height: var(--picker-size);
-							margin-top: var(--picker-circle-radius);
-						}
-					}
-
-					&.value {
-						&::before {
-							width: var(--picker-size);
-							margin-left: var(--picker-circle-radius);
-						}
-
-						&::after {
-							width: var(--picker-size);
-							margin-left: calc(-1 * var(--picker-size) - var(--picker-circle-radius));
-						}
+					+ .selection-circle-axis-snap-line {
+						opacity: 0.25;
 					}
 				}
 
 				.selection-needle {
+					pointer-events: none;
 					position: absolute;
 					top: 0;
 					width: 100%;
 					height: 0;
-					pointer-events: none;
 
 					&::before {
 						content: "";
@@ -888,13 +870,13 @@
 
 				&.outlined::after {
 					content: "";
+					pointer-events: none;
 					position: absolute;
 					top: 0;
 					bottom: 0;
 					left: 0;
 					right: 0;
 					box-shadow: inset 0 0 0 1px rgba(var(--color-0-black-rgb), var(--outline-amount));
-					pointer-events: none;
 				}
 
 				&.transparency {
