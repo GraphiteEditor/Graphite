@@ -69,7 +69,15 @@ impl InputMapperMessageHandler {
 			// Append the key button for the entry
 			use InputMapperMessage as IMM;
 			match entry.input {
-				IMM::KeyDown(key) | IMM::KeyUp(key) | IMM::KeyDownNoRepeat(key) | IMM::KeyUpNoRepeat(key) | IMM::DoubleTap(key) => keys.push(key),
+				IMM::KeyDown(key) | IMM::KeyUp(key) | IMM::KeyDownNoRepeat(key) | IMM::KeyUpNoRepeat(key) => keys.push(key),
+				IMM::DoubleTap(key) => {
+					keys.push(Key::Double);
+					keys.push(key);
+				}
+				IMM::DoubleClick(button) => {
+					keys.push(Key::Double);
+					keys.push(button.into());
+				}
 				_ => (),
 			}
 
