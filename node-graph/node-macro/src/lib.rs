@@ -42,7 +42,7 @@ pub fn derive_buffer_struct(input_item: TokenStream) -> TokenStream {
 }
 
 #[proc_macro_error]
-#[proc_macro_derive(Destruct)]
+#[proc_macro_derive(Destruct, attributes(output))]
 /// Derives the `Destruct` trait for structs and creates accessor node implementations.
 pub fn derive_destruct(item: TokenStream) -> TokenStream {
 	let input = syn::parse_macro_input!(item as syn::DeriveInput);

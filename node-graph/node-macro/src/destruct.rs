@@ -13,8 +13,8 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream2> {
 		return Err(Error::new(Span::call_site(), "Deriving `Destruct` is currently only supported for structs"));
 	};
 
-	let graphene_core = match proc_macro_crate::crate_name("graphene-core")
-		.map_err(|e| Error::new(Span::call_site(), format!("Failed to find location of graphene_core. Make sure it is imported as a dependency: {e}")))?
+	let core_types = match proc_macro_crate::crate_name("core-types")
+		.map_err(|e| Error::new(Span::call_site(), format!("Failed to find location of core_types. Make sure it is imported as a dependency: {e}")))?
 	{
 		FoundCrate::Itself => quote!(crate),
 		FoundCrate::Name(name) => {
@@ -38,12 +38,12 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream2> {
 		let fn_name = format_ident!("extract_{}_{}", struct_name.to_string().to_case(Case::Snake), field_name);
 		let node_struct_name = format_ident!("{}Node", fn_name.to_string().to_case(Case::Pascal));
 
-		node_implementations.push(generate_extractor_node(&graphene_core, &fn_name, &struct_name, &field_name, &ty, &output_name_lit));
+		node_implementations.push(generate_extractor_node(&core_types, &fn_name, &struct_name, &field_name, &ty, &output_name_lit));
 		output_fields.push(quote! {
-			#graphene_core::registry::StructField {
+			#core_types::registry::StructField {
 				name: #output_name_lit,
-				node_path: concat!(std::module_path!().rsplit_once("::").unwrap().0, "::", stringify!(#node_struct_name)),
-				ty: #graphene_core::concrete!(#ty),
+				node_path: concat!(std::module_path!(), "::", stringify!(#node_struct_name)),
+				ty: #core_types::concrete!(#ty),
 			}
 		});
 	}
@@ -51,20 +51,21 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream2> {
 	Ok(quote! {
 		#(#node_implementations)*
 
-		impl #impl_generics #graphene_core::registry::Destruct for #struct_name #ty_generics #where_clause {
-			fn fields() -> &'static [#graphene_core::registry::StructField] {
-				&[
+		impl #impl_generics #core_types::registry::Destruct for #struct_name #ty_generics #where_clause {
+			fn fields() -> &'static [#core_types::registry::StructField] {
+				static FIELDS: std::sync::OnceLock<Vec<#core_types::registry::StructField>> = std::sync::OnceLock::new();
+				FIELDS.get_or_init(|| vec![
 					#(#output_fields,)*
-				]
+				]).as_slice()
 			}
 		}
 	})
 }
 
-fn generate_extractor_node(graphene_core: &TokenStream2, fn_name: &syn::Ident, struct_name: &syn::Ident, field_name: &syn::Ident, ty: &Type, output_name: &LitStr) -> TokenStream2 {
+fn generate_extractor_node(core_types: &TokenStream2, fn_name: &syn::Ident, struct_name: &syn::Ident, field_name: &syn::Ident, ty: &Type, output_name: &LitStr) -> TokenStream2 {
 	quote! {
 		#[node_macro::node(category(""), name(#output_name))]
-		fn #fn_name(_: impl #graphene_core::Ctx, data: #struct_name) -> #ty {
+		fn #fn_name(_: impl #core_types::Ctx, data: #struct_name) -> #ty {
 			data.#field_name
 		}
 	}
