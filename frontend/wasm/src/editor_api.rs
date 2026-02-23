@@ -18,6 +18,7 @@ use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
 use graph_craft::document::NodeId;
 use graphene_std::raster::Image;
 use graphene_std::raster::color::Color;
+use graphene_std::vector::GradientStops;
 use js_sys::{Object, Reflect};
 use serde::Serialize;
 use serde_wasm_bindgen::{self, from_value};
@@ -901,6 +902,34 @@ pub fn evaluate_math_expression(expression: &str) -> Option<f64> {
 		return None;
 	};
 	Some(real)
+}
+
+#[wasm_bindgen(js_name = sampleInterpolatedGradient)]
+pub fn sample_interpolated_gradient(position: Vec<f64>, midpoint: Vec<f64>, color: Vec<JsValue>, omit_alpha: bool) -> String {
+	let color = color.into_iter().filter_map(|c| serde_wasm_bindgen::from_value(c).ok()).collect();
+	GradientStops { position, midpoint, color }
+		.interpolated_samples()
+		.into_iter()
+		.map(|(position, color, _)| {
+			let hex = if omit_alpha { color.to_rgb_hex_srgb_from_gamma() } else { color.to_rgba_hex_srgb_from_gamma() };
+			let percent = ((position * 100.) * 1e2).round() / 1e2;
+			format!("#{hex} {percent}%")
+		})
+		.collect::<Vec<_>>()
+		.join(", ")
+}
+
+#[wasm_bindgen(js_name = evaluateGradientAtPosition)]
+pub fn evaluate_gradient_at_position(t: f64, position: Vec<f64>, midpoint: Vec<f64>, color: Vec<JsValue>) -> Object {
+	let color = color.into_iter().filter_map(|c| serde_wasm_bindgen::from_value(c).ok()).collect();
+	let color = GradientStops { position, midpoint, color }.evaluate(t);
+
+	let obj = Object::new();
+	Reflect::set(&obj, &JsValue::from_str("red"), &JsValue::from_f64(color.r() as f64)).unwrap();
+	Reflect::set(&obj, &JsValue::from_str("green"), &JsValue::from_f64(color.g() as f64)).unwrap();
+	Reflect::set(&obj, &JsValue::from_str("blue"), &JsValue::from_f64(color.b() as f64)).unwrap();
+	Reflect::set(&obj, &JsValue::from_str("alpha"), &JsValue::from_f64(color.a() as f64)).unwrap();
+	obj
 }
 
 /// Helper function for calling JS's `requestAnimationFrame` with the given closure

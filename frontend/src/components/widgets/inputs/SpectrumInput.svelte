@@ -1,6 +1,12 @@
+<script lang="ts" context="module">
+	export const MIN_MIDPOINT = 0.01;
+	export const MAX_MIDPOINT = 0.99;
+</script>
+
 <script lang="ts">
 	import { createEventDispatcher, onDestroy } from "svelte";
 
+	import { evaluateGradientAtPosition } from "@graphite/../wasm/pkg/graphite_wasm";
 	import type { Gradient } from "@graphite/messages";
 	import { Color } from "@graphite/messages";
 
@@ -11,11 +17,12 @@
 	const BUTTON_LEFT = 0;
 	const BUTTON_RIGHT = 2;
 
-	const dispatch = createEventDispatcher<{ activeMarkerIndexChange: number | undefined; gradient: Gradient; dragging: boolean }>();
+	const dispatch = createEventDispatcher<{ activeMarkerIndexChange: { activeMarkerIndex: number | undefined; activeMarkerIsMidpoint: boolean }; gradient: Gradient; dragging: boolean }>();
 
 	export let gradient: Gradient;
 	export let disabled = false;
 	export let activeMarkerIndex = 0 as number | undefined;
+	export let activeMarkerIsMidpoint = false;
 	// export let disabled = false;
 	// export let tooltipLabel: string | undefined = undefined;
 	// export let tooltipDescription: string | undefined = undefined;
@@ -24,14 +31,21 @@
 	let markerTrack: LayoutRow | undefined = undefined;
 	let positionRestore: number | undefined = undefined;
 	let deletionRestore: boolean | undefined = undefined;
+	let midpointRestore: number | undefined = undefined;
+	let activeMarkerIndexRestore: number | undefined = undefined;
+	let activeMarkerIsMidpointRestore = false;
+	let midpointDragged = false;
 
 	function markerPointerDown(e: PointerEvent, index: number) {
 		if (disabled) return;
 
 		// Left-click to select and begin potentially dragging
 		if (e.button === BUTTON_LEFT) {
+			activeMarkerIndexRestore = activeMarkerIndex;
+			activeMarkerIsMidpointRestore = activeMarkerIsMidpoint;
 			activeMarkerIndex = index;
-			dispatch("activeMarkerIndexChange", index);
+			activeMarkerIsMidpoint = false;
+			dispatch("activeMarkerIndexChange", { activeMarkerIndex, activeMarkerIsMidpoint });
 			addEvents();
 			return;
 		}
@@ -52,40 +66,63 @@
 		return Math.max(0, Math.min(1, ratio));
 	}
 
+	function midpointPointerDown(e: PointerEvent, index: number) {
+		if (disabled) return;
+		if (e.button !== BUTTON_LEFT) return;
+
+		activeMarkerIndexRestore = activeMarkerIndex;
+		activeMarkerIsMidpointRestore = activeMarkerIsMidpoint;
+		activeMarkerIndex = index;
+		activeMarkerIsMidpoint = true;
+		midpointDragged = false;
+
+		dispatch("activeMarkerIndexChange", { activeMarkerIndex, activeMarkerIsMidpoint });
+
+		addEvents();
+	}
+
+	function resetMidpoint(index: number, force = false) {
+		if (!force && (disabled || midpointDragged)) return;
+
+		gradient.midpoint[index] = 0.5;
+		dispatch("gradient", gradient);
+	}
+
 	function insertStop(e: MouseEvent) {
 		if (disabled) return;
-
 		if (e.button !== BUTTON_LEFT) return;
 
 		let position = markerPosition(e);
 		if (position === undefined) return;
 
-		const stops = gradient.stops;
-
-		let before = gradient.stops.position.findLastIndex((item) => item < position);
-		let after = gradient.stops.position.findIndex((item) => item > position);
+		let before = gradient.position.findLastIndex((item) => item < position);
+		let after = gradient.position.findIndex((item) => item > position);
 
 		let color = Color.fromCSS("black") as Color;
 		if (before !== -1 && after !== -1) {
-			let t = (position - stops.position[before]) / (stops.position[after] - stops.position[before]);
-			color = stops.color[before].lerp(stops.color[after], t);
+			type ReturnedColor = { red: number; green: number; blue: number; alpha: number };
+			const evaluated = evaluateGradientAtPosition(position, new Float64Array(gradient.position), new Float64Array(gradient.midpoint), gradient.color) as ReturnedColor;
+			color = new Color(evaluated.red, evaluated.green, evaluated.blue, evaluated.alpha);
 		} else if (before !== -1) {
-			color = stops.color[before];
+			color = gradient.color[before];
 		} else if (after !== -1) {
-			color = stops.color[after];
+			color = gradient.color[after];
 		}
 
-		let index = stops.position.findIndex((item) => item > position);
-		if (index === -1) index = stops.position.length;
+		let index = gradient.position.findIndex((item) => item > position);
+		if (index === -1) index = gradient.position.length;
 
-		stops.position.splice(index, 0, position);
-		stops.midpoint.splice(index, 0, 0.5);
-		stops.color.splice(index, 0, color);
+		gradient.position.splice(index, 0, position);
+		gradient.midpoint.splice(index, 0, gradient.midpoint[index - 1] ?? 0.5);
+		gradient.color.splice(index, 0, color);
 
+		activeMarkerIndexRestore = activeMarkerIndex;
+		activeMarkerIsMidpointRestore = activeMarkerIsMidpoint;
 		activeMarkerIndex = index;
+		activeMarkerIsMidpoint = false;
 		deletionRestore = true;
 
-		dispatch("activeMarkerIndexChange", index);
+		dispatch("activeMarkerIndexChange", { activeMarkerIndex, activeMarkerIsMidpoint });
 		dispatch("gradient", gradient);
 
 		addEvents();
@@ -99,26 +136,28 @@
 
 		if (positionRestore !== undefined) stopDrag();
 
-		deleteStopByIndex(activeMarkerIndex);
+		if (activeMarkerIsMidpoint) resetMidpoint(activeMarkerIndex, true);
+		else deleteStopByIndex(activeMarkerIndex);
 	}
 
 	function deleteStopByIndex(index: number) {
 		if (disabled) return;
 
-		if (gradient.stops.position.length <= 2) return;
+		if (gradient.position.length <= 2) return;
 
-		gradient.stops.position.splice(index, 1);
-		gradient.stops.midpoint.splice(index, 1);
-		gradient.stops.color.splice(index, 1);
+		gradient.position.splice(index, 1);
+		gradient.midpoint.splice(index, 1);
+		gradient.color.splice(index, 1);
 
-		if (gradient.stops.position.length === 0) {
+		if (gradient.position.length === 0) {
 			activeMarkerIndex = undefined;
 		} else {
-			activeMarkerIndex = Math.max(0, Math.min(gradient.stops.position.length - 1, index));
+			activeMarkerIndex = Math.max(0, Math.min(gradient.position.length - 1, index));
 		}
+		activeMarkerIsMidpoint = false;
 		deletionRestore = undefined;
 
-		dispatch("activeMarkerIndexChange", activeMarkerIndex);
+		dispatch("activeMarkerIndexChange", { activeMarkerIndex, activeMarkerIsMidpoint });
 		dispatch("gradient", gradient);
 	}
 
@@ -138,46 +177,91 @@
 			dispatch("dragging", true);
 		}
 
-		setPosition(index, position);
+		setPosition(index, position, false);
 	}
 
-	export function setPosition(index: number, position: number) {
+	function moveMidpoint(e: PointerEvent, index: number) {
+		if (disabled) return;
+
+		// Just in case the mouseup event is lost
+		if (e.buttons === 0) {
+			stopDrag();
+			return;
+		}
+
+		let position = markerPosition(e);
+		if (position === undefined) return;
+
+		if (midpointRestore === undefined) {
+			midpointRestore = gradient.midpoint[index];
+			midpointDragged = true;
+			dispatch("dragging", true);
+		}
+
+		const leftStop = gradient.position[index];
+		const rightStop = gradient.position[index + 1];
+		const range = rightStop - leftStop;
+		if (range <= 0) return;
+
+		gradient.midpoint[index] = Math.max(MIN_MIDPOINT, Math.min(MAX_MIDPOINT, (position - leftStop) / range));
+		dispatch("gradient", gradient);
+	}
+
+	export function setPosition(index: number, position: number, isMidpoint: boolean) {
 		if (disabled) return;
 
 		const markers = toMarkers(gradient);
-
 		const active = markers[index];
-		active.position = position;
+
+		if (isMidpoint) active.midpoint = position;
+		else active.position = position;
+
 		markers.sort((a, b) => a.position - b.position);
 		if (markers.indexOf(active) !== activeMarkerIndex) {
 			activeMarkerIndex = markers.indexOf(active);
-			dispatch("activeMarkerIndexChange", markers.indexOf(active));
+			dispatch("activeMarkerIndexChange", { activeMarkerIndex, activeMarkerIsMidpoint });
 		}
 
-		gradient.stops.position = markers.map((stop) => stop.position);
-		gradient.stops.midpoint = markers.map((stop) => stop.midpoint);
-		gradient.stops.color = markers.map((stop) => stop.color);
+		gradient.position = markers.map((stop) => stop.position);
+		gradient.midpoint = markers.map((stop) => stop.midpoint);
+		gradient.color = markers.map((stop) => stop.color);
 		dispatch("gradient", gradient);
 	}
 
 	function toMarkers(gradient: Gradient): { position: number; midpoint: number; color: Color }[] {
-		return gradient.stops.position.map((position, i) => ({
+		return gradient.position.map((position, i) => ({
 			position,
-			midpoint: gradient.stops.midpoint[i],
-			color: gradient.stops.color[i],
+			midpoint: gradient.midpoint[i],
+			color: gradient.color[i],
 		}));
+	}
+
+	function toMidpoints(gradient: Gradient): number[] {
+		if (gradient.position.length < 2) return [];
+
+		return gradient.midpoint.slice(0, -1).map((midpoint, i) => {
+			const leftMarker = gradient.position[i];
+			const rightMarker = gradient.position[i + 1];
+			return leftMarker + midpoint * (rightMarker - leftMarker);
+		});
 	}
 
 	function abortDrag() {
 		if (disabled) return;
 
-		if (activeMarkerIndex === undefined) return;
-
-		if (deletionRestore) {
-			deleteStopByIndex(activeMarkerIndex);
-		} else if (positionRestore !== undefined) {
-			setPosition(activeMarkerIndex, positionRestore);
+		if (activeMarkerIndex !== undefined) {
+			if (activeMarkerIsMidpoint && midpointRestore !== undefined) {
+				gradient.midpoint[activeMarkerIndex] = midpointRestore;
+				dispatch("gradient", gradient);
+			} else {
+				if (deletionRestore) deleteStopByIndex(activeMarkerIndex);
+				else if (positionRestore !== undefined) setPosition(activeMarkerIndex, positionRestore, false);
+			}
 		}
+
+		activeMarkerIndex = activeMarkerIndexRestore;
+		activeMarkerIsMidpoint = activeMarkerIsMidpointRestore;
+		dispatch("activeMarkerIndexChange", { activeMarkerIndex, activeMarkerIsMidpoint });
 
 		stopDrag();
 	}
@@ -189,6 +273,9 @@
 
 		positionRestore = undefined;
 		deletionRestore = undefined;
+		midpointRestore = undefined;
+		activeMarkerIndexRestore = undefined;
+		activeMarkerIsMidpointRestore = false;
 
 		dispatch("dragging", false);
 	}
@@ -196,7 +283,8 @@
 	function onPointerMove(e: PointerEvent) {
 		if (disabled) return;
 
-		if (activeMarkerIndex !== undefined) moveMarker(e, activeMarkerIndex);
+		if (activeMarkerIsMidpoint && activeMarkerIndex !== undefined) moveMidpoint(e, activeMarkerIndex);
+		else if (activeMarkerIndex !== undefined) moveMarker(e, activeMarkerIndex);
 	}
 
 	function onPointerUp() {
@@ -272,11 +360,27 @@
 	}}
 >
 	<LayoutRow class="gradient-strip" on:pointerdown={insertStop}></LayoutRow>
+	<LayoutRow class="midpoint-track">
+		{#each toMidpoints(gradient) as midpoint, index}
+			<svg
+				class="midpoint"
+				class:active={index === activeMarkerIndex && activeMarkerIsMidpoint}
+				style:--midpoint-position={midpoint}
+				on:pointerdown={(e) => midpointPointerDown(e, index)}
+				on:dblclick={() => resetMidpoint(index)}
+				data-gradient-midpoint
+				xmlns="http://www.w3.org/2000/svg"
+				viewBox="0 0 8 8"
+			>
+				<polygon points="0,4 4,0 8,4 4,8" />
+			</svg>
+		{/each}
+	</LayoutRow>
 	<LayoutRow class="marker-track" bind:this={markerTrack}>
 		{#each toMarkers(gradient) as marker, index}
 			<svg
 				class="marker"
-				class:active={index === activeMarkerIndex}
+				class:active={index === activeMarkerIndex && !activeMarkerIsMidpoint}
 				style:--marker-position={marker.position}
 				style:--marker-color={marker.color.toRgbCSS()}
 				on:pointerdown={(e) => markerPointerDown(e, index)}
@@ -299,6 +403,7 @@
 
 <style lang="scss" global>
 	.spectrum-input {
+		position: relative;
 		--marker-half-width: 6px;
 
 		.gradient-strip {
@@ -330,6 +435,35 @@
 
 			&:hover {
 				opacity: 0.5;
+			}
+		}
+
+		.midpoint-track {
+			position: absolute;
+			top: 0;
+			left: var(--marker-half-width);
+			right: var(--marker-half-width);
+
+			.midpoint {
+				position: absolute;
+				margin-left: -4px;
+				width: 8px;
+				height: 8px;
+				bottom: 0;
+				left: calc(var(--midpoint-position) * 100%);
+
+				polygon {
+					stroke: var(--color-e-nearwhite);
+					fill: var(--color-2-mildblack);
+				}
+
+				&.active {
+					z-index: 1;
+
+					polygon {
+						fill: var(--color-e-nearwhite);
+					}
+				}
 			}
 		}
 
@@ -380,6 +514,8 @@
 			}
 
 			&.active {
+				z-index: 1;
+
 				.inner-fill {
 					filter: drop-shadow(0 0 1px var(--color-2-mildblack)) drop-shadow(0 0 1px var(--color-2-mildblack));
 				}

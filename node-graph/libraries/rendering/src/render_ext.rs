@@ -16,14 +16,14 @@ impl RenderExt for Gradient {
 	/// Adds the gradient def through mutating the first argument, returning the gradient ID.
 	fn render(&self, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: DAffine2, transformed_bounds: DAffine2, _render_params: &RenderParams) -> Self::Output {
 		let mut stop = String::new();
-		for s in self.stops.iter() {
+		for (position, color, _) in self.stops.interpolated_samples() {
 			stop.push_str("<stop");
-			if s.position != 0. {
-				let _ = write!(stop, r#" offset="{}""#, (s.position * 1_000_000.).round() / 1_000_000.);
+			if position != 0. {
+				let _ = write!(stop, r#" offset="{}""#, (position * 1_000_000.).round() / 1_000_000.);
 			}
-			let _ = write!(stop, r##" stop-color="#{}""##, s.color.to_rgb_hex_srgb_from_gamma());
-			if s.color.a() < 1. {
-				let _ = write!(stop, r#" stop-opacity="{}""#, (s.color.a() * 1000.).round() / 1000.);
+			let _ = write!(stop, r##" stop-color="#{}""##, color.to_rgb_hex_srgb_from_gamma());
+			if color.a() < 1. {
+				let _ = write!(stop, r#" stop-opacity="{}""#, (color.a() * 1000.).round() / 1000.);
 			}
 			stop.push_str(" />")
 		}

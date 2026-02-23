@@ -193,23 +193,20 @@ impl LayoutMessageHandler {
 							}
 
 							// Gradient
-							let gradient = update_value.get("stops").and_then(|x| x.as_object());
-							if let Some(stops_obj) = gradient {
-								let positions = stops_obj.get("position").and_then(|x| x.as_array());
-								let midpoints = stops_obj.get("midpoint").and_then(|x| x.as_array());
-								let colors = stops_obj.get("color").and_then(|x| x.as_array());
+							let positions = update_value.get("position").and_then(|x| x.as_array());
+							let midpoints = update_value.get("midpoint").and_then(|x| x.as_array());
+							let colors = update_value.get("color").and_then(|x| x.as_array());
 
-								if let (Some(positions), Some(midpoints), Some(colors)) = (positions, midpoints, colors) {
-									let gradient_stops = positions.iter().zip(midpoints.iter()).zip(colors.iter()).filter_map(|((pos, mid), col)| {
-										let position = pos.as_f64()?;
-										let midpoint = mid.as_f64()?;
-										let color = col.as_object().and_then(decode_color)?;
-										Some(GradientStop { position, midpoint, color })
-									});
+							if let (Some(positions), Some(midpoints), Some(colors)) = (positions, midpoints, colors) {
+								let gradient_stops = positions.iter().zip(midpoints.iter()).zip(colors.iter()).filter_map(|((pos, mid), col)| {
+									let position = pos.as_f64()?;
+									let midpoint = mid.as_f64()?;
+									let color = col.as_object().and_then(decode_color)?;
+									Some(GradientStop { position, midpoint, color })
+								});
 
-									color_button.value = FillChoice::Gradient(GradientStops::new(gradient_stops));
-									return (color_button.on_update.callback)(color_button);
-								}
+								color_button.value = FillChoice::Gradient(GradientStops::new(gradient_stops));
+								return (color_button.on_update.callback)(color_button);
 							}
 
 							warn!("ColorInput update was not able to be parsed with color data: {color_button:?}");

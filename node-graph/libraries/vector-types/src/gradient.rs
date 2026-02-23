@@ -13,7 +13,7 @@ pub enum GradientType {
 // TODO: Someday we could switch this to a Box[T] to avoid over-allocation
 // TODO: Use linear not gamma colors
 /// A list of colors associated with positions (in the range 0 to 1) along a gradient.
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny, specta::Type)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, DynAny, specta::Type)]
 pub struct GradientStops {
 	/// The position of this stop, a factor from 0-1 along the length of the full gradient.
 	pub position: Vec<f64>,
@@ -21,6 +21,41 @@ pub struct GradientStops {
 	pub midpoint: Vec<f64>,
 	/// The color at this stop.
 	pub color: Vec<Color>,
+}
+
+// TODO: Eventually remove this migration document upgrade code
+impl<'de> serde::Deserialize<'de> for GradientStops {
+	fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+		#[derive(serde::Deserialize)]
+		struct NewFormat {
+			position: Vec<f64>,
+			midpoint: Vec<f64>,
+			color: Vec<Color>,
+		}
+
+		#[derive(serde::Deserialize)]
+		#[serde(untagged)]
+		enum GradientStopsFormat {
+			New(NewFormat),
+			Old(Vec<(f64, Color)>),
+		}
+
+		Ok(match GradientStopsFormat::deserialize(deserializer)? {
+			GradientStopsFormat::New(new) => Self {
+				position: new.position,
+				midpoint: new.midpoint,
+				color: new.color,
+			},
+			GradientStopsFormat::Old(stops) => {
+				let count = stops.len();
+				Self {
+					position: stops.iter().map(|(p, _)| *p).collect(),
+					midpoint: vec![0.5; count],
+					color: stops.into_iter().map(|(_, c)| c).collect(),
+				}
+			}
+		})
+	}
 }
 
 impl std::hash::Hash for GradientStops {
@@ -206,21 +241,10 @@ impl GradientStops {
 	pub fn reversed(&self) -> Self {
 		let position: Vec<f64> = self.position.iter().rev().map(|&p| 1. - p).collect();
 
-		let color: Vec<Color> = self.color.iter().rev().cloned().collect();
-
-		// We have to shift the midpoint indexes so the unused value at the end becomes the one at the start before reversing, and the midpoint values are reversed but still between the same stops.
 		let count = self.midpoint.len();
-		let midpoint: Vec<f64> = (0..count)
-			.map(|i| {
-				if i == 0 {
-					1. - self.midpoint[count - 2]
-				} else if i == count - 1 {
-					1. - self.midpoint[0]
-				} else {
-					self.midpoint[count - 1 - i]
-				}
-			})
-			.collect();
+		let midpoint = (0..count).map(|i| if i < count - 1 { 1. - self.midpoint[count - 2 - i] } else { 0.5 }).collect::<Vec<_>>();
+
+		let color: Vec<Color> = self.color.iter().rev().cloned().collect();
 
 		Self { position, midpoint, color }
 	}
@@ -231,6 +255,74 @@ impl GradientStops {
 			midpoint: self.midpoint.clone(),
 			color: self.color.iter().map(f).collect(),
 		}
+	}
+
+	/// Produce a set of linearly-interpolated color samples that approximate the gradient's midpoint curves.
+	///
+	/// Each sample is `(position, color, is_original_stop)` where `is_original_stop` is `true` for
+	/// actual gradient stops and `false` for interpolated samples added to approximate midpoint curves.
+	pub fn interpolated_samples(&self) -> Vec<(f64, Color, bool)> {
+		/// Controls accuracy vs. number of samples tradeoff.
+		/// 1/255 means the linear approximation will deviate by no more than 1 gradation of 8-bit color from the theoretically perfect curve with this midpoint bias.
+		const THRESHOLD: f64 = 1. / 255.;
+
+		#[allow(clippy::too_many_arguments)]
+		fn subdivide(left: f64, right: f64, midpoint: f64, pos_a: f64, pos_b: f64, color_a: Color, color_b: Color, result: &mut Vec<(f64, Color, bool)>, depth: u32) {
+			const MAX_DEPTH: u32 = 20;
+			if depth >= MAX_DEPTH {
+				return;
+			}
+
+			let mid = (left + right) / 2.;
+
+			let y_actual = apply_midpoint(mid, midpoint);
+			let y_left = apply_midpoint(left, midpoint);
+			let y_right = apply_midpoint(right, midpoint);
+			let y_linear = (y_left + y_right) / 2.;
+
+			if (y_actual - y_linear).abs() > THRESHOLD {
+				subdivide(left, mid, midpoint, pos_a, pos_b, color_a, color_b, result, depth + 1);
+
+				let global_pos = pos_a + mid * (pos_b - pos_a);
+				let color = color_a.lerp(&color_b, y_actual as f32);
+				result.push((global_pos, color, false));
+
+				subdivide(mid, right, midpoint, pos_a, pos_b, color_a, color_b, result, depth + 1);
+			}
+		}
+
+		if self.position.is_empty() {
+			return vec![];
+		}
+
+		if self.position.len() == 1 {
+			return vec![(self.position[0], self.color[0], true)];
+		}
+
+		let mut result = Vec::new();
+
+		for i in 0..self.position.len() - 1 {
+			let pos_a = self.position[i];
+			let pos_b = self.position[i + 1];
+			let color_a = self.color[i];
+			let color_b = self.color[i + 1];
+			let midpoint = self.midpoint[i].clamp(0.01, 0.99);
+
+			// Add the start stop (subsequent segments share the previous end stop)
+			if i == 0 {
+				result.push((pos_a, color_a, true));
+			}
+
+			// Only subdivide if midpoint deviates from linear (0.5)
+			if (midpoint - 0.5).abs() >= 1e-6 {
+				subdivide(0., 1., midpoint, pos_a, pos_b, color_a, color_b, &mut result, 0);
+			}
+
+			// Add the end stop
+			result.push((pos_b, color_b, true));
+		}
+
+		result
 	}
 }
 

@@ -13,7 +13,7 @@
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
 	import NumberInput from "@graphite/components/widgets/inputs/NumberInput.svelte";
-	import SpectrumInput from "@graphite/components/widgets/inputs/SpectrumInput.svelte";
+	import SpectrumInput, { MAX_MIDPOINT, MIN_MIDPOINT } from "@graphite/components/widgets/inputs/SpectrumInput.svelte";
 	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
 	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
@@ -57,7 +57,8 @@
 	// Gradient color stops
 	$: gradient = colorOrGradient instanceof Gradient ? colorOrGradient : undefined;
 	let activeIndex = 0 as number | undefined;
-	$: selectedGradientColor = (activeIndex !== undefined && gradient?.stops.color[activeIndex]) || (Color.fromCSS("black") as Color);
+	let activeIndexIsMidpoint = false;
+	$: selectedGradientColor = (activeIndex !== undefined && gradient?.color[activeIndex]) || (Color.fromCSS("black") as Color);
 	// Currently viewed color
 	$: color = colorOrGradient instanceof Color ? colorOrGradient : selectedGradientColor;
 	// New color components
@@ -286,8 +287,8 @@
 	function setColor(color?: Color) {
 		const colorToEmit = color || new Color({ h: hue, s: saturation, v: value, a: alpha });
 
-		if (gradientSpectrumInputWidget && activeIndex !== undefined && gradient?.stops.position[activeIndex] !== undefined && colorOrGradient instanceof Gradient) {
-			colorOrGradient.stops.color[activeIndex] = colorToEmit;
+		if (gradientSpectrumInputWidget && activeIndex !== undefined && gradient?.position[activeIndex] !== undefined && colorOrGradient instanceof Gradient) {
+			colorOrGradient.color[activeIndex] = colorToEmit;
 		}
 
 		dispatch("colorOrGradient", gradient || colorToEmit);
@@ -398,9 +399,11 @@
 		}
 	}
 
-	function gradientActiveMarkerIndexChange({ detail: index }: CustomEvent<number | undefined>) {
-		activeIndex = index;
-		const color = index === undefined ? undefined : gradient?.colorAtIndex(index);
+	function gradientActiveMarkerIndexChange({ detail: { activeMarkerIndex, activeMarkerIsMidpoint } }: CustomEvent<{ activeMarkerIndex: number | undefined; activeMarkerIsMidpoint: boolean }>) {
+		activeIndex = activeMarkerIndex;
+		activeIndexIsMidpoint = activeMarkerIsMidpoint;
+
+		const color = activeMarkerIndex === undefined ? undefined : gradient?.color[activeMarkerIndex];
 		const hsva = color?.toHSVA();
 		if (!color || !hsva) return;
 
@@ -485,19 +488,22 @@
 						on:gradient={() => dispatch("colorOrGradient", gradient)}
 						on:activeMarkerIndexChange={gradientActiveMarkerIndexChange}
 						activeMarkerIndex={activeIndex}
+						activeMarkerIsMidpoint={activeIndexIsMidpoint}
 						on:dragging={({ detail }) => (gradientSpectrumDragging = detail)}
 						bind:this={gradientSpectrumInputWidget}
 					/>
 					{#if gradientSpectrumInputWidget && activeIndex !== undefined}
 						<NumberInput
-							value={(gradient.positionAtIndex(activeIndex) || 0) * 100}
+							value={(activeIndexIsMidpoint ? gradient.midpoint[activeIndex] : gradient.position[activeIndex] || 0) * 100}
 							{disabled}
-							on:value={({ detail }) => {
-								if (gradientSpectrumInputWidget && activeIndex !== undefined && detail !== undefined) gradientSpectrumInputWidget.setPosition(activeIndex, detail / 100);
+							on:value={({ detail: position }) => {
+								if (gradientSpectrumInputWidget && activeIndex !== undefined && position !== undefined) {
+									gradientSpectrumInputWidget.setPosition(activeIndex, position / 100, activeIndexIsMidpoint);
+								}
 							}}
 							displayDecimalPlaces={0}
-							min={0}
-							max={100}
+							min={activeIndexIsMidpoint ? MIN_MIDPOINT * 100 : 0}
+							max={activeIndexIsMidpoint ? MAX_MIDPOINT * 100 : 100}
 							unit="%"
 						/>
 					{/if}

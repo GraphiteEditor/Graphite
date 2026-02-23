@@ -2,7 +2,7 @@
 
 import { Transform, Type, plainToClass } from "class-transformer";
 
-import { type EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
+import { sampleInterpolatedGradient, type EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
 import { type PopoverButtonStyle, type IconName, type IconSize } from "@graphite/icons";
 
 export class JsMessage {
@@ -355,44 +355,40 @@ export type RGBA = { r: number; g: number; b: number; a: number };
 export type RGB = { r: number; g: number; b: number };
 
 export class Gradient {
-	readonly stops!: { position: number[]; midpoint: number[]; color: Color[] };
+	position!: number[];
+	midpoint!: number[];
+	color!: Color[];
 
 	constructor(position: number[], midpoint: number[], color: Color[]) {
-		this.stops = { position, midpoint, color };
+		this.position = position;
+		this.midpoint = midpoint;
+		this.color = color;
 	}
 
 	toLinearGradientCSS(): string {
-		if (this.stops.position.length === 1) {
-			return `linear-gradient(to right, ${this.stops.color[0].toHexOptionalAlpha()} 0%, ${this.stops.color[0].toHexOptionalAlpha()} 100%)`;
+		if (this.position.length === 1) {
+			return `linear-gradient(to right, ${this.color[0].toHexOptionalAlpha()} 0%, ${this.color[0].toHexOptionalAlpha()} 100%)`;
 		}
-		const pairs = this.stops.position.map((position, index) => ({ position, color: this.stops.color[index] }));
-		const pieces = pairs.map((stop) => `${stop.color.toHexOptionalAlpha()} ${stop.position * 100}%`);
-		return `linear-gradient(to right, ${pieces.join(", ")})`;
+
+		const pieces = sampleInterpolatedGradient(new Float64Array(this.position), new Float64Array(this.midpoint), this.color, false);
+		return `linear-gradient(to right, ${pieces})`;
 	}
 
 	toLinearGradientCSSNoAlpha(): string {
-		if (this.stops.position.length === 1) {
-			return `linear-gradient(to right, ${this.stops.color[0].toHexNoAlpha()} 0%, ${this.stops.color[0].toHexNoAlpha()} 100%)`;
+		if (this.position.length === 1) {
+			return `linear-gradient(to right, ${this.color[0].toHexNoAlpha()} 0%, ${this.color[0].toHexNoAlpha()} 100%)`;
 		}
-		const pairs = this.stops.position.map((position, index) => ({ position, color: this.stops.color[index] }));
-		const pieces = pairs.map((stop) => `${stop.color.toHexNoAlpha()} ${stop.position * 100}%`);
-		return `linear-gradient(to right, ${pieces.join(", ")})`;
+
+		const pieces = sampleInterpolatedGradient(new Float64Array(this.position), new Float64Array(this.midpoint), this.color, true);
+		return `linear-gradient(to right, ${pieces})`;
 	}
 
 	firstColor(): Color | undefined {
-		return this.stops.color[0];
+		return this.color[0];
 	}
 
 	lastColor(): Color | undefined {
-		return this.stops.color[this.stops.color.length - 1];
-	}
-
-	colorAtIndex(index: number): Color | undefined {
-		return this.stops.color[index];
-	}
-
-	positionAtIndex(index: number): number | undefined {
-		return this.stops.position[index];
+		return this.color[this.color.length - 1];
 	}
 }
 
@@ -495,10 +491,6 @@ export class Color {
 	equals(other: Color): boolean {
 		if (this.none && other.none) return true;
 		return Math.abs(this.red - other.red) < 1e-6 && Math.abs(this.green - other.green) < 1e-6 && Math.abs(this.blue - other.blue) < 1e-6 && Math.abs(this.alpha - other.alpha) < 1e-6;
-	}
-
-	lerp(other: Color, t: number): Color {
-		return new Color(this.red * (1 - t) + other.red * t, this.green * (1 - t) + other.green * t, this.blue * (1 - t) + other.blue * t, this.alpha * (1 - t) + other.alpha * t);
 	}
 
 	toHexNoAlpha(): string | undefined {
@@ -949,7 +941,7 @@ export class ColorInput extends WidgetProps {
 	// Content
 	@Transform(({ value }) => {
 		if (value instanceof Gradient) return value;
-		const gradient: Gradient["stops"] | undefined = value["Gradient"];
+		const gradient: Gradient | undefined = value["Gradient"];
 		if (gradient) {
 			return new Gradient(
 				gradient.position,
@@ -1005,10 +997,10 @@ export function contrastingOutlineFactor(value: FillChoice, proximityColor: stri
 	};
 
 	if (value instanceof Gradient) {
-		if (value.stops.color.length === 0) return 0;
+		if (value.color.length === 0) return 0;
 
-		const first = contrast(value.stops.color[0]);
-		const last = contrast(value.stops.color[value.stops.color.length - 1]);
+		const first = contrast(value.color[0]);
+		const last = contrast(value.color[value.color.length - 1]);
 
 		return Math.min(first, last);
 	}
