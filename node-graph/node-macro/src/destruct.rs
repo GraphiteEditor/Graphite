@@ -10,18 +10,12 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream2> {
 	let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
 	let Data::Struct(data_struct) = input.data else {
-		return Err(Error::new(
-			Span::call_site(),
-			"Deriving `Destruct` is currently only supported for structs",
-		));
+		return Err(Error::new(Span::call_site(), "Deriving `Destruct` is currently only supported for structs"));
 	};
 
-	let graphene_core = match proc_macro_crate::crate_name("graphene-core").map_err(|e| {
-		Error::new(
-			Span::call_site(),
-			format!("Failed to find location of graphene_core. Make sure it is imported as a dependency: {e}"),
-		)
-	})? {
+	let graphene_core = match proc_macro_crate::crate_name("graphene-core")
+		.map_err(|e| Error::new(Span::call_site(), format!("Failed to find location of graphene_core. Make sure it is imported as a dependency: {e}")))?
+	{
 		FoundCrate::Itself => quote!(crate),
 		FoundCrate::Name(name) => {
 			let ident = syn::Ident::new(&name, Span::call_site());
@@ -67,14 +61,7 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream2> {
 	})
 }
 
-fn generate_extractor_node(
-	graphene_core: &TokenStream2,
-	fn_name: &syn::Ident,
-	struct_name: &syn::Ident,
-	field_name: &syn::Ident,
-	ty: &Type,
-	output_name: &LitStr,
-) -> TokenStream2 {
+fn generate_extractor_node(graphene_core: &TokenStream2, fn_name: &syn::Ident, struct_name: &syn::Ident, field_name: &syn::Ident, ty: &Type, output_name: &LitStr) -> TokenStream2 {
 	quote! {
 		#[node_macro::node(category(""), name(#output_name))]
 		fn #fn_name(_: impl #graphene_core::Ctx, data: #struct_name) -> #ty {

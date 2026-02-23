@@ -137,9 +137,12 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 
 		nodes.insert(source_node_id, document_node);
 
-		let use_memo = !available_output_fields.is_empty() && node_registry.get(&memo_node).is_some_and(|memo_implementations| {
-			memo_implementations.iter().any(|(_, node_io)| node_io.call_argument == *input_type && node_io.return_value == first_node_io.return_value)
-		});
+		let use_memo = !available_output_fields.is_empty()
+			&& node_registry.get(&memo_node).is_some_and(|memo_implementations| {
+				memo_implementations
+					.iter()
+					.any(|(_, node_io)| node_io.call_argument == *input_type && node_io.return_value == first_node_io.return_value)
+			});
 
 		if use_memo {
 			let memo_node_id = NodeId((input_count + generated_node_count) as u64);
