@@ -21,13 +21,9 @@ use vector_types::GradientStops;
 #[cfg(feature = "std")]
 #[derive(Debug, Clone, dyn_any::DynAny, node_macro::Destruct)]
 pub struct SplitChannelsOutput {
-	#[output(name = "Red")]
 	pub red: Table<Raster<CPU>>,
-	#[output(name = "Green")]
 	pub green: Table<Raster<CPU>>,
-	#[output(name = "Blue")]
 	pub blue: Table<Raster<CPU>>,
-	#[output(name = "Alpha")]
 	pub alpha: Table<Raster<CPU>>,
 }
 

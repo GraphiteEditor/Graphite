@@ -13,15 +13,14 @@ pub fn derive(input: DeriveInput) -> syn::Result<TokenStream2> {
 		return Err(Error::new(Span::call_site(), "Deriving `Destruct` is currently only supported for structs"));
 	};
 
-	let core_types = match proc_macro_crate::crate_name("core-types")
-		.map_err(|e| Error::new(Span::call_site(), format!("Failed to find location of core_types. Make sure it is imported as a dependency: {e}")))?
-	{
-		FoundCrate::Itself => quote!(crate),
-		FoundCrate::Name(name) => {
-			let ident = syn::Ident::new(&name, Span::call_site());
-			quote!(#ident)
-		}
-	};
+	let core_types =
+		match proc_macro_crate::crate_name("core-types").map_err(|e| Error::new(Span::call_site(), format!("Failed to find location of core_types. Make sure it is imported as a dependency: {e}")))? {
+			FoundCrate::Itself => quote!(crate),
+			FoundCrate::Name(name) => {
+				let ident = syn::Ident::new(&name, Span::call_site());
+				quote!(#ident)
+			}
+		};
 
 	let mut node_implementations = Vec::with_capacity(data_struct.fields.len());
 	let mut output_fields = Vec::with_capacity(data_struct.fields.len());

@@ -1207,7 +1207,6 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
 					input_metadata: vec![("Image", "TODO").into()],
-					output_names: vec!["Red".to_string(), "Green".to_string(), "Blue".to_string(), "Alpha".to_string()],
 					network_metadata: None,
 					..Default::default()
 				},
@@ -1219,7 +1218,7 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			identifier: "Split Vec2",
 			category: "Math: Vector",
 			node_template: NodeTemplate {
-					document_node: DocumentNode {
+				document_node: DocumentNode {
 					implementation: DocumentNodeImplementation::ProtoNode(extract_xy::split_vec_2::IDENTIFIER),
 					inputs: vec![NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), true)],
 					call_argument: generic!(T),
@@ -1227,7 +1226,6 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 				},
 				persistent_node_metadata: DocumentNodePersistentMetadata {
 					input_metadata: vec![("Vec2", "TODO").into()],
-					output_names: vec!["X".to_string(), "Y".to_string()],
 					network_metadata: None,
 					..Default::default()
 				},
@@ -1239,29 +1237,13 @@ fn document_node_definitions() -> HashMap<DefinitionIdentifier, DocumentNodeDefi
 			),
 			properties: None,
 		},
-		// TODO: Remove this and just use the proto node definition directly
+		//TODO: Remove this and just use the proto node definition directly
 		DocumentNodeDefinition {
 			identifier: "Brush",
 			category: "Raster",
 			node_template: NodeTemplate {
 				document_node: DocumentNode {
-					implementation: DocumentNodeImplementation::Network(NodeNetwork {
-						exports: vec![NodeInput::node(NodeId(0), 0)],
-						nodes: vec![DocumentNode {
-							inputs: vec![
-								NodeInput::import(concrete!(Table<Raster<CPU>>), 0),
-								NodeInput::import(concrete!(Vec<brush::brush_stroke::BrushStroke>), 1),
-								NodeInput::import(concrete!(BrushCache), 2),
-							],
-							implementation: DocumentNodeImplementation::ProtoNode(brush::brush::brush::IDENTIFIER),
-							..Default::default()
-						}]
-						.into_iter()
-						.enumerate()
-						.map(|(id, node)| (NodeId(id as u64), node))
-						.collect(),
-						..Default::default()
-					}),
+					implementation: DocumentNodeImplementation::ProtoNode(brush::brush::brush::IDENTIFIER),
 					inputs: vec![
 						NodeInput::value(TaggedValue::Raster(Default::default()), true),
 						NodeInput::value(TaggedValue::BrushStrokes(Vec::new()), false),

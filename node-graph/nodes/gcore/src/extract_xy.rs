@@ -4,9 +4,7 @@ use glam::{DVec2, IVec2, UVec2};
 
 #[derive(Debug, Clone, DynAny, node_macro::Destruct)]
 pub struct SplitVec2Output {
-	#[output(name = "X")]
 	pub x: f64,
-	#[output(name = "Y")]
 	pub y: f64,
 }
 
