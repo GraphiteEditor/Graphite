@@ -273,7 +273,8 @@ impl Parse for NodeFnAttributes {
 					}
 					skip_impl = true;
 				}
-				Meta::Path(path) if path.is_ident("deconstruct_output") => {
+				"deconstruct_output" => {
+					let path = meta.require_path_only()?;
 					if deconstruct_output {
 						return Err(Error::new_spanned(path, "Multiple 'deconstruct_output' attributes are not allowed"));
 					}
