@@ -1,3 +1,4 @@
+use super::input_keyboard::Key;
 use crate::consts::DRAG_THRESHOLD;
 use crate::messages::prelude::*;
 use bitflags::bitflags;
@@ -119,6 +120,18 @@ pub enum MouseButton {
 	Middle,
 	Back,
 	Forward,
+}
+
+impl From<MouseButton> for Key {
+	fn from(mouse_button: MouseButton) -> Self {
+		match mouse_button {
+			MouseButton::Left => Key::MouseLeft,
+			MouseButton::Right => Key::MouseRight,
+			MouseButton::Middle => Key::MouseMiddle,
+			MouseButton::Back => Key::MouseBack,
+			MouseButton::Forward => Key::MouseForward,
+		}
+	}
 }
 
 pub const NUMBER_OF_MOUSE_BUTTONS: usize = 5; // Should be the number of variants in MouseButton
