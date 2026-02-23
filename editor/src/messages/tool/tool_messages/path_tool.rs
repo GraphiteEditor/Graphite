@@ -1888,6 +1888,11 @@ impl Fsm for PathToolFsmState {
 						}
 					}
 					Self::Drawing { selection_shape } => {
+						let previous_mouse = document.metadata().document_to_viewport.transform_point2(tool_data.previous_mouse_position);
+						if tool_data.drag_start_pos.distance(previous_mouse) < 1e-8 {
+							return self;
+						}
+
 						let mut fill_color = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
 							.unwrap()
 							.with_alpha(0.05)
