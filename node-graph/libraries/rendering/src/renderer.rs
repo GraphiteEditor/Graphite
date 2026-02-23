@@ -284,11 +284,21 @@ impl RenderMetadata {
 	/// Merge another RenderMetadata into this one.
 	/// Values from `other` take precedence for duplicate keys.
 	pub fn merge(&mut self, other: &RenderMetadata) {
-		self.upstream_footprints.extend(other.upstream_footprints.iter().map(|(k, v)| (*k, *v)));
-		self.local_transforms.extend(other.local_transforms.iter().map(|(k, v)| (*k, *v)));
-		self.first_element_source_id.extend(other.first_element_source_id.iter().map(|(k, v)| (*k, *v)));
-		self.click_targets.extend(other.click_targets.iter().map(|(k, v)| (*k, v.clone())));
-		self.clip_targets.extend(other.clip_targets.iter().copied());
+		// Destructure Self to get errors when new fields are added to the struct
+		let RenderMetadata {
+			upstream_footprints,
+			local_transforms,
+			first_element_source_id,
+			click_targets,
+			clip_targets,
+			vector_data,
+		} = self;
+		upstream_footprints.extend(other.upstream_footprints.iter().map(|(k, v)| (*k, *v)));
+		local_transforms.extend(other.local_transforms.iter().map(|(k, v)| (*k, *v)));
+		first_element_source_id.extend(other.first_element_source_id.iter().map(|(k, v)| (*k, *v)));
+		click_targets.extend(other.click_targets.iter().map(|(k, v)| (*k, v.clone())));
+		clip_targets.extend(other.clip_targets.iter().copied());
+		vector_data.extend(other.vector_data.iter().map(|(id, data)| (*id, data.clone())));
 	}
 }
 
