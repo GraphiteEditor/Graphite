@@ -822,9 +822,11 @@ impl Fsm for ShapeToolFsmState {
 				self
 			}
 			(ShapeToolFsmState::Ready(_), ShapeToolMessage::DragStart) => {
-				tool_data.line_data.drag_start = input.mouse.position;
+				// Use ORIGINAL mouse position (not snapped) for drag_start
+				let original_mouse_pos = input.mouse.position;
+				tool_data.line_data.drag_start = original_mouse_pos;
 
-				// Snapped position in viewport space
+				// Snapped position for current position while dragging (not for start)
 				let mouse_pos = tool_data
 					.data
 					.snap_manager
@@ -833,6 +835,9 @@ impl Fsm for ShapeToolFsmState {
 					.unwrap_or(input.mouse.position);
 
 				tool_data.line_data.drag_current = mouse_pos;
+
+				// Store as viewport position - will be converted to layer-relative in update_shape
+				tool_data.data.drag_start = original_mouse_pos;
 
 				if tool_data.gizmo_manager.handle_click() && !input.keyboard.key(Key::Accel) {
 					tool_data.data.drag_start = document.metadata().document_to_viewport.inverse().transform_point2(mouse_pos);
@@ -851,7 +856,6 @@ impl Fsm for ShapeToolFsmState {
 					return ShapeToolFsmState::ModifyingGizmo;
 				}
 
-				// If clicked on endpoints of a selected line, drag its endpoints
 				if let Some((layer, _, _)) = closest_point(
 					document,
 					mouse_pos,
@@ -905,13 +909,17 @@ impl Fsm for ShapeToolFsmState {
 					ShapeType::Polygon | ShapeType::Star | ShapeType::Circle | ShapeType::Arc | ShapeType::Spiral | ShapeType::Grid | ShapeType::Rectangle | ShapeType::Ellipse => {
 						tool_data.data.start(document, input, viewport);
 					}
-					ShapeType::Arrow | ShapeType::Line => {
+					ShapeType::Arrow => {
+						// Arrow uses snapping for drag_start
 						let point = SnapCandidatePoint::handle(document.metadata().document_to_viewport.inverse().transform_point2(input.mouse.position));
 						let snapped = tool_data
 							.data
 							.snap_manager
 							.free_snap(&SnapData::new(document, input, viewport), &point, SnapTypeConfiguration::default());
 						tool_data.data.drag_start = snapped.snapped_point_document;
+					}
+					ShapeType::Line => {
+						// drag_start already set in DragStart handler
 					}
 				}
 
@@ -958,6 +966,18 @@ impl Fsm for ShapeToolFsmState {
 						tool_options.fill.apply_fill(layer, defered_responses);
 					}
 					ShapeType::Line => {
+						// Get the parent artboard's transform to calculate offset
+						let layer_to_viewport = document.metadata().transform_to_viewport(layer);
+						// Set layer transform to counteract the artboard offset
+						// This ensures line coordinates (in layer-space) render correctly
+						let offset = -layer_to_viewport.translation;
+						defered_responses.add(GraphOperationMessage::TransformSet {
+							layer,
+							transform: DAffine2::from_translation(offset),
+							transform_in: TransformIn::Local,
+							skip_rerender: false,
+						});
+
 						tool_data.line_data.weight = tool_options.line_weight;
 						tool_data.line_data.editing_layer = Some(layer);
 					}
@@ -1122,6 +1142,10 @@ impl Fsm for ShapeToolFsmState {
 				input.mouse.finish_transaction(tool_data.data.drag_start, responses);
 				tool_data.data.cleanup(responses);
 
+				// Reset drag_start to marker to indicate new session
+				let marker = DVec2::splat(f64::MIN);
+				tool_data.data.drag_start = marker;
+
 				tool_data.gizmo_manager.handle_cleanup();
 
 				if let Some(bounds) = &mut tool_data.bounding_box_manager {
@@ -1146,6 +1170,9 @@ impl Fsm for ShapeToolFsmState {
 			) => {
 				responses.add(DocumentMessage::AbortTransaction);
 				tool_data.data.cleanup(responses);
+				// Reset drag_start to marker to indicate new session
+				let marker = DVec2::splat(f64::MIN);
+				tool_data.data.drag_start = marker;
 				tool_data.line_data.dragging_endpoint = None;
 				tool_data.line_data.editing_layer = None;
 

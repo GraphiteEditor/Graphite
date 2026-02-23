@@ -1,6 +1,5 @@
 use super::shape_utility::ShapeToolModifierKey;
 use crate::consts::{BOUNDS_SELECT_THRESHOLD, LINE_ROTATE_SNAP_ANGLE};
-use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type};
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
@@ -56,40 +55,56 @@ impl Line {
 		modifier: ShapeToolModifierKey,
 		responses: &mut VecDeque<Message>,
 	) {
+		let layer_to_viewport = document.metadata().transform_to_viewport(layer);
+		let viewport_to_layer = layer_to_viewport.inverse();
+
+		let viewport_mouse = ipp.mouse.position;
+
+		// Check if drag_start is not set (using marker value f64::MIN)
+		let is_not_set = shape_tool_data.data.drag_start.x == f64::MIN || shape_tool_data.data.drag_start.y == f64::MIN;
+
+		// Convert viewport positions to layer-space (artboard-relative)
+		let layer_space_mouse = viewport_to_layer.transform_point2(viewport_mouse);
+
+		let effective_drag_start = if is_not_set {
+			layer_space_mouse
+		} else {
+			// Convert stored viewport position to layer-space
+			viewport_to_layer.transform_point2(shape_tool_data.data.drag_start)
+		};
+
 		let [center, snap_angle, lock_angle] = modifier;
 
-		shape_tool_data.line_data.drag_current = ipp.mouse.position;
+		// Store layer-space current position (not viewport)
+		shape_tool_data.line_data.drag_current = layer_space_mouse;
 
 		let keyboard = &ipp.keyboard;
 		let ignore = [layer];
 		let snap_data = SnapData::ignore(document, ipp, viewport, &ignore);
+
+		// Pass layer-space coordinates to generate_line (for angle/length calculations)
+		let original_drag_start = shape_tool_data.data.drag_start;
+		shape_tool_data.data.drag_start = effective_drag_start;
+
 		let mut document_points = generate_line(shape_tool_data, snap_data, keyboard.key(lock_angle), keyboard.key(snap_angle), keyboard.key(center));
+
+		shape_tool_data.data.drag_start = original_drag_start; // Restore
 
 		if shape_tool_data.line_data.dragging_endpoint == Some(LineEnd::Start) {
 			document_points.swap(0, 1);
 		}
 
-		let viewport_points = document_points.map(|point| document.metadata().document_to_viewport.transform_point2(point));
-		let midpoint = viewport_points[0].midpoint(viewport_points[1]);
-
 		let Some(node_id) = graph_modification_utils::get_line_id(layer, &document.network_interface) else {
 			return;
 		};
 
-		responses.add(GraphOperationMessage::TransformSet {
-			layer,
-			transform: DAffine2::from_translation(midpoint),
-			transform_in: TransformIn::Viewport,
-			skip_rerender: true,
-		});
-
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(node_id, 1),
-			input: NodeInput::value(TaggedValue::DVec2(viewport_points[0] - midpoint), false),
+			input: NodeInput::value(TaggedValue::DVec2(document_points[0]), false),
 		});
 		responses.add(NodeGraphMessage::SetInput {
 			input_connector: InputConnector::node(node_id, 2),
-			input: NodeInput::value(TaggedValue::DVec2(viewport_points[1] - midpoint), false),
+			input: NodeInput::value(TaggedValue::DVec2(document_points[1]), false),
 		});
 		responses.add(NodeGraphMessage::RunDocumentGraph);
 	}
@@ -121,8 +136,8 @@ impl Line {
 }
 
 fn generate_line(tool_data: &mut ShapeToolData, snap_data: SnapData, lock_angle: bool, snap_angle: bool, center: bool) -> [DVec2; 2] {
-	let document_to_viewport = snap_data.document.metadata().document_to_viewport;
-	let mut document_points = [tool_data.data.drag_start, document_to_viewport.inverse().transform_point2(tool_data.line_data.drag_current)];
+	// Coordinates are already in layer-space (passed from update_shape)
+	let mut document_points = [tool_data.data.drag_start, tool_data.line_data.drag_current];
 
 	let mut angle = -(document_points[1] - document_points[0]).angle_to(DVec2::X);
 	let mut line_length = (document_points[1] - document_points[0]).length();
@@ -244,8 +259,8 @@ mod test_line_tool {
 		editor.new_document().await;
 		editor.drag_tool(ToolType::Line, 0., 0., 100., 100., ModifierKeys::empty()).await;
 		if let Some((start_input, end_input)) = get_line_node_inputs(&mut editor).await {
-			assert!((start_input - DVec2::new(-50., -50.)).length() < 1., "Start point should be near (-50, -50)");
-			assert!((end_input - DVec2::new(50., 50.)).length() < 1., "End point should be near (50, 50)");
+			assert!((start_input - DVec2::new(0., 0.)).length() < 1., "Start point should be near (0, 0)");
+			assert!((end_input - DVec2::new(100., 100.)).length() < 1., "End point should be near (100, 100)");
 		}
 	}
 
@@ -262,16 +277,16 @@ mod test_line_tool {
 			let document_to_viewport = document.metadata().document_to_viewport;
 			let viewport_to_document = document_to_viewport.inverse();
 
-			let expected_start = DVec2::new(-50., -50.);
-			let expected_end = DVec2::new(50., 50.);
+			let expected_start = viewport_to_document.transform_point2(DVec2::ZERO);
+			let expected_end = viewport_to_document.transform_point2(DVec2::new(100., 100.));
 
 			assert!(
 				(start_input - expected_start).length() < 1.,
-				"Start point should match expected viewport coordinates. Got {start_input:?}, expected {expected_start:?}"
+				"Start point should match expected document coordinates. Got {start_input:?}, expected {expected_start:?}"
 			);
 			assert!(
 				(end_input - expected_end).length() < 1.,
-				"End point should match expected viewport coordinates. Got {end_input:?}, expected {expected_end:?}"
+				"End point should match expected document coordinates. Got {end_input:?}, expected {expected_end:?}"
 			);
 		} else {
 			panic!("Line was not created successfully with transformed viewport");
