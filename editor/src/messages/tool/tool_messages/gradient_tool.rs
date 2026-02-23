@@ -5,7 +5,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::{NodeGraphLayer, get_gradient};
 use crate::messages::tool::common_functionality::snapping::SnapManager;
-use graphene_std::vector::style::{Fill, Gradient, GradientType};
+use graphene_std::vector::style::{Fill, Gradient, GradientStops, GradientType};
 
 #[derive(Default, ExtractField)]
 pub struct GradientTool {
@@ -182,13 +182,13 @@ struct SelectedGradient {
 	initial_gradient: Gradient,
 }
 
-fn calculate_insertion(start: DVec2, end: DVec2, stops: &[(f64, graphene_std::Color)], mouse: DVec2) -> Option<f64> {
+fn calculate_insertion(start: DVec2, end: DVec2, stops: &GradientStops, mouse: DVec2) -> Option<f64> {
 	let distance = (end - start).angle_to(mouse - start).sin() * (mouse - start).length();
 	let projection = ((end - start).angle_to(mouse - start)).cos() * start.distance(mouse) / start.distance(end);
 
 	if distance.abs() < SEGMENT_INSERTION_DISTANCE && (0. ..=1.).contains(&projection) {
-		for (position, _) in stops {
-			let stop_pos = start.lerp(end, *position);
+		for stop in stops {
+			let stop_pos = start.lerp(end, stop.position);
 			if stop_pos.distance_squared(mouse) < (MANIPULATOR_GROUP_MARKER_SIZE * 2.).powi(2) {
 				return None;
 			}
@@ -262,11 +262,12 @@ impl SelectedGradient {
 
 				// Should not go off end but can swap
 				let clamped = new_pos.clamp(0., 1.);
-				self.gradient.stops.get_mut(s).unwrap().0 = clamped;
-				let new_pos = self.gradient.stops[s];
+				self.gradient.stops.position[s] = clamped;
+				let new_position = self.gradient.stops.position[s];
+				let new_color = self.gradient.stops.color[s];
 
 				self.gradient.stops.sort();
-				self.dragging = GradientDragTarget::Step(self.gradient.stops.iter().position(|x| *x == new_pos).unwrap());
+				self.dragging = GradientDragTarget::Step(self.gradient.stops.iter().position(|s| s.position == new_position && s.color == new_color).unwrap());
 			}
 		}
 		self.render_gradient(responses);
@@ -357,18 +358,18 @@ impl Fsm for GradientToolFsmState {
 						format!("#{}", color.with_alpha(1.).to_rgba_hex_srgb())
 					}
 
-					let start_hex = stops.first().map(|(_, c)| color_to_hex(*c)).unwrap_or(String::from(COLOR_OVERLAY_BLUE));
-					let end_hex = stops.last().map(|(_, c)| color_to_hex(*c)).unwrap_or(String::from(COLOR_OVERLAY_BLUE));
+					let start_hex = stops.color.first().map(|&c| color_to_hex(c)).unwrap_or(String::from(COLOR_OVERLAY_BLUE));
+					let end_hex = stops.color.last().map(|&c| color_to_hex(c)).unwrap_or(String::from(COLOR_OVERLAY_BLUE));
 
 					overlay_context.line(start, end, None, None);
 					overlay_context.gradient_color_stop(start, dragging == Some(GradientDragTarget::Start), &start_hex);
 					overlay_context.gradient_color_stop(end, dragging == Some(GradientDragTarget::End), &end_hex);
 
-					for (index, (position, color)) in stops.clone().into_iter().enumerate() {
-						if position.abs() < f64::EPSILON * 1000. || (1. - position).abs() < f64::EPSILON * 1000. {
+					for (index, stop) in stops.iter().enumerate() {
+						if stop.position.abs() < f64::EPSILON * 1000. || (1. - stop.position).abs() < f64::EPSILON * 1000. {
 							continue;
 						}
-						overlay_context.gradient_color_stop(start.lerp(end, position), dragging == Some(GradientDragTarget::Step(index)), &color_to_hex(color));
+						overlay_context.gradient_color_stop(start.lerp(end, stop.position), dragging == Some(GradientDragTarget::Step(index)), &color_to_hex(stop.color));
 					}
 
 					if let (Some(projection), Some(dir)) = (calculate_insertion(start, end, stops, mouse), (end - start).try_normalize()) {
@@ -415,7 +416,7 @@ impl Fsm for GradientToolFsmState {
 					if let Some(layer) = selected_gradient.layer {
 						responses.add(GraphOperationMessage::FillSet {
 							layer,
-							fill: Fill::Solid(selected_gradient.gradient.stops[0].1),
+							fill: Fill::Solid(selected_gradient.gradient.stops.color[0]),
 						});
 					}
 					responses.add(DocumentMessage::CommitTransaction);
@@ -424,8 +425,8 @@ impl Fsm for GradientToolFsmState {
 				}
 
 				// Find the minimum and maximum positions
-				let min_position = selected_gradient.gradient.stops.iter().map(|(pos, _)| *pos).reduce(f64::min).expect("No min");
-				let max_position = selected_gradient.gradient.stops.iter().map(|(pos, _)| *pos).reduce(f64::max).expect("No max");
+				let min_position = selected_gradient.gradient.stops.position.iter().copied().reduce(f64::min).expect("No min");
+				let max_position = selected_gradient.gradient.stops.position.iter().copied().reduce(f64::max).expect("No max");
 
 				// Recompute the start and end position of the gradient (in viewport transform)
 				let transform = selected_gradient.transform;
@@ -435,7 +436,7 @@ impl Fsm for GradientToolFsmState {
 				selected_gradient.gradient.end = transform.inverse().transform_point2(new_end);
 
 				// Remap the positions
-				for (position, _) in selected_gradient.gradient.stops.iter_mut() {
+				for position in selected_gradient.gradient.stops.position.iter_mut() {
 					*position = (*position - min_position) / (max_position - min_position);
 				}
 
@@ -492,8 +493,8 @@ impl Fsm for GradientToolFsmState {
 					let Some(gradient) = get_gradient(layer, &document.network_interface) else { continue };
 					let transform = gradient_space_transform(layer, document);
 					// Check for dragging step
-					for (index, (pos, _)) in gradient.stops.iter().enumerate() {
-						let pos = transform.transform_point2(gradient.start.lerp(gradient.end, *pos));
+					for (index, stop) in gradient.stops.iter().enumerate() {
+						let pos = transform.transform_point2(gradient.start.lerp(gradient.end, stop.position));
 						if pos.distance_squared(mouse) < tolerance {
 							dragging = true;
 							tool_data.selected_gradient = Some(SelectedGradient {
@@ -787,7 +788,7 @@ mod test_gradient {
 		let (gradient, transform) = get_gradient(&mut editor).await;
 
 		// Gradient goes from secondary color to primary color
-		let stops = gradient.stops.iter().map(|stop| (stop.0, stop.1.to_rgba8_srgb())).collect::<Vec<_>>();
+		let stops = gradient.stops.iter().map(|stop| (stop.position, stop.color.to_rgba8_srgb())).collect::<Vec<_>>();
 		assert_eq!(stops, vec![(0., Color::BLUE.to_rgba8_srgb()), (1., Color::GREEN.to_rgba8_srgb())]);
 		assert!(transform.transform_point2(gradient.start).abs_diff_eq(DVec2::new(2., 3.), 1e-10));
 		assert!(transform.transform_point2(gradient.end).abs_diff_eq(DVec2::new(24., 4.), 1e-10));
@@ -879,7 +880,7 @@ mod test_gradient {
 		let (updated_gradient, _) = get_gradient(&mut editor).await;
 		assert_eq!(updated_gradient.stops.len(), 3, "Expected 3 stops, found {}", updated_gradient.stops.len());
 
-		let positions: Vec<f64> = updated_gradient.stops.iter().map(|(pos, _)| *pos).collect();
+		let positions: Vec<f64> = updated_gradient.stops.iter().map(|stop| stop.position).collect();
 		assert!(
 			positions.iter().any(|pos| (pos - 0.5).abs() < 0.1),
 			"Expected to find a stop near position 0.5, but found: {positions:?}"
@@ -975,12 +976,12 @@ mod test_gradient {
 
 		// Verify initial stop positions and colors
 		let mut stops = initial_gradient.stops.clone();
-		stops.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+		stops.sort();
 
-		let positions: Vec<f64> = stops.iter().map(|(pos, _)| *pos).collect();
+		let positions: Vec<f64> = stops.iter().map(|stop| stop.position).collect();
 		assert_stops_at_positions(&positions, &[0., 0.5, 1.], 0.1);
 
-		let middle_color = stops[1].1.to_rgba8_srgb();
+		let middle_color = stops.color[1].to_rgba8_srgb();
 
 		// Simulate dragging the middle stop to position 0.8
 		let click_position = DVec2::new(50., 0.);
@@ -1014,16 +1015,16 @@ mod test_gradient {
 
 		// Verify updated stop positions and colors
 		let mut updated_stops = updated_gradient.stops.clone();
-		updated_stops.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+		updated_stops.sort();
 
 		// Check positions are now correctly ordered
-		let updated_positions: Vec<f64> = updated_stops.iter().map(|(pos, _)| *pos).collect();
+		let updated_positions: Vec<f64> = updated_stops.iter().map(|stop| stop.position).collect();
 		assert_stops_at_positions(&updated_positions, &[0., 0.8, 1.], 0.1);
 
 		// Colors should maintain their associations with the stop points
-		assert_eq!(updated_stops[0].1.to_rgba8_srgb(), Color::BLUE.to_rgba8_srgb());
-		assert_eq!(updated_stops[1].1.to_rgba8_srgb(), middle_color);
-		assert_eq!(updated_stops[2].1.to_rgba8_srgb(), Color::GREEN.to_rgba8_srgb());
+		assert_eq!(updated_stops.color[0].to_rgba8_srgb(), Color::BLUE.to_rgba8_srgb());
+		assert_eq!(updated_stops.color[1].to_rgba8_srgb(), middle_color);
+		assert_eq!(updated_stops.color[2].to_rgba8_srgb(), Color::GREEN.to_rgba8_srgb());
 	}
 
 	#[tokio::test]
@@ -1054,7 +1055,7 @@ mod test_gradient {
 		let (updated_gradient, _) = get_gradient(&mut editor).await;
 		assert_eq!(updated_gradient.stops.len(), 4, "Expected 4 stops, found {}", updated_gradient.stops.len());
 
-		let positions: Vec<f64> = updated_gradient.stops.iter().map(|(pos, _)| *pos).collect();
+		let positions: Vec<f64> = updated_gradient.stops.iter().map(|stop| stop.position).collect();
 
 		// Use helper function to verify positions
 		assert_stops_at_positions(&positions, &[0., 0.25, 0.75, 1.], 0.05);
@@ -1080,7 +1081,7 @@ mod test_gradient {
 		let (final_gradient, _) = get_gradient(&mut editor).await;
 		assert_eq!(final_gradient.stops.len(), 3, "Expected 3 stops after deletion, found {}", final_gradient.stops.len());
 
-		let final_positions: Vec<f64> = final_gradient.stops.iter().map(|(pos, _)| *pos).collect();
+		let final_positions: Vec<f64> = final_gradient.stops.iter().map(|stop| stop.position).collect();
 
 		// Verify final positions with helper function
 		assert_stops_at_positions(&final_positions, &[0., 0.25, 1.], 0.05);

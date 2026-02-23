@@ -997,10 +997,10 @@ impl Render for Table<Vector> {
 				}
 				Fill::Gradient(gradient) => {
 					let mut stops = peniko::ColorStops::new();
-					for &(offset, color) in &gradient.stops {
+					for stop in &gradient.stops {
 						stops.push(peniko::ColorStop {
-							offset: offset as f32,
-							color: peniko::color::DynamicColor::from_alpha_color(peniko::Color::new([color.r(), color.g(), color.b(), color.a()])),
+							offset: stop.position as f32,
+							color: peniko::color::DynamicColor::from_alpha_color(peniko::Color::new([stop.color.r(), stop.color.g(), stop.color.b(), stop.color.a()])),
 						});
 					}
 
@@ -1557,10 +1557,10 @@ impl Render for Table<GradientStops> {
 				attributes.push("points", format!("{max},{max} -{max},{max} -{max},-{max} {max},-{max}"));
 
 				let mut stop_string = String::new();
-				for (position, color) in row.element.0.iter() {
-					let _ = write!(stop_string, r##"<stop offset="{}" stop-color="#{}""##, position, color.to_rgb_hex_srgb_from_gamma());
-					if color.a() < 1. {
-						let _ = write!(stop_string, r#" stop-opacity="{}""#, color.a());
+				for stop in row.element {
+					let _ = write!(stop_string, r##"<stop offset="{}" stop-color="#{}""##, stop.position, stop.color.to_rgb_hex_srgb_from_gamma());
+					if stop.color.a() < 1. {
+						let _ = write!(stop_string, r#" stop-opacity="{}""#, stop.color.a());
 					}
 					stop_string.push_str(" />");
 				}
@@ -1619,7 +1619,7 @@ impl Render for Table<GradientStops> {
 			let blend_mode = alpha_blending.blend_mode.to_peniko();
 			let opacity = alpha_blending.opacity(render_params.for_mask);
 
-			let color = row.element.0.first().map(|stop| stop.1).unwrap_or(Color::MAGENTA);
+			let color = row.element.color.first().copied().unwrap_or(Color::MAGENTA);
 			let vello_color = peniko::Color::new([color.r(), color.g(), color.b(), color.a()]);
 
 			let rect = kurbo::Rect::from_origin_size(kurbo::Point::ZERO, kurbo::Size::new(1., 1.));

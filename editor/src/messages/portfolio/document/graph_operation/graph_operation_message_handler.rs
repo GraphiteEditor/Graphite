@@ -14,7 +14,7 @@ use graphene_std::renderer::Quad;
 use graphene_std::renderer::convert_usvg_path::convert_usvg_path;
 use graphene_std::table::Table;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::style::{Fill, Gradient, GradientStops, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use graphene_std::vector::style::{Fill, Gradient, GradientStop, GradientStops, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 
 #[derive(ExtractField)]
 pub struct GraphOperationMessageContext<'a> {
@@ -443,7 +443,11 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, b
 
 			let gradient_type = GradientType::Linear;
 
-			let stops = linear.stops().iter().map(|stop| (stop.offset().get() as f64, usvg_color(stop.color(), stop.opacity().get()))).collect();
+			let stops = linear.stops().iter().map(|stop| GradientStop {
+				position: stop.offset().get() as f64,
+				midpoint: 0.5,
+				color: usvg_color(stop.color(), stop.opacity().get()),
+			});
 			let stops = GradientStops::new(stops);
 
 			Fill::Gradient(Gradient { start, end, gradient_type, stops })
@@ -457,7 +461,11 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, b
 
 			let gradient_type = GradientType::Radial;
 
-			let stops = radial.stops().iter().map(|stop| (stop.offset().get() as f64, usvg_color(stop.color(), stop.opacity().get()))).collect();
+			let stops = radial.stops().iter().map(|stop| GradientStop {
+				position: stop.offset().get() as f64,
+				midpoint: 0.5,
+				color: usvg_color(stop.color(), stop.opacity().get()),
+			});
 			let stops = GradientStops::new(stops);
 
 			Fill::Gradient(Gradient { start, end, gradient_type, stops })

@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { createEventDispatcher, onDestroy } from "svelte";
 
-	import { Color, type Gradient } from "@graphite/messages";
+	import type { Gradient } from "@graphite/messages";
+	import { Color } from "@graphite/messages";
 
 	import { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -59,23 +60,28 @@
 		let position = markerPosition(e);
 		if (position === undefined) return;
 
-		let before = gradient.stops.findLast((value) => value.position < position);
-		let after = gradient.stops.find((value) => value.position > position);
+		const stops = gradient.stops;
+
+		let before = gradient.stops.position.findLastIndex((item) => item < position);
+		let after = gradient.stops.position.findIndex((item) => item > position);
 
 		let color = Color.fromCSS("black") as Color;
-		if (before && after) {
-			let t = (position - before.position) / (after.position - before.position);
-			color = before.color.lerp(after.color, t);
-		} else if (before) {
-			color = before.color;
-		} else if (after) {
-			color = after.color;
+		if (before !== -1 && after !== -1) {
+			let t = (position - stops.position[before]) / (stops.position[after] - stops.position[before]);
+			color = stops.color[before].lerp(stops.color[after], t);
+		} else if (before !== -1) {
+			color = stops.color[before];
+		} else if (after !== -1) {
+			color = stops.color[after];
 		}
 
-		let index = gradient.stops.findIndex((value) => value.position > position);
-		if (index === -1) index = gradient.stops.length;
+		let index = stops.position.findIndex((item) => item > position);
+		if (index === -1) index = stops.position.length;
 
-		gradient.stops.splice(index, 0, { position, color });
+		stops.position.splice(index, 0, position);
+		stops.midpoint.splice(index, 0, 0.5);
+		stops.color.splice(index, 0, color);
+
 		activeMarkerIndex = index;
 		deletionRestore = true;
 
@@ -99,13 +105,16 @@
 	function deleteStopByIndex(index: number) {
 		if (disabled) return;
 
-		if (gradient.stops.length <= 2) return;
+		if (gradient.stops.position.length <= 2) return;
 
-		gradient.stops.splice(index, 1);
-		if (gradient.stops.length === 0) {
+		gradient.stops.position.splice(index, 1);
+		gradient.stops.midpoint.splice(index, 1);
+		gradient.stops.color.splice(index, 1);
+
+		if (gradient.stops.position.length === 0) {
 			activeMarkerIndex = undefined;
 		} else {
-			activeMarkerIndex = Math.max(0, Math.min(gradient.stops.length - 1, index));
+			activeMarkerIndex = Math.max(0, Math.min(gradient.stops.position.length - 1, index));
 		}
 		deletionRestore = undefined;
 
@@ -135,14 +144,28 @@
 	export function setPosition(index: number, position: number) {
 		if (disabled) return;
 
-		const active = gradient.stops[index];
+		const markers = toMarkers(gradient);
+
+		const active = markers[index];
 		active.position = position;
-		gradient.stops.sort((a, b) => a.position - b.position);
-		if (gradient.stops.indexOf(active) !== activeMarkerIndex) {
-			activeMarkerIndex = gradient.stops.indexOf(active);
-			dispatch("activeMarkerIndexChange", gradient.stops.indexOf(active));
+		markers.sort((a, b) => a.position - b.position);
+		if (markers.indexOf(active) !== activeMarkerIndex) {
+			activeMarkerIndex = markers.indexOf(active);
+			dispatch("activeMarkerIndexChange", markers.indexOf(active));
 		}
+
+		gradient.stops.position = markers.map((stop) => stop.position);
+		gradient.stops.midpoint = markers.map((stop) => stop.midpoint);
+		gradient.stops.color = markers.map((stop) => stop.color);
 		dispatch("gradient", gradient);
+	}
+
+	function toMarkers(gradient: Gradient): { position: number; midpoint: number; color: Color }[] {
+		return gradient.stops.position.map((position, i) => ({
+			position,
+			midpoint: gradient.stops.midpoint[i],
+			color: gradient.stops.color[i],
+		}));
 	}
 
 	function abortDrag() {
@@ -250,7 +273,7 @@
 >
 	<LayoutRow class="gradient-strip" on:pointerdown={insertStop}></LayoutRow>
 	<LayoutRow class="marker-track" bind:this={markerTrack}>
-		{#each gradient.stops as marker, index}
+		{#each toMarkers(gradient) as marker, index}
 			<svg
 				class="marker"
 				class:active={index === activeMarkerIndex}

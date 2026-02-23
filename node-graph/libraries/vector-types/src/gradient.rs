@@ -14,21 +14,33 @@ pub enum GradientType {
 // TODO: Use linear not gamma colors
 /// A list of colors associated with positions (in the range 0 to 1) along a gradient.
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, DynAny, specta::Type)]
-pub struct GradientStops(pub Vec<(f64, Color)>);
+pub struct GradientStops {
+	/// The position of this stop, a factor from 0-1 along the length of the full gradient.
+	pub position: Vec<f64>,
+	/// The midpoint to the right of this stop, a factor from 0-1 along the distance to the next stop. The final stop's midpoint is ignored.
+	pub midpoint: Vec<f64>,
+	/// The color at this stop.
+	pub color: Vec<Color>,
+}
 
 impl std::hash::Hash for GradientStops {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		self.0.len().hash(state);
-		self.0.iter().for_each(|(position, color)| {
-			position.to_bits().hash(state);
-			color.hash(state);
-		});
+		self.position.len().hash(state);
+		for i in 0..self.position.len() {
+			self.position[i].to_bits().hash(state);
+			self.midpoint[i].to_bits().hash(state);
+			self.color[i].hash(state);
+		}
 	}
 }
 
 impl Default for GradientStops {
 	fn default() -> Self {
-		Self(vec![(0., Color::BLACK), (1., Color::WHITE)])
+		Self {
+			position: vec![0., 1.],
+			midpoint: vec![0.5, 0.5],
+			color: vec![Color::BLACK, Color::WHITE],
+		}
 	}
 }
 
@@ -38,71 +50,145 @@ impl RenderComplexity for GradientStops {
 	}
 }
 
-impl IntoIterator for GradientStops {
-	type Item = (f64, Color);
-	type IntoIter = std::vec::IntoIter<(f64, Color)>;
+/// Apply the midpoint curve to a normalized parameter `t` (0 to 1) given a `midpoint` (0 to 1, where 0.5 is linear).
+fn apply_midpoint(t: f64, midpoint: f64) -> f64 {
+	if (midpoint - 0.5).abs() < 1e-6 {
+		return t;
+	}
 
-	fn into_iter(self) -> Self::IntoIter {
-		self.0.into_iter()
+	let midpoint = midpoint.clamp(f64::EPSILON, 1. - f64::EPSILON);
+
+	if midpoint < 0.5 {
+		let q = -1. / (1. - midpoint).log2();
+		1. - (1. - t).powf(q)
+	} else {
+		let p = -1. / midpoint.log2();
+		t.powf(p)
 	}
 }
+
+#[derive(Debug, Clone, Copy)]
+pub struct GradientStop {
+	pub position: f64,
+	pub midpoint: f64,
+	pub color: Color,
+}
+
+pub struct GradientStopsIter<'a> {
+	stops: &'a GradientStops,
+	index: usize,
+}
+
+impl<'a> Iterator for GradientStopsIter<'a> {
+	type Item = GradientStop;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		if self.index >= self.stops.position.len() {
+			return None;
+		}
+
+		let stop = GradientStop {
+			position: self.stops.position[self.index],
+			midpoint: self.stops.midpoint[self.index],
+			color: self.stops.color[self.index],
+		};
+		self.index += 1;
+		Some(stop)
+	}
+
+	fn size_hint(&self) -> (usize, Option<usize>) {
+		let remaining = self.stops.position.len() - self.index;
+		(remaining, Some(remaining))
+	}
+}
+
+impl ExactSizeIterator for GradientStopsIter<'_> {}
 
 impl<'a> IntoIterator for &'a GradientStops {
-	type Item = &'a (f64, Color);
-	type IntoIter = std::slice::Iter<'a, (f64, Color)>;
+	type Item = GradientStop;
+	type IntoIter = GradientStopsIter<'a>;
 
 	fn into_iter(self) -> Self::IntoIter {
-		self.0.iter()
+		GradientStopsIter { stops: self, index: 0 }
 	}
 }
 
-impl std::ops::Index<usize> for GradientStops {
-	type Output = (f64, Color);
+impl IntoIterator for GradientStops {
+	type Item = GradientStop;
+	type IntoIter = std::vec::IntoIter<GradientStop>;
 
-	fn index(&self, index: usize) -> &Self::Output {
-		&self.0[index]
-	}
-}
-
-impl std::ops::Deref for GradientStops {
-	type Target = Vec<(f64, Color)>;
-
-	fn deref(&self) -> &Self::Target {
-		&self.0
-	}
-}
-
-impl std::ops::DerefMut for GradientStops {
-	fn deref_mut(&mut self) -> &mut Self::Target {
-		&mut self.0
+	fn into_iter(self) -> Self::IntoIter {
+		self.position
+			.into_iter()
+			.zip(self.midpoint)
+			.zip(self.color)
+			.map(|((position, midpoint), color)| GradientStop { position, midpoint, color })
+			.collect::<Vec<_>>()
+			.into_iter()
 	}
 }
 
 impl GradientStops {
-	pub fn new(stops: Vec<(f64, Color)>) -> Self {
-		let mut stops = Self(stops);
-		stops.sort();
-		stops
+	pub fn new(stops: impl IntoIterator<Item = GradientStop>) -> Self {
+		let mut position = Vec::new();
+		let mut midpoint = Vec::new();
+		let mut color = Vec::new();
+
+		for stop in stops {
+			position.push(stop.position);
+			midpoint.push(stop.midpoint);
+			color.push(stop.color);
+		}
+
+		Self { position, midpoint, color }
+	}
+
+	pub fn len(&self) -> usize {
+		self.position.len()
+	}
+
+	pub fn is_empty(&self) -> bool {
+		self.position.is_empty()
+	}
+
+	pub fn iter(&self) -> GradientStopsIter<'_> {
+		self.into_iter()
+	}
+
+	/// Remove a stop at the given index.
+	pub fn remove(&mut self, index: usize) {
+		self.position.remove(index);
+		self.midpoint.remove(index);
+		self.color.remove(index);
+	}
+
+	/// Remove and return the last stop's color, or `None` if empty.
+	pub fn pop(&mut self) -> Option<Color> {
+		self.position.pop();
+		self.midpoint.pop();
+		self.color.pop()
 	}
 
 	pub fn evaluate(&self, t: f64) -> Color {
-		if self.0.is_empty() {
+		if self.position.is_empty() {
 			return Color::BLACK;
 		}
 
-		if t <= self.0[0].0 {
-			return self.0[0].1;
+		if t <= self.position[0] {
+			return self.color[0];
 		}
-		if t >= self.0[self.0.len() - 1].0 {
-			return self.0[self.0.len() - 1].1;
+		let last = self.position.len() - 1;
+		if t >= self.position[last] {
+			return self.color[last];
 		}
 
-		for i in 0..self.0.len() - 1 {
-			let (t1, c1) = self.0[i];
-			let (t2, c2) = self.0[i + 1];
+		for i in 0..self.position.len() - 1 {
+			let (t1, c1) = (self.position[i], self.color[i]);
+			let (t2, c2) = (self.position[i + 1], self.color[i + 1]);
 			if t >= t1 && t <= t2 {
 				let normalized_t = (t - t1) / (t2 - t1);
-				return c1.lerp(&c2, normalized_t as f32);
+				let adjusted_t = apply_midpoint(normalized_t, self.midpoint[i]);
+				return c1.lerp(&c2, adjusted_t as f32);
 			}
 		}
 
@@ -110,15 +196,41 @@ impl GradientStops {
 	}
 
 	pub fn sort(&mut self) {
-		self.0.sort_unstable_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+		let mut indices: Vec<usize> = (0..self.position.len()).collect();
+		indices.sort_unstable_by(|&a, &b| self.position[a].partial_cmp(&self.position[b]).unwrap());
+		self.position = indices.iter().map(|&i| self.position[i]).collect();
+		self.midpoint = indices.iter().map(|&i| self.midpoint[i]).collect();
+		self.color = indices.iter().map(|&i| self.color[i]).collect();
 	}
 
 	pub fn reversed(&self) -> Self {
-		Self(self.0.iter().rev().map(|(position, color)| (1. - position, *color)).collect())
+		let position: Vec<f64> = self.position.iter().rev().map(|&p| 1. - p).collect();
+
+		let color: Vec<Color> = self.color.iter().rev().cloned().collect();
+
+		// We have to shift the midpoint indexes so the unused value at the end becomes the one at the start before reversing, and the midpoint values are reversed but still between the same stops.
+		let count = self.midpoint.len();
+		let midpoint: Vec<f64> = (0..count)
+			.map(|i| {
+				if i == 0 {
+					1. - self.midpoint[count - 2]
+				} else if i == count - 1 {
+					1. - self.midpoint[0]
+				} else {
+					self.midpoint[count - 1 - i]
+				}
+			})
+			.collect();
+
+		Self { position, midpoint, color }
 	}
 
 	pub fn map_colors<F: Fn(&Color) -> Color>(&self, f: F) -> Self {
-		Self(self.0.iter().map(|(position, color)| (*position, f(color))).collect())
+		Self {
+			position: self.position.clone(),
+			midpoint: self.midpoint.clone(),
+			color: self.color.iter().map(f).collect(),
+		}
 	}
 }
 
@@ -147,13 +259,14 @@ impl Default for Gradient {
 
 impl std::hash::Hash for Gradient {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		self.stops.0.len().hash(state);
+		self.stops.len().hash(state);
 		[].iter()
 			.chain(self.start.to_array().iter())
 			.chain(self.end.to_array().iter())
-			.chain(self.stops.0.iter().map(|(position, _)| position))
+			.chain(self.stops.position.iter())
+			.chain(self.stops.midpoint.iter())
 			.for_each(|x| x.to_bits().hash(state));
-		self.stops.0.iter().for_each(|(_, color)| color.hash(state));
+		self.stops.color.iter().for_each(|color| color.hash(state));
 		self.gradient_type.hash(state);
 	}
 }
@@ -163,9 +276,8 @@ impl std::fmt::Display for Gradient {
 		let round = |x: f64| (x * 1e3).round() / 1e3;
 		let stops = self
 			.stops
-			.0
 			.iter()
-			.map(|(position, color)| format!("[{}%: #{}]", round(position * 100.), color.to_rgba_hex_srgb()))
+			.map(|stop| format!("[{}%: #{}]", round(stop.position * 100.), stop.color.to_rgba_hex_srgb()))
 			.collect::<Vec<_>>()
 			.join(", ");
 		write!(f, "{} Gradient: {stops}", self.gradient_type)
@@ -175,7 +287,18 @@ impl std::fmt::Display for Gradient {
 impl Gradient {
 	/// Constructs a new gradient with the colors at 0 and 1 specified.
 	pub fn new(start: DVec2, start_color: Color, end: DVec2, end_color: Color, gradient_type: GradientType) -> Self {
-		let stops = GradientStops::new(vec![(0., start_color.to_gamma_srgb()), (1., end_color.to_gamma_srgb())]);
+		let stops = GradientStops::new([
+			GradientStop {
+				position: 0.,
+				midpoint: 0.5,
+				color: start_color.to_gamma_srgb(),
+			},
+			GradientStop {
+				position: 1.,
+				midpoint: 0.5,
+				color: end_color.to_gamma_srgb(),
+			},
+		]);
 
 		Self { start, end, stops, gradient_type }
 	}
@@ -183,17 +306,11 @@ impl Gradient {
 	pub fn lerp(&self, other: &Self, time: f64) -> Self {
 		let start = self.start + (other.start - self.start) * time;
 		let end = self.end + (other.end - self.end) * time;
-		let stops = self
-			.stops
-			.0
-			.iter()
-			.zip(other.stops.0.iter())
-			.map(|((a_pos, a_color), (b_pos, b_color))| {
-				let position = a_pos + (b_pos - a_pos) * time;
-				let color = a_color.lerp(b_color, time as f32);
-				(position, color)
-			})
-			.collect::<Vec<_>>();
+		let stops = self.stops.iter().zip(other.stops.iter()).map(|(a, b)| {
+			let position = a.position + (b.position - a.position) * time;
+			let color = a.color.lerp(&b.color, time as f32);
+			GradientStop { position, midpoint: 0.5, color }
+		});
 		let stops = GradientStops::new(stops);
 		let gradient_type = if time < 0.5 { self.gradient_type } else { other.gradient_type };
 
@@ -213,27 +330,19 @@ impl Gradient {
 			return None;
 		}
 
-		// Compute the color of the inserted stop
-		let get_color = |index: usize, time: f64| match (self.stops.0[index].1, self.stops.0.get(index + 1).map(|(_, c)| *c)) {
-			// Lerp between the nearest colors if applicable
-			(a, Some(b)) => a.lerp(
-				&b,
-				((time - self.stops.0[index].0) / self.stops.0.get(index + 1).map(|end| end.0 - self.stops.0[index].0).unwrap_or_default()) as f32,
-			),
-			// Use the start or the end color if applicable
-			(v, _) => v,
-		};
+		// Compute the color of the inserted stop using evaluate (which respects midpoints)
+		let new_color = self.stops.evaluate(new_position);
 
 		// Compute the correct index to keep the positions in order
 		let mut index = 0;
-		while self.stops.0.len() > index && self.stops.0[index].0 <= new_position {
+		while self.stops.len() > index && self.stops.position[index] <= new_position {
 			index += 1;
 		}
 
-		let new_color = get_color(index - 1, new_position);
-
 		// Insert the new stop
-		self.stops.0.insert(index, (new_position, new_color));
+		self.stops.position.insert(index, new_position);
+		self.stops.midpoint.insert(index, 0.5);
+		self.stops.color.insert(index, new_color);
 
 		Some(index)
 	}

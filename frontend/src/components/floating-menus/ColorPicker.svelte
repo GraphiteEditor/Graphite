@@ -57,7 +57,7 @@
 	// Gradient color stops
 	$: gradient = colorOrGradient instanceof Gradient ? colorOrGradient : undefined;
 	let activeIndex = 0 as number | undefined;
-	$: selectedGradientColor = (activeIndex !== undefined && gradient?.atIndex(activeIndex)?.color) || (Color.fromCSS("black") as Color);
+	$: selectedGradientColor = (activeIndex !== undefined && gradient?.stops.color[activeIndex]) || (Color.fromCSS("black") as Color);
 	// Currently viewed color
 	$: color = colorOrGradient instanceof Color ? colorOrGradient : selectedGradientColor;
 	// New color components
@@ -286,8 +286,9 @@
 	function setColor(color?: Color) {
 		const colorToEmit = color || new Color({ h: hue, s: saturation, v: value, a: alpha });
 
-		const stop = gradientSpectrumInputWidget && activeIndex !== undefined && gradient?.atIndex(activeIndex);
-		if (stop) stop.color = colorToEmit;
+		if (gradientSpectrumInputWidget && activeIndex !== undefined && gradient?.stops.position[activeIndex] !== undefined && colorOrGradient instanceof Gradient) {
+			colorOrGradient.stops.color[activeIndex] = colorToEmit;
+		}
 
 		dispatch("colorOrGradient", gradient || colorToEmit);
 	}

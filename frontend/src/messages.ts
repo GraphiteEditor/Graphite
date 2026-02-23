@@ -355,46 +355,44 @@ export type RGBA = { r: number; g: number; b: number; a: number };
 export type RGB = { r: number; g: number; b: number };
 
 export class Gradient {
-	readonly stops!: { position: number; color: Color }[];
+	readonly stops!: { position: number[]; midpoint: number[]; color: Color[] };
 
-	constructor(stops: { position: number; color: Color }[]) {
-		this.stops = stops;
+	constructor(position: number[], midpoint: number[], color: Color[]) {
+		this.stops = { position, midpoint, color };
 	}
 
 	toLinearGradientCSS(): string {
-		if (this.stops.length === 1) {
-			return `linear-gradient(to right, ${this.stops[0].color.toHexOptionalAlpha()} 0%, ${this.stops[0].color.toHexOptionalAlpha()} 100%)`;
+		if (this.stops.position.length === 1) {
+			return `linear-gradient(to right, ${this.stops.color[0].toHexOptionalAlpha()} 0%, ${this.stops.color[0].toHexOptionalAlpha()} 100%)`;
 		}
-		const pieces = this.stops.map((stop) => `${stop.color.toHexOptionalAlpha()} ${stop.position * 100}%`);
+		const pairs = this.stops.position.map((position, index) => ({ position, color: this.stops.color[index] }));
+		const pieces = pairs.map((stop) => `${stop.color.toHexOptionalAlpha()} ${stop.position * 100}%`);
 		return `linear-gradient(to right, ${pieces.join(", ")})`;
 	}
 
 	toLinearGradientCSSNoAlpha(): string {
-		if (this.stops.length === 1) {
-			return `linear-gradient(to right, ${this.stops[0].color.toHexNoAlpha()} 0%, ${this.stops[0].color.toHexNoAlpha()} 100%)`;
+		if (this.stops.position.length === 1) {
+			return `linear-gradient(to right, ${this.stops.color[0].toHexNoAlpha()} 0%, ${this.stops.color[0].toHexNoAlpha()} 100%)`;
 		}
-		const pieces = this.stops.map((stop) => `${stop.color.toHexNoAlpha()} ${stop.position * 100}%`);
+		const pairs = this.stops.position.map((position, index) => ({ position, color: this.stops.color[index] }));
+		const pieces = pairs.map((stop) => `${stop.color.toHexNoAlpha()} ${stop.position * 100}%`);
 		return `linear-gradient(to right, ${pieces.join(", ")})`;
 	}
 
 	firstColor(): Color | undefined {
-		return this.stops[0]?.color;
+		return this.stops.color[0];
 	}
 
 	lastColor(): Color | undefined {
-		return this.stops[this.stops.length - 1]?.color;
-	}
-
-	atIndex(index: number): { position: number; color: Color } | undefined {
-		return this.stops[index];
+		return this.stops.color[this.stops.color.length - 1];
 	}
 
 	colorAtIndex(index: number): Color | undefined {
-		return this.stops[index]?.color;
+		return this.stops.color[index];
 	}
 
 	positionAtIndex(index: number): number | undefined {
-		return this.stops[index]?.position;
+		return this.stops.position[index];
 	}
 }
 
@@ -951,20 +949,19 @@ export class ColorInput extends WidgetProps {
 	// Content
 	@Transform(({ value }) => {
 		if (value instanceof Gradient) return value;
-		const gradient = value["Gradient"];
+		const gradient: Gradient["stops"] | undefined = value["Gradient"];
 		if (gradient) {
-			const stops = gradient.map(([position, color]: [number, color: { red: number; green: number; blue: number; alpha: number }]) => ({
-				position,
-				color: new Color(color.red, color.green, color.blue, color.alpha),
-			}));
-			return new Gradient(stops);
+			return new Gradient(
+				gradient.position,
+				gradient.midpoint,
+				gradient.color.map((color: any) => new Color(color.red, color.green, color.blue, color.alpha)),
+			);
 		}
 
 		if (value instanceof Color) return value;
+
 		const solid = value["Solid"];
-		if (solid) {
-			return new Color(solid.red, solid.green, solid.blue, solid.alpha);
-		}
+		if (solid) return new Color(solid.red, solid.green, solid.blue, solid.alpha);
 
 		return new Color("none");
 	})
@@ -1008,10 +1005,10 @@ export function contrastingOutlineFactor(value: FillChoice, proximityColor: stri
 	};
 
 	if (value instanceof Gradient) {
-		if (value.stops.length === 0) return 0;
+		if (value.stops.color.length === 0) return 0;
 
-		const first = contrast(value.stops[0].color);
-		const last = contrast(value.stops[value.stops.length - 1].color);
+		const first = contrast(value.stops.color[0]);
+		const last = contrast(value.stops.color[value.stops.color.length - 1]);
 
 		return Math.min(first, last);
 	}
