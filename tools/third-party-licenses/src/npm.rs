@@ -41,7 +41,10 @@ struct NpmEntry {
 }
 
 pub fn run(dir: &std::path::Path) -> String {
+	#[cfg(not(target_os = "windows"))]
 	let mut cmd = Command::new("npx");
+	#[cfg(target_os = "windows")]
+	let mut cmd = Command::new("npx.cmd");
 	cmd.args(["license-checker-rseidelsohn", "--json"]);
 	cmd.current_dir(dir);
 
