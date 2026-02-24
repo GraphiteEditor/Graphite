@@ -2125,20 +2125,12 @@ impl Fsm for PathToolFsmState {
 				{
 					// Constrain molding to a single axis when Shift is held
 					let mouse_position = if snap_axis_state {
-						// Calculate the midpoint between the segment's two anchor endpoints for the axis overlay
-						let midpoint = if let Some(vector) = document.network_interface.compute_modified_vector(segment.layer()) {
-							let transform = document.metadata().transform_to_viewport(segment.layer());
-							let points = segment.points();
-							let pos1 = vector.point_domain.position_from_id(points[0]);
-							let pos2 = vector.point_domain.position_from_id(points[1]);
-							if let (Some(p1), Some(p2)) = (pos1, pos2) {
-								(transform.transform_point2(p1) + transform.transform_point2(p2)) / 2.0
-							} else {
-								tool_data.drag_start_pos
-							}
-						} else {
-							tool_data.drag_start_pos
-						};
+						// Calculate the midpoint along the actual bezier curve for the axis overlay.
+						// This uses the curve captured at mouse-down (which includes all prior modifications),
+						// so after a previous bulge the axis origin reflects the updated curve shape.
+						let transform = document.metadata().transform_to_viewport(segment.layer());
+						let curve_midpoint = point_to_dvec2(segment.pathseg().eval(0.5));
+						let midpoint = transform.transform_point2(curve_midpoint);
 						tool_data.snap_axis_origin = Some(midpoint);
 
 						// Constrain mouse movement relative to drag start so molding delta stays correct
