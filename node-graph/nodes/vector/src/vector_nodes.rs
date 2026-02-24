@@ -1197,7 +1197,9 @@ async fn solidify_stroke<T: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #
 				.with_dashes(dash_offset, dash_pattern)
 				.with_miter_limit(miter_limit);
 
-			let stroke_options = kurbo::StrokeOpts::default();
+			// Pick `stable_dash_order` per subpath: closed subpaths use the default merge so the seam-spanning dash matches Vello/SVG renderers, while open subpaths use stable order so dashes are emitted in path-length sequence
+			let stroke_options_default = kurbo::StrokeOpts::default();
+			let stroke_options_stable = kurbo::StrokeOpts::default().stable_dash_order(true);
 
 			// 0.25 is balanced between performace and accuracy of the curve.
 			const STROKE_TOLERANCE: f64 = 0.25;
@@ -1205,7 +1207,10 @@ async fn solidify_stroke<T: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #
 			for mut path in bezpaths {
 				path.apply_affine(Affine::new(stroke.transform.to_cols_array()));
 
-				let mut solidified = kurbo::stroke(path, &stroke_style, &stroke_options, STROKE_TOLERANCE);
+				let is_closed = matches!(path.elements().last(), Some(kurbo::PathEl::ClosePath));
+				let stroke_options = if is_closed { &stroke_options_default } else { &stroke_options_stable };
+
+				let mut solidified = kurbo::stroke(path, &stroke_style, stroke_options, STROKE_TOLERANCE);
 				if stroke.transform.matrix2.determinant() != 0. {
 					solidified.apply_affine(Affine::new(stroke.transform.inverse().to_cols_array()));
 				}

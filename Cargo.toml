@@ -153,7 +153,7 @@ keyboard-types = "0.8"
 url = "2.5"
 tokio = { version = "1.29", features = ["fs", "macros", "io-std", "rt", "rt-multi-thread"] }
 # Linebender ecosystem (BEGIN)
-kurbo = { version = "0.13", features = ["serde"] }
+kurbo = { git = "https://github.com/linebender/kurbo.git", features = ["serde"] }
 vello = "0.8"
 vello_encoding = "0.8"
 resvg = "0.47"
@@ -245,3 +245,8 @@ debug = true
 # Force cargo to use only one version of the dpi crate (vendoring breaks without this)
 dpi = { git = "https://github.com/rust-windowing/winit.git" }
 rfd = { git = "https://github.com/timon-schelling/rfd.git", branch = "graphite" } # TODO: Remove this once https://github.com/PolyMeilex/rfd/pull/317 is merged and released
+download-cef = { git = "https://github.com/timon-schelling/cef-rs.git", branch = "graphite" }
+# Force the Linebender ecosystem (vello, resvg, usvg, parley, etc.) to use the same git version of kurbo/polycool as our workspace
+# TODO: Remove these when the Linebender ecosystem has its next update with Kurbo >0.13.0
+kurbo = { git = "https://github.com/linebender/kurbo.git" }
+polycool = { git = "https://github.com/linebender/kurbo.git" }
