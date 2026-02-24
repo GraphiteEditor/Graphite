@@ -3,7 +3,7 @@
 use core_types::math::bbox::AxisAlignedBbox;
 use core_types::transform::{Footprint, RenderQuality, Transform};
 use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime, OwnedContextImpl};
-use glam::{DVec2, IVec2, UVec2};
+use glam::{DAffine2, DVec2, IVec2, UVec2};
 use graph_craft::document::value::RenderOutput;
 use graph_craft::wasm_application_io::WasmEditorApi;
 use graphene_application_io::{ApplicationIo, ImageTexture};
@@ -47,10 +47,11 @@ pub struct CacheKey {
 	pub animation_time_ms: i64,
 	pub real_time_ms: i64,
 	pub pointer: [u8; 16],
+	pub scale: u64,
 }
 
 impl CacheKey {
-	pub fn new(
+	fn new(
 		render_mode_hash: u64,
 		hide_artboards: bool,
 		for_export: bool,
@@ -61,6 +62,7 @@ impl CacheKey {
 		animation_time: f64,
 		real_time: f64,
 		pointer: Option<DVec2>,
+		scale: f64,
 	) -> Self {
 		let pointer_bytes = pointer
 			.map(|p| {
@@ -81,6 +83,7 @@ impl CacheKey {
 			animation_time_ms: (animation_time * 1000.0).round() as i64,
 			real_time_ms: (real_time * 1000.0).round() as i64,
 			pointer: pointer_bytes,
+			scale: scale.to_bits(),
 		}
 	}
 }
@@ -98,6 +101,7 @@ impl Default for CacheKey {
 			animation_time_ms: 0,
 			real_time_ms: 0,
 			pointer: [0u8; 16],
+			scale: 0,
 		}
 	}
 }
@@ -390,7 +394,12 @@ pub async fn render_output_cache<'a: 'n>(
 	let logical_scale = footprint.decompose_scale().x;
 	let device_scale = render_params.scale;
 	let physical_scale = logical_scale * device_scale;
+
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
+	let viewport_bounds = AxisAlignedBbox {
+		start: viewport_bounds.start,
+		end: viewport_bounds.start + viewport_bounds.size() / device_scale,
+	};
 
 	let cache_key = CacheKey::new(
 		render_params.render_mode as u64,
@@ -403,6 +412,7 @@ pub async fn render_output_cache<'a: 'n>(
 		ctx.try_animation_time().unwrap_or(0.0),
 		ctx.try_real_time().unwrap_or(0.0),
 		ctx.try_pointer_position(),
+		render_params.scale,
 	);
 
 	let max_region_area = editor_api.editor_preferences.max_render_region_area();
