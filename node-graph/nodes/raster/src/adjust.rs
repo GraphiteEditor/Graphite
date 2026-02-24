@@ -41,7 +41,7 @@ mod adjust_std {
 	}
 	impl Adjust<Color> for GradientStops {
 		fn adjust(&mut self, map_fn: impl Fn(&Color) -> Color) {
-			for (_, color) in self.iter_mut() {
+			for color in self.color.iter_mut() {
 				*color = map_fn(color);
 			}
 		}

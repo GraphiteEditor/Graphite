@@ -564,7 +564,7 @@ impl TableRowLayout for GradientStops {
 		"Gradient"
 	}
 	fn identifier(&self) -> String {
-		format!("Gradient ({} stops)", self.0.len())
+		format!("Gradient ({} stops)", self.len())
 	}
 	fn element_widget(&self, _index: usize) -> WidgetInstance {
 		ColorInput::new(FillChoice::Gradient(self.clone()))

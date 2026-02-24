@@ -484,6 +484,7 @@ impl OverlayContext {
 				self.render_context.set_line_width(width);
 				self.render_context.set_stroke_style_str(color);
 				self.render_context.stroke();
+				self.render_context.set_line_width(1.);
 			} else {
 				self.render_context.set_fill_style_str(color);
 				self.render_context.fill();

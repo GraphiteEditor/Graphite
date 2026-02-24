@@ -47,9 +47,9 @@ jobs:
           command: check bans licenses sources
           manifest-path: libraries/rawkit/Cargo.toml
 
-  # Full build and tests on self-hosted runner
+  # Build the web app on the self-hosted wasm runner
   build:
-    runs-on: self-hosted
+    runs-on: [self-hosted, target/wasm]
     permissions:
       contents: write
       deployments: write
@@ -120,6 +120,32 @@ jobs:
         run: |
           cd frontend
           npm run lint
+
+  # Run the Rust tests on the self-hosted native runner
+  test:
+    runs-on: [self-hosted, target/native]
+    env:
+      RUSTC_WRAPPER: /usr/bin/sccache
+      CARGO_INCREMENTAL: 0
+      SCCACHE_DIR: /var/lib/github-actions/.cache
+
+    steps:
+      - name: 📥 Clone and checkout repository
+        uses: actions/checkout@v3
+
+      - name: 🚦 Check if CI can be skipped
+        id: skip-check
+        uses: cariad-tech/merge-queue-ci-skipper@main
+
+      - name: 🦀 Install the latest Rust
+        if: steps.skip-check.outputs.skip-check != 'true'
+        run: |
+          rustup update stable
+
+      - name: 🦀 Fetch Rust dependencies
+        if: steps.skip-check.outputs.skip-check != 'true'
+        run: |
+          cargo fetch --locked
 
       - name: 🧪 Run Rust tests
         if: steps.skip-check.outputs.skip-check != 'true'

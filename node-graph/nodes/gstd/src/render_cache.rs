@@ -35,9 +35,10 @@ pub struct CachedRegion {
 	memory_size: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub struct CacheKey {
 	pub render_mode_hash: u64,
+	pub scale: u64,
 	pub hide_artboards: bool,
 	pub for_export: bool,
 	pub for_mask: bool,
@@ -50,8 +51,10 @@ pub struct CacheKey {
 }
 
 impl CacheKey {
-	pub fn new(
+	#[expect(clippy::too_many_arguments)]
+	fn new(
 		render_mode_hash: u64,
+		scale: f64,
 		hide_artboards: bool,
 		for_export: bool,
 		for_mask: bool,
@@ -72,6 +75,7 @@ impl CacheKey {
 			.unwrap_or([0u8; 16]);
 		Self {
 			render_mode_hash,
+			scale: scale.to_bits(),
 			hide_artboards,
 			for_export,
 			for_mask,
@@ -81,23 +85,6 @@ impl CacheKey {
 			animation_time_ms: (animation_time * 1000.0).round() as i64,
 			real_time_ms: (real_time * 1000.0).round() as i64,
 			pointer: pointer_bytes,
-		}
-	}
-}
-
-impl Default for CacheKey {
-	fn default() -> Self {
-		Self {
-			render_mode_hash: 0,
-			hide_artboards: false,
-			for_export: false,
-			for_mask: false,
-			thumbnail: false,
-			aligned_strokes: false,
-			override_paint_order: false,
-			animation_time_ms: 0,
-			real_time_ms: 0,
-			pointer: [0u8; 16],
 		}
 	}
 }
@@ -390,10 +377,16 @@ pub async fn render_output_cache<'a: 'n>(
 	let logical_scale = footprint.decompose_scale().x;
 	let device_scale = render_params.scale;
 	let physical_scale = logical_scale * device_scale;
+
 	let viewport_bounds = footprint.viewport_bounds_in_local_space();
+	let viewport_bounds = AxisAlignedBbox {
+		start: viewport_bounds.start,
+		end: viewport_bounds.start + viewport_bounds.size() / device_scale,
+	};
 
 	let cache_key = CacheKey::new(
 		render_params.render_mode as u64,
+		render_params.scale,
 		render_params.hide_artboards,
 		render_params.for_export,
 		render_params.for_mask,

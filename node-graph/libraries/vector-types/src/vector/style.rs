@@ -51,7 +51,13 @@ impl Fill {
 			Self::None => Color::BLACK,
 			Self::Solid(color) => *color,
 			// TODO: Should correctly sample the gradient the equation here: https://svgwg.org/svg2-draft/pservers.html#Gradients
-			Self::Gradient(Gradient { stops, .. }) => stops.0[0].1,
+			Self::Gradient(Gradient { stops, .. }) => {
+				if stops.is_empty() {
+					Color::BLACK
+				} else {
+					stops.color[0]
+				}
+			}
 		}
 	}
 
@@ -64,13 +70,13 @@ impl Fill {
 			(Self::Solid(a), Self::Solid(b)) => Self::Solid(a.lerp(b, time as f32)),
 			(Self::Solid(a), Self::Gradient(b)) => {
 				let mut solid_to_gradient = b.clone();
-				solid_to_gradient.stops.0.iter_mut().for_each(|(_, color)| *color = *a);
+				solid_to_gradient.stops.color.iter_mut().for_each(|color| *color = *a);
 				let a = &solid_to_gradient;
 				Self::Gradient(a.lerp(b, time))
 			}
 			(Self::Gradient(a), Self::Solid(b)) => {
 				let mut gradient_to_solid = a.clone();
-				gradient_to_solid.stops.0.iter_mut().for_each(|(_, color)| *color = *b);
+				gradient_to_solid.stops.color.iter_mut().for_each(|color| *color = *b);
 				let b = &gradient_to_solid;
 				Self::Gradient(a.lerp(b, time))
 			}
@@ -99,7 +105,7 @@ impl Fill {
 	pub fn is_opaque(&self) -> bool {
 		match self {
 			Fill::Solid(color) => color.is_opaque(),
-			Fill::Gradient(gradient) => gradient.stops.iter().all(|(_, color)| color.is_opaque()),
+			Fill::Gradient(gradient) => gradient.stops.color.iter().all(|color| color.is_opaque()),
 			Fill::None => true,
 		}
 	}
