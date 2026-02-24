@@ -550,6 +550,7 @@ fn clamp<T: std::cmp::PartialOrd>(
 	min: T,
 	/// The right (greater) side of the range. The output is never greater than this number.
 	#[implementations(f64, f32, u32, &str)]
+	#[default(1)]
 	max: T,
 ) -> T {
 	let (min, max) = if min < max { (min, max) } else { (max, min) };
@@ -705,6 +706,7 @@ fn logical_or(
 	/// One of the two boolean values, either of which may be true for the node to output true.
 	value: bool,
 	/// The other of the two boolean values, either of which may be true for the node to output true.
+	#[expose]
 	other_value: bool,
 ) -> bool {
 	value || other_value
@@ -717,6 +719,7 @@ fn logical_and(
 	/// One of the two boolean values, both of which must be true for the node to output true.
 	value: bool,
 	/// The other of the two boolean values, both of which must be true for the node to output true.
+	#[expose]
 	other_value: bool,
 ) -> bool {
 	value && other_value

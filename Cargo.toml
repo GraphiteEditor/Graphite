@@ -31,6 +31,7 @@ members = [
 	"node-graph/nodes/raster/shaders/entrypoint",
 	"node-graph/nodes/text",
 	"node-graph/nodes/transform",
+	"node-graph/nodes/repeat",
 	"node-graph/nodes/vector",
 	"node-graph/graph-craft",
 	"node-graph/graphene-cli",
@@ -116,6 +117,7 @@ graphic-nodes = { path = "node-graph/nodes/graphic" }
 text-nodes = { path = "node-graph/nodes/text" }
 transform-nodes = { path = "node-graph/nodes/transform" }
 vector-nodes = { path = "node-graph/nodes/vector" }
+repeat-nodes = { path = "node-graph/nodes/repeat" }
 math-nodes = { path = "node-graph/nodes/math" }
 path-bool-nodes = { path = "node-graph/nodes/path-bool" }
 graph-craft = { path = "node-graph/graph-craft" }
@@ -179,7 +181,7 @@ web-sys = { version = "=0.3.77", features = [
 winit = { git = "https://github.com/rust-windowing/winit.git" }
 keyboard-types = "0.8"
 url = "2.5"
-tokio = { version = "1.29", features = ["fs", "macros", "io-std", "rt"] }
+tokio = { version = "1.29", features = ["fs", "macros", "io-std", "rt", "rt-multi-thread"] }
 # Linebender ecosystem (BEGIN)
 kurbo = { version = "0.12", features = ["serde"] }
 vello = { git = "https://github.com/linebender/vello" }
@@ -244,6 +246,7 @@ spin = "0.10"
 clap = "4.5"
 spirv-std = { git = "https://github.com/Firestar99/rust-gpu-new", rev = "c12f216121820580731440ee79ebc7403d6ea04f", features = ["bytemuck"] }
 cargo-gpu = { git = "https://github.com/Firestar99/cargo-gpu", rev = "3952a22d16edbd38689f3a876e417899f21e1fe7", default-features = false }
+qrcodegen = "1.8"
 
 [workspace.lints.rust]
 unexpected_cfgs = { level = "allow", check-cfg = ['cfg(target_arch, values("spirv"))'] }

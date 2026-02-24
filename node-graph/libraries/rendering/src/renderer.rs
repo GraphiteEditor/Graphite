@@ -84,7 +84,7 @@ impl SvgRender {
 		let (x, y) = bounds_min.into();
 		let (size_x, size_y) = (bounds_max - bounds_min).into();
 		let defs = &self.svg_defs;
-		let svg_header = format!(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{x} {y} {size_x} {size_y}"><defs>{defs}</defs>"#,);
+		let svg_header = format!(r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:graphite="https://graphite.art" viewBox="{x} {y} {size_x} {size_y}"><defs>{defs}</defs>"#,);
 		self.svg.insert(0, svg_header.into());
 		self.svg.push("</svg>".into());
 	}
@@ -99,7 +99,7 @@ impl SvgRender {
 		let matrix = format_transform_matrix(transform);
 		let transform = if matrix.is_empty() { String::new() } else { format!(r#" transform="{matrix}""#) };
 
-		let svg_header = format!(r#"<svg xmlns="http://www.w3.org/2000/svg" {view_box}><defs>{defs}</defs><g{transform}>"#);
+		let svg_header = format!(r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:graphite="https://graphite.art" {view_box}><defs>{defs}</defs><g{transform}>"#);
 		self.svg.insert(0, svg_header.into());
 		self.svg.push("</g></svg>".into());
 	}
@@ -182,6 +182,7 @@ pub struct RenderParams {
 	pub alignment_parent_transform: Option<DAffine2>,
 	pub aligned_strokes: bool,
 	pub override_paint_order: bool,
+	pub artboard_background: Option<Color>,
 }
 
 impl Hash for RenderParams {
@@ -198,6 +199,7 @@ impl Hash for RenderParams {
 		}
 		self.aligned_strokes.hash(state);
 		self.override_paint_order.hash(state);
+		self.artboard_background.hash(state);
 	}
 }
 
@@ -235,6 +237,26 @@ fn max_scale(transform: DAffine2) -> f64 {
 	(sx + sy).sqrt()
 }
 
+pub fn black_or_white_for_best_contrast(background: Option<Color>) -> Color {
+	let Some(bg) = background else { return core_types::consts::LAYER_OUTLINE_STROKE_COLOR };
+
+	let alpha = bg.a();
+
+	// Un-premultiply, then convert to gamma sRGB
+	let srgb = if alpha > f32::EPSILON {
+		Color::from_rgbaf32_unchecked(bg.r() / alpha, bg.g() / alpha, bg.b() / alpha, alpha).to_gamma_srgb()
+	} else {
+		Color::TRANSPARENT
+	};
+
+	// Composite over black in sRGB space, then convert back to linear for luminance
+	let composited = Color::from_rgbaf32_unchecked(srgb.r() * alpha, srgb.g() * alpha, srgb.b() * alpha, 1.).to_linear_srgb();
+
+	let threshold = (1.05 * 0.05f32).sqrt() - 0.05;
+
+	if composited.luminance_srgb() > threshold { Color::BLACK } else { Color::WHITE }
+}
+
 pub fn to_transform(transform: DAffine2) -> usvg::Transform {
 	let cols = transform.to_cols_array();
 	usvg::Transform::from_row(cols[0] as f32, cols[1] as f32, cols[2] as f32, cols[3] as f32, cols[4] as f32, cols[5] as f32)
@@ -247,8 +269,9 @@ pub struct RenderMetadata {
 	pub upstream_footprints: HashMap<NodeId, Footprint>,
 	pub local_transforms: HashMap<NodeId, DAffine2>,
 	pub first_element_source_id: HashMap<NodeId, Option<NodeId>>,
-	pub click_targets: HashMap<NodeId, Vec<ClickTarget>>,
+	pub click_targets: HashMap<NodeId, Vec<Arc<ClickTarget>>>,
 	pub clip_targets: HashSet<NodeId>,
+	pub vector_data: HashMap<NodeId, Arc<Vector>>,
 }
 
 impl RenderMetadata {
@@ -256,6 +279,26 @@ impl RenderMetadata {
 		for value in self.upstream_footprints.values_mut() {
 			value.transform = transform * value.transform;
 		}
+	}
+
+	/// Merge another RenderMetadata into this one.
+	/// Values from `other` take precedence for duplicate keys.
+	pub fn merge(&mut self, other: &RenderMetadata) {
+		// Destructure Self to get errors when new fields are added to the struct
+		let RenderMetadata {
+			upstream_footprints,
+			local_transforms,
+			first_element_source_id,
+			click_targets,
+			clip_targets,
+			vector_data,
+		} = self;
+		upstream_footprints.extend(other.upstream_footprints.iter());
+		local_transforms.extend(other.local_transforms.iter());
+		first_element_source_id.extend(other.first_element_source_id.iter());
+		click_targets.extend(other.click_targets.iter().map(|(k, v)| (*k, v.clone())));
+		clip_targets.extend(other.clip_targets.iter());
+		vector_data.extend(other.vector_data.iter().map(|(id, data)| (*id, data.clone())));
 	}
 }
 
@@ -440,7 +483,9 @@ impl Render for Artboard {
 			},
 			// Artwork content
 			|render| {
-				self.content.render_svg(render, render_params);
+				let mut render_params = render_params.clone();
+				render_params.artboard_background = Some(self.background);
+				self.content.render_svg(render, &render_params);
 			},
 		);
 	}
@@ -462,7 +507,9 @@ impl Render for Artboard {
 		}
 		// Since the content's transform is right multiplied in when rendering the content, we just need to right multiply by the artboard offset here.
 		let child_transform = transform * DAffine2::from_translation(self.location.as_dvec2());
-		self.content.render_to_vello(scene, child_transform, context, render_params);
+		let mut render_params = render_params.clone();
+		render_params.artboard_background = Some(self.background);
+		self.content.render_to_vello(scene, child_transform, context, &render_params);
 		if self.clip {
 			scene.pop_layer();
 		}
@@ -471,7 +518,7 @@ impl Render for Artboard {
 	fn collect_metadata(&self, metadata: &mut RenderMetadata, mut footprint: Footprint, element_id: Option<NodeId>) {
 		if let Some(element_id) = element_id {
 			let subpath = Subpath::new_rectangle(DVec2::ZERO, self.dimensions.as_dvec2());
-			metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.)]);
+			metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.).into()]);
 			metadata.upstream_footprints.insert(element_id, footprint);
 			metadata.local_transforms.insert(element_id, DAffine2::from_translation(self.location.as_dvec2()));
 			if self.clip {
@@ -666,7 +713,7 @@ impl Render for Table<Graphic> {
 				all_upstream_click_targets.extend(new_click_targets);
 			}
 
-			metadata.click_targets.insert(element_id, all_upstream_click_targets);
+			metadata.click_targets.insert(element_id, all_upstream_click_targets.into_iter().map(|x| x.into()).collect());
 		}
 	}
 
@@ -881,7 +928,7 @@ impl Render for Table<Vector> {
 	}
 
 	fn render_to_vello(&self, scene: &mut Scene, parent_transform: DAffine2, _context: &mut RenderContext, render_params: &RenderParams) {
-		use core_types::consts::{LAYER_OUTLINE_STROKE_COLOR, LAYER_OUTLINE_STROKE_WEIGHT};
+		use core_types::consts::LAYER_OUTLINE_STROKE_WEIGHT;
 		use graphic_types::vector_types::vector::style::{GradientType, StrokeCap, StrokeJoin};
 		use vello::kurbo::{Cap, Join};
 		use vello::peniko;
@@ -950,9 +997,9 @@ impl Render for Table<Vector> {
 				}
 				Fill::Gradient(gradient) => {
 					let mut stops = peniko::ColorStops::new();
-					for &(offset, color) in &gradient.stops {
+					for (position, color, _) in gradient.stops.interpolated_samples() {
 						stops.push(peniko::ColorStop {
-							offset: offset as f32,
+							offset: position as f32,
 							color: peniko::color::DynamicColor::from_alpha_color(peniko::Color::new([color.r(), color.g(), color.b(), color.a()])),
 						});
 					}
@@ -1036,13 +1083,14 @@ impl Render for Table<Vector> {
 						StrokeJoin::Bevel => Join::Bevel,
 						StrokeJoin::Round => Join::Round,
 					};
+					let dash_pattern = stroke.dash_lengths.iter().map(|l| l.max(0.)).collect();
 					let stroke = kurbo::Stroke {
 						width: stroke.weight * width_scale,
 						miter_limit: stroke.join_miter_limit,
 						join,
 						start_cap: cap,
 						end_cap: cap,
-						dash_pattern: stroke.dash_lengths.into(),
+						dash_pattern,
 						dash_offset: stroke.dash_offset,
 					};
 
@@ -1064,12 +1112,9 @@ impl Render for Table<Vector> {
 						dash_pattern: Default::default(),
 						dash_offset: 0.,
 					};
-					let outline_color = peniko::Color::new([
-						LAYER_OUTLINE_STROKE_COLOR.r(),
-						LAYER_OUTLINE_STROKE_COLOR.g(),
-						LAYER_OUTLINE_STROKE_COLOR.b(),
-						LAYER_OUTLINE_STROKE_COLOR.a(),
-					]);
+
+					let outline_color = black_or_white_for_best_contrast(render_params.artboard_background);
+					let outline_color = peniko::Color::new([outline_color.r(), outline_color.g(), outline_color.b(), outline_color.a()]);
 
 					scene.stroke(&outline_stroke, kurbo::Affine::new(element_transform.to_cols_array()), outline_color, None, &path);
 				}
@@ -1172,7 +1217,7 @@ impl Render for Table<Vector> {
 						let anchor = vector.point_domain.position_from_id(point_id).unwrap_or_default();
 						let point = FreePoint::new(point_id, anchor);
 
-						Some(ClickTarget::new_with_free_point(point))
+						Some(ClickTarget::new_with_free_point(point).into())
 					} else {
 						None
 					}
@@ -1181,11 +1226,13 @@ impl Render for Table<Vector> {
 				let click_targets = vector
 					.stroke_bezier_paths()
 					.map(fill)
-					.map(|subpath| ClickTarget::new_with_subpath(subpath, stroke_width))
+					.map(|subpath| ClickTarget::new_with_subpath(subpath, stroke_width).into())
 					.chain(single_anchors_targets.into_iter())
-					.collect::<Vec<ClickTarget>>();
+					.collect::<Vec<_>>();
 
 				metadata.click_targets.entry(element_id).or_insert(click_targets);
+				// Store the full vector data including segment IDs for accurate segment modification
+				metadata.vector_data.entry(element_id).or_insert_with(|| Arc::new(vector.clone()));
 			}
 
 			if let Some(upstream_nested_layers) = &vector.upstream_data {
@@ -1365,7 +1412,7 @@ impl Render for Table<Raster<CPU>> {
 		let Some(element_id) = element_id else { return };
 		let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
 
-		metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.)]);
+		metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.).into()]);
 		metadata.upstream_footprints.insert(element_id, footprint);
 		// TODO: Find a way to handle more than one row of the raster table
 		if let Some(raster) = self.iter().next() {
@@ -1425,7 +1472,7 @@ impl Render for Table<Raster<GPU>> {
 		let Some(element_id) = element_id else { return };
 		let subpath = Subpath::new_rectangle(DVec2::ZERO, DVec2::ONE);
 
-		metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.)]);
+		metadata.click_targets.insert(element_id, vec![ClickTarget::new_with_subpath(subpath, 0.).into()]);
 		metadata.upstream_footprints.insert(element_id, footprint);
 		// TODO: Find a way to handle more than one row of the raster table
 		if let Some(raster) = self.iter().next() {
@@ -1510,10 +1557,13 @@ impl Render for Table<GradientStops> {
 				attributes.push("points", format!("{max},{max} -{max},{max} -{max},-{max} {max},-{max}"));
 
 				let mut stop_string = String::new();
-				for (position, color) in row.element.0.iter() {
+				for (position, color, original_midpoint) in row.element.interpolated_samples() {
 					let _ = write!(stop_string, r##"<stop offset="{}" stop-color="#{}""##, position, color.to_rgb_hex_srgb_from_gamma());
 					if color.a() < 1. {
 						let _ = write!(stop_string, r#" stop-opacity="{}""#, color.a());
+					}
+					if let Some(midpoint) = original_midpoint {
+						let _ = write!(stop_string, r#" graphite:midpoint="{}""#, (midpoint * 1000.).round() / 1000.);
 					}
 					stop_string.push_str(" />");
 				}
@@ -1572,7 +1622,7 @@ impl Render for Table<GradientStops> {
 			let blend_mode = alpha_blending.blend_mode.to_peniko();
 			let opacity = alpha_blending.opacity(render_params.for_mask);
 
-			let color = row.element.0.first().map(|stop| stop.1).unwrap_or(Color::MAGENTA);
+			let color = row.element.color.first().copied().unwrap_or(Color::MAGENTA);
 			let vello_color = peniko::Color::new([color.r(), color.g(), color.b(), color.a()]);
 
 			let rect = kurbo::Rect::from_origin_size(kurbo::Point::ZERO, kurbo::Size::new(1., 1.));

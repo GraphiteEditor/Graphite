@@ -13,7 +13,7 @@ impl DialogLayoutHolder for AboutGraphiteDialog {
 	const TITLE: &'static str = "About Graphite";
 
 	fn layout_buttons(&self) -> Layout {
-		let widgets = vec![TextButton::new("OK").emphasized(true).on_update(|_| FrontendMessage::DisplayDialogDismiss.into()).widget_instance()];
+		let widgets = vec![TextButton::new("OK").emphasized(true).on_update(|_| FrontendMessage::DialogClose.into()).widget_instance()];
 
 		Layout(vec![LayoutGroup::Row { widgets }])
 	}

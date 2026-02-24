@@ -1,10 +1,16 @@
 name: Build Linux Bundle
 
 on:
-  workflow_dispatch: {}
   push:
     branches:
       - master
+  workflow_dispatch:
+    inputs:
+      push_to_cache:
+        description: "Push to Nix Cache"
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   build:
@@ -14,10 +20,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: DeterminateSystems/nix-installer-action@main
-      - uses: DeterminateSystems/magic-nix-cache-action@main
 
       - name: Free disk space
         run: sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
+
+      - name: Build Nix Package
+        run: nix build .nix --no-link --print-out-paths
+
+      - name: Push to Nix Cache
+        if: github.ref == 'refs/heads/master' || inputs.push_to_cache == true
+        env:
+          NIX_CACHE_AUTH_TOKEN: ${{ secrets.NIX_CACHE_AUTH_TOKEN }}
+        run: |
+          nix run nixpkgs#cachix -- authtoken $NIX_CACHE_AUTH_TOKEN
+          nix build .nix --no-link --print-out-paths | nix run nixpkgs#cachix -- push graphite
 
       - name: Build Linux Bundle
         run: nix build .nix#graphite-bundle.tar.xz && cp ./result ./graphite-linux-bundle.tar.xz
@@ -49,11 +65,11 @@ jobs:
 
           flatpak-builder --user --force-clean --install-deps-from=flathub --repo=repo build ./manifest.json
 
-          flatpak build-bundle repo graphite.flatpak art.graphite.Graphite --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo
+          flatpak build-bundle repo Graphite.flatpak art.graphite.Graphite --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo
 
       - name: Upload Flatpak
         uses: actions/upload-artifact@v4
         with:
           name: graphite-flatpak
-          path: .flatpak/graphite.flatpak
+          path: .flatpak/Graphite.flatpak
           compression-level: 0

@@ -31,6 +31,7 @@ winit = { workspace = true, features = [
 ] }
 thiserror = { workspace = true }
 futures = { workspace = true }
+tokio = { workspace = true }
 cef = { workspace = true }
 cef-dll-sys = { workspace = true }
 tracing-subscriber = { workspace = true }

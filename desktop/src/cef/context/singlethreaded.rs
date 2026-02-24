@@ -42,6 +42,10 @@ impl CefContext for SingleThreadedCefContext {
 
 impl Drop for SingleThreadedCefContext {
 	fn drop(&mut self) {
+		tracing::debug!("Shutting down CEF");
+
+		// CEF wants us to close the browser before shutting down, otherwise it may run longer that necessary.
+		self.browser.host().unwrap().close_browser(1);
 		cef::shutdown();
 
 		// Sometimes some CEF processes still linger at this point and hold file handles to the cache directory.

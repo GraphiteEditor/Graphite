@@ -1,12 +1,14 @@
 use rand::Rng;
 use rfd::AsyncFileDialog;
 use std::fs;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender, SyncSender};
 use std::thread;
 use std::time::{Duration, Instant};
 use winit::application::ApplicationHandler;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
-use winit::event::{ButtonSource, ElementState, MouseButton, WindowEvent};
+use winit::event::{ButtonSource, ElementState, MouseButton, StartCause, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
 use winit::window::WindowId;
 
@@ -15,6 +17,7 @@ use crate::cli::Cli;
 use crate::consts::CEF_MESSAGE_LOOP_MAX_ITERATIONS;
 use crate::event::{AppEvent, AppEventScheduler};
 use crate::persist::PersistentData;
+use crate::preferences;
 use crate::render::{RenderError, RenderState};
 use crate::window::Window;
 use crate::wrapper::messages::{DesktopFrontendMessage, DesktopWrapperMessage, InputMessage, MouseKeys, MouseState};
@@ -44,6 +47,7 @@ pub(crate) struct App {
 	persistent_data: PersistentData,
 	cli: Cli,
 	startup_time: Option<Instant>,
+	exiting: Arc<AtomicBool>,
 	exit_reason: ExitReason,
 }
 
@@ -67,13 +71,20 @@ impl App {
 		})
 		.expect("Error setting Ctrl-C handler");
 
+		let exiting = Arc::new(AtomicBool::new(false));
+
 		let rendering_app_event_scheduler = app_event_scheduler.clone();
 		let (start_render_sender, start_render_receiver) = std::sync::mpsc::sync_channel(1);
+		let exiting_clone = exiting.clone();
 		std::thread::spawn(move || {
+			let runtime = tokio::runtime::Runtime::new().unwrap();
 			loop {
-				let result = futures::executor::block_on(DesktopWrapper::execute_node_graph());
+				let result = runtime.block_on(DesktopWrapper::execute_node_graph());
 				rendering_app_event_scheduler.schedule(AppEvent::NodeGraphExecutionResult(result));
-				let _ = start_render_receiver.recv();
+				let _ = start_render_receiver.recv_timeout(Duration::from_millis(10));
+				if exiting_clone.load(Ordering::Relaxed) {
+					break;
+				}
 			}
 		});
 
@@ -105,8 +116,9 @@ impl App {
 			web_communication_startup_buffer: Vec::new(),
 			persistent_data,
 			cli,
-			exit_reason: ExitReason::Shutdown,
 			startup_time: None,
+			exiting,
+			exit_reason: ExitReason::Shutdown,
 		}
 	}
 
@@ -116,6 +128,10 @@ impl App {
 	}
 
 	fn exit(&mut self, reason: Option<ExitReason>) {
+		if self.exiting.swap(true, Ordering::Relaxed) {
+			return;
+		}
+		let _ = self.start_render_sender.send(());
 		if let Some(reason) = reason {
 			self.exit_reason = reason;
 		}
@@ -259,6 +275,9 @@ impl App {
 				if let Some(render_state) = &mut self.render_state {
 					render_state.set_overlays_scene(scene);
 				}
+				if let Some(window) = &self.window {
+					window.request_redraw();
+				}
 			}
 			DesktopFrontendMessage::PersistenceWriteDocument { id, document } => {
 				self.persistent_data.write_document(id, document);
@@ -273,10 +292,10 @@ impl App {
 				self.persistent_data.set_document_order(ids);
 			}
 			DesktopFrontendMessage::PersistenceWritePreferences { preferences } => {
-				self.persistent_data.write_preferences(preferences);
+				preferences::write(preferences);
 			}
 			DesktopFrontendMessage::PersistenceLoadPreferences => {
-				let preferences = self.persistent_data.load_preferences();
+				let preferences = preferences::read();
 				let message = DesktopWrapperMessage::LoadPreferences { preferences };
 				responses.push(message);
 			}
@@ -393,6 +412,9 @@ impl App {
 				if let Some(window) = &self.window {
 					window.show_all();
 				}
+			}
+			DesktopFrontendMessage::Restart => {
+				self.exit(Some(ExitReason::Restart));
 			}
 		}
 	}
@@ -631,10 +653,17 @@ impl ApplicationHandler for App {
 		}
 	}
 
+	fn new_events(&mut self, _event_loop: &dyn ActiveEventLoop, cause: winit::event::StartCause) {
+		if let StartCause::ResumeTimeReached { .. } = cause
+			&& let Some(window) = &self.window
+		{
+			window.request_redraw();
+		}
+	}
+
 	fn about_to_wait(&mut self, event_loop: &dyn ActiveEventLoop) {
 		// Set a timeout in case we miss any cef schedule requests
-		let timeout = Instant::now() + Duration::from_millis(10);
-		let wait_until = timeout.min(self.cef_schedule.unwrap_or(timeout));
+		let mut wait_until = Instant::now() + Duration::from_millis(10);
 		if let Some(schedule) = self.cef_schedule
 			&& schedule < Instant::now()
 		{
@@ -643,16 +672,15 @@ impl ApplicationHandler for App {
 			for _ in 0..CEF_MESSAGE_LOOP_MAX_ITERATIONS {
 				self.cef_context.work();
 			}
+		} else if let Some(cef_schedule) = self.cef_schedule {
+			wait_until = wait_until.min(cef_schedule);
 		}
-		if let Some(window) = &self.window.as_ref() {
-			window.request_redraw();
-		}
-
 		event_loop.set_control_flow(ControlFlow::WaitUntil(wait_until));
 	}
 }
 
 pub(crate) enum ExitReason {
 	Shutdown,
+	Restart,
 	UiAccelerationFailure,
 }
