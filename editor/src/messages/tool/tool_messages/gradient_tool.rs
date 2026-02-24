@@ -603,7 +603,8 @@ impl Fsm for GradientToolFsmState {
 				let gradient_state = if dragging {
 					GradientToolFsmState::Drawing
 				} else {
-					let selected_layer = document.click(input, viewport);
+					let document_mouse = document.metadata().document_to_viewport.inverse().transform_point2(mouse);
+					let selected_layer = document.click_based_on_position(document_mouse);
 
 					// Apply the gradient to the selected layer
 					if let Some(layer) = selected_layer {
