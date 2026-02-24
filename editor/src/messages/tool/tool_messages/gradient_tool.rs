@@ -1,5 +1,8 @@
 use super::tool_prelude::*;
-use crate::consts::{COLOR_OVERLAY_BLUE, DRAG_THRESHOLD, LINE_ROTATE_SNAP_ANGLE, MANIPULATOR_GROUP_MARKER_SIZE, SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD};
+use crate::consts::{
+	COLOR_OVERLAY_BLUE, DRAG_THRESHOLD, GRADIENT_MIDPOINT_DIAMOND_RADIUS, GRADIENT_MIDPOINT_MAX, GRADIENT_MIDPOINT_MIN, GRADIENT_STOP_MIN_VIEWPORT_GAP, LINE_ROTATE_SNAP_ANGLE,
+	MANIPULATOR_GROUP_MARKER_SIZE, SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD,
+};
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
@@ -29,6 +32,7 @@ pub enum GradientToolMessage {
 
 	// Tool-specific messages
 	DeleteStop,
+	DoubleClick,
 	InsertStop,
 	PointerDown,
 	PointerMove { constrain_axis: Key },
@@ -113,6 +117,7 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 		PointerDown,
 		PointerUp,
 		PointerMove,
+		DoubleClick,
 		Abort,
 		DeleteStop,
 	);
@@ -163,12 +168,18 @@ fn gradient_space_transform(layer: LayerNodeIdentifier, document: &DocumentMessa
 	multiplied * bound_transform
 }
 
+/// Whether two adjacent stops are too closely packed in viewport space for a midpoint diamond to be shown or interacted with.
+fn midpoint_hidden_by_proximity(left_stop_pos: f64, right_stop_pos: f64, viewport_line_length: f64) -> bool {
+	(right_stop_pos - left_stop_pos) * viewport_line_length < GRADIENT_STOP_MIN_VIEWPORT_GAP * 2.
+}
+
 #[derive(PartialEq, Eq, Clone, Copy, Debug, Default)]
 pub enum GradientDragTarget {
 	Start,
 	#[default]
 	End,
-	Step(usize),
+	Stop(usize),
+	Midpoint(usize),
 	New,
 }
 
@@ -195,6 +206,23 @@ fn calculate_insertion(start: DVec2, end: DVec2, stops: &GradientStops, mouse: D
 		}
 		if start.distance_squared(mouse) < (MANIPULATOR_GROUP_MARKER_SIZE * 2.).powi(2) || end.distance_squared(mouse) < (MANIPULATOR_GROUP_MARKER_SIZE * 2.).powi(2) {
 			return None;
+		}
+
+		// Don't insert when clicking near a (currently visible) midpoint diamond
+		let line_length = start.distance(end);
+		for i in 0..stops.position.len().saturating_sub(1) {
+			let left = stops.position[i];
+			let right = stops.position[i + 1];
+
+			if midpoint_hidden_by_proximity(left, right, line_length) {
+				continue;
+			}
+
+			let midpoint_pos = left + stops.midpoint[i] * (right - left);
+			let midpoint_viewport = start.lerp(end, midpoint_pos);
+			if midpoint_viewport.distance_squared(mouse) < GRADIENT_MIDPOINT_DIAMOND_RADIUS.powi(2) {
+				return None;
+			}
 		}
 
 		return Some(projection);
@@ -278,10 +306,17 @@ impl SelectedGradient {
 				self.gradient.start = self.transform.inverse().transform_point2(drag_start);
 				self.gradient.end = transformed_mouse;
 			}
-			GradientDragTarget::Step(s) => {
+			GradientDragTarget::Stop(s) => {
 				let document_to_viewport = snap_data.document.metadata().document_to_viewport;
 
 				let (viewport_start, viewport_end) = (self.transform.transform_point2(self.gradient.start), self.transform.transform_point2(self.gradient.end));
+
+				let line_length = viewport_start.distance(viewport_end);
+				if line_length < f64::EPSILON {
+					self.render_gradient(responses);
+					return;
+				}
+
 				let (document_start, document_end) = (
 					document_to_viewport.inverse().transform_point2(viewport_start),
 					document_to_viewport.inverse().transform_point2(viewport_end),
@@ -306,16 +341,90 @@ impl SelectedGradient {
 				snap_manager.update_indicator(snapped);
 
 				// Calculate the new position by finding the closest point on the line
-				let new_pos = ((viewport_end - viewport_start).angle_to(projected_mouse - viewport_start)).cos() * viewport_start.distance(projected_mouse) / viewport_start.distance(viewport_end);
+				let new_pos = ((viewport_end - viewport_start).angle_to(projected_mouse - viewport_start)).cos() * viewport_start.distance(projected_mouse) / line_length;
 
-				// Should not go off end but can swap
-				let clamped = new_pos.clamp(0., 1.);
+				if !new_pos.is_finite() {
+					self.render_gradient(responses);
+					return;
+				}
+
+				// Clamp within neighboring stops with a minimum viewport-space gap away from the neighboring stops on either end
+				let min_gap = GRADIENT_STOP_MIN_VIEWPORT_GAP / line_length;
+				let initial_pos = self.initial_gradient.stops.position[s];
+
+				let left_bound = if s > 0 {
+					let left_neighbor = self.gradient.stops.position[s - 1];
+					(left_neighbor + min_gap).min(initial_pos)
+				} else {
+					0.
+				};
+				let right_bound = if s + 1 < self.gradient.stops.len() {
+					let right_neighbor = self.gradient.stops.position[s + 1];
+					(right_neighbor - min_gap).max(initial_pos)
+				} else {
+					1.
+				};
+
+				let clamped = new_pos.clamp(left_bound, right_bound);
 				self.gradient.stops.position[s] = clamped;
 				let new_position = self.gradient.stops.position[s];
 				let new_color = self.gradient.stops.color[s];
 
 				self.gradient.stops.sort();
-				self.dragging = GradientDragTarget::Step(self.gradient.stops.iter().position(|s| s.position == new_position && s.color == new_color).unwrap());
+				if let Some(new_index) = self.gradient.stops.iter().position(|s| s.position == new_position && s.color == new_color) {
+					self.dragging = GradientDragTarget::Stop(new_index);
+				}
+			}
+			GradientDragTarget::Midpoint(midpoint_index) => {
+				let document_to_viewport = snap_data.document.metadata().document_to_viewport;
+
+				let (viewport_start, viewport_end) = (self.transform.transform_point2(self.gradient.start), self.transform.transform_point2(self.gradient.end));
+
+				let line_length = viewport_start.distance(viewport_end);
+				if line_length < f64::EPSILON {
+					self.render_gradient(responses);
+					return;
+				}
+
+				let (document_start, document_end) = (
+					document_to_viewport.inverse().transform_point2(viewport_start),
+					document_to_viewport.inverse().transform_point2(viewport_end),
+				);
+
+				let constraint = SnapConstraint::Line {
+					origin: document_start,
+					direction: document_end - document_start,
+				};
+
+				let document_mouse = document_to_viewport.inverse().transform_point2(mouse);
+				let point_candidate = SnapCandidatePoint::gradient_handle(document_mouse);
+
+				let snapped = snap_manager.constrained_snap(&snap_data, &point_candidate, constraint, SnapTypeConfiguration::default());
+
+				let projected_mouse_document = if snapped.is_snapped() {
+					snapped.snapped_point_document
+				} else {
+					constraint.projection(document_mouse)
+				};
+				let projected_mouse = document_to_viewport.transform_point2(projected_mouse_document);
+				snap_manager.update_indicator(snapped);
+
+				// Calculate the position along the full gradient (0-1)
+				let full_pos = ((viewport_end - viewport_start).angle_to(projected_mouse - viewport_start)).cos() * viewport_start.distance(projected_mouse) / line_length;
+
+				if !full_pos.is_finite() {
+					self.render_gradient(responses);
+					return;
+				}
+
+				// Convert to a midpoint ratio within the interval between the two surrounding stops
+				let left_stop = self.gradient.stops.position[midpoint_index];
+				let right_stop = self.gradient.stops.position[midpoint_index + 1];
+				let range = right_stop - left_stop;
+				if range > 0. {
+					let midpoint_ratio = ((full_pos - left_stop) / range).clamp(GRADIENT_MIDPOINT_MIN, GRADIENT_MIDPOINT_MAX);
+					self.gradient.stops.midpoint[midpoint_index] = midpoint_ratio;
+				}
 			}
 		}
 		self.render_gradient(responses);
@@ -391,7 +500,8 @@ impl Fsm for GradientToolFsmState {
 						.filter(|selected| selected.layer.is_some_and(|selected_layer| selected_layer == layer))
 						.map(|selected| selected.dragging);
 
-					let gradient = if dragging.is_some()
+					let gradient = if self == GradientToolFsmState::Drawing
+						&& dragging.is_some()
 						&& let Some(selected_gradient) = selected.filter(|s| s.layer == Some(layer))
 					{
 						&selected_gradient.gradient
@@ -409,21 +519,75 @@ impl Fsm for GradientToolFsmState {
 					let start_hex = stops.color.first().map(|&c| color_to_hex(c)).unwrap_or(String::from(COLOR_OVERLAY_BLUE));
 					let end_hex = stops.color.last().map(|&c| color_to_hex(c)).unwrap_or(String::from(COLOR_OVERLAY_BLUE));
 
+					// Check if the first/last stops are at position ~0/~1 (rendered as the endpoint dots rather than as separate stops)
+					let first_at_start = stops.position.first().is_some_and(|&p| p.abs() < f64::EPSILON * 1000.);
+					let last_at_end = stops.position.last().is_some_and(|&p| (1. - p).abs() < f64::EPSILON * 1000.);
+
+					let start_selected = first_at_start && (dragging == Some(GradientDragTarget::Start) || dragging == Some(GradientDragTarget::Stop(0)));
+					let end_selected = last_at_end && !stops.is_empty() && (dragging == Some(GradientDragTarget::End) || dragging == Some(GradientDragTarget::Stop(stops.len() - 1)));
+
 					overlay_context.line(start, end, None, None);
-					overlay_context.gradient_color_stop(start, dragging == Some(GradientDragTarget::Start), &start_hex);
-					overlay_context.gradient_color_stop(end, dragging == Some(GradientDragTarget::End), &end_hex);
+					overlay_context.gradient_color_stop(start, start_selected, &start_hex, !first_at_start);
+					overlay_context.gradient_color_stop(end, end_selected, &end_hex, !last_at_end);
 
 					for (index, stop) in stops.iter().enumerate() {
 						if stop.position.abs() < f64::EPSILON * 1000. || (1. - stop.position).abs() < f64::EPSILON * 1000. {
 							continue;
 						}
-						overlay_context.gradient_color_stop(start.lerp(end, stop.position), dragging == Some(GradientDragTarget::Step(index)), &color_to_hex(stop.color));
+						overlay_context.gradient_color_stop(start.lerp(end, stop.position), dragging == Some(GradientDragTarget::Stop(index)), &color_to_hex(stop.color), false);
 					}
 
-					if let (Some(projection), Some(dir)) = (calculate_insertion(start, end, stops, mouse), (end - start).try_normalize()) {
+					// Draw midpoint diamonds between adjacent stops (hidden when stops are too close in viewport space)
+					let line_angle = (end - start).to_angle();
+					let line_length = start.distance(end);
+					for i in 0..stops.position.len().saturating_sub(1) {
+						let left = stops.position[i];
+						let right = stops.position[i + 1];
+
+						if midpoint_hidden_by_proximity(left, right, line_length) {
+							continue;
+						}
+
+						let midpoint_pos = left + stops.midpoint[i] * (right - left);
+						let midpoint_viewport = start.lerp(end, midpoint_pos);
+
+						overlay_context.gradient_midpoint(midpoint_viewport, dragging == Some(GradientDragTarget::Midpoint(i)), line_angle);
+					}
+
+					if self != GradientToolFsmState::Drawing
+						&& calculate_insertion(start, end, stops, mouse).is_some()
+						&& let Some(dir) = (end - start).try_normalize()
+					{
 						let perp = dir.perp();
-						let point = start.lerp(end, projection);
-						overlay_context.line(point - perp * SEGMENT_OVERLAY_SIZE, point + perp * SEGMENT_OVERLAY_SIZE, Some(COLOR_OVERLAY_BLUE), Some(1.));
+
+						// Snap the insertion point along the gradient line
+						let document_to_viewport = document.metadata().document_to_viewport;
+
+						let (document_start, document_end) = (document_to_viewport.inverse().transform_point2(start), document_to_viewport.inverse().transform_point2(end));
+						let constraint = SnapConstraint::Line {
+							origin: document_start,
+							direction: document_end - document_start,
+						};
+
+						let document_mouse = document_to_viewport.inverse().transform_point2(mouse);
+						let point_candidate = SnapCandidatePoint::gradient_handle(document_mouse);
+
+						let snap_data = SnapData::new(document, input, viewport);
+						let snapped = tool_data.snap_manager.constrained_snap(&snap_data, &point_candidate, constraint, SnapTypeConfiguration::default());
+
+						let snapped_point = if snapped.is_snapped() {
+							document_to_viewport.transform_point2(snapped.snapped_point_document)
+						} else {
+							let projected = constraint.projection(document_mouse);
+							document_to_viewport.transform_point2(projected)
+						};
+
+						overlay_context.line(
+							snapped_point - perp * SEGMENT_OVERLAY_SIZE,
+							snapped_point + perp * SEGMENT_OVERLAY_SIZE,
+							Some(COLOR_OVERLAY_BLUE),
+							Some(1.),
+						);
 					}
 				}
 
@@ -436,14 +600,34 @@ impl Fsm for GradientToolFsmState {
 				tool_data.selected_gradient = None;
 				self
 			}
-			(GradientToolFsmState::Ready { .. }, GradientToolMessage::DeleteStop) => {
+			(_, GradientToolMessage::DoubleClick) => {
+				// Only reset if the mouse hasn't moved so we don't trigger from a click-then-click-and-drag being reported as a double-click
+				if input.mouse.position.distance(tool_data.drag_start) <= DRAG_THRESHOLD
+					&& let Some(selected_gradient) = &mut tool_data.selected_gradient
+					&& let GradientDragTarget::Midpoint(index) = selected_gradient.dragging
+				{
+					selected_gradient.gradient.stops.midpoint[index] = 0.5;
+					selected_gradient.render_gradient(responses);
+					responses.add(PropertiesPanelMessage::Refresh);
+				}
+				self
+			}
+			(state, GradientToolMessage::DeleteStop) => {
 				let Some(selected_gradient) = &mut tool_data.selected_gradient else {
-					return self;
+					return GradientToolFsmState::Ready { hover_insertion: false };
 				};
 
 				// Skip if invalid gradient
 				if selected_gradient.gradient.stops.len() < 2 {
-					return self;
+					return GradientToolFsmState::Ready { hover_insertion: false };
+				}
+
+				// If we're in the middle of a drag, abort it first and revert to the initial gradient
+				if state == GradientToolFsmState::Drawing {
+					selected_gradient.gradient = selected_gradient.initial_gradient.clone();
+					selected_gradient.render_gradient(responses);
+					responses.add(DocumentMessage::AbortTransaction);
+					tool_data.snap_manager.cleanup(responses);
 				}
 
 				responses.add(DocumentMessage::StartTransaction);
@@ -451,15 +635,39 @@ impl Fsm for GradientToolFsmState {
 				// Remove the selected point
 				match selected_gradient.dragging {
 					GradientDragTarget::Start => {
-						selected_gradient.gradient.stops.remove(0);
+						// Only delete if there's a real color stop at position ~0 (not the endpoint of the line which isn't itself a color stop)
+						if selected_gradient.gradient.stops.position.first().is_some_and(|&p| p.abs() < f64::EPSILON * 1000.) {
+							selected_gradient.gradient.stops.remove(0);
+						} else {
+							responses.add(DocumentMessage::AbortTransaction);
+							return GradientToolFsmState::Ready { hover_insertion: false };
+						}
 					}
 					GradientDragTarget::End => {
-						let _ = selected_gradient.gradient.stops.pop();
+						// Only delete if there's a real color stop at position ~1 (not the endpoint of the line which isn't itself a color stop)
+						if selected_gradient.gradient.stops.position.last().is_some_and(|&p| (1. - p).abs() < f64::EPSILON * 1000.) {
+							let _ = selected_gradient.gradient.stops.pop();
+						} else {
+							responses.add(DocumentMessage::AbortTransaction);
+							return GradientToolFsmState::Ready { hover_insertion: false };
+						}
 					}
-					GradientDragTarget::Step(index) => {
+					GradientDragTarget::New => {
+						responses.add(DocumentMessage::AbortTransaction);
+						return GradientToolFsmState::Ready { hover_insertion: false };
+					}
+					GradientDragTarget::Stop(index) => {
 						selected_gradient.gradient.stops.remove(index);
 					}
-					GradientDragTarget::New => {}
+					GradientDragTarget::Midpoint(index) => {
+						selected_gradient.gradient.stops.midpoint[index] = 0.5;
+						selected_gradient.render_gradient(responses);
+
+						responses.add(DocumentMessage::CommitTransaction);
+						responses.add(PropertiesPanelMessage::Refresh);
+
+						return GradientToolFsmState::Ready { hover_insertion: false };
+					}
 				};
 
 				// The gradient has only one point and so should become a fill
@@ -472,7 +680,7 @@ impl Fsm for GradientToolFsmState {
 					}
 					responses.add(DocumentMessage::CommitTransaction);
 					responses.add(PropertiesPanelMessage::Refresh);
-					return self;
+					return GradientToolFsmState::Ready { hover_insertion: false };
 				}
 
 				// Find the minimum and maximum positions
@@ -497,7 +705,7 @@ impl Fsm for GradientToolFsmState {
 				responses.add(PropertiesPanelMessage::Refresh);
 				tool_data.selected_gradient = None;
 
-				self
+				GradientToolFsmState::Ready { hover_insertion: false }
 			}
 			(_, GradientToolMessage::InsertStop) => {
 				for layer in document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface) {
@@ -519,7 +727,7 @@ impl Fsm for GradientToolFsmState {
 							let mut selected_gradient = SelectedGradient::new(gradient, layer, document);
 
 							// Select the new point
-							selected_gradient.dragging = GradientDragTarget::Step(index);
+							selected_gradient.dragging = GradientDragTarget::Stop(index);
 
 							// Update the layer fill
 							selected_gradient.render_gradient(responses);
@@ -554,33 +762,81 @@ impl Fsm for GradientToolFsmState {
 				for layer in document.network_interface.selected_nodes().selected_visible_layers(&document.network_interface) {
 					let Some(gradient) = get_gradient(layer, &document.network_interface) else { continue };
 					let transform = gradient_space_transform(layer, document);
+
+					// Check for dragging a midpoint diamond
+					if !dragging {
+						let (start, end) = (transform.transform_point2(gradient.start), transform.transform_point2(gradient.end));
+						let line_length = start.distance(end);
+						let midpoint_tolerance = GRADIENT_MIDPOINT_DIAMOND_RADIUS.powi(2);
+						for i in 0..gradient.stops.position.len().saturating_sub(1) {
+							let left = gradient.stops.position[i];
+							let right = gradient.stops.position[i + 1];
+
+							if midpoint_hidden_by_proximity(left, right, line_length) {
+								continue;
+							}
+
+							let midpoint_pos = left + gradient.stops.midpoint[i] * (right - left);
+							let midpoint_viewport = start.lerp(end, midpoint_pos);
+
+							if midpoint_viewport.distance_squared(mouse) < midpoint_tolerance {
+								dragging = true;
+
+								tool_data.selected_gradient = Some(SelectedGradient {
+									layer: Some(layer),
+									transform,
+									gradient: gradient.clone(),
+									dragging: GradientDragTarget::Midpoint(i),
+									initial_gradient: gradient.clone(),
+								});
+
+								break;
+							}
+						}
+					}
+
 					// Check for dragging step
-					for (index, stop) in gradient.stops.iter().enumerate() {
-						let pos = transform.transform_point2(gradient.start.lerp(gradient.end, stop.position));
-						if pos.distance_squared(mouse) < tolerance {
-							dragging = true;
-							tool_data.selected_gradient = Some(SelectedGradient {
-								layer: Some(layer),
-								transform,
-								gradient: gradient.clone(),
-								dragging: GradientDragTarget::Step(index),
-								initial_gradient: gradient.clone(),
-							})
+					if !dragging {
+						for (index, stop) in gradient.stops.iter().enumerate() {
+							let pos = transform.transform_point2(gradient.start.lerp(gradient.end, stop.position));
+							if pos.distance_squared(mouse) < tolerance {
+								dragging = true;
+
+								// Stops at position 0 or 1 are locked endpoints: dragging moves the
+								// gradient line endpoint geometry (start/end) instead of stop position
+								let drag_target = if stop.position.abs() < f64::EPSILON * 1000. {
+									GradientDragTarget::Start
+								} else if (1. - stop.position).abs() < f64::EPSILON * 1000. {
+									GradientDragTarget::End
+								} else {
+									GradientDragTarget::Stop(index)
+								};
+
+								tool_data.selected_gradient = Some(SelectedGradient {
+									layer: Some(layer),
+									transform,
+									gradient: gradient.clone(),
+									dragging: drag_target,
+									initial_gradient: gradient.clone(),
+								})
+							}
 						}
 					}
 
 					// Check dragging start or end handle
-					for (pos, dragging_target) in [(gradient.start, GradientDragTarget::Start), (gradient.end, GradientDragTarget::End)] {
-						let pos = transform.transform_point2(pos);
-						if pos.distance_squared(mouse) < tolerance {
-							dragging = true;
-							tool_data.selected_gradient = Some(SelectedGradient {
-								layer: Some(layer),
-								transform,
-								gradient: gradient.clone(),
-								dragging: dragging_target,
-								initial_gradient: gradient.clone(),
-							})
+					if !dragging {
+						for (pos, dragging_target) in [(gradient.start, GradientDragTarget::Start), (gradient.end, GradientDragTarget::End)] {
+							let pos = transform.transform_point2(pos);
+							if pos.distance_squared(mouse) < tolerance {
+								dragging = true;
+								tool_data.selected_gradient = Some(SelectedGradient {
+									layer: Some(layer),
+									transform,
+									gradient: gradient.clone(),
+									dragging: dragging_target,
+									initial_gradient: gradient.clone(),
+								})
+							}
 						}
 					}
 
@@ -597,7 +853,7 @@ impl Fsm for GradientToolFsmState {
 								transaction_started = true;
 
 								let mut selected_gradient = SelectedGradient::new(new_gradient, layer, document);
-								selected_gradient.dragging = GradientDragTarget::Step(index);
+								selected_gradient.dragging = GradientDragTarget::Stop(index);
 								// No offset when inserting a new stop, it should be exactly under the mouse
 								selected_gradient.render_gradient(responses);
 								tool_data.selected_gradient = Some(selected_gradient);
@@ -701,14 +957,16 @@ impl Fsm for GradientToolFsmState {
 			(GradientToolFsmState::Drawing, GradientToolMessage::PointerUp) => {
 				responses.add(DocumentMessage::EndTransaction);
 				tool_data.snap_manager.cleanup(responses);
-				let was_dragging = tool_data.selected_gradient.is_some();
 
-				if !was_dragging
-					&& let Some(selected_layer) = document.click(input, viewport)
-					&& let Some(gradient) = get_gradient(selected_layer, &document.network_interface)
-				{
-					tool_data.selected_gradient = Some(SelectedGradient::new(gradient, selected_layer, document));
+				// Clear the selection if we were dragging an endpoint of the gradient which isn't a stop
+				if tool_data.selected_gradient.as_ref().is_some_and(|s| match s.dragging {
+					GradientDragTarget::Start => !s.gradient.stops.position.first().is_some_and(|&p| p.abs() < f64::EPSILON * 1000.),
+					GradientDragTarget::End => !s.gradient.stops.position.last().is_some_and(|&p| (1. - p).abs() < f64::EPSILON * 1000.),
+					_ => false,
+				}) {
+					tool_data.selected_gradient = None;
 				}
+
 				GradientToolFsmState::Ready { hover_insertion: false }
 			}
 			(GradientToolFsmState::Ready { .. }, GradientToolMessage::PointerMove { .. }) => {
@@ -940,9 +1198,9 @@ mod test_gradient {
 		assert_eq!(initial_gradient.stops.len(), 2, "Expected 2 stops, found {}", initial_gradient.stops.len());
 
 		editor.select_tool(ToolType::Gradient).await;
-		editor.move_mouse(50., 0., ModifierKeys::empty(), MouseKeys::empty()).await;
-		editor.left_mousedown(50., 0., ModifierKeys::empty()).await;
-		editor.left_mouseup(50., 0., ModifierKeys::empty()).await;
+		editor.move_mouse(25., 0., ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(25., 0., ModifierKeys::empty()).await;
+		editor.left_mouseup(25., 0., ModifierKeys::empty()).await;
 
 		// Check that a new stop has been added
 		let (updated_gradient, _) = get_gradient(&mut editor).await;
@@ -950,8 +1208,8 @@ mod test_gradient {
 
 		let positions: Vec<f64> = updated_gradient.stops.iter().map(|stop| stop.position).collect();
 		assert!(
-			positions.iter().any(|pos| (pos - 0.5).abs() < 0.1),
-			"Expected to find a stop near position 0.5, but found: {positions:?}"
+			positions.iter().any(|pos| (pos - 0.25).abs() < 0.1),
+			"Expected to find a stop near position 0.25, but found: {positions:?}"
 		);
 	}
 
@@ -1034,10 +1292,10 @@ mod test_gradient {
 
 		editor.select_tool(ToolType::Gradient).await;
 
-		// Add a middle stop at 50%
-		editor.move_mouse(50., 0., ModifierKeys::empty(), MouseKeys::empty()).await;
-		editor.left_mousedown(50., 0., ModifierKeys::empty()).await;
-		editor.left_mouseup(50., 0., ModifierKeys::empty()).await;
+		// Add a middle stop at 25%
+		editor.move_mouse(25., 0., ModifierKeys::empty(), MouseKeys::empty()).await;
+		editor.left_mousedown(25., 0., ModifierKeys::empty()).await;
+		editor.left_mouseup(25., 0., ModifierKeys::empty()).await;
 
 		let (initial_gradient, _) = get_gradient(&mut editor).await;
 		assert_eq!(initial_gradient.stops.len(), 3, "Expected 3 stops, found {}", initial_gradient.stops.len());
@@ -1047,12 +1305,12 @@ mod test_gradient {
 		stops.sort();
 
 		let positions: Vec<f64> = stops.iter().map(|stop| stop.position).collect();
-		assert_stops_at_positions(&positions, &[0., 0.5, 1.], 0.1);
+		assert_stops_at_positions(&positions, &[0., 0.25, 1.], 0.1);
 
 		let middle_color = stops.color[1].to_rgba8_srgb();
 
 		// Simulate dragging the middle stop to position 0.8
-		let click_position = DVec2::new(50., 0.);
+		let click_position = DVec2::new(25., 0.);
 		editor
 			.mousedown(
 				EditorMouseState {

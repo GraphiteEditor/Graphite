@@ -175,6 +175,7 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		entry!(KeyDown(Enter); modifiers=[Accel], action_dispatch=TextToolMessage::Abort),
 		//
 		// GradientToolMessage
+		entry!(DoubleClick(MouseButton::Left); action_dispatch=GradientToolMessage::DoubleClick),
 		entry!(KeyDown(MouseLeft); action_dispatch=GradientToolMessage::PointerDown),
 		entry!(PointerMove; refresh_keys=[Shift], action_dispatch=GradientToolMessage::PointerMove { constrain_axis: Shift }),
 		entry!(KeyUp(MouseLeft); action_dispatch=GradientToolMessage::PointerUp),

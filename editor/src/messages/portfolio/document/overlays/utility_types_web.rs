@@ -2,7 +2,8 @@ use super::utility_functions::overlay_canvas_context;
 use crate::consts::{
 	ARC_SWEEP_GIZMO_RADIUS, COLOR_OVERLAY_BLACK, COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_50, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW,
 	COLOR_OVERLAY_YELLOW_DULL, COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, DOWEL_PIN_RADIUS,
-	MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER, RESIZE_HANDLE_SIZE, SEGMENT_SELECTED_THICKNESS, SKEW_TRIANGLE_OFFSET, SKEW_TRIANGLE_SIZE,
+	GRADIENT_MIDPOINT_DIAMOND_RADIUS, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER, RESIZE_HANDLE_SIZE, SEGMENT_SELECTED_THICKNESS,
+	SKEW_TRIANGLE_OFFSET, SKEW_TRIANGLE_SIZE,
 };
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::Message;
@@ -468,13 +469,13 @@ impl OverlayContext {
 		self.square(position, None, Some(color_fill), Some(color_stroke));
 	}
 
-	pub fn gradient_color_stop(&mut self, position: DVec2, selected: bool, color: &str) {
+	pub fn gradient_color_stop(&mut self, position: DVec2, selected: bool, color: &str, small: bool) {
 		self.start_dpi_aware_transform();
 
 		let position = position.round() - DVec2::splat(0.5);
 
 		let (radius_offset, stroke_width) = if selected { (1., 3.) } else { (0., 1.) };
-		let radius = MANIPULATOR_GROUP_MARKER_SIZE / 1.5 + 1. + radius_offset;
+		let radius = (MANIPULATOR_GROUP_MARKER_SIZE / 1.5 + 1. + radius_offset) * if small { 0.5 } else { 1. };
 
 		let draw_circle = |radius: f64, width: Option<f64>, color: &str| {
 			self.render_context.begin_path();
@@ -496,6 +497,36 @@ impl OverlayContext {
 		draw_circle(radius + stroke_width / 2., Some(1.), COLOR_OVERLAY_BLACK);
 		// Stroke (outer)
 		draw_circle(radius, Some(stroke_width), COLOR_OVERLAY_WHITE);
+
+		self.end_dpi_aware_transform();
+	}
+
+	pub fn gradient_midpoint(&mut self, position: DVec2, selected: bool, angle: f64) {
+		self.start_dpi_aware_transform();
+
+		let position = position.round() - DVec2::splat(0.5);
+
+		// Rotate diamond points by the gradient line angle
+		let (sin, cos) = angle.sin_cos();
+		let rotate = |dx: f64, dy: f64| DVec2::new(dx * cos - dy * sin, dx * sin + dy * cos);
+
+		let top = rotate(0., -GRADIENT_MIDPOINT_DIAMOND_RADIUS);
+		let right = rotate(GRADIENT_MIDPOINT_DIAMOND_RADIUS, 0.);
+		let bottom = rotate(0., GRADIENT_MIDPOINT_DIAMOND_RADIUS);
+		let left = rotate(-GRADIENT_MIDPOINT_DIAMOND_RADIUS, 0.);
+
+		self.render_context.begin_path();
+		self.render_context.move_to(position.x + top.x, position.y + top.y);
+		self.render_context.line_to(position.x + right.x, position.y + right.y);
+		self.render_context.line_to(position.x + bottom.x, position.y + bottom.y);
+		self.render_context.line_to(position.x + left.x, position.y + left.y);
+		self.render_context.close_path();
+
+		let fill = if selected { COLOR_OVERLAY_BLUE } else { COLOR_OVERLAY_WHITE };
+		self.render_context.set_fill_style_str(fill);
+		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
+		self.render_context.fill();
+		self.render_context.stroke();
 
 		self.end_dpi_aware_transform();
 	}
