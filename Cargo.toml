@@ -148,7 +148,7 @@ anyhow = "1.0"
 proc-macro2 = { version = "1", features = ["span-locations"] }
 quote = "1.0"
 chrono = "0.4"
-ron = "0.11"
+ron = "0.12"
 fastnoise-lite = "1.1"
 wgpu = { version = "27.0", features = [
 	# We don't have wgpu on multiple threads (yet) https://github.com/gfx-rs/wgpu/blob/trunk/CHANGELOG.md#wgpu-types-now-send-sync-on-wasm
