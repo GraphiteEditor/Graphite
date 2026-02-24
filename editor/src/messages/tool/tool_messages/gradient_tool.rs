@@ -215,6 +215,7 @@ impl SelectedGradient {
 		}
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	pub fn update_gradient(
 		&mut self,
 		mut mouse: DVec2,
@@ -279,6 +280,7 @@ impl SelectedGradient {
 			}
 			GradientDragTarget::Step(s) => {
 				let document_to_viewport = snap_data.document.metadata().document_to_viewport;
+
 				let (viewport_start, viewport_end) = (self.transform.transform_point2(self.gradient.start), self.transform.transform_point2(self.gradient.end));
 				let (document_start, document_end) = (
 					document_to_viewport.inverse().transform_point2(viewport_start),
@@ -532,13 +534,18 @@ impl Fsm for GradientToolFsmState {
 				self
 			}
 			(GradientToolFsmState::Ready { .. }, GradientToolMessage::PointerDown) => {
+				let document_to_viewport = document.metadata().document_to_viewport;
+
 				let mut mouse = input.mouse.position;
+
 				let snap_data = SnapData::new(document, input, viewport);
-				let point = SnapCandidatePoint::gradient_handle(document.metadata().document_to_viewport.inverse().transform_point2(mouse));
+				let point = SnapCandidatePoint::gradient_handle(document_to_viewport.inverse().transform_point2(mouse));
 				let snapped = tool_data.snap_manager.free_snap(&snap_data, &point, SnapTypeConfiguration::default());
+
 				if snapped.is_snapped() {
-					mouse = document.metadata().document_to_viewport.transform_point2(snapped.snapped_point_document);
+					mouse = document_to_viewport.transform_point2(snapped.snapped_point_document);
 				}
+
 				tool_data.drag_start = mouse;
 				let tolerance = (MANIPULATOR_GROUP_MARKER_SIZE * 2.).powi(2);
 
@@ -721,7 +728,7 @@ impl Fsm for GradientToolFsmState {
 				}
 
 				let snap_data = SnapData::new(document, input, viewport);
-				tool_data.snap_manager.gradient_preview_draw(&snap_data, mouse);
+				tool_data.snap_manager.preview_draw_gradient(&snap_data, mouse);
 
 				responses.add(OverlaysMessage::Draw);
 				GradientToolFsmState::Ready { hover_insertion }

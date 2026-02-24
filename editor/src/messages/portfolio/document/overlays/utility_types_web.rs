@@ -484,6 +484,7 @@ impl OverlayContext {
 				self.render_context.set_line_width(width);
 				self.render_context.set_stroke_style_str(color);
 				self.render_context.stroke();
+				self.render_context.set_line_width(1.);
 			} else {
 				self.render_context.set_fill_style_str(color);
 				self.render_context.fill();
@@ -495,8 +496,6 @@ impl OverlayContext {
 		draw_circle(radius + stroke_width / 2., Some(1.), COLOR_OVERLAY_BLACK);
 		// Stroke (outer)
 		draw_circle(radius, Some(stroke_width), COLOR_OVERLAY_WHITE);
-
-		self.render_context.set_line_width(1.);
 
 		self.end_dpi_aware_transform();
 	}
