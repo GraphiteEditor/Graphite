@@ -259,15 +259,15 @@ impl GradientStops {
 
 	/// Produce a set of linearly-interpolated color samples that approximate the gradient's midpoint curves.
 	///
-	/// Each sample is `(position, color, is_original_stop)` where `is_original_stop` is `true` for
-	/// actual gradient stops and `false` for interpolated samples added to approximate midpoint curves.
-	pub fn interpolated_samples(&self) -> Vec<(f64, Color, bool)> {
+	/// Each sample is `(position, color, original_midpoint)` where `original_midpoint` is `Some(f64)` with the corresponding
+	/// midpoint for actual gradient stops, and `None` for interpolated samples added to approximate midpoint curves.
+	pub fn interpolated_samples(&self) -> Vec<(f64, Color, Option<f64>)> {
 		/// Controls accuracy vs. number of samples tradeoff.
-		/// 1/255 means the linear approximation will deviate by no more than 1 gradation of 8-bit color from the theoretically perfect curve with this midpoint bias.
-		const THRESHOLD: f64 = 1. / 255.;
+		/// 2/255 means the linear approximation will deviate by no more than 2 gradations of 8-bit color from the theoretically perfect curve with this midpoint bias.
+		const THRESHOLD: f64 = 2. / 255.;
 
 		#[allow(clippy::too_many_arguments)]
-		fn subdivide(left: f64, right: f64, midpoint: f64, pos_a: f64, pos_b: f64, color_a: Color, color_b: Color, result: &mut Vec<(f64, Color, bool)>, depth: u32) {
+		fn subdivide(left: f64, right: f64, midpoint: f64, pos_a: f64, pos_b: f64, color_a: Color, color_b: Color, result: &mut Vec<(f64, Color, Option<f64>)>, depth: u32) {
 			const MAX_DEPTH: u32 = 20;
 			if depth >= MAX_DEPTH {
 				return;
@@ -285,7 +285,7 @@ impl GradientStops {
 
 				let global_pos = pos_a + mid * (pos_b - pos_a);
 				let color = color_a.lerp(&color_b, y_actual as f32);
-				result.push((global_pos, color, false));
+				result.push((global_pos, color, None));
 
 				subdivide(mid, right, midpoint, pos_a, pos_b, color_a, color_b, result, depth + 1);
 			}
@@ -296,7 +296,7 @@ impl GradientStops {
 		}
 
 		if self.position.len() == 1 {
-			return vec![(self.position[0], self.color[0], true)];
+			return vec![(self.position[0], self.color[0], Some(self.midpoint[0]))];
 		}
 
 		let mut result = Vec::new();
@@ -307,10 +307,11 @@ impl GradientStops {
 			let color_a = self.color[i];
 			let color_b = self.color[i + 1];
 			let midpoint = self.midpoint[i].clamp(0.01, 0.99);
+			let next_midpoint = self.midpoint[i + 1].clamp(0.01, 0.99);
 
 			// Add the start stop (subsequent segments share the previous end stop)
 			if i == 0 {
-				result.push((pos_a, color_a, true));
+				result.push((pos_a, color_a, Some(midpoint)));
 			}
 
 			// Only subdivide if midpoint deviates from linear (0.5)
@@ -319,7 +320,12 @@ impl GradientStops {
 			}
 
 			// Add the end stop
-			result.push((pos_b, color_b, true));
+			result.push((pos_b, color_b, Some(next_midpoint)));
+		}
+
+		// If every midpoint is 0.5 (or within epsilon), turn all midpoints to None
+		if result.iter().all(|(_, _, midpoint)| matches!(midpoint, Some(m) if (m - 0.5).abs() < 1e-6)) {
+			result.iter_mut().for_each(|(_, _, midpoint)| *midpoint = None);
 		}
 
 		result
