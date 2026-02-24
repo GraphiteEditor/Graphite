@@ -591,7 +591,6 @@ struct PathToolData {
 	last_clicked_segment_was_selected: bool,
 	snapping_axis: Option<Axis>,
 	snap_axis_origin: Option<DVec2>,
-	snap_axis_origin: Option<DVec2>,
 	alt_clicked_on_anchor: bool,
 	alt_dragging_from_anchor: bool,
 	angle_locked: bool,
@@ -1977,7 +1976,6 @@ impl Fsm for PathToolFsmState {
 						if tool_data.snapping_axis.is_some() {
 							let Some(axis) = tool_data.snapping_axis else { return self };
 							let origin = tool_data.snap_axis_origin.or_else(|| tool_data.snap_manager.indicator_pos()).unwrap_or(tool_data.drag_start_pos);
-							let origin = tool_data.snap_axis_origin.or_else(|| tool_data.snap_manager.indicator_pos()).unwrap_or(tool_data.drag_start_pos);
 							let viewport_diagonal = viewport.size().into_dvec2().length();
 
 							let faded = |color: &str| {
@@ -2120,7 +2118,6 @@ impl Fsm for PathToolFsmState {
 
 				let break_molding = input.keyboard.get(break_colinear_molding as usize);
 				let snap_axis_state = input.keyboard.get(snap_angle as usize);
-				let snap_axis_state = input.keyboard.get(snap_angle as usize);
 
 				// Logic for molding segment
 				if let Some(segment) = &mut tool_data.segment
@@ -2156,7 +2153,6 @@ impl Fsm for PathToolFsmState {
 						document,
 						responses,
 						molding_segment_handles,
-						mouse_position,
 						mouse_position,
 						break_molding,
 						tool_data.temporary_adjacent_handles_while_molding,
