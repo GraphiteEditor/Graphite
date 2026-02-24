@@ -53,11 +53,12 @@ impl<'a> MessageHandler<InputPreprocessorMessage, InputPreprocessorMessageContex
 
 				if !key_repeat {
 					let no_mouse_buttons_held = self.mouse.mouse_keys.is_empty();
+					let no_modifier_keys_held = modifier_keys.is_empty();
 					let same_key_within_threshold = self
 						.last_key_down
 						.is_some_and(|(last_key, last_time)| last_key == key && self.time.saturating_sub(last_time) < DOUBLE_CLICK_MILLISECONDS);
 
-					if no_mouse_buttons_held && same_key_within_threshold {
+					if no_mouse_buttons_held && no_modifier_keys_held && same_key_within_threshold {
 						self.double_tap_key = Some((key, self.time));
 						self.last_key_down = None;
 					} else {
