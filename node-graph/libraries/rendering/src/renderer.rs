@@ -498,12 +498,12 @@ impl Render for Artboard {
 		let [a, b] = [self.location.as_dvec2(), self.location.as_dvec2() + self.dimensions.as_dvec2()];
 		let rect = kurbo::Rect::new(a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y));
 
-		scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::new(transform.to_cols_array()), &rect);
+		scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., kurbo::Affine::new(transform.to_cols_array()), &rect);
 		scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(transform.to_cols_array()), color, None, &rect);
 		scene.pop_layer();
 
 		if self.clip {
-			scene.push_clip_layer(kurbo::Affine::new(transform.to_cols_array()), &rect);
+			scene.push_clip_layer(peniko::Fill::NonZero, kurbo::Affine::new(transform.to_cols_array()), &rect);
 		}
 		// Since the content's transform is right multiplied in when rendering the content, we just need to right multiply by the artboard offset here.
 		let child_transform = transform * DAffine2::from_translation(self.location.as_dvec2());
@@ -643,6 +643,7 @@ impl Render for Table<Graphic> {
 
 				if let RenderBoundingBox::Rectangle(bounds) = bounds {
 					scene.push_layer(
+						peniko::Fill::NonZero,
 						peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver),
 						opacity,
 						kurbo::Affine::IDENTITY,
@@ -668,9 +669,15 @@ impl Render for Table<Graphic> {
 				if let RenderBoundingBox::Rectangle(bounds) = bounds {
 					let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
 
-					scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
+					scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
 					mask_element.render_to_vello(scene, transform_mask, context, &render_params.for_clipper());
-					scene.push_layer(peniko::BlendMode::new(peniko::Mix::Normal, peniko::Compose::SrcIn), 1., kurbo::Affine::IDENTITY, &rect);
+					scene.push_layer(
+						peniko::Fill::NonZero,
+						peniko::BlendMode::new(peniko::Mix::Normal, peniko::Compose::SrcIn),
+						1.,
+						kurbo::Affine::IDENTITY,
+						&rect,
+					);
 				}
 
 				row.element.render_to_vello(scene, transform, context, render_params);
@@ -976,6 +983,7 @@ impl Render for Table<Vector> {
 				let quad = Quad::from_box(layer_bounds).inflate(weight * max_scale(applied_stroke_transform));
 				let layer_bounds = quad.bounding_box();
 				scene.push_layer(
+					peniko::Fill::NonZero,
 					peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver),
 					opacity,
 					kurbo::Affine::new(multiplied_transform.to_cols_array()),
@@ -1144,9 +1152,9 @@ impl Render for Table<Vector> {
 						};
 
 						if wants_stroke_below {
-							scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
+							scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
 							vector_table.render_to_vello(scene, parent_transform, _context, &render_params.for_alignment(applied_stroke_transform));
-							scene.push_layer(peniko::BlendMode::new(peniko::Mix::Normal, compose), 1., kurbo::Affine::IDENTITY, &rect);
+							scene.push_layer(peniko::Fill::NonZero, peniko::BlendMode::new(peniko::Mix::Normal, compose), 1., kurbo::Affine::IDENTITY, &rect);
 
 							do_stroke(scene, 2.);
 
@@ -1158,9 +1166,9 @@ impl Render for Table<Vector> {
 							// Fill first (unclipped), then stroke (clipped) above
 							do_fill(scene);
 
-							scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
+							scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
 							vector_table.render_to_vello(scene, parent_transform, _context, &render_params.for_alignment(applied_stroke_transform));
-							scene.push_layer(peniko::BlendMode::new(peniko::Mix::Normal, compose), 1., kurbo::Affine::IDENTITY, &rect);
+							scene.push_layer(peniko::Fill::NonZero, peniko::BlendMode::new(peniko::Mix::Normal, compose), 1., kurbo::Affine::IDENTITY, &rect);
 
 							do_stroke(scene, 2.);
 
@@ -1386,7 +1394,7 @@ impl Render for Table<Raster<CPU>> {
 			{
 				let blending = peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver);
 				let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
-				scene.push_layer(blending, opacity, kurbo::Affine::IDENTITY, &rect);
+				scene.push_layer(peniko::Fill::NonZero, blending, opacity, kurbo::Affine::IDENTITY, &rect);
 				layer = true;
 			}
 
@@ -1444,7 +1452,7 @@ impl Render for Table<Raster<GPU>> {
 			{
 				let blending = peniko::BlendMode::new(blend_mode.blend_mode.to_peniko(), peniko::Compose::SrcOver);
 				let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
-				scene.push_layer(blending, blend_mode.opacity, kurbo::Affine::IDENTITY, &rect);
+				scene.push_layer(peniko::Fill::NonZero, blending, blend_mode.opacity, kurbo::Affine::IDENTITY, &rect);
 				layer = true;
 			}
 
@@ -1534,7 +1542,7 @@ impl Render for Table<Color> {
 			let mut layer = false;
 			if opacity < 1. || alpha_blending.blend_mode != BlendMode::default() {
 				let blending = peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver);
-				scene.push_layer(blending, opacity, kurbo::Affine::scale(f64::INFINITY), &rect);
+				scene.push_layer(peniko::Fill::NonZero, blending, opacity, kurbo::Affine::scale(f64::INFINITY), &rect);
 				layer = true;
 			}
 
@@ -1631,7 +1639,7 @@ impl Render for Table<GradientStops> {
 			if opacity < 1. || alpha_blending.blend_mode != BlendMode::default() {
 				let blending = peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver);
 				// See implemenation in `Table<Color>` for more detail
-				scene.push_layer(blending, opacity, kurbo::Affine::scale(f64::INFINITY), &rect);
+				scene.push_layer(peniko::Fill::NonZero, blending, opacity, kurbo::Affine::scale(f64::INFINITY), &rect);
 				layer = true;
 			}
 
