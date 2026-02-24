@@ -3301,7 +3301,7 @@ dependencies = [
 [[package]]
 name = "kurbo"
 version = "0.13.0"
-source = "git+https://github.com/RobertBrewitz/kurbo.git?branch=strokeel#b6763e07b28d7e921d098af25c503c6031552a63"
+source = "git+https://github.com/RobertBrewitz/kurbo.git?branch=strokeel#294462c0054cca0417b245ef0d2a4d3497429462"
 dependencies = [
  "arrayvec",
  "euclid",
@@ -4579,7 +4579,7 @@ checksum = "2f3a9f18d041e6d0e102a0a46750538147e5e8992d3b4873aaafee2520b00ce3"
 [[package]]
 name = "polycool"
 version = "0.4.0"
-source = "git+https://github.com/RobertBrewitz/kurbo.git?branch=strokeel#b6763e07b28d7e921d098af25c503c6031552a63"
+source = "git+https://github.com/RobertBrewitz/kurbo.git?branch=strokeel#294462c0054cca0417b245ef0d2a4d3497429462"
 dependencies = [
  "arrayvec",
 ]
@@ -5491,11 +5491,11 @@ dependencies = [
 
 [[package]]
 name = "schannel"
-version = "0.1.27"
+version = "0.1.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1f29ebaa345f945cec9fbbc532eb307f0fdad8161f281b6369539c8d84876b3d"
+checksum = "891d81b926048e76efe18581bf793546b4c0eaf8448d72be8de2bbee5fd166e1"
 dependencies = [
- "windows-sys 0.59.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
