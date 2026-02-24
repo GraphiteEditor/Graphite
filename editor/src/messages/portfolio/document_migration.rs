@@ -754,16 +754,8 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::vector::CentroidNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::vector::circular_repeat::IDENTIFIER,
-		aliases: &["graphene_core::vector::CircularRepeatNode"],
-	},
-	NodeReplacement {
 		node: graphene_std::vector::close_path::IDENTIFIER,
 		aliases: &["graphene_core::vector::ClosePathNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::vector::copy_to_points::IDENTIFIER,
-		aliases: &["graphene_core::vector::CopyToPointsNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::vector::count_elements::IDENTIFIER,
@@ -834,28 +826,36 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::vector::generator_nodes::StarNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::vector::instance_index::IDENTIFIER,
-		aliases: &["graphene_core::vector::InstanceIndexNode"],
+		node: graphene_std::context::read_index::IDENTIFIER,
+		aliases: &["graphene_core::vector::InstanceIndexNode", "core_types::vector::InstanceIndexNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::vector::instance_map::IDENTIFIER,
+		node: graphene_std::graphic::map::IDENTIFIER,
 		aliases: &["graphene_core::vector::InstanceMapNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::vector::instance_on_points::IDENTIFIER,
-		aliases: &["graphene_core::vector::InstanceOnPointsNode"],
+		node: graphene_std::context::read_position::IDENTIFIER,
+		aliases: &["graphene_core::vector::InstancePositionNode", "core_types::vector::InstancePositionNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::vector::instance_position::IDENTIFIER,
-		aliases: &["graphene_core::vector::InstancePositionNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::vector::instance_repeat::IDENTIFIER,
-		aliases: &["graphene_core::vector::InstanceRepeatNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::vector::instance_vector::IDENTIFIER,
+		node: graphene_std::context::read_vector::IDENTIFIER,
 		aliases: &["graphene_core::vector::InstanceVectorNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::repeat::repeat::IDENTIFIER,
+		aliases: &["graphene_core::vector::InstanceRepeatNode", "core_types::vector::InstanceRepeatNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::repeat::repeat_array::IDENTIFIER,
+		aliases: &["graphene_core::vector::RepeatNode", "core_types::vector::RepeatNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::repeat::repeat_radial::IDENTIFIER,
+		aliases: &["graphene_core::vector::CircularRepeatNode", "core_types::vector::CircularRepeatNode"],
+	},
+	NodeReplacement {
+		node: graphene_std::repeat::repeat_on_points::IDENTIFIER,
+		aliases: &["graphene_core::vector::InstanceOnPointsNode", "core_types::vector::InstanceOnPointsNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::vector::jitter_points::IDENTIFIER,
@@ -866,8 +866,8 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_core::vector::MergeByDistanceNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::vector::mirror::IDENTIFIER,
-		aliases: &["graphene_core::vector::MirrorNode"],
+		node: graphene_std::graphic::mirror::IDENTIFIER,
+		aliases: &["graphene_core::vector::MirrorNode", "core_types::vector::MirrorNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::vector::morph::IDENTIFIER,
@@ -904,10 +904,6 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 	NodeReplacement {
 		node: graphene_std::vector::position_on_path::IDENTIFIER,
 		aliases: &["graphene_core::vector::PositionOnPathNode"],
-	},
-	NodeReplacement {
-		node: graphene_std::vector::repeat::IDENTIFIER,
-		aliases: &["graphene_core::vector::RepeatNode"],
 	},
 	NodeReplacement {
 		node: graphene_std::vector::round_corners::IDENTIFIER,
@@ -1337,7 +1333,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	}
 
 	// Upgrade the Mirror node to add the `keep_original` boolean input
-	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::mirror::IDENTIFIER) && inputs_count == 3 {
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::graphic::mirror::IDENTIFIER) && inputs_count == 3 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
@@ -1352,7 +1348,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 	}
 
 	// Upgrade the Mirror node to add the `reference_point` input and change `offset` from `DVec2` to `f64`
-	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::mirror::IDENTIFIER) && inputs_count == 4 {
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::graphic::mirror::IDENTIFIER) && inputs_count == 4 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
@@ -1404,7 +1400,7 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		}
 	}
 
-	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::instance_on_points::IDENTIFIER) && inputs_count == 2 {
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::repeat::repeat_on_points::IDENTIFIER) && inputs_count == 2 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 
@@ -1546,11 +1542,11 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 		}
 	}
 
-	// Add the "Depth" parameter to the "Instance Index" node
-	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector::instance_index::IDENTIFIER) && inputs_count == 0 {
+	// Add the "Depth" parameter to the "Read Index" node
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::context::read_index::IDENTIFIER) && inputs_count == 0 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
-		document.network_interface.set_display_name(node_id, "Instance Index".to_string(), network_path);
+		document.network_interface.set_display_name(node_id, "Read Index".to_string(), network_path);
 
 		let mut node_path = network_path.to_vec();
 		node_path.push(*node_id);
@@ -1646,8 +1642,8 @@ fn migrate_node(node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId], 
 			.set_input(&InputConnector::node(*node_id, 1), NodeInput::value(TaggedValue::F64(1.), false), network_path);
 	}
 
-	// Upgrade the "Instance Position" node to add the "Loop Level" input
-	if reference == DefinitionIdentifier::ProtoNode(graphene_std::vector_nodes::instance::instance_position::IDENTIFIER) && inputs_count < 2 {
+	// Upgrade the "Read Position" node to add the "Loop Level" input
+	if reference == DefinitionIdentifier::ProtoNode(graphene_std::context::read_position::IDENTIFIER) && inputs_count < 2 {
 		let mut node_template = resolve_document_node_type(&reference)?.default_node_template();
 		document.network_interface.replace_implementation(node_id, network_path, &mut node_template);
 		let _ = document.network_interface.replace_inputs(node_id, network_path, &mut node_template);

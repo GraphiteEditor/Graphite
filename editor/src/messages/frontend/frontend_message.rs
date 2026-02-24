@@ -28,7 +28,7 @@ pub enum FrontendMessage {
 		title: String,
 		icon: String,
 	},
-	DisplayDialogDismiss,
+	DialogClose,
 	DisplayDialogPanic {
 		#[serde(rename = "panicInfo")]
 		panic_info: String,
@@ -376,4 +376,5 @@ pub enum FrontendMessage {
 	WindowHide,
 	WindowHideOthers,
 	WindowShowAll,
+	WindowRestart,
 }

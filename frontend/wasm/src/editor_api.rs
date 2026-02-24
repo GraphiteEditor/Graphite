@@ -5,7 +5,7 @@
 // on the dispatcher messaging system and more complex Rust data types.
 //
 use crate::helpers::translate_key;
-use crate::{EDITOR_HANDLE, EDITOR_HAS_CRASHED, Error, MESSAGE_BUFFER};
+use crate::{EDITOR_HANDLE, EDITOR_HAS_CRASHED, Error, MESSAGE_BUFFER, PANIC_DIALOG_MESSAGE_CALLBACK};
 use editor::consts::FILE_EXTENSION;
 use editor::messages::clipboard::utility_types::ClipboardContentRaw;
 use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
@@ -78,6 +78,16 @@ impl EditorHandle {
 	pub fn send_frontend_message_to_js_rust_proxy(&self, message: FrontendMessage) {
 		self.send_frontend_message_to_js(message);
 	}
+
+	fn initialize_handle(frontend_message_handler_callback: js_sys::Function) -> EditorHandle {
+		let panic_callback = frontend_message_handler_callback.clone();
+		let editor_handle = EditorHandle { frontend_message_handler_callback };
+		if EDITOR_HANDLE.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor_handle.clone()))).is_none() {
+			log::error!("Attempted to initialize the editor handle more than once");
+		}
+		PANIC_DIALOG_MESSAGE_CALLBACK.with_borrow_mut(|callback| *callback = Some(panic_callback));
+		editor_handle
+	}
 }
 
 #[wasm_bindgen]
@@ -97,23 +107,16 @@ impl EditorHandle {
 			uuid_random_seed,
 		);
 
-		let editor_handle = EditorHandle { frontend_message_handler_callback };
 		if EDITOR.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor))).is_none() {
 			log::error!("Attempted to initialize the editor more than once");
 		}
-		if EDITOR_HANDLE.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor_handle.clone()))).is_none() {
-			log::error!("Attempted to initialize the editor handle more than once");
-		}
-		editor_handle
+
+		Self::initialize_handle(frontend_message_handler_callback)
 	}
 
 	#[cfg(feature = "native")]
 	pub fn create(_platform: String, _uuid_random_seed: u64, frontend_message_handler_callback: js_sys::Function) -> EditorHandle {
-		let editor_handle = EditorHandle { frontend_message_handler_callback };
-		if EDITOR_HANDLE.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor_handle.clone()))).is_none() {
-			log::error!("Attempted to initialize the editor handle more than once");
-		}
-		editor_handle
+		Self::initialize_handle(frontend_message_handler_callback)
 	}
 
 	// Sends a message to the dispatcher in the Editor Backend
@@ -202,20 +205,20 @@ impl EditorHandle {
 				if !EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
 					handle(|handle| {
 						// Process all messages that have been queued up
-						let messages = MESSAGE_BUFFER.take();
-
-						for message in messages {
-							handle.dispatch(message);
-						}
-
-						handle.dispatch(InputPreprocessorMessage::CurrentTime {
-							timestamp: js_sys::Date::now() as u64,
-						});
-						handle.dispatch(AnimationMessage::IncrementFrameCounter);
+						let mut messages = MESSAGE_BUFFER.take();
+						messages.push(
+							InputPreprocessorMessage::CurrentTime {
+								timestamp: js_sys::Date::now() as u64,
+							}
+							.into(),
+						);
+						messages.push(AnimationMessage::IncrementFrameCounter.into());
 
 						// Used by auto-panning, but this could possibly be refactored in the future, see:
 						// <https://github.com/GraphiteEditor/Graphite/pull/2562#discussion_r2041102786>
-						handle.dispatch(BroadcastMessage::TriggerEvent(EventMessage::AnimationFrame));
+						messages.push(BroadcastMessage::TriggerEvent(EventMessage::AnimationFrame).into());
+
+						handle.dispatch(Message::Batched { messages: messages.into() });
 					});
 				}
 
@@ -384,18 +387,14 @@ impl EditorHandle {
 
 	#[wasm_bindgen(js_name = loadPreferences)]
 	pub fn load_preferences(&self, preferences: Option<String>) {
-		let preferences = if let Some(preferences) = preferences {
+		if let Some(preferences) = preferences {
 			let Ok(preferences) = serde_json::from_str(&preferences) else {
 				log::error!("Failed to deserialize preferences");
 				return;
 			};
-			Some(preferences)
-		} else {
-			None
-		};
-
-		let message = PreferencesMessage::Load { preferences };
-		self.dispatch(message);
+			let message = PreferencesMessage::Load { preferences };
+			self.dispatch(message);
+		}
 	}
 
 	#[wasm_bindgen(js_name = selectDocument)]
@@ -600,6 +599,13 @@ impl EditorHandle {
 		self.dispatch(message);
 
 		Ok(())
+	}
+
+	/// Dialog got dismissed
+	#[wasm_bindgen(js_name = onDialogDismiss)]
+	pub fn on_dialog_dismiss(&self) {
+		let message = DialogMessage::Dismiss;
+		self.dispatch(message);
 	}
 
 	/// A text box was changed
@@ -961,7 +967,7 @@ async fn poll_node_graph_evaluation() {
 
 	if !editor::node_graph_executor::run_node_graph().await.0 {
 		return;
-	};
+	}
 
 	editor_and_handle(|editor, handle| {
 		let mut messages = VecDeque::new();

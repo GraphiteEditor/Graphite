@@ -5,6 +5,7 @@
 	import { Color, contrastingOutlineFactor, Gradient } from "@graphite/messages";
 	import type { TooltipState } from "@graphite/state-providers/tooltip";
 	import { clamp } from "@graphite/utility-functions/math";
+	import { isDesktop } from "@graphite/utility-functions/platform";
 
 	import FloatingMenu from "@graphite/components/layout/FloatingMenu.svelte";
 	import { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";
@@ -376,6 +377,9 @@
 
 	// TODO: Replace this temporary usage of the browser eyedropper API, that only works in Chromium-based browsers, with the custom color sampler system used by the Eyedropper tool
 	function eyedropperSupported(): boolean {
+		// TODO: Implement support in the desktop app for OS-level color picking
+		if (isDesktop()) return false;
+
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		return Boolean((window as any).EyeDropper);
 	}

@@ -1,13 +1,110 @@
-use core_types::Color;
-use core_types::Ctx;
-use core_types::registry::types::SignedInteger;
+use core_types::bounds::{BoundingBox, RenderBoundingBox};
+use core_types::registry::types::{Angle, SignedInteger};
 use core_types::table::{Table, TableRow};
 use core_types::uuid::NodeId;
+use core_types::{AnyHash, CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::graphic::{Graphic, IntoGraphicTable};
 use graphic_types::{Artboard, Vector};
 use raster_types::{CPU, GPU, Raster};
-use vector_types::GradientStops;
+use vector_types::{GradientStops, ReferencePoint};
+
+#[node_macro::node(category("General"))]
+async fn map<Item: AnyHash + Send + Sync + std::hash::Hash>(
+	ctx: impl Ctx + CloneVarArgs + ExtractAll,
+	#[implementations(
+		Table<Graphic>,
+		Table<Vector>,
+		Table<Raster<CPU>>,
+		Table<Color>,
+		Table<GradientStops>,
+	)]
+	content: Table<Item>,
+	#[implementations(
+		Context -> Table<Graphic>,
+		Context -> Table<Vector>,
+		Context -> Table<Raster<CPU>>,
+		Context -> Table<Color>,
+		Context -> Table<GradientStops>,
+	)]
+	mapped: impl Node<Context<'static>, Output = Table<Item>>,
+) -> Table<Item> {
+	let mut rows = Table::new();
+
+	for (i, row) in content.into_iter().enumerate() {
+		let owned_ctx = OwnedContextImpl::from(ctx.clone());
+		let owned_ctx = owned_ctx.with_vararg(Box::new(Table::new_from_row(row))).with_index(i);
+		let table = mapped.eval(owned_ctx.into_context()).await;
+
+		rows.extend(table);
+	}
+
+	rows
+}
+
+#[node_macro::node(category("General"))]
+async fn mirror<T: 'n + Send + Clone>(
+	_: impl Ctx,
+	#[implementations(
+		Table<Graphic>,
+		Table<Vector>,
+		Table<Raster<CPU>>,
+		Table<Color>,
+		Table<GradientStops>,
+	)]
+	content: Table<T>,
+	#[default(ReferencePoint::Center)] relative_to_bounds: ReferencePoint,
+	#[unit(" px")] offset: f64,
+	#[range((-90., 90.))] angle: Angle,
+	#[default(true)] keep_original: bool,
+) -> Table<T>
+where
+	Table<T>: BoundingBox,
+{
+	// Normalize the direction vector
+	let normal = DVec2::from_angle(angle.to_radians());
+
+	// The mirror reference may be based on the bounding box if an explicit reference point is chosen
+	let RenderBoundingBox::Rectangle(bounding_box) = content.bounding_box(DAffine2::IDENTITY, false) else {
+		return content;
+	};
+
+	let reference_point_location = relative_to_bounds.point_in_bounding_box((bounding_box[0], bounding_box[1]).into());
+	let mirror_reference_point = reference_point_location.map(|point| point + normal * offset);
+
+	// Create the reflection matrix
+	let reflection = DAffine2::from_mat2_translation(
+		glam::DMat2::from_cols(
+			DVec2::new(1. - 2. * normal.x * normal.x, -2. * normal.y * normal.x),
+			DVec2::new(-2. * normal.x * normal.y, 1. - 2. * normal.y * normal.y),
+		),
+		DVec2::ZERO,
+	);
+
+	// Apply reflection around the reference point
+	let reflected_transform = if let Some(mirror_reference_point) = mirror_reference_point {
+		DAffine2::from_translation(mirror_reference_point) * reflection * DAffine2::from_translation(-mirror_reference_point)
+	} else {
+		reflection * DAffine2::from_translation(DVec2::from_angle(angle.to_radians()) * DVec2::splat(-offset))
+	};
+
+	let mut result_table = Table::new();
+
+	// Add original instance depending on the keep_original flag
+	if keep_original {
+		for instance in content.clone().into_iter() {
+			result_table.push(instance);
+		}
+	}
+
+	// Create and add mirrored instance
+	for mut row in content.into_iter() {
+		row.transform = reflected_transform * row.transform;
+		result_table.push(row);
+	}
+
+	result_table
+}
 
 /// Performs internal editor record-keeping that enables tools to target this network's layer.
 /// This node associates the ID of the network's parent layer to every element of output data.
@@ -160,8 +257,14 @@ pub async fn flatten_graphic(_: impl Ctx, content: Table<Graphic>, fully_flatten
 
 /// Converts a graphic table into a vector table by deeply flattening any vector content it contains, and discarding any non-vector content.
 #[node_macro::node(category("Vector"))]
-pub async fn flatten_vector<I: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Vector>)] content: I) -> Table<Vector> {
+pub async fn flatten_vector<T: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Vector>)] content: T) -> Table<Vector> {
 	content.into_flattened_vector_table()
+}
+
+/// Converts a graphic table into a vector table by deeply flattening any vector content it contains, and discarding any non-vector content.
+#[node_macro::node(category("Vector"))]
+pub async fn flatten_raster<T: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Raster<CPU>>)] content: T) -> Table<Raster<CPU>> {
+	content.into_flattened_raster_table()
 }
 
 /// Returns the value at the specified index in the collection.

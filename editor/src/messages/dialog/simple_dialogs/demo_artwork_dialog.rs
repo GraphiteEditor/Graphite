@@ -20,7 +20,7 @@ impl DialogLayoutHolder for DemoArtworkDialog {
 	const TITLE: &'static str = "Demo Artwork";
 
 	fn layout_buttons(&self) -> Layout {
-		let widgets = vec![TextButton::new("Close").emphasized(true).on_update(|_| FrontendMessage::DisplayDialogDismiss.into()).widget_instance()];
+		let widgets = vec![TextButton::new("Close").emphasized(true).on_update(|_| FrontendMessage::DialogClose.into()).widget_instance()];
 
 		Layout(vec![LayoutGroup::Row { widgets }])
 	}
@@ -32,7 +32,7 @@ impl LayoutHolder for DemoArtworkDialog {
 			.chunks(4)
 			.flat_map(|chunk| {
 				fn make_dialog(name: &str, filename: &str) -> Message {
-					DialogMessage::CloseDialogAndThen {
+					DialogMessage::CloseAndThen {
 						followups: vec![
 							FrontendMessage::TriggerFetchAndOpenDocument {
 								name: name.to_string(),

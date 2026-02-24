@@ -1,0 +1,129 @@
+name: "CI"
+
+on:
+  pull_request: {}
+  merge_group: {}
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Rust format check on GitHub runner
+  rust-fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Clone and checkout repository
+        uses: actions/checkout@v3
+
+      - name: 🚦 Check if CI can be skipped
+        id: skip-check
+        uses: cariad-tech/merge-queue-ci-skipper@main
+
+      - name: 🦀 Install the latest Rust
+        if: steps.skip-check.outputs.skip-check != 'true'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: 🔬 Check Rust formatting
+        if: steps.skip-check.outputs.skip-check != 'true'
+        run: cargo fmt --all -- --check
+
+  # License compatibility check on GitHub runner
+  cargo-deny:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Clone and checkout repository
+        uses: actions/checkout@v3
+
+      - name: 📜 Check crate license compatibility for root workspace
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check bans licenses sources
+
+      - name: 📜 Check crate license compatibility for /libraries/rawkit
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check bans licenses sources
+          manifest-path: libraries/rawkit/Cargo.toml
+
+  # Full build and tests on self-hosted runner
+  build:
+    runs-on: self-hosted
+    permissions:
+      contents: write
+      deployments: write
+      pull-requests: write
+      actions: write
+    env:
+      RUSTC_WRAPPER: /usr/bin/sccache
+      CARGO_INCREMENTAL: 0
+      SCCACHE_DIR: /var/lib/github-actions/.cache
+
+    steps:
+      - name: 📥 Clone and checkout repository
+        uses: actions/checkout@v3
+
+      - name: 🚦 Check if CI can be skipped
+        id: skip-check
+        uses: cariad-tech/merge-queue-ci-skipper@main
+
+      - name: 🗑 Clear wasm-bindgen cache
+        if: steps.skip-check.outputs.skip-check != 'true'
+        run: rm -r ~/.cache/.wasm-pack || true
+
+      - name: 🟢 Install the latest Node.js
+        if: steps.skip-check.outputs.skip-check != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'latest'
+
+      - name: 🚧 Install build dependencies
+        if: steps.skip-check.outputs.skip-check != 'true'
+        run: |
+          cd frontend
+          npm run setup
+
+      - name: 🦀 Install the latest Rust
+        if: steps.skip-check.outputs.skip-check != 'true'
+        run: |
+          rustup update stable
+
+      - name: 🦀 Fetch Rust dependencies
+        if: steps.skip-check.outputs.skip-check != 'true'
+        run: |
+          cargo fetch --locked
+
+      - name: 🌐 Build Graphite web code
+        if: steps.skip-check.outputs.skip-check != 'true'
+        env:
+          NODE_ENV: production
+        run: |
+          cd frontend
+          mold -run npm run build
+
+      - name: 📤 Publish to Cloudflare Pages
+        if: steps.skip-check.outputs.skip-check != 'true'
+        uses: cloudflare/pages-action@1
+        continue-on-error: true
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
+          projectName: graphite-dev
+          directory: frontend/dist
+
+      - name: 👕 Lint Graphite web formatting
+        if: steps.skip-check.outputs.skip-check != 'true'
+        env:
+          NODE_ENV: production
+        run: |
+          cd frontend
+          npm run lint
+
+      - name: 🧪 Run Rust tests
+        if: steps.skip-check.outputs.skip-check != 'true'
+        env:
+          RUSTFLAGS: -Dwarnings
+        run: |
+          mold -run cargo test --all-features

@@ -151,6 +151,9 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		FrontendMessage::WindowShowAll => {
 			dispatcher.respond(DesktopFrontendMessage::WindowShowAll);
 		}
+		FrontendMessage::WindowRestart => {
+			dispatcher.respond(DesktopFrontendMessage::Restart);
+		}
 		m => return Some(m),
 	}
 	None
