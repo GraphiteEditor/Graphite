@@ -47,7 +47,7 @@ jobs:
           command: check bans licenses sources
           manifest-path: libraries/rawkit/Cargo.toml
 
-  # WASM build on self-hosted web runner
+  # Build the web app on the self-hosted wasm runner
   build:
     runs-on: [self-hosted, target/wasm]
     permissions:
@@ -121,7 +121,7 @@ jobs:
           cd frontend
           npm run lint
 
-  # Rust tests on self-hosted native runner
+  # Run the Rust tests on the self-hosted native runner
   test:
     runs-on: [self-hosted, target/native]
     env:
