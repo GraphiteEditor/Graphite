@@ -1375,6 +1375,9 @@ impl Render for Table<Raster<CPU>> {
 	}
 
 	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, _: &mut RenderContext, render_params: &RenderParams) {
+		use core_types::consts::LAYER_OUTLINE_STROKE_WEIGHT;
+		use vector_types::vector::PointId;
+		use vello::kurbo::{Cap, Join};
 		use vello::peniko;
 
 		for row in self.iter() {
@@ -1389,7 +1392,7 @@ impl Render for Table<Raster<CPU>> {
 			let opacity = alpha_blending.opacity(render_params.for_mask);
 			let mut layer = false;
 
-			if (opacity < 1. || alpha_blending.blend_mode != BlendMode::default())
+			if (opacity < 1. || (render_params.render_mode != RenderMode::Outline && alpha_blending.blend_mode != BlendMode::default()))
 				&& let RenderBoundingBox::Rectangle(bounds) = self.bounding_box(transform, false)
 			{
 				let blending = peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver);
@@ -1398,17 +1401,41 @@ impl Render for Table<Raster<CPU>> {
 				layer = true;
 			}
 
-			let image_brush = peniko::ImageBrush::new(peniko::ImageData {
-				data: image.to_flat_u8().0.into(),
-				format: peniko::ImageFormat::Rgba8,
-				width: image.width,
-				height: image.height,
-				alpha_type: peniko::ImageAlphaType::Alpha,
-			})
-			.with_extend(peniko::Extend::Repeat);
-			let image_transform = transform * *row.transform * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
+			match render_params.render_mode {
+				RenderMode::Outline => {
+					let outline_transform = transform * *row.transform;
 
-			scene.draw_image(&image_brush, kurbo::Affine::new(image_transform.to_cols_array()));
+					let outline_stroke = kurbo::Stroke {
+						width: LAYER_OUTLINE_STROKE_WEIGHT,
+						miter_limit: 4.,
+						join: Join::Miter,
+						start_cap: Cap::Butt,
+						end_cap: Cap::Butt,
+						dash_pattern: Default::default(),
+						dash_offset: 0.,
+					};
+					let outline_color = black_or_white_for_best_contrast(render_params.artboard_background);
+					let outline_color = peniko::Color::new([outline_color.r(), outline_color.g(), outline_color.b(), outline_color.a()]);
+					let mut outline_path = Subpath::<PointId>::new_rectangle(DVec2::ZERO, DVec2::ONE).to_bezpath();
+					outline_path.apply_affine(kurbo::Affine::new(outline_transform.to_cols_array()));
+
+					scene.stroke(&outline_stroke, kurbo::Affine::IDENTITY, outline_color, None, &outline_path);
+				}
+				_ => {
+					let image_transform = transform * *row.transform * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
+
+					let image_brush = peniko::ImageBrush::new(peniko::ImageData {
+						data: image.to_flat_u8().0.into(),
+						format: peniko::ImageFormat::Rgba8,
+						width: image.width,
+						height: image.height,
+						alpha_type: peniko::ImageAlphaType::Alpha,
+					})
+					.with_extend(peniko::Extend::Repeat);
+
+					scene.draw_image(&image_brush, kurbo::Affine::new(image_transform.to_cols_array()));
+				}
+			}
 
 			if layer {
 				scene.pop_layer();
@@ -1441,34 +1468,63 @@ impl Render for Table<Raster<GPU>> {
 		log::warn!("tried to render texture as an svg");
 	}
 
-	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, _render_params: &RenderParams) {
+	fn render_to_vello(&self, scene: &mut Scene, transform: DAffine2, context: &mut RenderContext, render_params: &RenderParams) {
+		use core_types::consts::LAYER_OUTLINE_STROKE_WEIGHT;
+		use vector_types::vector::PointId;
+		use vello::kurbo::{Cap, Join};
 		use vello::peniko;
 
 		for row in self.iter() {
-			let blend_mode = *row.alpha_blending;
+			let alpha_blending = *row.alpha_blending;
+			let blend_mode = alpha_blending.blend_mode.to_peniko();
+
 			let mut layer = false;
-			if blend_mode != Default::default()
+
+			if (render_params.render_mode != RenderMode::Outline && alpha_blending != Default::default())
 				&& let RenderBoundingBox::Rectangle(bounds) = self.bounding_box(transform, true)
 			{
-				let blending = peniko::BlendMode::new(blend_mode.blend_mode.to_peniko(), peniko::Compose::SrcOver);
+				let blending = peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver);
 				let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
-				scene.push_layer(peniko::Fill::NonZero, blending, blend_mode.opacity, kurbo::Affine::IDENTITY, &rect);
+				scene.push_layer(peniko::Fill::NonZero, blending, alpha_blending.opacity, kurbo::Affine::IDENTITY, &rect);
 				layer = true;
 			}
 
-			let width = row.element.data().width();
-			let height = row.element.data().height();
-			let image = peniko::ImageBrush::new(peniko::ImageData {
-				data: peniko::Blob::new(LAZY_ARC_VEC_ZERO_U8.deref().clone()),
-				format: peniko::ImageFormat::Rgba8,
-				width,
-				height,
-				alpha_type: peniko::ImageAlphaType::Alpha,
-			})
-			.with_extend(peniko::Extend::Repeat);
-			let image_transform = transform * *row.transform * DAffine2::from_scale(1. / DVec2::new(width as f64, height as f64));
-			scene.draw_image(&image, kurbo::Affine::new(image_transform.to_cols_array()));
-			context.resource_overrides.push((image, row.element.data().clone()));
+			match render_params.render_mode {
+				RenderMode::Outline => {
+					let outline_transform = transform * *row.transform;
+
+					let outline_stroke = kurbo::Stroke {
+						width: LAYER_OUTLINE_STROKE_WEIGHT,
+						miter_limit: 4.,
+						join: Join::Miter,
+						start_cap: Cap::Butt,
+						end_cap: Cap::Butt,
+						dash_pattern: Default::default(),
+						dash_offset: 0.,
+					};
+					let outline_color = black_or_white_for_best_contrast(render_params.artboard_background);
+					let outline_color = peniko::Color::new([outline_color.r(), outline_color.g(), outline_color.b(), outline_color.a()]);
+					let mut outline_path = Subpath::<PointId>::new_rectangle(DVec2::ZERO, DVec2::ONE).to_bezpath();
+					outline_path.apply_affine(kurbo::Affine::new(outline_transform.to_cols_array()));
+
+					scene.stroke(&outline_stroke, kurbo::Affine::IDENTITY, outline_color, None, &outline_path);
+				}
+				_ => {
+					let width = row.element.data().width();
+					let height = row.element.data().height();
+					let image = peniko::ImageBrush::new(peniko::ImageData {
+						data: peniko::Blob::new(LAZY_ARC_VEC_ZERO_U8.deref().clone()),
+						format: peniko::ImageFormat::Rgba8,
+						width,
+						height,
+						alpha_type: peniko::ImageAlphaType::Alpha,
+					})
+					.with_extend(peniko::Extend::Repeat);
+					let image_transform = transform * *row.transform * DAffine2::from_scale(1. / DVec2::new(width as f64, height as f64));
+					scene.draw_image(&image, kurbo::Affine::new(image_transform.to_cols_array()));
+					context.resource_overrides.push((image, row.element.data().clone()));
+				}
+			}
 
 			if layer {
 				scene.pop_layer()
