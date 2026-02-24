@@ -250,7 +250,7 @@ cargo-gpu = { git = "https://github.com/Firestar99/cargo-gpu", rev = "3952a22d16
 qrcodegen = "1.8"
 lzma-rust2 = { version = "0.16", default-features = false, features = ["std", "encoder", "optimization", "xz"] }
 scraper = "0.25"
-linesweeper = { git = "https://github.com/jneem/linesweeper", rev = "db9809e698c0b7c46666987df33b43f8ec3c2fde" }
+linesweeper = "0.3"
 smallvec = "1.13.2"
 
 [workspace.lints.rust]
