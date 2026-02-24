@@ -3,7 +3,7 @@
 use core_types::math::bbox::AxisAlignedBbox;
 use core_types::transform::{Footprint, RenderQuality, Transform};
 use core_types::{CloneVarArgs, Context, Ctx, ExtractAll, ExtractAnimationTime, ExtractPointerPosition, ExtractRealTime, OwnedContextImpl};
-use glam::{DAffine2, DVec2, IVec2, UVec2};
+use glam::{DVec2, IVec2, UVec2};
 use graph_craft::document::value::RenderOutput;
 use graph_craft::wasm_application_io::WasmEditorApi;
 use graphene_application_io::{ApplicationIo, ImageTexture};
@@ -35,9 +35,10 @@ pub struct CachedRegion {
 	memory_size: usize,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Default)]
 pub struct CacheKey {
 	pub render_mode_hash: u64,
+	pub scale: u64,
 	pub hide_artboards: bool,
 	pub for_export: bool,
 	pub for_mask: bool,
@@ -47,12 +48,13 @@ pub struct CacheKey {
 	pub animation_time_ms: i64,
 	pub real_time_ms: i64,
 	pub pointer: [u8; 16],
-	pub scale: u64,
 }
 
 impl CacheKey {
+	#[expect(clippy::too_many_arguments)]
 	fn new(
 		render_mode_hash: u64,
+		scale: f64,
 		hide_artboards: bool,
 		for_export: bool,
 		for_mask: bool,
@@ -62,7 +64,6 @@ impl CacheKey {
 		animation_time: f64,
 		real_time: f64,
 		pointer: Option<DVec2>,
-		scale: f64,
 	) -> Self {
 		let pointer_bytes = pointer
 			.map(|p| {
@@ -74,6 +75,7 @@ impl CacheKey {
 			.unwrap_or([0u8; 16]);
 		Self {
 			render_mode_hash,
+			scale: scale.to_bits(),
 			hide_artboards,
 			for_export,
 			for_mask,
@@ -83,25 +85,6 @@ impl CacheKey {
 			animation_time_ms: (animation_time * 1000.0).round() as i64,
 			real_time_ms: (real_time * 1000.0).round() as i64,
 			pointer: pointer_bytes,
-			scale: scale.to_bits(),
-		}
-	}
-}
-
-impl Default for CacheKey {
-	fn default() -> Self {
-		Self {
-			render_mode_hash: 0,
-			hide_artboards: false,
-			for_export: false,
-			for_mask: false,
-			thumbnail: false,
-			aligned_strokes: false,
-			override_paint_order: false,
-			animation_time_ms: 0,
-			real_time_ms: 0,
-			pointer: [0u8; 16],
-			scale: 0,
 		}
 	}
 }
@@ -403,6 +386,7 @@ pub async fn render_output_cache<'a: 'n>(
 
 	let cache_key = CacheKey::new(
 		render_params.render_mode as u64,
+		render_params.scale,
 		render_params.hide_artboards,
 		render_params.for_export,
 		render_params.for_mask,
@@ -412,7 +396,6 @@ pub async fn render_output_cache<'a: 'n>(
 		ctx.try_animation_time().unwrap_or(0.0),
 		ctx.try_real_time().unwrap_or(0.0),
 		ctx.try_pointer_position(),
-		render_params.scale,
 	);
 
 	let max_region_area = editor_api.editor_preferences.max_render_region_area();
