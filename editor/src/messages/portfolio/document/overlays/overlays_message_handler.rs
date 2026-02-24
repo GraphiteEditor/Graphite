@@ -1,4 +1,5 @@
 use super::utility_types::{OverlayProvider, OverlaysVisibilitySettings};
+#[cfg(not(test))]
 use crate::messages::portfolio::document::guide_message::GuideMessage;
 use crate::messages::prelude::*;
 

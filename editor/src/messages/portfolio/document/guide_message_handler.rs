@@ -50,13 +50,14 @@ impl MessageHandler<GuideMessage, GuideMessageContext<'_>> for GuideMessageHandl
 			viewport,
 		} = context;
 
+		let viewport_to_document_point = |mouse_x: f64, mouse_y: f64| -> DVec2 {
+			let document_to_viewport = navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), document_ptz);
+			document_to_viewport.inverse().transform_point2(DVec2::new(mouse_x, mouse_y))
+		};
+
 		match message {
 			GuideMessage::CreateGuide { id, direction, mouse_x, mouse_y } => {
-				let document_to_viewport = navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), document_ptz);
-				let viewport_to_document = document_to_viewport.inverse();
-
-				let viewport_point = DVec2::new(mouse_x, mouse_y);
-				let document_point = viewport_to_document.transform_point2(viewport_point);
+				let document_point = viewport_to_document_point(mouse_x, mouse_y);
 
 				let document_position = match direction {
 					GuideDirection::Horizontal => document_point.y,
@@ -69,11 +70,7 @@ impl MessageHandler<GuideMessage, GuideMessageContext<'_>> for GuideMessageHandl
 				responses.add(PortfolioMessage::UpdateDocumentWidgets);
 			}
 			GuideMessage::MoveGuide { id, mouse_x, mouse_y } => {
-				let document_to_viewport = navigation_handler.calculate_offset_transform(viewport.center_in_viewport_space().into(), document_ptz);
-				let viewport_to_document = document_to_viewport.inverse();
-
-				let viewport_point = DVec2::new(mouse_x, mouse_y);
-				let document_point = viewport_to_document.transform_point2(viewport_point);
+				let document_point = viewport_to_document_point(mouse_x, mouse_y);
 
 				if let Some(guide) = self.guides.iter_mut().find(|guide| guide.id == id) {
 					guide.position = match guide.direction {

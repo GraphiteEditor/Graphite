@@ -162,7 +162,7 @@
 	type GuideDirection = "Horizontal" | "Vertical";
 
 	function getViewportElement(): HTMLElement | undefined {
-		return viewport ?? (window.document.querySelector("[data-viewport]") as HTMLElement) ?? undefined;
+		return viewport;
 	}
 
 	function getGuideMousePosition(event: PointerEvent, viewportRect: DOMRect): { mouseX: number; mouseY: number } {
