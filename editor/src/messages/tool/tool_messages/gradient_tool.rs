@@ -77,128 +77,15 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 		match options {
 			GradientOptionsUpdate::Type(gradient_type) => {
 				self.options.gradient_type = gradient_type;
-				let selected_layers: Vec<_> = context
-					.document
-					.network_interface
-					.selected_nodes()
-					.selected_visible_layers(&context.document.network_interface)
-					.collect();
-
-				let mut transaction_started = false;
-				for layer in selected_layers {
-					if NodeGraphLayer::is_raster_layer(layer, &mut context.document.network_interface) {
-						continue;
-					}
-
-					if let Some(mut gradient) = get_gradient(layer, &context.document.network_interface)
-						&& gradient.gradient_type != gradient_type
-					{
-						if !transaction_started {
-							responses.add(DocumentMessage::StartTransaction);
-							transaction_started = true;
-						}
-						gradient.gradient_type = gradient_type;
-						responses.add(GraphOperationMessage::FillSet {
-							layer,
-							fill: Fill::Gradient(gradient),
-						});
-					}
-				}
-
-				if transaction_started {
-					responses.add(DocumentMessage::AddTransaction);
-				}
-				if let Some(selected_gradient) = &mut self.data.selected_gradient
-					&& let Some(layer) = selected_gradient.layer
-					&& !NodeGraphLayer::is_raster_layer(layer, &mut context.document.network_interface)
-				{
-					selected_gradient.gradient.gradient_type = gradient_type;
-				}
+				apply_gradient_update(&mut self.data, context, responses, |g| g.gradient_type != gradient_type, |g| g.gradient_type = gradient_type);
 				responses.add(ToolMessage::UpdateHints);
-				responses.add(PropertiesPanelMessage::Refresh);
 				responses.add(ToolMessage::UpdateCursor);
-				self.data.has_selected_gradient = has_gradient_on_selected_layers(context.document);
-				responses.add(ToolMessage::RefreshToolOptions);
 			}
 			GradientOptionsUpdate::ReverseStops => {
-				let selected_layers: Vec<_> = context
-					.document
-					.network_interface
-					.selected_nodes()
-					.selected_visible_layers(&context.document.network_interface)
-					.collect();
-
-				let mut transaction_started = false;
-				for layer in selected_layers {
-					if NodeGraphLayer::is_raster_layer(layer, &mut context.document.network_interface) {
-						continue;
-					}
-
-					if let Some(mut gradient) = get_gradient(layer, &context.document.network_interface) {
-						if !transaction_started {
-							responses.add(DocumentMessage::StartTransaction);
-							transaction_started = true;
-						}
-						gradient.stops = gradient.stops.reversed();
-						responses.add(GraphOperationMessage::FillSet {
-							layer,
-							fill: Fill::Gradient(gradient),
-						});
-					}
-				}
-
-				if transaction_started {
-					responses.add(DocumentMessage::AddTransaction);
-				}
-				if let Some(selected_gradient) = &mut self.data.selected_gradient
-					&& let Some(layer) = selected_gradient.layer
-					&& !NodeGraphLayer::is_raster_layer(layer, &mut context.document.network_interface)
-				{
-					selected_gradient.gradient.stops = selected_gradient.gradient.stops.reversed();
-				}
-				responses.add(PropertiesPanelMessage::Refresh);
-				self.data.has_selected_gradient = has_gradient_on_selected_layers(context.document);
-				responses.add(ToolMessage::RefreshToolOptions);
+				apply_gradient_update(&mut self.data, context, responses, |_| true, |g| g.stops = g.stops.reversed());
 			}
 			GradientOptionsUpdate::ReverseDirection => {
-				let selected_layers: Vec<_> = context
-					.document
-					.network_interface
-					.selected_nodes()
-					.selected_visible_layers(&context.document.network_interface)
-					.collect();
-
-				let mut transaction_started = false;
-				for layer in selected_layers {
-					if NodeGraphLayer::is_raster_layer(layer, &mut context.document.network_interface) {
-						continue;
-					}
-
-					if let Some(mut gradient) = get_gradient(layer, &context.document.network_interface) {
-						if !transaction_started {
-							responses.add(DocumentMessage::StartTransaction);
-							transaction_started = true;
-						}
-						std::mem::swap(&mut gradient.start, &mut gradient.end);
-						responses.add(GraphOperationMessage::FillSet {
-							layer,
-							fill: Fill::Gradient(gradient),
-						});
-					}
-				}
-
-				if transaction_started {
-					responses.add(DocumentMessage::AddTransaction);
-				}
-				if let Some(selected_gradient) = &mut self.data.selected_gradient
-					&& let Some(layer) = selected_gradient.layer
-					&& !NodeGraphLayer::is_raster_layer(layer, &mut context.document.network_interface)
-				{
-					std::mem::swap(&mut selected_gradient.gradient.start, &mut selected_gradient.gradient.end);
-				}
-				responses.add(PropertiesPanelMessage::Refresh);
-				self.data.has_selected_gradient = has_gradient_on_selected_layers(context.document);
-				responses.add(ToolMessage::RefreshToolOptions);
+				apply_gradient_update(&mut self.data, context, responses, |_| true, |g| std::mem::swap(&mut g.start, &mut g.end));
 			}
 		}
 	}
@@ -1455,6 +1342,55 @@ fn compute_selected_target(tool_data: &GradientToolData) -> GradientSelectedTarg
 		}
 		GradientDragTarget::New => GradientSelectedTarget::None,
 	}
+}
+
+fn apply_gradient_update(
+	data: &mut GradientToolData,
+	context: &mut ToolActionMessageContext,
+	responses: &mut VecDeque<Message>,
+	condition: impl Fn(&Gradient) -> bool,
+	update: impl Fn(&mut Gradient),
+) {
+	let selected_layers: Vec<_> = context
+		.document
+		.network_interface
+		.selected_nodes()
+		.selected_visible_layers(&context.document.network_interface)
+		.collect();
+
+	let mut transaction_started = false;
+	for layer in selected_layers {
+		if NodeGraphLayer::is_raster_layer(layer, &mut context.document.network_interface) {
+			continue;
+		}
+
+		if let Some(mut gradient) = get_gradient(layer, &context.document.network_interface)
+			&& condition(&gradient)
+		{
+			if !transaction_started {
+				responses.add(DocumentMessage::StartTransaction);
+				transaction_started = true;
+			}
+			update(&mut gradient);
+			responses.add(GraphOperationMessage::FillSet {
+				layer,
+				fill: Fill::Gradient(gradient),
+			});
+		}
+	}
+
+	if transaction_started {
+		responses.add(DocumentMessage::AddTransaction);
+	}
+	if let Some(selected_gradient) = &mut data.selected_gradient
+		&& let Some(layer) = selected_gradient.layer
+		&& !NodeGraphLayer::is_raster_layer(layer, &mut context.document.network_interface)
+	{
+		update(&mut selected_gradient.gradient);
+	}
+	responses.add(PropertiesPanelMessage::Refresh);
+	data.has_selected_gradient = has_gradient_on_selected_layers(context.document);
+	responses.add(ToolMessage::RefreshToolOptions);
 }
 
 fn has_gradient_on_selected_layers(document: &DocumentMessageHandler) -> bool {
