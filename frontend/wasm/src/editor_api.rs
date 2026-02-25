@@ -1103,4 +1103,18 @@ fn render_image_data_to_canvases(image_data: &[(u64, Image<Color>)]) {
 			error!("Failed to set canvas '{canvas_name}' on imageCanvases object");
 		}
 	}
+
+	// Evict canvases for images no longer present in the current render, freeing their pixel memory
+	let current_ids: std::collections::HashSet<String> = image_data.iter().map(|(id, _)| id.to_string()).collect();
+	let existing_keys = Object::keys(&canvases_obj);
+	for i in 0..existing_keys.length() {
+		let key = existing_keys.get(i);
+		if let Some(key_str) = key.as_string() {
+			if !current_ids.contains(&key_str) {
+				if Reflect::delete_property(&canvases_obj.clone().into(), &key).is_err() {
+					error!("Failed to delete stale canvas '{key_str}'");
+				}
+			}
+		}
+	}
 }

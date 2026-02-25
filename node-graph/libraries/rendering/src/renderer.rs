@@ -1304,7 +1304,14 @@ impl Render for Table<Raster<CPU>> {
 			if render_params.to_canvas() {
 				let mut image_copy = image.clone();
 				image_copy.data_mut().map_pixels(|p| p.to_unassociated_alpha());
-				let id = *render.image_data.entry(image_copy.into_data()).or_insert_with(generate_uuid);
+				let image_data = image_copy.into_data();
+				let content_id = {
+					use std::collections::hash_map::DefaultHasher;
+					let mut hasher = DefaultHasher::new();
+					image_data.hash(&mut hasher);
+					hasher.finish()
+				};
+				let id = *render.image_data.entry(image_data).or_insert(content_id);
 
 				render.parent_tag(
 					"foreignObject",
