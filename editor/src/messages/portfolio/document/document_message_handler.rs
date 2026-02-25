@@ -10,7 +10,7 @@ use crate::messages::input_mapper::utility_types::macros::action_shortcut;
 use crate::messages::layout::utility_types::widget_prelude::*;
 use crate::messages::portfolio::document::data_panel::{DataPanelMessageContext, DataPanelMessageHandler};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
-use crate::messages::portfolio::document::guide_message_handler::{GuideMessageContext, GuideMessageHandler};
+use crate::messages::portfolio::document::guide_lines_message_handler::{GuideLinesMessageContext, GuideLinesMessageHandler};
 use crate::messages::portfolio::document::node_graph::NodeGraphMessageContext;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::node_graph::utility_types::FrontendGraphDataType;
@@ -78,7 +78,7 @@ pub struct DocumentMessageHandler {
 	#[serde(skip)]
 	pub data_panel_message_handler: DataPanelMessageHandler,
 	#[serde(flatten)]
-	pub guide_handler: GuideMessageHandler,
+	pub guide_lines_message_handler: GuideLinesMessageHandler,
 
 	// ============================================
 	// Fields that are saved in the document format
@@ -157,7 +157,7 @@ impl Default for DocumentMessageHandler {
 			overlays_message_handler: OverlaysMessageHandler::default(),
 			properties_panel_message_handler: PropertiesPanelMessageHandler::default(),
 			data_panel_message_handler: DataPanelMessageHandler::default(),
-			guide_handler: GuideMessageHandler::default(),
+			guide_lines_message_handler: GuideLinesMessageHandler::default(),
 			// ============================================
 			// Fields that are saved in the document format
 			// ============================================
@@ -220,13 +220,13 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 
 				self.navigation_handler.process_message(message, responses, context);
 			}
-			DocumentMessage::Guide(message) => {
-				let context = GuideMessageContext {
+			DocumentMessage::GuideLines(message) => {
+				let context = GuideLinesMessageContext {
 					navigation_handler: &self.navigation_handler,
 					document_ptz: &self.document_ptz,
 					viewport,
 				};
-				self.guide_handler.process_message(message, responses, context);
+				self.guide_lines_message_handler.process_message(message, responses, context);
 			}
 			DocumentMessage::Overlays(message) => {
 				let visibility_settings = self.overlays_visibility_settings;
@@ -1447,7 +1447,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 			ZoomCanvasTo200Percent,
 			ZoomCanvasToFitAll,
 		);
-		common.extend(self.guide_handler.actions());
+		common.extend(self.guide_lines_message_handler.actions());
 
 		// Additional actions available on desktop
 		#[cfg(not(target_family = "wasm"))]

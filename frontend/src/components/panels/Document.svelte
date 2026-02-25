@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { getContext, onMount, onDestroy, tick } from "svelte";
 
-	import { generateGuideId } from "@graphite/../wasm/pkg/graphite_wasm";
+	import { generateGuideLineId } from "@graphite/../wasm/pkg/graphite_wasm";
 
 	import type { Editor } from "@graphite/editor";
 	import {
@@ -59,8 +59,8 @@
 	let rulersVisible = true;
 
 	// Guide drag state
-	let draggingGuideId: bigint | undefined = undefined;
-	let draggingGuideDirection: "Horizontal" | "Vertical" | undefined = undefined;
+	let draggingGuideLineId: bigint | undefined = undefined;
+	let draggingGuideLineDirection: "Horizontal" | "Vertical" | undefined = undefined;
 
 	// Rendered SVG viewport data
 	let artworkSvg = "";
@@ -159,59 +159,59 @@
 		editor.handle.panCanvas(0, -delta * scrollbarMultiplier.y);
 	}
 
-	type GuideDirection = "Horizontal" | "Vertical";
+	type GuideLineDirection = "Horizontal" | "Vertical";
 
 	function getViewportElement(): HTMLElement | undefined {
 		return viewport;
 	}
 
-	function getGuideMousePosition(event: PointerEvent, viewportRect: DOMRect): { mouseX: number; mouseY: number } {
+	function getGuideLineMousePosition(event: PointerEvent, viewportRect: DOMRect): { mouseX: number; mouseY: number } {
 		return {
 			mouseX: event.clientX - viewportRect.left,
 			mouseY: event.clientY - viewportRect.top,
 		};
 	}
 
-	function isInRulerArea(event: PointerEvent, viewportRect: DOMRect, direction: GuideDirection): boolean {
+	function isInRulerArea(event: PointerEvent, viewportRect: DOMRect, direction: GuideLineDirection): boolean {
 		return direction === "Horizontal" ? event.clientY < viewportRect.top : event.clientX < viewportRect.left;
 	}
 
-	function createGuideDragHandlers(options: { deleteOnCancel: boolean }) {
+	function createGuideLineDragHandlers(options: { deleteOnCancel: boolean }) {
 		const viewportEl = getViewportElement();
 		if (!viewportEl) return null;
 
 		const onMove = (event: PointerEvent) => {
-			if (draggingGuideId === undefined || !draggingGuideDirection) return;
+			if (draggingGuideLineId === undefined || !draggingGuideLineDirection) return;
 			const rect = viewportEl.getBoundingClientRect();
-			const { mouseX, mouseY } = getGuideMousePosition(event, rect);
-			editor.handle.moveGuide(draggingGuideId, mouseX, mouseY);
+			const { mouseX, mouseY } = getGuideLineMousePosition(event, rect);
+			editor.handle.moveGuideLine(draggingGuideLineId, mouseX, mouseY);
 		};
 
 		const onRelease = (event: PointerEvent) => {
-			if (draggingGuideId === undefined || !draggingGuideDirection) return;
+			if (draggingGuideLineId === undefined || !draggingGuideLineDirection) return;
 			const rect = viewportEl.getBoundingClientRect();
-			if (isInRulerArea(event, rect, draggingGuideDirection)) {
-				editor.handle.deleteGuide(draggingGuideId);
+			if (isInRulerArea(event, rect, draggingGuideLineDirection)) {
+				editor.handle.deleteGuideLine(draggingGuideLineId);
 			}
 			cleanup();
 		};
 
 		const onEscape = (event: KeyboardEvent) => {
-			if (event.key !== "Escape" || draggingGuideId === undefined) return;
-			if (options.deleteOnCancel) editor.handle.deleteGuide(draggingGuideId);
+			if (event.key !== "Escape" || draggingGuideLineId === undefined) return;
+			if (options.deleteOnCancel) editor.handle.deleteGuideLine(draggingGuideLineId);
 			cleanup();
 		};
 
 		const onRightClick = (event: MouseEvent) => {
-			if (draggingGuideId === undefined) return;
+			if (draggingGuideLineId === undefined) return;
 			event.preventDefault();
-			if (options.deleteOnCancel) editor.handle.deleteGuide(draggingGuideId);
+			if (options.deleteOnCancel) editor.handle.deleteGuideLine(draggingGuideLineId);
 			cleanup();
 		};
 
 		const cleanup = () => {
-			draggingGuideId = undefined;
-			draggingGuideDirection = undefined;
+			draggingGuideLineId = undefined;
+			draggingGuideLineDirection = undefined;
 			window.removeEventListener("pointermove", onMove);
 			window.removeEventListener("pointerup", onRelease);
 			window.removeEventListener("keydown", onEscape);
@@ -221,8 +221,8 @@
 		return { onMove, onRelease, onEscape, onRightClick };
 	}
 
-	function startGuideDrag(options: { deleteOnCancel: boolean }) {
-		const handlers = createGuideDragHandlers(options);
+	function startGuideLineDrag(options: { deleteOnCancel: boolean }) {
+		const handlers = createGuideLineDragHandlers(options);
 		if (!handlers) return;
 
 		window.addEventListener("pointermove", handlers.onMove);
@@ -233,15 +233,15 @@
 
 	// Guide Event Handlers
 
-	function handleGuideDragStart(e: CustomEvent<{ direction: GuideDirection; mouseX: number; mouseY: number }>) {
+	function handleGuideLineDragStart(e: CustomEvent<{ direction: GuideLineDirection; mouseX: number; mouseY: number }>) {
 		const { direction, mouseX, mouseY } = e.detail;
 
-		const guideId = generateGuideId();
-		draggingGuideId = guideId;
-		draggingGuideDirection = direction;
+		const guideLineId = generateGuideLineId();
+		draggingGuideLineId = guideLineId;
+		draggingGuideLineDirection = direction;
 
-		editor.handle.createGuide(guideId, direction, mouseX, mouseY);
-		startGuideDrag({ deleteOnCancel: true });
+		editor.handle.createGuideLine(guideLineId, direction, mouseX, mouseY);
+		startGuideLineDrag({ deleteOnCancel: true });
 	}
 
 	function canvasPointerDown(e: PointerEvent) {
@@ -641,7 +641,7 @@
 						numberInterval={rulerInterval}
 						direction="Horizontal"
 						bind:this={rulerHorizontal}
-						on:guideDragStart={handleGuideDragStart}
+						on:guideLineDragStart={handleGuideLineDragStart}
 					/>
 				</LayoutRow>
 			{/if}
@@ -654,7 +654,7 @@
 							numberInterval={rulerInterval}
 							direction="Vertical"
 							bind:this={rulerVertical}
-							on:guideDragStart={handleGuideDragStart}
+							on:guideLineDragStart={handleGuideLineDragStart}
 						/>
 					</LayoutCol>
 				{/if}

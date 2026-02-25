@@ -18,7 +18,7 @@
 	export let microDivisions = 2;
 
 	const dispatch = createEventDispatcher<{
-		guideDragStart: { direction: RulerDirection; mouseX: number; mouseY: number };
+		guideLineDragStart: { direction: RulerDirection; mouseX: number; mouseY: number };
 	}>();
 
 	let rulerInput: HTMLDivElement | undefined;
@@ -125,7 +125,7 @@
 		const mouseX = e.clientX - viewportRect.left;
 		const mouseY = e.clientY - viewportRect.top;
 
-		dispatch("guideDragStart", { direction, mouseX, mouseY });
+		dispatch("guideLineDragStart", { direction, mouseX, mouseY });
 	}
 
 	function handlePointerUp(e: PointerEvent) {
