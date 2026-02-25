@@ -28,6 +28,42 @@ impl Hash for CefLicenseSource {
 	}
 }
 
+fn parse(html: &str) -> Vec<LicenseEntry> {
+	let document = Html::parse_document(html);
+
+	let product_sel = Selector::parse("div.product").unwrap();
+	let title_sel = Selector::parse("span.title").unwrap();
+	let homepage_sel = Selector::parse("span.homepage a").unwrap();
+	let license_sel = Selector::parse("div.license pre").unwrap();
+
+	document
+		.select(&product_sel)
+		.filter_map(|product| {
+			let name: String = product.select(&title_sel).next().map(|el| el.text().collect()).unwrap_or_default();
+
+			if name.is_empty() {
+				return None;
+			}
+
+			let homepage = product.select(&homepage_sel).next().and_then(|el| el.value().attr("href").map(String::from));
+
+			let license_text: String = product.select(&license_sel).next().map(|el| el.text().collect::<String>()).unwrap_or_default().trim().to_string();
+
+			let pkg = Package {
+				name,
+				url: homepage,
+				authors: Vec::new(),
+			};
+
+			Some(LicenseEntry {
+				name: None,
+				text: license_text,
+				packages: vec![pkg],
+			})
+		})
+		.collect()
+}
+
 fn read() -> String {
 	let cef_path = PathBuf::from(env!("CEF_PATH"));
 	let cef_credits = std::fs::read_dir(&cef_path)
@@ -66,40 +102,4 @@ fn read() -> String {
 			process::exit(1);
 		})
 	}
-}
-
-fn parse(html: &str) -> Vec<LicenseEntry> {
-	let document = Html::parse_document(html);
-
-	let product_sel = Selector::parse("div.product").unwrap();
-	let title_sel = Selector::parse("span.title").unwrap();
-	let homepage_sel = Selector::parse("span.homepage a").unwrap();
-	let license_sel = Selector::parse("div.license pre").unwrap();
-
-	document
-		.select(&product_sel)
-		.filter_map(|product| {
-			let name: String = product.select(&title_sel).next().map(|el| el.text().collect()).unwrap_or_default();
-
-			if name.is_empty() {
-				return None;
-			}
-
-			let homepage = product.select(&homepage_sel).next().and_then(|el| el.value().attr("href").map(String::from));
-
-			let license_text: String = product.select(&license_sel).next().map(|el| el.text().collect::<String>()).unwrap_or_default().trim().to_string();
-
-			let pkg = Package {
-				name,
-				url: homepage,
-				authors: Vec::new(),
-			};
-
-			Some(LicenseEntry {
-				name: None,
-				text: license_text,
-				packages: vec![pkg],
-			})
-		})
-		.collect()
 }

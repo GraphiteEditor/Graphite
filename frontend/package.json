@@ -39,7 +39,6 @@
 		"source-sans-pro": "2.45.0"
 	},
 	"devDependencies": {
-		"license-checker-rseidelsohn": "^4.4.2",
 		"@eslint/compat": "^2.0.1",
 		"@eslint/eslintrc": "^3.3.3",
 		"@eslint/js": "^9.39.2",
@@ -52,19 +51,20 @@
 		"eslint-plugin-prettier": "^5.5.5",
 		"eslint-plugin-svelte": "^3.14.0",
 		"globals": "^17.0.0",
+		"license-checker-rseidelsohn": "^4.4.2",
 		"postcss": "^8.5.6",
-		"prettier": "^3.8.0",
 		"prettier-plugin-svelte": "^3.4.1",
+		"prettier": "^3.8.0",
 		"process": "^0.11.10",
 		"sass": "^1.97.2",
-		"svelte": "5.47.1",
 		"svelte-preprocess": "^6.0.3",
+		"svelte": "5.47.1",
 		"tar": "^7.5.4",
 		"ts-node": "^10.9.2",
-		"typescript": "^5.9.3",
 		"typescript-eslint": "^8.53.1",
-		"vite": "^7.3.1",
-		"vite-multiple-assets": "2.2.6"
+		"typescript": "^5.9.3",
+		"vite-multiple-assets": "2.2.6",
+		"vite": "^7.3.1"
 	},
 	"homepage": "https://graphite.art",
 	"license": "Apache-2.0",
