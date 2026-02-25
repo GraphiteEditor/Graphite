@@ -490,6 +490,7 @@ struct GradientToolData {
 	snap_manager: SnapManager,
 	drag_start: DVec2,
 	auto_panning: AutoPanning,
+	auto_pan_shift: DVec2,
 	gradient_angle: f64,
 }
 
@@ -710,7 +711,8 @@ impl Fsm for GradientToolFsmState {
 			}
 			(_, GradientToolMessage::DoubleClick) => {
 				// Only reset if the mouse hasn't moved so we don't trigger from a click-then-click-and-drag being reported as a double-click
-				if input.mouse.position.distance(tool_data.drag_start) <= DRAG_THRESHOLD
+				let drag_start_viewport = document.metadata().document_to_viewport.transform_point2(tool_data.drag_start);
+				if input.mouse.position.distance(drag_start_viewport) <= DRAG_THRESHOLD
 					&& let Some(selected_gradient) = &mut tool_data.selected_gradient
 					&& let GradientDragTarget::Midpoint(index) = selected_gradient.dragging
 				{
@@ -801,6 +803,9 @@ impl Fsm for GradientToolFsmState {
 				let max_position = selected_gradient.gradient.stops.position.iter().copied().reduce(f64::max).expect("No max");
 
 				// Recompute the start and end position of the gradient (in viewport transform)
+				if let Some(layer) = selected_gradient.layer {
+					selected_gradient.transform = gradient_space_transform(layer, document);
+				}
 				let transform = selected_gradient.transform;
 				let (start, end) = (transform.transform_point2(selected_gradient.gradient.start), transform.transform_point2(selected_gradient.gradient.end));
 				let (new_start, new_end) = (start.lerp(end, min_position), start.lerp(end, max_position));
@@ -867,7 +872,8 @@ impl Fsm for GradientToolFsmState {
 					mouse = document_to_viewport.transform_point2(snapped.snapped_point_document);
 				}
 
-				tool_data.drag_start = mouse;
+				tool_data.drag_start = document_to_viewport.inverse().transform_point2(mouse);
+				tool_data.auto_pan_shift = DVec2::ZERO;
 				let tolerance = (MANIPULATOR_GROUP_MARKER_SIZE * 2.).powi(2);
 
 				let mut drag_hint: Option<GradientDragHintState> = None;
@@ -1056,13 +1062,24 @@ impl Fsm for GradientToolFsmState {
 					let mouse = input.mouse.position;
 					let snap_data = SnapData::new(document, input, viewport);
 
+					// Recompute the gradient-to-viewport transform fresh each frame so zoom/pan mid-drag works correctly
+					if let Some(layer) = selected_gradient.layer {
+						selected_gradient.transform = gradient_space_transform(layer, document);
+						selected_gradient.transform.translation += tool_data.auto_pan_shift;
+					}
+
+					// Convert drag_start from document space to effective viewport space
+					let d2v = document.metadata().document_to_viewport;
+					let drag_start_viewport = d2v.transform_point2(tool_data.drag_start) + tool_data.auto_pan_shift;
+					tool_data.auto_pan_shift = DVec2::ZERO;
+
 					selected_gradient.update_gradient(
 						mouse,
 						responses,
 						input.keyboard.get(constrain_axis as usize),
 						input.keyboard.get(lock_angle as usize),
 						selected_gradient.gradient.gradient_type,
-						tool_data.drag_start,
+						drag_start_viewport,
 						snap_data,
 						&mut tool_data.snap_manager,
 						&mut tool_data.gradient_angle,
@@ -1082,10 +1099,8 @@ impl Fsm for GradientToolFsmState {
 			}
 			(GradientToolFsmState::Drawing { drag_hint }, GradientToolMessage::PointerOutsideViewport { .. }) => {
 				// Auto-panning
-				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, viewport, responses)
-					&& let Some(selected_gradient) = &mut tool_data.selected_gradient
-				{
-					selected_gradient.transform.translation += shift;
+				if let Some(shift) = tool_data.auto_panning.shift_viewport(input, viewport, responses) {
+					tool_data.auto_pan_shift += shift;
 				}
 
 				GradientToolFsmState::Drawing { drag_hint }
