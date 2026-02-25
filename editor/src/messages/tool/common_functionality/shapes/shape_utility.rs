@@ -204,7 +204,7 @@ pub fn update_radius_sign(end: DVec2, start: DVec2, layer: LayerNodeIdentifier, 
 		};
 
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(polygon_node_id, 2),
+			input_connector: InputConnector::node(polygon_node_id, graphene_std::vector::generator_nodes::regular_polygon::RadiusInput::INDEX),
 			input: NodeInput::value(TaggedValue::F64(sign_num * 0.5), false),
 		});
 		return;
@@ -221,11 +221,11 @@ pub fn update_radius_sign(end: DVec2, start: DVec2, layer: LayerNodeIdentifier, 
 		};
 
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(star_node_id, 2),
+			input_connector: InputConnector::node(star_node_id, graphene_std::vector::generator_nodes::star::Radius1Input::INDEX),
 			input: NodeInput::value(TaggedValue::F64(sign_num * 0.5), false),
 		});
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(star_node_id, 3),
+			input_connector: InputConnector::node(star_node_id, graphene_std::vector::generator_nodes::star::Radius2Input::INDEX),
 			input: NodeInput::value(TaggedValue::F64(sign_num * 0.25), false),
 		});
 	}
