@@ -3477,7 +3477,7 @@ fn update_dynamic_hints(
 			}
 
 			let drag_selected_hints = vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")];
-			let mut delete_selected_hints = vec![HintInfo::keys([Key::Delete], "Delete Selected")];
+			let mut delete_selected_hints = vec![HintInfo::keys([Key::Backspace], "Delete Selected")];
 
 			if at_least_one_anchor_selected {
 				delete_selected_hints.push(HintInfo::keys([Key::Accel], "No Dissolve").prepend_plus());

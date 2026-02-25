@@ -307,6 +307,19 @@ pub enum PathSnapSource {
 	IntersectionPoint,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GradientSnapSource {
+	Endpoint,
+}
+
+impl fmt::Display for GradientSnapSource {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			GradientSnapSource::Endpoint => write!(f, "Gradient: Endpoint"),
+		}
+	}
+}
+
 impl fmt::Display for PathSnapSource {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
@@ -347,6 +360,7 @@ pub enum SnapSource {
 	Artboard(ArtboardSnapSource),
 	Path(PathSnapSource),
 	Alignment(AlignmentSnapSource),
+	Gradient(GradientSnapSource),
 }
 
 impl SnapSource {
@@ -377,6 +391,7 @@ impl fmt::Display for SnapSource {
 			SnapSource::Artboard(artboard_snap_source) => write!(f, "{artboard_snap_source}"),
 			SnapSource::Path(path_snap_source) => write!(f, "{path_snap_source}"),
 			SnapSource::Alignment(alignment_snap_source) => write!(f, "{alignment_snap_source}"),
+			SnapSource::Gradient(gradient_snap_source) => write!(f, "{gradient_snap_source}"),
 		}
 	}
 }

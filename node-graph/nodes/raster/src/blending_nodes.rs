@@ -8,7 +8,7 @@ use no_std_types::registry::types::PercentageF32;
 #[cfg(feature = "std")]
 use raster_types::{CPU, Raster};
 #[cfg(feature = "std")]
-use vector_types::GradientStops;
+use vector_types::{GradientStop, GradientStops};
 
 pub trait Blend<P: Pixel> {
 	fn blend(&self, under: &Self, blend_fn: impl Fn(P, P) -> P) -> Self;
@@ -63,18 +63,15 @@ mod blend_std {
 	}
 	impl Blend<Color> for GradientStops {
 		fn blend(&self, under: &Self, blend_fn: impl Fn(Color, Color) -> Color) -> Self {
-			let mut combined_stops = self.iter().map(|(position, _)| position).chain(under.iter().map(|(position, _)| position)).collect::<Vec<_>>();
-			combined_stops.dedup_by(|&mut a, &mut b| (a - b).abs() < 1e-6);
+			let mut combined_stops = self.position.iter().chain(under.position.iter()).copied().collect::<Vec<_>>();
+			combined_stops.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
 			combined_stops.sort_by(|a, b| a.partial_cmp(b).unwrap_or(Ordering::Equal));
-			let stops = combined_stops
-				.into_iter()
-				.map(|&position| {
-					let over_color = self.evaluate(position);
-					let under_color = under.evaluate(position);
-					let color = blend_fn(over_color, under_color);
-					(position, color)
-				})
-				.collect::<Vec<_>>();
+			let stops = combined_stops.into_iter().map(|position| {
+				let over_color = self.evaluate(position);
+				let under_color = under.evaluate(position);
+				let color = blend_fn(over_color, under_color);
+				GradientStop { position, midpoint: 0.5, color }
+			});
 			GradientStops::new(stops)
 		}
 	}
