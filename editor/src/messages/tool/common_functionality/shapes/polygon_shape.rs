@@ -15,6 +15,8 @@ use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::DAffine2;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::NodeInputDecleration;
+use graphene_std::vector::generator_nodes::regular_polygon::*;
 use std::collections::VecDeque;
 
 #[derive(Clone, Debug, Default)]
@@ -147,7 +149,7 @@ impl Polygon {
 			};
 
 			responses.add(NodeGraphMessage::SetInput {
-				input_connector: InputConnector::node(node_id, 2),
+				input_connector: InputConnector::node(node_id, RadiusInput::INDEX),
 				input: NodeInput::value(TaggedValue::F64(radius), false),
 			});
 
@@ -185,7 +187,7 @@ impl Polygon {
 		});
 
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, 1),
+			input_connector: InputConnector::node(node_id, SidesInput::<u32>::INDEX),
 			input: NodeInput::value(TaggedValue::U32(new_dimension), false),
 		});
 		responses.add(NodeGraphMessage::RunDocumentGraph);

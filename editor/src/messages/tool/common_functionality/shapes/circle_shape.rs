@@ -12,6 +12,7 @@ use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::DAffine2;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::NodeInputDecleration;
 
 #[derive(Clone, Debug, Default)]
 pub struct CircleGizmoHandler {
@@ -107,7 +108,7 @@ impl Circle {
 		let radius: f64 = if dimensions.x > dimensions.y { dimensions.y / 2. } else { dimensions.x / 2. };
 
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, 1),
+			input_connector: InputConnector::node(node_id, graphene_std::vector::generator_nodes::circle::RadiusInput::INDEX),
 			input: NodeInput::value(TaggedValue::F64(radius), false),
 		});
 
