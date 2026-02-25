@@ -38,6 +38,7 @@ struct NpmEntry {
 	#[serde(rename = "licenseFile")]
 	license_file: Option<String>,
 	publisher: Option<String>,
+	email: Option<String>,
 }
 
 pub fn run(dir: &std::path::Path) -> String {
@@ -45,7 +46,7 @@ pub fn run(dir: &std::path::Path) -> String {
 	let mut cmd = Command::new("npx");
 	#[cfg(target_os = "windows")]
 	let mut cmd = Command::new("npx.cmd");
-	cmd.args(["license-checker-rseidelsohn", "--json"]);
+	cmd.args(["license-checker-rseidelsohn", "--production", "--json"]);
 	cmd.current_dir(dir);
 
 	let output = cmd.output().unwrap_or_else(|e| {
@@ -70,21 +71,21 @@ pub fn parse(json_str: &str) -> Vec<LicenseEntry> {
 	entries
 		.iter()
 		.map(|(name, entry)| {
-			let license_text = entry
-				.license_file
-				.as_ref()
-				.and_then(|p| fs::read_to_string(p).ok())
-				.map(|s| s.trim().to_string())
-				.unwrap_or_else(|| entry.licenses.clone().unwrap_or_default());
+			let publisher_info = entry.publisher.as_ref().map(|p| {
+				let email_part = entry.email.as_ref().map(|e| format!(" <{}>", e)).unwrap_or_default();
+				format!("{}{}", p, email_part)
+			});
 
 			let pkg = Package {
 				name: name.to_string(),
 				url: entry.repository.clone(),
-				authors: entry.publisher.as_ref().map(|p| vec![p.clone()]).unwrap_or_default(),
+				authors: publisher_info.into_iter().collect(),
 			};
 
+			let license_text = entry.license_file.as_ref().and_then(|p| fs::read_to_string(p).ok()).map(|s| s.to_string()).unwrap_or_default();
+
 			LicenseEntry {
-				name: None,
+				name: entry.licenses.clone(),
 				text: license_text,
 				packages: vec![pkg],
 			}

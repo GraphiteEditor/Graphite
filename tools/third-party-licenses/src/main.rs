@@ -126,9 +126,9 @@ fn format_credits(licenses: &Vec<LicenseEntry>) -> String {
 			.packages
 			.iter()
 			.map(|pkg| match &pkg {
-				Package { name, authors, url: Some(url) } if !authors.is_empty() => format!("{} [{}] - {}", name, authors.join(", "), url),
+				Package { name, authors, url: Some(url) } if !authors.is_empty() => format!("{} - [{}] - {}", name, authors.join(", "), url),
 				Package { name, authors: _, url: Some(url) } => format!("{} - {}", name, url),
-				Package { name, authors, url: None } if !authors.is_empty() => format!("{} [{}]", name, authors.join(", ")),
+				Package { name, authors, url: None } if !authors.is_empty() => format!("{} - [{}]", name, authors.join(", ")),
 				_ => pkg.name.clone(),
 			})
 			.collect();
@@ -136,15 +136,10 @@ fn format_credits(licenses: &Vec<LicenseEntry>) -> String {
 		let multi = package_lines.len() > 1;
 
 		let header = format!(
-			"The package{} listed here {} licensed under the terms of the {} printed beneath ({} lines)",
+			"The package{} listed here {} licensed under the terms of the {} printed beneath",
 			if multi { "s" } else { "" },
 			if multi { "are" } else { "is" },
-			if let Some(license) = license.name.as_ref() {
-				format!("\"{}\" license", license)
-			} else {
-				"license".to_string()
-			},
-			license.text.lines().count()
+			if let Some(license) = license.name.as_ref() { license.to_string() } else { "license".to_string() }
 		);
 
 		let max_len = std::iter::once(header.len()).chain(package_lines.iter().map(|l| l.chars().count())).max().unwrap_or(0);
@@ -173,9 +168,9 @@ fn format_credits(licenses: &Vec<LicenseEntry>) -> String {
 			out.push_str("    ");
 			out.push_str(line);
 		}
+		out.push('\n');
 	}
 
-	out.push('\n');
 	out
 }
 
