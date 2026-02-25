@@ -162,6 +162,11 @@ mod tests {
 	#[test]
 	fn test_float_to_srgb_u8() {
 		for u in 0..=u8::MAX {
+			// let a = srgb_u8_to_float(u);
+			// let b = srgb_u8_to_float_ref(u);
+			// if a != b {
+			// panic!("Mismatch at u={}: {} != {}", u, a, b);
+			// }
 			assert!(srgb_u8_to_float(u) == srgb_u8_to_float_ref(u));
 		}
 	}
