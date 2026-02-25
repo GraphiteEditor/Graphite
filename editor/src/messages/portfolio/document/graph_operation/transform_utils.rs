@@ -76,27 +76,22 @@ impl LayerBounds {
 
 /// Get the current affine transform from the transform node's inputs
 pub fn get_current_transform(inputs: &[NodeInput]) -> DAffine2 {
-	const TRANSLATION_INDEX: usize = 1;
-	const ROTATION_INDEX: usize = 2;
-	const SCALE_INDEX: usize = 3;
-	const SKEW_INDEX: usize = 4;
-
-	let translation = if let Some(&TaggedValue::DVec2(translation)) = inputs[TRANSLATION_INDEX].as_value() {
+	let translation = if let Some(&TaggedValue::DVec2(translation)) = inputs[TranslationInput::INDEX].as_value() {
 		translation
 	} else {
 		DVec2::ZERO
 	};
-	let rotation = if let Some(&TaggedValue::F64(rotation)) = inputs[ROTATION_INDEX].as_value() {
+	let rotation = if let Some(&TaggedValue::F64(rotation)) = inputs[RotationInput::INDEX].as_value() {
 		rotation
 	} else {
 		0.
 	};
-	let scale = if let Some(&TaggedValue::DVec2(scale)) = inputs[SCALE_INDEX].as_value() {
+	let scale = if let Some(&TaggedValue::DVec2(scale)) = inputs[ScaleInput::INDEX].as_value() {
 		scale
 	} else {
 		DVec2::ONE
 	};
-	let shear = if let Some(&TaggedValue::DVec2(shear)) = inputs[SKEW_INDEX].as_value() {
+	let shear = if let Some(&TaggedValue::DVec2(shear)) = inputs[SkewInput::INDEX].as_value() {
 		shear
 	} else {
 		DVec2::ZERO
