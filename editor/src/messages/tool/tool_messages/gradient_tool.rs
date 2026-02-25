@@ -44,6 +44,8 @@ pub enum GradientToolMessage {
 #[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum GradientOptionsUpdate {
 	Type(GradientType),
+	ReverseStops,
+	ReverseDirection,
 }
 
 impl ToolMetadata for GradientTool {
@@ -63,6 +65,13 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
 		let ToolMessage::Gradient(GradientToolMessage::UpdateOptions { options }) = message else {
 			self.fsm_state.process_event(message, &mut self.data, context, &self.options, responses, false);
+
+			let has_gradient = has_gradient_on_selected_layers(context.document);
+			if has_gradient != self.data.has_selected_gradient {
+				self.data.has_selected_gradient = has_gradient;
+				responses.add(ToolMessage::RefreshToolOptions);
+			}
+
 			return;
 		};
 		match options {
@@ -108,6 +117,87 @@ impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for Grad
 				responses.add(ToolMessage::UpdateHints);
 				responses.add(PropertiesPanelMessage::Refresh);
 				responses.add(ToolMessage::UpdateCursor);
+				self.data.has_selected_gradient = has_gradient_on_selected_layers(context.document);
+				responses.add(ToolMessage::RefreshToolOptions);
+			}
+			GradientOptionsUpdate::ReverseStops => {
+				let selected_layers: Vec<_> = context
+					.document
+					.network_interface
+					.selected_nodes()
+					.selected_visible_layers(&context.document.network_interface)
+					.collect();
+
+				let mut transaction_started = false;
+				for layer in selected_layers {
+					if NodeGraphLayer::is_raster_layer(layer, &mut context.document.network_interface) {
+						continue;
+					}
+
+					if let Some(mut gradient) = get_gradient(layer, &context.document.network_interface) {
+						if !transaction_started {
+							responses.add(DocumentMessage::StartTransaction);
+							transaction_started = true;
+						}
+						gradient.stops = gradient.stops.reversed();
+						responses.add(GraphOperationMessage::FillSet {
+							layer,
+							fill: Fill::Gradient(gradient),
+						});
+					}
+				}
+
+				if transaction_started {
+					responses.add(DocumentMessage::AddTransaction);
+				}
+				if let Some(selected_gradient) = &mut self.data.selected_gradient
+					&& let Some(layer) = selected_gradient.layer
+					&& !NodeGraphLayer::is_raster_layer(layer, &mut context.document.network_interface)
+				{
+					selected_gradient.gradient.stops = selected_gradient.gradient.stops.reversed();
+				}
+				responses.add(PropertiesPanelMessage::Refresh);
+				self.data.has_selected_gradient = has_gradient_on_selected_layers(context.document);
+				responses.add(ToolMessage::RefreshToolOptions);
+			}
+			GradientOptionsUpdate::ReverseDirection => {
+				let selected_layers: Vec<_> = context
+					.document
+					.network_interface
+					.selected_nodes()
+					.selected_visible_layers(&context.document.network_interface)
+					.collect();
+
+				let mut transaction_started = false;
+				for layer in selected_layers {
+					if NodeGraphLayer::is_raster_layer(layer, &mut context.document.network_interface) {
+						continue;
+					}
+
+					if let Some(mut gradient) = get_gradient(layer, &context.document.network_interface) {
+						if !transaction_started {
+							responses.add(DocumentMessage::StartTransaction);
+							transaction_started = true;
+						}
+						std::mem::swap(&mut gradient.start, &mut gradient.end);
+						responses.add(GraphOperationMessage::FillSet {
+							layer,
+							fill: Fill::Gradient(gradient),
+						});
+					}
+				}
+
+				if transaction_started {
+					responses.add(DocumentMessage::AddTransaction);
+				}
+				if let Some(selected_gradient) = &mut self.data.selected_gradient
+					&& let Some(layer) = selected_gradient.layer
+					&& !NodeGraphLayer::is_raster_layer(layer, &mut context.document.network_interface)
+				{
+					std::mem::swap(&mut selected_gradient.gradient.start, &mut selected_gradient.gradient.end);
+				}
+				responses.add(PropertiesPanelMessage::Refresh);
+				self.data.has_selected_gradient = has_gradient_on_selected_layers(context.document);
 				responses.add(ToolMessage::RefreshToolOptions);
 			}
 		}
@@ -142,7 +232,52 @@ impl LayoutHolder for GradientTool {
 		.selected_index(Some((self.options.gradient_type == GradientType::Radial) as u32))
 		.widget_instance();
 
-		Layout(vec![LayoutGroup::Row { widgets: vec![gradient_type] }])
+		let reverse_stops = IconButton::new("Reverse", 24)
+			.tooltip_label("Reverse Stops")
+			.tooltip_description("Reverse the gradient color stops.")
+			.disabled(!self.data.has_selected_gradient)
+			.on_update(|_| {
+				GradientToolMessage::UpdateOptions {
+					options: GradientOptionsUpdate::ReverseStops,
+				}
+				.into()
+			})
+			.widget_instance();
+
+		let mut widgets = vec![gradient_type, Separator::new(SeparatorStyle::Unrelated).widget_instance(), reverse_stops];
+
+		if self.options.gradient_type == GradientType::Radial {
+			let orientation = self
+				.data
+				.selected_gradient
+				.as_ref()
+				.map(|selected_gradient| {
+					let (start, end) = (selected_gradient.gradient.start, selected_gradient.gradient.end);
+					if (end.x - start.x).abs() > f64::EPSILON * 1e6 {
+						end.x > start.x
+					} else {
+						(start.x + start.y) < (end.x + end.y)
+					}
+				})
+				.unwrap_or(true);
+
+			let reverse_direction = IconButton::new(if orientation { "ReverseRadialGradientToRight" } else { "ReverseRadialGradientToLeft" }, 24)
+				.tooltip_label("Reverse Direction")
+				.tooltip_description("Reverse which end the gradient radiates from.")
+				.disabled(!self.data.has_selected_gradient)
+				.on_update(|_| {
+					GradientToolMessage::UpdateOptions {
+						options: GradientOptionsUpdate::ReverseDirection,
+					}
+					.into()
+				})
+				.widget_instance();
+
+			widgets.push(Separator::new(SeparatorStyle::Related).widget_instance());
+			widgets.push(reverse_direction);
+		}
+
+		Layout(vec![LayoutGroup::Row { widgets }])
 	}
 }
 
@@ -492,6 +627,7 @@ struct GradientToolData {
 	auto_panning: AutoPanning,
 	auto_pan_shift: DVec2,
 	gradient_angle: f64,
+	has_selected_gradient: bool,
 }
 
 impl Fsm for GradientToolFsmState {
@@ -993,9 +1129,12 @@ impl Fsm for GradientToolFsmState {
 				}
 
 				// Initialize `gradient_angle` from the existing gradient so Ctrl (lock angle) works from the first mouse move
-				if let Some(sg) = &tool_data.selected_gradient {
-					let (vp_start, vp_end) = (sg.transform.transform_point2(sg.gradient.start), sg.transform.transform_point2(sg.gradient.end));
-					let delta = match sg.dragging {
+				if let Some(selected_gradient) = &tool_data.selected_gradient {
+					let (vp_start, vp_end) = (
+						selected_gradient.transform.transform_point2(selected_gradient.gradient.start),
+						selected_gradient.transform.transform_point2(selected_gradient.gradient.end),
+					);
+					let delta = match selected_gradient.dragging {
 						// When dragging End, the fixed point is start and the mouse begins at end
 						GradientDragTarget::End => vp_start - vp_end,
 						// When dragging Start, the fixed point is end and the mouse begins at start
@@ -1316,6 +1455,14 @@ fn compute_selected_target(tool_data: &GradientToolData) -> GradientSelectedTarg
 		}
 		GradientDragTarget::New => GradientSelectedTarget::None,
 	}
+}
+
+fn has_gradient_on_selected_layers(document: &DocumentMessageHandler) -> bool {
+	document
+		.network_interface
+		.selected_nodes()
+		.selected_visible_layers(&document.network_interface)
+		.any(|layer| get_gradient(layer, &document.network_interface).is_some())
 }
 
 #[inline(always)]
