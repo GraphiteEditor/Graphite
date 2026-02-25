@@ -2,10 +2,16 @@ use winit::event_loop::ActiveEventLoop;
 use winit::window::{Window, WindowAttributes, WindowId};
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::raw_window_handle::HasWindowHandle;
-use windows::Win32::Graphics::Gdi::{GetDC, ReleaseDC, GetPixel, COLORREF, BitBlt, CreateCompatibleDC, CreateCompatibleBitmap, SelectObject, DeleteDC, DeleteObject, SRCCOPY, HDC};
+use windows::Win32::Graphics::Gdi::{
+	CreateCompatibleBitmap, CreateCompatibleDC, CreateSolidBrush, DeleteDC, DeleteObject, FillRect, FrameRect, GetDC, GetStockObject, ReleaseDC, SelectObject, StretchBlt,
+	BLACK_BRUSH, SRCCOPY,
+};
 use windows::Win32::Foundation::{HWND, RECT};
-use windows::Win32::UI::WindowsAndMessaging::{GetCursorPos, GetDesktopWindow, GetWindowRect};
+use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
 use graphene_std::raster::color::Color;
+
+const MAGNIFIER_RES: u32 = 11;
+const MAGNIFIER_SIZE: u32 = 110;
 
 pub struct GlobalEyedropper {
 	window: Option<Window>,
@@ -21,13 +27,17 @@ impl GlobalEyedropper {
 	}
 
 	pub fn start(&mut self, event_loop: &dyn ActiveEventLoop, primary: bool) {
+		if self.is_active() {
+			return;
+		}
+
 		self.primary = primary;
 		let attributes = WindowAttributes::default()
 			.with_title("Graphite Eyedropper")
 			.with_decorations(false)
 			.with_transparent(true)
 			.with_always_on_top(true)
-			.with_visible(false); // We'll show it and move it in the first update
+			.with_visible(false);
 
 		match event_loop.create_window(attributes) {
 			Ok(window) => {
@@ -54,16 +64,25 @@ impl GlobalEyedropper {
 	pub fn update(&mut self, position: PhysicalPosition<f64>) {
 		let Some(window) = &self.window else { return };
 
-		let size = PhysicalSize::new(110, 110);
+		let size = PhysicalSize::new(MAGNIFIER_SIZE, MAGNIFIER_SIZE);
 		window.set_outer_position(PhysicalPosition::new(position.x - size.width as f64 / 2., position.y - size.height as f64 / 2.));
 		window.set_min_surface_size(Some(size.into()));
 		window.set_visible(true);
 		window.request_redraw();
 	}
 
+	fn window_hwnd(&self) -> HWND {
+		let Some(window) = &self.window else {
+			return HWND::default();
+		};
+		HWND(match window.window_handle().unwrap().as_raw() {
+			winit::raw_window_handle::RawWindowHandle::Win32(handle) => handle.hwnd.get() as isize,
+			_ => 0,
+		})
+	}
+
 	pub fn render(&self) {
-		let Some(window) = &self.window else { return };
-		let size = window.inner_size();
+		let Some(_window) = &self.window else { return };
 
 		unsafe {
 			let mut pt = Default::default();
@@ -71,45 +90,68 @@ impl GlobalEyedropper {
 				return;
 			}
 
-			let res = 11;
-			let pixel_size = size.width / res;
+			let pixel_size = MAGNIFIER_SIZE / MAGNIFIER_RES;
+			let half = MAGNIFIER_RES as i32 / 2;
 
 			let desktop_dc = GetDC(HWND::default());
-			let window_dc = GetDC(HWND(match window.window_handle().unwrap().as_raw() {
-				winit::raw_window_handle::RawWindowHandle::Win32(handle) => handle.hwnd.get() as isize,
-				_ => 0,
-			}));
+			let window_hwnd = self.window_hwnd();
+			let window_dc = GetDC(window_hwnd);
 
-			for y in 0..res {
-				for x in 0..res {
-					let sx = pt.x - (res as i32 / 2) + x as i32;
-					let sy = pt.y - (res as i32 / 2) + y as i32;
-					let color = GetPixel(desktop_dc, sx, sy);
+			// Capture the screen area into a memory DC, then stretch it onto the window
+			let mem_dc = CreateCompatibleDC(desktop_dc);
+			let bitmap = CreateCompatibleBitmap(desktop_dc, MAGNIFIER_RES as i32, MAGNIFIER_RES as i32);
+			let old_bitmap = SelectObject(mem_dc, bitmap);
 
-					let rect = RECT {
-						left: (x * pixel_size) as i32,
-						top: (y * pixel_size) as i32,
-						right: ((x + 1) * pixel_size) as i32,
-						bottom: ((y + 1) * pixel_size) as i32,
-					};
-					windows::Win32::Graphics::Gdi::FillRect(window_dc, &rect, windows::Win32::Graphics::Gdi::HBRUSH((color.0 + 1) as isize));
-				}
-			}
+			// Copy 11x11 pixels from the screen around the cursor into the memory bitmap
+			StretchBlt(
+				mem_dc,
+				0,
+				0,
+				MAGNIFIER_RES as i32,
+				MAGNIFIER_RES as i32,
+				desktop_dc,
+				pt.x - half,
+				pt.y - half,
+				MAGNIFIER_RES as i32,
+				MAGNIFIER_RES as i32,
+				SRCCOPY,
+			)
+			.ok();
 
-			let mid = res / 2;
+			// Now stretch the small bitmap onto the window DC to get the magnified view
+			StretchBlt(
+				window_dc,
+				0,
+				0,
+				MAGNIFIER_SIZE as i32,
+				MAGNIFIER_SIZE as i32,
+				mem_dc,
+				0,
+				0,
+				MAGNIFIER_RES as i32,
+				MAGNIFIER_RES as i32,
+				SRCCOPY,
+			)
+			.ok();
+
+			// Clean up memory DC and bitmap
+			SelectObject(mem_dc, old_bitmap);
+			let _ = DeleteObject(bitmap);
+			let _ = DeleteDC(mem_dc);
+
+			// Draw crosshair border on the center pixel
+			let mid = MAGNIFIER_RES / 2;
 			let rect = RECT {
 				left: (mid * pixel_size) as i32,
 				top: (mid * pixel_size) as i32,
 				right: ((mid + 1) * pixel_size) as i32,
 				bottom: ((mid + 1) * pixel_size) as i32,
 			};
-			windows::Win32::Graphics::Gdi::FrameRect(window_dc, &rect, windows::Win32::Graphics::Gdi::HBRUSH(1));
+			let black_brush = GetStockObject(BLACK_BRUSH);
+			FrameRect(window_dc, &rect, black_brush.into());
 
 			ReleaseDC(HWND::default(), desktop_dc);
-			ReleaseDC(HWND(match window.window_handle().unwrap().as_raw() {
-				winit::raw_window_handle::RawWindowHandle::Win32(handle) => handle.hwnd.get() as isize,
-				_ => 0,
-			}), window_dc);
+			ReleaseDC(window_hwnd, window_dc);
 		}
 	}
 
@@ -121,14 +163,14 @@ impl GlobalEyedropper {
 			}
 
 			let hdc = GetDC(HWND::default());
-			let pixel = GetPixel(hdc, pt.x, pt.y);
+			let pixel = windows::Win32::Graphics::Gdi::GetPixel(hdc, pt.x, pt.y);
 			ReleaseDC(HWND::default(), hdc);
 
 			let r = (pixel.0 & 0xFF) as f32 / 255.0;
 			let g = ((pixel.0 >> 8) & 0xFF) as f32 / 255.0;
 			let b = ((pixel.0 >> 16) & 0xFF) as f32 / 255.0;
 
-			Some(Color::from_rgbaf32(r, g, b, 1.0).unwrap())
+			Some(Color::from_rgbaf32_unchecked(r, g, b, 1.0))
 		}
 	}
 

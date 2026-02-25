@@ -406,7 +406,9 @@ impl App {
 			}
 			DesktopFrontendMessage::GlobalEyedropper { open, primary } => {
 				if open {
-					self.app_event_scheduler.schedule(AppEvent::StartGlobalEyedropper { primary });
+					if !self.global_eyedropper.is_active() {
+						self.app_event_scheduler.schedule(AppEvent::StartGlobalEyedropper { primary });
+					}
 				} else {
 					self.global_eyedropper.stop();
 				}
