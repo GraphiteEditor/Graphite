@@ -28,6 +28,13 @@ pub fn empty_provider() -> OverlayProvider {
 	|_| Message::NoOp
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GizmoEmphasis {
+	Regular,
+	Hovered,
+	Active,
+}
+
 /// Types of overlays used by DocumentMessage to enable/disable the selected set of viewport overlays.
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum OverlaysType {
@@ -469,12 +476,17 @@ impl OverlayContext {
 		self.square(position, None, Some(color_fill), Some(color_stroke));
 	}
 
-	pub fn gradient_color_stop(&mut self, position: DVec2, selected: bool, color: &str, small: bool) {
+	pub fn gradient_color_stop(&mut self, position: DVec2, emphasis: GizmoEmphasis, color: &str, small: bool) {
 		self.start_dpi_aware_transform();
 
 		let position = position.round() - DVec2::splat(0.5);
 
-		let (radius_offset, stroke_width) = if selected { (1., 3.) } else { (0., 1.) };
+		let radius_offset = match emphasis {
+			GizmoEmphasis::Regular => 0.,
+			GizmoEmphasis::Hovered => 0.5,
+			GizmoEmphasis::Active => 1.,
+		};
+		let stroke_width = radius_offset * 2. + 1.;
 		let radius = (MANIPULATOR_GROUP_MARKER_SIZE / 1.5 + 1. + radius_offset) * if small { 0.5 } else { 1. };
 
 		let draw_circle = |radius: f64, width: Option<f64>, color: &str| {
@@ -501,7 +513,7 @@ impl OverlayContext {
 		self.end_dpi_aware_transform();
 	}
 
-	pub fn gradient_midpoint(&mut self, position: DVec2, selected: bool, angle: f64) {
+	pub fn gradient_midpoint(&mut self, position: DVec2, emphasis: GizmoEmphasis, angle: f64) {
 		self.start_dpi_aware_transform();
 
 		let position = position.round() - DVec2::splat(0.5);
@@ -522,11 +534,17 @@ impl OverlayContext {
 		self.render_context.line_to(position.x + left.x, position.y + left.y);
 		self.render_context.close_path();
 
-		let fill = if selected { COLOR_OVERLAY_BLUE } else { COLOR_OVERLAY_WHITE };
+		let (fill, stroke_width) = match emphasis {
+			GizmoEmphasis::Regular => (COLOR_OVERLAY_WHITE, 1.),
+			GizmoEmphasis::Hovered => (COLOR_OVERLAY_WHITE, 2.),
+			GizmoEmphasis::Active => (COLOR_OVERLAY_BLUE, 1.),
+		};
 		self.render_context.set_fill_style_str(fill);
 		self.render_context.set_stroke_style_str(COLOR_OVERLAY_BLUE);
 		self.render_context.fill();
+		self.render_context.set_line_width(stroke_width);
 		self.render_context.stroke();
+		self.render_context.set_line_width(1.);
 
 		self.end_dpi_aware_transform();
 	}

@@ -177,7 +177,7 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		// GradientToolMessage
 		entry!(DoubleClick(MouseButton::Left); action_dispatch=GradientToolMessage::DoubleClick),
 		entry!(KeyDown(MouseLeft); action_dispatch=GradientToolMessage::PointerDown),
-		entry!(PointerMove; refresh_keys=[Shift], action_dispatch=GradientToolMessage::PointerMove { constrain_axis: Shift }),
+		entry!(PointerMove; refresh_keys=[Shift, Control], action_dispatch=GradientToolMessage::PointerMove { constrain_axis: Shift, lock_angle: Control }),
 		entry!(KeyUp(MouseLeft); action_dispatch=GradientToolMessage::PointerUp),
 		entry!(KeyDown(Delete); action_dispatch=GradientToolMessage::DeleteStop),
 		entry!(KeyDown(Backspace); action_dispatch=GradientToolMessage::DeleteStop),

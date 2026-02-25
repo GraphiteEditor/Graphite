@@ -34,6 +34,14 @@ pub fn empty_provider() -> OverlayProvider {
 }
 
 // TODO Remove duplicated definition of this in `utility_types_web.rs`
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GizmoEmphasis {
+	Regular,
+	Hovered,
+	Active,
+}
+
+// TODO Remove duplicated definition of this in `utility_types_web.rs`
 /// Types of overlays used by DocumentMessage to enable/disable the selected set of viewport overlays.
 #[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum OverlaysType {
@@ -273,12 +281,12 @@ impl OverlayContext {
 		self.internal().manipulator_anchor(position, selected, color);
 	}
 
-	pub fn gradient_color_stop(&mut self, position: DVec2, selected: bool, color: &str, small: bool) {
-		self.internal().gradient_color_stop(position, selected, color, small);
+	pub fn gradient_color_stop(&mut self, position: DVec2, emphasis: GizmoEmphasis, color: &str, small: bool) {
+		self.internal().gradient_color_stop(position, emphasis, color, small);
 	}
 
-	pub fn gradient_midpoint(&mut self, position: DVec2, selected: bool, angle: f64) {
-		self.internal().gradient_midpoint(position, selected, angle);
+	pub fn gradient_midpoint(&mut self, position: DVec2, emphasis: GizmoEmphasis, angle: f64) {
+		self.internal().gradient_midpoint(position, emphasis, angle);
 	}
 
 	pub fn resize_handle(&mut self, position: DVec2, rotation: f64) {
@@ -591,11 +599,16 @@ impl OverlayContextInternal {
 		self.square(position, None, Some(color_fill), Some(COLOR_OVERLAY_BLUE));
 	}
 
-	fn gradient_color_stop(&mut self, position: DVec2, selected: bool, color: &str, small: bool) {
+	fn gradient_color_stop(&mut self, position: DVec2, emphasis: GizmoEmphasis, color: &str, small: bool) {
 		let transform = self.get_transform();
 		let position = position.round() - DVec2::splat(0.5);
 
-		let (radius_offset, stroke_width) = if selected { (1., 3.) } else { (0., 1.) };
+		let radius_offset = match emphasis {
+			GizmoEmphasis::Regular => 0.,
+			GizmoEmphasis::Hovered => 0.5,
+			GizmoEmphasis::Active => 1.,
+		};
+		let stroke_width = radius_offset * 2. + 1.;
 		let radius = (MANIPULATOR_GROUP_MARKER_SIZE / 1.5 + 1. + radius_offset) * if small { 0.5 } else { 1. };
 
 		let mut draw_circle = |radius: f64, width: Option<f64>, color: &str| {
@@ -614,7 +627,7 @@ impl OverlayContextInternal {
 		draw_circle(radius, Some(stroke_width), COLOR_OVERLAY_WHITE);
 	}
 
-	fn gradient_midpoint(&mut self, position: DVec2, selected: bool, angle: f64) {
+	fn gradient_midpoint(&mut self, position: DVec2, emphasis: GizmoEmphasis, angle: f64) {
 		let transform = self.get_transform();
 		let position = position.round() - DVec2::splat(0.5);
 
@@ -634,9 +647,13 @@ impl OverlayContextInternal {
 		path.line_to(kurbo::Point::new(position.x + left.x, position.y + left.y));
 		path.close_path();
 
-		let fill = if selected { COLOR_OVERLAY_BLUE } else { COLOR_OVERLAY_WHITE };
+		let (fill, stroke_width) = match emphasis {
+			GizmoEmphasis::Regular => (COLOR_OVERLAY_WHITE, 1.),
+			GizmoEmphasis::Hovered => (COLOR_OVERLAY_WHITE, 2.),
+			GizmoEmphasis::Active => (COLOR_OVERLAY_BLUE, 1.),
+		};
 		self.scene.fill(peniko::Fill::NonZero, transform, Self::parse_color(fill), None, &path);
-		self.scene.stroke(&kurbo::Stroke::new(1.), transform, Self::parse_color(COLOR_OVERLAY_BLUE), None, &path);
+		self.scene.stroke(&kurbo::Stroke::new(stroke_width), transform, Self::parse_color(COLOR_OVERLAY_BLUE), None, &path);
 	}
 
 	fn resize_handle(&mut self, position: DVec2, rotation: f64) {
