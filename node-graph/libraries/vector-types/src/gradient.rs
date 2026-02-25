@@ -232,7 +232,7 @@ impl GradientStops {
 
 	pub fn sort(&mut self) {
 		let mut indices: Vec<usize> = (0..self.position.len()).collect();
-		indices.sort_unstable_by(|&a, &b| self.position[a].partial_cmp(&self.position[b]).unwrap());
+		indices.sort_unstable_by(|&a, &b| self.position[a].total_cmp(&self.position[b]));
 		self.position = indices.iter().map(|&i| self.position[i]).collect();
 		self.midpoint = indices.iter().map(|&i| self.midpoint[i]).collect();
 		self.color = indices.iter().map(|&i| self.color[i]).collect();
@@ -437,9 +437,10 @@ impl Gradient {
 			index += 1;
 		}
 
-		// Insert the new stop
+		// Insert the new stop, duplicating the midpoint ratio of the interval being split
+		let inherited_midpoint = if index > 0 { self.stops.midpoint[index - 1] } else { 0.5 };
 		self.stops.position.insert(index, new_position);
-		self.stops.midpoint.insert(index, 0.5);
+		self.stops.midpoint.insert(index, inherited_midpoint);
 		self.stops.color.insert(index, new_color);
 
 		Some(index)
