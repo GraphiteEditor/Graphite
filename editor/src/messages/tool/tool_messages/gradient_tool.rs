@@ -594,13 +594,22 @@ impl Fsm for GradientToolFsmState {
 							GizmoEmphasis::Regular
 						}
 					};
+					let mut draw_stop = |id: StopId, emphasis: GizmoEmphasis| match id {
+						StopId::Start => overlay_context.gradient_color_stop(start, emphasis, &start_hex, !first_at_start),
+						StopId::End => overlay_context.gradient_color_stop(end, emphasis, &end_hex, !last_at_end),
+						StopId::Middle(i) => {
+							if let Some(stop) = stops.iter().nth(i) {
+								overlay_context.gradient_color_stop(start.lerp(end, stop.position), emphasis, &color_to_hex(stop.color), false);
+							}
+						}
+					};
 
 					// Draw regular (non-deferred) stops
 					if !is_deferred(StopId::Start) {
-						overlay_context.gradient_color_stop(start, emphasis_for(StopId::Start), &start_hex, !first_at_start);
+						draw_stop(StopId::Start, emphasis_for(StopId::Start));
 					}
 					if !is_deferred(StopId::End) {
-						overlay_context.gradient_color_stop(end, emphasis_for(StopId::End), &end_hex, !last_at_end);
+						draw_stop(StopId::End, emphasis_for(StopId::End));
 					}
 					for (index, stop) in stops.iter().enumerate() {
 						if stop.position.abs() < f64::EPSILON * 1000. || (1. - stop.position).abs() < f64::EPSILON * 1000. {
@@ -608,7 +617,7 @@ impl Fsm for GradientToolFsmState {
 						}
 						let id = StopId::Middle(index);
 						if !is_deferred(id) {
-							overlay_context.gradient_color_stop(start.lerp(end, stop.position), emphasis_for(id), &color_to_hex(stop.color), false);
+							draw_stop(id, emphasis_for(id));
 						}
 					}
 
@@ -616,29 +625,13 @@ impl Fsm for GradientToolFsmState {
 					if let Some(selected_id) = selected_stop_id
 						&& Some(selected_id) != hovered_stop_id
 					{
-						match selected_id {
-							StopId::Start => overlay_context.gradient_color_stop(start, GizmoEmphasis::Active, &start_hex, !first_at_start),
-							StopId::End => overlay_context.gradient_color_stop(end, GizmoEmphasis::Active, &end_hex, !last_at_end),
-							StopId::Middle(i) => {
-								if let Some(stop) = stops.iter().nth(i) {
-									overlay_context.gradient_color_stop(start.lerp(end, stop.position), GizmoEmphasis::Active, &color_to_hex(stop.color), false);
-								}
-							}
-						}
+						draw_stop(selected_id, GizmoEmphasis::Active);
 					}
 
 					// Draw hovered stop last (on top of everything)
 					if let Some(hov_id) = hovered_stop_id {
 						let emphasis = if Some(hov_id) == selected_stop_id { GizmoEmphasis::Active } else { GizmoEmphasis::Hovered };
-						match hov_id {
-							StopId::Start => overlay_context.gradient_color_stop(start, emphasis, &start_hex, !first_at_start),
-							StopId::End => overlay_context.gradient_color_stop(end, emphasis, &end_hex, !last_at_end),
-							StopId::Middle(i) => {
-								if let Some(stop) = stops.iter().nth(i) {
-									overlay_context.gradient_color_stop(start.lerp(end, stop.position), emphasis, &color_to_hex(stop.color), false);
-								}
-							}
-						}
+						draw_stop(hov_id, emphasis);
 					}
 
 					// Draw midpoint diamonds between adjacent stops (hidden when stops are too close in viewport space)
