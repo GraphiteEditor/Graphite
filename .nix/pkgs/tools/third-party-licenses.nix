@@ -17,7 +17,7 @@ let
     env = deps.cef.env // {
       CARGO_PROFILE = "dev";
     };
-    cargoExtraArgs = "-p third-party-licenses";
+    cargoExtraArgs = "-p third-party-licenses --features desktop";
     doCheck = false;
   };
 in

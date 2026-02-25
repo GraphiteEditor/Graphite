@@ -65,7 +65,7 @@ function plugins(mode: string): PluginOption[] {
 			name: "third-party-licenses",
 			buildStart() {
 				try {
-					execSync("cargo run -p third-party-licenses -- --web", {
+					execSync("cargo run -p third-party-licenses", {
 						stdio: "inherit",
 					});
 				} catch (_e) {

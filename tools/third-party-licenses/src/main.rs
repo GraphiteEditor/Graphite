@@ -1,15 +1,15 @@
-use lzma_rust2::{XzOptions, XzWriter};
 use std::collections::HashMap;
 use std::hash::{DefaultHasher, Hash, Hasher};
-use std::io::Write;
 use std::path::PathBuf;
 use std::{fs, process};
 
 mod cargo;
+#[cfg(feature = "desktop")]
 mod cef;
 mod npm;
 
 use crate::cargo::CargoLicenseSource;
+#[cfg(feature = "desktop")]
 use crate::cef::CefLicenseSource;
 use crate::npm::NpmLicenseSource;
 
@@ -30,39 +30,44 @@ pub struct Package {
 }
 
 #[derive(Hash)]
-struct RunHashes<'a> {
+struct Run<'a> {
 	output: &'a Vec<u8>,
 	cargo: &'a CargoLicenseSource,
 	npm: &'a NpmLicenseSource,
-	cef: &'a Option<CefLicenseSource>,
+	#[cfg(feature = "desktop")]
+	cef: &'a CefLicenseSource,
 }
 
 fn main() {
-	let web = std::env::args().any(|arg| arg == "--web");
-
 	let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
 	let workspace_dir = PathBuf::from(env!("CARGO_WORKSPACE_DIR"));
-	let output_path = if web {
-		workspace_dir.join("frontend/third-party-licenses.txt")
-	} else {
-		workspace_dir.join("desktop/third-party-licenses.txt.xz")
-	};
-	let current_hash_path = manifest_dir.join(if web { "web.hash" } else { "desktop.hash" });
+
+	#[cfg(feature = "desktop")]
+	let output_path = workspace_dir.join("desktop/third-party-licenses.txt.xz");
+	#[cfg(not(feature = "desktop"))]
+	let output_path = workspace_dir.join("frontend/third-party-licenses.txt");
+
+	#[cfg(feature = "desktop")]
+	let current_hash_path = manifest_dir.join("desktop.hash");
+	#[cfg(not(feature = "desktop"))]
+	let current_hash_path = manifest_dir.join("web.hash");
 
 	let cargo_source = CargoLicenseSource::new();
 	let npm_source = NpmLicenseSource::new(workspace_dir.join("frontend"));
-	let cef_source = if web { None } else { Some(CefLicenseSource::new()) };
+	#[cfg(feature = "desktop")]
+	let cef_source = CefLicenseSource::new();
 
-	let mut run = RunHashes {
+	let mut run = Run {
 		cargo: &cargo_source,
 		npm: &npm_source,
+		#[cfg(feature = "desktop")]
 		cef: &cef_source,
 		output: &fs::read(&output_path).unwrap_or_default(),
 	};
 
 	let mut hasher = DefaultHasher::new();
 	run.hash(&mut hasher);
-	let current_hash = hasher.finish().to_string();
+	let current_hash = format!("{:016x}", hasher.finish());
 
 	if current_hash == fs::read_to_string(&current_hash_path).unwrap_or_default() {
 		eprintln!("No changes in licenses detected, skipping generation.");
@@ -70,40 +75,34 @@ fn main() {
 	}
 	eprintln!("Changes in licenses detected, generating new license file.");
 
-	let mut sources = vec![cargo_source.licenses(), npm_source.licenses()];
-	if let Some(cef_source) = cef_source.as_ref() {
-		sources.push(cef_source.licenses());
+	let licenses = merge_filter_dedup_and_sort(vec![
+		cargo_source.licenses(),
+		npm_source.licenses(),
+		#[cfg(feature = "desktop")]
+		cef_source.licenses(),
+	]);
+	let formatted = format_credits(&licenses);
+
+	#[cfg(feature = "desktop")]
+	let output = compress(&formatted);
+	#[cfg(not(feature = "desktop"))]
+	let output = formatted.as_bytes().to_vec();
+	if let Some(parent) = output_path.parent() {
+		fs::create_dir_all(parent).unwrap_or_else(|e| {
+			eprintln!("Failed to create directory {}: {e}", parent.display());
+			std::process::exit(1);
+		});
 	}
-	let credits = merge_filter_dedup_and_sort(sources);
-
-	let formatted = format_credits(&credits);
-
-	let output = if web {
-		if let Some(parent) = output_path.parent() {
-			fs::create_dir_all(parent).unwrap_or_else(|e| {
-				eprintln!("Failed to create directory {}: {e}", parent.display());
-				std::process::exit(1);
-			});
-		}
-		fs::write(&output_path, &formatted).unwrap_or_else(|e| {
-			eprintln!("Failed to write {}: {e}", &output_path.display());
-			std::process::exit(1);
-		});
-		formatted.as_bytes().to_vec()
-	} else {
-		let compressed = compress(&formatted);
-		fs::write(&output_path, &compressed).unwrap_or_else(|e| {
-			eprintln!("Failed to write {}: {e}", &output_path.display());
-			std::process::exit(1);
-		});
-		compressed
-	};
+	fs::write(&output_path, &output).unwrap_or_else(|e| {
+		eprintln!("Failed to write {}: {e}", &output_path.display());
+		std::process::exit(1);
+	});
 	run.output = &output;
 
 	let hash = {
 		let mut hasher = DefaultHasher::new();
 		run.hash(&mut hasher);
-		hasher.finish().to_string()
+		format!("{:016x}", hasher.finish())
 	};
 
 	fs::write(&current_hash_path, hash).unwrap_or_else(|e| {
@@ -209,9 +208,11 @@ fn dedup_by_licence_text(vec: Vec<LicenseEntry>) -> Vec<LicenseEntry> {
 	map.into_values().collect()
 }
 
+#[cfg(feature = "desktop")]
 fn compress(content: &str) -> Vec<u8> {
+	use std::io::Write;
 	let mut buf = Vec::new();
-	let mut writer = XzWriter::new(&mut buf, XzOptions::default()).unwrap_or_else(|e| {
+	let mut writer = lzma_rust2::XzWriter::new(&mut buf, lzma_rust2::XzOptions::default()).unwrap_or_else(|e| {
 		eprintln!("Failed to create XZ writer: {e}");
 		std::process::exit(1);
 	});

@@ -24,8 +24,7 @@ impl LicenceSource for CefLicenseSource {
 
 impl Hash for CefLicenseSource {
 	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-		let cef_path = PathBuf::from(env!("CEF_PATH")).join("CREDITS.html");
-		fs::read_to_string(cef_path).unwrap().hash(state)
+		read().hash(state)
 	}
 }
 
