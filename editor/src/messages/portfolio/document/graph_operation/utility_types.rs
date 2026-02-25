@@ -367,7 +367,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let Some(blend_node_id) = self.existing_proto_node_id(graphene_std::blending_nodes::blending::IDENTIFIER, true) else {
 			return;
 		};
-		let input_connector = InputConnector::node(blend_node_id, 1);
+		let input_connector = InputConnector::node(blend_node_id, graphene_std::blending_nodes::blending::BlendModeInput::INDEX);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::BlendMode(blend_mode), false), false);
 	}
 
@@ -375,7 +375,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let Some(blend_node_id) = self.existing_proto_node_id(graphene_std::blending_nodes::blending::IDENTIFIER, true) else {
 			return;
 		};
-		let input_connector = InputConnector::node(blend_node_id, 2);
+		let input_connector = InputConnector::node(blend_node_id, graphene_std::blending_nodes::blending::OpacityInput::INDEX);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(opacity * 100.), false), false);
 	}
 
@@ -383,7 +383,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let Some(blend_node_id) = self.existing_proto_node_id(graphene_std::blending_nodes::blending::IDENTIFIER, true) else {
 			return;
 		};
-		let input_connector = InputConnector::node(blend_node_id, 3);
+		let input_connector = InputConnector::node(blend_node_id, graphene_std::blending_nodes::blending::FillInput::INDEX);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::F64(fill * 100.), false), false);
 	}
 
@@ -392,7 +392,7 @@ impl<'a> ModifyInputsContext<'a> {
 		let Some(clip_node_id) = self.existing_proto_node_id(graphene_std::blending_nodes::blending::IDENTIFIER, true) else {
 			return;
 		};
-		let input_connector = InputConnector::node(clip_node_id, 4);
+		let input_connector = InputConnector::node(clip_node_id, graphene_std::blending_nodes::blending::ClipInput::INDEX);
 		self.set_input_with_refresh(input_connector, NodeInput::value(TaggedValue::Bool(clip), false), false);
 	}
 

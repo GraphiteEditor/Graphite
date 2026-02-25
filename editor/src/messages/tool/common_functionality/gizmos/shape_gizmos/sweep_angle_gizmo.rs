@@ -11,6 +11,8 @@ use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::DVec2;
 use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{NodeId, NodeInput};
+use graphene_std::NodeInputDecleration;
+use graphene_std::vector::generator_nodes::arc::*;
 use std::collections::VecDeque;
 use std::f64::consts::FRAC_PI_4;
 
@@ -332,11 +334,11 @@ impl SweepAngleGizmo {
 		self.snap_angles = Self::calculate_snap_angles();
 
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, 2),
+			input_connector: InputConnector::node(node_id, StartAngleInput::INDEX),
 			input: NodeInput::value(TaggedValue::F64(start_angle), false),
 		});
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, 3),
+			input_connector: InputConnector::node(node_id, SweepAngleInput::INDEX),
 			input: NodeInput::value(TaggedValue::F64(sweep_angle), false),
 		});
 

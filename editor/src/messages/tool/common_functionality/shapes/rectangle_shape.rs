@@ -9,6 +9,8 @@ use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::DAffine2;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::NodeInputDecleration;
+use graphene_std::vector::generator_nodes::rectangle::*;
 use std::collections::VecDeque;
 
 #[derive(Default)]
@@ -37,11 +39,11 @@ impl Rectangle {
 			};
 
 			responses.add(NodeGraphMessage::SetInput {
-				input_connector: InputConnector::node(node_id, 1),
+				input_connector: InputConnector::node(node_id, WidthInput::INDEX),
 				input: NodeInput::value(TaggedValue::F64((start.x - end.x).abs()), false),
 			});
 			responses.add(NodeGraphMessage::SetInput {
-				input_connector: InputConnector::node(node_id, 2),
+				input_connector: InputConnector::node(node_id, HeightInput::INDEX),
 				input: NodeInput::value(TaggedValue::F64((start.y - end.y).abs()), false),
 			});
 			responses.add(GraphOperationMessage::TransformSet {

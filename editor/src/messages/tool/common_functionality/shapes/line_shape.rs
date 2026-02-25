@@ -13,6 +13,8 @@ use crate::messages::tool::tool_messages::tool_prelude::*;
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::NodeInputDecleration;
+use graphene_std::vector::generator_nodes::line::*;
 use std::collections::VecDeque;
 
 #[derive(Clone, PartialEq, Debug, Default)]
@@ -73,7 +75,7 @@ impl Line {
 		let line_to = document_points[1] - document_points[0];
 
 		responses.add(NodeGraphMessage::SetInput {
-			input_connector: InputConnector::node(node_id, 1),
+			input_connector: InputConnector::node(node_id, StartInput::INDEX),
 			input: NodeInput::value(TaggedValue::DVec2(line_to), false),
 		});
 		let document_to_viewport = document.metadata().document_to_viewport;
