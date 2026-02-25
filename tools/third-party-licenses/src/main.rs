@@ -167,7 +167,7 @@ fn format_credits(licenses: &Vec<LicenseEntry>) -> String {
 			out.push_str("    ");
 			out.push_str(line);
 		}
-		out = out.trim_end().to_string();
+		out.truncate(out.trim_end().len());
 		out.push('\n');
 	}
 
