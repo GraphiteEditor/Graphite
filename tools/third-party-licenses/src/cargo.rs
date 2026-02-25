@@ -1,29 +1,28 @@
 use crate::{LicenceSource, LicenseEntry, Package};
 use serde::Deserialize;
-use sha256::TrySha256Digest;
-use std::{
-	path::PathBuf,
-	process::{self, Command},
-};
+use std::fs;
+use std::hash::{Hash, Hasher};
+use std::path::PathBuf;
+use std::process::{self, Command};
 
-pub struct CargoAboutLicenseSource {}
+pub struct CargoLicenseSource {}
 
-impl CargoAboutLicenseSource {
+impl CargoLicenseSource {
 	pub fn new() -> Self {
 		Self {}
 	}
 }
 
-impl LicenceSource for CargoAboutLicenseSource {
+impl LicenceSource for CargoLicenseSource {
 	fn licenses(&self) -> Vec<LicenseEntry> {
 		parse(run())
 	}
-	fn hash(&self) -> String {
+}
+
+impl Hash for CargoLicenseSource {
+	fn hash<H: Hasher>(&self, state: &mut H) {
 		let lock_path = PathBuf::from(env!("CARGO_WORKSPACE_DIR")).join("Cargo.lock");
-		lock_path.digest().unwrap_or_else(|e| {
-			eprintln!("Failed to hash Cargo.lock: {e}");
-			process::exit(1);
-		})
+		fs::read_to_string(lock_path).unwrap().hash(state)
 	}
 }
 

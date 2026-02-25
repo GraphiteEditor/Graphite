@@ -418,7 +418,7 @@ impl App {
 				self.exit(Some(ExitReason::Restart));
 			}
 			DesktopFrontendMessage::LoadThirdPartyLicenses => {
-				let compressed = include_bytes!(concat!(env!("CARGO_WORKSPACE_DIR"), "/third-party-licenses.txt.xz"));
+				let compressed = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/third-party-licenses.txt.xz"));
 				let mut reader = lzma_rust2::XzReader::new(compressed.as_slice(), false);
 				let mut string = String::new();
 				if let Err(e) = reader.read_to_string(&mut string) {

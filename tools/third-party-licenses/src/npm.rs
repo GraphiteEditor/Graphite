@@ -1,11 +1,8 @@
-use serde::Deserialize;
-use sha256::TrySha256Digest;
-use std::{
-	collections::BTreeMap,
-	fs,
-	path::PathBuf,
-	process::{self, Command},
-};
+use std::collections::HashMap;
+use std::fs;
+use std::path::PathBuf;
+use std::process;
+use std::process::Command;
 
 use crate::{LicenceSource, LicenseEntry, Package};
 
@@ -22,16 +19,16 @@ impl LicenceSource for NpmLicenseSource {
 	fn licenses(&self) -> Vec<LicenseEntry> {
 		parse(&run(&self.dir))
 	}
-	fn hash(&self) -> String {
+}
+
+impl std::hash::Hash for NpmLicenseSource {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
 		let lock_path = self.dir.join("package-lock.json");
-		lock_path.digest().unwrap_or_else(|e| {
-			eprintln!("Failed to hash npm package-lock.json: {e}");
-			process::exit(1);
-		})
+		fs::read_to_string(lock_path).unwrap().hash(state)
 	}
 }
 
-#[derive(Deserialize)]
+#[derive(serde::Deserialize)]
 struct NpmEntry {
 	licenses: Option<String>,
 	repository: Option<String>,
@@ -63,9 +60,9 @@ pub fn run(dir: &std::path::Path) -> String {
 }
 
 pub fn parse(json_str: &str) -> Vec<LicenseEntry> {
-	let entries: BTreeMap<String, NpmEntry> = serde_json::from_str(json_str).unwrap_or_else(|e| {
+	let entries: HashMap<String, NpmEntry> = serde_json::from_str(json_str).unwrap_or_else(|e| {
 		eprintln!("Failed to parse license-checker JSON: {e}");
-		process::exit(1);
+		process::exit(1)
 	});
 
 	entries

@@ -1,6 +1,6 @@
 use lzma_rust2::{XzOptions, XzWriter};
-use sha256::Sha256Digest;
-use std::collections::BTreeMap;
+use std::collections::HashMap;
+use std::hash::{DefaultHasher, Hash, Hasher};
 use std::io::Write;
 use std::path::PathBuf;
 use std::{fs, process};
@@ -9,13 +9,12 @@ mod cargo;
 mod cef;
 mod npm;
 
-use crate::cargo::CargoAboutLicenseSource;
+use crate::cargo::CargoLicenseSource;
 use crate::cef::CefLicenseSource;
 use crate::npm::NpmLicenseSource;
 
-pub trait LicenceSource {
+pub trait LicenceSource: std::hash::Hash {
 	fn licenses(&self) -> Vec<LicenseEntry>;
-	fn hash(&self) -> String;
 }
 
 pub struct LicenseEntry {
@@ -30,17 +29,12 @@ pub struct Package {
 	url: Option<String>,
 }
 
-struct Run {
-	output_hash: String,
-	cargo_hash: String,
-	npm_hash: String,
-	cef_hash: Option<String>,
-}
-
-impl Run {
-	fn hash(&self) -> String {
-		format!("{}{}{}{}", self.cargo_hash, self.npm_hash, self.cef_hash.as_deref().unwrap_or_default(), self.output_hash).digest()
-	}
+#[derive(Hash)]
+struct RunHashes<'a> {
+	output: &'a Vec<u8>,
+	cargo: &'a CargoLicenseSource,
+	npm: &'a NpmLicenseSource,
+	cef: &'a Option<CefLicenseSource>,
 }
 
 fn main() {
@@ -51,41 +45,40 @@ fn main() {
 	let output_path = if web {
 		workspace_dir.join("frontend/third-party-licenses.txt")
 	} else {
-		workspace_dir.join("third-party-licenses.txt.xz")
+		workspace_dir.join("desktop/third-party-licenses.txt.xz")
 	};
 	let current_hash_path = manifest_dir.join(if web { "web.hash" } else { "desktop.hash" });
 
-	let cargo_source = CargoAboutLicenseSource::new();
+	let cargo_source = CargoLicenseSource::new();
 	let npm_source = NpmLicenseSource::new(workspace_dir.join("frontend"));
 	let cef_source = if web { None } else { Some(CefLicenseSource::new()) };
 
-	let mut run = Run {
-		cargo_hash: cargo_source.hash(),
-		npm_hash: npm_source.hash(),
-		cef_hash: cef_source.as_ref().map(|s| s.hash()),
-		output_hash: if output_path.exists() {
-			fs::read_to_string(&output_path).unwrap_or_default().digest()
-		} else {
-			Default::default()
-		},
+	let mut run = RunHashes {
+		cargo: &cargo_source,
+		npm: &npm_source,
+		cef: &cef_source,
+		output: &fs::read(&output_path).unwrap_or_default(),
 	};
 
-	if run.hash() == fs::read_to_string(&current_hash_path).unwrap_or_default() {
+	let mut hasher = DefaultHasher::new();
+	run.hash(&mut hasher);
+	let current_hash = hasher.finish().to_string();
+
+	if current_hash == fs::read_to_string(&current_hash_path).unwrap_or_default() {
 		eprintln!("No changes in licenses detected, skipping generation.");
 		return;
 	}
 	eprintln!("Changes in licenses detected, generating new license file.");
 
 	let mut sources = vec![cargo_source.licenses(), npm_source.licenses()];
-	if !web {
-		let cef_source = CefLicenseSource::new();
+	if let Some(cef_source) = cef_source.as_ref() {
 		sources.push(cef_source.licenses());
 	}
 	let credits = merge_filter_dedup_and_sort(sources);
 
 	let formatted = format_credits(&credits);
 
-	if web {
+	let output = if web {
 		if let Some(parent) = output_path.parent() {
 			fs::create_dir_all(parent).unwrap_or_else(|e| {
 				eprintln!("Failed to create directory {}: {e}", parent.display());
@@ -96,17 +89,24 @@ fn main() {
 			eprintln!("Failed to write {}: {e}", &output_path.display());
 			std::process::exit(1);
 		});
-		run.output_hash = formatted.digest();
+		formatted.as_bytes().to_vec()
 	} else {
-		let formatted_compressed = compress(&formatted);
-		fs::write(&output_path, &formatted_compressed).unwrap_or_else(|e| {
+		let compressed = compress(&formatted);
+		fs::write(&output_path, &compressed).unwrap_or_else(|e| {
 			eprintln!("Failed to write {}: {e}", &output_path.display());
 			std::process::exit(1);
 		});
-		run.output_hash = formatted_compressed.digest();
-	}
+		compressed
+	};
+	run.output = &output;
 
-	fs::write(&current_hash_path, run.hash()).unwrap_or_else(|e| {
+	let hash = {
+		let mut hasher = DefaultHasher::new();
+		run.hash(&mut hasher);
+		hasher.finish().to_string()
+	};
+
+	fs::write(&current_hash_path, hash).unwrap_or_else(|e| {
 		eprintln!("Failed to write hash file {}: {e}", current_hash_path.display());
 		process::exit(1);
 	});
@@ -193,14 +193,14 @@ fn filter(licenses: &mut Vec<LicenseEntry>) {
 }
 
 fn dedup_by_licence_text(vec: Vec<LicenseEntry>) -> Vec<LicenseEntry> {
-	let mut map: BTreeMap<String, LicenseEntry> = BTreeMap::new();
+	let mut map: HashMap<String, LicenseEntry> = HashMap::new();
 
 	for entry in vec {
 		match map.entry(entry.text.clone()) {
-			std::collections::btree_map::Entry::Occupied(mut e) => {
+			std::collections::hash_map::Entry::Occupied(mut e) => {
 				e.get_mut().packages.extend(entry.packages);
 			}
-			std::collections::btree_map::Entry::Vacant(e) => {
+			std::collections::hash_map::Entry::Vacant(e) => {
 				e.insert(entry);
 			}
 		}

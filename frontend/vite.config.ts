@@ -13,7 +13,6 @@ const projectRootDir = path.resolve(__dirname);
 export default defineConfig(({ mode }) => {
 	return {
 		plugins: plugins(mode),
-
 		resolve: {
 			alias: [
 				{ find: /@branding\/(.*\.svg)/, replacement: path.resolve(projectRootDir, "../branding", "$1?raw") },

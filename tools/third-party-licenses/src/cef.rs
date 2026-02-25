@@ -1,5 +1,6 @@
 use lzma_rust2::XzReader;
 use scraper::{Html, Selector};
+use std::hash::Hash;
 use std::io::Read;
 use std::path::PathBuf;
 use std::{fs, process};
@@ -19,9 +20,12 @@ impl LicenceSource for CefLicenseSource {
 		let html = read();
 		parse(&html)
 	}
-	fn hash(&self) -> String {
-		let html = read();
-		sha256::digest(html)
+}
+
+impl Hash for CefLicenseSource {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		let cef_path = PathBuf::from(env!("CEF_PATH")).join("CREDITS.html");
+		fs::read_to_string(cef_path).unwrap().hash(state)
 	}
 }
 

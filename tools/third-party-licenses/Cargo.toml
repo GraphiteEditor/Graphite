@@ -9,6 +9,5 @@ authors.workspace = true
 serde = { workspace = true }
 serde_json = { workspace = true }
 lzma-rust2 = { workspace = true }
-cef-dll-sys = { workspace = true }
+cef-dll-sys = { workspace = true } # TODO: make optional to now slow down web builds
 scraper = "0.22"
-sha256 = "1"
