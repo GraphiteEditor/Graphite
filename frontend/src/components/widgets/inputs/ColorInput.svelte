@@ -28,7 +28,7 @@
 	$: outlined = outlineFactor > 0.0001;
 	$: chosenGradient = value instanceof Gradient ? value.toLinearGradientCSS() : `linear-gradient(${value.toHexOptionalAlpha()}, ${value.toHexOptionalAlpha()})`;
 	$: none = value instanceof Color ? value.none : false;
-	$: transparency = value instanceof Gradient ? value.stops.some((stop) => stop.color.alpha < 1) : value.alpha < 1;
+	$: transparency = value instanceof Gradient ? value.color.some((color) => color.alpha < 1) : value.alpha < 1;
 </script>
 
 <LayoutCol class="color-button" classes={{ open, disabled, narrow, none, transparency, outlined, "direction-top": menuDirection === "Top" }} {tooltipLabel} {tooltipDescription} {tooltipShortcut}>

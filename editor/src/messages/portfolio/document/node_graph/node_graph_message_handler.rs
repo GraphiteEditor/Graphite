@@ -2787,7 +2787,10 @@ impl NodeGraphMessageHandler {
 		if self.has_selection {
 			hint_data.0.extend([
 				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
-				HintGroup(vec![HintInfo::keys([Key::Delete], "Delete Selected"), HintInfo::keys([Key::Control], "Keep Children").prepend_plus()]),
+				HintGroup(vec![
+					HintInfo::keys([Key::Backspace], "Delete Selected"),
+					HintInfo::keys([Key::Control], "Keep Children").prepend_plus(),
+				]),
 				HintGroup(vec![
 					HintInfo::keys_and_mouse([Key::Alt], MouseMotion::LmbDrag, "Move Duplicate"),
 					HintInfo::keys([Key::Control, Key::KeyD], "Duplicate").add_mac_keys([Key::Command, Key::KeyD]),

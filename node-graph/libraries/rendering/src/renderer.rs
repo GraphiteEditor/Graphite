@@ -84,7 +84,7 @@ impl SvgRender {
 		let (x, y) = bounds_min.into();
 		let (size_x, size_y) = (bounds_max - bounds_min).into();
 		let defs = &self.svg_defs;
-		let svg_header = format!(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{x} {y} {size_x} {size_y}"><defs>{defs}</defs>"#,);
+		let svg_header = format!(r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:graphite="https://graphite.art" viewBox="{x} {y} {size_x} {size_y}"><defs>{defs}</defs>"#,);
 		self.svg.insert(0, svg_header.into());
 		self.svg.push("</svg>".into());
 	}
@@ -99,7 +99,7 @@ impl SvgRender {
 		let matrix = format_transform_matrix(transform);
 		let transform = if matrix.is_empty() { String::new() } else { format!(r#" transform="{matrix}""#) };
 
-		let svg_header = format!(r#"<svg xmlns="http://www.w3.org/2000/svg" {view_box}><defs>{defs}</defs><g{transform}>"#);
+		let svg_header = format!(r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:graphite="https://graphite.art" {view_box}><defs>{defs}</defs><g{transform}>"#);
 		self.svg.insert(0, svg_header.into());
 		self.svg.push("</g></svg>".into());
 	}
@@ -279,6 +279,26 @@ impl RenderMetadata {
 		for value in self.upstream_footprints.values_mut() {
 			value.transform = transform * value.transform;
 		}
+	}
+
+	/// Merge another RenderMetadata into this one.
+	/// Values from `other` take precedence for duplicate keys.
+	pub fn merge(&mut self, other: &RenderMetadata) {
+		// Destructure Self to get errors when new fields are added to the struct
+		let RenderMetadata {
+			upstream_footprints,
+			local_transforms,
+			first_element_source_id,
+			click_targets,
+			clip_targets,
+			vector_data,
+		} = self;
+		upstream_footprints.extend(other.upstream_footprints.iter());
+		local_transforms.extend(other.local_transforms.iter());
+		first_element_source_id.extend(other.first_element_source_id.iter());
+		click_targets.extend(other.click_targets.iter().map(|(k, v)| (*k, v.clone())));
+		clip_targets.extend(other.clip_targets.iter());
+		vector_data.extend(other.vector_data.iter().map(|(id, data)| (*id, data.clone())));
 	}
 }
 
@@ -977,9 +997,9 @@ impl Render for Table<Vector> {
 				}
 				Fill::Gradient(gradient) => {
 					let mut stops = peniko::ColorStops::new();
-					for &(offset, color) in &gradient.stops {
+					for (position, color, _) in gradient.stops.interpolated_samples() {
 						stops.push(peniko::ColorStop {
-							offset: offset as f32,
+							offset: position as f32,
 							color: peniko::color::DynamicColor::from_alpha_color(peniko::Color::new([color.r(), color.g(), color.b(), color.a()])),
 						});
 					}
@@ -1537,10 +1557,13 @@ impl Render for Table<GradientStops> {
 				attributes.push("points", format!("{max},{max} -{max},{max} -{max},-{max} {max},-{max}"));
 
 				let mut stop_string = String::new();
-				for (position, color) in row.element.0.iter() {
+				for (position, color, original_midpoint) in row.element.interpolated_samples() {
 					let _ = write!(stop_string, r##"<stop offset="{}" stop-color="#{}""##, position, color.to_rgb_hex_srgb_from_gamma());
 					if color.a() < 1. {
 						let _ = write!(stop_string, r#" stop-opacity="{}""#, color.a());
+					}
+					if let Some(midpoint) = original_midpoint {
+						let _ = write!(stop_string, r#" graphite:midpoint="{}""#, (midpoint * 1000.).round() / 1000.);
 					}
 					stop_string.push_str(" />");
 				}
@@ -1599,7 +1622,7 @@ impl Render for Table<GradientStops> {
 			let blend_mode = alpha_blending.blend_mode.to_peniko();
 			let opacity = alpha_blending.opacity(render_params.for_mask);
 
-			let color = row.element.0.first().map(|stop| stop.1).unwrap_or(Color::MAGENTA);
+			let color = row.element.color.first().copied().unwrap_or(Color::MAGENTA);
 			let vello_color = peniko::Color::new([color.r(), color.g(), color.b(), color.a()]);
 
 			let rect = kurbo::Rect::from_origin_size(kurbo::Point::ZERO, kurbo::Size::new(1., 1.));

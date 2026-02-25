@@ -847,6 +847,18 @@ impl Color {
 		format!("{:02x?}{:02x?}{:02x?}", (self.r() * 255.) as u8, (self.g() * 255.) as u8, (self.b() * 255.) as u8)
 	}
 
+	/// Return an 8-character RGBA hex string (without a # prefix). Use this if the [`Color`] is in gamma space.
+	#[cfg(feature = "std")]
+	pub fn to_rgba_hex_srgb_from_gamma(&self) -> String {
+		format!(
+			"{:02x?}{:02x?}{:02x?}{:02x?}",
+			(self.r() * 255.) as u8,
+			(self.g() * 255.) as u8,
+			(self.b() * 255.) as u8,
+			(self.a() * 255.) as u8,
+		)
+	}
+
 	/// Return the all components as a u8 slice, first component is red, followed by green, followed by blue, followed by alpha. Use this if the [`Color`] is in linear space.
 	///
 	/// # Examples
