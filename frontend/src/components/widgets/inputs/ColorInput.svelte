@@ -32,11 +32,7 @@
 </script>
 
 <LayoutCol class="color-button" classes={{ open, disabled, narrow, none, transparency, outlined, "direction-top": menuDirection === "Top" }} {tooltipLabel} {tooltipDescription} {tooltipShortcut}>
-	<button style:--chosen-gradient={chosenGradient} style:--outline-amount={outlineFactor} on:click={() => (open = true)} tabindex="0" data-floating-menu-spawner>
-		<!-- {#if disabled && value instanceof Color && !value.none}
-			<TextLabel>sRGB</TextLabel>
-		{/if} -->
-	</button>
+	<button style:--chosen-gradient={chosenGradient} style:--outline-amount={outlineFactor} on:click={() => (open = true)} tabindex="0" data-floating-menu-spawner></button>
 	<ColorPicker
 		{open}
 		{disabled}

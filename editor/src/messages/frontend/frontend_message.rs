@@ -57,6 +57,11 @@ pub enum FrontendMessage {
 		transform: [f64; 6],
 	},
 	DisplayRemoveEditableTextbox,
+	UpdateGradientStopColorPickerPosition {
+		color: Color,
+		x: f64,
+		y: f64,
+	},
 
 	// Send prefix: Send global, static data to the frontend that is never updated
 	SendUIMetadata {
