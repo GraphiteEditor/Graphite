@@ -21,9 +21,11 @@ let
     doCheck = false;
   };
 in
-deps.crane.lib.buildPackage common
-// {
-  inherit cargoVendorDir;
-  cargoArtifacts = deps.crane.lib.buildDepsOnly common;
-  meta.mainProgram = "third-party-licenses";
-}
+deps.crane.lib.buildPackage (
+  common
+  // {
+    inherit cargoVendorDir;
+    cargoArtifacts = deps.crane.lib.buildDepsOnly common;
+    meta.mainProgram = "third-party-licenses";
+  }
+)
