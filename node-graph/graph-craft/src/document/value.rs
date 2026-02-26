@@ -209,8 +209,10 @@ tagged_value! {
 	#[serde(alias = "ArtboardGroup")]
 	Artboard(Table<Artboard>),
 	#[serde(deserialize_with = "core_types::misc::migrate_color")] // TODO: Eventually remove this migration document upgrade code
-	#[serde(alias = "ColorTable", alias = "OptionalColor")]
+	#[serde(alias = "ColorTable", alias = "OptionalColor", alias = "ColorNotInTable")]
 	Color(Table<Color>),
+	#[serde(deserialize_with = "graphic_types::vector_types::gradient::migrate_gradient_stops")] // TODO: Eventually remove this migration document upgrade code
+	#[serde(alias = "GradientPositions", alias = "GradientStops")]
 	GradientTable(Table<GradientStops>),
 	// ============
 	// STRUCT TYPES

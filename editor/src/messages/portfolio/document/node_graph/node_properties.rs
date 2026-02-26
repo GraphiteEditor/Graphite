@@ -219,14 +219,14 @@ pub(crate) fn property_from_type(
 						// ==========================
 						Some(x) if x == TypeId::of::<Vec<f64>>() => array_of_number_widget(default_info, TextInput::default()).into(),
 						Some(x) if x == TypeId::of::<Vec<DVec2>>() => array_of_vec2_widget(default_info, TextInput::default()).into(),
+						// ===========
+						// TABLE TYPES
+						// ===========
+						Some(x) if x == TypeId::of::<Table<Color>>() => color_widget(default_info, ColorInput::default().allow_none(true)),
+						Some(x) if x == TypeId::of::<Table<GradientStops>>() => color_widget(default_info, ColorInput::default().allow_none(false)),
 						// ============
 						// STRUCT TYPES
 						// ============
-						Some(x) if x == TypeId::of::<Color>() => color_widget(default_info, ColorInput::default()),
-						Some(x) if x == TypeId::of::<Option<Color>>() => color_widget(default_info, ColorInput::default()),
-						Some(x) if x == TypeId::of::<Table<Color>>() => color_widget(default_info, ColorInput::default().allow_none(true)),
-						Some(x) if x == TypeId::of::<GradientStops>() => color_widget(default_info, ColorInput::default().allow_none(false)),
-						Some(x) if x == TypeId::of::<Table<GradientStops>>() => color_widget(default_info, ColorInput::default().allow_none(false)),
 						Some(x) if x == TypeId::of::<Font>() => font_widget(default_info),
 						Some(x) if x == TypeId::of::<Curve>() => curve_widget(default_info),
 						Some(x) if x == TypeId::of::<Footprint>() => footprint_widget(default_info, &mut extra_widgets),

@@ -447,6 +447,24 @@ impl Gradient {
 	}
 }
 
+// TODO: Eventually remove this migration document upgrade code
+pub fn migrate_gradient_stops<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<core_types::table::Table<GradientStops>, D::Error> {
+	use core_types::table::Table;
+	use serde::Deserialize;
+
+	#[derive(serde::Deserialize)]
+	#[serde(untagged)]
+	enum GradientStopsFormat {
+		GradientStops(GradientStops),
+		GradientTable(Table<GradientStops>),
+	}
+
+	Ok(match GradientStopsFormat::deserialize(deserializer)? {
+		GradientStopsFormat::GradientStops(stops) => Table::new_from_element(stops),
+		GradientStopsFormat::GradientTable(table) => table,
+	})
+}
+
 impl core_types::bounds::BoundingBox for GradientStops {
 	fn bounding_box(&self, _transform: DAffine2, _include_stroke: bool) -> core_types::bounds::RenderBoundingBox {
 		core_types::bounds::RenderBoundingBox::Infinite
