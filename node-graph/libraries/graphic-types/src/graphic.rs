@@ -104,6 +104,49 @@ impl From<Table<GradientStops>> for Graphic {
 	}
 }
 
+/// Deeply flattens a graphic table, collecting only elements matching a specific variant (extracted by `extract_variant`)
+/// and discarding all other non-matching content. Recursion through `Graphic::Graphic` sub-tables composes transforms and opacity.
+fn flatten_graphic_table<T: Clone>(content: Table<Graphic>, extract_variant: fn(Graphic) -> Option<Table<T>>) -> Table<T> {
+	fn flatten_recursive<T: Clone>(output: &mut Table<T>, current_graphic_table: Table<Graphic>, extract_variant: fn(Graphic) -> Option<Table<T>>) {
+		for current_graphic_row in current_graphic_table.iter() {
+			let current_graphic = current_graphic_row.element.clone();
+			let source_node_id = *current_graphic_row.source_node_id;
+
+			match current_graphic {
+				// Recurse into nested graphic tables, composing the parent's transform onto each child
+				Graphic::Graphic(mut sub_table) => {
+					for graphic in sub_table.iter_mut() {
+						*graphic.transform = *current_graphic_row.transform * *graphic.transform;
+					}
+					flatten_recursive(output, sub_table, extract_variant);
+				}
+				// Try to extract the target variant; if it matches, push its rows with composed transform and opacity
+				other => {
+					if let Some(typed_table) = extract_variant(other) {
+						for row in typed_table.iter() {
+							output.push(TableRow {
+								element: row.element.clone(),
+								transform: *current_graphic_row.transform * *row.transform,
+								alpha_blending: AlphaBlending {
+									blend_mode: row.alpha_blending.blend_mode,
+									opacity: current_graphic_row.alpha_blending.opacity * row.alpha_blending.opacity,
+									fill: row.alpha_blending.fill,
+									clip: row.alpha_blending.clip,
+								},
+								source_node_id,
+							});
+						}
+					}
+				}
+			}
+		}
+	}
+
+	let mut output = Table::new();
+	flatten_recursive(&mut output, content, extract_variant);
+	output
+}
+
 // Local trait to convert types to Table<Graphic> (avoids orphan rule issues)
 pub trait IntoGraphicTable {
 	fn into_graphic_table(self) -> Table<Graphic>;
@@ -113,48 +156,10 @@ pub trait IntoGraphicTable {
 	where
 		Self: std::marker::Sized,
 	{
-		let content = self.into_graphic_table();
-
-		// TODO: Avoid mutable reference, instead return a new Table<Graphic>?
-		fn flatten_table(output_vector_table: &mut Table<Vector>, current_graphic_table: Table<Graphic>) {
-			for current_graphic_row in current_graphic_table.iter() {
-				let current_graphic = current_graphic_row.element.clone();
-				let source_node_id = *current_graphic_row.source_node_id;
-
-				match current_graphic {
-					// If we're allowed to recurse, flatten any tables we encounter
-					Graphic::Graphic(mut current_graphic_table) => {
-						// Apply the parent graphic's transform to all child elements
-						for graphic in current_graphic_table.iter_mut() {
-							*graphic.transform = *current_graphic_row.transform * *graphic.transform;
-						}
-
-						flatten_table(output_vector_table, current_graphic_table);
-					}
-					// Push any leaf Vector elements we encounter
-					Graphic::Vector(vector_table) => {
-						for current_vector_row in vector_table.iter() {
-							output_vector_table.push(TableRow {
-								element: current_vector_row.element.clone(),
-								transform: *current_graphic_row.transform * *current_vector_row.transform,
-								alpha_blending: AlphaBlending {
-									blend_mode: current_vector_row.alpha_blending.blend_mode,
-									opacity: current_graphic_row.alpha_blending.opacity * current_vector_row.alpha_blending.opacity,
-									fill: current_vector_row.alpha_blending.fill,
-									clip: current_vector_row.alpha_blending.clip,
-								},
-								source_node_id,
-							});
-						}
-					}
-					_ => {}
-				}
-			}
-		}
-
-		let mut output = Table::new();
-		flatten_table(&mut output, content);
-		output
+		flatten_graphic_table(self.into_graphic_table(), |g| match g {
+			Graphic::Vector(t) => Some(t),
+			_ => None,
+		})
 	}
 
 	/// Deeply flattens any raster content within a graphic table, discarding non-raster content, and returning a table of only raster elements.
@@ -162,47 +167,10 @@ pub trait IntoGraphicTable {
 	where
 		Self: std::marker::Sized,
 	{
-		let content = self.into_graphic_table();
-
-		fn flatten_table(output_raster_table: &mut Table<Raster<CPU>>, current_graphic_table: Table<Graphic>) {
-			for current_graphic_row in current_graphic_table.iter() {
-				let current_graphic = current_graphic_row.element.clone();
-				let source_node_id = *current_graphic_row.source_node_id;
-
-				match current_graphic {
-					// If we're allowed to recurse, flatten any tables we encounter
-					Graphic::Graphic(mut current_graphic_table) => {
-						// Apply the parent graphic's transform to all child elements
-						for graphic in current_graphic_table.iter_mut() {
-							*graphic.transform = *current_graphic_row.transform * *graphic.transform;
-						}
-
-						flatten_table(output_raster_table, current_graphic_table);
-					}
-					// Push any leaf RasterCPU elements we encounter
-					Graphic::RasterCPU(raster_table) => {
-						for current_raster_row in raster_table.iter() {
-							output_raster_table.push(TableRow {
-								element: current_raster_row.element.clone(),
-								transform: *current_graphic_row.transform * *current_raster_row.transform,
-								alpha_blending: AlphaBlending {
-									blend_mode: current_raster_row.alpha_blending.blend_mode,
-									opacity: current_graphic_row.alpha_blending.opacity * current_raster_row.alpha_blending.opacity,
-									fill: current_raster_row.alpha_blending.fill,
-									clip: current_raster_row.alpha_blending.clip,
-								},
-								source_node_id,
-							});
-						}
-					}
-					_ => {}
-				}
-			}
-		}
-
-		let mut output = Table::new();
-		flatten_table(&mut output, content);
-		output
+		flatten_graphic_table(self.into_graphic_table(), |g| match g {
+			Graphic::RasterCPU(t) => Some(t),
+			_ => None,
+		})
 	}
 
 	/// Deeply flattens any color content within a graphic table, discarding non-color content, and returning a table of only color elements.
@@ -210,47 +178,10 @@ pub trait IntoGraphicTable {
 	where
 		Self: std::marker::Sized,
 	{
-		let content = self.into_graphic_table();
-
-		fn flatten_table(output_color_table: &mut Table<Color>, current_graphic_table: Table<Graphic>) {
-			for current_graphic_row in current_graphic_table.iter() {
-				let current_graphic = current_graphic_row.element.clone();
-				let source_node_id = *current_graphic_row.source_node_id;
-
-				match current_graphic {
-					// If we're allowed to recurse, flatten any tables we encounter
-					Graphic::Graphic(mut current_graphic_table) => {
-						// Apply the parent graphic's transform to all child elements
-						for graphic in current_graphic_table.iter_mut() {
-							*graphic.transform = *current_graphic_row.transform * *graphic.transform;
-						}
-
-						flatten_table(output_color_table, current_graphic_table);
-					}
-					// Push any leaf Color elements we encounter
-					Graphic::Color(color_table) => {
-						for current_color_row in color_table.iter() {
-							output_color_table.push(TableRow {
-								element: *current_color_row.element,
-								transform: *current_graphic_row.transform * *current_color_row.transform,
-								alpha_blending: AlphaBlending {
-									blend_mode: current_color_row.alpha_blending.blend_mode,
-									opacity: current_graphic_row.alpha_blending.opacity * current_color_row.alpha_blending.opacity,
-									fill: current_color_row.alpha_blending.fill,
-									clip: current_color_row.alpha_blending.clip,
-								},
-								source_node_id,
-							});
-						}
-					}
-					_ => {}
-				}
-			}
-		}
-
-		let mut output = Table::new();
-		flatten_table(&mut output, content);
-		output
+		flatten_graphic_table(self.into_graphic_table(), |g| match g {
+			Graphic::Color(t) => Some(t),
+			_ => None,
+		})
 	}
 
 	/// Deeply flattens any gradient content within a graphic table, discarding non-gradient content, and returning a table of only gradient elements.
@@ -258,47 +189,10 @@ pub trait IntoGraphicTable {
 	where
 		Self: std::marker::Sized,
 	{
-		let content = self.into_graphic_table();
-
-		fn flatten_table(output_gradient_table: &mut Table<GradientStops>, current_graphic_table: Table<Graphic>) {
-			for current_graphic_row in current_graphic_table.iter() {
-				let current_graphic = current_graphic_row.element.clone();
-				let source_node_id = *current_graphic_row.source_node_id;
-
-				match current_graphic {
-					// If we're allowed to recurse, flatten any tables we encounter
-					Graphic::Graphic(mut current_graphic_table) => {
-						// Apply the parent graphic's transform to all child elements
-						for graphic in current_graphic_table.iter_mut() {
-							*graphic.transform = *current_graphic_row.transform * *graphic.transform;
-						}
-
-						flatten_table(output_gradient_table, current_graphic_table);
-					}
-					// Push any leaf GradientStops elements we encounter
-					Graphic::Gradient(gradient_table) => {
-						for current_gradient_row in gradient_table.iter() {
-							output_gradient_table.push(TableRow {
-								element: current_gradient_row.element.clone(),
-								transform: *current_graphic_row.transform * *current_gradient_row.transform,
-								alpha_blending: AlphaBlending {
-									blend_mode: current_gradient_row.alpha_blending.blend_mode,
-									opacity: current_graphic_row.alpha_blending.opacity * current_gradient_row.alpha_blending.opacity,
-									fill: current_gradient_row.alpha_blending.fill,
-									clip: current_gradient_row.alpha_blending.clip,
-								},
-								source_node_id,
-							});
-						}
-					}
-					_ => {}
-				}
-			}
-		}
-
-		let mut output = Table::new();
-		flatten_table(&mut output, content);
-		output
+		flatten_graphic_table(self.into_graphic_table(), |g| match g {
+			Graphic::Gradient(t) => Some(t),
+			_ => None,
+		})
 	}
 }
 
