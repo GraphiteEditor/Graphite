@@ -18,7 +18,7 @@ async fn gradient_map<T: Adjust<Color>>(
 		Table<GradientStops>,
 	)]
 	mut image: T,
-	#[default(Color::BLACK, Color::WHITE)] gradient: Table<GradientStops>,
+	gradient: Table<GradientStops>,
 	reverse: bool,
 ) -> T {
 	let Some(row) = gradient.get(0) else { return image };

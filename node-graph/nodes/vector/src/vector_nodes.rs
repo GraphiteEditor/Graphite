@@ -60,7 +60,6 @@ async fn assign_colors<T>(
 	stroke: bool,
 	/// The range of colors to select from.
 	#[widget(ParsedWidgetOverride::Custom = "assign_colors_gradient")]
-	#[default(Color::BLACK, Color::WHITE)]
 	gradient: Table<GradientStops>,
 	/// Whether to reverse the gradient.
 	reverse: bool,

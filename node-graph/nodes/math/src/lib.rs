@@ -767,13 +767,13 @@ fn color_value(_: impl Ctx, _primary: (), #[default(Color::BLACK)] color: Table<
 
 /// Constructs a gradient value which may be set to any sequence of color stops to represent the transition between colors.
 #[node_macro::node(category("Value"))]
-fn gradient_value(_: impl Ctx, _primary: (), #[default(Color::BLACK, Color::WHITE)] gradient: Table<GradientStops>) -> Table<GradientStops> {
+fn gradient_value(_: impl Ctx, _primary: (), gradient: Table<GradientStops>) -> Table<GradientStops> {
 	gradient
 }
 
 /// Gets the color at the specified position along the gradient, given a position from 0 (left) to 1 (right).
 #[node_macro::node(category("Color"))]
-fn sample_gradient(_: impl Ctx, _primary: (), #[default(Color::BLACK, Color::WHITE)] gradient: Table<GradientStops>, position: Fraction) -> Table<Color> {
+fn sample_gradient(_: impl Ctx, _primary: (), gradient: Table<GradientStops>, position: Fraction) -> Table<Color> {
 	let Some(row) = gradient.get(0) else { return Table::new() };
 
 	let position = position.clamp(0., 1.);

@@ -1163,7 +1163,7 @@ pub fn color_widget(parameter_widgets_info: ParameterWidgetsInfo, color_button: 
 			color_button
 				.value(match gradient_table.iter().next() {
 					Some(row) => FillChoice::Gradient(row.element.clone()),
-					None => FillChoice::None,
+					None => FillChoice::Gradient(GradientStops::default()),
 				})
 				.on_update(update_value(
 					|input: &ColorInput| TaggedValue::GradientTable(input.value.as_gradient().iter().map(|&gradient| TableRow::new_from_element(gradient.clone())).collect()),
