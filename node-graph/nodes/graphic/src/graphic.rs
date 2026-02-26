@@ -331,7 +331,7 @@ fn colors_to_gradient<T: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #[im
 	}
 
 	let colors = colors.into_iter().enumerate().map(|(index, row)| GradientStop {
-		position: index as f64 / (total_colors as f64 - 1.).max(1.),
+		position: index as f64 / (total_colors - 1).max(1) as f64,
 		midpoint: 0.5,
 		color: row.element,
 	});
