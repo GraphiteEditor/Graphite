@@ -330,7 +330,7 @@ fn colors_to_gradient<T: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #[im
 				color: Color::BLACK,
 			},
 			GradientStop {
-				position: 0.,
+				position: 1.,
 				midpoint: 0.5,
 				color: Color::BLACK,
 			},
