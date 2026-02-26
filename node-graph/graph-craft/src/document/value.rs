@@ -183,7 +183,6 @@ tagged_value! {
 	U64(u64),
 	Bool(bool),
 	String(String),
-	ColorNotInTable(Color),
 	// ========================
 	// LISTS OF PRIMITIVE TYPES
 	// ========================
@@ -403,8 +402,6 @@ impl TaggedValue {
 					() if ty == TypeId::of::<u32>() => FromStr::from_str(string).map(TaggedValue::U32).ok()?,
 					() if ty == TypeId::of::<DVec2>() => to_dvec2(string).map(TaggedValue::DVec2)?,
 					() if ty == TypeId::of::<bool>() => FromStr::from_str(string).map(TaggedValue::Bool).ok()?,
-					() if ty == TypeId::of::<Color>() => to_color(string).map(TaggedValue::ColorNotInTable)?,
-					() if ty == TypeId::of::<Option<Color>>() => TaggedValue::ColorNotInTable(to_color(string)?),
 					() if ty == TypeId::of::<Table<Color>>() => to_color(string).map(|color| TaggedValue::Color(Table::new_from_element(color)))?,
 					() if ty == TypeId::of::<Table<GradientStops>>() => to_gradient(string).map(|color| TaggedValue::GradientTable(Table::new_from_element(color)))?,
 					() if ty == TypeId::of::<Fill>() => to_color(string).map(|color| TaggedValue::Fill(Fill::solid(color)))?,
@@ -565,9 +562,4 @@ mod fake_hash {
 			self.1.hash(state)
 		}
 	}
-}
-
-#[test]
-fn can_construct_color() {
-	assert_eq!(TaggedValue::from_type(&concrete!(Color)).unwrap(), TaggedValue::ColorNotInTable(Color::default()));
 }
