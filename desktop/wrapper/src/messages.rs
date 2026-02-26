@@ -127,7 +127,9 @@ pub enum DesktopWrapperMessage {
 		x: f64,
 		y: f64,
 	},
-	LoadThirdPartyLicenses(String),
+	LoadThirdPartyLicenses {
+		text: String,
+	},
 }
 
 #[derive(Clone, serde::Serialize, serde::Deserialize, Debug)]
