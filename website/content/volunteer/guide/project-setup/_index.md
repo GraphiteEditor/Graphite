@@ -40,7 +40,7 @@ git clone https://github.com/GraphiteEditor/Graphite.git
 From either the `/` (root) or `/frontend` directories, you can run the project by executing:
 
 ```sh
-npm start
+cargo run
 ```
 
 This spins up the dev server at <http://localhost:8080> with a file watcher that performs hot reloading of the web page. You should be able to start the server, edit and save web and Rust code, and shut it down by double pressing <kbd>Ctrl</kbd><kbd>C</kbd>. TypeScript and HTML changes require a manual page reload to fix broken state.
@@ -53,13 +53,13 @@ This method compiles Graphite code in debug mode which includes debug symbols fo
 On rare occasions (like while running advanced performance profiles or proxying the dev server connection over a slow network where the >100 MB unoptimized binary size would pose an issue), you may need to run the dev server with release optimizations. To do that while keeping debug symbols:
 
 ```sh
-npm run profiling
+cargo run profiling
 ```
 
 To run the dev server without debug symbols, using the same release optimizations as production builds:
 
 ```sh
-npm run production
+cargo run release
 ```
 
 </details>
@@ -70,7 +70,7 @@ npm run production
 You'll rarely need to compile your own production builds because our CI/CD system takes care of deployments. However, you can compile a production build with full optimizations by running:
 
 ```sh
-npm run build
+cargo run web build
 ```
 
 This produces the `/frontend/dist` directory containing the static site files that must be served by your own web server.

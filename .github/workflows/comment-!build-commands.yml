@@ -82,10 +82,10 @@ jobs:
       - name: ⌨ Set build command based on comment
         id: build_command
         run: |
-          if [[ "${{ github.event.comment.body }}" == "!build-dev" ]]; then
-            echo "command=build-dev" >> $GITHUB_OUTPUT
+          if [[ "${{ github.event.comment.body }}" == "!build-debug" ]]; then
+            echo "command=build debug" >> $GITHUB_OUTPUT
           elif [[ "${{ github.event.comment.body }}" == "!build-profiling" ]]; then
-            echo "command=build-profiling" >> $GITHUB_OUTPUT
+            echo "command=build profiling" >> $GITHUB_OUTPUT
           elif [[ "${{ github.event.comment.body }}" == "!build" ]]; then
             echo "command=build" >> $GITHUB_OUTPUT
           else
@@ -108,9 +108,7 @@ jobs:
         env:
           NODE_ENV: production
         if: ${{ success() || failure()}}
-        run: |
-          cd frontend
-          mold -run npm run ${{ steps.build_command.outputs.command }}
+        run: mold -run cargo run web ${{ steps.build_command.outputs.command }}
 
       - name: ❗ Warn on build failure
         if: ${{ failure() }}

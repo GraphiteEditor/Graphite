@@ -76,7 +76,7 @@ jobs:
         if: steps.skip-check.outputs.skip-check != 'true'
         uses: actions/setup-node@v4
         with:
-          node-version: 'latest'
+          node-version: "latest"
 
       - name: 🚧 Install build dependencies
         if: steps.skip-check.outputs.skip-check != 'true'
@@ -98,9 +98,7 @@ jobs:
         if: steps.skip-check.outputs.skip-check != 'true'
         env:
           NODE_ENV: production
-        run: |
-          cd frontend
-          mold -run npm run build
+        run: mold -run cargo run web build
 
       - name: 📤 Publish to Cloudflare Pages
         if: steps.skip-check.outputs.skip-check != 'true'

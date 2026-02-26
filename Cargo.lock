@@ -610,6 +610,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "building"
+version = "0.0.0"
+
+[[package]]
 name = "built"
 version = "0.7.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
