@@ -26,6 +26,7 @@ use std::hash::Hash;
 use std::marker::PhantomData;
 use std::str::FromStr;
 pub use std::sync::Arc;
+use text_nodes::vector_types::GradientStop;
 
 pub struct TaggedValueTypeError;
 
@@ -222,8 +223,6 @@ tagged_value! {
 	DAffine2(DAffine2),
 	Stroke(graphic_types::vector_types::vector::style::Stroke),
 	Gradient(graphic_types::vector_types::vector::style::Gradient),
-	#[serde(alias = "GradientPositions")] // TODO: Eventually remove this alias document upgrade code
-	GradientStops(GradientStops),
 	Font(text_nodes::Font),
 	BrushStrokes(Vec<BrushStroke>),
 	BrushCache(BrushCache),
@@ -333,6 +332,35 @@ impl TaggedValue {
 			None
 		}
 
+		fn to_gradient(input: &str) -> Option<GradientStops> {
+			// String syntax: (e.g. "000000ff, ff0000ff")
+			let stops = input.split(',').filter_map(|s| to_color(s.trim())).collect::<Vec<_>>();
+			if stops.len() == 1 {
+				Some(GradientStops::new(vec![
+					GradientStop {
+						position: 0.,
+						midpoint: 0.5,
+						color: stops[0],
+					},
+					GradientStop {
+						position: 1.,
+						midpoint: 0.5,
+						color: stops[0],
+					},
+				]))
+			} else if stops.len() >= 2 {
+				let step = 1. / (stops.len() - 1) as f64;
+				Some(GradientStops::new(stops.into_iter().enumerate().map(|(i, color)| GradientStop {
+					position: i as f64 * step,
+					midpoint: 0.5,
+					color,
+				})))
+			} else {
+				log::error!("Invalid default value gradient string: {input}");
+				None
+			}
+		}
+
 		fn to_reference_point(input: &str) -> Option<ReferencePoint> {
 			let mut choices = input.split("::");
 			let (first, second) = (choices.next()?.trim(), choices.next()?.trim());
@@ -378,6 +406,7 @@ impl TaggedValue {
 					() if ty == TypeId::of::<Color>() => to_color(string).map(TaggedValue::ColorNotInTable)?,
 					() if ty == TypeId::of::<Option<Color>>() => TaggedValue::ColorNotInTable(to_color(string)?),
 					() if ty == TypeId::of::<Table<Color>>() => to_color(string).map(|color| TaggedValue::Color(Table::new_from_element(color)))?,
+					() if ty == TypeId::of::<Table<GradientStops>>() => to_gradient(string).map(|color| TaggedValue::GradientTable(Table::new_from_element(color)))?,
 					() if ty == TypeId::of::<Fill>() => to_color(string).map(|color| TaggedValue::Fill(Fill::solid(color)))?,
 					() if ty == TypeId::of::<ReferencePoint>() => to_reference_point(string).map(TaggedValue::ReferencePoint)?,
 					_ => return None,

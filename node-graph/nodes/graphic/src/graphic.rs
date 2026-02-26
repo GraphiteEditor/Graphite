@@ -318,22 +318,47 @@ pub async fn flatten_gradient<T: IntoGraphicTable + 'n + Send + Clone>(_: impl C
 
 /// Constructs a gradient from a table of colors, where the colors are evenly distributed as gradient stops across the range from 0 to 1.
 #[node_macro::node(category("Color"))]
-fn colors_to_gradient<T: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Color>)] colors: T) -> GradientStops {
+fn colors_to_gradient<T: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Color>)] colors: T) -> Table<GradientStops> {
 	let colors = colors.into_flattened_table::<Color>();
 	let total_colors = colors.len();
 
 	if total_colors == 0 {
-		return GradientStops::new(vec![GradientStop {
-			position: 0.,
-			midpoint: 0.5,
-			color: Color::BLACK,
-		}]);
+		return Table::new_from_element(GradientStops::new(vec![
+			GradientStop {
+				position: 0.,
+				midpoint: 0.5,
+				color: Color::BLACK,
+			},
+			GradientStop {
+				position: 0.,
+				midpoint: 0.5,
+				color: Color::BLACK,
+			},
+		]));
+	}
+
+	if let (Some(color), None) = {
+		let mut colors_iter = colors.iter();
+		(colors_iter.next(), colors_iter.next())
+	} {
+		return Table::new_from_element(GradientStops::new(vec![
+			GradientStop {
+				position: 0.,
+				midpoint: 0.5,
+				color: *color.element,
+			},
+			GradientStop {
+				position: 1.,
+				midpoint: 0.5,
+				color: *color.element,
+			},
+		]));
 	}
 
 	let colors = colors.into_iter().enumerate().map(|(index, row)| GradientStop {
-		position: index as f64 / (total_colors - 1).max(1) as f64,
+		position: index as f64 / (total_colors - 1) as f64,
 		midpoint: 0.5,
 		color: row.element,
 	});
-	GradientStops::new(colors)
+	Table::new_from_element(GradientStops::new(colors))
 }

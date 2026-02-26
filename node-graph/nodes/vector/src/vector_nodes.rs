@@ -60,7 +60,8 @@ async fn assign_colors<T>(
 	stroke: bool,
 	/// The range of colors to select from.
 	#[widget(ParsedWidgetOverride::Custom = "assign_colors_gradient")]
-	gradient: GradientStops,
+	#[default(Color::BLACK, Color::WHITE)]
+	gradient: Table<GradientStops>,
 	/// Whether to reverse the gradient.
 	reverse: bool,
 	/// Whether to randomize the color selection for each element from throughout the gradient.
@@ -76,8 +77,10 @@ async fn assign_colors<T>(
 where
 	T: VectorTableIterMut + 'n + Send,
 {
+	let Some(row) = gradient.into_iter().next() else { return content };
+
 	let length = content.vector_iter_mut().count();
-	let gradient = if reverse { gradient.reversed() } else { gradient };
+	let gradient = if reverse { row.element.reversed() } else { row.element };
 
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
 
