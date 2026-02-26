@@ -295,31 +295,31 @@ pub async fn flatten_graphic(_: impl Ctx, content: Table<Graphic>, fully_flatten
 /// Converts a graphic table into a vector table by deeply flattening any vector content it contains, and discarding any non-vector content.
 #[node_macro::node(category("Vector"))]
 pub async fn flatten_vector<T: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Vector>)] content: T) -> Table<Vector> {
-	content.into_flattened_vector_table()
+	content.into_flattened_table()
 }
 
 /// Converts a graphic table into a raster table by deeply flattening any raster content it contains, and discarding any non-raster content.
 #[node_macro::node(category("Raster"))]
 pub async fn flatten_raster<T: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Raster<CPU>>)] content: T) -> Table<Raster<CPU>> {
-	content.into_flattened_raster_table()
+	content.into_flattened_table()
 }
 
 /// Converts a graphic table into a color table by deeply flattening any color content it contains, and discarding any non-color content.
 #[node_macro::node(category("General"))]
 pub async fn flatten_color<T: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Color>)] content: T) -> Table<Color> {
-	content.into_flattened_color_table()
+	content.into_flattened_table()
 }
 
 /// Converts a graphic table into a gradient table by deeply flattening any gradient content it contains, and discarding any non-gradient content.
 #[node_macro::node(category("General"))]
 pub async fn flatten_gradient<T: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #[implementations(Table<Graphic>, Table<GradientStops>)] content: T) -> Table<GradientStops> {
-	content.into_flattened_gradient_table()
+	content.into_flattened_table()
 }
 
 /// Constructs a gradient from a table of colors, where the colors are evenly distributed as gradient stops across the range from 0 to 1.
 #[node_macro::node(category("Color"))]
 fn colors_to_gradient<T: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Color>)] colors: T) -> GradientStops {
-	let colors = colors.into_flattened_color_table();
+	let colors = colors.into_flattened_table::<Color>();
 	let total_colors = colors.len();
 
 	if total_colors == 0 {

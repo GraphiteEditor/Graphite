@@ -147,52 +147,46 @@ fn flatten_graphic_table<T: Clone>(content: Table<Graphic>, extract_variant: fn(
 	output
 }
 
+/// Maps from a concrete element type to its corresponding `Graphic` enum variant,
+/// enabling type-directed casting of typed tables from a `Graphic` value.
+pub trait TryFromGraphic: Clone + Sized {
+	fn try_from_graphic(graphic: Graphic) -> Option<Table<Self>>;
+}
+
+impl TryFromGraphic for Vector {
+	fn try_from_graphic(graphic: Graphic) -> Option<Table<Self>> {
+		if let Graphic::Vector(t) = graphic { Some(t) } else { None }
+	}
+}
+
+impl TryFromGraphic for Raster<CPU> {
+	fn try_from_graphic(graphic: Graphic) -> Option<Table<Self>> {
+		if let Graphic::RasterCPU(t) = graphic { Some(t) } else { None }
+	}
+}
+
+impl TryFromGraphic for Color {
+	fn try_from_graphic(graphic: Graphic) -> Option<Table<Self>> {
+		if let Graphic::Color(t) = graphic { Some(t) } else { None }
+	}
+}
+
+impl TryFromGraphic for GradientStops {
+	fn try_from_graphic(graphic: Graphic) -> Option<Table<Self>> {
+		if let Graphic::Gradient(t) = graphic { Some(t) } else { None }
+	}
+}
+
 // Local trait to convert types to Table<Graphic> (avoids orphan rule issues)
 pub trait IntoGraphicTable {
 	fn into_graphic_table(self) -> Table<Graphic>;
 
-	/// Deeply flattens any vector content within a graphic table, discarding non-vector content, and returning a table of only vector elements.
-	fn into_flattened_vector_table(self) -> Table<Vector>
+	/// Deeply flattens any content of type `T` within a graphic table, discarding all other content, and returning a flat table of only `T` elements.
+	fn into_flattened_table<T: TryFromGraphic>(self) -> Table<T>
 	where
 		Self: std::marker::Sized,
 	{
-		flatten_graphic_table(self.into_graphic_table(), |g| match g {
-			Graphic::Vector(t) => Some(t),
-			_ => None,
-		})
-	}
-
-	/// Deeply flattens any raster content within a graphic table, discarding non-raster content, and returning a table of only raster elements.
-	fn into_flattened_raster_table(self) -> Table<Raster<CPU>>
-	where
-		Self: std::marker::Sized,
-	{
-		flatten_graphic_table(self.into_graphic_table(), |g| match g {
-			Graphic::RasterCPU(t) => Some(t),
-			_ => None,
-		})
-	}
-
-	/// Deeply flattens any color content within a graphic table, discarding non-color content, and returning a table of only color elements.
-	fn into_flattened_color_table(self) -> Table<Color>
-	where
-		Self: std::marker::Sized,
-	{
-		flatten_graphic_table(self.into_graphic_table(), |g| match g {
-			Graphic::Color(t) => Some(t),
-			_ => None,
-		})
-	}
-
-	/// Deeply flattens any gradient content within a graphic table, discarding non-gradient content, and returning a table of only gradient elements.
-	fn into_flattened_gradient_table(self) -> Table<GradientStops>
-	where
-		Self: std::marker::Sized,
-	{
-		flatten_graphic_table(self.into_graphic_table(), |g| match g {
-			Graphic::Gradient(t) => Some(t),
-			_ => None,
-		})
+		flatten_graphic_table(self.into_graphic_table(), T::try_from_graphic)
 	}
 }
 

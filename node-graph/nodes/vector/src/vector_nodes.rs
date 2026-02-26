@@ -1782,7 +1782,7 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	let graphic_table_content = content.clone().into_graphic_table();
 
 	// If the input isn't a Table<Vector>, we convert it into one by flattening any Table<Graphic> content.
-	let content = content.into_flattened_vector_table();
+	let content = content.into_flattened_table::<Vector>();
 
 	// Determine source and target indices and interpolation time fraction
 	let progression = progression.max(0.);
