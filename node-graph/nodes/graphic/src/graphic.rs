@@ -317,7 +317,7 @@ pub async fn flatten_gradient<T: IntoGraphicTable + 'n + Send + Clone>(_: impl C
 }
 
 /// Constructs a gradient from a table of colors, where the colors are evenly distributed as gradient stops across the range from 0 to 1.
-#[node_macro::node(category("Value"))]
+#[node_macro::node(category("Color"))]
 fn colors_to_gradient<T: IntoGraphicTable + 'n + Send + Clone>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Color>)] colors: T) -> GradientStops {
 	let colors = colors.into_flattened_color_table();
 	let total_colors = colors.len();
