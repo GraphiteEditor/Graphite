@@ -138,8 +138,7 @@ impl<H: CefEventHandler> CefContextBuilder<H> {
 				});
 			}
 			Err(e) => {
-				tracing::error!("Failed to initialize CEF context: {:?}", e);
-				std::process::exit(1);
+				panic!("Failed to initialize CEF context: {:?}", e);
 			}
 		});
 
