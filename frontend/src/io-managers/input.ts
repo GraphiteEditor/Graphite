@@ -179,7 +179,8 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		potentiallyRestoreCanvasFocus(e);
 
 		const { target } = e;
-		const isTargetingCanvas = target instanceof Element && target.closest("[data-viewport], [data-viewport-container], [data-node-graph]");
+		const inFloatingMenu = target instanceof Element && target.closest("[data-floating-menu-content]");
+		const isTargetingCanvas = !inFloatingMenu && target instanceof Element && target.closest("[data-viewport], [data-viewport-container], [data-node-graph]");
 		const inDialog = target instanceof Element && target.closest("[data-dialog] [data-floating-menu-content]");
 		const inContextMenu = target instanceof Element && target.closest("[data-context-menu]");
 		const inTextInput = target === textToolInteractiveInputElement;

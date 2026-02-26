@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getContext, onDestroy, createEventDispatcher } from "svelte";
+	import { getContext, onDestroy, createEventDispatcher, tick } from "svelte";
 
 	import type { HSV, RGB, FillChoice, MenuDirection } from "@graphite/messages";
 	import { Color, contrastingOutlineFactor, Gradient } from "@graphite/messages";
@@ -40,7 +40,7 @@
 		["Magenta", "#ff00ff", "#696969"],
 	];
 
-	const dispatch = createEventDispatcher<{ colorOrGradient: FillChoice; startHistoryTransaction: undefined }>();
+	const dispatch = createEventDispatcher<{ colorOrGradient: FillChoice; startHistoryTransaction: undefined; commitHistoryTransaction: undefined }>();
 	const tooltip = getContext<TooltipState>("tooltip");
 
 	export let colorOrGradient: FillChoice;
@@ -109,10 +109,11 @@
 		return new Color({ h, s, v, a });
 	}
 
-	function watchOpen(open: boolean) {
+	async function watchOpen(open: boolean) {
 		if (open) {
 			setTimeout(() => hexCodeInputWidget?.focus(), 0);
-		} else {
+
+			await tick();
 			setOldHSVA(hue, saturation, value, alpha, isNone);
 		}
 	}
@@ -198,6 +199,7 @@
 	}
 
 	function onPointerUp() {
+		if (draggingPickerTrack) dispatch("commitHistoryTransaction");
 		removeEvents();
 	}
 
@@ -411,6 +413,10 @@
 
 		setNewHSVA(hsva.h, hsva.s, hsva.v, hsva.a, color.none);
 		setOldHSVA(hsva.h, hsva.s, hsva.v, hsva.a, color.none);
+	}
+
+	export function div(): HTMLDivElement | undefined {
+		return self?.div();
 	}
 
 	onDestroy(() => {
@@ -705,6 +711,7 @@
 
 <style lang="scss" global>
 	.color-picker {
+		--widget-height: 24px;
 		--picker-size: 256px;
 		--picker-circle-radius: 6px;
 

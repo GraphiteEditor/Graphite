@@ -828,6 +828,15 @@ export class DisplayEditableTextboxTransform extends JsMessage {
 
 export class DisplayRemoveEditableTextbox extends JsMessage {}
 
+export class UpdateGradientStopColorPickerPosition extends JsMessage {
+	@Type(() => Color)
+	readonly color!: Color;
+
+	readonly x!: number;
+
+	readonly y!: number;
+}
+
 export class UpdateDocumentLayerDetails extends JsMessage {
 	@Type(() => LayerPanelEntry)
 	readonly data!: LayerPanelEntry;
@@ -1713,6 +1722,7 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateEyedropperSamplingState,
 	UpdateFullscreen,
 	UpdateGraphFadeArtwork,
+	UpdateGradientStopColorPickerPosition,
 	UpdateGraphViewOverlay,
 	UpdateImportReorderIndex,
 	UpdateImportsExports,

@@ -650,6 +650,34 @@ impl EditorHandle {
 		Ok(())
 	}
 
+	/// Update the color of the currently-edited gradient stop
+	#[wasm_bindgen(js_name = updateGradientStopColor)]
+	pub fn update_gradient_stop_color(&self, red: f32, green: f32, blue: f32, alpha: f32) -> Result<(), JsValue> {
+		let Some(color) = Color::from_rgbaf32(red, green, blue, alpha) else {
+			return Err(Error::new("Invalid color").into());
+		};
+		self.dispatch(GradientToolMessage::UpdateStopColor { color: color.to_linear_srgb() });
+		Ok(())
+	}
+
+	/// Start a new undo transaction for gradient stop color editing
+	#[wasm_bindgen(js_name = startGradientStopColorTransaction)]
+	pub fn start_gradient_stop_color_transaction(&self) {
+		self.dispatch(GradientToolMessage::StartTransactionForColorStop);
+	}
+
+	/// Commit the current gradient stop color transaction (called on pointer-up after each drag/click)
+	#[wasm_bindgen(js_name = commitGradientStopColorTransaction)]
+	pub fn commit_gradient_stop_color_transaction(&self) {
+		self.dispatch(GradientToolMessage::CommitTransactionForColorStop);
+	}
+
+	/// Close the gradient stop color picker and commit any pending transaction
+	#[wasm_bindgen(js_name = closeGradientStopColorPicker)]
+	pub fn close_gradient_stop_color_picker(&self) {
+		self.dispatch(GradientToolMessage::CloseStopColorPicker);
+	}
+
 	#[wasm_bindgen(js_name = clipLayer)]
 	pub fn clip_layer(&self, id: u64) {
 		let id = NodeId(id);
