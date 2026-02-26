@@ -361,13 +361,13 @@ impl Dispatcher {
 		let discriminant = MessageDiscriminant::from(message);
 		let is_blocked =
 			|discriminant| DEBUG_MESSAGE_BLOCK_LIST.contains(&discriminant) || DEBUG_MESSAGE_ENDING_BLOCK_LIST.iter().any(|blocked_name| discriminant.local_name().ends_with(blocked_name));
-		let is_empty_batched = if let Message::Batched { messages } = message {
+		let is_batch_all_blocked = if let Message::Batched { messages } = message {
 			messages.iter().all(|message| is_blocked(MessageDiscriminant::from(message)))
 		} else {
 			false
 		};
 
-		if !is_blocked(discriminant) && !is_empty_batched {
+		if !is_blocked(discriminant) && !is_batch_all_blocked {
 			match message_logging_verbosity {
 				MessageLoggingVerbosity::Off => {}
 				MessageLoggingVerbosity::Names => {

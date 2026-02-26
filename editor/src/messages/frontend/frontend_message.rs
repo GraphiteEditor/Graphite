@@ -57,11 +57,6 @@ pub enum FrontendMessage {
 		transform: [f64; 6],
 	},
 	DisplayRemoveEditableTextbox,
-	UpdateGradientStopColorPickerPosition {
-		color: Color,
-		x: f64,
-		y: f64,
-	},
 
 	// Send prefix: Send global, static data to the frontend that is never updated
 	SendUIMetadata {
@@ -155,6 +150,11 @@ pub enum FrontendMessage {
 	UpdateActiveDocument {
 		#[serde(rename = "documentId")]
 		document_id: DocumentId,
+	},
+	UpdateGradientStopColorPickerPosition {
+		color: Color,
+		x: f64,
+		y: f64,
 	},
 	UpdateImportsExports {
 		/// If the primary import is not visible, then it is None.
