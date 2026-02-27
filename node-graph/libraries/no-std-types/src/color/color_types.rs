@@ -967,25 +967,15 @@ impl Color {
 	/// let color = Color::from_rgba_str("7C67FA61").unwrap();
 	/// ```
 	pub fn from_rgba_str(color_str: &str) -> Option<Color> {
-		let from_rgba8_srgb = |red, green, blue, alpha| {
-			let map_range = |int_color| int_color as f32 / 255.;
-
-			let red = map_range(red);
-			let green = map_range(green);
-			let blue = map_range(blue);
-			let alpha = map_range(alpha);
-			Color { red, green, blue, alpha }
-		};
-
 		if color_str.len() != 8 {
 			return None;
 		}
-		let r = u8::from_str_radix(&color_str[0..2], 16).ok()?;
-		let g = u8::from_str_radix(&color_str[2..4], 16).ok()?;
-		let b = u8::from_str_radix(&color_str[4..6], 16).ok()?;
-		let a = u8::from_str_radix(&color_str[6..8], 16).ok()?;
+		let red = u8::from_str_radix(&color_str[0..2], 16).ok()? as f32 / 255.;
+		let green = u8::from_str_radix(&color_str[2..4], 16).ok()? as f32 / 255.;
+		let blue = u8::from_str_radix(&color_str[4..6], 16).ok()? as f32 / 255.;
+		let alpha = u8::from_str_radix(&color_str[6..8], 16).ok()? as f32 / 255.;
 
-		Some(from_rgba8_srgb(r, g, b, a))
+		Some(Color { red, green, blue, alpha })
 	}
 
 	/// Creates a color from a 6-character RGB hex string (without a # prefix).
@@ -995,23 +985,14 @@ impl Color {
 	/// let color = Color::from_rgb_str("7C67FA").unwrap();
 	/// ```
 	pub fn from_rgb_str(color_str: &str) -> Option<Color> {
-		let from_rgb8_srgb = |red, green, blue| {
-			let map_range = |int_color| int_color as f32 / 255.;
-
-			let red = map_range(red);
-			let green = map_range(green);
-			let blue = map_range(blue);
-			Color { red, green, blue, alpha: 1. }
-		};
-
 		if color_str.len() != 6 {
 			return None;
 		}
-		let r = u8::from_str_radix(&color_str[0..2], 16).ok()?;
-		let g = u8::from_str_radix(&color_str[2..4], 16).ok()?;
-		let b = u8::from_str_radix(&color_str[4..6], 16).ok()?;
+		let red = u8::from_str_radix(&color_str[0..2], 16).ok()? as f32 / 255.;
+		let green = u8::from_str_radix(&color_str[2..4], 16).ok()? as f32 / 255.;
+		let blue = u8::from_str_radix(&color_str[4..6], 16).ok()? as f32 / 255.;
 
-		Some(from_rgb8_srgb(r, g, b))
+		Some(Color { red, green, blue, alpha: 1. })
 	}
 
 	/// Creates a color from a hex color code string with an optional `#` prefix, such as `#RRGGBB`, `RRGGBB`, `#RRGGBBAA`, or `RRGGBBAA`.
