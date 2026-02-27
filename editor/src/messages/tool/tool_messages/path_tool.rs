@@ -1,8 +1,9 @@
 use super::select_tool::extend_lasso;
 use super::tool_prelude::*;
 use crate::consts::{
-	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_GRAY, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, DEFAULT_STROKE_WIDTH, DOUBLE_CLICK_MILLISECONDS, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD,
-	DRILL_THROUGH_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE, SELECTION_THRESHOLD, SELECTION_TOLERANCE,
+	COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_05, COLOR_OVERLAY_GRAY, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_GREEN_25, COLOR_OVERLAY_RED, COLOR_OVERLAY_RED_25, DEFAULT_STROKE_WIDTH,
+	DOUBLE_CLICK_MILLISECONDS, DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD, DRAG_THRESHOLD, DRILL_THROUGH_THRESHOLD, HANDLE_ROTATE_SNAP_ANGLE, SEGMENT_INSERTION_DISTANCE, SEGMENT_OVERLAY_SIZE,
+	SELECTION_THRESHOLD, SELECTION_TOLERANCE,
 };
 use crate::messages::clipboard::utility_types::ClipboardContent;
 use crate::messages::input_mapper::utility_types::macros::action_shortcut_manual;
@@ -1888,12 +1889,7 @@ impl Fsm for PathToolFsmState {
 						}
 					}
 					Self::Drawing { selection_shape } => {
-						let mut fill_color = graphene_std::Color::from_rgb_hex_for_overlays(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
-							.unwrap()
-							.with_alpha(0.05)
-							.to_rgba_hex_srgb();
-						fill_color.insert(0, '#');
-						let fill_color = Some(fill_color.as_str());
+						let fill_color = Some(COLOR_OVERLAY_BLUE_05);
 
 						let selection_mode = match tool_action_data.preferences.get_selection_mode() {
 							SelectionMode::Directional => tool_data.calculate_selection_mode_from_direction(document.metadata()),
@@ -1977,22 +1973,14 @@ impl Fsm for PathToolFsmState {
 							let origin = tool_data.drag_start_pos;
 							let viewport_diagonal = viewport.size().into_dvec2().length();
 
-							let faded = |color: &str| {
-								let mut color = graphene_std::Color::from_rgb_hex_for_overlays(color.strip_prefix('#').unwrap())
-									.unwrap()
-									.with_alpha(0.25)
-									.to_rgba_hex_srgb();
-								color.insert(0, '#');
-								color
-							};
 							match axis {
 								Axis::Y => {
 									overlay_context.line(origin - DVec2::Y * viewport_diagonal, origin + DVec2::Y * viewport_diagonal, Some(COLOR_OVERLAY_GREEN), None);
-									overlay_context.line(origin - DVec2::X * viewport_diagonal, origin + DVec2::X * viewport_diagonal, Some(&faded(COLOR_OVERLAY_RED)), None);
+									overlay_context.line(origin - DVec2::X * viewport_diagonal, origin + DVec2::X * viewport_diagonal, Some(COLOR_OVERLAY_RED_25), None);
 								}
 								Axis::X | Axis::Both => {
 									overlay_context.line(origin - DVec2::X * viewport_diagonal, origin + DVec2::X * viewport_diagonal, Some(COLOR_OVERLAY_RED), None);
-									overlay_context.line(origin - DVec2::Y * viewport_diagonal, origin + DVec2::Y * viewport_diagonal, Some(&faded(COLOR_OVERLAY_GREEN)), None);
+									overlay_context.line(origin - DVec2::Y * viewport_diagonal, origin + DVec2::Y * viewport_diagonal, Some(COLOR_OVERLAY_GREEN_25), None);
 								}
 							}
 						}

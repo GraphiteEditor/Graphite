@@ -426,12 +426,10 @@ impl Color {
 	/// ```
 	#[inline(always)]
 	pub fn from_rgba8_srgb(red: u8, green: u8, blue: u8, alpha: u8) -> Color {
-		let map_range = |int_color| int_color as f32 / 255.;
-
-		let red = map_range(red);
-		let green = map_range(green);
-		let blue = map_range(blue);
-		let alpha = map_range(alpha);
+		let red = red as f32 / 255.;
+		let green = green as f32 / 255.;
+		let blue = blue as f32 / 255.;
+		let alpha = alpha as f32 / 255.;
 		Color { red, green, blue, alpha }.to_linear_srgb().map_rgb(|channel| channel * alpha)
 	}
 
@@ -941,70 +939,19 @@ impl Color {
 		[hue, saturation, lightness, self.alpha]
 	}
 
-	// TODO: This incorrectly handles gamma/linear and premultiplied alpha. For now, this can only be used for overlay drawing, not artwork.
-	// TODO: Remove this function and have overlays directly use the hex colors and not use the `Color` struct at all.
-	/// Creates a color from a 6-character RGB hex string (without a # prefix).
-	///
-	/// ```
-	/// use core_types::color::Color;
-	/// let color = Color::from_rgb_hex_for_overlays("7C67FA").unwrap();
-	/// ```
-	pub fn from_rgb_hex_for_overlays(color_str: &str) -> Option<Color> {
-		if color_str.len() != 6 {
-			return None;
-		}
-		let r = u8::from_str_radix(&color_str[0..2], 16).ok()?;
-		let g = u8::from_str_radix(&color_str[2..4], 16).ok()?;
-		let b = u8::from_str_radix(&color_str[4..6], 16).ok()?;
-
-		Some(Color::from_rgb8_srgb(r, g, b))
-	}
-
-	/// Creates a color from an 8-character RGBA hex string (without a # prefix).
-	///
-	/// ```
-	/// use core_types::color::Color;
-	/// let color = Color::from_rgba_str("7C67FA61").unwrap();
-	/// ```
-	pub fn from_rgba_str(color_str: &str) -> Option<Color> {
-		if color_str.len() != 8 {
-			return None;
-		}
-		let red = u8::from_str_radix(&color_str[0..2], 16).ok()? as f32 / 255.;
-		let green = u8::from_str_radix(&color_str[2..4], 16).ok()? as f32 / 255.;
-		let blue = u8::from_str_radix(&color_str[4..6], 16).ok()? as f32 / 255.;
-		let alpha = u8::from_str_radix(&color_str[6..8], 16).ok()? as f32 / 255.;
-
-		Some(Color { red, green, blue, alpha })
-	}
-
-	/// Creates a color from a 6-character RGB hex string (without a # prefix).
-	///
-	/// ```
-	/// use core_types::color::Color;
-	/// let color = Color::from_rgb_str("7C67FA").unwrap();
-	/// ```
-	pub fn from_rgb_str(color_str: &str) -> Option<Color> {
-		if color_str.len() != 6 {
-			return None;
-		}
-		let red = u8::from_str_radix(&color_str[0..2], 16).ok()? as f32 / 255.;
-		let green = u8::from_str_radix(&color_str[2..4], 16).ok()? as f32 / 255.;
-		let blue = u8::from_str_radix(&color_str[4..6], 16).ok()? as f32 / 255.;
-
-		Some(Color { red, green, blue, alpha: 1. })
-	}
-
 	/// Creates a color from a hex color code string with an optional `#` prefix, such as `#RRGGBB`, `RRGGBB`, `#RRGGBBAA`, or `RRGGBBAA`.
 	/// Returns `None` for invalid or unrecognized strings.
 	#[cfg(feature = "std")]
 	pub fn from_hex_str(hex: &str) -> Option<Color> {
 		let hex = hex.trim().trim_start_matches('#');
-		match hex.len() {
-			6 => Color::from_rgb_str(hex),
-			8 => Color::from_rgba_str(hex),
-			_ => None,
+		if hex.len() != 6 && hex.len() != 8 {
+			return None;
 		}
+		let red = u8::from_str_radix(&hex[0..2], 16).ok()? as f32 / 255.;
+		let green = u8::from_str_radix(&hex[2..4], 16).ok()? as f32 / 255.;
+		let blue = u8::from_str_radix(&hex[4..6], 16).ok()? as f32 / 255.;
+		let alpha = if hex.len() == 8 { u8::from_str_radix(&hex[6..8], 16).ok()? as f32 / 255. } else { 1. };
+		Some(Color { red, green, blue, alpha })
 	}
 
 	/// Linearly interpolates between two colors based on t.

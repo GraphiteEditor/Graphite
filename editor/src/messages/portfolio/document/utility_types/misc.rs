@@ -1,6 +1,5 @@
 use crate::consts::COLOR_OVERLAY_GRAY;
 use glam::DVec2;
-use graphene_std::raster::Color;
 use std::fmt;
 
 #[repr(transparent)]
@@ -216,7 +215,7 @@ pub struct GridSnapping {
 	pub isometric_y_spacing: f64,
 	pub isometric_angle_a: f64,
 	pub isometric_angle_b: f64,
-	pub grid_color: Color,
+	pub color: String,
 	pub dot_display: bool,
 }
 
@@ -229,7 +228,7 @@ impl Default for GridSnapping {
 			isometric_y_spacing: 1.,
 			isometric_angle_a: 30.,
 			isometric_angle_b: 30.,
-			grid_color: Color::from_rgb_hex_for_overlays(COLOR_OVERLAY_GRAY.strip_prefix('#').unwrap()).unwrap(),
+			color: COLOR_OVERLAY_GRAY.to_string(),
 			dot_display: false,
 		}
 	}

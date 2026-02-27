@@ -1,7 +1,7 @@
 #![allow(clippy::too_many_arguments)]
 
 use super::tool_prelude::*;
-use crate::consts::{COLOR_OVERLAY_BLUE, COLOR_OVERLAY_RED, DRAG_THRESHOLD};
+use crate::consts::{COLOR_OVERLAY_BLUE_05, COLOR_OVERLAY_RED, DRAG_THRESHOLD};
 use crate::messages::portfolio::document::graph_operation::utility_types::TransformIn;
 use crate::messages::portfolio::document::node_graph::document_node_definitions::DefinitionIdentifier;
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
@@ -570,10 +570,7 @@ impl Fsm for TextToolFsmState {
 			..
 		} = transition_data;
 		let font_cache = &persistent_data.font_cache;
-		let fill_color = graphene_std::Color::from_rgb_hex_for_overlays(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
-			.unwrap()
-			.with_alpha(0.05)
-			.to_rgba_hex_srgb();
+		let fill_color = COLOR_OVERLAY_BLUE_05;
 
 		let ToolMessage::Text(event) = event else { return self };
 		match (self, event) {
@@ -585,7 +582,7 @@ impl Fsm for TextToolFsmState {
 					if far.x != 0. && far.y != 0. {
 						let quad = Quad::from_box([DVec2::ZERO, far]);
 						let transformed_quad = document.metadata().transform_to_viewport(tool_data.layer) * quad;
-						overlay_context.quad(transformed_quad, None, Some(&("#".to_string() + &fill_color)));
+						overlay_context.quad(transformed_quad, None, Some(fill_color));
 					}
 				}
 
@@ -598,14 +595,10 @@ impl Fsm for TextToolFsmState {
 
 					// Draw a bounding box on the layers to be selected
 					for layer in document.intersect_quad_no_artboards(quad, viewport) {
-						overlay_context.quad(
-							Quad::from_box(document.metadata().bounding_box_viewport(layer).unwrap_or([DVec2::ZERO; 2])),
-							None,
-							Some(&("#".to_string() + &fill_color)),
-						);
+						overlay_context.quad(Quad::from_box(document.metadata().bounding_box_viewport(layer).unwrap_or([DVec2::ZERO; 2])), None, Some(fill_color));
 					}
 
-					overlay_context.quad(quad, None, Some(&("#".to_string() + &fill_color)));
+					overlay_context.quad(quad, None, Some(fill_color));
 				}
 
 				// TODO: implement bounding box for multiple layers

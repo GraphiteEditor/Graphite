@@ -600,7 +600,7 @@ impl Fsm for GradientToolFsmState {
 					let (start, end) = (transform.transform_point2(*start), transform.transform_point2(*end));
 
 					fn color_to_hex(color: graphene_std::Color) -> String {
-						format!("#{}", color.with_alpha(1.).to_rgba_hex_srgb())
+						format!("#{}", color.to_rgb_hex_srgb_from_gamma())
 					}
 
 					let start_hex = stops.color.first().map(|&c| color_to_hex(c)).unwrap_or(String::from(COLOR_OVERLAY_BLUE));

@@ -1,5 +1,5 @@
 use crate::consts::{
-	ARC_SWEEP_GIZMO_RADIUS, COLOR_OVERLAY_BLACK, COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_50, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_YELLOW,
+	ARC_SWEEP_GIZMO_RADIUS, COLOR_OVERLAY_BLACK, COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_50, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_WHITE_05, COLOR_OVERLAY_YELLOW,
 	COLOR_OVERLAY_YELLOW_DULL, COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, DOWEL_PIN_RADIUS,
 	GRADIENT_MIDPOINT_DIAMOND_RADIUS, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER, RESIZE_HANDLE_SIZE, SKEW_TRIANGLE_OFFSET, SKEW_TRIANGLE_SIZE,
 };
@@ -10,7 +10,6 @@ use crate::messages::prelude::ViewportMessageHandler;
 use core::borrow::Borrow;
 use core::f64::consts::{FRAC_PI_2, PI, TAU};
 use glam::{DAffine2, DVec2};
-use graphene_std::Color;
 use graphene_std::math::quad::Quad;
 use graphene_std::subpath::{self, Subpath};
 use graphene_std::table::Table;
@@ -404,9 +403,9 @@ impl OverlayContext {
 		self.internal().fill_path(subpaths, transform, color);
 	}
 
-	/// Fills the area inside the path with a pattern. Assumes `color` is in gamma space.
+	/// Fills the area inside the path with a pattern. Assumes `color` is an sRGB hex string.
 	/// Used by the fill tool to show the area to be filled.
-	pub fn fill_path_pattern(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color) {
+	pub fn fill_path_pattern(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
 		self.internal().fill_path_pattern(subpaths, transform, color);
 	}
 
@@ -784,12 +783,7 @@ impl OverlayContextInternal {
 
 	pub fn draw_scale(&mut self, start: DVec2, scale: f64, radius: f64, text: &str) {
 		let sign = scale.signum();
-		let mut fill_color = Color::from_rgb_hex_for_overlays(COLOR_OVERLAY_WHITE.strip_prefix('#').unwrap())
-			.unwrap()
-			.with_alpha(0.05)
-			.to_rgba_hex_srgb();
-		fill_color.insert(0, '#');
-		let fill_color = Some(fill_color.as_str());
+		let fill_color = Some(COLOR_OVERLAY_WHITE_05);
 		self.line(start + DVec2::X * radius * sign, start + DVec2::X * radius * scale.abs(), None, None);
 		self.circle(start, radius, fill_color, None);
 		self.circle(start, radius * scale.abs(), fill_color, None);
@@ -820,15 +814,9 @@ impl OverlayContextInternal {
 
 		// Hover ring
 		if show_hover_ring {
-			let mut fill_color = Color::from_rgb_hex_for_overlays(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
-				.unwrap()
-				.with_alpha(0.5)
-				.to_rgba_hex_srgb();
-			fill_color.insert(0, '#');
-
 			let circle = kurbo::Circle::new((center.x, center.y), hover_ring_centerline_radius);
 			self.scene
-				.stroke(&kurbo::Stroke::new(hover_ring_stroke_width), transform, Self::parse_color(&fill_color), None, &circle);
+				.stroke(&kurbo::Stroke::new(hover_ring_stroke_width), transform, Self::parse_color(COLOR_OVERLAY_BLUE_50), None, &circle);
 		}
 
 		// Arrows
@@ -1067,16 +1055,21 @@ impl OverlayContextInternal {
 		self.scene.fill(peniko::Fill::NonZero, self.get_transform(), Self::parse_color(color), None, &path);
 	}
 
-	/// Fills the area inside the path with a pattern. Assumes `color` is in gamma space.
+	/// Fills the area inside the path with a pattern. Assumes `color` is an sRGB hex string.
 	/// Used by the fill tool to show the area to be filled.
-	fn fill_path_pattern(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &Color) {
+	fn fill_path_pattern(&mut self, subpaths: impl Iterator<Item = impl Borrow<Subpath<PointId>>>, transform: DAffine2, color: &str) {
 		const PATTERN_WIDTH: u32 = 4;
 		const PATTERN_HEIGHT: u32 = 4;
 
 		// Create a 4x4 pixel pattern with colored pixels at (0,0) and (2,2)
 		// This matches the Canvas2D checkerboard pattern
 		let mut data = vec![0u8; (PATTERN_WIDTH * PATTERN_HEIGHT * 4) as usize];
-		let rgba = color.to_rgba8_srgb();
+		let hex = color.trim_start_matches('#');
+		let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(0);
+		let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(0);
+		let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(0);
+		let a = if hex.len() >= 8 { u8::from_str_radix(&hex[6..8], 16).unwrap_or(255) } else { 255 };
+		let rgba = [r, g, b, a];
 
 		// ┌▄▄┬──┬──┬──┐
 		// ├▀▀┼──┼──┼──┤
