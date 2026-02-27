@@ -229,7 +229,7 @@ impl Default for GridSnapping {
 			isometric_y_spacing: 1.,
 			isometric_angle_a: 30.,
 			isometric_angle_b: 30.,
-			grid_color: Color::from_rgb_str(COLOR_OVERLAY_GRAY.strip_prefix('#').unwrap()).unwrap(),
+			grid_color: Color::from_rgb_hex_for_overlays(COLOR_OVERLAY_GRAY.strip_prefix('#').unwrap()).unwrap(),
 			dot_display: false,
 		}
 	}

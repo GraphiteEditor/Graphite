@@ -297,15 +297,12 @@ impl TaggedValue {
 		fn to_color(input: &str) -> Option<Color> {
 			// String syntax (e.g. "000000ff")
 			if input.starts_with('"') && input.ends_with('"') {
-				let color = input.trim().trim_matches('"').trim().trim_start_matches('#');
-				match color.len() {
-					6 => return Color::from_rgb_str(color),
-					8 => return Color::from_rgba_str(color),
-					_ => {
-						log::error!("Invalid default value color string: {input}");
-						return None;
-					}
+				let hex = input.trim().trim_matches('"').trim().trim_start_matches('#');
+				let color = Color::from_hex_str(hex);
+				if color.is_none() {
+					log::error!("Invalid default value color string: {input}");
 				}
+				return color;
 			}
 
 			// Color constant syntax (e.g. Color::BLACK)

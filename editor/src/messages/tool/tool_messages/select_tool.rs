@@ -689,7 +689,7 @@ impl Fsm for SelectToolFsmState {
 										.parent(document.metadata())
 										.is_some_and(|parent| selected.selected_layers_contains(parent, document.metadata()))
 								}) {
-									let mut fill_color = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
+									let mut fill_color = graphene_std::Color::from_rgb_hex_for_overlays(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
 										.unwrap()
 										.with_alpha(0.5)
 										.to_rgba_hex_srgb();
@@ -903,7 +903,10 @@ impl Fsm for SelectToolFsmState {
 						let color = if !hover {
 							color
 						} else {
-							let color_string = &graphene_std::Color::from_rgb_str(color.strip_prefix('#').unwrap()).unwrap().with_alpha(0.25).to_rgba_hex_srgb();
+							let color_string = &graphene_std::Color::from_rgb_hex_for_overlays(color.strip_prefix('#').unwrap())
+								.unwrap()
+								.with_alpha(0.25)
+								.to_rgba_hex_srgb();
 							&format!("#{color_string}")
 						};
 						let line_center = tool_data.line_center;
@@ -927,7 +930,10 @@ impl Fsm for SelectToolFsmState {
 						} else {
 							(COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED)
 						};
-						let mut perp_color = graphene_std::Color::from_rgb_str(perp_color.strip_prefix('#').unwrap()).unwrap().with_alpha(0.25).to_rgba_hex_srgb();
+						let mut perp_color = graphene_std::Color::from_rgb_hex_for_overlays(perp_color.strip_prefix('#').unwrap())
+							.unwrap()
+							.with_alpha(0.25)
+							.to_rgba_hex_srgb();
 						perp_color.insert(0, '#');
 						let perp_color = perp_color.as_str();
 						overlay_context.line(origin - edge * viewport_diagonal, origin + edge * viewport_diagonal, Some(edge_color), None);
@@ -972,7 +978,7 @@ impl Fsm for SelectToolFsmState {
 					}
 
 					// Update the selection box
-					let mut fill_color = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
+					let mut fill_color = graphene_std::Color::from_rgb_hex_for_overlays(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
 						.unwrap()
 						.with_alpha(0.05)
 						.to_rgba_hex_srgb();

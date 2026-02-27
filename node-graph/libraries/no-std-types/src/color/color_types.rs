@@ -435,7 +435,7 @@ impl Color {
 		Color { red, green, blue, alpha }.to_linear_srgb().map_rgb(|channel| channel * alpha)
 	}
 
-	/// Create a [Color] from a hue, saturation, lightness and alpha (all between 0 and 1)
+	/// Create a [Color] from a hue, saturation, lightness, and alpha (all between 0 and 1)
 	///
 	/// # Examples
 	/// ```
@@ -474,6 +474,25 @@ impl Color {
 		map_channel(&mut green, temp2, temp1);
 		map_channel(&mut blue, temp2, temp1);
 
+		Color { red, green, blue, alpha }
+	}
+
+	/// Create a [Color] from hue, saturation, value, and alpha (all between 0 and 1).
+	pub fn from_hsva(hue: f32, saturation: f32, value: f32, alpha: f32) -> Color {
+		let h_prime = (hue * 6.) % 6.;
+		let i = h_prime as i32;
+		let f = h_prime - i as f32;
+		let p = value * (1. - saturation);
+		let q = value * (1. - f * saturation);
+		let t = value * (1. - (1. - f) * saturation);
+		let (red, green, blue) = match i % 6 {
+			0 => (value, t, p),
+			1 => (q, value, p),
+			2 => (p, value, t),
+			3 => (p, q, value),
+			4 => (t, p, value),
+			_ => (value, p, q),
+		};
 		Color { red, green, blue, alpha }
 	}
 
@@ -922,16 +941,42 @@ impl Color {
 		[hue, saturation, lightness, self.alpha]
 	}
 
-	// TODO: Readd formatting
-
-	/// Creates a color from a 8-character RGBA hex string (without a # prefix).
+	// TODO: This incorrectly handles gamma/linear and premultiplied alpha. For now, this can only be used for overlay drawing, not artwork.
+	// TODO: Remove this function and have overlays directly use the hex colors and not use the `Color` struct at all.
+	/// Creates a color from a 6-character RGB hex string (without a # prefix).
 	///
-	/// # Examples
+	/// ```
+	/// use core_types::color::Color;
+	/// let color = Color::from_rgb_hex_for_overlays("7C67FA").unwrap();
+	/// ```
+	pub fn from_rgb_hex_for_overlays(color_str: &str) -> Option<Color> {
+		if color_str.len() != 6 {
+			return None;
+		}
+		let r = u8::from_str_radix(&color_str[0..2], 16).ok()?;
+		let g = u8::from_str_radix(&color_str[2..4], 16).ok()?;
+		let b = u8::from_str_radix(&color_str[4..6], 16).ok()?;
+
+		Some(Color::from_rgb8_srgb(r, g, b))
+	}
+
+	/// Creates a color from an 8-character RGBA hex string (without a # prefix).
+	///
 	/// ```
 	/// use core_types::color::Color;
 	/// let color = Color::from_rgba_str("7C67FA61").unwrap();
 	/// ```
 	pub fn from_rgba_str(color_str: &str) -> Option<Color> {
+		let from_rgba8_srgb = |red, green, blue, alpha| {
+			let map_range = |int_color| int_color as f32 / 255.;
+
+			let red = map_range(red);
+			let green = map_range(green);
+			let blue = map_range(blue);
+			let alpha = map_range(alpha);
+			Color { red, green, blue, alpha }
+		};
+
 		if color_str.len() != 8 {
 			return None;
 		}
@@ -940,7 +985,7 @@ impl Color {
 		let b = u8::from_str_radix(&color_str[4..6], 16).ok()?;
 		let a = u8::from_str_radix(&color_str[6..8], 16).ok()?;
 
-		Some(Color::from_rgba8_srgb(r, g, b, a))
+		Some(from_rgba8_srgb(r, g, b, a))
 	}
 
 	/// Creates a color from a 6-character RGB hex string (without a # prefix).
@@ -950,6 +995,15 @@ impl Color {
 	/// let color = Color::from_rgb_str("7C67FA").unwrap();
 	/// ```
 	pub fn from_rgb_str(color_str: &str) -> Option<Color> {
+		let from_rgb8_srgb = |red, green, blue| {
+			let map_range = |int_color| int_color as f32 / 255.;
+
+			let red = map_range(red);
+			let green = map_range(green);
+			let blue = map_range(blue);
+			Color { red, green, blue, alpha: 1. }
+		};
+
 		if color_str.len() != 6 {
 			return None;
 		}
@@ -957,7 +1011,19 @@ impl Color {
 		let g = u8::from_str_radix(&color_str[2..4], 16).ok()?;
 		let b = u8::from_str_radix(&color_str[4..6], 16).ok()?;
 
-		Some(Color::from_rgb8_srgb(r, g, b))
+		Some(from_rgb8_srgb(r, g, b))
+	}
+
+	/// Creates a color from a hex color code string with an optional `#` prefix, such as `#RRGGBB`, `RRGGBB`, `#RRGGBBAA`, or `RRGGBBAA`.
+	/// Returns `None` for invalid or unrecognized strings.
+	#[cfg(feature = "std")]
+	pub fn from_hex_str(hex: &str) -> Option<Color> {
+		let hex = hex.trim().trim_start_matches('#');
+		match hex.len() {
+			6 => Color::from_rgb_str(hex),
+			8 => Color::from_rgba_str(hex),
+			_ => None,
+		}
 	}
 
 	/// Linearly interpolates between two colors based on t.

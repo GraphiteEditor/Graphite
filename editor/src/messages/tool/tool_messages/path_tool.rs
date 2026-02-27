@@ -1888,7 +1888,7 @@ impl Fsm for PathToolFsmState {
 						}
 					}
 					Self::Drawing { selection_shape } => {
-						let mut fill_color = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
+						let mut fill_color = graphene_std::Color::from_rgb_hex_for_overlays(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
 							.unwrap()
 							.with_alpha(0.05)
 							.to_rgba_hex_srgb();
@@ -1978,7 +1978,10 @@ impl Fsm for PathToolFsmState {
 							let viewport_diagonal = viewport.size().into_dvec2().length();
 
 							let faded = |color: &str| {
-								let mut color = graphene_std::Color::from_rgb_str(color.strip_prefix('#').unwrap()).unwrap().with_alpha(0.25).to_rgba_hex_srgb();
+								let mut color = graphene_std::Color::from_rgb_hex_for_overlays(color.strip_prefix('#').unwrap())
+									.unwrap()
+									.with_alpha(0.25)
+									.to_rgba_hex_srgb();
 								color.insert(0, '#');
 								color
 							};

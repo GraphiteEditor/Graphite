@@ -765,6 +765,48 @@ fn color_value(_: impl Ctx, _primary: (), #[default(Color::BLACK)] color: Table<
 	color
 }
 
+/// Constructs a color value from red, green, blue, and alpha components given as numbers from 0 to 1.
+#[node_macro::node(category("Color"), name("RGBA to Color"))]
+fn rgba_to_color(_: impl Ctx, _primary: (), red: Fraction, green: Fraction, blue: Fraction, #[default(1.)] alpha: Fraction) -> Table<Color> {
+	let red = (red as f32).clamp(0., 1.);
+	let green = (green as f32).clamp(0., 1.);
+	let blue = (blue as f32).clamp(0., 1.);
+	let alpha = (alpha as f32).clamp(0., 1.);
+
+	Table::new_from_element(Color::from_rgbaf32_unchecked(red, green, blue, alpha))
+}
+
+/// Constructs a color value from hue, saturation, value, and alpha components given as numbers from 0 to 1.
+#[node_macro::node(category("Color"), name("HSVA to Color"))]
+fn hsva_to_color(_: impl Ctx, _primary: (), hue: Fraction, #[default(1.)] saturation: Fraction, #[default(1.)] value: Fraction, #[default(1.)] alpha: Fraction) -> Table<Color> {
+	let hue = (hue as f32) - (hue as f32).floor();
+	let saturation = (saturation as f32).clamp(0., 1.);
+	let value = (value as f32).clamp(0., 1.);
+	let alpha = (alpha as f32).clamp(0., 1.);
+
+	Table::new_from_element(Color::from_hsva(hue, saturation, value, alpha))
+}
+
+/// Constructs a color value from hue, saturation, lightness, and alpha components given as numbers from 0 to 1.
+#[node_macro::node(category("Color"), name("HSLA to Color"))]
+fn hsla_to_color(_: impl Ctx, _primary: (), hue: Fraction, #[default(1.)] saturation: Fraction, #[default(0.5)] lightness: Fraction, #[default(1.)] alpha: Fraction) -> Table<Color> {
+	let hue = (hue as f32) - (hue as f32).floor();
+	let saturation = (saturation as f32).clamp(0., 1.);
+	let lightness = (lightness as f32).clamp(0., 1.);
+	let alpha = (alpha as f32).clamp(0., 1.);
+
+	Table::new_from_element(Color::from_hsla(hue, saturation, lightness, alpha))
+}
+
+/// Constructs a color value from an sRGB color code string, such as `#RRGGBB` or `#RRGGBBAA`. Invalid hex code strings produce no color.
+#[node_macro::node(category("Color"), name("Hex to Color"))]
+fn hex_to_color(_: impl Ctx, hex_code: String) -> Table<Color> {
+	match Color::from_hex_str(&hex_code) {
+		Some(c) => Table::new_from_element(c),
+		None => Table::new(),
+	}
+}
+
 /// Constructs a gradient value which may be set to any sequence of color stops to represent the transition between colors.
 #[node_macro::node(category("Value"))]
 fn gradient_value(_: impl Ctx, _primary: (), gradient: Table<GradientStops>) -> Table<GradientStops> {

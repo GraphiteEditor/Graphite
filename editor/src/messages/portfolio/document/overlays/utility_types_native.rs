@@ -784,7 +784,10 @@ impl OverlayContextInternal {
 
 	pub fn draw_scale(&mut self, start: DVec2, scale: f64, radius: f64, text: &str) {
 		let sign = scale.signum();
-		let mut fill_color = Color::from_rgb_str(COLOR_OVERLAY_WHITE.strip_prefix('#').unwrap()).unwrap().with_alpha(0.05).to_rgba_hex_srgb();
+		let mut fill_color = Color::from_rgb_hex_for_overlays(COLOR_OVERLAY_WHITE.strip_prefix('#').unwrap())
+			.unwrap()
+			.with_alpha(0.05)
+			.to_rgba_hex_srgb();
 		fill_color.insert(0, '#');
 		let fill_color = Some(fill_color.as_str());
 		self.line(start + DVec2::X * radius * sign, start + DVec2::X * radius * scale.abs(), None, None);
@@ -817,7 +820,10 @@ impl OverlayContextInternal {
 
 		// Hover ring
 		if show_hover_ring {
-			let mut fill_color = Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap()).unwrap().with_alpha(0.5).to_rgba_hex_srgb();
+			let mut fill_color = Color::from_rgb_hex_for_overlays(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
+				.unwrap()
+				.with_alpha(0.5)
+				.to_rgba_hex_srgb();
 			fill_color.insert(0, '#');
 
 			let circle = kurbo::Circle::new((center.x, center.y), hover_ring_centerline_radius);
