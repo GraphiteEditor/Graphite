@@ -3,7 +3,7 @@ use crate::consts::{
 	COLOR_OVERLAY_YELLOW_DULL, COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, DOWEL_PIN_RADIUS,
 	GRADIENT_MIDPOINT_DIAMOND_RADIUS, MANIPULATOR_GROUP_MARKER_SIZE, PIVOT_CROSSHAIR_LENGTH, PIVOT_CROSSHAIR_THICKNESS, PIVOT_DIAMETER, RESIZE_HANDLE_SIZE, SKEW_TRIANGLE_OFFSET, SKEW_TRIANGLE_SIZE,
 };
-use crate::messages::portfolio::document::overlays::utility_functions::{GLOBAL_FONT_CACHE, GLOBAL_TEXT_CONTEXT};
+use crate::messages::portfolio::document::overlays::utility_functions::{GLOBAL_FONT_CACHE, GLOBAL_TEXT_CONTEXT, hex_to_rgba_u8};
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
 use crate::messages::prelude::Message;
 use crate::messages::prelude::ViewportMessageHandler;
@@ -456,11 +456,7 @@ impl OverlayContextInternal {
 	}
 
 	fn parse_color(color: &str) -> peniko::Color {
-		let hex = color.trim_start_matches('#');
-		let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(0);
-		let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(0);
-		let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(0);
-		let a = if hex.len() >= 8 { u8::from_str_radix(&hex[6..8], 16).unwrap_or(255) } else { 255 };
+		let [r, g, b, a] = hex_to_rgba_u8(color);
 		peniko::Color::from_rgba8(r, g, b, a)
 	}
 
@@ -1064,12 +1060,7 @@ impl OverlayContextInternal {
 		// Create a 4x4 pixel pattern with colored pixels at (0,0) and (2,2)
 		// This matches the Canvas2D checkerboard pattern
 		let mut data = vec![0u8; (PATTERN_WIDTH * PATTERN_HEIGHT * 4) as usize];
-		let hex = color.trim_start_matches('#');
-		let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(0);
-		let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(0);
-		let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(0);
-		let a = if hex.len() >= 8 { u8::from_str_radix(&hex[6..8], 16).unwrap_or(255) } else { 255 };
-		let rgba = [r, g, b, a];
+		let rgba = hex_to_rgba_u8(color);
 
 		// ┌▄▄┬──┬──┬──┐
 		// ├▀▀┼──┼──┼──┤

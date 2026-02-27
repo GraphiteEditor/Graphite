@@ -1,4 +1,4 @@
-use super::utility_functions::overlay_canvas_context;
+use super::utility_functions::{hex_to_rgba_u8, overlay_canvas_context};
 use crate::consts::{
 	ARC_SWEEP_GIZMO_RADIUS, COLOR_OVERLAY_BLACK, COLOR_OVERLAY_BLUE, COLOR_OVERLAY_BLUE_50, COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED, COLOR_OVERLAY_WHITE, COLOR_OVERLAY_WHITE_05, COLOR_OVERLAY_YELLOW,
 	COLOR_OVERLAY_YELLOW_DULL, COMPASS_ROSE_ARROW_SIZE, COMPASS_ROSE_HOVER_RING_DIAMETER, COMPASS_ROSE_MAIN_RING_DIAMETER, COMPASS_ROSE_RING_INNER_DIAMETER, DOWEL_PIN_RADIUS,
@@ -1023,12 +1023,7 @@ impl OverlayContext {
 		// 4x4 pixels, 4 components (RGBA) per pixel
 		let mut data = [0_u8; 4 * PATTERN_WIDTH * PATTERN_HEIGHT];
 
-		let hex = color.trim_start_matches('#');
-		let r = u8::from_str_radix(&hex[0..2], 16).unwrap_or(0);
-		let g = u8::from_str_radix(&hex[2..4], 16).unwrap_or(0);
-		let b = u8::from_str_radix(&hex[4..6], 16).unwrap_or(0);
-		let a = if hex.len() >= 8 { u8::from_str_radix(&hex[6..8], 16).unwrap_or(255) } else { 255 };
-		let rgba = [r, g, b, a];
+		let rgba = hex_to_rgba_u8(color);
 
 		// ┌▄▄┬──┬──┬──┐
 		// ├▀▀┼──┼──┼──┤
