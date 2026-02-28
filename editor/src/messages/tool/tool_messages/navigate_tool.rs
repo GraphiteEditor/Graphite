@@ -109,7 +109,10 @@ impl Fsm for NavigateToolFsmState {
 						});
 					}
 				} else {
-					responses.add_front(NavigationMessage::EndCanvasPTZ { abort_transform: false });
+					responses.add_front(NavigationMessage::EndCanvasPTZ {
+						abort_transform: false,
+						panning: false,
+					});
 				}
 
 				tool_data.drag_start = None;
@@ -138,7 +141,10 @@ impl Fsm for NavigateToolFsmState {
 				NavigateToolFsmState::Ready
 			}
 			NavigateToolMessage::Abort => {
-				responses.add_front(NavigationMessage::EndCanvasPTZ { abort_transform: false });
+				responses.add_front(NavigationMessage::EndCanvasPTZ {
+					abort_transform: false,
+					panning: false,
+				});
 				tool_data.drag_start = None;
 				NavigateToolFsmState::Ready
 			}
