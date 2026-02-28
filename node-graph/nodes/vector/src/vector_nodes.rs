@@ -5,7 +5,7 @@ use core_types::bounds::{BoundingBox, RenderBoundingBox};
 use core_types::registry::types::{Angle, Length, Multiplier, Percentage, PixelLength, Progression, SeedValue};
 use core_types::table::{Table, TableRow, TableRowMut};
 use core_types::transform::{Footprint, Transform};
-use core_types::{CloneVarArgs, Color, Context, Ctx, ExtractAll, OwnedContextImpl};
+use core_types::{CloneVarArgs, Color, Context, Ctx, ExtractAll, ExtractFootprint, OwnedContextImpl};
 use glam::{DAffine2, DVec2};
 use graphic_types::Vector;
 use graphic_types::raster_types::{CPU, GPU, Raster};
@@ -13,6 +13,7 @@ use graphic_types::{Graphic, IntoGraphicTable};
 use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, PathEl, PathSeg, Shape};
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
+use vector_types::Subpath;
 use vector_types::subpath::{BezierHandles, ManipulatorGroup};
 use vector_types::vector::PointDomain;
 use vector_types::vector::algorithms::bezpath_algorithms::{self, TValue, eval_pathseg_euclidean, evaluate_bezpath, sample_polyline_on_bezpath, split_bezpath, tangent_on_bezpath};
@@ -1002,6 +1003,91 @@ async fn bounding_box(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
 				})
 				.unwrap_or_default();
 
+			result.style = vector.style.clone();
+			result.style.set_stroke_transform(DAffine2::IDENTITY);
+
+			row.element = result;
+			row
+		})
+		.collect()
+}
+
+/// Returns the bottom left point in screen coordinates.
+fn take_bottom_left(p0: DVec2, p1: DVec2) -> DVec2 {
+	if p0.y > p1.y || (p0.y == p1.y && p0.x < p1.x) { p0 } else { p1 }
+}
+
+/// Returns true if p0 → p1 → p2 makes a clockwise turn in screen coordinates.
+fn is_clockwise(p0: DVec2, p1: DVec2, p2: DVec2) -> bool {
+	(p1 - p0).perp_dot(p2 - p1) > 0.
+}
+
+/// Computes the convex hull of a vector path using the Graham scan.
+/// Bézier curves are flattened into line segments using kurbo::flatten before processing.
+/// The flattening tolerance is adaptively adjusted based on the current zoom level.
+#[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
+async fn convex_hull(ctx: impl Ctx + ExtractFootprint, content: Table<Vector>) -> Table<Vector> {
+	const DEFAULT_TOLERANCE: f64 = 0.25;
+	const MIN_TOLERANCE: f64 = 0.01;
+	let logical_scale = ctx.footprint().decompose_scale().x;
+	let flattening_tolerance = (DEFAULT_TOLERANCE / logical_scale).max(MIN_TOLERANCE);
+
+	content
+		.into_iter()
+		.map(|mut row| {
+			let vector = row.element;
+
+			// Collect all points and find the bottom-left origin for angular sorting
+			let mut points: Vec<DVec2> = vec![];
+			let mut origin = DVec2::new(f64::MAX, f64::MIN);
+
+			for bezpath in vector.stroke_bezpath_iter() {
+				kurbo::flatten(bezpath.path_elements(0.0), flattening_tolerance, |path_el| match path_el {
+					PathEl::MoveTo(p) | PathEl::LineTo(p) => {
+						let point = point_to_dvec2(p);
+						points.push(point);
+						origin = take_bottom_left(origin, point);
+					}
+					_ => {}
+				});
+			}
+			points.retain(|p| *p != origin);
+
+			if points.len() < 2 {
+				row.element = vector;
+				return row;
+			}
+
+			// Sort by polar angle to traverse the points in clockwise order
+			points.sort_by(|a, b| {
+				let angle_a = (a.y - origin.y).atan2(a.x - origin.x);
+				let angle_b = (b.y - origin.y).atan2(b.x - origin.x);
+				match angle_a.partial_cmp(&angle_b) {
+					// Closer one comes first if the angles are the same
+					Some(Ordering::Equal) => {
+						let dist_a = (*a - origin).length_squared();
+						let dist_b = (*b - origin).length_squared();
+						dist_a.partial_cmp(&dist_b).unwrap_or(Ordering::Equal)
+					}
+					ord => ord.unwrap_or(Ordering::Equal),
+				}
+			});
+			points.dedup();
+
+			// Run Graham scan
+			let mut hull: Vec<DVec2> = vec![origin];
+			for point in points {
+				while let [.., a, b] = hull.as_slice() {
+					if is_clockwise(*a, *b, point) {
+						break;
+					}
+					hull.pop();
+				}
+				hull.push(point);
+			}
+
+			let subpath = Subpath::<PointId>::from_anchors(hull, true);
+			let mut result = Vector::from_subpath(&subpath);
 			result.style = vector.style.clone();
 			result.style.set_stroke_transform(DAffine2::IDENTITY);
 
@@ -2406,6 +2492,71 @@ mod test {
 		for i in 0..4 {
 			assert_eq!(manipulator_groups_anchors[i], expected_bounding_box[i]);
 		}
+	}
+	#[tokio::test]
+	async fn convex_hull() {
+		let get_anchors = |vector: &Vector| {
+			vector
+				.region_manipulator_groups()
+				.next()
+				.unwrap()
+				.1
+				.iter()
+				.map(|manipulators| manipulators.anchor)
+				.collect::<Vec<DVec2>>()
+		};
+		// 1. Rectangle
+		let rect_vector = vector_node_from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY));
+		let convex_hull = super::convex_hull((), rect_vector).await;
+		let convex_hull = convex_hull.iter().next().unwrap().element;
+		assert_eq!(convex_hull.region_manipulator_groups().count(), 1);
+		let anchors = get_anchors(convex_hull);
+
+		// The anchors should be sorted in clockwise order from bottom-left anchor
+		assert_eq!(&anchors[..4], &[DVec2::new(-1., 1.), DVec2::NEG_ONE, DVec2::new(1., -1.), DVec2::ONE,]);
+
+		// All consecutive anchor triplets must be clockwise
+		let n = anchors.len();
+		let all_clockwise = (0..anchors.len()).all(|i| is_clockwise(anchors[i], anchors[(i + 1) % n], anchors[(i + 2) % n]));
+		assert!(all_clockwise);
+
+		// 2. Concave straight line shape
+		let concave_vector = vector_node_from_bezpath(BezPath::from_vec(vec![
+			PathEl::MoveTo(Point::new(0., 0.)),
+			PathEl::LineTo(Point::new(2., 0.)),
+			PathEl::LineTo(Point::new(2., 1.)),
+			PathEl::LineTo(Point::new(1., 1.)),
+			PathEl::LineTo(Point::new(1., 2.)),
+			PathEl::LineTo(Point::new(0., 2.)),
+			PathEl::ClosePath,
+		]));
+		let convex_hull = super::convex_hull((), concave_vector).await;
+		let convex_hull = convex_hull.iter().next().unwrap().element;
+		assert_eq!(convex_hull.region_manipulator_groups().count(), 1);
+		let anchors = get_anchors(convex_hull);
+
+		let n = anchors.len();
+		// One anchor should not be included in the result
+		assert_eq!(n, 5);
+		let all_clockwise = (0..anchors.len()).all(|i| is_clockwise(anchors[i], anchors[(i + 1) % n], anchors[(i + 2) % n]));
+		assert!(all_clockwise);
+
+		// 3. Curved shape
+		let curved_vector = vector_node_from_bezpath(BezPath::from_vec(vec![
+			PathEl::MoveTo(Point::new(0., 0.)),
+			PathEl::CurveTo(Point::new(50., -50.), Point::new(100., -50.), Point::new(100., 0.)),
+			PathEl::LineTo(Point::new(100., 100.)),
+			PathEl::LineTo(Point::new(0., 100.)),
+			PathEl::ClosePath,
+		]));
+		let convex_hull = super::convex_hull((), curved_vector).await;
+		let convex_hull = convex_hull.iter().next().unwrap().element;
+		assert_eq!(convex_hull.region_manipulator_groups().count(), 1);
+		let anchors = get_anchors(convex_hull);
+
+		let n = anchors.len();
+		let all_clockwise = (0..anchors.len()).all(|i| is_clockwise(anchors[i], anchors[(i + 1) % n], anchors[(i + 2) % n]));
+		assert!(all_clockwise);
 	}
 	#[tokio::test]
 	async fn copy_to_points() {
