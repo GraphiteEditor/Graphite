@@ -60,6 +60,7 @@
 	let rulerSpacing = 100;
 	let rulerInterval = 100;
 	let rulersVisible = true;
+	let rulersTilt = 0;
 
 	// Rendered SVG viewport data
 	let artworkSvg = "";
@@ -296,11 +297,12 @@
 		scrollbarMultiplier = multiplier;
 	}
 
-	export function updateDocumentRulers(origin: XY, spacing: number, interval: number, visible: boolean) {
+	export function updateDocumentRulers(origin: XY, spacing: number, interval: number, visible: boolean, tilt: number) {
 		rulerOrigin = origin;
 		rulerSpacing = spacing;
 		rulerInterval = interval;
 		rulersVisible = visible;
+		rulersTilt = tilt;
 	}
 
 	// Update mouse cursor icon
@@ -479,8 +481,8 @@
 		editor.subscriptions.subscribeJsMessage(UpdateDocumentRulers, async (data) => {
 			await tick();
 
-			const { origin, spacing, interval, visible } = data;
-			updateDocumentRulers(origin, spacing, interval, visible);
+			const { origin, spacing, interval, visible, tilt } = data;
+			updateDocumentRulers(origin, spacing, interval, visible, tilt);
 		});
 
 		// Update mouse cursor icon
@@ -572,13 +574,13 @@
 			{#if rulersVisible}
 				<LayoutRow class="ruler-or-scrollbar top-ruler">
 					<LayoutCol class="ruler-corner"></LayoutCol>
-					<RulerInput origin={rulerOrigin.x} majorMarkSpacing={rulerSpacing} numberInterval={rulerInterval} direction="Horizontal" bind:this={rulerHorizontal} />
+					<RulerInput origin={rulerOrigin.x} majorMarkSpacing={rulerSpacing} numberInterval={rulerInterval} tilt={rulersTilt} direction="Horizontal" bind:this={rulerHorizontal} />
 				</LayoutRow>
 			{/if}
 			<LayoutRow class="viewport-container-inner-1">
 				{#if rulersVisible}
 					<LayoutCol class="ruler-or-scrollbar">
-						<RulerInput origin={rulerOrigin.y} majorMarkSpacing={rulerSpacing} numberInterval={rulerInterval} direction="Vertical" bind:this={rulerVertical} />
+						<RulerInput origin={rulerOrigin.y} majorMarkSpacing={rulerSpacing} numberInterval={rulerInterval} tilt={rulersTilt} direction="Vertical" bind:this={rulerVertical} />
 					</LayoutCol>
 				{/if}
 				<LayoutCol class="viewport-container-inner-2" styles={{ cursor: canvasCursor }} data-viewport-container>

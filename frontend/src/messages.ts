@@ -666,6 +666,8 @@ export class UpdateDocumentRulers extends JsMessage {
 	readonly interval!: number;
 
 	readonly visible!: boolean;
+
+	readonly tilt!: number;
 }
 
 export class EyedropperPreviewImage {
