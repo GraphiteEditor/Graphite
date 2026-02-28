@@ -3416,7 +3416,7 @@ mod document_message_handler_tests {
 		editor.handle_message(NodeGraphMessage::SelectedNodesSet { nodes: vec![folder1.to_node()] }).await;
 		editor.handle_message(DocumentMessage::MoveSelectedLayersTo { parent: folder2, insert_index: 0 }).await;
 
-		// Verifing hierarchy: folder2 > folder1 > rectangle
+// Verifying hierarchy: folder2 > folder1 > rectangle
 		let document = editor.active_document();
 		let folder1_parent = folder1.parent(document.metadata()).unwrap();
 		assert_eq!(folder1_parent, folder2, "Folder1 should be inside folder2");
