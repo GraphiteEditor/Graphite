@@ -3744,7 +3744,7 @@ impl NodeNetworkInterface {
 		Some(old_inputs)
 	}
 
-	/// Used when opening an old document to add the persistent metadata for each input if it doesnt exist, which is where the name/description are saved.
+	/// Used when opening an old document to add the persistent metadata for each input if it doesn't exist, which is where the name/description are saved.
 	pub fn validate_input_metadata(&mut self, node_id: &NodeId, node: &DocumentNode, network_path: &[NodeId]) {
 		let number_of_inputs = node.inputs.len();
 		let Some(metadata) = self.node_metadata_mut(node_id, network_path) else { return };
@@ -3877,7 +3877,7 @@ impl NodeNetworkInterface {
 			return;
 		}
 
-		// It is necessary to ensure the grpah is acyclic before calling `self.position` as it sometimes crashes with cyclic graphs #3227
+		// It is necessary to ensure the graph is acyclic before calling `self.position` as it sometimes crashes with cyclic graphs #3227
 		let previous_metadata = match &previous_input {
 			NodeInput::Node { node_id, .. } => self.position(node_id, network_path).map(|position| (*node_id, position)),
 			_ => None,
@@ -6436,7 +6436,7 @@ pub struct NavigationMetadata {
 	/// The current pan, and zoom state of the viewport's view of the node graph.
 	/// Ensure `DocumentMessage::UpdateDocumentTransform` is called when the pan, zoom, or transform changes.
 	pub node_graph_ptz: PTZ,
-	// TODO: Eventually remove once te click targets are extracted from the native render
+	// TODO: Eventually remove once the click targets are extracted from the native render
 	/// Transform from node graph space to viewport space.
 	pub node_graph_to_viewport: DAffine2,
 	// TODO: Eventually remove once the import/export positions are extracted from the native render

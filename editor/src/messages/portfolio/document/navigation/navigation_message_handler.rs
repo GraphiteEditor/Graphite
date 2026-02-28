@@ -371,7 +371,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				ptz.set_zoom(ptz.zoom() * new_scale * VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR);
 
 				// Keep the canvas filling less than the full available viewport bounds if requested.
-				// And if the zoom is close to the full viewport bounds, we ignore the padding because 100% is preferrable if it still fits.
+				// And if the zoom is close to the full viewport bounds, we ignore the padding because 100% is preferable if it still fits.
 				if prevent_zoom_past_100 && ptz.zoom() > VIEWPORT_ZOOM_TO_FIT_PADDING_SCALE_FACTOR {
 					ptz.set_zoom(1.);
 				}
