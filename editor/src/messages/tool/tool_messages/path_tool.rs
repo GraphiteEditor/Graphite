@@ -1892,13 +1892,8 @@ impl Fsm for PathToolFsmState {
 							overlay_context.outline(outline, layer_to_viewport, Some(color));
 						}
 					}
-            Self::Drawing { selection_shape, drag_start_document } => {
-						let mut fill_color = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
-							.unwrap()
-							.with_alpha(0.05)
-							.to_rgba_hex_srgb();
-						fill_color.insert(0, '#');
-						let fill_color = Some(fill_color.as_str());
+					Self::Drawing { selection_shape, drag_start_document } => {
+						let fill_color = Some(COLOR_OVERLAY_BLUE_05);
 
 						let selection_mode = match tool_action_data.preferences.get_selection_mode() {
 							SelectionMode::Directional => tool_data.calculate_selection_mode_from_direction(drag_start_document, document.metadata()),
