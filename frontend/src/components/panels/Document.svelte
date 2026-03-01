@@ -3,8 +3,10 @@
 
 	import type { Editor } from "@graphite/editor";
 	import {
+		type MenuDirection,
 		type MouseCursorIcon,
 		type XY,
+		Color,
 		DisplayEditableTextbox,
 		DisplayEditableTextboxUpdateFontData,
 		DisplayEditableTextboxTransform,
@@ -14,6 +16,7 @@
 		UpdateDocumentRulers,
 		UpdateDocumentScrollbars,
 		UpdateEyedropperSamplingState,
+		UpdateGradientStopColorPickerPosition,
 		UpdateMouseCursor,
 		isWidgetSpanRow,
 	} from "@graphite/messages";
@@ -24,6 +27,7 @@
 	import { rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
 	import { setupViewportResizeObserver, cleanupViewportResizeObserver } from "@graphite/utility-functions/viewports";
 
+	import ColorPicker from "@graphite/components/floating-menus/ColorPicker.svelte";
 	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "@graphite/components/floating-menus/EyedropperPreview.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -35,6 +39,7 @@
 	let rulerHorizontal: RulerInput | undefined;
 	let rulerVertical: RulerInput | undefined;
 	let viewport: HTMLDivElement | undefined;
+	let gradientStopPicker: ColorPicker | undefined;
 
 	const editor = getContext<Editor>("editor");
 	const appWindow = getContext<AppWindowState>("appWindow");
@@ -74,6 +79,10 @@
 	let cursorEyedropperPreviewColorChoice = "";
 	let cursorEyedropperPreviewColorPrimary = "";
 	let cursorEyedropperPreviewColorSecondary = "";
+
+	// Gradient stop color picker
+	let gradientStopPickerColor: Color | undefined = undefined;
+	let gradientStopPickerPosition: { x: number; y: number } | undefined = undefined;
 
 	// Canvas dimensions
 	let canvasWidth: number | undefined = undefined;
@@ -406,6 +415,19 @@
 		// which provides pixel-perfect physical dimensions via devicePixelContentBoxSize
 	}
 
+	function gradientStopPickerDirection(position: XY | undefined, viewport: HTMLDivElement | undefined): MenuDirection {
+		const picker = (gradientStopPicker?.div()?.querySelector("[data-floating-menu-content]") || undefined) as HTMLElement | undefined;
+		if (!picker || !position || !viewport) return "Bottom";
+
+		const roomRight = position.x + picker.offsetWidth - viewport.clientWidth;
+		const roomBelow = position.y + picker.offsetHeight - viewport.clientHeight;
+
+		// Prefer bottom if there's room
+		if (roomBelow <= 0) return "Bottom";
+		// Otherwise choose the direction with more room
+		return roomRight > roomBelow ? "Bottom" : "Right";
+	}
+
 	onMount(() => {
 		// Not compatible with Safari:
 		// <https://developer.mozilla.org/en-US/docs/Web/API/Window/devicePixelRatio#browser_compatibility>
@@ -439,6 +461,12 @@
 				if (setColorChoice === "Primary") editor.handle.updatePrimaryColor(...rgb, 1);
 				if (setColorChoice === "Secondary") editor.handle.updateSecondaryColor(...rgb, 1);
 			}
+		});
+
+		// Gradient stop color picker
+		editor.subscriptions.subscribeJsMessage(UpdateGradientStopColorPickerPosition, (data) => {
+			gradientStopPickerColor = data.color;
+			gradientStopPickerPosition = { x: data.x, y: data.y };
 		});
 
 		// Update scrollbars and rulers
@@ -564,6 +592,34 @@
 							y={cursorTop}
 						/>
 					{/if}
+					<div
+						style:left={gradientStopPickerPosition ? `${gradientStopPickerPosition?.x}px` : undefined}
+						style:top={gradientStopPickerPosition ? `${gradientStopPickerPosition?.y}px` : undefined}
+						style:position="absolute"
+						data-floating-menu-no-position
+					>
+						<div data-floating-menu-spawner></div>
+						<ColorPicker
+							direction={gradientStopPickerDirection(gradientStopPickerPosition, viewport)}
+							open={Boolean(gradientStopPickerPosition && gradientStopPickerColor)}
+							on:open={({ detail }) => {
+								if (!detail) {
+									editor.handle.closeGradientStopColorPicker();
+									gradientStopPickerPosition = undefined;
+									gradientStopPickerColor = undefined;
+								}
+							}}
+							colorOrGradient={gradientStopPickerColor || new Color()}
+							on:colorOrGradient={({ detail }) => {
+								if (detail instanceof Color) {
+									editor.handle.updateGradientStopColor(detail.red, detail.green, detail.blue, detail.alpha);
+								}
+							}}
+							on:startHistoryTransaction={() => editor.handle.startGradientStopColorTransaction()}
+							on:commitHistoryTransaction={() => editor.handle.commitGradientStopColorTransaction()}
+							bind:this={gradientStopPicker}
+						/>
+					</div>
 					<div
 						class:viewport={!$appWindow.viewportHolePunch}
 						class:viewport-transparent={$appWindow.viewportHolePunch}

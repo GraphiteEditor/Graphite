@@ -1,0 +1,19 @@
+[package]
+name = "third-party-licenses"
+edition.workspace = true
+version.workspace = true
+license.workspace = true
+authors.workspace = true
+
+[features]
+desktop = ["dep:cef-dll-sys", "dep:scraper"]
+
+[dependencies]
+# Workspace dependencies
+serde = { workspace = true }
+serde_json = { workspace = true }
+lzma-rust2 = { workspace = true }
+
+# Optional workspace dependencies
+cef-dll-sys = { workspace = true, optional = true }
+scraper = { workspace = true, optional = true }

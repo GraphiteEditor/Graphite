@@ -14,7 +14,7 @@ use graphene_std::renderer::Quad;
 use graphene_std::renderer::convert_usvg_path::convert_usvg_path;
 use graphene_std::table::Table;
 use graphene_std::text::{Font, TypesettingConfig};
-use graphene_std::vector::style::{Fill, Gradient, GradientStops, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use graphene_std::vector::style::{Fill, Gradient, GradientStop, GradientStops, GradientType, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 
 #[derive(ExtractField)]
 pub struct GraphOperationMessageContext<'a> {
@@ -337,7 +337,17 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				let offset_to_center = DVec2::new(size.width() as f64, size.height() as f64) / -2.;
 				let transform = transform * DAffine2::from_translation(offset_to_center);
 
-				import_usvg_node(&mut modify_inputs, &usvg::Node::Group(Box::new(tree.root().clone())), transform, id, parent, insert_index);
+				let graphite_gradient_stops = extract_graphite_gradient_stops(&svg);
+
+				import_usvg_node(
+					&mut modify_inputs,
+					&usvg::Node::Group(Box::new(tree.root().clone())),
+					transform,
+					id,
+					parent,
+					insert_index,
+					&graphite_gradient_stops,
+				);
 			}
 		}
 	}
@@ -362,7 +372,85 @@ fn usvg_transform(c: usvg::Transform) -> DAffine2 {
 	DAffine2::from_cols_array(&[c.sx as f64, c.ky as f64, c.kx as f64, c.sy as f64, c.tx as f64, c.ty as f64])
 }
 
-fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, transform: DAffine2, id: NodeId, parent: LayerNodeIdentifier, insert_index: usize) {
+const GRAPHITE_NAMESPACE: &str = "https://graphite.art";
+
+/// Pre-parses the raw SVG XML to extract gradient stops that have `graphite:midpoint` attributes.
+/// Graphite exports gradients with midpoint curve data by writing interpolated approximation stops
+/// alongside the real stops. Real stops are tagged with `graphite:midpoint` attributes.
+/// Returns a map from gradient element `id` to `GradientStops` containing only the real stops.
+fn extract_graphite_gradient_stops(svg: &str) -> HashMap<String, GradientStops> {
+	let mut result = HashMap::new();
+
+	// Quick check: if the SVG doesn't reference `graphite:midpoint` at all, skip parsing
+	if !svg.contains("graphite:midpoint") {
+		return result;
+	}
+
+	let doc = match usvg::roxmltree::Document::parse(svg) {
+		Ok(doc) => doc,
+		Err(_) => return result,
+	};
+
+	for node in doc.descendants() {
+		match node.tag_name().name() {
+			"linearGradient" | "radialGradient" => {}
+			_ => continue,
+		}
+
+		let gradient_id = match node.attribute("id") {
+			Some(id) => id.to_string(),
+			None => continue,
+		};
+
+		let mut real_stops = Vec::new();
+		let mut has_any_midpoint = false;
+
+		for child in node.children() {
+			if child.tag_name().name() != "stop" {
+				continue;
+			}
+
+			let midpoint = child.attribute((GRAPHITE_NAMESPACE, "midpoint")).and_then(|v| v.parse::<f64>().ok());
+
+			if let Some(midpoint) = midpoint {
+				has_any_midpoint = true;
+
+				let offset = child.attribute("offset").and_then(|v| v.parse::<f64>().ok()).unwrap_or(0.);
+				let opacity = child.attribute("stop-opacity").and_then(|v| v.parse::<f32>().ok()).unwrap_or(1.);
+				let color = child.attribute("stop-color").and_then(|hex| parse_hex_stop_color(hex, opacity)).unwrap_or(Color::BLACK);
+
+				real_stops.push(GradientStop { position: offset, midpoint, color });
+			}
+		}
+
+		if has_any_midpoint && !real_stops.is_empty() {
+			result.insert(gradient_id, GradientStops::new(real_stops));
+		}
+	}
+
+	result
+}
+
+fn parse_hex_stop_color(hex: &str, opacity: f32) -> Option<Color> {
+	let hex = hex.strip_prefix('#')?;
+	if hex.len() != 6 {
+		return None;
+	}
+	let r = u8::from_str_radix(&hex[0..2], 16).ok()? as f32 / 255.;
+	let g = u8::from_str_radix(&hex[2..4], 16).ok()? as f32 / 255.;
+	let b = u8::from_str_radix(&hex[4..6], 16).ok()? as f32 / 255.;
+	Some(Color::from_rgbaf32_unchecked(r, g, b, opacity))
+}
+
+fn import_usvg_node(
+	modify_inputs: &mut ModifyInputsContext,
+	node: &usvg::Node,
+	transform: DAffine2,
+	id: NodeId,
+	parent: LayerNodeIdentifier,
+	insert_index: usize,
+	graphite_gradient_stops: &HashMap<String, GradientStops>,
+) {
 	let layer = modify_inputs.create_layer(id);
 	modify_inputs.network_interface.move_layer_to_stack(layer, parent, insert_index, &[]);
 	modify_inputs.layer_node = Some(layer);
@@ -372,7 +460,7 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 	match node {
 		usvg::Node::Group(group) => {
 			for child in group.children() {
-				import_usvg_node(modify_inputs, child, transform, NodeId::new(), layer, 0);
+				import_usvg_node(modify_inputs, child, transform, NodeId::new(), layer, 0, graphite_gradient_stops);
 			}
 			modify_inputs.layer_node = Some(layer);
 		}
@@ -388,7 +476,7 @@ fn import_usvg_node(modify_inputs: &mut ModifyInputsContext, node: &usvg::Node, 
 
 			if let Some(fill) = path.fill() {
 				let bounds_transform = DAffine2::from_scale_angle_translation(bounds[1] - bounds[0], 0., bounds[0]);
-				apply_usvg_fill(fill, modify_inputs, bounds_transform);
+				apply_usvg_fill(fill, modify_inputs, bounds_transform, graphite_gradient_stops);
 			}
 			if let Some(stroke) = path.stroke() {
 				apply_usvg_stroke(stroke, modify_inputs, transform * usvg_transform(node.abs_transform()));
@@ -432,7 +520,7 @@ fn apply_usvg_stroke(stroke: &usvg::Stroke, modify_inputs: &mut ModifyInputsCont
 	}
 }
 
-fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, bounds_transform: DAffine2) {
+fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, bounds_transform: DAffine2, graphite_gradient_stops: &HashMap<String, GradientStops>) {
 	modify_inputs.fill_set(match &fill.paint() {
 		usvg::Paint::Color(color) => Fill::solid(usvg_color(*color, fill.opacity().get())),
 		usvg::Paint::LinearGradient(linear) => {
@@ -443,8 +531,17 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, b
 
 			let gradient_type = GradientType::Linear;
 
-			let stops = linear.stops().iter().map(|stop| (stop.offset().get() as f64, usvg_color(stop.color(), stop.opacity().get()))).collect();
-			let stops = GradientStops::new(stops);
+			let stops = match graphite_gradient_stops.get(linear.id()) {
+				Some(graphite_stops) => graphite_stops.clone(),
+				None => {
+					let stops = linear.stops().iter().map(|stop| GradientStop {
+						position: stop.offset().get() as f64,
+						midpoint: 0.5,
+						color: usvg_color(stop.color(), stop.opacity().get()),
+					});
+					GradientStops::new(stops)
+				}
+			};
 
 			Fill::Gradient(Gradient { start, end, gradient_type, stops })
 		}
@@ -457,8 +554,17 @@ fn apply_usvg_fill(fill: &usvg::Fill, modify_inputs: &mut ModifyInputsContext, b
 
 			let gradient_type = GradientType::Radial;
 
-			let stops = radial.stops().iter().map(|stop| (stop.offset().get() as f64, usvg_color(stop.color(), stop.opacity().get()))).collect();
-			let stops = GradientStops::new(stops);
+			let stops = match graphite_gradient_stops.get(radial.id()) {
+				Some(graphite_stops) => graphite_stops.clone(),
+				None => {
+					let stops = radial.stops().iter().map(|stop| GradientStop {
+						position: stop.offset().get() as f64,
+						midpoint: 0.5,
+						color: usvg_color(stop.color(), stop.opacity().get()),
+					});
+					GradientStops::new(stops)
+				}
+			};
 
 			Fill::Gradient(Gradient { start, end, gradient_type, stops })
 		}
