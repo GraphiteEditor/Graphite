@@ -444,8 +444,9 @@ impl SelectToolData {
 	pub fn selection_box(&self, drag_start_document: DVec2, metadata: &DocumentMetadata) -> [DVec2; 2] {
 		// Transform the document-anchored start point to viewport
 		let start_viewport = metadata.document_to_viewport.transform_point2(drag_start_document);
+		let roundtrip_epsilon = 10. * f64::EPSILON;
 
-		if self.drag_current == start_viewport {
+		if self.drag_current.distance_squared(start_viewport) <= roundtrip_epsilon.powi(2) {
 			let tolerance = DVec2::splat(SELECTION_TOLERANCE);
 			[start_viewport - tolerance, start_viewport + tolerance]
 		} else {
