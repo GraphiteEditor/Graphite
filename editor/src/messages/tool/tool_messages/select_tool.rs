@@ -344,7 +344,7 @@ impl ToolTransition for SelectTool {
 	}
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 enum SelectToolFsmState {
 	Ready {
 		selection: NestedSelectionBehavior,
@@ -352,6 +352,7 @@ enum SelectToolFsmState {
 	Drawing {
 		selection_shape: SelectionShapeType,
 		has_drawn: bool,
+		drag_start_document: DVec2,
 	},
 	Dragging {
 		axis: Axis,
@@ -402,7 +403,6 @@ struct SelectToolData {
 	snap_candidates: Vec<SnapCandidatePoint>,
 	auto_panning: AutoPanning,
 	drag_start_center: ViewportPosition,
-	drag_start_document: Option<DVec2>,
 }
 
 impl SelectToolData {
@@ -419,13 +419,13 @@ impl SelectToolData {
 		}
 	}
 
-	pub fn selection_quad(&self, metadata: &DocumentMetadata) -> Quad {
-		let bbox = self.selection_box(metadata);
+	pub fn selection_quad(&self, drag_start_document: Option<DVec2>, metadata: &DocumentMetadata) -> Quad {
+		let bbox = self.selection_box(drag_start_document, metadata);
 		Quad::from_box(bbox)
 	}
 
-	pub fn calculate_selection_mode_from_direction(&mut self, metadata: &DocumentMetadata) -> SelectionMode {
-		let bbox: [DVec2; 2] = self.selection_box(metadata);
+	pub fn calculate_selection_mode_from_direction(&mut self, drag_start_document: DVec2, metadata: &DocumentMetadata) -> SelectionMode {
+		let bbox: [DVec2; 2] = self.selection_box(Some(drag_start_document), metadata);
 		let above_threshold = bbox[1].distance_squared(bbox[0]) > DRAG_DIRECTION_MODE_DETERMINATION_THRESHOLD.powi(2);
 
 		if self.selection_mode.is_none() && above_threshold {
@@ -441,9 +441,9 @@ impl SelectToolData {
 		self.selection_mode.unwrap_or(SelectionMode::Touched)
 	}
 
-	pub fn selection_box(&self, metadata: &DocumentMetadata) -> [DVec2; 2] {
+	pub fn selection_box(&self, drag_start_document: Option<DVec2>, metadata: &DocumentMetadata) -> [DVec2; 2] {
 		// If we have a document-anchored start point, transform it to viewport
-		let start_viewport = if let Some(start_doc) = self.drag_start_document {
+		let start_viewport = if let Some(start_doc) = drag_start_document {
 			metadata.document_to_viewport.transform_point2(start_doc)
 		} else {
 			self.drag_start
@@ -944,12 +944,15 @@ impl Fsm for SelectToolFsmState {
 				}
 
 				// Check if the tool is in selection mode
-				if let Self::Drawing { selection_shape, .. } = self {
+				if let Self::Drawing {
+					selection_shape, drag_start_document, ..
+				} = self
+				{
 					// Get the updated selection box bounds
-					let quad = tool_data.selection_quad(document.metadata());
+					let quad = tool_data.selection_quad(Some(drag_start_document), document.metadata());
 
 					let current_selection_mode = match tool_action_data.preferences.get_selection_mode() {
-						SelectionMode::Directional => tool_data.calculate_selection_mode_from_direction(document.metadata()),
+						SelectionMode::Directional => tool_data.calculate_selection_mode_from_direction(drag_start_document, document.metadata()),
 						SelectionMode::Touched => SelectionMode::Touched,
 						SelectionMode::Enclosed => SelectionMode::Enclosed,
 					};
@@ -1149,8 +1152,12 @@ impl Fsm for SelectToolFsmState {
 					} else {
 						let selection_shape = if input.keyboard.key(lasso_select) { SelectionShapeType::Lasso } else { SelectionShapeType::Box };
 						// Anchor the drag start to document coordinates so panning/zooming doesn't move the start point
-						tool_data.drag_start_document = Some(document.metadata().document_to_viewport.inverse().transform_point2(tool_data.drag_start));
-						SelectToolFsmState::Drawing { selection_shape, has_drawn: false }
+						let drag_start_document = document.metadata().document_to_viewport.inverse().transform_point2(tool_data.drag_start);
+						SelectToolFsmState::Drawing {
+							selection_shape,
+							has_drawn: false,
+							drag_start_document,
+						}
 					}
 				};
 				tool_data.non_duplicated_layers = None;
@@ -1299,7 +1306,14 @@ impl Fsm for SelectToolFsmState {
 
 				SelectToolFsmState::DraggingPivot
 			}
-			(SelectToolFsmState::Drawing { selection_shape, has_drawn }, SelectToolMessage::PointerMove { modifier_keys }) => {
+			(
+				SelectToolFsmState::Drawing {
+					selection_shape,
+					has_drawn,
+					drag_start_document,
+				},
+				SelectToolMessage::PointerMove { modifier_keys },
+			) => {
 				if !has_drawn {
 					responses.add(ToolMessage::UpdateHints);
 				}
@@ -1318,7 +1332,11 @@ impl Fsm for SelectToolFsmState {
 				];
 				tool_data.auto_panning.setup_by_mouse_position(input, viewport, &messages, responses);
 
-				SelectToolFsmState::Drawing { selection_shape, has_drawn: true }
+				SelectToolFsmState::Drawing {
+					selection_shape,
+					has_drawn: true,
+					drag_start_document,
+				}
 			}
 			(SelectToolFsmState::Ready { .. }, SelectToolMessage::PointerMove { .. }) => {
 				let dragging_bounds = tool_data
@@ -1412,7 +1430,7 @@ impl Fsm for SelectToolFsmState {
 
 				if !has_dragged && input.keyboard.key(remove_from_selection) && tool_data.layer_selected_on_start.is_none() {
 					// When you click on the layer with remove from selection key (shift) pressed, we deselect all nodes that are children.
-					let quad = tool_data.selection_quad(document.metadata());
+					let quad = tool_data.selection_quad(None, document.metadata());
 					let intersection: Vec<_> = document.intersect_quad_no_artboards(quad, viewport).collect();
 
 					if let Some(path) = intersection.last() {
@@ -1511,11 +1529,16 @@ impl Fsm for SelectToolFsmState {
 				let selection = tool_data.nested_selection_behavior;
 				SelectToolFsmState::Ready { selection }
 			}
-			(SelectToolFsmState::Drawing { selection_shape, .. }, SelectToolMessage::DragStop { remove_from_selection }) => {
-				let quad = tool_data.selection_quad(document.metadata());
+			(
+				SelectToolFsmState::Drawing {
+					selection_shape, drag_start_document, ..
+				},
+				SelectToolMessage::DragStop { remove_from_selection },
+			) => {
+				let quad = tool_data.selection_quad(Some(drag_start_document), document.metadata());
 
 				let selection_mode = match tool_action_data.preferences.get_selection_mode() {
-					SelectionMode::Directional => tool_data.calculate_selection_mode_from_direction(document.metadata()),
+					SelectionMode::Directional => tool_data.calculate_selection_mode_from_direction(drag_start_document, document.metadata()),
 					selection_mode => selection_mode,
 				};
 
@@ -1579,9 +1602,6 @@ impl Fsm for SelectToolFsmState {
 				}
 
 				tool_data.lasso_polygon.clear();
-
-				// Clear the document-anchored drag start when finishing drawing
-				tool_data.drag_start_document = None;
 
 				responses.add(OverlaysMessage::Draw);
 
