@@ -941,7 +941,10 @@ impl Fsm for SelectToolFsmState {
 
 				// Check if the tool is in selection mode and has started drawing
 				if let Self::Drawing {
-					selection_shape, drag_start_document, has_drawn: true, ..
+					selection_shape,
+					drag_start_document,
+					has_drawn: true,
+					..
 				} = self
 				{
 					// Get the updated selection box bounds
