@@ -1,91 +1,100 @@
 use std::io::IsTerminal;
 use std::process::Command;
 
+use crate::*;
+
+#[derive(Default, Clone)]
 struct Dependency {
 	command: &'static str,
 	args: &'static [&'static str],
 	name: &'static str,
 	version: Option<&'static str>,
 	install: Option<&'static str>,
+	skip: Option<&'static dyn Fn(&Task) -> bool>,
 }
 
-const DEPENDENCIES: &[Dependency] = &[
-	Dependency {
-		command: "rustc",
-		args: &["--version"],
-		name: "Rust",
-		version: None,
-		install: None,
-	},
-	Dependency {
-		command: "cargo-about",
-		args: &["--version"],
-		name: "cargo-about",
-		version: None,
-		install: Some("cargo install cargo-about"),
-	},
-	Dependency {
-		command: "cargo-watch",
-		args: &["--version"],
-		name: "cargo-watch",
-		version: None,
-		install: Some("cargo install cargo-watch"),
-	},
-	Dependency {
-		command: "wasm-bindgen",
-		args: &["--version"],
-		name: "wasm-bindgen-cli",
-		version: Some("0.2.100"),
-		install: Some("cargo install -f wasm-bindgen-cli@0.2.100"),
-	},
-	Dependency {
-		command: "wasm-pack",
-		args: &["--version"],
-		name: "wasm-pack",
-		version: None,
-		install: Some("cargo install wasm-pack"),
-	},
-	Dependency {
-		command: "node",
-		args: &["--version"],
-		name: "Node.js",
-		version: None,
-		install: None,
-	},
-];
+fn dependencies(task: &Task) -> Vec<Dependency> {
+	[
+		Dependency {
+			command: "rustc",
+			args: &["--version"],
+			name: "Rust",
+			..Default::default()
+		},
+		Dependency {
+			command: "cargo-about",
+			args: &["--version"],
+			name: "cargo-about",
+			install: Some("cargo install cargo-about"),
+			..Default::default()
+		},
+		Dependency {
+			command: "cargo-watch",
+			args: &["--version"],
+			name: "cargo-watch",
+			install: Some("cargo install cargo-watch"),
+			skip: Some(&|task| {
+				!matches!(
+					task,
+					Task {
+						target: Target::Web,
+						action: Action::Run,
+						profile: _
+					}
+				)
+			}),
+			..Default::default()
+		},
+		Dependency {
+			command: "wasm-bindgen",
+			args: &["--version"],
+			name: "wasm-bindgen-cli",
+			version: Some("0.2.100"),
+			install: Some("cargo install -f wasm-bindgen-cli@0.2.100"),
+			..Default::default()
+		},
+		Dependency {
+			command: "wasm-pack",
+			args: &["--version"],
+			name: "wasm-pack",
+			install: Some("cargo install wasm-pack"),
+			..Default::default()
+		},
+		Dependency {
+			command: "node",
+			args: &["--version"],
+			name: "Node.js",
+			..Default::default()
+		},
+		Dependency {
+			command: "cmake",
+			args: &["--version"],
+			name: "CMake",
+			skip: Some(&|task| !matches!(task.target, Target::Desktop)),
+			..Default::default()
+		},
+		Dependency {
+			command: "ninja",
+			args: &["--version"],
+			name: "Ninja",
+			skip: Some(&|task| !matches!(task.target, Target::Desktop) || !cfg!(target_os = "windows")),
+			..Default::default()
+		},
+	]
+	.iter()
+	.filter(|d| if let Some(skip) = d.skip { !skip(task) } else { true })
+	.cloned()
+	.collect()
+}
 
-const DESKTOP_DEPENDENCIES: &[Dependency] = &[
-	Dependency {
-		command: "cmake",
-		args: &["--version"],
-		name: "CMake",
-		version: None,
-		install: None,
-	},
-	#[cfg(target_os = "windows")]
-	Dependency {
-		command: "ninja",
-		args: &["--version"],
-		name: "Ninja",
-		version: None,
-		install: None,
-	},
-];
-
-pub fn check(desktop: bool) {
+pub fn check(task: &Task) {
 	eprintln!();
 	eprintln!("Checking dependencies:");
 
-	let mut installable: Vec<&Dependency> = Vec::new();
+	let mut installable: Vec<Dependency> = Vec::new();
 	let mut failures: Vec<String> = Vec::new();
 
-	let deps: Box<dyn Iterator<Item = &Dependency>> = if desktop {
-		Box::new(DEPENDENCIES.iter().chain(DESKTOP_DEPENDENCIES.iter()))
-	} else {
-		Box::new(DEPENDENCIES.iter())
-	};
-
-	for dep in deps {
+	for dep in dependencies(task) {
 		match Command::new(dep.command).args(dep.args).output() {
 			Ok(output) if output.status.success() => {
 				let version = String::from_utf8_lossy(&output.stdout);

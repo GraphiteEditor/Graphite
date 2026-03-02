@@ -14,72 +14,44 @@ fn main() {
 	let args: Vec<String> = std::env::args().collect();
 	let args: Vec<&str> = args.iter().skip(1).map(String::as_str).collect();
 
-	deps::check(matches!(args.first(), Some(&"desktop")));
+	let task = match Task::parse(&args) {
+		Some(run) => run,
+		None => return usage(),
+	};
 
-	match args.as_slice() {
-		["desktop", rest @ ..] => match rest {
-			["build", rest @ ..] => build_desktop(rest.into()),
-			_ => run_desktop(rest.into()),
-		},
-		["web", rest @ ..] => match rest {
-			["build", rest @ ..] => build_web(rest.into()),
-			_ => run_web(rest.into()),
-		},
-		rest => match rest {
-			["build", rest @ ..] => build_web(rest.into()),
-			_ => run_web(rest.into()),
-		},
-	}
-}
+	deps::check(&task);
 
-fn run_web(profile: Profile) {
-	match profile {
-		Profile::Debug | Profile::Default => run_in_frontend_dir("npm run start"),
-		Profile::Release => run_in_frontend_dir("npm run production"),
-		Profile::Profiling => run_in_frontend_dir("npm run profiling"),
-		Profile::Error => usage(),
-	}
-}
+	match (&task.target, &task.action, &task.profile) {
+		(Target::Web, Action::Run, Profile::Debug | Profile::Default) => run_in_frontend_dir("npm run start"),
+		(Target::Web, Action::Run, Profile::Release) => run_in_frontend_dir("npm run production"),
+		(Target::Web, Action::Run, Profile::Profiling) => run_in_frontend_dir("npm run profiling"),
 
-fn run_desktop(profile: Profile) {
-	match profile {
-		Profile::Debug | Profile::Default => {
+		(Target::Web, Action::Build, Profile::Debug) => run_in_frontend_dir("npm run build-dev"),
+		(Target::Web, Action::Build, Profile::Release | Profile::Default) => run_in_frontend_dir("npm run build"),
+		(Target::Web, Action::Build, Profile::Profiling) => run_in_frontend_dir("npm run build-profiling"),
+
+		(Target::Desktop, Action::Run, Profile::Debug | Profile::Default) => {
 			run_in_frontend_dir("npm run build-native-dev");
 			run("cargo run -p third-party-licenses --features desktop");
 			run("cargo run -p graphite-desktop-bundle -- open");
 		}
-		Profile::Release => {
+		(Target::Desktop, Action::Run, Profile::Release) => {
 			run_in_frontend_dir("npm run build-native");
 			run("cargo run -p third-party-licenses --features desktop");
 			run("cargo run -r -p graphite-desktop-bundle -- open");
 		}
-		Profile::Profiling => todo!("profiling run for desktop"),
-		Profile::Error => usage(),
-	}
-}
+		(Target::Desktop, Action::Run, Profile::Profiling) => todo!("profiling run for desktop"),
 
-fn build_web(profile: Profile) {
-	match profile {
-		Profile::Debug => run_in_frontend_dir("npm run build-dev"),
-		Profile::Release | Profile::Default => run_in_frontend_dir("npm run build"),
-		Profile::Profiling => run_in_frontend_dir("npm run build-profiling"),
-		Profile::Error => usage(),
-	}
-}
-
-fn build_desktop(profile: Profile) {
-	match profile {
-		Profile::Debug => {
+		(Target::Desktop, Action::Build, Profile::Debug) => {
 			run_in_frontend_dir("npm run build-native-dev");
 			run("cargo run -p third-party-licenses --features desktop");
 			run("cargo run -p graphite-desktop-bundle");
 		}
-		Profile::Release | Profile::Default => {
+		(Target::Desktop, Action::Build, Profile::Release | Profile::Default) => {
 			run_in_frontend_dir("npm run build-native");
 			run("cargo run -p third-party-licenses --features desktop");
 			run("cargo run -r -p graphite-desktop-bundle");
 		}
-		Profile::Profiling => todo!("profiling build for desktop"),
-		Profile::Error => usage(),
+		(Target::Desktop, Action::Build, Profile::Profiling) => todo!("profiling build for desktop"),
 	}
 }

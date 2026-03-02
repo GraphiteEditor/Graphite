@@ -2,29 +2,51 @@ pub mod deps;
 
 use std::process;
 
+pub enum Target {
+	Web,
+	Desktop,
+}
+
+pub enum Action {
+	Run,
+	Build,
+}
+
 pub enum Profile {
 	Default,
 	Release,
 	Debug,
 	Profiling,
-	Error,
 }
 
-impl From<&[&str]> for Profile {
-	fn from(arg: &[&str]) -> Self {
-		arg.first().map(|s| s.to_string()).as_deref().unwrap_or_default().into()
-	}
+pub struct Task {
+	pub target: Target,
+	pub action: Action,
+	pub profile: Profile,
 }
 
-impl From<&str> for Profile {
-	fn from(arg: &str) -> Self {
-		match arg {
+impl Task {
+	pub fn parse(args: &[&str]) -> Option<Self> {
+		let (target, rest) = match args.first() {
+			Some(&"desktop") => (Target::Desktop, &args[1..]),
+			Some(&"web") => (Target::Web, &args[1..]),
+			_ => (Target::Web, args),
+		};
+
+		let (action, rest) = match rest.first() {
+			Some(&"build") => (Action::Build, &rest[1..]),
+			_ => (Action::Run, rest),
+		};
+
+		let profile = match rest.first().copied().unwrap_or_default() {
+			"" => Profile::Default,
 			"release" => Profile::Release,
 			"debug" => Profile::Debug,
 			"profiling" => Profile::Profiling,
-			_ if arg.is_empty() => Profile::Default,
-			_ => Profile::Error,
-		}
+			_ => return None,
+		};
+
+		Some(Task { target, action, profile })
 	}
 }
 
