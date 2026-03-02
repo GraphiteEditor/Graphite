@@ -8,12 +8,13 @@ fn usage() {
 	eprintln!("  web build         Build the web version");
 	eprintln!("  desktop           Run the desktop app");
 	eprintln!("  desktop build     Build the desktop version");
-	eprintln!("  check             Check that all required dependencies are installed");
 }
 
 fn main() {
 	let args: Vec<String> = std::env::args().collect();
 	let args: Vec<&str> = args.iter().skip(1).map(String::as_str).collect();
+
+	deps::check(matches!(args.first(), Some(&"desktop")));
 
 	match args.as_slice() {
 		["desktop", rest @ ..] => match rest {

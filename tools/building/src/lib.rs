@@ -1,4 +1,4 @@
-pub mod checks;
+pub mod deps;
 
 use std::process;
 
