@@ -1,32 +1,31 @@
-use winit::event_loop::ActiveEventLoop;
-use winit::window::{Window, WindowAttributes, WindowId};
-use winit::dpi::{PhysicalPosition, PhysicalSize};
-use winit::raw_window_handle::HasWindowHandle;
-use windows::Win32::Graphics::Gdi::{
-	CreateCompatibleBitmap, CreateCompatibleDC, CreateSolidBrush, DeleteDC, DeleteObject, FillRect, FrameRect, GetDC, GetStockObject, ReleaseDC, SelectObject, StretchBlt,
-	BLACK_BRUSH, SRCCOPY,
-};
-use windows::Win32::Foundation::{HWND, RECT};
-use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
 use graphene_std::raster::color::Color;
+use winit::dpi::{PhysicalPosition, PhysicalSize};
+use winit::event_loop::ActiveEventLoop;
+use winit::raw_window_handle::HasWindowHandle;
+use winit::window::{Window, WindowAttributes, WindowId};
+use windows::Win32::Foundation::{HWND, RECT};
+use windows::Win32::Graphics::Gdi::{
+	CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, FrameRect, GetDC, GetStockObject, ReleaseDC, SelectObject, StretchBlt, BLACK_BRUSH, SRCCOPY,
+};
+use windows::Win32::UI::WindowsAndMessaging::GetCursorPos;
 
 const MAGNIFIER_RES: u32 = 11;
 const MAGNIFIER_SIZE: u32 = 110;
 
-pub struct GlobalEyedropper {
+pub(crate) struct GlobalEyedropperImpl {
 	window: Option<Window>,
 	primary: bool,
 }
 
-impl GlobalEyedropper {
-	pub fn new() -> Self {
+impl super::NativeEyedropper for GlobalEyedropperImpl {
+	fn new() -> Self {
 		Self {
 			window: None,
 			primary: true,
 		}
 	}
 
-	pub fn start(&mut self, event_loop: &dyn ActiveEventLoop, primary: bool) {
+	fn start(&mut self, event_loop: &dyn ActiveEventLoop, primary: bool) {
 		if self.is_active() {
 			return;
 		}
@@ -49,19 +48,19 @@ impl GlobalEyedropper {
 		}
 	}
 
-	pub fn stop(&mut self) {
+	fn stop(&mut self) {
 		self.window = None;
 	}
 
-	pub fn is_active(&self) -> bool {
+	fn is_active(&self) -> bool {
 		self.window.is_some()
 	}
 
-	pub fn window_id(&self) -> Option<WindowId> {
+	fn window_id(&self) -> Option<WindowId> {
 		self.window.as_ref().map(|w| w.id())
 	}
 
-	pub fn update(&mut self, position: PhysicalPosition<f64>) {
+	fn update(&mut self, position: PhysicalPosition<f64>) {
 		let Some(window) = &self.window else { return };
 
 		let size = PhysicalSize::new(MAGNIFIER_SIZE, MAGNIFIER_SIZE);
@@ -71,17 +70,7 @@ impl GlobalEyedropper {
 		window.request_redraw();
 	}
 
-	fn window_hwnd(&self) -> HWND {
-		let Some(window) = &self.window else {
-			return HWND::default();
-		};
-		HWND(match window.window_handle().unwrap().as_raw() {
-			winit::raw_window_handle::RawWindowHandle::Win32(handle) => handle.hwnd.get() as isize,
-			_ => 0,
-		})
-	}
-
-	pub fn render(&self) {
+	fn render(&self) {
 		let Some(_window) = &self.window else { return };
 
 		unsafe {
@@ -97,12 +86,10 @@ impl GlobalEyedropper {
 			let window_hwnd = self.window_hwnd();
 			let window_dc = GetDC(window_hwnd);
 
-			// Capture the screen area into a memory DC, then stretch it onto the window
 			let mem_dc = CreateCompatibleDC(desktop_dc);
 			let bitmap = CreateCompatibleBitmap(desktop_dc, MAGNIFIER_RES as i32, MAGNIFIER_RES as i32);
 			let old_bitmap = SelectObject(mem_dc, bitmap);
 
-			// Copy 11x11 pixels from the screen around the cursor into the memory bitmap
 			StretchBlt(
 				mem_dc,
 				0,
@@ -118,7 +105,6 @@ impl GlobalEyedropper {
 			)
 			.ok();
 
-			// Now stretch the small bitmap onto the window DC to get the magnified view
 			StretchBlt(
 				window_dc,
 				0,
@@ -134,12 +120,10 @@ impl GlobalEyedropper {
 			)
 			.ok();
 
-			// Clean up memory DC and bitmap
 			SelectObject(mem_dc, old_bitmap);
 			let _ = DeleteObject(bitmap);
 			let _ = DeleteDC(mem_dc);
 
-			// Draw crosshair border on the center pixel
 			let mid = MAGNIFIER_RES / 2;
 			let rect = RECT {
 				left: (mid * pixel_size) as i32,
@@ -155,7 +139,7 @@ impl GlobalEyedropper {
 		}
 	}
 
-	pub fn sample_color(&self) -> Option<Color> {
+	fn sample_color(&self) -> Option<Color> {
 		unsafe {
 			let mut pt = Default::default();
 			if GetCursorPos(&mut pt).is_err() {
@@ -174,7 +158,19 @@ impl GlobalEyedropper {
 		}
 	}
 
-	pub fn is_primary(&self) -> bool {
+	fn is_primary(&self) -> bool {
 		self.primary
+	}
+}
+
+impl GlobalEyedropperImpl {
+	fn window_hwnd(&self) -> HWND {
+		let Some(window) = &self.window else {
+			return HWND::default();
+		};
+		HWND(match window.window_handle().unwrap().as_raw() {
+			winit::raw_window_handle::RawWindowHandle::Win32(handle) => handle.hwnd.get() as isize,
+			_ => 0,
+		})
 	}
 }
