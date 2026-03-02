@@ -154,6 +154,9 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		FrontendMessage::WindowRestart => {
 			dispatcher.respond(DesktopFrontendMessage::Restart);
 		}
+		FrontendMessage::TriggerDisplayThirdPartyLicensesDialog => {
+			dispatcher.respond(DesktopFrontendMessage::LoadThirdPartyLicenses);
+		}
 		FrontendMessage::GlobalEyedropper { open, primary } => {
 			dispatcher.respond(DesktopFrontendMessage::GlobalEyedropper { open, primary });
 		}

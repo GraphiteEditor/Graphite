@@ -35,7 +35,7 @@ smallvec = "1.13.2"
 [dev-dependencies]
 glob = "0.3"
 svg = "0.18"
-resvg = "0.44"
+resvg = "0.47"
 image = "0.25"
 
 # Required dependencies

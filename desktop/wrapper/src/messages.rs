@@ -75,6 +75,7 @@ pub enum DesktopFrontendMessage {
 	WindowHideOthers,
 	WindowShowAll,
 	Restart,
+	LoadThirdPartyLicenses,
 	GlobalEyedropper {
 		open: bool,
 		primary: bool,
@@ -133,6 +134,9 @@ pub enum DesktopWrapperMessage {
 	PointerLockMove {
 		x: f64,
 		y: f64,
+	},
+	LoadThirdPartyLicenses {
+		text: String,
 	},
 }
 

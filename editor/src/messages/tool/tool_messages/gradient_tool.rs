@@ -8,6 +8,7 @@ use crate::messages::portfolio::document::utility_types::document_metadata::Laye
 use crate::messages::tool::common_functionality::auto_panning::AutoPanning;
 use crate::messages::tool::common_functionality::graph_modification_utils::{NodeGraphLayer, get_gradient};
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapManager, SnapTypeConfiguration};
+use graphene_std::raster::color::Color;
 use graphene_std::vector::style::{Fill, Gradient, GradientStops, GradientType};
 
 #[derive(Default, ExtractField)]
@@ -38,12 +39,18 @@ pub enum GradientToolMessage {
 	PointerMove { constrain_axis: Key, lock_angle: Key },
 	PointerOutsideViewport { constrain_axis: Key, lock_angle: Key },
 	PointerUp,
+	StartTransactionForColorStop,
+	CommitTransactionForColorStop,
+	CloseStopColorPicker,
+	UpdateStopColor { color: Color },
 	UpdateOptions { options: GradientOptionsUpdate },
 }
 
 #[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
 pub enum GradientOptionsUpdate {
 	Type(GradientType),
+	ReverseStops,
+	ReverseDirection,
 }
 
 impl ToolMetadata for GradientTool {
@@ -61,54 +68,59 @@ impl ToolMetadata for GradientTool {
 #[message_handler_data]
 impl<'a> MessageHandler<ToolMessage, &mut ToolActionMessageContext<'a>> for GradientTool {
 	fn process_message(&mut self, message: ToolMessage, responses: &mut VecDeque<Message>, context: &mut ToolActionMessageContext<'a>) {
-		let ToolMessage::Gradient(GradientToolMessage::UpdateOptions { options }) = message else {
-			self.fsm_state.process_event(message, &mut self.data, context, &self.options, responses, false);
-			return;
-		};
-		match options {
-			GradientOptionsUpdate::Type(gradient_type) => {
-				self.options.gradient_type = gradient_type;
-				let selected_layers: Vec<_> = context
-					.document
-					.network_interface
-					.selected_nodes()
-					.selected_visible_layers(&context.document.network_interface)
-					.collect();
-
-				let mut transaction_started = false;
-				for layer in selected_layers {
-					if NodeGraphLayer::is_raster_layer(layer, &mut context.document.network_interface) {
-						continue;
-					}
-
-					if let Some(mut gradient) = get_gradient(layer, &context.document.network_interface)
-						&& gradient.gradient_type != gradient_type
-					{
-						if !transaction_started {
-							responses.add(DocumentMessage::StartTransaction);
-							transaction_started = true;
-						}
-						gradient.gradient_type = gradient_type;
-						responses.add(GraphOperationMessage::FillSet {
-							layer,
-							fill: Fill::Gradient(gradient),
-						});
-					}
+		match message {
+			ToolMessage::Gradient(GradientToolMessage::UpdateOptions { options }) => match options {
+				GradientOptionsUpdate::Type(gradient_type) => {
+					self.options.gradient_type = gradient_type;
+					apply_gradient_update(&mut self.data, context, responses, |g| g.gradient_type != gradient_type, |g| g.gradient_type = gradient_type);
+					responses.add(ToolMessage::UpdateHints);
+					responses.add(ToolMessage::UpdateCursor);
 				}
-
-				if transaction_started {
-					responses.add(DocumentMessage::AddTransaction);
+				GradientOptionsUpdate::ReverseStops => {
+					apply_gradient_update(&mut self.data, context, responses, |_| true, |g| g.stops = g.stops.reversed());
 				}
-				if let Some(selected_gradient) = &mut self.data.selected_gradient
-					&& let Some(layer) = selected_gradient.layer
-					&& !NodeGraphLayer::is_raster_layer(layer, &mut context.document.network_interface)
+				GradientOptionsUpdate::ReverseDirection => {
+					apply_gradient_update(&mut self.data, context, responses, |_| true, |g| std::mem::swap(&mut g.start, &mut g.end));
+				}
+			},
+			ToolMessage::Gradient(GradientToolMessage::StartTransactionForColorStop) => {
+				if self.data.color_picker_transaction_open {
+					responses.add(DocumentMessage::EndTransaction);
+				}
+				responses.add(DocumentMessage::StartTransaction);
+				self.data.color_picker_transaction_open = true;
+			}
+			ToolMessage::Gradient(GradientToolMessage::CommitTransactionForColorStop) => {
+				if self.data.color_picker_transaction_open {
+					responses.add(DocumentMessage::EndTransaction);
+					self.data.color_picker_transaction_open = false;
+				}
+			}
+			ToolMessage::Gradient(GradientToolMessage::UpdateStopColor { color }) => {
+				if let Some(stop_index) = self.data.color_picker_editing_color_stop
+					&& let Some(selected_gradient) = &mut self.data.selected_gradient
+					&& stop_index < selected_gradient.gradient.stops.color.len()
 				{
-					selected_gradient.gradient.gradient_type = gradient_type;
+					selected_gradient.gradient.stops.color[stop_index] = color;
+					selected_gradient.render_gradient(responses);
+					responses.add(PropertiesPanelMessage::Refresh);
 				}
-				responses.add(ToolMessage::UpdateHints);
-				responses.add(PropertiesPanelMessage::Refresh);
-				responses.add(ToolMessage::UpdateCursor);
-				responses.add(ToolMessage::RefreshToolOptions);
+			}
+			ToolMessage::Gradient(GradientToolMessage::CloseStopColorPicker) => {
+				if self.data.color_picker_transaction_open {
+					responses.add(DocumentMessage::EndTransaction);
+					self.data.color_picker_transaction_open = false;
+				}
+				self.data.color_picker_editing_color_stop = None;
+			}
+			_ => {
+				self.fsm_state.process_event(message, &mut self.data, context, &self.options, responses, false);
+
+				let has_gradient = has_gradient_on_selected_layers(context.document);
+				if has_gradient != self.data.has_selected_gradient {
+					self.data.has_selected_gradient = has_gradient;
+					responses.add(ToolMessage::RefreshToolOptions);
+				}
 			}
 		}
 	}
@@ -142,7 +154,52 @@ impl LayoutHolder for GradientTool {
 		.selected_index(Some((self.options.gradient_type == GradientType::Radial) as u32))
 		.widget_instance();
 
-		Layout(vec![LayoutGroup::Row { widgets: vec![gradient_type] }])
+		let reverse_stops = IconButton::new("Reverse", 24)
+			.tooltip_label("Reverse Stops")
+			.tooltip_description("Reverse the gradient color stops.")
+			.disabled(!self.data.has_selected_gradient)
+			.on_update(|_| {
+				GradientToolMessage::UpdateOptions {
+					options: GradientOptionsUpdate::ReverseStops,
+				}
+				.into()
+			})
+			.widget_instance();
+
+		let mut widgets = vec![gradient_type, Separator::new(SeparatorStyle::Unrelated).widget_instance(), reverse_stops];
+
+		if self.options.gradient_type == GradientType::Radial {
+			let orientation = self
+				.data
+				.selected_gradient
+				.as_ref()
+				.map(|selected_gradient| {
+					let (start, end) = (selected_gradient.gradient.start, selected_gradient.gradient.end);
+					if (end.x - start.x).abs() > f64::EPSILON * 1e6 {
+						end.x > start.x
+					} else {
+						(start.x + start.y) < (end.x + end.y)
+					}
+				})
+				.unwrap_or(true);
+
+			let reverse_direction = IconButton::new(if orientation { "ReverseRadialGradientToRight" } else { "ReverseRadialGradientToLeft" }, 24)
+				.tooltip_label("Reverse Direction")
+				.tooltip_description("Reverse which end the gradient radiates from.")
+				.disabled(!self.data.has_selected_gradient)
+				.on_update(|_| {
+					GradientToolMessage::UpdateOptions {
+						options: GradientOptionsUpdate::ReverseDirection,
+					}
+					.into()
+				})
+				.widget_instance();
+
+			widgets.push(Separator::new(SeparatorStyle::Related).widget_instance());
+			widgets.push(reverse_direction);
+		}
+
+		Layout(vec![LayoutGroup::Row { widgets }])
 	}
 }
 
@@ -492,6 +549,9 @@ struct GradientToolData {
 	auto_panning: AutoPanning,
 	auto_pan_shift: DVec2,
 	gradient_angle: f64,
+	has_selected_gradient: bool,
+	color_picker_editing_color_stop: Option<usize>,
+	color_picker_transaction_open: bool,
 }
 
 impl Fsm for GradientToolFsmState {
@@ -540,7 +600,7 @@ impl Fsm for GradientToolFsmState {
 					let (start, end) = (transform.transform_point2(*start), transform.transform_point2(*end));
 
 					fn color_to_hex(color: graphene_std::Color) -> String {
-						format!("#{}", color.with_alpha(1.).to_rgba_hex_srgb())
+						format!("#{}", color.to_rgb_hex_srgb_from_gamma())
 					}
 
 					let start_hex = stops.color.first().map(|&c| color_to_hex(c)).unwrap_or(String::from(COLOR_OVERLAY_BLUE));
@@ -700,9 +760,31 @@ impl Fsm for GradientToolFsmState {
 				let snap_data = SnapData::new(document, input, viewport);
 				tool_data.snap_manager.draw_overlays(snap_data, &mut overlay_context);
 
+				// Update color picker position if active (keeps it anchored to the stop during pan/zoom)
+				if let Some(stop_index) = tool_data.color_picker_editing_color_stop
+					&& let Some(selected_gradient) = tool_data.selected_gradient.as_ref()
+					&& let Some(layer) = selected_gradient.layer
+				{
+					let transform = gradient_space_transform(layer, document);
+					let gradient = &selected_gradient.gradient;
+					if stop_index < gradient.stops.position.len() {
+						let color = gradient.stops.color[stop_index].to_gamma_srgb();
+						let position = gradient.stops.position[stop_index];
+						let DVec2 { x, y } = transform.transform_point2(gradient.start.lerp(gradient.end, position));
+						responses.add(FrontendMessage::UpdateGradientStopColorPickerPosition { color, x, y });
+					}
+				}
+
 				self
 			}
 			(GradientToolFsmState::Ready { .. }, GradientToolMessage::SelectionChanged) => {
+				if tool_data.color_picker_editing_color_stop.is_some() {
+					if tool_data.color_picker_transaction_open {
+						responses.add(DocumentMessage::EndTransaction);
+						tool_data.color_picker_transaction_open = false;
+					}
+					tool_data.color_picker_editing_color_stop = None;
+				}
 				tool_data.selected_gradient = None;
 				GradientToolFsmState::Ready {
 					hovering: GradientHoverTarget::None,
@@ -714,11 +796,45 @@ impl Fsm for GradientToolFsmState {
 				let drag_start_viewport = document.metadata().document_to_viewport.transform_point2(tool_data.drag_start);
 				if input.mouse.position.distance(drag_start_viewport) <= DRAG_THRESHOLD
 					&& let Some(selected_gradient) = &mut tool_data.selected_gradient
-					&& let GradientDragTarget::Midpoint(index) = selected_gradient.dragging
 				{
-					selected_gradient.gradient.stops.midpoint[index] = 0.5;
-					selected_gradient.render_gradient(responses);
-					responses.add(PropertiesPanelMessage::Refresh);
+					match selected_gradient.dragging {
+						GradientDragTarget::Midpoint(index) => {
+							selected_gradient.gradient.stops.midpoint[index] = 0.5;
+							selected_gradient.render_gradient(responses);
+							responses.add(PropertiesPanelMessage::Refresh);
+						}
+						GradientDragTarget::Start | GradientDragTarget::End | GradientDragTarget::Stop(_) => {
+							// Find the stop index from the drag target
+							let stop_index = match selected_gradient.dragging {
+								GradientDragTarget::Stop(i) => Some(i),
+								GradientDragTarget::Start => selected_gradient.gradient.stops.position.iter().position(|&p| p.abs() < f64::EPSILON * 1000.),
+								GradientDragTarget::End => selected_gradient.gradient.stops.position.iter().position(|&p| (1. - p).abs() < f64::EPSILON * 1000.),
+								_ => None,
+							};
+							if let Some(stop_index) = stop_index
+								&& stop_index < selected_gradient.gradient.stops.color.len()
+							{
+								// Dismiss any existing color picker first
+								if tool_data.color_picker_editing_color_stop.is_some() && tool_data.color_picker_transaction_open {
+									responses.add(DocumentMessage::EndTransaction);
+									tool_data.color_picker_transaction_open = false;
+								}
+
+								let stop_pos = selected_gradient.gradient.stops.position[stop_index];
+								let viewport_pos = selected_gradient
+									.transform
+									.transform_point2(selected_gradient.gradient.start.lerp(selected_gradient.gradient.end, stop_pos));
+								let color = selected_gradient.gradient.stops.color[stop_index].to_gamma_srgb();
+								tool_data.color_picker_editing_color_stop = Some(stop_index);
+								responses.add(FrontendMessage::UpdateGradientStopColorPickerPosition {
+									color,
+									x: viewport_pos.x,
+									y: viewport_pos.y,
+								});
+							}
+						}
+						_ => {}
+					}
 				}
 				self
 			}
@@ -993,9 +1109,12 @@ impl Fsm for GradientToolFsmState {
 				}
 
 				// Initialize `gradient_angle` from the existing gradient so Ctrl (lock angle) works from the first mouse move
-				if let Some(sg) = &tool_data.selected_gradient {
-					let (vp_start, vp_end) = (sg.transform.transform_point2(sg.gradient.start), sg.transform.transform_point2(sg.gradient.end));
-					let delta = match sg.dragging {
+				if let Some(selected_gradient) = &tool_data.selected_gradient {
+					let (vp_start, vp_end) = (
+						selected_gradient.transform.transform_point2(selected_gradient.gradient.start),
+						selected_gradient.transform.transform_point2(selected_gradient.gradient.end),
+					);
+					let delta = match selected_gradient.dragging {
 						// When dragging End, the fixed point is start and the mouse begins at end
 						GradientDragTarget::End => vp_start - vp_end,
 						// When dragging Start, the fixed point is end and the mouse begins at start
@@ -1152,15 +1271,21 @@ impl Fsm for GradientToolFsmState {
 				tool_data.selected_gradient = None;
 				responses.add(OverlaysMessage::Draw);
 
+				dismiss_color_stop_color_picker(tool_data, responses);
+
 				GradientToolFsmState::Ready {
 					hovering: GradientHoverTarget::None,
 					selected: GradientSelectedTarget::None,
 				}
 			}
-			(_, GradientToolMessage::Abort) => GradientToolFsmState::Ready {
-				hovering: GradientHoverTarget::None,
-				selected: GradientSelectedTarget::None,
-			},
+			(_, GradientToolMessage::Abort) => {
+				dismiss_color_stop_color_picker(tool_data, responses);
+
+				GradientToolFsmState::Ready {
+					hovering: GradientHoverTarget::None,
+					selected: GradientSelectedTarget::None,
+				}
+			}
 			_ => self,
 		}
 	}
@@ -1247,6 +1372,16 @@ impl Fsm for GradientToolFsmState {
 	}
 }
 
+fn dismiss_color_stop_color_picker(tool_data: &mut GradientToolData, responses: &mut VecDeque<Message>) {
+	if tool_data.color_picker_editing_color_stop.is_some() {
+		if tool_data.color_picker_transaction_open {
+			responses.add(DocumentMessage::EndTransaction);
+			tool_data.color_picker_transaction_open = false;
+		}
+		tool_data.color_picker_editing_color_stop = None;
+	}
+}
+
 fn detect_hover_target(mouse: DVec2, document: &DocumentMessageHandler) -> GradientHoverTarget {
 	let stop_tolerance = (MANIPULATOR_GROUP_MARKER_SIZE * 2.).powi(2);
 	let midpoint_tolerance = GRADIENT_MIDPOINT_DIAMOND_RADIUS.powi(2);
@@ -1316,6 +1451,63 @@ fn compute_selected_target(tool_data: &GradientToolData) -> GradientSelectedTarg
 		}
 		GradientDragTarget::New => GradientSelectedTarget::None,
 	}
+}
+
+fn apply_gradient_update(
+	data: &mut GradientToolData,
+	context: &mut ToolActionMessageContext,
+	responses: &mut VecDeque<Message>,
+	condition: impl Fn(&Gradient) -> bool,
+	update: impl Fn(&mut Gradient),
+) {
+	let selected_layers: Vec<_> = context
+		.document
+		.network_interface
+		.selected_nodes()
+		.selected_visible_layers(&context.document.network_interface)
+		.collect();
+
+	let mut transaction_started = false;
+	for layer in selected_layers {
+		if NodeGraphLayer::is_raster_layer(layer, &mut context.document.network_interface) {
+			continue;
+		}
+
+		if let Some(mut gradient) = get_gradient(layer, &context.document.network_interface)
+			&& condition(&gradient)
+		{
+			if !transaction_started {
+				responses.add(DocumentMessage::StartTransaction);
+				transaction_started = true;
+			}
+			update(&mut gradient);
+			responses.add(GraphOperationMessage::FillSet {
+				layer,
+				fill: Fill::Gradient(gradient),
+			});
+		}
+	}
+
+	if transaction_started {
+		responses.add(DocumentMessage::EndTransaction);
+	}
+	if let Some(selected_gradient) = &mut data.selected_gradient
+		&& let Some(layer) = selected_gradient.layer
+		&& !NodeGraphLayer::is_raster_layer(layer, &mut context.document.network_interface)
+	{
+		update(&mut selected_gradient.gradient);
+	}
+	responses.add(PropertiesPanelMessage::Refresh);
+	data.has_selected_gradient = has_gradient_on_selected_layers(context.document);
+	responses.add(ToolMessage::RefreshToolOptions);
+}
+
+fn has_gradient_on_selected_layers(document: &DocumentMessageHandler) -> bool {
+	document
+		.network_interface
+		.selected_nodes()
+		.selected_visible_layers(&document.network_interface)
+		.any(|layer| get_gradient(layer, &document.network_interface).is_some())
 }
 
 #[inline(always)]

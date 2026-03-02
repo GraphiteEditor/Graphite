@@ -81,7 +81,6 @@ export function createDialogState(editor: Editor) {
 	editor.subscriptions.subscribeJsMessage(TriggerDisplayThirdPartyLicensesDialog, async () => {
 		const BACKUP_URL = "https://editor.graphite.art/third-party-licenses.txt";
 		let licenseText = `Content was not able to load. Please check your network connection and try again.\n\nOr visit ${BACKUP_URL} for the license notices.`;
-		if (editor.handle.inDevelopmentMode()) licenseText = `Third-party licenses are not available in development builds.\n\nVisit ${BACKUP_URL} for the license notices.`;
 
 		const response = await fetch("/third-party-licenses.txt");
 		if (response.ok && response.headers.get("Content-Type")?.includes("text/plain")) licenseText = await response.text();

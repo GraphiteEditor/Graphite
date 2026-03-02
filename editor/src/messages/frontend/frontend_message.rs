@@ -151,6 +151,11 @@ pub enum FrontendMessage {
 		#[serde(rename = "documentId")]
 		document_id: DocumentId,
 	},
+	UpdateGradientStopColorPickerPosition {
+		color: Color,
+		x: f64,
+		y: f64,
+	},
 	UpdateImportsExports {
 		/// If the primary import is not visible, then it is None.
 		imports: Vec<Option<FrontendGraphOutput>>,

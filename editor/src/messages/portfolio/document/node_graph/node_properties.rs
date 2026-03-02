@@ -214,19 +214,19 @@ pub(crate) fn property_from_type(
 						Some(x) if x == TypeId::of::<String>() => text_widget(default_info).into(),
 						Some(x) if x == TypeId::of::<DVec2>() => vec2_widget(default_info, "X", "Y", "", None, false),
 						Some(x) if x == TypeId::of::<DAffine2>() => transform_widget(default_info, &mut extra_widgets),
-						Some(x) if x == TypeId::of::<Color>() => color_widget(default_info, ColorInput::default()),
-						Some(x) if x == TypeId::of::<Option<Color>>() => color_widget(default_info, ColorInput::default()),
 						// ==========================
 						// PRIMITIVE COLLECTION TYPES
 						// ==========================
 						Some(x) if x == TypeId::of::<Vec<f64>>() => array_of_number_widget(default_info, TextInput::default()).into(),
 						Some(x) if x == TypeId::of::<Vec<DVec2>>() => array_of_vec2_widget(default_info, TextInput::default()).into(),
+						// ===========
+						// TABLE TYPES
+						// ===========
+						Some(x) if x == TypeId::of::<Table<Color>>() => color_widget(default_info, ColorInput::default().allow_none(true)),
+						Some(x) if x == TypeId::of::<Table<GradientStops>>() => color_widget(default_info, ColorInput::default().allow_none(false)),
 						// ============
 						// STRUCT TYPES
 						// ============
-						Some(x) if x == TypeId::of::<Table<Color>>() => color_widget(default_info, ColorInput::default().allow_none(true)),
-						Some(x) if x == TypeId::of::<Table<GradientStops>>() => color_widget(default_info, ColorInput::default().allow_none(false)),
-						Some(x) if x == TypeId::of::<GradientStops>() => color_widget(default_info, ColorInput::default().allow_none(false)),
 						Some(x) if x == TypeId::of::<Font>() => font_widget(default_info),
 						Some(x) if x == TypeId::of::<Curve>() => curve_widget(default_info),
 						Some(x) if x == TypeId::of::<Footprint>() => footprint_widget(default_info, &mut extra_widgets),
@@ -1145,14 +1145,6 @@ pub fn color_widget(parameter_widgets_info: ParameterWidgetsInfo, color_button: 
 
 	// Add the color input
 	match &**tagged_value {
-		TaggedValue::ColorNotInTable(color) => widgets.push(
-			color_button
-				.value(FillChoice::Solid(*color))
-				.allow_none(false)
-				.on_update(update_value(|input: &ColorInput| TaggedValue::ColorNotInTable(input.value.as_solid().unwrap()), node_id, index))
-				.on_commit(commit_value)
-				.widget_instance(),
-		),
 		TaggedValue::Color(color_table) => widgets.push(
 			color_button
 				.value(match color_table.iter().next() {
@@ -1171,7 +1163,7 @@ pub fn color_widget(parameter_widgets_info: ParameterWidgetsInfo, color_button: 
 			color_button
 				.value(match gradient_table.iter().next() {
 					Some(row) => FillChoice::Gradient(row.element.clone()),
-					None => FillChoice::None,
+					None => FillChoice::Gradient(GradientStops::default()),
 				})
 				.on_update(update_value(
 					|input: &ColorInput| TaggedValue::GradientTable(input.value.as_gradient().iter().map(|&gradient| TableRow::new_from_element(gradient.clone())).collect()),
@@ -1181,18 +1173,7 @@ pub fn color_widget(parameter_widgets_info: ParameterWidgetsInfo, color_button: 
 				.on_commit(commit_value)
 				.widget_instance(),
 		),
-		TaggedValue::GradientStops(gradient_stops) => widgets.push(
-			color_button
-				.value(FillChoice::Gradient(gradient_stops.clone()))
-				.on_update(update_value(
-					|input: &ColorInput| TaggedValue::GradientStops(input.value.as_gradient().cloned().unwrap_or_default()),
-					node_id,
-					index,
-				))
-				.on_commit(commit_value)
-				.widget_instance(),
-		),
-		x => warn!("Colour {x:?}"),
+		x => warn!("Color {x:?}"),
 	}
 
 	LayoutGroup::Row { widgets }

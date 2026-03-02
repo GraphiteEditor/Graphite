@@ -152,13 +152,18 @@ pub const SCALE_EFFECT: f64 = 0.5;
 // COLORS
 pub const COLOR_OVERLAY_BLUE: &str = "#00a8ff";
 pub const COLOR_OVERLAY_BLUE_50: &str = "#00a8ff80";
+pub const COLOR_OVERLAY_BLUE_25: &str = "#00a8ff40";
+pub const COLOR_OVERLAY_BLUE_05: &str = "#00a8ff0d";
 pub const COLOR_OVERLAY_YELLOW: &str = "#ffc848";
 pub const COLOR_OVERLAY_YELLOW_DULL: &str = "#d7ba8b";
 pub const COLOR_OVERLAY_GREEN: &str = "#63ce63";
+pub const COLOR_OVERLAY_GREEN_25: &str = "#63ce6340";
 pub const COLOR_OVERLAY_RED: &str = "#ef5454";
+pub const COLOR_OVERLAY_RED_25: &str = "#ef545440";
 pub const COLOR_OVERLAY_GRAY: &str = "#cccccc";
 pub const COLOR_OVERLAY_GRAY_25: &str = "#cccccc40";
 pub const COLOR_OVERLAY_WHITE: &str = "#ffffff";
+pub const COLOR_OVERLAY_WHITE_05: &str = "#ffffff0d";
 pub const COLOR_OVERLAY_BLACK: &str = "#000000";
 pub const COLOR_OVERLAY_BLACK_75: &str = "#000000bf";
 
