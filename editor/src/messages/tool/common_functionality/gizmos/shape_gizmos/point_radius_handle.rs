@@ -9,11 +9,13 @@ use crate::messages::prelude::FrontendMessage;
 use crate::messages::prelude::Responses;
 use crate::messages::prelude::{DocumentMessageHandler, InputPreprocessorMessageHandler, NodeGraphMessage};
 use crate::messages::tool::common_functionality::graph_modification_utils::{self, NodeGraphLayer};
-use crate::messages::tool::common_functionality::shapes::shape_utility::{draw_snapping_ticks, extract_polygon_parameters, polygon_outline, polygon_vertex_position, star_outline};
-use crate::messages::tool::common_functionality::shapes::shape_utility::{extract_star_parameters, star_vertex_position};
+use crate::messages::tool::common_functionality::shapes::shape_utility::{
+	draw_snapping_ticks, extract_polygon_parameters, extract_star_parameters, polygon_edge_midpoint, polygon_outline, polygon_vertex_position, star_outline, star_vertex_position,
+};
 use glam::DVec2;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::vector::calculate_effective_radius;
 use std::collections::VecDeque;
 use std::f64::consts::{FRAC_1_SQRT_2, FRAC_PI_4, PI, SQRT_2};
 
@@ -87,11 +89,16 @@ impl PointRadiusHandle {
 				}
 
 				// Draw the point handle gizmo for the polygon shape
-				if let Some((sides, radius)) = extract_polygon_parameters(Some(layer), document) {
+				if let Some((sides, radius, is_inner_radius)) = extract_polygon_parameters(Some(layer), document) {
 					let viewport = document.metadata().transform_to_viewport(layer);
+					let effective_radius = calculate_effective_radius(radius, sides, is_inner_radius);
 
 					for i in 0..sides {
-						let point = polygon_vertex_position(viewport, i as i32, sides, radius);
+						let point = if is_inner_radius {
+							polygon_edge_midpoint(viewport, i as i32, sides, radius)
+						} else {
+							polygon_vertex_position(viewport, i as i32, sides, effective_radius)
+						};
 						let center = viewport.transform_point2(DVec2::ZERO);
 
 						// If the user zooms out such that shape is very small hide the gizmo
@@ -130,8 +137,13 @@ impl PointRadiusHandle {
 				}
 
 				// Polygon
-				if let Some((sides, radius)) = extract_polygon_parameters(Some(layer), document) {
-					let point = polygon_vertex_position(viewport, self.point as i32, sides, radius);
+				if let Some((sides, radius, is_inner_radius)) = extract_polygon_parameters(Some(layer), document) {
+					let effective_radius = calculate_effective_radius(radius, sides, is_inner_radius);
+					let point = if is_inner_radius {
+						polygon_edge_midpoint(viewport, self.point as i32, sides, radius)
+					} else {
+						polygon_vertex_position(viewport, self.point as i32, sides, effective_radius)
+					};
 
 					if matches!(&self.handle_state, PointRadiusHandleState::Hover) && (mouse_position - point).length() > 5. {
 						self.update_state(PointRadiusHandleState::Inactive);
@@ -166,11 +178,16 @@ impl PointRadiusHandle {
 				}
 
 				// Draw the point handle gizmo for the Polygon shape
-				if let Some((sides, radius)) = extract_polygon_parameters(Some(layer), document) {
+				if let Some((sides, radius, is_inner_radius)) = extract_polygon_parameters(Some(layer), document) {
 					let viewport = document.metadata().transform_to_viewport(layer);
+					let effective_radius = calculate_effective_radius(radius, sides, is_inner_radius);
 
 					for i in 0..sides {
-						let point = polygon_vertex_position(viewport, i as i32, sides, radius);
+						let point = if is_inner_radius {
+							polygon_edge_midpoint(viewport, i as i32, sides, radius)
+						} else {
+							polygon_vertex_position(viewport, i as i32, sides, effective_radius)
+						};
 						let center = viewport.transform_point2(DVec2::ZERO);
 
 						// If the user zooms out such that shape is very small hide the gizmo
@@ -211,8 +228,13 @@ impl PointRadiusHandle {
 				}
 
 				// Polygon
-				if let Some((sides, radius)) = extract_polygon_parameters(Some(layer), document) {
-					let point = polygon_vertex_position(viewport, self.point as i32, sides, radius);
+				if let Some((sides, radius, is_inner_radius)) = extract_polygon_parameters(Some(layer), document) {
+					let effective_radius = calculate_effective_radius(radius, sides, is_inner_radius);
+					let point = if is_inner_radius {
+						polygon_edge_midpoint(viewport, self.point as i32, sides, radius)
+					} else {
+						polygon_vertex_position(viewport, self.point as i32, sides, effective_radius)
+					};
 
 					let Some(direction) = (point - center).try_normalize() else { return };
 
@@ -421,13 +443,14 @@ impl PointRadiusHandle {
 		};
 
 		let viewport_transform = document.network_interface.document_metadata().transform_to_viewport(layer);
-		let center = viewport_transform.transform_point2(DVec2::ZERO);
+
 		let radius_index = self.radius_index;
 
 		let original_radius = self.initial_radius;
 
-		let delta = viewport_transform.inverse().transform_point2(input.mouse.position) - viewport_transform.inverse().transform_point2(drag_start);
-		let radius = drag_start - center;
+		let drag_start = viewport_transform.inverse().transform_point2(drag_start);
+		let delta = viewport_transform.inverse().transform_point2(input.mouse.position) - drag_start;
+		let radius = drag_start;
 		let projection = delta.project_onto(radius);
 		let sign = radius.dot(delta).signum();
 

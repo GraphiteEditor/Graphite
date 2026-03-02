@@ -13,6 +13,7 @@ use crate::messages::tool::common_functionality::shapes::shape_utility::{extract
 use glam::{DAffine2, DVec2};
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::vector::generator_nodes::calculate_effective_radius;
 use std::collections::VecDeque;
 use std::f64::consts::TAU;
 
@@ -68,11 +69,12 @@ impl NumberOfPointsDial {
 				}
 
 				// Polygon
-				if let Some((sides, radius)) = extract_polygon_parameters(Some(layer), document) {
+				if let Some((sides, radius, is_inner_radius)) = extract_polygon_parameters(Some(layer), document) {
 					let viewport = document.metadata().transform_to_viewport(layer);
 					let center = viewport.transform_point2(DVec2::ZERO);
 
-					let point_on_max_radius = polygon_vertex_position(viewport, 0, sides, radius);
+					let effective_radius = calculate_effective_radius(radius, sides, is_inner_radius);
+					let point_on_max_radius = polygon_vertex_position(viewport, 0, sides, effective_radius);
 
 					if mouse_position.distance(center) < NUMBER_OF_POINTS_DIAL_SPOKE_LENGTH && point_on_max_radius.distance(center) > GIZMO_HIDE_THRESHOLD {
 						self.layer = Some(layer);
@@ -122,7 +124,7 @@ impl NumberOfPointsDial {
 				}
 
 				// Polygon
-				if let Some((sides, radius)) = extract_polygon_parameters(Some(layer), document) {
+				if let Some((sides, radius, is_inner_radius)) = extract_polygon_parameters(Some(layer), document) {
 					let viewport = document.metadata().transform_to_viewport(layer);
 					let center = viewport.transform_point2(DVec2::ZERO);
 
@@ -131,10 +133,11 @@ impl NumberOfPointsDial {
 					{
 						return;
 					}
-					let point_on_max_radius = polygon_vertex_position(viewport, 0, sides, radius);
+					let effective_radius = calculate_effective_radius(radius, sides, is_inner_radius);
+					let point_on_max_radius = polygon_vertex_position(viewport, 0, sides, effective_radius);
 
-					if inside_polygon(viewport, sides, radius, mouse_position) && point_on_max_radius.distance(center) > GIZMO_HIDE_THRESHOLD {
-						self.draw_spokes(center, viewport, sides, radius, overlay_context);
+					if inside_polygon(viewport, sides, effective_radius, mouse_position) && point_on_max_radius.distance(center) > GIZMO_HIDE_THRESHOLD {
+						self.draw_spokes(center, viewport, sides, effective_radius, overlay_context);
 					}
 				}
 			}
@@ -144,10 +147,12 @@ impl NumberOfPointsDial {
 				};
 
 				// Get the star's greater radius or polygon's radius, as well as the number of sides
-				let Some((sides, radius)) = extract_star_parameters(Some(layer), document)
-					.map(|(sides, r1, r2)| (sides, r1.max(r2)))
-					.or_else(|| extract_polygon_parameters(Some(layer), document))
-				else {
+				let Some((sides, radius)) = extract_star_parameters(Some(layer), document).map(|(sides, r1, r2)| (sides, r1.max(r2))).or_else(|| {
+					extract_polygon_parameters(Some(layer), document).map(|(sides, radius, is_inner_radius)| {
+						let effective_radius = calculate_effective_radius(radius, sides, is_inner_radius);
+						(sides, effective_radius)
+					})
+				}) else {
 					return;
 				};
 
