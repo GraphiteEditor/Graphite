@@ -67,7 +67,8 @@ pub fn run_from(comand: &str, dir: Option<&str>) {
 		cmd.args(&comand[1..]);
 	}
 	cmd.current_dir(dir);
-	cmd.spawn()
+	let exit_code = cmd
+		.spawn()
 		.unwrap_or_else(|e| {
 			panic!("Failed to run command '{}': {e}", comand.join(" "));
 		})
@@ -75,4 +76,7 @@ pub fn run_from(comand: &str, dir: Option<&str>) {
 		.unwrap_or_else(|e| {
 			panic!("Failed to wait for command '{}': {e}", comand.join(" "));
 		});
+	if !exit_code.success() {
+		panic!("Command '{}' exited with code {}", comand.join(" "), exit_code);
+	}
 }

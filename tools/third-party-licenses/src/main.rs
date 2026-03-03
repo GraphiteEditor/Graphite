@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::hash::{DefaultHasher, Hash, Hasher};
 use std::path::PathBuf;
+use std::process::ExitCode;
 
 mod cargo;
 #[cfg(feature = "desktop")]
@@ -57,11 +58,12 @@ struct Run<'a> {
 	cef: &'a CefLicenseSource,
 }
 
-fn main() {
+fn main() -> ExitCode {
 	if let Err(e) = run() {
 		eprintln!("Error: {e}");
-		std::process::exit(1);
+		return ExitCode::FAILURE;
 	}
+	ExitCode::SUCCESS
 }
 
 fn run() -> Result<(), Error> {
