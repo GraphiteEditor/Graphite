@@ -102,7 +102,8 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				}
 			}
 			GraphOperationMessage::SetUpstreamToChain { layer } => {
-				let Some(OutputConnector::Node { node_id: first_chain_node, .. }) = network_interface.upstream_output_connector(&InputConnector::node(layer.to_node(), 1), &[]) else {
+				const LAYER_SECONDARY_INPUT_INDEX: usize = 1;
+				let Some(OutputConnector::Node { node_id: first_chain_node, .. }) = network_interface.upstream_output_connector(&InputConnector::node(layer.to_node(), LAYER_SECONDARY_INPUT_INDEX), &[]) else {
 					return;
 				};
 
@@ -146,15 +147,18 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 
 						// Set the bottom input of the artboard back to artboard
 						let bottom_input = NodeInput::value(TaggedValue::Artboard(Table::new()), true);
-						network_interface.set_input(&InputConnector::node(artboard_layer.to_node(), 0), bottom_input, &[]);
+						const ARTBOARD_BASE_INDEX: usize = 0;
+						network_interface.set_input(&InputConnector::node(artboard_layer.to_node(), ARTBOARD_BASE_INDEX), bottom_input, &[]);
 					} else {
 						// We have some non layers (e.g. just a rectangle node). We disconnect the bottom input and connect it to the left input.
-						network_interface.disconnect_input(&InputConnector::node(artboard_layer.to_node(), 0), &[]);
-						network_interface.set_input(&InputConnector::node(artboard_layer.to_node(), 1), primary_input, &[]);
+						const ARTBOARD_BASE_INDEX: usize = 0;
+						const ARTBOARD_CONTENT_INDEX: usize = 1;
+						network_interface.disconnect_input(&InputConnector::node(artboard_layer.to_node(), ARTBOARD_BASE_INDEX), &[]);
+						network_interface.set_input(&InputConnector::node(artboard_layer.to_node(), ARTBOARD_CONTENT_INDEX), primary_input, &[]);
 
 						// Set the bottom input of the artboard back to artboard
 						let bottom_input = NodeInput::value(TaggedValue::Artboard(Table::new()), true);
-						network_interface.set_input(&InputConnector::node(artboard_layer.to_node(), 0), bottom_input, &[]);
+						network_interface.set_input(&InputConnector::node(artboard_layer.to_node(), ARTBOARD_BASE_INDEX), bottom_input, &[]);
 					}
 				}
 				responses.add_front(NodeGraphMessage::SelectedNodesSet { nodes: vec![id] });
@@ -265,8 +269,9 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 					let first_new_node_id = new_ids[&NodeId(0)];
 					responses.add(NodeGraphMessage::AddNodes { nodes, new_ids });
 
+				const LAYER_SECONDARY_INPUT_INDEX: usize = 1;
 					responses.add(NodeGraphMessage::SetInput {
-						input_connector: InputConnector::node(layer.to_node(), 1),
+							input_connector: InputConnector::node(layer.to_node(), LAYER_SECONDARY_INPUT_INDEX),
 						input: NodeInput::node(first_new_node_id, 0),
 					});
 				}
@@ -330,10 +335,11 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 						return;
 					};
 
-					artboard_data.insert(
-						artboard.to_node(),
-						ArtboardInfo {
-							input_node: NodeInput::node(document_node.inputs[1].as_node().unwrap_or_default(), 0),
+				const ARTBOARD_CONTENT_INDEX: usize = 1;
+				artboard_data.insert(
+					artboard.to_node(),
+					ArtboardInfo {
+							input_node: NodeInput::node(document_node.inputs[ARTBOARD_CONTENT_INDEX].as_node().unwrap_or_default(), 0),
 							output_nodes: network_interface
 								.outward_wires(&[])
 								.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(artboard.to_node(), 0)))
@@ -360,8 +366,9 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				// Go through all artboards and connect them to the merge nodes
 				for artboard in &artboard_data {
 					// Modify downstream connections
-					responses.add(NodeGraphMessage::SetInput {
-						input_connector: InputConnector::node(artboard.1.merge_node, 1),
+				const MERGE_CONTENT_INDEX: usize = 1;
+				responses.add(NodeGraphMessage::SetInput {
+						input_connector: InputConnector::node(artboard.1.merge_node, MERGE_CONTENT_INDEX),
 						input: NodeInput::node(artboard.1.input_node.as_node().unwrap_or_default(), 0),
 					});
 

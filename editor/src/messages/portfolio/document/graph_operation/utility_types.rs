@@ -73,7 +73,8 @@ impl<'a> ModifyInputsContext<'a> {
 		let mut post_node_input_connector = if parent == LayerNodeIdentifier::ROOT_PARENT {
 			InputConnector::Export(0)
 		} else {
-			InputConnector::node(parent.to_node(), 1)
+			const LAYER_SECONDARY_INPUT_INDEX: usize = 1;
+			InputConnector::node(parent.to_node(), LAYER_SECONDARY_INPUT_INDEX)
 		};
 		// Skip layers based on skip_layer_nodes, which inserts the new layer at a certain index of the layer stack.
 		let mut current_index = 0;
@@ -390,7 +391,8 @@ impl<'a> ModifyInputsContext<'a> {
 		// If inserting a 'Path' node, insert a 'Flatten Path' node if the type is `Graphic`.
 		// TODO: Allow the 'Path' node to operate on table data by utilizing the reference (index or ID?) for each row.
 		if node_definition.identifier == "Path" {
-			let layer_input_type = self.network_interface.input_type(&InputConnector::node(output_layer.to_node(), 1), &[]);
+			const LAYER_SECONDARY_INPUT_INDEX: usize = 1;
+			let layer_input_type = self.network_interface.input_type(&InputConnector::node(output_layer.to_node(), LAYER_SECONDARY_INPUT_INDEX), &[]);
 			if layer_input_type.compiled_nested_type() == Some(&concrete!(Table<Graphic>)) {
 				let Some(flatten_path_definition) = resolve_proto_node_type(graphene_std::vector_nodes::flatten_path::IDENTIFIER) else {
 					log::error!("Flatten Path does not exist in ModifyInputsContext::existing_node_id");
@@ -575,10 +577,18 @@ impl<'a> ModifyInputsContext<'a> {
 		let Some(brush_node_id) = self.existing_network_node_id("Brush", true) else {
 			return;
 		};
-		self.set_input_with_refresh(InputConnector::node(brush_node_id, 1), NodeInput::value(TaggedValue::BrushStrokes(strokes), false), false);
+		const BRUSH_STROKES_INDEX: usize = 1;
+		self.set_input_with_refresh(
+			InputConnector::node(brush_node_id, BRUSH_STROKES_INDEX),
+			NodeInput::value(TaggedValue::BrushStrokes(strokes), false),
+			false,
+		);
 	}
 
 	pub fn resize_artboard(&mut self, location: IVec2, dimensions: IVec2) {
+		const ARTBOARD_LOCATION_INDEX: usize = 2;
+		const ARTBOARD_DIMENSIONS_INDEX: usize = 3;
+
 		let Some(artboard_node_id) = self.existing_network_node_id("Artboard", true) else {
 			return;
 		};
@@ -594,8 +604,16 @@ impl<'a> ModifyInputsContext<'a> {
 			dimensions.y *= -1;
 			location.y -= dimensions.y;
 		}
-		self.set_input_with_refresh(InputConnector::node(artboard_node_id, 2), NodeInput::value(TaggedValue::DVec2(location.into()), false), false);
-		self.set_input_with_refresh(InputConnector::node(artboard_node_id, 3), NodeInput::value(TaggedValue::DVec2(dimensions.into()), false), false);
+		self.set_input_with_refresh(
+			InputConnector::node(artboard_node_id, ARTBOARD_LOCATION_INDEX),
+			NodeInput::value(TaggedValue::DVec2(location.into()), false),
+			false,
+		);
+		self.set_input_with_refresh(
+			InputConnector::node(artboard_node_id, ARTBOARD_DIMENSIONS_INDEX),
+			NodeInput::value(TaggedValue::DVec2(dimensions.into()), false),
+			false,
+		);
 	}
 
 	/// Set the input, refresh the properties panel, and run the document graph if skip_rerender is false

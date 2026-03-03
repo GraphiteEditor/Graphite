@@ -176,7 +176,7 @@ impl Polygon {
 			return;
 		};
 
-		let Some(&TaggedValue::U32(n)) = node_inputs.get(1).unwrap().as_value() else {
+		let Some(&TaggedValue::U32(n)) = node_inputs.get(SidesInput::<u32>::INDEX).unwrap().as_value() else {
 			return;
 		};
 
