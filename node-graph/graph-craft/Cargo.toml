@@ -3,6 +3,7 @@ name = "graph-craft"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
+authors.workspace = true
 
 [features]
 default = ["dealloc_nodes", "wgpu"]
@@ -21,6 +22,7 @@ graphene-core = { workspace = true }
 graphene-application-io = { workspace = true }
 rendering = { workspace = true }
 raster-nodes = { workspace = true }
+vector-nodes = { workspace = true }
 graphic-types = { workspace = true }
 text-nodes = { workspace = true }
 

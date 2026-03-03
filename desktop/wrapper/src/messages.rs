@@ -74,6 +74,8 @@ pub enum DesktopFrontendMessage {
 	WindowHide,
 	WindowHideOthers,
 	WindowShowAll,
+	Restart,
+	LoadThirdPartyLicenses,
 }
 
 pub enum DesktopWrapperMessage {
@@ -113,7 +115,7 @@ pub enum DesktopWrapperMessage {
 		id: DocumentId,
 	},
 	LoadPreferences {
-		preferences: Option<Preferences>,
+		preferences: Preferences,
 	},
 	MenuEvent {
 		id: String,
@@ -124,6 +126,9 @@ pub enum DesktopWrapperMessage {
 	PointerLockMove {
 		x: f64,
 		y: f64,
+	},
+	LoadThirdPartyLicenses {
+		text: String,
 	},
 }
 

@@ -692,13 +692,7 @@ impl Fsm for SelectToolFsmState {
 										.parent(document.metadata())
 										.is_some_and(|parent| selected.selected_layers_contains(parent, document.metadata()))
 								}) {
-									let mut fill_color = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
-										.unwrap()
-										.with_alpha(0.5)
-										.to_rgba_hex_srgb();
-									fill_color.insert(0, '#');
-									let fill_color = Some(fill_color.as_str());
-									hover_overlay_draw(new_selected, fill_color);
+									hover_overlay_draw(new_selected, Some(COLOR_OVERLAY_BLUE_50));
 								}
 							}
 						}
@@ -895,9 +889,9 @@ impl Fsm for SelectToolFsmState {
 							.map(|bounding_box_manager| bounding_box_manager.transform * Quad::from_box(bounding_box_manager.bounds))
 							.map_or(DVec2::X, |quad| (quad.top_left() - quad.top_right()).normalize_or(DVec2::X));
 
-						let (direction, color) = match axis {
-							Axis::X => (e0, COLOR_OVERLAY_RED),
-							Axis::Y => (e0.perp(), COLOR_OVERLAY_GREEN),
+						let (direction, color, color_faded) = match axis {
+							Axis::X => (e0, COLOR_OVERLAY_RED, COLOR_OVERLAY_RED_25),
+							Axis::Y => (e0.perp(), COLOR_OVERLAY_GREEN, COLOR_OVERLAY_GREEN_25),
 							_ => unreachable!(),
 						};
 
@@ -930,13 +924,10 @@ impl Fsm for SelectToolFsmState {
 						let perp = edge.perp();
 
 						let (edge_color, perp_color) = if edge.x.abs() > edge.y.abs() {
-							(COLOR_OVERLAY_RED, COLOR_OVERLAY_GREEN)
+							(COLOR_OVERLAY_RED, COLOR_OVERLAY_GREEN_25)
 						} else {
-							(COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED)
+							(COLOR_OVERLAY_GREEN, COLOR_OVERLAY_RED_25)
 						};
-						let mut perp_color = graphene_std::Color::from_rgb_str(perp_color.strip_prefix('#').unwrap()).unwrap().with_alpha(0.25).to_rgba_hex_srgb();
-						perp_color.insert(0, '#');
-						let perp_color = perp_color.as_str();
 						overlay_context.line(origin - edge * viewport_diagonal, origin + edge * viewport_diagonal, Some(edge_color), None);
 						overlay_context.line(origin - perp * viewport_diagonal, origin + perp * viewport_diagonal, Some(perp_color), None);
 					}
@@ -979,12 +970,7 @@ impl Fsm for SelectToolFsmState {
 					}
 
 					// Update the selection box
-					let mut fill_color = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
-						.unwrap()
-						.with_alpha(0.05)
-						.to_rgba_hex_srgb();
-					fill_color.insert(0, '#');
-					let fill_color = Some(fill_color.as_str());
+					let fill_color = Some(COLOR_OVERLAY_BLUE_05);
 
 					let polygon = &tool_data.lasso_polygon;
 

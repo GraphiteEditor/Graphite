@@ -15,6 +15,7 @@ core-types = { workspace = true }
 vector-types = { workspace = true }
 graphic-types = { workspace = true }
 node-macro = { workspace = true }
+repeat-nodes = { workspace = true }
 
 # Workspace dependencies
 dyn-any = { workspace = true }
@@ -23,6 +24,7 @@ kurbo = { workspace = true }
 rand = { workspace = true }
 rustc-hash = { workspace = true }
 log = { workspace = true }
+qrcodegen = { workspace = true }
 
 # Optional workspace dependencies
 serde = { workspace = true, optional = true }
