@@ -1,4 +1,6 @@
 <script lang="ts">
+	import { onMount, onDestroy } from "svelte";
+
 	import type { ActionShortcut } from "@graphite/messages";
 
 	let className = "";
@@ -28,12 +30,39 @@
 	export let tooltipDescription: string | undefined = undefined;
 	export let tooltipShortcut: ActionShortcut | undefined = undefined;
 
+	let self: HTMLLabelElement | undefined;
+
 	$: extraClasses = Object.entries(classes)
 		.flatMap(([className, stateName]) => (stateName ? [className] : []))
 		.join(" ");
 	$: extraStyles = Object.entries(styles)
 		.flatMap((styleAndValue) => (styleAndValue[1] !== undefined ? [`${styleAndValue[0]}: ${styleAndValue[1]};`] : []))
 		.join(" ");
+
+	$: watchForCheckbox(forCheckbox);
+
+	function watchForCheckbox(forCheckbox: bigint | undefined) {
+		if (!self) return;
+
+		self.removeEventListener("pointerenter", handlePointerEnter);
+		self.removeEventListener("pointerleave", handlePointerLeave);
+
+		if (forCheckbox !== undefined) {
+			self.addEventListener("pointerenter", handlePointerEnter);
+			self.addEventListener("pointerleave", handlePointerLeave);
+		}
+	}
+
+	function handlePointerEnter() {
+		document.querySelector(`[for="checkbox-input-${forCheckbox}"]`)?.classList.add("label-is-hovered");
+	}
+
+	function handlePointerLeave() {
+		document.querySelector(`[for="checkbox-input-${forCheckbox}"]`)?.classList.remove("label-is-hovered");
+	}
+
+	onMount(() => watchForCheckbox(forCheckbox));
+	onDestroy(() => watchForCheckbox(undefined));
 </script>
 
 <label
@@ -52,6 +81,7 @@
 	data-tooltip-description={tooltipDescription}
 	data-tooltip-shortcut={tooltipShortcut?.shortcut ? JSON.stringify(tooltipShortcut.shortcut) : undefined}
 	for={forCheckbox !== undefined ? `checkbox-input-${forCheckbox}` : undefined}
+	bind:this={self}
 >
 	<slot />
 </label>

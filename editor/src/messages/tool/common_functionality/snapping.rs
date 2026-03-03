@@ -251,11 +251,19 @@ impl SnapManager {
 	pub fn update_indicator(&mut self, snapped_point: SnappedPoint) {
 		self.indicator = snapped_point.is_snapped().then_some(snapped_point);
 	}
+
 	pub fn clear_indicator(&mut self) {
 		self.indicator = None;
 	}
+
 	pub fn preview_draw(&mut self, snap_data: &SnapData, mouse: DVec2) {
 		let point = SnapCandidatePoint::handle(snap_data.document.metadata().document_to_viewport.inverse().transform_point2(mouse));
+		let snapped = self.free_snap(snap_data, &point, SnapTypeConfiguration::default());
+		self.update_indicator(snapped);
+	}
+
+	pub fn preview_draw_gradient(&mut self, snap_data: &SnapData, mouse: DVec2) {
+		let point = SnapCandidatePoint::gradient_handle(snap_data.document.metadata().document_to_viewport.inverse().transform_point2(mouse));
 		let snapped = self.free_snap(snap_data, &point, SnapTypeConfiguration::default());
 		self.update_indicator(snapped);
 	}

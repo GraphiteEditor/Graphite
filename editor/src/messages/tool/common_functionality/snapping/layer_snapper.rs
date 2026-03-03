@@ -453,6 +453,10 @@ impl SnapCandidatePoint {
 		Self::new_source(document_point, SnapSource::Path(PathSnapSource::AnchorPointWithFreeHandles))
 	}
 
+	pub fn gradient_handle(document_point: DVec2) -> Self {
+		Self::new_source(document_point, SnapSource::Gradient(GradientSnapSource::Endpoint))
+	}
+
 	pub fn handle_neighbors(document_point: DVec2, neighbors: impl Into<Vec<DVec2>>) -> Self {
 		let mut point = Self::new_source(document_point, SnapSource::Path(PathSnapSource::AnchorPointWithFreeHandles));
 		point.neighbors = neighbors.into();

@@ -101,7 +101,7 @@ jobs:
               comment_id: ${{ github.event.comment.id }},
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: '!build ([build link](https://github.com/GraphiteEditor/Graphite/actions/runs/' + context.runId + '))'
+              body: '!build ([Run ID ' + context.runId + '](https://github.com/GraphiteEditor/Graphite/actions/runs/' + context.runId + '))'
             });
 
       - name: 🌐 Build Graphite web code
@@ -111,7 +111,7 @@ jobs:
         run: |
           cd frontend
           mold -run npm run ${{ steps.build_command.outputs.command }}
-      
+
       - name: ❗ Warn on build failure
         if: ${{ failure() }}
         uses: actions/github-script@v6

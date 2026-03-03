@@ -74,7 +74,7 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		entry!(KeyDown(MouseLeft); modifiers=[Alt], action_dispatch=NodeGraphMessage::PointerDown { shift_click: false, control_click: false, alt_click: true, right_click: false }),
 		entry!(KeyDown(MouseRight); action_dispatch=NodeGraphMessage::PointerDown { shift_click: false, control_click: false, alt_click: false, right_click: true }),
 		entry!(DoubleClick(MouseButton::Left); action_dispatch=NodeGraphMessage::EnterNestedNetwork),
-		entry!(PointerMove; refresh_keys=[Shift], action_dispatch=NodeGraphMessage::PointerMove { shift: Shift }),
+		entry!(PointerMove; refresh_keys=[Control, Alt, Shift], action_dispatch=NodeGraphMessage::PointerMove { shift: Shift }),
 		entry!(PointerShake; action_dispatch=NodeGraphMessage::ShakeNode),
 		entry!(KeyUp(MouseLeft); action_dispatch=NodeGraphMessage::PointerUp),
 		entry!(KeyDown(Delete); modifiers=[Accel], action_dispatch=NodeGraphMessage::DeleteSelectedNodes { delete_children: false }),
@@ -175,8 +175,9 @@ pub fn input_mappings(zoom_with_scroll: bool) -> Mapping {
 		entry!(KeyDown(Enter); modifiers=[Accel], action_dispatch=TextToolMessage::Abort),
 		//
 		// GradientToolMessage
+		entry!(DoubleClick(MouseButton::Left); action_dispatch=GradientToolMessage::DoubleClick),
 		entry!(KeyDown(MouseLeft); action_dispatch=GradientToolMessage::PointerDown),
-		entry!(PointerMove; refresh_keys=[Shift], action_dispatch=GradientToolMessage::PointerMove { constrain_axis: Shift }),
+		entry!(PointerMove; refresh_keys=[Shift, Control], action_dispatch=GradientToolMessage::PointerMove { constrain_axis: Shift, lock_angle: Control }),
 		entry!(KeyUp(MouseLeft); action_dispatch=GradientToolMessage::PointerUp),
 		entry!(KeyDown(Delete); action_dispatch=GradientToolMessage::DeleteStop),
 		entry!(KeyDown(Backspace); action_dispatch=GradientToolMessage::DeleteStop),

@@ -1977,16 +1977,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					}
 
 					if control {
-						let mut non_layer_nodes = HashSet::new();
-
-						let layer_nodes = nodes.iter().filter(|node_id| network_interface.is_layer(node_id, selection_network_path));
-						for &layer_id in layer_nodes {
-							for child_id in network_interface.upstream_flow_back_from_nodes(vec![layer_id], selection_network_path, FlowType::LayerChildrenUpstreamFlow) {
-								if nodes.contains(&child_id) && child_id != layer_id {
-									non_layer_nodes.insert(child_id);
-								}
-							}
-						}
+						let layer_nodes: HashSet<_> = nodes.iter().filter(|node_id| network_interface.is_layer(node_id, selection_network_path)).cloned().collect();
+						let non_layer_nodes: HashSet<_> = nodes.difference(&layer_nodes).cloned().collect();
 
 						// Remove non-layer nodes from selection
 						if alt {
@@ -2795,7 +2787,10 @@ impl NodeGraphMessageHandler {
 		if self.has_selection {
 			hint_data.0.extend([
 				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
-				HintGroup(vec![HintInfo::keys([Key::Delete], "Delete Selected"), HintInfo::keys([Key::Control], "Keep Children").prepend_plus()]),
+				HintGroup(vec![
+					HintInfo::keys([Key::Backspace], "Delete Selected"),
+					HintInfo::keys([Key::Control], "Keep Children").prepend_plus(),
+				]),
 				HintGroup(vec![
 					HintInfo::keys_and_mouse([Key::Alt], MouseMotion::LmbDrag, "Move Duplicate"),
 					HintInfo::keys([Key::Control, Key::KeyD], "Duplicate").add_mac_keys([Key::Command, Key::KeyD]),

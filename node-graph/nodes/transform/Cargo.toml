@@ -18,6 +18,7 @@ node-macro = { workspace = true }
 
 # Workspace dependencies
 glam = { workspace = true }
+rand = { workspace = true }
 
 # Optional workspace dependencies
 serde = { workspace = true, optional = true }
