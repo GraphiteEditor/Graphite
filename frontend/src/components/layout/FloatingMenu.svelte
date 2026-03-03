@@ -199,7 +199,8 @@
 		}
 
 		const inParentFloatingMenu = Boolean(floatingMenuContainer.closest("[data-floating-menu-content]"));
-		if (!inParentFloatingMenu) {
+		const noPosition = Boolean(floatingMenuContainer.closest("[data-floating-menu-no-position]"));
+		if (!inParentFloatingMenu && !noPosition) {
 			// Required to correctly position content when scrolled (it has a `position: fixed` to prevent clipping)
 			// We use `.style` on a div (instead of a style DOM attribute binding) because the binding causes the `afterUpdate()` hook to call the function we're in recursively forever
 			let tailOffset = 0;
@@ -322,7 +323,7 @@
 
 		// POINTER STRAY
 		// Close the floating menu if the pointer has strayed far enough from its bounds (and it's not hovering over its own spawner)
-		const notHoveringOverOwnSpawner = ownSpawner !== targetSpawner;
+		const notHoveringOverOwnSpawner = ownSpawner !== targetSpawner || (ownSpawner === undefined && targetSpawner === undefined);
 		if (strayCloses && notHoveringOverOwnSpawner && isPointerEventOutsideFloatingMenu(e, POINTER_STRAY_DISTANCE)) {
 			// TODO: Extend this rectangle bounds check to all submenu bounds up the DOM tree since currently submenus disappear
 			// TODO: with zero stray distance if the cursor is further than the stray distance from only the top-level menu

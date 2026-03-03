@@ -55,7 +55,8 @@
 		"a11y-click-events-have-key-events": "ignore", // NOTICE: Keep this list in sync with the list in `frontend/vite.config.ts`
 		"a11y_consider_explicit_label": "ignore", // NOTICE: Keep this list in sync with the list in `frontend/vite.config.ts`
 		"a11y_click_events_have_key_events": "ignore", // NOTICE: Keep this list in sync with the list in `frontend/vite.config.ts`
-		"a11y_no_noninteractive_element_interactions": "ignore" // NOTICE: Keep this list in sync with the list in `frontend/vite.config.ts`
+		"a11y_no_noninteractive_element_interactions": "ignore", // NOTICE: Keep this list in sync with the list in `frontend/vite.config.ts`
+		"a11y_no_static_element_interactions": "ignore" // NOTICE: Keep this list in sync with the list in `frontend/vite.config.ts`
 	},
 	// Git Graph config
 	"git-graph.repository.fetchAndPrune": true,

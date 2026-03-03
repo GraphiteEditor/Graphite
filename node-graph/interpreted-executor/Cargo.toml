@@ -3,6 +3,7 @@ name = "interpreted-executor"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
+authors.workspace = true
 
 [features]
 default = []
@@ -56,4 +57,3 @@ harness = false
 [[bench]]
 name = "run_cached_iai"
 harness = false
-

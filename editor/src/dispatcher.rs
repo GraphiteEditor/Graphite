@@ -359,10 +359,15 @@ impl Dispatcher {
 	/// with a discriminant or the entire payload (depending on settings)
 	fn log_message(&self, message: &Message, queues: &[VecDeque<Message>], message_logging_verbosity: MessageLoggingVerbosity) {
 		let discriminant = MessageDiscriminant::from(message);
-		let is_blocked = DEBUG_MESSAGE_BLOCK_LIST.contains(&discriminant) || DEBUG_MESSAGE_ENDING_BLOCK_LIST.iter().any(|blocked_name| discriminant.local_name().ends_with(blocked_name));
-		let is_empty_batched = if let Message::Batched { messages } = message { messages.is_empty() } else { false };
+		let is_blocked =
+			|discriminant| DEBUG_MESSAGE_BLOCK_LIST.contains(&discriminant) || DEBUG_MESSAGE_ENDING_BLOCK_LIST.iter().any(|blocked_name| discriminant.local_name().ends_with(blocked_name));
+		let is_batch_all_blocked = if let Message::Batched { messages } = message {
+			messages.iter().all(|message| is_blocked(MessageDiscriminant::from(message)))
+		} else {
+			false
+		};
 
-		if !is_blocked && !is_empty_batched {
+		if !is_blocked(discriminant) && !is_batch_all_blocked {
 			match message_logging_verbosity {
 				MessageLoggingVerbosity::Off => {}
 				MessageLoggingVerbosity::Names => {

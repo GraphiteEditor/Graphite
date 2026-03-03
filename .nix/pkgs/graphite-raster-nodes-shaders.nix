@@ -1,12 +1,4 @@
-{
-  info,
-  pkgs,
-  inputs,
-  deps,
-  libs,
-  tools,
-  ...
-}:
+{ info, deps, ... }:
 
 (deps.crane.lib.overrideToolchain (_: deps.rustGPU.toolchain)).buildPackage {
   pname = "raster-nodes-shaders";
@@ -16,7 +8,7 @@
     inherit (deps.crane.lib.findCargoFiles (deps.crane.lib.cleanCargoSource info.src)) cargoConfigs;
     cargoLockList = [
       "${info.src}/Cargo.lock"
-      "${deps.rustGPU.toolchain.passthru.availableComponents.rust-src}/lib/rustlib/src/rust/library/Cargo.lock"
+      "${deps.rustGPU.toolchain.availableComponents.rust-src}/lib/rustlib/src/rust/library/Cargo.lock"
     ];
   };
 
