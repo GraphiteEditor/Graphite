@@ -1,16 +1,14 @@
 use core_types::table::Table;
-use core_types::transform::Footprint;
+use core_types::transform::{Footprint, Transform};
 use core_types::{CloneVarArgs, ExtractAll, ExtractVarArgs};
 use core_types::{Color, Context, Ctx, ExtractFootprint, OwnedContextImpl, WasmNotSend};
 use graph_craft::document::value::RenderOutput;
 pub use graph_craft::document::value::RenderOutputType;
 pub use graph_craft::wasm_application_io::*;
 use graphene_application_io::{ApplicationIo, ExportFormat, ImageTexture, RenderConfig};
-use graphic_types::Artboard;
-use graphic_types::Graphic;
-use graphic_types::Vector;
 use graphic_types::raster_types::Image;
 use graphic_types::raster_types::{CPU, Raster};
+use graphic_types::{Artboard, Graphic, Vector};
 use rendering::{Render, RenderOutputType as RenderOutputTypeRequest, RenderParams, RenderSvgSegmentList, SvgRender, format_transform_matrix};
 use rendering::{RenderMetadata, SvgSegment};
 use std::collections::HashMap;
@@ -110,6 +108,7 @@ async fn create_context<'a: 'n>(
 		render_output_type,
 		footprint: Footprint::default(),
 		scale: render_config.scale,
+		viewport_zoom: footprint.decompose_scale().x,
 		..Default::default()
 	};
 
