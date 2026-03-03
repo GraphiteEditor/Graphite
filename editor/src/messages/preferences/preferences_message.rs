@@ -10,7 +10,6 @@ pub enum PreferencesMessage {
 	ResetToDefaults,
 
 	// Per-preference messages
-	UseVello { use_vello: bool },
 	SelectionMode { selection_mode: SelectionMode },
 	BrushTool { enabled: bool },
 	ModifyLayout { zoom_with_scroll: bool },
@@ -18,4 +17,5 @@ pub enum PreferencesMessage {
 	ViewportZoomWheelRate { rate: f64 },
 	UIScale { scale: f64 },
 	DisableUIAcceleration { disable_ui_acceleration: bool },
+	MaxRenderRegionSize { size: u32 },
 }

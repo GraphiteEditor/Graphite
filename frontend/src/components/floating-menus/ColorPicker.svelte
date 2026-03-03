@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { getContext, onDestroy, createEventDispatcher } from "svelte";
+	import { getContext, onDestroy, createEventDispatcher, tick } from "svelte";
 
 	import type { HSV, RGB, FillChoice, MenuDirection } from "@graphite/messages";
 	import { Color, contrastingOutlineFactor, Gradient } from "@graphite/messages";
@@ -13,7 +13,7 @@
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
 	import NumberInput from "@graphite/components/widgets/inputs/NumberInput.svelte";
-	import SpectrumInput from "@graphite/components/widgets/inputs/SpectrumInput.svelte";
+	import SpectrumInput, { MAX_MIDPOINT, MIN_MIDPOINT } from "@graphite/components/widgets/inputs/SpectrumInput.svelte";
 	import TextInput from "@graphite/components/widgets/inputs/TextInput.svelte";
 	import Separator from "@graphite/components/widgets/labels/Separator.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
@@ -40,7 +40,7 @@
 		["Magenta", "#ff00ff", "#696969"],
 	];
 
-	const dispatch = createEventDispatcher<{ colorOrGradient: FillChoice; startHistoryTransaction: undefined }>();
+	const dispatch = createEventDispatcher<{ colorOrGradient: FillChoice; startHistoryTransaction: undefined; commitHistoryTransaction: undefined }>();
 	const tooltip = getContext<TooltipState>("tooltip");
 
 	export let colorOrGradient: FillChoice;
@@ -57,7 +57,8 @@
 	// Gradient color stops
 	$: gradient = colorOrGradient instanceof Gradient ? colorOrGradient : undefined;
 	let activeIndex = 0 as number | undefined;
-	$: selectedGradientColor = (activeIndex !== undefined && gradient?.atIndex(activeIndex)?.color) || (Color.fromCSS("black") as Color);
+	let activeIndexIsMidpoint = false;
+	$: selectedGradientColor = (activeIndex !== undefined && gradient?.color[activeIndex]) || (Color.fromCSS("black") as Color);
 	// Currently viewed color
 	$: color = colorOrGradient instanceof Color ? colorOrGradient : selectedGradientColor;
 	// New color components
@@ -108,10 +109,11 @@
 		return new Color({ h, s, v, a });
 	}
 
-	function watchOpen(open: boolean) {
+	async function watchOpen(open: boolean) {
 		if (open) {
 			setTimeout(() => hexCodeInputWidget?.focus(), 0);
-		} else {
+
+			await tick();
 			setOldHSVA(hue, saturation, value, alpha, isNone);
 		}
 	}
@@ -191,12 +193,13 @@
 			alignedAxis = undefined;
 		} else if (!shiftPressed && draggingPickerTrack) {
 			shiftPressed = true;
-			saturationStartOfAxisAlign = saturation;
-			valueStartOfAxisAlign = value;
+			saturationStartOfAxisAlign = saturationBeforeDrag;
+			valueStartOfAxisAlign = valueBeforeDrag;
 		}
 	}
 
 	function onPointerUp() {
+		if (draggingPickerTrack) dispatch("commitHistoryTransaction");
 		removeEvents();
 	}
 
@@ -286,8 +289,9 @@
 	function setColor(color?: Color) {
 		const colorToEmit = color || new Color({ h: hue, s: saturation, v: value, a: alpha });
 
-		const stop = gradientSpectrumInputWidget && activeIndex !== undefined && gradient?.atIndex(activeIndex);
-		if (stop) stop.color = colorToEmit;
+		if (gradientSpectrumInputWidget && activeIndex !== undefined && gradient?.position[activeIndex] !== undefined && colorOrGradient instanceof Gradient) {
+			colorOrGradient.color[activeIndex] = colorToEmit;
+		}
 
 		dispatch("colorOrGradient", gradient || colorToEmit);
 	}
@@ -397,9 +401,11 @@
 		}
 	}
 
-	function gradientActiveMarkerIndexChange({ detail: index }: CustomEvent<number | undefined>) {
-		activeIndex = index;
-		const color = index === undefined ? undefined : gradient?.colorAtIndex(index);
+	function gradientActiveMarkerIndexChange({ detail: { activeMarkerIndex, activeMarkerIsMidpoint } }: CustomEvent<{ activeMarkerIndex: number | undefined; activeMarkerIsMidpoint: boolean }>) {
+		activeIndex = activeMarkerIndex;
+		activeIndexIsMidpoint = activeMarkerIsMidpoint;
+
+		const color = activeMarkerIndex === undefined ? undefined : gradient?.color[activeMarkerIndex];
 		const hsva = color?.toHSVA();
 		if (!color || !hsva) return;
 
@@ -407,6 +413,10 @@
 
 		setNewHSVA(hsva.h, hsva.s, hsva.v, hsva.a, color.none);
 		setOldHSVA(hsva.h, hsva.s, hsva.v, hsva.a, color.none);
+	}
+
+	export function div(): HTMLDivElement | undefined {
+		return self?.div();
 	}
 
 	onDestroy(() => {
@@ -440,17 +450,24 @@
 					on:pointerdown={onPointerDown}
 					data-saturation-value-picker
 				>
-					{#if !isNone}
-						<div class="selection-circle" style:top={`${(1 - value) * 100}%`} style:left={`${saturation * 100}%`}></div>
-					{/if}
 					{#if alignedAxis}
 						<div
-							class="selection-circle-alignment"
-							class:saturation={alignedAxis === "saturation"}
-							class:value={alignedAxis === "value"}
-							style:top={`${(1 - value) * 100}%`}
-							style:left={`${saturation * 100}%`}
+							class="selection-circle-axis-snap-line"
+							style:width={alignedAxis === "value" ? "100%" : undefined}
+							style:height={alignedAxis === "saturation" ? "100%" : undefined}
+							style:top={alignedAxis === "value" ? `${(1 - value) * 100}%` : undefined}
+							style:left={alignedAxis === "saturation" ? `${saturation * 100}%` : undefined}
 						></div>
+						<div
+							class="selection-circle-axis-snap-line"
+							style:width={alignedAxis === "saturation" ? "100%" : undefined}
+							style:height={alignedAxis === "value" ? "100%" : undefined}
+							style:top={alignedAxis === "saturation" ? `${(1 - valueBeforeDrag) * 100}%` : undefined}
+							style:left={alignedAxis === "value" ? `${saturationBeforeDrag * 100}%` : undefined}
+						></div>
+					{/if}
+					{#if !isNone}
+						<div class="selection-circle" style:top={`${(1 - value) * 100}%`} style:left={`${saturation * 100}%`}></div>
 					{/if}
 				</LayoutCol>
 				<LayoutCol
@@ -484,19 +501,22 @@
 						on:gradient={() => dispatch("colorOrGradient", gradient)}
 						on:activeMarkerIndexChange={gradientActiveMarkerIndexChange}
 						activeMarkerIndex={activeIndex}
+						activeMarkerIsMidpoint={activeIndexIsMidpoint}
 						on:dragging={({ detail }) => (gradientSpectrumDragging = detail)}
 						bind:this={gradientSpectrumInputWidget}
 					/>
 					{#if gradientSpectrumInputWidget && activeIndex !== undefined}
 						<NumberInput
-							value={(gradient.positionAtIndex(activeIndex) || 0) * 100}
+							value={(activeIndexIsMidpoint ? gradient.midpoint[activeIndex] : gradient.position[activeIndex] || 0) * 100}
 							{disabled}
-							on:value={({ detail }) => {
-								if (gradientSpectrumInputWidget && activeIndex !== undefined && detail !== undefined) gradientSpectrumInputWidget.setPosition(activeIndex, detail / 100);
+							on:value={({ detail: position }) => {
+								if (gradientSpectrumInputWidget && activeIndex !== undefined && position !== undefined) {
+									gradientSpectrumInputWidget.setPosition(activeIndex, position / 100, activeIndexIsMidpoint);
+								}
 							}}
 							displayDecimalPlaces={0}
-							min={0}
-							max={100}
+							min={activeIndexIsMidpoint ? MIN_MIDPOINT * 100 : 0}
+							max={activeIndexIsMidpoint ? MAX_MIDPOINT * 100 : 100}
 							unit="%"
 						/>
 					{/if}
@@ -691,6 +711,7 @@
 
 <style lang="scss" global>
 	.color-picker {
+		--widget-height: 24px;
 		--picker-size: 256px;
 		--picker-circle-radius: 6px;
 
@@ -744,12 +765,12 @@
 				}
 
 				.selection-circle {
+					pointer-events: none;
 					position: absolute;
 					left: 0;
 					top: 0;
 					width: 0;
 					height: 0;
-					pointer-events: none;
 
 					&::after {
 						content: "";
@@ -761,56 +782,31 @@
 						height: calc(var(--picker-circle-radius) * 2 + 1px);
 						border-radius: 50%;
 						border: 2px solid var(--opaque-color-contrasting);
+						background: var(--opaque-color);
 						box-sizing: border-box;
 					}
 				}
 
-				.selection-circle-alignment {
-					position: absolute;
+				.selection-circle-axis-snap-line {
 					pointer-events: none;
+					position: absolute;
+					width: 1px;
+					height: 1px;
+					top: 0;
+					left: 0;
+					background: var(--opaque-color-contrasting);
 
-					&.saturation::before,
-					&.saturation::after,
-					&.value::before,
-					&.value::after {
-						content: "";
-						position: absolute;
-						background: var(--opaque-color-contrasting);
-						width: 1px;
-						height: 1px;
-					}
-
-					&.saturation {
-						&::before {
-							height: var(--picker-size);
-							margin-top: calc(-1 * var(--picker-size) - var(--picker-circle-radius));
-						}
-
-						&::after {
-							height: var(--picker-size);
-							margin-top: var(--picker-circle-radius);
-						}
-					}
-
-					&.value {
-						&::before {
-							width: var(--picker-size);
-							margin-left: var(--picker-circle-radius);
-						}
-
-						&::after {
-							width: var(--picker-size);
-							margin-left: calc(-1 * var(--picker-size) - var(--picker-circle-radius));
-						}
+					+ .selection-circle-axis-snap-line {
+						opacity: 0.25;
 					}
 				}
 
 				.selection-needle {
+					pointer-events: none;
 					position: absolute;
 					top: 0;
 					width: 100%;
 					height: 0;
-					pointer-events: none;
 
 					&::before {
 						content: "";
@@ -881,13 +877,13 @@
 
 				&.outlined::after {
 					content: "";
+					pointer-events: none;
 					position: absolute;
 					top: 0;
 					bottom: 0;
 					left: 0;
 					right: 0;
 					box-shadow: inset 0 0 0 1px rgba(var(--color-0-black-rgb), var(--outline-amount));
-					pointer-events: none;
 				}
 
 				&.transparency {

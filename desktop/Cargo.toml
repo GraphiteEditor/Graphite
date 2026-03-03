@@ -44,8 +44,9 @@ vello = { workspace = true }
 derivative = { workspace = true }
 rfd = { workspace = true }
 open = { workspace = true }
-rand = { workspace = true, features = ["thread_rng"] }
+lzma-rust2 = { workspace = true }
 serde = { workspace = true }
+rand = { workspace = true, features = ["thread_rng"] }
 clap = { workspace = true, features = ["derive"] }
 fd-lock = "4.0.4"
 ctrlc = "3.5.1"

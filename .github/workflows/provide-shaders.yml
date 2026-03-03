@@ -17,7 +17,7 @@ jobs:
       - uses: DeterminateSystems/magic-nix-cache-action@main
 
       - name: Build graphene raster nodes shaders
-        run: nix build .nix#raster-nodes-shaders && cp result raster_nodes_shaders_entrypoint.wgsl
+        run: nix build .nix#graphite-raster-nodes-shaders && cp result raster_nodes_shaders_entrypoint.wgsl
 
       - name: Upload graphene raster nodes shaders to artifacts repository
         run: |

@@ -110,7 +110,8 @@ impl Fsm for FillToolFsmState {
 
 				// Get the layer the user is hovering over
 				if let Some(layer) = document.click(input, viewport) {
-					overlay_context.fill_path_pattern(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer), &preview_color);
+					let color_hex = format!("#{}", preview_color.to_rgba_hex_srgb());
+					overlay_context.fill_path_pattern(document.metadata().layer_outline(layer), document.metadata().transform_to_viewport(layer), &color_hex);
 				}
 
 				self

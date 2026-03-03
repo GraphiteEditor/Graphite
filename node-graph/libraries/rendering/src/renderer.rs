@@ -12,11 +12,8 @@ use core_types::uuid::{NodeId, generate_uuid};
 use dyn_any::DynAny;
 use glam::{DAffine2, DVec2};
 use graphic_types::Vector;
-use graphic_types::raster_types::BitmapMut;
-use graphic_types::raster_types::Image;
-use graphic_types::raster_types::{CPU, GPU, Raster};
-use graphic_types::vector_types::gradient::GradientStops;
-use graphic_types::vector_types::gradient::GradientType;
+use graphic_types::raster_types::{BitmapMut, CPU, GPU, Image, Raster};
+use graphic_types::vector_types::gradient::{GradientStops, GradientType};
 use graphic_types::vector_types::subpath::Subpath;
 use graphic_types::vector_types::vector::click_target::{ClickTarget, FreePoint};
 use graphic_types::vector_types::vector::style::{Fill, PaintOrder, RenderMode, Stroke, StrokeAlign};
@@ -84,7 +81,7 @@ impl SvgRender {
 		let (x, y) = bounds_min.into();
 		let (size_x, size_y) = (bounds_max - bounds_min).into();
 		let defs = &self.svg_defs;
-		let svg_header = format!(r#"<svg xmlns="http://www.w3.org/2000/svg" viewBox="{x} {y} {size_x} {size_y}"><defs>{defs}</defs>"#,);
+		let svg_header = format!(r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:graphite="https://graphite.art" viewBox="{x} {y} {size_x} {size_y}"><defs>{defs}</defs>"#,);
 		self.svg.insert(0, svg_header.into());
 		self.svg.push("</svg>".into());
 	}
@@ -99,7 +96,7 @@ impl SvgRender {
 		let matrix = format_transform_matrix(transform);
 		let transform = if matrix.is_empty() { String::new() } else { format!(r#" transform="{matrix}""#) };
 
-		let svg_header = format!(r#"<svg xmlns="http://www.w3.org/2000/svg" {view_box}><defs>{defs}</defs><g{transform}>"#);
+		let svg_header = format!(r#"<svg xmlns="http://www.w3.org/2000/svg" xmlns:graphite="https://graphite.art" {view_box}><defs>{defs}</defs><g{transform}>"#);
 		self.svg.insert(0, svg_header.into());
 		self.svg.push("</g></svg>".into());
 	}
@@ -183,6 +180,8 @@ pub struct RenderParams {
 	pub aligned_strokes: bool,
 	pub override_paint_order: bool,
 	pub artboard_background: Option<Color>,
+	/// Viewport zoom level (document-space scale). Used to compute constant viewport-pixel stroke widths in Outline mode.
+	pub viewport_zoom: f64,
 }
 
 impl Hash for RenderParams {
@@ -200,6 +199,7 @@ impl Hash for RenderParams {
 		self.aligned_strokes.hash(state);
 		self.override_paint_order.hash(state);
 		self.artboard_background.hash(state);
+		self.viewport_zoom.to_bits().hash(state);
 	}
 }
 
@@ -279,6 +279,26 @@ impl RenderMetadata {
 		for value in self.upstream_footprints.values_mut() {
 			value.transform = transform * value.transform;
 		}
+	}
+
+	/// Merge another RenderMetadata into this one.
+	/// Values from `other` take precedence for duplicate keys.
+	pub fn merge(&mut self, other: &RenderMetadata) {
+		// Destructure Self to get errors when new fields are added to the struct
+		let RenderMetadata {
+			upstream_footprints,
+			local_transforms,
+			first_element_source_id,
+			click_targets,
+			clip_targets,
+			vector_data,
+		} = self;
+		upstream_footprints.extend(other.upstream_footprints.iter());
+		local_transforms.extend(other.local_transforms.iter());
+		first_element_source_id.extend(other.first_element_source_id.iter());
+		click_targets.extend(other.click_targets.iter().map(|(k, v)| (*k, v.clone())));
+		clip_targets.extend(other.clip_targets.iter());
+		vector_data.extend(other.vector_data.iter().map(|(id, data)| (*id, data.clone())));
 	}
 }
 
@@ -478,12 +498,12 @@ impl Render for Artboard {
 		let [a, b] = [self.location.as_dvec2(), self.location.as_dvec2() + self.dimensions.as_dvec2()];
 		let rect = kurbo::Rect::new(a.x.min(b.x), a.y.min(b.y), a.x.max(b.x), a.y.max(b.y));
 
-		scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::new(transform.to_cols_array()), &rect);
+		scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., kurbo::Affine::new(transform.to_cols_array()), &rect);
 		scene.fill(peniko::Fill::NonZero, kurbo::Affine::new(transform.to_cols_array()), color, None, &rect);
 		scene.pop_layer();
 
 		if self.clip {
-			scene.push_clip_layer(kurbo::Affine::new(transform.to_cols_array()), &rect);
+			scene.push_clip_layer(peniko::Fill::NonZero, kurbo::Affine::new(transform.to_cols_array()), &rect);
 		}
 		// Since the content's transform is right multiplied in when rendering the content, we just need to right multiply by the artboard offset here.
 		let child_transform = transform * DAffine2::from_translation(self.location.as_dvec2());
@@ -623,6 +643,7 @@ impl Render for Table<Graphic> {
 
 				if let RenderBoundingBox::Rectangle(bounds) = bounds {
 					scene.push_layer(
+						peniko::Fill::NonZero,
 						peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver),
 						opacity,
 						kurbo::Affine::IDENTITY,
@@ -648,9 +669,15 @@ impl Render for Table<Graphic> {
 				if let RenderBoundingBox::Rectangle(bounds) = bounds {
 					let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
 
-					scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
+					scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
 					mask_element.render_to_vello(scene, transform_mask, context, &render_params.for_clipper());
-					scene.push_layer(peniko::BlendMode::new(peniko::Mix::Normal, peniko::Compose::SrcIn), 1., kurbo::Affine::IDENTITY, &rect);
+					scene.push_layer(
+						peniko::Fill::NonZero,
+						peniko::BlendMode::new(peniko::Mix::Normal, peniko::Compose::SrcIn),
+						1.,
+						kurbo::Affine::IDENTITY,
+						&rect,
+					);
 				}
 
 				row.element.render_to_vello(scene, transform, context, render_params);
@@ -956,6 +983,7 @@ impl Render for Table<Vector> {
 				let quad = Quad::from_box(layer_bounds).inflate(weight * max_scale(applied_stroke_transform));
 				let layer_bounds = quad.bounding_box();
 				scene.push_layer(
+					peniko::Fill::NonZero,
 					peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver),
 					opacity,
 					kurbo::Affine::new(multiplied_transform.to_cols_array()),
@@ -977,9 +1005,9 @@ impl Render for Table<Vector> {
 				}
 				Fill::Gradient(gradient) => {
 					let mut stops = peniko::ColorStops::new();
-					for &(offset, color) in &gradient.stops {
+					for (position, color, _) in gradient.stops.interpolated_samples() {
 						stops.push(peniko::ColorStop {
-							offset: offset as f32,
+							offset: position as f32,
 							color: peniko::color::DynamicColor::from_alpha_color(peniko::Color::new([color.r(), color.g(), color.b(), color.a()])),
 						});
 					}
@@ -1084,7 +1112,7 @@ impl Render for Table<Vector> {
 			match render_params.render_mode {
 				RenderMode::Outline => {
 					let outline_stroke = kurbo::Stroke {
-						width: LAYER_OUTLINE_STROKE_WEIGHT,
+						width: LAYER_OUTLINE_STROKE_WEIGHT / if render_params.viewport_zoom > 0. { render_params.viewport_zoom } else { 1. },
 						miter_limit: 4.,
 						join: Join::Miter,
 						start_cap: Cap::Butt,
@@ -1124,9 +1152,9 @@ impl Render for Table<Vector> {
 						};
 
 						if wants_stroke_below {
-							scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
+							scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
 							vector_table.render_to_vello(scene, parent_transform, _context, &render_params.for_alignment(applied_stroke_transform));
-							scene.push_layer(peniko::BlendMode::new(peniko::Mix::Normal, compose), 1., kurbo::Affine::IDENTITY, &rect);
+							scene.push_layer(peniko::Fill::NonZero, peniko::BlendMode::new(peniko::Mix::Normal, compose), 1., kurbo::Affine::IDENTITY, &rect);
 
 							do_stroke(scene, 2.);
 
@@ -1138,9 +1166,9 @@ impl Render for Table<Vector> {
 							// Fill first (unclipped), then stroke (clipped) above
 							do_fill(scene);
 
-							scene.push_layer(peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
+							scene.push_layer(peniko::Fill::NonZero, peniko::Mix::Normal, 1., kurbo::Affine::IDENTITY, &rect);
 							vector_table.render_to_vello(scene, parent_transform, _context, &render_params.for_alignment(applied_stroke_transform));
-							scene.push_layer(peniko::BlendMode::new(peniko::Mix::Normal, compose), 1., kurbo::Affine::IDENTITY, &rect);
+							scene.push_layer(peniko::Fill::NonZero, peniko::BlendMode::new(peniko::Mix::Normal, compose), 1., kurbo::Affine::IDENTITY, &rect);
 
 							do_stroke(scene, 2.);
 
@@ -1366,7 +1394,7 @@ impl Render for Table<Raster<CPU>> {
 			{
 				let blending = peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver);
 				let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
-				scene.push_layer(blending, opacity, kurbo::Affine::IDENTITY, &rect);
+				scene.push_layer(peniko::Fill::NonZero, blending, opacity, kurbo::Affine::IDENTITY, &rect);
 				layer = true;
 			}
 
@@ -1424,7 +1452,7 @@ impl Render for Table<Raster<GPU>> {
 			{
 				let blending = peniko::BlendMode::new(blend_mode.blend_mode.to_peniko(), peniko::Compose::SrcOver);
 				let rect = kurbo::Rect::new(bounds[0].x, bounds[0].y, bounds[1].x, bounds[1].y);
-				scene.push_layer(blending, blend_mode.opacity, kurbo::Affine::IDENTITY, &rect);
+				scene.push_layer(peniko::Fill::NonZero, blending, blend_mode.opacity, kurbo::Affine::IDENTITY, &rect);
 				layer = true;
 			}
 
@@ -1514,7 +1542,7 @@ impl Render for Table<Color> {
 			let mut layer = false;
 			if opacity < 1. || alpha_blending.blend_mode != BlendMode::default() {
 				let blending = peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver);
-				scene.push_layer(blending, opacity, kurbo::Affine::scale(f64::INFINITY), &rect);
+				scene.push_layer(peniko::Fill::NonZero, blending, opacity, kurbo::Affine::scale(f64::INFINITY), &rect);
 				layer = true;
 			}
 
@@ -1537,10 +1565,13 @@ impl Render for Table<GradientStops> {
 				attributes.push("points", format!("{max},{max} -{max},{max} -{max},-{max} {max},-{max}"));
 
 				let mut stop_string = String::new();
-				for (position, color) in row.element.0.iter() {
+				for (position, color, original_midpoint) in row.element.interpolated_samples() {
 					let _ = write!(stop_string, r##"<stop offset="{}" stop-color="#{}""##, position, color.to_rgb_hex_srgb_from_gamma());
 					if color.a() < 1. {
 						let _ = write!(stop_string, r#" stop-opacity="{}""#, color.a());
+					}
+					if let Some(midpoint) = original_midpoint {
+						let _ = write!(stop_string, r#" graphite:midpoint="{}""#, (midpoint * 1000.).round() / 1000.);
 					}
 					stop_string.push_str(" />");
 				}
@@ -1599,7 +1630,7 @@ impl Render for Table<GradientStops> {
 			let blend_mode = alpha_blending.blend_mode.to_peniko();
 			let opacity = alpha_blending.opacity(render_params.for_mask);
 
-			let color = row.element.0.first().map(|stop| stop.1).unwrap_or(Color::MAGENTA);
+			let color = row.element.color.first().copied().unwrap_or(Color::MAGENTA);
 			let vello_color = peniko::Color::new([color.r(), color.g(), color.b(), color.a()]);
 
 			let rect = kurbo::Rect::from_origin_size(kurbo::Point::ZERO, kurbo::Size::new(1., 1.));
@@ -1608,7 +1639,7 @@ impl Render for Table<GradientStops> {
 			if opacity < 1. || alpha_blending.blend_mode != BlendMode::default() {
 				let blending = peniko::BlendMode::new(blend_mode, peniko::Compose::SrcOver);
 				// See implemenation in `Table<Color>` for more detail
-				scene.push_layer(blending, opacity, kurbo::Affine::scale(f64::INFINITY), &rect);
+				scene.push_layer(peniko::Fill::NonZero, blending, opacity, kurbo::Affine::scale(f64::INFINITY), &rect);
 				layer = true;
 			}
 

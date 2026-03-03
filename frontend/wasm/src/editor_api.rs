@@ -5,7 +5,7 @@
 // on the dispatcher messaging system and more complex Rust data types.
 //
 use crate::helpers::translate_key;
-use crate::{EDITOR_HANDLE, EDITOR_HAS_CRASHED, Error, MESSAGE_BUFFER};
+use crate::{EDITOR_HANDLE, EDITOR_HAS_CRASHED, Error, MESSAGE_BUFFER, PANIC_DIALOG_MESSAGE_CALLBACK};
 use editor::consts::FILE_EXTENSION;
 use editor::messages::clipboard::utility_types::ClipboardContentRaw;
 use editor::messages::input_mapper::utility_types::input_keyboard::ModifierKeys;
@@ -18,6 +18,7 @@ use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
 use graph_craft::document::NodeId;
 use graphene_std::raster::Image;
 use graphene_std::raster::color::Color;
+use graphene_std::vector::GradientStops;
 use js_sys::{Object, Reflect};
 use serde::Serialize;
 use serde_wasm_bindgen::{self, from_value};
@@ -78,6 +79,16 @@ impl EditorHandle {
 	pub fn send_frontend_message_to_js_rust_proxy(&self, message: FrontendMessage) {
 		self.send_frontend_message_to_js(message);
 	}
+
+	fn initialize_handle(frontend_message_handler_callback: js_sys::Function) -> EditorHandle {
+		let panic_callback = frontend_message_handler_callback.clone();
+		let editor_handle = EditorHandle { frontend_message_handler_callback };
+		if EDITOR_HANDLE.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor_handle.clone()))).is_none() {
+			log::error!("Attempted to initialize the editor handle more than once");
+		}
+		PANIC_DIALOG_MESSAGE_CALLBACK.with_borrow_mut(|callback| *callback = Some(panic_callback));
+		editor_handle
+	}
 }
 
 #[wasm_bindgen]
@@ -97,23 +108,16 @@ impl EditorHandle {
 			uuid_random_seed,
 		);
 
-		let editor_handle = EditorHandle { frontend_message_handler_callback };
 		if EDITOR.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor))).is_none() {
 			log::error!("Attempted to initialize the editor more than once");
 		}
-		if EDITOR_HANDLE.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor_handle.clone()))).is_none() {
-			log::error!("Attempted to initialize the editor handle more than once");
-		}
-		editor_handle
+
+		Self::initialize_handle(frontend_message_handler_callback)
 	}
 
 	#[cfg(feature = "native")]
 	pub fn create(_platform: String, _uuid_random_seed: u64, frontend_message_handler_callback: js_sys::Function) -> EditorHandle {
-		let editor_handle = EditorHandle { frontend_message_handler_callback };
-		if EDITOR_HANDLE.with(|handle| handle.lock().ok().map(|mut guard| *guard = Some(editor_handle.clone()))).is_none() {
-			log::error!("Attempted to initialize the editor handle more than once");
-		}
-		editor_handle
+		Self::initialize_handle(frontend_message_handler_callback)
 	}
 
 	// Sends a message to the dispatcher in the Editor Backend
@@ -202,20 +206,20 @@ impl EditorHandle {
 				if !EDITOR_HAS_CRASHED.load(Ordering::SeqCst) {
 					handle(|handle| {
 						// Process all messages that have been queued up
-						let messages = MESSAGE_BUFFER.take();
-
-						for message in messages {
-							handle.dispatch(message);
-						}
-
-						handle.dispatch(InputPreprocessorMessage::CurrentTime {
-							timestamp: js_sys::Date::now() as u64,
-						});
-						handle.dispatch(AnimationMessage::IncrementFrameCounter);
+						let mut messages = MESSAGE_BUFFER.take();
+						messages.push(
+							InputPreprocessorMessage::CurrentTime {
+								timestamp: js_sys::Date::now() as u64,
+							}
+							.into(),
+						);
+						messages.push(AnimationMessage::IncrementFrameCounter.into());
 
 						// Used by auto-panning, but this could possibly be refactored in the future, see:
 						// <https://github.com/GraphiteEditor/Graphite/pull/2562#discussion_r2041102786>
-						handle.dispatch(BroadcastMessage::TriggerEvent(EventMessage::AnimationFrame));
+						messages.push(BroadcastMessage::TriggerEvent(EventMessage::AnimationFrame).into());
+
+						handle.dispatch(Message::Batched { messages: messages.into() });
 					});
 				}
 
@@ -646,6 +650,34 @@ impl EditorHandle {
 		Ok(())
 	}
 
+	/// Update the color of the currently-edited gradient stop
+	#[wasm_bindgen(js_name = updateGradientStopColor)]
+	pub fn update_gradient_stop_color(&self, red: f32, green: f32, blue: f32, alpha: f32) -> Result<(), JsValue> {
+		let Some(color) = Color::from_rgbaf32(red, green, blue, alpha) else {
+			return Err(Error::new("Invalid color").into());
+		};
+		self.dispatch(GradientToolMessage::UpdateStopColor { color: color.to_linear_srgb() });
+		Ok(())
+	}
+
+	/// Start a new undo transaction for gradient stop color editing
+	#[wasm_bindgen(js_name = startGradientStopColorTransaction)]
+	pub fn start_gradient_stop_color_transaction(&self) {
+		self.dispatch(GradientToolMessage::StartTransactionForColorStop);
+	}
+
+	/// Commit the current gradient stop color transaction (called on pointer-up after each drag/click)
+	#[wasm_bindgen(js_name = commitGradientStopColorTransaction)]
+	pub fn commit_gradient_stop_color_transaction(&self) {
+		self.dispatch(GradientToolMessage::CommitTransactionForColorStop);
+	}
+
+	/// Close the gradient stop color picker and commit any pending transaction
+	#[wasm_bindgen(js_name = closeGradientStopColorPicker)]
+	pub fn close_gradient_stop_color_picker(&self) {
+		self.dispatch(GradientToolMessage::CloseStopColorPicker);
+	}
+
 	#[wasm_bindgen(js_name = clipLayer)]
 	pub fn clip_layer(&self, id: u64) {
 		let id = NodeId(id);
@@ -900,6 +932,34 @@ pub fn evaluate_math_expression(expression: &str) -> Option<f64> {
 	Some(real)
 }
 
+#[wasm_bindgen(js_name = sampleInterpolatedGradient)]
+pub fn sample_interpolated_gradient(position: Vec<f64>, midpoint: Vec<f64>, color: Vec<JsValue>, omit_alpha: bool) -> String {
+	let color = color.into_iter().filter_map(|c| serde_wasm_bindgen::from_value(c).ok()).collect();
+	GradientStops { position, midpoint, color }
+		.interpolated_samples()
+		.into_iter()
+		.map(|(position, color, _)| {
+			let hex = if omit_alpha { color.to_rgb_hex_srgb_from_gamma() } else { color.to_rgba_hex_srgb_from_gamma() };
+			let percent = ((position * 100.) * 1e2).round() / 1e2;
+			format!("#{hex} {percent}%")
+		})
+		.collect::<Vec<_>>()
+		.join(", ")
+}
+
+#[wasm_bindgen(js_name = evaluateGradientAtPosition)]
+pub fn evaluate_gradient_at_position(t: f64, position: Vec<f64>, midpoint: Vec<f64>, color: Vec<JsValue>) -> Object {
+	let color = color.into_iter().filter_map(|c| serde_wasm_bindgen::from_value(c).ok()).collect();
+	let color = GradientStops { position, midpoint, color }.evaluate(t);
+
+	let obj = Object::new();
+	Reflect::set(&obj, &JsValue::from_str("red"), &JsValue::from_f64(color.r() as f64)).unwrap();
+	Reflect::set(&obj, &JsValue::from_str("green"), &JsValue::from_f64(color.g() as f64)).unwrap();
+	Reflect::set(&obj, &JsValue::from_str("blue"), &JsValue::from_f64(color.b() as f64)).unwrap();
+	Reflect::set(&obj, &JsValue::from_str("alpha"), &JsValue::from_f64(color.a() as f64)).unwrap();
+	obj
+}
+
 /// Helper function for calling JS's `requestAnimationFrame` with the given closure
 fn request_animation_frame(f: &Closure<dyn FnMut(f64)>) {
 	web_sys::window()
@@ -964,7 +1024,7 @@ async fn poll_node_graph_evaluation() {
 
 	if !editor::node_graph_executor::run_node_graph().await.0 {
 		return;
-	};
+	}
 
 	editor_and_handle(|editor, handle| {
 		let mut messages = VecDeque::new();
