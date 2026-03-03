@@ -154,17 +154,16 @@ impl WgpuExecutor {
 		Ok(())
 	}
 
-	/// Upscale `source_texture` to `target_size` using nearest-neighbor filtering.
-	/// Used by Pixel Preview render mode to display the 100%-scale render at higher viewport zoom levels.
-	/// `source_transform` is a 2x2 matrix mapping output fragment coordinates to source texel coordinates
-	/// (e.g. `Scale(1/logical_zoom)` without tilt, or `Rotate(-tilt) * Scale(1/logical_zoom)` with tilt).
-	/// `source_offset` is the offset in source texels to start sampling from (compensates for sub-pixel snapping).
-	pub fn upscale_texture_nearest_neighbor(&self, source_texture: &wgpu::Texture, target_size: UVec2, source_transform: glam::Mat2, source_offset: glam::Vec2) -> Result<wgpu::Texture> {
+	/// Resample `source_texture` into a new texture of `target_size` using an affine transform.
+	/// For each output pixel `p`, the source texel coordinate is `source_transform * p + source_offset`.
+	/// `filter` selects interpolation: `Nearest` for sharp pixel boundaries (used by the Pixel Preview render mode),
+	/// `Linear` for smooth bilinear interpolation (used by tilted viewport compositing).
+	pub fn resample_texture(&self, source_texture: &wgpu::Texture, target_size: UVec2, source_transform: glam::Mat2, source_offset: glam::Vec2, filter: wgpu::FilterMode) -> Result<wgpu::Texture> {
 		let device = &self.context.device;
 		let queue = &self.context.queue;
 
 		let output_texture = device.create_texture(&wgpu::TextureDescriptor {
-			label: Some("pixel_preview_upscale"),
+			label: Some("resample_output"),
 			size: wgpu::Extent3d {
 				width: target_size.x,
 				height: target_size.y,
@@ -187,15 +186,22 @@ impl WgpuExecutor {
 		params_data[16..20].copy_from_slice(&source_offset.x.to_le_bytes());
 		params_data[20..24].copy_from_slice(&source_offset.y.to_le_bytes());
 		let uniform_buf = device.create_buffer(&wgpu::BufferDescriptor {
-			label: Some("pixel_preview_params"),
+			label: Some("resample_params"),
 			size: 24,
 			usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
 			mapped_at_creation: false,
 		});
 		queue.write_buffer(&uniform_buf, 0, &params_data);
 
+		let sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+			label: Some("resample_sampler"),
+			mag_filter: filter,
+			min_filter: filter,
+			..Default::default()
+		});
+
 		let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-			label: Some("pixel_preview_blit"),
+			label: Some("resample_blit"),
 			source: wgpu::ShaderSource::Wgsl(
 				r#"
 				@vertex fn vs(@builtin(vertex_index) vi: u32) -> @builtin(position) vec4<f32> {
@@ -203,11 +209,13 @@ impl WgpuExecutor {
 					return vec4(pos[vi], 0., 1.);
 				}
 				@group(0) @binding(0) var src: texture_2d<f32>;
+				@group(0) @binding(1) var src_sampler: sampler;
 				struct Params { transform: mat2x2<f32>, offset: vec2<f32> }
-				@group(0) @binding(1) var<uniform> params: Params;
+				@group(0) @binding(2) var<uniform> params: Params;
 				@fragment fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
 					let src_coord = params.transform * pos.xy + params.offset;
-					return textureLoad(src, vec2<u32>(max(src_coord, vec2(0.0))), 0u);
+					let uv = src_coord / vec2<f32>(textureDimensions(src));
+					return textureSample(src, src_sampler, uv);
 				}
 				"#
 				.into(),
@@ -221,7 +229,7 @@ impl WgpuExecutor {
 					binding: 0,
 					visibility: wgpu::ShaderStages::FRAGMENT,
 					ty: wgpu::BindingType::Texture {
-						sample_type: wgpu::TextureSampleType::Float { filterable: false },
+						sample_type: wgpu::TextureSampleType::Float { filterable: true },
 						view_dimension: wgpu::TextureViewDimension::D2,
 						multisampled: false,
 					},
@@ -229,6 +237,12 @@ impl WgpuExecutor {
 				},
 				wgpu::BindGroupLayoutEntry {
 					binding: 1,
+					visibility: wgpu::ShaderStages::FRAGMENT,
+					ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+					count: None,
+				},
+				wgpu::BindGroupLayoutEntry {
+					binding: 2,
 					visibility: wgpu::ShaderStages::FRAGMENT,
 					ty: wgpu::BindingType::Buffer {
 						ty: wgpu::BufferBindingType::Uniform,
@@ -241,7 +255,7 @@ impl WgpuExecutor {
 		});
 
 		let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
-			label: Some("pixel_preview_pipeline"),
+			label: Some("resample_pipeline"),
 			layout: Some(&device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
 				label: None,
 				bind_group_layouts: &[&bind_group_layout],
@@ -281,13 +295,17 @@ impl WgpuExecutor {
 				},
 				wgpu::BindGroupEntry {
 					binding: 1,
+					resource: wgpu::BindingResource::Sampler(&sampler),
+				},
+				wgpu::BindGroupEntry {
+					binding: 2,
 					resource: uniform_buf.as_entire_binding(),
 				},
 			],
 		});
 
 		let out_view = output_texture.create_view(&wgpu::TextureViewDescriptor::default());
-		let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("pixel_preview_blit") });
+		let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("resample_blit") });
 		{
 			let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
 				label: None,
@@ -318,6 +336,7 @@ impl WgpuExecutor {
 		let surface = self.context.instance.create_surface(wgpu::SurfaceTarget::Canvas(canvas.surface))?;
 		self.create_surface_inner(surface, canvas.window_id)
 	}
+
 	#[cfg(not(target_family = "wasm"))]
 	pub fn create_surface(&self, window: SurfaceHandle<Window>) -> Result<SurfaceHandle<Surface>> {
 		let surface = self.context.instance.create_surface(wgpu::SurfaceTarget::Window(Box::new(window.surface)))?;

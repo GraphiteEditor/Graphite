@@ -259,7 +259,7 @@ async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, edito
 					let source_transform = glam::Mat2::from_cols(inv.matrix2.x_axis.as_vec2(), inv.matrix2.y_axis.as_vec2());
 					let source_offset = ((inv.translation - snapped_doc_origin) * scale).as_vec2();
 					let texture = exec
-						.upscale_texture_nearest_neighbor(&document_texture, physical_resolution, source_transform, source_offset)
+						.resample_texture(&document_texture, physical_resolution, source_transform, source_offset, wgpu::FilterMode::Nearest)
 						.expect("Failed to upscale pixel preview texture");
 
 					return RenderOutput {
