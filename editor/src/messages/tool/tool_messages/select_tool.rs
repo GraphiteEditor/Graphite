@@ -898,13 +898,13 @@ impl Fsm for SelectToolFsmState {
 						let viewport_diagonal = viewport.size().into_dvec2().length();
 
 						let color = if !hover {
-							color
+							color.to_string()
 						} else {
-							let color_string = &graphene_std::Color::from_rgb_str(color.strip_prefix('#').unwrap()).unwrap().with_alpha(0.25).to_rgba_hex_srgb();
-							&format!("#{color_string}")
+							let color_string = graphene_std::Color::from_hex_str(color.strip_prefix('#').unwrap()).unwrap().with_alpha(0.25).to_rgba_hex_srgb();
+							format!("#{color_string}")
 						};
 						let line_center = document.metadata().document_to_viewport.transform_point2(tool_data.line_center_document);
-						overlay_context.line(line_center - direction * viewport_diagonal, line_center + direction * viewport_diagonal, Some(color), None);
+						overlay_context.line(line_center - direction * viewport_diagonal, line_center + direction * viewport_diagonal, Some(color.as_str()), None);
 					}
 
 					if axis_state.is_none_or(|(axis, _)| !axis.is_constraint()) && tool_data.axis_align {
