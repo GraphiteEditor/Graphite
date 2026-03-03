@@ -18,6 +18,7 @@ use editor::messages::tool::tool_messages::tool_prelude::WidgetId;
 use graph_craft::document::NodeId;
 use graphene_std::raster::Image;
 use graphene_std::raster::color::Color;
+use graphene_std::vector::GradientStops;
 use js_sys::{Object, Reflect};
 use serde::Serialize;
 use serde_wasm_bindgen::{self, from_value};
@@ -649,6 +650,34 @@ impl EditorHandle {
 		Ok(())
 	}
 
+	/// Update the color of the currently-edited gradient stop
+	#[wasm_bindgen(js_name = updateGradientStopColor)]
+	pub fn update_gradient_stop_color(&self, red: f32, green: f32, blue: f32, alpha: f32) -> Result<(), JsValue> {
+		let Some(color) = Color::from_rgbaf32(red, green, blue, alpha) else {
+			return Err(Error::new("Invalid color").into());
+		};
+		self.dispatch(GradientToolMessage::UpdateStopColor { color: color.to_linear_srgb() });
+		Ok(())
+	}
+
+	/// Start a new undo transaction for gradient stop color editing
+	#[wasm_bindgen(js_name = startGradientStopColorTransaction)]
+	pub fn start_gradient_stop_color_transaction(&self) {
+		self.dispatch(GradientToolMessage::StartTransactionForColorStop);
+	}
+
+	/// Commit the current gradient stop color transaction (called on pointer-up after each drag/click)
+	#[wasm_bindgen(js_name = commitGradientStopColorTransaction)]
+	pub fn commit_gradient_stop_color_transaction(&self) {
+		self.dispatch(GradientToolMessage::CommitTransactionForColorStop);
+	}
+
+	/// Close the gradient stop color picker and commit any pending transaction
+	#[wasm_bindgen(js_name = closeGradientStopColorPicker)]
+	pub fn close_gradient_stop_color_picker(&self) {
+		self.dispatch(GradientToolMessage::CloseStopColorPicker);
+	}
+
 	#[wasm_bindgen(js_name = clipLayer)]
 	pub fn clip_layer(&self, id: u64) {
 		let id = NodeId(id);
@@ -901,6 +930,34 @@ pub fn evaluate_math_expression(expression: &str) -> Option<f64> {
 		return None;
 	};
 	Some(real)
+}
+
+#[wasm_bindgen(js_name = sampleInterpolatedGradient)]
+pub fn sample_interpolated_gradient(position: Vec<f64>, midpoint: Vec<f64>, color: Vec<JsValue>, omit_alpha: bool) -> String {
+	let color = color.into_iter().filter_map(|c| serde_wasm_bindgen::from_value(c).ok()).collect();
+	GradientStops { position, midpoint, color }
+		.interpolated_samples()
+		.into_iter()
+		.map(|(position, color, _)| {
+			let hex = if omit_alpha { color.to_rgb_hex_srgb_from_gamma() } else { color.to_rgba_hex_srgb_from_gamma() };
+			let percent = ((position * 100.) * 1e2).round() / 1e2;
+			format!("#{hex} {percent}%")
+		})
+		.collect::<Vec<_>>()
+		.join(", ")
+}
+
+#[wasm_bindgen(js_name = evaluateGradientAtPosition)]
+pub fn evaluate_gradient_at_position(t: f64, position: Vec<f64>, midpoint: Vec<f64>, color: Vec<JsValue>) -> Object {
+	let color = color.into_iter().filter_map(|c| serde_wasm_bindgen::from_value(c).ok()).collect();
+	let color = GradientStops { position, midpoint, color }.evaluate(t);
+
+	let obj = Object::new();
+	Reflect::set(&obj, &JsValue::from_str("red"), &JsValue::from_f64(color.r() as f64)).unwrap();
+	Reflect::set(&obj, &JsValue::from_str("green"), &JsValue::from_f64(color.g() as f64)).unwrap();
+	Reflect::set(&obj, &JsValue::from_str("blue"), &JsValue::from_f64(color.b() as f64)).unwrap();
+	Reflect::set(&obj, &JsValue::from_str("alpha"), &JsValue::from_f64(color.a() as f64)).unwrap();
+	obj
 }
 
 /// Helper function for calling JS's `requestAnimationFrame` with the given closure

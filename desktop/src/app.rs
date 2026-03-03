@@ -1,6 +1,7 @@
 use rand::Rng;
 use rfd::AsyncFileDialog;
 use std::fs;
+use std::io::Read;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender, SyncSender};
@@ -415,6 +416,18 @@ impl App {
 			}
 			DesktopFrontendMessage::Restart => {
 				self.exit(Some(ExitReason::Restart));
+			}
+			DesktopFrontendMessage::LoadThirdPartyLicenses => {
+				let compressed = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/third-party-licenses.txt.xz"));
+				let mut reader = lzma_rust2::XzReader::new(compressed.as_slice(), false);
+				let mut text = String::new();
+				if let Err(e) = reader.read_to_string(&mut text) {
+					tracing::error!("Failed to decompress third-party licenses: {e}");
+					return;
+				}
+
+				let message = DesktopWrapperMessage::LoadThirdPartyLicenses { text };
+				responses.push(message);
 			}
 		}
 	}

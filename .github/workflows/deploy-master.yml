@@ -11,7 +11,7 @@ env:
 
 jobs:
   deploy:
-    runs-on: self-hosted
+    runs-on: [self-hosted, target/wasm]
     permissions:
       contents: write
       deployments: write

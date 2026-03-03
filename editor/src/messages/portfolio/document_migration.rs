@@ -283,12 +283,14 @@ const NODE_REPLACEMENTS: &[NodeReplacement<'static>] = &[
 		aliases: &["graphene_math_nodes::FootprintValueNode", "graphene_core::ops::FootprintValueNode"],
 	},
 	NodeReplacement {
-		node: graphene_std::math_nodes::gradient_table_value::IDENTIFIER,
-		aliases: &["graphene_math_nodes::GradientTableValueNode", "graphene_core::ops::GradientTableValueNode"],
-	},
-	NodeReplacement {
 		node: graphene_std::math_nodes::gradient_value::IDENTIFIER,
-		aliases: &["graphene_math_nodes::GradientValueNode", "graphene_core::ops::GradientValueNode"],
+		aliases: &[
+			"graphene_math_nodes::GradientValueNode",
+			"graphene_core::ops::GradientValueNode",
+			"graphene_math_nodes::GradientTableValueNode",
+			"graphene_core::ops::GradientTableValueNode",
+			"math_nodes::GradientTableValueNode",
+		],
 	},
 	NodeReplacement {
 		node: graphene_std::math_nodes::greater_than::IDENTIFIER,
