@@ -1088,6 +1088,10 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				// Set the new active document ID
 				self.active_document_id = Some(document_id);
 
+				// Clear the cached canvas frame so the frontend gets a fresh SVG with the canvas placeholder,
+				// since the previous document's DOM element was destroyed when the document view changed.
+				self.executor.clear_canvas_cache();
+
 				responses.add(MenuBarMessage::SendLayout);
 				responses.add(PortfolioMessage::UpdateOpenDocumentsList);
 				responses.add(FrontendMessage::UpdateActiveDocument { document_id });

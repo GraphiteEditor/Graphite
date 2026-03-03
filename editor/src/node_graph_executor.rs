@@ -94,6 +94,10 @@ impl NodeGraphExecutor {
 		execution_id
 	}
 
+	pub fn clear_canvas_cache(&mut self) {
+		self.last_svg_canvas = None;
+	}
+
 	pub fn update_font_cache(&self, font_cache: FontCache) {
 		self.runtime_io.send(GraphRuntimeRequest::FontCacheUpdate(font_cache)).expect("Failed to send font cache update");
 	}
