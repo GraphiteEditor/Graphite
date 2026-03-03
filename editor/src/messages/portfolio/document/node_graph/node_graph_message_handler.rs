@@ -1324,7 +1324,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						.cloned()
 						.collect::<Vec<_>>()
 					{
-						network_interface.try_set_upstream_to_chain(&InputConnector::node(layer, 1), selection_network_path);
+						const LAYER_SECONDARY_INPUT_INDEX: usize = 1;
+						network_interface.try_set_upstream_to_chain(&InputConnector::node(layer, LAYER_SECONDARY_INPUT_INDEX), selection_network_path);
 					}
 					responses.add(NodeGraphMessage::SendGraph);
 

@@ -1897,7 +1897,12 @@ impl DocumentMessageHandler {
 
 				// If there's already a boolean operation on the selected layer, update it with the new operation
 				if let (Some(upstream_boolean_op), Some(only_selected_layer)) = (upstream_boolean_op, only_selected_layer) {
-					network_interface.set_input(&InputConnector::node(upstream_boolean_op, 1), NodeInput::value(TaggedValue::BooleanOperation(operation), false), &[]);
+					const BOOLEAN_OPERATION_INDEX: usize = 1;
+					network_interface.set_input(
+						&InputConnector::node(upstream_boolean_op, BOOLEAN_OPERATION_INDEX),
+						NodeInput::value(TaggedValue::BooleanOperation(operation), false),
+						&[],
+					);
 
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 
@@ -2786,8 +2791,9 @@ impl DocumentMessageHandler {
 				.popover_layout({
 					// Showing only compatible types for the layer based on the output type of the node upstream from its horizontal input
 					let compatible_type = selected_layer.and_then(|layer| {
+						const LAYER_SECONDARY_INPUT_INDEX: usize = 1;
 						self.network_interface
-							.upstream_output_connector(&InputConnector::node(layer.to_node(), 1), &[])
+							.upstream_output_connector(&InputConnector::node(layer.to_node(), LAYER_SECONDARY_INPUT_INDEX), &[])
 							.and_then(|upstream_output| self.network_interface.output_type(&upstream_output, &[]).add_node_string())
 					});
 

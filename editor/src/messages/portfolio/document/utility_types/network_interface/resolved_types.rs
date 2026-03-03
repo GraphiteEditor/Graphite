@@ -12,6 +12,9 @@ use crate::messages::portfolio::document::node_graph::utility_types::FrontendGra
 use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface, OutputConnector};
 
 // This file contains utility methods for interfacing with the resolved types returned from the compiler
+
+/// Index of the `editor_api` parameter in the render node (second parameter after the primary context input).
+const RENDER_NODE_EDITOR_API_INDEX: usize = 1;
 #[derive(Debug, Default)]
 pub struct ResolvedDocumentNodeTypes {
 	pub types: HashMap<Vec<NodeId>, NodeTypes>,
@@ -317,7 +320,7 @@ impl NodeNetworkInterface {
 							log::error!("Protonode {render_node:?} not found in registry");
 							return Vec::new();
 						};
-						implementations.keys().map(|types| types.inputs[1].clone()).collect()
+						implementations.keys().map(|types| types.inputs[RENDER_NODE_EDITOR_API_INDEX].clone()).collect()
 					}
 				}
 			}
