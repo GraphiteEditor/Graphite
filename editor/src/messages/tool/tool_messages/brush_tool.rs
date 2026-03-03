@@ -317,7 +317,8 @@ impl BrushToolData {
 			};
 
 			if reference == DefinitionIdentifier::Network("Brush".into()) && node_id != layer.to_node() {
-				let points_input = node.inputs.get(1)?;
+				const BRUSH_STROKES_INDEX: usize = 1;
+				let points_input = node.inputs.get(BRUSH_STROKES_INDEX)?;
 				let Some(TaggedValue::BrushStrokes(strokes)) = points_input.as_value() else { continue };
 				self.strokes.clone_from(strokes);
 

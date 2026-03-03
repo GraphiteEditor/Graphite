@@ -9,6 +9,7 @@ use graph_craft::document::{NodeId, NodeInput};
 use graph_craft::{ProtoNodeIdentifier, concrete};
 use graphene_std::Color;
 use graphene_std::NodeInputDecleration;
+use graphene_std::blending_nodes::blending::*;
 use graphene_std::raster::BlendMode;
 use graphene_std::raster_types::{CPU, GPU, Raster};
 use graphene_std::subpath::Subpath;
@@ -92,9 +93,11 @@ pub fn merge_layers(document: &DocumentMessageHandler, first_layer: LayerNodeIde
 		node_id: merge_node_id,
 		parent: first_layer,
 	});
+	const LAYER_SECONDARY_INPUT_INDEX: usize = 1;
+	const MERGE_CONTENT_INDEX: usize = 1;
 	responses.add(NodeGraphMessage::ConnectUpstreamOutputToInput {
-		downstream_input: InputConnector::node(second_layer.to_node(), 1),
-		input_connector: InputConnector::node(merge_node_id, 1),
+		downstream_input: InputConnector::node(second_layer.to_node(), LAYER_SECONDARY_INPUT_INDEX),
+		input_connector: InputConnector::node(merge_node_id, MERGE_CONTENT_INDEX),
 	});
 	responses.add(NodeGraphMessage::DeleteNodes {
 		node_ids: vec![second_layer.to_node()],
@@ -298,7 +301,7 @@ pub fn get_fill_color(layer: LayerNodeIdentifier, network_interface: &NodeNetwor
 /// Get the current blend mode of a layer from the closest "Blending" node.
 pub fn get_blend_mode(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<BlendMode> {
 	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::blending_nodes::blending::IDENTIFIER))?;
-	let TaggedValue::BlendMode(blend_mode) = inputs.get(1)?.as_value()? else {
+	let TaggedValue::BlendMode(blend_mode) = inputs.get(BlendModeInput::INDEX)?.as_value()? else {
 		return None;
 	};
 	Some(*blend_mode)
@@ -314,7 +317,7 @@ pub fn get_blend_mode(layer: LayerNodeIdentifier, network_interface: &NodeNetwor
 /// With those limitations in mind, the intention of this function is to show just the value already present in an upstream Opacity node so that value can be directly edited.
 pub fn get_opacity(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<f64> {
 	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::blending_nodes::blending::IDENTIFIER))?;
-	let TaggedValue::F64(opacity) = inputs.get(2)?.as_value()? else {
+	let TaggedValue::F64(opacity) = inputs.get(OpacityInput::INDEX)?.as_value()? else {
 		return None;
 	};
 	Some(*opacity)
@@ -322,7 +325,7 @@ pub fn get_opacity(layer: LayerNodeIdentifier, network_interface: &NodeNetworkIn
 
 pub fn get_clip_mode(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<bool> {
 	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::blending_nodes::blending::IDENTIFIER))?;
-	let TaggedValue::Bool(clip) = inputs.get(4)?.as_value()? else {
+	let TaggedValue::Bool(clip) = inputs.get(ClipInput::INDEX)?.as_value()? else {
 		return None;
 	};
 	Some(*clip)
@@ -330,7 +333,7 @@ pub fn get_clip_mode(layer: LayerNodeIdentifier, network_interface: &NodeNetwork
 
 pub fn get_fill(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<f64> {
 	let inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::blending_nodes::blending::IDENTIFIER))?;
-	let TaggedValue::F64(fill) = inputs.get(3)?.as_value()? else {
+	let TaggedValue::F64(fill) = inputs.get(FillInput::INDEX)?.as_value()? else {
 		return None;
 	};
 	Some(*fill)
@@ -518,7 +521,8 @@ impl<'a> NodeGraphLayer<'a> {
 
 	/// Check if a layer is a raster layer
 	pub fn is_raster_layer(layer: LayerNodeIdentifier, network_interface: &mut NodeNetworkInterface) -> bool {
-		let layer_input_type = network_interface.input_type(&InputConnector::node(layer.to_node(), 1), &[]);
+		const LAYER_SECONDARY_INPUT_INDEX: usize = 1;
+		let layer_input_type = network_interface.input_type(&InputConnector::node(layer.to_node(), LAYER_SECONDARY_INPUT_INDEX), &[]);
 
 		layer_input_type.compiled_nested_type() == Some(&concrete!(Table<Raster<CPU>>)) || layer_input_type.compiled_nested_type() == Some(&concrete!(Table<Raster<GPU>>))
 	}

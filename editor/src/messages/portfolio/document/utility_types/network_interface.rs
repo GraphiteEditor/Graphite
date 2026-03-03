@@ -419,7 +419,8 @@ impl NodeNetworkInterface {
 		for old_id in new_nodes.iter().map(|(_, old_id, _)| *old_id).collect::<Vec<_>>() {
 			// Try set all selected nodes upstream of a layer to be chain nodes
 			if self.is_layer(&old_id, network_path) {
-				for valid_upstream_chain_node in self.valid_upstream_chain_nodes(&InputConnector::node(old_id, 1), network_path) {
+				const LAYER_SECONDARY_INPUT_INDEX: usize = 1;
+				for valid_upstream_chain_node in self.valid_upstream_chain_nodes(&InputConnector::node(old_id, LAYER_SECONDARY_INPUT_INDEX), network_path) {
 					if let Some(node_template) = new_nodes.iter_mut().find_map(|(_, old_id, template)| (*old_id == valid_upstream_chain_node).then_some(template)) {
 						match &mut node_template.persistent_node_metadata.node_type_metadata {
 							NodeTypePersistentMetadata::Node(node_metadata) => node_metadata.position = NodePosition::Chain,
@@ -1195,7 +1196,8 @@ impl NodeNetworkInterface {
 						.find(|ancestor| *ancestor != LayerNodeIdentifier::ROOT_PARENT && self.is_artboard(&ancestor.to_node(), &[]))
 				{
 					let artboard = self.document_node(&artboard_node_identifier.to_node(), &[]);
-					let clip_input = artboard.unwrap().inputs.get(5).unwrap();
+					const ARTBOARD_CLIP_INDEX: usize = 5;
+					let clip_input = artboard.unwrap().inputs.get(ARTBOARD_CLIP_INDEX).unwrap();
 					if let NodeInput::Value { tagged_value, .. } = clip_input
 						&& tagged_value.clone().deref() == &TaggedValue::Bool(true)
 					{
@@ -1312,7 +1314,8 @@ impl NodeNetworkInterface {
 				.iter()
 				.filter_map(move |node_id| {
 					if self.is_layer(node_id, network_path) {
-						network.nodes.get(node_id).and_then(|node| node.inputs.get(1)).and_then(|input| input.as_node())
+						const LAYER_SECONDARY_INPUT_INDEX: usize = 1;
+						network.nodes.get(node_id).and_then(|node| node.inputs.get(LAYER_SECONDARY_INPUT_INDEX)).and_then(|input| input.as_node())
 					} else {
 						Some(*node_id)
 					}
@@ -3097,7 +3100,8 @@ impl NodeNetworkInterface {
 			let mut modified = vector.clone();
 
 			let path_node = self.document_network().nodes.get(&path_node);
-			let modification_input = path_node.and_then(|node: &DocumentNode| node.inputs.get(1)).and_then(|input| input.as_value());
+			const PATH_MODIFICATION_INDEX: usize = 1;
+			let modification_input = path_node.and_then(|node: &DocumentNode| node.inputs.get(PATH_MODIFICATION_INDEX)).and_then(|input| input.as_value());
 			if let Some(TaggedValue::VectorModification(modification)) = modification_input {
 				modification.apply(&mut modified);
 			}
@@ -4604,7 +4608,8 @@ impl NodeNetworkInterface {
 
 		// Try build the chain
 		if is_layer {
-			self.try_set_upstream_to_chain(&InputConnector::node(*node_id, 1), network_path);
+			const LAYER_SECONDARY_INPUT_INDEX: usize = 1;
+			self.try_set_upstream_to_chain(&InputConnector::node(*node_id, LAYER_SECONDARY_INPUT_INDEX), network_path);
 		} else {
 			self.try_set_node_to_chain(node_id, network_path);
 		}
@@ -5655,16 +5660,17 @@ impl NodeNetworkInterface {
 
 	// Moves a node and to the start of a layer chain (feeding into the secondary input of the layer)
 	pub fn move_node_to_chain_start(&mut self, node_id: &NodeId, parent: LayerNodeIdentifier, network_path: &[NodeId]) {
-		let Some(current_input) = self.input_from_connector(&InputConnector::node(parent.to_node(), 1), network_path) else {
+		const LAYER_SECONDARY_INPUT_INDEX: usize = 1;
+		let Some(current_input) = self.input_from_connector(&InputConnector::node(parent.to_node(), LAYER_SECONDARY_INPUT_INDEX), network_path) else {
 			log::error!("Could not get input for node {node_id}");
 			return;
 		};
 		if matches!(current_input, NodeInput::Value { .. }) {
-			self.create_wire(&OutputConnector::node(*node_id, 0), &InputConnector::node(parent.to_node(), 1), network_path);
+			self.create_wire(&OutputConnector::node(*node_id, 0), &InputConnector::node(parent.to_node(), LAYER_SECONDARY_INPUT_INDEX), network_path);
 			self.set_chain_position(node_id, network_path);
 		} else {
 			// Insert the node in the gap and set the upstream to a chain
-			self.insert_node_between(node_id, &InputConnector::node(parent.to_node(), 1), 0, network_path);
+			self.insert_node_between(node_id, &InputConnector::node(parent.to_node(), LAYER_SECONDARY_INPUT_INDEX), 0, network_path);
 			self.force_set_upstream_to_chain(node_id, network_path);
 		}
 	}

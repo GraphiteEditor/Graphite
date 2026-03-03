@@ -90,38 +90,70 @@ pub fn float_to_srgb_u8(mut f: f32) -> u8 {
 
 #[rustfmt::skip]
 const FROM_SRGB_U8: [f32; 256] = [
-	0., 0.000303527, 0.000607054, 0.00091058103, 0.001214108, 0.001517635, 0.0018211621, 0.002124689,
-	0.002428216, 0.002731743, 0.00303527, 0.0033465356, 0.003676507, 0.004024717, 0.004391442,
-	0.0047769533, 0.005181517, 0.0056053917, 0.0060488326, 0.006512091, 0.00699541, 0.0074990317,
-	0.008023192, 0.008568125, 0.009134057, 0.009721218, 0.010329823, 0.010960094, 0.011612245,
-	0.012286487, 0.012983031, 0.013702081, 0.014443844, 0.015208514, 0.015996292, 0.016807375,
-	0.017641952, 0.018500218, 0.019382361, 0.020288562, 0.02121901, 0.022173883, 0.023153365,
-	0.02415763, 0.025186857, 0.026241222, 0.027320892, 0.028426038, 0.029556843, 0.03071345, 0.03189604,
-	0.033104774, 0.03433981, 0.035601325, 0.036889452, 0.038204376, 0.039546248, 0.04091521, 0.042311423,
-	0.043735042, 0.045186214, 0.046665095, 0.048171833, 0.049706575, 0.051269468, 0.052860655, 0.05448028,
-	0.056128494, 0.057805434, 0.05951124, 0.06124607, 0.06301003, 0.06480328, 0.06662595, 0.06847818,
-	0.07036011, 0.07227186, 0.07421358, 0.07618539, 0.07818743, 0.08021983, 0.082282715, 0.084376216,
-	0.086500466, 0.088655606, 0.09084173, 0.09305898, 0.095307484, 0.09758736, 0.09989874, 0.10224175,
-	0.10461649, 0.10702311, 0.10946172, 0.111932434, 0.11443538, 0.116970696, 0.11953845, 0.12213881,
-	0.12477186, 0.12743773, 0.13013652, 0.13286836, 0.13563336, 0.13843165, 0.14126332, 0.1441285,
-	0.1470273, 0.14995982, 0.15292618, 0.1559265, 0.15896086, 0.16202943, 0.16513224, 0.16826946,
-	0.17144115, 0.17464745, 0.17788847, 0.1811643, 0.18447503, 0.1878208, 0.19120172, 0.19461787,
-	0.19806935, 0.2015563, 0.20507877, 0.2086369, 0.21223079, 0.21586053, 0.21952623, 0.22322798,
-	0.22696589, 0.23074007, 0.23455065, 0.23839766, 0.2422812, 0.2462014, 0.25015837, 0.25415218,
-	0.2581829, 0.26225072, 0.26635566, 0.27049786, 0.27467737, 0.27889434, 0.2831488, 0.2874409,
-	0.2917707, 0.29613832, 0.30054384, 0.30498737, 0.30946895, 0.31398875, 0.31854683, 0.32314324,
-	0.32777813, 0.33245158, 0.33716366, 0.34191445, 0.3467041, 0.3515327, 0.35640025, 0.36130688,
-	0.3662527, 0.37123778, 0.37626222, 0.3813261, 0.38642952, 0.39157256, 0.3967553, 0.40197787,
-	0.4072403, 0.4125427, 0.41788515, 0.42326775, 0.42869055, 0.4341537, 0.43965724, 0.44520125,
-	0.45078585, 0.45641106, 0.46207705, 0.46778384, 0.47353154, 0.47932023, 0.48514998, 0.4910209,
-	0.49693304, 0.5028866, 0.50888145, 0.5149178, 0.5209957, 0.52711535, 0.5332766, 0.5394797,
-	0.5457247, 0.5520116, 0.5583406, 0.5647117, 0.57112503, 0.57758063, 0.5840786, 0.590619, 0.597202,
-	0.60382754, 0.61049575, 0.61720675, 0.62396055, 0.63075733, 0.637597, 0.6444799, 0.6514058,
-	0.65837497, 0.66538745, 0.67244333, 0.6795426, 0.68668544, 0.69387203, 0.70110214, 0.70837605,
-	0.7156938, 0.72305536, 0.730461, 0.7379107, 0.7454045, 0.75294244, 0.76052475, 0.7681514, 0.77582246,
-	0.78353804, 0.79129815, 0.79910296, 0.8069525, 0.8148468, 0.822786, 0.8307701, 0.83879924, 0.84687346,
-	0.8549928, 0.8631574, 0.87136734, 0.8796226, 0.8879232, 0.89626956, 0.90466136, 0.913099, 0.92158204,
-	0.93011117, 0.9386859, 0.9473069, 0.9559735, 0.9646866, 0.9734455, 0.98225087, 0.9911022, 1.,
+	f32::from_bits(0x00000000), f32::from_bits(0x399f22b4), f32::from_bits(0x3a1f22b4), f32::from_bits(0x3a6eb40f),
+	f32::from_bits(0x3a9f22b4), f32::from_bits(0x3ac6eb61), f32::from_bits(0x3aeeb40f), f32::from_bits(0x3b0b3e5e),
+	f32::from_bits(0x3b1f22b4), f32::from_bits(0x3b33070b), f32::from_bits(0x3b46eb61), f32::from_bits(0x3b5b518d),
+	f32::from_bits(0x3b70f18d), f32::from_bits(0x3b83e1c6), f32::from_bits(0x3b8fe616), f32::from_bits(0x3b9c87fd),
+	f32::from_bits(0x3ba9c9b7), f32::from_bits(0x3bb7ad6f), f32::from_bits(0x3bc63549), f32::from_bits(0x3bd56361),
+	f32::from_bits(0x3be539c1), f32::from_bits(0x3bf5ba70), f32::from_bits(0x3c0373b5), f32::from_bits(0x3c0c6152),
+	f32::from_bits(0x3c15a703), f32::from_bits(0x3c1f45be), f32::from_bits(0x3c293e6b), f32::from_bits(0x3c3391f7),
+	f32::from_bits(0x3c3e4149), f32::from_bits(0x3c494d43), f32::from_bits(0x3c54b6c7), f32::from_bits(0x3c607eb1),
+	f32::from_bits(0x3c6ca5df), f32::from_bits(0x3c792d22), f32::from_bits(0x3c830aa8), f32::from_bits(0x3c89af9f),
+	f32::from_bits(0x3c9085db), f32::from_bits(0x3c978dc5), f32::from_bits(0x3c9ec7c2), f32::from_bits(0x3ca63433),
+	f32::from_bits(0x3cadd37d), f32::from_bits(0x3cb5a601), f32::from_bits(0x3cbdac20), f32::from_bits(0x3cc5e639),
+	f32::from_bits(0x3cce54ab), f32::from_bits(0x3cd6f7d5), f32::from_bits(0x3cdfd010), f32::from_bits(0x3ce8ddb9),
+	f32::from_bits(0x3cf22131), f32::from_bits(0x3cfb9ac6), f32::from_bits(0x3d02a56c), f32::from_bits(0x3d0798df),
+	f32::from_bits(0x3d0ca7e7), f32::from_bits(0x3d11d2b2), f32::from_bits(0x3d171965), f32::from_bits(0x3d1c7c31),
+	f32::from_bits(0x3d21fb3f), f32::from_bits(0x3d2796b5), f32::from_bits(0x3d2d4ebe), f32::from_bits(0x3d332384),
+	f32::from_bits(0x3d39152e), f32::from_bits(0x3d3f23e6), f32::from_bits(0x3d454fd4), f32::from_bits(0x3d4b991f),
+	f32::from_bits(0x3d51ffef), f32::from_bits(0x3d58846a), f32::from_bits(0x3d5f26b7), f32::from_bits(0x3d65e6fe),
+	f32::from_bits(0x3d6cc564), f32::from_bits(0x3d73c20f), f32::from_bits(0x3d7add29), f32::from_bits(0x3d810b68),
+	f32::from_bits(0x3d84b795), f32::from_bits(0x3d887330), f32::from_bits(0x3d8c3e4a), f32::from_bits(0x3d9018f6),
+	f32::from_bits(0x3d940345), f32::from_bits(0x3d97fd4a), f32::from_bits(0x3d9c0716), f32::from_bits(0x3da020bb),
+	f32::from_bits(0x3da44a4b), f32::from_bits(0x3da883d7), f32::from_bits(0x3daccd70), f32::from_bits(0x3db12728), f32::from_bits(0x3db59112),
+	f32::from_bits(0x3dba0b3b), f32::from_bits(0x3dbe95b5), f32::from_bits(0x3dc33092), f32::from_bits(0x3dc7dbe2),
+	f32::from_bits(0x3dcc97b6), f32::from_bits(0x3dd1641f), f32::from_bits(0x3dd6412c), f32::from_bits(0x3ddb2eef),
+	f32::from_bits(0x3de02d77), f32::from_bits(0x3de53cd5), f32::from_bits(0x3dea5d19), f32::from_bits(0x3def8e55),
+	f32::from_bits(0x3df4d093), f32::from_bits(0x3dfa23ea), f32::from_bits(0x3dff8864), f32::from_bits(0x3e027f09),
+	f32::from_bits(0x3e054282), f32::from_bits(0x3e080ea5), f32::from_bits(0x3e0ae379), f32::from_bits(0x3e0dc107),
+	f32::from_bits(0x3e10a755), f32::from_bits(0x3e13966c), f32::from_bits(0x3e168e53), f32::from_bits(0x3e198f11),
+	f32::from_bits(0x3e1c98ae), f32::from_bits(0x3e1fab32), f32::from_bits(0x3e22c6a3), f32::from_bits(0x3e25eb0b),
+	f32::from_bits(0x3e29186d), f32::from_bits(0x3e2c4ed4), f32::from_bits(0x3e2f8e45), f32::from_bits(0x3e32d6c8),
+	f32::from_bits(0x3e362865), f32::from_bits(0x3e398322), f32::from_bits(0x3e3ce706), f32::from_bits(0x3e405419),
+	f32::from_bits(0x3e43ca62), f32::from_bits(0x3e4749e8), f32::from_bits(0x3e4ad2b1), f32::from_bits(0x3e4e64c6),
+	f32::from_bits(0x3e52002b), f32::from_bits(0x3e55a4e9), f32::from_bits(0x3e595307), f32::from_bits(0x3e5d0a8b),
+	f32::from_bits(0x3e60cb7c), f32::from_bits(0x3e6495e0), f32::from_bits(0x3e6869bf), f32::from_bits(0x3e6c4720),
+	f32::from_bits(0x3e702e0c), f32::from_bits(0x3e741e84), f32::from_bits(0x3e781890), f32::from_bits(0x3e7c1c38),
+	f32::from_bits(0x3e8014c2), f32::from_bits(0x3e82203c), f32::from_bits(0x3e84308d), f32::from_bits(0x3e8645ba),
+	f32::from_bits(0x3e885fc5), f32::from_bits(0x3e8a7eb2), f32::from_bits(0x3e8ca283), f32::from_bits(0x3e8ecb3d),
+	f32::from_bits(0x3e90f8e1), f32::from_bits(0x3e932b74), f32::from_bits(0x3e9562f8), f32::from_bits(0x3e979f71),
+	f32::from_bits(0x3e99e0e2), f32::from_bits(0x3e9c274e), f32::from_bits(0x3e9e72b7), f32::from_bits(0x3ea0c322),
+	f32::from_bits(0x3ea31892), f32::from_bits(0x3ea57308), f32::from_bits(0x3ea7d289), f32::from_bits(0x3eaa3718),
+	f32::from_bits(0x3eaca0b7), f32::from_bits(0x3eaf0f69), f32::from_bits(0x3eb18333), f32::from_bits(0x3eb3fc18),
+	f32::from_bits(0x3eb67a18), f32::from_bits(0x3eb8fd37), f32::from_bits(0x3ebb8579), f32::from_bits(0x3ebe12e1),
+	f32::from_bits(0x3ec0a571), f32::from_bits(0x3ec33d2d), f32::from_bits(0x3ec5da17), f32::from_bits(0x3ec87c33),
+	f32::from_bits(0x3ecb2383), f32::from_bits(0x3ecdd00b), f32::from_bits(0x3ed081cd), f32::from_bits(0x3ed338cc),
+	f32::from_bits(0x3ed5f50b), f32::from_bits(0x3ed8b68d), f32::from_bits(0x3edb7d54), f32::from_bits(0x3ede4965),
+	f32::from_bits(0x3ee11ac1), f32::from_bits(0x3ee3f16b), f32::from_bits(0x3ee6cd67), f32::from_bits(0x3ee9aeb7),
+	f32::from_bits(0x3eec955d), f32::from_bits(0x3eef815d), f32::from_bits(0x3ef272ba), f32::from_bits(0x3ef56976),
+	f32::from_bits(0x3ef86594), f32::from_bits(0x3efb6717), f32::from_bits(0x3efe6e02), f32::from_bits(0x3f00bd2d),
+	f32::from_bits(0x3f02460e), f32::from_bits(0x3f03d1a7), f32::from_bits(0x3f055ff9), f32::from_bits(0x3f06f108),
+	f32::from_bits(0x3f0884d1), f32::from_bits(0x3f0a1b57), f32::from_bits(0x3f0bb49d), f32::from_bits(0x3f0d50a2),
+	f32::from_bits(0x3f0eef69), f32::from_bits(0x3f1090f2), f32::from_bits(0x3f123540), f32::from_bits(0x3f13dc53),
+	f32::from_bits(0x3f15862d), f32::from_bits(0x3f1732cf), f32::from_bits(0x3f18e23b), f32::from_bits(0x3f1a9471),
+	f32::from_bits(0x3f1c4973), f32::from_bits(0x3f1e0143), f32::from_bits(0x3f1fbbe1), f32::from_bits(0x3f217950),
+	f32::from_bits(0x3f23398f), f32::from_bits(0x3f24fca2), f32::from_bits(0x3f26c288), f32::from_bits(0x3f288b43),
+	f32::from_bits(0x3f2a56d5), f32::from_bits(0x3f2c253f), f32::from_bits(0x3f2df681), f32::from_bits(0x3f2fca9e),
+	f32::from_bits(0x3f31a199), f32::from_bits(0x3f337b6e), f32::from_bits(0x3f355822), f32::from_bits(0x3f3737b5),
+	f32::from_bits(0x3f391a28), f32::from_bits(0x3f3aff7e), f32::from_bits(0x3f3ce7b7), f32::from_bits(0x3f3ed2d4), f32::from_bits(0x3f40c0d6),
+	f32::from_bits(0x3f42b1c0), f32::from_bits(0x3f44a592), f32::from_bits(0x3f469c4d), f32::from_bits(0x3f4895f3),
+	f32::from_bits(0x3f4a9284), f32::from_bits(0x3f4c9203), f32::from_bits(0x3f4e9470), f32::from_bits(0x3f5099cd),
+	f32::from_bits(0x3f52a21a), f32::from_bits(0x3f54ad59), f32::from_bits(0x3f56bb8c), f32::from_bits(0x3f58ccb3),
+	f32::from_bits(0x3f5ae0cf), f32::from_bits(0x3f5cf7e2), f32::from_bits(0x3f5f11ee), f32::from_bits(0x3f612ef2), f32::from_bits(0x3f634eef),
+	f32::from_bits(0x3f6571ec), f32::from_bits(0x3f6797e3), f32::from_bits(0x3f69c0db), f32::from_bits(0x3f6beccd),
+	f32::from_bits(0x3f6e1bc4), f32::from_bits(0x3f704db8), f32::from_bits(0x3f7282b4), f32::from_bits(0x3f74baae),
+	f32::from_bits(0x3f76f5b3), f32::from_bits(0x3f7933b9), f32::from_bits(0x3f7b74cb), f32::from_bits(0x3f7db8e0),
+	f32::from_bits(0x3f800000),
 ];
 
 #[inline]
@@ -162,12 +194,11 @@ mod tests {
 	#[test]
 	fn test_float_to_srgb_u8() {
 		for u in 0..=u8::MAX {
-			// let a = srgb_u8_to_float(u);
-			// let b = srgb_u8_to_float_ref(u);
-			// if a != b {
-			// panic!("Mismatch at u={}: {} != {}", u, a, b);
-			// }
-			assert!(srgb_u8_to_float(u) == srgb_u8_to_float_ref(u));
+			let a = srgb_u8_to_float(u);
+			let b = srgb_u8_to_float_ref(u);
+			if a != b {
+				panic!("Mismatch at u={}: {} != {}", u, a, b);
+			}
 		}
 	}
 

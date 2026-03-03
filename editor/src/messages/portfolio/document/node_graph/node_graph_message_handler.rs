@@ -1324,7 +1324,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						.cloned()
 						.collect::<Vec<_>>()
 					{
-						network_interface.try_set_upstream_to_chain(&InputConnector::node(layer, 1), selection_network_path);
+						const LAYER_SECONDARY_INPUT_INDEX: usize = 1;
+						network_interface.try_set_upstream_to_chain(&InputConnector::node(layer, LAYER_SECONDARY_INPUT_INDEX), selection_network_path);
 					}
 					responses.add(NodeGraphMessage::SendGraph);
 
@@ -2503,9 +2504,10 @@ impl NodeGraphMessageHandler {
 							.icon(Some("Node".to_string()))
 							.tooltip_description("Add an operation to the end of this layer's chain of nodes.")
 							.popover_layout({
+								const LAYER_SECONDARY_INPUT_INDEX: usize = 1;
 								let compatible_type = context
 									.network_interface
-									.upstream_output_connector(&InputConnector::node(layer, 1), &[])
+									.upstream_output_connector(&InputConnector::node(layer, LAYER_SECONDARY_INPUT_INDEX), &[])
 									.and_then(|upstream_output| context.network_interface.output_type(&upstream_output, &[]).add_node_string());
 
 								let mut node_chooser = NodeCatalog::new();
