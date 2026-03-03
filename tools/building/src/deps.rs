@@ -87,7 +87,7 @@ fn dependencies(task: &Task) -> Vec<Dependency> {
 	.collect()
 }
 
-pub fn check(task: &Task) {
+pub fn check(task: &Task) -> Result<(), Error> {
 	eprintln!();
 	eprintln!("Checking dependencies:");
 
@@ -138,7 +138,7 @@ pub fn check(task: &Task) {
 	eprintln!();
 
 	if installable.is_empty() && failures.is_empty() {
-		return;
+		return Ok(());
 	}
 
 	let total = installable.len() + failures.len();
@@ -155,31 +155,39 @@ pub fn check(task: &Task) {
 		eprintln!("See: https://graphite.art/volunteer/guide/project-setup/");
 	}
 
-	if !installable.is_empty() && std::io::stdout().is_terminal() {
-		eprintln!();
-		eprintln!("The following can be installed automatically:");
+	if installable.is_empty() {
+		return Ok(());
+	}
+
+	// Don't prompt for automatic installation if we're not interactive session
+	if !std::io::stdout().is_terminal() && !std::io::stderr().is_terminal() && !std::io::stdin().is_terminal() {
+		return Ok(());
+	}
+
+	eprintln!();
+	eprintln!("The following can be installed automatically:");
+	for dep in &installable {
+		eprintln!("  {}", dep.install.unwrap());
+	}
+	eprintln!();
+	eprint!("Install them now? [Y/n] ");
+
+	let mut input = String::new();
+	std::io::stdin().read_line(&mut input).map_err(|e| Error::Io(e, "Failed to read from stdin".into()))?;
+	let input = input.trim();
+
+	if input.is_empty() || input.eq_ignore_ascii_case("y") || input.eq_ignore_ascii_case("yes") {
 		for dep in &installable {
-			eprintln!("  {}", dep.install.unwrap());
-		}
-		eprintln!();
-		eprint!("Install them now? [Y/n] ");
-
-		let mut input = String::new();
-		std::io::stdin().read_line(&mut input).unwrap();
-		let input = input.trim();
-
-		if input.is_empty() || input.eq_ignore_ascii_case("y") || input.eq_ignore_ascii_case("yes") {
-			for dep in &installable {
-				let parts: Vec<&str> = dep.install.unwrap().split_whitespace().collect();
-				eprintln!("Running: {}...", dep.install.unwrap());
-				let status = Command::new(parts[0])
-					.args(&parts[1..])
-					.status()
-					.unwrap_or_else(|e| panic!("Failed to run '{}': {e}", dep.install.unwrap()));
-				if !status.success() {
-					eprintln!("Failed to install {}", dep.name);
-				}
+			let parts: Vec<&str> = dep.install.unwrap().split_whitespace().collect();
+			eprintln!("Running: {}...", dep.install.unwrap());
+			let status = Command::new(parts[0])
+				.args(&parts[1..])
+				.status()
+				.map_err(|e| Error::Io(e, format!("Failed to run '{}'", dep.install.unwrap())))?;
+			if !status.success() {
+				eprintln!("Failed to install {}", dep.name);
 			}
 		}
 	}
+	Ok(())
 }

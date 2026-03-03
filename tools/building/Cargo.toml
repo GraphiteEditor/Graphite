@@ -6,3 +6,6 @@ license.workspace = true
 authors.workspace = true
 
 default-run = "building"
+
+[dependencies]
+thiserror = { workspace = true }

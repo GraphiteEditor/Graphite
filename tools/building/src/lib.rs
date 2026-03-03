@@ -50,33 +50,39 @@ impl Task {
 	}
 }
 
-pub fn run(comand: &str) {
-	run_from(comand, None);
+pub fn run(command: &str) -> Result<(), Error> {
+	run_from(command, None)
 }
 
-pub fn run_in_frontend_dir(comand: &str) {
-	run_from(comand, Some("frontend"));
+pub fn run_in_frontend_dir(command: &str) -> Result<(), Error> {
+	run_from(command, Some("frontend"))
 }
 
-pub fn run_from(comand: &str, dir: Option<&str>) {
+pub fn run_from(command: &str, dir: Option<&str>) -> Result<(), Error> {
 	let workspace_dir = std::path::PathBuf::from(env!("CARGO_WORKSPACE_DIR"));
 	let dir = if let Some(dir) = dir { workspace_dir.join(dir) } else { workspace_dir };
-	let comand = comand.split_whitespace().collect::<Vec<_>>();
-	let mut cmd = process::Command::new(comand[0]);
-	if comand.len() > 1 {
-		cmd.args(&comand[1..]);
+	let command = command.split_whitespace().collect::<Vec<_>>();
+	let mut cmd = process::Command::new(command[0]);
+	if command.len() > 1 {
+		cmd.args(&command[1..]);
 	}
 	cmd.current_dir(dir);
 	let exit_code = cmd
 		.spawn()
-		.unwrap_or_else(|e| {
-			panic!("Failed to run command '{}': {e}", comand.join(" "));
-		})
+		.map_err(|e| Error::Io(e, format!("Failed to spawn command '{}'", command.join(" "))))?
 		.wait()
-		.unwrap_or_else(|e| {
-			panic!("Failed to wait for command '{}': {e}", comand.join(" "));
-		});
+		.map_err(|e| Error::Io(e, format!("Failed to wait for command '{}'", command.join(" "))))?;
 	if !exit_code.success() {
-		panic!("Command '{}' exited with code {}", comand.join(" "), exit_code);
+		return Err(Error::Command(command.join(" "), exit_code));
 	}
+	Ok(())
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum Error {
+	#[error("{1}: {0}")]
+	Io(#[source] std::io::Error, String),
+
+	#[error("Command '{0}' exited with code {1}")]
+	Command(String, process::ExitStatus),
 }
