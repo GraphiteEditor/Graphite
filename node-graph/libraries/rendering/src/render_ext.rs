@@ -148,10 +148,6 @@ impl RenderExt for Stroke {
 		if let Some(stroke_join_miter_limit) = stroke_join_miter_limit {
 			let _ = write!(&mut attributes, r#" stroke-miterlimit="{stroke_join_miter_limit}""#);
 		}
-		// Add vector-effect attribute to make strokes non-scaling
-		if self.non_scaling {
-			let _ = write!(&mut attributes, r#" vector-effect="non-scaling-stroke""#);
-		}
 		if paint_order.is_some() {
 			let _ = write!(&mut attributes, r#" style="paint-order: stroke;" "#);
 		}

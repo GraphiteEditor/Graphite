@@ -515,7 +515,6 @@ fn apply_usvg_stroke(stroke: &usvg::Stroke, modify_inputs: &mut ModifyInputsCont
 			align: StrokeAlign::Center,
 			paint_order: PaintOrder::StrokeAbove,
 			transform,
-			non_scaling: false,
 		})
 	}
 }

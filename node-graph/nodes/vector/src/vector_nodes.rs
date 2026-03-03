@@ -211,7 +211,6 @@ where
 		join_miter_limit: miter_limit,
 		align,
 		transform: DAffine2::IDENTITY,
-		non_scaling: false,
 		paint_order,
 	};
 
