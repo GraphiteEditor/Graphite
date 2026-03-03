@@ -154,6 +154,160 @@ impl WgpuExecutor {
 		Ok(())
 	}
 
+	/// Upscale `source_texture` to `target_size` using nearest-neighbor filtering.
+	/// Used by Pixel Preview render mode to display the 100%-scale render at higher viewport zoom levels.
+	/// `source_scale` maps output fragment coordinates to source texel coordinates (e.g. `1/logical_zoom`).
+	/// `source_offset` is the offset in source texels to start sampling from (compensates for sub-pixel snapping).
+	pub fn upscale_texture_nearest_neighbor(&self, source_texture: &wgpu::Texture, target_size: UVec2, source_scale: glam::Vec2, source_offset: glam::Vec2) -> Result<wgpu::Texture> {
+		let device = &self.context.device;
+		let queue = &self.context.queue;
+
+		let output_texture = device.create_texture(&wgpu::TextureDescriptor {
+			label: Some("pixel_preview_upscale"),
+			size: wgpu::Extent3d {
+				width: target_size.x,
+				height: target_size.y,
+				depth_or_array_layers: 1,
+			},
+			mip_level_count: 1,
+			sample_count: 1,
+			dimension: wgpu::TextureDimension::D2,
+			format: VELLO_SURFACE_FORMAT,
+			usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::TEXTURE_BINDING,
+			view_formats: &[],
+		});
+
+		let mut params_data = [0_u8; 16];
+		params_data[0..4].copy_from_slice(&source_scale.x.to_le_bytes());
+		params_data[4..8].copy_from_slice(&source_scale.y.to_le_bytes());
+		params_data[8..12].copy_from_slice(&source_offset.x.to_le_bytes());
+		params_data[12..16].copy_from_slice(&source_offset.y.to_le_bytes());
+		let uniform_buf = device.create_buffer(&wgpu::BufferDescriptor {
+			label: Some("pixel_preview_scale"),
+			size: 16,
+			usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+			mapped_at_creation: false,
+		});
+		queue.write_buffer(&uniform_buf, 0, &params_data);
+
+		let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+			label: Some("pixel_preview_blit"),
+			source: wgpu::ShaderSource::Wgsl(
+				r#"
+				@vertex fn vs(@builtin(vertex_index) vi: u32) -> @builtin(position) vec4<f32> {
+					var pos = array<vec2<f32>, 3>(vec2(-1., 3.), vec2(-1., -1.), vec2(3., -1.));
+					return vec4(pos[vi], 0., 1.);
+				}
+				@group(0) @binding(0) var src: texture_2d<f32>;
+				struct Params { scale: vec2<f32>, offset: vec2<f32> }
+				@group(0) @binding(1) var<uniform> params: Params;
+				@fragment fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+					return textureLoad(src, vec2<u32>(pos.xy * params.scale + params.offset), 0u);
+				}
+				"#
+				.into(),
+			),
+		});
+
+		let bind_group_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+			label: None,
+			entries: &[
+				wgpu::BindGroupLayoutEntry {
+					binding: 0,
+					visibility: wgpu::ShaderStages::FRAGMENT,
+					ty: wgpu::BindingType::Texture {
+						sample_type: wgpu::TextureSampleType::Float { filterable: false },
+						view_dimension: wgpu::TextureViewDimension::D2,
+						multisampled: false,
+					},
+					count: None,
+				},
+				wgpu::BindGroupLayoutEntry {
+					binding: 1,
+					visibility: wgpu::ShaderStages::FRAGMENT,
+					ty: wgpu::BindingType::Buffer {
+						ty: wgpu::BufferBindingType::Uniform,
+						has_dynamic_offset: false,
+						min_binding_size: None,
+					},
+					count: None,
+				},
+			],
+		});
+
+		let pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+			label: Some("pixel_preview_pipeline"),
+			layout: Some(&device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
+				label: None,
+				bind_group_layouts: &[&bind_group_layout],
+				push_constant_ranges: &[],
+			})),
+			vertex: wgpu::VertexState {
+				module: &shader,
+				entry_point: Some("vs"),
+				buffers: &[],
+				compilation_options: Default::default(),
+			},
+			fragment: Some(wgpu::FragmentState {
+				module: &shader,
+				entry_point: Some("fs"),
+				targets: &[Some(wgpu::ColorTargetState {
+					format: VELLO_SURFACE_FORMAT,
+					blend: None,
+					write_mask: wgpu::ColorWrites::ALL,
+				})],
+				compilation_options: Default::default(),
+			}),
+			primitive: wgpu::PrimitiveState::default(),
+			depth_stencil: None,
+			multisample: wgpu::MultisampleState::default(),
+			multiview: None,
+			cache: None,
+		});
+
+		let src_view = source_texture.create_view(&wgpu::TextureViewDescriptor::default());
+		let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+			label: None,
+			layout: &bind_group_layout,
+			entries: &[
+				wgpu::BindGroupEntry {
+					binding: 0,
+					resource: wgpu::BindingResource::TextureView(&src_view),
+				},
+				wgpu::BindGroupEntry {
+					binding: 1,
+					resource: uniform_buf.as_entire_binding(),
+				},
+			],
+		});
+
+		let out_view = output_texture.create_view(&wgpu::TextureViewDescriptor::default());
+		let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("pixel_preview_blit") });
+		{
+			let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+				label: None,
+				color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+					view: &out_view,
+					resolve_target: None,
+					depth_slice: None,
+					ops: wgpu::Operations {
+						load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT),
+						store: wgpu::StoreOp::Store,
+					},
+				})],
+				depth_stencil_attachment: None,
+				timestamp_writes: None,
+				occlusion_query_set: None,
+			});
+			pass.set_pipeline(&pipeline);
+			pass.set_bind_group(0, &bind_group, &[]);
+			pass.draw(0..3, 0..1);
+		}
+		queue.submit([encoder.finish()]);
+
+		Ok(output_texture)
+	}
+
 	#[cfg(target_family = "wasm")]
 	pub fn create_surface(&self, canvas: graphene_application_io::WasmSurfaceHandle) -> Result<SurfaceHandle<Surface>> {
 		let surface = self.context.instance.create_surface(wgpu::SurfaceTarget::Canvas(canvas.surface))?;

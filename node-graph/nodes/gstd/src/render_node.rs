@@ -1,7 +1,8 @@
 use core_types::table::Table;
-use core_types::transform::Footprint;
+use core_types::transform::{Footprint, Transform};
 use core_types::{CloneVarArgs, ExtractAll, ExtractVarArgs};
 use core_types::{Color, Context, Ctx, ExtractFootprint, OwnedContextImpl, WasmNotSend};
+use glam::UVec2;
 use graph_craft::document::value::RenderOutput;
 pub use graph_craft::document::value::RenderOutputType;
 pub use graph_craft::wasm_application_io::*;
@@ -16,6 +17,7 @@ use rendering::{RenderMetadata, SvgSegment};
 use std::collections::HashMap;
 use std::sync::Arc;
 use vector_types::GradientStops;
+use vector_types::vector::style::RenderMode;
 use wgpu_executor::RenderContext;
 
 // Re-export render_output_cache from render_cache module
@@ -185,8 +187,7 @@ async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, edito
 			// We now replace all transforms which are supposed to be infinite with a transform which covers the entire viewport
 			// See <https://xi.zulipchat.com/#narrow/channel/197075-vello/topic/Full.20screen.20color.2Fgradients/near/538435044> for more detail
 			let scaled_infinite_transform = vello::kurbo::Affine::scale_non_uniform(physical_resolution.x as f64, physical_resolution.y as f64);
-			let encoding = scene.encoding_mut();
-			for transform in encoding.transforms.iter_mut() {
+			for transform in scene.encoding_mut().transforms.iter_mut() {
 				if transform.matrix[0] == f32::INFINITY {
 					*transform = vello_encoding::Transform::from_kurbo(&scaled_infinite_transform);
 				}
@@ -197,6 +198,65 @@ async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, edito
 			} else {
 				None
 			};
+
+			// Pixel Preview: render at the 100%-scale in document space, then upscale with nearest-neighbor filtering.
+			// This shows the actual pixels of the exported image at viewport zoom levels above 100%.
+			if render_params.render_mode == RenderMode::PixelPreview {
+				let logical_zoom = footprint.decompose_scale().x;
+				if logical_zoom > 1. {
+					// Apply an inverse zoom to return scale to the identity, allowing content to render at 100% scale in document space.
+					let unzoomed_transform = glam::DAffine2::from_scale(glam::DVec2::splat(1. / logical_zoom)) * footprint.transform;
+
+					// The translation of unzoomed_transform is -pan_document_space (the pan in document units, negated).
+					// Snap the pan to integer document pixels so paths always sit at exact document-pixel-aligned positions in the render.
+					// Without this, a fractional pan shifts which edges are at sub-pixel boundaries in the 100%-scale render,
+					// causing the antialiasing pattern to change as you zoom or pan slightly, making the view visually unstable.
+					let pan_document_space = -unzoomed_transform.translation;
+					let snapped_pan_document_space = pan_document_space.floor();
+					// Remaining fractional document-pixel offset in [0, 1) per axis.
+					let fractional_pan = pan_document_space - snapped_pan_document_space;
+					let snapped_unzoomed = glam::DAffine2::from_cols(unzoomed_transform.matrix2.x_axis, unzoomed_transform.matrix2.y_axis, -snapped_pan_document_space);
+					let document_transform_vello = vello::kurbo::Affine::new((scale_transform * snapped_unzoomed).to_cols_array());
+
+					// Expand by ceil(scale) + 2 extra pixels:
+					// scale covers the fractional_pan offset (up to 1 document pixel at DPI scale, i.e. scale texture pixels) and 2 is a safety margin for rounding.
+					let extra = scale.ceil() as u32 + 2;
+					let document_resolution = UVec2::new(
+						(physical_resolution.x as f64 / logical_zoom).ceil() as u32 + extra,
+						(physical_resolution.y as f64 / logical_zoom).ceil() as u32 + extra,
+					);
+
+					let mut scene = vello::Scene::new();
+					scene.append(child, Some(document_transform_vello));
+
+					let scaled_infinite_transform = vello::kurbo::Affine::scale_non_uniform(document_resolution.x as f64, document_resolution.y as f64);
+					for transform in scene.encoding_mut().transforms.iter_mut() {
+						if transform.matrix[0] == f32::INFINITY {
+							*transform = vello_encoding::Transform::from_kurbo(&scaled_infinite_transform);
+						}
+					}
+
+					let document_texture = exec
+						.render_vello_scene_to_texture(&scene, document_resolution, context, background)
+						.await
+						.expect("Failed to render Vello scene for pixel preview");
+
+					// Use the exact zoom reciprocal as scale rather than the texture-size ratio, which would
+					// accumulate rounding error across the viewport width and misplace document pixel boundaries.
+					// The source offset accounts for the fractional document-pixel snap so that the integer document-pixel
+					// grid aligns correctly in the upscaled viewport output.
+					let source_scale = glam::Vec2::splat(1. / logical_zoom as f32);
+					let source_offset = (fractional_pan * scale).as_vec2();
+					let texture = exec
+						.upscale_texture_nearest_neighbor(&document_texture, physical_resolution, source_scale, source_offset)
+						.expect("Failed to upscale pixel preview texture");
+
+					return RenderOutput {
+						data: RenderOutputType::Texture(ImageTexture { texture }),
+						metadata,
+					};
+				}
+			}
 
 			let texture = exec
 				.render_vello_scene_to_texture(&scene, physical_resolution, context, background)
