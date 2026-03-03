@@ -433,10 +433,6 @@ impl TableRowLayout for Vector {
 						TextLabel::new(format_transform_matrix(&stroke.transform)).narrow(true).widget_instance(),
 					]);
 					table_rows.push(vec![
-						TextLabel::new("Stroke Non-Scaling").narrow(true).widget_instance(),
-						TextLabel::new((if stroke.non_scaling { "Yes" } else { "No" }).to_string()).narrow(true).widget_instance(),
-					]);
-					table_rows.push(vec![
 						TextLabel::new("Stroke Paint Order").narrow(true).widget_instance(),
 						TextLabel::new(stroke.paint_order.to_string()).narrow(true).widget_instance(),
 					]);

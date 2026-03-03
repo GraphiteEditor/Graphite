@@ -309,8 +309,6 @@ pub struct Stroke {
 	#[serde(default = "daffine2_identity")]
 	pub transform: DAffine2,
 	#[serde(default)]
-	pub non_scaling: bool,
-	#[serde(default)]
 	pub paint_order: PaintOrder,
 }
 
@@ -328,7 +326,6 @@ impl std::hash::Hash for Stroke {
 		self.join_miter_limit.to_bits().hash(state);
 		self.align.hash(state);
 		self.transform.to_cols_array().iter().for_each(|x| x.to_bits().hash(state));
-		self.non_scaling.hash(state);
 		self.paint_order.hash(state);
 	}
 }
@@ -345,7 +342,6 @@ impl Stroke {
 			join_miter_limit: 4.,
 			align: StrokeAlign::Center,
 			transform: DAffine2::IDENTITY,
-			non_scaling: false,
 			paint_order: PaintOrder::StrokeAbove,
 		}
 	}
@@ -364,7 +360,6 @@ impl Stroke {
 				time * self.transform.matrix2 + (1. - time) * other.transform.matrix2,
 				self.transform.translation * time + other.transform.translation * (1. - time),
 			),
-			non_scaling: if time < 0.5 { self.non_scaling } else { other.non_scaling },
 			paint_order: if time < 0.5 { self.paint_order } else { other.paint_order },
 		}
 	}
@@ -462,11 +457,6 @@ impl Stroke {
 		self
 	}
 
-	pub fn with_non_scaling(mut self, non_scaling: bool) -> Self {
-		self.non_scaling = non_scaling;
-		self
-	}
-
 	pub fn has_renderable_stroke(&self) -> bool {
 		self.weight > 0. && self.color.is_some_and(|color| color.a() != 0.)
 	}
@@ -485,7 +475,6 @@ impl Default for Stroke {
 			join_miter_limit: 4.,
 			align: StrokeAlign::Center,
 			transform: DAffine2::IDENTITY,
-			non_scaling: false,
 			paint_order: PaintOrder::default(),
 		}
 	}

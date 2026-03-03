@@ -180,6 +180,8 @@ pub struct RenderParams {
 	pub aligned_strokes: bool,
 	pub override_paint_order: bool,
 	pub artboard_background: Option<Color>,
+	/// Viewport zoom level (document-space scale). Used to compute constant viewport-pixel stroke widths in Outline mode.
+	pub viewport_zoom: f64,
 }
 
 impl Hash for RenderParams {
@@ -197,6 +199,7 @@ impl Hash for RenderParams {
 		self.aligned_strokes.hash(state);
 		self.override_paint_order.hash(state);
 		self.artboard_background.hash(state);
+		self.viewport_zoom.to_bits().hash(state);
 	}
 }
 
@@ -1109,7 +1112,7 @@ impl Render for Table<Vector> {
 			match render_params.render_mode {
 				RenderMode::Outline => {
 					let outline_stroke = kurbo::Stroke {
-						width: LAYER_OUTLINE_STROKE_WEIGHT,
+						width: LAYER_OUTLINE_STROKE_WEIGHT / if render_params.viewport_zoom > 0. { render_params.viewport_zoom } else { 1. },
 						miter_limit: 4.,
 						join: Join::Miter,
 						start_cap: Cap::Butt,
