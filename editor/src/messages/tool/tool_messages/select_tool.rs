@@ -1,5 +1,5 @@
 #![allow(clippy::too_many_arguments)]
-
+#[allow(unused_variables)]
 use super::tool_prelude::*;
 use crate::consts::*;
 use crate::messages::input_mapper::utility_types::input_mouse::ViewportPosition;
