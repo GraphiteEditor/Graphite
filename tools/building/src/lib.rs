@@ -1,6 +1,7 @@
-pub mod deps;
-
+use std::path::PathBuf;
 use std::process;
+
+pub mod deps;
 
 pub enum Target {
 	Web,
@@ -54,19 +55,22 @@ pub fn run(command: &str) -> Result<(), Error> {
 	run_from(command, None)
 }
 
-pub fn run_in_frontend_dir(command: &str) -> Result<(), Error> {
-	run_from(command, Some("frontend"))
+pub fn npm_run_in_frontend_dir(args: &str) -> Result<(), Error> {
+	let workspace_dir = std::path::PathBuf::from(env!("CARGO_WORKSPACE_DIR"));
+	let frontend_dir = workspace_dir.join("frontend");
+	let npm = if cfg!(target_os = "windows") { "npm.cmd" } else { "npm" };
+	run_from(&format!("{npm} run {args}"), Some(&frontend_dir))
 }
 
-pub fn run_from(command: &str, dir: Option<&str>) -> Result<(), Error> {
-	let workspace_dir = std::path::PathBuf::from(env!("CARGO_WORKSPACE_DIR"));
-	let dir = if let Some(dir) = dir { workspace_dir.join(dir) } else { workspace_dir };
+fn run_from(command: &str, dir: Option<&PathBuf>) -> Result<(), Error> {
 	let command = command.split_whitespace().collect::<Vec<_>>();
 	let mut cmd = process::Command::new(command[0]);
 	if command.len() > 1 {
 		cmd.args(&command[1..]);
 	}
-	cmd.current_dir(dir);
+	if let Some(dir) = dir {
+		cmd.current_dir(dir);
+	}
 	let exit_code = cmd
 		.spawn()
 		.map_err(|e| Error::Io(e, format!("Failed to spawn command '{}'", command.join(" "))))?

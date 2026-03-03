@@ -35,33 +35,33 @@ fn run_task(task: &Task) -> Result<(), Error> {
 	deps::check(task)?;
 
 	match (&task.target, &task.action, &task.profile) {
-		(Target::Web, Action::Run, Profile::Debug | Profile::Default) => run_in_frontend_dir("npm run start")?,
-		(Target::Web, Action::Run, Profile::Release) => run_in_frontend_dir("npm run production")?,
-		(Target::Web, Action::Run, Profile::Profiling) => run_in_frontend_dir("npm run profiling")?,
+		(Target::Web, Action::Run, Profile::Debug | Profile::Default) => npm_run_in_frontend_dir("start")?,
+		(Target::Web, Action::Run, Profile::Release) => npm_run_in_frontend_dir("production")?,
+		(Target::Web, Action::Run, Profile::Profiling) => npm_run_in_frontend_dir("profiling")?,
 
-		(Target::Web, Action::Build, Profile::Debug) => run_in_frontend_dir("npm run build-dev")?,
-		(Target::Web, Action::Build, Profile::Release | Profile::Default) => run_in_frontend_dir("npm run build")?,
-		(Target::Web, Action::Build, Profile::Profiling) => run_in_frontend_dir("npm run build-profiling")?,
+		(Target::Web, Action::Build, Profile::Debug) => npm_run_in_frontend_dir("build-dev")?,
+		(Target::Web, Action::Build, Profile::Release | Profile::Default) => npm_run_in_frontend_dir("build")?,
+		(Target::Web, Action::Build, Profile::Profiling) => npm_run_in_frontend_dir("build-profiling")?,
 
 		(Target::Desktop, Action::Run, Profile::Debug | Profile::Default) => {
-			run_in_frontend_dir("npm run build-native-dev")?;
+			npm_run_in_frontend_dir("build-native-dev")?;
 			run("cargo run -p third-party-licenses --features desktop")?;
 			run("cargo run -p graphite-desktop-bundle -- open")?;
 		}
 		(Target::Desktop, Action::Run, Profile::Release) => {
-			run_in_frontend_dir("npm run build-native")?;
+			npm_run_in_frontend_dir("build-native")?;
 			run("cargo run -p third-party-licenses --features desktop")?;
 			run("cargo run -r -p graphite-desktop-bundle -- open")?;
 		}
 		(Target::Desktop, Action::Run, Profile::Profiling) => todo!("profiling run for desktop"),
 
 		(Target::Desktop, Action::Build, Profile::Debug) => {
-			run_in_frontend_dir("npm run build-native-dev")?;
+			npm_run_in_frontend_dir("build-native-dev")?;
 			run("cargo run -p third-party-licenses --features desktop")?;
 			run("cargo run -p graphite-desktop-bundle")?;
 		}
 		(Target::Desktop, Action::Build, Profile::Release | Profile::Default) => {
-			run_in_frontend_dir("npm run build-native")?;
+			npm_run_in_frontend_dir("build-native")?;
 			run("cargo run -p third-party-licenses --features desktop")?;
 			run("cargo run -r -p graphite-desktop-bundle")?;
 		}
