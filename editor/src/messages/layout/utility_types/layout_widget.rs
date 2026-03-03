@@ -340,6 +340,7 @@ pub enum LayoutGroup {
 		description: String,
 		visible: bool,
 		pinned: bool,
+		expanded: bool,
 		id: u64,
 		layout: Layout,
 	},
@@ -439,6 +440,7 @@ impl Diffable for LayoutGroup {
 					description: current_description,
 					visible: current_visible,
 					pinned: current_pinned,
+					expanded: current_expanded,
 					id: current_id,
 					layout: current_layout,
 				},
@@ -447,6 +449,7 @@ impl Diffable for LayoutGroup {
 					description: new_description,
 					visible: new_visible,
 					pinned: new_pinned,
+					expanded: new_expanded,
 					id: new_id,
 					layout: new_layout,
 				},
@@ -458,6 +461,7 @@ impl Diffable for LayoutGroup {
 					|| *current_description != new_description
 					|| *current_visible != new_visible
 					|| *current_pinned != new_pinned
+					|| *current_expanded != new_expanded
 					|| *current_id != new_id
 				{
 					// Update self to reflect new changes
@@ -465,6 +469,7 @@ impl Diffable for LayoutGroup {
 					current_description.clone_from(&new_description);
 					*current_visible = new_visible;
 					*current_pinned = new_pinned;
+					*current_expanded = new_expanded;
 					*current_id = new_id;
 					current_layout.clone_from(&new_layout);
 
@@ -474,6 +479,7 @@ impl Diffable for LayoutGroup {
 						description: new_description,
 						visible: new_visible,
 						pinned: new_pinned,
+						expanded: new_expanded,
 						id: new_id,
 						layout: new_layout,
 					}

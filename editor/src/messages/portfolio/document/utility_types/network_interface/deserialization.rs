@@ -147,6 +147,7 @@ impl From<DocumentNodePersistentMetadataStringReference> for DocumentNodePersist
 			output_names: old.output_names,
 			locked: old.locked,
 			pinned: old.pinned,
+			collapsed: false,
 			node_type_metadata: old.node_type_metadata,
 			network_metadata: old.network_metadata,
 		}
