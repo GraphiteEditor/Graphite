@@ -1345,34 +1345,44 @@ async fn decimate(
 		(point - line_start).perp_dot(line_vector).abs() / line_length_squared.sqrt()
 	}
 
-	fn rdp_simplify(points: &[DVec2], epsilon: f64) -> Vec<DVec2> {
+	fn rdp_simplify(points: &[DVec2], tolerance: f64) -> Vec<DVec2> {
 		if points.len() < 3 {
 			return points.to_vec();
 		}
 
-		let start = points[0];
-		let end = points[points.len() - 1];
+		let mut keep = vec![false; points.len()];
+		keep[0] = true;
+		keep[points.len() - 1] = true;
 
-		let mut max_distance = 0.;
-		let mut max_index = 0;
+		let mut stack = vec![(0, points.len() - 1)];
 
-		for (i, &point) in points.iter().enumerate().skip(1).take(points.len() - 2) {
-			let distance = perpendicular_distance(point, start, end);
-			if distance > max_distance {
-				max_distance = distance;
-				max_index = i;
+		while let Some((start_index, end_index)) = stack.pop() {
+			let start = points[start_index];
+			let end = points[end_index];
+
+			let mut max_distance = 0.;
+			let mut max_index = 0;
+
+			for (i, &point) in points.iter().enumerate().take(end_index).skip(start_index + 1) {
+				let distance = perpendicular_distance(point, start, end);
+				if distance > max_distance {
+					max_distance = distance;
+					max_index = i;
+				}
+			}
+
+			if max_distance > tolerance {
+				keep[max_index] = true;
+				if max_index - start_index > 1 {
+					stack.push((start_index, max_index));
+				}
+				if end_index - max_index > 1 {
+					stack.push((max_index, end_index));
+				}
 			}
 		}
 
-		if max_distance > epsilon {
-			let mut left = rdp_simplify(&points[..=max_index], epsilon);
-			let right = rdp_simplify(&points[max_index..], epsilon);
-			left.pop();
-			left.extend(right);
-			left
-		} else {
-			vec![start, end]
-		}
+		points.iter().enumerate().filter(|(i, _)| keep[*i]).map(|(_, p)| *p).collect()
 	}
 
 	content
@@ -1410,6 +1420,11 @@ async fn decimate(
 							points.push(DVec2::new(sampled.x, sampled.y));
 						}
 					}
+				}
+
+				// For closed paths, the last segment ends exactly at the first point, leaving a duplicate, so we remove it.
+				if is_closed {
+					points.pop();
 				}
 
 				// Apply RDP simplification
