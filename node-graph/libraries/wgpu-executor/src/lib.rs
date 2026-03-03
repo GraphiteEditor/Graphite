@@ -156,9 +156,10 @@ impl WgpuExecutor {
 
 	/// Upscale `source_texture` to `target_size` using nearest-neighbor filtering.
 	/// Used by Pixel Preview render mode to display the 100%-scale render at higher viewport zoom levels.
-	/// `source_scale` maps output fragment coordinates to source texel coordinates (e.g. `1/logical_zoom`).
+	/// `source_transform` is a 2x2 matrix mapping output fragment coordinates to source texel coordinates
+	/// (e.g. `Scale(1/logical_zoom)` without tilt, or `Rotate(-tilt) * Scale(1/logical_zoom)` with tilt).
 	/// `source_offset` is the offset in source texels to start sampling from (compensates for sub-pixel snapping).
-	pub fn upscale_texture_nearest_neighbor(&self, source_texture: &wgpu::Texture, target_size: UVec2, source_scale: glam::Vec2, source_offset: glam::Vec2) -> Result<wgpu::Texture> {
+	pub fn upscale_texture_nearest_neighbor(&self, source_texture: &wgpu::Texture, target_size: UVec2, source_transform: glam::Mat2, source_offset: glam::Vec2) -> Result<wgpu::Texture> {
 		let device = &self.context.device;
 		let queue = &self.context.queue;
 
@@ -177,14 +178,17 @@ impl WgpuExecutor {
 			view_formats: &[],
 		});
 
-		let mut params_data = [0_u8; 16];
-		params_data[0..4].copy_from_slice(&source_scale.x.to_le_bytes());
-		params_data[4..8].copy_from_slice(&source_scale.y.to_le_bytes());
-		params_data[8..12].copy_from_slice(&source_offset.x.to_le_bytes());
-		params_data[12..16].copy_from_slice(&source_offset.y.to_le_bytes());
+		// Layout: mat2x2<f32> (4 floats = 16 bytes) + vec2<f32> (2 floats = 8 bytes) = 24 bytes
+		let mut params_data = [0_u8; 24];
+		params_data[0..4].copy_from_slice(&source_transform.x_axis.x.to_le_bytes());
+		params_data[4..8].copy_from_slice(&source_transform.x_axis.y.to_le_bytes());
+		params_data[8..12].copy_from_slice(&source_transform.y_axis.x.to_le_bytes());
+		params_data[12..16].copy_from_slice(&source_transform.y_axis.y.to_le_bytes());
+		params_data[16..20].copy_from_slice(&source_offset.x.to_le_bytes());
+		params_data[20..24].copy_from_slice(&source_offset.y.to_le_bytes());
 		let uniform_buf = device.create_buffer(&wgpu::BufferDescriptor {
-			label: Some("pixel_preview_scale"),
-			size: 16,
+			label: Some("pixel_preview_params"),
+			size: 24,
 			usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
 			mapped_at_creation: false,
 		});
@@ -199,10 +203,11 @@ impl WgpuExecutor {
 					return vec4(pos[vi], 0., 1.);
 				}
 				@group(0) @binding(0) var src: texture_2d<f32>;
-				struct Params { scale: vec2<f32>, offset: vec2<f32> }
+				struct Params { transform: mat2x2<f32>, offset: vec2<f32> }
 				@group(0) @binding(1) var<uniform> params: Params;
 				@fragment fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
-					return textureLoad(src, vec2<u32>(pos.xy * params.scale + params.offset), 0u);
+					let src_coord = params.transform * pos.xy + params.offset;
+					return textureLoad(src, vec2<u32>(max(src_coord, vec2(0.0))), 0u);
 				}
 				"#
 				.into(),

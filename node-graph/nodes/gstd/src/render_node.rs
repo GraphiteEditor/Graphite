@@ -201,34 +201,45 @@ async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, edito
 
 			// Pixel Preview: render at the 100%-scale in document space, then upscale with nearest-neighbor filtering.
 			// This shows the actual pixels of the exported image at viewport zoom levels above 100%.
+			// When the viewport is tilted, the upscale applies the rotation so individual document pixels
+			// appear as tilted squares, while the document-space render itself stays pixel-aligned (no rotation).
 			if render_params.render_mode == RenderMode::PixelPreview {
 				let logical_zoom = footprint.decompose_scale().x;
 				if logical_zoom > 1. {
-					// Apply an inverse zoom to return scale to the identity, allowing content to render at 100% scale in document space.
-					let unzoomed_transform = glam::DAffine2::from_scale(glam::DVec2::splat(1. / logical_zoom)) * footprint.transform;
+					let inv = footprint.transform.inverse();
 
-					// The translation of unzoomed_transform is -pan_document_space (the pan in document units, negated).
-					// Snap the pan to integer document pixels so paths always sit at exact document-pixel-aligned positions in the render.
-					// Without this, a fractional pan shifts which edges are at sub-pixel boundaries in the 100%-scale render,
-					// causing the antialiasing pattern to change as you zoom or pan slightly, making the view visually unstable.
-					let pan_document_space = -unzoomed_transform.translation;
-					let snapped_pan_document_space = pan_document_space.floor();
-					// Remaining fractional document-pixel offset in [0, 1) per axis.
-					let fractional_pan = pan_document_space - snapped_pan_document_space;
-					let snapped_unzoomed = glam::DAffine2::from_cols(unzoomed_transform.matrix2.x_axis, unzoomed_transform.matrix2.y_axis, -snapped_pan_document_space);
-					let document_transform_vello = vello::kurbo::Affine::new((scale_transform * snapped_unzoomed).to_cols_array());
+					// Compute the viewport's axis-aligned bounding box in document space.
+					// When tilted, the visible area is a rotated rectangle in document space;
+					// the AABB of that rectangle determines the document render region.
+					let corners = [
+						glam::DVec2::ZERO,
+						glam::DVec2::new(logical_resolution.x, 0.),
+						glam::DVec2::new(logical_resolution.x, logical_resolution.y),
+						glam::DVec2::new(0., logical_resolution.y),
+					];
+					let doc_corners = corners.map(|c| inv.transform_point2(c));
+					let doc_min = doc_corners.iter().copied().reduce(|a, b| a.min(b)).unwrap();
+					let doc_max = doc_corners.iter().copied().reduce(|a, b| a.max(b)).unwrap();
 
-					// Expand by ceil(scale) + 2 extra pixels:
-					// scale covers the fractional_pan offset (up to 1 document pixel at DPI scale, i.e. scale texture pixels) and 2 is a safety margin for rounding.
+					// Snap the document render origin to integer document pixels for stable antialiasing.
+					// This ensures paths always sit at exact document-pixel-aligned positions in the 100%-scale render,
+					// so the antialiasing pattern doesn't flicker as you zoom or pan slightly.
+					let snapped_doc_origin = doc_min.floor();
+					let doc_size = doc_max - snapped_doc_origin;
+
+					// Document render transform: no zoom, no rotation — only translation at DPI scale.
+					// This renders the document pixel-aligned at 100% scale.
+					let document_render_transform = glam::DAffine2::from_translation(-snapped_doc_origin);
+					let document_transform_vello = vello::kurbo::Affine::new((scale_transform * document_render_transform).to_cols_array());
+
 					let extra = scale.ceil() as u32 + 2;
-					let document_resolution = UVec2::new(
-						(physical_resolution.x as f64 / logical_zoom).ceil() as u32 + extra,
-						(physical_resolution.y as f64 / logical_zoom).ceil() as u32 + extra,
-					);
+					let document_resolution = UVec2::new((doc_size.x * scale).ceil() as u32 + extra, (doc_size.y * scale).ceil() as u32 + extra);
 
 					let mut scene = vello::Scene::new();
 					scene.append(child, Some(document_transform_vello));
 
+					// Same infinite-transform fix as in the normal render path (see comment there), but sized to
+					// the document-resolution render target instead of the full viewport resolution.
 					let scaled_infinite_transform = vello::kurbo::Affine::scale_non_uniform(document_resolution.x as f64, document_resolution.y as f64);
 					for transform in scene.encoding_mut().transforms.iter_mut() {
 						if transform.matrix[0] == f32::INFINITY {
@@ -241,14 +252,14 @@ async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, edito
 						.await
 						.expect("Failed to render Vello scene for pixel preview");
 
-					// Use the exact zoom reciprocal as scale rather than the texture-size ratio, which would
-					// accumulate rounding error across the viewport width and misplace document pixel boundaries.
-					// The source offset accounts for the fractional document-pixel snap so that the integer document-pixel
-					// grid aligns correctly in the upscaled viewport output.
-					let source_scale = glam::Vec2::splat(1. / logical_zoom as f32);
-					let source_offset = (fractional_pan * scale).as_vec2();
+					// Map output viewport pixels to document texture coordinates.
+					// source_transform = footprint.inverse().matrix2 (encodes rotation and 1/zoom).
+					// source_offset = DPI * (viewport_origin_in_doc_space - snapped_doc_origin).
+					// For each output pixel p: tex_coord = source_transform * p + source_offset.
+					let source_transform = glam::Mat2::from_cols(inv.matrix2.x_axis.as_vec2(), inv.matrix2.y_axis.as_vec2());
+					let source_offset = ((inv.translation - snapped_doc_origin) * scale).as_vec2();
 					let texture = exec
-						.upscale_texture_nearest_neighbor(&document_texture, physical_resolution, source_scale, source_offset)
+						.upscale_texture_nearest_neighbor(&document_texture, physical_resolution, source_transform, source_offset)
 						.expect("Failed to upscale pixel preview texture");
 
 					return RenderOutput {

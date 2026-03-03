@@ -374,6 +374,14 @@ pub async fn render_output_cache<'a: 'n>(
 		return data.eval(context.into_context()).await;
 	}
 
+	// Fall back to direct render when viewport is tilted (rotated), since tile-based caching
+	// assumes axis-aligned tiles which can't correctly represent rotated viewport content.
+	let m = footprint.transform.matrix2;
+	if m.x_axis.y.abs() > 1e-10 || m.y_axis.x.abs() > 1e-10 {
+		let context = OwnedContextImpl::empty().with_footprint(*footprint).with_vararg(Box::new(render_params.clone()));
+		return data.eval(context.into_context()).await;
+	}
+
 	let logical_scale = footprint.decompose_scale().x;
 	let device_scale = render_params.scale;
 	let physical_scale = logical_scale * device_scale;
