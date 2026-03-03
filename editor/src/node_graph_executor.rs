@@ -187,9 +187,11 @@ impl NodeGraphExecutor {
 		self.submit_current_node_graph_evaluation(document, document_id, viewport_resolution, viewport_scale, time, pointer)
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	#[cfg(not(target_family = "wasm"))]
 	pub(crate) fn submit_eyedropper_preview(
 		&mut self,
+		document: &DocumentMessageHandler,
 		document_id: DocumentId,
 		transform: DAffine2,
 		pointer: DVec2,
@@ -208,7 +210,7 @@ impl NodeGraphExecutor {
 			time,
 			pointer,
 			export_format: graphene_std::application_io::ExportFormat::Raster,
-			render_mode: graphene_std::vector::style::RenderMode::Normal,
+			render_mode: document.render_mode,
 			hide_artboards: false,
 			for_export: false,
 			for_eyedropper: true,
