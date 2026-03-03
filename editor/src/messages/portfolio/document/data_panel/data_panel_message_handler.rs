@@ -166,11 +166,12 @@ fn generate_layout(introspected_data: &Arc<dyn std::any::Any + Send + Sync + 'st
 		Table<Raster<GPU>>,
 		Table<Color>,
 		Table<GradientStops>,
-		Vec<String>,
+		GradientStops,
 		f64,
 		u32,
 		u64,
 		bool,
+		Vec<String>,
 		String,
 		Option<f64>,
 		DVec2,
@@ -432,10 +433,6 @@ impl TableRowLayout for Vector {
 						TextLabel::new(format_transform_matrix(&stroke.transform)).narrow(true).widget_instance(),
 					]);
 					table_rows.push(vec![
-						TextLabel::new("Stroke Non-Scaling").narrow(true).widget_instance(),
-						TextLabel::new((if stroke.non_scaling { "Yes" } else { "No" }).to_string()).narrow(true).widget_instance(),
-					]);
-					table_rows.push(vec![
 						TextLabel::new("Stroke Paint Order").narrow(true).widget_instance(),
 						TextLabel::new(stroke.paint_order.to_string()).narrow(true).widget_instance(),
 					]);
@@ -564,7 +561,7 @@ impl TableRowLayout for GradientStops {
 		"Gradient"
 	}
 	fn identifier(&self) -> String {
-		format!("Gradient ({} stops)", self.0.len())
+		format!("Gradient ({} stops)", self.len())
 	}
 	fn element_widget(&self, _index: usize) -> WidgetInstance {
 		ColorInput::new(FillChoice::Gradient(self.clone()))

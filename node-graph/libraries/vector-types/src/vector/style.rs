@@ -2,6 +2,7 @@
 
 pub use crate::gradient::*;
 use core_types::Color;
+use core_types::color::Alpha;
 use core_types::table::Table;
 use dyn_any::DynAny;
 use glam::DAffine2;
@@ -50,7 +51,13 @@ impl Fill {
 			Self::None => Color::BLACK,
 			Self::Solid(color) => *color,
 			// TODO: Should correctly sample the gradient the equation here: https://svgwg.org/svg2-draft/pservers.html#Gradients
-			Self::Gradient(Gradient { stops, .. }) => stops.0[0].1,
+			Self::Gradient(Gradient { stops, .. }) => {
+				if stops.is_empty() {
+					Color::BLACK
+				} else {
+					stops.color[0]
+				}
+			}
 		}
 	}
 
@@ -63,13 +70,13 @@ impl Fill {
 			(Self::Solid(a), Self::Solid(b)) => Self::Solid(a.lerp(b, time as f32)),
 			(Self::Solid(a), Self::Gradient(b)) => {
 				let mut solid_to_gradient = b.clone();
-				solid_to_gradient.stops.0.iter_mut().for_each(|(_, color)| *color = *a);
+				solid_to_gradient.stops.color.iter_mut().for_each(|color| *color = *a);
 				let a = &solid_to_gradient;
 				Self::Gradient(a.lerp(b, time))
 			}
 			(Self::Gradient(a), Self::Solid(b)) => {
 				let mut gradient_to_solid = a.clone();
-				gradient_to_solid.stops.0.iter_mut().for_each(|(_, color)| *color = *b);
+				gradient_to_solid.stops.color.iter_mut().for_each(|color| *color = *b);
 				let b = &gradient_to_solid;
 				Self::Gradient(a.lerp(b, time))
 			}
@@ -98,7 +105,7 @@ impl Fill {
 	pub fn is_opaque(&self) -> bool {
 		match self {
 			Fill::Solid(color) => color.is_opaque(),
-			Fill::Gradient(gradient) => gradient.stops.iter().all(|(_, color)| color.is_opaque()),
+			Fill::Gradient(gradient) => gradient.stops.color.iter().all(|color| color.is_opaque()),
 			Fill::None => true,
 		}
 	}
@@ -123,7 +130,9 @@ impl From<Option<Color>> for Fill {
 
 impl From<Table<Color>> for Fill {
 	fn from(color: Table<Color>) -> Fill {
-		Fill::solid_or_none(color.into())
+		let alpha = color.get(0).map(|c| c.alpha_blending.opacity).unwrap_or(1.);
+		let color: Option<Color> = color.into();
+		Fill::solid_or_none(color.map(|c| c.with_alpha(c.alpha() * alpha)))
 	}
 }
 
@@ -300,8 +309,6 @@ pub struct Stroke {
 	#[serde(default = "daffine2_identity")]
 	pub transform: DAffine2,
 	#[serde(default)]
-	pub non_scaling: bool,
-	#[serde(default)]
 	pub paint_order: PaintOrder,
 }
 
@@ -319,7 +326,6 @@ impl std::hash::Hash for Stroke {
 		self.join_miter_limit.to_bits().hash(state);
 		self.align.hash(state);
 		self.transform.to_cols_array().iter().for_each(|x| x.to_bits().hash(state));
-		self.non_scaling.hash(state);
 		self.paint_order.hash(state);
 	}
 }
@@ -336,7 +342,6 @@ impl Stroke {
 			join_miter_limit: 4.,
 			align: StrokeAlign::Center,
 			transform: DAffine2::IDENTITY,
-			non_scaling: false,
 			paint_order: PaintOrder::StrokeAbove,
 		}
 	}
@@ -355,7 +360,6 @@ impl Stroke {
 				time * self.transform.matrix2 + (1. - time) * other.transform.matrix2,
 				self.transform.translation * time + other.transform.translation * (1. - time),
 			),
-			non_scaling: if time < 0.5 { self.non_scaling } else { other.non_scaling },
 			paint_order: if time < 0.5 { self.paint_order } else { other.paint_order },
 		}
 	}
@@ -453,11 +457,6 @@ impl Stroke {
 		self
 	}
 
-	pub fn with_non_scaling(mut self, non_scaling: bool) -> Self {
-		self.non_scaling = non_scaling;
-		self
-	}
-
 	pub fn has_renderable_stroke(&self) -> bool {
 		self.weight > 0. && self.color.is_some_and(|color| color.a() != 0.)
 	}
@@ -476,7 +475,6 @@ impl Default for Stroke {
 			join_miter_limit: 4.,
 			align: StrokeAlign::Center,
 			transform: DAffine2::IDENTITY,
-			non_scaling: false,
 			paint_order: PaintOrder::default(),
 		}
 	}
@@ -659,6 +657,6 @@ pub enum RenderMode {
 	Outline,
 	// /// Render with normal coloration at the document resolution, showing the pixels when the current viewport resolution is higher
 	// PixelPreview,
-	// /// Render a preview of how the object would be exported as an SVG.
-	// SvgPreview,
+	/// Render a preview of how the object would be exported as an SVG.
+	SvgPreview,
 }

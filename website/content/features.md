@@ -138,33 +138,37 @@ Marrying vector and raster under one roof enables both art forms to complement e
 			<img class="atlas" style="--atlas-index: 66" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
 			<span>All-around performance optimizations</span>
 		</div>
-		<div class="feature-icon complete" title="Development Complete">
-			<img class="atlas" style="--atlas-index: 7" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
-			<span>Desktop app (Windows, Mac, Linux)</span>
-		</div>
 		<div class="feature-icon ongoing" title="Development Ongoing">
 			<img class="atlas" style="--atlas-index: 73" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
 			<span>Blend tool to morph between shapes</span>
 		</div>
-		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 51" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
-			<span>Context menus throughout the editor</span>
-		</div>
-		<div class="feature-icon">
-			<img class="atlas" style="--atlas-index: 64" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
-			<span>Node version management</span>
-		</div>
-		<div class="feature-icon">
+		<div class="feature-icon ongoing" title="Development Ongoing">
 			<img class="atlas" style="--atlas-index: 17" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
 			<span>Stable document format</span>
+		</div>
+		<div class="feature-icon ongoing" title="Development Ongoing">
+			<img class="atlas" style="--atlas-index: 7" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
+			<span>Desktop app <a href="/#desktop-first-and-web-ready">release candidates</a></span>
 		</div>
 		<!-- Beta 1 -->
 		<div class="feature-icon heading" data-year="Early 2026">
 			<h3>— Beta 1 —</h3>
 		</div>
 		<div class="feature-icon">
+			<img class="atlas" style="--atlas-index: 7" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
+			<span>Desktop app release and 1.0 launch</span>
+		</div>
+		<div class="feature-icon">
+			<img class="atlas" style="--atlas-index: 51" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
+			<span>Context menus throughout the editor</span>
+		</div>
+		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 40" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
 			<span>Simplified main properties panel</span>
+		</div>
+		<div class="feature-icon">
+			<img class="atlas" style="--atlas-index: 64" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
+			<span>Node version management</span>
 		</div>
 		<div class="feature-icon">
 			<img class="atlas" style="--atlas-index: 53" src="https://static.graphite.art/icons/icon-atlas-roadmap__5.png" alt="" />
@@ -303,7 +307,7 @@ Marrying vector and raster under one roof enables both art forms to complement e
 			<span>Raw photo processing</span>
 		</div>
 		<!-- LTS Releases -->
-		<div class="feature-icon heading">
+		<div class="feature-icon heading" data-year="Future">
 			<h3>— LTS Releases —</h3>
 		</div>
 		<div class="feature-icon">

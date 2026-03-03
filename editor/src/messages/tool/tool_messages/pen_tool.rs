@@ -1306,8 +1306,8 @@ impl PenToolData {
 		let parent = document.new_layer_bounding_artboard(input, viewport);
 		let layer = graph_modification_utils::new_custom(NodeId::new(), nodes, parent, responses);
 		self.current_layer = Some(layer);
-		tool_options.fill.apply_fill(layer, responses);
 		tool_options.stroke.apply_stroke(tool_options.line_weight, layer, responses);
+		tool_options.fill.apply_fill(layer, responses);
 		self.prior_segment = None;
 		self.prior_segments = None;
 		responses.add(NodeGraphMessage::SelectedNodesSet { nodes: vec![layer.to_node()] });
@@ -1834,12 +1834,8 @@ impl Fsm for PenToolFsmState {
 								})
 								.collect();
 
-							let mut fill_color = graphene_std::Color::from_rgb_str(COLOR_OVERLAY_BLUE.strip_prefix('#').unwrap())
-								.unwrap()
-								.with_alpha(0.05)
-								.to_rgba_hex_srgb();
-							fill_color.insert(0, '#');
-							overlay_context.fill_path(subpaths.iter(), transform, fill_color.as_str());
+							let fill_color = COLOR_OVERLAY_BLUE_05;
+							overlay_context.fill_path(subpaths.iter(), transform, fill_color);
 						}
 					}
 				}

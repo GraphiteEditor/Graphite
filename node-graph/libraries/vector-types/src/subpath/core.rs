@@ -350,6 +350,7 @@ impl<PointId: Identifier> Subpath<PointId> {
 		let mut prev_in_handle = None;
 		let theta_end = turns * std::f64::consts::TAU + start_angle;
 
+		let a = if spiral_type == SpiralType::Logarithmic { a.max(1e-10) } else { a };
 		let b = calculate_growth_factor(a, turns, outer_radius, spiral_type);
 
 		let mut theta = start_angle;

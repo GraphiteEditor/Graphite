@@ -1,25 +1,21 @@
 use graph_craft::wasm_application_io::WasmApplicationIo;
 use graphite_editor::application::{Editor, Environment, Host, Platform};
 use graphite_editor::messages::prelude::{FrontendMessage, Message};
+use message_dispatcher::DesktopWrapperMessageDispatcher;
+use messages::{DesktopFrontendMessage, DesktopWrapperMessage};
 
 pub use graphite_editor::consts::FILE_EXTENSION;
-
 pub use wgpu_executor::TargetTexture;
 pub use wgpu_executor::WgpuContext;
 pub use wgpu_executor::WgpuContextBuilder;
 pub use wgpu_executor::WgpuExecutor;
 pub use wgpu_executor::WgpuFeatures;
 
-pub mod messages;
-use messages::{DesktopFrontendMessage, DesktopWrapperMessage};
-
-mod message_dispatcher;
-use message_dispatcher::DesktopWrapperMessageDispatcher;
-
 mod handle_desktop_wrapper_message;
 mod intercept_editor_message;
 mod intercept_frontend_message;
-
+mod message_dispatcher;
+pub mod messages;
 pub(crate) mod utils;
 
 pub struct DesktopWrapper {

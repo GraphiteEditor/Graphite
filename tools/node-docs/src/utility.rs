@@ -21,7 +21,8 @@ pub fn category_description(category: &str) -> &str {
 			"
 		),
 		"General" => "Nodes in this category deal with general data handling, such as merging and flattening graphical elements.",
-		"Instancing" => "Nodes in this category enable the duplication, arrangement, and looped generation of graphical elements.",
+		"Context" => "Nodes in this category read data from the evaluation context supplied by downstream nodes, such as the current loop iteration index.",
+		"Repeat" => "Nodes in this category enable the duplication, arrangement, and looped generation of graphical elements.",
 		"Math: Arithmetic" => "Nodes in this category perform common arithmetic operations on numerical values (and where applicable, `vec2` values).",
 		"Math: Logic" => "Nodes in this category perform boolean logic operations such as comparisons, conditionals, logic gates, and switching.",
 		"Math: Numeric" => "Nodes in this category perform discontinuous numeric operations such as rounding, clamping, mapping, and randomization.",
@@ -41,7 +42,11 @@ pub fn category_description(category: &str) -> &str {
 		"Vector: Style" => "Nodes in this category apply fill and stroke styles to alter the appearance of vector graphics.",
 		"Vector" => "Nodes in this category deal with fundamental vector graphics data handling and operations.",
 		"Web Request" => "Nodes in this category facilitate fetching and handling resources from HTTP endpoints and sending webhook requests to external services.",
-		_ => panic!("Category '{category}' is missing a description"),
+		_ => {
+			eprintln!("Category '{category}' is missing a description");
+
+			"*Category description coming soon.*"
+		}
 	}.trim()
 }
 

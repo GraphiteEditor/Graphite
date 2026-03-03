@@ -1,9 +1,8 @@
-use crate::renderer::{RenderParams, black_or_white_for_best_contrast, format_transform_matrix};
-use core_types::consts::LAYER_OUTLINE_STROKE_WEIGHT;
+use crate::renderer::{RenderParams, format_transform_matrix};
 use core_types::uuid::generate_uuid;
 use glam::DAffine2;
 use graphic_types::vector_types::gradient::{Gradient, GradientType};
-use graphic_types::vector_types::vector::style::{Fill, PaintOrder, PathStyle, RenderMode, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
+use graphic_types::vector_types::vector::style::{Fill, PaintOrder, PathStyle, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use std::fmt::Write;
 
 pub trait RenderExt {
@@ -14,17 +13,20 @@ pub trait RenderExt {
 impl RenderExt for Gradient {
 	type Output = u64;
 
-	// /// Adds the gradient def through mutating the first argument, returning the gradient ID.
+	/// Adds the gradient def through mutating the first argument, returning the gradient ID.
 	fn render(&self, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: DAffine2, transformed_bounds: DAffine2, _render_params: &RenderParams) -> Self::Output {
 		let mut stop = String::new();
-		for (position, color) in self.stops.0.iter() {
+		for (position, color, original_midpoint) in self.stops.interpolated_samples() {
 			stop.push_str("<stop");
-			if *position != 0. {
+			if position != 0. {
 				let _ = write!(stop, r#" offset="{}""#, (position * 1_000_000.).round() / 1_000_000.);
 			}
 			let _ = write!(stop, r##" stop-color="#{}""##, color.to_rgb_hex_srgb_from_gamma());
 			if color.a() < 1. {
 				let _ = write!(stop, r#" stop-opacity="{}""#, (color.a() * 1000.).round() / 1000.);
+			}
+			if let Some(midpoint) = original_midpoint {
+				let _ = write!(stop, r#" graphite:midpoint="{}""#, (midpoint * 1000.).round() / 1000.);
 			}
 			stop.push_str(" />")
 		}
@@ -146,10 +148,6 @@ impl RenderExt for Stroke {
 		if let Some(stroke_join_miter_limit) = stroke_join_miter_limit {
 			let _ = write!(&mut attributes, r#" stroke-miterlimit="{stroke_join_miter_limit}""#);
 		}
-		// Add vector-effect attribute to make strokes non-scaling
-		if self.non_scaling {
-			let _ = write!(&mut attributes, r#" vector-effect="non-scaling-stroke""#);
-		}
 		if paint_order.is_some() {
 			let _ = write!(&mut attributes, r#" style="paint-order: stroke;" "#);
 		}
@@ -163,28 +161,12 @@ impl RenderExt for PathStyle {
 	/// Renders the shape's fill and stroke attributes as a string with them concatenated together.
 	#[allow(clippy::too_many_arguments)]
 	fn render(&self, svg_defs: &mut String, element_transform: DAffine2, stroke_transform: DAffine2, bounds: DAffine2, transformed_bounds: DAffine2, render_params: &RenderParams) -> String {
-		let render_mode = render_params.render_mode;
-		match render_mode {
-			RenderMode::Outline => {
-				let fill_attribute = Fill::None.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds, render_params);
-
-				let outline_color = black_or_white_for_best_contrast(render_params.artboard_background);
-				let mut outline_stroke = Stroke::new(Some(outline_color), LAYER_OUTLINE_STROKE_WEIGHT);
-				// Outline strokes should be non-scaling by default
-				outline_stroke.non_scaling = true;
-
-				let stroke_attribute = outline_stroke.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds, render_params);
-				format!("{fill_attribute}{stroke_attribute}")
-			}
-			_ => {
-				let fill_attribute = self.fill.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds, render_params);
-				let stroke_attribute = self
-					.stroke
-					.as_ref()
-					.map(|stroke| stroke.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds, render_params))
-					.unwrap_or_default();
-				format!("{fill_attribute}{stroke_attribute}")
-			}
-		}
+		let fill_attribute = self.fill.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds, render_params);
+		let stroke_attribute = self
+			.stroke
+			.as_ref()
+			.map(|stroke| stroke.render(svg_defs, element_transform, stroke_transform, bounds, transformed_bounds, render_params))
+			.unwrap_or_default();
+		format!("{fill_attribute}{stroke_attribute}")
 	}
 }

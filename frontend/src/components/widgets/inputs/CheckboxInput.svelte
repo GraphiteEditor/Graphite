@@ -99,7 +99,8 @@
 			}
 
 			// Hovered while unchecked
-			&:hover .checkbox-box {
+			&:hover .checkbox-box,
+			&.label-is-hovered .checkbox-box {
 				background: var(--color-6-lowergray);
 			}
 
@@ -120,7 +121,8 @@
 			}
 
 			// Hovered while checked
-			&:hover .checkbox-box {
+			&:hover .checkbox-box,
+			&.label-is-hovered .checkbox-box {
 				background: var(--color-f-white);
 			}
 

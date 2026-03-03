@@ -19,9 +19,10 @@ Graphite is built with Rust and web technologies, which means you will need to i
 Next, install the dependencies required for development builds:
 
 ```sh
-cargo install cargo-watch
-cargo install wasm-pack
 cargo install -f wasm-bindgen-cli@0.2.100
+cargo install wasm-pack
+cargo install cargo-watch
+cargo install cargo-about
 ```
 
 Regarding the last one: you'll likely get faster build times if you manually install that specific version of `wasm-bindgen-cli`. It is supposed to be installed automatically but a version mismatch causes it to reinstall every single recompilation. It may need to be manually updated periodically to match the version of the `wasm-bindgen` dependency in [`Cargo.toml`](https://github.com/GraphiteEditor/Graphite/blob/master/Cargo.toml).
@@ -66,13 +67,7 @@ npm run production
 <details>
 <summary>Production build instructions: click here</summary>
 
-You'll rarely need to compile your own production builds because our CI/CD system takes care of deployments. However, you can compile a production build with full optimizations by first installing the additional `cargo-about` dev dependency:
-
-```sh
-cargo install cargo-about
-```
-
-And then running:
+You'll rarely need to compile your own production builds because our CI/CD system takes care of deployments. However, you can compile a production build with full optimizations by running:
 
 ```sh
 npm run build

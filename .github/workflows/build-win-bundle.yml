@@ -70,6 +70,7 @@ jobs:
           cargo binstall --no-confirm --force "wasm-bindgen-cli@$env:WASM_BINDGEN_CLI_VERSION"
 
       - name: Build Windows Bundle
+        shell: bash # `cargo-about` refuses to run in powershell
         env:
           CARGO_TERM_COLOR: always
         run: npm run build-desktop
