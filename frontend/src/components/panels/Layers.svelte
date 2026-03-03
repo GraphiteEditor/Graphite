@@ -15,7 +15,7 @@
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import type { TooltipState } from "@graphite/state-providers/tooltip";
 	import { pasteFile } from "@graphite/utility-functions/files";
-	import { operatingSystem } from "@graphite/utility-functions/platform";
+	import { isDesktop, operatingSystem } from "@graphite/utility-functions/platform";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -199,7 +199,7 @@
 		const [accel, oppositeAccel] = operatingSystem() === "Mac" ? [meta, ctrl] : [ctrl, meta];
 
 		// Alt-clicking to make a clipping mask
-		if (layerToClipAltKeyPressed && layerToClipUponClick && layerToClipUponClick.entry.clippable) clipLayer(layerToClipUponClick);
+		if (alt && layerToClipUponClick && layerToClipUponClick.entry.clippable) clipLayer(layerToClipUponClick);
 		// Select the layer only if the accel and/or shift keys are pressed
 		else if (!oppositeAccel && !alt) selectLayer(listing, accel, shift);
 
@@ -211,7 +211,13 @@
 	}
 
 	function clippingKeyPress(e: KeyboardEvent) {
-		layerToClipAltKeyPressed = e.altKey;
+		const isAltKeyEvent = e.key === "Alt" || e.key === "AltGraph";
+		if (isAltKeyEvent) {
+			layerToClipAltKeyPressed = e.type === "keydown";
+			return;
+		}
+
+		layerToClipAltKeyPressed = e.getModifierState("Alt");
 	}
 
 	function clippingHover(e: PointerEvent) {
@@ -551,7 +557,7 @@
 	<LayoutRow class="list-area" classes={{ "drag-ongoing": Boolean(internalDragState?.active && draggingData) }} scrollableY={true}>
 		<LayoutCol
 			class="list"
-			styles={{ cursor: layerToClipUponClick && layerToClipAltKeyPressed && layerToClipUponClick.entry.clippable ? "alias" : "auto" }}
+			styles={{ cursor: layerToClipUponClick && layerToClipAltKeyPressed && layerToClipUponClick.entry.clippable ? (isDesktop() ? "copy" : "alias") : "auto" }}
 			data-layer-panel
 			bind:this={list}
 			on:click={() => deselectAllLayers()}
