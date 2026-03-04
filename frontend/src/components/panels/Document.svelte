@@ -5,7 +5,6 @@
 	import {
 		type MenuDirection,
 		type MouseCursorIcon,
-		type XY,
 		type Color,
 		isColor,
 		createColor,
@@ -53,12 +52,12 @@
 	let textInputMatrix: number[];
 
 	// Scrollbars
-	let scrollbarPos: XY = { x: 0.5, y: 0.5 };
-	let scrollbarSize: XY = { x: 0.5, y: 0.5 };
-	let scrollbarMultiplier: XY = { x: 0, y: 0 };
+	let scrollbarPos = { x: 0.5, y: 0.5 };
+	let scrollbarSize = { x: 0.5, y: 0.5 };
+	let scrollbarMultiplier = { x: 0, y: 0 };
 
 	// Rulers
-	let rulerOrigin: XY = { x: 0, y: 0 };
+	let rulerOrigin = { x: 0, y: 0 };
 	let rulerSpacing = 100;
 	let rulerInterval = 100;
 	let rulersVisible = true;
@@ -226,7 +225,7 @@
 	export async function updateEyedropperSamplingState(
 		// `image` is currently only used for Vello renders
 		image: ImageData | undefined,
-		mousePosition: XY | undefined,
+		mousePosition: [number, number] | undefined,
 		colorPrimary: string,
 		colorSecondary: string,
 	): Promise<[number, number, number] | undefined> {
@@ -238,8 +237,8 @@
 
 		if (canvasWidth === undefined || canvasHeight === undefined) return undefined;
 
-		cursorLeft = mousePosition.x;
-		cursorTop = mousePosition.y;
+		cursorLeft = mousePosition[0];
+		cursorTop = mousePosition[1];
 
 		let preview = image;
 		if (!preview) {
@@ -261,8 +260,8 @@
 			if (!rasterizedContext) return undefined;
 
 			preview = rasterizedContext.getImageData(
-				mousePosition.x * dpiFactor - (ZOOM_WINDOW_DIMENSIONS - 1) / 2,
-				mousePosition.y * dpiFactor - (ZOOM_WINDOW_DIMENSIONS - 1) / 2,
+				mousePosition[0] * dpiFactor - (ZOOM_WINDOW_DIMENSIONS - 1) / 2,
+				mousePosition[1] * dpiFactor - (ZOOM_WINDOW_DIMENSIONS - 1) / 2,
 				ZOOM_WINDOW_DIMENSIONS,
 				ZOOM_WINDOW_DIMENSIONS,
 			);
@@ -292,14 +291,14 @@
 	}
 
 	// Update scrollbars and rulers
-	export function updateDocumentScrollbars(position: XY, size: XY, multiplier: XY) {
-		scrollbarPos = position;
-		scrollbarSize = size;
-		scrollbarMultiplier = multiplier;
+	export function updateDocumentScrollbars(position: [number, number], size: [number, number], multiplier: [number, number]) {
+		scrollbarPos = { x: position[0], y: position[1] };
+		scrollbarSize = { x: size[0], y: size[1] };
+		scrollbarMultiplier = { x: multiplier[0], y: multiplier[1] };
 	}
 
-	export function updateDocumentRulers(origin: XY, spacing: number, interval: number, visible: boolean) {
-		rulerOrigin = origin;
+	export function updateDocumentRulers(origin: [number, number], spacing: number, interval: number, visible: boolean) {
+		rulerOrigin = { x: origin[0], y: origin[1] };
 		rulerSpacing = spacing;
 		rulerInterval = interval;
 		rulersVisible = visible;
@@ -417,7 +416,7 @@
 		// which provides pixel-perfect physical dimensions via devicePixelContentBoxSize
 	}
 
-	function gradientStopPickerDirection(position: XY | undefined, viewport: HTMLDivElement | undefined): MenuDirection {
+	function gradientStopPickerDirection(position: { x: number; y: number } | undefined, viewport: HTMLDivElement | undefined): MenuDirection {
 		const picker = (gradientStopPicker?.div()?.querySelector("[data-floating-menu-content]") || undefined) as HTMLElement | undefined;
 		if (!picker || !position || !viewport) return "Bottom";
 

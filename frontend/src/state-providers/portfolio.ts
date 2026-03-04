@@ -78,7 +78,7 @@ export function createPortfolioState(editor: Editor) {
 
 		// Rasterize the SVG to an image file
 		try {
-			const blob = await rasterizeSVG(svg, size.x, size.y, mime, backgroundColor);
+			const blob = await rasterizeSVG(svg, size[0], size[1], mime, backgroundColor);
 
 			// Have the browser download the file to the user's disk
 			downloadFileBlob(name, blob);

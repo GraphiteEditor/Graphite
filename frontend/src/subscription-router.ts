@@ -36,8 +36,8 @@ export function createSubscriptionRouter() {
 		const isJsMessageMaker = (fn: typeof messageMaker): fn is typeof JsMessage => "jsMessageMarker" in fn;
 		const messageIsClass = isJsMessageMaker(messageMaker);
 
-		// Messages with non-empty data are provided by wasm-bindgen as an object with one key as the message name, like: { NameOfThisMessage: { ... } }
-		// Messages with empty data are provided by wasm-bindgen as a string with the message name, like: "NameOfThisMessage"
+		// Messages with non-empty data are provided by Serde JSON as an object with one key as the message name, like: { NameOfThisMessage: { ... } }
+		// Messages with empty data are provided by Serde JSON as a string with the message name, like: "NameOfThisMessage"
 		// Here we extract the payload object or use an empty object depending on the situation.
 		const unwrappedMessageData = messageData[messageType] || {};
 
@@ -51,8 +51,8 @@ export function createSubscriptionRouter() {
 		// The frontend should always have a callback for all messages, but due to message ordering, we might have to delay a few stack frames until we do.
 		let retries = 0;
 		const callCallback = () => {
-			// It is ok to use constructor.name even with minification since it is used consistently with registerHandler
-			const callback = subscriptions[message.constructor.name];
+			// The messageType key is used for lookup since factory-created messages may not have a matching constructor.name
+			const callback = subscriptions[messageType];
 
 			// Attempt to call the callback, but try again several times on the next stack frame if it is not yet registered due to message ordering.
 			if (callback) {

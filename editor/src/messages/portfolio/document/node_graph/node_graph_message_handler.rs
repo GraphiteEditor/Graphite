@@ -847,7 +847,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					};
 
 					self.context_menu = Some(ContextMenuInformation {
-						context_menu_coordinates: (node_graph_point + node_graph_shift).into(),
+						context_menu_coordinates: (node_graph_point + node_graph_shift).as_ivec2(),
 						context_menu_data,
 					});
 
@@ -1280,7 +1280,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						let compatible_type = network_interface.output_type(&output_connector, selection_network_path).add_node_string();
 
 						self.context_menu = Some(ContextMenuInformation {
-							context_menu_coordinates: (point + node_graph_shift).into(),
+							context_menu_coordinates: (point + node_graph_shift).as_ivec2(),
 							context_menu_data: ContextMenuData::CreateNode { compatible_type },
 						});
 
@@ -2696,7 +2696,7 @@ impl NodeGraphMessageHandler {
 			position += IVec2::new(12, -12)
 		}
 
-		Some(NodeGraphErrorDiagnostic { position: position.into(), error })
+		Some(NodeGraphErrorDiagnostic { position, error })
 	}
 
 	fn update_layer_panel(network_interface: &NodeNetworkInterface, selection_network_path: &[NodeId], collapsed: &CollapsedLayers, layers_panel_open: bool, responses: &mut VecDeque<Message>) {

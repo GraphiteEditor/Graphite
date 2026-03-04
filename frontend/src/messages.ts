@@ -8,18 +8,14 @@ export class JsMessage {
 	static readonly jsMessageMarker = true;
 }
 
-const TupleToVec2 = Transform(({ value }: { value: [number, number] | undefined }) => (value === undefined ? undefined : { x: value[0], y: value[1] }));
-
-export type XY = { x: number; y: number };
-
-// ============================================================================
+// ===============================================================================================
 // Add additional classes below to replicate Rust's `FrontendMessage`s and data structures.
 //
 // Remember to add each message to the `messageConstructors` export at the bottom of the file.
 //
 // Read class-transformer docs at https://github.com/typestack/class-transformer#table-of-contents
-// for details about how to transform the JSON from wasm-bindgen into classes.
-// ============================================================================
+// for details about how to transform the JSON produced by Serde JSON into classes.
+// ===============================================================================================
 
 export class UpdateBox extends JsMessage {
 	readonly box!: Box | undefined;
@@ -34,11 +30,9 @@ export class UpdateImportsExports extends JsMessage {
 
 	readonly exports!: (FrontendGraphInput | undefined)[];
 
-	@TupleToVec2
-	readonly importPosition!: XY;
+	readonly importPosition!: [number, number];
 
-	@TupleToVec2
-	readonly exportPosition!: XY;
+	readonly exportPosition!: [number, number];
 
 	readonly addImportExport!: boolean;
 }
@@ -69,7 +63,6 @@ export class UpdateLayerWidths extends JsMessage {
 }
 
 export class UpdateNodeGraphNodes extends JsMessage {
-	@Type(() => FrontendNode)
 	readonly nodes!: FrontendNode[];
 }
 
@@ -78,7 +71,7 @@ export class UpdateNodeGraphErrorDiagnostic extends JsMessage {
 }
 
 export type NodeGraphError = {
-	readonly position: XY;
+	readonly position: [number, number];
 	readonly error: string;
 };
 
@@ -188,7 +181,7 @@ type ContextMenuDataModifyNode = {
 	};
 };
 export type ContextMenuInformation = {
-	contextMenuCoordinates: XY;
+	contextMenuCoordinates: [number, number];
 	contextMenuData: ContextMenuDataCreateNode | ContextMenuDataModifyNode;
 };
 
@@ -215,42 +208,25 @@ export type FrontendGraphOutput = {
 	readonly connectedTo: string[];
 };
 
-export class FrontendNode {
-	readonly id!: bigint;
-
-	readonly isLayer!: boolean;
-
-	readonly canBeLayer!: boolean;
-
-	readonly reference!: string | undefined;
-
-	readonly displayName!: string;
-
-	readonly implementationName!: string;
-
-	readonly primaryInput!: FrontendGraphInput | undefined;
-
-	readonly exposedInputs!: FrontendGraphInput[];
-
-	readonly primaryOutput!: FrontendGraphOutput | undefined;
-
-	readonly exposedOutputs!: FrontendGraphOutput[];
-
-	readonly primaryInputConnectedToLayer!: boolean;
-
-	readonly primaryOutputConnectedToLayer!: boolean;
-
-	@TupleToVec2
-	readonly position!: XY;
-
+export type FrontendNode = {
+	readonly id: bigint;
+	readonly isLayer: boolean;
+	readonly canBeLayer: boolean;
+	readonly reference: string | undefined;
+	readonly displayName: string;
+	readonly implementationName: string;
+	readonly primaryInput: FrontendGraphInput | undefined;
+	readonly exposedInputs: FrontendGraphInput[];
+	readonly primaryOutput: FrontendGraphOutput | undefined;
+	readonly exposedOutputs: FrontendGraphOutput[];
+	readonly primaryInputConnectedToLayer: boolean;
+	readonly primaryOutputConnectedToLayer: boolean;
+	readonly position: [number, number];
 	// TODO: Store field for the width of the left node chain
-
-	readonly previewed!: boolean;
-
-	readonly visible!: boolean;
-
-	readonly locked!: boolean;
-}
+	readonly previewed: boolean;
+	readonly visible: boolean;
+	readonly locked: boolean;
+};
 
 export type FrontendNodeType = {
 	readonly identifier: string;
@@ -589,19 +565,15 @@ export class UpdateDocumentArtwork extends JsMessage {
 }
 
 export class UpdateDocumentScrollbars extends JsMessage {
-	@TupleToVec2
-	readonly position!: XY;
+	readonly position!: [number, number];
 
-	@TupleToVec2
-	readonly size!: XY;
+	readonly size!: [number, number];
 
-	@TupleToVec2
-	readonly multiplier!: XY;
+	readonly multiplier!: [number, number];
 }
 
 export class UpdateDocumentRulers extends JsMessage {
-	@TupleToVec2
-	readonly origin!: XY;
+	readonly origin!: [number, number];
 
 	readonly spacing!: number;
 
@@ -619,8 +591,7 @@ export class EyedropperPreviewImage {
 export class UpdateEyedropperSamplingState extends JsMessage {
 	readonly image!: EyedropperPreviewImage | undefined;
 
-	@TupleToVec2
-	readonly mousePosition!: XY | undefined;
+	readonly mousePosition!: [number, number] | undefined;
 
 	readonly primaryColor!: string;
 
@@ -708,8 +679,7 @@ export class TriggerExportImage extends JsMessage {
 
 	readonly mime!: string;
 
-	@TupleToVec2
-	readonly size!: XY;
+	readonly size!: [number, number];
 }
 
 export class TriggerSaveFile extends JsMessage {
