@@ -36,13 +36,13 @@ pub struct LineToolData {
 pub struct Line;
 
 impl Line {
-	pub fn create_node(document: &DocumentMessageHandler, drag_start: DVec2) -> NodeTemplate {
+	pub fn create_node() -> NodeTemplate {
 		let identifier = DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::line::IDENTIFIER);
 		let node_type = resolve_document_node_type(&identifier).expect("Line node can't be found");
 		node_type.node_template_input_override([
 			None,
-			Some(NodeInput::value(TaggedValue::DVec2(document.metadata().document_to_viewport.transform_point2(drag_start)), false)),
-			Some(NodeInput::value(TaggedValue::DVec2(document.metadata().document_to_viewport.transform_point2(drag_start)), false)),
+			Some(NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false)),
+			Some(NodeInput::value(TaggedValue::DVec2(DVec2::ZERO), false)),
 		])
 	}
 
@@ -55,14 +55,40 @@ impl Line {
 		modifier: ShapeToolModifierKey,
 		responses: &mut VecDeque<Message>,
 	) {
+		let layer_to_viewport = document.metadata().transform_to_viewport(layer);
+		let viewport_to_layer = layer_to_viewport.inverse();
+
+		let viewport_mouse = ipp.mouse.position;
+
+		// Check if drag_start is not set (using marker value f64::MIN)
+		let is_not_set = shape_tool_data.data.drag_start.x == f64::MIN || shape_tool_data.data.drag_start.y == f64::MIN;
+
+		// Convert viewport positions to layer-space (artboard-relative)
+		let layer_space_mouse = viewport_to_layer.transform_point2(viewport_mouse);
+
+		let effective_drag_start = if is_not_set {
+			layer_space_mouse
+		} else {
+			// Convert stored viewport position to layer-space
+			viewport_to_layer.transform_point2(shape_tool_data.data.drag_start)
+		};
+
 		let [center, snap_angle, lock_angle] = modifier;
 
-		shape_tool_data.line_data.drag_current = ipp.mouse.position;
+		// Store layer-space current position (not viewport)
+		shape_tool_data.line_data.drag_current = layer_space_mouse;
 
 		let keyboard = &ipp.keyboard;
 		let ignore = [layer];
 		let snap_data = SnapData::ignore(document, ipp, viewport, &ignore);
+
+		// Pass layer-space coordinates to generate_line (for angle/length calculations)
+		let original_drag_start = shape_tool_data.data.drag_start;
+		shape_tool_data.data.drag_start = effective_drag_start;
+
 		let mut document_points = generate_line(shape_tool_data, snap_data, keyboard.key(lock_angle), keyboard.key(snap_angle), keyboard.key(center));
+
+		shape_tool_data.data.drag_start = original_drag_start; // Restore
 
 		if shape_tool_data.line_data.dragging_endpoint == Some(LineEnd::Start) {
 			document_points.swap(0, 1);
@@ -110,8 +136,8 @@ impl Line {
 }
 
 fn generate_line(tool_data: &mut ShapeToolData, snap_data: SnapData, lock_angle: bool, snap_angle: bool, center: bool) -> [DVec2; 2] {
-	let document_to_viewport = snap_data.document.metadata().document_to_viewport;
-	let mut document_points = [tool_data.data.drag_start, document_to_viewport.inverse().transform_point2(tool_data.line_data.drag_current)];
+	// Coordinates are already in layer-space (passed from update_shape)
+	let mut document_points = [tool_data.data.drag_start, tool_data.line_data.drag_current];
 
 	let mut angle = -(document_points[1] - document_points[0]).angle_to(DVec2::X);
 	let mut line_length = (document_points[1] - document_points[0]).length();
@@ -195,7 +221,7 @@ pub fn clicked_on_line_endpoints(layer: LayerNodeIdentifier, document: &Document
 
 	if start_click || end_click {
 		shape_tool_data.line_data.dragging_endpoint = Some(if end_click { LineEnd::End } else { LineEnd::Start });
-		shape_tool_data.data.drag_start = if end_click { document_start } else { document_end };
+		shape_tool_data.data.drag_start = document.metadata().transform_to_document(layer).transform_point2(if end_click { document_start } else { document_end });
 		shape_tool_data.line_data.editing_layer = Some(layer);
 		return true;
 	}
@@ -233,12 +259,8 @@ mod test_line_tool {
 		editor.new_document().await;
 		editor.drag_tool(ToolType::Line, 0., 0., 100., 100., ModifierKeys::empty()).await;
 		if let Some((start_input, end_input)) = get_line_node_inputs(&mut editor).await {
-			match (start_input, end_input) {
-				(start_input, end_input) => {
-					assert!((start_input - DVec2::ZERO).length() < 1., "Start point should be near (0,0)");
-					assert!((end_input - DVec2::new(100., 100.)).length() < 1., "End point should be near (100,100)");
-				}
-			}
+			assert!((start_input - DVec2::new(0., 0.)).length() < 1., "Start point should be near (0, 0)");
+			assert!((end_input - DVec2::new(100., 100.)).length() < 1., "End point should be near (100, 100)");
 		}
 	}
 
