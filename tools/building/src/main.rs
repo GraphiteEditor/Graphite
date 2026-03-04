@@ -3,13 +3,15 @@ use std::process::ExitCode;
 use building::*;
 
 fn usage() {
-	eprintln!("usage: cargo run [<command>] [release|debug|profiling]");
 	eprintln!();
-	eprintln!("commands:");
-	eprintln!("  web               Run the dev server");
-	eprintln!("  web build         Build the web version");
-	eprintln!("  desktop           Run the desktop app");
-	eprintln!("  desktop build     Build the desktop version");
+	eprintln!("Usage: cargo run [<command>] [release|debug|profiling]");
+	eprintln!();
+	eprintln!("Commands:");
+	eprintln!("  web [run]         Run the web app on local dev server");
+	eprintln!("  web build         Build the web app");
+	eprintln!("  desktop [run]     Run the desktop app");
+	eprintln!("  desktop build     Build the desktop app");
+	eprintln!();
 }
 
 fn main() -> ExitCode {
