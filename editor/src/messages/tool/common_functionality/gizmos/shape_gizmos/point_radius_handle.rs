@@ -14,6 +14,7 @@ use crate::messages::tool::common_functionality::shapes::shape_utility::{extract
 use glam::DVec2;
 use graph_craft::document::NodeInput;
 use graph_craft::document::value::TaggedValue;
+use graphene_std::NodeInputDecleration;
 use graphene_std::vector::generator_nodes::star::*;
 use std::collections::VecDeque;
 use std::f64::consts::{FRAC_1_SQRT_2, FRAC_PI_4, PI, SQRT_2};
