@@ -1464,11 +1464,6 @@ type WidgetKindMap = { [T in WidgetSubTypes as T["name"]]: InstanceType<T["value
 export type WidgetPropsNames = keyof WidgetKindMap;
 export type WidgetPropsSet = WidgetKindMap[WidgetPropsNames];
 
-export function narrowWidgetProps<K extends WidgetPropsNames>(props: WidgetPropsSet, kind: K) {
-	if (props.kind === kind) return props as WidgetKindMap[K];
-	else return undefined;
-}
-
 export class WidgetInstance {
 	@Type(() => WidgetProps, { discriminator: { property: "kind", subTypes: [...widgetSubTypes] }, keepDiscriminatorProperty: true })
 	props!: WidgetPropsSet;
