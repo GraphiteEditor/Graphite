@@ -75,24 +75,16 @@ impl DocumentMetadata {
 	}
 
 	pub fn transform_to_viewport(&self, layer: LayerNodeIdentifier) -> DAffine2 {
-		// We're not allowed to convert the root parent to a node id
-		if layer == LayerNodeIdentifier::ROOT_PARENT {
-			return self.document_to_viewport;
-		}
-
-		let footprint = self.upstream_footprints.get(&layer.to_node()).map(|footprint| footprint.transform).unwrap_or(self.document_to_viewport);
-		let local_transform = self.local_transforms.get(&layer.to_node()).copied().unwrap_or_default();
+		let node_id = if layer == LayerNodeIdentifier::ROOT_PARENT { NodeId(0) } else { layer.to_node() };
+		let footprint = self.upstream_footprints.get(&node_id).map(|footprint| footprint.transform).unwrap_or(self.document_to_viewport);
+		let local_transform = self.local_transforms.get(&node_id).copied().unwrap_or_default();
 
 		footprint * local_transform
 	}
 
 	pub fn transform_to_viewport_if_feeds(&self, layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> DAffine2 {
-		// We're not allowed to convert the root parent to a node id
-		if layer == LayerNodeIdentifier::ROOT_PARENT {
-			return self.document_to_viewport;
-		}
-
-		let footprint = self.upstream_footprints.get(&layer.to_node()).map(|footprint| footprint.transform).unwrap_or(self.document_to_viewport);
+		let node_id = if layer == LayerNodeIdentifier::ROOT_PARENT { NodeId(0) } else { layer.to_node() };
+		let footprint = self.upstream_footprints.get(&node_id).map(|footprint| footprint.transform).unwrap_or(self.document_to_viewport);
 
 		let mut use_local = true;
 		let graph_layer = graph_modification_utils::NodeGraphLayer::new(layer, network_interface);
@@ -270,10 +262,7 @@ impl LayerNodeIdentifier {
 
 	/// Access the node id of this layer
 	pub fn to_node(self) -> NodeId {
-		let id = NodeId(u64::from(self.0) - 1);
-		debug_assert!(id != NodeId(0), "LayerNodeIdentifier::ROOT_PARENT cannot be converted to NodeId");
-
-		id
+		NodeId(u64::from(self.0) - 1)
 	}
 
 	/// Access the parent layer if possible
