@@ -9,7 +9,6 @@
 		type Color,
 		isColor,
 		createColor,
-		colorToHexOptionalAlpha,
 		DisplayEditableTextbox,
 		DisplayEditableTextboxUpdateFontData,
 		DisplayEditableTextboxTransform,
@@ -363,7 +362,7 @@
 		textInput.style.height = height;
 		textInput.style.lineHeight = `${data.lineHeightRatio}`;
 		textInput.style.fontSize = `${data.fontSize}px`;
-		textInput.style.color = colorToHexOptionalAlpha(data.color) || "transparent";
+		textInput.style.color = data.color;
 		textInput.style.textAlign = data.align;
 
 		textInput.oninput = () => {

@@ -39,7 +39,7 @@ pub enum FrontendMessage {
 		line_height_ratio: f64,
 		#[serde(rename = "fontSize")]
 		font_size: f64,
-		color: Color,
+		color: String,
 		#[serde(rename = "fontData")]
 		font_data: Vec<u8>,
 		transform: [f64; 6],

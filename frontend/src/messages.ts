@@ -763,8 +763,7 @@ export class DisplayEditableTextbox extends JsMessage {
 
 	readonly fontSize!: number;
 
-	@Type(() => Color)
-	readonly color!: Color;
+	readonly color!: string;
 
 	readonly fontData!: ArrayBuffer;
 
