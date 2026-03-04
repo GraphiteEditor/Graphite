@@ -813,19 +813,14 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						// Determine which layers the Lock/Unlock action would affect:
 						// - If the right-clicked node is in the selection, it affects all selected layers
 						// - If the right-clicked node is not in the selection, it affects just the right-clicked node
-						let is_clicked_selected = network_interface
-							.selected_nodes_in_nested_network(selection_network_path)
-							.is_some_and(|selected| selected.selected_nodes().any(|id| *id == node_id));
+						let selected_nodes = network_interface.selected_nodes_in_nested_network(selection_network_path);
+						let is_clicked_selected = selected_nodes.as_ref().is_some_and(|selected| selected.selected_nodes().any(|id| *id == node_id));
 						let affected_layer_ids = if is_clicked_selected {
-							network_interface
-								.selected_nodes_in_nested_network(selection_network_path)
-								.map(|selected| selected.selected_nodes().filter(|id| network_interface.is_layer(id, selection_network_path)).cloned().collect())
-								.unwrap_or_default()
-						} else if network_interface.is_layer(&node_id, selection_network_path) {
-							vec![node_id]
+							selected_nodes.map(|selected| selected.selected_nodes().copied().filter(|id| network_interface.is_layer(id, selection_network_path)).collect())
 						} else {
-							vec![]
-						};
+							network_interface.is_layer(&node_id, selection_network_path).then(|| vec![node_id])
+						}
+						.unwrap_or_default();
 						let has_selected_layers = !affected_layer_ids.is_empty();
 						let all_selected_layers_locked = has_selected_layers && affected_layer_ids.iter().all(|id| network_interface.is_locked(id, selection_network_path));
 
