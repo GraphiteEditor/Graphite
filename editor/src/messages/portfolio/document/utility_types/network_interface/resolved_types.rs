@@ -290,7 +290,7 @@ impl NodeNetworkInterface {
 							log::error!("Protonode {proto_node_identifier:?} not found in registry in complete_valid_input_types");
 							return Vec::new();
 						};
-						let valid_output_types = self.valid_output_types(&OutputConnector::node(*node_id, 0), network_path);
+						let valid_output_types = self.valid_output_types(&OutputConnector::node(*node_id, OutputConnector::PRIMARY_OUTPUT_INDEX), network_path);
 
 						implementations
 							.iter()

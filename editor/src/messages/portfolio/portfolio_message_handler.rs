@@ -764,7 +764,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 					let Some((downstream_node, input_index)) = document
 						.network_interface
 						.outward_wires(&[])
-						.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(layer.to_node(), 0)))
+						.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(layer.to_node(), OutputConnector::PRIMARY_OUTPUT_INDEX)))
 						.and_then(|outward_wires| outward_wires.first())
 						.and_then(|input_connector| input_connector.node_id().map(|node_id| (node_id, input_connector.input_index())))
 					else {

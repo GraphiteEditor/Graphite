@@ -94,7 +94,7 @@ impl<'a> ModifyInputsContext<'a> {
 					current_index += 1;
 				}
 				// Input as a sibling to the Layer node above
-				post_node_input_connector = InputConnector::node(*next_node_in_stack_id, 0);
+				post_node_input_connector = InputConnector::node(*next_node_in_stack_id, InputConnector::PRIMARY_INPUT_INDEX);
 			} else {
 				log::error!("Error getting post node: insert_index out of bounds");
 				break;
@@ -110,7 +110,7 @@ impl<'a> ModifyInputsContext<'a> {
 			match pre_node_output_connector {
 				Some(OutputConnector::Node { node_id: pre_node_id, .. }) if !network_interface.is_layer(&pre_node_id, &[]) => {
 					// Update post_node_input_connector for the next iteration
-					post_node_input_connector = InputConnector::node(pre_node_id, 0);
+					post_node_input_connector = InputConnector::node(pre_node_id, InputConnector::PRIMARY_INPUT_INDEX);
 					// Insert directly under layer if moving to the end of a layer stack that ends with a non layer node that does not have an exposed primary input
 					let primary_is_exposed = network_interface.input_from_connector(&post_node_input_connector, &[]).is_some_and(|input| input.is_exposed());
 					if !primary_is_exposed {

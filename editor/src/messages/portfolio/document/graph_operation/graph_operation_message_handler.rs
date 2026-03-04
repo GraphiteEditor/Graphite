@@ -272,7 +272,7 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				const LAYER_SECONDARY_INPUT_INDEX: usize = 1;
 					responses.add(NodeGraphMessage::SetInput {
 							input_connector: InputConnector::node(layer.to_node(), LAYER_SECONDARY_INPUT_INDEX),
-						input: NodeInput::node(first_new_node_id, 0),
+						input: NodeInput::node(first_new_node_id, NodeInput::PRIMARY_OUTPUT_INDEX),
 					});
 				}
 				// Move the layer and all nodes to the correct position in the network
@@ -339,10 +339,10 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				artboard_data.insert(
 					artboard.to_node(),
 					ArtboardInfo {
-							input_node: NodeInput::node(document_node.inputs[ARTBOARD_CONTENT_INDEX].as_node().unwrap_or_default(), 0),
+							input_node: NodeInput::node(document_node.inputs[ARTBOARD_CONTENT_INDEX].as_node().unwrap_or_default(), NodeInput::PRIMARY_OUTPUT_INDEX),
 							output_nodes: network_interface
 								.outward_wires(&[])
-								.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(artboard.to_node(), 0)))
+								.and_then(|outward_wires| outward_wires.get(&OutputConnector::node(artboard.to_node(), OutputConnector::PRIMARY_OUTPUT_INDEX)))
 								.cloned()
 								.unwrap_or_default(),
 							merge_node: node_id,
@@ -369,12 +369,12 @@ impl MessageHandler<GraphOperationMessage, GraphOperationMessageContext<'_>> for
 				const MERGE_CONTENT_INDEX: usize = 1;
 				responses.add(NodeGraphMessage::SetInput {
 						input_connector: InputConnector::node(artboard.1.merge_node, MERGE_CONTENT_INDEX),
-						input: NodeInput::node(artboard.1.input_node.as_node().unwrap_or_default(), 0),
+						input: NodeInput::node(artboard.1.input_node.as_node().unwrap_or_default(), NodeInput::PRIMARY_OUTPUT_INDEX),
 					});
 
 					// Modify upstream connections
 					for outward_wire in &artboard.1.output_nodes {
-						let input = NodeInput::node(artboard_data[artboard.0].merge_node, 0);
+						let input = NodeInput::node(artboard_data[artboard.0].merge_node, NodeInput::PRIMARY_OUTPUT_INDEX);
 						let input_connector = match artboard_data.get(&outward_wire.node_id().unwrap_or_default()) {
 							Some(artboard_info) => InputConnector::node(artboard_info.merge_node, outward_wire.input_index()),
 							_ => *outward_wire,
