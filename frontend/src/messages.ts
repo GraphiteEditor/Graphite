@@ -10,8 +10,6 @@ export class JsMessage {
 
 const TupleToVec2 = Transform(({ value }: { value: [number, number] | undefined }) => (value === undefined ? undefined : { x: value[0], y: value[1] }));
 
-// const BigIntTupleToVec2 = Transform(({ value }: { value: [bigint, bigint] | undefined }) => (value === undefined ? undefined : { x: Number(value[0]), y: Number(value[1]) }));
-
 export type XY = { x: number; y: number };
 
 // ============================================================================
@@ -79,10 +77,10 @@ export class UpdateNodeGraphErrorDiagnostic extends JsMessage {
 	readonly error!: NodeGraphError | undefined;
 }
 
-export class NodeGraphError {
-	readonly position!: XY;
-	readonly error!: string;
-}
+export type NodeGraphError = {
+	readonly position: XY;
+	readonly error: string;
+};
 
 export class UpdateVisibleNodes extends JsMessage {
 	readonly nodes!: bigint[];
@@ -157,15 +155,12 @@ export class DocumentDetails {
 	readonly isSaved!: boolean;
 }
 
-export class Box {
-	readonly startX!: number;
-
-	readonly startY!: number;
-
-	readonly endX!: number;
-
-	readonly endY!: number;
-}
+export type Box = {
+	readonly startX: number;
+	readonly startY: number;
+	readonly endX: number;
+	readonly endY: number;
+};
 
 export type FrontendClickTargets = {
 	readonly nodeClickTargets: string[];
@@ -203,31 +198,22 @@ export class UpdateContextMenuInformation extends JsMessage {
 
 export type FrontendGraphDataType = "General" | "Number" | "Artboard" | "Graphic" | "Raster" | "Vector" | "Color" | "Invalid";
 
-export class FrontendGraphInput {
-	readonly dataType!: FrontendGraphDataType;
+export type FrontendGraphInput = {
+	readonly dataType: FrontendGraphDataType;
+	readonly name: string;
+	readonly description: string;
+	readonly resolvedType: string;
+	readonly validTypes: string[];
+	readonly connectedTo: string;
+};
 
-	readonly name!: string;
-
-	readonly description!: string;
-
-	readonly resolvedType!: string;
-
-	readonly validTypes!: string[];
-
-	readonly connectedTo!: string;
-}
-
-export class FrontendGraphOutput {
-	readonly dataType!: FrontendGraphDataType;
-
-	readonly name!: string;
-
-	readonly description!: string;
-
-	readonly resolvedType!: string;
-
-	readonly connectedTo!: string[];
-}
+export type FrontendGraphOutput = {
+	readonly dataType: FrontendGraphDataType;
+	readonly name: string;
+	readonly description: string;
+	readonly resolvedType: string;
+	readonly connectedTo: string[];
+};
 
 export class FrontendNode {
 	readonly id!: bigint;
@@ -266,30 +252,27 @@ export class FrontendNode {
 	readonly locked!: boolean;
 }
 
-export class FrontendNodeType {
-	readonly identifier!: string;
-
-	readonly name!: string;
-
-	readonly category!: string;
-
-	readonly inputTypes!: string[];
-}
+export type FrontendNodeType = {
+	readonly identifier: string;
+	readonly name: string;
+	readonly category: string;
+	readonly inputTypes: string[];
+};
 
 export type DefinitionIdentifier = { type: "Network" | "ProtoNode"; data: string };
 
-export class NodeGraphTransform {
-	readonly scale!: number;
-	readonly x!: number;
-	readonly y!: number;
-}
+export type NodeGraphTransform = {
+	readonly scale: number;
+	readonly x: number;
+	readonly y: number;
+};
 
-export class WirePath {
-	readonly pathString!: string;
-	readonly dataType!: FrontendGraphDataType;
-	readonly thick!: boolean;
-	readonly dashed!: boolean;
-}
+export type WirePath = {
+	readonly pathString: string;
+	readonly dataType: FrontendGraphDataType;
+	readonly thick: boolean;
+	readonly dashed: boolean;
+};
 
 export class WireUpdate {
 	readonly id!: bigint;
@@ -367,20 +350,20 @@ export type HSVA = { h: number; s: number; v: number; a: number };
 export type HSV = { h: number; s: number; v: number };
 export type RGB = { r: number; g: number; b: number };
 
-export class Gradient {
-	position!: number[];
-	midpoint!: number[];
-	color!: Color[];
-}
+export type Gradient = {
+	position: number[];
+	midpoint: number[];
+	color: Color[];
+};
 
 // All channels range are represented by 0-1, sRGB, gamma.
-export class Color {
-	readonly red!: number;
-	readonly green!: number;
-	readonly blue!: number;
-	readonly alpha!: number;
-	readonly none!: boolean;
-}
+export type Color = {
+	readonly red: number;
+	readonly green: number;
+	readonly blue: number;
+	readonly alpha: number;
+	readonly none: boolean;
+};
 
 // COLOR FACTORY FUNCTIONS
 
@@ -787,7 +770,6 @@ export class DisplayEditableTextboxTransform extends JsMessage {
 export class DisplayRemoveEditableTextbox extends JsMessage {}
 
 export class UpdateGradientStopColorPickerPosition extends JsMessage {
-	@Type(() => Color)
 	readonly color!: Color;
 
 	readonly x!: number;
@@ -817,7 +799,6 @@ export class LayerPanelEntry {
 
 	expanded!: boolean;
 
-	@Transform(({ value }: { value: bigint }) => Number(value))
 	depth!: number;
 
 	visible!: boolean;
@@ -1222,9 +1203,7 @@ export class Separator extends WidgetProps {
 
 export class WorkingColorsInput extends WidgetProps {
 	// Content
-	@Type(() => Color)
 	primary!: Color;
-	@Type(() => Color)
 	secondary!: Color;
 }
 

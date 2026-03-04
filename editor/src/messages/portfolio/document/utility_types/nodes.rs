@@ -28,7 +28,7 @@ pub struct LayerPanelEntry {
 	#[serde(rename = "childrenPresent")]
 	pub children_present: bool,
 	pub expanded: bool,
-	pub depth: usize,
+	pub depth: u32,
 	pub visible: bool,
 	#[serde(rename = "parentsVisible")]
 	pub parents_visible: bool,

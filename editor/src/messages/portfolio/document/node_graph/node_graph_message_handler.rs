@@ -2769,7 +2769,7 @@ impl NodeGraphMessageHandler {
 					children_allowed,
 					children_present: layer.has_children(network_interface.document_metadata()),
 					expanded: layer.has_children(network_interface.document_metadata()) && !collapsed.0.contains(&layer),
-					depth: layer.ancestors(network_interface.document_metadata()).count() - 1,
+					depth: layer.ancestors(network_interface.document_metadata()).count() as u32 - 1,
 					visible: network_interface.is_visible(&node_id, &[]),
 					parents_visible,
 					unlocked: !network_interface.is_locked(&node_id, &[]),
