@@ -6,6 +6,7 @@ pub mod text;
 pub mod wasm_application_io;
 pub use blending_nodes;
 pub use brush_nodes as brush;
+pub use convex_hull_nodes;
 pub use core_types::*;
 pub use graphene_application_io as application_io;
 pub use graphene_core;

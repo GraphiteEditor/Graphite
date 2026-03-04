@@ -1059,6 +1059,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "convex-hull-nodes"
+version = "0.1.0"
+dependencies = [
+ "convex_hull",
+ "core-types",
+ "dyn-any",
+ "glam",
+ "graphic-types",
+ "kurbo",
+ "log",
+ "node-macro",
+ "path-bool",
+ "serde",
+ "specta",
+ "vector-types",
+]
+
+[[package]]
+name = "convex_hull"
+version = "0.1.0"
+dependencies = [
+ "kurbo",
+ "poly-cool",
+]
+
+[[package]]
 name = "cookie"
 version = "0.18.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2351,6 +2377,7 @@ dependencies = [
  "base64",
  "blending-nodes",
  "brush-nodes",
+ "convex-hull-nodes",
  "core-types",
  "dyn-any",
  "glam",
@@ -4575,6 +4602,15 @@ name = "pollster"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2f3a9f18d041e6d0e102a0a46750538147e5e8992d3b4873aaafee2520b00ce3"
+
+[[package]]
+name = "poly-cool"
+version = "0.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cb79f376772fbca123c950f4c2a74558bae8f8fd7d35037c093d5d53d45b46c2"
+dependencies = [
+ "arrayvec",
+]
 
 [[package]]
 name = "polycool"

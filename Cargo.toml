@@ -26,6 +26,7 @@ members = [
 	"node-graph/nodes/graphic",
 	"node-graph/nodes/math",
 	"node-graph/nodes/path-bool",
+	"node-graph/nodes/convex_hull",
 	"node-graph/nodes/raster",
 	"node-graph/nodes/raster/shaders",
 	"node-graph/nodes/raster/shaders/entrypoint",
@@ -121,6 +122,7 @@ vector-nodes = { path = "node-graph/nodes/vector" }
 repeat-nodes = { path = "node-graph/nodes/repeat" }
 math-nodes = { path = "node-graph/nodes/math" }
 path-bool-nodes = { path = "node-graph/nodes/path-bool" }
+convex-hull-nodes = { path = "node-graph/nodes/convex_hull" }
 graph-craft = { path = "node-graph/graph-craft" }
 raster-nodes = { path = "node-graph/nodes/raster" }
 graphene-std = { path = "node-graph/nodes/gstd" }

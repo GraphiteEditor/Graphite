@@ -35,6 +35,7 @@ text-nodes = { workspace = true }
 transform-nodes = { workspace = true }
 vector-nodes = { workspace = true }
 path-bool-nodes = { workspace = true }
+convex-hull-nodes = { workspace = true }
 math-nodes = { workspace = true }
 rendering = { workspace = true }
 graphene-application-io = { workspace = true }
