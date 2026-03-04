@@ -3,9 +3,10 @@
 
 	import type { Editor } from "@graphite/editor";
 	import {
-		type MenuDirection,
-		type MouseCursorIcon,
 		type Color,
+		type MenuDirection,
+		type MouseCursor,
+		mouseCursorIconCSSNames,
 		isColor,
 		createColor,
 		DisplayEditableTextbox,
@@ -305,11 +306,11 @@
 	}
 
 	// Update mouse cursor icon
-	export function updateMouseCursor(cursor: MouseCursorIcon) {
-		let cursorString: string = cursor;
+	export function updateMouseCursor(cursor: MouseCursor) {
+		let cursorString: string = mouseCursorIconCSSNames[cursor] || mouseCursorIconCSSNames["Alias"];
 
 		// This isn't very clean but it's good enough for now until we need more icons, then we can build something more robust (consider blob URLs)
-		if (cursor === "custom-rotate") {
+		if (cursor === "Rotate") {
 			const svg = `
 				<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" width="20" height="20">
 					<path fill="none" stroke="black" stroke-width="2" d="M10,15.8c-3.2,0-5.8-2.6-5.8-5.8S6.8,4.2,10,4.2c0.999,0,1.999,0.273,2.877,0.771L11.7,7h5.8l-2.9-5l-1.013,1.746C12.5,3.125,11.271,2.8,10,2.8C6,2.8,2.8,6,2.8,10S6,17.2,10,17.2s7.2-3.2,7.2-7.2h-1.4C15.8,13.2,13.2,15.8,10,15.8z" />

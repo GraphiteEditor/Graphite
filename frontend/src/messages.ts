@@ -50,11 +50,11 @@ export class UpdateExportReorderIndex extends JsMessage {
 }
 
 export class UpdateLayerWidths extends JsMessage {
-	@Transform(({ obj }) => obj.layerWidths)
+	@Transform(({ obj }) => obj.layerWidths) // To be removed when removing plainToInstance
 	readonly layerWidths!: Map<bigint, number>;
-	@Transform(({ obj }) => obj.chainWidths)
+	@Transform(({ obj }) => obj.chainWidths) // To be removed when removing plainToInstance
 	readonly chainWidths!: Map<bigint, number>;
-	@Transform(({ obj }) => obj.hasLeftInputWire)
+	@Transform(({ obj }) => obj.hasLeftInputWire) // To be removed when removing plainToInstance
 	readonly hasLeftInputWire!: Map<bigint, boolean>;
 }
 
@@ -86,8 +86,7 @@ export class UpdateNodeGraphTransform extends JsMessage {
 }
 
 export class SendUIMetadata extends JsMessage {
-	@Transform(({ obj }) => new Map(obj.nodeDescriptions))
-	readonly nodeDescriptions!: Map<string, string>;
+	readonly nodeDescriptions!: [string, string][];
 
 	readonly nodeTypes!: FrontendNodeType[];
 }
@@ -112,12 +111,10 @@ export class UpdateNodeThumbnail extends JsMessage {
 }
 
 export class UpdateNodeGraphSelection extends JsMessage {
-	@Type(() => BigInt)
 	readonly selected!: bigint[];
 }
 
 export class UpdateOpenDocumentsList extends JsMessage {
-	@Type(() => OpenDocument)
 	readonly openDocuments!: OpenDocument[];
 }
 
@@ -125,20 +122,16 @@ export class UpdateWirePathInProgress extends JsMessage {
 	readonly wirePath!: WirePath | undefined;
 }
 
-export class OpenDocument {
-	readonly id!: bigint;
+export type OpenDocument = {
+	readonly id: bigint;
+	readonly details: DocumentDetails;
+};
 
-	@Type(() => DocumentDetails)
-	readonly details!: DocumentDetails;
-}
-
-export class DocumentDetails {
-	readonly name!: string;
-
-	readonly isAutoSaved!: boolean;
-
-	readonly isSaved!: boolean;
-}
+export type DocumentDetails = {
+	readonly name: string;
+	readonly isAutoSaved: boolean;
+	readonly isSaved: boolean;
+};
 
 export type Box = {
 	readonly startX: number;
@@ -253,7 +246,6 @@ export class TriggerPersistenceWriteDocument extends JsMessage {
 
 	document!: string;
 
-	@Type(() => DocumentDetails)
 	details!: DocumentDetails;
 
 	version!: string;
@@ -266,7 +258,6 @@ export class TriggerPersistenceRemoveDocument extends JsMessage {
 export type AppWindowPlatform = "Web" | "Windows" | "Mac" | "Linux";
 
 export class UpdatePlatform extends JsMessage {
-	@Transform(({ value }: { value: AppWindowPlatform }) => value)
 	readonly platform!: AppWindowPlatform;
 }
 
@@ -588,8 +579,9 @@ export class UpdateEyedropperSamplingState extends JsMessage {
 	readonly setColorChoice!: "Primary" | "Secondary" | undefined;
 }
 
-const mouseCursorIconCSSNames = {
+export const mouseCursorIconCSSNames = {
 	Default: "default",
+	Alias: "alias",
 	None: "none",
 	ZoomIn: "zoom-in",
 	ZoomOut: "zoom-out",
@@ -604,7 +596,10 @@ const mouseCursorIconCSSNames = {
 	Rotate: "custom-rotate",
 } as const;
 export type MouseCursor = keyof typeof mouseCursorIconCSSNames;
-export type MouseCursorIcon = (typeof mouseCursorIconCSSNames)[MouseCursor];
+
+export class UpdateMouseCursor extends JsMessage {
+	readonly cursor!: MouseCursor;
+}
 
 export class UpdateGraphViewOverlay extends JsMessage {
 	open!: boolean;
@@ -624,11 +619,6 @@ export class UpdatePropertiesPanelState extends JsMessage {
 
 export class UpdateLayersPanelState extends JsMessage {
 	readonly open!: boolean;
-}
-
-export class UpdateMouseCursor extends JsMessage {
-	@Transform(({ value }: { value: MouseCursor }) => mouseCursorIconCSSNames[value] || "alias")
-	readonly cursor!: MouseCursorIcon;
 }
 
 export class TriggerLoadFirstAutoSaveDocument extends JsMessage {}
@@ -736,62 +726,41 @@ export class UpdateGradientStopColorPickerPosition extends JsMessage {
 }
 
 export class UpdateDocumentLayerDetails extends JsMessage {
-	@Type(() => LayerPanelEntry)
 	readonly data!: LayerPanelEntry;
 }
 
-export class LayerPanelEntry {
-	id!: bigint;
-
-	implementationName!: string;
-
-	iconName!: IconName | undefined;
-
-	alias!: string;
-
-	inSelectedNetwork!: boolean;
-
-	childrenAllowed!: boolean;
-
-	childrenPresent!: boolean;
-
-	expanded!: boolean;
-
-	depth!: number;
-
-	visible!: boolean;
-
-	parentsVisible!: boolean;
-
-	unlocked!: boolean;
-
-	parentsUnlocked!: boolean;
-
-	parentId!: bigint | undefined;
-
-	selected!: boolean;
-
-	ancestorOfSelected!: boolean;
-
-	descendantOfSelected!: boolean;
-
-	clipped!: boolean;
-
-	clippable!: boolean;
-}
+export type LayerPanelEntry = {
+	id: bigint;
+	implementationName: string;
+	iconName: IconName | undefined;
+	alias: string;
+	inSelectedNetwork: boolean;
+	childrenAllowed: boolean;
+	childrenPresent: boolean;
+	expanded: boolean;
+	depth: number;
+	visible: boolean;
+	parentsVisible: boolean;
+	unlocked: boolean;
+	parentsUnlocked: boolean;
+	parentId: bigint | undefined;
+	selected: boolean;
+	ancestorOfSelected: boolean;
+	descendantOfSelected: boolean;
+	clipped: boolean;
+	clippable: boolean;
+};
 
 export class DialogClose extends JsMessage {}
 
-export class Font {
-	fontFamily!: string;
-
-	fontStyle!: string;
-}
+export type Font = {
+	fontFamily: string;
+	fontStyle: string;
+};
 
 export class TriggerFontCatalogLoad extends JsMessage {}
 
 export class TriggerFontDataLoad extends JsMessage {
-	@Type(() => Font)
 	font!: Font;
 
 	url!: string;

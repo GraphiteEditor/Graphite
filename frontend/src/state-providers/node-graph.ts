@@ -64,7 +64,7 @@ export function createNodeGraphState(editor: Editor) {
 	// Set up message subscriptions on creation
 	editor.subscriptions.subscribeJsMessage(SendUIMetadata, (data) => {
 		update((state) => {
-			state.nodeDescriptions = data.nodeDescriptions;
+			state.nodeDescriptions = new Map(data.nodeDescriptions);
 			state.nodeTypes = data.nodeTypes;
 			return state;
 		});
