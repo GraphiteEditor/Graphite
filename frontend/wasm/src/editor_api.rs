@@ -761,6 +761,13 @@ impl EditorHandle {
 		self.dispatch(message);
 	}
 
+	/// Toggle lock state of all selected layers
+	#[wasm_bindgen(js_name = toggleSelectedLocked)]
+	pub fn toggle_selected_locked(&self) {
+		let message = NodeGraphMessage::ToggleSelectedLocked;
+		self.dispatch(message);
+	}
+
 	/// Creates a new document node in the node graph
 	#[wasm_bindgen(js_name = createNode)]
 	pub fn create_node(&self, node_type: JsValue, x: i32, y: i32) {

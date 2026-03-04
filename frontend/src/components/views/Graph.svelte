@@ -234,6 +234,22 @@
 						disabled={!$nodeGraph.contextMenuInformation.contextMenuData.data.canBeLayer}
 						flush={true}
 					/>
+					{#if $nodeGraph.contextMenuInformation.contextMenuData.data.hasSelectedLayers}
+						{@const allLocked = $nodeGraph.contextMenuInformation.contextMenuData.data.allSelectedLayersLocked}
+						{@const nodeId = $nodeGraph.contextMenuInformation.contextMenuData.data.nodeId}
+						<TextButton
+							label={allLocked ? "Unlock" : "Lock"}
+							action={() => {
+								if ($nodeGraph.selected.includes(nodeId)) {
+									editor.handle.toggleSelectedLocked();
+								} else {
+									editor.handle.toggleLayerLock(nodeId);
+								}
+								nodeGraph.closeContextMenu();
+							}}
+							flush={true}
+						/>
+					{/if}
 				</LayoutCol>
 			{/if}
 		</FloatingMenu>
@@ -493,6 +509,7 @@
 				class:in-selected-network={$nodeGraph.inSelectedNetwork}
 				class:previewed={node.previewed}
 				class:disabled={!node.visible}
+				class:locked={node.locked}
 				style:--offset-left={node.position?.x || 0}
 				style:--offset-top={node.position?.y || 0}
 				style:--clip-path-id={`url(#${clipPathId})`}
@@ -582,6 +599,19 @@
 					<TextLabel>{node.displayName}</TextLabel>
 				</div>
 				<div class="solo-drag-grip" data-tooltip-description="Drag only this layer without pushing others outside the stack"></div>
+				{#if node.locked}
+					<IconButton
+						class="lock"
+						data-lock-button
+						size={24}
+						icon="PadlockLocked"
+						hoverIcon="PadlockUnlocked"
+						action={() => {
+							/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
+						}}
+						tooltipLabel="Unlock"
+					/>
+				{/if}
 				<IconButton
 					class="visibility"
 					data-visibility-button
@@ -1231,6 +1261,10 @@
 				border-radius: 2px;
 			}
 
+			&.locked .solo-drag-grip {
+				right: calc(-12px + 24px + 24px);
+			}
+
 			.solo-drag-grip:hover,
 			&.selected .solo-drag-grip {
 				background-image: var(--icon-drag-grip);
@@ -1241,8 +1275,11 @@
 			}
 
 			.visibility {
-				position: absolute;
 				right: -12px;
+			}
+
+			.lock {
+				right: 12px;
 			}
 
 			.input.connectors {
@@ -1250,6 +1287,7 @@
 			}
 
 			.solo-drag-grip,
+			.lock,
 			.visibility,
 			.input.connectors,
 			.input.connectors .connector {

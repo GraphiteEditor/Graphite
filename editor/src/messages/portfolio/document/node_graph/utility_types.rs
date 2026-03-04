@@ -147,6 +147,10 @@ pub enum ContextMenuData {
 		can_be_layer: bool,
 		#[serde(rename = "currentlyIsNode")]
 		currently_is_node: bool,
+		#[serde(rename = "hasSelectedLayers")]
+		has_selected_layers: bool,
+		#[serde(rename = "allSelectedLayersLocked")]
+		all_selected_layers_locked: bool,
 	},
 	CreateNode {
 		#[serde(rename = "compatibleType")]

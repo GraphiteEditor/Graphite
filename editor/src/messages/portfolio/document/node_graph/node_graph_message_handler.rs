@@ -809,10 +809,27 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					let context_menu_data = if let Some(node_id) = clicked_id {
 						let currently_is_node = !network_interface.is_layer(&node_id, breadcrumb_network_path);
 						let can_be_layer = network_interface.is_eligible_to_be_layer(&node_id, breadcrumb_network_path);
+
+						// Determine which layers the Lock/Unlock action would affect:
+						// - If the right-clicked node is in the selection, it affects all selected layers
+						// - If the right-clicked node is not in the selection, it affects just the right-clicked node
+						let selected_nodes = network_interface.selected_nodes_in_nested_network(selection_network_path);
+						let is_clicked_selected = selected_nodes.as_ref().is_some_and(|selected| selected.selected_nodes().any(|id| *id == node_id));
+						let affected_layer_ids = if is_clicked_selected {
+							selected_nodes.map(|selected| selected.selected_nodes().copied().filter(|id| network_interface.is_layer(id, selection_network_path)).collect())
+						} else {
+							network_interface.is_layer(&node_id, selection_network_path).then(|| vec![node_id])
+						}
+						.unwrap_or_default();
+						let has_selected_layers = !affected_layer_ids.is_empty();
+						let all_selected_layers_locked = has_selected_layers && affected_layer_ids.iter().all(|id| network_interface.is_locked(id, selection_network_path));
+
 						ContextMenuData::ModifyNode {
 							can_be_layer,
 							currently_is_node,
 							node_id,
+							has_selected_layers,
+							all_selected_layers_locked,
 						}
 					} else {
 						ContextMenuData::CreateNode { compatible_type: None }
@@ -893,6 +910,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				// Toggle visibility of clicked node and return
 				if let Some(clicked_visibility) = network_interface.layer_click_target_from_click(click, network_interface::LayerClickTargetTypes::Visibility, selection_network_path) {
 					responses.add(NodeGraphMessage::ToggleVisibility { node_id: clicked_visibility });
+					return;
+				}
+
+				// Toggle lock of clicked node and return
+				if let Some(clicked_lock) = network_interface.layer_click_target_from_click(click, network_interface::LayerClickTargetTypes::Lock, selection_network_path) {
+					responses.add(NodeGraphMessage::ToggleLocked { node_id: clicked_lock });
 					return;
 				}
 
@@ -1834,9 +1857,17 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					log::error!("Could not get selected nodes in NodeGraphMessage::ToggleSelectedLocked");
 					return;
 				};
-				let node_ids = selected_nodes.selected_nodes().cloned().collect::<Vec<_>>();
+				let node_ids = selected_nodes
+					.selected_nodes()
+					.filter(|node_id| network_interface.is_layer(node_id, selection_network_path))
+					.cloned()
+					.collect::<Vec<_>>();
 
-				// If any of the selected layers are locked, show them all. Otherwise, hide them all.
+				if node_ids.is_empty() {
+					return;
+				}
+
+				// If any of the selected layers are unlocked, lock them all. Otherwise, unlock them all.
 				let locked = !node_ids.iter().all(|node_id| network_interface.is_locked(node_id, selection_network_path));
 
 				responses.add(DocumentMessage::AddTransaction);
