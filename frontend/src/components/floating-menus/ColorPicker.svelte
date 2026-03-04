@@ -2,7 +2,25 @@
 	import { getContext, onDestroy, createEventDispatcher, tick } from "svelte";
 
 	import type { HSV, RGB, FillChoice, MenuDirection } from "@graphite/messages";
-	import { Color, contrastingOutlineFactor, Gradient } from "@graphite/messages";
+	import {
+		type Color,
+		contrastingOutlineFactor,
+		isColor,
+		isGradient,
+		createColor,
+		createNoneColor,
+		createColorFromHSVA,
+		colorFromCSS,
+		colorToRgb255,
+		colorToHSVA,
+		colorToHexOptionalAlpha,
+		colorToHexNoAlpha,
+		colorToRgbCSS,
+		colorContrastingColor,
+		colorOpaque,
+		colorEquals,
+		gradientFirstColor,
+	} from "@graphite/messages";
 	import type { TooltipState } from "@graphite/state-providers/tooltip";
 	import { clamp } from "@graphite/utility-functions/math";
 	import { isDesktop } from "@graphite/utility-functions/platform";
@@ -51,16 +69,17 @@
 	// TODO: See if this should be made to follow the pattern of DropdownInput.svelte so this could be removed
 	export let open: boolean;
 
-	const hsvaOrNone = colorOrGradient instanceof Color ? colorOrGradient.toHSVA() : colorOrGradient.firstColor()?.toHSVA();
+	const colorForHSVA = isColor(colorOrGradient) ? colorOrGradient : gradientFirstColor(colorOrGradient);
+	const hsvaOrNone = colorForHSVA ? colorToHSVA(colorForHSVA) : undefined;
 	const hsva = hsvaOrNone || { h: 0, s: 0, v: 0, a: 1 };
 
 	// Gradient color stops
-	$: gradient = colorOrGradient instanceof Gradient ? colorOrGradient : undefined;
+	$: gradient = isGradient(colorOrGradient) ? colorOrGradient : undefined;
 	let activeIndex = 0 as number | undefined;
 	let activeIndexIsMidpoint = false;
-	$: selectedGradientColor = (activeIndex !== undefined && gradient?.color[activeIndex]) || (Color.fromCSS("black") as Color);
+	$: selectedGradientColor = (activeIndex !== undefined && gradient?.color[activeIndex]) || (colorFromCSS("black") as Color);
 	// Currently viewed color
-	$: color = colorOrGradient instanceof Color ? colorOrGradient : selectedGradientColor;
+	$: color = isColor(colorOrGradient) ? colorOrGradient : selectedGradientColor;
 	// New color components
 	let hue = hsva.h;
 	let saturation = hsva.s;
@@ -97,16 +116,16 @@
 
 	$: oldColor = generateColor(oldHue, oldSaturation, oldValue, oldAlpha, oldIsNone);
 	$: newColor = generateColor(hue, saturation, value, alpha, isNone);
-	$: rgbChannels = Object.entries(newColor.toRgb255() || { r: undefined, g: undefined, b: undefined }) as [keyof RGB, number | undefined][];
+	$: rgbChannels = Object.entries(colorToRgb255(newColor) || { r: undefined, g: undefined, b: undefined }) as [keyof RGB, number | undefined][];
 	$: hsvChannels = Object.entries(!isNone ? { h: hue * 360, s: saturation * 100, v: value * 100 } : { h: undefined, s: undefined, v: undefined }) as [keyof HSV, number | undefined][];
-	$: opaqueHueColor = new Color({ h: hue, s: 1, v: 1, a: 1 });
+	$: opaqueHueColor = createColorFromHSVA(hue, 1, 1, 1);
 	$: outlineFactor = Math.max(contrastingOutlineFactor(newColor, "--color-2-mildblack", 0.01), contrastingOutlineFactor(oldColor, "--color-2-mildblack", 0.01));
 	$: outlined = outlineFactor > 0.0001;
 	$: transparency = newColor.alpha < 1 || oldColor.alpha < 1;
 
 	function generateColor(h: number, s: number, v: number, a: number, none: boolean) {
-		if (none) return new Color("none");
-		return new Color({ h, s, v, a });
+		if (none) return createNoneColor();
+		return createColorFromHSVA(h, s, v, a);
 	}
 
 	async function watchOpen(open: boolean) {
@@ -119,7 +138,7 @@
 	}
 
 	function watchColor(color: Color) {
-		const hsva = color.toHSVA();
+		const hsva = colorToHSVA(color);
 
 		if (hsva === undefined) {
 			setNewHSVA(0, 0, 0, 1, true);
@@ -185,7 +204,7 @@
 			strayCloses = false;
 		}
 
-		const color = new Color({ h: hue, s: saturation, v: value, a: alpha });
+		const color = createColorFromHSVA(hue, saturation, value, alpha);
 		setColor(color);
 
 		if (!e.shiftKey) {
@@ -226,7 +245,7 @@
 				saturation = saturationRestoreWhenShiftReleased;
 				value = valueRestoreWhenShiftReleased;
 
-				const color = new Color({ h: hue, s: saturation, v: value, a: alpha });
+				const color = createColorFromHSVA(hue, saturation, value, alpha);
 				setColor(color);
 			}
 		}
@@ -282,14 +301,14 @@
 		value = valueBeforeDrag;
 		alpha = alphaBeforeDrag;
 
-		const color = new Color({ h: hue, s: saturation, v: value, a: alpha });
+		const color = createColorFromHSVA(hue, saturation, value, alpha);
 		setColor(color);
 	}
 
 	function setColor(color?: Color) {
-		const colorToEmit = color || new Color({ h: hue, s: saturation, v: value, a: alpha });
+		const colorToEmit = color || createColorFromHSVA(hue, saturation, value, alpha);
 
-		if (gradientSpectrumInputWidget && activeIndex !== undefined && gradient?.position[activeIndex] !== undefined && colorOrGradient instanceof Gradient) {
+		if (gradientSpectrumInputWidget && activeIndex !== undefined && gradient?.position[activeIndex] !== undefined && isGradient(colorOrGradient)) {
 			colorOrGradient.color[activeIndex] = colorToEmit;
 		}
 
@@ -312,7 +331,7 @@
 	}
 
 	function setColorCode(colorCode: string) {
-		const color = Color.fromCSS(colorCode);
+		const color = colorFromCSS(colorCode);
 		if (color) setColor(color);
 	}
 
@@ -320,9 +339,9 @@
 		// Do nothing if the given value is undefined
 		if (strength === undefined) return undefined;
 		// Set the specified channel to the given value
-		else if (channel === "r") setColor(new Color(strength / 255, newColor.green, newColor.blue, newColor.alpha));
-		else if (channel === "g") setColor(new Color(newColor.red, strength / 255, newColor.blue, newColor.alpha));
-		else if (channel === "b") setColor(new Color(newColor.red, newColor.green, strength / 255, newColor.alpha));
+		else if (channel === "r") setColor(createColor(strength / 255, newColor.green, newColor.blue, newColor.alpha));
+		else if (channel === "g") setColor(createColor(newColor.red, strength / 255, newColor.blue, newColor.alpha));
+		else if (channel === "b") setColor(createColor(newColor.red, newColor.green, strength / 255, newColor.alpha));
 	}
 
 	function setColorHSV(channel: keyof HSV, strength: number | undefined) {
@@ -353,10 +372,10 @@
 
 		if (preset === "none") {
 			setNewHSVA(0, 0, 0, 1, true);
-			setColor(new Color("none"));
+			setColor(createNoneColor());
 		} else {
-			const presetColor = new Color(...PURE_COLORS[preset], 1);
-			const hsva = presetColor.toHSVA() || { h: 0, s: 0, v: 0, a: 0 };
+			const presetColor = createColor(...PURE_COLORS[preset], 1);
+			const hsva = colorToHSVA(presetColor) || { h: 0, s: 0, v: 0, a: 0 };
 
 			setNewHSVA(hsva.h, hsva.s, hsva.v, hsva.a, false);
 			setColor(presetColor);
@@ -406,7 +425,7 @@
 		activeIndexIsMidpoint = activeMarkerIsMidpoint;
 
 		const color = activeMarkerIndex === undefined ? undefined : gradient?.color[activeMarkerIndex];
-		const hsva = color?.toHSVA();
+		const hsva = color ? colorToHSVA(color) : undefined;
 		if (!color || !hsva) return;
 
 		setColor(color);
@@ -427,14 +446,14 @@
 <FloatingMenu class="color-picker" classes={{ disabled }} {open} on:open {strayCloses} escapeCloses={strayCloses && !gradientSpectrumDragging} {direction} type="Popover" bind:this={self}>
 	<LayoutRow
 		styles={{
-			"--new-color": newColor.toHexOptionalAlpha(),
-			"--new-color-contrasting": newColor.contrastingColor(),
-			"--old-color": oldColor.toHexOptionalAlpha(),
-			"--old-color-contrasting": oldColor.contrastingColor(),
-			"--hue-color": opaqueHueColor.toRgbCSS(),
-			"--hue-color-contrasting": opaqueHueColor.contrastingColor(),
-			"--opaque-color": (newColor.opaque() || new Color(0, 0, 0, 1)).toHexNoAlpha(),
-			"--opaque-color-contrasting": (newColor.opaque() || new Color(0, 0, 0, 1)).contrastingColor(),
+			"--new-color": colorToHexOptionalAlpha(newColor),
+			"--new-color-contrasting": colorContrastingColor(newColor),
+			"--old-color": colorToHexOptionalAlpha(oldColor),
+			"--old-color-contrasting": colorContrastingColor(oldColor),
+			"--hue-color": colorToRgbCSS(opaqueHueColor),
+			"--hue-color-contrasting": colorContrastingColor(opaqueHueColor),
+			"--opaque-color": colorToHexNoAlpha(colorOpaque(newColor) || createColor(0, 0, 0, 1)),
+			"--opaque-color-contrasting": colorContrastingColor(colorOpaque(newColor) || createColor(0, 0, 0, 1)),
 		}}
 	>
 		{@const hueDescription = "The shade along the spectrum of the rainbow."}
@@ -528,18 +547,18 @@
 				class="choice-preview"
 				classes={{ outlined, transparency }}
 				styles={{ "--outline-amount": outlineFactor }}
-				tooltipDescription={!newColor.equals(oldColor) ? "Comparison between the present color choice (left) and the color before it was changed (right)." : "The present color choice."}
+				tooltipDescription={!colorEquals(newColor, oldColor) ? "Comparison between the present color choice (left) and the color before it was changed (right)." : "The present color choice."}
 			>
-				{#if !newColor.equals(oldColor) && !disabled}
+				{#if !colorEquals(newColor, oldColor) && !disabled}
 					<div class="swap-button-background"></div>
 					<IconButton class="swap-button" icon="SwapHorizontal" size={16} action={swapNewWithOld} tooltipLabel="Swap" />
 				{/if}
 				<LayoutCol class="new-color" classes={{ none: isNone }}>
-					{#if !newColor.equals(oldColor)}
+					{#if !colorEquals(newColor, oldColor)}
 						<TextLabel>New</TextLabel>
 					{/if}
 				</LayoutCol>
-				{#if !newColor.equals(oldColor)}
+				{#if !colorEquals(newColor, oldColor)}
 					<LayoutCol class="old-color" classes={{ none: oldIsNone }}>
 						<TextLabel>Old</TextLabel>
 					</LayoutCol>
@@ -552,7 +571,7 @@
 				<Separator style="Related" />
 				<LayoutRow>
 					<TextInput
-						value={newColor.toHexOptionalAlpha() || "-"}
+						value={colorToHexOptionalAlpha(newColor) || "-"}
 						{disabled}
 						on:commitText={({ detail }) => {
 							dispatch("startHistoryTransaction");
