@@ -24,12 +24,13 @@ use std::collections::{HashMap, HashSet};
 use vector_types::gradient::{build_transform_with_y_preservation, initial_gradient_transform_for_bounding_box};
 use vector_types::subpath::{BezierHandles, ManipulatorGroup};
 use vector_types::vector::algorithms::bezpath_algorithms::{self, TValue, eval_pathseg_euclidean, evaluate_bezpath, split_bezpath, tangent_on_bezpath};
+use vector_types::vector::algorithms::convex_hull::convex_hull_of_geometry;
 use vector_types::vector::algorithms::merge_by_distance::MergeByDistanceExt;
 use vector_types::vector::algorithms::offset_subpath::offset_bezpath;
 use vector_types::vector::algorithms::spline::{solve_spline_first_handle_closed, solve_spline_first_handle_open};
 use vector_types::vector::misc::{
 	CentroidType, ExtrudeJoiningAlgorithm, HandleId, InterpolationDistribution, MergeByDistanceAlgorithm, PointSpacingType, RowsOrColumns, bezpath_from_manipulator_groups,
-	bezpath_to_manipulator_groups, handles_to_segment, is_linear, point_to_dvec2, segment_to_handles,
+	bezpath_to_manipulator_groups, dvec2_to_point, handles_to_segment, is_linear, point_to_dvec2, segment_to_handles,
 };
 use vector_types::vector::style::{DashPattern, Gradient, PaintOrder, Stroke, StrokeAlign, StrokeCap, StrokeJoin};
 use vector_types::vector::{FillId, PointId, RegionId, SegmentDomain, SegmentId, StrokeId, VectorExt};
@@ -557,6 +558,67 @@ pub fn merge_by_distance(
 	}
 
 	content
+}
+
+/// Wraps all of the input geometry in its convex hull: the shape a taut rubber band would form when stretched around it.
+///
+/// Convex portions of curved segments are kept exactly as they are, and the boundary departs from a curve only where it must, continuing along a straight bridging line that leaves and rejoins the curves at perfect tangents. The anchor points, floating points, and subpaths (open or closed) of all the input shapes are wrapped together into one combined hull.
+#[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
+async fn convex_hull<I: IntoGraphicList>(
+	_: impl Ctx,
+	/// The `List` of vector paths to wrap in the convex hull. Nested `List`s are automatically flattened.
+	#[implementations(List<Graphic>, List<Vector>)]
+	content: I,
+) -> List<Vector> {
+	let content = content.into_graphic_list();
+	let flattened: List<Vector> = content.clone().into_flattened_list();
+
+	// Gather the world-space segments and floating anchor points of every input item
+	let mut segments = Vec::new();
+	let mut loose_points = Vec::new();
+	for index in 0..flattened.len() {
+		let Some(element) = flattened.element(index) else { continue };
+		let transform: DAffine2 = flattened.attribute_cloned_or_default(ATTR_TRANSFORM, index);
+		let affine = Affine::new(transform.to_cols_array());
+
+		for bezpath in element.stroke_bezpath_iter() {
+			segments.extend(bezpath.segments().map(|segment| affine * segment));
+		}
+
+		// Anchor points not connected to any segment still participate in the hull
+		let connected_points: HashSet<usize> = element.segment_domain.start_point().iter().chain(element.segment_domain.end_point()).copied().collect();
+		for (point_index, &position) in element.point_domain.positions().iter().enumerate() {
+			if !connected_points.contains(&point_index) {
+				loose_points.push(dvec2_to_point(transform.transform_point2(position)));
+			}
+		}
+	}
+
+	let hull = convex_hull_of_geometry(&segments, &loose_points);
+
+	// Carry over the attributes and stroke of the last input item, matching the Boolean Operation node
+	let Some(last_index) = flattened.len().checked_sub(1) else { return List::new() };
+	let mut attributes = flattened.clone_item_attributes(last_index);
+	let last_transform: DAffine2 = flattened.attribute_cloned_or_default(ATTR_TRANSFORM, last_index);
+
+	// The hull geometry is built in world space, so the result item carries no transform of its own
+	attributes.insert(ATTR_TRANSFORM, DAffine2::IDENTITY);
+	bake_paint_transforms(&mut attributes, last_transform);
+
+	let mut element = Vector {
+		stroke: flattened.element(last_index).map(|vector| vector.stroke.clone()).unwrap_or_default(),
+		..Default::default()
+	};
+	element.append_bezpath(hull);
+	element.set_stroke_transform(DAffine2::IDENTITY);
+
+	let mut result = List::new();
+	result.push(Item::from_parts(element, attributes));
+
+	// Snapshot the input layers so the renderer can recurse into them for editor click-target preservation
+	result.set_attribute(ATTR_EDITOR_MERGED_LAYERS, 0, content);
+
+	result
 }
 
 pub mod extrude_algorithms {
@@ -3609,6 +3671,33 @@ mod test {
 				&[offset + DVec2::NEG_ONE, offset + DVec2::new(1., -1.), offset + DVec2::ONE, offset + DVec2::new(-1., 1.),]
 			);
 		}
+	}
+
+	#[tokio::test]
+	async fn convex_hull_wraps_multiple_items_and_floating_points() {
+		// Two squares far apart, each placed by its own transform, plus a free-floating anchor point far above
+		let square = Rect::new(0., 0., 10., 10.).to_path(DEFAULT_ACCURACY);
+		let mut content = List::new();
+		content.push(create_vector_item(square.clone(), DAffine2::IDENTITY));
+		content.push(create_vector_item(square, DAffine2::from_translation(DVec2::new(100., 0.))));
+
+		let mut floating = Vector::default();
+		floating.point_domain.push(PointId::generate(), DVec2::new(50., 200.));
+		content.push(Item::new_from_element(floating));
+
+		let hull = super::convex_hull(Footprint::default(), content).await;
+		let element = hull.element(0).unwrap();
+
+		// The hull is the pentagon spanning both squares' outer corners and the floating point
+		let positions = element.point_domain.positions();
+		assert_eq!(positions.len(), 5, "expected a pentagon, got anchors at {positions:?}");
+		for expected in [DVec2::new(0., 0.), DVec2::new(110., 0.), DVec2::new(110., 10.), DVec2::new(50., 200.), DVec2::new(0., 10.)] {
+			assert!(positions.iter().any(|position| position.distance(expected) < 1e-6), "expected a hull anchor near {expected}");
+		}
+
+		// The hull geometry is emitted in world space with no residual transform
+		let transform: DAffine2 = hull.attribute_cloned_or_default(ATTR_TRANSFORM, 0);
+		assert_eq!(transform, DAffine2::IDENTITY);
 	}
 
 	#[tokio::test]
