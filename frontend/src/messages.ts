@@ -1,4 +1,4 @@
-import { Transform, Type, plainToClass } from "class-transformer";
+import { Transform } from "class-transformer";
 
 import { sampleInterpolatedGradient, type EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
 import { type PopoverButtonStyle, type IconName, type IconSize } from "@graphite/icons";
@@ -1221,38 +1221,34 @@ export class ReferencePointInput extends WidgetProps {
 
 // WIDGET
 
-const widgetSubTypes = [
-	{ value: BreadcrumbTrailButtons, name: "BreadcrumbTrailButtons" },
-	{ value: CheckboxInput, name: "CheckboxInput" },
-	{ value: ColorInput, name: "ColorInput" },
-	{ value: CurveInput, name: "CurveInput" },
-	{ value: DropdownInput, name: "DropdownInput" },
-	{ value: IconButton, name: "IconButton" },
-	{ value: ImageButton, name: "ImageButton" },
-	{ value: ImageLabel, name: "ImageLabel" },
-	{ value: ShortcutLabel, name: "ShortcutLabel" },
-	{ value: IconLabel, name: "IconLabel" },
-	{ value: NodeCatalog, name: "NodeCatalog" },
-	{ value: NumberInput, name: "NumberInput" },
-	{ value: ParameterExposeButton, name: "ParameterExposeButton" },
-	{ value: ReferencePointInput, name: "ReferencePointInput" },
-	{ value: PopoverButton, name: "PopoverButton" },
-	{ value: RadioInput, name: "RadioInput" },
-	{ value: Separator, name: "Separator" },
-	{ value: WorkingColorsInput, name: "WorkingColorsInput" },
-	{ value: TextAreaInput, name: "TextAreaInput" },
-	{ value: TextButton, name: "TextButton" },
-	{ value: TextInput, name: "TextInput" },
-	{ value: TextLabel, name: "TextLabel" },
-] as const;
-
-type WidgetSubTypes = (typeof widgetSubTypes)[number];
-export type WidgetTypes = { [T in WidgetSubTypes as T["name"]]: InstanceType<T["value"]> };
+export type WidgetTypes = {
+	BreadcrumbTrailButtons: BreadcrumbTrailButtons;
+	CheckboxInput: CheckboxInput;
+	ColorInput: ColorInput;
+	CurveInput: CurveInput;
+	DropdownInput: DropdownInput;
+	IconButton: IconButton;
+	IconLabel: IconLabel;
+	ImageButton: ImageButton;
+	ImageLabel: ImageLabel;
+	NodeCatalog: NodeCatalog;
+	NumberInput: NumberInput;
+	ParameterExposeButton: ParameterExposeButton;
+	PopoverButton: PopoverButton;
+	RadioInput: RadioInput;
+	ReferencePointInput: ReferencePointInput;
+	Separator: Separator;
+	ShortcutLabel: ShortcutLabel;
+	TextAreaInput: TextAreaInput;
+	TextButton: TextButton;
+	TextInput: TextInput;
+	TextLabel: TextLabel;
+	WorkingColorsInput: WorkingColorsInput;
+};
 export type WidgetPropsNames = keyof WidgetTypes;
 export type WidgetPropsSet = WidgetTypes[WidgetPropsNames];
 
 export class WidgetInstance {
-	@Type(() => WidgetProps, { discriminator: { property: "kind", subTypes: [...widgetSubTypes] }, keepDiscriminatorProperty: true })
 	props!: WidgetPropsSet;
 
 	widgetId!: bigint;
@@ -1271,9 +1267,10 @@ function hoistWidgetInstance(widgetInstance: any): WidgetInstance {
 		props.value = parseFillChoice(props.value);
 	}
 
-	const { widgetId } = widgetInstance;
-
-	return plainToClass(WidgetInstance, { props, widgetId });
+	const instance = new WidgetInstance();
+	instance.props = props;
+	instance.widgetId = widgetInstance.widgetId;
+	return instance;
 }
 
 // WIDGET LAYOUT
@@ -1336,8 +1333,8 @@ export function patchLayout(layout: /* &mut */ Layout, updates: WidgetDiffUpdate
 			if (targetLayout && "rowWidgets" in targetLayout) return targetLayout.rowWidgets[index];
 			if (targetLayout && "tableWidgets" in targetLayout) return targetLayout.tableWidgets[index];
 			if (targetLayout && "layout" in targetLayout) return targetLayout.layout[index];
-			if (targetLayout instanceof WidgetInstance) {
-				if (targetLayout.props.kind === "PopoverButton" && targetLayout.props instanceof PopoverButton && targetLayout.props.popoverLayout) {
+			if (targetLayout && "props" in targetLayout && "widgetId" in targetLayout) {
+				if (targetLayout.props.kind === "PopoverButton" && "popoverLayout" in targetLayout.props && targetLayout.props.popoverLayout) {
 					return targetLayout.props.popoverLayout[index];
 				}
 				// eslint-disable-next-line no-console
