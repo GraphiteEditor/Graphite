@@ -36,7 +36,7 @@
 	$: stretchedSpacing = majorMarkSpacing * stretchFactor;
 	$: effectiveOrigin = computeEffectiveOrigin(direction, originX, originY, otherAxis);
 	$: svgPath = computeSvgPath(direction, effectiveOrigin, stretchedSpacing, minorDivisions, microDivisions, rulerLength, otherAxis);
-	$: svgTexts = computeSvgTexts(direction, effectiveOrigin, stretchedSpacing, numberInterval, rulerLength, trackedAxis);
+	$: svgTexts = computeSvgTexts(direction, effectiveOrigin, stretchedSpacing, numberInterval, rulerLength, trackedAxis, otherAxis);
 
 	function computeAxes(tilt: number): { horiz: Axis; vert: Axis } {
 		const HALF_PI = Math.PI / 2;
@@ -101,8 +101,15 @@
 		numberInterval: number,
 		rulerLength: number,
 		trackedAxis: Axis,
+		otherAxis: Axis,
 	): { transform: string; text: string }[] {
 		const isVertical = direction === "Vertical";
+
+		// Compute the tick tip offset so labels align with the top of the slanted tick
+		const [vx, vy] = otherAxis.vec;
+		const flip = isVertical ? (vx > 0 ? -1 : 1) : vy > 0 ? -1 : 1;
+		const tipOffsetX = vx * flip * MAJOR_MARK_THICKNESS;
+		const tipOffsetY = vy * flip * MAJOR_MARK_THICKNESS;
 
 		const shiftedOffsetStart = mod(effectiveOrigin, stretchedSpacing) - stretchedSpacing;
 		const increments = Math.round((shiftedOffsetStart - effectiveOrigin) / stretchedSpacing);
@@ -112,8 +119,8 @@
 
 		for (let loc = shiftedOffsetStart; loc < rulerLength; loc += stretchedSpacing) {
 			const destination = Math.round(loc);
-			const x = isVertical ? 9 : destination + 2;
-			const y = isVertical ? destination + 1 : 9;
+			const x = isVertical ? 9 : destination + 2 + tipOffsetX;
+			const y = isVertical ? destination + 1 + tipOffsetY : 9;
 
 			let transform = `translate(${x} ${y})`;
 			if (isVertical) transform += " rotate(-90)";
