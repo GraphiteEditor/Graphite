@@ -84,11 +84,8 @@ pub fn start() {
 			tracing::info!("CEF initialized successfully");
 			context
 		}
-		Err(cef::InitError::AlreadyRunning) => {
-			panic!("Another instance is already running.");
-		}
-		Err(cef::InitError::InitializationFailed(code)) => {
-			panic!("Cef initialization failed with code: {code}");
+		Err(cef::InitError::InitializationFailureCode(code)) => {
+			panic!("CEF initialization failed with code: {code}");
 		}
 		Err(cef::InitError::BrowserCreationFailed) => {
 			panic!("Failed to create CEF browser");

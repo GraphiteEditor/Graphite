@@ -36,6 +36,7 @@ impl Task {
 
 		let (action, rest) = match rest.first() {
 			Some(&"build") => (Action::Build, &rest[1..]),
+			Some(&"run") => (Action::Run, &rest[1..]),
 			_ => (Action::Run, rest),
 		};
 

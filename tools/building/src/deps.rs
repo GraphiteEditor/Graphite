@@ -155,12 +155,12 @@ pub fn check(task: &Task) -> Result<(), Error> {
 		eprintln!("See: https://graphite.art/volunteer/guide/project-setup/");
 	}
 
-	if installable.is_empty() {
+	// Don't prompt for automatic installation if we're not interactive session
+	if !std::io::stdout().is_terminal() || !std::io::stderr().is_terminal() || !std::io::stdin().is_terminal() {
 		return Ok(());
 	}
 
-	// Don't prompt for automatic installation if we're not interactive session
-	if !std::io::stdout().is_terminal() && !std::io::stderr().is_terminal() && !std::io::stdin().is_terminal() {
+	if installable.is_empty() {
 		return Ok(());
 	}
 
