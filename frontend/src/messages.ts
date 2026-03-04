@@ -365,282 +365,227 @@ export type ActionShortcut = { shortcut: LabeledShortcut };
 // Channels can have any range (0-1, 0-255, 0-100, 0-360) in the context they are being used in, these are just containers for the numbers
 export type HSVA = { h: number; s: number; v: number; a: number };
 export type HSV = { h: number; s: number; v: number };
-export type RGBA = { r: number; g: number; b: number; a: number };
 export type RGB = { r: number; g: number; b: number };
 
 export class Gradient {
 	position!: number[];
 	midpoint!: number[];
 	color!: Color[];
-
-	constructor(position: number[], midpoint: number[], color: Color[]) {
-		this.position = position;
-		this.midpoint = midpoint;
-		this.color = color;
-	}
-
-	toLinearGradientCSS(): string {
-		if (this.position.length === 1) {
-			return `linear-gradient(to right, ${this.color[0].toHexOptionalAlpha()} 0%, ${this.color[0].toHexOptionalAlpha()} 100%)`;
-		}
-
-		const pieces = sampleInterpolatedGradient(new Float64Array(this.position), new Float64Array(this.midpoint), this.color, false);
-		return `linear-gradient(to right, ${pieces})`;
-	}
-
-	toLinearGradientCSSNoAlpha(): string {
-		if (this.position.length === 1) {
-			return `linear-gradient(to right, ${this.color[0].toHexNoAlpha()} 0%, ${this.color[0].toHexNoAlpha()} 100%)`;
-		}
-
-		const pieces = sampleInterpolatedGradient(new Float64Array(this.position), new Float64Array(this.midpoint), this.color, true);
-		return `linear-gradient(to right, ${pieces})`;
-	}
-
-	firstColor(): Color | undefined {
-		return this.color[0];
-	}
-
-	lastColor(): Color | undefined {
-		return this.color[this.color.length - 1];
-	}
 }
 
 // All channels range are represented by 0-1, sRGB, gamma.
 export class Color {
 	readonly red!: number;
-
 	readonly green!: number;
-
 	readonly blue!: number;
-
 	readonly alpha!: number;
-
 	readonly none!: boolean;
+}
 
-	constructor();
+// COLOR FACTORY FUNCTIONS
 
-	constructor(none: "none");
+export function createColor(red: number, green: number, blue: number, alpha: number): Color {
+	return { red, green, blue, alpha, none: false };
+}
 
-	constructor(hsva: HSVA);
+export function createNoneColor(): Color {
+	return { red: 0, green: 0, blue: 0, alpha: 1, none: true };
+}
 
-	constructor(red: number, green: number, blue: number, alpha: number);
+export function createColorFromHSVA(h: number, s: number, v: number, a: number): Color {
+	const convert = (n: number): number => {
+		const k = (n + h * 6) % 6;
+		return v - v * s * Math.max(Math.min(...[k, 4 - k, 1]), 0);
+	};
 
-	constructor(firstArg?: "none" | HSVA | number, green?: number, blue?: number, alpha?: number) {
-		// Empty constructor
-		if (firstArg === undefined) {
-			this.red = 0;
-			this.green = 0;
-			this.blue = 0;
-			this.alpha = 1;
-			this.none = false;
-		} else if (firstArg === "none") {
-			this.red = 0;
-			this.green = 0;
-			this.blue = 0;
-			this.alpha = 1;
-			this.none = true;
+	return { red: convert(5), green: convert(3), blue: convert(1), alpha: a, none: false };
+}
+
+// COLOR UTILITY FUNCTIONS
+
+export function colorFromCSS(colorCode: string): Color | undefined {
+	// Allow single-digit hex value inputs
+	let colorValue = colorCode.trim();
+	if (colorValue.length === 2 && colorValue.charAt(0) === "#" && /[0-9a-f]/i.test(colorValue.charAt(1))) {
+		const digit = colorValue.charAt(1);
+		colorValue = `#${digit}${digit}${digit}`;
+	}
+
+	const canvas = document.createElement("canvas");
+	canvas.width = 1;
+	canvas.height = 1;
+	const context = canvas.getContext("2d", { willReadFrequently: true });
+	if (!context) return undefined;
+
+	context.clearRect(0, 0, 1, 1);
+
+	context.fillStyle = "black";
+	context.fillStyle = colorValue;
+	const comparisonA = context.fillStyle;
+
+	context.fillStyle = "white";
+	context.fillStyle = colorValue;
+	const comparisonB = context.fillStyle;
+
+	// Invalid color
+	if (comparisonA !== comparisonB) {
+		// If this color code didn't start with a #, add it and try again
+		if (colorValue.trim().charAt(0) !== "#") return colorFromCSS(`#${colorValue.trim()}`);
+		return undefined;
+	}
+
+	context.fillRect(0, 0, 1, 1);
+
+	const [r, g, b, a] = [...context.getImageData(0, 0, 1, 1).data];
+	return createColor(r / 255, g / 255, b / 255, a / 255);
+}
+
+export function colorEquals(c1: Color, c2: Color): boolean {
+	if (c1.none && c2.none) return true;
+	return Math.abs(c1.red - c2.red) < 1e-6 && Math.abs(c1.green - c2.green) < 1e-6 && Math.abs(c1.blue - c2.blue) < 1e-6 && Math.abs(c1.alpha - c2.alpha) < 1e-6;
+}
+
+export function colorToHexNoAlpha(color: Color): string | undefined {
+	if (color.none) return undefined;
+
+	const r = Math.round(color.red * 255)
+		.toString(16)
+		.padStart(2, "0");
+	const g = Math.round(color.green * 255)
+		.toString(16)
+		.padStart(2, "0");
+	const b = Math.round(color.blue * 255)
+		.toString(16)
+		.padStart(2, "0");
+
+	return `#${r}${g}${b}`;
+}
+
+export function colorToHexOptionalAlpha(color: Color): string | undefined {
+	if (color.none) return undefined;
+
+	const hex = colorToHexNoAlpha(color);
+	const a = Math.round(color.alpha * 255)
+		.toString(16)
+		.padStart(2, "0");
+
+	return a === "ff" ? hex : `${hex}${a}`;
+}
+
+export function colorToRgb255(color: Color): RGB | undefined {
+	if (color.none) return undefined;
+
+	return {
+		r: Math.round(color.red * 255),
+		g: Math.round(color.green * 255),
+		b: Math.round(color.blue * 255),
+	};
+}
+
+export function colorToRgbCSS(color: Color): string | undefined {
+	const rgb = colorToRgb255(color);
+	if (!rgb) return undefined;
+
+	return `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
+}
+
+export function colorToRgbaCSS(color: Color): string | undefined {
+	const rgb = colorToRgb255(color);
+	if (!rgb) return undefined;
+
+	return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${color.alpha})`;
+}
+
+export function colorToHSVA(color: Color): HSVA | undefined {
+	if (color.none) return undefined;
+
+	const { red: r, green: g, blue: b, alpha: a } = color;
+
+	const max = Math.max(r, g, b);
+	const min = Math.min(r, g, b);
+
+	const d = max - min;
+	const s = max === 0 ? 0 : d / max;
+	const v = max;
+
+	let h = 0;
+	if (max !== min) {
+		switch (max) {
+			case r:
+				h = (g - b) / d + (g < b ? 6 : 0);
+				break;
+			case g:
+				h = (b - r) / d + 2;
+				break;
+			case b:
+				h = (r - g) / d + 4;
+				break;
+			default:
 		}
-		// HSVA constructor
-		else if (typeof firstArg === "object" && green === undefined && blue === undefined && alpha === undefined) {
-			const { h, s, v } = firstArg;
-			const convert = (n: number): number => {
-				const k = (n + h * 6) % 6;
-				return v - v * s * Math.max(Math.min(...[k, 4 - k, 1]), 0);
-			};
-
-			this.red = convert(5);
-			this.green = convert(3);
-			this.blue = convert(1);
-			this.alpha = firstArg.a;
-			this.none = false;
-		}
-		// RGBA constructor
-		else if (typeof firstArg === "number" && typeof green === "number" && typeof blue === "number" && typeof alpha === "number") {
-			this.red = firstArg;
-			this.green = green;
-			this.blue = blue;
-			this.alpha = alpha;
-			this.none = false;
-		}
+		h /= 6;
 	}
 
-	static fromCSS(colorCode: string): Color | undefined {
-		// Allow single-digit hex value inputs
-		let colorValue = colorCode.trim();
-		if (colorValue.length === 2 && colorValue.charAt(0) === "#" && /[0-9a-f]/i.test(colorValue.charAt(1))) {
-			const digit = colorValue.charAt(1);
-			colorValue = `#${digit}${digit}${digit}`;
-		}
+	return { h, s, v, a };
+}
 
-		const canvas = document.createElement("canvas");
-		canvas.width = 1;
-		canvas.height = 1;
-		const context = canvas.getContext("2d", { willReadFrequently: true });
-		if (!context) return undefined;
+export function colorOpaque(color: Color): Color | undefined {
+	if (color.none) return undefined;
 
-		context.clearRect(0, 0, 1, 1);
+	return createColor(color.red, color.green, color.blue, 1);
+}
 
-		context.fillStyle = "black";
-		context.fillStyle = colorValue;
-		const comparisonA = context.fillStyle;
+export function colorLuminance(color: Color): number | undefined {
+	if (color.none) return undefined;
 
-		context.fillStyle = "white";
-		context.fillStyle = colorValue;
-		const comparisonB = context.fillStyle;
+	// Convert alpha into white
+	const r = color.red * color.alpha + (1 - color.alpha);
+	const g = color.green * color.alpha + (1 - color.alpha);
+	const b = color.blue * color.alpha + (1 - color.alpha);
 
-		// Invalid color
-		if (comparisonA !== comparisonB) {
-			// If this color code didn't start with a #, add it and try again
-			if (colorValue.trim().charAt(0) !== "#") return Color.fromCSS(`#${colorValue.trim()}`);
-			return undefined;
-		}
+	// https://stackoverflow.com/a/3943023/775283
 
-		context.fillRect(0, 0, 1, 1);
+	const linearR = r <= 0.04045 ? r / 12.92 : ((r + 0.055) / 1.055) ** 2.4;
+	const linearG = g <= 0.04045 ? g / 12.92 : ((g + 0.055) / 1.055) ** 2.4;
+	const linearB = b <= 0.04045 ? b / 12.92 : ((b + 0.055) / 1.055) ** 2.4;
 
-		const [r, g, b, a] = [...context.getImageData(0, 0, 1, 1).data];
-		return new Color(r / 255, g / 255, b / 255, a / 255);
+	return linearR * 0.2126 + linearG * 0.7152 + linearB * 0.0722;
+}
+
+export function colorContrastingColor(color: Color): "black" | "white" {
+	if (color.none) return "black";
+
+	const luminance = colorLuminance(color);
+
+	return luminance && luminance > Math.sqrt(1.05 * 0.05) - 0.05 ? "black" : "white";
+}
+
+// GRADIENT UTILITY FUNCTIONS
+
+export function gradientToLinearGradientCSS(gradient: Gradient): string {
+	if (gradient.position.length === 1) {
+		return `linear-gradient(to right, ${colorToHexOptionalAlpha(gradient.color[0])} 0%, ${colorToHexOptionalAlpha(gradient.color[0])} 100%)`;
 	}
 
-	equals(other: Color): boolean {
-		if (this.none && other.none) return true;
-		return Math.abs(this.red - other.red) < 1e-6 && Math.abs(this.green - other.green) < 1e-6 && Math.abs(this.blue - other.blue) < 1e-6 && Math.abs(this.alpha - other.alpha) < 1e-6;
-	}
+	const pieces = sampleInterpolatedGradient(new Float64Array(gradient.position), new Float64Array(gradient.midpoint), gradient.color, false);
+	return `linear-gradient(to right, ${pieces})`;
+}
 
-	toHexNoAlpha(): string | undefined {
-		if (this.none) return undefined;
+export function gradientFirstColor(gradient: Gradient): Color | undefined {
+	return gradient.color[0];
+}
 
-		const r = Math.round(this.red * 255)
-			.toString(16)
-			.padStart(2, "0");
-		const g = Math.round(this.green * 255)
-			.toString(16)
-			.padStart(2, "0");
-		const b = Math.round(this.blue * 255)
-			.toString(16)
-			.padStart(2, "0");
+export function gradientLastColor(gradient: Gradient): Color | undefined {
+	return gradient.color[gradient.color.length - 1];
+}
 
-		return `#${r}${g}${b}`;
-	}
+// COLOR/GRADIENT TYPE GUARDS
 
-	toHexOptionalAlpha(): string | undefined {
-		if (this.none) return undefined;
+export function isColor(value: unknown): value is Color {
+	return typeof value === "object" && value !== null && "red" in value;
+}
 
-		const hex = this.toHexNoAlpha();
-		const a = Math.round(this.alpha * 255)
-			.toString(16)
-			.padStart(2, "0");
-
-		return a === "ff" ? hex : `${hex}${a}`;
-	}
-
-	toRgb255(): RGB | undefined {
-		if (this.none) return undefined;
-
-		return {
-			r: Math.round(this.red * 255),
-			g: Math.round(this.green * 255),
-			b: Math.round(this.blue * 255),
-		};
-	}
-
-	toRgbCSS(): string | undefined {
-		const rgb = this.toRgb255();
-		if (!rgb) return undefined;
-
-		return `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
-	}
-
-	toRgbaCSS(): string | undefined {
-		const rgb = this.toRgb255();
-		if (!rgb) return undefined;
-
-		return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${this.alpha})`;
-	}
-
-	toHSV(): HSV | undefined {
-		const hsva = this.toHSVA();
-		if (!hsva) return undefined;
-
-		return { h: hsva.h, s: hsva.s, v: hsva.v };
-	}
-
-	toHSVA(): HSVA | undefined {
-		if (this.none) return undefined;
-
-		const { red: r, green: g, blue: b, alpha: a } = this;
-
-		const max = Math.max(r, g, b);
-		const min = Math.min(r, g, b);
-
-		const d = max - min;
-		const s = max === 0 ? 0 : d / max;
-		const v = max;
-
-		let h = 0;
-		if (max !== min) {
-			switch (max) {
-				case r:
-					h = (g - b) / d + (g < b ? 6 : 0);
-					break;
-				case g:
-					h = (b - r) / d + 2;
-					break;
-				case b:
-					h = (r - g) / d + 4;
-					break;
-				default:
-			}
-			h /= 6;
-		}
-
-		return { h, s, v, a };
-	}
-
-	toHsvDegreesAndPercent(): HSV | undefined {
-		const hsva = this.toHSVA();
-		if (!hsva) return undefined;
-
-		return { h: hsva.h * 360, s: hsva.s * 100, v: hsva.v * 100 };
-	}
-
-	toHsvaDegreesAndPercent(): HSVA | undefined {
-		const hsva = this.toHSVA();
-		if (!hsva) return undefined;
-
-		return { h: hsva.h * 360, s: hsva.s * 100, v: hsva.v * 100, a: hsva.a * 100 };
-	}
-
-	opaque(): Color | undefined {
-		if (this.none) return undefined;
-
-		return new Color(this.red, this.green, this.blue, 1);
-	}
-
-	luminance(): number | undefined {
-		if (this.none) return undefined;
-
-		// Convert alpha into white
-		const r = this.red * this.alpha + (1 - this.alpha);
-		const g = this.green * this.alpha + (1 - this.alpha);
-		const b = this.blue * this.alpha + (1 - this.alpha);
-
-		// https://stackoverflow.com/a/3943023/775283
-
-		const linearR = r <= 0.04045 ? r / 12.92 : ((r + 0.055) / 1.055) ** 2.4;
-		const linearG = g <= 0.04045 ? g / 12.92 : ((g + 0.055) / 1.055) ** 2.4;
-		const linearB = b <= 0.04045 ? b / 12.92 : ((b + 0.055) / 1.055) ** 2.4;
-
-		return linearR * 0.2126 + linearG * 0.7152 + linearB * 0.0722;
-	}
-
-	contrastingColor(): "black" | "white" {
-		if (this.none) return "black";
-
-		const luminance = this.luminance();
-
-		return luminance && luminance > Math.sqrt(1.05 * 0.05) - 0.05 ? "black" : "white";
-	}
+export function isGradient(value: unknown): value is Gradient {
+	return typeof value === "object" && value !== null && "position" in value && "midpoint" in value;
 }
 
 export class UpdateActiveDocument extends JsMessage {
@@ -963,22 +908,19 @@ export class CheckboxInput extends WidgetProps {
 export class ColorInput extends WidgetProps {
 	// Content
 	@Transform(({ value }) => {
-		if (value instanceof Gradient) return value;
+		if (isGradient(value)) return value;
 		const gradient: Gradient | undefined = value["Gradient"];
 		if (gradient) {
-			return new Gradient(
-				gradient.position,
-				gradient.midpoint,
-				gradient.color.map((color) => new Color(color.red, color.green, color.blue, color.alpha)),
-			);
+			const color = gradient.color.map((color) => createColor(color.red, color.green, color.blue, color.alpha));
+			return { ...gradient, color };
 		}
 
-		if (value instanceof Color) return value;
+		if (isColor(value)) return value;
 
 		const solid = value["Solid"];
-		if (solid) return new Color(solid.red, solid.green, solid.blue, solid.alpha);
+		if (solid) return createColor(solid.red, solid.green, solid.blue, solid.alpha);
 
-		return new Color("none");
+		return createNoneColor();
 	})
 	value!: FillChoice;
 	allowNone!: boolean;
@@ -1002,24 +944,20 @@ export type FillChoice = Color | Gradient;
 
 export function contrastingOutlineFactor(value: FillChoice, proximityColor: string | [string, string], proximityRange: number): number {
 	const pair = Array.isArray(proximityColor) ? [proximityColor[0], proximityColor[1]] : [proximityColor, proximityColor];
-	const [range1, range2] = pair.map((color) => Color.fromCSS(window.getComputedStyle(document.body).getPropertyValue(color)) || new Color("none"));
+	const [range1, range2] = pair.map((color) => colorFromCSS(window.getComputedStyle(document.body).getPropertyValue(color)) || createNoneColor());
 
 	const contrast = (color: Color): number => {
-		const colorLuminance = color.luminance() || 0;
-		let rangeLuminance1 = range1.luminance() || 0;
-		let rangeLuminance2 = range2.luminance() || 0;
+		const lum = colorLuminance(color) || 0;
+		let rangeLuminance1 = colorLuminance(range1) || 0;
+		let rangeLuminance2 = colorLuminance(range2) || 0;
 		[rangeLuminance1, rangeLuminance2] = [Math.min(rangeLuminance1, rangeLuminance2), Math.max(rangeLuminance1, rangeLuminance2)];
 
-		const distance = (() => {
-			if (colorLuminance < rangeLuminance1) return rangeLuminance1 - colorLuminance;
-			if (colorLuminance > rangeLuminance2) return colorLuminance - rangeLuminance2;
-			return 0;
-		})();
+		const distance = Math.max(0, rangeLuminance1 - lum, lum - rangeLuminance2);
 
-		return (1 - Math.min(distance / proximityRange, 1)) * (1 - (color.toHSV()?.s || 0));
+		return (1 - Math.min(distance / proximityRange, 1)) * (1 - (colorToHSVA(color)?.s || 0));
 	};
 
-	if (value instanceof Gradient) {
+	if (isGradient(value)) {
 		if (value.color.length === 0) return 0;
 
 		const first = contrast(value.color[0]);

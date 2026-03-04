@@ -6,7 +6,10 @@
 		type MenuDirection,
 		type MouseCursorIcon,
 		type XY,
-		Color,
+		type Color,
+		isColor,
+		createColor,
+		colorToHexOptionalAlpha,
 		DisplayEditableTextbox,
 		DisplayEditableTextboxUpdateFontData,
 		DisplayEditableTextboxTransform,
@@ -360,7 +363,7 @@
 		textInput.style.height = height;
 		textInput.style.lineHeight = `${data.lineHeightRatio}`;
 		textInput.style.fontSize = `${data.fontSize}px`;
-		textInput.style.color = data.color.toHexOptionalAlpha() || "transparent";
+		textInput.style.color = colorToHexOptionalAlpha(data.color) || "transparent";
 		textInput.style.textAlign = data.align;
 
 		textInput.oninput = () => {
@@ -609,9 +612,9 @@
 									gradientStopPickerColor = undefined;
 								}
 							}}
-							colorOrGradient={gradientStopPickerColor || new Color()}
+							colorOrGradient={gradientStopPickerColor || createColor(0, 0, 0, 1)}
 							on:colorOrGradient={({ detail }) => {
-								if (detail instanceof Color) {
+								if (isColor(detail)) {
 									editor.handle.updateGradientStopColor(detail.red, detail.green, detail.blue, detail.alpha);
 								}
 							}}
