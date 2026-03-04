@@ -1298,20 +1298,28 @@ export type LayoutTarget =
 	| "WorkingColors";
 
 export class WidgetDiffUpdate extends JsMessage {
-	@Transform(({ value }: { value: WidgetDiff[] }) => {
-		// Unpacking rust types to more usable type in the frontend
-		return value.map((diff) => {
-			const { widgetPath, newValue } = diff;
-
-			if ("layout" in newValue) return { widgetPath, newValue: newValue.layout.map(createLayoutGroup) };
-			if ("layoutGroup" in newValue) return { widgetPath, newValue: createLayoutGroup(newValue.layoutGroup) };
-			if ("widget" in newValue) return { widgetPath, newValue: hoistWidgetInstance(newValue.widget) };
-
-			// This code should be unreachable
-			throw new Error("DiffUpdate invalid");
-		});
-	})
 	diff!: WidgetDiff[];
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function parseWidgetDiffs(rawDiffs: any[]): WidgetDiff[] {
+	return rawDiffs.map((diff) => {
+		const { widgetPath, newValue } = diff;
+
+		if ("layout" in newValue) return { widgetPath, newValue: newValue.layout.map(createLayoutGroup) };
+		if ("layoutGroup" in newValue) return { widgetPath, newValue: createLayoutGroup(newValue.layoutGroup) };
+		if ("widget" in newValue) return { widgetPath, newValue: hoistWidgetInstance(newValue.widget) };
+
+		// This code should be unreachable
+		throw new Error("DiffUpdate invalid");
+	});
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function createWidgetDiffMessage(data: any): WidgetDiffUpdate {
+	const message = new WidgetDiffUpdate();
+	message.diff = parseWidgetDiffs(data.diff);
+	return message;
 }
 
 type DiffUpdate = { layout: Layout } | { layoutGroup: LayoutGroup } | { widget: WidgetInstance };
@@ -1507,13 +1515,13 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateBox,
 	UpdateClickTargets,
 	UpdateContextMenuInformation,
-	UpdateDataPanelLayout,
+	UpdateDataPanelLayout: createWidgetDiffMessage,
 	UpdateDataPanelState,
-	UpdateDialogButtons,
-	UpdateDialogColumn1,
-	UpdateDialogColumn2,
+	UpdateDialogButtons: createWidgetDiffMessage,
+	UpdateDialogColumn1: createWidgetDiffMessage,
+	UpdateDialogColumn2: createWidgetDiffMessage,
 	UpdateDocumentArtwork,
-	UpdateDocumentBarLayout,
+	UpdateDocumentBarLayout: createWidgetDiffMessage,
 	UpdateDocumentLayerDetails,
 	UpdateDocumentLayerStructure,
 	UpdateDocumentRulers,
@@ -1527,15 +1535,15 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateImportReorderIndex,
 	UpdateImportsExports,
 	UpdateInSelectedNetwork,
-	UpdateLayersPanelBottomBarLayout,
-	UpdateLayersPanelControlBarLeftLayout,
-	UpdateLayersPanelControlBarRightLayout,
+	UpdateLayersPanelBottomBarLayout: createWidgetDiffMessage,
+	UpdateLayersPanelControlBarLeftLayout: createWidgetDiffMessage,
+	UpdateLayersPanelControlBarRightLayout: createWidgetDiffMessage,
 	UpdateLayersPanelState,
 	UpdateLayerWidths,
 	UpdateMaximized,
-	UpdateMenuBarLayout,
+	UpdateMenuBarLayout: createWidgetDiffMessage,
 	UpdateMouseCursor,
-	UpdateNodeGraphControlBarLayout,
+	UpdateNodeGraphControlBarLayout: createWidgetDiffMessage,
 	UpdateNodeGraphErrorDiagnostic,
 	UpdateNodeGraphNodes,
 	UpdateNodeGraphSelection,
@@ -1544,19 +1552,19 @@ export const messageMakers: Record<string, MessageMaker> = {
 	UpdateNodeThumbnail,
 	UpdateOpenDocumentsList,
 	UpdatePlatform,
-	UpdatePropertiesPanelLayout,
+	UpdatePropertiesPanelLayout: createWidgetDiffMessage,
 	UpdatePropertiesPanelState,
-	UpdateStatusBarHintsLayout,
-	UpdateStatusBarInfoLayout,
-	UpdateToolOptionsLayout,
-	UpdateToolShelfLayout,
+	UpdateStatusBarHintsLayout: createWidgetDiffMessage,
+	UpdateStatusBarInfoLayout: createWidgetDiffMessage,
+	UpdateToolOptionsLayout: createWidgetDiffMessage,
+	UpdateToolShelfLayout: createWidgetDiffMessage,
 	UpdateUIScale,
 	UpdateViewportHolePunch,
 	UpdateViewportPhysicalBounds,
 	UpdateVisibleNodes,
-	UpdateWelcomeScreenButtonsLayout,
+	UpdateWelcomeScreenButtonsLayout: createWidgetDiffMessage,
 	UpdateWirePathInProgress,
-	UpdateWorkingColorsLayout,
+	UpdateWorkingColorsLayout: createWidgetDiffMessage,
 	WindowFullscreen,
 	WindowPointerLockMove,
 } as const;
