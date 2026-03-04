@@ -44,7 +44,7 @@ function readAtCaret(cut: boolean): string | undefined {
 		return undefined;
 	}
 
-	const selectedText = selection.toString();
+	const selectedText = String(selection);
 	if (!selectedText) return undefined;
 
 	if (cut) {

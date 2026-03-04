@@ -68,7 +68,7 @@ export function githubUrl(panicDetails: string): string {
 			if (value) url.searchParams.set(field, value);
 		});
 
-		return url.toString();
+		return String(url);
 	};
 
 	let urlString = buildUrl(true);

@@ -164,7 +164,7 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 		await storeDocument(data);
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerPersistenceRemoveDocument, async (data) => {
-		await removeDocument(data.documentId);
+		await removeDocument(String(data.documentId));
 	});
 	editor.subscriptions.subscribeJsMessage(TriggerLoadFirstAutoSaveDocument, async () => {
 		await loadFirstDocument();
