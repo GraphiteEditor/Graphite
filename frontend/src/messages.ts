@@ -249,9 +249,7 @@ export class WireUpdate {
 }
 
 export class TriggerPersistenceWriteDocument extends JsMessage {
-	// Use a string since IndexedDB can not use BigInts for keys
-	@Transform(({ value }: { value: bigint }) => value.toString())
-	documentId!: string;
+	documentId!: bigint;
 
 	document!: string;
 
@@ -262,9 +260,7 @@ export class TriggerPersistenceWriteDocument extends JsMessage {
 }
 
 export class TriggerPersistenceRemoveDocument extends JsMessage {
-	// Use a string since IndexedDB can not use BigInts for keys
-	@Transform(({ value }: { value: bigint }) => value.toString())
-	documentId!: string;
+	documentId!: bigint;
 }
 
 export type AppWindowPlatform = "Web" | "Windows" | "Mac" | "Linux";

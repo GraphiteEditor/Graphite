@@ -33,14 +33,14 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 			"documents",
 			(old) => {
 				const documents = old || {};
-				documents[autoSaveDocument.documentId] = autoSaveDocument;
+				documents[String(autoSaveDocument.documentId)] = autoSaveDocument;
 				return documents;
 			},
 			graphiteStore,
 		);
 
 		await storeDocumentOrder();
-		await storeCurrentDocumentId(autoSaveDocument.documentId);
+		await storeCurrentDocumentId(String(autoSaveDocument.documentId));
 	}
 
 	async function removeDocument(id: string) {
@@ -79,30 +79,50 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 
 	async function loadFirstDocument() {
 		const previouslySavedDocuments = await get<Record<string, TriggerPersistenceWriteDocument>>("documents", graphiteStore);
+
+		// TODO: Eventually remove this document upgrade code
+		// Migrate TriggerPersistenceWriteDocument.documentId from string to bigint if needed
+		if (previouslySavedDocuments) {
+			Object.values(previouslySavedDocuments).forEach((doc) => {
+				if (typeof doc.documentId === "string") doc.documentId = BigInt(doc.documentId);
+			});
+		}
+
 		const documentOrder = await get<string[]>("documents_tab_order", graphiteStore);
-		const currentDocumentId = await get<string>("current_document_id", graphiteStore);
+		const currentDocumentIdString = await get<string>("current_document_id", graphiteStore);
+		const currentDocumentId = currentDocumentIdString ? BigInt(currentDocumentIdString) : undefined;
 		if (!previouslySavedDocuments || !documentOrder) return;
 
 		const orderedSavedDocuments = documentOrder.flatMap((id) => (previouslySavedDocuments[id] ? [previouslySavedDocuments[id]] : []));
 
-		if (currentDocumentId && currentDocumentId in previouslySavedDocuments) {
-			const doc = previouslySavedDocuments[currentDocumentId];
-			editor.handle.openAutoSavedDocument(BigInt(doc.documentId), doc.details.name, doc.details.isSaved, doc.document, false);
-			editor.handle.selectDocument(BigInt(currentDocumentId));
+		if (currentDocumentId !== undefined && String(currentDocumentId) in previouslySavedDocuments) {
+			const doc = previouslySavedDocuments[String(currentDocumentId)];
+			editor.handle.openAutoSavedDocument(doc.documentId, doc.details.name, doc.details.isSaved, doc.document, false);
+			editor.handle.selectDocument(currentDocumentId);
 		} else {
 			const len = orderedSavedDocuments.length;
 			if (len > 0) {
 				const doc = orderedSavedDocuments[len - 1];
-				editor.handle.openAutoSavedDocument(BigInt(doc.documentId), doc.details.name, doc.details.isSaved, doc.document, false);
-				editor.handle.selectDocument(BigInt(doc.documentId));
+				editor.handle.openAutoSavedDocument(doc.documentId, doc.details.name, doc.details.isSaved, doc.document, false);
+				editor.handle.selectDocument(doc.documentId);
 			}
 		}
 	}
 
 	async function loadRestDocuments() {
 		const previouslySavedDocuments = await get<Record<string, TriggerPersistenceWriteDocument>>("documents", graphiteStore);
+
+		// TODO: Eventually remove this document upgrade code
+		// Migrate TriggerPersistenceWriteDocument.documentId from string to bigint if needed
+		if (previouslySavedDocuments) {
+			Object.values(previouslySavedDocuments).forEach((doc) => {
+				if (typeof doc.documentId === "string") doc.documentId = BigInt(doc.documentId);
+			});
+		}
+
 		const documentOrder = await get<string[]>("documents_tab_order", graphiteStore);
-		const currentDocumentId = await get<string>("current_document_id", graphiteStore);
+		const currentDocumentIdString = await get<string>("current_document_id", graphiteStore);
+		const currentDocumentId = currentDocumentIdString ? BigInt(currentDocumentIdString) : undefined;
 		if (!previouslySavedDocuments || !documentOrder) return;
 
 		const orderedSavedDocuments = documentOrder.flatMap((id) => (previouslySavedDocuments[id] ? [previouslySavedDocuments[id]] : []));
@@ -115,28 +135,25 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 			for (let i = beforeCurrentIndex; i >= 0; i--) {
 				const { documentId, document, details } = orderedSavedDocuments[i];
 				const { name, isSaved } = details;
-				editor.handle.openAutoSavedDocument(BigInt(documentId), name, isSaved, document, true);
+				editor.handle.openAutoSavedDocument(documentId, name, isSaved, document, true);
 			}
 			for (let i = afterCurrentIndex; i < orderedSavedDocuments.length; i++) {
 				const { documentId, document, details } = orderedSavedDocuments[i];
 				const { name, isSaved } = details;
-				editor.handle.openAutoSavedDocument(BigInt(documentId), name, isSaved, document, false);
+				editor.handle.openAutoSavedDocument(documentId, name, isSaved, document, false);
 			}
 
-			editor.handle.selectDocument(BigInt(currentDocumentId));
+			editor.handle.selectDocument(currentDocumentId);
 		} else {
 			const length = orderedSavedDocuments.length;
 
 			for (let i = length - 2; i >= 0; i--) {
 				const { documentId, document, details } = orderedSavedDocuments[i];
 				const { name, isSaved } = details;
-				editor.handle.openAutoSavedDocument(BigInt(documentId), name, isSaved, document, true);
+				editor.handle.openAutoSavedDocument(documentId, name, isSaved, document, true);
 			}
 
-			if (length > 0) {
-				const id = orderedSavedDocuments[length - 1].documentId;
-				editor.handle.selectDocument(BigInt(id));
-			}
+			if (length > 0) editor.handle.selectDocument(orderedSavedDocuments[length - 1].documentId);
 		}
 	}
 
@@ -178,6 +195,15 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 	editor.subscriptions.subscribeJsMessage(TriggerSaveActiveDocument, async (data) => {
 		const documentId = String(data.documentId);
 		const previouslySavedDocuments = await get<Record<string, TriggerPersistenceWriteDocument>>("documents", graphiteStore);
+
+		// TODO: Eventually remove this document upgrade code
+		// Migrate TriggerPersistenceWriteDocument.documentId from string to bigint if needed
+		if (previouslySavedDocuments) {
+			Object.values(previouslySavedDocuments).forEach((doc) => {
+				if (typeof doc.documentId === "string") doc.documentId = BigInt(doc.documentId);
+			});
+		}
+
 		if (!previouslySavedDocuments) return;
 		if (documentId in previouslySavedDocuments) {
 			await storeCurrentDocumentId(documentId);
