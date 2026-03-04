@@ -575,7 +575,7 @@ pub fn make_path_editable_is_allowed(network_interface: &mut NodeNetworkInterfac
 	// Must be a layer of type Table<Vector>
 	let node_id = NodeGraphLayer::new(first_layer, network_interface).horizontal_layer_flow().nth(1)?;
 
-	let output_type = network_interface.output_type(&OutputConnector::node(node_id, 0), &[]);
+	let output_type = network_interface.output_type(&OutputConnector::node(node_id, OutputConnector::PRIMARY_OUTPUT_INDEX), &[]);
 	if output_type.compiled_nested_type() != Some(&concrete!(Table<Vector>)) {
 		return None;
 	}

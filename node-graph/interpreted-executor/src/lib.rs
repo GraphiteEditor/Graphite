@@ -14,7 +14,7 @@ mod tests {
 		use graph_craft::*;
 
 		let network = NodeNetwork {
-			exports: vec![NodeInput::node(NodeId(1), 0)],
+			exports: vec![NodeInput::node(NodeId(1), NodeInput::PRIMARY_OUTPUT_INDEX)],
 			nodes: [
 				// Simple identity node taking a number as input from outside the graph
 				(
@@ -30,7 +30,7 @@ mod tests {
 				(
 					NodeId(1),
 					DocumentNode {
-						inputs: vec![NodeInput::node(NodeId(0), 0), NodeInput::node(NodeId(0), 0)],
+						inputs: vec![NodeInput::node(NodeId(0), NodeInput::PRIMARY_OUTPUT_INDEX), NodeInput::node(NodeId(0), NodeInput::PRIMARY_OUTPUT_INDEX)],
 						implementation: DocumentNodeImplementation::ProtoNode(graphene_std::math_nodes::add::IDENTIFIER),
 						..Default::default()
 					},
