@@ -3,7 +3,7 @@ use crate::consts::{BOUNDS_SELECT_THRESHOLD, LINE_ROTATE_SNAP_ANGLE};
 use crate::messages::portfolio::document::node_graph::document_node_definitions::{DefinitionIdentifier, resolve_document_node_type};
 use crate::messages::portfolio::document::overlays::utility_types::OverlayContext;
 use crate::messages::portfolio::document::utility_types::document_metadata::LayerNodeIdentifier;
-use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeTemplate};
+use crate::messages::portfolio::document::utility_types::network_interface::{InputConnector, NodeNetworkInterface, NodeTemplate};
 use crate::messages::tool::common_functionality::graph_modification_utils;
 pub use crate::messages::tool::common_functionality::graph_modification_utils::NodeGraphLayer;
 use crate::messages::tool::common_functionality::snapping::{SnapCandidatePoint, SnapConstraint, SnapData, SnapTypeConfiguration};
@@ -89,12 +89,7 @@ impl Line {
 			.selected_nodes()
 			.selected_visible_and_unlocked_layers(&document.network_interface)
 			.filter_map(|layer| {
-				let node_inputs =
-					NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::line::IDENTIFIER))?;
-
-				let (Some(&TaggedValue::DVec2(start)), Some(&TaggedValue::DVec2(end))) = (node_inputs[1].as_value(), node_inputs[2].as_value()) else {
-					return None;
-				};
+				let (start, end) = get_line_endpoints(layer, &document.network_interface)?;
 
 				let [viewport_start, viewport_end] = [start, end].map(|point| document.metadata().transform_to_viewport(layer).transform_point2(point));
 				if !start.abs_diff_eq(end, f64::EPSILON * 1000.) {
@@ -107,6 +102,25 @@ impl Line {
 			})
 			.collect::<HashMap<LayerNodeIdentifier, [DVec2; 2]>>();
 	}
+}
+
+fn get_line_endpoints(layer: LayerNodeIdentifier, network_interface: &NodeNetworkInterface) -> Option<(DVec2, DVec2)> {
+	let from_vector = network_interface.compute_modified_vector(layer).and_then(|vector| {
+		let endpoints: Vec<DVec2> = vector.anchor_endpoints().filter_map(|point_id| vector.point_domain.position_from_id(point_id)).collect();
+		(endpoints.len() == 2).then(|| (endpoints[0], endpoints[1]))
+	});
+
+	if let Some(endpoints) = from_vector {
+		return Some(endpoints);
+	}
+
+	let node_inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::line::IDENTIFIER))?;
+
+	let (Some(&TaggedValue::DVec2(start)), Some(&TaggedValue::DVec2(end))) = (node_inputs[1].as_value(), node_inputs[2].as_value()) else {
+		return None;
+	};
+
+	Some((start, end))
 }
 
 fn generate_line(tool_data: &mut ShapeToolData, snap_data: SnapData, lock_angle: bool, snap_angle: bool, center: bool) -> [DVec2; 2] {
@@ -173,11 +187,7 @@ fn generate_line(tool_data: &mut ShapeToolData, snap_data: SnapData, lock_angle:
 }
 
 pub fn clicked_on_line_endpoints(layer: LayerNodeIdentifier, document: &DocumentMessageHandler, input: &InputPreprocessorMessageHandler, shape_tool_data: &mut ShapeToolData) -> bool {
-	let Some(node_inputs) = NodeGraphLayer::new(layer, &document.network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::line::IDENTIFIER)) else {
-		return false;
-	};
-
-	let (Some(&TaggedValue::DVec2(document_start)), Some(&TaggedValue::DVec2(document_end))) = (node_inputs[1].as_value(), node_inputs[2].as_value()) else {
+	let Some((document_start, document_end)) = get_line_endpoints(layer, &document.network_interface) else {
 		return false;
 	};
 
@@ -197,6 +207,8 @@ pub fn clicked_on_line_endpoints(layer: LayerNodeIdentifier, document: &Document
 		shape_tool_data.line_data.dragging_endpoint = Some(if end_click { LineEnd::End } else { LineEnd::Start });
 		shape_tool_data.data.drag_start = if end_click { document_start } else { document_end };
 		shape_tool_data.line_data.editing_layer = Some(layer);
+		let line_vector = document_end - document_start;
+		shape_tool_data.line_data.angle = -line_vector.angle_to(DVec2::X);
 		return true;
 	}
 	false
@@ -217,13 +229,7 @@ mod test_line_tool {
 		network_interface
 			.selected_nodes()
 			.selected_visible_and_unlocked_layers(network_interface)
-			.filter_map(|layer| {
-				let node_inputs = NodeGraphLayer::new(layer, network_interface).find_node_inputs(&DefinitionIdentifier::ProtoNode(graphene_std::vector::generator_nodes::line::IDENTIFIER))?;
-				let (Some(&TaggedValue::DVec2(start)), Some(&TaggedValue::DVec2(end))) = (node_inputs[1].as_value(), node_inputs[2].as_value()) else {
-					return None;
-				};
-				Some((start, end))
-			})
+			.filter_map(|layer| super::get_line_endpoints(layer, network_interface))
 			.next()
 	}
 
