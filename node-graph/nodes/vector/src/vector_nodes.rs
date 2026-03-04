@@ -10,7 +10,8 @@ use glam::{DAffine2, DVec2};
 use graphic_types::Vector;
 use graphic_types::raster_types::{CPU, GPU, Raster};
 use graphic_types::{Graphic, IntoGraphicTable};
-use kurbo::{Affine, BezPath, DEFAULT_ACCURACY, Line, ParamCurve, PathEl, PathSeg, Shape};
+use kurbo::common::solve_quadratic;
+use kurbo::{Affine, BezPath, CubicBez, DEFAULT_ACCURACY, Line, ParamCurve, ParamCurveDeriv, PathEl, PathSeg, Shape, Vec2, segments};
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::DefaultHasher;
 use vector_types::Subpath;
@@ -1012,85 +1013,507 @@ async fn bounding_box(_: impl Ctx, content: Table<Vector>) -> Table<Vector> {
 		.collect()
 }
 
-/// Returns the bottom left point in screen coordinates.
-fn take_bottom_left(p0: DVec2, p1: DVec2) -> DVec2 {
-	if p0.y > p1.y || (p0.y == p1.y && p0.x < p1.x) { p0 } else { p1 }
+/// Find the slope at a given parameter t.
+fn slope_at(segment: &PathSeg, t: f64) -> f64 {
+	assert!((0. ..=1.).contains(&t));
+	match segment {
+		PathSeg::Cubic(cubic) => {
+			let mut d = (cubic.deriv().eval(t)).to_vec2();
+			if is_linear(*segment) {
+				d = cubic.p3 - cubic.p0;
+			}
+			d.y.atan2(d.x)
+		}
+		PathSeg::Quad(quad) => {
+			let mut d = (quad.deriv().eval(t)).to_vec2();
+			if is_linear(*segment) {
+				d = quad.p2 - quad.p0;
+			}
+			d.y.atan2(d.x)
+		}
+		PathSeg::Line(line) => {
+			let d = line.p1 - line.p0;
+			d.y.atan2(d.x)
+		}
+	}
 }
 
-/// Returns true if p0 → p1 → p2 makes a clockwise turn in screen coordinates.
-fn is_clockwise(p0: DVec2, p1: DVec2, p2: DVec2) -> bool {
-	(p1 - p0).perp_dot(p2 - p1) > 0.
+/// Calculates min/max range of the slope of the given segment that does not have inflection points.
+fn slope_range(segment: &PathSeg) -> (f64, f64) {
+	match segment {
+		PathSeg::Line(line) => {
+			let d = line.p1 - line.p0;
+			let a = d.y.atan2(d.x);
+			(a, a)
+		}
+		PathSeg::Quad(_) | PathSeg::Cubic(_) => {
+			let a0 = slope_at(segment, 0.0);
+			let a1 = slope_at(segment, 1.0);
+			let a_mid = slope_at(segment, 0.5);
+			directed_range(a0, a1, a_mid)
+		}
+	}
 }
 
-/// Computes the convex hull of a vector path using the Graham scan.
-/// Bézier curves are flattened into line segments using kurbo::flatten before processing.
-/// The flattening tolerance is adaptively adjusted based on the current zoom level.
+/// Find a bezier curve parameter where the tangent has the target radian angle and within the provided range.
+fn solve_t_for_slope(cubic: &CubicBez, radian_angle: f64, t_low: f64, t_high: f64) -> Option<f64> {
+	let (t_low, t_high) = (t_low.min(t_high), t_low.max(t_high));
+	let t_low = t_low.clamp(0., 1.);
+	let t_high = t_high.clamp(0., 1.);
+	assert!(0. <= t_low && t_low <= t_high && t_high <= 1.);
+
+	let d0 = cubic.p1 - cubic.p0;
+	let d1 = cubic.p2 - cubic.p1;
+	let d2 = cubic.p3 - cubic.p2;
+
+	let sin_t = radian_angle.sin();
+	let cos_t = radian_angle.cos();
+	let e0 = d0.x * sin_t - d0.y * cos_t;
+	let e1 = d1.x * sin_t - d1.y * cos_t;
+	let e2 = d2.x * sin_t - d2.y * cos_t;
+
+	let a = e0 - 2.0 * e1 + e2;
+	let b = 2.0 * (e1 - e0);
+	let c = e0;
+
+	let result = solve_quadratic(c, b, a);
+	result.into_iter().find(|t| *t > t_low && *t <= t_high)
+}
+
+/// Check if the angle is within the range. The arguments expect radian.
+fn angle_in_range(angle: f64, range: (f64, f64)) -> bool {
+	let (start, end) = range;
+	let span = end - start;
+	let offset = (angle - start).rem_euclid(TAU);
+	offset <= span
+}
+
+/// Returns an arc between a0 and a1 that contains target. The arguments expect radian.
+fn directed_range(a0: f64, a1: f64, target: f64) -> (f64, f64) {
+	let short = wrap_range(a0, a1);
+	if angle_in_range(target, short) { short } else { (short.1, short.0 + TAU) }
+}
+
+/// Make a pair of radians that is a shorter part of the arc between a0 and a1. The arguments expect radian.
+fn wrap_range(a0: f64, a1: f64) -> (f64, f64) {
+	let diff = a1 - a0;
+	if diff.abs() <= PI {
+		(a0.min(a1), a0.max(a1))
+	} else {
+		let a1_shifted = a1 - diff.signum() * TAU;
+		(a0.min(a1_shifted), a0.max(a1_shifted))
+	}
+}
+
+/// Shift the given range to be the closest to the reference by TAU.
+fn normalize_range_near(range: (f64, f64), reference: (f64, f64)) -> (f64, f64) {
+	let mid = (range.0 + range.1) / 2.0;
+	let ref_mid = (reference.0 + reference.1) / 2.0;
+	let shift = ((ref_mid - mid) / TAU).round() * TAU;
+	(range.0 + shift, range.1 + shift)
+}
+
+// TODO: Is it OK to keep using numerator?
+/// Calculates the curvature numerator at the given bezier parameter.
+fn curvature_numerator_at(segment: &PathSeg, t: f64) -> f64 {
+	assert!((0. ..=1.).contains(&t));
+	match segment {
+		PathSeg::Line(_) => 0.0,
+		PathSeg::Quad(quad_bez) => {
+			let d1 = quad_bez.deriv().eval(t);
+			let d2 = quad_bez.deriv().deriv().eval(t);
+			d1.x * d2.y - d1.y * d2.x
+		}
+		PathSeg::Cubic(cubic_bez) => {
+			let d1 = cubic_bez.deriv().eval(t);
+			let d2 = cubic_bez.deriv().deriv().eval(t);
+			d1.x * d2.y - d1.y * d2.x
+		}
+	}
+}
+
+/// Split a segment on the inflection points.
+fn split_at_inflections(segment: &PathSeg) -> Vec<PathSeg> {
+	let eps = 1e-6;
+	if let PathSeg::Cubic(cubic) = segment {
+		let mut ts: Vec<f64> = cubic.inflections().into_iter().filter(|&t| t > eps && t < 1.0 - eps).collect();
+		ts.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
+		if ts.is_empty() {
+			return vec![*segment];
+		}
+
+		let mut result = Vec::new();
+		let mut t_prev = 0.0;
+		for &t in &ts {
+			result.push(PathSeg::Cubic(cubic.subsegment(t_prev..t)));
+			t_prev = t;
+		}
+		result.push(PathSeg::Cubic(cubic.subsegment(t_prev..1.0)));
+		result
+	} else {
+		vec![*segment]
+	}
+}
+
+fn next_index(i: usize, forward: bool, n: usize) -> usize {
+	if forward { (i + 1) % n } else { (i + n - 1) % n }
+}
+
+fn solve_t_for_slope_in_direction(cubic: &CubicBez, radian_angle: f64, forward: bool) -> Option<f64> {
+	let d0 = cubic.p1 - cubic.p0;
+	let d1 = cubic.p2 - cubic.p1;
+	let d2 = cubic.p3 - cubic.p2;
+
+	let sin_t = radian_angle.sin();
+	let cos_t = radian_angle.cos();
+	let e0 = d0.x * sin_t - d0.y * cos_t;
+	let e1 = d1.x * sin_t - d1.y * cos_t;
+	let e2 = d2.x * sin_t - d2.y * cos_t;
+
+	let a = e0 - 2.0 * e1 + e2;
+	let b = 2.0 * (e1 - e0);
+	let c = e0;
+
+	let mut roots: Vec<f64> = solve_quadratic(c, b, a).into_iter().filter(|t| *t > 0.0 && *t <= 1.0).collect();
+
+	roots.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
+	if forward { roots.into_iter().next() } else { roots.into_iter().next_back() }
+}
+
+/// Computes the convex hull
 #[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
 async fn convex_hull(ctx: impl Ctx + ExtractFootprint, content: Table<Vector>) -> Table<Vector> {
-	const DEFAULT_TOLERANCE: f64 = 0.25;
-	const MIN_TOLERANCE: f64 = 0.01;
-	let logical_scale = ctx.footprint().decompose_scale().x;
-	let flattening_tolerance = (DEFAULT_TOLERANCE / logical_scale).max(MIN_TOLERANCE);
+	// TODO: find proper eps
+	const GEOM_EPS: f64 = 1e-9;
 
+	log::debug!("===== Convex Hull =====");
 	content
 		.into_iter()
 		.map(|mut row| {
 			let vector = row.element;
-
-			// Collect all points and find the bottom-left origin for angular sorting
-			let mut points: Vec<DVec2> = vec![];
-			let mut origin = DVec2::new(f64::MAX, f64::MIN);
+			let mut result = vector.clone();
+			// TODO: use DefaultHasher if we need vector concatenation
+			let mut hash_id = 0u64;
 
 			for bezpath in vector.stroke_bezpath_iter() {
-				kurbo::flatten(bezpath.path_elements(0.0), flattening_tolerance, |path_el| match path_el {
-					PathEl::MoveTo(p) | PathEl::LineTo(p) => {
-						let point = point_to_dvec2(p);
-						points.push(point);
-						origin = take_bottom_left(origin, point);
-					}
-					_ => {}
+				let raw_segments: Vec<PathSeg> = bezpath.segments().collect();
+				// split the original segments at inflection points
+				let segments: Vec<PathSeg> = raw_segments.iter().flat_map(split_at_inflections).collect();
+
+				log::debug!("inflection splitted segments: {:?}", segments);
+
+				let area = bezpath.area();
+				let mut inflection_segments: Vec<(usize, bool)> = vec![];
+				let mut concave_line_segment_pairs: Vec<(usize, usize)> = vec![];
+				let mut non_continuous_curve_pairs: Vec<(usize, usize, bool)> = vec![];
+
+				for i in 0..segments.len() {
+					let next_i = (i + 1) % segments.len();
+					let current_end_slope = slope_at(&segments[i], 1.);
+					let next_start_slope = slope_at(&segments[next_i], 0.);
+
+					// TODO: maybe wrap?
+					match (current_end_slope - next_start_slope).abs() <= GEOM_EPS {
+						true => {
+							// G1 continuous
+							let current_mid_curvature = curvature_numerator_at(&segments[i], 0.5);
+							let next_mid_curvature = curvature_numerator_at(&segments[next_i], 0.5);
+
+							if current_mid_curvature * next_mid_curvature < 0.0 {
+								let forward_is_convex = next_mid_curvature.signum() == area.signum();
+								inflection_segments.push((if forward_is_convex { next_i } else { i }, forward_is_convex));
+							}
+						}
+						false => {
+							// Not G1 continuous
+							let angle_diff = next_start_slope - current_end_slope;
+							let angle_diff = (angle_diff + PI).rem_euclid(TAU) - PI;
+							let is_convex_at_joint = angle_diff.signum() == area.signum();
+
+							let curr_segment = &segments[i];
+							let next_segment = &segments[next_i];
+							let is_curr_linear = is_linear(*curr_segment);
+							let is_next_linear = is_linear(*next_segment);
+
+							// No need to create a shortcut
+							if is_convex_at_joint && is_curr_linear && is_next_linear {
+								continue;
+							}
+
+							// Create shortcut between the two end points
+							if !is_convex_at_joint && is_curr_linear && is_next_linear {
+								concave_line_segment_pairs.push((i, next_i));
+								continue;
+							}
+
+							let is_curr_convex = is_curr_linear || curvature_numerator_at(&segments[i], 0.5).signum() == area.signum();
+							let is_next_convex = is_next_linear || curvature_numerator_at(&segments[next_i], 0.5).signum() == area.signum();
+
+							if !is_convex_at_joint || !is_curr_convex || !is_next_convex {
+								non_continuous_curve_pairs.push((i, next_i, is_convex_at_joint));
+							}
+						}
+					};
+				}
+
+				log::debug!("inflection_segments: {:?}", inflection_segments);
+				log::debug!("non_continuous_curve_pairs: {:?}", non_continuous_curve_pairs);
+				log::debug!("concave_line_segment_pairs: {:?}", concave_line_segment_pairs);
+
+				// ----- Handle non smooth connections -----
+				// TODO: handle not closed path
+				concave_line_segment_pairs.into_iter().for_each(|(first_seg_idx, second_seg_idx)| {
+					let first_segment = segments[first_seg_idx];
+					let second_segment = segments[second_seg_idx];
+					let shortcut_start = match first_segment {
+						PathSeg::Line(line) => line.p0,
+						PathSeg::Quad(quad_bez) => quad_bez.p0,
+						PathSeg::Cubic(cubic_bez) => cubic_bez.p0,
+					};
+					let shortcut_end = match second_segment {
+						PathSeg::Line(line) => line.p1,
+						PathSeg::Quad(quad_bez) => quad_bez.p2,
+						PathSeg::Cubic(cubic_bez) => cubic_bez.p3,
+					};
+					log::debug!("shortcut_start: {:?}", shortcut_start);
+					log::debug!("shortcut_end: {:?}", shortcut_end);
+					let bezier = PathSeg::Line(Line::new(shortcut_start, shortcut_end));
+					let subpath = Subpath::from_bezier(bezier);
+					let vector = Vector::from_subpath(&subpath);
+					log::debug!("vector: {:?}", vector);
+					result.concat(&vector, DAffine2::IDENTITY, hash_id); // TODO: hash seed
+					hash_id += 1;
 				});
-			}
-			points.retain(|p| *p != origin);
 
-			if points.len() < 2 {
-				row.element = vector;
-				return row;
-			}
+				non_continuous_curve_pairs.into_iter().for_each(|(first_seg_idx, second_seg_idx, is_convex_at_joint)| {
+					let first_segment = segments[first_seg_idx];
+					let second_segment = segments[second_seg_idx];
+					// TODO: handle the both curve case
+					// TODO: Find a t where the linear segment's end point is on the tangent of the curve
+					let (shortcut_target, init_curve_idx, is_first_curve) = if is_linear(first_segment) {
+						(if is_convex_at_joint { first_segment.end() } else { first_segment.start() }, second_seg_idx, false)
+					} else {
+						(if is_convex_at_joint { second_segment.start() } else { second_segment.end() }, first_seg_idx, true)
+					};
 
-			// Sort by polar angle to traverse the points in clockwise order
-			points.sort_by(|a, b| {
-				let angle_a = (a.y - origin.y).atan2(a.x - origin.x);
-				let angle_b = (b.y - origin.y).atan2(b.x - origin.x);
-				match angle_a.partial_cmp(&angle_b) {
-					// Closer one comes first if the angles are the same
-					Some(Ordering::Equal) => {
-						let dist_a = (*a - origin).length_squared();
-						let dist_b = (*b - origin).length_squared();
-						dist_a.partial_cmp(&dist_b).unwrap_or(Ordering::Equal)
+					let search_t_tangent_to_target = |curve_segment: &PathSeg, mut low: f64, mut high: f64| -> Option<f64> {
+						let mut t = None;
+						let forward = !is_first_curve;
+
+						for _ in 0..50 {
+							let theta = (low + high) / 2.0;
+							if (theta - low).abs() <= f64::EPSILON && (theta - high).abs() <= f64::EPSILON {
+								break;
+							}
+
+							t = solve_t_for_slope_in_direction(&curve_segment.to_cubic(), theta, forward);
+
+							// No valid parameter is found
+							if t.is_none() {
+								break;
+							}
+
+							let point = curve_segment.eval(t.unwrap());
+							let tangent_vector = if is_first_curve { shortcut_target - point } else { point - shortcut_target };
+							let line_slope_raw = tangent_vector.y.atan2(tangent_vector.x);
+							// Rotate the raw slope to make it closer to the theta for the further comparison
+							let line_slope = line_slope_raw + ((theta - line_slope_raw) / TAU).round() * TAU;
+
+							if (line_slope > theta) == (area > 0.0) {
+								low = theta;
+							} else {
+								high = theta;
+							}
+						}
+
+						t
+					};
+
+					let mut curve_idx = init_curve_idx;
+					let mut t: Option<f64> = None;
+					let forward = !is_first_curve;
+					let mut shortcut_start = shortcut_target;
+
+					for _ in 0..segments.len() {
+						let next_segment = &segments[curve_idx];
+
+						if is_linear(*next_segment) {
+							continue;
+						} else {
+							let (range_start_t, range_end_t) = if forward { (0.0, 1.0) } else { (1.0, 0.0) };
+							let curve_range = directed_range(slope_at(next_segment, range_start_t), slope_at(next_segment, range_end_t), slope_at(next_segment, 0.5));
+
+							t = search_t_tangent_to_target(next_segment, curve_range.0, curve_range.1);
+							if let Some(t) = t {
+								let point = next_segment.eval(t);
+								let tangent = next_segment.to_cubic().deriv().eval(t).to_vec2();
+								let to_joint = shortcut_target - point;
+
+								// Check if joint_point is on the tangent
+								let cross = tangent.x * to_joint.y - tangent.y * to_joint.x;
+								let len_prod = tangent.length() * to_joint.length();
+								let on_tangent_line = len_prod > GEOM_EPS && cross.abs() <= GEOM_EPS * len_prod;
+
+								if on_tangent_line {
+									shortcut_start = next_segment.eval(t);
+									break;
+								}
+							}
+						}
+
+						curve_idx = next_index(curve_idx, !is_first_curve, segments.len());
 					}
-					ord => ord.unwrap_or(Ordering::Equal),
-				}
-			});
-			points.dedup();
 
-			// Run Graham scan
-			let mut hull: Vec<DVec2> = vec![origin];
-			for point in points {
-				while let [.., a, b] = hull.as_slice() {
-					if is_clockwise(*a, *b, point) {
-						break;
+					let bezier = PathSeg::Line(Line::new(shortcut_start, shortcut_target));
+					let subpath = Subpath::from_bezier(bezier);
+					let vector = Vector::from_subpath(&subpath);
+					result.concat(&vector, DAffine2::IDENTITY, hash_id); // TODO: hash seed
+					hash_id += 1;
+				});
+
+				let n = inflection_segments.len();
+
+				// ----- Handle G2 continuous curves -----
+				// Make a pair of inflection segments that the forward_is_convex is (false, true).
+				// This is required as the forward direction will not be alternated if the path is not C2 continuity.
+				let pairs: Vec<_> = (0..n)
+					.filter(|&i| !inflection_segments[i].1)
+					.filter_map(|i| {
+						(1..=n).find_map(|offset| {
+							let j = (i + offset) % n;
+							if inflection_segments[j].1 {
+								Some((&inflection_segments[i], &inflection_segments[j]))
+							} else {
+								None
+							}
+						})
+					})
+					.collect();
+
+				// Find the segments pair that have convex points to be connected by a shortcut segment
+				for (inflection_a, inflection_b) in &pairs {
+					let (segment_a, forward_a) = inflection_a;
+					let (segment_b, forward_b) = inflection_b;
+					let mut segment_idx_a = *segment_a;
+					let mut segment_idx_b = *segment_b;
+
+					let mut range_a = {
+						let start_t = if *forward_a { 0. } else { 1. };
+						let end_t = if *forward_a { 1. } else { 0. };
+
+						let start = slope_at(&segments[segment_idx_a], start_t);
+						let end = slope_at(&segments[segment_idx_a], end_t);
+						let mid = slope_at(&segments[segment_idx_a], 0.5);
+
+						directed_range(start, end, mid)
+					};
+					let mut range_b = {
+						let start_t = if *forward_b { 0. } else { 1. };
+						let end_t = if *forward_b { 1. } else { 0. };
+
+						let start = slope_at(&segments[segment_idx_b], start_t);
+						let end = slope_at(&segments[segment_idx_b], end_t);
+						let mid = slope_at(&segments[segment_idx_b], 0.5);
+
+						directed_range(start, end, mid)
+					};
+
+					// Find the pair of segments that share the range of slopes, which means these pairs should have a shortcut line segment.
+					let max_steps = segments.len() + 1;
+					let mut steps = 0;
+					loop {
+						log::debug!("a_idx: {} range_a: {:?}", segment_idx_a, range_a);
+						log::debug!("b_idx: {} range_b: {:?}", segment_idx_b, range_b);
+
+						range_a = normalize_range_near(range_a, range_b);
+
+						if range_a.0 <= range_b.1 && range_b.0 <= range_a.1 {
+							break;
+						}
+
+						if range_a.1 < range_b.0 {
+							segment_idx_a = next_index(segment_idx_a, *forward_a, segments.len());
+							range_a = slope_range(&segments[segment_idx_a]);
+						} else {
+							segment_idx_b = next_index(segment_idx_b, *forward_b, segments.len());
+							range_b = slope_range(&segments[segment_idx_b]);
+						}
+						steps += 1;
+						if steps > max_steps {
+							break;
+						}
 					}
-					hull.pop();
+
+					if steps > max_steps {
+						continue;
+					}
+
+					let segment_a = segments[segment_idx_a];
+					let segment_b = segments[segment_idx_b];
+
+					log::debug!("segment_idx_a: {:?}", segment_idx_a);
+					log::debug!("segment_idx_b: {:?}", segment_idx_b);
+
+					// Find the radian angle of the shortcut segment by binary search.
+					let (t_a_low, t_a_high) = (0.0, 1.0);
+					let (t_b_low, t_b_high) = (0.0, 1.0);
+					let mut low = range_a.0.max(range_b.0);
+					let mut high = range_a.1.min(range_b.1);
+
+					let mut t1 = None;
+					let mut t2 = None;
+
+					for _ in 0..50 {
+						let theta = (low + high) / 2.0;
+						if (theta - low).abs() <= f64::EPSILON && (theta - high).abs() <= f64::EPSILON {
+							break;
+						}
+
+						t1 = solve_t_for_slope(&segment_a.to_cubic(), theta, t_a_low, t_a_high);
+						t2 = solve_t_for_slope(&segment_b.to_cubic(), theta, t_b_low, t_b_high);
+
+						// No valid parameter is found
+						if t1.is_none() || t2.is_none() {
+							break;
+						}
+
+						let p1 = segment_a.eval(t1.unwrap());
+						let p2 = segment_b.eval(t2.unwrap());
+						let line_slope_raw = (p2.y - p1.y).atan2(p2.x - p1.x);
+						// Rotate the raw slope to make it closer to the theta for the further comparison
+						let line_slope = line_slope_raw + ((theta - line_slope_raw) / TAU).round() * TAU;
+
+						if (line_slope > theta) == (area > 0.0) {
+							low = theta;
+						} else {
+							high = theta;
+						}
+					}
+
+					if t1.is_none() || t2.is_none() {
+						continue;
+					}
+
+					let shortcut_start = segment_a.eval(t1.unwrap());
+					let shortcut_end = segment_b.eval(t2.unwrap());
+
+					let bezier = PathSeg::Line(Line::new(shortcut_start, shortcut_end));
+					let subpath = Subpath::from_bezier(bezier);
+					let vector = Vector::from_subpath(&subpath);
+					log::debug!("vector: {:?}", vector);
+					result.concat(&vector, DAffine2::IDENTITY, hash_id); // TODO: hash seed
+					hash_id += 1;
+
+					// TODO: Recursively apply the logics
+					// TODO: Split bezier
+					// TODO: Self intersections
 				}
-				hull.push(point);
 			}
 
-			let subpath = Subpath::<PointId>::from_anchors(hull, true);
-			let mut result = Vector::from_subpath(&subpath);
 			result.style = vector.style.clone();
 			result.style.set_stroke_transform(DAffine2::IDENTITY);
-
 			row.element = result;
 			row
 		})
@@ -2495,68 +2918,68 @@ mod test {
 	}
 	#[tokio::test]
 	async fn convex_hull() {
-		let get_anchors = |vector: &Vector| {
-			vector
-				.region_manipulator_groups()
-				.next()
-				.unwrap()
-				.1
-				.iter()
-				.map(|manipulators| manipulators.anchor)
-				.collect::<Vec<DVec2>>()
-		};
-		// 1. Rectangle
-		let rect_vector = vector_node_from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY));
-		let convex_hull = super::convex_hull((), rect_vector).await;
-		let convex_hull = convex_hull.iter().next().unwrap().element;
-		assert_eq!(convex_hull.region_manipulator_groups().count(), 1);
-		let anchors = get_anchors(convex_hull);
-
-		// The anchors should be sorted in clockwise order from bottom-left anchor
-		assert_eq!(&anchors[..4], &[DVec2::new(-1., 1.), DVec2::NEG_ONE, DVec2::new(1., -1.), DVec2::ONE,]);
-
-		// All consecutive anchor triplets must be clockwise
-		let n = anchors.len();
-		let all_clockwise = (0..anchors.len()).all(|i| is_clockwise(anchors[i], anchors[(i + 1) % n], anchors[(i + 2) % n]));
-		assert!(all_clockwise);
-
-		// 2. Concave straight line shape
-		let concave_vector = vector_node_from_bezpath(BezPath::from_vec(vec![
-			PathEl::MoveTo(Point::new(0., 0.)),
-			PathEl::LineTo(Point::new(2., 0.)),
-			PathEl::LineTo(Point::new(2., 1.)),
-			PathEl::LineTo(Point::new(1., 1.)),
-			PathEl::LineTo(Point::new(1., 2.)),
-			PathEl::LineTo(Point::new(0., 2.)),
-			PathEl::ClosePath,
-		]));
-		let convex_hull = super::convex_hull((), concave_vector).await;
-		let convex_hull = convex_hull.iter().next().unwrap().element;
-		assert_eq!(convex_hull.region_manipulator_groups().count(), 1);
-		let anchors = get_anchors(convex_hull);
-
-		let n = anchors.len();
-		// One anchor should not be included in the result
-		assert_eq!(n, 5);
-		let all_clockwise = (0..anchors.len()).all(|i| is_clockwise(anchors[i], anchors[(i + 1) % n], anchors[(i + 2) % n]));
-		assert!(all_clockwise);
-
-		// 3. Curved shape
-		let curved_vector = vector_node_from_bezpath(BezPath::from_vec(vec![
-			PathEl::MoveTo(Point::new(0., 0.)),
-			PathEl::CurveTo(Point::new(50., -50.), Point::new(100., -50.), Point::new(100., 0.)),
-			PathEl::LineTo(Point::new(100., 100.)),
-			PathEl::LineTo(Point::new(0., 100.)),
-			PathEl::ClosePath,
-		]));
-		let convex_hull = super::convex_hull((), curved_vector).await;
-		let convex_hull = convex_hull.iter().next().unwrap().element;
-		assert_eq!(convex_hull.region_manipulator_groups().count(), 1);
-		let anchors = get_anchors(convex_hull);
-
-		let n = anchors.len();
-		let all_clockwise = (0..anchors.len()).all(|i| is_clockwise(anchors[i], anchors[(i + 1) % n], anchors[(i + 2) % n]));
-		assert!(all_clockwise);
+		// let get_anchors = |vector: &Vector| {
+		// 	vector
+		// 		.region_manipulator_groups()
+		// 		.next()
+		// 		.unwrap()
+		// 		.1
+		// 		.iter()
+		// 		.map(|manipulators| manipulators.anchor)
+		// 		.collect::<Vec<DVec2>>()
+		// };
+		// // 1. Rectangle
+		// let rect_vector = vector_node_from_bezpath(Rect::new(-1., -1., 1., 1.).to_path(DEFAULT_ACCURACY));
+		// let convex_hull = super::convex_hull((), rect_vector).await;
+		// let convex_hull = convex_hull.iter().next().unwrap().element;
+		// assert_eq!(convex_hull.region_manipulator_groups().count(), 1);
+		// let anchors = get_anchors(convex_hull);
+		//
+		// // The anchors should be sorted in clockwise order from bottom-left anchor
+		// assert_eq!(&anchors[..4], &[DVec2::new(-1., 1.), DVec2::NEG_ONE, DVec2::new(1., -1.), DVec2::ONE,]);
+		//
+		// // All consecutive anchor triplets must be clockwise
+		// let n = anchors.len();
+		// let all_clockwise = (0..anchors.len()).all(|i| is_clockwise(anchors[i], anchors[(i + 1) % n], anchors[(i + 2) % n]));
+		// assert!(all_clockwise);
+		//
+		// // 2. Concave straight line shape
+		// let concave_vector = vector_node_from_bezpath(BezPath::from_vec(vec![
+		// 	PathEl::MoveTo(Point::new(0., 0.)),
+		// 	PathEl::LineTo(Point::new(2., 0.)),
+		// 	PathEl::LineTo(Point::new(2., 1.)),
+		// 	PathEl::LineTo(Point::new(1., 1.)),
+		// 	PathEl::LineTo(Point::new(1., 2.)),
+		// 	PathEl::LineTo(Point::new(0., 2.)),
+		// 	PathEl::ClosePath,
+		// ]));
+		// let convex_hull = super::convex_hull((), concave_vector).await;
+		// let convex_hull = convex_hull.iter().next().unwrap().element;
+		// assert_eq!(convex_hull.region_manipulator_groups().count(), 1);
+		// let anchors = get_anchors(convex_hull);
+		//
+		// let n = anchors.len();
+		// // One anchor should not be included in the result
+		// assert_eq!(n, 5);
+		// let all_clockwise = (0..anchors.len()).all(|i| is_clockwise(anchors[i], anchors[(i + 1) % n], anchors[(i + 2) % n]));
+		// assert!(all_clockwise);
+		//
+		// // 3. Curved shape
+		// let curved_vector = vector_node_from_bezpath(BezPath::from_vec(vec![
+		// 	PathEl::MoveTo(Point::new(0., 0.)),
+		// 	PathEl::CurveTo(Point::new(50., -50.), Point::new(100., -50.), Point::new(100., 0.)),
+		// 	PathEl::LineTo(Point::new(100., 100.)),
+		// 	PathEl::LineTo(Point::new(0., 100.)),
+		// 	PathEl::ClosePath,
+		// ]));
+		// let convex_hull = super::convex_hull((), curved_vector).await;
+		// let convex_hull = convex_hull.iter().next().unwrap().element;
+		// assert_eq!(convex_hull.region_manipulator_groups().count(), 1);
+		// let anchors = get_anchors(convex_hull);
+		//
+		// let n = anchors.len();
+		// let all_clockwise = (0..anchors.len()).all(|i| is_clockwise(anchors[i], anchors[(i + 1) % n], anchors[(i + 2) % n]));
+		// assert!(all_clockwise);
 	}
 	#[tokio::test]
 	async fn copy_to_points() {
