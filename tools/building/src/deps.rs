@@ -70,14 +70,14 @@ fn dependencies(task: &Task) -> Vec<Dependency> {
 			command: "cmake",
 			args: &["--version"],
 			name: "CMake",
-			skip: Some(&|task| !matches!(task.target, Target::Desktop)),
+			skip: Some(&|task| !matches!(task.target, Target::Desktop) || cfg!(target_os = "linux")),
 			..Default::default()
 		},
 		Dependency {
 			command: "ninja",
 			args: &["--version"],
 			name: "Ninja",
-			skip: Some(&|task| !matches!(task.target, Target::Desktop) || !cfg!(target_os = "windows")),
+			skip: Some(&|task| !matches!(task.target, Target::Desktop) || cfg!(target_os = "linux")),
 			..Default::default()
 		},
 	]

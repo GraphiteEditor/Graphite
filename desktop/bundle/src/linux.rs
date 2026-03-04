@@ -12,7 +12,6 @@ pub fn main() -> Result<(), Box<dyn std::error::Error>> {
 		eprintln!("Binary built and placed at {}", app_bin.to_string_lossy());
 		eprintln!("Bundling for Linux is not yet implemented.");
 		eprintln!("You can still start the app with the `open` subcommand. `cargo run -p graphite-desktop-bundle -- open`");
-		std::process::exit(1);
 	}
 
 	Ok(())
