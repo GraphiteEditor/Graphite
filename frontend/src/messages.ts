@@ -178,9 +178,25 @@ export type FrontendClickTargets = {
 	readonly modifyImportExport: string[];
 };
 
+type ContextMenuDataCreateNode = {
+	type: "CreateNode";
+	data: {
+		compatibleType: string | undefined;
+	};
+};
+type ContextMenuDataModifyNode = {
+	type: "ModifyNode";
+	data: {
+		nodeId: bigint;
+		canBeLayer: boolean;
+		currentlyIsNode: boolean;
+		hasSelectedLayers: boolean;
+		allSelectedLayersLocked: boolean;
+	};
+};
 export type ContextMenuInformation = {
 	contextMenuCoordinates: XY;
-	contextMenuData: { type: "CreateNode"; data: { compatibleType: string | undefined } } | { type: "ModifyNode"; data: { canBeLayer: boolean; currentlyIsNode: boolean; nodeId: bigint } };
+	contextMenuData: ContextMenuDataCreateNode | ContextMenuDataModifyNode;
 };
 
 export class UpdateContextMenuInformation extends JsMessage {
