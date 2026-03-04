@@ -526,6 +526,23 @@ export function isGradient(value: unknown): value is Gradient {
 	return typeof value === "object" && value !== null && "position" in value && "midpoint" in value;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function parseFillChoice(value: any): FillChoice {
+	if (isColor(value)) return value;
+	if (isGradient(value)) return value;
+
+	const gradient: Gradient | undefined = value["Gradient"];
+	if (gradient) {
+		const color = gradient.color.map((c) => createColor(c.red, c.green, c.blue, c.alpha));
+		return { ...gradient, color };
+	}
+
+	const solid = value["Solid"];
+	if (solid) return createColor(solid.red, solid.green, solid.blue, solid.alpha);
+
+	return createNoneColor();
+}
+
 export class UpdateActiveDocument extends JsMessage {
 	readonly documentId!: bigint;
 }
@@ -811,21 +828,6 @@ export class CheckboxInput extends WidgetProps {
 
 export class ColorInput extends WidgetProps {
 	// Content
-	@Transform(({ value }) => {
-		if (isGradient(value)) return value;
-		const gradient: Gradient | undefined = value["Gradient"];
-		if (gradient) {
-			const color = gradient.color.map((color) => createColor(color.red, color.green, color.blue, color.alpha));
-			return { ...gradient, color };
-		}
-
-		if (isColor(value)) return value;
-
-		const solid = value["Solid"];
-		if (solid) return createColor(solid.red, solid.green, solid.blue, solid.alpha);
-
-		return createNoneColor();
-	})
 	value!: FillChoice;
 	allowNone!: boolean;
 	// allowTransparency!: boolean; // TODO: Implement
@@ -1264,6 +1266,9 @@ function hoistWidgetInstance(widgetInstance: any): WidgetInstance {
 
 	if (kind === "PopoverButton") {
 		props.popoverLayout = props.popoverLayout.map(createLayoutGroup);
+	}
+	if (kind === "ColorInput") {
+		props.value = parseFillChoice(props.value);
 	}
 
 	const { widgetId } = widgetInstance;
