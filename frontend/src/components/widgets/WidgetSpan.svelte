@@ -2,7 +2,7 @@
 	import { getContext } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import type { LayoutTarget, WidgetInstance, WidgetSpanColumn, WidgetSpanRow } from "@graphite/messages";
+	import type { LayoutTarget, WidgetInstance, WidgetPropsNames, WidgetPropsSet, WidgetTypes, WidgetSpanColumn, WidgetSpanRow } from "@graphite/messages";
 	import { isWidgetSpanColumn, isWidgetSpanRow } from "@graphite/messages";
 	import { debouncer } from "@graphite/utility-functions/debounce";
 
@@ -72,25 +72,30 @@
 	}
 
 	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	function exclude(props: Record<string, any>, additional?: string[]): Record<string, any> {
+	function exclude(props: WidgetPropsSet, additional?: string[]): Record<string, any> {
 		const exclusions = new Set(["kind", ...(additional || [])]);
 		return Object.fromEntries(Object.entries(props).filter(([key]) => !exclusions.has(key)));
 	}
 
-	// eslint-disable-next-line @typescript-eslint/no-explicit-any
-	type WidgetConfig = { component: any; getProps: (props: any, widgetIndex: number) => Record<string, any> | undefined; getSlotContent?: (props: any) => string };
+	type WidgetConfig = {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		component: any;
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		getProps(props: WidgetPropsSet, widgetIndex: number): Record<string, any> | undefined;
+		getSlotContent?(props: WidgetPropsSet): string;
+	};
 
-	const widgetRegistry: Record<string, WidgetConfig> = {
+	const widgetRegistry: Record<WidgetPropsNames, WidgetConfig> = {
 		CheckboxInput: {
 			component: CheckboxInput,
-			getProps: (props, index) => ({
+			getProps: (props: WidgetTypes["CheckboxInput"], index) => ({
 				...exclude(props),
 				$$events: { checked: (e: CustomEvent) => widgetValueCommitAndUpdate(index, e.detail, true) },
 			}),
 		},
 		ColorInput: {
 			component: ColorInput,
-			getProps: (props, index) => ({
+			getProps: (props: WidgetTypes["ColorInput"], index) => ({
 				...exclude(props),
 				$$events: {
 					value: (e: CustomEvent) => widgetValueUpdate(index, e.detail, false),
@@ -101,7 +106,7 @@
 		CurveInput: {
 			// TODO: CurvesInput is currently unused
 			component: CurveInput,
-			getProps: (props, index) => ({
+			getProps: (props: WidgetTypes["CurveInput"], index) => ({
 				...exclude(props),
 				$$events: {
 					value: (e: CustomEvent) => debouncer((value: unknown) => widgetValueCommitAndUpdate(index, value, false), { debounceTime: 120 }).debounceUpdateValue(e.detail),
@@ -110,7 +115,7 @@
 		},
 		DropdownInput: {
 			component: DropdownInput,
-			getProps: (props, index) => ({
+			getProps: (props: WidgetTypes["DropdownInput"], index) => ({
 				...exclude(props),
 				$$events: {
 					hoverInEntry: (e: CustomEvent) => widgetValueUpdate(index, e.detail, false),
@@ -121,50 +126,50 @@
 		},
 		ParameterExposeButton: {
 			component: ParameterExposeButton,
-			getProps: (props, index) => ({
+			getProps: (props: WidgetTypes["ParameterExposeButton"], index) => ({
 				...exclude(props),
 				action: () => widgetValueCommitAndUpdate(index, undefined, true),
 			}),
 		},
 		IconButton: {
 			component: IconButton,
-			getProps: (props, index) => ({
+			getProps: (props: WidgetTypes["IconButton"], index) => ({
 				...exclude(props),
 				action: () => widgetValueCommitAndUpdate(index, undefined, true),
 			}),
 		},
 		IconLabel: {
 			component: IconLabel,
-			getProps: (props) => exclude(props),
+			getProps: (props: WidgetTypes["IconLabel"]) => exclude(props),
 		},
 		ShortcutLabel: {
 			component: ShortcutLabel,
-			getProps: (props) => {
+			getProps: (props: WidgetTypes["ShortcutLabel"]) => {
 				if (!props.shortcut) return undefined;
 				return exclude(props);
 			},
 		},
 		ImageLabel: {
 			component: ImageLabel,
-			getProps: (props) => exclude(props),
+			getProps: (props: WidgetTypes["ImageLabel"]) => exclude(props),
 		},
 		ImageButton: {
 			component: ImageButton,
-			getProps: (props, index) => ({
+			getProps: (props: WidgetTypes["ImageButton"], index) => ({
 				...exclude(props),
 				action: () => widgetValueCommitAndUpdate(index, undefined, true),
 			}),
 		},
 		NodeCatalog: {
 			component: NodeCatalog,
-			getProps: (props, index) => ({
+			getProps: (props: WidgetTypes["NodeCatalog"], index) => ({
 				...exclude(props),
 				$$events: { selectNodeType: (e: CustomEvent) => widgetValueCommitAndUpdate(index, e.detail, false) },
 			}),
 		},
 		NumberInput: {
 			component: NumberInput,
-			getProps: (props, index) => ({
+			getProps: (props: WidgetTypes["NumberInput"], index) => ({
 				...exclude(props),
 				incrementCallbackIncrease: () => widgetValueCommitAndUpdate(index, "Increment", false),
 				incrementCallbackDecrease: () => widgetValueCommitAndUpdate(index, "Decrement", false),
@@ -176,43 +181,43 @@
 		},
 		ReferencePointInput: {
 			component: ReferencePointInput,
-			getProps: (props, index) => ({
+			getProps: (props: WidgetTypes["ReferencePointInput"], index) => ({
 				...exclude(props),
 				$$events: { value: (e: CustomEvent) => widgetValueCommitAndUpdate(index, e.detail, true) },
 			}),
 		},
 		PopoverButton: {
 			component: PopoverButton,
-			getProps: (props) => ({
+			getProps: (props: WidgetTypes["PopoverButton"]) => ({
 				...exclude(props),
 				layoutTarget,
 			}),
 		},
 		RadioInput: {
 			component: RadioInput,
-			getProps: (props, index) => ({
+			getProps: (props: WidgetTypes["RadioInput"], index) => ({
 				...exclude(props),
 				$$events: { selectedIndex: (e: CustomEvent) => widgetValueCommitAndUpdate(index, e.detail, true) },
 			}),
 		},
 		Separator: {
 			component: Separator,
-			getProps: (props) => exclude(props),
+			getProps: (props: WidgetTypes["Separator"]) => exclude(props),
 		},
 		WorkingColorsInput: {
 			component: WorkingColorsInput,
-			getProps: (props) => exclude(props),
+			getProps: (props: WidgetTypes["WorkingColorsInput"]) => exclude(props),
 		},
 		TextAreaInput: {
 			component: TextAreaInput,
-			getProps: (props, index) => ({
+			getProps: (props: WidgetTypes["TextAreaInput"], index) => ({
 				...exclude(props),
 				$$events: { commitText: (e: CustomEvent) => widgetValueCommitAndUpdate(index, e.detail, false) },
 			}),
 		},
 		TextButton: {
 			component: TextButton,
-			getProps: (props, index) => ({
+			getProps: (props: WidgetTypes["TextButton"], index) => ({
 				...exclude(props),
 				action: () => widgetValueCommitAndUpdate(index, [], true),
 				$$events: { selectedEntryValuePath: (e: CustomEvent) => widgetValueCommitAndUpdate(index, e.detail, false) },
@@ -220,22 +225,22 @@
 		},
 		BreadcrumbTrailButtons: {
 			component: BreadcrumbTrailButtons,
-			getProps: (props, index) => ({
+			getProps: (props: WidgetTypes["BreadcrumbTrailButtons"], index) => ({
 				...exclude(props),
 				action: (breadcrumbIndex: number) => widgetValueCommitAndUpdate(index, breadcrumbIndex, true),
 			}),
 		},
 		TextInput: {
 			component: TextInput,
-			getProps: (props, index) => ({
+			getProps: (props: WidgetTypes["TextInput"], index) => ({
 				...exclude(props),
 				$$events: { commitText: (e: CustomEvent) => widgetValueCommitAndUpdate(index, e.detail, true) },
 			}),
 		},
 		TextLabel: {
 			component: TextLabel,
-			getProps: (props) => exclude(props, ["value"]),
-			getSlotContent: (props) => props.value,
+			getProps: (props: WidgetTypes["TextLabel"]) => exclude(props, ["value"]),
+			getSlotContent: (props: WidgetTypes["TextLabel"]) => props.value,
 		},
 	};
 </script>

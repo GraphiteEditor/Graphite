@@ -1,5 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-
 import { Transform, Type, plainToClass } from "class-transformer";
 
 import { sampleInterpolatedGradient, type EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
@@ -971,7 +969,7 @@ export class ColorInput extends WidgetProps {
 			return new Gradient(
 				gradient.position,
 				gradient.midpoint,
-				gradient.color.map((color: any) => new Color(color.red, color.green, color.blue, color.alpha)),
+				gradient.color.map((color) => new Color(color.red, color.green, color.blue, color.alpha)),
 			);
 		}
 
@@ -1460,9 +1458,9 @@ const widgetSubTypes = [
 ] as const;
 
 type WidgetSubTypes = (typeof widgetSubTypes)[number];
-type WidgetKindMap = { [T in WidgetSubTypes as T["name"]]: InstanceType<T["value"]> };
-export type WidgetPropsNames = keyof WidgetKindMap;
-export type WidgetPropsSet = WidgetKindMap[WidgetPropsNames];
+export type WidgetTypes = { [T in WidgetSubTypes as T["name"]]: InstanceType<T["value"]> };
+export type WidgetPropsNames = keyof WidgetTypes;
+export type WidgetPropsSet = WidgetTypes[WidgetPropsNames];
 
 export class WidgetInstance {
 	@Type(() => WidgetProps, { discriminator: { property: "kind", subTypes: [...widgetSubTypes] }, keepDiscriminatorProperty: true })
@@ -1471,6 +1469,7 @@ export class WidgetInstance {
 	widgetId!: bigint;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function hoistWidgetInstance(widgetInstance: any): WidgetInstance {
 	const kind = Object.keys(widgetInstance.widget)[0];
 	const props = widgetInstance.widget[kind];
@@ -1483,10 +1482,6 @@ function hoistWidgetInstance(widgetInstance: any): WidgetInstance {
 	const { widgetId } = widgetInstance;
 
 	return plainToClass(WidgetInstance, { props, widgetId });
-}
-
-function hoistWidgetInstances(widgetInstance: any[]): WidgetInstance[] {
-	return widgetInstance.map(hoistWidgetInstance);
 }
 
 // WIDGET LAYOUT
@@ -1511,7 +1506,6 @@ export type LayoutTarget =
 	| "WorkingColors";
 
 export class WidgetDiffUpdate extends JsMessage {
-	// TODO: Replace `any` with correct typing
 	@Transform(({ value }: { value: WidgetDiff[] }) => {
 		// Unpacking rust types to more usable type in the frontend
 		return value.map((diff) => {
@@ -1569,7 +1563,7 @@ export function patchLayout(layout: /* &mut */ Layout, updates: WidgetDiffUpdate
 			diffObject.length = 0;
 		}
 		// Remove all of the keys from the old object
-		Object.keys(diffObject).forEach((key) => delete (diffObject as any)[key]);
+		Object.keys(diffObject).forEach((key) => delete (diffObject as Record<string, unknown>)[key]);
 
 		// Assign keys to the new object
 		// `Object.assign` works but `diffObject = update.newValue;` doesn't.
@@ -1602,16 +1596,17 @@ export function isWidgetSection(layoutRow: LayoutGroup): layoutRow is WidgetSect
 }
 
 // Unpacking a layout group
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function createLayoutGroup(layoutGroup: any): LayoutGroup {
 	if (layoutGroup.column) {
-		const columnWidgets = hoistWidgetInstances(layoutGroup.column.columnWidgets);
+		const columnWidgets = layoutGroup.column.columnWidgets.map(hoistWidgetInstance);
 
 		const result: WidgetSpanColumn = { columnWidgets };
 		return result;
 	}
 
 	if (layoutGroup.row) {
-		const result: WidgetSpanRow = { rowWidgets: hoistWidgetInstances(layoutGroup.row.rowWidgets) };
+		const result: WidgetSpanRow = { rowWidgets: layoutGroup.row.rowWidgets.map(hoistWidgetInstance) };
 		return result;
 	}
 
@@ -1629,7 +1624,8 @@ function createLayoutGroup(layoutGroup: any): LayoutGroup {
 
 	if (layoutGroup.table) {
 		const result: WidgetTable = {
-			tableWidgets: layoutGroup.table.tableWidgets.map(hoistWidgetInstances),
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			tableWidgets: layoutGroup.table.tableWidgets.map((row: any) => row.map(hoistWidgetInstance)),
 			unstyled: layoutGroup.table.unstyled,
 		};
 		return result;
@@ -1674,6 +1670,7 @@ export class UpdateToolShelfLayout extends WidgetDiffUpdate {}
 export class UpdateWorkingColorsLayout extends WidgetDiffUpdate {}
 
 // `any` is used since the type of the object should be known from the Rust side
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type JSMessageFactory = (data: any, wasm: WebAssembly.Memory, handle: EditorHandle) => JsMessage;
 type MessageMaker = typeof JsMessage | JSMessageFactory;
 
