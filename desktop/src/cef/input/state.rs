@@ -141,64 +141,36 @@ impl ClickTracker {
 			return ClickCount::Single;
 		};
 
-		let prev_time = record.time;
-
 		let now = Instant::now();
-		record.time = now;
+		let within_time = now.saturating_duration_since(record.time) <= MULTICLICK_TIMEOUT;
 
-		match state {
-			ElementState::Pressed if record.down_count == ClickCount::Triple => {
-				*record = ClickRecord {
-					down_position: position,
-					down_count: ClickCount::Double,
-					..*record
-				};
-				return ClickCount::Double;
-			}
-			ElementState::Released if record.up_count == ClickCount::Triple => {
-				*record = ClickRecord {
-					up_position: position,
-					up_count: ClickCount::Double,
-					..*record
-				};
-				return ClickCount::Double;
-			}
-			_ => {}
-		}
-
-		let prev_count = match state {
-			ElementState::Pressed => record.down_count,
-			ElementState::Released => record.up_count,
+		let (prev_count, prev_position) = match state {
+			ElementState::Pressed => (record.down_count, record.down_position),
+			ElementState::Released => (record.up_count, record.up_position),
 		};
 
-		let prev_position = match state {
-			ElementState::Pressed => record.down_position,
-			ElementState::Released => record.up_position,
-		};
-		let within_dist_x = position.x.abs_diff(prev_position.x) <= MULTICLICK_ALLOWED_TRAVEL;
-		let within_dist_y = position.y.abs_diff(prev_position.y) <= MULTICLICK_ALLOWED_TRAVEL;
-		let within_dist = within_dist_x && within_dist_y;
+		let within_dist = position.x.abs_diff(prev_position.x) <= MULTICLICK_ALLOWED_TRAVEL && position.y.abs_diff(prev_position.y) <= MULTICLICK_ALLOWED_TRAVEL;
 
-		let within_time = now.saturating_duration_since(prev_time) <= MULTICLICK_TIMEOUT;
-
-		let count = match (prev_count, within_dist, within_time) {
+		let count = match (prev_count, within_time, within_dist) {
+			(ClickCount::Single, true, true) => ClickCount::Double,
 			(ClickCount::Double, true, true) => ClickCount::Triple,
-			(_, true, true) => ClickCount::Double,
+			(ClickCount::Triple, true, true) => ClickCount::Double,
 			_ => ClickCount::Single,
 		};
 
-		*record = match state {
-			ElementState::Pressed => ClickRecord {
-				down_position: position,
-				down_count: count,
-				..*record
-			},
-			ElementState::Released => ClickRecord {
-				up_position: position,
-				up_count: count,
-				..*record
-			},
-		};
+		record.time = now;
+
+		match state {
+			ElementState::Pressed => {
+				record.down_position = position;
+				record.down_count = count;
+			}
+			ElementState::Released => {
+				record.up_position = position;
+				record.up_count = count;
+			}
+		}
+
 		count
 	}
 }
