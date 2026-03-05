@@ -149,7 +149,9 @@ impl ClickTracker {
 			ElementState::Released => (record.up_count, record.up_position),
 		};
 
-		let within_dist = position.x.abs_diff(prev_position.x) <= MULTICLICK_ALLOWED_TRAVEL && position.y.abs_diff(prev_position.y) <= MULTICLICK_ALLOWED_TRAVEL;
+		let dx = position.x.abs_diff(prev_position.x);
+		let dy = position.y.abs_diff(prev_position.y);
+		let within_dist = dx <= MULTICLICK_ALLOWED_TRAVEL && dy <= MULTICLICK_ALLOWED_TRAVEL;
 
 		let count = match (prev_count, within_time, within_dist) {
 			(ClickCount::Single, true, true) => ClickCount::Double,
