@@ -26,7 +26,6 @@ use interpreted_executor::util::wrap_network_in_scope;
 use spin::Mutex;
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender};
-use vello::wgpu::TexelCopyTextureInfoBase;
 
 /// Persistent data between graph executions. It's updated via message passing from the editor thread with [`GraphRuntimeRequest`]`.
 /// Some of these fields are put into a [`WasmEditorApi`] which is passed to the final compiled graph network upon each execution.
@@ -60,6 +59,8 @@ pub struct NodeRuntime {
 	/// Cached surface for WASM viewport rendering (reused across frames)
 	#[cfg(all(target_family = "wasm", feature = "gpu"))]
 	wasm_viewport_surface: Option<wgpu_executor::WgpuSurface>,
+	/// Currently displayed texture, the runtime keeps a reference to it to avoid the texture getting destroyed while it is still in use.
+	#[cfg(all(target_family = "wasm", feature = "gpu"))]
 	current_viewport_texture: Option<ImageTexture>,
 }
 
@@ -146,6 +147,7 @@ impl NodeRuntime {
 			inspect_state: None,
 			#[cfg(all(target_family = "wasm", feature = "gpu"))]
 			wasm_viewport_surface: None,
+			#[cfg(all(target_family = "wasm", feature = "gpu"))]
 			current_viewport_texture: None,
 		}
 	}
@@ -360,13 +362,13 @@ impl NodeRuntime {
 							self.current_viewport_texture = Some(image_texture.clone());
 
 							encoder.copy_texture_to_texture(
-								TexelCopyTextureInfoBase {
+								wgpu::TexelCopyTextureInfoBase {
 									texture: image_texture.texture.as_ref(),
 									mip_level: 0,
 									origin: Default::default(),
 									aspect: Default::default(),
 								},
-								TexelCopyTextureInfoBase {
+								wgpu::TexelCopyTextureInfoBase {
 									texture: &surface_texture.texture,
 									mip_level: 0,
 									origin: Default::default(),
