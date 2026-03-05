@@ -1,7 +1,6 @@
 import { writable } from "svelte/store";
 
 import { type Editor } from "@graphite/editor";
-import { WindowFullscreen } from "@graphite/messages";
 
 export function createFullscreenState(editor: Editor) {
 	// Experimental Keyboard API: https://developer.mozilla.org/en-US/docs/Web/API/Navigator/keyboard
@@ -51,7 +50,7 @@ export function createFullscreenState(editor: Editor) {
 		});
 	}
 
-	editor.subscriptions.subscribeJsMessage(WindowFullscreen, () => {
+	editor.subscriptions.subscribeJsMessage("WindowFullscreen", () => {
 		toggleFullscreen();
 	});
 

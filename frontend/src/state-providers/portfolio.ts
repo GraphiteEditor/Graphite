@@ -2,19 +2,6 @@ import { writable } from "svelte/store";
 
 import { type Editor } from "@graphite/editor";
 import type { OpenDocument } from "@graphite/messages";
-import {
-	TriggerFetchAndOpenDocument,
-	TriggerSaveDocument,
-	TriggerExportImage,
-	TriggerSaveFile,
-	TriggerImport,
-	TriggerOpen,
-	UpdateActiveDocument,
-	UpdateOpenDocumentsList,
-	UpdateDataPanelState,
-	UpdatePropertiesPanelState,
-	UpdateLayersPanelState,
-} from "@graphite/messages";
 import { downloadFile, downloadFileBlob, upload } from "@graphite/utility-functions/files";
 import { rasterizeSVG } from "@graphite/utility-functions/rasterization";
 
@@ -29,13 +16,13 @@ export function createPortfolioState(editor: Editor) {
 	});
 
 	// Set up message subscriptions on creation
-	editor.subscriptions.subscribeJsMessage(UpdateOpenDocumentsList, (data) => {
+	editor.subscriptions.subscribeJsMessage("UpdateOpenDocumentsList", (data) => {
 		update((state) => {
 			state.documents = data.openDocuments;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateActiveDocument, (data) => {
+	editor.subscriptions.subscribeJsMessage("UpdateActiveDocument", (data) => {
 		update((state) => {
 			// Assume we receive a correct document id
 			const activeId = state.documents.findIndex((doc) => doc.id === data.documentId);
@@ -43,7 +30,7 @@ export function createPortfolioState(editor: Editor) {
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerFetchAndOpenDocument, async (data) => {
+	editor.subscriptions.subscribeJsMessage("TriggerFetchAndOpenDocument", async (data) => {
 		try {
 			const url = new URL(`demo-artwork/${data.filename}`, document.location.href);
 			const response = await fetch(url);
@@ -55,22 +42,22 @@ export function createPortfolioState(editor: Editor) {
 			}, 0);
 		}
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerOpen, async () => {
+	editor.subscriptions.subscribeJsMessage("TriggerOpen", async () => {
 		const data = await upload(`image/*,.${editor.handle.fileExtension()}`, "data");
 		editor.handle.openFile(data.filename, data.content);
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerImport, async () => {
+	editor.subscriptions.subscribeJsMessage("TriggerImport", async () => {
 		// TODO: Use the same `accept` string as in the `TriggerOpen` handler once importing Graphite documents as nodes is supported
 		const data = await upload("image/*", "data");
 		editor.handle.importFile(data.filename, data.content);
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerSaveDocument, (data) => {
+	editor.subscriptions.subscribeJsMessage("TriggerSaveDocument", (data) => {
 		downloadFile(data.name, data.content);
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerSaveFile, (data) => {
+	editor.subscriptions.subscribeJsMessage("TriggerSaveFile", (data) => {
 		downloadFile(data.name, data.content);
 	});
-	editor.subscriptions.subscribeJsMessage(TriggerExportImage, async (data) => {
+	editor.subscriptions.subscribeJsMessage("TriggerExportImage", async (data) => {
 		const { svg, name, mime, size } = data;
 
 		// Fill the canvas with white if it'll be a JPEG (which does not support transparency and defaults to black)
@@ -86,19 +73,19 @@ export function createPortfolioState(editor: Editor) {
 			// Fail silently if there's an error rasterizing the SVG, such as a zero-sized image
 		}
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateDataPanelState, async (data) => {
+	editor.subscriptions.subscribeJsMessage("UpdateDataPanelState", async (data) => {
 		update((state) => {
 			state.dataPanelOpen = data.open;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdatePropertiesPanelState, async (data) => {
+	editor.subscriptions.subscribeJsMessage("UpdatePropertiesPanelState", async (data) => {
 		update((state) => {
 			state.propertiesPanelOpen = data.open;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateLayersPanelState, async (data) => {
+	editor.subscriptions.subscribeJsMessage("UpdateLayersPanelState", async (data) => {
 		update((state) => {
 			state.layersPanelOpen = data.open;
 			return state;

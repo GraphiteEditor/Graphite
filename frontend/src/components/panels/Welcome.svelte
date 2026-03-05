@@ -3,7 +3,7 @@
 
 	import type { Editor } from "@graphite/editor";
 	import type { Layout } from "@graphite/messages";
-	import { patchLayout, UpdateWelcomeScreenButtonsLayout } from "@graphite/messages";
+	import { patchLayout } from "@graphite/messages";
 	import { pasteFile } from "@graphite/utility-functions/files";
 	import { isDesktop } from "@graphite/utility-functions/platform";
 
@@ -18,14 +18,14 @@
 	let welcomePanelButtonsLayout: Layout = [];
 
 	onMount(() => {
-		editor.subscriptions.subscribeJsMessage(UpdateWelcomeScreenButtonsLayout, (data) => {
+		editor.subscriptions.subscribeJsMessage("UpdateWelcomeScreenButtonsLayout", (data) => {
 			patchLayout(welcomePanelButtonsLayout, data);
 			welcomePanelButtonsLayout = welcomePanelButtonsLayout;
 		});
 	});
 
 	onDestroy(() => {
-		editor.subscriptions.unsubscribeJsMessage(UpdateWelcomeScreenButtonsLayout);
+		editor.subscriptions.unsubscribeJsMessage("UpdateWelcomeScreenButtonsLayout");
 	});
 
 	function dropFile(e: DragEvent) {

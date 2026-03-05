@@ -1,126 +1,10 @@
-import { Transform } from "class-transformer";
-
 import { sampleInterpolatedGradient, type EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
 import { type PopoverButtonStyle, type IconName, type IconSize } from "@graphite/icons";
-
-export class JsMessage {
-	// The marker provides a way to check if an object is a sub-class constructor for a jsMessage.
-	static readonly jsMessageMarker = true;
-}
-
-// ===============================================================================================
-// Add additional classes below to replicate Rust's `FrontendMessage`s and data structures.
-//
-// Remember to add each message to the `messageConstructors` export at the bottom of the file.
-//
-// Read class-transformer docs at https://github.com/typestack/class-transformer#table-of-contents
-// for details about how to transform the JSON produced by Serde JSON into classes.
-// ===============================================================================================
-
-export class UpdateBox extends JsMessage {
-	readonly box!: Box | undefined;
-}
-
-export class UpdateClickTargets extends JsMessage {
-	readonly clickTargets!: FrontendClickTargets | undefined;
-}
-
-export class UpdateImportsExports extends JsMessage {
-	readonly imports!: (FrontendGraphOutput | undefined)[];
-
-	readonly exports!: (FrontendGraphInput | undefined)[];
-
-	readonly importPosition!: [number, number];
-
-	readonly exportPosition!: [number, number];
-
-	readonly addImportExport!: boolean;
-}
-
-export class UpdateInSelectedNetwork extends JsMessage {
-	readonly inSelectedNetwork!: boolean;
-}
-
-export class UpdateImportReorderIndex extends JsMessage {
-	readonly importIndex!: number | undefined;
-}
-
-export class UpdateExportReorderIndex extends JsMessage {
-	readonly exportIndex!: number | undefined;
-}
-
-export class UpdateLayerWidths extends JsMessage {
-	@Transform(({ obj }) => obj.layerWidths) // To be removed when removing plainToInstance
-	readonly layerWidths!: Map<bigint, number>;
-	@Transform(({ obj }) => obj.chainWidths) // To be removed when removing plainToInstance
-	readonly chainWidths!: Map<bigint, number>;
-	@Transform(({ obj }) => obj.hasLeftInputWire) // To be removed when removing plainToInstance
-	readonly hasLeftInputWire!: Map<bigint, boolean>;
-}
-
-export class UpdateNodeGraphNodes extends JsMessage {
-	readonly nodes!: FrontendNode[];
-}
-
-export class UpdateNodeGraphErrorDiagnostic extends JsMessage {
-	readonly error!: NodeGraphError | undefined;
-}
 
 export type NodeGraphError = {
 	readonly position: [number, number];
 	readonly error: string;
 };
-
-export class UpdateVisibleNodes extends JsMessage {
-	readonly nodes!: bigint[];
-}
-
-export class UpdateNodeGraphWires extends JsMessage {
-	readonly wires!: WireUpdate[];
-}
-
-export class ClearAllNodeGraphWires extends JsMessage {}
-
-export class UpdateNodeGraphTransform extends JsMessage {
-	readonly transform!: NodeGraphTransform;
-}
-
-export class SendUIMetadata extends JsMessage {
-	readonly nodeDescriptions!: [string, string][];
-
-	readonly nodeTypes!: FrontendNodeType[];
-}
-
-export class SendShortcutFullscreen extends JsMessage {
-	readonly shortcut!: ActionShortcut | undefined;
-	readonly shortcutMac!: ActionShortcut | undefined;
-}
-
-export class SendShortcutAltClick extends JsMessage {
-	readonly shortcut!: ActionShortcut | undefined;
-}
-
-export class SendShortcutShiftClick extends JsMessage {
-	readonly shortcut!: ActionShortcut | undefined;
-}
-
-export class UpdateNodeThumbnail extends JsMessage {
-	readonly id!: bigint;
-
-	readonly value!: string;
-}
-
-export class UpdateNodeGraphSelection extends JsMessage {
-	readonly selected!: bigint[];
-}
-
-export class UpdateOpenDocumentsList extends JsMessage {
-	readonly openDocuments!: OpenDocument[];
-}
-
-export class UpdateWirePathInProgress extends JsMessage {
-	readonly wirePath!: WirePath | undefined;
-}
 
 export type OpenDocument = {
 	readonly id: bigint;
@@ -169,10 +53,6 @@ export type ContextMenuInformation = {
 	contextMenuCoordinates: [number, number];
 	contextMenuData: ContextMenuDataCreateNode | ContextMenuDataModifyNode;
 };
-
-export class UpdateContextMenuInformation extends JsMessage {
-	readonly contextMenuInformation!: ContextMenuInformation | undefined;
-}
 
 export type FrontendGraphDataType = "General" | "Number" | "Artboard" | "Graphic" | "Raster" | "Vector" | "Color" | "Invalid";
 
@@ -241,55 +121,7 @@ export type WireUpdate = {
 	readonly wirePathUpdate: WirePath | undefined;
 };
 
-export class TriggerPersistenceWriteDocument extends JsMessage {
-	documentId!: bigint;
-
-	document!: string;
-
-	details!: DocumentDetails;
-
-	version!: string;
-}
-
-export class TriggerPersistenceRemoveDocument extends JsMessage {
-	documentId!: bigint;
-}
-
 export type AppWindowPlatform = "Web" | "Windows" | "Mac" | "Linux";
-
-export class UpdatePlatform extends JsMessage {
-	readonly platform!: AppWindowPlatform;
-}
-
-export class UpdateMaximized extends JsMessage {
-	readonly maximized!: boolean;
-}
-
-export class UpdateFullscreen extends JsMessage {
-	readonly fullscreen!: boolean;
-}
-
-export class UpdateViewportHolePunch extends JsMessage {
-	readonly active!: boolean;
-}
-
-export class UpdateViewportPhysicalBounds extends JsMessage {
-	readonly x!: number;
-	readonly y!: number;
-	readonly width!: number;
-	readonly height!: number;
-}
-
-export class UpdateUIScale extends JsMessage {
-	readonly scale!: number;
-}
-
-export class WindowPointerLockMove extends JsMessage {
-	readonly x!: number;
-	readonly y!: number;
-}
-
-export class WindowFullscreen extends JsMessage {}
 
 // Rust enum `Key`
 export type KeyRaw = string;
@@ -543,58 +375,11 @@ export function parseFillChoice(value: any): FillChoice {
 	return createNoneColor();
 }
 
-export class UpdateActiveDocument extends JsMessage {
-	readonly documentId!: bigint;
-}
-
-export class DisplayDialogPanic extends JsMessage {
-	readonly panicInfo!: string;
-}
-
-export class DisplayDialog extends JsMessage {
-	readonly title!: string;
-	readonly icon!: IconName;
-}
-
-export class UpdateDocumentArtwork extends JsMessage {
-	readonly svg!: string;
-}
-
-export class UpdateDocumentScrollbars extends JsMessage {
-	readonly position!: [number, number];
-
-	readonly size!: [number, number];
-
-	readonly multiplier!: [number, number];
-}
-
-export class UpdateDocumentRulers extends JsMessage {
-	readonly origin!: [number, number];
-
-	readonly spacing!: number;
-
-	readonly interval!: number;
-
-	readonly visible!: boolean;
-}
-
 export type EyedropperPreviewImage = {
 	readonly data: Uint8Array;
 	readonly width: number;
 	readonly height: number;
 };
-
-export class UpdateEyedropperSamplingState extends JsMessage {
-	readonly image!: EyedropperPreviewImage | undefined;
-
-	readonly mousePosition!: [number, number] | undefined;
-
-	readonly primaryColor!: string;
-
-	readonly secondaryColor!: string;
-
-	readonly setColorChoice!: "Primary" | "Secondary" | undefined;
-}
 
 export const mouseCursorIconCSSNames = {
 	Default: "default",
@@ -614,137 +399,12 @@ export const mouseCursorIconCSSNames = {
 } as const;
 export type MouseCursor = keyof typeof mouseCursorIconCSSNames;
 
-export class UpdateMouseCursor extends JsMessage {
-	readonly cursor!: MouseCursor;
-}
-
-export class UpdateGraphViewOverlay extends JsMessage {
-	open!: boolean;
-}
-
-export class UpdateGraphFadeArtwork extends JsMessage {
-	readonly percentage!: number;
-}
-
-export class UpdateDataPanelState extends JsMessage {
-	readonly open!: boolean;
-}
-
-export class UpdatePropertiesPanelState extends JsMessage {
-	readonly open!: boolean;
-}
-
-export class UpdateLayersPanelState extends JsMessage {
-	readonly open!: boolean;
-}
-
-export class TriggerLoadFirstAutoSaveDocument extends JsMessage {}
-export class TriggerLoadRestAutoSaveDocuments extends JsMessage {}
-
-export class TriggerOpenLaunchDocuments extends JsMessage {}
-
-export class TriggerLoadPreferences extends JsMessage {}
-
-export class TriggerFetchAndOpenDocument extends JsMessage {
-	readonly name!: string;
-
-	readonly filename!: string;
-}
-
-export class TriggerOpen extends JsMessage {}
-
-export class TriggerImport extends JsMessage {}
-
-export class TriggerClipboardRead extends JsMessage {}
-
-export class TriggerSaveDocument extends JsMessage {
-	readonly documentId!: bigint;
-
-	readonly name!: string;
-
-	readonly path!: string | undefined;
-
-	readonly content!: ArrayBuffer;
-}
-
-export class TriggerExportImage extends JsMessage {
-	readonly svg!: string;
-
-	readonly name!: string;
-
-	readonly mime!: string;
-
-	readonly size!: [number, number];
-}
-
-export class TriggerSaveFile extends JsMessage {
-	readonly name!: string;
-
-	readonly content!: ArrayBuffer;
-}
-
-export class TriggerSavePreferences extends JsMessage {
-	readonly preferences!: Record<string, unknown>;
-}
-
-export class TriggerSaveActiveDocument extends JsMessage {
-	readonly documentId!: bigint;
-}
-
-export class DocumentChanged extends JsMessage {}
-
 export type LayerStructureEntry = {
 	layerId: bigint;
 	children: LayerStructureEntry[];
 };
 
-export class UpdateDocumentLayerStructure extends JsMessage {
-	readonly layerStructure!: LayerStructureEntry[];
-}
-
 export type TextAlign = "Left" | "Center" | "Right" | "JustifyLeft";
-
-export class DisplayEditableTextbox extends JsMessage {
-	readonly text!: string;
-
-	readonly lineHeightRatio!: number;
-
-	readonly fontSize!: number;
-
-	readonly color!: string;
-
-	readonly fontData!: ArrayBuffer;
-
-	readonly transform!: number[];
-
-	readonly maxWidth!: undefined | number;
-
-	readonly maxHeight!: undefined | number;
-
-	readonly align!: TextAlign;
-}
-
-export class DisplayEditableTextboxUpdateFontData extends JsMessage {
-	readonly fontData!: ArrayBuffer;
-}
-
-export class DisplayEditableTextboxTransform extends JsMessage {
-	readonly transform!: number[];
-}
-
-export class DisplayRemoveEditableTextbox extends JsMessage {}
-
-export class UpdateGradientStopColorPickerPosition extends JsMessage {
-	readonly color!: Color;
-
-	readonly x!: number;
-
-	readonly y!: number;
-}
-
-export class UpdateDocumentLayerDetails extends JsMessage {
-	readonly data!: LayerPanelEntry;
-}
 
 export type LayerPanelEntry = {
 	id: bigint;
@@ -768,44 +428,10 @@ export type LayerPanelEntry = {
 	clippable: boolean;
 };
 
-export class DialogClose extends JsMessage {}
-
 export type Font = {
 	fontFamily: string;
 	fontStyle: string;
 };
-
-export class TriggerFontCatalogLoad extends JsMessage {}
-
-export class TriggerFontDataLoad extends JsMessage {
-	font!: Font;
-
-	url!: string;
-}
-
-export class TriggerVisitLink extends JsMessage {
-	url!: string;
-}
-
-export class TriggerTextCommit extends JsMessage {}
-
-export class TriggerClipboardWrite extends JsMessage {
-	readonly content!: string;
-}
-
-export class TriggerSelectionRead extends JsMessage {
-	readonly cut!: boolean;
-}
-
-export class TriggerSelectionWrite extends JsMessage {
-	readonly content!: string;
-}
-
-export class TriggerAboutGraphiteLocalizedCommitDate extends JsMessage {
-	readonly commitDate!: string;
-}
-
-export class TriggerDisplayThirdPartyLicensesDialog extends JsMessage {}
 
 // WIDGET PROPS
 
@@ -1332,13 +958,9 @@ export type LayoutTarget =
 	| "WelcomeScreenButtons"
 	| "WorkingColors";
 
-export class WidgetDiffUpdate extends JsMessage {
-	diff!: WidgetDiff[];
-}
-
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function parseWidgetDiffs(rawDiffs: any[]): WidgetDiff[] {
-	return rawDiffs.map((diff) => {
+function createWidgetDiffMessage(data: any): WidgetDiff[] {
+	return data.diff.map((diff: WidgetDiff) => {
 		const { widgetPath, newValue } = diff;
 
 		if ("layout" in newValue) return { widgetPath, newValue: newValue.layout.map(createLayoutGroup) };
@@ -1350,21 +972,14 @@ function parseWidgetDiffs(rawDiffs: any[]): WidgetDiff[] {
 	});
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function createWidgetDiffMessage(data: any): WidgetDiffUpdate {
-	const message = new WidgetDiffUpdate();
-	message.diff = parseWidgetDiffs(data.diff);
-	return message;
-}
-
 type DiffUpdate = { layout: Layout } | { layoutGroup: LayoutGroup } | { widget: WidgetInstance };
-type WidgetDiff = { widgetPath: number[]; newValue: DiffUpdate };
+export type WidgetDiff = { widgetPath: number[]; newValue: DiffUpdate };
 
 type UIItem = Layout | LayoutGroup | WidgetInstance[] | WidgetInstance;
 
 // Updates a widget layout based on a list of updates, giving the new layout by mutating the `layout` argument
-export function patchLayout(layout: /* &mut */ Layout, updates: WidgetDiffUpdate) {
-	updates.diff.forEach((update) => {
+export function patchLayout(layout: /* &mut */ Layout, diffs: WidgetDiff[]) {
+	diffs.forEach((update) => {
 		// Find the object where the diff applies to
 		const diffObject = update.widgetPath.reduce((targetLayout: UIItem | undefined, index: number): UIItem | undefined => {
 			if (targetLayout && "columnWidgets" in targetLayout) return targetLayout.columnWidgets[index];
@@ -1469,138 +1084,228 @@ function createLayoutGroup(layoutGroup: any): LayoutGroup {
 	throw new Error("Layout row type does not exist");
 }
 
-// WIDGET LAYOUTS
-export class UpdateDialogButtons extends WidgetDiffUpdate {}
+// JS MESSAGE TYPES
 
-export class UpdateDialogColumn1 extends WidgetDiffUpdate {}
+export type JsMessageTypeMap = {
+	ClearAllNodeGraphWires: Record<string, never>;
+	DisplayDialog: { readonly title: string; readonly icon: IconName };
+	DialogClose: Record<string, never>;
+	DisplayDialogPanic: { readonly panicInfo: string };
+	DisplayEditableTextbox: {
+		readonly text: string;
+		readonly lineHeightRatio: number;
+		readonly fontSize: number;
+		readonly color: string;
+		readonly fontData: ArrayBuffer;
+		readonly transform: number[];
+		readonly maxWidth: undefined | number;
+		readonly maxHeight: undefined | number;
+		readonly align: TextAlign;
+	};
+	DisplayEditableTextboxTransform: { readonly transform: number[] };
+	DisplayEditableTextboxUpdateFontData: { readonly fontData: ArrayBuffer };
+	DisplayRemoveEditableTextbox: Record<string, never>;
+	SendShortcutAltClick: { readonly shortcut: ActionShortcut | undefined };
+	SendShortcutFullscreen: { readonly shortcut: ActionShortcut | undefined; readonly shortcutMac: ActionShortcut | undefined };
+	SendShortcutShiftClick: { readonly shortcut: ActionShortcut | undefined };
+	SendUIMetadata: { readonly nodeDescriptions: [string, string][]; readonly nodeTypes: FrontendNodeType[] };
+	TriggerAboutGraphiteLocalizedCommitDate: { readonly commitDate: string };
+	TriggerClipboardRead: Record<string, never>;
+	TriggerClipboardWrite: { readonly content: string };
+	TriggerDisplayThirdPartyLicensesDialog: Record<string, never>;
+	TriggerExportImage: { readonly svg: string; readonly name: string; readonly mime: string; readonly size: [number, number] };
+	TriggerFetchAndOpenDocument: { readonly name: string; readonly filename: string };
+	TriggerFontCatalogLoad: Record<string, never>;
+	TriggerFontDataLoad: { font: Font; url: string };
+	TriggerImport: Record<string, never>;
+	TriggerLoadFirstAutoSaveDocument: Record<string, never>;
+	TriggerLoadPreferences: Record<string, never>;
+	TriggerLoadRestAutoSaveDocuments: Record<string, never>;
+	TriggerOpen: Record<string, never>;
+	TriggerOpenLaunchDocuments: Record<string, never>;
+	TriggerPersistenceRemoveDocument: { documentId: bigint };
+	TriggerPersistenceWriteDocument: { documentId: bigint; document: string; details: DocumentDetails; version: string };
+	TriggerSaveActiveDocument: { readonly documentId: bigint };
+	TriggerSaveDocument: { readonly documentId: bigint; readonly name: string; readonly path: string | undefined; readonly content: ArrayBuffer };
+	TriggerSaveFile: { readonly name: string; readonly content: ArrayBuffer };
+	TriggerSavePreferences: { readonly preferences: Record<string, unknown> };
+	TriggerSelectionRead: { readonly cut: boolean };
+	TriggerSelectionWrite: { readonly content: string };
+	TriggerTextCommit: Record<string, never>;
+	TriggerVisitLink: { url: string };
+	UpdateActiveDocument: { readonly documentId: bigint };
+	UpdateBox: { readonly box: Box | undefined };
+	UpdateClickTargets: { readonly clickTargets: FrontendClickTargets | undefined };
+	UpdateContextMenuInformation: { readonly contextMenuInformation: ContextMenuInformation | undefined };
+	UpdateDataPanelLayout: WidgetDiff[];
+	UpdateDataPanelState: { readonly open: boolean };
+	UpdateDialogButtons: WidgetDiff[];
+	UpdateDialogColumn1: WidgetDiff[];
+	UpdateDialogColumn2: WidgetDiff[];
+	UpdateDocumentArtwork: { readonly svg: string };
+	UpdateDocumentBarLayout: WidgetDiff[];
+	UpdateDocumentLayerDetails: { readonly data: LayerPanelEntry };
+	UpdateDocumentLayerStructure: { readonly layerStructure: LayerStructureEntry[] };
+	UpdateDocumentRulers: { readonly origin: [number, number]; readonly spacing: number; readonly interval: number; readonly visible: boolean };
+	UpdateDocumentScrollbars: { readonly position: [number, number]; readonly size: [number, number]; readonly multiplier: [number, number] };
+	UpdateExportReorderIndex: { readonly exportIndex: number | undefined };
+	UpdateEyedropperSamplingState: {
+		readonly image: EyedropperPreviewImage | undefined;
+		readonly mousePosition: [number, number] | undefined;
+		readonly primaryColor: string;
+		readonly secondaryColor: string;
+		readonly setColorChoice: "Primary" | "Secondary" | undefined;
+	};
+	UpdateFullscreen: { readonly fullscreen: boolean };
+	UpdateGradientStopColorPickerPosition: { readonly color: Color; readonly x: number; readonly y: number };
+	UpdateGraphFadeArtwork: { readonly percentage: number };
+	UpdateGraphViewOverlay: { open: boolean };
+	UpdateImportReorderIndex: { readonly importIndex: number | undefined };
+	UpdateImportsExports: {
+		readonly imports: (FrontendGraphOutput | undefined)[];
+		readonly exports: (FrontendGraphInput | undefined)[];
+		readonly importPosition: [number, number];
+		readonly exportPosition: [number, number];
+		readonly addImportExport: boolean;
+	};
+	UpdateInSelectedNetwork: { readonly inSelectedNetwork: boolean };
+	UpdateLayersPanelBottomBarLayout: WidgetDiff[];
+	UpdateLayersPanelControlBarLeftLayout: WidgetDiff[];
+	UpdateLayersPanelControlBarRightLayout: WidgetDiff[];
+	UpdateLayersPanelState: { readonly open: boolean };
+	UpdateLayerWidths: { readonly layerWidths: Map<bigint, number>; readonly chainWidths: Map<bigint, number>; readonly hasLeftInputWire: Map<bigint, boolean> };
+	UpdateMaximized: { readonly maximized: boolean };
+	UpdateMenuBarLayout: WidgetDiff[];
+	UpdateMouseCursor: { readonly cursor: MouseCursor };
+	UpdateNodeGraphControlBarLayout: WidgetDiff[];
+	UpdateNodeGraphErrorDiagnostic: { readonly error: NodeGraphError | undefined };
+	UpdateNodeGraphNodes: { readonly nodes: FrontendNode[] };
+	UpdateNodeGraphSelection: { readonly selected: bigint[] };
+	UpdateNodeGraphTransform: { readonly transform: NodeGraphTransform };
+	UpdateNodeGraphWires: { readonly wires: WireUpdate[] };
+	UpdateNodeThumbnail: { readonly id: bigint; readonly value: string };
+	UpdateOpenDocumentsList: { readonly openDocuments: OpenDocument[] };
+	UpdatePlatform: { readonly platform: AppWindowPlatform };
+	UpdatePropertiesPanelLayout: WidgetDiff[];
+	UpdatePropertiesPanelState: { readonly open: boolean };
+	UpdateStatusBarHintsLayout: WidgetDiff[];
+	UpdateStatusBarInfoLayout: WidgetDiff[];
+	UpdateToolOptionsLayout: WidgetDiff[];
+	UpdateToolShelfLayout: WidgetDiff[];
+	UpdateUIScale: { readonly scale: number };
+	UpdateViewportHolePunch: { readonly active: boolean };
+	UpdateViewportPhysicalBounds: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
+	UpdateVisibleNodes: { readonly nodes: bigint[] };
+	UpdateWelcomeScreenButtonsLayout: WidgetDiff[];
+	UpdateWirePathInProgress: { readonly wirePath: WirePath | undefined };
+	UpdateWorkingColorsLayout: WidgetDiff[];
+	WindowFullscreen: Record<string, never>;
+	WindowPointerLockMove: { readonly x: number; readonly y: number };
+};
+export type JsMessageType = keyof JsMessageTypeMap;
 
-export class UpdateDialogColumn2 extends WidgetDiffUpdate {}
+// Standalone type aliases for types used outside subscriptions
+export type DisplayEditableTextbox = JsMessageTypeMap["DisplayEditableTextbox"];
+export type TriggerPersistenceWriteDocument = JsMessageTypeMap["TriggerPersistenceWriteDocument"];
+export type TriggerSavePreferences = JsMessageTypeMap["TriggerSavePreferences"];
+export type UpdateImportsExports = JsMessageTypeMap["UpdateImportsExports"];
 
-export class UpdateDocumentBarLayout extends WidgetDiffUpdate {}
+// MESSAGE MAKERS
 
-export class UpdateLayersPanelControlBarLeftLayout extends WidgetDiffUpdate {}
-
-export class UpdateLayersPanelControlBarRightLayout extends WidgetDiffUpdate {}
-
-export class UpdateLayersPanelBottomBarLayout extends WidgetDiffUpdate {}
-
-export class UpdateMenuBarLayout extends WidgetDiffUpdate {}
-
-export class UpdateNodeGraphControlBarLayout extends WidgetDiffUpdate {}
-
-export class UpdateWelcomeScreenButtonsLayout extends WidgetDiffUpdate {}
-
-export class UpdatePropertiesPanelLayout extends WidgetDiffUpdate {}
-
-export class UpdateDataPanelLayout extends WidgetDiffUpdate {}
-
-export class UpdateStatusBarHintsLayout extends WidgetDiffUpdate {}
-
-export class UpdateStatusBarInfoLayout extends WidgetDiffUpdate {}
-
-export class UpdateToolOptionsLayout extends WidgetDiffUpdate {}
-
-export class UpdateToolShelfLayout extends WidgetDiffUpdate {}
-
-export class UpdateWorkingColorsLayout extends WidgetDiffUpdate {}
-
-// `any` is used since the type of the object should be known from the Rust side
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type JSMessageFactory = (data: any, wasm: WebAssembly.Memory, handle: EditorHandle) => JsMessage;
-type MessageMaker = typeof JsMessage | JSMessageFactory;
+type MessageFactory = (data: any, wasm: WebAssembly.Memory, handle: EditorHandle) => unknown;
 
-export const messageMakers: Record<string, MessageMaker> = {
-	ClearAllNodeGraphWires,
-	DisplayDialog,
-	DialogClose,
-	DisplayDialogPanic,
-	DisplayEditableTextbox,
-	DisplayEditableTextboxTransform,
-	DisplayEditableTextboxUpdateFontData,
-	DisplayRemoveEditableTextbox,
-	SendShortcutAltClick,
-	SendShortcutFullscreen,
-	SendShortcutShiftClick,
-	SendUIMetadata,
-	TriggerAboutGraphiteLocalizedCommitDate,
-	TriggerClipboardRead,
-	TriggerClipboardWrite,
-	TriggerDisplayThirdPartyLicensesDialog,
-	TriggerExportImage,
-	TriggerFetchAndOpenDocument,
-	TriggerFontCatalogLoad,
-	TriggerFontDataLoad,
-	TriggerImport,
-	TriggerLoadFirstAutoSaveDocument,
-	TriggerLoadPreferences,
-	TriggerLoadRestAutoSaveDocuments,
-	TriggerOpen,
-	TriggerOpenLaunchDocuments,
-	TriggerPersistenceRemoveDocument,
-	TriggerPersistenceWriteDocument,
-	TriggerSaveActiveDocument,
-	TriggerSaveDocument,
-	TriggerSaveFile,
-	TriggerSavePreferences,
-	TriggerSelectionRead,
-	TriggerSelectionWrite,
-	TriggerTextCommit,
-	TriggerVisitLink,
-	UpdateActiveDocument,
-	UpdateBox,
-	UpdateClickTargets,
-	UpdateContextMenuInformation,
+export const messageMakers: Record<JsMessageType, MessageFactory | undefined> = {
+	ClearAllNodeGraphWires: undefined,
+	DisplayDialog: undefined,
+	DialogClose: undefined,
+	DisplayDialogPanic: undefined,
+	DisplayEditableTextbox: undefined,
+	DisplayEditableTextboxTransform: undefined,
+	DisplayEditableTextboxUpdateFontData: undefined,
+	DisplayRemoveEditableTextbox: undefined,
+	SendShortcutAltClick: undefined,
+	SendShortcutFullscreen: undefined,
+	SendShortcutShiftClick: undefined,
+	SendUIMetadata: undefined,
+	TriggerAboutGraphiteLocalizedCommitDate: undefined,
+	TriggerClipboardRead: undefined,
+	TriggerClipboardWrite: undefined,
+	TriggerDisplayThirdPartyLicensesDialog: undefined,
+	TriggerExportImage: undefined,
+	TriggerFetchAndOpenDocument: undefined,
+	TriggerFontCatalogLoad: undefined,
+	TriggerFontDataLoad: undefined,
+	TriggerImport: undefined,
+	TriggerLoadFirstAutoSaveDocument: undefined,
+	TriggerLoadPreferences: undefined,
+	TriggerLoadRestAutoSaveDocuments: undefined,
+	TriggerOpen: undefined,
+	TriggerOpenLaunchDocuments: undefined,
+	TriggerPersistenceRemoveDocument: undefined,
+	TriggerPersistenceWriteDocument: undefined,
+	TriggerSaveActiveDocument: undefined,
+	TriggerSaveDocument: undefined,
+	TriggerSaveFile: undefined,
+	TriggerSavePreferences: undefined,
+	TriggerSelectionRead: undefined,
+	TriggerSelectionWrite: undefined,
+	TriggerTextCommit: undefined,
+	TriggerVisitLink: undefined,
+	UpdateActiveDocument: undefined,
+	UpdateBox: undefined,
+	UpdateClickTargets: undefined,
+	UpdateContextMenuInformation: undefined,
 	UpdateDataPanelLayout: createWidgetDiffMessage,
-	UpdateDataPanelState,
+	UpdateDataPanelState: undefined,
 	UpdateDialogButtons: createWidgetDiffMessage,
 	UpdateDialogColumn1: createWidgetDiffMessage,
 	UpdateDialogColumn2: createWidgetDiffMessage,
-	UpdateDocumentArtwork,
+	UpdateDocumentArtwork: undefined,
 	UpdateDocumentBarLayout: createWidgetDiffMessage,
-	UpdateDocumentLayerDetails,
-	UpdateDocumentLayerStructure,
-	UpdateDocumentRulers,
-	UpdateDocumentScrollbars,
-	UpdateExportReorderIndex,
-	UpdateEyedropperSamplingState,
-	UpdateFullscreen,
-	UpdateGraphFadeArtwork,
-	UpdateGradientStopColorPickerPosition,
-	UpdateGraphViewOverlay,
-	UpdateImportReorderIndex,
-	UpdateImportsExports,
-	UpdateInSelectedNetwork,
+	UpdateDocumentLayerDetails: undefined,
+	UpdateDocumentLayerStructure: undefined,
+	UpdateDocumentRulers: undefined,
+	UpdateDocumentScrollbars: undefined,
+	UpdateExportReorderIndex: undefined,
+	UpdateEyedropperSamplingState: undefined,
+	UpdateFullscreen: undefined,
+	UpdateGradientStopColorPickerPosition: undefined,
+	UpdateGraphFadeArtwork: undefined,
+	UpdateGraphViewOverlay: undefined,
+	UpdateImportReorderIndex: undefined,
+	UpdateImportsExports: undefined,
+	UpdateInSelectedNetwork: undefined,
 	UpdateLayersPanelBottomBarLayout: createWidgetDiffMessage,
 	UpdateLayersPanelControlBarLeftLayout: createWidgetDiffMessage,
 	UpdateLayersPanelControlBarRightLayout: createWidgetDiffMessage,
-	UpdateLayersPanelState,
-	UpdateLayerWidths,
-	UpdateMaximized,
+	UpdateLayersPanelState: undefined,
+	UpdateLayerWidths: undefined,
+	UpdateMaximized: undefined,
 	UpdateMenuBarLayout: createWidgetDiffMessage,
-	UpdateMouseCursor,
+	UpdateMouseCursor: undefined,
 	UpdateNodeGraphControlBarLayout: createWidgetDiffMessage,
-	UpdateNodeGraphErrorDiagnostic,
-	UpdateNodeGraphNodes,
-	UpdateNodeGraphSelection,
-	UpdateNodeGraphTransform,
-	UpdateNodeGraphWires,
-	UpdateNodeThumbnail,
-	UpdateOpenDocumentsList,
-	UpdatePlatform,
+	UpdateNodeGraphErrorDiagnostic: undefined,
+	UpdateNodeGraphNodes: undefined,
+	UpdateNodeGraphSelection: undefined,
+	UpdateNodeGraphTransform: undefined,
+	UpdateNodeGraphWires: undefined,
+	UpdateNodeThumbnail: undefined,
+	UpdateOpenDocumentsList: undefined,
+	UpdatePlatform: undefined,
 	UpdatePropertiesPanelLayout: createWidgetDiffMessage,
-	UpdatePropertiesPanelState,
+	UpdatePropertiesPanelState: undefined,
 	UpdateStatusBarHintsLayout: createWidgetDiffMessage,
 	UpdateStatusBarInfoLayout: createWidgetDiffMessage,
 	UpdateToolOptionsLayout: createWidgetDiffMessage,
 	UpdateToolShelfLayout: createWidgetDiffMessage,
-	UpdateUIScale,
-	UpdateViewportHolePunch,
-	UpdateViewportPhysicalBounds,
-	UpdateVisibleNodes,
+	UpdateUIScale: undefined,
+	UpdateViewportHolePunch: undefined,
+	UpdateViewportPhysicalBounds: undefined,
+	UpdateVisibleNodes: undefined,
 	UpdateWelcomeScreenButtonsLayout: createWidgetDiffMessage,
-	UpdateWirePathInProgress,
+	UpdateWirePathInProgress: undefined,
 	UpdateWorkingColorsLayout: createWidgetDiffMessage,
-	WindowFullscreen,
-	WindowPointerLockMove,
-} as const;
-export type JsMessageType = keyof typeof messageMakers;
+	WindowFullscreen: undefined,
+	WindowPointerLockMove: undefined,
+};

@@ -1,12 +1,11 @@
 import { type Editor } from "@graphite/editor";
-import { DisplayDialogPanic } from "@graphite/messages";
 import { type DialogState } from "@graphite/state-providers/dialog";
 import { browserVersion, operatingSystem } from "@graphite/utility-functions/platform";
 import { stripIndents } from "@graphite/utility-functions/strip-indents";
 
 export function createPanicManager(editor: Editor, dialogState: DialogState) {
 	// Code panic dialog and console error
-	editor.subscriptions.subscribeJsMessage(DisplayDialogPanic, (data) => {
+	editor.subscriptions.subscribeJsMessage("DisplayDialogPanic", (data) => {
 		// `Error.stackTraceLimit` is only available in V8/Chromium
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		(Error as any).stackTraceLimit = Infinity;

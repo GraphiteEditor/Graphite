@@ -3,16 +3,7 @@ import { writable } from "svelte/store";
 
 import { type Editor } from "@graphite/editor";
 
-import {
-	patchLayout,
-	UpdateDocumentBarLayout,
-	UpdateToolOptionsLayout,
-	UpdateToolShelfLayout,
-	UpdateWorkingColorsLayout,
-	UpdateNodeGraphControlBarLayout,
-	UpdateGraphViewOverlay,
-	UpdateGraphFadeArtwork,
-} from "@graphite/messages";
+import { patchLayout } from "@graphite/messages";
 import type { Layout } from "@graphite/messages";
 
 export function createDocumentState(editor: Editor) {
@@ -30,13 +21,13 @@ export function createDocumentState(editor: Editor) {
 	const { subscribe, update } = state;
 
 	// Update layouts
-	editor.subscriptions.subscribeJsMessage(UpdateGraphFadeArtwork, (data) => {
+	editor.subscriptions.subscribeJsMessage("UpdateGraphFadeArtwork", (data) => {
 		update((state) => {
 			state.fadeArtwork = data.percentage;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateToolOptionsLayout, async (data) => {
+	editor.subscriptions.subscribeJsMessage("UpdateToolOptionsLayout", async (data) => {
 		await tick();
 
 		update((state) => {
@@ -44,7 +35,7 @@ export function createDocumentState(editor: Editor) {
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateDocumentBarLayout, async (data) => {
+	editor.subscriptions.subscribeJsMessage("UpdateDocumentBarLayout", async (data) => {
 		await tick();
 
 		update((state) => {
@@ -52,7 +43,7 @@ export function createDocumentState(editor: Editor) {
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateToolShelfLayout, async (data) => {
+	editor.subscriptions.subscribeJsMessage("UpdateToolShelfLayout", async (data) => {
 		await tick();
 
 		update((state) => {
@@ -60,7 +51,7 @@ export function createDocumentState(editor: Editor) {
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateWorkingColorsLayout, async (data) => {
+	editor.subscriptions.subscribeJsMessage("UpdateWorkingColorsLayout", async (data) => {
 		await tick();
 
 		update((state) => {
@@ -68,7 +59,7 @@ export function createDocumentState(editor: Editor) {
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(UpdateNodeGraphControlBarLayout, (data) => {
+	editor.subscriptions.subscribeJsMessage("UpdateNodeGraphControlBarLayout", (data) => {
 		update((state) => {
 			patchLayout(state.nodeGraphControlBarLayout, data);
 			return state;
@@ -76,7 +67,7 @@ export function createDocumentState(editor: Editor) {
 	});
 
 	// Show or hide the graph view overlay
-	editor.subscriptions.subscribeJsMessage(UpdateGraphViewOverlay, (data) => {
+	editor.subscriptions.subscribeJsMessage("UpdateGraphViewOverlay", (data) => {
 		update((state) => {
 			state.graphViewOverlayOpen = data.open;
 			return state;

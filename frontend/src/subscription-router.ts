@@ -1,29 +1,23 @@
-import { plainToInstance } from "class-transformer";
-
 import { type EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
-import { type JsMessageType, messageMakers, type JsMessage } from "@graphite/messages";
+import { type JsMessageType, type JsMessageTypeMap, messageMakers } from "@graphite/messages";
 
-type JsMessageCallback<T extends JsMessage> = (messageData: T) => void;
-// Don't know a better way of typing this since it can be any subclass of JsMessage
-// The functions interacting with this map are strongly typed though around JsMessage
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type JsMessageCallbackMap = Record<string, JsMessageCallback<any> | undefined>;
+type JsMessageCallbackMap = Record<string, ((messageData: any) => void) | undefined>;
 
 export function createSubscriptionRouter() {
 	const subscriptions: JsMessageCallbackMap = {};
 
-	const subscribeJsMessage = <T extends JsMessage, Args extends unknown[]>(messageType: new (...args: Args) => T, callback: JsMessageCallback<T>) => {
-		subscriptions[messageType.name] = callback;
+	const subscribeJsMessage = <T extends JsMessageType>(messageType: T, callback: (data: JsMessageTypeMap[T]) => void) => {
+		subscriptions[messageType] = callback;
 	};
 
-	const unsubscribeJsMessage = <T extends JsMessage>(messageType: new () => T) => {
-		delete subscriptions[messageType.name];
+	const unsubscribeJsMessage = (messageType: JsMessageType) => {
+		delete subscriptions[messageType];
 	};
 
 	const handleJsMessage = (messageType: JsMessageType, messageData: Record<string, unknown>, wasm: WebAssembly.Memory, handle: EditorHandle) => {
-		// Find the message maker for the message type, which can either be a JS class constructor or a function that returns an instance of the JS class
-		const messageMaker = messageMakers[messageType];
-		if (!messageMaker) {
+		// Find the message maker for the message type, which can either be undefined (passthrough) or a factory function
+		if (!(messageType in messageMakers)) {
 			// eslint-disable-next-line no-console
 			console.error(
 				`Received a frontend message of type "${messageType}" but was not able to parse the data. ` +
@@ -31,27 +25,21 @@ export function createSubscriptionRouter() {
 			);
 			return;
 		}
-
-		// Checks if the provided `messageMaker` is a class extending `JsMessage`. All classes inheriting from `JsMessage` will have a static readonly `jsMessageMarker` which is `true`.
-		const isJsMessageMaker = (fn: typeof messageMaker): fn is typeof JsMessage => "jsMessageMarker" in fn;
-		const messageIsClass = isJsMessageMaker(messageMaker);
+		const messageMaker = messageMakers[messageType];
 
 		// Messages with non-empty data are provided by Serde JSON as an object with one key as the message name, like: { NameOfThisMessage: { ... } }
 		// Messages with empty data are provided by Serde JSON as a string with the message name, like: "NameOfThisMessage"
 		// Here we extract the payload object or use an empty object depending on the situation.
 		const unwrappedMessageData = messageData[messageType] || {};
 
-		// Converts to a `JsMessage` object by turning the JSON message data into an instance of the message class, either automatically or by calling the function that builds it.
-		// If the `messageMaker` is a `JsMessage` class then we use the class-transformer library's `plainToInstance` function in order to convert the JSON data into the destination class.
-		// If it is not a `JsMessage` then it should be a custom function that creates a JsMessage from a JSON, so we call the function itself with the raw JSON as an argument.
-		// The resulting `message` is an instance of a class that extends `JsMessage`.
-		const message = messageIsClass ? plainToInstance(messageMaker, unwrappedMessageData) : messageMaker(unwrappedMessageData, wasm, handle);
+		// If the maker is undefined, the raw data is passed through directly.
+		// If the maker is a factory function, it transforms the raw data into the desired shape.
+		const message = messageMaker !== undefined ? messageMaker(unwrappedMessageData, wasm, handle) : unwrappedMessageData;
 
 		// If we have constructed a valid message, then we try and execute the callback that the frontend has associated with this message.
 		// The frontend should always have a callback for all messages, but due to message ordering, we might have to delay a few stack frames until we do.
 		let retries = 0;
 		const callCallback = () => {
-			// The messageType key is used for lookup since factory-created messages may not have a matching constructor.name
 			const callback = subscriptions[messageType];
 
 			// Attempt to call the callback, but try again several times on the next stack frame if it is not yet registered due to message ordering.

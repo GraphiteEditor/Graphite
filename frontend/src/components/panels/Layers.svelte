@@ -3,14 +3,7 @@
 	import { SvelteMap } from "svelte/reactivity";
 
 	import type { Editor } from "@graphite/editor";
-	import {
-		patchLayout,
-		UpdateDocumentLayerDetails,
-		UpdateDocumentLayerStructure,
-		UpdateLayersPanelControlBarLeftLayout,
-		UpdateLayersPanelControlBarRightLayout,
-		UpdateLayersPanelBottomBarLayout,
-	} from "@graphite/messages";
+	import { patchLayout } from "@graphite/messages";
 	import type { LayerPanelEntry, LayerStructureEntry, Layout } from "@graphite/messages";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import type { TooltipState } from "@graphite/state-providers/tooltip";
@@ -76,26 +69,26 @@
 	let layersPanelBottomBarLayout: Layout = [];
 
 	onMount(() => {
-		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarLeftLayout, (data) => {
+		editor.subscriptions.subscribeJsMessage("UpdateLayersPanelControlBarLeftLayout", (data) => {
 			patchLayout(layersPanelControlBarLeftLayout, data);
 			layersPanelControlBarLeftLayout = layersPanelControlBarLeftLayout;
 		});
 
-		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelControlBarRightLayout, (data) => {
+		editor.subscriptions.subscribeJsMessage("UpdateLayersPanelControlBarRightLayout", (data) => {
 			patchLayout(layersPanelControlBarRightLayout, data);
 			layersPanelControlBarRightLayout = layersPanelControlBarRightLayout;
 		});
 
-		editor.subscriptions.subscribeJsMessage(UpdateLayersPanelBottomBarLayout, (data) => {
+		editor.subscriptions.subscribeJsMessage("UpdateLayersPanelBottomBarLayout", (data) => {
 			patchLayout(layersPanelBottomBarLayout, data);
 			layersPanelBottomBarLayout = layersPanelBottomBarLayout;
 		});
 
-		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerStructure, (data) => {
+		editor.subscriptions.subscribeJsMessage("UpdateDocumentLayerStructure", (data) => {
 			rebuildLayerHierarchy(data.layerStructure);
 		});
 
-		editor.subscriptions.subscribeJsMessage(UpdateDocumentLayerDetails, (data) => {
+		editor.subscriptions.subscribeJsMessage("UpdateDocumentLayerDetails", (data) => {
 			const targetLayer = data.data;
 			const targetId = targetLayer.id;
 
@@ -114,11 +107,11 @@
 	});
 
 	onDestroy(() => {
-		editor.subscriptions.unsubscribeJsMessage(UpdateLayersPanelControlBarLeftLayout);
-		editor.subscriptions.unsubscribeJsMessage(UpdateLayersPanelControlBarRightLayout);
-		editor.subscriptions.unsubscribeJsMessage(UpdateLayersPanelBottomBarLayout);
-		editor.subscriptions.unsubscribeJsMessage(UpdateDocumentLayerStructure);
-		editor.subscriptions.unsubscribeJsMessage(UpdateDocumentLayerDetails);
+		editor.subscriptions.unsubscribeJsMessage("UpdateLayersPanelControlBarLeftLayout");
+		editor.subscriptions.unsubscribeJsMessage("UpdateLayersPanelControlBarRightLayout");
+		editor.subscriptions.unsubscribeJsMessage("UpdateLayersPanelBottomBarLayout");
+		editor.subscriptions.unsubscribeJsMessage("UpdateDocumentLayerStructure");
+		editor.subscriptions.unsubscribeJsMessage("UpdateDocumentLayerDetails");
 
 		removeEventListener("pointerup", draggingPointerUp);
 		removeEventListener("pointermove", draggingPointerMove);

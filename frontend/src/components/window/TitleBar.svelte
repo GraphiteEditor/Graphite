@@ -3,7 +3,7 @@
 
 	import type { Editor } from "@graphite/editor";
 	import type { Layout } from "@graphite/messages";
-	import { patchLayout, UpdateMenuBarLayout } from "@graphite/messages";
+	import { patchLayout } from "@graphite/messages";
 	import type { AppWindowState } from "@graphite/state-providers/app-window";
 	import type { FullscreenState } from "@graphite/state-providers/fullscreen";
 	import type { TooltipState } from "@graphite/state-providers/tooltip";
@@ -26,7 +26,7 @@
 	$: height = $appWindow.platform === "Mac" ? 28 * (1 / $appWindow.uiScale) : 28;
 
 	onMount(() => {
-		editor.subscriptions.subscribeJsMessage(UpdateMenuBarLayout, (data) => {
+		editor.subscriptions.subscribeJsMessage("UpdateMenuBarLayout", (data) => {
 			patchLayout(menuBarLayout, data);
 			menuBarLayout = menuBarLayout;
 		});
