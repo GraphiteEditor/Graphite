@@ -68,6 +68,7 @@ export function colorFromCSS(colorCode: string): Color | undefined {
 }
 
 export function colorEquals(c1: Color, c2: Color): boolean {
+	if (c1.none !== c2.none) return false;
 	if (c1.none && c2.none) return true;
 	return Math.abs(c1.red - c2.red) < 1e-6 && Math.abs(c1.green - c2.green) < 1e-6 && Math.abs(c1.blue - c2.blue) < 1e-6 && Math.abs(c1.alpha - c2.alpha) < 1e-6;
 }

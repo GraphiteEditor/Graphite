@@ -77,7 +77,8 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 		// TODO: Eventually remove this document upgrade code
 		// Migrate TriggerPersistenceWriteDocument.documentId from string to bigint if needed
 		if (previouslySavedDocuments) {
-			Object.values(previouslySavedDocuments).forEach((doc) => {
+			// eslint-disable-next-line @typescript-eslint/no-explicit-any
+			Object.values(previouslySavedDocuments).forEach((doc: any) => {
 				if (typeof doc.documentId === "string") doc.documentId = BigInt(doc.documentId);
 			});
 		}
@@ -121,7 +122,7 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 
 		const orderedSavedDocuments = documentOrder.flatMap((id) => (previouslySavedDocuments[id] ? [previouslySavedDocuments[id]] : []));
 
-		if (currentDocumentId) {
+		if (currentDocumentId !== undefined) {
 			const currentIndex = orderedSavedDocuments.findIndex((doc) => doc.documentId === currentDocumentId);
 			const beforeCurrentIndex = currentIndex - 1;
 			const afterCurrentIndex = currentIndex + 1;

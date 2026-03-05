@@ -18,7 +18,7 @@ export function isWidgetSection(layoutRow: LayoutGroup): layoutRow is WidgetSect
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function hoistWidgetInstance(widgetInstance: any): WidgetInstance {
+function parseWidgetInstance(widgetInstance: any): WidgetInstance {
 	const kind = Object.keys(widgetInstance.widget)[0];
 	const props = widgetInstance.widget[kind];
 	props.kind = kind;
@@ -42,7 +42,7 @@ export function parseWidgetDiffs(rawDiffs: any): WidgetDiff[] {
 
 		if ("layout" in newValue) return { widgetPath, newValue: newValue.layout.map(createLayoutGroup) };
 		if ("layoutGroup" in newValue) return { widgetPath, newValue: createLayoutGroup(newValue.layoutGroup) };
-		if ("widget" in newValue) return { widgetPath, newValue: hoistWidgetInstance(newValue.widget) };
+		if ("widget" in newValue) return { widgetPath, newValue: parseWidgetInstance(newValue.widget) };
 
 		// This code should be unreachable
 		throw new Error("DiffUpdate invalid");
@@ -98,14 +98,14 @@ export function patchLayout(layout: /* &mut */ Layout, diffs: WidgetDiff[]) {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function createLayoutGroup(layoutGroup: any): LayoutGroup {
 	if (layoutGroup.column) {
-		const columnWidgets = layoutGroup.column.columnWidgets.map(hoistWidgetInstance);
+		const columnWidgets = layoutGroup.column.columnWidgets.map(parseWidgetInstance);
 
 		const result: WidgetSpanColumn = { columnWidgets };
 		return result;
 	}
 
 	if (layoutGroup.row) {
-		const result: WidgetSpanRow = { rowWidgets: layoutGroup.row.rowWidgets.map(hoistWidgetInstance) };
+		const result: WidgetSpanRow = { rowWidgets: layoutGroup.row.rowWidgets.map(parseWidgetInstance) };
 		return result;
 	}
 
@@ -124,7 +124,7 @@ function createLayoutGroup(layoutGroup: any): LayoutGroup {
 	if (layoutGroup.table) {
 		const result: WidgetTable = {
 			// eslint-disable-next-line @typescript-eslint/no-explicit-any
-			tableWidgets: layoutGroup.table.tableWidgets.map((row: any) => row.map(hoistWidgetInstance)),
+			tableWidgets: layoutGroup.table.tableWidgets.map((row: any) => row.map(parseWidgetInstance)),
 			unstyled: layoutGroup.table.unstyled,
 		};
 		return result;
