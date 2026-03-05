@@ -235,11 +235,11 @@ export type WirePath = {
 	readonly dashed: boolean;
 };
 
-export class WireUpdate {
-	readonly id!: bigint;
-	readonly inputIndex!: number;
-	readonly wirePathUpdate!: WirePath | undefined;
-}
+export type WireUpdate = {
+	readonly id: bigint;
+	readonly inputIndex: number;
+	readonly wirePathUpdate: WirePath | undefined;
+};
 
 export class TriggerPersistenceWriteDocument extends JsMessage {
 	documentId!: bigint;
@@ -578,11 +578,11 @@ export class UpdateDocumentRulers extends JsMessage {
 	readonly visible!: boolean;
 }
 
-export class EyedropperPreviewImage {
-	readonly data!: Uint8Array;
-	readonly width!: number;
-	readonly height!: number;
-}
+export type EyedropperPreviewImage = {
+	readonly data: Uint8Array;
+	readonly width: number;
+	readonly height: number;
+};
 
 export class UpdateEyedropperSamplingState extends JsMessage {
 	readonly image!: EyedropperPreviewImage | undefined;
@@ -809,39 +809,39 @@ export class TriggerDisplayThirdPartyLicensesDialog extends JsMessage {}
 
 // WIDGET PROPS
 
-export abstract class WidgetProps {
-	kind!: WidgetPropsNames;
-}
+export type CheckboxInput = {
+	kind: WidgetPropsNames;
 
-export class CheckboxInput extends WidgetProps {
 	// Content
-	checked!: boolean;
-	icon!: IconName;
-	forLabel!: bigint | undefined;
-	disabled!: boolean;
+	checked: boolean;
+	icon: IconName;
+	forLabel: bigint | undefined;
+	disabled: boolean;
 
 	// Tooltips
-	tooltipLabel!: string;
-	tooltipDescription!: string;
-	tooltipShortcut!: ActionShortcut | undefined;
-}
+	tooltipLabel: string;
+	tooltipDescription: string;
+	tooltipShortcut: ActionShortcut | undefined;
+};
 
-export class ColorInput extends WidgetProps {
+export type ColorInput = {
+	kind: WidgetPropsNames;
+
 	// Content
-	value!: FillChoice;
-	allowNone!: boolean;
-	// allowTransparency!: boolean; // TODO: Implement
-	menuDirection!: MenuDirection | undefined;
-	disabled!: boolean;
+	value: FillChoice;
+	allowNone: boolean;
+	// allowTransparency: boolean; // TODO: Implement
+	menuDirection: MenuDirection | undefined;
+	disabled: boolean;
 
 	// Styling
-	narrow!: boolean;
+	narrow: boolean;
 
 	// Tooltips
-	tooltipLabel!: string;
-	tooltipDescription!: string;
-	tooltipShortcut!: ActionShortcut | undefined;
-}
+	tooltipLabel: string;
+	tooltipDescription: string;
+	tooltipShortcut: ActionShortcut | undefined;
+};
 
 export type FillChoice = Color | Gradient;
 
@@ -893,169 +893,189 @@ export type MenuListEntry = {
 	tooltipShortcut?: ActionShortcut;
 };
 
-export class CurveManipulatorGroup {
-	anchor!: [number, number];
-	handles!: [[number, number], [number, number]];
-}
+export type CurveManipulatorGroup = {
+	anchor: [number, number];
+	handles: [[number, number], [number, number]];
+};
 
-export class Curve {
-	manipulatorGroups!: CurveManipulatorGroup[];
-	firstHandle!: [number, number];
-	lastHandle!: [number, number];
-}
+export type Curve = {
+	manipulatorGroups: CurveManipulatorGroup[];
+	firstHandle: [number, number];
+	lastHandle: [number, number];
+};
 
-export class CurveInput extends WidgetProps {
+export type CurveInput = {
+	kind: WidgetPropsNames;
+
 	// Content
-	value!: Curve;
+	value: Curve;
 
 	// Tooltips
-	tooltipLabel!: string;
-	tooltipDescription!: string;
-	tooltipShortcut!: ActionShortcut | undefined;
-}
+	tooltipLabel: string;
+	tooltipDescription: string;
+	tooltipShortcut: ActionShortcut | undefined;
+};
 
-export class DropdownInput extends WidgetProps {
+export type DropdownInput = {
+	kind: WidgetPropsNames;
+
 	// Content
-	selectedIndex!: number | undefined;
-	drawIcon!: boolean;
-	disabled!: boolean;
+	selectedIndex: number | undefined;
+	drawIcon: boolean;
+	disabled: boolean;
 
 	// Children
-	entries!: MenuListEntry[][];
-	entriesHash!: bigint;
+	entries: MenuListEntry[][];
+	entriesHash: bigint;
 
 	// Styling
-	narrow!: boolean;
+	narrow: boolean;
 
 	// Behavior
-	virtualScrolling!: boolean;
-	interactive!: boolean;
+	virtualScrolling: boolean;
+	interactive: boolean;
 
 	// Sizing
-	minWidth!: number;
-	maxWidth!: number;
+	minWidth: number;
+	maxWidth: number;
 
 	// Tooltips
-	tooltipLabel!: string;
-	tooltipDescription!: string;
-	tooltipShortcut!: ActionShortcut | undefined;
-}
+	tooltipLabel: string;
+	tooltipDescription: string;
+	tooltipShortcut: ActionShortcut | undefined;
+};
 
-export class IconButton extends WidgetProps {
+export type IconButton = {
+	kind: WidgetPropsNames;
+
 	// Content
-	icon!: IconName;
-	hoverIcon!: IconName | undefined;
-	size!: IconSize;
-	disabled!: boolean;
+	icon: IconName;
+	hoverIcon: IconName | undefined;
+	size: IconSize;
+	disabled: boolean;
 
 	// Styling
-	emphasized!: boolean;
+	emphasized: boolean;
 
 	// Tooltips
-	tooltipLabel!: string;
-	tooltipDescription!: string;
-	tooltipShortcut!: ActionShortcut | undefined;
-}
+	tooltipLabel: string;
+	tooltipDescription: string;
+	tooltipShortcut: ActionShortcut | undefined;
+};
 
-export class IconLabel extends WidgetProps {
+export type IconLabel = {
+	kind: WidgetPropsNames;
+
 	// Content
-	icon!: IconName;
-	disabled!: boolean;
+	icon: IconName;
+	disabled: boolean;
 
 	// Tooltips
-	tooltipLabel!: string;
-	tooltipDescription!: string;
-	tooltipShortcut!: ActionShortcut | undefined;
-}
+	tooltipLabel: string;
+	tooltipDescription: string;
+	tooltipShortcut: ActionShortcut | undefined;
+};
 
-export class ImageButton extends WidgetProps {
+export type ImageButton = {
+	kind: WidgetPropsNames;
+
 	// Content
-	image!: IconName;
-	width!: string | undefined;
-	height!: string | undefined;
+	image: IconName;
+	width: string | undefined;
+	height: string | undefined;
 
 	// Tooltips
-	tooltipLabel!: string;
-	tooltipDescription!: string;
-	tooltipShortcut!: ActionShortcut | undefined;
-}
+	tooltipLabel: string;
+	tooltipDescription: string;
+	tooltipShortcut: ActionShortcut | undefined;
+};
 
-export class ImageLabel extends WidgetProps {
+export type ImageLabel = {
+	kind: WidgetPropsNames;
+
 	// Content
-	url!: string;
-	width!: string | undefined;
-	height!: string | undefined;
+	url: string;
+	width: string | undefined;
+	height: string | undefined;
 
 	// Tooltips
-	tooltipLabel!: string;
-	tooltipDescription!: string;
-	tooltipShortcut!: ActionShortcut | undefined;
-}
+	tooltipLabel: string;
+	tooltipDescription: string;
+	tooltipShortcut: ActionShortcut | undefined;
+};
 
-export class ShortcutLabel extends WidgetProps {
+export type ShortcutLabel = {
+	kind: WidgetPropsNames;
+
 	// Content
-	shortcut!: ActionShortcut | undefined;
-}
+	shortcut: ActionShortcut | undefined;
+};
 
 export type NumberInputIncrementBehavior = "Add" | "Multiply" | "Callback" | "None";
 export type NumberInputMode = "Increment" | "Range";
 
-export class NumberInput extends WidgetProps {
+export type NumberInput = {
+	kind: WidgetPropsNames;
+
 	// Content
-	value!: number | undefined;
-	label!: string | undefined;
-	disabled!: boolean;
+	value: number | undefined;
+	label: string | undefined;
+	disabled: boolean;
 
 	// Styling
-	narrow!: boolean;
+	narrow: boolean;
 
 	// Behavior
-	mode!: NumberInputMode;
-	min!: number | undefined;
-	max!: number | undefined;
-	rangeMin!: number | undefined;
-	rangeMax!: number | undefined;
-	step!: number;
-	isInteger!: boolean;
-	incrementBehavior!: NumberInputIncrementBehavior;
-	displayDecimalPlaces!: number;
-	unit!: string;
-	unitIsHiddenWhenEditing!: boolean;
+	mode: NumberInputMode;
+	min: number | undefined;
+	max: number | undefined;
+	rangeMin: number | undefined;
+	rangeMax: number | undefined;
+	step: number;
+	isInteger: boolean;
+	incrementBehavior: NumberInputIncrementBehavior;
+	displayDecimalPlaces: number;
+	unit: string;
+	unitIsHiddenWhenEditing: boolean;
 
 	// Sizing
-	minWidth!: number;
-	maxWidth!: number;
+	minWidth: number;
+	maxWidth: number;
 
 	// Tooltips
-	tooltipLabel!: string;
-	tooltipDescription!: string;
-	tooltipShortcut!: ActionShortcut | undefined;
-}
+	tooltipLabel: string;
+	tooltipDescription: string;
+	tooltipShortcut: ActionShortcut | undefined;
+};
 
-export class NodeCatalog extends WidgetProps {
+export type NodeCatalog = {
+	kind: WidgetPropsNames;
+
 	// Content
-	disabled!: boolean;
+	disabled: boolean;
 
 	// Behavior
-	initialSearchTerm!: string;
-}
+	initialSearchTerm: string;
+};
 
-export class PopoverButton extends WidgetProps {
+export type PopoverButton = {
+	kind: WidgetPropsNames;
+
 	// Content
-	style!: PopoverButtonStyle | undefined;
-	icon!: IconName | undefined;
-	disabled!: boolean;
+	style: PopoverButtonStyle | undefined;
+	icon: IconName | undefined;
+	disabled: boolean;
 
 	// Children
-	popoverLayout!: Layout;
-	popoverMinWidth!: number | undefined;
-	menuDirection!: MenuDirection | undefined;
+	popoverLayout: Layout;
+	popoverMinWidth: number | undefined;
+	menuDirection: MenuDirection | undefined;
 
 	// Tooltips
-	tooltipLabel!: string;
-	tooltipDescription!: string;
-	tooltipShortcut!: ActionShortcut | undefined;
-}
+	tooltipLabel: string;
+	tooltipDescription: string;
+	tooltipShortcut: ActionShortcut | undefined;
+};
 
 export type MenuDirection = "Top" | "Bottom" | "Left" | "Right" | "TopLeft" | "TopRight" | "BottomLeft" | "BottomRight" | "Center";
 
@@ -1071,153 +1091,173 @@ export type RadioEntryData = {
 	tooltipShortcut?: ActionShortcut;
 };
 
-export class RadioInput extends WidgetProps {
+export type RadioInput = {
+	kind: WidgetPropsNames;
+
 	// Content
-	selectedIndex!: number | undefined;
-	disabled!: boolean;
+	selectedIndex: number | undefined;
+	disabled: boolean;
 
 	// Children
-	entries!: RadioEntryData[];
+	entries: RadioEntryData[];
 
 	// Styling
-	narrow!: boolean;
+	narrow: boolean;
 
 	// Sizing
-	minWidth!: number;
-}
+	minWidth: number;
+};
 
 export type SeparatorDirection = "Horizontal" | "Vertical";
 export type SeparatorStyle = "Related" | "Unrelated" | "Section";
 
-export class Separator extends WidgetProps {
-	// Content
-	direction!: SeparatorDirection;
-	style!: SeparatorStyle;
-}
+export type Separator = {
+	kind: WidgetPropsNames;
 
-export class WorkingColorsInput extends WidgetProps {
 	// Content
-	primary!: Color;
-	secondary!: Color;
-}
+	direction: SeparatorDirection;
+	style: SeparatorStyle;
+};
 
-export class TextAreaInput extends WidgetProps {
+export type WorkingColorsInput = {
+	kind: WidgetPropsNames;
+
 	// Content
-	value!: string;
-	label!: string | undefined;
-	disabled!: boolean;
+	primary: Color;
+	secondary: Color;
+};
+
+export type TextAreaInput = {
+	kind: WidgetPropsNames;
+
+	// Content
+	value: string;
+	label: string | undefined;
+	disabled: boolean;
 
 	// Tooltips
-	tooltipLabel!: string;
-	tooltipDescription!: string;
-	tooltipShortcut!: ActionShortcut | undefined;
-}
+	tooltipLabel: string;
+	tooltipDescription: string;
+	tooltipShortcut: ActionShortcut | undefined;
+};
 
-export class ParameterExposeButton extends WidgetProps {
+export type ParameterExposeButton = {
+	kind: WidgetPropsNames;
+
 	// Content
-	exposed!: boolean;
-	dataType!: FrontendGraphDataType;
+	exposed: boolean;
+	dataType: FrontendGraphDataType;
 
 	// Tooltips
-	tooltipLabel!: string;
-	tooltipDescription!: string;
-	tooltipShortcut!: ActionShortcut | undefined;
-}
+	tooltipLabel: string;
+	tooltipDescription: string;
+	tooltipShortcut: ActionShortcut | undefined;
+};
 
-export class TextButton extends WidgetProps {
+export type TextButton = {
+	kind: WidgetPropsNames;
+
 	// Content
-	label!: string;
-	icon!: IconName | undefined;
-	hoverIcon!: IconName | undefined;
-	disabled!: boolean;
+	label: string;
+	icon: IconName | undefined;
+	hoverIcon: IconName | undefined;
+	disabled: boolean;
 
 	// Children
-	menuListChildren!: MenuListEntry[][];
-	menuListChildrenHash!: bigint;
+	menuListChildren: MenuListEntry[][];
+	menuListChildrenHash: bigint;
 
 	// Styling
-	emphasized!: boolean;
-	flush!: boolean;
-	narrow!: boolean;
+	emphasized: boolean;
+	flush: boolean;
+	narrow: boolean;
 
 	// Sizing
-	minWidth!: number;
+	minWidth: number;
 
 	// Tooltips
-	tooltipLabel!: string;
-	tooltipDescription!: string;
-	tooltipShortcut!: ActionShortcut | undefined;
-}
+	tooltipLabel: string;
+	tooltipDescription: string;
+	tooltipShortcut: ActionShortcut | undefined;
+};
 
-export class BreadcrumbTrailButtons extends WidgetProps {
+export type BreadcrumbTrailButtons = {
+	kind: WidgetPropsNames;
+
 	// Content
-	labels!: string[];
-	disabled!: boolean;
+	labels: string[];
+	disabled: boolean;
 
 	// Tooltips
-	tooltipLabel!: string;
-	tooltipDescription!: string;
-	tooltipShortcut!: ActionShortcut | undefined;
-}
+	tooltipLabel: string;
+	tooltipDescription: string;
+	tooltipShortcut: ActionShortcut | undefined;
+};
 
-export class TextInput extends WidgetProps {
+export type TextInput = {
+	kind: WidgetPropsNames;
+
 	// Content
-	value!: string;
-	label!: string | undefined;
-	placeholder!: string | undefined;
-	disabled!: boolean;
+	value: string;
+	label: string | undefined;
+	placeholder: string | undefined;
+	disabled: boolean;
 
 	// Styling
-	narrow!: boolean;
-	centered!: boolean;
+	narrow: boolean;
+	centered: boolean;
 
 	// Sizing
-	minWidth!: number;
-	maxWidth!: number;
+	minWidth: number;
+	maxWidth: number;
 
 	// Tooltips
-	tooltipLabel!: string;
-	tooltipDescription!: string;
-	tooltipShortcut!: ActionShortcut | undefined;
-}
+	tooltipLabel: string;
+	tooltipDescription: string;
+	tooltipShortcut: ActionShortcut | undefined;
+};
 
-export class TextLabel extends WidgetProps {
+export type TextLabel = {
+	kind: WidgetPropsNames;
+
 	// Content
-	value!: string;
-	disabled!: boolean;
-	forCheckbox!: bigint | undefined;
+	value: string;
+	disabled: boolean;
+	forCheckbox: bigint | undefined;
 
 	// Styling
-	narrow!: boolean;
-	bold!: boolean;
-	italic!: boolean;
-	monospace!: boolean;
-	multiline!: boolean;
-	centerAlign!: boolean;
-	tableAlign!: boolean;
+	narrow: boolean;
+	bold: boolean;
+	italic: boolean;
+	monospace: boolean;
+	multiline: boolean;
+	centerAlign: boolean;
+	tableAlign: boolean;
 
 	// Sizing
-	minWidth!: number;
-	minWidthCharacters!: number;
+	minWidth: number;
+	minWidthCharacters: number;
 
 	// Tooltips
-	tooltipLabel!: string;
-	tooltipDescription!: string;
-	tooltipShortcut!: ActionShortcut | undefined;
-}
+	tooltipLabel: string;
+	tooltipDescription: string;
+	tooltipShortcut: ActionShortcut | undefined;
+};
 
 export type ReferencePoint = "None" | "TopLeft" | "TopCenter" | "TopRight" | "CenterLeft" | "Center" | "CenterRight" | "BottomLeft" | "BottomCenter" | "BottomRight";
 
-export class ReferencePointInput extends WidgetProps {
+export type ReferencePointInput = {
+	kind: WidgetPropsNames;
+
 	// Content
-	value!: ReferencePoint;
-	disabled!: boolean;
+	value: ReferencePoint;
+	disabled: boolean;
 
 	// Tooltips
-	tooltipLabel!: string;
-	tooltipDescription!: string;
-	tooltipShortcut!: ActionShortcut | undefined;
-}
+	tooltipLabel: string;
+	tooltipDescription: string;
+	tooltipShortcut: ActionShortcut | undefined;
+};
 
 // WIDGET
 
@@ -1248,11 +1288,10 @@ export type WidgetTypes = {
 export type WidgetPropsNames = keyof WidgetTypes;
 export type WidgetPropsSet = WidgetTypes[WidgetPropsNames];
 
-export class WidgetInstance {
-	props!: WidgetPropsSet;
-
-	widgetId!: bigint;
-}
+export type WidgetInstance = {
+	props: WidgetPropsSet;
+	widgetId: bigint;
+};
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function hoistWidgetInstance(widgetInstance: any): WidgetInstance {
@@ -1267,10 +1306,9 @@ function hoistWidgetInstance(widgetInstance: any): WidgetInstance {
 		props.value = parseFillChoice(props.value);
 	}
 
-	const instance = new WidgetInstance();
-	instance.props = props;
-	instance.widgetId = widgetInstance.widgetId;
-	return instance;
+	const { widgetId } = widgetInstance;
+
+	return { props, widgetId };
 }
 
 // WIDGET LAYOUT
