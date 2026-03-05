@@ -1,6 +1,6 @@
 use std::hint::black_box;
 
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{Criterion, criterion_group, criterion_main};
 use math_parser::{ast, context::EvalContext};
 
 macro_rules! generate_benchmarks {
