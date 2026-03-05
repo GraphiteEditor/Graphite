@@ -91,13 +91,6 @@ impl From<&PhysicalPosition<f64>> for MousePosition {
 		}
 	}
 }
-impl MousePosition {
-	fn within_distance(self, other: Self) -> bool {
-		let dx = self.x.abs_diff(other.x);
-		let dy = self.y.abs_diff(other.y);
-		dx <= MULTICLICK_ALLOWED_TRAVEL && dy <= MULTICLICK_ALLOWED_TRAVEL
-	}
-}
 
 #[derive(Default, Clone)]
 pub(crate) struct MouseState {
@@ -173,13 +166,22 @@ impl ClickTracker {
 			_ => {}
 		}
 
-		let within_time = now.saturating_duration_since(prev_time) <= MULTICLICK_TIMEOUT;
-		let (prev_count, within_dist) = match state {
-			ElementState::Pressed => (record.down_count, position.within_distance(record.down_position)),
-			ElementState::Released => (record.up_count, position.within_distance(record.up_position)),
+		let prev_count = match state {
+			ElementState::Pressed => record.down_count,
+			ElementState::Released => record.up_count,
 		};
 
-		let count = match (prev_count, within_time, within_dist) {
+		let prev_position = match state {
+			ElementState::Pressed => record.down_position,
+			ElementState::Released => record.up_position,
+		};
+		let within_dist_x = position.x.abs_diff(prev_position.x) <= MULTICLICK_ALLOWED_TRAVEL;
+		let within_dist_y = position.y.abs_diff(prev_position.y) <= MULTICLICK_ALLOWED_TRAVEL;
+		let within_dist = within_dist_x && within_dist_y;
+
+		let within_time = now.saturating_duration_since(prev_time) <= MULTICLICK_TIMEOUT;
+
+		let count = match (prev_count, within_dist, within_time) {
 			(ClickCount::Double, true, true) => ClickCount::Triple,
 			(_, true, true) => ClickCount::Double,
 			_ => ClickCount::Single,
