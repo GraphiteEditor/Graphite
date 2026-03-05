@@ -1,7 +1,8 @@
-use criterion::{Criterion, criterion_group, criterion_main};
+use std::hint::black_box;
+
+use criterion::{criterion_group, criterion_main, Criterion};
 use glam::DVec2;
 use path_bool::*;
-use std::hint::black_box;
 
 pub fn criterion_benchmark(crit: &mut Criterion) {
 	crit.bench_function("intersect 1", |bench| bench.iter(|| path_segment_intersection(black_box(&a()), black_box(&b()), true, &EPS)));

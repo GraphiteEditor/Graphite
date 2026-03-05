@@ -1,6 +1,7 @@
-use criterion::{Criterion, criterion_group, criterion_main};
-use graph_craft::util::DEMO_ART;
 use std::hint::black_box;
+
+use criterion::{criterion_group, criterion_main, Criterion};
+use graph_craft::util::DEMO_ART;
 
 fn compile_to_proto(c: &mut Criterion) {
 	use graph_craft::util::{compile, load_from_name};
