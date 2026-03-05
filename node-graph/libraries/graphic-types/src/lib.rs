@@ -8,7 +8,7 @@ pub use vector_types;
 
 // Re-export commonly used types at the crate root
 pub use artboard::Artboard;
-pub use graphic::{Graphic, IntoGraphicTable, Vector};
+pub use graphic::{Graphic, IntoGraphicTable, TryFromGraphic, Vector};
 
 pub mod migrations {
 	use core_types::{

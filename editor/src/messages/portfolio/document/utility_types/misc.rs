@@ -1,6 +1,5 @@
 use crate::consts::COLOR_OVERLAY_GRAY;
 use glam::DVec2;
-use graphene_std::raster::Color;
 use std::fmt;
 
 #[repr(transparent)]
@@ -216,7 +215,7 @@ pub struct GridSnapping {
 	pub isometric_y_spacing: f64,
 	pub isometric_angle_a: f64,
 	pub isometric_angle_b: f64,
-	pub grid_color: Color,
+	pub color: String,
 	pub dot_display: bool,
 }
 
@@ -229,7 +228,7 @@ impl Default for GridSnapping {
 			isometric_y_spacing: 1.,
 			isometric_angle_a: 30.,
 			isometric_angle_b: 30.,
-			grid_color: Color::from_rgb_str(COLOR_OVERLAY_GRAY.strip_prefix('#').unwrap()).unwrap(),
+			color: COLOR_OVERLAY_GRAY.to_string(),
 			dot_display: false,
 		}
 	}
@@ -307,6 +306,19 @@ pub enum PathSnapSource {
 	IntersectionPoint,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GradientSnapSource {
+	Endpoint,
+}
+
+impl fmt::Display for GradientSnapSource {
+	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+		match self {
+			GradientSnapSource::Endpoint => write!(f, "Gradient: Endpoint"),
+		}
+	}
+}
+
 impl fmt::Display for PathSnapSource {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
@@ -347,6 +359,7 @@ pub enum SnapSource {
 	Artboard(ArtboardSnapSource),
 	Path(PathSnapSource),
 	Alignment(AlignmentSnapSource),
+	Gradient(GradientSnapSource),
 }
 
 impl SnapSource {
@@ -377,6 +390,7 @@ impl fmt::Display for SnapSource {
 			SnapSource::Artboard(artboard_snap_source) => write!(f, "{artboard_snap_source}"),
 			SnapSource::Path(path_snap_source) => write!(f, "{path_snap_source}"),
 			SnapSource::Alignment(alignment_snap_source) => write!(f, "{alignment_snap_source}"),
+			SnapSource::Gradient(gradient_snap_source) => write!(f, "{gradient_snap_source}"),
 		}
 	}
 }

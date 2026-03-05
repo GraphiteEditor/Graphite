@@ -3,7 +3,8 @@ use core_types::registry::types::TextArea;
 use core_types::table::Table;
 use core_types::{Context, Ctx};
 use glam::{DAffine2, DVec2};
-use graphic_types::{Artboard, Graphic, Vector, vector_types::GradientStops};
+use graphic_types::vector_types::GradientStops;
+use graphic_types::{Artboard, Graphic, Vector};
 use raster_types::{CPU, GPU, Raster};
 
 /// Type-asserts a value to be a string.
@@ -152,7 +153,7 @@ async fn switch<T, C: Send + 'n + Clone>(
 		Context -> Table<Raster<CPU>>,
 		Context -> Table<Raster<GPU>>,
 		Context -> Table<Color>,
-		Context -> GradientStops,
+		Context -> Table<GradientStops>,
 	)]
 	if_true: impl Node<C, Output = T>,
 	#[expose]
@@ -171,7 +172,7 @@ async fn switch<T, C: Send + 'n + Clone>(
 		Context -> Table<Raster<CPU>>,
 		Context -> Table<Raster<GPU>>,
 		Context -> Table<Color>,
-		Context -> GradientStops,
+		Context -> Table<GradientStops>,
 	)]
 	if_false: impl Node<C, Output = T>,
 ) -> T {

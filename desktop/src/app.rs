@@ -1,6 +1,9 @@
 use rand::Rng;
 use rfd::AsyncFileDialog;
 use std::fs;
+use std::io::Read;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, Sender, SyncSender};
 use std::thread;
 use std::time::{Duration, Instant};
@@ -45,6 +48,7 @@ pub(crate) struct App {
 	persistent_data: PersistentData,
 	cli: Cli,
 	startup_time: Option<Instant>,
+	exiting: Arc<AtomicBool>,
 	exit_reason: ExitReason,
 }
 
@@ -68,14 +72,20 @@ impl App {
 		})
 		.expect("Error setting Ctrl-C handler");
 
+		let exiting = Arc::new(AtomicBool::new(false));
+
 		let rendering_app_event_scheduler = app_event_scheduler.clone();
 		let (start_render_sender, start_render_receiver) = std::sync::mpsc::sync_channel(1);
+		let exiting_clone = exiting.clone();
 		std::thread::spawn(move || {
 			let runtime = tokio::runtime::Runtime::new().unwrap();
 			loop {
 				let result = runtime.block_on(DesktopWrapper::execute_node_graph());
 				rendering_app_event_scheduler.schedule(AppEvent::NodeGraphExecutionResult(result));
 				let _ = start_render_receiver.recv_timeout(Duration::from_millis(10));
+				if exiting_clone.load(Ordering::Relaxed) {
+					break;
+				}
 			}
 		});
 
@@ -107,8 +117,9 @@ impl App {
 			web_communication_startup_buffer: Vec::new(),
 			persistent_data,
 			cli,
-			exit_reason: ExitReason::Shutdown,
 			startup_time: None,
+			exiting,
+			exit_reason: ExitReason::Shutdown,
 		}
 	}
 
@@ -118,6 +129,10 @@ impl App {
 	}
 
 	fn exit(&mut self, reason: Option<ExitReason>) {
+		if self.exiting.swap(true, Ordering::Relaxed) {
+			return;
+		}
+		let _ = self.start_render_sender.send(());
 		if let Some(reason) = reason {
 			self.exit_reason = reason;
 		}
@@ -401,6 +416,18 @@ impl App {
 			}
 			DesktopFrontendMessage::Restart => {
 				self.exit(Some(ExitReason::Restart));
+			}
+			DesktopFrontendMessage::LoadThirdPartyLicenses => {
+				let compressed = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/third-party-licenses.txt.xz"));
+				let mut reader = lzma_rust2::XzReader::new(compressed.as_slice(), false);
+				let mut text = String::new();
+				if let Err(e) = reader.read_to_string(&mut text) {
+					tracing::error!("Failed to decompress third-party licenses: {e}");
+					return;
+				}
+
+				let message = DesktopWrapperMessage::LoadThirdPartyLicenses { text };
+				responses.push(message);
 			}
 		}
 	}

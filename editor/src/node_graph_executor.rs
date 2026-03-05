@@ -5,8 +5,7 @@ use graph_craft::document::value::{RenderOutput, TaggedValue};
 use graph_craft::document::{DocumentNode, DocumentNodeImplementation, NodeId, NodeInput};
 use graph_craft::proto::GraphErrors;
 use graph_craft::wasm_application_io::EditorPreferences;
-use graphene_std::application_io::{NodeGraphUpdateMessage, RenderConfig};
-use graphene_std::application_io::{SurfaceFrame, TimingInformation};
+use graphene_std::application_io::{NodeGraphUpdateMessage, RenderConfig, TimingInformation};
 use graphene_std::raster::{CPU, Raster};
 use graphene_std::renderer::{RenderMetadata, format_transform_matrix};
 use graphene_std::text::FontCache;
@@ -56,7 +55,6 @@ pub struct NodeGraphExecutor {
 	futures: VecDeque<(u64, ExecutionContext)>,
 	node_graph_hash: u64,
 	previous_node_to_inspect: Option<NodeId>,
-	last_svg_canvas: Option<SurfaceFrame>,
 }
 
 #[derive(Debug, Clone)]
@@ -79,7 +77,6 @@ impl NodeGraphExecutor {
 			node_graph_hash: 0,
 			current_execution_id: 0,
 			previous_node_to_inspect: None,
-			last_svg_canvas: None,
 		};
 		(node_runtime, node_executor)
 	}
@@ -187,9 +184,11 @@ impl NodeGraphExecutor {
 		self.submit_current_node_graph_evaluation(document, document_id, viewport_resolution, viewport_scale, time, pointer)
 	}
 
+	#[allow(clippy::too_many_arguments)]
 	#[cfg(not(target_family = "wasm"))]
 	pub(crate) fn submit_eyedropper_preview(
 		&mut self,
+		document: &DocumentMessageHandler,
 		document_id: DocumentId,
 		transform: DAffine2,
 		pointer: DVec2,
@@ -208,7 +207,7 @@ impl NodeGraphExecutor {
 			time,
 			pointer,
 			export_format: graphene_std::application_io::ExportFormat::Raster,
-			render_mode: graphene_std::vector::style::RenderMode::Normal,
+			render_mode: document.render_mode,
 			hide_artboards: false,
 			for_export: false,
 			for_eyedropper: true,
@@ -382,19 +381,14 @@ impl NodeGraphExecutor {
 				// Send to frontend
 				responses.add(FrontendMessage::UpdateImageData { image_data });
 				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
-				self.last_svg_canvas = None;
 			}
-			RenderOutputType::CanvasFrame(frame) => 'block: {
-				if self.last_svg_canvas == Some(frame) {
-					break 'block;
-				}
+			RenderOutputType::CanvasFrame(frame) => {
 				let matrix = format_transform_matrix(frame.transform);
 				let transform = if matrix.is_empty() { String::new() } else { format!(" transform=\"{matrix}\"") };
 				let svg = format!(
 					r#"<svg><foreignObject width="{}" height="{}"{transform}><div data-canvas-placeholder="{}" data-is-viewport="true"></div></foreignObject></svg>"#,
 					frame.resolution.x, frame.resolution.y, frame.surface_id.0,
 				);
-				self.last_svg_canvas = Some(frame);
 				responses.add(FrontendMessage::UpdateDocumentArtwork { svg });
 			}
 			RenderOutputType::Texture { .. } => {}

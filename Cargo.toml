@@ -24,6 +24,7 @@ members = [
 	"node-graph/preprocessor",
 	"proc-macros",
 	"tools/crate-hierarchy-viz",
+	"tools/third-party-licenses",
 	"tools/editor-message-tree",
 	"tools/node-docs",
 ]
@@ -97,7 +98,7 @@ bytemuck = { version = "1.13", features = ["derive", "min_const_generics"] }
 serde = { version = "1.0", features = ["derive", "rc"] }
 serde_json = "1.0"
 serde-wasm-bindgen = "0.6"
-reqwest = { version = "0.12", features = ["blocking", "rustls-tls", "json"] }
+reqwest = { version = "0.13", features = ["blocking", "json"] }
 futures = "0.3"
 env_logger = "0.11"
 log = "0.4"
@@ -111,7 +112,7 @@ anyhow = "1.0"
 proc-macro2 = { version = "1", features = ["span-locations"] }
 quote = "1.0"
 chrono = "0.4"
-ron = "0.11"
+ron = "0.12"
 fastnoise-lite = "1.1"
 wgpu = { version = "27.0", features = [
 	# We don't have wgpu on multiple threads (yet) https://github.com/gfx-rs/wgpu/blob/trunk/CHANGELOG.md#wgpu-types-now-send-sync-on-wasm
@@ -146,13 +147,13 @@ keyboard-types = "0.8"
 url = "2.5"
 tokio = { version = "1.29", features = ["fs", "macros", "io-std", "rt", "rt-multi-thread"] }
 # Linebender ecosystem (BEGIN)
-kurbo = { version = "0.12", features = ["serde"] }
-vello = { git = "https://github.com/linebender/vello" }
-vello_encoding = { git = "https://github.com/linebender/vello" }
-resvg = "0.45"
-usvg = "0.45"
+kurbo = { version = "0.13", features = ["serde"] }
+vello = "0.7"
+vello_encoding = "0.7"
+resvg = "0.47"
+usvg = "0.47"
 parley = "0.6"
-skrifa = "0.36"
+skrifa = "0.40"
 polycool = "0.4"
 # Linebender ecosystem (END)
 rand = { version = "0.9", default-features = false, features = ["std_rng"] }
@@ -210,6 +211,8 @@ clap = "4.5"
 spirv-std = { git = "https://github.com/Firestar99/rust-gpu-new", rev = "c12f216121820580731440ee79ebc7403d6ea04f", features = ["bytemuck"] }
 cargo-gpu = { git = "https://github.com/Firestar99/cargo-gpu", rev = "3952a22d16edbd38689f3a876e417899f21e1fe7", default-features = false }
 qrcodegen = "1.8"
+lzma-rust2 = { version = "0.16", default-features = false, features = ["std", "encoder", "optimization", "xz"] }
+scraper = "0.25"
 
 [workspace.lints.rust]
 unexpected_cfgs = { level = "allow", check-cfg = ['cfg(target_arch, values("spirv"))'] }
@@ -240,3 +243,4 @@ debug = true
 [patch.crates-io]
 # Force cargo to use only one version of the dpi crate (vendoring breaks without this)
 dpi = { git = "https://github.com/rust-windowing/winit.git" }
+download-cef = { git = "https://github.com/timon-schelling/cef-rs.git", branch = "graphite" }

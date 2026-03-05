@@ -1,11 +1,10 @@
 import { get } from "svelte/store";
 
-import { type Editor } from "@graphite/editor";
-import { TriggerClipboardRead, WindowPointerLockMove } from "@graphite/messages";
-import { type DialogState } from "@graphite/state-providers/dialog";
-import { type DocumentState } from "@graphite/state-providers/document";
-import { type FullscreenState } from "@graphite/state-providers/fullscreen";
-import { type PortfolioState } from "@graphite/state-providers/portfolio";
+import type { Editor } from "@graphite/editor";
+import type { DialogState } from "@graphite/state-providers/dialog";
+import type { DocumentState } from "@graphite/state-providers/document";
+import type { FullscreenState } from "@graphite/state-providers/fullscreen";
+import type { PortfolioState } from "@graphite/state-providers/portfolio";
 import { pasteFile } from "@graphite/utility-functions/files";
 import { makeKeyboardModifiersBitfield, textInputCleanup, getLocalizedScanCode } from "@graphite/utility-functions/keyboard-entry";
 import { isDesktop, operatingSystem } from "@graphite/utility-functions/platform";
@@ -179,7 +178,8 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 		potentiallyRestoreCanvasFocus(e);
 
 		const { target } = e;
-		const isTargetingCanvas = target instanceof Element && target.closest("[data-viewport], [data-viewport-container], [data-node-graph]");
+		const inFloatingMenu = target instanceof Element && target.closest("[data-floating-menu-content]");
+		const isTargetingCanvas = !inFloatingMenu && target instanceof Element && target.closest("[data-viewport], [data-viewport-container], [data-node-graph]");
 		const inDialog = target instanceof Element && target.closest("[data-dialog] [data-floating-menu-content]");
 		const inContextMenu = target instanceof Element && target.closest("[data-context-menu]");
 		const inTextInput = target === textToolInteractiveInputElement;
@@ -391,7 +391,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 	// Frontend message subscriptions
 
-	editor.subscriptions.subscribeJsMessage(TriggerClipboardRead, async () => {
+	editor.subscriptions.subscribeFrontendMessage("TriggerClipboardRead", async () => {
 		// In the try block, attempt to read from the Clipboard API, which may not have permission and may not be supported in all browsers
 		// In the catch block, explain to the user why the paste failed and how to fix or work around the problem
 		try {
@@ -486,7 +486,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 	});
 
 	// Pointer lock movement events on desktop
-	editor.subscriptions.subscribeJsMessage(WindowPointerLockMove, (data) => {
+	editor.subscriptions.subscribeFrontendMessage("WindowPointerLockMove", (data) => {
 		const event = new CustomEvent("pointerlockmove", { detail: data });
 		window.dispatchEvent(event);
 	});

@@ -60,7 +60,7 @@ async fn assign_colors<T>(
 	stroke: bool,
 	/// The range of colors to select from.
 	#[widget(ParsedWidgetOverride::Custom = "assign_colors_gradient")]
-	gradient: GradientStops,
+	gradient: Table<GradientStops>,
 	/// Whether to reverse the gradient.
 	reverse: bool,
 	/// Whether to randomize the color selection for each element from throughout the gradient.
@@ -76,8 +76,10 @@ async fn assign_colors<T>(
 where
 	T: VectorTableIterMut + 'n + Send,
 {
+	let Some(row) = gradient.into_iter().next() else { return content };
+
 	let length = content.vector_iter_mut().count();
-	let gradient = if reverse { gradient.reversed() } else { gradient };
+	let gradient = if reverse { row.element.reversed() } else { row.element };
 
 	let mut rng = rand::rngs::StdRng::seed_from_u64(seed.into());
 
@@ -209,7 +211,6 @@ where
 		join_miter_limit: miter_limit,
 		align,
 		transform: DAffine2::IDENTITY,
-		non_scaling: false,
 		paint_order,
 	};
 
@@ -222,7 +223,7 @@ where
 	content
 }
 
-#[node_macro::node(name("Copy to Points"), category("Instancing"), path(core_types::vector))]
+#[node_macro::node(name("Copy to Points"), category("Repeat"), path(core_types::vector))]
 async fn copy_to_points<I: 'n + Send + Clone>(
 	_: impl Ctx,
 	points: Table<Vector>,
@@ -1212,66 +1213,28 @@ async fn map_points(ctx: impl Ctx + CloneVarArgs + ExtractAll, content: Table<Ve
 	content
 }
 
+// TODO: Rename to "Combine Paths" and make this happen per-element instead of flattening every element into a single path. The migration for this should then become a Flatten Vector -> Combine Paths pair of nodes.
 #[node_macro::node(category("Vector"), path(graphene_core::vector))]
-pub async fn flatten_path<T: 'n + Send>(
-	_: impl Ctx,
-	#[implementations(
-		Table<Graphic>,
-		Table<Vector>,
-	)]
-	content: Table<T>,
-) -> Table<Vector>
-where
-	Graphic: From<Table<T>>,
-{
-	// NOTE(AdamGerhant):
-	// A node-based solution to support passing through vector data could be a network node with a cache node
-	// connected to a Flatten Path connected to an if else node, another connection from the cache directly to
-	// the if else node, and another connection from the cache to a matches type node connected to the if else node.
-
-	fn flatten_table(output: &mut TableRowMut<Vector>, graphic_table: &Table<Graphic>) {
-		for (current_index, current_element) in graphic_table.iter().enumerate() {
-			match current_element.element {
-				Graphic::Vector(vector) => {
-					// Loop through every row of the `Table<Vector>` and concatenate each element's subpath into the output `Vector` element.
-					for (vector_index, row) in vector.iter().enumerate() {
-						let other = row.element;
-						let transform = *current_element.transform * *row.transform;
-						let node_id = current_element.source_node_id.map(|node_id| node_id.0).unwrap_or_default();
-
-						let mut hasher = DefaultHasher::new();
-						(current_index, vector_index, node_id).hash(&mut hasher);
-						let collision_hash_seed = hasher.finish();
-
-						output.element.concat(other, transform, collision_hash_seed);
-
-						// TODO: Make this instead use the first encountered style
-						// Use the last encountered style as the output style
-						output.element.style = row.element.style.clone();
-					}
-				}
-				Graphic::Graphic(graphic) => {
-					let mut graphic = graphic.clone();
-					for row in graphic.iter_mut() {
-						*row.transform = *current_element.transform * *row.transform;
-					}
-
-					flatten_table(output, &graphic);
-				}
-				_ => {}
-			}
-		}
-	}
-
+pub async fn flatten_path<T: IntoGraphicTable + 'n + Send>(_: impl Ctx, #[implementations(Table<Graphic>, Table<Vector>)] content: T) -> Table<Vector> {
 	// Create a table with one empty `Vector` element, then get a mutable reference to it which we append flattened subpaths to
 	let mut output_table = Table::new_from_element(Vector::default());
-	let Some(mut output) = output_table.iter_mut().next() else { return output_table };
+	let Some(output) = output_table.iter_mut().next() else { return output_table };
 
-	// Flatten the graphic input into the output `Vector` element
-	let base_graphic_table = Table::new_from_element(Graphic::from(content));
-	flatten_table(&mut output, &base_graphic_table);
+	// Concatenate every vector element's subpaths into the single output compound path
+	for (index, row) in content.into_flattened_table().iter().enumerate() {
+		let node_id = row.source_node_id.map(|node_id| node_id.0).unwrap_or_default();
 
-	// Return the single-row Table<Vector> containing the flattened Vector subpaths
+		let mut hasher = DefaultHasher::new();
+		(index, node_id).hash(&mut hasher);
+		let collision_hash_seed = hasher.finish();
+
+		output.element.concat(row.element, *row.transform, collision_hash_seed);
+
+		// TODO: Make this instead use the first encountered style
+		// Use the last encountered style as the output style
+		output.element.style = row.element.style.clone();
+	}
+
 	output_table
 }
 
@@ -1782,7 +1745,7 @@ async fn morph<I: IntoGraphicTable + 'n + Send + Clone>(
 	let graphic_table_content = content.clone().into_graphic_table();
 
 	// If the input isn't a Table<Vector>, we convert it into one by flattening any Table<Graphic> content.
-	let content = content.into_flattened_vector_table();
+	let content = content.into_flattened_table::<Vector>();
 
 	// Determine source and target indices and interpolation time fraction
 	let progression = progression.max(0.);
