@@ -1,9 +1,10 @@
 <script lang="ts">
 	import { getContext, onDestroy, createEventDispatcher, tick } from "svelte";
 
-	import type { HSV, RGB, FillChoice, MenuDirection } from "@graphite/messages";
+	import type { FillChoice, MenuDirection } from "@graphite/messages";
+	import type { Color } from "@graphite/messages";
+	import type { TooltipState } from "@graphite/state-providers/tooltip";
 	import {
-		type Color,
 		contrastingOutlineFactor,
 		isColor,
 		isGradient,
@@ -12,7 +13,7 @@
 		createColorFromHSVA,
 		colorFromCSS,
 		colorToRgb255,
-		colorToHSVA,
+		colorToHSV,
 		colorToHexOptionalAlpha,
 		colorToHexNoAlpha,
 		colorToRgbCSS,
@@ -20,8 +21,8 @@
 		colorOpaque,
 		colorEquals,
 		gradientFirstColor,
-	} from "@graphite/messages";
-	import type { TooltipState } from "@graphite/state-providers/tooltip";
+	} from "@graphite/utility-functions/colors";
+	import type { HSV, RGB } from "@graphite/utility-functions/colors";
 	import { clamp } from "@graphite/utility-functions/math";
 	import { isDesktop } from "@graphite/utility-functions/platform";
 
@@ -70,8 +71,8 @@
 	export let open: boolean;
 
 	const colorForHSVA = isColor(colorOrGradient) ? colorOrGradient : gradientFirstColor(colorOrGradient);
-	const hsvaOrNone = colorForHSVA ? colorToHSVA(colorForHSVA) : undefined;
-	const hsva = hsvaOrNone || { h: 0, s: 0, v: 0, a: 1 };
+	const hsvOrNone = colorForHSVA ? colorToHSV(colorForHSVA) : undefined;
+	const hsv = hsvOrNone || { h: 0, s: 0, v: 0 };
 
 	// Gradient color stops
 	$: gradient = isGradient(colorOrGradient) ? colorOrGradient : undefined;
@@ -81,17 +82,17 @@
 	// Currently viewed color
 	$: color = isColor(colorOrGradient) ? colorOrGradient : selectedGradientColor;
 	// New color components
-	let hue = hsva.h;
-	let saturation = hsva.s;
-	let value = hsva.v;
-	let alpha = hsva.a;
-	let isNone = hsvaOrNone === undefined;
+	let hue = hsv.h;
+	let saturation = hsv.s;
+	let value = hsv.v;
+	let alpha = colorForHSVA ? colorForHSVA.alpha : 1;
+	let isNone = hsvOrNone === undefined;
 	// Old color components
-	let oldHue = hsva.h;
-	let oldSaturation = hsva.s;
-	let oldValue = hsva.v;
-	let oldAlpha = hsva.a;
-	let oldIsNone = hsvaOrNone === undefined;
+	let oldHue = hsv.h;
+	let oldSaturation = hsv.s;
+	let oldValue = hsv.v;
+	let oldAlpha = colorForHSVA ? colorForHSVA.alpha : 1;
+	let oldIsNone = hsvOrNone === undefined;
 	// Transient state
 	let draggingPickerTrack: HTMLDivElement | undefined = undefined;
 	let strayCloses = true;
@@ -114,19 +115,14 @@
 	$: watchOpen(open);
 	$: watchColor(color);
 
-	$: oldColor = generateColor(oldHue, oldSaturation, oldValue, oldAlpha, oldIsNone);
-	$: newColor = generateColor(hue, saturation, value, alpha, isNone);
+	$: oldColor = oldIsNone ? createNoneColor() : createColorFromHSVA(oldHue, oldSaturation, oldValue, oldAlpha);
+	$: newColor = isNone ? createNoneColor() : createColorFromHSVA(hue, saturation, value, alpha);
 	$: rgbChannels = Object.entries(colorToRgb255(newColor) || { r: undefined, g: undefined, b: undefined }) as [keyof RGB, number | undefined][];
 	$: hsvChannels = Object.entries(!isNone ? { h: hue * 360, s: saturation * 100, v: value * 100 } : { h: undefined, s: undefined, v: undefined }) as [keyof HSV, number | undefined][];
 	$: opaqueHueColor = createColorFromHSVA(hue, 1, 1, 1);
 	$: outlineFactor = Math.max(contrastingOutlineFactor(newColor, "--color-2-mildblack", 0.01), contrastingOutlineFactor(oldColor, "--color-2-mildblack", 0.01));
 	$: outlined = outlineFactor > 0.0001;
 	$: transparency = newColor.alpha < 1 || oldColor.alpha < 1;
-
-	function generateColor(h: number, s: number, v: number, a: number, none: boolean) {
-		if (none) return createNoneColor();
-		return createColorFromHSVA(h, s, v, a);
-	}
 
 	async function watchOpen(open: boolean) {
 		if (open) {
@@ -138,9 +134,9 @@
 	}
 
 	function watchColor(color: Color) {
-		const hsva = colorToHSVA(color);
+		const hsv = colorToHSV(color);
 
-		if (hsva === undefined) {
+		if (hsv === undefined) {
 			setNewHSVA(0, 0, 0, 1, true);
 			return;
 		}
@@ -149,14 +145,14 @@
 		// - ...jump the user's hue from 360° (top) to the equivalent 0° (bottom)
 		// - ...reset the hue to 0° if the color is fully desaturated, where all hues are equivalent
 		// - ...reset the hue to 0° if the color's value is black, where all hues are equivalent
-		if (!(hsva.h === 0 && hue === 1) && hsva.s > 0 && hsva.v > 0) hue = hsva.h;
+		if (!(hsv.h === 0 && hue === 1) && hsv.s > 0 && hsv.v > 0) hue = hsv.h;
 		// Update the saturation, but only if it is necessary so we don't:
 		// - ...reset the saturation to the left if the color's value is black along the bottom edge, where all saturations are equivalent
-		if (hsva.v !== 0) saturation = hsva.s;
+		if (hsv.v !== 0) saturation = hsv.s;
 		// Update the value
-		value = hsva.v;
+		value = hsv.v;
 		// Update the alpha
-		alpha = hsva.a;
+		alpha = color.alpha;
 		// Update the status of this not being a color
 		isNone = false;
 	}
@@ -375,9 +371,10 @@
 			setColor(createNoneColor());
 		} else {
 			const presetColor = createColor(...PURE_COLORS[preset], 1);
-			const hsva = colorToHSVA(presetColor) || { h: 0, s: 0, v: 0, a: 0 };
+			const hsv = colorToHSV(presetColor);
+			if (!hsv) return;
 
-			setNewHSVA(hsva.h, hsva.s, hsva.v, hsva.a, false);
+			setNewHSVA(hsv.h, hsv.s, hsv.v, presetColor.alpha, false);
 			setColor(presetColor);
 		}
 	}
@@ -425,13 +422,13 @@
 		activeIndexIsMidpoint = activeMarkerIsMidpoint;
 
 		const color = activeMarkerIndex === undefined ? undefined : gradient?.color[activeMarkerIndex];
-		const hsva = color ? colorToHSVA(color) : undefined;
-		if (!color || !hsva) return;
+		const hsv = color ? colorToHSV(color) : undefined;
+		if (!color || !hsv) return;
 
 		setColor(color);
 
-		setNewHSVA(hsva.h, hsva.s, hsva.v, hsva.a, color.none);
-		setOldHSVA(hsva.h, hsva.s, hsva.v, hsva.a, color.none);
+		setNewHSVA(hsv.h, hsv.s, hsv.v, color.alpha, color.none);
+		setOldHSVA(hsv.h, hsv.s, hsv.v, color.alpha, color.none);
 	}
 
 	export function div(): HTMLDivElement | undefined {

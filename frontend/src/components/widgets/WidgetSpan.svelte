@@ -3,8 +3,9 @@
 
 	import type { Editor } from "@graphite/editor";
 	import type { LayoutTarget, WidgetInstance, WidgetPropsNames, WidgetPropsSet, WidgetTypes, WidgetSpanColumn, WidgetSpanRow } from "@graphite/messages";
-	import { isWidgetSpanColumn, isWidgetSpanRow } from "@graphite/messages";
+	import { parseFillChoice } from "@graphite/utility-functions/colors";
 	import { debouncer } from "@graphite/utility-functions/debounce";
+	import { isWidgetSpanColumn, isWidgetSpanRow, createLayoutGroup } from "@graphite/utility-functions/widgets";
 
 	import NodeCatalog from "@graphite/components/floating-menus/NodeCatalog.svelte";
 	import BreadcrumbTrailButtons from "@graphite/components/widgets/buttons/BreadcrumbTrailButtons.svelte";
@@ -97,6 +98,7 @@
 			component: ColorInput,
 			getProps: (props: WidgetTypes["ColorInput"], index) => ({
 				...exclude(props),
+				value: parseFillChoice(props.value),
 				$$events: {
 					value: (e: CustomEvent) => widgetValueUpdate(index, e.detail, false),
 					startHistoryTransaction: () => widgetValueCommit(index, props.value),
@@ -191,6 +193,7 @@
 			getProps: (props: WidgetTypes["PopoverButton"]) => ({
 				...exclude(props),
 				layoutTarget,
+				popoverLayout: props.popoverLayout.map(createLayoutGroup),
 			}),
 		},
 		RadioInput: {

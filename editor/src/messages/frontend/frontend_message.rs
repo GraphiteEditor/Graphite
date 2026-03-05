@@ -39,7 +39,7 @@ pub enum FrontendMessage {
 		line_height_ratio: f64,
 		#[serde(rename = "fontSize")]
 		font_size: f64,
-		color: Color,
+		color: String,
 		#[serde(rename = "fontData")]
 		font_data: Vec<u8>,
 		transform: [f64; 6],
@@ -199,7 +199,9 @@ pub enum FrontendMessage {
 	UpdateLayersPanelState {
 		open: bool,
 	},
-	UpdateDataPanelLayout {
+	UpdateLayout {
+		#[serde(rename = "layoutTarget")]
+		layout_target: LayoutTarget,
 		diff: Vec<WidgetDiff>,
 	},
 	UpdateImportReorderIndex {
@@ -218,23 +220,11 @@ pub enum FrontendMessage {
 		#[serde(rename = "hasLeftInputWire")]
 		has_left_input_wire: HashMap<NodeId, bool>,
 	},
-	UpdateDialogButtons {
-		diff: Vec<WidgetDiff>,
-	},
-	UpdateDialogColumn1 {
-		diff: Vec<WidgetDiff>,
-	},
-	UpdateDialogColumn2 {
-		diff: Vec<WidgetDiff>,
-	},
 	UpdateDocumentArtwork {
 		svg: String,
 	},
 	UpdateImageData {
 		image_data: Vec<(u64, Image<Color>)>,
-	},
-	UpdateDocumentBarLayout {
-		diff: Vec<WidgetDiff>,
 	},
 	UpdateDocumentLayerDetails {
 		data: LayerPanelEntry,
@@ -268,18 +258,6 @@ pub enum FrontendMessage {
 	UpdateGraphFadeArtwork {
 		percentage: f64,
 	},
-	UpdateLayersPanelControlBarLeftLayout {
-		diff: Vec<WidgetDiff>,
-	},
-	UpdateLayersPanelControlBarRightLayout {
-		diff: Vec<WidgetDiff>,
-	},
-	UpdateLayersPanelBottomBarLayout {
-		diff: Vec<WidgetDiff>,
-	},
-	UpdateMenuBarLayout {
-		diff: Vec<WidgetDiff>,
-	},
 	UpdateMouseCursor {
 		cursor: MouseCursorIcon,
 	},
@@ -296,9 +274,6 @@ pub enum FrontendMessage {
 		wires: Vec<WirePathUpdate>,
 	},
 	ClearAllNodeGraphWires,
-	UpdateNodeGraphControlBarLayout {
-		diff: Vec<WidgetDiff>,
-	},
 	UpdateNodeGraphSelection {
 		selected: Vec<NodeId>,
 	},
@@ -313,30 +288,9 @@ pub enum FrontendMessage {
 		#[serde(rename = "openDocuments")]
 		open_documents: Vec<OpenDocument>,
 	},
-	UpdatePropertiesPanelLayout {
-		diff: Vec<WidgetDiff>,
-	},
-	UpdateToolOptionsLayout {
-		diff: Vec<WidgetDiff>,
-	},
-	UpdateToolShelfLayout {
-		diff: Vec<WidgetDiff>,
-	},
 	UpdateWirePathInProgress {
 		#[serde(rename = "wirePath")]
 		wire_path: Option<WirePath>,
-	},
-	UpdateWelcomeScreenButtonsLayout {
-		diff: Vec<WidgetDiff>,
-	},
-	UpdateStatusBarHintsLayout {
-		diff: Vec<WidgetDiff>,
-	},
-	UpdateStatusBarInfoLayout {
-		diff: Vec<WidgetDiff>,
-	},
-	UpdateWorkingColorsLayout {
-		diff: Vec<WidgetDiff>,
 	},
 	UpdatePlatform {
 		platform: AppWindowPlatform,
