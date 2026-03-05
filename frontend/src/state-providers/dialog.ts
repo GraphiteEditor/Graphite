@@ -55,21 +55,21 @@ export function createDialogState(editor: Editor) {
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage("UpdateDialogButtons", (data) => {
+	editor.subscriptions.subscribeLayoutUpdate("DialogButtons", (data) => {
 		update((state) => {
 			patchLayout(state.buttons, data);
 
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage("UpdateDialogColumn1", (data) => {
+	editor.subscriptions.subscribeLayoutUpdate("DialogColumn1", (data) => {
 		update((state) => {
 			patchLayout(state.column1, data);
 
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage("UpdateDialogColumn2", (data) => {
+	editor.subscriptions.subscribeLayoutUpdate("DialogColumn2", (data) => {
 		update((state) => {
 			patchLayout(state.column2, data);
 

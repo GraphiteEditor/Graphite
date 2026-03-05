@@ -18,14 +18,14 @@
 	let welcomePanelButtonsLayout: Layout = [];
 
 	onMount(() => {
-		editor.subscriptions.subscribeJsMessage("UpdateWelcomeScreenButtonsLayout", (data) => {
+		editor.subscriptions.subscribeLayoutUpdate("WelcomeScreenButtons", (data) => {
 			patchLayout(welcomePanelButtonsLayout, data);
 			welcomePanelButtonsLayout = welcomePanelButtonsLayout;
 		});
 	});
 
 	onDestroy(() => {
-		editor.subscriptions.unsubscribeJsMessage("UpdateWelcomeScreenButtonsLayout");
+		editor.subscriptions.unsubscribeLayoutUpdate("WelcomeScreenButtons");
 	});
 
 	function dropFile(e: DragEvent) {

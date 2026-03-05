@@ -15,11 +15,11 @@
 	let statusBarInfoLayout: Layout = [];
 
 	onMount(() => {
-		editor.subscriptions.subscribeJsMessage("UpdateStatusBarHintsLayout", (data) => {
+		editor.subscriptions.subscribeLayoutUpdate("StatusBarHints", (data) => {
 			patchLayout(statusBarHintsLayout, data);
 			statusBarHintsLayout = statusBarHintsLayout;
 		});
-		editor.subscriptions.subscribeJsMessage("UpdateStatusBarInfoLayout", (data) => {
+		editor.subscriptions.subscribeLayoutUpdate("StatusBarInfo", (data) => {
 			patchLayout(statusBarInfoLayout, data);
 			statusBarInfoLayout = statusBarInfoLayout;
 		});

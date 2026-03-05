@@ -26,7 +26,7 @@
 	$: height = $appWindow.platform === "Mac" ? 28 * (1 / $appWindow.uiScale) : 28;
 
 	onMount(() => {
-		editor.subscriptions.subscribeJsMessage("UpdateMenuBarLayout", (data) => {
+		editor.subscriptions.subscribeLayoutUpdate("MenuBar", (data) => {
 			patchLayout(menuBarLayout, data);
 			menuBarLayout = menuBarLayout;
 		});

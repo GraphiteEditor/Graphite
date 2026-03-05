@@ -959,8 +959,8 @@ export type LayoutTarget =
 	| "WorkingColors";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function createWidgetDiffMessage(data: any): WidgetDiff[] {
-	return data.diff.map((diff: WidgetDiff) => {
+export function parseWidgetDiffs(rawDiffs: any): WidgetDiff[] {
+	return rawDiffs.map((diff: WidgetDiff) => {
 		const { widgetPath, newValue } = diff;
 
 		if ("layout" in newValue) return { widgetPath, newValue: newValue.layout.map(createLayoutGroup) };
@@ -1137,13 +1137,8 @@ export type JsMessageTypeMap = {
 	UpdateBox: { readonly box: Box | undefined };
 	UpdateClickTargets: { readonly clickTargets: FrontendClickTargets | undefined };
 	UpdateContextMenuInformation: { readonly contextMenuInformation: ContextMenuInformation | undefined };
-	UpdateDataPanelLayout: WidgetDiff[];
 	UpdateDataPanelState: { readonly open: boolean };
-	UpdateDialogButtons: WidgetDiff[];
-	UpdateDialogColumn1: WidgetDiff[];
-	UpdateDialogColumn2: WidgetDiff[];
 	UpdateDocumentArtwork: { readonly svg: string };
-	UpdateDocumentBarLayout: WidgetDiff[];
 	UpdateDocumentLayerDetails: { readonly data: LayerPanelEntry };
 	UpdateDocumentLayerStructure: { readonly layerStructure: LayerStructureEntry[] };
 	UpdateDocumentRulers: { readonly origin: [number, number]; readonly spacing: number; readonly interval: number; readonly visible: boolean };
@@ -1169,15 +1164,11 @@ export type JsMessageTypeMap = {
 		readonly addImportExport: boolean;
 	};
 	UpdateInSelectedNetwork: { readonly inSelectedNetwork: boolean };
-	UpdateLayersPanelBottomBarLayout: WidgetDiff[];
-	UpdateLayersPanelControlBarLeftLayout: WidgetDiff[];
-	UpdateLayersPanelControlBarRightLayout: WidgetDiff[];
 	UpdateLayersPanelState: { readonly open: boolean };
 	UpdateLayerWidths: { readonly layerWidths: Map<bigint, number>; readonly chainWidths: Map<bigint, number>; readonly hasLeftInputWire: Map<bigint, boolean> };
+	UpdateLayout: { readonly layoutTarget: LayoutTarget; readonly diff: WidgetDiff[] };
 	UpdateMaximized: { readonly maximized: boolean };
-	UpdateMenuBarLayout: WidgetDiff[];
 	UpdateMouseCursor: { readonly cursor: MouseCursor };
-	UpdateNodeGraphControlBarLayout: WidgetDiff[];
 	UpdateNodeGraphErrorDiagnostic: { readonly error: NodeGraphError | undefined };
 	UpdateNodeGraphNodes: { readonly nodes: FrontendNode[] };
 	UpdateNodeGraphSelection: { readonly selected: bigint[] };
@@ -1186,19 +1177,12 @@ export type JsMessageTypeMap = {
 	UpdateNodeThumbnail: { readonly id: bigint; readonly value: string };
 	UpdateOpenDocumentsList: { readonly openDocuments: OpenDocument[] };
 	UpdatePlatform: { readonly platform: AppWindowPlatform };
-	UpdatePropertiesPanelLayout: WidgetDiff[];
 	UpdatePropertiesPanelState: { readonly open: boolean };
-	UpdateStatusBarHintsLayout: WidgetDiff[];
-	UpdateStatusBarInfoLayout: WidgetDiff[];
-	UpdateToolOptionsLayout: WidgetDiff[];
-	UpdateToolShelfLayout: WidgetDiff[];
 	UpdateUIScale: { readonly scale: number };
 	UpdateViewportHolePunch: { readonly active: boolean };
 	UpdateViewportPhysicalBounds: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
 	UpdateVisibleNodes: { readonly nodes: bigint[] };
-	UpdateWelcomeScreenButtonsLayout: WidgetDiff[];
 	UpdateWirePathInProgress: { readonly wirePath: WirePath | undefined };
-	UpdateWorkingColorsLayout: WidgetDiff[];
 	WindowFullscreen: Record<string, never>;
 	WindowPointerLockMove: { readonly x: number; readonly y: number };
 };
@@ -1256,13 +1240,8 @@ export const messageMakers: Record<JsMessageType, MessageFactory | undefined> = 
 	UpdateBox: undefined,
 	UpdateClickTargets: undefined,
 	UpdateContextMenuInformation: undefined,
-	UpdateDataPanelLayout: createWidgetDiffMessage,
 	UpdateDataPanelState: undefined,
-	UpdateDialogButtons: createWidgetDiffMessage,
-	UpdateDialogColumn1: createWidgetDiffMessage,
-	UpdateDialogColumn2: createWidgetDiffMessage,
 	UpdateDocumentArtwork: undefined,
-	UpdateDocumentBarLayout: createWidgetDiffMessage,
 	UpdateDocumentLayerDetails: undefined,
 	UpdateDocumentLayerStructure: undefined,
 	UpdateDocumentRulers: undefined,
@@ -1276,15 +1255,11 @@ export const messageMakers: Record<JsMessageType, MessageFactory | undefined> = 
 	UpdateImportReorderIndex: undefined,
 	UpdateImportsExports: undefined,
 	UpdateInSelectedNetwork: undefined,
-	UpdateLayersPanelBottomBarLayout: createWidgetDiffMessage,
-	UpdateLayersPanelControlBarLeftLayout: createWidgetDiffMessage,
-	UpdateLayersPanelControlBarRightLayout: createWidgetDiffMessage,
 	UpdateLayersPanelState: undefined,
 	UpdateLayerWidths: undefined,
+	UpdateLayout: undefined,
 	UpdateMaximized: undefined,
-	UpdateMenuBarLayout: createWidgetDiffMessage,
 	UpdateMouseCursor: undefined,
-	UpdateNodeGraphControlBarLayout: createWidgetDiffMessage,
 	UpdateNodeGraphErrorDiagnostic: undefined,
 	UpdateNodeGraphNodes: undefined,
 	UpdateNodeGraphSelection: undefined,
@@ -1293,19 +1268,12 @@ export const messageMakers: Record<JsMessageType, MessageFactory | undefined> = 
 	UpdateNodeThumbnail: undefined,
 	UpdateOpenDocumentsList: undefined,
 	UpdatePlatform: undefined,
-	UpdatePropertiesPanelLayout: createWidgetDiffMessage,
 	UpdatePropertiesPanelState: undefined,
-	UpdateStatusBarHintsLayout: createWidgetDiffMessage,
-	UpdateStatusBarInfoLayout: createWidgetDiffMessage,
-	UpdateToolOptionsLayout: createWidgetDiffMessage,
-	UpdateToolShelfLayout: createWidgetDiffMessage,
 	UpdateUIScale: undefined,
 	UpdateViewportHolePunch: undefined,
 	UpdateViewportPhysicalBounds: undefined,
 	UpdateVisibleNodes: undefined,
-	UpdateWelcomeScreenButtonsLayout: createWidgetDiffMessage,
 	UpdateWirePathInProgress: undefined,
-	UpdateWorkingColorsLayout: createWidgetDiffMessage,
 	WindowFullscreen: undefined,
 	WindowPointerLockMove: undefined,
 };

@@ -12,14 +12,14 @@
 	let dataPanelLayout: Layout = [];
 
 	onMount(() => {
-		editor.subscriptions.subscribeJsMessage("UpdateDataPanelLayout", (data) => {
+		editor.subscriptions.subscribeLayoutUpdate("DataPanel", (data) => {
 			patchLayout(dataPanelLayout, data);
 			dataPanelLayout = dataPanelLayout;
 		});
 	});
 
 	onDestroy(() => {
-		editor.subscriptions.unsubscribeJsMessage("UpdateDataPanelLayout");
+		editor.subscriptions.unsubscribeLayoutUpdate("DataPanel");
 	});
 </script>
 

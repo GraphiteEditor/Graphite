@@ -463,30 +463,11 @@ impl LayoutMessageHandler {
 	fn send_diff(&self, mut diff: Vec<WidgetDiff>, layout_target: LayoutTarget, responses: &mut VecDeque<Message>, action_input_mapping: &impl Fn(&MessageDiscriminant) -> Option<KeysGroup>) {
 		diff.iter_mut().for_each(|diff| diff.new_value.apply_keyboard_shortcut(action_input_mapping));
 
-		let message = match layout_target {
-			LayoutTarget::DataPanel => FrontendMessage::UpdateDataPanelLayout { diff },
-			LayoutTarget::DialogButtons => FrontendMessage::UpdateDialogButtons { diff },
-			LayoutTarget::DialogColumn1 => FrontendMessage::UpdateDialogColumn1 { diff },
-			LayoutTarget::DialogColumn2 => FrontendMessage::UpdateDialogColumn2 { diff },
-			LayoutTarget::DocumentBar => FrontendMessage::UpdateDocumentBarLayout { diff },
-			LayoutTarget::LayersPanelBottomBar => FrontendMessage::UpdateLayersPanelBottomBarLayout { diff },
-			LayoutTarget::LayersPanelControlLeftBar => FrontendMessage::UpdateLayersPanelControlBarLeftLayout { diff },
-			LayoutTarget::LayersPanelControlRightBar => FrontendMessage::UpdateLayersPanelControlBarRightLayout { diff },
-			LayoutTarget::MenuBar => FrontendMessage::UpdateMenuBarLayout { diff },
-			LayoutTarget::NodeGraphControlBar => FrontendMessage::UpdateNodeGraphControlBarLayout { diff },
-			LayoutTarget::PropertiesPanel => FrontendMessage::UpdatePropertiesPanelLayout { diff },
-			LayoutTarget::StatusBarHints => FrontendMessage::UpdateStatusBarHintsLayout { diff },
-			LayoutTarget::StatusBarInfo => FrontendMessage::UpdateStatusBarInfoLayout { diff },
-			LayoutTarget::ToolOptions => FrontendMessage::UpdateToolOptionsLayout { diff },
-			LayoutTarget::ToolShelf => FrontendMessage::UpdateToolShelfLayout { diff },
-			LayoutTarget::WelcomeScreenButtons => FrontendMessage::UpdateWelcomeScreenButtonsLayout { diff },
-			LayoutTarget::WorkingColors => FrontendMessage::UpdateWorkingColorsLayout { diff },
+		if matches!(layout_target, LayoutTarget::_LayoutTargetLength) {
+			panic!("`_LayoutTargetLength` is not a valid `LayoutTarget` and is used for array indexing");
+		}
 
-			// KEEP THIS ENUM LAST
-			LayoutTarget::_LayoutTargetLength => panic!("`_LayoutTargetLength` is not a valid `LayoutTarget` and is used for array indexing"),
-		};
-
-		responses.add(message);
+		responses.add(FrontendMessage::UpdateLayout { layout_target, diff });
 	}
 }
 

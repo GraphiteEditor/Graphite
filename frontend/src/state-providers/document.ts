@@ -27,7 +27,7 @@ export function createDocumentState(editor: Editor) {
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage("UpdateToolOptionsLayout", async (data) => {
+	editor.subscriptions.subscribeLayoutUpdate("ToolOptions", async (data) => {
 		await tick();
 
 		update((state) => {
@@ -35,7 +35,7 @@ export function createDocumentState(editor: Editor) {
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage("UpdateDocumentBarLayout", async (data) => {
+	editor.subscriptions.subscribeLayoutUpdate("DocumentBar", async (data) => {
 		await tick();
 
 		update((state) => {
@@ -43,7 +43,7 @@ export function createDocumentState(editor: Editor) {
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage("UpdateToolShelfLayout", async (data) => {
+	editor.subscriptions.subscribeLayoutUpdate("ToolShelf", async (data) => {
 		await tick();
 
 		update((state) => {
@@ -51,7 +51,7 @@ export function createDocumentState(editor: Editor) {
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage("UpdateWorkingColorsLayout", async (data) => {
+	editor.subscriptions.subscribeLayoutUpdate("WorkingColors", async (data) => {
 		await tick();
 
 		update((state) => {
@@ -59,7 +59,7 @@ export function createDocumentState(editor: Editor) {
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage("UpdateNodeGraphControlBarLayout", (data) => {
+	editor.subscriptions.subscribeLayoutUpdate("NodeGraphControlBar", (data) => {
 		update((state) => {
 			patchLayout(state.nodeGraphControlBarLayout, data);
 			return state;

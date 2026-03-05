@@ -12,14 +12,14 @@
 	let propertiesPanelLayout: Layout = [];
 
 	onMount(() => {
-		editor.subscriptions.subscribeJsMessage("UpdatePropertiesPanelLayout", (data) => {
+		editor.subscriptions.subscribeLayoutUpdate("PropertiesPanel", (data) => {
 			patchLayout(propertiesPanelLayout, data);
 			propertiesPanelLayout = propertiesPanelLayout;
 		});
 	});
 
 	onDestroy(() => {
-		editor.subscriptions.unsubscribeJsMessage("UpdatePropertiesPanelLayout");
+		editor.subscriptions.unsubscribeLayoutUpdate("PropertiesPanel");
 	});
 </script>
 

@@ -69,17 +69,17 @@
 	let layersPanelBottomBarLayout: Layout = [];
 
 	onMount(() => {
-		editor.subscriptions.subscribeJsMessage("UpdateLayersPanelControlBarLeftLayout", (data) => {
+		editor.subscriptions.subscribeLayoutUpdate("LayersPanelControlLeftBar", (data) => {
 			patchLayout(layersPanelControlBarLeftLayout, data);
 			layersPanelControlBarLeftLayout = layersPanelControlBarLeftLayout;
 		});
 
-		editor.subscriptions.subscribeJsMessage("UpdateLayersPanelControlBarRightLayout", (data) => {
+		editor.subscriptions.subscribeLayoutUpdate("LayersPanelControlRightBar", (data) => {
 			patchLayout(layersPanelControlBarRightLayout, data);
 			layersPanelControlBarRightLayout = layersPanelControlBarRightLayout;
 		});
 
-		editor.subscriptions.subscribeJsMessage("UpdateLayersPanelBottomBarLayout", (data) => {
+		editor.subscriptions.subscribeLayoutUpdate("LayersPanelBottomBar", (data) => {
 			patchLayout(layersPanelBottomBarLayout, data);
 			layersPanelBottomBarLayout = layersPanelBottomBarLayout;
 		});
@@ -107,9 +107,9 @@
 	});
 
 	onDestroy(() => {
-		editor.subscriptions.unsubscribeJsMessage("UpdateLayersPanelControlBarLeftLayout");
-		editor.subscriptions.unsubscribeJsMessage("UpdateLayersPanelControlBarRightLayout");
-		editor.subscriptions.unsubscribeJsMessage("UpdateLayersPanelBottomBarLayout");
+		editor.subscriptions.unsubscribeLayoutUpdate("LayersPanelControlLeftBar");
+		editor.subscriptions.unsubscribeLayoutUpdate("LayersPanelControlRightBar");
+		editor.subscriptions.unsubscribeLayoutUpdate("LayersPanelBottomBar");
 		editor.subscriptions.unsubscribeJsMessage("UpdateDocumentLayerStructure");
 		editor.subscriptions.unsubscribeJsMessage("UpdateDocumentLayerDetails");
 

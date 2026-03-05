@@ -1,11 +1,12 @@
 import { type EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
-import { type JsMessageType, type JsMessageTypeMap, messageMakers } from "@graphite/messages";
+import { type JsMessageType, type JsMessageTypeMap, type LayoutTarget, type WidgetDiff, messageMakers, parseWidgetDiffs } from "@graphite/messages";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type JsMessageCallbackMap = Record<string, ((messageData: any) => void) | undefined>;
 
 export function createSubscriptionRouter() {
 	const subscriptions: JsMessageCallbackMap = {};
+	const layoutCallbacks: Partial<Record<LayoutTarget, (diffs: WidgetDiff[]) => void>> = {};
 
 	const subscribeJsMessage = <T extends JsMessageType>(messageType: T, callback: (data: JsMessageTypeMap[T]) => void) => {
 		subscriptions[messageType] = callback;
@@ -13,6 +14,14 @@ export function createSubscriptionRouter() {
 
 	const unsubscribeJsMessage = (messageType: JsMessageType) => {
 		delete subscriptions[messageType];
+	};
+
+	const subscribeLayoutUpdate = (target: LayoutTarget, callback: (diffs: WidgetDiff[]) => void) => {
+		layoutCallbacks[target] = callback;
+	};
+
+	const unsubscribeLayoutUpdate = (target: LayoutTarget) => {
+		delete layoutCallbacks[target];
 	};
 
 	const handleJsMessage = (messageType: JsMessageType, messageData: Record<string, unknown>, wasm: WebAssembly.Memory, handle: EditorHandle) => {
@@ -36,21 +45,37 @@ export function createSubscriptionRouter() {
 		// If the maker is a factory function, it transforms the raw data into the desired shape.
 		const message = messageMaker !== undefined ? messageMaker(unwrappedMessageData, wasm, handle) : unwrappedMessageData;
 
-		// If we have constructed a valid message, then we try and execute the callback that the frontend has associated with this message.
-		// The frontend should always have a callback for all messages, but due to message ordering, we might have to delay a few stack frames until we do.
+		// Resolve the callback lookup and the data to pass, depending on whether this is a layout update or a regular message.
+		// UpdateLayout messages are dispatched to layout-specific callbacks based on the layout target.
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		let getCallback: () => ((data: any) => void) | undefined;
+		let callbackData: unknown;
+		let errorLabel: string;
+		if (messageType === "UpdateLayout") {
+			const { layoutTarget, diff } = message as JsMessageTypeMap["UpdateLayout"];
+			getCallback = () => layoutCallbacks[layoutTarget];
+			callbackData = parseWidgetDiffs(diff);
+			errorLabel = `UpdateLayout for layout target "${layoutTarget}"`;
+		} else {
+			getCallback = () => subscriptions[messageType];
+			callbackData = message;
+			errorLabel = messageType;
+		}
+
+		// Try to execute the callback. Due to message ordering, the callback may not be registered yet,
+		// so we retry a few times on the next stack frame to give onMount a chance to run.
 		let retries = 0;
 		const callCallback = () => {
-			const callback = subscriptions[messageType];
+			const callback = getCallback();
 
-			// Attempt to call the callback, but try again several times on the next stack frame if it is not yet registered due to message ordering.
 			if (callback) {
-				callback(message);
+				callback(callbackData);
 			} else if (retries <= 3) {
 				retries += 1;
 				setTimeout(callCallback, 0);
 			} else {
 				// eslint-disable-next-line no-console
-				console.error(`Received a frontend message of type "${messageType}" but no handler was registered for it from the client.`);
+				console.error(`Received a frontend message of type "${errorLabel}" but no handler was registered for it from the client.`);
 			}
 		};
 
@@ -60,6 +85,8 @@ export function createSubscriptionRouter() {
 	return {
 		subscribeJsMessage,
 		unsubscribeJsMessage,
+		subscribeLayoutUpdate,
+		unsubscribeLayoutUpdate,
 		handleJsMessage,
 	};
 }
