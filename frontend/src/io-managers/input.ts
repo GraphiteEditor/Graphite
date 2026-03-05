@@ -36,6 +36,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 	let canvasFocused = true;
 	let inPointerLock = false;
 	const shakeSamples: { x: number; y: number; time: number }[] = [];
+	let lastMousePosition: [number, number] = [0, 0];
 	let lastShakeTime = 0;
 
 	// Event listeners
@@ -158,6 +159,8 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 	// While any pointer button is already down, additional button down events are not reported, but they are sent as `pointermove` events and these are handled in the backend
 	function onPointerMove(e: PointerEvent) {
 		potentiallyRestoreCanvasFocus(e);
+
+		lastMousePosition = [e.clientX, e.clientY];
 
 		if (!e.buttons) viewportPointerInteractionOngoing = false;
 
@@ -320,7 +323,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 		Array.from(dataTransfer.items).forEach(async (item) => {
 			if (item.type === "text/plain") item.getAsString((text) => editor.handle.pasteText(text));
-			await pasteFile(item, editor);
+			await pasteFile(item, editor, lastMousePosition);
 		});
 	}
 
