@@ -7,7 +7,8 @@
 	import { createEventDispatcher, onDestroy } from "svelte";
 
 	import { evaluateGradientAtPosition } from "@graphite/../wasm/pkg/graphite_wasm";
-	import { type Color, type Gradient, createColor, colorToHexOptionalAlpha, colorToRgbCSS, gradientFirstColor, gradientLastColor, gradientToLinearGradientCSS } from "@graphite/messages";
+	import { type Color, type Gradient } from "@graphite/messages";
+	import { createColor, colorToHexOptionalAlpha, colorToRgbCSS, gradientFirstColor, gradientLastColor, gradientToLinearGradientCSS } from "@graphite/utility-functions/colors";
 
 	import { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";

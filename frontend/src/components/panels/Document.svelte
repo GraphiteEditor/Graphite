@@ -2,9 +2,10 @@
 	import { getContext, onMount, onDestroy, tick } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import { type Color, type DisplayEditableTextbox, type MenuDirection, type MouseCursor, mouseCursorIconCSSNames, isColor, createColor, isWidgetSpanRow } from "@graphite/messages";
+	import { type Color, type DisplayEditableTextbox, type MenuDirection, type MouseCursor, mouseCursorIconCSSNames, isWidgetSpanRow } from "@graphite/messages";
 	import type { AppWindowState } from "@graphite/state-providers/app-window";
 	import type { DocumentState } from "@graphite/state-providers/document";
+	import { isColor, createColor } from "@graphite/utility-functions/colors";
 	import { pasteFile } from "@graphite/utility-functions/files";
 	import { textInputCleanup } from "@graphite/utility-functions/keyboard-entry";
 	import { rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";

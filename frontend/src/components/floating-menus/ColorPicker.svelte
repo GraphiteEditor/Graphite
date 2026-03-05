@@ -1,9 +1,12 @@
 <script lang="ts">
 	import { getContext, onDestroy, createEventDispatcher, tick } from "svelte";
 
-	import type { HSV, RGB, FillChoice, MenuDirection } from "@graphite/messages";
+	import type { FillChoice, MenuDirection } from "@graphite/messages";
+	import type { Color } from "@graphite/messages";
+	import type { TooltipState } from "@graphite/state-providers/tooltip";
 	import {
-		type Color,
+		type HSV,
+		type RGB,
 		contrastingOutlineFactor,
 		isColor,
 		isGradient,
@@ -20,8 +23,7 @@
 		colorOpaque,
 		colorEquals,
 		gradientFirstColor,
-	} from "@graphite/messages";
-	import type { TooltipState } from "@graphite/state-providers/tooltip";
+	} from "@graphite/utility-functions/colors";
 	import { clamp } from "@graphite/utility-functions/math";
 	import { isDesktop } from "@graphite/utility-functions/platform";
 
