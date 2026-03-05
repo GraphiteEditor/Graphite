@@ -36,7 +36,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 	let canvasFocused = true;
 	let inPointerLock = false;
 	const shakeSamples: { x: number; y: number; time: number }[] = [];
-	let lastMousePosition: [number, number] = [0, 0];
+	let lastMousePosition: [number, number] | undefined;
 	let lastShakeTime = 0;
 
 	// Event listeners
