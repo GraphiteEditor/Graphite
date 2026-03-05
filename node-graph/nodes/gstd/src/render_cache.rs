@@ -458,7 +458,6 @@ pub async fn render_output_cache<'a: 'n>(
 
 	let exec = editor_api.application_io.as_ref().unwrap().gpu_executor().unwrap();
 
-	// TODO: Use texture pool to reuse existing unused textures instead of allocating fresh ones every time
 	let device = &exec.context.device;
 	let output_texture = tile_cache.request_texture(physical_resolution, device);
 
