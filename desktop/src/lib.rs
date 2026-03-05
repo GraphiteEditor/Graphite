@@ -62,6 +62,8 @@ pub fn start() {
 		}
 	};
 
+	let prefs = preferences::read();
+
 	// Must be called before event loop initialization or native window integrations will break
 	App::init();
 
@@ -73,7 +75,7 @@ pub fn start() {
 
 	let (cef_view_info_sender, cef_view_info_receiver) = std::sync::mpsc::channel();
 
-	let disable_ui_acceleration = preferences::read().disable_ui_acceleration || cli.disable_ui_acceleration;
+	let disable_ui_acceleration = prefs.disable_ui_acceleration || cli.disable_ui_acceleration;
 	if disable_ui_acceleration {
 		println!("UI acceleration is disabled");
 	}
@@ -95,7 +97,7 @@ pub fn start() {
 		}
 	};
 
-	let app = App::new(Box::new(cef_context), cef_view_info_sender, wgpu_context, app_event_receiver, app_event_scheduler, cli);
+	let app = App::new(Box::new(cef_context), cef_view_info_sender, wgpu_context, app_event_receiver, app_event_scheduler, prefs, cli);
 
 	let exit_reason = app.run(event_loop);
 
@@ -111,15 +113,15 @@ pub fn start() {
 	drop(lock);
 
 	match exit_reason {
-		#[cfg(target_os = "linux")]
 		app::ExitReason::Restart | app::ExitReason::UiAccelerationFailure => {
 			tracing::error!("Restarting application");
 			let mut command = std::process::Command::new(std::env::current_exe().unwrap());
 			#[cfg(target_family = "unix")]
 			let _ = std::os::unix::process::CommandExt::exec(&mut command);
+			#[cfg(target_family = "unix")]
+			tracing::error!("Failed to restart application");
 			#[cfg(not(target_family = "unix"))]
 			let _ = command.spawn();
-			tracing::error!("Failed to restart application");
 		}
 		_ => {}
 	}
