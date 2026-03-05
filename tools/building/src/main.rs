@@ -70,7 +70,11 @@ fn run_task(task: &Task) -> Result<(), Error> {
 				Profile::Profiling => "profiling",
 				Profile::Default => unreachable!(),
 			};
-			let args = if let Action::Run = action { format!(" -- open {}", task.args.join(" ")) } else { "".to_string() };
+			let args = if matches!(action, Action::Run) {
+				format!(" -- open {}", task.args.join(" "))
+			} else {
+				"".to_string()
+			};
 			run(&format!("cargo run --profile {cargo_profile} -p graphite-desktop-bundle{args}"))?;
 		}
 
