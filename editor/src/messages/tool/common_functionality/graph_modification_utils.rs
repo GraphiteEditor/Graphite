@@ -243,6 +243,15 @@ pub fn new_svg_layer(svg: String, transform: glam::DAffine2, id: NodeId, parent:
 }
 
 pub fn new_custom(id: NodeId, nodes: Vec<(NodeId, NodeTemplate)>, parent: LayerNodeIdentifier, responses: &mut VecDeque<Message>) -> LayerNodeIdentifier {
+	let transform_node_id = NodeId::new();
+	let mut nodes = nodes;
+
+	// Insert a Transform node
+	let transform_node = crate::messages::portfolio::document::node_graph::document_node_definitions::resolve_network_node_type("Transform")
+		.expect("Transform node does not exist")
+		.default_node_template();
+	nodes.push((transform_node_id, transform_node));
+
 	responses.add(GraphOperationMessage::NewCustomLayer { id, nodes, parent, insert_index: 0 });
 	responses.add(GraphOperationMessage::SetUpstreamToChain {
 		layer: LayerNodeIdentifier::new_unchecked(id),
