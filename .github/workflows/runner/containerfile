@@ -1,0 +1,97 @@
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# System dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        ca-certificates \
+        cmake \
+        curl \
+        git \
+        jq \
+        libssl-dev \
+        lsb-release \
+        mold \
+        pkg-config \
+        sudo \
+        unzip \
+        wget \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install sccache to /usr/bin (CI expects it there for RUSTC_WRAPPER)
+ARG SCCACHE_VERSION=0.9.1
+RUN ARCH=$(uname -m) && \
+    curl -fsSL "https://github.com/mozilla/sccache/releases/download/v${SCCACHE_VERSION}/sccache-v${SCCACHE_VERSION}-${ARCH}-unknown-linux-musl.tar.gz" \
+    | tar xz --strip-components=1 -C /usr/bin/ "sccache-v${SCCACHE_VERSION}-${ARCH}-unknown-linux-musl/sccache" && \
+    chmod +x /usr/bin/sccache
+
+# Install Node.js LTS
+ARG NODE_MAJOR=22
+RUN curl -fsSL https://deb.nodesource.com/setup_${NODE_MAJOR}.x | bash - && \
+    apt-get install -y --no-install-recommends nodejs && \
+    rm -rf /var/lib/apt/lists/*
+
+# Create runner user
+RUN useradd -m -s /bin/bash runner && \
+    echo "runner ALL=(ALL) NOPASSWD:ALL" >> /etc/sudoers.d/runner
+
+# Create cache directories with correct ownership
+RUN mkdir -p /var/lib/github-actions/.cache && \
+    chown -R runner:runner /var/lib/github-actions
+
+USER runner
+WORKDIR /home/runner
+
+# Install Rust stable + wasm target
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile default && \
+    . "$HOME/.cargo/env" && \
+    rustup target add wasm32-unknown-unknown && \
+    rustup component add clippy rustfmt
+
+ENV PATH="/home/runner/.cargo/bin:${PATH}"
+
+# Install cargo tools required by the project
+# wasm-bindgen-cli is pinned to match the version in Cargo.toml (=0.2.100)
+RUN cargo install --locked wasm-bindgen-cli@0.2.100 && \
+    cargo install --locked wasm-pack && \
+    cargo install --locked cargo-about
+
+# Environment variables matching CI configuration
+ENV RUSTC_WRAPPER=/usr/bin/sccache
+ENV CARGO_INCREMENTAL=0
+ENV SCCACHE_DIR=/var/lib/github-actions/.cache
+
+# Install GitHub Actions runner
+ARG RUNNER_VERSION=2.322.0
+RUN ARCH=$(uname -m | sed 's/x86_64/x64/' | sed 's/aarch64/arm64/') && \
+    curl -fsSL "https://github.com/actions/runner/releases/download/v${RUNNER_VERSION}/actions-runner-linux-${ARCH}-${RUNNER_VERSION}.tar.gz" \
+    | tar xz -C /home/runner
+
+# Entrypoint script: configure and start the runner
+COPY --chown=runner:runner <<'ENTRYPOINT' /home/runner/entrypoint.sh
+#!/usr/bin/env bash
+set -euo pipefail
+
+RUNNER_NAME="${RUNNER_NAME:-$(hostname)}"
+RUNNER_LABELS="${RUNNER_LABELS:-target/wasm,target/native}"
+RUNNER_WORKDIR="${RUNNER_WORKDIR:-/home/runner/_work}"
+
+# Configure the runner if not already configured
+if [ ! -f /home/runner/.runner ]; then
+    /home/runner/config.sh \
+        --unattended \
+        --url "${GITHUB_URL}" \
+        --token "${RUNNER_TOKEN}" \
+        --name "${RUNNER_NAME}" \
+        --labels "${RUNNER_LABELS}" \
+        --work "${RUNNER_WORKDIR}" \
+        --replace
+fi
+
+# Run with automatic cleanup on container stop
+exec /home/runner/run.sh
+ENTRYPOINT
+RUN chmod +x /home/runner/entrypoint.sh
+
+ENTRYPOINT ["/home/runner/entrypoint.sh"]
