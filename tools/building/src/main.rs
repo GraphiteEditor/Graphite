@@ -4,13 +4,16 @@ use building::*;
 
 fn usage() {
 	eprintln!();
-	eprintln!("Usage: cargo run [<command>] [release|debug|profiling]");
+	eprintln!("Usage: cargo run [<command>] [release|debug|profiling] -- [args...]");
 	eprintln!();
 	eprintln!("Commands:");
 	eprintln!("  web [run]         Run the web app on local dev server");
 	eprintln!("  web build         Build the web app");
 	eprintln!("  desktop [run]     Run the desktop app");
 	eprintln!("  desktop build     Build the desktop app");
+	eprintln!("  cli [run]         Run the Graphen CLI");
+	eprintln!("  cli build         Build the Graphen CLI");
+	eprintln!("  help              Show this message");
 	eprintln!();
 }
 
@@ -45,29 +48,30 @@ fn run_task(task: &Task) -> Result<(), Error> {
 		(Target::Web, Action::Build, Profile::Release | Profile::Default) => npm_run_in_frontend_dir("build")?,
 		(Target::Web, Action::Build, Profile::Profiling) => npm_run_in_frontend_dir("build-profiling")?,
 
-		(Target::Desktop, Action::Run, Profile::Debug | Profile::Default) => {
-			npm_run_in_frontend_dir("build-native-dev")?;
+		(Target::Desktop, action, profile) => {
+			if matches!((action, profile), (_, Profile::Release) | (Action::Build, Profile::Default)) {
+				npm_run_in_frontend_dir("build-native")?;
+			} else {
+				npm_run_in_frontend_dir("build-native-dev")?;
+			};
 			run("cargo run -p third-party-licenses --features desktop")?;
-			run("cargo run -p graphite-desktop-bundle -- open")?;
-		}
-		(Target::Desktop, Action::Run, Profile::Release) => {
-			npm_run_in_frontend_dir("build-native")?;
-			run("cargo run -p third-party-licenses --features desktop")?;
-			run("cargo run -r -p graphite-desktop-bundle -- open")?;
-		}
-		(Target::Desktop, Action::Run, Profile::Profiling) => todo!("profiling run for desktop"),
 
-		(Target::Desktop, Action::Build, Profile::Debug) => {
-			npm_run_in_frontend_dir("build-native-dev")?;
-			run("cargo run -p third-party-licenses --features desktop")?;
-			run("cargo run -p graphite-desktop-bundle")?;
+			let cargo_profile = match profile {
+				Profile::Debug | Profile::Default => "dev",
+				Profile::Release => "release",
+				Profile::Profiling => "profiling",
+			};
+			let args = if let Action::Run = action { format!(" -- open {}", task.args.join(" ")) } else { "".to_string() };
+			run(&format!("cargo run --profile {cargo_profile} -p graphite-desktop-bundle{args}"))?;
 		}
-		(Target::Desktop, Action::Build, Profile::Release | Profile::Default) => {
-			npm_run_in_frontend_dir("build-native")?;
-			run("cargo run -p third-party-licenses --features desktop")?;
-			run("cargo run -r -p graphite-desktop-bundle")?;
-		}
-		(Target::Desktop, Action::Build, Profile::Profiling) => todo!("profiling build for desktop"),
+
+		(Target::Cli, Action::Run, Profile::Debug | Profile::Default) => run(&format!("cargo run -p graphene-cli -- {}", task.args.join(" ")))?,
+		(Target::Cli, Action::Run, Profile::Release) => run(&format!("cargo run -r -p graphene-cli -- {}", task.args.join(" ")))?,
+		(Target::Cli, Action::Run, Profile::Profiling) => run(&format!("cargo run --profile profiling -p graphene-cli -- {}", task.args.join(" ")))?,
+
+		(Target::Cli, Action::Build, Profile::Debug) => run("cargo build -p graphene-cli")?,
+		(Target::Cli, Action::Build, Profile::Release | Profile::Default) => run("cargo build -r -p graphene-cli")?,
+		(Target::Cli, Action::Build, Profile::Profiling) => run("cargo build --profile profiling -p graphene-cli")?,
 	}
 	Ok(())
 }

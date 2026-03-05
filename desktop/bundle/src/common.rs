@@ -29,8 +29,7 @@ pub(crate) fn cef_path() -> PathBuf {
 }
 
 pub(crate) fn build_bin(package: &str, bin: Option<&str>) -> Result<PathBuf, Box<dyn Error>> {
-	let profile = &profile_name();
-	let mut args = vec!["build", "--package", package, "--profile", profile];
+	let mut args = vec!["build", "--package", package, "--profile", profile_name()];
 	if let Some(bin) = bin {
 		args.push("--bin");
 		args.push(bin);

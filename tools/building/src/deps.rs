@@ -26,6 +26,7 @@ fn dependencies(task: &Task) -> Vec<Dependency> {
 			args: &["--version"],
 			name: "cargo-about",
 			install: Some("cargo install cargo-about"),
+			skip: Some(&|task| matches!(task.target, Target::Cli)),
 			..Default::default()
 		},
 		Dependency {
@@ -39,7 +40,7 @@ fn dependencies(task: &Task) -> Vec<Dependency> {
 					Task {
 						target: Target::Web,
 						action: Action::Run,
-						profile: _
+						..
 					}
 				)
 			}),
@@ -51,19 +52,21 @@ fn dependencies(task: &Task) -> Vec<Dependency> {
 			name: "wasm-bindgen-cli",
 			version: Some("0.2.100"),
 			install: Some("cargo install -f wasm-bindgen-cli@0.2.100"),
-			..Default::default()
+			skip: Some(&|task| matches!(task.target, Target::Cli)),
 		},
 		Dependency {
 			command: "wasm-pack",
 			args: &["--version"],
 			name: "wasm-pack",
 			install: Some("cargo install wasm-pack"),
+			skip: Some(&|task| matches!(task.target, Target::Cli)),
 			..Default::default()
 		},
 		Dependency {
 			command: "node",
 			args: &["--version"],
 			name: "Node.js",
+			skip: Some(&|task| matches!(task.target, Target::Cli)),
 			..Default::default()
 		},
 		Dependency {

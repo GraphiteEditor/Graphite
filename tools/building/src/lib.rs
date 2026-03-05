@@ -6,6 +6,7 @@ pub mod deps;
 pub enum Target {
 	Web,
 	Desktop,
+	Cli,
 }
 
 pub enum Action {
@@ -24,31 +25,45 @@ pub struct Task {
 	pub target: Target,
 	pub action: Action,
 	pub profile: Profile,
+	pub args: Vec<String>,
 }
 
 impl Task {
 	pub fn parse(args: &[&str]) -> Option<Self> {
+		let split = args.iter().position(|a| *a == "--").unwrap_or(args.len());
+		let passthru_args = args[split..].iter().skip(1).map(|s| s.to_string()).collect();
+		let args = &args[..split];
+
 		let (target, rest) = match args.first() {
 			Some(&"desktop") => (Target::Desktop, &args[1..]),
 			Some(&"web") => (Target::Web, &args[1..]),
-			_ => (Target::Web, args),
+			Some(&"cli") => (Target::Cli, &args[1..]),
+			Some(&"help") => return None,
+			None => (Target::Web, args),
+			_ => return None,
 		};
 
 		let (action, rest) = match rest.first() {
 			Some(&"build") => (Action::Build, &rest[1..]),
 			Some(&"run") => (Action::Run, &rest[1..]),
-			_ => (Action::Run, rest),
-		};
-
-		let profile = match rest.first().copied().unwrap_or_default() {
-			"" => Profile::Default,
-			"release" => Profile::Release,
-			"debug" => Profile::Debug,
-			"profiling" => Profile::Profiling,
+			None => (Action::Run, rest),
 			_ => return None,
 		};
 
-		Some(Task { target, action, profile })
+		let profile = match rest.first() {
+			Some(&"release") => Profile::Release,
+			Some(&"debug") => Profile::Debug,
+			Some(&"profiling") => Profile::Profiling,
+			None => Profile::Default,
+			_ => return None,
+		};
+
+		Some(Task {
+			target,
+			action,
+			profile,
+			args: passthru_args,
+		})
 	}
 }
 
