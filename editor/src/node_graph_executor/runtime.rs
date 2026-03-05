@@ -26,6 +26,7 @@ use interpreted_executor::util::wrap_network_in_scope;
 use spin::Mutex;
 use std::sync::Arc;
 use std::sync::mpsc::{Receiver, Sender};
+use vello::wgpu::TexelCopyTextureInfoBase;
 
 /// Persistent data between graph executions. It's updated via message passing from the editor thread with [`GraphRuntimeRequest`]`.
 /// Some of these fields are put into a [`WasmEditorApi`] which is passed to the final compiled graph network upon each execution.
@@ -358,12 +359,20 @@ impl NodeRuntime {
 							let surface_texture = surface_inner.get_current_texture().expect("Failed to get surface texture");
 							self.current_viewport_texture = Some(image_texture.clone());
 
-							// Blit the rendered texture to the surface
-							surface.surface.blitter.copy(
-								&executor.context.device,
-								&mut encoder,
-								&image_texture.texture.create_view(&vello::wgpu::TextureViewDescriptor::default()),
-								&surface_texture.texture.create_view(&vello::wgpu::TextureViewDescriptor::default()),
+							encoder.copy_texture_to_texture(
+								TexelCopyTextureInfoBase {
+									texture: image_texture.texture.as_ref(),
+									mip_level: 0,
+									origin: Default::default(),
+									aspect: Default::default(),
+								},
+								TexelCopyTextureInfoBase {
+									texture: &surface_texture.texture,
+									mip_level: 0,
+									origin: Default::default(),
+									aspect: Default::default(),
+								},
+								image_texture.texture.size(),
 							);
 
 							executor.context.queue.submit([encoder.finish()]);
