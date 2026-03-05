@@ -4,7 +4,8 @@ import path from "path";
 
 import { svelte } from "@sveltejs/vite-plugin-svelte";
 import { sveltePreprocess } from "svelte-preprocess";
-import { defineConfig, type PluginOption } from "vite";
+import { defineConfig } from "vite";
+import type { PluginOption } from "vite";
 import { DynamicPublicDirectory as viteMultipleAssets } from "vite-multiple-assets";
 
 const projectRootDir = path.resolve(__dirname);

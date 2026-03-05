@@ -1,5 +1,6 @@
 <script lang="ts">
-	import { isWidgetSpanColumn, isWidgetSpanRow, isWidgetSection, type Layout, isWidgetTable, type LayoutTarget } from "@graphite/messages";
+	import type { Layout, LayoutTarget } from "@graphite/messages";
+	import { isWidgetSpanColumn, isWidgetSpanRow, isWidgetTable, isWidgetSection } from "@graphite/utility-functions/widgets";
 
 	import WidgetSection from "@graphite/components/widgets/WidgetSection.svelte";
 	import WidgetSpan from "@graphite/components/widgets/WidgetSpan.svelte";

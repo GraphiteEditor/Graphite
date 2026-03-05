@@ -1,4 +1,4 @@
-use glam::{DVec2, IVec2};
+use glam::IVec2;
 use graph_craft::document::NodeId;
 use graph_craft::document::value::TaggedValue;
 use graphene_std::Type;
@@ -162,14 +162,14 @@ pub enum ContextMenuData {
 pub struct ContextMenuInformation {
 	// Stores whether the context menu is open and its position in graph coordinates
 	#[serde(rename = "contextMenuCoordinates")]
-	pub context_menu_coordinates: FrontendXY,
+	pub context_menu_coordinates: IVec2,
 	#[serde(rename = "contextMenuData")]
 	pub context_menu_data: ContextMenuData,
 }
 
 #[derive(Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize, specta::Type)]
 pub struct NodeGraphErrorDiagnostic {
-	pub position: FrontendXY,
+	pub position: IVec2,
 	pub error: String,
 }
 
@@ -195,23 +195,4 @@ pub enum Direction {
 	Down,
 	Left,
 	Right,
-}
-
-/// Stores node graph coordinates which are then transformed in Svelte based on the node graph transform
-#[derive(Clone, Debug, PartialEq, Default, serde::Serialize, serde::Deserialize, specta::Type)]
-pub struct FrontendXY {
-	pub x: i32,
-	pub y: i32,
-}
-
-impl From<DVec2> for FrontendXY {
-	fn from(v: DVec2) -> Self {
-		FrontendXY { x: v.x as i32, y: v.y as i32 }
-	}
-}
-
-impl From<IVec2> for FrontendXY {
-	fn from(v: IVec2) -> Self {
-		FrontendXY { x: v.x, y: v.y }
-	}
 }

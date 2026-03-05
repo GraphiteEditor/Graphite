@@ -590,7 +590,11 @@ mod test {
 
 			for response in responses {
 				// Check for the existence of the file format incompatibility warning dialog after opening the test file
-				if let FrontendMessage::UpdateDialogColumn1 { diff } = response {
+				if let FrontendMessage::UpdateLayout {
+					layout_target: LayoutTarget::DialogColumn1,
+					diff,
+				} = response
+				{
 					if let DiffUpdate::Layout(sub_layout) = &diff[0].new_value {
 						if let LayoutGroup::Row { widgets } = &sub_layout.0[0] {
 							if let Widget::TextLabel(TextLabel { value, .. }) = &*widgets[0].widget {
