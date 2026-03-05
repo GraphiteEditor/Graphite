@@ -180,6 +180,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
 			// Create executor
 			let executor = create_executor(proto_graph)?;
 
+			if fps <= 0. {
+				return Err("Fps number must be positive".into());
+			}
+
 			// Perform export based on file type
 			if file_type == export::FileType::Gif {
 				let animation = export::AnimationParams::new(fps, frames, duration);
