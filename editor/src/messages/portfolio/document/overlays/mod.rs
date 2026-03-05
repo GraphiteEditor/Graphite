@@ -1,4 +1,5 @@
 pub mod grid_overlays;
+pub mod guide_line_overlays;
 mod overlays_message;
 mod overlays_message_handler;
 pub mod utility_functions;
