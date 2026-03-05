@@ -48,18 +48,27 @@ fn run_task(task: &Task) -> Result<(), Error> {
 		(Target::Web, Action::Build, Profile::Release | Profile::Default) => npm_run_in_frontend_dir("build")?,
 		(Target::Web, Action::Build, Profile::Profiling) => npm_run_in_frontend_dir("build-profiling")?,
 
-		(Target::Desktop, action, profile) => {
-			if matches!((action, profile), (_, Profile::Release) | (Action::Build, Profile::Default)) {
+		(Target::Desktop, action, mut profile) => {
+			if matches!(profile, Profile::Default) {
+				profile = match action {
+					Action::Build => &Profile::Release,
+					Action::Run => &Profile::Debug,
+				}
+			}
+
+			if matches!(profile, Profile::Release) {
 				npm_run_in_frontend_dir("build-native")?;
 			} else {
 				npm_run_in_frontend_dir("build-native-dev")?;
 			};
+
 			run("cargo run -p third-party-licenses --features desktop")?;
 
 			let cargo_profile = match profile {
-				Profile::Debug | Profile::Default => "dev",
+				Profile::Debug => "dev",
 				Profile::Release => "release",
 				Profile::Profiling => "profiling",
+				Profile::Default => unreachable!(),
 			};
 			let args = if let Action::Run = action { format!(" -- open {}", task.args.join(" ")) } else { "".to_string() };
 			run(&format!("cargo run --profile {cargo_profile} -p graphite-desktop-bundle{args}"))?;
