@@ -1,6 +1,6 @@
 import { writable } from "svelte/store";
 
-import { type Editor } from "@graphite/editor";
+import type { Editor } from "@graphite/editor";
 
 export function createFullscreenState(editor: Editor) {
 	// Experimental Keyboard API: https://developer.mozilla.org/en-US/docs/Web/API/Navigator/keyboard

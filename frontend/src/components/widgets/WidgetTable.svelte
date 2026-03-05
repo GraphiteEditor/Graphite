@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { type LayoutTarget, type WidgetTable as WidgetTableFromJsMessages } from "@graphite/messages";
+	import type { LayoutTarget, WidgetTable as WidgetTableFromJsMessages } from "@graphite/messages";
 
 	import WidgetSpan from "@graphite/components/widgets/WidgetSpan.svelte";
 

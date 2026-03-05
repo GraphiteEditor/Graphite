@@ -1,4 +1,4 @@
-import { type Editor } from "@graphite/editor";
+import type { Editor } from "@graphite/editor";
 
 let resizeObserver: ResizeObserver | undefined;
 

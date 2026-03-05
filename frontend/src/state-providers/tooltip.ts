@@ -1,6 +1,6 @@
 import { writable } from "svelte/store";
 
-import { type Editor } from "@graphite/editor";
+import type { Editor } from "@graphite/editor";
 import type { ActionShortcut } from "@graphite/messages";
 import { operatingSystem } from "@graphite/utility-functions/platform";
 

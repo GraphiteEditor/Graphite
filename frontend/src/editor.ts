@@ -2,8 +2,9 @@
 
 import { EditorHandle } from "@graphite/../wasm/pkg/graphite_wasm";
 import init, { wasmMemory, receiveNativeMessage } from "@graphite/../wasm/pkg/graphite_wasm";
-import { type JsMessageType } from "@graphite/messages";
-import { createSubscriptionRouter, type SubscriptionRouter } from "@graphite/subscription-router";
+import type { JsMessageType } from "@graphite/messages";
+import { createSubscriptionRouter } from "@graphite/subscription-router";
+import type { SubscriptionRouter } from "@graphite/subscription-router";
 import { operatingSystem } from "@graphite/utility-functions/platform";
 
 // TODO: Remove `raw`, split out `subscriptions`, and unwrap the remaining `handle` so `EditorHandle` can replace `Editor` and then it can also be renamed to `Editor` to fully remove `EditorHandle`.

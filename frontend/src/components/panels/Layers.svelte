@@ -3,12 +3,12 @@
 	import { SvelteMap } from "svelte/reactivity";
 
 	import type { Editor } from "@graphite/editor";
-	import { patchLayout } from "@graphite/messages";
 	import type { LayerPanelEntry, LayerStructureEntry, Layout } from "@graphite/messages";
 	import type { NodeGraphState } from "@graphite/state-providers/node-graph";
 	import type { TooltipState } from "@graphite/state-providers/tooltip";
 	import { pasteFile } from "@graphite/utility-functions/files";
 	import { operatingSystem } from "@graphite/utility-functions/platform";
+	import { patchLayout } from "@graphite/utility-functions/widgets";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";

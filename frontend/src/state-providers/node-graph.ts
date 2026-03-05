@@ -1,6 +1,6 @@
 import { writable } from "svelte/store";
 
-import { type Editor } from "@graphite/editor";
+import type { Editor } from "@graphite/editor";
 import type { NodeGraphError, Box, FrontendClickTargets, ContextMenuInformation, FrontendNode, FrontendNodeType, WirePath, UpdateImportsExports } from "@graphite/messages";
 
 export function createNodeGraphState(editor: Editor) {

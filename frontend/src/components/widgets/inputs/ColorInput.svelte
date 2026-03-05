@@ -2,7 +2,7 @@
 	import { createEventDispatcher } from "svelte";
 
 	import type { FillChoice, MenuDirection, ActionShortcut } from "@graphite/messages";
-	import { type Color } from "@graphite/messages";
+	import type { Color } from "@graphite/messages";
 	import { contrastingOutlineFactor, isColor, isGradient, colorToHexOptionalAlpha, gradientToLinearGradientCSS } from "@graphite/utility-functions/colors";
 
 	import ColorPicker from "@graphite/components/floating-menus/ColorPicker.svelte";

@@ -3,10 +3,10 @@
 
 	import type { Editor } from "@graphite/editor";
 	import type { Layout } from "@graphite/messages";
-	import { patchLayout } from "@graphite/messages";
 	import type { AppWindowState } from "@graphite/state-providers/app-window";
 	import type { FullscreenState } from "@graphite/state-providers/fullscreen";
 	import type { TooltipState } from "@graphite/state-providers/tooltip";
+	import { patchLayout } from "@graphite/utility-functions/widgets";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import IconLabel from "@graphite/components/widgets/labels/IconLabel.svelte";

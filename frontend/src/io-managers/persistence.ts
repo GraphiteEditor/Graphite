@@ -1,9 +1,9 @@
 import { createStore, del, get, set, update } from "idb-keyval";
 import { get as getFromStore } from "svelte/store";
 
-import { type Editor } from "@graphite/editor";
+import type { Editor } from "@graphite/editor";
 import type { TriggerPersistenceWriteDocument, TriggerSavePreferences } from "@graphite/messages";
-import { type PortfolioState } from "@graphite/state-providers/portfolio";
+import type { PortfolioState } from "@graphite/state-providers/portfolio";
 
 const graphiteStore = createStore("graphite", "store");
 

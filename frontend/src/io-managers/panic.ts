@@ -1,5 +1,5 @@
-import { type Editor } from "@graphite/editor";
-import { type DialogState } from "@graphite/state-providers/dialog";
+import type { Editor } from "@graphite/editor";
+import type { DialogState } from "@graphite/state-providers/dialog";
 import { browserVersion, operatingSystem } from "@graphite/utility-functions/platform";
 import { stripIndents } from "@graphite/utility-functions/strip-indents";
 

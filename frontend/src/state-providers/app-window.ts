@@ -1,6 +1,6 @@
 import { writable } from "svelte/store";
 
-import { type Editor } from "@graphite/editor";
+import type { Editor } from "@graphite/editor";
 import type { AppWindowPlatform } from "@graphite/messages";
 
 export function createAppWindowState(editor: Editor) {

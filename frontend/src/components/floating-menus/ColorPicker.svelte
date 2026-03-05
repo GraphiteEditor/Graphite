@@ -5,8 +5,6 @@
 	import type { Color } from "@graphite/messages";
 	import type { TooltipState } from "@graphite/state-providers/tooltip";
 	import {
-		type HSV,
-		type RGB,
 		contrastingOutlineFactor,
 		isColor,
 		isGradient,
@@ -24,6 +22,7 @@
 		colorEquals,
 		gradientFirstColor,
 	} from "@graphite/utility-functions/colors";
+	import type { HSV, RGB } from "@graphite/utility-functions/colors";
 	import { clamp } from "@graphite/utility-functions/math";
 	import { isDesktop } from "@graphite/utility-functions/platform";
 

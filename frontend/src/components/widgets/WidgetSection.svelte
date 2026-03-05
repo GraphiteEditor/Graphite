@@ -2,7 +2,8 @@
 	import { getContext } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import { isWidgetSpanRow, isWidgetSection, type WidgetSection as WidgetSectionFromJsMessages, type LayoutTarget } from "@graphite/messages";
+	import type { WidgetSection as WidgetSectionFromJsMessages, LayoutTarget } from "@graphite/messages";
+	import { isWidgetSpanRow, isWidgetSection } from "@graphite/utility-functions/widgets";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";

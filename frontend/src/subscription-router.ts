@@ -1,4 +1,5 @@
-import { type JsMessageType, type JsMessageTypeMap, type LayoutTarget, type WidgetDiff, parseWidgetDiffs } from "@graphite/messages";
+import type { JsMessageType, JsMessageTypeMap, LayoutTarget, WidgetDiff } from "@graphite/messages";
+import { parseWidgetDiffs } from "@graphite/utility-functions/widgets";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type JsMessageCallbackMap = Record<string, ((messageData: any) => void) | undefined>;

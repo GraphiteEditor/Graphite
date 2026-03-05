@@ -1,4 +1,4 @@
-import { type Editor } from "@graphite/editor";
+import type { Editor } from "@graphite/editor";
 
 type ApiResponse = { family: string; variants: string[]; files: Record<string, string> }[];
 

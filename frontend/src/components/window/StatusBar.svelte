@@ -3,7 +3,7 @@
 
 	import type { Editor } from "@graphite/editor";
 	import type { Layout } from "@graphite/messages";
-	import { patchLayout } from "@graphite/messages";
+	import { patchLayout } from "@graphite/utility-functions/widgets";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
 	import Separator from "@graphite/components/widgets/labels/Separator.svelte";

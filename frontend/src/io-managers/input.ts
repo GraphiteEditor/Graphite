@@ -1,10 +1,10 @@
 import { get } from "svelte/store";
 
-import { type Editor } from "@graphite/editor";
-import { type DialogState } from "@graphite/state-providers/dialog";
-import { type DocumentState } from "@graphite/state-providers/document";
-import { type FullscreenState } from "@graphite/state-providers/fullscreen";
-import { type PortfolioState } from "@graphite/state-providers/portfolio";
+import type { Editor } from "@graphite/editor";
+import type { DialogState } from "@graphite/state-providers/dialog";
+import type { DocumentState } from "@graphite/state-providers/document";
+import type { FullscreenState } from "@graphite/state-providers/fullscreen";
+import type { PortfolioState } from "@graphite/state-providers/portfolio";
 import { pasteFile } from "@graphite/utility-functions/files";
 import { makeKeyboardModifiersBitfield, textInputCleanup, getLocalizedScanCode } from "@graphite/utility-functions/keyboard-entry";
 import { isDesktop, operatingSystem } from "@graphite/utility-functions/platform";

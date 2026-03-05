@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { type IconName, type PopoverButtonStyle } from "@graphite/icons";
+	import type { IconName, PopoverButtonStyle } from "@graphite/icons";
 
 	import type { MenuDirection, ActionShortcut, Layout, LayoutTarget } from "@graphite/messages";
 

@@ -1,4 +1,4 @@
-import { type Editor } from "@graphite/editor";
+import type { Editor } from "@graphite/editor";
 import { extractPixelData } from "@graphite/utility-functions/rasterization";
 
 export function downloadFileURL(filename: string, url: string) {

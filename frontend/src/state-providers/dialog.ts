@@ -1,9 +1,9 @@
 import { writable } from "svelte/store";
 
-import { type Editor } from "@graphite/editor";
-import { type IconName } from "@graphite/icons";
-import { patchLayout } from "@graphite/messages";
+import type { Editor } from "@graphite/editor";
+import type { IconName } from "@graphite/icons";
 import type { Layout } from "@graphite/messages";
+import { patchLayout } from "@graphite/utility-functions/widgets";
 
 export function createDialogState(editor: Editor) {
 	const { subscribe, update } = writable({

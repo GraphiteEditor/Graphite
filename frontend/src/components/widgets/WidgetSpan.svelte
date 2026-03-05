@@ -3,8 +3,8 @@
 
 	import type { Editor } from "@graphite/editor";
 	import type { LayoutTarget, WidgetInstance, WidgetPropsNames, WidgetPropsSet, WidgetTypes, WidgetSpanColumn, WidgetSpanRow } from "@graphite/messages";
-	import { isWidgetSpanColumn, isWidgetSpanRow } from "@graphite/messages";
 	import { debouncer } from "@graphite/utility-functions/debounce";
+	import { isWidgetSpanColumn, isWidgetSpanRow } from "@graphite/utility-functions/widgets";
 
 	import NodeCatalog from "@graphite/components/floating-menus/NodeCatalog.svelte";
 	import BreadcrumbTrailButtons from "@graphite/components/widgets/buttons/BreadcrumbTrailButtons.svelte";

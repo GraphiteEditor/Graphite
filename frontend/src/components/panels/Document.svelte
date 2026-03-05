@@ -2,7 +2,8 @@
 	import { getContext, onMount, onDestroy, tick } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import { type Color, type DisplayEditableTextbox, type MenuDirection, type MouseCursor, mouseCursorIconCSSNames, isWidgetSpanRow } from "@graphite/messages";
+	import { mouseCursorIconCSSNames } from "@graphite/messages";
+	import type { Color, DisplayEditableTextbox, MenuDirection, MouseCursor } from "@graphite/messages";
 	import type { AppWindowState } from "@graphite/state-providers/app-window";
 	import type { DocumentState } from "@graphite/state-providers/document";
 	import { isColor, createColor } from "@graphite/utility-functions/colors";
@@ -10,6 +11,7 @@
 	import { textInputCleanup } from "@graphite/utility-functions/keyboard-entry";
 	import { rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
 	import { setupViewportResizeObserver, cleanupViewportResizeObserver } from "@graphite/utility-functions/viewports";
+	import { isWidgetSpanRow } from "@graphite/utility-functions/widgets";
 
 	import ColorPicker from "@graphite/components/floating-menus/ColorPicker.svelte";
 	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "@graphite/components/floating-menus/EyedropperPreview.svelte";
