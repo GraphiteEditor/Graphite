@@ -131,7 +131,6 @@ export type LabeledShortcut = LabeledKeyOrMouseMotion[];
 export type ActionShortcut = { shortcut: LabeledShortcut };
 
 // Channels can have any range (0-1, 0-255, 0-100, 0-360) in the context they are being used in, these are just containers for the numbers
-type HSVA = { h: number; s: number; v: number; a: number };
 export type HSV = { h: number; s: number; v: number };
 export type RGB = { r: number; g: number; b: number };
 
@@ -264,10 +263,10 @@ export function colorToRgbaCSS(color: Color): string | undefined {
 	return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${color.alpha})`;
 }
 
-export function colorToHSVA(color: Color): HSVA | undefined {
+export function colorToHSV(color: Color): HSV | undefined {
 	if (color.none) return undefined;
 
-	const { red: r, green: g, blue: b, alpha: a } = color;
+	const { red: r, green: g, blue: b } = color;
 
 	const max = Math.max(r, g, b);
 	const min = Math.min(r, g, b);
@@ -293,7 +292,7 @@ export function colorToHSVA(color: Color): HSVA | undefined {
 		h /= 6;
 	}
 
-	return { h, s, v, a };
+	return { h, s, v };
 }
 
 export function colorOpaque(color: Color): Color | undefined {
@@ -481,7 +480,7 @@ export function contrastingOutlineFactor(value: FillChoice, proximityColor: stri
 
 		const distance = Math.max(0, rangeLuminance1 - lum, lum - rangeLuminance2);
 
-		return (1 - Math.min(distance / proximityRange, 1)) * (1 - (colorToHSVA(color)?.s || 0));
+		return (1 - Math.min(distance / proximityRange, 1)) * (1 - (colorToHSV(color)?.s || 0));
 	};
 
 	if (isGradient(value)) {
