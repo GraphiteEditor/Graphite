@@ -362,13 +362,13 @@ impl NodeRuntime {
 							self.current_viewport_texture = Some(image_texture.clone());
 
 							encoder.copy_texture_to_texture(
-								wgpu::TexelCopyTextureInfoBase {
+								vello::wgpu::TexelCopyTextureInfoBase {
 									texture: image_texture.texture.as_ref(),
 									mip_level: 0,
 									origin: Default::default(),
 									aspect: Default::default(),
 								},
-								wgpu::TexelCopyTextureInfoBase {
+								vello::wgpu::TexelCopyTextureInfoBase {
 									texture: &surface_texture.texture,
 									mip_level: 0,
 									origin: Default::default(),
