@@ -1,6 +1,7 @@
-use criterion::{Criterion, black_box, criterion_group, criterion_main};
+use criterion::{Criterion, criterion_group, criterion_main};
 use math_parser::ast;
 use math_parser::context::EvalContext;
+use std::hint::black_box;
 
 macro_rules! generate_benchmarks {
 	($( $input:expr_2021 ),* $(,)?) => {
