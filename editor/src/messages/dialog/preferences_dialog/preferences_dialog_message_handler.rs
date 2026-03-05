@@ -387,6 +387,39 @@ impl PreferencesDialogMessageHandler {
 
 				rows.push(ui_acceleration);
 			}
+
+			#[cfg(target_os = "macos")]
+			{
+				let vsync_description = "
+					Enable vertical synchronization (VSync), which synchronizes the frame rate to the display's refresh rate. This can reduce screen tearing but may add input latency.\n\
+					\n\
+					*Default: Off.*
+					"
+				.trim();
+
+				let checkbox_id = CheckboxId::new();
+				let vsync_checked = preferences.vsync;
+
+				let vsync = vec![
+					Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+					Separator::new(SeparatorStyle::Unrelated).widget_instance(),
+					CheckboxInput::new(vsync_checked)
+						.tooltip_label("Enable VSync")
+						.tooltip_description(vsync_description)
+						.on_update(|checkbox_input: &CheckboxInput| Message::Batched {
+							messages: Box::new([PreferencesDialogMessage::MayRequireRestart.into(), PreferencesMessage::VSync { vsync: checkbox_input.checked }.into()]),
+						})
+						.for_label(checkbox_id)
+						.widget_instance(),
+					TextLabel::new("Enable VSync")
+						.tooltip_label("Enable VSync")
+						.tooltip_description(vsync_description)
+						.for_checkbox(checkbox_id)
+						.widget_instance(),
+				];
+
+				rows.push(vsync);
+			}
 		}
 
 		Layout(rows.into_iter().map(|r| LayoutGroup::Row { widgets: r }).collect())

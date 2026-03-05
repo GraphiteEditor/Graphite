@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use wgpu::PresentMode;
 
 use crate::window::Window;
 use crate::wrapper::{TargetTexture, WgpuContext, WgpuExecutor};
@@ -27,7 +28,7 @@ pub(crate) struct RenderState {
 }
 
 impl RenderState {
-	pub(crate) fn new(window: &Window, context: WgpuContext) -> Self {
+	pub(crate) fn new(window: &Window, context: WgpuContext, present_mode: Option<PresentMode>) -> Self {
 		let size = window.surface_size();
 		let surface = window.create_surface(context.instance.clone());
 
@@ -39,10 +40,7 @@ impl RenderState {
 			format: surface_format,
 			width: size.width,
 			height: size.height,
-			#[cfg(not(target_os = "macos"))]
-			present_mode: surface_caps.present_modes[0],
-			#[cfg(target_os = "macos")]
-			present_mode: wgpu::PresentMode::Immediate,
+			present_mode: present_mode.unwrap_or(surface_caps.present_modes[0]),
 			alpha_mode: surface_caps.alpha_modes[0],
 			view_formats: vec![],
 			desired_maximum_frame_latency: 1,
