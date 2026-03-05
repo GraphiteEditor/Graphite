@@ -2,35 +2,35 @@ import { sampleInterpolatedGradient } from "@graphite/../wasm/pkg/graphite_wasm"
 import { type PopoverButtonStyle, type IconName, type IconSize } from "@graphite/icons";
 
 export type NodeGraphError = {
-	readonly position: [number, number];
-	readonly error: string;
+	position: [number, number];
+	error: string;
 };
 
 export type OpenDocument = {
-	readonly id: bigint;
-	readonly details: DocumentDetails;
+	id: bigint;
+	details: DocumentDetails;
 };
 
-export type DocumentDetails = {
-	readonly name: string;
-	readonly isAutoSaved: boolean;
-	readonly isSaved: boolean;
+type DocumentDetails = {
+	name: string;
+	isAutoSaved: boolean;
+	isSaved: boolean;
 };
 
 export type Box = {
-	readonly startX: number;
-	readonly startY: number;
-	readonly endX: number;
-	readonly endY: number;
+	startX: number;
+	startY: number;
+	endX: number;
+	endY: number;
 };
 
 export type FrontendClickTargets = {
-	readonly nodeClickTargets: string[];
-	readonly layerClickTargets: string[];
-	readonly connectorClickTargets: string[];
-	readonly iconClickTargets: string[];
-	readonly allNodesBoundingBox: string;
-	readonly modifyImportExport: string[];
+	nodeClickTargets: string[];
+	layerClickTargets: string[];
+	connectorClickTargets: string[];
+	iconClickTargets: string[];
+	allNodesBoundingBox: string;
+	modifyImportExport: string[];
 };
 
 type ContextMenuDataCreateNode = {
@@ -57,68 +57,66 @@ export type ContextMenuInformation = {
 export type FrontendGraphDataType = "General" | "Number" | "Artboard" | "Graphic" | "Raster" | "Vector" | "Color" | "Invalid";
 
 export type FrontendGraphInput = {
-	readonly dataType: FrontendGraphDataType;
-	readonly name: string;
-	readonly description: string;
-	readonly resolvedType: string;
-	readonly validTypes: string[];
-	readonly connectedTo: string;
+	dataType: FrontendGraphDataType;
+	name: string;
+	description: string;
+	resolvedType: string;
+	validTypes: string[];
+	connectedTo: string;
 };
 
 export type FrontendGraphOutput = {
-	readonly dataType: FrontendGraphDataType;
-	readonly name: string;
-	readonly description: string;
-	readonly resolvedType: string;
-	readonly connectedTo: string[];
+	dataType: FrontendGraphDataType;
+	name: string;
+	description: string;
+	resolvedType: string;
+	connectedTo: string[];
 };
 
 export type FrontendNode = {
-	readonly id: bigint;
-	readonly isLayer: boolean;
-	readonly canBeLayer: boolean;
-	readonly reference: string | undefined;
-	readonly displayName: string;
-	readonly implementationName: string;
-	readonly primaryInput: FrontendGraphInput | undefined;
-	readonly exposedInputs: FrontendGraphInput[];
-	readonly primaryOutput: FrontendGraphOutput | undefined;
-	readonly exposedOutputs: FrontendGraphOutput[];
-	readonly primaryInputConnectedToLayer: boolean;
-	readonly primaryOutputConnectedToLayer: boolean;
-	readonly position: [number, number];
+	id: bigint;
+	isLayer: boolean;
+	canBeLayer: boolean;
+	reference: string | undefined;
+	displayName: string;
+	implementationName: string;
+	primaryInput: FrontendGraphInput | undefined;
+	exposedInputs: FrontendGraphInput[];
+	primaryOutput: FrontendGraphOutput | undefined;
+	exposedOutputs: FrontendGraphOutput[];
+	primaryInputConnectedToLayer: boolean;
+	primaryOutputConnectedToLayer: boolean;
+	position: [number, number];
 	// TODO: Store field for the width of the left node chain
-	readonly previewed: boolean;
-	readonly visible: boolean;
-	readonly locked: boolean;
+	previewed: boolean;
+	visible: boolean;
+	locked: boolean;
 };
 
 export type FrontendNodeType = {
-	readonly identifier: string;
-	readonly name: string;
-	readonly category: string;
-	readonly inputTypes: string[];
+	identifier: string;
+	name: string;
+	category: string;
+	inputTypes: string[];
 };
 
-export type DefinitionIdentifier = { type: "Network" | "ProtoNode"; data: string };
-
 export type NodeGraphTransform = {
-	readonly scale: number;
-	readonly x: number;
-	readonly y: number;
+	scale: number;
+	x: number;
+	y: number;
 };
 
 export type WirePath = {
-	readonly pathString: string;
-	readonly dataType: FrontendGraphDataType;
-	readonly thick: boolean;
-	readonly dashed: boolean;
+	pathString: string;
+	dataType: FrontendGraphDataType;
+	thick: boolean;
+	dashed: boolean;
 };
 
-export type WireUpdate = {
-	readonly id: bigint;
-	readonly inputIndex: number;
-	readonly wirePathUpdate: WirePath | undefined;
+type WireUpdate = {
+	id: bigint;
+	inputIndex: number;
+	wirePathUpdate: WirePath | undefined;
 };
 
 export type AppWindowPlatform = "Web" | "Windows" | "Mac" | "Linux";
@@ -126,14 +124,14 @@ export type AppWindowPlatform = "Web" | "Windows" | "Mac" | "Linux";
 // Rust enum `Key`
 export type KeyRaw = string;
 // Serde converts a Rust `Key` enum variant into this format with both the `Key` variant name (called `RawKey` in TS) and the localized `label` for the key
-export type LabeledKey = { key: KeyRaw; label: string };
+type LabeledKey = { key: KeyRaw; label: string };
 export type MouseMotion = "None" | "Lmb" | "Rmb" | "Mmb" | "ScrollUp" | "ScrollDown" | "Drag" | "LmbDouble" | "LmbDrag" | "RmbDrag" | "RmbDouble" | "MmbDrag";
-export type LabeledKeyOrMouseMotion = LabeledKey | MouseMotion;
+type LabeledKeyOrMouseMotion = LabeledKey | MouseMotion;
 export type LabeledShortcut = LabeledKeyOrMouseMotion[];
 export type ActionShortcut = { shortcut: LabeledShortcut };
 
 // Channels can have any range (0-1, 0-255, 0-100, 0-360) in the context they are being used in, these are just containers for the numbers
-export type HSVA = { h: number; s: number; v: number; a: number };
+type HSVA = { h: number; s: number; v: number; a: number };
 export type HSV = { h: number; s: number; v: number };
 export type RGB = { r: number; g: number; b: number };
 
@@ -145,11 +143,11 @@ export type Gradient = {
 
 // All channels range are represented by 0-1, sRGB, gamma.
 export type Color = {
-	readonly red: number;
-	readonly green: number;
-	readonly blue: number;
-	readonly alpha: number;
-	readonly none: boolean;
+	red: number;
+	green: number;
+	blue: number;
+	alpha: number;
+	none: boolean;
 };
 
 // COLOR FACTORY FUNCTIONS
@@ -376,9 +374,9 @@ export function parseFillChoice(value: any): FillChoice {
 }
 
 export type EyedropperPreviewImage = {
-	readonly data: Uint8Array;
-	readonly width: number;
-	readonly height: number;
+	data: Uint8Array;
+	width: number;
+	height: number;
 };
 
 export const mouseCursorIconCSSNames = {
@@ -404,7 +402,7 @@ export type LayerStructureEntry = {
 	children: LayerStructureEntry[];
 };
 
-export type TextAlign = "Left" | "Center" | "Right" | "JustifyLeft";
+type TextAlign = "Left" | "Center" | "Right" | "JustifyLeft";
 
 export type LayerPanelEntry = {
 	id: bigint;
@@ -1022,7 +1020,7 @@ export function patchLayout(layout: /* &mut */ Layout, diffs: WidgetDiff[]) {
 	});
 }
 
-export type LayoutGroup = WidgetSpanRow | WidgetSpanColumn | WidgetTable | WidgetSection;
+type LayoutGroup = WidgetSpanRow | WidgetSpanColumn | WidgetTable | WidgetSection;
 export type Layout = LayoutGroup[];
 
 export type WidgetSpanColumn = { columnWidgets: WidgetInstance[] };
@@ -1088,33 +1086,33 @@ function createLayoutGroup(layoutGroup: any): LayoutGroup {
 
 export type JsMessageTypeMap = {
 	ClearAllNodeGraphWires: Record<string, never>;
-	DisplayDialog: { readonly title: string; readonly icon: IconName };
+	DisplayDialog: { title: string; icon: IconName };
 	DialogClose: Record<string, never>;
-	DisplayDialogPanic: { readonly panicInfo: string };
+	DisplayDialogPanic: { panicInfo: string };
 	DisplayEditableTextbox: {
-		readonly text: string;
-		readonly lineHeightRatio: number;
-		readonly fontSize: number;
-		readonly color: string;
-		readonly fontData: ArrayBuffer;
-		readonly transform: number[];
-		readonly maxWidth: undefined | number;
-		readonly maxHeight: undefined | number;
-		readonly align: TextAlign;
+		text: string;
+		lineHeightRatio: number;
+		fontSize: number;
+		color: string;
+		fontData: ArrayBuffer;
+		transform: number[];
+		maxWidth: undefined | number;
+		maxHeight: undefined | number;
+		align: TextAlign;
 	};
-	DisplayEditableTextboxTransform: { readonly transform: number[] };
-	DisplayEditableTextboxUpdateFontData: { readonly fontData: ArrayBuffer };
+	DisplayEditableTextboxTransform: { transform: number[] };
+	DisplayEditableTextboxUpdateFontData: { fontData: ArrayBuffer };
 	DisplayRemoveEditableTextbox: Record<string, never>;
-	SendShortcutAltClick: { readonly shortcut: ActionShortcut | undefined };
-	SendShortcutFullscreen: { readonly shortcut: ActionShortcut | undefined; readonly shortcutMac: ActionShortcut | undefined };
-	SendShortcutShiftClick: { readonly shortcut: ActionShortcut | undefined };
-	SendUIMetadata: { readonly nodeDescriptions: [string, string][]; readonly nodeTypes: FrontendNodeType[] };
-	TriggerAboutGraphiteLocalizedCommitDate: { readonly commitDate: string };
+	SendShortcutAltClick: { shortcut: ActionShortcut | undefined };
+	SendShortcutFullscreen: { shortcut: ActionShortcut | undefined; shortcutMac: ActionShortcut | undefined };
+	SendShortcutShiftClick: { shortcut: ActionShortcut | undefined };
+	SendUIMetadata: { nodeDescriptions: [string, string][]; nodeTypes: FrontendNodeType[] };
+	TriggerAboutGraphiteLocalizedCommitDate: { commitDate: string };
 	TriggerClipboardRead: Record<string, never>;
-	TriggerClipboardWrite: { readonly content: string };
+	TriggerClipboardWrite: { content: string };
 	TriggerDisplayThirdPartyLicensesDialog: Record<string, never>;
-	TriggerExportImage: { readonly svg: string; readonly name: string; readonly mime: string; readonly size: [number, number] };
-	TriggerFetchAndOpenDocument: { readonly name: string; readonly filename: string };
+	TriggerExportImage: { svg: string; name: string; mime: string; size: [number, number] };
+	TriggerFetchAndOpenDocument: { name: string; filename: string };
 	TriggerFontCatalogLoad: Record<string, never>;
 	TriggerFontDataLoad: { font: Font; url: string };
 	TriggerImport: Record<string, never>;
@@ -1125,66 +1123,66 @@ export type JsMessageTypeMap = {
 	TriggerOpenLaunchDocuments: Record<string, never>;
 	TriggerPersistenceRemoveDocument: { documentId: bigint };
 	TriggerPersistenceWriteDocument: { documentId: bigint; document: string; details: DocumentDetails; version: string };
-	TriggerSaveActiveDocument: { readonly documentId: bigint };
-	TriggerSaveDocument: { readonly documentId: bigint; readonly name: string; readonly path: string | undefined; readonly content: ArrayBuffer };
-	TriggerSaveFile: { readonly name: string; readonly content: ArrayBuffer };
-	TriggerSavePreferences: { readonly preferences: Record<string, unknown> };
-	TriggerSelectionRead: { readonly cut: boolean };
-	TriggerSelectionWrite: { readonly content: string };
+	TriggerSaveActiveDocument: { documentId: bigint };
+	TriggerSaveDocument: { documentId: bigint; name: string; path: string | undefined; content: ArrayBuffer };
+	TriggerSaveFile: { name: string; content: ArrayBuffer };
+	TriggerSavePreferences: { preferences: Record<string, unknown> };
+	TriggerSelectionRead: { cut: boolean };
+	TriggerSelectionWrite: { content: string };
 	TriggerTextCommit: Record<string, never>;
 	TriggerVisitLink: { url: string };
-	UpdateActiveDocument: { readonly documentId: bigint };
-	UpdateBox: { readonly box: Box | undefined };
-	UpdateClickTargets: { readonly clickTargets: FrontendClickTargets | undefined };
-	UpdateContextMenuInformation: { readonly contextMenuInformation: ContextMenuInformation | undefined };
-	UpdateDataPanelState: { readonly open: boolean };
-	UpdateDocumentArtwork: { readonly svg: string };
-	UpdateDocumentLayerDetails: { readonly data: LayerPanelEntry };
-	UpdateDocumentLayerStructure: { readonly layerStructure: LayerStructureEntry[] };
-	UpdateDocumentRulers: { readonly origin: [number, number]; readonly spacing: number; readonly interval: number; readonly visible: boolean };
-	UpdateDocumentScrollbars: { readonly position: [number, number]; readonly size: [number, number]; readonly multiplier: [number, number] };
-	UpdateExportReorderIndex: { readonly exportIndex: number | undefined };
+	UpdateActiveDocument: { documentId: bigint };
+	UpdateBox: { box: Box | undefined };
+	UpdateClickTargets: { clickTargets: FrontendClickTargets | undefined };
+	UpdateContextMenuInformation: { contextMenuInformation: ContextMenuInformation | undefined };
+	UpdateDataPanelState: { open: boolean };
+	UpdateDocumentArtwork: { svg: string };
+	UpdateDocumentLayerDetails: { data: LayerPanelEntry };
+	UpdateDocumentLayerStructure: { layerStructure: LayerStructureEntry[] };
+	UpdateDocumentRulers: { origin: [number, number]; spacing: number; interval: number; visible: boolean };
+	UpdateDocumentScrollbars: { position: [number, number]; size: [number, number]; multiplier: [number, number] };
+	UpdateExportReorderIndex: { exportIndex: number | undefined };
 	UpdateEyedropperSamplingState: {
-		readonly image: EyedropperPreviewImage | undefined;
-		readonly mousePosition: [number, number] | undefined;
-		readonly primaryColor: string;
-		readonly secondaryColor: string;
-		readonly setColorChoice: "Primary" | "Secondary" | undefined;
+		image: EyedropperPreviewImage | undefined;
+		mousePosition: [number, number] | undefined;
+		primaryColor: string;
+		secondaryColor: string;
+		setColorChoice: "Primary" | "Secondary" | undefined;
 	};
-	UpdateFullscreen: { readonly fullscreen: boolean };
-	UpdateGradientStopColorPickerPosition: { readonly color: Color; readonly x: number; readonly y: number };
-	UpdateGraphFadeArtwork: { readonly percentage: number };
+	UpdateFullscreen: { fullscreen: boolean };
+	UpdateGradientStopColorPickerPosition: { color: Color; x: number; y: number };
+	UpdateGraphFadeArtwork: { percentage: number };
 	UpdateGraphViewOverlay: { open: boolean };
-	UpdateImportReorderIndex: { readonly importIndex: number | undefined };
+	UpdateImportReorderIndex: { importIndex: number | undefined };
 	UpdateImportsExports: {
-		readonly imports: (FrontendGraphOutput | undefined)[];
-		readonly exports: (FrontendGraphInput | undefined)[];
-		readonly importPosition: [number, number];
-		readonly exportPosition: [number, number];
-		readonly addImportExport: boolean;
+		imports: (FrontendGraphOutput | undefined)[];
+		exports: (FrontendGraphInput | undefined)[];
+		importPosition: [number, number];
+		exportPosition: [number, number];
+		addImportExport: boolean;
 	};
-	UpdateInSelectedNetwork: { readonly inSelectedNetwork: boolean };
-	UpdateLayersPanelState: { readonly open: boolean };
-	UpdateLayerWidths: { readonly layerWidths: Map<bigint, number>; readonly chainWidths: Map<bigint, number>; readonly hasLeftInputWire: Map<bigint, boolean> };
-	UpdateLayout: { readonly layoutTarget: LayoutTarget; readonly diff: WidgetDiff[] };
-	UpdateMaximized: { readonly maximized: boolean };
-	UpdateMouseCursor: { readonly cursor: MouseCursor };
-	UpdateNodeGraphErrorDiagnostic: { readonly error: NodeGraphError | undefined };
-	UpdateNodeGraphNodes: { readonly nodes: FrontendNode[] };
-	UpdateNodeGraphSelection: { readonly selected: bigint[] };
-	UpdateNodeGraphTransform: { readonly transform: NodeGraphTransform };
-	UpdateNodeGraphWires: { readonly wires: WireUpdate[] };
-	UpdateNodeThumbnail: { readonly id: bigint; readonly value: string };
-	UpdateOpenDocumentsList: { readonly openDocuments: OpenDocument[] };
-	UpdatePlatform: { readonly platform: AppWindowPlatform };
-	UpdatePropertiesPanelState: { readonly open: boolean };
-	UpdateUIScale: { readonly scale: number };
-	UpdateViewportHolePunch: { readonly active: boolean };
-	UpdateViewportPhysicalBounds: { readonly x: number; readonly y: number; readonly width: number; readonly height: number };
-	UpdateVisibleNodes: { readonly nodes: bigint[] };
-	UpdateWirePathInProgress: { readonly wirePath: WirePath | undefined };
+	UpdateInSelectedNetwork: { inSelectedNetwork: boolean };
+	UpdateLayersPanelState: { open: boolean };
+	UpdateLayerWidths: { layerWidths: Map<bigint, number>; chainWidths: Map<bigint, number>; hasLeftInputWire: Map<bigint, boolean> };
+	UpdateLayout: { layoutTarget: LayoutTarget; diff: WidgetDiff[] };
+	UpdateMaximized: { maximized: boolean };
+	UpdateMouseCursor: { cursor: MouseCursor };
+	UpdateNodeGraphErrorDiagnostic: { error: NodeGraphError | undefined };
+	UpdateNodeGraphNodes: { nodes: FrontendNode[] };
+	UpdateNodeGraphSelection: { selected: bigint[] };
+	UpdateNodeGraphTransform: { transform: NodeGraphTransform };
+	UpdateNodeGraphWires: { wires: WireUpdate[] };
+	UpdateNodeThumbnail: { id: bigint; value: string };
+	UpdateOpenDocumentsList: { openDocuments: OpenDocument[] };
+	UpdatePlatform: { platform: AppWindowPlatform };
+	UpdatePropertiesPanelState: { open: boolean };
+	UpdateUIScale: { scale: number };
+	UpdateViewportHolePunch: { active: boolean };
+	UpdateViewportPhysicalBounds: { x: number; y: number; width: number; height: number };
+	UpdateVisibleNodes: { nodes: bigint[] };
+	UpdateWirePathInProgress: { wirePath: WirePath | undefined };
 	WindowFullscreen: Record<string, never>;
-	WindowPointerLockMove: { readonly x: number; readonly y: number };
+	WindowPointerLockMove: { x: number; y: number };
 };
 export type JsMessageType = keyof JsMessageTypeMap;
 
