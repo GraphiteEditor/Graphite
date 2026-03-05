@@ -1,5 +1,4 @@
 import type { Layout, LayoutGroup, UIItem, WidgetDiff, WidgetInstance, WidgetSection, WidgetSpanColumn, WidgetSpanRow, WidgetTable } from "@graphite/messages";
-import { parseFillChoice } from "@graphite/utility-functions/colors";
 
 export function isWidgetSpanColumn(layoutColumn: LayoutGroup): layoutColumn is WidgetSpanColumn {
 	return Boolean((layoutColumn as WidgetSpanColumn)?.columnWidgets);
@@ -17,22 +16,16 @@ export function isWidgetSection(layoutRow: LayoutGroup): layoutRow is WidgetSect
 	return Boolean((layoutRow as WidgetSection)?.layout);
 }
 
+/// Unwraps the Serde tagged enum `{ widgetId, widget: { Kind: props } }` into `{ widgetId, props: { kind, ...props } }`
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function parseWidgetInstance(widgetInstance: any): WidgetInstance {
+	const widgetId = widgetInstance.widgetId;
+
 	const kind = Object.keys(widgetInstance.widget)[0];
 	const props = widgetInstance.widget[kind];
 	props.kind = kind;
 
-	if (kind === "PopoverButton") {
-		props.popoverLayout = props.popoverLayout.map(createLayoutGroup);
-	}
-	if (kind === "ColorInput") {
-		props.value = parseFillChoice(props.value);
-	}
-
-	const { widgetId } = widgetInstance;
-
-	return { props, widgetId };
+	return { widgetId, props };
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -60,6 +53,7 @@ export function patchLayout(layout: /* &mut */ Layout, diffs: WidgetDiff[]) {
 			if (targetLayout && "layout" in targetLayout) return targetLayout.layout[index];
 			if (targetLayout && "props" in targetLayout && "widgetId" in targetLayout) {
 				if (targetLayout.props.kind === "PopoverButton" && "popoverLayout" in targetLayout.props && targetLayout.props.popoverLayout) {
+					targetLayout.props.popoverLayout = targetLayout.props.popoverLayout.map(createLayoutGroup);
 					return targetLayout.props.popoverLayout[index];
 				}
 				// eslint-disable-next-line no-console
@@ -96,7 +90,10 @@ export function patchLayout(layout: /* &mut */ Layout, diffs: WidgetDiff[]) {
 
 // Unpacking a layout group
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-function createLayoutGroup(layoutGroup: any): LayoutGroup {
+export function createLayoutGroup(layoutGroup: any): LayoutGroup {
+	// Detect if this has already been parsed and, if so, return it as-is so this function can be idempotent
+	if ("columnWidgets" in layoutGroup || "rowWidgets" in layoutGroup || "tableWidgets" in layoutGroup || ("name" in layoutGroup && "layout" in layoutGroup)) return layoutGroup;
+
 	if (layoutGroup.column) {
 		const columnWidgets = layoutGroup.column.columnWidgets.map(parseWidgetInstance);
 

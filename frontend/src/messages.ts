@@ -625,8 +625,8 @@ export type WidgetPropsNames = keyof WidgetTypes;
 export type WidgetPropsSet = WidgetTypes[WidgetPropsNames];
 
 export type WidgetInstance = {
-	props: WidgetPropsSet;
 	widgetId: bigint;
+	props: WidgetPropsSet;
 };
 
 // WIDGET LAYOUT
