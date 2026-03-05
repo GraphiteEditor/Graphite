@@ -2,7 +2,7 @@
 	import { getContext, onMount, onDestroy, tick } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import type { Color, DisplayEditableTextbox, MenuDirection } from "@graphite/messages";
+	import type { Color, FrontendMessages, MenuDirection } from "@graphite/messages";
 	import type { AppWindowState } from "@graphite/state-providers/app-window";
 	import type { DocumentState } from "@graphite/state-providers/document";
 	import { isColor, createColor } from "@graphite/utility-functions/colors";
@@ -20,6 +20,8 @@
 	import RulerInput from "@graphite/components/widgets/inputs/RulerInput.svelte";
 	import ScrollbarInput from "@graphite/components/widgets/inputs/ScrollbarInput.svelte";
 	import WidgetLayout from "@graphite/components/widgets/WidgetLayout.svelte";
+
+	type DisplayEditableTextbox = FrontendMessages["DisplayEditableTextbox"];
 
 	let rulerHorizontal: RulerInput | undefined;
 	let rulerVertical: RulerInput | undefined;
@@ -446,12 +448,12 @@
 		updatePixelRatio();
 
 		// Update rendered SVGs
-		editor.subscriptions.subscribeJsMessage("UpdateDocumentArtwork", async (data) => {
+		editor.subscriptions.subscribeFrontendMessage("UpdateDocumentArtwork", async (data) => {
 			await tick();
 
 			updateDocumentArtwork(data.svg);
 		});
-		editor.subscriptions.subscribeJsMessage("UpdateEyedropperSamplingState", async (data) => {
+		editor.subscriptions.subscribeFrontendMessage("UpdateEyedropperSamplingState", async (data) => {
 			await tick();
 
 			const { image, mousePosition, primaryColor, secondaryColor, setColorChoice } = data;
@@ -465,19 +467,19 @@
 		});
 
 		// Gradient stop color picker
-		editor.subscriptions.subscribeJsMessage("UpdateGradientStopColorPickerPosition", (data) => {
+		editor.subscriptions.subscribeFrontendMessage("UpdateGradientStopColorPickerPosition", (data) => {
 			gradientStopPickerColor = data.color;
 			gradientStopPickerPosition = { x: data.x, y: data.y };
 		});
 
 		// Update scrollbars and rulers
-		editor.subscriptions.subscribeJsMessage("UpdateDocumentScrollbars", async (data) => {
+		editor.subscriptions.subscribeFrontendMessage("UpdateDocumentScrollbars", async (data) => {
 			await tick();
 
 			const { position, size, multiplier } = data;
 			updateDocumentScrollbars(position, size, multiplier);
 		});
-		editor.subscriptions.subscribeJsMessage("UpdateDocumentRulers", async (data) => {
+		editor.subscriptions.subscribeFrontendMessage("UpdateDocumentRulers", async (data) => {
 			await tick();
 
 			const { origin, spacing, interval, visible } = data;
@@ -485,24 +487,24 @@
 		});
 
 		// Update mouse cursor icon
-		editor.subscriptions.subscribeJsMessage("UpdateMouseCursor", async (data) => {
+		editor.subscriptions.subscribeFrontendMessage("UpdateMouseCursor", async (data) => {
 			await tick();
 
 			updateMouseCursor(data.cursor);
 		});
 
 		// Text entry
-		editor.subscriptions.subscribeJsMessage("TriggerTextCommit", async () => {
+		editor.subscriptions.subscribeFrontendMessage("TriggerTextCommit", async () => {
 			await tick();
 
 			triggerTextCommit();
 		});
-		editor.subscriptions.subscribeJsMessage("DisplayEditableTextbox", async (data) => {
+		editor.subscriptions.subscribeFrontendMessage("DisplayEditableTextbox", async (data) => {
 			await tick();
 
 			displayEditableTextbox(data);
 		});
-		editor.subscriptions.subscribeJsMessage("DisplayEditableTextboxUpdateFontData", async (data) => {
+		editor.subscriptions.subscribeFrontendMessage("DisplayEditableTextboxUpdateFontData", async (data) => {
 			await tick();
 
 			const fontData = new Uint8Array(data.fontData);
@@ -511,10 +513,10 @@
 				textInput.style.fontFamily = "text-font";
 			}
 		});
-		editor.subscriptions.subscribeJsMessage("DisplayEditableTextboxTransform", async (data) => {
+		editor.subscriptions.subscribeFrontendMessage("DisplayEditableTextboxTransform", async (data) => {
 			textInputMatrix = data.transform;
 		});
-		editor.subscriptions.subscribeJsMessage("DisplayRemoveEditableTextbox", async () => {
+		editor.subscriptions.subscribeFrontendMessage("DisplayRemoveEditableTextbox", async () => {
 			await tick();
 
 			displayRemoveEditableTextbox();

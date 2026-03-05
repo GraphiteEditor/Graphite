@@ -2,8 +2,11 @@ import { createStore, del, get, set, update } from "idb-keyval";
 import { get as getFromStore } from "svelte/store";
 
 import type { Editor } from "@graphite/editor";
-import type { TriggerPersistenceWriteDocument, TriggerSavePreferences } from "@graphite/messages";
+import type { FrontendMessages } from "@graphite/messages";
 import type { PortfolioState } from "@graphite/state-providers/portfolio";
+
+type TriggerPersistenceWriteDocument = FrontendMessages["TriggerPersistenceWriteDocument"];
+type TriggerSavePreferences = FrontendMessages["TriggerSavePreferences"];
 
 const graphiteStore = createStore("graphite", "store");
 
@@ -162,28 +165,28 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 	// FRONTEND MESSAGE SUBSCRIPTIONS
 
 	// Subscribe to process backend events
-	editor.subscriptions.subscribeJsMessage("TriggerSavePreferences", async (data) => {
+	editor.subscriptions.subscribeFrontendMessage("TriggerSavePreferences", async (data) => {
 		await savePreferences(data.preferences);
 	});
-	editor.subscriptions.subscribeJsMessage("TriggerLoadPreferences", async () => {
+	editor.subscriptions.subscribeFrontendMessage("TriggerLoadPreferences", async () => {
 		await loadPreferences();
 	});
-	editor.subscriptions.subscribeJsMessage("TriggerPersistenceWriteDocument", async (data) => {
+	editor.subscriptions.subscribeFrontendMessage("TriggerPersistenceWriteDocument", async (data) => {
 		await storeDocument(data);
 	});
-	editor.subscriptions.subscribeJsMessage("TriggerPersistenceRemoveDocument", async (data) => {
+	editor.subscriptions.subscribeFrontendMessage("TriggerPersistenceRemoveDocument", async (data) => {
 		await removeDocument(String(data.documentId));
 	});
-	editor.subscriptions.subscribeJsMessage("TriggerLoadFirstAutoSaveDocument", async () => {
+	editor.subscriptions.subscribeFrontendMessage("TriggerLoadFirstAutoSaveDocument", async () => {
 		await loadFirstDocument();
 	});
-	editor.subscriptions.subscribeJsMessage("TriggerLoadRestAutoSaveDocuments", async () => {
+	editor.subscriptions.subscribeFrontendMessage("TriggerLoadRestAutoSaveDocuments", async () => {
 		await loadRestDocuments();
 	});
-	editor.subscriptions.subscribeJsMessage("TriggerOpenLaunchDocuments", async () => {
+	editor.subscriptions.subscribeFrontendMessage("TriggerOpenLaunchDocuments", async () => {
 		// TODO: Could be used to load documents from URL params or similar on launch
 	});
-	editor.subscriptions.subscribeJsMessage("TriggerSaveActiveDocument", async (data) => {
+	editor.subscriptions.subscribeFrontendMessage("TriggerSaveActiveDocument", async (data) => {
 		const documentId = String(data.documentId);
 		const previouslySavedDocuments = await get<Record<string, TriggerPersistenceWriteDocument>>("documents", graphiteStore);
 

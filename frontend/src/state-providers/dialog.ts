@@ -45,7 +45,7 @@ export function createDialogState(editor: Editor) {
 	}
 
 	// Subscribe to process backend events
-	editor.subscriptions.subscribeJsMessage("DisplayDialog", (data) => {
+	editor.subscriptions.subscribeFrontendMessage("DisplayDialog", (data) => {
 		update((state) => {
 			state.visible = true;
 
@@ -76,9 +76,9 @@ export function createDialogState(editor: Editor) {
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage("DialogClose", dismissDialog);
+	editor.subscriptions.subscribeFrontendMessage("DialogClose", dismissDialog);
 
-	editor.subscriptions.subscribeJsMessage("TriggerDisplayThirdPartyLicensesDialog", async () => {
+	editor.subscriptions.subscribeFrontendMessage("TriggerDisplayThirdPartyLicensesDialog", async () => {
 		const BACKUP_URL = "https://editor.graphite.art/third-party-licenses.txt";
 		let licenseText = `Content was not able to load. Please check your network connection and try again.\n\nOr visit ${BACKUP_URL} for the license notices.`;
 

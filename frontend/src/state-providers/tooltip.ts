@@ -65,19 +65,19 @@ export function createTooltipState(editor: Editor) {
 	document.addEventListener("keydown", closeTooltip);
 	document.addEventListener("wheel", closeTooltip);
 
-	editor.subscriptions.subscribeJsMessage("SendShortcutShiftClick", async (data) => {
+	editor.subscriptions.subscribeFrontendMessage("SendShortcutShiftClick", async (data) => {
 		update((state) => {
 			state.shiftClickShortcut = data.shortcut;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage("SendShortcutAltClick", async (data) => {
+	editor.subscriptions.subscribeFrontendMessage("SendShortcutAltClick", async (data) => {
 		update((state) => {
 			state.altClickShortcut = data.shortcut;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage("SendShortcutFullscreen", async (data) => {
+	editor.subscriptions.subscribeFrontendMessage("SendShortcutFullscreen", async (data) => {
 		update((state) => {
 			state.fullscreenShortcut = operatingSystem() === "Mac" ? data.shortcutMac : data.shortcut;
 			return state;

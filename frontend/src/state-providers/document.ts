@@ -20,7 +20,7 @@ export function createDocumentState(editor: Editor) {
 	const { subscribe, update } = state;
 
 	// Update layouts
-	editor.subscriptions.subscribeJsMessage("UpdateGraphFadeArtwork", (data) => {
+	editor.subscriptions.subscribeFrontendMessage("UpdateGraphFadeArtwork", (data) => {
 		update((state) => {
 			state.fadeArtwork = data.percentage;
 			return state;
@@ -66,7 +66,7 @@ export function createDocumentState(editor: Editor) {
 	});
 
 	// Show or hide the graph view overlay
-	editor.subscriptions.subscribeJsMessage("UpdateGraphViewOverlay", (data) => {
+	editor.subscriptions.subscribeFrontendMessage("UpdateGraphViewOverlay", (data) => {
 		update((state) => {
 			state.graphViewOverlayOpen = data.open;
 			return state;

@@ -656,21 +656,15 @@ export type WidgetDiff = {
 };
 
 export type UIItem = Layout | LayoutGroup | WidgetInstance[] | WidgetInstance;
-
 export type LayoutGroup = WidgetSpanRow | WidgetSpanColumn | WidgetTable | WidgetSection;
 export type Layout = LayoutGroup[];
 
 export type WidgetSpanColumn = { columnWidgets: WidgetInstance[] };
-
 export type WidgetSpanRow = { rowWidgets: WidgetInstance[] };
-
 export type WidgetTable = { tableWidgets: WidgetInstance[][]; unstyled: boolean };
-
 export type WidgetSection = { name: string; description: string; visible: boolean; pinned: boolean; id: bigint; layout: Layout };
 
-// JS MESSAGE TYPES
-
-export type JsMessageTypeMap = {
+export type FrontendMessages = {
 	ClearAllNodeGraphWires: Record<string, never>;
 	DisplayDialog: { title: string; icon: IconName };
 	DialogClose: Record<string, never>;
@@ -770,10 +764,3 @@ export type JsMessageTypeMap = {
 	WindowFullscreen: Record<string, never>;
 	WindowPointerLockMove: { x: number; y: number };
 };
-export type JsMessageType = keyof JsMessageTypeMap;
-
-// Standalone type aliases for types used outside subscriptions
-export type DisplayEditableTextbox = JsMessageTypeMap["DisplayEditableTextbox"];
-export type TriggerPersistenceWriteDocument = JsMessageTypeMap["TriggerPersistenceWriteDocument"];
-export type TriggerSavePreferences = JsMessageTypeMap["TriggerSavePreferences"];
-export type UpdateImportsExports = JsMessageTypeMap["UpdateImportsExports"];

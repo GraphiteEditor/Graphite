@@ -5,7 +5,7 @@ import { stripIndents } from "@graphite/utility-functions/strip-indents";
 
 export function createPanicManager(editor: Editor, dialogState: DialogState) {
 	// Code panic dialog and console error
-	editor.subscriptions.subscribeJsMessage("DisplayDialogPanic", (data) => {
+	editor.subscriptions.subscribeFrontendMessage("DisplayDialogPanic", (data) => {
 		// `Error.stackTraceLimit` is only available in V8/Chromium
 		// eslint-disable-next-line @typescript-eslint/no-explicit-any
 		(Error as any).stackTraceLimit = Infinity;

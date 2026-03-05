@@ -1,18 +1,18 @@
-import type { JsMessageType, JsMessageTypeMap, LayoutTarget, WidgetDiff } from "@graphite/messages";
+import type { FrontendMessages, LayoutTarget, WidgetDiff } from "@graphite/messages";
 import { parseWidgetDiffs } from "@graphite/utility-functions/widgets";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-type JsMessageCallbackMap = Record<string, ((messageData: any) => void) | undefined>;
+type FrontendMessageCallbacks = Record<string, ((messageData: any) => void) | undefined>;
 
 export function createSubscriptionRouter() {
-	const subscriptions: JsMessageCallbackMap = {};
+	const subscriptions: FrontendMessageCallbacks = {};
 	const layoutCallbacks: Partial<Record<LayoutTarget, (diffs: WidgetDiff[]) => void>> = {};
 
-	const subscribeJsMessage = <T extends JsMessageType>(messageType: T, callback: (data: JsMessageTypeMap[T]) => void) => {
+	const subscribeFrontendMessage = <T extends keyof FrontendMessages>(messageType: T, callback: (data: FrontendMessages[T]) => void) => {
 		subscriptions[messageType] = callback;
 	};
 
-	const unsubscribeJsMessage = (messageType: JsMessageType) => {
+	const unsubscribeFrontendMessage = (messageType: keyof FrontendMessages) => {
 		delete subscriptions[messageType];
 	};
 
@@ -24,7 +24,7 @@ export function createSubscriptionRouter() {
 		delete layoutCallbacks[target];
 	};
 
-	const handleJsMessage = (messageType: JsMessageType, messageData: Record<string, unknown>) => {
+	const handleFrontendMessage = (messageType: keyof FrontendMessages, messageData: Record<string, unknown>) => {
 		// Messages with non-empty data are provided by Serde JSON as an object with one key as the message name, like: { NameOfThisMessage: { ... } }
 		// Messages with empty data are provided by Serde JSON as a string with the message name, like: "NameOfThisMessage"
 		// Here we extract the payload object or use an empty object depending on the situation.
@@ -37,7 +37,7 @@ export function createSubscriptionRouter() {
 		let callbackData: unknown;
 		let errorLabel: string;
 		if (messageType === "UpdateLayout") {
-			const { layoutTarget, diff } = message as JsMessageTypeMap["UpdateLayout"];
+			const { layoutTarget, diff } = message as FrontendMessages["UpdateLayout"];
 			getCallback = () => layoutCallbacks[layoutTarget];
 			callbackData = parseWidgetDiffs(diff);
 			errorLabel = `UpdateLayout for layout target "${layoutTarget}"`;
@@ -68,11 +68,11 @@ export function createSubscriptionRouter() {
 	};
 
 	return {
-		subscribeJsMessage,
-		unsubscribeJsMessage,
+		subscribeFrontendMessage,
+		unsubscribeFrontendMessage,
 		subscribeLayoutUpdate,
 		unsubscribeLayoutUpdate,
-		handleJsMessage,
+		handleFrontendMessage,
 	};
 }
 export type SubscriptionRouter = ReturnType<typeof createSubscriptionRouter>;

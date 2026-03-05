@@ -2,14 +2,14 @@ import type { Editor } from "@graphite/editor";
 
 export function createClipboardManager(editor: Editor) {
 	// Subscribe to process backend event
-	editor.subscriptions.subscribeJsMessage("TriggerClipboardWrite", (data) => {
+	editor.subscriptions.subscribeFrontendMessage("TriggerClipboardWrite", (data) => {
 		// If the Clipboard API is supported in the browser, copy text to the clipboard
 		navigator.clipboard?.writeText?.(data.content);
 	});
-	editor.subscriptions.subscribeJsMessage("TriggerSelectionRead", async (data) => {
+	editor.subscriptions.subscribeFrontendMessage("TriggerSelectionRead", async (data) => {
 		editor.handle.readSelection(readAtCaret(data.cut), data.cut);
 	});
-	editor.subscriptions.subscribeJsMessage("TriggerSelectionWrite", async (data) => {
+	editor.subscriptions.subscribeFrontendMessage("TriggerSelectionWrite", async (data) => {
 		insertAtCaret(data.content);
 	});
 }

@@ -13,31 +13,31 @@ export function createAppWindowState(editor: Editor) {
 	});
 
 	// Set up message subscriptions on creation
-	editor.subscriptions.subscribeJsMessage("UpdatePlatform", (data) => {
+	editor.subscriptions.subscribeFrontendMessage("UpdatePlatform", (data) => {
 		update((state) => {
 			state.platform = data.platform;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage("UpdateMaximized", (data) => {
+	editor.subscriptions.subscribeFrontendMessage("UpdateMaximized", (data) => {
 		update((state) => {
 			state.maximized = data.maximized;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage("UpdateFullscreen", (data) => {
+	editor.subscriptions.subscribeFrontendMessage("UpdateFullscreen", (data) => {
 		update((state) => {
 			state.fullscreen = data.fullscreen;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage("UpdateViewportHolePunch", (data) => {
+	editor.subscriptions.subscribeFrontendMessage("UpdateViewportHolePunch", (data) => {
 		update((state) => {
 			state.viewportHolePunch = data.active;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage("UpdateUIScale", (data) => {
+	editor.subscriptions.subscribeFrontendMessage("UpdateUIScale", (data) => {
 		update((state) => {
 			state.uiScale = data.scale;
 			return state;

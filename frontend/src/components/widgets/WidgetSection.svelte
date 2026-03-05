@@ -2,7 +2,7 @@
 	import { getContext } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import type { WidgetSection as WidgetSectionFromJsMessages, LayoutTarget } from "@graphite/messages";
+	import type { WidgetSection as WidgetSectionData, LayoutTarget } from "@graphite/messages";
 	import { isWidgetSpanRow, isWidgetSection } from "@graphite/utility-functions/widgets";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -10,7 +10,7 @@
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 	import WidgetSpan from "@graphite/components/widgets/WidgetSpan.svelte";
 
-	export let widgetData: WidgetSectionFromJsMessages;
+	export let widgetData: WidgetSectionData;
 	export let layoutTarget: LayoutTarget;
 
 	let className = "";

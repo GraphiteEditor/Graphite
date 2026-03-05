@@ -50,7 +50,7 @@ export function createFullscreenState(editor: Editor) {
 		});
 	}
 
-	editor.subscriptions.subscribeJsMessage("WindowFullscreen", () => {
+	editor.subscriptions.subscribeFrontendMessage("WindowFullscreen", () => {
 		toggleFullscreen();
 	});
 

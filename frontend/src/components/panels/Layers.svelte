@@ -84,11 +84,11 @@
 			layersPanelBottomBarLayout = layersPanelBottomBarLayout;
 		});
 
-		editor.subscriptions.subscribeJsMessage("UpdateDocumentLayerStructure", (data) => {
+		editor.subscriptions.subscribeFrontendMessage("UpdateDocumentLayerStructure", (data) => {
 			rebuildLayerHierarchy(data.layerStructure);
 		});
 
-		editor.subscriptions.subscribeJsMessage("UpdateDocumentLayerDetails", (data) => {
+		editor.subscriptions.subscribeFrontendMessage("UpdateDocumentLayerDetails", (data) => {
 			const targetLayer = data.data;
 			const targetId = targetLayer.id;
 
@@ -110,8 +110,8 @@
 		editor.subscriptions.unsubscribeLayoutUpdate("LayersPanelControlLeftBar");
 		editor.subscriptions.unsubscribeLayoutUpdate("LayersPanelControlRightBar");
 		editor.subscriptions.unsubscribeLayoutUpdate("LayersPanelBottomBar");
-		editor.subscriptions.unsubscribeJsMessage("UpdateDocumentLayerStructure");
-		editor.subscriptions.unsubscribeJsMessage("UpdateDocumentLayerDetails");
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateDocumentLayerStructure");
+		editor.subscriptions.unsubscribeFrontendMessage("UpdateDocumentLayerDetails");
 
 		removeEventListener("pointerup", draggingPointerUp);
 		removeEventListener("pointermove", draggingPointerMove);
