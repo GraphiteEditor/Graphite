@@ -185,9 +185,13 @@
 			const logicalWidth = parseFloat(foreignObject.getAttribute("width") || "0");
 			const logicalHeight = parseFloat(foreignObject.getAttribute("height") || "0");
 
-			// Clone canvas for repeated instances (layers that appear multiple times)
-			// Viewport canvas is marked with data-is-viewport and should never be cloned
+			// Viewport canvas is marked with data-is-viewport and should never be cloned.
+			// If it's already mounted in the viewport, skip the DOM replacement since it's already showing the rendered content.
+			// We check `canvas.isConnected` to ensure it's in the live DOM, not a detached tree from a destroyed component.
 			const isViewport = placeholder.hasAttribute("data-is-viewport");
+			if (isViewport && canvas.isConnected && canvas.parentElement?.closest("[data-viewport]")) return;
+
+			// Clone canvas for repeated instances (layers that appear multiple times)
 			if (!isViewport && canvas.parentElement) {
 				const newCanvas = window.document.createElement("canvas");
 				const context = newCanvas.getContext("2d");
