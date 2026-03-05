@@ -2,8 +2,7 @@
 	import { getContext, onMount, onDestroy, tick } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import { mouseCursorIconCSSNames } from "@graphite/messages";
-	import type { Color, DisplayEditableTextbox, MenuDirection, MouseCursor } from "@graphite/messages";
+	import type { Color, DisplayEditableTextbox, MenuDirection } from "@graphite/messages";
 	import type { AppWindowState } from "@graphite/state-providers/app-window";
 	import type { DocumentState } from "@graphite/state-providers/document";
 	import { isColor, createColor } from "@graphite/utility-functions/colors";
@@ -290,8 +289,24 @@
 	}
 
 	// Update mouse cursor icon
-	export function updateMouseCursor(cursor: MouseCursor) {
-		let cursorString: string = mouseCursorIconCSSNames[cursor] || mouseCursorIconCSSNames["Alias"];
+	export function updateMouseCursor(cursor: string) {
+		const mouseCursorIconCSSNames: Record<string, string> = {
+			Default: "default",
+			Alias: "alias",
+			None: "none",
+			ZoomIn: "zoom-in",
+			ZoomOut: "zoom-out",
+			Grabbing: "grabbing",
+			Crosshair: "crosshair",
+			Text: "text",
+			Move: "move",
+			NSResize: "ns-resize",
+			EWResize: "ew-resize",
+			NESWResize: "nesw-resize",
+			NWSEResize: "nwse-resize",
+			Rotate: "custom-rotate",
+		};
+		let cursorString = mouseCursorIconCSSNames[cursor] || mouseCursorIconCSSNames["Alias"];
 
 		// This isn't very clean but it's good enough for now until we need more icons, then we can build something more robust (consider blob URLs)
 		if (cursor === "Rotate") {
@@ -473,8 +488,7 @@
 		editor.subscriptions.subscribeJsMessage("UpdateMouseCursor", async (data) => {
 			await tick();
 
-			const { cursor } = data;
-			updateMouseCursor(cursor);
+			updateMouseCursor(data.cursor);
 		});
 
 		// Text entry

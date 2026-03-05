@@ -10,11 +10,7 @@ export type OpenDocument = {
 	details: DocumentDetails;
 };
 
-type DocumentDetails = {
-	name: string;
-	isAutoSaved: boolean;
-	isSaved: boolean;
-};
+type DocumentDetails = { name: string; isAutoSaved: boolean; isSaved: boolean };
 
 export type Box = {
 	startX: number;
@@ -112,21 +108,13 @@ export type WirePath = {
 	dashed: boolean;
 };
 
-type WireUpdate = {
-	id: bigint;
-	inputIndex: number;
-	wirePathUpdate: WirePath | undefined;
-};
-
 export type AppWindowPlatform = "Web" | "Windows" | "Mac" | "Linux";
 
 // Rust enum `Key`
 export type KeyRaw = string;
 // Serde converts a Rust `Key` enum variant into this format with both the `Key` variant name (called `RawKey` in TS) and the localized `label` for the key
-type LabeledKey = { key: KeyRaw; label: string };
 export type MouseMotion = "None" | "Lmb" | "Rmb" | "Mmb" | "ScrollUp" | "ScrollDown" | "Drag" | "LmbDouble" | "LmbDrag" | "RmbDrag" | "RmbDouble" | "MmbDrag";
-type LabeledKeyOrMouseMotion = LabeledKey | MouseMotion;
-export type LabeledShortcut = LabeledKeyOrMouseMotion[];
+export type LabeledShortcut = (MouseMotion | { key: KeyRaw; label: string })[];
 export type ActionShortcut = { shortcut: LabeledShortcut };
 
 // All channels range are represented by 0-1, sRGB, gamma.
@@ -152,30 +140,10 @@ export type EyedropperPreviewImage = {
 	height: number;
 };
 
-export const mouseCursorIconCSSNames = {
-	Default: "default",
-	Alias: "alias",
-	None: "none",
-	ZoomIn: "zoom-in",
-	ZoomOut: "zoom-out",
-	Grabbing: "grabbing",
-	Crosshair: "crosshair",
-	Text: "text",
-	Move: "move",
-	NSResize: "ns-resize",
-	EWResize: "ew-resize",
-	NESWResize: "nesw-resize",
-	NWSEResize: "nwse-resize",
-	Rotate: "custom-rotate",
-} as const;
-export type MouseCursor = keyof typeof mouseCursorIconCSSNames;
-
 export type LayerStructureEntry = {
 	layerId: bigint;
 	children: LayerStructureEntry[];
 };
-
-type TextAlign = "Left" | "Center" | "Right" | "JustifyLeft";
 
 export type LayerPanelEntry = {
 	id: bigint;
@@ -682,8 +650,10 @@ export type LayoutTarget =
 	| "WelcomeScreenButtons"
 	| "WorkingColors";
 
-type DiffUpdate = { layout: Layout } | { layoutGroup: LayoutGroup } | { widget: WidgetInstance };
-export type WidgetDiff = { widgetPath: number[]; newValue: DiffUpdate };
+export type WidgetDiff = {
+	widgetPath: number[];
+	newValue: { layout: Layout } | { layoutGroup: LayoutGroup } | { widget: WidgetInstance };
+};
 
 export type UIItem = Layout | LayoutGroup | WidgetInstance[] | WidgetInstance;
 
@@ -714,7 +684,7 @@ export type JsMessageTypeMap = {
 		transform: number[];
 		maxWidth: undefined | number;
 		maxHeight: undefined | number;
-		align: TextAlign;
+		align: "Left" | "Center" | "Right" | "JustifyLeft";
 	};
 	DisplayEditableTextboxTransform: { transform: number[] };
 	DisplayEditableTextboxUpdateFontData: { fontData: ArrayBuffer };
@@ -782,12 +752,12 @@ export type JsMessageTypeMap = {
 	UpdateLayerWidths: { layerWidths: Map<bigint, number>; chainWidths: Map<bigint, number>; hasLeftInputWire: Map<bigint, boolean> };
 	UpdateLayout: { layoutTarget: LayoutTarget; diff: WidgetDiff[] };
 	UpdateMaximized: { maximized: boolean };
-	UpdateMouseCursor: { cursor: MouseCursor };
+	UpdateMouseCursor: { cursor: string };
 	UpdateNodeGraphErrorDiagnostic: { error: NodeGraphError | undefined };
 	UpdateNodeGraphNodes: { nodes: FrontendNode[] };
 	UpdateNodeGraphSelection: { selected: bigint[] };
 	UpdateNodeGraphTransform: { transform: NodeGraphTransform };
-	UpdateNodeGraphWires: { wires: WireUpdate[] };
+	UpdateNodeGraphWires: { wires: { id: bigint; inputIndex: number; wirePathUpdate: WirePath | undefined }[] };
 	UpdateNodeThumbnail: { id: bigint; value: string };
 	UpdateOpenDocumentsList: { openDocuments: OpenDocument[] };
 	UpdatePlatform: { platform: AppWindowPlatform };
