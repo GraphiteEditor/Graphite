@@ -355,7 +355,7 @@
 		// eslint-disable-next-line svelte/no-dom-manipulating
 		if (data.text === "") textInput.textContent = "";
 		// eslint-disable-next-line svelte/no-dom-manipulating
-		else textInput.textContent = `${data.text}\n`;
+		else textInput.textContent = data.text;
 
 		// Make it so `maxHeight` is a multiple of `lineHeight`
 		const lineHeight = data.lineHeightRatio * data.fontSize;
@@ -387,6 +387,7 @@
 
 		const range = window.document.createRange();
 		range.selectNodeContents(textInput);
+		range.collapse(false);
 
 		const selection = window.getSelection();
 		if (selection) {
