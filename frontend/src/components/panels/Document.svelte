@@ -5,7 +5,7 @@
 	import type { Color, FrontendMessages, MenuDirection, MouseCursorIcon } from "@graphite/messages";
 	import type { AppWindowState } from "@graphite/state-providers/app-window";
 	import type { DocumentState } from "@graphite/state-providers/document";
-	import { isColor, createColor } from "@graphite/utility-functions/colors";
+	import { fillChoiceColor, createColor } from "@graphite/utility-functions/colors";
 	import { pasteFile } from "@graphite/utility-functions/files";
 	import { textInputCleanup } from "@graphite/utility-functions/keyboard-entry";
 	import { rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
@@ -614,11 +614,10 @@
 									gradientStopPickerColor = undefined;
 								}
 							}}
-							colorOrGradient={gradientStopPickerColor || createColor(0, 0, 0, 1)}
+							colorOrGradient={{ Solid: gradientStopPickerColor || createColor(0, 0, 0, 1) }}
 							on:colorOrGradient={({ detail }) => {
-								if (isColor(detail)) {
-									editor.handle.updateGradientStopColor(detail.red, detail.green, detail.blue, detail.alpha);
-								}
+								const color = fillChoiceColor(detail);
+								if (color) editor.handle.updateGradientStopColor(color.red, color.green, color.blue, color.alpha);
 							}}
 							on:startHistoryTransaction={() => editor.handle.startGradientStopColorTransaction()}
 							on:commitHistoryTransaction={() => editor.handle.commitGradientStopColorTransaction()}
