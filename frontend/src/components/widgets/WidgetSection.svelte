@@ -2,9 +2,7 @@
 	import { getContext } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import type { LayoutTarget } from "@graphite/messages";
-	import type { WidgetSection as WidgetSectionData } from "@graphite/utility-functions/widgets";
-	import { isWidgetRow, isWidgetSection } from "@graphite/utility-functions/widgets";
+	import type { LayoutTarget, WidgetSection as WidgetSectionData } from "@graphite/messages";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
 	import IconButton from "@graphite/components/widgets/buttons/IconButton.svelte";
@@ -27,13 +25,13 @@
 <LayoutCol class={`widget-section ${className}`.trim()} {classes}>
 	<button class="header" class:expanded on:click|stopPropagation={() => (expanded = !expanded)} tabindex="0">
 		<div class="expand-arrow"></div>
-		<TextLabel tooltipLabel={widgetData.section.name} tooltipDescription={widgetData.section.description} bold={true}>{widgetData.section.name}</TextLabel>
+		<TextLabel tooltipLabel={widgetData.name} tooltipDescription={widgetData.description} bold={true}>{widgetData.name}</TextLabel>
 		<IconButton
-			icon={widgetData.section.pinned ? "PinActive" : "PinInactive"}
-			tooltipDescription={widgetData.section.pinned ? "Unpin this node so it's no longer shown here when nothing is selected." : "Pin this node so it's shown here when nothing is selected."}
+			icon={widgetData.pinned ? "PinActive" : "PinInactive"}
+			tooltipDescription={widgetData.pinned ? "Unpin this node so it's no longer shown here when nothing is selected." : "Pin this node so it's shown here when nothing is selected."}
 			size={24}
 			action={(e) => {
-				editor.handle.setNodePinned(widgetData.section.id, !widgetData.section.pinned);
+				editor.handle.setNodePinned(widgetData.id, !widgetData.pinned);
 				e?.stopPropagation();
 			}}
 			class="show-only-on-hover"
@@ -43,30 +41,30 @@
 			tooltipDescription="Delete this node from the layer chain."
 			size={24}
 			action={(e) => {
-				editor.handle.deleteNode(widgetData.section.id);
+				editor.handle.deleteNode(widgetData.id);
 				e?.stopPropagation();
 			}}
 			class="show-only-on-hover"
 		/>
 		<IconButton
-			icon={widgetData.section.visible ? "EyeVisible" : "EyeHidden"}
-			hoverIcon={widgetData.section.visible ? "EyeHide" : "EyeShow"}
-			tooltipDescription={widgetData.section.visible ? "Hide this node." : "Show this node."}
+			icon={widgetData.visible ? "EyeVisible" : "EyeHidden"}
+			hoverIcon={widgetData.visible ? "EyeHide" : "EyeShow"}
+			tooltipDescription={widgetData.visible ? "Hide this node." : "Show this node."}
 			size={24}
 			action={(e) => {
-				editor.handle.toggleNodeVisibilityLayerPanel(widgetData.section.id);
+				editor.handle.toggleNodeVisibilityLayerPanel(widgetData.id);
 				e?.stopPropagation();
 			}}
-			class={widgetData.section.visible ? "show-only-on-hover" : ""}
+			class={widgetData.visible ? "show-only-on-hover" : ""}
 		/>
 	</button>
 	{#if expanded}
 		<LayoutCol class="body" data-block-hover-transfer>
-			{#each widgetData.section.layout as layoutGroup}
-				{#if isWidgetRow(layoutGroup)}
-					<WidgetSpan widgetData={layoutGroup} {layoutTarget} />
-				{:else if isWidgetSection(layoutGroup)}
-					<svelte:self widgetData={layoutGroup} {layoutTarget} />
+			{#each widgetData.layout as layoutGroup}
+				{#if "row" in layoutGroup}
+					<WidgetSpan direction="row" widgets={layoutGroup.row.rowWidgets} {layoutTarget} />
+				{:else if "section" in layoutGroup}
+					<svelte:self widgetData={layoutGroup.section} {layoutTarget} />
 				{/if}
 			{/each}
 		</LayoutCol>
