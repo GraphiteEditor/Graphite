@@ -223,7 +223,7 @@ impl LayoutHolder for BrushTool {
 				.widget_instance(),
 		);
 
-		Layout(vec![LayoutGroup::Row { widgets }])
+		Layout(vec![LayoutGroup::row(widgets)])
 	}
 }
 

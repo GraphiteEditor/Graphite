@@ -750,6 +750,6 @@ impl LayoutHolder for MenuBarMessageHandler {
 				.widget_instance(),
 		];
 
-		Layout(vec![LayoutGroup::Row { widgets: menu_bar_buttons }])
+		Layout(vec![LayoutGroup::row(menu_bar_buttons)])
 	}
 }

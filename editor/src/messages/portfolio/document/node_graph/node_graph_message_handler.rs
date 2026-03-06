@@ -2222,7 +2222,7 @@ impl NodeGraphMessageHandler {
 							}
 						})
 						.widget_instance();
-					Layout(vec![LayoutGroup::Row { widgets: vec![node_chooser] }])
+					Layout(vec![LayoutGroup::row(vec![node_chooser])])
 				})
 				.widget_instance(),
 			//
@@ -2323,7 +2323,7 @@ impl NodeGraphMessageHandler {
 			]);
 		}
 
-		self.widgets[0] = LayoutGroup::Row { widgets };
+		self.widgets[0] = LayoutGroup::row(widgets);
 	}
 
 	fn update_graph_bar_right(
@@ -2365,7 +2365,7 @@ impl NodeGraphMessageHandler {
 				.widget_instance(),
 		]);
 
-		self.widgets[1] = LayoutGroup::Row { widgets };
+		self.widgets[1] = LayoutGroup::row(widgets);
 	}
 
 	/// Collate the properties panel sections for a node graph
@@ -2407,8 +2407,7 @@ impl NodeGraphMessageHandler {
 					let mut properties = Vec::new();
 
 					if let [node_id] = *nodes.as_slice() {
-						properties.push(LayoutGroup::Row {
-							widgets: vec![
+						properties.push(LayoutGroup::row(vec![
 								Separator::new(SeparatorStyle::Related).widget_instance(),
 								IconLabel::new("Node").tooltip_description("Name of the selected node.").widget_instance(),
 								Separator::new(SeparatorStyle::Related).widget_instance(),
@@ -2424,8 +2423,7 @@ impl NodeGraphMessageHandler {
 									})
 									.widget_instance(),
 								Separator::new(SeparatorStyle::Related).widget_instance(),
-							],
-						});
+							]));
 					}
 
 					properties.extend(selected_nodes);
@@ -2435,8 +2433,7 @@ impl NodeGraphMessageHandler {
 
 				// TODO: Display properties for encapsulating node when no nodes are selected in a nested network
 				// This may require store a separate path for the properties panel
-				let mut properties = vec![LayoutGroup::Row {
-					widgets: vec![
+				let mut properties = vec![LayoutGroup::row(vec![
 						Separator::new(SeparatorStyle::Related).widget_instance(),
 						IconLabel::new("File").tooltip_description("Name of the current document.").widget_instance(),
 						Separator::new(SeparatorStyle::Related).widget_instance(),
@@ -2445,8 +2442,7 @@ impl NodeGraphMessageHandler {
 							.on_update(|text_input| DocumentMessage::RenameDocument { new_name: text_input.value.clone() }.into())
 							.widget_instance(),
 						Separator::new(SeparatorStyle::Related).widget_instance(),
-					],
-				}];
+					])];
 
 				let Some(network) = context.network_interface.nested_network(context.selection_network_path) else {
 					warn!("No network in collate_properties");
@@ -2482,8 +2478,7 @@ impl NodeGraphMessageHandler {
 					return Vec::new();
 				}
 
-				let mut layer_properties = vec![LayoutGroup::Row {
-					widgets: vec![
+				let mut layer_properties = vec![LayoutGroup::row(vec![
 						Separator::new(SeparatorStyle::Related).widget_instance(),
 						IconLabel::new("Layer").tooltip_description("Name of the selected layer.").widget_instance(),
 						Separator::new(SeparatorStyle::Related).widget_instance(),
@@ -2520,12 +2515,11 @@ impl NodeGraphMessageHandler {
 										.into()
 									})
 									.widget_instance();
-								Layout(vec![LayoutGroup::Row { widgets: vec![node_chooser] }])
+								Layout(vec![LayoutGroup::row(vec![node_chooser])])
 							})
 							.widget_instance(),
 						Separator::new(SeparatorStyle::Related).widget_instance(),
-					],
-				}];
+					])];
 
 				// Iterate through all the upstream nodes, but stop when we reach another layer (since that's a point where we switch from horizontal to vertical flow)
 				let node_properties = context
@@ -2842,7 +2836,7 @@ impl Default for NodeGraphMessageHandler {
 		Self {
 			network: Vec::new(),
 			has_selection: false,
-			widgets: [LayoutGroup::Row { widgets: Vec::new() }, LayoutGroup::Row { widgets: Vec::new() }],
+			widgets: [LayoutGroup::row(Vec::new()), LayoutGroup::row(Vec::new())],
 			drag_start: None,
 			begin_dragging: false,
 			node_has_moved_in_drag: false,

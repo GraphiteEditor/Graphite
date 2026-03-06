@@ -269,7 +269,7 @@ impl LayoutHolder for SelectTool {
 		widgets.push(Separator::new(SeparatorStyle::Unrelated).widget_instance());
 		widgets.extend(self.boolean_widgets(self.tool_data.selected_layers_count));
 
-		Layout(vec![LayoutGroup::Row { widgets }])
+		Layout(vec![LayoutGroup::row(widgets)])
 	}
 }
 

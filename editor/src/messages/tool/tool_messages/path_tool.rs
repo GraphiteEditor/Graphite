@@ -352,32 +352,30 @@ impl LayoutHolder for PathTool {
 
 		let _pin_pivot = pin_pivot_widget(self.tool_data.pivot_gizmo.pin_active(), false, PivotToolSource::Path);
 
-		Layout(vec![LayoutGroup::Row {
-			widgets: vec![
-				x_location,
-				related_seperator.clone(),
-				y_location,
-				unrelated_seperator.clone(),
-				colinear_handle_checkbox,
-				related_seperator.clone(),
-				colinear_handles_label,
-				unrelated_seperator.clone(),
-				point_editing_mode,
-				related_seperator.clone(),
-				segment_editing_mode,
-				unrelated_seperator.clone(),
-				path_overlay_mode_widget,
-				unrelated_seperator.clone(),
-				path_node_button,
-				// checkbox.clone(),
-				// related_seperator.clone(),
-				// dropdown.clone(),
-				// unrelated_seperator,
-				// pivot_reference,
-				// related_seperator.clone(),
-				// pin_pivot,
-			],
-		}])
+		Layout(vec![LayoutGroup::row(vec![
+			x_location,
+			related_seperator.clone(),
+			y_location,
+			unrelated_seperator.clone(),
+			colinear_handle_checkbox,
+			related_seperator.clone(),
+			colinear_handles_label,
+			unrelated_seperator.clone(),
+			point_editing_mode,
+			related_seperator.clone(),
+			segment_editing_mode,
+			unrelated_seperator.clone(),
+			path_overlay_mode_widget,
+			unrelated_seperator.clone(),
+			path_node_button,
+			// checkbox.clone(),
+			// related_seperator.clone(),
+			// dropdown.clone(),
+			// unrelated_seperator,
+			// pivot_reference,
+			// related_seperator.clone(),
+			// pin_pivot,
+		])])
 	}
 }
 

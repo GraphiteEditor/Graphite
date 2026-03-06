@@ -63,7 +63,7 @@ impl LayoutMessageHandler {
 		while let Some((mut widget_path, layout_group)) = stack.pop() {
 			match layout_group {
 				// Check if any of the widgets in the current column or row have the correct id
-				LayoutGroup::Column { widgets } | LayoutGroup::Row { widgets } => {
+				LayoutGroup::Column(WidgetColumn { widgets }) | LayoutGroup::Row(WidgetRow { widgets }) => {
 					for (index, widget) in widgets.iter().enumerate() {
 						// Return if this is the correct ID
 						if widget.widget_id == widget_id {
@@ -84,10 +84,10 @@ impl LayoutMessageHandler {
 					}
 				}
 				// A section contains more LayoutGroups which we add to the stack.
-				LayoutGroup::Section { layout, .. } => {
+				LayoutGroup::Section(WidgetSection { layout, .. }) => {
 					stack.extend(layout.0.iter().enumerate().map(|(index, val)| ([widget_path.as_slice(), &[index]].concat(), val)));
 				}
-				LayoutGroup::Table { rows, .. } => {
+				LayoutGroup::Table(WidgetTable { rows, .. }) => {
 					for (row_index, row) in rows.iter().enumerate() {
 						for (cell_index, cell) in row.iter().enumerate() {
 							// Return if this is the correct ID

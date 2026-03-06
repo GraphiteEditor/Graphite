@@ -201,7 +201,7 @@ impl LayoutHolder for GradientTool {
 			widgets.push(reverse_direction);
 		}
 
-		Layout(vec![LayoutGroup::Row { widgets }])
+		Layout(vec![LayoutGroup::row(widgets)])
 	}
 }
 
