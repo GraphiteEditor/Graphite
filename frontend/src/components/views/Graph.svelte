@@ -21,7 +21,7 @@
 
 	const editor = getContext<Editor>("editor");
 	const nodeGraph = getContext<NodeGraphState>("nodeGraph");
-	const document = getContext<DocumentState>("document");
+	const documentState = getContext<DocumentState>("document");
 
 	let graph: HTMLDivElement | undefined;
 
@@ -29,7 +29,7 @@
 	$: gridDotRadius = 1 + Math.floor($nodeGraph.transform.scale - 0.5 + 0.001) / 2;
 
 	// Close the context menu when the graph view overlay is closed
-	$: if (!$document.graphViewOverlayOpen) nodeGraph.closeContextMenu();
+	$: if (!$documentState.graphViewOverlayOpen) nodeGraph.closeContextMenu();
 
 	let inputElement: HTMLInputElement;
 	let hoveringImportIndex: number | undefined = undefined;
@@ -108,7 +108,7 @@
 	function createNode(identifier: string) {
 		if ($nodeGraph.contextMenuInformation === undefined) return;
 
-		editor.handle.createNode(identifier, $nodeGraph.contextMenuInformation.contextMenuCoordinates.x, $nodeGraph.contextMenuInformation.contextMenuCoordinates.y);
+		editor.handle.createNode(identifier, $nodeGraph.contextMenuInformation.contextMenuCoordinates[0], $nodeGraph.contextMenuInformation.contextMenuCoordinates[1]);
 	}
 
 	function nodeBorderMask(nodeWidth: number, primaryInputExists: boolean, exposedSecondaryInputs: number, primaryOutputExists: boolean, exposedSecondaryOutputs: number): string {
@@ -203,8 +203,8 @@
 			class="context-menu"
 			data-context-menu
 			styles={{
-				left: `${$nodeGraph.contextMenuInformation.contextMenuCoordinates.x * $nodeGraph.transform.scale + $nodeGraph.transform.x}px`,
-				top: `${$nodeGraph.contextMenuInformation.contextMenuCoordinates.y * $nodeGraph.transform.scale + $nodeGraph.transform.y}px`,
+				left: `${$nodeGraph.contextMenuInformation.contextMenuCoordinates[0] * $nodeGraph.transform.scale + $nodeGraph.transform.x}px`,
+				top: `${$nodeGraph.contextMenuInformation.contextMenuCoordinates[1] * $nodeGraph.transform.scale + $nodeGraph.transform.y}px`,
 			}}
 			open={true}
 			type="Popover"
@@ -234,6 +234,22 @@
 						disabled={!$nodeGraph.contextMenuInformation.contextMenuData.data.canBeLayer}
 						flush={true}
 					/>
+					{#if $nodeGraph.contextMenuInformation.contextMenuData.data.hasSelectedLayers}
+						{@const allLocked = $nodeGraph.contextMenuInformation.contextMenuData.data.allSelectedLayersLocked}
+						{@const nodeId = $nodeGraph.contextMenuInformation.contextMenuData.data.nodeId}
+						<TextButton
+							label={allLocked ? "Unlock" : "Lock"}
+							action={() => {
+								if ($nodeGraph.selected.includes(nodeId)) {
+									editor.handle.toggleSelectedLocked();
+								} else {
+									editor.handle.toggleLayerLock(nodeId);
+								}
+								nodeGraph.closeContextMenu();
+							}}
+							flush={true}
+						/>
+					{/if}
 				</LayoutCol>
 			{/if}
 		</FloatingMenu>
@@ -241,10 +257,10 @@
 
 	{#if $nodeGraph.error}
 		<div class="node-error-container" style:transform-origin="0 0" style:transform={`translate(${$nodeGraph.transform.x}px, ${$nodeGraph.transform.y}px) scale(${$nodeGraph.transform.scale})`}>
-			<span class="node-error faded" style:left={`${$nodeGraph.error.position.x}px`} style:top={`${$nodeGraph.error.position.y}px`} transition:fade={FADE_TRANSITION}>
+			<span class="node-error faded" style:left={`${$nodeGraph.error.position[0]}px`} style:top={`${$nodeGraph.error.position[1]}px`} transition:fade={FADE_TRANSITION}>
 				{$nodeGraph.error.error}
 			</span>
-			<span class="node-error hover" style:left={`${$nodeGraph.error.position.x}px`} style:top={`${$nodeGraph.error.position.y}px`} transition:fade={FADE_TRANSITION}>
+			<span class="node-error hover" style:left={`${$nodeGraph.error.position[0]}px`} style:top={`${$nodeGraph.error.position[1]}px`} transition:fade={FADE_TRANSITION}>
 				{$nodeGraph.error.error}
 			</span>
 		</div>
@@ -308,8 +324,8 @@
 						data-datatype={frontendOutput.dataType}
 						style:--data-color={`var(--color-data-${frontendOutput.dataType.toLowerCase()})`}
 						style:--data-color-dim={`var(--color-data-${frontendOutput.dataType.toLowerCase()}-dim)`}
-						style:--offset-left={($nodeGraph.updateImportsExports.importPosition.x - 8) / 24}
-						style:--offset-top={($nodeGraph.updateImportsExports.importPosition.y - 8) / 24 + index}
+						style:--offset-left={($nodeGraph.updateImportsExports.importPosition[0] - 8) / 24}
+						style:--offset-top={($nodeGraph.updateImportsExports.importPosition[1] - 8) / 24 + index}
 					>
 						{#if frontendOutput.connectedTo.length > 0}
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
@@ -324,8 +340,8 @@
 						class="edit-import-export import"
 						class:separator-bottom={index === 0 && $nodeGraph.updateImportsExports.addImportExport}
 						class:separator-top={index === 1 && $nodeGraph.updateImportsExports.addImportExport}
-						style:--offset-left={($nodeGraph.updateImportsExports.importPosition.x - 8) / 24}
-						style:--offset-top={($nodeGraph.updateImportsExports.importPosition.y - 8) / 24 + index}
+						style:--offset-left={($nodeGraph.updateImportsExports.importPosition[0] - 8) / 24}
+						style:--offset-top={($nodeGraph.updateImportsExports.importPosition[1] - 8) / 24 + index}
 					>
 						{#if editingNameImportIndex === index}
 							<input
@@ -361,8 +377,8 @@
 				{:else}
 					<div
 						class="plus"
-						style:--offset-top={($nodeGraph.updateImportsExports.importPosition.y - 12) / 24}
-						style:--offset-left={($nodeGraph.updateImportsExports.importPosition.x - 12) / 24}
+						style:--offset-top={($nodeGraph.updateImportsExports.importPosition[1] - 12) / 24}
+						style:--offset-left={($nodeGraph.updateImportsExports.importPosition[0] - 12) / 24}
 					>
 						<IconButton size={24} icon="Add" action={() => editor.handle.addPrimaryImport()} />
 					</div>
@@ -381,8 +397,8 @@
 						data-datatype={frontendInput.dataType}
 						style:--data-color={`var(--color-data-${frontendInput.dataType.toLowerCase()})`}
 						style:--data-color-dim={`var(--color-data-${frontendInput.dataType.toLowerCase()}-dim)`}
-						style:--offset-left={($nodeGraph.updateImportsExports.exportPosition.x - 8) / 24}
-						style:--offset-top={($nodeGraph.updateImportsExports.exportPosition.y - 8) / 24 + index}
+						style:--offset-left={($nodeGraph.updateImportsExports.exportPosition[0] - 8) / 24}
+						style:--offset-top={($nodeGraph.updateImportsExports.exportPosition[1] - 8) / 24 + index}
 					>
 						{#if frontendInput.connectedTo !== "Connected to nothing."}
 							<path d="M0,6.306A1.474,1.474,0,0,0,2.356,7.724L7.028,5.248c1.3-.687,1.3-1.809,0-2.5L2.356.276A1.474,1.474,0,0,0,0,1.694Z" fill="var(--data-color)" />
@@ -396,8 +412,8 @@
 						class="edit-import-export export"
 						class:separator-bottom={index === 0 && $nodeGraph.updateImportsExports.addImportExport}
 						class:separator-top={index === 1 && $nodeGraph.updateImportsExports.addImportExport}
-						style:--offset-left={($nodeGraph.updateImportsExports.exportPosition.x - 8) / 24}
-						style:--offset-top={($nodeGraph.updateImportsExports.exportPosition.y - 8) / 24 + index}
+						style:--offset-left={($nodeGraph.updateImportsExports.exportPosition[0] - 8) / 24}
+						style:--offset-top={($nodeGraph.updateImportsExports.exportPosition[1] - 8) / 24 + index}
 					>
 						{#if (hoveringExportIndex === index || editingNameExportIndex === index) && $nodeGraph.updateImportsExports.addImportExport}
 							{#if index > 0}
@@ -432,8 +448,8 @@
 				{:else}
 					<div
 						class="plus"
-						style:--offset-left={($nodeGraph.updateImportsExports.exportPosition.x - 12) / 24}
-						style:--offset-top={($nodeGraph.updateImportsExports.exportPosition.y - 12) / 24}
+						style:--offset-left={($nodeGraph.updateImportsExports.exportPosition[0] - 12) / 24}
+						style:--offset-top={($nodeGraph.updateImportsExports.exportPosition[1] - 12) / 24}
 					>
 						<IconButton size={24} icon="Add" action={() => editor.handle.addPrimaryExport()} />
 					</div>
@@ -443,15 +459,15 @@
 			{#if $nodeGraph.updateImportsExports.addImportExport}
 				<div
 					class="plus"
-					style:--offset-left={($nodeGraph.updateImportsExports.importPosition.x - 12) / 24}
-					style:--offset-top={($nodeGraph.updateImportsExports.importPosition.y - 12) / 24 + $nodeGraph.updateImportsExports.imports.length}
+					style:--offset-left={($nodeGraph.updateImportsExports.importPosition[0] - 12) / 24}
+					style:--offset-top={($nodeGraph.updateImportsExports.importPosition[1] - 12) / 24 + $nodeGraph.updateImportsExports.imports.length}
 				>
 					<IconButton size={24} icon="Add" action={() => editor.handle.addSecondaryImport()} />
 				</div>
 				<div
 					class="plus"
-					style:--offset-left={($nodeGraph.updateImportsExports.exportPosition.x - 12) / 24}
-					style:--offset-top={($nodeGraph.updateImportsExports.exportPosition.y - 12) / 24 + $nodeGraph.updateImportsExports.exports.length}
+					style:--offset-left={($nodeGraph.updateImportsExports.exportPosition[0] - 12) / 24}
+					style:--offset-top={($nodeGraph.updateImportsExports.exportPosition[1] - 12) / 24 + $nodeGraph.updateImportsExports.exports.length}
 				>
 					<IconButton size={24} icon="Add" action={() => editor.handle.addSecondaryExport()} />
 				</div>
@@ -459,16 +475,16 @@
 
 			{#if $nodeGraph.reorderImportIndex !== undefined}
 				{@const position = {
-					x: Number($nodeGraph.updateImportsExports.importPosition.x),
-					y: Number($nodeGraph.updateImportsExports.importPosition.y) + Number($nodeGraph.reorderImportIndex) * 24,
+					x: Number($nodeGraph.updateImportsExports.importPosition[0]),
+					y: Number($nodeGraph.updateImportsExports.importPosition[1]) + Number($nodeGraph.reorderImportIndex) * 24,
 				}}
 				<div class="reorder-bar" style:--offset-left={(position.x - 48) / 24} style:--offset-top={(position.y - 12) / 24}></div>
 			{/if}
 
 			{#if $nodeGraph.reorderExportIndex !== undefined}
 				{@const position = {
-					x: Number($nodeGraph.updateImportsExports.exportPosition.x),
-					y: Number($nodeGraph.updateImportsExports.exportPosition.y) + Number($nodeGraph.reorderExportIndex) * 24,
+					x: Number($nodeGraph.updateImportsExports.exportPosition[0]),
+					y: Number($nodeGraph.updateImportsExports.exportPosition[1]) + Number($nodeGraph.reorderExportIndex) * 24,
 				}}
 				<div class="reorder-bar" style:--offset-left={position.x / 24} style:--offset-top={(position.y - 12) / 24}></div>
 			{/if}
@@ -493,8 +509,9 @@
 				class:in-selected-network={$nodeGraph.inSelectedNetwork}
 				class:previewed={node.previewed}
 				class:disabled={!node.visible}
-				style:--offset-left={node.position?.x || 0}
-				style:--offset-top={node.position?.y || 0}
+				class:locked={node.locked}
+				style:--offset-left={node.position?.[0] || 0}
+				style:--offset-top={node.position?.[1] || 0}
 				style:--clip-path-id={`url(#${clipPathId})`}
 				style:--data-color={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()})`}
 				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
@@ -502,7 +519,7 @@
 				style:--node-chain-area-left-extension={layerChainWidth !== 0 ? layerChainWidth + 0.5 : 0}
 				data-tooltip-label={nodeNameTooltipLabel(node)}
 				data-tooltip-description={`
-					${(description || "").trim()}${editor.handle.inDevelopmentMode() ? `\n\nID: ${node.id}. Position: (${node.position.x}, ${node.position.y}).` : ""}
+					${(description || "").trim()}${editor.handle.inDevelopmentMode() ? `\n\nID: ${node.id}. Position: (${node.position[0]}, ${node.position[1]}).` : ""}
 					`.trim()}
 				data-node={node.id}
 			>
@@ -582,6 +599,19 @@
 					<TextLabel>{node.displayName}</TextLabel>
 				</div>
 				<div class="solo-drag-grip" data-tooltip-description="Drag only this layer without pushing others outside the stack"></div>
+				{#if node.locked}
+					<IconButton
+						class="lock"
+						data-lock-button
+						size={24}
+						icon="PadlockLocked"
+						hoverIcon="PadlockUnlocked"
+						action={() => {
+							/* Button is purely visual, clicking is handled in NodeGraphMessage::PointerDown */
+						}}
+						tooltipLabel="Unlock"
+					/>
+				{/if}
 				<IconButton
 					class="visibility"
 					data-visibility-button
@@ -645,14 +675,14 @@
 				class:selected={$nodeGraph.selected.includes(node.id)}
 				class:previewed={node.previewed}
 				class:disabled={!node.visible}
-				style:--offset-left={node.position?.x || 0}
-				style:--offset-top={node.position?.y || 0}
+				style:--offset-left={node.position?.[0] || 0}
+				style:--offset-top={node.position?.[1] || 0}
 				style:--clip-path-id={`url(#${clipPathId})`}
 				style:--data-color={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()})`}
 				style:--data-color-dim={`var(--color-data-${(node.primaryOutput?.dataType || "General").toLowerCase()}-dim)`}
 				data-tooltip-label={nodeNameTooltipLabel(node)}
 				data-tooltip-description={`
-					${(description || "").trim()}${editor.handle.inDevelopmentMode() ? `\n\nID: ${node.id}. Position: (${node.position.x}, ${node.position.y}).` : ""}
+					${(description || "").trim()}${editor.handle.inDevelopmentMode() ? `\n\nID: ${node.id}. Position: (${node.position[0]}, ${node.position[1]}).` : ""}
 					`.trim()}
 				data-node={node.id}
 			>
@@ -1231,6 +1261,10 @@
 				border-radius: 2px;
 			}
 
+			&.locked .solo-drag-grip {
+				right: calc(-12px + 24px + 24px);
+			}
+
 			.solo-drag-grip:hover,
 			&.selected .solo-drag-grip {
 				background-image: var(--icon-drag-grip);
@@ -1241,8 +1275,11 @@
 			}
 
 			.visibility {
-				position: absolute;
 				right: -12px;
+			}
+
+			.lock {
+				right: 12px;
 			}
 
 			.input.connectors {
@@ -1250,6 +1287,7 @@
 			}
 
 			.solo-drag-grip,
+			.lock,
 			.visibility,
 			.input.connectors,
 			.input.connectors .connector {

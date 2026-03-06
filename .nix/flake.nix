@@ -18,7 +18,6 @@
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
     };
-    flake-utils.url = "github:numtide/flake-utils";
     crane.url = "github:ipetkov/crane";
 
     # This is used to provide a identical development shell at `shell.nix` for users that do not use flakes
@@ -27,143 +26,85 @@
 
   outputs =
     inputs:
-    inputs.flake-utils.lib.eachDefaultSystem (
-      system:
+    (
       let
-        info = {
-          pname = "graphite";
-          version = "unstable";
-          src = pkgs.lib.cleanSourceWith {
-            src = ./..;
-            filter = path: type: !(type == "directory" && builtins.baseNameOf path == ".nix");
-          };
-        };
+        systems = [
+          "x86_64-linux"
+          "aarch64-linux"
+        ];
+        forAllSystems = f: inputs.nixpkgs.lib.genAttrs systems (system: f system);
+        args =
+          system:
+          (
+            let
+              lib = inputs.nixpkgs.lib // {
+                call = p: import p args;
+              };
 
-        pkgs = import inputs.nixpkgs {
-          inherit system;
-          overlays = [ (import inputs.rust-overlay) ];
-        };
+              pkgs = import inputs.nixpkgs {
+                inherit system;
+                overlays = [ (import inputs.rust-overlay) ];
+              };
 
-        deps = {
-          crane = import ./deps/crane.nix { inherit pkgs inputs; };
-          cef = import ./deps/cef.nix { inherit pkgs inputs; };
-          rustGPU = import ./deps/rust-gpu.nix { inherit pkgs inputs; };
-        };
+              info = {
+                pname = "graphite";
+                version = "unstable";
+                src = inputs.nixpkgs.lib.cleanSourceWith {
+                  src = ./..;
+                  filter = path: type: !(type == "directory" && builtins.baseNameOf path == ".nix");
+                };
+                cargoVendored = deps.crane.lib.vendorCargoDeps { inherit (info) src; };
+              };
 
-        libs = rec {
-          desktop = [
-            pkgs.wayland
-            pkgs.openssl
-            pkgs.vulkan-loader
-            pkgs.libraw
-            pkgs.libGL
-          ];
-          desktop-x11 = [
-            pkgs.libxkbcommon
-            pkgs.xorg.libXcursor
-            pkgs.xorg.libxcb
-            pkgs.xorg.libX11
-          ];
-          desktop-all = desktop ++ desktop-x11;
-          all = desktop-all;
-        };
+              deps = {
+                crane = lib.call ./deps/crane.nix;
+                cef = lib.call ./deps/cef.nix;
+                rustGPU = lib.call ./deps/rust-gpu.nix;
+              };
 
-        tools = rec {
-          desktop = [
-            pkgs.pkg-config
-          ];
-          frontend = [
-            pkgs.lld
-            pkgs.nodejs
-            pkgs.nodePackages.npm
-            pkgs.binaryen
-            pkgs.wasm-bindgen-cli_0_2_100
-            pkgs.wasm-pack
-            pkgs.cargo-about
-          ];
-          dev = [
-            pkgs.rustc
-            pkgs.cargo
-            pkgs.rust-analyzer
-            pkgs.clippy
-            pkgs.rustfmt
-
-            pkgs.git
-
-            pkgs.cargo-watch
-            pkgs.cargo-nextest
-            pkgs.cargo-expand
-
-            # Linker
-            pkgs.mold
-
-            # Profiling tools
-            pkgs.gnuplot
-            pkgs.samply
-            pkgs.cargo-flamegraph
-
-            # Plotting tools
-            pkgs.graphviz
-          ];
-          all = desktop ++ frontend ++ dev;
-        };
+              args = {
+                inherit system;
+                inherit (inputs) self;
+                inherit inputs;
+                inherit pkgs;
+                inherit lib;
+                inherit info;
+                inherit deps;
+              }
+              // inputs;
+            in
+            args
+          );
+        withArgs = f: forAllSystems (system: f (args system));
       in
       {
-        packages = rec {
-          graphiteWithArgs =
-            args:
-            (import ./pkgs/graphite.nix {
-              pkgs = pkgs // {
-                inherit raster-nodes-shaders;
-              };
-              inherit
-                info
-                inputs
-                deps
-                libs
-                tools
-                ;
-            })
-              args;
-          graphite = graphiteWithArgs { };
-          graphite-dev = graphiteWithArgs { dev = true; };
-          graphite-without-resources = graphiteWithArgs { embeddedResources = false; };
-          graphite-without-resources-dev = graphiteWithArgs {
-            embeddedResources = false;
-            dev = true;
-          };
-          graphite-bundle = import ./pkgs/graphite-bundle.nix {
-            inherit pkgs graphite;
-          };
-          graphite-flatpak-manifest = import ./pkgs/graphite-flatpak-manifest.nix {
-            inherit pkgs;
-            archive = graphite-bundle.tar;
-          };
-          #TODO: graphene-cli = import ./pkgs/graphene-cli.nix { inherit info pkgs inputs deps libs tools; };
-          raster-nodes-shaders = import ./pkgs/raster-nodes-shaders.nix {
-            inherit
-              info
-              pkgs
-              inputs
-              deps
-              libs
-              tools
-              ;
-          };
+        packages = withArgs (
+          { lib, ... }:
+          rec {
+            default = graphite;
+            graphite = (lib.call ./pkgs/graphite.nix) { };
+            graphite-dev = (lib.call ./pkgs/graphite.nix) { dev = true; };
+            graphite-raster-nodes-shaders = lib.call ./pkgs/graphite-raster-nodes-shaders.nix;
+            graphite-branding = lib.call ./pkgs/graphite-branding.nix;
+            graphite-bundle = lib.call ./pkgs/graphite-bundle.nix;
+            graphite-flatpak-manifest = lib.call ./pkgs/graphite-flatpak-manifest.nix;
 
-          default = graphite;
-        };
+            # TODO: graphene-cli = lib.call ./pkgs/graphene-cli.nix;
 
-        devShells.default = import ./dev.nix {
-          inherit
-            pkgs
-            deps
-            libs
-            tools
-            ;
-        };
+            tools = {
+              third-party-licenses = lib.call ./pkgs/tools/third-party-licenses.nix;
+            };
+          }
+        );
 
-        formatter = pkgs.nixfmt-tree;
+        devShells = withArgs (
+          { lib, ... }:
+          {
+            default = lib.call ./dev.nix;
+          }
+        );
+
+        formatter = withArgs ({ pkgs, ... }: pkgs.nixfmt-tree);
       }
     );
 }

@@ -1,18 +1,19 @@
 {
   pkgs,
-  graphite,
+  self,
+  system,
+  ...
 }:
 let
   bundle =
     {
-      pkgs,
-      graphite,
       archive ? false,
       compression ? null,
-      passthru ? {},
+      passthru ? { },
     }:
     (
       let
+        graphite = self.packages.${system}.graphite;
         tar = if compression == null then archive else true;
         nameArchiveSuffix = if tar then ".tar" else "";
         nameCompressionSuffix = if compression == null then "" else "." + compression;
@@ -20,9 +21,14 @@ let
         build = ''
           mkdir -p out
           mkdir -p out/bin
-          cp ${graphite}/bin/.graphite-wrapped out/bin/graphite
+          cp ${graphite}/bin/graphite out/bin/graphite
           chmod -v +w out/bin/graphite
-          patchelf --set-rpath '$ORIGIN/../lib:$ORIGIN/../lib/cef' --set-interpreter '/lib64/ld-linux-x86-64.so.2' out/bin/graphite
+          patchelf \
+            --set-rpath '$ORIGIN/../lib:$ORIGIN/../lib/cef' \
+            --set-interpreter '/lib64/ld-linux-x86-64.so.2' \
+            --remove-needed libGL.so \
+            out/bin/graphite
+          cp -r ${graphite}/share out/share
           mkdir -p out/lib/cef
           mkdir -p ./cef
           tar -xvf ${pkgs.cef-binary.src} -C ./cef --strip-components=1
@@ -30,7 +36,6 @@ let
           cp -r ./cef/Resources/* out/lib/cef/
           find "out/lib/cef/locales" -type f ! -name 'en-US*' -delete
           ${pkgs.bintools}/bin/strip out/lib/cef/*.so*
-          cp -r ${graphite}/share out/share
         '';
         install =
           if tar then
@@ -71,18 +76,14 @@ let
     );
 in
 bundle {
-  inherit pkgs graphite;
   passthru = {
     tar = bundle {
-      inherit pkgs graphite;
       archive = true;
       passthru = {
         gz = bundle {
-          inherit pkgs graphite;
           compression = "gz";
         };
         xz = bundle {
-          inherit pkgs graphite;
           compression = "xz";
         };
       };

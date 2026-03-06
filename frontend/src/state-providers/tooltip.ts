@@ -1,7 +1,7 @@
 import { writable } from "svelte/store";
 
-import { type Editor } from "@graphite/editor";
-import { SendShortcutAltClick, SendShortcutFullscreen, SendShortcutShiftClick, type ActionShortcut } from "@graphite/messages";
+import type { Editor } from "@graphite/editor";
+import type { ActionShortcut } from "@graphite/messages";
 import { operatingSystem } from "@graphite/utility-functions/platform";
 
 const SHOW_TOOLTIP_DELAY_MS = 500;
@@ -55,27 +55,34 @@ export function createTooltipState(editor: Editor) {
 		}, SHOW_TOOLTIP_DELAY_MS);
 	});
 
-	editor.subscriptions.subscribeJsMessage(SendShortcutShiftClick, async (data) => {
+	// Hide tooltip and cancel any pending timeout when the mouse leaves the application window
+	document.addEventListener("mouseleave", () => {
+		if (tooltipTimeout) clearTimeout(tooltipTimeout);
+		closeTooltip();
+	});
+
+	document.addEventListener("mousedown", closeTooltip);
+	document.addEventListener("keydown", closeTooltip);
+	document.addEventListener("wheel", closeTooltip);
+
+	editor.subscriptions.subscribeFrontendMessage("SendShortcutShiftClick", async (data) => {
 		update((state) => {
 			state.shiftClickShortcut = data.shortcut;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(SendShortcutAltClick, async (data) => {
+	editor.subscriptions.subscribeFrontendMessage("SendShortcutAltClick", async (data) => {
 		update((state) => {
 			state.altClickShortcut = data.shortcut;
 			return state;
 		});
 	});
-	editor.subscriptions.subscribeJsMessage(SendShortcutFullscreen, async (data) => {
+	editor.subscriptions.subscribeFrontendMessage("SendShortcutFullscreen", async (data) => {
 		update((state) => {
 			state.fullscreenShortcut = operatingSystem() === "Mac" ? data.shortcutMac : data.shortcut;
 			return state;
 		});
 	});
-
-	document.addEventListener("mousedown", closeTooltip);
-	document.addEventListener("keydown", closeTooltip);
 
 	// Stop showing a tooltip if the user clicks or presses a key, and require the user to first move out of the element before it can re-appear
 	function closeTooltip() {

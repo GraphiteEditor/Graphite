@@ -1,9 +1,9 @@
 use std::path::{Path, PathBuf};
 
 use cef::args::Args;
-use cef::sys::{CEF_API_VERSION_LAST, cef_resultcode_t};
+use cef::sys::{CEF_API_VERSION_LAST, cef_log_severity_t, cef_resultcode_t};
 use cef::{
-	App, BrowserSettings, CefString, Client, DictionaryValue, ImplCommandLine, ImplRequestContext, RequestContextSettings, SchemeHandlerFactory, Settings, WindowInfo, api_hash,
+	App, BrowserSettings, CefString, Client, DictionaryValue, ImplCommandLine, ImplRequestContext, LogSeverity, RequestContextSettings, SchemeHandlerFactory, Settings, WindowInfo, api_hash,
 	browser_host_create_browser_sync, execute_process,
 };
 
@@ -74,11 +74,24 @@ impl<H: CefEventHandler> CefContextBuilder<H> {
 	}
 
 	fn common_settings(instance_dir: &Path) -> Settings {
+		let log_severity = match std::env::var("GRAPHITE_BROWSER_LOG") {
+			Ok(level) => match level.to_lowercase().as_str() {
+				"debug" => LogSeverity::from(cef_log_severity_t::LOGSEVERITY_VERBOSE),
+				"info" => LogSeverity::from(cef_log_severity_t::LOGSEVERITY_INFO),
+				"warn" => LogSeverity::from(cef_log_severity_t::LOGSEVERITY_WARNING),
+				"error" => LogSeverity::from(cef_log_severity_t::LOGSEVERITY_ERROR),
+				"none" => LogSeverity::from(cef_log_severity_t::LOGSEVERITY_DISABLE),
+				_ => LogSeverity::from(cef_log_severity_t::LOGSEVERITY_FATAL),
+			},
+			Err(_) => LogSeverity::from(cef_log_severity_t::LOGSEVERITY_FATAL),
+		};
+
 		Settings {
 			windowless_rendering_enabled: 1,
 			root_cache_path: instance_dir.to_str().map(CefString::from).unwrap(),
 			cache_path: CefString::from(""),
 			disable_signal_handlers: 1,
+			log_severity,
 			..Default::default()
 		}
 	}

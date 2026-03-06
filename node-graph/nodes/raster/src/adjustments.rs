@@ -54,7 +54,6 @@ fn luminance<T: Adjust<Color>>(
 		Table<Raster<CPU>>,
 		Table<Color>,
 		Table<GradientStops>,
-		GradientStops,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -80,7 +79,6 @@ fn gamma_correction<T: Adjust<Color>>(
 		Table<Raster<CPU>>,
 		Table<Color>,
 		Table<GradientStops>,
-		GradientStops,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -102,7 +100,6 @@ fn extract_channel<T: Adjust<Color>>(
 		Table<Raster<CPU>>,
 		Table<Color>,
 		Table<GradientStops>,
-		GradientStops,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -127,7 +124,6 @@ fn make_opaque<T: Adjust<Color>>(
 		Table<Raster<CPU>>,
 		Table<Color>,
 		Table<GradientStops>,
-		GradientStops,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -154,7 +150,6 @@ fn brightness_contrast_classic<T: Adjust<Color>>(
 		Table<Raster<CPU>>,
 		Table<Color>,
 		Table<GradientStops>,
-		GradientStops,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -186,7 +181,6 @@ fn brightness_contrast<T: Adjust<Color>>(
 		Table<Raster<CPU>>,
 		Table<Color>,
 		Table<GradientStops>,
-		GradientStops,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -268,7 +262,6 @@ fn levels<T: Adjust<Color>>(
 		Table<Raster<CPU>>,
 		Table<Color>,
 		Table<GradientStops>,
-		GradientStops,
 	)]
 	#[gpu_image]
 	mut image: T,
@@ -337,7 +330,6 @@ fn black_and_white<T: Adjust<Color>>(
 		Table<Raster<CPU>>,
 		Table<Color>,
 		Table<GradientStops>,
-		GradientStops,
 	)]
 	#[gpu_image]
 	mut image: T,
@@ -411,7 +403,6 @@ fn hue_saturation<T: Adjust<Color>>(
 		Table<Raster<CPU>>,
 		Table<Color>,
 		Table<GradientStops>,
-		GradientStops,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -447,7 +438,6 @@ fn invert<T: Adjust<Color>>(
 		Table<Raster<CPU>>,
 		Table<Color>,
 		Table<GradientStops>,
-		GradientStops,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -471,7 +461,6 @@ fn threshold<T: Adjust<Color>>(
 		Table<Raster<CPU>>,
 		Table<Color>,
 		Table<GradientStops>,
-		GradientStops,
 	)]
 	#[gpu_image]
 	mut image: T,
@@ -518,7 +507,6 @@ fn vibrance<T: Adjust<Color>>(
 		Table<Raster<CPU>>,
 		Table<Color>,
 		Table<GradientStops>,
-		GradientStops,
 	)]
 	#[gpu_image]
 	mut image: T,
@@ -684,7 +672,6 @@ fn channel_mixer<T: Adjust<Color>>(
 		Table<Raster<CPU>>,
 		Table<Color>,
 		Table<GradientStops>,
-		GradientStops,
 	)]
 	#[gpu_image]
 	mut image: T,
@@ -815,7 +802,6 @@ fn selective_color<T: Adjust<Color>>(
 		Table<Raster<CPU>>,
 		Table<Color>,
 		Table<GradientStops>,
-		GradientStops,
 	)]
 	#[gpu_image]
 	mut image: T,
@@ -962,7 +948,6 @@ fn posterize<T: Adjust<Color>>(
 		Table<Raster<CPU>>,
 		Table<Color>,
 		Table<GradientStops>,
-		GradientStops,
 	)]
 	#[gpu_image]
 	mut input: T,
@@ -997,7 +982,6 @@ fn exposure<T: Adjust<Color>>(
 		Table<Raster<CPU>>,
 		Table<Color>,
 		Table<GradientStops>,
-		GradientStops,
 	)]
 	#[gpu_image]
 	mut input: T,

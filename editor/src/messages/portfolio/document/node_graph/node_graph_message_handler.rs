@@ -25,6 +25,7 @@ use crate::messages::tool::tool_messages::tool_prelude::{Key, MouseMotion};
 use crate::messages::tool::utility_types::{HintData, HintGroup, HintInfo};
 use crate::messages::viewport::Position;
 use glam::{DAffine2, DVec2, IVec2};
+use graph_craft::document::value::TaggedValue;
 use graph_craft::document::{DocumentNodeImplementation, NodeId, NodeInput};
 use graphene_std::math::math_ext::QuadExt;
 use graphene_std::vector::algorithms::bezpath_algorithms::bezpath_is_inside_bezpath;
@@ -808,10 +809,27 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					let context_menu_data = if let Some(node_id) = clicked_id {
 						let currently_is_node = !network_interface.is_layer(&node_id, breadcrumb_network_path);
 						let can_be_layer = network_interface.is_eligible_to_be_layer(&node_id, breadcrumb_network_path);
+
+						// Determine which layers the Lock/Unlock action would affect:
+						// - If the right-clicked node is in the selection, it affects all selected layers
+						// - If the right-clicked node is not in the selection, it affects just the right-clicked node
+						let selected_nodes = network_interface.selected_nodes_in_nested_network(selection_network_path);
+						let is_clicked_selected = selected_nodes.as_ref().is_some_and(|selected| selected.selected_nodes().any(|id| *id == node_id));
+						let affected_layer_ids = if is_clicked_selected {
+							selected_nodes.map(|selected| selected.selected_nodes().copied().filter(|id| network_interface.is_layer(id, selection_network_path)).collect())
+						} else {
+							network_interface.is_layer(&node_id, selection_network_path).then(|| vec![node_id])
+						}
+						.unwrap_or_default();
+						let has_selected_layers = !affected_layer_ids.is_empty();
+						let all_selected_layers_locked = has_selected_layers && affected_layer_ids.iter().all(|id| network_interface.is_locked(id, selection_network_path));
+
 						ContextMenuData::ModifyNode {
 							can_be_layer,
 							currently_is_node,
 							node_id,
+							has_selected_layers,
+							all_selected_layers_locked,
 						}
 					} else {
 						ContextMenuData::CreateNode { compatible_type: None }
@@ -829,7 +847,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					};
 
 					self.context_menu = Some(ContextMenuInformation {
-						context_menu_coordinates: (node_graph_point + node_graph_shift).into(),
+						context_menu_coordinates: (node_graph_point + node_graph_shift).as_ivec2(),
 						context_menu_data,
 					});
 
@@ -892,6 +910,12 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				// Toggle visibility of clicked node and return
 				if let Some(clicked_visibility) = network_interface.layer_click_target_from_click(click, network_interface::LayerClickTargetTypes::Visibility, selection_network_path) {
 					responses.add(NodeGraphMessage::ToggleVisibility { node_id: clicked_visibility });
+					return;
+				}
+
+				// Toggle lock of clicked node and return
+				if let Some(clicked_lock) = network_interface.layer_click_target_from_click(click, network_interface::LayerClickTargetTypes::Lock, selection_network_path) {
+					responses.add(NodeGraphMessage::ToggleLocked { node_id: clicked_lock });
 					return;
 				}
 
@@ -1256,7 +1280,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						let compatible_type = network_interface.output_type(&output_connector, selection_network_path).add_node_string();
 
 						self.context_menu = Some(ContextMenuInformation {
-							context_menu_coordinates: (point + node_graph_shift).into(),
+							context_menu_coordinates: (point + node_graph_shift).as_ivec2(),
 							context_menu_data: ContextMenuData::CreateNode { compatible_type },
 						});
 
@@ -1497,19 +1521,25 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					for input_index in 0..network_interface.number_of_inputs(selected_node, selection_network_path) {
 						let input_connector = InputConnector::node(*selected_node, input_index);
 						// Only disconnect inputs to non selected nodes
-						if network_interface
+						if !network_interface
 							.upstream_output_connector(&input_connector, selection_network_path)
 							.and_then(|connector| connector.node_id())
-							.is_some_and(|node_id| !all_selected_nodes.contains(&node_id))
+							.is_some_and(|node_id| all_selected_nodes.contains(&node_id))
 						{
 							responses.add(NodeGraphMessage::DisconnectInput { input_connector });
 						}
 					}
 
 					let number_of_outputs = network_interface.number_of_outputs(selected_node, selection_network_path);
-					let first_deselected_upstream_node = network_interface
-						.upstream_flow_back_from_nodes(vec![*selected_node], selection_network_path, FlowType::PrimaryFlow)
-						.find(|upstream_node| !all_selected_nodes.contains(upstream_node));
+					let mut first_deselected_upstream_output = network_interface.upstream_output_connector(&InputConnector::node(*selected_node, 0), selection_network_path);
+					while let Some(OutputConnector::Node { node_id, .. }) = &first_deselected_upstream_output {
+						if !all_selected_nodes.contains(node_id) {
+							break;
+						}
+
+						first_deselected_upstream_output = network_interface.upstream_output_connector(&InputConnector::node(*node_id, 0), selection_network_path);
+					}
+
 					let Some(outward_wires) = network_interface.outward_wires(selection_network_path) else {
 						log::error!("Could not get output wires in shake input");
 						continue;
@@ -1529,46 +1559,26 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 
 					// Handle reconnection
 					// Find first non selected upstream node by primary flow
-					if let Some(first_deselected_upstream_node) = first_deselected_upstream_node {
+					if let Some(first_deselected_upstream_output) = first_deselected_upstream_output {
 						let Some(downstream_connections_to_first_output) = outward_wires.get(&OutputConnector::node(*selected_node, 0)).cloned() else {
 							log::error!("Could not get downstream_connections_to_first_output in shake node");
 							return;
 						};
 						// Reconnect only if all downstream outputs are not selected
-						if !downstream_connections_to_first_output
-							.iter()
-							.any(|connector| connector.node_id().is_some_and(|node_id| all_selected_nodes.contains(&node_id)))
-						{
-							// Find what output on the deselected upstream node to reconnect to
-							for output_index in 0..network_interface.number_of_outputs(&first_deselected_upstream_node, selection_network_path) {
-								let output_connector = &OutputConnector::node(first_deselected_upstream_node, output_index);
-								let Some(outward_wires) = network_interface.outward_wires(selection_network_path) else {
-									log::error!("Could not get output wires in shake input");
-									continue;
-								};
-								if let Some(inputs) = outward_wires.get(output_connector) {
-									// This can only run once
-									if inputs.iter().any(|input_connector| {
-										input_connector
-											.node_id()
-											.is_some_and(|upstream_node| all_selected_nodes.contains(&upstream_node) && input_connector.input_index() == 0)
-									}) {
-										// Output index is the output of the deselected upstream node to reconnect to
-										for downstream_connections_to_first_output in &downstream_connections_to_first_output {
-											responses.add(NodeGraphMessage::CreateWire {
-												output_connector: OutputConnector::node(first_deselected_upstream_node, output_index),
-												input_connector: *downstream_connections_to_first_output,
-											});
-										}
-									}
-								}
-
-								// Set all chain nodes back to chain position
-								// TODO: Fix
-								// for chain_node_to_reset in std::mem::take(&mut self.drag_start_chain_nodes) {
-								// 	responses.add(NodeGraphMessage::SetChainPosition { node_id: chain_node_to_reset });
-								// }
+						for downstream_connection_to_first_output in &downstream_connections_to_first_output {
+							if !downstream_connection_to_first_output.node_id().is_some_and(|node_id| all_selected_nodes.contains(&node_id)) {
+								// Reconnect the upstream output to all downstream inputs
+								responses.add(NodeGraphMessage::CreateWire {
+									output_connector: first_deselected_upstream_output,
+									input_connector: *downstream_connection_to_first_output,
+								});
 							}
+
+							// Set all chain nodes back to chain position
+							// TODO: Fix
+							// for chain_node_to_reset in std::mem::take(&mut self.drag_start_chain_nodes) {
+							// 	responses.add(NodeGraphMessage::SetChainPosition { node_id: chain_node_to_reset });
+							// }
 						}
 					}
 				}
@@ -1699,12 +1709,16 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				}
 			}
 			NodeGraphMessage::SetInputValue { node_id, input_index, value } => {
+				let is_fill = matches!(value, TaggedValue::Fill(_));
 				let input = NodeInput::value(value, false);
 				responses.add(NodeGraphMessage::SetInput {
 					input_connector: InputConnector::node(node_id, input_index),
 					input,
 				});
 				responses.add(PropertiesPanelMessage::Refresh);
+				if is_fill {
+					responses.add(OverlaysMessage::Draw);
+				}
 				if network_interface.connected_to_output(&node_id, selection_network_path) {
 					responses.add(NodeGraphMessage::RunDocumentGraph);
 				}
@@ -1843,9 +1857,17 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					log::error!("Could not get selected nodes in NodeGraphMessage::ToggleSelectedLocked");
 					return;
 				};
-				let node_ids = selected_nodes.selected_nodes().cloned().collect::<Vec<_>>();
+				let node_ids = selected_nodes
+					.selected_nodes()
+					.filter(|node_id| network_interface.is_layer(node_id, selection_network_path))
+					.cloned()
+					.collect::<Vec<_>>();
 
-				// If any of the selected layers are locked, show them all. Otherwise, hide them all.
+				if node_ids.is_empty() {
+					return;
+				}
+
+				// If any of the selected layers are unlocked, lock them all. Otherwise, unlock them all.
 				let locked = !node_ids.iter().all(|node_id| network_interface.is_locked(node_id, selection_network_path));
 
 				responses.add(DocumentMessage::AddTransaction);
@@ -1986,16 +2008,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					}
 
 					if control {
-						let mut non_layer_nodes = HashSet::new();
-
-						let layer_nodes = nodes.iter().filter(|node_id| network_interface.is_layer(node_id, selection_network_path));
-						for &layer_id in layer_nodes {
-							for child_id in network_interface.upstream_flow_back_from_nodes(vec![layer_id], selection_network_path, FlowType::LayerChildrenUpstreamFlow) {
-								if nodes.contains(&child_id) && child_id != layer_id {
-									non_layer_nodes.insert(child_id);
-								}
-							}
-						}
+						let layer_nodes: HashSet<_> = nodes.iter().filter(|node_id| network_interface.is_layer(node_id, selection_network_path)).cloned().collect();
+						let non_layer_nodes: HashSet<_> = nodes.difference(&layer_nodes).cloned().collect();
 
 						// Remove non-layer nodes from selection
 						if alt {
@@ -2682,7 +2696,7 @@ impl NodeGraphMessageHandler {
 			position += IVec2::new(12, -12)
 		}
 
-		Some(NodeGraphErrorDiagnostic { position: position.into(), error })
+		Some(NodeGraphErrorDiagnostic { position, error })
 	}
 
 	fn update_layer_panel(network_interface: &NodeNetworkInterface, selection_network_path: &[NodeId], collapsed: &CollapsedLayers, layers_panel_open: bool, responses: &mut VecDeque<Message>) {
@@ -2755,7 +2769,7 @@ impl NodeGraphMessageHandler {
 					children_allowed,
 					children_present: layer.has_children(network_interface.document_metadata()),
 					expanded: layer.has_children(network_interface.document_metadata()) && !collapsed.0.contains(&layer),
-					depth: layer.ancestors(network_interface.document_metadata()).count() - 1,
+					depth: layer.ancestors(network_interface.document_metadata()).count() as u32 - 1,
 					visible: network_interface.is_visible(&node_id, &[]),
 					parents_visible,
 					unlocked: !network_interface.is_locked(&node_id, &[]),
@@ -2804,7 +2818,10 @@ impl NodeGraphMessageHandler {
 		if self.has_selection {
 			hint_data.0.extend([
 				HintGroup(vec![HintInfo::mouse(MouseMotion::LmbDrag, "Drag Selected")]),
-				HintGroup(vec![HintInfo::keys([Key::Delete], "Delete Selected"), HintInfo::keys([Key::Control], "Keep Children").prepend_plus()]),
+				HintGroup(vec![
+					HintInfo::keys([Key::Backspace], "Delete Selected"),
+					HintInfo::keys([Key::Control], "Keep Children").prepend_plus(),
+				]),
 				HintGroup(vec![
 					HintInfo::keys_and_mouse([Key::Alt], MouseMotion::LmbDrag, "Move Duplicate"),
 					HintInfo::keys([Key::Control, Key::KeyD], "Duplicate").add_mac_keys([Key::Command, Key::KeyD]),

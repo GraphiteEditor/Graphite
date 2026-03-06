@@ -1,6 +1,7 @@
-use std::path::PathBuf;
-
+#[cfg(target_os = "macos")]
+use graphite_editor::messages::layout::utility_types::layout_widget::LayoutTarget;
 use graphite_editor::messages::prelude::FrontendMessage;
+use std::path::PathBuf;
 
 use super::DesktopWrapperMessageDispatcher;
 use super::messages::{DesktopFrontendMessage, Document, FileFilter, OpenFileDialogContext, SaveFileDialogContext};
@@ -103,7 +104,10 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 			dispatcher.respond(DesktopFrontendMessage::PersistenceLoadPreferences);
 		}
 		#[cfg(target_os = "macos")]
-		FrontendMessage::UpdateMenuBarLayout { diff } => {
+		FrontendMessage::UpdateLayout {
+			layout_target: LayoutTarget::MenuBar,
+			diff,
+		} => {
 			use graphite_editor::messages::tool::tool_messages::tool_prelude::{DiffUpdate, WidgetDiff};
 			match diff.as_slice() {
 				[
@@ -150,6 +154,12 @@ pub(super) fn intercept_frontend_message(dispatcher: &mut DesktopWrapperMessageD
 		}
 		FrontendMessage::WindowShowAll => {
 			dispatcher.respond(DesktopFrontendMessage::WindowShowAll);
+		}
+		FrontendMessage::WindowRestart => {
+			dispatcher.respond(DesktopFrontendMessage::Restart);
+		}
+		FrontendMessage::TriggerDisplayThirdPartyLicensesDialog => {
+			dispatcher.respond(DesktopFrontendMessage::LoadThirdPartyLicenses);
 		}
 		m => return Some(m),
 	}

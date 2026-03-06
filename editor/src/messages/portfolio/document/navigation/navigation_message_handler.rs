@@ -239,7 +239,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 				}
 				let document_bounds = if !graph_view_overlay_open {
 					// TODO: Cache this in node graph coordinates and apply the transform to the rectangle to get viewport coordinates
-					network_interface.document_metadata().document_bounds_viewport_space()
+					network_interface.document_bounds_viewport_space(true)
 				} else {
 					network_interface.graph_bounds_viewport_space(breadcrumb_network_path)
 				};
@@ -257,7 +257,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 			NavigationMessage::CanvasZoomSet { zoom_factor } => {
 				let document_bounds = if !graph_view_overlay_open {
 					// TODO: Cache this in node graph coordinates and apply the transform to the rectangle to get viewport coordinates
-					network_interface.document_metadata().document_bounds_viewport_space()
+					network_interface.document_bounds_viewport_space(true)
 				} else {
 					network_interface.graph_bounds_viewport_space(breadcrumb_network_path)
 				};
@@ -454,7 +454,7 @@ impl MessageHandler<NavigationMessage, NavigationMessageContext<'_>> for Navigat
 
 							let document_bounds = if !graph_view_overlay_open {
 								// TODO: Cache this in node graph coordinates and apply the transform to the rectangle to get viewport coordinates
-								network_interface.document_metadata().document_bounds_viewport_space()
+								network_interface.document_bounds_viewport_space(true)
 							} else {
 								network_interface.graph_bounds_viewport_space(breadcrumb_network_path)
 							};
