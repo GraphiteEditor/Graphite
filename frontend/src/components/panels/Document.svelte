@@ -93,7 +93,7 @@
 	$: canvasHeightScaledRoundedToEven = canvasHeightScaled && (canvasHeightScaled % 2 === 1 ? canvasHeightScaled + 1 : canvasHeightScaled);
 
 	$: toolShelfTotalToolsAndSeparators = ((layoutGroup) => {
-		if (!isWidgetSpanRow(layoutGroup)) return undefined;
+		if (!layoutGroup || !isWidgetSpanRow(layoutGroup)) return undefined;
 
 		let totalSeparators = 0;
 		let totalToolRowsFor1Columns = 0;
@@ -108,8 +108,8 @@
 		};
 
 		let toolsInCurrentGroup = 0;
-		layoutGroup.rowWidgets.forEach((widget) => {
-			if (widget.props.kind === "Separator") {
+		layoutGroup.row.rowWidgets.forEach((widget) => {
+			if ("Separator" in widget.widget) {
 				totalSeparators += 1;
 				tally();
 			} else {
