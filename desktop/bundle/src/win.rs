@@ -14,9 +14,8 @@ pub fn main() -> Result<(), Box<dyn Error>> {
 	// TODO: Consider adding more useful cli
 	let args: Vec<String> = std::env::args().collect();
 	if let Some(pos) = args.iter().position(|a| a == "open") {
-		let executable_path = executable.to_string_lossy();
 		let extra_args: Vec<&str> = args[pos + 1..].iter().map(|s| s.as_str()).collect();
-		run_command(&executable_path, &extra_args).expect("failed to open app")
+		run_command(&executable_path.to_string_lossy(), &extra_args).expect("failed to open app")
 	}
 
 	Ok(())

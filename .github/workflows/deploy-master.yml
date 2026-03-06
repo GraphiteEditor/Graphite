@@ -31,7 +31,7 @@ jobs:
       - name: 🟢 Install the latest Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: latest
+          node-version: "latest"
 
       - name: 🚧 Install build dependencies
         run: |

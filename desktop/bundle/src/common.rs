@@ -46,7 +46,7 @@ pub(crate) fn build_bin(package: &str, bin: Option<&str>) -> Result<PathBuf, Box
 pub(crate) fn run_command(program: &str, args: &[&str]) -> Result<(), Box<dyn std::error::Error>> {
 	let status = Command::new(program).args(args).stdout(Stdio::inherit()).stderr(Stdio::inherit()).status()?;
 	if !status.success() {
-		panic!("Command '{}' with args {:?} failed with status: {}", program, args, status);
+		return Err(format!("Command '{}' with args {:?} failed with status: {}", program, args, status).into());
 	}
 	Ok(())
 }
