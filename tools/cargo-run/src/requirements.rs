@@ -4,7 +4,7 @@ use std::process::Command;
 use crate::*;
 
 #[derive(Default, Clone)]
-struct Dependency {
+struct Requirement {
 	command: &'static str,
 	args: &'static [&'static str],
 	name: &'static str,
@@ -13,15 +13,15 @@ struct Dependency {
 	skip: Option<&'static dyn Fn(&Task) -> bool>,
 }
 
-fn dependencies(task: &Task) -> Vec<Dependency> {
+fn requirements(task: &Task) -> Vec<Requirement> {
 	[
-		Dependency {
+		Requirement {
 			command: "rustc",
 			args: &["--version"],
 			name: "Rust",
 			..Default::default()
 		},
-		Dependency {
+		Requirement {
 			command: "cargo-about",
 			args: &["--version"],
 			name: "cargo-about",
@@ -29,7 +29,7 @@ fn dependencies(task: &Task) -> Vec<Dependency> {
 			skip: Some(&|task| matches!(task.target, Target::Cli)),
 			..Default::default()
 		},
-		Dependency {
+		Requirement {
 			command: "cargo-watch",
 			args: &["--version"],
 			name: "cargo-watch",
@@ -46,7 +46,7 @@ fn dependencies(task: &Task) -> Vec<Dependency> {
 			}),
 			..Default::default()
 		},
-		Dependency {
+		Requirement {
 			command: "wasm-bindgen",
 			args: &["--version"],
 			name: "wasm-bindgen-cli",
@@ -54,7 +54,7 @@ fn dependencies(task: &Task) -> Vec<Dependency> {
 			install: Some("cargo install -f wasm-bindgen-cli@0.2.100"),
 			skip: Some(&|task| matches!(task.target, Target::Cli)),
 		},
-		Dependency {
+		Requirement {
 			command: "wasm-pack",
 			args: &["--version"],
 			name: "wasm-pack",
@@ -62,21 +62,21 @@ fn dependencies(task: &Task) -> Vec<Dependency> {
 			skip: Some(&|task| matches!(task.target, Target::Cli)),
 			..Default::default()
 		},
-		Dependency {
+		Requirement {
 			command: "node",
 			args: &["--version"],
 			name: "Node.js",
 			skip: Some(&|task| matches!(task.target, Target::Cli)),
 			..Default::default()
 		},
-		Dependency {
+		Requirement {
 			command: "cmake",
 			args: &["--version"],
 			name: "CMake",
 			skip: Some(&|task| !matches!(task.target, Target::Desktop) || cfg!(target_os = "linux")),
 			..Default::default()
 		},
-		Dependency {
+		Requirement {
 			command: "ninja",
 			args: &["--version"],
 			name: "Ninja",
@@ -92,12 +92,12 @@ fn dependencies(task: &Task) -> Vec<Dependency> {
 
 pub fn check(task: &Task) -> Result<(), Error> {
 	eprintln!();
-	eprintln!("Checking dependencies:");
+	eprintln!("Checking Requirements:");
 
-	let mut installable: Vec<Dependency> = Vec::new();
+	let mut installable: Vec<Requirement> = Vec::new();
 	let mut failures: Vec<String> = Vec::new();
 
-	for dep in dependencies(task) {
+	for dep in requirements(task) {
 		match Command::new(dep.command).args(dep.args).output() {
 			Ok(output) if output.status.success() => {
 				let version = String::from_utf8_lossy(&output.stdout);
@@ -145,7 +145,7 @@ pub fn check(task: &Task) -> Result<(), Error> {
 	}
 
 	let total = installable.len() + failures.len();
-	eprintln!("{total} missing or misconfigured dependenc{}:", if total == 1 { "y" } else { "ies" });
+	eprintln!("{total} requirement{} not met:", if total > 1 { "s" } else { "" });
 	for dep in &installable {
 		eprintln!("  - {}: {}", dep.name, dep.install.unwrap());
 	}

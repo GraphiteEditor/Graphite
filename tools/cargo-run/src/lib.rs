@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 use std::process;
 
-pub mod deps;
+pub mod requirements;
 
 pub enum Action {
 	Run,

@@ -51,7 +51,7 @@ fn main() -> ExitCode {
 }
 
 fn run_task(task: &Task) -> Result<(), Error> {
-	deps::check(task)?;
+	requirements::check(task)?;
 
 	match (&task.action, &task.target, &task.profile) {
 		(Action::Run, Target::Web, Profile::Debug | Profile::Default) => npm_run_in_frontend_dir("start")?,
