@@ -875,6 +875,10 @@ async fn auto_tangents(
 	#[default(true)]
 	preserve_existing: bool,
 ) -> Table<Vector> {
+	if spread == 0. && preserve_existing {
+		return source;
+	}
+
 	source
 		.iter()
 		.map(|source| {
