@@ -10,7 +10,9 @@ use std::hash::{Hash, Hasher};
 use std::sync::Arc;
 
 #[repr(transparent)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[tsify(large_number_types_as_bigints)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct WidgetId(pub u64);
 
 impl core::fmt::Display for WidgetId {
@@ -19,7 +21,8 @@ impl core::fmt::Display for WidgetId {
 	}
 }
 
-#[derive(PartialEq, Clone, Debug, Hash, Eq, Copy, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Clone, Debug, Hash, Eq, Copy, serde::Serialize, serde::Deserialize)]
 #[repr(u8)]
 pub enum LayoutTarget {
 	/// The spreadsheet panel allows for the visualisation of data in the graph.
@@ -59,6 +62,7 @@ pub enum LayoutTarget {
 
 	// KEEP THIS ENUM LAST
 	// This is a marker that is used to define an array that is used to hold widgets
+	#[serde(skip)]
 	_LayoutTargetLength,
 }
 
@@ -151,7 +155,8 @@ fn compute_checkbox_id(layout_target: LayoutTarget, widget_path: &[usize], widge
 }
 
 /// Contains an arrangement of widgets mounted somewhere specific in the frontend.
-#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize, PartialEq, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize, PartialEq)]
 pub struct Layout(pub Vec<LayoutGroup>);
 
 impl Layout {
@@ -316,7 +321,8 @@ impl<'a> Iterator for WidgetIterMut<'a> {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum LayoutGroup {
 	#[serde(rename = "column")]
 	Column {
@@ -552,7 +558,8 @@ impl Diffable for LayoutGroup {
 	}
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct WidgetInstance {
 	#[serde(rename = "widgetId")]
 	pub widget_id: WidgetId,
@@ -674,9 +681,8 @@ impl Diffable for WidgetInstance {
 	}
 }
 
-#[derive(Clone, specta::Type)]
+#[derive(Clone)]
 pub struct WidgetCallback<T> {
-	#[specta(skip)]
 	pub callback: Arc<dyn Fn(&T) -> Message + 'static + Send + Sync>,
 }
 
@@ -692,7 +698,8 @@ impl<T> Default for WidgetCallback<T> {
 	}
 }
 
-#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Widget {
 	BreadcrumbTrailButtons(BreadcrumbTrailButtons),
 	CheckboxInput(CheckboxInput),
@@ -719,7 +726,9 @@ pub enum Widget {
 }
 
 /// A single change to part of the UI, containing the location of the change and the new value.
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[tsify(large_number_types_as_bigints)]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct WidgetDiff {
 	/// A path to the change
 	/// e.g. [0, 1, 2] in the properties panel is the first section, second row and third widget.
@@ -732,7 +741,8 @@ pub struct WidgetDiff {
 }
 
 /// The new value of the UI, sent as part of a diff.
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum DiffUpdate {
 	#[serde(rename = "layout")]
 	Layout(Layout),

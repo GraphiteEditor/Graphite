@@ -37,7 +37,8 @@ impl Default for FreehandOptions {
 }
 
 #[impl_message(Message, ToolMessage, Freehand)]
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum FreehandToolMessage {
 	// Standard messages
 	Overlays { context: OverlayContext },
@@ -51,7 +52,8 @@ pub enum FreehandToolMessage {
 	UpdateOptions { options: FreehandOptionsUpdate },
 }
 
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum FreehandOptionsUpdate {
 	FillColor(Option<Color>),
 	FillColorType(ToolColorType),

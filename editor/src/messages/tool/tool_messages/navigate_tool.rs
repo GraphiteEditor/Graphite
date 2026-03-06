@@ -7,7 +7,8 @@ pub struct NavigateTool {
 }
 
 #[impl_message(Message, ToolMessage, Navigate)]
-#[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
 pub enum NavigateToolMessage {
 	// Standard messages
 	Abort,

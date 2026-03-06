@@ -450,7 +450,10 @@ impl NodeGraphExecutor {
 				..
 			}) => {
 				if file_type == FileType::Svg {
-					responses.add(FrontendMessage::TriggerSaveFile { name, content: svg.into_bytes() });
+					responses.add(FrontendMessage::TriggerSaveFile {
+						name,
+						content: svg.into_bytes().into(),
+					});
 				} else {
 					let mime = file_type.to_mime().to_string();
 					let size = (size * scale_factor).into();
@@ -496,7 +499,7 @@ impl NodeGraphExecutor {
 					}
 				}
 
-				responses.add(FrontendMessage::TriggerSaveFile { name, content: encoded });
+				responses.add(FrontendMessage::TriggerSaveFile { name, content: encoded.into() });
 			}
 			_ => {
 				return Err(format!("Incorrect render type for exporting to an SVG ({file_type:?}, {node_graph_output})"));

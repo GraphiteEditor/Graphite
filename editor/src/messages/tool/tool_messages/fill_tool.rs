@@ -9,7 +9,8 @@ pub struct FillTool {
 }
 
 #[impl_message(Message, ToolMessage, Fill)]
-#[derive(PartialEq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
 pub enum FillToolMessage {
 	// Standard messages
 	Abort,

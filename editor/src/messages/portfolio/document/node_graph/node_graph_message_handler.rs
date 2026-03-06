@@ -847,7 +847,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 					};
 
 					self.context_menu = Some(ContextMenuInformation {
-						context_menu_coordinates: (node_graph_point + node_graph_shift).as_ivec2(),
+						context_menu_coordinates: (node_graph_point + node_graph_shift).as_ivec2().into(),
 						context_menu_data,
 					});
 
@@ -1280,7 +1280,7 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 						let compatible_type = network_interface.output_type(&output_connector, selection_network_path).add_node_string();
 
 						self.context_menu = Some(ContextMenuInformation {
-							context_menu_coordinates: (point + node_graph_shift).as_ivec2(),
+							context_menu_coordinates: (point + node_graph_shift).as_ivec2().into(),
 							context_menu_data: ContextMenuData::CreateNode { compatible_type },
 						});
 
@@ -2050,8 +2050,8 @@ impl<'a> MessageHandler<NodeGraphMessage, NodeGraphMessageContext<'a>> for NodeG
 				responses.add(FrontendMessage::UpdateImportsExports {
 					imports,
 					exports,
-					import_position,
-					export_position,
+					import_position: import_position.into(),
+					export_position: export_position.into(),
 					add_import_export,
 				});
 			}
@@ -2651,7 +2651,7 @@ impl NodeGraphMessageHandler {
 				exposed_outputs,
 				primary_output_connected_to_layer,
 				primary_input_connected_to_layer,
-				position,
+				position: position.into(),
 				previewed,
 				visible,
 				locked,
@@ -2695,6 +2695,7 @@ impl NodeGraphMessageHandler {
 		if network_interface.is_layer(&error_node, breadcrumb_network_path) {
 			position += IVec2::new(12, -12)
 		}
+		let position = position.into();
 
 		Some(NodeGraphErrorDiagnostic { position, error })
 	}

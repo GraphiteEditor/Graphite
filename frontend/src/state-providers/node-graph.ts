@@ -1,16 +1,16 @@
 import { writable } from "svelte/store";
 
 import type { Editor } from "@graphite/editor";
-import type { NodeGraphError, Box, FrontendClickTargets, ContextMenuInformation, FrontendNode, FrontendNodeType, WirePath, FrontendMessages } from "@graphite/messages";
+import type { NodeGraphErrorDiagnostic, BoxSelection, FrontendClickTargets, ContextMenuInformation, FrontendNode, FrontendNodeType, WirePath, FrontendMessages } from "@graphite/messages";
 
 type UpdateImportsExports = FrontendMessages["UpdateImportsExports"];
 
 export function createNodeGraphState(editor: Editor) {
 	const { subscribe, update } = writable({
-		box: undefined as Box | undefined,
+		box: undefined as BoxSelection | undefined,
 		clickTargets: undefined as FrontendClickTargets | undefined,
 		contextMenuInformation: undefined as ContextMenuInformation | undefined,
-		error: undefined as NodeGraphError | undefined,
+		error: undefined as NodeGraphErrorDiagnostic | undefined,
 		layerWidths: new Map<bigint, number>(),
 		chainWidths: new Map<bigint, number>(),
 		hasLeftInputWire: new Map<bigint, boolean>(),
@@ -148,7 +148,7 @@ export function createNodeGraphState(editor: Editor) {
 	});
 	editor.subscriptions.subscribeFrontendMessage("UpdateNodeGraphTransform", (data) => {
 		update((state) => {
-			state.transform = data.transform;
+			state.transform = { scale: data.scale, x: data.translation[0], y: data.translation[1] };
 			return state;
 		});
 	});

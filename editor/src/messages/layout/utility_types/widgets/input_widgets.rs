@@ -7,7 +7,8 @@ use graphene_std::raster::curve::Curve;
 use graphene_std::transform::ReferencePoint;
 use graphite_proc_macros::WidgetBuilder;
 
-#[derive(Clone, Derivative, serde::Serialize, serde::Deserialize, WidgetBuilder, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Derivative, serde::Serialize, serde::Deserialize, WidgetBuilder)]
 #[derivative(Debug, Default, PartialEq)]
 pub struct CheckboxInput {
 	// Content
@@ -36,6 +37,7 @@ pub struct CheckboxInput {
 	pub on_commit: WidgetCallback<()>,
 }
 
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash, serde::Serialize, serde::Deserialize)]
 pub struct CheckboxId(pub u64);
 
@@ -49,14 +51,9 @@ impl Default for CheckboxId {
 		Self::new()
 	}
 }
-impl specta::Type for CheckboxId {
-	fn inline(_type_map: &mut specta::TypeCollection, _generics: specta::Generics) -> specta::datatype::DataType {
-		// TODO: This might not be right, but it works for now. We just need the type `bigint | undefined`.
-		specta::datatype::DataType::Primitive(specta::datatype::PrimitiveType::u64)
-	}
-}
 
-#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, WidgetBuilder, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, WidgetBuilder)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct DropdownInput {
 	// Content
@@ -102,7 +99,8 @@ pub struct DropdownInput {
 
 pub type MenuListEntrySections = Vec<Vec<MenuListEntry>>;
 
-#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Default, WidgetBuilder, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, Default, WidgetBuilder)]
 #[derivative(Debug, PartialEq)]
 #[widget_builder(not_widget_instance)]
 pub struct MenuListEntry {
@@ -148,7 +146,8 @@ impl std::hash::Hash for MenuListEntry {
 	}
 }
 
-#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, WidgetBuilder, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, WidgetBuilder)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct NumberInput {
 	// Content
@@ -246,7 +245,8 @@ impl NumberInput {
 	}
 }
 
-#[derive(Clone, serde::Serialize, serde::Deserialize, Debug, Default, PartialEq, Eq, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, serde::Serialize, serde::Deserialize, Debug, Default, PartialEq, Eq)]
 pub enum NumberInputIncrementBehavior {
 	#[default]
 	Add,
@@ -254,14 +254,16 @@ pub enum NumberInputIncrementBehavior {
 	Callback,
 }
 
-#[derive(Clone, serde::Serialize, serde::Deserialize, Debug, Default, PartialEq, Eq, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, serde::Serialize, serde::Deserialize, Debug, Default, PartialEq, Eq)]
 pub enum NumberInputMode {
 	#[default]
 	Increment,
 	Range,
 }
 
-#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, WidgetBuilder, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, WidgetBuilder)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct NodeCatalog {
 	// Content
@@ -280,7 +282,8 @@ pub struct NodeCatalog {
 	pub on_commit: WidgetCallback<()>,
 }
 
-#[derive(Clone, Default, Derivative, serde::Serialize, serde::Deserialize, WidgetBuilder, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Default, Derivative, serde::Serialize, serde::Deserialize, WidgetBuilder)]
 #[derivative(Debug, PartialEq)]
 pub struct RadioInput {
 	// Content
@@ -303,7 +306,8 @@ pub struct RadioInput {
 	// Callbacks exists on the `RadioEntryData` children, not this parent `RadioInput`
 }
 
-#[derive(Clone, Default, Derivative, serde::Serialize, serde::Deserialize, WidgetBuilder, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Default, Derivative, serde::Serialize, serde::Deserialize, WidgetBuilder)]
 #[derivative(Debug, PartialEq)]
 #[widget_builder(not_widget_instance)]
 pub struct RadioEntryData {
@@ -330,7 +334,8 @@ pub struct RadioEntryData {
 	pub on_commit: WidgetCallback<()>,
 }
 
-#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, WidgetBuilder, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, WidgetBuilder)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct WorkingColorsInput {
 	// Content
@@ -340,7 +345,8 @@ pub struct WorkingColorsInput {
 	pub secondary: Color,
 }
 
-#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, WidgetBuilder, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, WidgetBuilder)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct TextAreaInput {
 	// Content
@@ -366,7 +372,8 @@ pub struct TextAreaInput {
 	pub on_commit: WidgetCallback<()>,
 }
 
-#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, WidgetBuilder, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, WidgetBuilder)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct TextInput {
 	// Content
@@ -403,7 +410,8 @@ pub struct TextInput {
 	pub on_commit: WidgetCallback<()>,
 }
 
-#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, WidgetBuilder, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, serde::Serialize, serde::Deserialize, Derivative, WidgetBuilder)]
 #[derivative(Debug, PartialEq, Default)]
 pub struct CurveInput {
 	// Content
@@ -427,7 +435,8 @@ pub struct CurveInput {
 	pub on_commit: WidgetCallback<()>,
 }
 
-#[derive(Clone, Default, Derivative, serde::Serialize, serde::Deserialize, WidgetBuilder, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Clone, Default, Derivative, serde::Serialize, serde::Deserialize, WidgetBuilder)]
 #[derivative(Debug, PartialEq)]
 pub struct ReferencePointInput {
 	// Content

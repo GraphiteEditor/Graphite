@@ -57,7 +57,8 @@ impl NodePropertiesContext<'_> {
 /// The key used to access definitions for a network node or proto node.
 /// For proto nodes, this is their [`ProtoNodeIdentifier`].
 /// For network nodes, it doesn't necessarily have to be the same as the network's display name, but it often is.
-#[derive(Debug, Clone, Hash, Eq, PartialEq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Hash, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
 #[serde(tag = "type", content = "data")]
 pub enum DefinitionIdentifier {
 	ProtoNode(ProtoNodeIdentifier),

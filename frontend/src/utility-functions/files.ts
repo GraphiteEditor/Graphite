@@ -18,11 +18,14 @@ export function downloadFileBlob(filename: string, blob: Blob) {
 	URL.revokeObjectURL(url);
 }
 
-export function downloadFile(filename: string, content: ArrayBuffer) {
+export function downloadFile(filename: string, content: Uint8Array) {
 	const type = filename.endsWith(".svg") ? "image/svg+xml;charset=utf-8" : "application/octet-stream";
 
-	const blob = new Blob([new Uint8Array(content)], { type });
-	downloadFileBlob(filename, blob);
+	if (content.length > 0 && content.buffer instanceof ArrayBuffer) {
+		const contentView = new Uint8Array(content.buffer, content.byteOffset, content.byteLength);
+		const blob = new Blob([contentView], { type });
+		downloadFileBlob(filename, blob);
+	}
 }
 
 // See https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Elements/input/file#accept for the `accept` string format

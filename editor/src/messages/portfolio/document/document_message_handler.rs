@@ -1,5 +1,4 @@
 use super::node_graph::document_node_definitions;
-use super::node_graph::utility_types::Transform;
 use super::utility_types::error::EditorError;
 use super::utility_types::misc::{GroupFolderType, SNAP_FUNCTIONS_FOR_BOUNDING_BOXES, SNAP_FUNCTIONS_FOR_PATHS, SnappingOptions, SnappingState};
 use super::utility_types::network_interface::{self, NodeNetworkInterface, TransactionStatus};
@@ -848,7 +847,7 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					document_id,
 					name: format!("{}.{}", self.name.clone(), FILE_EXTENSION),
 					path: self.path.clone(),
-					content: self.serialize_document().into_bytes(),
+					content: self.serialize_document().into_bytes().into(),
 				})
 			}
 			DocumentMessage::SavedDocument { path } => {
@@ -1332,11 +1331,8 @@ impl MessageHandler<DocumentMessage, DocumentMessageContext<'_>> for DocumentMes
 					responses.add(NodeGraphMessage::UpdateImportsExports);
 
 					responses.add(FrontendMessage::UpdateNodeGraphTransform {
-						transform: Transform {
-							scale: transform.matrix2.x_axis.x,
-							x: transform.translation.x,
-							y: transform.translation.y,
-						},
+						translation: transform.translation.into(),
+						scale: transform.matrix2.x_axis.x,
 					})
 				}
 			}

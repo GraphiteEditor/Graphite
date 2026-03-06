@@ -4,7 +4,8 @@ use dyn_any::{DynAny, StaticType, StaticTypeSized};
 use std::hash::{Hash, Hasher};
 use std::ops::{Add, Mul, Sub};
 
-#[derive(Debug, Clone, PartialEq, DynAny, specta::Type, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct Curve {
 	#[serde(rename = "manipulatorGroups")]
 	pub manipulator_groups: Vec<CurveManipulatorGroup>,
@@ -31,7 +32,8 @@ impl Hash for Curve {
 	}
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, DynAny, specta::Type, serde::Serialize, serde::Deserialize)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Debug, Clone, Copy, PartialEq, DynAny, serde::Serialize, serde::Deserialize)]
 pub struct CurveManipulatorGroup {
 	pub anchor: [f32; 2],
 	pub handles: [[f32; 2]; 2],

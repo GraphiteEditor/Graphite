@@ -46,22 +46,24 @@ export function parseWidgetDiffs(rawDiffs: any): WidgetDiff[] {
 export function patchLayout(layout: /* &mut */ Layout, diffs: WidgetDiff[]) {
 	diffs.forEach((update) => {
 		// Find the object where the diff applies to
-		const diffObject = update.widgetPath.reduce((targetLayout: UIItem | undefined, index: number): UIItem | undefined => {
-			if (targetLayout && "columnWidgets" in targetLayout) return targetLayout.columnWidgets[index];
-			if (targetLayout && "rowWidgets" in targetLayout) return targetLayout.rowWidgets[index];
-			if (targetLayout && "tableWidgets" in targetLayout) return targetLayout.tableWidgets[index];
-			if (targetLayout && "layout" in targetLayout) return targetLayout.layout[index];
+		const diffObject = update.widgetPath.reduce((targetLayout: UIItem | undefined, index: bigint): UIItem | undefined => {
+			const i = Number(index);
+
+			if (targetLayout && "columnWidgets" in targetLayout) return targetLayout.columnWidgets[i];
+			if (targetLayout && "rowWidgets" in targetLayout) return targetLayout.rowWidgets[i];
+			if (targetLayout && "tableWidgets" in targetLayout) return targetLayout.tableWidgets[i];
+			if (targetLayout && "layout" in targetLayout) return targetLayout.layout[i];
 			if (targetLayout && "props" in targetLayout && "widgetId" in targetLayout) {
 				if (targetLayout.props.kind === "PopoverButton" && "popoverLayout" in targetLayout.props && targetLayout.props.popoverLayout) {
 					targetLayout.props.popoverLayout = targetLayout.props.popoverLayout.map(createLayoutGroup);
-					return targetLayout.props.popoverLayout[index];
+					return targetLayout.props.popoverLayout[i];
 				}
 				// eslint-disable-next-line no-console
 				console.error("Tried to index widget");
 				return targetLayout;
 			}
 
-			return targetLayout?.[index];
+			return targetLayout?.[i];
 		}, layout as UIItem);
 
 		// Exit if we failed to produce a valid patch for the existing layout.
