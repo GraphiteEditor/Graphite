@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { IconName } from "@graphite/icons";
-	import type { ActionShortcut, KeyRaw, LabeledShortcut, MouseMotion } from "@graphite/messages";
+	import type { ActionShortcut, Key, LabeledShortcut, MouseMotion } from "@graphite/messages";
 	import { operatingSystem } from "@graphite/utility-functions/platform";
 
 	import LayoutRow from "@graphite/components/layout/LayoutRow.svelte";
@@ -57,7 +57,7 @@
 		return consolidatedList;
 	}
 
-	function keyboardHintIcon(input: KeyRaw): IconName | undefined {
+	function keyboardHintIcon(input: Key): IconName | undefined {
 		switch (input) {
 			case "ArrowDown":
 				return "KeyboardArrowDown";

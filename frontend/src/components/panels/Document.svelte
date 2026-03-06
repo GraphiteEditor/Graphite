@@ -2,7 +2,7 @@
 	import { getContext, onMount, onDestroy, tick } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import type { Color, FrontendMessages, MenuDirection } from "@graphite/messages";
+	import type { Color, FrontendMessages, MenuDirection, MouseCursorIcon } from "@graphite/messages";
 	import type { AppWindowState } from "@graphite/state-providers/app-window";
 	import type { DocumentState } from "@graphite/state-providers/document";
 	import { isColor, createColor } from "@graphite/utility-functions/colors";
@@ -35,7 +35,7 @@
 	// Interactive text editing
 	let textInput: undefined | HTMLDivElement = undefined;
 	let showTextInput: boolean;
-	let textInputMatrix: number[];
+	let textInputMatrix: [number, number, number, number, number, number];
 
 	// Scrollbars
 	let scrollbarPos = { x: 0.5, y: 0.5 };
@@ -295,10 +295,9 @@
 	}
 
 	// Update mouse cursor icon
-	export function updateMouseCursor(cursor: string) {
-		const mouseCursorIconCSSNames: Record<string, string> = {
+	export function updateMouseCursor(cursor: MouseCursorIcon) {
+		const mouseCursorIconCSSNames: Record<MouseCursorIcon, string> = {
 			Default: "default",
-			Alias: "alias",
 			None: "none",
 			ZoomIn: "zoom-in",
 			ZoomOut: "zoom-out",
@@ -312,7 +311,7 @@
 			NWSEResize: "nwse-resize",
 			Rotate: "custom-rotate",
 		};
-		let cursorString = mouseCursorIconCSSNames[cursor] || mouseCursorIconCSSNames["Alias"];
+		let cursorString = mouseCursorIconCSSNames[cursor] || "alias";
 
 		// This isn't very clean but it's good enough for now until we need more icons, then we can build something more robust (consider blob URLs)
 		if (cursor === "Rotate") {
@@ -377,9 +376,9 @@
 
 		textInputMatrix = data.transform;
 
-		const bytes = new Uint8Array(data.fontData);
-		if (bytes.length > 0) {
-			window.document.fonts.add(new FontFace("text-font", bytes));
+		if (data.fontData.length > 0 && data.fontData.buffer instanceof ArrayBuffer) {
+			const fontView = new Uint8Array(data.fontData.buffer, data.fontData.byteOffset, data.fontData.byteLength);
+			window.document.fonts.add(new FontFace("text-font", fontView));
 			textInput.style.fontFamily = "text-font";
 		}
 
@@ -473,7 +472,7 @@
 		// Gradient stop color picker
 		editor.subscriptions.subscribeFrontendMessage("UpdateGradientStopColorPickerPosition", (data) => {
 			gradientStopPickerColor = data.color;
-			gradientStopPickerPosition = { x: data.x, y: data.y };
+			gradientStopPickerPosition = { x: data.position[0], y: data.position[1] };
 		});
 
 		// Update scrollbars and rulers
@@ -511,9 +510,9 @@
 		editor.subscriptions.subscribeFrontendMessage("DisplayEditableTextboxUpdateFontData", async (data) => {
 			await tick();
 
-			const fontData = new Uint8Array(data.fontData);
-			if (fontData.length > 0 && textInput) {
-				window.document.fonts.add(new FontFace("text-font", fontData));
+			if (textInput && data.fontData.length > 0 && data.fontData.buffer instanceof ArrayBuffer) {
+				const fontView = new Uint8Array(data.fontData.buffer, data.fontData.byteOffset, data.fontData.byteLength);
+				window.document.fonts.add(new FontFace("text-font", fontView));
 				textInput.style.fontFamily = "text-font";
 			}
 		});

@@ -6,7 +6,6 @@ import type { FrontendMessages } from "@graphite/messages";
 import type { PortfolioState } from "@graphite/state-providers/portfolio";
 
 type TriggerPersistenceWriteDocument = FrontendMessages["TriggerPersistenceWriteDocument"];
-type TriggerSavePreferences = FrontendMessages["TriggerSavePreferences"];
 
 const graphiteStore = createStore("graphite", "store");
 
@@ -154,7 +153,7 @@ export function createPersistenceManager(editor: Editor, portfolio: PortfolioSta
 
 	// PREFERENCES
 
-	async function savePreferences(preferences: TriggerSavePreferences["preferences"]) {
+	async function savePreferences(preferences: unknown) {
 		await set("preferences", preferences, graphiteStore);
 	}
 

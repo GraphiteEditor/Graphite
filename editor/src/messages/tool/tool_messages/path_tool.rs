@@ -50,7 +50,8 @@ pub struct PathToolOptions {
 }
 
 #[impl_message(Message, ToolMessage, Path)]
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum PathToolMessage {
 	// Standard messages
 	Abort,
@@ -155,7 +156,8 @@ pub enum PathToolMessage {
 	ToggleSegmentEditing,
 }
 
-#[derive(PartialEq, Eq, Hash, Copy, Clone, Debug, Default, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Eq, Hash, Copy, Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
 pub enum PathOverlayMode {
 	AllHandles = 0,
 	#[default]
@@ -178,7 +180,8 @@ impl Default for PathEditingMode {
 	}
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
 pub enum PathOptionsUpdate {
 	OverlayModeType(PathOverlayMode),
 	PointEditingMode { enabled: bool },

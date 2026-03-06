@@ -38,7 +38,8 @@ impl Default for SplineOptions {
 }
 
 #[impl_message(Message, ToolMessage, Spline)]
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum SplineToolMessage {
 	// Standard messages
 	Overlays { context: OverlayContext },
@@ -65,7 +66,8 @@ enum SplineToolFsmState {
 	MergingEndpoints,
 }
 
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum SplineOptionsUpdate {
 	FillColor(Option<Color>),
 	FillColorType(ToolColorType),

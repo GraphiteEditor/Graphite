@@ -42,7 +42,8 @@ pub struct SelectOptions {
 	nested_selection_behavior: NestedSelectionBehavior,
 }
 
-#[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Eq, Clone, Debug, Hash, serde::Serialize, serde::Deserialize)]
 pub enum SelectOptionsUpdate {
 	NestedSelectionBehavior(NestedSelectionBehavior),
 	PivotGizmoType(PivotGizmoType),
@@ -50,7 +51,8 @@ pub enum SelectOptionsUpdate {
 	TogglePivotPinned,
 }
 
-#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, PartialEq, Eq, Clone, Copy, Debug, Hash, serde::Serialize, serde::Deserialize)]
 pub enum NestedSelectionBehavior {
 	#[default]
 	Shallowest,
@@ -66,7 +68,8 @@ impl fmt::Display for NestedSelectionBehavior {
 	}
 }
 
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct SelectToolPointerKeys {
 	pub axis_align: Key,
 	pub snap_angle: Key,
@@ -75,7 +78,8 @@ pub struct SelectToolPointerKeys {
 }
 
 #[impl_message(Message, ToolMessage, Select)]
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum SelectToolMessage {
 	// Standard messages
 	Abort,

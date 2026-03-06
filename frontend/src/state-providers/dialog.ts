@@ -50,7 +50,7 @@ export function createDialogState(editor: Editor) {
 			state.visible = true;
 
 			state.title = data.title;
-			state.icon = data.icon;
+			state.icon = data.icon as IconName;
 
 			return state;
 		});

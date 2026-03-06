@@ -487,7 +487,7 @@ export function createInputManager(editor: Editor, dialog: DialogState, portfoli
 
 	// Pointer lock movement events on desktop
 	editor.subscriptions.subscribeFrontendMessage("WindowPointerLockMove", (data) => {
-		const event = new CustomEvent("pointerlockmove", { detail: data });
+		const event = new CustomEvent("pointerlockmove", { detail: { x: data.position[0], y: data.position[1] } });
 		window.dispatchEvent(event);
 	});
 

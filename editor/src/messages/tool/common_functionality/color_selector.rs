@@ -4,7 +4,8 @@ use crate::messages::prelude::*;
 use graphene_std::Color;
 use graphene_std::vector::style::FillChoice;
 
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum ToolColorType {
 	Primary,
 	Secondary,

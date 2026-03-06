@@ -4,18 +4,19 @@ import type { Color, FillChoice, Gradient } from "@graphite/messages";
 // Channels can have any range (0-1, 0-255, 0-100, 0-360) in the context they are being used in, these are just containers for the numbers
 export type HSV = { h: number; s: number; v: number };
 export type RGB = { r: number; g: number; b: number };
+export type OptionalColor = Color & { none: boolean };
 
 // COLOR FACTORY FUNCTIONS
 
-export function createColor(red: number, green: number, blue: number, alpha: number): Color {
+export function createColor(red: number, green: number, blue: number, alpha: number): OptionalColor {
 	return { red, green, blue, alpha, none: false };
 }
 
-export function createNoneColor(): Color {
+export function createNoneColor(): OptionalColor {
 	return { red: 0, green: 0, blue: 0, alpha: 1, none: true };
 }
 
-export function createColorFromHSVA(h: number, s: number, v: number, a: number): Color {
+export function createColorFromHSVA(h: number, s: number, v: number, a: number): OptionalColor {
 	const convert = (n: number): number => {
 		const k = (n + h * 6) % 6;
 		return v - v * s * Math.max(Math.min(...[k, 4 - k, 1]), 0);
@@ -26,11 +27,11 @@ export function createColorFromHSVA(h: number, s: number, v: number, a: number):
 
 // COLOR UTILITY FUNCTIONS
 
-export function isColor(value: unknown): value is Color {
+export function isColor(value: unknown): value is OptionalColor {
 	return typeof value === "object" && value !== null && "red" in value;
 }
 
-export function colorFromCSS(colorCode: string): Color | undefined {
+export function colorFromCSS(colorCode: string): OptionalColor | undefined {
 	// Allow single-digit hex value inputs
 	let colorValue = colorCode.trim();
 	if (colorValue.length === 2 && colorValue.charAt(0) === "#" && /[0-9a-f]/i.test(colorValue.charAt(1))) {
@@ -67,13 +68,13 @@ export function colorFromCSS(colorCode: string): Color | undefined {
 	return createColor(r / 255, g / 255, b / 255, a / 255);
 }
 
-export function colorEquals(c1: Color, c2: Color): boolean {
+export function colorEquals(c1: OptionalColor, c2: OptionalColor): boolean {
 	if (c1.none !== c2.none) return false;
 	if (c1.none && c2.none) return true;
 	return Math.abs(c1.red - c2.red) < 1e-6 && Math.abs(c1.green - c2.green) < 1e-6 && Math.abs(c1.blue - c2.blue) < 1e-6 && Math.abs(c1.alpha - c2.alpha) < 1e-6;
 }
 
-export function colorToHexNoAlpha(color: Color): string | undefined {
+export function colorToHexNoAlpha(color: OptionalColor): string | undefined {
 	if (color.none) return undefined;
 
 	const r = Math.round(color.red * 255)
@@ -89,7 +90,7 @@ export function colorToHexNoAlpha(color: Color): string | undefined {
 	return `#${r}${g}${b}`;
 }
 
-export function colorToHexOptionalAlpha(color: Color): string | undefined {
+export function colorToHexOptionalAlpha(color: OptionalColor): string | undefined {
 	if (color.none) return undefined;
 
 	const hex = colorToHexNoAlpha(color);
@@ -100,7 +101,7 @@ export function colorToHexOptionalAlpha(color: Color): string | undefined {
 	return a === "ff" ? hex : `${hex}${a}`;
 }
 
-export function colorToRgb255(color: Color): RGB | undefined {
+export function colorToRgb255(color: OptionalColor): RGB | undefined {
 	if (color.none) return undefined;
 
 	return {
@@ -110,21 +111,21 @@ export function colorToRgb255(color: Color): RGB | undefined {
 	};
 }
 
-export function colorToRgbCSS(color: Color): string | undefined {
+export function colorToRgbCSS(color: OptionalColor): string | undefined {
 	const rgb = colorToRgb255(color);
 	if (!rgb) return undefined;
 
 	return `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
 }
 
-export function colorToRgbaCSS(color: Color): string | undefined {
+export function colorToRgbaCSS(color: OptionalColor): string | undefined {
 	const rgb = colorToRgb255(color);
 	if (!rgb) return undefined;
 
 	return `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${color.alpha})`;
 }
 
-export function colorToHSV(color: Color): HSV | undefined {
+export function colorToHSV(color: OptionalColor): HSV | undefined {
 	if (color.none) return undefined;
 
 	const { red: r, green: g, blue: b } = color;
@@ -156,13 +157,13 @@ export function colorToHSV(color: Color): HSV | undefined {
 	return { h, s, v };
 }
 
-export function colorOpaque(color: Color): Color | undefined {
+export function colorOpaque(color: OptionalColor): OptionalColor | undefined {
 	if (color.none) return undefined;
 
 	return createColor(color.red, color.green, color.blue, 1);
 }
 
-export function colorLuminance(color: Color): number | undefined {
+export function colorLuminance(color: OptionalColor): number | undefined {
 	if (color.none) return undefined;
 
 	// Convert alpha into white
@@ -179,7 +180,7 @@ export function colorLuminance(color: Color): number | undefined {
 	return linearR * 0.2126 + linearG * 0.7152 + linearB * 0.0722;
 }
 
-export function colorContrastingColor(color: Color): "black" | "white" {
+export function colorContrastingColor(color: OptionalColor): "black" | "white" {
 	if (color.none) return "black";
 
 	const luminance = colorLuminance(color);
@@ -191,7 +192,7 @@ export function contrastingOutlineFactor(value: FillChoice, proximityColor: stri
 	const pair = Array.isArray(proximityColor) ? [proximityColor[0], proximityColor[1]] : [proximityColor, proximityColor];
 	const [range1, range2] = pair.map((color) => colorFromCSS(window.getComputedStyle(document.body).getPropertyValue(color)) || createNoneColor());
 
-	const contrast = (color: Color): number => {
+	const contrast = (color: OptionalColor): number => {
 		const lum = colorLuminance(color) || 0;
 		let rangeLuminance1 = colorLuminance(range1) || 0;
 		let rangeLuminance2 = colorLuminance(range2) || 0;
@@ -229,11 +230,11 @@ export function gradientToLinearGradientCSS(gradient: Gradient): string {
 	return `linear-gradient(to right, ${pieces})`;
 }
 
-export function gradientFirstColor(gradient: Gradient): Color | undefined {
+export function gradientFirstColor(gradient: Gradient): OptionalColor | undefined {
 	return gradient.color[0];
 }
 
-export function gradientLastColor(gradient: Gradient): Color | undefined {
+export function gradientLastColor(gradient: Gradient): OptionalColor | undefined {
 	return gradient.color[gradient.color.length - 1];
 }
 

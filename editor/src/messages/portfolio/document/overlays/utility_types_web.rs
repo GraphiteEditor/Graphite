@@ -35,7 +35,8 @@ pub enum GizmoEmphasis {
 }
 
 /// Types of overlays used by DocumentMessage to enable/disable the selected set of viewport overlays.
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum OverlaysType {
 	ArtboardName,
 	CompassRose,
@@ -52,7 +53,8 @@ pub enum OverlaysType {
 	Handles,
 }
 
-#[derive(PartialEq, Copy, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Copy, Clone, Debug, serde::Serialize, serde::Deserialize)]
 #[serde(default)]
 pub struct OverlaysVisibilitySettings {
 	pub all: bool,
@@ -150,11 +152,11 @@ impl OverlaysVisibilitySettings {
 	}
 }
 
-#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize, specta::Type)]
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(PartialEq, Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct OverlayContext {
 	// Serde functionality isn't used but is required by the message system macros
 	#[serde(skip, default = "overlay_canvas_context")]
-	#[specta(skip)]
 	pub render_context: web_sys::CanvasRenderingContext2d,
 	pub viewport: ViewportMessageHandler,
 	pub visibility_settings: OverlaysVisibilitySettings,

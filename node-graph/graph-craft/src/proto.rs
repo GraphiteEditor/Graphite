@@ -619,8 +619,8 @@ impl GraphError {
 }
 impl Debug for GraphError {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-		f.debug_struct("NodeGraphError")
-			.field("path", &self.node_path.iter().map(|id| id.0).collect::<Vec<_>>())
+		f.debug_struct("GraphError")
+			.field("node_path", &self.node_path.iter().map(|id| id.0).collect::<Vec<_>>())
 			.field("identifier", &self.identifier.to_string())
 			.field("error", &self.error)
 			.finish()
