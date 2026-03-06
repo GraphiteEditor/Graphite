@@ -2,6 +2,7 @@ use core_types::table::Table;
 use core_types::transform::{Footprint, Transform};
 use core_types::{CloneVarArgs, ExtractAll, ExtractVarArgs};
 use core_types::{Color, Context, Ctx, ExtractFootprint, OwnedContextImpl, WasmNotSend};
+use glam::UVec2;
 use graph_craft::document::value::RenderOutput;
 pub use graph_craft::document::value::RenderOutputType;
 pub use graph_craft::wasm_application_io::*;
@@ -14,6 +15,7 @@ use rendering::{RenderMetadata, SvgSegment};
 use std::collections::HashMap;
 use std::sync::Arc;
 use vector_types::GradientStops;
+use vector_types::vector::style::RenderMode;
 use wgpu_executor::RenderContext;
 
 // Re-export render_output_cache from render_cache module
@@ -184,8 +186,7 @@ async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, edito
 			// We now replace all transforms which are supposed to be infinite with a transform which covers the entire viewport
 			// See <https://xi.zulipchat.com/#narrow/channel/197075-vello/topic/Full.20screen.20color.2Fgradients/near/538435044> for more detail
 			let scaled_infinite_transform = vello::kurbo::Affine::scale_non_uniform(physical_resolution.x as f64, physical_resolution.y as f64);
-			let encoding = scene.encoding_mut();
-			for transform in encoding.transforms.iter_mut() {
+			for transform in scene.encoding_mut().transforms.iter_mut() {
 				if transform.matrix[0] == f32::INFINITY {
 					*transform = vello_encoding::Transform::from_kurbo(&scaled_infinite_transform);
 				}
@@ -196,6 +197,76 @@ async fn render<'a: 'n>(ctx: impl Ctx + ExtractFootprint + ExtractVarArgs, edito
 			} else {
 				None
 			};
+
+			// Pixel Preview: render at the 100%-scale in document space, then upscale with nearest-neighbor filtering.
+			// This shows the actual pixels of the exported image at viewport zoom levels above 100%.
+			// When the viewport is tilted, the upscale applies the rotation so individual document pixels
+			// appear as tilted squares, while the document-space render itself stays pixel-aligned (no rotation).
+			if render_params.render_mode == RenderMode::PixelPreview {
+				let logical_zoom = footprint.decompose_scale().x;
+				if logical_zoom > 1. {
+					let inv = footprint.transform.inverse();
+
+					// Compute the viewport's axis-aligned bounding box in document space.
+					// When tilted, the visible area is a rotated rectangle in document space;
+					// the AABB of that rectangle determines the document render region.
+					let corners = [
+						glam::DVec2::ZERO,
+						glam::DVec2::new(logical_resolution.x, 0.),
+						glam::DVec2::new(logical_resolution.x, logical_resolution.y),
+						glam::DVec2::new(0., logical_resolution.y),
+					];
+					let doc_corners = corners.map(|c| inv.transform_point2(c));
+					let doc_min = doc_corners.iter().copied().reduce(|a, b| a.min(b)).unwrap();
+					let doc_max = doc_corners.iter().copied().reduce(|a, b| a.max(b)).unwrap();
+
+					// Snap the document render origin to integer document pixels for stable antialiasing.
+					// This ensures paths always sit at exact document-pixel-aligned positions in the 100%-scale render,
+					// so the antialiasing pattern doesn't flicker as you zoom or pan slightly.
+					let snapped_doc_origin = doc_min.floor();
+					let doc_size = doc_max - snapped_doc_origin;
+
+					// Document render transform: no zoom, no rotation — only translation at DPI scale.
+					// This renders the document pixel-aligned at 100% scale.
+					let document_render_transform = glam::DAffine2::from_translation(-snapped_doc_origin);
+					let document_transform_vello = vello::kurbo::Affine::new((scale_transform * document_render_transform).to_cols_array());
+
+					let extra = scale.ceil() as u32 + 2;
+					let document_resolution = UVec2::new((doc_size.x * scale).ceil() as u32 + extra, (doc_size.y * scale).ceil() as u32 + extra);
+
+					let mut scene = vello::Scene::new();
+					scene.append(child, Some(document_transform_vello));
+
+					// Same infinite-transform fix as in the normal render path (see comment there), but sized to
+					// the document-resolution render target instead of the full viewport resolution.
+					let scaled_infinite_transform = vello::kurbo::Affine::scale_non_uniform(document_resolution.x as f64, document_resolution.y as f64);
+					for transform in scene.encoding_mut().transforms.iter_mut() {
+						if transform.matrix[0] == f32::INFINITY {
+							*transform = vello_encoding::Transform::from_kurbo(&scaled_infinite_transform);
+						}
+					}
+
+					let document_texture = exec
+						.render_vello_scene_to_texture(&scene, document_resolution, context, background)
+						.await
+						.expect("Failed to render Vello scene for pixel preview");
+
+					// Map output viewport pixels to document texture coordinates.
+					// source_transform = footprint.inverse().matrix2 (encodes rotation and 1/zoom).
+					// source_offset = DPI * (viewport_origin_in_doc_space - snapped_doc_origin).
+					// For each output pixel p: tex_coord = source_transform * p + source_offset.
+					let source_transform = glam::Mat2::from_cols(inv.matrix2.x_axis.as_vec2(), inv.matrix2.y_axis.as_vec2());
+					let source_offset = ((inv.translation - snapped_doc_origin) * scale).as_vec2();
+					let texture = exec
+						.resample_texture(&document_texture, physical_resolution, source_transform, source_offset, wgpu::FilterMode::Nearest)
+						.expect("Failed to upscale pixel preview texture");
+
+					return RenderOutput {
+						data: RenderOutputType::Texture(ImageTexture { texture }),
+						metadata,
+					};
+				}
+			}
 
 			let texture = exec
 				.render_vello_scene_to_texture(&scene, physical_resolution, context, background)

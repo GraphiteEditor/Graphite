@@ -378,11 +378,23 @@ pub async fn render_output_cache<'a: 'n>(
 	let device_scale = render_params.scale;
 	let physical_scale = logical_scale * device_scale;
 
-	let viewport_bounds = footprint.viewport_bounds_in_local_space();
-	let viewport_bounds = AxisAlignedBbox {
-		start: viewport_bounds.start,
-		end: viewport_bounds.start + viewport_bounds.size() / device_scale,
-	};
+	// Compute the correct AABB of the viewport in document space by transforming all 4 corners.
+	// This handles tilted (rotated) viewports where only 2 corners would give an incorrect AABB.
+	let inverse = footprint.transform.inverse();
+	let logical_size = physical_resolution.as_dvec2() / device_scale;
+	let corners = [
+		inverse.transform_point2(DVec2::ZERO),
+		inverse.transform_point2(DVec2::new(logical_size.x, 0.)),
+		inverse.transform_point2(logical_size),
+		inverse.transform_point2(DVec2::new(0., logical_size.y)),
+	];
+	let doc_min = corners.iter().copied().reduce(|a, b| a.min(b)).unwrap();
+	let doc_max = corners.iter().copied().reduce(|a, b| a.max(b)).unwrap();
+	let viewport_bounds = AxisAlignedBbox { start: doc_min, end: doc_max };
+
+	// Detect if the viewport is tilted
+	let footprint_matrix = footprint.transform.matrix2;
+	let has_tilt = footprint_matrix.x_axis.y.abs() > 1e-10 || footprint_matrix.y_axis.x.abs() > 1e-10;
 
 	let cache_key = CacheKey::new(
 		render_params.render_mode as u64,
@@ -421,7 +433,7 @@ pub async fn render_output_cache<'a: 'n>(
 	}
 
 	let exec = editor_api.application_io.as_ref().unwrap().gpu_executor().unwrap();
-	let (output_texture, combined_metadata) = composite_cached_regions(&all_regions, &viewport_bounds, physical_resolution, logical_scale, physical_scale, exec);
+	let (output_texture, combined_metadata) = composite_cached_regions(&all_regions, &viewport_bounds, physical_resolution, logical_scale, physical_scale, exec, has_tilt, footprint.transform);
 
 	RenderOutput {
 		data: RenderOutputType::Texture(ImageTexture { texture: output_texture }),
@@ -485,6 +497,7 @@ where
 	}
 }
 
+#[allow(clippy::too_many_arguments)]
 fn composite_cached_regions(
 	regions: &[CachedRegion],
 	viewport_bounds: &AxisAlignedBbox,
@@ -492,16 +505,26 @@ fn composite_cached_regions(
 	logical_scale: f64,
 	physical_scale: f64,
 	exec: &wgpu_executor::WgpuExecutor,
+	has_tilt: bool,
+	footprint_transform: glam::DAffine2,
 ) -> (wgpu::Texture, rendering::RenderMetadata) {
 	let device = &exec.context.device;
 	let queue = &exec.context.queue;
+	let device_scale = physical_scale / logical_scale;
 
-	// TODO: Use texture pool to reuse existing unused textures instead of allocating fresh ones every time
-	let output_texture = device.create_texture(&wgpu::TextureDescriptor {
-		label: Some("viewport_output"),
+	// When tilted, we composite tiles into an intermediate document-space texture, then apply the viewport rotation via a bilinear sampling shader.
+	// When not tilted, we blit tiles directly into the output texture (no extra pass needed).
+	let composite_resolution = if has_tilt {
+		(viewport_bounds.size() * physical_scale).ceil().as_uvec2().max(UVec2::ONE)
+	} else {
+		output_resolution
+	};
+
+	let composite_texture = device.create_texture(&wgpu::TextureDescriptor {
+		label: Some(if has_tilt { "tilt_intermediate" } else { "viewport_output" }),
 		size: wgpu::Extent3d {
-			width: output_resolution.x,
-			height: output_resolution.y,
+			width: composite_resolution.x,
+			height: composite_resolution.y,
 			depth_or_array_layers: 1,
 		},
 		mip_level_count: 1,
@@ -516,7 +539,6 @@ fn composite_cached_regions(
 	let mut combined_metadata = rendering::RenderMetadata::default();
 
 	// Calculate viewport pixel offset using round() to match region boundary calculations
-	let device_scale = physical_scale / logical_scale;
 	let viewport_pixel_start = (viewport_bounds.start * physical_scale).round().as_ivec2();
 
 	for region in regions {
@@ -527,17 +549,17 @@ fn composite_cached_regions(
 		let offset_pixels = region_pixel_start - viewport_pixel_start;
 
 		let (src_x, dst_x, width) = if offset_pixels.x >= 0 {
-			(0, offset_pixels.x as u32, region.texture_size.x.min(output_resolution.x.saturating_sub(offset_pixels.x as u32)))
+			(0, offset_pixels.x as u32, region.texture_size.x.min(composite_resolution.x.saturating_sub(offset_pixels.x as u32)))
 		} else {
 			let skip = (-offset_pixels.x) as u32;
-			(skip, 0, region.texture_size.x.saturating_sub(skip).min(output_resolution.x))
+			(skip, 0, region.texture_size.x.saturating_sub(skip).min(composite_resolution.x))
 		};
 
 		let (src_y, dst_y, height) = if offset_pixels.y >= 0 {
-			(0, offset_pixels.y as u32, region.texture_size.y.min(output_resolution.y.saturating_sub(offset_pixels.y as u32)))
+			(0, offset_pixels.y as u32, region.texture_size.y.min(composite_resolution.y.saturating_sub(offset_pixels.y as u32)))
 		} else {
 			let skip = (-offset_pixels.y) as u32;
-			(skip, 0, region.texture_size.y.saturating_sub(skip).min(output_resolution.y))
+			(skip, 0, region.texture_size.y.saturating_sub(skip).min(composite_resolution.y))
 		};
 
 		if width > 0 && height > 0 {
@@ -549,7 +571,7 @@ fn composite_cached_regions(
 					aspect: wgpu::TextureAspect::All,
 				},
 				wgpu::TexelCopyTextureInfo {
-					texture: &output_texture,
+					texture: &composite_texture,
 					mip_level: 0,
 					origin: wgpu::Origin3d { x: dst_x, y: dst_y, z: 0 },
 					aspect: wgpu::TextureAspect::All,
@@ -564,11 +586,29 @@ fn composite_cached_regions(
 
 		// Transform metadata from document space to viewport logical pixels
 		let mut region_metadata = region.metadata.clone();
-		let document_to_viewport = glam::DAffine2::from_scale(DVec2::splat(logical_scale)) * glam::DAffine2::from_translation(-viewport_bounds.start);
+		let document_to_viewport = if has_tilt {
+			footprint_transform
+		} else {
+			glam::DAffine2::from_scale(DVec2::splat(logical_scale)) * glam::DAffine2::from_translation(-viewport_bounds.start)
+		};
 		region_metadata.apply_transform(document_to_viewport);
 		combined_metadata.merge(&region_metadata);
 	}
 
 	queue.submit([encoder.finish()]);
-	(output_texture, combined_metadata)
+
+	if has_tilt {
+		// Apply viewport rotation by sampling the intermediate document-space texture
+		// with a bilinear-filtered affine transform to produce the final viewport output.
+		// For each output pixel p: texel = inv.matrix2 * p * logical_scale + (inv.translation - viewport_bounds.start) * physical_scale
+		let inv = footprint_transform.inverse();
+		let source_transform = glam::Mat2::from_cols((inv.matrix2.x_axis * logical_scale).as_vec2(), (inv.matrix2.y_axis * logical_scale).as_vec2());
+		let source_offset = ((inv.translation - viewport_bounds.start) * physical_scale).as_vec2();
+		let output_texture = exec
+			.resample_texture(&composite_texture, output_resolution, source_transform, source_offset, wgpu::FilterMode::Linear)
+			.expect("Failed to apply viewport tilt rotation");
+		(output_texture, combined_metadata)
+	} else {
+		(composite_texture, combined_metadata)
+	}
 }
