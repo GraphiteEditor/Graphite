@@ -18,10 +18,24 @@
 
 	let self: FloatingMenu | undefined;
 
+	function onDialogContentKeyDown(e: KeyboardEvent) {
+		if ($dialog.title !== "New Document" || e.isComposing || e.key !== "Enter") return;
+
+		const emphasizedOrFirstButton = (self?.div?.()?.querySelector("[data-emphasized]") || self?.div?.()?.querySelector("[data-text-button]") || undefined) as HTMLButtonElement | undefined;
+		if (!emphasizedOrFirstButton || emphasizedOrFirstButton.dataset.disabled !== undefined) return;
+
+		e.preventDefault();
+		setTimeout(() => emphasizedOrFirstButton.click(), 0);
+	}
+
 	onMount(() => {
+		window.addEventListener("keydown", onDialogContentKeyDown, true);
+
 		// Focus the button which is marked as emphasized, or otherwise the first button, in the popup
 		const emphasizedOrFirstButton = (self?.div?.()?.querySelector("[data-emphasized]") || self?.div?.()?.querySelector("[data-text-button]") || undefined) as HTMLButtonElement | undefined;
 		emphasizedOrFirstButton?.focus();
+
+		return () => window.removeEventListener("keydown", onDialogContentKeyDown, true);
 	});
 </script>
 
