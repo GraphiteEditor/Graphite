@@ -246,19 +246,19 @@ impl<'a> Iterator for WidgetIter<'a> {
 		}
 
 		match self.stack.pop() {
-			Some(LayoutGroup::Column { widgets }) => {
+			Some(LayoutGroup::Column(WidgetColumn { widgets })) => {
 				self.current_slice = Some(widgets);
 				self.next()
 			}
-			Some(LayoutGroup::Row { widgets }) => {
+			Some(LayoutGroup::Row(WidgetRow { widgets })) => {
 				self.current_slice = Some(widgets);
 				self.next()
 			}
-			Some(LayoutGroup::Table { rows, .. }) => {
+			Some(LayoutGroup::Table(WidgetTable { rows, .. })) => {
 				self.table.extend(rows.iter().flatten().rev());
 				self.next()
 			}
-			Some(LayoutGroup::Section { layout, .. }) => {
+			Some(LayoutGroup::Section(WidgetSection { layout, .. })) => {
 				for layout_row in &layout.0 {
 					self.stack.push(layout_row);
 				}
@@ -298,19 +298,19 @@ impl<'a> Iterator for WidgetIterMut<'a> {
 		}
 
 		match self.stack.pop() {
-			Some(LayoutGroup::Column { widgets }) => {
+			Some(LayoutGroup::Column(WidgetColumn { widgets })) => {
 				self.current_slice = Some(widgets);
 				self.next()
 			}
-			Some(LayoutGroup::Row { widgets }) => {
+			Some(LayoutGroup::Row(WidgetRow { widgets })) => {
 				self.current_slice = Some(widgets);
 				self.next()
 			}
-			Some(LayoutGroup::Table { rows, .. }) => {
+			Some(LayoutGroup::Table(WidgetTable { rows, .. })) => {
 				self.table.extend(rows.iter_mut().flatten().rev());
 				self.next()
 			}
-			Some(LayoutGroup::Section { layout, .. }) => {
+			Some(LayoutGroup::Section(WidgetSection { layout, .. })) => {
 				for layout_row in &mut layout.0 {
 					self.stack.push(layout_row);
 				}
@@ -325,49 +325,89 @@ impl<'a> Iterator for WidgetIterMut<'a> {
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum LayoutGroup {
 	#[serde(rename = "column")]
-	Column {
-		#[serde(rename = "columnWidgets")]
-		widgets: Vec<WidgetInstance>,
-	},
+	Column(WidgetColumn),
 	#[serde(rename = "row")]
-	Row {
-		#[serde(rename = "rowWidgets")]
-		widgets: Vec<WidgetInstance>,
-	},
+	Row(WidgetRow),
 	#[serde(rename = "table")]
-	Table {
-		#[serde(rename = "tableWidgets")]
-		rows: Vec<Vec<WidgetInstance>>,
-		unstyled: bool,
-	},
+	Table(WidgetTable),
 	#[serde(rename = "section")]
-	Section {
-		name: String,
-		description: String,
-		visible: bool,
-		pinned: bool,
-		id: u64,
-		layout: Layout,
-	},
+	Section(WidgetSection),
+}
+
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct WidgetColumn {
+	#[serde(rename = "columnWidgets")]
+	pub widgets: Vec<WidgetInstance>,
+}
+
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct WidgetRow {
+	#[serde(rename = "rowWidgets")]
+	pub widgets: Vec<WidgetInstance>,
+}
+
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[derive(Default, Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct WidgetTable {
+	#[serde(rename = "tableWidgets")]
+	pub rows: Vec<Vec<WidgetInstance>>,
+	pub unstyled: bool,
+}
+
+#[cfg_attr(feature = "wasm", derive(tsify::Tsify))]
+#[tsify(large_number_types_as_bigints)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct WidgetSection {
+	pub name: String,
+	pub description: String,
+	pub visible: bool,
+	pub pinned: bool,
+	pub id: u64,
+	pub layout: Layout,
 }
 
 impl Default for LayoutGroup {
 	fn default() -> Self {
-		Self::Row { widgets: Vec::new() }
+		Self::Row(Default::default())
 	}
 }
 impl From<Vec<WidgetInstance>> for LayoutGroup {
 	fn from(widgets: Vec<WidgetInstance>) -> LayoutGroup {
-		LayoutGroup::Row { widgets }
+		LayoutGroup::Row(WidgetRow { widgets })
 	}
 }
 
 impl LayoutGroup {
+	pub fn row(widgets: Vec<WidgetInstance>) -> Self {
+		Self::Row(WidgetRow { widgets })
+	}
+
+	pub fn column(widgets: Vec<WidgetInstance>) -> Self {
+		Self::Column(WidgetColumn { widgets })
+	}
+
+	pub fn table(rows: Vec<Vec<WidgetInstance>>, unstyled: bool) -> Self {
+		Self::Table(WidgetTable { rows, unstyled })
+	}
+
+	pub fn section(name: impl Into<String>, description: impl Into<String>, visible: bool, pinned: bool, id: u64, layout: Layout) -> Self {
+		Self::Section(WidgetSection {
+			name: name.into(),
+			description: description.into(),
+			visible,
+			pinned,
+			id,
+			layout,
+		})
+	}
+
 	/// Applies a tooltip description to all widgets without a tooltip in this row or column.
 	pub fn with_tooltip_description(self, description: impl Into<String>) -> Self {
 		let (is_col, mut widgets) = match self {
-			LayoutGroup::Column { widgets } => (true, widgets),
-			LayoutGroup::Row { widgets } => (false, widgets),
+			LayoutGroup::Column(WidgetColumn { widgets }) => (true, widgets),
+			LayoutGroup::Row(WidgetRow { widgets }) => (false, widgets),
 			_ => unimplemented!(),
 		};
 		let description = description.into();
@@ -400,7 +440,7 @@ impl LayoutGroup {
 				val.clone_from(&description);
 			}
 		}
-		if is_col { Self::Column { widgets } } else { Self::Row { widgets } }
+		if is_col { Self::Column(WidgetColumn { widgets }) } else { Self::Row(WidgetRow { widgets }) }
 	}
 
 	pub fn iter_mut(&mut self) -> WidgetIterMut<'_> {
@@ -419,7 +459,8 @@ impl Diffable for LayoutGroup {
 	fn diff(&mut self, new: Self, widget_path: &mut Vec<usize>, widget_diffs: &mut Vec<WidgetDiff>) {
 		let is_column = matches!(new, Self::Column { .. });
 		match (self, new) {
-			(Self::Column { widgets: current_widgets }, Self::Column { widgets: new_widgets }) | (Self::Row { widgets: current_widgets }, Self::Row { widgets: new_widgets }) => {
+			(Self::Column(WidgetColumn { widgets: current_widgets }), Self::Column(WidgetColumn { widgets: new_widgets }))
+			| (Self::Row(WidgetRow { widgets: current_widgets }), Self::Row(WidgetRow { widgets: new_widgets })) => {
 				// If the lengths are different then resend the entire panel
 				// TODO: Diff insersion and deletion of items
 				if current_widgets.len() != new_widgets.len() {
@@ -427,7 +468,12 @@ impl Diffable for LayoutGroup {
 					current_widgets.clone_from(&new_widgets);
 
 					// Push back a LayoutGroup update to the diff
-					let new_value = (if is_column { Self::Column { widgets: new_widgets } } else { Self::Row { widgets: new_widgets } }).into_diff_update();
+					let new_value = (if is_column {
+						Self::Column(WidgetColumn { widgets: new_widgets })
+					} else {
+						Self::Row(WidgetRow { widgets: new_widgets })
+					})
+					.into_diff_update();
 					let widget_path = widget_path.to_vec();
 					widget_diffs.push(WidgetDiff { widget_path, new_value });
 					return;
@@ -440,22 +486,22 @@ impl Diffable for LayoutGroup {
 				}
 			}
 			(
-				Self::Section {
+				Self::Section(WidgetSection {
 					name: current_name,
 					description: current_description,
 					visible: current_visible,
 					pinned: current_pinned,
 					id: current_id,
 					layout: current_layout,
-				},
-				Self::Section {
+				}),
+				Self::Section(WidgetSection {
 					name: new_name,
 					description: new_description,
 					visible: new_visible,
 					pinned: new_pinned,
 					id: new_id,
 					layout: new_layout,
-				},
+				}),
 			) => {
 				// Resend the entire panel if the lengths, names, visibility, or node IDs are different
 				// TODO: Diff insersion and deletion of items
@@ -475,14 +521,14 @@ impl Diffable for LayoutGroup {
 					current_layout.clone_from(&new_layout);
 
 					// Push an update layout group to the diff
-					let new_value = Self::Section {
+					let new_value = Self::Section(WidgetSection {
 						name: new_name,
 						description: new_description,
 						visible: new_visible,
 						pinned: new_pinned,
 						id: new_id,
 						layout: new_layout,
-					}
+					})
 					.into_diff_update();
 					let widget_path = widget_path.to_vec();
 					widget_diffs.push(WidgetDiff { widget_path, new_value });
@@ -507,14 +553,14 @@ impl Diffable for LayoutGroup {
 
 	fn collect_checkbox_ids(&self, layout_target: LayoutTarget, widget_path: &mut Vec<usize>, checkbox_map: &mut HashMap<CheckboxId, CheckboxId>) {
 		match self {
-			Self::Column { widgets } | Self::Row { widgets } => {
+			Self::Column(WidgetColumn { widgets }) | Self::Row(WidgetRow { widgets }) => {
 				for (index, widget) in widgets.iter().enumerate() {
 					widget_path.push(index);
 					widget.collect_checkbox_ids(layout_target, widget_path, checkbox_map);
 					widget_path.pop();
 				}
 			}
-			Self::Table { rows, .. } => {
+			Self::Table(WidgetTable { rows, .. }) => {
 				for (row_idx, row) in rows.iter().enumerate() {
 					for (col_idx, widget) in row.iter().enumerate() {
 						widget_path.push(row_idx);
@@ -525,7 +571,7 @@ impl Diffable for LayoutGroup {
 					}
 				}
 			}
-			Self::Section { layout, .. } => {
+			Self::Section(WidgetSection { layout, .. }) => {
 				layout.collect_checkbox_ids(layout_target, widget_path, checkbox_map);
 			}
 		}
@@ -533,14 +579,14 @@ impl Diffable for LayoutGroup {
 
 	fn replace_widget_ids(&mut self, layout_target: LayoutTarget, widget_path: &mut Vec<usize>, checkbox_map: &HashMap<CheckboxId, CheckboxId>) {
 		match self {
-			Self::Column { widgets } | Self::Row { widgets } => {
+			Self::Column(WidgetColumn { widgets }) | Self::Row(WidgetRow { widgets }) => {
 				for (index, widget) in widgets.iter_mut().enumerate() {
 					widget_path.push(index);
 					widget.replace_widget_ids(layout_target, widget_path, checkbox_map);
 					widget_path.pop();
 				}
 			}
-			Self::Table { rows, .. } => {
+			Self::Table(WidgetTable { rows, .. }) => {
 				for (row_idx, row) in rows.iter_mut().enumerate() {
 					for (col_idx, widget) in row.iter_mut().enumerate() {
 						widget_path.push(row_idx);
@@ -551,7 +597,7 @@ impl Diffable for LayoutGroup {
 					}
 				}
 			}
-			Self::Section { layout, .. } => {
+			Self::Section(WidgetSection { layout, .. }) => {
 				layout.replace_widget_ids(layout_target, widget_path, checkbox_map);
 			}
 		}

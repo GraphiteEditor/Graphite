@@ -2192,9 +2192,7 @@ fn static_input_properties() -> InputProperties {
 					true
 				});
 
-			Ok(vec![LayoutGroup::Row {
-				widgets: node_properties::number_widget(ParameterWidgetsInfo::new(node_id, index, blank_assist, context), number_input),
-			}])
+			Ok(vec![LayoutGroup::row(node_properties::number_widget(ParameterWidgetsInfo::new(node_id, index, blank_assist, context), number_input))])
 		}),
 	);
 	map.insert(
@@ -2228,10 +2226,8 @@ fn static_input_properties() -> InputProperties {
 					number_input = number_input.step(number_step);
 				}
 			};
-			Ok(vec![LayoutGroup::Row {
-				// NOTE: The bool input MUST be at the input index directly before the f64 input!
-				widgets: node_properties::optional_f64_widget(ParameterWidgetsInfo::new(node_id, index, false, context), index - 1, number_input),
-			}])
+			// NOTE: The bool input MUST be at the input index directly before the f64 input!
+			Ok(vec![LayoutGroup::row(node_properties::optional_f64_widget(ParameterWidgetsInfo::new(node_id, index, false, context), index - 1, number_input))])
 		}),
 	);
 	map.insert(
@@ -2299,7 +2295,7 @@ fn static_input_properties() -> InputProperties {
 		"noise_properties_noise_type".to_string(),
 		Box::new(|node_id, index, context| {
 			let noise_type_row = enum_choice::<NoiseType>().for_socket(ParameterWidgetsInfo::new(node_id, index, true, context)).property_row();
-			Ok(vec![noise_type_row, LayoutGroup::Row { widgets: Vec::new() }])
+			Ok(vec![noise_type_row, LayoutGroup::row(Vec::new())])
 		}),
 	);
 	map.insert(
@@ -2321,7 +2317,7 @@ fn static_input_properties() -> InputProperties {
 				ParameterWidgetsInfo::new(node_id, index, true, context),
 				NumberInput::default().min(0.).disabled(!coherent_noise_active || !domain_warp_active),
 			);
-			Ok(vec![domain_warp_amplitude.into(), LayoutGroup::Row { widgets: Vec::new() }])
+			Ok(vec![domain_warp_amplitude.into(), LayoutGroup::row(Vec::new())])
 		}),
 	);
 	map.insert(
@@ -2409,7 +2405,7 @@ fn static_input_properties() -> InputProperties {
 					.range_max(Some(10.))
 					.disabled(!ping_pong_active || !coherent_noise_active || !fractal_active || domain_warp_only_fractal_type_wrongly_active),
 			);
-			Ok(vec![fractal_ping_pong_strength.into(), LayoutGroup::Row { widgets: Vec::new() }])
+			Ok(vec![fractal_ping_pong_strength.into(), LayoutGroup::row(Vec::new())])
 		}),
 	);
 	map.insert(
@@ -2505,7 +2501,7 @@ fn static_input_properties() -> InputProperties {
 				]);
 			}
 
-			Ok(vec![LayoutGroup::Row { widgets }])
+			Ok(vec![LayoutGroup::row(widgets)])
 		}),
 	);
 	// Skew has a custom override that maps to degrees
@@ -2549,24 +2545,22 @@ fn static_input_properties() -> InputProperties {
 				]);
 			}
 
-			Ok(vec![LayoutGroup::Row { widgets }])
+			Ok(vec![LayoutGroup::row(widgets)])
 		}),
 	);
 	map.insert(
 		"text_area".to_string(),
 		Box::new(|node_id, index, context| {
-			Ok(vec![LayoutGroup::Row {
-				widgets: node_properties::text_area_widget(ParameterWidgetsInfo::new(node_id, index, true, context)),
-			}])
+			Ok(vec![LayoutGroup::row(node_properties::text_area_widget(ParameterWidgetsInfo::new(node_id, index, true, context)))])
 		}),
 	);
 	map.insert(
 		"text_font".to_string(),
 		Box::new(|node_id, index, context| {
 			let (font, style) = node_properties::font_inputs(ParameterWidgetsInfo::new(node_id, index, true, context));
-			let mut result = vec![LayoutGroup::Row { widgets: font }];
+			let mut result = vec![LayoutGroup::row(font)];
 			if let Some(style) = style {
-				result.push(LayoutGroup::Row { widgets: style });
+				result.push(LayoutGroup::row(style));
 			}
 			Ok(result)
 		}),

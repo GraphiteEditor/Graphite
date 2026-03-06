@@ -273,7 +273,7 @@ impl TextTool {
 			},
 		));
 
-		Layout(vec![LayoutGroup::Row { widgets }])
+		Layout(vec![LayoutGroup::row(widgets)])
 	}
 }
 

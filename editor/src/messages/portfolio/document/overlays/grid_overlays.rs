@@ -228,12 +228,9 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 		})
 	};
 
-	widgets.push(LayoutGroup::Row {
-		widgets: vec![TextLabel::new("Grid").bold(true).widget_instance()],
-	});
+	widgets.push(LayoutGroup::row(vec![TextLabel::new("Grid").bold(true).widget_instance()]));
 
-	widgets.push(LayoutGroup::Row {
-		widgets: vec![
+	widgets.push(LayoutGroup::row(vec![
 			TextLabel::new("Type").table_align(true).widget_instance(),
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			RadioInput::new(vec![
@@ -262,8 +259,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 				GridType::Isometric { .. } => 1,
 			}))
 			.widget_instance(),
-		],
-	});
+		]));
 
 	let mut color_widgets = vec![
 		TextLabel::new("Display").table_align(true).widget_instance(),
@@ -288,10 +284,9 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 			}))
 			.widget_instance(),
 	);
-	widgets.push(LayoutGroup::Row { widgets: color_widgets });
+	widgets.push(LayoutGroup::row(color_widgets));
 
-	widgets.push(LayoutGroup::Row {
-		widgets: vec![
+	widgets.push(LayoutGroup::row(vec![
 			TextLabel::new("Origin").table_align(true).widget_instance(),
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 			NumberInput::new(Some(grid.origin.x))
@@ -307,12 +302,10 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 				.min_width(98)
 				.on_update(update_origin(grid, |grid| Some(&mut grid.origin.y)))
 				.widget_instance(),
-		],
-	});
+		]));
 
 	match grid.grid_type {
-		GridType::Rectangular { spacing } => widgets.push(LayoutGroup::Row {
-			widgets: vec![
+		GridType::Rectangular { spacing } => widgets.push(LayoutGroup::row(vec![
 				TextLabel::new("Spacing").table_align(true).widget_instance(),
 				Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 				NumberInput::new(Some(spacing.x))
@@ -330,11 +323,9 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 					.min_width(98)
 					.on_update(update_origin(grid, |grid| grid.grid_type.rectangular_spacing().map(|spacing| &mut spacing.y)))
 					.widget_instance(),
-			],
-		}),
+			])),
 		GridType::Isometric { y_axis_spacing, angle_a, angle_b } => {
-			widgets.push(LayoutGroup::Row {
-				widgets: vec![
+			widgets.push(LayoutGroup::row(vec![
 					TextLabel::new("Y Spacing").table_align(true).widget_instance(),
 					Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 					NumberInput::new(Some(y_axis_spacing))
@@ -343,10 +334,8 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 						.min_width(200)
 						.on_update(update_origin(grid, |grid| grid.grid_type.isometric_y_spacing()))
 						.widget_instance(),
-				],
-			});
-			widgets.push(LayoutGroup::Row {
-				widgets: vec![
+				]));
+			widgets.push(LayoutGroup::row(vec![
 					TextLabel::new("Angles").table_align(true).widget_instance(),
 					Separator::new(SeparatorStyle::Unrelated).widget_instance(),
 					NumberInput::new(Some(angle_a))
@@ -360,8 +349,7 @@ pub fn overlay_options(grid: &GridSnapping) -> Vec<LayoutGroup> {
 						.min_width(98)
 						.on_update(update_origin(grid, |grid| grid.grid_type.angle_b()))
 						.widget_instance(),
-				],
-			});
+				]));
 		}
 	}
 

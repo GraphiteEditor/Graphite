@@ -85,7 +85,7 @@ impl DialogLayoutHolder for ExportDialogMessageHandler {
 			TextButton::new("Cancel").on_update(|_| FrontendMessage::DialogClose.into()).widget_instance(),
 		];
 
-		Layout(vec![LayoutGroup::Row { widgets }])
+		Layout(vec![LayoutGroup::row(widgets)])
 	}
 }
 
@@ -170,10 +170,10 @@ impl LayoutHolder for ExportDialogMessageHandler {
 		];
 
 		Layout(vec![
-			LayoutGroup::Row { widgets: export_type },
-			LayoutGroup::Row { widgets: resolution },
-			LayoutGroup::Row { widgets: export_area },
-			LayoutGroup::Row { widgets: transparent_background },
+			LayoutGroup::row(export_type),
+			LayoutGroup::row(resolution),
+			LayoutGroup::row(export_area),
+			LayoutGroup::row(transparent_background),
 		])
 	}
 }

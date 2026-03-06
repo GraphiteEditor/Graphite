@@ -15,7 +15,7 @@ pub(crate) mod menu {
 			[layout_group] => layout_group,
 			_ => panic!("Menu bar layout is supposed to have exactly one layout group"),
 		};
-		let LayoutGroup::Row { widgets } = layout_group else {
+		let LayoutGroup::Row(WidgetRow { widgets }) = layout_group else {
 			panic!("Menu bar layout group is supposed to be a row");
 		};
 		widgets

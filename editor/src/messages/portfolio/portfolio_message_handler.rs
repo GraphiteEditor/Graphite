@@ -1011,9 +1011,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 			PortfolioMessage::RequestWelcomeScreenButtonsLayout => {
 				let donate = "https://graphite.art/donate/";
 
-				let table = LayoutGroup::Table {
-					unstyled: true,
-					rows: vec![
+				let table = LayoutGroup::table(
+					vec![
 						vec![
 							TextButton::new("New Document")
 								.icon(Some("File".into()))
@@ -1045,7 +1044,8 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 								.widget_instance(),
 						],
 					],
-				};
+					true,
+				);
 
 				responses.add(LayoutMessage::DestroyLayout {
 					layout_target: LayoutTarget::WelcomeScreenButtons,
@@ -1061,7 +1061,7 @@ impl MessageHandler<PortfolioMessage, PortfolioMessageContext<'_>> for Portfolio
 				#[cfg(target_family = "wasm")]
 				let widgets = vec![];
 
-				let row = LayoutGroup::Row { widgets };
+				let row = LayoutGroup::row(widgets);
 
 				responses.add(LayoutMessage::SendLayout {
 					layout: Layout(vec![row]),

@@ -2212,14 +2212,9 @@ impl DocumentMessageHandler {
 				.widget_instance(),
 			PopoverButton::new()
 				.popover_layout(Layout(vec![
-					LayoutGroup::Row {
-						widgets: vec![TextLabel::new("Overlays").bold(true).widget_instance()],
-					},
-					LayoutGroup::Row {
-						widgets: vec![TextLabel::new("General").widget_instance()],
-					},
-					LayoutGroup::Row {
-						widgets: {
+					LayoutGroup::row(vec![TextLabel::new("Overlays").bold(true).widget_instance()]),
+					LayoutGroup::row(vec![TextLabel::new("General").widget_instance()]),
+					LayoutGroup::row({
 							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.artboard_name)
@@ -2234,10 +2229,8 @@ impl DocumentMessageHandler {
 									.widget_instance(),
 								TextLabel::new("Artboard Name".to_string()).for_checkbox(checkbox_id).widget_instance(),
 							]
-						},
-					},
-					LayoutGroup::Row {
-						widgets: {
+						}),
+					LayoutGroup::row({
 							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.transform_measurement)
@@ -2252,13 +2245,9 @@ impl DocumentMessageHandler {
 									.widget_instance(),
 								TextLabel::new("G/R/S Measurement".to_string()).for_checkbox(checkbox_id).widget_instance(),
 							]
-						},
-					},
-					LayoutGroup::Row {
-						widgets: vec![TextLabel::new("Select Tool").widget_instance()],
-					},
-					LayoutGroup::Row {
-						widgets: {
+						}),
+					LayoutGroup::row(vec![TextLabel::new("Select Tool").widget_instance()]),
+					LayoutGroup::row({
 							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.quick_measurement)
@@ -2273,10 +2262,8 @@ impl DocumentMessageHandler {
 									.widget_instance(),
 								TextLabel::new("Quick Measurement".to_string()).for_checkbox(checkbox_id).widget_instance(),
 							]
-						},
-					},
-					LayoutGroup::Row {
-						widgets: {
+						}),
+					LayoutGroup::row({
 							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.transform_cage)
@@ -2291,10 +2278,8 @@ impl DocumentMessageHandler {
 									.widget_instance(),
 								TextLabel::new("Transform Cage".to_string()).for_checkbox(checkbox_id).widget_instance(),
 							]
-						},
-					},
-					LayoutGroup::Row {
-						widgets: {
+						}),
+					LayoutGroup::row({
 							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.compass_rose)
@@ -2309,10 +2294,8 @@ impl DocumentMessageHandler {
 									.widget_instance(),
 								TextLabel::new("Transform Dial".to_string()).for_checkbox(checkbox_id).widget_instance(),
 							]
-						},
-					},
-					LayoutGroup::Row {
-						widgets: {
+						}),
+					LayoutGroup::row({
 							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.pivot)
@@ -2327,10 +2310,8 @@ impl DocumentMessageHandler {
 									.widget_instance(),
 								TextLabel::new("Transform Pivot".to_string()).for_checkbox(checkbox_id).widget_instance(),
 							]
-						},
-					},
-					LayoutGroup::Row {
-						widgets: {
+						}),
+					LayoutGroup::row({
 							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.pivot)
@@ -2345,10 +2326,8 @@ impl DocumentMessageHandler {
 									.widget_instance(),
 								TextLabel::new("Transform Origin".to_string()).for_checkbox(checkbox_id).widget_instance(),
 							]
-						},
-					},
-					LayoutGroup::Row {
-						widgets: {
+						}),
+					LayoutGroup::row({
 							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.hover_outline)
@@ -2363,10 +2342,8 @@ impl DocumentMessageHandler {
 									.widget_instance(),
 								TextLabel::new("Hover Outline".to_string()).for_checkbox(checkbox_id).widget_instance(),
 							]
-						},
-					},
-					LayoutGroup::Row {
-						widgets: {
+						}),
+					LayoutGroup::row({
 							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.selection_outline)
@@ -2381,10 +2358,8 @@ impl DocumentMessageHandler {
 									.widget_instance(),
 								TextLabel::new("Selection Outline".to_string()).for_checkbox(checkbox_id).widget_instance(),
 							]
-						},
-					},
-					LayoutGroup::Row {
-						widgets: {
+						}),
+					LayoutGroup::row({
 							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.layer_origin_cross)
@@ -2399,13 +2374,9 @@ impl DocumentMessageHandler {
 									.widget_instance(),
 								TextLabel::new("Layer Origin".to_string()).for_checkbox(checkbox_id).widget_instance(),
 							]
-						},
-					},
-					LayoutGroup::Row {
-						widgets: vec![TextLabel::new("Pen & Path Tools").widget_instance()],
-					},
-					LayoutGroup::Row {
-						widgets: {
+						}),
+					LayoutGroup::row(vec![TextLabel::new("Pen & Path Tools").widget_instance()]),
+					LayoutGroup::row({
 							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.path)
@@ -2420,10 +2391,8 @@ impl DocumentMessageHandler {
 									.widget_instance(),
 								TextLabel::new("Path".to_string()).for_checkbox(checkbox_id).widget_instance(),
 							]
-						},
-					},
-					LayoutGroup::Row {
-						widgets: {
+						}),
+					LayoutGroup::row({
 							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.anchors)
@@ -2438,10 +2407,8 @@ impl DocumentMessageHandler {
 									.widget_instance(),
 								TextLabel::new("Anchors".to_string()).for_checkbox(checkbox_id).widget_instance(),
 							]
-						},
-					},
-					LayoutGroup::Row {
-						widgets: {
+						}),
+					LayoutGroup::row({
 							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(self.overlays_visibility_settings.handles)
@@ -2460,8 +2427,7 @@ impl DocumentMessageHandler {
 									.for_checkbox(checkbox_id)
 									.widget_instance(),
 							]
-						},
-					},
+						}),
 				]))
 				.widget_instance(),
 			Separator::new(SeparatorStyle::Related).widget_instance(),
@@ -2480,16 +2446,11 @@ impl DocumentMessageHandler {
 			PopoverButton::new()
 				.popover_layout(Layout(
 					[
-						LayoutGroup::Row {
-							widgets: vec![TextLabel::new("Snapping").bold(true).widget_instance()],
-						},
-						LayoutGroup::Row {
-							widgets: vec![TextLabel::new(SnappingOptions::BoundingBoxes.to_string()).widget_instance()],
-						},
+						LayoutGroup::row(vec![TextLabel::new("Snapping").bold(true).widget_instance()]),
+						LayoutGroup::row(vec![TextLabel::new(SnappingOptions::BoundingBoxes.to_string()).widget_instance()]),
 					]
 					.into_iter()
-					.chain(SNAP_FUNCTIONS_FOR_BOUNDING_BOXES.into_iter().map(|(name, closure, description)| LayoutGroup::Row {
-						widgets: {
+					.chain(SNAP_FUNCTIONS_FOR_BOUNDING_BOXES.into_iter().map(|(name, closure, description)| LayoutGroup::row({
 							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(*closure(&mut snapping_state))
@@ -2506,13 +2467,9 @@ impl DocumentMessageHandler {
 									.widget_instance(),
 								TextLabel::new(name).tooltip_label(name).tooltip_description(description).for_checkbox(checkbox_id).widget_instance(),
 							]
-						},
-					}))
-					.chain([LayoutGroup::Row {
-						widgets: vec![TextLabel::new(SnappingOptions::Paths.to_string()).widget_instance()],
-					}])
-					.chain(SNAP_FUNCTIONS_FOR_PATHS.into_iter().map(|(name, closure, description)| LayoutGroup::Row {
-						widgets: {
+						})))
+					.chain([LayoutGroup::row(vec![TextLabel::new(SnappingOptions::Paths.to_string()).widget_instance()])])
+					.chain(SNAP_FUNCTIONS_FOR_PATHS.into_iter().map(|(name, closure, description)| LayoutGroup::row({
 							let checkbox_id = CheckboxId::new();
 							vec![
 								CheckboxInput::new(*closure(&mut snapping_state2))
@@ -2529,8 +2486,7 @@ impl DocumentMessageHandler {
 									.widget_instance(),
 								TextLabel::new(name).tooltip_label(name).tooltip_description(description).for_checkbox(checkbox_id).widget_instance(),
 							]
-						},
-					}))
+						})))
 					.collect(),
 				))
 				.widget_instance(),
@@ -2635,7 +2591,7 @@ impl DocumentMessageHandler {
 		]);
 
 		responses.add(LayoutMessage::SendLayout {
-			layout: Layout(vec![LayoutGroup::Row { widgets }]),
+			layout: Layout(vec![LayoutGroup::row(widgets)]),
 			layout_target: LayoutTarget::DocumentBar,
 		});
 		responses.add(NodeGraphMessage::RunDocumentGraph);
@@ -2773,7 +2729,7 @@ impl DocumentMessageHandler {
 				.tooltip_label("Fill")
 				.widget_instance(),
 		];
-		let layers_panel_control_bar_left = Layout(vec![LayoutGroup::Row { widgets }]);
+		let layers_panel_control_bar_left = Layout(vec![LayoutGroup::row(widgets)]);
 
 		let widgets = vec![
 			IconButton::new(if selection_all_locked { "PadlockLocked" } else { "PadlockUnlocked" }, 24)
@@ -2791,7 +2747,7 @@ impl DocumentMessageHandler {
 				.disabled(!has_selection)
 				.widget_instance(),
 		];
-		let layers_panel_control_bar_right = Layout(vec![LayoutGroup::Row { widgets }]);
+		let layers_panel_control_bar_right = Layout(vec![LayoutGroup::row(widgets)]);
 
 		responses.add(LayoutMessage::SendLayout {
 			layout: layers_panel_control_bar_left,
@@ -2845,7 +2801,7 @@ impl DocumentMessageHandler {
 							}
 						})
 						.widget_instance();
-					Layout(vec![LayoutGroup::Row { widgets: vec![node_chooser] }])
+					Layout(vec![LayoutGroup::row(vec![node_chooser])])
 				})
 				.widget_instance(),
 			Separator::new(SeparatorStyle::Unrelated).widget_instance(),
@@ -2871,7 +2827,7 @@ impl DocumentMessageHandler {
 				.widget_instance(),
 		];
 		responses.add(LayoutMessage::SendLayout {
-			layout: Layout(vec![LayoutGroup::Row { widgets }]),
+			layout: Layout(vec![LayoutGroup::row(widgets)]),
 			layout_target: LayoutTarget::LayersPanelBottomBar,
 		});
 	}
