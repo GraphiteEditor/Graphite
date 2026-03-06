@@ -1,6 +1,6 @@
 <script lang="ts">
 	import type { Layout, LayoutTarget } from "@graphite/messages";
-	import { isWidgetSpanColumn, isWidgetSpanRow, isWidgetTable, isWidgetSection } from "@graphite/utility-functions/widgets";
+	import { isWidgetColumn, isWidgetRow, isWidgetTable, isWidgetSection } from "@graphite/utility-functions/widgets";
 
 	import WidgetSection from "@graphite/components/widgets/WidgetSection.svelte";
 	import WidgetSpan from "@graphite/components/widgets/WidgetSpan.svelte";
@@ -14,7 +14,7 @@
 </script>
 
 {#each layout as layoutGroup}
-	{#if isWidgetSpanRow(layoutGroup) || isWidgetSpanColumn(layoutGroup)}
+	{#if isWidgetRow(layoutGroup) || isWidgetColumn(layoutGroup)}
 		<WidgetSpan widgetData={layoutGroup} {layoutTarget} class={className} {classes} />
 	{:else if isWidgetSection(layoutGroup)}
 		<WidgetSection widgetData={layoutGroup} {layoutTarget} class={className} {classes} />
