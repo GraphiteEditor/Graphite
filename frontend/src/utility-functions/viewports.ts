@@ -44,10 +44,8 @@ export function setupViewportResizeObserver(editor: Editor) {
 			const scale = logicalWidth > 0 ? physicalWidth / logicalWidth : 1;
 
 			if (!scale || scale <= 0) {
-				// @ts-ignore
 				editor.handle.updateViewport(bounds.x, bounds.y, logicalWidth, logicalHeight, 1e-6);
 			} else {
-				// @ts-ignore
 				editor.handle.updateViewport(bounds.x, bounds.y, logicalWidth, logicalHeight, scale);
 			}
 		}
