@@ -35,7 +35,7 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 	for (id, metadata) in core_types::registry::NODE_METADATA.lock().unwrap().iter() {
 		let id = id.clone();
 
-		let NodeMetadata { fields, .. } = metadata;
+		let NodeMetadata { fields, output_fields, .. } = metadata;
 		let Some(implementations) = node_registry.get(&id) else { continue };
 		let valid_call_args: HashSet<_> = implementations.iter().map(|(_, node_io)| node_io.call_argument.clone()).collect();
 		let first_node_io = implementations.first().map(|(_, node_io)| node_io).unwrap_or(const { &NodeIOTypes::empty() });
@@ -55,6 +55,7 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 		let network_inputs = (0..input_count).map(|i| NodeInput::node(NodeId(i as u64), 0)).collect();
 
 		let identity_node = ops::identity::IDENTIFIER;
+		let memo_node = memo::memo::IDENTIFIER;
 
 		let mut generated_nodes = 0;
 		let mut nodes: HashMap<_, _, _> = node_io_types
@@ -103,9 +104,26 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 			})
 			.collect();
 
-		if generated_nodes == 0 {
+		let available_output_fields: Vec<_> = output_fields
+			.iter()
+			.filter_map(|field| {
+				let identifier = ProtoNodeIdentifier::with_owned_string(field.node_path.to_string());
+				if node_registry.contains_key(&identifier) {
+					Some((field, identifier))
+				} else {
+					warn!("Failed to find output field extractor node '{}' for '{}'", field.node_path, id.as_str());
+					None
+				}
+			})
+			.collect();
+
+		if generated_nodes == 0 && available_output_fields.is_empty() {
 			continue;
 		}
+
+		let source_node_id = NodeId(input_count as u64);
+		let mut generated_node_count = 1;
+		let mut output_source_node = source_node_id;
 
 		let document_node = DocumentNode {
 			inputs: network_inputs,
@@ -117,16 +135,72 @@ pub fn generate_node_substitutions() -> HashMap<ProtoNodeIdentifier, DocumentNod
 			..Default::default()
 		};
 
-		nodes.insert(NodeId(input_count as u64), document_node);
+		nodes.insert(source_node_id, document_node);
+
+		let use_memo = !available_output_fields.is_empty()
+			&& node_registry.get(&memo_node).is_some_and(|memo_implementations| {
+				memo_implementations
+					.iter()
+					.any(|(_, node_io)| node_io.call_argument == *input_type && node_io.return_value == first_node_io.return_value)
+			});
+
+		if use_memo {
+			let memo_node_id = NodeId((input_count + generated_node_count) as u64);
+			generated_node_count += 1;
+			nodes.insert(
+				memo_node_id,
+				DocumentNode {
+					inputs: vec![NodeInput::node(source_node_id, 0)],
+					call_argument: input_type.clone(),
+					implementation: DocumentNodeImplementation::ProtoNode(memo_node.clone()),
+					visible: false,
+					..Default::default()
+				},
+			);
+			output_source_node = memo_node_id;
+		}
+
+		let exports = if available_output_fields.is_empty() {
+			vec![NodeInput::Node {
+				node_id: source_node_id,
+				output_index: 0,
+			}]
+		} else {
+			available_output_fields
+				.iter()
+				.map(|(_, field_identifier)| {
+					let accessor_call_argument = node_registry
+						.get(field_identifier)
+						.and_then(|implementations| implementations.first().map(|(_, node_io)| node_io.call_argument.clone()))
+						.unwrap_or_else(|| input_type.clone());
+
+					let accessor_node_id = NodeId((input_count + generated_node_count) as u64);
+					generated_node_count += 1;
+
+					nodes.insert(
+						accessor_node_id,
+						DocumentNode {
+							inputs: vec![NodeInput::node(output_source_node, 0)],
+							call_argument: accessor_call_argument,
+							implementation: DocumentNodeImplementation::ProtoNode(field_identifier.clone()),
+							visible: false,
+							..Default::default()
+						},
+					);
+
+					NodeInput::Node {
+						node_id: accessor_node_id,
+						output_index: 0,
+					}
+				})
+				.collect()
+		};
 
 		let node = DocumentNode {
 			inputs,
 			call_argument: input_type.clone(),
 			implementation: DocumentNodeImplementation::Network(NodeNetwork {
-				exports: vec![NodeInput::Node {
-					node_id: NodeId(input_count as u64),
-					output_index: 0,
-				}],
+				exports,
 				nodes,
 				scope_injections: Default::default(),
 				generated: true,
