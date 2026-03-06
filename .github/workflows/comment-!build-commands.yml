@@ -1,7 +1,6 @@
 # USAGE:
 # After reviewing the code, core team members may comment on a PR with the exact text:
 # - `!build-debug` to build with debug symbols and optimizations disabled
-# - `!build-profiling` to build with debug symbols and optimizations enabled
 # - `!build` to build without debug symbols and optimizations enabled
 # The comment may not contain any other text, not even whitespace or newlines.
 name: "!build PR Command"
@@ -21,7 +20,7 @@ jobs:
     if: >
       github.event.issue.pull_request &&
       github.event.comment.author_association == 'MEMBER' &&
-      (github.event.comment.body == '!build-debug' || github.event.comment.body == '!build-profiling' || github.event.comment.body == '!build')
+      (github.event.comment.body == '!build-debug' || github.event.comment.body == '!build')
     runs-on: self-hosted
     permissions:
       contents: read
@@ -84,12 +83,10 @@ jobs:
         run: |
           if [[ "${{ github.event.comment.body }}" == "!build-debug" ]]; then
             echo "command=build web debug" >> $GITHUB_OUTPUT
-          elif [[ "${{ github.event.comment.body }}" == "!build-profiling" ]]; then
-            echo "command=build web profiling" >> $GITHUB_OUTPUT
           elif [[ "${{ github.event.comment.body }}" == "!build" ]]; then
             echo "command=build web" >> $GITHUB_OUTPUT
           else
-            echo "Failed to detect if the build command written in the comment should have been '!build-debug', '!build-profiling', or '!build'" >> $GITHUB_OUTPUT
+            echo "Failed to detect if the build command written in the comment should have been '!build-debug', or '!build'" >> $GITHUB_OUTPUT
           fi
 
       - name: 💬 Comment Actions run link

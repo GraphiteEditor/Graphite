@@ -21,18 +21,12 @@ fn usage() {
 	println!("  desktop      Desktop app");
 	println!("  cli          Graphene CLI");
 	println!("<profile>:");
-	println!("  [debug]      Debug symbols enabled,");
-	println!("               optimizations disabled");
-	println!("               (default for run)");
-	println!("  [release]    Debug symbols disabled,");
-	println!("               optimizations enabled");
-	println!("               (default for build)");
-	println!("  profiling    Debug symbols enabled,");
-	println!("               optimizations enabled");
+	println!("  [debug]      Optimizations disabled (default for run)");
+	println!("  [release]    Optimizations enabled (default for build)");
 	println!();
 	println!("MORE EXAMPLES:");
 	println!("  cargo run build desktop");
-	println!("  cargo run desktop profiling");
+	println!("  cargo run desktop release");
 	println!("  cargo run cli -- --help");
 	println!()
 }
@@ -62,11 +56,9 @@ fn run_task(task: &Task) -> Result<(), Error> {
 	match (&task.action, &task.target, &task.profile) {
 		(Action::Run, Target::Web, Profile::Debug | Profile::Default) => npm_run_in_frontend_dir("start")?,
 		(Action::Run, Target::Web, Profile::Release) => npm_run_in_frontend_dir("production")?,
-		(Action::Run, Target::Web, Profile::Profiling) => npm_run_in_frontend_dir("profiling")?,
 
 		(Action::Build, Target::Web, Profile::Debug) => npm_run_in_frontend_dir("build-dev")?,
 		(Action::Build, Target::Web, Profile::Release | Profile::Default) => npm_run_in_frontend_dir("build")?,
-		(Action::Build, Target::Web, Profile::Profiling) => npm_run_in_frontend_dir("build-profiling")?,
 
 		(action, Target::Desktop, mut profile) => {
 			if matches!(profile, Profile::Default) {
@@ -87,7 +79,6 @@ fn run_task(task: &Task) -> Result<(), Error> {
 			let cargo_profile = match profile {
 				Profile::Debug => "dev",
 				Profile::Release => "release",
-				Profile::Profiling => "profiling",
 				Profile::Default => unreachable!(),
 			};
 			let args = if matches!(action, Action::Run) {
@@ -100,11 +91,9 @@ fn run_task(task: &Task) -> Result<(), Error> {
 
 		(Action::Run, Target::Cli, Profile::Debug | Profile::Default) => run(&format!("cargo run -p graphene-cli -- {}", task.args.join(" ")))?,
 		(Action::Run, Target::Cli, Profile::Release) => run(&format!("cargo run -r -p graphene-cli -- {}", task.args.join(" ")))?,
-		(Action::Run, Target::Cli, Profile::Profiling) => run(&format!("cargo run --profile profiling -p graphene-cli -- {}", task.args.join(" ")))?,
 
 		(Action::Build, Target::Cli, Profile::Debug) => run("cargo build -p graphene-cli")?,
 		(Action::Build, Target::Cli, Profile::Release | Profile::Default) => run("cargo build -r -p graphene-cli")?,
-		(Action::Build, Target::Cli, Profile::Profiling) => run("cargo build --profile profiling -p graphene-cli")?,
 	}
 	Ok(())
 }

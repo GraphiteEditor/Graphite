@@ -18,7 +18,6 @@ pub enum Profile {
 	Default,
 	Release,
 	Debug,
-	Profiling,
 }
 
 pub struct Task {
@@ -51,7 +50,6 @@ impl Task {
 		let profile = match args.first() {
 			Some(&"release") => Profile::Release,
 			Some(&"debug") => Profile::Debug,
-			Some(&"profiling") => Profile::Profiling,
 			None => Profile::Default,
 			_ => return None,
 		};

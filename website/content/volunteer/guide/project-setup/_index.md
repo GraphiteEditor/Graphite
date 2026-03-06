@@ -42,12 +42,6 @@ This method compiles Graphite code in debug mode which includes debug symbols fo
 On rare occasions (like while running advanced performance profiles or proxying the dev server connection over a slow network where the >100 MB unoptimized binary size would pose an issue), you may need to run the dev server with release optimizations. To do that while keeping debug symbols:
 
 ```sh
-cargo run profiling
-```
-
-To run the dev server without debug symbols, using the same release optimizations as production builds:
-
-```sh
 cargo run release
 ```
 
