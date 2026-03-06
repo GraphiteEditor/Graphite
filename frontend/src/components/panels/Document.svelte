@@ -10,7 +10,6 @@
 	import { textInputCleanup } from "@graphite/utility-functions/keyboard-entry";
 	import { rasterizeSVGCanvas } from "@graphite/utility-functions/rasterization";
 	import { setupViewportResizeObserver, cleanupViewportResizeObserver } from "@graphite/utility-functions/viewports";
-	import { isWidgetRow } from "@graphite/utility-functions/widgets";
 
 	import ColorPicker from "@graphite/components/floating-menus/ColorPicker.svelte";
 	import EyedropperPreview, { ZOOM_WINDOW_DIMENSIONS } from "@graphite/components/floating-menus/EyedropperPreview.svelte";
@@ -93,7 +92,7 @@
 	$: canvasHeightScaledRoundedToEven = canvasHeightScaled && (canvasHeightScaled % 2 === 1 ? canvasHeightScaled + 1 : canvasHeightScaled);
 
 	$: toolShelfTotalToolsAndSeparators = ((layoutGroup) => {
-		if (!layoutGroup || !isWidgetRow(layoutGroup)) return undefined;
+		if (!layoutGroup || !("row" in layoutGroup)) return undefined;
 
 		let totalSeparators = 0;
 		let totalToolRowsFor1Columns = 0;

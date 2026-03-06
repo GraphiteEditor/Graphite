@@ -2,11 +2,9 @@
 	import { getContext } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import type { LayoutTarget, WidgetInstance } from "@graphite/messages";
+	import type { LayoutTarget, Widget, WidgetInstance } from "@graphite/messages";
 	import { parseFillChoice } from "@graphite/utility-functions/colors";
 	import { debouncer } from "@graphite/utility-functions/debounce";
-	import type { WidgetColumn, WidgetRow, WidgetKind } from "@graphite/utility-functions/widgets";
-	import { isWidgetColumn, isWidgetRow } from "@graphite/utility-functions/widgets";
 
 	import NodeCatalog from "@graphite/components/floating-menus/NodeCatalog.svelte";
 	import BreadcrumbTrailButtons from "@graphite/components/widgets/buttons/BreadcrumbTrailButtons.svelte";
@@ -31,9 +29,12 @@
 	import ShortcutLabel from "@graphite/components/widgets/labels/ShortcutLabel.svelte";
 	import TextLabel from "@graphite/components/widgets/labels/TextLabel.svelte";
 
+	type WidgetKind = Widget extends infer T ? (T extends Record<infer K, unknown> ? K & string : never) : never;
+
 	const editor = getContext<Editor>("editor");
 
-	export let widgetData: WidgetRow | WidgetColumn;
+	export let widgets: WidgetInstance[];
+	export let direction: "row" | "column";
 	export let layoutTarget: LayoutTarget;
 
 	let className = "";
@@ -45,21 +46,6 @@
 	$: extraClasses = Object.entries(classes)
 		.flatMap(([className, stateName]) => (stateName ? [className] : []))
 		.join(" ");
-
-	$: direction = watchDirection(widgetData);
-	$: widgets = watchWidgets(widgetData);
-
-	function watchDirection(widgetData: WidgetRow | WidgetColumn): "row" | "column" | undefined {
-		if (isWidgetRow(widgetData)) return "row";
-		if (isWidgetColumn(widgetData)) return "column";
-	}
-
-	function watchWidgets(widgetData: WidgetRow | WidgetColumn): WidgetInstance[] {
-		let widgets: WidgetInstance[] = [];
-		if (isWidgetRow(widgetData)) widgets = widgetData.row.rowWidgets;
-		else if (isWidgetColumn(widgetData)) widgets = widgetData.column.columnWidgets;
-		return widgets;
-	}
 
 	function widgetValueCommit(widgetIndex: number, value: unknown) {
 		editor.handle.widgetValueCommit(layoutTarget, widgets[widgetIndex].widgetId, value);

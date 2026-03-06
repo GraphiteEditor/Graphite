@@ -1,29 +1,6 @@
-import type { Layout, LayoutGroup, Widget, WidgetDiff, WidgetInstance } from "@graphite/messages";
+import type { Layout, LayoutGroup, WidgetDiff, WidgetInstance } from "@graphite/messages";
 
 type UIItem = Layout | LayoutGroup | WidgetInstance[] | WidgetInstance;
-export type WidgetColumn = Extract<LayoutGroup, { column: unknown }>;
-export type WidgetRow = Extract<LayoutGroup, { row: unknown }>;
-export type WidgetTable = Extract<LayoutGroup, { table: unknown }>;
-export type WidgetSection = Extract<LayoutGroup, { section: unknown }>;
-type ExtractWidgetKind<T> = T extends Record<infer K, unknown> ? K & string : never;
-export type WidgetKind = ExtractWidgetKind<Widget>;
-
-export function isWidgetColumn(layoutGroup: LayoutGroup): layoutGroup is WidgetColumn {
-	return "column" in layoutGroup;
-}
-
-export function isWidgetRow(layoutGroup: LayoutGroup): layoutGroup is WidgetRow {
-	return "row" in layoutGroup;
-}
-
-export function isWidgetTable(layoutGroup: LayoutGroup): layoutGroup is WidgetTable {
-	return "table" in layoutGroup;
-}
-
-export function isWidgetSection(layoutGroup: LayoutGroup): layoutGroup is WidgetSection {
-	return "section" in layoutGroup;
-}
-
 // Updates a widget layout based on a list of updates, giving the new layout by mutating the `layout` argument
 export function patchLayout(layout: /* &mut */ Layout, diffs: WidgetDiff[]) {
 	diffs.forEach((update) => {
