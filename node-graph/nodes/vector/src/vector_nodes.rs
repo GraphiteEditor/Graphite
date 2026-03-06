@@ -1306,6 +1306,153 @@ async fn sample_polyline(
 		.collect()
 }
 
+/// Simplifies vector paths by removing points that don't significantly contribute to the shape, using the Ramer-Douglas-Peucker algorithm. Any curves are sampled into polylines before simplification.
+#[node_macro::node(category("Vector: Modifier"), path(core_types::vector))]
+async fn decimate(
+	_: impl Ctx,
+	/// The vector paths to simplify.
+	content: Table<Vector>,
+	/// The maximum distance a point can deviate from the simplified path before it is kept.
+	#[default(5.)]
+	#[unit(" px")]
+	tolerance: Length,
+) -> Table<Vector> {
+	// Tolerance of 0 means no simplification is possible, so return immediately
+	if tolerance <= 0. {
+		return content;
+	}
+
+	// Below this squared length, a line segment is treated as a degenerate point and the distance
+	// falls back to a simple point-to-point measurement to avoid division by near-zero.
+	const NEAR_ZERO_LENGTH_SQUARED: f64 = 1e-20;
+	// How many curve samples we want within each tolerance-width span. Sampling at exactly the
+	// tolerance step would leave deviations between consecutive samples undetected if a curve
+	// feature falls between two samples; doubling the density closes that gap with comfortable margin.
+	const SAMPLES_PER_TOLERANCE_WIDTH: f64 = 2.;
+	// Hard floor on the sample step (in document pixels). Prevents near-zero tolerance values from
+	// producing pathologically dense sampling before the early-return guard has a chance to act.
+	const MIN_SAMPLE_STEP: f64 = 0.01;
+	// Every curve segment must produce at least this many samples so there is always a start and
+	// at least one interior point for RDP to evaluate.
+	const MIN_SAMPLE_COUNT: usize = 2;
+
+	fn perpendicular_distance(point: DVec2, line_start: DVec2, line_end: DVec2) -> f64 {
+		let line_vector = line_end - line_start;
+		let line_length_squared = line_vector.length_squared();
+		if line_length_squared < NEAR_ZERO_LENGTH_SQUARED {
+			return point.distance(line_start);
+		}
+		(point - line_start).perp_dot(line_vector).abs() / line_length_squared.sqrt()
+	}
+
+	fn rdp_simplify(points: &[DVec2], tolerance: f64) -> Vec<DVec2> {
+		if points.len() < 3 {
+			return points.to_vec();
+		}
+
+		let mut keep = vec![false; points.len()];
+		keep[0] = true;
+		keep[points.len() - 1] = true;
+
+		let mut stack = vec![(0, points.len() - 1)];
+
+		while let Some((start_index, end_index)) = stack.pop() {
+			let start = points[start_index];
+			let end = points[end_index];
+
+			let mut max_distance = 0.;
+			let mut max_index = 0;
+
+			for (i, &point) in points.iter().enumerate().take(end_index).skip(start_index + 1) {
+				let distance = perpendicular_distance(point, start, end);
+				if distance > max_distance {
+					max_distance = distance;
+					max_index = i;
+				}
+			}
+
+			if max_distance > tolerance {
+				keep[max_index] = true;
+				if max_index - start_index > 1 {
+					stack.push((start_index, max_index));
+				}
+				if end_index - max_index > 1 {
+					stack.push((max_index, end_index));
+				}
+			}
+		}
+
+		points.iter().enumerate().filter(|(i, _)| keep[*i]).map(|(_, p)| *p).collect()
+	}
+
+	content
+		.into_iter()
+		.map(|mut row| {
+			let transform = Affine::new(row.transform.to_cols_array());
+			let inverse_transform = transform.inverse();
+
+			let mut result = Vector {
+				style: std::mem::take(&mut row.element.style),
+				upstream_data: std::mem::take(&mut row.element.upstream_data),
+				..Default::default()
+			};
+
+			for mut bezpath in row.element.stroke_bezpath_iter() {
+				bezpath.apply_affine(transform);
+
+				let is_closed = matches!(bezpath.elements().last(), Some(PathEl::ClosePath));
+
+				// Collect points from the bezpath, sampling curves into line segments
+				let mut points = Vec::new();
+				for segment in bezpath.segments() {
+					if points.is_empty() {
+						points.push(DVec2::new(segment.start().x, segment.start().y));
+					}
+					if is_linear(segment) {
+						points.push(DVec2::new(segment.end().x, segment.end().y));
+					} else {
+						let length = segment.perimeter(DEFAULT_ACCURACY);
+						let sample_step = (tolerance / SAMPLES_PER_TOLERANCE_WIDTH).max(MIN_SAMPLE_STEP);
+						let sample_count = ((length / sample_step).ceil() as usize).max(MIN_SAMPLE_COUNT);
+						for i in 1..=sample_count {
+							let t = i as f64 / sample_count as f64;
+							let sampled = segment.eval(t);
+							points.push(DVec2::new(sampled.x, sampled.y));
+						}
+					}
+				}
+
+				// For closed paths, the last segment ends exactly at the first point, leaving a duplicate, so we remove it.
+				if is_closed {
+					points.pop();
+				}
+
+				// Apply RDP simplification
+				let simplified = rdp_simplify(&points, tolerance);
+				if simplified.is_empty() {
+					continue;
+				}
+
+				// Reconstruct as a polyline
+				let mut new_bezpath = BezPath::new();
+				new_bezpath.move_to((simplified[0].x, simplified[0].y));
+				for &point in &simplified[1..] {
+					new_bezpath.line_to((point.x, point.y));
+				}
+				if is_closed {
+					new_bezpath.close_path();
+				}
+
+				new_bezpath.apply_affine(inverse_transform);
+				result.append_bezpath(new_bezpath);
+			}
+
+			row.element = result;
+			row
+		})
+		.collect()
+}
+
 /// Cuts a path at a given progression from 0 to 1 along the path, creating two new subpaths from the original one (if the path is initially open) or one open subpath (if the path is initially closed).
 ///
 /// If multiple subpaths make up the path, the whole number part of the progression value selects the subpath and the decimal part determines the position along it.
