@@ -1122,9 +1122,9 @@ impl Render for Table<Vector> {
 					};
 
 					let outline_color = black_or_white_for_best_contrast(render_params.artboard_background);
-					let outline_color = peniko::Color::new([outline_color.r(), outline_color.g(), outline_color.b(), outline_color.a()]);
+					let outline_color_peniko = peniko::Color::new([outline_color.r(), outline_color.g(), outline_color.b(), outline_color.a()]);
 
-					scene.stroke(&outline_stroke, kurbo::Affine::new(element_transform.to_cols_array()), outline_color, None, &path);
+					scene.stroke(&outline_stroke, kurbo::Affine::new(element_transform.to_cols_array()), outline_color_peniko, None, &path);
 				}
 				_ => {
 					if use_layer {
@@ -1415,11 +1415,11 @@ impl Render for Table<Raster<CPU>> {
 						dash_offset: 0.,
 					};
 					let outline_color = black_or_white_for_best_contrast(render_params.artboard_background);
-					let outline_color = peniko::Color::new([outline_color.r(), outline_color.g(), outline_color.b(), outline_color.a()]);
+					let outline_color_peniko = peniko::Color::new([outline_color.r(), outline_color.g(), outline_color.b(), outline_color.a()]);
 					let mut outline_path = Subpath::<PointId>::new_rectangle(DVec2::ZERO, DVec2::ONE).to_bezpath();
 					outline_path.apply_affine(kurbo::Affine::new(outline_transform.to_cols_array()));
 
-					scene.stroke(&outline_stroke, kurbo::Affine::IDENTITY, outline_color, None, &outline_path);
+					scene.stroke(&outline_stroke, kurbo::Affine::IDENTITY, outline_color_peniko, None, &outline_path);
 				}
 				_ => {
 					let image_transform = transform * *row.transform * DAffine2::from_scale(1. / DVec2::new(image.width as f64, image.height as f64));
@@ -1503,11 +1503,11 @@ impl Render for Table<Raster<GPU>> {
 						dash_offset: 0.,
 					};
 					let outline_color = black_or_white_for_best_contrast(render_params.artboard_background);
-					let outline_color = peniko::Color::new([outline_color.r(), outline_color.g(), outline_color.b(), outline_color.a()]);
+					let outline_color_peniko = peniko::Color::new([outline_color.r(), outline_color.g(), outline_color.b(), outline_color.a()]);
 					let mut outline_path = Subpath::<PointId>::new_rectangle(DVec2::ZERO, DVec2::ONE).to_bezpath();
 					outline_path.apply_affine(kurbo::Affine::new(outline_transform.to_cols_array()));
 
-					scene.stroke(&outline_stroke, kurbo::Affine::IDENTITY, outline_color, None, &outline_path);
+					scene.stroke(&outline_stroke, kurbo::Affine::IDENTITY, outline_color_peniko, None, &outline_path);
 				}
 				_ => {
 					let width = row.element.data().width();
