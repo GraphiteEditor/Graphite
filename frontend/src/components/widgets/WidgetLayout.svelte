@@ -19,7 +19,7 @@
 	{:else if isWidgetSection(layoutGroup)}
 		<WidgetSection widgetData={layoutGroup} {layoutTarget} class={className} {classes} />
 	{:else if isWidgetTable(layoutGroup)}
-		<WidgetTable widgetData={layoutGroup} {layoutTarget} unstyled={layoutGroup.unstyled} />
+		<WidgetTable widgetData={layoutGroup} {layoutTarget} unstyled={layoutGroup.table.unstyled} />
 	{/if}
 {/each}
 

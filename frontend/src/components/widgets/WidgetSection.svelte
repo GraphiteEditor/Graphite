@@ -2,7 +2,8 @@
 	import { getContext } from "svelte";
 
 	import type { Editor } from "@graphite/editor";
-	import type { WidgetSection as WidgetSectionData, LayoutTarget } from "@graphite/messages";
+	import type { LayoutTarget } from "@graphite/messages";
+	import type { WidgetSection as WidgetSectionData } from "@graphite/utility-functions/widgets";
 	import { isWidgetSpanRow, isWidgetSection } from "@graphite/utility-functions/widgets";
 
 	import LayoutCol from "@graphite/components/layout/LayoutCol.svelte";
@@ -26,13 +27,13 @@
 <LayoutCol class={`widget-section ${className}`.trim()} {classes}>
 	<button class="header" class:expanded on:click|stopPropagation={() => (expanded = !expanded)} tabindex="0">
 		<div class="expand-arrow"></div>
-		<TextLabel tooltipLabel={widgetData.name} tooltipDescription={widgetData.description} bold={true}>{widgetData.name}</TextLabel>
+		<TextLabel tooltipLabel={widgetData.section.name} tooltipDescription={widgetData.section.description} bold={true}>{widgetData.section.name}</TextLabel>
 		<IconButton
-			icon={widgetData.pinned ? "PinActive" : "PinInactive"}
-			tooltipDescription={widgetData.pinned ? "Unpin this node so it's no longer shown here when nothing is selected." : "Pin this node so it's shown here when nothing is selected."}
+			icon={widgetData.section.pinned ? "PinActive" : "PinInactive"}
+			tooltipDescription={widgetData.section.pinned ? "Unpin this node so it's no longer shown here when nothing is selected." : "Pin this node so it's shown here when nothing is selected."}
 			size={24}
 			action={(e) => {
-				editor.handle.setNodePinned(widgetData.id, !widgetData.pinned);
+				editor.handle.setNodePinned(widgetData.section.id, !widgetData.section.pinned);
 				e?.stopPropagation();
 			}}
 			class="show-only-on-hover"
@@ -42,26 +43,26 @@
 			tooltipDescription="Delete this node from the layer chain."
 			size={24}
 			action={(e) => {
-				editor.handle.deleteNode(widgetData.id);
+				editor.handle.deleteNode(widgetData.section.id);
 				e?.stopPropagation();
 			}}
 			class="show-only-on-hover"
 		/>
 		<IconButton
-			icon={widgetData.visible ? "EyeVisible" : "EyeHidden"}
-			hoverIcon={widgetData.visible ? "EyeHide" : "EyeShow"}
-			tooltipDescription={widgetData.visible ? "Hide this node." : "Show this node."}
+			icon={widgetData.section.visible ? "EyeVisible" : "EyeHidden"}
+			hoverIcon={widgetData.section.visible ? "EyeHide" : "EyeShow"}
+			tooltipDescription={widgetData.section.visible ? "Hide this node." : "Show this node."}
 			size={24}
 			action={(e) => {
-				editor.handle.toggleNodeVisibilityLayerPanel(widgetData.id);
+				editor.handle.toggleNodeVisibilityLayerPanel(widgetData.section.id);
 				e?.stopPropagation();
 			}}
-			class={widgetData.visible ? "show-only-on-hover" : ""}
+			class={widgetData.section.visible ? "show-only-on-hover" : ""}
 		/>
 	</button>
 	{#if expanded}
 		<LayoutCol class="body" data-block-hover-transfer>
-			{#each widgetData.layout as layoutGroup}
+			{#each widgetData.section.layout as layoutGroup}
 				{#if isWidgetSpanRow(layoutGroup)}
 					<WidgetSpan widgetData={layoutGroup} {layoutTarget} />
 				{:else if isWidgetSection(layoutGroup)}

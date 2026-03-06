@@ -661,9 +661,11 @@ export type LayoutTarget =
 	| "WelcomeScreenButtons"
 	| "WorkingColors";
 
+export type DiffUpdate = { layout: Layout } | { layoutGroup: LayoutGroup } | { widget: WidgetInstance };
+
 export type WidgetDiff = {
 	widgetPath: bigint[];
-	newValue: { layout: Layout } | { layoutGroup: LayoutGroup } | { widget: WidgetInstance };
+	newValue: DiffUpdate;
 };
 
 export type UIItem = Layout | LayoutGroup | WidgetInstance[] | WidgetInstance;

@@ -1,5 +1,4 @@
 import type { FrontendMessage, FrontendMessages, LayoutTarget, WidgetDiff, ToMessageMap } from "@graphite/messages";
-import { parseWidgetDiffs } from "@graphite/utility-functions/widgets";
 
 export function createSubscriptionRouter() {
 	// Callbacks are wrapped at subscription time to capture their type-specific data extraction in a closure,
@@ -55,7 +54,7 @@ export function createSubscriptionRouter() {
 			getHandler = () => {
 				const layoutCallback = layoutCallbacks[layoutTarget];
 				if (!layoutCallback) return undefined;
-				return () => layoutCallback(parseWidgetDiffs(diff));
+				return () => layoutCallback(diff);
 			};
 		}
 
