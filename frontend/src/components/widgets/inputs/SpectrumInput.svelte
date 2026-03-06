@@ -7,7 +7,7 @@
 	import { createEventDispatcher, onDestroy } from "svelte";
 
 	import { evaluateGradientAtPosition } from "@graphite/../wasm/pkg/graphite_wasm";
-	import type { Color, Gradient } from "@graphite/messages";
+	import type { Color, GradientStops } from "@graphite/messages";
 	import { createColor, colorToHexOptionalAlpha, colorToRgbCSS, gradientFirstColor, gradientLastColor, gradientToLinearGradientCSS } from "@graphite/utility-functions/colors";
 
 	import { preventEscapeClosingParentFloatingMenu } from "@graphite/components/layout/FloatingMenu.svelte";
@@ -17,9 +17,9 @@
 	const BUTTON_LEFT = 0;
 	const BUTTON_RIGHT = 2;
 
-	const dispatch = createEventDispatcher<{ activeMarkerIndexChange: { activeMarkerIndex: number | undefined; activeMarkerIsMidpoint: boolean }; gradient: Gradient; dragging: boolean }>();
+	const dispatch = createEventDispatcher<{ activeMarkerIndexChange: { activeMarkerIndex: number | undefined; activeMarkerIsMidpoint: boolean }; gradient: GradientStops; dragging: boolean }>();
 
-	export let gradient: Gradient;
+	export let gradient: GradientStops;
 	export let disabled = false;
 	export let activeMarkerIndex = 0 as number | undefined;
 	export let activeMarkerIsMidpoint = false;
@@ -243,7 +243,7 @@
 		dispatch("gradient", gradient);
 	}
 
-	function toMarkers(gradient: Gradient): { position: number; midpoint: number; color: Color }[] {
+	function toMarkers(gradient: GradientStops): { position: number; midpoint: number; color: Color }[] {
 		return gradient.position.map((position, i) => ({
 			position,
 			midpoint: gradient.midpoint[i],
@@ -251,7 +251,7 @@
 		}));
 	}
 
-	function toMidpoints(gradient: Gradient): number[] {
+	function toMidpoints(gradient: GradientStops): number[] {
 		if (gradient.position.length < 2) return [];
 
 		return gradient.midpoint.slice(0, -1).map((midpoint, i) => {
